@@ -28,13 +28,17 @@ BiocManager::install(organism, character.only = TRUE)
 library(organism, character.only = TRUE)
 
 # Set directories
-working_dir <- "S:/Lab_Member/Tobi/Experiments/Exp3_Nlgn3_development/LaserDissProteomics/GSEA"
+#working_dir <- "S:/Lab_Member/Tobi/Experiments/Exp3_Nlgn3_development/LaserDissProteomics/GSEA"
+working_dir <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/"
 results_dir <- file.path(working_dir, "Results")
 setwd(working_dir)
 
 # Define cell types
-cell_types <- c("ca3soma", "ca1soma")
-data_path <- file.path(working_dir, "Datasets", paste(cell_types, collapse = "_"), ".csv")
+group <- "g1"
+cell_types <- c("neuron", "cfos")
+file_name <- paste(group, paste(cell_types, collapse = "_"), sep = "_")
+data_path <- file.path(working_dir, "Datasets", paste0(file_name, ".csv"))
+#data_path <- file.path(working_dir, "Datasets", paste(group, paste(cell_types, collapse = "_"), sep = "_"), ".csv")
 
 # Load and prepare gene data
 df <- read.csv(data_path, header = TRUE)
