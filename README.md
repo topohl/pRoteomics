@@ -11,7 +11,6 @@ Detailed documentation for clusterProfiler can be found here:
 - [Installation and Requirements](#installation-and-requirements)
 - [Usage](#usage)
 - [File Structure](#file-structure)
-- [Known Issues](#known-issues)
 - [Citation](#citation)
 - [License](#license)
 
@@ -70,10 +69,10 @@ Detailed documentation for clusterProfiler can be found here:
 
 ## File Structure
 
-├── README.md                 # This file; provides an overview and instructions.
-├── script.R                  # The R script containing the GSEA workflow.
-├── Datasets/                 # Contains sample CSV files with gene expression data.
-└── Results/                  # Directory where output plots and results will be saved.
+├── README.md&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;// This file: provides an overview and instructions. <br/>
+├── clusterProfiler.R&nbsp;&nbsp;&nbsp;&nbsp;// The R script containing the GSEA workflow.<br/>
+├── Datasets/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;// Directory with sample CSV files containing gene expression data. <br/>
+└── Results/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;// Directory where output plots and results will be saved.<br/>
 
 ## Citation
 
@@ -81,7 +80,3 @@ If you use this workflow or any part of this analysis in your research, please c
 
 **LG Wang, Y Han, QY He. _clusterProfiler: an R package for comparing biological themes among gene clusters._ OMICS: A Journal of Integrative Biology, 2012, 16(5):284-287.**  
 DOI: [10.1089/omi.2011.0118](http://dx.doi.org/10.1089/omi.2011.0118)
-
-## License
-
-This project is provided under the [choose-your-license](LICENSE). Please see the LICENSE file for details.
