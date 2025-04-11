@@ -47,7 +47,7 @@ Detailed documentation for clusterProfiler can be found here:
    Clone or download this repository to your local machine.
 
 2. **Update the Working Directory:**  
-   Open the R script (e.g., `script.R`) and modify the variable `working_dir` so that it points to your local working directory. Ensure your CSV file is placed in the `/Datasets/` subdirectory.
+   Open the R script clusterProfiler.R and modify the variable `working_dir` so that it points to your local working directory. Ensure your CSV file is placed in the `/Datasets/` subdirectory.
 
 3. **Run the Analysis:**  
    The script performs the following steps:
