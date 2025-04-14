@@ -2,25 +2,34 @@
 # Documentation: https://bioconductor.org/packages/release/bioc/vignettes/clusterProfiler/inst/doc/clusterProfiler.html
 
 # Check and install required packages
-if (!requireNamespace("BiocManager", quietly = TRUE))
+if (!requireNamespace("BiocManager", quietly = TRUE)) {
     install.packages("BiocManager")
-
-BiocManager::install(c("clusterProfiler", "pathview", "enrichplot", "DOSE"))
-
-# Load libraries with installation if needed
-required_packages <- c("clusterProfiler", "enrichplot", "ggplot2", "ggnewscale", 
-                       "cowplot", "ggridges", "europepmc", "ggpubr", "ggrepel", 
-                       "ggsci", "ggthemes", "ggExtra", "ggforce", "ggalluvial", 
-                       "lattice", "latticeExtra", "DOSE")
-
-install_and_load <- function(package) {
-    if (!require(package, character.only = TRUE)) {
-        install.packages(package)
-        library(package, character.only = TRUE)
-    }
 }
 
-lapply(required_packages, install_and_load)
+# Define required packages
+required_packages <- c(
+    "clusterProfiler", "pathview", "enrichplot", "DOSE", "ggplot2", "ggnewscale",
+    "cowplot", "ggridges", "europepmc", "ggpubr", "ggrepel", "ggsci", "ggthemes",
+    "ggExtra", "ggforce", "ggalluvial", "lattice", "latticeExtra", "BiocManager",
+    "org.Mm.eg.db", "ggplotify", "svglite"
+)
+
+# Install missing Bioconductor packages
+bioc_packages <- c("clusterProfiler", "pathview", "enrichplot", "DOSE", "org.Mm.eg.db")
+missing_bioc <- bioc_packages[!sapply(bioc_packages, requireNamespace, quietly = TRUE)]
+if (length(missing_bioc) > 0) {
+    BiocManager::install(missing_bioc)
+}
+
+# Install and load all required packages
+install_and_load <- function(package) {
+    if (!require(package, character.only = TRUE)) {
+        install.packages(package, dependencies = TRUE)
+    }
+    library(package, character.only = TRUE)
+}
+
+invisible(lapply(required_packages, install_and_load))
 
 # Set annotation package and load it
 organism <- "org.Mm.eg.db" 
@@ -28,7 +37,7 @@ BiocManager::install(organism, character.only = TRUE)
 library(organism, character.only = TRUE)
 
 # Set directories
-working_dir <- "/Users/tobiaspohl/Documents/clusterProfiler"
+working_dir <- "S:/Lab_Member/Tobi/Experiments/Exp3_Nlgn3_development/LaserDissProteomics/GSEA"
 results_dir <- file.path(working_dir, "Results")
 setwd(working_dir)
 
@@ -46,45 +55,66 @@ gene_list <- sort(na.omit(original_gene_list), decreasing = TRUE)
 
 # Gene Set Enrichment Analysis (GSEA)
 gse <- gseGO(
-    geneList = gene_list, ont = "ALL", keyType = "SYMBOL",
-    minGSSize = 3, maxGSSize = 800, pvalueCutoff = 1, verbose = TRUE,
-    OrgDb = organism, pAdjustMethod = "none"
+  geneList = gene_list, ont = "ALL", keyType = "SYMBOL",
+  minGSSize = 3, maxGSSize = 800, pvalueCutoff = 1, verbose = TRUE,
+  OrgDb = organism, pAdjustMethod = "none"
 )
 
 # Plotting function for reuse
 save_plot <- function(plot, filename) {
-    ggsave(file.path(results_dir, filename), plot, units = "cm", dpi = 300)
+  ggsave(file.path(results_dir, filename), plot, units = "cm", dpi = 300)
 }
 
 # Dotplot
 require(DOSE)
 dot_title <- paste("GSEA of", paste(cell_types, collapse = " over "))
 p1 <- clusterProfiler::dotplot(gse, showCategory = 10, split = ".sign") +
-    facet_grid(. ~ .sign) +
-    labs(title = dot_title)
-save_plot(p1, paste("GSEAdotplot_", paste(cell_types, collapse = "_"), ".png"))
+  facet_grid(. ~ .sign) +
+  labs(title = dot_title)
+save_plot(p1, paste("GSEAdotplot_", paste(cell_types, collapse = "_"), ".svg"))
 
 # Enrichment Map and Network Plot
 emapplot(pairwise_termsim(gse), showCategory = 10)
+save_plot(emapplot(pairwise_termsim(gse), showCategory = 10),
+          paste("GSEAemap_", paste(cell_types, collapse = "_"), ".svg"))
+
 cnetplot(gse, categorySize = "pvalue", foldChange = gene_list)
+save_plot(cnetplot(gse, categorySize = "pvalue", foldChange = gene_list),
+          paste("GSEAcnet_", paste(cell_types, collapse = "_"), ".svg"))
 
-# Ridgeplot
-ridgeplot(gse) + labs(x = "Enrichment distribution")
+# Ridgeplot: Visualizing enrichment distribution
+ridgeplot_gse <- ridgeplot(gse) +
+  labs(x = "Enrichment Distribution", title = "GSEA Ridgeplot") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"))
+save_plot(ridgeplot_gse, paste("GSEA_Ridgeplot_", paste(cell_types, collapse = "_"), ".svg"))
 
-# GSEA Plot
-gseaplot(gse, by = "all", title = gse$Description[1], geneSetID = 1)
+# GSEA Plot: Highlighting specific gene sets
+gseaplot_gse <- gseaplot(gse, by = "all", title = gse@result$Description[1], geneSetID = 1)
+save_plot(gseaplot_gse, paste("GSEA_Plot_", paste(cell_types, collapse = "_"), ".svg"))
 
-# PubMed Trend Plot
-terms <- gse$Description[1:3]
-pmcplot(terms, 2010:2018, proportion = FALSE)
+# PubMed Trend Plot: Analyzing publication trends for top enriched terms
+top_terms <- head(gse@result$Description, 3)
+pmcplot_gse <- pmcplot(top_terms, 2010:2018, proportion = FALSE) +
+    labs(title = "Publication Trends for Top Enriched Terms")
+save_plot(pmcplot_gse, paste("GSEA_PubMed_Trends_", paste(cell_types, collapse = "_"), ".svg"))
 
 # KEGG GSEA Analysis
+# Map SYMBOL to ENTREZID
 ids <- bitr(names(original_gene_list), fromType = "SYMBOL", toType = "ENTREZID", OrgDb = "org.Mm.eg.db")
-dedup_ids <- ids[!duplicated(ids[c("SYMBOL")]), ]
-df2 <- df[df$gene_symbol %in% dedup_ids$SYMBOL, ]
-df2$gene_symbol <- dedup_ids$ENTREZID
-kegg_gene_list <- sort(na.omit(df2$log2fc), decreasing = TRUE)
-names(kegg_gene_list) <- df2$gene_symbol
+
+# Remove duplicated SYMBOLs
+dedup_ids <- ids[!duplicated(ids$SYMBOL), ]
+
+# Merge df with ENTREZID mapping
+df2 <- merge(df, dedup_ids, by.x = "gene_symbol", by.y = "SYMBOL")
+
+# Now use ENTREZID as names
+kegg_gene_list <- df2$log2fc
+names(kegg_gene_list) <- df2$ENTREZID
+
+# Remove NAs and sort
+kegg_gene_list <- sort(na.omit(kegg_gene_list), decreasing = TRUE)
 
 kegg_organism <- "mmu"
 kk2 <- gseKEGG(
@@ -97,9 +127,9 @@ kk2 <- gseKEGG(
 kegg_dot_title <- paste("KEGG GSEA Enriched Pathways of", paste(cell_types, collapse = " over "))
 p2 <- clusterProfiler::dotplot(kk2, showCategory = 10, title = kegg_dot_title, split = ".sign") +
     facet_grid(. ~ .sign)
-save_plot(p2, paste("KEGGpathway_", paste(cell_types, collapse = "_"), ".png"))
+save_plot(p2, paste("KEGGpathway_", paste(cell_types, collapse = "_"), ".svg"))
 
-emapplot(kk2)
+emapplot(pairwise_termsim(kk2), showCategory = 10)
 cnetplot(kk2, categorySize = "pvalue", foldChange = gene_list)
 ridgeplot(kk2) + labs(x = "Enrichment distribution")
 gseaplot(kk2, by = "all", title = kk2$Description[1], geneSetID = 1)
@@ -121,7 +151,7 @@ go_enrich <- enrichGO(
 # Heatmap Plot
 p3 <- heatplot(go_enrich, foldChange = gene_list, showCategory = 5)
 p3 <- p3 + labs(title = paste("GO Enrichment Heatmap of", paste(cell_types, collapse = " over ")))
-save_plot(p3, paste("GOheatmap_", paste(cell_types, collapse = "_"), ".png"))
+save_plot(p3, paste("GOheatmap_", paste(cell_types, collapse = "_"), ".svg"))
 
-save_plot(p4, paste("GOheatmap_", paste(cell_types, collapse = "_"), ".png"))
+save_plot(p4, paste("GOheatmap_", paste(cell_types, collapse = "_"), ".svg"))
 cowplot::plot_grid(p1, p3, ncol = 1, labels = LETTERS[1:2])
