@@ -60,12 +60,12 @@ invisible(lapply(required_packages, install_and_load))
 # ----------------------------------------------------
 
 # Set directories
-working_dir <- "S:/Lab_Member/Tobi/Experiments/Exp3_Nlgn3_development/LaserDissProteomics/GSEA"
+working_dir <- "/Users/tobiaspohl/Documents/clusterProfiler"
 results_dir <- file.path(working_dir, "Results")
 setwd(working_dir)
 
 # Define cell types
-cell_types <- c("neuropil", "microglia")
+cell_types <- c("mcherryG1", "mcherryG2")
 file_name <- paste0(paste(cell_types, collapse = "_"), ".csv")
 data_path <- file.path(working_dir, "Datasets", file_name)
 
@@ -76,10 +76,31 @@ data_path <- file.path(working_dir, "Datasets", file_name)
 # Load and prepare gene data
 df <- read.csv(data_path, header = TRUE)
 colnames(df)[1] <- "gene_symbol"
-
 original_gene_list <- df$log2fc
 names(original_gene_list) <- df$gene_symbol
 gene_list <- sort(na.omit(original_gene_list), decreasing = TRUE)
+# remove duplicates
+gene_list <- gene_list[!duplicated(names(gene_list))]
+
+top_df <- read.csv(data_path, header = TRUE)
+colnames(top_df)[1] <- "gene_symbol"
+top_gene_list <- top_df$log2fc
+names(top_gene_list) <- top_df$gene_symbol
+top_gene_list <- sort(na.omit(top_gene_list), decreasing = TRUE)
+# Select top N genes by absolute fold change
+top_genes <- names(top_gene_list)[abs(top_gene_list) > 1]  # Adjust threshold as needed
+top_genes <- sort(top_gene_list[top_genes], decreasing = TRUE)
+top_genes <- names(top_genes)
+
+library(clusterProfiler)
+library(org.Mm.eg.db)
+
+# Try converting assuming your IDs are UNIPROT
+#converted_genes <- bitr(names(top_genes),
+#                        fromType = "UNIPROT",
+#                        toType = "SYMBOL",
+#                        OrgDb = org.Mm.eg.db)
+#head(converted_genes)
 
 # ----------------------------------------------------
 # Perform Gene Set Enrichment Analysis (GSEA)
@@ -92,9 +113,9 @@ library(organism, character.only = TRUE)
 
 # Gene Set Enrichment Analysis (GSEA)
 gse <- gseGO(
-  geneList = gene_list, ont = "ALL", keyType = "SYMBOL",
+  geneList = gene_list, ont = "BP", keyType = "UNIPROT",
   minGSSize = 3, maxGSSize = 800, pvalueCutoff = 1, verbose = TRUE,
-  OrgDb = organism, pAdjustMethod = "none"
+  OrgDb = organism, pAdjustMethod = "BH"
 )
 
 # Helper to save plots
@@ -102,13 +123,43 @@ save_plot <- function(plot, filename) {
   ggsave(file.path(results_dir, filename), plot, units = "cm", dpi = 300)
 }
 
-# Dotplot
+# Dotplot with Gene Ratio scaled from 0 to 1
 require(DOSE)
 dot_title <- paste("GSEA of", paste(cell_types, collapse = " over "))
 p1 <- clusterProfiler::dotplot(gse, showCategory = 10, split = ".sign") +
-  facet_grid(. ~ .sign) +
-  labs(title = dot_title)
+    facet_grid(. ~ .sign) +
+    labs(title = dot_title, x = "Gene Ratio", y = "Enrichment") +
+    theme_minimal(base_size = 12) +
+    theme(
+        plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.text.y = element_text(size = 10),
+        strip.text = element_text(size = 12, face = "bold")
+    )
 save_plot(p1, paste("GSEAdotplot_", paste(cell_types, collapse = "_"), ".svg"))
+
+# ----------------------------------------------------
+# Focus on the top regulated genes
+# ----------------------------------------------------
+
+# Set annotation package and load it
+organism <- "org.Mm.eg.db" 
+BiocManager::install(organism, character.only = TRUE)
+library(organism, character.only = TRUE)
+
+# Perform enrichment analysis (ORA)
+library(org.Mm.eg.db)
+ora <- enrichGO(gene = top_genes, ont = "CC", keyType = "UNIPROT",
+             minGSSize = 3, maxGSSize = 800, pvalueCutoff = 1,
+             OrgDb = organism, pAdjustMethod = "none")
+
+# Dotplot for ORA
+p7 <- clusterProfiler::dotplot(ora, showCategory = 10) +
+  labs(title = "ORA of Top Regulated Genes") +
+  scale_x_continuous(limits = c(0, 1))  # Scale Gene Ratio from 0 to 1
+save_plot(p7, paste("ORA_dotplot_", paste(cell_types, collapse = "_"), ".svg"))
+# Save the ORA results
+#write.csv(ora@result, file = file.path(results_dir, paste("ORA_results_", paste(cell_types, collapse = "_"), ".csv")))
 
 # ----------------------------------------------------
 # Enrichment Map, Network Plot, and Ridgeplot of GSEA
@@ -146,17 +197,19 @@ save_plot(pmcplot_gse, paste("GSEA_PubMed_Trends_", paste(cell_types, collapse =
 
 # KEGG GSEA Analysis
 # Map SYMBOL to ENTREZID
-ids <- bitr(names(original_gene_list), fromType = "SYMBOL", toType = "ENTREZID", OrgDb = "org.Mm.eg.db")
+ids <- bitr(names(original_gene_list), fromType = "UNIPROT", toType = "ENTREZID", OrgDb = "org.Mm.eg.db")
 
-# Remove duplicated SYMBOLs
-dedup_ids <- ids[!duplicated(ids$SYMBOL), ]
+# Remove duplicated UNIPROT IDs
+dedup_ids <- ids[!duplicated(ids$UNIPROT), ]
 
 # Merge df with ENTREZID mapping
-df2 <- merge(df, dedup_ids, by.x = "gene_symbol", by.y = "SYMBOL")
+df2 <- merge(df, dedup_ids, by.x = "gene_symbol", by.y = "UNIPROT")
 
 # Now use ENTREZID as names
 kegg_gene_list <- df2$log2fc
 names(kegg_gene_list) <- df2$ENTREZID
+# Remove duplicates
+kegg_gene_list <- kegg_gene_list[!duplicated(names(kegg_gene_list))]
 
 # Remove NAs and sort
 kegg_gene_list <- sort(na.omit(kegg_gene_list), decreasing = TRUE)
@@ -186,6 +239,38 @@ library(pathview)
 pathview(gene.data = kegg_gene_list, pathway.id = "mmu00030", species = kegg_organism)
 pathview(gene.data = kegg_gene_list, pathway.id = "mmu00030", species = kegg_organism, kegg.native = FALSE)
 
+# pathview of differnt cellular pathways
+pathview(gene.data = kegg_gene_list, pathway.id = "mmu04110", species = kegg_organism)
+pathview(gene.data = kegg_gene_list, pathway.id = "mmu04115", species = kegg_organism)
+pathview(gene.data = kegg_gene_list, pathway.id = "mmu04114", species = kegg_organism)
+pathview(gene.data = kegg_gene_list, pathway.id = "mmu04113", species = kegg_organism)
+pathview(gene.data = kegg_gene_list, pathway.id = "mmu04112", species = kegg_organism)
+pathview(gene.data = kegg_gene_list, pathway.id = "mmu04111", species = kegg_organism)
+
+# learning pathway
+pathview(gene.data = kegg_gene_list, pathway.id = "mmu04116", species = kegg_organism)
+pathview(gene.data = kegg_gene_list, pathway.id = "mmu04117", species = kegg_organism)
+pathview(gene.data = kegg_gene_list, pathway.id = "mmu04118", species = kegg_organism)
+pathview(gene.data = kegg_gene_list, pathway.id = "mmu04119", species = kegg_organism)
+
+# pathview of pathway important for memory
+pathview(gene.data = kegg_gene_list, pathway.id = "mmu04720", species = kegg_organism)
+pathview(gene.data = kegg_gene_list, pathway.id = "mmu04721", species = kegg_organism)
+pathview(gene.data = kegg_gene_list, pathway.id = "mmu04722", species = kegg_organism)
+
+# Serotonergic synapse
+pathview(gene.data = kegg_gene_list, pathway.id = "mmu04725", species = kegg_organism)
+pathview(gene.data = kegg_gene_list, pathway.id = "mmu04726", species = kegg_organism)
+
+# GABAergic synapse
+pathview(gene.data = kegg_gene_list, pathway.id = "mmu04727", species = kegg_organism)
+
+# Glu synapse
+pathview(gene.data = kegg_gene_list, pathway.id = "mmu04724", species = kegg_organism)
+
+# general NT signalling
+pathview(gene.data = kegg_gene_list, pathway.id = "mmu04080", species = kegg_organism)
+
 # ----------------------------------------------------
 # EnrichGO Analysis and Heatmap
 # ----------------------------------------------------
@@ -198,6 +283,6 @@ go_enrich <- enrichGO(
 )
 
 # Heatmap Plot
-p3 <- heatplot(go_enrich, foldChange = gene_list, showCategory = 5)
-save_plot(p4, paste("GOheatmap_", paste(cell_types, collapse = "_"), ".svg"))
-cowplot::plot_grid(p1, p3, ncol = 1, labels = LETTERS[1:2])
+#p3 <- heatplot(go_enrich, foldChange = gene_list, showCategory = 5)
+#save_plot(p4, paste("GOheatmap_", paste(cell_types, collapse = "_"), ".svg"))
+#cowplot::plot_grid(p1, p3, ncol = 1, labels = LETTERS[1:2])
