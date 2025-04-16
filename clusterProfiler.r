@@ -113,7 +113,7 @@ library(organism, character.only = TRUE)
 
 # Gene Set Enrichment Analysis (GSEA)
 gse <- gseGO(
-  geneList = gene_list, ont = "BP", keyType = "UNIPROT",
+  geneList = gene_list, ont = "ALL", keyType = "UNIPROT",
   minGSSize = 3, maxGSSize = 800, pvalueCutoff = 1, verbose = TRUE,
   OrgDb = organism, pAdjustMethod = "BH"
 )
@@ -217,7 +217,7 @@ kegg_gene_list <- sort(na.omit(kegg_gene_list), decreasing = TRUE)
 kegg_organism <- "mmu"
 kk2 <- gseKEGG(
   geneList = kegg_gene_list, organism = "mmu",
-  minGSSize = 3, maxGSSize = 800, pvalueCutoff = 1, pAdjustMethod = "none",
+  minGSSize = 3, maxGSSize = 800, pvalueCutoff = 1, pAdjustMethod = "BH",
   keyType = "ncbi-geneid"
 )
 
