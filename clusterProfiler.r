@@ -236,40 +236,23 @@ gseaplot(kk2, by = "all", title = kk2$Description[1], geneSetID = 1)
 if (!requireNamespace("pathview", quietly = TRUE)) install.packages("pathview")
 library(pathview)
 
+# KEGG Pathway Visualizations using Pathview
+
+# For the mmu00030 pathway, generate both native and non-native plots.
 pathview(gene.data = kegg_gene_list, pathway.id = "mmu00030", species = kegg_organism)
 pathview(gene.data = kegg_gene_list, pathway.id = "mmu00030", species = kegg_organism, kegg.native = FALSE)
 
-# pathview of differnt cellular pathways
-pathview(gene.data = kegg_gene_list, pathway.id = "mmu04110", species = kegg_organism)
-pathview(gene.data = kegg_gene_list, pathway.id = "mmu04115", species = kegg_organism)
-pathview(gene.data = kegg_gene_list, pathway.id = "mmu04114", species = kegg_organism)
-pathview(gene.data = kegg_gene_list, pathway.id = "mmu04113", species = kegg_organism)
-pathview(gene.data = kegg_gene_list, pathway.id = "mmu04112", species = kegg_organism)
-pathview(gene.data = kegg_gene_list, pathway.id = "mmu04111", species = kegg_organism)
+# Define additional pathway IDs for visualization.
+path_ids <- c(
+    "mmu04110", "mmu04115", "mmu04114", "mmu04113", "mmu04112", "mmu04111",
+    "mmu04116", "mmu04117", "mmu04118", "mmu04119", "mmu04720", "mmu04721",
+    "mmu04722", "mmu04725", "mmu04726", "mmu04727", "mmu04724", "mmu04080"
+)
 
-# learning pathway
-pathview(gene.data = kegg_gene_list, pathway.id = "mmu04116", species = kegg_organism)
-pathview(gene.data = kegg_gene_list, pathway.id = "mmu04117", species = kegg_organism)
-pathview(gene.data = kegg_gene_list, pathway.id = "mmu04118", species = kegg_organism)
-pathview(gene.data = kegg_gene_list, pathway.id = "mmu04119", species = kegg_organism)
-
-# pathview of pathway important for memory
-pathview(gene.data = kegg_gene_list, pathway.id = "mmu04720", species = kegg_organism)
-pathview(gene.data = kegg_gene_list, pathway.id = "mmu04721", species = kegg_organism)
-pathview(gene.data = kegg_gene_list, pathway.id = "mmu04722", species = kegg_organism)
-
-# Serotonergic synapse
-pathview(gene.data = kegg_gene_list, pathway.id = "mmu04725", species = kegg_organism)
-pathview(gene.data = kegg_gene_list, pathway.id = "mmu04726", species = kegg_organism)
-
-# GABAergic synapse
-pathview(gene.data = kegg_gene_list, pathway.id = "mmu04727", species = kegg_organism)
-
-# Glu synapse
-pathview(gene.data = kegg_gene_list, pathway.id = "mmu04724", species = kegg_organism)
-
-# general NT signalling
-pathview(gene.data = kegg_gene_list, pathway.id = "mmu04080", species = kegg_organism)
+# Generate pathview plots for each pathway in the list.
+lapply(path_ids, function(pid) {
+    pathview(gene.data = kegg_gene_list, pathway.id = pid, species = kegg_organism)
+})
 
 # ----------------------------------------------------
 # EnrichGO Analysis and Heatmap
