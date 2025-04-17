@@ -1,86 +1,135 @@
-#' @title Gene Symbol Mapping for ClusterProfiler Analysis
+#' UniProt ID Mapping for ClusterProfiler Analysis
 #'
-#' @description
-#' This script processes a gene dataset by cleaning gene symbols and mapping them to corresponding UniProt 
-#' SwissProt identifiers using the biomaRt package. It handles entries with multiple gene symbols by 
-#' retaining only the primary symbol and then integrates UniProt database data to update these symbols when available.
+#' This script processes gene data with UniProtKB IDs (e.g., "GENE_MOUSE") and maps them
+#' to UniProt Accessions using an official UniProt ID mapping file.
 #'
 #' @details
-#' The script performs the following steps:
-#' \itemize{
-#'   \item Loads necessary libraries including dplyr, stringr, tidyr, purrr, biomaRt, and readr.
-#'   \item Sets the working directory and defines directories for results and datasets.
-#'   \item Constructs the file name dynamically based on predefined cell types and verifies that the
-#'         dataset exists.
-#'   \item Reads the gene data from a CSV file, transforms gene symbol entries with multiple entries by 
-#'         splitting on ";" and retaining only the first entry.
-#'   \item Filters out empty or duplicate gene symbols to ensure a clean dataset.
-#'   \item Queries the UniProt database via biomaRt to get corresponding SwissProt identifiers for gene names.
-#'   \item Joins the gene dataset with the UniProt data, replacing gene symbols with their SwissProt
-#'         identifiers when available.
+#' The workflow includes:
+#' \enumerate{
+#'   \item Setting up the environment and loading necessary libraries.
+#'   \item Defining project directories.
+#'   \item Checking for the existence of input data and the mapping file.
+#'   \item Preprocessing gene identifiers by extracting the primary ID when multiple are provided.
+#'   \item Reading and filtering the official UniProt mapping file (MOUSE_10090_idmapping.dat) to obtain an Entry Name to Accession map.
+#'   \item Merging the mapping data with the gene information.
+#'   \item Saving the mapped results for downstream analysis.
 #' }
 #'
-#' @note 
-#' Ensure that the CSV data file is present at the designated path. The script will terminate with an error
-#' if the file does not exist.
+#' @note Ensure that the mapping file is downloaded, unzipped, and placed in the specified directory before running this script.
 #'
-#' @examples
-#' \dontrun{
-#'   # Set up working directory and run the script to map gene symbols to SwissProt identifiers.
-#' }
-#'
-#' @author
-#' Tobias Pohl
+#' @author Tobias Pohl
 
-library(dplyr)
-library(stringr)
-library(tidyr)
-library(purrr)
-library(biomaRt)
-library(readr)
+# -----------------------------------------------------
+# Load Libraries
+# -----------------------------------------------------
 
-# Set working directory and results directory paths
+if (!requireNamespace("pacman", quietly = TRUE))
+    install.packages("pacman")
+
+# Load required libraries with pacman
+pacman::p_load(dplyr, stringr, tidyr, purrr, readr)
+
+# -----------------------------------------------------
+# Define Paths and Project Directories
+# -----------------------------------------------------
+
 working_dir <- "/Users/tobiaspohl/Documents/clusterProfiler"
 results_dir <- file.path(working_dir, "Results")
 setwd(working_dir)
 
-# Define cell types and construct the CSV file name accordingly
-cell_types <- c("mcherryG1", "mcherryG2")
+# Specify cell types which determine dataset file name
+cell_types <- c("TESTmcherryG1", "mcherryG2")
 file_name <- paste0(paste(cell_types, collapse = "_"), ".csv")
 data_path <- file.path(working_dir, "Datasets", file_name)
 
-# Verify that the data file exists before proceeding
+# IMPORTANT: Set path for the downloaded UniProt mapping file
+uniprot_mapping_file_path <- file.path(working_dir, "Datasets", "MOUSE_10090_idmapping.dat")
+
+# -----------------------------------------------------
+# Verify Input Files
+# -----------------------------------------------------
+
 if (!file.exists(data_path)) {
-    stop("Data file does not exist: ", data_path)
+    stop("Input data file does not exist: ", data_path)
+}
+if (!file.exists(uniprot_mapping_file_path)) {
+    stop("UniProt mapping file not found at: ", uniprot_mapping_file_path,
+         "\nDownload and unzip from: ftp://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/idmapping/by_organism/MOUSE_10090_idmapping.dat.gz")
 }
 
-# Load the gene dataset, convert gene symbols to character vectors,
-# split entries with multiple genes at the semicolon, and use only the first gene.
-# Also, remove empty entries and duplicate gene symbols.
-df <- read_csv(data_path) %>%
+# -----------------------------------------------------
+# Preprocess Gene Data
+# -----------------------------------------------------
+
+cat("Reading gene data from:", data_path, "\n")
+df <- readr::read_csv(data_path, show_col_types = FALSE) %>%
     mutate(gene_symbol = as.character(gene_symbol)) %>%
-    mutate(gene_symbol = str_split(gene_symbol, ";")) %>%
-    mutate(gene_symbol = map_chr(gene_symbol, ~str_trim(.x[1]))) %>%
-    filter(gene_symbol != "") %>%
+    # In the case of semicolon-separated IDs, retain the primary (first) identifier
+    mutate(gene_symbol = map_chr(str_split(gene_symbol, ";"), ~str_trim(.x[1]))) %>%
+    filter(gene_symbol != "" & !is.na(gene_symbol)) %>%
     distinct(gene_symbol, .keep_all = TRUE)
 
-# Connect to the UniProt database using biomaRt
-uniprot <- useMart("uniprot", dataset = "uniprotkb")
+cat("Total genes loaded:", nrow(df), "\n")
+if (nrow(df) == 0) {
+    stop("No valid gene symbols were identified after preprocessing.")
+}
+cat("Preview of gene data BEFORE mapping:\n")
+print(head(df))
 
-# Retrieve UniProt SwissProt identifiers and associated gene names,
-# group by gene name to consolidate multiple identifiers,
-# and filter out any invalid or missing gene names.
-gene_symbols_db <- getBM(attributes = c("uniprot_swissprot", "gene_name"), mart = uniprot) %>%
-    group_by(gene_name) %>%
-    summarise(uniprot_swissprot = paste(unique(uniprot_swissprot), collapse = ";"),
-              .groups = "drop") %>%
-    filter(!is.na(gene_name) & gene_name != "")
+# -----------------------------------------------------
+# Parse UniProt Mapping File
+# -----------------------------------------------------
 
-# Integrate the UniProt data with the gene dataset by performing a left join.
-# Replace the gene symbol with the corresponding SwissProt identifier when available.
-df <- df %>%
-    left_join(gene_symbols_db, by = c("gene_symbol" = "gene_name")) %>%
-    mutate(gene_symbol = if_else(uniprot_swissprot != "" & !is.na(uniprot_swissprot),
-                                 uniprot_swissprot,
-                                 gene_symbol)) %>%
-    select(gene_symbol, everything(), -uniprot_swissprot)
+cat("Loading UniProt mapping file from:", uniprot_mapping_file_path, "\n")
+uniprot_mapping <- readr::read_tsv(
+    uniprot_mapping_file_path,
+    col_names = c("UniProt_Accession", "Type", "Value"),
+    col_types = "ccc",  # reading all columns as characters
+    quote = ""         # avoid handling quotes in the identifiers
+)
+
+cat("Total entries in UniProt mapping file:", nrow(uniprot_mapping), "\n")
+
+# Extract mappings for UniProtKB-ID to Accession
+entry_name_to_accession <- uniprot_mapping %>%
+    dplyr::filter(Type == "UniProtKB-ID") %>%
+    dplyr::select(UniProt_Accession, UniProtKB_ID = Value) %>% 
+    dplyr::distinct(UniProtKB_ID, .keep_all = TRUE)
+
+cat("Total unique UniProtKB-ID mappings identified:", nrow(entry_name_to_accession), "\n")
+if (nrow(entry_name_to_accession) == 0) {
+    stop("Failed to obtain UniProtKB-ID mappings from the file.")
+}
+
+# -----------------------------------------------------
+# Map Gene IDs to UniProt Accessions
+# -----------------------------------------------------
+
+cat("Mapping gene identifiers to UniProt Accessions...\n")
+df_mapped <- df %>%
+    left_join(entry_name_to_accession, by = c("gene_symbol" = "UniProtKB_ID")) %>%
+    # Replace the original gene_symbol with the Accession if mapping exists
+    mutate(
+        gene_symbol = if_else(
+            !is.na(UniProt_Accession) & UniProt_Accession != "",
+            UniProt_Accession,
+            gene_symbol
+        )
+    ) %>%
+    # Retain and order the columns for downstream analysis (adjust if necessary)
+    dplyr::select(gene_symbol, pval, padj, log2fc)
+
+cat("Preview of gene data AFTER mapping:\n")
+print(head(df_mapped))
+
+cat("Final gene count:", nrow(df_mapped), "\n")
+
+# -----------------------------------------------------
+# Save Mapped Results
+# -----------------------------------------------------
+
+results_file <- file.path(results_dir, paste0(tools::file_path_sans_ext(file_name), "_mapped.csv"))
+readr::write_csv(df_mapped, results_file)
+cat("Mapped results saved to:", results_file, "\n")
+
+cat("Pipeline completed successfully.\n")
