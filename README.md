@@ -1,82 +1,104 @@
-# Gene Set Enrichment Analysis (GSEA) with clusterProfiler
+# pRoteomics
 
-This repository provides an end-to-end example for performing Gene Set Enrichment Analysis (GSEA) using the R package **clusterProfiler** along with several complementary packages. The workflow demonstrates how to install and load the necessary packages, prepare gene expression data, and run both Gene Ontology (GO) and KEGG pathway enrichment analyses. Multiple visualization outputs such as dotplots, enrichment maps, network plots, ridgeplots, GSEA plots, PubMed trend plots, and heatmaps are generated throughout the analysis.
-
-Detailed documentation for clusterProfiler can be found here:  
-[clusterProfiler Documentation](https://bioconductor.org/packages/release/bioc/vignettes/clusterProfiler/inst/doc/clusterProfiler.html)
-
-## Table of Contents
-
-- [Overview](#overview)
-- [Installation and Requirements](#installation-and-requirements)
-- [Usage](#usage)
-- [File Structure](#file-structure)
-- [Citation](#citation)
-- [License](#license)
+pRoteomics is a repository of R scripts designed for advanced proteomics analyses. The two primary scripts included focus on processing gene data for clusterProfiler analysis and performing comprehensive Gene Set Enrichment Analysis (GSEA) along with pathway visualization.
 
 ## Overview
 
-- **Purpose:**  
-  This project provides a detailed workflow for performing GSEA on gene expression data using **clusterProfiler**. It covers both GO and KEGG analyses along with comprehensive visualizations.
+This repository contains two main workflows:
 
-- **Key Features:**  
-  - **Automatic Package Installation:** Automatically installs required Bioconductor and CRAN packages.
-  - **Data Preparation:** Loads gene expression data from a CSV file, renames columns, and generates a sorted gene list.
-  - **GO Enrichment Analysis:** Uses the `gseGO` function to perform GO enrichment and generates various plots including dotplots, enrichment maps, network plots, and ridgeplots.
-  - **KEGG Pathway Enrichment Analysis:** Converts gene symbols to ENTREZ IDs, performs KEGG GSEA using `gseKEGG`, and integrates with Pathview for pathway diagrams.
-  - **Additional Visualizations:** Includes a PubMed trend plot and a GO enrichment heatmap.
-  - **Result Saving:** Uses custom functions to save output plots in the specified results directory.
+- **UniProt ID Mapping for ClusterProfiler Analysis**  
+  This script processes gene data containing UniProtKB IDs (e.g., "GENE_MOUSE"), maps them to corresponding UniProt Accessions using an official UniProt mapping file, and saves the mapped results for downstream clusterProfiler analyses.
 
-## Installation and Requirements
+- **Gene Set Enrichment Analysis (GSEA) Workflow using clusterProfiler**  
+  This script executes GSEA and KEGG pathway enrichment on mouse datasets. It includes gene list sorting based on log₂ fold change, various functional and publication-quality plot generations, and KEGG pathway visualizations using the Pathview package.
 
-- **Prerequisites:**
-  - R (and optionally RStudio) installed on your system.
-  - Internet connectivity to download packages and annotation/pathway data.
+## System Requirements
 
-- **Required Packages:**  
-  The analysis utilizes the following R packages:
-  - **Bioconductor Packages:** `clusterProfiler`, `pathview`, `enrichplot`, `DOSE`, `org.Mm.eg.db`
-  - **CRAN Packages:** `ggplot2`, `ggnewscale`, `cowplot`, `ggridges`, `europepmc`, `ggpubr`, `ggrepel`, `ggsci`, `ggthemes`, `ggExtra`, `ggforce`, `ggalluvial`, `lattice`, `latticeExtra`
+- **R** (version ≥ 4.0 recommended)
+- Required R packages:
+  - **Data Manipulation and I/O:** `dplyr`, `stringr`, `tidyr`, `purrr`, `readr`, `pacman`
+  - **Enrichment and Plotting:** `clusterProfiler`, `pathview`, `enrichplot`, `DOSE`, `ggplot2`, `cowplot`, `ggridges`, `ggpubr`, `ggrepel`, `ggsci`, `ggthemes`, `ggExtra`, `ggforce`, `ggalluvial`, `lattice`, `latticeExtra`
+  - **Bioconductor and OrgDB:** `BiocManager`, `org.Mm.eg.db`
+  - **Additional Visualization:** `ggplotify`, `svglite`
 
-- **Installation Instructions:**  
-  The script is designed to automatically check for and install any missing packages on runtime. Simply run the R script after adjusting the working directory and file paths to match your environment.
+- **Input Files:**
+  - A gene data CSV file (named based on cell types, e.g., `TESTmcherryG1_mcherryG2.csv` or `mcherryG1_mcherryG2.csv`) located in the `Datasets` folder.
+  - The UniProt mapping file (`MOUSE_10090_idmapping.dat`) downloaded and placed in the `Datasets` folder.
+
+## Installation
+
+1. **Clone the Repository:**
+
+   ```bash
+   git clone https://github.com/yourusername/pRoteomics.git
+   cd pRoteomics
+   ```
+
+2. **Prepare the Environment:**
+
+   - Open the project in RStudio or run the scripts using the command line via Rscript.
+   - Ensure the Datasets folder contains the required gene data CSV file and the UniProt mapping file.
+
+3. **Dependency Management:**
+
+   The scripts include code to automatically check for and install any missing packages. Ensure you have an active internet connection for package installation.
 
 ## Usage
 
-1. **Clone the Repository:**  
-   Clone or download this repository to your local machine.
+### UniProt ID Mapping Script
 
-2. **Update the Working Directory:**  
-   Open the R script clusterProfiler.R and modify the variable `working_dir` so that it points to your local working directory. Ensure your CSV file is placed in the `/Datasets/` subdirectory.
+This script maps gene symbols (e.g., "GENE_MOUSE") from your dataset to their corresponding UniProt Accessions.
 
-3. **Run the Analysis:**  
-   The script performs the following steps:
-   - **Package Setup:**  
-     Checks for and installs all required packages using a helper function (`install_and_load`).
-   - **Data Preparation:**  
-     Loads a CSV file with gene expression data, renames the first column to `gene_symbol`, and creates a sorted gene list based on `log2fc` values.
-   - **GO Enrichment:**  
-     Executes GSEA using `gseGO` with predefined parameters and generates several plots (dotplot, enrichment map, network plot, ridgeplot, and a GSEA plot).
-   - **KEGG Pathway Enrichment:**  
-     Converts gene symbols to ENTREZ IDs, performs KEGG GSEA using `gseKEGG`, and creates similar visualizations. Pathway diagrams are generated using Pathview.
-   - **Additional Visualizations:**  
-     Generates a PubMed trend plot for selected enriched terms and a GO enrichment heatmap.
-   - **Saving Outputs:**  
-     Uses custom functions (e.g., `save_plot`) to store generated plots in the `/Results/` directory.
+- **Workflow Steps:**
+  - Setup environment and load necessary libraries.
+  - Define project directories and input file paths.
+  - Validate the existence of input gene data and UniProt mapping file.
+  - Preprocess gene identifiers to extract and clean primary IDs.
+  - Parse the UniProt mapping file to extract a mapping from UniProtKB-ID to Accession.
+  - Merge the gene data with the mapping information.
+  - Save the final mapped output as a CSV file for further downstream analysis.
 
-4. **Adjust and Extend:**  
-   Feel free to modify analysis parameters (e.g., p-value cutoffs, category limits) or integrate additional plots as needed.
+- **Run the Script:**
 
-## File Structure
+   ```bash
+   Rscript path/to/UniProt_ID_Mapping.R
+   ```
 
-├── README.md&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;// This file: provides an overview and instructions. <br/>
-├── clusterProfiler.R&nbsp;&nbsp;&nbsp;&nbsp;// The R script containing the GSEA workflow.<br/>
-├── Datasets/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;// Directory with sample CSV files containing gene expression data. <br/>
-└── Results/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;// Directory where output plots and results will be saved.<br/>
+### Gene Set Enrichment Analysis (GSEA) Workflow Script
 
-## Citation
+This script performs multiple enrichment analyses and creates high-quality visualizations for the analysis of mouse gene datasets.
 
-If you use this workflow or any part of this analysis in your research, please cite **clusterProfiler** as follows:
+- **Workflow Steps:**
+  - Install and load all required packages (both CRAN and Bioconductor).
+  - Define directories and load the gene dataset.
+  - Prepare and sort gene lists based on log₂ fold change values.
+  - Execute Gene Ontology (GO) GSEA across all ontologies.
+  - Generate various plots such as dotplots, enrichment maps, network plots, ridgeplots, and GSEA curves.
+  - Conduct ORA on top regulated genes and generate corresponding visualizations.
+  - Convert gene IDs from UniProt to ENTREZID for KEGG analysis.
+  - Perform KEGG GSEA and generate KEGG pathway visualizations using the Pathview package.
+  - Optionally, execute additional enrichment analysis with EnrichGO and produce heatmaps.
 
-**LG Wang, Y Han, QY He. _clusterProfiler: an R package for comparing biological themes among gene clusters._ OMICS: A Journal of Integrative Biology, 2012, 16(5):284-287.**  
-DOI: [10.1089/omi.2011.0118](http://dx.doi.org/10.1089/omi.2011.0118)
+- **Run the Script:**
+
+   ```bash
+   Rscript path/to/GSEA_Workflow.R
+   ```
+
+## Outputs
+
+- **CSV Files:**
+  
+  Mapped gene data and any saved enrichment results are written to a Results directory.
+
+- **Visualizations:**
+  
+  Publication-quality plots such as dotplots, network plots, ridgeplots, and KEGG pathway images are saved as SVG files within the Results folder.
+
+## Contributing
+
+Contributions, bug reports, and feature requests are welcome. Please open an issue or submit a pull request to help improve the repository.
+
+## Author
+
+Tobias Pohl
