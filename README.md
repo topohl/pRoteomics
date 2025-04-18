@@ -6,7 +6,7 @@ pRoteomics is a repository of R scripts designed for advanced proteomics analyse
 
 This repository contains two main workflows:
 
-- **UniProt ID Mapping for ClusterProfiler Analysis**  
+- **MapThatProt ID Mapping for ClusterProfiler Analysis**  
   This script processes gene data containing UniProtKB IDs (e.g., "GENE_MOUSE"), maps them to corresponding UniProt Accessions using an official UniProt mapping file, and saves the mapped results for downstream clusterProfiler analyses.
 
 - **Gene Set Enrichment Analysis (GSEA) Workflow using clusterProfiler**  
@@ -45,7 +45,7 @@ This repository contains two main workflows:
 
 ## Usage
 
-### UniProt ID Mapping Script
+### MapThatProt Script
 
 This script maps gene symbols (e.g., "GENE_MOUSE") from your dataset to their corresponding UniProt Accessions.
 
@@ -61,7 +61,7 @@ This script maps gene symbols (e.g., "GENE_MOUSE") from your dataset to their co
 - **Run the Script:**
 
    ```bash
-   Rscript path/to/UniProt_ID_Mapping.R
+   Rscript path/to/MapThatProt.r
    ```
 
 ### Gene Set Enrichment Analysis (GSEA) Workflow Script
@@ -82,7 +82,7 @@ This script performs multiple enrichment analyses and creates high-quality visua
 - **Run the Script:**
 
    ```bash
-   Rscript path/to/GSEA_Workflow.R
+   Rscript path/to/clusterProfiler.r
    ```
 
 ## Outputs
