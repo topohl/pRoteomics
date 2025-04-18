@@ -1,3 +1,5 @@
+<img width="759" alt="Screenshot 2025-04-18 at 14 47 44" src="https://github.com/user-attachments/assets/be03dd69-eea1-4f5f-bdef-a05ba77392fe" />
+
 # pRoteomics
 
 pRoteomics is a repository of R scripts designed for advanced proteomics analyses. The two primary scripts included focus on processing gene data for clusterProfiler analysis and performing comprehensive Gene Set Enrichment Analysis (GSEA) along with pathway visualization.
