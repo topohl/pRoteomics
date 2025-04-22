@@ -53,8 +53,24 @@ if (!file.exists(data_path)) {
     stop("Input data file does not exist: ", data_path)
 }
 if (!file.exists(uniprot_mapping_file_path)) {
-    stop("UniProt mapping file not found at: ", uniprot_mapping_file_path,
-         "\nDownload and unzip from: ftp://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/idmapping/by_organism/MOUSE_10090_idmapping.dat.gz")
+    cat("UniProt mapping file not found at:", uniprot_mapping_file_path, "\n")
+    cat("Attempting to download the file...\n")
+    
+    # Increase timeout to 3600 seconds (1 hour) to prevent download timeout
+    options(timeout = 3600)
+    
+    gz_url <- "https://ftp.uniprot.org/pub/databases/uniprot/knowledgebase/idmapping/by_organism/MOUSE_10090_idmapping.dat.gz"
+    gz_file <- paste0(uniprot_mapping_file_path, ".gz")
+    tryCatch({
+        download.file(gz_url, gz_file, mode = "wb")
+        if (!requireNamespace("R.utils", quietly = TRUE)) {
+            install.packages("R.utils")
+        }
+        R.utils::gunzip(gz_file, destname = uniprot_mapping_file_path, remove = TRUE)
+        cat("Downloaded and unzipped the UniProt mapping file successfully.\n")
+    }, error = function(e) {
+        stop("Failed to download or unzip the UniProt mapping file: ", e$message)
+    })
 }
 
 # -----------------------------------------------------
@@ -123,6 +139,15 @@ cat("Preview of gene data AFTER mapping:\n")
 print(head(df_mapped))
 
 cat("Final gene count:", nrow(df_mapped), "\n")
+
+# report proteins that werent mapped
+unmapped_proteins <- df %>%
+  left_join(entry_name_to_accession, by = c("gene_symbol" = "UniProtKB_ID")) %>%
+  filter(is.na(UniProt_Accession) | UniProt_Accession == "") %>%
+  select(gene_symbol)
+cat("Total unmapped proteins:", nrow(unmapped_proteins), "\n")
+cat("Unmapped proteins:\n")
+print(unmapped_proteins)
 
 # -----------------------------------------------------
 # Save Mapped Results
