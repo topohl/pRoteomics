@@ -69,6 +69,39 @@ cell_types <- c("mcherryG1", "mcherryG2")
 file_name <- paste0(paste(cell_types, collapse = "_"), ".csv")
 data_path <- file.path(working_dir, "Datasets", file_name)
 
+# set organism
+organism <- "org.Mm.eg.db"
+
+# ----------------------------------------------------
+# Helper functions
+# ----------------------------------------------------
+
+# Helper to save plots
+save_plot <- function(plot, filename) {
+  ggsave(file.path(results_dir, filename), plot, units = "cm", dpi = 300)
+}
+
+plot_dot <- function(dataset, cell_types, results_dir = results_dir) {
+  dot_title <- paste("GSEA of", paste(cell_types, collapse = " over "))
+  p <- clusterProfiler::dotplot(dataset, showCategory = 10, split = ".sign") +
+    facet_wrap(~ .sign, nrow = 1) +
+    labs(title = dot_title, x = "Gene Ratio", y = "Gene Set") +
+    scale_fill_viridis_c(option = "cividis") +
+    theme_minimal(base_size = 12) +
+    theme(
+      plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      axis.text.y = element_text(size = 10),
+      strip.text = element_text(size = 12, face = "plain"),
+      panel.grid.major = element_line(color = "grey85", size = 0.3),
+      panel.grid.minor = element_blank()
+    )
+  analysis_type <- deparse(substitute(dataset))
+  plot_filename <- paste0(analysis_type, "_", paste(cell_types, collapse = "_"), ".svg")
+  save_plot(p, plot_filename)
+  return(p)
+}
+
 # ----------------------------------------------------
 # Load and prepare data
 # ----------------------------------------------------
@@ -92,24 +125,9 @@ top_genes <- names(top_gene_list)[abs(top_gene_list) > 1]  # Adjust threshold as
 top_genes <- sort(top_gene_list[top_genes], decreasing = TRUE)
 top_genes <- names(top_genes)
 
-library(clusterProfiler)
-library(org.Mm.eg.db)
-
-# Try converting assuming your IDs are UNIPROT
-#converted_genes <- bitr(names(top_genes),
-#                        fromType = "UNIPROT",
-#                        toType = "SYMBOL",
-#                        OrgDb = org.Mm.eg.db)
-#head(converted_genes)
-
 # ----------------------------------------------------
 # Perform Gene Set Enrichment Analysis (GSEA)
 # ----------------------------------------------------
-
-# Set annotation package and load it
-organism <- "org.Mm.eg.db" 
-BiocManager::install(organism, character.only = TRUE)
-library(organism, character.only = TRUE)
 
 # Gene Set Enrichment Analysis (GSEA)
 gse <- gseGO(
@@ -118,25 +136,16 @@ gse <- gseGO(
   OrgDb = organism, pAdjustMethod = "BH"
 )
 
-# Helper to save plots
-save_plot <- function(plot, filename) {
-  ggsave(file.path(results_dir, filename), plot, units = "cm", dpi = 300)
-}
+plot_dot(gse, cell_types)
 
-# Dotplot with Gene Ratio scaled from 0 to 1
-require(DOSE)
-dot_title <- paste("GSEA of", paste(cell_types, collapse = " over "))
-p1 <- clusterProfiler::dotplot(gse, showCategory = 10, split = ".sign") +
-    facet_grid(. ~ .sign) +
-    labs(title = dot_title, x = "Gene Ratio", y = "Enrichment") +
-    theme_minimal(base_size = 12) +
-    theme(
-        plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
-        axis.text.x = element_text(angle = 45, hjust = 1),
-        axis.text.y = element_text(size = 10),
-        strip.text = element_text(size = 12, face = "bold")
-    )
-save_plot(p1, paste("GSEAdotplot_", paste(cell_types, collapse = "_"), ".svg"))
+# save core_enrichment results
+core_enrichment <- gse@result$core_enrichment
+# Save the GSEA results
+core_dir <- file.path(results_dir, "core_enrichment")
+if (!dir.exists(core_dir)) {
+  dir.create(core_dir, recursive = TRUE)
+}
+write.csv(gse@result, file = file.path(core_dir, paste("coreEnrichment_", paste(cell_types, collapse = "_"), ".csv")))
 
 # ----------------------------------------------------
 # Focus on the top regulated genes
@@ -187,7 +196,7 @@ save_plot(gseaplot_gse, paste("GSEA_Plot_", paste(cell_types, collapse = "_"), "
 
 # PubMed Trend Plot: Analyzing publication trends for top enriched terms
 top_terms <- head(gse@result$Description, 3)
-pmcplot_gse <- pmcplot(top_terms, 2010:2018, proportion = FALSE) +
+pmcplot_gse <- pmcplot(top_terms, 2010:2025, proportion = FALSE) +
   labs(title = "Publication Trends for Top Enriched Terms")
 save_plot(pmcplot_gse, paste("GSEA_PubMed_Trends_", paste(cell_types, collapse = "_"), ".svg"))
 
@@ -222,10 +231,12 @@ kk2 <- gseKEGG(
 )
 
 # KEGG Dotplot and Network Plot
-kegg_dot_title <- paste("KEGG GSEA Enriched Pathways of", paste(cell_types, collapse = " over "))
-p2 <- clusterProfiler::dotplot(kk2, showCategory = 10, title = kegg_dot_title, split = ".sign") +
-  facet_grid(. ~ .sign)
-save_plot(p2, paste("KEGGpathway_", paste(cell_types, collapse = "_"), ".svg"))
+#kegg_dot_title <- paste("KEGG GSEA Enriched Pathways of", paste(cell_types, collapse = " over "))
+#p2 <- clusterProfiler::dotplot(kk2, showCategory = 10, title = kegg_dot_title, split = ".sign") +
+#  facet_grid(. ~ .sign)
+#save_plot(p2, paste("KEGGpathway_", paste(cell_types, collapse = "_"), ".svg"))
+
+plot_dot(kk2, cell_types)
 
 emapplot(pairwise_termsim(kk2), showCategory = 10)
 cnetplot(kk2, categorySize = "pvalue", foldChange = gene_list)
@@ -238,22 +249,31 @@ library(pathview)
 
 # KEGG Pathway Visualizations using Pathview
 
-# For the mmu00030 pathway, generate both native and non-native plots.
-pathview(gene.data = kegg_gene_list, pathway.id = "mmu00030", species = kegg_organism)
-pathview(gene.data = kegg_gene_list, pathway.id = "mmu00030", species = kegg_organism, kegg.native = FALSE)
-
 # Define additional pathway IDs for visualization.
 path_ids <- c(
-    "mmu04110", "mmu04115", "mmu04114", "mmu04113", "mmu04112", "mmu04111",
-    "mmu04116", "mmu04117", "mmu04118", "mmu04119", "mmu04720", "mmu04721",
-    "mmu04722", "mmu04725", "mmu04726", "mmu04727", "mmu04724", "mmu04080"
+  "mmu04110", "mmu04115", "mmu04114", "mmu04113", "mmu04112", "mmu04111",
+  "mmu04116", "mmu04117", "mmu04118", "mmu04119", "mmu04720", "mmu04721",
+  "mmu04722", "mmu04725", "mmu04726", "mmu04727", "mmu04724", "mmu04080",
+  "mmu00030"
 )
 
-# Generate pathview plots for each pathway in the list.
-lapply(path_ids, function(pid) {
-    pathview(gene.data = kegg_gene_list, pathway.id = pid, species = kegg_organism)
-})
+# Create a subdirectory for pathview results and get its absolute path.
+pathview_dir <- normalizePath(file.path(results_dir, "pathview"), winslash = "/", mustWork = FALSE)
+if (!dir.exists(pathview_dir)) {
+  dir.create(pathview_dir, recursive = TRUE)
+}
 
+oldwd <- getwd()
+setwd(pathview_dir)
+# Generate pathview plots for each pathway in the list using absolute paths.
+lapply(path_ids, function(pid) {
+  pathview(
+    gene.data = kegg_gene_list, 
+    pathway.id = pid, 
+    species = kegg_organism, 
+  )
+})
+setwd(oldwd)
 # ----------------------------------------------------
 # EnrichGO Analysis and Heatmap
 # ----------------------------------------------------
