@@ -1,57 +1,142 @@
-#' @title Comparative GO Enrichment Analysis Using clusterProfiler
+#' Compare Enrichment Analysis and Visualization
 #'
-#' @description This script performs a comprehensive analysis to compare the enrichment of Gene Ontology (GO) terms across multiple gene clusters. The workflow includes:
-#' \itemize{
-#'   \item Installing and loading necessary packages if they are not already installed.
-#'   \item Reading gene lists from CSV files (each representing a cell type or condition) in a specified directory.
-#'   \item Converting gene symbols to Entrez IDs using the bitr function from clusterProfiler for accurate enrichment analysis.
-#'   \item Executing a comparative GO enrichment (Biological Process) analysis across the gene clusters using the compareCluster function.
-#'   \item Visualizing the enrichment results with a dotplot enhanced by ggplot2 customizations.
+#' @description
+#' This script performs a comparative enrichment analysis by:
+#'
+#' - Reading multiple CSV files from a specified directory containing enrichment data.  
+#'   The CSV filenames (excluding the extension) are used as identifiers for different comparisons.
+#'
+#' - Combining the individual CSV data into a single data frame with an additional 
+#'   "Comparison" column indicating the source file.
+#'
+#' - Selecting the top enriched terms per comparison based on the highest absolute 
+#'   Normalized Enrichment Score (NES), and compiling a master list of these top terms.
+#'
+#' - Filtering the combined data to include only these top terms, across all comparisons.
+#'
+#' - Reordering comparisons in the final visualization based on the maximum absolute NES.
+#'
+#' - Generating a significance label for each term when the adjusted p-value (p.adjust) is less than 0.05.
+#'
+#' @details
+#' The script creates two types of visualizations:
+#'
+#' 1. A professional heatmap where:
+#' 2. A point plot that visualizes:
+#' 
+#'
+#' @section File Inputs:
+#' CSV files are read from the directory "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/core_enrichment"
+#' based on the pattern "*.csv". Each file serves as input for one comparison.
+#'
+#' @section Output:
+#' The script outputs two plots:
+#' \enumerate{
+#'   \item A heatmap visualizing the top differential enrichments.
+#'   \item A point plot emphasizing the size (via -log10(p.adjust)) and color (via NES) of each term.
 #' }
 #'
-#' @details The analysis utilizes the clusterProfiler package for enrichment testing and the enrichplot package for visualizations. Additionally, it leverages organism-specific annotations from the org.Mm.eg.db package (Mus musculus) to ensure accurate mapping of gene identifiers.
+#' @note 
+#' Ensure that the file paths and package dependencies are properly set up before running the script.
 #'
-#' @note Ensure that the file paths (e.g., for gene list CSV files and project directories) are correctly specified according to your local environment. The script may require adjustments if your gene identifiers are in different formats.
-#'
-#' @author
-#' Tobias Pohl
-#'
+#' @author Tobias Pohl
 
-# Install required packages if not already installed
-required_pkgs <- c("clusterProfiler", "org.Mm.eg.db", "enrichplot")
-if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager")
-for (pkg in required_pkgs) {
-    if (!requireNamespace(pkg, quietly = TRUE)) BiocManager::install(pkg)
-}
+# -----------------------------------------------------
+# Load Libraries
+# -----------------------------------------------------
 
 if (!require("pacman")) install.packages("pacman")
-pacman::p_load(clusterProfiler, org.Mm.eg.db, enrichplot, ggplot2, dplyr, tidyr, ggrepel)
+pacman::p_load(ggplot2, stringr, ggpubr, ggthemes, dplyr)
 
-# Example: Read in gene lists from files (one list per cell type/condition)
-# Each file should contain a single column of gene symbols or Entrez IDs
-file_list <- list.files(path = "/Users/tobiaspohl/Documents/clusterProfiler/Results/core_enrichment", pattern = "*.csv", full.names = TRUE)
-gene_lists <- lapply(file_list, function(f) scan(f, what = "", quiet = TRUE))
-names(gene_lists) <- tools::file_path_sans_ext(basename(file_list))
+# -----------------------------------------------------
+# Define Paths and Project Directories
+# -----------------------------------------------------
 
-# If your genes are in SYMBOL, convert to ENTREZID (recommended for clusterProfiler)
-gene_lists_entrez <- lapply(gene_lists, function(genes) {
-  bitr(genes, fromType = "SYMBOL", toType = "ENTREZID", OrgDb = org.Mm.eg.db)$ENTREZID
-})
+file_paths <- list.files(path = "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/core_enrichment", pattern = "*.csv", full.names = TRUE)
+names(file_paths) <- basename(file_paths) %>% str_remove(".csv")
 
-# Comparative GO enrichment (Biological Process)
-ck <- compareCluster(
-  geneCluster = gene_lists_entrez,
-  fun = "enrichGO",
-  OrgDb = org.Mm.eg.db,
-  ont = "BP",
-  pAdjustMethod = "BH",
-  pvalueCutoff = 0.05,
-  qvalueCutoff = 0.2,
-  readable = TRUE
+# -----------------------------------------------------
+# Read and Combine Data
+# -----------------------------------------------------
+
+enrichment_list <- lapply(file_paths, read.csv)
+names(enrichment_list) <- names(file_paths)
+
+combined_df <- bind_rows(
+  lapply(names(enrichment_list), function(name) {
+    df <- enrichment_list[[name]]
+    df$Comparison <- name
+    return(df)
+  })
 )
 
-# View results
-head(as.data.frame(ck))
+# -----------------------------------------------------
+# Select Top Terms
+# -----------------------------------------------------
 
-# Visualization: Dotplot for comparison
-dotplot(ck, showCategory = 10) + ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+# For each comparison, select the top 10 terms with the highest absolute NES value
+top10_df <- combined_df %>%
+    group_by(Comparison) %>%
+    slice_max(order_by = abs(NES), n = 15) %>% 
+    ungroup()
+
+# Create a master list of top terms from all comparisons
+top_terms <- unique(top10_df$Description)
+
+# -----------------------------------------------------
+# Filter Data for Heatmap
+# -----------------------------------------------------
+
+# For every comparison, get the rows corresponding to these top terms, even if they're not in the top 10 there
+lookup_df <- combined_df %>%
+    filter(Description %in% top_terms)
+
+# Compute an ordering of comparisons by the maximum absolute NES value in the lookup dataframe
+comparison_order <- lookup_df %>%
+    group_by(Comparison) %>%
+    summarize(max_abs_NES = max(abs(NES), na.rm = TRUE), .groups = "drop") %>%
+    arrange(desc(max_abs_NES)) %>%
+    pull(Comparison)
+
+# Reorder the Comparison factor using the computed order
+lookup_df <- lookup_df %>%
+    mutate(Comparison = factor(Comparison, levels = comparison_order))
+
+# -----------------------------------------------------
+# Create Heatmap
+# -----------------------------------------------------
+
+# Create a significance label if a p-value adjustment column is available (using p.adjust below).
+# Adjust the threshold as necessary.
+lookup_df <- lookup_df %>%
+    mutate(sig_label = ifelse(p.adjust < 0.05, "*", ""))
+    # Create a professional heatmap with Description on y-axis and Comparison on x-axis.
+    # Significant changes are marked with a star.
+    ggplot(lookup_df, aes(x = Comparison, y = reorder(Description, NES), fill = NES)) +
+        geom_tile(color = "white", size = 0.5) +
+        scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0) +
+        geom_text(aes(label = sig_label), color = "black", size = 5, vjust = 0.5) +
+        labs(
+            title = "Heatmap of Top Differential Enrichment",
+            x = "Comparison",
+            y = "Enriched Terms",
+            fill = "Normalized Enrichment Score (NES)"
+        ) +
+        theme_minimal(base_family = "Arial", base_size = 12) +
+        theme(
+            panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(),
+            axis.text.x = element_text(angle = 45, hjust = 1, face = "bold"),
+            axis.text.y = element_text(face = "bold", size = 10),
+            plot.title = element_text(face = "bold", size = 18, hjust = 0.5),
+            plot.margin = margin(10, 10, 10, 10)
+        )
+
+# -----------------------------------------------------
+# Create Dot Plot
+# -----------------------------------------------------
+
+ggplot(lookup_df, aes(x = Comparison, y = reorder(Description, NES), color = NES, size = -log10(p.adjust))) +
+  geom_point() +
+  scale_color_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0) +
+  theme_pubclean()
