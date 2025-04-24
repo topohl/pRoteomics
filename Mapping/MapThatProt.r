@@ -33,12 +33,12 @@ pacman::p_load(dplyr, stringr, tidyr, purrr, readr)
 # Define Paths and Project Directories
 # -----------------------------------------------------
 
-working_dir <- "/Users/tobiaspohl/Documents/clusterProfiler"
+working_dir <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler"
 results_dir <- file.path(working_dir, "Results")
 setwd(working_dir)
 
 # Specify cell types which determine dataset file name
-cell_types <- c("TESTmcherryG1", "mcherryG2")
+cell_types <- c("cfos3", "cfos4")
 file_name <- paste0(paste(cell_types, collapse = "_"), ".csv")
 data_path <- file.path(working_dir, "Datasets", file_name)
 
@@ -78,7 +78,7 @@ if (!file.exists(uniprot_mapping_file_path)) {
 # -----------------------------------------------------
 
 cat("Reading gene data from:", data_path, "\n")
-df <- readr::read_csv(data_path, show_col_types = FALSE) %>%
+df <- readr::read_csv2(data_path, col_names = TRUE, show_col_types = FALSE) %>%
     mutate(gene_symbol = as.character(gene_symbol)) %>%
     # In the case of semicolon-separated IDs, retain the primary (first) identifier
     mutate(gene_symbol = map_chr(str_split(gene_symbol, ";"), ~str_trim(.x[1]))) %>%
@@ -156,5 +156,9 @@ print(unmapped_proteins)
 results_file <- file.path(results_dir, paste0(tools::file_path_sans_ext(file_name), "_mapped.csv"))
 readr::write_csv(df_mapped, results_file)
 cat("Mapped results saved to:", results_file, "\n")
+
+unmapped_file <- file.path(results_dir, paste0(tools::file_path_sans_ext(file_name), "_unmapped.csv"))
+readr::write_csv(unmapped_proteins, unmapped_file)
+cat("Unmapped proteins saved to:", unmapped_file, "\n")
 
 cat("Pipeline completed successfully.\n")
