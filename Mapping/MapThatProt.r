@@ -38,9 +38,9 @@ results_dir <- file.path(working_dir, "Results")
 setwd(working_dir)
 
 # Specify cell types which determine dataset file name
-cell_types <- c("cfos3", "cfos4")
+cell_types <- c("mcherry3", "mcherry4")
 file_name <- paste0(paste(cell_types, collapse = "_"), ".csv")
-data_path <- file.path(working_dir, "Datasets", file_name)
+data_path <- file.path(working_dir, "Datasets", "raw", file_name)
 
 # IMPORTANT: Set path for the downloaded UniProt mapping file
 uniprot_mapping_file_path <- file.path(working_dir, "Datasets", "MOUSE_10090_idmapping.dat")
