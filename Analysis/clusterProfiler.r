@@ -59,15 +59,20 @@ invisible(lapply(required_packages, install_and_load))
 # Define working directory, cell types, and data paths
 # ----------------------------------------------------
 
+# Define cell types
+cell_types <- c("cfos3", "cfos4")
+
 # Set directories
-working_dir <- "/Users/tobiaspohl/Documents/clusterProfiler"
-results_dir <- file.path(working_dir, "Results")
+# working_dir <- "/Users/tobiaspohl/Documents/clusterProfiler"
+working_dir <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler"
+results_dir <- file.path(working_dir, "Results", paste(cell_types, collapse = "_"))
+if (!dir.exists(results_dir)) {
+  dir.create(results_dir, recursive = TRUE)
+}
 setwd(working_dir)
 
-# Define cell types
-cell_types <- c("mcherryG1", "mcherryG2")
 file_name <- paste0(paste(cell_types, collapse = "_"), ".csv")
-data_path <- file.path(working_dir, "Datasets", file_name)
+data_path <- file.path(working_dir, "Datasets", "mapped", file_name)
 
 # set organism
 organism <- "org.Mm.eg.db"
@@ -131,7 +136,7 @@ top_genes <- names(top_genes)
 
 # Gene Set Enrichment Analysis (GSEA)
 gse <- gseGO(
-  geneList = gene_list, ont = "ALL", keyType = "UNIPROT",
+  geneList = gene_list, ont = "CC", keyType = "UNIPROT",
   minGSSize = 3, maxGSSize = 800, pvalueCutoff = 1, verbose = TRUE,
   OrgDb = organism, pAdjustMethod = "BH"
 )
@@ -152,12 +157,12 @@ write.csv(gse@result, file = file.path(core_dir, paste("coreEnrichment_", paste(
 # ----------------------------------------------------
 
 # Set annotation package and load it
-organism <- "org.Mm.eg.db" 
-BiocManager::install(organism, character.only = TRUE)
-library(organism, character.only = TRUE)
+#organism <- "org.Mm.eg.db" 
+#BiocManager::install(organism, character.only = TRUE)
+#library(organism, character.only = TRUE)
 
 # Perform enrichment analysis (ORA)
-library(org.Mm.eg.db)
+#library(org.Mm.eg.db)
 ora <- enrichGO(gene = top_genes, ont = "CC", keyType = "UNIPROT",
              minGSSize = 3, maxGSSize = 800, pvalueCutoff = 1,
              OrgDb = organism, pAdjustMethod = "none")
