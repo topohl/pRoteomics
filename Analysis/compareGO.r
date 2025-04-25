@@ -46,7 +46,7 @@
 # -----------------------------------------------------
 
 if (!require("pacman")) install.packages("pacman")
-pacman::p_load(ggplot2, stringr, ggpubr, ggthemes, dplyr, tidyr, purrr, readr, pheatmap, tibble)
+pacman::p_load(ggplot2, stringr, ggpubr, ggthemes, dplyr, tidyr, purrr, readr, pheatmap, tibble, tidyverse)
 
 # -----------------------------------------------------
 # Define Paths and Project Directories
@@ -56,6 +56,12 @@ pacman::p_load(ggplot2, stringr, ggpubr, ggthemes, dplyr, tidyr, purrr, readr, p
 setwd("S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler")
 file_paths <- list.files(path = "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/core_enrichment", pattern = "*.csv", full.names = TRUE)
 names(file_paths) <- basename(file_paths) %>% str_remove(".csv")
+
+output_dir <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Results"
+dir.create(output_dir, showWarnings = FALSE)
+
+core_enrichment_dir <- file.path(output_dir, "core_enrichment")
+dir.create(core_enrichment_dir, showWarnings = FALSE, recursive = TRUE)
 
 # -----------------------------------------------------
 # Read and Combine Data
@@ -108,31 +114,53 @@ lookup_df <- lookup_df %>%
 # Create Heatmap
 # -----------------------------------------------------
 
-# Create a significance label if a p-value adjustment column is available (using p.adjust below).
-# Adjust the threshold as necessary.
+# Prepare significance labels for the enrichment heatmap
 lookup_df <- lookup_df %>%
-    mutate(sig_label = ifelse(p.adjust < 0.05, "*", ""))
-    # Create a professional heatmap with Description on y-axis and Comparison on x-axis.
-    # Significant changes are marked with a star.
-    ggplot(lookup_df, aes(x = Comparison, y = reorder(Description, NES), fill = NES)) +
-        geom_tile(color = "white", size = 0.5) +
-        scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0) +
-        geom_text(aes(label = sig_label), color = "black", size = 5, vjust = 0.5) +
-        labs(
-            title = "Heatmap of Top Differential Enrichment",
-            x = "Comparison",
-            y = "Enriched Terms",
-            fill = "Normalized Enrichment Score (NES)"
-        ) +
-        theme_minimal(base_family = "Arial", base_size = 12) +
-        theme(
-            panel.grid.major = element_blank(),
-            panel.grid.minor = element_blank(),
-            axis.text.x = element_text(angle = 45, hjust = 1, face = "bold"),
-            axis.text.y = element_text(face = "bold", size = 10),
-            plot.title = element_text(face = "bold", size = 18, hjust = 0.5),
-            plot.margin = margin(10, 10, 10, 10)
-        )
+  mutate(sig_label = ifelse(p.adjust < 0.05, "✱", ""))
+
+# Reshape the data to create a matrix of NES values (rows: Description, columns: Comparison)
+heatmap_data <- lookup_df %>%
+  select(Description, Comparison, NES) %>%
+  pivot_wider(names_from = Comparison, values_from = NES) %>%
+  column_to_rownames("Description") %>%
+  as.matrix()
+
+# Similarly, create a corresponding matrix for significance labels
+heatmap_labels <- lookup_df %>%
+  select(Description, Comparison, sig_label) %>%
+  pivot_wider(names_from = Comparison, values_from = sig_label) %>%
+  column_to_rownames("Description") %>%
+  as.matrix()
+
+# Dynamically adjust the plot height to accommodate the number of rows and prevent label cutoff
+plot_height <- max(8, nrow(heatmap_data) * 0.3)
+
+# Generate heatmap
+heatmap_plot <- pheatmap(
+  heatmap_data,
+  cluster_rows = FALSE,
+  cluster_cols = FALSE,
+  display_numbers = heatmap_labels,
+  number_color = "black",
+  color = colorRampPalette(c("#3b4cc0", "#ffffff", "#c03b3b"))(100),
+  main = "Differential Enrichment Heatmap",
+  fontsize = 12,
+  fontsize_number = 10,
+  border_color = NA,
+  cellwidth = 15,
+  cellheight = 15,
+  show_rownames = TRUE,
+  show_colnames = TRUE,
+  angle_col = 90,
+  silent = TRUE
+)
+
+# Render the heatmap ensuring that no elements are cut off
+grid::grid.newpage()
+grid::grid.draw(heatmap_plot$gtable)
+
+# Save the heatmap to an SVG file with the calculated height
+ggsave(output_file, heatmap_plot, width = 10, height = plot_height, dpi = 300)
 
 # -----------------------------------------------------
 # Create Dot Plot
@@ -140,7 +168,7 @@ lookup_df <- lookup_df %>%
 
 ggplot(lookup_df, aes(x = Comparison, y = reorder(Description, NES), color = NES, size = -log10(p.adjust))) +
   geom_point() +
-  scale_color_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0) +
+  scale_color_gradient2(low = "#3b4cc0", mid = "white", high = "#c03b3b", midpoint = 0) +
   theme_pubclean()
 
 # -----------------------------------------------------
@@ -208,7 +236,6 @@ rownames(jaccard_matrix) <- colnames(binary_matrix)
 colnames(jaccard_matrix) <- colnames(binary_matrix)
 
 # Plot heatmap of shared gene similarity
-library(pheatmap)
 pheatmap(jaccard_matrix, main = "Jaccard Similarity of Core Genes per Comparison",
          color = colorRampPalette(c("white", "blue"))(100),
          display_numbers = TRUE, cluster_rows = TRUE, cluster_cols = TRUE)
@@ -247,7 +274,6 @@ heatmap_matrix <- heatmap_df %>%
 heatmap_matrix[is.na(heatmap_matrix)] <- 0 # Replace NAs with 0 for heatmap visualization
 
 # Now plot the heatmap
-library(pheatmap)
 pheatmap(heatmap_matrix,
          color = colorRampPalette(c("blue", "white", "red"))(100),
          main = "Core Enrichment Gene Heatmap",
@@ -259,13 +285,13 @@ pheatmap(heatmap_matrix,
 output_file <- file.path("S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/core_enrichment", "core_enrichment_heatmap.png")
 ggsave(output_file, width = 10, height = 8, dpi = 300)
 
+# save to results dir
+
+ggsave(file.path(core_enrichment_dir, "core_enrichment_heatmap.png"), width = 10, height = 8, dpi = 300)
+
 # -----------------------------------------------------
 # Generate Individual Core Enrichment Heatmaps
 # -----------------------------------------------------
-
-# Load required libraries
-library(tidyverse)
-library(pheatmap)
 
 # Read log2fc data for each comparison from the mapped directory
 log2fc_files <- list.files(
@@ -273,6 +299,7 @@ log2fc_files <- list.files(
   pattern = "*.csv",
   full.names = TRUE
 )
+
 names(log2fc_files) <- basename(log2fc_files) %>% str_remove(".csv")
 log2fc_list <- lapply(names(log2fc_files), function(comp) {
   df <- read.csv(log2fc_files[comp])
@@ -291,11 +318,11 @@ core_long_df %>%
   group_split() %>%
   walk(function(df_term) {
     description <- unique(df_term$Description)
-    
+
     # Merge log2fc values based on matching Gene and Comparison
     df_term_log2fc <- df_term %>%
       left_join(log2fc_df, by = c("Gene" = "gene_symbol", "Comparison"))
-    
+
     # Create a matrix of log2fc values (genes x comparisons)
     matrix_df <- df_term_log2fc %>%
       select(Gene, Comparison, log2fc) %>%
@@ -303,25 +330,25 @@ core_long_df %>%
       summarize(log2fc = mean(log2fc, na.rm = TRUE), .groups = "drop") %>%
       pivot_wider(names_from = Comparison, values_from = log2fc) %>%
       column_to_rownames("Gene")
-    
+
     heatmap_matrix <- as.matrix(matrix_df)
     heatmap_matrix[is.na(heatmap_matrix)] <- 0
-    
+
     # Define output filename with a safe name
     filename <- file.path(output_dir, paste0(make.names(description), ".svg"))
-    
+
     # Set clustering options based on matrix dimensions
     cluster_rows_option <- nrow(heatmap_matrix) > 1
     cluster_cols_option <- ncol(heatmap_matrix) > 1
-    
+
     # Set a symmetric color scale with white representing 0
     max_val <- max(abs(heatmap_matrix), na.rm = TRUE)
     breaks <- seq(-max_val, max_val, length.out = 101)
-    
+
     # Dynamically calculate plot height to avoid label overlap
-    row_height <- 0.1
-    plot_height <- max(8, nrow(heatmap_matrix) * row_height + 0.1 * nrow(heatmap_matrix))
-    
+    row_height <- 0.05
+    plot_height <- max(8, nrow(heatmap_matrix) * row_height + 0.2 * nrow(heatmap_matrix))
+
     # Save the heatmap as an SVG file
     svg(filename, width = 7, height = plot_height)
     pheatmap(
@@ -335,7 +362,7 @@ core_long_df %>%
       cluster_rows = cluster_rows_option,
       cluster_cols = cluster_cols_option,
       border_color = NA,
-      angle_col = 45,
+      angle_col = 90,
       cellwidth = 15,
       cellheight = 15,
       legend_breaks = c(-max_val, 0, max_val),
