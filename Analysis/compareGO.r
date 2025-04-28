@@ -1,45 +1,47 @@
-#' Compare Enrichment Analysis and Visualization
+#' compareGO.r - Comparative Gene Ontology Enrichment Analysis and Visualization
 #'
 #' @description
-#' This script performs a comparative enrichment analysis by:
+#' This script performs a comparative analysis of GO enrichment across multiple experiments.
+#' It:
+#'   - Reads multiple CSV files containing enrichment data from a specified directory. The filenames (without
+#'     extensions) serve as labels for individual comparisons.
 #'
-#' - Reading multiple CSV files from a specified directory containing enrichment data.  
-#'   The CSV filenames (excluding the extension) are used as identifiers for different comparisons.
+#'   - Combines the data into a single data frame with an added "Comparison" column indicating the source experiment.
 #'
-#' - Combining the individual CSV data into a single data frame with an additional 
-#'   "Comparison" column indicating the source file.
+#'   - Selects the top enriched terms for each comparison based on the highest absolute Normalized Enrichment Score (NES)
+#'     and compiles a master list of these terms.
 #'
-#' - Selecting the top enriched terms per comparison based on the highest absolute 
-#'   Normalized Enrichment Score (NES), and compiling a master list of these top terms.
+#'   - Filters the combined dataset to include only these top terms, ensuring consistency across all comparisons.
 #'
-#' - Filtering the combined data to include only these top terms, across all comparisons.
+#'   - Reorders the comparisons in the final visualizations based on the maximum absolute NES observed.
 #'
-#' - Reordering comparisons in the final visualization based on the maximum absolute NES.
-#'
-#' - Generating a significance label for each term when the adjusted p-value (p.adjust) is less than 0.05.
+#'   - Generates a significance label ("✱") for each gene set if the adjusted p-value (p.adjust) is below 0.05.
 #'
 #' @details
-#' The script creates two types of visualizations:
+#' The script creates two primary visualizations:
 #'
-#' 1. A professional heatmap where:
-#' 2. A point plot that visualizes:
-#' 
+#'   1. A heatmap that displays differential enrichment across comparisons.
+#'   2. A dot plot that highlights both the NES (color) and the significance (-log10(p.adjust)) of each term.
+#'
+#' Additional outputs include:
+#'   - Core gene lists per term across comparisons.
+#'   - A binary matrix of core gene presence/absence for computing Jaccard similarity between comparisons.
+#'   - Expanded core enrichment heatmaps for individual terms.
 #'
 #' @section File Inputs:
-#' CSV files are read from the directory "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/core_enrichment"
-#' based on the pattern "*.csv". Each file serves as input for one comparison.
+#'   - CSV files from the directory: "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/core_enrichment"
+#'     (matching the pattern "*.csv").
 #'
-#' @section Output:
-#' The script outputs two plots:
-#' \enumerate{
-#'   \item A heatmap visualizing the top differential enrichments.
-#'   \item A point plot emphasizing the size (via -log10(p.adjust)) and color (via NES) of each term.
-#' }
+#' @section Outputs:
+#'   - Heatmaps and dot plots detailing enrichment profiles.
+#'   - Core gene tables saved in CSV format.
+#'   - SVG and PNG files for individual and overall enrichments.
 #'
 #' @note 
-#' Ensure that the file paths and package dependencies are properly set up before running the script.
+#'   Ensure that all file paths and package dependencies are correctly installed and set before running this script.
 #'
-#' @author Tobias Pohl
+#' @author
+#'   Tobias Pohl
 
 # -----------------------------------------------------
 # Load Libraries
