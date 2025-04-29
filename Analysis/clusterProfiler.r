@@ -24,36 +24,50 @@
 # Install and load packages
 # ----------------------------------------------------
 
-# Check and install required packages
-if (!requireNamespace("BiocManager", quietly = TRUE)) {
-  install.packages("BiocManager")
-}
+# Modularized package installation and loading functions
 
-# Define required packages
-required_packages <- c(
-  "clusterProfiler", "pathview", "enrichplot", "DOSE", "ggplot2", "ggnewscale",
-  "cowplot", "ggridges", "europepmc", "ggpubr", "ggrepel", "ggsci", "ggthemes",
-  "ggExtra", "ggforce", "ggalluvial", "lattice", "latticeExtra", "BiocManager",
-  "org.Mm.eg.db", "ggplotify", "svglite"
-)
-
-# Install missing Bioconductor packages
-bioc_packages <- c(
-  "clusterProfiler", "pathview", "enrichplot", "DOSE", "org.Mm.eg.db"
-)
-
-missing_bioc <- bioc_packages[!sapply(bioc_packages, requireNamespace, quietly = TRUE)]
-if (length(missing_bioc) > 0) {
-  BiocManager::install(missing_bioc)
-}
-
-install_and_load <- function(package) {
-  if (!require(package, character.only = TRUE)) {
-    install.packages(package, dependencies = TRUE)
+# Function to ensure BiocManager is installed
+checkBiocManager <- function() {
+  if (!requireNamespace("BiocManager", quietly = TRUE)) {
+    install.packages("BiocManager")
   }
-  library(package, character.only = TRUE)
 }
-invisible(lapply(required_packages, install_and_load))
+
+# Function to install missing Bioconductor packages
+installBioC <- function(bioc_packages) {
+  missing <- bioc_packages[!sapply(bioc_packages, requireNamespace, quietly = TRUE)]
+  if (length(missing) > 0) {
+    BiocManager::install(missing)
+  }
+}
+
+# Function to install and load a CRAN package
+installAndLoadCRAN <- function(pkg) {
+  if (!require(pkg, character.only = TRUE, quietly = TRUE)) {
+    install.packages(pkg, dependencies = TRUE)
+  }
+  library(pkg, character.only = TRUE)
+}
+
+# Main function to setup all required packages
+setupPackages <- function() {
+  checkBiocManager()
+  
+  required_packages <- c(
+    "clusterProfiler", "pathview", "enrichplot", "DOSE", "ggplot2", "ggnewscale",
+    "cowplot", "ggridges", "europepmc", "ggpubr", "ggrepel", "ggsci", "ggthemes",
+    "ggExtra", "ggforce", "ggalluvial", "lattice", "latticeExtra", "BiocManager",
+    "org.Mm.eg.db", "ggplotify", "svglite"
+  )
+  
+  bioc_packages <- c("clusterProfiler", "pathview", "enrichplot", "DOSE", "org.Mm.eg.db")
+  
+  installBioC(bioc_packages)
+  invisible(lapply(required_packages, installAndLoadCRAN))
+}
+
+# Call the main setup function to install and load all necessary packages
+setupPackages()
 
 # ----------------------------------------------------
 # Define working directory, cell types, and data paths
