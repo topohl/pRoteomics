@@ -34,11 +34,21 @@ pacman::p_load(dplyr, stringr, tidyr, purrr, readr)
 # -----------------------------------------------------
 
 working_dir <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler"
-results_dir <- file.path(working_dir, "Results")
+mapped_dir <- file.path(working_dir, "Datasets", "mapped")
+unmapped_dir <- file.path(working_dir, "Datasets", "unmapped")
+
+# Create directories if they do not exist
+if (!dir.exists(mapped_dir)) {
+    dir.create(mapped_dir, recursive = TRUE)
+}
+if (!dir.exists(unmapped_dir)) {
+    dir.create(unmapped_dir, recursive = TRUE)
+}
+
 setwd(working_dir)
 
 # Specify cell types which determine dataset file name
-cell_types <- c("mcherry3", "mcherry4")
+cell_types <- c("mcherry1", "mcherry3")
 file_name <- paste0(paste(cell_types, collapse = "_"), ".csv")
 data_path <- file.path(working_dir, "Datasets", "raw", file_name)
 
@@ -153,11 +163,11 @@ print(unmapped_proteins)
 # Save Mapped Results
 # -----------------------------------------------------
 
-results_file <- file.path(results_dir, paste0(tools::file_path_sans_ext(file_name), "_mapped.csv"))
-readr::write_csv(df_mapped, results_file)
-cat("Mapped results saved to:", results_file, "\n")
+mapped_file <- file.path(mapped_dir, paste0(tools::file_path_sans_ext(file_name), ".csv"))
+readr::write_csv(df_mapped, mapped_file)
+cat("Mapped results saved to:", mapped_file, "\n")
 
-unmapped_file <- file.path(results_dir, paste0(tools::file_path_sans_ext(file_name), "_unmapped.csv"))
+unmapped_file <- file.path(unmapped_dir, paste0(tools::file_path_sans_ext(file_name), ".csv"))
 readr::write_csv(unmapped_proteins, unmapped_file)
 cat("Unmapped proteins saved to:", unmapped_file, "\n")
 
