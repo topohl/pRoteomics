@@ -48,7 +48,7 @@
 # -----------------------------------------------------
 
 if (!require("pacman")) install.packages("pacman")
-pacman::p_load(ggplot2, stringr, ggpubr, ggthemes, dplyr, tidyr, purrr, readr, pheatmap, tibble, tidyverse)
+pacman::p_load(ggplot2, stringr, ggpubr, ggthemes, dplyr, tidyr, purrr, readr, pheatmap, tibble, tidyverse, RColorBrewer)
 
 # -----------------------------------------------------
 # Define Paths and Project Directories
@@ -87,7 +87,7 @@ combined_df <- bind_rows(
 # For each comparison, select the top 10 terms with the highest absolute NES value
 top10_df <- combined_df %>%
     group_by(Comparison) %>%
-    slice_max(order_by = abs(NES), n = 15) %>% 
+    slice_max(order_by = abs(NES), n = 10) %>% 
     ungroup()
 
 # Create a master list of top terms from all comparisons
@@ -118,7 +118,7 @@ lookup_df <- lookup_df %>%
 
 # Prepare significance labels for the enrichment heatmap
 lookup_df <- lookup_df %>%
-  mutate(sig_label = ifelse(p.adjust < 0.05, "✱", ""))
+  mutate(sig_label = ifelse(p.adjust < 0.05, as.expression(bquote(bold("*"))), ""))
 
 # Reshape the data to create a matrix of NES values (rows: Description, columns: Comparison)
 heatmap_data <- lookup_df %>%
@@ -135,34 +135,42 @@ heatmap_labels <- lookup_df %>%
   as.matrix()
 
 # Dynamically adjust the plot height to accommodate the number of rows and prevent label cutoff
-plot_height <- max(8, nrow(heatmap_data) * 0.3)
+plot_height <- max(8, nrow(heatmap_data) * 0.4)
 
-# Generate heatmap
+# Use a clean, diverging palette (reversed RdBu from RColorBrewer)
+my_colors <- colorRampPalette(rev(brewer.pal(n = 11, name = "RdBu")))(100)
+
+# Generate the heatmap
 heatmap_plot <- pheatmap(
   heatmap_data,
-  cluster_rows = FALSE,
-  cluster_cols = FALSE,
+  cluster_rows = TRUE,
+  cluster_cols = TRUE,
   display_numbers = heatmap_labels,
   number_color = "black",
-  color = colorRampPalette(c("#3b4cc0", "#ffffff", "#c03b3b"))(100),
-  main = "Differential Enrichment Heatmap",
-  fontsize = 12,
+  color = my_colors,
+  main = "",
+  fontsize = 14,
   fontsize_number = 10,
   border_color = NA,
-  cellwidth = 15,
-  cellheight = 15,
+  cellwidth = 20,
+  cellheight = 20,
   show_rownames = TRUE,
   show_colnames = TRUE,
-  angle_col = 90,
+  angle_col = 45,
   silent = TRUE
 )
 
-# Render the heatmap ensuring that no elements are cut off
+# Render the heatmap in VSCode/RStudio viewer
 grid::grid.newpage()
 grid::grid.draw(heatmap_plot$gtable)
 
-# Save the heatmap to an SVG file with the calculated height
-ggsave(output_file, heatmap_plot, width = 10, height = plot_height, dpi = 300)
+# Define output directory and filename
+output_file <- file.path(output_dir, "enrichment_heatmap.svg")
+
+# Save the heatmap to an SVG file with clean font and correct height
+svg(output_file, width = 10, height = plot_height, family = "Arial")
+grid::grid.draw(heatmap_plot$gtable)
+dev.off()
 
 # -----------------------------------------------------
 # Create Dot Plot
