@@ -54,13 +54,30 @@ pacman::p_load(ggplot2, stringr, ggpubr, ggthemes, dplyr, tidyr, purrr, readr, p
 # Define Paths and Project Directories
 # -----------------------------------------------------
 
+# define ensemble profiling
+# eg. baseline_cell_type_profiling,
+# effects_chemogenetic_inhibition,
+# effects_inhibition_memory_ensemble,
+# learning_signature
+
+# set ensemble prfiling
+ensemble_profiling <- "learning_signature"
+
+# either CNO, VEH, CS or US
+condition <- "NA"
+
 # Set working directory
 setwd("S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler")
-file_paths <- list.files(path = "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/core_enrichment", pattern = "*.csv", full.names = TRUE)
+# List CSV files from the core_enrichment subfolder specified by ensemble_profiling
+file_paths <- list.files(
+  path = file.path("S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/core_enrichment", ensemble_profiling, condition),
+  pattern = "*.csv",
+  full.names = TRUE
+)
 names(file_paths) <- basename(file_paths) %>% str_remove(".csv")
 
-output_dir <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Results"
-dir.create(output_dir, showWarnings = FALSE)
+output_dir <- file.path("S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Results", ensemble_profiling, condition)
+dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
 
 core_enrichment_dir <- file.path(output_dir, "core_enrichment")
 dir.create(core_enrichment_dir, showWarnings = FALSE, recursive = TRUE)
@@ -84,11 +101,11 @@ combined_df <- bind_rows(
 # Select Top Terms
 # -----------------------------------------------------
 
-# For each comparison, select the top 10 terms with the highest absolute NES value
+# For each comparison, select the top 10 terms with the highest absolute NES value alternatively: pick only significant
 top10_df <- combined_df %>%
-    group_by(Comparison) %>%
-    slice_max(order_by = abs(NES), n = 10) %>% 
-    ungroup()
+  group_by(Comparison) %>%
+  slice_max(order_by = abs(NES), n = 10) %>% 
+  ungroup()
 
 # Create a master list of top terms from all comparisons
 top_terms <- unique(top10_df$Description)
@@ -99,18 +116,18 @@ top_terms <- unique(top10_df$Description)
 
 # For every comparison, get the rows corresponding to these top terms, even if they're not in the top 10 there
 lookup_df <- combined_df %>%
-    filter(Description %in% top_terms)
+  filter(Description %in% top_terms)
 
 # Compute an ordering of comparisons by the maximum absolute NES value in the lookup dataframe
 comparison_order <- lookup_df %>%
-    group_by(Comparison) %>%
+  group_by(Comparison) %>%
     summarize(max_abs_NES = max(abs(NES), na.rm = TRUE), .groups = "drop") %>%
     arrange(desc(max_abs_NES)) %>%
     pull(Comparison)
 
 # Reorder the Comparison factor using the computed order
 lookup_df <- lookup_df %>%
-    mutate(Comparison = factor(Comparison, levels = comparison_order))
+  mutate(Comparison = factor(Comparison, levels = comparison_order))
 
 # -----------------------------------------------------
 # Create Heatmap
@@ -118,7 +135,7 @@ lookup_df <- lookup_df %>%
 
 # Prepare significance labels for the enrichment heatmap
 lookup_df <- lookup_df %>%
-  mutate(sig_label = ifelse(p.adjust < 0.05, as.expression(bquote(bold("*"))), ""))
+  mutate(sig_label = ifelse(p.adjust < 0.05, "*", ""))
 
 # Reshape the data to create a matrix of NES values (rows: Description, columns: Comparison)
 heatmap_data <- lookup_df %>%
@@ -140,7 +157,7 @@ plot_height <- max(8, nrow(heatmap_data) * 0.4)
 # Use a clean, diverging palette (reversed RdBu from RColorBrewer)
 my_colors <- colorRampPalette(rev(brewer.pal(n = 11, name = "RdBu")))(100)
 
-# Generate the heatmap
+# Generate the heatmap with the ensemble_profiling title as headline
 heatmap_plot <- pheatmap(
   heatmap_data,
   cluster_rows = TRUE,
@@ -148,7 +165,7 @@ heatmap_plot <- pheatmap(
   display_numbers = heatmap_labels,
   number_color = "black",
   color = my_colors,
-  main = "",
+  main = paste("Ensemble Profiling:", ensemble_profiling, "\nCondition:", condition),
   fontsize = 14,
   fontsize_number = 10,
   border_color = NA,
@@ -202,8 +219,8 @@ names(core_gene_sets) <- names(enrichment_list)
 core_genes_df <- bind_rows(core_gene_sets)
 
 # Optional: write core gene list for each Comparison & Description combo
-output_dir <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/core_genes_per_term/"
-dir.create(output_dir, showWarnings = FALSE)
+output_dir <- file.path("S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/core_genes_per_term", ensemble_profiling, condition)
+dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
 
 # Save full core gene table across all comparisons
 write.csv(core_genes_df,
@@ -303,9 +320,9 @@ ggsave(file.path(core_enrichment_dir, "core_enrichment_heatmap.png"), width = 10
 # Generate Individual Core Enrichment Heatmaps
 # -----------------------------------------------------
 
-# Read log2fc data for each comparison from the mapped directory
+# Read log2fc data for each comparison from the mapped/ensemble_profiling directory
 log2fc_files <- list.files(
-  path = "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/mapped",
+  path = file.path("S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/mapped", ensemble_profiling, condition),
   pattern = "*.csv",
   full.names = TRUE
 )
