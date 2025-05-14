@@ -101,18 +101,28 @@ combined_df <- bind_rows(
 # Select Top Terms
 # -----------------------------------------------------
 
-# For each comparison, select the top 10 terms with the highest absolute NES value alternatively: pick only significant
-top10_df <- combined_df %>%
-  group_by(Comparison) %>%
-  slice_max(order_by = abs(NES), n = 10) %>% 
-  ungroup()
+significant_only <- TRUE
 
-# Create a master list of top terms from all comparisons
-top_terms <- unique(top10_df$Description)
+if (significant_only) {
+  # Keep only significant terms (p.adjust < 0.05)
+  top_df <- combined_df %>% filter(p.adjust < 0.05)
+} else {
+  # Select top 10 terms (by absolute NES) for each comparison
+  top_df <- combined_df %>% 
+    group_by(Comparison) %>% 
+    slice_max(order_by = abs(NES), n = 10) %>% 
+    ungroup()
+}
+
+# Create a master list of top terms
+top_terms <- unique(top_df$Description)
 
 # -----------------------------------------------------
 # Filter Data for Heatmap
 # -----------------------------------------------------
+
+combined_df <- combined_df %>%
+  mutate(Comparison = str_trim(Comparison))
 
 # For every comparison, get the rows corresponding to these top terms, even if they're not in the top 10 there
 lookup_df <- combined_df %>%
@@ -137,19 +147,30 @@ lookup_df <- lookup_df %>%
 lookup_df <- lookup_df %>%
   mutate(sig_label = ifelse(p.adjust < 0.05, "*", ""))
 
-# Reshape the data to create a matrix of NES values (rows: Description, columns: Comparison)
+# Select relevant columns and reshape the data
 heatmap_data <- lookup_df %>%
-  select(Description, Comparison, NES) %>%
-  pivot_wider(names_from = Comparison, values_from = NES) %>%
-  column_to_rownames("Description") %>%
-  as.matrix()
+  dplyr::select(Description, Comparison, NES) %>%
+  tidyr::pivot_wider(names_from = Comparison, values_from = NES)
+
+# Convert to data.frame before using column_to_rownames()
+heatmap_data <- as.data.frame(heatmap_data)
+
+# Set rownames based on the 'Description' column
+rownames(heatmap_data) <- heatmap_data$Description
+
+# Drop the 'Description' column, now that it's set as rownames
+heatmap_data <- heatmap_data[, -which(names(heatmap_data) == "Description")]
+
+# Convert to matrix
+heatmap_data <- as.matrix(heatmap_data)
 
 # Similarly, create a corresponding matrix for significance labels
 heatmap_labels <- lookup_df %>%
-  select(Description, Comparison, sig_label) %>%
-  pivot_wider(names_from = Comparison, values_from = sig_label) %>%
-  column_to_rownames("Description") %>%
-  as.matrix()
+  dplyr::select(Description, Comparison, sig_label) %>%
+  tidyr::pivot_wider(names_from = Comparison, values_from = sig_label) %>%
+  tibble::column_to_rownames("Description")
+
+as.matrix(heatmap_labels)
 
 # Dynamically adjust the plot height to accommodate the number of rows and prevent label cutoff
 plot_height <- max(8, nrow(heatmap_data) * 0.4)
@@ -193,10 +214,36 @@ dev.off()
 # Create Dot Plot
 # -----------------------------------------------------
 
-ggplot(lookup_df, aes(x = Comparison, y = reorder(Description, NES), color = NES, size = -log10(p.adjust))) +
-  geom_point() +
-  scale_color_gradient2(low = "#3b4cc0", mid = "white", high = "#c03b3b", midpoint = 0) +
-  theme_pubclean()
+ggplot(lookup_df, aes(x = Comparison, y = reorder(Description, NES, FUN = median),
+            color = NES, size = -log10(p.adjust))) +
+  geom_point(alpha = 0.85) +
+  scale_color_gradientn(
+  colours = rev(RColorBrewer::brewer.pal(n = 11, name = "RdBu")),
+  name = "NES",
+  limits = c(min(lookup_df$NES, na.rm = TRUE), max(lookup_df$NES, na.rm = TRUE)),
+  oob = scales::squish
+  ) +
+  scale_size_continuous(
+  name = "-log10(p.adjust)",
+  range = c(3, 10)
+  ) +
+  labs(
+  title = "Comparative GO Enrichment Dot Plot",
+  x = "Comparison",
+  y = "Gene Set Description"
+  ) +
+  theme_bw(base_size = 14) +
+  theme(
+  plot.title = element_text(face = "bold", hjust = 0.5, margin = margin(b = 10)),
+  axis.title = element_text(face = "bold"),
+  axis.text = element_text(color = "black"),
+  axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+  panel.grid.major = element_line(color = "gray90"),
+  panel.grid.minor = element_blank(),
+  legend.position = "right",
+  legend.background = element_rect(fill = "transparent", color = NA),
+  panel.border = element_rect(color = "gray80", fill = NA)
+  )
 
 # -----------------------------------------------------
 # Extract Core Genes per Comparison
@@ -327,16 +374,28 @@ log2fc_files <- list.files(
   full.names = TRUE
 )
 
-names(log2fc_files) <- basename(log2fc_files) %>% str_remove(".csv")
+# Set names for the log2fc files with trimmed whitespace (directly check and trim here)
+names(log2fc_files) <- basename(log2fc_files) %>% 
+  str_remove(".csv") %>% 
+  str_trim()  # Ensure no spaces before using them
+
+# Print the names after trimming to check if it resolved the space issue
+#print(names(log2fc_files))
+
+# Proceed with the rest of your code and check the output again
 log2fc_list <- lapply(names(log2fc_files), function(comp) {
   df <- read.csv(log2fc_files[comp])
   df$Comparison <- comp
   df
 })
+
 log2fc_df <- bind_rows(log2fc_list)
 
+# print head of mcherry2_mcherry4 case in the Comparison column
+# head(log2fc_df[log2fc_df$Comparison == "mcherry2_mcherry4", ])
+
 # Create output directory for individual core enrichment heatmaps
-output_dir <- file.path(getwd(), "Results", "core_enrichment_heatmaps")
+output_dir <- file.path(getwd(), "Results", "core_enrichment_heatmaps", ensemble_profiling, condition)
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
 # Loop over each enriched term and generate a corresponding heatmap
@@ -346,9 +405,19 @@ core_long_df %>%
   walk(function(df_term) {
     description <- unique(df_term$Description)
 
+    # print description
+    # print(description)
+
     # Merge log2fc values based on matching Gene and Comparison
     df_term_log2fc <- df_term %>%
       left_join(log2fc_df, by = c("Gene" = "gene_symbol", "Comparison"))
+
+    print(summary(core_long_df$Gene))
+    print(summary(log2fc_df$gene_symbol))
+    print(summary(core_long_df$Comparison))
+    print(summary(log2fc_df$Comparison))
+    # check df_term_log2fc
+    #print(head(df_term_log2fc))
 
     # Create a matrix of log2fc values (genes x comparisons)
     matrix_df <- df_term_log2fc %>%
@@ -357,6 +426,9 @@ core_long_df %>%
       summarize(log2fc = mean(log2fc, na.rm = TRUE), .groups = "drop") %>%
       pivot_wider(names_from = Comparison, values_from = log2fc) %>%
       column_to_rownames("Gene")
+
+    # Clean up column names by trimming any leading/trailing spaces
+    colnames(matrix_df) <- str_trim(colnames(matrix_df))
 
     heatmap_matrix <- as.matrix(matrix_df)
     heatmap_matrix[is.na(heatmap_matrix)] <- 0
@@ -375,6 +447,9 @@ core_long_df %>%
     # Dynamically calculate plot height to avoid label overlap
     row_height <- 0.05
     plot_height <- max(8, nrow(heatmap_matrix) * row_height + 0.2 * nrow(heatmap_matrix))
+
+    # check matrix_df
+    #print(head(matrix_df))
 
     # Save the heatmap as an SVG file
     svg(filename, width = 7, height = plot_height)
@@ -397,3 +472,10 @@ core_long_df %>%
     )
     dev.off()
   })
+
+  # print the names of comparison column
+  print(colnames(heatmap_matrix))
+
+  # print unique names in Comparison column of log2fc_df
+  print(unique(log2fc_df$Comparison))
+  
