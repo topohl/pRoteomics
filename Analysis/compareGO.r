@@ -48,7 +48,7 @@
 # -----------------------------------------------------
 
 if (!require("pacman")) install.packages("pacman")
-pacman::p_load(ggplot2, stringr, ggpubr, ggthemes, dplyr, tidyr, purrr, readr, pheatmap, tibble, tidyverse, RColorBrewer)
+pacman::p_load(ggplot2, stringr, ggpubr, ggthemes, dplyr, tidyr, purrr, readr, pheatmap, tibble, tidyverse, RColorBrewer, writexl)
 
 # -----------------------------------------------------
 # Define Paths and Project Directories
@@ -59,12 +59,13 @@ pacman::p_load(ggplot2, stringr, ggpubr, ggthemes, dplyr, tidyr, purrr, readr, p
 # effects_chemogenetic_inhibition,
 # effects_inhibition_memory_ensemble,
 # learning_signature
+# "interaction_with_learning"
 
 # set ensemble prfiling
-ensemble_profiling <- "learning_signature"
+ensemble_profiling <- "interaction_with_learning"
 
-# either CNO, VEH, CS or US
-condition <- "NA"
+# either CNO, VEH, CS or US or effects_inhibition_memory_ensemble or learning_signature
+condition <- "learning_signature"
 
 # Set working directory
 setwd("S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler")
@@ -76,7 +77,7 @@ file_paths <- list.files(
 )
 names(file_paths) <- basename(file_paths) %>% str_remove(".csv")
 
-output_dir <- file.path("S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Results", ensemble_profiling, condition)
+output_dir <- file.path("S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Results/compareGO", ensemble_profiling, condition)
 dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
 
 core_enrichment_dir <- file.path(output_dir, "core_enrichment")
@@ -164,6 +165,13 @@ heatmap_data <- heatmap_data[, -which(names(heatmap_data) == "Description")]
 # Convert to matrix
 heatmap_data <- as.matrix(heatmap_data)
 
+# save the heatmap data to a CSV file
+file_name <- paste0("heatmap_data_", ensemble_profiling, "_", condition, ".xlsx")
+heatmap_data_export <- tibble::rownames_to_column(as.data.frame(heatmap_data), var = "RowNames")
+# Replace empty fields with NA
+heatmap_data_export[heatmap_data_export == ""] <- NA
+writexl::write_xlsx(heatmap_data_export, path = file.path(core_enrichment_dir, file_name))
+
 # Similarly, create a corresponding matrix for significance labels
 heatmap_labels <- lookup_df %>%
   dplyr::select(Description, Comparison, sig_label) %>%
@@ -203,7 +211,7 @@ grid::grid.newpage()
 grid::grid.draw(heatmap_plot$gtable)
 
 # Define output directory and filename
-output_file <- file.path(output_dir, "enrichment_heatmap.svg")
+output_file <- file.path(output_dir, paste0("enrichment_heatmap_", ensemble_profiling, "_", condition, ".svg"))
 
 # Save the heatmap to an SVG file with clean font and correct height
 svg(output_file, width = 10, height = plot_height, family = "Arial")
@@ -214,36 +222,52 @@ dev.off()
 # Create Dot Plot
 # -----------------------------------------------------
 
-ggplot(lookup_df, aes(x = Comparison, y = reorder(Description, NES, FUN = median),
-            color = NES, size = -log10(p.adjust))) +
+dotplot <- ggplot(lookup_df, aes(
+  x = Comparison,
+  y = reorder(Description, NES, FUN = median),
+  color = NES,
+  size = -log10(p.adjust)
+)) +
   geom_point(alpha = 0.85) +
   scale_color_gradientn(
-  colours = rev(RColorBrewer::brewer.pal(n = 11, name = "RdBu")),
-  name = "NES",
-  limits = c(min(lookup_df$NES, na.rm = TRUE), max(lookup_df$NES, na.rm = TRUE)),
-  oob = scales::squish
+    colours = colorRampPalette(c("#6698CC", "white", "#F08C21"))(100),
+    name = "NES",
+    limits = c(min(lookup_df$NES, na.rm = TRUE), max(lookup_df$NES, na.rm = TRUE)),
+    values = scales::rescale(c(min(lookup_df$NES, na.rm = TRUE), 0, max(lookup_df$NES, na.rm = TRUE)))
   ) +
   scale_size_continuous(
-  name = "-log10(p.adjust)",
-  range = c(3, 10)
+    name = expression(-log[10](p.adjust)),
+    range = c(3, 10)
   ) +
   labs(
-  title = "Comparative GO Enrichment Dot Plot",
-  x = "Comparison",
-  y = "Gene Set Description"
+    title = "Comparative Gene Ontology Enrichment Dot Plot",
+    subtitle = paste(ensemble_profiling, "under", condition, "condition"),
+    x = paste("Comparison (", ensemble_profiling, ")", sep = ""),
+    y = "Gene Set Description"
   ) +
-  theme_bw(base_size = 14) +
+  theme_classic(base_size = 14) +
   theme(
-  plot.title = element_text(face = "bold", hjust = 0.5, margin = margin(b = 10)),
-  axis.title = element_text(face = "bold"),
-  axis.text = element_text(color = "black"),
-  axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
-  panel.grid.major = element_line(color = "gray90"),
-  panel.grid.minor = element_blank(),
-  legend.position = "right",
-  legend.background = element_rect(fill = "transparent", color = NA),
-  panel.border = element_rect(color = "gray80", fill = NA)
+    plot.title = element_text(face = "bold", size = 16, hjust = 0.5, margin = margin(b = 10)),
+    plot.subtitle = element_text(size = 14, hjust = 0.5, margin = margin(b = 10)),
+    axis.title = element_text(face = "bold", size = 14),
+    axis.text = element_text(color = "black", size = 12),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.border = element_rect(color = "black", fill = NA, size = 0.5),
+    legend.title = element_text(face = "bold", size = 14),
+    legend.text = element_text(size = 12),
+    legend.position = "right"
   )
+
+# Render the dotplot
+print(dotplot)
+
+# Adjust the width dynamically based on the number of comparisons (with a minimum width of 10)
+num_comparisons <- length(unique(lookup_df$Comparison))
+dynamic_width <- max(8, num_comparisons * 1.2)
+
+# Save the dotplot to an SVG file using dynamic width and the same dynamic plot_height
+output_dotplot <- file.path(output_dir, paste0("enrichment_dotplot_", ensemble_profiling, "_", condition, ".svg"))
+ggsave(output_dotplot, plot = dotplot, width = dynamic_width, height = plot_height, dpi = 300)
 
 # -----------------------------------------------------
 # Extract Core Genes per Comparison
