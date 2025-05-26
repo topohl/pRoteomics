@@ -74,7 +74,7 @@ setupPackages()
 # ----------------------------------------------------
 
 # Define cell types
-cell_types <- c("cfos3", "cfos4")
+cell_types <- c("neuron2", "neuron4")
 
 # Set directories
 # working_dir <- "/Users/tobiaspohl/Documents/clusterProfiler"
@@ -159,12 +159,20 @@ plot_dot(gse, cell_types)
 
 # save core_enrichment results
 core_enrichment <- gse@result$core_enrichment
-# Save the GSEA results
+
+# Save the GSEA results in the primary directory
 core_dir <- file.path(results_dir, "core_enrichment")
 if (!dir.exists(core_dir)) {
   dir.create(core_dir, recursive = TRUE)
 }
 write.csv(gse@result, file = file.path(core_dir, paste("coreEnrichment_", paste(cell_types, collapse = "_"), ".csv")))
+
+# Additionally, save the GSEA results in the specified Datasets directory
+additional_dir <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/core_enrichment"
+if (!dir.exists(additional_dir)) {
+  dir.create(additional_dir, recursive = TRUE)
+}
+write.csv(gse@result, file = file.path(additional_dir, paste(paste(cell_types, collapse = "_"), ".csv")))
 
 # ----------------------------------------------------
 # Focus on the top regulated genes
