@@ -103,16 +103,31 @@ combined_df <- bind_rows(
 # -----------------------------------------------------
 
 significant_only <- TRUE
+top10_terms <- TRUE
 
-if (significant_only) {
-  # Keep only significant terms (p.adjust < 0.05)
-  top_df <- combined_df %>% filter(p.adjust < 0.05)
+if (top10_terms) {
+  if (significant_only) {
+    # Filter significant terms and then select top 10 by absolute NES per comparison
+    top_df <- combined_df %>% 
+      filter(p.adjust < 0.05) %>% 
+      group_by(Comparison) %>% 
+      slice_max(order_by = abs(NES), n = 10) %>% 
+      ungroup()
+  } else {
+    # Select top 10 terms by absolute NES per comparison (without filtering for significance)
+    top_df <- combined_df %>% 
+      group_by(Comparison) %>% 
+      slice_max(order_by = abs(NES), n = 10) %>% 
+      ungroup()
+  }
 } else {
-  # Select top 10 terms (by absolute NES) for each comparison
-  top_df <- combined_df %>% 
-    group_by(Comparison) %>% 
-    slice_max(order_by = abs(NES), n = 10) %>% 
-    ungroup()
+  if (significant_only) {
+    # Keep only significant terms (p.adjust < 0.05)
+    top_df <- combined_df %>% filter(p.adjust < 0.05)
+  } else {
+    # Use all terms if no filtering is applied
+    top_df <- combined_df
+  }
 }
 
 # Create a master list of top terms
@@ -270,6 +285,59 @@ output_dotplot <- file.path(output_dir, paste0("enrichment_dotplot_", ensemble_p
 ggsave(output_dotplot, plot = dotplot, width = dynamic_width, height = plot_height, dpi = 300)
 
 # -----------------------------------------------------
+# Define genes to look for enrichment
+# -----------------------------------------------------
+# Define a list of genes to look for enrichment
+
+# gene_list <- c("Tac2", "Tac3", "Tacr3")
+
+gene_list <- c("P55099", "Q6NXX1")
+
+# Unnest genes in core_enrichment
+long_df <- combined_df %>%
+  mutate(core_gene = strsplit(as.character(core_enrichment), "/|;|,|\\s+")) %>%
+  unnest(core_gene)
+
+# Filter for genes of interest
+filtered_df <- long_df %>%
+  filter(core_gene %in% gene_list) %>%
+  mutate(Description = factor(Description, levels = unique(Description)))
+
+windows()
+
+# Plot NES by Comparison, now colored and shaped by gene identity
+ggplot(filtered_df, aes(
+  x = Comparison,
+  y = Description,
+  color = NES,
+  size = -log10(p.adjust),
+  shape = core_gene
+)) +
+  geom_point(alpha = 0.9) +
+  scale_color_gradientn(
+    colours = colorRampPalette(c("#6698CC", "white", "#F08C21"))(100),
+    name = "NES"
+  ) +
+  scale_size_continuous(
+    name = expression(-log[10](p.adjust)),
+    range = c(3, 10)
+  ) +
+  labs(
+    title = paste("Enrichment for Selected Genes:", paste(gene_list, collapse = ", ")),
+    subtitle = paste("Ensemble profiling:", ensemble_profiling, "| Condition:", condition),
+    x = "Comparison",
+    y = "Enriched Gene Set",
+    shape = "Gene"
+  ) +
+  theme_classic(base_size = 14) +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(hjust = 0.5),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "right"
+  )
+
+# -----------------------------------------------------
 # Extract Core Genes per Comparison
 # -----------------------------------------------------
 
@@ -333,10 +401,21 @@ jaccard_matrix <- outer(1:ncol(binary_matrix), 1:ncol(binary_matrix), Vectorize(
 rownames(jaccard_matrix) <- colnames(binary_matrix)
 colnames(jaccard_matrix) <- colnames(binary_matrix)
 
+windows()
+
 # Plot heatmap of shared gene similarity
-pheatmap(jaccard_matrix, main = "Jaccard Similarity of Core Genes per Comparison",
-         color = colorRampPalette(c("white", "blue"))(100),
-         display_numbers = TRUE, cluster_rows = TRUE, cluster_cols = TRUE)
+jaccard_heatmap <- pheatmap(
+  jaccard_matrix,
+  main = "Jaccard Similarity of Core Genes per Comparison",
+  color = colorRampPalette(c("white", "blue"))(100),
+  display_numbers = TRUE,
+  cluster_rows = TRUE,
+  cluster_cols = TRUE
+)
+
+# Render the plot in the VS Code R plot viewer
+grid::grid.newpage()
+grid::grid.draw(jaccard_heatmap$gtable)
 
 # -----------------------------------------------------
 # Expand Core Enrichment Genes for Heatmap
@@ -435,11 +514,13 @@ core_long_df %>%
     # Merge log2fc values based on matching Gene and Comparison
     df_term_log2fc <- df_term %>%
       left_join(log2fc_df, by = c("Gene" = "gene_symbol", "Comparison"))
+    
+    write.csv(df_term_log2fc, file = "debug_neuron1_neuron2.csv", row.names = FALSE)
 
-    print(summary(core_long_df$Gene))
-    print(summary(log2fc_df$gene_symbol))
-    print(summary(core_long_df$Comparison))
-    print(summary(log2fc_df$Comparison))
+    #print(summary(core_long_df$Gene))
+    #print(summary(log2fc_df$gene_symbol))
+    #print(summary(core_long_df$Comparison))
+    #print(summary(log2fc_df$Comparison))
     # check df_term_log2fc
     #print(head(df_term_log2fc))
 
@@ -496,10 +577,3 @@ core_long_df %>%
     )
     dev.off()
   })
-
-  # print the names of comparison column
-  print(colnames(heatmap_matrix))
-
-  # print unique names in Comparison column of log2fc_df
-  print(unique(log2fc_df$Comparison))
-  
