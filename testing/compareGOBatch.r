@@ -48,7 +48,7 @@
 # -----------------------------------------------------
 
 if (!require("pacman")) install.packages("pacman")
-pacman::p_load(ggplot2, stringr, ggpubr, ggthemes, dplyr, tidyr, purrr, readr, pheatmap, tibble, tidyverse, RColorBrewer, writexl)
+pacman::p_load(ggplot2, stringr, ggpubr, ggthemes, dplyr, tidyr, purrr, readr, pheatmap, tibble, tidyverse, RColorBrewer, writexl, tidytext)
 
 # -----------------------------------------------------
 # Define Paths and Project Directories
@@ -62,10 +62,10 @@ pacman::p_load(ggplot2, stringr, ggpubr, ggthemes, dplyr, tidyr, purrr, readr, p
 # "interaction_with_learning"
 
 # set ensemble prfiling
-ensemble_profiling <- "baseline_cell_type_profiling"
+ensemble_profiling <- "effects_chemogenetic_inhibition"
 
 # either CNO, VEH, CS or US or effects_inhibition_memory_ensemble or learning_signature
-condition <- "US"
+condition <- "CS"
 
 ont <- "BP"
 
@@ -344,9 +344,12 @@ dotplot <- ggplot(lookup_df, aes(
 # Render the dotplot
 print(dotplot)
 
+# open lookup_df table in viewer
+View(lookup_df)
+
 # Adjust the width dynamically based on the number of comparisons (with a minimum width of 10)
 num_comparisons <- length(unique(lookup_df$Comparison))
-dynamic_width <- max(8, num_comparisons * 1.2)
+dynamic_width <- max(8, num_comparisons * 4)
 
 # Save the dotplot to an SVG file using dynamic width and the same dynamic plot_height
 output_dotplot <- file.path(output_dir, paste0("enrichment_dotplot_", ont, ensemble_profiling, "_", condition, ".svg"))
@@ -460,7 +463,7 @@ core_gene_sets <- lapply(names(enrichment_list), function(name) {
   df <- enrichment_list[[name]]
   # Split semicolon-separated genes per row and unnest
   df_long <- df %>%
-    select(Description, core_enrichment) %>%
+    dplyr::select(Description, core_enrichment) %>%
     mutate(core_enrichment = str_split(core_enrichment, "/")) %>%
     unnest(core_enrichment) %>%
     mutate(Comparison = name)
@@ -540,8 +543,6 @@ jaccard_matrix <- outer(1:ncol(binary_matrix), 1:ncol(binary_matrix), Vectorize(
 rownames(jaccard_matrix) <- colnames(binary_matrix)
 colnames(jaccard_matrix) <- colnames(binary_matrix)
 
-#graphics::windows()
-
 # Plot heatmap of shared gene similarity
 jaccard_heatmap <- pheatmap(
   jaccard_matrix,
@@ -575,13 +576,12 @@ grid::grid.draw(jaccard_heatmap$gtable)
 #'
 #' @return A visual heatmap saved in specified file formats.
 
-
 # Expand each enrichment file to get one gene per row
 core_long_df <- bind_rows(
   lapply(names(enrichment_list), function(name) {
     df <- enrichment_list[[name]]
     df %>%
-      select(Description, NES, core_enrichment) %>%
+      dplyr::select(Description, NES, core_enrichment) %>%
       mutate(core_enrichment = str_split(core_enrichment, "/")) %>%
       unnest(core_enrichment) %>%
       mutate(Comparison = name)
@@ -606,20 +606,23 @@ heatmap_matrix <- heatmap_df %>%
 heatmap_matrix[is.na(heatmap_matrix)] <- 0 # Replace NAs with 0 for heatmap visualization
 
 # Now plot the heatmap
-pheatmap(heatmap_matrix,
+heatmap_plot <- pheatmap(heatmap_matrix,
          color = colorRampPalette(c("blue", "white", "red"))(100),
          main = "Core Enrichment Gene Heatmap",
          fontsize_row = 8,
          cluster_rows = TRUE,
          cluster_cols = TRUE)
 
-# Save the overall heatmap plot to a PNG file
-output_file <- file.path("S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/core_enrichment", "core_enrichment_heatmap.svg")
-ggsave(output_file, width = 10, height = 8, dpi = 300)
+# Save the overall heatmap plot to SVG file
+output_file <- file.path(core_enrichment_dir, "core_enrichment_heatmap.svg")
+svg(output_file, width = 10, height = 8)
+grid::grid.draw(heatmap_plot$gtable)
+dev.off()
 
-# save to results dir
-
-ggsave(file.path(core_enrichment_dir, "core_enrichment_heatmap.png"), width = 10, height = 8, dpi = 300)
+# Save to PNG file
+png(file.path(core_enrichment_dir, "core_enrichment_heatmap.png"), width = 10*300, height = 8*300, res = 300)
+grid::grid.draw(heatmap_plot$gtable)
+dev.off()
 
 # -----------------------------------------------------
 # Generate Individual Core Enrichment Heatmaps
@@ -676,7 +679,7 @@ log2fc_df <- bind_rows(log2fc_list)
 # head(log2fc_df[log2fc_df$Comparison == "mcherry2_mcherry4", ])
 
 # Create output directory for individual core enrichment heatmaps
-output_dir <- file.path(getwd(), "Results", "core_enrichment_heatmaps", ensemble_profiling, condition)
+output_dir <- file.path(getwd(), "Results", "core_enrichment_heatmaps", ont, ensemble_profiling, condition)
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
 # Loop over each enriched term and generate a corresponding heatmap
@@ -686,25 +689,15 @@ core_long_df %>%
   walk(function(df_term) {
     description <- unique(df_term$Description)
 
-    # print description
-    # print(description)
-
     # Merge log2fc values based on matching Gene and Comparison
     df_term_log2fc <- df_term %>%
       left_join(log2fc_df, by = c("Gene" = "gene_symbol", "Comparison"))
-    
-    write.csv(df_term_log2fc, file = "debug_neuron1_neuron2.csv", row.names = FALSE)
 
-    #print(summary(core_long_df$Gene))
-    #print(summary(log2fc_df$gene_symbol))
-    #print(summary(core_long_df$Comparison))
-    #print(summary(log2fc_df$Comparison))
-    # check df_term_log2fc
-    #print(head(df_term_log2fc))
+    write.csv(df_term_log2fc, file = "debug_neuron1_neuron2.csv", row.names = FALSE)
 
     # Create a matrix of log2fc values (genes x comparisons)
     matrix_df <- df_term_log2fc %>%
-      select(Gene, Comparison, log2fc) %>%
+      dplyr::select(Gene, Comparison, log2fc) %>%
       group_by(Gene, Comparison) %>%
       summarize(log2fc = mean(log2fc, na.rm = TRUE), .groups = "drop") %>%
       pivot_wider(names_from = Comparison, values_from = log2fc) %>%
