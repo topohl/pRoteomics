@@ -48,7 +48,14 @@
 # -----------------------------------------------------
 
 if (!require("pacman")) install.packages("pacman")
-pacman::p_load(ggplot2, stringr, ggpubr, ggthemes, dplyr, tidyr, purrr, readr, pheatmap, tibble, tidyverse, RColorBrewer, writexl, tidytext)
+pacman::p_load(ggplot2, stringr, ggpubr, ggthemes, dplyr, tidyr, purrr,
+               readr, pheatmap, tibble, tidyverse, RColorBrewer, writexl)
+
+uniprot_mapping_file_path <- file.path(
+  "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler",
+  "Datasets",
+  "MOUSE_10090_idmapping.dat"
+)
 
 # -----------------------------------------------------
 # Define Paths and Project Directories
@@ -62,10 +69,10 @@ pacman::p_load(ggplot2, stringr, ggpubr, ggthemes, dplyr, tidyr, purrr, readr, p
 # "interaction_with_learning"
 
 # set ensemble prfiling
-ensemble_profiling <- "effects_chemogenetic_inhibition"
+ensemble_profiling <- "interaction_with_learning"
 
 # either CNO, VEH, CS or US or effects_inhibition_memory_ensemble or learning_signature
-condition <- "CS"
+condition <- "effects_inhibition_memory_ensemble"
 
 ont <- "BP"
 
@@ -344,15 +351,12 @@ dotplot <- ggplot(lookup_df, aes(
 # Render the dotplot
 print(dotplot)
 
-# open lookup_df table in viewer
-View(lookup_df)
-
 # Adjust the width dynamically based on the number of comparisons (with a minimum width of 10)
 num_comparisons <- length(unique(lookup_df$Comparison))
-dynamic_width <- max(8, num_comparisons * 4)
+dynamic_width <- max(10, num_comparisons * 4.5)
 
 # Save the dotplot to an SVG file using dynamic width and the same dynamic plot_height
-output_dotplot <- file.path(output_dir, paste0("enrichment_dotplot_", ont, ensemble_profiling, "_", condition, ".svg"))
+output_dotplot <- file.path(output_dir, paste0("enrichment_dotplot_", ont, "_", ensemble_profiling, "_", condition, ".svg"))
 ggsave(output_dotplot, plot = dotplot, width = dynamic_width, height = plot_height, dpi = 300)
 
 # -----------------------------------------------------
@@ -389,6 +393,13 @@ filtered_df <- long_df %>%
   filter(core_gene %in% gene_list) %>%
   mutate(Description = factor(Description, levels = unique(Description)))
 
+# Get min and max NES
+nes_min <- min(filtered_df$NES, na.rm = TRUE)
+nes_max <- max(filtered_df$NES, na.rm = TRUE)
+
+# Use the larger absolute value for symmetric limits
+max_abs_nes <- max(abs(nes_min), abs(nes_max))
+
 windows()
 
 # Plot NES by Comparison, now colored and shaped by gene identity
@@ -401,7 +412,9 @@ plot_selected_genes <- ggplot(filtered_df, aes(
 )) +
   geom_point(alpha = 0.9) +
   scale_color_gradientn(
-    colours = colorRampPalette(c("#6698CC", "white", "#F08C21"))(100),
+    colours = c("#6698CC", "white", "#F08C21"),
+    limits = c(-max_abs_nes, max_abs_nes),
+    values = c(0, 0.5, 1),  # Ensures NES = 0 is white
     name = "NES"
   ) +
   scale_size_continuous(
@@ -605,13 +618,24 @@ heatmap_matrix <- heatmap_df %>%
 
 heatmap_matrix[is.na(heatmap_matrix)] <- 0 # Replace NAs with 0 for heatmap visualization
 
-# Now plot the heatmap
+# Get min and max NES
+nes_min <- min(heatmap_matrix, na.rm = TRUE)
+nes_max <- max(heatmap_matrix, na.rm = TRUE)
+
+# Use the larger absolute value for symmetric limits
+max_abs_nes <- max(abs(nes_min), abs(nes_max))
+
+# Create symmetric breaks for the color scale
+breaks <- seq(-max_abs_nes, max_abs_nes, length.out = 101)
+
+# Now plot the heatmap with adjusted color scale
 heatmap_plot <- pheatmap(heatmap_matrix,
-         color = colorRampPalette(c("blue", "white", "red"))(100),
-         main = "Core Enrichment Gene Heatmap",
-         fontsize_row = 8,
-         cluster_rows = TRUE,
-         cluster_cols = TRUE)
+     color = colorRampPalette(c("#6698CC", "white", "#F08C21"))(100),
+     breaks = breaks,
+     main = "Core Enrichment Gene Heatmap",
+     fontsize_row = 8,
+     cluster_rows = TRUE,
+     cluster_cols = TRUE)
 
 # Save the overall heatmap plot to SVG file
 output_file <- file.path(core_enrichment_dir, "core_enrichment_heatmap.svg")
@@ -619,9 +643,74 @@ svg(output_file, width = 10, height = 8)
 grid::grid.draw(heatmap_plot$gtable)
 dev.off()
 
-# Save to PNG file
-png(file.path(core_enrichment_dir, "core_enrichment_heatmap.png"), width = 10*300, height = 8*300, res = 300)
-grid::grid.draw(heatmap_plot$gtable)
+# Get top 25 and bottom 25 genes based on absolute NES values across comparisons
+top_bottom_genes <- heatmap_df %>%
+  pivot_longer(-Gene, names_to = "Comparison", values_to = "NES") %>%
+  group_by(Gene) %>%
+  summarize(max_abs_nes = max(abs(NES), na.rm = TRUE), .groups = "drop") %>%
+  arrange(desc(max_abs_nes)) %>%
+  slice_head(n = 50) %>%
+  bind_rows(
+    arrange(., max_abs_nes) %>% slice_head(n = 50)
+  ) %>%
+  distinct(Gene)
+
+# Filter the heatmap matrix to only include the top and bottom 25 genes
+top_bottom_matrix <- heatmap_matrix[rownames(heatmap_matrix) %in% top_bottom_genes$Gene, , drop = FALSE]
+
+# Order rows by max abs NES again for nice visual
+gene_order <- heatmap_df %>%
+  filter(Gene %in% rownames(top_bottom_matrix)) %>%
+  pivot_longer(-Gene, names_to = "Comparison", values_to = "NES") %>%
+  group_by(Gene) %>%
+  summarize(order_metric = max(abs(NES), na.rm = TRUE)) %>%
+  arrange(desc(order_metric)) %>%
+  pull(Gene)
+
+top_bottom_matrix <- top_bottom_matrix[gene_order, , drop = FALSE]
+
+# Get min and max NES
+nes_min <- min(top_bottom_matrix, na.rm = TRUE)
+nes_max <- max(top_bottom_matrix, na.rm = TRUE)
+
+# Use the larger absolute value for symmetric limits
+max_abs_nes <- max(abs(nes_min), abs(nes_max))
+
+# Create symmetric breaks for the color scale
+breaks <- seq(-max_abs_nes, max_abs_nes, length.out = 101)
+
+top_bottom_plot <- pheatmap(
+  top_bottom_matrix,
+  color = colorRampPalette(c("#6698CC", "white", "#F08C21"))(100),
+  breaks = breaks,
+  main = "Top & Bottom 50 Core Enrichment Genes",
+  fontsize = 8,
+  fontsize_row = 6,
+  fontsize_col = 8,
+  fontsize_number = 6,
+  cluster_rows = TRUE,
+  cluster_cols = TRUE,
+  clustering_distance_rows = "euclidean",
+  clustering_distance_cols = "euclidean",
+  clustering_method = "complete",
+  border_color = "#e7e7e7",
+  border_width = 0.1,
+  cellwidth = 12,
+  cellheight = 8,
+  angle_col = 45,
+  treeheight_row = 20,
+  treeheight_col = 20,
+  legend = TRUE,
+  legend_breaks = c(-2, -1, 0, 1, 2),
+  legend_labels = c("-2", "-1", "0", "1", "2"),
+  annotation_legend = TRUE,
+  show_rownames = TRUE,
+  show_colnames = TRUE
+)
+
+# Save to SVG
+svg(file.path(core_enrichment_dir, "top_bottom_core_enrichment_heatmap.svg"), width = 10, height = 10)
+grid::grid.draw(top_bottom_plot$gtable)
 dev.off()
 
 # -----------------------------------------------------
@@ -710,7 +799,7 @@ core_long_df %>%
     heatmap_matrix[is.na(heatmap_matrix)] <- 0
 
     # Define output filename with a safe name
-    filename <- file.path(output_dir, paste0(make.names(description), ".svg"))
+    filename <- file.path(output_dir, paste0(substr(make.names(description), 1, 20), ".svg"))
 
     # Set clustering options based on matrix dimensions
     cluster_rows_option <- nrow(heatmap_matrix) > 1
@@ -723,9 +812,6 @@ core_long_df %>%
     # Dynamically calculate plot height to avoid label overlap
     row_height <- 0.05
     plot_height <- max(8, nrow(heatmap_matrix) * row_height + 0.2 * nrow(heatmap_matrix))
-
-    # check matrix_df
-    #print(head(matrix_df))
 
     # Save the heatmap as an SVG file
     svg(filename, width = 7, height = plot_height)
