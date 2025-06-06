@@ -1,21 +1,20 @@
 #' UniProt ID Mapping for ClusterProfiler Analysis
 #'
-#' This script processes gene data with UniProtKB IDs (e.g., "GENE_MOUSE") and maps them
-#' to UniProt Accessions using an official UniProt ID mapping file.
+#' This script processes gene data containing UniProtKB IDs (e.g., "GENE_MOUSE") 
+#' and maps them to their corresponding UniProt Accessions using an official 
+#' UniProt ID mapping file.
 #'
 #' @details
-#' The workflow includes:
-#' \enumerate{
-#'   \item Setting up the environment and loading necessary libraries.
-#'   \item Defining project directories.
-#'   \item Checking for the existence of input data and the mapping file.
-#'   \item Preprocessing gene identifiers by extracting the primary ID when multiple are provided.
-#'   \item Reading and filtering the official UniProt mapping file (MOUSE_10090_idmapping.dat) to obtain an Entry Name to Accession map.
-#'   \item Merging the mapping data with the gene information.
-#'   \item Saving the mapped results for downstream analysis.
-#' }
+#' The workflow is structured as follows:
+#' 1. Set up the environment and load required libraries.
+#' 2. Define project directories.
+#' 3. Verify the existence of the input data and the UniProt mapping file.
+#' 4. Preprocess gene identifiers by extracting the primary identifier when multiple are provided.
+#' 5. Load and filter the official UniProt mapping file (MOUSE_10090_idmapping.dat) to create an Entry Name to Accession map.
+#' 6. Merge the mapping data with the gene information.
+#' 7. Save both the mapped and unmapped results for downstream analysis.
 #'
-#' @note Ensure that the mapping file is downloaded, unzipped, and placed in the specified directory before running this script.
+#' @note Ensure the mapping file is downloaded, unzipped, and placed in the specified directory before running this script.
 #'
 #' @author Tobias Pohl
 
@@ -48,7 +47,7 @@ if (!dir.exists(unmapped_dir)) {
 setwd(working_dir)
 
 # Specify cell types which determine dataset file name
-cell_types <- c("mcherry1", "mcherry3")
+cell_types <- c("neuron2", "neuron4")
 file_name <- paste0(paste(cell_types, collapse = "_"), ".csv")
 data_path <- file.path(working_dir, "Datasets", "raw", file_name)
 
@@ -58,17 +57,16 @@ uniprot_mapping_file_path <- file.path(working_dir, "Datasets", "MOUSE_10090_idm
 # -----------------------------------------------------
 # Verify Input Files
 # -----------------------------------------------------
-
 if (!file.exists(data_path)) {
     stop("Input data file does not exist: ", data_path)
 }
 if (!file.exists(uniprot_mapping_file_path)) {
     cat("UniProt mapping file not found at:", uniprot_mapping_file_path, "\n")
     cat("Attempting to download the file...\n")
-    
+
     # Increase timeout to 3600 seconds (1 hour) to prevent download timeout
     options(timeout = 3600)
-    
+
     gz_url <- "https://ftp.uniprot.org/pub/databases/uniprot/knowledgebase/idmapping/by_organism/MOUSE_10090_idmapping.dat.gz"
     gz_file <- paste0(uniprot_mapping_file_path, ".gz")
     tryCatch({
