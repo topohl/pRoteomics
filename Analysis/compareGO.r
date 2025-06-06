@@ -68,7 +68,7 @@ uniprot_mapping_file_path <- file.path(
 #' Gene Ontology (GO) enrichment analysis using clusterProfiler.
 #'
 #' @section Analysis Parameters:
-#' - ensemble_profiling: Type of ensemble profiling analysis 
+#' - ensemble_profiling: Type of ensemble profiling analysis
 #'   (e.g., "baseline_cell_type_profiling", "effects_chemogenetic_inhibition",
 #'   "interaction_with_learning", etc.)
 #' - condition: Experimental condition being analyzed (e.g., "CS", "US",
@@ -78,28 +78,42 @@ uniprot_mapping_file_path <- file.path(
 #' @section Directory Structure:
 #' - Input:  Datasets/core_enrichment/{ont}/{ensemble_profiling}/{condition}/
 #' - Output: Results/compareGO/{ont}/{ensemble_profiling}/{condition}/
+# Set analysis parameters ---------------------------------------------
 
-# set ensemble prfiling
-ensemble_profiling <- "interaction_with_learning"
+# Define the ensemble profiling method used in the analysis
+ensemble_profiling <- "effects_chemogenetic_inhibition"
 
-# either CNO, VEH, CS or US or effects_inhibition_memory_ensemble or learning_signature
-condition <- "effects_inhibition_memory_ensemble"
+# Specify the experimental condition (e.g., CNO, VEH, CS, US, effects_inhibition_memory_ensemble, or learning_signature)
+condition <- "CS"
 
-ont <- "MF"
+# Define the Gene Ontology domain (e.g., MF, BP, or CC)
+ont <- "CC"
 
-# Set working directory
+# Set up working environment ------------------------------------------
+
+# Set the working directory to the project’s base folder
 setwd("S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler")
-# List CSV files from the core_enrichment subfolder specified by ensemble_profiling
+
+# Import input files --------------------------------------------------
+
+# List all CSV files from the specified core_enrichment subfolder
+# The folder structure is based on the ontology, profiling method, and condition
 file_paths <- list.files(
   path = file.path("S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/core_enrichment", ont, ensemble_profiling, condition),
   pattern = "*.csv",
   full.names = TRUE
 )
+# Name each file entry using the base filename (without the .csv extension)
 names(file_paths) <- basename(file_paths) %>% str_remove(".csv")
 
+# Define output directories -------------------------------------------
+
+# Set the output directory for comparative GO analysis results
 output_dir <- file.path("S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Results/compareGO", ont, ensemble_profiling, condition)
+# Create the output directory if it doesn't already exist
 dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
 
+# Define and create a subdirectory for core enrichment outputs
 core_enrichment_dir <- file.path(output_dir, "core_enrichment")
 dir.create(core_enrichment_dir, showWarnings = FALSE, recursive = TRUE)
 
@@ -142,19 +156,21 @@ combined_df <- bind_rows(
 #' @return A data frame ('top_df') with the selected terms per comparison and a vector ('top_terms') 
 #'         containing unique term descriptions.
 
-significant_only <- TRUE
-top10_terms <- TRUE
+# Define filtering parameters for selecting top GO terms
+significant_only <- TRUE  # If TRUE, only keep terms with p.adjust < 0.05
+top10_terms <- TRUE       # If TRUE, select the top 10 terms based on absolute NES for each comparison
 
+# Filter and select top terms from the combined data frame
 if (top10_terms) {
   if (significant_only) {
-    # Filter significant terms and then select top 10 by absolute NES per comparison
+    # Only include significant terms (p.adjust < 0.05), then select the top 10 with the highest absolute NES per Comparison
     top_df <- combined_df %>% 
       filter(p.adjust < 0.05) %>% 
       group_by(Comparison) %>% 
       slice_max(order_by = abs(NES), n = 10) %>% 
       ungroup()
   } else {
-    # Select top 10 terms by absolute NES per comparison (without filtering for significance)
+    # Without significance filtering, select the top 10 terms with the highest absolute NES per Comparison
     top_df <- combined_df %>% 
       group_by(Comparison) %>% 
       slice_max(order_by = abs(NES), n = 10) %>% 
@@ -162,15 +178,19 @@ if (top10_terms) {
   }
 } else {
   if (significant_only) {
-    # Keep only significant terms (p.adjust < 0.05)
-    top_df <- combined_df %>% filter(p.adjust < 0.05)
+    # If not selecting top10, just retain all significant terms (p.adjust < 0.05)
+    top_df <- combined_df %>% 
+      filter(p.adjust < 0.05)
   } else {
-    # Use all terms if no filtering is applied
+    # Include all terms without any filtering
     top_df <- combined_df
   }
 }
 
-# Create a master list of top terms
+# -----------------------------------------------------------------------------
+# Create a master list of GO term descriptions from the filtered data
+# -----------------------------------------------------------------------------
+
 top_terms <- unique(top_df$Description)
 
 # -----------------------------------------------------
@@ -187,21 +207,22 @@ top_terms <- unique(top_df$Description)
 #' @return A modified data frame (lookup_df) with ordered factor levels for comparisons, 
 #'         ready for visualization in a heatmap.
 
+# Remove any extra whitespace from the Comparison names to ensure consistency
 combined_df <- combined_df %>%
   mutate(Comparison = str_trim(Comparison))
 
-# Include all rows for selected top terms
+# Filter the combined data to include only rows with GO term descriptions that are in the top_terms list
 lookup_df <- combined_df %>%
   filter(Description %in% top_terms)
 
-# Order comparisons by max |NES|
+# Compute the order of comparisons by determining the maximum absolute NES for each, then sort in descending order
 comparison_order <- lookup_df %>%
   group_by(Comparison) %>%
   summarize(max_abs_NES = max(abs(NES), na.rm = TRUE), .groups = "drop") %>%
   arrange(desc(max_abs_NES)) %>%
   pull(Comparison)
 
-# Reorder the Comparison factor using the computed order
+# Recast the Comparison column as a factor using the determined order to ensure proper ordering in plots
 lookup_df <- lookup_df %>%
   mutate(Comparison = factor(Comparison, levels = comparison_order))
 
@@ -323,13 +344,14 @@ dev.off()
 #'
 #' @return The function renders a dot plot and saves it as an SVG file.
 
+# Construct dot plot for comparative GO enrichment analysis.
 dotplot <- ggplot(lookup_df, aes(
   x = Comparison,
-  y = reorder(Description, NES, FUN = median),
+  y = reorder(Description, NES, FUN = median),  # Order gene sets by median NES
   color = NES,
   size = -log10(p.adjust)
 )) +
-  geom_point(alpha = 0.85) +
+  geom_point(alpha = 0.85) +  # Slight transparency for overlapping points
   scale_color_gradientn(
     colours = colorRampPalette(c("#6698CC", "white", "#F08C21"))(100),
     name = "NES",
@@ -359,14 +381,15 @@ dotplot <- ggplot(lookup_df, aes(
     legend.position = "right"
   )
 
-# Render the dotplot
+# Display the dot plot
 print(dotplot)
 
-# Adjust the width dynamically based on the number of comparisons (with a minimum width of 10)
+# Dynamically adjust the plot width based on the number of unique comparisons.
+# A minimum width is set to ensure clarity when few comparisons are present.
 num_comparisons <- length(unique(lookup_df$Comparison))
 dynamic_width <- max(10, num_comparisons * 4.5)
 
-# Save the dotplot to an SVG file using dynamic width and the same dynamic plot_height
+# Save the dot plot as an SVG file using the dynamic width and predefined plot height.
 output_dotplot <- file.path(output_dir, paste0("enrichment_dotplot_", ont, "_", ensemble_profiling, "_", condition, ".svg"))
 ggsave(output_dotplot, plot = dotplot, width = dynamic_width, height = plot_height, dpi = 300)
 
@@ -392,28 +415,37 @@ ggsave(output_dotplot, plot = dotplot, width = dynamic_width, height = plot_heig
 #' @return
 #' A ggplot object visualizing the enrichment of specified genes across comparisons,
 
+# Define the target gene identifiers for enrichment analysis
 gene_list <- c("P55099", "Q6NXX1")
 
-# Unnest genes in core_enrichment
+# Split the 'core_enrichment' field into individual genes by various delimiters,
+# then expand the data frame so that each gene is represented in its own row.
 long_df <- combined_df %>%
   mutate(core_gene = strsplit(as.character(core_enrichment), "/|;|,|\\s+")) %>%
   unnest(core_gene)
 
-# Filter for genes of interest
+# Retain only the rows corresponding to the genes of interest,
+# and convert the 'Description' column into an ordered factor for consistent plotting.
 filtered_df <- long_df %>%
   filter(core_gene %in% gene_list) %>%
   mutate(Description = factor(Description, levels = unique(Description)))
 
-# Get min and max NES
+# Compute the minimum and maximum Normalized Enrichment Scores (NES) across the filtered data
 nes_min <- min(filtered_df$NES, na.rm = TRUE)
 nes_max <- max(filtered_df$NES, na.rm = TRUE)
 
-# Use the larger absolute value for symmetric limits
+# Determine the symmetric limit for color scaling by taking the larger absolute NES value
 max_abs_nes <- max(abs(nes_min), abs(nes_max))
 
+# Open a new graphics window (useful for interactive sessions)
 windows()
 
-# Plot NES by Comparison, now colored and shaped by gene identity
+# Construct a ggplot object to visualize enrichment metrics:
+# - X-axis: Comparisons
+# - Y-axis: Enriched gene set descriptions
+# - Point color represents the NES,
+# - Point size is scaled by -log10(p.adjust)
+# - Different point shapes denote distinct genes
 plot_selected_genes <- ggplot(filtered_df, aes(
   x = Comparison,
   y = Description,
@@ -425,7 +457,7 @@ plot_selected_genes <- ggplot(filtered_df, aes(
   scale_color_gradientn(
     colours = c("#6698CC", "white", "#F08C21"),
     limits = c(-max_abs_nes, max_abs_nes),
-    values = c(0, 0.5, 1),  # Ensures NES = 0 is white
+    values = c(0, 0.5, 1),  # Ensures that a NES of 0 appears white for neutral contrast
     name = "NES"
   ) +
   scale_size_continuous(
@@ -447,11 +479,13 @@ plot_selected_genes <- ggplot(filtered_df, aes(
     legend.position = "right"
   )
 
-# Save the plot to an SVG file
+# Define the output file path to save the generated plot in SVG format
 output_plot_file <- file.path(core_enrichment_dir, paste0("selected_genes_plot_", ont, "_", ensemble_profiling, "_", condition, ".svg"))
+
+# Export the plot to the specified SVG file with fixed dimensions and resolution
 ggsave(output_plot_file, plot = plot_selected_genes, width = 10, height = 7, dpi = 300)
 
-# Render the plot in the viewer
+# Display the plot
 print(plot_selected_genes)
 
 # -----------------------------------------------------
@@ -514,17 +548,19 @@ write.csv(core_genes_df,
       file = file.path(output_dir, "core_genes_all_comparisons.csv"),
       row.names = FALSE)
 
-# For each unique combination of Comparison and Description,
-# aggregate the unique core genes and write them into separate CSV files
+# Group the core genes by Comparison and Description, and then export each group as a separate CSV file.
 core_genes_df %>%
-  group_by(Comparison, Description) %>%                             # Group the data by Comparison and Description
-  summarise(Genes = list(unique(core_enrichment)), .groups = "drop") %>% # Aggregate unique core genes into a list for each group
-  rowwise() %>%                                                      # Process each row individually
-  mutate(file_name = file.path(                                    # Create a file name for each group file
-  output_dir,
-  paste0(Comparison, "_", substr(make.names(Description), 1, 50), ".csv")  # Use Comparison and a cleaned, truncated Description
+  group_by(Comparison, Description) %>%
+  summarise(Genes = list(unique(core_enrichment)), .groups = "drop") %>%
+  rowwise() %>%
+  mutate(file_name = file.path(
+    output_dir,
+    paste0(Comparison, "_", substr(make.names(Description), 1, 50), ".csv")
   )) %>%
-  pwalk(~ write.csv(data.frame(Gene = ..3), file = ..4, row.names = FALSE)) # Write each group's gene list to its CSV file
+  # For each group (defined by Comparison and Description), write the unique core genes (in column 3)
+  # to a CSV file. Here, pwalk iterates over each group’s elements, creating a one-column data frame
+  # containing the unique gene IDs, and saves it to the file path provided in element 4.
+  pwalk(~ write.csv(data.frame(Gene = ..3), file = ..4, row.names = FALSE))
 
 # -----------------------------------------------------
 # Compare Shared Core Genes Between Comparisons
