@@ -62,10 +62,10 @@ pacman::p_load(ggplot2, stringr, ggpubr, ggthemes, dplyr, tidyr, purrr, readr, p
 # "interaction_with_learning"
 
 # set ensemble prfiling
-ensemble_profiling <- "interaction_with_learning"
+ensemble_profiling <- "baseline_cell_type_profiling"
 
 # either CNO, VEH, CS or US or effects_inhibition_memory_ensemble or learning_signature
-condition <- "learning_signature"
+condition <- "US"
 
 # Set working directory
 setwd("S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler")
@@ -346,7 +346,7 @@ core_gene_sets <- lapply(names(enrichment_list), function(name) {
   df <- enrichment_list[[name]]
   # Split semicolon-separated genes per row and unnest
   df_long <- df %>%
-    select(Description, core_enrichment) %>%
+    dplyr::select(Description, core_enrichment) %>%
     mutate(core_enrichment = str_split(core_enrichment, "/")) %>%
     unnest(core_enrichment) %>%
     mutate(Comparison = name)
@@ -426,7 +426,7 @@ core_long_df <- bind_rows(
   lapply(names(enrichment_list), function(name) {
     df <- enrichment_list[[name]]
     df %>%
-      select(Description, NES, core_enrichment) %>%
+      dplyr::select(Description, NES, core_enrichment) %>%
       mutate(core_enrichment = str_split(core_enrichment, "/")) %>%
       unnest(core_enrichment) %>%
       mutate(Comparison = name)
@@ -526,7 +526,7 @@ core_long_df %>%
 
     # Create a matrix of log2fc values (genes x comparisons)
     matrix_df <- df_term_log2fc %>%
-      select(Gene, Comparison, log2fc) %>%
+      dplyr::select(Gene, Comparison, log2fc) %>%
       group_by(Gene, Comparison) %>%
       summarize(log2fc = mean(log2fc, na.rm = TRUE), .groups = "drop") %>%
       pivot_wider(names_from = Comparison, values_from = log2fc) %>%
