@@ -3,8 +3,8 @@
 #' @description
 #' This script performs a comparative analysis of GO enrichment across multiple experiments.
 #' It:
-#'   - Reads multiple CSV files containing enrichment data from a specified directory. The filenames (without
-#'     extensions) serve as labels for individual comparisons.
+#'   - Reads multiple CSV files containing enrichment data from a specified directory. 
+#'     The filenames (without extensions) serve as labels for individual comparisons.
 #'
 #'   - Combines the data into a single data frame with an added "Comparison" column indicating the source experiment.
 #'
@@ -21,15 +21,18 @@
 #' The script creates two primary visualizations:
 #'
 #'   1. A heatmap that displays differential enrichment across comparisons.
-#'   2. A dot plot that highlights both the NES (color) and the significance (-log10(p.adjust)) of each term.
+#'   2. A dot plot that highlights both the NES (color) and
+#'      the significance (-log10(p.adjust)) of each term.
 #'
 #' Additional outputs include:
 #'   - Core gene lists per term across comparisons.
-#'   - A binary matrix of core gene presence/absence for computing Jaccard similarity between comparisons.
+#'   - A binary matrix of core gene presence/absence
+#'     for computing Jaccard similarity between comparisons.
 #'   - Expanded core enrichment heatmaps for individual terms.
 #'
 #' @section File Inputs:
-#'   - CSV files from the directory: "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/core_enrichment"
+#'   - CSV files from the directory:
+#'     "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/core_enrichment"
 #'     (matching the pattern "*.csv").
 #'
 #' @section Outputs:
@@ -37,8 +40,9 @@
 #'   - Core gene tables saved in CSV format.
 #'   - SVG and PNG files for individual and overall enrichments.
 #'
-#' @note 
-#'   Ensure that all file paths and package dependencies are correctly installed and set before running this script.
+#' @note
+#'   Ensure that all file paths and package dependencies are
+#'   correctly installed and set before running this script.
 #'
 #' @author
 #'   Tobias Pohl
@@ -57,6 +61,16 @@ uniprot_mapping_file_path <- file.path(
   "MOUSE_10090_idmapping.dat"
 )
 
+# Read the UniProt mapping file and extract only Uniprot-to-GeneName mappings
+uniprot_df <- read.delim(
+  uniprot_mapping_file_path,
+  header = FALSE,
+  sep = "\t",
+  stringsAsFactors = FALSE
+) %>%
+  filter(V2 == "Gene_Name") %>%
+  select(UniprotID = V1, Gene_Name = V3)
+
 # -----------------------------------------------------
 # Define Paths and Project Directories
 # -----------------------------------------------------
@@ -72,7 +86,7 @@ uniprot_mapping_file_path <- file.path(
 #'   (e.g., "baseline_cell_type_profiling", "effects_chemogenetic_inhibition",
 #'   "interaction_with_learning", etc.)
 #' - condition: Experimental condition being analyzed (e.g., "CS", "US",
-#'   "effects_memory_inhibition", "learning_signature" etc.)
+#'   "effects_inhibition_memory_ensemble", "learning_signature" etc.)
 #' - ont: Gene Ontology domain (MF/BP/CC)
 #'
 #' @section Directory Structure:
@@ -87,7 +101,7 @@ ensemble_profiling <- "effects_chemogenetic_inhibition"
 condition <- "CS"
 
 # Define the Gene Ontology domain (e.g., MF, BP, or CC)
-ont <- "CC"
+ont <- "BP"  # Biological Process
 
 # Set up working environment ------------------------------------------
 
@@ -143,12 +157,29 @@ combined_df <- bind_rows(
   })
 )
 
+# Read in go_ids 
+gene_go_ids <- combined_df %>%
+  # Select just the columns needed
+  select(GO_ID = ID, core_enrichment) %>%
+  # Split the slash-separated gene accessions into rows
+  mutate(core_enrichment = strsplit(core_enrichment, "/")) %>%
+  unnest(core_enrichment) %>%
+  rename(Gene = core_enrichment) %>%
+  distinct() %>%
+  group_by(Gene) %>%
+  summarize(GO_IDs = paste(unique(GO_ID), collapse = "; "), .groups = "drop")
+
+# read in p-values
+p_values <- combined_df %>%
+  select(Comparison, Description, p.adjust) %>%
+  distinct()
+
 # -----------------------------------------------------
 # Select Top Terms
 # -----------------------------------------------------
 #' Top Terms Selection for GO Batch Comparison
 #' @description Filters and selects top terms from gene ontology comparisons based on significance and normalized enrichment scores.
-#' @details 
+#' @details
 #' The code uses two flags, 'top10_terms' and 'significant_only', to determine:
 #'   - Whether to select only the top 10 terms per comparison or use all terms.
 #'   - Whether to filter terms for significance (p.adjust < 0.05) prior to selection.
@@ -164,22 +195,22 @@ top10_terms <- TRUE       # If TRUE, select the top 10 terms based on absolute N
 if (top10_terms) {
   if (significant_only) {
     # Only include significant terms (p.adjust < 0.05), then select the top 10 with the highest absolute NES per Comparison
-    top_df <- combined_df %>% 
-      filter(p.adjust < 0.05) %>% 
-      group_by(Comparison) %>% 
-      slice_max(order_by = abs(NES), n = 10) %>% 
+    top_df <- combined_df %>%
+      filter(p.adjust < 0.05) %>%
+      group_by(Comparison) %>%
+      slice_max(order_by = abs(NES), n = 10) %>%
       ungroup()
   } else {
     # Without significance filtering, select the top 10 terms with the highest absolute NES per Comparison
-    top_df <- combined_df %>% 
-      group_by(Comparison) %>% 
-      slice_max(order_by = abs(NES), n = 10) %>% 
+    top_df <- combined_df %>%
+      group_by(Comparison) %>%
+      slice_max(order_by = abs(NES), n = 10) %>%
       ungroup()
   }
 } else {
   if (significant_only) {
     # If not selecting top10, just retain all significant terms (p.adjust < 0.05)
-    top_df <- combined_df %>% 
+    top_df <- combined_df %>%
       filter(p.adjust < 0.05)
   } else {
     # Include all terms without any filtering
@@ -381,9 +412,6 @@ dotplot <- ggplot(lookup_df, aes(
     legend.position = "right"
   )
 
-# Display the dot plot
-print(dotplot)
-
 # Dynamically adjust the plot width based on the number of unique comparisons.
 # A minimum width is set to ensure clarity when few comparisons are present.
 num_comparisons <- length(unique(lookup_df$Comparison))
@@ -487,6 +515,64 @@ ggsave(output_plot_file, plot = plot_selected_genes, width = 10, height = 7, dpi
 
 # Display the plot
 print(plot_selected_genes)
+
+# -----------------------------------------------
+# Gene-centric Enrichment: Frequency & NES summary
+# -----------------------------------------------
+
+# Count occurrences of each gene in each Comparison and calculate mean NES
+gene_enrichment_summary <- long_df %>%
+  filter(core_gene %in% gene_list) %>%
+  group_by(core_gene, Comparison) %>%
+  summarise(
+    count = n(),
+    mean_NES = mean(NES, na.rm = TRUE),
+    max_padj = min(p.adjust, na.rm = TRUE),  # Best (smallest) adjusted p-value across gene sets
+    .groups = "drop"
+  )
+
+# Plot: Each point is a gene in a comparison
+plot_gene_summary <- ggplot(gene_enrichment_summary, aes(
+  x = Comparison,
+  y = core_gene,
+  size = count,
+  fill = mean_NES
+)) +
+  geom_point(shape = 21, stroke = 0) +
+  scale_size_continuous(
+    name = "Occurrences\nin Gene Sets",
+    range = c(3, 10)
+  ) +
+  scale_fill_gradient2(
+    name = "Mean NES",
+    low = "#6698CC", mid = "white", high = "#F08C21",
+    midpoint = 0, limits = c(-max_abs_nes, max_abs_nes)
+  ) +
+  labs(
+    title = "Gene-Centric Enrichment Across Comparisons",
+    subtitle = paste("Ontology:", ont, "| Profiling:", ensemble_profiling, "| Condition:", condition),
+    x = "Comparison",
+    y = "Gene"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    panel.grid = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA, size = 1),
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(hjust = 0.5),
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 16),
+    axis.text.y = element_text(size = 16),
+    axis.title.x = element_text(size = 16),
+    axis.title.y = element_text(size = 16),
+    legend.position = "right"
+  )
+
+# Save plot
+gene_summary_file <- file.path(core_enrichment_dir, paste0("gene_centric_enrichment_", ont, "_", ensemble_profiling, "_", condition, ".svg"))
+ggsave(gene_summary_file, plot = plot_gene_summary, width = 5, height = 4, dpi = 300)
+
+# Show plot
+print(plot_gene_summary)
 
 # -----------------------------------------------------
 # Extract Core Genes per Comparison
@@ -613,9 +699,11 @@ jaccard_heatmap <- pheatmap(
   cluster_cols = TRUE
 )
 
-# Render the plot in the VS Code R plot viewer
-grid::grid.newpage()
+# Save the Jaccard heatmap to an SVG file
+jaccard_sim_matrix <- file.path(core_enrichment_dir, "jaccard_similarity_heatmap.svg")
+svg(jaccard_sim_matrix, width = 10, height = 8)
 grid::grid.draw(jaccard_heatmap$gtable)
+dev.off()
 
 # -----------------------------------------------------
 # Expand Core Enrichment Genes for Heatmap
@@ -690,17 +778,45 @@ svg(output_file, width = 10, height = 8)
 grid::grid.draw(heatmap_plot$gtable)
 dev.off()
 
-# Get top 25 and bottom 25 genes based on absolute NES values across comparisons
-top_bottom_genes <- heatmap_df %>%
-  pivot_longer(-Gene, names_to = "Comparison", values_to = "NES") %>%
+# Reshape to long format
+long_heatmap_df <- heatmap_df %>%
+  pivot_longer(-Gene, names_to = "Comparison", values_to = "NES")
+
+# Top 25 upregulated genes (highest positive NES)
+top25_up <- long_heatmap_df %>%
   group_by(Gene) %>%
-  summarize(max_abs_nes = max(abs(NES), na.rm = TRUE), .groups = "drop") %>%
-  arrange(desc(max_abs_nes)) %>%
-  slice_head(n = 50) %>%
-  bind_rows(
-    arrange(., max_abs_nes) %>% slice_head(n = 50)
-  ) %>%
-  distinct(Gene)
+  summarize(max_nes = max(NES, na.rm = TRUE), .groups = "drop") %>%
+  arrange(desc(max_nes)) %>%
+  slice_head(n = 25) %>%
+  mutate(Direction = "Up")
+
+# Top 25 downregulated genes (lowest negative NES)
+top25_down <- long_heatmap_df %>%
+  group_by(Gene) %>%
+  summarize(min_nes = min(NES, na.rm = TRUE), .groups = "drop") %>%
+  arrange(min_nes) %>%
+  slice_head(n = 25) %>%
+  mutate(Direction = "Down")
+
+# Combine without deduplication
+top_bottom_genes <- bind_rows(top25_up, top25_down)
+
+# Create a mapping of each gene to its GO terms (Description)
+gene_go <- core_long_df %>%
+  select(Gene, Description) %>%
+  distinct() %>%
+  group_by(Gene) %>%
+  summarize(GO_Terms = paste(unique(Description), collapse = "; "), .groups = "drop")
+
+# Add the GO term column to the gene list
+top_bottom_genes <- top_bottom_genes %>%
+  left_join(gene_go, by = "Gene")
+
+# Save gene list with direction and GO term
+write_xlsx(
+  top_bottom_genes,
+  file.path(core_enrichment_dir, "top_bottom_gene_list.xlsx")
+)
 
 # Filter the heatmap matrix to only include the top and bottom 25 genes
 top_bottom_matrix <- heatmap_matrix[rownames(heatmap_matrix) %in% top_bottom_genes$Gene, , drop = FALSE]
@@ -716,6 +832,29 @@ gene_order <- heatmap_df %>%
 
 top_bottom_matrix <- top_bottom_matrix[gene_order, , drop = FALSE]
 
+# Load UniProt mapping (only Gene_Name)
+uniprot_df <- read.delim(
+  uniprot_mapping_file_path,
+  header = FALSE,
+  sep = "\t",
+  stringsAsFactors = FALSE
+) %>%
+  filter(V2 == "Gene_Name") %>%
+  select(UniprotID = V1, Gene_Name = V3)
+
+# Update rownames in heatmap
+mapped_names <- left_join(
+  tibble(Gene = rownames(top_bottom_matrix)),
+  uniprot_df,
+  by = c("Gene" = "UniprotID")
+)
+
+rownames(top_bottom_matrix) <- ifelse(
+  is.na(mapped_names$Gene_Name),
+  mapped_names$Gene,
+  mapped_names$Gene_Name
+)
+
 # Get min and max NES
 nes_min <- min(top_bottom_matrix, na.rm = TRUE)
 nes_max <- max(top_bottom_matrix, na.rm = TRUE)
@@ -730,7 +869,7 @@ top_bottom_plot <- pheatmap(
   top_bottom_matrix,
   color = colorRampPalette(c("#6698CC", "white", "#F08C21"))(100),
   breaks = breaks,
-  main = "Top & Bottom 50 Core Enrichment Genes",
+  main = "Core Enrichment Overview",
   fontsize = 8,
   fontsize_row = 6,
   fontsize_col = 8,
@@ -756,9 +895,275 @@ top_bottom_plot <- pheatmap(
 )
 
 # Save to SVG
-svg(file.path(core_enrichment_dir, "top_bottom_core_enrichment_heatmap.svg"), width = 10, height = 10)
+svg(file.path(core_enrichment_dir, "top_bottom_core_enrichment_heatmap.svg"), width = 5, height = 10)
 grid::grid.draw(top_bottom_plot$gtable)
 dev.off()
+
+# -------------------------------------------------------
+# Create Excel file with top/bottom genes and Uniprot IDs
+# -------------------------------------------------------
+
+#log2fc_files <- list.files(
+#  path = file.path("S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/mapped", ensemble_profiling, condition),
+#  pattern = "*.csv",
+#  full.names = TRUE
+#)
+
+# Save top_bottom_matrix to excel with Uniprot gene names
+# Read the Uniprot mapping file (adjust parameters as needed depending on file format)
+#uniprot_df <- read.delim(uniprot_mapping_file_path, header = FALSE, sep = "\t", stringsAsFactors = FALSE)
+#
+# Assume the first two columns are Uniprot ID and Gene Name; rename them accordingly
+#colnames(uniprot_df)[1:2] <- c("UniprotID", "Gene_Name", "UniProtKB-ID")
+
+# Convert top_bottom_matrix to a data frame with a Gene column
+#top_bottom_df <- tibble::rownames_to_column(as.data.frame(top_bottom_matrix), var = "Gene")
+#
+# Merge gene names again for Excel (in case they weren't used as rownames above)
+#top_bottom_df <- left_join(top_bottom_df, uniprot_df, by = c("Gene" = "UniprotID")) %>%
+#  relocate(Gene_Name, .before = Gene) %>%
+#  rename(Uniprot_ID = Gene)
+
+#write_xlsx(
+#  top_bottom_df,
+#  file.path(core_enrichment_dir, "top_bottom_core_enrichment_genes.xlsx")
+#)
+
+# -------------------------------------------------------
+# Create per-comparison heatmaps and Excel files
+# -------------------------------------------------------
+
+# Load UniProt mapping file (dat format)
+uniprot_df <- read.delim(
+  uniprot_mapping_file_path,
+  header = FALSE,
+  sep = "\t",
+  stringsAsFactors = FALSE
+)
+
+# Extract relevant mappings
+uniprot_subset <- uniprot_df %>%
+  filter(V2 %in% c("Gene_Name", "UniProtKB-ID")) %>%
+  pivot_wider(names_from = V2, values_from = V3, values_fn = list) %>%
+  unnest(cols = everything()) %>%
+  distinct(V1, .keep_all = TRUE) %>%
+  rename(UniprotID = V1)
+
+# Extract Gene Synonyms
+gene_synonyms <- uniprot_df %>%
+  filter(V2 == "Gene_Synonym") %>%
+  distinct(V1, .keep_all = TRUE) %>%
+  rename(UniprotID = V1, Gene_Synonym = V3)
+
+# Optional: Gene Descriptions (from GSEA if available)
+gene_descriptions <- core_long_df %>%
+  select(Gene, Description) %>%
+  distinct() %>%
+  group_by(Gene) %>%
+  summarize(Description = paste(unique(Description), collapse = "; "), .groups = "drop")
+
+# List log2fc input files
+log2fc_files <- list.files(
+  path = file.path("S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/mapped", ensemble_profiling, condition),
+  pattern = "*.csv",
+  full.names = TRUE
+)
+
+# Read and combine all log2fc files
+log2fc_df_list <- lapply(log2fc_files, function(f) {
+  df <- read_csv(f, col_types = cols())
+  df$Comparison <- tools::file_path_sans_ext(basename(f))
+  return(df)
+})
+
+log2fc_long_df <- bind_rows(log2fc_df_list)
+
+# Unique comparisons
+unique_comparisons <- unique(log2fc_long_df$Comparison)
+
+# Loop over each comparison
+for (comp in unique_comparisons) {
+  full_comp_df <- log2fc_long_df %>%
+  filter(Comparison == comp, !is.na(log2fc), !is.na(padj))
+
+# Volcano plot section (always runs, even if no sig genes)
+volcano_df <- full_comp_df %>%
+  filter(!str_detect(gene_symbol, "_")) %>%
+  left_join(uniprot_subset %>% select(UniprotID, Gene_Name),
+            by = c("gene_symbol" = "UniprotID")) %>%
+  mutate(Significance = case_when(
+    padj < 0.05 & log2fc > 0 ~ "up",
+    padj < 0.05 & log2fc < 0 ~ "down",
+    TRUE ~ "n.s."
+  ))
+  
+volcano_plot <- ggplot(volcano_df, aes(x = log2fc, y = -log10(padj), label = Gene_Name, color = Significance)) +
+    geom_point(shape = 16, alpha = 0.6, size = 4) +
+    ggrepel::geom_text_repel(
+      data = subset(volcano_df, padj < 0.05),
+      aes(label = Gene_Name),
+      size = 4,
+      max.overlaps = Inf,
+      show.legend = FALSE
+    ) +
+    scale_color_manual(
+      values = c("up" = "#f36d07", "down" = "#455A64", "n.s." = "#c7c7c7"),
+      breaks = c("up", "down", "n.s.")
+    ) +
+    scale_x_continuous(breaks = seq(floor(min(volcano_df$log2fc, na.rm = TRUE)),
+                                    ceiling(max(volcano_df$log2fc, na.rm = TRUE)),
+                                    by = 1)) +
+    labs(
+      title = paste(strsplit(comp, "_")[[1]], collapse = " over "),
+      x = "log2 Fold Change",
+      y = expression(-log[10]~(p~adj.))
+    ) +
+    coord_fixed(ratio = 2) +
+    theme_minimal(base_size = 12) +
+    theme(
+      legend.position = c(1, 1),
+      legend.justification = c(1, 1),
+      legend.background = element_rect(fill = "white", color = NA),
+      legend.title = element_blank(),
+      plot.title = element_text(size = 14, face = "bold"),
+      axis.title = element_text(face = "bold")
+    ) +
+    geom_hline(yintercept = -log10(0.05), linetype = "dashed", color = "#455A64")
+  
+  # Save volcano plot
+  # Create subfolder for volcano plots if it doesn't exist
+  vol_dir <- file.path(core_enrichment_dir, "volcano_plots")
+  if (!dir.exists(vol_dir)) {
+    dir.create(vol_dir, recursive = TRUE)
+  }
+  
+  ggsave(
+    filename = file.path(vol_dir, paste0("log2fc_", comp, "_volcano.svg")),
+    plot = volcano_plot,
+    width = 5,
+    height = 5
+  )
+  
+  # Now check for significant data for heatmap + Excel
+comp_df <- full_comp_df %>% filter(padj < 0.05)
+
+if (nrow(comp_df) == 0) {
+  message(paste("No significant genes found for", comp, "- skipping heatmap and Excel."))
+  next
+}
+
+  # Select top and bottom 25 based on log2fc direction
+  comp_df <- comp_df %>%
+    mutate(Direction = case_when(
+      log2fc > 0 ~ "Up",
+      log2fc < 0 ~ "Down",
+      TRUE ~ "Neutral"
+    ))
+
+  # Combine top 25 up and down (before deduplication)
+  top_bottom_genes <- bind_rows(
+    comp_df %>%
+      filter(Direction == "Up") %>%
+      arrange(desc(log2fc)) %>%
+      slice_head(n = 25),
+    comp_df %>%
+      filter(Direction == "Down") %>%
+      arrange(log2fc) %>%
+      slice_head(n = 25)
+  ) %>%
+    distinct(gene_symbol, Comparison, .keep_all = TRUE)
+
+  # Join UniProt annotations
+  mapped_top_bottom <- top_bottom_genes %>%
+    left_join(uniprot_subset, by = c("gene_symbol" = "UniprotID")) %>%
+    left_join(gene_synonyms, by = c("gene_symbol" = "UniprotID")) %>%
+    left_join(gene_descriptions, by = c("gene_symbol" = "Gene")) %>%
+    left_join(gene_go_ids, by = c("gene_symbol" = "Gene")) %>%
+    mutate(
+      Gene_Name = as.character(Gene_Name),
+      `UniProtKB-ID` = as.character(`UniProtKB-ID`),
+      Gene_Synonym = as.character(Gene_Synonym),
+      Gene_Label = ifelse(is.na(Gene_Name), gene_symbol, Gene_Name),
+      Gene_Label = make.unique(as.character(Gene_Label)),
+      abs_log2fc = abs(log2fc),
+      UniProt_Link = paste0("https://www.uniprot.org/uniprot/", gene_symbol)
+    )
+
+  # Add rank within direction
+  mapped_top_bottom <- mapped_top_bottom %>%
+    group_by(Direction) %>%
+    arrange(Direction, desc(abs_log2fc)) %>%
+    mutate(Rank = row_number()) %>%
+    ungroup()
+
+  # Create heatmap matrix
+  heatmap_matrix <- mapped_top_bottom %>%
+    select(Gene_Label, log2fc) %>%
+    mutate(Gene_Label = make.unique(as.character(Gene_Label))) %>%
+    tibble::column_to_rownames("Gene_Label") %>%
+    as.matrix()
+
+  if (nrow(heatmap_matrix) < 2) {
+    message(paste("Skipping heatmap for", comp, "- fewer than 2 unique genes."))
+  } else {
+    max_abs <- max(abs(heatmap_matrix), na.rm = TRUE)
+    breaks <- seq(-max_abs, max_abs, length.out = 101)
+
+    heatmap_plot <- pheatmap(
+      heatmap_matrix,
+      color = colorRampPalette(c("#6698CC", "white", "#F08C21"))(100),
+      breaks = breaks,
+      main = paste("Top/Bottom 25 Genes by log2FC in", comp),
+      cluster_rows = TRUE,
+      cluster_cols = FALSE,
+      fontsize_row = 6,
+      show_colnames = FALSE,
+      border_color = "#e7e7e7"
+    )
+
+    # Save heatmap
+    heatmap_dir <- file.path(core_enrichment_dir, "heatmap_plots")
+    if (!dir.exists(heatmap_dir)) {
+      dir.create(heatmap_dir, recursive = TRUE)
+    }
+    svg(
+      file.path(heatmap_dir, paste0("log2fc_", comp, "_heatmap.svg")),
+      width = 3, height = 8
+    )
+    grid::grid.draw(heatmap_plot$gtable)
+    dev.off()
+  }
+
+  
+
+  # Save Excel with annotation
+  excel_out <- mapped_top_bottom %>%
+    select(
+      Gene_Name,
+      `UniProtKB-ID`,
+      Uniprot_Accession = gene_symbol,
+      Gene_Synonym,
+      Comparison,
+      log2fc,
+      abs_log2fc,
+      padj,
+      Direction,
+      Rank,
+      GO_IDs,
+      Description,
+      UniProt_Link
+    ) %>%
+    mutate(across(everything(), as.character)) %>%
+    distinct()
+
+  proteins_sig_reg_dir <- file.path(core_enrichment_dir, "significant_proteins")
+  dir.create(proteins_sig_reg_dir, showWarnings = FALSE, recursive = TRUE)
+  write_xlsx(
+    excel_out,
+    file.path(proteins_sig_reg_dir, paste0("log2fc_", comp, "_genes.xlsx"))
+  )
+}
+
 
 # -----------------------------------------------------
 # Generate Individual Core Enrichment Heatmaps
@@ -766,28 +1171,27 @@ dev.off()
 #' Generate and Save Core Enrichment Heatmaps
 #'
 #' @description
-#' Reads log2fc CSV files for different comparisons, consolidates them, merges the data
-#' with core enrichment results, and generates heatmaps for each enriched term. The heatmaps 
-#' are exported as SVG files.
+#' This section reads log2fc data from CSV files and merges it with core enrichment results,
+#' then generates heatmaps for each enriched term. Each heatmap is dynamically sized and saved as an SVG file.
 #'
 #' @details
-#' The script performs the following steps:
-#' \itemize{
-#'   \item Reads log2fc data from CSV files residing in a specified folder.
-#'   \item Trims file names to avoid issues with whitespace.
-#'   \item Consolidates individual log2fc datasets into a single dataframe.
-#'   \item Merges the log2fc values with a core enrichment dataset based on gene and comparison.
-#'   \item Constructs a matrix for each enriched term and generates a heatmap using the 'pheatmap' package.
-#'   \item Dynamically calculates plot dimensions and saves the output as SVG.
-#' }
+#' The following steps are performed:
+#'   - Log2fc data is read from CSV files located in the mapped/ensemble profiling directory.
+#'   - File names are trimmed to remove any extraneous whitespace.
+#'   - Individual log2fc datasets are consolidated into a single dataframe.
+#'   - The consolidated log2fc data is merged with the core enrichment dataframe based on matching gene identifiers and comparisons.
+#'   - For each enriched term, a matrix is created from the merged data.
+#'   - A heatmap is generated using the 'pheatmap' package with dynamically determined dimensions to prevent label overlap.
+#'   - Each heatmap is exported and saved as an SVG file.
 #'
-#' @param ensemble_profiling A character string indicating the ensemble profiling folder segment.
-#' @param condition A character string specifying the experimental condition used in file paths.
-#' @param core_long_df A dataframe containing core enrichment information (long format).
+#' @param ensemble_profiling A character string indicating the ensemble profiling method used in forming file paths.
+#' @param condition A character string specifying the experimental condition.
+#' @param core_long_df A dataframe in long format containing core enrichment results.
 #'
-#' @return No value is returned. The function creates SVG files with heatmaps as a side effect.
-
+#' @return No return value. The function produces SVG files of heatmaps as a side effect.
+#
 # Read log2fc data for each comparison from the mapped/ensemble_profiling directory
+
 log2fc_files <- list.files(
   path = file.path("S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/mapped", ensemble_profiling, condition),
   pattern = "*.csv",
@@ -798,9 +1202,6 @@ log2fc_files <- list.files(
 names(log2fc_files) <- basename(log2fc_files) %>%
   str_remove(".csv") %>%
   str_trim()  # Ensure no spaces before using them
-
-# Print the names after trimming to check if it resolved the space issue
-#print(names(log2fc_files))
 
 # Proceed with the rest of your code and check the output again
 log2fc_list <- lapply(names(log2fc_files), function(comp) {
@@ -864,7 +1265,7 @@ core_long_df %>%
     svg(filename, width = 7, height = plot_height)
     pheatmap(
       heatmap_matrix,
-      color = colorRampPalette(c("#3b4cc0", "#ffffff", "#c03b3b"))(100),
+      color = colorRampPalette(c("#6698CC", "white", "#F08C21"))(100),
       breaks = breaks,
       main = description,
       fontsize = 10,
@@ -881,3 +1282,147 @@ core_long_df %>%
     )
     dev.off()
   })
+
+# -----------------------------------------------------
+# Gene-Centric Log2 Fold-Change (log2FC) Analysis
+# -----------------------------------------------------
+#'
+#' @description
+#' Processes multiple CSV files containing gene expression data (log2FC) to:
+#'   - Add comparison information derived from file names.
+#'   - Filter for a specific gene list.
+#'   - Summarize data by gene and comparison.
+#'   - Generate a bubble plot that visualizes the mean log2FC values.
+#'
+#' @details
+#' The analysis workflow is as follows:
+#'   1. Read CSV files from a designated directory.
+#'   2. Extract a "Comparison" field from the filename (removing its extension) and append it to the data.
+#'   3. Combine the individual data frames into one long-form data frame.
+#'   4. Optionally filter the combined data to include only genes from a provided gene list.
+#'   5. Group the data by gene and comparison to compute:
+#'      - The count of occurrences.
+#'      - The mean log2FC.
+#'      - The minimum adjusted p-value (padj).
+#'   6. Create a bubble plot with ggplot2 where:
+#'      - The point size reflects the occurrence count.
+#'      - The fill color represents the mean log2FC on a custom gradient scale.
+#'   7. Save the generated plot as an SVG file and display it.
+#'#'
+#' @section Inputs:
+#'   - CSV files containing gene expression data (with columns "gene_symbol", "log2fc", "padj") located 
+#'     in a directory formed using the variables ensemble_profiling and condition.
+#'   - gene_list: A vector of gene symbols for filtering the data; customize as necessary.
+#'
+#' @section Outputs:
+#'   - A summarized data frame (gene_fc_summary) that includes, per gene and comparison, the count,
+#'     mean log2FC, and the minimum adjusted p-value.
+#'   - A ggplot2 bubble plot that visualizes gene-centric log2FC data.
+#'   - An SVG file containing the bubble plot, saved to a path defined by core_enrichment_dir, ensemble_profiling, and condition.
+#'
+#' @usage
+#' Source this script in an R environment after ensuring that:
+#'   - All required variables (ensemble_profiling, condition, gene_list) are properly set.
+#'   - The necessary dependencies are available in the environment.
+
+# LTP gene list
+#gene_list <- c(
+#  "P35438", "P23818", "P11798", "P05132", "Q01147", "P21237",
+#  "Q62108", "O88935", "P63085", "Q9JLN9", "P31750", "P23819",
+#  "Q63844", "P15209", "P18760", "O88602"
+#)
+
+# gene list for plc
+#gene_list <- c("A3KGF7", "P51432", "Q62077", "Q8CIH5", "Q8K2J0",
+#  "Q8K3R3", "Q8K4S1", "Q8R3B1", "Q9Z1B3")
+
+# gene list for tacr3 signalling pathway
+#gene_list <- c("Q8K3R3", "Q8R071", "P11798", "P28652", "P20444", "P68404", "P05132", "P68181")
+# TACR3-signalling broad
+#gene_list <- sort(c(
+#  "P21279", "P21278", "P51432", "P11881", "P68404",
+#  "P63318", "P0DP26", "P0DP27", "P0DP28", "P11798",
+#  "P28652", "Q61411", "Q99N57", "P31938", "P63085",
+#  "Q63844", "Q01147"
+#))
+
+# TACR3-signalling CORE
+gene_list <- sort(unique(c(
+  "P21279", "P21278", "P51432", "P11881", "P63318",
+  "P68404", "P0DP26", "P0DP27", "P0DP28", "P11798",
+  "P28652", "P47937", "P47713"
+)))
+
+log2fc_files <- list.files(
+  path = file.path("S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/mapped", ensemble_profiling, condition),
+  pattern = "*.csv",
+  full.names = TRUE
+)
+
+log2fc_list <- lapply(log2fc_files, function(file) {
+  read_csv(file) %>% 
+    mutate(
+      Comparison = tools::file_path_sans_ext(basename(file))
+    )
+})
+
+# Combine all into one long data frame
+log2fc_long <- bind_rows(log2fc_list)
+
+# Step 2: Filter for genes of interest (optional)
+log2fc_filtered <- log2fc_long %>%
+  filter(gene_symbol %in% gene_list)  # replace with your list of genes
+
+# Step 3: Summarize per gene per comparison
+gene_fc_summary <- log2fc_filtered %>%
+  group_by(gene_symbol, Comparison) %>%
+  summarise(
+    count = n(),
+    mean_log2fc = mean(log2fc, na.rm = TRUE),
+    min_padj = min(padj, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Step 4: Plot
+max_abs_fc <- max(abs(gene_fc_summary$mean_log2fc), na.rm = TRUE)
+
+plot_gene_fc <- ggplot(gene_fc_summary, aes(
+  x = Comparison,
+  y = gene_symbol,
+  size = count,
+  fill = mean_log2fc
+)) +
+  geom_point(shape = 21, stroke = 0) +
+  scale_size_continuous(guide = "none", range = c(3, 10)) +  # Remove Occurrences legend
+  scale_fill_gradient2(
+    name = "Mean log2FC",
+    low = "#6698CC", mid = "white", high = "#F08C21",
+    midpoint = 0, limits = c(-max_abs_fc, max_abs_fc)
+  ) +
+  labs(
+    title = "Gene-Centric log2FC Across Comparisons",
+    subtitle = paste("Profiling:", ensemble_profiling, "| Condition:", condition),
+    x = "Comparison",
+    y = "Gene"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    panel.grid = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA, size = 1),
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(hjust = 0.5),
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 16),
+    axis.text.y = element_text(size = 16),
+    axis.title.x = element_text(size = 16),
+    axis.title.y = element_text(size = 16),
+    legend.position = "right"
+  )
+
+# Save and show
+fc_plot_file <- file.path(core_enrichment_dir, paste0("NK3R_gene_centric_log2fc_", ensemble_profiling, "_", condition, ".svg"))
+ggsave(fc_plot_file, plot = plot_gene_fc, width = 5, height = 7, dpi = 300)
+print(plot_gene_fc)
+
+# save the summary table to a CSV file
+summary_file <- file.path(core_enrichment_dir, paste0("NK3R_gene_centric_log2fc_summary_", ensemble_profiling, "_", condition, ".xlsx"))
+writexl::write_xlsx(gene_fc_summary, path = summary_file)
