@@ -21,7 +21,7 @@ library("dplyr")
 # load simulated data:
 # geneExpr: matrix of gene expression values
 # info: information/metadata about each sample
-data(varPartData)
+#data(varPartData)
 # view data varPartData
 
 
@@ -56,7 +56,7 @@ geneExpr <- as.matrix(geneExpr)
 # Individual and Tissue are both categorical,
 # so model them as random effects
 # Note the syntax used to specify random effects
-form <- ~ (1 | AnimalID) + (1 | celltype) + (1 | region) + (1 | plate) + (1 | layer) + (1 | region:layer) + (1 | celltype_layer) + (1 | celltype_ExpGroup) ExpGroup
+form <- ~ (1 | AnimalID) + (1 | celltype) + (1 | region) + (1 | plate) + (1 | layer) + (1 | region:layer) + (1 | celltype_layer) + (1 | celltype_ExpGroup) + ExpGroup
 
 # Fit model and extract results
 # 1) fit linear mixed model on gene expression
@@ -105,31 +105,31 @@ head(varPart[order(varPart$Individual, decreasing = TRUE), ])
 # get gene with the highest variation across Tissues
 # create data.frame with expression of gene i and Tissue
 # 		type for each sample
-i <- which.max(varPart$ExpGroup)
-GE <- data.frame(Expression = geneExpr[i, ], ExpGroup = info$ExpGroup)
+i <- which.max(varPart$AnimalID)
+GE <- data.frame(Expression = geneExpr[i, ], celltype_layer = info$celltype_layer)
 
 # Figure 2a
-# plot expression stratified by ExpGroup
-plotStratify(Expression ~ ExpGroup, GE, main = rownames(geneExpr)[i])
+# plot expression stratified by celltype_layer
+plotStratify(Expression ~ celltype_layer, GE, main = rownames(geneExpr)[i])
 
 # get gene with the highest variation across Individuals
 # create data.frame with expression of gene i and Tissue
 # 		type for each sample
 i <- which.max(varPart$AnimalID)
 GE <- data.frame(
-  Expression = geneExpr[i, ],
-  AnimalID = info$AnimalID
+    Expression = geneExpr[i, ],
+    celltype_ExpGroup = info$AnimalID
 )
 
 # Figure 2b
-# plot expression stratified by AnimalID
-label <- paste("AnimalID:", format(varPart$AnimalID[i] * 100,
-  digits = 3
+# plot expression stratified by ExpGroup
+label <- paste("ExpGroup:", format(varPart$AnimalID[i] * 100,
+    digits = 3
 ), "%")
 main <- rownames(geneExpr)[i]
 plotStratify(Expression ~ AnimalID, GE,
-  colorBy = NULL,
-  text = label, main = main
+    colorBy = NULL,
+    text = label, main = main
 )
 
 
