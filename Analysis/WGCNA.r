@@ -133,7 +133,11 @@ Modules <- cutreeDynamic(dendro = geneTree, distM = TOM.dissimilarity, deepSplit
 
 table(Modules) #returns a table of the counts of factor levels in an object. In this case how many genes are assigned to each created module.
 
-ModuleColors <- labels2colors(Modules) #assigns each module number a color
+#ModuleColors <- labels2colors(Modules) #assigns each module number a color
+
+# create ModuleColors list 
+
+
 table(ModuleColors) #returns the counts for each color (aka the number of genes within each module)
 
 svg(file = file.path(output_dir, "gene_dendrogram_module_colors.svg"), width = 12, height = 9)
@@ -172,20 +176,17 @@ plotDendroAndColors(geneTree, cbind(ModuleColors, mergedColors),
           main = "Gene dendrogram and module colors for original and merged modules")
 dev.off()
 
-#t <- curl('https://raw.githubusercontent.com/fuzzyatelin/fuzzyatelin.github.io/master/bioanth-stats/module-F21-Group1/FemaleLiver-Data/ClinicalTraits.csv')
-#traitData <- read.csv(t, header = TRUE, stringsAsFactors = FALSE)
-#head(traitData)
-
+# Load trait data
 t <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/data/sample_info.xlsx"
 traitData <- read_excel(path = t)
 head(traitData)
 
 allTraits <- traitData[, -c(2)] #removing notes and comments sections 
 allTraits <- allTraits[, c(1, 5:15) ] #pulling out only continuous traits
-
 Samples <- rownames(expression.data)
 traitRows <- match(Samples, allTraits$row.names)
 datTraits <- allTraits[traitRows, -1]
+
 # convert to a data.frame (not a tibble) so row names can be set safely
 datTraits <- as.data.frame(datTraits, stringsAsFactors = FALSE)
 # assign row names as a character vector from the first column of allTraits
@@ -212,7 +213,11 @@ datTraits_consus <- create_datTraits_comparison(datTraits, "ExpGroup", c(con = 1
 datTraits_conres <- create_datTraits_comparison(datTraits, "ExpGroup", c(con = 1, res = 2))
 datTraits_susres <- create_datTraits_comparison(datTraits, "ExpGroup", c(sus = 3, res = 2))
 
-datTrait <- datTraits_susres # choose which comparison to use for module-trait correlation analysis
+# choose which comparison to use for module-trait correlation analysis and set a stable label
+# update detected_label (used later) and keep label for backward compatibility with existing checks
+datTrait <- datTraits_consus
+detected_label <- "consus"
+label <- detected_label
 
 # Define numbers of genes and samples
 nGenes = ncol(expression.data)
@@ -235,7 +240,7 @@ labeledHeatmap(Matrix = module.trait.correlation,
          colors = blueWhiteRed(50),
          textMatrix = textMatrix,
          setStdMargins = FALSE,
-         cex.text = 0.4,
+         cex.text = 1,
          zlim = c(-1,1),
          main = paste("Module-trait relationships"))
 
@@ -257,6 +262,7 @@ label <- if (exists("datTrait") && exists("datTraits_consus") && identical(datTr
   gsub("[^A-Za-z0-9_\\-]", "_", inferred)
 }
 svg(file = file.path(outdir, paste0("module_trait_relationships_", label, ".svg")), width = 3, height = 8)
+
 par(mar = c(6, 8.5, 3, 1))
 labeledHeatmap(Matrix = module.trait.correlation,
          xLabels = names(datTraits),
@@ -266,7 +272,7 @@ labeledHeatmap(Matrix = module.trait.correlation,
          colors = blueWhiteRed(50),
          textMatrix = textMatrix,
          setStdMargins = FALSE,
-         cex.text = 0.4,
+         cex.text = 0.7,
          zlim = c(-1,1),
          main = paste("Module-trait relationships"))
 dev.off()
@@ -387,27 +393,65 @@ names(geneTraitSignificance) = paste("GS.", names(ExpGroup), sep="")
 names(GSPvalue) = paste("p.GS.", names(ExpGroup), sep="")
 head(GSPvalue)
 
-par(mar=c(1,1,1,1))
-module = "orange"
-column = match(module, modNames)
-moduleGenes = mergedColors==module
-verboseScatterplot(abs(geneModuleMembership[moduleGenes,column]),
-abs(geneTraitSignificance[moduleGenes,1]),
-xlab = paste("Module Membership in", module, "module"),
-ylab = "Gene significance for body weight",
-main = paste("Module membership vs. gene significance\n"),
-cex.main = 1.2, cex.lab = 1.2, cex.axis = 1.2, col = module)
+# Plot module membership vs gene significance for a given module and trait
+module <- "grey60"
+col_idx <- match(module, modNames)
+moduleGenes <- mergedColors == module
 
-par(mar=c(1,1,1,1))
-module = "orange"
-column = match(module, modNames)
-moduleGenes = mergedColors==module
-verboseScatterplot(abs(geneModuleMembership[moduleGenes,column]),
-abs(geneTraitSignificance[moduleGenes,1]),
-xlab = paste("Module Membership in", module, "module"),
-ylab = "Gene significance for body weight",
-main = paste("Module membership vs. gene significance\n"),
-cex.main = 1.2, cex.lab = 1.2, cex.axis = 1.2, col = module)
+if (!any(moduleGenes)) {
+  message(sprintf("No genes in module '%s' — skipping plot.", module))
+} else {
+  mm_vals <- abs(as.numeric(geneModuleMembership[moduleGenes, col_idx]))
+  gs_vals <- abs(as.numeric(geneTraitSignificance[moduleGenes, 1]))
+  genes <- colnames(expression.data)[moduleGenes]
+  df_ms <- data.frame(Gene = genes, MM = mm_vals, GS = gs_vals, stringsAsFactors = FALSE)
+
+  # correlation (pearson). Protect against too few points.
+  if (nrow(df_ms) >= 3) {
+    ct <- cor.test(df_ms$MM, df_ms$GS, method = "pearson")
+    r_val <- as.numeric(ct$estimate)
+    p_val <- ct$p.value
+    r_txt <- sprintf("r = %.2f", r_val)
+    p_txt <- ifelse(p_val < 0.001, "p < 0.001", sprintf("p = %.3g", p_val))
+  } else {
+    r_val <- cor(df_ms$MM, df_ms$GS, use = "complete.obs")
+    p_val <- NA
+    r_txt <- sprintf("r = %.2f", r_val)
+    p_txt <- "p = NA (n < 3)"
+  }
+
+  caption_text <- paste(r_txt, p_txt, sep = "   ")
+
+  # Make plot match aesthetics of other plot (theme_classic + large text, white-outlined points)
+  p_mm_gs <- ggplot(df_ms, aes(x = MM, y = GS)) +
+    geom_point(shape = 21, size = 6, fill = module, color = "white", stroke = 0.6, alpha = 0.95) +
+    geom_smooth(method = "lm", se = FALSE, color = "black", linetype = "dashed", size = 0.8) +
+    labs(
+      x = paste0("Module Membership (kME) — ", module),
+      y = "Gene significance (|GS|)",
+      title = paste("Module membership vs gene significance —", module),
+      caption = caption_text
+    ) +
+    coord_cartesian(expand = TRUE) +
+    theme_classic(base_size = 11) +
+    theme(
+      legend.position = "none",
+      axis.text = element_text(color = "black", size = 20),
+      axis.title = element_text(size = 14),
+      axis.title.y = element_text(margin = margin(r = 20)),
+      plot.title = element_text(face = "plain", size = 20),
+      axis.line = element_line(size = 0.8, colour = "black"),
+      axis.ticks = element_line(size = 0.6, colour = "black"),
+      plot.caption = element_text(size = 10, hjust = 0, margin = margin(t = 10))
+    )
+
+  print(p_mm_gs)
+
+  # save SVG to output_dir (label fallback handled)
+  if (!exists("label")) label <- "datTrait"
+  outfile <- file.path(output_dir, paste0("module_membership_vs_gene_significance_", module, "_", label, ".svg"))
+  ggsave(filename = outfile, plot = p_mm_gs, device = svglite::svglite, width = 4, height = 5, units = "in", dpi = 300)
+}
 
 # Isolate weight from the clinical traits
 ExpGroup = as.data.frame(datTraits_consus$ExpGroup);
@@ -467,16 +511,17 @@ svg(file = file.path(output_dir, paste0("eigengene_adjacency_heatmap_", label, "
 par(cex = 1.0, mar = c(1,1,1,1))
 plotEigengeneNetworks(MET, "Eigengene adjacency heatmap", marHeatmap = c(5,5,2,2),
 plotDendrograms = FALSE, xLabelsAngle = 90)
-
 dev.off()
 
-# Isolate weight and Glucose from the clinical traits
+# Isolate ExpGroup from the dataset
 ExpGroup = as.data.frame(datTraits$ExpGroup);
 names(ExpGroup) = "ExpGroup"
 layer = as.data.frame(datTraits$layer)
 names(layer) = "layer"
+
 # Add the weight to existing module eigengenes
 MET = orderMEs(cbind(MEs, ExpGroup, layer))
+
 # Plot the relationships among the eigengenes and the trait
 par(cex = 0.9)
 plotEigengeneNetworks(MET, "", marDendro = c(0,4,1,2), marHeatmap = c(5,4,1,2), cex.lab = 0.8, xLabelsAngle
@@ -543,103 +588,76 @@ if (!exists("label")) {
 write.csv(do.call(rbind, lapply(names(top_hubs), function(m) cbind(Module=m, top_hubs[[m]]))),
           file.path(output_dir, paste0("top_hubs_per_module_", label, ".csv")), row.names = FALSE)
 
-moduleEigs <- mergedMEs$MEgrey60  # replace with appropriate module name
-group <- datTraits$ExpGroup
-boxplot(moduleEigs ~ group, names=c("Resilient","Susceptible"))
+# explicit module choice or set to NULL to auto-detect
+chosen_module <- "grey60"  # e.g. "grey60" or NULL to infer
 
-# Create group factor with defined levels and labels
-group_factor <- factor(datTrait, levels = c(2, 3), labels = c("Resilient", "Susceptible"))
+if (!is.null(chosen_module)) {
+  me_col <- paste0("ME", chosen_module)
+  if (!me_col %in% colnames(mergedMEs)) stop("Column ", me_col, " not found in mergedMEs")
+  moduleEigs <- mergedMEs[[me_col]]
+  module_name <- chosen_module
+} 
 
-# Remove samples with NA in group_factor (control animals)
-valid_samples <- !is.na(group_factor)
-
-# Subset module eigengenes and group factor to valid samples only
-moduleEigs_valid <- moduleEigs[valid_samples]
-group_factor_valid <- group_factor[valid_samples]
-
-# Plot boxplot with filtered data
-boxplot(moduleEigs_valid ~ group_factor_valid, 
-        main = "Module Eigengene by Group (Susceptible vs Resilient)",
-        xlab = "Group", ylab = "Module Eigengene Expression")
-
-table(group_factor)          # Check levels and counts including NAs
-table(group_factor_valid)    # Check counts after filtering NA
-length(moduleEigs_valid)     # Should match length of group_factor_valid
-length(moduleEigs)           # Number of samples in expression data
-length(datTrait)             # Should match length of moduleEigs
-
-# auto-detect which datTrait is active and derive a label
-detected_label <- "datTrait"
-if (exists("datTrait")) {
-  if (exists("datTraits_consus") && identical(datTrait, datTraits_consus)) detected_label <- "consus"
-  else if (exists("datTraits_conres") && identical(datTrait, datTraits_conres)) detected_label <- "conres"
-  else if (exists("datTraits_susres") && identical(datTrait, dataits_susres)) detected_label <- "susres"
-}
-
-# get numeric trait vector (support datTrait being a data.frame/single-column df or a vector)
-if (exists("datTrait")) {
-  trait_vector <- if (is.data.frame(datTrait)) {
-    as.numeric(datTrait[[1]])
-  } else {
-    as.numeric(datTrait)
-  }
-} else if (exists("datTraits_consus")) {
-  # fallback to consus if datTrait wasn't explicitly set
-  trait_vector <- as.numeric(datTraits_consus[[1]])
-  detected_label <- "consus"
-} else {
-  stop("No datTrait or datTraits_consus/conres/susres available to infer comparison.")
-}
-
-# mapping numeric codes to human labels (matches create_datTraits_comparison mapping: 1=con,2=res,3=sus)
-code_to_label <- c("1" = "Control", "2" = "Resilient", "3" = "Susceptible")
-present_vals <- sort(unique(na.omit(trait_vector)))
-if (length(present_vals) < 2) stop("Trait vector does not contain at least two groups to compare.")
-# build ordered group labels for the values present
-group_labels <- unname(code_to_label[as.character(present_vals)])
-group_labels[is.na(group_labels)] <- paste0("Group", present_vals[is.na(group_labels)])
-
-# build factor for plotting (initial)
-group_factor <- factor(trait_vector, levels = present_vals, labels = group_labels)
-
-# REORDER FACTOR LEVELS SO: Control always left, Susceptible always right, others in between
-preferred_order <- c("Control", "Resilient", "Susceptible")
-# keep only the labels that are present, placing Control first and Sus last if present
-middle <- setdiff(levels(group_factor), c("Control", "Susceptible"))
-final_levels <- c(intersect(preferred_order[1], levels(group_factor))) # maybe Control
-final_levels <- final_levels[!is.na(final_levels)]
-# append any middle labels (preserve their current order)
-if (length(middle) > 0) final_levels <- c(final_levels, middle)
-# append Susceptible if present
-if ("Susceptible" %in% levels(group_factor)) final_levels <- c(final_levels, "Susceptible")
-# ensure final_levels unique and valid
-final_levels <- unique(final_levels)
-# if Control wasn't present (unlikely) but to be safe, fallback to existing levels
-if (length(final_levels) == 0) final_levels <- levels(group_factor)
-
-# Re-factor with the desired order
-group_factor <- factor(as.character(group_factor), levels = final_levels)
-
-# filter valid (non-NA) samples
-valid_samples <- !is.na(group_factor)
-moduleEigs_valid <- as.numeric(moduleEigs[valid_samples])
-group_factor_valid <- droplevels(group_factor[valid_samples])
-
-# infer module name (if module variable present use it, otherwise try to match moduleEigs to mergedMEs)
-module_name <- "unknown"
-if (exists("module") && is.character(module) && nzchar(module)) {
-  module_name <- module
-} else if (exists("mergedMEs") && !is.null(dim(mergedMEs)) && length(moduleEigs_valid) > 0) {
-  me_sub <- mergedMEs[valid_samples, , drop = FALSE]
-  corrs <- sapply(seq_len(ncol(me_sub)), function(i) cor(as.numeric(me_sub[, i]), moduleEigs_valid, use = "complete.obs"))
-  nm <- names(corrs)[which.max(abs(corrs))]
-  module_name <- if (!is.null(nm)) sub("^ME", "", nm) else "unknown"
-}
+# remove any leftover loop variable to avoid accidental reuse later
+if (exists("module")) rm(module)
 
 # prepare plot directory & filename
 plot_dir <- file.path(output_dir, "module_eigengene_plots", detected_label)
 dir.create(plot_dir, recursive = TRUE, showWarnings = FALSE)
-outfile <- file.path(plot_dir, paste0("module_eigengene_", module_name, "_boxplot_", detected_label, ".svg"))
+outfile <- file.path(plot_dir, paste0("module_eigengene_", module_name, "_", detected_label, ".svg"))
+
+# create group_Factor_valid from datTrait$ExpGroup, ensuring it is a factor with levels in the desired order
+if (!"ExpGroup" %in% names(datTrait)) stop("Column 'ExpGroup' not found in datTrait")
+
+# raw group vector (as character)
+gf_raw <- as.character(datTrait$ExpGroup)
+
+# attempt to align to expression sample order if possible; if alignment fails, keep original order
+if (exists("Samples") && !is.null(rownames(datTrait))) {
+  idx_samples <- match(Samples, rownames(datTrait))
+  if (all(is.na(idx_samples))) {
+    gf_aligned <- gf_raw
+  } else {
+    gf_aligned <- gf_raw[idx_samples]
+  }
+} else {
+  gf_aligned <- gf_raw
+}
+
+# map short labels to readable group names
+label_map <- c(con = "Control", res = "Resilient", sus = "Susceptible")
+mapped <- unname(label_map[gf_aligned])
+
+# If mapping failed (e.g. ExpGroup contains numeric codes), try numeric-to-label mapping
+if (all(is.na(mapped))) {
+  numeric_map <- c("1" = "Control", "2" = "Resilient", "3" = "Susceptible")
+  mapped <- unname(numeric_map[as.character(gf_aligned)])
+}
+
+# fallback to original values if mapping still yields NA (preserve whatever values are present)
+mapped[is.na(mapped)] <- as.character(gf_aligned[is.na(mapped)])
+
+# drop positions with NA in either group or module eigengene
+moduleEigs_current <- if (exists("moduleEigs")) moduleEigs else stop("moduleEigs not found")
+keep_idx <- !is.na(mapped) & !is.na(moduleEigs_current)
+# derive mapped vector filtered by keep_idx
+mapped_valid <- mapped[keep_idx]
+
+# desired canonical order
+desired_order <- c("Control", "Resilient", "Susceptible")
+
+# keep only levels that are actually present, preserving desired order
+present_levels <- desired_order[desired_order %in% unique(mapped_valid)]
+
+# create factor restricted to present levels (no extraneous levels)
+group_factor_valid <- factor(mapped_valid, levels = present_levels)
+
+# fallback if nothing matched (avoid zero-level factor)
+if (length(levels(group_factor_valid)) == 0) group_factor_valid <- factor(mapped_valid)
+moduleEigs_valid <- as.numeric(moduleEigs_current[keep_idx])
+
+# final_levels used for plotting (only levels actually present)
+final_levels <- levels(droplevels(group_factor_valid))
 
 # assemble plotting dataframe
 df_plot <- data.frame(
@@ -653,12 +671,54 @@ plot_colors <- color_map[intersect(names(color_map), levels(df_plot$Group))]
 # fallback if none match
 if (length(plot_colors) == 0) plot_colors <- rep("#999999", length(levels(df_plot$Group)))
 
+# jitter plot + median and 25-75% intervals + simple stats caption
+# compute per-group summary (n, median, Q1, Q3)
+stats_df <- do.call(rbind, lapply(split(df_plot$ME, df_plot$Group), function(x) {
+  data.frame(
+    Group = unique(df_plot$Group[ df_plot$ME %in% x ]),
+    n = sum(!is.na(x)),
+    median = median(x, na.rm = TRUE),
+    Q1 = quantile(x, 0.25, na.rm = TRUE),
+    Q3 = quantile(x, 0.75, na.rm = TRUE),
+    stringsAsFactors = FALSE
+  )
+}))
+stats_df$Group <- factor(stats_df$Group, levels = levels(df_plot$Group))
+
+# choose test depending on number of groups
+gcount <- nlevels(df_plot$Group)
+if (gcount == 2) {
+  test_res <- wilcox.test(ME ~ Group, data = df_plot)
+  test_name <- "Wilcoxon rank-sum"
+  pval <- test_res$p.value
+} else {
+  test_res <- kruskal.test(ME ~ Group, data = df_plot)
+  test_name <- "Kruskal-Wallis"
+  pval <- test_res$p.value
+}
+pval_text <- ifelse(pval < 0.001, "<0.001", formatC(pval, format = "f", digits = 3))
+
+# build caption with per-group stats and test result
+group_lines <- apply(stats_df, 1, function(r) {
+  sprintf("%s: n=%d, median=%.3f, IQR=[%.3f, %.3f]", r["Group"], as.integer(r["n"]),
+          as.numeric(r["median"]), as.numeric(r["Q1"]), as.numeric(r["Q3"]))
+})
+caption_text <- paste(paste(group_lines, collapse = " | "),
+                      sprintf("\nTest: %s, p = %s", test_name, pval_text))
+
+# final plot: jittered points, median points, and 25-75% interval errorbars
 p <- ggplot(df_plot, aes(x = Group, y = ME, fill = Group)) +
-  geom_boxplot(width = 0.6, outlier.shape = NA, colour = "black", fatten = 1, lwd = 1) +
-  geom_jitter(color = "white", width = 0.12, size = 6, shape = 21, alpha = 0.8, stroke = 0.8) +
+  geom_jitter(width = 0.16, height = 0, size = 7, shape = 21, color = "white", alpha = 0.85, stroke = 0.6) +
+  # 25-75% interval as thick errorbar; set inherit.aes = FALSE so the layer does not try to use y = ME from the global mapping
+  geom_linerange(data = stats_df, aes(x = Group, ymin = Q1, ymax = Q3),
+                 size = 1.1, color = "black", inherit.aes = FALSE) +
+  # median as filled point (override global mapping with its own y), being explicit about aesthetics
+  geom_point(data = stats_df, aes(x = Group, y = median), shape = 21, size = 3.5, fill = "black", color = "black", inherit.aes = FALSE) +
   scale_fill_manual(values = plot_colors) +
-  stat_summary(fun = median, geom = "point", shape = 21, size = 2.5, fill = "black", color = "black") +
-  labs(x = NULL, y = paste0("Module Eigengene (", module_name, ")"), title = paste0("Module Eigengene by Group — ", detected_label)) +
+  labs(x = NULL,
+       y = paste0("Module Eigengene (", module_name, ")"),
+       title = paste0("Module Eigengene by Group — ", detected_label),
+       caption = caption_text) +
   coord_cartesian(ylim = c(-0.3, 0.2)) +
   theme_classic(base_size = 11) +
   theme(
@@ -666,8 +726,9 @@ p <- ggplot(df_plot, aes(x = Group, y = ME, fill = Group)) +
     axis.text = element_text(color = "black", size = 20),
     axis.title.y = element_text(margin = margin(r = 20)),
     plot.title = element_text(face = "plain", size = 20),
-    axis.line = element_line(size = 1, colour = "black"),
-    axis.ticks = element_line(size = 0.6, colour = "black")
+    axis.line = element_line(size = 0.8, colour = "black"),
+    axis.ticks = element_line(size = 0.6, colour = "black"),
+    plot.caption = element_text(size = 10, hjust = 0, margin = margin(t = 10))
   )
 
 # save SVG (prefer svglite if available)
