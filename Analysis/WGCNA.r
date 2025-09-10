@@ -159,7 +159,7 @@ dev.off()
 Modules <- cutreeDynamic(dendro = geneTree, distM = TOM.dissimilarity, deepSplit = 2, pamRespectsDendro = FALSE, minClusterSize = 30)
 table(Modules)
 
-#ModuleColors <- labels2colors(Modules) #assigns each module number a color
+ModuleColors <- labels2colors(Modules) #assigns each module number a color
 # create ModuleColors list 
 
 table(ModuleColors) #returns the counts for each color (aka the number of genes within each module)
@@ -253,8 +253,8 @@ datTraits_susres <- create_datTraits_comparison(datTraits, "ExpGroup", c(sus = 3
 
 # Choose which comparison to use for module-trait correlation analysis and set a stable label
 # Update detected_label (used later) and keep label for backward compatibility with existing checks
-datTrait <- datTraits_consus
-detected_label <- "consus"
+datTrait <- datTraits_susres
+detected_label <- "susres"
 label <- detected_label
 
 # Define numbers of genes and samples
@@ -314,6 +314,37 @@ labeledHeatmap(Matrix = module.trait.correlation,
          zlim = c(-1,1),
          main = paste("Module-trait relationships"))
 dev.off()
+
+# create composite figure
+# cycle through either consus, conres, susres and then create a single graph merged within one graph
+# 1. consus
+# 2. conres
+# 3. susres
+# create a 3-row layout
+par(mfrow = c(3, 1))
+par(mar = c(6, 8.5, 3, 1))
+for (dt in list(consus = datTraits_consus, conres = datTraits_conres, susres = datTraits_susres)) {
+  module.trait.correlation = cor(mergedMEs, dt, use = "p") #p for pearson correlation coefficient
+  module.trait.Pvalue = corPvalueStudent(module.trait.correlation, nSamples) #calculate the p-value associated with the correlation
+  
+
+  # Will display correlations and their p-values
+  textMatrix = paste(signif(module.trait.correlation, 2), "\n(",
+             signif(module.trait.Pvalue, 1), ")", sep = "");
+  dim(textMatrix) = dim(module.trait.correlation)
+
+  labeledHeatmap(Matrix = module.trait.correlation,
+           xLabels = names(dt),
+           yLabels = names(mergedMEs),
+           ySymbols = names(mergedMEs),
+           colorLabels = FALSE,
+           colors = blueWhiteRed(50),
+           textMatrix = textMatrix,
+           setStdMargins = FALSE,
+           cex.text = 0.7,
+           zlim = c(-1,1),
+           main = paste("Module-trait relationships"))
+}
 
 ## experimental
 # # Make sure row names match your expression data sample names
@@ -491,10 +522,10 @@ if (!any(moduleGenes)) {
   ggsave(filename = outfile, plot = p_mm_gs, device = svglite::svglite, width = 4, height = 5, units = "in", dpi = 300)
 }
 
-# Isolate weight from the clinical traits
-ExpGroup = as.data.frame(datTraits_consus$ExpGroup);
+# Isolate ExpGroup from the dataset
+ExpGroup = as.data.frame(datTraits_susres$ExpGroup);
 names(ExpGroup) = "ExpGroup"
-# Add the weight to existing module eigengenes
+# Add ExprGroup to existing module eigengenes
 MET = orderMEs(cbind(MEs, ExpGroup))
 # Plot the relationships among the eigengenes and the trait
 par(cex = 0.9)
