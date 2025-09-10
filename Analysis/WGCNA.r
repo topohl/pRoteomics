@@ -1,70 +1,93 @@
-# Option 1: Run R as administrator (recommended for system-wide installs)
-# Option 2: Install to a user-writable directory:
-user_lib <- Sys.getenv("R_LIBS_USER")
-if (!dir.exists(user_lib)) dir.create(user_lib, recursive = TRUE)
-install.packages('BiocManager', lib = user_lib)
-library(BiocManager, lib.loc = user_lib)
-BiocManager::install('GO.db', lib = user_lib) # Explicitly install GO.db first
-BiocManager::install('WGCNA', lib = user_lib)
-BiocManager::install('flashClust', lib = user_lib)
+# Use pacman to install/load packages (and BiocManager for Bioconductor packages)
+if (!requireNamespace("pacman", quietly = TRUE)) {
+  install.packages("pacman", repos = "https://cloud.r-project.org")
+}
+if (!requireNamespace("BiocManager", quietly = TRUE)) {
+  install.packages("BiocManager", repos = "https://cloud.r-project.org")
+}
 
+# Ensure GO.db (Bioconductor) is installed
+if (!requireNamespace("GO.db", quietly = TRUE)) {
+  BiocManager::install("GO.db", ask = FALSE, update = FALSE)
+}
 
-library(WGCNA)
-library(flashClust)
-library(curl)
-library(readxl)
-library(ggplot2)
-library(svglite)
+# Install (if missing) and load required packages with pacman, suppressing startup messages
+suppressPackageStartupMessages(
+  pacman::p_load(
+    WGCNA,
+    flashClust,
+    curl,
+    readxl,
+    ggplot2,
+    svglite,
+    GO.db,
+    install = TRUE
+  )
+)
 
-
-#d <- curl('https://raw.githubusercontent.com/fuzzyatelin/fuzzyatelin.github.io/master/bioanth-stats/module-F21-Group1/FemaleLiver-Data/LiverFemale3600.csv')
-#liver.data <- read.csv(file = d, stringsAsFactors = FALSE, header = TRUE)
-#head(liver.data)
+# --------------------------------------------------------------------
+# Load and prepare data
+# --------------------------------------------------------------------
 
 # define output_dir
 output_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/wgcna/output"
-if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
+if (!dir.exists(output_dir)) {
+  dir.create(output_dir, recursive = TRUE)
+}
 
 # load data
 d <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/data/male.data.xlsx"
-
 male.data <- read_excel(path = d)
 
-# remove rows frome male.data where the first column (gene_symbol) doesnt contain "_MOUSE" anywhere in the name
+# remove rows from male.data where the first column (gene_symbol) doesn't contain "_MOUSE"
 male.data <- male.data[grepl("_MOUSE", male.data$gene_symbol), ]
 
-#expression.data <- liver.data[,-c(1:8)] #removing variables not holding expression data
+# expression.data <- liver.data[,-c(1:8)] # removing variables not holding expression data
 expression.data <- male.data[, -1]
 
 # Make sure expression data is numeric before transposing
 expression.data <- as.data.frame(lapply(expression.data, as.numeric))
 
-expression.data <- as.data.frame(t(expression.data)) #transforming the data.frame so columns now represent genes and rows represent samples
+# transform the data.frame so columns represent genes and rows represent samples
+expression.data <- as.data.frame(t(expression.data))
 names(expression.data) <- male.data$gene_symbol
-#renaming the columns so we don't lose the gene IDs
 
+# --------------------------------------------------------------------
+# Quality check and clustering of samples to detect outliers
+# --------------------------------------------------------------------
+
+# Check for genes and samples with too many missing values
 gsg <- goodSamplesGenes(expression.data)
-
 summary(gsg)
-
 gsg$allOK
 
-if (!gsg$allOK)
-{
-if (sum(!gsg$goodGenes)>0) 
-printFlush(paste("Removing genes:", paste(names(expression.data)[!gsg$goodGenes], collapse = ", "))); #Identifies and prints outlier genes
-if (sum(!gsg$goodSamples)>0)
-printFlush(paste("Removing samples:", paste(rownames(expression.data)[!gsg$goodSamples], collapse = ", "))); #Identifies and prints oulier samples
-expression.data <- expression.data[gsg$goodSamples == TRUE, gsg$goodGenes == TRUE] # Removes the offending genes and samples from the data
+if (!gsg$allOK) {
+  if (sum(!gsg$goodGenes) > 0) {
+    printFlush(
+      paste(
+        "Removing genes:",
+        paste(names(expression.data)[!gsg$goodGenes], collapse = ", ")
+      )
+    ) # Identifies and prints outlier genes
+  }
+  if (sum(!gsg$goodSamples) > 0) {
+    printFlush(
+      paste(
+        "Removing samples:",
+        paste(rownames(expression.data)[!gsg$goodSamples], collapse = ", ")
+      )
+    ) # Identifies and prints outlier samples
+  }
+  expression.data <- expression.data[gsg$goodSamples == TRUE, gsg$goodGenes == TRUE] # Removes offending genes and samples
 }
 
 sampleTree <- hclust(dist(expression.data), method = "average") #Clustering samples based on distance 
 
-#Setting the graphical parameters
+# Setting the graphical parameters
 par(cex = 0.6);
 par(mar = c(0,4,2,0))
 
-#Plotting the cluster dendrogram
+# Plotting the cluster dendrogram
 plot(sampleTree, main = "Sample clustering to detect outliers", sub="", xlab="", cex.lab = 1.5,
 cex.axis = 1.5, cex.main = 2)
 
@@ -84,10 +107,11 @@ plot(sampleTree, main = "Sample clustering to detect outliers", sub = "", xlab =
 abline(h = 40, col = "red")
 dev.off()
 
-cut.sampleTree <- cutreeStatic(sampleTree, cutHeight = 80, minSize = 10) #returns numeric vector
-#Remove outlier
-expression.data <- expression.data[cut.sampleTree==1, ]
+# Determine cluster under the line
+cut.sampleTree <- cutreeStatic(sampleTree, cutHeight = 80, minSize = 10)
 
+# Remove outlier samples
+expression.data <- expression.data[cut.sampleTree==1, ]
 spt <- pickSoftThreshold(expression.data)
 
 # Plot the results:
@@ -108,35 +132,35 @@ plot(spt$fitIndices[,1], spt$fitIndices[,5],
 text(spt$fitIndices[,1], spt$fitIndices[,5], labels= spt$fitIndices[,1], col="red")
 dev.off()
 
+# ---------------------------------------------------------------------
+# Constructing a gene co-expression network and identifying modules
+# ---------------------------------------------------------------------
+
 # Based on the above plots, we choose a soft-thresholding power of 6
 softPower <- 6 
 adjacency <- adjacency(expression.data, power = softPower)
-
 TOM <- TOMsimilarity(adjacency)
-
 TOM.dissimilarity <- 1-TOM
 
-#creating the dendrogram 
+# Clustering using TOM-based dissimilarity, creating dendrogram
 geneTree <- hclust(as.dist(TOM.dissimilarity), method = "average")
 
-# plotting the dendrogram (display and save to SVG)
+# Plot the resulting clustering tree (dendrogram)
 sizeGrWindow(12,9)
 plot(geneTree, xlab="", sub="", main = "Gene clustering on TOM-based dissimilarity", labels = FALSE, hang = 0.04)
 
-# save as SVG in output_dir
+# Also save the same plot as SVG in output_dir
 svg_filename <- file.path(output_dir, "gene_dendrogram.svg")
 svg(file = svg_filename, width = 12, height = 9)
 plot(geneTree, xlab="", sub="", main = "Gene clustering on TOM-based dissimilarity", labels = FALSE, hang = 0.04)
 dev.off()
 
+# Set the minimum module size, e.g., 30
 Modules <- cutreeDynamic(dendro = geneTree, distM = TOM.dissimilarity, deepSplit = 2, pamRespectsDendro = FALSE, minClusterSize = 30)
-
-table(Modules) #returns a table of the counts of factor levels in an object. In this case how many genes are assigned to each created module.
+table(Modules)
 
 #ModuleColors <- labels2colors(Modules) #assigns each module number a color
-
 # create ModuleColors list 
-
 
 table(ModuleColors) #returns the counts for each color (aka the number of genes within each module)
 
@@ -147,7 +171,7 @@ plotDendroAndColors(geneTree, ModuleColors, "Module",
           main = "Gene dendrogram and module colors")
 dev.off()
 
-# Calculate eigengenes
+# Calculate Eigengenes
 MElist <- moduleEigengenes(expression.data, colors = ModuleColors) 
 MEs <- MElist$eigengenes 
 head(MEs)
@@ -155,16 +179,19 @@ head(MEs)
 # Calculate dissimilarity of module eigengenes
 ME.dissimilarity = 1-cor(MElist$eigengenes, use="complete") #Calculate eigengene dissimilarity
 
-METree = hclust(as.dist(ME.dissimilarity), method = "average") #Clustering eigengenes 
-par(mar = c(0,4,2,0)) #seting margin sizes
-par(cex = 0.6);#scaling the graphic
+# Cluster module eigengenes
+METree = hclust(as.dist(ME.dissimilarity), method = "average") #Clustering eigengenes
+par(mar = c(0,4,2,0)) # setting margin sizes
+par(cex = 0.6); # scaling the graphic
 plot(METree)
 abline(h=.25, col = "red") #a height of .25 corresponds to correlation of .75
 
+# Merge modules whose eigengenes are very similar, i.e. their correlation is above 0.75 (height below 0.25)
 merge <- mergeCloseModules(expression.data, ModuleColors, cutHeight = .25)
 
 # The merged module colors, assigning one color to each module
 mergedColors = merge$colors
+
 # Eigengenes of the new merged modules
 mergedMEs = merge$newMEs
 
@@ -176,13 +203,17 @@ plotDendroAndColors(geneTree, cbind(ModuleColors, mergedColors),
           main = "Gene dendrogram and module colors for original and merged modules")
 dev.off()
 
+# ---------------------------------------------------------------------
+# Loading trait data (metadata) and associating it with modules
+# ---------------------------------------------------------------------
+
 # Load trait data
 t <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/data/sample_info.xlsx"
 traitData <- read_excel(path = t)
 head(traitData)
 
-allTraits <- traitData[, -c(2)] #removing notes and comments sections 
-allTraits <- allTraits[, c(1, 5:15) ] #pulling out only continuous traits
+allTraits <- traitData[, -c(2)] # Removing notes and comments sections
+allTraits <- allTraits[, c(1, 5:15)] # Pulling out only continuous traits
 Samples <- rownames(expression.data)
 traitRows <- match(Samples, allTraits$row.names)
 datTraits <- allTraits[traitRows, -1]
@@ -194,6 +225,10 @@ rownames(datTraits) <- as.character(allTraits[[1]][traitRows])
 
 # keep only ExpGroup in datTraits for simplicity
 datTraits <- datTraits["ExpGroup"]
+
+# ---------------------------------------------------------------------
+# Creating module-trait relationships (in this case ExpGroup)
+# ---------------------------------------------------------------------
 
 # Helper to create a comparison-ready datTraits by mapping factor levels to numeric values
 create_datTraits_comparison <- function(datTraits, column = "ExpGroup", values_map = c(con = 1, res = 2, sus = 3)) {
@@ -209,12 +244,15 @@ create_datTraits_comparison <- function(datTraits, column = "ExpGroup", values_m
 }
 
 # Create the three comparisons used downstream
+# values_map defines how to convert ExpGroup factor levels to numeric values
+# e.g. con = 1, res = 2, sus = 3 for a continuous comparison
+# this is done so that the correlation analysis later makes sense
 datTraits_consus <- create_datTraits_comparison(datTraits, "ExpGroup", c(con = 1, sus = 3))
 datTraits_conres <- create_datTraits_comparison(datTraits, "ExpGroup", c(con = 1, res = 2))
 datTraits_susres <- create_datTraits_comparison(datTraits, "ExpGroup", c(sus = 3, res = 2))
 
-# choose which comparison to use for module-trait correlation analysis and set a stable label
-# update detected_label (used later) and keep label for backward compatibility with existing checks
+# Choose which comparison to use for module-trait correlation analysis and set a stable label
+# Update detected_label (used later) and keep label for backward compatibility with existing checks
 datTrait <- datTraits_consus
 detected_label <- "consus"
 label <- detected_label
@@ -374,19 +412,19 @@ dev.off()
 # 
 # # ## experimental
 
-# Define variable weight containing the weight column of datTrait
+# Define variable ExpGroup from the dataset
 ExpGroup = as.data.frame(datTraits_consus$ExpGroup)
 names(ExpGroup) = "ExpGroup"
 
 modNames = substring(names(mergedMEs), 3) #extract module names
 
-#Calculate the module membership and the associated p-values
+# Calculate the module membership and the associated p-values
 geneModuleMembership = as.data.frame(cor(expression.data, mergedMEs, use = "p"))
 MMPvalue = as.data.frame(corPvalueStudent(as.matrix(geneModuleMembership), nSamples))
 names(geneModuleMembership) = paste("MM", modNames, sep="")
 names(MMPvalue) = paste("p.MM", modNames, sep="")
 
-#Calculate the gene significance and associated p-values
+# Calculate the gene significance and associated p-values
 geneTraitSignificance = as.data.frame(cor(expression.data, ExpGroup, use = "p"))
 GSPvalue = as.data.frame(corPvalueStudent(as.matrix(geneTraitSignificance), nSamples))
 names(geneTraitSignificance) = paste("GS.", names(ExpGroup), sep="")
@@ -422,7 +460,7 @@ if (!any(moduleGenes)) {
 
   caption_text <- paste(r_txt, p_txt, sep = "   ")
 
-  # Make plot match aesthetics of other plot (theme_classic + large text, white-outlined points)
+  # Create scatter plot with regression line
   p_mm_gs <- ggplot(df_ms, aes(x = MM, y = GS)) +
     geom_point(shape = 21, size = 6, fill = module, color = "white", stroke = 0.6, alpha = 0.95) +
     geom_smooth(method = "lm", se = FALSE, color = "black", linetype = "dashed", size = 0.8) +
@@ -447,7 +485,7 @@ if (!any(moduleGenes)) {
 
   print(p_mm_gs)
 
-  # save SVG to output_dir (label fallback handled)
+  # save SVG to output_dir
   if (!exists("label")) label <- "datTrait"
   outfile <- file.path(output_dir, paste0("module_membership_vs_gene_significance_", module, "_", label, ".svg"))
   ggsave(filename = outfile, plot = p_mm_gs, device = svglite::svglite, width = 4, height = 5, units = "in", dpi = 300)
@@ -481,7 +519,7 @@ if (!exists("label")) {
   }
 }
 
-# save dendrogram as SVG in output_dir using the label
+# Save dendrogram as SVG in output_dir using the label
 svg(file = file.path(output_dir, paste0("eigengene_dendrogram_", label, ".svg")), width = 8, height = 6)
 par(cex = 1.0)
 plotEigengeneNetworks(MET, "Eigengene dendrogram", marDendro = c(0,4,2,0),
@@ -493,7 +531,7 @@ par(cex = 1.0, mar = c(1,1,1,1))
 plotEigengeneNetworks(MET, "Eigengene adjacency heatmap", marHeatmap = c(5,5,2,2),
 plotDendrograms = FALSE, xLabelsAngle = 90)
 
-# ensure a label exists (fall back to "datTrait" if not)
+# Ensure a label exists (fall back to "datTrait" if not)
 if (!exists("label")) {
   label <- if (exists("datTrait") && exists("datTraits_consus") && identical(datTrait, datTraits_consus)) {
   "consus"
@@ -506,7 +544,7 @@ if (!exists("label")) {
   }
 }
 
-# save heatmap as SVG in output_dir using the label
+# Save heatmap as SVG in output_dir using the label
 svg(file = file.path(output_dir, paste0("eigengene_adjacency_heatmap_", label, ".svg")), width = 8, height = 6)
 par(cex = 1.0, mar = c(1,1,1,1))
 plotEigengeneNetworks(MET, "Eigengene adjacency heatmap", marHeatmap = c(5,5,2,2),
@@ -527,7 +565,7 @@ par(cex = 0.9)
 plotEigengeneNetworks(MET, "", marDendro = c(0,4,1,2), marHeatmap = c(5,4,1,2), cex.lab = 0.8, xLabelsAngle
 = 90)
 
-# check for modules of interest
+# Check for modules of interest
 table(mergedColors)
 
 # Extract genes that belong to specific modules and save to csv file in output directory, do that for all available modules in mergedColors
@@ -731,5 +769,5 @@ p <- ggplot(df_plot, aes(x = Group, y = ME, fill = Group)) +
     plot.caption = element_text(size = 10, hjust = 0, margin = margin(t = 10))
   )
 
-# save SVG (prefer svglite if available)
+# save SVG
 ggsave(filename = outfile, plot = p, device = svglite::svglite, width = 4, height = 5, units = "in", dpi = 300)
