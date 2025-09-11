@@ -19,25 +19,34 @@
 
 
 if (!require("pacman")) install.packages("pacman")
-pacman::p_load(dplyr, ggplot2, readxl, tibble, tidyr, pheatmap)
+pacman::p_load(dplyr, ggplot2, readxl, tibble, tidyr, pheatmap, openxlsx)
 
-# Read the data (adjust path and separator as needed), and remove "Background" celltype data
-df <- read_excel("S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/rawDataFC.xlsx") %>%
+# define sheet name
+sheet_name <- "cleaned"  # Adjust if necessary, or remove if using the first sheet by default
+
+# Read the data (adjust path and sep as needed)
+# Remove "Background" celltype data
+excel_file <- paste0("S:/Lab_Member/Tobi/Experiments/Collabs/Neha/",
+                     "clusterProfiler/Datasets/rawDataFC.xlsx")
+df <- read_excel(excel_file, sheet = sheet_name) %>%
   filter(Celltype != "Background") %>%
-  mutate(Group = factor(Group, levels = c(1,2,3,4),
-                        labels = c("CS CNO", "CS VEH", "US CNO", "US VEH")))
+  mutate(Group = factor(Group, 
+                        levels = c(1, 2, 3, 4),
+                        labels = c("CS CNO", "CS VEH", "US CNO", "US VEH"))) %>%
+  dplyr::select(Celltype, Group, TKNK_MOUSE)
 
 results_dir <- "C:/Users/topohl/Documents/Rtestground"
 
-# Optional: Check available group values
-available_groups <- unique(df$Group)
-print(available_groups)
-
-# Generate z-score dataframe for TKNK_MOUSE expression per Celltype and Group
+# Keep only TKNK_MOUSE along with grouping variables and generate z-score dataframe 
+# for TKNK_MOUSE expression per Celltype and Group
 df_z <- df %>%
+  dplyr::select(Celltype, Group, TKNK_MOUSE) %>%
   group_by(Celltype, Group) %>%
   mutate(TKNK_zscore = scale(as.numeric(TKNK_MOUSE))) %>%
   ungroup()
+
+# Initialize list to collect ANOVA data frames
+anova_results_all <- list()  # <--- Add this before the loop starts
 
 # Loop over each group and generate a plot
 for (grp in available_groups) {
@@ -77,7 +86,84 @@ for (grp in available_groups) {
   # Save the plot as SVG with group in file name
   filename <- file.path(results_dir, paste0("TKNK_zscore_plot_group_", grp, ".svg"))
   ggsave(filename = filename, plot = p, width = 3, height = 5, dpi = 300)
+
+
+  # ------------------------------------------
+  # Perform ANOVA for the current group
+  # ------------------------------------------
+  # Perform ANOVA for the current group on TKNK_zscore by Celltype
+  anova_model_grp <- aov(TKNK_zscore ~ Celltype, data = df_grp_z)
+  anova_summary <- summary(anova_model_grp)[[1]]
+
+  # Convert summary to a data frame and add effect names and group info
+  anova_df_grp <- as.data.frame(anova_summary)
+  anova_df_grp <- tibble::rownames_to_column(anova_df_grp, var = "Effect")
+  anova_df_grp$Group <- grp
+  anova_df_grp <- anova_df_grp[, c("Group", "Effect", "Df", "Sum Sq", "Mean Sq", "F value", "Pr(>F)")]
+
+  # Save the group-specific ANOVA results as an Excel file
+  output_file <- file.path(results_dir, paste0("TKNK_zscore_ANOVA_Group_", grp, ".xlsx"))
+  write.xlsx(anova_df_grp, file = output_file, rowNames = FALSE)
+
+  # Collect the results for a combined summary output
+  anova_results_all[[as.character(grp)]] <- anova_df_grp
+
+  # ------------------------------------------
+  # Perform Kruskall-Wallis test for the current group
+  # ------------------------------------------
+  kruskal_test <- kruskal.test(TKNK_zscore ~ Celltype, data = df_grp_z)
+  kruskal_df <- data.frame(
+    Group = grp,
+    Kruskal_Chi_Sq = kruskal_test$statistic,
+    Kruskal_p_value = kruskal_test$p.value
+  )
+  # Save the Kruskal-Wallis test results as an Excel file
+  kruskal_file <- file.path(results_dir, paste0("TKNK_zscore_Kruskal_Group_", grp, ".xlsx"))
+  write.xlsx(kruskal_df, file = kruskal_file, rowNames = FALSE)
+  
 }
+
+# Compute summary statistics
+summary_stats <- df_z %>%
+  group_by(Group, Celltype) %>%
+  summarise(
+    N = n(),
+    Mean_zscore = mean(TKNK_zscore, na.rm = TRUE),
+    SD_zscore = sd(TKNK_zscore, na.rm = TRUE),
+    Median_zscore = median(TKNK_zscore, na.rm = TRUE),
+    Min_zscore = min(TKNK_zscore, na.rm = TRUE),
+    Max_zscore = max(TKNK_zscore, na.rm = TRUE)
+  ) %>%
+  ungroup()
+
+# Save the statistics as CSV
+library(openxlsx)  # Ensure the package is installed with install.packages("openxlsx") if necessary
+summary_file <- file.path(results_dir, "TKNK_zscore_summary_stats.xlsx")
+write.xlsx(summary_stats, summary_file, rowNames = FALSE)
+
+# Optional: Print to console
+print("Summary statistics saved:")
+print(summary_file)
+
+# Perform two-way ANOVA on the z-scored expression
+anova_model <- aov(TKNK_zscore ~ Group * Celltype, data = df_z)
+
+# Get ANOVA table
+anova_table <- summary(anova_model)[[1]]
+
+# Convert to data frame for saving
+anova_df <- as.data.frame(anova_table)
+anova_df$Effect <- rownames(anova_df)
+anova_df <- anova_df[, c("Effect", "Df", "Sum Sq", "Mean Sq", "F value", "Pr(>F)")]
+
+# Save ANOVA results to CSV
+anova_file <- file.path(results_dir, "TKNK_zscore_anova_results.csv")
+write.csv(anova_df, anova_file, row.names = FALSE)
+
+# Optional: Print location of saved file
+print("ANOVA results saved:")
+print(anova_file)
+
 
 # Combined plot: All groups in one figure, faceted by Group
 p_all <- ggplot(df_z, aes(x = Celltype, y = TKNK_zscore, fill = Celltype)) +
