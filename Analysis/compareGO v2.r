@@ -56,7 +56,7 @@ pacman::p_load(ggplot2, stringr, ggpubr, ggthemes, dplyr, tidyr, purrr,
                readr, pheatmap, tibble, tidyverse, RColorBrewer, writexl)
 
 uniprot_mapping_file_path <- file.path(
-  "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler",
+  "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics",
   "Datasets",
   "MOUSE_10090_idmapping.dat"
 )
@@ -106,14 +106,14 @@ ont <- "BP"  # Biological Process
 # Set up working environment ------------------------------------------
 
 # Set the working directory to the project’s base folder
-setwd("S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler")
+setwd("S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics")
 
 # Import input files --------------------------------------------------
 
 # List all CSV files from the specified core_enrichment subfolder
 # The folder structure is based on the ontology, profiling method, and condition
 file_paths <- list.files(
-  path = file.path("S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/core_enrichment", ont, ensemble_profiling, condition),
+  path = file.path("S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/core_enrichment", ont, ensemble_profiling, condition),
   pattern = "*.csv",
   full.names = TRUE
 )
