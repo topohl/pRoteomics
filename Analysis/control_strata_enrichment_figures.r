@@ -14,8 +14,8 @@ suppressPackageStartupMessages({
 set.seed(17)
 
 # ------------------------------- Parameters -----------------------------
-region_of_interest <- "DG"               # Set here to "CA1", "CA2", "CA3", etc.
-layer_levels <- c("mo", "sg", "po") # Set layers for the chosen region here
+region_of_interest <- "CA2"               # Set here to "CA1", "CA2", "CA3", etc.
+layer_levels <- c("so", "sp", "sr", "slm") # Set layers for the chosen region here
 alpha_layer  <- 0.05
 alpha_within <- 0.05
 extra_layer  <- "microglia"
@@ -73,12 +73,15 @@ to_numeric_matrix_hard <- function(x) {
   }
   out
 }
+
 row_median_base <- function(m) {
   apply(m, 1, function(v) { v <- v[is.finite(v)]; if (!length(v)) NA_real_ else stats::median(v) })
 }
+
 row_mad_base <- function(m, constant = 1) {
   apply(m, 1, function(v) { v <- v[is.finite(v)]; if (!length(v)) return(NA_real_); stats::mad(v, constant = constant, na.rm = TRUE) })
 }
+
 impute_layer_robust_base <- function(m, groups,
                                     center_fun = row_median_base,
                                     scale_fun  = function(x) row_mad_base(x, constant = 1)) {
@@ -103,6 +106,7 @@ impute_layer_robust_base <- function(m, groups,
   }
   out
 }
+
 impute_layer_mnar_finalize <- function(m, groups, downshift = 1.8) {
   stopifnot(is.matrix(m))
   out <- m
@@ -123,10 +127,12 @@ impute_layer_mnar_finalize <- function(m, groups, downshift = 1.8) {
   }
   out
 }
+
 keep_idx <- function(m, groups, min_prop = 0.5) {
   by_grp <- split(seq_len(ncol(m)), groups)
   apply(m, 1, function(x) all(vapply(by_grp, function(idx) mean(!is.na(x[idx])) >= min_prop, logical(1))))
 }
+
 run_within_layer_contrast <- function(expr_mat_imp, samp_meta, group_a, group_b) {
   layers_present <- levels(droplevels(samp_meta$layer))
   lapply(layers_present, function(lyr) {
@@ -149,12 +155,14 @@ run_within_layer_contrast <- function(expr_mat_imp, samp_meta, group_a, group_b)
     tt
   }) %>% Filter(Negate(is.null), .)
 }
+
 standardize_cols <- function(df) {
   out <- df
   if ("P.Value" %in% names(out)) out <- out %>% rename(pval = P.Value)
   if ("adj.P.Val" %in% names(out)) out <- out %>% rename(padj = adj.P.Val)
   out
 }
+
 normalize_idmap_first <- function(idmap_raw) {
   idmap_raw %>%
     distinct(protein_id, gene_symbol) %>%
@@ -211,14 +219,18 @@ build_volcano <- function(df, xlab, out_svg, out_png, alpha = 0.05, labels_df = 
     geom_vline(xintercept = 0, linetype = 2, color = "grey60") +
     geom_point(aes(color = sig_flag), alpha = 0.55, size = 1.8, na.rm = TRUE) +
     geom_point(data = ~ subset(., sig), color = "red", fill = "red", alpha = 0.95, size = 2.1, na.rm = TRUE) +
-    facet_wrap(~ layer, ncol = 1, scales = "fixed") +
-    scale_y_continuous(limits = c(0, ymax), name = "-log10 adj. p (within-layer)") +
+    scale_y_continuous(limits = c(0, ymax), name = "-log10 adj. p") +
     scale_x_continuous(name = xlab) +
     scale_color_manual(values = c(nonsig = "grey80", sig = "#2C6BED"), guide = "none") +
     theme_minimal(base_size = 11) +
     theme(panel.grid = element_blank(),
           axis.text = element_text(size = 13),
           strip.text = element_text(face = "bold"))
+
+  # Facet by layer only if it exists and has multiple levels
+  if ("layer" %in% names(plot_df) && n_distinct(plot_df$layer) > 1) {
+    p <- p + facet_wrap(~ layer, ncol = 1, scales = "fixed")
+  }
 
   if (!is.null(labels_df) && nrow(labels_df)) {
     p <- p + ggrepel::geom_text_repel(
@@ -229,9 +241,43 @@ build_volcano <- function(df, xlab, out_svg, out_png, alpha = 0.05, labels_df = 
     )
   }
 
-  ggsave(out_svg, p, width = 4, height = 12, device = "svg")
-  ggsave(out_png, p, width = 4, height = 12, dpi = 300)
+  ggsave(out_svg, p, width = ifelse("layer" %in% names(plot_df) && n_distinct(plot_df$layer) > 1, 4, 6), height = ifelse("layer" %in% names(plot_df) && n_distinct(plot_df$layer) > 1, 12, 5), device = "svg")
+  ggsave(out_png, p, width = ifelse("layer" %in% names(plot_df) && n_distinct(plot_df$layer) > 1, 4, 6), height = ifelse("layer" %in% names(plot_df) && n_distinct(plot_df$layer) > 1, 12, 5), dpi = 300)
   invisible(p)
+}
+
+save_xlsx_de_tables <- function(df, out_dir, stem, alpha = 0.05, idmap_norm = NULL, overwrite = TRUE) {
+  if (!nrow(df)) return(invisible(NULL))
+  df2 <- standardize_cols(df)
+  if (!is.null(idmap_norm)) df2 <- df2 %>% left_join(idmap_norm, by = "protein_id")
+  all_tab <- df2
+  up_tab <- df2 %>% filter(padj <= alpha, logFC > 0)
+  down_tab <- df2 %>% filter(padj <= alpha, logFC < 0)
+  wb <- createWorkbook()
+  addWorksheet(wb, "All")
+  writeData(wb, "All", all_tab)
+  addWorksheet(wb, "Upregulated")
+  writeData(wb, "Upregulated", up_tab)
+  addWorksheet(wb, "Downregulated")
+  writeData(wb, "Downregulated", down_tab)
+  saveWorkbook(wb, file.path(out_dir, paste0(stem, "_", ts, ".xlsx")), overwrite = overwrite)
+  invisible(list(all = all_tab, up = up_tab, down = down_tab))
+}
+
+save_xlsx_top5_tables <- function(df, out_dir, stem, alpha = 0.05, idmap_norm = NULL, n = 5, overwrite = TRUE) {
+  if (!nrow(df)) return(invisible(NULL))
+  df2 <- standardize_cols(df)
+  if (!is.null(idmap_norm)) df2 <- df2 %>% left_join(idmap_norm, by = "protein_id")
+  sig <- df2 %>% filter(padj <= alpha)
+  top5_up <- sig %>% filter(logFC > 0) %>% arrange(padj, desc(logFC)) %>% slice_head(n = n)
+  top5_dn <- sig %>% filter(logFC < 0) %>% arrange(padj, logFC) %>% slice_head(n = n)
+  wb <- createWorkbook()
+  addWorksheet(wb, "Upregulated")
+  writeData(wb, "Upregulated", top5_up)
+  addWorksheet(wb, "Downregulated")
+  writeData(wb, "Downregulated", top5_dn)
+  saveWorkbook(wb, file.path(out_dir, paste0(stem, "_top5_", ts, ".xlsx")), overwrite = overwrite)
+  invisible(list(top5_up = top5_up, top5_dn = top5_dn))
 }
 
 # --------------------------- Load and prepare ---------------------------
@@ -354,8 +400,8 @@ labels_df <- stats_df %>%
   }) %>% ungroup()
 
 # Save layer enrichment and top up/down
-save_result_tables(stats_df, dirs$tabs_layer, stem = "layer_enrichment_controls", alpha = alpha_layer, idmap_norm = idmap_norm)
-save_top_updown_tables(stats_df, dirs$tabs_layer, stem = "layer_enrichment_controls", alpha = alpha_layer, idmap_norm = idmap_norm, by_layer = TRUE, n = 50)
+save_xlsx_de_tables(stats_df, dirs$tabs_layer, stem = "layer_enrichment_controls", alpha = alpha_layer, idmap_norm = idmap_norm)
+save_xlsx_top5_tables(stats_df, dirs$tabs_layer, stem = "layer_enrichment_controls", alpha = alpha_layer, idmap_norm = idmap_norm, n = 50)
 
 # Plot layer enrichment
 min_p <- min(stats_df$padj[is.finite(stats_df$padj)], na.rm = TRUE)
@@ -414,7 +460,6 @@ if (nrow(samp_micro_con)) {
     ggsave(file.path(dirs$figs_micro, paste0("microglia_controls_rank_", ts, ".png")), p_micro, width = 6, height = 4, dpi = 300)
   }
 }
-
 
 # 1c) Microglia vs region average EXCLUDING SP or SG (controls only)
 samp_micro_con <- samp_con %>%
@@ -477,6 +522,13 @@ if (nrow(samp_micro_con) && nrow(samp_region_noSP_con)) {
   readr::write_csv(mg_top5_up, file.path(dirs$tabs_micro, paste0("microglia_vs_", region_of_interest, "avg_noSP_top5_up_", ts, ".csv")))
   readr::write_csv(mg_top5_dn, file.path(dirs$tabs_micro, paste0("microglia_vs_", region_of_interest, "avg_noSP_top5_down_", ts, ".csv")))
   save_top_updown_tables(mg_df, dirs$tabs_micro, stem = paste0("microglia_vs_", region_of_interest, "avg_noSP"), alpha = alpha_layer, idmap_norm = idmap_norm, by_layer = FALSE, n = 50)
+
+  # Save all proteins as an Excel file with upregulated and downregulated sheets
+  openxlsx::write.xlsx(list(
+    Upregulated = mg_top5_up,
+    Downregulated = mg_top5_dn,
+    All_Proteins = mg_df
+  ), file = file.path(dirs$tabs_micro, paste0("microglia_vs_", region_of_interest, "avg_noSP_all_proteins_", ts, ".xlsx")), overwrite = TRUE)
 
   # Volcano with top-5 up and down labels
   plot_mg <- mg_df %>% mutate(minus_log10_padj = -log10(padj), sig = padj <= alpha_layer, sig_flag = ifelse(sig, "sig", "nonsig"))
@@ -642,12 +694,16 @@ do_within <- function(group_a, group_b, slot, xlab) {
   tables <- run_within_layer_contrast(expr_mat_all_imp, samp_sub, group_a, group_b)
   df <- if (length(tables)) bind_rows(tables) %>% standardize_cols() else tibble()
   if (!nrow(df)) return(invisible(NULL))
-  save_result_tables(df, within_sub[[slot]]$tabs, stem = slot, alpha = alpha_within, idmap_norm = idmap_norm)
-  save_top_updown_tables(df, within_sub[[slot]]$tabs, stem = slot, alpha = alpha_within, idmap_norm = idmap_norm, by_layer = TRUE, n = 50)
+
+  # Save results as Excel with separate sheets
+  save_xlsx_de_tables(df, within_sub[[slot]]$tabs, stem = slot, alpha = alpha_within, idmap_norm = idmap_norm)
+  save_xlsx_top5_tables(df, within_sub[[slot]]$tabs, stem = slot, alpha = alpha_within, idmap_norm = idmap_norm, n = 50)
+
   lab_df <- df %>%
     { if (!is.null(idmap_norm)) left_join(., idmap_norm, by = "protein_id") else mutate(., gene_symbol = NA_character_) } %>%
     group_by(layer) %>% arrange(padj, desc(abs(logFC)), .by_group = TRUE) %>% slice_head(n = 5) %>%
     mutate(label = ifelse(!is.na(gene_symbol) & gene_symbol != "", gene_symbol, protein_id)) %>% ungroup()
+
   build_volcano(df, xlab = xlab,
                 out_svg = file.path(within_sub[[slot]]$figs, paste0(slot, "_", ts, ".svg")),
                 out_png = file.path(within_sub[[slot]]$figs, paste0(slot, "_", ts, ".png")),
@@ -660,6 +716,163 @@ cs_df <- do_within("con","sus","con_vs_sus","log2 fold change (con − sus)")
 cr_df <- do_within("con","res","con_vs_res","log2 fold change (con − res)")
 sr_df <- do_within("sus","res","sus_vs_res","log2 fold change (sus − res)")
 rc_df <- do_within("res","con","res_vs_con","log2 fold change (res − con)")
+
+# --------------------- Cross-region layer comparison -----------------------
+# Example: DG-SG vs CA-SP
+
+#region_layer_a <- "DG_SG"
+#region_layer_b <- "CA_SP"
+
+#layer_a <- "sg"   # DG layer SG
+#layer_b <- "sp"   # CA1/CA2/CA3 layers SP
+#ca_regions <- c("CA1", "CA2", "CA3")
+
+region_layer_a <- "DG_SG"
+region_layer_b <- "CA_SP"
+
+layer_a <- "sg"   # DG layer SG
+layer_b <- "sp"   # CA1/CA2/CA3 layers SP
+ca_regions <- c("CA1", "CA2", "CA3")
+
+# Create dedicated output directories for cross-region comparisons
+cross_region_base <- file.path("S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Results",
+  "cross_region_comparisons", "layer_and_within_group_fdr005")
+dirs_cross <- list(
+  figs = file.path(cross_region_base, "figures"),
+  tabs = file.path(cross_region_base, "tables")
+)
+invisible(lapply(dirs_cross, dir.create, showWarnings = FALSE, recursive = TRUE))
+
+# Subset samples to these groups and label groups
+samp_region_layer <- samp %>%
+  filter(
+  (region == "DG" & layer == layer_a) |
+  (region %in% ca_regions & layer == layer_b)
+  ) %>%
+  mutate(
+  region_layer_group = case_when(
+  region == "DG" & layer == layer_a ~ region_layer_a,
+  region %in% ca_regions & layer == layer_b ~ region_layer_b,
+  TRUE ~ NA_character_
+  )
+  ) %>%
+  filter(!is.na(region_layer_group))
+
+# Expression subset
+expr_long_subset <- expr_long %>%
+  semi_join(tibble(sample_id = samp_region_layer$sample_id), by = "sample_id")
+
+expr_wide_subset <- expr_long_subset %>%
+  select(protein_id, sample_id, log2_intensity) %>%
+  pivot_wider(names_from = sample_id, values_from = log2_intensity) %>%
+  arrange(protein_id) %>%
+  filter(!is.na(protein_id), protein_id != "")
+
+expr_mat_subset <- expr_wide_subset %>% select(-protein_id) %>% as.matrix()
+rownames(expr_mat_subset) <- expr_wide_subset$protein_id
+expr_mat_subset <- to_numeric_matrix_hard(expr_mat_subset)
+
+groups_subset <- factor(samp_region_layer$region_layer_group[match(colnames(expr_mat_subset), samp_region_layer$sample_id)])
+
+keep_subset <- keep_idx(expr_mat_subset, groups_subset, 0.5)
+expr_mat_subset <- expr_mat_subset[keep_subset, , drop = FALSE]
+
+expr_stage1_subset <- impute_layer_robust_base(expr_mat_subset, groups_subset)
+expr_mat_imp_subset <- impute_layer_mnar_finalize(expr_stage1_subset, groups_subset, downshift = 1.8)
+
+design_subset <- model.matrix(~ 0 + groups_subset)
+colnames(design_subset) <- levels(groups_subset)
+
+# Define contrast name dynamically based on region_layer_a and region_layer_b
+contrast_name <- paste0(region_layer_a, "_vs_", region_layer_b)
+
+# Create contrast using makeContrasts, dynamically referencing the groups
+contrast_formula <- paste0(region_layer_a, " - ", region_layer_b)
+contrast_subset <- makeContrasts(
+  contrasts = contrast_formula,
+  levels = design_subset
+)
+
+# Fit linear model and apply empirical Bayes moderation
+fit_subset <- lmFit(expr_mat_imp_subset, design_subset)
+fit_subset2 <- eBayes(contrasts.fit(fit_subset, contrast_subset), trend = TRUE, robust = TRUE)
+
+tt_subset <- topTable(fit_subset2, coef = 1, number = Inf, sort.by = "none")
+tt_subset$protein_id <- rownames(tt_subset)
+
+# Keep only the first protein_id if there are multiple separated by ";"
+tt_subset <- tt_subset %>%
+  mutate(protein_id = sub(";.*", "", protein_id))
+
+# Rename p-value columns to standardized names
+tt_subset <- tt_subset %>%
+  rename(pval = P.Value, padj = adj.P.Val)
+
+if (!is.null(idmap_norm)) {
+  tt_subset <- tt_subset %>% left_join(idmap_norm, by = "protein_id")
+}
+
+# Top 5 up-regulated (logFC > 0) and top 5 down-regulated (logFC < 0), both significant
+top5_up <- tt_subset %>%
+  filter(padj <= alpha_layer, logFC > 0) %>%
+  arrange(padj, desc(logFC)) %>%
+  slice_head(n = 5)
+
+top5_down <- tt_subset %>%
+  filter(padj <= alpha_layer, logFC < 0) %>%
+  arrange(padj, logFC) %>%
+  slice_head(n = 5)
+
+labels_df <- bind_rows(top5_up, top5_down) %>%
+  distinct(protein_id, .keep_all = TRUE) %>%  # Remove duplicates, keep only first occurrence
+  mutate(label = protein_id)
+
+sig_subset <- tt_subset %>% filter(padj <= alpha_layer) %>% arrange(padj)
+
+# Prepare upregulated and downregulated for full and significant tables
+full_up <- tt_subset %>% filter(logFC > 0) %>% arrange(desc(logFC), padj)
+full_down <- tt_subset %>% filter(logFC < 0) %>% arrange(logFC, padj)
+
+sig_up <- sig_subset %>% filter(logFC > 0) %>% arrange(desc(logFC), padj)
+sig_down <- sig_subset %>% filter(logFC < 0) %>% arrange(logFC, padj)
+
+# Save full table with sheets
+library(openxlsx)
+wb_full <- createWorkbook()
+addWorksheet(wb_full, "All")
+writeData(wb_full, "All", tt_subset)
+addWorksheet(wb_full, "Upregulated")
+writeData(wb_full, "Upregulated", full_up)
+addWorksheet(wb_full, "Downregulated")
+writeData(wb_full, "Downregulated", full_down)
+saveWorkbook(wb_full, file.path(dirs_cross$tabs, paste0(region_layer_a, "_vs_", region_layer_b, "_DE_full_", ts, ".xlsx")), overwrite = TRUE)
+
+# Save significant table with sheets
+wb_sig <- createWorkbook()
+addWorksheet(wb_sig, "All")
+writeData(wb_sig, "All", sig_subset)
+addWorksheet(wb_sig, "Upregulated")
+writeData(wb_sig, "Upregulated", sig_up)
+addWorksheet(wb_sig, "Downregulated")
+writeData(wb_sig, "Downregulated", sig_down)
+saveWorkbook(wb_sig, file.path(dirs_cross$tabs, paste0(region_layer_a, "_vs_", region_layer_b, "_DE_significant_", ts, ".xlsx")), overwrite = TRUE)
+
+# Save top 5 up/down table
+wb_top <- createWorkbook()
+addWorksheet(wb_top, "Upregulated")
+writeData(wb_top, "Upregulated", top5_up)
+addWorksheet(wb_top, "Downregulated")
+writeData(wb_top, "Downregulated", top5_down)
+saveWorkbook(wb_top, file.path(dirs_cross$tabs, paste0(region_layer_a, "_vs_", region_layer_b, "_DE_top5_", ts, ".xlsx")), overwrite = TRUE)
+
+sig_subset <- sig_subset %>% mutate(layer = "all")
+
+build_volcano(tt_subset,
+  xlab = paste(region_layer_a, "vs", region_layer_b, "log2 Fold Change"),
+  out_svg = file.path(dirs_cross$figs, paste0(region_layer_a, "_vs_", region_layer_b, "_volcano_", ts, ".svg")),
+  out_png = file.path(dirs_cross$figs, paste0(region_layer_a, "_vs_", region_layer_b, "_volcano_", ts, ".png")),
+  alpha = alpha_layer,
+  labels_df = labels_df)
 
 # ------------------------------- Save RDS -------------------------------
 saveRDS(list(
