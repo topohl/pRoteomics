@@ -1134,8 +1134,6 @@ if (nrow(comp_df) == 0) {
     dev.off()
   }
 
-  
-
   # Save Excel with annotation
   excel_out <- mapped_top_bottom %>%
     select(
