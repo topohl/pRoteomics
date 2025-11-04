@@ -57,7 +57,8 @@ setupPackages <- function() {
     "clusterProfiler", "pathview", "enrichplot", "DOSE", "ggplot2", "ggnewscale",
     "cowplot", "ggridges", "europepmc", "ggpubr", "ggrepel", "ggsci", "ggthemes",
     "ggExtra", "ggforce", "ggalluvial", "lattice", "latticeExtra", "BiocManager",
-    "org.Mm.eg.db", "ggplotify", "svglite"
+    "org.Mm.eg.db", "ggplotify", "svglite", "tidyr", "dplyr", "pheatmap", "proxy",
+    "tibble"
   )
 
   bioc_packages <- c("clusterProfiler", "pathview", "enrichplot", "DOSE", "org.Mm.eg.db")
@@ -503,7 +504,7 @@ gseaplot(gsea_nk3r, by = "all", title = "NK3R-signalling", geneSetID = 1)
 
 # load celltypes csv file
 celltype_file <- file.path("S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler",
-                           "Datasets/celltypes.xlsx")
+                           "Datasets/celltypes_long.xlsx")
 # read the celltype file
 library(openxlsx)
 celltype_df <- read.xlsx(celltype_file, sheet = 1)
@@ -560,6 +561,8 @@ gct_data <- read_gct(gct_file)
 
 head(gct_data)
 
+grouping_factor <- "Celltype"
+
 # === 2. Extract metadata ===
 metadata <- gct_data[1:4, ]  # Keep all columns including the first column (IDs)
 colnames(metadata) <- paste0("V", seq_len(ncol(metadata)))  # Temporary colnames
@@ -605,6 +608,7 @@ expr_annotated <- expr_annotated %>%
 
 # Add final label column (use Gene_Name if available, otherwise fall back to Protein_ID)
 expr_annotated <- expr_annotated %>%
+  filter(!grepl("Background", Celltype)) %>%
   relocate(Gene_Name, .before = 1) %>%
   relocate(UniProtID, .after = Gene_Name) %>%
   relocate(Expression, .after = last_col())
@@ -612,25 +616,22 @@ expr_annotated <- expr_annotated %>%
 # === Done! ===
 glimpse(expr_annotated)
 
-
-
-
 # === 1. Reshape marker list ===
 celltype_long <- celltype_df %>%
   pivot_longer(cols = everything(), names_to = "Celltype_Class", values_to = "Gene_Label") %>%
   filter(!is.na(Gene_Label) & Gene_Label != "")
 
 # === 2. Filter expr_annotated_named for matching genes ===
-marker_expr <- expr_annotated_named %>%
-  filter(Gene_Label %in% celltype_long$Gene_Label)
+marker_expr <- expr_annotated %>%
+  filter(Gene_Name %in% celltype_long$Gene_Label)
 
 # === 3. Add Celltype_Class info to each expression entry ===
 marker_expr <- marker_expr %>%
-  left_join(celltype_long, by = "Gene_Label")
+  left_join(celltype_long, by = c("Gene_Name" = "Gene_Label"))
 
-# === 4. Compute average expression for each Celltype_Class per Celltype_Group ===
+# === 4. Compute average expression for each Celltype_Class per grouping_factor ===
 celltype_scores <- marker_expr %>%
-  group_by(Celltype_Group, Celltype_Class) %>%
+  group_by(!!sym(grouping_factor), Celltype_Class) %>%
   summarise(
     Mean_Expression = mean(Expression, na.rm = TRUE),
     .groups = "drop"
@@ -642,11 +643,176 @@ celltype_score_table <- celltype_scores %>%
 
 # create graph of celltype scores
 library(ggplot2)
-celltype_score_plot <- ggplot(celltype_scores, aes(x = Celltype_Group, y = Mean_Expression, fill = Celltype_Class)) +
-  geom_bar(stat = "identity", position = "dodge") +
-  labs(title = "Celltype Scores by Group", x = "Celltype Group", y = "Mean Expression") +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+celltype_score_plot <- ggplot(celltype_scores, aes(x = !!sym(grouping_factor), y = Mean_Expression, fill = Celltype_Class)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.8), width = 0.7) +
+  labs(
+    title = "Celltype Scores by Group",
+    x = grouping_factor,  # Beschriftung bleibt dynamisch
+    y = "Mean Expression",
+    fill = "Cell Class"
+  ) +
+  scale_fill_manual(values = c("#f36d07", "#455A64", "#c7c7c7")) +
+  guides(fill = guide_legend(ncol = 1)) +
+  theme_bw(base_size = 16) +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5, size = 20),
+    axis.title = element_text(face = "bold", size = 18),
+    axis.text.x = element_text(angle = 45, hjust = 1, color = "black", size = 16),
+    axis.text.y = element_text(color = "black", size = 16),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    axis.ticks = element_line(color = "black", size = 1),
+    legend.position = c(0.9, 0.9),
+    legend.background = element_rect(color = "black", fill = NA),
+    legend.title = element_text(face = "bold", size = 16),
+    legend.text = element_text(size = 16)
+  )
 
 # Save the plot in working directory
 ggsave(file.path(working_dir, "celltype_scores_by_group.svg"), celltype_score_plot, units = "cm", dpi = 300)
+
+# --- 1. Gene-Klasse-Mapping vorbereiten
+gene_class_df <- celltype_long %>%
+  distinct(Gene_Label, Celltype_Class) %>%
+  rename(Gene_Name = Gene_Label)
+
+annotation_row <- data.frame(
+  Celltype_Class = gene_class_df$Celltype_Class
+)
+rownames(annotation_row) <- gene_class_df$Gene_Name
+
+# --- 2. Mittelwert pro Gen und grouping_factor berechnen
+marker_matrix <- marker_expr %>%
+  group_by(Gene_Name, !!sym(grouping_factor)) %>%
+  summarise(
+    Mean_Expression = mean(Expression, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  { print(grouping_factor); print(colnames(.)); . } %>%
+  pivot_wider(
+    names_from = !!sym(grouping_factor),
+    values_from = Mean_Expression
+  ) %>%
+  column_to_rownames("Gene_Name") %>%
+  as.matrix()
+
+# --- 3. Clean matrix: remove rows/columns with all NA or insufficient data
+marker_matrix_clean <- marker_matrix[rowSums(is.na(marker_matrix)) < ncol(marker_matrix), ]
+marker_matrix_clean <- marker_matrix_clean[, colSums(is.na(marker_matrix_clean)) < nrow(marker_matrix_clean)]
+marker_matrix_clean <- marker_matrix_clean[rowSums(!is.na(marker_matrix_clean)) >= 2, ]
+marker_matrix_clean <- marker_matrix_clean[, colSums(!is.na(marker_matrix_clean)) >= 2]
+
+# --- 4. Optional: Entferne einzelne problematische Gene
+marker_matrix_clean <- marker_matrix_clean[!grepl("^Oasl2\\s*$", rownames(marker_matrix_clean)), ]
+
+# --- 5. Ersetze NaN/Inf durch NA
+marker_matrix_clean[is.nan(marker_matrix_clean)] <- NA
+marker_matrix_clean[is.infinite(marker_matrix_clean)] <- NA
+
+# --- 6. annotation_row nach cleaned matrix filtern
+annotation_row <- annotation_row[rownames(marker_matrix_clean), , drop = FALSE]
+
+# --- 7. Farbschema für Annotationen
+annotation_colors <- list(
+  Celltype_Class = c(
+    "gaba"   = "#f36d07",
+    "vglut1" = "#455A64",
+    "vglut2" = "#c7c7c7"
+  )
+)
+
+# --- 8. Heatmap speichern
+pheatmap(
+  marker_matrix_clean,
+  cluster_rows = TRUE,
+  cluster_cols = FALSE,
+  color = colorRampPalette(c("#6698CC", "white", "#F08C21"))(100),
+  na_col = "grey",
+  main = paste("Marker Expression per", grouping_factor),
+  fontsize = 12,
+  fontsize_row = 10,
+  fontsize_col = 12,
+  cellheight = 12,
+  cellwidth = 12,
+  border_color = NA,
+  annotation_row = annotation_row,
+  annotation_colors = annotation_colors,
+  filename = file.path(working_dir, paste0("marker_expression_heatmap_", grouping_factor, ".pdf"))
+)
+
+
+# Z-transform expression per gene across all samples
+expr_scaled <- marker_expr %>%
+  group_by(Gene_Name) %>%
+  mutate(Z_Expression = scale(Expression)) %>%
+  ungroup()
+
+# Then average z-scores per grouping_factor × Celltype_Class
+celltype_z_scores <- expr_scaled %>%
+  group_by(grouping_factor, Celltype_Class) %>%
+  summarise(
+    Mean_Z = mean(Z_Expression, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+heatmap_plot <- ggplot(celltype_z_scores, aes(x = reorder(Celltype_Class, Mean_Z, FUN = median), y = grouping_factor, fill = Mean_Z)) +
+  geom_tile(color = "grey80", size = 0.2, width = 0.5) +
+  scale_fill_gradient2(
+    low = "#4575b4", mid = "white", high = "#d73027",
+    midpoint = 0, name = "Z-Score",
+    guide = guide_colorbar(barwidth = 0.8, barheight = 20)
+  ) +
+  labs(
+    title = "Celltype Marker Signature by Group",
+    x = "Marker Class",
+    y = "Sample Group"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5, margin = margin(b = 10)),
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+    axis.text.y = element_text(size = 10),
+    axis.title = element_text(size = 12),
+    panel.grid = element_blank(),
+    legend.title = element_text(size = 12),
+    legend.text = element_text(size = 10)
+  )
+
+ggsave(file.path(working_dir, "celltype_scores_heatmap.svg"), heatmap_plot, width = 16, height = 9, units = "cm", dpi = 300)
+
+
+
+# 1. Sum z-scores by grouping_factor and Celltype_Class
+proportional_scores <- expr_scaled %>%
+  group_by(grouping_factor, Celltype_Class) %>%
+  summarise(
+    Mean_Z = mean(Z_Expression, na.rm = TRUE)
+    .groups = "drop"
+  )
+
+# 2. Calculate proportions per grouping_factor
+proportional_scores <- proportional_scores %>%
+  group_by(grouping_factor) %>%
+  mutate(
+    Proportion = Total_Z / sum(Total_Z, na.rm = TRUE) * 100
+  ) %>%
+  ungroup()
+
+  prop_barplot <- ggplot(proportional_scores, aes(x = grouping_factor, y = Proportion, fill = Celltype_Class)) +
+  geom_bar(stat = "identity", width = 0.8) +
+  labs(
+    title = "Proportional Celltype Signature per Group",
+    x = "Celltype Group",
+    y = "Proportion of Total Marker Signal (%)",
+    fill = "Celltype Class"
+  ) +
+  scale_fill_brewer(palette = "Set2") +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid = element_line(color = "#f0f0f0")
+  )
+
+ggsave(file.path(working_dir, "celltype_relative_proportions.svg"), prop_barplot, width = 16, height = 10, units = "cm", dpi = 300)
