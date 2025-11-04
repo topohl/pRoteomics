@@ -84,16 +84,16 @@ if (!gsg$allOK) {
 sampleTree <- hclust(dist(expression.data), method = "average") #Clustering samples based on distance 
 
 # Setting the graphical parameters
-par(cex = 0.6);
-par(mar = c(0,4,2,0))
+par(cex = 0.6)
+par(mar = c(0, 4, 2, 0))
 
 # Plotting the cluster dendrogram
-plot(sampleTree, main = "Sample clustering to detect outliers", sub="", xlab="", cex.lab = 1.5,
-cex.axis = 1.5, cex.main = 2)
+plot(sampleTree, main = "Sample clustering to detect outliers", sub = "", xlab = "", cex.lab = 1.5,
+  cex.axis = 1.5, cex.main = 2)
 
 # Setting the graphical parameters and plot to screen
 par(cex = 0.6)
-par(mar = c(0,4,2,0))
+par(mar = c(0, 4, 2, 0))
 plot(sampleTree, main = "Sample clustering to detect outliers", sub = "", xlab = "", cex.lab = 1.5,
   cex.axis = 1.5, cex.main = 2)
 abline(h = 40, col = "red")
@@ -101,7 +101,7 @@ abline(h = 40, col = "red")
 # Also save the same plot as SVG in output_dir
 svg(file = file.path(output_dir, "sample_clustering_outliers.svg"), width = 8, height = 6)
 par(cex = 0.6)
-par(mar = c(0,4,2,0))
+par(mar = c(0, 4, 2, 0))
 plot(sampleTree, main = "Sample clustering to detect outliers", sub = "", xlab = "", cex.lab = 1.5,
   cex.axis = 1.5, cex.main = 2)
 abline(h = 40, col = "red")
@@ -111,48 +111,89 @@ dev.off()
 cut.sampleTree <- cutreeStatic(sampleTree, cutHeight = 80, minSize = 10)
 
 # Remove outlier samples
-expression.data <- expression.data[cut.sampleTree==1, ]
+expression.data <- expression.data[cut.sampleTree == 1, ]
 spt <- pickSoftThreshold(expression.data)
 
 # Plot the results:
-svg(file = file.path(output_dir, "soft_threshold_scale_independence.svg"), width = 7, height = 5)
-par(mar=c(1,1,1,1))
-plot(spt$fitIndices[,1], spt$fitIndices[,2],
-  xlab="Soft Threshold (power)", ylab="Scale Free Topology Model Fit, signed R^2", type="n",
-  main = paste("Scale independence"))
-text(spt$fitIndices[,1], spt$fitIndices[,2], col="red")
-abline(h=0.80, col="red")
+# Improved plotting that also opens an interactive device (when possible in VSCode)
+open_plot_device <- function(width = 7, height = 5) {
+  if (interactive()) {
+    tryCatch({
+      if (.Platform$OS.type == "windows") {
+        windows(width = width, height = height)
+      } else if (capabilities("aqua")) {
+        quartz(width = width, height = height)
+      } else if (capabilities("X11")) {
+        x11(width = width, height = height)
+      }
+    }, error = function(e) { message("Could not open interactive device: ", e$message) })
+  }
+}
+
+# 1) Scale independence: open interactive device (if possible) then save SVG
+open_plot_device()
+par(mar = c(4, 4, 2, 1))
+plot(spt$fitIndices[, 1], spt$fitIndices[, 2],
+     xlab = "Soft Threshold (power)",
+     ylab = "Scale Free Topology Model Fit, signed R^2",
+     type = "n", main = "Scale independence")
+text(spt$fitIndices[, 1], spt$fitIndices[, 2], labels = spt$fitIndices[, 1], col = "red")
+abline(h = 0.80, col = "red")
+
+# save to SVG (always)
+out1 <- file.path(output_dir, "soft_threshold_scale_independence.svg")
+svglite::svglite(file = out1, width = 7, height = 5)
+par(mar = c(4, 4, 2, 1))
+plot(spt$fitIndices[, 1], spt$fitIndices[, 2],
+     xlab = "Soft Threshold (power)",
+     ylab = "Scale Free Topology Model Fit, signed R^2",
+     type = "n", main = "Scale independence")
+text(spt$fitIndices[, 1], spt$fitIndices[, 2], labels = spt$fitIndices[, 1], col = "red")
+abline(h = 0.80, col = "red")
 dev.off()
 
-svg(file = file.path(output_dir, "soft_threshold_mean_connectivity.svg"), width = 7, height = 5)
-par(mar=c(1,1,1,1))
-plot(spt$fitIndices[,1], spt$fitIndices[,5],
-  xlab="Soft Threshold (power)", ylab="Mean Connectivity", type="n",
-  main = paste("Mean connectivity"))
-text(spt$fitIndices[,1], spt$fitIndices[,5], labels= spt$fitIndices[,1], col="red")
+# 2) Mean connectivity: open interactive device (if possible) then save SVG
+open_plot_device()
+par(mar = c(4, 4, 2, 1))
+plot(spt$fitIndices[, 1], spt$fitIndices[, 5],
+     xlab = "Soft Threshold (power)",
+     ylab = "Mean Connectivity",
+     type = "n", main = "Mean connectivity")
+text(spt$fitIndices[, 1], spt$fitIndices[, 5], labels = spt$fitIndices[, 1], col = "red")
+
+out2 <- file.path(output_dir, "soft_threshold_mean_connectivity.svg")
+svglite::svglite(file = out2, width = 7, height = 5)
+par(mar = c(4, 4, 2, 1))
+plot(spt$fitIndices[, 1], spt$fitIndices[, 5],
+     xlab = "Soft Threshold (power)",
+     ylab = "Mean Connectivity",
+     type = "n", main = "Mean connectivity")
+text(spt$fitIndices[, 1], spt$fitIndices[, 5], labels = spt$fitIndices[, 1], col = "red")
 dev.off()
+
+message("Saved SVGs:\n - ", out1, "\n - ", out2, "\nIf you expected an interactive plot in VSCode, ensure the R extension's Plot pane is enabled; the script also opens an interactive device when possible.")
 
 # ---------------------------------------------------------------------
 # Constructing a gene co-expression network and identifying modules
 # ---------------------------------------------------------------------
 
 # Based on the above plots, we choose a soft-thresholding power of 6
-softPower <- 6 
+softPower <- 6
 adjacency <- adjacency(expression.data, power = softPower)
 TOM <- TOMsimilarity(adjacency)
-TOM.dissimilarity <- 1-TOM
+TOM.dissimilarity <- 1 - TOM
 
 # Clustering using TOM-based dissimilarity, creating dendrogram
 geneTree <- hclust(as.dist(TOM.dissimilarity), method = "average")
 
 # Plot the resulting clustering tree (dendrogram)
-sizeGrWindow(12,9)
-plot(geneTree, xlab="", sub="", main = "Gene clustering on TOM-based dissimilarity", labels = FALSE, hang = 0.04)
+sizeGrWindow(12, 9)
+plot(geneTree, xlab = "", sub = "", main = "Gene clustering on TOM-based dissimilarity", labels = FALSE, hang = 0.04)
 
 # Also save the same plot as SVG in output_dir
 svg_filename <- file.path(output_dir, "gene_dendrogram.svg")
 svg(file = svg_filename, width = 12, height = 9)
-plot(geneTree, xlab="", sub="", main = "Gene clustering on TOM-based dissimilarity", labels = FALSE, hang = 0.04)
+plot(geneTree, xlab = "", sub = "", main = "Gene clustering on TOM-based dissimilarity", labels = FALSE, hang = 0.04)
 dev.off()
 
 # Set the minimum module size, e.g., 30
@@ -160,7 +201,7 @@ Modules <- cutreeDynamic(dendro = geneTree, distM = TOM.dissimilarity, deepSplit
 table(Modules)
 
 ModuleColors <- labels2colors(Modules) #assigns each module number a color
-# create ModuleColors list 
+# create ModuleColors list
 
 table(ModuleColors) #returns the counts for each color (aka the number of genes within each module)
 
@@ -172,28 +213,28 @@ plotDendroAndColors(geneTree, ModuleColors, "Module",
 dev.off()
 
 # Calculate Eigengenes
-MElist <- moduleEigengenes(expression.data, colors = ModuleColors) 
-MEs <- MElist$eigengenes 
+MElist <- moduleEigengenes(expression.data, colors = ModuleColors)
+MEs <- MElist$eigengenes
 head(MEs)
 
 # Calculate dissimilarity of module eigengenes
-ME.dissimilarity = 1-cor(MElist$eigengenes, use="complete") #Calculate eigengene dissimilarity
+ME.dissimilarity = 1-cor(MElist$eigengenes, use = "complete") #Calculate eigengene dissimilarity
 
 # Cluster module eigengenes
-METree = hclust(as.dist(ME.dissimilarity), method = "average") #Clustering eigengenes
-par(mar = c(0,4,2,0)) # setting margin sizes
+METree <- hclust(as.dist(ME.dissimilarity), method = "average") #Clustering eigengenes
+par(mar = c(0, 4, 2, 0)) # setting margin sizes
 par(cex = 0.6); # scaling the graphic
 plot(METree)
-abline(h=.25, col = "red") #a height of .25 corresponds to correlation of .75
+abline(h = 0.25, col = "red") #a height of .25 corresponds to correlation of .75
 
 # Merge modules whose eigengenes are very similar, i.e. their correlation is above 0.75 (height below 0.25)
 merge <- mergeCloseModules(expression.data, ModuleColors, cutHeight = .25)
 
 # The merged module colors, assigning one color to each module
-mergedColors = merge$colors
+mergedColors <- merge$colors
 
 # Eigengenes of the new merged modules
-mergedMEs = merge$newMEs
+mergedMEs <- merge$newMEs
 
 svg(file = file.path(output_dir, "gene_dendrogram_modules_merged.svg"), width = 12, height = 9)
 plotDendroAndColors(geneTree, cbind(ModuleColors, mergedColors),
@@ -258,29 +299,29 @@ detected_label <- "susres"
 label <- detected_label
 
 # Define numbers of genes and samples
-nGenes = ncol(expression.data)
-nSamples = nrow(expression.data)
-module.trait.correlation = cor(mergedMEs, datTrait, use = "p") #p for pearson correlation coefficient
-module.trait.Pvalue = corPvalueStudent(module.trait.correlation, nSamples) #calculate the p-value associated with the correlation
+nGenes <- ncol(expression.data)
+nSamples <- nrow(expression.data)
+module.trait.correlation <- cor(mergedMEs, datTrait, use = "p") #p for pearson correlation coefficient
+module.trait.Pvalue <- corPvalueStudent(module.trait.correlation, nSamples) #calculate the p-value associated with the correlation
 
 # Will display correlations and their p-values
-textMatrix = paste(signif(module.trait.correlation, 2), "\n(",
+textMatrix <- paste(signif(module.trait.correlation, 2), "\n(",
            signif(module.trait.Pvalue, 1), ")", sep = "");
-dim(textMatrix) = dim(module.trait.correlation)
+dim(textMatrix) <- dim(module.trait.correlation)
 par(mar = c(6, 8.5, 3, 1))
 
 # Display the correlation values within a heatmap plot (to screen)
 labeledHeatmap(Matrix = module.trait.correlation,
-         xLabels = names(datTraits),
-         yLabels = names(mergedMEs),
-         ySymbols = names(mergedMEs),
-         colorLabels = FALSE,
-         colors = blueWhiteRed(50),
-         textMatrix = textMatrix,
-         setStdMargins = FALSE,
-         cex.text = 1,
-         zlim = c(-1,1),
-         main = paste("Module-trait relationships"))
+               xLabels = names(datTraits),
+               yLabels = names(mergedMEs),
+               ySymbols = names(mergedMEs),
+               colorLabels = FALSE,
+               colors = blueWhiteRed(50),
+               textMatrix = textMatrix,
+               setStdMargins = FALSE,
+               cex.text = 1,
+               zlim = c(-1,1),
+               main = paste("Module-trait relationships"))
 
 # Also save the same heatmap as SVG in output_dir
 outdir <- file.path(output_dir, "module_trait_relationships")
@@ -303,20 +344,21 @@ svg(file = file.path(outdir, paste0("module_trait_relationships_", label, ".svg"
 
 par(mar = c(6, 8.5, 3, 1))
 labeledHeatmap(Matrix = module.trait.correlation,
-         xLabels = names(datTraits),
-         yLabels = names(mergedMEs),
-         ySymbols = names(mergedMEs),
-         colorLabels = FALSE,
-         colors = blueWhiteRed(50),
-         textMatrix = textMatrix,
-         setStdMargins = FALSE,
-         cex.text = 0.7,
-         zlim = c(-1,1),
-         main = paste("Module-trait relationships"))
+               xLabels = names(datTraits),
+               yLabels = names(mergedMEs),
+               ySymbols = names(mergedMEs),
+               colorLabels = FALSE,
+               colors = blueWhiteRed(50),
+               textMatrix = textMatrix,
+               setStdMargins = FALSE,
+               cex.text = 0.7,
+               zlim = c(-1,1),
+               main = paste("Module-trait relationships"))
 dev.off()
 
 # create composite figure
-# cycle through either consus, conres, susres and then create a single graph merged within one graph
+# cycle through either consus, conres, susres and then
+# create a single graph merged within one graph
 # 1. consus
 # 2. conres
 # 3. susres
@@ -324,26 +366,25 @@ dev.off()
 par(mfrow = c(3, 1))
 par(mar = c(6, 8.5, 3, 1))
 for (dt in list(consus = datTraits_consus, conres = datTraits_conres, susres = datTraits_susres)) {
-  module.trait.correlation = cor(mergedMEs, dt, use = "p") #p for pearson correlation coefficient
-  module.trait.Pvalue = corPvalueStudent(module.trait.correlation, nSamples) #calculate the p-value associated with the correlation
-  
+  module.trait.correlation <- cor(mergedMEs, dt, use = "p")
+  module.trait.Pvalue <- corPvalueStudent(module.trait.correlation, nSamples)
 
   # Will display correlations and their p-values
-  textMatrix = paste(signif(module.trait.correlation, 2), "\n(",
-             signif(module.trait.Pvalue, 1), ")", sep = "");
-  dim(textMatrix) = dim(module.trait.correlation)
+  textMatrix <- paste(signif(module.trait.correlation, 2), "\n(",
+                      signif(module.trait.Pvalue, 1), ")", sep = "");
+  dim(textMatrix) <- dim(module.trait.correlation)
 
   labeledHeatmap(Matrix = module.trait.correlation,
-           xLabels = names(dt),
-           yLabels = names(mergedMEs),
-           ySymbols = names(mergedMEs),
-           colorLabels = FALSE,
-           colors = blueWhiteRed(50),
-           textMatrix = textMatrix,
-           setStdMargins = FALSE,
-           cex.text = 0.7,
-           zlim = c(-1,1),
-           main = paste("Module-trait relationships"))
+                 xLabels = names(dt),
+                 yLabels = names(mergedMEs),
+                 ySymbols = names(mergedMEs),
+                 colorLabels = FALSE,
+                 colors = blueWhiteRed(50),
+                 textMatrix = textMatrix,
+                 setStdMargins = FALSE,
+                 cex.text = 0.7,
+                 zlim = c(-1, 1),
+                 main = paste("Module-trait relationships"))
 }
 
 ## experimental
@@ -444,22 +485,22 @@ for (dt in list(consus = datTraits_consus, conres = datTraits_conres, susres = d
 # # ## experimental
 
 # Define variable ExpGroup from the dataset
-ExpGroup = as.data.frame(datTraits_consus$ExpGroup)
-names(ExpGroup) = "ExpGroup"
+ExpGroup <- as.data.frame(datTraits_consus$ExpGroup)
+names(ExpGroup) <- "ExpGroup"
 
-modNames = substring(names(mergedMEs), 3) #extract module names
+modNames <- substring(names(mergedMEs), 3) #extract module names
 
 # Calculate the module membership and the associated p-values
-geneModuleMembership = as.data.frame(cor(expression.data, mergedMEs, use = "p"))
-MMPvalue = as.data.frame(corPvalueStudent(as.matrix(geneModuleMembership), nSamples))
-names(geneModuleMembership) = paste("MM", modNames, sep="")
-names(MMPvalue) = paste("p.MM", modNames, sep="")
+geneModuleMembership <- as.data.frame(cor(expression.data, mergedMEs, use = "p"))
+MMPvalue <- as.data.frame(corPvalueStudent(as.matrix(geneModuleMembership), nSamples))
+names(geneModuleMembership) <- paste("MM", modNames, sep = "")
+names(MMPvalue) <- paste("p.MM", modNames, sep = "")
 
 # Calculate the gene significance and associated p-values
-geneTraitSignificance = as.data.frame(cor(expression.data, ExpGroup, use = "p"))
-GSPvalue = as.data.frame(corPvalueStudent(as.matrix(geneTraitSignificance), nSamples))
-names(geneTraitSignificance) = paste("GS.", names(ExpGroup), sep="")
-names(GSPvalue) = paste("p.GS.", names(ExpGroup), sep="")
+geneTraitSignificance <- as.data.frame(cor(expression.data, ExpGroup, use = "p"))
+GSPvalue <- as.data.frame(corPvalueStudent(as.matrix(geneTraitSignificance), nSamples))
+names(geneTraitSignificance) <- paste("GS.", names(ExpGroup), sep = "")
+names(GSPvalue) <- paste("p.GS.", names(ExpGroup), sep = "")
 head(GSPvalue)
 
 # Plot module membership vs gene significance for a given module and trait
@@ -523,19 +564,18 @@ if (!any(moduleGenes)) {
 }
 
 # Isolate ExpGroup from the dataset
-ExpGroup = as.data.frame(datTraits_susres$ExpGroup);
-names(ExpGroup) = "ExpGroup"
+ExpGroup <- as.data.frame(datTraits_susres$ExpGroup)
+names(ExpGroup) <- "ExpGroup"
 # Add ExprGroup to existing module eigengenes
-MET = orderMEs(cbind(MEs, ExpGroup))
+MET <- orderMEs(cbind(MEs, ExpGroup))
 # Plot the relationships among the eigengenes and the trait
 par(cex = 0.9)
-plotEigengeneNetworks(MET, "", marDendro = c(0,4,1,2), marHeatmap = c(5,4,1,2), cex.lab = 0.8, xLabelsAngle
-= 90)
+plotEigengeneNetworks(MET, "", marDendro = c(0, 4, 1, 2), marHeatmap = c(5, 4, 1, 2), cex.lab = 0.8, xLabelsAngle = 90)
 
 # Plot the dendrogram
 par(cex = 1.0)
-plotEigengeneNetworks(MET, "Eigengene dendrogram", marDendro = c(0,4,2,0),
-            plotHeatmaps = FALSE)
+plotEigengeneNetworks(MET, "Eigengene dendrogram", marDendro = c(0, 4, 2, 0),
+                      plotHeatmaps = FALSE)
 
 # ensure a label exists (fall back to "datTrait" if not)
 if (!exists("label")) {
@@ -553,48 +593,54 @@ if (!exists("label")) {
 # Save dendrogram as SVG in output_dir using the label
 svg(file = file.path(output_dir, paste0("eigengene_dendrogram_", label, ".svg")), width = 8, height = 6)
 par(cex = 1.0)
-plotEigengeneNetworks(MET, "Eigengene dendrogram", marDendro = c(0,4,2,0),
-            plotHeatmaps = FALSE)
+plotEigengeneNetworks(MET, "Eigengene dendrogram", marDendro = c(0, 4, 2, 0),
+                      plotHeatmaps = FALSE)
 dev.off()
 
 # Plot the heatmap matrix (note: this plot will overwrite the dendrogram plot)
-par(cex = 1.0, mar = c(1,1,1,1))
-plotEigengeneNetworks(MET, "Eigengene adjacency heatmap", marHeatmap = c(5,5,2,2),
-plotDendrograms = FALSE, xLabelsAngle = 90)
+par(cex = 1.0, mar = c(1, 1, 1, 1))
+plotEigengeneNetworks(MET, "Eigengene adjacency heatmap", marHeatmap = c(5, 5, 2, 2),
+                      plotDendrograms = FALSE, xLabelsAngle = 90)
 
 # Ensure a label exists (fall back to "datTrait" if not)
 if (!exists("label")) {
-  label <- if (exists("datTrait") && exists("datTraits_consus") && identical(datTrait, datTraits_consus)) {
-  "consus"
-  } else if (exists("datTrait") && exists("datTraits_conres") && identical(datTrait, datTraits_conres)) {
-  "conres"
-  } else if (exists("datTrait") && exists("datTraits_susres") && identical(datTrait, datTraits_susres)) {
-  "susres"
+  label <- if (exists("datTrait") &&
+                 exists("datTraits_consus") &&
+                 identical(datTrait, datTraits_consus)) {
+    "consus"
+  } else if (exists("datTrait") &&
+               exists("datTraits_conres") &&
+               identical(datTrait, datTraits_conres)) {
+    "conres"
+  } else if (exists("datTrait") &&
+               exists("datTraits_susres") &&
+               identical(datTrait, datTraits_susres)) {
+    "susres"
   } else {
-  "datTrait"
+    "datTrait"
   }
 }
 
 # Save heatmap as SVG in output_dir using the label
 svg(file = file.path(output_dir, paste0("eigengene_adjacency_heatmap_", label, ".svg")), width = 8, height = 6)
-par(cex = 1.0, mar = c(1,1,1,1))
-plotEigengeneNetworks(MET, "Eigengene adjacency heatmap", marHeatmap = c(5,5,2,2),
-plotDendrograms = FALSE, xLabelsAngle = 90)
+par(cex = 1.0, mar = c(1, 1, 1, 1))
+plotEigengeneNetworks(MET, "Eigengene adjacency heatmap", marHeatmap = c(5, 5, 2, 2),
+                      plotDendrograms = FALSE, xLabelsAngle = 90)
 dev.off()
 
 # Isolate ExpGroup from the dataset
-ExpGroup = as.data.frame(datTraits$ExpGroup);
-names(ExpGroup) = "ExpGroup"
-layer = as.data.frame(datTraits$layer)
-names(layer) = "layer"
+ExpGroup <- as.data.frame(datTraits$ExpGroup)
+names(ExpGroup) <- "ExpGroup"
+layer <- as.data.frame(datTraits$layer)
+names(layer) <- "layer"
 
 # Add the weight to existing module eigengenes
-MET = orderMEs(cbind(MEs, ExpGroup, layer))
+MET <- orderMEs(cbind(MEs, ExpGroup, layer))
 
 # Plot the relationships among the eigengenes and the trait
 par(cex = 0.9)
-plotEigengeneNetworks(MET, "", marDendro = c(0,4,1,2), marHeatmap = c(5,4,1,2), cex.lab = 0.8, xLabelsAngle
-= 90)
+plotEigengeneNetworks(MET, "", marDendro = c(0,4,1,2), marHeatmap = c(5,4,1,2),
+                      cex.lab = 0.8, xLabelsAngle = 90)
 
 # Check for modules of interest
 table(mergedColors)
@@ -665,7 +711,7 @@ if (!is.null(chosen_module)) {
   if (!me_col %in% colnames(mergedMEs)) stop("Column ", me_col, " not found in mergedMEs")
   moduleEigs <- mergedMEs[[me_col]]
   module_name <- chosen_module
-} 
+}
 
 # remove any leftover loop variable to avoid accidental reuse later
 if (exists("module")) rm(module)
@@ -744,7 +790,7 @@ if (length(plot_colors) == 0) plot_colors <- rep("#999999", length(levels(df_plo
 # compute per-group summary (n, median, Q1, Q3)
 stats_df <- do.call(rbind, lapply(split(df_plot$ME, df_plot$Group), function(x) {
   data.frame(
-    Group = unique(df_plot$Group[ df_plot$ME %in% x ]),
+    Group = unique(df_plot$Group[df_plot$ME %in% x]),
     n = sum(!is.na(x)),
     median = median(x, na.rm = TRUE),
     Q1 = quantile(x, 0.25, na.rm = TRUE),
@@ -782,7 +828,10 @@ p <- ggplot(df_plot, aes(x = Group, y = ME, fill = Group)) +
   geom_linerange(data = stats_df, aes(x = Group, ymin = Q1, ymax = Q3),
                  size = 1.1, color = "black", inherit.aes = FALSE) +
   # median as filled point (override global mapping with its own y), being explicit about aesthetics
-  geom_point(data = stats_df, aes(x = Group, y = median), shape = 21, size = 3.5, fill = "black", color = "black", inherit.aes = FALSE) +
+  geom_point(data = stats_df, aes(x = Group, y = median),
+             shape = 21, size = 3.5,
+             fill = "black", color = "black",
+             inherit.aes = FALSE) +
   scale_fill_manual(values = plot_colors) +
   labs(x = NULL,
        y = paste0("Module Eigengene (", module_name, ")"),
