@@ -95,10 +95,10 @@ uniprot_df <- read.delim(
 # Set analysis parameters ---------------------------------------------
 
 # Define the ensemble profiling method used in the analysis
-ensemble_profiling <- "effects_chemogenetic_inhibition"
+ensemble_profiling <- "phenotype_within_unit_simplified"  # e.g., "baseline_cell_type_profiling", "effects_chemogenetic_inhibition", "interaction_with_learning", "phenotype_within_unit_simplified"
 
 # Specify the experimental condition (e.g., CNO, VEH, CS, US, effects_inhibition_memory_ensemble, or learning_signature)
-condition <- "CS"
+condition <- "CA2"
 
 # Define the Gene Ontology domain (e.g., MF, BP, or CC)
 ont <- "BP"  # Biological Process
@@ -123,7 +123,7 @@ names(file_paths) <- basename(file_paths) %>% str_remove(".csv")
 # Define output directories -------------------------------------------
 
 # Set the output directory for comparative GO analysis results
-output_dir <- file.path("S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Results/compareGO", ont, ensemble_profiling, condition)
+output_dir <- file.path("S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Results/compareGO", ont, ensemble_profiling, condition)
 # Create the output directory if it doesn't already exist
 dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
 
@@ -297,6 +297,9 @@ rownames(heatmap_data) <- heatmap_data$Description
 # Drop the 'Description' column, now that it's set as rownames
 heatmap_data <- heatmap_data[, -which(names(heatmap_data) == "Description")]
 
+# Replace NA with 0
+heatmap_data[is.na(heatmap_data)] <- 0
+
 # Convert to matrix
 heatmap_data <- as.matrix(heatmap_data)
 
@@ -326,7 +329,7 @@ my_colors <- colorRampPalette(rev(brewer.pal(n = 11, name = "RdBu")))(100)
 heatmap_plot <- pheatmap(
   heatmap_data,
   cluster_rows = TRUE,
-  cluster_cols = TRUE,
+  cluster_cols = FALSE,
   display_numbers = heatmap_labels,
   number_color = "black",
   color = my_colors,
@@ -621,7 +624,7 @@ core_genes_df <- bind_rows(core_gene_sets)
 # Optional: Write core gene list for each Comparison & Description combo
 
 # Define base directory for core genes output
-base_dir <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Results/core_genes"
+base_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Results/core_genes"
 
 # Construct output directory path using ont, ensemble_profiling, and condition
 output_dir <- file.path(base_dir, ont, ensemble_profiling, condition)
@@ -964,7 +967,7 @@ gene_descriptions <- core_long_df %>%
 
 # List log2fc input files
 log2fc_files <- list.files(
-  path = file.path("S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/mapped", ensemble_profiling, condition),
+  path = file.path("S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/mapped", ensemble_profiling, condition),
   pattern = "*.csv",
   full.names = TRUE
 )
@@ -1191,7 +1194,7 @@ if (nrow(comp_df) == 0) {
 # Read log2fc data for each comparison from the mapped/ensemble_profiling directory
 
 log2fc_files <- list.files(
-  path = file.path("S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/mapped", ensemble_profiling, condition),
+  path = file.path("S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Results/Datasets/mapped", ensemble_profiling, condition),
   pattern = "*.csv",
   full.names = TRUE
 )
@@ -1352,7 +1355,7 @@ gene_list <- sort(unique(c(
 )))
 
 log2fc_files <- list.files(
-  path = file.path("S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/mapped", ensemble_profiling, condition),
+  path = file.path("S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Results/Datasets/mapped", ensemble_profiling, condition),
   pattern = "*.csv",
   full.names = TRUE
 )
