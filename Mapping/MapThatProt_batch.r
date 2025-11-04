@@ -1,13 +1,16 @@
-#' Batch UniProt ID Mapping for ClusterProfiler Analysis
+#' Batch UniProt ID Mapping for ClusterProfiler Analysis (parallelized with doParallel)
 #' Processes all .csv files in Datasets/raw and maps UniProtKB IDs to Accessions.
 
 if (!requireNamespace("pacman", quietly = TRUE)) install.packages("pacman")
-pacman::p_load(dplyr, stringr, tidyr, purrr, readr, R.utils)
+pacman::p_load(dplyr, stringr, tidyr, purrr, readr, R.utils, foreach, doParallel)
 
-working_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/"
-raw_dir <- file.path(working_dir, "Datasets", "raw", "region-expgroup")
-mapped_dir <- file.path(working_dir, "Datasets", "mapped", "region-expgroup")
-unmapped_dir <- file.path(working_dir, "Datasets", "unmapped", "region-expgroup")
+mapped_comparisons <- "unknown-comparison"  # specify the comparison folder to process
+
+#working_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/"
+working_dir <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler"
+raw_dir <- file.path(working_dir, "Datasets", "raw", mapped_comparisons)
+mapped_dir <- file.path(working_dir, "Datasets", "mapped", mapped_comparisons)
+unmapped_dir <- file.path(working_dir, "Datasets", "unmapped", mapped_comparisons)
 
 dir.create(mapped_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(unmapped_dir, recursive = TRUE, showWarnings = FALSE)
@@ -154,7 +157,24 @@ process_file <- function(data_path) {
     invisible(list(mapped = mapped_file, unmapped = unmapped_file))
 }
 
-# iterate over all csv files
-purrr::walk(csv_files, process_file)
+# -------------------------
+# Parallel execution block
+# -------------------------
+n_files <- length(csv_files)
+available_cores <- parallel::detectCores(logical = FALSE)
+# leave one core free when possible
+workers <- max(1, min(available_cores - 1, n_files))
 
+cat("Starting parallel processing with", workers, "workers for", n_files, "files...\n")
+cl <- parallel::makeCluster(workers)
+doParallel::registerDoParallel(cl)
+
+# Export the necessary objects and ensure packages are loaded on workers
+results <- foreach(i = seq_along(csv_files),
+                   .packages = c("dplyr", "stringr", "tidyr", "purrr", "readr", "R.utils"),
+                   .export = c("uniprot_mapping", "entry_name_to_accession", "mapped_dir", "unmapped_dir", "process_file")) %dopar% {
+    process_file(csv_files[i])
+}
+
+parallel::stopCluster(cl)
 cat("Batch mapping completed for", length(csv_files), "files.\n")
