@@ -42,7 +42,6 @@ geneExpr <- read_excel("S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteo
 info <- read_excel("S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/data/sample_info.xlsx")
 rownames(info) <- info$row.names
 
-
 # 1. Extract first column name (gene names column)
 gene_id_col <- colnames(geneExpr)[1]
 
