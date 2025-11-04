@@ -8,9 +8,9 @@ mapped_comparisons <- "unknown-comparison"  # specify the comparison folder to p
 
 #working_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/"
 working_dir <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler"
-raw_dir <- file.path(working_dir, "Datasets", "raw", mapped_comparisons)
-mapped_dir <- file.path(working_dir, "Datasets", "mapped", mapped_comparisons)
-unmapped_dir <- file.path(working_dir, "Datasets", "unmapped", mapped_comparisons)
+raw_dir <- file.path(working_dir, "Datasets", "raw", mapped_comparisons, "reverse")
+mapped_dir <- file.path(working_dir, "Datasets", "mapped", mapped_comparisons, "reverse")
+unmapped_dir <- file.path(working_dir, "Datasets", "unmapped", mapped_comparisons, "reverse")
 
 dir.create(mapped_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(unmapped_dir, recursive = TRUE, showWarnings = FALSE)
@@ -132,7 +132,7 @@ process_file <- function(data_path) {
         mutate(gene_symbol = if_else(!is.na(final_accession) & final_accession != "", final_accession, gene_symbol))
 
     # select only the common expected output columns if they exist
-    keep_cols <- intersect(c("gene_symbol", "pval", "padj", "log2fc"), names(df_mapped))
+    keep_cols <- intersect(c("gene_symbol", "pval", "padj", "log2fc", "P.Value", "adj.P.Val", "logFC"), names(df_mapped))
     df_mapped <- df_mapped %>%
         select(all_of(keep_cols)) %>%
         distinct()
