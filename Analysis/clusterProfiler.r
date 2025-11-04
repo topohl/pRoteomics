@@ -80,6 +80,7 @@ cell_types <- c("mcherry2", "mcherry4")
 # Set directories
 # working_dir <- "/Users/tobiaspohl/Documents/clusterProfiler"
 working_dir <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler"
+raw_data_dir <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/raw/unknown-comparison/cleaned"
 results_dir <- file.path(working_dir, "Results", paste(cell_types, collapse = "_"))
 if (!dir.exists(results_dir)) {
   dir.create(results_dir, recursive = TRUE)
@@ -134,6 +135,15 @@ plot_dot <- function(dataset, cell_types, results_dir = results_dir) {
 
 # Load and prepare gene data
 df <- read.csv(data_path, header = TRUE)
+# check if log2fc column exists
+if (!"log2fc" %in% colnames(df)) {
+  if ("logFC" %in% colnames(df)) {
+    colnames(df)[colnames(df) == "logFC"] <- "log2fc"
+  } else {
+    stop("Neither log2fc nor logFC column found in the input data.")
+  }
+}
+
 colnames(df)[1] <- "gene_symbol"
 original_gene_list <- df$log2fc
 names(original_gene_list) <- df$gene_symbol
@@ -556,7 +566,7 @@ read_gct <- function(file_path) {
   return(gct_data)
 }
 
-gct_file <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/gct/neha_spatial_group.gct"
+gct_file <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/gct/pg.matrix_filtered_70percent-onegroup_imputed_ANOVA_z-scored.gct"
 gct_data <- read_gct(gct_file)
 
 head(gct_data)
@@ -784,35 +794,35 @@ ggsave(file.path(working_dir, "celltype_scores_heatmap.svg"), heatmap_plot, widt
 
 
 # 1. Sum z-scores by grouping_factor and Celltype_Class
-proportional_scores <- expr_scaled %>%
-  group_by(grouping_factor, Celltype_Class) %>%
-  summarise(
-    Mean_Z = mean(Z_Expression, na.rm = TRUE)
-    .groups = "drop"
-  )
+#proportional_scores <- expr_scaled %>%
+#  group_by(grouping_factor, Celltype_Class) %>%
+#  summarise(
+#    Mean_Z = mean(Z_Expression, na.rm = TRUE)
+#    .groups = "drop"
+#  )
 
 # 2. Calculate proportions per grouping_factor
-proportional_scores <- proportional_scores %>%
-  group_by(grouping_factor) %>%
-  mutate(
-    Proportion = Total_Z / sum(Total_Z, na.rm = TRUE) * 100
-  ) %>%
-  ungroup()
-
-  prop_barplot <- ggplot(proportional_scores, aes(x = grouping_factor, y = Proportion, fill = Celltype_Class)) +
-  geom_bar(stat = "identity", width = 0.8) +
-  labs(
-    title = "Proportional Celltype Signature per Group",
-    x = "Celltype Group",
-    y = "Proportion of Total Marker Signal (%)",
-    fill = "Celltype Class"
-  ) +
-  scale_fill_brewer(palette = "Set2") +
-  theme_minimal(base_size = 14) +
-  theme(
-    plot.title = element_text(face = "bold", hjust = 0.5),
-    axis.text.x = element_text(angle = 45, hjust = 1),
-    panel.grid = element_line(color = "#f0f0f0")
-  )
-
-ggsave(file.path(working_dir, "celltype_relative_proportions.svg"), prop_barplot, width = 16, height = 10, units = "cm", dpi = 300)
+#proportional_scores <- proportional_scores %>%
+#  group_by(grouping_factor) %>%
+#  mutate(
+#    Proportion = Total_Z / sum(Total_Z, na.rm = TRUE) * 100
+#  ) %>%
+#  ungroup()
+#
+#  prop_barplot <- ggplot(proportional_scores, aes(x = grouping_factor, y = Proportion, fill = Celltype_Class)) +
+#  geom_bar(stat = "identity", width = 0.8) +
+#  labs(
+#    title = "Proportional Celltype Signature per Group",
+#    x = "Celltype Group",
+#    y = "Proportion of Total Marker Signal (%)",
+#    fill = "Celltype Class"
+#  ) +
+#  scale_fill_brewer(palette = "Set2") +
+#  theme_minimal(base_size = 14) +
+#  theme(
+#    plot.title = element_text(face = "bold", hjust = 0.5),
+#    axis.text.x = element_text(angle = 45, hjust = 1),
+#    panel.grid = element_line(color = "#f0f0f0")
+#  )
+#
+#ggsave(file.path(working_dir, "celltype_relative_proportions.svg"), prop_barplot, width = 16, height = 10, units = "cm", dpi = 300)
