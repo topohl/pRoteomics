@@ -8,8 +8,8 @@ to_install <- setdiff(pkgs, rownames(installed.packages()))
 if (length(to_install)) install.packages(to_install, quiet = TRUE)
 invisible(lapply(pkgs, library, character.only = TRUE))
 
-# Pathsneuron-regionLayerBaseline"
-in_dir  <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/mapped/neuron-regionLayerBaselineCA1"
+# Paths
+in_dir  <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/mapped/neuron-phenotypeWithinUnit"
 out_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Results/prot_sign"
 if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
