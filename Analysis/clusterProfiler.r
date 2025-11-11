@@ -1,589 +1,422 @@
-#' Gene Set Enrichment Analysis (GSEA) Workflow using clusterProfiler
+#' ============================================================
+#' HIGH-THROUGHPUT Gene Set Enrichment Analysis (GSEA) Workflow
+#' WITH PARALLEL PROCESSING
+#' ============================================================
+#' 
+#' This script performs comprehensive GSEA, KEGG, ORA, custom pathway analysis
+#' for MULTIPLE cell type comparisons in parallel using doParallel.
+#' Celltype scoring runs separately at the end.
 #'
-#' This script performs Gene Set Enrichment Analysis (GSEA), KEGG pathway enrichment,
-#' and visualization of functional gene sets using the `clusterProfiler` ecosystem.
-#' It supports mouse datasets and creates various publication-quality plots.
-#'
-#' @details
-#' The analysis includes:
-#' - Setup of required packages and environment
-#' - Loading and sorting of gene lists based on log2 fold change
-#' - Gene Ontology (GO) GSEA
-#' - KEGG GSEA (symbol to ENTREZID conversion)
-#' - Functional plots: dotplots, network plots, ridgeplots, GSEA plots
-#' - PubMed trend analysis for top terms
-#' - GO enrichment analysis and heatmaps
-#'
-#' @references
-#' clusterProfiler vignette: \url{https://bioconductor.org/packages/release/bioc/vignettes/clusterProfiler/inst/doc/clusterProfiler.html}
-#'
-#' @author
-#' Tobias Pohl
+#' @author Tobias Pohl
+#' ============================================================
+
+#' ============================================================
+#' HIGH-THROUGHPUT GSEA Workflow with FUTURE (BETTER)
+#' ============================================================
 
 # ----------------------------------------------------
-# Install and load packages
+# 1. PACKAGE SETUP
 # ----------------------------------------------------
-
-# Modularized package installation and loading functions
-
-# Function to ensure BiocManager is installed
 checkBiocManager <- function() {
-  if (!requireNamespace("BiocManager", quietly = TRUE)) {
-    install.packages("BiocManager")
-  }
+  if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager")
 }
 
-# Function to install missing Bioconductor packages
 installBioC <- function(bioc_packages) {
   missing <- bioc_packages[!sapply(bioc_packages, requireNamespace, quietly = TRUE)]
-  if (length(missing) > 0) {
-    BiocManager::install(missing)
-  }
+  if (length(missing) > 0) BiocManager::install(missing)
 }
 
-# Function to install and load a CRAN package
 installAndLoadCRAN <- function(pkg) {
-  if (!require(pkg, character.only = TRUE, quietly = TRUE)) {
-    install.packages(pkg, dependencies = TRUE)
-  }
+  if (!require(pkg, character.only = TRUE, quietly = TRUE)) install.packages(pkg, dependencies = TRUE)
   library(pkg, character.only = TRUE)
 }
 
-# Main function to setup all required packages
 setupPackages <- function() {
   checkBiocManager()
-
-  required_packages <- c(
-    "clusterProfiler", "pathview", "enrichplot", "DOSE", "ggplot2", "ggnewscale",
-    "cowplot", "ggridges", "europepmc", "ggpubr", "ggrepel", "ggsci", "ggthemes",
-    "ggExtra", "ggforce", "ggalluvial", "lattice", "latticeExtra", "BiocManager",
-    "org.Mm.eg.db", "ggplotify", "svglite", "tidyr", "dplyr", "pheatmap", "proxy",
-    "tibble"
-  )
-
+  required_packages <- c("clusterProfiler", "pathview", "enrichplot", "DOSE", "ggplot2", "ggnewscale",
+                         "cowplot", "ggridges", "europepmc", "ggpubr", "ggrepel", "ggsci", "ggthemes",
+                         "ggExtra", "ggforce", "ggalluvial", "lattice", "latticeExtra", "BiocManager",
+                         "org.Mm.eg.db", "ggplotify", "svglite", "tidyr", "dplyr", "pheatmap", "proxy",
+                         "tibble", "openxlsx", "future", "future.apply")
   bioc_packages <- c("clusterProfiler", "pathview", "enrichplot", "DOSE", "org.Mm.eg.db")
-
   installBioC(bioc_packages)
   invisible(lapply(required_packages, installAndLoadCRAN))
 }
 
-# Call the main setup function to install and load all necessary packages
 setupPackages()
 
 # ----------------------------------------------------
-# Define working directory, cell types, and data paths
+# 2. DIRECTORY ORGANIZATION FUNCTIONS
 # ----------------------------------------------------
-
-# Define cell types
-cell_types <- c("mcherry2", "mcherry4")
-
-# Set directories
-# working_dir <- "/Users/tobiaspohl/Documents/clusterProfiler"
-working_dir <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler"
-raw_data_dir <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/raw/unknown-comparison/cleaned"
-results_dir <- file.path(working_dir, "Results", paste(cell_types, collapse = "_"))
-if (!dir.exists(results_dir)) {
-  dir.create(results_dir, recursive = TRUE)
+create_analysis_dirs <- function(base_dir, comparison_name, ontology) {
+  dirs <- list(
+    results = file.path(base_dir, "Results", comparison_name),
+    go_ont = file.path(base_dir, "Results", comparison_name, "GO", ontology),
+    kegg = file.path(base_dir, "Results", comparison_name, "KEGG"),
+    ora = file.path(base_dir, "Results", comparison_name, "ORA"),
+    custom = file.path(base_dir, "Results", comparison_name, "Custom"),
+    pathview = file.path(base_dir, "Results", comparison_name, "pathview"),
+    plots_go = file.path(base_dir, "Plots", comparison_name, paste0("GO_", ontology)),
+    plots_kegg = file.path(base_dir, "Plots", comparison_name, "KEGG"),
+    plots_ora = file.path(base_dir, "Plots", comparison_name, "ORA"),
+    plots_custom = file.path(base_dir, "Plots", comparison_name, "Custom"),
+    core_enrich = file.path(base_dir, "Datasets/core_enrichment", ontology)
+  )
+  lapply(dirs, function(d) if (!dir.exists(d)) dir.create(d, recursive = TRUE))
+  return(dirs)
 }
-setwd(working_dir)
 
-file_name <- paste0(paste(cell_types, collapse = "_"), ".csv")
-data_path <- file.path(working_dir, "Datasets", "mapped", file_name)
+save_plot_organized <- function(plot, filename, directory) {
+  ggsave(file.path(directory, filename), plot, units = "cm", dpi = 300)
+}
 
-# set organism
+read_gct <- function(file_path) {
+  gct_data <- read.delim(file_path, skip = 2, header = FALSE, check.names = FALSE)
+  if ("Name" %in% colnames(gct_data)) {
+    colnames(gct_data)[1] <- "Gene"
+  }
+  return(gct_data)
+}
+
+# ----------------------------------------------------
+# 3. DATA INPUT/COMPARISONS
+# ----------------------------------------------------
+mapped_dir <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/mapped"
+comparison_files <- list.files(mapped_dir, pattern = "\\.csv$", full.names = FALSE)
+comparison_list <- lapply(comparison_files, function(f) {
+  parts <- strsplit(sub("\\.csv$", "", f), "_")[[1]]
+  if (length(parts) == 2 && all(nzchar(parts))) parts else NULL
+})
+comparison_list <- Filter(Negate(is.null), comparison_list)
+
+if (length(comparison_list) == 0) {
+  warning("No valid comparison files found in: ", mapped_dir)
+}
+
+working_base <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler"
+working_dir <- working_base
+mapped_data_base <- file.path(working_base, "Datasets/mapped")
 organism <- "org.Mm.eg.db"
+ont <- "BP"
 
-# Set comparison ontology
-ont <- "BP"  # Cellular Component
-# ont <- "BP"  # Biological Process
-# ont <- "MF"  # Molecular Function
-# ont <- "ALL"  # All Ontologies
+nk3r_genes <- c("P21279", "P21278", "P51432", "P11881", "P63318", "P68404", "P0DP26", "P0DP27", "P0DP28", "P11798", "P28652", "P47937", "P47713")
+selected_uniprot <- c("P21279", "P21278", "Q9Z1B3", "P51432", "P11881", "P68404", "P63318", "P0DP26", "P0DP27", "P11798", "P28652", "Q61411", "Q99N57", "P31938", "P63085", "Q63844", "Q8BWG8", "Q91YI4", "V9GXQ9")
+path_ids <- c("mmu04110", "mmu04115", "mmu04114", "mmu04113", "mmu04112", "mmu04111", "mmu04116", "mmu04117", "mmu04118", "mmu04119", "mmu04720", "mmu04721", "mmu04722", "mmu04725", "mmu04726", "mmu04727", "mmu04724", "mmu04080", "mmu00030", "mmu04151")
 
 # ----------------------------------------------------
-# Helper functions
+# 4. SETUP PARALLEL PROCESSING WITH FUTURE
 # ----------------------------------------------------
+library(future)
+library(future.apply)
 
-# Helper to save plots
-save_plot <- function(plot, filename) {
-  ggsave(file.path(results_dir, filename), plot, units = "cm", dpi = 300)
+# Set up multisession plan
+n_cores <- availableCores() - 1
+plan(multisession, workers = n_cores)
+
+cat("Setting up parallel processing with", n_cores, "cores using future\n")
+
+# ----------------------------------------------------
+# 5. ANALYSIS FUNCTION
+# ----------------------------------------------------
+analyze_comparison <- function(cell_types, working_base, mapped_data_base, organism, ont, 
+                               nk3r_genes, selected_uniprot, path_ids) {
+  
+  # Load required libraries in worker
+  suppressPackageStartupMessages({
+    library(clusterProfiler)
+    library(pathview)
+    library(enrichplot)
+    library(DOSE)
+    library(ggplot2)
+    library(tidyr)
+    library(dplyr)
+    library(openxlsx)
+    library(org.Mm.eg.db)
+  })
+  
+  comparison_name <- paste(cell_types, collapse = "_")
+  
+  tryCatch({
+    # Setup directories
+    dirs <- create_analysis_dirs(working_base, comparison_name, ont)
+    
+    # Define data file path
+    file_name <- paste0(comparison_name, ".csv")
+    data_path <- file.path(mapped_data_base, file_name)
+    
+    if (!file.exists(data_path)) {
+      return(list(status = "FAILED", comparison = comparison_name, error = "File not found"))
+    }
+    
+    # Load and prepare data
+    df <- read.csv(data_path, header = TRUE, stringsAsFactors = FALSE)
+    if (!"log2fc" %in% colnames(df)) {
+      if ("logFC" %in% colnames(df)) {
+        colnames(df)[colnames(df) == "logFC"] <- "log2fc"
+      } else {
+        return(list(status = "FAILED", comparison = comparison_name, error = "No log2fc column"))
+      }
+    }
+    
+    colnames(df)[1] <- "gene_symbol"
+    original_gene_list <- df$log2fc
+    names(original_gene_list) <- df$gene_symbol
+    gene_list <- sort(na.omit(original_gene_list), decreasing = TRUE)
+    gene_list <- gene_list[!duplicated(names(gene_list))]
+    
+    top_df <- df
+    colnames(top_df)[1] <- "gene_symbol"
+    top_gene_list <- top_df$log2fc
+    names(top_gene_list) <- top_df$gene_symbol
+    top_gene_list <- sort(na.omit(top_gene_list), decreasing = TRUE)
+    top_genes <- names(top_gene_list)[abs(top_gene_list) > 1]
+    top_genes <- sort(top_gene_list[top_genes], decreasing = TRUE)
+    top_genes <- names(top_genes)
+    
+    # ----------------------------------------------------
+    # GSEA (GO)
+    # ----------------------------------------------------
+    gse <- gseGO(geneList = gene_list, ont = ont, keyType = "UNIPROT", 
+                 minGSSize = 3, maxGSSize = 800, pvalueCutoff = 1, 
+                 verbose = FALSE, OrgDb = organism, pAdjustMethod = "BH")
+    
+    gse_plot <- clusterProfiler::dotplot(gse, showCategory = 10, split = ".sign") +
+      facet_wrap(~ .sign, nrow = 1) +
+      labs(title = paste("GSEA", ont, "of", comparison_name), x = "Gene Ratio", y = "Gene Set") +
+      scale_fill_viridis_c(option = "cividis") + 
+      theme_minimal(base_size = 12) +
+      theme(
+        plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.text.y = element_text(size = 10),
+        strip.text = element_text(size = 12, face = "plain"),
+        panel.grid.major = element_line(color = "grey85", size = 0.3),
+        panel.grid.minor = element_blank()
+      )
+    
+    save_plot_organized(gse_plot, paste0("GSEA_", ont, "_dotplot.svg"), dirs$plots_go)
+    write.csv(gse@result, file = file.path(dirs$core_enrich, paste0(comparison_name, ".csv")), row.names = FALSE)
+    write.csv(gse@result, file = file.path(dirs$go_ont, paste0("GSEA_", ont, "_results.csv")), row.names = FALSE)
+    
+    # GSEA Visualization Plots
+    save_plot_organized(emapplot(pairwise_termsim(gse), showCategory = 10), paste0("GSEA_", ont, "_emap.svg"), dirs$plots_go)
+    save_plot_organized(cnetplot(gse, categorySize = "pvalue", foldChange = gene_list), paste0("GSEA_", ont, "_cnet.svg"), dirs$plots_go)
+    
+    ridgeplot_gse <- ridgeplot(gse) + labs(x = "Enrichment Distribution", title = paste("GSEA", ont, "Ridgeplot")) + theme_minimal()
+    save_plot_organized(ridgeplot_gse, paste0("GSEA_", ont, "_ridge.svg"), dirs$plots_go)
+    
+    gseaplot_gse <- gseaplot(gse, by = "all", title = gse@result$Description[1], geneSetID = 1)
+    save_plot_organized(gseaplot_gse, paste0("GSEA_", ont, "_plot.svg"), dirs$plots_go)
+    
+    top_terms <- head(gse@result$Description, 3)
+    pmcplot_gse <- pmcplot(top_terms, 2010:2025, proportion = FALSE) + labs(title = paste("Publication Trends -", ont))
+    save_plot_organized(pmcplot_gse, paste0("GSEA_", ont, "_pubmed.svg"), dirs$plots_go)
+    
+    # ORA
+    ora <- enrichGO(gene = top_genes, ont = ont, keyType = "UNIPROT", 
+                    minGSSize = 3, maxGSSize = 800, pvalueCutoff = 1, 
+                    OrgDb = organism, pAdjustMethod = "BH")
+    
+    ora_plot <- clusterProfiler::dotplot(ora, showCategory = 10) + 
+      labs(title = paste("ORA", ont, "- Top Regulated Genes")) + 
+      scale_x_continuous(limits = c(0, 1))
+    save_plot_organized(ora_plot, paste0("ORA_", ont, "_dotplot.svg"), dirs$plots_ora)
+    write.csv(ora@result, file = file.path(dirs$ora, paste0("ORA_", ont, "_results.csv")), row.names = FALSE)
+    
+    # KEGG GSEA
+    ids <- bitr(names(original_gene_list), fromType = "UNIPROT", toType = "ENTREZID", OrgDb = organism)
+    dedup_ids <- ids[!duplicated(ids$UNIPROT), ]
+    df2 <- merge(df, dedup_ids, by.x = "gene_symbol", by.y = "UNIPROT")
+    
+    kegg_gene_list <- df2$log2fc
+    names(kegg_gene_list) <- df2$ENTREZID
+    kegg_gene_list <- kegg_gene_list[!duplicated(names(kegg_gene_list))]
+    kegg_gene_list <- sort(na.omit(kegg_gene_list), decreasing = TRUE)
+    
+    kk2 <- gseKEGG(geneList = kegg_gene_list, organism = "mmu", 
+                   minGSSize = 3, maxGSSize = 800, pvalueCutoff = 1, 
+                   pAdjustMethod = "BH", keyType = "ncbi-geneid", verbose = FALSE)
+    
+    kegg_dot <- clusterProfiler::dotplot(kk2, showCategory = 10, split = ".sign") + 
+      facet_wrap(~ .sign, nrow = 1) + 
+      labs(title = "KEGG GSEA") + 
+      theme_minimal()
+    save_plot_organized(kegg_dot, "KEGG_dotplot.svg", dirs$plots_kegg)
+    save_plot_organized(emapplot(pairwise_termsim(kk2), showCategory = 10), "KEGG_emap.svg", dirs$plots_kegg)
+    save_plot_organized(cnetplot(kk2, categorySize = "pvalue", foldChange = gene_list), "KEGG_cnet.svg", dirs$plots_kegg)
+    save_plot_organized(ridgeplot(kk2), "KEGG_ridge.svg", dirs$plots_kegg)
+    save_plot_organized(gseaplot(kk2, by = "all", title = kk2$Description[1], geneSetID = 1), "KEGG_plot.svg", dirs$plots_kegg)
+    write.csv(kk2@result, file = file.path(dirs$kegg, "KEGG_GSEA_results.csv"), row.names = FALSE)
+    
+    # Pathview
+    pathview_dir <- normalizePath(dirs$pathview, winslash = "/", mustWork = FALSE)
+    oldwd <- getwd()
+    setwd(pathview_dir)
+    
+    lapply(path_ids, function(pid) {
+      pathview(gene.data = kegg_gene_list, pathway.id = pid, species = "mmu", 
+               low = "#6698CC", mid = "white", high = "#F08C21", file.type = "svg")
+    })
+    
+    setwd(oldwd)
+    
+    # EnrichGO Analysis
+    go_enrich <- enrichGO(gene = names(gene_list), universe = names(gene_list), 
+                          OrgDb = organism, keyType = 'UNIPROT', readable = TRUE, 
+                          ont = "ALL", pvalueCutoff = 1, qvalueCutoff = 1, 
+                          pAdjustMethod = "BH", minGSSize = 3, maxGSSize = 800)
+    
+    p4 <- clusterProfiler::dotplot(go_enrich, showCategory = 20, split = "ONTOLOGY") +
+      facet_grid(ONTOLOGY ~ ., scales = "free_y") +
+      labs(title = "GO Enrichment Dotplot", x = "Gene Ratio", y = "GO Term", color = "p.adjust", size = "Count") +
+      scale_color_viridis_c(option = "magma", direction = -1) +
+      theme_minimal(base_size = 12) +
+      theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"), 
+            axis.text.x = element_text(angle = 45, hjust = 1))
+    
+    save_plot_organized(p4, paste0("GOenrich_dotplot.svg"), dirs$plots_go)
+    write.csv(go_enrich@result, file = file.path(dirs$go_ont, paste0("enrichGO_ALL_results.csv")), row.names = FALSE)
+    
+    # KEGG GSEA with Predefined UniProt IDs
+    selected_entrez <- bitr(selected_uniprot, fromType = "UNIPROT", toType = "ENTREZID", OrgDb = organism)
+    selected_df <- merge(df, selected_entrez, by.x = "gene_symbol", by.y = "UNIPROT")
+    selected_kegg_list <- selected_df$log2fc
+    names(selected_kegg_list) <- selected_df$ENTREZID
+    selected_kegg_list <- selected_kegg_list[!duplicated(names(selected_kegg_list))]
+    selected_kegg_list <- sort(na.omit(selected_kegg_list), decreasing = TRUE)
+    
+    gsea_kegg_selected <- gseKEGG(geneList = selected_kegg_list, organism = "mmu", 
+                                   minGSSize = 3, maxGSSize = 800, pvalueCutoff = 1, 
+                                   pAdjustMethod = "BH", keyType = "ncbi-geneid", verbose = FALSE)
+    
+    kegg_selected_dot <- clusterProfiler::dotplot(gsea_kegg_selected, showCategory = 10, split = ".sign") + 
+      facet_wrap(~ .sign, nrow = 1) + 
+      labs(title = "KEGG GSEA (Predefined)") + 
+      theme_minimal()
+    save_plot_organized(kegg_selected_dot, "KEGG_Predefined_dotplot.svg", dirs$plots_kegg)
+    write.csv(gsea_kegg_selected@result, file = file.path(dirs$kegg, "KEGG_GSEA_Predefined_UniProt.csv"), row.names = FALSE)
+    
+    save_plot_organized(emapplot(pairwise_termsim(gsea_kegg_selected), showCategory = 10), "KEGG_Predefined_emap.svg", dirs$plots_kegg)
+    save_plot_organized(cnetplot(gsea_kegg_selected, categorySize = "pvalue", foldChange = selected_kegg_list), "KEGG_Predefined_cnet.svg", dirs$plots_kegg)
+    save_plot_organized(ridgeplot(gsea_kegg_selected), "KEGG_Predefined_ridge.svg", dirs$plots_kegg)
+    save_plot_organized(gseaplot(gsea_kegg_selected, by = "all", title = gsea_kegg_selected$Description[1], geneSetID = 1), "KEGG_Predefined_plot.svg", dirs$plots_kegg)
+    
+    # Custom GSEA: NK3R-signalling
+    term2gene_nk3r <- data.frame(term = rep("NK3R-signalling", length(nk3r_genes)), gene = nk3r_genes)
+    custom_gene_list <- df$log2fc
+    names(custom_gene_list) <- df$gene_symbol
+    custom_gene_list <- sort(na.omit(custom_gene_list), decreasing = TRUE)
+    custom_gene_list <- custom_gene_list[!duplicated(names(custom_gene_list))]
+    
+    gsea_nk3r <- clusterProfiler::GSEA(geneList = custom_gene_list, TERM2GENE = term2gene_nk3r, 
+                                       pvalueCutoff = 1, minGSSize = 1, maxGSSize = 500, verbose = FALSE)
+    
+    nk3r_dot <- clusterProfiler::dotplot(gsea_nk3r, showCategory = 10, split = ".sign") + 
+      facet_wrap(~ .sign, nrow = 1) + 
+      labs(title = "NK3R-signalling GSEA") + 
+      theme_minimal()
+    save_plot_organized(nk3r_dot, "NK3R_dotplot.svg", dirs$plots_custom)
+    
+    nk3r_plot <- gseaplot(gsea_nk3r, by = "all", title = "NK3R-signalling", geneSetID = 1)
+    save_plot_organized(nk3r_plot, "NK3R_gsea_plot.svg", dirs$plots_custom)
+    openxlsx::write.xlsx(gsea_nk3r@result, file = file.path(dirs$custom, "NK3R_GSEA_results.xlsx"))
+    
+    return(list(status = "SUCCESS", comparison = comparison_name))
+    
+  }, error = function(e) {
+    return(list(status = "ERROR", comparison = comparison_name, error = conditionMessage(e)))
+  })
 }
 
-plot_dot <- function(dataset, cell_types, results_dir = results_dir) {
-  dot_title <- paste("GSEA of", paste(cell_types, collapse = " over "))
-  p <- clusterProfiler::dotplot(dataset, showCategory = 10, split = ".sign") +
-    facet_wrap(~ .sign, nrow = 1) +
-    labs(title = dot_title, x = "Gene Ratio", y = "Gene Set") +
-    scale_fill_viridis_c(option = "cividis") +
-    theme_minimal(base_size = 12) +
-    theme(
-      plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
-      axis.text.x = element_text(angle = 45, hjust = 1),
-      axis.text.y = element_text(size = 10),
-      strip.text = element_text(size = 12, face = "plain"),
-      panel.grid.major = element_line(color = "grey85", size = 0.3),
-      panel.grid.minor = element_blank()
-    )
-  analysis_type <- deparse(substitute(dataset))
-  plot_filename <- paste0(analysis_type, "_", paste(cell_types, collapse = "_"), ".svg")
-  save_plot(p, plot_filename)
-  return(p)
-}
-
 # ----------------------------------------------------
-# Load and prepare data
+# 6. RUN PARALLEL ANALYSIS WITH FUTURE
 # ----------------------------------------------------
+cat("\n==============================================\n")
+cat("STARTING PARALLEL GSEA ANALYSIS\n")
+cat("==============================================\n\n")
 
-# Load and prepare gene data
-df <- read.csv(data_path, header = TRUE)
-# check if log2fc column exists
-if (!"log2fc" %in% colnames(df)) {
-  if ("logFC" %in% colnames(df)) {
-    colnames(df)[colnames(df) == "logFC"] <- "log2fc"
+results <- future_lapply(comparison_list, function(cell_types) {
+  analyze_comparison(cell_types, working_base, mapped_data_base, organism, ont, 
+                    nk3r_genes, selected_uniprot, path_ids)
+}, future.seed = TRUE)
+
+# Reset to sequential processing
+plan(sequential)
+
+# Print summary
+cat("\n==============================================\n")
+cat("PARALLEL ANALYSIS SUMMARY\n")
+cat("==============================================\n\n")
+
+for (result in results) {
+  if (result$status == "SUCCESS") {
+    cat("✓", result$comparison, "- COMPLETED\n")
   } else {
-    stop("Neither log2fc nor logFC column found in the input data.")
+    cat("✗", result$comparison, "- FAILED:", result$error, "\n")
   }
 }
 
-colnames(df)[1] <- "gene_symbol"
-original_gene_list <- df$log2fc
-names(original_gene_list) <- df$gene_symbol
-gene_list <- sort(na.omit(original_gene_list), decreasing = TRUE)
-# remove duplicates
-gene_list <- gene_list[!duplicated(names(gene_list))]
-
-top_df <- read.csv(data_path, header = TRUE)
-colnames(top_df)[1] <- "gene_symbol"
-top_gene_list <- top_df$log2fc
-names(top_gene_list) <- top_df$gene_symbol
-top_gene_list <- sort(na.omit(top_gene_list), decreasing = TRUE)
-# Select top N genes by absolute fold change
-top_genes <- names(top_gene_list)[abs(top_gene_list) > 1]  # Adjust threshold as needed
-top_genes <- sort(top_gene_list[top_genes], decreasing = TRUE)
-top_genes <- names(top_genes)
-
-# ----------------------------------------------------
-# Perform Gene Set Enrichment Analysis (GSEA)
-# ----------------------------------------------------
-
-# Gene Set Enrichment Analysis (GSEA)
-gse <- gseGO(
-  geneList = gene_list, ont = "CC", keyType = "UNIPROT",
-  minGSSize = 3, maxGSSize = 800, pvalueCutoff = 1, verbose = TRUE,
-  OrgDb = organism, pAdjustMethod = "BH"
-)
-
-plot_dot(gse, cell_types)
-
-# save core_enrichment results
-core_enrichment <- gse@result$core_enrichment
-
-# Save the GSEA results in the primary directory using ont as the subfolder
-core_dir <- file.path(results_dir, "core_enrichment", ont)
-if (!dir.exists(core_dir)) {
-  dir.create(core_dir, recursive = TRUE)
-}
-write.csv(gse@result,
-          file = file.path(core_dir, paste0("coreEnrichment_", ont, "_", paste(cell_types, collapse = "_"), ".csv")))
-
-# Additionally, save the GSEA results in the specified Datasets directory using ont as the subfolder
-additional_dir <- file.path("S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/core_enrichment", ont)
-if (!dir.exists(additional_dir)) {
-  dir.create(additional_dir, recursive = TRUE)
-}
-write.csv(gse@result,
-          file = file.path(additional_dir, paste0("coreEnrichment_", ont, "_", paste(cell_types, collapse = "_"), ".csv")))
-
-# ----------------------------------------------------
-# Focus on the top regulated genes
-# ----------------------------------------------------
-
-# Set annotation package and load it
-#organism <- "org.Mm.eg.db" 
-#BiocManager::install(organism, character.only = TRUE)
-#library(organism, character.only = TRUE)
-
-# Perform enrichment analysis (ORA)
-#library(org.Mm.eg.db)
-ora <- enrichGO(gene = top_genes, ont = "CC", keyType = "UNIPROT",
-             minGSSize = 3, maxGSSize = 800, pvalueCutoff = 1,
-             OrgDb = organism, pAdjustMethod = "none")
-
-# Dotplot for ORA
-p7 <- clusterProfiler::dotplot(ora, showCategory = 10) +
-  labs(title = "ORA of Top Regulated Genes") +
-  scale_x_continuous(limits = c(0, 1))  # Scale Gene Ratio from 0 to 1
-save_plot(p7, paste("ORA_dotplot_", paste(cell_types, collapse = "_"), ".svg"))
-# Save the ORA results
-#write.csv(ora@result, file = file.path(results_dir, paste("ORA_results_", paste(cell_types, collapse = "_"), ".csv")))
-
-# ----------------------------------------------------
-# Enrichment Map, Network Plot, and Ridgeplot of GSEA
-# ----------------------------------------------------
-
-# Enrichment Map and Network Plot
-emapplot(pairwise_termsim(gse), showCategory = 10)
-save_plot(emapplot(pairwise_termsim(gse), showCategory = 10),
-          paste("GSEAemap_", paste(cell_types, collapse = "_"), ".svg"))
-
-cnetplot(gse, categorySize = "pvalue", foldChange = gene_list)
-save_plot(cnetplot(gse, categorySize = "pvalue", foldChange = gene_list),
-          paste("GSEAcnet_", paste(cell_types, collapse = "_"), ".svg"))
-
-# Ridgeplot: Visualizing enrichment distribution
-ridgeplot_gse <- ridgeplot(gse) +
-  labs(x = "Enrichment Distribution", title = "GSEA Ridgeplot") +
-  theme_minimal() +
-  theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"))
-save_plot(ridgeplot_gse, paste("GSEA_Ridgeplot_", paste(cell_types, collapse = "_"), ".svg"))
-
-# GSEA Plot: Highlighting specific gene sets
-gseaplot_gse <- gseaplot(gse, by = "all", title = gse@result$Description[1], geneSetID = 1)
-save_plot(gseaplot_gse, paste("GSEA_Plot_", paste(cell_types, collapse = "_"), ".svg"))
-
-# PubMed Trend Plot: Analyzing publication trends for top enriched terms
-top_terms <- head(gse@result$Description, 3)
-pmcplot_gse <- pmcplot(top_terms, 2010:2025, proportion = FALSE) +
-  labs(title = "Publication Trends for Top Enriched Terms")
-save_plot(pmcplot_gse, paste("GSEA_PubMed_Trends_", paste(cell_types, collapse = "_"), ".svg"))
-
-# ----------------------------------------------------
-# KEGG Gene Set Enrichment Analysis
-# ----------------------------------------------------
-
-# KEGG GSEA Analysis
-# Map SYMBOL to ENTREZID
-ids <- bitr(names(original_gene_list), fromType = "UNIPROT", toType = "ENTREZID", OrgDb = "org.Mm.eg.db")
-
-# Remove duplicated UNIPROT IDs
-dedup_ids <- ids[!duplicated(ids$UNIPROT), ]
-
-# Merge df with ENTREZID mapping
-df2 <- merge(df, dedup_ids, by.x = "gene_symbol", by.y = "UNIPROT")
-
-# Now use ENTREZID as names
-kegg_gene_list <- df2$log2fc
-names(kegg_gene_list) <- df2$ENTREZID
-# Remove duplicates
-kegg_gene_list <- kegg_gene_list[!duplicated(names(kegg_gene_list))]
-
-# Remove NAs and sort
-kegg_gene_list <- sort(na.omit(kegg_gene_list), decreasing = TRUE)
-
-kegg_organism <- "mmu"
-kk2 <- gseKEGG(
-  geneList = kegg_gene_list, organism = "mmu",
-  minGSSize = 3, maxGSSize = 800, pvalueCutoff = 1, pAdjustMethod = "BH",
-  keyType = "ncbi-geneid"
-)
-
-# KEGG Dotplot and Network Plot
-#kegg_dot_title <- paste("KEGG GSEA Enriched Pathways of", paste(cell_types, collapse = " over "))
-#p2 <- clusterProfiler::dotplot(kk2, showCategory = 10, title = kegg_dot_title, split = ".sign") +
-#  facet_grid(. ~ .sign)
-#save_plot(p2, paste("KEGGpathway_", paste(cell_types, collapse = "_"), ".svg"))
-
-plot_dot(kk2, cell_types)
-
-emapplot(pairwise_termsim(kk2), showCategory = 10)
-cnetplot(kk2, categorySize = "pvalue", foldChange = gene_list)
-ridgeplot(kk2) + labs(x = "Enrichment distribution")
-gseaplot(kk2, by = "all", title = kk2$Description[1], geneSetID = 1)
-
-# KEGG Pathway Visualizations using Pathview
-if (!requireNamespace("pathview", quietly = TRUE)) install.packages("pathview")
-library(pathview)
-
-# KEGG Pathway Visualizations using Pathview
-
-# Define additional pathway IDs for visualization.
-path_ids <- c(
-  "mmu04110", "mmu04115", "mmu04114", "mmu04113", "mmu04112", "mmu04111",
-  "mmu04116", "mmu04117", "mmu04118", "mmu04119", "mmu04720", "mmu04721",
-  "mmu04722", "mmu04725", "mmu04726", "mmu04727", "mmu04724", "mmu04080",
-  "mmu00030",
-  "mmu04151",  # P!3K-Akt signaling pathway
-)
-
-# Create a subdirectory for pathview results and get its absolute path.
-pathview_dir <- normalizePath(file.path(results_dir, "pathview"), winslash = "/", mustWork = FALSE)
-if (!dir.exists(pathview_dir)) {
-  dir.create(pathview_dir, recursive = TRUE)
-}
-
-oldwd <- getwd()
-setwd(pathview_dir)
-# Generate pathview plots for each pathway in the list using absolute paths.
-lapply(path_ids, function(pid) {
-  pathview(
-    gene.data = kegg_gene_list,
-    pathway.id = pid,
-    species = kegg_organism,
-    low = "#6698CC",
-    mid = "white",
-    high = "#F08C21",
-    file.type = "svg"
-  )
-})
-setwd(oldwd)
-# ----------------------------------------------------
-# EnrichGO Analysis and Heatmap
-# ----------------------------------------------------
-
-# EnrichGO Analysis and Heatmap
-go_enrich <- enrichGO(
-  gene = names(gene_list), universe = names(gene_list), OrgDb = organism, 
-  keyType = 'SYMBOL', readable = TRUE, ont = "ALL", pvalueCutoff = 1, 
-  qvalueCutoff = 1, pAdjustMethod = "none", minGSSize = 3, maxGSSize = 800
-)
-
-# Heatmap Plot
-#p3 <- heatplot(go_enrich, foldChange = gene_list, showCategory = 5)
-#save_plot(p4, paste("GOheatmap_", paste(cell_types, collapse = "_"), ".svg"))
-#cowplot::plot_grid(p1, p3, ncol = 1, labels = LETTERS[1:2])
+cat("\n==============================================\n")
+cat("ALL COMPARISONS COMPLETED!\n")
+cat("==============================================\n\n")
 
 
 # ----------------------------------------------------
-# KEGG GSEA Analysis with Predefined UniProt IDs
+# 5. CELLTYPE SCORING ANALYSIS (Sequential)
 # ----------------------------------------------------
+cat("\n==============================================\n")
+cat("STARTING CELLTYPE SCORING ANALYSIS\n")
+cat("==============================================\n\n")
 
-# Define your UniProt gene list
-#selected_uniprot <- c("Q8K3R3", "Q8R071", "P11798", "P28652", "P20444", "P68404", "P05132", "P68181")
-#selected_uniprot <- c(
-#  "Q9JL06", "Q9EQ31", "Q149R9", "P61793", "Q6NS65", "Q9QY96", "Q8JZL2", "P56942",
-#  "Q8BZ39", "Q5H8A1", "P12023", "P27784", "P51670", "P10107", "O88536", "P11859",
-#  "Q9QXK8", "O55040", "Q6S9I3", "P32299", "Q61125", "P62880", "P29387", "Q61011",
-#  "P62881", "P62874", "Q80SZ7", "Q9DAS9", "Q61016", "P63078", "Q61012", "Q61017",
-#  "P63216", "Q9CXP8", "Q9JMF3", "P50153", "P61953", "P63213", "O08899", "O08850",
-#  "Q9CX84", "Q9JL25", "Q8K443", "P97428", "V9GXQ3", "Q9QZB0", "Q99PG4", "Q9DC04",
-#  "P21278", "P21279", "P30678", "P30677", "P63085", "P28867", "P20444", "Q99MK8",
-#  "A3KGF7", "Q9Z1B3", "Q91UZ1", "P51432", "P35991", "Q9CWR0", "Q62245", "Q0KL02",
-#  "A2CG49", "P97717", "P97714", "P97718", "P30987", "Q5U431", "P55095", "Q61606",
-#  "Q8BZP8", "P0C0P8", "P35455", "O08908", "Q64143", "P26450", "P42337", "O08849",
-#  "A0A5F8MPV0", "Q9Z329", "P70227", "P11881", "Q99LR1", "Q8R2Y0", "Q6WQJ1", "Q91WC9",
-#  "O35678", "P16054", "P23298", "Q02111", "Q61143", "Q9QZC1", "Q9WVC5", "O88673",
-#  "D3YXJ0", "Q6P5E8", "Q6NS52", "Q91WG7", "Q80UP3", "E9PUQ8", "D3YWQ0", "Q9R1C6",
-#  "F6UUZ3", "Q8VCK6", "Q62361", "P21761", "P41539", "P30549", "Q920H4", "Q9ERZ3",
-#  "P12657", "P55099", "P47937", "P56481", "O08786", "P09240", "Q3UVX5", "P97772",
-#  "P70174", "Q8K4Z6", "P70259", "O54798", "O54799", "P21729", "Q8R1I2", "Q9CR53",
-#  "Q924H0", "E9Q468", "Q9WVA8", "Q9QXU7", "Q14A28", "Q9JKL1", "Q8K458", "Q9QXZ9",
-#  "P47993", "Q9R0M1", "P43117", "Q8BFU7", "Q99P50", "Q9EQX0", "Q62035", "O88855",
-#  "Q9JJL9", "Q8CE23", "G3UWA8", "Q920A1", "P30548", "Q99JA4", "P49650", "O55241",
-#  "P58308", "Q8BMC0", "P97926", "P35454", "P35383", "P19221", "O08675", "O88634",
-#  "P30558", "P55086", "P29754", "Q9ERK9", "Q91V45", "Q6Y4S4", "Q7TMA4", "Q8BFQ3",
-#  "Q9Z282", "Q8BUD0", "Q61038", "P35375", "Q8BLG2", "P48757", "P58307", "Q9WU02",
-#  "Q62463", "Q3UFD7", "P13562", "Q01776", "Q76JU9", "Q765I1", "Q9QZQ3", "Q8VIH9",
-#  "P48302", "Q61614", "P22387", "P22389", "P48299", "P70310", "O88319", "Q9D3P9",
-#  "P35363", "Q02152", "P34968", "Q9WUT3", "P18653", "P18654", "Q01147-1", "Q60631",
-#  "Q06186", "Q01279", "Q61411", "P32883", "P08556", "P28862", "Q9WVS8", "Q63844"
-#)
+grouping_factor <- "Celltype"
 
-# Define the selected UniProt IDs for the custom GSEA analysis
-selected_uniprot <- c(
-  "P21279", "P21278", "Q9Z1B3", "P51432", "P11881", "P68404",
-  "P63318", "P0DP26", "P0DP27", "P11798", "P28652", "Q61411",
-  "Q99N57", "P31938", "P63085", "Q63844", "Q8BWG8", "Q91YI4", "V9GXQ9"
-)
-
-# Convert to ENTREZIDs
-selected_entrez <- bitr(
-  selected_uniprot,
-  fromType = "UNIPROT",
-  toType = "ENTREZID",
-  OrgDb = "org.Mm.eg.db"
-)
-
-# Extract fold changes for these genes from your dataframe
-# Assuming 'df' contains 'gene_symbol' = UNIPROT and 'log2fc'
-selected_df <- merge(df, selected_entrez, by.x = "gene_symbol", by.y = "UNIPROT")
-selected_kegg_list <- selected_df$log2fc
-names(selected_kegg_list) <- selected_df$ENTREZID
-
-# Remove duplicates and sort
-selected_kegg_list <- selected_kegg_list[!duplicated(names(selected_kegg_list))]
-selected_kegg_list <- sort(na.omit(selected_kegg_list), decreasing = TRUE)
-
-# Run GSEA on selected gene set
-gsea_kegg_selected <- gseKEGG(
-  geneList = selected_kegg_list,
-  organism = "mmu",
-  minGSSize = 3,
-  maxGSSize = 800,
-  pvalueCutoff = 1,
-  pAdjustMethod = "BH",
-  keyType = "ncbi-geneid",
-  verbose = TRUE
-)
-
-# Plot and save
-plot_dot(gsea_kegg_selected, cell_types)
-write.csv(
-  gsea_kegg_selected@result,
-  file = file.path(results_dir, paste0("KEGG_GSEA_Predefined_UniProt_", paste(cell_types, collapse = "_"), ".csv"))
-)
-
-# Optional plots
-emapplot(pairwise_termsim(gsea_kegg_selected), showCategory = 10)
-cnetplot(gsea_kegg_selected, categorySize = "pvalue", foldChange = selected_kegg_list)
-ridgeplot(gsea_kegg_selected)
-gseaplot(gsea_kegg_selected, by = "all", title = gsea_kegg_selected$Description[1], geneSetID = 1)
-
-
-
-# ----------------------------------------------------
-# Custom GSEA: NK3R-signalling pathway (UniProt IDs)
-# ----------------------------------------------------
-
-# Define your custom gene set as TERM2GENE data.frame
-#nk3r_genes <- c("Q8K3R3", "Q8R071", "P11798", "P28652", "P20444", "P68404", "P05132", "P68181")
-
-#nk3r_genes <- c(
-#  "Q9JL06", "Q9EQ31", "Q149R9", "P61793", "Q6NS65", "Q9QY96", "Q8JZL2", "P56942",
-#  "Q8BZ39", "Q5H8A1", "P12023", "P27784", "P51670", "P10107", "O88536", "P11859",
-#  "Q9QXK8", "O55040", "Q6S9I3", "P32299", "Q61125", "P62880", "P29387", "Q61011",
-#  "P62881", "P62874", "Q80SZ7", "Q9DAS9", "Q61016", "P63078", "Q61012", "Q61017",
-#  "P63216", "Q9CXP8", "Q9JMF3", "P50153", "P61953", "P63213", "O08899", "O08850",
-#  "Q9CX84", "Q9JL25", "Q8K443", "P97428", "V9GXQ3", "Q9QZB0", "Q99PG4", "Q9DC04",
-#  "P21278", "P21279", "P30678", "P30677", "P63085", "P28867", "P20444", "Q99MK8",
-#  "A3KGF7", "Q9Z1B3", "Q91UZ1", "P51432", "P35991", "Q9CWR0", "Q62245", "Q0KL02",
-#  "A2CG49", "P97717", "P97714", "P97718", "P30987", "Q5U431", "P55095", "Q61606",
-#  "Q8BZP8", "P0C0P8", "P35455", "O08908", "Q64143", "P26450", "P42337", "O08849",
-#  "A0A5F8MPV0", "Q9Z329", "P70227", "P11881", "Q99LR1", "Q8R2Y0", "Q6WQJ1", "Q91WC9",
-#  "O35678", "P16054", "P23298", "Q02111", "Q61143", "Q9QZC1", "Q9WVC5", "O88673",
-#  "D3YXJ0", "Q6P5E8", "Q6NS52", "Q91WG7", "Q80UP3", "E9PUQ8", "D3YWQ0", "Q9R1C6",
-#  "F6UUZ3", "Q8VCK6", "Q62361", "P21761", "P41539", "P30549", "Q920H4", "Q9ERZ3",
-#  "P12657", "P55099", "P47937", "P56481", "O08786", "P09240", "Q3UVX5", "P97772",
-#  "P70174", "Q8K4Z6", "P70259", "O54798", "O54799", "P21729", "Q8R1I2", "Q9CR53",
-#  "Q924H0", "E9Q468", "Q9WVA8", "Q9QXU7", "Q14A28", "Q9JKL1", "Q8K458", "Q9QXZ9",
-#  "P47993", "Q9R0M1", "P43117", "Q8BFU7", "Q99P50", "Q9EQX0", "Q62035", "O88855",
-#  "Q9JJL9", "Q8CE23", "G3UWA8", "Q920A1", "P30548", "Q99JA4", "P49650", "O55241",
-#  "P58308", "Q8BMC0", "P97926", "P35454", "P35383", "P19221", "O08675", "O88634",
-#  "P30558", "P55086", "P29754", "Q9ERK9", "Q91V45", "Q6Y4S4", "Q7TMA4", "Q8BFQ3",
-#  "Q9Z282", "Q8BUD0", "Q61038", "P35375", "Q8BLG2", "P48757", "P58307", "Q9WU02",
-#  "Q62463", "Q3UFD7", "P13562", "Q01776", "Q76JU9", "Q765I1", "Q9QZQ3", "Q8VIH9",
-#  "P48302", "Q61614", "P22387", "P22389", "P48299", "P70310", "O88319", "Q9D3P9",
-#  "P35363", "Q02152", "P34968", "Q9WUT3", "P18653", "P18654", "Q01147-1", "Q60631",
-#  "Q06186", "Q01279", "Q61411", "P32883", "P08556", "P28862", "Q9WVS8", "Q63844"
-#)
-
-#nk3r_genes <- c(
-#  "P21279", "P21278", "Q9Z1B3", "P51432", "P11881", "P68404",
-#  "P63318", "P0DP26", "P0DP27", "P11798", "P28652", "Q61411",
-#  "Q99N57", "P31938", "P63085", "Q63844", "Q8BWG8", "Q91YI4", 
-#  "V9GXQ9")
-
-# nk3r core genes
-nk3r_genes <- c(
-  "P21279", "P21278", "P51432", "P11881", "P63318",
-  "P68404", "P0DP26", "P0DP27", "P0DP28", "P11798",
-  "P28652", "P47937", "P47713"
-)
-
-term2gene_nk3r <- data.frame(
-  term = rep("NK3R-signalling", length(nk3r_genes)),
-  gene = nk3r_genes
-)
-
-# Prepare gene list: log2FCs named by UniProt ID
-custom_gene_list <- df$log2fc
-names(custom_gene_list) <- df$gene_symbol
-custom_gene_list <- sort(na.omit(custom_gene_list), decreasing = TRUE)
-custom_gene_list <- custom_gene_list[!duplicated(names(custom_gene_list))]
-
-# Run GSEA with your custom term2gene set
-gsea_nk3r <- clusterProfiler::GSEA(
-  geneList = custom_gene_list,
-  TERM2GENE = term2gene_nk3r,
-  pvalueCutoff = 1,
-  minGSSize = 1,
-  maxGSSize = 500,
-  verbose = TRUE
-)
-
-# Save and visualize
-plot_dot(gsea_nk3r, cell_types)
-openxlsx::write.xlsx(gsea_nk3r@result,
-           file = file.path(results_dir, paste0("Custom_GSEA_NK3R_", paste(cell_types, collapse = "_"), ".xlsx")))
-
-# Additional plot
-gseaplot(gsea_nk3r, by = "all", title = "NK3R-signalling", geneSetID = 1)
-
-
-# ----------------------------------------------------
-# Celltype scoring
-# ----------------------------------------------------
-
-# load celltypes csv file
-celltype_file <- file.path("S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler",
-                           "Datasets/celltypes_long.xlsx")
-# read the celltype file
-library(openxlsx)
+# Load celltypes markers
+celltype_file <- file.path(working_base, "Datasets/celltypes_long.xlsx")
 celltype_df <- read.xlsx(celltype_file, sheet = 1)
 
+# Load UniProt mapping
 uniprot_mapping_file_path <- file.path(working_dir, "Datasets", "MOUSE_10090_idmapping.dat")
-
 cat("Loading UniProt mapping file from:", uniprot_mapping_file_path, "\n")
-uniprot_df <- read.delim(
-  uniprot_mapping_file_path,
-  header = FALSE,
-  sep = "\t",
-  stringsAsFactors = FALSE
-)
+uniprot_df <- read.delim(uniprot_mapping_file_path, header = FALSE, sep = "\t", stringsAsFactors = FALSE)
 
 # Extract Gene_Name mappings
 gene_names <- uniprot_df %>%
   filter(V2 == "Gene_Name") %>%
   distinct(V1, .keep_all = TRUE) %>%
-  rename(
-    UniProtID = V1,
-    Gene_Name = V3
-  ) %>%
+  rename(UniProtID = V1, Gene_Name = V3) %>%
   select(UniProtID, Gene_Name)
 
 # Extract UniProtKB-ID mappings
 uniprot_ids <- uniprot_df %>%
   filter(V2 == "UniProtKB-ID") %>%
   distinct(V1, .keep_all = TRUE) %>%
-  rename(
-    UniProtID = V1,
-    UniProtKB_ID = V3
-  ) %>%
+  rename(UniProtID = V1, UniProtKB_ID = V3) %>%
   select(UniProtID, UniProtKB_ID)
 
-# Combine both mappings into one gene_map
+# Combine both mappings
 gene_map <- gene_names %>%
   left_join(uniprot_ids, by = "UniProtID")
 
-# load gct file
-read_gct <- function(file_path) {
-  # Read the file, skipping first two lines (version and size info)
-  gct_data <- read.delim(file_path, skip = 2, header = FALSE, check.names = FALSE)
-  
-  # Rename "Name" to "Gene" if needed
-  if ("Name" %in% colnames(gct_data)) {
-    colnames(gct_data)[1] <- "Gene"
-  }
-  
-  return(gct_data)
-}
-
-gct_file <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/gct/pg.matrix_filtered_70percent-onegroup_imputed_ANOVA_z-scored.gct"
+# Load GCT file
+gct_file <- file.path(working_base, "Datasets/gct/data/pg.matrix_filtered_pcaAdjusted.gct")
 gct_data <- read_gct(gct_file)
 
-head(gct_data)
+# Extract metadata
+fetch_meta <- function(label) {
+  idx <- which(gct_data[, 1] == label)
+  if (length(idx) == 0) stop("Metadata label not found in GCT: ", label)
+  as.character(unlist(gct_data[idx, -1]))
+}
 
-grouping_factor <- "Celltype"
+sample_id      <- fetch_meta("sampleNumber")
+celltype       <- fetch_meta("celltype")
+groups         <- fetch_meta("ExpGroup")
+celltype_group <- fetch_meta("celltype_group")
 
-# === 2. Extract metadata ===
-metadata <- gct_data[1:4, ]  # Keep all columns including the first column (IDs)
-colnames(metadata) <- paste0("V", seq_len(ncol(metadata)))  # Temporary colnames
-
-sample_id      <- as.character(unlist(gct_data[1, -1]))
-celltype       <- as.character(unlist(gct_data[2, -1]))
-groups          <- as.character(unlist(gct_data[3, -1]))
-celltype_group <- as.character(unlist(gct_data[4, -1]))
+stopifnot(length(sample_id) == length(celltype), length(groups) == length(celltype_group), length(sample_id) == length(groups))
 
 metadata_df <- data.frame(
-  ColName         = paste0("V", 2:(ncol(gct_data))),  # for joining later
+  ColName         = paste0("V", 2:(ncol(gct_data))),
   Sample          = sample_id,
   Celltype        = celltype,
   Group           = groups,
@@ -591,76 +424,58 @@ metadata_df <- data.frame(
   stringsAsFactors = FALSE
 )
 
-# === 3. Extract expression data ===
+# Extract expression data
 expr_data <- gct_data[-c(1:4), ]
 colnames(expr_data)[1] <- "Protein_ID"
-
-# Restore sample names as colnames
 colnames(expr_data)[-1] <- sample_id
 
-# === 4. Reshape to long format ===
+# Reshape to long format
 expr_long <- expr_data %>%
-  pivot_longer(
-    cols = -Protein_ID,
-    names_to = "Sample",
-    values_to = "Expression"
-  )
+  pivot_longer(cols = -Protein_ID, names_to = "Sample", values_to = "Expression")
 
-# === 5. Join with metadata ===
+# Join with metadata
 expr_annotated <- expr_long %>%
   left_join(metadata_df %>% select(-ColName), by = "Sample") %>%
   mutate(Expression = as.numeric(Expression)) %>%
-  mutate(Protein_ID = sub(";.*", "", Protein_ID))  # Keep only the first entry before ";" 
+  mutate(Protein_ID = sub(";.*", "", Protein_ID))
 
-# Join based on Protein_ID matching UniProtKB_ID
+# Join with gene map
 expr_annotated <- expr_annotated %>%
   left_join(gene_map, by = c("Protein_ID" = "UniProtKB_ID"))
 
-# Add final label column (use Gene_Name if available, otherwise fall back to Protein_ID)
+# Add final label column
 expr_annotated <- expr_annotated %>%
   filter(!grepl("Background", Celltype)) %>%
   relocate(Gene_Name, .before = 1) %>%
   relocate(UniProtID, .after = Gene_Name) %>%
   relocate(Expression, .after = last_col())
 
-# === Done! ===
-glimpse(expr_annotated)
-
-# === 1. Reshape marker list ===
+# Reshape marker list
 celltype_long <- celltype_df %>%
   pivot_longer(cols = everything(), names_to = "Celltype_Class", values_to = "Gene_Label") %>%
   filter(!is.na(Gene_Label) & Gene_Label != "")
 
-# === 2. Filter expr_annotated_named for matching genes ===
+# Filter for matching genes
 marker_expr <- expr_annotated %>%
   filter(Gene_Name %in% celltype_long$Gene_Label)
 
-# === 3. Add Celltype_Class info to each expression entry ===
+# Add Celltype_Class info
 marker_expr <- marker_expr %>%
   left_join(celltype_long, by = c("Gene_Name" = "Gene_Label"))
 
-# === 4. Compute average expression for each Celltype_Class per grouping_factor ===
+# Compute average expression
 celltype_scores <- marker_expr %>%
   group_by(!!sym(grouping_factor), Celltype_Class) %>%
-  summarise(
-    Mean_Expression = mean(Expression, na.rm = TRUE),
-    .groups = "drop"
-  )
+  summarise(Mean_Expression = mean(Expression, na.rm = TRUE), .groups = "drop")
 
-# === 5. (Optional) Pivot wider for a table format ===
+# Pivot wider for table format
 celltype_score_table <- celltype_scores %>%
   pivot_wider(names_from = Celltype_Class, values_from = Mean_Expression)
 
-# create graph of celltype scores
-library(ggplot2)
+# Create bar plot of celltype scores
 celltype_score_plot <- ggplot(celltype_scores, aes(x = !!sym(grouping_factor), y = Mean_Expression, fill = Celltype_Class)) +
   geom_bar(stat = "identity", position = position_dodge(width = 0.8), width = 0.7) +
-  labs(
-    title = "Celltype Scores by Group",
-    x = grouping_factor,  # Beschriftung bleibt dynamisch
-    y = "Mean Expression",
-    fill = "Cell Class"
-  ) +
+  labs(title = "Celltype Scores by Group", x = grouping_factor, y = "Mean Expression", fill = "Cell Class") +
   scale_fill_manual(values = c("#f36d07", "#455A64", "#c7c7c7")) +
   guides(fill = guide_legend(ncol = 1)) +
   theme_bw(base_size = 16) +
@@ -679,60 +494,60 @@ celltype_score_plot <- ggplot(celltype_scores, aes(x = !!sym(grouping_factor), y
     legend.text = element_text(size = 16)
   )
 
-# Save the plot in working directory
 ggsave(file.path(working_dir, "celltype_scores_by_group.svg"), celltype_score_plot, units = "cm", dpi = 300)
 
-# --- 1. Gene-Klasse-Mapping vorbereiten
+# Create pheatmap of marker expression
 gene_class_df <- celltype_long %>%
   distinct(Gene_Label, Celltype_Class) %>%
   rename(Gene_Name = Gene_Label)
 
-annotation_row <- data.frame(
-  Celltype_Class = gene_class_df$Celltype_Class
-)
-rownames(annotation_row) <- gene_class_df$Gene_Name
+# Keep track of which class each gene belongs to
+gene_class_expanded <- celltype_long %>%
+  rename(Gene_Name = Gene_Label) %>%
+  group_by(Gene_Name) %>%
+  mutate(
+    Gene_Name_Unique = if(n() > 1) {
+      paste0(Gene_Name, "_", Celltype_Class)  # Add class suffix for duplicates
+    } else {
+      Gene_Name
+    }
+  ) %>%
+  ungroup()
 
-# --- 2. Mittelwert pro Gen und grouping_factor berechnen
-marker_matrix <- marker_expr %>%
-  group_by(Gene_Name, !!sym(grouping_factor)) %>%
-  summarise(
-    Mean_Expression = mean(Expression, na.rm = TRUE),
-    .groups = "drop"
-  ) %>%
-  { print(grouping_factor); print(colnames(.)); . } %>%
-  pivot_wider(
-    names_from = !!sym(grouping_factor),
-    values_from = Mean_Expression
-  ) %>%
-  column_to_rownames("Gene_Name") %>%
+annotation_row <- gene_class_expanded %>%
+  distinct(Gene_Name_Unique, Celltype_Class) %>%
+  column_to_rownames("Gene_Name_Unique")
+
+# Calculate mean expression per gene and grouping_factor
+marker_expr_unique <- marker_expr %>%
+  left_join(
+    gene_class_expanded %>% select(Gene_Name, Celltype_Class, Gene_Name_Unique),
+    by = c("Gene_Name", "Celltype_Class")
+  )
+
+marker_matrix <- marker_expr_unique %>%
+  group_by(Gene_Name_Unique, !!sym(grouping_factor)) %>%
+  summarise(Mean_Expression = mean(Expression, na.rm = TRUE), .groups = "drop") %>%
+  pivot_wider(names_from = !!sym(grouping_factor), values_from = Mean_Expression) %>%
+  column_to_rownames("Gene_Name_Unique") %>%
   as.matrix()
 
-# --- 3. Clean matrix: remove rows/columns with all NA or insufficient data
+# Rest of cleaning code stays the same
 marker_matrix_clean <- marker_matrix[rowSums(is.na(marker_matrix)) < ncol(marker_matrix), ]
 marker_matrix_clean <- marker_matrix_clean[, colSums(is.na(marker_matrix_clean)) < nrow(marker_matrix_clean)]
 marker_matrix_clean <- marker_matrix_clean[rowSums(!is.na(marker_matrix_clean)) >= 2, ]
 marker_matrix_clean <- marker_matrix_clean[, colSums(!is.na(marker_matrix_clean)) >= 2]
-
-# --- 4. Optional: Entferne einzelne problematische Gene
 marker_matrix_clean <- marker_matrix_clean[!grepl("^Oasl2\\s*$", rownames(marker_matrix_clean)), ]
-
-# --- 5. Ersetze NaN/Inf durch NA
 marker_matrix_clean[is.nan(marker_matrix_clean)] <- NA
 marker_matrix_clean[is.infinite(marker_matrix_clean)] <- NA
 
-# --- 6. annotation_row nach cleaned matrix filtern
+# Filter annotation_row to match cleaned matrix
 annotation_row <- annotation_row[rownames(marker_matrix_clean), , drop = FALSE]
 
-# --- 7. Farbschema für Annotationen
-annotation_colors <- list(
-  Celltype_Class = c(
-    "gaba"   = "#f36d07",
-    "vglut1" = "#455A64",
-    "vglut2" = "#c7c7c7"
-  )
-)
+# Color scheme for annotations
+annotation_colors <- list(Celltype_Class = c("gaba" = "#f36d07", "vglut1" = "#455A64", "vglut2" = "#c7c7c7"))
 
-# --- 8. Heatmap speichern
+# Save pheatmap
 pheatmap(
   marker_matrix_clean,
   cluster_rows = TRUE,
@@ -751,33 +566,20 @@ pheatmap(
   filename = file.path(working_dir, paste0("marker_expression_heatmap_", grouping_factor, ".pdf"))
 )
 
-
-# Z-transform expression per gene across all samples
+# Z-score heatmap
 expr_scaled <- marker_expr %>%
   group_by(Gene_Name) %>%
-  mutate(Z_Expression = scale(Expression)) %>%
+  mutate(Z_Expression = as.numeric(scale(Expression))) %>%
   ungroup()
 
-# Then average z-scores per grouping_factor × Celltype_Class
 celltype_z_scores <- expr_scaled %>%
-  group_by(grouping_factor, Celltype_Class) %>%
-  summarise(
-    Mean_Z = mean(Z_Expression, na.rm = TRUE),
-    .groups = "drop"
-  )
+  group_by(!!sym(grouping_factor), Celltype_Class) %>%
+  summarise(Mean_Z = mean(Z_Expression, na.rm = TRUE), .groups = "drop")
 
-heatmap_plot <- ggplot(celltype_z_scores, aes(x = reorder(Celltype_Class, Mean_Z, FUN = median), y = grouping_factor, fill = Mean_Z)) +
+heatmap_plot <- ggplot(celltype_z_scores, aes(x = reorder(Celltype_Class, Mean_Z, FUN = median), y = .data[[grouping_factor]], fill = Mean_Z)) +
   geom_tile(color = "grey80", size = 0.2, width = 0.5) +
-  scale_fill_gradient2(
-    low = "#4575b4", mid = "white", high = "#d73027",
-    midpoint = 0, name = "Z-Score",
-    guide = guide_colorbar(barwidth = 0.8, barheight = 20)
-  ) +
-  labs(
-    title = "Celltype Marker Signature by Group",
-    x = "Marker Class",
-    y = "Sample Group"
-  ) +
+  scale_fill_gradient2(low = "#4575b4", mid = "white", high = "#d73027", midpoint = 0, name = "Z-Score", guide = guide_colorbar(barwidth = 0.8, barheight = 20)) +
+  labs(title = "Celltype Marker Signature by Group", x = "Marker Class", y = "Sample Group") +
   theme_minimal(base_size = 12) +
   theme(
     plot.title = element_text(face = "bold", hjust = 0.5, margin = margin(b = 10)),
@@ -791,38 +593,6 @@ heatmap_plot <- ggplot(celltype_z_scores, aes(x = reorder(Celltype_Class, Mean_Z
 
 ggsave(file.path(working_dir, "celltype_scores_heatmap.svg"), heatmap_plot, width = 16, height = 9, units = "cm", dpi = 300)
 
-
-
-# 1. Sum z-scores by grouping_factor and Celltype_Class
-#proportional_scores <- expr_scaled %>%
-#  group_by(grouping_factor, Celltype_Class) %>%
-#  summarise(
-#    Mean_Z = mean(Z_Expression, na.rm = TRUE)
-#    .groups = "drop"
-#  )
-
-# 2. Calculate proportions per grouping_factor
-#proportional_scores <- proportional_scores %>%
-#  group_by(grouping_factor) %>%
-#  mutate(
-#    Proportion = Total_Z / sum(Total_Z, na.rm = TRUE) * 100
-#  ) %>%
-#  ungroup()
-#
-#  prop_barplot <- ggplot(proportional_scores, aes(x = grouping_factor, y = Proportion, fill = Celltype_Class)) +
-#  geom_bar(stat = "identity", width = 0.8) +
-#  labs(
-#    title = "Proportional Celltype Signature per Group",
-#    x = "Celltype Group",
-#    y = "Proportion of Total Marker Signal (%)",
-#    fill = "Celltype Class"
-#  ) +
-#  scale_fill_brewer(palette = "Set2") +
-#  theme_minimal(base_size = 14) +
-#  theme(
-#    plot.title = element_text(face = "bold", hjust = 0.5),
-#    axis.text.x = element_text(angle = 45, hjust = 1),
-#    panel.grid = element_line(color = "#f0f0f0")
-#  )
-#
-#ggsave(file.path(working_dir, "celltype_relative_proportions.svg"), prop_barplot, width = 16, height = 10, units = "cm", dpi = 300)
+cat("\n==============================================\n")
+cat("ENTIRE PIPELINE COMPLETED!\n")
+cat("==============================================\n")
