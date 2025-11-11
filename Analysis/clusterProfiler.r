@@ -1,17 +1,14 @@
 #' ============================================================
 #' HIGH-THROUGHPUT Gene Set Enrichment Analysis (GSEA) Workflow
-#' WITH PARALLEL PROCESSING
+#' WITH PARALLEL PROCESSING AND GO TERM SIMPLIFICATION
 #' ============================================================
 #' 
 #' This script performs comprehensive GSEA, KEGG, ORA, custom pathway analysis
-#' for MULTIPLE cell type comparisons in parallel using doParallel.
+#' for MULTIPLE cell type comparisons in parallel using future.
+#' Includes GO term redundancy removal via simplify().
 #' Celltype scoring runs separately at the end.
 #'
 #' @author Tobias Pohl
-#' ============================================================
-
-#' ============================================================
-#' HIGH-THROUGHPUT GSEA Workflow with FUTURE (BETTER)
 #' ============================================================
 
 # ----------------------------------------------------
@@ -37,8 +34,8 @@ setupPackages <- function() {
                          "cowplot", "ggridges", "europepmc", "ggpubr", "ggrepel", "ggsci", "ggthemes",
                          "ggExtra", "ggforce", "ggalluvial", "lattice", "latticeExtra", "BiocManager",
                          "org.Mm.eg.db", "ggplotify", "svglite", "tidyr", "dplyr", "pheatmap", "proxy",
-                         "tibble", "openxlsx", "future", "future.apply")
-  bioc_packages <- c("clusterProfiler", "pathview", "enrichplot", "DOSE", "org.Mm.eg.db")
+                         "tibble", "openxlsx", "future", "future.apply", "GOSemSim")
+  bioc_packages <- c("clusterProfiler", "pathview", "enrichplot", "DOSE", "org.Mm.eg.db", "GOSemSim")
   installBioC(bioc_packages)
   invisible(lapply(required_packages, installAndLoadCRAN))
 }
@@ -132,6 +129,7 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
     library(dplyr)
     library(openxlsx)
     library(org.Mm.eg.db)
+    library(GOSemSim)
   })
   
   comparison_name <- paste(cell_types, collapse = "_")
@@ -174,15 +172,18 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
     top_genes <- names(top_genes)
     
     # ----------------------------------------------------
-    # GSEA (GO)
+    # GSEA (GO) WITH SIMPLIFICATION
     # ----------------------------------------------------
     gse <- gseGO(geneList = gene_list, ont = ont, keyType = "UNIPROT", 
                  minGSSize = 3, maxGSSize = 800, pvalueCutoff = 1, 
                  verbose = FALSE, OrgDb = organism, pAdjustMethod = "BH")
     
-    gse_plot <- clusterProfiler::dotplot(gse, showCategory = 10, split = ".sign") +
+    # Simplify GO terms to remove redundancy
+    gse_simplified <- simplify(gse, cutoff = 0.7, by = "p.adjust", select_fun = min)
+    
+    gse_plot <- clusterProfiler::dotplot(gse_simplified, showCategory = 10, split = ".sign") +
       facet_wrap(~ .sign, nrow = 1) +
-      labs(title = paste("GSEA", ont, "of", comparison_name), x = "Gene Ratio", y = "Gene Set") +
+      labs(title = paste("GSEA", ont, "of", comparison_name, "(Simplified)"), x = "Gene Ratio", y = "Gene Set") +
       scale_fill_viridis_c(option = "cividis") + 
       theme_minimal(base_size = 12) +
       theme(
@@ -193,37 +194,53 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
         panel.grid.major = element_line(color = "grey85", size = 0.3),
         panel.grid.minor = element_blank()
       )
+
+
+    save_plot_organized(gse_plot, paste0("GSEA_", ont, "_dotplot_simplified.svg"), dirs$plots_go)
     
-    save_plot_organized(gse_plot, paste0("GSEA_", ont, "_dotplot.svg"), dirs$plots_go)
-    write.csv(gse@result, file = file.path(dirs$core_enrich, paste0(comparison_name, ".csv")), row.names = FALSE)
-    write.csv(gse@result, file = file.path(dirs$go_ont, paste0("GSEA_", ont, "_results.csv")), row.names = FALSE)
+    # Save both original and simplified results
+    write.csv(gse@result, file = file.path(dirs$go_ont, paste0("GSEA_", ont, "_results_full.csv")), row.names = FALSE)
+    write.csv(gse_simplified@result, file = file.path(dirs$go_ont, paste0("GSEA_", ont, "_results_simplified.csv")), row.names = FALSE)
+    write.csv(gse_simplified@result, file = file.path(dirs$core_enrich, paste0(comparison_name, "_simplified.csv")), row.names = FALSE)
     
-    # GSEA Visualization Plots
-    save_plot_organized(emapplot(pairwise_termsim(gse), showCategory = 10), paste0("GSEA_", ont, "_emap.svg"), dirs$plots_go)
-    save_plot_organized(cnetplot(gse, categorySize = "pvalue", foldChange = gene_list), paste0("GSEA_", ont, "_cnet.svg"), dirs$plots_go)
+    # GSEA Visualization Plots (using simplified results)
+    save_plot_organized(emapplot(pairwise_termsim(gse_simplified), showCategory = 10), paste0("GSEA_", ont, "_emap_simplified.svg"), dirs$plots_go)
+    save_plot_organized(cnetplot(gse_simplified, categorySize = "pvalue", foldChange = gene_list), paste0("GSEA_", ont, "_cnet_simplified.svg"), dirs$plots_go)
     
-    ridgeplot_gse <- ridgeplot(gse) + labs(x = "Enrichment Distribution", title = paste("GSEA", ont, "Ridgeplot")) + theme_minimal()
-    save_plot_organized(ridgeplot_gse, paste0("GSEA_", ont, "_ridge.svg"), dirs$plots_go)
+    ridgeplot_gse <- ridgeplot(gse_simplified) + labs(x = "Enrichment Distribution", title = paste("GSEA", ont, "Ridgeplot (Simplified)")) + theme_minimal()
+    save_plot_organized(ridgeplot_gse, paste0("GSEA_", ont, "_ridge_simplified.svg"), dirs$plots_go)
     
-    gseaplot_gse <- gseaplot(gse, by = "all", title = gse@result$Description[1], geneSetID = 1)
-    save_plot_organized(gseaplot_gse, paste0("GSEA_", ont, "_plot.svg"), dirs$plots_go)
+    if (nrow(gse_simplified@result) > 0) {
+      gseaplot_gse <- gseaplot(gse_simplified, by = "all", title = gse_simplified@result$Description[1], geneSetID = 1)
+      save_plot_organized(gseaplot_gse, paste0("GSEA_", ont, "_plot_simplified.svg"), dirs$plots_go)
+      
+      top_terms <- head(gse_simplified@result$Description, 3)
+      pmcplot_gse <- pmcplot(top_terms, 2010:2025, proportion = FALSE) + labs(title = paste("Publication Trends -", ont, "(Simplified)"))
+      save_plot_organized(pmcplot_gse, paste0("GSEA_", ont, "_pubmed_simplified.svg"), dirs$plots_go)
+    }
     
-    top_terms <- head(gse@result$Description, 3)
-    pmcplot_gse <- pmcplot(top_terms, 2010:2025, proportion = FALSE) + labs(title = paste("Publication Trends -", ont))
-    save_plot_organized(pmcplot_gse, paste0("GSEA_", ont, "_pubmed.svg"), dirs$plots_go)
-    
-    # ORA
+    # ----------------------------------------------------
+    # ORA WITH SIMPLIFICATION
+    # ----------------------------------------------------
     ora <- enrichGO(gene = top_genes, ont = ont, keyType = "UNIPROT", 
                     minGSSize = 3, maxGSSize = 800, pvalueCutoff = 1, 
                     OrgDb = organism, pAdjustMethod = "BH")
     
-    ora_plot <- clusterProfiler::dotplot(ora, showCategory = 10) + 
-      labs(title = paste("ORA", ont, "- Top Regulated Genes")) + 
-      scale_x_continuous(limits = c(0, 1))
-    save_plot_organized(ora_plot, paste0("ORA_", ont, "_dotplot.svg"), dirs$plots_ora)
-    write.csv(ora@result, file = file.path(dirs$ora, paste0("ORA_", ont, "_results.csv")), row.names = FALSE)
+    # Simplify ORA results
+    ora_simplified <- simplify(ora, cutoff = 0.7, by = "p.adjust", select_fun = min)
     
-    # KEGG GSEA
+    ora_plot <- clusterProfiler::dotplot(ora_simplified, showCategory = 10) + 
+      labs(title = paste("ORA", ont, "- Top Regulated Genes (Simplified)")) + 
+      scale_x_continuous(limits = c(0, 1))
+    save_plot_organized(ora_plot, paste0("ORA_", ont, "_dotplot_simplified.svg"), dirs$plots_ora)
+    
+    # Save both original and simplified ORA results
+    write.csv(ora@result, file = file.path(dirs$ora, paste0("ORA_", ont, "_results_full.csv")), row.names = FALSE)
+    write.csv(ora_simplified@result, file = file.path(dirs$ora, paste0("ORA_", ont, "_results_simplified.csv")), row.names = FALSE)
+    
+    # ----------------------------------------------------
+    # KEGG GSEA (No simplification - KEGG specific)
+    # ----------------------------------------------------
     ids <- bitr(names(original_gene_list), fromType = "UNIPROT", toType = "ENTREZID", OrgDb = organism)
     dedup_ids <- ids[!duplicated(ids$UNIPROT), ]
     df2 <- merge(df, dedup_ids, by.x = "gene_symbol", by.y = "UNIPROT")
@@ -245,7 +262,10 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
     save_plot_organized(emapplot(pairwise_termsim(kk2), showCategory = 10), "KEGG_emap.svg", dirs$plots_kegg)
     save_plot_organized(cnetplot(kk2, categorySize = "pvalue", foldChange = gene_list), "KEGG_cnet.svg", dirs$plots_kegg)
     save_plot_organized(ridgeplot(kk2), "KEGG_ridge.svg", dirs$plots_kegg)
-    save_plot_organized(gseaplot(kk2, by = "all", title = kk2$Description[1], geneSetID = 1), "KEGG_plot.svg", dirs$plots_kegg)
+    
+    if (nrow(kk2@result) > 0) {
+      save_plot_organized(gseaplot(kk2, by = "all", title = kk2$Description[1], geneSetID = 1), "KEGG_plot.svg", dirs$plots_kegg)
+    }
     write.csv(kk2@result, file = file.path(dirs$kegg, "KEGG_GSEA_results.csv"), row.names = FALSE)
     
     # Pathview
@@ -260,24 +280,44 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
     
     setwd(oldwd)
     
-    # EnrichGO Analysis
+    # ----------------------------------------------------
+    # EnrichGO Analysis (ALL ontologies) WITH SIMPLIFICATION
+    # ----------------------------------------------------
     go_enrich <- enrichGO(gene = names(gene_list), universe = names(gene_list), 
                           OrgDb = organism, keyType = 'UNIPROT', readable = TRUE, 
                           ont = "ALL", pvalueCutoff = 1, qvalueCutoff = 1, 
                           pAdjustMethod = "BH", minGSSize = 3, maxGSSize = 800)
     
-    p4 <- clusterProfiler::dotplot(go_enrich, showCategory = 20, split = "ONTOLOGY") +
+    # Simplify each ontology separately for "ALL" results
+    go_bp <- go_enrich[go_enrich$ONTOLOGY == "BP", ]
+    go_cc <- go_enrich[go_enrich$ONTOLOGY == "CC", ]
+    go_mf <- go_enrich[go_enrich$ONTOLOGY == "MF", ]
+    
+    go_bp_simple <- if(nrow(go_bp@result) > 0) simplify(go_bp, cutoff = 0.7, by = "p.adjust", select_fun = min) else go_bp
+    go_cc_simple <- if(nrow(go_cc@result) > 0) simplify(go_cc, cutoff = 0.7, by = "p.adjust", select_fun = min) else go_cc
+    go_mf_simple <- if(nrow(go_mf@result) > 0) simplify(go_mf, cutoff = 0.7, by = "p.adjust", select_fun = min) else go_mf
+    
+    # Combine simplified results
+    go_enrich_simplified <- go_enrich
+    go_enrich_simplified@result <- rbind(go_bp_simple@result, go_cc_simple@result, go_mf_simple@result)
+    
+    p4 <- clusterProfiler::dotplot(go_enrich_simplified, showCategory = 20, split = "ONTOLOGY") +
       facet_grid(ONTOLOGY ~ ., scales = "free_y") +
-      labs(title = "GO Enrichment Dotplot", x = "Gene Ratio", y = "GO Term", color = "p.adjust", size = "Count") +
+      labs(title = "GO Enrichment Dotplot (Simplified)", x = "Gene Ratio", y = "GO Term", color = "p.adjust", size = "Count") +
       scale_color_viridis_c(option = "magma", direction = -1) +
       theme_minimal(base_size = 12) +
       theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"), 
             axis.text.x = element_text(angle = 45, hjust = 1))
     
-    save_plot_organized(p4, paste0("GOenrich_dotplot.svg"), dirs$plots_go)
-    write.csv(go_enrich@result, file = file.path(dirs$go_ont, paste0("enrichGO_ALL_results.csv")), row.names = FALSE)
+    save_plot_organized(p4, paste0("GOenrich_dotplot_simplified.svg"), dirs$plots_go)
     
+    # Save both full and simplified enrichGO results
+    write.csv(go_enrich@result, file = file.path(dirs$go_ont, paste0("enrichGO_ALL_results_full.csv")), row.names = FALSE)
+    write.csv(go_enrich_simplified@result, file = file.path(dirs$go_ont, paste0("enrichGO_ALL_results_simplified.csv")), row.names = FALSE)
+    
+    # ----------------------------------------------------
     # KEGG GSEA with Predefined UniProt IDs
+    # ----------------------------------------------------
     selected_entrez <- bitr(selected_uniprot, fromType = "UNIPROT", toType = "ENTREZID", OrgDb = organism)
     selected_df <- merge(df, selected_entrez, by.x = "gene_symbol", by.y = "UNIPROT")
     selected_kegg_list <- selected_df$log2fc
@@ -299,9 +339,14 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
     save_plot_organized(emapplot(pairwise_termsim(gsea_kegg_selected), showCategory = 10), "KEGG_Predefined_emap.svg", dirs$plots_kegg)
     save_plot_organized(cnetplot(gsea_kegg_selected, categorySize = "pvalue", foldChange = selected_kegg_list), "KEGG_Predefined_cnet.svg", dirs$plots_kegg)
     save_plot_organized(ridgeplot(gsea_kegg_selected), "KEGG_Predefined_ridge.svg", dirs$plots_kegg)
-    save_plot_organized(gseaplot(gsea_kegg_selected, by = "all", title = gsea_kegg_selected$Description[1], geneSetID = 1), "KEGG_Predefined_plot.svg", dirs$plots_kegg)
     
-    # Custom GSEA: NK3R-signalling
+    if (nrow(gsea_kegg_selected@result) > 0) {
+      save_plot_organized(gseaplot(gsea_kegg_selected, by = "all", title = gsea_kegg_selected$Description[1], geneSetID = 1), "KEGG_Predefined_plot.svg", dirs$plots_kegg)
+    }
+    
+    # ----------------------------------------------------
+    # Custom GSEA: NK3R-signalling (No simplification needed)
+    # ----------------------------------------------------
     term2gene_nk3r <- data.frame(term = rep("NK3R-signalling", length(nk3r_genes)), gene = nk3r_genes)
     custom_gene_list <- df$log2fc
     names(custom_gene_list) <- df$gene_symbol
@@ -317,8 +362,10 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
       theme_minimal()
     save_plot_organized(nk3r_dot, "NK3R_dotplot.svg", dirs$plots_custom)
     
-    nk3r_plot <- gseaplot(gsea_nk3r, by = "all", title = "NK3R-signalling", geneSetID = 1)
-    save_plot_organized(nk3r_plot, "NK3R_gsea_plot.svg", dirs$plots_custom)
+    if (nrow(gsea_nk3r@result) > 0) {
+      nk3r_plot <- gseaplot(gsea_nk3r, by = "all", title = "NK3R-signalling", geneSetID = 1)
+      save_plot_organized(nk3r_plot, "NK3R_gsea_plot.svg", dirs$plots_custom)
+    }
     openxlsx::write.xlsx(gsea_nk3r@result, file = file.path(dirs$custom, "NK3R_GSEA_results.xlsx"))
     
     return(list(status = "SUCCESS", comparison = comparison_name))
@@ -360,9 +407,8 @@ cat("\n==============================================\n")
 cat("ALL COMPARISONS COMPLETED!\n")
 cat("==============================================\n\n")
 
-
 # ----------------------------------------------------
-# 5. CELLTYPE SCORING ANALYSIS (Sequential)
+# 7. CELLTYPE SCORING ANALYSIS (Sequential)
 # ----------------------------------------------------
 cat("\n==============================================\n")
 cat("STARTING CELLTYPE SCORING ANALYSIS\n")
