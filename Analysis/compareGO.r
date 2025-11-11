@@ -69,7 +69,7 @@ uniprot_df <- read.delim(
   stringsAsFactors = FALSE
 ) %>%
   filter(V2 == "Gene_Name") %>%
-  select(UniprotID = V1, Gene_Name = V3)
+  dplyr::select(UniprotID = V1, Gene_Name = V3)
 
 # -----------------------------------------------------
 # Define Paths and Project Directories
@@ -95,13 +95,13 @@ uniprot_df <- read.delim(
 # Set analysis parameters ---------------------------------------------
 
 # Define the ensemble profiling method used in the analysis
-ensemble_profiling <- "effects_chemogenetic_inhibition"
+ensemble_profiling <- "learning_signature"
 
 # Specify the experimental condition (e.g., CNO, VEH, CS, US, effects_inhibition_memory_ensemble, or learning_signature)
-condition <- "CS"
+condition <- "effects_inhibition_memory_ensemble"
 
 # Define the Gene Ontology domain (e.g., MF, BP, or CC)
-ont <- "BP"  # Biological Process
+ont <- "MF"  # Biological Process
 
 # Set up working environment ------------------------------------------
 
@@ -160,7 +160,7 @@ combined_df <- bind_rows(
 # Read in go_ids 
 gene_go_ids <- combined_df %>%
   # Select just the columns needed
-  select(GO_ID = ID, core_enrichment) %>%
+  dplyr::select(GO_ID = ID, core_enrichment) %>%
   # Split the slash-separated gene accessions into rows
   mutate(core_enrichment = strsplit(core_enrichment, "/")) %>%
   unnest(core_enrichment) %>%
@@ -171,7 +171,7 @@ gene_go_ids <- combined_df %>%
 
 # read in p-values
 p_values <- combined_df %>%
-  select(Comparison, Description, p.adjust) %>%
+  dplyr::select(Comparison, Description, p.adjust) %>%
   distinct()
 
 # -----------------------------------------------------
@@ -393,6 +393,11 @@ dotplot <- ggplot(lookup_df, aes(
     name = expression(-log[10](p.adjust)),
     range = c(3, 10)
   ) +
+  scale_x_discrete(expand = expansion(mult = c(0.29, 0.29))) +  # Increased x-axis padding
+  scale_y_discrete(
+  expand = expansion(add = c(0.6, 0.6)),
+  labels = scales::label_wrap(40)
+  ) +  # Add spacing between y-axis categories
   labs(
     title = "Comparative Gene Ontology Enrichment Dot Plot",
     subtitle = paste(ont, ensemble_profiling, "under", condition, "condition"),
@@ -405,21 +410,28 @@ dotplot <- ggplot(lookup_df, aes(
     plot.subtitle = element_text(size = 14, hjust = 0.5, margin = margin(b = 10)),
     axis.title = element_text(face = "bold", size = 14),
     axis.text = element_text(color = "black", size = 12),
-    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = 10),
     panel.border = element_rect(color = "black", fill = NA, size = 0.5),
     legend.title = element_text(face = "bold", size = 14),
     legend.text = element_text(size = 12),
-    legend.position = "right"
-  )
+    legend.position = "right",
+    plot.margin = margin(5, 5, 5, 5),
+    panel.spacing.x = unit(0.5, "lines")  # Reduce spacing between panels if faceted
+  ) +
+  coord_cartesian(clip = 'off')  # Prevent clipping of points
 
 # Dynamically adjust the plot width based on the number of unique comparisons.
 # A minimum width is set to ensure clarity when few comparisons are present.
 num_comparisons <- length(unique(lookup_df$Comparison))
-dynamic_width <- max(10, num_comparisons * 4.5)
+dynamic_width <- max(5, num_comparisons * 2.1)  # Increased width calculation
 
-# Save the dot plot as an SVG file using the dynamic width and predefined plot height.
+# Dynamically adjust plot height based on number of gene sets (y-axis points)
+num_gene_sets <- length(unique(lookup_df$Description))
+dynamic_height <- max(8, num_gene_sets * 0.55)  # Scale height with number of gene sets
+
+# Save the dot plot as an SVG file using the dynamic width and height.
 output_dotplot <- file.path(output_dir, paste0("enrichment_dotplot_", ont, "_", ensemble_profiling, "_", condition, ".svg"))
-ggsave(output_dotplot, plot = dotplot, width = dynamic_width, height = plot_height, dpi = 300)
+ggsave(output_dotplot, plot = dotplot, width = dynamic_width, height = dynamic_height, dpi = 300)
 
 # -----------------------------------------------------
 # Specify the target genes for the enrichment analysis
@@ -725,20 +737,19 @@ dev.off()
 #' @return A visual heatmap saved in specified file formats.
 
 # Expand each enrichment file to get one gene per row
+# Expand each enrichment file to get one gene per row
+
 core_long_df <- bind_rows(
   lapply(names(enrichment_list), function(name) {
     df <- enrichment_list[[name]]
     df %>%
       dplyr::select(Description, NES, core_enrichment) %>%
       mutate(core_enrichment = str_split(core_enrichment, "/")) %>%
-      unnest(core_enrichment) %>%
+      tidyr::unnest_longer(core_enrichment) %>%  # ← Changed to unnest_longer
+      rename(Gene = core_enrichment) %>%
       mutate(Comparison = name)
   })
 )
-
-# Rename for clarity
-core_long_df <- core_long_df %>%
-  rename(Gene = core_enrichment)
 
 # First, aggregate duplicate Gene-Comparison pairs using mean NES
 heatmap_df <- core_long_df %>%
@@ -803,7 +814,7 @@ top_bottom_genes <- bind_rows(top25_up, top25_down)
 
 # Create a mapping of each gene to its GO terms (Description)
 gene_go <- core_long_df %>%
-  select(Gene, Description) %>%
+  dplyr::select(Gene, Description) %>%
   distinct() %>%
   group_by(Gene) %>%
   summarize(GO_Terms = paste(unique(Description), collapse = "; "), .groups = "drop")
@@ -840,7 +851,7 @@ uniprot_df <- read.delim(
   stringsAsFactors = FALSE
 ) %>%
   filter(V2 == "Gene_Name") %>%
-  select(UniprotID = V1, Gene_Name = V3)
+  dplyr::select(UniprotID = V1, Gene_Name = V3)
 
 # Update rownames in heatmap
 mapped_names <- left_join(
@@ -957,7 +968,7 @@ gene_synonyms <- uniprot_df %>%
 
 # Optional: Gene Descriptions (from GSEA if available)
 gene_descriptions <- core_long_df %>%
-  select(Gene, Description) %>%
+  dplyr::select(Gene, Description) %>%
   distinct() %>%
   group_by(Gene) %>%
   summarize(Description = paste(unique(Description), collapse = "; "), .groups = "drop")
@@ -973,6 +984,12 @@ log2fc_files <- list.files(
 log2fc_df_list <- lapply(log2fc_files, function(f) {
   df <- read_csv(f, col_types = cols())
   df$Comparison <- tools::file_path_sans_ext(basename(f))
+  df <- df %>%
+    dplyr::rename(
+      padj = adj.P.Val,
+      log2fc = logFC
+    ) %>%
+    as.data.frame()  # Remove tibble spec attributes
   return(df)
 })
 
@@ -989,7 +1006,7 @@ for (comp in unique_comparisons) {
 # Volcano plot section (always runs, even if no sig genes)
 volcano_df <- full_comp_df %>%
   filter(!str_detect(gene_symbol, "_")) %>%
-  left_join(uniprot_subset %>% select(UniprotID, Gene_Name),
+  left_join(uniprot_subset %>% dplyr::select(UniprotID, Gene_Name),
             by = c("gene_symbol" = "UniprotID")) %>%
   mutate(Significance = case_when(
     padj < 0.05 & log2fc > 0 ~ "up",
@@ -997,54 +1014,71 @@ volcano_df <- full_comp_df %>%
     TRUE ~ "n.s."
   ))
   
+# Identify top 5 up and down regulated genes
+top5_up <- volcano_df %>%
+  filter(Significance == "up") %>%
+  arrange(desc(log2fc)) %>%
+  slice_head(n = 5)
+
+top5_down <- volcano_df %>%
+  filter(Significance == "down") %>%
+  arrange(log2fc) %>%
+  slice_head(n = 5)
+
+top_genes_to_label <- bind_rows(top5_up, top5_down)
+
 volcano_plot <- ggplot(volcano_df, aes(x = log2fc, y = -log10(padj), label = Gene_Name, color = Significance)) +
-    geom_point(shape = 16, alpha = 0.6, size = 4) +
-    ggrepel::geom_text_repel(
-      data = subset(volcano_df, padj < 0.05),
-      aes(label = Gene_Name),
-      size = 4,
-      max.overlaps = Inf,
-      show.legend = FALSE
-    ) +
-    scale_color_manual(
-      values = c("up" = "#f36d07", "down" = "#455A64", "n.s." = "#c7c7c7"),
-      breaks = c("up", "down", "n.s.")
-    ) +
-    scale_x_continuous(breaks = seq(floor(min(volcano_df$log2fc, na.rm = TRUE)),
-                                    ceiling(max(volcano_df$log2fc, na.rm = TRUE)),
-                                    by = 1)) +
-    labs(
-      title = paste(strsplit(comp, "_")[[1]], collapse = " over "),
-      x = "log2 Fold Change",
-      y = expression(-log[10]~(p~adj.))
-    ) +
-    coord_fixed(ratio = 2) +
-    theme_minimal(base_size = 12) +
-    theme(
-      legend.position = c(1, 1),
-      legend.justification = c(1, 1),
-      legend.background = element_rect(fill = "white", color = NA),
-      legend.title = element_blank(),
-      plot.title = element_text(size = 14, face = "bold"),
-      axis.title = element_text(face = "bold")
-    ) +
-    geom_hline(yintercept = -log10(0.05), linetype = "dashed", color = "#455A64")
-  
-  # Save volcano plot
-  # Create subfolder for volcano plots if it doesn't exist
-  vol_dir <- file.path(core_enrichment_dir, "volcano_plots")
-  if (!dir.exists(vol_dir)) {
-    dir.create(vol_dir, recursive = TRUE)
-  }
-  
-  ggsave(
-    filename = file.path(vol_dir, paste0("log2fc_", comp, "_volcano.svg")),
-    plot = volcano_plot,
-    width = 5,
-    height = 5
-  )
-  
-  # Now check for significant data for heatmap + Excel
+  geom_point(shape = 16, alpha = 0.6, size = 4) +
+  ggrepel::geom_text_repel(
+    data = top_genes_to_label,
+    aes(label = Gene_Name),
+    size = 6,
+    max.overlaps = Inf,
+    show.legend = FALSE
+  ) +
+  scale_color_manual(
+    values = c("up" = "#f36d07", "down" = "#455A64", "n.s." = "#c7c7c7"),
+    breaks = c("up", "down", "n.s.")
+  ) +
+  scale_x_continuous(breaks = seq(floor(min(volcano_df$log2fc, na.rm = TRUE)),
+                                  ceiling(max(volcano_df$log2fc, na.rm = TRUE)),
+                                  by = 1)) +
+  labs(
+    title = paste(strsplit(comp, "_")[[1]], collapse = " over "),
+    x = "log2 Fold Change",
+    y = expression(-log[10]~(p~adj.))
+  ) +
+  coord_fixed(ratio = 2) +
+  theme_classic(base_size = 16) +
+  theme(
+    legend.position = c(1, 1),
+    legend.justification = c(1, 1),
+    legend.background = element_rect(fill = "white", color = NA),
+    legend.title = element_blank(),
+    legend.text = element_text(size = 16),
+    plot.title = element_text(size = 18, face = "bold"),
+    axis.title = element_text(face = "bold", size = 16),
+    axis.text = element_text(size = 14),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()
+  ) +
+  geom_hline(yintercept = -log10(0.05), linetype = "dashed", color = "#455A64")
+
+# Save volcano plot
+# Create subfolder for volcano plots if it doesn't exist
+vol_dir <- file.path(core_enrichment_dir, "volcano_plots")
+if (!dir.exists(vol_dir)) {
+  dir.create(vol_dir, recursive = TRUE)
+}
+
+ggsave(
+  filename = file.path(vol_dir, paste0("log2fc_", comp, "_volcano.svg")),
+  plot = volcano_plot,
+  width = 5,
+  height = 5
+)
+
+# Now check for significant data for heatmap + Excel
 comp_df <- full_comp_df %>% filter(padj < 0.05)
 
 if (nrow(comp_df) == 0) {
@@ -1098,7 +1132,7 @@ if (nrow(comp_df) == 0) {
 
   # Create heatmap matrix
   heatmap_matrix <- mapped_top_bottom %>%
-    select(Gene_Label, log2fc) %>%
+    dplyr::select(Gene_Label, log2fc) %>%
     mutate(Gene_Label = make.unique(as.character(Gene_Label))) %>%
     tibble::column_to_rownames("Gene_Label") %>%
     as.matrix()
@@ -1136,7 +1170,7 @@ if (nrow(comp_df) == 0) {
 
   # Save Excel with annotation
   excel_out <- mapped_top_bottom %>%
-    select(
+    dplyr::select(
       Gene_Name,
       `UniProtKB-ID`,
       Uniprot_Accession = gene_symbol,
@@ -1161,7 +1195,6 @@ if (nrow(comp_df) == 0) {
     file.path(proteins_sig_reg_dir, paste0("log2fc_", comp, "_genes.xlsx"))
   )
 }
-
 
 # -----------------------------------------------------
 # Generate Individual Core Enrichment Heatmaps
@@ -1209,6 +1242,9 @@ log2fc_list <- lapply(names(log2fc_files), function(comp) {
 })
 
 log2fc_df <- bind_rows(log2fc_list)
+
+cat("✓ Column names standardized\n")
+cat("New columns in log2fc_df:", paste(colnames(log2fc_df), collapse = ", "), "\n")
 
 # print head of mcherry2_mcherry4 case in the Comparison column
 # head(log2fc_df[log2fc_df$Comparison == "mcherry2_mcherry4", ])
@@ -1365,7 +1401,12 @@ log2fc_list <- lapply(log2fc_files, function(file) {
 })
 
 # Combine all into one long data frame
-log2fc_long <- bind_rows(log2fc_list)
+log2fc_long <- bind_rows(log2fc_list) %>%
+  rename(
+    log2fc = logFC,
+    pvalue = P.Value,
+    padj = adj.P.Val
+  )
 
 # Step 2: Filter for genes of interest (optional)
 log2fc_filtered <- log2fc_long %>%
