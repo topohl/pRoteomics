@@ -95,13 +95,13 @@ uniprot_df <- read.delim(
 # Set analysis parameters ---------------------------------------------
 
 # Define the ensemble profiling method used in the analysis
-ensemble_profiling <- "learning_signature"
+ensemble_profiling <- "baseline_cell_type_profiling"
 
 # Specify the experimental condition (e.g., CNO, VEH, CS, US, effects_inhibition_memory_ensemble, or learning_signature)
-condition <- "effects_inhibition_memory_ensemble"
+condition <- "CS"
 
 # Define the Gene Ontology domain (e.g., MF, BP, or CC)
-ont <- "MF"  # Biological Process
+ont <- "BP"  # Biological Process
 
 # Set up working environment ------------------------------------------
 
@@ -423,11 +423,11 @@ dotplot <- ggplot(lookup_df, aes(
 # Dynamically adjust the plot width based on the number of unique comparisons.
 # A minimum width is set to ensure clarity when few comparisons are present.
 num_comparisons <- length(unique(lookup_df$Comparison))
-dynamic_width <- max(5, num_comparisons * 2.1)  # Increased width calculation
+dynamic_width <- max(5, num_comparisons * 2.15)  # Increased width calculation
 
 # Dynamically adjust plot height based on number of gene sets (y-axis points)
 num_gene_sets <- length(unique(lookup_df$Description))
-dynamic_height <- max(8, num_gene_sets * 0.55)  # Scale height with number of gene sets
+dynamic_height <- max(3.7, num_gene_sets * 0.55)  # Scale height with number of gene sets
 
 # Save the dot plot as an SVG file using the dynamic width and height.
 output_dotplot <- file.path(output_dir, paste0("enrichment_dotplot_", ont, "_", ensemble_profiling, "_", condition, ".svg"))
@@ -1242,6 +1242,14 @@ log2fc_list <- lapply(names(log2fc_files), function(comp) {
 })
 
 log2fc_df <- bind_rows(log2fc_list)
+
+# Standardize column names to match expected format in downstream code
+log2fc_df <- log2fc_df %>%
+  rename(
+    log2fc = logFC,
+    pvalue = P.Value,
+    padj = adj.P.Val
+  )
 
 cat("✓ Column names standardized\n")
 cat("New columns in log2fc_df:", paste(colnames(log2fc_df), collapse = ", "), "\n")
