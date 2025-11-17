@@ -31,8 +31,8 @@ use_label_map <- FALSE  # TRUE for "con"/"res"/"sus", FALSE for "_1"/"_2"/"_3"
 
 # ---- Input ----
 setwd("S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets")
-file <- "data/pg.matrix-neha-new-30oct_Two-sample_mod_T_2025-10-30-transformed-p-val_n120x5349"
-gct_data <- file.path("S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/gct", paste0(file, ".gct"))
+file <- "20251107_pg.matrix_Neha/pg.matrix-new-nov7_Two-sample_mod_T_2025-11-07-transformed-p-val_n120x5349"
+gct_data <- file.path("S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/data", paste0(file, ".gct"))
 
 # ------- GCT reading and cleaning -------
 raw <- tryCatch(
