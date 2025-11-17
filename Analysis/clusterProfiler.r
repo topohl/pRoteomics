@@ -12,6 +12,24 @@
 #' ============================================================
 
 # ----------------------------------------------------
+# 0. SIMPLIFICATION SETTINGS
+# ----------------------------------------------------
+# *** MAIN CONTROL: Set whether to perform simplification at all ***
+PERFORM_SIMPLIFICATION <- FALSE  # Set to FALSE to skip simplification entirely
+
+# Control which version to use for plots (only matters if PERFORM_SIMPLIFICATION = TRUE)
+USE_SIMPLIFIED_FOR_PLOTS <- FALSE  # TRUE = simplified plots, FALSE = full results
+
+# Semantic similarity cutoff for simplify() function (only used if simplification is enabled)
+# Range: 0.4 (strict, removes more) to 0.9 (lenient, keeps more)
+# Default: 0.7 (moderate redundancy removal)
+SIMPLIFY_CUTOFF <- 0.7
+
+# Note: 
+# - If PERFORM_SIMPLIFICATION = FALSE, only full results are computed and saved
+# - If PERFORM_SIMPLIFICATION = TRUE, both versions are computed and saved
+
+# ----------------------------------------------------
 # 1. PACKAGE SETUP
 # ----------------------------------------------------
 checkBiocManager <- function() {
@@ -94,7 +112,7 @@ working_base <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler"
 working_dir <- working_base
 mapped_data_base <- file.path(working_base, "Datasets/mapped")
 organism <- "org.Mm.eg.db"
-ont <- "BP"
+ont <- "MF"
 
 nk3r_genes <- c("P21279", "P21278", "P51432", "P11881", "P63318", "P68404", "P0DP26", "P0DP27", "P0DP28", "P11798", "P28652", "P47937", "P47713")
 selected_uniprot <- c("P21279", "P21278", "Q9Z1B3", "P51432", "P11881", "P68404", "P63318", "P0DP26", "P0DP27", "P11798", "P28652", "Q61411", "Q99N57", "P31938", "P63085", "Q63844", "Q8BWG8", "Q91YI4", "V9GXQ9")
@@ -171,72 +189,172 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
     top_genes <- sort(top_gene_list[top_genes], decreasing = TRUE)
     top_genes <- names(top_genes)
     
-    # ----------------------------------------------------
-    # GSEA (GO) WITH SIMPLIFICATION
-    # ----------------------------------------------------
-    gse <- gseGO(geneList = gene_list, ont = ont, keyType = "UNIPROT", 
-                 minGSSize = 3, maxGSSize = 800, pvalueCutoff = 1, 
-                 verbose = FALSE, OrgDb = organism, pAdjustMethod = "BH")
-    
-    # Simplify GO terms to remove redundancy
-    gse_simplified <- simplify(gse, cutoff = 0.7, by = "p.adjust", select_fun = min)
-    
-    gse_plot <- clusterProfiler::dotplot(gse_simplified, showCategory = 10, split = ".sign") +
-      facet_wrap(~ .sign, nrow = 1) +
-      labs(title = paste("GSEA", ont, "of", comparison_name, "(Simplified)"), x = "Gene Ratio", y = "Gene Set") +
-      scale_fill_viridis_c(option = "cividis") + 
-      theme_minimal(base_size = 12) +
-      theme(
-        plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
-        axis.text.x = element_text(angle = 45, hjust = 1),
-        axis.text.y = element_text(size = 10),
-        strip.text = element_text(size = 12, face = "plain"),
-        panel.grid.major = element_line(color = "grey85", size = 0.3),
-        panel.grid.minor = element_blank()
-      )
+# ----------------------------------------------------
+# GSEA (GO) WITH OPTIONAL SIMPLIFICATION
+# ----------------------------------------------------
+gse <- gseGO(geneList = gene_list, ont = ont, keyType = "UNIPROT", 
+             minGSSize = 3, maxGSSize = 800, pvalueCutoff = 1, 
+             verbose = FALSE, OrgDb = organism, pAdjustMethod = "BH")
 
 
-    save_plot_organized(gse_plot, paste0("GSEA_", ont, "_dotplot_simplified.svg"), dirs$plots_go)
-    
-    # Save both original and simplified results
-    write.csv(gse@result, file = file.path(dirs$go_ont, paste0("GSEA_", ont, "_results_full.csv")), row.names = FALSE)
-    write.csv(gse_simplified@result, file = file.path(dirs$go_ont, paste0("GSEA_", ont, "_results_simplified.csv")), row.names = FALSE)
-    write.csv(gse_simplified@result, file = file.path(dirs$core_enrich, paste0(comparison_name, "_simplified.csv")), row.names = FALSE)
-    
-    # GSEA Visualization Plots (using simplified results)
-    save_plot_organized(emapplot(pairwise_termsim(gse_simplified), showCategory = 10), paste0("GSEA_", ont, "_emap_simplified.svg"), dirs$plots_go)
-    save_plot_organized(cnetplot(gse_simplified, categorySize = "pvalue", foldChange = gene_list), paste0("GSEA_", ont, "_cnet_simplified.svg"), dirs$plots_go)
-    
-    ridgeplot_gse <- ridgeplot(gse_simplified) + labs(x = "Enrichment Distribution", title = paste("GSEA", ont, "Ridgeplot (Simplified)")) + theme_minimal()
-    save_plot_organized(ridgeplot_gse, paste0("GSEA_", ont, "_ridge_simplified.svg"), dirs$plots_go)
-    
-    if (nrow(gse_simplified@result) > 0) {
-      gseaplot_gse <- gseaplot(gse_simplified, by = "all", title = gse_simplified@result$Description[1], geneSetID = 1)
-      save_plot_organized(gseaplot_gse, paste0("GSEA_", ont, "_plot_simplified.svg"), dirs$plots_go)
-      
-      top_terms <- head(gse_simplified@result$Description, 3)
-      pmcplot_gse <- pmcplot(top_terms, 2010:2025, proportion = FALSE) + labs(title = paste("Publication Trends -", ont, "(Simplified)"))
-      save_plot_organized(pmcplot_gse, paste0("GSEA_", ont, "_pubmed_simplified.svg"), dirs$plots_go)
-    }
-    
-    # ----------------------------------------------------
-    # ORA WITH SIMPLIFICATION
-    # ----------------------------------------------------
-    ora <- enrichGO(gene = top_genes, ont = ont, keyType = "UNIPROT", 
-                    minGSSize = 3, maxGSSize = 800, pvalueCutoff = 1, 
-                    OrgDb = organism, pAdjustMethod = "BH")
-    
-    # Simplify ORA results
-    ora_simplified <- simplify(ora, cutoff = 0.7, by = "p.adjust", select_fun = min)
-    
-    ora_plot <- clusterProfiler::dotplot(ora_simplified, showCategory = 10) + 
-      labs(title = paste("ORA", ont, "- Top Regulated Genes (Simplified)")) + 
-      scale_x_continuous(limits = c(0, 1))
-    save_plot_organized(ora_plot, paste0("ORA_", ont, "_dotplot_simplified.svg"), dirs$plots_ora)
-    
-    # Save both original and simplified ORA results
-    write.csv(ora@result, file = file.path(dirs$ora, paste0("ORA_", ont, "_results_full.csv")), row.names = FALSE)
-    write.csv(ora_simplified@result, file = file.path(dirs$ora, paste0("ORA_", ont, "_results_simplified.csv")), row.names = FALSE)
+# Perform simplification ONLY if requested
+gse_simplified <- NULL  # Initialize as NULL
+
+if (PERFORM_SIMPLIFICATION && !is.null(gse) && nrow(gse@result) > 0) {
+  gse_temp <- tryCatch({
+    simplify(gse, cutoff = SIMPLIFY_CUTOFF, by = "p.adjust", select_fun = min)
+  }, error = function(e) {
+    warning("Simplify failed for ", comparison_name, ": ", e$message)
+    NULL  # Return NULL on failure
+  })
+
+  # Validate S4 class
+  if (!is.null(gse_temp) && (is(gse_temp, "gseaResult") || is(gse_temp, "enrichResult"))) {
+    gse_simplified <- gse_temp
+  }
+}
+
+
+# Determine which version to use for plotting
+if (PERFORM_SIMPLIFICATION && !is.null(gse_simplified)) {
+  gse_for_plot <- if(USE_SIMPLIFIED_FOR_PLOTS) gse_simplified else gse
+  plot_suffix <- if(USE_SIMPLIFIED_FOR_PLOTS) "_simplified" else "_full"
+} else {
+  # No simplification performed - use full results only
+  gse_for_plot <- gse
+  plot_suffix <- "_full"
+}
+
+
+# Generate plots using selected version
+if (!is.null(gse_for_plot) && nrow(gse_for_plot@result) > 0) {
+  plot_label <- if(PERFORM_SIMPLIFICATION && USE_SIMPLIFIED_FOR_PLOTS && !is.null(gse_simplified)) {
+    "(Simplified)"
+  } else {
+    "(Full)"
+  }
+
+  gse_plot <- clusterProfiler::dotplot(gse_for_plot, showCategory = 10, split = ".sign") +
+    facet_wrap(~ .sign, nrow = 1) +
+    labs(title = paste("GSEA", ont, "of", comparison_name, plot_label), 
+         x = "Gene Ratio", y = "Gene Set") +
+    scale_fill_viridis_c(option = "cividis") + 
+    theme_minimal(base_size = 12) +
+    theme(
+      plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      axis.text.y = element_text(size = 10),
+      strip.text = element_text(size = 12, face = "plain"),
+      panel.grid.major = element_line(color = "grey85", size = 0.3),
+      panel.grid.minor = element_blank()
+    )
+
+  save_plot_organized(gse_plot, paste0("GSEA_", ont, "_dotplot", plot_suffix, ".svg"), dirs$plots_go)
+
+  # Other plots
+  save_plot_organized(emapplot(pairwise_termsim(gse_for_plot), showCategory = 10), 
+                     paste0("GSEA_", ont, "_emap", plot_suffix, ".svg"), dirs$plots_go)
+  save_plot_organized(cnetplot(gse_for_plot, categorySize = "pvalue", foldChange = gene_list), 
+                     paste0("GSEA_", ont, "_cnet", plot_suffix, ".svg"), dirs$plots_go)
+
+  ridgeplot_gse <- ridgeplot(gse_for_plot) + 
+    labs(x = "Enrichment Distribution", 
+         title = paste("GSEA", ont, "Ridgeplot", plot_label)) + 
+    theme_minimal()
+  save_plot_organized(ridgeplot_gse, paste0("GSEA_", ont, "_ridge", plot_suffix, ".svg"), dirs$plots_go)
+
+  gseaplot_gse <- gseaplot(gse_for_plot, by = "all", 
+                           title = gse_for_plot@result$Description[1], geneSetID = 1)
+  save_plot_organized(gseaplot_gse, paste0("GSEA_", ont, "_plot", plot_suffix, ".svg"), dirs$plots_go)
+
+  top_terms <- head(gse_for_plot@result$Description, 3)
+  pmcplot_gse <- pmcplot(top_terms, 2010:2025, proportion = FALSE) + 
+    labs(title = paste("Publication Trends -", ont, plot_label))
+  save_plot_organized(pmcplot_gse, paste0("GSEA_", ont, "_pubmed", plot_suffix, ".svg"), dirs$plots_go)
+}
+
+
+# Save results based on whether simplification was performed
+write.csv(gse@result, 
+          file = file.path(dirs$go_ont, paste0("GSEA_", ont, "_results_full.csv")), 
+          row.names = FALSE)
+
+if (PERFORM_SIMPLIFICATION && !is.null(gse_simplified)) {
+  # Save simplified version
+  write.csv(gse_simplified@result, 
+            file = file.path(dirs$go_ont, paste0("GSEA_", ont, "_results_simplified.csv")), 
+            row.names = FALSE)
+}
+
+# Save the version used for plots to core_enrich
+gse_for_export <- if(PERFORM_SIMPLIFICATION && USE_SIMPLIFIED_FOR_PLOTS && !is.null(gse_simplified)) {
+  gse_simplified
+} else {
+  gse
+}
+
+write.csv(gse_for_export@result, 
+          file = file.path(dirs$core_enrich, paste0(comparison_name, plot_suffix, ".csv")), 
+          row.names = FALSE)
+
+# ----------------------------------------------------
+# ORA WITH OPTIONAL SIMPLIFICATION
+# ----------------------------------------------------
+ora <- enrichGO(gene = top_genes, ont = ont, keyType = "UNIPROT", 
+                minGSSize = 3, maxGSSize = 800, pvalueCutoff = 1, 
+                OrgDb = organism, pAdjustMethod = "BH")
+
+
+# Simplify ONLY if requested
+ora_simplified <- NULL
+
+if (PERFORM_SIMPLIFICATION && nrow(ora@result) > 0) {
+  ora_simplified <- tryCatch({
+    simplify(ora, cutoff = SIMPLIFY_CUTOFF, by = "p.adjust", select_fun = min)
+  }, error = function(e) {
+    warning("ORA simplify failed for ", comparison_name, ": ", e$message)
+    NULL
+  })
+
+  # Validate S4 class
+  if (!is.null(ora_simplified) && !is(ora_simplified, "enrichResult")) {
+    ora_simplified <- NULL
+  }
+}
+
+
+# Determine version for plotting
+if (PERFORM_SIMPLIFICATION && !is.null(ora_simplified)) {
+  ora_for_plot <- if(USE_SIMPLIFIED_FOR_PLOTS) ora_simplified else ora
+} else {
+  ora_for_plot <- ora
+}
+
+
+if (nrow(ora_for_plot@result) > 0) {
+  plot_label <- if(PERFORM_SIMPLIFICATION && USE_SIMPLIFIED_FOR_PLOTS && !is.null(ora_simplified)) {
+    "(Simplified)"
+  } else {
+    "(Full)"
+  }
+
+  ora_plot <- clusterProfiler::dotplot(ora_for_plot, showCategory = 10) + 
+    labs(title = paste("ORA", ont, "- Top Regulated Genes", plot_label)) + 
+    scale_x_continuous(limits = c(0, 1))
+  save_plot_organized(ora_plot, paste0("ORA_", ont, "_dotplot", plot_suffix, ".svg"), dirs$plots_ora)
+}
+
+
+# Save results
+write.csv(ora@result, 
+          file = file.path(dirs$ora, paste0("ORA_", ont, "_results_full.csv")), 
+          row.names = FALSE)
+
+if (PERFORM_SIMPLIFICATION && !is.null(ora_simplified)) {
+  write.csv(ora_simplified@result, 
+            file = file.path(dirs$ora, paste0("ORA_", ont, "_results_simplified.csv")), 
+            row.names = FALSE)
+}
     
     # ----------------------------------------------------
     # KEGG GSEA (No simplification - KEGG specific)
@@ -280,40 +398,109 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
     
     setwd(oldwd)
     
-    # ----------------------------------------------------
-    # EnrichGO Analysis (ALL ontologies) WITH SIMPLIFICATION
-    # ----------------------------------------------------
-    go_enrich <- enrichGO(gene = names(gene_list), universe = names(gene_list), 
-                          OrgDb = organism, keyType = 'UNIPROT', readable = TRUE, 
-                          ont = "ALL", pvalueCutoff = 1, qvalueCutoff = 1, 
-                          pAdjustMethod = "BH", minGSSize = 3, maxGSSize = 800)
-    
-    # Simplify each ontology separately for "ALL" results
-    go_bp <- go_enrich[go_enrich$ONTOLOGY == "BP", ]
-    go_cc <- go_enrich[go_enrich$ONTOLOGY == "CC", ]
-    go_mf <- go_enrich[go_enrich$ONTOLOGY == "MF", ]
-    
-    go_bp_simple <- if(nrow(go_bp@result) > 0) simplify(go_bp, cutoff = 0.7, by = "p.adjust", select_fun = min) else go_bp
-    go_cc_simple <- if(nrow(go_cc@result) > 0) simplify(go_cc, cutoff = 0.7, by = "p.adjust", select_fun = min) else go_cc
-    go_mf_simple <- if(nrow(go_mf@result) > 0) simplify(go_mf, cutoff = 0.7, by = "p.adjust", select_fun = min) else go_mf
-    
-    # Combine simplified results
+# ----------------------------------------------------
+# EnrichGO Analysis (ALL ontologies) WITH OPTIONAL SIMPLIFICATION
+# ----------------------------------------------------
+go_enrich <- enrichGO(gene = names(gene_list), universe = names(gene_list), 
+                      OrgDb = organism, keyType = 'UNIPROT', readable = TRUE, 
+                      ont = "ALL", pvalueCutoff = 1, qvalueCutoff = 1, 
+                      pAdjustMethod = "BH", minGSSize = 3, maxGSSize = 800)
+
+
+# Initialize simplified version as NULL
+go_enrich_simplified <- NULL
+
+
+# Process simplification ONLY if requested
+if (PERFORM_SIMPLIFICATION) {
+  simplified_results_list <- list()
+
+  for (ont_type in c("BP", "CC", "MF")) {
+    # Run enrichGO for this specific ontology
+    go_single <- tryCatch({
+      enrichGO(gene = names(gene_list), 
+               universe = names(gene_list), 
+               OrgDb = organism, 
+               keyType = 'UNIPROT', 
+               readable = TRUE, 
+               ont = ont_type,
+               pvalueCutoff = 1, 
+               qvalueCutoff = 1, 
+               pAdjustMethod = "BH", 
+               minGSSize = 3, 
+               maxGSSize = 800)
+    }, error = function(e) {
+      warning("enrichGO failed for ", ont_type, ": ", e$message)
+      NULL
+    })
+
+    # Simplify if results exist
+    if (!is.null(go_single) && nrow(go_single@result) > 0) {
+      go_simplified <- tryCatch({
+        simplify(go_single, cutoff = SIMPLIFY_CUTOFF, by = "p.adjust", select_fun = min)
+      }, error = function(e) {
+        warning("Simplify failed for ", ont_type, ": ", e$message)
+        go_single
+      })
+
+      # Store results as data.frame
+      if (is(go_simplified, "enrichResult")) {
+        simplified_results_list[[ont_type]] <- go_simplified@result
+      } else if (is.data.frame(go_simplified)) {
+        simplified_results_list[[ont_type]] <- go_simplified
+      } else {
+        simplified_results_list[[ont_type]] <- go_single@result
+      }
+    }
+  }
+
+  # Combine simplified results
+  if (length(simplified_results_list) > 0) {
     go_enrich_simplified <- go_enrich
-    go_enrich_simplified@result <- rbind(go_bp_simple@result, go_cc_simple@result, go_mf_simple@result)
-    
-    p4 <- clusterProfiler::dotplot(go_enrich_simplified, showCategory = 20, split = "ONTOLOGY") +
-      facet_grid(ONTOLOGY ~ ., scales = "free_y") +
-      labs(title = "GO Enrichment Dotplot (Simplified)", x = "Gene Ratio", y = "GO Term", color = "p.adjust", size = "Count") +
-      scale_color_viridis_c(option = "magma", direction = -1) +
-      theme_minimal(base_size = 12) +
-      theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"), 
-            axis.text.x = element_text(angle = 45, hjust = 1))
-    
-    save_plot_organized(p4, paste0("GOenrich_dotplot_simplified.svg"), dirs$plots_go)
-    
-    # Save both full and simplified enrichGO results
-    write.csv(go_enrich@result, file = file.path(dirs$go_ont, paste0("enrichGO_ALL_results_full.csv")), row.names = FALSE)
-    write.csv(go_enrich_simplified@result, file = file.path(dirs$go_ont, paste0("enrichGO_ALL_results_simplified.csv")), row.names = FALSE)
+    go_enrich_simplified@result <- do.call(rbind, simplified_results_list)
+  }
+}
+
+
+# Choose version for plotting
+if (PERFORM_SIMPLIFICATION && !is.null(go_enrich_simplified)) {
+  go_enrich_for_plot <- if(USE_SIMPLIFIED_FOR_PLOTS) go_enrich_simplified else go_enrich
+} else {
+  go_enrich_for_plot <- go_enrich
+}
+
+
+# Plot with selected version
+if (nrow(go_enrich_for_plot@result) > 0) {
+  plot_label <- if(PERFORM_SIMPLIFICATION && USE_SIMPLIFIED_FOR_PLOTS && !is.null(go_enrich_simplified)) {
+    "(Simplified)"
+  } else {
+    "(Full)"
+  }
+
+  p4 <- clusterProfiler::dotplot(go_enrich_for_plot, showCategory = 20, split = "ONTOLOGY") +
+    facet_grid(ONTOLOGY ~ ., scales = "free_y") +
+    labs(title = paste("GO Enrichment Dotplot", plot_label), 
+         x = "Gene Ratio", y = "GO Term", color = "p.adjust", size = "Count") +
+    scale_color_viridis_c(option = "magma", direction = -1) +
+    theme_minimal(base_size = 12) +
+    theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"), 
+          axis.text.x = element_text(angle = 45, hjust = 1))
+
+  save_plot_organized(p4, paste0("GOenrich_dotplot", plot_suffix, ".svg"), dirs$plots_go)
+}
+
+
+# Save results
+write.csv(go_enrich@result, 
+          file = file.path(dirs$go_ont, paste0("enrichGO_ALL_results_full.csv")), 
+          row.names = FALSE)
+
+if (PERFORM_SIMPLIFICATION && !is.null(go_enrich_simplified)) {
+  write.csv(go_enrich_simplified@result, 
+            file = file.path(dirs$go_ont, paste0("enrichGO_ALL_results_simplified.csv")), 
+            row.names = FALSE)
+}
     
     # ----------------------------------------------------
     # KEGG GSEA with Predefined UniProt IDs
@@ -427,17 +614,18 @@ uniprot_df <- read.delim(uniprot_mapping_file_path, header = FALSE, sep = "\t", 
 
 # Extract Gene_Name mappings
 gene_names <- uniprot_df %>%
-  filter(V2 == "Gene_Name") %>%
-  distinct(V1, .keep_all = TRUE) %>%
-  rename(UniProtID = V1, Gene_Name = V3) %>%
-  select(UniProtID, Gene_Name)
+  dplyr::filter(V2 == "Gene_Name") %>%
+  dplyr::distinct(V1, .keep_all = TRUE) %>%
+  dplyr::rename(UniProtID = V1, Gene_Name = V3) %>%
+  dplyr::select(UniProtID, Gene_Name)
 
-# Extract UniProtKB-ID mappings
+# Extract UniProtKB-ID mappings - FIXED
 uniprot_ids <- uniprot_df %>%
-  filter(V2 == "UniProtKB-ID") %>%
-  distinct(V1, .keep_all = TRUE) %>%
-  rename(UniProtID = V1, UniProtKB_ID = V3) %>%
-  select(UniProtID, UniProtKB_ID)
+  dplyr::filter(V2 == "UniProtKB-ID") %>%
+  dplyr::distinct(V1, .keep_all = TRUE) %>%
+  dplyr::rename(UniProtID = V1, UniProtKB_ID = V3) %>%
+  dplyr::select(UniProtID, UniProtKB_ID)
+
 
 # Combine both mappings
 gene_map <- gene_names %>%
