@@ -11,10 +11,10 @@ pacman::p_load(
 set.seed(42)
 
 # =============== Config =================
-#gct_file   <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/E9_pg_matrix_protigy.gct"
-#output_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/pca_plots"
-gct_file <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/gct/data/pg.matrix_filtered_70percent-onegroup_imputed_ANOVA_z-scored.gct"
-output_dir <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Results/pca_plots"
+gct_file   <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/E9_pg_matrix_protigy.gct"
+output_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/pca_plots"
+#gct_file <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/gct/data/pg.matrix_filtered_70percent-onegroup_imputed_ANOVA_z-scored.gct"
+#output_dir <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Results/pca_plots"
 if (!file.exists(gct_file)) stop(sprintf("Input file not found: %s", gct_file))
 dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
 
@@ -583,9 +583,6 @@ plot_biplot_sparse(20, "pca_biplot_sparse.svg")
 # 10) Save session info
 ensure_dir(subdir("tables/meta"))
 writeLines(c(capture.output(sessionInfo())), con = file.path(subdir("tables/meta"), "sessionInfo.txt"))
-
-
-
 
 # ================== Additional Extensions (organized outputs) ==================
 
