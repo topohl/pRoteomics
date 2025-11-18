@@ -95,10 +95,10 @@ uniprot_df <- read.delim(
 # Set analysis parameters ---------------------------------------------
 
 # Define the ensemble profiling method used in the analysis
-ensemble_profiling <- "baseline_cell_type_profiling"
+ensemble_profiling <- "learning_signature"
 
 # Specify the experimental condition (e.g., CNO, VEH, CS, US, effects_inhibition_memory_ensemble, or learning_signature)
-condition <- "CS"
+condition <- "memory_ensemble"
 
 # Define the Gene Ontology domain (e.g., MF, BP, or CC)
 ont <- "BP"  # Biological Process
@@ -189,23 +189,52 @@ p_values <- combined_df %>%
 
 # Define filtering parameters for selecting top GO terms
 significant_only <- TRUE  # If TRUE, only keep terms with p.adjust < 0.05
-top10_terms <- TRUE       # If TRUE, select the top 10 terms based on absolute NES for each comparison
+top10_terms <- TRUE
+top10_per_comp <- TRUE      # If TRUE, select the top 10 terms based on absolute NES for each comparison
+
+# Filter and select top terms from the combined data frame
+if (top10_per_comp) {
+  if (significant_only) {
+    # Only include significant terms (p.adjust < 0.05), then select the top 10 per comparison with the highest absolute NES
+    top_df_per_comp <- combined_df %>%
+      filter(p.adjust < 0.05) %>%
+      group_by(Comparison) %>%
+      arrange(desc(abs(NES))) %>%
+      slice_head(n = 10) %>%
+      ungroup()
+  } else {
+    # Without significance filtering, select the top 10 terms per comparison with the highest absolute NES
+    top_df_per_comp <- combined_df %>%
+      group_by(Comparison) %>%
+      arrange(desc(abs(NES))) %>%
+      slice_head(n = 10) %>%
+      ungroup()
+  }
+} else {
+  if (significant_only) {
+    # If not selecting top10, just retain all significant terms (p.adjust < 0.05)
+    top_df_per_comp <- combined_df %>%
+      filter(p.adjust < 0.05)
+  } else {
+    # Include all terms without any filtering
+    top_df_per_comp <- combined_df
+  }
+}
+
 
 # Filter and select top terms from the combined data frame
 if (top10_terms) {
   if (significant_only) {
-    # Only include significant terms (p.adjust < 0.05), then select the top 10 with the highest absolute NES per Comparison
+    # Only include significant terms (p.adjust < 0.05), then select the overall top 10 with the highest absolute NES across all comparisons
     top_df <- combined_df %>%
       filter(p.adjust < 0.05) %>%
-      group_by(Comparison) %>%
-      slice_max(order_by = abs(NES), n = 10) %>%
-      ungroup()
+      arrange(desc(abs(NES))) %>%
+      slice_head(n = 10)
   } else {
-    # Without significance filtering, select the top 10 terms with the highest absolute NES per Comparison
+    # Without significance filtering, select the overall top 10 terms with the highest absolute NES across all comparisons
     top_df <- combined_df %>%
-      group_by(Comparison) %>%
-      slice_max(order_by = abs(NES), n = 10) %>%
-      ungroup()
+      arrange(desc(abs(NES))) %>%
+      slice_head(n = 10)
   }
 } else {
   if (significant_only) {
@@ -374,32 +403,45 @@ dev.off()
 #' @param plot_height Numeric value specifying the height of the plot when saved (in inches).
 #'
 #' @return The function renders a dot plot and saves it as an SVG file.
-
 # Construct dot plot for comparative GO enrichment analysis.
-dotplot <- ggplot(lookup_df, aes(
+# Create full dotplot using top_df_per_comp (filtered per comparison)
+top_df_per_comp_plot <- top_df_per_comp %>%
+  mutate(Comparison = factor(Comparison, levels = comparison_order))
+
+# Get all comparisons from comparison_order (not just those in top_df_per_comp)
+all_comparisons <- comparison_order
+
+# Filter combined_df to include all data points for ALL comparisons
+# This ensures even comparisons with no significant terms are shown
+full_data_for_plot <- combined_df %>%
+  filter(Description %in% unique(top_df_per_comp_plot$Description)) %>%
+  mutate(Comparison = factor(Comparison, levels = all_comparisons))
+
+dotplot <- ggplot(full_data_for_plot, aes(
   x = Comparison,
-  y = reorder(Description, NES, FUN = median),  # Order gene sets by median NES
+  y = reorder(Description, NES, FUN = median),
   color = NES,
   size = -log10(p.adjust)
 )) +
-  geom_point(alpha = 0.85) +  # Slight transparency for overlapping points
+  geom_point(alpha = 0.85) +
   scale_color_gradientn(
     colours = colorRampPalette(c("#6698CC", "white", "#F08C21"))(100),
     name = "NES",
-    limits = c(min(lookup_df$NES, na.rm = TRUE), max(lookup_df$NES, na.rm = TRUE)),
-    values = scales::rescale(c(min(lookup_df$NES, na.rm = TRUE), 0, max(lookup_df$NES, na.rm = TRUE)))
+    limits = c(min(full_data_for_plot$NES, na.rm = TRUE), max(full_data_for_plot$NES, na.rm = TRUE)),
+    values = scales::rescale(c(min(full_data_for_plot$NES, na.rm = TRUE), 0, max(full_data_for_plot$NES, na.rm = TRUE)))
   ) +
   scale_size_continuous(
     name = expression(-log[10](p.adjust)),
-    range = c(3, 10)
+    range = c(1, 10),
+    limits = c(0, NA)
   ) +
-  scale_x_discrete(expand = expansion(mult = c(0.29, 0.29))) +  # Increased x-axis padding
+  scale_x_discrete(expand = expansion(mult = c(0.29, 0.29)), drop = FALSE) +  # drop = FALSE keeps all factor levels
   scale_y_discrete(
-  expand = expansion(add = c(0.6, 0.6)),
-  labels = scales::label_wrap(40)
-  ) +  # Add spacing between y-axis categories
+    expand = expansion(add = c(0.6, 0.6)),
+    labels = scales::label_wrap(40)
+  ) +
   labs(
-    title = "Comparative Gene Ontology Enrichment Dot Plot",
+    title = "Top Terms Per Comparison - GO Enrichment Dot Plot",
     subtitle = paste(ont, ensemble_profiling, "under", condition, "condition"),
     x = paste("Comparison (", ensemble_profiling, ")", sep = ""),
     y = "Gene Set Description"
@@ -416,22 +458,78 @@ dotplot <- ggplot(lookup_df, aes(
     legend.text = element_text(size = 12),
     legend.position = "right",
     plot.margin = margin(5, 5, 5, 5),
-    panel.spacing.x = unit(0.5, "lines")  # Reduce spacing between panels if faceted
+    panel.spacing.x = unit(0.5, "lines")
   ) +
-  coord_cartesian(clip = 'off')  # Prevent clipping of points
+  coord_cartesian(clip = 'off')
+
+# Create a second dot plot showing only top terms using lookup_df (filtered)
+# Include all comparisons and all data points for the selected top terms
+top_terms_all_data <- combined_df %>%
+  filter(Description %in% top_terms) %>%
+  mutate(Comparison = factor(Comparison, levels = all_comparisons))
+
+dotplot_top <- ggplot(top_terms_all_data, aes(
+  x = Comparison,
+  y = reorder(Description, NES, FUN = median),
+  color = NES,
+  size = -log10(p.adjust)
+)) +
+  geom_point(alpha = 0.85) +
+  scale_color_gradientn(
+    colours = colorRampPalette(c("#6698CC", "white", "#F08C21"))(100),
+    name = "NES",
+    limits = c(min(top_terms_all_data$NES, na.rm = TRUE), max(top_terms_all_data$NES, na.rm = TRUE)),
+    values = scales::rescale(c(min(top_terms_all_data$NES, na.rm = TRUE), 0, max(top_terms_all_data$NES, na.rm = TRUE)))
+  ) +
+  scale_size_continuous(
+    name = expression(-log[10](p.adjust)),
+    range = c(1, 10),
+    limits = c(0, NA)
+  ) +
+  scale_x_discrete(expand = expansion(mult = c(0.29, 0.29)), drop = FALSE) +  # drop = FALSE keeps all factor levels
+  scale_y_discrete(
+    expand = expansion(add = c(0.6, 0.6)),
+    labels = scales::label_wrap(40)
+  ) +
+  labs(
+    title = "Top Terms - Comparative GO Enrichment Dot Plot",
+    subtitle = paste(ont, ensemble_profiling, "under", condition, "condition"),
+    x = paste("Comparison (", ensemble_profiling, ")", sep = ""),
+    y = "Gene Set Description"
+  ) +
+  theme_classic(base_size = 14) +
+  theme(
+    plot.title = element_text(face = "bold", size = 16, hjust = 0.5, margin = margin(b = 10)),
+    plot.subtitle = element_text(size = 14, hjust = 0.5, margin = margin(b = 10)),
+    axis.title = element_text(face = "bold", size = 14),
+    axis.text = element_text(color = "black", size = 12),
+    axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = 10),
+    panel.border = element_rect(color = "black", fill = NA, size = 0.5),
+    legend.title = element_text(face = "bold", size = 14),
+    legend.text = element_text(size = 12),
+    legend.position = "right",
+    plot.margin = margin(5, 5, 5, 5),
+    panel.spacing.x = unit(0.5, "lines")
+  ) +
+  coord_cartesian(clip = 'off')
 
 # Dynamically adjust the plot width based on the number of unique comparisons.
 # A minimum width is set to ensure clarity when few comparisons are present.
 num_comparisons <- length(unique(lookup_df$Comparison))
-dynamic_width <- max(5, num_comparisons * 2.15)  # Increased width calculation
+dynamic_width <- max(5, num_comparisons * 1.9)  # Increased width calculation
 
-# Dynamically adjust plot height based on number of gene sets (y-axis points)
-num_gene_sets <- length(unique(lookup_df$Description))
-dynamic_height <- max(3.7, num_gene_sets * 0.55)  # Scale height with number of gene sets
+# Dynamically adjust plot height for each dotplot based on their respective number of gene sets
+num_gene_sets_per_comp <- length(unique(top_df_per_comp_plot$Description))
+dynamic_height_per_comp <- max(3.7, num_gene_sets_per_comp * 0.5)  # Height for dotplot
 
-# Save the dot plot as an SVG file using the dynamic width and height.
+num_gene_sets_top <- length(unique(lookup_df$Description))
+dynamic_height_top <- max(3.7, num_gene_sets_top * 0.7)  # Height for dotplot_top
+
+# Save the dot plots as SVG files using the appropriate dynamic heights.
 output_dotplot <- file.path(output_dir, paste0("enrichment_dotplot_", ont, "_", ensemble_profiling, "_", condition, ".svg"))
-ggsave(output_dotplot, plot = dotplot, width = dynamic_width, height = dynamic_height, dpi = 300)
+output_dotplot_top <- file.path(output_dir, paste0("enrichment_dotplot_top_terms_", ont, "_", ensemble_profiling, "_", condition, ".svg"))
+ggsave(output_dotplot, plot = dotplot, width = dynamic_width, height = dynamic_height_per_comp, dpi = 300)
+ggsave(output_dotplot_top, plot = dotplot_top, width = dynamic_width, height = dynamic_height_top, dpi = 300)
 
 # -----------------------------------------------------
 # Specify the target genes for the enrichment analysis
