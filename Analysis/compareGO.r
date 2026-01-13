@@ -61,6 +61,12 @@ uniprot_mapping_file_path <- file.path(
   "MOUSE_10090_idmapping.dat"
 )
 
+# Load required packages
+if (!require("clusterProfiler")) BiocManager::install("clusterProfiler")
+if (!require("org.Mm.eg.db")) BiocManager::install("org.Mm.eg.db")
+library(clusterProfiler)
+library(org.Mm.eg.db)
+
 # Read the UniProt mapping file and extract only Uniprot-to-GeneName mappings
 uniprot_df <- read.delim(
   uniprot_mapping_file_path,
@@ -94,14 +100,14 @@ uniprot_df <- read.delim(
 #' - Output: Results/compareGO/{ont}/{ensemble_profiling}/{condition}/
 # Set analysis parameters ---------------------------------------------
 
-# Define the ensemble profiling method used in the analysis
-ensemble_profiling <- "learning_signature"
-
-# Specify the experimental condition (e.g., CNO, VEH, CS, US, effects_inhibition_memory_ensemble, or learning_signature)
-condition <- "memory_ensemble"
-
 # Define the Gene Ontology domain (e.g., MF, BP, or CC)
 ont <- "BP"  # Biological Process
+
+# Define the ensemble profiling method used in the analysis
+ensemble_profiling <- "baseline_cell_type_profiling"
+
+# Specify the experimental condition (e.g., CNO, VEH, CS, US, effects_inhibition_memory_ensemble, or learning_signature)
+condition <- "CS"
 
 # Set up working environment ------------------------------------------
 
@@ -164,7 +170,7 @@ gene_go_ids <- combined_df %>%
   # Split the slash-separated gene accessions into rows
   mutate(core_enrichment = strsplit(core_enrichment, "/")) %>%
   unnest(core_enrichment) %>%
-  rename(Gene = core_enrichment) %>%
+  dplyr::rename(Gene = core_enrichment) %>%
   distinct() %>%
   group_by(Gene) %>%
   summarize(GO_IDs = paste(unique(GO_ID), collapse = "; "), .groups = "drop")
@@ -220,7 +226,6 @@ if (top10_per_comp) {
     top_df_per_comp <- combined_df
   }
 }
-
 
 # Filter and select top terms from the combined data frame
 if (top10_terms) {
@@ -835,16 +840,14 @@ dev.off()
 #' @return A visual heatmap saved in specified file formats.
 
 # Expand each enrichment file to get one gene per row
-# Expand each enrichment file to get one gene per row
-
 core_long_df <- bind_rows(
   lapply(names(enrichment_list), function(name) {
     df <- enrichment_list[[name]]
     df %>%
       dplyr::select(Description, NES, core_enrichment) %>%
-      mutate(core_enrichment = str_split(core_enrichment, "/")) %>%
-      tidyr::unnest_longer(core_enrichment) %>%  # ← Changed to unnest_longer
-      rename(Gene = core_enrichment) %>%
+      mutate(core_enrichment = strsplit(core_enrichment, "/")) %>%
+      tidyr::unnest(core_enrichment) %>%
+      dplyr::rename(Gene = core_enrichment) %>%
       mutate(Comparison = name)
   })
 )
@@ -1056,13 +1059,13 @@ uniprot_subset <- uniprot_df %>%
   pivot_wider(names_from = V2, values_from = V3, values_fn = list) %>%
   unnest(cols = everything()) %>%
   distinct(V1, .keep_all = TRUE) %>%
-  rename(UniprotID = V1)
+  dplyr::rename(UniprotID = V1)
 
 # Extract Gene Synonyms
 gene_synonyms <- uniprot_df %>%
   filter(V2 == "Gene_Synonym") %>%
   distinct(V1, .keep_all = TRUE) %>%
-  rename(UniprotID = V1, Gene_Synonym = V3)
+  dplyr::rename(UniprotID = V1, Gene_Synonym = V3)
 
 # Optional: Gene Descriptions (from GSEA if available)
 gene_descriptions <- core_long_df %>%
@@ -1124,13 +1127,30 @@ top5_down <- volcano_df %>%
   slice_head(n = 5)
 
 top_genes_to_label <- bind_rows(top5_up, top5_down)
+# Calculate the maximum absolute value across both dimensions to ensure equal scaling
+max_val <- max(
+  abs(volcano_df$log2fc),
+  abs(-log10(volcano_df$padj)),
+  0,
+  na.rm = TRUE
+)
+# Add a small buffer
+limit <- ceiling(max_val) + 1
+
+# Calculate the maximum absolute value for x axis
+max_x_val <- max(abs(volcano_df$log2fc), 0, na.rm = TRUE)
+x_limit <- ceiling(max_x_val) + 1
+
+# Calculate the maximum value for y axis
+max_y_val <- max(abs(-log10(volcano_df$padj)), 0, na.rm = TRUE)
+y_limit <- ceiling(max_y_val) + 1
 
 volcano_plot <- ggplot(volcano_df, aes(x = log2fc, y = -log10(padj), label = Gene_Name, color = Significance)) +
-  geom_point(shape = 16, alpha = 0.6, size = 4) +
+  geom_point(shape = 16, alpha = 0.6, size = 6) +
   ggrepel::geom_text_repel(
     data = top_genes_to_label,
     aes(label = Gene_Name),
-    size = 6,
+    size = 9,
     max.overlaps = Inf,
     show.legend = FALSE
   ) +
@@ -1138,25 +1158,26 @@ volcano_plot <- ggplot(volcano_df, aes(x = log2fc, y = -log10(padj), label = Gen
     values = c("up" = "#f36d07", "down" = "#455A64", "n.s." = "#c7c7c7"),
     breaks = c("up", "down", "n.s.")
   ) +
-  scale_x_continuous(breaks = seq(floor(min(volcano_df$log2fc, na.rm = TRUE)),
-                                  ceiling(max(volcano_df$log2fc, na.rm = TRUE)),
-                                  by = 1)) +
+  # Set limits based on respective maximums
+  scale_x_continuous(limits = c(-x_limit, x_limit), breaks = seq(-x_limit, x_limit, by = 1)) +
+  scale_y_continuous(limits = c(0, y_limit), breaks = scales::pretty_breaks()) +
   labs(
     title = paste(strsplit(comp, "_")[[1]], collapse = " over "),
     x = "log2 Fold Change",
     y = expression(-log[10]~(p~adj.))
   ) +
-  coord_fixed(ratio = 2) +
-  theme_classic(base_size = 16) +
+  theme_classic(base_size = 24) +
   theme(
     legend.position = c(1, 1),
     legend.justification = c(1, 1),
     legend.background = element_rect(fill = "white", color = NA),
     legend.title = element_blank(),
-    legend.text = element_text(size = 16),
-    plot.title = element_text(size = 18, face = "bold"),
-    axis.title = element_text(face = "bold", size = 16),
-    axis.text = element_text(size = 14),
+    legend.text = element_text(size = 24),
+    plot.title = element_text(size = 28, face = "bold"),
+    axis.title = element_text(face = "bold", size = 26),
+    axis.text = element_text(size = 24, color = "black"),
+    axis.line = element_blank(),
+    axis.ticks = element_line(color = "black", size = 1),
     panel.grid.major = element_blank(),
     panel.grid.minor = element_blank()
   ) +
@@ -1169,130 +1190,488 @@ if (!dir.exists(vol_dir)) {
   dir.create(vol_dir, recursive = TRUE)
 }
 
+# Define and create significant proteins directory early so the variable exists
+# even if no significant proteins are found in this comparison
+proteins_sig_reg_dir <- file.path(core_enrichment_dir, "significant_proteins")
+if (!dir.exists(proteins_sig_reg_dir)) {
+  dir.create(proteins_sig_reg_dir, recursive = TRUE)
+}
+
+volcano_file <- file.path(vol_dir, paste0("log2fc_", comp, "_volcano.svg"))
+message(paste("Saving volcano plot to:", volcano_file))
 ggsave(
-  filename = file.path(vol_dir, paste0("log2fc_", comp, "_volcano.svg")),
+  filename = volcano_file,
   plot = volcano_plot,
-  width = 5,
-  height = 5
+  width = 6,
+  height = 6
 )
 
 # Now check for significant data for heatmap + Excel
-comp_df <- full_comp_df %>% filter(padj < 0.05)
+comp_df <- full_comp_df %>% 
+  filter(padj < 0.05) %>%
+  ungroup()
+
+message(paste("  Comparison:", comp, "- Significant genes (p < 0.05):", nrow(comp_df)))
 
 if (nrow(comp_df) == 0) {
-  message(paste("No significant genes found for", comp, "- skipping heatmap and Excel."))
+  message(paste("  No significant genes found for", comp, "- skipping heatmap and Excel."))
   next
 }
 
-  # Select top and bottom 25 based on log2fc direction
-  comp_df <- comp_df %>%
-    mutate(Direction = case_when(
-      log2fc > 0 ~ "Up",
-      log2fc < 0 ~ "Down",
-      TRUE ~ "Neutral"
-    ))
+# Select top and bottom 25 based on log2fc direction
+comp_df <- comp_df %>%
+  mutate(Direction = case_when(
+    log2fc > 0 ~ "Up",
+    log2fc < 0 ~ "Down",
+    TRUE ~ "Neutral"
+  ))
 
-  # Combine top 25 up and down (before deduplication)
-  top_bottom_genes <- bind_rows(
-    comp_df %>%
-      filter(Direction == "Up") %>%
-      arrange(desc(log2fc)) %>%
-      slice_head(n = 25),
-    comp_df %>%
-      filter(Direction == "Down") %>%
-      arrange(log2fc) %>%
-      slice_head(n = 25)
-  ) %>%
-    distinct(gene_symbol, Comparison, .keep_all = TRUE)
+# Combine top 25 up and down (before deduplication)
+top_bottom_genes <- bind_rows(
+  comp_df %>%
+    filter(Direction == "Up") %>%
+    arrange(desc(log2fc)) %>%
+    slice_head(n = 25),
+  comp_df %>%
+    filter(Direction == "Down") %>%
+    arrange(log2fc) %>%
+    slice_head(n = 25)
+) %>%
+  distinct(gene_symbol, Comparison, .keep_all = TRUE)
 
-  # Join UniProt annotations
-  mapped_top_bottom <- top_bottom_genes %>%
-    left_join(uniprot_subset, by = c("gene_symbol" = "UniprotID")) %>%
-    left_join(gene_synonyms, by = c("gene_symbol" = "UniprotID")) %>%
-    left_join(gene_descriptions, by = c("gene_symbol" = "Gene")) %>%
-    left_join(gene_go_ids, by = c("gene_symbol" = "Gene")) %>%
-    mutate(
-      Gene_Name = as.character(Gene_Name),
-      `UniProtKB-ID` = as.character(`UniProtKB-ID`),
-      Gene_Synonym = as.character(Gene_Synonym),
-      Gene_Label = ifelse(is.na(Gene_Name), gene_symbol, Gene_Name),
-      Gene_Label = make.unique(as.character(Gene_Label)),
-      abs_log2fc = abs(log2fc),
-      UniProt_Link = paste0("https://www.uniprot.org/uniprot/", gene_symbol)
-    )
-
-  # Add rank within direction
-  mapped_top_bottom <- mapped_top_bottom %>%
-    group_by(Direction) %>%
-    arrange(Direction, desc(abs_log2fc)) %>%
-    mutate(Rank = row_number()) %>%
-    ungroup()
-
-  # Create heatmap matrix
-  heatmap_matrix <- mapped_top_bottom %>%
-    dplyr::select(Gene_Label, log2fc) %>%
-    mutate(Gene_Label = make.unique(as.character(Gene_Label))) %>%
-    tibble::column_to_rownames("Gene_Label") %>%
-    as.matrix()
-
-  if (nrow(heatmap_matrix) < 2) {
-    message(paste("Skipping heatmap for", comp, "- fewer than 2 unique genes."))
-  } else {
-    max_abs <- max(abs(heatmap_matrix), na.rm = TRUE)
-    breaks <- seq(-max_abs, max_abs, length.out = 101)
-
-    heatmap_plot <- pheatmap(
-      heatmap_matrix,
-      color = colorRampPalette(c("#6698CC", "white", "#F08C21"))(100),
-      breaks = breaks,
-      main = paste("Top/Bottom 25 Genes by log2FC in", comp),
-      cluster_rows = TRUE,
-      cluster_cols = FALSE,
-      fontsize_row = 6,
-      show_colnames = FALSE,
-      border_color = "#e7e7e7"
-    )
-
-    # Save heatmap
-    heatmap_dir <- file.path(core_enrichment_dir, "heatmap_plots")
-    if (!dir.exists(heatmap_dir)) {
-      dir.create(heatmap_dir, recursive = TRUE)
-    }
-    svg(
-      file.path(heatmap_dir, paste0("log2fc_", comp, "_heatmap.svg")),
-      width = 3, height = 8
-    )
-    grid::grid.draw(heatmap_plot$gtable)
-    dev.off()
-  }
-
-  # Save Excel with annotation
-  excel_out <- mapped_top_bottom %>%
-    dplyr::select(
-      Gene_Name,
-      `UniProtKB-ID`,
-      Uniprot_Accession = gene_symbol,
-      Gene_Synonym,
-      Comparison,
-      log2fc,
-      abs_log2fc,
-      padj,
-      Direction,
-      Rank,
-      GO_IDs,
-      Description,
-      UniProt_Link
-    ) %>%
-    mutate(across(everything(), as.character)) %>%
-    distinct()
-
-  proteins_sig_reg_dir <- file.path(core_enrichment_dir, "significant_proteins")
-  dir.create(proteins_sig_reg_dir, showWarnings = FALSE, recursive = TRUE)
-  write_xlsx(
-    excel_out,
-    file.path(proteins_sig_reg_dir, paste0("log2fc_", comp, "_genes.xlsx"))
+# Join UniProt annotations
+# Ensure annotation dataframes are unique by join key to prevent row duplication
+mapped_top_bottom <- top_bottom_genes %>%
+  left_join(uniprot_subset, by = c("gene_symbol" = "UniprotID")) %>%
+  left_join(gene_synonyms, by = c("gene_symbol" = "UniprotID")) %>%
+  left_join(gene_descriptions, by = c("gene_symbol" = "Gene")) %>%
+  left_join(gene_go_ids, by = c("gene_symbol" = "Gene")) %>%
+  mutate(
+    Gene_Name = as.character(Gene_Name),
+    `UniProtKB-ID` = as.character(`UniProtKB-ID`),
+    Gene_Synonym = as.character(Gene_Synonym),
+    Gene_Label = ifelse(is.na(Gene_Name) | Gene_Name == "", gene_symbol, Gene_Name),
+    Gene_Label = make.unique(as.character(Gene_Label)),
+    abs_log2fc = abs(log2fc),
+    UniProt_Link = paste0("https://www.uniprot.org/uniprot/", gene_symbol)
   )
+
+# Add rank within direction
+mapped_top_bottom <- mapped_top_bottom %>%
+  group_by(Direction) %>%
+  arrange(Direction, desc(abs_log2fc)) %>%
+  mutate(Rank = row_number()) %>%
+  ungroup()
+
+# Create heatmap matrix
+heatmap_matrix <- mapped_top_bottom %>%
+  dplyr::select(Gene_Label, log2fc) %>%
+  tibble::column_to_rownames("Gene_Label") %>%
+  as.matrix()
+
+if (nrow(heatmap_matrix) < 2) {
+  message(paste("  Skipping heatmap for", comp, "- fewer than 2 unique genes."))
+} else {
+  max_abs <- max(abs(heatmap_matrix), na.rm = TRUE)
+  breaks <- seq(-max_abs, max_abs, length.out = 101)
+
+  heatmap_plot <- pheatmap(
+    heatmap_matrix,
+    color = colorRampPalette(c("#6698CC", "white", "#F08C21"))(100),
+    breaks = breaks,
+    main = paste("Top/Bottom 25 Genes by log2FC in", comp),
+    cluster_rows = TRUE,
+    cluster_cols = FALSE,
+    fontsize_row = 6,
+    show_colnames = FALSE,
+    border_color = "#e7e7e7",
+    silent = TRUE
+  )
+
+  # Save heatmap
+  heatmap_dir <- file.path(core_enrichment_dir, "heatmap_plots")
+  if (!dir.exists(heatmap_dir)) {
+    dir.create(heatmap_dir, recursive = TRUE)
+  }
+  
+  heatmap_file <- file.path(heatmap_dir, paste0("log2fc_", comp, "_heatmap.svg"))
+  message(paste("  Saving heatmap to:", heatmap_file))
+  svg(heatmap_file, width = 3, height = 8)
+  grid::grid.draw(heatmap_plot$gtable)
+  dev.off()
 }
+
+# Save Excel with annotation (Top/Bottom summary)
+excel_out <- mapped_top_bottom %>%
+  dplyr::select(
+    Gene_Name,
+    `UniProtKB-ID`,
+    Uniprot_Accession = gene_symbol,
+    Gene_Synonym,
+    Comparison,
+    log2fc,
+    abs_log2fc,
+    padj,
+    Direction,
+    Rank,
+    GO_IDs,
+    Description,
+    UniProt_Link
+  ) %>%
+  mutate(across(everything(), as.character)) %>%
+  distinct()
+
+excel_file <- file.path(proteins_sig_reg_dir, paste0("log2fc_", comp, "_genes.xlsx"))
+message(paste("  Saving top/bottom genes Excel to:", excel_file))
+write_xlsx(excel_out, excel_file)
+
+# Save separate Excel files for ALL significantly upregulated and downregulated proteins
+# Prepare full annotated data for all significant proteins
+all_sig_proteins <- comp_df %>%
+  left_join(uniprot_subset, by = c("gene_symbol" = "UniprotID")) %>%
+  left_join(gene_synonyms, by = c("gene_symbol" = "UniprotID")) %>%
+  left_join(gene_descriptions, by = c("gene_symbol" = "Gene")) %>%
+  left_join(gene_go_ids, by = c("gene_symbol" = "Gene")) %>%
+  mutate(
+    Gene_Name = as.character(Gene_Name),
+    `UniProtKB-ID` = as.character(`UniProtKB-ID`),
+    Gene_Synonym = as.character(Gene_Synonym),
+    abs_log2fc = abs(log2fc),
+    UniProt_Link = paste0("https://www.uniprot.org/uniprot/", gene_symbol)
+  )
+
+# Save upregulated proteins
+upregulated <- all_sig_proteins %>%
+  filter(Direction == "Up") %>%
+  arrange(desc(log2fc)) %>%
+  mutate(Rank = row_number()) %>%
+  dplyr::select(
+    Gene_Name,
+    `UniProtKB-ID`,
+    Uniprot_Accession = gene_symbol,
+    Gene_Synonym,
+    Comparison,
+    log2fc,
+    abs_log2fc,
+    padj,
+    Direction,
+    Rank,
+    GO_IDs,
+    Description,
+    UniProt_Link
+  ) %>%
+  mutate(across(everything(), as.character)) %>%
+  distinct()
+
+if (nrow(upregulated) > 0) {
+  up_file <- file.path(proteins_sig_reg_dir, paste0("log2fc_", comp, "_upregulated_all.xlsx"))
+  message(paste("  Saving", nrow(upregulated), "upregulated genes to:", up_file))
+  write_xlsx(upregulated, up_file)
+} else {
+  message(paste("  No upregulated genes found for", comp))
+}
+
+# Save downregulated proteins
+downregulated <- all_sig_proteins %>%
+  filter(Direction == "Down") %>%
+  arrange(log2fc) %>%
+  mutate(Rank = row_number()) %>%
+  dplyr::select(
+    Gene_Name,
+    `UniProtKB-ID`,
+    Uniprot_Accession = gene_symbol,
+    Gene_Synonym,
+    Comparison,
+    log2fc,
+    abs_log2fc,
+    padj,
+    Direction,
+    Rank,
+    GO_IDs,
+    Description,
+    UniProt_Link
+  ) %>%
+  mutate(across(everything(), as.character)) %>%
+  distinct()
+
+if (nrow(downregulated) > 0) {
+  down_file <- file.path(proteins_sig_reg_dir, paste0("log2fc_", comp, "_downregulated_all.xlsx"))
+  message(paste("  Saving", nrow(downregulated), "downregulated genes to:", down_file))
+  write_xlsx(downregulated, down_file)
+} else {
+  message(paste("  No downregulated genes found for", comp))
+}
+}
+
+# run GOenrich analysis using up and downregulated files as input for each comparison
+# -----------------------------------------------------
+# Run GO Enrichment on Up/Downregulated Proteins
+# -----------------------------------------------------
+#' Run GO Enrichment Analysis on Significantly Regulated Proteins
+#'
+#' @description
+#' This section performs GO enrichment analysis separately for upregulated and 
+#' downregulated proteins from each comparison using clusterProfiler.
+#'
+#' @details
+#' For each comparison:
+#'   - Reads the upregulated and downregulated protein Excel files
+#'   - Extracts UniProt accessions
+#'   - Runs GO enrichment using enrichGO from clusterProfiler
+#'   - Saves results as CSV files
+#'   - Generates dot plots and bar plots for visualization
+#'   - Generates a summary log file tracking the status of each analysis
+#'
+#' @note Requires clusterProfiler and org.Mm.eg.db packages
+
+# Create output directory for GO enrichment results
+go_enrichment_dir <- file.path(core_enrichment_dir, "GO_enrichment_regulated_proteins")
+dir.create(go_enrichment_dir, showWarnings = FALSE, recursive = TRUE)
+message("Created/Verified output directory: ", go_enrichment_dir)
+
+# Initialize a data frame to log the results
+enrichment_summary_log <- data.frame(
+  Comparison = character(),
+  Direction = character(),
+  Input_Genes_Count = integer(),
+  Enriched_Terms_Count = integer(),
+  Status = character(),
+  Saved_CSV = character(),
+  Saved_Plot = character(),
+  Timestamp = character(),
+  stringsAsFactors = FALSE
+)
+
+# Get list of comparisons from the significant proteins directory
+comparison_files <- list.files(
+  path = proteins_sig_reg_dir,
+  pattern = "log2fc_.*_(upregulated_all|downregulated_all)\\.xlsx$",
+  full.names = TRUE
+)
+
+if (length(comparison_files) == 0) {
+  message("No significant protein files found in ", proteins_sig_reg_dir, ". Skipping GO enrichment analysis.")
+} else {
+  # Extract unique comparison names
+  comparisons <- unique(gsub("_upregulated_all\\.xlsx|_downregulated_all\\.xlsx", "", 
+                            basename(comparison_files)))
+  comparisons <- gsub("^log2fc_", "", comparisons)
+  
+  message("Found ", length(comparisons), " comparisons to process: ", paste(comparisons, collapse = ", "))
+
+  # Loop through each comparison
+  for (comp in comparisons) {
+    message(paste("\n--------------------------------------------------"))
+    message(paste("Processing GO enrichment for comparison:", comp))
+    message(paste("--------------------------------------------------"))
+    
+    # Define a common theme function for consistency
+    custom_theme <- function() {
+      theme_classic(base_size = 18) +  # Increased base font size
+        theme(
+          plot.title = element_text(face = "bold", size = 20, hjust = 0.5, margin = margin(b = 10)),
+          plot.subtitle = element_text(size = 16, hjust = 0.5, margin = margin(b = 10)),
+          axis.title = element_text(face = "bold", size = 18),
+          axis.text = element_text(color = "black", size = 16),
+          panel.border = element_rect(color = "black", fill = NA, size = 1),
+          legend.title = element_text(face = "bold", size = 16),
+          legend.text = element_text(size = 14)
+        )
+    }
+    
+    # --- Process Upregulated Proteins ---
+    up_file <- file.path(proteins_sig_reg_dir, paste0("log2fc_", comp, "_upregulated_all.xlsx"))
+    
+    # Initialize log variables for this step
+    log_genes_count <- 0
+    log_terms_count <- 0
+    log_status <- "File not found"
+    log_csv <- NA
+    log_plot <- NA
+    
+    if (file.exists(up_file)) {
+      message("  Reading upregulated file: ", basename(up_file))
+      up_genes <- readxl::read_xlsx(up_file) %>%
+        pull(Uniprot_Accession) %>%
+        unique()
+      
+      log_genes_count <- length(up_genes)
+      message("  Found ", log_genes_count, " unique upregulated genes.")
+      
+      if (log_genes_count > 0) {
+        message("  Running enrichGO (BP) for upregulated genes...")
+        # Run GO enrichment for BP
+        ego_up_bp <- enrichGO(
+          gene = up_genes,
+          OrgDb = org.Mm.eg.db,
+          keyType = "UNIPROT",
+          ont = "BP",
+          pAdjustMethod = "BH",
+          pvalueCutoff = 0.05,
+          qvalueCutoff = 0.2
+        )
+        
+        if (!is.null(ego_up_bp) && nrow(as.data.frame(ego_up_bp)) > 0) {
+          log_terms_count <- nrow(as.data.frame(ego_up_bp))
+          log_status <- "Success"
+          message("  ✓ Success: ", log_terms_count, " enriched terms found.")
+          
+          # Save results
+          out_csv <- file.path(go_enrichment_dir, paste0(comp, "_upregulated_BP.csv"))
+          write.csv(
+            as.data.frame(ego_up_bp),
+            out_csv,
+            row.names = FALSE
+          )
+          log_csv <- basename(out_csv)
+          message("    Saved CSV: ", log_csv)
+          
+          # Generate dot plot with modern aesthetics
+          p_dot <- dotplot(ego_up_bp, showCategory = 15) +
+            scale_color_gradientn(
+              colours = c("#6698CC", "white", "#F08C21"),
+              name = "p.adjust"
+            ) +
+            scale_size(range = c(5, 12)) +
+            labs(
+              title = "GO BP Enrichment - Upregulated",
+              subtitle = paste("Comparison:", comp)
+            ) +
+            custom_theme()
+            
+          out_plot <- file.path(go_enrichment_dir, paste0(comp, "_upregulated_BP_dotplot.svg"))
+          ggsave(
+            out_plot,
+            plot = p_dot, width = 8.5, height = 8
+          )
+          log_plot <- basename(out_plot)
+          message("    Saved Plot: ", log_plot)
+        } else {
+          log_status <- "No significant enrichment"
+          message("  x No significant enrichment found for upregulated genes.")
+        }
+      } else {
+        log_status <- "No genes in input file"
+      }
+    } else {
+      message("  ! Upregulated file not found for comparison: ", comp)
+    }
+    
+    # Append to log
+    enrichment_summary_log <- rbind(enrichment_summary_log, data.frame(
+      Comparison = comp,
+      Direction = "Upregulated",
+      Input_Genes_Count = log_genes_count,
+      Enriched_Terms_Count = log_terms_count,
+      Status = log_status,
+      Saved_CSV = log_csv,
+      Saved_Plot = log_plot,
+      Timestamp = as.character(Sys.time()),
+      stringsAsFactors = FALSE
+    ))
+    
+    # --- Process Downregulated Proteins ---
+    down_file <- file.path(proteins_sig_reg_dir, paste0("log2fc_", comp, "_downregulated_all.xlsx"))
+    
+    # Reset log variables
+    log_genes_count <- 0
+    log_terms_count <- 0
+    log_status <- "File not found"
+    log_csv <- NA
+    log_plot <- NA
+    
+    if (file.exists(down_file)) {
+      message("  Reading downregulated file: ", basename(down_file))
+      down_genes <- readxl::read_xlsx(down_file) %>%
+        pull(Uniprot_Accession) %>%
+        unique()
+      
+      log_genes_count <- length(down_genes)
+      message("  Found ", log_genes_count, " unique downregulated genes.")
+      
+      if (log_genes_count > 0) {
+        message("  Running enrichGO (BP) for downregulated genes...")
+        # Run GO enrichment for BP
+        ego_down_bp <- enrichGO(
+          gene = down_genes,
+          OrgDb = org.Mm.eg.db,
+          keyType = "UNIPROT",
+          ont = "BP",
+          pAdjustMethod = "BH",
+          pvalueCutoff = 0.05,
+          qvalueCutoff = 0.2
+        )
+        
+        if (!is.null(ego_down_bp) && nrow(as.data.frame(ego_down_bp)) > 0) {
+          log_terms_count <- nrow(as.data.frame(ego_down_bp))
+          log_status <- "Success"
+          message("  ✓ Success: ", log_terms_count, " enriched terms found.")
+          
+          # Save results
+          out_csv <- file.path(go_enrichment_dir, paste0(comp, "_downregulated_BP.csv"))
+          write.csv(
+            as.data.frame(ego_down_bp),
+            out_csv,
+            row.names = FALSE
+          )
+          log_csv <- basename(out_csv)
+          message("    Saved CSV: ", log_csv)
+          
+          # Generate dot plot with modern aesthetics
+          p_dot <- dotplot(ego_down_bp, showCategory = 15) +
+            scale_color_gradientn(
+              colours = c("#6698CC", "white", "#F08C21"),
+              name = "p.adjust"
+            ) +
+            scale_size(range = c(5, 12)) +
+            labs(
+              title = "GO BP Enrichment - Downregulated",
+              subtitle = paste("Comparison:", comp)
+            ) +
+            custom_theme()
+            
+          out_plot <- file.path(go_enrichment_dir, paste0(comp, "_downregulated_BP_dotplot.svg"))
+          ggsave(
+            out_plot,
+            plot = p_dot, width = 8.5, height = 8
+          )
+          log_plot <- basename(out_plot)
+          message("    Saved Plot: ", log_plot)
+        } else {
+          log_status <- "No significant enrichment"
+          message("  x No significant enrichment found for downregulated genes.")
+        }
+      } else {
+        log_status <- "No genes in input file"
+      }
+    } else {
+      message("  ! Downregulated file not found for comparison: ", comp)
+    }
+    
+    # Append to log
+    enrichment_summary_log <- rbind(enrichment_summary_log, data.frame(
+      Comparison = comp,
+      Direction = "Downregulated",
+      Input_Genes_Count = log_genes_count,
+      Enriched_Terms_Count = log_terms_count,
+      Status = log_status,
+      Saved_CSV = log_csv,
+      Saved_Plot = log_plot,
+      Timestamp = as.character(Sys.time()),
+      stringsAsFactors = FALSE
+    ))
+  }
+  
+  # Save the summary log to a CSV file
+  log_file_path <- file.path(go_enrichment_dir, "GO_enrichment_summary_log.csv")
+  write.csv(enrichment_summary_log, log_file_path, row.names = FALSE)
+  message("\n--------------------------------------------------")
+  message("GO enrichment analysis completed for all comparisons.")
+  message("Summary log saved to: ", log_file_path)
+  message("--------------------------------------------------")
+}
+
+
 
 # -----------------------------------------------------
 # Generate Individual Core Enrichment Heatmaps
@@ -1343,7 +1722,7 @@ log2fc_df <- bind_rows(log2fc_list)
 
 # Standardize column names to match expected format in downstream code
 log2fc_df <- log2fc_df %>%
-  rename(
+  dplyr::rename(
     log2fc = logFC,
     pvalue = P.Value,
     padj = adj.P.Val
@@ -1508,7 +1887,7 @@ log2fc_list <- lapply(log2fc_files, function(file) {
 
 # Combine all into one long data frame
 log2fc_long <- bind_rows(log2fc_list) %>%
-  rename(
+  dplyr::rename(
     log2fc = logFC,
     pvalue = P.Value,
     padj = adj.P.Val
