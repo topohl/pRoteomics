@@ -1,5 +1,27 @@
-#' Batch UniProt ID Mapping for ClusterProfiler Analysis (parallelized with doParallel)
-#' Processes all .csv files in Datasets/raw and maps UniProtKB IDs to Accessions.
+#' Batch UniProt ID Mapping Script for Proteomics Data
+#'
+#' This script processes proteomic comparison files in parallel to map gene symbols,
+#' UniProtKB entry names, and aliases to canonical UniProt accessions. It supports
+#' multiple mapping strategies including local mapping files, OrgDb annotations,
+#' UniProt.ws queries, and manual overrides. The script enforces a _MOUSE filter
+#' to ensure species-specific mapping and outputs mapped/unmapped datasets with
+#' detailed mapping strategy reports.
+#'
+#' Key features:
+#' - Parallel processing of multiple CSV files using doParallel
+#' - Multi-strategy mapping cascade (accession detection, entry name lookup,
+#'   gene symbol resolution, family prefix matching, OrgDb, UniProt.ws)
+#' - Manual mapping override support via Excel file
+#' - Comprehensive mapping statistics and unmapped protein tracking
+#' - Species-specific filtering (_MOUSE suffix enforcement)
+#' 
+#' Dependencies: dplyr, stringr, tidyr, purrr, readr, R.utils, foreach, doParallel, readxl, AnnotationDbi, org.Mm.eg.db, UniProt.ws
+#' 
+#' @title MapThatProt_batch
+#' 
+#' @author Tobias Pohl
+#' 
+#' @date 2025-12-15
 
 if (!requireNamespace("pacman", quietly = TRUE)) install.packages("pacman")
 pacman::p_load(dplyr, stringr, tidyr, purrr, readr, R.utils, foreach, doParallel)
@@ -9,13 +31,15 @@ map_reverse <- FALSE
 
 #working_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/"
 working_dir <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler"
-comparison_dir <- if (isTRUE(map_reverse)) file.path(mapped_comparisons, "reverse") else mapped_comparisons
+comparison_dir <- if (isTRUE(map_reverse)) file.path(mapped_comparisons, "reverse") else file.path(mapped_comparisons, "forward")
 raw_dir <- file.path(working_dir, "Datasets", "raw", comparison_dir)
 mapped_dir <- file.path(working_dir, "Datasets", "mapped", comparison_dir)
 unmapped_dir <- file.path(working_dir, "Datasets", "unmapped", comparison_dir)
+info_dir <- file.path(working_dir, "Datasets", "mapped", comparison_dir, "info")
 
 dir.create(mapped_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(unmapped_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(info_dir, recursive = TRUE, showWarnings = FALSE)
 
 setwd(working_dir)
 
@@ -45,34 +69,10 @@ uniprot_mapping <- readr::read_tsv(
 )
 entry_name_to_accession <- uniprot_mapping %>%
     filter(Type == "UniProtKB-ID") %>%
-    select(UniProt_Accession, UniProtKB_ID = Value) %>%
+    dplyr::select(UniProt_Accession, UniProtKB_ID = Value) %>%
     distinct(UniProtKB_ID, .keep_all = TRUE)
 
 if (nrow(entry_name_to_accession) == 0) stop("No UniProtKB-ID mappings found in mapping file.")
-
-# load protein to IPR/domain mapping (6 columns as in sample file)
-#protein2ipr_mapping <- readr::read_tsv(
-#    protein2ipr_mapping_file_path,
-#    col_names = c("UniProt_Accession","IPR_ID","IPR_Name","Source_DB_ID","Start","End"),
-#    col_types = readr::cols(
-#        UniProt_Accession = readr::col_character(),
-#        IPR_ID            = readr::col_character(),
-#        IPR_Name          = readr::col_character(),
-#        Source_DB_ID      = readr::col_character(),
-#        Start             = readr::col_integer(),
-#        End               = readr::col_integer()
-#    ),
-#    quote = ""
-#) %>%
-#    dplyr::mutate(
-#        UniProt_Accession = toupper(trimws(UniProt_Accession)),
-#        IPR_ID            = toupper(trimws(IPR_ID)),
-#        Source_DB_ID      = toupper(trimws(Source_DB_ID))
-#    ) %>%
-#    dplyr::filter(
-#        nzchar(UniProt_Accession),
-#        nzchar(IPR_ID)
-#    )
 
 # find CSV files
 csv_files <- list.files(raw_dir, pattern = ".*_.*\\.csv$", full.names = TRUE)
@@ -602,8 +602,8 @@ process_file <- function(data_path) {
     base <- tools::file_path_sans_ext(basename(data_path))
     mapped_file <- file.path(mapped_dir, paste0(base, ".csv"))
     unmapped_file <- file.path(unmapped_dir, paste0(base, ".csv"))
-    info_table_file <- file.path(mapped_dir, paste0(base, "_mapping_info.csv"))
-    info_summary_file <- file.path(mapped_dir, paste0(base, "_info.txt"))
+    info_table_file <- file.path(info_dir, paste0(base, "_mapping_info.csv"))
+    info_summary_file <- file.path(info_dir, paste0(base, "_info.txt"))
 
     readr::write_csv(df_mapped, mapped_file)
     readr::write_csv(unmapped_proteins, unmapped_file)
@@ -642,27 +642,24 @@ process_file <- function(data_path) {
         unmapped = unmapped_file,
         info = info_table_file,
         summary = info_summary_file,
-        unmapped_table = unmapped_proteins  # collected per-file
+        unmapped_table = unmapped_proteins
     ))
 }
-# NOTE: Add "manual_mapping","manual_override" to .export in foreach if running in parallel.
 
 # -------------------------
 # Parallel execution block
 # -------------------------
 n_files <- length(csv_files)
 available_cores <- parallel::detectCores(logical = FALSE)
-# leave one core free when possible
 workers <- max(1, min(available_cores - 1, n_files))
 
 cat("Starting parallel processing with", workers, "workers for", n_files, "files...\n")
 cl <- parallel::makeCluster(workers)
 doParallel::registerDoParallel(cl)
 
-# Export the necessary objects and ensure packages are loaded on workers
 results <- foreach(i = seq_along(csv_files),
                    .packages = c("dplyr", "stringr", "tidyr", "purrr", "readr", "R.utils"),
-                   .export = c("uniprot_mapping", "entry_name_to_accession", "mapped_dir", "unmapped_dir", "process_file")) %dopar% {
+                   .export = c("uniprot_mapping", "entry_name_to_accession", "mapped_dir", "unmapped_dir", "info_dir", "process_file")) %dopar% {
     process_file(csv_files[i])
 }
 
