@@ -112,7 +112,7 @@ working_base <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler"
 working_dir <- working_base
 mapped_data_base <- file.path(working_base, "Datasets/mapped")
 organism <- "org.Mm.eg.db"
-ont <- "MF"
+ont <- "CC"
 
 nk3r_genes <- c("P21279", "P21278", "P51432", "P11881", "P63318", "P68404", "P0DP26", "P0DP27", "P0DP28", "P11798", "P28652", "P47937", "P47713")
 selected_uniprot <- c("P21279", "P21278", "Q9Z1B3", "P51432", "P11881", "P68404", "P63318", "P0DP26", "P0DP27", "P11798", "P28652", "Q61411", "Q99N57", "P31938", "P63085", "Q63844", "Q8BWG8", "Q91YI4", "V9GXQ9")
@@ -593,13 +593,23 @@ for (result in results) {
 cat("\n==============================================\n")
 cat("ALL COMPARISONS COMPLETED!\n")
 cat("==============================================\n\n")
-
 # ----------------------------------------------------
 # 7. CELLTYPE SCORING ANALYSIS (Sequential)
 # ----------------------------------------------------
 cat("\n==============================================\n")
 cat("STARTING CELLTYPE SCORING ANALYSIS\n")
 cat("==============================================\n\n")
+
+# Define and create output directories for Celltype Scoring
+celltype_results_base <- file.path(working_base, "Results", "Celltype_Scoring")
+celltype_dirs <- list(
+  base = celltype_results_base,
+  plots = file.path(celltype_results_base, "Plots"),
+  tables = file.path(celltype_results_base, "Tables"),
+  heatmaps = file.path(celltype_results_base, "Heatmaps")
+)
+
+lapply(celltype_dirs, function(d) if (!dir.exists(d)) dir.create(d, recursive = TRUE))
 
 grouping_factor <- "Celltype"
 
@@ -610,6 +620,9 @@ celltype_df <- read.xlsx(celltype_file, sheet = 1)
 # Load UniProt mapping
 uniprot_mapping_file_path <- file.path(working_dir, "Datasets", "MOUSE_10090_idmapping.dat")
 cat("Loading UniProt mapping file from:", uniprot_mapping_file_path, "\n")
+if (!file.exists(uniprot_mapping_file_path)) {
+  stop("UniProt mapping file not found at: ", uniprot_mapping_file_path, "\nPlease verify the file path.")
+}
 uniprot_df <- read.delim(uniprot_mapping_file_path, header = FALSE, sep = "\t", stringsAsFactors = FALSE)
 
 # Extract Gene_Name mappings
@@ -626,13 +639,15 @@ uniprot_ids <- uniprot_df %>%
   dplyr::rename(UniProtID = V1, UniProtKB_ID = V3) %>%
   dplyr::select(UniProtID, UniProtKB_ID)
 
-
 # Combine both mappings
 gene_map <- gene_names %>%
   left_join(uniprot_ids, by = "UniProtID")
 
 # Load GCT file
-gct_file <- file.path(working_base, "Datasets/gct/data/pg.matrix_filtered_pcaAdjusted.gct")
+gct_file <- file.path(working_base, "Datasets/gct/data/pg.matrix_filtered_pcaAdjusted_unnormalized.gct")
+if (!file.exists(gct_file)) {
+  stop("GCT file not found at: ", gct_file, "\nPlease verify the file path.")
+}
 gct_data <- read_gct(gct_file)
 
 # Extract metadata
@@ -669,8 +684,8 @@ expr_long <- expr_data %>%
 
 # Join with metadata
 expr_annotated <- expr_long %>%
-  left_join(metadata_df %>% select(-ColName), by = "Sample") %>%
-  mutate(Expression = as.numeric(Expression)) %>%
+  left_join(metadata_df %>% dplyr::select(-ColName), by = "Sample") %>%
+  mutate(Expression = suppressWarnings(as.numeric(Expression))) %>%
   mutate(Protein_ID = sub(";.*", "", Protein_ID))
 
 # Join with gene map
@@ -697,21 +712,290 @@ marker_expr <- expr_annotated %>%
 marker_expr <- marker_expr %>%
   left_join(celltype_long, by = c("Gene_Name" = "Gene_Label"))
 
-# Compute average expression
-celltype_scores <- marker_expr %>%
-  group_by(!!sym(grouping_factor), Celltype_Class) %>%
+# ----------------------------------------------------
+# PREPARE ANNOTATIONS (Static)
+# ----------------------------------------------------
+# Keep track of which class each gene belongs to
+gene_class_expanded <- celltype_long %>%
+  dplyr::rename(Gene_Name = Gene_Label) %>%
+  group_by(Gene_Name) %>%
+  mutate(
+    Gene_Name_Unique = Gene_Name,  # Version without suffix
+    Gene_Name_WithClass = if(n() > 1) {
+      paste0(Gene_Name, "_", Celltype_Class)  # Add class suffix for duplicates
+    } else {
+      Gene_Name
+    }
+  ) %>%
+  ungroup()
+
+# Create multi-class annotation for genes in multiple classes
+annotation_row_unique_base <- gene_class_expanded %>%
+  group_by(Gene_Name_Unique) %>%
+  summarise(Celltype_Class = paste(sort(unique(Celltype_Class)), collapse = "+"), .groups = "drop") %>%
+  column_to_rownames("Gene_Name_Unique")
+
+# Expanded color scheme for multi-class genes
+unique_classes <- unique(annotation_row_unique_base$Celltype_Class)
+base_colors <- c("gaba" = "#f36d07", "vglut1" = "#455A64", "vglut2" = "#c7c7c7")
+extra_colors <- c("#00BCD4", "#8BC34A", "#FFC107", "#FF5722")
+
+annotation_colors <- list(
+  Celltype_Class = c(
+    base_colors,
+    setNames(extra_colors[1:(length(unique_classes) - length(base_colors))], 
+             setdiff(unique_classes, names(base_colors)))
+  )
+)
+
+# Create annotation for withclass version
+annotation_row_withclass_base <- gene_class_expanded %>%
+  distinct(Gene_Name_WithClass, Celltype_Class) %>%
+  column_to_rownames("Gene_Name_WithClass")
+
+# Color scheme for single-class annotations
+annotation_colors_withclass <- list(Celltype_Class = c("gaba" = "#f36d07", "vglut1" = "#455A64", "vglut2" = "#c7c7c7"))
+
+# ----------------------------------------------------
+# DEFINE ANALYSIS FUNCTION
+# ----------------------------------------------------
+run_celltype_analysis <- function(current_data, suffix) {
+  cat("  Generating plots for:", suffix, "\n")
+  
+  # Compute average expression
+  celltype_scores <- current_data %>%
+    group_by(!!sym(grouping_factor), Celltype_Class) %>%
+    summarise(Mean_Expression = mean(Expression, na.rm = TRUE), .groups = "drop")
+  
+  # Save scores to Excel
+  write.xlsx(celltype_scores, file = file.path(celltype_dirs$tables, paste0("celltype_scores", suffix, ".xlsx")))
+
+  # Create bar plot of celltype scores
+  celltype_score_plot <- ggplot(celltype_scores, aes(x = !!sym(grouping_factor), y = Mean_Expression, fill = Celltype_Class)) +
+    geom_bar(stat = "identity", position = position_dodge(width = 0.8), width = 0.7) +
+    labs(title = paste("Celltype Scores", suffix), x = grouping_factor, y = "Mean Expression", fill = "Cell Class") +
+    scale_fill_manual(values = c("gaba" = "#f36d07", "vglut1" = "#455A64", "vglut2" = "#c7c7c7")) +
+    guides(fill = guide_legend(ncol = 1)) +
+    theme_bw(base_size = 16) +
+    theme(
+      plot.title = element_text(face = "bold", hjust = 0.5, size = 20),
+      axis.title = element_text(face = "bold", size = 18),
+      axis.text.x = element_text(angle = 45, hjust = 1, color = "black", size = 16),
+      axis.text.y = element_text(color = "black", size = 16),
+      panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank(),
+      panel.border = element_blank(),
+      axis.ticks = element_line(color = "black", size = 1),
+      legend.position = c(0.9, 0.9),
+      legend.background = element_rect(color = "black", fill = NA),
+      legend.title = element_text(face = "bold", size = 16),
+      legend.text = element_text(size = 16)
+    )
+  
+  ggsave(file.path(celltype_dirs$plots, paste0("celltype_scores", suffix, ".svg")), celltype_score_plot, units = "cm", dpi = 300)
+  
+  # Calculate mean expression per gene and grouping_factor
+  marker_expr_unique <- current_data %>%
+    left_join(
+      gene_class_expanded %>% dplyr::select(Gene_Name, Celltype_Class, Gene_Name_Unique, Gene_Name_WithClass),
+      by = c("Gene_Name", "Celltype_Class")
+    )
+  
+  # ===== HEATMAP 1: Gene_Name_Unique (no suffix) =====
+  marker_matrix_unique <- marker_expr_unique %>%
+    group_by(Gene_Name_Unique, !!sym(grouping_factor)) %>%
+    summarise(Mean_Expression = mean(Expression, na.rm = TRUE), .groups = "drop") %>%
+    pivot_wider(names_from = !!sym(grouping_factor), values_from = Mean_Expression) %>%
+    column_to_rownames("Gene_Name_Unique") %>%
+    as.matrix()
+  
+  # Clean matrix (unique version)
+  marker_matrix_unique_clean <- marker_matrix_unique[rowSums(is.na(marker_matrix_unique)) < ncol(marker_matrix_unique), , drop=FALSE]
+  if(ncol(marker_matrix_unique_clean) > 0 && nrow(marker_matrix_unique_clean) > 0) {
+    marker_matrix_unique_clean <- marker_matrix_unique_clean[, colSums(is.na(marker_matrix_unique_clean)) < nrow(marker_matrix_unique_clean), drop=FALSE]
+    # Ensure we have enough data for heatmap
+    if(nrow(marker_matrix_unique_clean) >= 2 && ncol(marker_matrix_unique_clean) >= 2) {
+        marker_matrix_unique_clean <- marker_matrix_unique_clean[rowSums(!is.na(marker_matrix_unique_clean)) >= 1, , drop=FALSE]
+        marker_matrix_unique_clean <- marker_matrix_unique_clean[!grepl("^Oasl2\\s*$", rownames(marker_matrix_unique_clean)), , drop=FALSE]
+        marker_matrix_unique_clean[is.nan(marker_matrix_unique_clean)] <- NA
+        marker_matrix_unique_clean[is.infinite(marker_matrix_unique_clean)] <- NA
+        
+        # Filter annotation_row to match cleaned matrix
+        annotation_row_unique_clean <- annotation_row_unique_base[rownames(marker_matrix_unique_clean), , drop = FALSE]
+        
+        # Save pheatmap (unique version)
+        pheatmap(
+          marker_matrix_unique_clean,
+          cluster_rows = TRUE,
+          cluster_cols = FALSE,
+          color = colorRampPalette(c("#6698CC", "white", "#F08C21"))(100),
+          na_col = "grey",
+          main = paste("Marker Expression", suffix, "(Unique Names)"),
+          fontsize = 12,
+          fontsize_row = 10,
+          fontsize_col = 12,
+          cellheight = 12,
+          cellwidth = 12,
+          border_color = NA,
+          annotation_row = annotation_row_unique_clean,
+          annotation_colors = annotation_colors,
+          filename = file.path(celltype_dirs$heatmaps, paste0("marker_expression_heatmap", suffix, "_unique.pdf"))
+        )
+        
+        # ===== HEATMAP 1b: Sorted by Celltype_Class =====
+        annotation_row_sorted <- annotation_row_unique_clean %>% arrange(Celltype_Class)
+        marker_matrix_sorted <- marker_matrix_unique_clean[rownames(annotation_row_sorted), , drop = FALSE]
+        
+        pheatmap(
+          marker_matrix_sorted,
+          cluster_rows = FALSE,
+          cluster_cols = FALSE,
+          color = colorRampPalette(c("#6698CC", "white", "#F08C21"))(100),
+          na_col = "grey",
+          main = paste("Marker Expression", suffix, "(Sorted by Class)"),
+          fontsize = 12,
+          fontsize_row = 10,
+          fontsize_col = 12,
+          cellheight = 12,
+          cellwidth = 12,
+          border_color = NA,
+          annotation_row = annotation_row_sorted,
+          annotation_colors = annotation_colors,
+          filename = file.path(celltype_dirs$heatmaps, paste0("marker_expression_heatmap", suffix, "_sorted.pdf"))
+        )
+    }
+  }
+
+  # ===== HEATMAP 2: Gene_Name_WithClass (with suffix) =====
+  marker_matrix_withclass <- marker_expr_unique %>%
+    group_by(Gene_Name_WithClass, !!sym(grouping_factor)) %>%
+    summarise(Mean_Expression = mean(Expression, na.rm = TRUE), .groups = "drop") %>%
+    pivot_wider(names_from = !!sym(grouping_factor), values_from = Mean_Expression) %>%
+    column_to_rownames("Gene_Name_WithClass") %>%
+    as.matrix()
+  
+  # Clean matrix (withclass version)
+  marker_matrix_withclass_clean <- marker_matrix_withclass[rowSums(is.na(marker_matrix_withclass)) < ncol(marker_matrix_withclass), , drop=FALSE]
+  if(ncol(marker_matrix_withclass_clean) > 0 && nrow(marker_matrix_withclass_clean) > 0) {
+      marker_matrix_withclass_clean <- marker_matrix_withclass_clean[, colSums(is.na(marker_matrix_withclass_clean)) < nrow(marker_matrix_withclass_clean), drop=FALSE]
+      
+      if(nrow(marker_matrix_withclass_clean) >= 2 && ncol(marker_matrix_withclass_clean) >= 2) {
+          marker_matrix_withclass_clean <- marker_matrix_withclass_clean[rowSums(!is.na(marker_matrix_withclass_clean)) >= 1, , drop=FALSE]
+          marker_matrix_withclass_clean <- marker_matrix_withclass_clean[!grepl("^Oasl2\\s*$", rownames(marker_matrix_withclass_clean)), , drop=FALSE]
+          marker_matrix_withclass_clean[is.nan(marker_matrix_withclass_clean)] <- NA
+          marker_matrix_withclass_clean[is.infinite(marker_matrix_withclass_clean)] <- NA
+          
+          # Filter annotation_row to match cleaned matrix
+          annotation_row_withclass <- annotation_row_withclass_base[rownames(marker_matrix_withclass_clean), , drop = FALSE]
+          
+          # Save pheatmap (withclass version)
+          pheatmap(
+            marker_matrix_withclass_clean,
+            cluster_rows = TRUE,
+            cluster_cols = FALSE,
+            color = colorRampPalette(c("#6698CC", "white", "#F08C21"))(100),
+            na_col = "grey",
+            main = paste("Marker Expression", suffix, "(With Class Suffix)"),
+            fontsize = 12,
+            fontsize_row = 10,
+            fontsize_col = 12,
+            cellheight = 12,
+            cellwidth = 12,
+            border_color = NA,
+            annotation_row = annotation_row_withclass,
+            annotation_colors = annotation_colors_withclass,
+            filename = file.path(celltype_dirs$heatmaps, paste0("marker_expression_heatmap", suffix, "_withclass.pdf"))
+          )
+      }
+  }
+  
+  # Z-score heatmap
+  expr_scaled <- current_data %>%
+    group_by(Gene_Name) %>%
+    mutate(Z_Expression = as.numeric(scale(Expression))) %>%
+    ungroup()
+  
+  celltype_z_scores <- expr_scaled %>%
+    group_by(!!sym(grouping_factor), Celltype_Class) %>%
+    summarise(Mean_Z = mean(Z_Expression, na.rm = TRUE), .groups = "drop")
+  
+  heatmap_plot <- ggplot(celltype_z_scores, aes(x = reorder(Celltype_Class, Mean_Z, FUN = median), y = .data[[grouping_factor]], fill = Mean_Z)) +
+    geom_tile(color = "grey80", size = 0.2, width = 0.5) +
+    scale_fill_gradient2(low = "#4575b4", mid = "white", high = "#d73027", midpoint = 0, name = "Z-Score", guide = guide_colorbar(barwidth = 0.8, barheight = 20)) +
+    labs(title = paste("Celltype Marker Signature", suffix), x = "Marker Class", y = "Sample Group") +
+    theme_minimal(base_size = 12) +
+    theme(
+      plot.title = element_text(face = "bold", hjust = 0.5, margin = margin(b = 10)),
+      axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+      axis.text.y = element_text(size = 10),
+      axis.title = element_text(size = 12),
+      panel.grid = element_blank(),
+      legend.title = element_text(size = 12),
+      legend.text = element_text(size = 10)
+    )
+  
+  ggsave(file.path(celltype_dirs$heatmaps, paste0("celltype_scores_heatmap", suffix, ".svg")), heatmap_plot, width = 16, height = 9, units = "cm", dpi = 300)
+  
+  # ===== NEW: Z-score heatmap sorted by Celltype_Class =====
+  heatmap_plot_sorted <- ggplot(celltype_z_scores, aes(x = Celltype_Class, y = .data[[grouping_factor]], fill = Mean_Z)) +
+    geom_tile(color = "grey80", size = 0.2, width = 0.5) +
+    scale_fill_gradient2(low = "#4575b4", mid = "white", high = "#d73027", midpoint = 0, name = "Z-Score", guide = guide_colorbar(barwidth = 0.8, barheight = 20)) +
+    labs(title = paste("Celltype Marker Signature", suffix, "(Sorted)"), x = "Marker Class", y = "Sample Group") +
+    theme_minimal(base_size = 12) +
+    theme(
+      plot.title = element_text(face = "bold", hjust = 0.5, margin = margin(b = 10)),
+      axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+      axis.text.y = element_text(size = 10),
+      axis.title = element_text(size = 12),
+      panel.grid = element_blank(),
+      legend.title = element_text(size = 12),
+      legend.text = element_text(size = 10)
+    )
+  
+  ggsave(file.path(celltype_dirs$heatmaps, paste0("celltype_scores_heatmap_sorted", suffix, ".svg")), heatmap_plot_sorted, width = 16, height = 9, units = "cm", dpi = 300)
+}
+
+# ----------------------------------------------------
+# EXECUTE ANALYSIS
+# ----------------------------------------------------
+
+# 1. Run on ALL data (Combined)
+cat("Processing ALL data combined...\n")
+run_celltype_analysis(marker_expr, "_All")
+
+# 2. Run separately for each ExpGroup
+unique_groups <- unique(marker_expr$Group)
+cat("Processing separate groups:", paste(unique_groups, collapse=", "), "\n")
+
+for (grp in unique_groups) {
+  # Sanitize group name for filename
+  safe_grp <- gsub("[^a-zA-Z0-9]", "_", grp)
+  
+  # Filter data for this group
+  group_data <- marker_expr %>% filter(Group == grp)
+  
+  # Run analysis
+  run_celltype_analysis(group_data, paste0("_", safe_grp))
+}
+
+# ----------------------------------------------------
+# 8. COMPARISON BETWEEN EXP GROUPS
+# ----------------------------------------------------
+cat("\nProcessing Comparison between ExpGroups...\n")
+
+# Calculate mean expression per Celltype_Class and Group
+group_comparison <- marker_expr %>%
+  group_by(Group, Celltype_Class) %>%
   summarise(Mean_Expression = mean(Expression, na.rm = TRUE), .groups = "drop")
 
-# Pivot wider for table format
-celltype_score_table <- celltype_scores %>%
-  pivot_wider(names_from = Celltype_Class, values_from = Mean_Expression)
+# Save comparison data to Excel
+write.xlsx(group_comparison, file = file.path(celltype_dirs$tables, "celltype_scores_comparison_ExpGroups.xlsx"))
 
-# Create bar plot of celltype scores
-celltype_score_plot <- ggplot(celltype_scores, aes(x = !!sym(grouping_factor), y = Mean_Expression, fill = Celltype_Class)) +
+# Create comparison plot
+comparison_plot <- ggplot(group_comparison, aes(x = Group, y = Mean_Expression, fill = Celltype_Class)) +
   geom_bar(stat = "identity", position = position_dodge(width = 0.8), width = 0.7) +
-  labs(title = "Celltype Scores by Group", x = grouping_factor, y = "Mean Expression", fill = "Cell Class") +
-  scale_fill_manual(values = c("#f36d07", "#455A64", "#c7c7c7")) +
-  guides(fill = guide_legend(ncol = 1)) +
+  labs(title = "Celltype Scores Comparison by ExpGroup", x = "Experimental Group", y = "Mean Expression", fill = "Cell Class") +
+  scale_fill_manual(values = c("gaba" = "#f36d07", "vglut1" = "#455A64", "vglut2" = "#c7c7c7")) +
   theme_bw(base_size = 16) +
   theme(
     plot.title = element_text(face = "bold", hjust = 0.5, size = 20),
@@ -722,110 +1006,303 @@ celltype_score_plot <- ggplot(celltype_scores, aes(x = !!sym(grouping_factor), y
     panel.grid.minor = element_blank(),
     panel.border = element_blank(),
     axis.ticks = element_line(color = "black", size = 1),
-    legend.position = c(0.9, 0.9),
-    legend.background = element_rect(color = "black", fill = NA),
+    legend.position = "right",
     legend.title = element_text(face = "bold", size = 16),
     legend.text = element_text(size = 16)
   )
 
-ggsave(file.path(working_dir, "celltype_scores_by_group.svg"), celltype_score_plot, units = "cm", dpi = 300)
+ggsave(file.path(celltype_dirs$plots, "celltype_scores_comparison_ExpGroups.svg"), comparison_plot, units = "cm", dpi = 300, width = 25, height = 15)
 
-# Create pheatmap of marker expression
-gene_class_df <- celltype_long %>%
-  distinct(Gene_Label, Celltype_Class) %>%
-  rename(Gene_Name = Gene_Label)
+# ----------------------------------------------------
+# 9. ADVANCED INTERACTION VISUALIZATION
+# ----------------------------------------------------
+cat("\nGenerating Advanced Interaction Plots...\n")
 
-# Keep track of which class each gene belongs to
-gene_class_expanded <- celltype_long %>%
-  rename(Gene_Name = Gene_Label) %>%
-  group_by(Gene_Name) %>%
+# 1. Balloon Plot (Dot Plot) - FANCY VERSION
+# Visualizes Mean Expression (Size) and Z-Score (Color)
+# Grouping by grouping_factor (Celltype), Group (ExpGroup), and Celltype_Class
+interaction_stats <- marker_expr %>%
+  group_by(!!sym(grouping_factor), Group, Celltype_Class) %>%
+  summarise(
+    Mean_Expr = mean(Expression, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  group_by(Celltype_Class) %>%
   mutate(
-    Gene_Name_Unique = if(n() > 1) {
-      paste0(Gene_Name, "_", Celltype_Class)  # Add class suffix for duplicates
-    } else {
-      Gene_Name
-    }
+    Z_Score = scale(Mean_Expr),
+    Rel_Expr = Mean_Expr / max(Mean_Expr)
   ) %>%
   ungroup()
 
-annotation_row <- gene_class_expanded %>%
-  distinct(Gene_Name_Unique, Celltype_Class) %>%
-  column_to_rownames("Gene_Name_Unique")
-
-# Calculate mean expression per gene and grouping_factor
-marker_expr_unique <- marker_expr %>%
-  left_join(
-    gene_class_expanded %>% select(Gene_Name, Celltype_Class, Gene_Name_Unique),
-    by = c("Gene_Name", "Celltype_Class")
-  )
-
-marker_matrix <- marker_expr_unique %>%
-  group_by(Gene_Name_Unique, !!sym(grouping_factor)) %>%
-  summarise(Mean_Expression = mean(Expression, na.rm = TRUE), .groups = "drop") %>%
-  pivot_wider(names_from = !!sym(grouping_factor), values_from = Mean_Expression) %>%
-  column_to_rownames("Gene_Name_Unique") %>%
-  as.matrix()
-
-# Rest of cleaning code stays the same
-marker_matrix_clean <- marker_matrix[rowSums(is.na(marker_matrix)) < ncol(marker_matrix), ]
-marker_matrix_clean <- marker_matrix_clean[, colSums(is.na(marker_matrix_clean)) < nrow(marker_matrix_clean)]
-marker_matrix_clean <- marker_matrix_clean[rowSums(!is.na(marker_matrix_clean)) >= 2, ]
-marker_matrix_clean <- marker_matrix_clean[, colSums(!is.na(marker_matrix_clean)) >= 2]
-marker_matrix_clean <- marker_matrix_clean[!grepl("^Oasl2\\s*$", rownames(marker_matrix_clean)), ]
-marker_matrix_clean[is.nan(marker_matrix_clean)] <- NA
-marker_matrix_clean[is.infinite(marker_matrix_clean)] <- NA
-
-# Filter annotation_row to match cleaned matrix
-annotation_row <- annotation_row[rownames(marker_matrix_clean), , drop = FALSE]
-
-# Color scheme for annotations
-annotation_colors <- list(Celltype_Class = c("gaba" = "#f36d07", "vglut1" = "#455A64", "vglut2" = "#c7c7c7"))
-
-# Save pheatmap
-pheatmap(
-  marker_matrix_clean,
-  cluster_rows = TRUE,
-  cluster_cols = FALSE,
-  color = colorRampPalette(c("#6698CC", "white", "#F08C21"))(100),
-  na_col = "grey",
-  main = paste("Marker Expression per", grouping_factor),
-  fontsize = 12,
-  fontsize_row = 10,
-  fontsize_col = 12,
-  cellheight = 12,
-  cellwidth = 12,
-  border_color = NA,
-  annotation_row = annotation_row,
-  annotation_colors = annotation_colors,
-  filename = file.path(working_dir, paste0("marker_expression_heatmap_", grouping_factor, ".pdf"))
-)
-
-# Z-score heatmap
-expr_scaled <- marker_expr %>%
-  group_by(Gene_Name) %>%
-  mutate(Z_Expression = as.numeric(scale(Expression))) %>%
-  ungroup()
-
-celltype_z_scores <- expr_scaled %>%
-  group_by(!!sym(grouping_factor), Celltype_Class) %>%
-  summarise(Mean_Z = mean(Z_Expression, na.rm = TRUE), .groups = "drop")
-
-heatmap_plot <- ggplot(celltype_z_scores, aes(x = reorder(Celltype_Class, Mean_Z, FUN = median), y = .data[[grouping_factor]], fill = Mean_Z)) +
-  geom_tile(color = "grey80", size = 0.2, width = 0.5) +
-  scale_fill_gradient2(low = "#4575b4", mid = "white", high = "#d73027", midpoint = 0, name = "Z-Score", guide = guide_colorbar(barwidth = 0.8, barheight = 20)) +
-  labs(title = "Celltype Marker Signature by Group", x = "Marker Class", y = "Sample Group") +
-  theme_minimal(base_size = 12) +
+balloon_plot <- ggplot(interaction_stats, aes(x = !!sym(grouping_factor), y = Celltype_Class)) +
+  # Add a subtle background tile to define the grid
+  geom_tile(fill = "white", color = "grey95", size = 0.5) +
+  # The bubbles with a nicer stroke and alpha
+  geom_point(aes(size = Mean_Expr, fill = Z_Score), shape = 21, color = "grey20", stroke = 1, alpha = 0.9) +
+  # Facet by Experimental Group
+  facet_grid(~ Group, scales = "free_x", space = "free_x") +
+  # Improved color scale (High contrast diverging)
+  scale_fill_gradient2(low = "#313695", mid = "white", high = "#a50026", midpoint = 0, 
+                       name = "Z-Score\n(Row-scaled)") +
+  # Adjusted size range
+  scale_size_continuous(range = c(4, 14), name = "Mean\nExpression") +
+  # Clean labels
+  labs(
+    title = paste("Interaction:", grouping_factor, "vs Marker Class by ExpGroup"),
+    subtitle = "Balloon Plot: Size=Expression, Color=Z-score. Faceted by Experimental Group.",
+    x = grouping_factor,
+    y = "Marker Class"
+  ) +
+  # Polished theme
+  theme_minimal(base_size = 14) +
   theme(
-    plot.title = element_text(face = "bold", hjust = 0.5, margin = margin(b = 10)),
-    axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
-    axis.text.y = element_text(size = 10),
-    axis.title = element_text(size = 12),
-    panel.grid = element_blank(),
-    legend.title = element_text(size = 12),
-    legend.text = element_text(size = 10)
+    plot.background = element_rect(fill = "white", color = NA),
+    plot.title = element_text(face = "bold", hjust = 0.5, size = 18, margin = margin(b = 5)),
+    plot.subtitle = element_text(hjust = 0.5, color = "grey40", size = 12, margin = margin(b = 20)),
+    axis.text.x = element_text(angle = 45, hjust = 1, color = "black", size = 12, face = "bold"),
+    axis.text.y = element_text(color = "black", face = "bold", size = 12),
+    axis.title = element_text(face = "bold", color = "grey30"),
+    panel.grid.major = element_line(color = "grey92", linetype = "dotted"),
+    panel.grid.minor = element_blank(),
+    strip.background = element_rect(fill = "#f0f0f0", color = NA),
+    strip.text = element_text(face = "bold", size = 12),
+    legend.position = "right",
+    legend.box = "vertical",
+    legend.title = element_text(face = "bold", size = 10),
+    legend.background = element_rect(fill = "grey98", color = NA),
+    legend.key = element_blank()
+  ) +
+  # Ensure size legend dots are neutral color
+  guides(size = guide_legend(override.aes = list(fill = "grey50")))
+
+ggsave(file.path(celltype_dirs$plots, "interaction_balloon_plot.svg"), balloon_plot, 
+       width = 28, height = 16, units = "cm", dpi = 300)
+
+# 2. Fancy Distribution Plot (Violin + Boxplot + Jitter)
+# Shows the full distribution of data points behind the means
+# X-axis: grouping_factor, Fill: Group, Facet: Celltype_Class
+fancy_dist_plot <- ggplot(marker_expr, aes(x = !!sym(grouping_factor), y = Expression, fill = Group)) +
+  geom_violin(alpha = 0.4, color = NA, trim = FALSE, scale = "width", position = position_dodge(width = 0.8)) +
+  geom_boxplot(width = 0.15, color = "grey20", outlier.shape = NA, alpha = 0.8, position = position_dodge(width = 0.8)) +
+  geom_point(aes(color = Group), position = position_jitterdodge(jitter.width = 0.1, dodge.width = 0.8), size = 0.5, alpha = 0.4, show.legend = FALSE) +
+  facet_wrap(~ Celltype_Class, scales = "free_y", ncol = 1) +
+  scale_fill_viridis_d(option = "D", begin = 0.2, end = 0.8) + 
+  scale_color_viridis_d(option = "D", begin = 0.2, end = 0.8) +
+  labs(
+    title = paste("Expression Distribution by", grouping_factor, ", Group and Marker Class"),
+    subtitle = "Violin plots showing density with overlaid boxplots. Colored by Experimental Group.",
+    x = grouping_factor,
+    y = "Protein Expression",
+    fill = "Exp Group"
+  ) +
+  theme_bw(base_size = 14) +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(hjust = 0.5, color = "grey40", size = 10),
+    axis.text.x = element_text(angle = 45, hjust = 1, face = "bold"),
+    strip.background = element_rect(fill = "#2c3e50"),
+    strip.text = element_text(color = "white", face = "bold", size = 12),
+    legend.position = "bottom",
+    panel.grid.minor = element_blank()
   )
 
-ggsave(file.path(working_dir, "celltype_scores_heatmap.svg"), heatmap_plot, width = 16, height = 9, units = "cm", dpi = 300)
+ggsave(file.path(celltype_dirs$plots, "interaction_distribution_fancy.svg"), fancy_dist_plot, 
+       width = 24, height = 28, units = "cm", dpi = 300)
+
+# ----------------------------------------------------
+# 10. DIRECT DIFFERENCE & PROFILE VISUALIZATION
+# ----------------------------------------------------
+cat("\nGenerating Difference and Profile Plots...\n")
+
+# A. DEVIATION PLOT (Log2FC vs Average)
+# This shows how each ExpGroup differs from the average expression of that marker in that celltype
+# 1. Calculate Consensus Mean (Average across all groups for each Celltype/Class)
+consensus_means <- marker_expr %>%
+  group_by(!!sym(grouping_factor), Celltype_Class) %>%
+  summarise(Global_Mean = mean(Expression, na.rm = TRUE), .groups = "drop")
+
+# 2. Join with Group Means and Calculate Log2FC
+deviation_data <- interaction_stats %>%
+  left_join(consensus_means, by = c(grouping_factor, "Celltype_Class")) %>%
+  mutate(
+    Log2FC_vs_Mean = log2(Mean_Expr / Global_Mean),
+    # Handle potential infinite values if mean is 0
+    Log2FC_vs_Mean = ifelse(is.infinite(Log2FC_vs_Mean), 0, Log2FC_vs_Mean)
+  )
+
+# 3. Plot Deviation
+deviation_plot <- ggplot(deviation_data, aes(x = Celltype_Class, y = Log2FC_vs_Mean, fill = Group)) +
+  geom_hline(yintercept = 0, color = "grey50", linetype = "dashed") +
+  geom_col(position = position_dodge(width = 0.8), width = 0.7, color = "black", size = 0.2) +
+  facet_wrap(as.formula(paste("~", grouping_factor)), scales = "fixed") +
+  scale_fill_viridis_d(option = "D", begin = 0.1, end = 0.9) +
+  labs(
+    title = "Deviation from Consensus Profile",
+    subtitle = "Log2 Fold Change of each Group vs the Average of all Groups",
+    x = "Marker Class",
+    y = "Log2 Fold Change (vs Average)",
+    fill = "Exp Group"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(hjust = 0.5, color = "grey40", size = 11),
+    axis.text.x = element_text(face = "bold"),
+    strip.background = element_rect(fill = "grey90", color = NA),
+    strip.text = element_text(face = "bold"),
+    panel.grid.major.x = element_blank(),
+    legend.position = "bottom"
+  )
+
+ggsave(file.path(celltype_dirs$plots, "interaction_deviation_lollipop.svg"), deviation_plot, 
+       width = 24, height = 18, units = "cm", dpi = 300)
+
+
+# B. RADAR PROFILE PLOT (Polar Coordinates)
+# This shows the "shape" of the marker identity (GABA vs VGLUT1 vs VGLUT2)
+# Since we have 3 axes, this forms a triangle profile for each group
+radar_plot <- ggplot(interaction_stats, aes(x = Celltype_Class, y = Mean_Expr, group = Group, color = Group, fill = Group)) +
+  geom_polygon(alpha = 0.2, size = 1) +
+  geom_point(size = 2) +
+  coord_polar() +
+  facet_wrap(as.formula(paste("~", grouping_factor)), ncol = 2) +
+  scale_color_viridis_d(option = "D", begin = 0.1, end = 0.9) +
+  scale_fill_viridis_d(option = "D", begin = 0.1, end = 0.9) +
+  labs(
+    title = "Marker Identity Profiles (Radar Chart)",
+    subtitle = "Shape indicates the balance between GABA, VGLUT1, and VGLUT2 markers",
+    x = NULL,
+    y = "Mean Expression",
+    color = "Exp Group",
+    fill = "Exp Group"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(hjust = 0.5, color = "grey40", size = 11),
+    axis.text.y = element_blank(), # Hide radial axis labels to reduce clutter
+    axis.ticks = element_blank(),
+    axis.text.x = element_text(face = "bold", size = 11),
+    strip.text = element_text(face = "bold", size = 12),
+    panel.grid.major = element_line(color = "grey85", linetype = "dashed"),
+    legend.position = "bottom"
+  )
+
+ggsave(file.path(celltype_dirs$plots, "interaction_radar_profile.svg"), radar_plot, 
+       width = 22, height = 22, units = "cm", dpi = 300)
+
+# C. DIFFERENCE HEATMAP
+#' Create and Save Consensus Deviation Heatmap
+#'
+#' This section generates a high-density heatmap visualizing the Log2 Fold Changes (Log2FC)
+#' of specific markers relative to the global mean across different experimental groups.
+#'
+#' @description
+#' The plot uses `geom_tile` to display deviations:
+#' *   **X-axis:** Marker Class (`Celltype_Class`).
+#' *   **Y-axis:** Experimental Group (`Group`).
+#' *   **Faceting:** The plot is faceted horizontally by the dynamic `grouping_factor`.
+#' *   **Color Scale:** A diverging gradient is used:
+#'     *   **Blue (#313695):** Negative deviation (lower than mean).
+#'     *   **White:** No deviation (equal to mean).
+#'     *   **Red (#a50026):** Positive deviation (higher than mean).
+#'
+#' @note **Why are some tiles grey?**
+#' In `ggplot2`, missing values (`NA`) in the variable mapped to the `fill` aesthetic
+#' (here, `Log2FC_vs_Mean`) are rendered in grey by default. If tiles appear grey,
+#' it indicates that there is no calculated Log2 Fold Change data for that specific
+#' combination of `Celltype_Class` and `Group`. This often happens if the protein/marker
+#' was not detected in that specific group or if the calculation resulted in an undefined value.
+#'
+#' @output Saves the plot as "interaction_deviation_heatmap.svg" in the defined plots directory.
+# A compact, high-density view of deviations
+diff_heatmap <- ggplot(deviation_data, aes(x = Celltype_Class, y = Group, fill = Log2FC_vs_Mean)) +
+  geom_tile(color = "white", size = 0.5) +
+  geom_text(data = subset(deviation_data, is.na(Log2FC_vs_Mean)), 
+            aes(label = "NA"), color = "grey50", size = 3) +
+  facet_grid(as.formula(paste("~", grouping_factor)), scales = "free_x", space = "free_x") +
+  scale_fill_gradient2(low = "#313695", mid = "white", high = "#a50026", midpoint = 0,
+                       name = "Log2FC\n(vs Mean)", na.value = "grey99") +
+  labs(
+    title = "Consensus Deviation Heatmap",
+    subtitle = "Heatmap of Log2 Fold Changes relative to the global mean across groups",
+    x = "Marker Class",
+    y = "Experimental Group"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(hjust = 0.5, color = "grey40", size = 11),
+    axis.text.x = element_text(face = "bold"),
+    axis.text.y = element_text(face = "bold", angle = 90, hjust = 0.5),
+    panel.grid = element_blank(),
+    strip.background = element_rect(fill = "grey95", color = NA),
+    strip.text = element_text(face = "bold"),
+    legend.position = "right"
+  )
+
+ggsave(file.path(celltype_dirs$plots, "interaction_deviation_heatmap.svg"), diff_heatmap,
+       width = 20, height = 10, units = "cm", dpi = 300)
+
+      # ----------------------------------------------------
+      # 11. DIRECT COMPARISON: ExpGroup 2 vs ExpGroup 4
+      # ----------------------------------------------------
+      cat("\nGenerating Direct Comparison: ExpGroup 2 vs ExpGroup 4...\n")
+
+      # Filter for the specific groups
+      target_groups <- c("ExpGroup 2", "ExpGroup 4")
+      direct_comp_data <- interaction_stats %>%
+        filter(Group %in% target_groups) %>%
+        select(!!sym(grouping_factor), Celltype_Class, Group, Mean_Expr) %>%
+        pivot_wider(names_from = Group, values_from = Mean_Expr)
+
+      # Check if both groups exist in the data
+      if (all(target_groups %in% colnames(direct_comp_data))) {
+        
+        # Calculate Log2 Fold Change (Group 2 / Group 4)
+        # Note: Adjust direction (2 vs 4 or 4 vs 2) as needed. Here: log2(Group2 / Group4)
+        direct_comp_data <- direct_comp_data %>%
+          mutate(
+            Log2FC_2vs4 = log2(`ExpGroup 2` / `ExpGroup 4`),
+            # Handle infinite/NaN if expression is 0
+            Log2FC_2vs4 = ifelse(is.infinite(Log2FC_2vs4) | is.nan(Log2FC_2vs4), 0, Log2FC_2vs4)
+          )
+        
+        # Save table
+        write.xlsx(direct_comp_data, file = file.path(celltype_dirs$tables, "direct_comparison_ExpGroup2_vs_ExpGroup4.xlsx"))
+        
+        # Plot
+        direct_comp_plot <- ggplot(direct_comp_data, aes(x = Celltype_Class, y = Log2FC_2vs4, fill = Log2FC_2vs4 > 0)) +
+          geom_hline(yintercept = 0, color = "grey50", linetype = "dashed") +
+          geom_col(color = "black", size = 0.2, width = 0.7) +
+          facet_wrap(as.formula(paste("~", grouping_factor)), scales = "fixed") +
+          scale_fill_manual(values = c("TRUE" = "#d73027", "FALSE" = "#4575b4"), 
+                            labels = c("TRUE" = "Higher in ExpGroup 2", "FALSE" = "Higher in ExpGroup 4"),
+                            name = "Direction") +
+          labs(
+            title = "Direct Comparison: ExpGroup 2 vs ExpGroup 4",
+            subtitle = "Positive values indicate higher expression in ExpGroup 2",
+            x = "Marker Class",
+            y = "Log2 Fold Change (ExpGroup 2 / ExpGroup 4)"
+          ) +
+          theme_minimal(base_size = 14) +
+          theme(
+            plot.title = element_text(face = "bold", hjust = 0.5),
+            plot.subtitle = element_text(hjust = 0.5, color = "grey40", size = 11),
+            axis.text.x = element_text(face = "bold"),
+            strip.background = element_rect(fill = "grey90", color = NA),
+            strip.text = element_text(face = "bold"),
+            panel.grid.major.x = element_blank(),
+            legend.position = "bottom"
+          )
+        
+        ggsave(file.path(celltype_dirs$plots, "direct_comparison_ExpGroup2_vs_ExpGroup4.svg"), 
+               direct_comp_plot, width = 20, height = 15, units = "cm", dpi = 300)
+        
+      } else {
+        cat("Warning: Could not perform direct comparison. One or both groups ('ExpGroup 2', 'ExpGroup 4') not found in data.\n")
+        cat("Available groups:", paste(unique(interaction_stats$Group), collapse = ", "), "\n")
+      }
 
 cat("\n==============================================\n")
 cat("ENTIRE PIPELINE COMPLETED!\n")
