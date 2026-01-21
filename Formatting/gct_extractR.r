@@ -31,8 +31,8 @@ use_label_map <- FALSE  # TRUE for "con"/"res"/"sus", FALSE for "_1"/"_2"/"_3"
 
 # ---- Input ----
 setwd("S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets")
-file <- "20251107_pg.matrix_Neha/pg.matrix-new-nov7_Two-sample_mod_T_2025-11-07-transformed-p-val_n120x5349"
-gct_data <- file.path("S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/data", paste0(file, ".gct"))
+file <- "pg.matrix_Two-sample_mod_T_2025-12-15-transformed-p-val_n120x5349"
+gct_data <- file.path("S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/gct/data", paste0(file, ".gct"))
 
 # ------- GCT reading and cleaning -------
 raw <- tryCatch(
@@ -67,9 +67,16 @@ annotation_rows <- c(
   "celltype_layer_ExpGroup", "celltype_sublayer_ExpGroup", "plate",
   "sampleNumber",  "shortname"
 )
+# Remove annotation/metadata rows that aren't protein data
 data <- data %>% filter(!id %in% annotation_rows, id != "na")
+
+# Convert all non-ID columns from character to numeric
+# Only convert columns that contain comparison metrics (contain ".over." or specific metric patterns)
 num_cols <- setdiff(names(data), "id")
-data[num_cols] <- lapply(data[num_cols], readr::parse_number)
+num_cols <- num_cols[grepl("\\.over\\.|^(adj\\.P\\.Val|P\\.Value|logFC|Log\\.P\\.Value|AveExpr|^t$|RawlogFC)", num_cols)]
+data[num_cols] <- lapply(data[num_cols], function(x) {
+  if (is.character(x)) readr::parse_number(x) else as.numeric(x)
+})
 
 # ------ Function: extract comparison key ------
 extract_comparison <- function(col, use_label_map = TRUE) {
@@ -133,7 +140,7 @@ safe_name <- function(x) {
 # ------- Main loop: Write files for each comparison -------
 purrr::iwalk(by_comparison, function(cols, comp_key) {
   # -- Subset columns for this comparison --
-  df_out <- data %>% mutate(id = as.character(id)) %>% select(id, all_of(cols))
+  df_out <- data %>% mutate(id = as.character(id)) %>% dplyr::select(id, all_of(cols))
   if (is.list(df_out$id)) {
     df_out$id <- vapply(df_out$id, function(x) paste(as.character(x), collapse = ";"), character(1))
   }
