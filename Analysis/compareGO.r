@@ -185,36 +185,183 @@ p_values <- combined_df %>%
 #' Top Terms Selection for GO Batch Comparison
 
 # Define filtering parameters for selecting top GO terms
-significant_only <- TRUE  # If TRUE, only keep terms with p.adjust < 0.05
-top10_terms <- TRUE
-top10_per_comp <- TRUE    # If TRUE, select the top 10 terms based on absolute NES for each comparison
+significant_only <- TRUE      # If TRUE, only keep terms with p.adjust < 0.05
+top10_terms <- TRUE           # Global top terms
+top10_per_comp <- TRUE        # If TRUE, select top terms per comparison (mutually exclusive with below in logic priority)
+top5_up_down_per_comp <- TRUE # If TRUE, select top 5 UP and top 5 DOWN per comparison (overrides top10)
+
+# Helper function to check redundancy
+check_redundancy <- function(terms_df, combined_df, threshold = 0.7) {
+  
+  # Function to get genes for a specific term description from the full dataset
+  get_genes_for_term <- function(desc, df) {
+  row_data <- df %>% 
+    filter(Description == desc) %>% 
+    arrange(desc(abs(NES))) %>% 
+    dplyr::slice(1)
+  
+  if(nrow(row_data) == 0) return(character(0))
+  unlist(strsplit(as.character(row_data$core_enrichment), "/"))
+  }
+  
+  # Prepare gene sets for all candidate terms
+  unique_candidates <- unique(terms_df$Description)
+  term_gene_map <- lapply(unique_candidates, function(term) {
+  sort(unique(get_genes_for_term(term, combined_df)))
+  })
+  names(term_gene_map) <- unique_candidates
+  
+  # List to keep
+  kept_terms <- character(0)
+  
+  # Iterate through candidates (assumed to be ordered by importance/NES if dataframe is passed)
+  # Ideally, terms_df should be sorted by priority (e.g., NES magnitude) before calling this
+  
+  for (candidate in unique_candidates) {
+  candidate_genes <- term_gene_map[[candidate]]
+  
+  is_redundant <- FALSE
+  
+  for (accepted in kept_terms) {
+    accepted_genes <- term_gene_map[[accepted]]
+    
+    intersect_len <- length(intersect(candidate_genes, accepted_genes))
+    union_len <- length(union(candidate_genes, accepted_genes))
+    jaccard <- ifelse(union_len > 0, intersect_len / union_len, 0)
+    
+    if (jaccard > threshold) {
+    is_redundant <- TRUE
+    break
+    }
+  }
+  
+  if (!is_redundant) {
+    kept_terms <- c(kept_terms, candidate)
+  }
+  }
+  
+  return(kept_terms)
+}
+
+
+# Variables to store specifically the 5-up-5-down selection for separate plotting later
+top5_up_down_df <- NULL
 
 # Filter and select top terms from the combined data frame for the NON-REFINED (Standard) version
-if (top10_per_comp) {
+if (top5_up_down_per_comp) {
+  # Logic: Top 5 Positive and Top 5 Negative NES per comparison WITH Redundancy Check
+  
   if (significant_only) {
-    # Only include significant terms (p.adjust < 0.05), then select the top 10 per comparison with the highest absolute NES
-    top_df_per_comp <- combined_df %>%
-      filter(p.adjust < 0.05) %>%
-      group_by(Comparison) %>%
-      arrange(desc(abs(NES))) %>%
-      dplyr::slice_head(n = 10) %>%
-      ungroup()
+  df_sig <- combined_df %>% filter(p.adjust < 0.05)
   } else {
-    # Without significance filtering, select the top 10 terms per comparison with the highest absolute NES
-    top_df_per_comp <- combined_df %>%
-      group_by(Comparison) %>%
-      arrange(desc(abs(NES))) %>%
-      dplyr::slice_head(n = 10) %>%
-      ungroup()
+  df_sig <- combined_df
+  }
+  
+  # Create a function to iteratively pick top N non-redundant terms
+  pick_top_n_non_redundant <- function(sub_df, n_target, direction = "up") {
+  
+  # Sort by priority
+  if (direction == "up") {
+    sorted_cand <- sub_df %>% arrange(desc(NES))
+  } else {
+    sorted_cand <- sub_df %>% arrange(NES) # most negative first
+  }
+  
+  # We need to iterate until we find n_target terms or run out of candidates
+  candidates <- sorted_cand$Description
+  
+  # Get all gene signatures once
+  term_signatures <- list()
+  for(desc in unique(candidates)) {
+    row_data <- sub_df %>% filter(Description == desc) %>% dplyr::slice(1)
+    term_signatures[[desc]] <- sort(unique(unlist(strsplit(as.character(row_data$core_enrichment), "/"))))
+  }
+  
+  kept <- character(0)
+  
+  for (term in candidates) {
+    if (length(kept) >= n_target) break
+    if (term %in% kept) next # Already kept (duplicates in list)
+    
+    curr_genes <- term_signatures[[term]]
+    is_redundant <- FALSE
+    
+    for (k in kept) {
+    k_genes <- term_signatures[[k]]
+    intersect_len <- length(intersect(curr_genes, k_genes))
+    union_len <- length(union(curr_genes, k_genes))
+    jac <- ifelse(union_len > 0, intersect_len / union_len, 0)
+    
+    if (jac > 0.7) {
+      is_redundant <- TRUE
+      break
+    }
+    }
+    
+    if (!is_redundant) {
+    kept <- c(kept, term)
+    }
+  }
+  
+  # Return the dataframe rows for these kept terms
+  sub_df %>% filter(Description %in% kept) %>% 
+    group_by(Description) %>% 
+    filter(row_number() == 1) %>% # Ensure unique if multiple rows per term
+    ungroup()
+  }
+  
+  # Apply per comparison
+  
+  unique_comps <- unique(df_sig$Comparison)
+  results_list <- list()
+  
+  for (comp in unique_comps) {
+  message(paste("Processing redundancy check for comparison:", comp))
+  comp_df <- df_sig %>% filter(Comparison == comp)
+  
+  # UP
+  up_candidates <- comp_df %>% filter(NES > 0)
+  top_up <- pick_top_n_non_redundant(up_candidates, 5, "up")
+  
+  # DOWN
+  down_candidates <- comp_df %>% filter(NES < 0)
+  top_down <- pick_top_n_non_redundant(down_candidates, 5, "down")
+  
+  results_list[[comp]] <- bind_rows(top_up, top_down)
+  }
+  
+  top_df_per_comp <- bind_rows(results_list) %>%
+  distinct(Comparison, ID, .keep_all = TRUE)
+  
+  # Save this specifically for the separate plot
+  top5_up_down_df <- top_df_per_comp
+
+} else if (top10_per_comp) {
+  # Logic: Top 10 Absolute NES per comparison
+  if (significant_only) {
+  # Only include significant terms (p.adjust < 0.05), then select the top 10 per comparison with the highest absolute NES
+  top_df_per_comp <- combined_df %>%
+    filter(p.adjust < 0.05) %>%
+    group_by(Comparison) %>%
+    arrange(desc(abs(NES))) %>%
+    dplyr::slice_head(n = 10) %>%
+    ungroup()
+  } else {
+  # Without significance filtering, select the top 10 terms per comparison with the highest absolute NES
+  top_df_per_comp <- combined_df %>%
+    group_by(Comparison) %>%
+    arrange(desc(abs(NES))) %>%
+    dplyr::slice_head(n = 10) %>%
+    ungroup()
   }
 } else {
   if (significant_only) {
-    # If not selecting top10, just retain all significant terms (p.adjust < 0.05)
-    top_df_per_comp <- combined_df %>%
-      filter(p.adjust < 0.05)
+  # If not selecting top10, just retain all significant terms (p.adjust < 0.05)
+  top_df_per_comp <- combined_df %>%
+    filter(p.adjust < 0.05)
   } else {
-    # Include all terms without any filtering
-    top_df_per_comp <- combined_df
+  # Include all terms without any filtering
+  top_df_per_comp <- combined_df
   }
 }
 
@@ -225,28 +372,28 @@ if (top10_per_comp) {
 # Create a master candidate pool sorted by absolute NES
 if (significant_only) {
   candidate_pool_df <- combined_df %>%
-    filter(p.adjust < 0.05) %>%
-    arrange(desc(abs(NES)))
+  filter(p.adjust < 0.05) %>%
+  arrange(desc(abs(NES)))
 } else {
   candidate_pool_df <- combined_df %>%
-    arrange(desc(abs(NES)))
+  arrange(desc(abs(NES)))
 }
 
 # -------------------------------------------------------------------------
 # 1. Non-Refined Selection (Standard Top N)
 # -------------------------------------------------------------------------
 if (top10_terms) {
-    top_df_standard <- candidate_pool_df %>%
-      dplyr::slice_head(n = 10)
+  top_df_standard <- candidate_pool_df %>%
+    dplyr::slice_head(n = 10)
 } else {
-    top_df_standard <- candidate_pool_df
+  top_df_standard <- candidate_pool_df
 }
 
 # Define the standard list of top terms
 top_terms_standard <- unique(top_df_standard$Description)
 
 # -------------------------------------------------------------------------
-# 2. Refined Selection: Check Gene Overlap & Remove Redundancy
+# 2. Refined Selection: Check Gene Overlap & Remove Redundancy (Global)
 # -------------------------------------------------------------------------
 #' Check for complete protein overlap in Top Terms and fill up from candidates.
 
@@ -269,9 +416,9 @@ redundancy_log <- data.frame(
 get_term_genes <- function(desc, df) {
   # Take the row with max abs(NES) for this term to represent its core contents
   row_data <- df %>% 
-    filter(Description == desc) %>% 
-    arrange(desc(abs(NES))) %>% 
-    dplyr::slice(1)
+  filter(Description == desc) %>% 
+  arrange(desc(abs(NES))) %>% 
+  dplyr::slice(1)
   
   genes <- unlist(strsplit(as.character(row_data$core_enrichment), "/"))
   return(sort(unique(genes)))
@@ -290,31 +437,31 @@ for (term in unique_candidates) {
   
   # Compare with accepted terms
   for (accepted in refined_terms) {
-    accepted_genes <- term_signatures[[accepted]]
-    
-    # Calculate overlap (Jaccard)
-    intersect_len <- length(intersect(current_genes, accepted_genes))
-    union_len <- length(union(current_genes, accepted_genes))
-    jaccard <- ifelse(union_len > 0, intersect_len / union_len, 0)
-    
-    # Check for heavy overlap (e.g. > 0.9 or 1.0)
-    if (jaccard > 0.7) {
-      is_redundant <- TRUE
-      overlap_term <- accepted
-      score <- jaccard
-      break
-    }
+  accepted_genes <- term_signatures[[accepted]]
+  
+  # Calculate overlap (Jaccard)
+  intersect_len <- length(intersect(current_genes, accepted_genes))
+  union_len <- length(union(current_genes, accepted_genes))
+  jaccard <- ifelse(union_len > 0, intersect_len / union_len, 0)
+  
+  # Check for heavy overlap (e.g. > 0.7)
+  if (jaccard > 0.7) {
+    is_redundant <- TRUE
+    overlap_term <- accepted
+    score <- jaccard
+    break
+  }
   }
   
   if (is_redundant) {
-    redundancy_log <- rbind(redundancy_log, data.frame(
-      Rejected_Term = term,
-      Overlapping_With = overlap_term,
-      Jaccard_Index = score
-    ))
+  redundancy_log <- rbind(redundancy_log, data.frame(
+    Rejected_Term = term,
+    Overlapping_With = overlap_term,
+    Jaccard_Index = score
+  ))
   } else {
-    refined_terms <- c(refined_terms, term)
-    term_signatures[[term]] <- current_genes
+  refined_terms <- c(refined_terms, term)
+  term_signatures[[term]] <- current_genes
   }
 }
 
@@ -359,21 +506,21 @@ comparison_plot_data <- bind_rows(plot_data_standard, plot_data_refined) %>%
 # Create a comparison dotplot
 # Only plot unique descriptions per method to keep it readable
 comp_plot <- ggplot(comparison_plot_data, aes(
-    x = Comparison,
-    y = reorder(Description, NES, FUN = mean),
-    color = NES,
-    size = -log10(p.adjust)
+  x = Comparison,
+  y = reorder(Description, NES, FUN = mean),
+  color = NES,
+  size = -log10(p.adjust)
   )) +
   geom_point() +
   facet_grid(Selection_Type ~ ., scales = "free_y", space = "free_y") +
   scale_color_gradientn(
-    colours = colorRampPalette(c("#6698CC", "white", "#F08C21"))(100),
-    name = "NES"
+  colours = colorRampPalette(c("#6698CC", "white", "#F08C21"))(100),
+  name = "NES"
   ) +
   labs(
-    title = "Comparison of Top Term Selection Methods",
-    y = "GO Term",
-    x = "Comparison"
+  title = "Comparison of Top Term Selection Methods",
+  y = "GO Term",
+  x = "Comparison"
   ) +
   theme_bw() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
@@ -460,6 +607,7 @@ lookup_df <- combined_df %>%
   filter(Description %in% top_terms)
 
 # Compute the order of comparisons by determining the maximum absolute NES for each, then sort in descending order
+# (Note: This order might be overridden visually if clustering is enabled in pheatmap, but we perform it for data consistency)
 comparison_order <- lookup_df %>%
   group_by(Comparison) %>%
   summarize(max_abs_NES = max(abs(NES), na.rm = TRUE), .groups = "drop") %>%
@@ -495,12 +643,10 @@ heatmap_data <- heatmap_data[, -which(names(heatmap_data) == "Description")]
 
 # Convert to matrix
 heatmap_data <- as.matrix(heatmap_data)
+heatmap_data[is.na(heatmap_data)] <- 0 # Pheatmap handles NA poorly in clustering sometimes, better to zero or impute
 
 # Save the heatmap data to a CSV file
 heatmap_data_export <- tibble::rownames_to_column(as.data.frame(heatmap_data), var = "RowNames")
-
-# Replace empty fields with NA
-heatmap_data_export[heatmap_data_export == ""] <- NA
 writexl::write_xlsx(heatmap_data_export, path = file.path(subdirs$tables, "Matrix_Heatmap_NES.xlsx"))
 
 # Similarly, create a corresponding matrix for significance labels
@@ -535,6 +681,11 @@ heatmap_plot <- pheatmap(
   silent = TRUE
 )
 
+# Extract the clustering order from the heatmap to ensure dotplot matches
+# This ensures that the dotplot is ordered "up to down" following the clustering logic
+heatmap_row_order <- rownames(heatmap_data)[heatmap_plot$tree_row$order]
+heatmap_col_order <- colnames(heatmap_data)[heatmap_plot$tree_col$order]
+
 # Define output directory and filename
 output_file <- file.path(subdirs$plots_main, "Heatmap_Enrichment_Comparisons.svg")
 
@@ -546,24 +697,41 @@ dev.off()
 # -----------------------------------------------------
 # Create Dot Plot
 # -----------------------------------------------------
-#' Comparative Gene Ontology Enrichment Dot Plot
+#' comparative Gene Ontology Enrichment Dot Plot
 
 # Construct dot plot for comparative GO enrichment analysis.
-# Create full dotplot using top_df_per_comp (filtered per comparison)
-top_df_per_comp_plot <- top_df_per_comp %>%
-  mutate(Comparison = factor(Comparison, levels = comparison_order))
 
-# Get all comparisons from comparison_order
-all_comparisons <- comparison_order
+# DATA PREP FOR DOTPLOT 1: Per-Comparison Top Terms
+# -----------------------------------------------------------------------------
+# Determine meaningful order for the "Per Comparison" plot.
+# Since this has more terms than the heatmap, we run a cluster on its own matrix
+# to ensure the "Left to Right -> Up to Down" diagonalization flow.
 
-# Filter combined_df to include all data points for ALL comparisons
+# Create wide matrix for all terms in Per-Comparison list
+per_comp_width <- combined_df %>%
+  filter(Description %in% unique(top_df_per_comp$Description)) %>%
+  select(Description, Comparison, NES) %>%
+  pivot_wider(names_from = Comparison, values_from = NES, values_fill = 0) %>%
+  column_to_rownames("Description") %>%
+  as.matrix()
+
+# Cluster to find order
+pc_row_dend <- hclust(dist(per_comp_width))
+pc_col_dend <- hclust(dist(t(per_comp_width)))
+pc_row_order <- rownames(per_comp_width)[pc_row_dend$order]
+pc_col_order <- colnames(per_comp_width)[pc_col_dend$order]
+
+# Order the data based on this clustering
 full_data_for_plot <- combined_df %>%
-  filter(Description %in% unique(top_df_per_comp_plot$Description)) %>%
-  mutate(Comparison = factor(Comparison, levels = all_comparisons))
+  filter(Description %in% unique(top_df_per_comp$Description)) %>%
+  mutate(
+    Comparison = factor(Comparison, levels = pc_col_order),
+    Description = factor(Description, levels = pc_row_order)
+  )
 
 dotplot <- ggplot(full_data_for_plot, aes(
   x = Comparison,
-  y = reorder(Description, NES, FUN = median),
+  y = Description, # Already ordered by factor above
   color = NES,
   size = -log10(p.adjust)
 )) +
@@ -606,14 +774,19 @@ dotplot <- ggplot(full_data_for_plot, aes(
   ) +
   coord_cartesian(clip = 'off')
 
-# Create a second dot plot showing only top terms using lookup_df (filtered)
+# DATA PREP FOR DOTPLOT 2: Overall Top Terms
+# -----------------------------------------------------------------------------
+# Apply the exact order extracted from the heatmap (row and column trees)
 top_terms_all_data <- combined_df %>%
   filter(Description %in% top_terms) %>%
-  mutate(Comparison = factor(Comparison, levels = all_comparisons))
+  mutate(
+    Comparison = factor(Comparison, levels = heatmap_col_order),
+    Description = factor(Description, levels = heatmap_row_order)
+  )
 
 dotplot_top <- ggplot(top_terms_all_data, aes(
   x = Comparison,
-  y = reorder(Description, NES, FUN = median),
+  y = Description, # Ordered based on heatmap clustering
   color = NES,
   size = -log10(p.adjust)
 )) +
@@ -661,10 +834,10 @@ num_comparisons <- length(unique(lookup_df$Comparison))
 dynamic_width <- max(5, num_comparisons * 1.9)
 
 # Dynamically adjust plot height for each dotplot
-num_gene_sets_per_comp <- length(unique(top_df_per_comp_plot$Description))
+num_gene_sets_per_comp <- length(unique(full_data_for_plot$Description))
 dynamic_height_per_comp <- max(3.7, num_gene_sets_per_comp * 0.5)
 
-num_gene_sets_top <- length(unique(lookup_df$Description))
+num_gene_sets_top <- length(unique(top_terms_all_data$Description))
 dynamic_height_top <- max(3.7, num_gene_sets_top * 0.7)
 
 # Save the dot plots as SVG files
@@ -672,6 +845,66 @@ output_dotplot <- file.path(subdirs$plots_main, "Dotplot_Enrichment_TopGenes_Per
 output_dotplot_top <- file.path(subdirs$plots_main, "Dotplot_Enrichment_TopGenes_Overall.svg")
 ggsave(output_dotplot, plot = dotplot, width = dynamic_width, height = dynamic_height_per_comp, dpi = 300)
 ggsave(output_dotplot_top, plot = dotplot_top, width = dynamic_width, height = dynamic_height_top, dpi = 300)
+
+# -----------------------------------------------------
+# Create Separate Dot Plot for Split Up/Down Top Terms
+# -----------------------------------------------------
+#' @description
+#' If top5_up_down_per_comp was specifically used, this section generates one additional plot
+#' strictly reflecting that 5 up / 5 down structure without any other merges.
+
+if (!is.null(top5_up_down_df) && nrow(top5_up_down_df) > 0) {
+  
+  # For this specific plot, we keep the original intent of strict X-axis binning,
+  # but order Y-axis by NES within comparisons for clarity.
+  
+  plot_data_split <- top5_up_down_df %>%
+  mutate(Comparison = factor(Comparison, levels = pc_col_order)) # Use same column order as main plot
+
+  dotplot_split <- ggplot(plot_data_split, aes(
+  x = Comparison,
+  # Order description relative to median NES to keep up/down separation clear
+  y = reorder(Description, NES, FUN = median), 
+  color = NES,
+  size = -log10(p.adjust)
+  )) +
+  geom_point(alpha = 0.85) +
+  scale_color_gradientn(
+    colours = colorRampPalette(c("#6698CC", "white", "#F08C21"))(100),
+    name = "NES",
+    limits = c(min(plot_data_split$NES, na.rm = TRUE), max(plot_data_split$NES, na.rm = TRUE)),
+    values = scales::rescale(c(min(plot_data_split$NES, na.rm = TRUE), 0, max(plot_data_split$NES, na.rm = TRUE)))
+  ) +
+  scale_size_continuous(
+    name = expression(-log[10](p.adjust)),
+    range = c(1, 10),
+    limits = c(0, NA)
+  ) +
+  scale_x_discrete(expand = expansion(mult = c(0.29, 0.29)), drop = FALSE) +
+  scale_y_discrete(
+    expand = expansion(add = c(0.6, 0.6)),
+    labels = scales::label_wrap(40)
+  ) +
+  labs(
+    title = "Top 5 Up/Down Terms Per Comparison (Unique Filter)",
+    subtitle = paste(ont, ensemble_profiling, "under", condition),
+    x = "Comparison",
+    y = "Gene Set Description"
+  ) +
+  theme_classic(base_size = 14) +
+  theme(
+    plot.title = element_text(face = "bold", size = 16, hjust = 0.5),
+    axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
+    panel.border = element_rect(color = "black", fill = NA, size = 0.5)
+  )
+  
+  # Dynamic height calculation
+  num_terms_split <- length(unique(plot_data_split$Description))
+  dynamic_height_split <- max(4, num_terms_split * 0.5)
+  
+  output_dotplot_split <- file.path(subdirs$plots_main, "Dotplot_Enrichment_Top5_Up_Down_PerComp.svg")
+  ggsave(output_dotplot_split, plot = dotplot_split, width = dynamic_width, height = dynamic_height_split, dpi = 300)
+}
 
 # -----------------------------------------------------
 # Specify the target genes for the enrichment analysis
