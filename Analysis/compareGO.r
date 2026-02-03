@@ -557,10 +557,9 @@ if (top5_up_down_per_comp) {
 # For each comparison, select top 5 up and top 5 down terms (by NES, non-redundant).
 # "Standard": just top/bottom 5 by NES per comparison.
 # "Refined": non-redundant (by Jaccard), still top/bottom 5 per comparison.
-
 target_n_terms <- 5
 
-# Helper: get genes for a term
+# Helper: get genes for a term (helper function kept for potential external usage)
 get_term_genes <- function(desc, df) {
   row_data <- df %>% 
     filter(Description == desc) %>% 
@@ -570,53 +569,105 @@ get_term_genes <- function(desc, df) {
   return(sort(unique(genes)))
 }
 
-# Non-redundant top-N selection by Jaccard
+# Non-redundant top-N selection with iterative fill-up logic
 pick_top_n_non_redundant <- function(sub_df, n_target, direction = "up") {
+  if (nrow(sub_df) == 0) return(sub_df)
+  
+  # 1. Sort Candidates
   if (direction == "up") {
-    sorted_cand <- sub_df %>% arrange(desc(NES))
+    sorted_df <- sub_df %>% arrange(desc(NES))
   } else {
-    sorted_cand <- sub_df %>% arrange(NES)
+    sorted_df <- sub_df %>% arrange(NES)
   }
-  candidates <- sorted_cand$Description
+  
+  sorted_candidates <- unique(sorted_df$Description)
+  
+  # 2. Pre-calculate signatures for ALL unique candidates to avoid repeated processing
   term_signatures <- list()
-  for(desc in unique(candidates)) {
-    row_data <- sub_df %>% filter(Description == desc) %>% dplyr::slice(1)
-    term_signatures[[desc]] <- sort(unique(unlist(strsplit(as.character(row_data$core_enrichment), "/"))))
+  tmp_lookup <- sorted_df %>% 
+    dplyr::select(Description, core_enrichment) %>%
+    group_by(Description) %>%
+    dplyr::slice(1) %>% # Take representative gene list
+    ungroup()
+    
+  for(i in 1:nrow(tmp_lookup)) {
+    d <- tmp_lookup$Description[i]
+    g_str <- tmp_lookup$core_enrichment[i]
+    if(!is.na(g_str)) {
+      term_signatures[[d]] <- sort(unique(unlist(strsplit(as.character(g_str), "/"))))
+    } else {
+      term_signatures[[d]] <- character(0)
+    }
   }
-  kept <- character(0)
-  for (term in candidates) {
-    if (length(kept) >= n_target) break
-    if (term %in% kept) next 
-    curr_genes <- term_signatures[[term]]
-    is_redundant <- FALSE
-    for (k in kept) {
-      k_genes <- term_signatures[[k]]
-      intersect_len <- length(intersect(curr_genes, k_genes))
-      union_len <- length(union(curr_genes, k_genes))
+
+  # Helper: Check if a candidate is redundant against a specific existing set
+  is_redundant <- function(cand, accepted_list, threshold = 0.7) {
+    if (length(accepted_list) == 0) return(FALSE)
+    cand_genes <- term_signatures[[cand]]
+    if (length(cand_genes) == 0) return(FALSE)
+    
+    for (acc in accepted_list) {
+      acc_genes <- term_signatures[[acc]]
+      intersect_len <- length(intersect(cand_genes, acc_genes))
+      union_len <- length(union(cand_genes, acc_genes))
       jac <- ifelse(union_len > 0, intersect_len / union_len, 0)
-      if (jac > 0.7) {
-        is_redundant <- TRUE
-        break
+      if (jac > threshold) return(TRUE)
+    }
+    return(FALSE)
+  }
+
+  # --- LOGIC IMPLEMENTATION ---
+  
+  # Step A: Take the initial top N candidates (absolute best NES)
+  initial_candidates <- sorted_candidates[1:min(length(sorted_candidates), n_target)]
+  
+  # Step B: Filter redundancy within these initial top N
+  kept_terms <- character(0)
+  for (term in initial_candidates) {
+    if (!is_redundant(term, kept_terms)) {
+      kept_terms <- c(kept_terms, term)
+    }
+  }
+  
+  # Step C: If we have fewer than n_target, go back to the pool to fill up
+  if (length(kept_terms) < n_target) {
+    # Identify candidates we haven't checked yet (those beyond the initial top N)
+    remaining_candidates <- sorted_candidates[(length(initial_candidates) + 1):length(sorted_candidates)]
+    
+    # Iterate through remaining to fill slots
+    for (term in remaining_candidates) {
+      # Stop if we reached the target count
+      if (length(kept_terms) >= n_target) break
+      
+      # Check redundancy against established list
+      if (!is_redundant(term, kept_terms)) {
+        kept_terms <- c(kept_terms, term)
       }
     }
-    if (!is_redundant) {
-      kept <- c(kept, term)
-    }
   }
-  sub_df %>% filter(Description %in% kept) %>% 
+  
+  # 5. Return Result DataFrame
+  if (direction == "up") {
+      res <- sub_df %>% filter(Description %in% kept_terms) %>% arrange(desc(NES))
+  } else {
+      res <- sub_df %>% filter(Description %in% kept_terms) %>% arrange(NES)
+  }
+  
+  # Ensure distinct rows per term, re-sort, and slice final count (just in case)
+  res %>% 
     group_by(Description) %>% 
     filter(row_number() == 1) %>% 
-    ungroup()
+    ungroup() %>%
+    { if(direction == "up") arrange(., desc(NES)) else arrange(., NES) } %>%
+    dplyr::slice_head(n = n_target)
 }
 
 # --- STANDARD: top/bottom 5 by NES per comparison (no redundancy check) ---
 if (significant_only) {
   candidate_pool_df <- combined_df %>%
-    filter(p.adjust < 0.05) %>%
-    arrange(desc(abs(NES)))
+    filter(p.adjust < 0.05) 
 } else {
-  candidate_pool_df <- combined_df %>%
-    arrange(desc(abs(NES)))
+  candidate_pool_df <- combined_df
 }
 
 unique_comps <- unique(candidate_pool_df$Comparison)
@@ -625,24 +676,80 @@ results_list_down_std <- list()
 results_list_up_ref <- list()
 results_list_down_ref <- list()
 
+# Prepare replacement tracking list
+replacement_tracker <- list()
+
 for (comp in unique_comps) {
+  message(paste("Processing refined selection for:", comp))
   comp_df <- candidate_pool_df %>% filter(Comparison == comp)
+  
   # Standard: just top/bottom 5 by NES
   up_std <- comp_df %>% filter(NES > 0) %>% arrange(desc(NES)) %>% dplyr::slice_head(n = target_n_terms)
   down_std <- comp_df %>% filter(NES < 0) %>% arrange(NES) %>% dplyr::slice_head(n = target_n_terms)
+  
   results_list_up_std[[comp]] <- up_std
   results_list_down_std[[comp]] <- down_std
-  # Refined: non-redundant top/bottom 5 by NES
+  
+  # Refined: non-redundant with fill-up
   up_ref <- pick_top_n_non_redundant(comp_df %>% filter(NES > 0), target_n_terms, "up")
   down_ref <- pick_top_n_non_redundant(comp_df %>% filter(NES < 0), target_n_terms, "down")
+  
   results_list_up_ref[[comp]] <- up_ref
   results_list_down_ref[[comp]] <- down_ref
+  
+  # --- Track differences (Replacements) ---
+  track_diffs <- function(std_df, ref_df, direction_label) {
+    if (nrow(std_df) == 0 && nrow(ref_df) == 0) return(NULL)
+    
+    std_terms <- unique(std_df$Description)
+    ref_terms <- unique(ref_df$Description)
+    
+    # Terms removed by redundancy logic
+    dropped <- setdiff(std_terms, ref_terms)
+    # Terms added by redundancy logic (replacements)
+    added <- setdiff(ref_terms, std_terms)
+    
+    if (length(dropped) == 0 && length(added) == 0) return(NULL)
+    
+    # Organize into a dataframe (fill with NA if unequal lengths)
+    max_len <- max(length(dropped), length(added))
+    if(max_len == 0) return(NULL)
+    
+    df_diff <- data.frame(
+        Comparison = comp,
+        Direction = direction_label,
+        Dropped_Standard_Term = c(dropped, rep(NA, max_len - length(dropped))),
+        Added_Refined_Term = c(added, rep(NA, max_len - length(added))),
+        stringsAsFactors = FALSE
+    )
+    return(df_diff)
+  }
+  
+  replacement_tracker[[paste0(comp, "_up")]] <- track_diffs(up_std, up_ref, "Up")
+  replacement_tracker[[paste0(comp, "_down")]] <- track_diffs(down_std, down_ref, "Down")
 }
 
 top_df_up_std <- bind_rows(results_list_up_std)
 top_df_down_std <- bind_rows(results_list_down_std)
 top_df_up_ref <- bind_rows(results_list_up_ref)
 top_df_down_ref <- bind_rows(results_list_down_ref)
+
+df_refined_combined <- bind_rows(top_df_up_ref, top_df_down_ref) %>%
+  arrange(Comparison, desc(NES))
+
+df_replacements <- bind_rows(replacement_tracker)
+if (nrow(df_replacements) == 0) {
+    df_replacements <- data.frame(Message = "No redundancy replacements occurred.")
+}
+
+# --- Save Results to Excel with Two Sheets ---
+writexl::write_xlsx(
+  list(
+    "Final_Refined_List" = df_refined_combined,
+    "Replacements" = df_replacements
+  ),
+  path = file.path(subdirs$tables, "Redundancy_Check_Results.xlsx")
+)
 
 top_terms_up_std <- unique(top_df_up_std$Description)
 top_terms_down_std <- unique(top_df_down_std$Description)
@@ -671,11 +778,32 @@ plot_data_refined <- combined_df %>%
 comparison_plot_data <- bind_rows(plot_data_standard, plot_data_refined) %>%
   mutate(Comparison = factor(Comparison)) 
 
+# Calculate ordering based on NES and Significance
+# We define the order based on the "best" instance of each term across comparisons
+term_ordering <- comparison_plot_data %>%
+  group_by(Description) %>%
+  summarise(
+    Max_NES = NES[which.max(abs(NES))], # Use signed max NES
+    Best_Padj = p.adjust[which.max(abs(NES))], # P-value associated with max NES
+    Dominant_Comparison = Comparison[which.max(abs(NES))],
+    .groups = "drop"
+  ) %>%
+  # Sort order determines factor levels (1 = Bottom, N = Top)
+  # Arrange by Comparison (to group visually), then NES (ascending -> High NES at Top),
+  # then desc(Padj) (Low p-value -> High Index -> Top)
+  arrange(Dominant_Comparison, Max_NES, desc(Best_Padj))
+
+# Apply factor levels
+comparison_plot_data$Description <- factor(
+  comparison_plot_data$Description,
+  levels = term_ordering$Description
+)
+
 max_abs_nes <- max(abs(comparison_plot_data$NES), na.rm = TRUE)
 
 comp_plot <- ggplot(comparison_plot_data, aes(
   x = Comparison,
-  y = reorder(Description, NES, FUN = mean),
+  y = Description,
   color = NES,
   size = -log10(p.adjust)
 )) +
@@ -1572,7 +1700,7 @@ if (length(comparison_files) > 0) {
             mutate(Description = factor(Description, levels = unique(Description)))
           
           if (nrow(ego_df) > 0) {
-            lollipop_palette <- colorRampPalette(c("#4c87c6", "#faa51a"))
+            lollipop_palette <- colorRampPalette(c("#faa51a", "#4c87c6"))
             p_lollipop <- ggplot(ego_df, aes(x = GeneRatio, y = Description)) +
               geom_segment(aes(x = 0, xend = GeneRatio, y = Description, yend = Description), color = "#bdbdbd", linewidth = 1) +
               geom_point(aes(size = Count, color = p.adjust), alpha = 0.9) +
@@ -1637,7 +1765,7 @@ if (length(comparison_files) > 0) {
             mutate(Description = factor(Description, levels = unique(Description)))
           
           if (nrow(ego_df) > 0) {
-            lollipop_palette <- colorRampPalette(c("#4c87c6", "#faa51a"))
+            lollipop_palette <- colorRampPalette(c("#faa51a", "#4c87c6"))
             p_lollipop <- ggplot(ego_df, aes(x = GeneRatio, y = Description)) +
               geom_segment(aes(x = 0, xend = GeneRatio, y = Description, yend = Description), color = "#bdbdbd", linewidth = 1) +
               geom_point(aes(size = Count, color = p.adjust), alpha = 0.9) +
