@@ -24,22 +24,33 @@
 #' @date 2025-12-15
 
 if (!requireNamespace("pacman", quietly = TRUE)) install.packages("pacman")
-pacman::p_load(dplyr, stringr, tidyr, purrr, readr, R.utils, foreach, doParallel)
+pacman::p_load(dplyr, stringr, tidyr, purrr, readr, R.utils, foreach, doParallel, readxl, AnnotationDbi, org.Mm.eg.db, UniProt.ws)
 
-mapped_comparisons <- "unknown-comparison"  # specify the comparison folder to process
+mapped_comparisons <- "neuron-soma"  # specify the comparison folder to process
 map_reverse <- FALSE
 
 #working_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/"
-working_dir <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler"
+working_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/"
 comparison_dir <- if (isTRUE(map_reverse)) file.path(mapped_comparisons, "reverse") else file.path(mapped_comparisons, "forward")
 raw_dir <- file.path(working_dir, "Datasets", "raw", comparison_dir)
-mapped_dir <- file.path(working_dir, "Datasets", "mapped", comparison_dir)
-unmapped_dir <- file.path(working_dir, "Datasets", "unmapped", comparison_dir)
+
 info_dir <- file.path(working_dir, "Datasets", "mapped", comparison_dir, "info")
 
-dir.create(mapped_dir, recursive = TRUE, showWarnings = FALSE)
-dir.create(unmapped_dir, recursive = TRUE, showWarnings = FALSE)
+mapped_dir <- file.path(working_dir, "Datasets", "mapped", comparison_dir, "per_file")
+mapped_summary_dir <- file.path(working_dir, "Datasets", "mapped", comparison_dir, "summaries")
+
+unmapped_dir <- file.path(working_dir, "Datasets", "unmapped", comparison_dir, "per_file")
+unmapped_summary_dir <- file.path(working_dir, "Datasets", "unmapped", comparison_dir, "summaries")
+
+report_dir <- file.path(working_dir, "Datasets", "mapping_reports", comparison_dir)
+
 dir.create(info_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(mapped_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(mapped_summary_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(unmapped_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(unmapped_summary_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(report_dir, recursive = TRUE, showWarnings = FALSE)
+
 
 setwd(working_dir)
 
@@ -638,12 +649,16 @@ process_file <- function(data_path) {
     message("Saved summary info -> ", info_summary_file)
 
     invisible(list(
-        mapped = mapped_file,
-        unmapped = unmapped_file,
-        info = info_table_file,
-        summary = info_summary_file,
-        unmapped_table = unmapped_proteins
-    ))
+    mapping_table = mapping_info %>%
+        dplyr::mutate(
+            source_file = basename(data_path),
+            mapped_status = ifelse(!is.na(final_accession) & nzchar(final_accession), "mapped", "unmapped")
+        ),
+
+    unmapped_table = unmapped_proteins %>%
+        dplyr::mutate(source_file = basename(data_path))
+))
+
 }
 
 # -------------------------
@@ -665,3 +680,122 @@ results <- foreach(i = seq_along(csv_files),
 
 parallel::stopCluster(cl)
 cat("Batch mapping completed for", length(csv_files), "files.\n")
+
+cat("Building global mapping summaries...\n")
+
+all_mapping_tables <- purrr::map(results, "mapping_table") %>% dplyr::bind_rows()
+all_unmapped_tables <- purrr::map(results, "unmapped_table") %>% dplyr::bind_rows()
+
+# -------------------------
+# Global Mapping Summary
+# -------------------------
+
+global_mapping_summary <- all_mapping_tables %>%
+    dplyr::distinct() %>%
+    dplyr::arrange(source_file, original_symbol)
+
+global_mapping_file <- file.path(info_dir, "GLOBAL_mapping_summary.csv")
+readr::write_csv(global_mapping_summary, global_mapping_file)
+
+cat("Saved global mapping summary ->", global_mapping_file, "\n")
+
+# -------------------------
+# Global Unmapped Proteins
+# -------------------------
+
+global_unmapped_summary <- all_unmapped_tables %>%
+    dplyr::group_by(gene_symbol) %>%
+    dplyr::summarise(
+        occurrences = dplyr::n(),
+        files_present = paste(unique(source_file), collapse = "; "),
+        .groups = "drop"
+    ) %>%
+    dplyr::arrange(dplyr::desc(occurrences))
+
+global_unmapped_file <- file.path(unmapped_dir, "GLOBAL_unmapped_proteins.csv")
+readr::write_csv(global_unmapped_summary, global_unmapped_file)
+
+cat("Saved global unmapped protein list ->", global_unmapped_file, "\n")
+
+# -------------------------
+# Optional Strategy Stats
+# -------------------------
+
+strategy_stats <- global_mapping_summary %>%
+    dplyr::filter(mapped_status == "mapped") %>%
+    dplyr::count(matched_by, name = "total_mapped") %>%
+    dplyr::arrange(dplyr::desc(total_mapped))
+
+strategy_file <- file.path(info_dir, "GLOBAL_strategy_statistics.csv")
+readr::write_csv(strategy_stats, strategy_file)
+
+cat("Saved global strategy stats ->", strategy_file, "\n")
+
+
+mapping_full <- all_mapping_tables %>%
+    dplyr::distinct() %>%
+    dplyr::arrange(source_file, original_symbol)
+
+protein_summary <- mapping_full %>%
+    dplyr::group_by(original_symbol) %>%
+    dplyr::summarise(
+        mapped_to = paste(unique(na.omit(final_accession)), collapse = "; "),
+        strategies = paste(unique(na.omit(matched_by)), collapse = "; "),
+        files_present = paste(unique(source_file), collapse = "; "),
+        mapped = any(!is.na(final_accession)),
+        .groups = "drop"
+    )
+
+unmapped_proteins_global <- protein_summary %>%
+    dplyr::filter(mapped == FALSE)
+
+
+# Count total replacements per strategy (existing)
+strategy_stats <- mapping_full %>%
+    dplyr::filter(!is.na(final_accession)) %>%
+    dplyr::count(matched_by, name = "count") %>%
+    dplyr::arrange(desc(count))
+
+# Count unique proteins mapped per strategy (new)
+strategy_stats_unique <- mapping_full %>%
+    dplyr::filter(!is.na(final_accession)) %>%
+    dplyr::distinct(matched_by, original_symbol) %>%
+    dplyr::count(matched_by, name = "unique_proteins") %>%
+    dplyr::arrange(desc(unique_proteins))
+
+coverage_stats <- mapping_full %>%
+    dplyr::group_by(source_file) %>%
+    dplyr::summarise(
+        total = dplyr::n(),
+        mapped = sum(!is.na(final_accession)),
+        coverage = mapped / total,
+        .groups = "drop"
+    )
+
+if (!requireNamespace("openxlsx", quietly = TRUE)) install.packages("openxlsx")
+
+report_file <- file.path(report_dir, "Mapping_QC_Report.xlsx")
+
+wb <- openxlsx::createWorkbook()
+
+openxlsx::addWorksheet(wb, "Full_Mapping_Table")
+openxlsx::writeData(wb, "Full_Mapping_Table", mapping_full)
+
+openxlsx::addWorksheet(wb, "Protein_Summary")
+openxlsx::writeData(wb, "Protein_Summary", protein_summary)
+
+openxlsx::addWorksheet(wb, "Unmapped_Proteins")
+openxlsx::writeData(wb, "Unmapped_Proteins", unmapped_proteins_global)
+
+openxlsx::addWorksheet(wb, "Strategy_Stats")
+openxlsx::writeData(wb, "Strategy_Stats", strategy_stats)
+
+openxlsx::addWorksheet(wb, "Unique_Strategy_Stats")
+openxlsx::writeData(wb, "Unique_Strategy_Stats", strategy_stats_unique)
+
+openxlsx::addWorksheet(wb, "Coverage_Stats")
+openxlsx::writeData(wb, "Coverage_Stats", coverage_stats)
+
+openxlsx::saveWorkbook(wb, report_file, overwrite = TRUE)
+
+cat("Saved mapping QC workbook ->", report_file, "\n")
