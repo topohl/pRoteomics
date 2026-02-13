@@ -26,7 +26,7 @@
 if (!requireNamespace("pacman", quietly = TRUE)) install.packages("pacman")
 pacman::p_load(dplyr, stringr, tidyr, purrr, readr, R.utils, foreach, doParallel, readxl, AnnotationDbi, org.Mm.eg.db, UniProt.ws)
 
-mapped_comparisons <- "neuron-soma"  # specify the comparison folder to process
+mapped_comparisons <- "microglia"  # specify the comparison folder to process
 map_reverse <- FALSE
 
 #working_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/"
@@ -477,10 +477,12 @@ process_file <- function(data_path) {
             ok <- res_list[!vapply(res_list, inherits, logical(1), "try-error")]
             if (length(ok)) {
                 tbl <- dplyr::bind_rows(lapply(ok, tibble::as_tibble))
-                if (nrow(tbl)) {
+                if (nrow(tbl) && all(c("id", "accession") %in% names(tbl))) {
                     tbl <- tbl %>% dplyr::mutate(id = toupper(.data$id), accession = toupper(.data$accession))
                     pick <- tbl %>% dplyr::group_by(id) %>% dplyr::arrange(dplyr::desc(.data$reviewed), accession, .by_group = TRUE) %>% dplyr::slice_head(n = 1) %>% dplyr::ungroup() %>% dplyr::transmute(input = id, primaryAccession = accession)
                     picks[[length(picks) + 1]] <- pick
+                } else if (nrow(tbl)) {
+                    message("UniProt.ws result missing 'id' or 'accession' column; skipping batch.")
                 }
             }
         }
