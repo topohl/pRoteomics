@@ -24,7 +24,7 @@ WGCNAnThreads()
 # --------------------------
 # Paths and data load
 # --------------------------
-output_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/wgcna/output"
+output_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/wgcna/output/neuron-soma/"
 if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
 # Subfolders
@@ -51,8 +51,22 @@ save_svg <- function(path, width, height, expr) {
   force(expr)
 }
 
-expr_xlsx <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/data/male.data.xlsx"
-meta_xlsx <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/data/sample_info.xlsx"
+#expr_xlsx <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/data/male.data.xlsx"
+#meta_xlsx <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/data/sample_info.xlsx"
+meta_xlsx <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/data/sample_info_neuron-soma.xlsx"
+
+# Define output directory for results and plots
+#output_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/wgcna/output"
+#if (!dir.exists(output_dir)) {
+#    dir.create(output_dir, recursive = TRUE)
+#}
+
+
+# Load expression data from Excel file
+d <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/data/male.data_neuron-soma.xlsx"
+expr <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/data/male.data_neuron-soma.xlsx"
+male.data <- read_excel(path = d)
+
 
 # ================================
 # Mouse-only mapping: robust idmapping parser + offline + SYMBOL/ALIAS + Entrez + UniProt gene_primary + QC
@@ -66,6 +80,7 @@ suppressPackageStartupMessages({
   )
 })
 if (!requireNamespace("UniProt.ws", quietly = TRUE)) {
+  if (!requireNamespace("filelock", quietly = TRUE)) install.packages("filelock", repos = "https://cloud.r-project.org")
   if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager", repos = "https://cloud.r-project.org")
   BiocManager::install("UniProt.ws", ask = FALSE, update = FALSE)
 }
@@ -74,7 +89,7 @@ library(UniProt.ws)
 # --------------------------
 # Paths and environment
 # --------------------------
-output_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/wgcna/output"
+output_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/wgcna/output/neuron-soma/"
 subdirs <- list(
   plots_qc         = file.path(output_dir, "plots_qc"),
   plots_traits     = file.path(output_dir, "plots_traits"),
@@ -89,8 +104,11 @@ invisible(lapply(c(output_dir, unlist(subdirs)), safe_dir)); log_session(output_
 # --------------------------
 # Inputs
 # --------------------------
-expr_xlsx <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/data/male.data.xlsx"
-meta_xlsx <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/data/sample_info.xlsx"
+#expr_xlsx <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/data/male.data_.xlsx"
+#meta_xlsx <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/data/sample_info.xlsx"
+
+expr_xlsx <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/data/male.data_neuron-soma.xlsx"
+meta_xlsx <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/data/sample_info_neuron-soma.xlsx"
 idmap_dat <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/MOUSE_10090_idmapping.dat"
 
 stop_if_missing <- function(path) if (!file.exists(path)) stop(sprintf("Missing file: %s", path))
@@ -322,11 +340,11 @@ male.norm <- resolved2 %>%
   dplyr::mutate(gene_symbol = dplyr::na_if(gene_symbol, ""))
 
 to_numeric_matrix <- function(male_norm, qc_dir = subdirs$plots_qc) {
-  if (!"gene_symbol" %in% names(male_norm)) stop("male.norm must contain gene_symbol")
+  if (!"gene_symbol" %in% names(male.norm)) stop("male.norm must contain gene_symbol")
   expr <- as.data.frame(lapply(male_norm[, -1, drop = FALSE], function(x) suppressWarnings(as.numeric(x))))
   if (!all(vapply(expr, is.numeric, logical(1)))) stop("Non-numeric columns remain after coercion")
   mat <- as.data.frame(t(expr))
-  feat <- male_norm$gene_symbol
+  feat <- male.norm$gene_symbol
   empty <- which(!nzchar(ifelse(is.na(feat), "", feat)))
   if (length(empty)) feat[empty] <- paste0("UNMAPPED_", seq_along(empty))
   feat <- make.unique(feat, sep = "_")
@@ -373,6 +391,54 @@ if (!gsg$allOK) {
   expression.data <- expression.data[gsg$goodSamples == TRUE, gsg$goodGenes == TRUE]
 }
 
+# --- Save settings and metadata log ---
+
+# Improved metadata settings log
+settings_log <- list(
+  date = as.character(Sys.time()),
+  R_version = R.Version()$version.string,
+  R_platform = R.Version()$platform,
+  R_home = R.home(),
+  user = Sys.info()[["user"]],
+  nodename = Sys.info()[["nodename"]],
+  sysname = Sys.info()[["sysname"]],
+  release = Sys.info()[["release"]],
+  machine = Sys.info()[["machine"]],
+  nCores = nCores,
+  output_dir = output_dir,
+  expr_xlsx = if (exists("expr_xlsx")) expr_xlsx else NA,
+  meta_xlsx = if (exists("meta_xlsx")) meta_xlsx else NA,
+  idmap_dat = if (exists("idmap_dat")) idmap_dat else NA,
+  n_samples = nrow(expression.data),
+  n_genes = ncol(expression.data),
+  softPower = if (exists("softPower")) softPower else NA,
+  sessionInfo = capture.output(sessionInfo()),
+  loaded_packages = {
+    ip <- as.data.frame(installed.packages()[,c("Package","Version")], stringsAsFactors = FALSE)
+    loaded <- .packages()
+    ip[ip$Package %in% loaded, , drop=FALSE]
+  },
+  script_file = tryCatch(normalizePath(sys.frame(1)$ofile), error=function(e) NA),
+  script_md5 = tryCatch(digest::digest(file = sys.frame(1)$ofile, algo = "md5"), error=function(e) NA)
+)
+
+settings_log_file_txt <- file.path(output_dir, "settings_and_metadata_log.txt")
+settings_log_file_rds <- file.path(output_dir, "settings_and_metadata_log.rds")
+
+# Write as text (human readable)
+writeLines(unlist(lapply(settings_log, function(x) {
+  if (is.data.frame(x)) {
+    paste0(names(x), ":\n", paste(capture.output(print(x)), collapse = "\n"))
+  } else if (length(x) > 1) {
+    paste0(names(x), ":\n", paste(x, collapse = "\n"))
+  } else {
+    paste0(names(x), ": ", x)
+  }
+})), settings_log_file_txt)
+
+# Save as RDS for reproducibility
+saveRDS(settings_log, file = settings_log_file_rds)
+
 sampleTree <- hclust(dist(expression.data), method = "average")
 par(cex = 0.6, mar = c(0, 4, 2, 0))
 plot(sampleTree, main = "Sample clustering to detect outliers", sub = "", xlab = "", cex.main = 2); abline(h = 40, col = "red")
@@ -388,19 +454,56 @@ expression.data <- expression.data[cut.sampleTree == 1, ]
 # --------------------------
 spt <- pickSoftThreshold(expression.data)
 
+
+# Save the soft-threshold fit indices as Excel for transparency
+if (!requireNamespace("openxlsx", quietly = TRUE)) install.packages("openxlsx", repos = "https://cloud.r-project.org")
+soft_thresh_xlsx <- fp_qc("soft_threshold_fit_indices.xlsx")
+openxlsx::write.xlsx(spt$fitIndices, file = soft_thresh_xlsx, rowNames = FALSE)
+
+# Save the full pickSoftThreshold output as RDS
+soft_thresh_rds <- fp_qc("soft_threshold_pickSoftThreshold.rds")
+saveRDS(spt, file = soft_thresh_rds)
+
+# Automatically select softPower: first power with R^2 > 0.8, else max R^2
+fit_df <- as.data.frame(spt$fitIndices)
+if ("SFT.R.sq" %in% colnames(fit_df)) {
+  idx <- which(fit_df$SFT.R.sq > 0.8)
+  if (length(idx) > 0) {
+    softPower <- fit_df$Power[min(idx)]
+  } else {
+    softPower <- fit_df$Power[which.max(fit_df$SFT.R.sq)]
+  }
+} else {
+  softPower <- fit_df$Power[1]
+}
+
+# Save the selected softPower value as a separate file for downstream use
+soft_power_txt <- fp_qc("soft_power_selected.txt")
+writeLines(as.character(softPower), soft_power_txt)
+
+# Save a text summary of the soft-threshold selection
+soft_thresh_txt <- fp_qc("soft_threshold_selection_summary.txt")
+summary_lines <- c(
+  "Soft-thresholding power selection (pickSoftThreshold):",
+  paste0("Candidate powers: ", paste(fit_df$Power, collapse=", ")),
+  paste0("Selected softPower: ", softPower),
+  "",
+  "Fit indices head:",
+  paste(capture.output(head(fit_df)), collapse = "\n")
+)
+writeLines(summary_lines, soft_thresh_txt)
+
 svglite::svglite(file = fp_qc("soft_threshold_scale_independence.svg"), width = 7, height = 5)
 par(mar = c(4,4,2,1))
-plot(spt$fitIndices[,1], spt$fitIndices[,2], xlab = "Soft Threshold (power)", ylab = "Scale Free Topology Model Fit, signed R^2", type = "n", main = "Scale independence")
-text(spt$fitIndices[,1], spt$fitIndices[,2], labels = spt$fitIndices[,1], col = "red"); abline(h = 0.80, col = "red")
+plot(fit_df$Power, fit_df$SFT.R.sq, xlab = "Soft Threshold (power)", ylab = "Scale Free Topology Model Fit, signed R^2", type = "n", main = "Scale independence")
+text(fit_df$Power, fit_df$SFT.R.sq, labels = fit_df$Power, col = "red"); abline(h = 0.80, col = "red")
 dev.off()
 
 svglite::svglite(file = fp_qc("soft_threshold_mean_connectivity.svg"), width = 7, height = 5)
 par(mar = c(4,4,2,1))
-plot(spt$fitIndices[,1], spt$fitIndices[,5], xlab = "Soft Threshold (power)", ylab = "Mean Connectivity", type = "n", main = "Mean connectivity")
-text(spt$fitIndices[,1], spt$fitIndices[,5], labels = spt$fitIndices[,1], col = "red")
+plot(fit_df$Power, fit_df$mean.k., xlab = "Soft Threshold (power)", ylab = "Mean Connectivity", type = "n", main = "Mean connectivity")
+text(fit_df$Power, fit_df$mean.k., labels = fit_df$Power, col = "red")
 dev.off()
-
-softPower <- 6
 
 # --------------------------
 # Network construction
@@ -413,6 +516,57 @@ geneTree <- hclust(as.dist(TOM.dissimilarity), method = "average")
 
 svg(file = fp_net("gene_dendrogram.svg"), width = 12, height = 9)
 plot(geneTree, xlab = "", sub = "", main = "Gene clustering on TOM-based dissimilarity", labels = FALSE, hang = 0.04)
+suppressPackageStartupMessages({
+  if (!requireNamespace("openxlsx", quietly = TRUE)) install.packages("openxlsx", repos = "https://cloud.r-project.org")
+  library(openxlsx)
+})
+
+# --- Soft-threshold selection and export ---
+spt <- pickSoftThreshold(expression.data)
+fit_df <- as.data.frame(spt$fitIndices)
+
+# Export fit indices to Excel
+openxlsx::write.xlsx(fit_df, file = fp_qc("soft_threshold_fit_indices.xlsx"), rowNames = FALSE)
+# Save full pickSoftThreshold output
+saveRDS(spt, file = fp_qc("soft_threshold_pickSoftThreshold.rds"))
+
+# Select softPower: first power with R^2 > 0.8, else max R^2
+softPower <- NA
+if ("SFT.R.sq" %in% names(fit_df)) {
+  idx <- which(fit_df$SFT.R.sq > 0.8)
+  softPower <- if (length(idx)) fit_df$Power[min(idx)] else fit_df$Power[which.max(fit_df$SFT.R.sq)]
+} else if (nrow(fit_df) > 0) {
+  softPower <- fit_df$Power[1]
+} else {
+  stop("No fit indices returned by pickSoftThreshold.")
+}
+
+# Save selected softPower
+writeLines(as.character(softPower), fp_qc("soft_power_selected.txt"))
+
+# Write summary
+summary_lines <- c(
+  "Soft-thresholding power selection (pickSoftThreshold):",
+  sprintf("Candidate powers: %s", paste(fit_df$Power, collapse=", ")),
+  sprintf("Selected softPower: %s", softPower),
+  "",
+  "Fit indices head:",
+  paste(capture.output(head(fit_df)), collapse = "\n")
+)
+writeLines(summary_lines, fp_qc("soft_threshold_selection_summary.txt"))
+
+# Plots: scale independence and mean connectivity
+svglite::svglite(fp_qc("soft_threshold_scale_independence.svg"), width = 7, height = 5)
+par(mar = c(4,4,2,1))
+plot(fit_df$Power, fit_df$SFT.R.sq, xlab = "Soft Threshold (power)", ylab = "Scale Free Topology Model Fit, signed R^2", type = "n", main = "Scale independence")
+text(fit_df$Power, fit_df$SFT.R.sq, labels = fit_df$Power, col = "red")
+abline(h = 0.80, col = "red")
+dev.off()
+
+svglite::svglite(fp_qc("soft_threshold_mean_connectivity.svg"), width = 7, height = 5)
+par(mar = c(4,4,2,1))
+plot(fit_df$Power, fit_df$mean.k., xlab = "Soft Threshold (power)", ylab = "Mean Connectivity", type = "n", main = "Mean connectivity")
+text(fit_df$Power, fit_df$mean.k., labels = fit_df$Power, col = "red")
 dev.off()
 
 Modules <- cutreeDynamic(dendro = geneTree, distM = TOM.dissimilarity, deepSplit = 2,
@@ -464,32 +618,38 @@ dev.off()
 # --------------------------
 # Eigengene network plots
 # --------------------------
+
 MET <- orderMEs(mergedMEs)
-svg(file = fp_net("eigengene_dendrogram.svg"), width = 8, height = 6)
-plotEigengeneNetworks(MET, "", plotHeatmaps = FALSE, marDendro = c(0, 4, 2, 0))
-dev.off()
-svg(file = fp_net("eigengene_adjacency_heatmap.svg"), width = 8, height = 6)
-par(mar = c(1,1,1,1))
-plotEigengeneNetworks(MET, "Eigengene adjacency heatmap", plotDendrograms = FALSE,
-                      marHeatmap = c(5, 5, 2, 2), xLabelsAngle = 90)
-dev.off()
+if (is.matrix(MET) && ncol(MET) > 1) {
+  svg(file = fp_net("eigengene_dendrogram.svg"), width = 8, height = 6)
+  plotEigengeneNetworks(MET, "", plotHeatmaps = FALSE, marDendro = c(0, 4, 2, 0))
+  dev.off()
+  svg(file = fp_net("eigengene_adjacency_heatmap.svg"), width = 8, height = 6)
+  par(mar = c(1,1,1,1))
+  plotEigengeneNetworks(MET, "Eigengene adjacency heatmap", plotDendrograms = FALSE,
+                        marHeatmap = c(5, 5, 2, 2), xLabelsAngle = 90)
+  dev.off()
+} else {
+  message("Skipping eigengene dendrogram/heatmap: less than 3 modules present.")
+}
 
 # --------------------------
 # Spatial + condition trait matrix and heatmaps
 # --------------------------
 sample_info <- readxl::read_excel(path = meta_xlsx)
 stopifnot("row.names" %in% names(sample_info))
+sample_info <- as.data.frame(sample_info)
 rownames(sample_info) <- as.character(sample_info$row.names)
 
 Samples <- rownames(expression.data)
 sample_info <- sample_info[Samples, , drop = FALSE]
 
-X_celltype <- model.matrix(~ 0 + celltype, data = sample_info); colnames(X_celltype) <- sub("^celltype", "celltype_", colnames(X_celltype))
-X_layer    <- model.matrix(~ 0 + layer,    data = sample_info); colnames(X_layer)    <- sub("^layer",    "layer_",    colnames(X_layer))
+#X_celltype <- model.matrix(~ 0 + celltype, data = sample_info); colnames(X_celltype) <- sub("^celltype", "celltype_", colnames(X_celltype))
+#X_layer    <- model.matrix(~ 0 + layer,    data = sample_info); colnames(X_layer)    <- sub("^layer",    "layer_",    colnames(X_layer))
 X_region   <- model.matrix(~ 0 + region,   data = sample_info); colnames(X_region)   <- sub("^region",   "region_",   colnames(X_region))
 X_cond     <- model.matrix(~ 0 + ExpGroup, data = sample_info); colnames(X_cond)     <- sub("^ExpGroup", "cond_",     colnames(X_cond))
 
-datTraits <- as.data.frame(cbind(X_celltype, X_layer, X_region, X_cond), stringsAsFactors = FALSE)
+datTraits <- as.data.frame(cbind(X_region, X_cond), stringsAsFactors = FALSE)
 keep_cols <- vapply(datTraits, function(x) sd(as.numeric(x), na.rm = TRUE) > 0, logical(1))
 datTraits <- datTraits[, keep_cols, drop = FALSE]
 rownames(datTraits) <- Samples
@@ -521,8 +681,8 @@ plot_trait_heatmap <- function(matCorr, matP, cols, file) {
 
 trait_names <- colnames(datTraits)
 groups <- list(
-  celltype = grep("^celltype_", trait_names),
-  layer    = grep("^layer_",   trait_names),
+#  celltype = grep("^celltype_", trait_names),
+#  layer    = grep("^layer_",   trait_names),
   region   = grep("^region_",  trait_names),
   cond     = grep("^cond_",    trait_names)
 )
@@ -588,13 +748,121 @@ for (module in modules_of_interest) {
   moduleGenes <- mergedColors == module
   if (!any(moduleGenes)) next
   mmcol <- paste0("MM", module); if (!mmcol %in% colnames(geneModuleMembership)) next
-  gene_info <- data.frame(
-    Gene = colnames(expression.data)[moduleGenes],
-    Module = module,
-    ModuleMembership = geneModuleMembership[moduleGenes, mmcol],
-    GeneSignificance = geneTraitSignificance[moduleGenes, "GS.ExpGroup"]
-  )
+  gene_ids <- colnames(expression.data)[moduleGenes]
+
+  # Try to map Gene to protein name and more info if available
+  info_df <- NULL
+  if (exists("resolved2")) {
+    info_df <- resolved2 %>%
+      dplyr::select(Resolved_UNIPROT, token_raw, token_base) %>%
+      dplyr::distinct(Resolved_UNIPROT, .keep_all = TRUE)
+    colnames(info_df)[colnames(info_df) == "Resolved_UNIPROT"] <- "Gene"
+  }
+
+  # If org.Mm.eg.db is loaded, try to get SYMBOL and ENTREZID
+  extra_annot <- NULL
+  if (requireNamespace("AnnotationDbi", quietly = TRUE) && requireNamespace("org.Mm.eg.db", quietly = TRUE)) {
+    suppressMessages({
+      up_ids <- gene_ids
+      annot <- try(AnnotationDbi::select(org.Mm.eg.db, keys = up_ids, keytype = "UNIPROT", columns = c("SYMBOL", "GENENAME", "ENTREZID")), silent = TRUE)
+      if (!inherits(annot, "try-error") && nrow(annot)) {
+        annot <- as.data.frame(annot)
+        colnames(annot)[colnames(annot) == "UNIPROT"] <- "Gene"
+        extra_annot <- annot
+      }
+    })
+  }
+
+  # Merge info_df and extra_annot if both exist
+  gene_info <- data.frame(Gene = gene_ids, stringsAsFactors = FALSE)
+  if (!is.null(info_df)) {
+    gene_info <- dplyr::left_join(gene_info, info_df, by = "Gene")
+  }
+  if (!is.null(extra_annot)) {
+    gene_info <- dplyr::left_join(gene_info, extra_annot, by = "Gene")
+  }
+
+  # Align ModuleMembership and GeneSignificance by gene_ids
+  mm_idx <- match(gene_info$Gene, rownames(geneModuleMembership))
+  gs_idx <- match(gene_info$Gene, rownames(geneTraitSignificance))
+  gene_info$Module <- module
+  gene_info$ModuleMembership <- rep(NA_real_, nrow(gene_info))
+  gene_info$GeneSignificance <- rep(NA_real_, nrow(gene_info))
+  # Assign values only for matched indices
+  valid_mm <- which(!is.na(mm_idx))
+  if (length(valid_mm) > 0) {
+    gene_info$ModuleMembership[valid_mm] <- geneModuleMembership[mm_idx[valid_mm], mmcol]
+  }
+  valid_gs <- which(!is.na(gs_idx))
+  if (length(valid_gs) > 0) {
+    gene_info$GeneSignificance[valid_gs] <- geneTraitSignificance[gs_idx[valid_gs], "GS.ExpGroup"]
+  }
+
+  # Rename GENENAME to ProteinName if present
+  if ("GENENAME" %in% colnames(gene_info)) {
+    colnames(gene_info)[colnames(gene_info) == "GENENAME"] <- "ProteinName"
+  } else {
+    gene_info$ProteinName <- NA_character_
+  }
+
+  # Move ProteinName next to Gene
+  col_order <- c("Gene", "ProteinName")
+  rest <- setdiff(colnames(gene_info), col_order)
+  gene_info <- gene_info[, c(col_order, rest)]
+
   write.csv(gene_info, file = fp_modtab(paste0("genes_in_module_", module, ".csv")), row.names = FALSE)
+
+  # --- Plot gene membership vs gene significance and mark top 5 proteins ---
+  suppressPackageStartupMessages({library(ggplot2); library(ggrepel)})
+  plot_df <- gene_info
+  # Remove NA or non-finite values for plotting
+  plot_df <- plot_df[
+    !is.na(plot_df$ModuleMembership) & !is.na(plot_df$GeneSignificance) &
+    is.finite(plot_df$ModuleMembership) & is.finite(plot_df$GeneSignificance),
+  ]
+  if (nrow(plot_df) > 0) {
+    # Top 5 by product of abs(module membership) and abs(gene significance)
+    plot_df$absGS <- abs(plot_df$GeneSignificance)
+    plot_df$absMM <- abs(plot_df$ModuleMembership)
+    plot_df$score <- plot_df$absGS * plot_df$absMM
+    plot_df <- plot_df[order(-plot_df$score), ]
+    # Remove duplicated labels for clarity
+    plot_df$label <- ifelse(!is.na(plot_df$ProteinName) & nzchar(plot_df$ProteinName), plot_df$ProteinName, plot_df$Gene)
+    plot_df$label[duplicated(plot_df$label)] <- NA_character_
+    top5 <- head(plot_df, 5)
+    # Modern color: use viridis for all points, highlight top5 in orange
+    suppressPackageStartupMessages({library(viridis)})
+
+    # Regression statistics
+    lm_fit <- lm(GeneSignificance ~ ModuleMembership, data = plot_df)
+    lm_sum <- summary(lm_fit)
+    r2 <- lm_sum$r.squared
+    pval <- coef(lm_sum)[2,4]
+    subtitle_txt <- sprintf("R² = %.3f, p = %.2g", r2, pval)
+
+    p <- ggplot(plot_df, aes(x = ModuleMembership, y = GeneSignificance)) +
+      geom_point(alpha = 0.85, size = 6, color = viridis::viridis(1, begin = 0.2, end = 0.7)) +
+      geom_smooth(method = "lm", se = FALSE, color = "#21918c", linetype = "dashed", size = 1.7) +
+      geom_point(data = top5, aes(x = ModuleMembership, y = GeneSignificance), color = "#ff9900", size = 8) +
+      ggrepel::geom_text_repel(data = top5, aes(label = label), color = "#ff9900", size = 6, fontface = "bold", max.overlaps = 10, box.padding = 0.7, point.padding = 0.6, segment.color = "grey60") +
+      labs(title = paste0("Module ", module, ": kME vs. GS (top 5 highlighted by |GS|*|kME|)"),
+           subtitle = subtitle_txt,
+           x = "Module Membership (kME)", y = "Gene Significance (GS)") +
+      theme_minimal(base_size = 24) +
+      theme(
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_rect(fill = "white", color = NA),
+        plot.background = element_rect(fill = "white", color = NA),
+        axis.text = element_text(size = 22),
+        axis.title = element_text(size = 26),
+        plot.title = element_text(size = 28, face = "bold"),
+        plot.subtitle = element_text(size = 22)
+      ) +
+      coord_fixed(ratio = 1)
+    # Save plot as square
+    ggsave(fp_modtab(paste0("genes_in_module_", module, "_kME_vs_GS_scatter.svg")), p, width = 7, height = 7)
+  }
 }
 
 # --------------------------
@@ -672,11 +940,12 @@ write.csv(Z_SUS, fp_prestab("module_preservation_SUS_vs_ALL_Zsummary.csv"), row.
 # --------------------------
 # Build combined label; microglia layer -> "none"
 region <- as.character(sample_info$region)
-layer  <- as.character(sample_info$layer)
-cell   <- as.character(sample_info$celltype)
+#layer  <- as.character(sample_info$layer)
+#cell   <- as.character(sample_info$celltype)
 cond   <- as.character(sample_info$ExpGroup)
 
-combo <- paste(cond, region, layer, cell, sep = "_")
+#combo <- paste(cond, region, layer, cell, sep = "_")
+combo <- paste(cond, region, sep = "_")
 combo <- factor(combo)
 
 # One-hot and correlations
@@ -715,7 +984,7 @@ panel_plot <- function(dfi, panel_title = "") {
   ord <- order(dfi$region, dfi$layer, dfi$cell)
   dfi$trait <- factor(dfi$trait, levels = unique(dfi$trait[ord]))
   ggplot(dfi, aes(x = trait, y = module, fill = r)) +
-    geom_tile(color = "white", size = 0.3) +
+    geom_tile(color = "white", linewidth = 0.3) +
     geom_text(aes(label = stars), size = 3, color = "black", na.rm = TRUE) +
     scale_fill_gradient2(limits = c(-1, 1), oob = scales::squish,
                          low = "#2166ac", mid = "white", high = "#b2182b") +
@@ -906,35 +1175,48 @@ nr <- nrow(r_mat)
 png(fp_traits("ME_trait_pheatmap.png"), width = 3200, height = 1800, res = 300)
 grid::grid.newpage(); grid::grid.draw(ph$gtable)
 panel_id <- grep("matrix", ph$gtable$layout$name)[1]
-seekViewport(ph$gtable$layout$name[panel_id])
-for (xl in xlines) {
-  grid::grid.lines(x = unit(c(xl, xl), "native"),
-                   y = unit(c(0, nr), "native"),
-                   gp = gpar(col = "white", lwd = 3))
+if (!is.na(panel_id) && ph$gtable$layout$name[panel_id] %in% grid::current.viewport()$name) {
+  seekViewport(ph$gtable$layout$name[panel_id])
+  for (xl in xlines) {
+    grid::grid.lines(x = unit(c(xl, xl), "native"),
+                     y = unit(c(0, nr), "native"),
+                     gp = gpar(col = "white", lwd = 3))
+  }
+  upViewport(0)
 }
-upViewport(0); dev.off()
+dev.off()
 
 pdf(fp_traits("ME_trait_pheatmap.pdf"), width = 12, height = 7)
 grid::grid.newpage(); grid::grid.draw(ph$gtable)
 panel_id <- grep("matrix", ph$gtable$layout$name)[1]
-seekViewport(ph$gtable$layout$name[panel_id])
-for (xl in xlines) {
-  grid::grid.lines(x = unit(c(xl, xl), "native"),
-                   y = unit(c(0, nr), "native"),
-                   gp = gpar(col = "white", lwd = 2))
+if (!is.na(panel_id) && ph$gtable$layout$name[panel_id] %in% grid::current.viewport()$name) {
+  seekViewport(ph$gtable$layout$name[panel_id])
+  for (xl in xlines) {
+    grid::grid.lines(x = unit(c(xl, xl), "native"),
+                    y = unit(c(0, nr), "native"),
+                    gp = gpar(col = "white", lwd = 2))
+  }
+  upViewport(0)
+} else {
+  warning(sprintf("Viewport '%s' was not found; skipping vertical lines.", ph$gtable$layout$name[panel_id]))
 }
-upViewport(0); dev.off()
+dev.off()
 
 svglite::svglite(fp_traits("ME_trait_pheatmap.svg"), width = 12, height = 7)
 grid::grid.newpage(); grid::grid.draw(ph$gtable)
 panel_id <- grep("matrix", ph$gtable$layout$name)[1]
-seekViewport(ph$gtable$layout$name[panel_id])
-for (xl in xlines) {
-  grid::grid.lines(x = unit(c(xl, xl), "native"),
+if (!is.na(panel_id) && ph$gtable$layout$name[panel_id] %in% grid::current.viewport()$name) {
+  seekViewport(ph$gtable$layout$name[panel_id])
+  for (xl in xlines) {
+    grid::grid.lines(x = unit(c(xl, xl), "native"),
                    y = unit(c(0, nr), "native"),
                    gp = gpar(col = "white", lwd = 2))
+  }
+  upViewport(0)
+} else {
+  warning(sprintf("Viewport '%s' was not found; skipping vertical lines.", ph$gtable$layout$name[panel_id]))
 }
-upViewport(0); dev.off()
+dev.off()
 
 library(patchwork)
 library(gtools)
@@ -942,9 +1224,9 @@ library(cowplot)
 
 # Build blocks: celltype, region, layer, condition (no cellclass)
 block_list <- list(
-  celltype  = grep("^celltype_", colnames(datTraits)),
+#  celltype  = grep("^celltype_", colnames(datTraits)),
   region    = grep("^region_",  colnames(datTraits)),
-  layer     = grep("^layer_",   colnames(datTraits)),
+#  layer     = grep("^layer_",   colnames(datTraits)),
   condition = grep("^cond_",    colnames(datTraits))
 )
 
@@ -1037,7 +1319,7 @@ stat_list <- ME_long %>%
   group_by(module) %>%
   group_map(~{
     st <- do_stats(.x)
-    tibble(module = unique(.x$module), aov_p = st$aov_p)
+    tibble(module = .y$module, aov_p = st$aov_p)
   }) %>% bind_rows() %>%
   mutate(aov_fdr = p.adjust(aov_p, method = "BH")) %>%
   arrange(aov_fdr)
@@ -1095,12 +1377,19 @@ plot_dot_mod <- function(dfm, mod, aov_fdr = NA_real_, show_subtitle = TRUE, err
     theme_minimal(base_size = 11) +
     theme(panel.grid.major.x = element_blank())
 
-  # Pairwise significance labels (Wilcoxon BH), shown as p.signif above groups
+  # Pairwise significance labels (Wilcoxon BH), shown as p.signif and p-value above groups
   p <- p + ggpubr::stat_compare_means(comparisons = comparisons,
                                       method = "wilcox.test",
                                       p.adjust.method = "BH",
                                       label = "p.signif",
                                       hide.ns = TRUE)
+  # Add formatted p-value above the plot
+  p <- p + ggpubr::stat_compare_means(comparisons = comparisons,
+                                      method = "wilcox.test",
+                                      p.adjust.method = "BH",
+                                      label = "p.format",
+                                      hide.ns = TRUE,
+                                      y.position = NULL)
   p
 }
 
@@ -1111,6 +1400,10 @@ for (mod in unique(ME_long$module)) {
   aov_fdr <- stat_list$aov_fdr[stat_list$module == mod][1]
   p <- plot_dot_mod(dfm, mod, aov_fdr = aov_fdr, show_subtitle = TRUE, errorbar = "sem")
   print(p)
+  # Save each module plot as SVG separately
+  svglite::svglite(fp_traits(paste0("ME_by_condition_", mod, "_dotplot.svg")), width = 7, height = 4.5)
+  print(p)
+  dev.off()
 }
 dev.off()
 
@@ -1121,23 +1414,43 @@ plot_one_mod_dot <- function(mod) {
   summ <- dfm %>% group_by(condition) %>%
     summarise(mean = mean(ME, na.rm = TRUE), se = sd(ME, na.rm = TRUE)/sqrt(n()), .groups = "drop")
 
-  ggplot(dfm, aes(x = condition, y = ME, color = condition)) +
+  p <- ggplot(dfm, aes(x = condition, y = ME, color = condition)) +
     geom_point(position = position_jitter(width = 0.08, height = 0, seed = 1),
-               size = 1.8, alpha = 0.8, shape = 16, stroke = 0) +
+               size = 4.5, alpha = 0.85, shape = 16, stroke = 0) +
     geom_point(data = summ, aes(x = condition, y = mean),
-               inherit.aes = FALSE, size = 3, shape = 16, color = "black") +
+               inherit.aes = FALSE, size = 7, shape = 16, color = "black") +
     geom_point(data = summ, aes(x = condition, y = mean, color = condition),
-               inherit.aes = FALSE, size = 2.6, shape = 16) +
-    # Optional tiny SEM bars for overview
+               inherit.aes = FALSE, size = 6, shape = 16) +
+    # Optional larger SEM bars for overview
     geom_errorbar(data = summ, aes(x = condition, ymin = mean - se, ymax = mean + se, color = condition),
-                  inherit.aes = FALSE, width = 0.08, alpha = 0.8) +
+                  inherit.aes = FALSE, width = 0.18, alpha = 0.8, linewidth = 1.1) +
     scale_color_manual(values = cond_cols, guide = "none") +
     labs(title = paste0(mod, "  (FDR=", signif(aov_fdr, 3), ")"),
          x = NULL, y = NULL) +
-    theme_minimal(base_size = 9) +
-    theme(legend.position = "none",
-          plot.title = element_text(size = 9),
-          panel.grid.major.x = element_blank())
+    theme_minimal(base_size = 18) +
+    theme(
+      legend.position = "none",
+      plot.title = element_text(size = 18),
+      axis.text = element_text(size = 16),
+      axis.title = element_text(size = 18),
+      panel.grid = element_blank(),
+      panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank(),
+      aspect.ratio = 1
+    )
+  # Add both significance stars and formatted p-values above the plot
+  p <- p + ggpubr::stat_compare_means(comparisons = comparisons,
+                                      method = "wilcox.test",
+                                      p.adjust.method = "BH",
+                                      label = "p.signif",
+                                      hide.ns = TRUE)
+  p <- p + ggpubr::stat_compare_means(comparisons = comparisons,
+                                      method = "wilcox.test",
+                                      p.adjust.method = "BH",
+                                      label = "p.format",
+                                      hide.ns = TRUE,
+                                      y.position = NULL)
+  p
 }
 
 if (length(top_modules) > 0) {
@@ -1146,19 +1459,28 @@ if (length(top_modules) > 0) {
   nrow_grid <- ceiling(length(plots_top)/ncol_grid)
   g <- patchwork::wrap_plots(plots_top, ncol = ncol_grid)
   svglite::svglite(fp_traits("ME_by_condition_top_modules_dotplot.svg"),
-                   width = 3.0*ncol_grid, height = 2.5*nrow_grid)
-  print(g)
-  dev.off()
-}
+                     width = 4.0*ncol_grid, height = 3.5*nrow_grid)
+    print(g)
+    dev.off()
+  }
 
 # Optional: export pairwise Wilcoxon BH summary across modules
+
+# Export pairwise Wilcoxon BH summary across modules, with file creation check
 pw_tables <- ME_long %>%
   group_by(module) %>%
   group_map(~{
     tt <- pairwise.wilcox.test(.x$ME, .x$condition, p.adjust.method = "BH", exact = FALSE)
-    broom::tidy(tt) %>% mutate(module = unique(.x$module))
+    broom::tidy(tt) %>% mutate(module = .y$module)
   }) %>% bind_rows()
-readr::write_csv(pw_tables, fp_modtab("ME_by_condition_pairwise_Wilcoxon_BH.csv"))
+
+out_file <- fp_modtab("ME_by_condition_pairwise_Wilcoxon_BH.csv")
+if (nrow(pw_tables) > 0) {
+  readr::write_csv(pw_tables, out_file)
+  message(sprintf("Pairwise Wilcoxon results written to: %s", out_file))
+} else {
+  warning(sprintf("No pairwise Wilcoxon results to write (empty table): %s", out_file))
+}
 
 
 # --------------------------
