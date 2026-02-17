@@ -33,29 +33,54 @@ SIMPLIFY_CUTOFF <- 0.7
 # 1. PACKAGE SETUP
 # ----------------------------------------------------
 checkBiocManager <- function() {
-  if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager")
+  if (!requireNamespace("BiocManager", quietly = TRUE)) {
+    install.packages("BiocManager", repos = "https://cloud.r-project.org")
+  }
 }
 
 installBioC <- function(bioc_packages) {
+  # Install only missing packages to avoid unloading issues, set update=FALSE
   missing <- bioc_packages[!sapply(bioc_packages, requireNamespace, quietly = TRUE)]
-  if (length(missing) > 0) BiocManager::install(missing)
+  if (length(missing) > 0) {
+    message("Installing missing Bioconductor packages: ", paste(missing, collapse = ", "))
+    BiocManager::install(missing, update = FALSE, ask = FALSE)
+  }
 }
 
-installAndLoadCRAN <- function(pkg) {
-  if (!require(pkg, character.only = TRUE, quietly = TRUE)) install.packages(pkg, dependencies = TRUE)
-  library(pkg, character.only = TRUE)
+loadPkg <- function(pkg) {
+  if (!require(pkg, character.only = TRUE, quietly = TRUE)) warning(paste("Could not load:", pkg))
 }
 
 setupPackages <- function() {
+  # Ensure a CRAN mirror is set for non-interactive sessions
+  if (is.null(getOption("repos"))) {
+    options(repos = c(CRAN = "https://cloud.r-project.org"))
+  }
+  
   checkBiocManager()
+  
   required_packages <- c("clusterProfiler", "pathview", "enrichplot", "DOSE", "ggplot2", "ggnewscale",
                          "cowplot", "ggridges", "europepmc", "ggpubr", "ggrepel", "ggsci", "ggthemes",
                          "ggExtra", "ggforce", "ggalluvial", "lattice", "latticeExtra", "BiocManager",
                          "org.Mm.eg.db", "ggplotify", "svglite", "tidyr", "dplyr", "pheatmap", "proxy",
                          "tibble", "openxlsx", "future", "future.apply", "GOSemSim")
-  bioc_packages <- c("clusterProfiler", "pathview", "enrichplot", "DOSE", "org.Mm.eg.db", "GOSemSim")
+  bioc_packages <- c("clusterProfiler", "pathview", "enrichplot", "DOSE", "org.Mm.eg.db", "GOSemSim", "org.Hs.eg.db")
+  
+  # 1. Install missing BioC packages first
   installBioC(bioc_packages)
-  invisible(lapply(required_packages, installAndLoadCRAN))
+  
+  # 2. Identify and install missing CRAN packages
+  cran_packages <- setdiff(required_packages, bioc_packages)
+  # Only check strictly for missing namespaces to avoid touching loaded packages
+  missing_cran <- cran_packages[!sapply(cran_packages, requireNamespace, quietly = TRUE)]
+  
+  if (length(missing_cran) > 0) {
+    message("Installing missing CRAN packages: ", paste(missing_cran, collapse = ", "))
+    install.packages(missing_cran, repos = "https://cloud.r-project.org")
+  }
+  
+  # 3. Load all required packages
+  invisible(lapply(required_packages, loadPkg))
 }
 
 setupPackages()
@@ -82,7 +107,12 @@ create_analysis_dirs <- function(base_dir, comparison_name, ontology) {
 }
 
 save_plot_organized <- function(plot, filename, directory) {
-  ggsave(file.path(directory, filename), plot, units = "cm", dpi = 300)
+  # Wrap in tryCatch as specific plots sometimes fail to render
+  tryCatch({
+    ggsave(file.path(directory, filename), plot, units = "cm", dpi = 300)
+  }, error = function(e) {
+    warning("Plot save failed for ", filename, ": ", e$message)
+  })
 }
 
 read_gct <- function(file_path) {
@@ -96,7 +126,8 @@ read_gct <- function(file_path) {
 # ----------------------------------------------------
 # 3. DATA INPUT/COMPARISONS
 # ----------------------------------------------------
-mapped_dir <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/mapped"
+#mapped_dir <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/mapped"
+mapped_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/mapped/neuron-soma/forward/per_file"
 comparison_files <- list.files(mapped_dir, pattern = "\\.csv$", full.names = FALSE)
 comparison_list <- lapply(comparison_files, function(f) {
   parts <- strsplit(sub("\\.csv$", "", f), "_")[[1]]
@@ -108,15 +139,17 @@ if (length(comparison_list) == 0) {
   warning("No valid comparison files found in: ", mapped_dir)
 }
 
-working_base <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler"
-working_dir <- working_base
-mapped_data_base <- file.path(working_base, "Datasets/mapped")
-organism <- "org.Mm.eg.db"
-ont <- "CC"
+#working_base <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler"
+working_base <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics"
 
-nk3r_genes <- c("P21279", "P21278", "P51432", "P11881", "P63318", "P68404", "P0DP26", "P0DP27", "P0DP28", "P11798", "P28652", "P47937", "P47713")
-selected_uniprot <- c("P21279", "P21278", "Q9Z1B3", "P51432", "P11881", "P68404", "P63318", "P0DP26", "P0DP27", "P11798", "P28652", "Q61411", "Q99N57", "P31938", "P63085", "Q63844", "Q8BWG8", "Q91YI4", "V9GXQ9")
-path_ids <- c("mmu04110", "mmu04115", "mmu04114", "mmu04113", "mmu04112", "mmu04111", "mmu04116", "mmu04117", "mmu04118", "mmu04119", "mmu04720", "mmu04721", "mmu04722", "mmu04725", "mmu04726", "mmu04727", "mmu04724", "mmu04080", "mmu00030", "mmu04151")
+working_dir <- working_base
+mapped_data_base <- file.path(working_base, "Datasets/mapped/neuron-soma/forward/per_file")
+organism <- "org.Mm.eg.db"
+ont <- "BP"
+
+#nk3r_genes <- c("P21279", "P21278", "P51432", "P11881", "P63318", "P68404", "P0DP26", "P0DP27", "P0DP28", "P11798", "P28652", "P47937", "P47713")
+#selected_uniprot <- c("P21279", "P21278", "Q9Z1B3", "P51432", "P11881", "P68404", "P63318", "P0DP26", "P0DP27", "P11798", "P28652", "Q61411", "Q99N57", "P31938", "P63085", "Q63844", "Q8BWG8", "Q91YI4", "V9GXQ9")
+#path_ids <- c("mmu04110", "mmu04115", "mmu04114", "mmu04113", "mmu04112", "mmu04111", "mmu04116", "mmu04117", "mmu04118", "mmu04119", "mmu04720", "mmu04721", "mmu04722", "mmu04725", "mmu04726", "mmu04727", "mmu04724", "mmu04080", "mmu00030", "mmu04151")
 
 # ----------------------------------------------------
 # 4. SETUP PARALLEL PROCESSING WITH FUTURE
@@ -127,6 +160,9 @@ library(future.apply)
 # Set up multisession plan
 n_cores <- availableCores() - 1
 plan(multisession, workers = n_cores)
+
+# Increase global size limit for passing data to workers
+options(future.globals.maxSize = 8000 * 1024^2) 
 
 cat("Setting up parallel processing with", n_cores, "cores using future\n")
 
@@ -146,8 +182,27 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
     library(tidyr)
     library(dplyr)
     library(openxlsx)
-    library(org.Mm.eg.db)
     library(GOSemSim)
+  })
+  
+  # === CRITICAL FIX FOR PARALLEL PROCESSING ===
+  # To avoid "undefined columns selected" / connection errors:
+  # We must ensure the OrgDb is loaded FRESH in this worker process.
+  # If it was inherited from the master process, the SQLite connection is dead.
+  tryCatch({
+    # 1. If the namespace is already loaded (possibly inherited as zombie), UNLOAD it.
+    if (organism %in% loadedNamespaces()) {
+      unloadNamespace(organism)
+    }
+    
+    # 2. Load it fresh, establishing a new persistent SQLite connection
+    library(organism, character.only = TRUE)
+    
+    # 3. Get the object reference
+    org_db_obj <- get(organism, envir = asNamespace(organism))
+    
+  }, error = function(e) {
+    stop("Failed to load OrgDb: ", organism, " - ", e$message)
   })
   
   comparison_name <- paste(cell_types, collapse = "_")
@@ -166,6 +221,11 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
     
     # Load and prepare data
     df <- read.csv(data_path, header = TRUE, stringsAsFactors = FALSE)
+    
+    if (nrow(df) == 0) {
+       return(list(status = "FAILED", comparison = comparison_name, error = "Data file is empty"))
+    }
+    
     if (!"log2fc" %in% colnames(df)) {
       if ("logFC" %in% colnames(df)) {
         colnames(df)[colnames(df) == "logFC"] <- "log2fc"
@@ -178,7 +238,12 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
     original_gene_list <- df$log2fc
     names(original_gene_list) <- df$gene_symbol
     gene_list <- sort(na.omit(original_gene_list), decreasing = TRUE)
+    # Ensure simple named vector
     gene_list <- gene_list[!duplicated(names(gene_list))]
+    
+    # Helper for cnetplot data
+    # Create foldChange vector that is robust for cnetplot
+    fc_for_cnet <- gene_list
     
     top_df <- df
     colnames(top_df)[1] <- "gene_symbol"
@@ -186,349 +251,397 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
     names(top_gene_list) <- top_df$gene_symbol
     top_gene_list <- sort(na.omit(top_gene_list), decreasing = TRUE)
     top_genes <- names(top_gene_list)[abs(top_gene_list) > 1]
-    top_genes <- sort(top_gene_list[top_genes], decreasing = TRUE)
-    top_genes <- names(top_genes)
     
-# ----------------------------------------------------
-# GSEA (GO) WITH OPTIONAL SIMPLIFICATION
-# ----------------------------------------------------
-gse <- gseGO(geneList = gene_list, ont = ont, keyType = "UNIPROT", 
-             minGSSize = 3, maxGSSize = 800, pvalueCutoff = 1, 
-             verbose = FALSE, OrgDb = organism, pAdjustMethod = "BH")
-
-
-# Perform simplification ONLY if requested
-gse_simplified <- NULL  # Initialize as NULL
-
-if (PERFORM_SIMPLIFICATION && !is.null(gse) && nrow(gse@result) > 0) {
-  gse_temp <- tryCatch({
-    simplify(gse, cutoff = SIMPLIFY_CUTOFF, by = "p.adjust", select_fun = min)
-  }, error = function(e) {
-    warning("Simplify failed for ", comparison_name, ": ", e$message)
-    NULL  # Return NULL on failure
-  })
-
-  # Validate S4 class
-  if (!is.null(gse_temp) && (is(gse_temp, "gseaResult") || is(gse_temp, "enrichResult"))) {
-    gse_simplified <- gse_temp
-  }
-}
-
-
-# Determine which version to use for plotting
-if (PERFORM_SIMPLIFICATION && !is.null(gse_simplified)) {
-  gse_for_plot <- if(USE_SIMPLIFIED_FOR_PLOTS) gse_simplified else gse
-  plot_suffix <- if(USE_SIMPLIFIED_FOR_PLOTS) "_simplified" else "_full"
-} else {
-  # No simplification performed - use full results only
-  gse_for_plot <- gse
-  plot_suffix <- "_full"
-}
-
-
-# Generate plots using selected version
-if (!is.null(gse_for_plot) && nrow(gse_for_plot@result) > 0) {
-  plot_label <- if(PERFORM_SIMPLIFICATION && USE_SIMPLIFIED_FOR_PLOTS && !is.null(gse_simplified)) {
-    "(Simplified)"
-  } else {
-    "(Full)"
-  }
-
-  gse_plot <- clusterProfiler::dotplot(gse_for_plot, showCategory = 10, split = ".sign") +
-    facet_wrap(~ .sign, nrow = 1) +
-    labs(title = paste("GSEA", ont, "of", comparison_name, plot_label), 
-         x = "Gene Ratio", y = "Gene Set") +
-    scale_fill_viridis_c(option = "cividis") + 
-    theme_minimal(base_size = 12) +
-    theme(
-      plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
-      axis.text.x = element_text(angle = 45, hjust = 1),
-      axis.text.y = element_text(size = 10),
-      strip.text = element_text(size = 12, face = "plain"),
-      panel.grid.major = element_line(color = "grey85", size = 0.3),
-      panel.grid.minor = element_blank()
-    )
-
-  save_plot_organized(gse_plot, paste0("GSEA_", ont, "_dotplot", plot_suffix, ".svg"), dirs$plots_go)
-
-  # Other plots
-  save_plot_organized(emapplot(pairwise_termsim(gse_for_plot), showCategory = 10), 
-                     paste0("GSEA_", ont, "_emap", plot_suffix, ".svg"), dirs$plots_go)
-  save_plot_organized(cnetplot(gse_for_plot, categorySize = "pvalue", foldChange = gene_list), 
-                     paste0("GSEA_", ont, "_cnet", plot_suffix, ".svg"), dirs$plots_go)
-
-  ridgeplot_gse <- ridgeplot(gse_for_plot) + 
-    labs(x = "Enrichment Distribution", 
-         title = paste("GSEA", ont, "Ridgeplot", plot_label)) + 
-    theme_minimal()
-  save_plot_organized(ridgeplot_gse, paste0("GSEA_", ont, "_ridge", plot_suffix, ".svg"), dirs$plots_go)
-
-  gseaplot_gse <- gseaplot(gse_for_plot, by = "all", 
-                           title = gse_for_plot@result$Description[1], geneSetID = 1)
-  save_plot_organized(gseaplot_gse, paste0("GSEA_", ont, "_plot", plot_suffix, ".svg"), dirs$plots_go)
-
-  top_terms <- head(gse_for_plot@result$Description, 3)
-  pmcplot_gse <- pmcplot(top_terms, 2010:2025, proportion = FALSE) + 
-    labs(title = paste("Publication Trends -", ont, plot_label))
-  save_plot_organized(pmcplot_gse, paste0("GSEA_", ont, "_pubmed", plot_suffix, ".svg"), dirs$plots_go)
-}
-
-
-# Save results based on whether simplification was performed
-write.csv(gse@result, 
-          file = file.path(dirs$go_ont, paste0("GSEA_", ont, "_results_full.csv")), 
-          row.names = FALSE)
-
-if (PERFORM_SIMPLIFICATION && !is.null(gse_simplified)) {
-  # Save simplified version
-  write.csv(gse_simplified@result, 
-            file = file.path(dirs$go_ont, paste0("GSEA_", ont, "_results_simplified.csv")), 
-            row.names = FALSE)
-}
-
-# Save the version used for plots to core_enrich
-gse_for_export <- if(PERFORM_SIMPLIFICATION && USE_SIMPLIFIED_FOR_PLOTS && !is.null(gse_simplified)) {
-  gse_simplified
-} else {
-  gse
-}
-
-write.csv(gse_for_export@result, 
-          file = file.path(dirs$core_enrich, paste0(comparison_name, plot_suffix, ".csv")), 
-          row.names = FALSE)
-
-# ----------------------------------------------------
-# ORA WITH OPTIONAL SIMPLIFICATION
-# ----------------------------------------------------
-ora <- enrichGO(gene = top_genes, ont = ont, keyType = "UNIPROT", 
-                minGSSize = 3, maxGSSize = 800, pvalueCutoff = 1, 
-                OrgDb = organism, pAdjustMethod = "BH")
-
-
-# Simplify ONLY if requested
-ora_simplified <- NULL
-
-if (PERFORM_SIMPLIFICATION && nrow(ora@result) > 0) {
-  ora_simplified <- tryCatch({
-    simplify(ora, cutoff = SIMPLIFY_CUTOFF, by = "p.adjust", select_fun = min)
-  }, error = function(e) {
-    warning("ORA simplify failed for ", comparison_name, ": ", e$message)
-    NULL
-  })
-
-  # Validate S4 class
-  if (!is.null(ora_simplified) && !is(ora_simplified, "enrichResult")) {
-    ora_simplified <- NULL
-  }
-}
-
-
-# Determine version for plotting
-if (PERFORM_SIMPLIFICATION && !is.null(ora_simplified)) {
-  ora_for_plot <- if(USE_SIMPLIFIED_FOR_PLOTS) ora_simplified else ora
-} else {
-  ora_for_plot <- ora
-}
-
-
-if (nrow(ora_for_plot@result) > 0) {
-  plot_label <- if(PERFORM_SIMPLIFICATION && USE_SIMPLIFIED_FOR_PLOTS && !is.null(ora_simplified)) {
-    "(Simplified)"
-  } else {
-    "(Full)"
-  }
-
-  ora_plot <- clusterProfiler::dotplot(ora_for_plot, showCategory = 10) + 
-    labs(title = paste("ORA", ont, "- Top Regulated Genes", plot_label)) + 
-    scale_x_continuous(limits = c(0, 1))
-  save_plot_organized(ora_plot, paste0("ORA_", ont, "_dotplot", plot_suffix, ".svg"), dirs$plots_ora)
-}
-
-
-# Save results
-write.csv(ora@result, 
-          file = file.path(dirs$ora, paste0("ORA_", ont, "_results_full.csv")), 
-          row.names = FALSE)
-
-if (PERFORM_SIMPLIFICATION && !is.null(ora_simplified)) {
-  write.csv(ora_simplified@result, 
-            file = file.path(dirs$ora, paste0("ORA_", ont, "_results_simplified.csv")), 
-            row.names = FALSE)
-}
+    if(length(top_genes) > 0) {
+      top_genes <- sort(top_gene_list[top_genes], decreasing = TRUE)
+      top_genes <- names(top_genes)
+    } else {
+      top_genes <- character(0)
+    }
+    
+    # ----------------------------------------------------
+    # GSEA (GO) WITH OPTIONAL SIMPLIFICATION
+    # ----------------------------------------------------
+    # Ensure OrgDb is passed as object
+    gse <- gseGO(geneList = gene_list, ont = ont, keyType = "UNIPROT", 
+                 minGSSize = 10, maxGSSize = 800, pvalueCutoff = 1, 
+                 verbose = FALSE, OrgDb = org_db_obj, pAdjustMethod = "BH")
+    
+    
+    # Perform simplification ONLY if requested
+    gse_simplified <- NULL  # Initialize as NULL
+    
+    if (PERFORM_SIMPLIFICATION && !is.null(gse) && nrow(gse@result) > 0) {
+      gse_temp <- tryCatch({
+        simplify(gse, cutoff = SIMPLIFY_CUTOFF, by = "p.adjust", select_fun = min)
+      }, error = function(e) {
+        warning("Simplify failed for ", comparison_name, ": ", e$message)
+        NULL  # Return NULL on failure
+      })
+      
+      # Validate S4 class
+      if (!is.null(gse_temp) && (is(gse_temp, "gseaResult") || is(gse_temp, "enrichResult"))) {
+        gse_simplified <- gse_temp
+      }
+    }
+    
+    # Determine which version to use for plotting
+    if (PERFORM_SIMPLIFICATION && !is.null(gse_simplified)) {
+      gse_for_plot <- if(USE_SIMPLIFIED_FOR_PLOTS) gse_simplified else gse
+      plot_suffix <- if(USE_SIMPLIFIED_FOR_PLOTS) "_simplified" else "_full"
+    } else {
+      # No simplification performed - use full results only
+      gse_for_plot <- gse
+      plot_suffix <- "_full"
+    }
+    
+    # Generate plots using selected version
+    if (!is.null(gse_for_plot) && nrow(gse_for_plot@result) > 0) {
+      plot_label <- if(PERFORM_SIMPLIFICATION && USE_SIMPLIFIED_FOR_PLOTS && !is.null(gse_simplified)) {
+        "(Simplified)"
+      } else {
+        "(Full)"
+      }
+      
+      tryCatch({
+        gse_plot <- clusterProfiler::dotplot(gse_for_plot, showCategory = 10, split = ".sign") +
+          facet_wrap(~ .sign, nrow = 1) +
+          labs(title = paste("GSEA", ont, "of", comparison_name, plot_label), 
+               x = "Gene Ratio", y = "Gene Set") +
+          scale_fill_viridis_c(option = "cividis") + 
+          theme_minimal(base_size = 12) +
+          theme(
+            plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
+            axis.text.x = element_text(angle = 45, hjust = 1),
+            axis.text.y = element_text(size = 10),
+            strip.text = element_text(size = 12, face = "plain"),
+            panel.grid.major = element_line(color = "grey85", size = 0.3),
+            panel.grid.minor = element_blank()
+          )
+        save_plot_organized(gse_plot, paste0("GSEA_", ont, "_dotplot", plot_suffix, ".svg"), dirs$plots_go)
+      }, error=function(e) warning("GSEA dotplot failed: ", e$message))
+      
+      # Other plots
+      tryCatch({
+        save_plot_organized(emapplot(pairwise_termsim(gse_for_plot), showCategory = 10), 
+                            paste0("GSEA_", ont, "_emap", plot_suffix, ".svg"), dirs$plots_go)
+      }, error=function(e) NULL)
+      
+      tryCatch({
+        save_plot_organized(cnetplot(gse_for_plot, categorySize = "pvalue", foldChange = fc_for_cnet), 
+                            paste0("GSEA_", ont, "_cnet", plot_suffix, ".svg"), dirs$plots_go)
+      }, error = function(e) warning("cnetplot failed: ", e$message))
+      
+      tryCatch({
+        ridgeplot_gse <- ridgeplot(gse_for_plot) + 
+          labs(x = "Enrichment Distribution", 
+               title = paste("GSEA", ont, "Ridgeplot", plot_label)) + 
+          theme_minimal()
+        save_plot_organized(ridgeplot_gse, paste0("GSEA_", ont, "_ridge", plot_suffix, ".svg"), dirs$plots_go)
+      }, error=function(e) NULL)
+      
+      tryCatch({
+        gseaplot_gse <- gseaplot(gse_for_plot, by = "all", 
+                                 title = gse_for_plot@result$Description[1], geneSetID = 1)
+        save_plot_organized(gseaplot_gse, paste0("GSEA_", ont, "_plot", plot_suffix, ".svg"), dirs$plots_go)
+      }, error=function(e) NULL)
+      
+      tryCatch({
+        top_terms <- head(gse_for_plot@result$Description, 3)
+        pmcplot_gse <- pmcplot(top_terms, 2010:2025, proportion = FALSE) + 
+          labs(title = paste("Publication Trends -", ont, plot_label))
+        save_plot_organized(pmcplot_gse, paste0("GSEA_", ont, "_pubmed", plot_suffix, ".svg"), dirs$plots_go)
+      }, error=function(e) NULL)
+    }
+    
+    # Save results based on whether simplification was performed
+    write.csv(gse@result, 
+              file = file.path(dirs$go_ont, paste0("GSEA_", ont, "_results_full.csv")), 
+              row.names = FALSE)
+    
+    if (PERFORM_SIMPLIFICATION && !is.null(gse_simplified)) {
+      write.csv(gse_simplified@result, 
+                file = file.path(dirs$go_ont, paste0("GSEA_", ont, "_results_simplified.csv")), 
+                row.names = FALSE)
+    }
+    
+    # Save the version used for plots to core_enrich
+    gse_for_export <- if(PERFORM_SIMPLIFICATION && USE_SIMPLIFIED_FOR_PLOTS && !is.null(gse_simplified)) {
+      gse_simplified
+    } else {
+      gse
+    }
+    
+    write.csv(gse_for_export@result, 
+              file = file.path(dirs$core_enrich, paste0(comparison_name, plot_suffix, ".csv")), 
+              row.names = FALSE)
+    
+    # ----------------------------------------------------
+    # ORA WITH OPTIONAL SIMPLIFICATION
+    # ----------------------------------------------------
+    if(length(top_genes) > 0) {
+      ora <- enrichGO(gene = top_genes, ont = ont, keyType = "UNIPROT", 
+                      minGSSize = 10, maxGSSize = 800, pvalueCutoff = 1, 
+                      OrgDb = org_db_obj, pAdjustMethod = "BH")
+      
+      # Simplify ONLY if requested
+      ora_simplified <- NULL
+      
+      if (PERFORM_SIMPLIFICATION && nrow(ora@result) > 0) {
+        ora_simplified <- tryCatch({
+          simplify(ora, cutoff = SIMPLIFY_CUTOFF, by = "p.adjust", select_fun = min)
+        }, error = function(e) {
+          warning("ORA simplify failed for ", comparison_name, ": ", e$message)
+          NULL
+        })
+        
+        # Validate S4 class
+        if (!is.null(ora_simplified) && !is(ora_simplified, "enrichResult")) {
+          ora_simplified <- NULL
+        }
+      }
+      
+      # Determine version for plotting
+      if (PERFORM_SIMPLIFICATION && !is.null(ora_simplified)) {
+        ora_for_plot <- if(USE_SIMPLIFIED_FOR_PLOTS) ora_simplified else ora
+      } else {
+        ora_for_plot <- ora
+      }
+      
+      if (nrow(ora_for_plot@result) > 0) {
+        plot_label <- if(PERFORM_SIMPLIFICATION && USE_SIMPLIFIED_FOR_PLOTS && !is.null(ora_simplified)) {
+          "(Simplified)"
+        } else {
+          "(Full)"
+        }
+        
+        ora_plot <- clusterProfiler::dotplot(ora_for_plot, showCategory = 10) + 
+          labs(title = paste("ORA", ont, "- Top Regulated Genes", plot_label)) + 
+          scale_x_continuous(limits = c(0, 1))
+        save_plot_organized(ora_plot, paste0("ORA_", ont, "_dotplot", plot_suffix, ".svg"), dirs$plots_ora)
+      }
+      
+      # Save results
+      write.csv(ora@result, 
+                file = file.path(dirs$ora, paste0("ORA_", ont, "_results_full.csv")), 
+                row.names = FALSE)
+      
+      if (PERFORM_SIMPLIFICATION && !is.null(ora_simplified)) {
+        write.csv(ora_simplified@result, 
+                  file = file.path(dirs$ora, paste0("ORA_", ont, "_results_simplified.csv")), 
+                  row.names = FALSE)
+      }
+    }
     
     # ----------------------------------------------------
     # KEGG GSEA (No simplification - KEGG specific)
     # ----------------------------------------------------
-    ids <- bitr(names(original_gene_list), fromType = "UNIPROT", toType = "ENTREZID", OrgDb = organism)
-    dedup_ids <- ids[!duplicated(ids$UNIPROT), ]
-    df2 <- merge(df, dedup_ids, by.x = "gene_symbol", by.y = "UNIPROT")
+    ids <- tryCatch({
+      bitr(names(original_gene_list), fromType = "UNIPROT", toType = "ENTREZID", OrgDb = org_db_obj)
+    }, error = function(e) NULL)
     
-    kegg_gene_list <- df2$log2fc
-    names(kegg_gene_list) <- df2$ENTREZID
-    kegg_gene_list <- kegg_gene_list[!duplicated(names(kegg_gene_list))]
-    kegg_gene_list <- sort(na.omit(kegg_gene_list), decreasing = TRUE)
-    
-    kk2 <- gseKEGG(geneList = kegg_gene_list, organism = "mmu", 
-                   minGSSize = 3, maxGSSize = 800, pvalueCutoff = 1, 
-                   pAdjustMethod = "BH", keyType = "ncbi-geneid", verbose = FALSE)
-    
-    kegg_dot <- clusterProfiler::dotplot(kk2, showCategory = 10, split = ".sign") + 
-      facet_wrap(~ .sign, nrow = 1) + 
-      labs(title = "KEGG GSEA") + 
-      theme_minimal()
-    save_plot_organized(kegg_dot, "KEGG_dotplot.svg", dirs$plots_kegg)
-    save_plot_organized(emapplot(pairwise_termsim(kk2), showCategory = 10), "KEGG_emap.svg", dirs$plots_kegg)
-    save_plot_organized(cnetplot(kk2, categorySize = "pvalue", foldChange = gene_list), "KEGG_cnet.svg", dirs$plots_kegg)
-    save_plot_organized(ridgeplot(kk2), "KEGG_ridge.svg", dirs$plots_kegg)
-    
-    if (nrow(kk2@result) > 0) {
-      save_plot_organized(gseaplot(kk2, by = "all", title = kk2$Description[1], geneSetID = 1), "KEGG_plot.svg", dirs$plots_kegg)
-    }
-    write.csv(kk2@result, file = file.path(dirs$kegg, "KEGG_GSEA_results.csv"), row.names = FALSE)
-    
-    # Pathview
-    pathview_dir <- normalizePath(dirs$pathview, winslash = "/", mustWork = FALSE)
-    oldwd <- getwd()
-    setwd(pathview_dir)
-    
-    lapply(path_ids, function(pid) {
-      pathview(gene.data = kegg_gene_list, pathway.id = pid, species = "mmu", 
-               low = "#6698CC", mid = "white", high = "#F08C21", file.type = "svg")
-    })
-    
-    setwd(oldwd)
-    
-# ----------------------------------------------------
-# EnrichGO Analysis (ALL ontologies) WITH OPTIONAL SIMPLIFICATION
-# ----------------------------------------------------
-go_enrich <- enrichGO(gene = names(gene_list), universe = names(gene_list), 
-                      OrgDb = organism, keyType = 'UNIPROT', readable = TRUE, 
-                      ont = "ALL", pvalueCutoff = 1, qvalueCutoff = 1, 
-                      pAdjustMethod = "BH", minGSSize = 3, maxGSSize = 800)
-
-
-# Initialize simplified version as NULL
-go_enrich_simplified <- NULL
-
-
-# Process simplification ONLY if requested
-if (PERFORM_SIMPLIFICATION) {
-  simplified_results_list <- list()
-
-  for (ont_type in c("BP", "CC", "MF")) {
-    # Run enrichGO for this specific ontology
-    go_single <- tryCatch({
-      enrichGO(gene = names(gene_list), 
-               universe = names(gene_list), 
-               OrgDb = organism, 
-               keyType = 'UNIPROT', 
-               readable = TRUE, 
-               ont = ont_type,
-               pvalueCutoff = 1, 
-               qvalueCutoff = 1, 
-               pAdjustMethod = "BH", 
-               minGSSize = 3, 
-               maxGSSize = 800)
-    }, error = function(e) {
-      warning("enrichGO failed for ", ont_type, ": ", e$message)
-      NULL
-    })
-
-    # Simplify if results exist
-    if (!is.null(go_single) && nrow(go_single@result) > 0) {
-      go_simplified <- tryCatch({
-        simplify(go_single, cutoff = SIMPLIFY_CUTOFF, by = "p.adjust", select_fun = min)
-      }, error = function(e) {
-        warning("Simplify failed for ", ont_type, ": ", e$message)
-        go_single
-      })
-
-      # Store results as data.frame
-      if (is(go_simplified, "enrichResult")) {
-        simplified_results_list[[ont_type]] <- go_simplified@result
-      } else if (is.data.frame(go_simplified)) {
-        simplified_results_list[[ont_type]] <- go_simplified
+    if(!is.null(ids)) {
+      dedup_ids <- ids[!duplicated(ids$UNIPROT), ]
+      df2 <- merge(df, dedup_ids, by.x = "gene_symbol", by.y = "UNIPROT")
+      
+      kegg_gene_list <- df2$log2fc
+      names(kegg_gene_list) <- df2$ENTREZID
+      kegg_gene_list <- kegg_gene_list[!duplicated(names(kegg_gene_list))]
+      kegg_gene_list <- sort(na.omit(kegg_gene_list), decreasing = TRUE)
+      
+      kk2 <- gseKEGG(geneList = kegg_gene_list, organism = "mmu", 
+                     minGSSize = 10, maxGSSize = 800, pvalueCutoff = 1, 
+                     pAdjustMethod = "BH", keyType = "ncbi-geneid", verbose = FALSE)
+      
+      if (!is.null(kk2) && nrow(kk2@result) > 0) {
+        kegg_dot <- clusterProfiler::dotplot(kk2, showCategory = 10, split = ".sign") + 
+          facet_wrap(~ .sign, nrow = 1) + 
+          labs(title = "KEGG GSEA") + 
+          theme_minimal()
+        save_plot_organized(kegg_dot, "KEGG_dotplot.svg", dirs$plots_kegg)
+        
+        tryCatch({
+          save_plot_organized(emapplot(pairwise_termsim(kk2), showCategory = 10), "KEGG_emap.svg", dirs$plots_kegg)
+        }, error=function(e){})
+        
+        tryCatch({
+          save_plot_organized(cnetplot(kk2, categorySize = "pvalue", foldChange = gene_list), "KEGG_cnet.svg", dirs$plots_kegg)
+        }, error=function(e){})
+        
+        tryCatch({
+          save_plot_organized(ridgeplot(kk2), "KEGG_ridge.svg", dirs$plots_kegg)
+        }, error=function(e){})
+        
+        save_plot_organized(gseaplot(kk2, by = "all", title = kk2$Description[1], geneSetID = 1), "KEGG_plot.svg", dirs$plots_kegg)
+        write.csv(kk2@result, file = file.path(dirs$kegg, "KEGG_GSEA_results.csv"), row.names = FALSE)
       } else {
-        simplified_results_list[[ont_type]] <- go_single@result
+        # Create empty file so we know it ran but found nothing
+        write.csv(data.frame(), file = file.path(dirs$kegg, "KEGG_GSEA_results_EMPTY.csv"))
+      }
+      
+      # Pathview
+      pathview_dir <- normalizePath(dirs$pathview, winslash = "/", mustWork = FALSE)
+      tryCatch({
+        oldwd <- getwd()
+        if(file.exists(pathview_dir)) setwd(pathview_dir)
+        
+        lapply(path_ids, function(pid) {
+          try({
+            pathview(gene.data = kegg_gene_list, pathway.id = pid, species = "mmu", 
+                     low = "#6698CC", mid = "white", high = "#F08C21", file.type = "svg")
+          }, silent = TRUE)
+        })
+        setwd(oldwd)
+      }, error = function(e) {
+        warning("Pathview failed: ", e$message)
+      })
+    }
+    
+    # ----------------------------------------------------
+    # EnrichGO Analysis (ALL ontologies) WITH OPTIONAL SIMPLIFICATION
+    # ----------------------------------------------------
+    go_enrich <- enrichGO(gene = names(gene_list), universe = names(gene_list), 
+                          OrgDb = org_db_obj, keyType = 'UNIPROT', readable = TRUE, 
+                          ont = "BP", pvalueCutoff = 1, qvalueCutoff = 1, 
+                          pAdjustMethod = "BH", minGSSize = 10, maxGSSize = 800)
+    
+    
+    # Initialize simplified version as NULL
+    go_enrich_simplified <- NULL
+    
+    # Process simplification ONLY if requested
+    if (PERFORM_SIMPLIFICATION) {
+      simplified_results_list <- list()
+      
+      for (ont_type in c("BP", "CC", "MF")) {
+        # Run enrichGO for this specific ontology
+        go_single <- tryCatch({
+          enrichGO(gene = names(gene_list), 
+                   universe = names(gene_list), 
+                   OrgDb = org_db_obj, 
+                   keyType = 'UNIPROT', 
+                   readable = TRUE, 
+                   ont = ont_type,
+                   pvalueCutoff = 1, 
+                   qvalueCutoff = 1, 
+                   pAdjustMethod = "BH", 
+                   minGSSize = 10, 
+                   maxGSSize = 800)
+        }, error = function(e) {
+          warning("enrichGO failed for ", ont_type, ": ", e$message)
+          NULL
+        })
+        
+        # Simplify if results exist
+        if (!is.null(go_single) && nrow(go_single@result) > 0) {
+          go_simplified <- tryCatch({
+            simplify(go_single, cutoff = SIMPLIFY_CUTOFF, by = "p.adjust", select_fun = min)
+          }, error = function(e) {
+            warning("Simplify failed for ", ont_type, ": ", e$message)
+            go_single
+          })
+          
+          # Store results as data.frame
+          if (is(go_simplified, "enrichResult")) {
+            simplified_results_list[[ont_type]] <- go_simplified@result
+          } else if (is.data.frame(go_simplified)) {
+            simplified_results_list[[ont_type]] <- go_simplified
+          } else {
+            simplified_results_list[[ont_type]] <- go_single@result
+          }
+        }
+      }
+      
+      # Combine simplified results
+      if (length(simplified_results_list) > 0) {
+        go_enrich_simplified <- go_enrich
+        go_enrich_simplified@result <- do.call(rbind, simplified_results_list)
       }
     }
-  }
-
-  # Combine simplified results
-  if (length(simplified_results_list) > 0) {
-    go_enrich_simplified <- go_enrich
-    go_enrich_simplified@result <- do.call(rbind, simplified_results_list)
-  }
-}
-
-
-# Choose version for plotting
-if (PERFORM_SIMPLIFICATION && !is.null(go_enrich_simplified)) {
-  go_enrich_for_plot <- if(USE_SIMPLIFIED_FOR_PLOTS) go_enrich_simplified else go_enrich
-} else {
-  go_enrich_for_plot <- go_enrich
-}
-
-
-# Plot with selected version
-if (nrow(go_enrich_for_plot@result) > 0) {
-  plot_label <- if(PERFORM_SIMPLIFICATION && USE_SIMPLIFIED_FOR_PLOTS && !is.null(go_enrich_simplified)) {
-    "(Simplified)"
-  } else {
-    "(Full)"
-  }
-
-  p4 <- clusterProfiler::dotplot(go_enrich_for_plot, showCategory = 20, split = "ONTOLOGY") +
-    facet_grid(ONTOLOGY ~ ., scales = "free_y") +
-    labs(title = paste("GO Enrichment Dotplot", plot_label), 
-         x = "Gene Ratio", y = "GO Term", color = "p.adjust", size = "Count") +
-    scale_color_viridis_c(option = "magma", direction = -1) +
-    theme_minimal(base_size = 12) +
-    theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"), 
-          axis.text.x = element_text(angle = 45, hjust = 1))
-
-  save_plot_organized(p4, paste0("GOenrich_dotplot", plot_suffix, ".svg"), dirs$plots_go)
-}
-
-
-# Save results
-write.csv(go_enrich@result, 
-          file = file.path(dirs$go_ont, paste0("enrichGO_ALL_results_full.csv")), 
-          row.names = FALSE)
-
-if (PERFORM_SIMPLIFICATION && !is.null(go_enrich_simplified)) {
-  write.csv(go_enrich_simplified@result, 
-            file = file.path(dirs$go_ont, paste0("enrichGO_ALL_results_simplified.csv")), 
-            row.names = FALSE)
-}
+    
+    
+    # Choose version for plotting
+    if (PERFORM_SIMPLIFICATION && !is.null(go_enrich_simplified)) {
+      go_enrich_for_plot <- if(USE_SIMPLIFIED_FOR_PLOTS) go_enrich_simplified else go_enrich
+    } else {
+      go_enrich_for_plot <- go_enrich
+    }
+    
+    
+    # Plot with selected version
+    if (nrow(go_enrich_for_plot@result) > 0) {
+      plot_label <- if(PERFORM_SIMPLIFICATION && USE_SIMPLIFIED_FOR_PLOTS && !is.null(go_enrich_simplified)) {
+        "(Simplified)"
+      } else {
+        "(Full)"
+      }
+      
+      p4 <- clusterProfiler::dotplot(go_enrich_for_plot, showCategory = 20, split = "ONTOLOGY") +
+        facet_grid(ONTOLOGY ~ ., scales = "free_y") +
+        labs(title = paste("GO Enrichment Dotplot", plot_label), 
+             x = "Gene Ratio", y = "GO Term", color = "p.adjust", size = "Count") +
+        scale_color_viridis_c(option = "magma", direction = -1) +
+        theme_minimal(base_size = 12) +
+        theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"), 
+              axis.text.x = element_text(angle = 45, hjust = 1))
+      
+      save_plot_organized(p4, paste0("GOenrich_dotplot", plot_suffix, ".svg"), dirs$plots_go)
+    }
+    
+    
+    # Save results
+    write.csv(go_enrich@result, 
+              file = file.path(dirs$go_ont, paste0("enrichGO_ALL_results_full.csv")), 
+              row.names = FALSE)
+    
+    if (PERFORM_SIMPLIFICATION && !is.null(go_enrich_simplified)) {
+      write.csv(go_enrich_simplified@result, 
+                file = file.path(dirs$go_ont, paste0("enrichGO_ALL_results_simplified.csv")), 
+                row.names = FALSE)
+    }
     
     # ----------------------------------------------------
     # KEGG GSEA with Predefined UniProt IDs
     # ----------------------------------------------------
-    selected_entrez <- bitr(selected_uniprot, fromType = "UNIPROT", toType = "ENTREZID", OrgDb = organism)
-    selected_df <- merge(df, selected_entrez, by.x = "gene_symbol", by.y = "UNIPROT")
-    selected_kegg_list <- selected_df$log2fc
-    names(selected_kegg_list) <- selected_df$ENTREZID
-    selected_kegg_list <- selected_kegg_list[!duplicated(names(selected_kegg_list))]
-    selected_kegg_list <- sort(na.omit(selected_kegg_list), decreasing = TRUE)
+    selected_entrez <- tryCatch({
+       bitr(selected_uniprot, fromType = "UNIPROT", toType = "ENTREZID", OrgDb = org_db_obj)
+    }, error=function(e) NULL)
     
-    gsea_kegg_selected <- gseKEGG(geneList = selected_kegg_list, organism = "mmu", 
-                                   minGSSize = 3, maxGSSize = 800, pvalueCutoff = 1, 
-                                   pAdjustMethod = "BH", keyType = "ncbi-geneid", verbose = FALSE)
-    
-    kegg_selected_dot <- clusterProfiler::dotplot(gsea_kegg_selected, showCategory = 10, split = ".sign") + 
-      facet_wrap(~ .sign, nrow = 1) + 
-      labs(title = "KEGG GSEA (Predefined)") + 
-      theme_minimal()
-    save_plot_organized(kegg_selected_dot, "KEGG_Predefined_dotplot.svg", dirs$plots_kegg)
-    write.csv(gsea_kegg_selected@result, file = file.path(dirs$kegg, "KEGG_GSEA_Predefined_UniProt.csv"), row.names = FALSE)
-    
-    save_plot_organized(emapplot(pairwise_termsim(gsea_kegg_selected), showCategory = 10), "KEGG_Predefined_emap.svg", dirs$plots_kegg)
-    save_plot_organized(cnetplot(gsea_kegg_selected, categorySize = "pvalue", foldChange = selected_kegg_list), "KEGG_Predefined_cnet.svg", dirs$plots_kegg)
-    save_plot_organized(ridgeplot(gsea_kegg_selected), "KEGG_Predefined_ridge.svg", dirs$plots_kegg)
-    
-    if (nrow(gsea_kegg_selected@result) > 0) {
-      save_plot_organized(gseaplot(gsea_kegg_selected, by = "all", title = gsea_kegg_selected$Description[1], geneSetID = 1), "KEGG_Predefined_plot.svg", dirs$plots_kegg)
+    if(!is.null(selected_entrez)) {
+      selected_df <- merge(df, selected_entrez, by.x = "gene_symbol", by.y = "UNIPROT")
+      if(nrow(selected_df) > 0) {
+        selected_kegg_list <- selected_df$log2fc
+        names(selected_kegg_list) <- selected_df$ENTREZID
+        selected_kegg_list <- selected_kegg_list[!duplicated(names(selected_kegg_list))]
+        selected_kegg_list <- sort(na.omit(selected_kegg_list), decreasing = TRUE)
+        
+        gsea_kegg_selected <- gseKEGG(geneList = selected_kegg_list, organism = "mmu", 
+                                      minGSSize = 10, maxGSSize = 800, pvalueCutoff = 1, 
+                                      pAdjustMethod = "BH", keyType = "ncbi-geneid", verbose = FALSE)
+        
+        if (!is.null(gsea_kegg_selected) && nrow(gsea_kegg_selected@result) > 0) {
+          kegg_selected_dot <- clusterProfiler::dotplot(gsea_kegg_selected, showCategory = 10, split = ".sign") + 
+            facet_wrap(~ .sign, nrow = 1) + 
+            labs(title = "KEGG GSEA (Predefined)") + 
+            theme_minimal()
+          save_plot_organized(kegg_selected_dot, "KEGG_Predefined_dotplot.svg", dirs$plots_kegg)
+          write.csv(gsea_kegg_selected@result, file = file.path(dirs$kegg, "KEGG_GSEA_Predefined_UniProt.csv"), row.names = FALSE)
+          
+          tryCatch({
+            save_plot_organized(emapplot(pairwise_termsim(gsea_kegg_selected), showCategory = 10), "KEGG_Predefined_emap.svg", dirs$plots_kegg)
+          }, error=function(e){})
+          
+          tryCatch({
+            save_plot_organized(cnetplot(gsea_kegg_selected, categorySize = "pvalue", foldChange = selected_kegg_list), "KEGG_Predefined_cnet.svg", dirs$plots_kegg)
+          }, error=function(e){})
+          
+          tryCatch({
+            save_plot_organized(ridgeplot(gsea_kegg_selected), "KEGG_Predefined_ridge.svg", dirs$plots_kegg)
+          }, error=function(e){})
+          
+          save_plot_organized(gseaplot(gsea_kegg_selected, by = "all", title = gsea_kegg_selected$Description[1], geneSetID = 1), "KEGG_Predefined_plot.svg", dirs$plots_kegg)
+        }
+      }
     }
     
     # ----------------------------------------------------
@@ -543,17 +656,17 @@ if (PERFORM_SIMPLIFICATION && !is.null(go_enrich_simplified)) {
     gsea_nk3r <- clusterProfiler::GSEA(geneList = custom_gene_list, TERM2GENE = term2gene_nk3r, 
                                        pvalueCutoff = 1, minGSSize = 1, maxGSSize = 500, verbose = FALSE)
     
-    nk3r_dot <- clusterProfiler::dotplot(gsea_nk3r, showCategory = 10, split = ".sign") + 
-      facet_wrap(~ .sign, nrow = 1) + 
-      labs(title = "NK3R-signalling GSEA") + 
-      theme_minimal()
-    save_plot_organized(nk3r_dot, "NK3R_dotplot.svg", dirs$plots_custom)
-    
-    if (nrow(gsea_nk3r@result) > 0) {
+    if (!is.null(gsea_nk3r) && nrow(gsea_nk3r@result) > 0) {
+      nk3r_dot <- clusterProfiler::dotplot(gsea_nk3r, showCategory = 10, split = ".sign") + 
+        facet_wrap(~ .sign, nrow = 1) + 
+        labs(title = "NK3R-signalling GSEA") + 
+        theme_minimal()
+      save_plot_organized(nk3r_dot, "NK3R_dotplot.svg", dirs$plots_custom)
+      
       nk3r_plot <- gseaplot(gsea_nk3r, by = "all", title = "NK3R-signalling", geneSetID = 1)
       save_plot_organized(nk3r_plot, "NK3R_gsea_plot.svg", dirs$plots_custom)
+      openxlsx::write.xlsx(gsea_nk3r@result, file = file.path(dirs$custom, "NK3R_GSEA_results.xlsx"))
     }
-    openxlsx::write.xlsx(gsea_nk3r@result, file = file.path(dirs$custom, "NK3R_GSEA_results.xlsx"))
     
     return(list(status = "SUCCESS", comparison = comparison_name))
     
@@ -571,7 +684,7 @@ cat("==============================================\n\n")
 
 results <- future_lapply(comparison_list, function(cell_types) {
   analyze_comparison(cell_types, working_base, mapped_data_base, organism, ont, 
-                    nk3r_genes, selected_uniprot, path_ids)
+                     nk3r_genes, selected_uniprot, path_ids)
 }, future.seed = TRUE)
 
 # Reset to sequential processing
@@ -599,6 +712,9 @@ cat("==============================================\n\n")
 cat("\n==============================================\n")
 cat("STARTING CELLTYPE SCORING ANALYSIS\n")
 cat("==============================================\n\n")
+
+# Note: All libraries needed below are already loaded in step 0. 
+# Re-loading them here has been removed to prevent potential package conflict/unloading errors.
 
 # Define and create output directories for Celltype Scoring
 celltype_results_base <- file.path(working_base, "Results", "Celltype_Scoring")
@@ -632,7 +748,7 @@ gene_names <- uniprot_df %>%
   dplyr::rename(UniProtID = V1, Gene_Name = V3) %>%
   dplyr::select(UniProtID, Gene_Name)
 
-# Extract UniProtKB-ID mappings - FIXED
+# Extract UniProtKB-ID mappings
 uniprot_ids <- uniprot_df %>%
   dplyr::filter(V2 == "UniProtKB-ID") %>%
   dplyr::distinct(V1, .keep_all = TRUE) %>%
@@ -708,9 +824,9 @@ celltype_long <- celltype_df %>%
 marker_expr <- expr_annotated %>%
   filter(Gene_Name %in% celltype_long$Gene_Label)
 
-# Add Celltype_Class info
+# Add Celltype_Class info including updated many-to-many relationship
 marker_expr <- marker_expr %>%
-  left_join(celltype_long, by = c("Gene_Name" = "Gene_Label"))
+  left_join(celltype_long, by = c("Gene_Name" = "Gene_Label"), relationship = "many-to-many")
 
 # ----------------------------------------------------
 # PREPARE ANNOTATIONS (Static)
@@ -769,9 +885,9 @@ run_celltype_analysis <- function(current_data, suffix) {
   
   # Save scores to Excel
   write.xlsx(celltype_scores, file = file.path(celltype_dirs$tables, paste0("celltype_scores", suffix, ".xlsx")))
-
-  # Create bar plot of celltype scores
-  celltype_score_plot <- ggplot(celltype_scores, aes(x = !!sym(grouping_factor), y = Mean_Expression, fill = Celltype_Class)) +
+  
+  # Create bar plot of celltype scores - use explicit namespace for safety
+  celltype_score_plot <- ggplot2::ggplot(celltype_scores, aes(x = !!sym(grouping_factor), y = Mean_Expression, fill = Celltype_Class)) +
     geom_bar(stat = "identity", position = position_dodge(width = 0.8), width = 0.7) +
     labs(title = paste("Celltype Scores", suffix), x = grouping_factor, y = "Mean Expression", fill = "Cell Class") +
     scale_fill_manual(values = c("gaba" = "#f36d07", "vglut1" = "#455A64", "vglut2" = "#c7c7c7")) +
@@ -792,7 +908,9 @@ run_celltype_analysis <- function(current_data, suffix) {
       legend.text = element_text(size = 16)
     )
   
-  ggsave(file.path(celltype_dirs$plots, paste0("celltype_scores", suffix, ".svg")), celltype_score_plot, units = "cm", dpi = 300)
+  tryCatch({
+    ggsave(file.path(celltype_dirs$plots, paste0("celltype_scores", suffix, ".svg")), celltype_score_plot, units = "cm", dpi = 300)
+  }, error = function(e) warning("Failed to save score plot: ", e$message))
   
   # Calculate mean expression per gene and grouping_factor
   marker_expr_unique <- current_data %>%
@@ -815,57 +933,57 @@ run_celltype_analysis <- function(current_data, suffix) {
     marker_matrix_unique_clean <- marker_matrix_unique_clean[, colSums(is.na(marker_matrix_unique_clean)) < nrow(marker_matrix_unique_clean), drop=FALSE]
     # Ensure we have enough data for heatmap
     if(nrow(marker_matrix_unique_clean) >= 2 && ncol(marker_matrix_unique_clean) >= 2) {
-        marker_matrix_unique_clean <- marker_matrix_unique_clean[rowSums(!is.na(marker_matrix_unique_clean)) >= 1, , drop=FALSE]
-        marker_matrix_unique_clean <- marker_matrix_unique_clean[!grepl("^Oasl2\\s*$", rownames(marker_matrix_unique_clean)), , drop=FALSE]
-        marker_matrix_unique_clean[is.nan(marker_matrix_unique_clean)] <- NA
-        marker_matrix_unique_clean[is.infinite(marker_matrix_unique_clean)] <- NA
-        
-        # Filter annotation_row to match cleaned matrix
-        annotation_row_unique_clean <- annotation_row_unique_base[rownames(marker_matrix_unique_clean), , drop = FALSE]
-        
-        # Save pheatmap (unique version)
-        pheatmap(
-          marker_matrix_unique_clean,
-          cluster_rows = TRUE,
-          cluster_cols = FALSE,
-          color = colorRampPalette(c("#6698CC", "white", "#F08C21"))(100),
-          na_col = "grey",
-          main = paste("Marker Expression", suffix, "(Unique Names)"),
-          fontsize = 12,
-          fontsize_row = 10,
-          fontsize_col = 12,
-          cellheight = 12,
-          cellwidth = 12,
-          border_color = NA,
-          annotation_row = annotation_row_unique_clean,
-          annotation_colors = annotation_colors,
-          filename = file.path(celltype_dirs$heatmaps, paste0("marker_expression_heatmap", suffix, "_unique.pdf"))
-        )
-        
-        # ===== HEATMAP 1b: Sorted by Celltype_Class =====
-        annotation_row_sorted <- annotation_row_unique_clean %>% arrange(Celltype_Class)
-        marker_matrix_sorted <- marker_matrix_unique_clean[rownames(annotation_row_sorted), , drop = FALSE]
-        
-        pheatmap(
-          marker_matrix_sorted,
-          cluster_rows = FALSE,
-          cluster_cols = FALSE,
-          color = colorRampPalette(c("#6698CC", "white", "#F08C21"))(100),
-          na_col = "grey",
-          main = paste("Marker Expression", suffix, "(Sorted by Class)"),
-          fontsize = 12,
-          fontsize_row = 10,
-          fontsize_col = 12,
-          cellheight = 12,
-          cellwidth = 12,
-          border_color = NA,
-          annotation_row = annotation_row_sorted,
-          annotation_colors = annotation_colors,
-          filename = file.path(celltype_dirs$heatmaps, paste0("marker_expression_heatmap", suffix, "_sorted.pdf"))
-        )
+      marker_matrix_unique_clean <- marker_matrix_unique_clean[rowSums(!is.na(marker_matrix_unique_clean)) >= 1, , drop=FALSE]
+      marker_matrix_unique_clean <- marker_matrix_unique_clean[!grepl("^Oasl2\\s*$", rownames(marker_matrix_unique_clean)), , drop=FALSE]
+      marker_matrix_unique_clean[is.nan(marker_matrix_unique_clean)] <- NA
+      marker_matrix_unique_clean[is.infinite(marker_matrix_unique_clean)] <- NA
+      
+      # Filter annotation_row to match cleaned matrix
+      annotation_row_unique_clean <- annotation_row_unique_base[rownames(marker_matrix_unique_clean), , drop = FALSE]
+      
+      # Save pheatmap (unique version)
+      pheatmap(
+        marker_matrix_unique_clean,
+        cluster_rows = TRUE,
+        cluster_cols = FALSE,
+        color = colorRampPalette(c("#6698CC", "white", "#F08C21"))(100),
+        na_col = "grey",
+        main = paste("Marker Expression", suffix, "(Unique Names)"),
+        fontsize = 12,
+        fontsize_row = 10,
+        fontsize_col = 12,
+        cellheight = 12,
+        cellwidth = 12,
+        border_color = NA,
+        annotation_row = annotation_row_unique_clean,
+        annotation_colors = annotation_colors,
+        filename = file.path(celltype_dirs$heatmaps, paste0("marker_expression_heatmap", suffix, "_unique.pdf"))
+      )
+      
+      # ===== HEATMAP 1b: Sorted by Celltype_Class =====
+      annotation_row_sorted <- annotation_row_unique_clean %>% arrange(Celltype_Class)
+      marker_matrix_sorted <- marker_matrix_unique_clean[rownames(annotation_row_sorted), , drop = FALSE]
+      
+      pheatmap(
+        marker_matrix_sorted,
+        cluster_rows = FALSE,
+        cluster_cols = FALSE,
+        color = colorRampPalette(c("#6698CC", "white", "#F08C21"))(100),
+        na_col = "grey",
+        main = paste("Marker Expression", suffix, "(Sorted by Class)"),
+        fontsize = 12,
+        fontsize_row = 10,
+        fontsize_col = 12,
+        cellheight = 12,
+        cellwidth = 12,
+        border_color = NA,
+        annotation_row = annotation_row_sorted,
+        annotation_colors = annotation_colors,
+        filename = file.path(celltype_dirs$heatmaps, paste0("marker_expression_heatmap", suffix, "_sorted.pdf"))
+      )
     }
   }
-
+  
   # ===== HEATMAP 2: Gene_Name_WithClass (with suffix) =====
   marker_matrix_withclass <- marker_expr_unique %>%
     group_by(Gene_Name_WithClass, !!sym(grouping_factor)) %>%
@@ -877,36 +995,36 @@ run_celltype_analysis <- function(current_data, suffix) {
   # Clean matrix (withclass version)
   marker_matrix_withclass_clean <- marker_matrix_withclass[rowSums(is.na(marker_matrix_withclass)) < ncol(marker_matrix_withclass), , drop=FALSE]
   if(ncol(marker_matrix_withclass_clean) > 0 && nrow(marker_matrix_withclass_clean) > 0) {
-      marker_matrix_withclass_clean <- marker_matrix_withclass_clean[, colSums(is.na(marker_matrix_withclass_clean)) < nrow(marker_matrix_withclass_clean), drop=FALSE]
+    marker_matrix_withclass_clean <- marker_matrix_withclass_clean[, colSums(is.na(marker_matrix_withclass_clean)) < nrow(marker_matrix_withclass_clean), drop=FALSE]
+    
+    if(nrow(marker_matrix_withclass_clean) >= 2 && ncol(marker_matrix_withclass_clean) >= 2) {
+      marker_matrix_withclass_clean <- marker_matrix_withclass_clean[rowSums(!is.na(marker_matrix_withclass_clean)) >= 1, , drop=FALSE]
+      marker_matrix_withclass_clean <- marker_matrix_withclass_clean[!grepl("^Oasl2\\s*$", rownames(marker_matrix_withclass_clean)), , drop=FALSE]
+      marker_matrix_withclass_clean[is.nan(marker_matrix_withclass_clean)] <- NA
+      marker_matrix_withclass_clean[is.infinite(marker_matrix_withclass_clean)] <- NA
       
-      if(nrow(marker_matrix_withclass_clean) >= 2 && ncol(marker_matrix_withclass_clean) >= 2) {
-          marker_matrix_withclass_clean <- marker_matrix_withclass_clean[rowSums(!is.na(marker_matrix_withclass_clean)) >= 1, , drop=FALSE]
-          marker_matrix_withclass_clean <- marker_matrix_withclass_clean[!grepl("^Oasl2\\s*$", rownames(marker_matrix_withclass_clean)), , drop=FALSE]
-          marker_matrix_withclass_clean[is.nan(marker_matrix_withclass_clean)] <- NA
-          marker_matrix_withclass_clean[is.infinite(marker_matrix_withclass_clean)] <- NA
-          
-          # Filter annotation_row to match cleaned matrix
-          annotation_row_withclass <- annotation_row_withclass_base[rownames(marker_matrix_withclass_clean), , drop = FALSE]
-          
-          # Save pheatmap (withclass version)
-          pheatmap(
-            marker_matrix_withclass_clean,
-            cluster_rows = TRUE,
-            cluster_cols = FALSE,
-            color = colorRampPalette(c("#6698CC", "white", "#F08C21"))(100),
-            na_col = "grey",
-            main = paste("Marker Expression", suffix, "(With Class Suffix)"),
-            fontsize = 12,
-            fontsize_row = 10,
-            fontsize_col = 12,
-            cellheight = 12,
-            cellwidth = 12,
-            border_color = NA,
-            annotation_row = annotation_row_withclass,
-            annotation_colors = annotation_colors_withclass,
-            filename = file.path(celltype_dirs$heatmaps, paste0("marker_expression_heatmap", suffix, "_withclass.pdf"))
-          )
-      }
+      # Filter annotation_row to match cleaned matrix
+      annotation_row_withclass <- annotation_row_withclass_base[rownames(marker_matrix_withclass_clean), , drop = FALSE]
+      
+      # Save pheatmap (withclass version)
+      pheatmap(
+        marker_matrix_withclass_clean,
+        cluster_rows = TRUE,
+        cluster_cols = FALSE,
+        color = colorRampPalette(c("#6698CC", "white", "#F08C21"))(100),
+        na_col = "grey",
+        main = paste("Marker Expression", suffix, "(With Class Suffix)"),
+        fontsize = 12,
+        fontsize_row = 10,
+        fontsize_col = 12,
+        cellheight = 12,
+        cellwidth = 12,
+        border_color = NA,
+        annotation_row = annotation_row_withclass,
+        annotation_colors = annotation_colors_withclass,
+        filename = file.path(celltype_dirs$heatmaps, paste0("marker_expression_heatmap", suffix, "_withclass.pdf"))
+      )
+    }
   }
   
   # Z-score heatmap
@@ -919,7 +1037,7 @@ run_celltype_analysis <- function(current_data, suffix) {
     group_by(!!sym(grouping_factor), Celltype_Class) %>%
     summarise(Mean_Z = mean(Z_Expression, na.rm = TRUE), .groups = "drop")
   
-  heatmap_plot <- ggplot(celltype_z_scores, aes(x = reorder(Celltype_Class, Mean_Z, FUN = median), y = .data[[grouping_factor]], fill = Mean_Z)) +
+  heatmap_plot <- ggplot2::ggplot(celltype_z_scores, aes(x = reorder(Celltype_Class, Mean_Z, FUN = median), y = .data[[grouping_factor]], fill = Mean_Z)) +
     geom_tile(color = "grey80", size = 0.2, width = 0.5) +
     scale_fill_gradient2(low = "#4575b4", mid = "white", high = "#d73027", midpoint = 0, name = "Z-Score", guide = guide_colorbar(barwidth = 0.8, barheight = 20)) +
     labs(title = paste("Celltype Marker Signature", suffix), x = "Marker Class", y = "Sample Group") +
@@ -937,7 +1055,7 @@ run_celltype_analysis <- function(current_data, suffix) {
   ggsave(file.path(celltype_dirs$heatmaps, paste0("celltype_scores_heatmap", suffix, ".svg")), heatmap_plot, width = 16, height = 9, units = "cm", dpi = 300)
   
   # ===== NEW: Z-score heatmap sorted by Celltype_Class =====
-  heatmap_plot_sorted <- ggplot(celltype_z_scores, aes(x = Celltype_Class, y = .data[[grouping_factor]], fill = Mean_Z)) +
+  heatmap_plot_sorted <- ggplot2::ggplot(celltype_z_scores, aes(x = Celltype_Class, y = .data[[grouping_factor]], fill = Mean_Z)) +
     geom_tile(color = "grey80", size = 0.2, width = 0.5) +
     scale_fill_gradient2(low = "#4575b4", mid = "white", high = "#d73027", midpoint = 0, name = "Z-Score", guide = guide_colorbar(barwidth = 0.8, barheight = 20)) +
     labs(title = paste("Celltype Marker Signature", suffix, "(Sorted)"), x = "Marker Class", y = "Sample Group") +
@@ -992,7 +1110,7 @@ group_comparison <- marker_expr %>%
 write.xlsx(group_comparison, file = file.path(celltype_dirs$tables, "celltype_scores_comparison_ExpGroups.xlsx"))
 
 # Create comparison plot
-comparison_plot <- ggplot(group_comparison, aes(x = Group, y = Mean_Expression, fill = Celltype_Class)) +
+comparison_plot <- ggplot2::ggplot(group_comparison, aes(x = Group, y = Mean_Expression, fill = Celltype_Class)) +
   geom_bar(stat = "identity", position = position_dodge(width = 0.8), width = 0.7) +
   labs(title = "Celltype Scores Comparison by ExpGroup", x = "Experimental Group", y = "Mean Expression", fill = "Cell Class") +
   scale_fill_manual(values = c("gaba" = "#f36d07", "vglut1" = "#455A64", "vglut2" = "#c7c7c7")) +
@@ -1034,7 +1152,7 @@ interaction_stats <- marker_expr %>%
   ) %>%
   ungroup()
 
-balloon_plot <- ggplot(interaction_stats, aes(x = !!sym(grouping_factor), y = Celltype_Class)) +
+balloon_plot <- ggplot2::ggplot(interaction_stats, aes(x = !!sym(grouping_factor), y = Celltype_Class)) +
   # Add a subtle background tile to define the grid
   geom_tile(fill = "white", color = "grey95", size = 0.5) +
   # The bubbles with a nicer stroke and alpha
@@ -1081,7 +1199,7 @@ ggsave(file.path(celltype_dirs$plots, "interaction_balloon_plot.svg"), balloon_p
 # 2. Fancy Distribution Plot (Violin + Boxplot + Jitter)
 # Shows the full distribution of data points behind the means
 # X-axis: grouping_factor, Fill: Group, Facet: Celltype_Class
-fancy_dist_plot <- ggplot(marker_expr, aes(x = !!sym(grouping_factor), y = Expression, fill = Group)) +
+fancy_dist_plot <- ggplot2::ggplot(marker_expr, aes(x = !!sym(grouping_factor), y = Expression, fill = Group)) +
   geom_violin(alpha = 0.4, color = NA, trim = FALSE, scale = "width", position = position_dodge(width = 0.8)) +
   geom_boxplot(width = 0.15, color = "grey20", outlier.shape = NA, alpha = 0.8, position = position_dodge(width = 0.8)) +
   geom_point(aes(color = Group), position = position_jitterdodge(jitter.width = 0.1, dodge.width = 0.8), size = 0.5, alpha = 0.4, show.legend = FALSE) +
@@ -1131,7 +1249,7 @@ deviation_data <- interaction_stats %>%
   )
 
 # 3. Plot Deviation
-deviation_plot <- ggplot(deviation_data, aes(x = Celltype_Class, y = Log2FC_vs_Mean, fill = Group)) +
+deviation_plot <- ggplot2::ggplot(deviation_data, aes(x = Celltype_Class, y = Log2FC_vs_Mean, fill = Group)) +
   geom_hline(yintercept = 0, color = "grey50", linetype = "dashed") +
   geom_col(position = position_dodge(width = 0.8), width = 0.7, color = "black", size = 0.2) +
   facet_wrap(as.formula(paste("~", grouping_factor)), scales = "fixed") +
@@ -1161,7 +1279,7 @@ ggsave(file.path(celltype_dirs$plots, "interaction_deviation_lollipop.svg"), dev
 # B. RADAR PROFILE PLOT (Polar Coordinates)
 # This shows the "shape" of the marker identity (GABA vs VGLUT1 vs VGLUT2)
 # Since we have 3 axes, this forms a triangle profile for each group
-radar_plot <- ggplot(interaction_stats, aes(x = Celltype_Class, y = Mean_Expr, group = Group, color = Group, fill = Group)) +
+radar_plot <- ggplot2::ggplot(interaction_stats, aes(x = Celltype_Class, y = Mean_Expr, group = Group, color = Group, fill = Group)) +
   geom_polygon(alpha = 0.2, size = 1) +
   geom_point(size = 2) +
   coord_polar() +
@@ -1192,31 +1310,8 @@ ggsave(file.path(celltype_dirs$plots, "interaction_radar_profile.svg"), radar_pl
        width = 22, height = 22, units = "cm", dpi = 300)
 
 # C. DIFFERENCE HEATMAP
-#' Create and Save Consensus Deviation Heatmap
-#'
-#' This section generates a high-density heatmap visualizing the Log2 Fold Changes (Log2FC)
-#' of specific markers relative to the global mean across different experimental groups.
-#'
-#' @description
-#' The plot uses `geom_tile` to display deviations:
-#' *   **X-axis:** Marker Class (`Celltype_Class`).
-#' *   **Y-axis:** Experimental Group (`Group`).
-#' *   **Faceting:** The plot is faceted horizontally by the dynamic `grouping_factor`.
-#' *   **Color Scale:** A diverging gradient is used:
-#'     *   **Blue (#313695):** Negative deviation (lower than mean).
-#'     *   **White:** No deviation (equal to mean).
-#'     *   **Red (#a50026):** Positive deviation (higher than mean).
-#'
-#' @note **Why are some tiles grey?**
-#' In `ggplot2`, missing values (`NA`) in the variable mapped to the `fill` aesthetic
-#' (here, `Log2FC_vs_Mean`) are rendered in grey by default. If tiles appear grey,
-#' it indicates that there is no calculated Log2 Fold Change data for that specific
-#' combination of `Celltype_Class` and `Group`. This often happens if the protein/marker
-#' was not detected in that specific group or if the calculation resulted in an undefined value.
-#'
-#' @output Saves the plot as "interaction_deviation_heatmap.svg" in the defined plots directory.
 # A compact, high-density view of deviations
-diff_heatmap <- ggplot(deviation_data, aes(x = Celltype_Class, y = Group, fill = Log2FC_vs_Mean)) +
+diff_heatmap <- ggplot2::ggplot(deviation_data, aes(x = Celltype_Class, y = Group, fill = Log2FC_vs_Mean)) +
   geom_tile(color = "white", size = 0.5) +
   geom_text(data = subset(deviation_data, is.na(Log2FC_vs_Mean)), 
             aes(label = "NA"), color = "grey50", size = 3) +
@@ -1244,65 +1339,82 @@ diff_heatmap <- ggplot(deviation_data, aes(x = Celltype_Class, y = Group, fill =
 ggsave(file.path(celltype_dirs$plots, "interaction_deviation_heatmap.svg"), diff_heatmap,
        width = 20, height = 10, units = "cm", dpi = 300)
 
-      # ----------------------------------------------------
-      # 11. DIRECT COMPARISON: ExpGroup 2 vs ExpGroup 4
-      # ----------------------------------------------------
-      cat("\nGenerating Direct Comparison: ExpGroup 2 vs ExpGroup 4...\n")
+# ----------------------------------------------------
+# 11. DIRECT COMPARISON: ExpGroup 2 vs ExpGroup 4
+# ----------------------------------------------------
+cat("\nGenerating Direct Comparison: ExpGroup 2 vs ExpGroup 4...\n")
 
-      # Filter for the specific groups
-      target_groups <- c("ExpGroup 2", "ExpGroup 4")
-      direct_comp_data <- interaction_stats %>%
-        filter(Group %in% target_groups) %>%
-        select(!!sym(grouping_factor), Celltype_Class, Group, Mean_Expr) %>%
-        pivot_wider(names_from = Group, values_from = Mean_Expr)
+# Filter for the specific groups
+# Updated to look for flexible string formats like "2.00" based on log output
+target_groups_clean <- c("1","2", "3", "4")
+target_groups_formatted <- c("2.00", "4.00")
+target_groups <- c(target_groups_clean, target_groups_formatted)
 
-      # Check if both groups exist in the data
-      if (all(target_groups %in% colnames(direct_comp_data))) {
-        
-        # Calculate Log2 Fold Change (Group 2 / Group 4)
-        # Note: Adjust direction (2 vs 4 or 4 vs 2) as needed. Here: log2(Group2 / Group4)
-        direct_comp_data <- direct_comp_data %>%
-          mutate(
-            Log2FC_2vs4 = log2(`ExpGroup 2` / `ExpGroup 4`),
-            # Handle infinite/NaN if expression is 0
-            Log2FC_2vs4 = ifelse(is.infinite(Log2FC_2vs4) | is.nan(Log2FC_2vs4), 0, Log2FC_2vs4)
-          )
-        
-        # Save table
-        write.xlsx(direct_comp_data, file = file.path(celltype_dirs$tables, "direct_comparison_ExpGroup2_vs_ExpGroup4.xlsx"))
-        
-        # Plot
-        direct_comp_plot <- ggplot(direct_comp_data, aes(x = Celltype_Class, y = Log2FC_2vs4, fill = Log2FC_2vs4 > 0)) +
-          geom_hline(yintercept = 0, color = "grey50", linetype = "dashed") +
-          geom_col(color = "black", size = 0.2, width = 0.7) +
-          facet_wrap(as.formula(paste("~", grouping_factor)), scales = "fixed") +
-          scale_fill_manual(values = c("TRUE" = "#d73027", "FALSE" = "#4575b4"), 
-                            labels = c("TRUE" = "Higher in ExpGroup 2", "FALSE" = "Higher in ExpGroup 4"),
-                            name = "Direction") +
-          labs(
-            title = "Direct Comparison: ExpGroup 2 vs ExpGroup 4",
-            subtitle = "Positive values indicate higher expression in ExpGroup 2",
-            x = "Marker Class",
-            y = "Log2 Fold Change (ExpGroup 2 / ExpGroup 4)"
-          ) +
-          theme_minimal(base_size = 14) +
-          theme(
-            plot.title = element_text(face = "bold", hjust = 0.5),
-            plot.subtitle = element_text(hjust = 0.5, color = "grey40", size = 11),
-            axis.text.x = element_text(face = "bold"),
-            strip.background = element_rect(fill = "grey90", color = NA),
-            strip.text = element_text(face = "bold"),
-            panel.grid.major.x = element_blank(),
-            legend.position = "bottom"
-          )
-        
-        ggsave(file.path(celltype_dirs$plots, "direct_comparison_ExpGroup2_vs_ExpGroup4.svg"), 
-               direct_comp_plot, width = 20, height = 15, units = "cm", dpi = 300)
-        
-      } else {
-        cat("Warning: Could not perform direct comparison. One or both groups ('ExpGroup 2', 'ExpGroup 4') not found in data.\n")
-        cat("Available groups:", paste(unique(interaction_stats$Group), collapse = ", "), "\n")
-      }
+direct_comp_data_long <- interaction_stats %>%
+  filter(Group %in% target_groups) 
+
+# Ensure we have data for two distinct groups before proceeding
+found_groups <- unique(direct_comp_data_long$Group)
+
+if (length(found_groups) >= 2) {
+  
+  # Standardize column names for pivot (handle 2 vs 2.00)
+  # We map found groups to "Group2" and "Group4" arbitrarily based on value to ensure pivot works
+  # Assuming order 2 < 4
+  sorted_groups <- sort(found_groups)
+  grp2_label <- sorted_groups[1] # e.g., "2.00"
+  grp4_label <- sorted_groups[2] # e.g., "4.00"
+  
+  cat("Comparing", grp2_label, "vs", grp4_label, "\n")
+  
+  direct_comp_data <- direct_comp_data_long %>%
+    select(!!sym(grouping_factor), Celltype_Class, Group, Mean_Expr) %>%
+    pivot_wider(names_from = Group, values_from = Mean_Expr)
+
+  # Calculate Log2 Fold Change (Group 2 / Group 4)
+  # Dynamic column names
+  direct_comp_data <- direct_comp_data %>%
+    mutate(
+      Log2FC_2vs4 = log2(.data[[grp2_label]] / .data[[grp4_label]]),
+      # Handle infinite/NaN if expression is 0
+      Log2FC_2vs4 = ifelse(is.infinite(Log2FC_2vs4) | is.nan(Log2FC_2vs4), 0, Log2FC_2vs4)
+    )
+  
+  # Save table
+  write.xlsx(direct_comp_data, file = file.path(celltype_dirs$tables, "direct_comparison_ExpGroup2_vs_ExpGroup4.xlsx"))
+  
+  # Plot
+  direct_comp_plot <- ggplot2::ggplot(direct_comp_data, aes(x = Celltype_Class, y = Log2FC_2vs4, fill = Log2FC_2vs4 > 0)) +
+    geom_hline(yintercept = 0, color = "grey50", linetype = "dashed") +
+    geom_col(color = "black", size = 0.2, width = 0.7) +
+    facet_wrap(as.formula(paste("~", grouping_factor)), scales = "fixed") +
+    scale_fill_manual(values = c("TRUE" = "#d73027", "FALSE" = "#4575b4"), 
+                      labels = c("TRUE" = paste("Higher in Grp", grp2_label), "FALSE" = paste("Higher in Grp", grp4_label)),
+                      name = "Direction") +
+    labs(
+      title = "Direct Comparison: ExpGroup 2 vs ExpGroup 4",
+      subtitle = paste("Positive values indicate higher expression in Group", grp2_label),
+      x = "Marker Class",
+      y = paste("Log2 Fold Change (", grp2_label, "/", grp4_label, ")")
+    ) +
+    theme_minimal(base_size = 14) +
+    theme(
+      plot.title = element_text(face = "bold", hjust = 0.5),
+      plot.subtitle = element_text(hjust = 0.5, color = "grey40", size = 11),
+      axis.text.x = element_text(face = "bold"),
+      strip.background = element_rect(fill = "grey90", color = NA),
+      strip.text = element_text(face = "bold"),
+      panel.grid.major.x = element_blank(),
+      legend.position = "bottom"
+    )
+  
+  ggsave(file.path(celltype_dirs$plots, "direct_comparison_ExpGroup2_vs_ExpGroup4.svg"), 
+         direct_comp_plot, width = 20, height = 15, units = "cm", dpi = 300)
+  
+} else {
+  cat("Warning: Could not perform direct comparison. Required groups (2, 4 or 2.00, 4.00) not found in data.\n")
+  cat("Available groups:", paste(unique(interaction_stats$Group), collapse = ", "), "\n")
+}
 
 cat("\n==============================================\n")
 cat("ENTIRE PIPELINE COMPLETED!\n")
