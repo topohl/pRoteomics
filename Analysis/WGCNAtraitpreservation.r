@@ -24,7 +24,7 @@ WGCNAnThreads()
 # --------------------------
 # Paths and data load
 # --------------------------
-output_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/wgcna/output/neuron-soma/"
+output_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/wgcna/output/microglia/"
 if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
 # Subfolders
@@ -53,7 +53,7 @@ save_svg <- function(path, width, height, expr) {
 
 #expr_xlsx <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/data/male.data.xlsx"
 #meta_xlsx <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/data/sample_info.xlsx"
-meta_xlsx <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/data/sample_info_neuron-soma.xlsx"
+meta_xlsx <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/data/sample_info_microglia.xlsx"
 
 # Define output directory for results and plots
 #output_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/wgcna/output"
@@ -63,8 +63,8 @@ meta_xlsx <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap
 
 
 # Load expression data from Excel file
-d <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/data/male.data_neuron-soma.xlsx"
-expr <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/data/male.data_neuron-soma.xlsx"
+d <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/data/male.data_microglia.xlsx"
+expr <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/data/male.data_microglia.xlsx"
 male.data <- read_excel(path = d)
 
 
@@ -89,7 +89,7 @@ library(UniProt.ws)
 # --------------------------
 # Paths and environment
 # --------------------------
-output_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/wgcna/output/neuron-soma/"
+output_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/wgcna/output/microglia/"
 subdirs <- list(
   plots_qc         = file.path(output_dir, "plots_qc"),
   plots_traits     = file.path(output_dir, "plots_traits"),
@@ -107,9 +107,27 @@ invisible(lapply(c(output_dir, unlist(subdirs)), safe_dir)); log_session(output_
 #expr_xlsx <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/data/male.data_.xlsx"
 #meta_xlsx <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/data/sample_info.xlsx"
 
-expr_xlsx <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/data/male.data_neuron-soma.xlsx"
-meta_xlsx <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/data/sample_info_neuron-soma.xlsx"
+expr_xlsx <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/data/male.data_microglia.xlsx"
+meta_xlsx <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/data/sample_info_microglia.xlsx"
 idmap_dat <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/MOUSE_10090_idmapping.dat"
+
+# Manual mapping file
+manual_map_xlsx <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/manual_mapping.xlsx"
+manual_map <- NULL
+if (file.exists(manual_map_xlsx)) {
+  suppressMessages({
+    manual_map <- try(readxl::read_excel(manual_map_xlsx), silent = TRUE)
+  })
+  if (!inherits(manual_map, "try-error") && all(c("gene_sym", "mapped_gene") %in% names(manual_map))) {
+    manual_map <- manual_map %>%
+      dplyr::mutate(gene_sym = toupper(trimws(gene_sym)), mapped_gene = toupper(trimws(mapped_gene)))
+  } else {
+    warning(sprintf("Manual mapping file found but missing required columns: %s", manual_map_xlsx))
+    manual_map <- NULL
+  }
+} else {
+  message(sprintf("Manual mapping file not found: %s", manual_map_xlsx))
+}
 
 stop_if_missing <- function(path) if (!file.exists(path)) stop(sprintf("Missing file: %s", path))
 read_head <- function(path) { df <- readxl::read_excel(path); utils::write.table(utils::head(df, 10), file.path(subdirs$plots_qc, paste0(basename(path), "_head10.tsv")), sep="\t", row.names=FALSE, quote=FALSE); df }
@@ -163,7 +181,7 @@ tokenize_mouse_only <- function(male_df) {
   tok <- male_df %>% tidyr::separate_rows(gene_symbol, sep = ";") %>% dplyr::mutate(token_raw = gene_symbol, token_up = normalize_token(gene_symbol))
   dropped_non_mouse <- tok %>% dplyr::filter(!grepl("_MOUSE$", token_up))
   if (nrow(dropped_non_mouse)) readr::write_tsv(dropped_non_mouse, file.path(subdirs$tables_modules, "dropped_non_mouse_tokens.tsv"))
-  tok %>%
+  tok <- tok %>%
     dplyr::filter(grepl("_MOUSE$", token_up)) %>%
     dplyr::mutate(
       token_base = to_base_no_iso_mouse(token_up),
@@ -177,6 +195,16 @@ tokenize_mouse_only <- function(male_df) {
       Resolved_UNIPROT = NA_character_,
       strategy = NA_character_
     )
+  # --- MANUAL MAPPING: apply before all other mapping steps ---
+  if (!is.null(manual_map)) {
+    idx_manual <- match(tok$token_base, manual_map$gene_sym)
+    manual_hits <- which(!is.na(idx_manual) & nzchar(manual_map$mapped_gene[idx_manual]))
+    if (length(manual_hits)) {
+      tok$Resolved_UNIPROT[manual_hits] <- manual_map$mapped_gene[idx_manual[manual_hits]]
+      tok$strategy[manual_hits] <- "manual_mapping"
+    }
+  }
+  tok
 }
 resolved2 <- tokenize_mouse_only(male.data)
 
