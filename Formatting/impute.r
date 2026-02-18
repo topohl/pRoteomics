@@ -87,39 +87,43 @@ for (celltype_layer in unique(metadata$celltype_layer)) {
         filter(celltype_layer == !!celltype_layer) %>%
         pull(sample_id)
     subset_sample_ids <- intersect(subset_sample_ids, common_sample_ids)
-    
+
     # If no samples, skip
     if (length(subset_sample_ids) == 0) next
-    
-    # Subset data
+
+    # Subset data: annotation columns + sample columns
     subset_cols <- c(annotation_names, subset_sample_ids)
     df_subset <- df[, subset_cols]
-    
-    # Identify numeric columns for this subset
+
+    # Identify numeric columns for this subset (sample columns only)
     numeric_cols <- (length(annotation_names) + 1):ncol(df_subset)
-    
-    # Log2 transform numeric columns (like Perseus)
+
+    # Log2 transform numeric columns
     df_subset[, numeric_cols] <- log2(df_subset[, numeric_cols])
-    
+
+    # Median center each sample column
+    for (col in numeric_cols) {
+        df_subset[[col]] <- df_subset[[col]] - median(df_subset[[col]], na.rm = TRUE)
+    }
+
     # Filter out proteins (rows) with >70% missingness in numeric columns
     missing_prop <- apply(df_subset[, numeric_cols], 1, function(x) mean(is.na(x)))
     df_filtered <- df_subset[missing_prop <= 0.7, ]
-    
+
     # Impute missing values (on log2 scale)
     imputed_df <- impute_normal(df_filtered, numeric_cols)
-    
-    # === Move annotation columns to the end ===
-    sample_idx <- setdiff(seq_along(imputed_df), match(annotation_names, names(imputed_df)))
+
+    # Move annotation columns to the end
     anno_idx <- match(annotation_names, names(imputed_df))
+    sample_idx <- setdiff(seq_along(imputed_df), anno_idx)
     imputed_df <- imputed_df[, c(sample_idx, anno_idx)]
-    # =========================================
-    
+
     # Create scientific filename
     n_samples <- length(subset_sample_ids)
     n_proteins <- nrow(imputed_df)
     filename <- make_filename(celltype_layer, n_samples, n_proteins)
     output_path <- file.path(output_dir, filename)
-    
+
     # Write output
     write_xlsx(imputed_df, output_path)
 }
