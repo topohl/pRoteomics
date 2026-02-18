@@ -4,10 +4,6 @@
 # Author: Tobias Pohl
 # ===========================================================
 
-swap_comparison <- function(comp_key, use_label_map = FALSE) {
-outdir_fwd <- file.path(outdir, "forward")
-outdir_rev <- file.path(outdir, "reverse")
-
 # -------------------------------
 # Library Setup
 # -------------------------------
@@ -27,9 +23,9 @@ use_label_map <- FALSE   # TRUE = con/res/sus mapping
 # -------------------------------
 setwd("S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets")
 
-input_file <- "20260206-pgmatrix-imputed-microglia-72samples-missing70pct-with-metadata-protigy_Two-sample_mod_T_2026-02-09-transformed-p-val_n66x5229"
+input_file <- "20260218-pgmatrix-imputed-neuron-soma-71samples-missing70pct-with-metadata_Two-sample_mod_T_2026-02-18-transformed-p-val_n66x5538"
 gct_path <- file.path(
-  "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/protigy_output/microglia",
+  "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/protigy_output/neuron_soma",
   paste0(input_file, ".gct")
 )
 
@@ -135,7 +131,7 @@ data[valid_cols] <- lapply(data[valid_cols], readr::parse_number)
 
 outdir_base <- "raw"
 fname <- basename(gct_path)
-subfolder <- stringr::str_extract(fname, "(?<=E9-).*?(?=_Two-sample)")
+subfolder <- basename(fs::path_dir(gct_path))
 if (is.na(subfolder)) subfolder <- "unknown-comparison"
 
 outdir <- file.path(outdir_base, subfolder)
@@ -177,32 +173,29 @@ purrr::iwalk(by_comparison, function(cols, comp_key) {
   new_names <- make.unique(new_names)
   names(df_out)[-1] <- new_names
 
-  # Forward filename
-  comp2 <- comp_key
-  m <- stringr::str_match(comp2, "^([A-Za-z0-9]+)_([A-Za-z0-9]+)_([A-Za-z0-9]+)_([A-Za-z0-9]+)\\.over\\.([A-Za-z0-9]+)_([A-Za-z0-9]+)_([A-Za-z0-9]+)_([A-Za-z0-9]+)$")
-  if (!is.na(m[1,1])) {
-    r1 <- m[1,2]; g1 <- m[1,3]; r2 <- m[1,4]; g2 <- m[1,5];
-    r3 <- m[1,6]; g3 <- m[1,7]; r4 <- m[1,8]; g4 <- m[1,9];
+  # Improved: Parse comp_key for output file naming like CA1spres_CA1spcon
+  # Accepts e.g. CA1_sp_2.over.CA1_sp_1 or similar
+  parse_compkey <- function(key) {
+    # Try to match region_group pattern: e.g. CA1_sp_2.over.CA1_sp_1
+    m <- stringr::str_match(key, "^([A-Za-z0-9]+)_([a-z]+)_([123])\\.over\\.([A-Za-z0-9]+)_([a-z]+)_([123])$")
     label_map <- c("1" = "con", "2" = "res", "3" = "sus")
-    g2_label <- ifelse(g2 %in% names(label_map), label_map[[g2]], g2)
-    g4_label <- ifelse(g4 %in% names(label_map), label_map[[g4]], g4)
-    comp2 <- paste0(r2, g2_label, "_", r4, g4_label)
-  } else {
-    m2 <- stringr::str_match(comp2, "^([A-Za-z0-9]+)_([A-Za-z0-9]+)\\.over\\.([A-Za-z0-9]+)_([A-Za-z0-9]+)$")
-    if (!is.na(m2[1,1])) {
-      r1 <- m2[1,2]; g1 <- m2[1,3]; r2 <- m2[1,4]; g2 <- m2[1,5];
-      label_map <- c("1" = "con", "2" = "res", "3" = "sus")
-      g1_label <- ifelse(g1 %in% names(label_map), label_map[[g1]], g1)
-      g2_label <- ifelse(g2 %in% names(label_map), label_map[[g2]], g2)
-      comp2 <- paste0(r1, g1_label, "_", r2, g2_label)
-    } else {
-      comp2 <- stringr::str_replace_all(comp2, "\\.over\\.", "_")
-      comp2 <- stringr::str_replace_all(comp2, "_1", "con")
-      comp2 <- stringr::str_replace_all(comp2, "_2", "res")
-      comp2 <- stringr::str_replace_all(comp2, "_3", "sus")
+    if (!is.na(m[1,1])) {
+      r1 <- m[1,2]; g1 <- m[1,3]; l1 <- m[1,4];
+      r2 <- m[1,5]; g2 <- m[1,6]; l2 <- m[1,7];
+      left <- paste0(r1, g1, label_map[[l1]])
+      right <- paste0(r2, g2, label_map[[l2]])
+      return(paste0(left, "_", right))
     }
+    # fallback: just replace .over. with _ and _1/2/3 with con/res/sus
+    key2 <- stringr::str_replace_all(key, "\\.over\\.", "_")
+    key2 <- stringr::str_replace_all(key2, "_1", "con")
+    key2 <- stringr::str_replace_all(key2, "_2", "res")
+    key2 <- stringr::str_replace_all(key2, "_3", "sus")
+    key2 <- stringr::str_replace_all(key2, "[^A-Za-z0-9_]", "")
+    return(key2)
   }
-  comp2 <- stringr::str_replace_all(comp2, "([A-Za-z0-9]+)_([a-z]+)", "\1\2")
+
+  comp2 <- parse_compkey(comp_key)
   fwd_file <- file.path(outdir_fwd, paste0(safe_name(comp2), ".csv"))
   utils::write.csv(df_out, fwd_file, row.names = FALSE, quote = TRUE)
   message("Wrote: ", fwd_file)
@@ -217,21 +210,22 @@ purrr::iwalk(by_comparison, function(cols, comp_key) {
     for (col in log_cols) {
       df_rev[[col]] <- suppressWarnings(as.numeric(df_rev[[col]]) * -1)
     }
-    m2 <- stringr::str_match(comp_key, "^([A-Za-z0-9]+)_([A-Za-z0-9]+)\\.over\\.([A-Za-z0-9]+)_([A-Za-z0-9]+)$")
-    if (!is.na(m2[1,1])) {
-      r1 <- m2[1,2]; g1 <- m2[1,3]; r2 <- m2[1,4]; g2 <- m2[1,5];
-      label_map <- c("1" = "con", "2" = "res", "3" = "sus")
-      g1_label <- ifelse(g1 %in% names(label_map), label_map[[g1]], g1)
-      g2_label <- ifelse(g2 %in% names(label_map), label_map[[g2]], g2)
-      rev_comp <- paste0(r2, g2_label, "_", r1, g1_label)
+    # Swap left/right for reverse
+    m <- stringr::str_match(comp_key, "^([A-Za-z0-9]+)_([a-z]+)_([123])\\.over\\.([A-Za-z0-9]+)_([a-z]+)_([123])$")
+    label_map <- c("1" = "con", "2" = "res", "3" = "sus")
+    if (!is.na(m[1,1])) {
+      r1 <- m[1,2]; g1 <- m[1,3]; l1 <- m[1,4];
+      r2 <- m[1,5]; g2 <- m[1,6]; l2 <- m[1,7];
+      left <- paste0(r2, g2, label_map[[l2]])
+      right <- paste0(r1, g1, label_map[[l1]])
+      rev_comp <- paste0(left, "_", right)
     } else {
       rev_comp <- swap_comparison(comp_key, TRUE)
       rev_comp <- stringr::str_replace_all(rev_comp, "_1", "con")
       rev_comp <- stringr::str_replace_all(rev_comp, "_2", "res")
       rev_comp <- stringr::str_replace_all(rev_comp, "_3", "sus")
-      rev_comp <- stringr::str_replace_all(rev_comp, "\\.over\\.", "_")
+      rev_comp <- stringr::str_replace_all(rev_comp, "[^A-Za-z0-9_]", "")
     }
-    rev_comp <- stringr::str_replace_all(rev_comp, "([A-Za-z0-9]+)_([a-z]+)", "\1\2")
     rev_file <- file.path(outdir_rev, paste0(safe_name(rev_comp), ".csv"))
     utils::write.csv(df_rev, rev_file, row.names = FALSE, quote = TRUE)
     message("Wrote (reversed): ", rev_file)
