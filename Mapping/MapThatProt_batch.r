@@ -26,7 +26,7 @@
 if (!requireNamespace("pacman", quietly = TRUE)) install.packages("pacman")
 pacman::p_load(dplyr, stringr, tidyr, purrr, readr, R.utils, foreach, doParallel, readxl, AnnotationDbi, org.Mm.eg.db, UniProt.ws)
 
-mapped_comparisons <- "microglia"  # specify the comparison folder to process
+mapped_comparisons <- "neuron-soma"  # specify the comparison folder to process
 map_reverse <- FALSE
 
 #working_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/"
@@ -612,15 +612,35 @@ process_file <- function(data_path) {
         dplyr::transmute(gene_symbol = token_raw) %>%
         dplyr::distinct()
 
+
     base <- tools::file_path_sans_ext(basename(data_path))
     mapped_file <- file.path(mapped_dir, paste0(base, ".csv"))
     unmapped_file <- file.path(unmapped_dir, paste0(base, ".csv"))
     info_table_file <- file.path(info_dir, paste0(base, "_mapping_info.csv"))
     info_summary_file <- file.path(info_dir, paste0(base, "_info.txt"))
+    mapped_summary_file <- file.path(mapped_summary_dir, paste0(base, "_summary.csv"))
+    unmapped_summary_file <- file.path(unmapped_summary_dir, paste0(base, "_summary.csv"))
 
     readr::write_csv(df_mapped, mapped_file)
     readr::write_csv(unmapped_proteins, unmapped_file)
     readr::write_csv(mapping_info, info_table_file)
+
+    # Write per-file mapped summary (with mapping strategies)
+    mapped_summary <- mapping_info %>%
+        dplyr::filter(!is.na(final_accession) & nzchar(final_accession)) %>%
+        dplyr::group_by(final_accession) %>%
+        dplyr::summarise(
+            original_symbols = paste(unique(original_symbol), collapse = "; "),
+            strategies = paste(unique(na.omit(matched_by)), collapse = "; "),
+            .groups = "drop"
+        )
+    readr::write_csv(mapped_summary, mapped_summary_file)
+
+    # Write per-file unmapped summary
+    unmapped_summary <- unmapped_proteins %>%
+        dplyr::group_by(gene_symbol) %>%
+        dplyr::summarise(occurrences = dplyr::n(), .groups = "drop")
+    readr::write_csv(unmapped_summary, unmapped_summary_file)
 
     total_in <- nrow(df_tok)
     total_mapped <- sum(!is.na(mapping_info$final_accession) & nzchar(mapping_info$final_accession))
@@ -649,6 +669,8 @@ process_file <- function(data_path) {
     message("Saved unmapped -> ", unmapped_file, " (", nrow(unmapped_proteins), " entries )")
     message("Saved mapping info -> ", info_table_file)
     message("Saved summary info -> ", info_summary_file)
+    message("Saved mapped summary -> ", mapped_summary_file)
+    message("Saved unmapped summary -> ", unmapped_summary_file)
 
     invisible(list(
     mapping_table = mapping_info %>%
@@ -688,6 +710,7 @@ cat("Building global mapping summaries...\n")
 all_mapping_tables <- purrr::map(results, "mapping_table") %>% dplyr::bind_rows()
 all_unmapped_tables <- purrr::map(results, "unmapped_table") %>% dplyr::bind_rows()
 
+
 # -------------------------
 # Global Mapping Summary
 # -------------------------
@@ -699,7 +722,12 @@ global_mapping_summary <- all_mapping_tables %>%
 global_mapping_file <- file.path(info_dir, "GLOBAL_mapping_summary.csv")
 readr::write_csv(global_mapping_summary, global_mapping_file)
 
+# Also save in mapped_summary_dir
+global_mapping_summary_file2 <- file.path(mapped_summary_dir, "GLOBAL_mapping_summary.csv")
+readr::write_csv(global_mapping_summary, global_mapping_summary_file2)
+
 cat("Saved global mapping summary ->", global_mapping_file, "\n")
+cat("Saved global mapping summary ->", global_mapping_summary_file2, "\n")
 
 # -------------------------
 # Global Unmapped Proteins
@@ -717,7 +745,12 @@ global_unmapped_summary <- all_unmapped_tables %>%
 global_unmapped_file <- file.path(unmapped_dir, "GLOBAL_unmapped_proteins.csv")
 readr::write_csv(global_unmapped_summary, global_unmapped_file)
 
+# Also save in unmapped_summary_dir
+global_unmapped_summary_file2 <- file.path(unmapped_summary_dir, "GLOBAL_unmapped_proteins.csv")
+readr::write_csv(global_unmapped_summary, global_unmapped_summary_file2)
+
 cat("Saved global unmapped protein list ->", global_unmapped_file, "\n")
+cat("Saved global unmapped protein list ->", global_unmapped_summary_file2, "\n")
 
 # -------------------------
 # Optional Strategy Stats
