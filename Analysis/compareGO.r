@@ -101,11 +101,11 @@ ensemble_profiling <- "phenotype_within_unit"
 
 # Experimental condition
 #condition <- "memory_ensemble"
-condition <- "CA2_microglia"
+condition <- "DG_sg"
 
 # Base project path for all input/output
 #base_project_path <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler"
-base_project_path <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/"
+base_project_path <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics"
 
 # Set working directory
 setwd(base_project_path)
@@ -1734,6 +1734,7 @@ log2fc_files <- list.files(
   pattern = "*.csv",
   full.names = TRUE
 )
+
 go_results_list <- list()
 for (f in log2fc_files) {
   comp_name <- tools::file_path_sans_ext(basename(f))
@@ -1797,6 +1798,7 @@ for (f in log2fc_files) {
     }
   }
 }
+
 # Remove empty or too small lists
 go_results_list <- go_results_list[sapply(go_results_list, nrow) > 0]
 
@@ -1804,6 +1806,8 @@ go_results_list <- go_results_list[sapply(go_results_list, nrow) > 0]
 go_results_list <- go_results_list[sapply(go_results_list, nrow) > 0]
 if (length(go_results_list) >= 2) {
   simplifygo_plot_file <- file.path(subdirs$plots_main, "simplifyGO_MultipleLists.svg")
+  # Ensure any open graphics device is closed before opening a new one
+  while(dev.cur() > 1) dev.off()
   svg(simplifygo_plot_file, width = 10, height = 8, family = "sans")
   simplifyEnrichment::simplifyGOFromMultipleLists(
     go_results_list,
