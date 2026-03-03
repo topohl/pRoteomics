@@ -93,7 +93,7 @@ calc_dims <- function(df_plot) {
 # -----------------------------------------------------
 
 # Gene Ontology domain (MF, BP, or CC)
-ont <- "BP"  # Biological Process
+ont <- "BP"
 
 # Ensemble profiling method
 #ensemble_profiling <- "learning_signature"
@@ -101,7 +101,7 @@ ensemble_profiling <- "phenotype_within_unit"
 
 # Experimental condition
 #condition <- "memory_ensemble"
-condition <- "DG_sg"
+condition <- "CA1_microglia"
 
 # Base project path for all input/output
 #base_project_path <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler"
@@ -117,10 +117,10 @@ uniprot_mapping_file_path <- file.path(
 )
 
 # Load clusterProfiler and organism database
-if (!require("clusterProfiler")) BiocManager::install("clusterProfiler")
-if (!require("org.Mm.eg.db")) BiocManager::install("org.Mm.eg.db")
-library(clusterProfiler)
-library(org.Mm.eg.db)
+if (!requireNamespace("clusterProfiler", quietly = TRUE)) BiocManager::install("clusterProfiler")
+if (!requireNamespace("org.Mm.eg.db", quietly = TRUE)) BiocManager::install("org.Mm.eg.db")
+suppressPackageStartupMessages(library(clusterProfiler))
+suppressPackageStartupMessages(library(org.Mm.eg.db))
 
 # Read UniProt mapping file (UniprotID <-> Gene_Name)
 uniprot_df <- read.delim(
@@ -301,8 +301,10 @@ if(significant_only){
   candidate_pool <- combined_df_best
 }
 
+
+# Improved handling for the case where there are no significant GO terms
 if(nrow(candidate_pool) == 0) {
-  message("No significant GO terms found. Skipping top term selection and downstream plots.")
+  message("No significant GO terms found. Skipping top term selection and all downstream plots/tables.")
   df_standard <- tibble()
   df_refined <- tibble()
   df_replacements <- tibble()
@@ -310,8 +312,8 @@ if(nrow(candidate_pool) == 0) {
   top_terms_standard <- character(0)
   top_terms_refined <- character(0)
   # Ensure 'leading_edge' is character to avoid writexl warnings
-  df_standard <- df_standard %>% mutate(across(leading_edge, as.character))
-  df_refined <- df_refined %>% mutate(across(leading_edge, as.character))
+  df_standard <- df_standard %>% mutate(leading_edge = as.character(NA))
+  df_refined <- df_refined %>% mutate(leading_edge = as.character(NA))
   writexl::write_xlsx(
     list(
       Standard = df_standard,
@@ -320,6 +322,14 @@ if(nrow(candidate_pool) == 0) {
     ),
     path = file.path(subdirs$tables, "Redundancy_Check_Results.xlsx")
   )
+  # Set empty data for downstream plotting and skip those blocks
+  plot_data_standard <- tibble()
+  plot_data_refined <- tibble()
+  comparison_plot_data <- tibble()
+  lookup_df <- tibble()
+  suppressWarnings({
+    writexl::write_xlsx(list(), path = file.path(subdirs$tables, "Matrix_Heatmap_NES.xlsx"))
+  })
 } else {
   comparisons <- unique(candidate_pool$Comparison)
   std_list <- list()
@@ -370,7 +380,7 @@ if(nrow(candidate_pool) == 0) {
 # -----------------------------------------------------
 
 # Custom color palette: upregulation = #faa51a, downregulation = #4c87c6, 0 = white
-custom_palette <- colorRampPalette(c("#4c87c6", "white", "#faa51a"))
+custom_palette <- colorRampPalette(c("#3E3C6F", "white", "#E63A47"))
 
 plot_data_standard <- combined_df %>%
   filter(Description %in% top_terms_standard) %>%
@@ -379,7 +389,7 @@ plot_data_refined <- combined_df %>%
   filter(Description %in% top_terms_refined) %>%
   mutate(Selection_Type = "Refined")
 comparison_plot_data <- bind_rows(plot_data_standard, plot_data_refined) %>%
-  mutate(Comparison = factor(Comparison))
+  mutate(Comparison = factor(Comparison, levels = unique(Comparison)))
 
 # --- Robust plotting: skip if no data or NES is all NA ---
 if (nrow(comparison_plot_data) == 0 || all(is.na(comparison_plot_data$NES))) {
@@ -478,17 +488,25 @@ heatmap_labels <- lookup_df %>%
   dplyr::select(Description, Comparison, sig_label) %>%
   tidyr::pivot_wider(names_from = Comparison, values_from = sig_label) %>%
   tibble::column_to_rownames("Description")
+
 plot_height <- max(6, nrow(heatmap_data) * 0.3)
-max_abs_val <- max(abs(heatmap_data), na.rm=TRUE)
-my_breaks <- seq(-max_abs_val, max_abs_val, length.out = 100)
+# Set NES legend range to -3 to 3
+legend_min <- -2.5
+legend_max <- 2.5
+my_breaks <- seq(legend_min, legend_max, length.out = 100)
 
 # Custom color palette: downregulation = #4c87c6, 0 = white, upregulation = #faa51a
-my_colors <- colorRampPalette(c("#4c87c6", "white", "#faa51a"))(100)
+#my_colors <- colorRampPalette(c("#4c87c6", "white", "#faa51a"))(100)
+my_colors <- colorRampPalette(c("#3E3C6F", "white", "#E63A47"))(100)
+
+# Determine if clustering is possible (must have >=2 rows/cols)
+cluster_rows_opt <- if (nrow(heatmap_data) >= 2) TRUE else FALSE
+cluster_cols_opt <- if (ncol(heatmap_data) >= 2) TRUE else FALSE
 
 heatmap_plot <- pheatmap(
   heatmap_data,
-  cluster_rows = TRUE,
-  cluster_cols = TRUE,
+  cluster_rows = cluster_rows_opt,
+  cluster_cols = cluster_cols_opt,
   display_numbers = heatmap_labels,
   number_color = "black",
   color = my_colors,
@@ -504,8 +522,11 @@ heatmap_plot <- pheatmap(
   silent = TRUE,
   legend = TRUE
 )
-heatmap_row_order <- rownames(heatmap_data)[heatmap_plot$tree_row$order]
-heatmap_col_order <- colnames(heatmap_data)[heatmap_plot$tree_col$order]
+
+# Only extract row/col order if clustering was performed
+heatmap_row_order <- if (cluster_rows_opt) rownames(heatmap_data)[heatmap_plot$tree_row$order] else rownames(heatmap_data)
+heatmap_col_order <- if (cluster_cols_opt) colnames(heatmap_data)[heatmap_plot$tree_col$order] else colnames(heatmap_data)
+
 output_file <- file.path(subdirs$plots_main, "Heatmap_Enrichment_Comparisons.svg")
 svg(output_file, width = 6, height = plot_height, family = "sans")
 grid::grid.draw(heatmap_plot$gtable)
@@ -523,6 +544,12 @@ order_dotplot <- function(df, desc_col = "Description", comp_col = "Comparison",
     pivot_wider(names_from = all_of(comp_col), values_from = all_of(val_col), values_fill = 0) %>%
     column_to_rownames(desc_col) %>%
     as.matrix()
+  # If less than 2 columns or rows, skip clustering and return default order
+  if (ncol(mat) < 2 || nrow(mat) < 2) {
+    col_order <- colnames(mat)
+    row_order <- rownames(mat)
+    return(list(row_order = row_order, col_order = col_order))
+  }
   hc_col <- hclust(dist(t(mat)))
   col_order <- colnames(mat)[hc_col$order]
   dom_comp <- apply(mat, 1, function(x) colnames(mat)[which.max(abs(x))])
@@ -711,50 +738,50 @@ if (exists("top5_up_down_df") && !is.null(top5_up_down_df) && nrow(top5_up_down_
 # Plot Enrichment for Selected Genes
 # -----------------------------------------------------
 
-gene_list <- c("P55099", "Q6NXX1")
-long_df <- combined_df %>%
-  mutate(core_gene = strsplit(as.character(core_enrichment), "/|;|,|\\s+")) %>%
-  unnest(core_gene)
-filtered_df <- long_df %>%
-  filter(core_gene %in% gene_list) %>%
-  mutate(Description = factor(Description, levels = unique(Description)))
-ggsave(output_plot_file, plot = plot_selected_genes, width = 8, height = 6, dpi = 300)
-
-# Only plot if filtered_df is not empty and NES is not all NA
-if (nrow(filtered_df) > 0 && any(!is.na(filtered_df$NES))) {
-  nes_min <- min(filtered_df$NES, na.rm = TRUE)
-  nes_max <- max(filtered_df$NES, na.rm = TRUE)
-  max_abs_nes <- max(abs(nes_min), abs(nes_max))
-  plot_selected_genes <- ggplot(filtered_df, aes(
-    x = Comparison,
-    y = Description,
-    color = NES,
-    size = -log10(p.adjust),
-    shape = core_gene
-  )) +
-    geom_point(alpha = 1) +
-    scale_color_gradientn(
-      colours = custom_palette(100),
-      limits = c(-max_abs_nes, max_abs_nes),
-      name = "NES"
-    ) +
-    scale_size_continuous(
-      name = expression(-log[10](italic(P)[adj])),
-      range = c(2, 6)
-    ) +
-    labs(
-      title = "Enrichment for selected genes",
-      x = NULL,
-      y = NULL,
-      shape = "Gene"
-    ) +
-    theme_custom(base_size = 10) +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1))
-  output_plot_file <- file.path(subdirs$plots_main, "Plot_Selected_Genes.svg")
-  ggsave(output_plot_file, plot = plot_selected_genes, width = 8, height = 6, dpi = 300)
-} else {
-  message("No data available for selected genes plot. Skipping plot generation.")
-}
+# gene_list <- c("P55099", "Q6NXX1")
+# long_df <- combined_df %>%
+#   mutate(core_gene = strsplit(as.character(core_enrichment), "/|;|,|\\s+")) %>%
+#   unnest(core_gene)
+# filtered_df <- long_df %>%
+#   filter(core_gene %in% gene_list) %>%
+#   mutate(Description = factor(Description, levels = unique(Description)))
+# ggsave(output_plot_file, plot = plot_selected_genes, width = 8, height = 6, dpi = 300)
+#
+# # Only plot if filtered_df is not empty and NES is not all NA
+# if (nrow(filtered_df) > 0 && any(!is.na(filtered_df$NES))) {
+#   nes_min <- min(filtered_df$NES, na.rm = TRUE)
+#   nes_max <- max(filtered_df$NES, na.rm = TRUE)
+#   max_abs_nes <- max(abs(nes_min), abs(nes_max))
+#   plot_selected_genes <- ggplot(filtered_df, aes(
+#     x = Comparison,
+#     y = Description,
+#     color = NES,
+#     size = -log10(p.adjust),
+#     shape = core_gene
+#   )) +
+#     geom_point(alpha = 1) +
+#     scale_color_gradientn(
+#       colours = custom_palette(100),
+#       limits = c(-max_abs_nes, max_abs_nes),
+#       name = "NES"
+#     ) +
+#     scale_size_continuous(
+#       name = expression(-log[10](italic(P)[adj])),
+#       range = c(2, 6)
+#     ) +
+#     labs(
+#       title = "Enrichment for selected genes",
+#       x = NULL,
+#       y = NULL,
+#       shape = "Gene"
+#     ) +
+#     theme_custom(base_size = 10) +
+#     theme(axis.text.x = element_text(angle = 45, hjust = 1))
+#   output_plot_file <- file.path(subdirs$plots_main, "Plot_Selected_Genes.svg")
+#   ggsave(output_plot_file, plot = plot_selected_genes, width = 8, height = 6, dpi = 300)
+# } else {
+#   message("No data available for selected genes plot. Skipping plot generation.")
+# }
 
 # -----------------------------------------------------
 # Gene-Centric Enrichment Summary Plot
@@ -884,19 +911,34 @@ dev.off()
 
 core_long_df <- bind_rows(
   lapply(names(enrichment_list), function(name) {
-    df <- enrichment_list[[name]]
-    df %>%
-      dplyr::select(Description, NES, core_enrichment) %>%
-      mutate(core_enrichment = strsplit(core_enrichment, "/")) %>%
-      tidyr::unnest(core_enrichment) %>%
-      dplyr::rename(Gene = core_enrichment) %>%
-      mutate(Comparison = name)
+    df <- enrichment_list[[name]] %>%
+      dplyr::select(GO_ID = ID, Description, NES, core_enrichment) %>%
+      mutate(NES = as.numeric(NES),
+             Comparison = name) %>%
+      filter(!is.na(NES))
+    
+    # Split core_enrichment safely and expand rowwise
+    df <- df %>%
+      rowwise() %>%
+      mutate(Gene = list(strsplit(core_enrichment, "/")[[1]])) %>%
+      tidyr::unnest_longer(Gene) %>%
+      ungroup() %>%
+      dplyr::select(GO_ID, Description, NES, Gene, Comparison)
+    
+    return(df)
   })
 )
+
+# save enrichment list to excel for debugging
+writexl::write_xlsx(enrichment_list, file.path(subdirs$tables, "Enrichment_List_Debug.xlsx"))
+
+# save core_long_df for debugging
+write.csv(core_long_df, file.path(subdirs$tables, "Core_Enrichment_LongFormat.csv"), row.names = FALSE)
 
 heatmap_df <- core_long_df %>%
   group_by(Gene, Comparison) %>%
   summarise(NES = mean(NES, na.rm = TRUE), .groups = "drop") %>%
+  mutate(NES = ifelse(is.nan(NES) | is.infinite(NES), NA, NES)) %>%
   pivot_wider(names_from = Comparison, values_from = NES)
 heatmap_matrix <- heatmap_df %>%
   column_to_rownames("Gene") %>%
@@ -920,27 +962,68 @@ heatmap_plot <- pheatmap(
   cluster_cols = TRUE,
   border_color = NA
 )
-output_file <- file.path(subdirs$plots_main, "Heatmap_Overall_Core_Enrichment.svg")
+output_file <- file.path(subdirs$core_enrichment_plots, "Heatmap_Overall_Core_Enrichment.svg")
 svg(output_file, width = 8, height = 8, family = "sans")
 grid::grid.draw(heatmap_plot$gtable)
 dev.off()
 
 # Identify top 25 up/down genes by NES for supplementary tables/plots
+# -------------------
+# IMPORTANT NOTE FOR USERS:
+# -------------------
+# The top/bottom 25 genes in the heatmap ("TopBottom_GeneList.xlsx" and "Heatmap_TopBottom_Enrichment.svg")
+# are selected based on the maximum (for up) or minimum (for down) NES (Normalized Enrichment Score)
+# across ALL GO terms and ALL comparisons, i.e., based on GSEA core enrichment results.
+#
+# The "supplementary full_differential_data" (sheet "Full_Differential_Data" in Supplementary_Data.xlsx)
+# contains ALL proteins from the differential expression analysis, ranked by log2FC and p-value per comparison.
+#
+# Therefore, the top/bottom 25 proteins in the heatmap are NOT necessarily the same as the top/bottom proteins
+# in the full differential data, because:
+#   - The heatmap is based on NES from GSEA/GO enrichment, not log2FC from differential analysis.
+#   - A protein may have a high NES in enrichment but not be the most up/downregulated by log2FC, and vice versa.
+#   - The selection is global across all comparisons, not per comparison.
+#
+# This is expected behavior and reflects the different ranking criteria.
+message("[INFO] Top/bottom 25 genes for heatmap are selected by NES (enrichment), not by log2FC (differential expression). See comments in code for details.")
+
+
+# -----------------------------------------------------
+# Select and Visualize Top 25 Up/Down Genes by NES Across All Comparisons
+# -----------------------------------------------------
+# This section identifies the top 25 upregulated and top 25 downregulated genes based on the maximum (for up) or minimum (for down)
+# NES (Normalized Enrichment Score) observed for each gene across all comparisons. The data used is the heatmap_df, which contains
+# NES values for each gene (rows) and comparison (columns). The resulting top/bottom gene list is exported, and a heatmap is generated.
+
+# --- Data Preparation ---
+# Convert heatmap_df (wide: genes x comparisons) to long format for easier aggregation.
 long_heatmap_df <- heatmap_df %>%
   pivot_longer(-Gene, names_to = "Comparison", values_to = "NES")
-top25_up <- long_heatmap_df %>%
+
+# --- Top/Bottom Gene Selection ---
+# For each gene, find the maximum NES (upregulation) and minimum NES (downregulation) across all comparisons.
+gene_max_nes <- long_heatmap_df %>%
   group_by(Gene) %>%
-  summarize(max_nes = max(NES, na.rm = TRUE), .groups = "drop") %>%
+  summarise(max_nes = max(NES, na.rm = TRUE), .groups = "drop")
+gene_min_nes <- long_heatmap_df %>%
+  group_by(Gene) %>%
+  summarise(min_nes = min(NES, na.rm = TRUE), .groups = "drop")
+
+# Select top 25 upregulated and top 25 downregulated genes.
+top25_up <- gene_max_nes %>%
   arrange(desc(max_nes)) %>%
   dplyr::slice_head(n = 25) %>%
   mutate(Direction = "Up")
-top25_down <- long_heatmap_df %>%
-  group_by(Gene) %>%
-  summarize(min_nes = min(NES, na.rm = TRUE), .groups = "drop") %>%
+top25_down <- gene_min_nes %>%
   arrange(min_nes) %>%
   dplyr::slice_head(n = 25) %>%
   mutate(Direction = "Down")
+
+# Combine into a single data frame for export and plotting.
 top_bottom_genes <- bind_rows(top25_up, top25_down)
+
+# --- Add GO Terms for Each Gene ---
+# For each gene, collect all unique GO term descriptions from core_long_df.
 gene_go <- core_long_df %>%
   dplyr::select(Gene, Description) %>%
   distinct() %>%
@@ -948,13 +1031,24 @@ gene_go <- core_long_df %>%
   summarize(GO_Terms = paste(unique(Description), collapse = "; "), .groups = "drop")
 top_bottom_genes <- top_bottom_genes %>%
   left_join(gene_go, by = "Gene")
+
+# --- Export Top/Bottom Gene List ---
+# Save the top/bottom gene list (with NES and GO terms) to Excel for supplementary tables.
+# Combine max_nes and min_nes into a single NES column (show as "max: X; min: Y")
+top_bottom_genes <- top_bottom_genes %>%
+  mutate(NES = paste0("max: ", signif(max_nes, 4), "; min: ", signif(min_nes, 4))) %>%
+  dplyr::select(-max_nes, -min_nes) # Remove old columns
+
 write_xlsx(
   top_bottom_genes,
-  file.path(subdirs$gene_lists, "TopBottom_GeneList.xlsx")
+  file.path(subdirs$tables, "TopBottom_GeneList.xlsx")
 )
 
-# Generate heatmap for top 25 up/down genes
+# --- Generate Heatmap for Top 25 Up/Down Genes ---
+# Subset the heatmap matrix to only the selected top/bottom genes.
 top_bottom_matrix <- heatmap_matrix[rownames(heatmap_matrix) %in% top_bottom_genes$Gene, , drop = FALSE]
+
+# Order genes in the heatmap by their maximum absolute NES (for visual clarity).
 gene_order <- heatmap_df %>%
   filter(Gene %in% rownames(top_bottom_matrix)) %>%
   pivot_longer(-Gene, names_to = "Comparison", values_to = "NES") %>%
@@ -964,6 +1058,9 @@ gene_order <- heatmap_df %>%
   pull(Gene)
 
 top_bottom_matrix <- top_bottom_matrix[gene_order, , drop = FALSE]
+
+# --- Map UniProt IDs to Gene Names for Heatmap Row Labels ---
+# Use the UniProt mapping file to convert UniProt IDs to gene names for better readability in the heatmap.
 uniprot_df <- read.delim(
   uniprot_mapping_file_path,
   header = FALSE,
@@ -978,16 +1075,23 @@ mapped_names <- left_join(
   by = c("Gene" = "UniprotID")
 )
 
+# Replace rownames with gene names where available, otherwise keep UniProt ID.
 rownames(top_bottom_matrix) <- ifelse(
   is.na(mapped_names$Gene_Name),
   mapped_names$Gene,
   mapped_names$Gene_Name
 )
 
+# --- Plotting ---
+# Create a heatmap of NES values for the top/bottom genes across all comparisons.
+# Color scale: blue = downregulated, red = upregulated, white = neutral.
 nes_min <- min(top_bottom_matrix, na.rm = TRUE)
 nes_max <- max(top_bottom_matrix, na.rm = TRUE)
 max_abs_nes <- max(abs(nes_min), abs(nes_max))
 breaks <- seq(-max_abs_nes, max_abs_nes, length.out = 101)
+
+# --- Add more info text on the plot ---
+library(grid)
 top_bottom_plot <- pheatmap(
   top_bottom_matrix,
   color = colorRampPalette(rev(brewer.pal(n = 7, name = "RdBu")))(100),
@@ -1014,6 +1118,23 @@ top_bottom_plot <- pheatmap(
   show_rownames = TRUE,
   show_colnames = TRUE
 )
+
+# Add info text: n genes, NES scale, etc.
+info_text <- paste0(
+  "n genes: ", nrow(top_bottom_matrix),
+  " | n comparisons: ", ncol(top_bottom_matrix),
+  " | NES scale: [", round(-max_abs_nes, 2), ", ", round(max_abs_nes, 2), "]\n",
+  "Red = upregulated, Blue = downregulated, NES = Normalized Enrichment Score"
+)
+
+svg(file.path(subdirs$plots_main, "Heatmap_TopBottom_Enrichment.svg"), width = 4, height = 8, family="sans")
+grid::grid.draw(top_bottom_plot$gtable)
+grid::grid.text(
+  info_text,
+  x = 0.5, y = 0.98, just = "center", gp = grid::gpar(fontsize = 8, col = "#222222"))
+dev.off()
+
+# Save the heatmap as SVG for publication-quality output.
 svg(file.path(subdirs$plots_main, "Heatmap_TopBottom_Enrichment.svg"), width = 4, height = 8, family="sans")
 grid::grid.draw(top_bottom_plot$gtable)
 dev.off()
@@ -1320,8 +1441,8 @@ if (length(comparison_files) > 0) {
           enrichGO(
             gene = up_genes,
             OrgDb = org.Mm.eg.db,
-            keyType = "UNIPROT",    # Changed from ENTREZID to UNIPROT
-            ont = "BP",
+            keyType = "UNIPROT",
+            ont = ont,
             pAdjustMethod = "BH",
             pvalueCutoff = 0.05,
             qvalueCutoff = 0.2,
@@ -1329,11 +1450,9 @@ if (length(comparison_files) > 0) {
           ),
           error = function(e) NULL
         )
-        
         if (!is.null(ego_up) && nrow(as.data.frame(ego_up)) > 0) {
-          out_csv <- file.path(subdirs$go_enrichment, paste0("GO_", comp, "_Upregulated_BP.csv"))
+          out_csv <- file.path(subdirs$go_enrichment, paste0("GO_", comp, "_Upregulated_", ont, ".csv"))
           write.csv(as.data.frame(ego_up), out_csv, row.names = FALSE)
-          
           ego_df <- as.data.frame(ego_up) %>%
             dplyr::mutate(Count = as.numeric(Count)) %>%
             dplyr::filter(Count >= 10) %>%
@@ -1342,7 +1461,6 @@ if (length(comparison_files) > 0) {
             dplyr::slice_head(n = 15) %>%
             mutate(Description = stringr::str_wrap(Description, width = 50)) %>%
             mutate(Description = factor(Description, levels = unique(Description)))
-          
           if (nrow(ego_df) > 0) {
             lollipop_palette <- colorRampPalette(c("#faa51a", "#4c87c6"))
             p_lollipop <- ggplot(ego_df, aes(x = GeneRatio, y = Description)) +
@@ -1361,8 +1479,7 @@ if (length(comparison_files) > 0) {
                 axis.text.x = element_text(size = 9),
                 legend.position = "right"
               )
-            
-            out_plot <- file.path(subdirs$go_enrichment, paste0("GO_Lollipop_", comp, "_Upregulated_BP.svg"))
+            out_plot <- file.path(subdirs$go_enrichment, paste0("GO_Lollipop_", comp, "_Upregulated_", ont, ".svg"))
             ggsave(out_plot, plot = p_lollipop, width = 7, height = 5)
           }
         }
@@ -1385,7 +1502,7 @@ if (length(comparison_files) > 0) {
             gene = down_genes,
             OrgDb = org.Mm.eg.db,
             keyType = "UNIPROT",
-            ont = "BP",
+            ont = ont,
             pAdjustMethod = "BH",
             pvalueCutoff = 0.05,
             qvalueCutoff = 0.2,
@@ -1393,11 +1510,9 @@ if (length(comparison_files) > 0) {
           ),
           error = function(e) NULL
         )
-        
         if (!is.null(ego_down) && nrow(as.data.frame(ego_down)) > 0) {
-          out_csv <- file.path(subdirs$go_enrichment, paste0("GO_", comp, "_Downregulated_BP.csv"))
+          out_csv <- file.path(subdirs$go_enrichment, paste0("GO_", comp, "_Downregulated_", ont, ".csv"))
           write.csv(as.data.frame(ego_down), out_csv, row.names = FALSE)
-          
           ego_df <- as.data.frame(ego_down) %>%
             dplyr::mutate(Count = as.numeric(Count)) %>%
             dplyr::filter(Count >= 10) %>%
@@ -1406,7 +1521,6 @@ if (length(comparison_files) > 0) {
             dplyr::slice_head(n = 15) %>%
             mutate(Description = stringr::str_wrap(Description, width = 50)) %>%
             mutate(Description = factor(Description, levels = unique(Description)))
-          
           if (nrow(ego_df) > 0) {
             lollipop_palette <- colorRampPalette(c("#faa51a", "#4c87c6"))
             p_lollipop <- ggplot(ego_df, aes(x = GeneRatio, y = Description)) +
@@ -1425,8 +1539,7 @@ if (length(comparison_files) > 0) {
                 axis.text.x = element_text(size = 9),
                 legend.position = "right"
               )
-            
-            out_plot <- file.path(subdirs$go_enrichment, paste0("GO_Lollipop_", comp, "_Downregulated_BP.svg"))
+            out_plot <- file.path(subdirs$go_enrichment, paste0("GO_Lollipop_", comp, "_Downregulated_", ont, ".svg"))
             ggsave(out_plot, plot = p_lollipop, width = 7, height = 5)
           }
         }
@@ -1475,7 +1588,9 @@ if (length(missing_cols) > 0) {
   warning(paste("log2fc_df is missing columns:", paste(missing_cols, collapse=", ")))
 }
 
+
 # --- Robust join for core_long_df heatmaps ---
+# Save per-term core enrichment heatmaps in the correct subdirectory (core_enrichment_plots)
 core_long_df %>%
   group_by(Description) %>%
   group_split() %>%
@@ -1505,13 +1620,48 @@ core_long_df %>%
     heatmap_matrix <- as.matrix(matrix_df)
     heatmap_matrix[is.na(heatmap_matrix)] <- 0
     safe_desc <- substr(make.names(description), 1, 30)
-    filename <- file.path(subdirs$core_enrichment_plots, paste0("Heatmap_Core_", safe_desc, ".svg"))
+    filename_svg <- file.path(subdirs$core_enrichment_plots, paste0("Heatmap_Core_", safe_desc, ".svg"))
+    filename_png <- file.path(subdirs$core_enrichment_plots, paste0("Heatmap_Core_", safe_desc, ".png"))
     cluster_rows_option <- nrow(heatmap_matrix) > 1
     cluster_cols_option <- ncol(heatmap_matrix) > 1
-    max_val <- max(abs(heatmap_matrix), na.rm = TRUE)
-    breaks <- seq(-max_val, max_val, length.out = 101)
+    max_val <- suppressWarnings(max(abs(heatmap_matrix), na.rm = TRUE))
+    # If max_val is NA or 0, set breaks to c(-1,0,1) and skip plotting if all values are zero
+    if (is.na(max_val) || max_val == 0) {
+      breaks <- c(-1, 0, 1)
+      # Only plot if there is at least one nonzero value
+      if (all(heatmap_matrix == 0)) {
+        warning(paste0("Skipping heatmap for ", description, ": all values are zero."))
+        return()
+      }
+    } else {
+      # Ensure breaks are unique
+      breaks <- unique(seq(-max_val, max_val, length.out = 101))
+      if (length(breaks) < 2) {
+        breaks <- c(-1, 0, 1)
+      }
+    }
     plot_height <- max(4, nrow(heatmap_matrix) * 0.15 + 1)
-    svg(filename, width = 5, height = plot_height, family = "sans")
+    # Save SVG
+    svg(filename_svg, width = 5, height = plot_height, family = "sans")
+    pheatmap(
+      heatmap_matrix,
+      color = colorRampPalette(rev(brewer.pal(n = 7, name = "RdBu")))(100),
+      breaks = breaks,
+      main = substr(description, 1, 40),
+      fontsize = 8,
+      fontsize_row = 7,
+      fontsize_col = 8,
+      cluster_rows = cluster_rows_option,
+      cluster_cols = cluster_cols_option,
+      border_color = "white",
+      angle_col = 45,
+      cellwidth = 12,
+      cellheight = 10,
+      legend = TRUE
+    )
+    dev.off()
+    # Save PNG as well for convenience
+    png(filename_png, width = 5 * 100, height = plot_height * 100, res = 100, units = "px", family = "sans")
     pheatmap(
       heatmap_matrix,
       color = colorRampPalette(rev(brewer.pal(n = 7, name = "RdBu")))(100),
@@ -1632,7 +1782,15 @@ supp_enrichment <- combined_df %>%
   dplyr::select(Comparison, ID, Description, setSize, 
                 pvalue, p.adjust, qvalue, NES, rank, leading_edge,
                 core_enrichment, core_enrichment_gene) %>%
-  mutate(across(c(core_enrichment, core_enrichment_gene), 
+  mutate(
+    leading_edge = vapply(leading_edge, function(x) {
+      if (is.null(x) || all(is.na(x))) return(NA_character_)
+      paste(x, collapse = "/")
+    }, character(1)),
+    core_enrichment = as.character(core_enrichment),
+    core_enrichment_gene = as.character(core_enrichment_gene)
+  ) %>%
+  mutate(across(c(core_enrichment, core_enrichment_gene, leading_edge), 
                 function(x) {
                   x <- as.character(x)
                   ifelse(nchar(x) > 32000, paste0(substr(x, 1, 32000), "...[TRUNCATED]"), x)
@@ -1720,6 +1878,27 @@ supp_list <- list(
   "Redundancy_Log" = supp_redundancy         
 )
 
+# Add sheets for heatmap_df and heatmap_matrix (top/bottom 25 proteins)
+
+if (exists("top_bottom_genes")) {
+  supp_list[["TopBottom_Proteins"]] <- top_bottom_genes
+}
+if (exists("heatmap_df")) {
+  supp_list[["Heatmap_TopBottom25_Protein_Data"]] <- heatmap_df
+}
+if (exists("heatmap_matrix")) {
+  supp_list[["Heatmap_TopBottom25_Protein_Matrix"]] <- tibble::rownames_to_column(as.data.frame(heatmap_matrix), var = "Gene")
+}
+if (exists("core_long_df")) {
+  supp_list[["Core_Enrichment_Gene_LongFormat"]] <- core_long_df
+}
+if (exists("log2fc_long")) {
+  supp_list[["Log2FC_LongFormat"]] <- log2fc_long
+}
+if (exists("top_bottom_matrix")) {
+  supp_list[["TopBottom_Log2FC_Matrix"]] <- tibble::rownames_to_column(as.data.frame(top_bottom_matrix), var = "Gene")
+}
+
 supp_output_path <- file.path(subdirs$tables, "Supplementary_Data.xlsx")
 writexl::write_xlsx(supp_list, path = supp_output_path)
 
@@ -1747,7 +1926,7 @@ for (f in log2fc_files) {
         gene = up_genes,
         OrgDb = org.Mm.eg.db,
         keyType = "UNIPROT",
-        ont = "BP",
+        ont = ont,
         pAdjustMethod = "BH",
         pvalueCutoff = 1,
         qvalueCutoff = 1
@@ -1777,7 +1956,7 @@ for (f in log2fc_files) {
         gene = down_genes,
         OrgDb = org.Mm.eg.db,
         keyType = "UNIPROT",
-        ont = "BP",
+        ont = ont,
         pAdjustMethod = "BH",
         pvalueCutoff = 1,
         qvalueCutoff = 1
@@ -1814,12 +1993,12 @@ if (length(go_results_list) >= 2) {
     go_id_column = "ID",
     padj_column = "p.adjust",
     padj_cutoff = 0.05,
-    ont = "BP",
+    ont = ont,
     db = "org.Mm.eg.db",
     measure = "Sim_XGraSM_2013",
     method = "binary_cut",
     verbose = TRUE,
-    column_title = "simplifyGO: All comparisons",
+    column_title = paste0("simplifyGO: All comparisons (", ont, ")"),
     heatmap_param = list(
       col = c("white", "#faa51a"),
       breaks = c(1, 0.0001),
@@ -1860,10 +2039,21 @@ message("Analysis complete. Files saved to: ", main_output_dir)
 # Visualize GO term overlap across comparisons as a network graph
 # Nodes = GO terms (Description), edges = shared genes or Jaccard similarity
 ###############################################################
+
+
+# Network plot: check for nodes and edges before plotting
 if (!require("igraph")) install.packages("igraph")
 if (!require("ggraph")) install.packages("ggraph")
 library(igraph)
 library(ggraph)
+
+# --- Improvements ---
+# 1. Avoid duplicate edges (undirected graph)
+# 2. Allow Jaccard threshold as a parameter
+# 3. Improve node labeling (shorten or wrap if needed)
+# 4. Add comments for clarity
+
+network_jaccard_threshold <- 0.2 # set as parameter for easy adjustment
 
 # Use refined top_terms for network
 network_terms <- combined_df %>%
@@ -1874,47 +2064,60 @@ network_terms <- combined_df %>%
 # Map term to gene sets
 term_gene_map <- network_terms %>%
   group_by(Description) %>%
-  summarise(Genes = unique(unlist(core_genes)), .groups = "drop")
+  reframe(Genes = list(unique(unlist(core_genes))))
 
-# Create all pairs of terms (no self-pairs)
-term_pairs <- expand.grid(Term1 = term_gene_map$Description, Term2 = term_gene_map$Description, stringsAsFactors = FALSE)
-term_pairs <- term_pairs[term_pairs$Term1 != term_pairs$Term2, ]
+# Only proceed if there are at least 2 terms with genes
+if (nrow(term_gene_map) >= 2 && all(lengths(term_gene_map$Genes) > 0)) {
+  # Create all unique pairs of terms (no self-pairs, undirected)
+  term_pairs <- t(combn(term_gene_map$Description, 2))
+  term_pairs_df <- data.frame(Term1 = term_pairs[,1], Term2 = term_pairs[,2], stringsAsFactors = FALSE)
 
-# Compute Jaccard similarity for each pair
-get_genes <- function(term) term_gene_map$Genes[term_gene_map$Description == term][[1]]
-term_pairs$Jaccard <- mapply(function(a, b) {
-  genes_a <- get_genes(a)
-  genes_b <- get_genes(b)
-  if (length(genes_a) == 0 || length(genes_b) == 0) return(0)
-  length(intersect(genes_a, genes_b)) / length(union(genes_a, genes_b))
-}, term_pairs$Term1, term_pairs$Term2)
+  # Compute Jaccard similarity for each pair
+  get_genes <- function(term) term_gene_map$Genes[term_gene_map$Description == term][[1]]
+  term_pairs_df$Jaccard <- mapply(function(a, b) {
+    genes_a <- get_genes(a)
+    genes_b <- get_genes(b)
+    if (length(genes_a) == 0 || length(genes_b) == 0) return(0)
+    length(intersect(genes_a, genes_b)) / length(union(genes_a, genes_b))
+  }, term_pairs_df$Term1, term_pairs_df$Term2)
 
-# Filter edges: only show edges with Jaccard > 0.2
-edges <- term_pairs %>%
-  filter(Jaccard > 0.2)
+  # Filter edges: only show edges with Jaccard > threshold
+  edges <- term_pairs_df %>%
+    filter(Jaccard > network_jaccard_threshold)
 
-# Nodes: GO terms, add NES and significance info
-nodes <- combined_df %>%
-  filter(Description %in% top_terms) %>%
-  group_by(Description) %>%
-  summarise(Max_NES = NES[which.max(abs(NES))], Min_padj = min(p.adjust, na.rm = TRUE), .groups = "drop") %>%
-  mutate(Significant = Min_padj < 0.05)
+  # Nodes: GO terms, add NES and significance info
+  nodes <- combined_df %>%
+    filter(Description %in% top_terms) %>%
+    group_by(Description) %>%
+    summarise(Max_NES = NES[which.max(abs(NES))], Min_padj = min(p.adjust, na.rm = TRUE), .groups = "drop") %>%
+    mutate(Significant = Min_padj < 0.05)
 
-# Build igraph object
-net <- graph_from_data_frame(d = edges, vertices = nodes, directed = FALSE)
+  # Optionally shorten/wrap node labels for clarity
+  nodes$Label <- stringr::str_wrap(nodes$Description, width = 40)
 
-# Plot network graph
-network_plot_file <- file.path(subdirs$plots_main, "GO_Term_Overlap_Network.svg")
-svg(network_plot_file, width = 8, height = 8, family = "sans")
-ggraph(net, layout = "fr") +
-  geom_edge_link(aes(width = Jaccard), color = "#4c87c6", alpha = 0.4) +
-  geom_node_point(aes(color = Max_NES, size = Significant), show.legend = TRUE) +
-  geom_node_text(aes(label = name), repel = TRUE, size = 3) +
-  scale_color_gradientn(colours = custom_palette(100), name = "Max NES") +
-  scale_size_manual(values = c(`TRUE` = 6, `FALSE` = 3), name = "Significant") +
-  labs(title = "GO Term Overlap Network (Jaccard > 0.2)") +
-  theme_void()
-dev.off()
+  # Only plot if there are at least 2 nodes and at least 1 edge
+  if (nrow(nodes) >= 2 && nrow(edges) > 0) {
+    net <- graph_from_data_frame(d = edges, vertices = nodes, directed = FALSE)
+    network_plot_file <- file.path(subdirs$plots_main, "GO_Term_Overlap_Network.svg")
+    svg(network_plot_file, width = 8, height = 8, family = "sans")
+    print(
+      ggraph(net, layout = "fr") +
+        geom_edge_link(aes(width = Jaccard), color = "#4c87c6", alpha = 0.4) +
+        geom_node_point(aes(color = Max_NES, size = Significant), show.legend = TRUE) +
+        geom_node_text(aes(label = Label), repel = TRUE, size = 3) +
+        scale_color_gradientn(colours = custom_palette(100), name = "Max NES") +
+        scale_size_manual(values = c(`TRUE` = 6, `FALSE` = 3), name = "Significant") +
+        labs(title = paste0("GO Term Overlap Network (Jaccard > ", network_jaccard_threshold, ")")) +
+        theme_void()
+    )
+    dev.off()
+    message("GO Term Overlap Network plot saved to: ", network_plot_file)
+  } else {
+    message("Not enough nodes or edges for GO Term Overlap Network plot. Skipping plot generation.")
+  }
+} else {
+  message("Not enough GO terms with genes for network plot. Skipping plot generation.")
+}
 
 
 
@@ -1999,5 +2202,131 @@ writexl::write_xlsx(
   path = file.path(subdirs$tables, "Inferred_CellTypes_Per_Comparison.xlsx")
 )
 
+
+# -----------------------------------------------------
+# Create log file with session info and analysis summary
+# -----------------------------------------------------
+
+log_file <- file.path(main_output_dir, paste0("compareGO_analysis_log_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".txt"))
+
+log_lines <- list()
+log_lines[[length(log_lines)+1]] <- paste0("compareGO.r analysis log - ", Sys.time())
+log_lines[[length(log_lines)+1]] <- paste0("R version: ", R.version.string)
+log_lines[[length(log_lines)+1]] <- paste0("Platform: ", R.version$platform)
+log_lines[[length(log_lines)+1]] <- paste0("Working directory: ", getwd())
+log_lines[[length(log_lines)+1]] <- paste0("Base project path: ", base_project_path)
+log_lines[[length(log_lines)+1]] <- paste0("Ontology: ", ont)
+log_lines[[length(log_lines)+1]] <- paste0("Ensemble profiling: ", ensemble_profiling)
+log_lines[[length(log_lines)+1]] <- paste0("Condition: ", condition)
+log_lines[[length(log_lines)+1]] <- ""
+
+# Session info
+log_lines[[length(log_lines)+1]] <- "--- Session Info ---"
+log_lines[[length(log_lines)+1]] <- capture.output(sessionInfo())
+log_lines[[length(log_lines)+1]] <- ""
+
+# Analysis steps summary
+log_lines[[length(log_lines)+1]] <- "--- Analysis Steps and Results ---"
+
+# 1. Data import
+if (length(file_paths) > 0) {
+  log_lines[[length(log_lines)+1]] <- paste0("Imported ", length(file_paths), " enrichment CSV files from ", input_dir)
+} else {
+  log_lines[[length(log_lines)+1]] <- paste0("No enrichment CSV files found in ", input_dir, ". Downstream analyses skipped.")
+}
+
+# 2. Combined enrichment data
+if (exists("combined_df") && nrow(combined_df) > 0) {
+  log_lines[[length(log_lines)+1]] <- paste0("Combined enrichment data: ", nrow(combined_df), " rows.")
+} else {
+  log_lines[[length(log_lines)+1]] <- "No combined enrichment data available."
+}
+
+# 3. Top term selection
+if (exists("top_terms") && length(top_terms) > 0) {
+  log_lines[[length(log_lines)+1]] <- paste0("Selected ", length(top_terms), " top GO terms for visualization (redundancy filtered).")
+} else {
+  log_lines[[length(log_lines)+1]] <- "No significant GO terms found. Top term selection and downstream plots skipped."
+}
+
+# 4. Plots
+if (exists("comparison_plot_data") && nrow(comparison_plot_data) > 0) {
+  log_lines[[length(log_lines)+1]] <- "Generated comparison selection dotplot."
+} else {
+  log_lines[[length(log_lines)+1]] <- "Comparison selection dotplot skipped (no data)."
+}
+if (exists("heatmap_data") && nrow(heatmap_data) > 0) {
+  log_lines[[length(log_lines)+1]] <- "Generated enrichment heatmap."
+} else {
+  log_lines[[length(log_lines)+1]] <- "Enrichment heatmap skipped (no data)."
+}
+if (exists("dotplot") && exists("output_dotplot") && file.exists(output_dotplot)) {
+  log_lines[[length(log_lines)+1]] <- "Generated dotplot for top terms per comparison."
+} else {
+  log_lines[[length(log_lines)+1]] <- "Dotplot for top terms per comparison skipped."
+}
+if (exists("dotplot_top") && exists("output_dotplot_top") && file.exists(output_dotplot_top)) {
+  log_lines[[length(log_lines)+1]] <- "Generated dotplot for overall top terms."
+} else {
+  log_lines[[length(log_lines)+1]] <- "Dotplot for overall top terms skipped."
+}
+
+# 5. Core gene and Jaccard analysis
+if (exists("core_genes_df") && nrow(core_genes_df) > 0) {
+  log_lines[[length(log_lines)+1]] <- paste0("Extracted core genes for all comparisons (", nrow(core_genes_df), " rows).")
+} else {
+  log_lines[[length(log_lines)+1]] <- "Core gene extraction skipped (no data)."
+}
+if (exists("jaccard_matrix") && nrow(jaccard_matrix) > 0) {
+  log_lines[[length(log_lines)+1]] <- "Computed Jaccard similarity matrix and generated heatmap."
+} else {
+  log_lines[[length(log_lines)+1]] <- "Jaccard similarity analysis skipped (no data)."
+}
+
+# 6. Per-comparison volcano plots and heatmaps
+if (exists("log2fc_long") && nrow(log2fc_long) > 0) {
+  log_lines[[length(log_lines)+1]] <- paste0("Processed log2FC data for ", length(unique(log2fc_long$Comparison)), " comparisons.")
+} else {
+  log_lines[[length(log_lines)+1]] <- "Log2FC data import skipped or failed."
+}
+
+# 7. GO enrichment on up/downregulated proteins
+if (length(comparison_files) > 0) {
+  log_lines[[length(log_lines)+1]] <- paste0("Ran GO enrichment for up/downregulated proteins in ", length(comparisons), " comparisons.")
+} else {
+  log_lines[[length(log_lines)+1]] <- "GO enrichment on up/downregulated proteins skipped (no significant proteins found)."
+}
+
+# 8. simplifyGOFromMultipleLists
+if (exists("go_results_list") && length(go_results_list) >= 2) {
+  log_lines[[length(log_lines)+1]] <- paste0("Ran simplifyGOFromMultipleLists for ", length(go_results_list), " lists.")
+} else {
+  log_lines[[length(log_lines)+1]] <- "simplifyGOFromMultipleLists skipped (not enough lists with data)."
+}
+
+# 9. GO term overlap network
+if (exists("network_terms") && nrow(network_terms) > 1 && exists("edges") && nrow(edges) > 0) {
+  log_lines[[length(log_lines)+1]] <- "Generated GO term overlap network plot."
+} else {
+  log_lines[[length(log_lines)+1]] <- "GO term overlap network plot skipped (not enough nodes/edges)."
+}
+
+# 10. Cell type inference
+if (exists("comparison_proteins") && nrow(comparison_proteins) > 0) {
+  log_lines[[length(log_lines)+1]] <- "Inferred cell types for each comparison based on marker proteins."
+} else {
+  log_lines[[length(log_lines)+1]] <- "Cell type inference skipped (no protein data)."
+}
+
+# 11. Supplementary tables
+if (exists("supp_output_path") && file.exists(supp_output_path)) {
+  log_lines[[length(log_lines)+1]] <- "Generated supplementary tables Excel file."
+} else {
+  log_lines[[length(log_lines)+1]] <- "Supplementary tables not generated."
+}
+
+# Write log file
+writeLines(unlist(log_lines), con = log_file)
+message("Analysis log written to: ", log_file)
 
 
