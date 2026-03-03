@@ -94,12 +94,12 @@ create_analysis_dirs <- function(base_dir, comparison_name, ontology) {
     go_ont = file.path(base_dir, "Results", comparison_name, "GO", ontology),
     kegg = file.path(base_dir, "Results", comparison_name, "KEGG"),
     ora = file.path(base_dir, "Results", comparison_name, "ORA"),
-    custom = file.path(base_dir, "Results", comparison_name, "Custom"),
+    custom = file.path(base_dir, "Results", comparison_name, "Custom", ontology),
     pathview = file.path(base_dir, "Results", comparison_name, "pathview"),
     plots_go = file.path(base_dir, "Plots", comparison_name, paste0("GO_", ontology)),
     plots_kegg = file.path(base_dir, "Plots", comparison_name, "KEGG"),
     plots_ora = file.path(base_dir, "Plots", comparison_name, "ORA"),
-    plots_custom = file.path(base_dir, "Plots", comparison_name, "Custom"),
+    plots_custom = file.path(base_dir, "Plots", comparison_name, "Custom", ontology),
     core_enrich = file.path(base_dir, "Datasets/core_enrichment", ontology)
   )
   lapply(dirs, function(d) if (!dir.exists(d)) dir.create(d, recursive = TRUE))
@@ -127,7 +127,7 @@ read_gct <- function(file_path) {
 # 3. DATA INPUT/COMPARISONS
 # ----------------------------------------------------
 #mapped_dir <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/mapped"
-mapped_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/mapped/neuron-soma/forward/per_file"
+mapped_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/mapped/microglia/forward/per_file"
 comparison_files <- list.files(mapped_dir, pattern = "\\.csv$", full.names = FALSE)
 comparison_list <- lapply(comparison_files, function(f) {
   parts <- strsplit(sub("\\.csv$", "", f), "_")[[1]]
@@ -143,7 +143,7 @@ if (length(comparison_list) == 0) {
 working_base <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics"
 
 working_dir <- working_base
-mapped_data_base <- file.path(working_base, "Datasets/mapped/neuron-soma/forward/per_file")
+mapped_data_base <- file.path(working_base, "Datasets/mapped/microglia/forward/per_file")
 organism <- "org.Mm.eg.db"
 ont <- "BP"
 
@@ -171,7 +171,7 @@ cat("Setting up parallel processing with", n_cores, "cores using future\n")
 # ----------------------------------------------------
 analyze_comparison <- function(cell_types, working_base, mapped_data_base, organism, ont, 
                                nk3r_genes, selected_uniprot, path_ids) {
-  
+
   # Load required libraries in worker
   suppressPackageStartupMessages({
     library(clusterProfiler)
@@ -184,48 +184,43 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
     library(openxlsx)
     library(GOSemSim)
   })
-  
+
   # === CRITICAL FIX FOR PARALLEL PROCESSING ===
   # To avoid "undefined columns selected" / connection errors:
   # We must ensure the OrgDb is loaded FRESH in this worker process.
   # If it was inherited from the master process, the SQLite connection is dead.
+  comparison_name <- paste(cell_types, collapse = "_")
+
   tryCatch({
     # 1. If the namespace is already loaded (possibly inherited as zombie), UNLOAD it.
     if (organism %in% loadedNamespaces()) {
       unloadNamespace(organism)
     }
-    
+
     # 2. Load it fresh, establishing a new persistent SQLite connection
     library(organism, character.only = TRUE)
-    
+
     # 3. Get the object reference
     org_db_obj <- get(organism, envir = asNamespace(organism))
-    
-  }, error = function(e) {
-    stop("Failed to load OrgDb: ", organism, " - ", e$message)
-  })
-  
-  comparison_name <- paste(cell_types, collapse = "_")
-  
-  tryCatch({
+
     # Setup directories
     dirs <- create_analysis_dirs(working_base, comparison_name, ont)
-    
+
     # Define data file path
     file_name <- paste0(comparison_name, ".csv")
     data_path <- file.path(mapped_data_base, file_name)
-    
+
     if (!file.exists(data_path)) {
       return(list(status = "FAILED", comparison = comparison_name, error = "File not found"))
     }
-    
+
     # Load and prepare data
     df <- read.csv(data_path, header = TRUE, stringsAsFactors = FALSE)
-    
+
     if (nrow(df) == 0) {
-       return(list(status = "FAILED", comparison = comparison_name, error = "Data file is empty"))
+      return(list(status = "FAILED", comparison = comparison_name, error = "Data file is empty"))
     }
-    
+
     if (!"log2fc" %in% colnames(df)) {
       if ("logFC" %in% colnames(df)) {
         colnames(df)[colnames(df) == "logFC"] <- "log2fc"
@@ -233,32 +228,32 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
         return(list(status = "FAILED", comparison = comparison_name, error = "No log2fc column"))
       }
     }
-    
+
     colnames(df)[1] <- "gene_symbol"
     original_gene_list <- df$log2fc
     names(original_gene_list) <- df$gene_symbol
     gene_list <- sort(na.omit(original_gene_list), decreasing = TRUE)
     # Ensure simple named vector
     gene_list <- gene_list[!duplicated(names(gene_list))]
-    
+
     # Helper for cnetplot data
     # Create foldChange vector that is robust for cnetplot
     fc_for_cnet <- gene_list
-    
+
     top_df <- df
     colnames(top_df)[1] <- "gene_symbol"
     top_gene_list <- top_df$log2fc
     names(top_gene_list) <- top_df$gene_symbol
     top_gene_list <- sort(na.omit(top_gene_list), decreasing = TRUE)
     top_genes <- names(top_gene_list)[abs(top_gene_list) > 1]
-    
+
     if(length(top_genes) > 0) {
       top_genes <- sort(top_gene_list[top_genes], decreasing = TRUE)
       top_genes <- names(top_genes)
     } else {
       top_genes <- character(0)
     }
-    
+
     # ----------------------------------------------------
     # GSEA (GO) WITH OPTIONAL SIMPLIFICATION
     # ----------------------------------------------------
@@ -266,11 +261,10 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
     gse <- gseGO(geneList = gene_list, ont = ont, keyType = "UNIPROT", 
                  minGSSize = 10, maxGSSize = 800, pvalueCutoff = 1, 
                  verbose = FALSE, OrgDb = org_db_obj, pAdjustMethod = "BH")
-    
-    
+
     # Perform simplification ONLY if requested
     gse_simplified <- NULL  # Initialize as NULL
-    
+
     if (PERFORM_SIMPLIFICATION && !is.null(gse) && nrow(gse@result) > 0) {
       gse_temp <- tryCatch({
         simplify(gse, cutoff = SIMPLIFY_CUTOFF, by = "p.adjust", select_fun = min)
@@ -278,13 +272,13 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
         warning("Simplify failed for ", comparison_name, ": ", e$message)
         NULL  # Return NULL on failure
       })
-      
+
       # Validate S4 class
       if (!is.null(gse_temp) && (is(gse_temp, "gseaResult") || is(gse_temp, "enrichResult"))) {
         gse_simplified <- gse_temp
       }
     }
-    
+
     # Determine which version to use for plotting
     if (PERFORM_SIMPLIFICATION && !is.null(gse_simplified)) {
       gse_for_plot <- if(USE_SIMPLIFIED_FOR_PLOTS) gse_simplified else gse
@@ -294,7 +288,7 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
       gse_for_plot <- gse
       plot_suffix <- "_full"
     }
-    
+
     # Generate plots using selected version
     if (!is.null(gse_for_plot) && nrow(gse_for_plot@result) > 0) {
       plot_label <- if(PERFORM_SIMPLIFICATION && USE_SIMPLIFIED_FOR_PLOTS && !is.null(gse_simplified)) {
@@ -302,7 +296,7 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
       } else {
         "(Full)"
       }
-      
+
       tryCatch({
         gse_plot <- clusterProfiler::dotplot(gse_for_plot, showCategory = 10, split = ".sign") +
           facet_wrap(~ .sign, nrow = 1) +
@@ -320,18 +314,18 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
           )
         save_plot_organized(gse_plot, paste0("GSEA_", ont, "_dotplot", plot_suffix, ".svg"), dirs$plots_go)
       }, error=function(e) warning("GSEA dotplot failed: ", e$message))
-      
+
       # Other plots
       tryCatch({
         save_plot_organized(emapplot(pairwise_termsim(gse_for_plot), showCategory = 10), 
                             paste0("GSEA_", ont, "_emap", plot_suffix, ".svg"), dirs$plots_go)
       }, error=function(e) NULL)
-      
+
       tryCatch({
         save_plot_organized(cnetplot(gse_for_plot, categorySize = "pvalue", foldChange = fc_for_cnet), 
                             paste0("GSEA_", ont, "_cnet", plot_suffix, ".svg"), dirs$plots_go)
       }, error = function(e) warning("cnetplot failed: ", e$message))
-      
+
       tryCatch({
         ridgeplot_gse <- ridgeplot(gse_for_plot) + 
           labs(x = "Enrichment Distribution", 
@@ -339,13 +333,13 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
           theme_minimal()
         save_plot_organized(ridgeplot_gse, paste0("GSEA_", ont, "_ridge", plot_suffix, ".svg"), dirs$plots_go)
       }, error=function(e) NULL)
-      
+
       tryCatch({
         gseaplot_gse <- gseaplot(gse_for_plot, by = "all", 
                                  title = gse_for_plot@result$Description[1], geneSetID = 1)
         save_plot_organized(gseaplot_gse, paste0("GSEA_", ont, "_plot", plot_suffix, ".svg"), dirs$plots_go)
       }, error=function(e) NULL)
-      
+
       tryCatch({
         top_terms <- head(gse_for_plot@result$Description, 3)
         pmcplot_gse <- pmcplot(top_terms, 2010:2025, proportion = FALSE) + 
@@ -353,29 +347,29 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
         save_plot_organized(pmcplot_gse, paste0("GSEA_", ont, "_pubmed", plot_suffix, ".svg"), dirs$plots_go)
       }, error=function(e) NULL)
     }
-    
+
     # Save results based on whether simplification was performed
     write.csv(gse@result, 
               file = file.path(dirs$go_ont, paste0("GSEA_", ont, "_results_full.csv")), 
               row.names = FALSE)
-    
+
     if (PERFORM_SIMPLIFICATION && !is.null(gse_simplified)) {
       write.csv(gse_simplified@result, 
                 file = file.path(dirs$go_ont, paste0("GSEA_", ont, "_results_simplified.csv")), 
                 row.names = FALSE)
     }
-    
+
     # Save the version used for plots to core_enrich
     gse_for_export <- if(PERFORM_SIMPLIFICATION && USE_SIMPLIFIED_FOR_PLOTS && !is.null(gse_simplified)) {
       gse_simplified
     } else {
       gse
     }
-    
+
     write.csv(gse_for_export@result, 
               file = file.path(dirs$core_enrich, paste0(comparison_name, plot_suffix, ".csv")), 
               row.names = FALSE)
-    
+
     # ----------------------------------------------------
     # ORA WITH OPTIONAL SIMPLIFICATION
     # ----------------------------------------------------
@@ -383,10 +377,10 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
       ora <- enrichGO(gene = top_genes, ont = ont, keyType = "UNIPROT", 
                       minGSSize = 10, maxGSSize = 800, pvalueCutoff = 1, 
                       OrgDb = org_db_obj, pAdjustMethod = "BH")
-      
+
       # Simplify ONLY if requested
       ora_simplified <- NULL
-      
+
       if (PERFORM_SIMPLIFICATION && nrow(ora@result) > 0) {
         ora_simplified <- tryCatch({
           simplify(ora, cutoff = SIMPLIFY_CUTOFF, by = "p.adjust", select_fun = min)
@@ -394,97 +388,104 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
           warning("ORA simplify failed for ", comparison_name, ": ", e$message)
           NULL
         })
-        
+
         # Validate S4 class
         if (!is.null(ora_simplified) && !is(ora_simplified, "enrichResult")) {
           ora_simplified <- NULL
         }
       }
-      
+
       # Determine version for plotting
       if (PERFORM_SIMPLIFICATION && !is.null(ora_simplified)) {
         ora_for_plot <- if(USE_SIMPLIFIED_FOR_PLOTS) ora_simplified else ora
       } else {
         ora_for_plot <- ora
       }
-      
+
       if (nrow(ora_for_plot@result) > 0) {
         plot_label <- if(PERFORM_SIMPLIFICATION && USE_SIMPLIFIED_FOR_PLOTS && !is.null(ora_simplified)) {
           "(Simplified)"
         } else {
           "(Full)"
         }
-        
+
         ora_plot <- clusterProfiler::dotplot(ora_for_plot, showCategory = 10) + 
           labs(title = paste("ORA", ont, "- Top Regulated Genes", plot_label)) + 
           scale_x_continuous(limits = c(0, 1))
         save_plot_organized(ora_plot, paste0("ORA_", ont, "_dotplot", plot_suffix, ".svg"), dirs$plots_ora)
       }
-      
+
       # Save results
       write.csv(ora@result, 
                 file = file.path(dirs$ora, paste0("ORA_", ont, "_results_full.csv")), 
                 row.names = FALSE)
-      
+
       if (PERFORM_SIMPLIFICATION && !is.null(ora_simplified)) {
         write.csv(ora_simplified@result, 
                   file = file.path(dirs$ora, paste0("ORA_", ont, "_results_simplified.csv")), 
                   row.names = FALSE)
       }
     }
-    
+
     # ----------------------------------------------------
     # KEGG GSEA (No simplification - KEGG specific)
     # ----------------------------------------------------
     ids <- tryCatch({
       bitr(names(original_gene_list), fromType = "UNIPROT", toType = "ENTREZID", OrgDb = org_db_obj)
     }, error = function(e) NULL)
-    
+
     if(!is.null(ids)) {
       dedup_ids <- ids[!duplicated(ids$UNIPROT), ]
       df2 <- merge(df, dedup_ids, by.x = "gene_symbol", by.y = "UNIPROT")
-      
+
       kegg_gene_list <- df2$log2fc
       names(kegg_gene_list) <- df2$ENTREZID
       kegg_gene_list <- kegg_gene_list[!duplicated(names(kegg_gene_list))]
       kegg_gene_list <- sort(na.omit(kegg_gene_list), decreasing = TRUE)
-      
+
       kk2 <- gseKEGG(geneList = kegg_gene_list, organism = "mmu", 
                      minGSSize = 10, maxGSSize = 800, pvalueCutoff = 1, 
                      pAdjustMethod = "BH", keyType = "ncbi-geneid", verbose = FALSE)
-      
+
       if (!is.null(kk2) && nrow(kk2@result) > 0) {
         kegg_dot <- clusterProfiler::dotplot(kk2, showCategory = 10, split = ".sign") + 
           facet_wrap(~ .sign, nrow = 1) + 
           labs(title = "KEGG GSEA") + 
           theme_minimal()
         save_plot_organized(kegg_dot, "KEGG_dotplot.svg", dirs$plots_kegg)
-        
+
         tryCatch({
           save_plot_organized(emapplot(pairwise_termsim(kk2), showCategory = 10), "KEGG_emap.svg", dirs$plots_kegg)
         }, error=function(e){})
-        
+
         tryCatch({
           save_plot_organized(cnetplot(kk2, categorySize = "pvalue", foldChange = gene_list), "KEGG_cnet.svg", dirs$plots_kegg)
         }, error=function(e){})
-        
+
         tryCatch({
           save_plot_organized(ridgeplot(kk2), "KEGG_ridge.svg", dirs$plots_kegg)
         }, error=function(e){})
-        
+
         save_plot_organized(gseaplot(kk2, by = "all", title = kk2$Description[1], geneSetID = 1), "KEGG_plot.svg", dirs$plots_kegg)
         write.csv(kk2@result, file = file.path(dirs$kegg, "KEGG_GSEA_results.csv"), row.names = FALSE)
+        # Also save the version used for plots to core_enrich
+        write.csv(kk2@result, file = file.path(dirs$core_enrich, paste0(comparison_name, "_KEGG.csv")), row.names = FALSE)
+
+        # Additionally, save to core_enrich with ontology set to 'KEGG'
+        core_enrich_kegg_dir <- file.path(working_base, "Datasets/core_enrichment", "KEGG")
+        if (!dir.exists(core_enrich_kegg_dir)) dir.create(core_enrich_kegg_dir, recursive = TRUE)
+        write.csv(kk2@result, file = file.path(core_enrich_kegg_dir, paste0(comparison_name, "_KEGG.csv")), row.names = FALSE)
       } else {
         # Create empty file so we know it ran but found nothing
         write.csv(data.frame(), file = file.path(dirs$kegg, "KEGG_GSEA_results_EMPTY.csv"))
       }
-      
+
       # Pathview
       pathview_dir <- normalizePath(dirs$pathview, winslash = "/", mustWork = FALSE)
       tryCatch({
         oldwd <- getwd()
         if(file.exists(pathview_dir)) setwd(pathview_dir)
-        
+
         lapply(path_ids, function(pid) {
           try({
             pathview(gene.data = kegg_gene_list, pathway.id = pid, species = "mmu", 
@@ -502,7 +503,7 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
     # ----------------------------------------------------
     go_enrich <- enrichGO(gene = names(gene_list), universe = names(gene_list), 
                           OrgDb = org_db_obj, keyType = 'UNIPROT', readable = TRUE, 
-                          ont = "BP", pvalueCutoff = 1, qvalueCutoff = 1, 
+                          ont = ont, pvalueCutoff = 1, qvalueCutoff = 1, 
                           pAdjustMethod = "BH", minGSSize = 10, maxGSSize = 800)
     
     
