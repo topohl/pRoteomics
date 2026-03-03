@@ -262,6 +262,29 @@ plt_fwhm <- ggplot(data, aes(x = FWHM.Scans, y = FWHM.RT, color = celltype_layer
     panel.grid.minor = element_blank()
   )
 
+# mass accuracy MA plot
+# MA plot: log2 ratio (y) vs log2 intensity (x)
+if (all(c("MS1.Signal", "MS2.Signal") %in% colnames(data))) {
+  ma_data <- data %>%
+    mutate(
+      log2_intensity = log2((MS1.Signal + MS2.Signal) / 2),
+      log2_ratio = log2(MS2.Signal / MS1.Signal)
+    )
+  plt_ma <- ggplot(ma_data, aes(x = log2_intensity, y = log2_ratio, color = celltype_layer)) +
+    geom_point(size = 3, alpha = 0.8) +
+    labs(title = "MA Plot: log2 Ratio vs log2 Intensity", x = "log2(Intensity)", y = "log2(MS2/MS1)") +
+    scale_color_manual(values = celltype_colors, name = NULL) +
+    theme_minimal(base_size = 18) +
+    theme(
+      legend.position = "bottom",
+      aspect.ratio = 1,
+      plot.title = element_text(face = "bold", size = 14),
+      panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank()
+    )
+  ggsave(filename = paste0(saving_dir, "qc_ma_plot.svg"), plot = plt_ma, width = 10, height = 10, units = "cm")
+}
+
 # 3. Mass Accuracy (MS1 and MS2, raw and corrected)
 plt_massacc <- ggplot(data, aes(x = Median.Mass.Acc.MS1, y = Median.Mass.Acc.MS2, color = celltype_layer)) +
   geom_point(size = 3, alpha = 0.8) +
@@ -454,3 +477,5 @@ norminstab_outliers <- data %>%
   filter(abs(norminstab_z) > 3)
 print(norminstab_outliers)
 write.csv(norminstab_outliers, file = paste0(saving_dir, "normalisation_instability_outliers.csv"), row.names = FALSE)
+
+
