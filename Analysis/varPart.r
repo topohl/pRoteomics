@@ -12,17 +12,18 @@ knitr::opts_chunk$set(
 options(width = 100)
 
 ## ----simResult, cache=TRUE, fig.height=4, fig.width=4---------------------------------------------
-if (!requireNamespace("pacman", quietly = TRUE)) install.packages("pacman")
-# load CRAN packages
-pacman::p_load(readxl, tibble, dplyr, svglite)
 
-# Ensure variancePartition is installed (use BiocManager for Bioconductor package),
-# then load it with library() to avoid pacman's argument-parsing ambiguities.
+# Improved package loading
+if (!requireNamespace("pacman", quietly = TRUE)) install.packages("pacman")
+invisible(suppressMessages(pacman::p_load(readxl, tibble, dplyr, svglite)))
+
+# Install BiocManager only if needed for variancePartition
 if (!requireNamespace("variancePartition", quietly = TRUE)) {
+    message("Installing Bioconductor package 'variancePartition'...")
     if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager")
     BiocManager::install("variancePartition", ask = FALSE, update = FALSE)
 }
-library(variancePartition)
+suppressPackageStartupMessages(library(variancePartition))
 
 # load simulated data:
 # geneExpr: matrix of gene expression values
@@ -36,11 +37,25 @@ if (!dir.exists(output_dir)) {
     dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 }
 
+#output_dir <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Results/varPart"
+#if (!dir.exists(output_dir)) {
+#    dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+#}
+
 # load data from two excel files in directory
 
-geneExpr <- read_excel("S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/data/gene_expression.xlsx")
-info <- read_excel("S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/data/sample_info.xlsx")
-rownames(info) <- info$row.names
+geneExpr <- read_excel("S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/data/gene_expression_neuron-soma.xlsx")
+info <- read_excel("S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/data/sample_info_neuron-soma.xlsx")
+# Fix: Use correct column name for rownames
+if (!"row.names" %in% colnames(info)) {
+    cat("Available columns in info:", paste(colnames(info), collapse=", "), "\n")
+    stop("Column 'row.names' not found in info. Please check the Excel file and update the code with the correct column name.")
+}
+rownames(info) <- info[["row.names"]]
+
+#geneExpr <- read_excel("S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/gct/data/gene_expression.xlsx")
+#info <- read_excel("S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/gct/data/sample_info.xlsx")
+#rownames(info) <- info$row.names
 
 # 1. Extract first column name (gene names column)
 gene_id_col <- colnames(geneExpr)[1]
@@ -71,7 +86,9 @@ geneExpr <- as.matrix(geneExpr)
 # Individual and Tissue are both categorical,
 # so model them as random effects
 # Note the syntax used to specify random effects
-form <- ~ celltype + region + layer + group + ReplicateGroup + (1|AnimalID) + (1|plate)
+#form <- ~ celltype + region + layer + group + ReplicateGroup + (1|AnimalID) + (1|plate)
+
+form <- ~ celltype + ReplicateGroup + (1|AnimalID) + (1|plate)
 
 # Fit model and extract results
 # 1) fit linear mixed model on gene expression
@@ -93,14 +110,18 @@ info <- as.data.frame(info)
 rownames(info) <- info$row.names
 
 info$ReplicateGroup <- factor(info$ReplicateGroup)
-info$celltype       <- factor(info$celltype)
+#info$celltype       <- factor(info$celltype)
 info$region         <- factor(info$region)
-info$layer          <- factor(info$layer)
+#info$layer          <- factor(info$layer)
 info$ExpGroup       <- factor(info$ExpGroup)
 
+
 # 3. Define a minimal, non‐collinear formula:
-form <- ~ (1 | celltype) + (1|region) + (1|layer) + (1|ReplicateGroup) + (1|ExpGroup) +
-         (1|AnimalID) + (1|plate)
+form <- ~ (1|region) + (1|ReplicateGroup) + (1|ExpGroup) +
+     (1|AnimalID) + (1|plate)
+
+#form <- ~ (1 | celltype) + (1 | ExpGroup) + (1 | ReplicateGroup) +
+#         (1 | AnimalID) +  plate
 
 # now run
 varPart <- fitExtractVarPartModel(geneExpr, form, info)
@@ -118,7 +139,41 @@ ggsave(file.path(output_dir, "Figure1a.svg"), plot = last_plot(), device = "svg"
 
 # Figure 1b
 # violin plot of contribution of each variable to total variance
-plotVarPart(vp)
+plotVarPart(vp, col = c("#4A90E2", "#50C878", "#FF6B6B", "#FFD93D", "#6C5CE7",
+                        "#A7C7E7", "#B5D6C3", "#E2D4BA", "#F6EAC2", "#C9BBCF", 
+                        "#D6E3E6", "#BFD8B8", "#E8CFC2", "#B4C6A6", "#E2CFC4", 
+                        "#B8B8FF", "#F1FAEE", "#B0A8B9", "#A3B18A", "#B7B7A4"
+                        )) + 
+    theme_minimal() +
+    theme(
+        text = element_text(size = 20, family = "sans"),
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 20),
+        axis.text.y = element_text(size = 20),
+        axis.title = element_text(size = 20, face = "bold"),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        plot.title = element_text(face = "bold", hjust = 0.5, size = 18),
+        plot.margin = margin(20, 20, 20, 20),
+        legend.position = "right",
+        legend.text = element_text(size = 20),
+        legend.title = element_text(size = 20, face = "bold"),
+        panel.background = element_rect(fill = "white", color = NA),
+        plot.background = element_rect(fill = "white", color = NA),
+        panel.border = element_blank(),
+        axis.line = element_blank()
+    ) +
+    scale_fill_manual(values = c("#A3B18A", "#B5C9C3", "#D6CFC7", "#E9D8A6", "#B7B7A4",
+                                 "#A9BCD0", "#C9ADA7", "#BFD8B8", "#B5B2C2", "#DDBEA9",
+                                 "#B4C6A6", "#C6DEF1", "#E2CFC4", "#B8B8FF", "#B0A8B9"
+    )) +
+    scale_color_manual(values = c(
+        "#A3B18A", "#B5C9C3", "#D6CFC7", "#E9D8A6", "#B7B7A4",
+        "#A9BCD0", "#C9ADA7", "#BFD8B8", "#B5B2C2", "#DDBEA9",
+        "#B4C6A6", "#C6DEF1", "#E2CFC4", "#B8B8FF", "#B0A8B9"
+    )) +
+    labs(fill = "Variable", 
+         y = "Fraction of Variance Explained",
+         title = "Variance Partition Analysis")
 
 # save in output dir
 ggsave(file.path(output_dir, "Figure1b.svg"), plot = last_plot(), device = "svg")
@@ -197,7 +252,8 @@ fit <- lmer(form_test, info, REML = FALSE)
 calcVarPart(fit)
 
 ## ----canCorPairs, cache=TRUE, results='hide', fig.width=5, fig.height=5---------------------------
-form <- ~ (1 | AnimalID) + celltype + (1 | region) + (1 | plate) + (1 | layer) + ExpGroup + ReplicateGroup
+#form <- ~ (1 | AnimalID) + celltype + (1 | region) + (1 | plate) + (1 | layer) + ExpGroup + ReplicateGroup
+form <- ~ (1 | AnimalID) + celltype + ExpGroup + ReplicateGroup + (1 | plate)
 
 # Compute Canonical Correlation Analysis (CCA)
 # between all pairs of variables
