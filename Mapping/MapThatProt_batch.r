@@ -23,27 +23,29 @@
 #' 
 #' @date 2025-12-15
 
+# --- Package Management ---
+# Automatically install and load necessary CRAN and Bioconductor packages.
 if (!requireNamespace("pacman", quietly = TRUE)) install.packages("pacman")
 pacman::p_load(dplyr, stringr, tidyr, purrr, readr, R.utils, foreach, doParallel, readxl, AnnotationDbi, org.Mm.eg.db, UniProt.ws)
 
-mapped_comparisons <- "neuron-soma"  # specify the comparison folder to process
+# --- Configuration & Experimental Settings ---
+mapped_comparisons <- "microglia"  # specify the comparison folder to process
 map_reverse <- FALSE
 
-#working_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/"
+# Define root file paths
 working_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/"
 comparison_dir <- if (isTRUE(map_reverse)) file.path(mapped_comparisons, "reverse") else file.path(mapped_comparisons, "forward")
 raw_dir <- file.path(working_dir, "Datasets", "raw", comparison_dir)
 
+# Define output directories for mapped datasets, unmapped trackers, and QC info
 info_dir <- file.path(working_dir, "Datasets", "mapped", comparison_dir, "info")
-
 mapped_dir <- file.path(working_dir, "Datasets", "mapped", comparison_dir, "per_file")
 mapped_summary_dir <- file.path(working_dir, "Datasets", "mapped", comparison_dir, "summaries")
-
 unmapped_dir <- file.path(working_dir, "Datasets", "unmapped", comparison_dir, "per_file")
 unmapped_summary_dir <- file.path(working_dir, "Datasets", "unmapped", comparison_dir, "summaries")
-
 report_dir <- file.path(working_dir, "Datasets", "mapping_reports", comparison_dir)
 
+# Initialize output folder structure
 dir.create(info_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(mapped_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(mapped_summary_dir, recursive = TRUE, showWarnings = FALSE)
@@ -51,13 +53,13 @@ dir.create(unmapped_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(unmapped_summary_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(report_dir, recursive = TRUE, showWarnings = FALSE)
 
-
 setwd(working_dir)
 
+# --- Reference Databases ---
+# Define path for central UniProt species-specific knowledgebase flatfile
 uniprot_mapping_file_path <- file.path(working_dir, "Datasets", "MOUSE_10090_idmapping.dat")
-#protein2ipr_mapping_file_path <- file.path(working_dir, "Datasets", "protein2ipr.dat")
 
-# ensure mapping file is present (download if necessary)
+# Auto-download the UniProt mapping file if missing (useful for reproducibility)
 if (!file.exists(uniprot_mapping_file_path)) {
     cat("UniProt mapping file not found at:", uniprot_mapping_file_path, "\nAttempting to download...\n")
     options(timeout = 3600)
@@ -70,7 +72,7 @@ if (!file.exists(uniprot_mapping_file_path)) {
     }, error = function(e) stop("Failed to download/unzip UniProt mapping file: ", e$message))
 }
 
-# load mapping once
+# Parse the UniProt mapping dictionary natively into memory
 cat("Loading UniProt mapping file from:", uniprot_mapping_file_path, "\n")
 uniprot_mapping <- readr::read_tsv(
     uniprot_mapping_file_path,
@@ -78,6 +80,8 @@ uniprot_mapping <- readr::read_tsv(
     col_types = "ccc",
     quote = ""
 )
+
+# Extract core UniProtKB canonical accessions to Entry name mapping
 entry_name_to_accession <- uniprot_mapping %>%
     filter(Type == "UniProtKB-ID") %>%
     dplyr::select(UniProt_Accession, UniProtKB_ID = Value) %>%
@@ -85,19 +89,17 @@ entry_name_to_accession <- uniprot_mapping %>%
 
 if (nrow(entry_name_to_accession) == 0) stop("No UniProtKB-ID mappings found in mapping file.")
 
-# find CSV files
+# Collect raw target files for batch proteomic mapping
 csv_files <- list.files(raw_dir, pattern = ".*_.*\\.csv$", full.names = TRUE)
 if (length(csv_files) == 0) stop("No .csv files found in: ", raw_dir)
 
-# Optional manual mapping file (user-provided), columns can include:
-# original_symbol OR symbol OR input OR gene_symbol
-# final_accession OR accession OR uniprot OR uniprot_accession
-# Manual mapping is provided as an Excel file with columns:
-# "gene_symbol" (unmapped) and "mapped_gene_symbol" (mapped)
+# --- Manual Override Configuration ---
+# Optional manual curation file. This is crucial for resolving heavily ambiguous 
+# protein groups or unannotated gene symbols common in exploratory proteomics.
 if (!requireNamespace("readxl", quietly = TRUE)) install.packages("readxl")
 
 manual_mapping_path <- file.path(working_dir, "Datasets", "manual_mapping.xlsx")
-manual_override <- TRUE  # if TRUE, manual map can overwrite previously resolved entries
+manual_override <- TRUE  # TRUE enforces curation over algorithmic mapping
 
 read_manual_xlsx <- function(path) {
     mm <- try(readxl::read_excel(path, sheet = 1), silent = TRUE)
@@ -105,6 +107,7 @@ read_manual_xlsx <- function(path) {
         message("Manual mapping Excel unreadable or empty: ", path)
         return(NULL)
     }
+    # Normalize curation column headers
     mm %>%
         dplyr::mutate(dplyr::across(dplyr::everything(), ~ toupper(trimws(as.character(.))))) %>%
         dplyr::rename_with(tolower)
@@ -118,7 +121,6 @@ manual_mapping <- if (file.exists(manual_mapping_path)) {
 }
 
 if (!is.null(manual_mapping)) {
-    # Ensure expected columns exist for symbol-to-symbol mapping
     needed <- c("gene_symbol", "mapped_gene_symbol")
     missing_cols <- setdiff(needed, names(manual_mapping))
     if (length(missing_cols)) {
@@ -128,9 +130,12 @@ if (!is.null(manual_mapping)) {
     }
 }
 
+# --- Core Mapping Function ---
+# This function is executed asynchronously for each input proteomics file.
 process_file <- function(data_path) {
     message("Processing file: ", data_path)
 
+    # Ingest generic CSV arrays, supporting delimiter fallbacks (e.g. European CSVs)
     df_raw <- tryCatch(
         readr::read_csv(data_path, col_names = TRUE, show_col_types = FALSE, trim_ws = TRUE, quote = "\""),
         error = function(e) {
@@ -139,11 +144,22 @@ process_file <- function(data_path) {
         }
     )
 
+    # Coerce assumed key column to 'gene_symbol' representation
     if (!"gene_symbol" %in% names(df_raw)) {
         names(df_raw)[1] <- "gene_symbol"
         message("Renamed first column to 'gene_symbol' for file: ", data_path)
     }
 
+    # Mark rows that have protein groups (indicated by semicolons)
+    df_raw <- df_raw %>%
+    dplyr::mutate(
+        original_row_id = dplyr::row_number(),
+        original_gene_symbol = gene_symbol,
+        multi_protein = stringr::str_detect(gene_symbol, ";")
+    )
+
+    # --- Bioinformatics String Normalization Functions ---
+    # Strip whitespace, illegal characters, and formatting artifacts
     normalize_token <- function(x) {
         x <- as.character(x)
         x <- sub("\\s.*$", "", x)
@@ -154,19 +170,23 @@ process_file <- function(data_path) {
         x <- gsub("__+", "_", x)
         x
     }
+    # Decouple isoform numbers (e.g., Q91X11-2 -> Q91X11) and _MOUSE suffixes
     to_base_no_iso_mouse <- function(x) {
         x <- gsub("-\\d+$", "", x)
         gsub("_MOUSE$", "", x)
     }
+    # Validate strictly canonical UniProt lengths & formats
     is_uniprot_ac <- function(x) {
         grepl("^(?:[OPQ][0-9][A-Z0-9]{3}[0-9]|[A-NR-Z][0-9][A-Z0-9]{3}[0-9]|A0A[0-9A-Z]{7})$", x)
     }
+    # Parse likely accessions stringed into fasta headers
     extract_ac <- function(s) {
         s <- as.character(s)
         m <- stringr::str_match(s, "(?i)(?:^|\\|)([OPQ][0-9][A-Z0-9]{3}[0-9]|[A-NR-Z][0-9][A-Z0-9]{3}[0-9]|A0A[0-9A-Z]{7})(?:\\-|\\||$|[^A-Z0-9])")
         out <- ifelse(is.na(m[,2]), NA_character_, toupper(m[,2]))
         gsub("-\\d+$", "", out)
     }
+    # Look for Entry Names (e.g. MAPK1_MOUSE)
     extract_entry <- function(s) {
         s <- as.character(s)
         m <- stringr::str_match(s, "(?i)(?:^|\\|)([A-Z0-9]+_MOUSE)(?:\\||$|\\s)")
@@ -179,8 +199,20 @@ process_file <- function(data_path) {
     }
     nz <- function(x) !is.na(x) & nzchar(x)
 
+    # --- Primary Tokenization Pipeline ---
     df_tok <- df_raw %>%
-        tidyr::separate_rows(gene_symbol, sep = ";") %>%
+        dplyr::mutate(
+            gene_symbol_split = stringr::str_split(gene_symbol, ";"),
+            n_proteins = purrr::map_int(gene_symbol_split, length),
+            kept_symbol = purrr::map_chr(gene_symbol_split, 1), # Keep the leading master protein
+            dropped_symbols = purrr::map_chr(
+                gene_symbol_split,
+                ~ if (length(.) > 1) paste(.[-1], collapse = ";") else NA_character_
+            )
+        ) %>%
+        dplyr::mutate(
+            gene_symbol = kept_symbol
+        ) %>%
         dplyr::mutate(
             token_raw = trimws(as.character(gene_symbol)),
             token_up  = normalize_token(token_raw),
@@ -189,10 +221,12 @@ process_file <- function(data_path) {
         ) %>%
         dplyr::filter(nzchar(token_up)) %>%
         dplyr::mutate(
+            # Coerce everything to a stripped logical base identifier
             token_base = dplyr::case_when(
                 nz(entry_guess_up) ~ to_base_no_iso_mouse(entry_guess_up),
                 TRUE               ~ to_base_no_iso_mouse(token_up)
             ),
+            # Stratify identity classes for the resolution cascade mapping
             token_kind = dplyr::case_when(
                 nz(acc_guess)                          ~ "AC_GUESS",
                 nz(entry_guess_up)                     ~ "ENTRY_GUESS",
@@ -201,14 +235,14 @@ process_file <- function(data_path) {
                 TRUE                                   ~ "SYMBOL_OR_ALIAS"
             )
         ) %>%
-        dplyr::distinct(token_up, .keep_all = TRUE) %>%
-        dplyr::filter(grepl("_MOUSE$", token_up))  # enforce _MOUSE filter
+        dplyr::filter(grepl("_MOUSE$", token_up))  # Core species filter mapping enforcer
 
     if (nrow(df_tok) == 0) {
         message("No _MOUSE entries remaining after exclusion in file: ", data_path)
-        return(invisible(list(unmapped_table = tibble::tibble(gene_symbol = character()))))
+        return(invisible(list(unmapped_table = tibble::tibble(gene_symbol = character()), multi_protein_log_table = tibble::tibble())))
     }
 
+    # Extract clean MOUSE reference entities from the local index
     entry_map <- uniprot_mapping %>%
         dplyr::filter(Type == "UniProtKB-ID") %>%
         dplyr::transmute(
@@ -219,6 +253,7 @@ process_file <- function(data_path) {
         dplyr::filter(grepl("_MOUSE\\s*$", entry_full), nzchar(UNIPROT)) %>%
         dplyr::distinct(entry_base, .keep_all = TRUE)
 
+    # Build primary synonym translation table and resolve review status overlaps (A0A -> SP/TR)
     gene_map <- uniprot_mapping %>%
         dplyr::filter(Type %in% c("Gene_Name", "Gene_Name(synonym)", "Gene_Synonym")) %>%
         dplyr::transmute(
@@ -226,7 +261,7 @@ process_file <- function(data_path) {
             input            = toupper(trimws(Value))
         ) %>%
         dplyr::filter(nzchar(input), nzchar(primaryAccession)) %>%
-        dplyr::mutate(pref = !startsWith(primaryAccession, "A0A")) %>%
+        dplyr::mutate(pref = !startsWith(primaryAccession, "A0A")) %>% # Favor non-TREMBL logic
         dplyr::arrange(dplyr::desc(pref), primaryAccession, input) %>%
         dplyr::group_by(input) %>% dplyr::slice_head(n = 1) %>% dplyr::ungroup() %>%
         dplyr::select(input, primaryAccession)
@@ -238,6 +273,7 @@ process_file <- function(data_path) {
 
     if (!nrow(entry_map)) stop("entry_map is empty after robust parse")
 
+    # Start tracking mapping states
     resolved <- df_tok %>%
         dplyr::transmute(
             token_raw, token_up, token_base, token_kind,
@@ -248,12 +284,16 @@ process_file <- function(data_path) {
             strategy = NA_character_
         )
 
+    # --- Resolution Cascade / ID Mapping Algorithms ---
+    
+    # Strategy 1: The token clearly contains a strict UniProt Accession
     idx0 <- which(nz(resolved$acc_guess))
     if (length(idx0)) {
         resolved$Resolved_UNIPROT[idx0] <- resolved$acc_guess[idx0]
         resolved$strategy[idx0] <- "accept_accession_in_token"
     }
 
+    # Strategy 2: Pre-parsed base natively resolves as UniProt Accession
     need <- which(is.na(resolved$Resolved_UNIPROT) | !nzchar(resolved$Resolved_UNIPROT))
     if (length(need)) {
         idx_ac <- need[is_uniprot_ac(resolved$token_base[need])]
@@ -263,6 +303,7 @@ process_file <- function(data_path) {
         }
     }
 
+    # Strategy 3: Lookup recognized ENTRY names against our index
     need <- which(is.na(resolved$Resolved_UNIPROT) | !nzchar(resolved$Resolved_UNIPROT))
     idx_en_guess <- need[nz(resolved$entry_guess_up[need])]
     if (length(idx_en_guess)) {
@@ -276,6 +317,7 @@ process_file <- function(data_path) {
         }
     }
 
+    # Strategy 4: Fallback for explicit ENTRY classes without guess hints
     need <- which(is.na(resolved$Resolved_UNIPROT) | !nzchar(resolved$Resolved_UNIPROT))
     idx_en <- need[resolved$id_class[need] %in% c("ENTRY")]
     if (length(idx_en)) {
@@ -288,6 +330,7 @@ process_file <- function(data_path) {
         }
     }
 
+    # Strategy 5: Translate Symbol/Alias to Primary Accessions locally
     need <- which(is.na(resolved$Resolved_UNIPROT) | !nzchar(resolved$Resolved_UNIPROT))
     idx_sym <- need[resolved$id_class[need] == "SYMBOL_OR_ALIAS"]
     if (length(idx_sym) && nrow(gene_map)) {
@@ -301,6 +344,7 @@ process_file <- function(data_path) {
         }
     }
 
+    # Strategy 6: Re-route unresolved entries via the Gene Name local dictionary
     need <- which(is.na(resolved$Resolved_UNIPROT) | !nzchar(resolved$Resolved_UNIPROT))
     idx_entry_to_gene <- need[resolved$id_class[need] %in% c("ENTRY","ENTRY_GUESS")]
     if (length(idx_entry_to_gene) && nrow(gene_map)) {
@@ -317,6 +361,7 @@ process_file <- function(data_path) {
         }
     }
 
+    # Strategy 7: Deduce missing proteins using Entry family prefix inference logic
     need <- which(is.na(resolved$Resolved_UNIPROT) | !nzchar(resolved$Resolved_UNIPROT))
     idx_family <- need[resolved$id_class[need] %in% c("SYMBOL_OR_ALIAS","ENTRY","ENTRY_GUESS")]
     if (length(idx_family) && nrow(entry_map)) {
@@ -347,7 +392,7 @@ process_file <- function(data_path) {
         }
     }
 
-    # OrgDb strategies
+    # Strategy 8: External DB Integration - Bioconductor OrgDb API (org.Mm.eg.db)
     if (requireNamespace("AnnotationDbi", quietly = TRUE) && requireNamespace("org.Mm.eg.db", quietly = TRUE)) {
         need_idx <- which((is.na(resolved$Resolved_UNIPROT) | !nzchar(resolved$Resolved_UNIPROT)) & resolved$id_class == "SYMBOL_OR_ALIAS")
         need_ids <- toupper(unique(resolved$token_base[need_idx]))
@@ -386,6 +431,7 @@ process_file <- function(data_path) {
             }
         }
 
+        # Sub-strategy: Route Symbol -> EntrezID -> UniProt to bridge mapping gaps
         need_idx <- which((is.na(resolved$Resolved_UNIPROT) | !nzchar(resolved$Resolved_UNIPROT)) & resolved$id_class == "SYMBOL_OR_ALIAS")
         need_ids <- toupper(unique(resolved$token_base[need_idx]))
         sym_left <- unique(need_ids[grepl("^[A-Z0-9\\-]{2,}$", need_ids)])
@@ -425,6 +471,7 @@ process_file <- function(data_path) {
         message("org.Mm.eg.db/AnnotationDbi not available; skipping OrgDb strategies")
     }
 
+    # Strategy 9: External DB Integration - Online UniProt REST API Fetching
     need_idx <- which((is.na(resolved$Resolved_UNIPROT) | !nzchar(resolved$Resolved_UNIPROT)) & resolved$id_class == "SYMBOL_OR_ALIAS")
     need_ids <- unique(toupper(resolved$token_base[need_idx]))
     sym_left2 <- unique(need_ids[grepl("^[A-Z0-9\\-]{2,}$", need_ids)])
@@ -461,6 +508,7 @@ process_file <- function(data_path) {
         message("UniProt.ws not available; skipping online gene strategy")
     }
 
+    # Strategy 10: Late-stage entry resolution explicitly pinging UniProt.ws
     need <- which(is.na(resolved$Resolved_UNIPROT) | !nzchar(resolved$Resolved_UNIPROT))
     idx_entry_ws <- need[resolved$id_class[need] %in% c("ENTRY","ENTRY_GUESS")]
     if (length(idx_entry_ws) && requireNamespace("UniProt.ws", quietly = TRUE)) {
@@ -499,7 +547,8 @@ process_file <- function(data_path) {
         }
     }
 
-    # Manual mapping application supporting "gene_symbol" -> "mapped_gene_symbol" (symbol-to-symbol) or accession
+    # --- Manual Override Integration ---
+    # Apply curation mappings as a priority lookup
     if (!is.null(manual_mapping)) {
         symbol_cols <- intersect(names(manual_mapping), c("original_symbol","symbol","input","gene_symbol","token_raw"))
         mapped_cols <- intersect(names(manual_mapping), c("final_accession","accession","uniprot","uniprot_accession","mapped_gene_symbol"))
@@ -516,7 +565,7 @@ process_file <- function(data_path) {
             mm_clean <- mm_clean %>% dplyr::filter(nzchar(.data[[mm_mapped]]))
 
             if (nrow(mm_clean)) {
-                # Convert mapped values to UniProt accessions if needed
+                # Ensure values represent absolute UniProt Accessions
                 map_to_acc <- function(vals) {
                     vals <- toupper(trimws(as.character(vals)))
                     out <- ifelse(is_uniprot_ac(vals), vals, NA_character_)
@@ -588,13 +637,21 @@ process_file <- function(data_path) {
         }
     }
 
+    # --- Data Combination & QC Output ---
+    
+    # Merge mapped annotations back with the original proteomics IDs
     mapping_info <- resolved %>%
-        dplyr::transmute(
-            original_symbol = token_raw,
-            base_name = token_base,
-            final_accession = Resolved_UNIPROT,
-            matched_by = strategy
-        )
+    dplyr::left_join(
+        df_raw %>% dplyr::select(original_row_id, original_gene_symbol, multi_protein),
+        by = c("token_raw" = "original_gene_symbol")
+    ) %>%
+    dplyr::transmute(
+        original_row_id,
+        original_symbol = token_raw,
+        base_name = token_base,
+        final_accession = Resolved_UNIPROT,
+        matched_by = strategy
+    )
 
     df_joined <- df_tok %>%
         dplyr::left_join(mapping_info, by = c("token_raw" = "original_symbol", "token_base" = "base_name"))
@@ -603,16 +660,32 @@ process_file <- function(data_path) {
         dplyr::filter(!is.na(final_accession) & nzchar(final_accession)) %>%
         dplyr::mutate(gene_symbol = final_accession)
 
+    # Restrict to core statistical outputs typical in DGE / Proteomic analyses
     keep_cols <- intersect(c("gene_symbol", "pval", "padj", "log2fc", "P.Value", "adj.P.Val", "logFC"), names(df_mapped))
     if (!length(keep_cols)) keep_cols <- "gene_symbol"
     df_mapped <- df_mapped %>% dplyr::select(dplyr::all_of(keep_cols)) %>% dplyr::distinct()
 
+    # Track identifiers that completely failed the cascades
     unmapped_proteins <- df_joined %>%
         dplyr::filter(is.na(final_accession) | !nzchar(final_accession)) %>%
         dplyr::transmute(gene_symbol = token_raw) %>%
         dplyr::distinct()
 
+    # Log biological multiplicity events (e.g. protein grouping)
+    multi_protein_log <- df_raw %>%
+    dplyr::filter(multi_protein) %>%
+    dplyr::transmute(
+        source_file = basename(data_path),
+        original_row_id,
+        original_entry = original_gene_symbol,
+        kept_protein = purrr::map_chr(stringr::str_split(original_gene_symbol, ";"), 1),
+        dropped_proteins = purrr::map_chr(
+            stringr::str_split(original_gene_symbol, ";"),
+            ~ if (length(.) > 1) paste(.[-1], collapse = ";") else NA_character_
+        )
+    )
 
+    # File IO bindings
     base <- tools::file_path_sans_ext(basename(data_path))
     mapped_file <- file.path(mapped_dir, paste0(base, ".csv"))
     unmapped_file <- file.path(unmapped_dir, paste0(base, ".csv"))
@@ -625,7 +698,7 @@ process_file <- function(data_path) {
     readr::write_csv(unmapped_proteins, unmapped_file)
     readr::write_csv(mapping_info, info_table_file)
 
-    # Write per-file mapped summary (with mapping strategies)
+    # Extract mapped summaries showing conversion strategy metadata
     mapped_summary <- mapping_info %>%
         dplyr::filter(!is.na(final_accession) & nzchar(final_accession)) %>%
         dplyr::group_by(final_accession) %>%
@@ -636,12 +709,13 @@ process_file <- function(data_path) {
         )
     readr::write_csv(mapped_summary, mapped_summary_file)
 
-    # Write per-file unmapped summary
+    # Extract unmapped summary metrics
     unmapped_summary <- unmapped_proteins %>%
         dplyr::group_by(gene_symbol) %>%
         dplyr::summarise(occurrences = dplyr::n(), .groups = "drop")
     readr::write_csv(unmapped_summary, unmapped_summary_file)
 
+    # Compute high-level file summary statistics
     total_in <- nrow(df_tok)
     total_mapped <- sum(!is.na(mapping_info$final_accession) & nzchar(mapping_info$final_accession))
     total_unmapped <- total_in - total_mapped
@@ -680,14 +754,17 @@ process_file <- function(data_path) {
         ),
 
     unmapped_table = unmapped_proteins %>%
-        dplyr::mutate(source_file = basename(data_path))
+        dplyr::mutate(source_file = basename(data_path)),
+    
+    multi_protein_log_table = multi_protein_log
 ))
 
 }
 
 # -------------------------
-# Parallel execution block
+# Parallel Execution Engine
 # -------------------------
+# Distribute file-level mapping across available processor cores
 n_files <- length(csv_files)
 available_cores <- parallel::detectCores(logical = FALSE)
 workers <- max(1, min(available_cores - 1, n_files))
@@ -707,14 +784,16 @@ cat("Batch mapping completed for", length(csv_files), "files.\n")
 
 cat("Building global mapping summaries...\n")
 
+# Aggregate outputs back from processing clusters
 all_mapping_tables <- purrr::map(results, "mapping_table") %>% dplyr::bind_rows()
 all_unmapped_tables <- purrr::map(results, "unmapped_table") %>% dplyr::bind_rows()
-
+all_dropped_proteins <- purrr::map(results, "multi_protein_log_table") %>% dplyr::bind_rows()
 
 # -------------------------
-# Global Mapping Summary
+# Global Mapping Workbooks
 # -------------------------
 
+# Consolidate standard mappings
 global_mapping_summary <- all_mapping_tables %>%
     dplyr::distinct() %>%
     dplyr::arrange(source_file, original_symbol)
@@ -722,17 +801,14 @@ global_mapping_summary <- all_mapping_tables %>%
 global_mapping_file <- file.path(info_dir, "GLOBAL_mapping_summary.csv")
 readr::write_csv(global_mapping_summary, global_mapping_file)
 
-# Also save in mapped_summary_dir
+# Backup in summaries dir
 global_mapping_summary_file2 <- file.path(mapped_summary_dir, "GLOBAL_mapping_summary.csv")
 readr::write_csv(global_mapping_summary, global_mapping_summary_file2)
 
 cat("Saved global mapping summary ->", global_mapping_file, "\n")
 cat("Saved global mapping summary ->", global_mapping_summary_file2, "\n")
 
-# -------------------------
-# Global Unmapped Proteins
-# -------------------------
-
+# Consolidate ID unmapped dropouts
 global_unmapped_summary <- all_unmapped_tables %>%
     dplyr::group_by(gene_symbol) %>%
     dplyr::summarise(
@@ -745,7 +821,6 @@ global_unmapped_summary <- all_unmapped_tables %>%
 global_unmapped_file <- file.path(unmapped_dir, "GLOBAL_unmapped_proteins.csv")
 readr::write_csv(global_unmapped_summary, global_unmapped_file)
 
-# Also save in unmapped_summary_dir
 global_unmapped_summary_file2 <- file.path(unmapped_summary_dir, "GLOBAL_unmapped_proteins.csv")
 readr::write_csv(global_unmapped_summary, global_unmapped_summary_file2)
 
@@ -753,7 +828,7 @@ cat("Saved global unmapped protein list ->", global_unmapped_file, "\n")
 cat("Saved global unmapped protein list ->", global_unmapped_summary_file2, "\n")
 
 # -------------------------
-# Optional Strategy Stats
+# Strategy Quality Control
 # -------------------------
 
 strategy_stats <- global_mapping_summary %>%
@@ -766,11 +841,11 @@ readr::write_csv(strategy_stats, strategy_file)
 
 cat("Saved global strategy stats ->", strategy_file, "\n")
 
-
 mapping_full <- all_mapping_tables %>%
     dplyr::distinct() %>%
     dplyr::arrange(source_file, original_symbol)
 
+# Produce unique biological entity tracking
 protein_summary <- mapping_full %>%
     dplyr::group_by(original_symbol) %>%
     dplyr::summarise(
@@ -785,19 +860,19 @@ unmapped_proteins_global <- protein_summary %>%
     dplyr::filter(mapped == FALSE)
 
 
-# Count total replacements per strategy (existing)
+# Tally relative efficiency across mapping resolution methods
 strategy_stats <- mapping_full %>%
     dplyr::filter(!is.na(final_accession)) %>%
     dplyr::count(matched_by, name = "count") %>%
     dplyr::arrange(desc(count))
 
-# Count unique proteins mapped per strategy (new)
 strategy_stats_unique <- mapping_full %>%
     dplyr::filter(!is.na(final_accession)) %>%
     dplyr::distinct(matched_by, original_symbol) %>%
     dplyr::count(matched_by, name = "unique_proteins") %>%
     dplyr::arrange(desc(unique_proteins))
 
+# Calculate dataset coverage % 
 coverage_stats <- mapping_full %>%
     dplyr::group_by(source_file) %>%
     dplyr::summarise(
@@ -807,6 +882,7 @@ coverage_stats <- mapping_full %>%
         .groups = "drop"
     )
 
+# --- Generate Comprehensive Excel QC Document ---
 if (!requireNamespace("openxlsx", quietly = TRUE)) install.packages("openxlsx")
 
 report_file <- file.path(report_dir, "Mapping_QC_Report.xlsx")
@@ -821,6 +897,9 @@ openxlsx::writeData(wb, "Protein_Summary", protein_summary)
 
 openxlsx::addWorksheet(wb, "Unmapped_Proteins")
 openxlsx::writeData(wb, "Unmapped_Proteins", unmapped_proteins_global)
+
+openxlsx::addWorksheet(wb, "Dropped_Proteins")
+openxlsx::writeData(wb, "Dropped_Proteins", all_dropped_proteins)
 
 openxlsx::addWorksheet(wb, "Strategy_Stats")
 openxlsx::writeData(wb, "Strategy_Stats", strategy_stats)
