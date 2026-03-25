@@ -59,7 +59,8 @@
   GCT_FILE_PATH <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/gct/data/pg.matrix_filtered_pcaAdjusted_unnormalized.gct"
 
   # Folder containing differential expression results (up/down regulated lists)
-  SIG_PATH <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Results/compareGO/BP/learning_signature/memory_ensemble/old/core_enrichment/significant_proteins/"
+  #SIG_PATH <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Results/compareGO/BP/learning_signature/memory_ensemble/old/core_enrichment/significant_proteins/"
+  SIG_PATH <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Results/compareGO/BP/learning_signature/memory_ensemble/06_Significant_Proteins/"
 
   # 1.3 Output Settings
   BASE_OUT_DIR <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Results/compare_sig_expr"
@@ -133,9 +134,9 @@
   ## ---------- 4. Data Loading: Learning Signature ----------
 
   # List and aggregate Excel files.
-  file_list <- list.files(path = SIG_PATH, pattern = "log2fc_.*_(down|up)regulated_all\\.xlsx$", full.names = TRUE)
+  file_list <- list.files(path = SIG_PATH, pattern = "^SigProteins_(Up|Down)regulated_.*\\.xlsx$", full.names = TRUE)
   file_names  <- tools::file_path_sans_ext(basename(file_list))
-  group_names <- gsub("^log2fc_|_(down|up)regulated_all$", "", file_names)
+  group_names <- gsub("^SigProteins_(Up|Down)regulated_", "", file_names)
 
   data_list <- list()
   unique_groups <- unique(group_names)
