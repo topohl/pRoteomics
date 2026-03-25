@@ -96,16 +96,16 @@ calc_dims <- function(df_plot) {
 ont <- "BP"
 
 # Ensemble profiling method
-#ensemble_profiling <- "learning_signature"
-ensemble_profiling <- "phenotype_within_unit"
+ensemble_profiling <- "learning_signature"
+#ensemble_profiling <- "phenotype_within_unit"
 
 # Experimental condition
-#condition <- "memory_ensemble"
-condition <- "CA1_microglia"
+condition <- "memory_ensemble"
+#condition <- "CA1_microglia"
 
 # Base project path for all input/output
-#base_project_path <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler"
-base_project_path <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics"
+base_project_path <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler"
+#base_project_path <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics"
 
 # Set working directory
 setwd(base_project_path)
@@ -380,7 +380,8 @@ if(nrow(candidate_pool) == 0) {
 # -----------------------------------------------------
 
 # Custom color palette: upregulation = #faa51a, downregulation = #4c87c6, 0 = white
-custom_palette <- colorRampPalette(c("#3E3C6F", "white", "#E63A47"))
+#custom_palette <- colorRampPalette(c("#3E3C6F", "white", "#E63A47"))
+custom_palette <- colorRampPalette(c("#4c87c6", "white", "#faa51a"))
 
 plot_data_standard <- combined_df %>%
   filter(Description %in% top_terms_standard) %>%
@@ -496,8 +497,8 @@ legend_max <- 2.5
 my_breaks <- seq(legend_min, legend_max, length.out = 100)
 
 # Custom color palette: downregulation = #4c87c6, 0 = white, upregulation = #faa51a
-#my_colors <- colorRampPalette(c("#4c87c6", "white", "#faa51a"))(100)
-my_colors <- colorRampPalette(c("#3E3C6F", "white", "#E63A47"))(100)
+my_colors <- colorRampPalette(c("#4c87c6", "white", "#faa51a"))(100)
+#my_colors <- colorRampPalette(c("#3E3C6F", "white", "#E63A47"))(100)
 
 # Determine if clustering is possible (must have >=2 rows/cols)
 cluster_rows_opt <- if (nrow(heatmap_data) >= 2) TRUE else FALSE
@@ -1460,12 +1461,12 @@ if (length(comparison_files) > 0) {
             arrange(desc(GeneRatio)) %>%
             dplyr::slice_head(n = 15) %>%
             mutate(Description = stringr::str_wrap(Description, width = 50)) %>%
-            mutate(Description = factor(Description, levels = unique(Description)))
+            mutate(Description = factor(Description, levels = rev(unique(Description))))
           if (nrow(ego_df) > 0) {
-            lollipop_palette <- colorRampPalette(c("#faa51a", "#4c87c6"))
+            lollipop_palette <- colorRampPalette(c("#e64f4f", "#f0a24a", "#dfb74b"))
             p_lollipop <- ggplot(ego_df, aes(x = GeneRatio, y = Description)) +
-              geom_segment(aes(x = 0, xend = GeneRatio, y = Description, yend = Description), color = "#bdbdbd", linewidth = 1) +
-              geom_point(aes(size = Count, color = p.adjust), alpha = 0.9) +
+              geom_segment(aes(x = 0, xend = GeneRatio, y = Description, yend = Description), color = "#bdbdbd", linewidth = 2) +
+              geom_point(aes(size = Count, color = p.adjust), alpha = 1) +
               scale_color_gradientn(colours = lollipop_palette(100), name = expression(italic(P)[adj])) +
               scale_size_continuous(range = c(2, 7), name = "Gene Count") +
               scale_x_continuous(expand = expansion(mult = c(0.01, 0.05)), name = "Gene Ratio") +
@@ -1480,7 +1481,7 @@ if (length(comparison_files) > 0) {
                 legend.position = "right"
               )
             out_plot <- file.path(subdirs$go_enrichment, paste0("GO_Lollipop_", comp, "_Upregulated_", ont, ".svg"))
-            ggsave(out_plot, plot = p_lollipop, width = 7, height = 5)
+            ggsave(out_plot, plot = p_lollipop, width = 6, height = 5)
           }
         }
       }
@@ -1520,7 +1521,7 @@ if (length(comparison_files) > 0) {
             arrange(desc(GeneRatio)) %>%
             dplyr::slice_head(n = 15) %>%
             mutate(Description = stringr::str_wrap(Description, width = 50)) %>%
-            mutate(Description = factor(Description, levels = unique(Description)))
+            mutate(Description = factor(Description, levels = rev(unique(Description))))
           if (nrow(ego_df) > 0) {
             lollipop_palette <- colorRampPalette(c("#faa51a", "#4c87c6"))
             p_lollipop <- ggplot(ego_df, aes(x = GeneRatio, y = Description)) +
