@@ -24,7 +24,7 @@ suppressPackageStartupMessages({
   }
 })
 
-# Root paths (fixed) ----------------------------------------------------------
+# Root paths ----------------------------------------------------------
 root_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Results/neuron-phenotypeWithinUnit"
 out_dir  <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Results/ZZ_consolidated"
 dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
