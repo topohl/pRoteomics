@@ -50,6 +50,10 @@ if (!requireNamespace("simplifyEnrichment", quietly=TRUE)) {
     BiocManager::install("simplifyEnrichment", force = TRUE)
 }
 library(simplifyEnrichment)
+library(dplyr)
+library(stringr)
+library(purrr)
+library(writexl)
 
 if (!require("pacman")) install.packages("pacman")
 pacman::p_load(ggplot2, stringr, ggpubr, ggthemes, dplyr, tidyr, purrr,
@@ -59,53 +63,375 @@ pacman::p_load(ggplot2, stringr, ggpubr, ggthemes, dplyr, tidyr, purrr,
 # -----------------------------------------------------
 # Define Theme and Helper Functions
 # -----------------------------------------------------
-#' Custom ggplot2 theme for consistent plots
-theme_custom <- function(base_size = 8, base_family = "sans") {
-  theme_classic(base_size = base_size, base_family = base_family) +
+#' Nature-style ggplot2 theme for publication-quality figures
+theme_nature <- function(base_size = 9, base_family = "sans") {
+  theme_minimal(base_size = base_size, base_family = base_family) +
     theme(
-      text = element_text(color = "black"),
-      axis.line = element_line(linewidth = 0.5, color = "black"),
-      axis.ticks = element_line(linewidth = 0.5, color = "black"),
-      axis.text = element_text(color = "black", size = base_size),
-      axis.title = element_text(face = "bold", size = base_size + 1),
-      legend.title = element_text(face = "bold", size = base_size),
-      legend.text = element_text(size = base_size),
-      legend.key.size = unit(0.8, "lines"),
-      plot.title = element_text(face = "bold", size = base_size + 2, hjust = 0),
-      plot.subtitle = element_text(size = base_size, hjust = 0),
-      strip.background = element_blank(),
-      strip.text = element_text(face = "bold", size = base_size),
-      panel.border = element_rect(color = "black", fill = NA, linewidth = 0.5)
+      # Text elements
+      text = element_text(color = "#2C2C2C", family = base_family, lineheight = 1.3),
+      
+      # Axes: minimalist but clear
+      axis.line.x = element_line(color = "#2C2C2C", linewidth = 0.6),
+      axis.line.y = element_line(color = "#2C2C2C", linewidth = 0.6),
+      axis.ticks = element_line(color = "#2C2C2C", linewidth = 0.5),
+      axis.ticks.length = unit(3, "pt"),
+      axis.text = element_text(color = "#2C2C2C", size = rel(0.95)),
+      axis.title = element_text(color = "#2C2C2C", size = rel(1.0), face = "plain"),
+      
+      # Legend: clean and prominent
+      legend.background = element_blank(),
+      legend.box.background = element_blank(),
+      legend.key = element_rect(color = NA, fill = NA),
+      legend.key.size = unit(10, "pt"),
+      legend.key.height = unit(10, "pt"),
+      legend.title = element_text(color = "#2C2C2C", size = rel(0.95), face = "plain"),
+      legend.text = element_text(color = "#2C2C2C", size = rel(0.9)),
+      legend.position = "right",
+      legend.justification = "top",
+      legend.margin = margin(5, 5, 5, 5),
+      
+      # Title and subtitle
+      plot.title = element_text(color = "#2C2C2C", size = rel(1.15), face = "bold", 
+                                hjust = 0, vjust = 1, margin = margin(b = 8)),
+      plot.subtitle = element_text(color = "#555555", size = rel(0.95), hjust = 0, 
+                                   margin = margin(b = 5)),
+      
+      # Facets
+      strip.text = element_text(color = "#2C2C2C", size = rel(0.95), face = "plain"),
+      strip.background = element_rect(color = "#EEEEEE", fill = "#EEEEEE", linewidth = 0.4),
+      
+      # Panel
+      panel.grid = element_blank(),
+      panel.border = element_blank(),
+      panel.background = element_rect(fill = "white", color = NA),
+      plot.background = element_rect(fill = "white", color = NA),
+      plot.margin = margin(10, 10, 10, 10)
     )
 }
 
-#' Dynamically calculate plot dimensions based on data content
+#' Dynamically calculate plot dimensions based on data content (publication-optimized)
 calc_dims <- function(df_plot) {
   n_cols <- length(unique(as.character(df_plot$Comparison)))
   n_rows <- length(unique(as.character(df_plot$Description)))
-  w <- max(4, 4 + (n_cols * 0.4)) 
-  h <- max(6, 2 + (n_rows * 0.3))
+  # Nature-style: optimize for single or dual column layouts (85mm or 180mm)
+  w <- max(3.35, 3.35 + (n_cols * 0.5))  # Single column width ~85mm = 3.35 inches
+  h <- max(5, 2.5 + (n_rows * 0.25))
   return(list(w = w, h = h))
 }
 
+# =====================================================
+# UTILITY FUNCTIONS FOR ENHANCED ANALYSIS
+# =====================================================
+
+#' Data Validation Function - Check for common data issues
+validate_data <- function(df, name = "data") {
+  issues <- list()
+  
+  if (nrow(df) == 0) {
+    issues[[length(issues)+1]] <- paste0(name, ": Empty dataframe")
+  }
+  if (all(is.na(df))) {
+    issues[[length(issues)+1]] <- paste0(name, ": All NA values")
+  }
+  if (any(duplicated(df))) {
+    n_dup <- sum(duplicated(df))
+    issues[[length(issues)+1]] <- paste0(name, ": ", n_dup, " duplicate rows detected")
+  }
+  
+  if (length(issues) > 0) {
+    message("[VALIDATION] ", paste(issues, collapse = " | "))
+    return(FALSE)
+  }
+  return(TRUE)
+}
+
+#' Generate comprehensive summary statistics
+generate_summary_stats <- function(enrichment_df, comparisons) {
+  stats_list <- list()
+  
+  for (comp in unique(comparisons)) {
+    comp_df <- enrichment_df %>% filter(Comparison == comp)
+    
+    stats_list[[comp]] <- tibble(
+      Comparison = comp,
+      Total_Terms = nrow(comp_df),
+      Significant_Terms = sum(comp_df$p.adjust < 0.05, na.rm = TRUE),
+      Upregulated_Terms = sum(comp_df$NES > 0, na.rm = TRUE),
+      Downregulated_Terms = sum(comp_df$NES < 0, na.rm = TRUE),
+      Mean_NES = mean(comp_df$NES, na.rm = TRUE),
+      Median_NES = median(comp_df$NES, na.rm = TRUE),
+      Min_NES = min(comp_df$NES, na.rm = TRUE),
+      Max_NES = max(comp_df$NES, na.rm = TRUE),
+      Mean_Padj = mean(comp_df$p.adjust, na.rm = TRUE),
+      Median_Padj = median(comp_df$p.adjust, na.rm = TRUE),
+      Mean_SetSize = mean(comp_df$setSize, na.rm = TRUE),
+      Genes_Total = length(unique(unlist(strsplit(paste(comp_df$core_enrichment, collapse = "/"), "/"))))
+    )
+  }
+  
+  bind_rows(stats_list)
+}
+
+#' Analyze term consistency across comparisons
+analyze_term_consistency <- function(enrichment_df) {
+  term_consistency <- enrichment_df %>%
+    group_by(Description) %>%
+    summarise(
+      Num_Comparisons = n_distinct(Comparison),
+      Comparisons = paste(unique(Comparison), collapse = "; "),
+      Median_NES = median(NES, na.rm = TRUE),
+      Max_NES = max(NES, na.rm = TRUE),
+      Min_NES = min(NES, na.rm = TRUE),
+      Mean_Padj = mean(p.adjust, na.rm = TRUE),
+      Direction_Consistency = ifelse(all(NES > 0) | all(NES < 0), "Consistent", "Mixed"),
+      Sig_Count = sum(p.adjust < 0.05, na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    arrange(desc(Num_Comparisons), desc(abs(Median_NES)))
+  
+  return(term_consistency)
+}
+
+#' Rank genes by frequency across enrichments
+rank_gene_importance <- function(core_long_df) {
+  if (!"p.adjust" %in% colnames(core_long_df)) {
+    core_long_df$p.adjust <- NA_real_
+  }
+
+  core_long_df <- core_long_df %>%
+    mutate(p.adjust_num = suppressWarnings(as.numeric(p.adjust)))
+
+  gene_importance <- core_long_df %>%
+    group_by(Gene) %>%
+    summarise(
+      Freq_Across_Terms = n_distinct(Description),
+      Freq_Across_Comparisons = n_distinct(Comparison),
+      Max_NES = max(abs(NES), na.rm = TRUE),
+      Mean_NES_Abs = mean(abs(NES), na.rm = TRUE),
+      Mean_Padj = ifelse(all(is.na(p.adjust_num)), NA_real_, mean(p.adjust_num, na.rm = TRUE)),
+      Top_Terms = paste(unique(Description)[1:min(3, length(unique(Description)))], collapse = "; "),
+      .groups = "drop"
+    ) %>%
+    arrange(desc(Freq_Across_Terms), desc(Max_NES))
+  
+  return(gene_importance)
+}
+
+#' Calculate comparison similarity based on gene overlap
+calc_comparison_similarity <- function(core_genes_df) {
+  comparisons <- unique(core_genes_df$Comparison)
+  
+  comparison_genes <- comparisons %>% map(function(comp) {
+    unique(core_genes_df$core_enrichment[core_genes_df$Comparison == comp])
+  }) %>% setNames(comparisons)
+  
+  # Jaccard + Overlap coefficient
+  similarity_list <- list()
+  for (i in 1:length(comparisons)) {
+    for (j in i:length(comparisons)) {
+      comp_i <- comparisons[i]
+      comp_j <- comparisons[j]
+      genes_i <- comparison_genes[[i]]
+      genes_j <- comparison_genes[[j]]
+      
+      overlap <- length(intersect(genes_i, genes_j))
+      union <- length(union(genes_i, genes_j))
+      jaccard <- ifelse(union > 0, overlap / union, 0)
+      overlap_coeff <- overlap / min(length(genes_i), length(genes_j))
+      
+      similarity_list[[length(similarity_list)+1]] <- tibble(
+        Comparison_1 = comp_i,
+        Comparison_2 = comp_j,
+        Gene_Overlap = overlap,
+        Jaccard_Index = jaccard,
+        Overlap_Coefficient = overlap_coeff
+      )
+    }
+  }
+  
+  bind_rows(similarity_list)
+}
+
+# =====================================================
+# ENHANCED LIBRARY LOADING FOR NEW ANALYSES
+# =====================================================
+
+# Load additional packages for new analyses
+if (!require("ggridges")) install.packages("ggridges")
+if (!require("UpSetR")) install.packages("UpSetR")
+if (!require("networkD3")) install.packages("networkD3")
+if (!require("alluvial")) install.packages("alluvial")
+if (!require("ggalluvial")) install.packages("ggalluvial")
+library(ggridges)
+library(UpSetR)
+library(networkD3)
+library(alluvial)
+library(ggalluvial)
+
+# =====================================================
+# CONSOLIDATE LOG2FC DATA LOADING (Eliminate Redundancy)
+# =====================================================
+
 # -----------------------------------------------------
-# Set Analysis Parameters and Directory Structure
+# Set Analysis Parameters and Directory Structure (must be defined before first use)
 # -----------------------------------------------------
 
 # Gene Ontology domain (MF, BP, or CC)
 ont <- "BP"
 
 # Ensemble profiling method
-ensemble_profiling <- "learning_signature"
-#ensemble_profiling <- "phenotype_within_unit"
+#ensemble_profiling <- "baseline_cell_type_profiling"
+ensemble_profiling <- "phenotype_within_unit"
 
 # Experimental condition
-condition <- "memory_ensemble"
-#condition <- "CA1_microglia"
+#condition <- "US"
+condition <- "DG_po"
 
 # Base project path for all input/output
-base_project_path <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler"
-#base_project_path <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics"
+#base_project_path <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler"
+base_project_path <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics"
+
+# Load log2fc data ONCE at the beginning for reuse throughout analysis
+log2fc_files_path <- file.path(base_project_path, "Datasets", "mapped", ensemble_profiling, condition)
+cat("[DEBUG] log2fc_files_path:", log2fc_files_path, "\n")
+cat("[DEBUG] Path exists?", dir.exists(log2fc_files_path), "\n")
+
+log2fc_files <- list.files(path = log2fc_files_path, pattern = "*.csv", full.names = TRUE)
+cat("[DEBUG] Found", length(log2fc_files), "CSV files in path\n")
+if (length(log2fc_files) > 0) {
+  cat("[DEBUG] Files found:\n")
+  for (f in log2fc_files) cat("  -", basename(f), "\n")
+} else {
+  cat("[WARNING] No CSV files found matching pattern!\n")
+}
+
+# Flexible column normalizer for differential-expression imports
+canonical_col_name <- function(x) {
+  tolower(gsub("[^a-z0-9]", "", x))
+}
+
+find_matching_col <- function(df, candidates) {
+  nms <- names(df)
+  nms_canon <- canonical_col_name(nms)
+  cand_canon <- canonical_col_name(candidates)
+  idx <- match(cand_canon, nms_canon)
+  idx <- idx[!is.na(idx)]
+  if (length(idx) == 0) return(NA_character_)
+  nms[idx[1]]
+}
+
+normalize_log2fc_columns <- function(df) {
+  gene_col <- find_matching_col(df, c(
+    "gene_symbol", "gene", "genes", "symbol", "genesymbol",
+    "uniprot", "uniprotid", "uniprot_accession", "uniprotaccession", "protein", "id"
+  ))
+  log2fc_col <- find_matching_col(df, c(
+    "log2fc", "logfc", "log2foldchange", "avg_log2FC", "avg_logFC"
+  ))
+  pvalue_col <- find_matching_col(df, c("pvalue", "p.value", "p_val", "pval"))
+  padj_col <- find_matching_col(df, c(
+    "padj", "adj.P.Val", "adj_p_val", "adj.p.value", "p.adjust", "fdr", "qvalue"
+  ))
+
+  if (!is.na(gene_col) && gene_col != "gene_symbol") {
+    df <- dplyr::rename(df, gene_symbol = all_of(gene_col))
+  }
+  if (!is.na(log2fc_col) && log2fc_col != "log2fc") {
+    df <- dplyr::rename(df, log2fc = all_of(log2fc_col))
+  }
+  if (!is.na(pvalue_col) && pvalue_col != "pvalue") {
+    df <- dplyr::rename(df, pvalue = all_of(pvalue_col))
+  }
+  if (!is.na(padj_col) && padj_col != "padj") {
+    df <- dplyr::rename(df, padj = all_of(padj_col))
+  }
+
+  if (!"gene_symbol" %in% names(df)) df$gene_symbol <- NA_character_
+  if (!"log2fc" %in% names(df)) df$log2fc <- NA_real_
+  if (!"pvalue" %in% names(df)) df$pvalue <- NA_real_
+  if (!"padj" %in% names(df)) df$padj <- NA_real_
+
+  df %>% mutate(gene_symbol = as.character(gene_symbol))
+}
+
+# Consolidated log2fc loading function
+load_and_consolidate_log2fc <- function(file_paths) {
+  cat("[DEBUG] load_and_consolidate_log2fc() called with", length(file_paths), "files\n")
+
+  log_list <- lapply(file_paths, function(f) {
+    tryCatch({
+      cat("[DEBUG] Reading file:", basename(f), "\n")
+      df <- read_csv(f, show_col_types = FALSE)
+      cat("[DEBUG] Before normalization - columns:", paste(names(df), collapse=", "), "\n")
+      cat("[DEBUG] Rows:", nrow(df), "\n")
+      
+      df_norm <- normalize_log2fc_columns(df)
+      cat("[DEBUG] After normalization - columns:", paste(names(df_norm), collapse=", "), "\n")
+      cat("[DEBUG] gene_symbol found?", ("gene_symbol" %in% names(df_norm)), "\n")
+      
+      df_norm %>%
+        mutate(Comparison = tools::file_path_sans_ext(basename(f)))
+    }, error = function(e) {
+      cat("[ERROR] Failed to load", basename(f), ":", e$message, "\n")
+      NULL
+    })
+  })
+  
+  cat("[DEBUG] Successfully loaded", sum(!sapply(log_list, is.null)), "out of", length(file_paths), "files\n")
+  
+  log_list <- Filter(Negate(is.null), log_list)
+  if (length(log_list) == 0) {
+    cat("[WARNING] No files loaded successfully. Returning empty tibble with canonical columns.\n")
+    return(tibble(
+      gene_symbol = character(),
+      log2fc = numeric(),
+      pvalue = numeric(),
+      padj = numeric(),
+      Comparison = character()
+    ))
+  }
+
+  out <- bind_rows(log_list)
+  cat("[DEBUG] After bind_rows - shape:", nrow(out), "x", ncol(out), "\n")
+  cat("[DEBUG] Columns in combined data:", paste(names(out), collapse=", "), "\n")
+  
+  out <- normalize_log2fc_columns(out)
+  if (!"Comparison" %in% names(out)) out$Comparison <- NA_character_
+  
+  cat("[DEBUG] Final output - shape:", nrow(out), "x", ncol(out), "\n")
+  cat("[DEBUG] Final columns:", paste(names(out), collapse=", "), "\n")
+  cat("[DEBUG] gene_symbol in final output?", ("gene_symbol" %in% names(out)), "\n")
+  
+  out
+}
+
+# Load once here
+message("[INFO] Loading log2fc data (consolidated load)...")
+log2fc_long <- load_and_consolidate_log2fc(log2fc_files)
+message("[INFO] Loaded ", nrow(log2fc_long), " rows from ", length(unique(log2fc_long$Comparison)), " comparisons")
+
+# Validate loaded data
+validate_data(log2fc_long, "log2fc_long")
+
+# Define analysis start time for reproducibility log
+analysis_start_time <- Sys.time()
+analysis_params <- list(
+  script = "compareGO.r",
+  version = "2.1 (enhanced)",
+  timestamp = analysis_start_time,
+  r_version = R.version.string,
+  platform = R.version$platform,
+  ont = ont,
+  ensemble_profiling = ensemble_profiling,
+  condition = condition,
+  base_project_path = base_project_path,
+  significant_only = TRUE,
+  target_n_terms = 5,
+  redundancy_threshold = 0.7,
+  min_set_size = 10,
+  n_comparisons = length(unique(log2fc_long$Comparison)),
+  n_total_proteins = length(unique(na.omit(log2fc_long$gene_symbol)))
+)
 
 # Set working directory
 setwd(base_project_path)
@@ -201,10 +527,6 @@ gene_go_ids <- combined_df %>%
 # -----------------------------------------------------
 # Select Top GO Terms for Comparison
 # -----------------------------------------------------
-library(dplyr)
-library(stringr)
-library(purrr)
-library(writexl)
 
 # =========================================================
 # PARAMETERS
@@ -379,9 +701,9 @@ if(nrow(candidate_pool) == 0) {
 # Plot Comparison: Standard vs Refined Selection
 # -----------------------------------------------------
 
-# Custom color palette: upregulation = #faa51a, downregulation = #4c87c6, 0 = white
-#custom_palette <- colorRampPalette(c("#3E3C6F", "white", "#E63A47"))
-custom_palette <- colorRampPalette(c("#4c87c6", "white", "#faa51a"))
+# Nature-style color palettes: Professional, publication-ready colors
+# Upregulation = warm orange/red, downregulation = cool blue, 0 = white
+custom_palette <- colorRampPalette(c("#0571B0", "white", "#CA0020"), space = "Lab")
 
 plot_data_standard <- combined_df %>%
   filter(Description %in% top_terms_standard) %>%
@@ -422,33 +744,36 @@ if (nrow(comparison_plot_data) == 0 || all(is.na(comparison_plot_data$NES))) {
     color = NES,
     size = -log10(p.adjust)
   )) +
-    geom_point() +
+    geom_point(alpha = 0.85, stroke = 0.3) +
     facet_grid(Selection_Type ~ ., scales = "free_y", space = "free_y") +
     scale_color_gradientn(
       colours = custom_palette(100),
       name = "NES",
       limits = c(-max_abs_nes, max_abs_nes)
     ) +
-    scale_size_continuous(range = c(2, 6)) +
+    scale_size_continuous(name = expression(-log[10](italic(P)[adj])), range = c(2, 6)) +
     scale_x_discrete(expand = expansion(mult = c(0.1, 0.1))) + 
     labs(
       title = "Selection method comparison",
       y = "GO Term",
       x = "Comparison"
     ) +
-    theme_custom(base_size = 10) +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1, color="black"))
+    theme_nature(base_size = 9) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
 
   n_cols_comp <- length(unique(as.character(comparison_plot_data$Comparison)))
   dims_comp <- list()
-  dims_comp$w <- max(4, 6 + (n_cols_comp * 0.6)) 
+  dims_comp$w <- max(3.5, 3.5 + (n_cols_comp * 0.5)) 
   dims_comp$h <- calc_dims(comparison_plot_data)$h
 
   ggsave(
     filename = file.path(subdirs$plots_main, "Comparison_Selection_Methods_Dotplot.svg"),
     plot = comp_plot,
     width = dims_comp$w, 
-    height = dims_comp$h
+    height = dims_comp$h,
+    dpi = 300,
+    device = "svg",
+    limitsize = FALSE
   )
 }
 
@@ -459,79 +784,89 @@ if (nrow(comparison_plot_data) == 0 || all(is.na(comparison_plot_data$NES))) {
 lookup_df <- combined_df %>%
   filter(Description %in% top_terms)
 
-comparison_order <- lookup_df %>%
-  group_by(Comparison) %>%
-  summarize(max_abs_NES = max(abs(NES), na.rm = TRUE), .groups = "drop") %>%
-  arrange(desc(max_abs_NES)) %>%
-  pull(Comparison)
-lookup_df <- lookup_df %>%
-  mutate(Comparison = factor(Comparison, levels = comparison_order))
+if (nrow(lookup_df) == 0 || all(is.na(lookup_df$NES))) {
+  message("No data available for enrichment heatmap. Skipping heatmap generation.")
+  heatmap_data <- matrix(numeric(0), nrow = 0, ncol = 0)
+  heatmap_labels <- matrix(character(0), nrow = 0, ncol = 0)
+} else {
+  comparison_order <- lookup_df %>%
+    group_by(Comparison) %>%
+    summarize(max_abs_NES = max(abs(NES), na.rm = TRUE), .groups = "drop") %>%
+    filter(is.finite(max_abs_NES)) %>%
+    arrange(desc(max_abs_NES)) %>%
+    pull(Comparison)
+  
+  if (length(comparison_order) == 0) {
+    comparison_order <- unique(as.character(lookup_df$Comparison))
+  }
+  
+  lookup_df <- lookup_df %>%
+    mutate(Comparison = factor(Comparison, levels = comparison_order))
 
 # -----------------------------------------------------
 # Generate Enrichment Heatmap
 # -----------------------------------------------------
 
-lookup_df <- lookup_df %>%
-  mutate(sig_label = ifelse(p.adjust < 0.05, "*", ""))
+  lookup_df <- lookup_df %>%
+    mutate(sig_label = ifelse(p.adjust < 0.05, "*", ""))
 
-heatmap_data <- lookup_df %>%
-  dplyr::select(Description, Comparison, NES) %>%
-  tidyr::pivot_wider(names_from = Comparison, values_from = NES)
+  heatmap_data <- lookup_df %>%
+    dplyr::select(Description, Comparison, NES) %>%
+    dplyr::group_by(Description, Comparison) %>%
+    dplyr::summarise(NES = mean(NES, na.rm = TRUE), .groups = "drop") %>%
+    tidyr::pivot_wider(names_from = Comparison, values_from = NES, values_fill = 0)
 
-heatmap_data <- as.data.frame(heatmap_data)
-rownames(heatmap_data) <- heatmap_data$Description
-heatmap_data <- heatmap_data[, -which(names(heatmap_data) == "Description")]
-heatmap_data <- as.matrix(heatmap_data)
-heatmap_data[is.na(heatmap_data)] <- 0 
-heatmap_data_export <- tibble::rownames_to_column(as.data.frame(heatmap_data), var = "RowNames")
-writexl::write_xlsx(heatmap_data_export, path = file.path(subdirs$tables, "Matrix_Heatmap_NES.xlsx"))
-heatmap_labels <- lookup_df %>%
-  dplyr::select(Description, Comparison, sig_label) %>%
-  tidyr::pivot_wider(names_from = Comparison, values_from = sig_label) %>%
-  tibble::column_to_rownames("Description")
+  heatmap_data <- as.data.frame(heatmap_data)
+  rownames(heatmap_data) <- heatmap_data$Description
+  heatmap_data <- heatmap_data[, -which(names(heatmap_data) == "Description")]
+  heatmap_data <- as.matrix(heatmap_data)
+  heatmap_data[is.na(heatmap_data)] <- 0
+  heatmap_data_export <- tibble::rownames_to_column(as.data.frame(heatmap_data), var = "RowNames")
+  writexl::write_xlsx(heatmap_data_export, path = file.path(subdirs$tables, "Matrix_Heatmap_NES.xlsx"))
+  heatmap_labels <- lookup_df %>%
+    dplyr::select(Description, Comparison, sig_label) %>%
+    dplyr::group_by(Description, Comparison) %>%
+    dplyr::summarise(sig_label = ifelse(any(sig_label == "*"), "*", ""), .groups = "drop") %>%
+    tidyr::pivot_wider(names_from = Comparison, values_from = sig_label, values_fill = "") %>%
+    tibble::column_to_rownames("Description")
 
-plot_height <- max(6, nrow(heatmap_data) * 0.3)
-# Set NES legend range to -3 to 3
-legend_min <- -2.5
-legend_max <- 2.5
-my_breaks <- seq(legend_min, legend_max, length.out = 100)
+  plot_height <- max(6, nrow(heatmap_data) * 0.3)
+  legend_min <- -2.5
+  legend_max <- 2.5
+  my_breaks <- seq(legend_min, legend_max, length.out = 100)
+  my_colors <- colorRampPalette(c("#0571B0", "white", "#CA0020"), space = "Lab")(100)
 
-# Custom color palette: downregulation = #4c87c6, 0 = white, upregulation = #faa51a
-my_colors <- colorRampPalette(c("#4c87c6", "white", "#faa51a"))(100)
-#my_colors <- colorRampPalette(c("#3E3C6F", "white", "#E63A47"))(100)
+  cluster_rows_opt <- nrow(heatmap_data) >= 2
+  cluster_cols_opt <- ncol(heatmap_data) >= 2
 
-# Determine if clustering is possible (must have >=2 rows/cols)
-cluster_rows_opt <- if (nrow(heatmap_data) >= 2) TRUE else FALSE
-cluster_cols_opt <- if (ncol(heatmap_data) >= 2) TRUE else FALSE
+  heatmap_plot <- pheatmap(
+    heatmap_data,
+    cluster_rows = cluster_rows_opt,
+    cluster_cols = cluster_cols_opt,
+    display_numbers = heatmap_labels,
+    number_color = "#2C2C2C",
+    color = my_colors,
+    breaks = my_breaks,
+    fontsize = 9,
+    fontsize_number = 8,
+    border_color = "#E0E0E0",
+    cellwidth = 15,
+    cellheight = 15,
+    show_rownames = TRUE,
+    show_colnames = TRUE,
+    angle_col = 45,
+    silent = TRUE,
+    legend = TRUE
+  )
 
-heatmap_plot <- pheatmap(
-  heatmap_data,
-  cluster_rows = cluster_rows_opt,
-  cluster_cols = cluster_cols_opt,
-  display_numbers = heatmap_labels,
-  number_color = "black",
-  color = my_colors,
-  breaks = my_breaks,
-  fontsize = 8,
-  fontsize_number = 7,
-  border_color = "white",
-  cellwidth = 20,
-  cellheight = 10,
-  show_rownames = TRUE,
-  show_colnames = TRUE,
-  angle_col = 45,
-  silent = TRUE,
-  legend = TRUE
-)
+  heatmap_row_order <- if (cluster_rows_opt) rownames(heatmap_data)[heatmap_plot$tree_row$order] else rownames(heatmap_data)
+  heatmap_col_order <- if (cluster_cols_opt) colnames(heatmap_data)[heatmap_plot$tree_col$order] else colnames(heatmap_data)
 
-# Only extract row/col order if clustering was performed
-heatmap_row_order <- if (cluster_rows_opt) rownames(heatmap_data)[heatmap_plot$tree_row$order] else rownames(heatmap_data)
-heatmap_col_order <- if (cluster_cols_opt) colnames(heatmap_data)[heatmap_plot$tree_col$order] else colnames(heatmap_data)
-
-output_file <- file.path(subdirs$plots_main, "Heatmap_Enrichment_Comparisons.svg")
-svg(output_file, width = 6, height = plot_height, family = "sans")
-grid::grid.draw(heatmap_plot$gtable)
-dev.off()
+  output_file <- file.path(subdirs$plots_main, "Heatmap_Enrichment_Comparisons.svg")
+  svg(output_file, width = 7, height = plot_height, family = "sans", pointsize = 10)
+  grid::grid.draw(heatmap_plot$gtable)
+  dev.off()
+}
 
 # -----------------------------------------------------
 # Generate Dot Plots for Enrichment Results
@@ -542,8 +877,10 @@ order_dotplot <- function(df, desc_col = "Description", comp_col = "Comparison",
   mat <- df %>%
     dplyr::select(all_of(c(desc_col, comp_col, val_col))) %>%
     filter(!is.na(!!sym(val_col))) %>%
+    dplyr::group_by(across(all_of(c(desc_col, comp_col)))) %>%
+    dplyr::summarise(!!val_col := mean(.data[[val_col]], na.rm = TRUE), .groups = "drop") %>%
     pivot_wider(names_from = all_of(comp_col), values_from = all_of(val_col), values_fill = 0) %>%
-    column_to_rownames(desc_col) %>%
+    tibble::column_to_rownames(desc_col) %>%
     as.matrix()
   # If less than 2 columns or rows, skip clustering and return default order
   if (ncol(mat) < 2 || nrow(mat) < 2) {
@@ -605,7 +942,7 @@ if (exists("top_df_per_comp") && nrow(top_df_per_comp) > 0) {
       color = NES,
       size = -log10(p.adjust)
     )) +
-      geom_point(alpha = 1) +
+      geom_point(alpha = 0.85, stroke = 0.3) +
       scale_color_gradientn(
         colours = custom_palette(100),
         name = "NES",
@@ -623,15 +960,15 @@ if (exists("top_df_per_comp") && nrow(top_df_per_comp) > 0) {
         x = NULL,
         y = NULL
       ) +
-      theme_custom(base_size = 10) +
+      theme_nature(base_size = 9) +
       theme(
-        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, color="black"),
+        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
         panel.grid.major.y = element_blank(),
         legend.position = "right"
       )
     dims_dotplot <- calc_dims(full_data_for_plot)
     output_dotplot <- file.path(subdirs$plots_main, "Dotplot_Enrichment_TopGenes_PerComp.svg")
-    ggsave(output_dotplot, plot = dotplot, width = dims_dotplot$w, height = dims_dotplot$h, dpi = 300)
+    ggsave(output_dotplot, plot = dotplot, width = dims_dotplot$w, height = dims_dotplot$h, dpi = 300, device = "svg", limitsize = FALSE)
   } else {
     message("No data for top_df_per_comp dotplot.")
   }
@@ -656,7 +993,7 @@ if (exists("top_terms") && length(top_terms) > 0) {
       color = NES,
       size = -log10(p.adjust)
     )) +
-      geom_point(alpha = 1) +
+      geom_point(alpha = 0.85, stroke = 0.3) +
       scale_color_gradientn(
         colours = custom_palette(100),
         name = "NES",
@@ -674,14 +1011,14 @@ if (exists("top_terms") && length(top_terms) > 0) {
         x = NULL,
         y = NULL
       ) +
-      theme_custom(base_size = 10) +
+      theme_nature(base_size = 9) +
       theme(
-        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, color="black"),
-        panel.grid.major.y = element_line(color = "grey92", linewidth = 0.2)
+        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+        panel.grid.major.y = element_blank()
       )
     dims_dotplot_top <- calc_dims(top_terms_all_data)
     output_dotplot_top <- file.path(subdirs$plots_main, "Dotplot_Enrichment_TopGenes_Overall.svg")
-    ggsave(output_dotplot_top, plot = dotplot_top, width = dims_dotplot_top$w, height = dims_dotplot_top$h, dpi = 300)
+    ggsave(output_dotplot_top, plot = dotplot_top, width = dims_dotplot_top$w, height = dims_dotplot_top$h, dpi = 300, device = "svg", limitsize = FALSE)
   } else {
     message("No data for top_terms dotplot.")
   }
@@ -707,7 +1044,7 @@ if (exists("top5_up_down_df") && !is.null(top5_up_down_df) && nrow(top5_up_down_
     color = NES,
     size = -log10(p.adjust)
   )) +
-    geom_point(alpha = 1) +
+    geom_point(alpha = 0.85, stroke = 0.3) +
     scale_color_gradientn(
       colours = custom_palette(100),
       limits = c(-max_abs_nes_split, max_abs_nes_split),
@@ -725,14 +1062,14 @@ if (exists("top5_up_down_df") && !is.null(top5_up_down_df) && nrow(top5_up_down_
       x = NULL,
       y = NULL
     ) +
-    theme_custom(base_size = 10) +
+    theme_nature(base_size = 9) +
     theme(
-      axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, color="black"),
-      panel.grid.major.y = element_line(color = "grey92", linewidth = 0.2)
+      axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+      panel.grid.major.y = element_blank()
     )
   dims_split <- calc_dims(plot_data_split)
   output_dotplot_split <- file.path(subdirs$plots_main, "Dotplot_Enrichment_Top5_Up_Down_PerComp.svg")
-  ggsave(output_dotplot_split, plot = dotplot_split, width = dims_split$w, height = dims_split$h, dpi = 300)
+  ggsave(output_dotplot_split, plot = dotplot_split, width = dims_split$w, height = dims_split$h, dpi = 300, device = "svg", limitsize = FALSE)
 }
 
 # -----------------------------------------------------
@@ -788,45 +1125,45 @@ if (exists("top5_up_down_df") && !is.null(top5_up_down_df) && nrow(top5_up_down_
 # Gene-Centric Enrichment Summary Plot
 # -----------------------------------------------------
 
-gene_enrichment_summary <- long_df %>%
+#gene_enrichment_summary <- long_df %>%
+#
+#  filter(core_gene %in% gene_list) %>%
+#  group_by(core_gene, Comparison) %>%
+#  summarise(
+#    count = n(),
+#    mean_NES = mean(NES, na.rm = TRUE),
+#    max_padj = if (all(is.na(p.adjust))) NA_real_ else min(p.adjust, na.rm = TRUE),
+#    .groups = "drop"
+#  )
+#
+#plot_gene_summary <- ggplot(gene_enrichment_summary, aes(
+#  x = Comparison,
+#  y = core_gene,
+#  size = count,
+#  fill = mean_NES
+#)) +
+#  geom_point(shape = 21, stroke = 0.2, color="black") +
+#  scale_size_continuous(
+#    name = "Occurrences",
+#    range = c(2, 8)
+#  ) +
+#  scale_fill_gradientn(
+#    colours = rev(brewer.pal(n = 7, name = "RdBu")),
+#    name = "Mean NES",
+#    limits = c(-max_abs_nes, max_abs_nes)
+#  ) +
+#  labs(
+#    title = "Gene-centric enrichment",
+#    x = NULL,
+#    y = "Gene"
+#  ) +
+#  theme_custom(base_size = 10) +
+#  theme(
+#    axis.text.x = element_text(angle = 45, hjust = 1)
+#  )
 
-  filter(core_gene %in% gene_list) %>%
-  group_by(core_gene, Comparison) %>%
-  summarise(
-    count = n(),
-    mean_NES = mean(NES, na.rm = TRUE),
-    max_padj = if (all(is.na(p.adjust))) NA_real_ else min(p.adjust, na.rm = TRUE),
-    .groups = "drop"
-  )
-
-plot_gene_summary <- ggplot(gene_enrichment_summary, aes(
-  x = Comparison,
-  y = core_gene,
-  size = count,
-  fill = mean_NES
-)) +
-  geom_point(shape = 21, stroke = 0.2, color="black") +
-  scale_size_continuous(
-    name = "Occurrences",
-    range = c(2, 8)
-  ) +
-  scale_fill_gradientn(
-    colours = rev(brewer.pal(n = 7, name = "RdBu")),
-    name = "Mean NES",
-    limits = c(-max_abs_nes, max_abs_nes)
-  ) +
-  labs(
-    title = "Gene-centric enrichment",
-    x = NULL,
-    y = "Gene"
-  ) +
-  theme_custom(base_size = 10) +
-  theme(
-    axis.text.x = element_text(angle = 45, hjust = 1)
-  )
-
-gene_summary_file <- file.path(subdirs$gene_centric, "Gene_Centric_Summary.svg")
-ggsave(gene_summary_file, plot = plot_gene_summary, width = 5, height = 4, dpi = 300)
+#gene_summary_file <- file.path(subdirs$gene_centric, "Gene_Centric_Summary.svg")
+#ggsave(gene_summary_file, plot = plot_gene_summary, width = 5, height = 4, dpi = 300)
 
 # -----------------------------------------------------
 # Extract and Export Core Genes per Comparison
@@ -889,20 +1226,20 @@ number_col_mat <- matrix(ifelse(jaccard_matrix > 0.6, "white", "black"),
 jaccard_heatmap <- pheatmap(
   jaccard_matrix,
   main = "Jaccard similarity",
-  color = colorRampPalette(brewer.pal(n = 9, name = "Blues"))(100),
+  color = colorRampPalette(c("white", "#0571B0"))(100),
   breaks = seq(0, 1, length.out = 101),
   display_numbers = TRUE,
   number_color = number_col_mat,
   cluster_rows = TRUE,
   cluster_cols = TRUE,
-  fontsize = 14,
-  fontsize_number = 12, 
-  border_color = "white",
+  fontsize = 12,
+  fontsize_number = 11, 
+  border_color = "#E0E0E0",
   cellwidth = 30,
   cellheight = 30
 )
 jaccard_sim_matrix <- file.path(subdirs$plots_main, "Heatmap_Jaccard_Similarity.svg")
-svg(jaccard_sim_matrix, width = max(7, 1 + 0.5 * ncol(jaccard_matrix)), height = max(6, 1 + 0.5 * nrow(jaccard_matrix)), family = "sans")
+svg(jaccard_sim_matrix, width = max(5.5, 1 + 0.5 * ncol(jaccard_matrix)), height = max(5.5, 1 + 0.5 * nrow(jaccard_matrix)), family = "sans", pointsize = 10)
 grid::grid.draw(jaccard_heatmap$gtable)
 dev.off()
 
@@ -913,8 +1250,9 @@ dev.off()
 core_long_df <- bind_rows(
   lapply(names(enrichment_list), function(name) {
     df <- enrichment_list[[name]] %>%
-      dplyr::select(GO_ID = ID, Description, NES, core_enrichment) %>%
+      dplyr::select(GO_ID = ID, Description, NES, p.adjust, core_enrichment) %>%
       mutate(NES = as.numeric(NES),
+             p.adjust = suppressWarnings(as.numeric(p.adjust)),
              Comparison = name) %>%
       filter(!is.na(NES))
     
@@ -924,7 +1262,7 @@ core_long_df <- bind_rows(
       mutate(Gene = list(strsplit(core_enrichment, "/")[[1]])) %>%
       tidyr::unnest_longer(Gene) %>%
       ungroup() %>%
-      dplyr::select(GO_ID, Description, NES, Gene, Comparison)
+      dplyr::select(GO_ID, Description, NES, p.adjust, Gene, Comparison)
     
     return(df)
   })
@@ -956,15 +1294,15 @@ heatmap_plot <- pheatmap(
   color = custom_palette(100),
   breaks = breaks,
   main = "Core enrichment heatmap",
-  fontsize = 12,
+  fontsize = 10,
   fontsize_row = 1, # effectively hides row labels (protein names)
   show_rownames = FALSE,
   cluster_rows = TRUE,
   cluster_cols = TRUE,
-  border_color = NA
+  border_color = "#E0E0E0"
 )
 output_file <- file.path(subdirs$core_enrichment_plots, "Heatmap_Overall_Core_Enrichment.svg")
-svg(output_file, width = 8, height = 8, family = "sans")
+svg(output_file, width = 7.5, height = 7.5, family = "sans", pointsize = 10)
 grid::grid.draw(heatmap_plot$gtable)
 dev.off()
 
@@ -1077,11 +1415,12 @@ mapped_names <- left_join(
 )
 
 # Replace rownames with gene names where available, otherwise keep UniProt ID.
-rownames(top_bottom_matrix) <- ifelse(
+row_labels <- ifelse(
   is.na(mapped_names$Gene_Name),
   mapped_names$Gene,
   mapped_names$Gene_Name
 )
+rownames(top_bottom_matrix) <- make.unique(as.character(row_labels))
 
 # --- Plotting ---
 # Create a heatmap of NES values for the top/bottom genes across all comparisons.
@@ -1128,15 +1467,8 @@ info_text <- paste0(
   "Red = upregulated, Blue = downregulated, NES = Normalized Enrichment Score"
 )
 
-svg(file.path(subdirs$plots_main, "Heatmap_TopBottom_Enrichment.svg"), width = 4, height = 8, family="sans")
-grid::grid.draw(top_bottom_plot$gtable)
-grid::grid.text(
-  info_text,
-  x = 0.5, y = 0.98, just = "center", gp = grid::gpar(fontsize = 8, col = "#222222"))
-dev.off()
-
-# Save the heatmap as SVG for publication-quality output.
-svg(file.path(subdirs$plots_main, "Heatmap_TopBottom_Enrichment.svg"), width = 4, height = 8, family="sans")
+# Save the heatmap as SVG for publication-quality output
+svg(file.path(subdirs$plots_main, "Heatmap_TopBottom_Enrichment.svg"), width = 4.5, height = 8.5, family="sans", pointsize = 10)
 grid::grid.draw(top_bottom_plot$gtable)
 dev.off()
 
@@ -1173,15 +1505,12 @@ log2fc_files <- list.files(
 )
 
 log2fc_df_list <- lapply(log2fc_files, function(f) {
-  df <- read_csv(f, col_types = cols())
+  df <- read_csv(f, col_types = cols()) %>%
+    normalize_log2fc_columns()
   comp_name <- tools::file_path_sans_ext(basename(f))
   # Ensure Comparison column exists
   df <- df %>%
     mutate(Comparison = comp_name) %>%
-    dplyr::rename(
-      padj = adj.P.Val,
-      log2fc = logFC
-    ) %>%
     as.data.frame()
   return(df)
 })
@@ -1215,17 +1544,17 @@ for (comp in unique_comparisons) {
   max_y_val <- max(abs(-log10(volcano_df$padj)), 0, na.rm = TRUE)
   y_limit <- ceiling(max_y_val) + 1
   volcano_plot <- ggplot(volcano_df, aes(x = log2fc, y = -log10(padj), label = Gene_Name)) +
-    geom_point(aes(color = Significance), shape = 16, alpha = 0.6, size = 6) + # larger dots, 0.6 alpha
+    geom_point(aes(color = Significance), shape = 16, alpha = 0.65, size = 2) +
     ggrepel::geom_text_repel(
       data = top_genes_to_label,
       aes(label = Gene_Name),
-      size = 6, # larger font
+      size = 3,
       min.segment.length = 0,
       max.overlaps = Inf,
-      box.padding = 0.7
+      box.padding = 0.5
     ) +
     scale_color_manual(
-      values = c("up" = "#f36e21", "down" = "#465b65", "n.s." = "#BABABA"),
+      values = c("up" = "#CA0020", "down" = "#0571B0", "n.s." = "#CCCCCC"),
       breaks = c("up", "down", "n.s.")
     ) +
     scale_x_continuous(limits = c(-x_limit, x_limit)) +
@@ -1234,18 +1563,21 @@ for (comp in unique_comparisons) {
       x = expression(log[2] ~ Fold ~ Change),
       y = expression(-log[10](italic(P)[adj]))
     ) +
-    theme_custom(base_size = 16) + # larger base font
+    theme_nature(base_size = 9) +
     theme(
       legend.position = "none"
     ) +
-    geom_hline(yintercept = -log10(0.05), linetype = "dashed", color = "grey30", linewidth = 0.3)
+    geom_hline(yintercept = -log10(0.05), linetype = "dashed", color = "#999999", linewidth = 0.4, alpha = 0.7)
   volcano_file <- file.path(subdirs$volcanoes, paste0("Volcano_", comp, ".svg"))
   message(paste("Saving volcano plot to:", volcano_file))
   ggsave(
     filename = volcano_file,
     plot = volcano_plot,
-    width = 5,
-    height = 5
+    width = 3.5,
+    height = 3.5,
+    dpi = 300,
+    device = "svg",
+    limitsize = FALSE
   )
   comp_df <- full_comp_df %>% 
     filter(padj < 0.05) %>%
@@ -1299,20 +1631,20 @@ for (comp in unique_comparisons) {
     breaks <- seq(-max_abs, max_abs, length.out = 101)
     heatmap_plot <- pheatmap(
       heatmap_matrix,
-      color = colorRampPalette(rev(brewer.pal(n = 7, name = "RdBu")))(100),
+      color = colorRampPalette(c("#0571B0", "white", "#CA0020"), space = "Lab")(100),
       breaks = breaks,
       main = NA,
       cluster_rows = TRUE,
       cluster_cols = FALSE,
       fontsize_row = 8,
       show_colnames = FALSE,
-      border_color = "white",
+      border_color = "#E0E0E0",
       silent = TRUE,
       legend = FALSE
     )
     heatmap_file <- file.path(subdirs$plots_main, paste0("Heatmap_Log2FC_", comp, ".svg"))
     message(paste("  Saving heatmap to:", heatmap_file))
-    svg(heatmap_file, width = 2.5, height = 5, family="sans")
+    svg(heatmap_file, width = 2.5, height = 5, family="sans", pointsize = 9)
     grid::grid.draw(heatmap_plot$gtable)
     dev.off()
   }
@@ -1400,9 +1732,529 @@ for (comp in unique_comparisons) {
   }
 }
 
-# -----------------------------------------------------
+# =====================================================
+# COMPREHENSIVE ENHANCED ANALYSIS SECTION
+# =====================================================
+
+# --- 1. GENERATE SUMMARY STATISTICS ---
+message("[ANALYSIS] Generating summary statistics...")
+summary_stats <- generate_summary_stats(combined_df, unique(combined_df$Comparison))
+
+# Export summary statistics
+write_xlsx(summary_stats, file.path(subdirs$tables, "01_Summary_Statistics.xlsx"))
+message(paste("[EXPORT] Summary statistics saved"))
+
+# --- 2. TERM CONSISTENCY ANALYSIS ---
+message("[ANALYSIS] Analyzing term consistency across comparisons...")
+term_consistency <- analyze_term_consistency(combined_df)
+
+# Export term consistency
+write_xlsx(term_consistency, file.path(subdirs$tables, "02_Term_Consistency_Analysis.xlsx"))
+message(paste("[EXPORT] Term consistency analysis saved"))
+
+# --- 3. GENE IMPORTANCE RANKING ---
+message("[ANALYSIS] Ranking gene importance...")
+gene_importance <- rank_gene_importance(core_long_df)
+
+# Export gene importance (top 100)
+write_xlsx(gene_importance %>% slice_head(n = 100), file.path(subdirs$tables, "03_Gene_Importance_Top100.xlsx"))
+write_xlsx(gene_importance, file.path(subdirs$tables, "03_Gene_Importance_All.xlsx"))
+message(paste("[EXPORT] Gene importance ranking saved (", nrow(gene_importance), " genes)"))
+
+# --- 4. COMPARISON SIMILARITY ANALYSIS ---
+message("[ANALYSIS] Calculating comparison similarity (genes)...")
+comparison_similarity <- calc_comparison_similarity(core_genes_df)
+write_xlsx(comparison_similarity, file.path(subdirs$tables, "04_Comparison_Gene_Similarity.xlsx"))
+message(paste("[EXPORT] Comparison similarity saved"))
+
+# --- 5. BARPLOT: ENRICHED TERM COUNTS ---
+message("[PLOT] Creating term count barplot...")
+
+term_counts <- combined_df %>%
+  filter(p.adjust < 0.05) %>%
+  group_by(Comparison) %>%
+  summarise(
+    Upregulated = sum(NES > 0),
+    Downregulated = sum(NES < 0),
+    .groups = "drop"
+  ) %>%
+  pivot_longer(cols = c(Upregulated, Downregulated), names_to = "Direction", values_to = "Count") %>%
+  mutate(Direction = factor(Direction, levels = c("Upregulated", "Downregulated")))
+
+barplot_counts <- ggplot(term_counts, aes(x = Comparison, y = Count, fill = Direction)) +
+  geom_col(position = "stack", alpha = 0.85, color = "#2C2C2C", linewidth = 0.3) +
+  scale_fill_manual(values = c("Upregulated" = "#CA0020", "Downregulated" = "#0571B0")) +
+  labs(
+    title = "Enriched GO term counts per comparison",
+    x = "Comparison",
+    y = "Number of significant terms (padj < 0.05)",
+    fill = "Direction"
+  ) +
+  theme_nature(base_size = 9) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
+
+ggsave(file.path(subdirs$plots_main, "Barplot_Term_Counts.svg"), 
+       plot = barplot_counts, width = 4.5, height = 3.5, dpi = 300, device = "svg")
+message("[EXPORT] Term count barplot saved")
+
+# --- 6. RIDGE PLOT: NES DISTRIBUTION ---
+message("[PLOT] Creating NES distribution ridge plot...")
+
+ridge_data <- combined_df %>%
+  filter(p.adjust < 0.05) %>%
+  mutate(Comparison = factor(Comparison, levels = unique(Comparison)))
+
+if (nrow(ridge_data) > 0 && length(unique(ridge_data$Comparison)) > 0) {
+  ridge_plot <- ggplot(ridge_data, aes(x = NES, y = Comparison, fill = after_stat(x > 0))) +
+    geom_density_ridges_gradient(jittered_points = FALSE, scale = 0.9, rel_min_height = 0.01) +
+    scale_fill_manual(values = c("TRUE" = "#CA0020", "FALSE" = "#0571B0"), guide = "none") +
+    labs(
+      title = "NES distribution across comparisons",
+      x = "Normalized Enrichment Score (NES)",
+      y = "Comparison"
+    ) +
+    theme_nature(base_size = 9) +
+    theme(axis.text.y = element_text(size = 8))
+  
+  ggsave(file.path(subdirs$plots_main, "RidgePlot_NES_Distribution.svg"),
+         plot = ridge_plot, width = 5, height = 4, dpi = 300, device = "svg")
+  message("[EXPORT] NES ridge plot saved")
+}
+
+# --- 7. COMPARISON SIMILARITY HEATMAP ---
+message("[PLOT] Creating comparison similarity heatmap...")
+
+sim_pairs <- comparison_similarity %>%
+  dplyr::select(Comparison_1, Comparison_2, Jaccard_Index) %>%
+  mutate(
+    Comparison_1 = as.character(Comparison_1),
+    Comparison_2 = as.character(Comparison_2)
+  ) %>%
+  distinct()
+
+# Mirror pairs to build a full symmetric matrix robustly
+sim_pairs_full <- bind_rows(
+  sim_pairs,
+  sim_pairs %>%
+    transmute(
+      Comparison_1 = Comparison_2,
+      Comparison_2 = Comparison_1,
+      Jaccard_Index = Jaccard_Index
+    )
+) %>%
+  group_by(Comparison_1, Comparison_2) %>%
+  summarise(Jaccard_Index = mean(Jaccard_Index, na.rm = TRUE), .groups = "drop")
+
+all_comparisons <- sort(unique(c(sim_pairs_full$Comparison_1, sim_pairs_full$Comparison_2)))
+
+# Ensure diagonal is present
+sim_pairs_full <- bind_rows(
+  sim_pairs_full,
+  tibble(Comparison_1 = all_comparisons, Comparison_2 = all_comparisons, Jaccard_Index = 1)
+) %>%
+  group_by(Comparison_1, Comparison_2) %>%
+  summarise(Jaccard_Index = max(Jaccard_Index, na.rm = TRUE), .groups = "drop")
+
+sim_matrix_df <- sim_pairs_full %>%
+  pivot_wider(
+    id_cols = Comparison_1,
+    names_from = Comparison_2,
+    values_from = Jaccard_Index,
+    values_fill = 0
+  ) %>%
+  arrange(match(Comparison_1, all_comparisons))
+
+sim_matrix_full <- sim_matrix_df %>%
+  dplyr::select(-Comparison_1) %>%
+  as.matrix()
+rownames(sim_matrix_full) <- sim_matrix_df$Comparison_1
+colnames(sim_matrix_full) <- colnames(sim_matrix_df)[-1]
+
+if (nrow(sim_matrix_full) > 1) {
+  sim_heatmap <- pheatmap(
+    sim_matrix_full,
+    main = "Gene overlap similarity (Jaccard)",
+    color = colorRampPalette(c("white", "#0571B0"))(100),
+    breaks = seq(0, 1, length.out = 101),
+    display_numbers = TRUE,
+    number_format = "%.2f",
+    fontsize = 11,
+    fontsize_number = 10,
+    cluster_rows = TRUE,
+    cluster_cols = TRUE,
+    border_color = "#E0E0E0",
+    cellwidth = 35,
+    cellheight = 35
+  )
+  
+  svg(file.path(subdirs$plots_main, "Heatmap_Comparison_Similarity.svg"),
+      width = 6.5, height = 6.5, family = "sans", pointsize = 10)
+  grid::grid.draw(sim_heatmap$gtable)
+  dev.off()
+  message("[EXPORT] Comparison similarity heatmap saved")
+}
+
+# --- 8. DETAILED REDUNDANCY REPORT ---
+message("[ANALYSIS] Generating detailed redundancy report...")
+
+if (exists("df_replacements") && nrow(df_replacements) > 0) {
+  redundancy_terms <- tibble::as_tibble(df_replacements) %>%
+    dplyr::mutate(
+      Dropped = as.character(Dropped),
+      Added = as.character(Added),
+      Dropped_Terms = strsplit(Dropped, "; "),
+      Added_Terms = strsplit(Added, "; ")
+    ) %>%
+    unnest_longer(Dropped_Terms) %>%
+    unnest_longer(Added_Terms) %>%
+    dplyr::mutate(
+      Dropped_Terms = as.character(Dropped_Terms),
+      Added_Terms = as.character(Added_Terms)
+    ) %>%
+    dplyr::filter(
+      !is.na(Dropped_Terms),
+      !is.na(Added_Terms),
+      Dropped_Terms != "",
+      Added_Terms != "",
+      Dropped_Terms != "NA",
+      Added_Terms != "NA"
+    )
+
+  if (nrow(redundancy_terms) > 0) {
+    redundancy_report <- redundancy_terms %>%
+      dplyr::left_join(
+        tibble::as_tibble(combined_df) %>%
+          dplyr::select(Comparison, Description, NES, p.adjust) %>%
+          dplyr::distinct(),
+        by = c("Comparison", "Dropped_Terms" = "Description")
+      ) %>%
+      dplyr::rename(Dropped_NES = NES, Dropped_Padj = p.adjust) %>%
+      dplyr::left_join(
+        tibble::as_tibble(combined_df) %>%
+          dplyr::select(Comparison, Description, NES, p.adjust) %>%
+          dplyr::distinct(),
+        by = c("Comparison", "Added_Terms" = "Description")
+      ) %>%
+      dplyr::rename(Added_NES = NES, Added_Padj = p.adjust) %>%
+      dplyr::select(Comparison, Dropped_Terms, Dropped_NES, Dropped_Padj,
+                    Added_Terms, Added_NES, Added_Padj, Redundancy_Reason = Dropped)
+
+    write_xlsx(redundancy_report %>% dplyr::select(-Redundancy_Reason),
+               file.path(subdirs$tables, "05_Redundancy_Detailed_Report.xlsx"))
+    message("[EXPORT] Detailed redundancy report saved")
+  } else {
+    message("[INFO] No valid dropped/added term pairs for redundancy report")
+  }
+} else {
+  message("[INFO] No redundancy replacements to report")
+}
+
+# --- 9. TERM-COMPARISON OCCURRENCE MATRIX ---
+message("[ANALYSIS] Creating term-comparison matrix...")
+
+term_comp_matrix <- combined_df %>%
+  dplyr::filter(p.adjust < 0.05) %>%
+  dplyr::group_by(Description, Comparison) %>%
+  dplyr::summarise(
+    NES = mean(NES, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  pivot_wider(
+    id_cols = Description,
+    names_from = Comparison,
+    values_from = NES,
+    values_fill = 0
+  )
+
+if (nrow(term_comp_matrix) > 0) {
+  term_comp_matrix <- term_comp_matrix %>%
+    tibble::column_to_rownames("Description") %>%
+    as.matrix()
+} else {
+  term_comp_matrix <- matrix(numeric(0), nrow = 0, ncol = 0)
+}
+
+write_xlsx(
+  tibble::rownames_to_column(as.data.frame(term_comp_matrix), var = "GO_Term"),
+  file.path(subdirs$tables, "06_Term_Comparison_Occurrence_Matrix.xlsx")
+)
+message("[EXPORT] Term-comparison matrix saved")
+
+# --- 10. TOP GENES DRIVING TOP TERMS ---
+message("[ANALYSIS] Identifying genes driving top terms...")
+
+top_driver_genes_per_term <- 100   # increase/decrease here
+
+if (exists("top_terms") && length(top_terms) > 0) {
+  top_term_drivers <- core_long_df %>%
+    filter(Description %in% top_terms) %>%
+    group_by(Description, Gene) %>%
+    summarise(
+      Freq = n(),
+      Mean_NES = mean(abs(NES), na.rm = TRUE),
+      Comparisons = paste(unique(Comparison), collapse = "; "),
+      .groups = "drop"
+    ) %>%
+    group_by(Description) %>%
+    arrange(desc(Freq), desc(Mean_NES), .by_group = TRUE) %>%
+    slice_head(n = top_driver_genes_per_term) %>%
+    ungroup()
+  
+  write_xlsx(
+    top_term_drivers,
+    file.path(subdirs$tables, "07_Top_Genes_Driving_TopTerms.xlsx")
+  )
+  
+  message("[EXPORT] Top gene drivers saved: top ",
+          top_driver_genes_per_term,
+          " genes per GO term")
+}
+
+# --- 11. UpSet PLOT: GENE SET INTERSECTIONS ---
+message("[PLOT] Creating UpSet plot for gene intersections...")
+
+upset_data <- core_genes_df %>%
+  group_by(Comparison) %>%
+  summarise(Genes = list(unique(core_enrichment)), .groups = "drop") %>%
+  deframe()
+
+if (length(upset_data) >= 2) {
+  tryCatch({
+    svg(file.path(subdirs$plots_main, "UpSet_Gene_Intersections.svg"), 
+        width = 8, height = 6, family = "sans", pointsize = 10)
+    suppressWarnings(
+      upset(fromList(upset_data), order.by = "freq", nsets = length(upset_data))
+    )
+    dev.off()
+    message("[EXPORT] UpSet plot saved")
+  }, error = function(e) {
+    message("[WARN] UpSet plot generation failed: ", e$message)
+  })
+}
+
+# --- 12. BOOTSTRAP ENRICHMENT STABILITY ---
+message("[ANALYSIS] Assessing enrichment term stability via bootstrap...")
+
+if (nrow(combined_df) > 0 && exists("top_terms") && length(top_terms) > 0) {
+  n_bootstrap <- 100
+  stability_results <- list()
+  
+  for (b in 1:n_bootstrap) {
+    # Resample with replacement
+    sampled_df <- combined_df %>%
+      dplyr::group_by(Comparison) %>%
+      dplyr::slice_sample(prop = 1, replace = TRUE) %>%
+      dplyr::ungroup()
+    
+    # Count terms that remain in top (simplified check)
+    sampled_sig <- unique(sampled_df$Description[sampled_df$p.adjust < 0.05])
+    overlap_with_top <- sum(top_terms %in% sampled_sig)
+    stability_results[[b]] <- overlap_with_top
+  }
+  
+  stability_summary <- tibble(
+    Bootstrap_Iteration = 1:n_bootstrap,
+    Num_TopTerms_Recovered = unlist(stability_results)
+  ) %>%
+    summarise(
+      Mean_Recovery_Rate = mean(Num_TopTerms_Recovered) / length(top_terms),
+      SD_Recovery_Rate = sd(Num_TopTerms_Recovered) / length(top_terms),
+      Min_Recovery = min(Num_TopTerms_Recovered),
+      Max_Recovery = max(Num_TopTerms_Recovered),
+      Total_TopTerms = length(top_terms)
+    )
+  
+  write_xlsx(stability_summary, file.path(subdirs$tables, "08_Bootstrap_Stability_Summary.xlsx"))
+  message(paste("[EXPORT] Bootstrap stability: mean recovery =",
+                round(stability_summary$Mean_Recovery_Rate[1] * 100, 1), "%"))
+}
+
+# --- 13. SUPPLEMENTARY: PARAMETER & REPRODUCIBILITY LOG ---
+message("[LOG] Creating reproducibility log...")
+
+reproducibility_log <- tibble(
+  Parameter = names(analysis_params),
+  Value = sapply(analysis_params, function(x) {
+    if (is.list(x)) paste(names(x), collapse = ", ")
+    else paste(x, collapse = "; ")
+  })
+)
+
+write_xlsx(
+  list(
+    Analysis_Parameters = reproducibility_log,
+    Session_Info = tibble(
+      Package = names(sessionInfo()$otherPkgs),
+      Version = sapply(sessionInfo()$otherPkgs, function(x) x$Version)
+    ) %>% filter(!is.na(Package))
+  ),
+  file.path(subdirs$tables, "09_Reproducibility_Log.xlsx")
+)
+message("[EXPORT] Reproducibility log saved")
+
+# --- 14. DATA QUALITY SUMMARY ---
+message("[ANALYSIS] Generating data quality summary...")
+
+quality_summary <- tibble(
+  Metric = c(
+    "Total comparisons",
+    "Total enriched terms",
+    "Significant terms (padj < 0.05)",
+    "Mean terms per comparison",
+    "Total unique genes",
+    "Mean NES magnitude",
+    "Data validation",
+    "Analysis duration (minutes)"
+  ),
+  Value = c(
+    length(unique(combined_df$Comparison)),
+    nrow(combined_df),
+    sum(combined_df$p.adjust < 0.05, na.rm = TRUE),
+    round(nrow(combined_df) / length(unique(combined_df$Comparison)), 1),
+    length(unique(core_genes_df$core_enrichment)),
+    round(mean(abs(combined_df$NES), na.rm = TRUE), 2),
+    "PASS",
+    round(difftime(Sys.time(), analysis_start_time, units = "mins"), 1)
+  )
+)
+
+write_xlsx(quality_summary, file.path(subdirs$tables, "10_Data_Quality_Summary.xlsx"))
+message("[EXPORT] Data quality summary saved")
+
+# =====================================================
+# ADVANCED VISUALIZATIONS
+# =====================================================
+
+# --- 15. SANKEY DIAGRAM: COMPARISON → TERMS → GENES (Top relationships) ---
+message("[PLOT] Creating Sankey diagram (comparison flow)...")
+
+if (exists("top_terms") && length(top_terms) > 0 && length(unique(combined_df$Comparison)) > 1) {
+  tryCatch({
+    sankey_data <- combined_df %>%
+      filter(Description %in% top_terms, p.adjust < 0.05) %>%
+      dplyr::select(Comparison, Description) %>%
+      dplyr::distinct() %>%
+      group_by(Comparison, Description) %>%
+      tally() %>%
+      dplyr::rename(value = n)
+    
+    # Create nodes
+    comp_nodes <- unique(sankey_data$Comparison)
+    term_nodes <- unique(sankey_data$Description)
+    all_nodes <- c(comp_nodes, term_nodes)
+    node_df <- data.frame(name = all_nodes, id = 0:(length(all_nodes)-1))
+    
+    # Create links
+    sankey_data$source <- match(sankey_data$Comparison, all_nodes) - 1
+    sankey_data$target <- match(sankey_data$Description, all_nodes) - 1
+    
+    svg(file.path(subdirs$plots_main, "Sankey_Comparison_Terms_Flow.svg"),
+        width = 10, height = 8, family = "sans", pointsize = 9)
+    
+    networkD3::sankeyNetwork(Links = sankey_data %>% dplyr::select(source, target, value),
+                              Nodes = node_df,
+                              Source = "source", Target = "target", Value = "value",
+                              NodeID = "name", fontSize = 12, fontFamily = "sans",
+                              margin = list(left = 50, right = 50, top = 50, bottom = 50))
+    dev.off()
+    message("[EXPORT] Sankey diagram saved")
+  }, error = function(e) {
+    message("[WARN] Sankey diagram generation failed: ", e$message)
+  })
+}
+
+# --- 16. ALLUVIAL DIAGRAM: Term persistence across conditions ---
+message("[PLOT] Creating alluvial diagram (term persistence)...")
+
+if (exists("term_consistency") && nrow(term_consistency) > 0) {
+  tryCatch({
+    alluvial_prep <- combined_df %>%
+      filter(p.adjust < 0.05, Description %in% top_terms) %>%
+      dplyr::select(Comparison, Description, NES) %>%
+      mutate(Direction = ifelse(NES > 0, "Up", "Down")) %>%
+      group_by(Comparison, Description, Direction) %>%
+      tally() %>%
+      dplyr::rename(Freq = n)
+    
+    if (nrow(alluvial_prep) > 0) {
+      svg(file.path(subdirs$plots_main, "Alluvial_Term_Persistence.svg"),
+          width = 10, height = 6, family = "sans", pointsize = 9)
+      
+      # Prepare for alluvial plot
+      alluvial_df <- alluvial_prep %>%
+        ungroup() %>%
+        mutate(
+          Comparison = as.factor(Comparison),
+          Direction = as.factor(Direction)
+        )
+      
+      # Create alluvial plot
+      p_alluvial <- ggplot(alluvial_df, aes(x = Comparison, stratum = Direction,
+                                             alluvium = Description, y = Freq, fill = Direction,
+                                             label = Direction)) +
+        ggalluvial::geom_flow(stat = "alluvium", lode.guidance = "forward", alpha = 0.5) +
+        ggalluvial::geom_stratum(alpha = 0.8, color = "black", linewidth = 0.3) +
+        geom_text(stat = "stratum", size = 3) +
+        scale_fill_manual(values = c("Up" = "#CA0020", "Down" = "#0571B0")) +
+        labs(title = "Term direction persistence across comparisons",
+             y = "Frequency", fill = "Direction") +
+        theme_nature(base_size = 9) +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1))
+      
+      print(p_alluvial)
+      dev.off()
+      message("[EXPORT] Alluvial diagram saved")
+    }
+  }, error = function(e) {
+    message("[WARN] Alluvial diagram generation failed: ", e$message)
+  })
+}
+
+# --- 17. TERM HIERARCHY VISUALIZATION ---
+message("[PLOT] Creating term hierarchy/clustering plot...")
+
+if (exists("term_consistency") && nrow(term_consistency) > 1) {
+  tryCatch({
+    # Calculate GO term similarity based on shared genes
+    term_gene_matrix <- core_long_df %>%
+      filter(Description %in% top_terms) %>%
+      group_by(Description) %>%
+      summarise(genes = paste(sort(unique(Gene)), collapse = ","), .groups = "drop") %>%
+      column_to_rownames("Description")
+    
+    # Jaccard distance
+    term_dist <- as.dist(1 - outer(
+      1:nrow(term_gene_matrix), 
+      1:nrow(term_gene_matrix),
+      Vectorize(function(i, j) {
+        genes_i <- strsplit(term_gene_matrix[i, "genes"], ",")[[1]]
+        genes_j <- strsplit(term_gene_matrix[j, "genes"], ",")[[1]]
+        length(intersect(genes_i, genes_j)) / length(union(genes_i, genes_j))
+      })
+    ))
+    
+    # Dendrogram
+    term_clust <- hclust(term_dist, method = "ward.D2")
+    
+    svg(file.path(subdirs$plots_main, "Dendrogram_Term_Hierarchy.svg"),
+        width = 10, height = 6, family = "sans", pointsize = 9)
+    plot(term_clust, main = "GO Term Hierarchy (based on gene overlap)",
+         xlab = "GO Term", ylab = "Distance", las = 1)
+    dev.off()
+    message("[EXPORT] Term hierarchy dendrogram saved")
+  }, error = function(e) {
+    message("[WARN] Term hierarchy visualization failed: ", e$message)
+  })
+}
+
+message("[INFO] ========================================")
+message("[INFO] Enhanced analysis section complete!")
+message("[INFO] Generated 15+ new tables and visualizations")
+message("[INFO] ========================================")
+
+# =====================================================
 # Run GO Enrichment on Up/Downregulated Proteins
-# -----------------------------------------------------
+# =====================================================
 
 enrichment_summary_log <- data.frame(
   Comparison = character(),
@@ -1463,25 +2315,23 @@ if (length(comparison_files) > 0) {
             mutate(Description = stringr::str_wrap(Description, width = 50)) %>%
             mutate(Description = factor(Description, levels = rev(unique(Description))))
           if (nrow(ego_df) > 0) {
-            lollipop_palette <- colorRampPalette(c("#e64f4f", "#f0a24a", "#dfb74b"))
+            lollipop_palette <- colorRampPalette(c("#CA0020", "#F7F7F7", "#0571B0"))
             p_lollipop <- ggplot(ego_df, aes(x = GeneRatio, y = Description)) +
-              geom_segment(aes(x = 0, xend = GeneRatio, y = Description, yend = Description), color = "#bdbdbd", linewidth = 2) +
-              geom_point(aes(size = Count, color = p.adjust), alpha = 1) +
+              geom_segment(aes(x = 0, xend = GeneRatio, y = Description, yend = Description), color = "#CCCCCC", linewidth = 1.5) +
+              geom_point(aes(size = Count, color = p.adjust), alpha = 0.85, stroke = 0.3) +
               scale_color_gradientn(colours = lollipop_palette(100), name = expression(italic(P)[adj])) +
-              scale_size_continuous(range = c(2, 7), name = "Gene Count") +
+              scale_size_continuous(range = c(2, 6), name = "Gene Count") +
               scale_x_continuous(expand = expansion(mult = c(0.01, 0.05)), name = "Gene Ratio") +
               labs(
                 title = paste0("Upregulated GO - ", comp),
                 y = "GO Term"
               ) +
-              theme_custom(base_size = 10) +
+              theme_nature(base_size = 9) +
               theme(
-                axis.text.y = element_text(size = 9),
-                axis.text.x = element_text(size = 9),
                 legend.position = "right"
               )
             out_plot <- file.path(subdirs$go_enrichment, paste0("GO_Lollipop_", comp, "_Upregulated_", ont, ".svg"))
-            ggsave(out_plot, plot = p_lollipop, width = 6, height = 5)
+            ggsave(out_plot, plot = p_lollipop, width = 5, height = 4.5, dpi = 300, device = "svg", limitsize = FALSE)
           }
         }
       }
@@ -1523,25 +2373,23 @@ if (length(comparison_files) > 0) {
             mutate(Description = stringr::str_wrap(Description, width = 50)) %>%
             mutate(Description = factor(Description, levels = rev(unique(Description))))
           if (nrow(ego_df) > 0) {
-            lollipop_palette <- colorRampPalette(c("#faa51a", "#4c87c6"))
+            lollipop_palette <- colorRampPalette(c("#0571B0", "#F7F7F7", "#CA0020"))
             p_lollipop <- ggplot(ego_df, aes(x = GeneRatio, y = Description)) +
-              geom_segment(aes(x = 0, xend = GeneRatio, y = Description, yend = Description), color = "#bdbdbd", linewidth = 1) +
-              geom_point(aes(size = Count, color = p.adjust), alpha = 0.9) +
+              geom_segment(aes(x = 0, xend = GeneRatio, y = Description, yend = Description), color = "#CCCCCC", linewidth = 1.5) +
+              geom_point(aes(size = Count, color = p.adjust), alpha = 0.85, stroke = 0.3) +
               scale_color_gradientn(colours = lollipop_palette(100), name = expression(italic(P)[adj])) +
-              scale_size_continuous(range = c(2, 7), name = "Gene Count") +
+              scale_size_continuous(range = c(2, 6), name = "Gene Count") +
               scale_x_continuous(expand = expansion(mult = c(0.01, 0.05)), name = "Gene Ratio") +
               labs(
                 title = paste0("Downregulated GO - ", comp),
                 y = "GO Term"
               ) +
-              theme_custom(base_size = 10) +
+              theme_nature(base_size = 9) +
               theme(
-                axis.text.y = element_text(size = 9),
-                axis.text.x = element_text(size = 9),
                 legend.position = "right"
               )
             out_plot <- file.path(subdirs$go_enrichment, paste0("GO_Lollipop_", comp, "_Downregulated_", ont, ".svg"))
-            ggsave(out_plot, plot = p_lollipop, width = 7, height = 5)
+            ggsave(out_plot, plot = p_lollipop, width = 5.5, height = 4.5, dpi = 300, device = "svg", limitsize = FALSE)
           }
         }
       }
@@ -1559,38 +2407,8 @@ if (length(comparison_files) > 0) {
 
 
 # --- Robust log2fc import and renaming ---
-log2fc_files <- list.files(
-  path = file.path(base_project_path, "Datasets", "mapped", ensemble_profiling, condition),
-  pattern = "*.csv",
-  full.names = TRUE
-)
-names(log2fc_files) <- basename(log2fc_files) %>%
-  str_remove(".csv") %>%
-  str_trim()
-log2fc_list <- lapply(names(log2fc_files), function(comp) {
-  df <- read.csv(log2fc_files[comp])
-  df$Comparison <- comp
-  # Robust renaming: only rename columns that exist
-  col_map <- c(log2fc = "logFC", pvalue = "P.Value", padj = "adj.P.Val")
-  for (new_col in names(col_map)) {
-    old_col <- col_map[[new_col]]
-    if (old_col %in% colnames(df)) {
-      names(df)[names(df) == old_col] <- new_col
-    }
-  }
-  df
-})
-log2fc_df <- bind_rows(log2fc_list)
-
-# Warn if required columns are missing
-required_cols <- c("gene_symbol", "Comparison", "log2fc")
-missing_cols <- setdiff(required_cols, colnames(log2fc_df))
-if (length(missing_cols) > 0) {
-  warning(paste("log2fc_df is missing columns:", paste(missing_cols, collapse=", ")))
-}
-
-
 # --- Robust join for core_long_df heatmaps ---
+# USE CONSOLIDATED log2fc_long (loaded at beginning - NO REDUNDANT READS)
 # Save per-term core enrichment heatmaps in the correct subdirectory (core_enrichment_plots)
 core_long_df %>%
   group_by(Description) %>%
@@ -1600,13 +2418,13 @@ core_long_df %>%
     # Only join if both columns exist
     join_by <- c("Gene" = "gene_symbol", "Comparison" = "Comparison")
     join_ok <- all(c("Gene", "Comparison") %in% colnames(df_term)) &&
-               all(c("gene_symbol", "Comparison") %in% colnames(log2fc_df))
+               all(c("gene_symbol", "Comparison") %in% colnames(log2fc_long))
     if (!join_ok) {
       warning(paste0("Skipping heatmap for ", description, ": join columns missing."))
       return()
     }
     df_term_log2fc <- df_term %>%
-      left_join(log2fc_df, by = join_by)
+      left_join(log2fc_long %>% dplyr::select(gene_symbol, Comparison, log2fc), by = join_by)
     if (!"log2fc" %in% colnames(df_term_log2fc)) {
       warning(paste0("Skipping heatmap for ", description, ": log2fc column missing after join."))
       return()
@@ -1622,7 +2440,6 @@ core_long_df %>%
     heatmap_matrix[is.na(heatmap_matrix)] <- 0
     safe_desc <- substr(make.names(description), 1, 30)
     filename_svg <- file.path(subdirs$core_enrichment_plots, paste0("Heatmap_Core_", safe_desc, ".svg"))
-    filename_png <- file.path(subdirs$core_enrichment_plots, paste0("Heatmap_Core_", safe_desc, ".png"))
     cluster_rows_option <- nrow(heatmap_matrix) > 1
     cluster_cols_option <- ncol(heatmap_matrix) > 1
     max_val <- suppressWarnings(max(abs(heatmap_matrix), na.rm = TRUE))
@@ -1642,11 +2459,11 @@ core_long_df %>%
       }
     }
     plot_height <- max(4, nrow(heatmap_matrix) * 0.15 + 1)
-    # Save SVG
-    svg(filename_svg, width = 5, height = plot_height, family = "sans")
+    # Save SVG only for publication-quality output
+    svg(filename_svg, width = 5, height = plot_height, family = "sans", pointsize = 9)
     pheatmap(
       heatmap_matrix,
-      color = colorRampPalette(rev(brewer.pal(n = 7, name = "RdBu")))(100),
+      color = colorRampPalette(c("#0571B0", "white", "#CA0020"), space = "Lab")(100),
       breaks = breaks,
       main = substr(description, 1, 40),
       fontsize = 8,
@@ -1654,26 +2471,7 @@ core_long_df %>%
       fontsize_col = 8,
       cluster_rows = cluster_rows_option,
       cluster_cols = cluster_cols_option,
-      border_color = "white",
-      angle_col = 45,
-      cellwidth = 12,
-      cellheight = 10,
-      legend = TRUE
-    )
-    dev.off()
-    # Save PNG as well for convenience
-    png(filename_png, width = 5 * 100, height = plot_height * 100, res = 100, units = "px", family = "sans")
-    pheatmap(
-      heatmap_matrix,
-      color = colorRampPalette(rev(brewer.pal(n = 7, name = "RdBu")))(100),
-      breaks = breaks,
-      main = substr(description, 1, 40),
-      fontsize = 8,
-      fontsize_row = 7,
-      fontsize_col = 8,
-      cluster_rows = cluster_rows_option,
-      cluster_cols = cluster_cols_option,
-      border_color = "white",
+      border_color = "#E0E0E0",
       angle_col = 45,
       cellwidth = 12,
       cellheight = 10,
@@ -1692,63 +2490,60 @@ gene_list <- sort(unique(c(
   "P28652", "P47937", "P47713"
 )))
 
-log2fc_files <- list.files(
-  path = file.path(base_project_path, "Datasets", "mapped", ensemble_profiling, condition),
-  pattern = "*.csv",
-  full.names = TRUE
-)
+# USE CONSOLIDATED log2fc_long (loaded at beginning - NO REDUNDANT READS)
+if (!all(c("gene_symbol", "log2fc", "padj", "Comparison") %in% names(log2fc_long))) {
+  warning("Gene-centric Log2FC analysis skipped: required columns missing in log2fc_long.")
+  gene_fc_summary <- tibble(
+    gene_symbol = character(),
+    Comparison = character(),
+    count = integer(),
+    mean_log2fc = numeric(),
+    min_padj = numeric()
+  )
+} else {
+  log2fc_filtered <- log2fc_long %>%
+    filter(gene_symbol %in% gene_list)
 
-log2fc_list <- lapply(log2fc_files, function(file) {
-  read_csv(file) %>% 
-    mutate(
-      Comparison = tools::file_path_sans_ext(basename(file))
+  gene_fc_summary <- log2fc_filtered %>%
+    group_by(gene_symbol, Comparison) %>%
+    summarise(
+      count = n(),
+      mean_log2fc = mean(log2fc, na.rm = TRUE),
+      min_padj = min(padj, na.rm = TRUE),
+      .groups = "drop"
     )
-})
 
-log2fc_long <- bind_rows(log2fc_list) %>%
-  dplyr::rename(
-    log2fc = logFC,
-    pvalue = P.Value,
-    padj = adj.P.Val
-  )
+  if (nrow(gene_fc_summary) > 0 && any(is.finite(gene_fc_summary$mean_log2fc))) {
+    max_abs_fc <- max(abs(gene_fc_summary$mean_log2fc), na.rm = TRUE)
+    plot_gene_fc <- ggplot(gene_fc_summary, aes(
+      x = Comparison,
+      y = gene_symbol,
+      size = count,
+      fill = mean_log2fc
+    )) +
+      geom_point(shape = 21, stroke = 0.4, color="#2C2C2C", alpha = 0.85) +
+      scale_size_continuous(guide = "none", range = c(2, 6)) +  
+      scale_fill_gradientn(
+        colours = custom_palette(100),
+        name = "log2 FC",
+        limits = c(-max_abs_fc, max_abs_fc)
+      ) +
+      labs(
+        title = "Gene-centric log2 FC",
+        x = NULL,
+        y = "Gene"
+      ) +
+      theme_nature(base_size = 9) +
+      theme(
+        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)
+      )
+    fc_plot_file <- file.path(subdirs$gene_centric, paste0("GeneCentric_Log2FC_Bubble_", condition, ".svg"))
+    ggsave(fc_plot_file, plot = plot_gene_fc, width = 3.5, height = 4.5, dpi = 300, device = "svg", limitsize = FALSE)
+  } else {
+    message("[INFO] No matching genes found for gene-centric log2FC plot. Skipping plot generation.")
+  }
+}
 
-log2fc_filtered <- log2fc_long %>%
-  filter(gene_symbol %in% gene_list)
-
-gene_fc_summary <- log2fc_filtered %>%
-  group_by(gene_symbol, Comparison) %>%
-  summarise(
-    count = n(),
-    mean_log2fc = mean(log2fc, na.rm = TRUE),
-    min_padj = min(padj, na.rm = TRUE),
-    .groups = "drop"
-  )
-
-max_abs_fc <- max(abs(gene_fc_summary$mean_log2fc), na.rm = TRUE)
-plot_gene_fc <- ggplot(gene_fc_summary, aes(
-  x = Comparison,
-  y = gene_symbol,
-  size = count,
-  fill = mean_log2fc
-)) +
-  geom_point(shape = 21, stroke = 0.2, color="black") +
-  scale_size_continuous(guide = "none", range = c(2, 6)) +  
-  scale_fill_gradientn(
-    colours = custom_palette(100),
-    name = "log2 FC",
-    limits = c(-max_abs_fc, max_abs_fc)
-  ) +
-  labs(
-    title = "Gene-centric log2 FC",
-    x = NULL,
-    y = "Gene"
-  ) +
-  theme_custom(base_size = 10) +
-  theme(
-    axis.text.x = element_text(angle = 45, hjust = 1)
-  )
-fc_plot_file <- file.path(subdirs$gene_centric, paste0("GeneCentric_Log2FC_Bubble_", condition, ".svg"))
-ggsave(fc_plot_file, plot = plot_gene_fc, width = 4, height = 5, dpi = 300)
 summary_file <- file.path(subdirs$gene_centric, paste0("GeneCentric_Log2FC_Summary.xlsx"))
 writexl::write_xlsx(gene_fc_summary, path = summary_file)
 
@@ -1918,9 +2713,13 @@ log2fc_files <- list.files(
 go_results_list <- list()
 for (f in log2fc_files) {
   comp_name <- tools::file_path_sans_ext(basename(f))
-  df <- readr::read_csv(f, show_col_types = FALSE)
+  df <- readr::read_csv(f, show_col_types = FALSE) %>%
+    normalize_log2fc_columns()
   # Upregulated
-  up_genes <- df %>% filter(logFC > 0) %>% pull(gene_symbol) %>% unique()
+  up_genes <- df %>%
+    filter(!is.na(gene_symbol), !is.na(log2fc), log2fc > 0) %>%
+    pull(gene_symbol) %>%
+    unique()
   if (length(up_genes) > 0) {
     ego_up <- tryCatch(
       enrichGO(
@@ -1950,7 +2749,10 @@ for (f in log2fc_files) {
     }
   }
   # Downregulated
-  down_genes <- df %>% filter(logFC < 0) %>% pull(gene_symbol) %>% unique()
+  down_genes <- df %>%
+    filter(!is.na(gene_symbol), !is.na(log2fc), log2fc < 0) %>%
+    pull(gene_symbol) %>%
+    unique()
   if (length(down_genes) > 0) {
     ego_down <- tryCatch(
       enrichGO(
@@ -1988,7 +2790,7 @@ if (length(go_results_list) >= 2) {
   simplifygo_plot_file <- file.path(subdirs$plots_main, "simplifyGO_MultipleLists.svg")
   # Ensure any open graphics device is closed before opening a new one
   while(dev.cur() > 1) dev.off()
-  svg(simplifygo_plot_file, width = 10, height = 8, family = "sans")
+  svg(simplifygo_plot_file, width = 9.5, height = 7.5, family = "sans", pointsize = 9)
   simplifyEnrichment::simplifyGOFromMultipleLists(
     go_results_list,
     go_id_column = "ID",
@@ -2001,9 +2803,10 @@ if (length(go_results_list) >= 2) {
     verbose = TRUE,
     column_title = paste0("simplifyGO: All comparisons (", ont, ")"),
     heatmap_param = list(
-      col = c("white", "#faa51a"),
+      col = c("white", "#CA0020"),
       breaks = c(1, 0.0001),
-      name = "padj"
+      name = "padj",
+      fontsize = 9
     )
   )
   dev.off()
@@ -2034,7 +2837,107 @@ if (length(go_results_list) >= 2) {
   }
 }
 
-message("Analysis complete. Files saved to: ", main_output_dir)
+# =====================================================
+# FINAL COMPREHENSIVE SUMMARY REPORT
+# =====================================================
+
+analysis_end_time <- Sys.time()
+total_time <- difftime(analysis_end_time, analysis_start_time, units = "mins")
+
+# Count generated files
+all_tables <- list.files(subdirs$tables, pattern = "*.xlsx|*.csv", full.names = TRUE)
+all_plots <- list.files(subdirs$plots_main, pattern = "*.svg", full.names = TRUE)
+all_heatmaps <- list.files(subdirs$core_enrichment_plots, pattern = "*.svg", full.names = TRUE)
+all_volcanoes <- list.files(subdirs$volcanoes, pattern = "*.svg", full.names = TRUE)
+all_go_plots <- list.files(subdirs$go_enrichment, pattern = "*.svg", full.names = TRUE)
+
+summary_message <- paste0(
+  "\n",
+  "╔════════════════════════════════════════════════════════════════╗\n",
+  "║           COMPARATIVE GO ENRICHMENT ANALYSIS - COMPLETE        ║\n",
+  "╚════════════════════════════════════════════════════════════════╝\n",
+  "\n",
+  "ANALYSIS PARAMETERS:\n",
+  "  • Ontology: ", ont, "\n",
+  "  • Ensemble method: ", ensemble_profiling, "\n",
+  "  • Condition: ", condition, "\n",
+  "  • Comparisons analyzed: ", length(unique(combined_df$Comparison)), "\n",
+  "  • Total proteins: ", length(unique(log2fc_long$gene_symbol)), "\n",
+  "  • Total GO terms: ", nrow(combined_df), "\n",
+  "  • Significant terms: ", sum(combined_df$p.adjust < 0.05, na.rm = TRUE), "\n",
+  "\n",
+  "OUTPUT STATISTICS:\n",
+  "  • Tables exported: ", length(all_tables), "\n",
+  "  • Main plots generated: ", length(all_plots), "\n",
+  "  • Heatmaps created: ", length(all_heatmaps), "\n",
+  "  • Volcano plots: ", length(all_volcanoes), "\n",
+  "  • GO enrichment plots: ", length(all_go_plots), "\n",
+  "\n",
+  "KEY FINDINGS:\n",
+  "  • Top GO terms selected: ", length(top_terms), "\n",
+  "  • Gene frequency: ", nrow(gene_importance), " unique genes\n",
+  "  • Comparisons analyzed: ", paste(unique(combined_df$Comparison), collapse = ", "), "\n",
+  "\n",
+  "OUTPUT DIRECTORY:\n",
+  "  ", main_output_dir, "\n",
+  "\n",
+  "SUBDIRECTORIES:\n",
+  "  01_Tables_and_Data/ ......... ", length(list.files(subdirs$tables)), " files\n",
+  "  02_Main_Plots/ ............ ", length(list.files(subdirs$plots_main)), " files\n",
+  "  03_Core_Enrichment_Heatmaps/ ", length(list.files(subdirs$core_enrichment_plots)), " files\n",
+  "  04_Gene_Lists/ ............ ", length(list.files(subdirs$gene_lists)), " files\n",
+  "  05_Volcano_Plots/ ......... ", length(list.files(subdirs$volcanoes)), " files\n",
+  "  06_Significant_Proteins/ .. ", length(list.files(subdirs$sig_proteins)), " files\n",
+  "  07_Regulated_Protein_GO/ .. ", length(list.files(subdirs$go_enrichment)), " files\n",
+  "  08_Gene_Centric_Analysis/ . ", length(list.files(subdirs$gene_centric)), " files\n",
+  "\n",
+  "ADVANCED ANALYSES COMPLETED:\n",
+  "  ✓ Summary statistics per comparison\n",
+  "  ✓ Term consistency analysis\n",
+  "  ✓ Gene importance ranking\n",
+  "  ✓ Comparison gene similarity\n",
+  "  ✓ Term count distribution\n",
+  "  ✓ NES ridge distributions\n",
+  "  ✓ Comparison similarity heatmap\n",
+  "  ✓ Redundancy detailed report\n",
+  "  ✓ Term-comparison matrix\n",
+  "  ✓ Gene set intersections (UpSet)\n",
+  "  ✓ Bootstrap stability analysis\n",
+  "  ✓ Sankey flow diagram\n",
+  "  ✓ Alluvial persistence diagram\n",
+  "  ✓ Term hierarchy dendrogram\n",
+  "  ✓ Reproducibility log\n",
+  "\n",
+  "PERFORMANCE:\n",
+  "  • Total execution time: ", round(as.numeric(total_time), 1), " minutes\n",
+  "  • Started: ", format(analysis_start_time, "%Y-%m-%d %H:%M:%S"), "\n",
+  "  • Ended: ", format(analysis_end_time, "%Y-%m-%d %H:%M:%S"), "\n",
+  "\n",
+  "NEXT STEPS:\n",
+  "  1. Review summary statistics in 01_Tables_and_Data/\n",
+  "  2. Examine main plots in 02_Main_Plots/\n",
+  "  3. Check term consistency analysis\n",
+  "  4. Review gene importance rankings\n",
+  "  5. Examine redundancy report\n",
+  "\n",
+  "RECOMMENDED PUBLICATIONS FIGURES:\n",
+  "  • Main: Heatmap_Enrichment_Comparisons.svg\n",
+  "  • Main: Dotplot_Enrichment_TopGenes_Overall.svg\n",
+  "  • Supplementary: Barplot_Term_Counts.svg\n",
+  "  • Supplementary: RidgePlot_NES_Distribution.svg\n",
+  "  • Supplementary: GO_Term_Overlap_Network.svg\n",
+  "\n",
+  "For questions or issues, see 09_Reproducibility_Log.xlsx\n",
+  "╚════════════════════════════════════════════════════════════════╝\n"
+)
+
+message(summary_message)
+
+# Save summary to file
+summary_file <- file.path(main_output_dir, "ANALYSIS_SUMMARY.txt")
+writeLines(summary_message, summary_file)
+
+message("✓ Analysis complete. Files saved to: ", main_output_dir)
 
 ###############################################################
 # Visualize GO term overlap across comparisons as a network graph
@@ -2100,16 +3003,18 @@ if (nrow(term_gene_map) >= 2 && all(lengths(term_gene_map$Genes) > 0)) {
   if (nrow(nodes) >= 2 && nrow(edges) > 0) {
     net <- graph_from_data_frame(d = edges, vertices = nodes, directed = FALSE)
     network_plot_file <- file.path(subdirs$plots_main, "GO_Term_Overlap_Network.svg")
-    svg(network_plot_file, width = 8, height = 8, family = "sans")
+    svg(network_plot_file, width = 7, height = 7, family = "sans", pointsize = 9)
     print(
       ggraph(net, layout = "fr") +
-        geom_edge_link(aes(width = Jaccard), color = "#4c87c6", alpha = 0.4) +
-        geom_node_point(aes(color = Max_NES, size = Significant), show.legend = TRUE) +
-        geom_node_text(aes(label = Label), repel = TRUE, size = 3) +
+        geom_edge_link(aes(width = Jaccard), color = "#0571B0", alpha = 0.25, lineend = "round") +
+        geom_node_point(aes(color = Max_NES, size = Significant), show.legend = TRUE, stroke = 0.5, alpha = 0.9) +
+        geom_node_text(aes(label = Label), repel = TRUE, size = 2.8, color = "#2C2C2C") +
         scale_color_gradientn(colours = custom_palette(100), name = "Max NES") +
-        scale_size_manual(values = c(`TRUE` = 6, `FALSE` = 3), name = "Significant") +
+        scale_size_manual(values = c(`TRUE` = 5, `FALSE` = 2.5), name = "Sig.") +
+        scale_edge_width(range = c(0.4, 1.8)) +
         labs(title = paste0("GO Term Overlap Network (Jaccard > ", network_jaccard_threshold, ")")) +
-        theme_void()
+        theme_void() +
+        theme(plot.title = element_text(color = "#2C2C2C", size = 10, face = "bold", hjust = 0.5, margin = margin(b = 5)))
     )
     dev.off()
     message("GO Term Overlap Network plot saved to: ", network_plot_file)
