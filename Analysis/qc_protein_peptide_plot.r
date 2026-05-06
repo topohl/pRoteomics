@@ -1,481 +1,884 @@
-#' @title QC Protein Peptide Plot
-#' @description
-#' Creates a quality control visualization of protein and peptide counts across different cell types.
-#' The function generates a faceted bar plot with dual y-axes, where protein counts are shown on the left axis and peptide counts on the right axis. Each cell type is displayed in a separate panel, with horizontal dashed lines indicating overall averages for proteins and peptides. The plot excludes background samples and uses custom color schemes to distinguish between cell types and measurement types.
-#' @param data A data frame containing protein and peptide counts.
-#' @return A ggplot object.
-#' @export
+# ================================================================
+# Manuscript-grade QC figures for spatial proteomics
+# Ring-free Nature-style version
+# ================================================================
 
-# Load libraries
-if (!require("pacman")) install.packages("pacman")
-pacman::p_load(
-  ggplot2, tidyr, dplyr, readxl, UpSetR, ComplexHeatmap, FactoMineR, factoextra, reshape2, ggrepel, patchwork, viridis
+suppressPackageStartupMessages({
+  library(readxl)
+  library(dplyr)
+  library(tidyr)
+  library(ggplot2)
+  library(patchwork)
+  library(ggrepel)
+  library(svglite)
+  library(scales)
+  library(openxlsx)
+  library(rlang)
+})
+
+# ================================================================
+# 1. Paths
+# ================================================================
+
+input_file <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/pg_matrix/raw/quicksearch.stats.annotated.xlsx"
+
+out_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Results/QC_Nature/"
+dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+
+# ================================================================
+# 2. Load and clean data
+# ================================================================
+
+qc <- read_excel(input_file) %>%
+  mutate(
+    sample_id = as.character(sample_id),
+    celltype_layer = as.character(celltype_layer)
+  ) %>%
+  filter(
+    !grepl("background|blank|bg", sample_id, ignore.case = TRUE),
+    !grepl("background|blank|bg", celltype_layer, ignore.case = TRUE)
+  ) %>%
+  mutate(celltype_layer = factor(celltype_layer))
+
+required_cols <- c("sample_id", "celltype_layer")
+missing_required <- setdiff(required_cols, names(qc))
+
+if (length(missing_required) > 0) {
+  stop("Missing required columns: ", paste(missing_required, collapse = ", "))
+}
+
+# ================================================================
+# 3. QC metric columns
+# ================================================================
+
+qc_metrics_all <- c(
+  "Proteins.Identified",
+  "Precursors.Identified",
+  "MS1.Signal",
+  "MS2.Signal",
+  "FWHM.Scans",
+  "FWHM.RT",
+  "Median.Mass.Acc.MS1",
+  "Median.Mass.Acc.MS2",
+  "Median.Mass.Acc.MS1.Corrected",
+  "Median.Mass.Acc.MS2.Corrected",
+  "Normalisation.Instability",
+  "Median.RT.Prediction.Acc",
+  "Average.Peptide.Length",
+  "Average.Peptide.Charge",
+  "Average.Missed.Tryptic.Cleavages"
 )
-library(RColorBrewer)
 
-# Read data
-data <- read_excel("S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/pg_matrix/raw/quicksearch.stats.annotated.xlsx")
-saving_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Results/QC/"
+qc_metrics <- intersect(qc_metrics_all, names(qc))
 
-# Prepare long format for protein/peptide plot
-data_long <- data %>%
-  pivot_longer(cols = c(Proteins.Identified, Precursors.Identified), names_to = "Type", values_to = "Count") %>%
-  mutate(ColorGroup = paste(celltype_layer, Type, sep = "_")) %>%
-  arrange(celltype_layer, sample_id) %>%
-  mutate(id = as.character(sample_id))
+qc <- qc %>%
+  mutate(across(all_of(qc_metrics), as.numeric))
 
-# Custom colors for protein/peptide plot
-custom_colors <- c(
-  "microglia_Proteins.Identified" = "#418caf",
-  "microglia_Precursors.Identified" = "#4aa2c5",
-  "neuron_soma_Proteins.Identified" = "#e06565",
-  "neuron_soma_Precursors.Identified" = "#f0aca0",
-  "neuron_neuropil_Proteins.Identified" = "#aa9f8f",
-  "neuron_neuropil_Precursors.Identified" = "#ddceb9"
+has_cols <- function(x) all(x %in% names(qc))
+
+# ================================================================
+# 4. Nature-style palette
+# ================================================================
+
+celltype_cols <- c(
+  "microglia" = "#4C78A8",
+  "neuron_soma" = "#E45756",
+  "neuron_neuropil" = "#72B7B2"
 )
 
-# Axis scaling
-protein_range <- range(data_long$Count[data_long$Type == "Proteins.Identified"], na.rm = TRUE)
-peptide_range <- range(data_long$Count[data_long$Type == "Precursors.Identified"], na.rm = TRUE)
-protein_min <- protein_range[1]
-protein_max <- protein_range[2]
-peptide_min <- peptide_range[1]
-peptide_max <- peptide_range[2]
-protein_span <- protein_max - protein_min
-peptide_span <- peptide_max - peptide_min
+missing_levels <- setdiff(levels(qc$celltype_layer), names(celltype_cols))
 
-data_long <- data_long %>%
-  mutate(Count_scaled = case_when(
-    Type == "Proteins.Identified" ~ Count,
-    Type == "Precursors.Identified" ~ (Count - peptide_min) / peptide_span * protein_span + protein_min
-  ))
+if (length(missing_levels) > 0) {
+  extra_cols <- hue_pal(l = 55, c = 70)(length(missing_levels))
+  names(extra_cols) <- missing_levels
+  celltype_cols <- c(celltype_cols, extra_cols)
+}
 
-# Overall averages
-overall_avg <- data %>%
-  pivot_longer(cols = c(Proteins.Identified, Precursors.Identified), names_to = "Type", values_to = "Count") %>%
-  group_by(Type) %>%
-  summarise(AvgCount = mean(Count, na.rm = TRUE)) %>%
-  mutate(AvgCount_scaled = case_when(
-    Type == "Proteins.Identified" ~ AvgCount,
-    Type == "Precursors.Identified" ~ (AvgCount - peptide_min) / peptide_span * protein_span + protein_min
-  ))
+neutral_cols <- c(
+  dark = "#333333",
+  mid = "#777777",
+  light = "#BDBDBD",
+  faint = "#E6E6E6"
+)
 
-# Protein/peptide plot
-plt <- ggplot(data_long, aes(x = id, y = Count_scaled, fill = ColorGroup)) +
-  geom_col(position = position_dodge(width = 0.8), width = 0.7) +
-  geom_hline(data = overall_avg, aes(yintercept = AvgCount_scaled, color = Type), linetype = "dashed", size = 1, inherit.aes = FALSE) +
-  facet_grid(. ~ celltype_layer, scales = "free_x", space = "free_x") +
-  scale_fill_manual(values = custom_colors, labels = names(custom_colors), name = NULL) +
-  scale_color_manual(values = c("Proteins.Identified" = "#457b9d", "Precursors.Identified" = "#e63946"), guide = "none") +
-  scale_y_continuous(
-    name = "Protein Count",
-    expand = c(0, 0),
-    sec.axis = sec_axis(
-      trans = ~ (.-protein_min) / protein_span * peptide_span + peptide_min,
-      name = "Peptide Count"
+# ================================================================
+# 5. Theme and save helpers
+# ================================================================
+
+theme_nature_qc <- function(base_size = 7) {
+  theme_classic(base_size = base_size) +
+    theme(
+      text = element_text(family = "Arial", colour = "black"),
+      axis.text = element_text(size = base_size, colour = "black"),
+      axis.title = element_text(size = base_size + 1, colour = "black"),
+      axis.line = element_line(linewidth = 0.3, colour = "black"),
+      axis.ticks = element_line(linewidth = 0.3, colour = "black"),
+      axis.ticks.length = unit(1.5, "mm"),
+      strip.background = element_blank(),
+      strip.text = element_text(size = base_size + 1, face = "bold"),
+      legend.position = "bottom",
+      legend.title = element_blank(),
+      legend.text = element_text(size = base_size),
+      legend.key.size = unit(3, "mm"),
+      legend.spacing.x = unit(2, "mm"),
+      plot.title = element_text(size = base_size + 2, face = "bold", hjust = 0),
+      plot.subtitle = element_text(size = base_size, colour = neutral_cols["mid"], hjust = 0),
+      plot.margin = margin(3, 3, 3, 3),
+      panel.spacing = unit(2, "mm")
     )
+}
+
+save_svg <- function(plot, filename, width, height) {
+  ggsave(
+    filename = file.path(out_dir, filename),
+    plot = plot,
+    width = width,
+    height = height,
+    units = "cm",
+    device = svglite
+  )
+}
+
+# ================================================================
+# 6. Robust outlier detection
+# Kept for tables, not drawn as rings in the main figure
+# ================================================================
+
+robust_z <- function(x) {
+  med <- median(x, na.rm = TRUE)
+  mad_val <- mad(x, constant = 1.4826, na.rm = TRUE)
+
+  if (is.na(mad_val) || mad_val == 0) {
+    return(rep(NA_real_, length(x)))
+  }
+
+  (x - med) / mad_val
+}
+
+outlier_metrics <- intersect(
+  c(
+    "Proteins.Identified",
+    "Precursors.Identified",
+    "MS1.Signal",
+    "MS2.Signal",
+    "Normalisation.Instability",
+    "Median.RT.Prediction.Acc",
+    "Median.Mass.Acc.MS1",
+    "Median.Mass.Acc.MS2"
+  ),
+  names(qc)
+)
+
+qc_outlier_z <- qc %>%
+  group_by(celltype_layer) %>%
+  mutate(
+    across(
+      all_of(outlier_metrics),
+      robust_z,
+      .names = "{.col}_robust_z"
+    )
+  ) %>%
+  ungroup()
+
+z_cols <- grep("_robust_z$", names(qc_outlier_z), value = TRUE)
+
+qc_outlier_z <- qc_outlier_z %>%
+  rowwise() %>%
+  mutate(
+    n_outlier_metrics = sum(abs(c_across(all_of(z_cols))) > 3, na.rm = TRUE),
+    max_abs_robust_z = suppressWarnings(max(abs(c_across(all_of(z_cols))), na.rm = TRUE)),
+    qc_outlier = n_outlier_metrics >= 2
+  ) %>%
+  ungroup() %>%
+  mutate(
+    max_abs_robust_z = ifelse(is.infinite(max_abs_robust_z), NA_real_, max_abs_robust_z)
+  )
+
+qc <- qc %>%
+  left_join(
+    qc_outlier_z %>%
+      select(sample_id, n_outlier_metrics, max_abs_robust_z, qc_outlier),
+    by = "sample_id"
+  )
+
+# ================================================================
+# 7. Composite QC score
+# Higher = better
+# ================================================================
+
+safe_scale <- function(x) {
+  if (all(is.na(x)) || sd(x, na.rm = TRUE) == 0) {
+    return(rep(NA_real_, length(x)))
+  }
+  as.numeric(scale(x))
+}
+
+score_components <- list()
+
+if ("Proteins.Identified" %in% names(qc)) {
+  score_components$protein_depth <- safe_scale(qc$Proteins.Identified)
+}
+
+if ("Precursors.Identified" %in% names(qc)) {
+  score_components$precursor_depth <- safe_scale(qc$Precursors.Identified)
+}
+
+if ("Normalisation.Instability" %in% names(qc)) {
+  score_components$norm_stability <- -safe_scale(qc$Normalisation.Instability)
+}
+
+if ("Median.RT.Prediction.Acc" %in% names(qc)) {
+  score_components$rt_accuracy <- -abs(safe_scale(qc$Median.RT.Prediction.Acc))
+}
+
+if ("Median.Mass.Acc.MS1" %in% names(qc)) {
+  score_components$mass_ms1 <- -abs(safe_scale(qc$Median.Mass.Acc.MS1))
+}
+
+if ("Median.Mass.Acc.MS2" %in% names(qc)) {
+  score_components$mass_ms2 <- -abs(safe_scale(qc$Median.Mass.Acc.MS2))
+}
+
+if (length(score_components) > 0) {
+  score_mat <- as.data.frame(score_components)
+  qc$QC.Score <- rowMeans(score_mat, na.rm = TRUE)
+} else {
+  qc$QC.Score <- NA_real_
+}
+
+# ================================================================
+# 8. Plot helper functions
+# No ring/outlier overlays
+# ================================================================
+
+plot_sample_bars <- function(df, yvar, ylab) {
+  df %>%
+    arrange(celltype_layer, .data[[yvar]]) %>%
+    mutate(sample_order = factor(sample_id, levels = unique(sample_id))) %>%
+    ggplot(aes(x = sample_order, y = .data[[yvar]], fill = celltype_layer)) +
+    geom_col(width = 0.75, colour = NA) +
+    facet_grid(. ~ celltype_layer, scales = "free_x", space = "free_x") +
+    scale_fill_manual(values = celltype_cols) +
+    scale_y_continuous(expand = expansion(mult = c(0, 0.06))) +
+    labs(x = NULL, y = ylab) +
+    theme_nature_qc() +
+    theme(
+      axis.text.x = element_blank(),
+      axis.ticks.x = element_blank(),
+      legend.position = "none",
+      panel.spacing.x = unit(1.5, "mm")
+    )
+}
+
+plot_scatter_qc <- function(df, xvar, yvar, xlab, ylab, log_axes = FALSE) {
+  p <- ggplot(df, aes(x = .data[[xvar]], y = .data[[yvar]], colour = celltype_layer)) +
+    geom_point(size = 1.4, alpha = 0.85) +
+    scale_colour_manual(values = celltype_cols) +
+    labs(x = xlab, y = ylab) +
+    theme_nature_qc() +
+    theme(aspect.ratio = 1)
+
+  if (log_axes) {
+    p <- p +
+      scale_x_log10(labels = label_scientific()) +
+      scale_y_log10(labels = label_scientific())
+  }
+
+  p
+}
+
+plot_box_jitter <- function(df, yvar, ylab) {
+  ggplot(df, aes(x = celltype_layer, y = .data[[yvar]], fill = celltype_layer)) +
+    geom_boxplot(
+      width = 0.52,
+      outlier.shape = NA,
+      linewidth = 0.35,
+      alpha = 0.75,
+      colour = "black"
+    ) +
+    geom_point(
+      aes(colour = celltype_layer),
+      position = position_jitter(width = 0.12, height = 0),
+      size = 1,
+      alpha = 0.65
+    ) +
+    scale_fill_manual(values = celltype_cols) +
+    scale_colour_manual(values = celltype_cols, guide = "none") +
+    labs(x = NULL, y = ylab) +
+    theme_nature_qc() +
+    theme(
+      axis.text.x = element_text(angle = 30, hjust = 1),
+      legend.position = "none"
+    )
+}
+
+# ================================================================
+# 9. Main QC panels
+# ================================================================
+
+p_protein <- NULL
+if ("Proteins.Identified" %in% names(qc)) {
+  p_protein <- plot_sample_bars(qc, "Proteins.Identified", "Proteins identified")
+}
+
+p_precursor <- NULL
+if ("Precursors.Identified" %in% names(qc)) {
+  p_precursor <- plot_sample_bars(qc, "Precursors.Identified", "Precursors identified")
+}
+
+p_signal <- NULL
+if (has_cols(c("MS1.Signal", "MS2.Signal"))) {
+  p_signal <- plot_scatter_qc(
+    qc,
+    "MS1.Signal",
+    "MS2.Signal",
+    "MS1 signal",
+    "MS2 signal",
+    log_axes = TRUE
+  )
+}
+
+p_mass <- NULL
+if (has_cols(c("Median.Mass.Acc.MS1", "Median.Mass.Acc.MS2"))) {
+  p_mass <- plot_scatter_qc(
+    qc,
+    "Median.Mass.Acc.MS1",
+    "Median.Mass.Acc.MS2",
+    "Median mass accuracy MS1 (ppm)",
+    "Median mass accuracy MS2 (ppm)"
   ) +
-  scale_x_discrete(expand = c(0, 0), breaks = unique(data_long$id), labels = unique(data_long$id)) +
-  labs(x = "Sample ID") +
-  theme_minimal(base_size = 30) +
-  theme(
-    axis.text.x = element_blank(),
-    axis.text.y = element_text(size = 30),
-    axis.title.y = element_text(size = 35),
-    axis.title.y.right = element_text(size = 35),
-    axis.ticks.x = element_blank(),
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank(),
-    legend.position = "bottom",
-    legend.text = element_text(size = 25),
-    legend.title = element_blank(),
-    plot.margin = margin(10, 10, 10, 10),
-    strip.background = element_rect(fill = NA, color = NA),
-    strip.text = element_text(face = "bold", size = 35),
-    panel.spacing = unit(0, 'lines')
-  )
-
-ggsave(filename = paste0(saving_dir, "protein_peptide_counts.svg"), plot = plt, width = 60, height = 30, units = "cm")
-print(plt)
-
-# Use ColorBrewer Set2 palette for celltype colors
-celltype_levels <- unique(data$celltype_layer)
-palette_size <- length(celltype_levels)
-celltype_colors <- brewer.pal(min(palette_size, 8), "Pastel2")
-if (palette_size > 8) celltype_colors <- rep(celltype_colors, length.out = palette_size)
-names(celltype_colors) <- celltype_levels
-
-# 9. Missing Value Distribution
-missing_per_sample <- rowSums(is.na(data))
-plt_missing_sample <- ggplot(data.frame(sample_id = data$sample_id, missing = missing_per_sample), aes(x = sample_id, y = missing)) +
-  geom_col(fill = "#e63946") +
-  labs(title = "Missing Values per Sample", x = "Sample ID", y = "Missing Value Count") +
-  theme_minimal(base_size = 18) +
-  theme(axis.text.x = element_text(angle = 90, hjust = 1))
-ggsave(filename = paste0(saving_dir, "qc_missing_sample.svg"), plot = plt_missing_sample, width = 15, height = 8, units = "cm")
-
-missing_per_celltype <- data %>% group_by(celltype_layer) %>% summarise(missing = sum(is.na(.)))
-plt_missing_celltype <- ggplot(missing_per_celltype, aes(x = celltype_layer, y = missing, fill = celltype_layer)) +
-  geom_col() +
-  labs(title = "Missing Values per Celltype", x = "Celltype", y = "Missing Value Count") +
-  scale_fill_manual(values = celltype_colors) +
-  theme_minimal(base_size = 18)
-ggsave(filename = paste0(saving_dir, "qc_missing_celltype.svg"), plot = plt_missing_celltype, width = 10, height = 8, units = "cm")
-
-# 10. Protein/Peptide Overlap (UpSet Plot)
-protein_sets <- split(data$Proteins.Identified, data$celltype_layer)
-protein_sets <- lapply(protein_sets, unique)
-protein_list <- list()
-for (ct in names(protein_sets)) protein_list[[ct]] <- protein_sets[[ct]]
-upset_data <- fromList(protein_list)
-png(filename = paste0(saving_dir, "qc_upset_protein.png"), width = 1200, height = 800)
-upset(upset_data, nsets = length(protein_list), order.by = "freq", main.bar.color = "#457b9d", sets.bar.color = "#e63946")
-dev.off()
-
-# 11. Intensity Distribution
-plt_ms1_box <- ggplot(data, aes(x = celltype_layer, y = MS1.Signal, fill = celltype_layer)) +
-  geom_boxplot() +
-  labs(title = "MS1 Intensity Distribution", x = "Celltype", y = "MS1 Signal") +
-  scale_fill_manual(values = celltype_colors) +
-  theme_minimal(base_size = 18)
-ggsave(filename = paste0(saving_dir, "qc_ms1_intensity_box.svg"), plot = plt_ms1_box, width = 10, height = 8, units = "cm")
-
-plt_ms2_box <- ggplot(data, aes(x = celltype_layer, y = MS2.Signal, fill = celltype_layer)) +
-  geom_boxplot() +
-  labs(title = "MS2 Intensity Distribution", x = "Celltype", y = "MS2 Signal") +
-  scale_fill_manual(values = celltype_colors) +
-  theme_minimal(base_size = 18)
-ggsave(filename = paste0(saving_dir, "qc_ms2_intensity_box.svg"), plot = plt_ms2_box, width = 10, height = 8, units = "cm")
-
-# 12. PCA
-pca_vars <- c("Proteins.Identified", "Precursors.Identified", "MS1.Signal", "MS2.Signal", "Median.Mass.Acc.MS1", "Median.Mass.Acc.MS2", "Normalisation.Instability", "Median.RT.Prediction.Acc")
-pca_data <- data[, pca_vars]
-pca_data <- na.omit(pca_data)
-pca_res <- PCA(pca_data, graph = FALSE)
-plt_pca <- fviz_pca_ind(
-  pca_res,
-  geom = "point",
-  pointshape = 21,
-  pointsize = 3,
-  col.ind = data$celltype_layer[as.numeric(rownames(pca_data))],
-  palette = celltype_colors,
-  addEllipses = TRUE,
-  legend.title = "Celltype"
-) + ggtitle("PCA of QC Metrics")
-ggsave(filename = paste0(saving_dir, "qc_pca.svg"), plot = plt_pca, width = 12, height = 10, units = "cm")
-
-# 13. Correlation Heatmaps
-cor_data <- data[, pca_vars]
-cor_data <- cor_data[, sapply(cor_data, is.numeric)]
-cor_matrix <- cor(cor_data, use = "pairwise.complete.obs")
-plt_cor_heat <- Heatmap(cor_matrix, name = "Correlation", col = colorRampPalette(c("#457b9d", "white", "#e63946"))(100))
-png(filename = paste0(saving_dir, "qc_correlation_heatmap.png"), width = 1200, height = 1000)
-draw(plt_cor_heat)
-dev.off()
-
-# 14. Batch Effects
-if ("batch" %in% colnames(data)) {
-  plt_batch <- ggplot(data, aes(x = batch, y = Normalisation.Instability, fill = batch)) +
-    geom_boxplot() +
-    labs(title = "Normalisation Instability by Batch", x = "Batch", y = "Normalisation Instability") +
-    theme_minimal(base_size = 18)
-  ggsave(filename = paste0(saving_dir, "qc_batch_effects.svg"), plot = plt_batch, width = 10, height = 8, units = "cm")
+    geom_hline(yintercept = 0, linewidth = 0.25, linetype = "dashed", colour = neutral_cols["mid"]) +
+    geom_vline(xintercept = 0, linewidth = 0.25, linetype = "dashed", colour = neutral_cols["mid"])
 }
 
-# 15. Peptide Modification Frequencies
-if ("PTM" %in% colnames(data)) {
-  ptm_freq <- data %>% group_by(celltype_layer, PTM) %>% summarise(count = n())
-  plt_ptm <- ggplot(ptm_freq, aes(x = PTM, y = count, fill = celltype_layer)) +
-    geom_bar(stat = "identity", position = "dodge") +
-    labs(title = "PTM Frequencies by Celltype", x = "PTM", y = "Count") +
-    scale_fill_manual(values = celltype_colors) +
-    theme_minimal(base_size = 18)
-  ggsave(filename = paste0(saving_dir, "qc_ptm_freq.svg"), plot = plt_ptm, width = 15, height = 8, units = "cm")
+p_norm <- NULL
+if ("Normalisation.Instability" %in% names(qc)) {
+  p_norm <- plot_box_jitter(qc, "Normalisation.Instability", "Normalisation instability")
 }
 
-# 16. Identification Rate
-if ("Total.Peptides" %in% colnames(data)) {
-  data$id_rate_pep <- data$Precursors.Identified / data$Total.Peptides
-  plt_idrate_pep <- ggplot(data, aes(x = sample_id, y = id_rate_pep, fill = celltype_layer)) +
-    geom_col() +
-    labs(title = "Peptide Identification Rate", x = "Sample ID", y = "ID Rate") +
-    scale_fill_manual(values = celltype_colors) +
-    theme_minimal(base_size = 18) +
-    theme(axis.text.x = element_text(angle = 90, hjust = 1))
-  ggsave(filename = paste0(saving_dir, "qc_idrate_pep.svg"), plot = plt_idrate_pep, width = 15, height = 8, units = "cm")
-}
-if ("Total.Proteins" %in% colnames(data)) {
-  data$id_rate_prot <- data$Proteins.Identified / data$Total.Proteins
-  plt_idrate_prot <- ggplot(data, aes(x = sample_id, y = id_rate_prot, fill = celltype_layer)) +
-    geom_col() +
-    labs(title = "Protein Identification Rate", x = "Sample ID", y = "ID Rate") +
-    scale_fill_manual(values = celltype_colors) +
-    theme_minimal(base_size = 18) +
-    theme(axis.text.x = element_text(angle = 90, hjust = 1))
-  ggsave(filename = paste0(saving_dir, "qc_idrate_prot.svg"), plot = plt_idrate_prot, width = 15, height = 8, units = "cm")
+p_rt <- NULL
+if ("Median.RT.Prediction.Acc" %in% names(qc)) {
+  p_rt <- plot_box_jitter(qc, "Median.RT.Prediction.Acc", "RT prediction accuracy")
 }
 
-# 17. Sample Outlier Detection (Mahalanobis Distance)
-mahal_data <- data[, pca_vars]
-mahal_data <- na.omit(mahal_data)
-mahal_dist <- mahalanobis(mahal_data, colMeans(mahal_data), cov(mahal_data))
-mahal_df <- data.frame(
-  sample_id = data$sample_id[as.numeric(rownames(mahal_data))],
-  mahal_dist = mahal_dist,
-  celltype_layer = data$celltype_layer[as.numeric(rownames(mahal_data))]
-)
-plt_mahal <- ggplot(mahal_df, aes(x = sample_id, y = mahal_dist, fill = celltype_layer)) +
-  geom_col() +
-  labs(title = "Sample Outlier Detection (Mahalanobis Distance)", x = "Sample ID", y = "Mahalanobis Distance") +
-  scale_fill_manual(values = celltype_colors) +
-  theme_minimal(base_size = 18) +
-  theme(axis.text.x = element_text(angle = 90, hjust = 1))
-ggsave(filename = paste0(saving_dir, "qc_mahalanobis.svg"), plot = plt_mahal, width = 15, height = 8, units = "cm")
-
-# Improved QC Plots and Combined Output
-
-# 1. MS1 and MS2 Signal Distribution
-plt_ms_signal <- ggplot(data, aes(x = MS1.Signal, y = MS2.Signal, color = celltype_layer)) +
-  geom_point(size = 3, alpha = 0.8) +
-  labs(title = "MS1 vs\nMS2 Signal", x = "MS1 Signal", y = "MS2 Signal") +
-  scale_color_manual(values = celltype_colors, name = NULL) +
-  theme_minimal(base_size = 18) +
-  theme(
-    legend.position = "bottom",
-    aspect.ratio = 1,
-    plot.title = element_text(face = "bold", size = 14),
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank()
-  )
-
-# 2. FWHM Distribution (Scans and RT)
-plt_fwhm <- ggplot(data, aes(x = FWHM.Scans, y = FWHM.RT, color = celltype_layer)) +
-  geom_point(size = 3, alpha = 0.8) +
-  labs(title = "FWHM:\nScans vs RT", x = "FWHM (Scans)", y = "FWHM (RT)") +
-  scale_color_manual(values = celltype_colors, name = NULL) +
-  theme_minimal(base_size = 18) +
-  theme(
-    legend.position = "bottom",
-    aspect.ratio = 1,
-    plot.title = element_text(face = "bold", size = 14),
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank()
-  )
-
-# mass accuracy MA plot
-# MA plot: log2 ratio (y) vs log2 intensity (x)
-if (all(c("MS1.Signal", "MS2.Signal") %in% colnames(data))) {
-  ma_data <- data %>%
-    mutate(
-      log2_intensity = log2((MS1.Signal + MS2.Signal) / 2),
-      log2_ratio = log2(MS2.Signal / MS1.Signal)
+p_qc_score <- NULL
+if ("QC.Score" %in% names(qc)) {
+  p_qc_score <- qc %>%
+    arrange(QC.Score) %>%
+    mutate(sample_order = factor(sample_id, levels = sample_id)) %>%
+    ggplot(aes(x = sample_order, y = QC.Score, fill = celltype_layer)) +
+    geom_col(width = 0.75, colour = NA) +
+    geom_hline(yintercept = 0, linewidth = 0.25, linetype = "dashed", colour = neutral_cols["mid"]) +
+    scale_fill_manual(values = celltype_cols) +
+    labs(x = NULL, y = "Composite QC score") +
+    theme_nature_qc() +
+    theme(
+      axis.text.x = element_blank(),
+      axis.ticks.x = element_blank(),
+      legend.position = "bottom"
     )
-  plt_ma <- ggplot(ma_data, aes(x = log2_intensity, y = log2_ratio, color = celltype_layer)) +
-    geom_point(size = 3, alpha = 0.8) +
-    labs(title = "MA Plot: log2 Ratio vs log2 Intensity", x = "log2(Intensity)", y = "log2(MS2/MS1)") +
-    scale_color_manual(values = celltype_colors, name = NULL) +
-    theme_minimal(base_size = 18) +
+}
+
+# ================================================================
+# 10. PCA of QC metrics
+# ================================================================
+
+p_pca <- NULL
+
+pca_metrics <- intersect(
+  c(
+    "Proteins.Identified",
+    "Precursors.Identified",
+    "MS1.Signal",
+    "MS2.Signal",
+    "FWHM.Scans",
+    "FWHM.RT",
+    "Median.Mass.Acc.MS1",
+    "Median.Mass.Acc.MS2",
+    "Normalisation.Instability",
+    "Median.RT.Prediction.Acc"
+  ),
+  names(qc)
+)
+
+if (length(pca_metrics) >= 3) {
+
+  pca_df <- qc %>%
+    select(sample_id, celltype_layer, qc_outlier, all_of(pca_metrics)) %>%
+    drop_na(all_of(pca_metrics))
+
+  if (nrow(pca_df) >= 4) {
+
+    pca_mat <- pca_df %>%
+      select(all_of(pca_metrics)) %>%
+      scale()
+
+    pca_res <- prcomp(pca_mat, center = TRUE, scale. = FALSE)
+
+    pca_scores <- as.data.frame(pca_res$x[, 1:2]) %>%
+      bind_cols(pca_df %>% select(sample_id, celltype_layer, qc_outlier))
+
+    pca_centroids <- pca_scores %>%
+      group_by(celltype_layer) %>%
+      summarise(
+        PC1 = mean(PC1, na.rm = TRUE),
+        PC2 = mean(PC2, na.rm = TRUE),
+        .groups = "drop"
+      )
+
+    pve <- 100 * summary(pca_res)$importance[2, 1:2]
+
+    p_pca <- ggplot(pca_scores, aes(PC1, PC2, colour = celltype_layer)) +
+      geom_point(size = 1.5, alpha = 0.9) +
+      geom_point(
+        data = pca_centroids,
+        aes(PC1, PC2, fill = celltype_layer),
+        shape = 23,
+        size = 2.2,
+        stroke = 0.3,
+        colour = "black",
+        inherit.aes = FALSE
+      ) +
+      scale_colour_manual(values = celltype_cols) +
+      scale_fill_manual(values = celltype_cols, guide = "none") +
+      labs(
+        x = sprintf("PC1 (%.1f%%)", pve[1]),
+        y = sprintf("PC2 (%.1f%%)", pve[2])
+      ) +
+      theme_nature_qc() +
+      theme(aspect.ratio = 1)
+  }
+}
+
+# ================================================================
+# 11. Depth-quality relationship
+# ================================================================
+
+p_depth_quality <- NULL
+
+if (has_cols(c("Proteins.Identified", "Normalisation.Instability"))) {
+  p_depth_quality <- plot_scatter_qc(
+    qc,
+    "Proteins.Identified",
+    "Normalisation.Instability",
+    "Proteins identified",
+    "Normalisation instability"
+  ) +
+    geom_smooth(
+      method = "lm",
+      se = FALSE,
+      linewidth = 0.35,
+      colour = neutral_cols["dark"],
+      inherit.aes = FALSE,
+      aes(x = Proteins.Identified, y = Normalisation.Instability)
+    )
+}
+
+# ================================================================
+# 12. Missingness estimate across QC metric columns
+# ================================================================
+
+p_missing <- NULL
+
+if (length(qc_metrics) >= 3) {
+
+  qc_missing <- qc %>%
+    mutate(
+      missing_fraction_qc_metrics = rowMeans(is.na(select(., all_of(qc_metrics))))
+    )
+
+  if ("MS1.Signal" %in% names(qc_missing)) {
+    p_missing <- ggplot(
+      qc_missing,
+      aes(x = MS1.Signal, y = missing_fraction_qc_metrics, colour = celltype_layer)
+    ) +
+      geom_point(size = 1.4, alpha = 0.85) +
+      scale_x_log10(labels = label_scientific()) +
+      scale_y_continuous(labels = percent_format(accuracy = 1)) +
+      scale_colour_manual(values = celltype_cols) +
+      labs(
+        x = "MS1 signal",
+        y = "Missing QC metric fraction"
+      ) +
+      theme_nature_qc() +
+      theme(aspect.ratio = 1)
+  } else {
+    p_missing <- ggplot(
+      qc_missing,
+      aes(x = sample_id, y = missing_fraction_qc_metrics, fill = celltype_layer)
+    ) +
+      geom_col(width = 0.75, colour = NA) +
+      scale_fill_manual(values = celltype_cols) +
+      scale_y_continuous(labels = percent_format(accuracy = 1)) +
+      labs(
+        x = NULL,
+        y = "Missing QC metric fraction"
+      ) +
+      theme_nature_qc() +
+      theme(
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank()
+      )
+  }
+}
+
+# ================================================================
+# 13. Coefficient of variation summary
+# ================================================================
+
+cv_metrics <- intersect(
+  c(
+    "Proteins.Identified",
+    "Precursors.Identified",
+    "MS1.Signal",
+    "MS2.Signal"
+  ),
+  names(qc)
+)
+
+cv_summary <- NULL
+p_cv <- NULL
+
+if (length(cv_metrics) > 0) {
+
+  cv_summary <- qc %>%
+    group_by(celltype_layer) %>%
+    summarise(
+      across(
+        all_of(cv_metrics),
+        ~ sd(.x, na.rm = TRUE) / mean(.x, na.rm = TRUE),
+        .names = "{.col}"
+      ),
+      .groups = "drop"
+    ) %>%
+    pivot_longer(
+      cols = all_of(cv_metrics),
+      names_to = "metric",
+      values_to = "cv"
+    )
+
+  p_cv <- ggplot(cv_summary, aes(x = metric, y = cv, fill = celltype_layer)) +
+    geom_col(
+      position = position_dodge(width = 0.75),
+      width = 0.65,
+      colour = NA
+    ) +
+    scale_fill_manual(values = celltype_cols) +
+    scale_y_continuous(labels = percent_format(accuracy = 1)) +
+    labs(x = NULL, y = "Coefficient of variation") +
+    theme_nature_qc() +
+    theme(
+      axis.text.x = element_text(angle = 35, hjust = 1)
+    )
+}
+
+# ================================================================
+# 14. Main manuscript QC figure
+# ================================================================
+
+main_plots <- list(
+  p_protein,
+  p_precursor,
+  p_signal,
+  p_mass,
+  p_pca,
+  p_norm,
+  p_rt,
+  p_depth_quality,
+  p_qc_score
+)
+
+main_plots <- main_plots[!vapply(main_plots, is.null, logical(1))]
+
+qc_main <- wrap_plots(main_plots, ncol = 3, guides = "collect") +
+  plot_annotation(tag_levels = "A") &
+  theme(
+    legend.position = "bottom",
+    plot.tag = element_text(size = 9, face = "bold")
+  )
+
+save_svg(qc_main, "Fig_QC_main_Nature_style_no_rings.svg", width = 18, height = 18)
+
+# ================================================================
+# 15. Supplemental QC figure
+# ================================================================
+
+supp_plots <- list()
+
+if (has_cols(c("FWHM.Scans", "FWHM.RT"))) {
+  supp_plots$fwhm <- plot_scatter_qc(
+    qc,
+    "FWHM.Scans",
+    "FWHM.RT",
+    "FWHM scans",
+    "FWHM RT"
+  )
+}
+
+if (has_cols(c("Median.Mass.Acc.MS1.Corrected", "Median.Mass.Acc.MS2.Corrected"))) {
+  supp_plots$mass_corrected <- plot_scatter_qc(
+    qc,
+    "Median.Mass.Acc.MS1.Corrected",
+    "Median.Mass.Acc.MS2.Corrected",
+    "Corrected MS1 mass accuracy (ppm)",
+    "Corrected MS2 mass accuracy (ppm)"
+  ) +
+    geom_hline(yintercept = 0, linewidth = 0.25, linetype = "dashed", colour = neutral_cols["mid"]) +
+    geom_vline(xintercept = 0, linewidth = 0.25, linetype = "dashed", colour = neutral_cols["mid"])
+}
+
+if ("Average.Peptide.Length" %in% names(qc)) {
+  supp_plots$peptide_length <- plot_box_jitter(
+    qc,
+    "Average.Peptide.Length",
+    "Average peptide length"
+  )
+}
+
+if ("Average.Peptide.Charge" %in% names(qc)) {
+  supp_plots$peptide_charge <- plot_box_jitter(
+    qc,
+    "Average.Peptide.Charge",
+    "Average peptide charge"
+  )
+}
+
+if ("Average.Missed.Tryptic.Cleavages" %in% names(qc)) {
+  supp_plots$missed_cleavages <- plot_box_jitter(
+    qc,
+    "Average.Missed.Tryptic.Cleavages",
+    "Missed tryptic cleavages"
+  )
+}
+
+if (!is.null(p_missing)) {
+  supp_plots$missingness <- p_missing
+}
+
+if (!is.null(p_cv)) {
+  supp_plots$cv <- p_cv
+}
+
+if (length(supp_plots) > 0) {
+  qc_supp <- wrap_plots(supp_plots, ncol = 3, guides = "collect") +
+    plot_annotation(tag_levels = "A") &
     theme(
       legend.position = "bottom",
-      aspect.ratio = 1,
-      plot.title = element_text(face = "bold", size = 14),
-      panel.grid.major = element_blank(),
-      panel.grid.minor = element_blank()
+      plot.tag = element_text(size = 9, face = "bold")
     )
-  ggsave(filename = paste0(saving_dir, "qc_ma_plot.svg"), plot = plt_ma, width = 10, height = 10, units = "cm")
+
+  save_svg(qc_supp, "Fig_QC_supplemental_Nature_style_no_rings.svg", width = 18, height = 14)
 }
 
-# 3. Mass Accuracy (MS1 and MS2, raw and corrected)
-plt_massacc <- ggplot(data, aes(x = Median.Mass.Acc.MS1, y = Median.Mass.Acc.MS2, color = celltype_layer)) +
-  geom_point(size = 3, alpha = 0.8) +
-  labs(title = "Median Mass Accuracy:\nMS1 vs MS2", x = "MS1 (ppm)", y = "MS2 (ppm)") +
-  scale_color_manual(values = celltype_colors, name = NULL) +
-  theme_minimal(base_size = 18) +
-  theme(
-    legend.position = "bottom",
-    aspect.ratio = 1,
-    plot.title = element_text(face = "bold", size = 14),
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank()
+# ================================================================
+# 16. Dedicated outlier plot
+# This keeps outlier information separate from the main manuscript figure
+# ================================================================
+
+p_outlier <- NULL
+
+if ("max_abs_robust_z" %in% names(qc)) {
+  p_outlier <- qc %>%
+    arrange(max_abs_robust_z) %>%
+    mutate(sample_order = factor(sample_id, levels = sample_id)) %>%
+    ggplot(aes(x = sample_order, y = max_abs_robust_z, fill = celltype_layer)) +
+    geom_col(width = 0.75, colour = NA) +
+    geom_hline(
+      yintercept = 3,
+      linewidth = 0.3,
+      linetype = "dashed",
+      colour = neutral_cols["dark"]
+    ) +
+    scale_fill_manual(values = celltype_cols) +
+    labs(
+      x = NULL,
+      y = "Maximum absolute robust z-score"
+    ) +
+    theme_nature_qc() +
+    theme(
+      axis.text.x = element_blank(),
+      axis.ticks.x = element_blank()
+    )
+
+  save_svg(p_outlier, "Fig_QC_outlier_summary.svg", width = 12, height = 6)
+}
+
+# ================================================================
+# 17. Correlation heatmap
+# ================================================================
+
+cor_plot <- NULL
+
+if (length(pca_metrics) >= 3) {
+
+  cor_mat <- qc %>%
+    select(all_of(pca_metrics)) %>%
+    cor(use = "pairwise.complete.obs")
+
+  cor_df <- as.data.frame(as.table(cor_mat)) %>%
+    rename(metric_x = Var1, metric_y = Var2, correlation = Freq)
+
+  cor_plot <- ggplot(cor_df, aes(metric_x, metric_y, fill = correlation)) +
+    geom_tile(colour = "white", linewidth = 0.25) +
+    scale_fill_gradient2(
+      low = "#4C78A8",
+      mid = "white",
+      high = "#E45756",
+      midpoint = 0,
+      limits = c(-1, 1),
+      name = "r"
+    ) +
+    coord_equal() +
+    labs(x = NULL, y = NULL) +
+    theme_nature_qc() +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      legend.position = "right"
+    )
+
+  save_svg(cor_plot, "Fig_QC_correlation_heatmap.svg", width = 14, height = 12)
+}
+
+# ================================================================
+# 18. Optional batch effect model
+# ================================================================
+
+batch_results <- NULL
+
+if ("batch" %in% names(qc) && "Normalisation.Instability" %in% names(qc)) {
+
+  batch_model <- lm(
+    Normalisation.Instability ~ batch + celltype_layer,
+    data = qc
   )
 
-plt_massacc_corr <- ggplot(data, aes(x = Median.Mass.Acc.MS1.Corrected, y = Median.Mass.Acc.MS2.Corrected, color = celltype_layer)) +
-  geom_point(size = 3, alpha = 0.8) +
-  labs(title = "Corrected Median Mass Accuracy:\nMS1 vs MS2", x = "MS1 Corrected (ppm)", y = "MS2 Corrected (ppm)") +
-  scale_color_manual(values = celltype_colors, name = NULL) +
-  theme_minimal(base_size = 18) +
-  theme(
-    legend.position = "bottom",
-    aspect.ratio = 1,
-    plot.title = element_text(face = "bold", size = 14),
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank()
+  batch_results <- as.data.frame(anova(batch_model))
+  batch_results$term <- rownames(batch_results)
+  rownames(batch_results) <- NULL
+
+  write.csv(
+    batch_results,
+    file = file.path(out_dir, "qc_batch_model_normalisation_instability.csv"),
+    row.names = FALSE
   )
 
-# 4. Normalisation Instability
-plt_norminstab <- ggplot(data, aes(x = celltype_layer, y = Normalisation.Instability, fill = celltype_layer)) +
-  geom_boxplot(outlier.shape = NA, alpha = 0.8, color = "black") +
-  geom_jitter(width = 0.2, alpha = 0.5, aes(color = celltype_layer), shape = 16, size = 1.5) +
-  labs(title = "Normalisation Instability\nby Celltype", x = "Celltype", y = "Normalisation Instability") +
-  scale_fill_manual(values = celltype_colors, name = NULL) +
-  scale_color_manual(values = celltype_colors, guide = "none") +
-  theme_minimal(base_size = 18) +
-  theme(
-    legend.position = "bottom",
-    legend.box = "vertical",
-    legend.spacing.y = unit(0, 'pt'),
-    legend.margin = margin(0,0,0,0),
-    legend.key.size = unit(0.7, "lines"),
-    legend.text = element_text(size = 12),
-    aspect.ratio = 1,
-    plot.title = element_text(face = "bold", size = 14),
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank()
-  )
+  p_batch <- ggplot(qc, aes(x = factor(batch), y = Normalisation.Instability, fill = celltype_layer)) +
+    geom_boxplot(width = 0.55, outlier.shape = NA, linewidth = 0.35, alpha = 0.75) +
+    geom_point(
+      aes(colour = celltype_layer),
+      position = position_jitterdodge(jitter.width = 0.12, dodge.width = 0.65),
+      size = 1,
+      alpha = 0.65
+    ) +
+    scale_fill_manual(values = celltype_cols) +
+    scale_colour_manual(values = celltype_cols, guide = "none") +
+    labs(
+      x = "Batch",
+      y = "Normalisation instability"
+    ) +
+    theme_nature_qc()
 
-# 5. RT Prediction Accuracy
-plt_rtacc <- ggplot(data, aes(x = celltype_layer, y = Median.RT.Prediction.Acc, fill = celltype_layer)) +
-  geom_boxplot(outlier.shape = NA, alpha = 0.8, color = "black") +
-  geom_jitter(width = 0.2, alpha = 0.5, aes(color = celltype_layer), shape = 16, size = 1.5) +
-  labs(title = "Median RT Prediction Accuracy\nby Celltype", x = "Celltype", y = "Median RT Prediction Accuracy") +
-  scale_fill_manual(values = celltype_colors, name = NULL) +
-  scale_color_manual(values = celltype_colors, guide = "none") +
-  theme_minimal(base_size = 18) +
-  theme(
-    legend.position = "bottom",
-    legend.box = "vertical",
-    legend.spacing.y = unit(0, 'pt'),
-    legend.margin = margin(0,0,0,0),
-    legend.key.size = unit(0.7, "lines"),
-    legend.text = element_text(size = 12),
-    aspect.ratio = 1,
-    plot.title = element_text(face = "bold", size = 14),
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank()
-  )
+  save_svg(p_batch, "Fig_QC_batch_normalisation_instability.svg", width = 10, height = 7)
+}
 
-# 6. Peptide Length, Charge, Missed Cleavages
-plt_peplen <- ggplot(data, aes(x = celltype_layer, y = Average.Peptide.Length, fill = celltype_layer)) +
-  geom_boxplot(outlier.shape = NA, alpha = 0.8, color = "black") +
-  geom_jitter(width = 0.2, alpha = 0.5, aes(color = celltype_layer), shape = 16, size = 1.5) +
-  labs(title = "Average Peptide Length\nby Celltype", x = "Celltype", y = "Average Peptide Length") +
-  scale_fill_manual(values = celltype_colors, name = NULL) +
-  scale_color_manual(values = celltype_colors, guide = "none") +
-  theme_minimal(base_size = 18) +
-  theme(
-    legend.position = "bottom",
-    legend.box = "vertical",
-    legend.spacing.y = unit(0, 'pt'),
-    legend.margin = margin(0,0,0,0),
-    legend.key.size = unit(0.7, "lines"),
-    legend.text = element_text(size = 12),
-    aspect.ratio = 1,
-    plot.title = element_text(face = "bold", size = 14),
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank()
-  )
+# ================================================================
+# 19. Summary tables
+# ================================================================
 
-plt_pepcharge <- ggplot(data, aes(x = celltype_layer, y = Average.Peptide.Charge, fill = celltype_layer)) +
-  geom_boxplot(outlier.shape = NA, alpha = 0.8, color = "black") +
-  geom_jitter(width = 0.2, alpha = 0.5, aes(color = celltype_layer), shape = 16, size = 1.5) +
-  labs(title = "Average Peptide Charge\nby Celltype", x = "Celltype", y = "Average Peptide Charge") +
-  scale_fill_manual(values = celltype_colors, name = NULL) +
-  scale_color_manual(values = celltype_colors, guide = "none") +
-  theme_minimal(base_size = 18) +
-  theme(
-    legend.position = "bottom",
-    legend.box = "vertical",
-    legend.spacing.y = unit(0, 'pt'),
-    legend.margin = margin(0,0,0,0),
-    legend.key.size = unit(0.7, "lines"),
-    legend.text = element_text(size = 12),
-    aspect.ratio = 1,
-    plot.title = element_text(face = "bold", size = 14),
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank()
-  )
-
-plt_pepmiss <- ggplot(data, aes(x = celltype_layer, y = Average.Missed.Tryptic.Cleavages, fill = celltype_layer)) +
-  geom_boxplot(outlier.shape = NA, alpha = 0.8, color = "black") +
-  geom_jitter(width = 0.2, alpha = 0.5, aes(color = celltype_layer), shape = 16, size = 1.5) +
-  labs(title = "Average Missed Tryptic Cleavages\nby Celltype", x = "Celltype", y = "Average Missed Tryptic Cleavages") +
-  scale_fill_manual(values = celltype_colors, name = NULL) +
-  scale_color_manual(values = celltype_colors, guide = "none") +
-  theme_minimal(base_size = 18) +
-  theme(
-    legend.position = "bottom",
-    legend.box = "vertical",
-    legend.spacing.y = unit(0, 'pt'),
-    legend.margin = margin(0,0,0,0),
-    legend.key.size = unit(0.7, "lines"),
-    legend.text = element_text(size = 12),
-    aspect.ratio = 1,
-    plot.title = element_text(face = "bold", size = 14),
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank()
-  )
-
-# Save each plot individually
-ggsave(filename = paste0(saving_dir, "qc_ms_signal.svg"), plot = plt_ms_signal, width = 10, height = 10, units = "cm")
-ggsave(filename = paste0(saving_dir, "qc_fwhm.svg"), plot = plt_fwhm, width = 10, height = 10, units = "cm")
-ggsave(filename = paste0(saving_dir, "qc_massacc.svg"), plot = plt_massacc, width = 10, height = 10, units = "cm")
-ggsave(filename = paste0(saving_dir, "qc_massacc_corr.svg"), plot = plt_massacc_corr, width = 10, height = 10, units = "cm")
-ggsave(filename = paste0(saving_dir, "qc_norminstab.svg"), plot = plt_norminstab, width = 10, height = 10, units = "cm")
-ggsave(filename = paste0(saving_dir, "qc_rtacc.svg"), plot = plt_rtacc, width = 10, height = 10, units = "cm")
-ggsave(filename = paste0(saving_dir, "qc_peplen.svg"), plot = plt_peplen, width = 10, height = 10, units = "cm")
-ggsave(filename = paste0(saving_dir, "qc_pepcharge.svg"), plot = plt_pepcharge, width = 10, height = 10, units = "cm")
-ggsave(filename = paste0(saving_dir, "qc_pepmiss.svg"), plot = plt_pepmiss, width = 10, height = 10, units = "cm")
-
-# Combine all plots into one file using patchwork
-all_plots <- (
-  plt_ms_signal + plt_fwhm + plt_massacc + plt_massacc_corr
-) /
-  (
-    plt_norminstab + plt_rtacc + plt_peplen + plt_pepcharge + plt_pepmiss
-  )
-ggsave(filename = paste0(saving_dir, "qc_all_plots.svg"), plot = all_plots, width = 40, height = 40, units = "cm")
-
-# 7. Summary Table: Mean/SD for key metrics by celltype_layer
-qc_summary <- data %>%
+qc_summary_by_celltype <- qc %>%
   group_by(celltype_layer) %>%
   summarise(
     n = n(),
-    Proteins.Identified_mean = mean(Proteins.Identified, na.rm = TRUE),
-    Proteins.Identified_sd = sd(Proteins.Identified, na.rm = TRUE),
-    Precursors.Identified_mean = mean(Precursors.Identified, na.rm = TRUE),
-    Precursors.Identified_sd = sd(Precursors.Identified, na.rm = TRUE),
-    MS1.Signal_mean = mean(MS1.Signal, na.rm = TRUE),
-    MS1.Signal_sd = sd(MS1.Signal, na.rm = TRUE),
-    MS2.Signal_mean = mean(MS2.Signal, na.rm = TRUE),
-    MS2.Signal_sd = sd(MS2.Signal, na.rm = TRUE),
-    FWHM.Scans_mean = mean(FWHM.Scans, na.rm = TRUE),
-    FWHM.Scans_sd = sd(FWHM.Scans, na.rm = TRUE),
-    FWHM.RT_mean = mean(FWHM.RT, na.rm = TRUE),
-    FWHM.RT_sd = sd(FWHM.RT, na.rm = TRUE),
-    Median.Mass.Acc.MS1_mean = mean(Median.Mass.Acc.MS1, na.rm = TRUE),
-    Median.Mass.Acc.MS1_sd = sd(Median.Mass.Acc.MS1, na.rm = TRUE),
-    Median.Mass.Acc.MS2_mean = mean(Median.Mass.Acc.MS2, na.rm = TRUE),
-    Median.Mass.Acc.MS2_sd = sd(Median.Mass.Acc.MS2, na.rm = TRUE),
-    Normalisation.Instability_mean = mean(Normalisation.Instability, na.rm = TRUE),
-    Normalisation.Instability_sd = sd(Normalisation.Instability, na.rm = TRUE),
-    Median.RT.Prediction.Acc_mean = mean(Median.RT.Prediction.Acc, na.rm = TRUE),
-    Median.RT.Prediction.Acc_sd = sd(Median.RT.Prediction.Acc, na.rm = TRUE),
-    Average.Peptide.Length_mean = mean(Average.Peptide.Length, na.rm = TRUE),
-    Average.Peptide.Length_sd = sd(Average.Peptide.Length, na.rm = TRUE),
-    Average.Peptide.Charge_mean = mean(Average.Peptide.Charge, na.rm = TRUE),
-    Average.Peptide.Charge_sd = sd(Average.Peptide.Charge, na.rm = TRUE),
-    Average.Missed.Tryptic.Cleavages_mean = mean(Average.Missed.Tryptic.Cleavages, na.rm = TRUE),
-    Average.Missed.Tryptic.Cleavages_sd = sd(Average.Missed.Tryptic.Cleavages, na.rm = TRUE)
+    n_outliers = sum(qc_outlier, na.rm = TRUE),
+    across(
+      all_of(outlier_metrics),
+      list(
+        mean = ~ mean(.x, na.rm = TRUE),
+        sd = ~ sd(.x, na.rm = TRUE),
+        median = ~ median(.x, na.rm = TRUE),
+        mad = ~ mad(.x, constant = 1.4826, na.rm = TRUE),
+        cv = ~ sd(.x, na.rm = TRUE) / mean(.x, na.rm = TRUE)
+      ),
+      .names = "{.col}_{.fn}"
+    ),
+    QC.Score_mean = mean(QC.Score, na.rm = TRUE),
+    QC.Score_sd = sd(QC.Score, na.rm = TRUE),
+    .groups = "drop"
   )
-print(qc_summary)
-write.csv(qc_summary, file = paste0(saving_dir, "qc_summary.csv"), row.names = FALSE)
 
-# 8. Table: Outlier detection for Normalisation Instability
-norminstab_outliers <- data %>%
-  group_by(celltype_layer) %>%
-  mutate(norminstab_z = (Normalisation.Instability - mean(Normalisation.Instability, na.rm = TRUE)) / sd(Normalisation.Instability, na.rm = TRUE)) %>%
-  filter(abs(norminstab_z) > 3)
-print(norminstab_outliers)
-write.csv(norminstab_outliers, file = paste0(saving_dir, "normalisation_instability_outliers.csv"), row.names = FALSE)
+qc_outliers <- qc_outlier_z %>%
+  select(
+    sample_id,
+    celltype_layer,
+    n_outlier_metrics,
+    max_abs_robust_z,
+    qc_outlier,
+    all_of(z_cols)
+  ) %>%
+  arrange(desc(qc_outlier), desc(max_abs_robust_z))
 
+write.csv(
+  qc_summary_by_celltype,
+  file = file.path(out_dir, "qc_summary_by_celltype_layer.csv"),
+  row.names = FALSE
+)
 
+write.csv(
+  qc_outliers,
+  file = file.path(out_dir, "qc_robust_outlier_table.csv"),
+  row.names = FALSE
+)
+
+if (!is.null(cv_summary)) {
+  write.csv(
+    cv_summary,
+    file = file.path(out_dir, "qc_cv_summary.csv"),
+    row.names = FALSE
+  )
+}
+
+xlsx_list <- list(
+  summary_by_celltype = qc_summary_by_celltype,
+  robust_outliers = qc_outliers
+)
+
+if (!is.null(cv_summary)) {
+  xlsx_list$cv_summary <- cv_summary
+}
+
+if (!is.null(batch_results)) {
+  xlsx_list$batch_model <- batch_results
+}
+
+openxlsx::write.xlsx(
+  xlsx_list,
+  file = file.path(out_dir, "qc_summary_tables.xlsx"),
+  overwrite = TRUE
+)
+
+# ================================================================
+# 20. Console output
+# ================================================================
+
+cat("\nQC manuscript figures saved to:\n")
+cat(out_dir, "\n\n")
+
+cat("Main figure:\n")
+cat(" - Fig_QC_main_Nature_style_no_rings.svg\n\n")
+
+cat("Supplemental figure:\n")
+cat(" - Fig_QC_supplemental_Nature_style_no_rings.svg\n\n")
+
+cat("Dedicated outlier figure:\n")
+cat(" - Fig_QC_outlier_summary.svg\n\n")
+
+cat("Tables:\n")
+cat(" - qc_summary_tables.xlsx\n")
+cat(" - qc_summary_by_celltype_layer.csv\n")
+cat(" - qc_robust_outlier_table.csv\n\n")
+
+cat("Outlier rule:\n")
+cat(" - Sample flagged if >=2 QC metrics have absolute robust z-score > 3 within celltype_layer.\n")
+cat(" - Outliers are not overlaid on the main figure to avoid visual clutter.\n\n")
+
+print(qc_main)
