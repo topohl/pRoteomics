@@ -23,17 +23,27 @@
 #' 
 #' @date 2025-12-15
 
+cat("====================================================\n")
+cat("Starting MapThatProt_batch execution...\n")
+cat("====================================================\n")
+
 # --- Package Management ---
 # Automatically install and load necessary CRAN and Bioconductor packages.
+cat("Checking and loading required libraries...\n")
 if (!requireNamespace("pacman", quietly = TRUE)) install.packages("pacman")
 pacman::p_load(dplyr, stringr, tidyr, purrr, readr, R.utils, foreach, doParallel, readxl, AnnotationDbi, org.Mm.eg.db, UniProt.ws)
 
 # --- Configuration & Experimental Settings ---
-mapped_comparisons <- "microglia"  # specify the comparison folder to process
-map_reverse <- FALSE
+mapped_comparisons <- "neuron_neuropil"  # specify the comparison folder to process
+map_reverse <- TRUE
+
+cat("Target Comparison:", mapped_comparisons, "\n")
+cat("Mapping Direction:", ifelse(map_reverse, "reverse", "forward"), "\n")
 
 # Define root file paths
 working_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/"
+#working_dir <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/"
+cat("Working Directory:", working_dir, "\n")
 comparison_dir <- if (isTRUE(map_reverse)) file.path(mapped_comparisons, "reverse") else file.path(mapped_comparisons, "forward")
 raw_dir <- file.path(working_dir, "Datasets", "raw", comparison_dir)
 
@@ -46,6 +56,7 @@ unmapped_summary_dir <- file.path(working_dir, "Datasets", "unmapped", compariso
 report_dir <- file.path(working_dir, "Datasets", "mapping_reports", comparison_dir)
 
 # Initialize output folder structure
+cat("Initializing output directories...\n")
 dir.create(info_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(mapped_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(mapped_summary_dir, recursive = TRUE, showWarnings = FALSE)
@@ -73,7 +84,7 @@ if (!file.exists(uniprot_mapping_file_path)) {
 }
 
 # Parse the UniProt mapping dictionary natively into memory
-cat("Loading UniProt mapping file from:", uniprot_mapping_file_path, "\n")
+cat("Parsing UniProt idmapping dictionary into memory... (This may take a moment)\n")
 uniprot_mapping <- readr::read_tsv(
     uniprot_mapping_file_path,
     col_names = c("UniProt_Accession", "Type", "Value"),
@@ -92,10 +103,12 @@ if (nrow(entry_name_to_accession) == 0) stop("No UniProtKB-ID mappings found in 
 # Collect raw target files for batch proteomic mapping
 csv_files <- list.files(raw_dir, pattern = ".*_.*\\.csv$", full.names = TRUE)
 if (length(csv_files) == 0) stop("No .csv files found in: ", raw_dir)
+cat("Found", length(csv_files), "CSV files to process in", raw_dir, "\n")
 
 # --- Manual Override Configuration ---
 # Optional manual curation file. This is crucial for resolving heavily ambiguous 
 # protein groups or unannotated gene symbols common in exploratory proteomics.
+cat("Checking for manual mapping override file...\n")
 if (!requireNamespace("readxl", quietly = TRUE)) install.packages("readxl")
 
 manual_mapping_path <- file.path(working_dir, "Datasets", "manual_mapping.xlsx")
@@ -104,7 +117,7 @@ manual_override <- TRUE  # TRUE enforces curation over algorithmic mapping
 read_manual_xlsx <- function(path) {
     mm <- try(readxl::read_excel(path, sheet = 1), silent = TRUE)
     if (inherits(mm, "try-error") || !is.data.frame(mm) || !nrow(mm)) {
-        message("Manual mapping Excel unreadable or empty: ", path)
+        cat("Notice: Manual mapping Excel unreadable or empty at:", path, "\n")
         return(NULL)
     }
     # Normalize curation column headers
@@ -116,7 +129,7 @@ read_manual_xlsx <- function(path) {
 manual_mapping <- if (file.exists(manual_mapping_path)) {
     read_manual_xlsx(manual_mapping_path)
 } else {
-    message("Manual mapping Excel not found at: ", manual_mapping_path)
+    cat("Notice: Manual mapping Excel not found at:", manual_mapping_path, "\n")
     NULL
 }
 
@@ -124,22 +137,20 @@ if (!is.null(manual_mapping)) {
     needed <- c("gene_symbol", "mapped_gene_symbol")
     missing_cols <- setdiff(needed, names(manual_mapping))
     if (length(missing_cols)) {
-        message("Manual mapping is missing columns: ", paste(missing_cols, collapse = ", "))
+        cat("Warning: Manual mapping is missing expected columns:", paste(missing_cols, collapse = ", "), "\n")
     } else {
-        message("Loaded manual mapping rows: ", nrow(manual_mapping))
+        cat("Successfully loaded", nrow(manual_mapping), "rows from manual mapping configuration.\n")
     }
 }
 
 # --- Core Mapping Function ---
 # This function is executed asynchronously for each input proteomics file.
 process_file <- function(data_path) {
-    message("Processing file: ", data_path)
-
+    # Suppress internal messages for cleaner parallel console, file-level info handles writing
     # Ingest generic CSV arrays, supporting delimiter fallbacks (e.g. European CSVs)
     df_raw <- tryCatch(
         readr::read_csv(data_path, col_names = TRUE, show_col_types = FALSE, trim_ws = TRUE, quote = "\""),
         error = function(e) {
-            message("read_csv failed, trying read_csv2(): ", e$message)
             readr::read_csv2(data_path, col_names = TRUE, show_col_types = FALSE, trim_ws = TRUE)
         }
     )
@@ -147,7 +158,6 @@ process_file <- function(data_path) {
     # Coerce assumed key column to 'gene_symbol' representation
     if (!"gene_symbol" %in% names(df_raw)) {
         names(df_raw)[1] <- "gene_symbol"
-        message("Renamed first column to 'gene_symbol' for file: ", data_path)
     }
 
     # Mark rows that have protein groups (indicated by semicolons)
@@ -238,7 +248,6 @@ process_file <- function(data_path) {
         dplyr::filter(grepl("_MOUSE$", token_up))  # Core species filter mapping enforcer
 
     if (nrow(df_tok) == 0) {
-        message("No _MOUSE entries remaining after exclusion in file: ", data_path)
         return(invisible(list(unmapped_table = tibble::tibble(gene_symbol = character()), multi_protein_log_table = tibble::tibble())))
     }
 
@@ -467,8 +476,6 @@ process_file <- function(data_path) {
                 }
             }
         }
-    } else {
-        message("org.Mm.eg.db/AnnotationDbi not available; skipping OrgDb strategies")
     }
 
     # Strategy 9: External DB Integration - Online UniProt REST API Fetching
@@ -504,8 +511,6 @@ process_file <- function(data_path) {
                 resolved$strategy[ii] <- "uniprot_gene_primary_retry"
             }
         }
-    } else if (length(sym_left2)) {
-        message("UniProt.ws not available; skipping online gene strategy")
     }
 
     # Strategy 10: Late-stage entry resolution explicitly pinging UniProt.ws
@@ -529,8 +534,6 @@ process_file <- function(data_path) {
                     tbl <- tbl %>% dplyr::mutate(id = toupper(.data$id), accession = toupper(.data$accession))
                     pick <- tbl %>% dplyr::group_by(id) %>% dplyr::arrange(dplyr::desc(.data$reviewed), accession, .by_group = TRUE) %>% dplyr::slice_head(n = 1) %>% dplyr::ungroup() %>% dplyr::transmute(input = id, primaryAccession = accession)
                     picks[[length(picks) + 1]] <- pick
-                } else if (nrow(tbl)) {
-                    message("UniProt.ws result missing 'id' or 'accession' column; skipping batch.")
                 }
             }
         }
@@ -628,12 +631,8 @@ process_file <- function(data_path) {
                             }
                         }
                     }
-                } else {
-                    message("Manual mapping present but mapped values could not be converted to UniProt accessions; skipping.")
                 }
             }
-        } else {
-            message("Manual mapping file lacks required columns; expected one of symbol columns and 'mapped_gene_symbol' or accession column.")
         }
     }
 
@@ -739,13 +738,6 @@ process_file <- function(data_path) {
     }
     writeLines(summary_lines, info_summary_file)
 
-    message("Saved mapped -> ", mapped_file)
-    message("Saved unmapped -> ", unmapped_file, " (", nrow(unmapped_proteins), " entries )")
-    message("Saved mapping info -> ", info_table_file)
-    message("Saved summary info -> ", info_summary_file)
-    message("Saved mapped summary -> ", mapped_summary_file)
-    message("Saved unmapped summary -> ", unmapped_summary_file)
-
     invisible(list(
     mapping_table = mapping_info %>%
         dplyr::mutate(
@@ -769,10 +761,11 @@ n_files <- length(csv_files)
 available_cores <- parallel::detectCores(logical = FALSE)
 workers <- max(1, min(available_cores - 1, n_files))
 
-cat("Starting parallel processing with", workers, "workers for", n_files, "files...\n")
+cat("Setting up parallel processing backend using", workers, "out of", available_cores, "available cores...\n")
 cl <- parallel::makeCluster(workers)
 doParallel::registerDoParallel(cl)
 
+cat("Initiating parallel mapping cascade for all files...\n")
 results <- foreach(i = seq_along(csv_files),
                    .packages = c("dplyr", "stringr", "tidyr", "purrr", "readr", "R.utils"),
                    .export = c("uniprot_mapping", "entry_name_to_accession", "mapped_dir", "unmapped_dir", "info_dir", "process_file")) %dopar% {
@@ -780,18 +773,19 @@ results <- foreach(i = seq_along(csv_files),
 }
 
 parallel::stopCluster(cl)
-cat("Batch mapping completed for", length(csv_files), "files.\n")
+cat("Batch parallel mapping successfully completed for", n_files, "files.\n")
 
-cat("Building global mapping summaries...\n")
+# -------------------------
+# Global Mapping Workbooks
+# -------------------------
+
+cat("Aggregating overall biology summaries and computing mapping strategy statistics...\n")
 
 # Aggregate outputs back from processing clusters
 all_mapping_tables <- purrr::map(results, "mapping_table") %>% dplyr::bind_rows()
 all_unmapped_tables <- purrr::map(results, "unmapped_table") %>% dplyr::bind_rows()
 all_dropped_proteins <- purrr::map(results, "multi_protein_log_table") %>% dplyr::bind_rows()
 
-# -------------------------
-# Global Mapping Workbooks
-# -------------------------
 
 # Consolidate standard mappings
 global_mapping_summary <- all_mapping_tables %>%
@@ -805,8 +799,7 @@ readr::write_csv(global_mapping_summary, global_mapping_file)
 global_mapping_summary_file2 <- file.path(mapped_summary_dir, "GLOBAL_mapping_summary.csv")
 readr::write_csv(global_mapping_summary, global_mapping_summary_file2)
 
-cat("Saved global mapping summary ->", global_mapping_file, "\n")
-cat("Saved global mapping summary ->", global_mapping_summary_file2, "\n")
+cat("Saved global mapping summary to:", info_dir, "and", mapped_summary_dir, "\n")
 
 # Consolidate ID unmapped dropouts
 global_unmapped_summary <- all_unmapped_tables %>%
@@ -824,8 +817,7 @@ readr::write_csv(global_unmapped_summary, global_unmapped_file)
 global_unmapped_summary_file2 <- file.path(unmapped_summary_dir, "GLOBAL_unmapped_proteins.csv")
 readr::write_csv(global_unmapped_summary, global_unmapped_summary_file2)
 
-cat("Saved global unmapped protein list ->", global_unmapped_file, "\n")
-cat("Saved global unmapped protein list ->", global_unmapped_summary_file2, "\n")
+cat("Saved global unmapped tracking to:", unmapped_dir, "and", unmapped_summary_dir, "\n")
 
 # -------------------------
 # Strategy Quality Control
@@ -838,8 +830,7 @@ strategy_stats <- global_mapping_summary %>%
 
 strategy_file <- file.path(info_dir, "GLOBAL_strategy_statistics.csv")
 readr::write_csv(strategy_stats, strategy_file)
-
-cat("Saved global strategy stats ->", strategy_file, "\n")
+cat("Saved global strategy statistics to:", strategy_file, "\n")
 
 mapping_full <- all_mapping_tables %>%
     dplyr::distinct() %>%
@@ -883,6 +874,7 @@ coverage_stats <- mapping_full %>%
     )
 
 # --- Generate Comprehensive Excel QC Document ---
+cat("Generating comprehensive Excel QC Report...\n")
 if (!requireNamespace("openxlsx", quietly = TRUE)) install.packages("openxlsx")
 
 report_file <- file.path(report_dir, "Mapping_QC_Report.xlsx")
@@ -912,4 +904,7 @@ openxlsx::writeData(wb, "Coverage_Stats", coverage_stats)
 
 openxlsx::saveWorkbook(wb, report_file, overwrite = TRUE)
 
-cat("Saved mapping QC workbook ->", report_file, "\n")
+cat("Saved master QC workbook to:", report_file, "\n")
+cat("====================================================\n")
+cat("MapThatProt_batch execution completed successfully!\n")
+cat("====================================================\n")
