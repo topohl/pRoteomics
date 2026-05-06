@@ -10,7 +10,7 @@ pacman::p_load(
 set.seed(42)
 
 # ---- 2. Config ----
-gct_file <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/morpheus/20260206_pgmatrix_imputed_neuron_soma_71samples_missing70pct_with_metadata.gct"
+gct_file <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/morpheus/20260218_pgmatrix_imputed_microglia_72samples_missing70pct_with_metadata.gct"
 project_root <- dirname(dirname(gct_file))
 output_root <- file.path(project_root, "Results", "pca")
 dir.create(output_root, showWarnings = FALSE, recursive = TRUE)
@@ -29,6 +29,8 @@ folders <- list(
     plots_violin = file.path(output_root, "plots", "violin"),
     plots_main   = file.path(output_root, "plots", "main_figure"),
     plots_other  = file.path(output_root, "plots", "other"),
+    plots_biplot = file.path(output_root, "plots", "biplot"),
+    batch        = file.path(output_root, "plots", "batch"),
     clustering   = file.path(output_root, "clustering"),
     correlations = file.path(output_root, "correlations"),
     loadings     = file.path(output_root, "loadings")
@@ -44,6 +46,19 @@ trim_ws <- function(x) {
     x
 }
 
+subdir <- function(path) {
+    if (grepl("^[A-Za-z]:[/\\\\]|^[/\\\\]", path)) path else file.path(output_root, path)
+}
+
+ensure_dir <- function(path) {
+    dir.create(path, showWarnings = FALSE, recursive = TRUE)
+    normalizePath(path, winslash = "/", mustWork = FALSE)
+}
+
+resolve_output_dir <- function(folder) {
+    if (grepl("^[A-Za-z]:[/\\\\]|^[/\\\\]", folder)) folder else subdir(folder)
+}
+
 write_dt <- function(df, path) {
     dir.create(dirname(path), showWarnings = FALSE, recursive = TRUE)
     if (requireNamespace("data.table", quietly = TRUE)) {
@@ -55,13 +70,17 @@ write_dt <- function(df, path) {
 }
 
 save_table <- function(folder, name, df, row.names = FALSE) {
-    f <- file.path(folder, name)
+    f <- file.path(resolve_output_dir(folder), name)
+    if (row.names) {
+        df <- data.frame(rowname = rownames(df), df, check.names = FALSE)
+    }
     write_dt(df, f)
     invisible(f)
 }
 
 save_plot <- function(folder, name, plot, width = 7, height = 6, dpi = 150) {
-    f <- file.path(folder, name)
+    f <- file.path(resolve_output_dir(folder), name)
+    dir.create(dirname(f), showWarnings = FALSE, recursive = TRUE)
     ggsave(filename = f, plot = plot, width = width, height = height, dpi = dpi)
     invisible(f)
 }
@@ -76,6 +95,7 @@ save_pheatmap <- function(mat, file, width = 8, height = 10, scale = "row") {
         file <- sub("\\.[A-Za-z0-9]+$", "", file)
         file <- paste0(file, ".png")
     }
+    dir.create(dirname(file), showWarnings = FALSE, recursive = TRUE)
     pheatmap::pheatmap(
         mat, show_colnames = FALSE, scale = scale, clustering_method = "complete",
         color = colorRampPalette(c("#2c7fb8", "#f7f7f7", "#d95f0e"))(101),
@@ -93,11 +113,14 @@ read_gct <- function(path) {
     all_lines <- readLines(path)
     version <- trimws(all_lines[1])
     dims <- as.numeric(strsplit(all_lines[2], "\t")[[1]])
-    sample_ids <- strsplit(all_lines[3], "\t")[[1]][-1]
-    meta_lines <- all_lines[4:12]
+    row_meta_cols <- as.integer(if (length(dims) >= 3 && is.finite(dims[3])) dims[3] else 0)
+    col_meta_rows <- as.integer(if (length(dims) >= 4 && is.finite(dims[4])) dims[4] else 9)
+    header_skip <- 1 + row_meta_cols
+    sample_ids <- strsplit(all_lines[3], "\t")[[1]][-(seq_len(header_skip))]
+    meta_lines <- all_lines[4:(3 + col_meta_rows)]
     meta_split <- lapply(meta_lines, function(x) strsplit(x, "\t")[[1]])
     meta_keys <- sapply(meta_split, `[`, 1)
-    meta_values_list <- lapply(meta_split, function(x) x[-1])
+    meta_values_list <- lapply(meta_split, function(x) x[-(seq_len(header_skip))])
     meta_mat <- do.call(rbind, meta_values_list)
     meta_df <- as.data.frame(t(meta_mat), stringsAsFactors = FALSE)
     colnames(meta_df) <- meta_keys
@@ -108,10 +131,10 @@ read_gct <- function(path) {
             if (!any(is.na(x_num))) meta_df[[col]] <- x_num
         })
     }
-    expr_lines <- all_lines[13:length(all_lines)]
+    expr_lines <- all_lines[(4 + col_meta_rows):length(all_lines)]
     expr_split <- lapply(expr_lines, function(x) strsplit(x, "\t")[[1]])
     proteins <- sapply(expr_split, `[`, 1)
-    expr_values_list <- lapply(expr_split, function(x) as.numeric(x[-1]))
+    expr_values_list <- lapply(expr_split, function(x) as.numeric(x[-(seq_len(header_skip))]))
     expr_mat <- do.call(rbind, expr_values_list)
     rownames(expr_mat) <- proteins
     colnames(expr_mat) <- sample_ids
@@ -268,18 +291,20 @@ read_gct <- function(path) {
     # Line 2: dimensions
     dims_parts <- strsplit(all_lines[2], "\t")[[1]]
     dims <- as.numeric(dims_parts)
+    row_meta_cols <- as.integer(if (length(dims) >= 3 && is.finite(dims[3])) dims[3] else 0)
+    col_meta_rows <- as.integer(if (length(dims) >= 4 && is.finite(dims[4])) dims[4] else 9)
+    header_skip <- 1 + row_meta_cols
     
     # Line 3: sample IDs (first element is "id", skip it)
     line3_parts <- strsplit(all_lines[3], "\t")[[1]]
-    sample_ids <- line3_parts[-1]
+    sample_ids <- line3_parts[-(seq_len(header_skip))]
     
-    # Lines 4-12: metadata (9 rows total)
-    # sampleNumber, shortname, plate, group2, AnimalID, ReplicateGroup, celltype, ExpGroup, celltype_group
-    meta_lines <- all_lines[4:12]
+    # Column metadata rows. Current file has 9, but GCT 1.3 stores this count in line 2.
+    meta_lines <- all_lines[4:(3 + col_meta_rows)]
     meta_split <- lapply(meta_lines, function(x) strsplit(x, "\t")[[1]])
     
     meta_keys <- sapply(meta_split, `[`, 1)
-    meta_values_list <- lapply(meta_split, function(x) x[-1])
+    meta_values_list <- lapply(meta_split, function(x) x[-(seq_len(header_skip))])
     
     # Build metadata dataframe
     meta_mat <- do.call(rbind, meta_values_list)
@@ -295,12 +320,12 @@ read_gct <- function(path) {
         })
     }
     
-    # Lines 13+: expression data
-    expr_lines <- all_lines[13:length(all_lines)]
+    # Expression data starts after the column metadata block.
+    expr_lines <- all_lines[(4 + col_meta_rows):length(all_lines)]
     expr_split <- lapply(expr_lines, function(x) strsplit(x, "\t")[[1]])
     
     proteins <- sapply(expr_split, `[`, 1)
-    expr_values_list <- lapply(expr_split, function(x) as.numeric(x[-1]))
+    expr_values_list <- lapply(expr_split, function(x) as.numeric(x[-(seq_len(header_skip))]))
     
     expr_mat <- do.call(rbind, expr_values_list)
     rownames(expr_mat) <- proteins
@@ -436,7 +461,7 @@ build_group <- function(key){
     factor(v)
 }
 
-plot_and_save_group <- function(key, title_prefix, out_file, point_size = 14) {
+plot_and_save_group <- function(key, title_prefix, out_file = NULL, ext = "svg", point_size = 14) {
   grp <- build_group(key)
   keep <- !is.na(grp)
   if (sum(keep) < 2) { message(sprintf("Skipping '%s': <2 non-NA samples.", key)); return(invisible(NULL)) }
@@ -480,7 +505,13 @@ plot_and_save_group <- function(key, title_prefix, out_file, point_size = 14) {
     labs(x = lab_x, y = lab_y, subtitle = NULL, caption = NULL)
 
   # Organized save
-  save_plot("plots/base", out_file, p)
+  if (is.null(out_file)) {
+    save_plot(folders$plots_base, make_filename("pca", key, ext), p)
+  } else if (tolower(tools::file_ext(out_file)) %in% c("svg", "png", "pdf", "tiff", "bmp", "jpeg", "jpg")) {
+    save_plot(folders$plots_base, out_file, p)
+  } else {
+    save_plot(out_file, make_filename("pca", key, ext), p)
+  }
   p
 }
 
@@ -497,73 +528,73 @@ if ("phenotypeWithinUnit" %in% colnames(meta)) plot_and_save_group("phenotypeWit
 # Export parsed metadata
 save_table(folders$meta, "sample_metadata_parsed.csv", meta, row.names = TRUE)
 
+
 # ================== Extensions ==================
 
 # 1) Scree and cumulative variance
 var_explained <- (pca$sdev^2) / sum(pca$sdev^2)
 df_scree <- data.frame(PC = seq_along(var_explained),
-                       Variance = var_explained,
-                       Cumulative = cumsum(var_explained))
+                                             Variance = var_explained,
+                                             Cumulative = cumsum(var_explained))
 save_table(folders$tables, "pca_variance_explained.csv", df_scree)
 
 p_scree <- ggplot(df_scree, aes(PC, Variance)) +
-  geom_col(fill="#6B5B95") +
-  geom_point() + geom_line(group=1) +
-  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
-  theme_pca_min() + labs(title="PCA Scree", x="Principal Component", y="Variance Explained")
+    geom_col(fill="#6B5B95") +
+    geom_point() + geom_line(group=1) +
+    scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+    theme_pca_min() + labs(title="PCA Scree", x="Principal Component", y="Variance Explained")
 save_plot(folders$plots_var, "pca_scree.svg", p_scree)
 
 p_cum <- ggplot(df_scree, aes(PC, Cumulative)) +
-  geom_point(color="#66C1A4") + geom_line(color="#66C1A4") +
-  geom_hline(yintercept = 0.8, linetype="dashed", color="#B2B2B2") +
-  scale_y_continuous(labels = scales::percent_format(accuracy = 1), limits=c(0,1)) +
-  theme_pca_min() + labs(title="Cumulative Variance", x="Principal Component", y="Cumulative Fraction")
+    geom_point(color="#66C1A4") + geom_line(color="#66C1A4") +
+    geom_hline(yintercept = 0.8, linetype="dashed", color="#B2B2B2") +
+    scale_y_continuous(labels = scales::percent_format(accuracy = 1), limits=c(0,1)) +
+    theme_pca_min() + labs(title="Cumulative Variance", x="Principal Component", y="Cumulative Fraction")
 save_plot(folders$plots_var, "pca_cumulative_variance.svg", p_cum)
 
 # 2) PC ~ metadata ANOVA with effect sizes (celltype and ExpGroup), robust and always writes a file
 pc_df <- as.data.frame(pca$x)
 pc_df$sample <- rownames(pc_df)
 pc_meta <- cbind(pc_df[, "sample", drop = FALSE], 
-                 pc_df[, grep("^PC", names(pc_df))], 
-                 meta[rownames(pc_df), , drop = FALSE])
-
+                                 pc_df[, grep("^PC", names(pc_df))],
+                                 meta[rownames(pc_df), , drop = FALSE])
 
 # Candidate factors
 cand_vars <- intersect(c("celltype","region","ExpGroup","phenotypeWithinUnit"), names(pc_meta))
 if (length(cand_vars)) {
-    pc_meta[cand_vars] <- lapply(pc_meta[cand_vars], function(x) {
-        x <- trim_ws(as.character(x)); x[x == ""] <- NA; factor(x)
-    })
+        pc_meta[cand_vars] <- lapply(pc_meta[cand_vars], function(x) {
+                x <- trim_ws(as.character(x)); x[x == ""] <- NA; factor(x)
+        })
 }
 
 anova_rows <- list()
 for (pc_name in colnames(pca$x)) {
-    if (!length(cand_vars)) break
-    dat <- pc_meta[, c(pc_name, cand_vars), drop = FALSE]
-    dat <- dat[complete.cases(dat), , drop = FALSE]
-    if (nrow(dat) < 3) next
-    vars_ok <- cand_vars[sapply(cand_vars, function(v) nlevels(droplevels(dat[[v]])) >= 2)]
-    if (!length(vars_ok)) next
-    form <- as.formula(sprintf("%s ~ %s", pc_name, paste(vars_ok, collapse = " + ")))
-    fit <- try(aov(form, data = dat), silent = TRUE)
-    if (inherits(fit, "try-error")) next
-    a <- try(summary(fit)[[1]], silent = TRUE)
-    if (inherits(a, "try-error")) next
-    ss_total <- sum(a[, "Sum Sq"], na.rm = TRUE)
-    for (v in vars_ok) {
-        if (v %in% rownames(a)) {
-            ss <- a[v, "Sum Sq"]; df <- a[v, "Df"]; ms <- a[v, "Mean Sq"]; f <- a[v, "F value"]; p <- a[v, "Pr(>F)"]
-            eta2 <- if (is.finite(ss_total) && ss_total > 0) ss / ss_total else NA_real_
-            anova_rows[[length(anova_rows)+1L]] <- data.frame(
-                PC = pc_name, term = v, df = as.numeric(df), ss = as.numeric(ss),
-                ms = as.numeric(ms), F = as.numeric(f), p = as.numeric(p), eta2 = as.numeric(eta2),
-                stringsAsFactors = FALSE
-            )
+        if (!length(cand_vars)) break
+        dat <- pc_meta[, c(pc_name, cand_vars), drop = FALSE]
+        dat <- dat[complete.cases(dat), , drop = FALSE]
+        if (nrow(dat) < 3) next
+        vars_ok <- cand_vars[sapply(cand_vars, function(v) nlevels(droplevels(dat[[v]])) >= 2)]
+        if (!length(vars_ok)) next
+        form <- as.formula(sprintf("%s ~ %s", pc_name, paste(vars_ok, collapse = " + ")))
+        fit <- try(aov(form, data = dat), silent = TRUE)
+        if (inherits(fit, "try-error")) next
+        a <- try(summary(fit)[[1]], silent = TRUE)
+        if (inherits(a, "try-error")) next
+        ss_total <- sum(a[, "Sum Sq"], na.rm = TRUE)
+        for (v in vars_ok) {
+                if (v %in% rownames(a)) {
+                        ss <- a[v, "Sum Sq"]; df <- a[v, "Df"]; ms <- a[v, "Mean Sq"]; f <- a[v, "F value"]; p <- a[v, "Pr(>F)"]
+                        eta2 <- if (is.finite(ss_total) && ss_total > 0) ss / ss_total else NA_real_
+                        anova_rows[[length(anova_rows)+1L]] <- data.frame(
+                                PC = pc_name, term = v, df = as.numeric(df), ss = as.numeric(ss),
+                                ms = as.numeric(ms), F = as.numeric(f), p = as.numeric(p), eta2 = as.numeric(eta2),
+                                stringsAsFactors = FALSE
+                        )
+                }
         }
-    }
 }
 anova_tab <- if (length(anova_rows)) do.call(rbind, anova_rows) else
-    data.frame(PC=character(), term=character(), df=double(), ss=double(), ms=double(), F=double(), p=double(), eta2=double(), stringsAsFactors = FALSE)
+        data.frame(PC=character(), term=character(), df=double(), ss=double(), ms=double(), F=double(), p=double(), eta2=double(), stringsAsFactors = FALSE)
 
 if (nrow(anova_tab)) anova_tab$q <- p.adjust(anova_tab$p, method = "BH") else anova_tab$q <- numeric(0)
 
@@ -575,199 +606,199 @@ rot <- as.data.frame(pca$rotation)
 rot$protein <- rownames(pca$rotation)
 top_n <- 50
 for (k in c("PC1","PC2")) {
-  if (!k %in% colnames(rot)) next
-  ord_pos <- rot[order(-rot[[k]]), c("protein", k)]
-  ord_neg <- rot[order(rot[[k]]),  c("protein", k)]
-    save_table(folders$loadings, sprintf("loadings_%s_toppos.csv", k), head(ord_pos, top_n))
-    save_table(folders$loadings, sprintf("loadings_%s_topneg.csv", k), head(ord_neg, top_n))
-    ranked <- rot[, c("protein", k)]
-    ranked <- ranked[order(-ranked[[k]]), ]
-    save_table(folders$loadings, sprintf("loadings_%s_ranked_full.csv", k), ranked)
+    if (!k %in% colnames(rot)) next
+    ord_pos <- rot[order(-rot[[k]]), c("protein", k)]
+    ord_neg <- rot[order(rot[[k]]),  c("protein", k)]
+        save_table(folders$loadings, sprintf("loadings_%s_toppos.csv", k), head(ord_pos, top_n))
+        save_table(folders$loadings, sprintf("loadings_%s_topneg.csv", k), head(ord_neg, top_n))
+        ranked <- rot[, c("protein", k)]
+        ranked <- ranked[order(-ranked[[k]]), ]
+        save_table(folders$loadings, sprintf("loadings_%s_ranked_full.csv", k), ranked)
 }
 
 # 4) PC–protein correlations (per protein vs PC1/PC2)
 pc_scores <- pca$x[, colnames(pca$x)[1:min(2, ncol(pca$x))], drop = FALSE]
 cors <- lapply(colnames(pc_scores), function(pc) {
-  s <- pc_scores[, pc]
-  ct <- apply(mat, 1, function(v) {
-    ok <- is.finite(v) & is.finite(s)
-    if (sum(ok) < 3) return(c(r=NA_real_, p=NA_real_))
-    test <- suppressWarnings(cor.test(v[ok], s[ok], method = "pearson"))
-    c(r = unname(test$estimate), p = unname(test$p.value))
-  })
-  df <- as.data.frame(t(ct))
-  df$protein <- rownames(df)
-  df$pc <- pc
-  df
+    s <- pc_scores[, pc]
+    ct <- apply(mat, 1, function(v) {
+        ok <- is.finite(v) & is.finite(s)
+        if (sum(ok) < 3) return(c(r=NA_real_, p=NA_real_))
+        test <- suppressWarnings(cor.test(v[ok], s[ok], method = "pearson"))
+        c(r = unname(test$estimate), p = unname(test$p.value))
+    })
+    df <- as.data.frame(t(ct))
+    df$protein <- rownames(df)
+    df$pc <- pc
+    df
 })
 cors_df <- do.call(rbind, cors)
 cors_df$q <- ave(cors_df$p, cors_df$pc, FUN = function(x) p.adjust(x, method="BH"))
 save_table(folders$correlations, "protein_pc_correlations.csv", cors_df)
 
 # 5) Signed loading heatmap for PC1/PC2 (top 50 +/−)
-heat_dir <- folders$plots_heat
 for (k in c("PC1","PC2")) {
-  if (!k %in% colnames(rot)) next
-  pos <- head(rot[order(-rot[[k]]), "protein"], top_n)
-  neg <- head(rot[order(rot[[k]]),  "protein"], top_n)
-  sel <- unique(c(pos, neg))
-  sel <- sel[sel %in% rownames(mat)]
-  if (length(sel) >= 4) {
-    ord_samples <- order(pca$x[,k])
-    M <- mat[sel, ord_samples, drop = FALSE]
-    save_pheatmap(M, file.path(heat_dir, sprintf("heatmap_%s_topposneg.png", k)), width=8, height=10, scale="row")
-  }
+    if (!k %in% colnames(rot)) next
+    pos <- head(rot[order(-rot[[k]]), "protein"], top_n)
+    neg <- head(rot[order(rot[[k]]),  "protein"], top_n)
+    sel <- unique(c(pos, neg))
+    sel <- sel[sel %in% rownames(mat)]
+    if (length(sel) >= 4) {
+        ord_samples <- order(pca$x[,k])
+        M <- mat[sel, ord_samples, drop = FALSE]
+        save_pheatmap(M, file.path(folders$plots_heat, sprintf("heatmap_%s_topposneg.png", k)), width=8, height=10, scale="row")
+    }
 }
 
 # 6) UMAP on PCs (first 20 PCs)
 run_umap <- function(X, n_neighbors = 15, min_dist = 0.2, n_components = 2, metric = "euclidean"){
-  if (!requireNamespace("uwot", quietly = TRUE)) {
-    message("uwot not installed; skipping UMAP.")
-    return(NULL)
-  }
-  set.seed(42)
-  uwot::umap(X, n_neighbors = n_neighbors, min_dist = min_dist, n_components = n_components, metric = metric, verbose = FALSE)
+    if (!requireNamespace("uwot", quietly = TRUE)) {
+        message("uwot not installed; skipping UMAP.")
+        return(NULL)
+    }
+    set.seed(42)
+    uwot::umap(X, n_neighbors = n_neighbors, min_dist = min_dist, n_components = n_components, metric = metric, verbose = FALSE)
 }
 npc <- min(20, ncol(pca$x))
 um <- run_umap(pca$x[, 1:npc, drop = FALSE], n_neighbors = 15, min_dist = 0.2)
+if (!is.null(um)) rownames(um) <- rownames(pca$x)
 if (!is.null(um)) {
-  um_df <- data.frame(UMAP1 = um[,1], UMAP2 = um[,2], meta[rownames(pca$x), , drop = FALSE])
-  plot_umap_group <- function(key, out_file){
-    if (!key %in% names(um_df)) return(NULL)
-    grp <- factor(trim_ws(as.character(um_df[[key]])))
-    pal <- make_modern_palette(nlevels(droplevels(grp)))
-    p <- ggplot(um_df, aes(UMAP1, UMAP2, color = grp)) +
-      geom_point(shape = 16, alpha = 0.8, size = 6, stroke = 0) +
-      scale_color_manual(values = pal, na.translate = FALSE) +
-      theme_pca_min() + labs(title = paste("UMAP by", key), color = key)
-    save_plot(folders$plots_umap, out_file, p)
-    invisible(p)
-  }
-  plot_umap_group("ReplicateGroup", "umap_by_replicate_group.svg")
-  plot_umap_group("celltype",       "umap_by_celltype.svg")
-  plot_umap_group("ExpGroup",       "umap_by_expgroup.svg")
-  plot_umap_group("region",         "umap_by_region.svg")
+    um_df <- data.frame(UMAP1 = um[,1], UMAP2 = um[,2], meta[rownames(pca$x), , drop = FALSE])
+    plot_umap_group <- function(key, out_file){
+        if (!key %in% names(um_df)) return(NULL)
+        grp <- factor(trim_ws(as.character(um_df[[key]])))
+        pal <- make_modern_palette(nlevels(droplevels(grp)))
+        p <- ggplot(um_df, aes(UMAP1, UMAP2, color = grp)) +
+            geom_point(shape = 16, alpha = 0.8, size = 6, stroke = 0) +
+            scale_color_manual(values = pal, na.translate = FALSE) +
+            theme_pca_min() + labs(title = paste("UMAP by", key), color = key)
+        save_plot(folders$plots_umap, out_file, p)
+        invisible(p)
+    }
+    plot_umap_group("ReplicateGroup", "umap_by_replicate_group.svg")
+    plot_umap_group("celltype",       "umap_by_celltype.svg")
+    plot_umap_group("ExpGroup",       "umap_by_expgroup.svg")
+    plot_umap_group("region",         "umap_by_region.svg")
 }
 # detect switched samples / outliers based on umap
 if (!is.null(um)) {
-    # Calculate celltype group centers in UMAP space using median
-    celltype_centers <- aggregate(um, by = list(celltype = meta[rownames(um), "celltype"]), FUN = median)
-    rownames(celltype_centers) <- celltype_centers$celltype
-    celltype_centers$celltype <- NULL
+        # Calculate celltype group centers in UMAP space using median
+        celltype_centers <- aggregate(um, by = list(celltype = meta[rownames(um), "celltype"]), FUN = median)
+        rownames(celltype_centers) <- celltype_centers$celltype
+        celltype_centers$celltype <- NULL
+
+        # Calculate distance of each sample to its own celltype center
+        sample_distances <- sapply(rownames(um), function(sample) {
+                sample_celltype <- meta[sample, "celltype"]
+                if (is.na(sample_celltype)) return(NA_real_)
+        
+                center <- as.numeric(celltype_centers[sample_celltype, ])
+                sample_coords <- as.numeric(um[sample, ])
+        
+                # Euclidean distance to center
+                sqrt(sum((sample_coords - center)^2))
+        })
     
-    # Calculate distance of each sample to its own celltype center
-    sample_distances <- sapply(rownames(um), function(sample) {
-        sample_celltype <- meta[sample, "celltype"]
-        if (is.na(sample_celltype)) return(NA_real_)
-        
-        center <- as.numeric(celltype_centers[sample_celltype, ])
-        sample_coords <- as.numeric(um[sample, ])
-        
-        # Euclidean distance to center
-        sqrt(sum((sample_coords - center)^2))
-    })
+        # Identify outliers per celltype (samples far from their own group center)
+        outlier_samples <- character(0)
+        outlier_info <- list()
     
-    # Identify outliers per celltype (samples far from their own group center)
-    outlier_samples <- character(0)
-    outlier_info <- list()
-    
-    for (ct in unique(meta$celltype)) {
-        if (is.na(ct)) next
+        for (ct in unique(meta$celltype)) {
+                if (is.na(ct)) next
         
-        samples_in_celltype <- rownames(meta)[meta$celltype == ct & !is.na(meta$celltype)]
-        samples_in_celltype <- intersect(samples_in_celltype, names(sample_distances))
+                samples_in_celltype <- rownames(meta)[meta$celltype == ct & !is.na(meta$celltype)]
+                samples_in_celltype <- intersect(samples_in_celltype, names(sample_distances))
         
-        if (length(samples_in_celltype) < 3) next  # Need at least 3 samples to detect outliers
+                if (length(samples_in_celltype) < 3) next  # Need at least 3 samples to detect outliers
         
-        dists <- sample_distances[samples_in_celltype]
+                dists <- sample_distances[samples_in_celltype]
         
-        # Use 95th percentile or 2 MADs as threshold
-        threshold <- max(quantile(dists, 0.95, na.rm = TRUE), 
-                        median(dists, na.rm = TRUE) + 2 * mad(dists, na.rm = TRUE))
+                # Use 95th percentile or 2 MADs as threshold
+                threshold <- max(quantile(dists, 0.95, na.rm = TRUE),
+                                                median(dists, na.rm = TRUE) + 2 * mad(dists, na.rm = TRUE))
         
-        outliers_in_group <- samples_in_celltype[dists > threshold]
+                outliers_in_group <- samples_in_celltype[dists > threshold]
         
-        if (length(outliers_in_group) > 0) {
-            outlier_samples <- c(outlier_samples, outliers_in_group)
-            for (outlier in outliers_in_group) {
-                outlier_info[[outlier]] <- data.frame(
-                    sample = outlier,
-                    celltype = ct,
-                    distance_to_center = dists[outlier],
-                    threshold = threshold,
-                    stringsAsFactors = FALSE
-                )
-            }
+                if (length(outliers_in_group) > 0) {
+                        outlier_samples <- c(outlier_samples, outliers_in_group)
+                        for (outlier in outliers_in_group) {
+                                outlier_info[[outlier]] <- data.frame(
+                                        sample = outlier,
+                                        celltype = ct,
+                                        distance_to_center = dists[outlier],
+                                        threshold = threshold,
+                                        stringsAsFactors = FALSE
+                                )
+                        }
+                }
         }
-    }
     
-    if (length(outlier_samples) > 0) {
-        message("Potential outlier samples detected based on distance to celltype center:")
-        print(outlier_samples)
+        if (length(outlier_samples) > 0) {
+                message("Potential outlier samples detected based on distance to celltype center:")
+                print(outlier_samples)
         
-        # Find potential switch partners for each outlier
-        switch_partners <- list()
-        for (outlier in outlier_samples) {
-            outlier_celltype <- meta[outlier, "celltype"]
-            outlier_coords <- um[outlier, ]
+                # Find potential switch partners for each outlier
+                switch_partners <- list()
+                for (outlier in outlier_samples) {
+                        outlier_celltype <- meta[outlier, "celltype"]
+                        outlier_coords <- um[outlier, ]
             
-            # Find closest celltype center (excluding own celltype)
-            other_celltypes <- setdiff(rownames(celltype_centers), outlier_celltype)
-            if (length(other_celltypes) > 0) {
-                distances_to_centers <- apply(celltype_centers[other_celltypes, , drop = FALSE], 1, function(center) {
-                    sqrt(sum((outlier_coords - center)^2))
-                })
-                closest_celltype <- names(which.min(distances_to_centers))
+                        # Find closest celltype center (excluding own celltype)
+                        other_celltypes <- setdiff(rownames(celltype_centers), outlier_celltype)
+                        if (length(other_celltypes) > 0) {
+                                distances_to_centers <- apply(celltype_centers[other_celltypes, , drop = FALSE], 1, function(center) {
+                                        sqrt(sum((outlier_coords - center)^2))
+                                })
+                                closest_celltype <- names(which.min(distances_to_centers))
                 
-                switch_partners[[outlier]] <- data.frame(
-                    outlier = outlier,
-                    outlier_celltype = outlier_celltype,
-                    distance_to_own_center = sample_distances[outlier],
-                    potential_switch_celltype = closest_celltype,
-                    distance_to_switch_center = min(distances_to_centers),
-                    stringsAsFactors = FALSE
+                                switch_partners[[outlier]] <- data.frame(
+                                        outlier = outlier,
+                                        outlier_celltype = outlier_celltype,
+                                        distance_to_own_center = sample_distances[outlier],
+                                        potential_switch_celltype = closest_celltype,
+                                        distance_to_switch_center = min(distances_to_centers),
+                                        stringsAsFactors = FALSE
+                                )
+                        }
+                }
+
+                if (length(switch_partners) > 0) {
+                        switch_df <- do.call(rbind, switch_partners)
+                        message("\nPotential sample switch partners:")
+                        print(switch_df)
+                        save_table(folders$correlations, "umap_outlier_samples_with_switches.csv", switch_df)
+                }
+
+                # Save detailed outlier info
+                outlier_detail_df <- do.call(rbind, outlier_info)
+                save_table(folders$correlations, "umap_outlier_samples_details.csv", outlier_detail_df)
+
+                # Label outliers in UMAP plot
+                um_df$outlier <- ifelse(rownames(um_df) %in% outlier_samples, "Outlier", "Normal")
+                p <- ggplot(um_df, aes(UMAP1, UMAP2, color = outlier)) +
+                        geom_point(alpha = 0.8, size = 6) +
+                        scale_color_manual(values = c("Normal" = "grey", "Outlier" = "red"), na.translate = FALSE) +
+                        theme_pca_min() + labs(title = "UMAP with Outliers Labeled", color = "Sample Status")
+                save_plot(folders$plots_umap, "umap_with_outliers.svg", p)
+
+                # Additional plot: show distances to centers
+                dist_df <- data.frame(
+                        sample = names(sample_distances),
+                        celltype = meta[names(sample_distances), "celltype"],
+                        distance = sample_distances,
+                        is_outlier = names(sample_distances) %in% outlier_samples,
+                        stringsAsFactors = FALSE
                 )
-            }
+                p_dist <- ggplot(dist_df, aes(x = celltype, y = distance, color = is_outlier)) +
+                        geom_jitter(width = 0.2, alpha = 0.7, size = 3) +
+                        scale_color_manual(values = c("FALSE" = "grey", "TRUE" = "red"), labels = c("Normal", "Outlier")) +
+                        theme_pca_min() +
+                        labs(title = "Distance to Celltype Center (Median)", x = "Celltype", y = "UMAP Distance", color = "Status") +
+                        theme(axis.text.x = element_text(angle = 45, hjust = 1))
+                save_plot(folders$plots_umap, "umap_distance_to_centers.svg", p_dist)
+        
+        } else {
+                message("No outlier samples detected based on distance to celltype centers.")
         }
-        
-        if (length(switch_partners) > 0) {
-            switch_df <- do.call(rbind, switch_partners)
-            message("\nPotential sample switch partners:")
-            print(switch_df)
-            save_table(folders$correlations, "umap_outlier_samples_with_switches.csv", switch_df)
-        }
-        
-        # Save detailed outlier info
-        outlier_detail_df <- do.call(rbind, outlier_info)
-        save_table(folders$correlations, "umap_outlier_samples_details.csv", outlier_detail_df)
-        
-        # Label outliers in UMAP plot
-        um_df$outlier <- ifelse(rownames(um_df) %in% outlier_samples, "Outlier", "Normal")
-        p <- ggplot(um_df, aes(UMAP1, UMAP2, color = outlier)) +
-            geom_point(alpha = 0.8, size = 6) +
-            scale_color_manual(values = c("Normal" = "grey", "Outlier" = "red"), na.translate = FALSE) +
-            theme_pca_min() + labs(title = "UMAP with Outliers Labeled", color = "Sample Status")
-        save_plot(folders$plots_umap, "umap_with_outliers.svg", p)
-        
-        # Additional plot: show distances to centers
-        dist_df <- data.frame(
-            sample = names(sample_distances),
-            celltype = meta[names(sample_distances), "celltype"],
-            distance = sample_distances,
-            is_outlier = names(sample_distances) %in% outlier_samples,
-            stringsAsFactors = FALSE
-        )
-        p_dist <- ggplot(dist_df, aes(x = celltype, y = distance, color = is_outlier)) +
-            geom_jitter(width = 0.2, alpha = 0.7, size = 3) +
-            scale_color_manual(values = c("FALSE" = "grey", "TRUE" = "red"), labels = c("Normal", "Outlier")) +
-            theme_pca_min() +
-            labs(title = "Distance to Celltype Center (Median)", x = "Celltype", y = "UMAP Distance", color = "Status") +
-            theme(axis.text.x = element_text(angle = 45, hjust = 1))
-        save_plot(folders$plots_umap, "umap_distance_to_centers.svg", p_dist)
-        
-    } else {
-        message("No outlier samples detected based on distance to celltype centers.")
-    }
 }
 
 # 7) Clustering on PCs and ARI/NMI vs metadata
@@ -775,135 +806,113 @@ pc_for_cluster <- scale(pca$x[, 1:npc, drop = FALSE])
 best_k <- 2:8
 
 if (!requireNamespace("cluster", quietly = TRUE)) {
-  message("cluster not installed; silhouette may be skipped.")
+    message("cluster not installed; silhouette may be skipped.")
 }
 if (!requireNamespace("aricode", quietly = TRUE)) {
-  message("aricode not installed; ARI/NMI will be skipped.")
+    message("aricode not installed; ARI/NMI will be skipped.")
 }
 
 sil_tab <- list()
 clu_eval <- list()
 for (k in best_k) {
-  km <- kmeans(pc_for_cluster, centers = k, nstart = 50, iter.max = 100)
-  sil_avg <- NA_real_
-  if (requireNamespace("cluster", quietly = TRUE)) {
-    s <- cluster::silhouette(km$cluster, dist(pc_for_cluster))
-    sil_avg <- mean(s[, "sil_width"], na.rm = TRUE)
-  }
-  sil_tab[[length(sil_tab)+1]] <- data.frame(k=k, silhouette=sil_avg)
-
-  if (requireNamespace("aricode", quietly = TRUE)) {
-    for (lab in c("celltype","ReplicateGroup")) {
-      if (!lab %in% names(meta)) next
-      ref <- factor(meta[[lab]])
-      pred <- factor(km$cluster, levels = sort(unique(km$cluster)))
-      ari <- aricode::ARI(ref, pred)
-      nmi <- aricode::NMI(ref, pred)
-      clu_eval[[length(clu_eval)+1]] <- data.frame(k=k, label=lab, ARI=ari, NMI=nmi, stringsAsFactors = FALSE)
+    km <- kmeans(pc_for_cluster, centers = k, nstart = 50, iter.max = 100)
+    sil_avg <- NA_real_
+    if (requireNamespace("cluster", quietly = TRUE)) {
+        s <- cluster::silhouette(km$cluster, dist(pc_for_cluster))
+        sil_avg <- mean(s[, "sil_width"], na.rm = TRUE)
     }
-  }
+    sil_tab[[length(sil_tab)+1]] <- data.frame(k=k, silhouette=sil_avg)
+
+    if (requireNamespace("aricode", quietly = TRUE)) {
+        for (lab in c("celltype","ReplicateGroup")) {
+            if (!lab %in% names(meta)) next
+            ref <- factor(meta[[lab]])
+            pred <- factor(km$cluster, levels = sort(unique(km$cluster)))
+            ari <- aricode::ARI(ref, pred)
+            nmi <- aricode::NMI(ref, pred)
+            clu_eval[[length(clu_eval)+1]] <- data.frame(k=k, label=lab, ARI=ari, NMI=nmi, stringsAsFactors = FALSE)
+        }
+    }
 }
 sil_df <- if (length(sil_tab)) do.call(rbind, sil_tab) else data.frame()
-if (nrow(sil_df)) save_table("tables/clustering", "cluster_silhouette.csv", sil_df)
+if (nrow(sil_df)) save_table(folders$clustering, "cluster_silhouette.csv", sil_df)
 clu_df <- if (length(clu_eval)) do.call(rbind, clu_eval) else data.frame()
-if (nrow(clu_df)) save_table("tables/clustering", "cluster_ARI_NMI.csv", clu_df)
+if (nrow(clu_df)) save_table(folders$clustering, "cluster_ARI_NMI.csv", clu_df)
 
 suggest_k <- if (nrow(sil_df) && is.finite(max(sil_df$silhouette, na.rm=TRUE))) sil_df$k[which.max(sil_df$silhouette)] else 3
 km_final <- kmeans(pc_for_cluster, centers = suggest_k, nstart = 100, iter.max = 200)
 meta$kmeans_cluster <- factor(km_final$cluster)
 pc_grp_plot <- plot_and_save_group("kmeans_cluster", "PCA", "pca_by_kmeans_cluster.svg")
-if (inherits(pc_grp_plot, "gg")) save_plot("plots/clustering", "pca_by_kmeans_cluster.svg", pc_grp_plot)
+if (inherits(pc_grp_plot, "gg")) save_plot(folders$clustering, "pca_by_kmeans_cluster.svg", pc_grp_plot)
 
 # 8) Batch correction check: pre/post plate (or ReplicateGroup) using limma
 run_remove_batch <- function(mat_samples_by_feature, meta_df, batch_key = "plate", design_keys = c("celltype")) {
-    if (!requireNamespace("limma", quietly = TRUE)) {
-        message("limma not installed; skipping batch correction.")
-        return(NULL)
-    }
-    if (!batch_key %in% names(meta_df)) {
-        message("Batch key not in meta: ", batch_key); return(NULL)
-    }
-    x <- mat_samples_by_feature
-    smp <- colnames(x)
-    meta_local <- meta_df[smp, , drop = FALSE]
-    if (!identical(rownames(meta_local), smp)) stop("Meta/sample alignment failed for batch removal.")
-    batch <- factor(meta_local[[batch_key]])
-    if (length(batch) != ncol(x)) stop("Batch length != number of samples in matrix.")
-    dk <- intersect(design_keys, names(meta_local))
-    if (!length(dk)) {
-        design <- matrix(1, ncol(x), 1); colnames(design) <- "Intercept"
-    } else {
-        design <- stats::model.matrix(as.formula(paste0("~ 0 + ", paste(dk, collapse = "+"))), data = meta_local)
-    }
-    if (nrow(design) != ncol(x)) stop("Row dimension of design must equal number of samples (columns of x).")
-    limma::removeBatchEffect(x, batch = batch, design = design)
+        if (!requireNamespace("limma", quietly = TRUE)) {
+                message("limma not installed; skipping batch correction.")
+                return(NULL)
+        }
+        if (!batch_key %in% names(meta_df)) {
+                message("Batch key not in meta: ", batch_key); return(NULL)
+        }
+        x <- mat_samples_by_feature
+        smp <- colnames(x)
+        meta_local <- meta_df[smp, , drop = FALSE]
+        if (!identical(rownames(meta_local), smp)) stop("Meta/sample alignment failed for batch removal.")
+        batch <- factor(meta_local[[batch_key]])
+        if (length(batch) != ncol(x)) stop("Batch length != number of samples in matrix.")
+        dk <- intersect(design_keys, names(meta_local))
+        if (!length(dk)) {
+                design <- matrix(1, ncol(x), 1); colnames(design) <- "Intercept"
+        } else {
+                design <- stats::model.matrix(as.formula(paste0("~ 0 + ", paste(dk, collapse = "+"))), data = meta_local)
+        }
+        if (nrow(design) != ncol(x)) stop("Row dimension of design must equal number of samples (columns of x).")
+        limma::removeBatchEffect(x, batch = batch, design = design)
 }
 
 mat_adj <- try(run_remove_batch(mat_samples_by_feature = mat, meta_df = meta, batch_key = "plate", design_keys = c("celltype")), silent = TRUE)
 if (!inherits(mat_adj, "try-error") && !is.null(mat_adj)) {
-    pca_prec <- pca
-    pca_post <- prcomp(t(mat_adj), center = TRUE, scale. = TRUE)
-    pre_plot <- plot_and_save_group("plate", "PCA (pre-correction)", "pca_by_plate_precorrect.svg")
-    if (inherits(pre_plot, "gg")) save_plot("plots/batch", "pca_by_plate_precorrect.svg", pre_plot)
-    pca <- pca_post
-    post_plot <- plot_and_save_group("plate", "PCA (post-correction)", "pca_by_plate_postcorrect.svg")
-    if (inherits(post_plot, "gg")) save_plot("plots/batch", "pca_by_plate_postcorrect.svg", post_plot)
-    pca <- pca_prec
+        pca_prec <- pca
+        pca_post <- prcomp(t(mat_adj), center = TRUE, scale. = TRUE)
+        pre_plot <- plot_and_save_group("plate", "PCA (pre-correction)", "pca_by_plate_precorrect.svg")
+        if (inherits(pre_plot, "gg")) save_plot(folders$batch, "pca_by_plate_precorrect.svg", pre_plot)
+        pca <- pca_post
+        post_plot <- plot_and_save_group("plate", "PCA (post-correction)", "pca_by_plate_postcorrect.svg")
+        if (inherits(post_plot, "gg")) save_plot(folders$batch, "pca_by_plate_postcorrect.svg", post_plot)
+        pca <- pca_prec
 } else {
-    message("Batch correction skipped or failed; check plate variable presence and design alignment.")
+        message("Batch correction skipped or failed; check plate variable presence and design alignment.")
 }
 
 # 9) Optional biplot with sparse loadings on PC1/PC2
 plot_biplot_sparse <- function(topN = 20, out_file = "pca_biplot_sparse.svg"){
-  R <- as.data.frame(pca$rotation)
-  R$protein <- rownames(R)
-  for (k in c("PC1","PC2")) if (!k %in% names(R)) return(invisible(NULL))
-  sel <- unique(c(head(R[order(-R$PC1), "protein"], topN),
-                  head(R[order(R$PC1),  "protein"], topN),
-                  head(R[order(-R$PC2), "protein"], topN),
-                  head(R[order(R$PC2),  "protein"], topN)))
-  dd <- data.frame(pca$x[,1:2, drop=FALSE], meta[rownames(pca$x), , drop=FALSE])
-  pal <- make_modern_palette(nlevels(factor(dd$celltype)))
-  p <- ggplot(dd, aes(PC1, PC2, color=factor(celltype))) +
-    geom_point(size=3, alpha=0.8) +
-    scale_color_manual(values = pal) +
-    theme_pca_min() + labs(title="PCA biplot (sparse loadings)", color="celltype")
-  arrows <- R[R$protein %in% sel, c("PC1","PC2","protein")]
-  rngx <- diff(range(dd$PC1)); rngy <- diff(range(dd$PC2))
-  scale_fac <- 0.5 * min(rngx, rngy)
-  arrows$PC1s <- arrows$PC1 * scale_fac
-  arrows$PC2s <- arrows$PC2 * scale_fac
-  p <- p +
-    geom_segment(data=arrows, aes(x=0, y=0, xend=PC1s, yend=PC2s), inherit.aes = FALSE, arrow = arrow(length = unit(0.15,"cm")), color="#444444", alpha=0.7) +
-    ggrepel::geom_text_repel(data=arrows, aes(x=PC1s, y=PC2s, label=protein), inherit.aes = FALSE, size=3, max.overlaps = 200)
-  save_plot("plots/biplot", out_file, p, width=8, height=6.5)
+    R <- as.data.frame(pca$rotation)
+    R$protein <- rownames(R)
+    for (k in c("PC1","PC2")) if (!k %in% names(R)) return(invisible(NULL))
+    sel <- unique(c(head(R[order(-R$PC1), "protein"], topN),
+                                    head(R[order(R$PC1),  "protein"], topN),
+                                    head(R[order(-R$PC2), "protein"], topN),
+                                    head(R[order(R$PC2),  "protein"], topN)))
+    dd <- data.frame(pca$x[,1:2, drop=FALSE], meta[rownames(pca$x), , drop=FALSE])
+    pal <- make_modern_palette(nlevels(factor(dd$celltype)))
+    p <- ggplot(dd, aes(PC1, PC2, color=factor(celltype))) +
+        geom_point(size=3, alpha=0.8) +
+        scale_color_manual(values = pal) +
+        theme_pca_min() + labs(title="PCA biplot (sparse loadings)", color="celltype")
+    arrows <- R[R$protein %in% sel, c("PC1","PC2","protein")]
+    rngx <- diff(range(dd$PC1)); rngy <- diff(range(dd$PC2))
+    scale_fac <- 0.5 * min(rngx, rngy)
+    arrows$PC1s <- arrows$PC1 * scale_fac
+    arrows$PC2s <- arrows$PC2 * scale_fac
+    p <- p +
+        geom_segment(data=arrows, aes(x=0, y=0, xend=PC1s, yend=PC2s), inherit.aes = FALSE, arrow = arrow(length = unit(0.15,"cm")), color="#444444", alpha=0.7) +
+        ggrepel::geom_text_repel(data=arrows, aes(x=PC1s, y=PC2s, label=protein), inherit.aes = FALSE, size=3, max.overlaps = 200)
+    save_plot(folders$plots_biplot, out_file, p, width=8, height=6.5)
 }
 plot_biplot_sparse(20, "pca_biplot_sparse.svg")
 
 # 10) Save session info
-ensure_dir(subdir("tables/meta"))
-writeLines(c(capture.output(sessionInfo())), con = file.path(subdir("tables/meta"), "sessionInfo.txt"))
-
-# ================== Additional Extensions (organized outputs) ==================
-
-# ----- Subdirectory helpers -----
-subdir <- function(...){ file.path(output_dir, ...) }
-ensure_dir <- function(path){ dir.create(path, showWarnings = FALSE, recursive = TRUE); path }
-
-# Save plot: create subdir and call ggsave
-save_plot <- function(subfolder, filename, plot, width=7.5, height=6.2, dpi=150){
-  d <- ensure_dir(subdir(subfolder))
-  ggsave(filename = filename, plot = plot, path = d, width = width, height = height, dpi = dpi)
-  invisible(file.path(d, filename))
-}
-
-# Save table: create subdir and write via write_dt fallback
-save_table <- function(subfolder, filename, df){
-  d <- ensure_dir(subdir(subfolder))
-  f <- file.path(d, filename)
-  if (exists("write_dt")) write_dt(df, f) else utils::write.csv(df, f, row.names = FALSE)
-  invisible(f)
-}
+writeLines(c(capture.output(sessionInfo())), con = file.path(folders$meta, "sessionInfo.txt"))
 
 # A) Confidence ellipses and centroids on PCA
 add_pca_ellipses <- function(key, fname){
@@ -1574,6 +1583,14 @@ pc_violin_plots <- function(n_pcs = 5, group_key = "celltype") {
     all_normality <- list()
     all_main_tests <- list()
     all_posthocs <- list()
+    bind_rows_fill <- function(xs) {
+        cols <- unique(unlist(lapply(xs, names), use.names = FALSE))
+        do.call(rbind, lapply(xs, function(x) {
+            missing_cols <- setdiff(cols, names(x))
+            for (nm in missing_cols) x[[nm]] <- NA
+            x[, cols, drop = FALSE]
+        }))
+    }
     
     for (i in 1:min(n_pcs, ncol(pca$x))) {
         pc_name <- paste0("PC", i)
@@ -1717,10 +1734,14 @@ pc_violin_plots <- function(n_pcs = 5, group_key = "celltype") {
         # Add significance annotations
         max_y <- y_start;
         if (n_sig_comparisons > 0) {
-            posthoc_df$group1 <- sapply(strsplit(posthoc_df$Comparison, " vs "), `[`, 1);
-            posthoc_df$group2 <- sapply(strsplit(posthoc_df$Comparison, " vs "), `[`, 2);
-            
             sig_comparisons <- posthoc_df[posthoc_df$P_Value < 0.05, ];
+            cmp_split <- strsplit(sig_comparisons$Comparison, " vs ", fixed = TRUE)
+            needs_tukey_split <- lengths(cmp_split) != 2
+            if (any(needs_tukey_split)) {
+                cmp_split[needs_tukey_split] <- strsplit(sig_comparisons$Comparison[needs_tukey_split], "-", fixed = TRUE)
+            }
+            sig_comparisons$group1 <- sapply(cmp_split, `[`, 1);
+            sig_comparisons$group2 <- sapply(cmp_split, `[`, 2);
             
             for (idx in 1:nrow(sig_comparisons)) {
                 y_pos <- y_start + (idx - 1) * y_step;
@@ -1731,6 +1752,7 @@ pc_violin_plots <- function(n_pcs = 5, group_key = "celltype") {
                 
                 x1 <- which(levels(df$group) == sig_comparisons$group1[idx]);
                 x2 <- which(levels(df$group) == sig_comparisons$group2[idx]);
+                if (length(x1) != 1 || length(x2) != 1) next;
                 
                 p <- p + 
                     annotate("segment", x = x1, xend = x2, y = y_pos, yend = y_pos, color = "black", size = 0.5) +
@@ -1754,19 +1776,19 @@ pc_violin_plots <- function(n_pcs = 5, group_key = "celltype") {
     
     # Save summary tables
     if (length(all_main_tests) > 0) {
-        combined_main_tests <- do.call(rbind, all_main_tests);
+        combined_main_tests <- bind_rows_fill(all_main_tests);
         combined_main_tests$Significant <- ifelse(combined_main_tests$P_Value < 0.05, "Yes", "No");
         save_table("tables/statistics", paste0("summary_main_tests_", group_key, ".csv"), combined_main_tests);
     }
     
     if (length(all_posthocs) > 0) {
-        combined_posthocs <- do.call(rbind, all_posthocs);
+        combined_posthocs <- bind_rows_fill(all_posthocs);
         combined_posthocs$Significant <- ifelse(combined_posthocs$P_Value < 0.05, "Yes", "No");
         save_table("tables/statistics", paste0("summary_posthoc_tests_", group_key, ".csv"), combined_posthocs);
     }
     
     if (length(all_normality) > 0) {
-        combined_normality <- do.call(rbind, all_normality);
+        combined_normality <- bind_rows_fill(all_normality);
         save_table("tables/statistics", paste0("summary_normality_tests_", group_key, ".csv"), combined_normality);
     }
 }
@@ -1861,7 +1883,7 @@ sample_qc_vs_pcs <- function(n_pcs = 2) {
         for (i in 1:min(n_pcs, ncol(pca$x))) {
             pc_name <- paste0("PC", i)
             
-            p <- ggplot(qc_df, aes_string(x = pc_name, y = qc_col)) +
+            p <- ggplot(qc_df, aes(x = .data[[pc_name]], y = .data[[qc_col]])) +
                 geom_point(alpha = 0.7, size = 3, color = "#6B5B95") +
                 geom_smooth(method = "lm", se = TRUE, color = "#66C1A4") +
                 theme_pca_min() +
@@ -1887,14 +1909,17 @@ sample_dendrogram <- function(n_pcs = 10, group_key = "celltype") {
     
     # Color by group
     groups <- factor(meta[rownames(pc_mat), group_key])
-    pal <- make_modern_palette(nlevels(droplevels(groups)))
-    colors <- pal[as.numeric(droplevels(groups))]
+    groups <- droplevels(groups[!is.na(groups)])
+    n_groups <- nlevels(groups)
+    pal <- make_modern_palette(max(1, n_groups))
     
     png(file.path(ensure_dir(subdir("plots/dendrogram")), 
                   paste0("dendrogram_by_", group_key, ".png")),
         width = 12, height = 8, units = "in", res = 150)
     plot(hc, hang = -1, cex = 0.6, main = paste("Sample Dendrogram colored by", group_key))
-    rect.hclust(hc, k = nlevels(droplevels(groups)), border = pal)
+    if (n_groups >= 2 && n_groups <= length(hc$order)) {
+        rect.hclust(hc, k = n_groups, border = pal)
+    }
     dev.off()
 }
 sample_dendrogram(10, "celltype")
@@ -1918,8 +1943,7 @@ scree_with_kaiser <- function() {
         annotate("text", x = 2, y = 1.2, label = "Kaiser criterion (λ=1)", 
                 color = "red", hjust = 0) +
         theme_pca_min() +
-        theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-        labs(title = "Scree Plot with Kaiser Criterion",
+        labs(title = "PCA Scree with Kaiser Criterion",
              x = "Principal Component", y = "Eigenvalue")
     
     save_plot("plots/variance", "scree_with_kaiser_criterion.svg", p)
@@ -2231,13 +2255,15 @@ statistical_summary_barplot <- function(group_key = "celltype") {
             group = factor(meta[rownames(pca$x), group_key])
         )
         df <- df[!is.na(df$group), ]
+        if (nrow(df) < 3 || nlevels(droplevels(df$group)) < 2) next
         
         # Check normality
         normality <- by(df$score, df$group, function(x) {
-            if (length(x) < 3) return(list(p = NA))
+            if (length(x) < 3) return(list(p.value = NA_real_))
             shapiro.test(x)
         })
-        all_normal <- all(sapply(normality, function(x) x$p.value > 0.05), na.rm = TRUE)
+        normality_p <- sapply(normality, function(x) x$p.value)
+        all_normal <- any(is.finite(normality_p)) && all(normality_p > 0.05, na.rm = TRUE)
         
         # Run appropriate test
         if (all_normal) {
@@ -2259,6 +2285,7 @@ statistical_summary_barplot <- function(group_key = "celltype") {
         )
     }
     
+    if (!length(results)) return(NULL)
     results_df <- do.call(rbind, results)
     
     p <- ggplot(results_df, aes(x = PC, y = NegLog10P, fill = Significant)) +
@@ -2308,13 +2335,15 @@ statistical_summary_barplot_umap <- function(group_key = "celltype") {
             group = factor(meta[rownames(um), group_key])
         )
         df <- df[!is.na(df$group), ]
+        if (nrow(df) < 3 || nlevels(droplevels(df$group)) < 2) next
         
         # Check normality
         normality <- by(df$score, df$group, function(x) {
-            if (length(x) < 3) return(list(p = NA))
+            if (length(x) < 3) return(list(p.value = NA_real_))
             shapiro.test(x)
         })
-        all_normal <- all(sapply(normality, function(x) x$p.value > 0.05), na.rm = TRUE)
+        normality_p <- sapply(normality, function(x) x$p.value)
+        all_normal <- any(is.finite(normality_p)) && all(normality_p > 0.05, na.rm = TRUE)
         
         # Run appropriate test
         if (all_normal) {
@@ -2337,6 +2366,7 @@ statistical_summary_barplot_umap <- function(group_key = "celltype") {
         )
     }
     
+    if (!length(results)) return(NULL)
     results_df <- do.call(rbind, results)
     
     # Create factor with proper ordering
@@ -2822,11 +2852,13 @@ chord_diagram_groups <- function(group_key = "celltype", pc_threshold = 2) {
     }
     
     # Calculate group centroids in PC space
-    groups <- factor(meta[rownames(pca$x), group_key])
-    groups <- groups[!is.na(groups)]
+    sample_ids <- rownames(pca$x)
+    groups <- factor(meta[sample_ids, group_key])
+    keep <- !is.na(groups)
+    if (sum(keep) < 2 || nlevels(droplevels(groups[keep])) < 2) return(NULL)
     
-    centroids <- aggregate(pca$x[names(groups), 1:5], 
-                          by = list(group = groups), 
+    centroids <- aggregate(pca$x[sample_ids[keep], 1:min(5, ncol(pca$x)), drop = FALSE],
+                          by = list(group = droplevels(groups[keep])),
                           FUN = mean)
     rownames(centroids) <- centroids$group
     centroids$group <- NULL
