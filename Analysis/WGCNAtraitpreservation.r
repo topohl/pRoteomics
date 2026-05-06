@@ -118,11 +118,41 @@ if (file.exists(manual_map_xlsx)) {
   suppressMessages({
     manual_map <- try(readxl::read_excel(manual_map_xlsx), silent = TRUE)
   })
-  if (!inherits(manual_map, "try-error") && all(c("gene_sym", "mapped_gene") %in% names(manual_map))) {
-    manual_map <- manual_map %>%
-      dplyr::mutate(gene_sym = toupper(trimws(gene_sym)), mapped_gene = toupper(trimws(mapped_gene)))
+  if (!inherits(manual_map, "try-error")) {
+    nm_raw <- names(manual_map)
+    nm_low <- tolower(trimws(nm_raw))
+
+    gene_col <- if ("gene_sym" %in% nm_low) {
+      nm_raw[match("gene_sym", nm_low)]
+    } else {
+      cand <- c("gene_symbol", "symbol", "gene", "input")
+      hit <- cand[cand %in% nm_low]
+      if (length(hit)) nm_raw[match(hit[1], nm_low)] else NA_character_
+    }
+
+    map_col <- if ("mapped_gene" %in% nm_low) {
+      nm_raw[match("mapped_gene", nm_low)]
+    } else {
+      cand <- c("mapped_symbol", "mapped", "map_to", "output")
+      hit <- cand[cand %in% nm_low]
+      if (length(hit)) nm_raw[match(hit[1], nm_low)] else NA_character_
+    }
+
+    if (!is.na(gene_col) && !is.na(map_col)) {
+      manual_map <- manual_map %>%
+        dplyr::transmute(
+          gene_sym = toupper(trimws(.data[[gene_col]])),
+          mapped_gene = toupper(trimws(.data[[map_col]]))
+        )
+      message(sprintf("Manual mapping loaded: %d rows, using columns '%s' -> '%s'", nrow(manual_map), gene_col, map_col))
+    } else {
+      message(sprintf("Manual mapping file columns found: %s", paste(nm_raw, collapse = ", ")))
+      message(sprintf("  -> Need one of [gene_sym, gene_symbol, symbol, gene, input] and one of [mapped_gene, mapped_symbol, mapped, map_to, output]"))
+      warning(sprintf("Manual mapping file found but missing required columns: %s", manual_map_xlsx))
+      manual_map <- NULL
+    }
   } else {
-    warning(sprintf("Manual mapping file found but missing required columns: %s", manual_map_xlsx))
+    warning(sprintf("Manual mapping file could not be read: %s", manual_map_xlsx))
     manual_map <- NULL
   }
 } else {
@@ -235,7 +265,7 @@ ids_ent <- unique(need_ids[!is_acc])
 
 if (length(ids_ent)) {
   sel_sym <- try(AnnotationDbi::select(org.Mm.eg.db, keys = ids_ent, keytype = "SYMBOL", columns = c("MGIID","ENTREZID","UNIPROT","SYMBOL")), silent = TRUE)
-  map_sym <- tibble::tibble()
+  map_sym <- tibble::tibble(input = character(), primaryAccession = character())
   if (!inherits(sel_sym, "try-error") && nrow(sel_sym)) {
     map_sym <- tibble::as_tibble(sel_sym) %>%
       dplyr::filter(!is.na(UNIPROT) & nzchar(UNIPROT)) %>%
@@ -243,7 +273,7 @@ if (length(ids_ent)) {
       dplyr::transmute(input = toupper(SYMBOL), primaryAccession = toupper(UNIPROT))
   }
   kt <- try(AnnotationDbi::keytypes(org.Mm.eg.db), silent = TRUE)
-  map_alias <- tibble::tibble()
+  map_alias <- tibble::tibble(input = character(), primaryAccession = character())
   if (!inherits(kt, "try-error") && "ALIAS" %in% kt) {
     sel_alias <- try(AnnotationDbi::select(org.Mm.eg.db, keys = ids_ent, keytype = "ALIAS", columns = c("UNIPROT","ALIAS")), silent = TRUE)
     if (!inherits(sel_alias, "try-error") && nrow(sel_alias)) {
@@ -1203,46 +1233,54 @@ nr <- nrow(r_mat)
 png(fp_traits("ME_trait_pheatmap.png"), width = 3200, height = 1800, res = 300)
 grid::grid.newpage(); grid::grid.draw(ph$gtable)
 panel_id <- grep("matrix", ph$gtable$layout$name)[1]
-if (!is.na(panel_id) && ph$gtable$layout$name[panel_id] %in% grid::current.viewport()$name) {
-  seekViewport(ph$gtable$layout$name[panel_id])
-  for (xl in xlines) {
-    grid::grid.lines(x = unit(c(xl, xl), "native"),
-                     y = unit(c(0, nr), "native"),
-                     gp = gpar(col = "white", lwd = 3))
-  }
-  upViewport(0)
+if (!is.na(panel_id) && length(xlines) > 0) {
+  tryCatch({
+    grid::seekViewport(ph$gtable$layout$name[panel_id])
+    for (xl in xlines) {
+      grid::grid.lines(x = grid::unit(c(xl, xl), "native"),
+                       y = grid::unit(c(0, nr), "native"),
+                       gp = grid::gpar(col = "white", lwd = 3))
+    }
+    grid::upViewport(0)
+  }, error = function(e) {
+    warning(sprintf("Viewport '%s' was not found; skipping vertical lines.", ph$gtable$layout$name[panel_id]))
+  })
 }
 dev.off()
 
 pdf(fp_traits("ME_trait_pheatmap.pdf"), width = 12, height = 7)
 grid::grid.newpage(); grid::grid.draw(ph$gtable)
 panel_id <- grep("matrix", ph$gtable$layout$name)[1]
-if (!is.na(panel_id) && ph$gtable$layout$name[panel_id] %in% grid::current.viewport()$name) {
-  seekViewport(ph$gtable$layout$name[panel_id])
-  for (xl in xlines) {
-    grid::grid.lines(x = unit(c(xl, xl), "native"),
-                    y = unit(c(0, nr), "native"),
-                    gp = gpar(col = "white", lwd = 2))
-  }
-  upViewport(0)
-} else {
-  warning(sprintf("Viewport '%s' was not found; skipping vertical lines.", ph$gtable$layout$name[panel_id]))
+if (!is.na(panel_id) && length(xlines) > 0) {
+  tryCatch({
+    grid::seekViewport(ph$gtable$layout$name[panel_id])
+    for (xl in xlines) {
+      grid::grid.lines(x = grid::unit(c(xl, xl), "native"),
+                      y = grid::unit(c(0, nr), "native"),
+                      gp = grid::gpar(col = "white", lwd = 2))
+    }
+    grid::upViewport(0)
+  }, error = function(e) {
+    warning(sprintf("Viewport '%s' was not found; skipping vertical lines.", ph$gtable$layout$name[panel_id]))
+  })
 }
 dev.off()
 
 svglite::svglite(fp_traits("ME_trait_pheatmap.svg"), width = 12, height = 7)
 grid::grid.newpage(); grid::grid.draw(ph$gtable)
 panel_id <- grep("matrix", ph$gtable$layout$name)[1]
-if (!is.na(panel_id) && ph$gtable$layout$name[panel_id] %in% grid::current.viewport()$name) {
-  seekViewport(ph$gtable$layout$name[panel_id])
-  for (xl in xlines) {
-    grid::grid.lines(x = unit(c(xl, xl), "native"),
-                   y = unit(c(0, nr), "native"),
-                   gp = gpar(col = "white", lwd = 2))
-  }
-  upViewport(0)
-} else {
-  warning(sprintf("Viewport '%s' was not found; skipping vertical lines.", ph$gtable$layout$name[panel_id]))
+if (!is.na(panel_id) && length(xlines) > 0) {
+  tryCatch({
+    grid::seekViewport(ph$gtable$layout$name[panel_id])
+    for (xl in xlines) {
+      grid::grid.lines(x = grid::unit(c(xl, xl), "native"),
+                     y = grid::unit(c(0, nr), "native"),
+                     gp = grid::gpar(col = "white", lwd = 2))
+    }
+    grid::upViewport(0)
+  }, error = function(e) {
+    warning(sprintf("Viewport '%s' was not found; skipping vertical lines.", ph$gtable$layout$name[panel_id]))
+  })
 }
 dev.off()
 
