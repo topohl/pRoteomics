@@ -25,6 +25,11 @@ USE_SIMPLIFIED_FOR_PLOTS <- FALSE  # TRUE = simplified plots, FALSE = full resul
 # Default: 0.7 (moderate redundancy removal)
 SIMPLIFY_CUTOFF <- 0.7
 
+# Package installation policy:
+# FALSE (recommended): fail fast with a clear list of missing packages.
+# TRUE: auto-install missing packages (can take a long time and look "stuck").
+AUTO_INSTALL_MISSING_PACKAGES <- FALSE
+
 # Note: 
 # - If PERFORM_SIMPLIFICATION = FALSE, only full results are computed and saved
 # - If PERFORM_SIMPLIFICATION = TRUE, both versions are computed and saved
@@ -38,12 +43,20 @@ checkBiocManager <- function() {
   }
 }
 
-installBioC <- function(bioc_packages) {
+installBioC <- function(bioc_packages, auto_install = AUTO_INSTALL_MISSING_PACKAGES) {
   # Install only missing packages to avoid unloading issues, set update=FALSE
   missing <- bioc_packages[!sapply(bioc_packages, requireNamespace, quietly = TRUE)]
   if (length(missing) > 0) {
-    message("Installing missing Bioconductor packages: ", paste(missing, collapse = ", "))
-    BiocManager::install(missing, update = FALSE, ask = FALSE)
+    if (isTRUE(auto_install)) {
+      message("Installing missing Bioconductor packages: ", paste(missing, collapse = ", "))
+      BiocManager::install(missing, update = FALSE, ask = FALSE)
+    } else {
+      stop(
+        "Missing Bioconductor packages detected (auto-install disabled): ",
+        paste(missing, collapse = ", "),
+        "\nInstall them manually or set AUTO_INSTALL_MISSING_PACKAGES <- TRUE."
+      )
+    }
   }
 }
 
@@ -52,6 +65,9 @@ loadPkg <- function(pkg) {
 }
 
 setupPackages <- function() {
+  setup_start <- Sys.time()
+  message("[Package setup] Checking dependencies...")
+
   # Ensure a CRAN mirror is set for non-interactive sessions
   if (is.null(getOption("repos"))) {
     options(repos = c(CRAN = "https://cloud.r-project.org"))
@@ -63,8 +79,8 @@ setupPackages <- function() {
                          "cowplot", "ggridges", "europepmc", "ggpubr", "ggrepel", "ggsci", "ggthemes",
                          "ggExtra", "ggforce", "ggalluvial", "lattice", "latticeExtra", "BiocManager",
                          "org.Mm.eg.db", "ggplotify", "svglite", "tidyr", "dplyr", "pheatmap", "proxy",
-                         "tibble", "openxlsx", "future", "future.apply", "GOSemSim")
-  bioc_packages <- c("clusterProfiler", "pathview", "enrichplot", "DOSE", "org.Mm.eg.db", "GOSemSim", "org.Hs.eg.db")
+                         "tibble", "openxlsx", "future", "future.apply", "GOSemSim", "yaml", "progressr")
+  bioc_packages <- c("clusterProfiler", "pathview", "enrichplot", "DOSE", "org.Mm.eg.db", "GOSemSim")
   
   # 1. Install missing BioC packages first
   installBioC(bioc_packages)
@@ -75,12 +91,30 @@ setupPackages <- function() {
   missing_cran <- cran_packages[!sapply(cran_packages, requireNamespace, quietly = TRUE)]
   
   if (length(missing_cran) > 0) {
-    message("Installing missing CRAN packages: ", paste(missing_cran, collapse = ", "))
-    install.packages(missing_cran, repos = "https://cloud.r-project.org")
+    if (isTRUE(AUTO_INSTALL_MISSING_PACKAGES)) {
+      message("Installing missing CRAN packages: ", paste(missing_cran, collapse = ", "))
+      install.packages(missing_cran, repos = "https://cloud.r-project.org")
+    } else {
+      stop(
+        "Missing CRAN packages detected (auto-install disabled): ",
+        paste(missing_cran, collapse = ", "),
+        "\nInstall them manually or set AUTO_INSTALL_MISSING_PACKAGES <- TRUE."
+      )
+    }
   }
   
-  # 3. Load all required packages
-  invisible(lapply(required_packages, loadPkg))
+  # 3. Quietly load only packages needed in the master process.
+  # Worker-specific packages are loaded inside analyze_comparison().
+  master_packages <- c("future", "future.apply", "yaml", "progressr")
+  suppressPackageStartupMessages({
+    invisible(lapply(master_packages, function(pkg) {
+      if (!require(pkg, character.only = TRUE, quietly = TRUE)) {
+        warning(paste("Could not load:", pkg))
+      }
+    }))
+  })
+
+  message("[Package setup] Ready in ", round(as.numeric(difftime(Sys.time(), setup_start, units = "secs")), 2), " sec")
 }
 
 setupPackages()
@@ -89,20 +123,29 @@ setupPackages()
 # 2. DIRECTORY ORGANIZATION FUNCTIONS
 # ----------------------------------------------------
 create_analysis_dirs <- function(base_dir, comparison_name, ontology) {
+  route <- classify_comparison_route(comparison_name)
+  results_root <- file.path(base_dir, "Results", route$category, route$unit_folder, comparison_name)
+  plots_root <- file.path(base_dir, "Plots", route$category, route$unit_folder, comparison_name)
+
   dirs <- list(
-    results = file.path(base_dir, "Results", comparison_name),
-    go_ont = file.path(base_dir, "Results", comparison_name, "GO", ontology),
-    kegg = file.path(base_dir, "Results", comparison_name, "KEGG"),
-    ora = file.path(base_dir, "Results", comparison_name, "ORA"),
-    custom = file.path(base_dir, "Results", comparison_name, "Custom", ontology),
-    pathview = file.path(base_dir, "Results", comparison_name, "pathview"),
-    plots_go = file.path(base_dir, "Plots", comparison_name, paste0("GO_", ontology)),
-    plots_kegg = file.path(base_dir, "Plots", comparison_name, "KEGG"),
-    plots_ora = file.path(base_dir, "Plots", comparison_name, "ORA"),
-    plots_custom = file.path(base_dir, "Plots", comparison_name, "Custom", ontology),
-    core_enrich = file.path(base_dir, "Datasets/core_enrichment", ontology)
+    results = results_root,
+    go_ont = file.path(results_root, "GO", ontology),
+    kegg = file.path(results_root, "KEGG"),
+    ora = file.path(results_root, "ORA"),
+    custom = file.path(results_root, "Custom", ontology),
+    pathview = file.path(results_root, "pathview"),
+    plots_go = file.path(plots_root, paste0("GO_", ontology)),
+    plots_kegg = file.path(plots_root, "KEGG"),
+    plots_ora = file.path(plots_root, "ORA"),
+    plots_custom = file.path(plots_root, "Custom", ontology),
+    core_enrich = file.path(base_dir, "Datasets/core_enrichment", ontology),
+    core_enrich_routed = file.path(base_dir, "Datasets/core_enrichment", ontology, route$category, route$unit_folder),
+    route_category = route$category,
+    route_unit = route$unit_folder
   )
-  lapply(dirs, function(d) if (!dir.exists(d)) dir.create(d, recursive = TRUE))
+  # Create only actual directory paths, not metadata fields.
+  dir_fields <- c("results", "go_ont", "kegg", "ora", "custom", "pathview", "plots_go", "plots_kegg", "plots_ora", "plots_custom", "core_enrich", "core_enrich_routed")
+  lapply(dirs[dir_fields], function(d) if (!dir.exists(d)) dir.create(d, recursive = TRUE))
   return(dirs)
 }
 
@@ -123,144 +166,550 @@ read_gct <- function(file_path) {
   return(gct_data)
 }
 
+read_config <- function(config_path) {
+  defaults <- list(
+    simplification = list(
+      perform = PERFORM_SIMPLIFICATION,
+      use_for_plots = USE_SIMPLIFIED_FOR_PLOTS,
+      cutoff = SIMPLIFY_CUTOFF
+    ),
+    analysis = list(
+      organism = "org.Mm.eg.db",
+      ontology = "BP",
+      top_gene_abs_log2fc = 1,
+      pvalue_cutoff = 1,
+      qvalue_cutoff = 1,
+      p_adjust_method = "BH",
+      min_gs_size = 10,
+      max_gs_size = 800
+    ),
+    runtime = list(
+      workers = -1,
+      future_globals_max_size_mb = 8000,
+      resume_if_complete = TRUE,
+      force_rerun = FALSE,
+      prewarm_workers = TRUE,
+      show_progress = TRUE,
+      show_step_progress = TRUE,
+      config_file = config_path
+    ),
+    paths = list(
+      mapped_dir = "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/mapped/neuron_neuropil/forward/per_file",
+      working_base = "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics",
+      mapped_data_base = "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/mapped/neuron_neuropil/forward/per_file",
+      background_universe_file = ""
+    ),
+    optional_inputs = list(
+      nk3r_genes = character(0),
+      selected_uniprot = character(0),
+      path_ids = character(0)
+    ),
+    background_universe = list(
+      enabled = FALSE,
+      column = "UNIPROT"
+    )
+  )
+
+  cfg <- defaults
+  if (file.exists(config_path)) {
+    yaml_cfg <- tryCatch(yaml::read_yaml(config_path), error = function(e) NULL)
+    if (!is.null(yaml_cfg) && is.list(yaml_cfg)) {
+      cfg <- utils::modifyList(defaults, yaml_cfg)
+      message("Loaded config: ", config_path)
+    } else {
+      warning("Config file exists but could not be parsed. Using defaults: ", config_path)
+    }
+  } else {
+    message("Config file not found; using script defaults: ", config_path)
+  }
+  cfg
+}
+
+write_log_line <- function(log_file, level = "INFO", comparison = "GLOBAL", step = "GENERAL", message_text = "") {
+  if (is.null(log_file) || !nzchar(log_file)) return(invisible(NULL))
+  dir.create(dirname(log_file), recursive = TRUE, showWarnings = FALSE)
+  line <- paste(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), level, comparison, step, message_text, sep = " | ")
+  cat(line, "\n", file = log_file, append = TRUE)
+  invisible(NULL)
+}
+
+print_progress_step <- function(comparison, step, detail = "", enabled = TRUE) {
+  if (!isTRUE(enabled)) return(invisible(NULL))
+  stamp <- format(Sys.time(), "%H:%M:%S")
+  msg <- paste0("[", stamp, "] [", comparison, "] ", step,
+                if (nzchar(detail)) paste0(" - ", detail) else "")
+  cat(msg, "\n")
+  flush.console()
+  invisible(NULL)
+}
+
+prewarm_workers <- function(n_workers, runtime_params) {
+  if (!isTRUE(runtime_params$prewarm_workers) || n_workers < 1) return(invisible(NULL))
+
+  cat("\n==============================================\n")
+  cat("PREWARMING WORKERS (INITIAL PACKAGE LOAD)\n")
+  cat("==============================================\n\n")
+
+  worker_ids <- seq_len(n_workers)
+  if (isTRUE(runtime_params$show_progress)) {
+    progressr::handlers("txtprogressbar")
+    progressr::with_progress({
+      p <- progressr::progressor(steps = length(worker_ids))
+      future_lapply(worker_ids, function(i) {
+        suppressPackageStartupMessages({
+          library(clusterProfiler)
+          library(pathview)
+          library(enrichplot)
+          library(DOSE)
+          library(ggplot2)
+          library(tidyr)
+          library(dplyr)
+          library(openxlsx)
+          library(GOSemSim)
+        })
+        options(clusterProfiler.worker_packages_loaded = TRUE)
+        p(message = paste0("worker ", i, " ready"))
+        TRUE
+      }, future.seed = TRUE)
+    })
+  } else {
+    future_lapply(worker_ids, function(i) {
+      suppressPackageStartupMessages({
+        library(clusterProfiler)
+        library(pathview)
+        library(enrichplot)
+        library(DOSE)
+        library(ggplot2)
+        library(tidyr)
+        library(dplyr)
+        library(openxlsx)
+        library(GOSemSim)
+      })
+      options(clusterProfiler.worker_packages_loaded = TRUE)
+      TRUE
+    }, future.seed = TRUE)
+  }
+
+  cat("Worker prewarm complete. Starting analysis...\n\n")
+  invisible(NULL)
+}
+
+checkpoint_file_path <- function(dirs) {
+  file.path(dirs$results, "ANALYSIS_COMPLETE.flag")
+}
+
+is_completed_checkpoint <- function(dirs) {
+  file.exists(checkpoint_file_path(dirs))
+}
+
+write_completed_checkpoint <- function(dirs) {
+  flag <- checkpoint_file_path(dirs)
+  cat(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), file = flag)
+  invisible(flag)
+}
+
+prepare_gene_vectors <- function(df, top_gene_abs_log2fc = 1) {
+  colnames(df)[1] <- "gene_symbol"
+  original_gene_list <- df$log2fc
+  names(original_gene_list) <- df$gene_symbol
+
+  gene_list <- sort(na.omit(original_gene_list), decreasing = TRUE)
+  gene_list <- gene_list[!duplicated(names(gene_list))]
+
+  top_gene_list <- gene_list
+  top_genes <- names(top_gene_list)[abs(top_gene_list) > top_gene_abs_log2fc]
+  if (length(top_genes) > 0) {
+    top_genes <- names(sort(top_gene_list[top_genes], decreasing = TRUE))
+  } else {
+    top_genes <- character(0)
+  }
+
+  list(
+    original_gene_list = original_gene_list,
+    gene_list = gene_list,
+    fc_for_cnet = gene_list,
+    top_genes = top_genes
+  )
+}
+
+load_background_universe <- function(cfg) {
+  if (!isTRUE(cfg$background_universe$enabled)) return(character(0))
+  file_path <- cfg$paths$background_universe_file
+  if (!nzchar(file_path) || !file.exists(file_path)) {
+    warning("Background universe enabled but file missing: ", file_path)
+    return(character(0))
+  }
+
+  universe_df <- tryCatch(read.csv(file_path, stringsAsFactors = FALSE), error = function(e) NULL)
+  if (is.null(universe_df) || nrow(universe_df) == 0) {
+    warning("Background universe file is empty or unreadable: ", file_path)
+    return(character(0))
+  }
+
+  column_name <- cfg$background_universe$column
+  if (!column_name %in% colnames(universe_df)) {
+    warning("Background universe column not found: ", column_name)
+    return(character(0))
+  }
+
+  universe <- unique(stats::na.omit(universe_df[[column_name]]))
+  as.character(universe)
+}
+
+parse_sample_token <- function(token, phenotypes = c("sus", "con")) {
+  phenotype <- ""
+  unit <- token
+
+  for (ph in phenotypes) {
+    if (grepl(paste0(ph, "$"), token, ignore.case = TRUE)) {
+      phenotype <- tolower(ph)
+      unit <- sub(paste0(ph, "$"), "", token, ignore.case = TRUE)
+      break
+    }
+  }
+
+  unit <- gsub("[^A-Za-z0-9]", "", unit)
+  pretty_unit <- unit
+  if (nzchar(unit)) {
+    m <- regexec("^([A-Za-z]+[0-9]*)([A-Za-z0-9]*)$", unit)
+    mm <- regmatches(unit, m)[[1]]
+    if (length(mm) == 3 && nzchar(mm[3])) {
+      pretty_unit <- paste(mm[2], mm[3], sep = "_")
+    }
+  }
+
+  list(raw = token, unit = unit, pretty_unit = pretty_unit, phenotype = phenotype)
+}
+
+classify_comparison_route <- function(comparison_name) {
+  parts <- strsplit(comparison_name, "_", fixed = TRUE)[[1]]
+  if (length(parts) < 2) {
+    return(list(category = "unclassified", unit_folder = "unknown_unit"))
+  }
+
+  a <- parse_sample_token(parts[1])
+  b <- parse_sample_token(parts[2])
+
+  same_unit <- nzchar(a$unit) && nzchar(b$unit) && identical(a$unit, b$unit)
+  same_pheno <- nzchar(a$phenotype) && nzchar(b$phenotype) && identical(a$phenotype, b$phenotype)
+
+  category <- if (same_unit && !same_pheno) {
+    "phenotype_within_unit"
+  } else if (!same_unit && same_pheno) {
+    "phenotype_between_unit"
+  } else if (same_unit && same_pheno) {
+    "within_unit_same_phenotype"
+  } else if (!same_unit && !same_pheno) {
+    "between_unit_and_phenotype"
+  } else {
+    "unclassified"
+  }
+
+  unit_folder <- if (same_unit && nzchar(a$pretty_unit)) {
+    a$pretty_unit
+  } else {
+    unit_a <- if (nzchar(a$pretty_unit)) a$pretty_unit else "unitA"
+    unit_b <- if (nzchar(b$pretty_unit)) b$pretty_unit else "unitB"
+    paste(sort(c(unit_a, unit_b)), collapse = "_vs_")
+  }
+
+  list(category = category, unit_folder = unit_folder)
+}
+
 # ----------------------------------------------------
 # 3. DATA INPUT/COMPARISONS
 # ----------------------------------------------------
-#mapped_dir <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/mapped"
-mapped_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/mapped/microglia/forward/per_file"
+`%||%` <- function(x, y) if (is.null(x)) y else x
+config_candidates <- c(
+  file.path(getwd(), "clusterProfiler_config.yml"),
+  file.path(getwd(), "Analysis", "clusterProfiler_config.yml")
+)
+config_path <- config_candidates[file.exists(config_candidates)][1] %||% config_candidates[1]
+cfg <- read_config(config_path)
+
+PERFORM_SIMPLIFICATION <- isTRUE(cfg$simplification$perform)
+USE_SIMPLIFIED_FOR_PLOTS <- isTRUE(cfg$simplification$use_for_plots)
+SIMPLIFY_CUTOFF <- as.numeric(cfg$simplification$cutoff)
+
+mapped_dir <- cfg$paths$mapped_dir
+if (!dir.exists(mapped_dir)) {
+  stop("Mapped data directory does not exist: ", mapped_dir)
+}
+
 comparison_files <- list.files(mapped_dir, pattern = "\\.csv$", full.names = FALSE)
 comparison_list <- lapply(comparison_files, function(f) {
-  parts <- strsplit(sub("\\.csv$", "", f), "_")[[1]]
-  if (length(parts) == 2 && all(nzchar(parts))) parts else NULL
+  parts <- strsplit(sub("\\.csv$", "", f), "_", fixed = TRUE)[[1]]
+  parts <- parts[nzchar(parts)]
+  if (length(parts) >= 2) parts else NULL
 })
 comparison_list <- Filter(Negate(is.null), comparison_list)
 
 if (length(comparison_list) == 0) {
-  warning("No valid comparison files found in: ", mapped_dir)
+  stop("No valid comparison files found in: ", mapped_dir)
 }
 
 #working_base <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler"
-working_base <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics"
+working_base <- cfg$paths$working_base
 
 working_dir <- working_base
-mapped_data_base <- file.path(working_base, "Datasets/mapped/microglia/forward/per_file")
-organism <- "org.Mm.eg.db"
-ont <- "BP"
+mapped_data_base <- cfg$paths$mapped_data_base
+#mapped_data_base <- file.path(working_base, "Datasets/mapped/baseline_cell_type_profiling/US")
+organism <- cfg$analysis$organism
+ont <- cfg$analysis$ontology
+
+analysis_params <- list(
+  pvalue_cutoff = as.numeric(cfg$analysis$pvalue_cutoff),
+  qvalue_cutoff = as.numeric(cfg$analysis$qvalue_cutoff),
+  p_adjust_method = as.character(cfg$analysis$p_adjust_method),
+  min_gs_size = as.integer(cfg$analysis$min_gs_size),
+  max_gs_size = as.integer(cfg$analysis$max_gs_size),
+  top_gene_abs_log2fc = as.numeric(cfg$analysis$top_gene_abs_log2fc)
+)
+
+runtime_params <- list(
+  workers = as.integer(cfg$runtime$workers),
+  future_globals_max_size_mb = as.numeric(cfg$runtime$future_globals_max_size_mb),
+  resume_if_complete = isTRUE(cfg$runtime$resume_if_complete),
+  force_rerun = isTRUE(cfg$runtime$force_rerun),
+  prewarm_workers = isTRUE(cfg$runtime$prewarm_workers),
+  show_progress = isTRUE(cfg$runtime$show_progress),
+  show_step_progress = isTRUE(cfg$runtime$show_step_progress)
+)
+
+run_id <- format(Sys.time(), "%Y%m%d_%H%M%S")
+run_log_dir <- file.path(working_base, "Results", "_run_logs")
+dir.create(run_log_dir, recursive = TRUE, showWarnings = FALSE)
+master_log <- file.path(run_log_dir, paste0("clusterProfiler_run_", run_id, ".log"))
+write_log_line(master_log, "INFO", "GLOBAL", "CONFIG", paste0("Using config file: ", config_path))
 
 #nk3r_genes <- c("P21279", "P21278", "P51432", "P11881", "P63318", "P68404", "P0DP26", "P0DP27", "P0DP28", "P11798", "P28652", "P47937", "P47713")
 #selected_uniprot <- c("P21279", "P21278", "Q9Z1B3", "P51432", "P11881", "P68404", "P63318", "P0DP26", "P0DP27", "P11798", "P28652", "Q61411", "Q99N57", "P31938", "P63085", "Q63844", "Q8BWG8", "Q91YI4", "V9GXQ9")
 #path_ids <- c("mmu04110", "mmu04115", "mmu04114", "mmu04113", "mmu04112", "mmu04111", "mmu04116", "mmu04117", "mmu04118", "mmu04119", "mmu04720", "mmu04721", "mmu04722", "mmu04725", "mmu04726", "mmu04727", "mmu04724", "mmu04080", "mmu00030", "mmu04151")
 
+# Optional analysis inputs: default to empty vectors so downstream blocks can be skipped cleanly.
+if (!exists("nk3r_genes", inherits = FALSE)) {
+  nk3r_genes <- as.character(cfg$optional_inputs$nk3r_genes %||% character(0))
+  if (length(nk3r_genes) > 0) {
+    message("Loaded nk3r_genes from config (n=", length(nk3r_genes), ").")
+  } else {
+    message("No nk3r_genes provided; custom NK3R GSEA will be skipped.")
+  }
+}
+if (!exists("selected_uniprot", inherits = FALSE)) {
+  selected_uniprot <- as.character(cfg$optional_inputs$selected_uniprot %||% character(0))
+  if (length(selected_uniprot) > 0) {
+    message("Loaded selected_uniprot from config (n=", length(selected_uniprot), ").")
+  } else {
+    message("No selected_uniprot provided; predefined KEGG GSEA will be skipped.")
+  }
+}
+if (!exists("path_ids", inherits = FALSE)) {
+  path_ids <- as.character(cfg$optional_inputs$path_ids %||% character(0))
+  if (length(path_ids) > 0) {
+    message("Loaded path_ids from config (n=", length(path_ids), ").")
+  } else {
+    message("No path_ids provided; pathview rendering will be skipped.")
+  }
+}
+
+background_universe <- load_background_universe(cfg)
+if (length(background_universe) > 0) {
+  write_log_line(master_log, "INFO", "GLOBAL", "BACKGROUND", paste0("Loaded background universe: n=", length(background_universe)))
+} else {
+  write_log_line(master_log, "INFO", "GLOBAL", "BACKGROUND", "No background universe loaded (disabled or unavailable).")
+}
+
 # ----------------------------------------------------
 # 4. SETUP PARALLEL PROCESSING WITH FUTURE
 # ----------------------------------------------------
-library(future)
-library(future.apply)
+suppressPackageStartupMessages({
+  library(future)
+  library(future.apply)
+})
+
+# Ensure progress handlers are active in interactive runs
+options(progressr.enable = TRUE)
+progressr::handlers(global = TRUE)
 
 # Set up multisession plan
-n_cores <- availableCores() - 1
+# Set up multisession plan
+detected_cores <- suppressWarnings(as.integer(availableCores()))
+cat("[DEBUG PARALLEL] availableCores() returned:", detected_cores, "\n")
+if (is.na(detected_cores) || detected_cores < 1L) detected_cores <- 1L
+cat("[DEBUG PARALLEL] After validation, detected_cores =", detected_cores, "\n")
+cat("[DEBUG PARALLEL] runtime_params$workers =", runtime_params$workers, "\n")
+
+if (!is.na(runtime_params$workers) && runtime_params$workers > 0) {
+  # Positive value: use specified workers, capped at detected cores
+  n_cores <- min(runtime_params$workers, detected_cores)
+  cat("[DEBUG PARALLEL] Using workers from config:", runtime_params$workers, "-> n_cores =", n_cores, "\n")
+} else if (!is.na(runtime_params$workers) && runtime_params$workers < 0) {
+  # Negative value (-1): use all cores except the specified number
+  # e.g., -1 means use all but 1
+  n_cores <- max(1L, detected_cores + runtime_params$workers)
+  cat("[DEBUG PARALLEL] Using negative config value:", runtime_params$workers, "-> n_cores =", n_cores, "\n")
+} else {
+  # Default fallback: use detected cores - 1
+  n_cores <- max(1L, detected_cores - 1L)
+  cat("[DEBUG PARALLEL] Using fallback (detected - 1):", n_cores, "\n")
+}
+
+cat("[DEBUG PARALLEL] Calling plan(multisession, workers =", n_cores, ")\n")
 plan(multisession, workers = n_cores)
+cat("[DEBUG PARALLEL] Plan set. Current plan is:", toString(class(plan())), "\n")
+on.exit(plan(sequential), add = TRUE)
 
 # Increase global size limit for passing data to workers
-options(future.globals.maxSize = 8000 * 1024^2) 
+options(future.globals.maxSize = runtime_params$future_globals_max_size_mb * 1024^2) 
 
 cat("Setting up parallel processing with", n_cores, "cores using future\n")
+write_log_line(master_log, "INFO", "GLOBAL", "PARALLEL", paste0("workers=", n_cores,
+                                                                      ", future.globals.maxSize(MB)=", runtime_params$future_globals_max_size_mb))
+
+prewarm_workers(n_cores, runtime_params)
 
 # ----------------------------------------------------
 # 5. ANALYSIS FUNCTION
 # ----------------------------------------------------
 analyze_comparison <- function(cell_types, working_base, mapped_data_base, organism, ont, 
-                               nk3r_genes, selected_uniprot, path_ids) {
+                               nk3r_genes, selected_uniprot, path_ids,
+                               analysis_params, runtime_params, run_log_dir,
+                               background_universe = character(0)) {
 
-  # Load required libraries in worker
-  suppressPackageStartupMessages({
-    library(clusterProfiler)
-    library(pathview)
-    library(enrichplot)
-    library(DOSE)
-    library(ggplot2)
-    library(tidyr)
-    library(dplyr)
-    library(openxlsx)
-    library(GOSemSim)
-  })
+  # Load required libraries in worker once per worker session.
+  if (!isTRUE(getOption("clusterProfiler.worker_packages_loaded", FALSE))) {
+    suppressPackageStartupMessages({
+      library(clusterProfiler)
+      library(pathview)
+      library(enrichplot)
+      library(DOSE)
+      library(ggplot2)
+      library(tidyr)
+      library(dplyr)
+      library(openxlsx)
+      library(GOSemSim)
+    })
+    options(clusterProfiler.worker_packages_loaded = TRUE)
+  }
 
   # === CRITICAL FIX FOR PARALLEL PROCESSING ===
   # To avoid "undefined columns selected" / connection errors:
   # We must ensure the OrgDb is loaded FRESH in this worker process.
   # If it was inherited from the master process, the SQLite connection is dead.
   comparison_name <- paste(cell_types, collapse = "_")
+  comparison_log <- file.path(run_log_dir, paste0(comparison_name, ".log"))
+  run_start <- Sys.time()
+  qc <- data.frame(
+    comparison = comparison_name,
+    status = "STARTED",
+    runtime_seconds = NA_real_,
+    n_input_rows = NA_integer_,
+    n_non_na_log2fc = NA_integer_,
+    n_unique_gene_ids = NA_integer_,
+    n_top_genes = NA_integer_,
+    n_background_universe = length(background_universe),
+    n_id_mapped_uniprot_to_entrez = NA_integer_,
+    n_gsea_terms = NA_integer_,
+    n_ora_terms = NA_integer_,
+    n_kegg_terms = NA_integer_,
+    stringsAsFactors = FALSE
+  )
+
+  cat("Analyzing comparison:", comparison_name, "\n")
+  write_log_line(comparison_log, "INFO", comparison_name, "START", "Comparison analysis started")
+  print_progress_step(comparison_name, "START", "Worker initialized", runtime_params$show_step_progress)
 
   tryCatch({
-    # 1. If the namespace is already loaded (possibly inherited as zombie), UNLOAD it.
-    if (organism %in% loadedNamespaces()) {
-      unloadNamespace(organism)
+    # Load OrgDb namespace quietly (no attach chatter in console)
+    if (!requireNamespace(organism, quietly = TRUE)) {
+      stop("Could not load OrgDb namespace: ", organism)
     }
 
-    # 2. Load it fresh, establishing a new persistent SQLite connection
-    library(organism, character.only = TRUE)
-
-    # 3. Get the object reference
+    # Get object reference from namespace
     org_db_obj <- get(organism, envir = asNamespace(organism))
 
     # Setup directories
     dirs <- create_analysis_dirs(working_base, comparison_name, ont)
+    cat("Directories set up for comparison:", comparison_name, "\n")
+    route_msg <- paste0("route=", dirs$route_category, " / ", dirs$route_unit)
+    print_progress_step(comparison_name, "ROUTE", route_msg, runtime_params$show_step_progress)
+    write_log_line(comparison_log, "INFO", comparison_name, "ROUTE", route_msg)
+    print_progress_step(comparison_name, "SETUP", "Output directories ready", runtime_params$show_step_progress)
+    qc_path <- file.path(dirs$results, "QC_summary.csv")
+
+    if (isTRUE(runtime_params$resume_if_complete) && !isTRUE(runtime_params$force_rerun) && is_completed_checkpoint(dirs)) {
+      write_log_line(comparison_log, "INFO", comparison_name, "CHECKPOINT", "Checkpoint found; skipping comparison")
+      qc$status <- "SKIPPED"
+      qc$runtime_seconds <- as.numeric(difftime(Sys.time(), run_start, units = "secs"))
+      write.csv(qc, qc_path, row.names = FALSE)
+      return(list(status = "SKIPPED", comparison = comparison_name, error = NA_character_, qc = qc))
+    }
 
     # Define data file path
     file_name <- paste0(comparison_name, ".csv")
+    cat("Looking for data file:", file_name, "\n")
     data_path <- file.path(mapped_data_base, file_name)
+    cat("Full data path:", data_path, "\n")
 
     if (!file.exists(data_path)) {
-      return(list(status = "FAILED", comparison = comparison_name, error = "File not found"))
+      write_log_line(comparison_log, "ERROR", comparison_name, "INPUT", paste0("File not found: ", data_path))
+      qc$status <- "FAILED"
+      qc$runtime_seconds <- as.numeric(difftime(Sys.time(), run_start, units = "secs"))
+      write.csv(qc, qc_path, row.names = FALSE)
+      return(list(status = "FAILED", comparison = comparison_name, error = "File not found", qc = qc))
     }
 
     # Load and prepare data
     df <- read.csv(data_path, header = TRUE, stringsAsFactors = FALSE)
+    cat("Data loaded for comparison:", comparison_name, "\n")
+    print_progress_step(comparison_name, "INPUT", paste0("Loaded rows=", nrow(df)), runtime_params$show_step_progress)
 
     if (nrow(df) == 0) {
-      return(list(status = "FAILED", comparison = comparison_name, error = "Data file is empty"))
+      write_log_line(comparison_log, "ERROR", comparison_name, "INPUT", "Data file is empty")
+      qc$status <- "FAILED"
+      qc$runtime_seconds <- as.numeric(difftime(Sys.time(), run_start, units = "secs"))
+      write.csv(qc, qc_path, row.names = FALSE)
+      return(list(status = "FAILED", comparison = comparison_name, error = "Data file is empty", qc = qc))
     }
 
     if (!"log2fc" %in% colnames(df)) {
       if ("logFC" %in% colnames(df)) {
         colnames(df)[colnames(df) == "logFC"] <- "log2fc"
       } else {
-        return(list(status = "FAILED", comparison = comparison_name, error = "No log2fc column"))
+        write_log_line(comparison_log, "ERROR", comparison_name, "INPUT", "No log2fc/logFC column")
+        qc$status <- "FAILED"
+        qc$runtime_seconds <- as.numeric(difftime(Sys.time(), run_start, units = "secs"))
+        write.csv(qc, qc_path, row.names = FALSE)
+        return(list(status = "FAILED", comparison = comparison_name, error = "No log2fc column", qc = qc))
       }
     }
 
-    colnames(df)[1] <- "gene_symbol"
-    original_gene_list <- df$log2fc
-    names(original_gene_list) <- df$gene_symbol
-    gene_list <- sort(na.omit(original_gene_list), decreasing = TRUE)
-    # Ensure simple named vector
-    gene_list <- gene_list[!duplicated(names(gene_list))]
+    vectors <- prepare_gene_vectors(df, top_gene_abs_log2fc = analysis_params$top_gene_abs_log2fc)
+    original_gene_list <- vectors$original_gene_list
+    gene_list <- vectors$gene_list
+    fc_for_cnet <- vectors$fc_for_cnet
+    top_genes <- vectors$top_genes
 
-    # Helper for cnetplot data
-    # Create foldChange vector that is robust for cnetplot
-    fc_for_cnet <- gene_list
-
-    top_df <- df
-    colnames(top_df)[1] <- "gene_symbol"
-    top_gene_list <- top_df$log2fc
-    names(top_gene_list) <- top_df$gene_symbol
-    top_gene_list <- sort(na.omit(top_gene_list), decreasing = TRUE)
-    top_genes <- names(top_gene_list)[abs(top_gene_list) > 1]
-
-    if(length(top_genes) > 0) {
-      top_genes <- sort(top_gene_list[top_genes], decreasing = TRUE)
-      top_genes <- names(top_genes)
-    } else {
-      top_genes <- character(0)
-    }
+    qc$n_input_rows <- nrow(df)
+    qc$n_non_na_log2fc <- sum(!is.na(df$log2fc))
+    qc$n_unique_gene_ids <- length(unique(df[[1]]))
+    qc$n_top_genes <- length(top_genes)
+    write_log_line(comparison_log, "INFO", comparison_name, "QC", paste0("rows=", qc$n_input_rows,
+                                                                            ", nonNA_log2fc=", qc$n_non_na_log2fc,
+                                                                            ", top_genes=", qc$n_top_genes))
+    print_progress_step(comparison_name, "QC", paste0("top_genes=", qc$n_top_genes), runtime_params$show_step_progress)
 
     # ----------------------------------------------------
     # GSEA (GO) WITH OPTIONAL SIMPLIFICATION
     # ----------------------------------------------------
     # Ensure OrgDb is passed as object
     gse <- gseGO(geneList = gene_list, ont = ont, keyType = "UNIPROT", 
-                 minGSSize = 10, maxGSSize = 800, pvalueCutoff = 1, 
-                 verbose = FALSE, OrgDb = org_db_obj, pAdjustMethod = "BH")
+                 minGSSize = analysis_params$min_gs_size,
+                 maxGSSize = analysis_params$max_gs_size,
+                 pvalueCutoff = analysis_params$pvalue_cutoff,
+                 verbose = FALSE,
+                 OrgDb = org_db_obj,
+                 pAdjustMethod = analysis_params$p_adjust_method)
 
     # Perform simplification ONLY if requested
     gse_simplified <- NULL  # Initialize as NULL
@@ -369,14 +818,24 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
     write.csv(gse_for_export@result, 
               file = file.path(dirs$core_enrich, paste0(comparison_name, plot_suffix, ".csv")), 
               row.names = FALSE)
+    write.csv(gse_for_export@result,
+          file = file.path(dirs$core_enrich_routed, paste0(comparison_name, plot_suffix, ".csv")),
+          row.names = FALSE)
+    qc$n_gsea_terms <- nrow(gse@result)
+    print_progress_step(comparison_name, "GSEA", paste0("terms=", qc$n_gsea_terms), runtime_params$show_step_progress)
 
     # ----------------------------------------------------
     # ORA WITH OPTIONAL SIMPLIFICATION
     # ----------------------------------------------------
+    ora_universe <- if (length(background_universe) > 0) background_universe else names(gene_list)
     if(length(top_genes) > 0) {
       ora <- enrichGO(gene = top_genes, ont = ont, keyType = "UNIPROT", 
-                      minGSSize = 10, maxGSSize = 800, pvalueCutoff = 1, 
-                      OrgDb = org_db_obj, pAdjustMethod = "BH")
+                      universe = ora_universe,
+                      minGSSize = analysis_params$min_gs_size,
+                      maxGSSize = analysis_params$max_gs_size,
+                      pvalueCutoff = analysis_params$pvalue_cutoff,
+                      OrgDb = org_db_obj,
+                      pAdjustMethod = analysis_params$p_adjust_method)
 
       # Simplify ONLY if requested
       ora_simplified <- NULL
@@ -425,6 +884,8 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
                   file = file.path(dirs$ora, paste0("ORA_", ont, "_results_simplified.csv")), 
                   row.names = FALSE)
       }
+      qc$n_ora_terms <- nrow(ora@result)
+      print_progress_step(comparison_name, "ORA", paste0("terms=", qc$n_ora_terms), runtime_params$show_step_progress)
     }
 
     # ----------------------------------------------------
@@ -436,6 +897,7 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
 
     if(!is.null(ids)) {
       dedup_ids <- ids[!duplicated(ids$UNIPROT), ]
+      qc$n_id_mapped_uniprot_to_entrez <- nrow(dedup_ids)
       df2 <- merge(df, dedup_ids, by.x = "gene_symbol", by.y = "UNIPROT")
 
       kegg_gene_list <- df2$log2fc
@@ -444,8 +906,11 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
       kegg_gene_list <- sort(na.omit(kegg_gene_list), decreasing = TRUE)
 
       kk2 <- gseKEGG(geneList = kegg_gene_list, organism = "mmu", 
-                     minGSSize = 10, maxGSSize = 800, pvalueCutoff = 1, 
-                     pAdjustMethod = "BH", keyType = "ncbi-geneid", verbose = FALSE)
+                     minGSSize = analysis_params$min_gs_size,
+                     maxGSSize = analysis_params$max_gs_size,
+                     pvalueCutoff = analysis_params$pvalue_cutoff,
+                     pAdjustMethod = analysis_params$p_adjust_method,
+                     keyType = "ncbi-geneid", verbose = FALSE)
 
       if (!is.null(kk2) && nrow(kk2@result) > 0) {
         kegg_dot <- clusterProfiler::dotplot(kk2, showCategory = 10, split = ".sign") + 
@@ -470,41 +935,59 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
         write.csv(kk2@result, file = file.path(dirs$kegg, "KEGG_GSEA_results.csv"), row.names = FALSE)
         # Also save the version used for plots to core_enrich
         write.csv(kk2@result, file = file.path(dirs$core_enrich, paste0(comparison_name, "_KEGG.csv")), row.names = FALSE)
+        write.csv(kk2@result, file = file.path(dirs$core_enrich_routed, paste0(comparison_name, "_KEGG.csv")), row.names = FALSE)
 
         # Additionally, save to core_enrich with ontology set to 'KEGG'
         core_enrich_kegg_dir <- file.path(working_base, "Datasets/core_enrichment", "KEGG")
         if (!dir.exists(core_enrich_kegg_dir)) dir.create(core_enrich_kegg_dir, recursive = TRUE)
         write.csv(kk2@result, file = file.path(core_enrich_kegg_dir, paste0(comparison_name, "_KEGG.csv")), row.names = FALSE)
+
+        core_enrich_kegg_routed_dir <- file.path(working_base, "Datasets/core_enrichment", "KEGG", dirs$route_category, dirs$route_unit)
+        if (!dir.exists(core_enrich_kegg_routed_dir)) dir.create(core_enrich_kegg_routed_dir, recursive = TRUE)
+        write.csv(kk2@result, file = file.path(core_enrich_kegg_routed_dir, paste0(comparison_name, "_KEGG.csv")), row.names = FALSE)
+        qc$n_kegg_terms <- nrow(kk2@result)
       } else {
         # Create empty file so we know it ran but found nothing
         write.csv(data.frame(), file = file.path(dirs$kegg, "KEGG_GSEA_results_EMPTY.csv"))
+        qc$n_kegg_terms <- 0
       }
+      print_progress_step(comparison_name, "KEGG", paste0("terms=", qc$n_kegg_terms), runtime_params$show_step_progress)
 
       # Pathview
       pathview_dir <- normalizePath(dirs$pathview, winslash = "/", mustWork = FALSE)
-      tryCatch({
+      if (length(path_ids) > 0) {
         oldwd <- getwd()
-        if(file.exists(pathview_dir)) setwd(pathview_dir)
+        tryCatch({
+          if (file.exists(pathview_dir)) setwd(pathview_dir)
 
-        lapply(path_ids, function(pid) {
-          try({
-            pathview(gene.data = kegg_gene_list, pathway.id = pid, species = "mmu", 
-                     low = "#6698CC", mid = "white", high = "#F08C21", file.type = "svg")
-          }, silent = TRUE)
+          lapply(path_ids, function(pid) {
+            try({
+              pathview(gene.data = kegg_gene_list, pathway.id = pid, species = "mmu", 
+                       low = "#6698CC", mid = "white", high = "#F08C21", file.type = "svg")
+            }, silent = TRUE)
+          })
+        }, error = function(e) {
+          warning("Pathview failed: ", e$message)
+        }, finally = {
+          setwd(oldwd)
         })
-        setwd(oldwd)
-      }, error = function(e) {
-        warning("Pathview failed: ", e$message)
-      })
+      } else {
+        message("No path_ids provided; skipping pathview for ", comparison_name)
+      }
     }
     
     # ----------------------------------------------------
     # EnrichGO Analysis (ALL ontologies) WITH OPTIONAL SIMPLIFICATION
     # ----------------------------------------------------
-    go_enrich <- enrichGO(gene = names(gene_list), universe = names(gene_list), 
+    go_universe <- if (length(background_universe) > 0) background_universe else names(gene_list)
+    go_enrich <- enrichGO(gene = names(gene_list), universe = go_universe, 
                           OrgDb = org_db_obj, keyType = 'UNIPROT', readable = TRUE, 
-                          ont = ont, pvalueCutoff = 1, qvalueCutoff = 1, 
-                          pAdjustMethod = "BH", minGSSize = 10, maxGSSize = 800)
+                ont = ont,
+                pvalueCutoff = analysis_params$pvalue_cutoff,
+                qvalueCutoff = analysis_params$qvalue_cutoff,
+                pAdjustMethod = analysis_params$p_adjust_method,
+                minGSSize = analysis_params$min_gs_size,
+                maxGSSize = analysis_params$max_gs_size)
     
     
     # Initialize simplified version as NULL
@@ -518,16 +1001,16 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
         # Run enrichGO for this specific ontology
         go_single <- tryCatch({
           enrichGO(gene = names(gene_list), 
-                   universe = names(gene_list), 
+                   universe = go_universe, 
                    OrgDb = org_db_obj, 
                    keyType = 'UNIPROT', 
                    readable = TRUE, 
                    ont = ont_type,
-                   pvalueCutoff = 1, 
-                   qvalueCutoff = 1, 
-                   pAdjustMethod = "BH", 
-                   minGSSize = 10, 
-                   maxGSSize = 800)
+                   pvalueCutoff = analysis_params$pvalue_cutoff,
+                   qvalueCutoff = analysis_params$qvalue_cutoff,
+                   pAdjustMethod = analysis_params$p_adjust_method,
+                   minGSSize = analysis_params$min_gs_size,
+                   maxGSSize = analysis_params$max_gs_size)
         }, error = function(e) {
           warning("enrichGO failed for ", ont_type, ": ", e$message)
           NULL
@@ -594,6 +1077,7 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
     write.csv(go_enrich@result, 
               file = file.path(dirs$go_ont, paste0("enrichGO_ALL_results_full.csv")), 
               row.names = FALSE)
+    print_progress_step(comparison_name, "enrichGO", paste0("terms=", nrow(go_enrich@result)), runtime_params$show_step_progress)
     
     if (PERFORM_SIMPLIFICATION && !is.null(go_enrich_simplified)) {
       write.csv(go_enrich_simplified@result, 
@@ -604,9 +1088,12 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
     # ----------------------------------------------------
     # KEGG GSEA with Predefined UniProt IDs
     # ----------------------------------------------------
-    selected_entrez <- tryCatch({
-       bitr(selected_uniprot, fromType = "UNIPROT", toType = "ENTREZID", OrgDb = org_db_obj)
-    }, error=function(e) NULL)
+     selected_entrez <- NULL
+     if (length(selected_uniprot) > 0) {
+      selected_entrez <- tryCatch({
+        bitr(selected_uniprot, fromType = "UNIPROT", toType = "ENTREZID", OrgDb = org_db_obj)
+      }, error=function(e) NULL)
+     }
     
     if(!is.null(selected_entrez)) {
       selected_df <- merge(df, selected_entrez, by.x = "gene_symbol", by.y = "UNIPROT")
@@ -617,8 +1104,11 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
         selected_kegg_list <- sort(na.omit(selected_kegg_list), decreasing = TRUE)
         
         gsea_kegg_selected <- gseKEGG(geneList = selected_kegg_list, organism = "mmu", 
-                                      minGSSize = 10, maxGSSize = 800, pvalueCutoff = 1, 
-                                      pAdjustMethod = "BH", keyType = "ncbi-geneid", verbose = FALSE)
+                                      minGSSize = analysis_params$min_gs_size,
+                                      maxGSSize = analysis_params$max_gs_size,
+                                      pvalueCutoff = analysis_params$pvalue_cutoff,
+                                      pAdjustMethod = analysis_params$p_adjust_method,
+                                      keyType = "ncbi-geneid", verbose = FALSE)
         
         if (!is.null(gsea_kegg_selected) && nrow(gsea_kegg_selected@result) > 0) {
           kegg_selected_dot <- clusterProfiler::dotplot(gsea_kegg_selected, showCategory = 10, split = ".sign") + 
@@ -648,31 +1138,47 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
     # ----------------------------------------------------
     # Custom GSEA: NK3R-signalling (No simplification needed)
     # ----------------------------------------------------
-    term2gene_nk3r <- data.frame(term = rep("NK3R-signalling", length(nk3r_genes)), gene = nk3r_genes)
-    custom_gene_list <- df$log2fc
-    names(custom_gene_list) <- df$gene_symbol
-    custom_gene_list <- sort(na.omit(custom_gene_list), decreasing = TRUE)
-    custom_gene_list <- custom_gene_list[!duplicated(names(custom_gene_list))]
-    
-    gsea_nk3r <- clusterProfiler::GSEA(geneList = custom_gene_list, TERM2GENE = term2gene_nk3r, 
-                                       pvalueCutoff = 1, minGSSize = 1, maxGSSize = 500, verbose = FALSE)
-    
-    if (!is.null(gsea_nk3r) && nrow(gsea_nk3r@result) > 0) {
-      nk3r_dot <- clusterProfiler::dotplot(gsea_nk3r, showCategory = 10, split = ".sign") + 
-        facet_wrap(~ .sign, nrow = 1) + 
-        labs(title = "NK3R-signalling GSEA") + 
-        theme_minimal()
-      save_plot_organized(nk3r_dot, "NK3R_dotplot.svg", dirs$plots_custom)
+    if (length(nk3r_genes) > 0) {
+      term2gene_nk3r <- data.frame(term = rep("NK3R-signalling", length(nk3r_genes)), gene = nk3r_genes)
+      custom_gene_list <- df$log2fc
+      names(custom_gene_list) <- df$gene_symbol
+      custom_gene_list <- sort(na.omit(custom_gene_list), decreasing = TRUE)
+      custom_gene_list <- custom_gene_list[!duplicated(names(custom_gene_list))]
       
-      nk3r_plot <- gseaplot(gsea_nk3r, by = "all", title = "NK3R-signalling", geneSetID = 1)
-      save_plot_organized(nk3r_plot, "NK3R_gsea_plot.svg", dirs$plots_custom)
-      openxlsx::write.xlsx(gsea_nk3r@result, file = file.path(dirs$custom, "NK3R_GSEA_results.xlsx"))
+      gsea_nk3r <- clusterProfiler::GSEA(geneList = custom_gene_list, TERM2GENE = term2gene_nk3r, 
+                                         pvalueCutoff = analysis_params$pvalue_cutoff,
+                                         minGSSize = 1,
+                                         maxGSSize = 500,
+                                         verbose = FALSE)
+      
+      if (!is.null(gsea_nk3r) && nrow(gsea_nk3r@result) > 0) {
+        nk3r_dot <- clusterProfiler::dotplot(gsea_nk3r, showCategory = 10, split = ".sign") + 
+          facet_wrap(~ .sign, nrow = 1) + 
+          labs(title = "NK3R-signalling GSEA") + 
+          theme_minimal()
+        save_plot_organized(nk3r_dot, "NK3R_dotplot.svg", dirs$plots_custom)
+        
+        nk3r_plot <- gseaplot(gsea_nk3r, by = "all", title = "NK3R-signalling", geneSetID = 1)
+        save_plot_organized(nk3r_plot, "NK3R_gsea_plot.svg", dirs$plots_custom)
+        openxlsx::write.xlsx(gsea_nk3r@result, file = file.path(dirs$custom, "NK3R_GSEA_results.xlsx"))
+      }
+    } else {
+      message("No nk3r_genes provided; skipping custom NK3R GSEA for ", comparison_name)
     }
     
-    return(list(status = "SUCCESS", comparison = comparison_name))
+    qc$status <- "SUCCESS"
+    qc$runtime_seconds <- as.numeric(difftime(Sys.time(), run_start, units = "secs"))
+    write.csv(qc, file.path(dirs$results, "QC_summary.csv"), row.names = FALSE)
+    write_completed_checkpoint(dirs)
+    write_log_line(comparison_log, "INFO", comparison_name, "DONE", paste0("Completed in ", round(qc$runtime_seconds, 2), " sec"))
+    print_progress_step(comparison_name, "DONE", paste0("runtime_sec=", round(qc$runtime_seconds, 2)), runtime_params$show_step_progress)
+    return(list(status = "SUCCESS", comparison = comparison_name, error = NA_character_, qc = qc))
     
   }, error = function(e) {
-    return(list(status = "ERROR", comparison = comparison_name, error = conditionMessage(e)))
+    qc$status <- "ERROR"
+    qc$runtime_seconds <- as.numeric(difftime(Sys.time(), run_start, units = "secs"))
+    write_log_line(comparison_log, "ERROR", comparison_name, "UNHANDLED", conditionMessage(e))
+    return(list(status = "ERROR", comparison = comparison_name, error = conditionMessage(e), qc = qc))
   })
 }
 
@@ -682,11 +1188,50 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
 cat("\n==============================================\n")
 cat("STARTING PARALLEL GSEA ANALYSIS\n")
 cat("==============================================\n\n")
+cat("Launching", length(comparison_list), "comparisons across", n_cores, "workers...\n")
+if (length(comparison_list) < n_cores) {
+  cat("[WARNING] Number of comparisons (", length(comparison_list), ") < workers (", n_cores, ")\n")
+  cat("[WARNING] Not all workers will be used; consider increasing comparison_list or reducing workers.\n")
+}
+cat("Progress updates now reflect both STARTED and FINISHED states.\n\n")
 
-results <- future_lapply(comparison_list, function(cell_types) {
-  analyze_comparison(cell_types, working_base, mapped_data_base, organism, ont, 
-                     nk3r_genes, selected_uniprot, path_ids)
-}, future.seed = TRUE)
+# Verify the plan before execution
+cat("[DEBUG PARALLEL] Before future_lapply:\n")
+cat("[DEBUG PARALLEL]   Current plan:", toString(class(plan())), "\n")
+cat("[DEBUG PARALLEL]   Number of workers:", nbrOfWorkers(), "\n")
+cat("[DEBUG PARALLEL]   Number of comparisons to process:", length(comparison_list), "\n")
+cat("[DEBUG PARALLEL]   Future.seed setting: TRUE\n")
+
+if (isTRUE(runtime_params$show_progress)) {
+  progressr::handlers("txtprogressbar")
+  results <- progressr::with_progress({
+    p <- progressr::progressor(steps = max(1L, 2L * length(comparison_list)))
+    future_lapply(comparison_list, function(cell_types) {
+      comparison_name <- paste(cell_types, collapse = "_")
+      p(message = paste0(comparison_name, " -> STARTED"))
+      res <- analyze_comparison(cell_types, working_base, mapped_data_base, organism, ont,
+                                nk3r_genes, selected_uniprot, path_ids,
+                                analysis_params = analysis_params,
+                                runtime_params = runtime_params,
+                                run_log_dir = run_log_dir,
+                                background_universe = background_universe)
+      p(message = paste0(res$comparison, " -> ", res$status))
+      res
+    }, future.seed = TRUE)
+  })
+} else {
+  results <- future_lapply(comparison_list, function(cell_types) {
+    analyze_comparison(cell_types, working_base, mapped_data_base, organism, ont,
+                       nk3r_genes, selected_uniprot, path_ids,
+                       analysis_params = analysis_params,
+                       runtime_params = runtime_params,
+                       run_log_dir = run_log_dir,
+                       background_universe = background_universe)
+  }, future.seed = TRUE)
+}
+
+cat("[DEBUG PARALLEL] After future_lapply completed\n")
+cat("[DEBUG PARALLEL]   Number of results:", length(results), "\n")
 
 # Reset to sequential processing
 plan(sequential)
@@ -699,6 +1244,8 @@ cat("==============================================\n\n")
 for (result in results) {
   if (result$status == "SUCCESS") {
     cat("✓", result$comparison, "- COMPLETED\n")
+  } else if (result$status == "SKIPPED") {
+    cat("○", result$comparison, "- SKIPPED (checkpoint exists)\n")
   } else {
     cat("✗", result$comparison, "- FAILED:", result$error, "\n")
   }
@@ -707,716 +1254,47 @@ for (result in results) {
 cat("\n==============================================\n")
 cat("ALL COMPARISONS COMPLETED!\n")
 cat("==============================================\n\n")
+
 # ----------------------------------------------------
-# 7. CELLTYPE SCORING ANALYSIS (Sequential)
+# 7. RUN-LEVEL SUMMARY OUTPUTS
 # ----------------------------------------------------
-cat("\n==============================================\n")
-cat("STARTING CELLTYPE SCORING ANALYSIS\n")
-cat("==============================================\n\n")
+summary_dir <- file.path(working_base, "Results")
+dir.create(summary_dir, recursive = TRUE, showWarnings = FALSE)
 
-# Note: All libraries needed below are already loaded in step 0. 
-# Re-loading them here has been removed to prevent potential package conflict/unloading errors.
+status_vec <- vapply(results, function(x) x$status, character(1))
+error_vec <- vapply(results, function(x) ifelse(is.null(x$error), NA_character_, x$error), character(1))
+comparison_vec <- vapply(results, function(x) x$comparison, character(1))
 
-# Define and create output directories for Celltype Scoring
-celltype_results_base <- file.path(working_base, "Results", "Celltype_Scoring")
-celltype_dirs <- list(
-  base = celltype_results_base,
-  plots = file.path(celltype_results_base, "Plots"),
-  tables = file.path(celltype_results_base, "Tables"),
-  heatmaps = file.path(celltype_results_base, "Heatmaps")
-)
-
-lapply(celltype_dirs, function(d) if (!dir.exists(d)) dir.create(d, recursive = TRUE))
-
-grouping_factor <- "Celltype"
-
-# Load celltypes markers
-celltype_file <- file.path(working_base, "Datasets/celltypes_long.xlsx")
-celltype_df <- read.xlsx(celltype_file, sheet = 1)
-
-# Load UniProt mapping
-uniprot_mapping_file_path <- file.path(working_dir, "Datasets", "MOUSE_10090_idmapping.dat")
-cat("Loading UniProt mapping file from:", uniprot_mapping_file_path, "\n")
-if (!file.exists(uniprot_mapping_file_path)) {
-  stop("UniProt mapping file not found at: ", uniprot_mapping_file_path, "\nPlease verify the file path.")
-}
-uniprot_df <- read.delim(uniprot_mapping_file_path, header = FALSE, sep = "\t", stringsAsFactors = FALSE)
-
-# Extract Gene_Name mappings
-gene_names <- uniprot_df %>%
-  dplyr::filter(V2 == "Gene_Name") %>%
-  dplyr::distinct(V1, .keep_all = TRUE) %>%
-  dplyr::rename(UniProtID = V1, Gene_Name = V3) %>%
-  dplyr::select(UniProtID, Gene_Name)
-
-# Extract UniProtKB-ID mappings
-uniprot_ids <- uniprot_df %>%
-  dplyr::filter(V2 == "UniProtKB-ID") %>%
-  dplyr::distinct(V1, .keep_all = TRUE) %>%
-  dplyr::rename(UniProtID = V1, UniProtKB_ID = V3) %>%
-  dplyr::select(UniProtID, UniProtKB_ID)
-
-# Combine both mappings
-gene_map <- gene_names %>%
-  left_join(uniprot_ids, by = "UniProtID")
-
-# Load GCT file
-gct_file <- file.path(working_base, "Datasets/gct/data/pg.matrix_filtered_pcaAdjusted_unnormalized.gct")
-if (!file.exists(gct_file)) {
-  stop("GCT file not found at: ", gct_file, "\nPlease verify the file path.")
-}
-gct_data <- read_gct(gct_file)
-
-# Extract metadata
-fetch_meta <- function(label) {
-  idx <- which(gct_data[, 1] == label)
-  if (length(idx) == 0) stop("Metadata label not found in GCT: ", label)
-  as.character(unlist(gct_data[idx, -1]))
-}
-
-sample_id      <- fetch_meta("sampleNumber")
-celltype       <- fetch_meta("celltype")
-groups         <- fetch_meta("ExpGroup")
-celltype_group <- fetch_meta("celltype_group")
-
-stopifnot(length(sample_id) == length(celltype), length(groups) == length(celltype_group), length(sample_id) == length(groups))
-
-metadata_df <- data.frame(
-  ColName         = paste0("V", 2:(ncol(gct_data))),
-  Sample          = sample_id,
-  Celltype        = celltype,
-  Group           = groups,
-  Celltype_Group  = celltype_group,
+run_summary <- data.frame(
+  comparison = comparison_vec,
+  status = status_vec,
+  error = error_vec,
   stringsAsFactors = FALSE
 )
 
-# Extract expression data
-expr_data <- gct_data[-c(1:4), ]
-colnames(expr_data)[1] <- "Protein_ID"
-colnames(expr_data)[-1] <- sample_id
+run_summary_file <- file.path(summary_dir, paste0("clusterProfiler_run_summary_", run_id, ".csv"))
+write.csv(run_summary, run_summary_file, row.names = FALSE)
 
-# Reshape to long format
-expr_long <- expr_data %>%
-  pivot_longer(cols = -Protein_ID, names_to = "Sample", values_to = "Expression")
+qc_rows <- lapply(results, function(x) x$qc)
+qc_rows <- qc_rows[!vapply(qc_rows, is.null, logical(1))]
+if (length(qc_rows) > 0) {
+  run_qc <- dplyr::bind_rows(qc_rows)
+  run_qc_file <- file.path(summary_dir, paste0("clusterProfiler_qc_summary_", run_id, ".csv"))
+  write.csv(run_qc, run_qc_file, row.names = FALSE)
+}
 
-# Join with metadata
-expr_annotated <- expr_long %>%
-  left_join(metadata_df %>% dplyr::select(-ColName), by = "Sample") %>%
-  mutate(Expression = suppressWarnings(as.numeric(Expression))) %>%
-  mutate(Protein_ID = sub(";.*", "", Protein_ID))
-
-# Join with gene map
-expr_annotated <- expr_annotated %>%
-  left_join(gene_map, by = c("Protein_ID" = "UniProtKB_ID"))
-
-# Add final label column
-expr_annotated <- expr_annotated %>%
-  filter(!grepl("Background", Celltype)) %>%
-  relocate(Gene_Name, .before = 1) %>%
-  relocate(UniProtID, .after = Gene_Name) %>%
-  relocate(Expression, .after = last_col())
-
-# Reshape marker list
-celltype_long <- celltype_df %>%
-  pivot_longer(cols = everything(), names_to = "Celltype_Class", values_to = "Gene_Label") %>%
-  filter(!is.na(Gene_Label) & Gene_Label != "")
-
-# Filter for matching genes
-marker_expr <- expr_annotated %>%
-  filter(Gene_Name %in% celltype_long$Gene_Label)
-
-# Add Celltype_Class info including updated many-to-many relationship
-marker_expr <- marker_expr %>%
-  left_join(celltype_long, by = c("Gene_Name" = "Gene_Label"), relationship = "many-to-many")
-
-# ----------------------------------------------------
-# PREPARE ANNOTATIONS (Static)
-# ----------------------------------------------------
-# Keep track of which class each gene belongs to
-gene_class_expanded <- celltype_long %>%
-  dplyr::rename(Gene_Name = Gene_Label) %>%
-  group_by(Gene_Name) %>%
-  mutate(
-    Gene_Name_Unique = Gene_Name,  # Version without suffix
-    Gene_Name_WithClass = if(n() > 1) {
-      paste0(Gene_Name, "_", Celltype_Class)  # Add class suffix for duplicates
-    } else {
-      Gene_Name
-    }
-  ) %>%
-  ungroup()
-
-# Create multi-class annotation for genes in multiple classes
-annotation_row_unique_base <- gene_class_expanded %>%
-  group_by(Gene_Name_Unique) %>%
-  summarise(Celltype_Class = paste(sort(unique(Celltype_Class)), collapse = "+"), .groups = "drop") %>%
-  column_to_rownames("Gene_Name_Unique")
-
-# Expanded color scheme for multi-class genes
-unique_classes <- unique(annotation_row_unique_base$Celltype_Class)
-base_colors <- c("gaba" = "#f36d07", "vglut1" = "#455A64", "vglut2" = "#c7c7c7")
-extra_colors <- c("#00BCD4", "#8BC34A", "#FFC107", "#FF5722")
-
-annotation_colors <- list(
-  Celltype_Class = c(
-    base_colors,
-    setNames(extra_colors[1:(length(unique_classes) - length(base_colors))], 
-             setdiff(unique_classes, names(base_colors)))
-  )
+summary_txt <- file.path(summary_dir, paste0("clusterProfiler_run_summary_", run_id, ".txt"))
+summary_lines <- c(
+  "clusterProfiler parallel run summary",
+  paste0("Run ID: ", run_id),
+  paste0("Timestamp: ", format(Sys.time(), "%Y-%m-%d %H:%M:%S")),
+  paste0("Config: ", config_path),
+  paste0("Total comparisons: ", length(results)),
+  paste0("SUCCESS: ", sum(status_vec == "SUCCESS")),
+  paste0("SKIPPED: ", sum(status_vec == "SKIPPED")),
+  paste0("FAILED/ERROR: ", sum(status_vec %in% c("FAILED", "ERROR"))),
+  paste0("Master log: ", master_log),
+  paste0("Run summary CSV: ", run_summary_file)
 )
-
-# Create annotation for withclass version
-annotation_row_withclass_base <- gene_class_expanded %>%
-  distinct(Gene_Name_WithClass, Celltype_Class) %>%
-  column_to_rownames("Gene_Name_WithClass")
-
-# Color scheme for single-class annotations
-annotation_colors_withclass <- list(Celltype_Class = c("gaba" = "#f36d07", "vglut1" = "#455A64", "vglut2" = "#c7c7c7"))
-
-# ----------------------------------------------------
-# DEFINE ANALYSIS FUNCTION
-# ----------------------------------------------------
-run_celltype_analysis <- function(current_data, suffix) {
-  cat("  Generating plots for:", suffix, "\n")
-  
-  # Compute average expression
-  celltype_scores <- current_data %>%
-    group_by(!!sym(grouping_factor), Celltype_Class) %>%
-    summarise(Mean_Expression = mean(Expression, na.rm = TRUE), .groups = "drop")
-  
-  # Save scores to Excel
-  write.xlsx(celltype_scores, file = file.path(celltype_dirs$tables, paste0("celltype_scores", suffix, ".xlsx")))
-  
-  # Create bar plot of celltype scores - use explicit namespace for safety
-  celltype_score_plot <- ggplot2::ggplot(celltype_scores, aes(x = !!sym(grouping_factor), y = Mean_Expression, fill = Celltype_Class)) +
-    geom_bar(stat = "identity", position = position_dodge(width = 0.8), width = 0.7) +
-    labs(title = paste("Celltype Scores", suffix), x = grouping_factor, y = "Mean Expression", fill = "Cell Class") +
-    scale_fill_manual(values = c("gaba" = "#f36d07", "vglut1" = "#455A64", "vglut2" = "#c7c7c7")) +
-    guides(fill = guide_legend(ncol = 1)) +
-    theme_bw(base_size = 16) +
-    theme(
-      plot.title = element_text(face = "bold", hjust = 0.5, size = 20),
-      axis.title = element_text(face = "bold", size = 18),
-      axis.text.x = element_text(angle = 45, hjust = 1, color = "black", size = 16),
-      axis.text.y = element_text(color = "black", size = 16),
-      panel.grid.major = element_blank(),
-      panel.grid.minor = element_blank(),
-      panel.border = element_blank(),
-      axis.ticks = element_line(color = "black", size = 1),
-      legend.position = c(0.9, 0.9),
-      legend.background = element_rect(color = "black", fill = NA),
-      legend.title = element_text(face = "bold", size = 16),
-      legend.text = element_text(size = 16)
-    )
-  
-  tryCatch({
-    ggsave(file.path(celltype_dirs$plots, paste0("celltype_scores", suffix, ".svg")), celltype_score_plot, units = "cm", dpi = 300)
-  }, error = function(e) warning("Failed to save score plot: ", e$message))
-  
-  # Calculate mean expression per gene and grouping_factor
-  marker_expr_unique <- current_data %>%
-    left_join(
-      gene_class_expanded %>% dplyr::select(Gene_Name, Celltype_Class, Gene_Name_Unique, Gene_Name_WithClass),
-      by = c("Gene_Name", "Celltype_Class")
-    )
-  
-  # ===== HEATMAP 1: Gene_Name_Unique (no suffix) =====
-  marker_matrix_unique <- marker_expr_unique %>%
-    group_by(Gene_Name_Unique, !!sym(grouping_factor)) %>%
-    summarise(Mean_Expression = mean(Expression, na.rm = TRUE), .groups = "drop") %>%
-    pivot_wider(names_from = !!sym(grouping_factor), values_from = Mean_Expression) %>%
-    column_to_rownames("Gene_Name_Unique") %>%
-    as.matrix()
-  
-  # Clean matrix (unique version)
-  marker_matrix_unique_clean <- marker_matrix_unique[rowSums(is.na(marker_matrix_unique)) < ncol(marker_matrix_unique), , drop=FALSE]
-  if(ncol(marker_matrix_unique_clean) > 0 && nrow(marker_matrix_unique_clean) > 0) {
-    marker_matrix_unique_clean <- marker_matrix_unique_clean[, colSums(is.na(marker_matrix_unique_clean)) < nrow(marker_matrix_unique_clean), drop=FALSE]
-    # Ensure we have enough data for heatmap
-    if(nrow(marker_matrix_unique_clean) >= 2 && ncol(marker_matrix_unique_clean) >= 2) {
-      marker_matrix_unique_clean <- marker_matrix_unique_clean[rowSums(!is.na(marker_matrix_unique_clean)) >= 1, , drop=FALSE]
-      marker_matrix_unique_clean <- marker_matrix_unique_clean[!grepl("^Oasl2\\s*$", rownames(marker_matrix_unique_clean)), , drop=FALSE]
-      marker_matrix_unique_clean[is.nan(marker_matrix_unique_clean)] <- NA
-      marker_matrix_unique_clean[is.infinite(marker_matrix_unique_clean)] <- NA
-      
-      # Filter annotation_row to match cleaned matrix
-      annotation_row_unique_clean <- annotation_row_unique_base[rownames(marker_matrix_unique_clean), , drop = FALSE]
-      
-      # Save pheatmap (unique version)
-      pheatmap(
-        marker_matrix_unique_clean,
-        cluster_rows = TRUE,
-        cluster_cols = FALSE,
-        color = colorRampPalette(c("#6698CC", "white", "#F08C21"))(100),
-        na_col = "grey",
-        main = paste("Marker Expression", suffix, "(Unique Names)"),
-        fontsize = 12,
-        fontsize_row = 10,
-        fontsize_col = 12,
-        cellheight = 12,
-        cellwidth = 12,
-        border_color = NA,
-        annotation_row = annotation_row_unique_clean,
-        annotation_colors = annotation_colors,
-        filename = file.path(celltype_dirs$heatmaps, paste0("marker_expression_heatmap", suffix, "_unique.pdf"))
-      )
-      
-      # ===== HEATMAP 1b: Sorted by Celltype_Class =====
-      annotation_row_sorted <- annotation_row_unique_clean %>% arrange(Celltype_Class)
-      marker_matrix_sorted <- marker_matrix_unique_clean[rownames(annotation_row_sorted), , drop = FALSE]
-      
-      pheatmap(
-        marker_matrix_sorted,
-        cluster_rows = FALSE,
-        cluster_cols = FALSE,
-        color = colorRampPalette(c("#6698CC", "white", "#F08C21"))(100),
-        na_col = "grey",
-        main = paste("Marker Expression", suffix, "(Sorted by Class)"),
-        fontsize = 12,
-        fontsize_row = 10,
-        fontsize_col = 12,
-        cellheight = 12,
-        cellwidth = 12,
-        border_color = NA,
-        annotation_row = annotation_row_sorted,
-        annotation_colors = annotation_colors,
-        filename = file.path(celltype_dirs$heatmaps, paste0("marker_expression_heatmap", suffix, "_sorted.pdf"))
-      )
-    }
-  }
-  
-  # ===== HEATMAP 2: Gene_Name_WithClass (with suffix) =====
-  marker_matrix_withclass <- marker_expr_unique %>%
-    group_by(Gene_Name_WithClass, !!sym(grouping_factor)) %>%
-    summarise(Mean_Expression = mean(Expression, na.rm = TRUE), .groups = "drop") %>%
-    pivot_wider(names_from = !!sym(grouping_factor), values_from = Mean_Expression) %>%
-    column_to_rownames("Gene_Name_WithClass") %>%
-    as.matrix()
-  
-  # Clean matrix (withclass version)
-  marker_matrix_withclass_clean <- marker_matrix_withclass[rowSums(is.na(marker_matrix_withclass)) < ncol(marker_matrix_withclass), , drop=FALSE]
-  if(ncol(marker_matrix_withclass_clean) > 0 && nrow(marker_matrix_withclass_clean) > 0) {
-    marker_matrix_withclass_clean <- marker_matrix_withclass_clean[, colSums(is.na(marker_matrix_withclass_clean)) < nrow(marker_matrix_withclass_clean), drop=FALSE]
-    
-    if(nrow(marker_matrix_withclass_clean) >= 2 && ncol(marker_matrix_withclass_clean) >= 2) {
-      marker_matrix_withclass_clean <- marker_matrix_withclass_clean[rowSums(!is.na(marker_matrix_withclass_clean)) >= 1, , drop=FALSE]
-      marker_matrix_withclass_clean <- marker_matrix_withclass_clean[!grepl("^Oasl2\\s*$", rownames(marker_matrix_withclass_clean)), , drop=FALSE]
-      marker_matrix_withclass_clean[is.nan(marker_matrix_withclass_clean)] <- NA
-      marker_matrix_withclass_clean[is.infinite(marker_matrix_withclass_clean)] <- NA
-      
-      # Filter annotation_row to match cleaned matrix
-      annotation_row_withclass <- annotation_row_withclass_base[rownames(marker_matrix_withclass_clean), , drop = FALSE]
-      
-      # Save pheatmap (withclass version)
-      pheatmap(
-        marker_matrix_withclass_clean,
-        cluster_rows = TRUE,
-        cluster_cols = FALSE,
-        color = colorRampPalette(c("#6698CC", "white", "#F08C21"))(100),
-        na_col = "grey",
-        main = paste("Marker Expression", suffix, "(With Class Suffix)"),
-        fontsize = 12,
-        fontsize_row = 10,
-        fontsize_col = 12,
-        cellheight = 12,
-        cellwidth = 12,
-        border_color = NA,
-        annotation_row = annotation_row_withclass,
-        annotation_colors = annotation_colors_withclass,
-        filename = file.path(celltype_dirs$heatmaps, paste0("marker_expression_heatmap", suffix, "_withclass.pdf"))
-      )
-    }
-  }
-  
-  # Z-score heatmap
-  expr_scaled <- current_data %>%
-    group_by(Gene_Name) %>%
-    mutate(Z_Expression = as.numeric(scale(Expression))) %>%
-    ungroup()
-  
-  celltype_z_scores <- expr_scaled %>%
-    group_by(!!sym(grouping_factor), Celltype_Class) %>%
-    summarise(Mean_Z = mean(Z_Expression, na.rm = TRUE), .groups = "drop")
-  
-  heatmap_plot <- ggplot2::ggplot(celltype_z_scores, aes(x = reorder(Celltype_Class, Mean_Z, FUN = median), y = .data[[grouping_factor]], fill = Mean_Z)) +
-    geom_tile(color = "grey80", size = 0.2, width = 0.5) +
-    scale_fill_gradient2(low = "#4575b4", mid = "white", high = "#d73027", midpoint = 0, name = "Z-Score", guide = guide_colorbar(barwidth = 0.8, barheight = 20)) +
-    labs(title = paste("Celltype Marker Signature", suffix), x = "Marker Class", y = "Sample Group") +
-    theme_minimal(base_size = 12) +
-    theme(
-      plot.title = element_text(face = "bold", hjust = 0.5, margin = margin(b = 10)),
-      axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
-      axis.text.y = element_text(size = 10),
-      axis.title = element_text(size = 12),
-      panel.grid = element_blank(),
-      legend.title = element_text(size = 12),
-      legend.text = element_text(size = 10)
-    )
-  
-  ggsave(file.path(celltype_dirs$heatmaps, paste0("celltype_scores_heatmap", suffix, ".svg")), heatmap_plot, width = 16, height = 9, units = "cm", dpi = 300)
-  
-  # ===== NEW: Z-score heatmap sorted by Celltype_Class =====
-  heatmap_plot_sorted <- ggplot2::ggplot(celltype_z_scores, aes(x = Celltype_Class, y = .data[[grouping_factor]], fill = Mean_Z)) +
-    geom_tile(color = "grey80", size = 0.2, width = 0.5) +
-    scale_fill_gradient2(low = "#4575b4", mid = "white", high = "#d73027", midpoint = 0, name = "Z-Score", guide = guide_colorbar(barwidth = 0.8, barheight = 20)) +
-    labs(title = paste("Celltype Marker Signature", suffix, "(Sorted)"), x = "Marker Class", y = "Sample Group") +
-    theme_minimal(base_size = 12) +
-    theme(
-      plot.title = element_text(face = "bold", hjust = 0.5, margin = margin(b = 10)),
-      axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
-      axis.text.y = element_text(size = 10),
-      axis.title = element_text(size = 12),
-      panel.grid = element_blank(),
-      legend.title = element_text(size = 12),
-      legend.text = element_text(size = 10)
-    )
-  
-  ggsave(file.path(celltype_dirs$heatmaps, paste0("celltype_scores_heatmap_sorted", suffix, ".svg")), heatmap_plot_sorted, width = 16, height = 9, units = "cm", dpi = 300)
-}
-
-# ----------------------------------------------------
-# EXECUTE ANALYSIS
-# ----------------------------------------------------
-
-# 1. Run on ALL data (Combined)
-cat("Processing ALL data combined...\n")
-run_celltype_analysis(marker_expr, "_All")
-
-# 2. Run separately for each ExpGroup
-unique_groups <- unique(marker_expr$Group)
-cat("Processing separate groups:", paste(unique_groups, collapse=", "), "\n")
-
-for (grp in unique_groups) {
-  # Sanitize group name for filename
-  safe_grp <- gsub("[^a-zA-Z0-9]", "_", grp)
-  
-  # Filter data for this group
-  group_data <- marker_expr %>% filter(Group == grp)
-  
-  # Run analysis
-  run_celltype_analysis(group_data, paste0("_", safe_grp))
-}
-
-# ----------------------------------------------------
-# 8. COMPARISON BETWEEN EXP GROUPS
-# ----------------------------------------------------
-cat("\nProcessing Comparison between ExpGroups...\n")
-
-# Calculate mean expression per Celltype_Class and Group
-group_comparison <- marker_expr %>%
-  group_by(Group, Celltype_Class) %>%
-  summarise(Mean_Expression = mean(Expression, na.rm = TRUE), .groups = "drop")
-
-# Save comparison data to Excel
-write.xlsx(group_comparison, file = file.path(celltype_dirs$tables, "celltype_scores_comparison_ExpGroups.xlsx"))
-
-# Create comparison plot
-comparison_plot <- ggplot2::ggplot(group_comparison, aes(x = Group, y = Mean_Expression, fill = Celltype_Class)) +
-  geom_bar(stat = "identity", position = position_dodge(width = 0.8), width = 0.7) +
-  labs(title = "Celltype Scores Comparison by ExpGroup", x = "Experimental Group", y = "Mean Expression", fill = "Cell Class") +
-  scale_fill_manual(values = c("gaba" = "#f36d07", "vglut1" = "#455A64", "vglut2" = "#c7c7c7")) +
-  theme_bw(base_size = 16) +
-  theme(
-    plot.title = element_text(face = "bold", hjust = 0.5, size = 20),
-    axis.title = element_text(face = "bold", size = 18),
-    axis.text.x = element_text(angle = 45, hjust = 1, color = "black", size = 16),
-    axis.text.y = element_text(color = "black", size = 16),
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank(),
-    panel.border = element_blank(),
-    axis.ticks = element_line(color = "black", size = 1),
-    legend.position = "right",
-    legend.title = element_text(face = "bold", size = 16),
-    legend.text = element_text(size = 16)
-  )
-
-ggsave(file.path(celltype_dirs$plots, "celltype_scores_comparison_ExpGroups.svg"), comparison_plot, units = "cm", dpi = 300, width = 25, height = 15)
-
-# ----------------------------------------------------
-# 9. ADVANCED INTERACTION VISUALIZATION
-# ----------------------------------------------------
-cat("\nGenerating Advanced Interaction Plots...\n")
-
-# 1. Balloon Plot (Dot Plot) - FANCY VERSION
-# Visualizes Mean Expression (Size) and Z-Score (Color)
-# Grouping by grouping_factor (Celltype), Group (ExpGroup), and Celltype_Class
-interaction_stats <- marker_expr %>%
-  group_by(!!sym(grouping_factor), Group, Celltype_Class) %>%
-  summarise(
-    Mean_Expr = mean(Expression, na.rm = TRUE),
-    .groups = "drop"
-  ) %>%
-  group_by(Celltype_Class) %>%
-  mutate(
-    Z_Score = scale(Mean_Expr),
-    Rel_Expr = Mean_Expr / max(Mean_Expr)
-  ) %>%
-  ungroup()
-
-balloon_plot <- ggplot2::ggplot(interaction_stats, aes(x = !!sym(grouping_factor), y = Celltype_Class)) +
-  # Add a subtle background tile to define the grid
-  geom_tile(fill = "white", color = "grey95", size = 0.5) +
-  # The bubbles with a nicer stroke and alpha
-  geom_point(aes(size = Mean_Expr, fill = Z_Score), shape = 21, color = "grey20", stroke = 1, alpha = 0.9) +
-  # Facet by Experimental Group
-  facet_grid(~ Group, scales = "free_x", space = "free_x") +
-  # Improved color scale (High contrast diverging)
-  scale_fill_gradient2(low = "#313695", mid = "white", high = "#a50026", midpoint = 0, 
-                       name = "Z-Score\n(Row-scaled)") +
-  # Adjusted size range
-  scale_size_continuous(range = c(4, 14), name = "Mean\nExpression") +
-  # Clean labels
-  labs(
-    title = paste("Interaction:", grouping_factor, "vs Marker Class by ExpGroup"),
-    subtitle = "Balloon Plot: Size=Expression, Color=Z-score. Faceted by Experimental Group.",
-    x = grouping_factor,
-    y = "Marker Class"
-  ) +
-  # Polished theme
-  theme_minimal(base_size = 14) +
-  theme(
-    plot.background = element_rect(fill = "white", color = NA),
-    plot.title = element_text(face = "bold", hjust = 0.5, size = 18, margin = margin(b = 5)),
-    plot.subtitle = element_text(hjust = 0.5, color = "grey40", size = 12, margin = margin(b = 20)),
-    axis.text.x = element_text(angle = 45, hjust = 1, color = "black", size = 12, face = "bold"),
-    axis.text.y = element_text(color = "black", face = "bold", size = 12),
-    axis.title = element_text(face = "bold", color = "grey30"),
-    panel.grid.major = element_line(color = "grey92", linetype = "dotted"),
-    panel.grid.minor = element_blank(),
-    strip.background = element_rect(fill = "#f0f0f0", color = NA),
-    strip.text = element_text(face = "bold", size = 12),
-    legend.position = "right",
-    legend.box = "vertical",
-    legend.title = element_text(face = "bold", size = 10),
-    legend.background = element_rect(fill = "grey98", color = NA),
-    legend.key = element_blank()
-  ) +
-  # Ensure size legend dots are neutral color
-  guides(size = guide_legend(override.aes = list(fill = "grey50")))
-
-ggsave(file.path(celltype_dirs$plots, "interaction_balloon_plot.svg"), balloon_plot, 
-       width = 28, height = 16, units = "cm", dpi = 300)
-
-# 2. Fancy Distribution Plot (Violin + Boxplot + Jitter)
-# Shows the full distribution of data points behind the means
-# X-axis: grouping_factor, Fill: Group, Facet: Celltype_Class
-fancy_dist_plot <- ggplot2::ggplot(marker_expr, aes(x = !!sym(grouping_factor), y = Expression, fill = Group)) +
-  geom_violin(alpha = 0.4, color = NA, trim = FALSE, scale = "width", position = position_dodge(width = 0.8)) +
-  geom_boxplot(width = 0.15, color = "grey20", outlier.shape = NA, alpha = 0.8, position = position_dodge(width = 0.8)) +
-  geom_point(aes(color = Group), position = position_jitterdodge(jitter.width = 0.1, dodge.width = 0.8), size = 0.5, alpha = 0.4, show.legend = FALSE) +
-  facet_wrap(~ Celltype_Class, scales = "free_y", ncol = 1) +
-  scale_fill_viridis_d(option = "D", begin = 0.2, end = 0.8) + 
-  scale_color_viridis_d(option = "D", begin = 0.2, end = 0.8) +
-  labs(
-    title = paste("Expression Distribution by", grouping_factor, ", Group and Marker Class"),
-    subtitle = "Violin plots showing density with overlaid boxplots. Colored by Experimental Group.",
-    x = grouping_factor,
-    y = "Protein Expression",
-    fill = "Exp Group"
-  ) +
-  theme_bw(base_size = 14) +
-  theme(
-    plot.title = element_text(face = "bold", hjust = 0.5),
-    plot.subtitle = element_text(hjust = 0.5, color = "grey40", size = 10),
-    axis.text.x = element_text(angle = 45, hjust = 1, face = "bold"),
-    strip.background = element_rect(fill = "#2c3e50"),
-    strip.text = element_text(color = "white", face = "bold", size = 12),
-    legend.position = "bottom",
-    panel.grid.minor = element_blank()
-  )
-
-ggsave(file.path(celltype_dirs$plots, "interaction_distribution_fancy.svg"), fancy_dist_plot, 
-       width = 24, height = 28, units = "cm", dpi = 300)
-
-# ----------------------------------------------------
-# 10. DIRECT DIFFERENCE & PROFILE VISUALIZATION
-# ----------------------------------------------------
-cat("\nGenerating Difference and Profile Plots...\n")
-
-# A. DEVIATION PLOT (Log2FC vs Average)
-# This shows how each ExpGroup differs from the average expression of that marker in that celltype
-# 1. Calculate Consensus Mean (Average across all groups for each Celltype/Class)
-consensus_means <- marker_expr %>%
-  group_by(!!sym(grouping_factor), Celltype_Class) %>%
-  summarise(Global_Mean = mean(Expression, na.rm = TRUE), .groups = "drop")
-
-# 2. Join with Group Means and Calculate Log2FC
-deviation_data <- interaction_stats %>%
-  left_join(consensus_means, by = c(grouping_factor, "Celltype_Class")) %>%
-  mutate(
-    Log2FC_vs_Mean = log2(Mean_Expr / Global_Mean),
-    # Handle potential infinite values if mean is 0
-    Log2FC_vs_Mean = ifelse(is.infinite(Log2FC_vs_Mean), 0, Log2FC_vs_Mean)
-  )
-
-# 3. Plot Deviation
-deviation_plot <- ggplot2::ggplot(deviation_data, aes(x = Celltype_Class, y = Log2FC_vs_Mean, fill = Group)) +
-  geom_hline(yintercept = 0, color = "grey50", linetype = "dashed") +
-  geom_col(position = position_dodge(width = 0.8), width = 0.7, color = "black", size = 0.2) +
-  facet_wrap(as.formula(paste("~", grouping_factor)), scales = "fixed") +
-  scale_fill_viridis_d(option = "D", begin = 0.1, end = 0.9) +
-  labs(
-    title = "Deviation from Consensus Profile",
-    subtitle = "Log2 Fold Change of each Group vs the Average of all Groups",
-    x = "Marker Class",
-    y = "Log2 Fold Change (vs Average)",
-    fill = "Exp Group"
-  ) +
-  theme_minimal(base_size = 14) +
-  theme(
-    plot.title = element_text(face = "bold", hjust = 0.5),
-    plot.subtitle = element_text(hjust = 0.5, color = "grey40", size = 11),
-    axis.text.x = element_text(face = "bold"),
-    strip.background = element_rect(fill = "grey90", color = NA),
-    strip.text = element_text(face = "bold"),
-    panel.grid.major.x = element_blank(),
-    legend.position = "bottom"
-  )
-
-ggsave(file.path(celltype_dirs$plots, "interaction_deviation_lollipop.svg"), deviation_plot, 
-       width = 24, height = 18, units = "cm", dpi = 300)
-
-
-# B. RADAR PROFILE PLOT (Polar Coordinates)
-# This shows the "shape" of the marker identity (GABA vs VGLUT1 vs VGLUT2)
-# Since we have 3 axes, this forms a triangle profile for each group
-radar_plot <- ggplot2::ggplot(interaction_stats, aes(x = Celltype_Class, y = Mean_Expr, group = Group, color = Group, fill = Group)) +
-  geom_polygon(alpha = 0.2, size = 1) +
-  geom_point(size = 2) +
-  coord_polar() +
-  facet_wrap(as.formula(paste("~", grouping_factor)), ncol = 2) +
-  scale_color_viridis_d(option = "D", begin = 0.1, end = 0.9) +
-  scale_fill_viridis_d(option = "D", begin = 0.1, end = 0.9) +
-  labs(
-    title = "Marker Identity Profiles (Radar Chart)",
-    subtitle = "Shape indicates the balance between GABA, VGLUT1, and VGLUT2 markers",
-    x = NULL,
-    y = "Mean Expression",
-    color = "Exp Group",
-    fill = "Exp Group"
-  ) +
-  theme_minimal(base_size = 14) +
-  theme(
-    plot.title = element_text(face = "bold", hjust = 0.5),
-    plot.subtitle = element_text(hjust = 0.5, color = "grey40", size = 11),
-    axis.text.y = element_blank(), # Hide radial axis labels to reduce clutter
-    axis.ticks = element_blank(),
-    axis.text.x = element_text(face = "bold", size = 11),
-    strip.text = element_text(face = "bold", size = 12),
-    panel.grid.major = element_line(color = "grey85", linetype = "dashed"),
-    legend.position = "bottom"
-  )
-
-ggsave(file.path(celltype_dirs$plots, "interaction_radar_profile.svg"), radar_plot, 
-       width = 22, height = 22, units = "cm", dpi = 300)
-
-# C. DIFFERENCE HEATMAP
-# A compact, high-density view of deviations
-diff_heatmap <- ggplot2::ggplot(deviation_data, aes(x = Celltype_Class, y = Group, fill = Log2FC_vs_Mean)) +
-  geom_tile(color = "white", size = 0.5) +
-  geom_text(data = subset(deviation_data, is.na(Log2FC_vs_Mean)), 
-            aes(label = "NA"), color = "grey50", size = 3) +
-  facet_grid(as.formula(paste("~", grouping_factor)), scales = "free_x", space = "free_x") +
-  scale_fill_gradient2(low = "#313695", mid = "white", high = "#a50026", midpoint = 0,
-                       name = "Log2FC\n(vs Mean)", na.value = "grey99") +
-  labs(
-    title = "Consensus Deviation Heatmap",
-    subtitle = "Heatmap of Log2 Fold Changes relative to the global mean across groups",
-    x = "Marker Class",
-    y = "Experimental Group"
-  ) +
-  theme_minimal(base_size = 14) +
-  theme(
-    plot.title = element_text(face = "bold", hjust = 0.5),
-    plot.subtitle = element_text(hjust = 0.5, color = "grey40", size = 11),
-    axis.text.x = element_text(face = "bold"),
-    axis.text.y = element_text(face = "bold", angle = 90, hjust = 0.5),
-    panel.grid = element_blank(),
-    strip.background = element_rect(fill = "grey95", color = NA),
-    strip.text = element_text(face = "bold"),
-    legend.position = "right"
-  )
-
-ggsave(file.path(celltype_dirs$plots, "interaction_deviation_heatmap.svg"), diff_heatmap,
-       width = 20, height = 10, units = "cm", dpi = 300)
-
-# ----------------------------------------------------
-# 11. DIRECT COMPARISON: ExpGroup 2 vs ExpGroup 4
-# ----------------------------------------------------
-cat("\nGenerating Direct Comparison: ExpGroup 2 vs ExpGroup 4...\n")
-
-# Filter for the specific groups
-# Updated to look for flexible string formats like "2.00" based on log output
-target_groups_clean <- c("1","2", "3", "4")
-target_groups_formatted <- c("2.00", "4.00")
-target_groups <- c(target_groups_clean, target_groups_formatted)
-
-direct_comp_data_long <- interaction_stats %>%
-  filter(Group %in% target_groups) 
-
-# Ensure we have data for two distinct groups before proceeding
-found_groups <- unique(direct_comp_data_long$Group)
-
-if (length(found_groups) >= 2) {
-  
-  # Standardize column names for pivot (handle 2 vs 2.00)
-  # We map found groups to "Group2" and "Group4" arbitrarily based on value to ensure pivot works
-  # Assuming order 2 < 4
-  sorted_groups <- sort(found_groups)
-  grp2_label <- sorted_groups[1] # e.g., "2.00"
-  grp4_label <- sorted_groups[2] # e.g., "4.00"
-  
-  cat("Comparing", grp2_label, "vs", grp4_label, "\n")
-  
-  direct_comp_data <- direct_comp_data_long %>%
-    select(!!sym(grouping_factor), Celltype_Class, Group, Mean_Expr) %>%
-    pivot_wider(names_from = Group, values_from = Mean_Expr)
-
-  # Calculate Log2 Fold Change (Group 2 / Group 4)
-  # Dynamic column names
-  direct_comp_data <- direct_comp_data %>%
-    mutate(
-      Log2FC_2vs4 = log2(.data[[grp2_label]] / .data[[grp4_label]]),
-      # Handle infinite/NaN if expression is 0
-      Log2FC_2vs4 = ifelse(is.infinite(Log2FC_2vs4) | is.nan(Log2FC_2vs4), 0, Log2FC_2vs4)
-    )
-  
-  # Save table
-  write.xlsx(direct_comp_data, file = file.path(celltype_dirs$tables, "direct_comparison_ExpGroup2_vs_ExpGroup4.xlsx"))
-  
-  # Plot
-  direct_comp_plot <- ggplot2::ggplot(direct_comp_data, aes(x = Celltype_Class, y = Log2FC_2vs4, fill = Log2FC_2vs4 > 0)) +
-    geom_hline(yintercept = 0, color = "grey50", linetype = "dashed") +
-    geom_col(color = "black", size = 0.2, width = 0.7) +
-    facet_wrap(as.formula(paste("~", grouping_factor)), scales = "fixed") +
-    scale_fill_manual(values = c("TRUE" = "#d73027", "FALSE" = "#4575b4"), 
-                      labels = c("TRUE" = paste("Higher in Grp", grp2_label), "FALSE" = paste("Higher in Grp", grp4_label)),
-                      name = "Direction") +
-    labs(
-      title = "Direct Comparison: ExpGroup 2 vs ExpGroup 4",
-      subtitle = paste("Positive values indicate higher expression in Group", grp2_label),
-      x = "Marker Class",
-      y = paste("Log2 Fold Change (", grp2_label, "/", grp4_label, ")")
-    ) +
-    theme_minimal(base_size = 14) +
-    theme(
-      plot.title = element_text(face = "bold", hjust = 0.5),
-      plot.subtitle = element_text(hjust = 0.5, color = "grey40", size = 11),
-      axis.text.x = element_text(face = "bold"),
-      strip.background = element_rect(fill = "grey90", color = NA),
-      strip.text = element_text(face = "bold"),
-      panel.grid.major.x = element_blank(),
-      legend.position = "bottom"
-    )
-  
-  ggsave(file.path(celltype_dirs$plots, "direct_comparison_ExpGroup2_vs_ExpGroup4.svg"), 
-         direct_comp_plot, width = 20, height = 15, units = "cm", dpi = 300)
-  
-} else {
-  cat("Warning: Could not perform direct comparison. Required groups (2, 4 or 2.00, 4.00) not found in data.\n")
-  cat("Available groups:", paste(unique(interaction_stats$Group), collapse = ", "), "\n")
-}
-
-cat("\n==============================================\n")
-cat("ENTIRE PIPELINE COMPLETED!\n")
-cat("==============================================\n")
+writeLines(summary_lines, con = summary_txt)
+write_log_line(master_log, "INFO", "GLOBAL", "SUMMARY", paste0("Run summary written: ", run_summary_file))
