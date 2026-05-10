@@ -44,8 +44,15 @@ invisible(lapply(bioc_packages, install_and_load, bioc = TRUE))
 # 1. CONFIG
 # ==========================================
 
-data_path    <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/pg_matrix/imputed/20260218_pgmatrix_imputed_neuron_soma_71samples_missing70pct_groups.xlsx"
-base_results <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Results/EWCE/neuron_soma"
+#data_path    <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/pg_matrix/imputed/20260218_pgmatrix_imputed_neuron_soma_71samples_missing70pct_groups.xlsx"
+#base_results <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Results/EWCE/neuron_neuropil"
+
+data_path     <- "/Users/tobiaspohl/Documents/pRoteomics/20260218_pgmatrix_imputed_neuron_neuropil_180samples_missing70pct.xlsx"
+base_results  <- "~/Documents/pRoteomics/Analysis/EWCE_E9_Results"
+sample_metadata_path <- "/Users/tobiaspohl/Documents/Data/proteomics/TPE9_sample_metadata_males.xlsx"
+
+# create folders if needed and define parameters
+
 
 analysis_params <- list(
   seed = 42,
@@ -57,7 +64,9 @@ analysis_params <- list(
   fdr_alpha = 0.05,
   marker_top_n = 200,
   regions = c("CA1", "CA2", "CA3", "DG"),
-  conditions = c("con", "res", "sus")
+  layers = c("so", "sp", "sr", "slm", "mo", "po", "sg"),
+  conditions = c("con", "res", "sus"),
+  expgroup_condition_map = c("1" = "con", "2" = "res", "3" = "sus")
 )
 
 dirs <- list(
@@ -119,13 +128,105 @@ clean_gene_token <- function(x) {
     stringr::str_trim()
 }
 
-parse_sample_metadata <- function(sample_names) {
-  tibble::tibble(Sample = sample_names) %>%
+extract_sample_token <- function(sample_names, tokens, case = c("asis", "upper", "lower")) {
+  case <- match.arg(case)
+  pattern <- paste0(
+    "(?i)(^|[^A-Za-z0-9])(",
+    paste(tokens, collapse = "|"),
+    ")(?=$|[^A-Za-z0-9])"
+  )
+  out <- stringr::str_match(sample_names, pattern)[, 3]
+  if (case == "upper") out <- stringr::str_to_upper(out)
+  if (case == "lower") out <- stringr::str_to_lower(out)
+  out
+}
+
+normalize_sample_id <- function(x) {
+  x %>%
+    as.character() %>%
+    stringr::str_replace_all("\\\\", "/") %>%
+    stringr::str_trim()
+}
+
+normalize_condition <- function(x) {
+  x <- stringr::str_to_lower(as.character(x))
+  mapped <- unname(analysis_params$expgroup_condition_map[x])
+  dplyr::if_else(!is.na(mapped), mapped, x)
+}
+
+load_sample_condition_lookup <- function(metadata_path) {
+  if (is.null(metadata_path) || !file.exists(metadata_path)) {
+    return(tibble::tibble(Sample = character(), AnimalID = character(), Cond_Metadata = character()))
+  }
+
+  meta_df <- readxl::read_excel(metadata_path, sheet = readxl::excel_sheets(metadata_path)[1]) %>%
+    tibble::as_tibble()
+
+  sample_col <- intersect(c("sample_id", "Sample", "sample", "SampleID"), colnames(meta_df))[1]
+  animal_col <- intersect(c("AnimalID", "animal_id", "Animal", "animal"), colnames(meta_df))[1]
+  cond_col <- intersect(c("Cond", "Condition", "condition", "ExpGroup", "Group", "group"), colnames(meta_df))[1]
+
+  if (is.na(cond_col) || (is.na(sample_col) && is.na(animal_col))) {
+    warning("Sample metadata file found but no usable sample/animal condition columns were detected: ", metadata_path)
+    return(tibble::tibble(Sample = character(), AnimalID = character(), Cond_Metadata = character()))
+  }
+
+  meta_df %>%
+    dplyr::transmute(
+      Sample = if (!is.na(sample_col)) normalize_sample_id(.data[[sample_col]]) else NA_character_,
+      AnimalID = if (!is.na(animal_col)) as.character(.data[[animal_col]]) else stringr::str_match(Sample, "(?i)(?:^|_)(A[0-9]+)(?=_)")[, 2],
+      Cond_Metadata = normalize_condition(.data[[cond_col]])
+    ) %>%
+    dplyr::filter(!is.na(Cond_Metadata), Cond_Metadata %in% analysis_params$conditions) %>%
+    dplyr::distinct()
+}
+
+parse_sample_metadata <- function(sample_names, condition_lookup = NULL) {
+  direct_meta <- tibble::tibble(
+    Sample = sample_names,
+    SampleKey = normalize_sample_id(sample_names),
+    AnimalID = stringr::str_match(sample_names, "(?i)(?:^|_)(A[0-9]+)(?=_)")[, 2]
+  )
+
+  if (!is.null(condition_lookup) && nrow(condition_lookup) > 0) {
+    by_sample <- condition_lookup %>%
+      dplyr::filter(!is.na(Sample)) %>%
+      dplyr::mutate(SampleKey = normalize_sample_id(Sample)) %>%
+      dplyr::distinct(SampleKey, Cond_Metadata)
+
+    by_animal <- condition_lookup %>%
+      dplyr::filter(!is.na(AnimalID)) %>%
+      dplyr::distinct(AnimalID, Cond_Animal = Cond_Metadata)
+
+    direct_meta <- direct_meta %>%
+      dplyr::left_join(by_sample, by = "SampleKey") %>%
+      dplyr::left_join(by_animal, by = "AnimalID")
+  } else {
+    direct_meta <- direct_meta %>%
+      dplyr::mutate(Cond_Metadata = NA_character_, Cond_Animal = NA_character_)
+  }
+
+  resolved_meta <- direct_meta %>%
+    dplyr::select(Sample, AnimalID, Cond_Metadata, Cond_Animal) %>%
+    dplyr::distinct() %>%
     dplyr::mutate(
-      Region = stringr::str_extract(Sample, "CA1|CA2|CA3|DG"),
-      Cond = stringr::str_extract(stringr::str_to_lower(Sample), "con|res|sus"),
-      Cond = factor(Cond, levels = analysis_params$conditions),
-      AnimalID = stringr::str_extract(Sample, "(?i)(mouse|animal|m)[-_]?[0-9]+"),
+      Cond_From_Name = extract_sample_token(Sample, analysis_params$conditions, case = "lower"),
+      Cond_From_Name = dplyr::if_else(
+        is.na(Cond_From_Name),
+        normalize_condition(stringr::str_extract(stringr::str_to_lower(Sample), paste(analysis_params$conditions, collapse = "|"))),
+        Cond_From_Name
+      ),
+      Cond_Resolved = dplyr::coalesce(Cond_From_Name, Cond_Metadata, Cond_Animal)
+    ) %>%
+    dplyr::select(Sample, AnimalID, Cond_Resolved) %>%
+    dplyr::right_join(tibble::tibble(Sample = sample_names), by = "Sample")
+
+  resolved_meta %>%
+    dplyr::mutate(
+      Region = extract_sample_token(Sample, analysis_params$regions, case = "upper"),
+      Layer = extract_sample_token(Sample, analysis_params$layers, case = "lower"),
+      Stratum = dplyr::if_else(is.na(Layer), Region, paste(Region, Layer, sep = "_")),
+      Cond = factor(Cond_Resolved, levels = analysis_params$conditions),
       Batch = stringr::str_extract(Sample, "(?i)(batch|plate|run)[-_]?[A-Za-z0-9]+")
     )
 }
@@ -142,18 +243,19 @@ make_expr_mat <- function(df, sample_cols) {
     as.matrix()
 }
 
-run_limma_region <- function(expr_mat, sample_meta, region) {
-  region_samples <- sample_meta %>%
-    dplyr::filter(Region == region, !is.na(Cond)) %>%
+run_limma_stratum <- function(expr_mat, sample_meta, stratum) {
+  stratum_meta <- sample_meta %>%
+    dplyr::filter(Stratum == stratum, !is.na(Cond))
+  stratum_samples <- stratum_meta %>%
     dplyr::pull(Sample)
 
-  if (length(region_samples) < 4) {
+  if (length(stratum_samples) < 4) {
     return(tibble::tibble())
   }
 
   meta <- sample_meta %>%
-    dplyr::filter(Sample %in% region_samples) %>%
-    dplyr::arrange(match(Sample, region_samples))
+    dplyr::filter(Sample %in% stratum_samples) %>%
+    dplyr::arrange(match(Sample, stratum_samples))
 
   x <- expr_mat[, meta$Sample, drop = FALSE]
   keep <- rowSums(is.finite(x)) >= 2
@@ -195,7 +297,9 @@ run_limma_region <- function(expr_mat, sample_meta, region) {
       tibble::rownames_to_column("Gene") %>%
       tibble::as_tibble() %>%
       dplyr::mutate(
-        Region = region,
+        Stratum = stratum,
+        Region = dplyr::first(meta$Region),
+        Layer = dplyr::first(meta$Layer),
         Contrast = coef_name,
         Direction_for_EWCE = dplyr::case_when(
           logFC > 0 ~ "up",
@@ -211,14 +315,22 @@ make_baseline_targets <- function(baseline_mat, top_n_values) {
   dplyr::bind_rows(lapply(colnames(baseline_mat), function(target) {
     vals <- baseline_mat[, target]
     ord <- names(sort(vals, decreasing = TRUE, na.last = NA))
+    target_parts <- stringr::str_split_fixed(target, "__", 2)
+    stratum <- target_parts[, 1]
+    metric <- target_parts[, 2]
+    region <- stringr::str_extract(stratum, paste(analysis_params$regions, collapse = "|"))
+    layer <- stringr::str_match(stratum, paste0("_(?:", paste(analysis_params$layers, collapse = "|"), ")$"))[, 1]
+    layer <- stringr::str_remove(layer, "^_")
     dplyr::bind_rows(lapply(top_n_values, function(top_n) {
       tibble::tibble(
         Target = target,
         AnalysisType = "Baseline",
-        Region = stringr::str_extract(target, "CA1|CA2|CA3|DG"),
+        Stratum = stratum,
+        Region = region,
+        Layer = layer,
         Contrast = NA_character_,
         Direction = "abundant",
-        Metric = stringr::str_remove(target, "^(CA1|CA2|CA3|DG)_"),
+        Metric = metric,
         TopN = top_n,
         Gene = head(ord, top_n),
         Rank = seq_along(head(ord, top_n)),
@@ -229,9 +341,11 @@ make_baseline_targets <- function(baseline_mat, top_n_values) {
 }
 
 make_differential_targets <- function(de_tbl, top_n_values) {
-  dplyr::bind_rows(lapply(split(de_tbl, list(de_tbl$Region, de_tbl$Contrast), drop = TRUE), function(tbl) {
+  dplyr::bind_rows(lapply(split(de_tbl, list(de_tbl$Stratum, de_tbl$Contrast), drop = TRUE), function(tbl) {
     if (nrow(tbl) == 0) return(tibble::tibble())
+    stratum <- tbl$Stratum[1]
     region <- tbl$Region[1]
+    layer <- tbl$Layer[1]
     contrast <- tbl$Contrast[1]
 
     dplyr::bind_rows(lapply(c("up", "down"), function(direction) {
@@ -244,9 +358,11 @@ make_differential_targets <- function(de_tbl, top_n_values) {
       dplyr::bind_rows(lapply(top_n_values, function(top_n) {
         take <- ranked %>% dplyr::slice_head(n = top_n)
         tibble::tibble(
-          Target = paste(region, contrast, direction, paste0("top", top_n), sep = "_"),
+          Target = paste(stratum, contrast, direction, paste0("top", top_n), sep = "_"),
           AnalysisType = "Differential",
+          Stratum = stratum,
           Region = region,
+          Layer = layer,
           Contrast = contrast,
           Direction = direction,
           Metric = paste(contrast, direction, sep = "_"),
@@ -321,8 +437,23 @@ add_worksheet_safe <- function(wb, sheet, data) {
   if (sheet %in% names(wb)) {
     sheet <- safe_sheet(paste0(sheet, "_", length(names(wb)) + 1))
   }
+  data <- as.data.frame(data, check.names = FALSE)
+  col_names <- names(data)
+  col_names <- as.character(col_names)
+  col_names[is.na(col_names) | stringr::str_trim(col_names) == ""] <- "Column"
+  col_names <- stringr::str_squish(col_names)
+  col_names <- make.unique(col_names, sep = "_")
+  names(data) <- col_names
   openxlsx::addWorksheet(wb, sheet)
-  openxlsx::writeDataTable(wb, sheet, data)
+  tryCatch(
+    openxlsx::writeDataTable(wb, sheet, data),
+    error = function(e) {
+      if (!grepl("colNames must be a unique vector", conditionMessage(e), fixed = TRUE)) {
+        stop(e)
+      }
+      openxlsx::writeData(wb, sheet, data, withFilter = TRUE)
+    }
+  )
 }
 
 celltype_marker_overlap <- function(results_tbl, target_gene_tbl, annot_level) {
@@ -346,7 +477,13 @@ celltype_marker_overlap <- function(results_tbl, target_gene_tbl, annot_level) {
     ) %>%
     dplyr::select(Target, CellType) %>%
     dplyr::distinct() %>%
-    dplyr::left_join(target_gene_tbl, by = "Target") %>%
+    dplyr::left_join(
+      target_gene_tbl %>%
+        dplyr::filter(TopN == analysis_params$primary_top_n) %>%
+        dplyr::distinct(Target, Gene),
+      by = "Target",
+      relationship = "many-to-many"
+    ) %>%
     dplyr::inner_join(marker_tbl, by = c("CellType", "Gene" = "MarkerGene")) %>%
     dplyr::group_by(Target, CellType) %>%
     dplyr::summarise(
@@ -427,13 +564,23 @@ expr_mat <- make_expr_mat(mapped_clean_df, sample_cols)
 expr_mat <- expr_mat[rownames(expr_mat) %in% ref_genes, , drop = FALSE]
 background_universe <- intersect(rownames(expr_mat), ref_genes)
 
-sample_meta <- parse_sample_metadata(colnames(expr_mat))
+condition_lookup <- load_sample_condition_lookup(sample_metadata_path)
+sample_meta <- parse_sample_metadata(colnames(expr_mat), condition_lookup)
+if (all(is.na(sample_meta$Cond))) {
+  stop(
+    "No sample conditions could be resolved. Provide condition tokens in sample names ",
+    "or set sample_metadata_path to a metadata file with AnimalID/sample_id and ExpGroup/Condition columns."
+  )
+}
+if (any(is.na(sample_meta$Cond))) {
+  warning(sum(is.na(sample_meta$Cond)), " sample(s) have no resolved condition and will be excluded from contrasts.")
+}
 sample_meta_qc <- sample_meta %>%
-  dplyr::count(Region, Cond, name = "N_Samples") %>%
-  dplyr::arrange(Region, Cond)
+  dplyr::count(Stratum, Region, Layer, Cond, name = "N_Samples") %>%
+  dplyr::arrange(Region, Layer, Cond)
 
 openxlsx::write.xlsx(
-  list(SampleMetadata = sample_meta, SampleCounts = sample_meta_qc),
+  list(SampleMetadata = sample_meta, SampleCounts = sample_meta_qc, ConditionLookup = condition_lookup),
   file.path(dirs$qc, "sample_metadata_qc.xlsx"),
   overwrite = TRUE
 )
@@ -449,23 +596,29 @@ long_df <- expr_mat %>%
   tibble::rownames_to_column("Gene") %>%
   tidyr::pivot_longer(-Gene, names_to = "Sample", values_to = "Exp") %>%
   dplyr::left_join(sample_meta, by = "Sample") %>%
-  dplyr::filter(!is.na(Region), !is.na(Cond))
+  dplyr::filter(!is.na(Stratum), !is.na(Cond))
 
 baseline_mat <- long_df %>%
-  dplyr::group_by(Gene, Region, Cond) %>%
+  dplyr::group_by(Gene, Stratum, Cond) %>%
   dplyr::summarise(MeanExp = mean(Exp, na.rm = TRUE), .groups = "drop") %>%
-  dplyr::mutate(ID = paste(Region, Cond, sep = "_")) %>%
+  dplyr::mutate(ID = paste(Stratum, Cond, sep = "__")) %>%
   dplyr::select(Gene, ID, MeanExp) %>%
   tidyr::pivot_wider(names_from = ID, values_from = MeanExp) %>%
   tibble::column_to_rownames("Gene") %>%
   as.matrix()
 
-de_tbl <- dplyr::bind_rows(lapply(analysis_params$regions, function(region) {
-  run_limma_region(expr_mat, sample_meta, region)
+analysis_strata <- sample_meta %>%
+  dplyr::filter(!is.na(Stratum)) %>%
+  dplyr::distinct(Stratum, Region, Layer) %>%
+  dplyr::arrange(Region, Layer) %>%
+  dplyr::pull(Stratum)
+
+de_tbl <- dplyr::bind_rows(lapply(analysis_strata, function(stratum) {
+  run_limma_stratum(expr_mat, sample_meta, stratum)
 }))
 
 if (nrow(de_tbl) == 0) {
-  stop("No differential contrasts were created. Check sample names for region and condition labels.")
+  stop("No differential contrasts were created. Check sample names for region, optional layer, and condition labels.")
 }
 
 target_gene_tbl <- dplyr::bind_rows(
@@ -474,7 +627,7 @@ target_gene_tbl <- dplyr::bind_rows(
 )
 
 target_manifest <- target_gene_tbl %>%
-  dplyr::group_by(Target, AnalysisType, Region, Contrast, Direction, Metric, TopN) %>%
+  dplyr::group_by(Target, AnalysisType, Stratum, Region, Layer, Contrast, Direction, Metric, TopN) %>%
   dplyr::summarise(
     N_Hits = dplyr::n_distinct(Gene),
     .groups = "drop"
@@ -500,7 +653,7 @@ future::plan(future::multisession, workers = workers)
 
 target_grid <- target_manifest %>%
   tidyr::crossing(AnnotLevel = analysis_params$annot_levels) %>%
-  dplyr::mutate(TargetRun = paste(Target, paste0("annot", AnnotLevel), sep = "__"))
+  dplyr::mutate(TargetRun = paste(Target, paste0("top", TopN), paste0("annot", AnnotLevel), sep = "__"))
 
 run_ewce_target <- function(target_run) {
   cache_file <- file.path(dirs$cache, paste0(safe_file_stem(target_run), ".rds"))
@@ -509,7 +662,18 @@ run_ewce_target <- function(target_run) {
   }
 
   row <- target_grid %>% dplyr::filter(TargetRun == target_run) %>% dplyr::slice(1)
-  genes <- target_gene_tbl %>% dplyr::filter(Target == row$Target) %>% dplyr::pull(Gene)
+  legacy_cache_file <- file.path(dirs$cache, paste0(safe_file_stem(paste(row$Target, paste0("annot", row$AnnotLevel), sep = "__")), ".rds"))
+  if (file.exists(legacy_cache_file)) {
+    legacy_out <- readRDS(legacy_cache_file)
+    if (all(legacy_out$TopN == row$TopN, na.rm = TRUE)) {
+      saveRDS(legacy_out, cache_file)
+      return(legacy_out)
+    }
+  }
+
+  genes <- target_gene_tbl %>%
+    dplyr::filter(Target == row$Target, TopN == row$TopN) %>%
+    dplyr::pull(Gene)
   bg <- intersect(background_universe, ref_genes_by_level[[row$AnnotLevel]])
 
   res <- run_ewce_once(genes, bg, row$AnnotLevel)
@@ -519,7 +683,9 @@ run_ewce_target <- function(target_run) {
     dplyr::mutate(
       Target = row$Target,
       AnalysisType = row$AnalysisType,
+      Stratum = row$Stratum,
       Region = row$Region,
+      Layer = row$Layer,
       Contrast = row$Contrast,
       Direction = row$Direction,
       Metric = row$Metric,
@@ -573,7 +739,7 @@ driver_overlap_tbl <- celltype_marker_overlap(
 )
 
 sensitivity_tbl <- results_all %>%
-  dplyr::group_by(AnalysisType, Region, Metric, Direction, CellType, AnnotLevel) %>%
+  dplyr::group_by(AnalysisType, Stratum, Region, Layer, Metric, Direction, CellType, AnnotLevel) %>%
   dplyr::summarise(
     N_TopN_Tested = dplyr::n_distinct(TopN),
     N_TopN_GlobalSig = dplyr::n_distinct(TopN[Significant_Global]),
@@ -595,14 +761,24 @@ col_sus      <- "#D55E00"
 col_res      <- "#0072B2"
 col_down     <- "#009E73"
 
+baseline_plot_tbl <- primary_results %>%
+  dplyr::filter(AnalysisType == "Baseline")
+
 p1 <- ggplot2::ggplot(
-  primary_results %>% dplyr::filter(AnalysisType == "Baseline", Significant_Global),
-  ggplot2::aes(x = Metric, y = CellType, size = abs(sd_from_mean), color = sd_from_mean)
+  baseline_plot_tbl,
+  ggplot2::aes(
+    x = Metric,
+    y = CellType,
+    size = abs(sd_from_mean),
+    color = sd_from_mean,
+    alpha = Significant_Global
+  )
 ) +
   ggplot2::geom_point() +
-  ggplot2::facet_wrap(~Region, nrow = 1) +
+  ggplot2::facet_wrap(~Stratum, nrow = 1) +
   viridis::scale_color_viridis(option = "magma", name = "Z-score") +
   ggplot2::scale_size_area(max_size = 3, name = "|Z|") +
+  ggplot2::scale_alpha_manual(values = c("FALSE" = 0.35, "TRUE" = 1), name = "Global FDR < 0.05") +
   theme_nature() +
   ggplot2::labs(x = NULL, y = "Cell type", title = "Baseline cell-type enrichment") +
   ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
@@ -621,7 +797,7 @@ p2 <- ggplot2::ggplot(
     stroke = 0.2,
     fill = "black"
   ) +
-  ggplot2::facet_wrap(~Region, nrow = 1) +
+  ggplot2::facet_wrap(~Stratum, nrow = 1) +
   ggplot2::scale_fill_gradient2(low = col_res, mid = "white", high = col_sus, midpoint = 0, name = "Z-score") +
   theme_nature() +
   ggplot2::labs(x = NULL, y = "Cell type", title = "Modeled stress contrasts") +
@@ -639,7 +815,7 @@ p4 <- ggplot2::ggplot(
   ggplot2::aes(x = Metric, y = CellType, fill = SignedSig_Global)
 ) +
   ggplot2::geom_tile(color = "white", linewidth = 0.1) +
-  ggplot2::facet_wrap(~Region, nrow = 1) +
+  ggplot2::facet_wrap(~Stratum, nrow = 1) +
   ggplot2::scale_fill_gradient2(low = col_res, mid = "white", high = col_sus, midpoint = 0, name = "Signed -log10(FDR)") +
   theme_nature() +
   ggplot2::labs(x = NULL, y = "Cell type", title = "Direction and global significance") +
@@ -667,13 +843,13 @@ p5 <- ggplot2::ggplot(
 
 p6 <- ggplot2::ggplot(
   primary_results %>% dplyr::filter(AnalysisType == "Differential"),
-  ggplot2::aes(x = sd_from_mean, y = Region, fill = Direction)
+  ggplot2::aes(x = sd_from_mean, y = Stratum, fill = Direction)
 ) +
   ggridges::geom_density_ridges(alpha = 0.7, scale = 0.9, color = "white", linewidth = 0.2) +
   ggplot2::scale_fill_manual(values = c("up" = col_sus, "down" = col_down), guide = "none") +
   ggplot2::geom_vline(xintercept = 0, linetype = "dashed", linewidth = 0.2) +
   theme_nature() +
-  ggplot2::labs(x = "Z-score", y = NULL, title = "Regional effect distributions")
+  ggplot2::labs(x = "Z-score", y = NULL, title = "Stratum effect distributions")
 
 p7 <- ggplot2::ggplot(
   sensitivity_tbl %>%
@@ -681,7 +857,7 @@ p7 <- ggplot2::ggplot(
     dplyr::arrange(Min_q_global) %>%
     dplyr::slice_head(n = 30),
   ggplot2::aes(
-    x = reorder(paste(Region, Metric, CellType, sep = " | "), -log10(Min_q_global)),
+    x = reorder(paste(Stratum, Metric, CellType, sep = " | "), -log10(Min_q_global)),
     y = N_TopN_GlobalSig,
     fill = RobustAcrossTopN
   )
@@ -704,7 +880,7 @@ supp_fig <- (p4 / p5 / p6 / p7) +
 
 diff_heatmap_tbl <- primary_results %>%
   dplyr::filter(AnalysisType == "Differential") %>%
-  dplyr::mutate(TargetLabel = paste(Region, Metric, sep = "_")) %>%
+  dplyr::mutate(TargetLabel = paste(Stratum, Metric, sep = "_")) %>%
   dplyr::select(CellType, TargetLabel, SignedSig_Global) %>%
   dplyr::distinct() %>%
   tidyr::pivot_wider(names_from = TargetLabel, values_from = SignedSig_Global)
@@ -741,7 +917,7 @@ if (nrow(diff_heatmap_mat) > 2 && ncol(diff_heatmap_mat) > 2) {
 }
 
 summary_tbl <- results_all %>%
-  dplyr::group_by(AnalysisType, AnnotLevel, TopN, Region, Metric) %>%
+  dplyr::group_by(AnalysisType, AnnotLevel, TopN, Stratum, Region, Layer, Metric) %>%
   dplyr::summarise(
     N_Tested = dplyr::n(),
     N_GlobalSignificant = sum(Significant_Global, na.rm = TRUE),
@@ -753,7 +929,7 @@ summary_tbl <- results_all %>%
     Best_q_global = min(q_global, na.rm = TRUE),
     .groups = "drop"
   ) %>%
-  dplyr::arrange(AnalysisType, AnnotLevel, TopN, Region, dplyr::desc(N_GlobalSignificant), dplyr::desc(Mean_Abs_Effect))
+  dplyr::arrange(AnalysisType, AnnotLevel, TopN, Region, Layer, dplyr::desc(N_GlobalSignificant), dplyr::desc(Mean_Abs_Effect))
 
 top_hits_tbl <- results_all %>%
   dplyr::group_by(Target, AnnotLevel) %>%
@@ -761,7 +937,7 @@ top_hits_tbl <- results_all %>%
   dplyr::slice_head(n = 15) %>%
   dplyr::ungroup() %>%
   dplyr::select(
-    Target, AnalysisType, AnnotLevel, TopN, Region, Metric, Direction,
+    Target, AnalysisType, AnnotLevel, TopN, Stratum, Region, Layer, Metric, Direction,
     CellType, sd_from_mean, p, q_target, q_global, SignedSig_Global, N_Hits, N_Background
   )
 
@@ -819,6 +995,7 @@ saveRDS(
     target_manifest = target_manifest,
     background_universe = background_universe,
     sample_metadata = sample_meta,
+    condition_lookup = condition_lookup,
     mapping_qc = mapping_qc,
     analysis_params = analysis_params
   ),
@@ -828,6 +1005,7 @@ saveRDS(
 reproducibility_lines <- c(
   paste0("Run date: ", Sys.time()),
   paste0("Input file: ", data_path),
+  paste0("Sample metadata file: ", sample_metadata_path),
   paste0("Input SHA256: ", input_hash),
   paste0("EWCE reps: ", analysis_params$reps),
   paste0("Top-N values: ", paste(analysis_params$top_n_values, collapse = ", ")),
