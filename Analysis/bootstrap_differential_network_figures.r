@@ -16,7 +16,7 @@
 
 required_pkgs <- c(
   "dplyr", "tidyr", "stringr", "purrr", "tibble", "ggplot2",
-  "readr", "ggraph", "igraph", "svglite", "scales"
+  "readr", "ggraph", "igraph", "svglite", "scales", "forcats"
 )
 missing <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
 if (length(missing) > 0) install.packages(missing, repos = "https://cloud.r-project.org")
