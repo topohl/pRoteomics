@@ -23,10 +23,10 @@ if (length(missing) > 0) install.packages(missing, repos = "https://cloud.r-proj
 invisible(lapply(required_pkgs, library, character.only = TRUE))
 
 params <- list(
-  spatial_rds = "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Results/network_spatial_relations/04_Logs/network_spatial_relations_objects.rds",
-  output_dir = "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Results/bootstrap_network_stability",
+  spatial_rds = "/Users/tobiaspohl/Documents/pRoteomics/Results/network_spatial_relations/04_Logs/network_spatial_relations_objects.rds",
+  output_dir = "/Users/tobiaspohl/Documents/pRoteomics/Results/bootstrap_network_stability",
   n_boot = 250,
-  edge_abs_r_threshold = 0.60,
+  edge_abs_r_threshold = 0.50,
   consensus_frequency_threshold = 0.70,
   seed = 1234
 )
@@ -53,7 +53,7 @@ aggregate_region_layer_expression <- function(expr, sample_md) {
   long <- as.data.frame(expr) %>%
     tibble::rownames_to_column("Protein") %>%
     tidyr::pivot_longer(-Protein, names_to = "SampleColumn", values_to = "Expression") %>%
-    left_join(md %>% select(SampleColumn, RegionLayer), by = "SampleColumn")
+    left_join(md %>% dplyr::select(SampleColumn, RegionLayer), by = "SampleColumn")
 
   agg <- long %>%
     filter(!is.na(RegionLayer)) %>%
@@ -80,14 +80,23 @@ cor_edges <- function(unit_matrix) {
 
 bootstrap_iteration <- function(expr, sample_md, threshold) {
   samp <- sample(sample_md$SampleColumn, size = nrow(sample_md), replace = TRUE)
-  md_boot <- sample_md %>% filter(SampleColumn %in% samp)
+
+  md_boot <- tibble::tibble(
+    SampleColumn = samp,
+    BootstrapSampleColumn = paste0(samp, "__boot", seq_along(samp))
+  ) %>%
+    dplyr::left_join(sample_md, by = "SampleColumn") %>%
+    dplyr::mutate(SampleColumn = .data$BootstrapSampleColumn) %>%
+    dplyr::select(-.data$BootstrapSampleColumn)
+
   expr_boot <- expr[, samp, drop = FALSE]
-  colnames(expr_boot) <- samp
-  md_boot$SampleColumn <- samp
+  colnames(expr_boot) <- md_boot$SampleColumn
 
   unit_matrix <- aggregate_region_layer_expression(expr_boot, md_boot)
   edges <- cor_edges(unit_matrix)
-  edges %>% mutate(Present = AbsSpearmanR >= threshold)
+
+  edges %>%
+    dplyr::mutate(Present = .data$AbsSpearmanR >= threshold)
 }
 
 summarise_bootstrap_edges <- function(edge_boot_tbl, threshold) {
