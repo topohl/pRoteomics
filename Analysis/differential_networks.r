@@ -28,9 +28,9 @@ params <- list(
   output_dir = "/Users/tobiaspohl/Documents/pRoteomics/Results/differential_networks",
   group_order = c("CON", "RES", "SUS"),
   comparisons = list(c("CON", "RES"), c("CON", "SUS"), c("RES", "SUS")),
-  edge_presence_abs_r = 0.60,
-  delta_abs_r_threshold = 0.20,
-  plot_min_abs_delta = 0.20
+  edge_presence_abs_r = 0.50,
+  delta_abs_r_threshold = 0.10,
+  plot_min_abs_delta = 0.10
 )
 
 message2 <- function(...) message(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), " | ", ...)
