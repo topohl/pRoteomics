@@ -195,14 +195,14 @@ make_cytoscape_nodes <- function(cyt_edges, node_summary) {
     dplyr::filter(!is.na(.data$name), .data$name != "") %>%
     dplyr::distinct(.data$name, .keep_all = TRUE) %>%
     dplyr::left_join(node_summary, by = c("name" = "Node")) %>%
-    dplyr::select(.data$name, dplyr::everything())
+    dplyr::select("name", dplyr::everything())
 }
 
 write_graphml <- function(edges, nodes, outfile) {
   if (nrow(edges) == 0) return(invisible(NULL))
 
   nodes <- nodes %>%
-    dplyr::select(.data$name, dplyr::everything()) %>%
+    dplyr::select("name", dplyr::everything()) %>%
     dplyr::filter(!is.na(.data$name), .data$name != "") %>%
     dplyr::distinct(.data$name, .keep_all = TRUE)
 
@@ -286,7 +286,7 @@ summary_tbl <- purrr::imap_dfr(all_diff, function(df, label) {
   df %>%
     dplyr::count(.data$EdgeClass, name = "N") %>%
     dplyr::mutate(Comparison = label) %>%
-    dplyr::select(.data$Comparison, .data$EdgeClass, .data$N)
+    dplyr::select("Comparison", "EdgeClass", "N")
 })
 
 utils::write.csv(summary_tbl, file.path(dirs$tables, "rewiring_summary_counts.csv"), row.names = FALSE)
