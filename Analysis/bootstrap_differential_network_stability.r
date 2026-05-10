@@ -92,11 +92,11 @@ make_unit_matrix_stratified_boot <- function(expr, sample_md, group) {
 
   if (nrow(md_group) < 4) return(NULL)
 
-  region_layers <- sort(unique(md_group$RegionLayer))
+  region_layers <- sort(unique(as.character(md_group$RegionLayer)))
   unit_profiles <- list()
 
   for (rl in region_layers) {
-    cols <- md_group$SampleColumn[md_group$RegionLayer == rl]
+    cols <- md_group$SampleColumn[as.character(md_group$RegionLayer) == rl]
     cols <- cols[cols %in% colnames(expr)]
     if (length(cols) < 2) next
 
@@ -119,16 +119,19 @@ cor_edges <- function(unit_matrix, group) {
   cor_mat <- suppressWarnings(cor(unit_matrix, method = "spearman", use = "pairwise.complete.obs"))
   units <- colnames(cor_mat)
 
-  edge_grid <- expand.grid(Source = units, Target = units, stringsAsFactors = FALSE) %>%
-    tibble::as_tibble() %>%
-    dplyr::filter(as.character(.data$Source) < as.character(.data$Target))
+  if (length(units) < 2) return(tibble::tibble())
 
-  if (nrow(edge_grid) == 0) return(tibble::tibble())
+  pairs <- utils::combn(units, 2, simplify = FALSE)
+  edges <- purrr::map_dfr(pairs, function(pair) {
+    r <- cor_mat[pair[1], pair[2]]
+    tibble::tibble(
+      Source = pair[1],
+      Target = pair[2],
+      SpearmanR = as.numeric(r)
+    )
+  })
 
-  edge_grid %>%
-    dplyr::rowwise() %>%
-    dplyr::mutate(SpearmanR = cor_mat[.data$Source, .data$Target]) %>%
-    dplyr::ungroup() %>%
+  edges %>%
     dplyr::filter(!is.na(.data$SpearmanR)) %>%
     dplyr::mutate(
       Group = group,
