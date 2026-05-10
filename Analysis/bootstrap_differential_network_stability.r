@@ -106,7 +106,7 @@ make_unit_matrix_stratified_boot <- function(expr, sample_md, group) {
 
   md_group <- sample_md %>%
     dplyr::filter(
-      .data$ExpGroup == group,
+      .data$ExpGroup == .env$group,
       !is.na(.data$RegionLayer),
       .data$SampleColumn %in% colnames(expr)
     ) %>%
