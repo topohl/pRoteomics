@@ -2,17 +2,17 @@
 # Bootstrap stability analysis for differential spatial networks
 # ================================================================
 # Purpose:
-#   Estimate whether group differences in region/layer proteomic similarity
+#   Test whether group differences in region/layer proteomic similarity
 #   networks are stable under bootstrap resampling.
 #
 # Required first step:
 #   Run Analysis/network_spatial_relations.r with run_group_specific_networks = TRUE.
 #
-# Difference from Analysis/bootstrap_network_stability.r:
-#   - bootstrap_network_stability.r tests whether edges are stable in the
-#     pooled/overall spatial network.
-#   - This script tests whether group differences in edges are stable, e.g.
-#     whether CA1_slm--CA2_slm is consistently weaker in SUS than CON.
+# Key design:
+#   This script resamples samples WITHIN each ExpGroup x RegionLayer stratum,
+#   recomputes each region/layer mean expression profile, recomputes Spearman
+#   spatial similarity networks, and then computes DeltaR = R_B - R_A for each
+#   group comparison.
 # ================================================================
 
 required_pkgs <- c(
@@ -46,7 +46,6 @@ params <- list(
   # Used for consensus differential tables/plots.
   differential_frequency_threshold = 0.70,
 
-  # Candidate edges to highlight in a focused output table.
   candidate_edges = tibble::tribble(
     ~Source, ~Target,
     "CA1_slm", "CA2_slm",
@@ -82,28 +81,41 @@ normalize_edge <- function(df) {
     dplyr::select(-"Source0", -"Target0")
 }
 
-aggregate_region_layer_expression <- function(expr, sample_md) {
-  sample_order <- match(colnames(expr), sample_md$SampleColumn)
-  if (any(is.na(sample_order))) {
-    stop("Some expression columns are missing from sample metadata during aggregation.")
+make_unit_matrix_stratified_boot <- function(expr, sample_md, group) {
+  md_group <- sample_md %>%
+    dplyr::filter(
+      .data$ExpGroup == group,
+      !is.na(.data$RegionLayer),
+      .data$SampleColumn %in% colnames(expr)
+    ) %>%
+    dplyr::distinct(.data$SampleColumn, .keep_all = TRUE)
+
+  if (nrow(md_group) < 4) return(NULL)
+
+  region_layers <- sort(unique(md_group$RegionLayer))
+  unit_profiles <- list()
+
+  for (rl in region_layers) {
+    cols <- md_group %>%
+      dplyr::filter(.data$RegionLayer == rl) %>%
+      dplyr::pull(.data$SampleColumn)
+
+    cols <- cols[cols %in% colnames(expr)]
+    if (length(cols) < 2) next
+
+    boot_cols <- sample(cols, size = length(cols), replace = TRUE)
+    unit_profiles[[rl]] <- rowMeans(expr[, boot_cols, drop = FALSE], na.rm = TRUE)
   }
 
-  md <- sample_md[sample_order, , drop = FALSE]
+  if (length(unit_profiles) < 3) return(NULL)
 
-  long <- as.data.frame(expr) %>%
-    tibble::rownames_to_column("Protein") %>%
-    tidyr::pivot_longer(-"Protein", names_to = "SampleColumn", values_to = "Expression") %>%
-    dplyr::left_join(md %>% dplyr::select("SampleColumn", "RegionLayer"), by = "SampleColumn")
+  unit_matrix <- do.call(cbind, unit_profiles)
+  rownames(unit_matrix) <- rownames(expr)
+  colnames(unit_matrix) <- names(unit_profiles)
+  unit_matrix <- unit_matrix[rowSums(!is.na(unit_matrix)) > 1, , drop = FALSE]
 
-  agg <- long %>%
-    dplyr::filter(!is.na(.data$RegionLayer)) %>%
-    dplyr::group_by(.data$Protein, .data$RegionLayer) %>%
-    dplyr::summarise(MeanExpression = mean(.data$Expression, na.rm = TRUE), .groups = "drop") %>%
-    tidyr::pivot_wider(names_from = "RegionLayer", values_from = "MeanExpression") %>%
-    tibble::column_to_rownames("Protein") %>%
-    as.matrix()
-
-  agg[rowSums(!is.na(agg)) > 1, , drop = FALSE]
+  if (nrow(unit_matrix) < 3 || ncol(unit_matrix) < 3) return(NULL)
+  unit_matrix
 }
 
 cor_edges <- function(unit_matrix, group) {
@@ -116,47 +128,16 @@ cor_edges <- function(unit_matrix, group) {
     dplyr::rowwise() %>%
     dplyr::mutate(SpearmanR = cor_mat[.data$Source, .data$Target]) %>%
     dplyr::ungroup() %>%
+    dplyr::filter(!is.na(.data$SpearmanR)) %>%
     dplyr::mutate(
       Group = group,
       AbsSpearmanR = abs(.data$SpearmanR)
     )
 }
 
-resample_group_samples <- function(sample_md_group) {
-  # Robust bootstrap with replacement.
-  # Important: do NOT use filter(SampleColumn %in% samp), because that drops
-  # duplicate bootstrap draws. Instead, sample row indices and then give every
-  # draw a unique pseudo-sample name.
-  idx <- sample(seq_len(nrow(sample_md_group)), size = nrow(sample_md_group), replace = TRUE)
-
-  md_boot <- sample_md_group[idx, , drop = FALSE]
-  md_boot$OriginalSampleColumn <- md_boot$SampleColumn
-  md_boot$SampleColumn <- paste0(md_boot$OriginalSampleColumn, "__boot", seq_along(idx))
-  rownames(md_boot) <- NULL
-
-  md_boot
-}
-
 bootstrap_group_edges <- function(expr, sample_md, group) {
-  md_group <- sample_md %>%
-    dplyr::filter(.data$ExpGroup == group, .data$SampleColumn %in% colnames(expr)) %>%
-    dplyr::distinct(.data$SampleColumn, .keep_all = TRUE)
-
-  if (nrow(md_group) < 4) return(tibble::tibble())
-
-  md_boot <- resample_group_samples(md_group)
-  samp <- md_boot$OriginalSampleColumn
-
-  if (!all(samp %in% colnames(expr))) {
-    stop("Bootstrap sampled columns not found in expression matrix for group: ", group)
-  }
-
-  expr_boot <- expr[, samp, drop = FALSE]
-  colnames(expr_boot) <- md_boot$SampleColumn
-
-  unit_matrix <- aggregate_region_layer_expression(expr_boot, md_boot)
-  if (ncol(unit_matrix) < 3) return(tibble::tibble())
-
+  unit_matrix <- make_unit_matrix_stratified_boot(expr, sample_md, group)
+  if (is.null(unit_matrix)) return(tibble::tibble())
   cor_edges(unit_matrix, group)
 }
 
@@ -385,6 +366,9 @@ print(sample_md %>% dplyr::count(.data$ExpGroup))
 
 message2("Samples matching expression matrix by group:")
 print(sample_md %>% dplyr::mutate(InExpressionMatrix = .data$SampleColumn %in% colnames(expr)) %>% dplyr::count(.data$ExpGroup, .data$InExpressionMatrix))
+
+message2("Region/layer counts by group:")
+print(sample_md %>% dplyr::filter(.data$SampleColumn %in% colnames(expr)) %>% dplyr::count(.data$ExpGroup, .data$RegionLayer))
 
 boot_list <- vector("list", params$n_boot)
 for (i in seq_len(params$n_boot)) {
