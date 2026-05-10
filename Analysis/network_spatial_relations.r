@@ -42,12 +42,15 @@ install_if_missing(required_pkgs)
 # -------------------------------
 params <- list(
   # Typical Exp9 neuron-neuropil matrix. Change as needed.
-  protein_file = "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/morpheus/20260218_pgmatrix_imputed_neuron_neuropil_180samples_missing70pct_with_metadata.xlsx",
+  #protein_file = "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/morpheus/20260218_pgmatrix_imputed_neuron_neuropil_180samples_missing70pct_with_metadata.xlsx",
+  protein_file = "/Users/tobiaspohl/Documents/pRoteomics/20260218_pgmatrix_imputed_neuron_neuropil_180samples_missing70pct.xlsx",
 
   # Optional metadata file. If NULL or missing, the script parses sample names.
-  metadata_file = "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Results/module_scores/sample_metadata_merged_clean_for_module_scores.xlsx",
+  #metadata_file = "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Results/module_scores/sample_metadata_merged_clean_for_module_scores.xlsx",
+  metadata_file = "/Users/tobiaspohl/Documents/Data/proteomics/TPE9_sample_metadata_males.xlsx",
 
-  output_dir = "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Results/network_spatial_relations",
+  #output_dir = "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Results/network_spatial_relations",
+  output_dir = "/Users/tobiaspohl/Documents/pRoteomics/Results/network_spatial_relations",
 
   # Minimum fraction of non-missing values required for a protein after sample-column selection.
   min_nonmissing_fraction = 0.5,
@@ -280,7 +283,7 @@ aggregate_region_layer_expression <- function(expr, sample_md) {
   long <- as.data.frame(expr) %>%
     rownames_to_column("Protein") %>%
     tidyr::pivot_longer(-Protein, names_to = "SampleColumn", values_to = "Expression") %>%
-    left_join(md %>% select(SampleColumn, Region, Layer, RegionLayer, ExpGroup), by = "SampleColumn")
+    left_join(md %>% dplyr::select(SampleColumn, Region, Layer, RegionLayer, ExpGroup), by = "SampleColumn")
 
   agg <- long %>%
     group_by(Protein, RegionLayer) %>%
@@ -352,7 +355,7 @@ make_node_table <- function(sample_md, edge_tbl = NULL) {
     rename(name = RegionLayer)
 
   if (!is.null(edge_tbl) && nrow(edge_tbl) > 0) {
-    g <- igraph::graph_from_data_frame(edge_tbl %>% select(Source, Target), directed = FALSE, vertices = nodes)
+    g <- igraph::graph_from_data_frame(edge_tbl %>% dplyr::select(Source, Target), directed = FALSE, vertices = nodes)
     cent <- tibble::tibble(
       name = igraph::V(g)$name,
       Degree = igraph::degree(g),
