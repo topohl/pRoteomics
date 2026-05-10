@@ -22,8 +22,10 @@ if (length(missing) > 0) install.packages(missing, repos = "https://cloud.r-proj
 invisible(lapply(required_pkgs, library, character.only = TRUE))
 
 params <- list(
-  spatial_rds = "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Results/network_spatial_relations/04_Logs/network_spatial_relations_objects.rds",
-  output_dir = "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Results/differential_networks",
+  #spatial_rds = "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Results/network_spatial_relations/04_Logs/network_spatial_relations_objects.rds",
+  spatial_rds = "/Users/tobiaspohl/Documents/pRoteomics/Results/network_spatial_relations/04_Logs/network_spatial_relations_objects.rds",
+  #output_dir = "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Results/differential_networks",
+  output_dir = "/Users/tobiaspohl/Documents/pRoteomics/Results/differential_networks",
   group_order = c("CON", "RES", "SUS"),
   comparisons = list(c("CON", "RES"), c("CON", "SUS"), c("RES", "SUS")),
   edge_presence_abs_r = 0.60,
@@ -134,8 +136,8 @@ plot_differential_network <- function(diff_edges, outfile, title, params) {
     ggraph::geom_edge_link(aes(width = AbsDeltaR, linetype = EdgeClass, alpha = AbsDeltaR), colour = "grey35") +
     ggraph::geom_node_point(shape = 21, fill = "white", colour = "black", size = 4, stroke = 0.4) +
     ggraph::geom_node_text(aes(label = name), repel = TRUE, size = 2.8) +
-    ggplot2::scale_edge_width(range = c(0.2, 1.8), guide = "none") +
-    ggplot2::scale_edge_alpha(range = c(0.25, 0.9), guide = "none") +
+    ggraph::scale_edge_width(range = c(0.2, 1.8), guide = "none") +
+    ggraph::scale_edge_alpha(range = c(0.25, 0.9), guide = "none") +
     ggplot2::labs(title = title) +
     ggplot2::theme_void(base_size = 8) +
     ggplot2::theme(plot.title = element_text(hjust = 0.5, face = "bold"))
