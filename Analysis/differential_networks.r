@@ -56,67 +56,81 @@ get_group_cor_matrix <- function(obj, group) {
 matrix_to_edges <- function(cor_mat, group) {
   units <- colnames(cor_mat)
   expand.grid(Source = units, Target = units, stringsAsFactors = FALSE) %>%
-    as_tibble() %>%
-    filter(Source < Target) %>%
-    rowwise() %>%
-    mutate(SpearmanR = cor_mat[Source, Target]) %>%
-    ungroup() %>%
-    mutate(Group = group, AbsSpearmanR = abs(SpearmanR))
+    tibble::as_tibble() %>%
+    dplyr::filter(.data$Source < .data$Target) %>%
+    dplyr::rowwise() %>%
+    dplyr::mutate(SpearmanR = cor_mat[.data$Source, .data$Target]) %>%
+    dplyr::ungroup() %>%
+    dplyr::mutate(Group = group, AbsSpearmanR = abs(.data$SpearmanR))
 }
 
 compare_edge_sets <- function(edges_a, edges_b, group_a, group_b, params) {
-  ea <- edges_a %>% transmute(Source, Target, R_A = SpearmanR, AbsR_A = AbsSpearmanR)
-  eb <- edges_b %>% transmute(Source, Target, R_B = SpearmanR, AbsR_B = AbsSpearmanR)
+  ea <- edges_a %>%
+    dplyr::transmute(Source = .data$Source, Target = .data$Target, R_A = .data$SpearmanR, AbsR_A = .data$AbsSpearmanR)
+  eb <- edges_b %>%
+    dplyr::transmute(Source = .data$Source, Target = .data$Target, R_B = .data$SpearmanR, AbsR_B = .data$AbsSpearmanR)
 
-  full_join(ea, eb, by = c("Source", "Target")) %>%
-    mutate(
+  dplyr::full_join(ea, eb, by = c("Source", "Target")) %>%
+    dplyr::mutate(
+      R_A = dplyr::coalesce(.data$R_A, 0),
+      R_B = dplyr::coalesce(.data$R_B, 0),
+      AbsR_A = dplyr::coalesce(.data$AbsR_A, 0),
+      AbsR_B = dplyr::coalesce(.data$AbsR_B, 0),
       Group_A = group_a,
       Group_B = group_b,
-      DeltaR = R_B - R_A,
-      AbsDeltaR = abs(DeltaR),
-      Present_A = AbsR_A >= params$edge_presence_abs_r,
-      Present_B = AbsR_B >= params$edge_presence_abs_r,
-      EdgeClass = case_when(
-        Present_A & !Present_B ~ "lost_in_B",
-        !Present_A & Present_B ~ "gained_in_B",
-        Present_A & Present_B & DeltaR >= params$delta_abs_r_threshold ~ "strengthened_in_B",
-        Present_A & Present_B & DeltaR <= -params$delta_abs_r_threshold ~ "weakened_in_B",
-        Present_A & Present_B ~ "preserved",
+      DeltaR = .data$R_B - .data$R_A,
+      AbsDeltaR = abs(.data$DeltaR),
+      Present_A = .data$AbsR_A >= params$edge_presence_abs_r,
+      Present_B = .data$AbsR_B >= params$edge_presence_abs_r,
+      EdgeClass = dplyr::case_when(
+        .data$Present_A & !.data$Present_B ~ "lost_in_B",
+        !.data$Present_A & .data$Present_B ~ "gained_in_B",
+        .data$Present_A & .data$Present_B & .data$DeltaR >= params$delta_abs_r_threshold ~ "strengthened_in_B",
+        .data$Present_A & .data$Present_B & .data$DeltaR <= -params$delta_abs_r_threshold ~ "weakened_in_B",
+        .data$Present_A & .data$Present_B ~ "preserved",
         TRUE ~ "weak_in_both"
       ),
-      DirectionChange = case_when(
-        sign(R_A) != sign(R_B) & abs(R_A) >= params$edge_presence_abs_r & abs(R_B) >= params$edge_presence_abs_r ~ "sign_flip_strong_edges",
-        sign(R_A) != sign(R_B) ~ "sign_flip_weak_edge",
+      DirectionChange = dplyr::case_when(
+        sign(.data$R_A) != sign(.data$R_B) & abs(.data$R_A) >= params$edge_presence_abs_r & abs(.data$R_B) >= params$edge_presence_abs_r ~ "sign_flip_strong_edges",
+        sign(.data$R_A) != sign(.data$R_B) ~ "sign_flip_weak_edge",
         TRUE ~ "same_sign"
       )
     ) %>%
-    arrange(desc(AbsDeltaR))
+    dplyr::arrange(dplyr::desc(.data$AbsDeltaR))
 }
 
 node_rewiring_summary <- function(diff_edges) {
-  bind_rows(
-    diff_edges %>% transmute(Node = Source, EdgeClass, AbsDeltaR, DeltaR),
-    diff_edges %>% transmute(Node = Target, EdgeClass, AbsDeltaR, DeltaR)
+  if (nrow(diff_edges) == 0) {
+    return(tibble::tibble(
+      Node = character(), N_Edges = integer(), N_Gained = integer(),
+      N_Lost = integer(), N_Strengthened = integer(), N_Weakened = integer(),
+      MeanAbsDeltaR = numeric(), MaxAbsDeltaR = numeric(), NetDeltaR = numeric()
+    ))
+  }
+
+  dplyr::bind_rows(
+    diff_edges %>% dplyr::transmute(Node = .data$Source, EdgeClass = .data$EdgeClass, AbsDeltaR = .data$AbsDeltaR, DeltaR = .data$DeltaR),
+    diff_edges %>% dplyr::transmute(Node = .data$Target, EdgeClass = .data$EdgeClass, AbsDeltaR = .data$AbsDeltaR, DeltaR = .data$DeltaR)
   ) %>%
-    group_by(Node) %>%
-    summarise(
-      N_Edges = n(),
-      N_Gained = sum(EdgeClass == "gained_in_B", na.rm = TRUE),
-      N_Lost = sum(EdgeClass == "lost_in_B", na.rm = TRUE),
-      N_Strengthened = sum(EdgeClass == "strengthened_in_B", na.rm = TRUE),
-      N_Weakened = sum(EdgeClass == "weakened_in_B", na.rm = TRUE),
-      MeanAbsDeltaR = mean(AbsDeltaR, na.rm = TRUE),
-      MaxAbsDeltaR = max(AbsDeltaR, na.rm = TRUE),
-      NetDeltaR = sum(DeltaR, na.rm = TRUE),
+    dplyr::group_by(.data$Node) %>%
+    dplyr::summarise(
+      N_Edges = dplyr::n(),
+      N_Gained = sum(.data$EdgeClass == "gained_in_B", na.rm = TRUE),
+      N_Lost = sum(.data$EdgeClass == "lost_in_B", na.rm = TRUE),
+      N_Strengthened = sum(.data$EdgeClass == "strengthened_in_B", na.rm = TRUE),
+      N_Weakened = sum(.data$EdgeClass == "weakened_in_B", na.rm = TRUE),
+      MeanAbsDeltaR = mean(.data$AbsDeltaR, na.rm = TRUE),
+      MaxAbsDeltaR = max(.data$AbsDeltaR, na.rm = TRUE),
+      NetDeltaR = sum(.data$DeltaR, na.rm = TRUE),
       .groups = "drop"
     ) %>%
-    arrange(desc(MaxAbsDeltaR), desc(MeanAbsDeltaR))
+    dplyr::arrange(dplyr::desc(.data$MaxAbsDeltaR), dplyr::desc(.data$MeanAbsDeltaR))
 }
 
 plot_differential_network <- function(diff_edges, outfile, title, params) {
   plot_edges <- diff_edges %>%
-    filter(AbsDeltaR >= params$plot_min_abs_delta) %>%
-    filter(EdgeClass != "weak_in_both")
+    dplyr::filter(.data$AbsDeltaR >= params$plot_min_abs_delta) %>%
+    dplyr::filter(.data$EdgeClass != "weak_in_both")
 
   if (nrow(plot_edges) == 0) {
     warning("No differential edges to plot for ", title)
@@ -124,10 +138,12 @@ plot_differential_network <- function(diff_edges, outfile, title, params) {
   }
 
   nodes <- unique(c(plot_edges$Source, plot_edges$Target)) %>%
-    tibble::tibble(name = .)
+    tibble::tibble(name = .) %>%
+    dplyr::filter(!is.na(.data$name), .data$name != "") %>%
+    dplyr::distinct(.data$name, .keep_all = TRUE)
 
   g <- igraph::graph_from_data_frame(
-    plot_edges %>% transmute(from = Source, to = Target, AbsDeltaR, DeltaR, EdgeClass),
+    plot_edges %>% dplyr::transmute(from = .data$Source, to = .data$Target, AbsDeltaR = .data$AbsDeltaR, DeltaR = .data$DeltaR, EdgeClass = .data$EdgeClass),
     directed = FALSE,
     vertices = nodes
   )
@@ -140,15 +156,63 @@ plot_differential_network <- function(diff_edges, outfile, title, params) {
     ggraph::scale_edge_alpha(range = c(0.25, 0.9), guide = "none") +
     ggplot2::labs(title = title) +
     ggplot2::theme_void(base_size = 8) +
-    ggplot2::theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+    ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5, face = "bold"))
 
   ggplot2::ggsave(outfile, p, width = 150, height = 120, units = "mm", device = svglite::svglite)
   invisible(p)
 }
 
+make_cytoscape_edges <- function(diff_edges, params) {
+  out <- diff_edges %>%
+    dplyr::filter(
+      .data$AbsDeltaR >= params$plot_min_abs_delta,
+      .data$EdgeClass != "weak_in_both"
+    ) %>%
+    dplyr::transmute(
+      Source = .data$Source,
+      Target = .data$Target,
+      DeltaR = .data$DeltaR,
+      AbsDeltaR = .data$AbsDeltaR,
+      EdgeClass = .data$EdgeClass,
+      DirectionChange = .data$DirectionChange,
+      R_A = .data$R_A,
+      R_B = .data$R_B
+    )
+
+  required_cols <- c("Source", "Target", "DeltaR", "AbsDeltaR", "EdgeClass", "DirectionChange", "R_A", "R_B")
+  missing_cols <- setdiff(required_cols, names(out))
+  if (length(missing_cols) > 0) out[missing_cols] <- NA
+  out[, required_cols, drop = FALSE]
+}
+
+make_cytoscape_nodes <- function(cyt_edges, node_summary) {
+  if (nrow(cyt_edges) == 0) {
+    return(tibble::tibble(name = character()))
+  }
+
+  unique(c(cyt_edges$Source, cyt_edges$Target)) %>%
+    tibble::tibble(name = .) %>%
+    dplyr::filter(!is.na(.data$name), .data$name != "") %>%
+    dplyr::distinct(.data$name, .keep_all = TRUE) %>%
+    dplyr::left_join(node_summary, by = c("name" = "Node")) %>%
+    dplyr::select(.data$name, dplyr::everything())
+}
+
 write_graphml <- function(edges, nodes, outfile) {
   if (nrow(edges) == 0) return(invisible(NULL))
-  g <- igraph::graph_from_data_frame(edges %>% rename(from = Source, to = Target), directed = FALSE, vertices = nodes)
+
+  nodes <- nodes %>%
+    dplyr::select(.data$name, dplyr::everything()) %>%
+    dplyr::filter(!is.na(.data$name), .data$name != "") %>%
+    dplyr::distinct(.data$name, .keep_all = TRUE)
+
+  if (nrow(nodes) == 0) return(invisible(NULL))
+
+  g <- igraph::graph_from_data_frame(
+    edges %>% dplyr::rename(from = .data$Source, to = .data$Target),
+    directed = FALSE,
+    vertices = nodes
+  )
   igraph::write_graph(g, outfile, format = "graphml")
 }
 
@@ -166,7 +230,7 @@ obj <- readRDS(params$spatial_rds)
 
 all_group_edges <- purrr::map_dfr(params$group_order, function(grp) {
   mat <- get_group_cor_matrix(obj, grp)
-  if (is.null(mat)) return(tibble())
+  if (is.null(mat)) return(tibble::tibble())
   matrix_to_edges(mat, grp)
 })
 
@@ -184,8 +248,8 @@ for (cmp in params$comparisons) {
   group_b <- cmp[2]
   message2("Comparing ", group_a, " vs ", group_b)
 
-  edges_a <- all_group_edges %>% filter(Group == group_a)
-  edges_b <- all_group_edges %>% filter(Group == group_b)
+  edges_a <- all_group_edges %>% dplyr::filter(.data$Group == group_a)
+  edges_b <- all_group_edges %>% dplyr::filter(.data$Group == group_b)
   if (nrow(edges_a) == 0 || nrow(edges_b) == 0) next
 
   diff_edges <- compare_edge_sets(edges_a, edges_b, group_a, group_b, params)
@@ -202,11 +266,8 @@ for (cmp in params$comparisons) {
     params
   )
 
-  cyt_edges <- diff_edges %>%
-    filter(AbsDeltaR >= params$plot_min_abs_delta, EdgeClass != "weak_in_both") %>%
-    transmute(Source, Target, DeltaR, AbsDeltaR, EdgeClass, DirectionChange, R_A, R_B)
-  cyt_nodes <- unique(c(cyt_edges$Source, cyt_edges$Target)) %>% tibble::tibble(name = .) %>%
-    left_join(node_summary, by = c("name" = "Node"))
+  cyt_edges <- make_cytoscape_edges(diff_edges, params)
+  cyt_nodes <- make_cytoscape_nodes(cyt_edges, node_summary)
 
   utils::write.csv(cyt_edges, file.path(dirs$networks, paste0(label, "_cytoscape_edges.csv")), row.names = FALSE)
   utils::write.csv(cyt_nodes, file.path(dirs$networks, paste0(label, "_cytoscape_nodes.csv")), row.names = FALSE)
@@ -223,9 +284,9 @@ for (cmp in params$comparisons) {
 
 summary_tbl <- purrr::imap_dfr(all_diff, function(df, label) {
   df %>%
-    count(EdgeClass, name = "N") %>%
-    mutate(Comparison = label) %>%
-    select(Comparison, EdgeClass, N)
+    dplyr::count(.data$EdgeClass, name = "N") %>%
+    dplyr::mutate(Comparison = label) %>%
+    dplyr::select(.data$Comparison, .data$EdgeClass, .data$N)
 })
 
 utils::write.csv(summary_tbl, file.path(dirs$tables, "rewiring_summary_counts.csv"), row.names = FALSE)
