@@ -45,7 +45,7 @@ params <- list(
   #protein_file = "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/morpheus/20260218_pgmatrix_imputed_neuron_neuropil_180samples_missing70pct_with_metadata.xlsx",
   protein_file = "/Users/tobiaspohl/Documents/pRoteomics/20260218_pgmatrix_imputed_neuron_neuropil_180samples_missing70pct.xlsx",
 
-  # Optional metadata file. If NULL or missing, the script parses sample names.
+  # EWCE/sample metadata file. The script uses sample_id/region/layer/celltype_layer/ExpGroup when available.
   #metadata_file = "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Results/module_scores/sample_metadata_merged_clean_for_module_scores.xlsx",
   metadata_file = "/Users/tobiaspohl/Documents/Data/proteomics/TPE9_sample_metadata_males.xlsx",
 
@@ -65,6 +65,14 @@ params <- list(
   # If TRUE, z-score each protein across all samples before aggregation.
   # Recommended for spatial relation networks, because it avoids high-abundance proteins dominating.
   zscore_proteins = TRUE,
+
+  # If TRUE, keep only neuron neuropil samples from metadata column celltype_layer.
+  # This prevents soma/microglia samples from entering the spatial neuropil network.
+  filter_neuron_neuropil_only = TRUE,
+
+  # Numeric ExpGroup recoding used by the EWCE metadata. Adjust here if EWCE_E9 used another coding.
+  # Common Exp9 convention assumed here: 1 = CON, 2 = RES, 3 = SUS.
+  expgroup_numeric_map = c("1" = "CON", "2" = "RES", "3" = "SUS"),
 
   # If TRUE, also creates group-specific spatial similarity networks where ExpGroup is available.
   run_group_specific_networks = TRUE,
@@ -132,71 +140,112 @@ row_zscore <- function(mat) {
   sweep(sweep(mat, 1, m, "-"), 1, s, "/")
 }
 
+normalize_sample_key <- function(x) {
+  x %>%
+    as.character() %>%
+    basename() %>%
+    stringr::str_replace("\\.d$", "") %>%
+    stringr::str_to_lower()
+}
+
+normalize_expgroup <- function(x, numeric_map = params$expgroup_numeric_map) {
+  x_chr <- as.character(x)
+  x_chr <- stringr::str_trim(x_chr)
+  x_up <- toupper(x_chr)
+
+  mapped_numeric <- unname(numeric_map[x_chr])
+
+  dplyr::case_when(
+    !is.na(mapped_numeric) ~ mapped_numeric,
+    x_up %in% c("CONTROL", "CTRL", "CON") ~ "CON",
+    x_up %in% c("RESILIENT", "RES") ~ "RES",
+    x_up %in% c("SUSCEPTIBLE", "SUS") ~ "SUS",
+    x_up %in% c("NA", "NAN", "") ~ NA_character_,
+    TRUE ~ x_up
+  )
+}
+
 parse_sample_metadata_from_names <- function(sample_names) {
+  sample_key <- basename(sample_names)
+
   tibble::tibble(
     SampleColumn = sample_names,
-    SampleKey = basename(sample_names),
-    Region = stringr::str_extract(SampleColumn, regex("CA1|CA2|CA3|DG", ignore_case = TRUE)) %>% toupper(),
-    Layer = stringr::str_extract(SampleColumn, regex("slm|s[ro]|sr|so|mo|po|sp|sg", ignore_case = TRUE)) %>% tolower(),
-    ExpGroup = stringr::str_extract(SampleColumn, regex("CON|RES|SUS|control|resilient|susceptible", ignore_case = TRUE)) %>% toupper()
+    SampleKey = sample_key,
+    Region = stringr::str_extract(SampleKey, regex("CA1|CA2|CA3|DG", ignore_case = TRUE)) %>% toupper(),
+    Layer = stringr::str_extract(SampleKey, regex("slm|sr|so|mo|po|sp|sg", ignore_case = TRUE)) %>% tolower(),
+    ExpGroup = stringr::str_extract(SampleKey, regex("CON|RES|SUS|control|resilient|susceptible", ignore_case = TRUE)) %>% normalize_expgroup()
   ) %>%
-    mutate(
-      ExpGroup = dplyr::case_when(
-        ExpGroup %in% c("CONTROL") ~ "CON",
-        ExpGroup %in% c("RESILIENT") ~ "RES",
-        ExpGroup %in% c("SUSCEPTIBLE") ~ "SUS",
-        TRUE ~ ExpGroup
-      ),
+    dplyr::mutate(
       RegionLayer = ifelse(!is.na(Region) & !is.na(Layer), paste(Region, Layer, sep = "_"), NA_character_)
     )
 }
 
-standardize_metadata <- function(metadata_df, sample_names) {
+standardize_metadata <- function(metadata_df, sample_names, numeric_map = params$expgroup_numeric_map) {
   md <- as.data.frame(metadata_df)
 
   sample_col <- find_first_col(md, c(
-    "SampleColumn", "Raw_Sample", "Sample", "SampleName", "sample_name",
-    "row.names", "filename", "File", "Run", "Label"
+    "sample_id", "SampleID", "SampleColumn", "Raw_Sample", "Sample", "SampleName",
+    "sample_name", "row.names", "filename", "File", "Run", "Label"
   ))
-  region_col <- find_first_col(md, c("Region", "region", "BrainRegion"))
-  layer_col  <- find_first_col(md, c("Layer", "layer", "Stratum", "stratum"))
-  group_col  <- find_first_col(md, c("ExpGroup", "Group", "group", "Phenotype", "Condition"))
+  region_col <- find_first_col(md, c("region", "Region", "BrainRegion"))
+  layer_col  <- find_first_col(md, c("layer", "Layer", "Stratum", "stratum"))
+  group_col  <- find_first_col(md, c("ExpGroup", "EWCE_Group", "group", "Group", "Phenotype", "Condition"))
+  celltype_layer_col <- find_first_col(md, c("celltype_layer", "CelltypeLayer", "cell_type_layer"))
+  celltype_col <- find_first_col(md, c("celltype", "Celltype", "CellType", "cell_type"))
+  exclude_col <- find_first_col(md, c("exclude", "Exclude", "excluded", "Excluded"))
 
-  out <- tibble::tibble(SampleColumn = sample_names)
+  out <- tibble::tibble(
+    SampleColumn = sample_names,
+    .JoinKey = normalize_sample_key(sample_names)
+  )
 
   if (!is.na(sample_col)) {
     md2 <- md %>%
-      dplyr::mutate(.SampleColumn = as.character(.data[[sample_col]])) %>%
-      dplyr::select(.SampleColumn, dplyr::everything())
+      dplyr::mutate(
+        .SampleColumn = as.character(.data[[sample_col]]),
+        .JoinKey = normalize_sample_key(.SampleColumn)
+      ) %>%
+      dplyr::select(.JoinKey, .SampleColumn, dplyr::everything()) %>%
+      dplyr::distinct(.JoinKey, .keep_all = TRUE)
 
     out <- out %>%
-      dplyr::left_join(md2, by = c("SampleColumn" = ".SampleColumn"))
+      dplyr::left_join(md2, by = ".JoinKey")
+  } else {
+    warning("No sample identifier column found in metadata. Falling back to parsing sample names.")
   }
 
   parsed <- parse_sample_metadata_from_names(sample_names)
 
   out <- out %>%
-    mutate(
+    dplyr::mutate(
       Region = if (!is.na(region_col) && region_col %in% names(out)) as.character(.data[[region_col]]) else NA_character_,
       Layer = if (!is.na(layer_col) && layer_col %in% names(out)) as.character(.data[[layer_col]]) else NA_character_,
-      ExpGroup = if (!is.na(group_col) && group_col %in% names(out)) as.character(.data[[group_col]]) else NA_character_
+      ExpGroup = if (!is.na(group_col) && group_col %in% names(out)) as.character(.data[[group_col]]) else NA_character_,
+      CelltypeLayer = if (!is.na(celltype_layer_col) && celltype_layer_col %in% names(out)) as.character(.data[[celltype_layer_col]]) else NA_character_,
+      Celltype = if (!is.na(celltype_col) && celltype_col %in% names(out)) as.character(.data[[celltype_col]]) else NA_character_,
+      Exclude = if (!is.na(exclude_col) && exclude_col %in% names(out)) as.character(.data[[exclude_col]]) else NA_character_
     ) %>%
-    mutate(
+    dplyr::mutate(
       Region = ifelse(is.na(Region) | Region == "", parsed$Region, Region),
-      Layer = ifelse(is.na(Layer) | Layer == "", parsed$Layer, Layer),
-      ExpGroup = ifelse(is.na(ExpGroup) | ExpGroup == "", parsed$ExpGroup, ExpGroup),
+      Layer = ifelse(is.na(Layer) | Layer == "" | toupper(Layer) == "NA", parsed$Layer, Layer),
+      ExpGroup = ifelse(is.na(ExpGroup) | ExpGroup == "" | toupper(ExpGroup) == "NA", parsed$ExpGroup, ExpGroup),
       Region = toupper(Region),
       Layer = tolower(Layer),
-      ExpGroup = toupper(ExpGroup),
-      ExpGroup = case_when(
-        ExpGroup %in% c("CONTROL", "CTRL", "CON") ~ "CON",
-        ExpGroup %in% c("RESILIENT", "RES") ~ "RES",
-        ExpGroup %in% c("SUSCEPTIBLE", "SUS") ~ "SUS",
-        TRUE ~ ExpGroup
+      ExpGroup = normalize_expgroup(ExpGroup, numeric_map = numeric_map),
+      CelltypeLayer = tolower(CelltypeLayer),
+      Celltype = tolower(Celltype),
+      Exclude = dplyr::case_when(
+        tolower(Exclude) %in% c("true", "t", "1", "yes", "y") ~ TRUE,
+        tolower(Exclude) %in% c("false", "f", "0", "no", "n", "") ~ FALSE,
+        is.na(Exclude) ~ FALSE,
+        TRUE ~ NA
       ),
       RegionLayer = ifelse(!is.na(Region) & !is.na(Layer), paste(Region, Layer, sep = "_"), NA_character_)
     ) %>%
-    dplyr::select(SampleColumn, Region, Layer, RegionLayer, ExpGroup, dplyr::everything())
+    dplyr::select(
+      SampleColumn, Region, Layer, RegionLayer, ExpGroup,
+      CelltypeLayer, Celltype, Exclude, dplyr::everything()
+    )
 
   out
 }
@@ -255,23 +304,36 @@ load_expression_matrix <- function(protein_file, metadata_file = NULL, min_nonmi
   if (!is.null(metadata_file) && file.exists(metadata_file)) {
     message2("Reading metadata: ", metadata_file)
     metadata_raw <- readxl::read_excel(metadata_file)
-    sample_md <- standardize_metadata(metadata_raw, colnames(expr))
+    sample_md <- standardize_metadata(metadata_raw, colnames(expr), numeric_map = params$expgroup_numeric_map)
   } else {
     message2("No metadata file found; parsing region/layer/group from sample names.")
     sample_md <- parse_sample_metadata_from_names(colnames(expr))
   }
 
   sample_md <- sample_md %>%
-    filter(SampleColumn %in% colnames(expr)) %>%
-    distinct(SampleColumn, .keep_all = TRUE)
+    dplyr::filter(SampleColumn %in% colnames(expr)) %>%
+    dplyr::distinct(SampleColumn, .keep_all = TRUE)
 
-  usable_samples <- sample_md %>% filter(!is.na(RegionLayer)) %>% pull(SampleColumn)
+  if (isTRUE(params$filter_neuron_neuropil_only) && "CelltypeLayer" %in% names(sample_md)) {
+    n_before <- nrow(sample_md)
+    sample_md <- sample_md %>%
+      dplyr::filter(is.na(Exclude) | Exclude == FALSE) %>%
+      dplyr::filter(CelltypeLayer == "neuron_neuropil")
+    message2("Filtered to neuron_neuropil non-excluded samples: ", nrow(sample_md), " / ", n_before)
+  }
+
+  message2("Sample metadata group counts:")
+  print(sample_md %>% dplyr::count(ExpGroup, sort = TRUE))
+  message2("Sample metadata region/layer counts:")
+  print(sample_md %>% dplyr::count(RegionLayer, sort = TRUE))
+
+  usable_samples <- sample_md %>% dplyr::filter(!is.na(RegionLayer)) %>% dplyr::pull(SampleColumn)
   if (length(usable_samples) < 4) {
     stop("Could not identify enough samples with RegionLayer metadata. Check metadata_file or sample names.")
   }
 
   expr <- expr[, usable_samples, drop = FALSE]
-  sample_md <- sample_md %>% filter(SampleColumn %in% usable_samples)
+  sample_md <- sample_md %>% dplyr::filter(SampleColumn %in% usable_samples)
 
   list(expr = expr, sample_metadata = sample_md, protein_id_col = protein_col)
 }
@@ -281,15 +343,15 @@ aggregate_region_layer_expression <- function(expr, sample_md) {
   md <- sample_md[sample_order, ]
 
   long <- as.data.frame(expr) %>%
-    rownames_to_column("Protein") %>%
+    tibble::rownames_to_column("Protein") %>%
     tidyr::pivot_longer(-Protein, names_to = "SampleColumn", values_to = "Expression") %>%
-    left_join(md %>% dplyr::select(SampleColumn, Region, Layer, RegionLayer, ExpGroup), by = "SampleColumn")
+    dplyr::left_join(md %>% dplyr::select(SampleColumn, Region, Layer, RegionLayer, ExpGroup), by = "SampleColumn")
 
   agg <- long %>%
-    group_by(Protein, RegionLayer) %>%
-    summarise(MeanExpression = mean(Expression, na.rm = TRUE), .groups = "drop") %>%
+    dplyr::group_by(Protein, RegionLayer) %>%
+    dplyr::summarise(MeanExpression = mean(Expression, na.rm = TRUE), .groups = "drop") %>%
     tidyr::pivot_wider(names_from = RegionLayer, values_from = MeanExpression) %>%
-    column_to_rownames("Protein") %>%
+    tibble::column_to_rownames("Protein") %>%
     as.matrix()
 
   # Remove proteins with all missing after aggregation.
@@ -302,21 +364,21 @@ compute_similarity_edges <- function(unit_matrix, min_abs_r = 0.6) {
   units <- colnames(cor_mat)
 
   edges <- expand.grid(Source = units, Target = units, stringsAsFactors = FALSE) %>%
-    as_tibble() %>%
-    filter(Source < Target) %>%
-    rowwise() %>%
-    mutate(SpearmanR = cor_mat[Source, Target]) %>%
-    ungroup() %>%
-    mutate(
+    tibble::as_tibble() %>%
+    dplyr::filter(Source < Target) %>%
+    dplyr::rowwise() %>%
+    dplyr::mutate(SpearmanR = cor_mat[Source, Target]) %>%
+    dplyr::ungroup() %>%
+    dplyr::mutate(
       AbsSpearmanR = abs(SpearmanR),
       Direction = ifelse(SpearmanR >= 0, "positive", "negative")
     ) %>%
-    arrange(desc(AbsSpearmanR))
+    dplyr::arrange(dplyr::desc(AbsSpearmanR))
 
   list(
     cor_mat = cor_mat,
     all_edges = edges,
-    filtered_edges = edges %>% filter(AbsSpearmanR >= min_abs_r)
+    filtered_edges = edges %>% dplyr::filter(AbsSpearmanR >= min_abs_r)
   )
 }
 
@@ -329,30 +391,30 @@ compute_top_protein_jaccard_edges <- function(unit_matrix, top_n = 100, min_jacc
 
   units <- names(top_sets)
   edges <- expand.grid(Source = units, Target = units, stringsAsFactors = FALSE) %>%
-    as_tibble() %>%
-    filter(Source < Target) %>%
-    rowwise() %>%
-    mutate(
+    tibble::as_tibble() %>%
+    dplyr::filter(Source < Target) %>%
+    dplyr::rowwise() %>%
+    dplyr::mutate(
       IntersectionN = length(intersect(top_sets[[Source]], top_sets[[Target]])),
       UnionN = length(union(top_sets[[Source]], top_sets[[Target]])),
       Jaccard = ifelse(UnionN > 0, IntersectionN / UnionN, NA_real_),
       OverlapCoefficient = IntersectionN / min(length(top_sets[[Source]]), length(top_sets[[Target]]))
     ) %>%
-    ungroup() %>%
-    arrange(desc(Jaccard))
+    dplyr::ungroup() %>%
+    dplyr::arrange(dplyr::desc(Jaccard))
 
   list(
     top_sets = top_sets,
     all_edges = edges,
-    filtered_edges = edges %>% filter(!is.na(Jaccard), Jaccard >= min_jaccard)
+    filtered_edges = edges %>% dplyr::filter(!is.na(Jaccard), Jaccard >= min_jaccard)
   )
 }
 
 make_node_table <- function(sample_md, edge_tbl = NULL) {
   nodes <- sample_md %>%
-    filter(!is.na(RegionLayer)) %>%
-    count(Region, Layer, RegionLayer, name = "NSamples") %>%
-    rename(name = RegionLayer)
+    dplyr::filter(!is.na(RegionLayer)) %>%
+    dplyr::count(Region, Layer, RegionLayer, name = "NSamples") %>%
+    dplyr::rename(name = RegionLayer)
 
   if (!is.null(edge_tbl) && nrow(edge_tbl) > 0) {
     g <- igraph::graph_from_data_frame(edge_tbl %>% dplyr::select(Source, Target), directed = FALSE, vertices = nodes)
@@ -362,9 +424,9 @@ make_node_table <- function(sample_md, edge_tbl = NULL) {
       Strength = igraph::strength(g, weights = rep(1, igraph::ecount(g))),
       Betweenness = igraph::betweenness(g, normalized = TRUE)
     )
-    nodes <- nodes %>% left_join(cent, by = "name")
+    nodes <- nodes %>% dplyr::left_join(cent, by = "name")
   } else {
-    nodes <- nodes %>% mutate(Degree = 0, Strength = 0, Betweenness = 0)
+    nodes <- nodes %>% dplyr::mutate(Degree = 0, Strength = 0, Betweenness = 0)
   }
 
   nodes
@@ -391,8 +453,8 @@ plot_network <- function(nodes, edges, outfile, edge_weight_col = "AbsSpearmanR"
   }
 
   edges2 <- edges %>%
-    rename(from = Source, to = Target) %>%
-    mutate(weight_for_plot = .data[[edge_weight_col]])
+    dplyr::rename(from = Source, to = Target) %>%
+    dplyr::mutate(weight_for_plot = .data[[edge_weight_col]])
 
   g <- igraph::graph_from_data_frame(edges2, directed = FALSE, vertices = nodes)
 
@@ -422,8 +484,8 @@ write_network_files <- function(edges, nodes, prefix, dirs) {
 
 run_group_specific <- function(expr, sample_md, dirs, params) {
   groups_available <- sample_md %>%
-    filter(!is.na(ExpGroup), ExpGroup %in% params$group_levels) %>%
-    count(ExpGroup)
+    dplyr::filter(!is.na(ExpGroup), ExpGroup %in% params$group_levels) %>%
+    dplyr::count(ExpGroup)
 
   if (nrow(groups_available) == 0) {
     message2("No usable ExpGroup metadata detected; skipping group-specific networks.")
@@ -433,12 +495,12 @@ run_group_specific <- function(expr, sample_md, dirs, params) {
   outputs <- list()
 
   for (grp in groups_available$ExpGroup) {
-    grp_samples <- sample_md %>% filter(ExpGroup == grp, SampleColumn %in% colnames(expr)) %>% pull(SampleColumn)
+    grp_samples <- sample_md %>% dplyr::filter(ExpGroup == grp, SampleColumn %in% colnames(expr)) %>% dplyr::pull(SampleColumn)
     if (length(grp_samples) < 4) next
 
     message2("Running group-specific spatial network: ", grp)
     expr_grp <- expr[, grp_samples, drop = FALSE]
-    md_grp <- sample_md %>% filter(SampleColumn %in% grp_samples)
+    md_grp <- sample_md %>% dplyr::filter(SampleColumn %in% grp_samples)
 
     unit_mat <- aggregate_region_layer_expression(expr_grp, md_grp)
     if (ncol(unit_mat) < 3) next
@@ -503,7 +565,7 @@ utils::write.csv(sample_md, file.path(dirs$tables, "standardized_sample_metadata
 
 unit_matrix <- aggregate_region_layer_expression(expr, sample_md)
 utils::write.csv(
-  as.data.frame(unit_matrix) %>% rownames_to_column("Protein"),
+  as.data.frame(unit_matrix) %>% tibble::rownames_to_column("Protein"),
   file.path(dirs$tables, "region_layer_mean_expression_matrix.csv"),
   row.names = FALSE
 )
@@ -516,7 +578,7 @@ nodes <- make_node_table(sample_md, sim$filtered_edges)
 utils::write.csv(sim$all_edges, file.path(dirs$tables, "overall_spearman_all_edges.csv"), row.names = FALSE)
 utils::write.csv(sim$filtered_edges, file.path(dirs$tables, "overall_spearman_filtered_edges.csv"), row.names = FALSE)
 utils::write.csv(nodes, file.path(dirs$tables, "overall_nodes_centrality.csv"), row.names = FALSE)
-utils::write.csv(as.data.frame(sim$cor_mat) %>% rownames_to_column("RegionLayer"), file.path(dirs$tables, "overall_spearman_correlation_matrix.csv"), row.names = FALSE)
+utils::write.csv(as.data.frame(sim$cor_mat) %>% tibble::rownames_to_column("RegionLayer"), file.path(dirs$tables, "overall_spearman_correlation_matrix.csv"), row.names = FALSE)
 
 plot_similarity_heatmap(
   sim$cor_mat,
@@ -535,7 +597,7 @@ write_network_files(sim$filtered_edges, nodes, "overall_spearman", dirs)
 # Top-protein overlap network.
 message2("Computing top-protein Jaccard overlap network")
 jac <- compute_top_protein_jaccard_edges(unit_matrix, params$top_n_proteins, params$min_jaccard)
-jac_nodes <- make_node_table(sample_md, jac$filtered_edges %>% rename(SpearmanR = Jaccard))
+jac_nodes <- make_node_table(sample_md, jac$filtered_edges %>% dplyr::rename(SpearmanR = Jaccard))
 utils::write.csv(jac$all_edges, file.path(dirs$tables, "overall_top_protein_jaccard_all_edges.csv"), row.names = FALSE)
 utils::write.csv(jac$filtered_edges, file.path(dirs$tables, "overall_top_protein_jaccard_filtered_edges.csv"), row.names = FALSE)
 utils::write.csv(jac_nodes, file.path(dirs$tables, "overall_jaccard_nodes_centrality.csv"), row.names = FALSE)
