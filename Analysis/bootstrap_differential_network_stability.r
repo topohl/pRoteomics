@@ -13,12 +13,6 @@
 #     pooled/overall spatial network.
 #   - This script tests whether group differences in edges are stable, e.g.
 #     whether CA1_slm--CA2_slm is consistently weaker in SUS than CON.
-#
-# Main outputs:
-#   - bootstrap distributions of edge-wise DeltaR = R_B - R_A
-#   - edge-level differential stability summaries
-#   - focused summary for selected candidate edges
-#   - heatmaps and optional network plots for stable differential edges
 # ================================================================
 
 required_pkgs <- c(
@@ -90,6 +84,10 @@ normalize_edge <- function(df) {
 
 aggregate_region_layer_expression <- function(expr, sample_md) {
   sample_order <- match(colnames(expr), sample_md$SampleColumn)
+  if (any(is.na(sample_order))) {
+    stop("Some expression columns are missing from sample metadata during aggregation.")
+  }
+
   md <- sample_md[sample_order, , drop = FALSE]
 
   long <- as.data.frame(expr) %>%
@@ -125,28 +123,33 @@ cor_edges <- function(unit_matrix, group) {
 }
 
 resample_group_samples <- function(sample_md_group) {
-  # Resample sample columns with replacement, preserving duplicate bootstrap draws
-  # by assigning unique pseudo-sample names.
-  samp <- sample(sample_md_group$SampleColumn, size = nrow(sample_md_group), replace = TRUE)
+  # Robust bootstrap with replacement.
+  # Important: do NOT use filter(SampleColumn %in% samp), because that drops
+  # duplicate bootstrap draws. Instead, sample row indices and then give every
+  # draw a unique pseudo-sample name.
+  idx <- sample(seq_len(nrow(sample_md_group)), size = nrow(sample_md_group), replace = TRUE)
 
-  tibble::tibble(
-    OriginalSampleColumn = samp,
-    SampleColumn = paste0(samp, "__boot", seq_along(samp))
-  ) %>%
-    dplyr::left_join(
-      sample_md_group %>% dplyr::rename(OriginalSampleColumn = "SampleColumn"),
-      by = "OriginalSampleColumn"
-    )
+  md_boot <- sample_md_group[idx, , drop = FALSE]
+  md_boot$OriginalSampleColumn <- md_boot$SampleColumn
+  md_boot$SampleColumn <- paste0(md_boot$OriginalSampleColumn, "__boot", seq_along(idx))
+  rownames(md_boot) <- NULL
+
+  md_boot
 }
 
 bootstrap_group_edges <- function(expr, sample_md, group) {
   md_group <- sample_md %>%
-    dplyr::filter(.data$ExpGroup == group, .data$SampleColumn %in% colnames(expr))
+    dplyr::filter(.data$ExpGroup == group, .data$SampleColumn %in% colnames(expr)) %>%
+    dplyr::distinct(.data$SampleColumn, .keep_all = TRUE)
 
   if (nrow(md_group) < 4) return(tibble::tibble())
 
   md_boot <- resample_group_samples(md_group)
   samp <- md_boot$OriginalSampleColumn
+
+  if (!all(samp %in% colnames(expr))) {
+    stop("Bootstrap sampled columns not found in expression matrix for group: ", group)
+  }
 
   expr_boot <- expr[, samp, drop = FALSE]
   colnames(expr_boot) <- md_boot$SampleColumn
@@ -266,10 +269,13 @@ plot_delta_heatmap <- function(summary_tbl, comparison, outfile) {
   }
   diag(mat) <- 0
 
+  max_abs <- max(abs(mat), na.rm = TRUE)
+  if (!is.finite(max_abs) || max_abs == 0) max_abs <- 1
+
   pheatmap::pheatmap(
     mat,
     color = colorRampPalette(c("#457B9D", "white", "#E63946"))(101),
-    breaks = seq(-max(abs(mat), na.rm = TRUE), max(abs(mat), na.rm = TRUE), length.out = 102),
+    breaks = seq(-max_abs, max_abs, length.out = 102),
     border_color = NA,
     fontsize = 7,
     main = paste0("Bootstrap mean DeltaR: ", comparison),
@@ -293,7 +299,7 @@ plot_stable_differential_network <- function(summary_tbl, comparison, outfile, p
 
   nodes <- unique(c(edges$Source, edges$Target)) %>%
     tibble::tibble(name = .) %>%
-    dplyr::distinct("name", .keep_all = TRUE)
+    dplyr::distinct(.data$name, .keep_all = TRUE)
 
   g <- igraph::graph_from_data_frame(
     edges %>%
@@ -333,7 +339,7 @@ write_graphml <- function(summary_tbl, comparison, outfile, params) {
 
   nodes <- unique(c(edges$Source, edges$Target)) %>%
     tibble::tibble(name = .) %>%
-    dplyr::distinct("name", .keep_all = TRUE)
+    dplyr::distinct(.data$name, .keep_all = TRUE)
 
   g <- igraph::graph_from_data_frame(
     edges %>% dplyr::transmute(
@@ -376,6 +382,9 @@ if (!all(c("SampleColumn", "RegionLayer", "ExpGroup") %in% names(sample_md))) {
 
 message2("Available group counts:")
 print(sample_md %>% dplyr::count(.data$ExpGroup))
+
+message2("Samples matching expression matrix by group:")
+print(sample_md %>% dplyr::mutate(InExpressionMatrix = .data$SampleColumn %in% colnames(expr)) %>% dplyr::count(.data$ExpGroup, .data$InExpressionMatrix))
 
 boot_list <- vector("list", params$n_boot)
 for (i in seq_len(params$n_boot)) {
