@@ -412,9 +412,10 @@ compute_top_protein_jaccard_edges <- function(unit_matrix, top_n = 100, min_jacc
 
 make_node_table <- function(sample_md, edge_tbl = NULL) {
   nodes <- sample_md %>%
-    dplyr::filter(!is.na(RegionLayer)) %>%
-    dplyr::count(Region, Layer, RegionLayer, name = "NSamples") %>%
-    dplyr::rename(name = RegionLayer)
+  dplyr::filter(!is.na(RegionLayer)) %>%
+  dplyr::count(Region, Layer, RegionLayer, name = "NSamples") %>%
+  dplyr::rename(name = RegionLayer) %>%
+  dplyr::select(name, Region, Layer, NSamples)
 
   if (!is.null(edge_tbl) && nrow(edge_tbl) > 0) {
     g <- igraph::graph_from_data_frame(edge_tbl %>% dplyr::select(Source, Target), directed = FALSE, vertices = nodes)
@@ -462,8 +463,8 @@ plot_network <- function(nodes, edges, outfile, edge_weight_col = "AbsSpearmanR"
     ggraph::geom_edge_link(aes(width = weight_for_plot, alpha = weight_for_plot), colour = "grey45") +
     ggraph::geom_node_point(aes(size = NSamples), shape = 21, fill = "white", colour = "black", stroke = 0.4) +
     ggraph::geom_node_text(aes(label = name), repel = TRUE, size = 2.7) +
-    ggplot2::scale_edge_width(range = c(0.2, 1.5), guide = "none") +
-    ggplot2::scale_edge_alpha(range = c(0.25, 0.9), guide = "none") +
+    ggraph::scale_edge_width(range = c(0.2, 1.5), guide = "none") +
+    ggraph::scale_edge_alpha(range = c(0.25, 0.9), guide = "none") +
     ggplot2::scale_size_continuous(range = c(2, 6), name = "n samples") +
     ggplot2::labs(title = title) +
     ggplot2::theme_void(base_size = 8) +
