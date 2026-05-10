@@ -751,6 +751,140 @@ sensitivity_tbl <- results_all %>%
   )
 
 # ==========================================
+# 5b. NATURE-ORIENTED SYNTHESIS (CACHE-PRESERVING)
+# ==========================================
+
+message("Step 4b: Building Nature-oriented synthesis tables...")
+
+stratum_order <- c(
+  "CA1_so", "CA1_sp", "CA1_sr", "CA1_slm",
+  "CA2_so", "CA2_sp", "CA2_sr", "CA2_slm",
+  "CA3_so", "CA3_sp", "CA3_sr", "CA3_slm",
+  "DG_mo", "DG_po", "DG_sg"
+)
+observed_strata <- unique(stats::na.omit(c(results_all$Stratum, sample_meta$Stratum)))
+stratum_order <- c(stratum_order[stratum_order %in% observed_strata], sort(setdiff(observed_strata, stratum_order)))
+
+format_contrast_label <- function(x) {
+  dplyr::recode(
+    as.character(x),
+    "Sus_vs_Con" = "Sus vs Con",
+    "Res_vs_Con" = "Res vs Con",
+    .default = as.character(x)
+  )
+}
+
+format_metric_label <- function(contrast, direction) {
+  paste(format_contrast_label(contrast), stringr::str_to_title(as.character(direction)))
+}
+
+cap_signed_value <- function(x, limit = 10) {
+  pmax(pmin(x, limit), -limit)
+}
+
+primary_results <- primary_results %>%
+  dplyr::mutate(
+    Stratum = factor(Stratum, levels = stratum_order),
+    ContrastLabel = format_contrast_label(Contrast),
+    MetricLabel = format_metric_label(Contrast, Direction),
+    MetricLabel = dplyr::if_else(AnalysisType == "Baseline", as.character(Metric), MetricLabel),
+    MetricLabel = factor(
+      MetricLabel,
+      levels = c("con", "res", "sus", "Sus vs Con Up", "Sus vs Con Down", "Res vs Con Up", "Res vs Con Down")
+    ),
+    SignedSig_Global_Capped = cap_signed_value(SignedSig_Global)
+  )
+
+results_all <- results_all %>%
+  dplyr::mutate(
+    Stratum = factor(Stratum, levels = stratum_order),
+    ContrastLabel = format_contrast_label(Contrast),
+    MetricLabel = format_metric_label(Contrast, Direction),
+    MetricLabel = dplyr::if_else(AnalysisType == "Baseline", as.character(Metric), MetricLabel),
+    SignedSig_Global_Capped = cap_signed_value(SignedSig_Global)
+  )
+
+sensitivity_tbl <- sensitivity_tbl %>%
+  dplyr::mutate(
+    Stratum = factor(Stratum, levels = stratum_order),
+    ContrastLabel = format_contrast_label(stringr::str_remove(as.character(Metric), "_(up|down)$")),
+    RobustnessScore = N_TopN_GlobalSig / pmax(N_TopN_Tested, 1)
+  )
+
+annotation_consistency_tbl <- sensitivity_tbl %>%
+  dplyr::group_by(AnalysisType, Stratum, Region, Layer, Metric, Direction, CellType) %>%
+  dplyr::summarise(
+    N_AnnotLevels_Tested = dplyr::n_distinct(AnnotLevel),
+    N_AnnotLevels_With_GlobalSig = dplyr::n_distinct(AnnotLevel[N_TopN_GlobalSig > 0]),
+    Mean_RobustnessScore = mean(RobustnessScore, na.rm = TRUE),
+    Max_RobustnessScore = max(RobustnessScore, na.rm = TRUE),
+    Min_q_global = min(Min_q_global, na.rm = TRUE),
+    Max_abs_Z = max(Max_abs_Z, na.rm = TRUE),
+    RobustInPrimaryAnnot = any(AnnotLevel == analysis_params$primary_annot_level & RobustAcrossTopN),
+    .groups = "drop"
+  ) %>%
+  dplyr::arrange(Min_q_global, dplyr::desc(Max_abs_Z))
+
+high_confidence_hits <- primary_results %>%
+  dplyr::filter(AnalysisType == "Differential", Significant_Global) %>%
+  dplyr::left_join(
+    sensitivity_tbl %>%
+      dplyr::filter(AnnotLevel == analysis_params$primary_annot_level) %>%
+      dplyr::select(
+        AnalysisType, Stratum, Region, Layer, Metric, Direction, CellType,
+        N_TopN_Tested, N_TopN_GlobalSig, RobustnessScore, RobustAcrossTopN,
+        Sensitivity_Min_q_global = Min_q_global,
+        Sensitivity_Max_abs_Z = Max_abs_Z
+      ),
+    by = c("AnalysisType", "Stratum", "Region", "Layer", "Metric", "Direction", "CellType")
+  ) %>%
+  dplyr::left_join(
+    annotation_consistency_tbl %>%
+      dplyr::select(
+        AnalysisType, Stratum, Region, Layer, Metric, Direction, CellType,
+        N_AnnotLevels_Tested, N_AnnotLevels_With_GlobalSig, Mean_RobustnessScore, Max_RobustnessScore
+      ),
+    by = c("AnalysisType", "Stratum", "Region", "Layer", "Metric", "Direction", "CellType")
+  ) %>%
+  dplyr::arrange(q_global, dplyr::desc(abs(sd_from_mean))) %>%
+  dplyr::select(
+    Stratum, Region, Layer, ContrastLabel, Direction, CellType,
+    sd_from_mean, fold_change, p, q_target, q_global,
+    RobustnessScore, RobustAcrossTopN, N_TopN_GlobalSig, N_TopN_Tested,
+    N_AnnotLevels_With_GlobalSig, N_AnnotLevels_Tested,
+    Target, Metric, TopN, AnnotLevel, N_Hits, N_Background
+  )
+
+nature_top_celltypes <- primary_results %>%
+  dplyr::filter(AnalysisType == "Differential") %>%
+  dplyr::group_by(CellType) %>%
+  dplyr::summarise(
+    Best_q_global = min(q_global, na.rm = TRUE),
+    Max_abs_SignedSig = max(abs(SignedSig_Global), na.rm = TRUE),
+    Max_abs_Z = max(abs(sd_from_mean), na.rm = TRUE),
+    Any_GlobalSignificant = any(Significant_Global, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  dplyr::arrange(!Any_GlobalSignificant, Best_q_global, dplyr::desc(Max_abs_Z)) %>%
+  dplyr::slice_head(n = 35)
+
+nature_diff_heatmap_tbl <- primary_results %>%
+  dplyr::filter(AnalysisType == "Differential", CellType %in% nature_top_celltypes$CellType) %>%
+  dplyr::mutate(
+    CellType = factor(CellType, levels = rev(nature_top_celltypes$CellType)),
+    Stratum = factor(Stratum, levels = stratum_order)
+  )
+
+nature_robust_tbl <- sensitivity_tbl %>%
+  dplyr::filter(AnalysisType == "Differential", AnnotLevel == analysis_params$primary_annot_level) %>%
+  dplyr::arrange(Min_q_global, dplyr::desc(Max_abs_Z)) %>%
+  dplyr::mutate(
+    FindingLabel = paste(Stratum, Metric, CellType, sep = " | "),
+    FindingLabel = factor(FindingLabel, levels = rev(unique(FindingLabel)))
+  ) %>%
+  dplyr::slice_head(n = 35)
+
+# ==========================================
 # 6. NATURE-STYLE VISUALIZATION
 # ==========================================
 
@@ -868,6 +1002,63 @@ p7 <- ggplot2::ggplot(
   theme_nature() +
   ggplot2::labs(x = NULL, y = "Significant top-N settings", title = "Hit-list sensitivity")
 
+nature_heatmap_fig <- ggplot2::ggplot(
+  nature_diff_heatmap_tbl,
+  ggplot2::aes(x = Stratum, y = CellType, fill = SignedSig_Global_Capped)
+) +
+  ggplot2::geom_tile(color = "white", linewidth = 0.12) +
+  ggplot2::geom_point(
+    data = nature_diff_heatmap_tbl %>% dplyr::filter(Significant_Global),
+    ggplot2::aes(x = Stratum, y = CellType),
+    inherit.aes = FALSE,
+    shape = 21,
+    fill = "black",
+    color = "white",
+    stroke = 0.15,
+    size = 0.85
+  ) +
+  ggplot2::facet_grid(. ~ MetricLabel, scales = "free_x", space = "free_x") +
+  ggplot2::scale_fill_gradient2(
+    low = col_res,
+    mid = "white",
+    high = col_sus,
+    midpoint = 0,
+    limits = c(-10, 10),
+    name = "Signed\n-log10(FDR)"
+  ) +
+  theme_nature() +
+  ggplot2::labs(
+    x = NULL,
+    y = "Cell type",
+    title = "Spatially resolved differential EWCE signatures"
+  ) +
+  ggplot2::theme(
+    axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, vjust = 0.5),
+    panel.spacing.x = grid::unit(1.5, "mm"),
+    legend.position = "right"
+  )
+
+nature_robustness_fig <- ggplot2::ggplot(
+  nature_robust_tbl,
+  ggplot2::aes(x = RobustnessScore, y = FindingLabel)
+) +
+  ggplot2::geom_col(ggplot2::aes(fill = RobustAcrossTopN), width = 0.75) +
+  ggplot2::geom_point(
+    ggplot2::aes(size = Max_abs_Z, color = -log10(pmax(Min_q_global, 1e-300))),
+    shape = 21,
+    stroke = 0.2
+  ) +
+  ggplot2::scale_x_continuous(limits = c(0, 1), breaks = c(0, 0.5, 1)) +
+  ggplot2::scale_fill_manual(values = c("FALSE" = "grey75", "TRUE" = col_sus), name = "Robust\nall Top-N") +
+  viridis::scale_color_viridis(option = "plasma", name = "-log10\nmin FDR") +
+  ggplot2::scale_size_area(max_size = 3.2, name = "Max |Z|") +
+  theme_nature() +
+  ggplot2::labs(
+    x = "Fraction of Top-N settings significant",
+    y = NULL,
+    title = "High-confidence EWCE findings across hit-list sizes"
+  )
+
 main_fig <- (p1 / p2 | p3) +
   patchwork::plot_layout(widths = c(2, 1)) +
   patchwork::plot_annotation(tag_levels = "A") &
@@ -900,6 +1091,10 @@ ggplot2::ggsave(file.path(dirs$svgs, "Fig1_EWCE_Summary.svg"), main_fig, width =
 ggplot2::ggsave(file.path(dirs$svgs, "Volcano_Panel.svg"), p3, width = 80, height = 80, units = "mm")
 ggplot2::ggsave(file.path(dirs$plots, "FigS1_EWCE_Additional_Visuals.pdf"), supp_fig, width = 180, height = 280, units = "mm", device = grDevices::cairo_pdf)
 ggplot2::ggsave(file.path(dirs$svgs, "FigS1_EWCE_Additional_Visuals.svg"), supp_fig, width = 180, height = 280, units = "mm")
+ggplot2::ggsave(file.path(dirs$plots, "Fig2_Primary_Differential_EWCE_Heatmap.pdf"), nature_heatmap_fig, width = 183, height = 170, units = "mm", device = grDevices::cairo_pdf)
+ggplot2::ggsave(file.path(dirs$svgs, "Fig2_Primary_Differential_EWCE_Heatmap.svg"), nature_heatmap_fig, width = 183, height = 170, units = "mm")
+ggplot2::ggsave(file.path(dirs$plots, "Fig3_Robust_EWCE_Findings.pdf"), nature_robustness_fig, width = 183, height = 160, units = "mm", device = grDevices::cairo_pdf)
+ggplot2::ggsave(file.path(dirs$svgs, "Fig3_Robust_EWCE_Findings.svg"), nature_robustness_fig, width = 183, height = 160, units = "mm")
 
 if (nrow(diff_heatmap_mat) > 2 && ncol(diff_heatmap_mat) > 2) {
   grDevices::pdf(file.path(dirs$plots, "FigS2_EWCE_ClusteredHeatmap.pdf"), width = 8, height = 10, family = "sans")
@@ -970,11 +1165,21 @@ add_worksheet_safe(wb, "Significant_Global", results_all %>% dplyr::filter(q_glo
 add_worksheet_safe(wb, "Summary_by_Contrast", summary_tbl)
 add_worksheet_safe(wb, "Top_Hits_per_Target", top_hits_tbl)
 add_worksheet_safe(wb, "Sensitivity", sensitivity_tbl)
+add_worksheet_safe(wb, "High_Confidence", high_confidence_hits)
+add_worksheet_safe(wb, "Annotation_Consistency", annotation_consistency_tbl)
 add_worksheet_safe(wb, "CellType_Significance_Rank", sig_rank_tbl)
 add_worksheet_safe(wb, "Driver_Marker_Overlap", driver_overlap_tbl)
 add_worksheet_safe(wb, "Input_Gene_Stats", input_gene_stats)
 add_worksheet_safe(wb, "Sample_Counts", sample_meta_qc)
 openxlsx::saveWorkbook(wb, file.path(dirs$tables, "Supplementary_Table_EWCE.xlsx"), overwrite = TRUE)
+
+nature_wb <- openxlsx::createWorkbook()
+add_worksheet_safe(nature_wb, "High_Confidence_Findings", high_confidence_hits)
+add_worksheet_safe(nature_wb, "Primary_Diff_Heatmap_Data", nature_diff_heatmap_tbl)
+add_worksheet_safe(nature_wb, "Robustness_Data", nature_robust_tbl)
+add_worksheet_safe(nature_wb, "Annotation_Consistency", annotation_consistency_tbl)
+add_worksheet_safe(nature_wb, "Top_CellTypes", nature_top_celltypes)
+openxlsx::saveWorkbook(nature_wb, file.path(dirs$tables, "High_Confidence_EWCE_Findings.xlsx"), overwrite = TRUE)
 
 source_wb <- openxlsx::createWorkbook()
 add_worksheet_safe(source_wb, "Fig1A_Baseline_Dotplot", primary_results %>% dplyr::filter(AnalysisType == "Baseline", Significant_Global))
@@ -984,6 +1189,8 @@ add_worksheet_safe(source_wb, "FigS1A_Signed_Heatmap", primary_results %>% dplyr
 add_worksheet_safe(source_wb, "FigS1B_Top_CellTypes", top_celltypes)
 add_worksheet_safe(source_wb, "FigS1C_Distributions", primary_results %>% dplyr::filter(AnalysisType == "Differential"))
 add_worksheet_safe(source_wb, "FigS1D_Sensitivity", sensitivity_tbl)
+add_worksheet_safe(source_wb, "Fig2_Primary_Heatmap", nature_diff_heatmap_tbl)
+add_worksheet_safe(source_wb, "Fig3_Robust_Findings", nature_robust_tbl)
 openxlsx::saveWorkbook(source_wb, file.path(dirs$source, "Source_Data_EWCE_Figures.xlsx"), overwrite = TRUE)
 
 saveRDS(
@@ -997,6 +1204,10 @@ saveRDS(
     sample_metadata = sample_meta,
     condition_lookup = condition_lookup,
     mapping_qc = mapping_qc,
+    high_confidence_hits = high_confidence_hits,
+    annotation_consistency_tbl = annotation_consistency_tbl,
+    nature_diff_heatmap_tbl = nature_diff_heatmap_tbl,
+    nature_robust_tbl = nature_robust_tbl,
     analysis_params = analysis_params
   ),
   file.path(dirs$data, "EWCE_results_full.rds")
