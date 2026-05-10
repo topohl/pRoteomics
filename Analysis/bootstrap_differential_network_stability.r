@@ -96,10 +96,7 @@ make_unit_matrix_stratified_boot <- function(expr, sample_md, group) {
   unit_profiles <- list()
 
   for (rl in region_layers) {
-    cols <- md_group %>%
-      dplyr::filter(.data$RegionLayer == rl) %>%
-      dplyr::pull(.data$SampleColumn)
-
+    cols <- md_group$SampleColumn[md_group$RegionLayer == rl]
     cols <- cols[cols %in% colnames(expr)]
     if (length(cols) < 2) next
 
@@ -122,9 +119,13 @@ cor_edges <- function(unit_matrix, group) {
   cor_mat <- suppressWarnings(cor(unit_matrix, method = "spearman", use = "pairwise.complete.obs"))
   units <- colnames(cor_mat)
 
-  expand.grid(Source = units, Target = units, stringsAsFactors = FALSE) %>%
+  edge_grid <- expand.grid(Source = units, Target = units, stringsAsFactors = FALSE) %>%
     tibble::as_tibble() %>%
-    dplyr::filter(.data$Source < .data$Target) %>%
+    dplyr::filter(as.character(.data$Source) < as.character(.data$Target))
+
+  if (nrow(edge_grid) == 0) return(tibble::tibble())
+
+  edge_grid %>%
     dplyr::rowwise() %>%
     dplyr::mutate(SpearmanR = cor_mat[.data$Source, .data$Target]) %>%
     dplyr::ungroup() %>%
@@ -369,6 +370,14 @@ print(sample_md %>% dplyr::mutate(InExpressionMatrix = .data$SampleColumn %in% c
 
 message2("Region/layer counts by group:")
 print(sample_md %>% dplyr::filter(.data$SampleColumn %in% colnames(expr)) %>% dplyr::count(.data$ExpGroup, .data$RegionLayer))
+
+message2("One-pass edge sanity check:")
+sanity <- purrr::map_dfr(params$group_order, function(grp) {
+  e <- bootstrap_group_edges(expr, sample_md, grp)
+  tibble::tibble(Group = grp, NEdges = nrow(e))
+})
+print(sanity)
+if (any(sanity$NEdges == 0)) stop("At least one group produced zero edges in the sanity check.")
 
 boot_list <- vector("list", params$n_boot)
 for (i in seq_len(params$n_boot)) {
