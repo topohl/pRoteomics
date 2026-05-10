@@ -81,7 +81,29 @@ normalize_edge <- function(df) {
     dplyr::select(-"Source0", -"Target0")
 }
 
+clean_unit_matrix <- function(unit_matrix) {
+  unit_matrix <- as.matrix(unit_matrix)
+  storage.mode(unit_matrix) <- "numeric"
+  unit_matrix[!is.finite(unit_matrix)] <- NA_real_
+
+  keep_complete_enough <- rowSums(!is.na(unit_matrix)) >= 2
+  unit_matrix <- unit_matrix[keep_complete_enough, , drop = FALSE]
+
+  if (nrow(unit_matrix) < 3 || ncol(unit_matrix) < 3) return(NULL)
+
+  row_sd <- apply(unit_matrix, 1, stats::sd, na.rm = TRUE)
+  keep_variable <- is.finite(row_sd) & row_sd > 0
+  unit_matrix <- unit_matrix[keep_variable, , drop = FALSE]
+
+  if (nrow(unit_matrix) < 3 || ncol(unit_matrix) < 3) return(NULL)
+  unit_matrix
+}
+
 make_unit_matrix_stratified_boot <- function(expr, sample_md, group) {
+  expr <- as.matrix(expr)
+  storage.mode(expr) <- "numeric"
+  expr[!is.finite(expr)] <- NA_real_
+
   md_group <- sample_md %>%
     dplyr::filter(
       .data$ExpGroup == group,
@@ -101,7 +123,9 @@ make_unit_matrix_stratified_boot <- function(expr, sample_md, group) {
     if (length(cols) < 2) next
 
     boot_cols <- sample(cols, size = length(cols), replace = TRUE)
-    unit_profiles[[rl]] <- rowMeans(expr[, boot_cols, drop = FALSE], na.rm = TRUE)
+    prof <- rowMeans(expr[, boot_cols, drop = FALSE], na.rm = TRUE)
+    prof[!is.finite(prof)] <- NA_real_
+    unit_profiles[[rl]] <- prof
   }
 
   if (length(unit_profiles) < 3) return(NULL)
@@ -109,14 +133,16 @@ make_unit_matrix_stratified_boot <- function(expr, sample_md, group) {
   unit_matrix <- do.call(cbind, unit_profiles)
   rownames(unit_matrix) <- rownames(expr)
   colnames(unit_matrix) <- names(unit_profiles)
-  unit_matrix <- unit_matrix[rowSums(!is.na(unit_matrix)) > 1, , drop = FALSE]
 
-  if (nrow(unit_matrix) < 3 || ncol(unit_matrix) < 3) return(NULL)
-  unit_matrix
+  clean_unit_matrix(unit_matrix)
 }
 
 cor_edges <- function(unit_matrix, group) {
+  unit_matrix <- clean_unit_matrix(unit_matrix)
+  if (is.null(unit_matrix)) return(tibble::tibble())
+
   cor_mat <- suppressWarnings(cor(unit_matrix, method = "spearman", use = "pairwise.complete.obs"))
+  cor_mat[!is.finite(cor_mat)] <- NA_real_
   units <- colnames(cor_mat)
 
   if (length(units) < 2) return(tibble::tibble())
@@ -376,8 +402,14 @@ print(sample_md %>% dplyr::filter(.data$SampleColumn %in% colnames(expr)) %>% dp
 
 message2("One-pass edge sanity check:")
 sanity <- purrr::map_dfr(params$group_order, function(grp) {
-  e <- bootstrap_group_edges(expr, sample_md, grp)
-  tibble::tibble(Group = grp, NEdges = nrow(e))
+  unit_matrix <- make_unit_matrix_stratified_boot(expr, sample_md, grp)
+  e <- if (is.null(unit_matrix)) tibble::tibble() else cor_edges(unit_matrix, grp)
+  tibble::tibble(
+    Group = grp,
+    UnitRows = if (is.null(unit_matrix)) 0L else nrow(unit_matrix),
+    UnitCols = if (is.null(unit_matrix)) 0L else ncol(unit_matrix),
+    NEdges = nrow(e)
+  )
 })
 print(sanity)
 if (any(sanity$NEdges == 0)) stop("At least one group produced zero edges in the sanity check.")
