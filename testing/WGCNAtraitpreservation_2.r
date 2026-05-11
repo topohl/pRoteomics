@@ -1,17 +1,58 @@
 # ================================ parallel-enabled
-# WGCNA with spatial traits + preservation + condition×region×layer×celltype panels
+# WGCNA with profile-aware spatial traits, preservation, and condition panels
 # Outputs organized into subfolders under output_dir
 # ================================ parallel-enabled
 
 # Packages
-if (!requireNamespace("pacman", quietly = TRUE)) install.packages("pacman", repos = "https://cloud.r-project.org")
-if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager", repos = "https://cloud.r-project.org")
-if (!requireNamespace("GO.db", quietly = TRUE)) BiocManager::install("GO.db", ask = FALSE, update = FALSE)
-suppressPackageStartupMessages(
-  pacman::p_load(WGCNA, flashClust, curl, readxl, ggplot2, svglite, GO.db,
-                 reshape2, gtools, patchwork, cowplot, pheatmap, dplyr, tidyr,
-                 httr, jsonlite, purrr, AnnotationDbi, org.Mm.eg.db, readr, stringr, install = TRUE)
+required_pkgs <- c(
+  "WGCNA", "flashClust", "curl", "readxl", "ggplot2", "svglite", "GO.db",
+  "reshape2", "gtools", "patchwork", "cowplot", "pheatmap", "dplyr", "tidyr",
+  "httr", "jsonlite", "purrr", "AnnotationDbi", "org.Mm.eg.db", "readr",
+  "stringr", "tibble", "UniProt.ws", "RColorBrewer", "ggpubr", "broom", "grid",
+  "clusterProfiler", "scales"
 )
+missing_pkgs <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
+if (length(missing_pkgs)) {
+  stop(
+    "Missing required packages: ", paste(missing_pkgs, collapse = ", "),
+    ". Install them explicitly before running this manuscript pipeline."
+  )
+}
+suppressPackageStartupMessages(
+  invisible(lapply(required_pkgs, library, character.only = TRUE))
+)
+
+mm_to_in <- function(mm) mm / 25.4
+nature_single_col <- mm_to_in(89)
+nature_double_col <- mm_to_in(183)
+nature_font <- "Arial"
+nature_base_size <- 7
+nature_axis_size <- 6.2
+nature_title_size <- 7
+nature_line <- 0.25
+nature_diverging <- c(low = "#2166AC", mid = "#F7F7F7", high = "#B2182B")
+nature_condition_cols <- c(con = "#4D4D4D", res = "#0072B2", sus = "#D55E00")
+nature_condition_labels <- c(con = "CON", res = "RES", sus = "SUS")
+
+theme_nature <- function(base_size = nature_base_size) {
+  ggplot2::theme_classic(base_size = base_size, base_family = nature_font) +
+    ggplot2::theme(
+      plot.title = ggplot2::element_text(size = nature_title_size, face = "plain", hjust = 0),
+      plot.subtitle = ggplot2::element_text(size = nature_axis_size, color = "grey30", margin = ggplot2::margin(t = 1, b = 2)),
+      axis.title = ggplot2::element_text(size = nature_axis_size),
+      axis.text = ggplot2::element_text(size = nature_axis_size, color = "black"),
+      axis.line = ggplot2::element_line(linewidth = nature_line, color = "black"),
+      axis.ticks = ggplot2::element_line(linewidth = nature_line, color = "black"),
+      legend.title = ggplot2::element_text(size = nature_axis_size),
+      legend.text = ggplot2::element_text(size = nature_axis_size),
+      legend.key.size = grid::unit(3, "mm"),
+      strip.background = ggplot2::element_blank(),
+      strip.text = ggplot2::element_text(size = nature_axis_size, color = "black"),
+      panel.grid = ggplot2::element_blank(),
+      plot.margin = ggplot2::margin(3, 3, 3, 3)
+    )
+}
+ggplot2::theme_set(theme_nature())
 
 # Parallel setup
 nCores <- tryCatch({
@@ -25,30 +66,89 @@ WGCNAnThreads()
 # Paths and data load
 # --------------------------
 output_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/wgcna/output"
-if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
-# Subfolders
 subdirs <- list(
-  plots_qc          = file.path(output_dir, "plots_qc"),
-  plots_traits      = file.path(output_dir, "plots_traits"),
-  network           = file.path(output_dir, "network"),
-  tables_modules    = file.path(output_dir, "tables_modules"),
-  tables_pres       = file.path(output_dir, "tables_preservation")
+  figures_qc          = file.path(output_dir, "figures", "qc"),
+  figures_network     = file.path(output_dir, "figures", "network"),
+  figures_traits      = file.path(output_dir, "figures", "traits"),
+  figures_main        = file.path(output_dir, "figures", "main"),
+  tables_qc           = file.path(output_dir, "tables", "qc"),
+  tables_mapping      = file.path(output_dir, "tables", "mapping"),
+  tables_modules      = file.path(output_dir, "tables", "modules"),
+  tables_pres         = file.path(output_dir, "tables", "preservation"),
+  tables_traits       = file.path(output_dir, "tables", "traits"),
+  source_data         = file.path(output_dir, "source_data"),
+  state               = file.path(output_dir, "state"),
+  logs                = file.path(output_dir, "logs")
 )
-invisible(lapply(subdirs, dir.create, recursive = TRUE, showWarnings = FALSE))
+
+safe_dir <- function(path) {
+  if (!dir.exists(path)) dir.create(path, recursive = TRUE, showWarnings = FALSE)
+  if (file.access(path, 2) != 0) stop(sprintf("Not writable: %s", path))
+  invisible(normalizePath(path))
+}
+invisible(lapply(c(output_dir, unlist(subdirs)), safe_dir))
 
 # Path helpers
-fp_qc      <- function(...) file.path(subdirs$plots_qc, ...)
-fp_traits  <- function(...) file.path(subdirs$plots_traits, ...)
-fp_net     <- function(...) file.path(subdirs$network, ...)
-fp_modtab  <- function(...) file.path(subdirs$tables_modules, ...)
-fp_prestab <- function(...) file.path(subdirs$tables_pres, ...)
+fp_qc       <- function(...) file.path(subdirs$figures_qc, ...)
+fp_traits   <- function(...) file.path(subdirs$figures_traits, ...)
+fp_mainfig  <- function(...) file.path(subdirs$figures_main, ...)
+fp_net      <- function(...) file.path(subdirs$figures_network, ...)
+fp_qctab    <- function(...) file.path(subdirs$tables_qc, ...)
+fp_maptab   <- function(...) file.path(subdirs$tables_mapping, ...)
+fp_modtab   <- function(...) file.path(subdirs$tables_modules, ...)
+fp_traittab <- function(...) file.path(subdirs$tables_traits, ...)
+fp_prestab  <- function(...) file.path(subdirs$tables_pres, ...)
+fp_source   <- function(...) file.path(subdirs$source_data, ...)
+fp_state    <- function(...) file.path(subdirs$state, ...)
+fp_log      <- function(...) file.path(subdirs$logs, ...)
+
+write_csv_safe <- function(x, path) {
+  readr::write_csv(x, path, na = "")
+  invisible(path)
+}
+write_tsv_safe <- function(x, path) {
+  readr::write_tsv(x, path, na = "")
+  invisible(path)
+}
+log_session <- function() {
+  writeLines(capture.output(utils::sessionInfo()), fp_log("session_info.txt"))
+}
+log_session()
+
+# Analysis parameters reported with outputs
+sample_tree_cut_height <- 80
+sample_tree_plot_height <- 40
+soft_threshold_rsquared <- 0.80
+min_module_size <- 30
+deep_split <- 2
+merge_cut_height <- 0.25
+module_preservation_permutations <- 1000
+dataset_profile <- "auto"  # one of: auto, microglia, neuron_soma, neuron_neuropil
 
 # Optional: safe svg helper
 save_svg <- function(path, width, height, expr) {
   svglite::svglite(file = path, width = width, height = height)
   on.exit(dev.off(), add = TRUE)
   force(expr)
+}
+
+save_plot_nature <- function(plot, path_svg, width, height) {
+  ggplot2::ggsave(path_svg, plot, device = svglite::svglite,
+                  width = width, height = height, units = "in", limitsize = FALSE)
+  ggplot2::ggsave(sub("\\.svg$", ".pdf", path_svg), plot, device = grDevices::pdf,
+                  width = width, height = height, units = "in", limitsize = FALSE,
+                  family = nature_font, useDingbats = FALSE)
+  invisible(path_svg)
+}
+
+sig_dot <- function(fdr) {
+  dplyr::case_when(
+    is.na(fdr) ~ "",
+    fdr < 0.01 ~ "\u2022",
+    fdr < 0.05 ~ "\u00b7",
+    TRUE ~ ""
+  )
 }
 
 expr_xlsx <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/data/male.data.xlsx"
@@ -58,34 +158,6 @@ meta_xlsx <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap
 # Mouse-only mapping: robust idmapping parser + offline + SYMBOL/ALIAS + Entrez + UniProt gene_primary + QC
 # ================================
 
-suppressPackageStartupMessages({
-  if (!requireNamespace("pacman", quietly = TRUE)) install.packages("pacman", repos = "https://cloud.r-project.org")
-  pacman::p_load(
-    WGCNA, readxl, ggplot2, svglite, dplyr, tidyr, tibble, stringr, readr, purrr,
-    AnnotationDbi, org.Mm.eg.db, install = TRUE
-  )
-})
-if (!requireNamespace("UniProt.ws", quietly = TRUE)) {
-  if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager", repos = "https://cloud.r-project.org")
-  BiocManager::install("UniProt.ws", ask = FALSE, update = FALSE)
-}
-library(UniProt.ws)
-
-# --------------------------
-# Paths and environment
-# --------------------------
-output_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/wgcna/output"
-subdirs <- list(
-  plots_qc         = file.path(output_dir, "plots_qc"),
-  plots_traits     = file.path(output_dir, "plots_traits"),
-  network          = file.path(output_dir, "network"),
-  tables_modules   = file.path(output_dir, "tables_modules"),
-  tables_pres      = file.path(output_dir, "tables_preservation")
-)
-safe_dir <- function(path) { if (!dir.exists(path)) dir.create(path, recursive = TRUE, showWarnings = FALSE); if (file.access(path, 2) != 0) stop(sprintf("Not writable: %s", path)); invisible(normalizePath(path)) }
-log_session <- function(out_dir) { safe_dir(out_dir); writeLines(capture.output(utils::sessionInfo()), file.path(out_dir, "session_info.txt")) }
-invisible(lapply(c(output_dir, unlist(subdirs)), safe_dir)); log_session(output_dir)
-
 # --------------------------
 # Inputs
 # --------------------------
@@ -94,7 +166,104 @@ meta_xlsx <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap
 idmap_dat <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/MOUSE_10090_idmapping.dat"
 
 stop_if_missing <- function(path) if (!file.exists(path)) stop(sprintf("Missing file: %s", path))
-read_head <- function(path) { df <- readxl::read_excel(path); utils::write.table(utils::head(df, 10), file.path(subdirs$plots_qc, paste0(basename(path), "_head10.tsv")), sep="\t", row.names=FALSE, quote=FALSE); df }
+read_head <- function(path) {
+  df <- readxl::read_excel(path)
+  utils::write.table(utils::head(df, 10), fp_log(paste0(basename(path), "_head10.tsv")),
+                     sep = "\t", row.names = FALSE, quote = FALSE)
+  df
+}
+
+norm_label <- function(x) {
+  x <- tolower(trimws(as.character(x)))
+  x <- gsub("[[:space:]-]+", "_", x)
+  x[is.na(x) | !nzchar(x)] <- NA_character_
+  x
+}
+
+infer_dataset_profile <- function(sample_info, expr_path, meta_path, requested = "auto") {
+  requested <- tolower(requested)
+  if (!identical(requested, "auto")) return(requested)
+  path_hint <- tolower(paste(expr_path, meta_path, collapse = " "))
+  if (grepl("microglia", path_hint)) return("microglia")
+  if (grepl("neuropil", path_hint)) return("neuron_neuropil")
+  if (grepl("soma", path_hint)) return("neuron_soma")
+  cell_hint <- if ("celltype" %in% names(sample_info)) paste(unique(norm_label(sample_info$celltype)), collapse = " ") else ""
+  if (grepl("microglia", cell_hint)) return("microglia")
+  if (grepl("neuropil", cell_hint)) return("neuron_neuropil")
+  if (grepl("soma", cell_hint)) return("neuron_soma")
+  layer_vals <- if ("layer" %in% names(sample_info)) unique(stats::na.omit(norm_label(sample_info$layer))) else character()
+  if (length(layer_vals) && any(layer_vals %in% c("so", "sr", "slm", "mo", "po"))) return("neuron_neuropil")
+  if (!length(layer_vals) || all(layer_vals %in% c("sp", "sg", "none"))) return("neuron_soma")
+  "region_only"
+}
+
+prepare_spatial_metadata <- function(sample_info, profile) {
+  if (!"region" %in% names(sample_info)) stop("sample_info must contain a 'region' column")
+  if (!"ExpGroup" %in% names(sample_info)) stop("sample_info must contain an 'ExpGroup' column")
+
+  profile <- tolower(profile)
+  allowed_profiles <- c("microglia", "neuron_soma", "neuron_neuropil", "region_only")
+  if (!profile %in% allowed_profiles) {
+    stop("Unsupported dataset_profile: ", profile, ". Use one of: ", paste(c("auto", allowed_profiles), collapse = ", "))
+  }
+  sample_info$region <- factor(norm_label(sample_info$region), levels = c("ca1", "ca2", "ca3", "dg"))
+  sample_info$condition <- factor(norm_label(sample_info$ExpGroup), levels = c("con", "res", "sus"))
+  sample_info$ExpGroup <- sample_info$condition
+
+  raw_layer <- if ("layer" %in% names(sample_info)) norm_label(sample_info$layer) else rep(NA_character_, nrow(sample_info))
+  raw_celltype <- if ("celltype" %in% names(sample_info)) norm_label(sample_info$celltype) else rep(NA_character_, nrow(sample_info))
+
+  if (identical(profile, "microglia")) {
+    sample_info$layer <- factor("none")
+    sample_info$celltype <- factor("microglia")
+    active_spatial_vars <- c("region")
+  } else if (identical(profile, "neuron_soma")) {
+    sample_info$soma_layer <- factor(raw_layer, levels = c("sp", "sg"))
+    sample_info$layer <- factor("none")
+    sample_info$celltype <- factor("neuron_soma")
+    active_spatial_vars <- c("region")
+  } else if (identical(profile, "neuron_neuropil")) {
+    sample_info$layer <- factor(raw_layer, levels = c("so", "sr", "slm", "mo", "po"))
+    sample_info$celltype <- factor("neuron_neuropil")
+    active_spatial_vars <- c("region", "layer")
+    invalid_layer <- (!is.na(sample_info$region) & !is.na(sample_info$layer)) & (
+      (sample_info$region %in% c("ca1", "ca2", "ca3") & !sample_info$layer %in% c("so", "sr", "slm")) |
+        (sample_info$region == "dg" & !sample_info$layer %in% c("mo", "po"))
+    )
+    if (any(invalid_layer)) {
+      write_csv_safe(sample_info[invalid_layer, , drop = FALSE], fp_log("invalid_region_layer_combinations.csv"))
+      warning("Invalid region/layer combinations found; see logs/invalid_region_layer_combinations.csv")
+    }
+  } else {
+    sample_info$layer <- factor(ifelse(is.na(raw_layer), "none", raw_layer))
+    sample_info$celltype <- factor(ifelse(is.na(raw_celltype), profile, raw_celltype))
+    active_spatial_vars <- c("region")
+    if (length(unique(stats::na.omit(sample_info$layer))) > 1) active_spatial_vars <- c(active_spatial_vars, "layer")
+    if (length(unique(stats::na.omit(sample_info$celltype))) > 1) active_spatial_vars <- c(active_spatial_vars, "celltype")
+  }
+
+  required_vars <- c("condition", active_spatial_vars)
+  missing_required <- Reduce(`|`, lapply(required_vars, function(v) is.na(sample_info[[v]])))
+  if (any(missing_required)) {
+    write_csv_safe(sample_info[missing_required, , drop = FALSE], fp_log("invalid_required_metadata.csv"))
+    stop("Missing or invalid values in required metadata columns: ",
+         paste(required_vars, collapse = ", "),
+         ". See logs/invalid_required_metadata.csv")
+  }
+
+  write_csv_safe(
+    tibble::tibble(
+      dataset_profile = profile,
+      active_spatial_vars = paste(active_spatial_vars, collapse = ","),
+      n_samples = nrow(sample_info),
+      regions = paste(sort(unique(stats::na.omit(as.character(sample_info$region)))), collapse = ","),
+      layers = paste(sort(unique(stats::na.omit(as.character(sample_info$layer)))), collapse = ",")
+    ),
+    fp_log("dataset_profile.csv")
+  )
+
+  list(sample_info = sample_info, profile = profile, active_spatial_vars = active_spatial_vars)
+}
 
 male.data <- { stop_if_missing(expr_xlsx); read_head(expr_xlsx) } %>% dplyr::mutate(.row_id = dplyr::row_number())
 meta.data <- { stop_if_missing(meta_xlsx); read_head(meta_xlsx) }
@@ -119,7 +288,7 @@ sentinels <- c("AIF1","AKAP2","ADCY1","AKAP1","AMPD3","ANXA3","1433S","ACK1","AI
 missing_sentinels <- setdiff(sentinels, entry_map$entry_base)
 if (length(missing_sentinels)) {
   warning(sprintf("entry_map missing expected keys: %s", paste(missing_sentinels, collapse=", ")))
-  readr::write_tsv(entry_map, file.path(subdirs$tables_modules, "entry_map_debug.tsv"))
+  write_tsv_safe(entry_map, fp_maptab("entry_map_debug.tsv"))
 }
 
 # --------------------------
@@ -131,7 +300,7 @@ to_base_no_iso_mouse <- function(x) { x <- gsub("-\\d+$", "", x); gsub("_MOUSE$"
 tokenize_mouse_only <- function(male_df) {
   tok <- male_df %>% tidyr::separate_rows(gene_symbol, sep = ";") %>% dplyr::mutate(token_raw = gene_symbol, token_up = normalize_token(gene_symbol))
   dropped_non_mouse <- tok %>% dplyr::filter(!grepl("_MOUSE$", token_up))
-  if (nrow(dropped_non_mouse)) readr::write_tsv(dropped_non_mouse, file.path(subdirs$tables_modules, "dropped_non_mouse_tokens.tsv"))
+  if (nrow(dropped_non_mouse)) write_tsv_safe(dropped_non_mouse, fp_maptab("dropped_non_mouse_tokens.tsv"))
   tok %>%
     dplyr::filter(grepl("_MOUSE$", token_up)) %>%
     dplyr::mutate(
@@ -280,7 +449,7 @@ audit_mouse <- resolved2 %>%
   dplyr::mutate(mapped = !is.na(Resolved_UNIPROT) & nzchar(Resolved_UNIPROT)) %>%
   dplyr::count(id_class, strategy, mapped, name = "n") %>%
   dplyr::arrange(desc(n))
-readr::write_tsv(audit_mouse, file.path(subdirs$tables_modules, "mapping_audit_mouse_only_robust.tsv"))
+write_tsv_safe(audit_mouse, fp_maptab("mapping_audit_mouse_only_robust.tsv"))
 
 unmapped_tokens <- resolved2 %>%
   dplyr::filter(is.na(Resolved_UNIPROT) | !nzchar(Resolved_UNIPROT)) %>%
@@ -292,10 +461,10 @@ unmapped_tokens <- resolved2 %>%
       TRUE ~ "unexpected_format_or_na"
     )
   ) %>% dplyr::arrange(id_class, token_base)
-readr::write_tsv(unmapped_tokens, file.path(subdirs$tables_modules, "unmapped_mouse_tokens.tsv"))
+write_tsv_safe(unmapped_tokens, fp_maptab("unmapped_mouse_tokens.tsv"))
 
 unmapped_summary <- unmapped_tokens %>% dplyr::count(id_class, reason, token_base, name = "n") %>% dplyr::arrange(dplyr::desc(n))
-readr::write_tsv(unmapped_summary, file.path(subdirs$tables_modules, "unmapped_mouse_tokens_summary.tsv"))
+write_tsv_safe(unmapped_summary, fp_maptab("unmapped_mouse_tokens_summary.tsv"))
 
 # --------------------------
 # Collapse to features and build expression matrix
@@ -308,7 +477,7 @@ male.norm <- resolved2 %>%
   dplyr::select(-.row_id) %>%
   dplyr::mutate(gene_symbol = dplyr::na_if(gene_symbol, ""))
 
-to_numeric_matrix <- function(male_norm, qc_dir = subdirs$plots_qc) {
+to_numeric_matrix <- function(male_norm, qc_dir = subdirs$logs) {
   if (!"gene_symbol" %in% names(male_norm)) stop("male.norm must contain gene_symbol")
   expr <- as.data.frame(lapply(male_norm[, -1, drop = FALSE], function(x) suppressWarnings(as.numeric(x))))
   if (!all(vapply(expr, is.numeric, logical(1)))) stop("Non-numeric columns remain after coercion")
@@ -324,31 +493,20 @@ to_numeric_matrix <- function(male_norm, qc_dir = subdirs$plots_qc) {
 }
 expression.data <- to_numeric_matrix(male.norm)
 
-# Save core outputs
-readr::write_tsv(resolved2, file.path(subdirs$tables_modules, "resolved_tokens_mouse_only_robust.tsv"))
-saveRDS(list(expression = expression.data, male.norm = male.norm, mapping = resolved2), file = file.path(subdirs$network, "mouse_only_mapping_outputs_robust.rds"))
-
-# Expression matrix: rows = samples, cols = proteins
-expression.data <- male.norm[, -1]
-expression.data <- as.data.frame(lapply(expression.data, as.numeric))
-expression.data <- as.data.frame(t(expression.data))
-names(expression.data) <- male.norm$gene_symbol
-
 # Force single accession per feature name and ensure uniqueness
 fix_feature_ids <- function(nms) {
-  # take first token before ';'
   first <- sub(";.*$", "", nms)
-  # trim + uppercase
   first <- toupper(trimws(first))
-  # keep only accession-like strings; if not accession, keep as-is
-  is_acc <- grepl("^[OPQ][0-9][A-Z0-9]{3}[0-9]$|^[A-NR-Z][0-9][A-Z0-9]{3}[0-9]$|^A0A[0-9A-Z]{7}$", first)
-  first[!nzchar(first)] <- "UNMAPPED"
-  # make unique to avoid downstream errors
+  first[is.na(first) | !nzchar(first)] <- "UNMAPPED"
   make.unique(first, sep = "_")
 }
 
 colnames(expression.data) <- fix_feature_ids(colnames(expression.data))
 
+# Save core outputs
+write_tsv_safe(resolved2, fp_maptab("resolved_tokens_mouse_only_robust.tsv"))
+saveRDS(list(expression = expression.data, male.norm = male.norm, mapping = resolved2),
+        file = fp_state("mouse_only_mapping_outputs_robust.rds"))
 
 # --------------------------
 # QC and sample clustering
@@ -361,33 +519,50 @@ if (!gsg$allOK) {
 }
 
 sampleTree <- hclust(dist(expression.data), method = "average")
+svg(file = fp_qc("sample_clustering_outliers.svg"), width = nature_single_col * 1.4, height = 3.8, family = nature_font)
 par(cex = 0.6, mar = c(0, 4, 2, 0))
-plot(sampleTree, main = "Sample clustering to detect outliers", sub = "", xlab = "", cex.main = 2); abline(h = 40, col = "red")
-svg(file = fp_qc("sample_clustering_outliers.svg"), width = 8, height = 6)
+plot(sampleTree, main = "Sample clustering to detect outliers", sub = "", xlab = "", cex.main = 2)
+abline(h = sample_tree_plot_height, col = "red")
 dev.off()
 
-#cut.sampleTree <- cutreeStatic(sampleTree, cutHeight = 80, minSize = 10)
-cut.sampleTree <- cutreeStatic(sampleTree, cutHeight = 80, minSize = 10)
+cut.sampleTree <- cutreeStatic(sampleTree, cutHeight = sample_tree_cut_height, minSize = 10)
 expression.data <- expression.data[cut.sampleTree == 1, ]
 
 # --------------------------
 # Soft-threshold selection
 # --------------------------
-spt <- pickSoftThreshold(expression.data)
+spt <- pickSoftThreshold(expression.data, networkType = "signed",
+                         corFnc = "bicor",
+                         corOptions = list(use = "p", maxPOutliers = 0.05))
 
-svglite::svglite(file = fp_qc("soft_threshold_scale_independence.svg"), width = 7, height = 5)
+svglite::svglite(file = fp_qc("soft_threshold_scale_independence.svg"), width = nature_single_col, height = 2.8)
 par(mar = c(4,4,2,1))
 plot(spt$fitIndices[,1], spt$fitIndices[,2], xlab = "Soft Threshold (power)", ylab = "Scale Free Topology Model Fit, signed R^2", type = "n", main = "Scale independence")
-text(spt$fitIndices[,1], spt$fitIndices[,2], labels = spt$fitIndices[,1], col = "red"); abline(h = 0.80, col = "red")
+text(spt$fitIndices[,1], spt$fitIndices[,2], labels = spt$fitIndices[,1], col = "red")
+abline(h = soft_threshold_rsquared, col = "red")
 dev.off()
 
-svglite::svglite(file = fp_qc("soft_threshold_mean_connectivity.svg"), width = 7, height = 5)
+svglite::svglite(file = fp_qc("soft_threshold_mean_connectivity.svg"), width = nature_single_col, height = 2.8)
 par(mar = c(4,4,2,1))
 plot(spt$fitIndices[,1], spt$fitIndices[,5], xlab = "Soft Threshold (power)", ylab = "Mean Connectivity", type = "n", main = "Mean connectivity")
 text(spt$fitIndices[,1], spt$fitIndices[,5], labels = spt$fitIndices[,1], col = "red")
 dev.off()
 
-softPower <- 6
+fit_indices <- tibble::as_tibble(spt$fitIndices)
+eligible_power <- fit_indices$Power[fit_indices$SFT.R.sq >= soft_threshold_rsquared]
+softPower <- if (length(eligible_power)) {
+  min(eligible_power)
+} else {
+  fit_indices$Power[which.max(fit_indices$SFT.R.sq)]
+}
+write_csv_safe(fit_indices, fp_qctab("soft_threshold_fit_indices.csv"))
+write_csv_safe(
+  tibble::tibble(
+    parameter = c("soft_threshold_rsquared", "selected_soft_power"),
+    value = c(soft_threshold_rsquared, softPower)
+  ),
+  fp_qctab("soft_threshold_selection.csv")
+)
 
 # --------------------------
 # Network construction
@@ -398,12 +573,12 @@ TOM <- TOMsimilarity(adjacency)
 TOM.dissimilarity <- 1 - TOM
 geneTree <- hclust(as.dist(TOM.dissimilarity), method = "average")
 
-svg(file = fp_net("gene_dendrogram.svg"), width = 12, height = 9)
+svg(file = fp_net("gene_dendrogram.svg"), width = nature_double_col, height = 5.2, family = nature_font)
 plot(geneTree, xlab = "", sub = "", main = "Gene clustering on TOM-based dissimilarity", labels = FALSE, hang = 0.04)
 dev.off()
 
-Modules <- cutreeDynamic(dendro = geneTree, distM = TOM.dissimilarity, deepSplit = 2,
-                         pamRespectsDendro = FALSE, minClusterSize = 30)
+Modules <- cutreeDynamic(dendro = geneTree, distM = TOM.dissimilarity, deepSplit = deep_split,
+                         pamRespectsDendro = FALSE, minClusterSize = min_module_size)
 
 colorSeq <- c(
   "lemon" = "lemonchiffon", "sage" = "darkseagreen", "bluegray" = "steelblue",
@@ -427,7 +602,7 @@ mod_colors_map <- setNames(palette_vals[seq_len(nmods)], as.character(unique_mod
 ModuleColors <- as.character(mod_colors_map[as.character(Modules)])
 stopifnot(length(ModuleColors) == length(Modules))
 
-svg(file = fp_net("gene_dendrogram_module_colors.svg"), width = 12, height = 9)
+svg(file = fp_net("gene_dendrogram_module_colors.svg"), width = nature_double_col, height = 5.2, family = nature_font)
 plotDendroAndColors(geneTree, ModuleColors, "Module", dendroLabels = FALSE, hang = 0.03,
                     addGuide = TRUE, guideHang = 0.05,
                     main = "Gene dendrogram and module colors")
@@ -437,11 +612,32 @@ MElist <- moduleEigengenes(expression.data, colors = ModuleColors)
 MEs <- MElist$eigengenes
 ME.dissimilarity <- 1 - cor(MEs, use = "p", method = "pearson")
 METree <- hclust(as.dist(ME.dissimilarity), method = "average")
-merge <- mergeCloseModules(expression.data, ModuleColors, cutHeight = .25)
+merge <- mergeCloseModules(expression.data, ModuleColors, cutHeight = merge_cut_height)
 mergedColors <- merge$colors
+names(mergedColors) <- colnames(expression.data)
 mergedMEs <- orderMEs(merge$newMEs)
 
-svg(file = fp_net("gene_dendrogram_modules_merged.svg"), width = 12, height = 9)
+write_csv_safe(
+  tibble::tibble(
+    parameter = c(
+      "sample_tree_cut_height", "sample_tree_plot_height",
+      "soft_threshold_rsquared", "selected_soft_power",
+      "network_type", "correlation_function", "bicor_maxPOutliers",
+      "deep_split", "min_module_size", "merge_cut_height",
+      "module_preservation_permutations"
+    ),
+    value = c(
+      sample_tree_cut_height, sample_tree_plot_height,
+      soft_threshold_rsquared, softPower,
+      "signed", "bicor", 0.05,
+      deep_split, min_module_size, merge_cut_height,
+      module_preservation_permutations
+    )
+  ),
+  fp_log("analysis_parameters.csv")
+)
+
+svg(file = fp_net("gene_dendrogram_modules_merged.svg"), width = nature_double_col, height = 5.2, family = nature_font)
 plotDendroAndColors(geneTree, cbind(ModuleColors, mergedColors),
                     c("Original Module","Merged Module"),
                     dendroLabels = FALSE, hang = 0.03, addGuide = TRUE, guideHang = 0.05,
@@ -452,10 +648,10 @@ dev.off()
 # Eigengene network plots
 # --------------------------
 MET <- orderMEs(mergedMEs)
-svg(file = fp_net("eigengene_dendrogram.svg"), width = 8, height = 6)
+svg(file = fp_net("eigengene_dendrogram.svg"), width = nature_single_col, height = 3.0, family = nature_font)
 plotEigengeneNetworks(MET, "", plotHeatmaps = FALSE, marDendro = c(0, 4, 2, 0))
 dev.off()
-svg(file = fp_net("eigengene_adjacency_heatmap.svg"), width = 8, height = 6)
+svg(file = fp_net("eigengene_adjacency_heatmap.svg"), width = nature_single_col, height = 3.0, family = nature_font)
 par(mar = c(1,1,1,1))
 plotEigengeneNetworks(MET, "Eigengene adjacency heatmap", plotDendrograms = FALSE,
                       marHeatmap = c(5, 5, 2, 2), xLabelsAngle = 90)
@@ -470,13 +666,28 @@ rownames(sample_info) <- as.character(sample_info$row.names)
 
 Samples <- rownames(expression.data)
 sample_info <- sample_info[Samples, , drop = FALSE]
+profile_info <- prepare_spatial_metadata(
+  sample_info,
+  infer_dataset_profile(sample_info, expr_xlsx, meta_xlsx, dataset_profile)
+)
+sample_info <- profile_info$sample_info
+dataset_profile_resolved <- profile_info$profile
+active_spatial_vars <- profile_info$active_spatial_vars
 
-X_celltype <- model.matrix(~ 0 + celltype, data = sample_info); colnames(X_celltype) <- sub("^celltype", "celltype_", colnames(X_celltype))
-X_layer    <- model.matrix(~ 0 + layer,    data = sample_info); colnames(X_layer)    <- sub("^layer",    "layer_",    colnames(X_layer))
-X_region   <- model.matrix(~ 0 + region,   data = sample_info); colnames(X_region)   <- sub("^region",   "region_",   colnames(X_region))
-X_cond     <- model.matrix(~ 0 + ExpGroup, data = sample_info); colnames(X_cond)     <- sub("^ExpGroup", "cond_",     colnames(X_cond))
+make_trait_matrix <- function(sample_info, vars) {
+  mats <- lapply(vars, function(v) {
+    x <- droplevels(factor(sample_info[[v]]))
+    if (length(unique(stats::na.omit(x))) <= 1) return(NULL)
+    mm <- model.matrix(~ 0 + x)
+    colnames(mm) <- paste0(v, "_", sub("^x", "", colnames(mm)))
+    mm
+  })
+  mats <- Filter(Negate(is.null), mats)
+  if (!length(mats)) stop("No variable traits remain after filtering")
+  as.data.frame(do.call(cbind, mats), stringsAsFactors = FALSE)
+}
 
-datTraits <- as.data.frame(cbind(X_celltype, X_layer, X_region, X_cond), stringsAsFactors = FALSE)
+datTraits <- make_trait_matrix(sample_info, c(active_spatial_vars, "condition"))
 keep_cols <- vapply(datTraits, function(x) sd(as.numeric(x), na.rm = TRUE) > 0, logical(1))
 datTraits <- datTraits[, keep_cols, drop = FALSE]
 rownames(datTraits) <- Samples
@@ -484,11 +695,15 @@ rownames(datTraits) <- Samples
 nSamples <- nrow(expression.data)
 MEcorr <- cor(mergedMEs, datTraits, use = "p", method = "pearson")
 MEp    <- corPvalueStudent(MEcorr, nSamples)
+MEfdr  <- matrix(
+  p.adjust(as.vector(MEp), method = "BH"),
+  nrow = nrow(MEp), ncol = ncol(MEp), dimnames = dimnames(MEp)
+)
 
-plot_trait_heatmap <- function(matCorr, matP, cols, file) {
+plot_trait_heatmap <- function(matCorr, matFdr, cols, file) {
   if (length(cols) == 0) return(invisible(NULL))
-  textMatrix <- paste(signif(matCorr[, cols, drop=FALSE], 2), "\n
-                (", signif(matP[, cols, drop=FALSE], 1), ")", sep = "")
+  textMatrix <- paste(signif(matCorr[, cols, drop=FALSE], 2), "\nq=",
+                      signif(matFdr[, cols, drop=FALSE], 1), sep = "")
   dim(textMatrix) <- dim(matCorr[, cols, drop=FALSE])
   svg(file = file, width = 6, height = max(4, nrow(matCorr) * 0.25 + 2))
   par(mar = c(6, 8.5, 3, 1))
@@ -511,14 +726,23 @@ groups <- list(
   celltype = grep("^celltype_", trait_names),
   layer    = grep("^layer_",   trait_names),
   region   = grep("^region_",  trait_names),
-  cond     = grep("^cond_",    trait_names)
+  condition = grep("^condition_", trait_names)
 )
+groups <- groups[c(intersect(c("celltype", "region", "layer"), active_spatial_vars), "condition")]
 for (nm in names(groups)) {
   idx <- groups[[nm]]
   if (length(idx) > 0) {
-    plot_trait_heatmap(MEcorr, MEp, idx, fp_traits(paste0("ME_trait_heatmap_", nm, ".svg")))
+    plot_trait_heatmap(MEcorr, MEfdr, idx, fp_traits(paste0("ME_trait_heatmap_", nm, ".svg")))
   }
 }
+write_csv_safe(
+  reshape2::melt(MEcorr, varnames = c("module", "trait"), value.name = "r") |>
+    dplyr::mutate(
+      p = as.vector(MEp),
+      fdr = as.vector(MEfdr)
+    ),
+  fp_source("ME_trait_correlations.csv")
+)
 
 # --------------------------
 # Pairwise condition contrasts (optional)
@@ -532,7 +756,9 @@ for (nm in names(contrasts)) {
   v <- contrasts[[nm]]; keep <- !is.na(v)
   cmat <- cor(mergedMEs[keep, , drop=FALSE], v[keep], use="p")
   pmat <- corPvalueStudent(cmat, sum(keep))
-  txt <- paste(signif(cmat,2), "\n(", signif(pmat,1), ")", sep = "")
+  qmat <- matrix(p.adjust(as.vector(pmat), method = "BH"),
+                 nrow = nrow(pmat), ncol = ncol(pmat), dimnames = dimnames(pmat))
+  txt <- paste(signif(cmat,2), "\nq=", signif(qmat,1), sep = "")
   dim(txt) <- dim(cmat)
   svg(file = fp_traits(paste0("ME_trait_heatmap_", nm, ".svg")),
       width = 3, height = max(4, ncol(mergedMEs) * 0.25 + 2))
@@ -560,15 +786,22 @@ MMPvalue <- as.data.frame(corPvalueStudent(as.matrix(geneModuleMembership), nSam
 names(geneModuleMembership) <- paste0("MM", modNames)
 names(MMPvalue) <- paste0("p.MM", modNames)
 
-cond_numeric <- setNames(c(1, 2, 3), c("con", "res", "sus"))
-ExpGroup_num <- as.numeric(cond_numeric[as.character(sample_info$ExpGroup)])
-geneTraitSignificance <- as.data.frame(cor(expression.data,
-                                           ExpGroup_num,
-                                           use = "p",
-                                           method = "pearson"))
-GSPvalue <- as.data.frame(corPvalueStudent(as.matrix(geneTraitSignificance), nSamples))
+condition_factor <- factor(sample_info$ExpGroup, levels = c("con", "res", "sus"))
+gene_condition_p <- vapply(expression.data, function(x) {
+  fit <- stats::lm(x ~ condition_factor)
+  stats::anova(fit)[["Pr(>F)"]][1]
+}, numeric(1))
+gene_condition_fdr <- p.adjust(gene_condition_p, method = "BH")
+geneTraitSignificance <- data.frame(
+  GS.ExpGroup = -log10(pmax(gene_condition_fdr, .Machine$double.xmin)),
+  row.names = colnames(expression.data)
+)
+GSPvalue <- data.frame(
+  p.GS.ExpGroup = gene_condition_p,
+  FDR.GS.ExpGroup = gene_condition_fdr,
+  row.names = colnames(expression.data)
+)
 names(geneTraitSignificance) <- "GS.ExpGroup"
-names(GSPvalue) <- "p.GS.ExpGroup"
 
 modules_of_interest <- unique(mergedColors)
 for (module in modules_of_interest) {
@@ -579,22 +812,16 @@ for (module in modules_of_interest) {
     Gene = colnames(expression.data)[moduleGenes],
     Module = module,
     ModuleMembership = geneModuleMembership[moduleGenes, mmcol],
-    GeneSignificance = geneTraitSignificance[moduleGenes, "GS.ExpGroup"]
+    GeneSignificance = geneTraitSignificance[moduleGenes, "GS.ExpGroup"],
+    GeneSignificanceP = GSPvalue[moduleGenes, "p.GS.ExpGroup"],
+    GeneSignificanceFDR = GSPvalue[moduleGenes, "FDR.GS.ExpGroup"]
   )
-  write.csv(gene_info, file = fp_modtab(paste0("genes_in_module_", module, ".csv")), row.names = FALSE)
+  write_csv_safe(gene_info, fp_modtab(paste0("genes_in_module_", module, ".csv")))
 }
 
 # ==========================
 # Module naming via GO terms (robust UNIPROT→ENTREZ + consistent renaming)
 # ==========================
-suppressPackageStartupMessages({
-  library(clusterProfiler)
-  library(org.Mm.eg.db)
-  library(dplyr)
-  library(stringr)
-  library(readr)
-})
-
 # Feature IDs may contain multiple UniProt accessions separated by ';'
 all_feature_ids <- colnames(expression.data)
 feature_to_acc <- strsplit(all_feature_ids, ";", fixed = TRUE)
@@ -742,9 +969,9 @@ best_by_mod <- annot_df |>
   )
 
 # Persist annotations
-readr::write_csv(annot_df |> dplyr::arrange(Module, dplyr::desc(score)),
-                 fp_modtab("module_annotations_GO.csv"))
-readr::write_csv(best_by_mod, fp_modtab("module_name_map.csv"))
+write_csv_safe(annot_df |> dplyr::arrange(Module, dplyr::desc(score)),
+               fp_modtab("module_annotations_GO.csv"))
+write_csv_safe(best_by_mod, fp_modtab("module_name_map.csv"))
 
 # Color -> Name map
 module_name_map <- setNames(best_by_mod$BestCompact, best_by_mod$Module)
@@ -768,7 +995,7 @@ gene_module_named <- data.frame(
   ModuleName    = unname(module_name_map[mergedColors[match(colnames(expression.data), names(mergedColors))]]),
   stringsAsFactors = FALSE
 )
-readr::write_csv(gene_module_named, fp_modtab("genes_module_with_names.csv"))
+write_csv_safe(gene_module_named, fp_modtab("genes_module_with_names.csv"))
 
 # Save maps
 module_name_map_df <- data.frame(
@@ -776,20 +1003,20 @@ module_name_map_df <- data.frame(
   ModuleName  = unname(module_name_map),
   stringsAsFactors = FALSE
 )
-readr::write_tsv(module_name_map_df, fp_modtab("module_name_map.tsv"))
+write_tsv_safe(module_name_map_df, fp_modtab("module_name_map.tsv"))
 me_rename_df <- data.frame(
   ME_old = ME_names_old,
   ME_new = ME_names_new,
   stringsAsFactors = FALSE
 )
-readr::write_tsv(me_rename_df, fp_modtab("ME_column_rename_map.tsv"))
+write_tsv_safe(me_rename_df, fp_modtab("ME_column_rename_map.tsv"))
 
 saveRDS(list(
   module_name_map = module_name_map,
   color_to_MEcol  = color_to_MEcol,
   ME_names_old    = ME_names_old,
   ME_names_new    = ME_names_new
-), file = fp_modtab("module_name_map.rds"))
+), file = fp_state("module_name_map.rds"))
 
 # --------------------------
 # Preservation across conditions
@@ -845,7 +1072,7 @@ mp <- modulePreservation(
   multi_expr_clean,
   multi_color,
   referenceNetworks = 1,
-  nPermutations = 200,
+  nPermutations = module_preservation_permutations,
   networkType = "signed",
   corFnc = "bicor",
   corOptions = "use = 'p', maxPOutliers = 0.05",
@@ -857,21 +1084,29 @@ Z_CON <- mp$preservation$Z$ref.ALL$inColumnsAlsoPresentIn.CON
 Z_RES <- mp$preservation$Z$ref.ALL$inColumnsAlsoPresentIn.RES
 Z_SUS <- mp$preservation$Z$ref.ALL$inColumnsAlsoPresentIn.SUS
 
-write.csv(Z_CON, fp_prestab("module_preservation_CON_vs_ALL_Zsummary.csv"), row.names = TRUE)
-write.csv(Z_RES, fp_prestab("module_preservation_RES_vs_ALL_Zsummary.csv"), row.names = TRUE)
-write.csv(Z_SUS, fp_prestab("module_preservation_SUS_vs_ALL_Zsummary.csv"), row.names = TRUE)
+write_csv_safe(tibble::rownames_to_column(as.data.frame(Z_CON), "module"),
+               fp_prestab("module_preservation_CON_vs_ALL_Zsummary.csv"))
+write_csv_safe(tibble::rownames_to_column(as.data.frame(Z_RES), "module"),
+               fp_prestab("module_preservation_RES_vs_ALL_Zsummary.csv"))
+write_csv_safe(tibble::rownames_to_column(as.data.frame(Z_SUS), "module"),
+               fp_prestab("module_preservation_SUS_vs_ALL_Zsummary.csv"))
+write_csv_safe(
+  dplyr::bind_rows(
+    tibble::rownames_to_column(as.data.frame(Z_CON), "module") |> dplyr::mutate(test_set = "CON"),
+    tibble::rownames_to_column(as.data.frame(Z_RES), "module") |> dplyr::mutate(test_set = "RES"),
+    tibble::rownames_to_column(as.data.frame(Z_SUS), "module") |> dplyr::mutate(test_set = "SUS")
+  ),
+  fp_source("module_preservation.csv")
+)
 
 # --------------------------
-# Condition × region × layer × celltype panels
+# Condition and active spatial trait panels
 # --------------------------
-# Build combined label; microglia layer -> "none"
-region <- as.character(sample_info$region)
-layer  <- as.character(sample_info$layer)
-cell   <- as.character(sample_info$celltype)
-cond   <- as.character(sample_info$ExpGroup)
-
-combo <- paste(cond, region, layer, cell, sep = "_")
-combo <- factor(combo)
+combo_vars <- c("condition", active_spatial_vars)
+combo_df <- sample_info[, combo_vars, drop = FALSE] |>
+  tibble::rownames_to_column("Sample") |>
+  dplyr::mutate(dplyr::across(dplyr::all_of(combo_vars), as.character))
+combo <- factor(do.call(paste, c(combo_df[combo_vars], sep = "_")))
 
 # One-hot and correlations
 X_combo <- model.matrix(~ 0 + combo)
@@ -884,40 +1119,43 @@ MEp_combo    <- corPvalueStudent(MEcorr_combo, nrow(expression.data))
 df_combo <- reshape2::melt(MEcorr_combo, varnames = c("module","comb"), value.name = "r")
 p_combo  <- reshape2::melt(MEp_combo,    varnames = c("module","comb"), value.name = "p")
 df_combo$p <- p_combo$p
-df_combo$stars <- gtools::stars.pval(df_combo$p)
+df_combo$fdr <- p.adjust(df_combo$p, method = "BH")
+df_combo$sig <- sig_dot(df_combo$fdr)
 df_combo$module <- factor(df_combo$module, levels = rownames(MEcorr_combo))
 
-# Robust split of combo into columns
-split_combo_labels <- function(labels) {
+split_combo_labels <- function(labels, vars) {
   parts <- strsplit(labels, "_", fixed = TRUE)
   do.call(rbind, lapply(parts, function(p) {
     p <- as.character(p)
-    if (length(p) < 4) p <- c(p, rep("missing", 4 - length(p)))
-    p[1:4]
+    if (length(p) < length(vars)) p <- c(p, rep("missing", length(vars) - length(p)))
+    p[seq_along(vars)]
   }))
 }
-lab_parts <- split_combo_labels(as.character(df_combo$comb))
-colnames(lab_parts) <- c("condition","region","layer","cell")
-df_combo2 <- cbind(df_combo[, c("module","comb","r","p","stars")], as.data.frame(lab_parts, stringsAsFactors = FALSE))
+lab_parts <- split_combo_labels(as.character(df_combo$comb), combo_vars)
+colnames(lab_parts) <- combo_vars
+df_combo2 <- cbind(df_combo[, c("module","comb","r","p","fdr","sig")], as.data.frame(lab_parts, stringsAsFactors = FALSE))
+df_combo2$spatial_trait <- do.call(paste, c(df_combo2[active_spatial_vars], sep = "_"))
+df_combo2$trait <- do.call(paste, c(df_combo2[c("condition", active_spatial_vars)], sep = "_"))
+write_csv_safe(df_combo2, fp_source("ME_condition_spatial_strata.csv"))
 
 present_conds <- intersect(c("con","res","sus"), unique(df_combo2$condition))
 by_cond <- split(df_combo2, df_combo2$condition)
 
 panel_plot <- function(dfi, panel_title = "") {
   if (!nrow(dfi)) return(NULL)
-  dfi$trait <- paste(dfi$region, dfi$layer, dfi$cell, sep = "_")
-  ord <- order(dfi$region, dfi$layer, dfi$cell)
-  dfi$trait <- factor(dfi$trait, levels = unique(dfi$trait[ord]))
-  ggplot(dfi, aes(x = trait, y = module, fill = r)) +
-    geom_tile(color = "white", size = 0.3) +
-    geom_text(aes(label = stars), size = 3, color = "black", na.rm = TRUE) +
+  ord <- do.call(order, dfi[active_spatial_vars])
+  dfi$spatial_trait <- factor(dfi$spatial_trait, levels = unique(dfi$spatial_trait[ord]))
+  ggplot(dfi, aes(x = spatial_trait, y = module, fill = r)) +
+    geom_tile(color = "white", linewidth = 0.15) +
+    geom_text(aes(label = sig), size = 1.8, color = "black", na.rm = TRUE) +
     scale_fill_gradient2(limits = c(-1, 1), oob = scales::squish,
-                         low = "#2166ac", mid = "white", high = "#b2182b") +
-    labs(title = panel_title, x = NULL, y = NULL, fill = "Pearson r") +
-    theme_minimal(base_size = 9) +
+                         low = nature_diverging["low"], mid = nature_diverging["mid"], high = nature_diverging["high"]) +
+    labs(title = panel_title, x = paste(active_spatial_vars, collapse = " / "), y = NULL, fill = "Pearson r") +
+    theme_nature() +
     theme(axis.text.x = element_text(angle = 45, hjust = 1),
-          panel.grid = element_blank(),
-          plot.margin = margin(2, 2, 2, 2),
+          axis.line.x = element_blank(),
+          axis.line.y = element_blank(),
+          axis.ticks = element_blank(),
           legend.position = "none")
 }
 
@@ -928,20 +1166,20 @@ if (length(plots) == 0) stop("No non-empty condition panels; check combo labels 
 # Combine panels; if single, save directly
 if (length(plots) == 1) {
   g_combined <- plots[[1]]
-  ggsave(fp_traits("panel_ME_vs_condition_region_layer_celltype.svg"),
-         g_combined, device = svglite::svglite, width = 10, height = 4)
+  save_plot_nature(g_combined, fp_traits("panel_ME_vs_condition_spatial_strata.svg"),
+                   width = nature_double_col, height = 3.9)
 } else {
   g_combined <- patchwork::wrap_plots(plots, nrow = 1)
   legend_df <- data.frame(x = 1:3, y = 1:3, r = c(-1, 0, 1))
   p_legend <- ggplot(legend_df, aes(x, y, fill = r)) +
     geom_tile() +
     scale_fill_gradient2(limits = c(-1, 1), oob = scales::squish,
-                         low = "#2166ac", mid = "white", high = "#b2182b") +
+                         low = nature_diverging["low"], mid = nature_diverging["mid"], high = nature_diverging["high"]) +
     theme_void() + theme(legend.position = "right") + labs(fill = "Pearson r")
   legend_only <- cowplot::get_legend(p_legend)
   g <- cowplot::plot_grid(g_combined, legend_only, rel_widths = c(1, 0.08))
-  ggsave(fp_traits("panel_ME_vs_condition_region_layer_celltype.svg"),
-         g, device = svglite::svglite, width = 14, height = 4.5)
+  save_plot_nature(g, fp_traits("panel_ME_vs_condition_spatial_strata.svg"),
+                   width = nature_double_col, height = 3.9)
 }
 
 # --------------------------
@@ -951,18 +1189,16 @@ if (!exists("df_all")) {
     if (exists("df_combo2")) {
         df_all <- df_combo2
         if (!"trait" %in% names(df_all)) {
-            df_all$trait <- paste(df_all$condition, df_all$region, df_all$layer, df_all$cell, sep = "_")
+            df_all$trait <- do.call(paste, c(df_all[c("condition", active_spatial_vars)], sep = "_"))
         }
     } else if (exists("MEcorr_combo") && exists("MEp_combo")) {
         df_all <- reshape2::melt(MEcorr_combo, varnames = c("module", "comb"), value.name = "r")
         p_tmp  <- reshape2::melt(MEp_combo,    varnames = c("module", "comb"), value.name = "p")
         df_all$p <- p_tmp$p
-        parts <- strsplit(as.character(df_all$comb), "_", fixed = TRUE)
-        parts <- lapply(parts, function(x) { x <- as.character(x); length(x) <- 4; x[is.na(x)] <- "missing"; x })
-        parts <- do.call(rbind, parts)
-        colnames(parts) <- c("condition", "region", "layer", "cell")
+        parts <- split_combo_labels(as.character(df_all$comb), combo_vars)
+        colnames(parts) <- combo_vars
         df_all <- cbind(df_all, as.data.frame(parts, stringsAsFactors = FALSE))
-        df_all$trait <- paste(df_all$condition, df_all$region, df_all$layer, df_all$cell, sep = "_")
+        df_all$trait <- do.call(paste, c(df_all[c("condition", active_spatial_vars)], sep = "_"))
     } else {
         stop("df_all is missing and cannot be reconstructed: provide df_combo2 or MEcorr_combo/MEp_combo.")
     }
@@ -982,9 +1218,8 @@ if (!exists("traits_in_order")) {
     if (exists("traits_in_order") && length(traits_in_order) > 0) {
         # already provided
     } else {
-        # reasonable default ordering: condition, region, layer, cell
-        df_all$trait <- paste(df_all$condition, df_all$region, df_all$layer, df_all$cell, sep = "_")
-        ord <- order(df_all$condition, df_all$region, df_all$layer, df_all$cell)
+        df_all$trait <- do.call(paste, c(df_all[c("condition", active_spatial_vars)], sep = "_"))
+        ord <- do.call(order, df_all[c("condition", active_spatial_vars)])
         traits_in_order <- unique(df_all$trait[ord])
     }
 }
@@ -998,13 +1233,6 @@ if (!exists("strip_df")) {
         strip_df <- data.frame(module = module_levels, mod_col = rep("grey80", length(module_levels)), stringsAsFactors = FALSE)
     }
 }
-
-# Ensure output_dir exists
-if (!exists("output_dir")) output_dir <- getwd()
-if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
-
-library(reshape2)
-library(grid)
 
 # 1) Wide matrices and order
 r_mat  <- reshape2::acast(df_all, module ~ trait, value.var = "r")
@@ -1031,7 +1259,12 @@ xlines <- gap_pos + 0.5
 if (exists("mergedMEs")) {
   me_names <- colnames(mergedMEs)                      # e.g., "MEblue"
   row_me <- rownames(r_mat)
-  row_mod_colors <- sub("^ME", "", row_me)
+  row_mod_colors <- if (exists("ME_names_new") && exists("ME_colors")) {
+    unname(setNames(ME_colors, ME_names_new)[row_me])
+  } else {
+    sub("^ME", "", row_me)
+  }
+  row_mod_colors[is.na(row_mod_colors) | !nzchar(row_mod_colors)] <- sub("^ME", "", row_me[is.na(row_mod_colors) | !nzchar(row_mod_colors)])
   if (!exists("colorSeq")) {
     colorSeq <- c(
       "turquoise"="turquoise","blue"="blue","brown"="brown","yellow"="yellow",
@@ -1060,13 +1293,12 @@ if (exists("mergedMEs")) {
 # Column condition annotation
 col_condition <- sapply(strsplit(colnames(r_mat), "_", fixed = TRUE), `[`, 1)
 ann_col <- data.frame(Condition = col_condition, row.names = colnames(r_mat))
-ann_colors$Condition <- c(con = "#eaf0ff", res = "#fff5df", sus = "#ffecef")
+ann_colors$Condition <- c(con = "#E6E6E6", res = "#D9ECF7", sus = "#F6D9CC")
 
 # 4) Palette and breaks
-if (!requireNamespace("RColorBrewer", quietly = TRUE)) install.packages("RColorBrewer", repos = "https://cloud.r-project.org")
 r_lim <- 0.8
 bk <- seq(-r_lim, r_lim, length.out = 201)
-pal <- colorRampPalette(rev(RColorBrewer::brewer.pal(n = 11, name = "RdBu")))(200)
+pal <- colorRampPalette(c(nature_diverging["low"], nature_diverging["mid"], nature_diverging["high"]))(200)
 
 # 5) Significance dots
 display_mat <- matrix("", nrow = nrow(r_mat), ncol = ncol(r_mat), dimnames = dimnames(r_mat))
@@ -1085,19 +1317,19 @@ ph <- pheatmap::pheatmap(
   annotation_colors = ann_colors,
   color = pal, breaks = bk, legend = TRUE,
   border_color = NA,
-  cellwidth = 10, cellheight = 10,
+  cellwidth = 8.5, cellheight = 8.5,
   angle_col = 45,
-  fontsize_col = 8.5, fontsize_row = 8.8,
+  fontsize_col = 6.2, fontsize_row = 6.2,
   display_numbers = display_mat,
   number_color = "grey20",
-  number_cex = 0.7,
+  number_cex = 0.6,
   show_rownames = TRUE, show_colnames = TRUE,
   silent = TRUE
 )
 
 nr <- nrow(r_mat)
 
-png(fp_traits("ME_trait_pheatmap.png"), width = 3200, height = 1800, res = 300)
+png(fp_traits("ME_trait_pheatmap.png"), width = round(nature_double_col * 300), height = round(4.3 * 300), res = 300)
 grid::grid.newpage(); grid::grid.draw(ph$gtable)
 panel_id <- grep("matrix", ph$gtable$layout$name)[1]
 seekViewport(ph$gtable$layout$name[panel_id])
@@ -1108,7 +1340,7 @@ for (xl in xlines) {
 }
 upViewport(0); dev.off()
 
-pdf(fp_traits("ME_trait_pheatmap.pdf"), width = 12, height = 7)
+pdf(fp_traits("ME_trait_pheatmap.pdf"), width = nature_double_col, height = 4.3, family = nature_font, useDingbats = FALSE)
 grid::grid.newpage(); grid::grid.draw(ph$gtable)
 panel_id <- grep("matrix", ph$gtable$layout$name)[1]
 seekViewport(ph$gtable$layout$name[panel_id])
@@ -1119,7 +1351,7 @@ for (xl in xlines) {
 }
 upViewport(0); dev.off()
 
-svglite::svglite(fp_traits("ME_trait_pheatmap.svg"), width = 12, height = 7)
+svglite::svglite(fp_traits("ME_trait_pheatmap.svg"), width = nature_double_col, height = 4.3)
 grid::grid.newpage(); grid::grid.draw(ph$gtable)
 panel_id <- grep("matrix", ph$gtable$layout$name)[1]
 seekViewport(ph$gtable$layout$name[panel_id])
@@ -1130,16 +1362,9 @@ for (xl in xlines) {
 }
 upViewport(0); dev.off()
 
-library(patchwork)
-library(gtools)
-library(cowplot)
-
-# Build blocks: celltype, region, layer, condition (no cellclass)
-block_list <- list(
-  celltype  = grep("^celltype_", colnames(datTraits)),
-  region    = grep("^region_",  colnames(datTraits)),
-  layer     = grep("^layer_",   colnames(datTraits)),
-  condition = grep("^cond_",    colnames(datTraits))
+block_list <- c(
+  setNames(lapply(active_spatial_vars, function(v) grep(paste0("^", v, "_"), colnames(datTraits))), active_spatial_vars),
+  list(condition = grep("^condition_", colnames(datTraits)))
 )
 
 block_cor_df <- function(block_idx, block_name) {
@@ -1149,7 +1374,8 @@ block_cor_df <- function(block_idx, block_name) {
   df <- reshape2::melt(r, varnames = c("module","trait"), value.name = "r")
   p_long <- reshape2::melt(p, varnames = c("module","trait"), value.name = "p")
   df$p <- p_long$p
-  df$stars <- gtools::stars.pval(df$p)
+  df$fdr <- p.adjust(df$p, method = "BH")
+  df$sig <- sig_dot(df$fdr)
   df$block <- block_name
   df$module <- factor(df$module, levels = rownames(r))
   df
@@ -1157,21 +1383,24 @@ block_cor_df <- function(block_idx, block_name) {
 
 dfs <- Filter(Negate(is.null),
               mapply(block_cor_df, block_list, names(block_list), SIMPLIFY = FALSE))
+write_csv_safe(dplyr::bind_rows(dfs), fp_source("ME_trait_block_correlations.csv"))
 
 panel_plot <- function(dfi, legend = "none") {
   if (nrow(dfi) == 0) return(NULL)
   dfi$trait <- factor(dfi$trait, levels = unique(dfi$trait))
 
   p_heat <- ggplot(dfi, aes(x = trait, y = module, fill = r)) +
-    geom_tile(color = "white", size = 0.3) +
-    geom_text(aes(label = stars), size = 3, color = "black", na.rm = TRUE) +
+    geom_tile(color = "white", linewidth = 0.15) +
+    geom_text(aes(label = sig), size = 1.8, color = "black", na.rm = TRUE) +
     scale_fill_gradient2(limits = c(-1, 1), oob = scales::squish,
-                         low = "#2166ac", mid = "white", high = "#b2182b") +
+                         low = nature_diverging["low"], mid = nature_diverging["mid"], high = nature_diverging["high"]) +
     labs(x = NULL, y = NULL, fill = "Pearson r") +
-    theme_minimal(base_size = 9) +
+    theme_nature() +
     theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          axis.line.x = element_blank(),
+          axis.line.y = element_blank(),
+          axis.ticks = element_blank(),
           legend.position = legend,
-          panel.grid = element_blank(),
           plot.margin = margin(2, 2, 2, 2))
 
   if (!identical(legend, "none")) return(p_heat)
@@ -1196,56 +1425,71 @@ p_legend_heat <- panel_plot(dfs[[1]], legend = "right")
 legend_only <- cowplot::get_legend(p_legend_heat)
 
 combo <- wrap_plots(plots, nrow = 1, guides = "collect") +
-  plot_annotation(title = "Module–trait relationships: cell type, region, layer, condition")
+  plot_annotation(title = paste("Module-trait relationships:", paste(c(active_spatial_vars, "condition"), collapse = ", ")))
 
-svg(file.path(output_dir, "panel_module_trait_relationships_no_cellclass.svg"), width = 14, height = 4.5)
-cowplot::plot_grid(combo, legend_only, rel_widths = c(1, 0.08))
-dev.off()
+main_trait_panel <- cowplot::plot_grid(combo, legend_only, rel_widths = c(1, 0.08))
+save_plot_nature(main_trait_panel, fp_mainfig("panel_module_trait_relationships_spatial.svg"),
+                 width = nature_double_col, height = 3.7)
 
 # ==========================================================
-# NEW: ME by condition plots with significance and exports
+# ME by condition plots with significance and exports
 # ==========================================================
-suppressPackageStartupMessages({
-  library(dplyr); library(tidyr); library(ggpubr); library(readr); library(broom)
-})
 
 # Long-form eigengenes + metadata
 stopifnot(nrow(mergedMEs) == nrow(sample_info))
 ME_long <- mergedMEs %>%
   tibble::rownames_to_column("Sample") %>%
-  mutate(condition = as.character(sample_info$ExpGroup)) %>%
+  mutate(
+    condition = as.character(sample_info$ExpGroup),
+    region = as.character(sample_info$region),
+    layer = as.character(sample_info$layer),
+    celltype = as.character(sample_info$celltype)
+  ) %>%
   pivot_longer(cols = starts_with("ME"),
                names_to = "module", values_to = "ME")
 
 # Ensure order con, res, sus
 ME_long$condition <- factor(ME_long$condition, levels = c("con","res","sus"))
+ME_long$region <- factor(ME_long$region)
+ME_long$layer <- factor(ME_long$layer)
+ME_long$celltype <- factor(ME_long$celltype)
 
 # Stats
 do_stats <- function(df) {
-  aov_fit <- stats::aov(ME ~ condition, data = df)
-  aov_p <- summary(aov_fit)[[1]][["Pr(>F)"]][1]
-  list(aov_p = aov_p)
+  covars <- active_spatial_vars
+  covars <- covars[vapply(df[covars], function(x) length(unique(stats::na.omit(x))) > 1, logical(1))]
+  rhs_full <- paste(c("condition", covars), collapse = " + ")
+  rhs_reduced <- if (length(covars)) paste(covars, collapse = " + ") else "1"
+  full_formula <- stats::as.formula(paste("ME ~", rhs_full))
+  reduced_formula <- stats::as.formula(paste("ME ~", rhs_reduced))
+  full_fit <- stats::lm(full_formula, data = df)
+  reduced_fit <- stats::lm(reduced_formula, data = df)
+  condition_p <- stats::anova(reduced_fit, full_fit)[["Pr(>F)"]][2]
+  list(condition_p = condition_p, model_formula = deparse(full_formula))
 }
 
 stat_list <- ME_long %>%
   group_by(module) %>%
   group_map(~{
     st <- do_stats(.x)
-    tibble(module = unique(.x$module), aov_p = st$aov_p)
+    tibble(module = unique(.x$module),
+           condition_model_p = st$condition_p,
+           model_formula = st$model_formula)
   }) %>% bind_rows() %>%
-  mutate(aov_fdr = p.adjust(aov_p, method = "BH")) %>%
-  arrange(aov_fdr)
+  mutate(condition_model_fdr = p.adjust(condition_model_p, method = "BH")) %>%
+  arrange(condition_model_fdr)
 
-readr::write_csv(stat_list, fp_modtab("ME_by_condition_ANOVA_FDR.csv"))
+write_csv_safe(stat_list, fp_traittab("ME_by_condition_adjusted_lm_FDR.csv"))
+write_csv_safe(ME_long, fp_source("ME_by_condition.csv"))
 
 top_modules <- head(stat_list$module, 12)
 comparisons <- list(c("con","res"), c("con","sus"), c("res","sus"))
 
 # Color mapping (full circles)
-cond_cols <- c(con = "#457B9D", res = "#C6C3BB", sus = "#E63946")
+cond_cols <- nature_condition_cols
 
 # Helper: build one dotplot
-plot_dot_mod <- function(dfm, mod, aov_fdr = NA_real_, show_subtitle = TRUE, errorbar = c("none","sem","sd")) {
+plot_dot_mod <- function(dfm, mod, condition_fdr = NA_real_, show_subtitle = TRUE, errorbar = c("none","sem","sd")) {
   errorbar <- match.arg(errorbar)
   # Summary for error bars
   summ <- dfm %>%
@@ -1257,36 +1501,37 @@ plot_dot_mod <- function(dfm, mod, aov_fdr = NA_real_, show_subtitle = TRUE, err
   # Base: all sample dots (full circles)
   p <- ggplot(dfm, aes(x = condition, y = ME, color = condition)) +
     geom_point(position = position_jitter(width = 0.08, height = 0, seed = 1),
-               size = 2, alpha = 0.85, shape = 16, stroke = 0) +
-    scale_color_manual(values = cond_cols, guide = "none")
+               size = 1.4, alpha = 0.75, shape = 16, stroke = 0) +
+    scale_color_manual(values = cond_cols, labels = nature_condition_labels, guide = "none") +
+    scale_x_discrete(labels = nature_condition_labels)
 
   # Add mean points (slightly larger) on top
   p <- p + geom_point(data = summ, aes(x = condition, y = mean),
-                      inherit.aes = FALSE, size = 3.2, shape = 16, color = "black") +
+                      inherit.aes = FALSE, size = 2.4, shape = 16, color = "black") +
            geom_point(data = summ, aes(x = condition, y = mean, color = condition),
-                      inherit.aes = FALSE, size = 2.8, shape = 16)
+                      inherit.aes = FALSE, size = 2.0, shape = 16)
 
   # Optional error bars
   if (errorbar != "none") {
     if (errorbar == "sem") {
       p <- p + geom_errorbar(data = summ,
                              aes(x = condition, ymin = mean - se, ymax = mean + se, color = condition),
-                             inherit.aes = FALSE, width = 0.1, alpha = 0.9)
+                             inherit.aes = FALSE, width = 0.10, linewidth = 0.25, alpha = 0.9)
     } else if (errorbar == "sd") {
       p <- p + geom_errorbar(data = summ,
                              aes(x = condition, ymin = mean - sd, ymax = mean + sd, color = condition),
-                             inherit.aes = FALSE, width = 0.1, alpha = 0.9)
+                             inherit.aes = FALSE, width = 0.10, linewidth = 0.25, alpha = 0.9)
     }
   }
 
   subtitle_txt <- if (isTRUE(show_subtitle))
-    sprintf("ANOVA FDR=%s", ifelse(is.na(aov_fdr), "NA", signif(aov_fdr, 3))) else NULL
+    sprintf("adjusted LM FDR=%s", ifelse(is.na(condition_fdr), "NA", signif(condition_fdr, 3))) else NULL
 
   p <- p +
     labs(title = paste0(mod, " eigengene by condition"),
          subtitle = subtitle_txt,
          x = NULL, y = "Module eigengene") +
-    theme_minimal(base_size = 11) +
+    theme_nature() +
     theme(panel.grid.major.x = element_blank())
 
   # Pairwise significance labels (Wilcoxon BH), shown as p.signif above groups
@@ -1302,8 +1547,8 @@ plot_dot_mod <- function(dfm, mod, aov_fdr = NA_real_, show_subtitle = TRUE, err
 pdf(fp_traits("ME_by_condition_all_modules_dotplot.pdf"), width = 7, height = 4.5)
 for (mod in unique(ME_long$module)) {
   dfm <- ME_long %>% filter(module == mod)
-  aov_fdr <- stat_list$aov_fdr[stat_list$module == mod][1]
-  p <- plot_dot_mod(dfm, mod, aov_fdr = aov_fdr, show_subtitle = TRUE, errorbar = "sem")
+  condition_fdr <- stat_list$condition_model_fdr[stat_list$module == mod][1]
+  p <- plot_dot_mod(dfm, mod, condition_fdr = condition_fdr, show_subtitle = TRUE, errorbar = "sem")
   print(p)
 }
 dev.off()
@@ -1311,26 +1556,27 @@ dev.off()
 # SVG grid: top N most differential modules (compact)
 plot_one_mod_dot <- function(mod) {
   dfm <- ME_long %>% filter(module == mod)
-  aov_fdr <- stat_list$aov_fdr[stat_list$module == mod][1]
+  condition_fdr <- stat_list$condition_model_fdr[stat_list$module == mod][1]
   summ <- dfm %>% group_by(condition) %>%
     summarise(mean = mean(ME, na.rm = TRUE), se = sd(ME, na.rm = TRUE)/sqrt(n()), .groups = "drop")
 
   ggplot(dfm, aes(x = condition, y = ME, color = condition)) +
     geom_point(position = position_jitter(width = 0.08, height = 0, seed = 1),
-               size = 1.8, alpha = 0.8, shape = 16, stroke = 0) +
+               size = 1.1, alpha = 0.75, shape = 16, stroke = 0) +
     geom_point(data = summ, aes(x = condition, y = mean),
-               inherit.aes = FALSE, size = 3, shape = 16, color = "black") +
+               inherit.aes = FALSE, size = 2.2, shape = 16, color = "black") +
     geom_point(data = summ, aes(x = condition, y = mean, color = condition),
-               inherit.aes = FALSE, size = 2.6, shape = 16) +
+               inherit.aes = FALSE, size = 1.8, shape = 16) +
     # Optional tiny SEM bars for overview
     geom_errorbar(data = summ, aes(x = condition, ymin = mean - se, ymax = mean + se, color = condition),
-                  inherit.aes = FALSE, width = 0.08, alpha = 0.8) +
-    scale_color_manual(values = cond_cols, guide = "none") +
-    labs(title = paste0(mod, "  (FDR=", signif(aov_fdr, 3), ")"),
+                  inherit.aes = FALSE, width = 0.08, linewidth = 0.25, alpha = 0.8) +
+    scale_color_manual(values = cond_cols, labels = nature_condition_labels, guide = "none") +
+    scale_x_discrete(labels = nature_condition_labels) +
+    labs(title = paste0(mod, "  (FDR=", signif(condition_fdr, 3), ")"),
          x = NULL, y = NULL) +
-    theme_minimal(base_size = 9) +
+    theme_nature() +
     theme(legend.position = "none",
-          plot.title = element_text(size = 9),
+          plot.title = element_text(size = 6.2),
           panel.grid.major.x = element_blank())
 }
 
@@ -1339,10 +1585,9 @@ if (length(top_modules) > 0) {
   ncol_grid <- min(4, ceiling(sqrt(length(plots_top))))
   nrow_grid <- ceiling(length(plots_top)/ncol_grid)
   g <- patchwork::wrap_plots(plots_top, ncol = ncol_grid)
-  svglite::svglite(fp_traits("ME_by_condition_top_modules_dotplot.svg"),
-                   width = 3.0*ncol_grid, height = 2.5*nrow_grid)
-  print(g)
-  dev.off()
+  save_plot_nature(g, fp_mainfig("ME_by_condition_top_modules_dotplot.svg"),
+                   width = min(nature_double_col, 1.75*ncol_grid),
+                   height = 1.55*nrow_grid)
 }
 
 # Optional: export pairwise Wilcoxon BH summary across modules
@@ -1352,1274 +1597,37 @@ pw_tables <- ME_long %>%
     tt <- pairwise.wilcox.test(.x$ME, .x$condition, p.adjust.method = "BH", exact = FALSE)
     broom::tidy(tt) %>% mutate(module = unique(.x$module))
   }) %>% bind_rows()
-readr::write_csv(pw_tables, fp_modtab("ME_by_condition_pairwise_Wilcoxon_BH.csv"))
+write_csv_safe(pw_tables, fp_traittab("ME_by_condition_pairwise_Wilcoxon_BH.csv"))
+
+output_manifest <- tibble::tibble(
+  category = c(
+    "logs", "logs", "qc_table", "mapping_table", "state",
+    "network_figure", "trait_figure", "main_figure", "main_figure",
+    "source_data", "source_data", "source_data", "source_data",
+    "module_table", "preservation_table", "trait_table"
+  ),
+  path = c(
+    fp_log("session_info.txt"),
+    fp_log("analysis_parameters.csv"),
+    fp_qctab("soft_threshold_selection.csv"),
+    fp_maptab("mapping_audit_mouse_only_robust.tsv"),
+    fp_state("mouse_only_mapping_outputs_robust.rds"),
+    fp_net("gene_dendrogram_modules_merged.svg"),
+    fp_traits("ME_trait_pheatmap.svg"),
+    fp_mainfig("panel_module_trait_relationships_spatial.svg"),
+    fp_mainfig("ME_by_condition_top_modules_dotplot.svg"),
+    fp_source("ME_trait_correlations.csv"),
+    fp_source("ME_condition_spatial_strata.csv"),
+    fp_source("ME_trait_block_correlations.csv"),
+    fp_source("ME_by_condition.csv"),
+    fp_modtab("module_name_map.csv"),
+    fp_prestab("module_preservation_CON_vs_ALL_Zsummary.csv"),
+    fp_traittab("ME_by_condition_adjusted_lm_FDR.csv")
+  )
+)
+write_csv_safe(output_manifest, fp_log("output_manifest.csv"))
 
 
 # --------------------------
 # End of script
 # --------------------------
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# ================================
-# Mouse-only mapping: offline + UniProt.ws query fallback (stable fields) + QC
-# ================================
-
-suppressPackageStartupMessages({
-  if (!requireNamespace("pacman", quietly = TRUE)) install.packages("pacman", repos = "https://cloud.r-project.org")
-  pacman::p_load(
-    WGCNA, readxl, ggplot2, svglite, dplyr, tidyr, tibble, stringr, readr, purrr,
-    AnnotationDbi, org.Mm.eg.db, install = TRUE
-  )
-})
-if (!requireNamespace("UniProt.ws", quietly = TRUE)) {
-  if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager", repos = "https://cloud.r-project.org")
-  BiocManager::install("UniProt.ws", ask = FALSE, update = FALSE)
-}
-library(UniProt.ws)
-
-# --------------------------
-# Paths and environment
-# --------------------------
-output_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/wgcna/output"
-subdirs <- list(
-  plots_qc         = file.path(output_dir, "plots_qc"),
-  plots_traits     = file.path(output_dir, "plots_traits"),
-  network          = file.path(output_dir, "network"),
-  tables_modules   = file.path(output_dir, "tables_modules"),
-  tables_pres      = file.path(output_dir, "tables_preservation")
-)
-safe_dir <- function(path) { if (!dir.exists(path)) dir.create(path, recursive = TRUE, showWarnings = FALSE); if (file.access(path, 2) != 0) stop(sprintf("Not writable: %s", path)); invisible(normalizePath(path)) }
-log_session <- function(out_dir) { safe_dir(out_dir); writeLines(capture.output(utils::sessionInfo()), file.path(out_dir, "session_info.txt")) }
-invisible(lapply(c(output_dir, unlist(subdirs)), safe_dir)); log_session(output_dir)
-
-# --------------------------
-# Inputs
-# --------------------------
-expr_xlsx <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/data/male.data.xlsx"
-meta_xlsx <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/data/sample_info.xlsx"
-idmap_dat <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/MOUSE_10090_idmapping.dat"
-
-stop_if_missing <- function(path) if (!file.exists(path)) stop(sprintf("Missing file: %s", path))
-read_head <- function(path) { df <- readxl::read_excel(path); utils::write.table(utils::head(df, 10), file.path(subdirs$plots_qc, paste0(basename(path), "_head10.tsv")), sep="\t", row.names=FALSE, quote=FALSE); df }
-
-male.data <- { stop_if_missing(expr_xlsx); read_head(expr_xlsx) } %>% dplyr::mutate(.row_id = dplyr::row_number())
-meta.data <- { stop_if_missing(meta_xlsx); read_head(meta_xlsx) }
-
-# --------------------------
-# Local UniProtKB-ID -> Accession map (offline)
-# --------------------------
-stop_if_missing(idmap_dat)
-dat_lines <- readr::read_lines(idmap_dat)
-hdr_idx <- which(stringr::str_detect(dat_lines, "^[A-NP-Z0-9]{4,6}\\tUniProtKB-ID\\t[A-Za-z0-9\\-]+(_[A-Za-z0-9\\-]+)?_MOUSE\\s*$"))
-entry_map <- tibble::tibble(line = dat_lines[hdr_idx]) %>%
-  dplyr::mutate(tokens = stringr::str_split(line, "\t", n = 3)) %>%
-  dplyr::transmute(entry_full = purrr::map_chr(tokens, ~ .x[[3]]),
-                   entry_base = toupper(gsub("_MOUSE$", "", sub("-\\d+$", "", entry_full))),
-                   UNIPROT = purrr::map_chr(tokens, ~ .x[[1]])) %>%
-  dplyr::distinct(entry_base, .keep_all = TRUE)
-if (!nrow(entry_map)) stop("entry_map is empty; parsing failed")
-
-# --------------------------
-# Mouse-only tokenization and classification
-# --------------------------
-normalize_token <- function(x) { x <- toupper(gsub("\\s+", "", x)); x <- gsub("\\u00A0", "", x); x <- gsub("\\.+", ".", x); x <- gsub("__+", "_", x); x }
-to_base_no_iso_mouse <- function(x) { x <- gsub("-\\d+$", "", x); gsub("_MOUSE$", "", x) }
-
-tokenize_mouse_only <- function(male_df) {
-  tok <- male_df %>% tidyr::separate_rows(gene_symbol, sep = ";") %>% dplyr::mutate(token_raw = gene_symbol, token_up = normalize_token(gene_symbol))
-  dropped_non_mouse <- tok %>% dplyr::filter(!grepl("_MOUSE$", token_up))
-  if (nrow(dropped_non_mouse)) readr::write_tsv(dropped_non_mouse, file.path(subdirs$tables_modules, "dropped_non_mouse_tokens.tsv"))
-  tok %>%
-    dplyr::filter(grepl("_MOUSE$", token_up)) %>%
-    dplyr::mutate(
-      token_base = to_base_no_iso_mouse(token_up),
-      looks_ac   = grepl("^[OPQ][0-9][A-Z0-9]{3}[0-9]$|^[A-NR-Z][0-9][A-Z0-9]{3}[0-9]$|^A0A[0-9A-Z]{7}$", token_base),
-      looks_entry= grepl("^[A-Z0-9][A-Z0-9\\-\\.]+$", token_base),
-      id_class = dplyr::case_when(
-        looks_ac    ~ "UNIPROT_AC_MOUSE",
-        looks_entry ~ "UNIPROT_ENTRY",
-        TRUE        ~ "UNKNOWN"
-      ),
-      Resolved_UNIPROT = NA_character_,
-      strategy = NA_character_
-    )
-}
-resolved2 <- tokenize_mouse_only(male.data)
-
-# --------------------------
-# Mapping stack: direct, offline, UniProt.ws (query)
-# --------------------------
-
-# 1) Accept accession-like bases
-idx_ac <- which(resolved2$id_class == "UNIPROT_AC_MOUSE")
-if (length(idx_ac)) {
-  resolved2$Resolved_UNIPROT[idx_ac] <- resolved2$token_base[idx_ac]
-  resolved2$strategy[idx_ac] <- "accept_accession_base"
-}
-
-# 2) Offline entry map
-idx_en <- which(resolved2$id_class == "UNIPROT_ENTRY" & (is.na(resolved2$Resolved_UNIPROT) | !nzchar(resolved2$Resolved_UNIPROT)))
-if (length(idx_en)) {
-  hit <- entry_map$UNIPROT[match(resolved2$token_base[idx_en], entry_map$entry_base)]
-  ok <- !is.na(hit) & nzchar(hit)
-  if (any(ok)) { ii <- idx_en[ok]; resolved2$Resolved_UNIPROT[ii] <- hit[ok]; resolved2$strategy[ii] <- "entry_local_mouse" }
-}
-
-# 3) Online via UniProt.ws query (robust to API keytype changes)
-# Handle remaining unmapped tokens in two passes:
-need_idx <- which(is.na(resolved2$Resolved_UNIPROT) | !nzchar(resolved2$Resolved_UNIPROT))
-need_ids <- toupper(unique(resolved2$token_base[need_idx]))
-is_acc <- grepl("^[OPQ][0-9][A-Z0-9]{3}[0-9]$|^[A-NR-Z][0-9][A-Z0-9]{3}[0-9]$|^A0A[0-9A-Z]{7}$", need_ids)
-ids_acc <- unique(need_ids[is_acc])
-ids_ent <- unique(need_ids[!is_acc])
-
-# A) Entry names: exact id + organism filter
-if (length(ids_ent)) {
-  queries_id <- paste0("id:", ids_ent, " AND organism_id:10090")
-  q_id <- try(UniProt.ws::queryUniProt(query = queries_id, fields = c("accession","id"), collapse = "OR", n = Inf, pageSize = 200), silent = TRUE)
-  if (!inherits(q_id, "try-error") && nrow(q_id)) {
-    map_id <- tibble::as_tibble(q_id) %>% dplyr::mutate(id = toupper(.data$id)) %>%
-      dplyr::filter(.data$id %in% toupper(ids_ent)) %>%
-      dplyr::transmute(input = .data$id, primaryAccession = .data$accession) %>%
-      dplyr::distinct(input, .keep_all = TRUE)
-    if (nrow(map_id)) {
-      base_need <- toupper(resolved2$token_base[need_idx])
-      hit <- map_id$primaryAccession[match(base_need, map_id$input)]
-      ok <- !is.na(hit) & nzchar(hit)
-      ii <- need_idx[ok]
-      if (length(ii)) {
-        resolved2$Resolved_UNIPROT[ii] <- hit[ok]
-        resolved2$strategy[ii] <- "uniprot_query_id_mouse"
-      }
-    }
-  }
-}
-
-# Recompute remaining after ID pass
-need_idx <- which(is.na(resolved2$Resolved_UNIPROT) | !nzchar(resolved2$Resolved_UNIPROT))
-need_ids <- toupper(unique(resolved2$token_base[need_idx]))
-is_acc <- grepl("^[OPQ][0-9][A-Z0-9]{3}[0-9]$|^[A-NR-Z][0-9][A-Z0-9]{3}[0-9]$|^A0A[0-9A-Z]{7}$", need_ids)
-ids_acc <- unique(need_ids[is_acc])
-
-# B) Accessions: exact accession field
-if (length(ids_acc)) {
-  queries_ac <- paste0("accession:", ids_acc)
-  q_ac <- try(UniProt.ws::queryUniProt(query = queries_ac, fields = c("accession","id"), collapse = "OR", n = Inf, pageSize = 200), silent = TRUE)
-  if (!inherits(q_ac, "try-error") && nrow(q_ac)) {
-    map_ac <- tibble::as_tibble(q_ac) %>% dplyr::mutate(accession = toupper(.data$accession)) %>%
-      dplyr::filter(.data$accession %in% toupper(ids_acc)) %>%
-      dplyr::transmute(input = .data$accession, primaryAccession = .data$accession) %>%
-      dplyr::distinct(input, .keep_all = TRUE)
-    if (nrow(map_ac)) {
-      base_need <- toupper(resolved2$token_base[need_idx])
-      hit <- map_ac$primaryAccession[match(base_need, map_ac$input)]
-      ok <- !is.na(hit) & nzchar(hit)
-      ii <- need_idx[ok]
-      if (length(ii)) {
-        resolved2$Resolved_UNIPROT[ii] <- hit[ok]
-        resolved2$strategy[ii] <- "uniprot_query_ac"
-      }
-    }
-  }
-}
-
-# Save unmapped mouse tokens with reasons and row context
-unmapped_tokens <- resolved2 %>%
-  dplyr::filter(is.na(Resolved_UNIPROT) | !nzchar(Resolved_UNIPROT)) %>%
-  dplyr::transmute(
-    .row_id,
-    token_raw,
-    token_up,
-    token_base,
-    id_class,
-    reason = dplyr::case_when(
-      grepl("[^A-Z0-9_\\-\\.]", token_base) ~ "illegal_chars",
-      grepl("^[A-Z0-9\\-\\.]+$", token_base) ~ "entry_name_not_in_local_or_query",
-      TRUE ~ "unexpected_format_or_na"
-    )
-  ) %>%
-  dplyr::arrange(id_class, token_base)
-
-readr::write_tsv(unmapped_tokens, file.path(subdirs$tables_modules, "unmapped_mouse_tokens.tsv"))
-
-# --------------------------
-# Audits and reasons
-# --------------------------
-audit_mouse <- resolved2 %>%
-  dplyr::mutate(mapped = !is.na(Resolved_UNIPROT) & nzchar(Resolved_UNIPROT)) %>%
-  dplyr::count(id_class, strategy, mapped, name = "n") %>%
-  dplyr::arrange(desc(n))
-readr::write_tsv(audit_mouse, file.path(subdirs$tables_modules, "mapping_audit_mouse_only_uniprot_query.tsv"))
-
-why_left <- resolved2 %>%
-  dplyr::filter(is.na(Resolved_UNIPROT) | !nzchar(Resolved_UNIPROT)) %>%
-  dplyr::mutate(
-    reason = dplyr::case_when(
-      grepl("[^A-Z0-9_\\-\\.]", token_base) ~ "illegal_chars",
-      grepl("^[A-Z0-9\\-\\.]+$", token_base) ~ "entry_name_not_in_local_or_query",
-      TRUE ~ "unexpected_format_or_na"
-    )
-  ) %>% dplyr::count(reason, sort = TRUE)
-readr::write_tsv(why_left, file.path(subdirs$tables_modules, "unmapped_mouse_reasons_uniprot_query.tsv"))
-
-# --------------------------
-# Collapse to features and build expression matrix
-# --------------------------
-collapse_ids <- function(x) { x <- unique(x[!is.na(x) & nzchar(x)]); if (!length(x)) return(NA_character_); paste(x, collapse = ";") }
-male.norm <- resolved2 %>%
-  dplyr::group_by(.row_id) %>%
-  dplyr::summarise(gene_symbol = collapse_ids(Resolved_UNIPROT), .groups = "drop") %>%
-  dplyr::right_join(male.data %>% dplyr::select(-gene_symbol, .row_id), by = ".row_id") %>%
-  dplyr::select(-.row_id) %>%
-  dplyr::mutate(gene_symbol = dplyr::na_if(gene_symbol, ""))
-
-to_numeric_matrix <- function(male_norm, qc_dir = subdirs$plots_qc) {
-  if (!"gene_symbol" %in% names(male_norm)) stop("male.norm must contain gene_symbol")
-  expr <- as.data.frame(lapply(male_norm[, -1, drop = FALSE], function(x) suppressWarnings(as.numeric(x))))
-  if (!all(vapply(expr, is.numeric, logical(1)))) stop("Non-numeric columns remain after coercion")
-  mat <- as.data.frame(t(expr))
-  feat <- male_norm$gene_symbol
-  empty <- which(!nzchar(ifelse(is.na(feat), "", feat)))
-  if (length(empty)) feat[empty] <- paste0("UNMAPPED_", seq_along(empty))
-  feat <- make.unique(feat, sep = "_")
-  colnames(mat) <- feat
-  if (any(!nzchar(colnames(mat)) | is.na(colnames(mat)))) stop("Empty/NA feature names after repair")
-  utils::write.table(utils::head(mat[, 1:min(10, ncol(mat)), drop = FALSE]), file.path(qc_dir, "expression_head10.tsv"), sep = "\t", row.names = TRUE, quote = FALSE)
-  mat
-}
-expression.data <- to_numeric_matrix(male.norm)
-
-# Save mapping artifacts
-readr::write_tsv(resolved2, file.path(subdirs$tables_modules, "resolved_tokens_mouse_only_uniprot_query.tsv"))
-saveRDS(list(expression = expression.data, male.norm = male.norm, mapping = resolved2), file = file.path(subdirs$network, "mouse_only_mapping_outputs_uniprot_query.rds"))
-
-
-
-
-
-
-
-
-
-# ================================
-# Mouse-only mapping: offline + SYMBOL/ALIAS + UniProt.ws (entry_name/id prefix/gene/accession) + QC
-# ================================
-
-suppressPackageStartupMessages({
-  if (!requireNamespace("pacman", quietly = TRUE)) install.packages("pacman", repos = "https://cloud.r-project.org")
-  pacman::p_load(
-    WGCNA, readxl, ggplot2, svglite, dplyr, tidyr, tibble, stringr, readr, purrr,
-    AnnotationDbi, org.Mm.eg.db, install = TRUE
-  )
-})
-if (!requireNamespace("UniProt.ws", quietly = TRUE)) {
-  if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager", repos = "https://cloud.r-project.org")
-  BiocManager::install("UniProt.ws", ask = FALSE, update = FALSE)
-}
-library(UniProt.ws)
-
-# --------------------------
-# Paths and environment
-# --------------------------
-output_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/wgcna/output"
-subdirs <- list(
-  plots_qc         = file.path(output_dir, "plots_qc"),
-  plots_traits     = file.path(output_dir, "plots_traits"),
-  network          = file.path(output_dir, "network"),
-  tables_modules   = file.path(output_dir, "tables_modules"),
-  tables_pres      = file.path(output_dir, "tables_preservation")
-)
-safe_dir <- function(path) { if (!dir.exists(path)) dir.create(path, recursive = TRUE, showWarnings = FALSE); if (file.access(path, 2) != 0) stop(sprintf("Not writable: %s", path)); invisible(normalizePath(path)) }
-log_session <- function(out_dir) { safe_dir(out_dir); writeLines(capture.output(utils::sessionInfo()), file.path(out_dir, "session_info.txt")) }
-invisible(lapply(c(output_dir, unlist(subdirs)), safe_dir)); log_session(output_dir)
-
-# --------------------------
-# Inputs
-# --------------------------
-expr_xlsx <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/data/male.data.xlsx"
-meta_xlsx <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/data/sample_info.xlsx"
-idmap_dat <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/MOUSE_10090_idmapping.dat"
-
-stop_if_missing <- function(path) if (!file.exists(path)) stop(sprintf("Missing file: %s", path))
-read_head <- function(path) { df <- readxl::read_excel(path); utils::write.table(utils::head(df, 10), file.path(subdirs$plots_qc, paste0(basename(path), "_head10.tsv")), sep="\t", row.names=FALSE, quote=FALSE); df }
-
-male.data <- { stop_if_missing(expr_xlsx); read_head(expr_xlsx) } %>% dplyr::mutate(.row_id = dplyr::row_number())
-meta.data <- { stop_if_missing(meta_xlsx); read_head(meta_xlsx) }
-
-# --------------------------
-# Local UniProtKB-ID -> Accession map (offline)
-# --------------------------
-stop_if_missing(idmap_dat)
-dat_lines <- readr::read_lines(idmap_dat)
-hdr_idx <- which(stringr::str_detect(dat_lines, "^[A-NP-Z0-9]{4,6}\\tUniProtKB-ID\\t[A-Za-z0-9\\-]+(_[A-Za-z0-9\\-]+)?_MOUSE\\s*$"))
-entry_map <- tibble::tibble(line = dat_lines[hdr_idx]) %>%
-  dplyr::mutate(tokens = stringr::str_split(line, "\t", n = 3)) %>%
-  dplyr::transmute(entry_full = purrr::map_chr(tokens, ~ .x[[3]]),
-                   entry_base = toupper(gsub("_MOUSE$", "", sub("-\\d+$", "", entry_full))),
-                   UNIPROT = purrr::map_chr(tokens, ~ .x[[1]])) %>%
-  dplyr::distinct(entry_base, .keep_all = TRUE)
-if (!nrow(entry_map)) stop("entry_map is empty; parsing failed")
-
-# --------------------------
-# Mouse-only tokenization and classification
-# --------------------------
-normalize_token <- function(x) { x <- toupper(gsub("\\s+", "", x)); x <- gsub("\\u00A0", "", x); x <- gsub("\\.+", ".", x); x <- gsub("__+", "_", x); x }
-to_base_no_iso_mouse <- function(x) { x <- gsub("-\\d+$", "", x); gsub("_MOUSE$", "", x) }
-
-tokenize_mouse_only <- function(male_df) {
-  tok <- male_df %>% tidyr::separate_rows(gene_symbol, sep = ";") %>% dplyr::mutate(token_raw = gene_symbol, token_up = normalize_token(gene_symbol))
-  dropped_non_mouse <- tok %>% dplyr::filter(!grepl("_MOUSE$", token_up))
-  if (nrow(dropped_non_mouse)) readr::write_tsv(dropped_non_mouse, file.path(subdirs$tables_modules, "dropped_non_mouse_tokens.tsv"))
-  tok %>%
-    dplyr::filter(grepl("_MOUSE$", token_up)) %>%
-    dplyr::mutate(
-      token_base = to_base_no_iso_mouse(token_up),
-      looks_ac   = grepl("^[OPQ][0-9][A-Z0-9]{3}[0-9]$|^[A-NR-Z][0-9][A-Z0-9]{3}[0-9]$|^A0A[0-9A-Z]{7}$", token_base),
-      looks_entry= grepl("^[A-Z0-9][A-Z0-9\\-\\.]+$", token_base),
-      id_class = dplyr::case_when(
-        looks_ac    ~ "UNIPROT_AC_MOUSE",
-        looks_entry ~ "UNIPROT_ENTRY",
-        TRUE        ~ "UNKNOWN"
-      ),
-      Resolved_UNIPROT = NA_character_,
-      strategy = NA_character_
-    )
-}
-resolved2 <- tokenize_mouse_only(male.data)
-
-# --------------------------
-# Mapping stack
-# --------------------------
-
-# 1) Accept accession-like bases immediately
-idx_ac <- which(resolved2$id_class == "UNIPROT_AC_MOUSE")
-if (length(idx_ac)) {
-  resolved2$Resolved_UNIPROT[idx_ac] <- resolved2$token_base[idx_ac]
-  resolved2$strategy[idx_ac] <- "accept_accession_base"
-}
-
-# 2) Offline entry map for entry names
-idx_en <- which(resolved2$id_class == "UNIPROT_ENTRY" & (is.na(resolved2$Resolved_UNIPROT) | !nzchar(resolved2$Resolved_UNIPROT)))
-if (length(idx_en)) {
-  hit <- entry_map$UNIPROT[match(resolved2$token_base[idx_en], entry_map$entry_base)]
-  ok <- !is.na(hit) & nzchar(hit)
-  if (any(ok)) { ii <- idx_en[ok]; resolved2$Resolved_UNIPROT[ii] <- hit[ok]; resolved2$strategy[ii] <- "entry_local_mouse" }
-}
-
-# 3) SYMBOL/ALIAS offline resolver for symbol-like tokens (NOVA2, S1PR1, CACNA2D1, BIN1, etc.)
-need_idx <- which(is.na(resolved2$Resolved_UNIPROT) | !nzchar(resolved2$Resolved_UNIPROT))
-need_ids <- toupper(unique(resolved2$token_base[need_idx]))
-is_acc <- grepl("^[OPQ][0-9][A-Z0-9]{3}[0-9]$|^[A-NR-Z][0-9][A-Z0-9]{3}[0-9]$|^A0A[0-9A-Z]{7}$", need_ids)
-ids_ent <- unique(need_ids[!is_acc])
-
-if (length(ids_ent)) {
-  sym_keys <- ids_ent
-  sel_sym <- try(AnnotationDbi::select(org.Mm.eg.db, keys = sym_keys, keytype = "SYMBOL", columns = c("UNIPROT","SYMBOL")), silent = TRUE)
-  map_sym <- tibble::tibble()
-  if (!inherits(sel_sym, "try-error") && nrow(sel_sym)) {
-    map_sym <- tibble::as_tibble(sel_sym) %>%
-      dplyr::filter(!is.na(UNIPROT) & nzchar(UNIPROT)) %>%
-      dplyr::group_by(SYMBOL) %>% dplyr::arrange(UNIPROT, .by_group = TRUE) %>% dplyr::slice_head(n=1) %>% dplyr::ungroup() %>%
-      dplyr::transmute(input = toupper(SYMBOL), primaryAccession = toupper(UNIPROT))
-  }
-  kt <- try(AnnotationDbi::keytypes(org.Mm.eg.db), silent = TRUE)
-  map_alias <- tibble::tibble()
-  if (!inherits(kt, "try-error") && "ALIAS" %in% kt) {
-    sel_alias <- try(AnnotationDbi::select(org.Mm.eg.db, keys = sym_keys, keytype = "ALIAS", columns = c("UNIPROT","ALIAS")), silent = TRUE)
-    if (!inherits(sel_alias, "try-error") && nrow(sel_alias)) {
-      map_alias <- tibble::as_tibble(sel_alias) %>%
-        dplyr::filter(!is.na(UNIPROT) & nzchar(UNIPROT)) %>%
-        dplyr::group_by(ALIAS) %>% dplyr::arrange(UNIPROT, .by_group = TRUE) %>% dplyr::slice_head(n=1) %>% dplyr::ungroup() %>%
-        dplyr::transmute(input = toupper(ALIAS), primaryAccession = toupper(UNIPROT))
-    }
-  }
-  map_symall <- dplyr::bind_rows(map_sym, map_alias) %>% dplyr::distinct(input, .keep_all = TRUE)
-  if (nrow(map_symall)) {
-    need_idx_now <- which(is.na(resolved2$Resolved_UNIPROT) | !nzchar(resolved2$Resolved_UNIPROT))
-    base_need <- toupper(resolved2$token_base[need_idx_now])
-    hit <- map_symall$primaryAccession[match(base_need, map_symall$input)]
-    ok <- !is.na(hit) & nzchar(hit)
-    ii <- need_idx_now[ok]
-    if (length(ii)) {
-      resolved2$Resolved_UNIPROT[ii] <- hit[ok]
-      resolved2$strategy[ii] <- "orgdb_symbol_alias"
-    }
-  }
-}
-
-# Recompute remaining
-need_idx <- which(is.na(resolved2$Resolved_UNIPROT) | !nzchar(resolved2$Resolved_UNIPROT))
-need_ids <- toupper(unique(resolved2$token_base[need_idx]))
-is_acc <- grepl("^[OPQ][0-9][A-Z0-9]{3}[0-9]$|^[A-NR-Z][0-9][A-Z0-9]{3}[0-9]$|^A0A[0-9A-Z]{7}$", need_ids)
-ids_acc <- unique(need_ids[is_acc])
-ids_ent <- unique(need_ids[!is_acc])
-
-# 4) entry_name exact (Entry Name) with organism filter
-if (length(ids_ent)) {
-  ids_try <- unique(c(ids_ent, paste0(ids_ent, "_MOUSE")))
-  q_en <- try(UniProt.ws::queryUniProt(query = paste0("entry_name:", ids_try, " AND organism_id:10090"),
-                                       fields = c("accession","id"),
-                                       collapse = "OR", n = Inf, pageSize = 200), silent = TRUE)
-  if (!inherits(q_en, "try-error") && nrow(q_en)) {
-    ent <- tibble::as_tibble(q_en) %>% dplyr::mutate(id = toupper(.data$id), accession = toupper(.data$accession))
-    map_en <- ent %>% dplyr::transmute(input = sub("_MOUSE$", "", id), primaryAccession = accession) %>% dplyr::distinct(input, .keep_all = TRUE)
-    base_need <- toupper(resolved2$token_base[need_idx])
-    hit <- map_en$primaryAccession[match(base_need, map_en$input)]
-    ok <- !is.na(hit) & nzchar(hit)
-    ii <- need_idx[ok]
-    if (length(ii)) {
-      resolved2$Resolved_UNIPROT[ii] <- hit[ok]
-      resolved2$strategy[ii] <- "uniprot_query_entry_name_exact"
-    }
-  }
-}
-
-# Recompute remaining
-need_idx <- which(is.na(resolved2$Resolved_UNIPROT) | !nzchar(resolved2$Resolved_UNIPROT))
-need_ids <- toupper(unique(resolved2$token_base[need_idx]))
-is_acc <- grepl("^[OPQ][0-9][A-Z0-9]{3}[0-9]$|^[A-NR-Z][0-9][A-Z0-9]{3}[0-9]$|^A0A[0-9A-Z]{7}$", need_ids)
-ids_acc <- unique(need_ids[is_acc])
-ids_ent <- unique(need_ids[!is_acc])
-
-# 5) ID prefix tolerant (prefer *_MOUSE) with organism filter
-if (length(ids_ent)) {
-  q_tol <- try(UniProt.ws::queryUniProt(query = paste0("id:", ids_ent, "* AND organism_id:10090"),
-                                        fields = c("accession","id"),
-                                        collapse = "OR", n = Inf, pageSize = 200), silent = TRUE)
-  if (!inherits(q_tol, "try-error") && nrow(q_tol)) {
-    tt <- tibble::as_tibble(q_tol) %>% dplyr::mutate(id = toupper(.data$id), accession = toupper(.data$accession))
-    picks <- lapply(ids_ent, function(b) {
-      bU <- toupper(b)
-      cand <- tt %>% dplyr::filter(startsWith(id, bU))
-      if (!nrow(cand)) return(NULL)
-      pref <- cand %>% dplyr::filter(endsWith(id, "_MOUSE"))
-      if (nrow(pref)) pref <- pref[1, , drop = FALSE] else pref <- cand[1, , drop = FALSE]
-      tibble::tibble(input = bU, primaryAccession = pref$accession[1], chosen_id = pref$id[1])
-    })
-    map_tol <- dplyr::bind_rows(Filter(Negate(is.null), picks))
-    if (nrow(map_tol)) {
-      base_need <- toupper(resolved2$token_base[need_idx])
-      hit <- map_tol$primaryAccession[match(base_need, map_tol$input)]
-      ok <- !is.na(hit) & nzchar(hit)
-      ii <- need_idx[ok]
-      if (length(ii)) {
-        resolved2$Resolved_UNIPROT[ii] <- hit[ok]
-        resolved2$strategy[ii] <- "uniprot_query_id_prefix_mouse_pref"
-        readr::write_tsv(map_tol, file.path(subdirs$tables_modules, "tolerant_kbid_choices.tsv"))
-      }
-    }
-  }
-}
-
-# Recompute remaining
-need_idx <- which(is.na(resolved2$Resolved_UNIPROT) | !nzchar(resolved2$Resolved_UNIPROT))
-need_ids <- toupper(unique(resolved2$token_base[need_idx]))
-is_acc <- grepl("^[OPQ][0-9][A-Z0-9]{3}[0-9]$|^[A-NR-Z][0-9][A-Z0-9]{3}[0-9]$|^A0A[0-9A-Z]{7}$", need_ids)
-ids_acc <- unique(need_ids[is_acc])
-ids_ent <- unique(need_ids[!is_acc])
-
-# 6) gene_exact for any remaining symbol-like tokens
-if (length(ids_ent)) {
-  q_list <- lapply(ids_ent, function(g) list(organism_id = 10090, gene_exact = g))
-  res_list <- lapply(q_list, function(q) try(UniProt.ws::queryUniProt(query = q, fields = c("accession","id","gene_primary"), collapse = "OR", n = 5, pageSize = 5), silent = TRUE))
-  got <- res_list[!vapply(res_list, inherits, logical(1), "try-error")]
-  if (length(got)) {
-    tbl <- dplyr::bind_rows(lapply(got, tibble::as_tibble))
-    if (nrow(tbl)) {
-      tbl <- tbl %>% dplyr::mutate(gene_primary = toupper(.data$gene_primary), accession = toupper(.data$accession))
-      map_gene <- tbl %>% dplyr::group_by(gene_primary) %>% dplyr::arrange(accession, .by_group = TRUE) %>% dplyr::slice_head(n=1) %>% dplyr::ungroup() %>%
-        dplyr::transmute(input = gene_primary, primaryAccession = accession)
-      base_need <- toupper(resolved2$token_base[need_idx])
-      hit <- map_gene$primaryAccession[match(base_need, map_gene$input)]
-      ok <- !is.na(hit) & nzchar(hit)
-      ii <- need_idx[ok]
-      if (length(ii)) {
-        resolved2$Resolved_UNIPROT[ii] <- hit[ok]
-        resolved2$strategy[ii] <- "uniprot_query_gene_exact"
-      }
-    }
-  }
-}
-
-# 7) accession exact for any remaining accession-like tokens
-need_idx <- which(is.na(resolved2$Resolved_UNIPROT) | !nzchar(resolved2$Resolved_UNIPROT))
-need_ids <- toupper(unique(resolved2$token_base[need_idx]))
-ids_acc <- unique(need_ids[grepl("^[OPQ][0-9][A-Z0-9]{3}[0-9]$|^[A-NR-Z][0-9][A-Z0-9]{3}[0-9]$|^A0A[0-9A-Z]{7}$", need_ids)])
-if (length(ids_acc)) {
-  q_ac <- try(UniProt.ws::queryUniProt(query = paste0("accession:", ids_acc), fields = c("accession","id"), collapse = "OR", n = Inf, pageSize = 200), silent = TRUE)
-  if (!inherits(q_ac, "try-error") && nrow(q_ac)) {
-    map_ac <- tibble::as_tibble(q_ac) %>% dplyr::mutate(accession = toupper(.data$accession)) %>%
-      dplyr::filter(.data$accession %in% toupper(ids_acc)) %>%
-      dplyr::transmute(input = .data$accession, primaryAccession = .data$accession) %>%
-      dplyr::distinct(input, .keep_all = TRUE)
-    if (nrow(map_ac)) {
-      base_need <- toupper(resolved2$token_base[need_idx])
-      hit <- map_ac$primaryAccession[match(base_need, map_ac$input)]
-      ok <- !is.na(hit) & nzchar(hit)
-      ii <- need_idx[ok]
-      if (length(ii)) {
-        resolved2$Resolved_UNIPROT[ii] <- hit[ok]
-        resolved2$strategy[ii] <- "uniprot_query_ac"
-      }
-    }
-  }
-}
-
-# --------------------------
-# Save unmapped lists and audits
-# --------------------------
-audit_mouse <- resolved2 %>%
-  dplyr::mutate(mapped = !is.na(Resolved_UNIPROT) & nzchar(Resolved_UNIPROT)) %>%
-  dplyr::count(id_class, strategy, mapped, name = "n") %>%
-  dplyr::arrange(desc(n))
-readr::write_tsv(audit_mouse, file.path(subdirs$tables_modules, "mapping_audit_mouse_only_full.tsv"))
-
-unmapped_tokens <- resolved2 %>%
-  dplyr::filter(is.na(Resolved_UNIPROT) | !nzchar(Resolved_UNIPROT)) %>%
-  dplyr::transmute(
-    .row_id, token_raw, token_up, token_base, id_class,
-    reason = dplyr::case_when(
-      grepl("[^A-Z0-9_\\-\\.]", token_base) ~ "illegal_chars",
-      grepl("^[A-Z0-9\\-\\.]+$", token_base) ~ "entry_name_not_in_local_or_query",
-      TRUE ~ "unexpected_format_or_na"
-    )
-  ) %>% dplyr::arrange(id_class, token_base)
-readr::write_tsv(unmapped_tokens, file.path(subdirs$tables_modules, "unmapped_mouse_tokens.tsv"))
-unmapped_summary <- unmapped_tokens %>% dplyr::count(id_class, reason, token_base, name = "n") %>% dplyr::arrange(dplyr::desc(n))
-readr::write_tsv(unmapped_summary, file.path(subdirs$tables_modules, "unmapped_mouse_tokens_summary.tsv"))
-
-# --------------------------
-# Collapse to features and build expression matrix
-# --------------------------
-collapse_ids <- function(x) { x <- unique(x[!is.na(x) & nzchar(x)]); if (!length(x)) return(NA_character_); paste(x, collapse = ";") }
-male.norm <- resolved2 %>%
-  dplyr::group_by(.row_id) %>%
-  dplyr::summarise(gene_symbol = collapse_ids(Resolved_UNIPROT), .groups = "drop") %>%
-  dplyr::right_join(male.data %>% dplyr::select(-gene_symbol, .row_id), by = ".row_id") %>%
-  dplyr::select(-.row_id) %>%
-  dplyr::mutate(gene_symbol = dplyr::na_if(gene_symbol, ""))
-
-to_numeric_matrix <- function(male_norm, qc_dir = subdirs$plots_qc) {
-  if (!"gene_symbol" %in% names(male_norm)) stop("male.norm must contain gene_symbol")
-  expr <- as.data.frame(lapply(male_norm[, -1, drop = FALSE], function(x) suppressWarnings(as.numeric(x))))
-  if (!all(vapply(expr, is.numeric, logical(1)))) stop("Non-numeric columns remain after coercion")
-  mat <- as.data.frame(t(expr))
-  feat <- male_norm$gene_symbol
-  empty <- which(!nzchar(ifelse(is.na(feat), "", feat)))
-  if (length(empty)) feat[empty] <- paste0("UNMAPPED_", seq_along(empty))
-  feat <- make.unique(feat, sep = "_")
-  colnames(mat) <- feat
-  if (any(!nzchar(colnames(mat)) | is.na(colnames(mat)))) stop("Empty/NA feature names after repair")
-  utils::write.table(utils::head(mat[, 1:min(10, ncol(mat)), drop = FALSE]), file.path(qc_dir, "expression_head10.tsv"), sep = "\t", row.names = TRUE, quote = FALSE)
-  mat
-}
-expression.data <- to_numeric_matrix(male.norm)
-
-# Save core outputs
-readr::write_tsv(resolved2, file.path(subdirs$tables_modules, "resolved_tokens_mouse_only_full.tsv"))
-saveRDS(list(expression = expression.data, male.norm = male.norm, mapping = resolved2), file = file.path(subdirs$network, "mouse_only_mapping_outputs_full.rds"))
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# ================================
-# Mouse-only mapping: offline + SYMBOL/ALIAS + Entrez + UniProt.ws (entry_name/id prefix/gene/accession) + QC
-# ================================
-
-suppressPackageStartupMessages({
-  if (!requireNamespace("pacman", quietly = TRUE)) install.packages("pacman", repos = "https://cloud.r-project.org")
-  pacman::p_load(
-    WGCNA, readxl, ggplot2, svglite, dplyr, tidyr, tibble, stringr, readr, purrr,
-    AnnotationDbi, org.Mm.eg.db, install = TRUE
-  )
-})
-if (!requireNamespace("UniProt.ws", quietly = TRUE)) {
-  if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager", repos = "https://cloud.r-project.org")
-  BiocManager::install("UniProt.ws", ask = FALSE, update = FALSE)
-}
-library(UniProt.ws)
-
-# --------------------------
-# Paths and environment
-# --------------------------
-output_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/wgcna/output"
-subdirs <- list(
-  plots_qc         = file.path(output_dir, "plots_qc"),
-  plots_traits     = file.path(output_dir, "plots_traits"),
-  network          = file.path(output_dir, "network"),
-  tables_modules   = file.path(output_dir, "tables_modules"),
-  tables_pres      = file.path(output_dir, "tables_preservation")
-)
-safe_dir <- function(path) { if (!dir.exists(path)) dir.create(path, recursive = TRUE, showWarnings = FALSE); if (file.access(path, 2) != 0) stop(sprintf("Not writable: %s", path)); invisible(normalizePath(path)) }
-log_session <- function(out_dir) { safe_dir(out_dir); writeLines(capture.output(utils::sessionInfo()), file.path(out_dir, "session_info.txt")) }
-invisible(lapply(c(output_dir, unlist(subdirs)), safe_dir)); log_session(output_dir)
-
-# --------------------------
-# Inputs
-# --------------------------
-expr_xlsx <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/data/male.data.xlsx"
-meta_xlsx <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/data/sample_info.xlsx"
-idmap_dat <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/MOUSE_10090_idmapping.dat"
-
-stop_if_missing <- function(path) if (!file.exists(path)) stop(sprintf("Missing file: %s", path))
-read_head <- function(path) { df <- readxl::read_excel(path); utils::write.table(utils::head(df, 10), file.path(subdirs$plots_qc, paste0(basename(path), "_head10.tsv")), sep="\t", row.names=FALSE, quote=FALSE); df }
-
-male.data <- { stop_if_missing(expr_xlsx); read_head(expr_xlsx) } %>% dplyr::mutate(.row_id = dplyr::row_number())
-meta.data <- { stop_if_missing(meta_xlsx); read_head(meta_xlsx) }
-
-# --------------------------
-# Local UniProtKB-ID -> Accession map (offline)
-# --------------------------
-stop_if_missing(idmap_dat)
-dat_lines <- readr::read_lines(idmap_dat)
-hdr_idx <- which(stringr::str_detect(dat_lines, "^[A-NP-Z0-9]{4,6}\\tUniProtKB-ID\\t[A-Za-z0-9\\-]+(_[A-Za-z0-9\\-]+)?_MOUSE\\s*$"))
-entry_map <- tibble::tibble(line = dat_lines[hdr_idx]) %>%
-  dplyr::mutate(tokens = stringr::str_split(line, "\t", n = 3)) %>%
-  dplyr::transmute(entry_full = purrr::map_chr(tokens, ~ .x[[3]]),
-                   entry_base = toupper(gsub("_MOUSE$", "", sub("-\\d+$", "", entry_full))),
-                   UNIPROT = purrr::map_chr(tokens, ~ .x[[1]])) %>%
-  dplyr::distinct(entry_base, .keep_all = TRUE)
-if (!nrow(entry_map)) stop("entry_map is empty; parsing failed")
-
-# --------------------------
-# Mouse-only tokenization and classification
-# --------------------------
-normalize_token <- function(x) { x <- toupper(gsub("\\s+", "", x)); x <- gsub("\\u00A0", "", x); x <- gsub("\\.+", ".", x); x <- gsub("__+", "_", x); x }
-to_base_no_iso_mouse <- function(x) { x <- gsub("-\\d+$", "", x); gsub("_MOUSE$", "", x) }
-
-tokenize_mouse_only <- function(male_df) {
-  tok <- male_df %>% tidyr::separate_rows(gene_symbol, sep = ";") %>% dplyr::mutate(token_raw = gene_symbol, token_up = normalize_token(gene_symbol))
-  dropped_non_mouse <- tok %>% dplyr::filter(!grepl("_MOUSE$", token_up))
-  if (nrow(dropped_non_mouse)) readr::write_tsv(dropped_non_mouse, file.path(subdirs$tables_modules, "dropped_non_mouse_tokens.tsv"))
-  tok %>%
-    dplyr::filter(grepl("_MOUSE$", token_up)) %>%
-    dplyr::mutate(
-      token_base = to_base_no_iso_mouse(token_up),
-      looks_ac   = grepl("^[OPQ][0-9][A-Z0-9]{3}[0-9]$|^[A-NR-Z][0-9][A-Z0-9]{3}[0-9]$|^A0A[0-9A-Z]{7}$", token_base),
-      looks_entry= grepl("^[A-Z0-9][A-Z0-9\\-\\.]+$", token_base),
-      id_class = dplyr::case_when(
-        looks_ac    ~ "UNIPROT_AC_MOUSE",
-        looks_entry ~ "UNIPROT_ENTRY",
-        TRUE        ~ "UNKNOWN"
-      ),
-      Resolved_UNIPROT = NA_character_,
-      strategy = NA_character_
-    )
-}
-resolved2 <- tokenize_mouse_only(male.data)
-
-# --------------------------
-# Mapping stack
-# --------------------------
-
-# 1) Accept accession-like bases
-idx_ac <- which(resolved2$id_class == "UNIPROT_AC_MOUSE")
-if (length(idx_ac)) {
-  resolved2$Resolved_UNIPROT[idx_ac] <- resolved2$token_base[idx_ac]
-  resolved2$strategy[idx_ac] <- "accept_accession_base"
-}
-
-# 2) Offline entry map
-idx_en <- which(resolved2$id_class == "UNIPROT_ENTRY" & (is.na(resolved2$Resolved_UNIPROT) | !nzchar(resolved2$Resolved_UNIPROT)))
-if (length(idx_en)) {
-  hit <- entry_map$UNIPROT[match(resolved2$token_base[idx_en], entry_map$entry_base)]
-  ok <- !is.na(hit) & nzchar(hit)
-  if (any(ok)) { ii <- idx_en[ok]; resolved2$Resolved_UNIPROT[ii] <- hit[ok]; resolved2$strategy[ii] <- "entry_local_mouse" }
-}
-
-# 3) SYMBOL/ALIAS offline resolver
-need_idx <- which(is.na(resolved2$Resolved_UNIPROT) | !nzchar(resolved2$Resolved_UNIPROT))
-need_ids <- toupper(unique(resolved2$token_base[need_idx]))
-is_acc <- grepl("^[OPQ][0-9][A-Z0-9]{3}[0-9]$|^[A-NR-Z][0-9][A-Z0-9]{3}[0-9]$|^A0A[0-9A-Z]{7}$", need_ids)
-ids_ent <- unique(need_ids[!is_acc])
-
-if (length(ids_ent)) {
-  sym_keys <- ids_ent
-  sel_sym <- try(AnnotationDbi::select(org.Mm.eg.db, keys = sym_keys, keytype = "SYMBOL", columns = c("UNIPROT","SYMBOL")), silent = TRUE)
-  map_sym <- tibble::tibble()
-  if (!inherits(sel_sym, "try-error") && nrow(sel_sym)) {
-    map_sym <- tibble::as_tibble(sel_sym) %>%
-      dplyr::filter(!is.na(UNIPROT) & nzchar(UNIPROT)) %>%
-      dplyr::group_by(SYMBOL) %>% dplyr::arrange(UNIPROT, .by_group = TRUE) %>% dplyr::slice_head(n=1) %>% dplyr::ungroup() %>%
-      dplyr::transmute(input = toupper(SYMBOL), primaryAccession = toupper(UNIPROT))
-  }
-  kt <- try(AnnotationDbi::keytypes(org.Mm.eg.db), silent = TRUE)
-  map_alias <- tibble::tibble()
-  if (!inherits(kt, "try-error") && "ALIAS" %in% kt) {
-    sel_alias <- try(AnnotationDbi::select(org.Mm.eg.db, keys = sym_keys, keytype = "ALIAS", columns = c("UNIPROT","ALIAS")), silent = TRUE)
-    if (!inherits(sel_alias, "try-error") && nrow(sel_alias)) {
-      map_alias <- tibble::as_tibble(sel_alias) %>%
-        dplyr::filter(!is.na(UNIPROT) & nzchar(UNIPROT)) %>%
-        dplyr::group_by(ALIAS) %>% dplyr::arrange(UNIPROT, .by_group = TRUE) %>% dplyr::slice_head(n=1) %>% dplyr::ungroup() %>%
-        dplyr::transmute(input = toupper(ALIAS), primaryAccession = toupper(UNIPROT))
-    }
-  }
-  map_symall <- dplyr::bind_rows(map_sym, map_alias) %>% dplyr::distinct(input, .keep_all = TRUE)
-  if (nrow(map_symall)) {
-    need_idx_now <- which(is.na(resolved2$Resolved_UNIPROT) | !nzchar(resolved2$Resolved_UNIPROT))
-    base_need <- toupper(resolved2$token_base[need_idx_now])
-    hit <- map_symall$primaryAccession[match(base_need, map_symall$input)]
-    ok <- !is.na(hit) & nzchar(hit)
-    ii <- need_idx_now[ok]
-    if (length(ii)) {
-      resolved2$Resolved_UNIPROT[ii] <- hit[ok]
-      resolved2$strategy[ii] <- "orgdb_symbol_alias"
-    }
-  }
-}
-
-# 4) SYMBOL -> Entrez -> UniProt (offline two-hop)
-need_idx <- which(is.na(resolved2$Resolved_UNIPROT) | !nzchar(resolved2$Resolved_UNIPROT))
-need_ids <- toupper(unique(resolved2$token_base[need_idx]))
-sym_left <- unique(need_ids[grepl("^[A-Z0-9\\-]{2,}$", need_ids)])
-
-if (length(sym_left)) {
-  sym2eg <- try(AnnotationDbi::select(org.Mm.eg.db, keys = sym_left, keytype = "SYMBOL", columns = c("ENTREZID","SYMBOL")), silent = TRUE)
-  eg2up  <- tibble::tibble()
-  if (!inherits(sym2eg, "try-error") && nrow(sym2eg)) {
-    ekeys <- unique(na.omit(sym2eg$ENTREZID))
-    if (length(ekeys)) {
-      egsel <- try(AnnotationDbi::select(org.Mm.eg.db, keys = ekeys, keytype = "ENTREZID", columns = c("UNIPROT","ENTREZID")), silent = TRUE)
-      if (!inherits(egsel, "try-error") && nrow(egsel)) {
-        eg2up <- tibble::as_tibble(egsel) %>%
-          dplyr::filter(!is.na(UNIPROT) & nzchar(UNIPROT)) %>%
-          dplyr::group_by(ENTREZID) %>% dplyr::arrange(UNIPROT, .by_group = TRUE) %>% dplyr::slice_head(n=1) %>% dplyr::ungroup()
-      }
-    }
-    if (nrow(eg2up)) {
-      map_sym2up <- tibble::as_tibble(sym2eg) %>%
-        dplyr::distinct(SYMBOL, ENTREZID) %>%
-        dplyr::left_join(eg2up, by = "ENTREZID") %>%
-        dplyr::filter(!is.na(UNIPROT) & nzchar(UNIPROT)) %>%
-        dplyr::transmute(input = toupper(SYMBOL), primaryAccession = toupper(UNIPROT)) %>%
-        dplyr::distinct(input, .keep_all = TRUE)
-      need_idx2 <- which(is.na(resolved2$Resolved_UNIPROT) | !nzchar(resolved2$Resolved_UNIPROT))
-      base_need <- toupper(resolved2$token_base[need_idx2])
-      hit <- map_sym2up$primaryAccession[match(base_need, map_sym2up$input)]
-      ok <- !is.na(hit) & nzchar(hit)
-      ii <- need_idx2[ok]
-      if (length(ii)) {
-        resolved2$Resolved_UNIPROT[ii] <- hit[ok]
-        resolved2$strategy[ii] <- "orgdb_symbol_entrez_uniprot"
-      }
-    }
-  }
-}
-
-# 5) entry_name exact (Entry Name) with organism filter
-need_idx <- which(is.na(resolved2$Resolved_UNIPROT) | !nzchar(resolved2$Resolved_UNIPROT))
-need_ids <- toupper(unique(resolved2$token_base[need_idx]))
-is_acc <- grepl("^[OPQ][0-9][A-Z0-9]{3}[0-9]$|^[A-NR-Z][0-9][A-Z0-9]{3}[0-9]$|^A0A[0-9A-Z]{7}$", need_ids)
-ids_ent <- unique(need_ids[!is_acc])
-
-if (length(ids_ent)) {
-  ids_try <- unique(c(ids_ent, paste0(ids_ent, "_MOUSE")))
-  q_en <- try(UniProt.ws::queryUniProt(query = paste0("entry_name:", ids_try, " AND organism_id:10090"),
-                                       fields = c("accession","id"),
-                                       collapse = "OR", n = Inf, pageSize = 200), silent = TRUE)
-  if (!inherits(q_en, "try-error") && nrow(q_en)) {
-    ent <- tibble::as_tibble(q_en) %>% dplyr::mutate(id = toupper(.data$id), accession = toupper(.data$accession))
-    map_en <- ent %>% dplyr::transmute(input = sub("_MOUSE$", "", id), primaryAccession = accession) %>% dplyr::distinct(input, .keep_all = TRUE)
-    base_need <- toupper(resolved2$token_base[need_idx])
-    hit <- map_en$primaryAccession[match(base_need, map_en$input)]
-    ok <- !is.na(hit) & nzchar(hit)
-    ii <- need_idx[ok]
-    if (length(ii)) {
-      resolved2$Resolved_UNIPROT[ii] <- hit[ok]
-      resolved2$strategy[ii] <- "uniprot_query_entry_name_exact"
-    }
-  }
-}
-
-# 6) ID prefix tolerant (prefer *_MOUSE) with organism filter
-need_idx <- which(is.na(resolved2$Resolved_UNIPROT) | !nzchar(resolved2$Resolved_UNIPROT))
-need_ids <- toupper(unique(resolved2$token_base[need_idx]))
-ids_ent <- unique(need_ids[!grepl("^[OPQ][0-9][A-Z0-9]{3}[0-9]$|^[A-NR-Z][0-9][A-Z0-9]{3}[0-9]$|^A0A[0-9A-Z]{7}$", need_ids)])
-
-if (length(ids_ent)) {
-  q_tol <- try(UniProt.ws::queryUniProt(query = paste0("id:", ids_ent, "* AND organism_id:10090"),
-                                        fields = c("accession","id"),
-                                        collapse = "OR", n = Inf, pageSize = 200), silent = TRUE)
-  if (!inherits(q_tol, "try-error") && nrow(q_tol)) {
-    tt <- tibble::as_tibble(q_tol) %>% dplyr::mutate(id = toupper(.data$id), accession = toupper(.data$accession))
-    picks <- lapply(ids_ent, function(b) {
-      bU <- toupper(b)
-      cand <- tt %>% dplyr::filter(startsWith(id, bU))
-      if (!nrow(cand)) return(NULL)
-      pref <- cand %>% dplyr::filter(endsWith(id, "_MOUSE"))
-      if (nrow(pref)) pref <- pref[1, , drop = FALSE] else pref <- cand[1, , drop = FALSE]
-      tibble::tibble(input = bU, primaryAccession = pref$accession[1], chosen_id = pref$id[1])
-    })
-    map_tol <- dplyr::bind_rows(Filter(Negate(is.null), picks))
-    if (nrow(map_tol)) {
-      base_need <- toupper(resolved2$token_base[need_idx])
-      hit <- map_tol$primaryAccession[match(base_need, map_tol$input)]
-      ok <- !is.na(hit) & nzchar(hit)
-      ii <- need_idx[ok]
-      if (length(ii)) {
-        resolved2$Resolved_UNIPROT[ii] <- hit[ok]
-        resolved2$strategy[ii] <- "uniprot_query_id_prefix_mouse_pref"
-        readr::write_tsv(map_tol, file.path(subdirs$tables_modules, "tolerant_kbid_choices.tsv"))
-      }
-    }
-  }
-}
-
-# 7) gene_primary strict resolver (mouse) as final gene route
-need_idx <- which(is.na(resolved2$Resolved_UNIPROT) | !nzchar(resolved2$Resolved_UNIPROT))
-need_ids <- toupper(unique(resolved2$token_base[need_idx]))
-sym_left2 <- unique(need_ids[grepl("^[A-Z0-9\\-]{2,}$", need_ids)])
-
-if (length(sym_left2)) {
-  q_list <- lapply(sym_left2, function(g) list(organism_id = 10090, gene_primary = g))
-  res_list <- lapply(q_list, function(q) try(UniProt.ws::queryUniProt(query = q, fields = c("accession","id","gene_primary","reviewed"), collapse = "OR", n = 10, pageSize = 10), silent = TRUE))
-  got <- res_list[!vapply(res_list, inherits, logical(1), "try-error")]
-  if (length(got)) {
-    tbl <- dplyr::bind_rows(lapply(got, tibble::as_tibble))
-    if (nrow(tbl)) {
-      tbl <- tbl %>% dplyr::mutate(gene_primary = toupper(.data$gene_primary), accession = toupper(.data$accession))
-      pick <- tbl %>% dplyr::group_by(gene_primary) %>% dplyr::arrange(dplyr::desc(.data$reviewed), accession, .by_group = TRUE) %>% dplyr::slice_head(n=1) %>% dplyr::ungroup() %>%
-        dplyr::transmute(input = gene_primary, primaryAccession = accession)
-      base_need <- toupper(resolved2$token_base[need_idx])
-      hit <- pick$primaryAccession[match(base_need, pick$input)]
-      ok <- !is.na(hit) & nzchar(hit)
-      ii <- need_idx[ok]
-      if (length(ii)) {
-        resolved2$Resolved_UNIPROT[ii] <- hit[ok]
-        resolved2$strategy[ii] <- "uniprot_query_gene_primary_mouse"
-      }
-    }
-  }
-}
-
-# 8) accession exact for any accession-like leftovers
-need_idx <- which(is.na(resolved2$Resolved_UNIPROT) | !nzchar(resolved2$Resolved_UNIPROT))
-need_ids <- toupper(unique(resolved2$token_base[need_idx]))
-ids_acc <- unique(need_ids[grepl("^[OPQ][0-9][A-Z0-9]{3}[0-9]$|^[A-NR-Z][0-9][A-Z0-9]{3}[0-9]$|^A0A[0-9A-Z]{7}$", need_ids)])
-if (length(ids_acc)) {
-  q_ac <- try(UniProt.ws::queryUniProt(query = paste0("accession:", ids_acc), fields = c("accession","id"), collapse = "OR", n = Inf, pageSize = 200), silent = TRUE)
-  if (!inherits(q_ac, "try-error") && nrow(q_ac)) {
-    map_ac <- tibble::as_tibble(q_ac) %>% dplyr::mutate(accession = toupper(.data$accession)) %>%
-      dplyr::filter(.data$accession %in% toupper(ids_acc)) %>%
-      dplyr::transmute(input = .data$accession, primaryAccession = .data$accession) %>%
-      dplyr::distinct(input, .keep_all = TRUE)
-    if (nrow(map_ac)) {
-      base_need <- toupper(resolved2$token_base[need_idx])
-      hit <- map_ac$primaryAccession[match(base_need, map_ac$input)]
-      ok <- !is.na(hit) & nzchar(hit)
-      ii <- need_idx[ok]
-      if (length(ii)) {
-        resolved2$Resolved_UNIPROT[ii] <- hit[ok]
-        resolved2$strategy[ii] <- "uniprot_query_ac"
-      }
-    }
-  }
-}
-
-# --------------------------
-# Save unmapped lists and audits
-# --------------------------
-audit_mouse <- resolved2 %>%
-  dplyr::mutate(mapped = !is.na(Resolved_UNIPROT) & nzchar(Resolved_UNIPROT)) %>%
-  dplyr::count(id_class, strategy, mapped, name = "n") %>%
-  dplyr::arrange(desc(n))
-readr::write_tsv(audit_mouse, file.path(subdirs$tables_modules, "mapping_audit_mouse_only_final.tsv"))
-
-unmapped_tokens <- resolved2 %>%
-  dplyr::filter(is.na(Resolved_UNIPROT) | !nzchar(Resolved_UNIPROT)) %>%
-  dplyr::transmute(
-    .row_id, token_raw, token_up, token_base, id_class,
-    reason = dplyr::case_when(
-      grepl("[^A-Z0-9_\\-\\.]", token_base) ~ "illegal_chars",
-      grepl("^[A-Z0-9\\-\\.]+$", token_base) ~ "entry_name_not_in_local_or_query",
-      TRUE ~ "unexpected_format_or_na"
-    )
-  ) %>% dplyr::arrange(id_class, token_base)
-readr::write_tsv(unmapped_tokens, file.path(subdirs$tables_modules, "unmapped_mouse_tokens.tsv"))
-unmapped_summary <- unmapped_tokens %>% dplyr::count(id_class, reason, token_base, name = "n") %>% dplyr::arrange(dplyr::desc(n))
-readr::write_tsv(unmapped_summary, file.path(subdirs$tables_modules, "unmapped_mouse_tokens_summary.tsv"))
-
-# --------------------------
-# Collapse to features and build expression matrix
-# --------------------------
-collapse_ids <- function(x) { x <- unique(x[!is.na(x) & nzchar(x)]); if (!length(x)) return(NA_character_); paste(x, collapse = ";") }
-male.norm <- resolved2 %>%
-  dplyr::group_by(.row_id) %>%
-  dplyr::summarise(gene_symbol = collapse_ids(Resolved_UNIPROT), .groups = "drop") %>%
-  dplyr::right_join(male.data %>% dplyr::select(-gene_symbol, .row_id), by = ".row_id") %>%
-  dplyr::select(-.row_id) %>%
-  dplyr::mutate(gene_symbol = dplyr::na_if(gene_symbol, ""))
-
-to_numeric_matrix <- function(male_norm, qc_dir = subdirs$plots_qc) {
-  if (!"gene_symbol" %in% names(male_norm)) stop("male.norm must contain gene_symbol")
-  expr <- as.data.frame(lapply(male_norm[, -1, drop = FALSE], function(x) suppressWarnings(as.numeric(x))))
-  if (!all(vapply(expr, is.numeric, logical(1)))) stop("Non-numeric columns remain after coercion")
-  mat <- as.data.frame(t(expr))
-  feat <- male_norm$gene_symbol
-  empty <- which(!nzchar(ifelse(is.na(feat), "", feat)))
-  if (length(empty)) feat[empty] <- paste0("UNMAPPED_", seq_along(empty))
-  feat <- make.unique(feat, sep = "_")
-  colnames(mat) <- feat
-  if (any(!nzchar(colnames(mat)) | is.na(colnames(mat)))) stop("Empty/NA feature names after repair")
-  utils::write.table(utils::head(mat[, 1:min(10, ncol(mat)), drop = FALSE]), file.path(qc_dir, "expression_head10.tsv"), sep = "\t", row.names = TRUE, quote = FALSE)
-  mat
-}
-expression.data <- to_numeric_matrix(male.norm)
-
-# Save core outputs
-readr::write_tsv(resolved2, file.path(subdirs$tables_modules, "resolved_tokens_mouse_only_final.tsv"))
-saveRDS(list(expression = expression.data, male.norm = male.norm, mapping = resolved2), file = file.path(subdirs$network, "mouse_only_mapping_outputs_final.rds"))
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# ================================
-# Mouse-only mapping: robust idmapping parser + offline + SYMBOL/ALIAS + Entrez + UniProt gene_primary + QC
-# ================================
-
-suppressPackageStartupMessages({
-  if (!requireNamespace("pacman", quietly = TRUE)) install.packages("pacman", repos = "https://cloud.r-project.org")
-  pacman::p_load(
-    WGCNA, readxl, ggplot2, svglite, dplyr, tidyr, tibble, stringr, readr, purrr,
-    AnnotationDbi, org.Mm.eg.db, install = TRUE
-  )
-})
-if (!requireNamespace("UniProt.ws", quietly = TRUE)) {
-  if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager", repos = "https://cloud.r-project.org")
-  BiocManager::install("UniProt.ws", ask = FALSE, update = FALSE)
-}
-library(UniProt.ws)
-
-# --------------------------
-# Paths and environment
-# --------------------------
-output_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/wgcna/output"
-subdirs <- list(
-  plots_qc         = file.path(output_dir, "plots_qc"),
-  plots_traits     = file.path(output_dir, "plots_traits"),
-  network          = file.path(output_dir, "network"),
-  tables_modules   = file.path(output_dir, "tables_modules"),
-  tables_pres      = file.path(output_dir, "tables_preservation")
-)
-safe_dir <- function(path) { if (!dir.exists(path)) dir.create(path, recursive = TRUE, showWarnings = FALSE); if (file.access(path, 2) != 0) stop(sprintf("Not writable: %s", path)); invisible(normalizePath(path)) }
-log_session <- function(out_dir) { safe_dir(out_dir); writeLines(capture.output(utils::sessionInfo()), file.path(out_dir, "session_info.txt")) }
-invisible(lapply(c(output_dir, unlist(subdirs)), safe_dir)); log_session(output_dir)
-
-# --------------------------
-# Inputs
-# --------------------------
-expr_xlsx <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/data/male.data.xlsx"
-meta_xlsx <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/data/sample_info.xlsx"
-idmap_dat <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/MOUSE_10090_idmapping.dat"
-
-stop_if_missing <- function(path) if (!file.exists(path)) stop(sprintf("Missing file: %s", path))
-read_head <- function(path) { df <- readxl::read_excel(path); utils::write.table(utils::head(df, 10), file.path(subdirs$plots_qc, paste0(basename(path), "_head10.tsv")), sep="\t", row.names=FALSE, quote=FALSE); df }
-
-male.data <- { stop_if_missing(expr_xlsx); read_head(expr_xlsx) } %>% dplyr::mutate(.row_id = dplyr::row_number())
-meta.data <- { stop_if_missing(meta_xlsx); read_head(meta_xlsx) }
-
-# --------------------------
-# Robust UniProtKB-ID -> Accession map (offline)
-# --------------------------
-stop_if_missing(idmap_dat)
-idmap_tbl <- readr::read_tsv(idmap_dat, col_names = c("ACC","DB","VAL"), col_types = "ccc", progress = FALSE, quote = "", comment = "")
-idmap_uid <- idmap_tbl %>%
-  dplyr::filter(DB == "UniProtKB-ID" & grepl("_MOUSE\\s*$", VAL) & nzchar(ACC)) %>%
-  dplyr::transmute(
-    UNIPROT    = toupper(trimws(ACC)),
-    entry_full = toupper(trimws(VAL)),
-    entry_base = toupper(gsub("_MOUSE$", "", trimws(VAL)))
-  )
-entry_map <- idmap_uid %>% dplyr::distinct(entry_base, .keep_all = TRUE)
-if (!nrow(entry_map)) stop("entry_map is empty after robust parse")
-
-# Sentinel sanity check
-sentinels <- c("AIF1","AKAP2","ADCY1","AKAP1","AMPD3","ANXA3","1433S","ACK1","AIP","ADA10")
-missing_sentinels <- setdiff(sentinels, entry_map$entry_base)
-if (length(missing_sentinels)) {
-  warning(sprintf("entry_map missing expected keys: %s", paste(missing_sentinels, collapse=", ")))
-  readr::write_tsv(entry_map, file.path(subdirs$tables_modules, "entry_map_debug.tsv"))
-}
-
-# --------------------------
-# Mouse-only tokenization and classification
-# --------------------------
-normalize_token <- function(x) { x <- toupper(gsub("\\s+", "", x)); x <- gsub("\\u00A0", "", x); x <- gsub("\\.+", ".", x); x <- gsub("__+", "_", x); x }
-to_base_no_iso_mouse <- function(x) { x <- gsub("-\\d+$", "", x); gsub("_MOUSE$", "", x) }
-
-tokenize_mouse_only <- function(male_df) {
-  tok <- male_df %>% tidyr::separate_rows(gene_symbol, sep = ";") %>% dplyr::mutate(token_raw = gene_symbol, token_up = normalize_token(gene_symbol))
-  dropped_non_mouse <- tok %>% dplyr::filter(!grepl("_MOUSE$", token_up))
-  if (nrow(dropped_non_mouse)) readr::write_tsv(dropped_non_mouse, file.path(subdirs$tables_modules, "dropped_non_mouse_tokens.tsv"))
-  tok %>%
-    dplyr::filter(grepl("_MOUSE$", token_up)) %>%
-    dplyr::mutate(
-      token_base = to_base_no_iso_mouse(token_up),
-      looks_ac   = grepl("^[OPQ][0-9][A-Z0-9]{3}[0-9]$|^[A-NR-Z][0-9][A-Z0-9]{3}[0-9]$|^A0A[0-9A-Z]{7}$", token_base),
-      looks_entry= grepl("^[A-Z0-9][A-Z0-9\\-\\.]+$", token_base),
-      id_class = dplyr::case_when(
-        looks_ac    ~ "UNIPROT_AC_MOUSE",
-        looks_entry ~ "UNIPROT_ENTRY",
-        TRUE        ~ "UNKNOWN"
-      ),
-      Resolved_UNIPROT = NA_character_,
-      strategy = NA_character_
-    )
-}
-resolved2 <- tokenize_mouse_only(male.data)
-
-# --------------------------
-# Mapping stack
-# --------------------------
-
-# 1) Accept accession-like bases
-idx_ac <- which(resolved2$id_class == "UNIPROT_AC_MOUSE")
-if (length(idx_ac)) {
-  resolved2$Resolved_UNIPROT[idx_ac] <- resolved2$token_base[idx_ac]
-  resolved2$strategy[idx_ac] <- "accept_accession_base"
-}
-
-# 2) Offline entry map (now robust)
-idx_en <- which(resolved2$id_class == "UNIPROT_ENTRY" & (is.na(resolved2$Resolved_UNIPROT) | !nzchar(resolved2$Resolved_UNIPROT)))
-if (length(idx_en)) {
-  hit <- entry_map$UNIPROT[match(toupper(resolved2$token_base[idx_en]), entry_map$entry_base)]
-  ok <- !is.na(hit) & nzchar(hit)
-  if (any(ok)) { ii <- idx_en[ok]; resolved2$Resolved_UNIPROT[ii] <- hit[ok]; resolved2$strategy[ii] <- "entry_local_mouse" }
-}
-
-# 3) SYMBOL/ALIAS offline resolver (MGI-first)
-need_idx <- which(is.na(resolved2$Resolved_UNIPROT) | !nzchar(resolved2$Resolved_UNIPROT))
-need_ids <- toupper(unique(resolved2$token_base[need_idx]))
-is_acc <- grepl("^[OPQ][0-9][A-Z0-9]{3}[0-9]$|^[A-NR-Z][0-9][A-Z0-9]{3}[0-9]$|^A0A[0-9A-Z]{7}$", need_ids)
-ids_ent <- unique(need_ids[!is_acc])
-
-if (length(ids_ent)) {
-  sel_sym <- try(AnnotationDbi::select(org.Mm.eg.db, keys = ids_ent, keytype = "SYMBOL", columns = c("MGIID","ENTREZID","UNIPROT","SYMBOL")), silent = TRUE)
-  map_sym <- tibble::tibble()
-  if (!inherits(sel_sym, "try-error") && nrow(sel_sym)) {
-    map_sym <- tibble::as_tibble(sel_sym) %>%
-      dplyr::filter(!is.na(UNIPROT) & nzchar(UNIPROT)) %>%
-      dplyr::group_by(SYMBOL) %>% dplyr::arrange(UNIPROT, .by_group = TRUE) %>% dplyr::slice_head(n=1) %>% dplyr::ungroup() %>%
-      dplyr::transmute(input = toupper(SYMBOL), primaryAccession = toupper(UNIPROT))
-  }
-  kt <- try(AnnotationDbi::keytypes(org.Mm.eg.db), silent = TRUE)
-  map_alias <- tibble::tibble()
-  if (!inherits(kt, "try-error") && "ALIAS" %in% kt) {
-    sel_alias <- try(AnnotationDbi::select(org.Mm.eg.db, keys = ids_ent, keytype = "ALIAS", columns = c("UNIPROT","ALIAS")), silent = TRUE)
-    if (!inherits(sel_alias, "try-error") && nrow(sel_alias)) {
-      map_alias <- tibble::as_tibble(sel_alias) %>%
-        dplyr::filter(!is.na(UNIPROT) & nzchar(UNIPROT)) %>%
-        dplyr::group_by(ALIAS) %>% dplyr::arrange(UNIPROT, .by_group = TRUE) %>% dplyr::slice_head(n=1) %>% dplyr::ungroup() %>%
-        dplyr::transmute(input = toupper(ALIAS), primaryAccession = toupper(UNIPROT))
-    }
-  }
-  map_symall <- dplyr::bind_rows(map_sym, map_alias) %>% dplyr::distinct(input, .keep_all = TRUE)
-  if (nrow(map_symall)) {
-    need_idx_now <- which(is.na(resolved2$Resolved_UNIPROT) | !nzchar(resolved2$Resolved_UNIPROT))
-    base_need <- toupper(resolved2$token_base[need_idx_now])
-    hit <- map_symall$primaryAccession[match(base_need, map_symall$input)]
-    ok <- !is.na(hit) & nzchar(hit)
-    ii <- need_idx_now[ok]
-    if (length(ii)) { resolved2$Resolved_UNIPROT[ii] <- hit[ok]; resolved2$strategy[ii] <- "orgdb_mgi_symbol_first" }
-  }
-}
-
-# 4) SYMBOL -> Entrez -> UniProt (offline two-hop)
-need_idx <- which(is.na(resolved2$Resolved_UNIPROT) | !nzchar(resolved2$Resolved_UNIPROT))
-need_ids <- toupper(unique(resolved2$token_base[need_idx]))
-sym_left <- unique(need_ids[grepl("^[A-Z0-9\\-]{2,}$", need_ids)])
-
-if (length(sym_left)) {
-  sym2eg <- try(AnnotationDbi::select(org.Mm.eg.db, keys = sym_left, keytype = "SYMBOL", columns = c("ENTREZID","SYMBOL")), silent = TRUE)
-  eg2up  <- tibble::tibble()
-  if (!inherits(sym2eg, "try-error") && nrow(sym2eg)) {
-    ekeys <- unique(na.omit(sym2eg$ENTREZID))
-    if (length(ekeys)) {
-      egsel <- try(AnnotationDbi::select(org.Mm.eg.db, keys = ekeys, keytype = "ENTREZID", columns = c("UNIPROT","ENTREZID")), silent = TRUE)
-      if (!inherits(egsel, "try-error") && nrow(egsel)) {
-        eg2up <- tibble::as_tibble(egsel) %>%
-          dplyr::filter(!is.na(UNIPROT) & nzchar(UNIPROT)) %>%
-          dplyr::group_by(ENTREZID) %>% dplyr::arrange(UNIPROT, .by_group = TRUE) %>% dplyr::slice_head(n=1) %>% dplyr::ungroup()
-      }
-    }
-    if (nrow(eg2up)) {
-      map_sym2up <- tibble::as_tibble(sym2eg) %>%
-        dplyr::distinct(SYMBOL, ENTREZID) %>%
-        dplyr::left_join(eg2up, by = "ENTREZID") %>%
-        dplyr::filter(!is.na(UNIPROT) & nzchar(UNIPROT)) %>%
-        dplyr::transmute(input = toupper(SYMBOL), primaryAccession = toupper(UNIPROT)) %>%
-        dplyr::distinct(input, .keep_all = TRUE)
-      need_idx2 <- which(is.na(resolved2$Resolved_UNIPROT) | !nzchar(resolved2$Resolved_UNIPROT))
-      base_need <- toupper(resolved2$token_base[need_idx2])
-      hit <- map_sym2up$primaryAccession[match(base_need, map_sym2up$input)]
-      ok <- !is.na(hit) & nzchar(hit)
-      ii <- need_idx2[ok]
-      if (length(ii)) { resolved2$Resolved_UNIPROT[ii] <- hit[ok]; resolved2$strategy[ii] <- "orgdb_symbol_entrez_uniprot" }
-    }
-  }
-}
-
-# 5) UniProt gene_primary resolver (Mus musculus), batched with retry, prefer reviewed
-need_idx <- which(is.na(resolved2$Resolved_UNIPROT) | !nzchar(resolved2$Resolved_UNIPROT))
-need_ids <- unique(toupper(resolved2$token_base[need_idx]))
-sym_left2 <- unique(need_ids[grepl("^[A-Z0-9\\-]{2,}$", need_ids)])
-
-if (length(sym_left2)) {
-  batch_vec <- split(sym_left2, ceiling(seq_along(sym_left2)/50))
-  picks <- list()
-  for (b in batch_vec) {
-    q_list <- lapply(b, function(g) list(organism_id = 10090, gene_primary = g))
-    query_once <- function(ql) try(UniProt.ws::queryUniProt(query = ql, fields = c("accession","id","gene_primary","reviewed"), collapse = "OR", n = 10, pageSize = 10), silent = TRUE)
-    res_list <- lapply(q_list, function(ql) { out <- query_once(ql); if (inherits(out, "try-error") || !is.data.frame(out)) { Sys.sleep(0.8); out <- query_once(ql) }; out })
-    ok <- res_list[!vapply(res_list, inherits, logical(1), "try-error")]
-    if (length(ok)) {
-      tbl <- dplyr::bind_rows(lapply(ok, tibble::as_tibble))
-      if (nrow(tbl)) {
-        tbl <- tbl %>% dplyr::mutate(gene_primary = toupper(.data$gene_primary), accession = toupper(.data$accession))
-        pick <- tbl %>% dplyr::group_by(gene_primary) %>% dplyr::arrange(dplyr::desc(.data$reviewed), accession, .by_group = TRUE) %>% dplyr::slice_head(n=1) %>% dplyr::ungroup() %>% dplyr::transmute(input = gene_primary, primaryAccession = accession)
-        picks[[length(picks)+1]] <- pick
-      }
-    }
-  }
-  if (length(picks)) {
-    map_gene <- dplyr::bind_rows(picks) %>% dplyr::distinct(input, .keep_all = TRUE)
-    need_idx3 <- which(is.na(resolved2$Resolved_UNIPROT) | !nzchar(resolved2$Resolved_UNIPROT))
-    base_need <- toupper(resolved2$token_base[need_idx3])
-    hit <- map_gene$primaryAccession[match(base_need, map_gene$input)]
-    ok <- !is.na(hit) & nzchar(hit)
-    ii <- need_idx3[ok]
-    if (length(ii)) { resolved2$Resolved_UNIPROT[ii] <- hit[ok]; resolved2$strategy[ii] <- "uniprot_gene_primary_retry" }
-  }
-}
-
-# --------------------------
-# Save unmapped lists and audits
-# --------------------------
-audit_mouse <- resolved2 %>%
-  dplyr::mutate(mapped = !is.na(Resolved_UNIPROT) & nzchar(Resolved_UNIPROT)) %>%
-  dplyr::count(id_class, strategy, mapped, name = "n") %>%
-  dplyr::arrange(desc(n))
-readr::write_tsv(audit_mouse, file.path(subdirs$tables_modules, "mapping_audit_mouse_only_robust.tsv"))
-
-unmapped_tokens <- resolved2 %>%
-  dplyr::filter(is.na(Resolved_UNIPROT) | !nzchar(Resolved_UNIPROT)) %>%
-  dplyr::transmute(
-    .row_id, token_raw, token_up, token_base, id_class,
-    reason = dplyr::case_when(
-      grepl("[^A-Z0-9_\\-\\.]", token_base) ~ "illegal_chars",
-      grepl("^[A-Z0-9\\-\\.]+$", token_base) ~ "entry_name_not_in_local_or_query",
-      TRUE ~ "unexpected_format_or_na"
-    )
-  ) %>% dplyr::arrange(id_class, token_base)
-readr::write_tsv(unmapped_tokens, file.path(subdirs$tables_modules, "unmapped_mouse_tokens.tsv"))
-
-unmapped_summary <- unmapped_tokens %>% dplyr::count(id_class, reason, token_base, name = "n") %>% dplyr::arrange(dplyr::desc(n))
-readr::write_tsv(unmapped_summary, file.path(subdirs$tables_modules, "unmapped_mouse_tokens_summary.tsv"))
-
-# --------------------------
-# Collapse to features and build expression matrix
-# --------------------------
-collapse_ids <- function(x) { x <- unique(x[!is.na(x) & nzchar(x)]); if (!length(x)) return(NA_character_); paste(x, collapse = ";") }
-male.norm <- resolved2 %>%
-  dplyr::group_by(.row_id) %>%
-  dplyr::summarise(gene_symbol = collapse_ids(Resolved_UNIPROT), .groups = "drop") %>%
-  dplyr::right_join(male.data %>% dplyr::select(-gene_symbol, .row_id), by = ".row_id") %>%
-  dplyr::select(-.row_id) %>%
-  dplyr::mutate(gene_symbol = dplyr::na_if(gene_symbol, ""))
-
-to_numeric_matrix <- function(male_norm, qc_dir = subdirs$plots_qc) {
-  if (!"gene_symbol" %in% names(male_norm)) stop("male.norm must contain gene_symbol")
-  expr <- as.data.frame(lapply(male_norm[, -1, drop = FALSE], function(x) suppressWarnings(as.numeric(x))))
-  if (!all(vapply(expr, is.numeric, logical(1)))) stop("Non-numeric columns remain after coercion")
-  mat <- as.data.frame(t(expr))
-  feat <- male_norm$gene_symbol
-  empty <- which(!nzchar(ifelse(is.na(feat), "", feat)))
-  if (length(empty)) feat[empty] <- paste0("UNMAPPED_", seq_along(empty))
-  feat <- make.unique(feat, sep = "_")
-  colnames(mat) <- feat
-  if (any(!nzchar(colnames(mat)) | is.na(colnames(mat)))) stop("Empty/NA feature names after repair")
-  utils::write.table(utils::head(mat[, 1:min(10, ncol(mat)), drop = FALSE]), file.path(qc_dir, "expression_head10.tsv"), sep = "\t", row.names = TRUE, quote = FALSE)
-  mat
-}
-expression.data <- to_numeric_matrix(male.norm)
-
-# Save core outputs
-readr::write_tsv(resolved2, file.path(subdirs$tables_modules, "resolved_tokens_mouse_only_robust.tsv"))
-saveRDS(list(expression = expression.data, male.norm = male.norm, mapping = resolved2), file = file.path(subdirs$network, "mouse_only_mapping_outputs_robust.rds"))
