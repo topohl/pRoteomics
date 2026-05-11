@@ -2,105 +2,245 @@
 
 # pRoteomics
 
-pRoteomics is a repository of R scripts designed for proteomics analyses. The two primary scripts included focus on processing gene data for clusterProfiler analysis and performing Gene Set Enrichment Analysis (GSEA) along with pathway visualization.
+pRoteomics is a repository of R-based workflows for spatial and systems-level proteomics analyses.
 
-## Overview
+The repository has evolved from a primarily clusterProfiler/GSEA workflow into a broader analysis framework integrating:
 
-This repository contains two main workflows:
+- spatial proteomics
+- differential enrichment analysis
+- EWCE cell-type enrichment
+- WGCNA and module analyses
+- spatial region/layer network analysis
+- bootstrap-based network stability analyses
+- behavior and physiology coupling
 
-- **MapThatProt ID Mapping for ClusterProfiler Analysis**  
-  This script processes gene data containing UniProtKB IDs (e.g., "GENE_MOUSE"), maps them to corresponding UniProt Accessions using an official UniProt mapping file, and saves the mapped results for downstream clusterProfiler analyses.
+The current focus is high-resolution spatial proteomics across hippocampal region/layer structures combined with systems-level network and behavioral analyses.
 
-- **Gene Set Enrichment Analysis (GSEA) Workflow using clusterProfiler**  
-  This script executes GSEA and KEGG pathway enrichment on mouse datasets. It includes gene list sorting based on log₂ fold change, various functional and publication-quality plot generations, and KEGG pathway visualizations using the Pathview package.
+---
 
-## System Requirements
+# Repository structure
 
-- **R** (version ≥ 4.0 recommended)
-- Required R packages:
-  - **Data Manipulation and I/O:** `dplyr`, `stringr`, `tidyr`, `purrr`, `readr`, `pacman`
-  - **Enrichment and Plotting:** `clusterProfiler`, `pathview`, `enrichplot`, `DOSE`, `ggplot2`, `cowplot`, `ggridges`, `ggpubr`, `ggrepel`, `ggsci`, `ggthemes`, `ggExtra`, `ggforce`, `ggalluvial`, `lattice`, `latticeExtra`
-  - **Bioconductor and OrgDB:** `BiocManager`, `org.Mm.eg.db`
-  - **Additional Visualization:** `ggplotify`, `svglite`
+```text
+01_preprocessing/
+02_id_mapping/
+03_qc_exploration/
+04_differential_expression_enrichment/
+05_celltype_enrichment_EWCE/
+06_modules_WGCNA/
+07_spatial_networks/
+08_behavior_physio_coupling/
+90_testing/
+99_deprecated/
+```
 
-- **Input Files:**
-  - A gene data CSV file (named based on cell types, e.g., `TESTmcherryG1_mcherryG2.csv` or `mcherryG1_mcherryG2.csv`) located in the `Datasets` folder.
-  - The UniProt mapping file (`MOUSE_10090_idmapping.dat`) downloaded and placed in the `Datasets` folder.
+---
 
-## Installation
+# Pipeline overview
 
-1. **Clone the Repository:**
+```text
+raw proteomics matrices + metadata
+→ preprocessing / metadata harmonization
+→ UniProt and ID mapping
+→ QC and exploratory structure analysis
+→ differential enrichment and GSEA
+→ EWCE cell-type enrichment
+→ WGCNA and module analyses
+→ spatial network analyses
+→ bootstrap stability analyses
+→ behavior and physiology coupling
+```
 
-   ```bash
-   git clone https://github.com/topohl/pRoteomics.git
-   cd pRoteomics
-   ```
+---
 
-2. **Prepare the Environment:**
+# Main analysis modules
 
-   - Open the project in RStudio or run the scripts using the command line via Rscript.
-   - Ensure the Datasets folder contains the required gene data CSV file and the UniProt mapping file.
+## 01_preprocessing
 
-3. **Dependency Management:**
+Purpose:
+- metadata formatting
+- matrix harmonization
+- imputation
+- merged metadata generation
 
-   The scripts include code to automatically check for and install any missing packages. Ensure you have an active internet connection for package installation.
+Representative scripts:
+- `01_impute.r`
+- `03_gct_extractR.r`
+- `04_format_metadata.r`
 
-## Usage
+---
 
-### MapThatProt Script
+## 02_id_mapping
 
-This script maps gene symbols (e.g., "GENE_MOUSE") from your dataset to their corresponding UniProt Accessions.
+Purpose:
+- UniProt mapping
+- clusterProfiler-compatible ID conversion
+- WGCNA-compatible identifier harmonization
 
-- **Workflow Steps:**
-  - Setup environment and load necessary libraries.
-  - Define project directories and input file paths.
-  - Validate the existence of input gene data and UniProt mapping file.
-  - Preprocess gene identifiers to extract and clean primary IDs.
-  - Parse the UniProt mapping file to extract a mapping from UniProtKB-ID to Accession.
-  - Merge the gene data with the mapping information.
-  - Save the final mapped output as a CSV file for further downstream analysis.
+Representative scripts:
+- `01_MapThatProt.r`
+- `02_MapThatProt_batch.r`
 
-- **Run the Script:**
+---
 
-   ```bash
-   Rscript path/to/MapThatProt.r
-   ```
+## 03_qc_exploration
 
-### Gene Set Enrichment Analysis (GSEA) Workflow Script
+Purpose:
+- PCA
+- variance partitioning
+- rank abundance analysis
+- protein/peptide QC
 
-This script performs multiple enrichment analyses and creates high-quality visualizations for the analysis of mouse gene datasets.
+Representative scripts:
+- `03_pcaPlot.r`
+- `05_pcaPlot_v3.r`
+- `07_varPart.r`
 
-- **Workflow Steps:**
-  - Install and load all required packages (both CRAN and Bioconductor).
-  - Define directories and load the gene dataset.
-  - Prepare and sort gene lists based on log₂ fold change values.
-  - Execute Gene Ontology (GO) GSEA across all ontologies.
-  - Generate various plots such as dotplots, enrichment maps, network plots, ridgeplots, and GSEA curves.
-  - Conduct ORA on top regulated genes and generate corresponding visualizations.
-  - Convert gene IDs from UniProt to ENTREZID for KEGG analysis.
-  - Perform KEGG GSEA and generate KEGG pathway visualizations using the Pathview package.
-  - Optionally, execute additional enrichment analysis with EnrichGO and produce heatmaps.
+---
 
-- **Run the Script:**
+## 04_differential_expression_enrichment
 
-   ```bash
-   Rscript path/to/clusterProfiler.r
-   ```
+Purpose:
+- GO enrichment
+- GSEA
+- pathway comparison
+- publication-style enrichment figures
 
-## Outputs
+Representative scripts:
+- `01_clusterProfiler.r`
+- `02_compareGO.r`
+- `03_compare_pathways.r`
 
-- **CSV Files:**
-  
-  Mapped gene data and any saved enrichment results are written to a Results directory.
+---
 
-- **Visualizations:**
-  
-  Publication-quality plots such as dotplots, network plots, ridgeplots, and KEGG pathway images are saved as SVG files within the Results folder.
+## 05_celltype_enrichment_EWCE
 
-## Contributing
+Purpose:
+- EWCE analyses
+- spatial cell-type interpretation
+- measured-proteome-aware enrichment workflows
 
-Contributions, bug reports, and feature requests are welcome. Please open an issue or submit a pull request to help improve the repository.
+Representative scripts:
+- `01_EWCE_E9.r`
 
-## Author
+---
+
+## 06_modules_WGCNA
+
+Purpose:
+- WGCNA
+- module scoring
+- module preservation
+- overlap-based module generation
+
+Representative scripts:
+- `01_WGCNA.r`
+- `02_WGCNAtraitpreservation.r`
+- `03_module_spatial_networks.r`
+
+---
+
+## 07_spatial_networks
+
+Purpose:
+- anatomical region/layer relationship networks
+- differential network analysis
+- bootstrap network validation
+- chord/network visualization
+
+Representative scripts:
+- `01_network_spatial_relations.r`
+- `02_differential_networks.r`
+- `03_bootstrap_network_stability.r`
+
+---
+
+## 08_behavior_physio_coupling
+
+Purpose:
+- connect proteomics and network structure with behavior and physiology
+- movement/stress score integration
+- systems-level phenotype coupling
+
+Representative scripts:
+- `01_correlate_proteomics_with_behavior.r`
+- `02_network_behavior_coupling.r`
+
+---
+
+# Running the pipeline
+
+A recommended execution order is documented in:
+
+`RUN_ORDER.md`
+
+The repository also contains:
+
+- `90_testing/` for exploratory or developmental workflows
+- `99_deprecated/` for archived legacy scripts retained for reproducibility
+
+---
+
+# System requirements
+
+Recommended:
+
+- R >= 4.2
+- RStudio or VS Code
+- macOS/Linux preferred for large workflows
+
+Core package ecosystem includes:
+
+- tidyverse
+- clusterProfiler
+- enrichplot
+- WGCNA
+- limma
+- EWCE
+- ggplot2
+- openxlsx
+- igraph
+- ggraph
+- patchwork
+- pheatmap
+- ComplexHeatmap
+- lme4/lmerTest
+- mgcv
+
+Additional dependencies vary between workflows.
+
+---
+
+# Outputs
+
+Typical outputs include:
+
+- publication-ready SVG/PDF figures
+- enrichment tables
+- network edge tables
+- bootstrap stability summaries
+- module score matrices
+- EWCE outputs
+- source-data tables
+- QC reports
+
+---
+
+# Reproducibility philosophy
+
+The repository intentionally preserves:
+
+- exploratory workflows
+- older analysis versions
+- testing scripts
+- alternative implementations
+
+This is done to maintain reproducibility of intermediate biological findings and figure-generation pipelines.
+
+Older scripts are preferentially moved to `99_deprecated/` rather than deleted.
+
+---
+
+# Author
 
 Tobias Pohl
+
