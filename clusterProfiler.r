@@ -201,3 +201,20 @@ go_enrich <- enrichGO(
 p3 <- heatplot(go_enrich, foldChange = gene_list, showCategory = 5)
 save_plot(p4, paste("GOheatmap_", paste(cell_types, collapse = "_"), ".svg"))
 cowplot::plot_grid(p1, p3, ncol = 1, labels = LETTERS[1:2])
+
+
+
+# ---- PCA on protein expression ----
+# Assumes df has expression columns (e.g., intensity or log2FC across conditions)
+# Replace 'expression_cols' with real column names in your dataset
+expression_cols <- grep("sample_", colnames(df), value = TRUE)
+if (length(expression_cols) > 1) {
+  expr_mat <- df[, expression_cols]
+  rownames(expr_mat) <- df$gene_symbol
+  pca_res <- prcomp(t(expr_mat), scale. = TRUE)
+  p_pca <- autoplot(pca_res, data = data.frame(Group = rep(cell_types, each = ncol(expr_mat)/length(cell_types))),
+                    colour = 'Group') +
+    labs(title = "PCA of Proteomic Expression Data") +
+    theme_minimal()
+  save_plot(p_pca, paste("PCA_", paste(cell_types, collapse = "_"), ".svg"))
+}
