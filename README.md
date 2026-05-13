@@ -1,82 +1,246 @@
-# Gene Set Enrichment Analysis (GSEA) with clusterProfiler
+<img width="759" alt="Screenshot 2025-04-18 at 14 47 44" src="https://github.com/user-attachments/assets/be03dd69-eea1-4f5f-bdef-a05ba77392fe" />
 
-This repository provides an end-to-end example for performing Gene Set Enrichment Analysis (GSEA) using the R package **clusterProfiler** along with several complementary packages. The workflow demonstrates how to install and load the necessary packages, prepare gene expression data, and run both Gene Ontology (GO) and KEGG pathway enrichment analyses. Multiple visualization outputs such as dotplots, enrichment maps, network plots, ridgeplots, GSEA plots, PubMed trend plots, and heatmaps are generated throughout the analysis.
+# pRoteomics
 
-Detailed documentation for clusterProfiler can be found here:  
-[clusterProfiler Documentation](https://bioconductor.org/packages/release/bioc/vignettes/clusterProfiler/inst/doc/clusterProfiler.html)
+pRoteomics is a repository of R-based workflows for spatial and systems-level proteomics analyses.
 
-## Table of Contents
+The repository has evolved from a primarily clusterProfiler/GSEA workflow into a broader analysis framework integrating:
 
-- [Overview](#overview)
-- [Installation and Requirements](#installation-and-requirements)
-- [Usage](#usage)
-- [File Structure](#file-structure)
-- [Citation](#citation)
-- [License](#license)
+- spatial proteomics
+- differential enrichment analysis
+- EWCE cell-type enrichment
+- WGCNA and module analyses
+- spatial region/layer network analysis
+- bootstrap-based network stability analyses
+- behavior and physiology coupling
 
-## Overview
+The current focus is high-resolution spatial proteomics across hippocampal region/layer structures combined with systems-level network and behavioral analyses.
 
-- **Purpose:**  
-  This project provides a detailed workflow for performing GSEA on gene expression data using **clusterProfiler**. It covers both GO and KEGG analyses along with comprehensive visualizations.
+---
 
-- **Key Features:**  
-  - **Automatic Package Installation:** Automatically installs required Bioconductor and CRAN packages.
-  - **Data Preparation:** Loads gene expression data from a CSV file, renames columns, and generates a sorted gene list.
-  - **GO Enrichment Analysis:** Uses the `gseGO` function to perform GO enrichment and generates various plots including dotplots, enrichment maps, network plots, and ridgeplots.
-  - **KEGG Pathway Enrichment Analysis:** Converts gene symbols to ENTREZ IDs, performs KEGG GSEA using `gseKEGG`, and integrates with Pathview for pathway diagrams.
-  - **Additional Visualizations:** Includes a PubMed trend plot and a GO enrichment heatmap.
-  - **Result Saving:** Uses custom functions to save output plots in the specified results directory.
+# Repository structure
 
-## Installation and Requirements
+```text
+01_preprocessing/
+02_id_mapping/
+03_qc_exploration/
+04_differential_expression_enrichment/
+05_celltype_enrichment_EWCE/
+06_modules_WGCNA/
+07_spatial_networks/
+08_behavior_physio_coupling/
+90_testing/
+99_deprecated/
+```
 
-- **Prerequisites:**
-  - R (and optionally RStudio) installed on your system.
-  - Internet connectivity to download packages and annotation/pathway data.
+---
 
-- **Required Packages:**  
-  The analysis utilizes the following R packages:
-  - **Bioconductor Packages:** `clusterProfiler`, `pathview`, `enrichplot`, `DOSE`, `org.Mm.eg.db`
-  - **CRAN Packages:** `ggplot2`, `ggnewscale`, `cowplot`, `ggridges`, `europepmc`, `ggpubr`, `ggrepel`, `ggsci`, `ggthemes`, `ggExtra`, `ggforce`, `ggalluvial`, `lattice`, `latticeExtra`
+# Pipeline overview
 
-- **Installation Instructions:**  
-  The script is designed to automatically check for and install any missing packages on runtime. Simply run the R script after adjusting the working directory and file paths to match your environment.
+```text
+raw proteomics matrices + metadata
+→ preprocessing / metadata harmonization
+→ UniProt and ID mapping
+→ QC and exploratory structure analysis
+→ differential enrichment and GSEA
+→ EWCE cell-type enrichment
+→ WGCNA and module analyses
+→ spatial network analyses
+→ bootstrap stability analyses
+→ behavior and physiology coupling
+```
 
-## Usage
+---
 
-1. **Clone the Repository:**  
-   Clone or download this repository to your local machine.
+# Main analysis modules
 
-2. **Update the Working Directory:**  
-   Open the R script clusterProfiler.R and modify the variable `working_dir` so that it points to your local working directory. Ensure your CSV file is placed in the `/Datasets/` subdirectory.
+## 01_preprocessing
 
-3. **Run the Analysis:**  
-   The script performs the following steps:
-   - **Package Setup:**  
-     Checks for and installs all required packages using a helper function (`install_and_load`).
-   - **Data Preparation:**  
-     Loads a CSV file with gene expression data, renames the first column to `gene_symbol`, and creates a sorted gene list based on `log2fc` values.
-   - **GO Enrichment:**  
-     Executes GSEA using `gseGO` with predefined parameters and generates several plots (dotplot, enrichment map, network plot, ridgeplot, and a GSEA plot).
-   - **KEGG Pathway Enrichment:**  
-     Converts gene symbols to ENTREZ IDs, performs KEGG GSEA using `gseKEGG`, and creates similar visualizations. Pathway diagrams are generated using Pathview.
-   - **Additional Visualizations:**  
-     Generates a PubMed trend plot for selected enriched terms and a GO enrichment heatmap.
-   - **Saving Outputs:**  
-     Uses custom functions (e.g., `save_plot`) to store generated plots in the `/Results/` directory.
+Purpose:
+- metadata formatting
+- matrix harmonization
+- imputation
+- merged metadata generation
 
-4. **Adjust and Extend:**  
-   Feel free to modify analysis parameters (e.g., p-value cutoffs, category limits) or integrate additional plots as needed.
+Representative scripts:
+- `01_impute.r`
+- `03_gct_extractR.r`
+- `04_format_metadata.r`
 
-## File Structure
+---
 
-├── README.md&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;// This file: provides an overview and instructions. <br/>
-├── clusterProfiler.R&nbsp;&nbsp;&nbsp;&nbsp;// The R script containing the GSEA workflow.<br/>
-├── Datasets/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;// Directory with sample CSV files containing gene expression data. <br/>
-└── Results/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;// Directory where output plots and results will be saved.<br/>
+## 02_id_mapping
 
-## Citation
+Purpose:
+- UniProt mapping
+- clusterProfiler-compatible ID conversion
+- WGCNA-compatible identifier harmonization
 
-If you use this workflow or any part of this analysis in your research, please cite **clusterProfiler** as follows:
+Representative scripts:
+- `01_MapThatProt.r`
+- `02_MapThatProt_batch.r`
 
-**LG Wang, Y Han, QY He. _clusterProfiler: an R package for comparing biological themes among gene clusters._ OMICS: A Journal of Integrative Biology, 2012, 16(5):284-287.**  
-DOI: [10.1089/omi.2011.0118](http://dx.doi.org/10.1089/omi.2011.0118)
+---
+
+## 03_qc_exploration
+
+Purpose:
+- PCA
+- variance partitioning
+- rank abundance analysis
+- protein/peptide QC
+
+Representative scripts:
+- `03_pcaPlot.r`
+- `05_pcaPlot_v3.r`
+- `07_varPart.r`
+
+---
+
+## 04_differential_expression_enrichment
+
+Purpose:
+- GO enrichment
+- GSEA
+- pathway comparison
+- publication-style enrichment figures
+
+Representative scripts:
+- `01_clusterProfiler.r`
+- `02_compareGO.r`
+- `03_compare_pathways.r`
+
+---
+
+## 05_celltype_enrichment_EWCE
+
+Purpose:
+- EWCE analyses
+- spatial cell-type interpretation
+- measured-proteome-aware enrichment workflows
+
+Representative scripts:
+- `01_EWCE_E9.r`
+
+---
+
+## 06_modules_WGCNA
+
+Purpose:
+- WGCNA
+- module scoring
+- module preservation
+- overlap-based module generation
+
+Representative scripts:
+- `01_WGCNA.r`
+- `02_WGCNAtraitpreservation.r`
+- `03_module_spatial_networks.r`
+
+---
+
+## 07_spatial_networks
+
+Purpose:
+- anatomical region/layer relationship networks
+- differential network analysis
+- bootstrap network validation
+- chord/network visualization
+
+Representative scripts:
+- `01_network_spatial_relations.r`
+- `02_differential_networks.r`
+- `03_bootstrap_network_stability.r`
+
+---
+
+## 08_behavior_physio_coupling
+
+Purpose:
+- connect proteomics and network structure with behavior and physiology
+- movement/stress score integration
+- systems-level phenotype coupling
+
+Representative scripts:
+- `01_correlate_proteomics_with_behavior.r`
+- `02_network_behavior_coupling.r`
+
+---
+
+# Running the pipeline
+
+A recommended execution order is documented in:
+
+`RUN_ORDER.md`
+
+The repository also contains:
+
+- `90_testing/` for exploratory or developmental workflows
+- `99_deprecated/` for archived legacy scripts retained for reproducibility
+
+---
+
+# System requirements
+
+Recommended:
+
+- R >= 4.2
+- RStudio or VS Code
+- macOS/Linux preferred for large workflows
+
+Core package ecosystem includes:
+
+- tidyverse
+- clusterProfiler
+- enrichplot
+- WGCNA
+- limma
+- EWCE
+- ggplot2
+- openxlsx
+- igraph
+- ggraph
+- patchwork
+- pheatmap
+- ComplexHeatmap
+- lme4/lmerTest
+- mgcv
+
+Additional dependencies vary between workflows.
+
+---
+
+# Outputs
+
+Typical outputs include:
+
+- publication-ready SVG/PDF figures
+- enrichment tables
+- network edge tables
+- bootstrap stability summaries
+- module score matrices
+- EWCE outputs
+- source-data tables
+- QC reports
+
+---
+
+# Reproducibility philosophy
+
+The repository intentionally preserves:
+
+- exploratory workflows
+- older analysis versions
+- testing scripts
+- alternative implementations
+
+This is done to maintain reproducibility of intermediate biological findings and figure-generation pipelines.
+
+Older scripts are preferentially moved to `99_deprecated/` rather than deleted.
+
+---
+
+# Author
+
+Tobias Pohl
+
