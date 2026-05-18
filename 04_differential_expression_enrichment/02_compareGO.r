@@ -3234,5 +3234,3 @@ if (exists("supp_output_path") && file.exists(supp_output_path)) {
 # Write log file
 writeLines(unlist(log_lines), con = log_file)
 message("Analysis log written to: ", log_file)
-
-
