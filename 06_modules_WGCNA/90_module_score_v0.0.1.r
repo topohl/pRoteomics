@@ -1210,6 +1210,32 @@ scores_animal_qc_sensitivity <- make_scores_animal(
   analysis_qc_sensitivity
 )
 
+proteomics_for_behavior <- scores_animal_all %>%
+  select(
+    AnimalID,
+    StressGroup,
+    Sex,
+    RegionLayer,
+    Module,
+    ModuleScore
+  ) %>%
+  mutate(
+    ProteomicFeature = paste(RegionLayer, Module, sep = "__")
+  ) %>%
+  select(AnimalID, StressGroup, Sex, ProteomicFeature, ModuleScore) %>%
+  pivot_wider(
+    names_from = ProteomicFeature,
+    values_from = ModuleScore
+  ) %>%
+  rename(AnimalNum = AnimalID)
+
+dir.create("S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/Analysis/Behavior/RFID/analysis_ready/proteomics", recursive = TRUE, showWarnings = FALSE)
+
+readr::write_csv(
+  proteomics_for_behavior,
+  "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/Analysis/Behavior/RFID/analysis_ready/proteomics/module_scores.csv"
+)
+
 write.xlsx(scores_animal_all, file.path(dir_tables, paste0("module_scores_per_animal_regionlayer_", analysis_primary, ".xlsx")), overwrite = TRUE)
 write.xlsx(scores_animal_qc_sensitivity, file.path(dir_tables, paste0("module_scores_per_animal_regionlayer_", analysis_qc_sensitivity, ".xlsx")), overwrite = TRUE)
 write.xlsx(scores_df_qc_sensitivity, file.path(dir_tables, paste0("module_scores_per_sample_", analysis_qc_sensitivity, ".xlsx")), overwrite = TRUE)
