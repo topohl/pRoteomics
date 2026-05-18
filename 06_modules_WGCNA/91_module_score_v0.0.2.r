@@ -91,6 +91,34 @@ metadata <- read_excel(metadata_file, sheet = "MergedMetadata_Clean") %>%
   filter(CellTypeLayer == "neuron_neuropil")
 
 # ------------------------------------------------
+# AUTOMATIC PROTEOMICS SCOPE LABEL
+# ------------------------------------------------
+
+clean_scope_token <- function(x) {
+  x <- as.character(x)
+  x <- unique(x[!is.na(x) & x != ""])
+  x <- stringr::str_to_lower(x)
+  x <- stringr::str_replace_all(x, "[^a-z0-9]+", "_")
+  x <- stringr::str_replace_all(x, "^_|_$", "")
+
+  if (length(x) == 0) return("unknown")
+  if (length(x) == 1) return(x)
+
+  paste(sort(x), collapse = "_and_")
+}
+
+sex_scope <- clean_scope_token(metadata$Sex)
+celltype_scope <- clean_scope_token(metadata$CellTypeLayer)
+
+proteomics_scope <- paste(
+  sex_scope,
+  celltype_scope,
+  sep = "_"
+)
+
+message("Detected proteomics scope: ", proteomics_scope)
+
+# ------------------------------------------------
 # 3) LOAD PROTEIN MATRIX FROM MORPHEUS FORMAT
 # ------------------------------------------------
 
@@ -250,12 +278,12 @@ write.xlsx(
   overwrite = TRUE
 )
 
-modules_mapped <- imap(
+modules_mapped <-purrr::imap(
   modules_accession,
   ~ map_accessions_to_matrix_ids(.x, mapping_table)
 )
 
-modules <- imap(
+modules <-purrr::imap(
   modules_mapped,
   ~ intersect(.x, rownames(mat))
 )
@@ -1154,6 +1182,97 @@ scores_animal_qc_sensitivity <- make_scores_animal(
   analysis_qc_sensitivity
 )
 
+# ------------------------------------------------
+# EXPORT FOR BEHAVIOR-PROTEOMICS INTEGRATION
+# ------------------------------------------------
+
+standardize_sex <- function(x) {
+  x <- as.character(x)
+  x <- stringr::str_to_lower(stringr::str_trim(x))
+
+  dplyr::case_when(
+    x %in% c("m", "male", "männlich") ~ "male",
+    x %in% c("f", "female", "weiblich") ~ "female",
+    TRUE ~ x
+  )
+}
+
+normalize_animal_id <- function(x) {
+  x <- as.character(x)
+  x <- stringr::str_trim(x)
+  x <- stringr::str_replace(x, "\\.0$", "")
+
+  digits <- stringr::str_extract(x, "\\d+$")
+  digits_num <- suppressWarnings(as.integer(digits))
+
+  dplyr::if_else(
+    !is.na(digits_num),
+    sprintf("%04d", digits_num),
+    x
+  )
+}
+
+export_behavior_proteomics_input <- function(scores_animal, analysis_label) {
+
+  out_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/Analysis/Behavior/RFID/analysis_ready/proteomics"
+
+  dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+
+  out_file <- file.path(
+    out_dir,
+    paste0(
+      "module_scores_",
+      proteomics_scope,
+      "_",
+      analysis_label,
+      ".csv"
+    )
+  )
+
+  proteomics_for_behavior <- scores_animal %>%
+    mutate(
+      AnimalID = normalize_animal_id(AnimalID),
+      Sex = standardize_sex(Sex),
+      ProteomicFeature = paste(
+        proteomics_scope,
+        RegionLayer,
+        Module,
+        sep = "__"
+      )
+    ) %>%
+    select(
+      AnimalNum = AnimalID,
+      Sex,
+      StressGroup,
+      ProteomicFeature,
+      ModuleScore
+    ) %>%
+    tidyr::pivot_wider(
+      id_cols = c(AnimalNum, Sex, StressGroup),
+      names_from = ProteomicFeature,
+      values_from = ModuleScore
+    )
+
+  readr::write_csv(
+    proteomics_for_behavior,
+    out_file
+  )
+
+  message("Exported: ", out_file)
+
+  invisible(out_file)
+}
+
+proteomics_file_primary <- export_behavior_proteomics_input(
+  scores_animal_all,
+  analysis_primary
+)
+
+proteomics_file_qc <- export_behavior_proteomics_input(
+  scores_animal_qc_sensitivity,
+  analysis_qc_sensitivity
+)
+
 write.xlsx(scores_animal_all, file.path(dir_tables, paste0("module_scores_per_animal_regionlayer_", analysis_primary, ".xlsx")), overwrite = TRUE)
 write.xlsx(scores_animal_qc_sensitivity, file.path(dir_tables, paste0("module_scores_per_animal_regionlayer_", analysis_qc_sensitivity, ".xlsx")), overwrite = TRUE)
 write.xlsx(scores_df_qc_sensitivity, file.path(dir_tables, paste0("module_scores_per_sample_", analysis_qc_sensitivity, ".xlsx")), overwrite = TRUE)
@@ -1391,25 +1510,25 @@ make_parametric_stats_tables <- function(df, analysis_label) {
   stats_nested <- df %>%
     group_by(RegionLayer, Module) %>%
     nest() %>%
-    mutate(stats = map(data, run_parametric_stats))
+    mutate(stats = purrr::map(data, run_parametric_stats))
 
   anova_out <- stats_nested %>%
-    transmute(RegionLayer, Module, anova = map(stats, "anova")) %>%
+    transmute(RegionLayer, Module, anova = purrr::map(stats, "anova")) %>%
     unnest(anova) %>%
     mutate(Analysis = analysis_label, .before = 1)
 
   contrasts_out <- stats_nested %>%
-    transmute(RegionLayer, Module, contrasts = map(stats, "contrasts")) %>%
+    transmute(RegionLayer, Module, contrasts = purrr::map(stats, "contrasts")) %>%
     unnest(contrasts) %>%
     mutate(Analysis = analysis_label, .before = 1)
 
   emmeans_out <- stats_nested %>%
-    transmute(RegionLayer, Module, emmeans = map(stats, "emmeans")) %>%
+    transmute(RegionLayer, Module, emmeans = purrr::map(stats, "emmeans")) %>%
     unnest(emmeans) %>%
     mutate(Analysis = analysis_label, .before = 1)
 
   diagnostics_out <- stats_nested %>%
-    transmute(RegionLayer, Module, diagnostics = map(stats, "diagnostics")) %>%
+    transmute(RegionLayer, Module, diagnostics = purrr::map(stats, "diagnostics")) %>%
     unnest(diagnostics) %>%
     mutate(Analysis = analysis_label, .before = 1)
 
@@ -1420,15 +1539,15 @@ make_nonparametric_stats_tables <- function(df, analysis_label) {
   stats_nested <- df %>%
     group_by(RegionLayer, Module) %>%
     nest() %>%
-    mutate(stats = map(data, run_nonparametric_stats))
+    mutate(stats = purrr::map(data, run_nonparametric_stats))
 
   omnibus_out <- stats_nested %>%
-    transmute(RegionLayer, Module, omnibus = map(stats, "omnibus")) %>%
+    transmute(RegionLayer, Module, omnibus = purrr::map(stats, "omnibus")) %>%
     unnest(omnibus) %>%
     mutate(Analysis = analysis_label, .before = 1)
 
   contrasts_out <- stats_nested %>%
-    transmute(RegionLayer, Module, contrasts = map(stats, "contrasts")) %>%
+    transmute(RegionLayer, Module, contrasts = purrr::map(stats, "contrasts")) %>%
     unnest(contrasts) %>%
     mutate(Analysis = analysis_label, .before = 1)
 
