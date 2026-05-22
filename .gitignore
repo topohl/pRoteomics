@@ -1,0 +1,27 @@
+# Local PRIDE/ProteomeXchange submission package
+PRIDE_package/
+
+# Vendor / raw mass spectrometry files; upload to PRIDE, not GitHub
+*.raw
+*.RAW
+*.wiff
+*.wiff.scan
+*.mzML
+*.mzXML
+*.mgf
+*.d/
+*.lcd
+*.baf
+*.tdf
+*.tdf_bin
+
+# Large or temporary local outputs
+*.zip
+*.tar
+*.tar.gz
+*.7z
+*.tmp
+.DS_Store
+.Rhistory
+.RData
+.Rproj.user/
