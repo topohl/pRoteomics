@@ -1,0 +1,31 @@
+# Example local configuration for pRoteomics.
+# Copy this file to config/config.yml and edit paths for your machine.
+
+project_root: .
+pride_package_dir: PRIDE_package
+
+metadata_candidates:
+  - results/analysis_ready/sample_metadata_clean.tsv
+  - results/analysis_ready/sample_metadata_clean.csv
+  - data/metadata/sample_metadata_clean.tsv
+  - data/metadata/sample_metadata_clean.csv
+
+processed_quantification_dirs:
+  - results/analysis_ready
+  - results/processed
+  - 01_preprocessing/output
+
+search_results_dirs:
+  - data/search_results
+  - results/search_results
+
+raw_dirs:
+  - PRIDE_package/01_raw
+
+fasta_dirs:
+  - data/fasta
+  - PRIDE_package/02_search_results/fasta_database
+
+parameter_dirs:
+  - data/search_parameters
+  - PRIDE_package/02_search_results/search_parameters
