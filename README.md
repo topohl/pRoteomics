@@ -13,6 +13,7 @@ The repository has evolved from a primarily clusterProfiler/GSEA workflow into a
 - spatial region/layer network analysis
 - bootstrap-based network stability analyses
 - behavior and physiology coupling
+- PRIDE/ProteomeXchange package preparation support
 
 The current focus is high-resolution spatial proteomics across hippocampal region/layer structures combined with systems-level network and behavioral analyses.
 
@@ -29,6 +30,7 @@ The current focus is high-resolution spatial proteomics across hippocampal regio
 06_modules_WGCNA/
 07_spatial_networks/
 08_behavior_physio_coupling/
+09_pride_submission/
 90_testing/
 99_deprecated/
 ```
@@ -48,6 +50,7 @@ raw proteomics matrices + metadata
 → spatial network analyses
 → bootstrap stability analyses
 → behavior and physiology coupling
+→ PRIDE / ProteomeXchange package metadata generation
 ```
 
 ---
@@ -167,6 +170,40 @@ Representative scripts:
 
 ---
 
+## 09_pride_submission
+
+Purpose:
+- create a local PRIDE/ProteomeXchange package skeleton
+- generate SDRF-style sample-to-file metadata
+- generate a file manifest
+- calculate MD5 checksums
+- validate whether raw files, search outputs, processed results, and metadata are traceable
+
+Main command:
+
+```r
+source("09_pride_submission/00_make_pride_package.R")
+```
+
+This creates or updates local files under the gitignored `PRIDE_package/` folder:
+
+```text
+PRIDE_package/00_metadata/sdrf_proteomics.tsv
+PRIDE_package/00_metadata/pride_file_manifest.tsv
+PRIDE_package/00_metadata/checksum.md5
+PRIDE_package/00_metadata/validation_report.tsv
+```
+
+Large raw/vendor mass spectrometry files should be uploaded to PRIDE, not committed to GitHub.
+
+Detailed instructions are in:
+
+```text
+09_pride_submission/README_PRIDE.md
+```
+
+---
+
 # Running the pipeline
 
 A recommended execution order is documented in:
@@ -222,6 +259,7 @@ Typical outputs include:
 - EWCE outputs
 - source-data tables
 - QC reports
+- PRIDE package metadata, manifests, checksums, and validation reports
 
 ---
 
