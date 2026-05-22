@@ -1,0 +1,5 @@
+file_name	relative_path	pride_file_type	description	generated_by_script	sample_id	raw_file_name	software	include_in_pride	md5
+example.raw	01_raw/example.raw	RAW	Vendor raw MS file		Sample_001	example.raw		TRUE	
+proteinGroups.txt	02_search_results/proteinGroups.txt	SEARCH	Search engine protein-level output				MaxQuant	TRUE	
+sample_metadata_clean.tsv	00_metadata/sample_metadata_clean.tsv	EXPERIMENTAL_DESIGN	Clean sample metadata	01_preprocessing/04_format_metadata.r				TRUE	
+sdrf_proteomics.tsv	00_metadata/sdrf_proteomics.tsv	EXPERIMENTAL_DESIGN	SDRF-Proteomics sample-to-file metadata	09_pride_submission/01_generate_sdrf.R				TRUE	
