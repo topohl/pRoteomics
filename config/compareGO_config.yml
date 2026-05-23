@@ -2,10 +2,13 @@
 # Filter these fields to select one manifest-backed route for compareGO.
 
 ontology: BP
+dry_run: false
 route_category: phenotype_within_unit
 route_unit: ""
 result_types:
   - GSEA_GO
+run_id: ""
+clusterProfiler_config_hash: ""
 
 clusterProfiler_manifest: data/processed/04_differential_expression_enrichment/clusterProfiler/clusterProfiler_manifest.csv
 uniprot_mapping_file: data/external/MOUSE_10090_idmapping.dat
