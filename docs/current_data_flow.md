@@ -8,6 +8,14 @@ This audit was generated before targeted refactoring of the clusterProfiler to c
 - Active scripts write a mix of canonical analysis tables, exploratory workbooks, figure-only exports, RDS caches, network files and logs directly under legacy `Results/` and `Datasets/` style folders.
 - `setwd()` is present in active ID mapping and GCT/pathview workflows; path helpers should be used instead, and unavoidable working-directory changes should restore `oldwd`.
 - Package auto-installation is present in several scripts. The refactored priority scripts now expose `AUTO_INSTALL_MISSING_PACKAGES` and default to fail-fast behavior.
+- Per-script input/output/dependency/refactor status is maintained in `docs/active_script_io_audit.tsv`.
+
+## Module Refactor Status
+
+- Refactored first: `04_differential_expression_enrichment/01_clusterProfiler.r` and `04_differential_expression_enrichment/02_compareGO.r`, because this handoff had the highest stale-file and duplicate-file risk.
+- Safe next candidates: `05_celltype_enrichment_EWCE/01_EWCE_E9.r`, `06_modules_WGCNA/02_module_spatial_networks.r`, `06_modules_WGCNA/03_overlap_modules.r`, `07_spatial_networks/03_bootstrap_network_stability.r`, `07_spatial_networks/04_bootstrap_differential_network_stability.r`, and `07_spatial_networks/05_bootstrap_differential_network_figures.r`; these can mostly be refactored through parameter/config path changes.
+- Higher-risk candidates: `06_modules_WGCNA/01_WGCNA v.2.0.0.r`, `07_spatial_networks/01_network_spatial_relations.r`, and `08_behavior_physio_coupling/01_correlate_proteomics_with_behavior.r`; these are central producers or depend on external behavior data and should be changed with input data available.
+- Keep documented unless revived: `05_celltype_enrichment_EWCE/90_EWCE_legacy.r`, `90_testing/`, and `99_deprecated/`.
 
 ## clusterProfiler to compareGO Before Refactor
 
@@ -52,7 +60,16 @@ compareGO reads that manifest, filters by ontology/result type/route, validates 
 
 `data/processed/04_differential_expression_enrichment/compareGO/compareGO_input_manifest.csv`
 
-This makes the data flow explicit and reproducible while preserving the biological route classification.
+This makes the data flow explicit and reproducible while preserving the biological route classification. By default, compareGO consumes only `result_type == GSEA_GO` and `used_for_plot == TRUE`. `GSEA_KEGG` rows are recorded by clusterProfiler for provenance and can be selected intentionally by `config/compareGO_config.yml`, but ORA and custom/NK3R outputs are not compareGO inputs unless future analysis logic explicitly supports them.
+
+Checkpoint behavior: if clusterProfiler skips a completed comparison, it reconstructs manifest rows from existing canonical GSEA_GO/GSEA_KEGG source-data tables when present and marks `checkpoint_status = reconstructed_from_checkpoint`. If a checkpoint predates canonical source-data outputs, rerun with `force_rerun: true` to refresh the manifest.
+
+Dry-run commands:
+
+```bash
+Rscript 04_differential_expression_enrichment/01_clusterProfiler.r --dry-run
+Rscript 04_differential_expression_enrichment/02_compareGO.r --dry-run
+```
 
 ## PRIDE and Journal Layers
 
