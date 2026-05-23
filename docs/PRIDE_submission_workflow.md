@@ -8,6 +8,20 @@ PRIDE/ProteomeXchange deposition should include original raw mass-spectrometry f
 
 Canonical processed quantitative matrices should come from `data/processed/01_preprocessing/` and include normalization, filtering, missingness and imputation metadata. These are PRIDE-linked processed outputs when they represent the stable quantitative data used for downstream analyses.
 
+## Dry-Run Validation
+
+Run these before staging a deposition:
+
+```bash
+Rscript 09_export_pride_journal/01_make_pride_manifest.R --dry-run
+Rscript 09_export_pride_journal/02_make_sample_metadata.R --dry-run
+Rscript 09_export_pride_journal/03_make_supplementary_tables.R --dry-run
+Rscript 09_export_pride_journal/04_validate_pride_submission.R --dry-run
+Rscript 09_export_pride_journal/05_make_methods_summary.R --dry-run
+```
+
+Dry-run mode prints pass/fail diagnostics and target output paths without copying supplementary files or writing final export products.
+
 ## Supplementary Tables
 
 Journal supplementary tables should be generated from canonical outputs:
