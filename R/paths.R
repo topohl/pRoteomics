@@ -1,8 +1,7 @@
-# Shared path helpers for pRoteomics
+# Shared path helpers for pRoteomics.
 #
-# These helpers avoid hard-coded machine-specific paths and are used by the
-# PRIDE/ProteomeXchange packaging scripts. They intentionally depend only on
-# base R so they can run in a minimal R installation.
+# All committed scripts should default to repository-relative paths. For local
+# machines, set PROTEOMICS_PROJECT_ROOT or provide a config override outside Git.
 
 repo_root <- function() {
   env_root <- Sys.getenv("PROTEOMICS_PROJECT_ROOT", unset = "")
@@ -10,12 +9,18 @@ repo_root <- function() {
     return(normalizePath(env_root, winslash = "/", mustWork = FALSE))
   }
 
+  if (requireNamespace("rprojroot", quietly = TRUE)) {
+    root <- tryCatch(
+      rprojroot::find_root(rprojroot::has_file("README.md") | rprojroot::is_git_root),
+      error = function(e) NULL
+    )
+    if (!is.null(root)) return(normalizePath(root, winslash = "/", mustWork = FALSE))
+  }
+
   cur <- normalizePath(getwd(), winslash = "/", mustWork = TRUE)
   repeat {
     markers <- c(".git", "README.md", "01_preprocessing")
-    if (any(file.exists(file.path(cur, markers)))) {
-      return(cur)
-    }
+    if (any(file.exists(file.path(cur, markers)))) return(cur)
     parent <- dirname(cur)
     if (identical(parent, cur)) {
       stop("Could not locate repository root. Set PROTEOMICS_PROJECT_ROOT.", call. = FALSE)
@@ -24,35 +29,92 @@ repo_root <- function() {
   }
 }
 
-repo_path <- function(...) {
-  file.path(repo_root(), ...)
+repo_path <- function(...) file.path(repo_root(), ...)
+
+path_raw <- function(...) repo_path("data", "raw", ...)
+path_metadata <- function(...) repo_path("data", "metadata", ...)
+path_external <- function(...) repo_path("data", "external", ...)
+path_processed <- function(...) repo_path("data", "processed", ...)
+path_results <- function(...) repo_path("results", ...)
+
+dir_create <- function(...) {
+  path <- file.path(...)
+  if (!dir.exists(path)) dir.create(path, recursive = TRUE, showWarnings = FALSE)
+  invisible(path)
 }
 
-pride_package_dir <- function() {
-  file.path(repo_root(), "PRIDE_package")
+ensure_dir <- dir_create
+
+safe_filename <- function(x, max_chars = 180) {
+  x <- as.character(x)
+  x <- gsub("[/\\\\:*?\"<>|]+", "_", x)
+  x <- gsub("[[:space:]]+", "_", x)
+  x <- gsub("_+", "_", x)
+  x <- gsub("^_|_$", "", x)
+  x <- ifelse(nzchar(x), x, "unnamed")
+  substr(x, 1, max_chars)
 }
 
-ensure_dir <- function(path) {
-  if (!dir.exists(path)) {
-    dir.create(path, recursive = TRUE, showWarnings = FALSE)
+file_hash <- function(path) {
+  if (is.null(path) || !length(path) || is.na(path) || !file.exists(path)) return(NA_character_)
+  unname(tools::md5sum(path))
+}
+
+relative_to <- function(path, root = repo_root()) {
+  path <- normalizePath(path, winslash = "/", mustWork = FALSE)
+  root <- normalizePath(root, winslash = "/", mustWork = FALSE)
+  sub(paste0("^", gsub("([\\^$.|?*+(){}])", "\\\\\\1", root), "/?"), "", path)
+}
+
+write_session_info <- function(path = path_results("logs", "sessionInfo.txt")) {
+  dir_create(dirname(path))
+  capture.output(utils::sessionInfo(), file = path)
+  invisible(path)
+}
+
+write_config_snapshot <- function(config, path) {
+  dir_create(dirname(path))
+  if (requireNamespace("yaml", quietly = TRUE)) {
+    writeLines(yaml::as.yaml(config), path)
+  } else {
+    capture.output(str(config), file = path)
   }
   invisible(path)
 }
 
-ensure_pride_dirs <- function() {
-  dirs <- file.path(
-    pride_package_dir(),
-    c(
-      "00_metadata",
-      "01_raw",
-      "02_search_results",
-      "02_search_results/search_parameters",
-      "02_search_results/fasta_database",
-      "03_processed_quantification",
-      "04_downstream_analysis",
-      "05_scripts"
-    )
+module_paths <- function(module, substep = NULL) {
+  tail <- c(module, substep)
+  tail <- tail[nzchar(tail)]
+  list(
+    processed = do.call(path_processed, as.list(tail)),
+    figures = do.call(path_results, as.list(c("figures", tail))),
+    tables = do.call(path_results, as.list(c("tables", tail))),
+    source_data = do.call(path_results, as.list(c("source_data", tail))),
+    logs = do.call(path_results, as.list(c("logs", tail))),
+    reports = do.call(path_results, as.list(c("reports", tail)))
   )
-  invisible(lapply(dirs, ensure_dir))
+}
+
+create_module_dirs <- function(module, substep = NULL) {
+  paths <- module_paths(module, substep)
+  invisible(lapply(paths, dir_create))
+  paths
+}
+
+pride_submission_dir <- function(...) repo_path("pride_submission", ...)
+
+ensure_pride_dirs <- function() {
+  dirs <- pride_submission_dir(c(
+    "metadata",
+    "processed_data",
+    "supplementary_tables",
+    "methods",
+    "manifests",
+    "validation"
+  ))
+  invisible(lapply(dirs, dir_create))
   invisible(dirs)
 }
+
+# Backward-compatible alias used by earlier PRIDE helper scripts.
+pride_package_dir <- function() pride_submission_dir()
