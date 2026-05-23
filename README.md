@@ -139,6 +139,13 @@ data/processed/04_differential_expression_enrichment/clusterProfiler/clusterProf
 
 `02_compareGO.r` consumes that manifest instead of recursively discovering arbitrary CSVs. This preserves ontology, comparison, route category, route unit, simplification state, plot-used status, input hashes and config hashes across the clusterProfiler to compareGO handoff.
 
+Dry-run checks are available:
+
+```bash
+Rscript 04_differential_expression_enrichment/01_clusterProfiler.r --dry-run
+Rscript 04_differential_expression_enrichment/02_compareGO.r --dry-run
+```
+
 ---
 
 ## 05_celltype_enrichment_EWCE
@@ -246,6 +253,8 @@ Main scripts:
 09_export_pride_journal/04_validate_pride_submission.R
 09_export_pride_journal/05_make_methods_summary.R
 ```
+
+Each export script supports `--dry-run` to validate expected folders and inputs without staging or writing analysis products.
 
 ---
 
