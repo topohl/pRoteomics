@@ -5,6 +5,7 @@ paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.
 source(paths_file)
 
 ensure_pride_dirs()
+DRY_RUN <- is_dry_run()
 
 classify_export_file <- function(path) {
   p <- tolower(gsub("\\\\", "/", path))
@@ -30,6 +31,14 @@ candidate_roots <- candidate_roots[dir.exists(candidate_roots)]
 files <- unique(unlist(lapply(candidate_roots, list.files, recursive = TRUE, full.names = TRUE, all.files = FALSE, no.. = TRUE)))
 files <- files[file.exists(files) & !file.info(files)$isdir]
 
+if (isTRUE(DRY_RUN)) {
+  dry_run_line("Script", "09_export_pride_journal/01_make_pride_manifest.R")
+  dry_run_line("Candidate roots", paste(candidate_roots, collapse = "; "))
+  dry_run_line("Candidate file count", length(files))
+  dry_run_line("Manifest target", pride_submission_dir("manifests", "pride_file_manifest.tsv"))
+  quit(status = 0, save = "no")
+}
+
 manifest <- data.frame(
   file_path = relative_to(files, repo_root()),
   file_type = vapply(files, classify_export_file, character(1)),
@@ -37,6 +46,18 @@ manifest <- data.frame(
   intended_for_supplement = vapply(files, function(f) classify_export_file(f) %in% c("differential_expression_result", "secondary_analysis", "metadata"), logical(1)),
   md5 = unname(tools::md5sum(files)),
   size_bytes = file.info(files)$size,
+  originating_script = NA_character_,
+  input_files = NA_character_,
+  input_hashes = NA_character_,
+  analysis_date = as.character(file.info(files)$mtime),
+  organism_database_version = NA_character_,
+  ontology_database_version = NA_character_,
+  simplification_status = NA_character_,
+  filtering_thresholds = NA_character_,
+  imputation_method = NA_character_,
+  statistical_model_used = NA_character_,
+  fdr_method = NA_character_,
+  package_software_versions = NA_character_,
   stringsAsFactors = FALSE
 )
 
