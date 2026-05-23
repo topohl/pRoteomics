@@ -1,4 +1,4 @@
-<img width="759" alt="Screenshot 2025-04-18 at 14 47 44" src="https://github.com/user-attachments/assets/be03dd69-eea1-4f5f-bdef-a05ba77392fe" />
+![Logo](https://github.com/user-attachments/files/28182224/bf2400e5f1d00757e1bd57e3abdc823cadab95b39e3705765fb82bdde967186b.tiff)
 
 # pRoteomics
 
