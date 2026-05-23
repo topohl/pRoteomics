@@ -25,3 +25,33 @@ PRIDE_package/
 .Rhistory
 .RData
 .Rproj.user/
+.DS_Store
+
+# Local config overrides and secrets
+config/*.local.yml
+config/*.local.yaml
+*.local.yml
+*.local.yaml
+
+# Large data and generated outputs
+data/raw/
+data/external/
+data/processed/
+results/figures/
+results/tables/
+results/source_data/
+results/logs/
+results/reports/**/*.html
+results/reports/**/*.pdf
+
+# PRIDE/journal staging
+pride_submission/
+PRIDE_package/
+
+# R/runtime caches
+.Rhistory
+.RData
+.Rproj.user/
+*.rds
+*.Rds
+*.RDS
