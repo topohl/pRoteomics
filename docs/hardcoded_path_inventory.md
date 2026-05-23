@@ -36,3 +36,10 @@ When each module is migrated, replace local roots with `source("R/paths.R")` and
 - `path_results()`
 
 Use `config/*.local.yml` for private machine paths and keep those files ignored by Git.
+
+## Safe-To-Refactor Assessment
+
+- Already partially refactored: `04_differential_expression_enrichment/01_clusterProfiler.r`, `04_differential_expression_enrichment/02_compareGO.r`.
+- Next safe path-only pass: `05_celltype_enrichment_EWCE/01_EWCE_E9.r`, `06_modules_WGCNA/02_module_spatial_networks.r`, `06_modules_WGCNA/03_overlap_modules.r`, `07_spatial_networks/03_bootstrap_network_stability.r`, `07_spatial_networks/04_bootstrap_differential_network_stability.r`, `07_spatial_networks/05_bootstrap_differential_network_figures.r`, `08_behavior_physio_coupling/02_network_behavior_coupling.r`.
+- Requires data-aware review before edits: `01_preprocessing/03_gct_extractR.r`, `02_id_mapping/01_MapThatProt_batch.r`, `06_modules_WGCNA/01_WGCNA v.2.0.0.r`, `07_spatial_networks/01_network_spatial_relations.r`, `08_behavior_physio_coupling/01_correlate_proteomics_with_behavior.r`.
+- Leave unchanged unless explicitly revived: `05_celltype_enrichment_EWCE/90_EWCE_legacy.r`, `90_testing/`, `99_deprecated/`.
