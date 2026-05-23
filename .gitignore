@@ -43,6 +43,8 @@ results/source_data/
 results/logs/
 results/reports/**/*.html
 results/reports/**/*.pdf
+results/reports/**/dry_run_diagnostics.csv
+results/reports/**/*_dry_run_diagnostics.csv
 
 # PRIDE/journal staging
 pride_submission/
