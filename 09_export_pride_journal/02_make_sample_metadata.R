@@ -6,7 +6,15 @@ source(paths_file)
 source(file.path(repo_root(), "R", "pride_helpers.R"))
 
 ensure_pride_dirs()
+DRY_RUN <- is_dry_run()
 meta <- read_sample_metadata()
+if (isTRUE(DRY_RUN)) {
+  dry_run_line("Script", "09_export_pride_journal/02_make_sample_metadata.R")
+  dry_run_line("Sample metadata rows", nrow(meta), if (nrow(meta) > 0) "PASS" else "FAIL")
+  dry_run_line("Metadata target", pride_submission_dir("metadata", "sample_metadata.tsv"))
+  dry_run_line("SDRF-like target", pride_submission_dir("metadata", "sdrf_like_metadata.tsv"))
+  quit(status = if (nrow(meta) > 0) 0 else 1, save = "no")
+}
 if (nrow(meta) == 0) stop("No sample metadata found in data/metadata or legacy candidate paths.", call. = FALSE)
 
 out_clean <- pride_submission_dir("metadata", "sample_metadata.tsv")
