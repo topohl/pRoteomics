@@ -158,6 +158,8 @@ Purpose:
 Representative scripts:
 - `01_EWCE_E9.r`
 
+`01_EWCE_E9.r` now uses canonical module folders and supports `--dry-run`.
+
 ---
 
 ## 06_modules_WGCNA
@@ -172,6 +174,8 @@ Representative scripts:
 - `01_WGCNA.r`
 - `02_WGCNAtraitpreservation.r`
 - `03_module_spatial_networks.r`
+
+Phase 3 canonicalized the safer helper/downstream scripts `02_module_spatial_networks.r`, `03_overlap_modules.r`, and `91_module_score_v0.0.2.r`. The central `01_WGCNA v.2.0.0.r` remains documented for a data-aware path refactor.
 
 ---
 
@@ -188,6 +192,8 @@ Representative scripts:
 - `02_differential_networks.r`
 - `03_bootstrap_network_stability.r`
 
+Phase 3 canonicalized `02_differential_networks.r`, `03_bootstrap_network_stability.r`, `04_bootstrap_differential_network_stability.r`, `05_bootstrap_differential_network_figures.r`, and `06_chord_diagram.r`. These downstream scripts expect the spatial object at `data/processed/07_spatial_networks/network_spatial_relations/network_spatial_relations_objects.rds`; the `01_network_spatial_relations.r` producer should be run or refactored with data present.
+
 ---
 
 ## 08_behavior_physio_coupling
@@ -200,6 +206,8 @@ Purpose:
 Representative scripts:
 - `01_correlate_proteomics_with_behavior.r`
 - `02_network_behavior_coupling.r`
+
+`02_network_behavior_coupling.r` now reads behavior files from `data/external/behavior/`, writes canonical outputs under `results/*/08_behavior_physio_coupling/network_behavior_coupling/`, and supports `--dry-run`.
 
 ---
 
