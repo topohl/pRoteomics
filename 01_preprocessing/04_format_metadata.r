@@ -1,13 +1,36 @@
-# Install and load required packages
+# Consumes:
+#   - raw sample metadata workbook from data/metadata/sample_metadata_R.xlsx
+# Produces:
+#   - processed sample metadata workbook under data/metadata/
+# File contract:
+#   - docs/active_script_io_audit.tsv object 01_preprocessing/04_format_metadata.r
+
+paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
+source(paths_file)
+
+file_path <- path_metadata("sample_metadata_R.xlsx")
+output_file <- path_metadata("sample_metadata_R_processed.xlsx")
+
+if (is_dry_run()) {
+  dry_run_line("Script", "01_preprocessing/04_format_metadata.r")
+  dry_run_line("Metadata workbook", file_path, if (file.exists(file_path)) "PASS" else "FAIL")
+  dry_run_line("Output file", output_file)
+  quit(status = if (file.exists(file_path)) 0 else 1, save = "no")
+}
+if (!file.exists(file_path)) stop("Metadata workbook not found: ", file_path, call. = FALSE)
+
+# Install and load required packages only when explicitly requested.
 packages <- c("readxl", "writexl", "dplyr")
-installed <- packages %in% rownames(installed.packages())
-if (any(!installed)) {
-    install.packages(packages[!installed])
+missing_packages <- packages[!vapply(packages, requireNamespace, logical(1), quietly = TRUE)]
+if (length(missing_packages) > 0) {
+  auto_install <- identical(tolower(Sys.getenv("AUTO_INSTALL_MISSING_PACKAGES", "false")), "true")
+  if (!auto_install) {
+    stop("Missing required R package(s): ", paste(missing_packages, collapse = ", "),
+         ". Set AUTO_INSTALL_MISSING_PACKAGES=true to install automatically.", call. = FALSE)
+  }
+  install.packages(missing_packages)
 }
 lapply(packages, library, character.only = TRUE)
-
-# Define the file path
-file_path <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/sample_metadata_R.xlsx"
 
 # Get available sheet names
 sheet_names <- excel_sheets(file_path)
@@ -15,6 +38,7 @@ print(sheet_names)
 
 # Load the sheet named "samples" into a data frame
 df <- read_excel(file_path, sheet = "samples")
+if (!"sample_id" %in% names(df)) stop("Metadata workbook sheet 'samples' must contain sample_id.", call. = FALSE)
 head(df)
 
 # extract info from column "sample_id", sample_id have this format: D:\Proteomics\Fabian\Tobi\Bluto_20250703_FCo_Evo2_80SPDzoom_Tobias_A0003_L_CA1_Microglia_S113_S2-A3_1_13026.d
@@ -58,4 +82,4 @@ df <- df %>%
   )
 
 # save as excel file using writexl package
-write_xlsx(df, "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/sample_metadata_R_processed.xlsx")
+write_xlsx(df, output_file)
