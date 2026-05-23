@@ -95,6 +95,23 @@ results/reports/04_differential_expression_enrichment/compareGO/
 
 Typical outputs include EWCE result tables, cell-type enrichment plots, and measured-proteome-aware enrichment summaries.
 
+Phase 3 canonicalized `01_EWCE_E9.r` so it reads the processed proteomics matrix and sample metadata through `R/paths.R` and writes to:
+
+```text
+data/processed/05_celltype_enrichment_EWCE/EWCE_E9/
+results/tables/05_celltype_enrichment_EWCE/EWCE_E9/
+results/figures/05_celltype_enrichment_EWCE/EWCE_E9/
+results/source_data/05_celltype_enrichment_EWCE/EWCE_E9/
+results/logs/05_celltype_enrichment_EWCE/EWCE_E9/
+results/reports/05_celltype_enrichment_EWCE/EWCE_E9/
+```
+
+Dry-run:
+
+```bash
+Rscript 05_celltype_enrichment_EWCE/01_EWCE_E9.r --dry-run
+```
+
 ## 6. Module and WGCNA analyses
 
 ```text
@@ -102,6 +119,16 @@ Typical outputs include EWCE result tables, cell-type enrichment plots, and meas
 ```
 
 Typical outputs include module assignments, module scores, module preservation statistics, and trait correlations.
+
+Phase 3 canonicalized the safer downstream/helper scripts:
+
+```bash
+Rscript 06_modules_WGCNA/02_module_spatial_networks.r --dry-run
+Rscript 06_modules_WGCNA/03_overlap_modules.r --dry-run
+Rscript 06_modules_WGCNA/91_module_score_v0.0.2.r --dry-run
+```
+
+`01_WGCNA v.2.0.0.r` remains documented for a later data-aware pass because it is the central WGCNA model producer.
 
 ## 7. Spatial network analyses
 
@@ -111,6 +138,24 @@ Typical outputs include module assignments, module scores, module preservation s
 
 Typical outputs include region/layer network edge tables, differential networks, and bootstrap stability summaries.
 
+Phase 3 canonicalized downstream network scripts:
+
+```bash
+Rscript 07_spatial_networks/02_differential_networks.r --dry-run
+Rscript 07_spatial_networks/03_bootstrap_network_stability.r --dry-run
+Rscript 07_spatial_networks/04_bootstrap_differential_network_stability.r --dry-run
+Rscript 07_spatial_networks/05_bootstrap_differential_network_figures.r --dry-run
+Rscript 07_spatial_networks/06_chord_diagram.r --dry-run
+```
+
+These scripts expect the canonical spatial object:
+
+```text
+data/processed/07_spatial_networks/network_spatial_relations/network_spatial_relations_objects.rds
+```
+
+`01_network_spatial_relations.r` is still the key producer to canonicalize with data present.
+
 ## 8. Behavior and physiology coupling
 
 ```text
@@ -118,6 +163,18 @@ Typical outputs include region/layer network edge tables, differential networks,
 ```
 
 Typical outputs include correlation tables and figures linking proteomic modules or networks with behavioral/physiological phenotypes.
+
+Phase 3 canonicalized `02_network_behavior_coupling.r`. It expects behavior inputs under:
+
+```text
+data/external/behavior/
+```
+
+Dry-run:
+
+```bash
+Rscript 08_behavior_physio_coupling/02_network_behavior_coupling.r --dry-run
+```
 
 ## 9. PRIDE / ProteomeXchange and journal export
 
