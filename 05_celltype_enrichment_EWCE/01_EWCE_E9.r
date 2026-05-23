@@ -1,4 +1,12 @@
 # ==========================================
+# Consumes:
+#   - processed proteomics matrix from data/processed/01_preprocessing/ or local config override
+#   - sample metadata from data/metadata/ or local config override
+# Produces:
+#   - EWCE tables, figures, source data, processed objects, cache and logs under canonical module folders
+# File contract:
+#   - docs/active_script_io_audit.tsv object 05_celltype_enrichment_EWCE/01_EWCE_E9.r
+# ==========================================
 # EWCE E9: Nature-oriented proteomics workflow
 # ==========================================
 
@@ -12,6 +20,42 @@
 
 options(repos = c(CRAN = "https://cloud.r-project.org"))
 set.seed(42)
+
+paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
+source(paths_file)
+MODULE_ID <- "05_celltype_enrichment_EWCE"
+SUBSTEP_ID <- "EWCE_E9"
+CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
+
+# Local machines can override these by defining the variables before source()
+# or through PROTEOMICS_PROJECT_ROOT. Do not commit machine-specific paths.
+if (!exists("data_path", inherits = FALSE)) {
+  data_path <- path_processed("01_preprocessing", "20260218_pgmatrix_imputed_neuron_neuropil_180samples_missing70pct.xlsx")
+}
+if (!exists("sample_metadata_path", inherits = FALSE)) {
+  sample_metadata_path <- path_metadata("TPE9_sample_metadata_males.xlsx")
+}
+base_results <- CANONICAL_PATHS$reports
+dirs <- list(
+  plots   = CANONICAL_PATHS$figures,
+  svgs    = file.path(CANONICAL_PATHS$figures, "SVG_Editable"),
+  tables  = CANONICAL_PATHS$tables,
+  qc      = CANONICAL_PATHS$logs,
+  data    = CANONICAL_PATHS$processed,
+  source  = CANONICAL_PATHS$source_data,
+  cache   = file.path(CANONICAL_PATHS$processed, "cache")
+)
+
+if (is_dry_run()) {
+  dry_run_line("Script", "05_celltype_enrichment_EWCE/01_EWCE_E9.r")
+  dry_run_line("Proteomics matrix", data_path, if (file.exists(data_path)) "PASS" else "FAIL")
+  dry_run_line("Sample metadata", sample_metadata_path, if (file.exists(sample_metadata_path)) "PASS" else "FAIL")
+  dry_run_line("Output folders", paste(unlist(dirs), collapse = "; "))
+  quit(status = if (file.exists(data_path) && file.exists(sample_metadata_path)) 0 else 1, save = "no")
+}
+
+if (!file.exists(data_path)) stop("Proteomics matrix not found: ", data_path, call. = FALSE)
+if (!file.exists(sample_metadata_path)) stop("Sample metadata not found: ", sample_metadata_path, call. = FALSE)
 
 if (!require("BiocManager", quietly = TRUE)) install.packages("BiocManager")
 
@@ -44,16 +88,6 @@ invisible(lapply(bioc_packages, install_and_load, bioc = TRUE))
 # 1. CONFIG
 # ==========================================
 
-#data_path    <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/pg_matrix/imputed/20260218_pgmatrix_imputed_neuron_soma_71samples_missing70pct_groups.xlsx"
-#base_results <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Results/EWCE/neuron_neuropil"
-
-data_path     <- "/Users/tobiaspohl/Documents/pRoteomics/20260218_pgmatrix_imputed_neuron_neuropil_180samples_missing70pct.xlsx"
-base_results  <- "~/Documents/pRoteomics/Analysis/EWCE_E9_Results"
-sample_metadata_path <- "/Users/tobiaspohl/Documents/Data/proteomics/TPE9_sample_metadata_males.xlsx"
-
-# create folders if needed and define parameters
-
-
 analysis_params <- list(
   seed = 42,
   reps = 10000,
@@ -69,16 +103,8 @@ analysis_params <- list(
   expgroup_condition_map = c("1" = "con", "2" = "res", "3" = "sus")
 )
 
-dirs <- list(
-  plots   = file.path(base_results, "01_Figures_Main"),
-  svgs    = file.path(base_results, "01_Figures_Main/SVG_Editable"),
-  tables  = file.path(base_results, "02_Tables_Supplements"),
-  qc      = file.path(base_results, "03_QC_Mapping_Logs"),
-  data    = file.path(base_results, "04_Processed_Data_Objects"),
-  source  = file.path(base_results, "05_Source_Data"),
-  cache   = file.path(base_results, "06_EWCE_Run_Cache")
-)
 lapply(dirs, dir.create, recursive = TRUE, showWarnings = FALSE)
+write_session_info(file.path(dirs$qc, "sessionInfo.txt"))
 
 message("Step 1: Loading CTD and proteomics matrix...")
 ctd <- ewceData::ctd()
@@ -87,6 +113,11 @@ ref_genes <- unique(unlist(ref_genes_by_level, use.names = FALSE))
 
 raw_df <- readxl::read_excel(data_path)
 input_hash <- if (file.exists(data_path)) digest::digest(file = data_path, algo = "sha256") else NA_character_
+required_raw_cols <- c("Genes")
+missing_raw_cols <- setdiff(required_raw_cols, colnames(raw_df))
+if (length(missing_raw_cols) > 0) {
+  stop("EWCE input matrix missing required columns: ", paste(missing_raw_cols, collapse = ", "), call. = FALSE)
+}
 
 # ==========================================
 # 2. HELPERS
