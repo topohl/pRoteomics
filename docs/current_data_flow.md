@@ -81,3 +81,44 @@ Repository outputs should be separated as:
 - figure-only outputs: SVG/PNG/PDF files excluded from PRIDE unless specifically requested by the journal
 - source-data tables: exact data behind figures under `results/source_data/`
 - exploratory analyses: testing/deprecated outputs excluded from PRIDE and usually excluded from supplements
+
+## Phase 3 Module I/O Harmonization
+
+Phase 3 applied targeted path-only refactors where script behavior could be preserved without data-dependent interpretation. The following active scripts now source `R/paths.R`, write canonical outputs first, include script I/O headers, add dry-run diagnostics, and avoid committed machine-specific paths:
+
+- `01_preprocessing/04_format_metadata.r`
+- `01_preprocessing/05_metadata_create.r`
+- `05_celltype_enrichment_EWCE/01_EWCE_E9.r`
+- `06_modules_WGCNA/02_module_spatial_networks.r`
+- `06_modules_WGCNA/03_overlap_modules.r`
+- `06_modules_WGCNA/91_module_score_v0.0.2.r`
+- `07_spatial_networks/02_differential_networks.r`
+- `07_spatial_networks/03_bootstrap_network_stability.r`
+- `07_spatial_networks/04_bootstrap_differential_network_stability.r`
+- `07_spatial_networks/05_bootstrap_differential_network_figures.r`
+- `07_spatial_networks/06_chord_diagram.r`
+- `08_behavior_physio_coupling/02_network_behavior_coupling.r`
+
+The old technical folder roots map as follows:
+
+| Old root/type | Canonical role | Notes |
+| --- | --- | --- |
+| `Datasets/raw` | `data/raw/` or `data/processed/01_preprocessing/` | Raw vendor/search exports belong in raw; derived matrices belong in processed. |
+| `Datasets/mapped`, `mapped`, `unmapped` | `data/processed/02_id_mapping/` | Mapping reports and summaries should also be copied to `results/reports/02_id_mapping/` or `results/tables/02_id_mapping/`. |
+| `Results`, `Output`, `Final`, `Final2`, `publication_ready` | `results/{tables,figures,source_data,reports}/<module>/<substep>/` | These are deprecated technical containers unless preserved as compatibility copies. |
+| `Plots`, `figures` | `results/figures/<module>/<substep>/` | Figure source tables should be written separately under `results/source_data/`. |
+| `core_enrichment` | `results/source_data/04_differential_expression_enrichment/clusterProfiler/` plus manifest rows | compareGO should consume the manifest, not recursively discover this folder. |
+| `module_scores` | `data/processed/06_modules_WGCNA/` and `results/tables/06_modules_WGCNA/` | Machine-readable scores belong in processed; publication tables in results/tables. |
+| `EWCE_E9_Results` | `data/processed/05_celltype_enrichment_EWCE/EWCE_E9/` and `results/*/05_celltype_enrichment_EWCE/EWCE_E9/` | EWCE caches stay in processed/cache. |
+| `network_spatial_relations` | `data/processed/07_spatial_networks/network_spatial_relations/` and `results/*/07_spatial_networks/network_spatial_relations/` | Producer script remains documented for later; downstream scripts now expect this canonical RDS. |
+
+Scripts left unchanged in Phase 3 are documented because they are central producers, exploratory notebooks-as-scripts, superseded versions, or require data-aware confirmation of file contracts before changing paths:
+
+- `01_preprocessing/01_impute.r`, `01_preprocessing/02_excel_convert.r`, `01_preprocessing/03_gct_extractR.r`, `01_preprocessing/06_merged_metadata_module_score.r`
+- `02_id_mapping/01_MapThatProt_batch.r`
+- `03_qc_exploration/*.r`
+- `06_modules_WGCNA/01_WGCNA v.2.0.0.r`, `06_modules_WGCNA/90_module_score_v0.0.1.r`
+- `07_spatial_networks/01_network_spatial_relations.r`
+- `08_behavior_physio_coupling/01_correlate_proteomics_with_behavior.r`
+
+The main remaining dependency gap is `07_spatial_networks/01_network_spatial_relations.r`: downstream Phase 3 scripts now expect `data/processed/07_spatial_networks/network_spatial_relations/network_spatial_relations_objects.rds`, but the producer itself still needs a data-aware canonicalization pass.
