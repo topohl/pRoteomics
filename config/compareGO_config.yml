@@ -1,0 +1,16 @@
+# Committed, repo-relative defaults for 04_differential_expression_enrichment/02_compareGO.r.
+# Filter these fields to select one manifest-backed route for compareGO.
+
+ontology: BP
+route_category: phenotype_within_unit
+route_unit: ""
+result_types:
+  - GSEA_GO
+
+clusterProfiler_manifest: data/processed/04_differential_expression_enrichment/clusterProfiler/clusterProfiler_manifest.csv
+uniprot_mapping_file: data/external/MOUSE_10090_idmapping.dat
+
+significant_only: true
+target_n_terms: 5
+redundancy_threshold: 0.7
+min_set_size: 10
