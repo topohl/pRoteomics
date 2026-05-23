@@ -58,6 +58,13 @@ source("04_differential_expression_enrichment/01_clusterProfiler.r")
 source("04_differential_expression_enrichment/02_compareGO.r")
 ```
 
+Dry-run validation without launching analyses:
+
+```bash
+Rscript 04_differential_expression_enrichment/01_clusterProfiler.r --dry-run
+Rscript 04_differential_expression_enrichment/02_compareGO.r --dry-run
+```
+
 `01_clusterProfiler.r` reads mapped contrast CSVs and writes:
 
 ```text
@@ -120,6 +127,16 @@ source("09_export_pride_journal/02_make_sample_metadata.R")
 source("09_export_pride_journal/03_make_supplementary_tables.R")
 source("09_export_pride_journal/04_validate_pride_submission.R")
 source("09_export_pride_journal/05_make_methods_summary.R")
+```
+
+Dry-run validation:
+
+```bash
+Rscript 09_export_pride_journal/01_make_pride_manifest.R --dry-run
+Rscript 09_export_pride_journal/02_make_sample_metadata.R --dry-run
+Rscript 09_export_pride_journal/03_make_supplementary_tables.R --dry-run
+Rscript 09_export_pride_journal/04_validate_pride_submission.R --dry-run
+Rscript 09_export_pride_journal/05_make_methods_summary.R --dry-run
 ```
 
 Before running this step, copy local large files into the gitignored `pride_submission/` folder as needed:
