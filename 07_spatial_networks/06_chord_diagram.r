@@ -1,21 +1,48 @@
 # =========================================================
+# Consumes:
+#   - mapped contrast CSVs from data/processed/02_id_mapping
+# Produces:
+#   - chord overlap figures and shared-protein workbooks under canonical spatial-network folders
+# File contract:
+#   - docs/active_script_io_audit.tsv object 07_spatial_networks/06_chord_diagram.r
+# =========================================================
 # Proteomics overlaps: plots + Excel shared-protein exports
 # =========================================================
 
-# Packages
-pkgs <- c("dplyr","tidyr","circlize","RColorBrewer","tools","magick","grid","openxlsx","digest")
-to_install <- setdiff(pkgs, rownames(installed.packages()))
-if (length(to_install)) install.packages(to_install, quiet = TRUE)
-invisible(lapply(pkgs, library, character.only = TRUE))
+paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
+source(paths_file)
+MODULE_ID <- "07_spatial_networks"
+SUBSTEP_ID <- "chord_diagram"
+CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
 
-# Paths
-in_dir  <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/mapped/neuron-phenotypeWithinUnit"
-out_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Results/prot_sign"
+in_dir  <- path_processed("02_id_mapping", "mapped", "neuron-phenotypeWithinUnit")
+out_dir <- CANONICAL_PATHS$figures
 if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
 # -------- Read CSVs and build wide tables --------
 csv_files <- list.files(in_dir, pattern = "\\.csv$", full.names = TRUE)
-stopifnot(length(csv_files) > 0)
+if (is_dry_run()) {
+  dry_run_line("Script", "07_spatial_networks/06_chord_diagram.r")
+  dry_run_line("Mapped input directory", in_dir, if (dir.exists(in_dir)) "PASS" else "FAIL")
+  dry_run_line("CSV count", length(csv_files), if (length(csv_files) > 0) "PASS" else "FAIL")
+  dry_run_line("Output folders", paste(unlist(CANONICAL_PATHS), collapse = "; "))
+  quit(status = if (length(csv_files) > 0) 0 else 1, save = "no")
+}
+if (length(csv_files) == 0) stop("No mapped CSV files found in: ", in_dir, call. = FALSE)
+write_session_info(file.path(CANONICAL_PATHS$logs, "sessionInfo.txt"))
+
+# Packages
+pkgs <- c("dplyr", "tidyr", "circlize", "RColorBrewer", "tools", "magick", "grid", "openxlsx", "digest")
+missing_packages <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
+if (length(missing_packages) > 0) {
+  auto_install <- identical(tolower(Sys.getenv("AUTO_INSTALL_MISSING_PACKAGES", "false")), "true")
+  if (!auto_install) {
+    stop("Missing required R package(s): ", paste(missing_packages, collapse = ", "),
+         ". Set AUTO_INSTALL_MISSING_PACKAGES=true to install automatically.", call. = FALSE)
+  }
+  install.packages(missing_packages)
+}
+invisible(lapply(pkgs, library, character.only = TRUE))
 
 read_both <- function(f) {
   df <- read.csv(f, stringsAsFactors = FALSE, check.names = FALSE)
