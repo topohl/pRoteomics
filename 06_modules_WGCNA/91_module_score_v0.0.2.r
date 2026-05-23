@@ -1,27 +1,22 @@
 # ================================================================
+# Consumes:
+#   - processed neuropil protein matrix
+#   - merged sample metadata
+#   - UniProt mapping and overlap-derived module definitions
+# Produces:
+#   - module score tables, QC workbooks, figures and source data in canonical folders
+# File contract:
+#   - docs/active_script_io_audit.tsv object 06_modules_WGCNA/91_module_score_v0.0.2.r
+# ================================================================
 # General neuropil module score analysis with group-aware replicate QC
 # Spatial proteomics: neuron_neuropil, nuclei excluded
 # ================================================================
 
-library(readxl)
-library(dplyr)
-library(tidyr)
-library(ggplot2)
-library(emmeans)
-library(openxlsx)
-library(stringr)
-library(purrr)
-library(tibble)
-library(ggpubr)
-library(scales)
-
-select <- dplyr::select
-filter <- dplyr::filter
-rename <- dplyr::rename
-mutate <- dplyr::mutate
-summarise <- dplyr::summarise
-arrange <- dplyr::arrange
-first <- dplyr::first
+paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
+source(paths_file)
+MODULE_ID <- "06_modules_WGCNA"
+SUBSTEP_ID <- "module_score_v0.0.2"
+CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
 
 # ------------------------------------------------
 # 1) PATHS
@@ -38,21 +33,21 @@ analysis_display_label <- function(x) {
   )
 }
 
-protein_file <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/morpheus/20260218_pgmatrix_imputed_neuron_neuropil_180samples_missing70pct_with_metadata.xlsx"
+protein_file <- path_processed("01_preprocessing", "20260218_pgmatrix_imputed_neuron_neuropil_180samples_missing70pct_with_metadata.xlsx")
 
-metadata_file <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Results/module_scores/sample_metadata_merged_clean_for_module_scores.xlsx"
+metadata_file <- path_metadata("sample_metadata_merged_clean_for_module_scores.xlsx")
 
-mapping_file <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/MOUSE_10090_idmapping.dat"
+mapping_file <- path_external("MOUSE_10090_idmapping.dat")
 
-module_definitions_file <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Results/module_definitions_overlap/Overlap_based_neuropil_modules_classified.xlsx"
+module_definitions_file <- path_results("tables", "06_modules_WGCNA", "overlap_modules", "Overlap_based_neuropil_modules_classified.xlsx")
 module_definitions_sheet <- "Modules_long"
 
-saving_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Results/module_scores/general_neuropil_module_score_results/"
+saving_dir <- CANONICAL_PATHS$reports
 dir.create(saving_dir, recursive = TRUE, showWarnings = FALSE)
 
-dir_tables <- file.path(saving_dir, "tables")
-dir_qc     <- file.path(saving_dir, "qc")
-dir_plots  <- file.path(saving_dir, "plots")
+dir_tables <- CANONICAL_PATHS$tables
+dir_qc     <- CANONICAL_PATHS$logs
+dir_plots  <- CANONICAL_PATHS$figures
 dir_group  <- file.path(dir_plots, "module_group_scores")
 dir_cor    <- file.path(dir_plots, "behavior_correlations")
 dir_qc_replicate <- file.path(dir_qc, "replicate_qc")
@@ -68,6 +63,40 @@ dir.create(dir_qc_replicate, recursive = TRUE, showWarnings = FALSE)
 dir.create(dir_group_primary, recursive = TRUE, showWarnings = FALSE)
 dir.create(dir_group_qc, recursive = TRUE, showWarnings = FALSE)
 dir.create(dir_directional, recursive = TRUE, showWarnings = FALSE)
+
+if (is_dry_run()) {
+  dry_run_line("Script", "06_modules_WGCNA/91_module_score_v0.0.2.r")
+  dry_run_line("Protein matrix", protein_file, if (file.exists(protein_file)) "PASS" else "FAIL")
+  dry_run_line("Metadata file", metadata_file, if (file.exists(metadata_file)) "PASS" else "FAIL")
+  dry_run_line("Mapping file", mapping_file, if (file.exists(mapping_file)) "PASS" else "FAIL")
+  dry_run_line("Module definitions", module_definitions_file, if (file.exists(module_definitions_file)) "PASS" else "FAIL")
+  dry_run_line("Output folders", paste(unlist(CANONICAL_PATHS), collapse = "; "))
+  quit(status = if (all(file.exists(c(protein_file, metadata_file, mapping_file, module_definitions_file)))) 0 else 1, save = "no")
+}
+missing_inputs <- c(protein_file, metadata_file, mapping_file, module_definitions_file)[!file.exists(c(protein_file, metadata_file, mapping_file, module_definitions_file))]
+if (length(missing_inputs) > 0) stop("Missing module-score input file(s):\n", paste(missing_inputs, collapse = "\n"), call. = FALSE)
+write_session_info(file.path(dir_qc, "sessionInfo.txt"))
+
+packages <- c("readxl", "dplyr", "tidyr", "ggplot2", "emmeans", "openxlsx",
+              "stringr", "purrr", "tibble", "ggpubr", "scales")
+missing_packages <- packages[!vapply(packages, requireNamespace, logical(1), quietly = TRUE)]
+if (length(missing_packages) > 0) {
+  auto_install <- identical(tolower(Sys.getenv("AUTO_INSTALL_MISSING_PACKAGES", "false")), "true")
+  if (!auto_install) {
+    stop("Missing required R package(s): ", paste(missing_packages, collapse = ", "),
+         ". Set AUTO_INSTALL_MISSING_PACKAGES=true to install automatically.", call. = FALSE)
+  }
+  install.packages(missing_packages)
+}
+invisible(lapply(packages, library, character.only = TRUE))
+
+select <- dplyr::select
+filter <- dplyr::filter
+rename <- dplyr::rename
+mutate <- dplyr::mutate
+summarise <- dplyr::summarise
+arrange <- dplyr::arrange
+first <- dplyr::first
 
 # ------------------------------------------------
 # 2) LOAD METADATA
@@ -1214,7 +1243,8 @@ normalize_animal_id <- function(x) {
 
 export_behavior_proteomics_input <- function(scores_animal, analysis_label) {
 
-  out_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/Analysis/Behavior/RFID/analysis_ready/proteomics"
+  # Compatibility handoff for behavior coupling; canonical copy lives in source_data.
+  out_dir <- file.path(CANONICAL_PATHS$source_data, "behavior_coupling_inputs")
 
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
