@@ -1,4 +1,11 @@
 # ================================================================
+# Consumes:
+#   - bootstrap differential network tables from canonical module output
+# Produces:
+#   - publication-ready figures and source tables in canonical folders
+# File contract:
+#   - docs/active_script_io_audit.tsv object 07_spatial_networks/05_bootstrap_differential_network_figures.r
+# ================================================================
 # Nature-style figures for bootstrap differential spatial networks
 # ================================================================
 # Purpose:
@@ -14,17 +21,20 @@
 # Run after bootstrap_differential_network_stability.r has completed.
 # ================================================================
 
+paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
+source(paths_file)
+MODULE_ID <- "07_spatial_networks"
+SUBSTEP_ID <- "bootstrap_differential_network_figures"
+CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
+
 required_pkgs <- c(
   "dplyr", "tidyr", "stringr", "purrr", "tibble", "ggplot2",
   "readr", "ggraph", "igraph", "svglite", "scales", "forcats"
 )
 missing <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
 if (length(missing) > 0) install.packages(missing, repos = "https://cloud.r-project.org")
-invisible(lapply(required_pkgs, library, character.only = TRUE))
-
 params <- list(
-  #bootstrap_dir = "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Results/bootstrap_differential_network_stability",
-  bootstrap_dir = "/Users/tobiaspohl/Documents/pRoteomics/Results/bootstrap_differential_network_stability",
+  bootstrap_dir = path_results("tables", "07_spatial_networks", "bootstrap_differential_network_stability"),
 
   stable_frequency_threshold = 0.70,
   top_n_edges_per_comparison = 8,
@@ -49,6 +59,15 @@ params <- list(
   )
 )
 
+if (is_dry_run()) {
+  dry_run_line("Script", "07_spatial_networks/05_bootstrap_differential_network_figures.r")
+  dry_run_line("Bootstrap table directory", params$bootstrap_dir, if (dir.exists(params$bootstrap_dir)) "PASS" else "FAIL")
+  dry_run_line("Output folders", paste(unlist(CANONICAL_PATHS), collapse = "; "))
+  quit(status = if (dir.exists(params$bootstrap_dir)) 0 else 1, save = "no")
+}
+if (!dir.exists(params$bootstrap_dir)) stop("Bootstrap table directory not found: ", params$bootstrap_dir, call. = FALSE)
+invisible(lapply(required_pkgs, library, character.only = TRUE))
+
 message2 <- function(...) message(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), " | ", ...)
 
 safe_name <- function(x) {
@@ -61,8 +80,8 @@ safe_name <- function(x) {
 
 make_dirs <- function(base_dir) {
   dirs <- list(
-    figures = file.path(base_dir, "02_Figures", "publication_ready"),
-    tables = file.path(base_dir, "01_Tables")
+    figures = CANONICAL_PATHS$figures,
+    tables = CANONICAL_PATHS$source_data
   )
   invisible(lapply(dirs, dir.create, recursive = TRUE, showWarnings = FALSE))
   dirs
@@ -340,6 +359,7 @@ plot_minimal_networks <- function(edge_summary, out_dir, params) {
 # -------------------------------
 message2("Starting Nature-style bootstrap differential network figure generation")
 dirs <- make_dirs(params$bootstrap_dir)
+write_session_info(file.path(CANONICAL_PATHS$logs, "sessionInfo.txt"))
 loaded <- load_bootstrap_outputs(params)
 
 edge_summary <- loaded$edge_summary
