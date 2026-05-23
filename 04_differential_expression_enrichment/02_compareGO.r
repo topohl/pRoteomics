@@ -1,5 +1,15 @@
 #' compareGO.r - Comparative Gene Ontology Enrichment Analysis and Visualization
 #'
+#' Consumes:
+#'   - data/processed/04_differential_expression_enrichment/clusterProfiler/clusterProfiler_manifest.csv
+#'   - mapped/log2FC contrast CSVs listed in that manifest
+#' Produces:
+#'   - compareGO tables, figures, source data, reports and logs under canonical
+#'     data/processed and results folders for 04_differential_expression_enrichment/compareGO
+#' Contract:
+#'   - reads clusterProfiler_manifest rather than recursively discovering CSVs
+#'   - validates ID, Description, NES, p.adjust, setSize, core_enrichment
+#'
 #' @description
 #' This script performs comparative GO enrichment analysis across multiple experiments.
 #' It:
@@ -21,9 +31,7 @@
 #'   - Expanded core enrichment heatmaps for individual terms.
 #'
 #' @section File Inputs:
-#'   - CSV files from:
-#'     "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/core_enrichment"
-#'     (pattern "*.csv").
+#'   - CSV files listed in clusterProfiler_manifest.csv.
 #'
 #' @section Outputs:
 #'   - Heatmaps and dot plots of enrichment profiles.
@@ -36,18 +44,47 @@
 #' @author
 #'   Tobias Pohl
 
+paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
+source(paths_file)
+MODULE_ID <- "04_differential_expression_enrichment"
+SUBSTEP_ID <- "compareGO"
+CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
+
+# Package installation policy. Keep FALSE for reproducible, fail-fast runs.
+AUTO_INSTALL_MISSING_PACKAGES <- FALSE
+
+require_or_stop <- function(pkgs, bioc = FALSE) {
+  missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
+  if (length(missing) == 0) return(invisible(TRUE))
+  if (isTRUE(AUTO_INSTALL_MISSING_PACKAGES)) {
+    if (bioc) {
+      if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager")
+      BiocManager::install(missing, update = FALSE, ask = FALSE)
+    } else {
+      install.packages(missing, repos = "https://cloud.r-project.org")
+    }
+    return(invisible(TRUE))
+  }
+  stop("Missing required packages: ", paste(missing, collapse = ", "),
+       ". Install them manually or set AUTO_INSTALL_MISSING_PACKAGES <- TRUE.", call. = FALSE)
+}
+
 # -----------------------------------------------------
 # Load Required Libraries
 # -----------------------------------------------------
 
-if (!requireNamespace("BiocManager", quietly=TRUE))
+if (!requireNamespace("BiocManager", quietly=TRUE) && isTRUE(AUTO_INSTALL_MISSING_PACKAGES))
     install.packages("BiocManager")
 # Ensure 'rlang' version >= 1.1.7 is installed before running this script.
 if (!requireNamespace("rlang", quietly=TRUE) || packageVersion("rlang") < "1.1.7") {
     stop("Please install 'rlang' version >= 1.1.7 manually before running this script.")
 }
 if (!requireNamespace("simplifyEnrichment", quietly=TRUE)) {
-    BiocManager::install("simplifyEnrichment", force = TRUE)
+    if (isTRUE(AUTO_INSTALL_MISSING_PACKAGES)) {
+      BiocManager::install("simplifyEnrichment", force = TRUE)
+    } else {
+      stop("Please install 'simplifyEnrichment' manually before running this script.")
+    }
 }
 library(simplifyEnrichment)
 library(dplyr)
@@ -55,10 +92,13 @@ library(stringr)
 library(purrr)
 library(writexl)
 
-if (!require("pacman")) install.packages("pacman")
-pacman::p_load(ggplot2, stringr, ggpubr, ggthemes, dplyr, tidyr, purrr,
-  readr, pheatmap, tibble, tidyverse, RColorBrewer, writexl, scales, ggrepel,
-  magick)
+cran_required <- c(
+  "ggplot2", "stringr", "ggpubr", "ggthemes", "dplyr", "tidyr", "purrr",
+  "readr", "pheatmap", "tibble", "RColorBrewer", "writexl", "scales",
+  "ggrepel", "magick"
+)
+require_or_stop(cran_required)
+suppressPackageStartupMessages(invisible(lapply(cran_required, library, character.only = TRUE)))
 
 # -----------------------------------------------------
 # Define Theme and Helper Functions
@@ -257,16 +297,14 @@ calc_comparison_similarity <- function(core_genes_df) {
 # =====================================================
 
 # Load additional packages for new analyses
-if (!require("ggridges")) install.packages("ggridges")
-if (!require("UpSetR")) install.packages("UpSetR")
-if (!require("networkD3")) install.packages("networkD3")
-if (!require("alluvial")) install.packages("alluvial")
-if (!require("ggalluvial")) install.packages("ggalluvial")
-library(ggridges)
-library(UpSetR)
-library(networkD3)
-library(alluvial)
-library(ggalluvial)
+require_or_stop(c("ggridges", "UpSetR", "networkD3", "alluvial", "ggalluvial"))
+suppressPackageStartupMessages({
+  library(ggridges)
+  library(UpSetR)
+  library(networkD3)
+  library(alluvial)
+  library(ggalluvial)
+})
 
 # =====================================================
 # CONSOLIDATE LOG2FC DATA LOADING (Eliminate Redundancy)
@@ -276,34 +314,121 @@ library(ggalluvial)
 # Set Analysis Parameters and Directory Structure (must be defined before first use)
 # -----------------------------------------------------
 
-# Gene Ontology domain (MF, BP, or CC)
-ont <- "BP"
-
-# Ensemble profiling method
-#ensemble_profiling <- "baseline_cell_type_profiling"
-ensemble_profiling <- "phenotype_within_unit"
-
-# Experimental condition
-#condition <- "US"
-condition <- "DG_po"
-
-# Base project path for all input/output
-#base_project_path <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler"
-base_project_path <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics"
-
-# Load log2fc data ONCE at the beginning for reuse throughout analysis
-log2fc_files_path <- file.path(base_project_path, "Datasets", "mapped", ensemble_profiling, condition)
-cat("[DEBUG] log2fc_files_path:", log2fc_files_path, "\n")
-cat("[DEBUG] Path exists?", dir.exists(log2fc_files_path), "\n")
-
-log2fc_files <- list.files(path = log2fc_files_path, pattern = "*.csv", full.names = TRUE)
-cat("[DEBUG] Found", length(log2fc_files), "CSV files in path\n")
-if (length(log2fc_files) > 0) {
-  cat("[DEBUG] Files found:\n")
-  for (f in log2fc_files) cat("  -", basename(f), "\n")
-} else {
-  cat("[WARNING] No CSV files found matching pattern!\n")
+`%||%` <- function(x, y) if (is.null(x)) y else x
+read_comparego_config <- function(config_path) {
+  defaults <- list(
+    ontology = "BP",
+    route_category = "phenotype_within_unit",
+    route_unit = "",
+    result_types = c("GSEA_GO"),
+    clusterProfiler_manifest = path_processed(
+      MODULE_ID, "clusterProfiler", "clusterProfiler_manifest.csv"
+    ),
+    uniprot_mapping_file = path_external("MOUSE_10090_idmapping.dat"),
+    significant_only = TRUE,
+    target_n_terms = 5,
+    redundancy_threshold = 0.7,
+    min_set_size = 10
+  )
+  if (file.exists(config_path) && requireNamespace("yaml", quietly = TRUE)) {
+    yaml_cfg <- yaml::read_yaml(config_path)
+    return(utils::modifyList(defaults, yaml_cfg))
+  }
+  defaults
 }
+
+config_candidates <- c(
+  file.path(getwd(), "compareGO_config.yml"),
+  file.path(getwd(), "compareGO_config.local.yml"),
+  file.path(getwd(), "config", "compareGO_config.yml"),
+  file.path(getwd(), "config", "compareGO_config.local.yml"),
+  repo_path("config", "compareGO_config.local.yml"),
+  repo_path("config", "compareGO_config.yml")
+)
+comparego_config_path <- config_candidates[file.exists(config_candidates)][1] %||% config_candidates[1]
+comparego_cfg <- read_comparego_config(comparego_config_path)
+
+as_repo_path <- function(path) {
+  if (is.null(path) || !nzchar(path)) return(path)
+  if (grepl("^([A-Za-z]:|/|~)", path)) return(path)
+  repo_path(path)
+}
+comparego_cfg$clusterProfiler_manifest <- as_repo_path(comparego_cfg$clusterProfiler_manifest)
+comparego_cfg$uniprot_mapping_file <- as_repo_path(comparego_cfg$uniprot_mapping_file)
+
+# Gene Ontology domain (MF, BP, CC, KEGG, custom)
+ont <- as.character(comparego_cfg$ontology)
+ensemble_profiling <- as.character(comparego_cfg$route_category)
+condition <- as.character(comparego_cfg$route_unit)
+base_project_path <- repo_root()
+
+manifest_path <- as.character(comparego_cfg$clusterProfiler_manifest)
+if (!file.exists(manifest_path)) {
+  stop("clusterProfiler manifest not found: ", manifest_path,
+       "\nRun 04_differential_expression_enrichment/01_clusterProfiler.r first.", call. = FALSE)
+}
+cluster_manifest <- readr::read_csv(manifest_path, show_col_types = FALSE)
+required_manifest_cols <- c(
+  "analysis_id", "run_id", "ontology", "result_type", "comparison",
+  "route_category", "route_unit", "used_for_plot", "input_gene_file",
+  "input_hash", "config_hash", "output_table", "n_terms", "empty_result"
+)
+missing_manifest_cols <- setdiff(required_manifest_cols, names(cluster_manifest))
+if (length(missing_manifest_cols) > 0) {
+  stop("clusterProfiler manifest is missing required columns: ",
+       paste(missing_manifest_cols, collapse = ", "), call. = FALSE)
+}
+
+manifest_filtered <- cluster_manifest %>%
+  filter(
+    ontology == ont,
+    result_type %in% unlist(comparego_cfg$result_types),
+    used_for_plot %in% TRUE
+  )
+if (nzchar(condition)) {
+  manifest_filtered <- manifest_filtered %>% filter(route_category == ensemble_profiling, route_unit == condition)
+} else {
+  manifest_filtered <- manifest_filtered %>% filter(route_category == ensemble_profiling)
+}
+if (nrow(manifest_filtered) == 0) {
+  stop("No manifest rows matched ontology=", ont,
+       ", route_category=", ensemble_profiling,
+       if (nzchar(condition)) paste0(", route_unit=", condition) else "",
+       ". Update config/compareGO_config.yml or rerun clusterProfiler.", call. = FALSE)
+}
+
+duplicate_keys <- manifest_filtered %>%
+  count(ontology, result_type, comparison, route_category, route_unit, name = "n") %>%
+  filter(n > 1)
+if (nrow(duplicate_keys) > 0) {
+  stop("Duplicate/conflicting clusterProfiler manifest rows detected for compareGO input. ",
+       "Inspect clusterProfiler_manifest.csv and filter by run_id/config_hash before proceeding.",
+       call. = FALSE)
+}
+
+missing_tables <- manifest_filtered$output_table[!file.exists(manifest_filtered$output_table)]
+if (length(missing_tables) > 0) {
+  stop("Manifest references missing enrichment table(s):\n",
+       paste(missing_tables, collapse = "\n"), call. = FALSE)
+}
+
+log2fc_files <- unique(manifest_filtered$input_gene_file)
+missing_log2fc <- log2fc_files[!file.exists(log2fc_files)]
+if (length(missing_log2fc) > 0) {
+  stop("Manifest references missing mapped/log2FC file(s):\n",
+       paste(missing_log2fc, collapse = "\n"), call. = FALSE)
+}
+
+hash_check <- manifest_filtered %>%
+  mutate(current_input_hash = vapply(input_gene_file, file_hash, character(1))) %>%
+  filter(!is.na(input_hash), !is.na(current_input_hash), input_hash != current_input_hash)
+if (nrow(hash_check) > 0) {
+  stop("Stale clusterProfiler manifest detected: mapped/log2FC input hash changed for ",
+       nrow(hash_check), " row(s). Rerun clusterProfiler before compareGO.", call. = FALSE)
+}
+
+message("[INFO] compareGO consuming ", nrow(manifest_filtered), " manifest rows from ", manifest_path)
+message("[INFO] Loading log2fc files listed by manifest: ", length(log2fc_files))
 
 # Flexible column normalizer for differential-expression imports
 canonical_col_name <- function(x) {
@@ -425,77 +550,103 @@ analysis_params <- list(
   ensemble_profiling = ensemble_profiling,
   condition = condition,
   base_project_path = base_project_path,
-  significant_only = TRUE,
-  target_n_terms = 5,
-  redundancy_threshold = 0.7,
-  min_set_size = 10,
+  significant_only = isTRUE(comparego_cfg$significant_only),
+  target_n_terms = as.integer(comparego_cfg$target_n_terms),
+  redundancy_threshold = as.numeric(comparego_cfg$redundancy_threshold),
+  min_set_size = as.integer(comparego_cfg$min_set_size),
   n_comparisons = length(unique(log2fc_long$Comparison)),
   n_total_proteins = length(unique(na.omit(log2fc_long$gene_symbol)))
 )
 
-# Set working directory
-setwd(base_project_path)
+write_session_info(file.path(CANONICAL_PATHS$logs, "sessionInfo.txt"))
+write_config_snapshot(comparego_cfg, file.path(CANONICAL_PATHS$logs, "compareGO_config_snapshot.yml"))
+readr::write_csv(manifest_filtered, file.path(CANONICAL_PATHS$processed, "compareGO_input_manifest.csv"))
 
-uniprot_mapping_file_path <- file.path(
-  base_project_path,
-  "Datasets",
-  "MOUSE_10090_idmapping.dat"
-)
+uniprot_mapping_file_path <- as.character(comparego_cfg$uniprot_mapping_file)
+if (!file.exists(uniprot_mapping_file_path)) {
+  warning("UniProt mapping file not found; gene-name annotation blocks may fail: ", uniprot_mapping_file_path)
+}
 
 # Load clusterProfiler and organism database
-if (!requireNamespace("clusterProfiler", quietly = TRUE)) BiocManager::install("clusterProfiler")
-if (!requireNamespace("org.Mm.eg.db", quietly = TRUE)) BiocManager::install("org.Mm.eg.db")
+require_or_stop(c("clusterProfiler", "org.Mm.eg.db"), bioc = TRUE)
 suppressPackageStartupMessages(library(clusterProfiler))
 suppressPackageStartupMessages(library(org.Mm.eg.db))
 
 # Read UniProt mapping file (UniprotID <-> Gene_Name)
-uniprot_df <- read.delim(
-  uniprot_mapping_file_path,
-  header = FALSE,
-  sep = "\t",
-  stringsAsFactors = FALSE
-) %>%
-  filter(V2 == "Gene_Name") %>%
-  dplyr::select(UniprotID = V1, Gene_Name = V3)
+uniprot_df <- if (file.exists(uniprot_mapping_file_path)) {
+  read.delim(
+    uniprot_mapping_file_path,
+    header = FALSE,
+    sep = "\t",
+    stringsAsFactors = FALSE
+  ) %>%
+    filter(V2 == "Gene_Name") %>%
+    dplyr::select(UniprotID = V1, Gene_Name = V3)
+} else {
+  tibble(UniprotID = character(), Gene_Name = character())
+}
 
 # -----------------------------------------------------
 # Import Enrichment Data Files
 # -----------------------------------------------------
 
-# List all enrichment CSV files for the specified condition
-input_dir <- file.path(base_project_path, "Datasets", "core_enrichment", ont, ensemble_profiling, condition)
-file_paths <- list.files(
-  path = input_dir,
-  pattern = "*.csv",
-  full.names = TRUE
-)
-names(file_paths) <- basename(file_paths) %>% str_remove(".csv")
+# List enrichment CSV files from the clusterProfiler manifest.
+input_dir <- dirname(manifest_filtered$output_table[[1]])
+file_paths <- manifest_filtered$output_table
+names(file_paths) <- manifest_filtered$comparison
 
 # -----------------------------------------------------
 # Define Output Directories
 # -----------------------------------------------------
 
-main_output_dir <- file.path(base_project_path, "Results", "compareGO", ont, ensemble_profiling, condition)
-dir.create(main_output_dir, showWarnings = FALSE, recursive = TRUE)
-
 subdirs <- list(
-  tables = file.path(main_output_dir, "01_Tables_and_Data"),
-  plots_main = file.path(main_output_dir, "02_Main_Plots"),
-  core_enrichment_plots = file.path(main_output_dir, "03_Core_Enrichment_Heatmaps"),
-  gene_lists = file.path(main_output_dir, "04_Gene_Lists"),
-  volcanoes = file.path(main_output_dir, "05_Volcano_Plots"),
-  sig_proteins = file.path(main_output_dir, "06_Significant_Proteins"),
-  go_enrichment = file.path(main_output_dir, "07_Regulated_Protein_GO"),
-  gene_centric = file.path(main_output_dir, "08_Gene_Centric_Analysis")
+  tables = file.path(CANONICAL_PATHS$tables, ont, ensemble_profiling, condition),
+  plots_main = file.path(CANONICAL_PATHS$figures, ont, ensemble_profiling, condition, "main"),
+  core_enrichment_plots = file.path(CANONICAL_PATHS$figures, ont, ensemble_profiling, condition, "core_enrichment"),
+  gene_lists = file.path(CANONICAL_PATHS$source_data, ont, ensemble_profiling, condition, "gene_lists"),
+  volcanoes = file.path(CANONICAL_PATHS$figures, ont, ensemble_profiling, condition, "volcanoes"),
+  sig_proteins = file.path(CANONICAL_PATHS$tables, ont, ensemble_profiling, condition, "significant_proteins"),
+  go_enrichment = file.path(CANONICAL_PATHS$tables, ont, ensemble_profiling, condition, "regulated_protein_go"),
+  gene_centric = file.path(CANONICAL_PATHS$tables, ont, ensemble_profiling, condition, "gene_centric")
 )
 lapply(subdirs, dir.create, showWarnings = FALSE, recursive = TRUE)
+main_output_dir <- file.path(CANONICAL_PATHS$reports, ont, ensemble_profiling, condition)
+dir.create(main_output_dir, showWarnings = FALSE, recursive = TRUE)
 
 # -----------------------------------------------------
 # Read and Combine Enrichment Data
 # -----------------------------------------------------
 
-enrichment_list <- lapply(file_paths, read.csv)
+enrichment_list <- lapply(file_paths, read.csv, stringsAsFactors = FALSE, check.names = FALSE)
 names(enrichment_list) <- names(file_paths)
+
+required_enrichment_cols <- c("ID", "Description", "NES", "p.adjust", "setSize", "core_enrichment")
+manifest_empty <- manifest_filtered$comparison[(manifest_filtered$empty_result %in% TRUE) | manifest_filtered$n_terms == 0]
+empty_tables <- unique(c(
+  manifest_empty,
+  names(enrichment_list)[vapply(enrichment_list, nrow, integer(1)) == 0]
+))
+if (length(empty_tables) > 0) {
+  message("[INFO] Empty enrichment tables will be excluded explicitly: ", paste(empty_tables, collapse = ", "))
+  readr::write_csv(
+    tibble(comparison = empty_tables, reason = "empty_enrichment_table"),
+    file.path(CANONICAL_PATHS$reports, "empty_clusterProfiler_inputs.csv")
+  )
+  enrichment_list <- enrichment_list[setdiff(names(enrichment_list), empty_tables)]
+}
+if (length(enrichment_list) == 0) {
+  stop("All manifest-selected enrichment tables are empty; compareGO cannot proceed.", call. = FALSE)
+}
+
+bad_tables <- names(enrichment_list)[vapply(enrichment_list, function(df) {
+  length(setdiff(required_enrichment_cols, names(df))) > 0
+}, logical(1))]
+if (length(bad_tables) > 0) {
+  missing_detail <- vapply(bad_tables, function(nm) {
+    paste0(nm, ": ", paste(setdiff(required_enrichment_cols, names(enrichment_list[[nm]])), collapse = ", "))
+  }, character(1))
+  stop("Enrichment table(s) missing required columns:\n", paste(missing_detail, collapse = "\n"), call. = FALSE)
+}
 
 combined_df <- bind_rows(
   lapply(names(enrichment_list), function(name) {
@@ -532,10 +683,10 @@ gene_go_ids <- combined_df %>%
 # PARAMETERS
 # =========================================================
 
-significant_only <- TRUE
-target_n_terms <- 5
-redundancy_threshold <- 0.7
-min_set_size <- 10
+significant_only <- isTRUE(comparego_cfg$significant_only)
+target_n_terms <- as.integer(comparego_cfg$target_n_terms)
+redundancy_threshold <- as.numeric(comparego_cfg$redundancy_threshold)
+min_set_size <- as.integer(comparego_cfg$min_set_size)
 
 # =========================================================
 # PREPROCESS LEADING EDGE ONCE
@@ -1400,14 +1551,18 @@ top_bottom_matrix <- top_bottom_matrix[gene_order, , drop = FALSE]
 
 # --- Map UniProt IDs to Gene Names for Heatmap Row Labels ---
 # Use the UniProt mapping file to convert UniProt IDs to gene names for better readability in the heatmap.
-uniprot_df <- read.delim(
-  uniprot_mapping_file_path,
-  header = FALSE,
-  sep = "\t",
-  stringsAsFactors = FALSE
-) %>%
-  filter(V2 == "Gene_Name") %>%
-  dplyr::select(UniprotID = V1, Gene_Name = V3)
+uniprot_df <- if (file.exists(uniprot_mapping_file_path)) {
+  read.delim(
+    uniprot_mapping_file_path,
+    header = FALSE,
+    sep = "\t",
+    stringsAsFactors = FALSE
+  ) %>%
+    filter(V2 == "Gene_Name") %>%
+    dplyr::select(UniprotID = V1, Gene_Name = V3)
+} else {
+  tibble(UniprotID = character(), Gene_Name = character())
+}
 mapped_names <- left_join(
   tibble(Gene = rownames(top_bottom_matrix)),
   uniprot_df,
@@ -1476,12 +1631,16 @@ dev.off()
 # Generate Per-Comparison Heatmaps and Excel Files
 # -----------------------------------------------------
 
-uniprot_df <- read.delim(
-  uniprot_mapping_file_path,
-  header = FALSE,
-  sep = "\t",
-  stringsAsFactors = FALSE
-)
+uniprot_df <- if (file.exists(uniprot_mapping_file_path)) {
+  read.delim(
+    uniprot_mapping_file_path,
+    header = FALSE,
+    sep = "\t",
+    stringsAsFactors = FALSE
+  )
+} else {
+  data.frame(V1 = character(), V2 = character(), V3 = character())
+}
 
 uniprot_subset <- uniprot_df %>%
   filter(V2 %in% c("Gene_Name", "UniProtKB-ID")) %>%
@@ -1498,11 +1657,7 @@ gene_descriptions <- core_long_df %>%
   distinct() %>%
   group_by(Gene) %>%
   summarize(Description = paste(unique(Description), collapse = "; "), .groups = "drop")
-log2fc_files <- list.files(
-  path = file.path(base_project_path, "Datasets", "mapped", ensemble_profiling, condition),
-  pattern = "*.csv",
-  full.names = TRUE
-)
+log2fc_files <- unique(manifest_filtered$input_gene_file)
 
 log2fc_df_list <- lapply(log2fc_files, function(f) {
   df <- read_csv(f, col_types = cols()) %>%
@@ -2704,11 +2859,7 @@ writexl::write_xlsx(supp_list, path = supp_output_path)
 # -----------------------------------------------------
 
 # Prepare GO enrichment results as a list of data frames for each comparison (up/downregulated proteins)
-log2fc_files <- list.files(
-  path = file.path(base_project_path, "Datasets", "mapped", ensemble_profiling, condition),
-  pattern = "*.csv",
-  full.names = TRUE
-)
+log2fc_files <- unique(manifest_filtered$input_gene_file)
 
 go_results_list <- list()
 for (f in log2fc_files) {
@@ -2946,8 +3097,7 @@ message("✓ Analysis complete. Files saved to: ", main_output_dir)
 
 
 # Network plot: check for nodes and edges before plotting
-if (!require("igraph")) install.packages("igraph")
-if (!require("ggraph")) install.packages("ggraph")
+require_or_stop(c("igraph", "ggraph"))
 library(igraph)
 library(ggraph)
 
