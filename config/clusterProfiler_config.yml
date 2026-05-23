@@ -18,6 +18,7 @@ analysis:
   max_gs_size: 800
 
 runtime:
+  dry_run: false
   workers: -1
   future_globals_max_size_mb: 8000
   resume_if_complete: true
@@ -28,7 +29,7 @@ runtime:
 
 paths:
   mapped_dir: data/processed/02_id_mapping/mapped/forward/per_file
-  working_base: .
+  working_base: "."
   mapped_data_base: data/processed/02_id_mapping/mapped/forward/per_file
   background_universe_file: ""
 
