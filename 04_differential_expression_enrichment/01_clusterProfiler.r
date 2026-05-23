@@ -1,4 +1,15 @@
 #' ============================================================
+#' Consumes:
+#'   - mapped contrast CSVs from data/processed/02_id_mapping/... (configurable)
+#'   - optional background/config inputs from config/clusterProfiler_config.yml
+#' Produces:
+#'   - canonical enrichment tables, figures, source data, reports and logs under
+#'     data/processed/04_differential_expression_enrichment/clusterProfiler and
+#'     results/*/04_differential_expression_enrichment/clusterProfiler
+#'   - clusterProfiler_manifest.csv consumed by 02_compareGO.r
+#' Contract:
+#'   - docs/file_contracts.tsv object_id clusterProfiler_manifest
+#' ============================================================
 #' HIGH-THROUGHPUT Gene Set Enrichment Analysis (GSEA) Workflow
 #' WITH PARALLEL PROCESSING AND GO TERM SIMPLIFICATION
 #' ============================================================
@@ -10,6 +21,12 @@
 #'
 #' @author Tobias Pohl
 #' ============================================================
+
+paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
+source(paths_file)
+MODULE_ID <- "04_differential_expression_enrichment"
+SUBSTEP_ID <- "clusterProfiler"
+CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
 
 # ----------------------------------------------------
 # 0. SIMPLIFICATION SETTINGS
@@ -124,8 +141,8 @@ setupPackages()
 # ----------------------------------------------------
 create_analysis_dirs <- function(base_dir, comparison_name, ontology) {
   route <- classify_comparison_route(comparison_name)
-  results_root <- file.path(base_dir, "Results", route$category, route$unit_folder, comparison_name)
-  plots_root <- file.path(base_dir, "Plots", route$category, route$unit_folder, comparison_name)
+  results_root <- file.path(CANONICAL_PATHS$processed, route$category, route$unit_folder, comparison_name)
+  plots_root <- file.path(CANONICAL_PATHS$figures, route$category, route$unit_folder, comparison_name)
 
   dirs <- list(
     results = results_root,
@@ -138,8 +155,8 @@ create_analysis_dirs <- function(base_dir, comparison_name, ontology) {
     plots_kegg = file.path(plots_root, "KEGG"),
     plots_ora = file.path(plots_root, "ORA"),
     plots_custom = file.path(plots_root, "Custom", ontology),
-    core_enrich = file.path(base_dir, "Datasets/core_enrichment", ontology),
-    core_enrich_routed = file.path(base_dir, "Datasets/core_enrichment", ontology, route$category, route$unit_folder),
+    core_enrich = file.path(CANONICAL_PATHS$source_data, ontology),
+    core_enrich_routed = file.path(CANONICAL_PATHS$source_data, ontology, route$category, route$unit_folder),
     route_category = route$category,
     route_unit = route$unit_folder
   )
@@ -194,9 +211,9 @@ read_config <- function(config_path) {
       config_file = config_path
     ),
     paths = list(
-      mapped_dir = "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/mapped/neuron_neuropil/forward/per_file",
-      working_base = "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics",
-      mapped_data_base = "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/mapped/neuron_neuropil/forward/per_file",
+      mapped_dir = path_processed("02_id_mapping", "mapped", "forward", "per_file"),
+      working_base = repo_root(),
+      mapped_data_base = path_processed("02_id_mapping", "mapped", "forward", "per_file"),
       background_universe_file = ""
     ),
     optional_inputs = list(
@@ -223,6 +240,49 @@ read_config <- function(config_path) {
     message("Config file not found; using script defaults: ", config_path)
   }
   cfg
+}
+
+manifest_columns <- c(
+  "analysis_id", "run_id", "ontology", "result_type", "contrast", "comparison",
+  "route_category", "route_unit", "condition", "direction", "simplified",
+  "plot_suffix", "used_for_plot", "input_gene_file", "input_hash",
+  "config_file", "config_hash", "output_table", "output_plot",
+  "n_genes", "n_terms", "empty_result", "checkpoint_status", "created_at"
+)
+
+make_manifest_row <- function(result_type, ontology, comparison_name, dirs, input_gene_file,
+                              config_path, output_table, output_plot = NA_character_,
+                              n_genes = NA_integer_, n_terms = NA_integer_,
+                              simplified = FALSE, used_for_plot = FALSE,
+                              plot_suffix = NA_character_, checkpoint_status = "computed",
+                              condition = NA_character_, direction = NA_character_) {
+  data.frame(
+    analysis_id = paste("clusterProfiler", result_type, ontology, comparison_name, sep = "::"),
+    run_id = run_id,
+    ontology = ontology,
+    result_type = result_type,
+    contrast = comparison_name,
+    comparison = comparison_name,
+    route_category = dirs$route_category,
+    route_unit = dirs$route_unit,
+    condition = condition,
+    direction = direction,
+    simplified = isTRUE(simplified),
+    plot_suffix = plot_suffix,
+    used_for_plot = isTRUE(used_for_plot),
+    input_gene_file = input_gene_file,
+    input_hash = file_hash(input_gene_file),
+    config_file = config_path,
+    config_hash = file_hash(config_path),
+    output_table = output_table,
+    output_plot = output_plot,
+    n_genes = n_genes,
+    n_terms = n_terms,
+    empty_result = isTRUE(is.na(n_terms) || n_terms == 0),
+    checkpoint_status = checkpoint_status,
+    created_at = format(Sys.time(), "%Y-%m-%d %H:%M:%S %z"),
+    stringsAsFactors = FALSE
+  )[manifest_columns]
 }
 
 write_log_line <- function(log_file, level = "INFO", comparison = "GLOBAL", step = "GENERAL", message_text = "") {
@@ -422,10 +482,25 @@ classify_comparison_route <- function(comparison_name) {
 `%||%` <- function(x, y) if (is.null(x)) y else x
 config_candidates <- c(
   file.path(getwd(), "clusterProfiler_config.yml"),
+  file.path(getwd(), "clusterProfiler_config.local.yml"),
+  file.path(getwd(), "config", "clusterProfiler_config.yml"),
+  file.path(getwd(), "config", "clusterProfiler_config.local.yml"),
+  repo_path("config", "clusterProfiler_config.local.yml"),
+  repo_path("config", "clusterProfiler_config.yml"),
   file.path(getwd(), "Analysis", "clusterProfiler_config.yml")
 )
 config_path <- config_candidates[file.exists(config_candidates)][1] %||% config_candidates[1]
 cfg <- read_config(config_path)
+
+as_repo_path <- function(path) {
+  if (is.null(path) || !nzchar(path)) return(path)
+  if (grepl("^([A-Za-z]:|/|~)", path)) return(path)
+  repo_path(path)
+}
+cfg$paths$mapped_dir <- as_repo_path(cfg$paths$mapped_dir)
+cfg$paths$working_base <- as_repo_path(cfg$paths$working_base)
+cfg$paths$mapped_data_base <- as_repo_path(cfg$paths$mapped_data_base)
+cfg$paths$background_universe_file <- as_repo_path(cfg$paths$background_universe_file)
 
 PERFORM_SIMPLIFICATION <- isTRUE(cfg$simplification$perform)
 USE_SIMPLIFIED_FOR_PLOTS <- isTRUE(cfg$simplification$use_for_plots)
@@ -448,7 +523,6 @@ if (length(comparison_list) == 0) {
   stop("No valid comparison files found in: ", mapped_dir)
 }
 
-#working_base <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler"
 working_base <- cfg$paths$working_base
 
 working_dir <- working_base
@@ -477,10 +551,12 @@ runtime_params <- list(
 )
 
 run_id <- format(Sys.time(), "%Y%m%d_%H%M%S")
-run_log_dir <- file.path(working_base, "Results", "_run_logs")
+run_log_dir <- CANONICAL_PATHS$logs
 dir.create(run_log_dir, recursive = TRUE, showWarnings = FALSE)
 master_log <- file.path(run_log_dir, paste0("clusterProfiler_run_", run_id, ".log"))
 write_log_line(master_log, "INFO", "GLOBAL", "CONFIG", paste0("Using config file: ", config_path))
+write_session_info(file.path(CANONICAL_PATHS$logs, "sessionInfo.txt"))
+write_config_snapshot(cfg, file.path(CANONICAL_PATHS$logs, paste0("clusterProfiler_config_snapshot_", run_id, ".yml")))
 
 #nk3r_genes <- c("P21279", "P21278", "P51432", "P11881", "P63318", "P68404", "P0DP26", "P0DP27", "P0DP28", "P11798", "P28652", "P47937", "P47713")
 #selected_uniprot <- c("P21279", "P21278", "Q9Z1B3", "P51432", "P11881", "P68404", "P63318", "P0DP26", "P0DP27", "P11798", "P28652", "Q61411", "Q99N57", "P31938", "P63085", "Q63844", "Q8BWG8", "Q91YI4", "V9GXQ9")
@@ -574,7 +650,8 @@ prewarm_workers(n_cores, runtime_params)
 analyze_comparison <- function(cell_types, working_base, mapped_data_base, organism, ont, 
                                nk3r_genes, selected_uniprot, path_ids,
                                analysis_params, runtime_params, run_log_dir,
-                               background_universe = character(0)) {
+                               background_universe = character(0),
+                               config_path = NA_character_) {
 
   # Load required libraries in worker once per worker session.
   if (!isTRUE(getOption("clusterProfiler.worker_packages_loaded", FALSE))) {
@@ -614,6 +691,7 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
     n_kegg_terms = NA_integer_,
     stringsAsFactors = FALSE
   )
+  manifest_rows <- list()
 
   cat("Analyzing comparison:", comparison_name, "\n")
   write_log_line(comparison_log, "INFO", comparison_name, "START", "Comparison analysis started")
@@ -642,7 +720,7 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
       qc$status <- "SKIPPED"
       qc$runtime_seconds <- as.numeric(difftime(Sys.time(), run_start, units = "secs"))
       write.csv(qc, qc_path, row.names = FALSE)
-      return(list(status = "SKIPPED", comparison = comparison_name, error = NA_character_, qc = qc))
+      return(list(status = "SKIPPED", comparison = comparison_name, error = NA_character_, qc = qc, manifest = dplyr::bind_rows(manifest_rows)))
     }
 
     # Define data file path
@@ -656,7 +734,7 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
       qc$status <- "FAILED"
       qc$runtime_seconds <- as.numeric(difftime(Sys.time(), run_start, units = "secs"))
       write.csv(qc, qc_path, row.names = FALSE)
-      return(list(status = "FAILED", comparison = comparison_name, error = "File not found", qc = qc))
+      return(list(status = "FAILED", comparison = comparison_name, error = "File not found", qc = qc, manifest = dplyr::bind_rows(manifest_rows)))
     }
 
     # Load and prepare data
@@ -669,7 +747,7 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
       qc$status <- "FAILED"
       qc$runtime_seconds <- as.numeric(difftime(Sys.time(), run_start, units = "secs"))
       write.csv(qc, qc_path, row.names = FALSE)
-      return(list(status = "FAILED", comparison = comparison_name, error = "Data file is empty", qc = qc))
+      return(list(status = "FAILED", comparison = comparison_name, error = "Data file is empty", qc = qc, manifest = dplyr::bind_rows(manifest_rows)))
     }
 
     if (!"log2fc" %in% colnames(df)) {
@@ -680,7 +758,7 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
         qc$status <- "FAILED"
         qc$runtime_seconds <- as.numeric(difftime(Sys.time(), run_start, units = "secs"))
         write.csv(qc, qc_path, row.names = FALSE)
-        return(list(status = "FAILED", comparison = comparison_name, error = "No log2fc column", qc = qc))
+        return(list(status = "FAILED", comparison = comparison_name, error = "No log2fc column", qc = qc, manifest = dplyr::bind_rows(manifest_rows)))
       }
     }
 
@@ -821,6 +899,23 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
     write.csv(gse_for_export@result,
           file = file.path(dirs$core_enrich_routed, paste0(comparison_name, plot_suffix, ".csv")),
           row.names = FALSE)
+    gsea_core_table <- file.path(dirs$core_enrich_routed, paste0(comparison_name, plot_suffix, ".csv"))
+    gsea_plot <- file.path(dirs$plots_go, paste0("GSEA_", ont, "_dotplot", plot_suffix, ".svg"))
+    manifest_rows[[length(manifest_rows) + 1]] <- make_manifest_row(
+      result_type = "GSEA_GO",
+      ontology = ont,
+      comparison_name = comparison_name,
+      dirs = dirs,
+      input_gene_file = data_path,
+      config_path = config_path,
+      output_table = gsea_core_table,
+      output_plot = if (file.exists(gsea_plot)) gsea_plot else NA_character_,
+      n_genes = length(gene_list),
+      n_terms = nrow(gse_for_export@result),
+      simplified = identical(plot_suffix, "_simplified"),
+      used_for_plot = TRUE,
+      plot_suffix = plot_suffix
+    )
     qc$n_gsea_terms <- nrow(gse@result)
     print_progress_step(comparison_name, "GSEA", paste0("terms=", qc$n_gsea_terms), runtime_params$show_step_progress)
 
@@ -938,13 +1033,30 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
         write.csv(kk2@result, file = file.path(dirs$core_enrich_routed, paste0(comparison_name, "_KEGG.csv")), row.names = FALSE)
 
         # Additionally, save to core_enrich with ontology set to 'KEGG'
-        core_enrich_kegg_dir <- file.path(working_base, "Datasets/core_enrichment", "KEGG")
+        core_enrich_kegg_dir <- file.path(CANONICAL_PATHS$source_data, "KEGG")
         if (!dir.exists(core_enrich_kegg_dir)) dir.create(core_enrich_kegg_dir, recursive = TRUE)
         write.csv(kk2@result, file = file.path(core_enrich_kegg_dir, paste0(comparison_name, "_KEGG.csv")), row.names = FALSE)
 
-        core_enrich_kegg_routed_dir <- file.path(working_base, "Datasets/core_enrichment", "KEGG", dirs$route_category, dirs$route_unit)
+        core_enrich_kegg_routed_dir <- file.path(CANONICAL_PATHS$source_data, "KEGG", dirs$route_category, dirs$route_unit)
         if (!dir.exists(core_enrich_kegg_routed_dir)) dir.create(core_enrich_kegg_routed_dir, recursive = TRUE)
         write.csv(kk2@result, file = file.path(core_enrich_kegg_routed_dir, paste0(comparison_name, "_KEGG.csv")), row.names = FALSE)
+        kegg_core_table <- file.path(core_enrich_kegg_routed_dir, paste0(comparison_name, "_KEGG.csv"))
+        kegg_plot <- file.path(dirs$plots_kegg, "KEGG_dotplot.svg")
+        manifest_rows[[length(manifest_rows) + 1]] <- make_manifest_row(
+          result_type = "GSEA_KEGG",
+          ontology = "KEGG",
+          comparison_name = comparison_name,
+          dirs = dirs,
+          input_gene_file = data_path,
+          config_path = config_path,
+          output_table = kegg_core_table,
+          output_plot = if (file.exists(kegg_plot)) kegg_plot else NA_character_,
+          n_genes = length(kegg_gene_list),
+          n_terms = nrow(kk2@result),
+          simplified = FALSE,
+          used_for_plot = TRUE,
+          plot_suffix = "_KEGG"
+        )
         qc$n_kegg_terms <- nrow(kk2@result)
       } else {
         # Create empty file so we know it ran but found nothing
@@ -1172,13 +1284,13 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
     write_completed_checkpoint(dirs)
     write_log_line(comparison_log, "INFO", comparison_name, "DONE", paste0("Completed in ", round(qc$runtime_seconds, 2), " sec"))
     print_progress_step(comparison_name, "DONE", paste0("runtime_sec=", round(qc$runtime_seconds, 2)), runtime_params$show_step_progress)
-    return(list(status = "SUCCESS", comparison = comparison_name, error = NA_character_, qc = qc))
+    return(list(status = "SUCCESS", comparison = comparison_name, error = NA_character_, qc = qc, manifest = dplyr::bind_rows(manifest_rows)))
     
   }, error = function(e) {
     qc$status <- "ERROR"
     qc$runtime_seconds <- as.numeric(difftime(Sys.time(), run_start, units = "secs"))
     write_log_line(comparison_log, "ERROR", comparison_name, "UNHANDLED", conditionMessage(e))
-    return(list(status = "ERROR", comparison = comparison_name, error = conditionMessage(e), qc = qc))
+    return(list(status = "ERROR", comparison = comparison_name, error = conditionMessage(e), qc = qc, manifest = dplyr::bind_rows(manifest_rows)))
   })
 }
 
@@ -1214,7 +1326,8 @@ if (isTRUE(runtime_params$show_progress)) {
                                 analysis_params = analysis_params,
                                 runtime_params = runtime_params,
                                 run_log_dir = run_log_dir,
-                                background_universe = background_universe)
+                                background_universe = background_universe,
+                                config_path = config_path)
       p(message = paste0(res$comparison, " -> ", res$status))
       res
     }, future.seed = TRUE)
@@ -1226,7 +1339,8 @@ if (isTRUE(runtime_params$show_progress)) {
                        analysis_params = analysis_params,
                        runtime_params = runtime_params,
                        run_log_dir = run_log_dir,
-                       background_universe = background_universe)
+                       background_universe = background_universe,
+                       config_path = config_path)
   }, future.seed = TRUE)
 }
 
@@ -1258,7 +1372,7 @@ cat("==============================================\n\n")
 # ----------------------------------------------------
 # 7. RUN-LEVEL SUMMARY OUTPUTS
 # ----------------------------------------------------
-summary_dir <- file.path(working_base, "Results")
+summary_dir <- CANONICAL_PATHS$reports
 dir.create(summary_dir, recursive = TRUE, showWarnings = FALSE)
 
 status_vec <- vapply(results, function(x) x$status, character(1))
@@ -1283,6 +1397,15 @@ if (length(qc_rows) > 0) {
   write.csv(run_qc, run_qc_file, row.names = FALSE)
 }
 
+manifest_rows <- lapply(results, function(x) x$manifest)
+manifest_rows <- manifest_rows[!vapply(manifest_rows, is.null, logical(1))]
+manifest <- if (length(manifest_rows) > 0) dplyr::bind_rows(manifest_rows) else {
+  data.frame(matrix(ncol = length(manifest_columns), nrow = 0, dimnames = list(NULL, manifest_columns)))
+}
+manifest_file <- file.path(CANONICAL_PATHS$processed, "clusterProfiler_manifest.csv")
+write.csv(manifest, manifest_file, row.names = FALSE)
+write.csv(manifest, file.path(CANONICAL_PATHS$reports, paste0("clusterProfiler_manifest_", run_id, ".csv")), row.names = FALSE)
+
 summary_txt <- file.path(summary_dir, paste0("clusterProfiler_run_summary_", run_id, ".txt"))
 summary_lines <- c(
   "clusterProfiler parallel run summary",
@@ -1294,6 +1417,7 @@ summary_lines <- c(
   paste0("SKIPPED: ", sum(status_vec == "SKIPPED")),
   paste0("FAILED/ERROR: ", sum(status_vec %in% c("FAILED", "ERROR"))),
   paste0("Master log: ", master_log),
+  paste0("Manifest: ", manifest_file),
   paste0("Run summary CSV: ", run_summary_file)
 )
 writeLines(summary_lines, con = summary_txt)
