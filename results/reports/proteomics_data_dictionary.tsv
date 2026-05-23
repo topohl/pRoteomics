@@ -1,0 +1,11 @@
+filename	biological_meaning	statistical_level	upstream_dependency	downstream_usage	intended_for_PRIDE	intended_for_supplement	transient_or_canonical
+data/processed/01_preprocessing/*	Processed quantitative proteomics matrices after filtering/normalization/imputation	protein abundance matrix	data/raw; data/metadata	ID mapping, QC, PRIDE processed-data export	TRUE	TRUE	canonical
+data/processed/02_id_mapping/mapped/forward/per_file/*.csv	Mapped differential-expression contrast input tables	protein-level contrast	data/processed/01_preprocessing	clusterProfiler; compareGO volcano/significant-protein analyses	FALSE	TRUE	canonical
+data/processed/04_differential_expression_enrichment/clusterProfiler/clusterProfiler_manifest.csv	Manifest linking mapped contrasts to enrichment outputs	provenance contract	04_differential_expression_enrichment/01_clusterProfiler.r	compareGO; PRIDE/journal provenance	FALSE	TRUE	canonical
+results/source_data/04_differential_expression_enrichment/clusterProfiler/*	GO/KEGG enrichment source data used for plotting	enrichment term level	mapped contrast CSVs via clusterProfiler	compareGO; figure reproduction	FALSE	TRUE	canonical
+data/processed/04_differential_expression_enrichment/compareGO/compareGO_input_manifest.csv	Manifest subset consumed by compareGO	provenance contract	clusterProfiler_manifest	PRIDE/journal provenance	FALSE	TRUE	canonical
+results/tables/04_differential_expression_enrichment/compareGO/*	Publication-facing compareGO summaries	enrichment comparison level	clusterProfiler source data	Journal supplementary tables	FALSE	TRUE	canonical
+results/figures/*	Rendered figures	figure artifact	module-specific source data	Manuscript figures	FALSE	FALSE	figure_only
+results/source_data/*	Exact data underlying figures	source-data table	module-specific canonical outputs	Figure reproduction	FALSE	TRUE	canonical
+90_testing/*	Exploratory/developmental outputs	varies	varies	Internal exploration only	FALSE	FALSE	transient
+99_deprecated/*	Archived legacy scripts/outputs	varies	varies	Historical reproducibility only	FALSE	FALSE	archival
