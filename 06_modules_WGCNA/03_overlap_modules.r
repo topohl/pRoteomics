@@ -1,4 +1,12 @@
 # ================================================================
+# Consumes:
+#   - compareGO overlap table from canonical results/tables
+#   - UniProt mapping file from data/external
+# Produces:
+#   - overlap-derived module definitions under data/processed and results/tables
+# File contract:
+#   - docs/active_script_io_audit.tsv object 06_modules_WGCNA/03_overlap_modules.r
+# ================================================================
 # Build overlap-based neuropil modules from recurrent proteins
 # Requires overlap table with columns:
 # Gene, N_datasets, Datasets
@@ -12,17 +20,34 @@ library(tidyr)
 library(purrr)
 library(openxlsx)
 
+paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
+source(paths_file)
+MODULE_ID <- "06_modules_WGCNA"
+SUBSTEP_ID <- "overlap_modules"
+CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
+
 # ------------------------------------------------
 # 1) PATHS
 # ------------------------------------------------
 
-overlap_file <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Results/compareGO/BP/phenotype_within_unit/overlapping_proteins_min3_datasets.xlsx"
+overlap_file <- path_results("tables", "04_differential_expression_enrichment", "compareGO", "overlapping_proteins_min3_datasets.xlsx")
 
-mapping_file <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/MOUSE_10090_idmapping.dat"
+mapping_file <- path_external("MOUSE_10090_idmapping.dat")
 
-saving_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Results/module_definitions_overlap"
+saving_dir <- CANONICAL_PATHS$tables
 
 dir.create(saving_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(CANONICAL_PATHS$processed, recursive = TRUE, showWarnings = FALSE)
+
+if (is_dry_run()) {
+  dry_run_line("Script", "06_modules_WGCNA/03_overlap_modules.r")
+  dry_run_line("Overlap file", overlap_file, if (file.exists(overlap_file)) "PASS" else "FAIL")
+  dry_run_line("Mapping file", mapping_file, if (file.exists(mapping_file)) "PASS" else "FAIL")
+  dry_run_line("Output folders", paste(unlist(CANONICAL_PATHS), collapse = "; "))
+  quit(status = if (file.exists(overlap_file) && file.exists(mapping_file)) 0 else 1, save = "no")
+}
+if (!file.exists(overlap_file)) stop("Overlap file not found: ", overlap_file, call. = FALSE)
+if (!file.exists(mapping_file)) stop("UniProt mapping file not found: ", mapping_file, call. = FALSE)
 
 # ------------------------------------------------
 # 2) LOAD OVERLAP TABLE
@@ -35,6 +60,7 @@ overlap_df <- if (str_detect(overlap_file, "\\.xlsx$")) {
 }
 
 overlap_df <- overlap_df %>%
+  { missing <- setdiff(c("Gene", "N_datasets", "Datasets"), names(.)); if (length(missing)) stop("Overlap table missing columns: ", paste(missing, collapse = ", "), call. = FALSE); . } %>%
   rename(UniProt = Gene) %>%
   mutate(
     UniProt = as.character(UniProt),
@@ -324,13 +350,14 @@ saveWorkbook(
 
 saveRDS(
   module_defs,
-  file.path(saving_dir, "Overlap_based_neuropil_modules_classified.rds")
+  file.path(CANONICAL_PATHS$processed, "Overlap_based_neuropil_modules_classified.rds")
 )
 
 write_csv(
   module_long,
-  file.path(saving_dir, "Overlap_based_neuropil_modules_classified_long.csv")
+  file.path(CANONICAL_PATHS$processed, "Overlap_based_neuropil_modules_classified_long.csv")
 )
+write_session_info(file.path(CANONICAL_PATHS$logs, "sessionInfo.txt"))
 
 # ------------------------------------------------
 # 9) PRINT RESULTS
