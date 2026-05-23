@@ -1,4 +1,12 @@
 # ================================================================
+# Consumes:
+#   - spatial network RDS from data/processed/07_spatial_networks/network_spatial_relations/
+#   - optional curated module file from data/processed/06_modules_WGCNA/
+# Produces:
+#   - module spatial network tables/figures/network files/logs in canonical module folders
+# File contract:
+#   - docs/active_script_io_audit.tsv object 06_modules_WGCNA/02_module_spatial_networks.r
+# ================================================================
 # Module-level spatial network analysis
 # ================================================================
 # Purpose:
@@ -24,6 +32,31 @@
 #   - Cytoscape/GraphML network files
 # ================================================================
 
+paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
+source(paths_file)
+MODULE_ID <- "06_modules_WGCNA"
+SUBSTEP_ID <- "module_spatial_networks"
+CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
+
+params <- list(
+  spatial_rds = path_processed("07_spatial_networks", "network_spatial_relations", "network_spatial_relations_objects.rds"),
+  module_file = path_processed("06_modules_WGCNA", "module_scores", "curated_neuropil_modules.xlsx"),
+  output_dir = CANONICAL_PATHS$reports,
+  min_module_size = 5,
+  min_abs_module_similarity = 0.50,
+  group_levels = c("CON", "RES", "SUS"),
+  run_group_specific_profiles = TRUE
+)
+
+if (is_dry_run()) {
+  dry_run_line("Script", "06_modules_WGCNA/02_module_spatial_networks.r")
+  dry_run_line("Spatial RDS", params$spatial_rds, if (file.exists(params$spatial_rds)) "PASS" else "FAIL")
+  dry_run_line("Module file", params$module_file, if (file.exists(params$module_file)) "PASS" else "WARN")
+  dry_run_line("Output folders", paste(unlist(CANONICAL_PATHS), collapse = "; "))
+  quit(status = if (file.exists(params$spatial_rds)) 0 else 1, save = "no")
+}
+if (!file.exists(params$spatial_rds)) stop("spatial_rds not found: ", params$spatial_rds, call. = FALSE)
+
 required_pkgs <- c(
   "dplyr", "tidyr", "stringr", "purrr", "tibble", "ggplot2", "pheatmap",
   "igraph", "ggraph", "openxlsx", "svglite", "readxl"
@@ -32,26 +65,16 @@ missing <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), qu
 if (length(missing) > 0) install.packages(missing, repos = "https://cloud.r-project.org")
 invisible(lapply(required_pkgs, library, character.only = TRUE))
 
-params <- list(
-  spatial_rds = "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Results/network_spatial_relations/04_Logs/network_spatial_relations_objects.rds",
-  module_file = "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Results/module_scores/curated_neuropil_modules.xlsx",
-  output_dir = "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Results/module_spatial_networks",
-  min_module_size = 5,
-  min_abs_module_similarity = 0.50,
-  group_levels = c("CON", "RES", "SUS"),
-  run_group_specific_profiles = TRUE
-)
-
 message2 <- function(...) message(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), " | ", ...)
 safe_name <- function(x) stringr::str_replace_all(as.character(x), "[^A-Za-z0-9_\\-]+", "_")
 
 make_dirs <- function(base_dir) {
   dirs <- list(
     base = base_dir,
-    tables = file.path(base_dir, "01_Tables"),
-    figures = file.path(base_dir, "02_Figures"),
-    networks = file.path(base_dir, "03_Network_Files"),
-    logs = file.path(base_dir, "04_Logs")
+    tables = CANONICAL_PATHS$tables,
+    figures = CANONICAL_PATHS$figures,
+    networks = file.path(CANONICAL_PATHS$processed, "network_files"),
+    logs = CANONICAL_PATHS$logs
   )
   invisible(lapply(dirs, dir.create, recursive = TRUE, showWarnings = FALSE))
   dirs
@@ -237,6 +260,7 @@ write_graphml <- function(edges, outfile) {
 # Main
 # -------------------------------
 dirs <- make_dirs(params$output_dir)
+write_session_info(file.path(dirs$logs, "sessionInfo.txt"))
 log_file <- file.path(dirs$logs, paste0("module_spatial_networks_run_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".txt"))
 sink(log_file, split = TRUE)
 on.exit(sink(), add = TRUE)
