@@ -31,9 +31,27 @@ The current focus is high-resolution spatial proteomics across hippocampal regio
 07_spatial_networks/
 08_behavior_physio_coupling/
 09_pride_submission/
+09_export_pride_journal/
 90_testing/
 99_deprecated/
 ```
+
+Canonical data and result folders:
+
+```text
+data/raw/
+data/metadata/
+data/external/
+data/processed/<module>/
+results/figures/<module>/
+results/tables/<module>/
+results/source_data/<module>/
+results/logs/<module>/
+results/reports/<module>/
+pride_submission/
+```
+
+Use `R/paths.R` for repo-relative paths. Local overrides should go in `config/*.local.yml` or environment variables such as `PROTEOMICS_PROJECT_ROOT`; do not commit machine-specific paths.
 
 ---
 
@@ -112,6 +130,14 @@ Representative scripts:
 - `01_clusterProfiler.r`
 - `02_compareGO.r`
 - `03_compare_pathways.r`
+
+`01_clusterProfiler.r` now writes a manifest at:
+
+```text
+data/processed/04_differential_expression_enrichment/clusterProfiler/clusterProfiler_manifest.csv
+```
+
+`02_compareGO.r` consumes that manifest instead of recursively discovering arbitrary CSVs. This preserves ontology, comparison, route category, route unit, simplification state, plot-used status, input hashes and config hashes across the clusterProfiler to compareGO handoff.
 
 ---
 
@@ -202,6 +228,25 @@ Detailed instructions are in:
 09_pride_submission/README_PRIDE.md
 ```
 
+## 09_export_pride_journal
+
+Purpose:
+- generate PRIDE-ready manifests
+- stage sample metadata and SDRF-like metadata
+- stage publication supplementary tables
+- validate deposition readiness
+- write methods/provenance summaries
+
+Main scripts:
+
+```text
+09_export_pride_journal/01_make_pride_manifest.R
+09_export_pride_journal/02_make_sample_metadata.R
+09_export_pride_journal/03_make_supplementary_tables.R
+09_export_pride_journal/04_validate_pride_submission.R
+09_export_pride_journal/05_make_methods_summary.R
+```
+
 ---
 
 # Running the pipeline
@@ -281,4 +326,3 @@ Older scripts are preferentially moved to `99_deprecated/` rather than deleted.
 # Author
 
 Tobias Pohl
-
