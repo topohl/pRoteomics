@@ -1,4 +1,11 @@
 # ================================================================
+# Consumes:
+#   - group-specific spatial network RDS from canonical spatial-network output
+# Produces:
+#   - differential network tables, figures, network files and RDS cache in canonical folders
+# File contract:
+#   - docs/active_script_io_audit.tsv object 07_spatial_networks/02_differential_networks.r
+# ================================================================
 # Differential spatial network analysis
 # ================================================================
 # Purpose:
@@ -16,16 +23,20 @@
 #   - Cytoscape-compatible node/edge CSV files
 # ================================================================
 
+paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
+source(paths_file)
+MODULE_ID <- "07_spatial_networks"
+SUBSTEP_ID <- "differential_networks"
+CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
+
 required_pkgs <- c("dplyr", "tidyr", "stringr", "purrr", "tibble", "ggplot2", "igraph", "ggraph", "openxlsx", "svglite")
 missing <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
 if (length(missing) > 0) install.packages(missing, repos = "https://cloud.r-project.org")
 invisible(lapply(required_pkgs, library, character.only = TRUE))
 
 params <- list(
-  #spatial_rds = "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Results/network_spatial_relations/04_Logs/network_spatial_relations_objects.rds",
-  spatial_rds = "/Users/tobiaspohl/Documents/pRoteomics/Results/network_spatial_relations/04_Logs/network_spatial_relations_objects.rds",
-  #output_dir = "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Results/differential_networks",
-  output_dir = "/Users/tobiaspohl/Documents/pRoteomics/Results/differential_networks",
+  spatial_rds = path_processed("07_spatial_networks", "network_spatial_relations", "network_spatial_relations_objects.rds"),
+  output_dir = CANONICAL_PATHS$reports,
   group_order = c("CON", "RES", "SUS"),
   comparisons = list(c("CON", "RES"), c("CON", "SUS"), c("RES", "SUS")),
   edge_presence_abs_r = 0.50,
@@ -33,16 +44,24 @@ params <- list(
   plot_min_abs_delta = 0.10
 )
 
+if (is_dry_run()) {
+  dry_run_line("Script", "07_spatial_networks/02_differential_networks.r")
+  dry_run_line("Spatial RDS", params$spatial_rds, if (file.exists(params$spatial_rds)) "PASS" else "FAIL")
+  dry_run_line("Output folders", paste(unlist(CANONICAL_PATHS), collapse = "; "))
+  quit(status = if (file.exists(params$spatial_rds)) 0 else 1, save = "no")
+}
+if (!file.exists(params$spatial_rds)) stop("spatial_rds not found: ", params$spatial_rds, call. = FALSE)
+
 message2 <- function(...) message(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), " | ", ...)
 safe_name <- function(x) stringr::str_replace_all(x, "[^A-Za-z0-9_\\-]+", "_")
 
 make_dirs <- function(base_dir) {
   dirs <- list(
     base = base_dir,
-    tables = file.path(base_dir, "01_Tables"),
-    figures = file.path(base_dir, "02_Figures"),
-    networks = file.path(base_dir, "03_Network_Files"),
-    logs = file.path(base_dir, "04_Logs")
+    tables = CANONICAL_PATHS$tables,
+    figures = CANONICAL_PATHS$figures,
+    networks = file.path(CANONICAL_PATHS$processed, "network_files"),
+    logs = CANONICAL_PATHS$logs
   )
   invisible(lapply(dirs, dir.create, recursive = TRUE, showWarnings = FALSE))
   dirs
@@ -220,6 +239,7 @@ write_graphml <- function(edges, nodes, outfile) {
 # Main
 # -------------------------------
 dirs <- make_dirs(params$output_dir)
+write_session_info(file.path(dirs$logs, "sessionInfo.txt"))
 log_file <- file.path(dirs$logs, paste0("differential_networks_run_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".txt"))
 sink(log_file, split = TRUE)
 on.exit(sink(), add = TRUE)
