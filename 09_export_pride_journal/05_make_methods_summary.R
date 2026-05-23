@@ -5,7 +5,13 @@ paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.
 source(paths_file)
 
 ensure_pride_dirs()
+DRY_RUN <- is_dry_run()
 out_file <- pride_submission_dir("methods", "methods_summary.md")
+if (isTRUE(DRY_RUN)) {
+  dry_run_line("Script", "09_export_pride_journal/05_make_methods_summary.R")
+  dry_run_line("Methods summary target", out_file)
+  quit(status = 0, save = "no")
+}
 lines <- c(
   "# Proteomics Methods and Provenance Summary",
   "",
