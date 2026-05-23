@@ -1,0 +1,42 @@
+# Committed, repo-relative defaults for 04_differential_expression_enrichment/01_clusterProfiler.r.
+# For local overrides, copy to config/clusterProfiler_config.local.yml or set paths
+# interactively before sourcing the script; do not commit machine-specific paths.
+
+simplification:
+  perform: false
+  use_for_plots: false
+  cutoff: 0.7
+
+analysis:
+  organism: org.Mm.eg.db
+  ontology: BP
+  top_gene_abs_log2fc: 1
+  pvalue_cutoff: 1
+  qvalue_cutoff: 1
+  p_adjust_method: BH
+  min_gs_size: 10
+  max_gs_size: 800
+
+runtime:
+  workers: -1
+  future_globals_max_size_mb: 8000
+  resume_if_complete: true
+  force_rerun: false
+  prewarm_workers: true
+  show_progress: true
+  show_step_progress: true
+
+paths:
+  mapped_dir: data/processed/02_id_mapping/mapped/forward/per_file
+  working_base: .
+  mapped_data_base: data/processed/02_id_mapping/mapped/forward/per_file
+  background_universe_file: ""
+
+optional_inputs:
+  nk3r_genes: []
+  selected_uniprot: []
+  path_ids: []
+
+background_universe:
+  enabled: false
+  column: UNIPROT
