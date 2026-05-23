@@ -1,23 +1,50 @@
-# read in xlsx files from directory
+# Consumes:
+#   - sample/protein metadata workbooks from data/metadata/
+# Produces:
+#   - processed protein metadata TSV and long metadata workbook under data/processed/01_preprocessing/metadata_create/
+# File contract:
+#   - docs/active_script_io_audit.tsv object 01_preprocessing/05_metadata_create.r
 
-if (!requireNamespace("pacman", quietly = TRUE)) {
-    install.packages("pacman")
-}
-pacman::p_load(readxl, dplyr, tidyr, stringr, purrr, tibble, writexl)
+paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
+source(paths_file)
+MODULE_ID <- "01_preprocessing"
+SUBSTEP_ID <- "metadata_create"
+CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
 
-work_direction <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics"
-metadata <- readxl::read_xlsx(file.path(work_direction, "TPE9_sample_metadata_males.xlsx"))
-
+work_direction <- path_metadata()
+metadata_file <- file.path(work_direction, "TPE9_sample_metadata_males.xlsx")
 files <- list.files(path = work_direction, pattern = "TPE9_samples_males\\.xlsx$", full.names = TRUE)
+if (is_dry_run()) {
+    dry_run_line("Script", "01_preprocessing/05_metadata_create.r")
+    dry_run_line("Metadata directory", work_direction, if (dir.exists(work_direction)) "PASS" else "FAIL")
+    dry_run_line("Sample metadata workbook", metadata_file, if (file.exists(metadata_file)) "PASS" else "FAIL")
+    dry_run_line("Protein workbook count", length(files), if (length(files) > 0) "PASS" else "FAIL")
+    dry_run_line("Output folders", paste(unlist(CANONICAL_PATHS), collapse = "; "))
+    quit(status = if (file.exists(metadata_file) && length(files) > 0) 0 else 1, save = "no")
+}
+if (!file.exists(metadata_file)) stop("Sample metadata workbook not found: ", metadata_file, call. = FALSE)
 if (length(files) == 0) {
     stop("No matching .xlsx files found in work_direction: ", work_direction)
 }
+
+packages <- c("readxl", "dplyr", "tidyr", "stringr", "purrr", "tibble", "writexl")
+missing_packages <- packages[!vapply(packages, requireNamespace, logical(1), quietly = TRUE)]
+if (length(missing_packages) > 0) {
+    auto_install <- identical(tolower(Sys.getenv("AUTO_INSTALL_MISSING_PACKAGES", "false")), "true")
+    if (!auto_install) {
+        stop("Missing required R package(s): ", paste(missing_packages, collapse = ", "),
+             ". Set AUTO_INSTALL_MISSING_PACKAGES=true to install automatically.", call. = FALSE)
+    }
+    install.packages(missing_packages)
+}
+invisible(lapply(packages, library, character.only = TRUE))
+metadata <- readxl::read_xlsx(metadata_file)
 safe_read <- purrr::possibly(readxl::read_xlsx, otherwise = tibble::tibble())
 data <- purrr::map_dfr(files, safe_read) %>%
     dplyr::filter(!is.na(`Protein.Group`))
 
 # save data as filename but with _processed.tsv
-output_file <- file.path(work_direction, "TPE9_samples_males_processed.tsv")
+output_file <- file.path(CANONICAL_PATHS$processed, "TPE9_samples_males_processed.tsv")
 # write as tab-separated values, no row names, no quotes, empty strings for NA
 write.table(data, file = output_file, sep = "\t", quote = FALSE, row.names = FALSE, na = "")
 
@@ -61,4 +88,5 @@ long_proteins <- data %>%
   left_join(metadata, by = "sample_id_clean") %>%        # add metadata columns
   filter(!is.na(intensity))
 
-writexl::write_xlsx(long_proteins, file.path(work_direction, "TPE9_samples_males_long_with_metadata.xlsx"))
+writexl::write_xlsx(long_proteins, file.path(CANONICAL_PATHS$processed, "TPE9_samples_males_long_with_metadata.xlsx"))
+write_session_info(file.path(CANONICAL_PATHS$logs, "sessionInfo.txt"))
