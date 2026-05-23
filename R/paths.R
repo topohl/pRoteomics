@@ -82,6 +82,23 @@ write_config_snapshot <- function(config, path) {
   invisible(path)
 }
 
+is_dry_run <- function(config = NULL) {
+  from_args <- "--dry-run" %in% commandArgs(trailingOnly = FALSE) ||
+    "--dry-run" %in% commandArgs(trailingOnly = TRUE)
+  from_env <- tolower(Sys.getenv("PROTEOMICS_DRY_RUN", unset = "")) %in% c("1", "true", "yes")
+  from_config <- FALSE
+  if (is.list(config)) {
+    from_config <- isTRUE(config$dry_run) ||
+      isTRUE(config$runtime$dry_run)
+  }
+  isTRUE(from_args || from_env || from_config)
+}
+
+dry_run_line <- function(label, value = "", status = NULL) {
+  prefix <- if (is.null(status)) "[DRY-RUN]" else paste0("[DRY-RUN ", status, "]")
+  message(prefix, " ", label, if (nzchar(as.character(value))) paste0(": ", value) else "")
+}
+
 module_paths <- function(module, substep = NULL) {
   tail <- c(module, substep)
   tail <- tail[nzchar(tail)]
