@@ -46,6 +46,7 @@ SIMPLIFY_CUTOFF <- 0.7
 # FALSE (recommended): fail fast with a clear list of missing packages.
 # TRUE: auto-install missing packages (can take a long time and look "stuck").
 AUTO_INSTALL_MISSING_PACKAGES <- FALSE
+DRY_RUN <- is_dry_run()
 
 # Note: 
 # - If PERFORM_SIMPLIFICATION = FALSE, only full results are computed and saved
@@ -83,6 +84,10 @@ loadPkg <- function(pkg) {
 
 setupPackages <- function() {
   setup_start <- Sys.time()
+  if (isTRUE(DRY_RUN)) {
+    message("[Package setup] Dry run: skipping analysis package checks.")
+    return(invisible(TRUE))
+  }
   message("[Package setup] Checking dependencies...")
 
   # Ensure a CRAN mirror is set for non-interactive sessions
@@ -133,8 +138,6 @@ setupPackages <- function() {
 
   message("[Package setup] Ready in ", round(as.numeric(difftime(Sys.time(), setup_start, units = "secs")), 2), " sec")
 }
-
-setupPackages()
 
 # ----------------------------------------------------
 # 2. DIRECTORY ORGANIZATION FUNCTIONS
@@ -208,6 +211,7 @@ read_config <- function(config_path) {
       prewarm_workers = TRUE,
       show_progress = TRUE,
       show_step_progress = TRUE,
+      dry_run = FALSE,
       config_file = config_path
     ),
     paths = list(
@@ -283,6 +287,59 @@ make_manifest_row <- function(result_type, ontology, comparison_name, dirs, inpu
     created_at = format(Sys.time(), "%Y-%m-%d %H:%M:%S %z"),
     stringsAsFactors = FALSE
   )[manifest_columns]
+}
+
+count_table_rows <- function(path) {
+  if (!file.exists(path)) return(NA_integer_)
+  out <- tryCatch(nrow(read.csv(path, stringsAsFactors = FALSE, check.names = FALSE)), error = function(e) NA_integer_)
+  as.integer(out)
+}
+
+reconstruct_checkpoint_manifest <- function(dirs, comparison_name, data_path, config_path, ont, plot_suffix) {
+  rows <- list()
+  gsea_table <- file.path(dirs$core_enrich_routed, paste0(comparison_name, plot_suffix, ".csv"))
+  if (file.exists(gsea_table)) {
+    gsea_plot <- file.path(dirs$plots_go, paste0("GSEA_", ont, "_dotplot", plot_suffix, ".svg"))
+    rows[[length(rows) + 1]] <- make_manifest_row(
+      result_type = "GSEA_GO",
+      ontology = ont,
+      comparison_name = comparison_name,
+      dirs = dirs,
+      input_gene_file = data_path,
+      config_path = config_path,
+      output_table = gsea_table,
+      output_plot = if (file.exists(gsea_plot)) gsea_plot else NA_character_,
+      n_genes = NA_integer_,
+      n_terms = count_table_rows(gsea_table),
+      simplified = identical(plot_suffix, "_simplified"),
+      used_for_plot = TRUE,
+      plot_suffix = plot_suffix,
+      checkpoint_status = "reconstructed_from_checkpoint"
+    )
+  }
+
+  kegg_table <- file.path(CANONICAL_PATHS$source_data, "KEGG", dirs$route_category, dirs$route_unit, paste0(comparison_name, "_KEGG.csv"))
+  if (file.exists(kegg_table)) {
+    kegg_plot <- file.path(dirs$plots_kegg, "KEGG_dotplot.svg")
+    rows[[length(rows) + 1]] <- make_manifest_row(
+      result_type = "GSEA_KEGG",
+      ontology = "KEGG",
+      comparison_name = comparison_name,
+      dirs = dirs,
+      input_gene_file = data_path,
+      config_path = config_path,
+      output_table = kegg_table,
+      output_plot = if (file.exists(kegg_plot)) kegg_plot else NA_character_,
+      n_genes = NA_integer_,
+      n_terms = count_table_rows(kegg_table),
+      simplified = FALSE,
+      used_for_plot = TRUE,
+      plot_suffix = "_KEGG",
+      checkpoint_status = "reconstructed_from_checkpoint"
+    )
+  }
+
+  dplyr::bind_rows(rows)
 }
 
 write_log_line <- function(log_file, level = "INFO", comparison = "GLOBAL", step = "GENERAL", message_text = "") {
@@ -501,17 +558,19 @@ cfg$paths$mapped_dir <- as_repo_path(cfg$paths$mapped_dir)
 cfg$paths$working_base <- as_repo_path(cfg$paths$working_base)
 cfg$paths$mapped_data_base <- as_repo_path(cfg$paths$mapped_data_base)
 cfg$paths$background_universe_file <- as_repo_path(cfg$paths$background_universe_file)
+DRY_RUN <- is_dry_run(cfg)
 
 PERFORM_SIMPLIFICATION <- isTRUE(cfg$simplification$perform)
 USE_SIMPLIFIED_FOR_PLOTS <- isTRUE(cfg$simplification$use_for_plots)
 SIMPLIFY_CUTOFF <- as.numeric(cfg$simplification$cutoff)
 
 mapped_dir <- cfg$paths$mapped_dir
-if (!dir.exists(mapped_dir)) {
+mapped_dir_exists <- dir.exists(mapped_dir)
+if (!mapped_dir_exists && !isTRUE(DRY_RUN)) {
   stop("Mapped data directory does not exist: ", mapped_dir)
 }
 
-comparison_files <- list.files(mapped_dir, pattern = "\\.csv$", full.names = FALSE)
+comparison_files <- if (mapped_dir_exists) list.files(mapped_dir, pattern = "\\.csv$", full.names = FALSE) else character(0)
 comparison_list <- lapply(comparison_files, function(f) {
   parts <- strsplit(sub("\\.csv$", "", f), "_", fixed = TRUE)[[1]]
   parts <- parts[nzchar(parts)]
@@ -519,7 +578,7 @@ comparison_list <- lapply(comparison_files, function(f) {
 })
 comparison_list <- Filter(Negate(is.null), comparison_list)
 
-if (length(comparison_list) == 0) {
+if (length(comparison_list) == 0 && !isTRUE(DRY_RUN)) {
   stop("No valid comparison files found in: ", mapped_dir)
 }
 
@@ -547,8 +606,44 @@ runtime_params <- list(
   force_rerun = isTRUE(cfg$runtime$force_rerun),
   prewarm_workers = isTRUE(cfg$runtime$prewarm_workers),
   show_progress = isTRUE(cfg$runtime$show_progress),
-  show_step_progress = isTRUE(cfg$runtime$show_step_progress)
+  show_step_progress = isTRUE(cfg$runtime$show_step_progress),
+  dry_run = isTRUE(cfg$runtime$dry_run)
 )
+
+if (isTRUE(DRY_RUN)) {
+  expected_dirs <- unlist(CANONICAL_PATHS, use.names = TRUE)
+  diagnostics <- data.frame(
+    check = c("config_exists", "mapped_dir_exists", "comparison_files_found", "canonical_dirs"),
+    status = c(
+      if (file.exists(config_path)) "PASS" else "WARN",
+      if (mapped_dir_exists) "PASS" else "FAIL",
+      if (length(comparison_files) > 0) "PASS" else "FAIL",
+      "PASS"
+    ),
+    detail = c(
+      config_path,
+      mapped_dir,
+      paste0(length(comparison_files), " csv file(s)"),
+      paste(names(expected_dirs), expected_dirs, sep = "=", collapse = "; ")
+    ),
+    stringsAsFactors = FALSE
+  )
+  dry_run_line("Script", "01_clusterProfiler.r")
+  dry_run_line("Config", config_path, diagnostics$status[1])
+  dry_run_line("Mapped directory", mapped_dir, diagnostics$status[2])
+  dry_run_line("Comparison CSV count", length(comparison_files), diagnostics$status[3])
+  if (length(comparison_files) > 0) {
+    dry_run_line("First comparisons", paste(head(comparison_files, 10), collapse = ", "))
+  }
+  dry_run_line("Ontology", cfg$analysis$ontology)
+  dry_run_line("Result manifest", file.path(CANONICAL_PATHS$processed, "clusterProfiler_manifest.csv"))
+  dry_run_file <- file.path(CANONICAL_PATHS$reports, "clusterProfiler_dry_run_diagnostics.csv")
+  write.csv(diagnostics, dry_run_file, row.names = FALSE)
+  dry_run_line("Diagnostics written", dry_run_file)
+  quit(status = if (any(diagnostics$status == "FAIL")) 1 else 0, save = "no")
+}
+
+setupPackages()
 
 run_id <- format(Sys.time(), "%Y%m%d_%H%M%S")
 run_log_dir <- CANONICAL_PATHS$logs
@@ -715,19 +810,22 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
     print_progress_step(comparison_name, "SETUP", "Output directories ready", runtime_params$show_step_progress)
     qc_path <- file.path(dirs$results, "QC_summary.csv")
 
+    # Define data file path before checkpoint handling so skipped comparisons
+    # can still reconstruct manifest rows from existing canonical outputs.
+    file_name <- paste0(comparison_name, ".csv")
+    cat("Looking for data file:", file_name, "\n")
+    data_path <- file.path(mapped_data_base, file_name)
+    cat("Full data path:", data_path, "\n")
+
     if (isTRUE(runtime_params$resume_if_complete) && !isTRUE(runtime_params$force_rerun) && is_completed_checkpoint(dirs)) {
       write_log_line(comparison_log, "INFO", comparison_name, "CHECKPOINT", "Checkpoint found; skipping comparison")
+      checkpoint_plot_suffix <- if (PERFORM_SIMPLIFICATION && USE_SIMPLIFIED_FOR_PLOTS) "_simplified" else "_full"
+      manifest_rows <- list(reconstruct_checkpoint_manifest(dirs, comparison_name, data_path, config_path, ont, plot_suffix = checkpoint_plot_suffix))
       qc$status <- "SKIPPED"
       qc$runtime_seconds <- as.numeric(difftime(Sys.time(), run_start, units = "secs"))
       write.csv(qc, qc_path, row.names = FALSE)
       return(list(status = "SKIPPED", comparison = comparison_name, error = NA_character_, qc = qc, manifest = dplyr::bind_rows(manifest_rows)))
     }
-
-    # Define data file path
-    file_name <- paste0(comparison_name, ".csv")
-    cat("Looking for data file:", file_name, "\n")
-    data_path <- file.path(mapped_data_base, file_name)
-    cat("Full data path:", data_path, "\n")
 
     if (!file.exists(data_path)) {
       write_log_line(comparison_log, "ERROR", comparison_name, "INPUT", paste0("File not found: ", data_path))
