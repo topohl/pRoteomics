@@ -52,8 +52,25 @@ CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
 
 # Package installation policy. Keep FALSE for reproducible, fail-fast runs.
 AUTO_INSTALL_MISSING_PACKAGES <- FALSE
+DRY_RUN <- is_dry_run()
+if (!isTRUE(DRY_RUN)) {
+  early_config_candidates <- c(
+    file.path(getwd(), "compareGO_config.yml"),
+    file.path(getwd(), "compareGO_config.local.yml"),
+    file.path(getwd(), "config", "compareGO_config.yml"),
+    file.path(getwd(), "config", "compareGO_config.local.yml"),
+    repo_path("config", "compareGO_config.local.yml"),
+    repo_path("config", "compareGO_config.yml")
+  )
+  early_config <- early_config_candidates[file.exists(early_config_candidates)][1]
+  if (!is.na(early_config)) {
+    cfg_lines <- readLines(early_config, warn = FALSE)
+    DRY_RUN <- any(grepl("^\\s*dry_run\\s*:\\s*true\\s*$", cfg_lines, ignore.case = TRUE))
+  }
+}
 
 require_or_stop <- function(pkgs, bioc = FALSE) {
+  if (isTRUE(DRY_RUN)) return(invisible(TRUE))
   missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
   if (length(missing) == 0) return(invisible(TRUE))
   if (isTRUE(AUTO_INSTALL_MISSING_PACKAGES)) {
@@ -73,24 +90,26 @@ require_or_stop <- function(pkgs, bioc = FALSE) {
 # Load Required Libraries
 # -----------------------------------------------------
 
-if (!requireNamespace("BiocManager", quietly=TRUE) && isTRUE(AUTO_INSTALL_MISSING_PACKAGES))
+if (!isTRUE(DRY_RUN) && !requireNamespace("BiocManager", quietly=TRUE) && isTRUE(AUTO_INSTALL_MISSING_PACKAGES))
     install.packages("BiocManager")
 # Ensure 'rlang' version >= 1.1.7 is installed before running this script.
-if (!requireNamespace("rlang", quietly=TRUE) || packageVersion("rlang") < "1.1.7") {
+if (!isTRUE(DRY_RUN) && (!requireNamespace("rlang", quietly=TRUE) || packageVersion("rlang") < "1.1.7")) {
     stop("Please install 'rlang' version >= 1.1.7 manually before running this script.")
 }
-if (!requireNamespace("simplifyEnrichment", quietly=TRUE)) {
+if (!isTRUE(DRY_RUN) && !requireNamespace("simplifyEnrichment", quietly=TRUE)) {
     if (isTRUE(AUTO_INSTALL_MISSING_PACKAGES)) {
       BiocManager::install("simplifyEnrichment", force = TRUE)
     } else {
       stop("Please install 'simplifyEnrichment' manually before running this script.")
     }
 }
-library(simplifyEnrichment)
-library(dplyr)
-library(stringr)
-library(purrr)
-library(writexl)
+if (!isTRUE(DRY_RUN)) {
+  library(simplifyEnrichment)
+  library(dplyr)
+  library(stringr)
+  library(purrr)
+  library(writexl)
+}
 
 cran_required <- c(
   "ggplot2", "stringr", "ggpubr", "ggthemes", "dplyr", "tidyr", "purrr",
@@ -98,7 +117,9 @@ cran_required <- c(
   "ggrepel", "magick"
 )
 require_or_stop(cran_required)
-suppressPackageStartupMessages(invisible(lapply(cran_required, library, character.only = TRUE)))
+if (!isTRUE(DRY_RUN)) {
+  suppressPackageStartupMessages(invisible(lapply(cran_required, library, character.only = TRUE)))
+}
 
 # -----------------------------------------------------
 # Define Theme and Helper Functions
@@ -298,13 +319,15 @@ calc_comparison_similarity <- function(core_genes_df) {
 
 # Load additional packages for new analyses
 require_or_stop(c("ggridges", "UpSetR", "networkD3", "alluvial", "ggalluvial"))
-suppressPackageStartupMessages({
-  library(ggridges)
-  library(UpSetR)
-  library(networkD3)
-  library(alluvial)
-  library(ggalluvial)
-})
+if (!isTRUE(DRY_RUN)) {
+  suppressPackageStartupMessages({
+    library(ggridges)
+    library(UpSetR)
+    library(networkD3)
+    library(alluvial)
+    library(ggalluvial)
+  })
+}
 
 # =====================================================
 # CONSOLIDATE LOG2FC DATA LOADING (Eliminate Redundancy)
@@ -321,6 +344,8 @@ read_comparego_config <- function(config_path) {
     route_category = "phenotype_within_unit",
     route_unit = "",
     result_types = c("GSEA_GO"),
+    run_id = "",
+    clusterProfiler_config_hash = "",
     clusterProfiler_manifest = path_processed(
       MODULE_ID, "clusterProfiler", "clusterProfiler_manifest.csv"
     ),
@@ -347,6 +372,7 @@ config_candidates <- c(
 )
 comparego_config_path <- config_candidates[file.exists(config_candidates)][1] %||% config_candidates[1]
 comparego_cfg <- read_comparego_config(comparego_config_path)
+DRY_RUN <- is_dry_run(comparego_cfg)
 
 as_repo_path <- function(path) {
   if (is.null(path) || !nzchar(path)) return(path)
@@ -363,6 +389,81 @@ condition <- as.character(comparego_cfg$route_unit)
 base_project_path <- repo_root()
 
 manifest_path <- as.character(comparego_cfg$clusterProfiler_manifest)
+if (isTRUE(DRY_RUN)) {
+  diagnostics <- data.frame(check = character(), status = character(), detail = character(), stringsAsFactors = FALSE)
+  add_diag <- function(check, status, detail) {
+    diagnostics <<- rbind(diagnostics, data.frame(check = check, status = status, detail = detail, stringsAsFactors = FALSE))
+  }
+  add_diag("config_exists", if (file.exists(comparego_config_path)) "PASS" else "WARN", comparego_config_path)
+  add_diag("manifest_exists", if (file.exists(manifest_path)) "PASS" else "FAIL", manifest_path)
+  if (file.exists(manifest_path)) {
+    dry_manifest <- utils::read.csv(manifest_path, stringsAsFactors = FALSE, check.names = FALSE)
+    dry_required_cols <- c(
+      "analysis_id", "run_id", "ontology", "result_type", "comparison",
+      "route_category", "route_unit", "used_for_plot", "input_gene_file",
+      "input_hash", "config_hash", "output_table", "n_terms", "empty_result"
+    )
+    missing_cols <- setdiff(dry_required_cols, names(dry_manifest))
+    add_diag("manifest_schema", if (length(missing_cols) == 0) "PASS" else "FAIL", paste(missing_cols, collapse = ", "))
+    if (length(missing_cols) == 0) {
+      dry_filtered <- dry_manifest[
+        dry_manifest$ontology == as.character(comparego_cfg$ontology) &
+          dry_manifest$result_type %in% unlist(comparego_cfg$result_types) &
+          dry_manifest$used_for_plot %in% TRUE,
+        ,
+        drop = FALSE
+      ]
+      if (nzchar(as.character(comparego_cfg$route_unit))) {
+        dry_filtered <- dry_filtered[
+          dry_filtered$route_category == as.character(comparego_cfg$route_category) &
+            dry_filtered$route_unit == as.character(comparego_cfg$route_unit),
+          ,
+          drop = FALSE
+        ]
+      } else {
+        dry_filtered <- dry_filtered[
+          dry_filtered$route_category == as.character(comparego_cfg$route_category),
+          ,
+          drop = FALSE
+        ]
+      }
+      add_diag("manifest_rows_selected", if (nrow(dry_filtered) > 0) "PASS" else "FAIL", paste0(nrow(dry_filtered), " row(s)"))
+      if (nrow(dry_filtered) > 0) {
+        if (nzchar(as.character(comparego_cfg$run_id))) {
+          dry_filtered <- dry_filtered[dry_filtered$run_id == as.character(comparego_cfg$run_id), , drop = FALSE]
+          add_diag("run_id_filter", if (nrow(dry_filtered) > 0) "PASS" else "FAIL", paste0(nrow(dry_filtered), " row(s)"))
+        }
+        if (nzchar(as.character(comparego_cfg$clusterProfiler_config_hash))) {
+          dry_filtered <- dry_filtered[dry_filtered$config_hash == as.character(comparego_cfg$clusterProfiler_config_hash), , drop = FALSE]
+          add_diag("config_hash_filter", if (nrow(dry_filtered) > 0) "PASS" else "FAIL", paste0(nrow(dry_filtered), " row(s)"))
+        } else {
+          add_diag("selected_config_hashes", if (length(unique(dry_filtered$config_hash)) <= 1) "PASS" else "WARN", paste(unique(dry_filtered$config_hash), collapse = "; "))
+        }
+        key <- paste(dry_filtered$ontology, dry_filtered$result_type, dry_filtered$comparison, dry_filtered$route_category, dry_filtered$route_unit, sep = "|")
+        add_diag("duplicate_manifest_rows", if (anyDuplicated(key) == 0) "PASS" else "FAIL", paste0(sum(duplicated(key)), " duplicate row(s)"))
+        missing_tables <- dry_filtered$output_table[!file.exists(dry_filtered$output_table)]
+        missing_inputs <- unique(dry_filtered$input_gene_file[!file.exists(dry_filtered$input_gene_file)])
+        add_diag("output_tables_exist", if (length(missing_tables) == 0) "PASS" else "FAIL", paste(missing_tables, collapse = "; "))
+        add_diag("mapped_inputs_exist", if (length(missing_inputs) == 0) "PASS" else "FAIL", paste(missing_inputs, collapse = "; "))
+        current_hash <- vapply(dry_filtered$input_gene_file, file_hash, character(1))
+        stale <- !is.na(dry_filtered$input_hash) & !is.na(current_hash) & dry_filtered$input_hash != current_hash
+        add_diag("input_hashes_match", if (!any(stale)) "PASS" else "FAIL", paste(dry_filtered$input_gene_file[stale], collapse = "; "))
+      }
+    }
+  }
+  dry_run_line("Script", "02_compareGO.r")
+  dry_run_line("Config", comparego_config_path, diagnostics$status[diagnostics$check == "config_exists"])
+  dry_run_line("Manifest", manifest_path, diagnostics$status[diagnostics$check == "manifest_exists"])
+  dry_run_line("Ontology", comparego_cfg$ontology)
+  dry_run_line("Route category", comparego_cfg$route_category)
+  dry_run_line("Route unit", comparego_cfg$route_unit)
+  dry_run_line("Result types", paste(unlist(comparego_cfg$result_types), collapse = ", "))
+  dry_run_file <- file.path(CANONICAL_PATHS$reports, "compareGO_dry_run_diagnostics.csv")
+  write.csv(diagnostics, dry_run_file, row.names = FALSE)
+  dry_run_line("Diagnostics written", dry_run_file)
+  quit(status = if (any(diagnostics$status == "FAIL")) 1 else 0, save = "no")
+}
+
 if (!file.exists(manifest_path)) {
   stop("clusterProfiler manifest not found: ", manifest_path,
        "\nRun 04_differential_expression_enrichment/01_clusterProfiler.r first.", call. = FALSE)
@@ -395,6 +496,23 @@ if (nrow(manifest_filtered) == 0) {
        ", route_category=", ensemble_profiling,
        if (nzchar(condition)) paste0(", route_unit=", condition) else "",
        ". Update config/compareGO_config.yml or rerun clusterProfiler.", call. = FALSE)
+}
+
+if (nzchar(as.character(comparego_cfg$run_id))) {
+  manifest_filtered <- manifest_filtered %>% filter(run_id == as.character(comparego_cfg$run_id))
+  if (nrow(manifest_filtered) == 0) {
+    stop("No manifest rows remain after run_id filter: ", comparego_cfg$run_id, call. = FALSE)
+  }
+}
+if (nzchar(as.character(comparego_cfg$clusterProfiler_config_hash))) {
+  manifest_filtered <- manifest_filtered %>% filter(config_hash == as.character(comparego_cfg$clusterProfiler_config_hash))
+  if (nrow(manifest_filtered) == 0) {
+    stop("No manifest rows remain after clusterProfiler_config_hash filter: ",
+         comparego_cfg$clusterProfiler_config_hash, call. = FALSE)
+  }
+} else if (length(unique(manifest_filtered$config_hash)) > 1) {
+  warning("Selected compareGO manifest rows contain multiple clusterProfiler config_hash values. ",
+          "Set clusterProfiler_config_hash in config/compareGO_config.yml to pin one run/config.")
 }
 
 duplicate_keys <- manifest_filtered %>%
