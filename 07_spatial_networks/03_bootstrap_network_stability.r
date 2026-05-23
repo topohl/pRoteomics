@@ -1,4 +1,11 @@
 # ================================================================
+# Consumes:
+#   - spatial network RDS from data/processed/07_spatial_networks/network_spatial_relations/
+# Produces:
+#   - bootstrap stability tables, figures, network files and RDS cache in canonical folders
+# File contract:
+#   - docs/active_script_io_audit.tsv object 07_spatial_networks/03_bootstrap_network_stability.r
+# ================================================================
 # Bootstrap stability analysis for spatial proteomics networks
 # ================================================================
 # Purpose:
@@ -17,19 +24,33 @@
 #   - stability heatmaps and network plots
 # ================================================================
 
-required_pkgs <- c("dplyr", "tidyr", "stringr", "purrr", "tibble", "ggplot2", "pheatmap", "igraph", "ggraph", "openxlsx", "svglite")
-missing <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
-if (length(missing) > 0) install.packages(missing, repos = "https://cloud.r-project.org")
-invisible(lapply(required_pkgs, library, character.only = TRUE))
+paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
+source(paths_file)
+MODULE_ID <- "07_spatial_networks"
+SUBSTEP_ID <- "bootstrap_network_stability"
+CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
 
 params <- list(
-  spatial_rds = "/Users/tobiaspohl/Documents/pRoteomics/Results/network_spatial_relations/04_Logs/network_spatial_relations_objects.rds",
-  output_dir = "/Users/tobiaspohl/Documents/pRoteomics/Results/bootstrap_network_stability",
+  spatial_rds = path_processed("07_spatial_networks", "network_spatial_relations", "network_spatial_relations_objects.rds"),
+  output_dir = CANONICAL_PATHS$reports,
   n_boot = 250,
   edge_abs_r_threshold = 0.50,
   consensus_frequency_threshold = 0.70,
   seed = 1234
 )
+
+if (is_dry_run()) {
+  dry_run_line("Script", "07_spatial_networks/03_bootstrap_network_stability.r")
+  dry_run_line("Spatial RDS", params$spatial_rds, if (file.exists(params$spatial_rds)) "PASS" else "FAIL")
+  dry_run_line("Output folders", paste(unlist(CANONICAL_PATHS), collapse = "; "))
+  quit(status = if (file.exists(params$spatial_rds)) 0 else 1, save = "no")
+}
+if (!file.exists(params$spatial_rds)) stop("spatial_rds not found: ", params$spatial_rds, call. = FALSE)
+
+required_pkgs <- c("dplyr", "tidyr", "stringr", "purrr", "tibble", "ggplot2", "pheatmap", "igraph", "ggraph", "openxlsx", "svglite")
+missing <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
+if (length(missing) > 0) install.packages(missing, repos = "https://cloud.r-project.org")
+invisible(lapply(required_pkgs, library, character.only = TRUE))
 
 message2 <- function(...) message(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), " | ", ...)
 safe_name <- function(x) stringr::str_replace_all(as.character(x), "[^A-Za-z0-9_\\-]+", "_")
@@ -37,10 +58,10 @@ safe_name <- function(x) stringr::str_replace_all(as.character(x), "[^A-Za-z0-9_
 make_dirs <- function(base_dir) {
   dirs <- list(
     base = base_dir,
-    tables = file.path(base_dir, "01_Tables"),
-    figures = file.path(base_dir, "02_Figures"),
-    networks = file.path(base_dir, "03_Network_Files"),
-    logs = file.path(base_dir, "04_Logs")
+    tables = CANONICAL_PATHS$tables,
+    figures = CANONICAL_PATHS$figures,
+    networks = file.path(CANONICAL_PATHS$processed, "network_files"),
+    logs = CANONICAL_PATHS$logs
   )
   invisible(lapply(dirs, dir.create, recursive = TRUE, showWarnings = FALSE))
   dirs
@@ -193,6 +214,7 @@ write_graphml <- function(edge_summary, outfile, threshold) {
 # -------------------------------
 set.seed(params$seed)
 dirs <- make_dirs(params$output_dir)
+write_session_info(file.path(dirs$logs, "sessionInfo.txt"))
 log_file <- file.path(dirs$logs, paste0("bootstrap_network_stability_run_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".txt"))
 sink(log_file, split = TRUE)
 on.exit(sink(), add = TRUE)
