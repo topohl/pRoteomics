@@ -1,0 +1,47 @@
+name: R smoke test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  syntax-and-dry-run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-r@v2
+
+      - name: Parse active R scripts
+        shell: Rscript {0}
+        run: |
+          files <- list.files(pattern = "[.][Rr]$", recursive = TRUE, full.names = TRUE)
+          active <- files[!grepl("^(./)?(90_testing|99_deprecated)/", files)]
+          bad <- character()
+          for (f in active) {
+            ok <- tryCatch({ parse(f); TRUE }, error = function(e) {
+              message(f, ": ", conditionMessage(e))
+              FALSE
+            })
+            if (!ok) bad <- c(bad, f)
+          }
+          message("Parsed active scripts: ", length(active) - length(bad), " / ", length(active))
+          if (length(bad)) quit(status = 1)
+
+      - name: Data-independent dry-runs
+        shell: bash
+        run: |
+          set -u
+          scripts=(
+            "01_preprocessing/03_gct_extractR.r"
+            "02_id_mapping/01_MapThatProt_batch.r"
+            "04_differential_expression_enrichment/01_clusterProfiler.r"
+            "04_differential_expression_enrichment/02_compareGO.r"
+            "07_spatial_networks/01_network_spatial_relations.r"
+            "09_export_pride_journal/04_validate_pride_submission.R"
+          )
+          for script in "${scripts[@]}"; do
+            echo "::group::$script --dry-run"
+            Rscript "$script" --dry-run || true
+            echo "::endgroup::"
+          done
