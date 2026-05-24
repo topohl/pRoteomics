@@ -2768,6 +2768,9 @@ if (!all(c("gene_symbol", "log2fc", "padj", "Comparison") %in% names(log2fc_long
   warning("Gene-centric Log2FC analysis skipped: required columns missing in log2fc_long.")
   gene_fc_summary <- tibble(
     gene_symbol = character(),
+    Uniprot_Accession = character(),
+    Gene_Name = character(),
+    Gene_Display = character(),
     Comparison = character(),
     count = integer(),
     mean_log2fc = numeric(),
@@ -2784,13 +2787,18 @@ if (!all(c("gene_symbol", "log2fc", "padj", "Comparison") %in% names(log2fc_long
       mean_log2fc = mean(log2fc, na.rm = TRUE),
       min_padj = min(padj, na.rm = TRUE),
       .groups = "drop"
+    ) %>%
+    left_join(uniprot_subset %>% dplyr::select(UniprotID, Gene_Name), by = c("gene_symbol" = "UniprotID")) %>%
+    mutate(
+      Uniprot_Accession = gene_symbol,
+      Gene_Display = ifelse(is.na(Gene_Name) | Gene_Name == "", gene_symbol, Gene_Name)
     )
 
   if (nrow(gene_fc_summary) > 0 && any(is.finite(gene_fc_summary$mean_log2fc))) {
     max_abs_fc <- max(abs(gene_fc_summary$mean_log2fc), na.rm = TRUE)
     plot_gene_fc <- ggplot(gene_fc_summary, aes(
       x = Comparison,
-      y = gene_symbol,
+      y = Gene_Display,
       size = count,
       fill = mean_log2fc
     )) +
