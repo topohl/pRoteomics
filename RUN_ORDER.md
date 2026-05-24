@@ -35,6 +35,28 @@ data/processed/02_id_mapping/mapped_protein_matrix.tsv
 data/processed/02_id_mapping/mapped/forward/per_file/*.csv
 ```
 
+The current canonical contrast handoff is:
+
+```bash
+Rscript 01_preprocessing/03_gct_extractR.r --dry-run
+Rscript 02_id_mapping/01_MapThatProt_batch.r --dry-run
+```
+
+`03_gct_extractR.r` writes split contrast CSVs to:
+
+```text
+data/processed/01_preprocessing/gct_extractR/<comparison>/forward/
+data/processed/01_preprocessing/gct_extractR/<comparison>/reverse/
+```
+
+`01_MapThatProt_batch.r` defaults to `PROTEOMICS_MAP_DIRECTION=forward` and writes clusterProfiler-ready files to:
+
+```text
+data/processed/02_id_mapping/mapped/forward/per_file/
+```
+
+Set `PROTEOMICS_MAP_DIRECTION=reverse` only when intentionally producing reverse contrasts.
+
 ## 3. QC and exploratory analysis
 
 ```text
@@ -138,9 +160,10 @@ Rscript 06_modules_WGCNA/91_module_score_v0.0.2.r --dry-run
 
 Typical outputs include region/layer network edge tables, differential networks, and bootstrap stability summaries.
 
-Phase 3 canonicalized downstream network scripts:
+Phase 4 canonicalized the spatial-network producer and Phase 3 canonicalized downstream network scripts:
 
 ```bash
+Rscript 07_spatial_networks/01_network_spatial_relations.r --dry-run
 Rscript 07_spatial_networks/02_differential_networks.r --dry-run
 Rscript 07_spatial_networks/03_bootstrap_network_stability.r --dry-run
 Rscript 07_spatial_networks/04_bootstrap_differential_network_stability.r --dry-run
@@ -154,7 +177,7 @@ These scripts expect the canonical spatial object:
 data/processed/07_spatial_networks/network_spatial_relations/network_spatial_relations_objects.rds
 ```
 
-`01_network_spatial_relations.r` is still the key producer to canonicalize with data present.
+`01_network_spatial_relations.r` now writes that canonical object while preserving the downstream RDS structure expected by the other network and behavior scripts.
 
 ## 8. Behavior and physiology coupling
 

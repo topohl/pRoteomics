@@ -121,4 +121,18 @@ Scripts left unchanged in Phase 3 are documented because they are central produc
 - `07_spatial_networks/01_network_spatial_relations.r`
 - `08_behavior_physio_coupling/01_correlate_proteomics_with_behavior.r`
 
-The main remaining dependency gap is `07_spatial_networks/01_network_spatial_relations.r`: downstream Phase 3 scripts now expect `data/processed/07_spatial_networks/network_spatial_relations/network_spatial_relations_objects.rds`, but the producer itself still needs a data-aware canonicalization pass.
+## Phase 4 Producer Refactors
+
+Phase 4 fixed the main remaining spatial-network dependency gap. `07_spatial_networks/01_network_spatial_relations.r` now writes the canonical downstream object:
+
+`data/processed/07_spatial_networks/network_spatial_relations/network_spatial_relations_objects.rds`
+
+The object preserves the legacy downstream structure (`expression_matrix`, `sample_metadata`, `region_layer_matrix`, `overall_spearman`, `overall_jaccard`, `nodes`, `group_specific`) and adds an input manifest with file hashes. Tables, figures, source data, network files, logs, and reports are split across the canonical `data/processed/07_spatial_networks/network_spatial_relations/` and `results/*/07_spatial_networks/network_spatial_relations/` folders.
+
+Phase 4 also canonicalized the preprocessing to ID-mapping contract:
+
+- `01_preprocessing/03_gct_extractR.r` reads a GCT from `data/processed/01_preprocessing/protigy_output/<comparison>/` and writes split contrast CSVs to `data/processed/01_preprocessing/gct_extractR/<comparison>/{forward,reverse}/`.
+- `02_id_mapping/01_MapThatProt_batch.r` consumes those split CSVs plus `data/external/MOUSE_10090_idmapping.dat` and writes mapped contrast CSVs to `data/processed/02_id_mapping/mapped/<forward|reverse>/per_file/`.
+- The default mapping direction is now `forward`, matching the `clusterProfiler` contract. Reverse mapping remains available with `PROTEOMICS_MAP_DIRECTION=reverse`.
+
+No `setwd()` remains in these two scripts, and UniProt idmapping download is opt-in via `AUTO_DOWNLOAD_UNIPROT_MAPPING=true`.

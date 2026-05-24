@@ -22,38 +22,65 @@
 #' @author Tobias Pohl
 #' 
 #' @date 2025-12-15
+#'
+#' Consumes:
+#'   - contrast CSVs from data/processed/01_preprocessing/gct_extractR/<comparison>/<forward|reverse>/
+#'   - UniProt idmapping from data/external/MOUSE_10090_idmapping.dat
+#'   - optional manual mapping workbook from data/metadata/manual_mapping.xlsx
+#' Produces:
+#'   - mapped contrast CSVs under data/processed/02_id_mapping/mapped/<forward|reverse>/per_file/
+#'   - unmapped tracking under data/processed/02_id_mapping/unmapped/
+#'   - mapping summaries/reports/logs under results/{tables,reports,logs}/02_id_mapping/MapThatProt_batch/
+#' File contract:
+#'   - docs/file_contracts.tsv object mapped_contrast_csv
 
 cat("====================================================\n")
 cat("Starting MapThatProt_batch execution...\n")
 cat("====================================================\n")
 
-# --- Package Management ---
-# Automatically install and load necessary CRAN and Bioconductor packages.
-cat("Checking and loading required libraries...\n")
-if (!requireNamespace("pacman", quietly = TRUE)) install.packages("pacman")
-pacman::p_load(dplyr, stringr, tidyr, purrr, readr, R.utils, foreach, doParallel, readxl, AnnotationDbi, org.Mm.eg.db, UniProt.ws)
+paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
+source(paths_file)
+MODULE_ID <- "02_id_mapping"
+SUBSTEP_ID <- "MapThatProt_batch"
+CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
+
+load_required_packages <- function(pkgs) {
+    missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
+    if (length(missing) > 0) {
+        auto_install <- identical(tolower(Sys.getenv("AUTO_INSTALL_MISSING_PACKAGES", "false")), "true")
+        if (!auto_install) {
+            stop("Missing required R package(s): ", paste(missing, collapse = ", "),
+                 ". Set AUTO_INSTALL_MISSING_PACKAGES=true to install automatically.", call. = FALSE)
+        }
+        bioc_pkgs <- intersect(missing, c("AnnotationDbi", "org.Mm.eg.db", "UniProt.ws"))
+        cran_pkgs <- setdiff(missing, bioc_pkgs)
+        if (length(cran_pkgs)) install.packages(cran_pkgs, repos = "https://cloud.r-project.org")
+        if (length(bioc_pkgs)) {
+            if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager", repos = "https://cloud.r-project.org")
+            BiocManager::install(bioc_pkgs, ask = FALSE, update = FALSE)
+        }
+    }
+    invisible(lapply(pkgs, library, character.only = TRUE))
+}
 
 # --- Configuration & Experimental Settings ---
 mapped_comparisons <- "neuron_neuropil"  # specify the comparison folder to process
-map_reverse <- TRUE
+map_direction <- Sys.getenv("PROTEOMICS_MAP_DIRECTION", unset = "forward")
+if (!map_direction %in% c("forward", "reverse")) stop("PROTEOMICS_MAP_DIRECTION must be 'forward' or 'reverse'.", call. = FALSE)
+map_reverse <- identical(map_direction, "reverse")
 
 cat("Target Comparison:", mapped_comparisons, "\n")
-cat("Mapping Direction:", ifelse(map_reverse, "reverse", "forward"), "\n")
+cat("Mapping Direction:", map_direction, "\n")
 
-# Define root file paths
-working_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/"
-#working_dir <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/"
-cat("Working Directory:", working_dir, "\n")
-comparison_dir <- if (isTRUE(map_reverse)) file.path(mapped_comparisons, "reverse") else file.path(mapped_comparisons, "forward")
-raw_dir <- file.path(working_dir, "Datasets", "raw", comparison_dir)
+raw_dir <- path_processed("01_preprocessing", "gct_extractR", mapped_comparisons, map_direction)
 
 # Define output directories for mapped datasets, unmapped trackers, and QC info
-info_dir <- file.path(working_dir, "Datasets", "mapped", comparison_dir, "info")
-mapped_dir <- file.path(working_dir, "Datasets", "mapped", comparison_dir, "per_file")
-mapped_summary_dir <- file.path(working_dir, "Datasets", "mapped", comparison_dir, "summaries")
-unmapped_dir <- file.path(working_dir, "Datasets", "unmapped", comparison_dir, "per_file")
-unmapped_summary_dir <- file.path(working_dir, "Datasets", "unmapped", comparison_dir, "summaries")
-report_dir <- file.path(working_dir, "Datasets", "mapping_reports", comparison_dir)
+info_dir <- file.path(CANONICAL_PATHS$logs, "mapped", map_direction, "info")
+mapped_dir <- path_processed(MODULE_ID, "mapped", map_direction, "per_file")
+mapped_summary_dir <- file.path(CANONICAL_PATHS$tables, "mapped", map_direction, "summaries")
+unmapped_dir <- path_processed(MODULE_ID, "unmapped", map_direction, "per_file")
+unmapped_summary_dir <- file.path(CANONICAL_PATHS$tables, "unmapped", map_direction, "summaries")
+report_dir <- file.path(CANONICAL_PATHS$reports, "mapping_reports", map_direction)
 
 # Initialize output folder structure
 cat("Initializing output directories...\n")
@@ -64,14 +91,30 @@ dir.create(unmapped_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(unmapped_summary_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(report_dir, recursive = TRUE, showWarnings = FALSE)
 
-setwd(working_dir)
-
 # --- Reference Databases ---
 # Define path for central UniProt species-specific knowledgebase flatfile
-uniprot_mapping_file_path <- file.path(working_dir, "Datasets", "MOUSE_10090_idmapping.dat")
+uniprot_mapping_file_path <- path_external("MOUSE_10090_idmapping.dat")
+
+csv_files <- list.files(raw_dir, pattern = ".*_.*\\.csv$", full.names = TRUE)
+if (is_dry_run()) {
+    dry_run_line("Script", "02_id_mapping/01_MapThatProt_batch.r")
+    dry_run_line("Raw contrast directory", raw_dir, if (dir.exists(raw_dir)) "PASS" else "FAIL")
+    dry_run_line("Raw contrast CSV count", length(csv_files), if (length(csv_files) > 0) "PASS" else "FAIL")
+    dry_run_line("UniProt mapping file", uniprot_mapping_file_path, if (file.exists(uniprot_mapping_file_path)) "PASS" else "FAIL")
+    dry_run_line("Mapped output directory", mapped_dir)
+    dry_run_line("Reports directory", report_dir)
+    quit(status = if (dir.exists(raw_dir) && length(csv_files) > 0 && file.exists(uniprot_mapping_file_path)) 0 else 1, save = "no")
+}
+if (!dir.exists(raw_dir)) stop("Raw contrast directory not found: ", raw_dir, call. = FALSE)
+if (length(csv_files) == 0) stop("No .csv files found in: ", raw_dir, call. = FALSE)
 
 # Auto-download the UniProt mapping file if missing (useful for reproducibility)
 if (!file.exists(uniprot_mapping_file_path)) {
+    auto_download <- identical(tolower(Sys.getenv("AUTO_DOWNLOAD_UNIPROT_MAPPING", "false")), "true")
+    if (!auto_download) {
+        stop("UniProt mapping file not found: ", uniprot_mapping_file_path,
+             ". Place MOUSE_10090_idmapping.dat under data/external or set AUTO_DOWNLOAD_UNIPROT_MAPPING=true.", call. = FALSE)
+    }
     cat("UniProt mapping file not found at:", uniprot_mapping_file_path, "\nAttempting to download...\n")
     options(timeout = 3600)
     gz_url <- "https://ftp.uniprot.org/pub/databases/uniprot/knowledgebase/idmapping/by_organism/MOUSE_10090_idmapping.dat.gz"
@@ -82,6 +125,20 @@ if (!file.exists(uniprot_mapping_file_path)) {
         cat("Downloaded and unzipped the UniProt mapping file successfully.\n")
     }, error = function(e) stop("Failed to download/unzip UniProt mapping file: ", e$message))
 }
+
+cat("Checking and loading required libraries...\n")
+load_required_packages(c("dplyr", "stringr", "tidyr", "purrr", "readr", "R.utils", "foreach", "doParallel", "readxl", "openxlsx", "AnnotationDbi", "org.Mm.eg.db", "UniProt.ws"))
+write_session_info(file.path(CANONICAL_PATHS$logs, "sessionInfo.txt"))
+utils::write.csv(
+    data.frame(
+        input_type = c("raw_contrast_directory", "uniprot_mapping", "manual_mapping"),
+        path = c(raw_dir, uniprot_mapping_file_path, path_metadata("manual_mapping.xlsx")),
+        md5 = c(NA_character_, file_hash(uniprot_mapping_file_path), file_hash(path_metadata("manual_mapping.xlsx"))),
+        stringsAsFactors = FALSE
+    ),
+    file.path(CANONICAL_PATHS$logs, "MapThatProt_batch_input_manifest.csv"),
+    row.names = FALSE
+)
 
 # Parse the UniProt mapping dictionary natively into memory
 cat("Parsing UniProt idmapping dictionary into memory... (This may take a moment)\n")
@@ -100,18 +157,13 @@ entry_name_to_accession <- uniprot_mapping %>%
 
 if (nrow(entry_name_to_accession) == 0) stop("No UniProtKB-ID mappings found in mapping file.")
 
-# Collect raw target files for batch proteomic mapping
-csv_files <- list.files(raw_dir, pattern = ".*_.*\\.csv$", full.names = TRUE)
-if (length(csv_files) == 0) stop("No .csv files found in: ", raw_dir)
 cat("Found", length(csv_files), "CSV files to process in", raw_dir, "\n")
 
 # --- Manual Override Configuration ---
 # Optional manual curation file. This is crucial for resolving heavily ambiguous 
 # protein groups or unannotated gene symbols common in exploratory proteomics.
 cat("Checking for manual mapping override file...\n")
-if (!requireNamespace("readxl", quietly = TRUE)) install.packages("readxl")
-
-manual_mapping_path <- file.path(working_dir, "Datasets", "manual_mapping.xlsx")
+manual_mapping_path <- path_metadata("manual_mapping.xlsx")
 manual_override <- TRUE  # TRUE enforces curation over algorithmic mapping
 
 read_manual_xlsx <- function(path) {
@@ -875,7 +927,6 @@ coverage_stats <- mapping_full %>%
 
 # --- Generate Comprehensive Excel QC Document ---
 cat("Generating comprehensive Excel QC Report...\n")
-if (!requireNamespace("openxlsx", quietly = TRUE)) install.packages("openxlsx")
 
 report_file <- file.path(report_dir, "Mapping_QC_Report.xlsx")
 
