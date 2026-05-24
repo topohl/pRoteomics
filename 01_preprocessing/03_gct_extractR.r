@@ -1,38 +1,67 @@
 # ===========================================================
+# Consumes:
+#   - ProTigy/limma GCT comparison output from data/processed/01_preprocessing/protigy_output/<comparison>/
+# Produces:
+#   - forward/reverse raw contrast CSVs for ID mapping under data/processed/01_preprocessing/gct_extractR/<comparison>/
+# File contract:
+#   - feeds docs/file_contracts.tsv object mapped_contrast_csv through 02_id_mapping/01_MapThatProt_batch.r
+# ===========================================================
 # GCT Comparison Splitter: Per-Comparison Forward and Reverse Output
 # Robust version for Metric.Comparison formatted GCT files
 # Handles duplicate column names by keeping first occurrence only
 # Author: Tobias Pohl
 # ===========================================================
 
-# -------------------------------
-# Library Setup
-# -------------------------------
+paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
+source(paths_file)
+MODULE_ID <- "01_preprocessing"
+SUBSTEP_ID <- "gct_extractR"
+CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
 
 required_pkgs <- c("dplyr", "readr", "stringr", "purrr", "fs", "tibble")
 
-if (!requireNamespace("pacman", quietly = TRUE)) install.packages("pacman")
-library(pacman)
-pacman::p_load(char = required_pkgs)
+load_required_packages <- function(pkgs) {
+  missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
+  if (length(missing) > 0) {
+    auto_install <- identical(tolower(Sys.getenv("AUTO_INSTALL_MISSING_PACKAGES", "false")), "true")
+    if (!auto_install) {
+      stop("Missing required R package(s): ", paste(missing, collapse = ", "),
+           ". Set AUTO_INSTALL_MISSING_PACKAGES=true to install automatically.", call. = FALSE)
+    }
+    install.packages(missing, repos = "https://cloud.r-project.org")
+  }
+  invisible(lapply(pkgs, library, character.only = TRUE))
+}
 
 # -------------------------------
 # Parameters
 # -------------------------------
 
 use_label_map <- FALSE   # TRUE = con/res/sus mapping
+comparison_name <- Sys.getenv("PROTEOMICS_GCT_COMPARISON", unset = "neuron_neuropil")
 
 # -------------------------------
 # Input
 # -------------------------------
 
-setwd("S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets")
-
 input_file <- "20260218-pgmatrix-imputed-neuron-neuropil-180samples-missing70pct-with-metadata_Two-sample_mod_T_2026-04-30-transformed-p-val_n27x5054_merged_missing"
 
-gct_path <- file.path(
-  "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/protigy_output/neuron_neuropil",
-  paste0(input_file, ".gct")
-)
+gct_path <- path_processed("01_preprocessing", "protigy_output", comparison_name, paste0(input_file, ".gct"))
+outdir <- file.path(CANONICAL_PATHS$processed, comparison_name)
+
+if (is_dry_run()) {
+  outdir_fwd <- file.path(outdir, "forward")
+  outdir_rev <- file.path(outdir, "reverse")
+  dry_run_line("Script", "01_preprocessing/03_gct_extractR.r")
+  dry_run_line("GCT input", gct_path, if (file.exists(gct_path)) "PASS" else "FAIL")
+  dry_run_line("Forward output directory", outdir_fwd)
+  dry_run_line("Reverse output directory", outdir_rev)
+  dry_run_line("Index output", file.path(outdir, "indexComparisons.csv"))
+  quit(status = if (file.exists(gct_path)) 0 else 1, save = "no")
+}
+if (!file.exists(gct_path)) stop("GCT input not found: ", gct_path, call. = FALSE)
+load_required_packages(required_pkgs)
+write_session_info(file.path(CANONICAL_PATHS$logs, "sessionInfo.txt"))
 
 # -------------------------------
 # Helper Functions
@@ -205,20 +234,6 @@ by_comparison <- split(valid_cols, comparison_keys[valid_cols])
 
 data[valid_cols] <- lapply(data[valid_cols], readr::parse_number)
 
-# -------------------------------
-# Output Folder Structure
-# -------------------------------
-
-outdir_base <- "raw"
-
-fname <- basename(gct_path)
-subfolder <- basename(fs::path_dir(gct_path))
-
-if (is.na(subfolder) || subfolder == "") {
-  subfolder <- "unknown-comparison"
-}
-
-outdir <- file.path(outdir_base, subfolder)
 outdir_fwd <- file.path(outdir, "forward")
 outdir_rev <- file.path(outdir, "reverse")
 

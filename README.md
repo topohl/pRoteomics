@@ -101,6 +101,8 @@ Representative scripts:
 - `01_MapThatProt.r`
 - `02_MapThatProt_batch.r`
 
+The canonical contrast handoff is now `01_preprocessing/03_gct_extractR.r` to `02_id_mapping/01_MapThatProt_batch.r`, producing clusterProfiler-ready mapped files at `data/processed/02_id_mapping/mapped/forward/per_file/`.
+
 ---
 
 ## 03_qc_exploration
@@ -192,7 +194,7 @@ Representative scripts:
 - `02_differential_networks.r`
 - `03_bootstrap_network_stability.r`
 
-Phase 3 canonicalized `02_differential_networks.r`, `03_bootstrap_network_stability.r`, `04_bootstrap_differential_network_stability.r`, `05_bootstrap_differential_network_figures.r`, and `06_chord_diagram.r`. These downstream scripts expect the spatial object at `data/processed/07_spatial_networks/network_spatial_relations/network_spatial_relations_objects.rds`; the `01_network_spatial_relations.r` producer should be run or refactored with data present.
+Phase 4 canonicalized `01_network_spatial_relations.r`, and Phase 3 canonicalized `02_differential_networks.r`, `03_bootstrap_network_stability.r`, `04_bootstrap_differential_network_stability.r`, `05_bootstrap_differential_network_figures.r`, and `06_chord_diagram.r`. The producer writes the spatial object at `data/processed/07_spatial_networks/network_spatial_relations/network_spatial_relations_objects.rds`, which downstream network and behavior scripts consume.
 
 ---
 
