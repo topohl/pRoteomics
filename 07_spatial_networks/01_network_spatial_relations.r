@@ -1,4 +1,14 @@
 # ================================================================
+# Consumes:
+#   - processed proteomics matrix from data/processed/01_preprocessing/
+#   - sample metadata from data/metadata/
+# Produces:
+#   - canonical spatial network object:
+#     data/processed/07_spatial_networks/network_spatial_relations/network_spatial_relations_objects.rds
+#   - tables/figures/source data/logs/reports under results/*/07_spatial_networks/network_spatial_relations/
+# File contract:
+#   - docs/file_contracts.tsv object spatial_network_objects
+# ================================================================
 # Spatial layer-region network analysis for proteomics matrices
 # ================================================================
 # Purpose:
@@ -20,37 +30,61 @@
 #     exploratory unless bootstrap/sensitivity support is added.
 # ================================================================
 
-# -------------------------------
-# 0) Packages
-# -------------------------------
+paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
+source(paths_file)
+MODULE_ID <- "07_spatial_networks"
+SUBSTEP_ID <- "network_spatial_relations"
+CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
+
 required_pkgs <- c(
   "readxl", "dplyr", "tidyr", "stringr", "purrr", "tibble", "ggplot2",
   "pheatmap", "igraph", "ggraph", "openxlsx", "scales", "svglite"
 )
 
-install_if_missing <- function(pkgs) {
+load_required_packages <- function(pkgs) {
   missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
   if (length(missing) > 0) {
+    auto_install <- identical(tolower(Sys.getenv("AUTO_INSTALL_MISSING_PACKAGES", "false")), "true")
+    if (!auto_install) {
+      stop("Missing required R package(s): ", paste(missing, collapse = ", "),
+           ". Set AUTO_INSTALL_MISSING_PACKAGES=true to install automatically.", call. = FALSE)
+    }
     install.packages(missing, repos = "https://cloud.r-project.org")
   }
   invisible(lapply(pkgs, library, character.only = TRUE))
 }
-install_if_missing(required_pkgs)
+
+`%||%` <- function(x, y) {
+  if (is.null(x) || length(x) == 0) y else x
+}
+
+read_local_overrides <- function() {
+  cfg_file <- repo_path("config", "spatial_networks.local.yml")
+  if (!file.exists(cfg_file)) return(list())
+  if (!requireNamespace("yaml", quietly = TRUE)) {
+    warning("Ignoring config/spatial_networks.local.yml because package 'yaml' is not installed.")
+    return(list())
+  }
+  cfg <- yaml::read_yaml(cfg_file)
+  if (is.null(cfg)) list() else cfg
+}
+
+override_param <- function(params, key, value) {
+  if (!is.null(value) && length(value) == 1 && !is.na(value) && nzchar(as.character(value))) {
+    params[[key]] <- as.character(value)
+  }
+  params
+}
 
 # -------------------------------
 # 1) User parameters
 # -------------------------------
 params <- list(
-  # Typical Exp9 neuron-neuropil matrix. Change as needed.
-  #protein_file = "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/morpheus/20260218_pgmatrix_imputed_neuron_neuropil_180samples_missing70pct_with_metadata.xlsx",
-  protein_file = "/Users/tobiaspohl/Documents/pRoteomics/20260218_pgmatrix_imputed_neuron_neuropil_180samples_missing70pct.xlsx",
+  protein_file = path_processed("01_preprocessing", "20260218_pgmatrix_imputed_neuron_neuropil_180samples_missing70pct.xlsx"),
 
-  # EWCE/sample metadata file. The script uses sample_id/region/layer/celltype_layer/ExpGroup when available.
-  #metadata_file = "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Results/module_scores/sample_metadata_merged_clean_for_module_scores.xlsx",
-  metadata_file = "/Users/tobiaspohl/Documents/Data/proteomics/TPE9_sample_metadata_males.xlsx",
+  metadata_file = path_metadata("TPE9_sample_metadata_males.xlsx"),
 
-  #output_dir = "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Results/network_spatial_relations",
-  output_dir = "/Users/tobiaspohl/Documents/pRoteomics/Results/network_spatial_relations",
+  output_dir = CANONICAL_PATHS$reports,
 
   # Minimum fraction of non-missing values required for a protein after sample-column selection.
   min_nonmissing_fraction = 0.5,
@@ -81,6 +115,12 @@ params <- list(
   group_levels = c("CON", "RES", "SUS")
 )
 
+local_cfg <- read_local_overrides()
+params <- override_param(params, "protein_file", Sys.getenv("PROTEOMICS_SPATIAL_PROTEIN_FILE", unset = ""))
+params <- override_param(params, "metadata_file", Sys.getenv("PROTEOMICS_SPATIAL_METADATA_FILE", unset = ""))
+params <- override_param(params, "protein_file", local_cfg$protein_file %||% local_cfg$paths$protein_file)
+params <- override_param(params, "metadata_file", local_cfg$metadata_file %||% local_cfg$paths$metadata_file)
+
 # -------------------------------
 # 2) Helpers
 # -------------------------------
@@ -97,10 +137,13 @@ safe_name <- function(x) {
 make_dirs <- function(base_dir) {
   dirs <- list(
     base = base_dir,
-    tables = file.path(base_dir, "01_Tables"),
-    figures = file.path(base_dir, "02_Figures"),
-    networks = file.path(base_dir, "03_Network_Files"),
-    logs = file.path(base_dir, "04_Logs")
+    processed = CANONICAL_PATHS$processed,
+    tables = CANONICAL_PATHS$tables,
+    figures = CANONICAL_PATHS$figures,
+    source_data = CANONICAL_PATHS$source_data,
+    networks = file.path(CANONICAL_PATHS$processed, "network_files"),
+    logs = CANONICAL_PATHS$logs,
+    reports = CANONICAL_PATHS$reports
   )
   invisible(lapply(dirs, dir.create, recursive = TRUE, showWarnings = FALSE))
   dirs
@@ -537,13 +580,70 @@ run_group_specific <- function(expr, sample_md, dirs, params) {
   outputs
 }
 
+validate_required_inputs <- function(params) {
+  required <- c(params$protein_file, params$metadata_file)
+  required[!file.exists(required)]
+}
+
+dry_run_validate <- function(params) {
+  dirs <- make_dirs(params$output_dir)
+  missing_inputs <- validate_required_inputs(params)
+  dry_run_line("Script", "07_spatial_networks/01_network_spatial_relations.r")
+  dry_run_line("Protein matrix", params$protein_file, if (file.exists(params$protein_file)) "PASS" else "FAIL")
+  dry_run_line("Sample metadata", params$metadata_file, if (file.exists(params$metadata_file)) "PASS" else "FAIL")
+  dry_run_line("Canonical RDS", file.path(dirs$processed, "network_spatial_relations_objects.rds"))
+  dry_run_line("Output folders", paste(unlist(dirs), collapse = "; "))
+
+  if (length(missing_inputs) == 0 && requireNamespace("readxl", quietly = TRUE)) {
+    protein_cols <- names(readxl::read_excel(params$protein_file, n_max = 0))
+    metadata_cols <- names(readxl::read_excel(params$metadata_file, n_max = 0))
+    protein_header <- as.data.frame(stats::setNames(as.list(rep(NA, length(protein_cols))), protein_cols), check.names = FALSE)
+    metadata_header <- as.data.frame(stats::setNames(as.list(rep(NA, length(metadata_cols))), metadata_cols), check.names = FALSE)
+    protein_id_col <- find_first_col(protein_header, c(
+      "Gene", "Genes", "gene_symbol", "GeneSymbol", "Majority protein IDs",
+      "Protein IDs", "Protein.IDs", "Accession", "UniprotID", "UniProt", "ID"
+    ))
+    metadata_sample_col <- find_first_col(metadata_header, c(
+      "sample_id", "SampleID", "SampleColumn", "Raw_Sample", "Sample", "SampleName",
+      "sample_name", "filename", "File", "Run", "Label"
+    ))
+    dry_run_line("Protein ID column", ifelse(is.na(protein_id_col), "not detected; first column will be used", protein_id_col),
+                 ifelse(is.na(protein_id_col), "WARN", "PASS"))
+    dry_run_line("Metadata sample column", metadata_sample_col,
+                 ifelse(is.na(metadata_sample_col), "FAIL", "PASS"))
+    if (is.na(metadata_sample_col)) missing_inputs <- c(missing_inputs, params$metadata_file)
+  } else if (length(missing_inputs) == 0) {
+    dry_run_line("Column validation", "install readxl to validate workbook headers", "WARN")
+  }
+
+  quit(status = if (length(missing_inputs) == 0) 0 else 1, save = "no")
+}
+
+if (is_dry_run()) dry_run_validate(params)
+
+missing_inputs <- validate_required_inputs(params)
+if (length(missing_inputs) > 0) {
+  stop("Missing required spatial-network input file(s):\n", paste(missing_inputs, collapse = "\n"), call. = FALSE)
+}
+
+load_required_packages(required_pkgs)
+
 # -------------------------------
 # 3) Main analysis
 # -------------------------------
 dirs <- make_dirs(params$output_dir)
+write_session_info(file.path(dirs$logs, "sessionInfo.txt"))
+write_config_snapshot(params, file.path(dirs$logs, "network_spatial_relations_params.yml"))
+input_manifest <- data.frame(
+  input_type = c("protein_matrix", "sample_metadata"),
+  path = c(params$protein_file, params$metadata_file),
+  md5 = c(file_hash(params$protein_file), file_hash(params$metadata_file)),
+  stringsAsFactors = FALSE
+)
+utils::write.csv(input_manifest, file.path(dirs$logs, "network_spatial_relations_input_manifest.csv"), row.names = FALSE)
 log_file <- file.path(dirs$logs, paste0("network_spatial_relations_run_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".txt"))
 sink(log_file, split = TRUE)
-on.exit({ sink(); }, add = TRUE)
+on.exit({ if (sink.number() > 0) sink(); }, add = TRUE)
 
 message2("Starting spatial layer-region network analysis")
 print(params)
@@ -557,6 +657,16 @@ loaded <- load_expression_matrix(
 
 expr <- loaded$expr
 sample_md <- loaded$sample_metadata
+required_sample_cols <- c("SampleColumn", "Region", "Layer", "RegionLayer")
+missing_sample_cols <- setdiff(required_sample_cols, names(sample_md))
+if (length(missing_sample_cols) > 0) {
+  stop("Standardized sample metadata missing required columns: ", paste(missing_sample_cols, collapse = ", "), call. = FALSE)
+}
+if (isTRUE(params$run_group_specific_networks)) {
+  if (!"ExpGroup" %in% names(sample_md) || all(is.na(sample_md$ExpGroup))) {
+    stop("Group-specific network output requested, but no usable ExpGroup values were detected.", call. = FALSE)
+  }
+}
 
 message2("Expression matrix retained: ", nrow(expr), " proteins x ", ncol(expr), " samples")
 message2("Region/layer units: ", paste(sort(unique(sample_md$RegionLayer)), collapse = ", "))
@@ -570,6 +680,11 @@ utils::write.csv(
   file.path(dirs$tables, "region_layer_mean_expression_matrix.csv"),
   row.names = FALSE
 )
+utils::write.csv(
+  as.data.frame(unit_matrix) %>% tibble::rownames_to_column("Protein"),
+  file.path(dirs$source_data, "region_layer_mean_expression_matrix.csv"),
+  row.names = FALSE
+)
 
 # Overall spatial similarity network.
 message2("Computing overall region/layer Spearman similarity network")
@@ -580,6 +695,9 @@ utils::write.csv(sim$all_edges, file.path(dirs$tables, "overall_spearman_all_edg
 utils::write.csv(sim$filtered_edges, file.path(dirs$tables, "overall_spearman_filtered_edges.csv"), row.names = FALSE)
 utils::write.csv(nodes, file.path(dirs$tables, "overall_nodes_centrality.csv"), row.names = FALSE)
 utils::write.csv(as.data.frame(sim$cor_mat) %>% tibble::rownames_to_column("RegionLayer"), file.path(dirs$tables, "overall_spearman_correlation_matrix.csv"), row.names = FALSE)
+utils::write.csv(sim$all_edges, file.path(dirs$source_data, "overall_spearman_all_edges.csv"), row.names = FALSE)
+utils::write.csv(sim$filtered_edges, file.path(dirs$source_data, "overall_spearman_filtered_edges.csv"), row.names = FALSE)
+utils::write.csv(as.data.frame(sim$cor_mat) %>% tibble::rownames_to_column("RegionLayer"), file.path(dirs$source_data, "overall_spearman_correlation_matrix.csv"), row.names = FALSE)
 
 plot_similarity_heatmap(
   sim$cor_mat,
@@ -602,10 +720,13 @@ jac_nodes <- make_node_table(sample_md, jac$filtered_edges %>% dplyr::rename(Spe
 utils::write.csv(jac$all_edges, file.path(dirs$tables, "overall_top_protein_jaccard_all_edges.csv"), row.names = FALSE)
 utils::write.csv(jac$filtered_edges, file.path(dirs$tables, "overall_top_protein_jaccard_filtered_edges.csv"), row.names = FALSE)
 utils::write.csv(jac_nodes, file.path(dirs$tables, "overall_jaccard_nodes_centrality.csv"), row.names = FALSE)
+utils::write.csv(jac$all_edges, file.path(dirs$source_data, "overall_top_protein_jaccard_all_edges.csv"), row.names = FALSE)
+utils::write.csv(jac$filtered_edges, file.path(dirs$source_data, "overall_top_protein_jaccard_filtered_edges.csv"), row.names = FALSE)
 
 # Export top-protein set membership in long format.
 top_set_long <- purrr::imap_dfr(jac$top_sets, ~ tibble::tibble(RegionLayer = .y, Protein = .x))
 utils::write.csv(top_set_long, file.path(dirs$tables, "top_protein_sets_by_region_layer.csv"), row.names = FALSE)
+utils::write.csv(top_set_long, file.path(dirs$source_data, "top_protein_sets_by_region_layer.csv"), row.names = FALSE)
 
 plot_network(
   jac_nodes,
@@ -620,6 +741,9 @@ write_network_files(jac$filtered_edges, jac_nodes, "overall_top_protein_jaccard"
 group_outputs <- NULL
 if (isTRUE(params$run_group_specific_networks)) {
   group_outputs <- run_group_specific(expr, sample_md, dirs, params)
+  if (is.null(group_outputs) || length(group_outputs) == 0) {
+    stop("Group-specific networks were requested but no group-specific outputs were produced.", call. = FALSE)
+  }
 }
 
 # Workbook summary.
@@ -641,21 +765,23 @@ openxlsx::addWorksheet(wb, "Top_Protein_Sets")
 openxlsx::writeData(wb, "Top_Protein_Sets", top_set_long)
 openxlsx::saveWorkbook(wb, file.path(dirs$tables, "network_spatial_relations_summary.xlsx"), overwrite = TRUE)
 
-# Save R object for later figure assembly or sensitivity analyses.
-saveRDS(
-  list(
-    params = params,
-    expression_matrix = expr,
-    sample_metadata = sample_md,
-    region_layer_matrix = unit_matrix,
-    overall_spearman = sim,
-    overall_jaccard = jac,
-    nodes = nodes,
-    group_specific = group_outputs,
-    sessionInfo = sessionInfo()
-  ),
-  file.path(dirs$logs, "network_spatial_relations_objects.rds")
+network_object <- list(
+  params = params,
+  input_manifest = input_manifest,
+  expression_matrix = expr,
+  sample_metadata = sample_md,
+  region_layer_matrix = unit_matrix,
+  overall_spearman = sim,
+  overall_jaccard = jac,
+  nodes = nodes,
+  group_specific = group_outputs,
+  sessionInfo = sessionInfo()
 )
+
+# Canonical object consumed by downstream spatial-network and behavior scripts.
+saveRDS(network_object, file.path(dirs$processed, "network_spatial_relations_objects.rds"))
+# Compatibility/debug copy kept with logs; downstream scripts should not consume this path.
+saveRDS(network_object, file.path(dirs$logs, "network_spatial_relations_objects.rds"))
 
 message2("Finished spatial layer-region network analysis")
 message2("Output directory: ", params$output_dir)
