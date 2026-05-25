@@ -1,17 +1,15 @@
 # ================== PCA analysis and plotting (extended, fixed, organized) ==================
-# Set a reliable CRAN mirror
-options(repos = c(CRAN = "https://cloud.r-project.org"))
-
-if (!requireNamespace("pacman", quietly = TRUE)) {
-    install.packages("pacman")
-}
-
-# Load core packages
-pacman::p_load(
-    data.table, ggplot2, factoextra, reshape2, stats, ggrepel, tools,
-    grid, uwot, RColorBrewer, pheatmap, Rtsne, aricode, rospca, irlba,
-    pandoc, treemapify, dplyr
+required_pkgs <- c(
+    "data.table", "ggplot2", "factoextra", "reshape2", "ggrepel",
+    "uwot", "RColorBrewer", "pheatmap", "Rtsne", "aricode", "rospca",
+    "irlba", "pandoc", "treemapify", "dplyr"
 )
+missing_pkgs <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
+if (length(missing_pkgs) > 0) {
+    stop("Missing required R package(s): ", paste(missing_pkgs, collapse = ", "),
+         ". Install them explicitly before running this script.", call. = FALSE)
+}
+suppressPackageStartupMessages(invisible(lapply(required_pkgs, library, character.only = TRUE)))
 
 # Try to load aricode separately (it's only used for clustering metrics)
 if (!requireNamespace("aricode", quietly = TRUE)) {
@@ -706,25 +704,6 @@ ensure_dir(subdir("tables/meta"))
 writeLines(c(capture.output(sessionInfo())), con = file.path(subdir("tables/meta"), "sessionInfo.txt"))
 
 # ================== Additional Extensions (organized outputs) ==================
-
-# ----- Subdirectory helpers -----
-subdir <- function(...){ file.path(output_dir, ...) }
-ensure_dir <- function(path){ dir.create(path, showWarnings = FALSE, recursive = TRUE); path }
-
-# Save plot: create subdir and call ggsave
-save_plot <- function(subfolder, filename, plot, width=7.5, height=6.2, dpi=150){
-  d <- ensure_dir(subdir(subfolder))
-  ggsave(filename = filename, plot = plot, path = d, width = width, height = height, dpi = dpi)
-  invisible(file.path(d, filename))
-}
-
-# Save table: create subdir and write via write_dt fallback
-save_table <- function(subfolder, filename, df){
-  d <- ensure_dir(subdir(subfolder))
-  f <- file.path(d, filename)
-  if (exists("write_dt")) write_dt(df, f) else utils::write.csv(df, f, row.names = FALSE)
-  invisible(f)
-}
 
 # A) Confidence ellipses and centroids on PCA
 add_pca_ellipses <- function(key, fname){
