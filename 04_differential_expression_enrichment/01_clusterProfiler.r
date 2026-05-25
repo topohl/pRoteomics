@@ -57,7 +57,7 @@ DRY_RUN <- is_dry_run()
 # ----------------------------------------------------
 checkBiocManager <- function() {
   if (!requireNamespace("BiocManager", quietly = TRUE)) {
-    install.packages("BiocManager", repos = "https://cloud.r-project.org")
+    stop("Missing required R package: BiocManager. Install it explicitly before running this script.", call. = FALSE)
   }
 }
 
@@ -65,16 +65,12 @@ installBioC <- function(bioc_packages, auto_install = AUTO_INSTALL_MISSING_PACKA
   # Install only missing packages to avoid unloading issues, set update=FALSE
   missing <- bioc_packages[!sapply(bioc_packages, requireNamespace, quietly = TRUE)]
   if (length(missing) > 0) {
-    if (isTRUE(auto_install)) {
-      message("Installing missing Bioconductor packages: ", paste(missing, collapse = ", "))
-      BiocManager::install(missing, update = FALSE, ask = FALSE)
-    } else {
-      stop(
-        "Missing Bioconductor packages detected (auto-install disabled): ",
-        paste(missing, collapse = ", "),
-        "\nInstall them manually or set AUTO_INSTALL_MISSING_PACKAGES <- TRUE."
-      )
-    }
+    stop(
+      "Missing Bioconductor packages detected: ",
+      paste(missing, collapse = ", "),
+      "\nInstall them explicitly before running this script.",
+      call. = FALSE
+    )
   }
 }
 
@@ -101,7 +97,7 @@ setupPackages <- function() {
                          "cowplot", "ggridges", "europepmc", "ggpubr", "ggrepel", "ggsci", "ggthemes",
                          "ggExtra", "ggforce", "ggalluvial", "lattice", "latticeExtra", "BiocManager",
                          "org.Mm.eg.db", "ggplotify", "svglite", "tidyr", "dplyr", "pheatmap", "proxy",
-                         "tibble", "openxlsx", "future", "future.apply", "GOSemSim", "yaml", "progressr")
+                         "tibble", "openxlsx", "future", "future.apply", "GOSemSim", "yaml", "progressr", "withr")
   bioc_packages <- c("clusterProfiler", "pathview", "enrichplot", "DOSE", "org.Mm.eg.db", "GOSemSim")
   
   # 1. Install missing BioC packages first
@@ -113,16 +109,12 @@ setupPackages <- function() {
   missing_cran <- cran_packages[!sapply(cran_packages, requireNamespace, quietly = TRUE)]
   
   if (length(missing_cran) > 0) {
-    if (isTRUE(AUTO_INSTALL_MISSING_PACKAGES)) {
-      message("Installing missing CRAN packages: ", paste(missing_cran, collapse = ", "))
-      install.packages(missing_cran, repos = "https://cloud.r-project.org")
-    } else {
-      stop(
-        "Missing CRAN packages detected (auto-install disabled): ",
-        paste(missing_cran, collapse = ", "),
-        "\nInstall them manually or set AUTO_INSTALL_MISSING_PACKAGES <- TRUE."
-      )
-    }
+    stop(
+      "Missing CRAN packages detected: ",
+      paste(missing_cran, collapse = ", "),
+      "\nInstall them explicitly before running this script.",
+      call. = FALSE
+    )
   }
   
   # 3. Quietly load only packages needed in the master process.
@@ -1166,20 +1158,18 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
       # Pathview
       pathview_dir <- normalizePath(dirs$pathview, winslash = "/", mustWork = FALSE)
       if (length(path_ids) > 0) {
-        oldwd <- getwd()
         tryCatch({
-          if (file.exists(pathview_dir)) setwd(pathview_dir)
-
-          lapply(path_ids, function(pid) {
-            try({
-              pathview(gene.data = kegg_gene_list, pathway.id = pid, species = "mmu", 
-                       low = "#6698CC", mid = "white", high = "#F08C21", file.type = "svg")
-            }, silent = TRUE)
+          if (!requireNamespace("withr", quietly = TRUE)) stop("Package 'withr' is required for pathview output isolation.")
+          withr::with_dir(pathview_dir, {
+            lapply(path_ids, function(pid) {
+              try({
+                pathview(gene.data = kegg_gene_list, pathway.id = pid, species = "mmu",
+                         low = "#6698CC", mid = "white", high = "#F08C21", file.type = "svg")
+              }, silent = TRUE)
+            })
           })
         }, error = function(e) {
           warning("Pathview failed: ", e$message)
-        }, finally = {
-          setwd(oldwd)
         })
       } else {
         message("No path_ids provided; skipping pathview for ", comparison_name)
