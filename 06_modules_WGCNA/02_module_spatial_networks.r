@@ -62,7 +62,7 @@ required_pkgs <- c(
   "igraph", "ggraph", "openxlsx", "svglite", "readxl"
 )
 missing <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
-if (length(missing) > 0) install.packages(missing, repos = "https://cloud.r-project.org")
+if (length(missing) > 0) stop("Missing required R package(s): ", paste(missing, collapse = ", "), ". Install them explicitly before running this script.", call. = FALSE)
 invisible(lapply(required_pkgs, library, character.only = TRUE))
 
 message2 <- function(...) message(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), " | ", ...)
