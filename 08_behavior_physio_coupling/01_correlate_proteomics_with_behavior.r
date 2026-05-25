@@ -7,10 +7,22 @@ library(readr)
 library(readxl)
 library(svglite)
 
+paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
+source(paths_file)
+
 # --- 2. Load Your Data Files ---
-# Replace filenames with your actual local paths
-prot_data <- readxl::read_xlsx("S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/morpheus/20260218_pgmatrix_imputed_neuron_soma_71samples_missing70pct_with_metadata.xlsx", sheet = 1, col_names = TRUE, col_types = NULL, na = c("", "NA", "N/A"), trim_ws = TRUE, skip = 0) # Individual log2 intensities
-beh_data  <- read.csv("S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/Analysis/Behavior/RFID/statistics/analyses/gamm/tables/auc_individual_animals_firstChangeActive.csv")                   # Column: 'MouseID', 'Group', 'Simulated_AUC'
+proteomics_input_file <- Sys.getenv(
+  "PROTEOMICS_BEHAVIOR_COR_PROTEOMICS_FILE",
+  unset = path_processed("morpheus", "20260218_pgmatrix_imputed_neuron_soma_71samples_missing70pct_with_metadata.xlsx")
+)
+behavior_input_file <- Sys.getenv(
+  "PROTEOMICS_BEHAVIOR_COR_BEHAVIOR_FILE",
+  unset = path_external("behavior", "auc_individual_animals_firstChangeActive.csv")
+)
+if (!file.exists(proteomics_input_file)) stop("Proteomics behavior-correlation input not found: ", proteomics_input_file, call. = FALSE)
+if (!file.exists(behavior_input_file)) stop("Behavior correlation input not found: ", behavior_input_file, call. = FALSE)
+prot_data <- readxl::read_xlsx(proteomics_input_file, sheet = 1, col_names = TRUE, col_types = NULL, na = c("", "NA", "N/A"), trim_ws = TRUE, skip = 0) # Individual log2 intensities
+beh_data  <- read.csv(behavior_input_file) # Column: 'MouseID', 'Group', 'Simulated_AUC'
 
 # The 13 Leading Edge IDs you identified for "Skin Development"
 leading_edge_ids <- c("E9Q557", "Q2VIS4", "Q9CQH5", "P97350", "Q02257", 
@@ -436,7 +448,8 @@ plot <- ggplot(final_df, aes(x = AUC, y = Structural_ZScore, color = Group)) +
 
 # --- 6. Save Everything ---
 
-out_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/Analysis/Behavior/RFID/statistics/correlation_proteomics"
+out_dir <- Sys.getenv("PROTEOMICS_BEHAVIOR_COR_OUTPUT_DIR", unset = path_results("behavior_coupling", "correlation_proteomics"))
+ensure_dir(out_dir)
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
 # Save as SVG (Nature single-column width: 88 mm)
