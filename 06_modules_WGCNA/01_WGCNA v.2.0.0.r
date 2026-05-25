@@ -168,7 +168,17 @@ expr_xlsx <- Sys.getenv("PROTEOMICS_WGCNA_EXPR_XLSX", unset = expr_xlsx)
 meta_xlsx <- Sys.getenv("PROTEOMICS_WGCNA_META_XLSX", unset = meta_xlsx)
 idmap_dat <- Sys.getenv("PROTEOMICS_WGCNA_IDMAP_DAT", unset = path_external("MOUSE_10090_idmapping.dat"))
 
-stop_if_missing <- function(path) if (!file.exists(path)) stop(sprintf("Missing file: %s", path))
+stop_if_missing <- function(path) {
+  if (!file.exists(path)) {
+    stop(
+      "Missing WGCNA input file: ", path,
+      ". This script consumes precombined variancePartition-style matrices ",
+      "(male.data.xlsx and sample_info.xlsx). TODO: generate these from a prior ",
+      "canonical manifest or set PROTEOMICS_WGCNA_EXPR_XLSX / PROTEOMICS_WGCNA_META_XLSX.",
+      call. = FALSE
+    )
+  }
+}
 read_head <- function(path) {
   df <- readxl::read_excel(path)
   utils::write.table(utils::head(df, 10), fp_log(paste0(basename(path), "_head10.tsv")),
@@ -275,6 +285,12 @@ meta.data <- { stop_if_missing(meta_xlsx); read_head(meta_xlsx) }
 # Robust UniProtKB-ID -> Accession map (offline)
 # --------------------------
 stop_if_missing(idmap_dat)
+input_manifest <- tibble::tibble(
+  role = c("expression_matrix", "sample_metadata", "mouse_idmapping"),
+  path = c(expr_xlsx, meta_xlsx, idmap_dat),
+  md5 = vapply(c(expr_xlsx, meta_xlsx, idmap_dat), file_hash, character(1))
+)
+write_csv_safe(input_manifest, fp_log("input_manifest.csv"))
 idmap_tbl <- readr::read_tsv(idmap_dat, col_names = c("ACC","DB","VAL"), col_types = "ccc", progress = FALSE, quote = "", comment = "")
 idmap_uid <- idmap_tbl %>%
   dplyr::filter(DB == "UniProtKB-ID" & grepl("_MOUSE\\s*$", VAL) & nzchar(ACC)) %>%
@@ -1629,6 +1645,21 @@ output_manifest <- tibble::tibble(
   )
 )
 write_csv_safe(output_manifest, fp_log("output_manifest.csv"))
+write_run_manifest(
+  fp_log("run_manifest.yml"),
+  inputs = as.list(stats::setNames(input_manifest$path, input_manifest$role)),
+  outputs = list(output_manifest = fp_log("output_manifest.csv")),
+  parameters = list(
+    soft_threshold_rsquared = soft_threshold_rsquared,
+    selected_soft_power = if (exists("softPower")) softPower else NA,
+    min_module_size = min_module_size,
+    deep_split = deep_split,
+    merge_cut_height = merge_cut_height,
+    module_preservation_permutations = module_preservation_permutations,
+    dataset_profile = dataset_profile
+  ),
+  notes = "Consumes precombined variancePartition-style matrices; see input_manifest.csv for exact inputs and hashes."
+)
 
 
 # --------------------------
