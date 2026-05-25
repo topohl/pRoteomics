@@ -35,12 +35,8 @@ write_session_info(file.path(CANONICAL_PATHS$logs, "sessionInfo.txt"))
 pkgs <- c("dplyr", "tidyr", "circlize", "RColorBrewer", "tools", "magick", "grid", "openxlsx", "digest")
 missing_packages <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
 if (length(missing_packages) > 0) {
-  auto_install <- identical(tolower(Sys.getenv("AUTO_INSTALL_MISSING_PACKAGES", "false")), "true")
-  if (!auto_install) {
-    stop("Missing required R package(s): ", paste(missing_packages, collapse = ", "),
-         ". Set AUTO_INSTALL_MISSING_PACKAGES=true to install automatically.", call. = FALSE)
-  }
-  install.packages(missing_packages)
+  stop("Missing required R package(s): ", paste(missing_packages, collapse = ", "),
+       ". Install them explicitly before running this script.", call. = FALSE)
 }
 invisible(lapply(pkgs, library, character.only = TRUE))
 
@@ -163,7 +159,6 @@ combo <- magick::image_append(c(img1, img2))
 magick::image_write(combo, f_side)
 
 # -------- Excel exports: shared proteins per pair --------
-if (!requireNamespace("openxlsx", quietly = TRUE)) install.packages("openxlsx")
 library(openxlsx)
 
 # Build long summary for a given direction
