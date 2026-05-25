@@ -33,7 +33,7 @@ required_pkgs <- c(
   "pheatmap", "igraph", "ggraph", "openxlsx", "svglite"
 )
 missing <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
-if (length(missing) > 0) install.packages(missing, repos = "https://cloud.r-project.org")
+if (length(missing) > 0) stop("Missing required R package(s): ", paste(missing, collapse = ", "), ". Install them explicitly before running this script.", call. = FALSE)
 params <- list(
   spatial_rds = path_processed("07_spatial_networks", "network_spatial_relations", "network_spatial_relations_objects.rds"),
   output_dir = CANONICAL_PATHS$reports,
@@ -483,6 +483,18 @@ saveRDS(
     sessionInfo = sessionInfo()
   ),
   file.path(dirs$logs, "bootstrap_differential_network_stability_objects.rds")
+)
+write_run_manifest(
+  file.path(dirs$logs, "run_manifest.yml"),
+  inputs = list(spatial_rds = params$spatial_rds),
+  outputs = list(
+    bootstrap_long = file.path(dirs$tables, "bootstrap_differential_edge_values_long.csv"),
+    edge_summary = file.path(dirs$tables, "bootstrap_differential_edge_stability_summary.csv"),
+    stable_edges = file.path(dirs$tables, "stable_differential_edges.csv"),
+    networks = dirs$networks
+  ),
+  parameters = params,
+  notes = "Bootstrap seed, edge threshold, delta threshold and differential frequency threshold are recorded in parameters."
 )
 
 message2("Finished bootstrap differential network stability analysis")
