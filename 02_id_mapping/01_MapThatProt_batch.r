@@ -47,18 +47,8 @@ CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
 load_required_packages <- function(pkgs) {
     missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
     if (length(missing) > 0) {
-        auto_install <- identical(tolower(Sys.getenv("AUTO_INSTALL_MISSING_PACKAGES", "false")), "true")
-        if (!auto_install) {
-            stop("Missing required R package(s): ", paste(missing, collapse = ", "),
-                 ". Set AUTO_INSTALL_MISSING_PACKAGES=true to install automatically.", call. = FALSE)
-        }
-        bioc_pkgs <- intersect(missing, c("AnnotationDbi", "org.Mm.eg.db", "UniProt.ws"))
-        cran_pkgs <- setdiff(missing, bioc_pkgs)
-        if (length(cran_pkgs)) install.packages(cran_pkgs, repos = "https://cloud.r-project.org")
-        if (length(bioc_pkgs)) {
-            if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager", repos = "https://cloud.r-project.org")
-            BiocManager::install(bioc_pkgs, ask = FALSE, update = FALSE)
-        }
+        stop("Missing required R package(s): ", paste(missing, collapse = ", "),
+             ". Install them explicitly before running this script.", call. = FALSE)
     }
     invisible(lapply(pkgs, library, character.only = TRUE))
 }
