@@ -3,15 +3,33 @@ library(dplyr)
 library(writexl)
 library(tools)
 
+paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
+source(paths_file)
+
 # ---- CONFIGURATION ----
 # Set mode: "excel" for sheets in one Excel file, "folder" for all Excel files in a folder
 mode <- "folder" # or "folder"
 
-# Define file paths
-file_path <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/imputed/pg_matrix_groupfiltered_70percentvalid_imputed_updated_Feb2026.xlsx"
-folder_path <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/pg_matrix/imputed/grouped"
-metadata_path <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/metadata/TPE9_sample_metadata_males.xlsx"
-output_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/morpheus"
+# Define file paths. Environment variables allow local overrides without
+# committing machine-specific paths.
+file_path <- Sys.getenv(
+    "PROTEOMICS_EXCEL_CONVERT_FILE",
+    unset = path_processed("pg_matrix", "imputed", "pg_matrix_groupfiltered_70percentvalid_imputed_updated_Feb2026.xlsx")
+)
+folder_path <- Sys.getenv(
+    "PROTEOMICS_EXCEL_CONVERT_FOLDER",
+    unset = path_processed("pg_matrix", "imputed", "grouped")
+)
+metadata_path <- Sys.getenv(
+    "PROTEOMICS_EXCEL_CONVERT_METADATA",
+    unset = path_metadata("TPE9_sample_metadata_males.xlsx")
+)
+output_dir <- Sys.getenv("PROTEOMICS_EXCEL_CONVERT_OUTPUT_DIR", unset = path_processed("morpheus"))
+
+if (!file.exists(metadata_path)) stop("Metadata file not found: ", metadata_path, call. = FALSE)
+if (mode == "excel" && !file.exists(file_path)) stop("Excel input file not found: ", file_path, call. = FALSE)
+if (mode == "folder" && !dir.exists(folder_path)) stop("Excel input folder not found: ", folder_path, call. = FALSE)
+ensure_dir(output_dir)
 
 # Read metadata
 metadata <- read_excel(metadata_path)
@@ -28,6 +46,7 @@ if (mode == "excel") {
 } else if (mode == "folder") {
     # Read all Excel files in folder (ignore sheets, use file name as key)
     excel_files <- list.files(folder_path, pattern = "\\.xlsx$", full.names = TRUE)
+    if (length(excel_files) == 0) stop("No .xlsx files found in folder: ", folder_path, call. = FALSE)
     sheet_dfs <- setNames(
         lapply(excel_files, function(f) read_excel(f)),
         basename(file_path_sans_ext(excel_files))
@@ -149,11 +168,33 @@ for (sheet in names(new_dfs)) {
 }
 
 # ---- SAVE EACH DATA FRAME AS GCT v1.3 ----
+validate_gct_v1.3 <- function(file, expected_rows, expected_sample_cols, expected_row_metadata_cols, expected_col_metadata_rows) {
+    first_lines <- readLines(file, n = 2, warn = FALSE)
+    if (length(first_lines) < 2 || !identical(first_lines[[1]], "#1.3")) {
+        stop("Invalid GCT marker in written file: ", file, call. = FALSE)
+    }
+    dims <- strsplit(first_lines[[2]], "\t", fixed = TRUE)[[1]]
+    if (length(dims) != 4 || any(is.na(suppressWarnings(as.integer(dims))))) {
+        stop("Invalid GCT v1.3 dimension line in written file: ", file, call. = FALSE)
+    }
+    dims <- as.integer(dims)
+    expected <- c(expected_rows, expected_sample_cols, expected_row_metadata_cols, expected_col_metadata_rows)
+    if (!identical(dims, expected)) {
+        stop(
+            "GCT v1.3 dimension mismatch in written file: ", file,
+            ". Expected ", paste(expected, collapse = "\t"),
+            " but found ", paste(dims, collapse = "\t"),
+            call. = FALSE
+        )
+    }
+    invisible(TRUE)
+}
+
 write_gct_v1.3 <- function(df, file, metadata) {
     meta_row_idx <- which(df$id %in% c(names(metadata), "region_layer_ExpGroup", "phenotypeWithinUnit"))
     data_rows <- df[-meta_row_idx, , drop = FALSE]
     data_rows <- data_rows[!is.na(data_rows$id) & data_rows$id != "", , drop = FALSE]
-    sample_cols <- setdiff(colnames(df), "id")
+    sample_cols <- intersect(setdiff(colnames(df), "id"), metadata$sample_id)
     sample_cols <- intersect(sample_cols, colnames(data_rows))
     if (length(sample_cols) == 0 || nrow(data_rows) == 0) {
         warning(sprintf("No data to write for file: %s", file))
@@ -171,14 +212,25 @@ write_gct_v1.3 <- function(df, file, metadata) {
         warning(sprintf("No numeric data to write for file: %s", file))
         return()
     }
+    meta_rows <- df[meta_row_idx, c("id", sample_cols), drop = FALSE]
+    meta_rows <- meta_rows[!is.na(meta_rows$id) & meta_rows$id != "", , drop = FALSE]
+    row_metadata_cols <- "id"
     con <- file(file, "wt")
     on.exit(close(con))
     writeLines("#1.3", con)
-    writeLines(sprintf("%d\t%d", nrow(data_rows), length(sample_cols)), con)
-    writeLines(paste(c("id", sample_cols), collapse = "\t"), con)
-    for (i in seq_len(nrow(data_rows))) {
-        writeLines(paste(unlist(data_rows[i, c("id", sample_cols)]), collapse = "\t"), con)
+    writeLines(sprintf("%d\t%d\t%d\t%d", nrow(data_rows), length(sample_cols), length(row_metadata_cols), nrow(meta_rows)), con)
+    writeLines(paste(c(row_metadata_cols, sample_cols), collapse = "\t"), con)
+    if (nrow(meta_rows) > 0) {
+        for (i in seq_len(nrow(meta_rows))) {
+            writeLines(paste(unlist(meta_rows[i, c(row_metadata_cols, sample_cols)]), collapse = "\t"), con)
+        }
     }
+    for (i in seq_len(nrow(data_rows))) {
+        writeLines(paste(unlist(data_rows[i, c(row_metadata_cols, sample_cols)]), collapse = "\t"), con)
+    }
+    close(con)
+    on.exit()
+    validate_gct_v1.3(file, nrow(data_rows), length(sample_cols), length(row_metadata_cols), nrow(meta_rows))
 }
 
 for (sheet in names(new_dfs)) {
