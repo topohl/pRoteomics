@@ -23,12 +23,8 @@ required_pkgs <- c("dplyr", "readr", "stringr", "purrr", "fs", "tibble")
 load_required_packages <- function(pkgs) {
   missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
   if (length(missing) > 0) {
-    auto_install <- identical(tolower(Sys.getenv("AUTO_INSTALL_MISSING_PACKAGES", "false")), "true")
-    if (!auto_install) {
-      stop("Missing required R package(s): ", paste(missing, collapse = ", "),
-           ". Set AUTO_INSTALL_MISSING_PACKAGES=true to install automatically.", call. = FALSE)
-    }
-    install.packages(missing, repos = "https://cloud.r-project.org")
+    stop("Missing required R package(s): ", paste(missing, collapse = ", "),
+         ". Install them explicitly before running this script.", call. = FALSE)
   }
   invisible(lapply(pkgs, library, character.only = TRUE))
 }
@@ -44,9 +40,32 @@ comparison_name <- Sys.getenv("PROTEOMICS_GCT_COMPARISON", unset = "neuron_neuro
 # Input
 # -------------------------------
 
-input_file <- "20260218-pgmatrix-imputed-neuron-neuropil-180samples-missing70pct-with-metadata_Two-sample_mod_T_2026-04-30-transformed-p-val_n27x5054_merged_missing"
+input_stem <- Sys.getenv("PROTEOMICS_GCT_INPUT_STEM", unset = "")
+if (!nzchar(input_stem)) {
+  manifest_candidates <- c(
+    path_processed("01_preprocessing", "protigy_output", comparison_name, "protigy_manifest.csv"),
+    path_processed("01_preprocessing", "protigy_output", "protigy_manifest.csv")
+  )
+  manifest_file <- manifest_candidates[file.exists(manifest_candidates)][1]
+  if (!is.na(manifest_file)) {
+    manifest <- read.csv(manifest_file, stringsAsFactors = FALSE)
+    path_col <- intersect(c("gct_path", "file", "path"), names(manifest))[1]
+    if (!is.na(path_col)) {
+      candidate <- manifest[[path_col]][1]
+      input_stem <- tools::file_path_sans_ext(basename(candidate))
+    }
+  }
+}
+if (!nzchar(input_stem)) {
+  stop(
+    "Could not infer ProTigy GCT input stem. Set PROTEOMICS_GCT_INPUT_STEM ",
+    "or provide a protigy_manifest.csv with a gct_path/file/path column under ",
+    path_processed("01_preprocessing", "protigy_output", comparison_name),
+    call. = FALSE
+  )
+}
 
-gct_path <- path_processed("01_preprocessing", "protigy_output", comparison_name, paste0(input_file, ".gct"))
+gct_path <- path_processed("01_preprocessing", "protigy_output", comparison_name, paste0(input_stem, ".gct"))
 outdir <- file.path(CANONICAL_PATHS$processed, comparison_name)
 
 if (is_dry_run()) {
@@ -375,6 +394,23 @@ written_index <- purrr::imap_dfr(by_comparison, function(cols, comp_key) {
 readr::write_csv(
   written_index,
   file.path(outdir, "indexComparisons.csv")
+)
+
+write_run_manifest(
+  file.path(CANONICAL_PATHS$logs, comparison_name, "run_manifest.yml"),
+  inputs = list(gct_path = gct_path),
+  outputs = list(
+    output_dir = outdir,
+    forward_dir = outdir_fwd,
+    reverse_dir = outdir_rev,
+    index = file.path(outdir, "indexComparisons.csv")
+  ),
+  parameters = list(
+    comparison_name = comparison_name,
+    input_stem = input_stem,
+    use_label_map = use_label_map,
+    n_comparisons_exported = nrow(written_index)
+  )
 )
 
 message("Finished successfully.")
