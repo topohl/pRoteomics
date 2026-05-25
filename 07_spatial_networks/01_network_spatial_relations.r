@@ -44,12 +44,8 @@ required_pkgs <- c(
 load_required_packages <- function(pkgs) {
   missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
   if (length(missing) > 0) {
-    auto_install <- identical(tolower(Sys.getenv("AUTO_INSTALL_MISSING_PACKAGES", "false")), "true")
-    if (!auto_install) {
-      stop("Missing required R package(s): ", paste(missing, collapse = ", "),
-           ". Set AUTO_INSTALL_MISSING_PACKAGES=true to install automatically.", call. = FALSE)
-    }
-    install.packages(missing, repos = "https://cloud.r-project.org")
+    stop("Missing required R package(s): ", paste(missing, collapse = ", "),
+         ". Install them explicitly before running this script.", call. = FALSE)
   }
   invisible(lapply(pkgs, library, character.only = TRUE))
 }
@@ -782,6 +778,18 @@ network_object <- list(
 saveRDS(network_object, file.path(dirs$processed, "network_spatial_relations_objects.rds"))
 # Compatibility/debug copy kept with logs; downstream scripts should not consume this path.
 saveRDS(network_object, file.path(dirs$logs, "network_spatial_relations_objects.rds"))
+write_run_manifest(
+  file.path(dirs$logs, "run_manifest.yml"),
+  inputs = as.list(stats::setNames(input_manifest$path, input_manifest$role)),
+  outputs = list(
+    spatial_object = file.path(dirs$processed, "network_spatial_relations_objects.rds"),
+    tables = dirs$tables,
+    figures = dirs$figures,
+    source_data = dirs$source_data
+  ),
+  parameters = params,
+  notes = "Edges represent molecular profile similarity/overlap; thresholds and parameters are captured in params."
+)
 
 message2("Finished spatial layer-region network analysis")
 message2("Output directory: ", params$output_dir)
