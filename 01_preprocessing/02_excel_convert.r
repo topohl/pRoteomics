@@ -1,3 +1,11 @@
+# Consumes:
+#   - imputed Excel workbook or folder of imputed Excel workbooks
+#   - sample metadata workbook
+# Produces:
+#   - metadata-augmented Excel workbooks and strict GCT v1.3 files
+# File contract:
+#   - GCT v1.3 writer emits #1.3, four-field dimensions, one row metadata column, column metadata rows, and numeric sample columns
+
 library(readxl)
 library(dplyr)
 library(writexl)
@@ -5,6 +13,9 @@ library(tools)
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
+MODULE_ID <- "01_preprocessing"
+SUBSTEP_ID <- "excel_convert"
+CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
 
 # ---- CONFIGURATION ----
 # Set mode: "excel" for sheets in one Excel file, "folder" for all Excel files in a folder
@@ -24,7 +35,7 @@ metadata_path <- Sys.getenv(
     "PROTEOMICS_EXCEL_CONVERT_METADATA",
     unset = path_metadata("TPE9_sample_metadata_males.xlsx")
 )
-output_dir <- Sys.getenv("PROTEOMICS_EXCEL_CONVERT_OUTPUT_DIR", unset = path_processed("morpheus"))
+output_dir <- path_or_env("PROTEOMICS_EXCEL_CONVERT_OUTPUT_DIR", CANONICAL_PATHS$processed, kind = "dir")
 
 if (!file.exists(metadata_path)) stop("Metadata file not found: ", metadata_path, call. = FALSE)
 if (mode == "excel" && !file.exists(file_path)) stop("Excel input file not found: ", file_path, call. = FALSE)
@@ -233,7 +244,39 @@ write_gct_v1.3 <- function(df, file, metadata) {
     validate_gct_v1.3(file, nrow(data_rows), length(sample_cols), length(row_metadata_cols), nrow(meta_rows))
 }
 
+self_test_write_gct_v1.3 <- function() {
+    tmp <- tempfile(fileext = ".gct")
+    test_metadata <- data.frame(
+        sample_id = c("sample1", "sample2", "sample3"),
+        group = c("A", "B", "A"),
+        stringsAsFactors = FALSE
+    )
+    test_df <- data.frame(
+        id = c("group", "protein_a", "protein_b"),
+        sample1 = c("A", 1, 4),
+        sample2 = c("B", 2, 5),
+        sample3 = c("A", 3, 6),
+        stringsAsFactors = FALSE,
+        check.names = FALSE
+    )
+    write_gct_v1.3(test_df, tmp, test_metadata)
+    lines <- readLines(tmp, warn = FALSE)
+    stopifnot(identical(lines[[1]], "#1.3"))
+    stopifnot(identical(lines[[2]], "2\t3\t1\t1"))
+    invisible(TRUE)
+}
+
+self_test_write_gct_v1.3()
+
 for (sheet in names(new_dfs)) {
     out_path <- file.path(output_dir, paste0(sheet, "_with_metadata.gct"))
     write_gct_v1.3(new_dfs[[sheet]], out_path, metadata)
 }
+
+write_run_manifest(
+    file.path(CANONICAL_PATHS$logs, "run_manifest.yml"),
+    inputs = list(file_path = file_path, folder_path = folder_path, metadata = metadata_path),
+    outputs = list(output_dir = output_dir, sheets = names(new_dfs)),
+    parameters = list(mode = mode, gct_format = "strict GCT v1.3"),
+    notes = "Excel export behavior is preserved; GCT writer self-test runs before writing outputs."
+)
