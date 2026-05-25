@@ -10,13 +10,20 @@ pacman::p_load(
 
 set.seed(42)
 
+paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
+source(paths_file)
+
 # =============== Config =================
-gct_file   <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/E9_pg_matrix_protigy.gct"
-output_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/pca_plots"
-#gct_file <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/gct/data/pg.matrix_filtered_70percent-onegroup_imputed_ANOVA_z-scored.gct"
-#output_dir <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Results/pca_plots"
+gct_file <- Sys.getenv("PROTEOMICS_PCA_GCT_FILE", unset = path_processed("morpheus", "E9_pg_matrix_protigy.gct"))
+output_dir <- Sys.getenv("PROTEOMICS_PCA_OUTPUT_DIR", unset = path_results("pca_plots"))
+if (is_dry_run()) {
+  dry_run_line("Script", "03_qc_exploration/03_pcaPlot.r")
+  dry_run_line("GCT input", gct_file, if (file.exists(gct_file)) "PASS" else "FAIL")
+  dry_run_line("Output directory", output_dir)
+  quit(status = if (file.exists(gct_file)) 0 else 1, save = "no")
+}
 if (!file.exists(gct_file)) stop(sprintf("Input file not found: %s", gct_file))
-dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
+ensure_dir(output_dir)
 
 # =============== Helpers =================
 trim_ws <- function(x){
@@ -239,13 +246,13 @@ meta$region_celltype_rep <- paste(meta$region, meta$celltype, meta$ReplicateGrou
 theme_pca_min <- function() {
   theme_minimal(base_size = 16, base_family = "sans") +
     theme(
-      panel.grid.major = element_line(color = "#ECECEC", size = 0.4),
+      panel.grid.major = element_line(color = "#ECECEC", linewidth = 0.4),
       panel.grid.minor = element_blank(),
       panel.background = element_rect(fill = "white", colour = NA),
       plot.background  = element_rect(fill = "white", colour = NA),
       axis.title = element_text(color = "#444444", size = 18, face = "plain"),
       axis.text  = element_text(color = "#555555", size = 18),
-      axis.ticks = element_line(color = "#DDDDDD", size = 0.3),
+      axis.ticks = element_line(color = "#DDDDDD", linewidth = 0.3),
       axis.line  = element_blank(),
       panel.border = element_blank(),
       legend.background = element_blank(),
@@ -586,25 +593,6 @@ writeLines(c(capture.output(sessionInfo())), con = file.path(subdir("tables/meta
 
 # ================== Additional Extensions (organized outputs) ==================
 
-# ----- Subdirectory helpers -----
-subdir <- function(...){ file.path(output_dir, ...) }
-ensure_dir <- function(path){ dir.create(path, showWarnings = FALSE, recursive = TRUE); path }
-
-# Save plot: create subdir and call ggsave
-save_plot <- function(subfolder, filename, plot, width=7.5, height=6.2, dpi=150){
-  d <- ensure_dir(subdir(subfolder))
-  ggsave(filename = filename, plot = plot, path = d, width = width, height = height, dpi = dpi)
-  invisible(file.path(d, filename))
-}
-
-# Save table: create subdir and write via write_dt fallback
-save_table <- function(subfolder, filename, df){
-  d <- ensure_dir(subdir(subfolder))
-  f <- file.path(d, filename)
-  if (exists("write_dt")) write_dt(df, f) else utils::write.csv(df, f, row.names = FALSE)
-  invisible(f)
-}
-
 # A) Confidence ellipses and centroids on PCA
 add_pca_ellipses <- function(key, fname){
   grp <- build_group(key)
@@ -687,7 +675,21 @@ leave_one_batch_pca <- function(batch_key = "plate"){
 leave_one_batch_pca("plate")
 
 # C) Robust PCA variants
-# Assumes run_irlba_pca() is already defined earlier and returns a prcomp-like list
+run_irlba_pca <- function(n = min(20, ncol(t(mat)) - 1L)) {
+  if (!requireNamespace("irlba", quietly = TRUE)) {
+    message("irlba not installed; skipping IRLBA PCA.")
+    return(NULL)
+  }
+  X <- scale(t(mat), center = TRUE, scale = TRUE)
+  n <- min(n, nrow(X) - 1L, ncol(X) - 1L)
+  if (!is.finite(n) || n < 2) {
+    message("Too few dimensions for IRLBA PCA; skipping.")
+    return(NULL)
+  }
+  fit <- irlba::prcomp_irlba(X, n = n, center = FALSE, scale. = FALSE)
+  rownames(fit$x) <- rownames(X)
+  fit
+}
 
 # C1) IRLBA PCA (fast truncated SVD on scaled data), aligned rownames
 pca_irlba <- run_irlba_pca()
