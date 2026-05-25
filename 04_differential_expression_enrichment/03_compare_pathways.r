@@ -6,14 +6,27 @@ library(svglite)
 library(gridExtra)
 library(pheatmap)
 
+paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
+source(paths_file)
+
 # Define file paths
-path_memory_ensemble <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Results/compareGO/BP/learning_signature/memory_ensemble/01_Tables_and_Data/Supplementary_Data.xlsx"
-path_effects_inhibition <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Results/compareGO/BP/learning_signature/effects_inhibition_memory_ensemble/01_Tables_and_Data/Supplementary_Data.xlsx"
+path_memory_ensemble <- Sys.getenv(
+    "PROTEOMICS_COMPARE_PATHWAYS_MEMORY",
+    unset = path_results("tables", "04_differential_expression_enrichment", "compareGO", "BP", "learning_signature", "memory_ensemble", "01_Tables_and_Data", "Supplementary_Data.xlsx")
+)
+path_effects_inhibition <- Sys.getenv(
+    "PROTEOMICS_COMPARE_PATHWAYS_EFFECTS",
+    unset = path_results("tables", "04_differential_expression_enrichment", "compareGO", "BP", "learning_signature", "effects_inhibition_memory_ensemble", "01_Tables_and_Data", "Supplementary_Data.xlsx")
+)
+if (!file.exists(path_memory_ensemble)) stop("Memory ensemble pathway workbook not found: ", path_memory_ensemble, call. = FALSE)
+if (!file.exists(path_effects_inhibition)) stop("Effects inhibition pathway workbook not found: ", path_effects_inhibition, call. = FALSE)
 
 # Define directories for saving output
-output_dir <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Results/compare_sig_expr"
+output_dir <- Sys.getenv("PROTEOMICS_COMPARE_PATHWAYS_OUTPUT_DIR", unset = path_results("compare_sig_expr"))
 tables_dir <- file.path(output_dir, "tables")
 plots_dir <- file.path(output_dir, "plots")
+ensure_dir(tables_dir)
+ensure_dir(plots_dir)
 
 # Read the Excel files into data frames
 data_memory_ensemble <- read_excel(path_memory_ensemble, sheet = "GO_Enrichment_Results")
