@@ -15,6 +15,9 @@ library(tibble)
 library(ggpubr)
 library(scales)
 
+paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
+source(paths_file)
+
 select <- dplyr::select
 filter <- dplyr::filter
 rename <- dplyr::rename
@@ -38,14 +41,32 @@ analysis_display_label <- function(x) {
   )
 }
 
-protein_file <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/morpheus/20260218_pgmatrix_imputed_neuron_neuropil_180samples_missing70pct_with_metadata.xlsx"
+protein_file <- Sys.getenv(
+  "PROTEOMICS_MODULE_SCORE_V001_PROTEIN_FILE",
+  unset = path_processed("morpheus", "20260218_pgmatrix_imputed_neuron_neuropil_180samples_missing70pct_with_metadata.xlsx")
+)
 
-metadata_file <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Results/module_scores/sample_metadata_merged_clean_for_module_scores.xlsx"
+metadata_file <- Sys.getenv(
+  "PROTEOMICS_MODULE_SCORE_V001_METADATA_FILE",
+  unset = path_results("module_scores", "sample_metadata_merged_clean_for_module_scores.xlsx")
+)
 
-mapping_file <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/MOUSE_10090_idmapping.dat"
+mapping_file <- Sys.getenv(
+  "PROTEOMICS_MODULE_SCORE_V001_MAPPING_FILE",
+  unset = path_external("MOUSE_10090_idmapping.dat")
+)
 
-saving_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Results/module_scores/general_neuropil_module_score_results/"
-dir.create(saving_dir, recursive = TRUE, showWarnings = FALSE)
+input_files <- c(protein_file, metadata_file, mapping_file)
+missing_input_files <- input_files[!file.exists(input_files)]
+if (length(missing_input_files) > 0) {
+  stop("Required module-score v0.0.1 input file(s) not found: ", paste(missing_input_files, collapse = ", "), call. = FALSE)
+}
+
+saving_dir <- Sys.getenv(
+  "PROTEOMICS_MODULE_SCORE_V001_OUTPUT_DIR",
+  unset = path_results("module_scores", "general_neuropil_module_score_results")
+)
+ensure_dir(saving_dir)
 
 dir_tables <- file.path(saving_dir, "tables")
 dir_qc     <- file.path(saving_dir, "qc")
@@ -1229,11 +1250,15 @@ proteomics_for_behavior <- scores_animal_all %>%
   ) %>%
   rename(AnimalNum = AnimalID)
 
-dir.create("S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/Analysis/Behavior/RFID/analysis_ready/proteomics", recursive = TRUE, showWarnings = FALSE)
+behavior_ready_dir <- Sys.getenv(
+  "PROTEOMICS_MODULE_SCORE_V001_BEHAVIOR_READY_DIR",
+  unset = path_results("source_data", "06_modules_WGCNA", "module_score_v0.0.1", "behavior_coupling_inputs")
+)
+ensure_dir(behavior_ready_dir)
 
 readr::write_csv(
   proteomics_for_behavior,
-  "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/Analysis/Behavior/RFID/analysis_ready/proteomics/module_scores.csv"
+  file.path(behavior_ready_dir, "module_scores.csv")
 )
 
 write.xlsx(scores_animal_all, file.path(dir_tables, paste0("module_scores_per_animal_regionlayer_", analysis_primary, ".xlsx")), overwrite = TRUE)
