@@ -73,35 +73,20 @@ require_or_stop <- function(pkgs, bioc = FALSE) {
   if (isTRUE(DRY_RUN)) return(invisible(TRUE))
   missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
   if (length(missing) == 0) return(invisible(TRUE))
-  if (isTRUE(AUTO_INSTALL_MISSING_PACKAGES)) {
-    if (bioc) {
-      if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager")
-      BiocManager::install(missing, update = FALSE, ask = FALSE)
-    } else {
-      install.packages(missing, repos = "https://cloud.r-project.org")
-    }
-    return(invisible(TRUE))
-  }
   stop("Missing required packages: ", paste(missing, collapse = ", "),
-       ". Install them manually or set AUTO_INSTALL_MISSING_PACKAGES <- TRUE.", call. = FALSE)
+       ". Install them explicitly before running this script.", call. = FALSE)
 }
 
 # -----------------------------------------------------
 # Load Required Libraries
 # -----------------------------------------------------
 
-if (!isTRUE(DRY_RUN) && !requireNamespace("BiocManager", quietly=TRUE) && isTRUE(AUTO_INSTALL_MISSING_PACKAGES))
-    install.packages("BiocManager")
 # Ensure 'rlang' version >= 1.1.7 is installed before running this script.
 if (!isTRUE(DRY_RUN) && (!requireNamespace("rlang", quietly=TRUE) || packageVersion("rlang") < "1.1.7")) {
     stop("Please install 'rlang' version >= 1.1.7 manually before running this script.")
 }
 if (!isTRUE(DRY_RUN) && !requireNamespace("simplifyEnrichment", quietly=TRUE)) {
-    if (isTRUE(AUTO_INSTALL_MISSING_PACKAGES)) {
-      BiocManager::install("simplifyEnrichment", force = TRUE)
-    } else {
-      stop("Please install 'simplifyEnrichment' manually before running this script.")
-    }
+    stop("Please install 'simplifyEnrichment' manually before running this script.")
 }
 if (!isTRUE(DRY_RUN)) {
   library(simplifyEnrichment)
