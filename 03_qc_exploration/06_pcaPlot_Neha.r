@@ -22,13 +22,14 @@ if (!requireNamespace("aricode", quietly = TRUE)) {
 
 set.seed(42)
 
+paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
+source(paths_file)
+
 # =============== Config =================
-#gct_file   <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/E9_pg_matrix_protigy.gct"
-#output_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/pca_plots"
-gct_file <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/gct/data/pg.matrix_filtered_pcaAdjusted.gct"
-output_dir <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Results/pca_plots"
+gct_file <- Sys.getenv("PROTEOMICS_NEHA_PCA_GCT_FILE", unset = path_external("neha", "pg.matrix_filtered_pcaAdjusted.gct"))
+output_dir <- Sys.getenv("PROTEOMICS_NEHA_PCA_OUTPUT_DIR", unset = path_results("pca_plots_neha"))
 if (!file.exists(gct_file)) stop(sprintf("Input file not found: %s", gct_file))
-dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
+ensure_dir(output_dir)
 
 # =============== Helpers =================
 trim_ws <- function(x){
@@ -217,13 +218,13 @@ if ("ReplicateGroup" %in% names(meta) && "celltype" %in% names(meta)) {
 theme_pca_min <- function() {
   theme_minimal(base_size = 16, base_family = "sans") +
     theme(
-      panel.grid.major = element_line(color = "#ECECEC", size = 0.4),
+      panel.grid.major = element_line(color = "#ECECEC", linewidth = 0.4),
       panel.grid.minor = element_blank(),
       panel.background = element_rect(fill = "white", colour = NA),
       plot.background  = element_rect(fill = "white", colour = NA),
       axis.title = element_text(color = "#444444", size = 18, face = "plain"),
       axis.text  = element_text(color = "#555555", size = 18),
-      axis.ticks = element_line(color = "#DDDDDD", size = 0.3),
+      axis.ticks = element_line(color = "#DDDDDD", linewidth = 0.3),
       axis.line  = element_blank(),
       panel.border = element_blank(),
       legend.background = element_blank(),
@@ -1404,7 +1405,7 @@ pc_violin_plots <- function(n_pcs = 5, group_key = "celltype") {
         
         # Create base plot
         p <- ggplot(df, aes(x = group, y = score, fill = group, color = group)) +
-            geom_hline(yintercept = 0, linetype = "solid", color = "lightgrey", size = 1) + 
+            geom_hline(yintercept = 0, linetype = "solid", color = "lightgrey", linewidth = 1) +
             geom_violin(alpha = 0.4, trim = FALSE, show.legend = FALSE, linetype = "blank") +
             geom_jitter(width = 0.15, alpha = 0.8, size = 4) +
             scale_fill_manual(values = pal) +
@@ -1724,7 +1725,7 @@ scree_with_kaiser <- function() {
     
     p <- ggplot(df, aes(x = PC, y = Eigenvalue)) +
         geom_col(fill = "#6B5B95", alpha = 0.7) +
-        geom_hline(yintercept = 1, linetype = "dashed", color = "red", size = 1) +
+        geom_hline(yintercept = 1, linetype = "dashed", color = "red", linewidth = 1) +
         annotate("text", x = 2, y = 1.2, label = "Kaiser criterion (λ=1)", 
                 color = "red", hjust = 0) +
         theme_pca_min() +
@@ -1848,7 +1849,7 @@ variance_main_figure <- function() {
         geom_col(aes(y = Individual), fill = "#6B5B95", alpha = 0.8, width = 0.7) +
         geom_line(aes(y = Cumulative), color = "#66C1A4", size = 1.5, group = 1) +
         geom_point(aes(y = Cumulative), color = "#66C1A4", size = 3) +
-        geom_hline(yintercept = 80, linetype = "dashed", color = "#E89369", size = 0.8) +
+        geom_hline(yintercept = 80, linetype = "dashed", color = "#E89369", linewidth = 0.8) +
         annotate("text", x = n_show * 0.8, y = 82, label = "80% threshold", 
                 color = "#E89369", size = 4) +
         scale_x_continuous(breaks = 1:n_show, labels = paste0("PC", 1:n_show)) +
@@ -1963,7 +1964,7 @@ pca_with_ellipses_main <- function(group_key = "celltype", conf_level = 0.95) {
     p <- ggplot(df, aes(PC1, PC2, color = group, fill = group)) +
         stat_ellipse(type = "t", level = conf_level, geom = "polygon", 
                     alpha = 0.15, show.legend = FALSE) +
-        stat_ellipse(type = "t", level = conf_level, size = 1, show.legend = FALSE) +
+        stat_ellipse(type = "t", level = conf_level, linewidth = 1, show.legend = FALSE) +
         geom_point(size = 5, alpha = 0.8, stroke = 0, shape = 16) +
         scale_color_manual(values = pal) +
         scale_fill_manual(values = pal) +
@@ -2664,4 +2665,3 @@ hexbin_umap_with_marginals <- function(group_key = "celltype") {
 hexbin_umap_with_marginals("celltype")
 hexbin_umap_with_marginals("ExpGroup")
 hexbin_umap_with_marginals("ReplicateGroup")
-
