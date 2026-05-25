@@ -1,21 +1,34 @@
-# ================== PCA analysis and plotting (extended, fixed, organized) ==================
-if (!requireNamespace("pacman", quietly = TRUE)) {
-  install.packages("pacman")
-}
+# Consumes:
+#   - strict GCT v1.3 matrix with row metadata and sample metadata rows
+# Produces:
+#   - PCA figures, variance tables, parsed metadata, optional exploratory outputs
+# File contract:
+#   - parses GCT v1.3 dimensions from line 2; optional heavy analyses are disabled by default
 
-pacman::p_load(
-  data.table, ggplot2, factoextra, reshape2, stats, ggrepel, tools,
-  grid, aricode
-)
+# ================== PCA analysis and plotting (extended, fixed, organized) ==================
+required_pkgs <- c("data.table", "ggplot2", "factoextra", "reshape2", "ggrepel", "aricode")
+missing_pkgs <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
+early_dry_run <- tolower(Sys.getenv("PROTEOMICS_DRY_RUN", unset = "")) %in% c("1", "true", "yes") ||
+  "--dry-run" %in% commandArgs(trailingOnly = TRUE)
+if (!early_dry_run && length(missing_pkgs) > 0) {
+  stop("Missing required R package(s): ", paste(missing_pkgs, collapse = ", "),
+       ". Install them explicitly before running this script.", call. = FALSE)
+}
+if (!early_dry_run) suppressPackageStartupMessages(invisible(lapply(required_pkgs, library, character.only = TRUE)))
 
 set.seed(42)
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
+MODULE_ID <- "03_qc_exploration"
+SUBSTEP_ID <- "pcaPlot"
+CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
+RUN_PCA_EXTENDED <- identical(tolower(Sys.getenv("PROTEOMICS_PCA_RUN_EXTENDED", "false")), "true")
+RUN_PCA_NETWORKS <- identical(tolower(Sys.getenv("PROTEOMICS_PCA_RUN_NETWORKS", "false")), "true")
 
 # =============== Config =================
-gct_file <- Sys.getenv("PROTEOMICS_PCA_GCT_FILE", unset = path_processed("morpheus", "E9_pg_matrix_protigy.gct"))
-output_dir <- Sys.getenv("PROTEOMICS_PCA_OUTPUT_DIR", unset = path_results("pca_plots"))
+gct_file <- path_or_env("PROTEOMICS_PCA_GCT_FILE", path_processed("01_preprocessing", "excel_convert", "E9_pg_matrix_protigy.gct"))
+output_dir <- path_or_env("PROTEOMICS_PCA_OUTPUT_DIR", CANONICAL_PATHS$figures, kind = "dir")
 if (is_dry_run()) {
   dry_run_line("Script", "03_qc_exploration/03_pcaPlot.r")
   dry_run_line("GCT input", gct_file, if (file.exists(gct_file)) "PASS" else "FAIL")
@@ -91,28 +104,35 @@ read_gct_meta_rows_checked <- function(path){
   cat("Dropped leading empty rows:", dropN, "\n")
 
   if (!identical(trim_ws(dt[1, V1][[1]]), "#1.3")) {
-    warning("Top marker not '#1.3' after dropping blanks; continuing but verify file format.")
+    stop("Top marker is not '#1.3'; 03_pcaPlot.r expects strict GCT v1.3.")
   }
 
-  meta_start <- 3L
-  meta_end   <- 19L
-  expr_start <- 20L
-  if (nrow(dt) < expr_start) stop("Unexpected file length; too short for meta+expr blocks.")
+  dims <- suppressWarnings(as.integer(strsplit(as.character(dt[2, V1][[1]]), "\t", fixed = TRUE)[[1]]))
+  if (length(dims) != 4 || any(is.na(dims))) {
+    dims <- suppressWarnings(as.integer(unlist(dt[2, 1:min(4, ncol(dt)), with = FALSE], use.names = FALSE)))
+  }
+  if (length(dims) < 4 || any(is.na(dims[1:4]))) {
+    stop("Invalid GCT v1.3 dimension line; expected n_rows, n_sample_cols, n_row_metadata_cols, n_col_metadata_rows.")
+  }
+  n_rows <- dims[[1]]
+  nS <- dims[[2]]
+  n_row_meta <- dims[[3]]
+  n_col_meta <- dims[[4]]
+  header_row <- 3L
+  meta_start <- header_row + 1L
+  meta_end <- meta_start + n_col_meta - 1L
+  expr_start <- meta_end + 1L
+  expr_end <- expr_start + n_rows - 1L
+  if (nrow(dt) < expr_end) stop("GCT file shorter than declared dimensions.")
 
-  meta_block <- dt[meta_start:meta_end]
-  expr_block <- dt[expr_start:nrow(dt)]
+  meta_block <- if (n_col_meta > 0) dt[meta_start:meta_end] else dt[0]
+  expr_block <- dt[expr_start:expr_end]
   cat("Meta block rows:", nrow(meta_block), " | Expr block rows:", nrow(expr_block), "\n")
 
-  if (ncol(meta_block) < 2) stop("Metadata block has no value columns (need >=2).")
-  keep_cols <- which(colSums(!is.na(meta_block)) > 0)
-  if (length(keep_cols) < 2) stop("Metadata has <2 non-empty columns.")
-  meta_block <- meta_block[, ..keep_cols]
-  ncols_meta <- ncol(meta_block)
-  nS <- ncols_meta - 1L
-  if (nS < 1L) stop("nS computed from meta width is <1; abort.")
+  if (n_col_meta > 0 && ncol(meta_block) < (n_row_meta + nS)) stop("Metadata block has too few columns for declared samples.")
   cat("Detected nS (samples):", nS, "from metadata width\n")
 
-  keys <- trim_ws(meta_block[[1]])
+  keys <- if (n_col_meta > 0) trim_ws(meta_block[[1]]) else character(0)
   cat("Meta keys detected:\n")
   print(keys)
 
@@ -120,7 +140,7 @@ read_gct_meta_rows_checked <- function(path){
   for (r in seq_along(keys)) {
     key <- keys[r]
     if (!nzchar(key)) next
-    vals <- trim_ws(as.character(meta_block[r, 2:(1+nS), with = FALSE]))
+    vals <- trim_ws(as.character(meta_block[r, (n_row_meta + 1):(n_row_meta + nS), with = FALSE]))
     if (length(vals) != nS) stop(sprintf("Meta row '%s' has %d values; expected %d.", key, length(vals), nS))
     meta_wide[[key]] <- vals
   }
@@ -130,14 +150,9 @@ read_gct_meta_rows_checked <- function(path){
   cat("Audit: first 3 samples from meta_wide fields:\n")
   print(head(meta_wide[, audit_fields, drop = FALSE], 3))
 
-  keep_cols_expr <- which(colSums(!is.na(expr_block)) > 0)
-  if (length(keep_cols_expr) < (1 + nS)) {
-    stop(sprintf("Expr block has only %d non-empty cols; need at least %d for values.", length(keep_cols_expr), 1 + nS))
-  }
-  expr_block_use <- expr_block[, ..keep_cols_expr]
-  if (ncol(expr_block_use) < (1 + nS)) stop("Expr usable columns < 1+nS; abort.")
+  expr_block_use <- expr_block[, 1:(n_row_meta + nS), with = FALSE]
   proteins <- trim_ws(expr_block_use[[1]])
-  expr_vals <- expr_block_use[, 2:(1+nS), with = FALSE]
+  expr_vals <- expr_block_use[, (n_row_meta + 1):(n_row_meta + nS), with = FALSE]
   expr_mat  <- as.matrix(expr_vals)
   mode(expr_mat) <- "numeric"
   rownames(expr_mat) <- proteins
@@ -445,6 +460,16 @@ for (k in c("PC1","PC2")) {
     save_pheatmap(M, file.path(heat_dir, sprintf("heatmap_%s_topposneg.png", k)), width=8, height=10, scale="row")
   }
 }
+
+write_run_manifest(
+  file.path(CANONICAL_PATHS$logs, "run_manifest.yml"),
+  inputs = list(gct_file = gct_file),
+  outputs = list(output_dir = output_dir, parsed_metadata = file.path(output_dir, "tables/meta/sample_metadata_parsed.csv")),
+  parameters = list(run_pca_extended = RUN_PCA_EXTENDED, run_pca_networks = RUN_PCA_NETWORKS),
+  notes = "Base PCA, scree, variance, loadings, correlations, parsed metadata and session info run by default."
+)
+
+if (RUN_PCA_EXTENDED) {
 
 # 6) UMAP on PCs (first 20 PCs)
 run_umap <- function(X, n_neighbors = 15, min_dist = 0.2, n_components = 2, metric = "euclidean"){
@@ -893,6 +918,8 @@ run_plsda <- function(label_key = "region"){
 run_plsda("region")
 run_plsda("layer")
 
+}
+
 # J) WGCNA module eigengene vs PCs (explicit WGCNA::cor, aligned samples)
 wgcna_modules_vs_pcs <- function(){
   if (!requireNamespace("WGCNA", quietly = TRUE)) { message("WGCNA not installed; skipping WGCNA-PC association."); return(NULL) }
@@ -915,4 +942,6 @@ wgcna_modules_vs_pcs <- function(){
   df$q <- p.adjust(df$p, method="BH")
   save_table("wgcna", "wgcna_module_vs_pc.csv", df)
 }
-wgcna_modules_vs_pcs()
+if (RUN_PCA_NETWORKS) {
+  wgcna_modules_vs_pcs()
+}
