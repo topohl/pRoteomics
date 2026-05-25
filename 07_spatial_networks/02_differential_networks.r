@@ -31,7 +31,7 @@ CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
 
 required_pkgs <- c("dplyr", "tidyr", "stringr", "purrr", "tibble", "ggplot2", "igraph", "ggraph", "openxlsx", "svglite")
 missing <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
-if (length(missing) > 0) install.packages(missing, repos = "https://cloud.r-project.org")
+if (length(missing) > 0) stop("Missing required R package(s): ", paste(missing, collapse = ", "), ". Install them explicitly before running this script.", call. = FALSE)
 invisible(lapply(required_pkgs, library, character.only = TRUE))
 
 params <- list(
@@ -317,6 +317,13 @@ openxlsx::saveWorkbook(wb, file.path(dirs$tables, "differential_networks_summary
 saveRDS(
   list(params = params, all_group_edges = all_group_edges, differential_edges = all_diff, node_rewiring = all_node, summary = summary_tbl, sessionInfo = sessionInfo()),
   file.path(dirs$logs, "differential_networks_objects.rds")
+)
+write_run_manifest(
+  file.path(dirs$logs, "run_manifest.yml"),
+  inputs = list(spatial_rds = params$spatial_rds),
+  outputs = list(tables = dirs$tables, figures = dirs$figures, networks = dirs$networks, rds = file.path(dirs$logs, "differential_networks_objects.rds")),
+  parameters = params,
+  notes = "Captures edge presence and delta thresholds for differential spatial network calls."
 )
 
 message2("Finished differential spatial network analysis")
