@@ -14,15 +14,13 @@ options(width = 100)
 ## ----simResult, cache=TRUE, fig.height=4, fig.width=4---------------------------------------------
 
 # Improved package loading
-if (!requireNamespace("pacman", quietly = TRUE)) install.packages("pacman")
-invisible(suppressMessages(pacman::p_load(readxl, tibble, dplyr, svglite)))
-
-# Install BiocManager only if needed for variancePartition
-if (!requireNamespace("variancePartition", quietly = TRUE)) {
-    message("Installing Bioconductor package 'variancePartition'...")
-    if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager")
-    BiocManager::install("variancePartition", ask = FALSE, update = FALSE)
+required_pkgs <- c("readxl", "tibble", "dplyr", "svglite", "variancePartition")
+missing_pkgs <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
+if (length(missing_pkgs) > 0) {
+    stop("Missing required R package(s): ", paste(missing_pkgs, collapse = ", "),
+         ". Install them explicitly before running this script.", call. = FALSE)
 }
+invisible(lapply(setdiff(required_pkgs, "variancePartition"), library, character.only = TRUE))
 suppressPackageStartupMessages(library(variancePartition))
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
