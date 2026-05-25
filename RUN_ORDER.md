@@ -150,7 +150,9 @@ Rscript 06_modules_WGCNA/03_overlap_modules.r --dry-run
 Rscript 06_modules_WGCNA/91_module_score_v0.0.2.r --dry-run
 ```
 
-`01_WGCNA v.2.0.0.r` remains documented for a later data-aware pass because it is the central WGCNA model producer.
+`91_module_score_v0.0.2.r` is the canonical active module-score script. `90_module_score_v0.0.1.r` is retained only as an older reference and should not be used in the active run order.
+
+`01_WGCNA v.2.0.0.r` now uses `R/paths.R` and writes an input manifest/hash table plus run manifest, but it still consumes precombined variancePartition-style matrices (`male.data.xlsx` and `sample_info.xlsx`). Generate those upstream or set `PROTEOMICS_WGCNA_EXPR_XLSX` and `PROTEOMICS_WGCNA_META_XLSX` explicitly.
 
 ## 7. Spatial network analyses
 
