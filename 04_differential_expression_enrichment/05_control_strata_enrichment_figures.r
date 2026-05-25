@@ -7,9 +7,14 @@
 # - Top lists: save top up/down; microglia volcano labels top 5 up and top 5 down
 
 suppressPackageStartupMessages({
-  if (!require("pacman", quietly = TRUE)) install.packages("pacman")
-  pacman::p_load(readxl, dplyr, tidyr, tibble, stringr, purrr,
-                 limma, ggplot2, ggrepel, readr, forcats)
+  required_pkgs <- c("readxl", "dplyr", "tidyr", "tibble", "stringr", "purrr",
+                     "limma", "ggplot2", "ggrepel", "readr", "forcats")
+  missing_pkgs <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
+  if (length(missing_pkgs) > 0) {
+    stop("Missing required R package(s): ", paste(missing_pkgs, collapse = ", "),
+         ". Install them explicitly before running this script.", call. = FALSE)
+  }
+  invisible(lapply(required_pkgs, library, character.only = TRUE))
 })
 set.seed(17)
 
@@ -889,4 +894,5 @@ saveRDS(list(
   region_of_interest = region_of_interest
 ), file = file.path(dirs$rds, paste0(region_of_interest, "_layer_within_micro_fdr005_", ts, ".rds")))
 
-sink(file.path(dirs$logs, paste0("sessionInfo_", ts, ".txt"))); print(sessionInfo()); sink()
+session_info_file <- file.path(dirs$logs, paste0("sessionInfo_", ts, ".txt"))
+capture.output(sessionInfo(), file = session_info_file)
