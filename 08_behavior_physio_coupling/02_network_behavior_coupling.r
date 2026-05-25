@@ -40,7 +40,7 @@ required_pkgs <- c(
   "ggplot2", "broom", "openxlsx", "svglite", "scales", "forcats"
 )
 missing <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
-if (length(missing) > 0) install.packages(missing, repos = "https://cloud.r-project.org")
+if (length(missing) > 0) stop("Missing required R package(s): ", paste(missing, collapse = ", "), ". Install them explicitly before running this script.", call. = FALSE)
 invisible(lapply(required_pkgs, library, character.only = TRUE))
 
 # -------------------------------
@@ -720,6 +720,25 @@ joined <- make_long_coupling_table(edge_scores, global_metrics, movement_tbl, ph
 edge_joined <- joined$edge_joined
 global_joined <- joined$global_joined
 
+proteomics_animals <- sort(unique(edge_scores$AnimalID))
+behavior_animals <- sort(unique(c(movement_tbl$AnimalID, physio_tbl$AnimalID)))
+joined_animals <- sort(unique(edge_joined$AnimalID[!is.na(edge_joined$Group)]))
+join_diag <- dplyr::bind_rows(
+  data.frame(metric = "proteomics_animals_before_join", value = length(proteomics_animals)),
+  data.frame(metric = "behavior_animals_before_join", value = length(behavior_animals)),
+  data.frame(metric = "animals_after_join", value = length(joined_animals)),
+  data.frame(metric = "animals_lost_from_proteomics", value = length(setdiff(proteomics_animals, behavior_animals))),
+  data.frame(metric = "animals_lost_from_behavior", value = length(setdiff(behavior_animals, proteomics_animals)))
+)
+readr::write_csv(join_diag, file.path(dirs$tables, "join_diagnostics_summary.csv"))
+readr::write_csv(data.frame(source = "proteomics_only", AnimalID = setdiff(proteomics_animals, behavior_animals)), file.path(dirs$tables, "join_diagnostics_proteomics_only.csv"))
+readr::write_csv(data.frame(source = "behavior_only", AnimalID = setdiff(behavior_animals, proteomics_animals)), file.path(dirs$tables, "join_diagnostics_behavior_only.csv"))
+coverage_cols <- intersect(c("Sex", "Group", "Phase", "window"), names(edge_joined))
+if (length(coverage_cols) > 0) {
+  coverage <- edge_joined %>% dplyr::count(dplyr::across(dplyr::all_of(coverage_cols)), name = "n")
+  readr::write_csv(coverage, file.path(dirs$tables, "join_diagnostics_coverage.csv"))
+}
+
 readr::write_csv(edge_joined, file.path(dirs$tables, "merged_edge_behavior_long.csv"))
 readr::write_csv(global_joined, file.path(dirs$tables, "merged_global_network_behavior.csv"))
 
@@ -780,6 +799,18 @@ saveRDS(
     sessionInfo = sessionInfo()
   ),
   file.path(dirs$logs, "network_behavior_coupling_objects.rds")
+)
+write_run_manifest(
+  file.path(dirs$logs, "run_manifest.yml"),
+  inputs = list(
+    spatial_rds = params$spatial_rds,
+    movement_auc_file = params$movement_auc_file,
+    movement_auc_all_file = params$movement_auc_all_file,
+    behavior_xlsx = params$behavior_xlsx
+  ),
+  outputs = list(tables = dirs$tables, figures = dirs$figures, logs = dirs$logs),
+  parameters = params,
+  notes = "Join diagnostics include animal counts, animals lost from each side, and sex/group/window coverage."
 )
 
 message2("Finished network-behavior coupling analysis")
