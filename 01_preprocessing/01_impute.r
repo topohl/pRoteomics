@@ -3,13 +3,22 @@ library(readr)
 library(dplyr)
 library(writexl)
 
-# Paths
-metadata_path <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/metadata/TPE9_sample_metadata_males.xlsx"
-input_path <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/pg_matrix/raw/quicksearch.pg_matrix.tsv"
-output_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/pg_matrix/imputed/"
+paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
+source(paths_file)
+
+# Paths/config
+IMPUTATION_SEED <- 42L
+metadata_path <- Sys.getenv("PROTEOMICS_IMPUTE_METADATA", unset = path_metadata("TPE9_sample_metadata_males.xlsx"))
+input_path <- Sys.getenv("PROTEOMICS_IMPUTE_INPUT", unset = path_raw("pg_matrix", "quicksearch.pg_matrix.tsv"))
+output_dir <- Sys.getenv("PROTEOMICS_IMPUTE_OUTPUT_DIR", unset = path_processed("pg_matrix", "imputed"))
+
+if (!file.exists(metadata_path)) stop("Metadata file not found: ", metadata_path, call. = FALSE)
+if (!file.exists(input_path)) stop("Input file not found: ", input_path, call. = FALSE)
+ensure_dir(output_dir)
 
 # Read metadata
 metadata <- read_excel(metadata_path)
+if (!"sample_id" %in% names(metadata)) stop("Metadata must contain a sample_id column.", call. = FALSE)
 
 # Exclude rows where 'exclude' is TRUE
 metadata <- metadata %>% filter(is.na(exclude) | exclude != TRUE)
@@ -25,6 +34,9 @@ if ("Protein.Names" %in% names(df)) {
 
 # Identify annotation columns (first 4 columns, adjust if needed)
 annotation_cols <- 1:4
+if (ncol(df) <= length(annotation_cols)) {
+    stop("Input matrix has no sample columns after annotation columns.", call. = FALSE)
+}
 annotation_names <- names(df)[annotation_cols]
 
 # Check sample_id matching
@@ -41,17 +53,25 @@ if (length(missing_in_metadata) > 0) {
 
 # Only keep sample_ids present in both
 common_sample_ids <- intersect(sample_ids_metadata, sample_ids_data)
+if (length(common_sample_ids) == 0) {
+    stop("No common sample IDs between metadata and input matrix.", call. = FALSE)
+}
 
 # Function to impute missing values (expects log2 scale)
-impute_normal <- function(df, numeric_cols, width = 0.3, downshift = 1.8) {
+impute_normal <- function(df, numeric_cols, width = 0.3, downshift = 1.8, seed = NULL) {
+    if (!is.null(seed)) set.seed(seed)
     imputed_df <- df
     for (col in numeric_cols) {
         col_data <- df[[col]]
         missing_idx <- which(is.na(col_data))
         if (length(missing_idx) > 0) {
             observed <- col_data[!is.na(col_data)]
+            if (length(observed) == 0) {
+                stop("Cannot impute column with no observed values: ", names(df)[col], call. = FALSE)
+            }
             mean_obs <- mean(observed)
             sd_obs <- sd(observed)
+            if (!is.finite(sd_obs) || sd_obs == 0) sd_obs <- 0
             impute_mean <- mean_obs - downshift * sd_obs
             impute_sd <- sd_obs * width
             imputed_values <- rnorm(length(missing_idx), mean = impute_mean, sd = impute_sd)
@@ -80,8 +100,12 @@ make_filename <- function(celltype_layer, n_samples, n_proteins, method = "norma
     )
 }
 
+qc_rows <- list()
+celltype_layers <- unique(metadata$celltype_layer)
+
 # Split by celltype_layer and process each subset
-for (celltype_layer in unique(metadata$celltype_layer)) {
+for (idx in seq_along(celltype_layers)) {
+    celltype_layer <- celltype_layers[[idx]]
     # Get sample_ids for this celltype_layer
     subset_sample_ids <- metadata %>%
         filter(celltype_layer == !!celltype_layer) %>%
@@ -96,7 +120,10 @@ for (celltype_layer in unique(metadata$celltype_layer)) {
     df_subset <- df[, subset_cols]
 
     # Identify numeric columns for this subset (sample columns only)
-    numeric_cols <- (length(annotation_names) + 1):ncol(df_subset)
+    numeric_cols <- seq.int(length(annotation_names) + 1L, ncol(df_subset))
+    if (length(numeric_cols) == 0) {
+        stop("No numeric sample columns available for celltype_layer: ", celltype_layer, call. = FALSE)
+    }
 
     # Log2 transform numeric columns
     df_subset[, numeric_cols] <- log2(df_subset[, numeric_cols])
@@ -111,7 +138,8 @@ for (celltype_layer in unique(metadata$celltype_layer)) {
     df_filtered <- df_subset[missing_prop <= 0.7, ]
 
     # Impute missing values (on log2 scale)
-    imputed_df <- impute_normal(df_filtered, numeric_cols)
+    subset_seed <- IMPUTATION_SEED + idx - 1L
+    imputed_df <- impute_normal(df_filtered, numeric_cols, seed = subset_seed)
 
     # Move annotation columns to the end
     anno_idx <- match(annotation_names, names(imputed_df))
@@ -126,4 +154,26 @@ for (celltype_layer in unique(metadata$celltype_layer)) {
 
     # Write output
     write_xlsx(imputed_df, output_path)
+
+    qc_rows[[length(qc_rows) + 1L]] <- data.frame(
+        celltype_layer = celltype_layer,
+        seed = subset_seed,
+        n_samples = n_samples,
+        n_proteins = n_proteins,
+        output_file = basename(output_path),
+        stringsAsFactors = FALSE
+    )
+}
+
+if (length(qc_rows) > 0) {
+    imputation_qc <- do.call(rbind, qc_rows)
+    write_csv(imputation_qc, file.path(output_dir, "imputation_qc.csv"))
+    writeLines(c(
+        paste("IMPUTATION_SEED:", IMPUTATION_SEED),
+        paste("metadata_path:", metadata_path),
+        paste("input_path:", input_path),
+        paste("output_dir:", output_dir),
+        "",
+        capture.output(sessionInfo())
+    ), file.path(output_dir, "sessionInfo.txt"))
 }
