@@ -21,13 +21,16 @@
 if (!require("pacman")) install.packages("pacman")
 pacman::p_load(dplyr, ggplot2, readxl, tibble, tidyr, pheatmap, openxlsx)
 
+paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
+source(paths_file)
+
 # define sheet name
 sheet_name <- "cleaned"  # Adjust if necessary, or remove if using the first sheet by default
 
-# Read the data (adjust path and sep as needed)
-# Remove "Background" celltype data
-excel_file <- paste0("S:/Lab_Member/Tobi/Experiments/Collabs/Neha/",
-                     "clusterProfiler/Datasets/rawDataFC.xlsx")
+# Read the data (adjust path and sep as needed). This collab input is external;
+# set PROTEOMICS_BOXPLOT_BONANZA_INPUT when it is not stored under data/external.
+excel_file <- Sys.getenv("PROTEOMICS_BOXPLOT_BONANZA_INPUT", unset = path_external("rawDataFC.xlsx"))
+if (!file.exists(excel_file)) stop("BoxplotBonanza input not found: ", excel_file, call. = FALSE)
 df <- read_excel(excel_file, sheet = sheet_name) %>%
   filter(Celltype != "Background") %>%
   mutate(Group = factor(Group, 
@@ -35,7 +38,8 @@ df <- read_excel(excel_file, sheet = sheet_name) %>%
                         labels = c("CS CNO", "CS VEH", "US CNO", "US VEH"))) %>%
   dplyr::select(Celltype, Group, TKNK_MOUSE)
 
-results_dir <- "C:/Users/topohl/Documents/Rtestground"
+results_dir <- Sys.getenv("PROTEOMICS_BOXPLOT_BONANZA_OUTPUT_DIR", unset = path_results("boxplotBonanza"))
+ensure_dir(results_dir)
 
 # Keep only TKNK_MOUSE along with grouping variables and generate z-score dataframe 
 # for TKNK_MOUSE expression per Celltype and Group
