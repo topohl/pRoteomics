@@ -18,8 +18,13 @@
 #' set before running the script. Adjust the color palette and plot aesthetics as needed.
 
 
-if (!require("pacman")) install.packages("pacman")
-pacman::p_load(dplyr, ggplot2, readxl, tibble, tidyr, pheatmap, openxlsx)
+required_pkgs <- c("dplyr", "ggplot2", "readxl", "tibble", "tidyr", "pheatmap", "openxlsx")
+missing_pkgs <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
+if (length(missing_pkgs) > 0) {
+  stop("Missing required R package(s): ", paste(missing_pkgs, collapse = ", "),
+       ". Install them explicitly before running this script.", call. = FALSE)
+}
+invisible(lapply(required_pkgs, library, character.only = TRUE))
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
@@ -141,7 +146,7 @@ summary_stats <- df_z %>%
   ungroup()
 
 # Save the statistics as CSV
-library(openxlsx)  # Ensure the package is installed with install.packages("openxlsx") if necessary
+library(openxlsx)
 summary_file <- file.path(results_dir, "TKNK_zscore_summary_stats.xlsx")
 write.xlsx(summary_stats, summary_file, rowNames = FALSE)
 
