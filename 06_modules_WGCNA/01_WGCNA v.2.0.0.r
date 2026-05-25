@@ -22,6 +22,9 @@ suppressPackageStartupMessages(
   invisible(lapply(required_pkgs, library, character.only = TRUE))
 )
 
+paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
+source(paths_file)
+
 mm_to_in <- function(mm) mm / 25.4
 nature_single_col <- mm_to_in(89)
 nature_double_col <- mm_to_in(183)
@@ -65,7 +68,7 @@ WGCNAnThreads()
 # --------------------------
 # Paths and data load
 # --------------------------
-output_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/wgcna/output"
+output_dir <- Sys.getenv("PROTEOMICS_WGCNA_OUTPUT_DIR", unset = path_results("06_modules_WGCNA", "wgcna_output"))
 
 subdirs <- list(
   figures_qc          = file.path(output_dir, "figures", "qc"),
@@ -151,8 +154,8 @@ sig_dot <- function(fdr) {
   )
 }
 
-expr_xlsx <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/data/male.data.xlsx"
-meta_xlsx <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/data/sample_info.xlsx"
+expr_xlsx <- Sys.getenv("PROTEOMICS_WGCNA_EXPR_XLSX", unset = path_processed("variancePartition", "data", "male.data.xlsx"))
+meta_xlsx <- Sys.getenv("PROTEOMICS_WGCNA_META_XLSX", unset = path_processed("variancePartition", "data", "sample_info.xlsx"))
 
 # ================================
 # Mouse-only mapping: robust idmapping parser + offline + SYMBOL/ALIAS + Entrez + UniProt gene_primary + QC
@@ -161,9 +164,9 @@ meta_xlsx <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap
 # --------------------------
 # Inputs
 # --------------------------
-expr_xlsx <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/data/male.data.xlsx"
-meta_xlsx <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/data/sample_info.xlsx"
-idmap_dat <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/MOUSE_10090_idmapping.dat"
+expr_xlsx <- Sys.getenv("PROTEOMICS_WGCNA_EXPR_XLSX", unset = expr_xlsx)
+meta_xlsx <- Sys.getenv("PROTEOMICS_WGCNA_META_XLSX", unset = meta_xlsx)
+idmap_dat <- Sys.getenv("PROTEOMICS_WGCNA_IDMAP_DAT", unset = path_external("MOUSE_10090_idmapping.dat"))
 
 stop_if_missing <- function(path) if (!file.exists(path)) stop(sprintf("Missing file: %s", path))
 read_head <- function(path) {
