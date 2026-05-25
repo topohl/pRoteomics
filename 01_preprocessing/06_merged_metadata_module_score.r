@@ -10,20 +10,41 @@ library(readr)
 library(openxlsx)
 library(janitor)
 
+paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
+source(paths_file)
+
 # ------------------------------------------------
 # 1) PATHS
 # ------------------------------------------------
 
-proteomics_file <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/morpheus/20260218_pgmatrix_imputed_neuron_neuropil_180samples_missing70pct_with_metadata.xlsx"
+proteomics_file <- Sys.getenv(
+  "PROTEOMICS_MODULE_SCORE_PROTEOMICS_FILE",
+  unset = path_processed("morpheus", "20260218_pgmatrix_imputed_neuron_neuropil_180samples_missing70pct_with_metadata.xlsx")
+)
 
-auc_all_file <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/Analysis/Behavior/RFID/statistics/gamm_new/analyses/gamm/tables/auc_individual_animals_all.csv"
+auc_all_file <- Sys.getenv(
+  "PROTEOMICS_MODULE_SCORE_AUC_ALL",
+  unset = path_external("behavior", "auc_individual_animals_all.csv")
+)
 
-auc_first_file <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/Analysis/Behavior/RFID/statistics/gamm_new/analyses/gamm/tables/auc_individual_animals_firstChangeActive.csv"
+auc_first_file <- Sys.getenv(
+  "PROTEOMICS_MODULE_SCORE_AUC_FIRST",
+  unset = path_external("behavior", "auc_individual_animals_firstChangeActive.csv")
+)
 
-behavior_file <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/Analysis/SIS_Analysis/E9_Behavior_Data.xlsx"
+behavior_file <- Sys.getenv(
+  "PROTEOMICS_MODULE_SCORE_BEHAVIOR_FILE",
+  unset = path_external("behavior", "E9_Behavior_Data.xlsx")
+)
 
-out_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Results/module_scores/"
-dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+input_files <- c(proteomics_file, auc_all_file, auc_first_file, behavior_file)
+missing_input_files <- input_files[!file.exists(input_files)]
+if (length(missing_input_files) > 0) {
+  stop("Required module-score merge input file(s) not found: ", paste(missing_input_files, collapse = ", "), call. = FALSE)
+}
+
+out_dir <- Sys.getenv("PROTEOMICS_MODULE_SCORE_OUTPUT_DIR", unset = path_results("module_scores"))
+ensure_dir(out_dir)
 
 out_file <- file.path(out_dir, "sample_metadata_merged_clean_for_module_scores.xlsx")
 
