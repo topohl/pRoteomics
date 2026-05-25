@@ -57,8 +57,6 @@ if (is_dry_run()) {
 if (!file.exists(data_path)) stop("Proteomics matrix not found: ", data_path, call. = FALSE)
 if (!file.exists(sample_metadata_path)) stop("Sample metadata not found: ", sample_metadata_path, call. = FALSE)
 
-if (!require("BiocManager", quietly = TRUE)) install.packages("BiocManager")
-
 cran_packages <- c(
   "readxl", "dplyr", "tibble", "tidyr", "ggplot2", "pheatmap",
   "svglite", "ggridges", "ggrepel", "ggsci", "viridis",
@@ -70,19 +68,14 @@ bioc_packages <- c(
   "limma", "EWCE", "ewceData", "org.Mm.eg.db", "AnnotationDbi"
 )
 
-install_and_load <- function(pkg, bioc = FALSE) {
-  if (!require(pkg, character.only = TRUE, quietly = TRUE)) {
-    if (bioc) {
-      BiocManager::install(pkg, update = FALSE, ask = FALSE)
-    } else {
-      install.packages(pkg)
-    }
+load_required <- function(pkg) {
+  if (!requireNamespace(pkg, quietly = TRUE)) {
+    stop("Missing required R package: ", pkg, ". Install it explicitly before running this script.", call. = FALSE)
   }
   library(pkg, character.only = TRUE)
 }
 
-invisible(lapply(cran_packages, install_and_load, bioc = FALSE))
-invisible(lapply(bioc_packages, install_and_load, bioc = TRUE))
+invisible(lapply(c(cran_packages, bioc_packages), load_required))
 
 # ==========================================
 # 1. CONFIG
