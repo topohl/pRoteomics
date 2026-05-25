@@ -934,7 +934,7 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
             axis.text.x = element_text(angle = 45, hjust = 1),
             axis.text.y = element_text(size = 10),
             strip.text = element_text(size = 12, face = "plain"),
-            panel.grid.major = element_line(color = "grey85", size = 0.3),
+            panel.grid.major = element_line(color = "grey85", linewidth = 0.3),
             panel.grid.minor = element_blank()
           )
         save_plot_organized(gse_plot, paste0("GSEA_", ont, "_dotplot", plot_suffix, ".svg"), dirs$plots_go)
