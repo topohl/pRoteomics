@@ -13,6 +13,9 @@ suppressPackageStartupMessages({
 })
 set.seed(17)
 
+paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
+source(paths_file)
+
 # ------------------------------- Parameters -----------------------------
 region_of_interest <- "CA2"               # Set here to "CA1", "CA2", "CA3", etc.
 layer_levels <- c("so", "sp", "sr", "slm") # Set layers for the chosen region here
@@ -24,12 +27,13 @@ extra_layer  <- "microglia"
 idmap_file <- NULL  # CSV with columns: protein_id, gene_symbol (optional)
 
 # ------------------------------- Paths ---------------------------------
-base <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/data"
+base <- Sys.getenv("PROTEOMICS_CONTROL_STRATA_INPUT_DIR", unset = path_processed("variancePartition", "data"))
 male_xlsx  <- file.path(base, "male.data.xlsx")
 sinfo_xlsx <- file.path(base, "sample_info.xlsx")
+if (!file.exists(male_xlsx)) stop("Control-strata expression workbook not found: ", male_xlsx, call. = FALSE)
+if (!file.exists(sinfo_xlsx)) stop("Control-strata sample info workbook not found: ", sinfo_xlsx, call. = FALSE)
 
-out_base <- file.path("S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Results",
-                      tolower(region_of_interest), "layer_and_within_group_fdr005")
+out_base <- path_results(tolower(region_of_interest), "layer_and_within_group_fdr005")
 dirs <- list(
   figs_layer    = file.path(out_base, "figures", "layer_enrichment"),
   figs_within   = file.path(out_base, "figures", "within_layer"),
@@ -735,8 +739,7 @@ layer_b <- "sp"   # CA1/CA2/CA3 layers SP
 ca_regions <- c("CA1", "CA2", "CA3")
 
 # Create dedicated output directories for cross-region comparisons
-cross_region_base <- file.path("S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Results",
-  "cross_region_comparisons", "layer_and_within_group_fdr005")
+cross_region_base <- path_results("cross_region_comparisons", "layer_and_within_group_fdr005")
 dirs_cross <- list(
   figs = file.path(cross_region_base, "figures"),
   tabs = file.path(cross_region_base, "tables")
