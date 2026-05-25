@@ -16,14 +16,21 @@ suppressPackageStartupMessages({
   library(rlang)
 })
 
+paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
+source(paths_file)
+
 # ================================================================
 # 1. Paths
 # ================================================================
 
-input_file <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/pg_matrix/raw/quicksearch.stats.annotated.xlsx"
+input_file <- Sys.getenv(
+  "PROTEOMICS_QC_STATS_FILE",
+  unset = path_raw("pg_matrix", "quicksearch.stats.annotated.xlsx")
+)
 
-out_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Results/QC_Nature/"
-dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+out_dir <- Sys.getenv("PROTEOMICS_QC_NATURE_DIR", unset = path_results("QC_Nature"))
+if (!file.exists(input_file)) stop("QC stats input not found: ", input_file, call. = FALSE)
+ensure_dir(out_dir)
 
 # ================================================================
 # 2. Load and clean data
