@@ -9,6 +9,11 @@ library(svglite)
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
+MODULE_ID <- "08_behavior_physio_coupling"
+SUBSTEP_ID <- "correlate_proteomics_with_behavior"
+CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
+out_dir <- path_or_env("PROTEOMICS_BEHAVIOR_COR_OUTPUT_DIR", CANONICAL_PATHS$figures, kind = "dir")
+ensure_dir(out_dir)
 
 # --- 2. Load Your Data Files ---
 proteomics_input_file <- Sys.getenv(
@@ -388,6 +393,23 @@ if (nrow(final_df) == 0) {
   stop("No overlap between behavior IDs and proteomics AnimalID after normalization.")
 }
 
+join_diagnostics <- dplyr::bind_rows(
+  data.frame(metric = "proteomics_animals_before_join", value = length(unique(mouse_scores$MouseID))),
+  data.frame(metric = "behavior_animals_before_join", value = length(unique(beh_tbl$MouseID))),
+  data.frame(metric = "animals_after_join", value = length(unique(final_df$MouseID))),
+  data.frame(metric = "animals_lost_from_proteomics", value = length(prot_only)),
+  data.frame(metric = "animals_lost_from_behavior", value = length(beh_only))
+)
+write.csv(join_diagnostics, file.path(CANONICAL_PATHS$tables, "join_diagnostics_summary.csv"), row.names = FALSE)
+write.csv(data.frame(source = "proteomics_only", MouseID = prot_only), file.path(CANONICAL_PATHS$tables, "join_diagnostics_proteomics_only.csv"), row.names = FALSE)
+write.csv(data.frame(source = "behavior_only", MouseID = beh_only), file.path(CANONICAL_PATHS$tables, "join_diagnostics_behavior_only.csv"), row.names = FALSE)
+coverage_cols <- intersect(c("Sex", "sex", "Group", "window"), names(final_df))
+if (length(coverage_cols) > 0) {
+  coverage <- final_df %>%
+    dplyr::count(dplyr::across(dplyr::all_of(coverage_cols)), name = "n")
+  write.csv(coverage, file.path(CANONICAL_PATHS$tables, "join_diagnostics_coverage.csv"), row.names = FALSE)
+}
+
 # Step D: Z-Score the protein data relative to the CONTROL group
 # This makes the Y-axis represent "deviation from normal"
 con_mean <- mean(final_df$Structural_Load_Mean[final_df$Group == "CON"], na.rm = TRUE)
@@ -448,10 +470,6 @@ plot <- ggplot(final_df, aes(x = AUC, y = Structural_ZScore, color = Group)) +
 
 # --- 6. Save Everything ---
 
-out_dir <- Sys.getenv("PROTEOMICS_BEHAVIOR_COR_OUTPUT_DIR", unset = path_results("behavior_coupling", "correlation_proteomics"))
-ensure_dir(out_dir)
-dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
-
 # Save as SVG (Nature single-column width: 88 mm)
 svglite::svglite(file.path(out_dir, "Figure3_AUC_vs_Proteomics.svg"),
                  width = 1.5, height = 2)
@@ -460,6 +478,12 @@ dev.off()
 
 # Save the final data table for your Supplemental Information
 write.csv(final_df, file.path(out_dir, "SourceData_Figure3_Correlation.csv"), row.names = FALSE)
+write_run_manifest(
+  file.path(CANONICAL_PATHS$logs, "run_manifest.yml"),
+  inputs = list(proteomics = proteomics_input_file, behavior = behavior_input_file),
+  outputs = list(figure_dir = out_dir, join_diagnostics = CANONICAL_PATHS$tables),
+  parameters = list(target_region = target_region, target_layer = target_layer, target_metric = target_metric)
+)
 
 # Print success message
 cat("Analysis complete. R²:", r_squared, "| P-value:", p_val)
