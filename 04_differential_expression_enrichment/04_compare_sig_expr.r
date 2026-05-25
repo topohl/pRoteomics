@@ -45,6 +45,8 @@
   library(pacman)
   # Added ggplot2 and RColorBrewer here to ensure they are loaded early
   p_load(readxl, dplyr, tidyr, pheatmap, svglite, ggplot2, RColorBrewer)
+  paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
+  source(paths_file)
 
   ## ---------- 1. Configuration (USER INPUT) ----------
 
@@ -56,16 +58,23 @@
 
   # 1.2 Input File Paths
   # GCT File
-  GCT_FILE_PATH <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/gct/data/pg.matrix_filtered_pcaAdjusted_unnormalized.gct"
+  GCT_FILE_PATH <- Sys.getenv(
+    "PROTEOMICS_COMPARE_SIG_EXPR_GCT",
+    unset = path_processed("morpheus", "pg.matrix_filtered_pcaAdjusted_unnormalized.gct")
+  )
 
   # Folder containing differential expression results (up/down regulated lists)
-  #SIG_PATH <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Results/compareGO/BP/learning_signature/memory_ensemble/old/core_enrichment/significant_proteins/"
-  SIG_PATH <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Results/compareGO/BP/learning_signature/memory_ensemble/06_Significant_Proteins/"
+  SIG_PATH <- Sys.getenv(
+    "PROTEOMICS_COMPARE_SIG_EXPR_SIG_PATH",
+    unset = path_results("tables", "04_differential_expression_enrichment", "compareGO", "BP", "learning_signature", "memory_ensemble", "06_Significant_Proteins")
+  )
 
   # 1.3 Output Settings
-  BASE_OUT_DIR <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Results/compare_sig_expr"
+  BASE_OUT_DIR <- Sys.getenv("PROTEOMICS_COMPARE_SIG_EXPR_OUTPUT_DIR", unset = path_results("compare_sig_expr"))
   DIR_TABLES   <- file.path(BASE_OUT_DIR, "tables")
   DIR_PLOTS    <- file.path(BASE_OUT_DIR, "plots")
+  if (!file.exists(GCT_FILE_PATH)) stop("GCT file not found: ", GCT_FILE_PATH, call. = FALSE)
+  if (!dir.exists(SIG_PATH)) stop("Signature directory not found: ", SIG_PATH, call. = FALSE)
 
   # Check directories
   if (!dir.exists(DIR_TABLES)) dir.create(DIR_TABLES, recursive = TRUE)
