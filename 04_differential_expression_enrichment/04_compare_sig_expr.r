@@ -41,10 +41,13 @@
   ## =============================================================================
 
   ## ---------- 0. Libraries and Setup ----------
-  if (!require("pacman")) install.packages("pacman")
-  library(pacman)
-  # Added ggplot2 and RColorBrewer here to ensure they are loaded early
-  p_load(readxl, dplyr, tidyr, pheatmap, svglite, ggplot2, RColorBrewer)
+  required_pkgs <- c("readxl", "dplyr", "tidyr", "pheatmap", "svglite", "ggplot2", "RColorBrewer")
+  missing_pkgs <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
+  if (length(missing_pkgs) > 0) {
+    stop("Missing required R package(s): ", paste(missing_pkgs, collapse = ", "),
+         ". Install them explicitly before running this script.", call. = FALSE)
+  }
+  invisible(lapply(required_pkgs, library, character.only = TRUE))
   paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
   source(paths_file)
 
