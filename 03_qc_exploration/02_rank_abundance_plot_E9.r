@@ -10,18 +10,25 @@ library(ggrepel)
 library(writexl)
 library(svglite)
 
+paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
+source(paths_file)
+
 # ==============================================================================
 # 0. Paths
 # ==============================================================================
 
-saving_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Results/QC/"
-dir.create(saving_dir, recursive = TRUE, showWarnings = FALSE)
+saving_dir <- Sys.getenv("PROTEOMICS_RANK_ABUNDANCE_DIR", unset = path_results("QC"))
+ensure_dir(saving_dir)
 
 files <- list(
-  soma = "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/pg_matrix/imputed/20260218_pgmatrix_imputed_neuron_soma_71samples_missing70pct.xlsx",
-  neuropil = "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/pg_matrix/imputed/20260218_pgmatrix_imputed_neuron_neuropil_180samples_missing70pct.xlsx",
-  microglia = "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Datasets/pg_matrix/imputed/20260218_pgmatrix_imputed_microglia_72samples_missing70pct.xlsx"
+  soma = Sys.getenv("PROTEOMICS_RANK_ABUNDANCE_SOMA", unset = path_processed("pg_matrix", "imputed", "20260218_pgmatrix_imputed_neuron_soma_71samples_missing70pct.xlsx")),
+  neuropil = Sys.getenv("PROTEOMICS_RANK_ABUNDANCE_NEUROPIL", unset = path_processed("pg_matrix", "imputed", "20260218_pgmatrix_imputed_neuron_neuropil_180samples_missing70pct.xlsx")),
+  microglia = Sys.getenv("PROTEOMICS_RANK_ABUNDANCE_MICROGLIA", unset = path_processed("pg_matrix", "imputed", "20260218_pgmatrix_imputed_microglia_72samples_missing70pct.xlsx"))
 )
+missing_files <- files[!file.exists(unlist(files))]
+if (length(missing_files) > 0) {
+  stop("Rank abundance input file(s) not found: ", paste(unlist(missing_files), collapse = ", "), call. = FALSE)
+}
 
 # ==============================================================================
 # 1. Palettes and markers
