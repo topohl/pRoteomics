@@ -32,7 +32,7 @@ required_pkgs <- c(
   "readr", "ggraph", "igraph", "svglite", "scales", "forcats"
 )
 missing <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
-if (length(missing) > 0) install.packages(missing, repos = "https://cloud.r-project.org")
+if (length(missing) > 0) stop("Missing required R package(s): ", paste(missing, collapse = ", "), ". Install them explicitly before running this script.", call. = FALSE)
 params <- list(
   bootstrap_dir = path_results("tables", "07_spatial_networks", "bootstrap_differential_network_stability"),
 
@@ -408,6 +408,13 @@ figure_table <- select_stable_edges(edge_summary, params) %>%
   )
 
 readr::write_csv(figure_table, file.path(dirs$tables, "publication_ready_stable_differential_edges.csv"))
+write_run_manifest(
+  file.path(CANONICAL_PATHS$logs, "run_manifest.yml"),
+  inputs = list(bootstrap_dir = params$bootstrap_dir),
+  outputs = list(figures = dirs$figures, tables = dirs$tables, source_data = dirs$source_data),
+  parameters = params,
+  notes = "Figure script records stable frequency threshold and candidate edges used for plotting."
+)
 
 message2("Finished figure generation")
 message2("Figure directory: ", dirs$figures)
