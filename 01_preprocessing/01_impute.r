@@ -1,3 +1,10 @@
+# Consumes:
+#   - raw pg_matrix TSV and sample metadata workbook
+# Produces:
+#   - imputed per-celltype_layer workbooks plus imputation QC and run manifest
+# File contract:
+#   - sample IDs in metadata$sample_id must match sample columns after the first four annotation columns
+
 library(readxl)
 library(readr)
 library(dplyr)
@@ -7,13 +14,13 @@ paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.
 source(paths_file)
 
 # Paths/config
+MODULE_ID <- "01_preprocessing"
+SUBSTEP_ID <- "impute"
+CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
 IMPUTATION_SEED <- 42L
-metadata_path <- Sys.getenv("PROTEOMICS_IMPUTE_METADATA", unset = path_metadata("TPE9_sample_metadata_males.xlsx"))
-input_path <- Sys.getenv("PROTEOMICS_IMPUTE_INPUT", unset = path_raw("pg_matrix", "quicksearch.pg_matrix.tsv"))
-output_dir <- Sys.getenv("PROTEOMICS_IMPUTE_OUTPUT_DIR", unset = path_processed("pg_matrix", "imputed"))
-
-if (!file.exists(metadata_path)) stop("Metadata file not found: ", metadata_path, call. = FALSE)
-if (!file.exists(input_path)) stop("Input file not found: ", input_path, call. = FALSE)
+metadata_path <- path_or_env("PROTEOMICS_IMPUTE_METADATA", path_metadata("TPE9_sample_metadata_males.xlsx"), must_exist = TRUE)
+input_path <- path_or_env("PROTEOMICS_IMPUTE_INPUT", path_raw("pg_matrix", "quicksearch.pg_matrix.tsv"), must_exist = TRUE)
+output_dir <- path_or_env("PROTEOMICS_IMPUTE_OUTPUT_DIR", CANONICAL_PATHS$processed, kind = "dir")
 ensure_dir(output_dir)
 
 # Read metadata
@@ -101,14 +108,16 @@ make_filename <- function(celltype_layer, n_samples, n_proteins, method = "norma
 }
 
 qc_rows <- list()
-celltype_layers <- unique(metadata$celltype_layer)
+metadata <- metadata %>%
+    mutate(celltype_layer_for_impute = ifelse(is.na(celltype_layer) | !nzchar(as.character(celltype_layer)), "missing_celltype_layer", as.character(celltype_layer)))
+celltype_layers <- sort(unique(as.character(metadata$celltype_layer_for_impute)))
 
 # Split by celltype_layer and process each subset
 for (idx in seq_along(celltype_layers)) {
     celltype_layer <- celltype_layers[[idx]]
     # Get sample_ids for this celltype_layer
     subset_sample_ids <- metadata %>%
-        filter(celltype_layer == !!celltype_layer) %>%
+        filter(celltype_layer_for_impute == !!celltype_layer) %>%
         pull(sample_id)
     subset_sample_ids <- intersect(subset_sample_ids, common_sample_ids)
 
@@ -134,12 +143,15 @@ for (idx in seq_along(celltype_layers)) {
     }
 
     # Filter out proteins (rows) with >70% missingness in numeric columns
+    n_proteins_before_filter <- nrow(df_subset)
     missing_prop <- apply(df_subset[, numeric_cols], 1, function(x) mean(is.na(x)))
     df_filtered <- df_subset[missing_prop <= 0.7, ]
+    n_missing_before_imputation <- sum(is.na(df_filtered[, numeric_cols]))
 
     # Impute missing values (on log2 scale)
     subset_seed <- IMPUTATION_SEED + idx - 1L
     imputed_df <- impute_normal(df_filtered, numeric_cols, seed = subset_seed)
+    n_missing_after_imputation <- sum(is.na(imputed_df[, numeric_cols]))
 
     # Move annotation columns to the end
     anno_idx <- match(annotation_names, names(imputed_df))
@@ -156,11 +168,17 @@ for (idx in seq_along(celltype_layers)) {
     write_xlsx(imputed_df, output_path)
 
     qc_rows[[length(qc_rows) + 1L]] <- data.frame(
+        base_seed = IMPUTATION_SEED,
+        subset_seed = subset_seed,
         celltype_layer = celltype_layer,
-        seed = subset_seed,
         n_samples = n_samples,
-        n_proteins = n_proteins,
-        output_file = basename(output_path),
+        n_proteins_before_filter = n_proteins_before_filter,
+        n_proteins_after_filter = n_proteins,
+        n_proteins_filtered_out = n_proteins_before_filter - n_proteins,
+        n_missing_before_imputation = n_missing_before_imputation,
+        n_missing_after_imputation = n_missing_after_imputation,
+        n_values_imputed = n_missing_before_imputation - n_missing_after_imputation,
+        output_path = output_path,
         stringsAsFactors = FALSE
     )
 }
@@ -176,4 +194,11 @@ if (length(qc_rows) > 0) {
         "",
         capture.output(sessionInfo())
     ), file.path(output_dir, "sessionInfo.txt"))
+    write_run_manifest(
+        file.path(CANONICAL_PATHS$logs, "run_manifest.yml"),
+        inputs = list(metadata = metadata_path, matrix = input_path),
+        outputs = list(imputed_outputs = imputation_qc$output_path, qc = file.path(output_dir, "imputation_qc.csv")),
+        parameters = list(imputation_seed = IMPUTATION_SEED, missing_threshold = 0.7, width = 0.3, downshift = 1.8),
+        notes = "Deterministic per-celltype_layer seeds are assigned after sorting celltype_layer labels."
+    )
 }
