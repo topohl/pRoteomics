@@ -12,6 +12,9 @@ file_path <- path_metadata("sample_metadata_R.xlsx")
 output_file <- path_metadata("sample_metadata_R_processed.xlsx")
 qc_csv_file <- path_metadata("sample_metadata_R_processed_QC.csv")
 qc_txt_file <- path_metadata("sample_metadata_R_processed_QC.txt")
+MODULE_ID <- "01_preprocessing"
+SUBSTEP_ID <- "format_metadata"
+CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
 
 if (is_dry_run()) {
   dry_run_line("Script", "01_preprocessing/04_format_metadata.r")
@@ -25,12 +28,8 @@ if (!file.exists(file_path)) stop("Metadata workbook not found: ", file_path, ca
 packages <- c("readxl", "writexl", "dplyr")
 missing_packages <- packages[!vapply(packages, requireNamespace, logical(1), quietly = TRUE)]
 if (length(missing_packages) > 0) {
-  auto_install <- identical(tolower(Sys.getenv("AUTO_INSTALL_MISSING_PACKAGES", "false")), "true")
-  if (!auto_install) {
-    stop("Missing required R package(s): ", paste(missing_packages, collapse = ", "),
-         ". Set AUTO_INSTALL_MISSING_PACKAGES=true to install automatically.", call. = FALSE)
-  }
-  install.packages(missing_packages)
+  stop("Missing required R package(s): ", paste(missing_packages, collapse = ", "),
+       ". Install them explicitly before running this script.", call. = FALSE)
 }
 lapply(packages, library, character.only = TRUE)
 
@@ -43,7 +42,8 @@ df <- read_excel(file_path, sheet = "samples")
 if (!"sample_id" %in% names(df)) stop("Metadata workbook sheet 'samples' must contain sample_id.", call. = FALSE)
 head(df)
 
-# extract info from column "sample_id", sample_id have this format: D:\Proteomics\Fabian\Tobi\Bluto_20250703_FCo_Evo2_80SPDzoom_Tobias_A0003_L_CA1_Microglia_S113_S2-A3_1_13026.d
+# extract info from column "sample_id"; example basename:
+# Bluto_20250703_FCo_Evo2_80SPDzoom_Tobias_A0003_L_CA1_Microglia_S113_S2-A3_1_13026.d
 # in Bluto_20250703_FCo_Evo2_80SPDzoom_Tobias_A0003_L_CA1_so_Neuron_S113_S2-A3_1_13026.d 
 # A0003 is AnimalID, _L_ or _R_ indicate left or right replicates and go into "ReplicateGroup".
 # _13026 is the run number and goes into "run_order"
@@ -63,6 +63,8 @@ df <- df %>%
     shortname = paste(plate, sample_number, sample_location, run_order, sep="_"),
     group2 = paste(group, ReplicateGroup, sep = "_"),
     region = sub(".*_(L|R)_((?:CA1|CA2|CA3|DG))_.*", "\\2", sample_id),
+    # Keep string "NA" for layer/celltype_layer because 02_excel_convert.r
+    # historically maps these metadata rows to microglia for Morpheus exports.
     layer = ifelse(grepl(".*_(?:L|R)_[^_]+_((?:so|sp|sr|slm|mo|po|sg))_.*", sample_id),
              sub(".*_(?:L|R)_[^_]+_((?:so|sp|sr|slm|mo|po|sg))_.*", "\\1", sample_id),
              "NA"),
@@ -87,11 +89,23 @@ if (any(df$AnimalID == df$sample_id, na.rm = TRUE)) {
   failed <- df$sample_id[df$AnimalID == df$sample_id]
   stop("AnimalID regex failed for sample_id(s): ", paste(failed, collapse = ", "), call. = FALSE)
 }
+if (any(df$run_order == df$sample_id | is.na(df$run_order) | !nzchar(df$run_order), na.rm = TRUE)) {
+  failed <- df$sample_id[df$run_order == df$sample_id | is.na(df$run_order) | !nzchar(df$run_order)]
+  stop("run_order regex failed for sample_id(s): ", paste(failed, collapse = ", "), call. = FALSE)
+}
+if (any(df$sample_number == df$sample_id | is.na(df$sample_number) | !nzchar(df$sample_number), na.rm = TRUE)) {
+  failed <- df$sample_id[df$sample_number == df$sample_id | is.na(df$sample_number) | !nzchar(df$sample_number)]
+  stop("sample_number regex failed for sample_id(s): ", paste(failed, collapse = ", "), call. = FALSE)
+}
+if (any(df$sample_location == df$sample_id | is.na(df$sample_location) | !nzchar(df$sample_location), na.rm = TRUE)) {
+  failed <- df$sample_id[df$sample_location == df$sample_id | is.na(df$sample_location) | !nzchar(df$sample_location)]
+  stop("sample_location regex failed for sample_id(s): ", paste(failed, collapse = ", "), call. = FALSE)
+}
 
 allowed_regions <- c("CA1", "CA2", "CA3", "DG")
 bad_regions <- unique(df$region[!is.na(df$region) & !df$region %in% allowed_regions])
 if (length(bad_regions) > 0) {
-  warning("Unexpected region value(s): ", paste(bad_regions, collapse = ", "), call. = FALSE)
+  stop("Unexpected or failed region value(s): ", paste(bad_regions, collapse = ", "), call. = FALSE)
 }
 
 allowed_layers <- c("so", "sp", "sr", "slm", "mo", "po", "sg", "NA")
@@ -147,3 +161,14 @@ writeLines(c(
 
 # save as excel file using writexl package
 write_xlsx(df, output_file)
+write_run_manifest(
+  file.path(CANONICAL_PATHS$logs, "run_manifest.yml"),
+  inputs = list(metadata_workbook = file_path),
+  outputs = list(processed_metadata = output_file, qc_csv = qc_csv_file, qc_txt = qc_txt_file),
+  parameters = list(
+    allowed_regions = allowed_regions,
+    allowed_layers = allowed_layers,
+    layer_na_representation = "string NA retained for downstream Morpheus metadata-row compatibility"
+  ),
+  notes = "Parsing QC fails on AnimalID, region, run_order, sample_number, and sample_location extraction failures."
+)
