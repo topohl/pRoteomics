@@ -81,12 +81,8 @@ packages <- c("readxl", "dplyr", "tidyr", "ggplot2", "emmeans", "openxlsx",
               "stringr", "purrr", "tibble", "ggpubr", "scales")
 missing_packages <- packages[!vapply(packages, requireNamespace, logical(1), quietly = TRUE)]
 if (length(missing_packages) > 0) {
-  auto_install <- identical(tolower(Sys.getenv("AUTO_INSTALL_MISSING_PACKAGES", "false")), "true")
-  if (!auto_install) {
-    stop("Missing required R package(s): ", paste(missing_packages, collapse = ", "),
-         ". Set AUTO_INSTALL_MISSING_PACKAGES=true to install automatically.", call. = FALSE)
-  }
-  install.packages(missing_packages)
+  stop("Missing required R package(s): ", paste(missing_packages, collapse = ", "),
+       ". Install them explicitly before running this script.", call. = FALSE)
 }
 invisible(lapply(packages, library, character.only = TRUE))
 
