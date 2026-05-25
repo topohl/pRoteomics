@@ -10,6 +10,8 @@ source(paths_file)
 
 file_path <- path_metadata("sample_metadata_R.xlsx")
 output_file <- path_metadata("sample_metadata_R_processed.xlsx")
+qc_csv_file <- path_metadata("sample_metadata_R_processed_QC.csv")
+qc_txt_file <- path_metadata("sample_metadata_R_processed_QC.txt")
 
 if (is_dry_run()) {
   dry_run_line("Script", "01_preprocessing/04_format_metadata.r")
@@ -80,6 +82,68 @@ df <- df %>%
       TRUE ~ "NA"
     )
   )
+
+if (any(df$AnimalID == df$sample_id, na.rm = TRUE)) {
+  failed <- df$sample_id[df$AnimalID == df$sample_id]
+  stop("AnimalID regex failed for sample_id(s): ", paste(failed, collapse = ", "), call. = FALSE)
+}
+
+allowed_regions <- c("CA1", "CA2", "CA3", "DG")
+bad_regions <- unique(df$region[!is.na(df$region) & !df$region %in% allowed_regions])
+if (length(bad_regions) > 0) {
+  warning("Unexpected region value(s): ", paste(bad_regions, collapse = ", "), call. = FALSE)
+}
+
+allowed_layers <- c("so", "sp", "sr", "slm", "mo", "po", "sg", "NA")
+bad_layers <- unique(df$layer[!is.na(df$layer) & !df$layer %in% allowed_layers])
+if (length(bad_layers) > 0) {
+  warning("Unexpected layer value(s): ", paste(bad_layers, collapse = ", "), call. = FALSE)
+}
+
+ca3_slm_rows <- df %>% filter(region == "CA3", layer == "slm")
+ca3_slm_excluded <- nrow(ca3_slm_rows) > 0 && all(ca3_slm_rows$exclude == TRUE, na.rm = FALSE)
+if (nrow(ca3_slm_rows) > 0 && !ca3_slm_excluded) {
+  stop("CA3_slm rows must be exclude == TRUE for all matching samples.", call. = FALSE)
+}
+
+qc_counts <- bind_rows(
+  data.frame(qc_section = "n_samples", value = "total", n = nrow(df), stringsAsFactors = FALSE),
+  df %>% count(region, name = "n") %>% transmute(qc_section = "region", value = as.character(region), n),
+  df %>% count(layer, name = "n") %>% transmute(qc_section = "layer", value = as.character(layer), n),
+  df %>% count(celltype, name = "n") %>% transmute(qc_section = "celltype", value = as.character(celltype), n),
+  df %>% count(celltype_layer, name = "n") %>% transmute(qc_section = "celltype_layer", value = as.character(celltype_layer), n),
+  df %>% count(exclude, name = "n") %>% transmute(qc_section = "exclude", value = as.character(exclude), n)
+)
+
+interaction_qc <- df %>%
+  count(region, layer, celltype, exclude, name = "n") %>%
+  mutate(
+    qc_section = "region_x_layer_x_celltype_x_exclude",
+    value = paste(region, layer, celltype, exclude, sep = " | ")
+  ) %>%
+  select(qc_section, value, n)
+
+ca3_slm_qc <- data.frame(
+  qc_section = "CA3_slm",
+  value = if (nrow(ca3_slm_rows) > 0) "all exclude == TRUE" else "no CA3_slm rows detected",
+  n = nrow(ca3_slm_rows),
+  stringsAsFactors = FALSE
+)
+
+qc_table <- bind_rows(qc_counts, interaction_qc, ca3_slm_qc)
+write.csv(qc_table, qc_csv_file, row.names = FALSE)
+writeLines(c(
+  "Metadata parsing QC",
+  paste("Input:", file_path),
+  paste("Output:", output_file),
+  paste("Samples:", nrow(df)),
+  paste("Unexpected regions:", if (length(bad_regions)) paste(bad_regions, collapse = ", ") else "none"),
+  paste("Unexpected layers:", if (length(bad_layers)) paste(bad_layers, collapse = ", ") else "none"),
+  paste("CA3_slm rows:", nrow(ca3_slm_rows)),
+  paste("CA3_slm exclude all TRUE:", if (nrow(ca3_slm_rows) > 0) ca3_slm_excluded else "not applicable"),
+  "",
+  capture.output(print(qc_table, row.names = FALSE))
+), qc_txt_file)
 
 # save as excel file using writexl package
 write_xlsx(df, output_file)
