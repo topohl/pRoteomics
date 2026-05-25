@@ -60,6 +60,31 @@ file_hash <- function(path) {
   unname(tools::md5sum(path))
 }
 
+path_or_env <- function(env, default, must_exist = FALSE, kind = c("file", "dir", "any")) {
+  kind <- match.arg(kind)
+  value <- Sys.getenv(env, unset = "")
+  path <- if (nzchar(value)) value else default
+  path <- normalizePath(path, winslash = "/", mustWork = FALSE)
+
+  if (isTRUE(must_exist)) {
+    exists_ok <- switch(
+      kind,
+      file = file.exists(path),
+      dir = dir.exists(path),
+      any = file.exists(path) || dir.exists(path)
+    )
+    if (!exists_ok) {
+      stop(
+        "Required ", kind, " path does not exist: ", path,
+        ". Set ", env, " to override this location.",
+        call. = FALSE
+      )
+    }
+  }
+
+  path
+}
+
 relative_to <- function(path, root = repo_root()) {
   path <- normalizePath(path, winslash = "/", mustWork = FALSE)
   root <- normalizePath(root, winslash = "/", mustWork = FALSE)
@@ -79,6 +104,42 @@ write_config_snapshot <- function(config, path) {
   } else {
     capture.output(str(config), file = path)
   }
+  invisible(path)
+}
+
+write_run_manifest <- function(path, inputs = list(), outputs = list(), parameters = list(), notes = NULL) {
+  dir_create(dirname(path))
+
+  flatten_paths <- function(x) {
+    vals <- unlist(x, recursive = TRUE, use.names = TRUE)
+    vals <- vals[!is.na(vals) & nzchar(as.character(vals))]
+    as.character(vals)
+  }
+
+  input_paths <- flatten_paths(inputs)
+  input_hashes <- lapply(input_paths, file_hash)
+  names(input_hashes) <- names(input_paths)
+
+  session_path <- file.path(dirname(path), "sessionInfo.txt")
+  capture.output(utils::sessionInfo(), file = session_path)
+
+  manifest <- list(
+    timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z"),
+    repo_root = repo_root(),
+    inputs = inputs,
+    input_hashes = input_hashes,
+    outputs = outputs,
+    parameters = parameters,
+    notes = notes,
+    session_info = relative_to(session_path)
+  )
+
+  if (requireNamespace("yaml", quietly = TRUE)) {
+    writeLines(yaml::as.yaml(manifest), path)
+  } else {
+    capture.output(str(manifest, max.level = 4), file = path)
+  }
+
   invisible(path)
 }
 
