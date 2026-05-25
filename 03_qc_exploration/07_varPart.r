@@ -25,6 +25,9 @@ if (!requireNamespace("variancePartition", quietly = TRUE)) {
 }
 suppressPackageStartupMessages(library(variancePartition))
 
+paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
+source(paths_file)
+
 # load simulated data:
 # geneExpr: matrix of gene expression values
 # info: information/metadata about each sample
@@ -32,20 +35,19 @@ suppressPackageStartupMessages(library(variancePartition))
 # view data varPartData
 
 # output_dir
-output_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/output"
+output_dir <- Sys.getenv("PROTEOMICS_VARPART_OUTPUT_DIR", unset = path_results("variancePartition", "output"))
 if (!dir.exists(output_dir)) {
     dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 }
 
-#output_dir <- "S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Results/varPart"
-#if (!dir.exists(output_dir)) {
-#    dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
-#}
-
 # load data from two excel files in directory
 
-geneExpr <- read_excel("S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/data/gene_expression_neuron-soma.xlsx")
-info <- read_excel("S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/msdap/variancePartition/data/sample_info_neuron-soma.xlsx")
+geneExpr_file <- Sys.getenv("PROTEOMICS_VARPART_GENE_EXPR", unset = path_processed("variancePartition", "data", "gene_expression_neuron-soma.xlsx"))
+info_file <- Sys.getenv("PROTEOMICS_VARPART_SAMPLE_INFO", unset = path_processed("variancePartition", "data", "sample_info_neuron-soma.xlsx"))
+if (!file.exists(geneExpr_file)) stop("VariancePartition expression file not found: ", geneExpr_file, call. = FALSE)
+if (!file.exists(info_file)) stop("VariancePartition sample info file not found: ", info_file, call. = FALSE)
+geneExpr <- read_excel(geneExpr_file)
+info <- read_excel(info_file)
 # Fix: Use correct column name for rownames
 if (!"row.names" %in% colnames(info)) {
     cat("Available columns in info:", paste(colnames(info), collapse=", "), "\n")
@@ -53,8 +55,6 @@ if (!"row.names" %in% colnames(info)) {
 }
 rownames(info) <- info[["row.names"]]
 
-#geneExpr <- read_excel("S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/gct/data/gene_expression.xlsx")
-#info <- read_excel("S:/Lab_Member/Tobi/Experiments/Collabs/Neha/clusterProfiler/Datasets/gct/data/sample_info.xlsx")
 #rownames(info) <- info$row.names
 
 # 1. Extract first column name (gene names column)
