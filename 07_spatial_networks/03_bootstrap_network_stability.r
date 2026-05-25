@@ -49,7 +49,7 @@ if (!file.exists(params$spatial_rds)) stop("spatial_rds not found: ", params$spa
 
 required_pkgs <- c("dplyr", "tidyr", "stringr", "purrr", "tibble", "ggplot2", "pheatmap", "igraph", "ggraph", "openxlsx", "svglite")
 missing <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
-if (length(missing) > 0) install.packages(missing, repos = "https://cloud.r-project.org")
+if (length(missing) > 0) stop("Missing required R package(s): ", paste(missing, collapse = ", "), ". Install them explicitly before running this script.", call. = FALSE)
 invisible(lapply(required_pkgs, library, character.only = TRUE))
 
 message2 <- function(...) message(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), " | ", ...)
@@ -265,6 +265,19 @@ openxlsx::saveWorkbook(wb, file.path(dirs$tables, "bootstrap_network_stability_s
 saveRDS(
   list(params = params, bootstrap_long = boot_tbl, edge_summary = edge_summary, node_summary = node_summary, consensus_edges = consensus_edges, sessionInfo = sessionInfo()),
   file.path(dirs$logs, "bootstrap_network_stability_objects.rds")
+)
+write_run_manifest(
+  file.path(dirs$logs, "run_manifest.yml"),
+  inputs = list(spatial_rds = params$spatial_rds),
+  outputs = list(
+    bootstrap_long = file.path(dirs$tables, "bootstrap_edge_values_long.csv"),
+    edge_summary = file.path(dirs$tables, "bootstrap_edge_stability_summary.csv"),
+    node_summary = file.path(dirs$tables, "bootstrap_node_stability_summary.csv"),
+    consensus_edges = file.path(dirs$tables, "consensus_edges.csv"),
+    networks = dirs$networks
+  ),
+  parameters = params,
+  notes = "Bootstrap seed, edge threshold and consensus threshold are recorded in parameters."
 )
 
 message2("Finished bootstrap network stability analysis")
