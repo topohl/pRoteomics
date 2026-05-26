@@ -1,6 +1,8 @@
 # Committed, repo-relative defaults for 04_differential_expression_enrichment/02_compareGO.r.
 # Filter these fields to select one manifest-backed route for compareGO.
 
+dataset: neuron_neuropil
+legacy_mode: false
 ontology: BP
 dry_run: false
 route_category: phenotype_within_unit
@@ -10,10 +12,20 @@ result_types:
 run_id: ""
 clusterProfiler_config_hash: ""
 
-clusterProfiler_manifest: data/processed/04_differential_expression_enrichment/clusterProfiler/clusterProfiler_manifest.csv
+# Leave empty to use:
+# data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv
+clusterProfiler_manifest: ""
 uniprot_mapping_file: data/external/MOUSE_10090_idmapping.dat
 
 significant_only: true
 target_n_terms: 5
 redundancy_threshold: 0.7
 min_set_size: 10
+
+# Example local overrides:
+# neuron_neuropil:
+#   dataset: neuron_neuropil
+# neuron_soma:
+#   dataset: neuron_soma
+# microglia:
+#   dataset: microglia
