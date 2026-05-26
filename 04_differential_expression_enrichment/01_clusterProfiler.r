@@ -4,8 +4,8 @@
 #'   - optional background/config inputs from config/clusterProfiler_config.yml
 #' Produces:
 #'   - canonical enrichment tables, figures, source data, reports and logs under
-#'     data/processed/04_differential_expression_enrichment/clusterProfiler and
-#'     results/*/04_differential_expression_enrichment/clusterProfiler
+#'     data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset> and
+#'     results/*/04_differential_expression_enrichment/clusterProfiler/<dataset>
 #'   - clusterProfiler_manifest.csv consumed by 02_compareGO.r
 #' Contract:
 #'   - docs/file_contracts.tsv object_id clusterProfiler_manifest
@@ -21,6 +21,8 @@
 #'
 #' @author Tobias Pohl
 #' ============================================================
+
+setwd("S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/Analysis/proteomics")
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
@@ -186,6 +188,7 @@ read_config <- function(config_path) {
       cutoff = SIMPLIFY_CUTOFF
     ),
     analysis = list(
+      dataset = Sys.getenv("PROTEOMICS_COMPARISON", unset = "neuron_neuropil"),
       organism = "org.Mm.eg.db",
       ontology = "BP",
       top_gene_abs_log2fc = 1,
@@ -207,9 +210,9 @@ read_config <- function(config_path) {
       config_file = config_path
     ),
     paths = list(
-      mapped_dir = path_processed("02_id_mapping", "mapped", "forward", "per_file"),
+      mapped_dir = "",
       working_base = repo_root(),
-      mapped_data_base = path_processed("02_id_mapping", "mapped", "forward", "per_file"),
+      mapped_data_base = "",
       background_universe_file = ""
     ),
     optional_inputs = list(
@@ -239,7 +242,7 @@ read_config <- function(config_path) {
 }
 
 manifest_columns <- c(
-  "analysis_id", "run_id", "ontology", "result_type", "contrast", "comparison",
+  "analysis_id", "dataset", "run_id", "ontology", "result_type", "contrast", "comparison",
   "route_category", "route_unit", "condition", "direction", "simplified",
   "plot_suffix", "used_for_plot", "input_gene_file", "input_hash",
   "config_file", "config_hash", "output_table", "output_plot",
@@ -252,8 +255,10 @@ make_manifest_row <- function(result_type, ontology, comparison_name, dirs, inpu
                               simplified = FALSE, used_for_plot = FALSE,
                               plot_suffix = NA_character_, checkpoint_status = "computed",
                               condition = NA_character_, direction = NA_character_) {
+  dataset <- get0("DATASET", ifnotfound = NA_character_)
   data.frame(
-    analysis_id = paste("clusterProfiler", result_type, ontology, comparison_name, sep = "::"),
+    analysis_id = paste("clusterProfiler", dataset, result_type, ontology, comparison_name, sep = "::"),
+    dataset = dataset,
     run_id = run_id,
     ontology = ontology,
     result_type = result_type,
@@ -334,6 +339,22 @@ reconstruct_checkpoint_manifest <- function(dirs, comparison_name, data_path, co
   dplyr::bind_rows(rows)
 }
 
+make_checkpoint_skip_result <- function(cell_types, working_base, mapped_data_base, ont, config_path) {
+  comparison_name <- paste(cell_types, collapse = "_")
+  dirs <- create_analysis_dirs(working_base, comparison_name, ont)
+  data_path <- file.path(mapped_data_base, paste0(comparison_name, ".csv"))
+  qc_path <- file.path(dirs$results, "QC_summary.csv")
+  qc <- tryCatch(read.csv(qc_path, stringsAsFactors = FALSE), error = function(e) NULL)
+  if (is.null(qc) || nrow(qc) == 0) {
+    qc <- data.frame(comparison = comparison_name, status = "SKIPPED", runtime_seconds = 0, stringsAsFactors = FALSE)
+  } else {
+    qc$status <- "SKIPPED"
+    if ("runtime_seconds" %in% colnames(qc)) qc$runtime_seconds <- 0
+  }
+  manifest <- reconstruct_checkpoint_manifest(dirs, comparison_name, data_path, config_path, ont, checkpoint_plot_suffix())
+  list(status = "SKIPPED", comparison = comparison_name, error = NA_character_, qc = qc, manifest = manifest)
+}
+
 write_log_line <- function(log_file, level = "INFO", comparison = "GLOBAL", step = "GENERAL", message_text = "") {
   if (is.null(log_file) || !nzchar(log_file)) return(invisible(NULL))
   dir.create(dirname(log_file), recursive = TRUE, showWarnings = FALSE)
@@ -407,8 +428,30 @@ checkpoint_file_path <- function(dirs) {
   file.path(dirs$results, "ANALYSIS_COMPLETE.flag")
 }
 
-is_completed_checkpoint <- function(dirs) {
-  file.exists(checkpoint_file_path(dirs))
+checkpoint_plot_suffix <- function() {
+  if (PERFORM_SIMPLIFICATION && USE_SIMPLIFIED_FOR_PLOTS) "_simplified" else "_full"
+}
+
+expected_checkpoint_outputs <- function(dirs, comparison_name, ont, plot_suffix = checkpoint_plot_suffix()) {
+  c(
+    flag = checkpoint_file_path(dirs),
+    qc = file.path(dirs$results, "QC_summary.csv"),
+    gsea_core_table = file.path(dirs$core_enrich_routed, paste0(comparison_name, plot_suffix, ".csv")),
+    gsea_full_table = file.path(dirs$go_ont, paste0("GSEA_", ont, "_results_full.csv")),
+    enrichgo_table = file.path(dirs$go_ont, "enrichGO_ALL_results_full.csv")
+  )
+}
+
+qc_reports_complete <- function(qc_path) {
+  if (!file.exists(qc_path)) return(FALSE)
+  qc <- tryCatch(read.csv(qc_path, stringsAsFactors = FALSE), error = function(e) NULL)
+  if (is.null(qc) || nrow(qc) == 0 || !"status" %in% colnames(qc)) return(FALSE)
+  as.character(qc$status[[1]]) %in% c("SUCCESS", "SKIPPED")
+}
+
+is_completed_checkpoint <- function(dirs, comparison_name, ont, plot_suffix = checkpoint_plot_suffix()) {
+  expected <- expected_checkpoint_outputs(dirs, comparison_name, ont, plot_suffix)
+  all(file.exists(expected)) && qc_reports_complete(expected[["qc"]])
 }
 
 write_completed_checkpoint <- function(dirs) {
@@ -465,39 +508,70 @@ load_background_universe <- function(cfg) {
   as.character(universe)
 }
 
-parse_sample_token <- function(token, phenotypes = c("sus", "con")) {
+pretty_unit_name <- function(unit) {
+  unit <- gsub("[^A-Za-z0-9]", "", as.character(unit))
+  if (!nzchar(unit)) return("")
+  m <- regexec("^([A-Za-z]+[0-9]*)([A-Za-z0-9]+)$", unit)
+  mm <- regmatches(unit, m)[[1]]
+  if (length(mm) == 3 && nzchar(mm[3])) {
+    return(paste(toupper(mm[2]), tolower(mm[3]), sep = "_"))
+  }
+  unit
+}
+
+parse_sample_token <- function(token, phenotypes = c("sus", "res", "con")) {
+  token <- trimws(as.character(token))
   phenotype <- ""
   unit <- token
 
   for (ph in phenotypes) {
-    if (grepl(paste0(ph, "$"), token, ignore.case = TRUE)) {
+    pattern <- paste0("(^|[_\\.-])", ph, "$|", ph, "$")
+    if (grepl(pattern, token, ignore.case = TRUE)) {
       phenotype <- tolower(ph)
-      unit <- sub(paste0(ph, "$"), "", token, ignore.case = TRUE)
+      unit <- sub(paste0("([_\\.-]?)", ph, "$"), "", token, ignore.case = TRUE)
       break
     }
   }
 
   unit <- gsub("[^A-Za-z0-9]", "", unit)
-  pretty_unit <- unit
-  if (nzchar(unit)) {
-    m <- regexec("^([A-Za-z]+[0-9]*)([A-Za-z0-9]*)$", unit)
-    mm <- regmatches(unit, m)[[1]]
-    if (length(mm) == 3 && nzchar(mm[3])) {
-      pretty_unit <- paste(mm[2], mm[3], sep = "_")
-    }
-  }
+  pretty_unit <- pretty_unit_name(unit)
 
-  list(raw = token, unit = unit, pretty_unit = pretty_unit, phenotype = phenotype)
+  list(raw = token, unit = toupper(unit), pretty_unit = pretty_unit, phenotype = phenotype)
+}
+
+split_comparison_tokens <- function(comparison_name) {
+  comparison_name <- sub("\\.csv$", "", basename(as.character(comparison_name)))
+  chars <- gregexpr("_", comparison_name, fixed = TRUE)[[1]]
+  split_positions <- if (identical(chars, -1L)) integer(0) else as.integer(chars)
+  candidates <- lapply(split_positions, function(pos) {
+    left <- substr(comparison_name, 1, pos - 1)
+    right <- substr(comparison_name, pos + 1, nchar(comparison_name))
+    a <- parse_sample_token(left)
+    b <- parse_sample_token(right)
+    score <- sum(nzchar(c(a$phenotype, b$phenotype, a$unit, b$unit)))
+    list(left = left, right = right, a = a, b = b, score = score)
+  })
+  valid <- candidates[vapply(candidates, function(x) {
+    nzchar(x$a$phenotype) && nzchar(x$b$phenotype) && nzchar(x$a$unit) && nzchar(x$b$unit)
+  }, logical(1))]
+  if (length(valid) > 0) {
+    return(valid[[which.max(vapply(valid, `[[`, numeric(1), "score"))]])
+  }
+  if (length(candidates) > 0) {
+    return(candidates[[which.max(vapply(candidates, `[[`, numeric(1), "score"))]])
+  }
+  empty <- parse_sample_token(comparison_name)
+  list(left = comparison_name, right = "", a = empty, b = parse_sample_token(""), score = 0)
 }
 
 classify_comparison_route <- function(comparison_name) {
-  parts <- strsplit(comparison_name, "_", fixed = TRUE)[[1]]
-  if (length(parts) < 2) {
+  tokens <- split_comparison_tokens(comparison_name)
+  if (!nzchar(tokens$right)) {
     return(list(category = "unclassified", unit_folder = "unknown_unit"))
   }
 
-  a <- parse_sample_token(parts[1])
-  b <- parse_sample_token(parts[2])
+  a <- tokens$a
+  b <- tokens$b
 
   same_unit <- nzchar(a$unit) && nzchar(b$unit) && identical(a$unit, b$unit)
   same_pheno <- nzchar(a$phenotype) && nzchar(b$phenotype) && identical(a$phenotype, b$phenotype)
@@ -522,7 +596,89 @@ classify_comparison_route <- function(comparison_name) {
     paste(sort(c(unit_a, unit_b)), collapse = "_vs_")
   }
 
-  list(category = category, unit_folder = unit_folder)
+  list(
+    category = category,
+    unit_folder = unit_folder,
+    left_token = tokens$left,
+    right_token = tokens$right,
+    left_unit = a$pretty_unit,
+    right_unit = b$pretty_unit,
+    left_phenotype = a$phenotype,
+    right_phenotype = b$phenotype
+  )
+}
+
+comparison_route_qc_row <- function(comparison_name) {
+  route <- classify_comparison_route(comparison_name)
+  expected_warning <- if (identical(route$category, "unclassified") ||
+                          !nzchar(route$left_phenotype) ||
+                          !nzchar(route$right_phenotype)) {
+    "unclassified_or_missing_phenotype"
+  } else {
+    ""
+  }
+  data.frame(
+    comparison = comparison_name,
+    left_token = route$left_token %||% NA_character_,
+    right_token = route$right_token %||% NA_character_,
+    left_unit = route$left_unit %||% NA_character_,
+    right_unit = route$right_unit %||% NA_character_,
+    left_phenotype = route$left_phenotype %||% NA_character_,
+    right_phenotype = route$right_phenotype %||% NA_character_,
+    route_category = route$category,
+    route_unit = route$unit_folder,
+    expected_warning = expected_warning,
+    stringsAsFactors = FALSE
+  )
+}
+
+assert_comparison_route_examples <- function() {
+  expected <- data.frame(
+    comparison = c(
+      "CA1slmres_CA1slmcon",
+      "CA1slmsus_CA1slmres",
+      "CA1slmsus_CA1slmcon",
+      "CA1sores_CA1socon",
+      "CA1slmcon_CA1socon",
+      "CA1slmsus_CA1socon",
+      "CA1_so_res_CA1_so_con",
+      "CA1_slm_con_CA1_so_con"
+    ),
+    category = c(
+      "phenotype_within_unit",
+      "phenotype_within_unit",
+      "phenotype_within_unit",
+      "phenotype_within_unit",
+      "phenotype_between_unit",
+      "between_unit_and_phenotype",
+      "phenotype_within_unit",
+      "phenotype_between_unit"
+    ),
+    unit = c(
+      "CA1_slm",
+      "CA1_slm",
+      "CA1_slm",
+      "CA1_so",
+      "CA1_slm_vs_CA1_so",
+      "CA1_slm_vs_CA1_so",
+      "CA1_so",
+      "CA1_slm_vs_CA1_so"
+    ),
+    stringsAsFactors = FALSE
+  )
+  for (i in seq_len(nrow(expected))) {
+    route <- classify_comparison_route(expected$comparison[[i]])
+    if (!identical(route$category, expected$category[[i]]) ||
+        !identical(route$unit_folder, expected$unit[[i]])) {
+      stop(
+        "Comparison route assertion failed for ", expected$comparison[[i]],
+        ": got ", route$category, " / ", route$unit_folder,
+        "; expected ", expected$category[[i]], " / ", expected$unit[[i]],
+        call. = FALSE
+      )
+    }
+  }
+  invisible(TRUE)
 }
 
 # ----------------------------------------------------
@@ -540,17 +696,55 @@ config_candidates <- c(
 )
 config_path <- config_candidates[file.exists(config_candidates)][1] %||% config_candidates[1]
 cfg <- read_config(config_path)
+assert_comparison_route_examples()
 
 as_repo_path <- function(path) {
   if (is.null(path) || !nzchar(path)) return(path)
   if (grepl("^([A-Za-z]:|/|~)", path)) return(path)
   repo_path(path)
 }
+DATASET <- as.character(cfg$analysis$dataset %||% Sys.getenv("PROTEOMICS_COMPARISON", unset = "neuron_neuropil"))
+allowed_datasets <- trimws(strsplit(
+  Sys.getenv("PROTEOMICS_ALLOWED_COMPARISONS", unset = "neuron_neuropil,neuron_soma,microglia"),
+  ",",
+  fixed = TRUE
+)[[1]])
+allowed_datasets <- allowed_datasets[nzchar(allowed_datasets)]
+if (length(allowed_datasets) > 0 && !DATASET %in% allowed_datasets) {
+  stop(
+    "clusterProfiler dataset='", DATASET, "' is not in the allowed dataset families: ",
+    paste(allowed_datasets, collapse = ", "),
+    ". Extend PROTEOMICS_ALLOWED_COMPARISONS if this is an intentional new family.",
+    call. = FALSE
+  )
+}
+CANONICAL_PATHS <- lapply(CANONICAL_PATHS, function(path) file.path(path, DATASET))
+invisible(lapply(CANONICAL_PATHS, dir.create, recursive = TRUE, showWarnings = FALSE))
+
+dataset_mapped_default <- path_processed("02_id_mapping", "mapped", DATASET, "forward", "per_file")
+if (is.null(cfg$paths$mapped_dir) || !nzchar(cfg$paths$mapped_dir)) {
+  cfg$paths$mapped_dir <- dataset_mapped_default
+}
+if (is.null(cfg$paths$mapped_data_base) || !nzchar(cfg$paths$mapped_data_base)) {
+  cfg$paths$mapped_data_base <- cfg$paths$mapped_dir
+}
 cfg$paths$mapped_dir <- as_repo_path(cfg$paths$mapped_dir)
 cfg$paths$working_base <- as_repo_path(cfg$paths$working_base)
 cfg$paths$mapped_data_base <- as_repo_path(cfg$paths$mapped_data_base)
 cfg$paths$background_universe_file <- as_repo_path(cfg$paths$background_universe_file)
 DRY_RUN <- is_dry_run(cfg)
+
+legacy_mapped_dir <- normalizePath(path_processed("02_id_mapping", "mapped", "forward", "per_file"), winslash = "/", mustWork = FALSE)
+configured_mapped_dir <- normalizePath(cfg$paths$mapped_dir, winslash = "/", mustWork = FALSE)
+dataset_mapped_dir <- normalizePath(dataset_mapped_default, winslash = "/", mustWork = FALSE)
+if (identical(configured_mapped_dir, legacy_mapped_dir)) {
+  stop(
+    "Refusing to scan legacy mixed mapped directory: ", cfg$paths$mapped_dir,
+    "\nUse dataset-specific mapped_dir: ", dataset_mapped_default,
+    "\nor set analysis.dataset/paths.mapped_dir explicitly for an intentional legacy migration.",
+    call. = FALSE
+  )
+}
 
 PERFORM_SIMPLIFICATION <- isTRUE(cfg$simplification$perform)
 USE_SIMPLIFIED_FOR_PLOTS <- isTRUE(cfg$simplification$use_for_plots)
@@ -563,10 +757,10 @@ if (!mapped_dir_exists && !isTRUE(DRY_RUN)) {
 }
 
 comparison_files <- if (mapped_dir_exists) list.files(mapped_dir, pattern = "\\.csv$", full.names = FALSE) else character(0)
-comparison_list <- lapply(comparison_files, function(f) {
-  parts <- strsplit(sub("\\.csv$", "", f), "_", fixed = TRUE)[[1]]
-  parts <- parts[nzchar(parts)]
-  if (length(parts) >= 2) parts else NULL
+comparison_names <- sub("\\.csv$", "", comparison_files)
+comparison_list <- lapply(comparison_names, function(comparison_name) {
+  tokens <- split_comparison_tokens(comparison_name)
+  if (nzchar(tokens$right)) c(tokens$left, tokens$right) else NULL
 })
 comparison_list <- Filter(Negate(is.null), comparison_list)
 
@@ -604,16 +798,23 @@ runtime_params <- list(
 
 if (isTRUE(DRY_RUN)) {
   expected_dirs <- unlist(CANONICAL_PATHS, use.names = TRUE)
+  route_qc <- if (length(comparison_names) > 0) {
+    dplyr::bind_rows(lapply(comparison_names, comparison_route_qc_row))
+  } else {
+    data.frame()
+  }
   diagnostics <- data.frame(
-    check = c("config_exists", "mapped_dir_exists", "comparison_files_found", "canonical_dirs"),
+    check = c("config_exists", "dataset", "mapped_dir_exists", "comparison_files_found", "canonical_dirs"),
     status = c(
       if (file.exists(config_path)) "PASS" else "WARN",
+      "PASS",
       if (mapped_dir_exists) "PASS" else "FAIL",
       if (length(comparison_files) > 0) "PASS" else "FAIL",
       "PASS"
     ),
     detail = c(
       config_path,
+      DATASET,
       mapped_dir,
       paste0(length(comparison_files), " csv file(s)"),
       paste(names(expected_dirs), expected_dirs, sep = "=", collapse = "; ")
@@ -622,15 +823,24 @@ if (isTRUE(DRY_RUN)) {
   )
   dry_run_line("Script", "01_clusterProfiler.r")
   dry_run_line("Config", config_path, diagnostics$status[1])
-  dry_run_line("Mapped directory", mapped_dir, diagnostics$status[2])
-  dry_run_line("Comparison CSV count", length(comparison_files), diagnostics$status[3])
+  dry_run_line("Dataset", DATASET)
+  dry_run_line("Mapped directory", mapped_dir, diagnostics$status[3])
+  dry_run_line("Comparison CSV count", length(comparison_files), diagnostics$status[4])
   if (length(comparison_files) > 0) {
     dry_run_line("First comparisons", paste(head(comparison_files, 10), collapse = ", "))
+    route_counts <- as.data.frame(table(route_qc$route_category, route_qc$route_unit), stringsAsFactors = FALSE)
+    names(route_counts) <- c("route_category", "route_unit", "n")
+    route_counts <- route_counts[route_counts$n > 0, , drop = FALSE]
+    dry_run_line("First routed comparisons", paste(utils::capture.output(print(head(route_qc, 10), row.names = FALSE)), collapse = " | "))
+    dry_run_line("Route counts", paste(utils::capture.output(print(route_counts, row.names = FALSE)), collapse = " | "))
   }
   dry_run_line("Ontology", cfg$analysis$ontology)
   dry_run_line("Result manifest", file.path(CANONICAL_PATHS$processed, "clusterProfiler_manifest.csv"))
   dry_run_file <- file.path(CANONICAL_PATHS$reports, "clusterProfiler_dry_run_diagnostics.csv")
   write.csv(diagnostics, dry_run_file, row.names = FALSE)
+  route_qc_file <- file.path(CANONICAL_PATHS$reports, "clusterProfiler_route_qc_dry_run.csv")
+  write.csv(route_qc, route_qc_file, row.names = FALSE)
+  dry_run_line("Route QC written", route_qc_file)
   dry_run_line("Diagnostics written", dry_run_file)
   quit(status = if (any(diagnostics$status == "FAIL")) 1 else 0, save = "no")
 }
@@ -642,8 +852,20 @@ run_log_dir <- CANONICAL_PATHS$logs
 dir.create(run_log_dir, recursive = TRUE, showWarnings = FALSE)
 master_log <- file.path(run_log_dir, paste0("clusterProfiler_run_", run_id, ".log"))
 write_log_line(master_log, "INFO", "GLOBAL", "CONFIG", paste0("Using config file: ", config_path))
+write_log_line(master_log, "INFO", "GLOBAL", "DATASET", paste0("Dataset family: ", DATASET))
 write_session_info(file.path(CANONICAL_PATHS$logs, "sessionInfo.txt"))
 write_config_snapshot(cfg, file.path(CANONICAL_PATHS$logs, paste0("clusterProfiler_config_snapshot_", run_id, ".yml")))
+
+route_qc <- dplyr::bind_rows(lapply(comparison_names, comparison_route_qc_row))
+route_qc$dataset <- DATASET
+route_qc_file <- file.path(CANONICAL_PATHS$reports, paste0("clusterProfiler_route_qc_", run_id, ".csv"))
+write.csv(route_qc, route_qc_file, row.names = FALSE)
+route_counts <- as.data.frame(table(route_qc$route_category, route_qc$route_unit), stringsAsFactors = FALSE)
+names(route_counts) <- c("route_category", "route_unit", "n")
+route_counts <- route_counts[route_counts$n > 0, , drop = FALSE]
+cat("Route QC written to:", route_qc_file, "\n")
+print(head(route_qc, 10), row.names = FALSE)
+print(route_counts, row.names = FALSE)
 
 #nk3r_genes <- c("P21279", "P21278", "P51432", "P11881", "P63318", "P68404", "P0DP26", "P0DP27", "P0DP28", "P11798", "P28652", "P47937", "P47713")
 #selected_uniprot <- c("P21279", "P21278", "Q9Z1B3", "P51432", "P11881", "P68404", "P63318", "P0DP26", "P0DP27", "P11798", "P28652", "Q61411", "Q99N57", "P31938", "P63085", "Q63844", "Q8BWG8", "Q91YI4", "V9GXQ9")
@@ -681,6 +903,35 @@ if (length(background_universe) > 0) {
 } else {
   write_log_line(master_log, "INFO", "GLOBAL", "BACKGROUND", "No background universe loaded (disabled or unavailable).")
 }
+
+completed_results <- list()
+if (isTRUE(runtime_params$resume_if_complete) && !isTRUE(runtime_params$force_rerun)) {
+  complete_flags <- vapply(comparison_list, function(cell_types) {
+    comparison_name <- paste(cell_types, collapse = "_")
+    dirs <- create_analysis_dirs(working_base, comparison_name, ont)
+    is_completed_checkpoint(dirs, comparison_name, ont, checkpoint_plot_suffix())
+  }, logical(1))
+
+  if (any(complete_flags)) {
+    completed_results <- lapply(comparison_list[complete_flags], make_checkpoint_skip_result,
+                                working_base = working_base,
+                                mapped_data_base = mapped_data_base,
+                                ont = ont,
+                                config_path = config_path)
+    skipped_names <- vapply(completed_results, function(x) x$comparison, character(1))
+    cat("Resume check: skipping ", length(completed_results), " completed comparison(s).\n", sep = "")
+    cat("Completed comparisons: ", paste(skipped_names, collapse = ", "), "\n", sep = "")
+    write_log_line(master_log, "INFO", "GLOBAL", "RESUME",
+                   paste0("Skipping completed comparisons: ", paste(skipped_names, collapse = ", ")))
+  }
+
+  comparison_list <- comparison_list[!complete_flags]
+  cat("Resume check: ", length(comparison_list), " comparison(s) still need analysis.\n", sep = "")
+} else if (isTRUE(runtime_params$force_rerun)) {
+  cat("Resume check disabled: force_rerun=TRUE, all comparisons will be recomputed.\n")
+}
+
+if (length(comparison_list) > 0) {
 
 # ----------------------------------------------------
 # 4. SETUP PARALLEL PROCESSING WITH FUTURE
@@ -809,10 +1060,11 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
     data_path <- file.path(mapped_data_base, file_name)
     cat("Full data path:", data_path, "\n")
 
-    if (isTRUE(runtime_params$resume_if_complete) && !isTRUE(runtime_params$force_rerun) && is_completed_checkpoint(dirs)) {
+    if (isTRUE(runtime_params$resume_if_complete) &&
+        !isTRUE(runtime_params$force_rerun) &&
+        is_completed_checkpoint(dirs, comparison_name, ont, checkpoint_plot_suffix())) {
       write_log_line(comparison_log, "INFO", comparison_name, "CHECKPOINT", "Checkpoint found; skipping comparison")
-      checkpoint_plot_suffix <- if (PERFORM_SIMPLIFICATION && USE_SIMPLIFIED_FOR_PLOTS) "_simplified" else "_full"
-      manifest_rows <- list(reconstruct_checkpoint_manifest(dirs, comparison_name, data_path, config_path, ont, plot_suffix = checkpoint_plot_suffix))
+      manifest_rows <- list(reconstruct_checkpoint_manifest(dirs, comparison_name, data_path, config_path, ont, plot_suffix = checkpoint_plot_suffix()))
       qc$status <- "SKIPPED"
       qc$runtime_seconds <- as.numeric(difftime(Sys.time(), run_start, units = "secs"))
       write.csv(qc, qc_path, row.names = FALSE)
@@ -1437,6 +1689,15 @@ cat("[DEBUG PARALLEL]   Number of results:", length(results), "\n")
 
 # Reset to sequential processing
 plan(sequential)
+
+results <- c(completed_results, results)
+
+} else {
+  cat("\n==============================================\n")
+  cat("RESUME CHECK FOUND NO PENDING COMPARISONS\n")
+  cat("==============================================\n\n")
+  results <- completed_results
+}
 
 # Print summary
 cat("\n==============================================\n")
