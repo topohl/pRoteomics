@@ -101,7 +101,7 @@ Representative scripts:
 - `01_MapThatProt.r`
 - `02_MapThatProt_batch.r`
 
-The canonical contrast handoff is now `01_preprocessing/03_gct_extractR.r` to `02_id_mapping/01_MapThatProt_batch.r`, producing clusterProfiler-ready mapped files at `data/processed/02_id_mapping/mapped/forward/per_file/`.
+The canonical contrast handoff is now `01_preprocessing/03_gct_extractR.r` to `02_id_mapping/01_MapThatProt_batch.r`, producing clusterProfiler-ready mapped files at `data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/`. Run this per dataset family, such as `neuron_neuropil`, `neuron_soma`, or `microglia`.
 
 ---
 
@@ -136,10 +136,10 @@ Representative scripts:
 `01_clusterProfiler.r` now writes a manifest at:
 
 ```text
-data/processed/04_differential_expression_enrichment/clusterProfiler/clusterProfiler_manifest.csv
+data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv
 ```
 
-`02_compareGO.r` consumes that manifest instead of recursively discovering arbitrary CSVs. This preserves ontology, comparison, route category, route unit, simplification state, plot-used status, input hashes and config hashes across the clusterProfiler to compareGO handoff.
+`02_compareGO.r` consumes that manifest instead of recursively discovering arbitrary CSVs. It filters by the required `dataset` column so neuron neuropil, neuron soma, and microglia runs do not overwrite or mix with each other. This preserves ontology, comparison, route category, route unit, simplification state, plot-used status, input hashes and config hashes across the clusterProfiler to compareGO handoff.
 
 Dry-run checks are available:
 
