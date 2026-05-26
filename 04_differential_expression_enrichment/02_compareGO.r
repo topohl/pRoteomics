@@ -325,15 +325,15 @@ if (!isTRUE(DRY_RUN)) {
 `%||%` <- function(x, y) if (is.null(x)) y else x
 read_comparego_config <- function(config_path) {
   defaults <- list(
+    dataset = Sys.getenv("PROTEOMICS_COMPARISON", unset = "neuron_neuropil"),
+    legacy_mode = FALSE,
     ontology = "BP",
     route_category = "phenotype_within_unit",
     route_unit = "",
     result_types = c("GSEA_GO"),
     run_id = "",
     clusterProfiler_config_hash = "",
-    clusterProfiler_manifest = path_processed(
-      MODULE_ID, "clusterProfiler", "clusterProfiler_manifest.csv"
-    ),
+    clusterProfiler_manifest = "",
     uniprot_mapping_file = path_external("MOUSE_10090_idmapping.dat"),
     significant_only = TRUE,
     target_n_terms = 5,
@@ -366,6 +366,14 @@ as_repo_path <- function(path) {
 }
 comparego_cfg$clusterProfiler_manifest <- as_repo_path(comparego_cfg$clusterProfiler_manifest)
 comparego_cfg$uniprot_mapping_file <- as_repo_path(comparego_cfg$uniprot_mapping_file)
+DATASET <- as.character(comparego_cfg$dataset %||% Sys.getenv("PROTEOMICS_COMPARISON", unset = "neuron_neuropil"))
+if (!nzchar(as.character(comparego_cfg$clusterProfiler_manifest))) {
+  comparego_cfg$clusterProfiler_manifest <- path_processed(
+    MODULE_ID, "clusterProfiler", DATASET, "clusterProfiler_manifest.csv"
+  )
+}
+comparego_cfg$clusterProfiler_manifest <- as_repo_path(comparego_cfg$clusterProfiler_manifest)
+legacy_mode <- isTRUE(comparego_cfg$legacy_mode)
 
 # Gene Ontology domain (MF, BP, CC, KEGG, custom)
 ont <- as.character(comparego_cfg$ontology)
@@ -384,13 +392,22 @@ if (isTRUE(DRY_RUN)) {
   if (file.exists(manifest_path)) {
     dry_manifest <- utils::read.csv(manifest_path, stringsAsFactors = FALSE, check.names = FALSE)
     dry_required_cols <- c(
-      "analysis_id", "run_id", "ontology", "result_type", "comparison",
+      "analysis_id", "dataset", "run_id", "ontology", "result_type", "comparison",
       "route_category", "route_unit", "used_for_plot", "input_gene_file",
       "input_hash", "config_hash", "output_table", "n_terms", "empty_result"
     )
+    if (legacy_mode) dry_required_cols <- setdiff(dry_required_cols, "dataset")
     missing_cols <- setdiff(dry_required_cols, names(dry_manifest))
     add_diag("manifest_schema", if (length(missing_cols) == 0) "PASS" else "FAIL", paste(missing_cols, collapse = ", "))
     if (length(missing_cols) == 0) {
+      if ("dataset" %in% names(dry_manifest)) {
+        dry_manifest <- dry_manifest[dry_manifest$dataset == DATASET, , drop = FALSE]
+        add_diag("dataset_filter", if (nrow(dry_manifest) > 0) "PASS" else "FAIL", paste0(DATASET, ": ", nrow(dry_manifest), " row(s)"))
+      } else if (!legacy_mode) {
+        add_diag("dataset_filter", "FAIL", "Manifest lacks required dataset column. Set legacy_mode: true only for intentional migration.")
+      } else {
+        add_diag("dataset_filter", "WARN", "legacy_mode=true; manifest has no dataset column")
+      }
       dry_filtered <- dry_manifest[
         dry_manifest$ontology == as.character(comparego_cfg$ontology) &
           dry_manifest$result_type %in% unlist(comparego_cfg$result_types) &
@@ -424,7 +441,7 @@ if (isTRUE(DRY_RUN)) {
         } else {
           add_diag("selected_config_hashes", if (length(unique(dry_filtered$config_hash)) <= 1) "PASS" else "WARN", paste(unique(dry_filtered$config_hash), collapse = "; "))
         }
-        key <- paste(dry_filtered$ontology, dry_filtered$result_type, dry_filtered$comparison, dry_filtered$route_category, dry_filtered$route_unit, sep = "|")
+        key <- paste(DATASET, dry_filtered$ontology, dry_filtered$result_type, dry_filtered$comparison, dry_filtered$route_category, dry_filtered$route_unit, sep = "|")
         add_diag("duplicate_manifest_rows", if (anyDuplicated(key) == 0) "PASS" else "FAIL", paste0(sum(duplicated(key)), " duplicate row(s)"))
         missing_tables <- dry_filtered$output_table[!file.exists(dry_filtered$output_table)]
         missing_inputs <- unique(dry_filtered$input_gene_file[!file.exists(dry_filtered$input_gene_file)])
@@ -439,11 +456,15 @@ if (isTRUE(DRY_RUN)) {
   dry_run_line("Script", "02_compareGO.r")
   dry_run_line("Config", comparego_config_path, diagnostics$status[diagnostics$check == "config_exists"])
   dry_run_line("Manifest", manifest_path, diagnostics$status[diagnostics$check == "manifest_exists"])
+  dry_run_line("Dataset", DATASET)
+  dry_run_line("Legacy mode", legacy_mode)
   dry_run_line("Ontology", comparego_cfg$ontology)
   dry_run_line("Route category", comparego_cfg$route_category)
   dry_run_line("Route unit", comparego_cfg$route_unit)
   dry_run_line("Result types", paste(unlist(comparego_cfg$result_types), collapse = ", "))
-  dry_run_file <- file.path(CANONICAL_PATHS$reports, "compareGO_dry_run_diagnostics.csv")
+  dry_run_dir <- file.path(CANONICAL_PATHS$reports, DATASET)
+  dir.create(dry_run_dir, recursive = TRUE, showWarnings = FALSE)
+  dry_run_file <- file.path(dry_run_dir, "compareGO_dry_run_diagnostics.csv")
   write.csv(diagnostics, dry_run_file, row.names = FALSE)
   dry_run_line("Diagnostics written", dry_run_file)
   quit(status = if (any(diagnostics$status == "FAIL")) 1 else 0, save = "no")
@@ -455,14 +476,30 @@ if (!file.exists(manifest_path)) {
 }
 cluster_manifest <- readr::read_csv(manifest_path, show_col_types = FALSE)
 required_manifest_cols <- c(
-  "analysis_id", "run_id", "ontology", "result_type", "comparison",
+  "analysis_id", "dataset", "run_id", "ontology", "result_type", "comparison",
   "route_category", "route_unit", "used_for_plot", "input_gene_file",
   "input_hash", "config_hash", "output_table", "n_terms", "empty_result"
 )
+if (legacy_mode) required_manifest_cols <- setdiff(required_manifest_cols, "dataset")
 missing_manifest_cols <- setdiff(required_manifest_cols, names(cluster_manifest))
 if (length(missing_manifest_cols) > 0) {
   stop("clusterProfiler manifest is missing required columns: ",
-       paste(missing_manifest_cols, collapse = ", "), call. = FALSE)
+       paste(missing_manifest_cols, collapse = ", "),
+       if ("dataset" %in% missing_manifest_cols) "\nSet legacy_mode: true only for intentional migration of old manifests." else "",
+       call. = FALSE)
+}
+if ("dataset" %in% names(cluster_manifest)) {
+  cluster_manifest <- cluster_manifest %>% filter(dataset == DATASET)
+  if (nrow(cluster_manifest) == 0) {
+    stop("No clusterProfiler manifest rows found for dataset='", DATASET, "'. ", 
+         "Check config/compareGO_config.yml dataset and clusterProfiler_manifest.", call. = FALSE)
+  }
+} else if (!legacy_mode) {
+  stop("clusterProfiler manifest lacks required dataset column. ",
+       "Rerun clusterProfiler with the dataset-aware pipeline or set legacy_mode: true only for intentional migration.",
+       call. = FALSE)
+} else {
+  warning("legacy_mode=true: accepting manifest without dataset column. Outputs will still be written under dataset=", DATASET, ".")
 }
 
 manifest_filtered <- cluster_manifest %>%
@@ -481,6 +518,9 @@ if (nrow(manifest_filtered) == 0) {
        ", route_category=", ensemble_profiling,
        if (nzchar(condition)) paste0(", route_unit=", condition) else "",
        ". Update config/compareGO_config.yml or rerun clusterProfiler.", call. = FALSE)
+}
+if (!"dataset" %in% names(manifest_filtered)) {
+  manifest_filtered$dataset <- DATASET
 }
 
 if (nzchar(as.character(comparego_cfg$run_id))) {
@@ -501,7 +541,7 @@ if (nzchar(as.character(comparego_cfg$clusterProfiler_config_hash))) {
 }
 
 duplicate_keys <- manifest_filtered %>%
-  count(ontology, result_type, comparison, route_category, route_unit, name = "n") %>%
+  count(dataset, ontology, result_type, comparison, route_category, route_unit, name = "n") %>%
   filter(n > 1)
 if (nrow(duplicate_keys) > 0) {
   stop("Duplicate/conflicting clusterProfiler manifest rows detected for compareGO input. ",
@@ -530,6 +570,7 @@ if (nrow(hash_check) > 0) {
        nrow(hash_check), " row(s). Rerun clusterProfiler before compareGO.", call. = FALSE)
 }
 
+message("[INFO] compareGO dataset: ", DATASET)
 message("[INFO] compareGO consuming ", nrow(manifest_filtered), " manifest rows from ", manifest_path)
 message("[INFO] Loading log2fc files listed by manifest: ", length(log2fc_files))
 
@@ -646,6 +687,7 @@ analysis_start_time <- Sys.time()
 analysis_params <- list(
   script = "compareGO.r",
   version = "2.1 (enhanced)",
+  dataset = DATASET,
   timestamp = analysis_start_time,
   r_version = R.version.string,
   platform = R.version$platform,
@@ -661,9 +703,13 @@ analysis_params <- list(
   n_total_proteins = length(unique(na.omit(log2fc_long$gene_symbol)))
 )
 
-write_session_info(file.path(CANONICAL_PATHS$logs, "sessionInfo.txt"))
-write_config_snapshot(comparego_cfg, file.path(CANONICAL_PATHS$logs, "compareGO_config_snapshot.yml"))
-readr::write_csv(manifest_filtered, file.path(CANONICAL_PATHS$processed, "compareGO_input_manifest.csv"))
+comparego_log_dir <- file.path(CANONICAL_PATHS$logs, DATASET)
+dir.create(comparego_log_dir, recursive = TRUE, showWarnings = FALSE)
+write_session_info(file.path(comparego_log_dir, "sessionInfo.txt"))
+write_config_snapshot(comparego_cfg, file.path(comparego_log_dir, "compareGO_config_snapshot.yml"))
+comparego_processed_dir <- file.path(CANONICAL_PATHS$processed, DATASET)
+dir.create(comparego_processed_dir, recursive = TRUE, showWarnings = FALSE)
+readr::write_csv(manifest_filtered, file.path(comparego_processed_dir, "compareGO_input_manifest.csv"))
 
 uniprot_mapping_file_path <- as.character(comparego_cfg$uniprot_mapping_file)
 if (!file.exists(uniprot_mapping_file_path)) {
@@ -703,17 +749,17 @@ names(file_paths) <- manifest_filtered$comparison
 # -----------------------------------------------------
 
 subdirs <- list(
-  tables = file.path(CANONICAL_PATHS$tables, ont, ensemble_profiling, condition),
-  plots_main = file.path(CANONICAL_PATHS$figures, ont, ensemble_profiling, condition, "main"),
-  core_enrichment_plots = file.path(CANONICAL_PATHS$figures, ont, ensemble_profiling, condition, "core_enrichment"),
-  gene_lists = file.path(CANONICAL_PATHS$source_data, ont, ensemble_profiling, condition, "gene_lists"),
-  volcanoes = file.path(CANONICAL_PATHS$figures, ont, ensemble_profiling, condition, "volcanoes"),
-  sig_proteins = file.path(CANONICAL_PATHS$tables, ont, ensemble_profiling, condition, "significant_proteins"),
-  go_enrichment = file.path(CANONICAL_PATHS$tables, ont, ensemble_profiling, condition, "regulated_protein_go"),
-  gene_centric = file.path(CANONICAL_PATHS$tables, ont, ensemble_profiling, condition, "gene_centric")
+  tables = file.path(CANONICAL_PATHS$tables, DATASET, ont, ensemble_profiling, condition),
+  plots_main = file.path(CANONICAL_PATHS$figures, DATASET, ont, ensemble_profiling, condition, "main"),
+  core_enrichment_plots = file.path(CANONICAL_PATHS$figures, DATASET, ont, ensemble_profiling, condition, "core_enrichment"),
+  gene_lists = file.path(CANONICAL_PATHS$source_data, DATASET, ont, ensemble_profiling, condition, "gene_lists"),
+  volcanoes = file.path(CANONICAL_PATHS$figures, DATASET, ont, ensemble_profiling, condition, "volcanoes"),
+  sig_proteins = file.path(CANONICAL_PATHS$tables, DATASET, ont, ensemble_profiling, condition, "significant_proteins"),
+  go_enrichment = file.path(CANONICAL_PATHS$tables, DATASET, ont, ensemble_profiling, condition, "regulated_protein_go"),
+  gene_centric = file.path(CANONICAL_PATHS$tables, DATASET, ont, ensemble_profiling, condition, "gene_centric")
 )
 lapply(subdirs, dir.create, showWarnings = FALSE, recursive = TRUE)
-main_output_dir <- file.path(CANONICAL_PATHS$reports, ont, ensemble_profiling, condition)
+main_output_dir <- file.path(CANONICAL_PATHS$reports, DATASET, ont, ensemble_profiling, condition)
 dir.create(main_output_dir, showWarnings = FALSE, recursive = TRUE)
 
 # -----------------------------------------------------
