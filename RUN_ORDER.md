@@ -32,14 +32,14 @@ Expected outputs:
 ```text
 data/processed/02_id_mapping/protein_id_mapping.tsv
 data/processed/02_id_mapping/mapped_protein_matrix.tsv
-data/processed/02_id_mapping/mapped/forward/per_file/*.csv
+data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv
 ```
 
 The current canonical contrast handoff is:
 
 ```bash
-Rscript 01_preprocessing/03_gct_extractR.r --dry-run
-Rscript 02_id_mapping/01_MapThatProt_batch.r --dry-run
+PROTEOMICS_GCT_COMPARISON=neuron_neuropil Rscript 01_preprocessing/03_gct_extractR.r --dry-run
+PROTEOMICS_COMPARISON=neuron_neuropil Rscript 02_id_mapping/01_MapThatProt_batch.r --dry-run
 ```
 
 `03_gct_extractR.r` writes split contrast CSVs to:
@@ -49,10 +49,10 @@ data/processed/01_preprocessing/gct_extractR/<comparison>/forward/
 data/processed/01_preprocessing/gct_extractR/<comparison>/reverse/
 ```
 
-`01_MapThatProt_batch.r` defaults to `PROTEOMICS_MAP_DIRECTION=forward` and writes clusterProfiler-ready files to:
+Run the GCT extraction and ID mapping once per biological dataset family, for example `neuron_neuropil`, `neuron_soma`, and `microglia`. `01_MapThatProt_batch.r` defaults to `PROTEOMICS_COMPARISON=neuron_neuropil` and `PROTEOMICS_MAP_DIRECTION=forward`; set `PROTEOMICS_COMPARISON` for each family. It writes clusterProfiler-ready files to:
 
 ```text
-data/processed/02_id_mapping/mapped/forward/per_file/
+data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/
 ```
 
 Set `PROTEOMICS_MAP_DIRECTION=reverse` only when intentionally producing reverse contrasts.
@@ -87,26 +87,26 @@ Rscript 04_differential_expression_enrichment/01_clusterProfiler.r --dry-run
 Rscript 04_differential_expression_enrichment/02_compareGO.r --dry-run
 ```
 
-`01_clusterProfiler.r` reads mapped contrast CSVs and writes:
+Set `analysis.dataset` in `config/clusterProfiler_config.yml` and `dataset` in `config/compareGO_config.yml` before each dataset family run. Leave mapped paths empty in the configs to use the dataset-aware defaults. `01_clusterProfiler.r` reads mapped contrast CSVs and writes:
 
 ```text
-data/processed/04_differential_expression_enrichment/clusterProfiler/clusterProfiler_manifest.csv
-results/source_data/04_differential_expression_enrichment/clusterProfiler/
-results/figures/04_differential_expression_enrichment/clusterProfiler/
-results/tables/04_differential_expression_enrichment/clusterProfiler/
-results/logs/04_differential_expression_enrichment/clusterProfiler/
-results/reports/04_differential_expression_enrichment/clusterProfiler/
+data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv
+results/source_data/04_differential_expression_enrichment/clusterProfiler/<dataset>/
+results/figures/04_differential_expression_enrichment/clusterProfiler/<dataset>/
+results/tables/04_differential_expression_enrichment/clusterProfiler/<dataset>/
+results/logs/04_differential_expression_enrichment/clusterProfiler/<dataset>/
+results/reports/04_differential_expression_enrichment/clusterProfiler/<dataset>/
 ```
 
-`02_compareGO.r` consumes only manifest-selected clusterProfiler outputs and the mapped/log2FC files listed in that manifest. It writes:
+`02_compareGO.r` requires the manifest `dataset` column, filters manifest rows by `dataset`, and consumes only manifest-selected clusterProfiler outputs plus the mapped/log2FC files listed in that manifest. It writes:
 
 ```text
-data/processed/04_differential_expression_enrichment/compareGO/compareGO_input_manifest.csv
-results/tables/04_differential_expression_enrichment/compareGO/
-results/figures/04_differential_expression_enrichment/compareGO/
-results/source_data/04_differential_expression_enrichment/compareGO/
-results/logs/04_differential_expression_enrichment/compareGO/
-results/reports/04_differential_expression_enrichment/compareGO/
+data/processed/04_differential_expression_enrichment/compareGO/<dataset>/compareGO_input_manifest.csv
+results/tables/04_differential_expression_enrichment/compareGO/<dataset>/
+results/figures/04_differential_expression_enrichment/compareGO/<dataset>/
+results/source_data/04_differential_expression_enrichment/compareGO/<dataset>/
+results/logs/04_differential_expression_enrichment/compareGO/<dataset>/
+results/reports/04_differential_expression_enrichment/compareGO/<dataset>/
 ```
 
 ## 5. Cell-type enrichment

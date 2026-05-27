@@ -81,12 +81,12 @@ mapping <- readr::read_tsv(
 gene_names <- mapping %>%
   filter(Type %in% c("Gene_Name", "Gene Names", "Gene_Synonym")) %>%
   group_by(UniProt) %>%
-  summarise(GeneName = first(Value), .groups = "drop")
+  summarise(GeneName = dplyr::first(Value), .groups = "drop")
 
 protein_names <- mapping %>%
   filter(Type %in% c("Protein names", "Protein_Name")) %>%
   group_by(UniProt) %>%
-  summarise(ProteinName = first(Value), .groups = "drop")
+  summarise(ProteinName = dplyr::first(Value), .groups = "drop")
 
 go_terms <- mapping %>%
   filter(str_detect(Type, "^GO")) %>%
@@ -283,7 +283,7 @@ module_long <- imap_dfr(module_defs, function(accessions, module_name) {
 }) %>%
   left_join(
     classified_df %>%
-      select(
+      dplyr::select(
         UniProt, GeneName, ProteinName,
         N_datasets, Datasets,
         is_RNP_RNA,
@@ -310,7 +310,7 @@ unassigned_df <- classified_df %>%
     !is_Synaptic_Cytoskeleton,
     !is_Chromatin_Exploratory
   ) %>%
-  select(UniProt, GeneName, ProteinName, N_datasets, Datasets) %>%
+  dplyr::select(UniProt, GeneName, ProteinName, N_datasets, Datasets) %>%
   arrange(desc(N_datasets), GeneName)
 
 # ------------------------------------------------
@@ -336,7 +336,7 @@ for (mod in names(module_defs)) {
 
   mod_df <- module_long %>%
     filter(Module == mod) %>%
-    select(UniProt, GeneName, ProteinName, N_datasets, Datasets)
+    dplyr::select(UniProt, GeneName, ProteinName, N_datasets, Datasets)
 
   addWorksheet(wb, sheet_name)
   writeData(wb, sheet_name, mod_df)

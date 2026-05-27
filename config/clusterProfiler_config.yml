@@ -8,6 +8,9 @@ simplification:
   cutoff: 0.7
 
 analysis:
+  # Dataset family. This selects data/processed/02_id_mapping/mapped/<dataset>/forward/per_file
+  # when paths.mapped_dir and paths.mapped_data_base are left empty.
+  dataset: neuron_neuropil
   organism: org.Mm.eg.db
   ontology: BP
   top_gene_abs_log2fc: 1
@@ -28,9 +31,10 @@ runtime:
   show_step_progress: true
 
 paths:
-  mapped_dir: data/processed/02_id_mapping/mapped/forward/per_file
+  # Leave these empty to construct dataset-aware defaults from analysis.dataset.
+  mapped_dir: ""
   working_base: "."
-  mapped_data_base: data/processed/02_id_mapping/mapped/forward/per_file
+  mapped_data_base: ""
   background_universe_file: ""
 
 optional_inputs:
@@ -41,3 +45,14 @@ optional_inputs:
 background_universe:
   enabled: false
   column: UNIPROT
+
+# Example local overrides:
+# neuron_neuropil:
+#   analysis:
+#     dataset: neuron_neuropil
+# neuron_soma:
+#   analysis:
+#     dataset: neuron_soma
+# microglia:
+#   analysis:
+#     dataset: microglia
