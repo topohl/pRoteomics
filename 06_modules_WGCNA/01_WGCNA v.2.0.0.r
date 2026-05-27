@@ -9,7 +9,7 @@ required_pkgs <- c(
   "reshape2", "gtools", "patchwork", "cowplot", "pheatmap", "dplyr", "tidyr",
   "httr", "jsonlite", "purrr", "AnnotationDbi", "org.Mm.eg.db", "readr",
   "stringr", "tibble", "UniProt.ws", "RColorBrewer", "ggpubr", "broom", "grid",
-  "clusterProfiler", "scales"
+  "clusterProfiler", "scales", "writexl"
 )
 missing_pkgs <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
 if (length(missing_pkgs)) {
@@ -154,8 +154,12 @@ sig_dot <- function(fdr) {
   )
 }
 
-expr_xlsx <- Sys.getenv("PROTEOMICS_WGCNA_EXPR_XLSX", unset = path_processed("variancePartition", "data", "male.data.xlsx"))
-meta_xlsx <- Sys.getenv("PROTEOMICS_WGCNA_META_XLSX", unset = path_processed("variancePartition", "data", "sample_info.xlsx"))
+expr_xlsx_env <- Sys.getenv("PROTEOMICS_WGCNA_EXPR_XLSX", unset = "")
+meta_xlsx_env <- Sys.getenv("PROTEOMICS_WGCNA_META_XLSX", unset = "")
+expr_xlsx_default <- path_processed("variancePartition", "data", "male.data.xlsx")
+meta_xlsx_default <- path_processed("variancePartition", "data", "sample_info.xlsx")
+expr_xlsx <- if (nzchar(expr_xlsx_env)) expr_xlsx_env else expr_xlsx_default
+meta_xlsx <- if (nzchar(meta_xlsx_env)) meta_xlsx_env else meta_xlsx_default
 
 # ================================
 # Mouse-only mapping: robust idmapping parser + offline + SYMBOL/ALIAS + Entrez + UniProt gene_primary + QC
@@ -164,21 +168,133 @@ meta_xlsx <- Sys.getenv("PROTEOMICS_WGCNA_META_XLSX", unset = path_processed("va
 # --------------------------
 # Inputs
 # --------------------------
-expr_xlsx <- Sys.getenv("PROTEOMICS_WGCNA_EXPR_XLSX", unset = expr_xlsx)
-meta_xlsx <- Sys.getenv("PROTEOMICS_WGCNA_META_XLSX", unset = meta_xlsx)
+expr_xlsx <- if (nzchar(expr_xlsx_env)) expr_xlsx_env else expr_xlsx
+meta_xlsx <- if (nzchar(meta_xlsx_env)) meta_xlsx_env else meta_xlsx
 idmap_dat <- Sys.getenv("PROTEOMICS_WGCNA_IDMAP_DAT", unset = path_external("MOUSE_10090_idmapping.dat"))
+
+find_latest_wgcna_upstream <- function(profile = dataset_profile) {
+  override <- Sys.getenv("PROTEOMICS_WGCNA_UPSTREAM_XLSX", unset = "")
+  if (nzchar(override)) return(override)
+
+  impute_dir <- path_processed("01_preprocessing", "impute")
+  if (!dir.exists(impute_dir)) return(NA_character_)
+
+  profile <- tolower(profile)
+  profile <- if (identical(profile, "auto") || identical(profile, "region_only")) "neuron_neuropil" else profile
+  pattern_profile <- paste0("^\\d{8}_pgmatrix_imputed_", profile, "_[0-9]+samples_missing70pct\\.xlsx$")
+  candidates <- list.files(impute_dir, pattern = pattern_profile, full.names = TRUE)
+  if (!length(candidates)) {
+    candidates <- list.files(impute_dir, pattern = "^\\d{8}_pgmatrix_imputed_.*_[0-9]+samples_missing70pct\\.xlsx$", full.names = TRUE)
+  }
+  if (!length(candidates)) return(NA_character_)
+
+  info <- file.info(candidates)
+  normalizePath(rownames(info)[order(info$mtime, decreasing = TRUE)[1]], winslash = "/", mustWork = FALSE)
+}
+
+first_existing_col <- function(df, candidates) {
+  nms_clean <- tolower(gsub("[^a-z0-9]", "", names(df)))
+  cand_clean <- tolower(gsub("[^a-z0-9]", "", candidates))
+  hit <- match(cand_clean, nms_clean)
+  hit <- hit[!is.na(hit)]
+  if (!length(hit)) return(NA_character_)
+  names(df)[hit[1]]
+}
+
+normalize_wgcna_group <- function(x) {
+  x <- toupper(trimws(as.character(x)))
+  dplyr::case_when(
+    x %in% c("1", "CON", "CTRL", "CONTROL") ~ "con",
+    x %in% c("2", "RES", "RESILIENT") ~ "res",
+    x %in% c("3", "SUS", "SUSCEPTIBLE") ~ "sus",
+    TRUE ~ tolower(x)
+  )
+}
+
+profile_from_upstream_name <- function(path) {
+  x <- tolower(basename(path))
+  dplyr::case_when(
+    grepl("microglia", x) ~ "microglia",
+    grepl("neuron_soma", x) ~ "neuron_soma",
+    grepl("neuron_neuropil", x) ~ "neuron_neuropil",
+    TRUE ~ NA_character_
+  )
+}
+
+auto_prepare_wgcna_inputs <- function(expr_path, meta_path) {
+  if (file.exists(expr_path) && file.exists(meta_path)) return(invisible(FALSE))
+  if (nzchar(expr_xlsx_env) || nzchar(meta_xlsx_env)) return(invisible(FALSE))
+
+  upstream_xlsx <- find_latest_wgcna_upstream()
+  upstream_meta <- Sys.getenv("PROTEOMICS_WGCNA_UPSTREAM_META_XLSX", unset = path_metadata("TPE9_sample_metadata_males.xlsx"))
+  if (is.na(upstream_xlsx) || !file.exists(upstream_xlsx) || !file.exists(upstream_meta)) return(invisible(FALSE))
+
+  message("Preparing missing WGCNA input workbooks from: ", upstream_xlsx)
+  upstream <- as.data.frame(readxl::read_excel(upstream_xlsx))
+  gene_col <- first_existing_col(upstream, c("T: Protein.Names", "gene_symbol", "Genes", "Protein.Group"))
+  if (is.na(gene_col)) stop("Could not find a protein identifier column in upstream WGCNA input: ", upstream_xlsx, call. = FALSE)
+
+  candidate_cols <- setdiff(names(upstream), c("Protein.Group", "T: Protein.Names", "Genes", "First.Protein.Description", gene_col))
+  numeric_fraction <- vapply(candidate_cols, function(cc) {
+    vals <- suppressWarnings(as.numeric(as.character(upstream[[cc]])))
+    mean(!is.na(vals))
+  }, numeric(1))
+  sample_cols <- candidate_cols[numeric_fraction >= 0.70]
+  if (length(sample_cols) < 4) stop("Could not detect expression sample columns in upstream WGCNA input: ", upstream_xlsx, call. = FALSE)
+
+  expr_out <- upstream[, sample_cols, drop = FALSE]
+  expr_out[] <- lapply(expr_out, function(x) suppressWarnings(as.numeric(as.character(x))))
+  expr_out <- dplyr::bind_cols(tibble::tibble(gene_symbol = as.character(upstream[[gene_col]])), tibble::as_tibble(expr_out))
+
+  metadata <- as.data.frame(readxl::read_excel(upstream_meta))
+  sample_col <- first_existing_col(metadata, c("sample_id", "SampleID", "SampleColumn", "row.names"))
+  if (is.na(sample_col)) stop("Could not find a sample identifier column in upstream metadata: ", upstream_meta, call. = FALSE)
+  if ("exclude" %in% names(metadata)) metadata <- metadata[is.na(metadata$exclude) | metadata$exclude != TRUE, , drop = FALSE]
+
+  metadata$.wgcna_sample <- as.character(metadata[[sample_col]])
+  metadata <- metadata[metadata$.wgcna_sample %in% sample_cols, , drop = FALSE]
+  metadata <- metadata[match(sample_cols, metadata$.wgcna_sample), , drop = FALSE]
+  if (any(is.na(metadata$.wgcna_sample))) stop("Some WGCNA expression columns are missing from metadata.", call. = FALSE)
+
+  source_profile <- profile_from_upstream_name(upstream_xlsx)
+  metadata$celltype <- if (!is.na(source_profile)) {
+    source_profile
+  } else if ("celltype" %in% names(metadata)) {
+    as.character(metadata$celltype)
+  } else {
+    NA_character_
+  }
+  meta_out <- metadata %>%
+    dplyr::transmute(
+      row.names = .data[[".wgcna_sample"]],
+      region = tolower(as.character(.data[["region"]])),
+      layer = tolower(as.character(.data[["layer"]])),
+      celltype = as.character(.data[["celltype"]]),
+      ExpGroup = normalize_wgcna_group(.data[["ExpGroup"]])
+    )
+
+  dir.create(dirname(expr_path), recursive = TRUE, showWarnings = FALSE)
+  dir.create(dirname(meta_path), recursive = TRUE, showWarnings = FALSE)
+  writexl::write_xlsx(expr_out, expr_path)
+  writexl::write_xlsx(meta_out, meta_path)
+  invisible(TRUE)
+}
 
 stop_if_missing <- function(path) {
   if (!file.exists(path)) {
     stop(
       "Missing WGCNA input file: ", path,
       ". This script consumes precombined variancePartition-style matrices ",
-      "(male.data.xlsx and sample_info.xlsx). TODO: generate these from a prior ",
-      "canonical manifest or set PROTEOMICS_WGCNA_EXPR_XLSX / PROTEOMICS_WGCNA_META_XLSX.",
+      "(male.data.xlsx and sample_info.xlsx). If using custom inputs, set ",
+      "PROTEOMICS_WGCNA_EXPR_XLSX / PROTEOMICS_WGCNA_META_XLSX. Otherwise, ",
+      "rerun 01_preprocessing/01_impute.r and ensure TPE9_sample_metadata_males.xlsx is available.",
       call. = FALSE
     )
   }
 }
+
+auto_prepare_wgcna_inputs(expr_xlsx, meta_xlsx)
+
 read_head <- function(path) {
   df <- readxl::read_excel(path)
   utils::write.table(utils::head(df, 10), fp_log(paste0(basename(path), "_head10.tsv")),
@@ -340,6 +456,9 @@ resolved2 <- tokenize_mouse_only(male.data)
 # --------------------------
 # Mapping stack
 # --------------------------
+empty_id_map <- function() {
+  tibble::tibble(input = character(), primaryAccession = character())
+}
 
 # 1) Accept accession-like bases
 idx_ac <- which(resolved2$id_class == "UNIPROT_AC_MOUSE")
@@ -364,7 +483,7 @@ ids_ent <- unique(need_ids[!is_acc])
 
 if (length(ids_ent)) {
   sel_sym <- try(AnnotationDbi::select(org.Mm.eg.db, keys = ids_ent, keytype = "SYMBOL", columns = c("MGIID","ENTREZID","UNIPROT","SYMBOL")), silent = TRUE)
-  map_sym <- tibble::tibble()
+  map_sym <- empty_id_map()
   if (!inherits(sel_sym, "try-error") && nrow(sel_sym)) {
     map_sym <- tibble::as_tibble(sel_sym) %>%
       dplyr::filter(!is.na(UNIPROT) & nzchar(UNIPROT)) %>%
@@ -372,7 +491,7 @@ if (length(ids_ent)) {
       dplyr::transmute(input = toupper(SYMBOL), primaryAccession = toupper(UNIPROT))
   }
   kt <- try(AnnotationDbi::keytypes(org.Mm.eg.db), silent = TRUE)
-  map_alias <- tibble::tibble()
+  map_alias <- empty_id_map()
   if (!inherits(kt, "try-error") && "ALIAS" %in% kt) {
     sel_alias <- try(AnnotationDbi::select(org.Mm.eg.db, keys = ids_ent, keytype = "ALIAS", columns = c("UNIPROT","ALIAS")), silent = TRUE)
     if (!inherits(sel_alias, "try-error") && nrow(sel_alias)) {
@@ -400,7 +519,7 @@ sym_left <- unique(need_ids[grepl("^[A-Z0-9\\-]{2,}$", need_ids)])
 
 if (length(sym_left)) {
   sym2eg <- try(AnnotationDbi::select(org.Mm.eg.db, keys = sym_left, keytype = "SYMBOL", columns = c("ENTREZID","SYMBOL")), silent = TRUE)
-  eg2up  <- tibble::tibble()
+  eg2up  <- tibble::tibble(ENTREZID = character(), UNIPROT = character())
   if (!inherits(sym2eg, "try-error") && nrow(sym2eg)) {
     ekeys <- unique(na.omit(sym2eg$ENTREZID))
     if (length(ekeys)) {
@@ -451,7 +570,7 @@ if (length(sym_left2)) {
     }
   }
   if (length(picks)) {
-    map_gene <- dplyr::bind_rows(picks) %>% dplyr::distinct(input, .keep_all = TRUE)
+    map_gene <- dplyr::bind_rows(c(list(empty_id_map()), picks)) %>% dplyr::distinct(input, .keep_all = TRUE)
     need_idx3 <- which(is.na(resolved2$Resolved_UNIPROT) | !nzchar(resolved2$Resolved_UNIPROT))
     base_need <- toupper(resolved2$token_base[need_idx3])
     hit <- map_gene$primaryAccession[match(base_need, map_gene$input)]
@@ -498,7 +617,10 @@ male.norm <- resolved2 %>%
 
 to_numeric_matrix <- function(male_norm, qc_dir = subdirs$logs) {
   if (!"gene_symbol" %in% names(male_norm)) stop("male.norm must contain gene_symbol")
-  expr <- as.data.frame(lapply(male_norm[, -1, drop = FALSE], function(x) suppressWarnings(as.numeric(x))))
+  expr <- as.data.frame(
+    lapply(male_norm[, -1, drop = FALSE], function(x) suppressWarnings(as.numeric(x))),
+    check.names = FALSE
+  )
   if (!all(vapply(expr, is.numeric, logical(1)))) stop("Non-numeric columns remain after coercion")
   mat <- as.data.frame(t(expr))
   feat <- male_norm$gene_symbol
@@ -679,12 +801,43 @@ dev.off()
 # --------------------------
 # Spatial + condition trait matrix and heatmaps
 # --------------------------
-sample_info <- readxl::read_excel(path = meta_xlsx)
+sample_info <- as.data.frame(readxl::read_excel(path = meta_xlsx))
 stopifnot("row.names" %in% names(sample_info))
-rownames(sample_info) <- as.character(sample_info$row.names)
+
+sample_key_for_match <- function(x) {
+  x <- tolower(trimws(as.character(x)))
+  gsub("[^a-z0-9]+", "", x)
+}
 
 Samples <- rownames(expression.data)
-sample_info <- sample_info[Samples, , drop = FALSE]
+sample_match <- match(Samples, as.character(sample_info$row.names))
+if (anyNA(sample_match)) {
+  sample_key <- sample_key_for_match(Samples)
+  metadata_key <- sample_key_for_match(sample_info$row.names)
+  duplicated_metadata_key <- duplicated(metadata_key) | duplicated(metadata_key, fromLast = TRUE)
+  if (any(duplicated_metadata_key)) {
+    duplicated_metadata <- sample_info[duplicated(metadata_key) | duplicated(metadata_key, fromLast = TRUE), , drop = FALSE]
+    write_csv_safe(duplicated_metadata, fp_log("metadata_duplicate_normalized_sample_keys.csv"))
+  }
+  metadata_key_unique <- metadata_key
+  metadata_key_unique[duplicated_metadata_key] <- NA_character_
+  fallback_match <- match(sample_key, metadata_key_unique)
+  sample_match[is.na(sample_match)] <- fallback_match[is.na(sample_match)]
+}
+if (anyNA(sample_match)) {
+  missing_samples <- Samples[is.na(sample_match)]
+  write_csv_safe(
+    tibble::tibble(sample = missing_samples),
+    fp_log("samples_missing_from_metadata.csv")
+  )
+  stop(
+    "Metadata is missing ", length(missing_samples), " expression samples. ",
+    "See logs/samples_missing_from_metadata.csv",
+    call. = FALSE
+  )
+}
+sample_info <- sample_info[sample_match, , drop = FALSE]
+rownames(sample_info) <- as.character(sample_info$row.names)
 profile_info <- prepare_spatial_metadata(
   sample_info,
   infer_dataset_profile(sample_info, expr_xlsx, meta_xlsx, dataset_profile)
@@ -884,11 +1037,11 @@ compact_term <- function(term) {
 prune_terms <- function(df, top_n = 5) {
   if (nrow(df) <= 1) return(utils::head(df, top_n))
   keep <- rep(TRUE, nrow(df))
-  names_list <- stringr::str_split(tolower(df$Description), " ")
+  names_list <- stringr::str_split(tolower(ifelse(is.na(df$Description), "", df$Description)), "\\s+")
   for (i in seq_len(nrow(df))) {
-    if (!keep[i]) next
+    if (!isTRUE(keep[i]) || i >= nrow(df)) next
     for (j in seq.int(i + 1, nrow(df))) {
-      if (!keep[j]) next
+      if (!isTRUE(keep[j])) next
       s1 <- names_list[[i]]; s2 <- names_list[[j]]
       inter <- length(intersect(s1, s2))
       uni   <- length(union(s1, s2))
