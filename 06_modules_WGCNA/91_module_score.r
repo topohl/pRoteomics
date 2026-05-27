@@ -22,6 +22,70 @@ CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
 # 1) PATHS
 # ------------------------------------------------
 
+first_existing_path <- function(paths) {
+  paths <- unique(normalizePath(paths[nzchar(paths)], winslash = "/", mustWork = FALSE))
+  hit <- paths[file.exists(paths)]
+  if (length(hit) == 0) return(NA_character_)
+  hit[[1]]
+}
+
+latest_matching_file <- function(root, pattern) {
+  root <- normalizePath(root, winslash = "/", mustWork = FALSE)
+  if (!dir.exists(root)) return(NA_character_)
+
+  candidates <- list.files(root, pattern = pattern, full.names = TRUE, recursive = TRUE)
+  candidates <- candidates[file.exists(candidates)]
+  if (length(candidates) == 0) return(NA_character_)
+
+  info <- file.info(candidates)
+  normalizePath(rownames(info)[order(info$mtime, decreasing = TRUE)[1]], winslash = "/", mustWork = FALSE)
+}
+
+latest_matching_file_anywhere <- function(roots, pattern) {
+  candidates <- vapply(roots, latest_matching_file, character(1), pattern = pattern)
+  candidates <- candidates[!is.na(candidates) & file.exists(candidates)]
+  if (length(candidates) == 0) return(NA_character_)
+
+  info <- file.info(candidates)
+  normalizePath(rownames(info)[order(info$mtime, decreasing = TRUE)[1]], winslash = "/", mustWork = FALSE)
+}
+
+resolve_module_score_protein_file <- function() {
+  override <- Sys.getenv("PROTEOMICS_MODULE_SCORE_PROTEIN_FILE", unset = "")
+  if (nzchar(override)) return(normalizePath(override, winslash = "/", mustWork = FALSE))
+
+  expected_name <- "20260218_pgmatrix_imputed_neuron_neuropil_180samples_missing70pct_with_metadata.xlsx"
+  direct <- first_existing_path(c(
+    path_processed("01_preprocessing", expected_name),
+    path_processed("01_preprocessing", "excel_convert", expected_name),
+    path_processed("morpheus", expected_name)
+  ))
+  if (!is.na(direct)) return(direct)
+
+  latest_matching_file(
+    path_processed("01_preprocessing"),
+    "^\\d{8}_pgmatrix_imputed_neuron_neuropil_[0-9]+samples_missing70pct_with_metadata\\.xlsx$"
+  )
+}
+
+resolve_module_score_metadata_file <- function() {
+  override <- Sys.getenv("PROTEOMICS_MODULE_SCORE_METADATA_FILE", unset = "")
+  if (nzchar(override)) return(normalizePath(override, winslash = "/", mustWork = FALSE))
+
+  expected_name <- "sample_metadata_merged_clean_for_module_scores.xlsx"
+  direct <- first_existing_path(c(
+    path_metadata(expected_name),
+    path_results("module_scores", expected_name),
+    path_processed("01_preprocessing", expected_name)
+  ))
+  if (!is.na(direct)) return(direct)
+
+  latest_matching_file_anywhere(
+    c(path_metadata(), path_results("module_scores"), path_processed("01_preprocessing")),
+    paste0("^", expected_name, "$")
+  )
+}
+
 analysis_primary <- "primary_all_replicates"
 analysis_qc_sensitivity <- "sensitivity_flagged_replicates_removed"
 
@@ -33,9 +97,9 @@ analysis_display_label <- function(x) {
   )
 }
 
-protein_file <- path_processed("01_preprocessing", "20260218_pgmatrix_imputed_neuron_neuropil_180samples_missing70pct_with_metadata.xlsx")
+protein_file <- resolve_module_score_protein_file()
 
-metadata_file <- path_metadata("sample_metadata_merged_clean_for_module_scores.xlsx")
+metadata_file <- resolve_module_score_metadata_file()
 
 mapping_file <- path_external("MOUSE_10090_idmapping.dat")
 
@@ -73,8 +137,33 @@ if (is_dry_run()) {
   dry_run_line("Output folders", paste(unlist(CANONICAL_PATHS), collapse = "; "))
   quit(status = if (all(file.exists(c(protein_file, metadata_file, mapping_file, module_definitions_file)))) 0 else 1, save = "no")
 }
-missing_inputs <- c(protein_file, metadata_file, mapping_file, module_definitions_file)[!file.exists(c(protein_file, metadata_file, mapping_file, module_definitions_file))]
-if (length(missing_inputs) > 0) stop("Missing module-score input file(s):\n", paste(missing_inputs, collapse = "\n"), call. = FALSE)
+input_paths <- c(
+  "Protein matrix" = protein_file,
+  "Metadata file" = metadata_file,
+  "Mapping file" = mapping_file,
+  "Module definitions" = module_definitions_file
+)
+missing_inputs <- names(input_paths)[!file.exists(input_paths)]
+if (length(missing_inputs) > 0) {
+  missing_lines <- paste0(missing_inputs, ": ", input_paths[missing_inputs])
+  hint_lines <- c(
+    "Expected upstream producers:",
+    "- Protein matrix with metadata: source('01_preprocessing/02_excel_convert.r')",
+    "- Merged module-score metadata: source('01_preprocessing/06_merged_metadata_module_score.r')",
+    "Optional overrides:",
+    "- Sys.setenv(PROTEOMICS_MODULE_SCORE_PROTEIN_FILE = 'path/to/*_with_metadata.xlsx')",
+    "- Sys.setenv(PROTEOMICS_MODULE_SCORE_METADATA_FILE = 'path/to/sample_metadata_merged_clean_for_module_scores.xlsx')"
+  )
+  stop(
+    "Missing module-score input file(s):\n",
+    paste(missing_lines, collapse = "\n"),
+    "\n\n",
+    paste(hint_lines, collapse = "\n"),
+    call. = FALSE
+  )
+}
+message("Using protein matrix: ", protein_file)
+message("Using module-score metadata: ", metadata_file)
 write_session_info(file.path(dir_qc, "sessionInfo.txt"))
 
 packages <- c("readxl", "dplyr", "tidyr", "ggplot2", "emmeans", "openxlsx",
