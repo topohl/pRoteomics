@@ -28,9 +28,9 @@
 #'   - UniProt idmapping from data/external/MOUSE_10090_idmapping.dat
 #'   - optional manual mapping workbook from data/metadata/manual_mapping.xlsx
 #' Produces:
-#'   - mapped contrast CSVs under data/processed/02_id_mapping/mapped/<forward|reverse>/per_file/
-#'   - unmapped tracking under data/processed/02_id_mapping/unmapped/
-#'   - mapping summaries/reports/logs under results/{tables,reports,logs}/02_id_mapping/MapThatProt_batch/
+#'   - mapped contrast CSVs under data/processed/02_id_mapping/mapped/<comparison>/<forward|reverse>/per_file/
+#'   - unmapped tracking under data/processed/02_id_mapping/unmapped/<comparison>/<forward|reverse>/per_file/
+#'   - mapping summaries/reports/logs under results/{tables,reports,logs}/02_id_mapping/MapThatProt_batch/<comparison>/
 #' File contract:
 #'   - docs/file_contracts.tsv object mapped_contrast_csv
 
@@ -54,7 +54,21 @@ load_required_packages <- function(pkgs) {
 }
 
 # --- Configuration & Experimental Settings ---
-mapped_comparisons <- "neuron_neuropil"  # specify the comparison folder to process
+mapped_comparisons <- Sys.getenv("PROTEOMICS_COMPARISON", unset = "neuron_neuropil")
+allowed_comparisons <- strsplit(
+    Sys.getenv("PROTEOMICS_ALLOWED_COMPARISONS", unset = "neuron_neuropil,neuron_soma,microglia"),
+    ",",
+    fixed = TRUE
+)[[1]]
+allowed_comparisons <- trimws(allowed_comparisons[nzchar(trimws(allowed_comparisons))])
+if (length(allowed_comparisons) > 0 && !mapped_comparisons %in% allowed_comparisons) {
+    stop(
+        "PROTEOMICS_COMPARISON='", mapped_comparisons, "' is not in the allowed comparison families: ",
+        paste(allowed_comparisons, collapse = ", "),
+        ". Extend PROTEOMICS_ALLOWED_COMPARISONS if this is an intentional new family.",
+        call. = FALSE
+    )
+}
 map_direction <- Sys.getenv("PROTEOMICS_MAP_DIRECTION", unset = "forward")
 if (!map_direction %in% c("forward", "reverse")) stop("PROTEOMICS_MAP_DIRECTION must be 'forward' or 'reverse'.", call. = FALSE)
 map_reverse <- identical(map_direction, "reverse")
@@ -65,12 +79,12 @@ cat("Mapping Direction:", map_direction, "\n")
 raw_dir <- path_processed("01_preprocessing", "gct_extractR", mapped_comparisons, map_direction)
 
 # Define output directories for mapped datasets, unmapped trackers, and QC info
-info_dir <- file.path(CANONICAL_PATHS$logs, "mapped", map_direction, "info")
-mapped_dir <- path_processed(MODULE_ID, "mapped", map_direction, "per_file")
-mapped_summary_dir <- file.path(CANONICAL_PATHS$tables, "mapped", map_direction, "summaries")
-unmapped_dir <- path_processed(MODULE_ID, "unmapped", map_direction, "per_file")
-unmapped_summary_dir <- file.path(CANONICAL_PATHS$tables, "unmapped", map_direction, "summaries")
-report_dir <- file.path(CANONICAL_PATHS$reports, "mapping_reports", map_direction)
+info_dir <- file.path(CANONICAL_PATHS$logs, mapped_comparisons, "mapped", map_direction, "info")
+mapped_dir <- path_processed(MODULE_ID, "mapped", mapped_comparisons, map_direction, "per_file")
+mapped_summary_dir <- file.path(CANONICAL_PATHS$tables, mapped_comparisons, "mapped", map_direction, "summaries")
+unmapped_dir <- path_processed(MODULE_ID, "unmapped", mapped_comparisons, map_direction, "per_file")
+unmapped_summary_dir <- file.path(CANONICAL_PATHS$tables, mapped_comparisons, "unmapped", map_direction, "summaries")
+report_dir <- file.path(CANONICAL_PATHS$reports, mapped_comparisons, "mapping_reports", map_direction)
 
 # Initialize output folder structure
 cat("Initializing output directories...\n")
@@ -92,6 +106,7 @@ if (is_dry_run()) {
     dry_run_line("Raw contrast CSV count", length(csv_files), if (length(csv_files) > 0) "PASS" else "FAIL")
     dry_run_line("UniProt mapping file", uniprot_mapping_file_path, if (file.exists(uniprot_mapping_file_path)) "PASS" else "FAIL")
     dry_run_line("Mapped output directory", mapped_dir)
+    dry_run_line("Unmapped output directory", unmapped_dir)
     dry_run_line("Reports directory", report_dir)
     quit(status = if (dir.exists(raw_dir) && length(csv_files) > 0 && file.exists(uniprot_mapping_file_path)) 0 else 1, save = "no")
 }
@@ -121,12 +136,14 @@ load_required_packages(c("dplyr", "stringr", "tidyr", "purrr", "readr", "R.utils
 write_session_info(file.path(CANONICAL_PATHS$logs, "sessionInfo.txt"))
 utils::write.csv(
     data.frame(
+        comparison_family = mapped_comparisons,
+        map_direction = map_direction,
         input_type = c("raw_contrast_directory", "uniprot_mapping", "manual_mapping"),
         path = c(raw_dir, uniprot_mapping_file_path, path_metadata("manual_mapping.xlsx")),
         md5 = c(NA_character_, file_hash(uniprot_mapping_file_path), file_hash(path_metadata("manual_mapping.xlsx"))),
         stringsAsFactors = FALSE
     ),
-    file.path(CANONICAL_PATHS$logs, "MapThatProt_batch_input_manifest.csv"),
+    file.path(CANONICAL_PATHS$logs, mapped_comparisons, paste0("MapThatProt_batch_input_manifest_", map_direction, ".csv")),
     row.names = FALSE
 )
 
@@ -687,6 +704,8 @@ process_file <- function(data_path) {
         by = c("token_raw" = "original_gene_symbol")
     ) %>%
     dplyr::transmute(
+        comparison_family = mapped_comparisons,
+        map_direction = map_direction,
         original_row_id,
         original_symbol = token_raw,
         base_name = token_base,
@@ -742,7 +761,7 @@ process_file <- function(data_path) {
     # Extract mapped summaries showing conversion strategy metadata
     mapped_summary <- mapping_info %>%
         dplyr::filter(!is.na(final_accession) & nzchar(final_accession)) %>%
-        dplyr::group_by(final_accession) %>%
+        dplyr::group_by(comparison_family, map_direction, final_accession) %>%
         dplyr::summarise(
             original_symbols = paste(unique(original_symbol), collapse = "; "),
             strategies = paste(unique(na.omit(matched_by)), collapse = "; "),
@@ -752,6 +771,7 @@ process_file <- function(data_path) {
 
     # Extract unmapped summary metrics
     unmapped_summary <- unmapped_proteins %>%
+        dplyr::mutate(comparison_family = mapped_comparisons, map_direction = map_direction) %>%
         dplyr::group_by(gene_symbol) %>%
         dplyr::summarise(occurrences = dplyr::n(), .groups = "drop")
     readr::write_csv(unmapped_summary, unmapped_summary_file)
@@ -767,6 +787,8 @@ process_file <- function(data_path) {
 
     summary_lines <- c(
         paste0("file: ", basename(data_path)),
+        paste0("comparison_family: ", mapped_comparisons),
+        paste0("map_direction: ", map_direction),
         paste0("total_valid_input_after__MOUSE_filter: ", total_in),
         paste0("mapped: ", total_mapped),
         paste0("unmapped: ", total_unmapped),
@@ -783,12 +805,14 @@ process_file <- function(data_path) {
     invisible(list(
     mapping_table = mapping_info %>%
         dplyr::mutate(
+            comparison_family = mapped_comparisons,
+            map_direction = map_direction,
             source_file = basename(data_path),
             mapped_status = ifelse(!is.na(final_accession) & nzchar(final_accession), "mapped", "unmapped")
         ),
 
     unmapped_table = unmapped_proteins %>%
-        dplyr::mutate(source_file = basename(data_path)),
+        dplyr::mutate(comparison_family = mapped_comparisons, map_direction = map_direction, source_file = basename(data_path)),
     
     multi_protein_log_table = multi_protein_log
 ))
@@ -810,7 +834,7 @@ doParallel::registerDoParallel(cl)
 cat("Initiating parallel mapping cascade for all files...\n")
 results <- foreach(i = seq_along(csv_files),
                    .packages = c("dplyr", "stringr", "tidyr", "purrr", "readr", "R.utils"),
-                   .export = c("uniprot_mapping", "entry_name_to_accession", "mapped_dir", "unmapped_dir", "info_dir", "process_file")) %dopar% {
+                   .export = c("uniprot_mapping", "entry_name_to_accession", "mapped_dir", "unmapped_dir", "info_dir", "mapped_comparisons", "map_direction", "process_file")) %dopar% {
     process_file(csv_files[i])
 }
 
@@ -845,7 +869,7 @@ cat("Saved global mapping summary to:", info_dir, "and", mapped_summary_dir, "\n
 
 # Consolidate ID unmapped dropouts
 global_unmapped_summary <- all_unmapped_tables %>%
-    dplyr::group_by(gene_symbol) %>%
+    dplyr::group_by(comparison_family, map_direction, gene_symbol) %>%
     dplyr::summarise(
         occurrences = dplyr::n(),
         files_present = paste(unique(source_file), collapse = "; "),
@@ -880,7 +904,7 @@ mapping_full <- all_mapping_tables %>%
 
 # Produce unique biological entity tracking
 protein_summary <- mapping_full %>%
-    dplyr::group_by(original_symbol) %>%
+    dplyr::group_by(comparison_family, map_direction, original_symbol) %>%
     dplyr::summarise(
         mapped_to = paste(unique(na.omit(final_accession)), collapse = "; "),
         strategies = paste(unique(na.omit(matched_by)), collapse = "; "),
@@ -907,7 +931,7 @@ strategy_stats_unique <- mapping_full %>%
 
 # Calculate dataset coverage % 
 coverage_stats <- mapping_full %>%
-    dplyr::group_by(source_file) %>%
+    dplyr::group_by(comparison_family, map_direction, source_file) %>%
     dplyr::summarise(
         total = dplyr::n(),
         mapped = sum(!is.na(final_accession)),

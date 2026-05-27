@@ -54,13 +54,15 @@ Risks in the old flow:
 
 clusterProfiler writes canonical source data and a manifest:
 
-`data/processed/04_differential_expression_enrichment/clusterProfiler/clusterProfiler_manifest.csv`
+`data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv`
 
-compareGO reads that manifest, filters by ontology/result type/route, validates required enrichment columns, verifies mapped/log2FC input files, writes the consumed subset to:
+The current dataset-aware flow is one biological dataset family to one mapped folder to one clusterProfiler manifest/run to one compareGO run. For example, `neuron_neuropil` maps to `data/processed/02_id_mapping/mapped/neuron_neuropil/forward/per_file/`, then clusterProfiler writes the `neuron_neuropil` manifest and source data, and compareGO filters that manifest by `dataset == "neuron_neuropil"`.
 
-`data/processed/04_differential_expression_enrichment/compareGO/compareGO_input_manifest.csv`
+compareGO reads that manifest, requires the `dataset` column unless `legacy_mode: true` is explicitly configured, filters by dataset/ontology/result type/route, validates required enrichment columns, verifies mapped/log2FC input files, writes the consumed subset to:
 
-This makes the data flow explicit and reproducible while preserving the biological route classification. By default, compareGO consumes only `result_type == GSEA_GO` and `used_for_plot == TRUE`. `GSEA_KEGG` rows are recorded by clusterProfiler for provenance and can be selected intentionally by `config/compareGO_config.yml`, but ORA and custom/NK3R outputs are not compareGO inputs unless future analysis logic explicitly supports them.
+`data/processed/04_differential_expression_enrichment/compareGO/<dataset>/compareGO_input_manifest.csv`
+
+This makes the data flow explicit and reproducible while preserving the biological route classification. By default, compareGO consumes only `result_type == GSEA_GO` and `used_for_plot == TRUE`. `GSEA_KEGG` rows are recorded by clusterProfiler for provenance and can be selected intentionally by `config/compareGO_config.yml`, but ORA and custom/NK3R outputs are not compareGO inputs unless future analysis logic explicitly supports them. Legacy mixed mapped folders such as `data/processed/02_id_mapping/mapped/forward/per_file/` are no longer accepted silently; migrate them into `mapped/<dataset>/<direction>/per_file/`.
 
 Checkpoint behavior: if clusterProfiler skips a completed comparison, it reconstructs manifest rows from existing canonical GSEA_GO/GSEA_KEGG source-data tables when present and marks `checkpoint_status = reconstructed_from_checkpoint`. If a checkpoint predates canonical source-data outputs, rerun with `force_rerun: true` to refresh the manifest.
 
@@ -132,7 +134,8 @@ The object preserves the legacy downstream structure (`expression_matrix`, `samp
 Phase 4 also canonicalized the preprocessing to ID-mapping contract:
 
 - `01_preprocessing/03_gct_extractR.r` reads a GCT from `data/processed/01_preprocessing/protigy_output/<comparison>/` and writes split contrast CSVs to `data/processed/01_preprocessing/gct_extractR/<comparison>/{forward,reverse}/`.
-- `02_id_mapping/01_MapThatProt_batch.r` consumes those split CSVs plus `data/external/MOUSE_10090_idmapping.dat` and writes mapped contrast CSVs to `data/processed/02_id_mapping/mapped/<forward|reverse>/per_file/`.
+- `02_id_mapping/01_MapThatProt_batch.r` consumes those split CSVs plus `data/external/MOUSE_10090_idmapping.dat` and writes mapped contrast CSVs to `data/processed/02_id_mapping/mapped/<comparison>/<forward|reverse>/per_file/`.
 - The default mapping direction is now `forward`, matching the `clusterProfiler` contract. Reverse mapping remains available with `PROTEOMICS_MAP_DIRECTION=reverse`.
+- The default comparison family is `neuron_neuropil`, overridable with `PROTEOMICS_COMPARISON`. The recognized default families are `neuron_neuropil`, `neuron_soma`, and `microglia`; extend `PROTEOMICS_ALLOWED_COMPARISONS` for new families.
 
 No `setwd()` remains in these two scripts, and UniProt idmapping download is opt-in via `AUTO_DOWNLOAD_UNIPROT_MAPPING=true`.

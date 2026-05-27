@@ -27,10 +27,58 @@ MODULE_ID <- "05_celltype_enrichment_EWCE"
 SUBSTEP_ID <- "EWCE_E9"
 CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
 
+resolve_ewce_pg_matrix <- function() {
+  env_path <- Sys.getenv("PROTEOMICS_EWCE_MATRIX", unset = "")
+  if (nzchar(env_path)) {
+    return(normalizePath(env_path, winslash = "/", mustWork = FALSE))
+  }
+
+  imputation_qc_path <- path_processed("01_preprocessing", "impute", "imputation_qc.csv")
+  if (file.exists(imputation_qc_path)) {
+    imputation_qc <- utils::read.csv(imputation_qc_path, stringsAsFactors = FALSE, check.names = FALSE)
+    required_cols <- c("celltype_layer", "n_samples", "output_path")
+    if (all(required_cols %in% colnames(imputation_qc))) {
+      candidates <- imputation_qc[
+        imputation_qc$celltype_layer == "neuron_neuropil" &
+          imputation_qc$n_samples == 180 &
+          !is.na(imputation_qc$output_path) &
+          nzchar(imputation_qc$output_path),
+        ,
+        drop = FALSE
+      ]
+      candidates <- candidates[file.exists(candidates$output_path), , drop = FALSE]
+      if (nrow(candidates) > 0) {
+        candidates$mtime <- file.info(candidates$output_path)$mtime
+        candidates <- candidates[order(candidates$mtime, decreasing = TRUE), , drop = FALSE]
+        return(normalizePath(candidates$output_path[1], winslash = "/", mustWork = FALSE))
+      }
+    }
+  }
+
+  legacy_path <- path_processed("01_preprocessing", "20260218_pgmatrix_imputed_neuron_neuropil_180samples_missing70pct.xlsx")
+  if (file.exists(legacy_path)) {
+    return(normalizePath(legacy_path, winslash = "/", mustWork = FALSE))
+  }
+
+  discovered <- list.files(
+    path_processed("01_preprocessing", "impute"),
+    pattern = "pgmatrix_imputed_neuron_neuropil_180samples_missing70pct\\.xlsx$",
+    full.names = TRUE,
+    recursive = FALSE
+  )
+  discovered <- discovered[file.exists(discovered)]
+  if (length(discovered) > 0) {
+    discovered <- discovered[order(file.info(discovered)$mtime, decreasing = TRUE)]
+    return(normalizePath(discovered[1], winslash = "/", mustWork = FALSE))
+  }
+
+  legacy_path
+}
+
 # Local machines can override these by defining the variables before source()
-# or through PROTEOMICS_PROJECT_ROOT. Do not commit machine-specific paths.
+# or through PROTEOMICS_PROJECT_ROOT / PROTEOMICS_EWCE_MATRIX. Do not commit machine-specific paths.
 if (!exists("data_path", inherits = FALSE)) {
-  data_path <- path_processed("01_preprocessing", "20260218_pgmatrix_imputed_neuron_neuropil_180samples_missing70pct.xlsx")
+  data_path <- resolve_ewce_pg_matrix()
 }
 if (!exists("sample_metadata_path", inherits = FALSE)) {
   sample_metadata_path <- path_metadata("TPE9_sample_metadata_males.xlsx")

@@ -1,6 +1,11 @@
 # ================================================================
-# Manuscript-grade QC figures for spatial proteomics
-# Ring-free Nature-style version
+# QC figures for spatial proteomics
+# This script generates QC figures for the main manuscript and supplemental materials, as well as summary tables. # nolint
+# Consumes an annotated QC stats file (e.g. from quicksearch) and produces consistent visualizations of key QC metrics across samples and cell types.
+# The main figure focuses on core QC metrics like protein/precursor counts, signal, mass accuracy, and a composite QC score, while the supplemental figure includes additional metrics and missingness estimates.
+# Outlier detection is performed using a robust z-score method, but outliers are not highlighted in the main figure to maintain visual clarity. Instead, a separate outlier summary figure and table are provided.
+# The script is designed to be flexible to varying QC metrics and sample annotations, and includes error handling for missing data. It also saves all outputs in a specified results directory.
+# Author: Tobias Pohl
 # ================================================================
 
 suppressPackageStartupMessages({
