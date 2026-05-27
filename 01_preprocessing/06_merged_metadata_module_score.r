@@ -17,31 +17,135 @@ source(paths_file)
 # 1) PATHS
 # ------------------------------------------------
 
-proteomics_file <- Sys.getenv(
-  "PROTEOMICS_MODULE_SCORE_PROTEOMICS_FILE",
-  unset = path_processed("morpheus", "20260218_pgmatrix_imputed_neuron_neuropil_180samples_missing70pct_with_metadata.xlsx")
-)
-
-auc_all_file <- Sys.getenv(
-  "PROTEOMICS_MODULE_SCORE_AUC_ALL",
-  unset = path_external("behavior", "auc_individual_animals_all.csv")
-)
-
-auc_first_file <- Sys.getenv(
-  "PROTEOMICS_MODULE_SCORE_AUC_FIRST",
-  unset = path_external("behavior", "auc_individual_animals_firstChangeActive.csv")
-)
-
-behavior_file <- Sys.getenv(
-  "PROTEOMICS_MODULE_SCORE_BEHAVIOR_FILE",
-  unset = path_external("behavior", "E9_Behavior_Data.xlsx")
-)
-
-input_files <- c(proteomics_file, auc_all_file, auc_first_file, behavior_file)
-missing_input_files <- input_files[!file.exists(input_files)]
-if (length(missing_input_files) > 0) {
-  stop("Required module-score merge input file(s) not found: ", paste(missing_input_files, collapse = ", "), call. = FALSE)
+first_existing_path <- function(paths) {
+  paths <- unique(normalizePath(paths[nzchar(paths)], winslash = "/", mustWork = FALSE))
+  hit <- paths[file.exists(paths)]
+  if (length(hit) == 0) return(NA_character_)
+  hit[[1]]
 }
+
+latest_matching_file <- function(root, pattern) {
+  root <- normalizePath(root, winslash = "/", mustWork = FALSE)
+  if (!dir.exists(root)) return(NA_character_)
+
+  candidates <- list.files(root, pattern = pattern, full.names = TRUE, recursive = TRUE)
+  candidates <- candidates[file.exists(candidates)]
+  if (length(candidates) == 0) return(NA_character_)
+
+  info <- file.info(candidates)
+  normalizePath(rownames(info)[order(info$mtime, decreasing = TRUE)[1]], winslash = "/", mustWork = FALSE)
+}
+
+latest_matching_file_anywhere <- function(roots, pattern) {
+  candidates <- vapply(roots, latest_matching_file, character(1), pattern = pattern)
+  candidates <- candidates[!is.na(candidates) & file.exists(candidates)]
+  if (length(candidates) == 0) return(NA_character_)
+
+  info <- file.info(candidates)
+  normalizePath(rownames(info)[order(info$mtime, decreasing = TRUE)[1]], winslash = "/", mustWork = FALSE)
+}
+
+analysis_root <- function() {
+  normalizePath(dirname(repo_root()), winslash = "/", mustWork = FALSE)
+}
+
+resolve_module_score_proteomics_file <- function() {
+  override <- Sys.getenv("PROTEOMICS_MODULE_SCORE_PROTEOMICS_FILE", unset = "")
+  if (nzchar(override)) return(normalizePath(override, winslash = "/", mustWork = FALSE))
+
+  expected_name <- "20260218_pgmatrix_imputed_neuron_neuropil_180samples_missing70pct_with_metadata.xlsx"
+  direct <- first_existing_path(c(
+    path_processed("morpheus", expected_name),
+    path_processed("01_preprocessing", expected_name),
+    path_processed("01_preprocessing", "excel_convert", expected_name)
+  ))
+  if (!is.na(direct)) return(direct)
+
+  latest_matching_file(
+    path_processed("01_preprocessing"),
+    "^\\d{8}_pgmatrix_imputed_neuron_neuropil_[0-9]+samples_missing70pct_with_metadata\\.xlsx$"
+  )
+}
+
+resolve_module_score_auc_all_file <- function() {
+  override <- Sys.getenv("PROTEOMICS_MODULE_SCORE_AUC_ALL", unset = "")
+  if (nzchar(override)) return(normalizePath(override, winslash = "/", mustWork = FALSE))
+
+  direct <- first_existing_path(c(
+    path_external("behavior", "auc_individual_animals_all.csv"),
+    file.path(analysis_root(), "Behavior", "RFID", "statistics", "gamm_new", "analyses", "gamm", "tables", "auc_individual_animals_all.csv"),
+    file.path(analysis_root(), "Behavior", "RFID", "statistics", "analyses_", "gamm", "tables", "auc_individual_animals_all.csv")
+  ))
+  if (!is.na(direct)) return(direct)
+
+  latest_matching_file(
+    file.path(analysis_root(), "Behavior"),
+    "^auc_individual_animals_all\\.csv$"
+  )
+}
+
+resolve_module_score_auc_first_file <- function() {
+  override <- Sys.getenv("PROTEOMICS_MODULE_SCORE_AUC_FIRST", unset = "")
+  if (nzchar(override)) return(normalizePath(override, winslash = "/", mustWork = FALSE))
+
+  direct <- first_existing_path(c(
+    path_external("behavior", "auc_individual_animals_firstChangeActive.csv"),
+    file.path(analysis_root(), "Behavior", "RFID", "statistics", "gamm_new", "analyses", "gamm", "tables", "auc_individual_animals_firstChangeActive.csv"),
+    file.path(analysis_root(), "Behavior", "RFID", "statistics", "analyses_", "gamm", "tables", "auc_individual_animals_firstChangeActive.csv")
+  ))
+  if (!is.na(direct)) return(direct)
+
+  latest_matching_file(
+    file.path(analysis_root(), "Behavior"),
+    "^auc_individual_animals_firstChangeActive\\.csv$"
+  )
+}
+
+resolve_module_score_behavior_file <- function() {
+  override <- Sys.getenv("PROTEOMICS_MODULE_SCORE_BEHAVIOR_FILE", unset = "")
+  if (nzchar(override)) return(normalizePath(override, winslash = "/", mustWork = FALSE))
+
+  direct <- first_existing_path(c(
+    path_external("behavior", "E9_Behavior_Data.xlsx"),
+    file.path(analysis_root(), "SIS_Analysis", "E9_Behavior_Data.xlsx")
+  ))
+  if (!is.na(direct)) return(direct)
+
+  latest_matching_file_anywhere(
+    c(file.path(analysis_root(), "SIS_Analysis"), file.path(analysis_root(), "Behavior")),
+    "^E9_Behavior_Data\\.xlsx$"
+  )
+}
+
+proteomics_file <- resolve_module_score_proteomics_file()
+auc_all_file <- resolve_module_score_auc_all_file()
+auc_first_file <- resolve_module_score_auc_first_file()
+behavior_file <- resolve_module_score_behavior_file()
+
+input_files <- c(
+  "Proteomics workbook" = proteomics_file,
+  "AUC all file" = auc_all_file,
+  "AUC first active file" = auc_first_file,
+  "Behavior z-score workbook" = behavior_file
+)
+missing_inputs <- names(input_files)[is.na(input_files) | !file.exists(input_files)]
+if (length(missing_inputs) > 0) {
+  missing_lines <- paste0(missing_inputs, ": ", input_files[missing_inputs])
+  stop(
+    "Required module-score merge input file(s) not found:\n",
+    paste(missing_lines, collapse = "\n"),
+    "\n\nIf the proteomics workbook is missing, run source('01_preprocessing/02_excel_convert.r') ",
+    "or set PROTEOMICS_MODULE_SCORE_PROTEOMICS_FILE to the metadata-augmented workbook.",
+    "\nIf behavior inputs are missing, set PROTEOMICS_MODULE_SCORE_AUC_ALL, ",
+    "PROTEOMICS_MODULE_SCORE_AUC_FIRST, or PROTEOMICS_MODULE_SCORE_BEHAVIOR_FILE.",
+    call. = FALSE
+  )
+}
+
+message("Using proteomics workbook: ", proteomics_file)
+message("Using AUC all file: ", auc_all_file)
+message("Using AUC first active file: ", auc_first_file)
+message("Using behavior z-score workbook: ", behavior_file)
 
 out_dir <- Sys.getenv("PROTEOMICS_MODULE_SCORE_OUTPUT_DIR", unset = path_results("module_scores"))
 ensure_dir(out_dir)
@@ -133,7 +237,7 @@ sample_meta <- sample_meta %>%
   ) %>%
   filter(sample_col != "V1") %>%
   mutate(sample_index = as.integer(str_remove(sample_col, "^V")) - 1L) %>%
-  select(sample_index, meta_key, value) %>%
+  dplyr::select(sample_index, meta_key, value) %>%
   pivot_wider(names_from = meta_key, values_from = value)
 
 sample_meta <- sample_meta %>%
@@ -175,7 +279,7 @@ auc_all <- read_csv(auc_all_file, show_col_types = FALSE) %>%
     batch_auc_all = as.character(batch)
   ) %>%
   filter(metric == "Movement") %>%
-  select(
+  dplyr::select(
     animal_id_join,
     batch_auc_all,
     group_auc_all,
@@ -205,7 +309,7 @@ auc_all_one <- auc_all %>%
   group_by(animal_id_join) %>%
   slice(1) %>%
   ungroup() %>%
-  select(-priority)
+  dplyr::select(-priority)
 
 # ------------------------------------------------
 # 5) READ AUC: FIRST ACTIVE PHASE
@@ -220,7 +324,7 @@ auc_first <- read_csv(auc_first_file, show_col_types = FALSE) %>%
     batch_auc_first = as.character(batch)
   ) %>%
   filter(metric == "Movement") %>%
-  select(
+  dplyr::select(
     animal_id_join,
     batch_auc_first,
     group_auc_first,
@@ -250,7 +354,7 @@ auc_first_one <- auc_first %>%
   group_by(animal_id_join) %>%
   slice(1) %>%
   ungroup() %>%
-  select(-priority)
+  dplyr::select(-priority)
 
 # ------------------------------------------------
 # 6) READ BEHAVIOR / PHYSIOLOGY Z-SCORES
@@ -273,7 +377,7 @@ behavior <- read_excel(behavior_file, sheet = "zScore") %>%
     SpleenWeight_z = spleen_weight,
     CombZ = comb_z
   ) %>%
-  select(
+  dplyr::select(
     animal_id_join,
     group_behavior_raw,
     sex_behavior,
@@ -312,7 +416,7 @@ merged_meta <- sample_meta %>%
 # ------------------------------------------------
 
 merged_meta_clean <- merged_meta %>%
-  select(
+  dplyr::select(
     Sample,
     ShortSample,
     AnimalID,
