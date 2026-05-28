@@ -1,6 +1,6 @@
 # ================================ parallel-enabled
 # WGCNA with profile-aware spatial traits, preservation, and condition panels
-# Outputs organized into subfolders under output_dir
+# Outputs organized into canonical module folders by default
 # ================================ parallel-enabled
 
 # Packages
@@ -68,27 +68,48 @@ WGCNAnThreads()
 # --------------------------
 # Paths and data load
 # --------------------------
-output_dir <- Sys.getenv("PROTEOMICS_WGCNA_OUTPUT_DIR", unset = path_results("06_modules_WGCNA", "wgcna_output"))
-
-subdirs <- list(
-  figures_qc          = file.path(output_dir, "figures", "qc"),
-  figures_network     = file.path(output_dir, "figures", "network"),
-  figures_traits      = file.path(output_dir, "figures", "traits"),
-  figures_main        = file.path(output_dir, "figures", "main"),
-  tables_qc           = file.path(output_dir, "tables", "qc"),
-  tables_mapping      = file.path(output_dir, "tables", "mapping"),
-  tables_modules      = file.path(output_dir, "tables", "modules"),
-  tables_pres         = file.path(output_dir, "tables", "preservation"),
-  tables_traits       = file.path(output_dir, "tables", "traits"),
-  source_data         = file.path(output_dir, "source_data"),
-  state               = file.path(output_dir, "state"),
-  logs                = file.path(output_dir, "logs")
-)
-
 safe_dir <- function(path) {
   if (!dir.exists(path)) dir.create(path, recursive = TRUE, showWarnings = FALSE)
   if (file.access(path, 2) != 0) stop(sprintf("Not writable: %s", path))
   invisible(normalizePath(path))
+}
+
+wgcna_module <- "06_modules_WGCNA"
+wgcna_substep <- "01_WGCNA"
+output_dir_env <- Sys.getenv("PROTEOMICS_WGCNA_OUTPUT_DIR", unset = "")
+if (nzchar(output_dir_env)) {
+  output_dir <- output_dir_env
+  subdirs <- list(
+    figures_qc          = file.path(output_dir, "figures", "qc"),
+    figures_network     = file.path(output_dir, "figures", "network"),
+    figures_traits      = file.path(output_dir, "figures", "traits"),
+    figures_main        = file.path(output_dir, "figures", "main"),
+    tables_qc           = file.path(output_dir, "tables", "qc"),
+    tables_mapping      = file.path(output_dir, "tables", "mapping"),
+    tables_modules      = file.path(output_dir, "tables", "modules"),
+    tables_pres         = file.path(output_dir, "tables", "preservation"),
+    tables_traits       = file.path(output_dir, "tables", "traits"),
+    source_data         = file.path(output_dir, "source_data"),
+    state               = file.path(output_dir, "state"),
+    logs                = file.path(output_dir, "logs")
+  )
+} else {
+  canonical_paths <- module_paths(wgcna_module, wgcna_substep)
+  output_dir <- canonical_paths$reports
+  subdirs <- list(
+    figures_qc          = file.path(canonical_paths$figures, "qc"),
+    figures_network     = file.path(canonical_paths$figures, "network"),
+    figures_traits      = file.path(canonical_paths$figures, "traits"),
+    figures_main        = file.path(canonical_paths$figures, "main"),
+    tables_qc           = file.path(canonical_paths$tables, "qc"),
+    tables_mapping      = file.path(canonical_paths$tables, "mapping"),
+    tables_modules      = file.path(canonical_paths$tables, "modules"),
+    tables_pres         = file.path(canonical_paths$tables, "preservation"),
+    tables_traits       = file.path(canonical_paths$tables, "traits"),
+    source_data         = canonical_paths$source_data,
+    state               = canonical_paths$processed,
+    logs                = canonical_paths$logs
+  )
 }
 invisible(lapply(c(output_dir, unlist(subdirs)), safe_dir))
 
@@ -277,6 +298,14 @@ auto_prepare_wgcna_inputs <- function(expr_path, meta_path) {
   dir.create(dirname(meta_path), recursive = TRUE, showWarnings = FALSE)
   writexl::write_xlsx(expr_out, expr_path)
   writexl::write_xlsx(meta_out, meta_path)
+  write_csv_safe(
+    tibble::tibble(
+      role = c("upstream_expression_matrix", "upstream_sample_metadata"),
+      path = c(upstream_xlsx, upstream_meta),
+      md5 = vapply(c(upstream_xlsx, upstream_meta), file_hash, character(1))
+    ),
+    fp_log("auto_prepared_input_manifest.csv")
+  )
   invisible(TRUE)
 }
 
@@ -293,7 +322,7 @@ stop_if_missing <- function(path) {
   }
 }
 
-auto_prepare_wgcna_inputs(expr_xlsx, meta_xlsx)
+wgcna_inputs_auto_prepared <- auto_prepare_wgcna_inputs(expr_xlsx, meta_xlsx)
 
 read_head <- function(path) {
   df <- readxl::read_excel(path)
@@ -406,6 +435,12 @@ input_manifest <- tibble::tibble(
   path = c(expr_xlsx, meta_xlsx, idmap_dat),
   md5 = vapply(c(expr_xlsx, meta_xlsx, idmap_dat), file_hash, character(1))
 )
+if (isTRUE(wgcna_inputs_auto_prepared) && file.exists(fp_log("auto_prepared_input_manifest.csv"))) {
+  input_manifest <- dplyr::bind_rows(
+    input_manifest,
+    readr::read_csv(fp_log("auto_prepared_input_manifest.csv"), show_col_types = FALSE)
+  )
+}
 write_csv_safe(input_manifest, fp_log("input_manifest.csv"))
 idmap_tbl <- readr::read_tsv(idmap_dat, col_names = c("ACC","DB","VAL"), col_types = "ccc", progress = FALSE, quote = "", comment = "")
 idmap_uid <- idmap_tbl %>%
@@ -653,6 +688,14 @@ saveRDS(list(expression = expression.data, male.norm = male.norm, mapping = reso
 # QC and sample clustering
 # --------------------------
 gsg <- goodSamplesGenes(expression.data)
+sample_qc <- tibble::tibble(
+  sample = rownames(expression.data),
+  good_samples_genes = as.logical(gsg$goodSamples)
+)
+gene_qc <- tibble::tibble(
+  gene = colnames(expression.data),
+  good_samples_genes = as.logical(gsg$goodGenes)
+)
 if (!gsg$allOK) {
   if (sum(!gsg$goodGenes) > 0) printFlush(paste("Removing genes:", paste(names(expression.data)[!gsg$goodGenes], collapse = ", ")))
   if (sum(!gsg$goodSamples) > 0) printFlush(paste("Removing samples:", paste(rownames(expression.data)[!gsg$goodSamples], collapse = ", ")))
@@ -667,6 +710,14 @@ abline(h = sample_tree_plot_height, col = "red")
 dev.off()
 
 cut.sampleTree <- cutreeStatic(sampleTree, cutHeight = sample_tree_cut_height, minSize = 10)
+sample_tree_cluster <- stats::setNames(as.integer(cut.sampleTree), rownames(expression.data))
+sample_qc <- sample_qc %>%
+  dplyr::mutate(
+    sample_tree_cluster = unname(sample_tree_cluster[.data$sample]),
+    retained_after_sample_tree = .data$good_samples_genes & .data$sample_tree_cluster == 1
+  )
+write_csv_safe(sample_qc, fp_qctab("sample_filtering_qc.csv"))
+write_csv_safe(gene_qc, fp_qctab("gene_filtering_qc.csv"))
 expression.data <- expression.data[cut.sampleTree == 1, ]
 
 # --------------------------
@@ -765,14 +816,16 @@ write_csv_safe(
       "soft_threshold_rsquared", "selected_soft_power",
       "network_type", "correlation_function", "bicor_maxPOutliers",
       "deep_split", "min_module_size", "merge_cut_height",
-      "module_preservation_permutations"
+      "module_preservation_permutations", "dataset_profile_requested",
+      "output_layout"
     ),
     value = c(
       sample_tree_cut_height, sample_tree_plot_height,
       soft_threshold_rsquared, softPower,
       "signed", "bicor", 0.05,
       deep_split, min_module_size, merge_cut_height,
-      module_preservation_permutations
+      module_preservation_permutations, dataset_profile,
+      ifelse(nzchar(output_dir_env), "custom_bundle", "canonical_module_paths")
     )
   ),
   fp_log("analysis_parameters.csv")
@@ -889,7 +942,7 @@ plot_trait_heatmap <- function(matCorr, matFdr, cols, file) {
                  setStdMargins = FALSE,
                  cex.text = 0.6,
                  zlim = c(-1, 1),
-                 main = "Module–trait relationships")
+                 main = "Module-trait relationships")
   dev.off()
 }
 
@@ -942,8 +995,8 @@ for (nm in names(contrasts)) {
                  colors = blueWhiteRed(50),
                  textMatrix = txt,
                  setStdMargins = FALSE,
-                 cex.text = 0.8, zlim = c(-1,1),
-                 main = "Module–trait relationships")
+                  cex.text = 0.8, zlim = c(-1,1),
+                  main = "Module-trait relationships")
   dev.off()
 }
 
@@ -992,14 +1045,14 @@ for (module in modules_of_interest) {
 }
 
 # ==========================
-# Module naming via GO terms (robust UNIPROT→ENTREZ + consistent renaming)
+# Module naming via GO terms (robust UNIPROT to ENTREZ + consistent renaming)
 # ==========================
 # Feature IDs may contain multiple UniProt accessions separated by ';'
 all_feature_ids <- colnames(expression.data)
 feature_to_acc <- strsplit(all_feature_ids, ";", fixed = TRUE)
 feature_to_acc <- lapply(feature_to_acc, function(v){
   v <- toupper(trimws(v))
-  # Keep only accession-like IDs (incl. A0A…)
+  # Keep only accession-like IDs, including A0A accessions.
   v[grepl("^[OPQ][0-9][A-Z0-9]{3}[0-9]$|^[A-NR-Z][0-9][A-Z0-9]{3}[0-9]$|^A0A[0-9A-Z]{7}$", v)]
 })
 names(feature_to_acc) <- all_feature_ids
@@ -1007,7 +1060,7 @@ names(feature_to_acc) <- all_feature_ids
 # Accession universe from all features used in WGCNA
 acc_universe <- unique(unlist(feature_to_acc, use.names = FALSE))
 
-# Map UNIPROT accessions → ENTREZ
+# Map UNIPROT accessions to ENTREZ.
 if (length(acc_universe)) {
   map_df <- suppressWarnings(clusterProfiler::bitr(
     acc_universe,
@@ -1160,7 +1213,7 @@ colnames(mergedMEs) <- ME_names_new
 # Provide a robust color->MEcol lookup for downstream MM/GS code
 color_to_MEcol <- setNames(ME_names_new, ME_colors)
 
-# Save gene→module with color and compact name
+# Save gene-to-module with color and compact name.
 gene_module_named <- data.frame(
   Gene          = colnames(expression.data),
   ModuleColor   = mergedColors[match(colnames(expression.data), names(mergedColors))],
@@ -1189,6 +1242,28 @@ saveRDS(list(
   ME_names_old    = ME_names_old,
   ME_names_new    = ME_names_new
 ), file = fp_state("module_name_map.rds"))
+
+saveRDS(list(
+  expression = expression.data,
+  sample_info = sample_info,
+  mergedColors = mergedColors,
+  mergedMEs = mergedMEs,
+  geneTree = geneTree,
+  softPower = softPower,
+  module_name_map = module_name_map,
+  color_to_MEcol = color_to_MEcol,
+  parameters = list(
+    network_type = "signed",
+    correlation_function = "bicor",
+    bicor_maxPOutliers = 0.05,
+    soft_threshold_rsquared = soft_threshold_rsquared,
+    selected_soft_power = softPower,
+    min_module_size = min_module_size,
+    deep_split = deep_split,
+    merge_cut_height = merge_cut_height,
+    dataset_profile = dataset_profile_resolved
+  )
+), file = fp_state("wgcna_final_model_state.rds"))
 
 # --------------------------
 # Preservation across conditions
@@ -1466,12 +1541,21 @@ p_mat   <- p_mat[module_levels, traits_in_order, drop = FALSE]
 fdr_mat <- fdr_mat[module_levels, traits_in_order, drop = FALSE]
 
 # 2) Column clustering and separators
-hc_cols <- hclust(as.dist(1 - cor(r_mat, use = "pairwise.complete.obs")), method = "average")
-k_clusters <- 6
-col_grp <- cutree(hc_cols, k = k_clusters)
-grp_ord <- col_grp[hc_cols$order]
-gap_pos <- which(grp_ord[-1] != head(grp_ord, -1))
-xlines <- gap_pos + 0.5
+if (ncol(r_mat) > 1) {
+  trait_cor <- cor(r_mat, use = "pairwise.complete.obs")
+  trait_cor[!is.finite(trait_cor)] <- 0
+  diag(trait_cor) <- 1
+  hc_cols <- hclust(as.dist(1 - trait_cor), method = "average")
+  k_clusters <- min(6, ncol(r_mat))
+  col_grp <- cutree(hc_cols, k = k_clusters)
+  grp_ord <- col_grp[hc_cols$order]
+  gap_pos <- which(grp_ord[-1] != head(grp_ord, -1))
+  xlines <- gap_pos + 0.5
+} else {
+  hc_cols <- FALSE
+  k_clusters <- 1
+  xlines <- numeric(0)
+}
 
 # 3) Module color mapping for row strip
 if (exists("mergedMEs")) {
@@ -1520,7 +1604,7 @@ pal <- colorRampPalette(c(nature_diverging["low"], nature_diverging["mid"], natu
 
 # 5) Significance dots
 display_mat <- matrix("", nrow = nrow(r_mat), ncol = ncol(r_mat), dimnames = dimnames(r_mat))
-display_mat[fdr_mat < 0.01] <- "•"
+display_mat[fdr_mat < 0.01] <- "\u2022"
 
 # 6) Render pheatmap once and save
 ph <- pheatmap::pheatmap(
@@ -1817,37 +1901,37 @@ pw_tables <- ME_long %>%
   }) %>% bind_rows()
 write_csv_safe(pw_tables, fp_traittab("ME_by_condition_pairwise_Wilcoxon_BH.csv"))
 
+manifest_category <- function(path) {
+  path <- normalizePath(path, winslash = "/", mustWork = FALSE)
+  roots <- vapply(subdirs, normalizePath, character(1), winslash = "/", mustWork = FALSE)
+  hit <- names(roots)[vapply(roots, function(root) startsWith(path, root), logical(1))]
+  if (length(hit)) hit[which.max(nchar(roots[hit]))] else "unclassified"
+}
+managed_files <- unique(unlist(lapply(unlist(subdirs), function(d) {
+  if (!dir.exists(d)) character() else list.files(d, recursive = TRUE, full.names = TRUE)
+}), use.names = FALSE))
+manifest_paths <- unique(c(
+  managed_files,
+  fp_log("output_manifest.csv"),
+  fp_log("run_manifest.yml")
+))
 output_manifest <- tibble::tibble(
-  category = c(
-    "logs", "logs", "qc_table", "mapping_table", "state",
-    "network_figure", "trait_figure", "main_figure", "main_figure",
-    "source_data", "source_data", "source_data", "source_data",
-    "module_table", "preservation_table", "trait_table"
-  ),
-  path = c(
-    fp_log("session_info.txt"),
-    fp_log("analysis_parameters.csv"),
-    fp_qctab("soft_threshold_selection.csv"),
-    fp_maptab("mapping_audit_mouse_only_robust.tsv"),
-    fp_state("mouse_only_mapping_outputs_robust.rds"),
-    fp_net("gene_dendrogram_modules_merged.svg"),
-    fp_traits("ME_trait_pheatmap.svg"),
-    fp_mainfig("panel_module_trait_relationships_spatial.svg"),
-    fp_mainfig("ME_by_condition_top_modules_dotplot.svg"),
-    fp_source("ME_trait_correlations.csv"),
-    fp_source("ME_condition_spatial_strata.csv"),
-    fp_source("ME_trait_block_correlations.csv"),
-    fp_source("ME_by_condition.csv"),
-    fp_modtab("module_name_map.csv"),
-    fp_prestab("module_preservation_CON_vs_ALL_Zsummary.csv"),
-    fp_traittab("ME_by_condition_adjusted_lm_FDR.csv")
-  )
-)
+  category = vapply(manifest_paths, manifest_category, character(1)),
+  path = normalizePath(manifest_paths, winslash = "/", mustWork = FALSE),
+  relative_path = relative_to(manifest_paths),
+  exists = file.exists(manifest_paths),
+  md5 = vapply(manifest_paths, file_hash, character(1))
+) %>%
+  dplyr::arrange(.data$category, .data$relative_path)
 write_csv_safe(output_manifest, fp_log("output_manifest.csv"))
 write_run_manifest(
   fp_log("run_manifest.yml"),
   inputs = as.list(stats::setNames(input_manifest$path, input_manifest$role)),
-  outputs = list(output_manifest = fp_log("output_manifest.csv")),
+  outputs = list(
+    output_manifest = fp_log("output_manifest.csv"),
+    output_root = output_dir,
+    managed_folders = subdirs
+  ),
   parameters = list(
     soft_threshold_rsquared = soft_threshold_rsquared,
     selected_soft_power = if (exists("softPower")) softPower else NA,
@@ -1855,10 +1939,22 @@ write_run_manifest(
     deep_split = deep_split,
     merge_cut_height = merge_cut_height,
     module_preservation_permutations = module_preservation_permutations,
-    dataset_profile = dataset_profile
+    dataset_profile_requested = dataset_profile,
+    dataset_profile_resolved = if (exists("dataset_profile_resolved")) dataset_profile_resolved else NA_character_,
+    output_layout = ifelse(nzchar(output_dir_env), "custom_bundle", "canonical_module_paths")
   ),
   notes = "Consumes precombined variancePartition-style matrices; see input_manifest.csv for exact inputs and hashes."
 )
+output_manifest <- output_manifest %>%
+  dplyr::mutate(
+    exists = file.exists(.data$path),
+    md5 = ifelse(
+      basename(.data$path) == "output_manifest.csv",
+      NA_character_,
+      vapply(.data$path, file_hash, character(1))
+    )
+  )
+write_csv_safe(output_manifest, fp_log("output_manifest.csv"))
 
 
 # --------------------------
