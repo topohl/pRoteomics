@@ -160,7 +160,7 @@ make_dirs <- function(base_dir) {
   dirs
 }
 
-theme_nature_network <- function(base_size = 8) {
+theme_publication_network <- function(base_size = 8) {
   ggplot2::theme_classic(base_size = base_size) +
     ggplot2::theme(
       text = ggplot2::element_text(family = "sans", colour = "black"),
