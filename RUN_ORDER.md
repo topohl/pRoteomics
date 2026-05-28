@@ -6,6 +6,25 @@ Canonical machine-readable outputs now belong under `data/processed/<module>/`. 
 
 ## 1. Preprocessing and metadata harmonization
 
+Dataset-scoped runs can be launched by setting `PROTEOMICS_DATASET` once:
+
+```powershell
+$env:PROTEOMICS_DATASET = "microglia"
+Rscript 01_preprocessing/03_gct_extractR.r --dry-run
+Rscript 02_id_mapping/01_MapThatProt_batch.r --dry-run
+Rscript 04_differential_expression_enrichment/01_clusterProfiler.r --dry-run
+Rscript 04_differential_expression_enrichment/02_compareGO.r --dry-run
+```
+
+Or with the launcher:
+
+```powershell
+Rscript run_dataset_pipeline.R --dataset microglia --dry-run
+Rscript run_dataset_pipeline.R --dataset microglia
+```
+
+Valid dataset families are `neuron_neuropil`, `neuron_soma`, and `microglia`. The shared `R/dataset_config.R` helper resolves `PROTEOMICS_DATASET` first, with backward-compatible fallback to `PROTEOMICS_COMPARISON` and `PROTEOMICS_GCT_COMPARISON`.
+
 ```text
 01_preprocessing/
 ```
@@ -37,9 +56,10 @@ data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv
 
 The current canonical contrast handoff is:
 
-```bash
-PROTEOMICS_GCT_COMPARISON=neuron_neuropil Rscript 01_preprocessing/03_gct_extractR.r --dry-run
-PROTEOMICS_COMPARISON=neuron_neuropil Rscript 02_id_mapping/01_MapThatProt_batch.r --dry-run
+```powershell
+$env:PROTEOMICS_DATASET = "microglia"
+Rscript 01_preprocessing/03_gct_extractR.r --dry-run
+Rscript 02_id_mapping/01_MapThatProt_batch.r --dry-run
 ```
 
 `03_gct_extractR.r` writes split contrast CSVs to:
@@ -49,7 +69,7 @@ data/processed/01_preprocessing/gct_extractR/<comparison>/forward/
 data/processed/01_preprocessing/gct_extractR/<comparison>/reverse/
 ```
 
-Run the GCT extraction and ID mapping once per biological dataset family, for example `neuron_neuropil`, `neuron_soma`, and `microglia`. `01_MapThatProt_batch.r` defaults to `PROTEOMICS_COMPARISON=neuron_neuropil` and `PROTEOMICS_MAP_DIRECTION=forward`; set `PROTEOMICS_COMPARISON` for each family. It writes clusterProfiler-ready files to:
+Run the GCT extraction and ID mapping once per biological dataset family, for example `neuron_neuropil`, `neuron_soma`, and `microglia`. `01_MapThatProt_batch.r` defaults to `PROTEOMICS_DATASET=neuron_neuropil` and `PROTEOMICS_MAP_DIRECTION=forward`; set `PROTEOMICS_DATASET` for each family. It writes clusterProfiler-ready files to:
 
 ```text
 data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/
