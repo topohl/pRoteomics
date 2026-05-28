@@ -1045,225 +1045,280 @@ for (module in modules_of_interest) {
 }
 
 # ==========================
-# Module naming via GO terms (robust UNIPROT to ENTREZ + consistent renaming)
+# WGCNA module contract and GO enrichment exports
 # ==========================
-# Feature IDs may contain multiple UniProt accessions separated by ';'
 all_feature_ids <- colnames(expression.data)
+is_uniprot_accession <- function(x) {
+  grepl("^[OPQ][0-9][A-Z0-9]{3}[0-9]$|^[A-NR-Z][0-9][A-Z0-9]{3}[0-9]$|^A0A[0-9A-Z]{7}$", x)
+}
 feature_to_acc <- strsplit(all_feature_ids, ";", fixed = TRUE)
-feature_to_acc <- lapply(feature_to_acc, function(v){
+feature_to_acc <- lapply(feature_to_acc, function(v) {
   v <- toupper(trimws(v))
-  # Keep only accession-like IDs, including A0A accessions.
-  v[grepl("^[OPQ][0-9][A-Z0-9]{3}[0-9]$|^[A-NR-Z][0-9][A-Z0-9]{3}[0-9]$|^A0A[0-9A-Z]{7}$", v)]
+  v[is_uniprot_accession(v)]
 })
 names(feature_to_acc) <- all_feature_ids
+feature_primary_acc <- vapply(feature_to_acc, function(x) if (length(x)) x[1] else NA_character_, character(1))
 
-# Accession universe from all features used in WGCNA
-acc_universe <- unique(unlist(feature_to_acc, use.names = FALSE))
-
-# Map UNIPROT accessions to ENTREZ.
+acc_universe <- unique(stats::na.omit(unlist(feature_to_acc, use.names = FALSE)))
 if (length(acc_universe)) {
-  map_df <- suppressWarnings(clusterProfiler::bitr(
-    acc_universe,
-    fromType = "UNIPROT",
-    toType   = "ENTREZID",
-    OrgDb    = org.Mm.eg.db
-  ))
-  map_df <- dplyr::distinct(map_df, UNIPROT, .keep_all = TRUE)
+  map_df <- tryCatch(
+    suppressWarnings(clusterProfiler::bitr(
+      acc_universe,
+      fromType = "UNIPROT",
+      toType = c("ENTREZID", "SYMBOL"),
+      OrgDb = org.Mm.eg.db
+    )),
+    error = function(e) NULL
+  )
+  map_df <- if (is.null(map_df) || !nrow(map_df)) {
+    tibble::tibble(UNIPROT = character(), ENTREZID = character(), SYMBOL = character())
+  } else {
+    tibble::as_tibble(map_df) %>%
+      dplyr::mutate(UNIPROT = toupper(.data$UNIPROT)) %>%
+      dplyr::distinct(.data$UNIPROT, .keep_all = TRUE)
+  }
 } else {
-  map_df <- tibble::tibble(UNIPROT = character(), ENTREZID = character())
+  map_df <- tibble::tibble(UNIPROT = character(), ENTREZID = character(), SYMBOL = character())
 }
-sym_to_entrez <- setNames(map_df$ENTREZID, map_df$UNIPROT)
-
-# Universe of ENTREZ IDs present in the network (character)
-universe_entrez <- unique(na.omit(unname(sym_to_entrez[acc_universe])))
+acc_to_entrez <- stats::setNames(as.character(map_df$ENTREZID), map_df$UNIPROT)
+acc_to_symbol <- stats::setNames(as.character(map_df$SYMBOL), map_df$UNIPROT)
+universe_entrez <- unique(stats::na.omit(unname(acc_to_entrez[acc_universe])))
 universe_entrez <- as.character(universe_entrez)
 
-# Helper: compact a GO term description
 compact_term <- function(term) {
   term <- gsub("\\b(process|regulation|pathway|of|the|cellular)\\b", "", term, ignore.case = TRUE)
   term <- gsub("[[:punct:]]+", " ", term)
-  term <- str_squish(term)
-  str_to_title(term)
+  term <- stringr::str_squish(term)
+  stringr::str_to_title(term)
+}
+ratio_to_numeric <- function(x) {
+  xy <- strsplit(as.character(x), "/", fixed = TRUE)[[1]]
+  if (length(xy) != 2) return(NA_real_)
+  suppressWarnings(as.numeric(xy[1]) / as.numeric(xy[2]))
 }
 
-# Simple redundancy pruning by Jaccard on tokens
-prune_terms <- function(df, top_n = 5) {
-  if (nrow(df) <= 1) return(utils::head(df, top_n))
-  keep <- rep(TRUE, nrow(df))
-  names_list <- stringr::str_split(tolower(ifelse(is.na(df$Description), "", df$Description)), "\\s+")
-  for (i in seq_len(nrow(df))) {
-    if (!isTRUE(keep[i]) || i >= nrow(df)) next
-    for (j in seq.int(i + 1, nrow(df))) {
-      if (!isTRUE(keep[j])) next
-      s1 <- names_list[[i]]; s2 <- names_list[[j]]
-      inter <- length(intersect(s1, s2))
-      uni   <- length(union(s1, s2))
-      jac   <- if (uni == 0) 0 else inter / uni
-      if (jac >= 0.60) keep[j] <- FALSE
+ME_names_stable <- colnames(mergedMEs)
+ME_colors <- sub("^ME", "", ME_names_stable)
+color_to_MEcol <- stats::setNames(ME_names_stable, ME_colors)
+module_colors <- sort(unique(as.character(mergedColors)))
+module_ids <- stats::setNames(paste0("WGCNA_", module_colors), module_colors)
+
+feature_module_tbl <- tibble::tibble(
+  ProteinID = all_feature_ids,
+  UniProt = unname(feature_primary_acc[all_feature_ids]),
+  EntrezID = unname(acc_to_entrez[feature_primary_acc[all_feature_ids]]),
+  GeneSymbol = unname(acc_to_symbol[feature_primary_acc[all_feature_ids]]),
+  ModuleColor = as.character(mergedColors[all_feature_ids]),
+  ModuleID = unname(module_ids[as.character(mergedColors[all_feature_ids])])
+) %>%
+  dplyr::mutate(
+    EntrezID = as.character(.data$EntrezID),
+    GeneSymbol = as.character(.data$GeneSymbol)
+  )
+
+kME_long <- purrr::map_dfr(module_colors, function(module_color) {
+  mm_col <- paste0("MM", module_color)
+  module_features <- feature_module_tbl$ProteinID[feature_module_tbl$ModuleColor == module_color]
+  if (!mm_col %in% colnames(geneModuleMembership)) return(NULL)
+  tibble::tibble(
+    ProteinID = module_features,
+    kME = as.numeric(geneModuleMembership[module_features, mm_col, drop = TRUE])
+  )
+})
+
+make_module_sets <- function(module_color) {
+  mod_tbl <- feature_module_tbl %>%
+    dplyr::filter(.data$ModuleColor == module_color) %>%
+    dplyr::left_join(kME_long, by = "ProteinID") %>%
+    dplyr::mutate(abs_kME = abs(.data$kME))
+  core_tbl <- mod_tbl %>% dplyr::filter(is.finite(.data$abs_kME), .data$abs_kME >= 0.6)
+  hub_tbl <- mod_tbl %>% dplyr::arrange(dplyr::desc(.data$abs_kME)) %>% dplyr::slice_head(n = 25)
+  list(all = mod_tbl, core_kME_0.6 = core_tbl, top_hub_25 = hub_tbl)
+}
+
+enrich_module_set <- function(module_color, set_name, set_tbl, ontology,
+                              min_mapped_n = 5, min_universe_n = 100) {
+  mapped_genes <- unique(stats::na.omit(as.character(set_tbl$EntrezID)))
+  qc_base <- tibble::tibble(
+    ModuleColor = module_color,
+    ModuleID = unname(module_ids[module_color]),
+    ModuleProteinSetType = set_name,
+    Ontology = ontology,
+    ModuleSize = nrow(set_tbl),
+    MappedModuleSize = length(mapped_genes),
+    UniverseSize = length(universe_entrez)
+  )
+  if (length(universe_entrez) < min_universe_n) {
+    return(list(result = NULL, qc = dplyr::mutate(qc_base, status = "skipped", reason = "universe_too_small")))
+  }
+  if (length(mapped_genes) < min_mapped_n) {
+    return(list(result = NULL, qc = dplyr::mutate(qc_base, status = "skipped", reason = "mapped_module_too_small")))
+  }
+  ego <- tryCatch(
+    suppressWarnings(clusterProfiler::enrichGO(
+      gene = mapped_genes,
+      universe = universe_entrez,
+      OrgDb = org.Mm.eg.db,
+      keyType = "ENTREZID",
+      ont = ontology,
+      pAdjustMethod = "BH",
+      pvalueCutoff = 1,
+      qvalueCutoff = 1,
+      readable = FALSE
+    )),
+    error = function(e) e
+  )
+  if (inherits(ego, "error")) {
+    return(list(result = NULL, qc = dplyr::mutate(qc_base, status = "failed", reason = conditionMessage(ego))))
+  }
+  df <- as.data.frame(ego)
+  if (!nrow(df)) {
+    return(list(result = NULL, qc = dplyr::mutate(qc_base, status = "skipped", reason = "no_enriched_terms")))
+  }
+  df <- tibble::as_tibble(df) %>%
+    dplyr::mutate(
+      ModuleColor = module_color,
+      ModuleID = unname(module_ids[module_color]),
+      ModuleProteinSetType = set_name,
+      Ontology = ontology,
+      ModuleSize = nrow(set_tbl),
+      MappedModuleSize = length(mapped_genes),
+      UniverseSize = length(universe_entrez),
+      .before = 1
+    ) %>%
+    dplyr::select(
+      ModuleColor, ModuleID, ModuleProteinSetType, Ontology,
+      ID, Description, GeneRatio, BgRatio, pvalue, p.adjust, qvalue,
+      geneID, Count, ModuleSize, MappedModuleSize, UniverseSize
+    )
+  list(result = df, qc = dplyr::mutate(qc_base, status = "ok", reason = NA_character_))
+}
+
+go_runs <- list()
+go_qc <- list()
+for (module_color in module_colors) {
+  sets <- make_module_sets(module_color)
+  for (set_name in names(sets)) {
+    for (ontology in c("BP", "MF", "CC")) {
+      run <- enrich_module_set(module_color, set_name, sets[[set_name]], ontology)
+      go_runs[[length(go_runs) + 1]] <- run$result
+      go_qc[[length(go_qc) + 1]] <- run$qc
     }
   }
-  utils::head(df[keep, , drop = FALSE], top_n)
 }
-
-# Per-module enrichment
-enrich_one_module <- function(mod_color, universe_entrez,
-                              min_mod_n = 10, min_univ_n = 100,
-                              pcut = 0.1, qcut = 0.1) {
-
-  # Features in module (by color)
-  features_in_mod <- names(mergedColors)[mergedColors == mod_color]
-  if (!length(features_in_mod)) return(NULL)
-
-  # Accessions for those features
-  acc_in_mod <- unique(unlist(feature_to_acc[features_in_mod], use.names = FALSE))
-
-  # ENTREZ IDs for the module
-  entrez_in_mod <- unique(na.omit(unname(sym_to_entrez[acc_in_mod])))
-  entrez_in_mod <- as.character(entrez_in_mod)
-
-  # Guard rails
-  if (length(universe_entrez) < min_univ_n || length(entrez_in_mod) < min_mod_n) return(NULL)
-
-  # Enrichment
-  ego <- suppressWarnings(clusterProfiler::enrichGO(
-    gene          = entrez_in_mod,
-    universe      = universe_entrez,
-    OrgDb         = org.Mm.eg.db,
-    keyType       = "ENTREZID",
-    ont           = "BP",
-    pAdjustMethod = "BH",
-    pvalueCutoff  = pcut,
-    qvalueCutoff  = qcut,
-    readable      = TRUE
-  ))
-  if (is.null(ego)) return(NULL)
-  df <- as.data.frame(ego)
-  if (!nrow(df)) return(NULL)
-
-  # Score = -log10(qvalue) * GeneRatio
-  gr <- vapply(df$GeneRatio, function(x){
-    xy <- strsplit(x, "/", fixed = TRUE)[[1]]
-    as.numeric(xy[1]) / as.numeric(xy[2])
-  }, numeric(1))
-  df$score <- (-log10(pmax(df$qvalue, 1e-300))) * gr
-
-  df <- df |>
-    dplyr::arrange(dplyr::desc(score)) |>
-    dplyr::filter(qvalue <= qcut)
-
-  if (!nrow(df)) return(NULL)
-
-  df_top <- prune_terms(df, top_n = 5)
-  df_top$Compact <- vapply(df_top$Description, compact_term, character(1))
-  df_top$Module  <- mod_color
-  df_top
-}
-
-# Run enrichment over module colors
-modules_vec <- unique(mergedColors)
-annot_list <- lapply(modules_vec, enrich_one_module, universe_entrez = universe_entrez)
-annot_df <- dplyr::bind_rows(annot_list)
-
-# Fallback if no terms
-mods_no_hits <- setdiff(modules_vec, unique(annot_df$Module))
-if (length(mods_no_hits)) {
-  fallback <- data.frame(
-    Module      = mods_no_hits,
-    ID          = NA_character_,
-    Description = NA_character_,
-    qvalue      = NA_real_,
-    GeneRatio   = NA_character_,
-    score       = NA_real_,
-    Compact     = NA_character_,
-    stringsAsFactors = FALSE
+GO_enrichment_long <- dplyr::bind_rows(go_runs)
+GO_enrichment_QC <- dplyr::bind_rows(go_qc)
+if (!nrow(GO_enrichment_long)) {
+  GO_enrichment_long <- tibble::tibble(
+    ModuleColor = character(), ModuleID = character(), ModuleProteinSetType = character(),
+    Ontology = character(), ID = character(), Description = character(), GeneRatio = character(),
+    BgRatio = character(), pvalue = numeric(), p.adjust = numeric(), qvalue = numeric(),
+    geneID = character(), Count = integer(), ModuleSize = integer(), MappedModuleSize = integer(),
+    UniverseSize = integer()
   )
-  annot_df <- dplyr::bind_rows(annot_df, fallback)
 }
+write_csv_safe(GO_enrichment_long, fp_modtab("WGCNA_module_GO_enrichment_long.csv"))
+write_csv_safe(GO_enrichment_QC, fp_modtab("WGCNA_module_GO_enrichment_QC.csv"))
 
-# Best name per module color
-best_by_mod <- annot_df |>
-  dplyr::group_by(Module) |>
-  dplyr::slice_max(order_by = score, n = 1, with_ties = FALSE) |>
-  dplyr::ungroup() |>
+best_go_labels <- GO_enrichment_long %>%
+  dplyr::filter(.data$ModuleProteinSetType == "all") %>%
+  dplyr::group_by(.data$ModuleColor, .data$Ontology) %>%
+  dplyr::arrange(.data$p.adjust, .data$qvalue, .by_group = TRUE) %>%
+  dplyr::slice_head(n = 1) %>%
+  dplyr::ungroup() %>%
   dplyr::transmute(
-    Module,
-    BestTerm    = ifelse(is.na(Description), paste0("module_", Module), Description),
-    BestCompact = ifelse(is.na(Compact),    paste0("Module ", Module), Compact),
-    qvalue,
-    score
+    ModuleColor,
+    Ontology,
+    Label = vapply(.data$Description, compact_term, character(1)),
+    BestTerm = .data$Description
   )
+best_go_wide <- best_go_labels %>%
+  dplyr::select(.data$ModuleColor, .data$Ontology, .data$Label) %>%
+  tidyr::pivot_wider(names_from = .data$Ontology, values_from = .data$Label, names_prefix = "ModuleLabel_GO_")
+best_term_wide <- best_go_labels %>%
+  dplyr::select(.data$ModuleColor, .data$Ontology, .data$BestTerm) %>%
+  tidyr::pivot_wider(names_from = .data$Ontology, values_from = .data$BestTerm, names_prefix = "best_GO_")
 
-# Persist annotations
-write_csv_safe(annot_df |> dplyr::arrange(Module, dplyr::desc(score)),
-               fp_modtab("module_annotations_GO.csv"))
-write_csv_safe(best_by_mod, fp_modtab("module_name_map.csv"))
+module_label_table <- tibble::tibble(
+  ModuleColor = module_colors,
+  ModuleID = unname(module_ids[module_colors]),
+  ModuleLabel_Manual = NA_character_
+) %>%
+  dplyr::left_join(best_go_wide, by = "ModuleColor") %>%
+  dplyr::mutate(
+    ModuleLabel_GO_BP = dplyr::coalesce(.data$ModuleLabel_GO_BP, paste0("Module ", .data$ModuleColor)),
+    ModuleLabel_GO_MF = dplyr::coalesce(.data$ModuleLabel_GO_MF, paste0("Module ", .data$ModuleColor)),
+    ModuleLabel_GO_CC = dplyr::coalesce(.data$ModuleLabel_GO_CC, paste0("Module ", .data$ModuleColor))
+  )
+module_name_map <- stats::setNames(module_label_table$ModuleLabel_GO_BP, module_label_table$ModuleColor)
 
-# Color -> Name map
-module_name_map <- setNames(best_by_mod$BestCompact, best_by_mod$Module)
+top_hub_flags <- feature_module_tbl %>%
+  dplyr::left_join(kME_long, by = "ProteinID") %>%
+  dplyr::mutate(abs_kME = abs(.data$kME)) %>%
+  dplyr::group_by(.data$ModuleColor) %>%
+  dplyr::arrange(dplyr::desc(.data$abs_kME), .by_group = TRUE) %>%
+  dplyr::mutate(is_top_hub_25 = dplyr::row_number() <= pmin(25L, dplyr::n())) %>%
+  dplyr::ungroup() %>%
+  dplyr::select(.data$ProteinID, .data$is_top_hub_25)
 
-# Rename ME columns from "ME<color>" to "ME<Compact>"
-ME_names_old <- colnames(mergedMEs)
-ME_colors    <- sub("^ME", "", ME_names_old)
-ME_new_suffix <- ifelse(ME_colors %in% names(module_name_map),
-                        make.names(module_name_map[ME_colors]),
-                        ME_colors)
-ME_names_new <- paste0("ME", ME_new_suffix)
-colnames(mergedMEs) <- ME_names_new
+WGCNA_modules_long <- feature_module_tbl %>%
+  dplyr::left_join(module_label_table, by = c("ModuleColor", "ModuleID")) %>%
+  dplyr::left_join(kME_long, by = "ProteinID") %>%
+  dplyr::left_join(top_hub_flags, by = "ProteinID") %>%
+  dplyr::mutate(
+    ModuleSet = "WGCNA",
+    abs_kME = abs(.data$kME),
+    GeneSignificanceP = GSPvalue[.data$ProteinID, "p.GS.ExpGroup"],
+    GeneSignificanceFDR = GSPvalue[.data$ProteinID, "FDR.GS.ExpGroup"],
+    is_core_kME_0.6 = is.finite(.data$abs_kME) & .data$abs_kME >= 0.6,
+    Source = "01_WGCNA.r"
+  ) %>%
+  dplyr::select(
+    ModuleSet, ModuleID, ModuleColor,
+    ModuleLabel_GO_BP, ModuleLabel_GO_MF, ModuleLabel_GO_CC, ModuleLabel_Manual,
+    ProteinID, UniProt, EntrezID, GeneSymbol, kME, abs_kME,
+    GeneSignificanceP, GeneSignificanceFDR, is_core_kME_0.6, is_top_hub_25, Source
+  )
+write_csv_safe(WGCNA_modules_long, fp_modtab("WGCNA_modules_long.csv"))
+writexl::write_xlsx(list(WGCNA_modules_long = WGCNA_modules_long), fp_modtab("WGCNA_modules_long.xlsx"))
+write_csv_safe(module_label_table, fp_modtab("module_name_map.csv"))
+write_tsv_safe(module_label_table, fp_modtab("module_name_map.tsv"))
 
-# Provide a robust color->MEcol lookup for downstream MM/GS code
-color_to_MEcol <- setNames(ME_names_new, ME_colors)
-
-# Save gene-to-module with color and compact name.
-gene_module_named <- data.frame(
-  Gene          = colnames(expression.data),
-  ModuleColor   = mergedColors[match(colnames(expression.data), names(mergedColors))],
-  ModuleName    = unname(module_name_map[mergedColors[match(colnames(expression.data), names(mergedColors))]]),
-  stringsAsFactors = FALSE
-)
-write_csv_safe(gene_module_named, fp_modtab("genes_module_with_names.csv"))
-
-# Save maps
-module_name_map_df <- data.frame(
-  ModuleColor = names(module_name_map),
-  ModuleName  = unname(module_name_map),
-  stringsAsFactors = FALSE
-)
-write_tsv_safe(module_name_map_df, fp_modtab("module_name_map.tsv"))
-me_rename_df <- data.frame(
-  ME_old = ME_names_old,
-  ME_new = ME_names_new,
-  stringsAsFactors = FALSE
-)
-write_tsv_safe(me_rename_df, fp_modtab("ME_column_rename_map.tsv"))
+make_wgcna_module_summary <- function(preservation_source = NULL) {
+  pres_wide <- tibble::tibble(ModuleColor = module_colors)
+  if (!is.null(preservation_source) && nrow(preservation_source)) {
+    pres_wide <- preservation_source %>%
+      dplyr::select(.data$module, .data$test_set, dplyr::contains("Zsummary")) %>%
+      dplyr::rename(ModuleColor = .data$module) %>%
+      tidyr::pivot_wider(
+        names_from = .data$test_set,
+        values_from = dplyr::contains("Zsummary"),
+        names_glue = "preservation_{test_set}_{.value}"
+      )
+  }
+  WGCNA_modules_long %>%
+    dplyr::group_by(.data$ModuleID, .data$ModuleColor) %>%
+    dplyr::summarise(
+      n_features = dplyr::n(),
+      n_mapped_entrez = dplyr::n_distinct(.data$EntrezID[!is.na(.data$EntrezID) & nzchar(.data$EntrezID)]),
+      median_abs_kME = stats::median(.data$abs_kME, na.rm = TRUE),
+      mean_abs_kME = mean(.data$abs_kME, na.rm = TRUE),
+      top_hub_proteins = paste(utils::head(.data$ProteinID[order(.data$abs_kME, decreasing = TRUE)], 25), collapse = ";"),
+      .groups = "drop"
+    ) %>%
+    dplyr::mutate(mapping_rate = .data$n_mapped_entrez / .data$n_features, .after = .data$n_mapped_entrez) %>%
+    dplyr::left_join(best_term_wide, by = "ModuleColor") %>%
+    dplyr::left_join(pres_wide, by = "ModuleColor")
+}
+WGCNA_module_summary <- make_wgcna_module_summary()
+write_csv_safe(WGCNA_module_summary, fp_modtab("WGCNA_module_summary.csv"))
 
 saveRDS(list(
   module_name_map = module_name_map,
-  color_to_MEcol  = color_to_MEcol,
-  ME_names_old    = ME_names_old,
-  ME_names_new    = ME_names_new
-), file = fp_state("module_name_map.rds"))
-
-saveRDS(list(
-  expression = expression.data,
-  sample_info = sample_info,
-  mergedColors = mergedColors,
-  mergedMEs = mergedMEs,
-  geneTree = geneTree,
-  softPower = softPower,
-  module_name_map = module_name_map,
+  module_label_table = module_label_table,
   color_to_MEcol = color_to_MEcol,
-  parameters = list(
-    network_type = "signed",
-    correlation_function = "bicor",
-    bicor_maxPOutliers = 0.05,
-    soft_threshold_rsquared = soft_threshold_rsquared,
-    selected_soft_power = softPower,
-    min_module_size = min_module_size,
-    deep_split = deep_split,
-    merge_cut_height = merge_cut_height,
-    dataset_profile = dataset_profile_resolved
-  )
-), file = fp_state("wgcna_final_model_state.rds"))
+  ME_names_stable = ME_names_stable
+), file = fp_state("module_name_map.rds"))
 
 # --------------------------
 # Preservation across conditions
@@ -1383,14 +1438,46 @@ write_csv_safe(tibble::rownames_to_column(as.data.frame(Z_RES), "module"),
                fp_prestab("module_preservation_RES_vs_ALL_Zsummary.csv"))
 write_csv_safe(tibble::rownames_to_column(as.data.frame(Z_SUS), "module"),
                fp_prestab("module_preservation_SUS_vs_ALL_Zsummary.csv"))
-write_csv_safe(
-  dplyr::bind_rows(
-    tibble::rownames_to_column(as.data.frame(Z_CON), "module") |> dplyr::mutate(test_set = "CON"),
-    tibble::rownames_to_column(as.data.frame(Z_RES), "module") |> dplyr::mutate(test_set = "RES"),
-    tibble::rownames_to_column(as.data.frame(Z_SUS), "module") |> dplyr::mutate(test_set = "SUS")
-  ),
-  fp_source("module_preservation.csv")
+module_preservation_long <- dplyr::bind_rows(
+  tibble::rownames_to_column(as.data.frame(Z_CON), "module") |> dplyr::mutate(test_set = "CON"),
+  tibble::rownames_to_column(as.data.frame(Z_RES), "module") |> dplyr::mutate(test_set = "RES"),
+  tibble::rownames_to_column(as.data.frame(Z_SUS), "module") |> dplyr::mutate(test_set = "SUS")
 )
+write_csv_safe(module_preservation_long, fp_source("module_preservation.csv"))
+
+WGCNA_module_summary <- make_wgcna_module_summary(module_preservation_long)
+write_csv_safe(WGCNA_module_summary, fp_modtab("WGCNA_module_summary.csv"))
+saveRDS(list(
+  expression.data = expression.data,
+  sample_info = sample_info,
+  mergedColors = mergedColors,
+  mergedMEs = mergedMEs,
+  kME = WGCNA_modules_long %>%
+    dplyr::select(.data$ModuleID, .data$ModuleColor, .data$ProteinID, .data$UniProt, .data$EntrezID, .data$GeneSymbol, .data$kME, .data$abs_kME),
+  WGCNA_modules_long = WGCNA_modules_long,
+  module_summary = WGCNA_module_summary,
+  GO_enrichment = GO_enrichment_long,
+  GO_enrichment_QC = GO_enrichment_QC,
+  module_name_map = module_name_map,
+  module_label_table = module_label_table,
+  color_to_MEcol = color_to_MEcol,
+  ME_names_stable = ME_names_stable,
+  module_preservation = module_preservation_long,
+  geneTree = geneTree,
+  softPower = softPower,
+  parameters = list(
+    network_type = "signed",
+    correlation_function = "bicor",
+    bicor_maxPOutliers = 0.05,
+    soft_threshold_rsquared = soft_threshold_rsquared,
+    selected_soft_power = softPower,
+    min_module_size = min_module_size,
+    deep_split = deep_split,
+    merge_cut_height = merge_cut_height,
+    module_preservation_permutations = module_preservation_permutations,
+    dataset_profile = dataset_profile_resolved
+  )
+), file = fp_state("wgcna_final_model_state.rds"))
 
 # --------------------------
 # Condition and active spatial trait panels
@@ -1561,11 +1648,7 @@ if (ncol(r_mat) > 1) {
 if (exists("mergedMEs")) {
   me_names <- colnames(mergedMEs)                      # e.g., "MEblue"
   row_me <- rownames(r_mat)
-  row_mod_colors <- if (exists("ME_names_new") && exists("ME_colors")) {
-    unname(setNames(ME_colors, ME_names_new)[row_me])
-  } else {
-    sub("^ME", "", row_me)
-  }
+  row_mod_colors <- sub("^ME", "", row_me)
   row_mod_colors[is.na(row_mod_colors) | !nzchar(row_mod_colors)] <- sub("^ME", "", row_me[is.na(row_mod_colors) | !nzchar(row_mod_colors)])
   if (!exists("colorSeq")) {
     colorSeq <- c(
