@@ -147,12 +147,12 @@ Phase 3 canonicalized the safer downstream/helper scripts:
 ```bash
 Rscript 06_modules_WGCNA/02_module_spatial_networks.r --dry-run
 Rscript 06_modules_WGCNA/03_overlap_modules.r --dry-run
-Rscript 06_modules_WGCNA/91_module_score_v0.0.2.r --dry-run
+Rscript 06_modules_WGCNA/91_module_score.r --dry-run
 ```
 
-`91_module_score_v0.0.2.r` is the canonical active module-score script. `90_module_score_v0.0.1.r` is retained only as an older reference and should not be used in the active run order.
+`91_module_score.r` is the canonical active module-score script. By default it consumes overlap/GSEA-derived modules. To score WGCNA modules from `01_WGCNA.r`, run with `PROTEOMICS_MODULE_DEFINITION_SOURCE=WGCNA`; the script then consumes `WGCNA_modules_long.xlsx` and, when available, `wgcna_final_model_state.rds` for eigengene scores. `90_module_score_v0.0.1.r` is retained only as an older reference and should not be used in the active run order.
 
-`01_WGCNA v.2.0.0.r` now uses `R/paths.R` and writes an input manifest/hash table plus run manifest, but it still consumes precombined variancePartition-style matrices (`male.data.xlsx` and `sample_info.xlsx`). Generate those upstream or set `PROTEOMICS_WGCNA_EXPR_XLSX` and `PROTEOMICS_WGCNA_META_XLSX` explicitly.
+`01_WGCNA.r` uses `R/paths.R` and writes an input manifest/hash table plus run manifest, but it still consumes precombined variancePartition-style matrices (`male.data.xlsx` and `sample_info.xlsx`). Generate those upstream or set `PROTEOMICS_WGCNA_EXPR_XLSX` and `PROTEOMICS_WGCNA_META_XLSX` explicitly. It exports stable color-based WGCNA module definitions under `results/tables/06_modules_WGCNA/01_WGCNA/modules/`.
 
 ## 7. Spatial network analyses
 
