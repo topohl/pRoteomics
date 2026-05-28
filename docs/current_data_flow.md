@@ -93,7 +93,7 @@ Phase 3 applied targeted path-only refactors where script behavior could be pres
 - `05_celltype_enrichment_EWCE/01_EWCE_E9.r`
 - `06_modules_WGCNA/02_module_spatial_networks.r`
 - `06_modules_WGCNA/03_overlap_modules.r`
-- `06_modules_WGCNA/91_module_score_v0.0.2.r`
+- `06_modules_WGCNA/91_module_score.r`
 - `07_spatial_networks/02_differential_networks.r`
 - `07_spatial_networks/03_bootstrap_network_stability.r`
 - `07_spatial_networks/04_bootstrap_differential_network_stability.r`
@@ -111,6 +111,7 @@ The old technical folder roots map as follows:
 | `Plots`, `figures` | `results/figures/<module>/<substep>/` | Figure source tables should be written separately under `results/source_data/`. |
 | `core_enrichment` | `results/source_data/04_differential_expression_enrichment/clusterProfiler/` plus manifest rows | compareGO should consume the manifest, not recursively discover this folder. |
 | `module_scores` | `data/processed/06_modules_WGCNA/` and `results/tables/06_modules_WGCNA/` | Machine-readable scores belong in processed; publication tables in results/tables. |
+| `WGCNA_modules_long` | `results/tables/06_modules_WGCNA/01_WGCNA/modules/` plus `data/processed/06_modules_WGCNA/01_WGCNA/wgcna_final_model_state.rds` | Color-stable WGCNA module definitions are reusable inputs for `91_module_score.r` when `PROTEOMICS_MODULE_DEFINITION_SOURCE=WGCNA`; GO labels are display metadata, not eigengene column names. |
 | `EWCE_E9_Results` | `data/processed/05_celltype_enrichment_EWCE/EWCE_E9/` and `results/*/05_celltype_enrichment_EWCE/EWCE_E9/` | EWCE caches stay in processed/cache. |
 | `network_spatial_relations` | `data/processed/07_spatial_networks/network_spatial_relations/` and `results/*/07_spatial_networks/network_spatial_relations/` | Producer script remains documented for later; downstream scripts now expect this canonical RDS. |
 
