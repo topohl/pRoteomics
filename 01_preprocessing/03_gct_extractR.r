@@ -14,6 +14,7 @@
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
+source(repo_path("R", "dataset_config.R"))
 MODULE_ID <- "01_preprocessing"
 SUBSTEP_ID <- "gct_extractR"
 CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
@@ -34,16 +35,17 @@ load_required_packages <- function(pkgs) {
 # -------------------------------
 
 use_label_map <- FALSE   # TRUE = con/res/sus mapping
-comparison_name <- Sys.getenv("PROTEOMICS_GCT_COMPARISON", unset = "neuron_neuropil")
+comparison_name <- current_dataset()
 
 # -------------------------------
 # Input
 # -------------------------------
 
 input_stem <- Sys.getenv("PROTEOMICS_GCT_INPUT_STEM", unset = "")
+protigy_dataset_dir <- path_processed("01_preprocessing", "protigy_output", comparison_name)
 if (!nzchar(input_stem)) {
   manifest_candidates <- c(
-    path_processed("01_preprocessing", "protigy_output", comparison_name, "protigy_manifest.csv"),
+    file.path(protigy_dataset_dir, "protigy_manifest.csv"),
     path_processed("01_preprocessing", "protigy_output", "protigy_manifest.csv")
   )
   manifest_file <- manifest_candidates[file.exists(manifest_candidates)][1]
@@ -52,30 +54,73 @@ if (!nzchar(input_stem)) {
     path_col <- intersect(c("gct_path", "file", "path"), names(manifest))[1]
     if (!is.na(path_col)) {
       candidate <- manifest[[path_col]][1]
-      input_stem <- tools::file_path_sans_ext(basename(candidate))
+      if (!is.na(candidate) && nzchar(as.character(candidate))) {
+        candidate <- as.character(candidate)
+        candidate_path <- if (grepl("^([A-Za-z]:|/|~)", candidate)) {
+          path.expand(candidate)
+        } else {
+          file.path(protigy_dataset_dir, basename(candidate))
+        }
+        if (file.exists(candidate_path)) {
+          input_stem <- tools::file_path_sans_ext(basename(candidate_path))
+        } else {
+          message("Ignoring ProTigy manifest entry because the referenced GCT file was not found: ", candidate_path)
+        }
+      }
     }
+  }
+}
+if (!nzchar(input_stem)) {
+  gct_candidates <- if (dir.exists(protigy_dataset_dir)) {
+    list.files(protigy_dataset_dir, pattern = "\\.gct$", full.names = TRUE, ignore.case = TRUE)
+  } else {
+    character()
+  }
+  if (length(gct_candidates) == 1L) {
+    input_stem <- tools::file_path_sans_ext(basename(gct_candidates[[1]]))
+    message("Auto-detected single ProTigy GCT file for dataset '", comparison_name, "': ", basename(gct_candidates[[1]]))
+  } else if (length(gct_candidates) == 0L) {
+    stop(
+      "Could not infer ProTigy GCT input stem for dataset '", comparison_name, "'. ",
+      "No .gct files were found in: ", protigy_dataset_dir,
+      ". Set PROTEOMICS_GCT_INPUT_STEM or add a valid protigy_manifest.csv.",
+      call. = FALSE
+    )
+  } else {
+    stop(
+      "Could not infer ProTigy GCT input stem for dataset '", comparison_name, "'. ",
+      "Multiple .gct files were found in: ", protigy_dataset_dir,
+      "\nCandidates:\n- ", paste(basename(gct_candidates), collapse = "\n- "),
+      "\nSet PROTEOMICS_GCT_INPUT_STEM to the desired file stem.",
+      call. = FALSE
+    )
   }
 }
 if (!nzchar(input_stem)) {
   stop(
     "Could not infer ProTigy GCT input stem. Set PROTEOMICS_GCT_INPUT_STEM ",
     "or provide a protigy_manifest.csv with a gct_path/file/path column under ",
-    path_processed("01_preprocessing", "protigy_output", comparison_name),
+    protigy_dataset_dir,
     call. = FALSE
   )
 }
 
-gct_path <- path_processed("01_preprocessing", "protigy_output", comparison_name, paste0(input_stem, ".gct"))
+gct_path <- file.path(protigy_dataset_dir, paste0(input_stem, ".gct"))
 outdir <- file.path(CANONICAL_PATHS$processed, comparison_name)
 
 if (is_dry_run()) {
   outdir_fwd <- file.path(outdir, "forward")
   outdir_rev <- file.path(outdir, "reverse")
   dry_run_line("Script", "01_preprocessing/03_gct_extractR.r")
+  dry_run_line("Dry-run mode", "no output folders or CSV files will be created")
+  dry_run_line("Resolved dataset", comparison_name)
+  dry_run_line("ProTigy dataset directory", protigy_dataset_dir, if (dir.exists(protigy_dataset_dir)) "PASS" else "FAIL")
+  dry_run_line("Resolved GCT input stem", input_stem)
   dry_run_line("GCT input", gct_path, if (file.exists(gct_path)) "PASS" else "FAIL")
   dry_run_line("Forward output directory", outdir_fwd)
   dry_run_line("Reverse output directory", outdir_rev)
   dry_run_line("Index output", file.path(outdir, "indexComparisons.csv"))
+  dry_run_line("Creates mapping inputs when run without --dry-run", outdir_fwd)
   quit(status = if (file.exists(gct_path)) 0 else 1, save = "no")
 }
 if (!file.exists(gct_path)) stop("GCT input not found: ", gct_path, call. = FALSE)
