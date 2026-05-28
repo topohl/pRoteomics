@@ -426,9 +426,9 @@ summary_fit <- summary(fit)
 r_squared <- summary_fit$r.squared
 p_val <- summary_fit$coefficients[2,4]
 
-# --- 5. Nature-Style Visualization ---
+# --- 5. Publication-style Visualization ---
 
-nature_theme <- theme_classic(base_size = 7, base_family = "sans") +
+publication_theme <- theme_classic(base_size = 7, base_family = "sans") +
   theme(
     # Axes
     axis.line        = element_line(colour = "black", linewidth = 0.4),
@@ -466,11 +466,11 @@ plot <- ggplot(final_df, aes(x = AUC, y = Structural_ZScore, color = Group)) +
     x        = "12 h locomotor load (AUC)",
     y        = "Structural leading-edge z-score\n(CA1 sp, relative to CON)"
   ) +
-  nature_theme
+  publication_theme
 
 # --- 6. Save Everything ---
 
-# Save as SVG (Nature single-column width: 88 mm)
+# Save as SVG (Publication single-column width: 88 mm)
 svglite::svglite(file.path(out_dir, "Figure3_AUC_vs_Proteomics.svg"),
                  width = 1.5, height = 2)
 print(plot)
