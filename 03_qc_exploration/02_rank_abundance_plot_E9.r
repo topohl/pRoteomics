@@ -694,7 +694,7 @@ write_xlsx(
 )
 
 # ------------------------------------------------------------------------------
-# 7.5 Nature-style module score plot with cleaner statistics
+# 7.5 Publication-style module score plot with cleaner statistics
 # ------------------------------------------------------------------------------
 
 # Cleaner p-value labels
@@ -815,7 +815,7 @@ module_score_plot_all <- ggplot(
   )
 
 ggsave(
-  file.path(saving_dir, "Nature_panel_allCellTypes_marker_module_scores_withStats_clean.svg"),
+  file.path(saving_dir, "publication_panel_allCellTypes_marker_module_scores_withStats_clean.svg"),
   module_score_plot_all,
   width = 155,
   height = 65,
