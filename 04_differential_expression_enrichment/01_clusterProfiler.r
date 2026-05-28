@@ -22,10 +22,9 @@
 #' @author Tobias Pohl
 #' ============================================================
 
-setwd("S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/Analysis/proteomics")
-
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
+source(repo_path("R", "dataset_config.R"))
 MODULE_ID <- "04_differential_expression_enrichment"
 SUBSTEP_ID <- "clusterProfiler"
 CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
@@ -188,7 +187,7 @@ read_config <- function(config_path) {
       cutoff = SIMPLIFY_CUTOFF
     ),
     analysis = list(
-      dataset = Sys.getenv("PROTEOMICS_COMPARISON", unset = "neuron_neuropil"),
+      dataset = current_dataset(),
       organism = "org.Mm.eg.db",
       ontology = "BP",
       top_gene_abs_log2fc = 1,
@@ -718,21 +717,8 @@ as_repo_path <- function(path) {
   if (grepl("^([A-Za-z]:|/|~)", path)) return(path)
   repo_path(path)
 }
-DATASET <- as.character(cfg$analysis$dataset %||% Sys.getenv("PROTEOMICS_COMPARISON", unset = "neuron_neuropil"))
-allowed_datasets <- trimws(strsplit(
-  Sys.getenv("PROTEOMICS_ALLOWED_COMPARISONS", unset = "neuron_neuropil,neuron_soma,microglia"),
-  ",",
-  fixed = TRUE
-)[[1]])
-allowed_datasets <- allowed_datasets[nzchar(allowed_datasets)]
-if (length(allowed_datasets) > 0 && !DATASET %in% allowed_datasets) {
-  stop(
-    "clusterProfiler dataset='", DATASET, "' is not in the allowed dataset families: ",
-    paste(allowed_datasets, collapse = ", "),
-    ". Extend PROTEOMICS_ALLOWED_COMPARISONS if this is an intentional new family.",
-    call. = FALSE
-  )
-}
+DATASET <- current_dataset(default = cfg$analysis$dataset %||% "neuron_neuropil")
+cfg$analysis$dataset <- DATASET
 CANONICAL_PATHS <- lapply(CANONICAL_PATHS, function(path) file.path(path, DATASET))
 invisible(lapply(CANONICAL_PATHS, dir.create, recursive = TRUE, showWarnings = FALSE))
 
@@ -850,6 +836,9 @@ if (isTRUE(DRY_RUN)) {
     dry_run_line("Route counts", paste(utils::capture.output(print(route_counts, row.names = FALSE)), collapse = " | "))
   }
   dry_run_line("Ontology", cfg$analysis$ontology)
+  dry_run_line("Dataset processed output", CANONICAL_PATHS$processed)
+  dry_run_line("Dataset figures output", CANONICAL_PATHS$figures)
+  dry_run_line("Dataset source data", CANONICAL_PATHS$source_data)
   dry_run_line("Result manifest", file.path(CANONICAL_PATHS$processed, "clusterProfiler_manifest.csv"))
   dry_run_file <- file.path(CANONICAL_PATHS$reports, "clusterProfiler_dry_run_diagnostics.csv")
   write.csv(diagnostics, dry_run_file, row.names = FALSE)
