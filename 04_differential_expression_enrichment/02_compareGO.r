@@ -67,6 +67,7 @@ if (!nzchar(Sys.getenv("PROTEOMICS_PROJECT_ROOT", unset = ""))) {
   Sys.setenv(PROTEOMICS_PROJECT_ROOT = dirname(dirname(paths_file)))
 }
 source(paths_file)
+source(repo_path("R", "dataset_config.R"))
 MODULE_ID <- "04_differential_expression_enrichment"
 SUBSTEP_ID <- "compareGO"
 CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
@@ -352,7 +353,7 @@ safe_filename <- function(x) {
 
 read_comparego_config <- function(config_path) {
   defaults <- list(
-    dataset = Sys.getenv("PROTEOMICS_COMPARISON", unset = "neuron_neuropil"),
+    dataset = current_dataset(),
     legacy_mode = FALSE,
     ontology = "BP",
     route_category = "phenotype_within_unit",
@@ -393,7 +394,8 @@ as_repo_path <- function(path) {
 }
 comparego_cfg$clusterProfiler_manifest <- as_repo_path(comparego_cfg$clusterProfiler_manifest)
 comparego_cfg$uniprot_mapping_file <- as_repo_path(comparego_cfg$uniprot_mapping_file)
-DATASET <- as.character(comparego_cfg$dataset %||% Sys.getenv("PROTEOMICS_COMPARISON", unset = "neuron_neuropil"))
+DATASET <- current_dataset(default = comparego_cfg$dataset %||% "neuron_neuropil")
+comparego_cfg$dataset <- DATASET
 if (!nzchar(as.character(comparego_cfg$clusterProfiler_manifest))) {
   comparego_cfg$clusterProfiler_manifest <- path_processed(
     MODULE_ID, "clusterProfiler", DATASET, "clusterProfiler_manifest.csv"
@@ -489,6 +491,9 @@ if (isTRUE(DRY_RUN)) {
   dry_run_line("Route category", comparego_cfg$route_category)
   dry_run_line("Route unit", comparego_cfg$route_unit)
   dry_run_line("Result types", paste(unlist(comparego_cfg$result_types), collapse = ", "))
+  dry_run_line("Dataset output tables", file.path(CANONICAL_PATHS$tables, DATASET))
+  dry_run_line("Dataset output figures", file.path(CANONICAL_PATHS$figures, DATASET))
+  dry_run_line("Dataset source data", file.path(CANONICAL_PATHS$source_data, DATASET))
   dry_run_dir <- file.path(CANONICAL_PATHS$reports, DATASET)
   dir.create(dry_run_dir, recursive = TRUE, showWarnings = FALSE)
   dry_run_file <- file.path(dry_run_dir, "compareGO_dry_run_diagnostics.csv")
