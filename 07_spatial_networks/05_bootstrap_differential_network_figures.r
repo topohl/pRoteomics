@@ -6,7 +6,7 @@
 # File contract:
 #   - docs/active_script_io_audit.tsv object 07_spatial_networks/05_bootstrap_differential_network_figures.r
 # ================================================================
-# Nature-style figures for bootstrap differential spatial networks
+# Publication-style figures for bootstrap differential spatial networks
 # ================================================================
 # Purpose:
 #   Generate publication-ready figures from outputs created by:
@@ -87,7 +87,7 @@ make_dirs <- function(base_dir) {
   dirs
 }
 
-theme_nature_boot <- function(base_size = 7) {
+theme_publication_boot <- function(base_size = 7) {
   ggplot2::theme_classic(base_size = base_size) +
     ggplot2::theme(
       text = ggplot2::element_text(family = "sans", colour = "black"),
@@ -190,7 +190,7 @@ plot_forest_stable_edges <- function(edge_summary, outfile, params) {
     ggplot2::scale_fill_manual(values = c("lower in B" = params$palette$lower_in_B, "higher in B" = params$palette$higher_in_B, "no change" = params$palette$neutral), name = NULL) +
     ggplot2::scale_size_continuous(range = c(1.5, 3.2), name = "Bootstrap\nfrequency") +
     ggplot2::labs(x = expression(Delta * "Spearman " * rho), y = NULL, title = "Stable spatial proteomic rewiring") +
-    theme_nature_boot(base_size = 7) +
+    theme_publication_boot(base_size = 7) +
     ggplot2::theme(legend.position = "right")
 
   ggplot2::ggsave(outfile, p, width = 95, height = 125, units = "mm", device = svglite::svglite)
@@ -224,7 +224,7 @@ plot_delta_frequency_heatmap <- function(edge_summary, outfile, params) {
       name = expression(Delta * rho)
     ) +
     ggplot2::labs(x = NULL, y = NULL, title = "Bootstrap-supported differential edges") +
-    theme_nature_boot(base_size = 7) +
+    theme_publication_boot(base_size = 7) +
     ggplot2::theme(
       axis.text.x = ggplot2::element_text(angle = 35, hjust = 1),
       axis.line = ggplot2::element_blank(),
@@ -274,7 +274,7 @@ plot_candidate_delta_distributions <- function(boot_long, candidate_summary, out
     ggplot2::facet_grid(Edge ~ Comparison, scales = "free_y") +
     ggplot2::scale_fill_manual(values = c("lower in B" = params$palette$lower_in_B, "higher in B" = params$palette$higher_in_B, "no change" = params$palette$neutral), name = NULL) +
     ggplot2::labs(x = expression(Delta * "Spearman " * rho), y = "Bootstrap density", title = "Candidate edge bootstrap distributions") +
-    theme_nature_boot(base_size = 7) +
+    theme_publication_boot(base_size = 7) +
     ggplot2::theme(legend.position = "top")
 
   ggplot2::ggsave(outfile, p, width = 180, height = 145, units = "mm", device = svglite::svglite)
@@ -357,7 +357,7 @@ plot_minimal_networks <- function(edge_summary, out_dir, params) {
 # -------------------------------
 # Main
 # -------------------------------
-message2("Starting Nature-style bootstrap differential network figure generation")
+message2("Starting Publication-style bootstrap differential network figure generation")
 dirs <- make_dirs(params$bootstrap_dir)
 write_session_info(file.path(CANONICAL_PATHS$logs, "sessionInfo.txt"))
 loaded <- load_bootstrap_outputs(params)
