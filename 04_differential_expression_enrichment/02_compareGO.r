@@ -130,8 +130,8 @@ if (!isTRUE(DRY_RUN)) {
 # -----------------------------------------------------
 # Define Theme and Helper Functions
 # -----------------------------------------------------
-#' Nature-style ggplot2 theme for publication-quality figures
-theme_nature <- function(base_size = 9, base_family = "sans") {
+#' Publication-style ggplot2 theme for publication-quality figures
+theme_publication <- function(base_size = 9, base_family = "sans") {
   theme_minimal(base_size = base_size, base_family = base_family) +
     theme(
       # Text elements
@@ -180,7 +180,7 @@ theme_nature <- function(base_size = 9, base_family = "sans") {
 calc_dims <- function(df_plot) {
   n_cols <- length(unique(as.character(df_plot$Comparison)))
   n_rows <- length(unique(as.character(df_plot$Description)))
-  # Nature-style: optimize for single or dual column layouts (85mm or 180mm)
+  # Publication-style: optimize for single or dual column layouts (85mm or 180mm)
   w <- max(3.35, 3.35 + (n_cols * 0.5))  # Single column width ~85mm = 3.35 inches
   h <- max(5, 2.5 + (n_rows * 0.25))
   return(list(w = w, h = h))
@@ -1052,7 +1052,7 @@ if(nrow(candidate_pool) == 0) {
 # Plot Comparison: Standard vs Refined Selection
 # -----------------------------------------------------
 
-# Nature-style color palettes: Professional, publication-ready colors
+# Publication-style color palettes: Professional, publication-ready colors
 # Upregulation = warm orange/red, downregulation = cool blue, 0 = white
 custom_palette <- colorRampPalette(c("#0571B0", "white", "#CA0020"), space = "Lab")
 
@@ -1109,7 +1109,7 @@ if (nrow(comparison_plot_data) == 0 || all(is.na(comparison_plot_data$NES))) {
       y = "GO Term",
       x = "Comparison"
     ) +
-    theme_nature(base_size = 9) +
+    theme_publication(base_size = 9) +
     theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
 
   n_cols_comp <- length(unique(as.character(comparison_plot_data$Comparison)))
@@ -1357,7 +1357,7 @@ save_enrichment_dotplot <- function(plot_df, output_file, title) {
     scale_x_discrete(expand = expansion(mult = c(0.1, 0.1)), drop = FALSE) +
     scale_y_discrete(labels = function(x) str_wrap(x, width = 50)) +
     labs(title = title, x = NULL, y = NULL) +
-    theme_nature(base_size = 9) +
+    theme_publication(base_size = 9) +
     theme(
       axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
       panel.grid.major.y = element_blank(),
@@ -1434,7 +1434,7 @@ if (exists("top_df_per_comp") && nrow(top_df_per_comp) > 0) {
         x = NULL,
         y = NULL
       ) +
-      theme_nature(base_size = 9) +
+      theme_publication(base_size = 9) +
       theme(
         axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
         panel.grid.major.y = element_blank(),
@@ -1486,7 +1486,7 @@ if (exists("top_terms") && length(top_terms) > 0) {
         x = NULL,
         y = NULL
       ) +
-      theme_nature(base_size = 9) +
+      theme_publication(base_size = 9) +
       theme(
         axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
         panel.grid.major.y = element_blank()
@@ -1538,7 +1538,7 @@ if (exists("top5_up_down_df") && !is.null(top5_up_down_df) && nrow(top5_up_down_
       x = NULL,
       y = NULL
     ) +
-    theme_nature(base_size = 9) +
+    theme_publication(base_size = 9) +
     theme(
       axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
       panel.grid.major.y = element_blank()
@@ -2075,7 +2075,7 @@ for (comp in unique_comparisons) {
       x = expression(log[2] ~ Fold ~ Change),
       y = expression(-log[10](italic(P)[adj]))
     ) +
-    theme_nature(base_size = 9) +
+    theme_publication(base_size = 9) +
     theme(
       legend.position = "none"
     ) +
@@ -2302,7 +2302,7 @@ barplot_counts <- ggplot(term_counts, aes(x = Comparison, y = Count, fill = Dire
     y = "Number of significant terms (padj < 0.05)",
     fill = "Direction"
   ) +
-  theme_nature(base_size = 9) +
+  theme_publication(base_size = 9) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
 
 ggsave(file.path(subdirs$plots_main, "Barplot_Term_Counts.svg"), 
@@ -2325,7 +2325,7 @@ if (nrow(ridge_data) > 0 && length(unique(ridge_data$Comparison)) > 0) {
       x = "Normalized Enrichment Score (NES)",
       y = "Comparison"
     ) +
-    theme_nature(base_size = 9) +
+    theme_publication(base_size = 9) +
     theme(axis.text.y = element_text(size = 8))
   
   ggsave(file.path(subdirs$plots_main, "RidgePlot_NES_Distribution.svg"),
@@ -2710,7 +2710,7 @@ if (exists("term_consistency") && nrow(term_consistency) > 0) {
         scale_fill_manual(values = c("Up" = "#CA0020", "Down" = "#0571B0")) +
         labs(title = "Term direction persistence across comparisons",
              y = "Frequency", fill = "Direction") +
-        theme_nature(base_size = 9) +
+        theme_publication(base_size = 9) +
         theme(axis.text.x = element_text(angle = 45, hjust = 1))
       
       print(p_alluvial)
@@ -2838,7 +2838,7 @@ if (length(comparison_files) > 0) {
                 title = paste0("Upregulated GO - ", comp),
                 y = "GO Term"
               ) +
-              theme_nature(base_size = 9) +
+              theme_publication(base_size = 9) +
               theme(
                 legend.position = "right"
               )
@@ -2896,7 +2896,7 @@ if (length(comparison_files) > 0) {
                 title = paste0("Downregulated GO - ", comp),
                 y = "GO Term"
               ) +
-              theme_nature(base_size = 9) +
+              theme_publication(base_size = 9) +
               theme(
                 legend.position = "right"
               )
@@ -3053,7 +3053,7 @@ if (!all(c("gene_symbol", "log2fc", "padj", "Comparison") %in% names(log2fc_long
         x = NULL,
         y = "Gene"
       ) +
-      theme_nature(base_size = 9) +
+      theme_publication(base_size = 9) +
       theme(
         axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)
       )
