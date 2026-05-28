@@ -24,6 +24,7 @@ suppressPackageStartupMessages(
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
+source(repo_path("R", "dataset_config.R"))
 
 mm_to_in <- function(mm) mm / 25.4
 figure_single_col <- mm_to_in(89)
@@ -75,10 +76,14 @@ safe_dir <- function(path) {
 }
 
 wgcna_module <- "06_modules_WGCNA"
-wgcna_substep <- "01_WGCNA"
+dataset_profile <- {
+  profile_override <- Sys.getenv("PROTEOMICS_WGCNA_DATASET_PROFILE", unset = "")
+  if (nzchar(profile_override)) validate_dataset(profile_override, source = "PROTEOMICS_WGCNA_DATASET_PROFILE") else current_dataset()
+}
+wgcna_substep <- file.path("01_WGCNA", dataset_profile)
 output_dir_env <- Sys.getenv("PROTEOMICS_WGCNA_OUTPUT_DIR", unset = "")
 if (nzchar(output_dir_env)) {
-  output_dir <- output_dir_env
+  output_dir <- file.path(output_dir_env, dataset_profile)
   subdirs <- list(
     figures_qc          = file.path(output_dir, "figures", "qc"),
     figures_network     = file.path(output_dir, "figures", "network"),
@@ -148,7 +153,6 @@ min_module_size <- 30
 deep_split <- 2
 merge_cut_height <- 0.25
 module_preservation_permutations <- 1000
-dataset_profile <- "auto"  # one of: auto, microglia, neuron_soma, neuron_neuropil
 
 # Optional: safe svg helper
 save_svg <- function(path, width, height, expr) {
