@@ -2470,7 +2470,7 @@ format_p <- function(p) {
   )
 }
 
-nature_module_theme <- function(base_size = 7) {
+module_score_theme <- function(base_size = 7) {
   theme_classic(base_size = base_size) +
     theme(
       legend.position = "none",
@@ -2625,7 +2625,7 @@ plot_module_scores <- function(
       ),
       clip = "off"
     ) +
-    nature_module_theme(base_size = 10)
+    module_score_theme(base_size = 10)
 
   if (!is.null(ann)) {
     p <- p +
@@ -2686,7 +2686,7 @@ for (rl in region_layers) {
 # ------------------------------------------------
 
 # -----------------------------
-# manuscript-style heatmap setup
+# publication-style heatmap setup
 # -----------------------------
 
 region_order <- c(
@@ -2745,7 +2745,7 @@ heat_cols <- c(
   grid = "#FFFFFF"
 )
 
-theme_nature_heat <- function(base_size = 7) {
+theme_publication_heat <- function(base_size = 7) {
   theme_minimal(base_size = base_size) +
     theme(
       panel.grid = element_blank(),
@@ -2875,7 +2875,7 @@ plot_directional_effect_heatmap <- function(df, analysis_label) {
       title = paste0("Neuropil module effect structure"),
       subtitle = paste0(analysis_display_label(analysis_label), " | dots indicate BH-adjusted p <= 0.05; numbers shown for |d| >= 0.8")
     ) +
-    theme_nature_heat(base_size = 7)
+    theme_publication_heat(base_size = 7)
 }
 
 # -----------------------------
@@ -2958,7 +2958,7 @@ plot_module_correlation_heatmap <- function(df, analysis_label) {
       title = "Module correlation structure",
       subtitle = paste0(analysis_display_label(analysis_label), " | dots indicate BH-adjusted p <= 0.05")
     ) +
-    theme_nature_heat(base_size = 6.5) +
+    theme_publication_heat(base_size = 6.5) +
     theme(
       axis.text.x = element_text(size = 5.5, angle = 45, hjust = 1, vjust = 1),
       axis.text.y = element_text(size = 5.5, lineheight = 0.9)
@@ -3030,7 +3030,7 @@ plot_module_driver_consistency <- function(df, analysis_label) {
       title = "Module member driver consistency",
       subtitle = paste0(analysis_display_label(analysis_label), " | numbers shown for coherent or unstable modules")
     ) +
-    theme_nature_heat(base_size = 7)
+    theme_publication_heat(base_size = 7)
 }
 
 # -----------------------------
@@ -3132,14 +3132,14 @@ for (analysis_label in unique(directional_effects$Analysis)) {
 
   if (!is.null(p_effect_heatmap)) {
     ggsave(
-      file.path(dir_directional, paste0("NATURE_directional_effect_heatmap_", analysis_label, ".svg")),
+      file.path(dir_directional, paste0("publication_directional_effect_heatmap_", analysis_label, ".svg")),
       plot = p_effect_heatmap,
       width = 185,
       height = 95,
       units = "mm"
     )
     ggsave(
-      file.path(dir_directional, paste0("NATURE_directional_effect_heatmap_", analysis_label, ".pdf")),
+      file.path(dir_directional, paste0("publication_directional_effect_heatmap_", analysis_label, ".pdf")),
       plot = p_effect_heatmap,
       width = 185,
       height = 95,
@@ -3151,14 +3151,14 @@ for (analysis_label in unique(directional_effects$Analysis)) {
 
   if (!is.null(p_consistency)) {
     ggsave(
-      file.path(dir_directional, paste0("NATURE_directional_consistency_by_module_", analysis_label, ".svg")),
+      file.path(dir_directional, paste0("publication_directional_consistency_by_module_", analysis_label, ".svg")),
       plot = p_consistency,
       width = 175,
       height = 80,
       units = "mm"
     )
     ggsave(
-      file.path(dir_directional, paste0("NATURE_directional_consistency_by_module_", analysis_label, ".pdf")),
+      file.path(dir_directional, paste0("publication_directional_consistency_by_module_", analysis_label, ".pdf")),
       plot = p_consistency,
       width = 175,
       height = 80,
@@ -3170,14 +3170,14 @@ for (analysis_label in unique(directional_effects$Analysis)) {
 
   if (!is.null(p_module_cor)) {
     ggsave(
-      file.path(dir_directional, paste0("NATURE_module_correlation_structure_", analysis_label, ".svg")),
+      file.path(dir_directional, paste0("publication_module_correlation_structure_", analysis_label, ".svg")),
       plot = p_module_cor,
       width = 195,
       height = 120,
       units = "mm"
     )
     ggsave(
-      file.path(dir_directional, paste0("NATURE_module_correlation_structure_", analysis_label, ".pdf")),
+      file.path(dir_directional, paste0("publication_module_correlation_structure_", analysis_label, ".pdf")),
       plot = p_module_cor,
       width = 195,
       height = 120,
@@ -3189,14 +3189,14 @@ for (analysis_label in unique(directional_effects$Analysis)) {
 
   if (!is.null(p_driver_consistency)) {
     ggsave(
-      file.path(dir_directional, paste0("NATURE_module_driver_consistency_", analysis_label, ".svg")),
+      file.path(dir_directional, paste0("publication_module_driver_consistency_", analysis_label, ".svg")),
       plot = p_driver_consistency,
       width = 185,
       height = 95,
       units = "mm"
     )
     ggsave(
-      file.path(dir_directional, paste0("NATURE_module_driver_consistency_", analysis_label, ".pdf")),
+      file.path(dir_directional, paste0("publication_module_driver_consistency_", analysis_label, ".pdf")),
       plot = p_driver_consistency,
       width = 185,
       height = 95,
