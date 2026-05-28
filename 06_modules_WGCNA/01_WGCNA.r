@@ -26,36 +26,36 @@ paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.
 source(paths_file)
 
 mm_to_in <- function(mm) mm / 25.4
-nature_single_col <- mm_to_in(89)
-nature_double_col <- mm_to_in(183)
-nature_font <- "Arial"
-nature_base_size <- 7
-nature_axis_size <- 6.2
-nature_title_size <- 7
-nature_line <- 0.25
-nature_diverging <- c(low = "#2166AC", mid = "#F7F7F7", high = "#B2182B")
-nature_condition_cols <- c(con = "#4D4D4D", res = "#0072B2", sus = "#D55E00")
-nature_condition_labels <- c(con = "CON", res = "RES", sus = "SUS")
+figure_single_col <- mm_to_in(89)
+figure_double_col <- mm_to_in(183)
+figure_font <- "Arial"
+figure_base_size <- 7
+figure_axis_size <- 6.2
+figure_title_size <- 7
+figure_line <- 0.25
+figure_diverging <- c(low = "#2166AC", mid = "#F7F7F7", high = "#B2182B")
+figure_condition_cols <- c(con = "#4D4D4D", res = "#0072B2", sus = "#D55E00")
+figure_condition_labels <- c(con = "CON", res = "RES", sus = "SUS")
 
-theme_nature <- function(base_size = nature_base_size) {
-  ggplot2::theme_classic(base_size = base_size, base_family = nature_font) +
+theme_publication <- function(base_size = figure_base_size) {
+  ggplot2::theme_classic(base_size = base_size, base_family = figure_font) +
     ggplot2::theme(
-      plot.title = ggplot2::element_text(size = nature_title_size, face = "plain", hjust = 0),
-      plot.subtitle = ggplot2::element_text(size = nature_axis_size, color = "grey30", margin = ggplot2::margin(t = 1, b = 2)),
-      axis.title = ggplot2::element_text(size = nature_axis_size),
-      axis.text = ggplot2::element_text(size = nature_axis_size, color = "black"),
-      axis.line = ggplot2::element_line(linewidth = nature_line, color = "black"),
-      axis.ticks = ggplot2::element_line(linewidth = nature_line, color = "black"),
-      legend.title = ggplot2::element_text(size = nature_axis_size),
-      legend.text = ggplot2::element_text(size = nature_axis_size),
+      plot.title = ggplot2::element_text(size = figure_title_size, face = "plain", hjust = 0),
+      plot.subtitle = ggplot2::element_text(size = figure_axis_size, color = "grey30", margin = ggplot2::margin(t = 1, b = 2)),
+      axis.title = ggplot2::element_text(size = figure_axis_size),
+      axis.text = ggplot2::element_text(size = figure_axis_size, color = "black"),
+      axis.line = ggplot2::element_line(linewidth = figure_line, color = "black"),
+      axis.ticks = ggplot2::element_line(linewidth = figure_line, color = "black"),
+      legend.title = ggplot2::element_text(size = figure_axis_size),
+      legend.text = ggplot2::element_text(size = figure_axis_size),
       legend.key.size = grid::unit(3, "mm"),
       strip.background = ggplot2::element_blank(),
-      strip.text = ggplot2::element_text(size = nature_axis_size, color = "black"),
+      strip.text = ggplot2::element_text(size = figure_axis_size, color = "black"),
       panel.grid = ggplot2::element_blank(),
       plot.margin = ggplot2::margin(3, 3, 3, 3)
     )
 }
-ggplot2::theme_set(theme_nature())
+ggplot2::theme_set(theme_publication())
 
 # Parallel setup
 nCores <- tryCatch({
@@ -157,12 +157,12 @@ save_svg <- function(path, width, height, expr) {
   force(expr)
 }
 
-save_plot_nature <- function(plot, path_svg, width, height) {
+save_plot_publication <- function(plot, path_svg, width, height) {
   ggplot2::ggsave(path_svg, plot, device = svglite::svglite,
                   width = width, height = height, units = "in", limitsize = FALSE)
   ggplot2::ggsave(sub("\\.svg$", ".pdf", path_svg), plot, device = grDevices::pdf,
                   width = width, height = height, units = "in", limitsize = FALSE,
-                  family = nature_font, useDingbats = FALSE)
+                  family = figure_font, useDingbats = FALSE)
   invisible(path_svg)
 }
 
@@ -703,7 +703,7 @@ if (!gsg$allOK) {
 }
 
 sampleTree <- hclust(dist(expression.data), method = "average")
-svg(file = fp_qc("sample_clustering_outliers.svg"), width = nature_single_col * 1.4, height = 3.8, family = nature_font)
+svg(file = fp_qc("sample_clustering_outliers.svg"), width = figure_single_col * 1.4, height = 3.8, family = figure_font)
 par(cex = 0.6, mar = c(0, 4, 2, 0))
 plot(sampleTree, main = "Sample clustering to detect outliers", sub = "", xlab = "", cex.main = 2)
 abline(h = sample_tree_plot_height, col = "red")
@@ -727,14 +727,14 @@ spt <- pickSoftThreshold(expression.data, networkType = "signed",
                          corFnc = "bicor",
                          corOptions = list(use = "p", maxPOutliers = 0.05))
 
-svglite::svglite(file = fp_qc("soft_threshold_scale_independence.svg"), width = nature_single_col, height = 2.8)
+svglite::svglite(file = fp_qc("soft_threshold_scale_independence.svg"), width = figure_single_col, height = 2.8)
 par(mar = c(4,4,2,1))
 plot(spt$fitIndices[,1], spt$fitIndices[,2], xlab = "Soft Threshold (power)", ylab = "Scale Free Topology Model Fit, signed R^2", type = "n", main = "Scale independence")
 text(spt$fitIndices[,1], spt$fitIndices[,2], labels = spt$fitIndices[,1], col = "red")
 abline(h = soft_threshold_rsquared, col = "red")
 dev.off()
 
-svglite::svglite(file = fp_qc("soft_threshold_mean_connectivity.svg"), width = nature_single_col, height = 2.8)
+svglite::svglite(file = fp_qc("soft_threshold_mean_connectivity.svg"), width = figure_single_col, height = 2.8)
 par(mar = c(4,4,2,1))
 plot(spt$fitIndices[,1], spt$fitIndices[,5], xlab = "Soft Threshold (power)", ylab = "Mean Connectivity", type = "n", main = "Mean connectivity")
 text(spt$fitIndices[,1], spt$fitIndices[,5], labels = spt$fitIndices[,1], col = "red")
@@ -765,7 +765,7 @@ TOM <- TOMsimilarity(adjacency)
 TOM.dissimilarity <- 1 - TOM
 geneTree <- hclust(as.dist(TOM.dissimilarity), method = "average")
 
-svg(file = fp_net("gene_dendrogram.svg"), width = nature_double_col, height = 5.2, family = nature_font)
+svg(file = fp_net("gene_dendrogram.svg"), width = figure_double_col, height = 5.2, family = figure_font)
 plot(geneTree, xlab = "", sub = "", main = "Gene clustering on TOM-based dissimilarity", labels = FALSE, hang = 0.04)
 dev.off()
 
@@ -794,7 +794,7 @@ mod_colors_map <- setNames(palette_vals[seq_len(nmods)], as.character(unique_mod
 ModuleColors <- as.character(mod_colors_map[as.character(Modules)])
 stopifnot(length(ModuleColors) == length(Modules))
 
-svg(file = fp_net("gene_dendrogram_module_colors.svg"), width = nature_double_col, height = 5.2, family = nature_font)
+svg(file = fp_net("gene_dendrogram_module_colors.svg"), width = figure_double_col, height = 5.2, family = figure_font)
 plotDendroAndColors(geneTree, ModuleColors, "Module", dendroLabels = FALSE, hang = 0.03,
                     addGuide = TRUE, guideHang = 0.05,
                     main = "Gene dendrogram and module colors")
@@ -831,7 +831,7 @@ write_csv_safe(
   fp_log("analysis_parameters.csv")
 )
 
-svg(file = fp_net("gene_dendrogram_modules_merged.svg"), width = nature_double_col, height = 5.2, family = nature_font)
+svg(file = fp_net("gene_dendrogram_modules_merged.svg"), width = figure_double_col, height = 5.2, family = figure_font)
 plotDendroAndColors(geneTree, cbind(ModuleColors, mergedColors),
                     c("Original Module","Merged Module"),
                     dendroLabels = FALSE, hang = 0.03, addGuide = TRUE, guideHang = 0.05,
@@ -842,10 +842,10 @@ dev.off()
 # Eigengene network plots
 # --------------------------
 MET <- orderMEs(mergedMEs)
-svg(file = fp_net("eigengene_dendrogram.svg"), width = nature_single_col, height = 3.0, family = nature_font)
+svg(file = fp_net("eigengene_dendrogram.svg"), width = figure_single_col, height = 3.0, family = figure_font)
 plotEigengeneNetworks(MET, "", plotHeatmaps = FALSE, marDendro = c(0, 4, 2, 0))
 dev.off()
-svg(file = fp_net("eigengene_adjacency_heatmap.svg"), width = nature_single_col, height = 3.0, family = nature_font)
+svg(file = fp_net("eigengene_adjacency_heatmap.svg"), width = figure_single_col, height = 3.0, family = figure_font)
 par(mar = c(1,1,1,1))
 plotEigengeneNetworks(MET, "Eigengene adjacency heatmap", plotDendrograms = FALSE,
                       marHeatmap = c(5, 5, 2, 2), xLabelsAngle = 90)
@@ -1529,9 +1529,9 @@ panel_plot <- function(dfi, panel_title = "") {
     geom_tile(color = "white", linewidth = 0.15) +
     geom_text(aes(label = sig), size = 1.8, color = "black", na.rm = TRUE) +
     scale_fill_gradient2(limits = c(-1, 1), oob = scales::squish,
-                         low = nature_diverging["low"], mid = nature_diverging["mid"], high = nature_diverging["high"]) +
+                         low = figure_diverging["low"], mid = figure_diverging["mid"], high = figure_diverging["high"]) +
     labs(title = panel_title, x = paste(active_spatial_vars, collapse = " / "), y = NULL, fill = "Pearson r") +
-    theme_nature() +
+    theme_publication() +
     theme(axis.text.x = element_text(angle = 45, hjust = 1),
           axis.line.x = element_blank(),
           axis.line.y = element_blank(),
@@ -1546,20 +1546,20 @@ if (length(plots) == 0) stop("No non-empty condition panels; check combo labels 
 # Combine panels; if single, save directly
 if (length(plots) == 1) {
   g_combined <- plots[[1]]
-  save_plot_nature(g_combined, fp_traits("panel_ME_vs_condition_spatial_strata.svg"),
-                   width = nature_double_col, height = 3.9)
+  save_plot_publication(g_combined, fp_traits("panel_ME_vs_condition_spatial_strata.svg"),
+                   width = figure_double_col, height = 3.9)
 } else {
   g_combined <- patchwork::wrap_plots(plots, nrow = 1)
   legend_df <- data.frame(x = 1:3, y = 1:3, r = c(-1, 0, 1))
   p_legend <- ggplot(legend_df, aes(x, y, fill = r)) +
     geom_tile() +
     scale_fill_gradient2(limits = c(-1, 1), oob = scales::squish,
-                         low = nature_diverging["low"], mid = nature_diverging["mid"], high = nature_diverging["high"]) +
+                         low = figure_diverging["low"], mid = figure_diverging["mid"], high = figure_diverging["high"]) +
     theme_void() + theme(legend.position = "right") + labs(fill = "Pearson r")
   legend_only <- cowplot::get_legend(p_legend)
   g <- cowplot::plot_grid(g_combined, legend_only, rel_widths = c(1, 0.08))
-  save_plot_nature(g, fp_traits("panel_ME_vs_condition_spatial_strata.svg"),
-                   width = nature_double_col, height = 3.9)
+  save_plot_publication(g, fp_traits("panel_ME_vs_condition_spatial_strata.svg"),
+                   width = figure_double_col, height = 3.9)
 }
 
 # --------------------------
@@ -1683,7 +1683,7 @@ ann_colors$Condition <- c(con = "#E6E6E6", res = "#D9ECF7", sus = "#F6D9CC")
 # 4) Palette and breaks
 r_lim <- 0.8
 bk <- seq(-r_lim, r_lim, length.out = 201)
-pal <- colorRampPalette(c(nature_diverging["low"], nature_diverging["mid"], nature_diverging["high"]))(200)
+pal <- colorRampPalette(c(figure_diverging["low"], figure_diverging["mid"], figure_diverging["high"]))(200)
 
 # 5) Significance dots
 display_mat <- matrix("", nrow = nrow(r_mat), ncol = ncol(r_mat), dimnames = dimnames(r_mat))
@@ -1714,7 +1714,7 @@ ph <- pheatmap::pheatmap(
 
 nr <- nrow(r_mat)
 
-png(fp_traits("ME_trait_pheatmap.png"), width = round(nature_double_col * 300), height = round(4.3 * 300), res = 300)
+png(fp_traits("ME_trait_pheatmap.png"), width = round(figure_double_col * 300), height = round(4.3 * 300), res = 300)
 grid::grid.newpage(); grid::grid.draw(ph$gtable)
 panel_id <- grep("matrix", ph$gtable$layout$name)[1]
 seekViewport(ph$gtable$layout$name[panel_id])
@@ -1725,7 +1725,7 @@ for (xl in xlines) {
 }
 upViewport(0); dev.off()
 
-pdf(fp_traits("ME_trait_pheatmap.pdf"), width = nature_double_col, height = 4.3, family = nature_font, useDingbats = FALSE)
+pdf(fp_traits("ME_trait_pheatmap.pdf"), width = figure_double_col, height = 4.3, family = figure_font, useDingbats = FALSE)
 grid::grid.newpage(); grid::grid.draw(ph$gtable)
 panel_id <- grep("matrix", ph$gtable$layout$name)[1]
 seekViewport(ph$gtable$layout$name[panel_id])
@@ -1736,7 +1736,7 @@ for (xl in xlines) {
 }
 upViewport(0); dev.off()
 
-svglite::svglite(fp_traits("ME_trait_pheatmap.svg"), width = nature_double_col, height = 4.3)
+svglite::svglite(fp_traits("ME_trait_pheatmap.svg"), width = figure_double_col, height = 4.3)
 grid::grid.newpage(); grid::grid.draw(ph$gtable)
 panel_id <- grep("matrix", ph$gtable$layout$name)[1]
 seekViewport(ph$gtable$layout$name[panel_id])
@@ -1778,9 +1778,9 @@ panel_plot <- function(dfi, legend = "none") {
     geom_tile(color = "white", linewidth = 0.15) +
     geom_text(aes(label = sig), size = 1.8, color = "black", na.rm = TRUE) +
     scale_fill_gradient2(limits = c(-1, 1), oob = scales::squish,
-                         low = nature_diverging["low"], mid = nature_diverging["mid"], high = nature_diverging["high"]) +
+                         low = figure_diverging["low"], mid = figure_diverging["mid"], high = figure_diverging["high"]) +
     labs(x = NULL, y = NULL, fill = "Pearson r") +
-    theme_nature() +
+    theme_publication() +
     theme(axis.text.x = element_text(angle = 45, hjust = 1),
           axis.line.x = element_blank(),
           axis.line.y = element_blank(),
@@ -1813,8 +1813,8 @@ combo <- wrap_plots(plots, nrow = 1, guides = "collect") +
   plot_annotation(title = paste("Module-trait relationships:", paste(c(active_spatial_vars, "condition"), collapse = ", ")))
 
 main_trait_panel <- cowplot::plot_grid(combo, legend_only, rel_widths = c(1, 0.08))
-save_plot_nature(main_trait_panel, fp_mainfig("panel_module_trait_relationships_spatial.svg"),
-                 width = nature_double_col, height = 3.7)
+save_plot_publication(main_trait_panel, fp_mainfig("panel_module_trait_relationships_spatial.svg"),
+                 width = figure_double_col, height = 3.7)
 
 # ==========================================================
 # ME by condition plots with significance and exports
@@ -1871,7 +1871,7 @@ top_modules <- head(stat_list$module, 12)
 comparisons <- list(c("con","res"), c("con","sus"), c("res","sus"))
 
 # Color mapping (full circles)
-cond_cols <- nature_condition_cols
+cond_cols <- figure_condition_cols
 
 # Helper: build one dotplot
 plot_dot_mod <- function(dfm, mod, condition_fdr = NA_real_, show_subtitle = TRUE, errorbar = c("none","sem","sd")) {
@@ -1887,8 +1887,8 @@ plot_dot_mod <- function(dfm, mod, condition_fdr = NA_real_, show_subtitle = TRU
   p <- ggplot(dfm, aes(x = condition, y = ME, color = condition)) +
     geom_point(position = position_jitter(width = 0.08, height = 0, seed = 1),
                size = 1.4, alpha = 0.75, shape = 16, stroke = 0) +
-    scale_color_manual(values = cond_cols, labels = nature_condition_labels, guide = "none") +
-    scale_x_discrete(labels = nature_condition_labels)
+    scale_color_manual(values = cond_cols, labels = figure_condition_labels, guide = "none") +
+    scale_x_discrete(labels = figure_condition_labels)
 
   # Add mean points (slightly larger) on top
   p <- p + geom_point(data = summ, aes(x = condition, y = mean),
@@ -1916,7 +1916,7 @@ plot_dot_mod <- function(dfm, mod, condition_fdr = NA_real_, show_subtitle = TRU
     labs(title = paste0(mod, " eigengene by condition"),
          subtitle = subtitle_txt,
          x = NULL, y = "Module eigengene") +
-    theme_nature() +
+    theme_publication() +
     theme(panel.grid.major.x = element_blank())
 
   # Pairwise significance labels (Wilcoxon BH), shown as p.signif above groups
@@ -1955,11 +1955,11 @@ plot_one_mod_dot <- function(mod) {
     # Optional tiny SEM bars for overview
     geom_errorbar(data = summ, aes(x = condition, ymin = mean - se, ymax = mean + se, color = condition),
                   inherit.aes = FALSE, width = 0.08, linewidth = 0.25, alpha = 0.8) +
-    scale_color_manual(values = cond_cols, labels = nature_condition_labels, guide = "none") +
-    scale_x_discrete(labels = nature_condition_labels) +
+    scale_color_manual(values = cond_cols, labels = figure_condition_labels, guide = "none") +
+    scale_x_discrete(labels = figure_condition_labels) +
     labs(title = paste0(mod, "  (FDR=", signif(condition_fdr, 3), ")"),
          x = NULL, y = NULL) +
-    theme_nature() +
+    theme_publication() +
     theme(legend.position = "none",
           plot.title = element_text(size = 6.2),
           panel.grid.major.x = element_blank())
@@ -1970,8 +1970,8 @@ if (length(top_modules) > 0) {
   ncol_grid <- min(4, ceiling(sqrt(length(plots_top))))
   nrow_grid <- ceiling(length(plots_top)/ncol_grid)
   g <- patchwork::wrap_plots(plots_top, ncol = ncol_grid)
-  save_plot_nature(g, fp_mainfig("ME_by_condition_top_modules_dotplot.svg"),
-                   width = min(nature_double_col, 1.75*ncol_grid),
+  save_plot_publication(g, fp_mainfig("ME_by_condition_top_modules_dotplot.svg"),
+                   width = min(figure_double_col, 1.75*ncol_grid),
                    height = 1.55*nrow_grid)
 }
 
