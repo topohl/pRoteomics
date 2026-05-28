@@ -40,6 +40,7 @@ cat("====================================================\n")
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
+source(repo_path("R", "dataset_config.R"))
 MODULE_ID <- "02_id_mapping"
 SUBSTEP_ID <- "MapThatProt_batch"
 CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
@@ -54,21 +55,7 @@ load_required_packages <- function(pkgs) {
 }
 
 # --- Configuration & Experimental Settings ---
-mapped_comparisons <- Sys.getenv("PROTEOMICS_COMPARISON", unset = "neuron_neuropil")
-allowed_comparisons <- strsplit(
-    Sys.getenv("PROTEOMICS_ALLOWED_COMPARISONS", unset = "neuron_neuropil,neuron_soma,microglia"),
-    ",",
-    fixed = TRUE
-)[[1]]
-allowed_comparisons <- trimws(allowed_comparisons[nzchar(trimws(allowed_comparisons))])
-if (length(allowed_comparisons) > 0 && !mapped_comparisons %in% allowed_comparisons) {
-    stop(
-        "PROTEOMICS_COMPARISON='", mapped_comparisons, "' is not in the allowed comparison families: ",
-        paste(allowed_comparisons, collapse = ", "),
-        ". Extend PROTEOMICS_ALLOWED_COMPARISONS if this is an intentional new family.",
-        call. = FALSE
-    )
-}
+mapped_comparisons <- current_dataset()
 map_direction <- Sys.getenv("PROTEOMICS_MAP_DIRECTION", unset = "forward")
 if (!map_direction %in% c("forward", "reverse")) stop("PROTEOMICS_MAP_DIRECTION must be 'forward' or 'reverse'.", call. = FALSE)
 map_reverse <- identical(map_direction, "reverse")
@@ -102,8 +89,13 @@ uniprot_mapping_file_path <- path_external("MOUSE_10090_idmapping.dat")
 csv_files <- list.files(raw_dir, pattern = ".*_.*\\.csv$", full.names = TRUE)
 if (is_dry_run()) {
     dry_run_line("Script", "02_id_mapping/01_MapThatProt_batch.r")
+    dry_run_line("Resolved dataset", mapped_comparisons)
+    dry_run_line("Mapping direction", map_direction)
     dry_run_line("Raw contrast directory", raw_dir, if (dir.exists(raw_dir)) "PASS" else "FAIL")
     dry_run_line("Raw contrast CSV count", length(csv_files), if (length(csv_files) > 0) "PASS" else "FAIL")
+    if (!dir.exists(raw_dir) || length(csv_files) == 0) {
+        dry_run_line("Required upstream step", "Rscript 01_preprocessing/03_gct_extractR.r without --dry-run")
+    }
     dry_run_line("UniProt mapping file", uniprot_mapping_file_path, if (file.exists(uniprot_mapping_file_path)) "PASS" else "FAIL")
     dry_run_line("Mapped output directory", mapped_dir)
     dry_run_line("Unmapped output directory", unmapped_dir)
