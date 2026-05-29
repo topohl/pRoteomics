@@ -255,6 +255,12 @@ make_manifest_row <- function(result_type, ontology, comparison_name, dirs, inpu
                               plot_suffix = NA_character_, checkpoint_status = "computed",
                               condition = NA_character_, direction = NA_character_) {
   dataset <- get0("DATASET", ifnotfound = NA_character_)
+  if (length(dataset) != 1L || is.na(dataset) || !nzchar(as.character(dataset))) {
+    dataset <- Sys.getenv("PROTEOMICS_DATASET", unset = NA_character_)
+  }
+  if (length(dataset) != 1L || is.na(dataset) || !nzchar(as.character(dataset))) {
+    dataset <- Sys.getenv("PROTEOMICS_COMPARISON", unset = NA_character_)
+  }
   data.frame(
     analysis_id = paste("clusterProfiler", dataset, result_type, ontology, comparison_name, sep = "::"),
     dataset = dataset,
@@ -432,8 +438,8 @@ checkpoint_plot_suffix <- function() {
 }
 
 expected_checkpoint_outputs <- function(dirs, comparison_name, ont, plot_suffix = checkpoint_plot_suffix()) {
+  # Raw-data checkpoint only: figures are intentionally not part of this check.
   c(
-    flag = checkpoint_file_path(dirs),
     qc = file.path(dirs$results, "QC_summary.csv"),
     gsea_core_table = file.path(dirs$core_enrich_routed, paste0(comparison_name, plot_suffix, ".csv")),
     gsea_full_table = file.path(dirs$go_ont, paste0("GSEA_", ont, "_results_full.csv")),
@@ -1516,16 +1522,23 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
         "(Full)"
       }
       
-      p4 <- clusterProfiler::dotplot(go_enrich_for_plot, showCategory = 20, split = "ONTOLOGY") +
-        facet_grid(ONTOLOGY ~ ., scales = "free_y") +
-        labs(title = paste("GO Enrichment Dotplot", plot_label), 
-             x = "Gene Ratio", y = "GO Term", color = "p.adjust", size = "Count") +
-        scale_color_viridis_c(option = "magma", direction = -1) +
-        theme_minimal(base_size = 12) +
-        theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"), 
-              axis.text.x = element_text(angle = 45, hjust = 1))
-      
-      save_plot_organized(p4, paste0("GOenrich_dotplot", plot_suffix, ".svg"), dirs$plots_go)
+      tryCatch({
+        if ("ONTOLOGY" %in% colnames(go_enrich_for_plot@result)) {
+          p4 <- clusterProfiler::dotplot(go_enrich_for_plot, showCategory = 20, split = "ONTOLOGY") +
+            facet_grid(ONTOLOGY ~ ., scales = "free_y")
+        } else {
+          p4 <- clusterProfiler::dotplot(go_enrich_for_plot, showCategory = 20)
+        }
+        p4 <- p4 +
+          labs(title = paste("GO Enrichment Dotplot", plot_label),
+               x = "Gene Ratio", y = "GO Term", color = "p.adjust", size = "Count") +
+          scale_color_viridis_c(option = "magma", direction = -1) +
+          theme_minimal(base_size = 12) +
+          theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+                axis.text.x = element_text(angle = 45, hjust = 1))
+
+        save_plot_organized(p4, paste0("GOenrich_dotplot", plot_suffix, ".svg"), dirs$plots_go)
+      }, error = function(e) warning("GO enrich dotplot failed: ", e$message))
     }
     
     
