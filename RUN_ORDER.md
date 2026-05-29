@@ -75,6 +75,16 @@ Run the GCT extraction and ID mapping once per biological dataset family, for ex
 data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/
 ```
 
+`03_gct_extractR.r` and `01_MapThatProt_batch.r` resume existing table outputs by default. Existing split/mapped CSV tables are skipped, and missing tables are still processed. To intentionally recompute table outputs, use either:
+
+```powershell
+$env:PROTEOMICS_RECOMPUTE = "true"
+Rscript 01_preprocessing/03_gct_extractR.r
+Rscript 02_id_mapping/01_MapThatProt_batch.r
+```
+
+or pass `--recompute` / `--force-rerun` to the script. Step-specific env vars are also available: `PROTEOMICS_GCT_RECOMPUTE=true` and `PROTEOMICS_MAPTHATPROT_RECOMPUTE=true`.
+
 Set `PROTEOMICS_MAP_DIRECTION=reverse` only when intentionally producing reverse contrasts.
 
 ## 3. QC and exploratory analysis
@@ -165,14 +175,29 @@ Typical outputs include module assignments, module scores, module preservation s
 Phase 3 canonicalized the safer downstream/helper scripts:
 
 ```bash
+Rscript 06_modules_WGCNA/01_WGCNA.r --dry-run
 Rscript 06_modules_WGCNA/02_module_spatial_networks.r --dry-run
-Rscript 06_modules_WGCNA/03_overlap_modules.r --dry-run
+Rscript 06_modules_WGCNA/04_overlap_modules.r --dry-run
 Rscript 06_modules_WGCNA/91_module_score.r --dry-run
 ```
 
 `91_module_score.r` is the canonical active module-score script. By default it consumes overlap/GSEA-derived modules. To score WGCNA modules from `01_WGCNA.r`, run with `PROTEOMICS_MODULE_DEFINITION_SOURCE=WGCNA`; the script then consumes `WGCNA_modules_long.xlsx` and, when available, `wgcna_final_model_state.rds` for eigengene scores. `90_module_score_v0.0.1.r` is retained only as an older reference and should not be used in the active run order.
 
-`01_WGCNA.r` uses `R/paths.R` and writes an input manifest/hash table plus run manifest, but it still consumes precombined variancePartition-style matrices (`male.data.xlsx` and `sample_info.xlsx`). Generate those upstream or set `PROTEOMICS_WGCNA_EXPR_XLSX` and `PROTEOMICS_WGCNA_META_XLSX` explicitly. It exports stable color-based WGCNA module definitions under `results/tables/06_modules_WGCNA/01_WGCNA/modules/`.
+`01_WGCNA.r` is dataset-aware and can be launched directly or through `run_dataset_pipeline.R`:
+
+```bash
+Rscript 06_modules_WGCNA/01_WGCNA.r --dataset neuron_neuropil --dry-run
+Rscript 06_modules_WGCNA/01_WGCNA.r --dataset neuron_neuropil
+```
+
+It stages dataset-scoped WGCNA input workbooks under `data/processed/06_modules_WGCNA/01_WGCNA/<dataset>/inputs/` when upstream imputed matrices and metadata are available. Set `PROTEOMICS_WGCNA_EXPR_XLSX` and `PROTEOMICS_WGCNA_META_XLSX` only when intentionally using custom inputs. It exports stable color-based WGCNA module definitions plus a downstream contract and ranked biological module summary under:
+
+```text
+results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_modules_long.xlsx
+results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_module_definitions_for_downstream.csv
+results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_module_priority_summary.csv
+results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_module_contracts.xlsx
+```
 
 ## 7. Spatial network analyses
 
