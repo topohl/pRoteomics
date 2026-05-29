@@ -60,8 +60,25 @@ map_direction <- Sys.getenv("PROTEOMICS_MAP_DIRECTION", unset = "forward")
 if (!map_direction %in% c("forward", "reverse")) stop("PROTEOMICS_MAP_DIRECTION must be 'forward' or 'reverse'.", call. = FALSE)
 map_reverse <- identical(map_direction, "reverse")
 
+truthy_env <- function(name, default = FALSE) {
+    value <- Sys.getenv(name, unset = if (isTRUE(default)) "true" else "false")
+    tolower(value) %in% c("1", "true", "yes", "y")
+}
+
+has_cli_flag <- function(flags) {
+    any(commandArgs(trailingOnly = TRUE) %in% flags) ||
+        any(commandArgs(trailingOnly = FALSE) %in% flags)
+}
+
+force_rerun <- truthy_env("PROTEOMICS_FORCE_RERUN") ||
+    truthy_env("PROTEOMICS_MAPTHATPROT_FORCE_RERUN") ||
+    truthy_env("PROTEOMICS_RECOMPUTE") ||
+    truthy_env("PROTEOMICS_MAPTHATPROT_RECOMPUTE") ||
+    has_cli_flag(c("--force-rerun", "--recompute"))
+
 cat("Target Comparison:", mapped_comparisons, "\n")
 cat("Mapping Direction:", map_direction, "\n")
+cat("Recompute existing tables:", force_rerun, "\n")
 
 raw_dir <- path_processed("01_preprocessing", "gct_extractR", mapped_comparisons, map_direction)
 
@@ -88,11 +105,33 @@ uniprot_mapping_file_path <- path_external("MOUSE_10090_idmapping.dat")
 
 csv_files <- list.files(raw_dir, pattern = ".*_.*\\.csv$", full.names = TRUE)
 if (is_dry_run()) {
+    expected_mapped <- file.path(mapped_dir, basename(csv_files))
+    expected_unmapped <- file.path(unmapped_dir, basename(csv_files))
+    expected_info <- file.path(
+        info_dir,
+        paste0(tools::file_path_sans_ext(basename(csv_files)), "_mapping_info.csv")
+    )
+    expected_mapped_summary <- file.path(
+        mapped_summary_dir,
+        paste0(tools::file_path_sans_ext(basename(csv_files)), "_summary.csv")
+    )
+    expected_unmapped_summary <- file.path(
+        unmapped_summary_dir,
+        paste0(tools::file_path_sans_ext(basename(csv_files)), "_summary.csv")
+    )
+    existing_complete <- file.exists(expected_mapped) &
+        file.exists(expected_unmapped) &
+        file.exists(expected_info) &
+        file.exists(expected_mapped_summary) &
+        file.exists(expected_unmapped_summary)
     dry_run_line("Script", "02_id_mapping/01_MapThatProt_batch.r")
     dry_run_line("Resolved dataset", mapped_comparisons)
     dry_run_line("Mapping direction", map_direction)
     dry_run_line("Raw contrast directory", raw_dir, if (dir.exists(raw_dir)) "PASS" else "FAIL")
     dry_run_line("Raw contrast CSV count", length(csv_files), if (length(csv_files) > 0) "PASS" else "FAIL")
+    dry_run_line("Already mapped table sets", sum(existing_complete))
+    dry_run_line("Remaining table sets", sum(!existing_complete))
+    dry_run_line("Recompute existing tables", force_rerun)
     if (!dir.exists(raw_dir) || length(csv_files) == 0) {
         dry_run_line("Required upstream step", "Rscript 01_preprocessing/03_gct_extractR.r without --dry-run")
     }
@@ -194,9 +233,64 @@ if (!is.null(manual_mapping)) {
     }
 }
 
+load_existing_processed_result <- function(data_path, mapped_file, unmapped_file, info_table_file) {
+    base <- tools::file_path_sans_ext(basename(data_path))
+    cat("Skipping existing mapped tables for:", basename(data_path), "\n")
+
+    mapping_info <- readr::read_csv(info_table_file, show_col_types = FALSE)
+    if (!"comparison_family" %in% names(mapping_info)) mapping_info$comparison_family <- mapped_comparisons
+    if (!"map_direction" %in% names(mapping_info)) mapping_info$map_direction <- map_direction
+
+    mapping_table <- mapping_info %>%
+        dplyr::mutate(
+            comparison_family = mapped_comparisons,
+            map_direction = map_direction,
+            source_file = basename(data_path),
+            mapped_status = ifelse(!is.na(final_accession) & nzchar(final_accession), "mapped", "unmapped")
+        )
+
+    unmapped_table <- readr::read_csv(unmapped_file, show_col_types = FALSE)
+    if (!"gene_symbol" %in% names(unmapped_table)) {
+        unmapped_table <- tibble::tibble(gene_symbol = character())
+    }
+    unmapped_table <- unmapped_table %>%
+        dplyr::mutate(
+            comparison_family = mapped_comparisons,
+            map_direction = map_direction,
+            source_file = basename(data_path)
+        )
+
+    invisible(list(
+        mapping_table = mapping_table,
+        unmapped_table = unmapped_table,
+        multi_protein_log_table = tibble::tibble(
+            source_file = character(),
+            original_row_id = integer(),
+            original_entry = character(),
+            kept_protein = character(),
+            dropped_proteins = character()
+        ),
+        checkpoint_status = "skipped_existing",
+        base = base
+    ))
+}
+
 # --- Core Mapping Function ---
 # This function is executed asynchronously for each input proteomics file.
 process_file <- function(data_path) {
+    base <- tools::file_path_sans_ext(basename(data_path))
+    mapped_file <- file.path(mapped_dir, paste0(base, ".csv"))
+    unmapped_file <- file.path(unmapped_dir, paste0(base, ".csv"))
+    info_table_file <- file.path(info_dir, paste0(base, "_mapping_info.csv"))
+    info_summary_file <- file.path(info_dir, paste0(base, "_info.txt"))
+    mapped_summary_file <- file.path(mapped_summary_dir, paste0(base, "_summary.csv"))
+    unmapped_summary_file <- file.path(unmapped_summary_dir, paste0(base, "_summary.csv"))
+
+    expected_tables <- c(mapped_file, unmapped_file, info_table_file, mapped_summary_file, unmapped_summary_file)
+    if (!isTRUE(force_rerun) && all(file.exists(expected_tables))) {
+        return(load_existing_processed_result(data_path, mapped_file, unmapped_file, info_table_file))
+    }
+
     # Suppress internal messages for cleaner parallel console, file-level info handles writing
     # Ingest generic CSV arrays, supporting delimiter fallbacks (e.g. European CSVs)
     df_raw <- tryCatch(
@@ -825,8 +919,13 @@ doParallel::registerDoParallel(cl)
 
 cat("Initiating parallel mapping cascade for all files...\n")
 results <- foreach(i = seq_along(csv_files),
-                   .packages = c("dplyr", "stringr", "tidyr", "purrr", "readr", "R.utils"),
-                   .export = c("uniprot_mapping", "entry_name_to_accession", "mapped_dir", "unmapped_dir", "info_dir", "mapped_comparisons", "map_direction", "process_file")) %dopar% {
+                   .packages = c("dplyr", "stringr", "tidyr", "purrr", "readr", "R.utils", "tibble"),
+                   .export = c(
+                       "uniprot_mapping", "entry_name_to_accession", "mapped_dir", "unmapped_dir",
+                       "info_dir", "mapped_summary_dir", "unmapped_summary_dir", "mapped_comparisons",
+                       "map_direction", "force_rerun", "manual_mapping", "manual_override",
+                       "load_existing_processed_result", "process_file"
+                   )) %dopar% {
     process_file(csv_files[i])
 }
 
