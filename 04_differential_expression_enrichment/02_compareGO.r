@@ -965,6 +965,11 @@ combined_df_best <- combined_df %>%
   slice_max(abs(NES), n = 1, with_ties = FALSE) %>%
   ungroup()
 
+significant_term_descriptions <- combined_df_best %>%
+  filter(!is.na(p.adjust), p.adjust < 0.05) %>%
+  pull(Description) %>%
+  unique()
+
 # =========================================================
 # JACCARD FUNCTION
 # =========================================================
@@ -1106,6 +1111,11 @@ if(nrow(candidate_pool) == 0) {
   top_terms <- unique(df_refined$Description)
 }
 
+# Terms shown in compareGO figures must be significant in at least one comparison,
+# but all available comparison values for those terms remain visible in the plots.
+figure_top_terms <- intersect(top_terms, significant_term_descriptions)
+figure_top_terms_standard <- intersect(top_terms_standard, significant_term_descriptions)
+figure_top_terms_refined <- intersect(top_terms_refined, significant_term_descriptions)
 
 # -----------------------------------------------------
 # Plot Comparison: Standard vs Refined Selection
@@ -1116,10 +1126,10 @@ if(nrow(candidate_pool) == 0) {
 custom_palette <- colorRampPalette(c("#0571B0", "white", "#CA0020"), space = "Lab")
 
 plot_data_standard <- combined_df %>%
-  filter(Description %in% top_terms_standard) %>%
+  filter(Description %in% figure_top_terms_standard) %>%
   mutate(Selection_Type = "Standard")
 plot_data_refined <- combined_df %>%
-  filter(Description %in% top_terms_refined) %>%
+  filter(Description %in% figure_top_terms_refined) %>%
   mutate(Selection_Type = "Refined")
 comparison_plot_data <- bind_rows(plot_data_standard, plot_data_refined) %>%
   mutate(Comparison = factor(Comparison, levels = unique(Comparison)))
@@ -1192,12 +1202,11 @@ if (nrow(comparison_plot_data) == 0 || all(is.na(comparison_plot_data$NES))) {
 # -----------------------------------------------------
 
 lookup_df <- combined_df %>%
-  filter(Description %in% top_terms)
-heatmap_lookup_df <- lookup_df %>%
-  filter(!is.na(p.adjust), p.adjust < 0.05)
+  filter(Description %in% figure_top_terms)
+heatmap_lookup_df <- lookup_df
 
 if (nrow(heatmap_lookup_df) == 0 || all(is.na(heatmap_lookup_df$NES))) {
-  message("No significant data available for enrichment heatmap. Skipping heatmap generation.")
+  message("No data available for significant selected GO terms. Skipping heatmap generation.")
   heatmap_data <- matrix(numeric(0), nrow = 0, ncol = 0)
   heatmap_labels <- matrix(character(0), nrow = 0, ncol = 0)
 } else {
@@ -1461,7 +1470,7 @@ if (!exists("top_df_per_comp")) {
 
 if (exists("top_df_per_comp") && nrow(top_df_per_comp) > 0) {
   df_per_comp_sub <- combined_df %>%
-    filter(Description %in% unique(top_df_per_comp$Description))
+    filter(Description %in% intersect(unique(top_df_per_comp$Description), significant_term_descriptions))
   if (nrow(df_per_comp_sub) > 0) {
     ordering_res <- order_dotplot(df_per_comp_sub)
     full_data_for_plot <- df_per_comp_sub %>%
@@ -1513,7 +1522,7 @@ if (exists("top_df_per_comp") && nrow(top_df_per_comp) > 0) {
 ## --- Dotplot: Overall top terms (refined) ---
 if (exists("top_terms") && length(top_terms) > 0) {
   df_top_sub <- combined_df %>%
-    filter(Description %in% top_terms)
+    filter(Description %in% figure_top_terms)
   if (nrow(df_top_sub) > 0) {
     ordering_res_top <- order_dotplot(df_top_sub)
     top_terms_all_data <- df_top_sub %>%
