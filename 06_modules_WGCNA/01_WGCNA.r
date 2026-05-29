@@ -29,7 +29,29 @@ source(repo_path("R", "dataset_config.R"))
 mm_to_in <- function(mm) mm / 25.4
 figure_single_col <- mm_to_in(89)
 figure_double_col <- mm_to_in(183)
-figure_font <- "Arial"
+resolve_figure_font <- function(preferred = Sys.getenv("PROTEOMICS_FIGURE_FONT", unset = "Arial")) {
+  preferred <- trimws(preferred)
+  if (!nzchar(preferred)) preferred <- "Arial"
+
+  font_available <- FALSE
+  if (requireNamespace("systemfonts", quietly = TRUE)) {
+    font_available <- tryCatch({
+      fonts <- systemfonts::system_fonts()
+      any(tolower(fonts$family) == tolower(preferred))
+    }, error = function(e) FALSE)
+  }
+
+  if (isTRUE(font_available) || identical(tolower(preferred), "sans")) return(preferred)
+
+  warning(
+    "Figure font '", preferred, "' is not available to the R graphics device; ",
+    "falling back to 'sans'. Set PROTEOMICS_FIGURE_FONT to an installed family ",
+    "to override.",
+    call. = FALSE
+  )
+  "sans"
+}
+figure_font <- resolve_figure_font()
 figure_base_size <- 7
 figure_axis_size <- 6.2
 figure_title_size <- 7
@@ -152,7 +174,7 @@ soft_threshold_rsquared <- 0.80
 min_module_size <- 30
 deep_split <- 2
 merge_cut_height <- 0.25
-module_preservation_permutations <- 1000
+module_preservation_permutations <- 100
 
 # Optional: safe svg helper
 save_svg <- function(path, width, height, expr) {
