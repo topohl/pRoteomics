@@ -366,7 +366,9 @@ read_comparego_config <- function(config_path) {
     significant_only = TRUE,
     target_n_terms = 5,
     redundancy_threshold = 0.7,
-    min_set_size = 10
+    min_set_size = 10,
+    resume_raw_tables = TRUE,
+    force_raw_recompute = FALSE
   )
   if (file.exists(config_path) && requireNamespace("yaml", quietly = TRUE)) {
     yaml_cfg <- yaml::read_yaml(config_path)
@@ -430,6 +432,13 @@ if (isTRUE(DRY_RUN)) {
     add_diag("manifest_schema", if (length(missing_cols) == 0) "PASS" else "FAIL", paste(missing_cols, collapse = ", "))
     if (length(missing_cols) == 0) {
       if ("dataset" %in% names(dry_manifest)) {
+        dataset_missing <- is.na(dry_manifest$dataset) |
+          !nzchar(trimws(as.character(dry_manifest$dataset))) |
+          toupper(trimws(as.character(dry_manifest$dataset))) == "NA"
+        manifest_parent_dataset <- basename(dirname(normalizePath(manifest_path, winslash = "/", mustWork = FALSE)))
+        if (any(dataset_missing) && identical(manifest_parent_dataset, DATASET)) {
+          dry_manifest$dataset[dataset_missing] <- DATASET
+        }
         dry_manifest <- dry_manifest[dry_manifest$dataset == DATASET, , drop = FALSE]
         add_diag("dataset_filter", if (nrow(dry_manifest) > 0) "PASS" else "FAIL", paste0(DATASET, ": ", nrow(dry_manifest), " row(s)"))
       } else if (!legacy_mode) {
@@ -527,6 +536,17 @@ if (length(missing_manifest_cols) > 0) {
        call. = FALSE)
 }
 if ("dataset" %in% names(cluster_manifest)) {
+  dataset_missing <- is.na(cluster_manifest$dataset) |
+    !nzchar(trimws(as.character(cluster_manifest$dataset))) |
+    toupper(trimws(as.character(cluster_manifest$dataset))) == "NA"
+  manifest_parent_dataset <- basename(dirname(normalizePath(manifest_path, winslash = "/", mustWork = FALSE)))
+  if (any(dataset_missing) && identical(manifest_parent_dataset, DATASET)) {
+    warning(
+      "Filling ", sum(dataset_missing), " missing dataset value(s) in clusterProfiler manifest from dataset-specific path: ",
+      DATASET
+    )
+    cluster_manifest$dataset[dataset_missing] <- DATASET
+  }
   cluster_manifest <- cluster_manifest %>% filter(dataset == DATASET)
   if (nrow(cluster_manifest) == 0) {
     stop("No clusterProfiler manifest rows found for dataset='", DATASET, "'. ", 
@@ -741,13 +761,46 @@ analysis_params <- list(
   n_total_proteins = length(unique(na.omit(log2fc_long$gene_symbol)))
 )
 
+resume_raw_tables <- isTRUE(comparego_cfg$resume_raw_tables)
+force_raw_recompute <- isTRUE(comparego_cfg$force_raw_recompute)
+
+should_write_raw_table <- function(path) {
+  !isTRUE(resume_raw_tables) || isTRUE(force_raw_recompute) || !file.exists(path)
+}
+
+write_raw_csv <- function(x, path, ..., writer = utils::write.csv) {
+  if (!should_write_raw_table(path)) {
+    message("[SKIP raw table] Existing file kept: ", path)
+    return(invisible(path))
+  }
+  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+  writer(x, path, ...)
+  invisible(path)
+}
+
+write_raw_xlsx <- function(x, path, ...) {
+  if (!should_write_raw_table(path)) {
+    message("[SKIP raw table] Existing file kept: ", path)
+    return(invisible(path))
+  }
+  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+  writexl::write_xlsx(x, path = path, ...)
+  invisible(path)
+}
+
+write_xlsx <- write_raw_xlsx
+
 comparego_log_dir <- file.path(CANONICAL_PATHS$logs, DATASET)
 dir.create(comparego_log_dir, recursive = TRUE, showWarnings = FALSE)
 write_session_info(file.path(comparego_log_dir, "sessionInfo.txt"))
 write_config_snapshot(comparego_cfg, file.path(comparego_log_dir, "compareGO_config_snapshot.yml"))
 comparego_processed_dir <- file.path(CANONICAL_PATHS$processed, DATASET)
 dir.create(comparego_processed_dir, recursive = TRUE, showWarnings = FALSE)
-readr::write_csv(manifest_filtered, file.path(comparego_processed_dir, "compareGO_input_manifest.csv"))
+write_raw_csv(
+  manifest_filtered,
+  file.path(comparego_processed_dir, "compareGO_input_manifest.csv"),
+  writer = function(x, path, ...) readr::write_csv(x, path, ...)
+)
 
 uniprot_mapping_file_path <- as.character(comparego_cfg$uniprot_mapping_file)
 if (!file.exists(uniprot_mapping_file_path)) {
@@ -815,9 +868,10 @@ empty_tables <- unique(c(
 ))
 if (length(empty_tables) > 0) {
   message("[INFO] Empty enrichment tables will be excluded explicitly: ", paste(empty_tables, collapse = ", "))
-  readr::write_csv(
+  write_raw_csv(
     tibble(comparison = empty_tables, reason = "empty_enrichment_table"),
-    file.path(CANONICAL_PATHS$reports, "empty_clusterProfiler_inputs.csv")
+    file.path(CANONICAL_PATHS$reports, "empty_clusterProfiler_inputs.csv"),
+    writer = function(x, path, ...) readr::write_csv(x, path, ...)
   )
   enrichment_list <- enrichment_list[setdiff(names(enrichment_list), empty_tables)]
 }
@@ -865,7 +919,7 @@ combined_df <- combined_df %>%
   )
 
 # Save combined enrichment data to Excel
-writexl::write_xlsx(
+write_raw_xlsx(
   combined_df, 
   path = file.path(subdirs$tables, paste0("Combined_Enrichment_Data.xlsx"))
 )
@@ -992,7 +1046,7 @@ if(nrow(candidate_pool) == 0) {
   # Ensure 'leading_edge' is character to avoid writexl warnings
   df_standard <- df_standard %>% mutate(leading_edge = as.character(NA))
   df_refined <- df_refined %>% mutate(leading_edge = as.character(NA))
-  writexl::write_xlsx(
+  write_raw_xlsx(
     list(
       Standard = df_standard,
       Refined = df_refined,
@@ -1006,7 +1060,7 @@ if(nrow(candidate_pool) == 0) {
   comparison_plot_data <- tibble()
   lookup_df <- tibble()
   suppressWarnings({
-    writexl::write_xlsx(list(), path = file.path(subdirs$tables, "Matrix_Heatmap_NES.xlsx"))
+    write_raw_xlsx(list(), path = file.path(subdirs$tables, "Matrix_Heatmap_NES.xlsx"))
   })
 } else {
   comparisons <- unique(candidate_pool$Comparison)
@@ -1041,7 +1095,7 @@ if(nrow(candidate_pool) == 0) {
   # Ensure 'leading_edge' is character to avoid writexl warnings
   df_standard <- df_standard %>% mutate(across(leading_edge, as.character))
   df_refined <- df_refined %>% mutate(across(leading_edge, as.character))
-  writexl::write_xlsx(
+  write_raw_xlsx(
     list(
       Standard = df_standard,
       Refined = df_refined,
@@ -1180,7 +1234,7 @@ if (nrow(heatmap_lookup_df) == 0 || all(is.na(heatmap_lookup_df$NES))) {
   heatmap_data <- as.matrix(heatmap_data)
   heatmap_data[is.na(heatmap_data)] <- 0
   heatmap_data_export <- tibble::rownames_to_column(as.data.frame(heatmap_data), var = "RowNames")
-  writexl::write_xlsx(heatmap_data_export, path = file.path(subdirs$tables, "Matrix_Heatmap_NES.xlsx"))
+  write_raw_xlsx(heatmap_data_export, path = file.path(subdirs$tables, "Matrix_Heatmap_NES.xlsx"))
   heatmap_labels <- heatmap_lookup_df %>%
     dplyr::select(Description, Comparison, sig_label) %>%
     dplyr::group_by(Description, Comparison) %>%
@@ -1663,9 +1717,9 @@ core_gene_sets <- lapply(names(enrichment_list), function(name) {
 
 names(core_gene_sets) <- names(enrichment_list)
 core_genes_df <- bind_rows(core_gene_sets)
-write.csv(core_genes_df,
-          file = file.path(subdirs$gene_lists, "Core_Genes_All_Comparisons.csv"),
-          row.names = FALSE)
+write_raw_csv(core_genes_df,
+              file.path(subdirs$gene_lists, "Core_Genes_All_Comparisons.csv"),
+              row.names = FALSE)
 core_genes_df %>%
   group_by(Comparison, ID, Description) %>%
   summarise(Genes = list(unique(core_enrichment)), .groups = "drop") %>%
@@ -1675,7 +1729,7 @@ core_genes_df %>%
   )) %>%
   pmap(function(Comparison, ID, Description, Genes, file_name) {
     dir.create(dirname(file_name), showWarnings = FALSE, recursive = TRUE)
-    write.csv(data.frame(Gene = Genes), file = file_name, row.names = FALSE)
+    write_raw_csv(data.frame(Gene = Genes), file_name, row.names = FALSE)
   })
 
 # -----------------------------------------------------
@@ -1753,10 +1807,10 @@ core_long_df <- bind_rows(
 )
 
 # save enrichment list to excel for debugging
-writexl::write_xlsx(enrichment_list, file.path(subdirs$tables, "Enrichment_List_Debug.xlsx"))
+write_raw_xlsx(enrichment_list, file.path(subdirs$tables, "Enrichment_List_Debug.xlsx"))
 
 # save core_long_df for debugging
-write.csv(core_long_df, file.path(subdirs$tables, "Core_Enrichment_LongFormat.csv"), row.names = FALSE)
+write_raw_csv(core_long_df, file.path(subdirs$tables, "Core_Enrichment_LongFormat.csv"), row.names = FALSE)
 
 heatmap_core_long_df <- core_long_df %>%
   filter(!is.na(p.adjust), p.adjust < 0.05)
@@ -2807,23 +2861,34 @@ if (length(comparison_files) > 0) {
       
       # Use UNIPROT IDs directly
       if (length(up_genes) > 0) {
-        ego_up <- tryCatch(
-          enrichGO(
-            gene = up_genes,
-            OrgDb = org.Mm.eg.db,
-            keyType = "UNIPROT",
-            ont = ont,
-            pAdjustMethod = "BH",
-            pvalueCutoff = 0.05,
-            qvalueCutoff = 0.2,
-            minGSSize = 10
-          ),
-          error = function(e) NULL
-        )
-        if (!is.null(ego_up) && nrow(as.data.frame(ego_up)) > 0) {
-          out_csv <- file.path(subdirs$go_enrichment, paste0("GO_", comp, "_Upregulated_", ont, ".csv"))
-          write.csv(as.data.frame(ego_up), out_csv, row.names = FALSE)
-          ego_df <- as.data.frame(ego_up) %>%
+        out_csv <- file.path(subdirs$go_enrichment, paste0("GO_", comp, "_Upregulated_", ont, ".csv"))
+        ego_up_df <- if (!should_write_raw_table(out_csv)) {
+          message("[SKIP raw table] Reusing GO enrichment CSV: ", out_csv)
+          read.csv(out_csv, stringsAsFactors = FALSE, check.names = FALSE)
+        } else {
+          ego_up <- tryCatch(
+            enrichGO(
+              gene = up_genes,
+              OrgDb = org.Mm.eg.db,
+              keyType = "UNIPROT",
+              ont = ont,
+              pAdjustMethod = "BH",
+              pvalueCutoff = 0.05,
+              qvalueCutoff = 0.2,
+              minGSSize = 10
+            ),
+            error = function(e) NULL
+          )
+          if (!is.null(ego_up) && nrow(as.data.frame(ego_up)) > 0) {
+            ego_up_df <- as.data.frame(ego_up)
+            write_raw_csv(ego_up_df, out_csv, row.names = FALSE)
+            ego_up_df
+          } else {
+            NULL
+          }
+        }
+        if (!is.null(ego_up_df) && nrow(ego_up_df) > 0) {
+          ego_df <- ego_up_df %>%
             dplyr::mutate(Count = as.numeric(Count)) %>%
             dplyr::filter(Count >= 10) %>%
             mutate(GeneRatio = sapply(strsplit(as.character(GeneRatio), "/"), function(x) as.numeric(x[1]) / as.numeric(x[2]))) %>%
@@ -2865,23 +2930,34 @@ if (length(comparison_files) > 0) {
       
       # Use UNIPROT IDs directly
       if (length(down_genes) > 0) {
-        ego_down <- tryCatch(
-          enrichGO(
-            gene = down_genes,
-            OrgDb = org.Mm.eg.db,
-            keyType = "UNIPROT",
-            ont = ont,
-            pAdjustMethod = "BH",
-            pvalueCutoff = 0.05,
-            qvalueCutoff = 0.2,
-            minGSSize = 10
-          ),
-          error = function(e) NULL
-        )
-        if (!is.null(ego_down) && nrow(as.data.frame(ego_down)) > 0) {
-          out_csv <- file.path(subdirs$go_enrichment, paste0("GO_", comp, "_Downregulated_", ont, ".csv"))
-          write.csv(as.data.frame(ego_down), out_csv, row.names = FALSE)
-          ego_df <- as.data.frame(ego_down) %>%
+        out_csv <- file.path(subdirs$go_enrichment, paste0("GO_", comp, "_Downregulated_", ont, ".csv"))
+        ego_down_df <- if (!should_write_raw_table(out_csv)) {
+          message("[SKIP raw table] Reusing GO enrichment CSV: ", out_csv)
+          read.csv(out_csv, stringsAsFactors = FALSE, check.names = FALSE)
+        } else {
+          ego_down <- tryCatch(
+            enrichGO(
+              gene = down_genes,
+              OrgDb = org.Mm.eg.db,
+              keyType = "UNIPROT",
+              ont = ont,
+              pAdjustMethod = "BH",
+              pvalueCutoff = 0.05,
+              qvalueCutoff = 0.2,
+              minGSSize = 10
+            ),
+            error = function(e) NULL
+          )
+          if (!is.null(ego_down) && nrow(as.data.frame(ego_down)) > 0) {
+            ego_down_df <- as.data.frame(ego_down)
+            write_raw_csv(ego_down_df, out_csv, row.names = FALSE)
+            ego_down_df
+          } else {
+            NULL
+          }
+        }
+        if (!is.null(ego_down_df) && nrow(ego_down_df) > 0) {
+          ego_df <- ego_down_df %>%
             dplyr::mutate(Count = as.numeric(Count)) %>%
             dplyr::filter(Count >= 10) %>%
             mutate(GeneRatio = sapply(strsplit(as.character(GeneRatio), "/"), function(x) as.numeric(x[1]) / as.numeric(x[2]))) %>%
@@ -3070,7 +3146,7 @@ if (!all(c("gene_symbol", "log2fc", "padj", "Comparison") %in% names(log2fc_long
 }
 
 summary_file <- file.path(subdirs$gene_centric, paste0("GeneCentric_Log2FC_Summary.xlsx"))
-writexl::write_xlsx(gene_fc_summary, path = summary_file)
+write_raw_xlsx(gene_fc_summary, path = summary_file)
 
 write_supplementary_workbook <- function(sheets, path, max_excel_rows = 1048575L) {
   sheets <- purrr::map(sheets, function(sheet) {
@@ -3095,7 +3171,7 @@ write_supplementary_workbook <- function(sheets, path, max_excel_rows = 1048575L
     if (!in_workbook) {
       dir.create(oversized_dir, recursive = TRUE, showWarnings = FALSE)
       external_csv <- file.path(oversized_dir, paste0(safe_filename(sheet_name), ".csv"))
-      readr::write_csv(sheet, external_csv)
+      write_raw_csv(sheet, external_csv, writer = function(x, path, ...) readr::write_csv(x, path, ...))
       message("[EXPORT] Sheet '", sheet_name, "' has ", n_rows,
               " rows; wrote full table to CSV instead of xlsx: ", external_csv)
     }
@@ -3111,7 +3187,7 @@ write_supplementary_workbook <- function(sheets, path, max_excel_rows = 1048575L
 
   workbook_sheets <- sheets[sheet_index$InWorkbook]
   workbook_sheets <- c(list(Supplementary_Sheet_Index = sheet_index), workbook_sheets)
-  writexl::write_xlsx(workbook_sheets, path = path)
+  write_raw_xlsx(workbook_sheets, path = path)
   invisible(sheet_index)
 }
 
@@ -3399,7 +3475,7 @@ if (length(go_results_list) >= 2) {
       left_join(go_annot, by = "ID") %>%
       left_join(desc_map, by = "ID")
     simplifygo_table_file <- file.path(subdirs$tables, "simplifyGO_MultipleLists_Results.xlsx")
-    writexl::write_xlsx(out_df, simplifygo_table_file)
+    write_raw_xlsx(out_df, simplifygo_table_file)
   } else {
     message("No clusters were found by simplifyEnrichment::cluster_terms or cluster size mismatch; skipping cluster assignment export.")
   }
@@ -3653,9 +3729,9 @@ comparison_proteins <- bind_cols(comparison_proteins, marker_counts_df)
 print(comparison_proteins %>% dplyr::select(Comparison, Inferred_CellType, Microglia_Markers, Astrocyte_Markers, Neuron_Markers))
 
 # Save summary CSV
-write.csv(comparison_proteins %>% dplyr::select(Comparison, Inferred_CellType, Microglia_Markers, Astrocyte_Markers, Neuron_Markers),
-          file = file.path(subdirs$tables, "Inferred_CellTypes_Per_Comparison.csv"),
-          row.names = FALSE)
+write_raw_csv(comparison_proteins %>% dplyr::select(Comparison, Inferred_CellType, Microglia_Markers, Astrocyte_Markers, Neuron_Markers),
+              file.path(subdirs$tables, "Inferred_CellTypes_Per_Comparison.csv"),
+              row.names = FALSE)
 
 # Save detailed Excel file: summary, marker counts, and protein lists
 library(writexl)
@@ -3666,7 +3742,7 @@ celltype_protein_lists <- comparison_proteins %>% dplyr::select(Comparison, Prot
 celltype_protein_long <- celltype_protein_lists %>% tidyr::unnest(Proteins)
 names(celltype_protein_long)[2] <- "Protein"
 
-writexl::write_xlsx(
+write_raw_xlsx(
   list(
     Summary = celltype_summary,
     Marker_Counts = celltype_marker_counts,
