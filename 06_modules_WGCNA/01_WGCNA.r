@@ -18,20 +18,50 @@ if (length(missing_pkgs)) {
     ". Install them explicitly before running this manuscript pipeline."
   )
 }
-suppressPackageStartupMessages(
-  invisible(lapply(required_pkgs, library, character.only = TRUE))
+suppressWarnings(
+  suppressPackageStartupMessages(
+    invisible(lapply(required_pkgs, library, character.only = TRUE))
+  )
 )
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
 source(repo_path("R", "dataset_config.R"))
 
+args <- commandArgs(trailingOnly = TRUE)
+arg_value <- function(flag, default = "") {
+  hit <- which(args == flag)
+  if (!length(hit) || hit[1] == length(args)) return(default)
+  args[[hit[1] + 1]]
+}
+has_flag <- function(flag) flag %in% args
+dataset_cli <- arg_value("--dataset", default = "")
+if (nzchar(dataset_cli)) Sys.setenv(PROTEOMICS_DATASET = validate_dataset(dataset_cli, source = "--dataset"))
+wgcna_dry_run <- has_flag("--dry-run") || is_dry_run()
+
 mm_to_in <- function(mm) mm / 25.4
 figure_single_col <- mm_to_in(89)
 figure_double_col <- mm_to_in(183)
-resolve_figure_font <- function(preferred = Sys.getenv("PROTEOMICS_FIGURE_FONT", unset = "Arial")) {
+graphics_font_works <- function(family) {
+  tf_svg <- tempfile(fileext = ".svg")
+  tf_pdf <- tempfile(fileext = ".pdf")
+  dev_id <- grDevices::dev.cur()
+  ok <- tryCatch({
+    svglite::svglite(file = tf_svg, width = 1, height = 1)
+    grid::grid.text("test", gp = grid::gpar(fontfamily = family, fontsize = 8))
+    grDevices::dev.off()
+    grDevices::pdf(file = tf_pdf, width = 1, height = 1, family = family, useDingbats = FALSE)
+    grid::grid.newpage()
+    TRUE
+  }, error = function(e) FALSE)
+  if (grDevices::dev.cur() != dev_id) grDevices::dev.off()
+  unlink(c(tf_svg, tf_pdf), force = TRUE)
+  ok
+}
+
+resolve_figure_font <- function(preferred = Sys.getenv("PROTEOMICS_FIGURE_FONT", unset = "sans")) {
   preferred <- trimws(preferred)
-  if (!nzchar(preferred)) preferred <- "Arial"
+  if (!nzchar(preferred)) preferred <- "sans"
 
   font_available <- FALSE
   if (requireNamespace("systemfonts", quietly = TRUE)) {
@@ -41,7 +71,9 @@ resolve_figure_font <- function(preferred = Sys.getenv("PROTEOMICS_FIGURE_FONT",
     }, error = function(e) FALSE)
   }
 
-  if (isTRUE(font_available) || identical(tolower(preferred), "sans")) return(preferred)
+  if ((isTRUE(font_available) || identical(tolower(preferred), "sans")) && graphics_font_works(preferred)) {
+    return(preferred)
+  }
 
   warning(
     "Figure font '", preferred, "' is not available to the R graphics device; ",
@@ -100,7 +132,9 @@ safe_dir <- function(path) {
 wgcna_module <- "06_modules_WGCNA"
 dataset_profile <- {
   profile_override <- Sys.getenv("PROTEOMICS_WGCNA_DATASET_PROFILE", unset = "")
-  if (nzchar(profile_override)) validate_dataset(profile_override, source = "PROTEOMICS_WGCNA_DATASET_PROFILE") else current_dataset()
+  if (nzchar(dataset_cli)) validate_dataset(dataset_cli, source = "--dataset")
+  else if (nzchar(profile_override)) validate_dataset(profile_override, source = "PROTEOMICS_WGCNA_DATASET_PROFILE")
+  else current_dataset()
 }
 wgcna_substep <- file.path("01_WGCNA", dataset_profile)
 output_dir_env <- Sys.getenv("PROTEOMICS_WGCNA_OUTPUT_DIR", unset = "")
@@ -116,6 +150,8 @@ if (nzchar(output_dir_env)) {
     tables_modules      = file.path(output_dir, "tables", "modules"),
     tables_pres         = file.path(output_dir, "tables", "preservation"),
     tables_traits       = file.path(output_dir, "tables", "traits"),
+    tables_supermodules = file.path(output_dir, "tables", "supermodules"),
+    figures_supermodules= file.path(output_dir, "figures", "supermodules"),
     source_data         = file.path(output_dir, "source_data"),
     state               = file.path(output_dir, "state"),
     logs                = file.path(output_dir, "logs")
@@ -133,6 +169,8 @@ if (nzchar(output_dir_env)) {
     tables_modules      = file.path(canonical_paths$tables, "modules"),
     tables_pres         = file.path(canonical_paths$tables, "preservation"),
     tables_traits       = file.path(canonical_paths$tables, "traits"),
+    tables_supermodules = file.path(canonical_paths$tables, "supermodules"),
+    figures_supermodules= file.path(canonical_paths$figures, "supermodules"),
     source_data         = canonical_paths$source_data,
     state               = canonical_paths$processed,
     logs                = canonical_paths$logs
@@ -150,6 +188,8 @@ fp_maptab   <- function(...) file.path(subdirs$tables_mapping, ...)
 fp_modtab   <- function(...) file.path(subdirs$tables_modules, ...)
 fp_traittab <- function(...) file.path(subdirs$tables_traits, ...)
 fp_prestab  <- function(...) file.path(subdirs$tables_pres, ...)
+fp_supertab <- function(...) file.path(subdirs$tables_supermodules, ...)
+fp_superfig <- function(...) file.path(subdirs$figures_supermodules, ...)
 fp_source   <- function(...) file.path(subdirs$source_data, ...)
 fp_state    <- function(...) file.path(subdirs$state, ...)
 fp_log      <- function(...) file.path(subdirs$logs, ...)
@@ -161,6 +201,9 @@ write_csv_safe <- function(x, path) {
 write_tsv_safe <- function(x, path) {
   readr::write_tsv(x, path, na = "")
   invisible(path)
+}
+`%||%` <- function(x, y) {
+  if (is.null(x) || length(x) == 0 || (length(x) == 1 && is.na(x))) y else x
 }
 log_session <- function() {
   writeLines(capture.output(utils::sessionInfo()), fp_log("session_info.txt"))
@@ -175,6 +218,9 @@ min_module_size <- 30
 deep_split <- 2
 merge_cut_height <- 0.25
 module_preservation_permutations <- 100
+reuse_completed_analysis <- tolower(Sys.getenv("PROTEOMICS_WGCNA_REUSE_STATE", unset = "true")) %in% c("1", "true", "yes", "y")
+force_full_analysis <- tolower(Sys.getenv("PROTEOMICS_WGCNA_FORCE_FULL", unset = "false")) %in% c("1", "true", "yes", "y")
+wgcna_final_state_path <- fp_state("wgcna_final_model_state.rds")
 
 # Optional: safe svg helper
 save_svg <- function(path, width, height, expr) {
@@ -201,10 +247,167 @@ sig_dot <- function(fdr) {
   )
 }
 
+supermodule_levels <- c(
+  "RNA processing / translation regulation",
+  "Energy metabolism / mitochondrial support",
+  "Synaptic and vesicle organization",
+  "Proteostasis / post-translational regulation",
+  "Developmental patterning / tissue-identity annotations",
+  "Motility / structural remodeling",
+  "Unassigned"
+)
+
+manual_supermodule_seed <- tibble::tribble(
+  ~module_eigengene, ~ModuleColor, ~Supermodule, ~SupermoduleConfidence, ~SupermoduleRationale,
+  "MEforestgreen", "forestgreen", "RNA processing / translation regulation", "high", "Top GO label is RNA processing; grouped with ncRNA and translation modules as an RNA expression-control program.",
+  "MEkhaki", "khaki", "RNA processing / translation regulation", "moderate-high", "Top GO label is regulatory ncRNA-mediated gene silencing; mechanistically close to RNA regulation.",
+  "MEcoral", "coral", "RNA processing / translation regulation", "high", "Top GO label is cytoplasmic translational initiation; complements RNA processing modules.",
+  "MEmediumaquamarine", "mediumaquamarine", "Proteostasis / post-translational regulation", "high", "Top GO label is ubiquitin-dependent protein catabolic process, consistent with proteostasis.",
+  "MElightpink", "lightpink", "Proteostasis / post-translational regulation", "high", "Top GO label is protein folding, consistent with chaperone/proteostasis biology.",
+  "MEplum", "plum", "Proteostasis / post-translational regulation", "moderate-high", "Top GO label is protein dephosphorylation; interpreted as post-translational regulation.",
+  "MElemonchiffon", "lemonchiffon", "Energy metabolism / mitochondrial support", "high", "Top GO label is generation of precursor metabolites and energy.",
+  "MEaquamarine", "aquamarine", "Energy metabolism / mitochondrial support", "moderate-high", "Top GO label is acetyl-CoA biosynthetic process, linked to metabolic support.",
+  "MEdeepskyblue", "deepskyblue", "Synaptic and vesicle organization", "high", "Top GO label is synapse organization.",
+  "MElightblue", "lightblue", "Synaptic and vesicle organization", "high", "Top GO label is vesicle organization, linked to synaptic vesicle/trafficking biology.",
+  "MEgold", "gold", "Developmental patterning / tissue-identity annotations", "moderate", "Top GO label is dorsal-ventral pattern formation; interpreted cautiously as patterning/tissue identity.",
+  "MElavender", "lavender", "Developmental patterning / tissue-identity annotations", "low-moderate", "Top GO label is skin development; retained as a tissue-identity style annotation but flagged as lower confidence.",
+  "MEsaddlebrown", "saddlebrown", "Motility / structural remodeling", "moderate", "Top GO label is negative regulation of cell motility, consistent with remodeling/motility annotation."
+)
+
+make_supermodule_annotation <- function(module_label_table = NULL, module_names = character()) {
+  module_names <- unique(as.character(module_names))
+  module_names <- module_names[nzchar(module_names)]
+  present <- tibble::tibble(
+    module_eigengene = module_names,
+    ModuleColor = sub("^ME", "", module_names),
+    present_in_dataset = TRUE
+  )
+
+  manual <- manual_supermodule_seed %>%
+    dplyr::mutate(
+      Supermodule = factor(.data$Supermodule, levels = supermodule_levels),
+      manual_annotation = TRUE
+    )
+
+  out <- dplyr::full_join(present, manual, by = c("module_eigengene", "ModuleColor")) %>%
+    dplyr::mutate(
+      present_in_dataset = dplyr::coalesce(.data$present_in_dataset, FALSE),
+      manual_annotation = dplyr::coalesce(.data$manual_annotation, FALSE),
+      Supermodule = dplyr::coalesce(as.character(.data$Supermodule), "Unassigned"),
+      SupermoduleConfidence = dplyr::coalesce(.data$SupermoduleConfidence, "unassigned"),
+      SupermoduleRationale = dplyr::coalesce(.data$SupermoduleRationale, "No manual supermodule annotation for this dataset/module.")
+    )
+
+  if (!is.null(module_label_table) && nrow(module_label_table)) {
+    label_cols <- intersect(
+      c("ModuleColor", "ModuleID", "ModuleLabel_Final", "ModuleLabel_GO_BP", "best_GO_BP", "best_GO_padj_BP"),
+      names(module_label_table)
+    )
+    out <- out %>%
+      dplyr::left_join(module_label_table[, label_cols, drop = FALSE], by = "ModuleColor")
+  }
+  for (missing_col in c("ModuleLabel_Final", "ModuleLabel_GO_BP", "best_GO_BP", "best_GO_padj_BP")) {
+    if (!missing_col %in% names(out)) out[[missing_col]] <- NA
+  }
+
+  out %>%
+    dplyr::mutate(
+      top_GO_label = dplyr::coalesce(
+        .data$ModuleLabel_Final,
+        .data$ModuleLabel_GO_BP,
+        .data$best_GO_BP,
+        paste("Module", .data$ModuleColor)
+      ),
+      Supermodule = factor(.data$Supermodule, levels = supermodule_levels)
+    ) %>%
+    dplyr::arrange(.data$Supermodule, .data$ModuleColor)
+}
+
+add_supermodule_cols <- function(df, annotation, module_col = "module", color_col = NULL) {
+  if (!nrow(df)) return(df)
+  ann <- annotation %>%
+    dplyr::select(
+      "module_eigengene", "ModuleColor", "Supermodule",
+      "SupermoduleConfidence", "SupermoduleRationale", "top_GO_label",
+      "present_in_dataset", "manual_annotation"
+    )
+  if (!is.null(color_col) && color_col %in% names(df)) {
+    return(df %>% dplyr::left_join(ann, by = stats::setNames("ModuleColor", color_col)))
+  }
+  if (module_col %in% names(df)) {
+    return(df %>% dplyr::left_join(ann, by = stats::setNames("module_eigengene", module_col)))
+  }
+  df
+}
+
+using_cached_final_state <- reuse_completed_analysis && !force_full_analysis && file.exists(wgcna_final_state_path)
+if (isTRUE(wgcna_dry_run) && using_cached_final_state) {
+  dry_run_line("Script", "06_modules_WGCNA/01_WGCNA.r")
+  dry_run_line("Dataset", dataset_profile)
+  dry_run_line("Cached state", wgcna_final_state_path, "PASS")
+  dry_run_line("Mode", "cached final state; figures/tables can be regenerated without rerunning WGCNA")
+  dry_run_line("Output folders", paste(unlist(subdirs), collapse = "; "))
+  quit(status = 0, save = "no")
+}
+if (using_cached_final_state) {
+  message("Reusing completed WGCNA analysis from: ", wgcna_final_state_path)
+  cached_state <- readRDS(wgcna_final_state_path)
+  list2env(cached_state, envir = environment())
+  if (exists("module_summary")) WGCNA_module_summary <- module_summary
+  if (exists("module_preservation")) module_preservation_long <- module_preservation
+  if (exists("module_label_table") && !"ModuleLabel_Final" %in% names(module_label_table)) {
+    module_label_table <- module_label_table %>%
+      dplyr::mutate(
+        ModuleLabel_Final = dplyr::coalesce(.data$ModuleLabel_Manual, .data$ModuleLabel_GO_BP, paste0("Module ", .data$ModuleColor)),
+        ModuleLabel_Source = dplyr::case_when(
+          !is.na(.data$ModuleLabel_Manual) & nzchar(.data$ModuleLabel_Manual) ~ "manual",
+          !is.na(.data$ModuleLabel_GO_BP) & nzchar(.data$ModuleLabel_GO_BP) ~ "GO_BP_ORA_all_module",
+          TRUE ~ "module_color"
+        )
+      )
+  }
+  if (exists("module_label_table")) {
+    module_name_map <- stats::setNames(module_label_table$ModuleLabel_Final %||% module_label_table$ModuleLabel_GO_BP, module_label_table$ModuleColor)
+  }
+  dataset_profile_resolved <- cached_state$parameters$dataset_profile %||% dataset_profile
+  if (!"condition" %in% names(sample_info)) sample_info$condition <- sample_info$ExpGroup
+  if ("row.names" %in% names(sample_info)) {
+    sample_info <- sample_info[match(rownames(expression.data), as.character(sample_info$row.names)), , drop = FALSE]
+    rownames(sample_info) <- rownames(expression.data)
+  }
+  spatial_candidates <- intersect(c("celltype", "region", "layer"), names(sample_info))
+  active_spatial_vars <- spatial_candidates[vapply(sample_info[spatial_candidates], function(x) {
+    length(unique(stats::na.omit(as.character(x)))) > 1
+  }, logical(1))]
+  if (!length(active_spatial_vars) && "region" %in% names(sample_info)) active_spatial_vars <- "region"
+  Samples <- rownames(expression.data)
+  make_cached_trait_matrix <- function(sample_info, vars) {
+    mats <- lapply(vars, function(v) {
+      x <- droplevels(factor(sample_info[[v]]))
+      if (length(unique(stats::na.omit(x))) <= 1) return(NULL)
+      mm <- stats::model.matrix(~ 0 + x)
+      colnames(mm) <- paste0(v, "_", sub("^x", "", colnames(mm)))
+      mm
+    })
+    mats <- Filter(Negate(is.null), mats)
+    if (!length(mats)) stop("No variable traits remain after filtering")
+    as.data.frame(do.call(cbind, mats), stringsAsFactors = FALSE)
+  }
+  datTraits <- make_cached_trait_matrix(sample_info, c(active_spatial_vars, "condition"))
+  keep_cols <- vapply(datTraits, function(x) stats::sd(as.numeric(x), na.rm = TRUE) > 0, logical(1))
+  datTraits <- datTraits[, keep_cols, drop = FALSE]
+  rownames(datTraits) <- Samples
+  input_manifest <- tibble::tibble(
+    role = "cached_wgcna_final_model_state",
+    path = wgcna_final_state_path,
+    md5 = file_hash(wgcna_final_state_path)
+  )
+} else {
+
 expr_xlsx_env <- Sys.getenv("PROTEOMICS_WGCNA_EXPR_XLSX", unset = "")
 meta_xlsx_env <- Sys.getenv("PROTEOMICS_WGCNA_META_XLSX", unset = "")
-expr_xlsx_default <- path_processed("variancePartition", "data", "male.data.xlsx")
-meta_xlsx_default <- path_processed("variancePartition", "data", "sample_info.xlsx")
+expr_xlsx_default <- path_processed(wgcna_module, "01_WGCNA", dataset_profile, "inputs", "wgcna_expression.xlsx")
+meta_xlsx_default <- path_processed(wgcna_module, "01_WGCNA", dataset_profile, "inputs", "wgcna_sample_info.xlsx")
 expr_xlsx <- if (nzchar(expr_xlsx_env)) expr_xlsx_env else expr_xlsx_default
 meta_xlsx <- if (nzchar(meta_xlsx_env)) meta_xlsx_env else meta_xlsx_default
 
@@ -339,13 +542,32 @@ stop_if_missing <- function(path) {
   if (!file.exists(path)) {
     stop(
       "Missing WGCNA input file: ", path,
-      ". This script consumes precombined variancePartition-style matrices ",
-      "(male.data.xlsx and sample_info.xlsx). If using custom inputs, set ",
-      "PROTEOMICS_WGCNA_EXPR_XLSX / PROTEOMICS_WGCNA_META_XLSX. Otherwise, ",
+      ". This script stages dataset-scoped WGCNA inputs under data/processed/06_modules_WGCNA/01_WGCNA/<dataset>/inputs. ",
+      "If using custom inputs, set PROTEOMICS_WGCNA_EXPR_XLSX / PROTEOMICS_WGCNA_META_XLSX. Otherwise, ",
       "rerun 01_preprocessing/01_impute.r and ensure TPE9_sample_metadata_males.xlsx is available.",
       call. = FALSE
     )
   }
+}
+
+if (isTRUE(wgcna_dry_run)) {
+  upstream_xlsx <- find_latest_wgcna_upstream()
+  upstream_meta <- Sys.getenv("PROTEOMICS_WGCNA_UPSTREAM_META_XLSX", unset = path_metadata("TPE9_sample_metadata_males.xlsx"))
+  can_stage_inputs <- file.exists(upstream_xlsx) && file.exists(upstream_meta)
+  can_use_inputs <- file.exists(expr_xlsx) && file.exists(meta_xlsx)
+  can_use_cache <- file.exists(wgcna_final_state_path) && !force_full_analysis
+  dry_run_line("Script", "06_modules_WGCNA/01_WGCNA.r")
+  dry_run_line("Dataset", dataset_profile)
+  dry_run_line("Reuse cached final state", reuse_completed_analysis)
+  dry_run_line("Force full analysis", force_full_analysis)
+  dry_run_line("Cached state", wgcna_final_state_path, if (can_use_cache) "PASS" else "WARN")
+  dry_run_line("Expression workbook", expr_xlsx, if (file.exists(expr_xlsx)) "PASS" else "WARN")
+  dry_run_line("Sample metadata workbook", meta_xlsx, if (file.exists(meta_xlsx)) "PASS" else "WARN")
+  dry_run_line("Stageable upstream expression", upstream_xlsx, if (file.exists(upstream_xlsx)) "PASS" else "WARN")
+  dry_run_line("Stageable upstream metadata", upstream_meta, if (file.exists(upstream_meta)) "PASS" else "WARN")
+  dry_run_line("Mouse idmapping", idmap_dat, if (file.exists(idmap_dat)) "PASS" else "FAIL")
+  dry_run_line("Output folders", paste(unlist(subdirs), collapse = "; "))
+  quit(status = if (can_use_cache || (file.exists(idmap_dat) && (can_use_inputs || can_stage_inputs))) 0 else 1, save = "no")
 }
 
 wgcna_inputs_auto_prepared <- auto_prepare_wgcna_inputs(expr_xlsx, meta_xlsx)
@@ -1256,7 +1478,9 @@ best_go_labels <- GO_enrichment_long %>%
     ModuleColor,
     Ontology,
     Label = vapply(.data$Description, compact_term, character(1)),
-    BestTerm = .data$Description
+    BestTerm = .data$Description,
+    BestTermPAdjust = .data$p.adjust,
+    BestTermQvalue = .data$qvalue
   )
 best_go_wide <- best_go_labels %>%
   dplyr::select(.data$ModuleColor, .data$Ontology, .data$Label) %>%
@@ -1264,6 +1488,12 @@ best_go_wide <- best_go_labels %>%
 best_term_wide <- best_go_labels %>%
   dplyr::select(.data$ModuleColor, .data$Ontology, .data$BestTerm) %>%
   tidyr::pivot_wider(names_from = .data$Ontology, values_from = .data$BestTerm, names_prefix = "best_GO_")
+best_term_padj_wide <- best_go_labels %>%
+  dplyr::select(.data$ModuleColor, .data$Ontology, .data$BestTermPAdjust) %>%
+  tidyr::pivot_wider(names_from = .data$Ontology, values_from = .data$BestTermPAdjust, names_prefix = "best_GO_padj_")
+best_term_qvalue_wide <- best_go_labels %>%
+  dplyr::select(.data$ModuleColor, .data$Ontology, .data$BestTermQvalue) %>%
+  tidyr::pivot_wider(names_from = .data$Ontology, values_from = .data$BestTermQvalue, names_prefix = "best_GO_qvalue_")
 
 module_label_table <- tibble::tibble(
   ModuleColor = module_colors,
@@ -1271,12 +1501,21 @@ module_label_table <- tibble::tibble(
   ModuleLabel_Manual = NA_character_
 ) %>%
   dplyr::left_join(best_go_wide, by = "ModuleColor") %>%
+  dplyr::left_join(best_term_wide, by = "ModuleColor") %>%
+  dplyr::left_join(best_term_padj_wide, by = "ModuleColor") %>%
+  dplyr::left_join(best_term_qvalue_wide, by = "ModuleColor") %>%
   dplyr::mutate(
     ModuleLabel_GO_BP = dplyr::coalesce(.data$ModuleLabel_GO_BP, paste0("Module ", .data$ModuleColor)),
     ModuleLabel_GO_MF = dplyr::coalesce(.data$ModuleLabel_GO_MF, paste0("Module ", .data$ModuleColor)),
-    ModuleLabel_GO_CC = dplyr::coalesce(.data$ModuleLabel_GO_CC, paste0("Module ", .data$ModuleColor))
+    ModuleLabel_GO_CC = dplyr::coalesce(.data$ModuleLabel_GO_CC, paste0("Module ", .data$ModuleColor)),
+    ModuleLabel_Final = dplyr::coalesce(.data$ModuleLabel_Manual, .data$ModuleLabel_GO_BP, paste0("Module ", .data$ModuleColor)),
+    ModuleLabel_Source = dplyr::case_when(
+      !is.na(.data$ModuleLabel_Manual) & nzchar(.data$ModuleLabel_Manual) ~ "manual",
+      !is.na(.data$best_GO_BP) & nzchar(.data$best_GO_BP) ~ "GO_BP_ORA_all_module",
+      TRUE ~ "module_color"
+    )
   )
-module_name_map <- stats::setNames(module_label_table$ModuleLabel_GO_BP, module_label_table$ModuleColor)
+module_name_map <- stats::setNames(module_label_table$ModuleLabel_Final, module_label_table$ModuleColor)
 
 top_hub_flags <- feature_module_tbl %>%
   dplyr::left_join(kME_long, by = "ProteinID") %>%
@@ -1301,7 +1540,8 @@ WGCNA_modules_long <- feature_module_tbl %>%
   ) %>%
   dplyr::select(
     ModuleSet, ModuleID, ModuleColor,
-    ModuleLabel_GO_BP, ModuleLabel_GO_MF, ModuleLabel_GO_CC, ModuleLabel_Manual,
+    ModuleLabel_Final, ModuleLabel_Source, ModuleLabel_GO_BP, ModuleLabel_GO_MF, ModuleLabel_GO_CC, ModuleLabel_Manual,
+    best_GO_BP, best_GO_MF, best_GO_CC, best_GO_padj_BP, best_GO_padj_MF, best_GO_padj_CC,
     ProteinID, UniProt, EntrezID, GeneSymbol, kME, abs_kME,
     GeneSignificanceP, GeneSignificanceFDR, is_core_kME_0.6, is_top_hub_25, Source
   )
@@ -1504,6 +1744,7 @@ saveRDS(list(
     dataset_profile = dataset_profile_resolved
   )
 ), file = fp_state("wgcna_final_model_state.rds"))
+}
 
 # --------------------------
 # Condition and active spatial trait panels
@@ -1740,38 +1981,37 @@ ph <- pheatmap::pheatmap(
 
 nr <- nrow(r_mat)
 
-png(fp_traits("ME_trait_pheatmap.png"), width = round(figure_double_col * 300), height = round(4.3 * 300), res = 300)
-grid::grid.newpage(); grid::grid.draw(ph$gtable)
-panel_id <- grep("matrix", ph$gtable$layout$name)[1]
-seekViewport(ph$gtable$layout$name[panel_id])
-for (xl in xlines) {
-  grid::grid.lines(x = unit(c(xl, xl), "native"),
-                   y = unit(c(0, nr), "native"),
-                   gp = gpar(col = "white", lwd = 3))
+draw_trait_pheatmap <- function(ph, xlines = numeric(0), nr = nrow(r_mat), separator_lwd = 2) {
+  grid::grid.newpage()
+  grid::grid.draw(ph$gtable)
+  if (!length(xlines)) return(invisible(NULL))
+  try({
+    panel_id <- grep("^matrix$", ph$gtable$layout$name)[1]
+    if (is.na(panel_id)) stop("matrix panel not found", call. = FALSE)
+    grid::seekViewport(ph$gtable$layout$name[panel_id])
+    for (xl in xlines) {
+      grid::grid.lines(
+        x = grid::unit(c(xl, xl), "native"),
+        y = grid::unit(c(0, nr), "native"),
+        gp = grid::gpar(col = "white", lwd = separator_lwd)
+      )
+    }
+    grid::upViewport(0)
+  }, silent = TRUE)
+  invisible(NULL)
 }
-upViewport(0); dev.off()
+
+png(fp_traits("ME_trait_pheatmap.png"), width = round(figure_double_col * 300), height = round(4.3 * 300), res = 300)
+draw_trait_pheatmap(ph, xlines = xlines, nr = nr, separator_lwd = 3)
+dev.off()
 
 pdf(fp_traits("ME_trait_pheatmap.pdf"), width = figure_double_col, height = 4.3, family = figure_font, useDingbats = FALSE)
-grid::grid.newpage(); grid::grid.draw(ph$gtable)
-panel_id <- grep("matrix", ph$gtable$layout$name)[1]
-seekViewport(ph$gtable$layout$name[panel_id])
-for (xl in xlines) {
-  grid::grid.lines(x = unit(c(xl, xl), "native"),
-                   y = unit(c(0, nr), "native"),
-                   gp = gpar(col = "white", lwd = 2))
-}
-upViewport(0); dev.off()
+draw_trait_pheatmap(ph, xlines = xlines, nr = nr, separator_lwd = 2)
+dev.off()
 
 svglite::svglite(fp_traits("ME_trait_pheatmap.svg"), width = figure_double_col, height = 4.3)
-grid::grid.newpage(); grid::grid.draw(ph$gtable)
-panel_id <- grep("matrix", ph$gtable$layout$name)[1]
-seekViewport(ph$gtable$layout$name[panel_id])
-for (xl in xlines) {
-  grid::grid.lines(x = unit(c(xl, xl), "native"),
-                   y = unit(c(0, nr), "native"),
-                   gp = gpar(col = "white", lwd = 2))
-}
-upViewport(0); dev.off()
+draw_trait_pheatmap(ph, xlines = xlines, nr = nr, separator_lwd = 2)
+dev.off()
 
 block_list <- c(
   setNames(lapply(active_spatial_vars, function(v) grep(paste0("^", v, "_"), colnames(datTraits))), active_spatial_vars),
@@ -1865,6 +2105,280 @@ ME_long$region <- factor(ME_long$region)
 ME_long$layer <- factor(ME_long$layer)
 ME_long$celltype <- factor(ME_long$celltype)
 
+supermodule_annotation <- make_supermodule_annotation(module_label_table, colnames(mergedMEs))
+supermodule_matched <- supermodule_annotation %>% dplyr::filter(.data$present_in_dataset, .data$manual_annotation)
+supermodule_missing <- supermodule_annotation %>% dplyr::filter(!.data$present_in_dataset, .data$manual_annotation)
+supermodule_unassigned <- supermodule_annotation %>% dplyr::filter(.data$present_in_dataset, .data$Supermodule == "Unassigned")
+message(
+  "WGCNA supermodule annotation: matched=", nrow(supermodule_matched),
+  "; manual-not-present=", nrow(supermodule_missing),
+  "; unassigned-present=", nrow(supermodule_unassigned)
+)
+if (nrow(supermodule_missing)) {
+  message("Manual supermodule modules not present in this dataset: ", paste(supermodule_missing$module_eigengene, collapse = ", "))
+}
+if (nrow(supermodule_unassigned)) {
+  message("Present WGCNA modules without manual supermodule annotation: ", paste(supermodule_unassigned$module_eigengene, collapse = ", "))
+}
+
+write_csv_safe(supermodule_annotation, fp_supertab("wgcna_module_supermodule_annotation.csv"))
+write_csv_safe(supermodule_annotation, fp_source("wgcna_module_supermodule_annotation.csv"))
+writexl::write_xlsx(list(supermodule_annotation = supermodule_annotation), fp_supertab("wgcna_module_supermodule_annotation.xlsx"))
+
+ME_long <- add_supermodule_cols(ME_long, supermodule_annotation, module_col = "module")
+if (exists("df_combo2")) {
+  df_combo2_supermodule <- add_supermodule_cols(df_combo2, supermodule_annotation, module_col = "module")
+  write_csv_safe(df_combo2_supermodule, fp_supertab("wgcna_module_trait_correlations_with_supermodules.csv"))
+  write_csv_safe(df_combo2_supermodule, fp_source("wgcna_module_trait_correlations_with_supermodules.csv"))
+}
+
+module_axis_labels <- function(modules, include_id = TRUE, width = 34) {
+  module_colors <- sub("^ME", "", as.character(modules))
+  labels <- unname(module_name_map[module_colors])
+  labels[is.na(labels) | !nzchar(labels)] <- paste("Module", module_colors[is.na(labels) | !nzchar(labels)])
+  labels <- stringr::str_to_sentence(labels)
+  labels <- stringr::str_wrap(labels, width = width)
+  if (isTRUE(include_id)) paste0(as.character(modules), "\n", labels) else labels
+}
+
+contrast_specs <- tibble::tibble(
+  contrast = c("RES - CON", "SUS - CON", "SUS - RES"),
+  group_a = c("con", "con", "res"),
+  group_b = c("res", "sus", "sus")
+)
+
+lm_condition_contrast <- function(df, group_a, group_b, covars) {
+  covars <- covars[vapply(df[covars], function(x) length(unique(stats::na.omit(x))) > 1, logical(1))]
+  rhs <- paste(c("condition", covars), collapse = " + ")
+  model_formula <- stats::as.formula(paste("ME ~", rhs))
+  fit <- tryCatch(stats::lm(model_formula, data = df), error = function(e) NULL)
+  if (is.null(fit)) {
+    return(tibble::tibble(adjusted_delta = NA_real_, p = NA_real_, model_formula = deparse(model_formula)))
+  }
+
+  beta <- stats::coef(fit)
+  vc <- stats::vcov(fit)
+  contrast_vector <- rep(0, length(beta))
+  names(contrast_vector) <- names(beta)
+  condition_effect <- function(group) {
+    out <- rep(0, length(beta))
+    names(out) <- names(beta)
+    coef_name <- paste0("condition", group)
+    if (coef_name %in% names(out)) out[coef_name] <- 1
+    out
+  }
+  contrast_vector <- condition_effect(group_b) - condition_effect(group_a)
+
+  contrast_idx <- which(contrast_vector != 0)
+  if (!length(contrast_idx) || any(is.na(beta[contrast_idx]))) {
+    return(tibble::tibble(adjusted_delta = NA_real_, p = NA_real_, model_formula = deparse(model_formula)))
+  }
+
+  adjusted_delta <- unname(sum(contrast_vector[contrast_idx] * beta[contrast_idx]))
+  se <- suppressWarnings(sqrt(as.numeric(t(contrast_vector[contrast_idx]) %*% vc[contrast_idx, contrast_idx, drop = FALSE] %*% contrast_vector[contrast_idx])))
+  p <- if (is.finite(se) && se > 0) {
+    2 * stats::pt(abs(adjusted_delta / se), df = stats::df.residual(fit), lower.tail = FALSE)
+  } else {
+    NA_real_
+  }
+  tibble::tibble(adjusted_delta = adjusted_delta, p = p, model_formula = deparse(model_formula))
+}
+
+ME_contrast_stats <- ME_long %>%
+  dplyr::group_by(.data$module) %>%
+  dplyr::group_map(~{
+    dfm <- .x
+    module_name <- .y$module
+    purrr::map_dfr(seq_len(nrow(contrast_specs)), function(i) {
+      a <- contrast_specs$group_a[i]
+      b <- contrast_specs$group_b[i]
+      adjusted <- lm_condition_contrast(dfm, a, b, active_spatial_vars)
+      tibble::tibble(
+        module = module_name,
+        contrast = contrast_specs$contrast[i],
+        group_a = a,
+        group_b = b,
+        n_a = sum(dfm$condition == a, na.rm = TRUE),
+        n_b = sum(dfm$condition == b, na.rm = TRUE),
+        mean_a = mean(dfm$ME[dfm$condition == a], na.rm = TRUE),
+        mean_b = mean(dfm$ME[dfm$condition == b], na.rm = TRUE),
+        delta_mean = mean_b - mean_a
+      ) %>%
+        dplyr::bind_cols(adjusted)
+    })
+  }) %>%
+  dplyr::bind_rows() %>%
+  dplyr::mutate(
+    fdr = p.adjust(.data$p, method = "BH"),
+    sig = sig_dot(.data$fdr),
+    contrast = factor(.data$contrast, levels = contrast_specs$contrast)
+  )
+ME_contrast_stats <- add_supermodule_cols(ME_contrast_stats, supermodule_annotation, module_col = "module")
+
+write_csv_safe(ME_contrast_stats, fp_traittab("ME_by_condition_pairwise_contrasts.csv"))
+write_csv_safe(ME_contrast_stats, fp_source("ME_by_condition_pairwise_contrasts.csv"))
+write_csv_safe(ME_contrast_stats, fp_supertab("wgcna_group_contrasts_with_supermodules.csv"))
+
+contrast_module_order <- ME_contrast_stats %>%
+  dplyr::group_by(.data$module) %>%
+  dplyr::summarise(max_abs_delta = max(abs(.data$adjusted_delta), na.rm = TRUE), .groups = "drop") %>%
+  dplyr::arrange(dplyr::desc(.data$max_abs_delta)) %>%
+  dplyr::pull(.data$module)
+
+ME_contrast_stats$module <- factor(ME_contrast_stats$module, levels = rev(contrast_module_order))
+contrast_lim <- max(abs(ME_contrast_stats$adjusted_delta), na.rm = TRUE)
+if (!is.finite(contrast_lim) || contrast_lim == 0) contrast_lim <- 1
+
+contrast_panel <- ggplot(ME_contrast_stats, aes(x = contrast, y = module, fill = adjusted_delta)) +
+  geom_tile(color = "white", linewidth = 0.15) +
+  geom_text(aes(label = sig), size = 1.8, color = "black", na.rm = TRUE) +
+  scale_fill_gradient2(
+    limits = c(-contrast_lim, contrast_lim),
+    oob = scales::squish,
+    low = figure_diverging["low"],
+    mid = figure_diverging["mid"],
+    high = figure_diverging["high"]
+  ) +
+  labs(x = NULL, y = NULL, fill = "Adjusted delta") +
+  theme_publication() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.line.x = element_blank(),
+    axis.line.y = element_blank(),
+    axis.ticks = element_blank()
+  )
+
+save_plot_publication(
+  contrast_panel,
+  fp_traits("panel_ME_by_condition_pairwise_contrasts.svg"),
+  width = figure_single_col,
+  height = max(3.2, 0.18 * length(contrast_module_order) + 1.1)
+)
+save_plot_publication(
+  contrast_panel,
+  fp_mainfig("panel_ME_by_condition_pairwise_contrasts.svg"),
+  width = figure_single_col,
+  height = max(3.2, 0.18 * length(contrast_module_order) + 1.1)
+)
+
+contrast_panel_GO_labels <- contrast_panel +
+  scale_y_discrete(labels = function(x) module_axis_labels(x, include_id = TRUE, width = 30))
+
+save_plot_publication(
+  contrast_panel_GO_labels,
+  fp_traits("panel_ME_by_condition_pairwise_contrasts_GO_labels.svg"),
+  width = figure_double_col,
+  height = max(3.6, 0.27 * length(contrast_module_order) + 1.1)
+)
+save_plot_publication(
+  contrast_panel_GO_labels,
+  fp_mainfig("panel_ME_by_condition_pairwise_contrasts_GO_labels.svg"),
+  width = figure_double_col,
+  height = max(3.6, 0.27 * length(contrast_module_order) + 1.1)
+)
+
+ME_strata <- ME_long %>%
+  dplyr::mutate(
+    spatial_trait = do.call(paste, c(dplyr::pick(dplyr::all_of(active_spatial_vars)), sep = "_"))
+  )
+
+strata_levels <- ME_strata %>%
+  dplyr::distinct(dplyr::across(dplyr::all_of(active_spatial_vars)), .data$spatial_trait) %>%
+  dplyr::arrange(dplyr::across(dplyr::all_of(active_spatial_vars))) %>%
+  dplyr::pull(.data$spatial_trait)
+
+ME_strata_contrast_stats <- ME_strata %>%
+  dplyr::group_by(.data$module, .data$spatial_trait) %>%
+  dplyr::group_map(~{
+    dfm <- .x
+    module_name <- .y$module
+    spatial_name <- .y$spatial_trait
+    purrr::map_dfr(seq_len(nrow(contrast_specs)), function(i) {
+      a <- contrast_specs$group_a[i]
+      b <- contrast_specs$group_b[i]
+      adjusted <- lm_condition_contrast(dfm, a, b, character(0))
+      tibble::tibble(
+        module = module_name,
+        spatial_trait = spatial_name,
+        contrast = contrast_specs$contrast[i],
+        group_a = a,
+        group_b = b,
+        n_a = sum(dfm$condition == a, na.rm = TRUE),
+        n_b = sum(dfm$condition == b, na.rm = TRUE),
+        mean_a = mean(dfm$ME[dfm$condition == a], na.rm = TRUE),
+        mean_b = mean(dfm$ME[dfm$condition == b], na.rm = TRUE),
+        delta_mean = mean_b - mean_a
+      ) %>%
+        dplyr::bind_cols(adjusted)
+    })
+  }) %>%
+  dplyr::bind_rows() %>%
+  dplyr::mutate(
+    fdr = p.adjust(.data$p, method = "BH"),
+    sig = sig_dot(.data$fdr),
+    contrast = factor(.data$contrast, levels = contrast_specs$contrast),
+    spatial_trait = factor(.data$spatial_trait, levels = strata_levels),
+    module = factor(.data$module, levels = levels(ME_contrast_stats$module))
+  )
+ME_strata_contrast_stats <- add_supermodule_cols(ME_strata_contrast_stats, supermodule_annotation, module_col = "module")
+
+write_csv_safe(ME_strata_contrast_stats, fp_traittab("ME_by_condition_spatial_strata_pairwise_contrasts.csv"))
+write_csv_safe(ME_strata_contrast_stats, fp_source("ME_by_condition_spatial_strata_pairwise_contrasts.csv"))
+write_csv_safe(ME_strata_contrast_stats, fp_supertab("wgcna_spatial_strata_group_contrasts_with_supermodules.csv"))
+
+strata_contrast_lim <- max(abs(ME_strata_contrast_stats$adjusted_delta), na.rm = TRUE)
+if (!is.finite(strata_contrast_lim) || strata_contrast_lim == 0) strata_contrast_lim <- 1
+
+strata_contrast_plot <- ggplot(ME_strata_contrast_stats, aes(x = spatial_trait, y = module, fill = adjusted_delta)) +
+  geom_tile(color = "white", linewidth = 0.15) +
+  geom_text(aes(label = sig), size = 1.8, color = "black", na.rm = TRUE) +
+  facet_wrap(~ contrast, nrow = 1) +
+  scale_fill_gradient2(
+    limits = c(-strata_contrast_lim, strata_contrast_lim),
+    oob = scales::squish,
+    low = figure_diverging["low"],
+    mid = figure_diverging["mid"],
+    high = figure_diverging["high"]
+  ) +
+  labs(x = paste(active_spatial_vars, collapse = " / "), y = NULL, fill = "Adjusted delta") +
+  theme_publication() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.line.x = element_blank(),
+    axis.line.y = element_blank(),
+    axis.ticks = element_blank(),
+    panel.spacing.x = grid::unit(0.8, "lines")
+  )
+
+save_plot_publication(
+  strata_contrast_plot,
+  fp_traits("panel_ME_by_condition_spatial_strata_pairwise_contrasts.svg"),
+  width = figure_double_col,
+  height = max(3.6, 0.18 * length(contrast_module_order) + 1.2)
+)
+save_plot_publication(
+  strata_contrast_plot,
+  fp_mainfig("panel_ME_by_condition_spatial_strata_pairwise_contrasts.svg"),
+  width = figure_double_col,
+  height = max(3.6, 0.18 * length(contrast_module_order) + 1.2)
+)
+
+strata_contrast_plot_GO_labels <- strata_contrast_plot +
+  scale_y_discrete(labels = function(x) module_axis_labels(x, include_id = TRUE, width = 30))
+
+save_plot_publication(
+  strata_contrast_plot_GO_labels,
+  fp_traits("panel_ME_by_condition_spatial_strata_pairwise_contrasts_GO_labels.svg"),
+  width = figure_double_col,
+  height = max(4.2, 0.27 * length(contrast_module_order) + 1.2)
+)
+save_plot_publication(
+  strata_contrast_plot_GO_labels,
+  fp_mainfig("panel_ME_by_condition_spatial_strata_pairwise_contrasts_GO_labels.svg"),
+  width = figure_double_col,
+  height = max(4.2, 0.27 * length(contrast_module_order) + 1.2)
+)
+
 # Stats
 do_stats <- function(df) {
   covars <- active_spatial_vars
@@ -1883,15 +2397,18 @@ stat_list <- ME_long %>%
   group_by(module) %>%
   group_map(~{
     st <- do_stats(.x)
-    tibble(module = unique(.x$module),
+    tibble(module = .y$module,
            condition_model_p = st$condition_p,
            model_formula = st$model_formula)
   }) %>% bind_rows() %>%
   mutate(condition_model_fdr = p.adjust(condition_model_p, method = "BH")) %>%
   arrange(condition_model_fdr)
+stat_list <- add_supermodule_cols(stat_list, supermodule_annotation, module_col = "module")
 
 write_csv_safe(stat_list, fp_traittab("ME_by_condition_adjusted_lm_FDR.csv"))
+write_csv_safe(stat_list, fp_supertab("wgcna_condition_omnibus_with_supermodules.csv"))
 write_csv_safe(ME_long, fp_source("ME_by_condition.csv"))
+write_csv_safe(ME_long, fp_supertab("wgcna_module_eigengenes_long_with_supermodules.csv"))
 
 top_modules <- head(stat_list$module, 12)
 comparisons <- list(c("con","res"), c("con","sus"), c("res","sus"))
@@ -1955,7 +2472,9 @@ plot_dot_mod <- function(dfm, mod, condition_fdr = NA_real_, show_subtitle = TRU
 }
 
 # Multi-page PDF: all modules as dotplots
-pdf(fp_traits("ME_by_condition_all_modules_dotplot.pdf"), width = 7, height = 4.5)
+all_modules_pdf <- fp_traits("ME_by_condition_all_modules_dotplot.pdf")
+all_modules_pdf_tmp <- tempfile(fileext = ".pdf")
+grDevices::pdf(all_modules_pdf_tmp, width = 7, height = 4.5, family = figure_font, useDingbats = FALSE)
 for (mod in unique(ME_long$module)) {
   dfm <- ME_long %>% filter(module == mod)
   condition_fdr <- stat_list$condition_model_fdr[stat_list$module == mod][1]
@@ -1963,6 +2482,10 @@ for (mod in unique(ME_long$module)) {
   print(p)
 }
 dev.off()
+if (!file.copy(all_modules_pdf_tmp, all_modules_pdf, overwrite = TRUE)) {
+  warning("Could not overwrite ", all_modules_pdf, "; it may be open in another application.", call. = FALSE)
+}
+unlink(all_modules_pdf_tmp, force = TRUE)
 
 # SVG grid: top N most differential modules (compact)
 plot_one_mod_dot <- function(mod) {
@@ -2006,9 +2529,414 @@ pw_tables <- ME_long %>%
   group_by(module) %>%
   group_map(~{
     tt <- pairwise.wilcox.test(.x$ME, .x$condition, p.adjust.method = "BH", exact = FALSE)
-    broom::tidy(tt) %>% mutate(module = unique(.x$module))
+    broom::tidy(tt) %>% mutate(module = .y$module)
   }) %>% bind_rows()
 write_csv_safe(pw_tables, fp_traittab("ME_by_condition_pairwise_Wilcoxon_BH.csv"))
+
+present_supermodule_annotation <- supermodule_annotation %>%
+  dplyr::filter(.data$present_in_dataset) %>%
+  dplyr::mutate(
+    module_eigengene = factor(.data$module_eigengene, levels = colnames(mergedMEs)),
+    Supermodule = factor(.data$Supermodule, levels = supermodule_levels)
+  )
+module_order_supermodule <- present_supermodule_annotation %>%
+  dplyr::arrange(.data$Supermodule, .data$module_eigengene) %>%
+  dplyr::pull(.data$module_eigengene) %>%
+  as.character()
+module_order_supermodule <- intersect(module_order_supermodule, colnames(mergedMEs))
+
+ME_corr_mat <- stats::cor(mergedMEs[, module_order_supermodule, drop = FALSE], use = "pairwise.complete.obs")
+ME_corr_export <- tibble::rownames_to_column(as.data.frame(ME_corr_mat), "module_eigengene")
+write_csv_safe(ME_corr_export, fp_supertab("wgcna_module_eigengene_correlation_matrix.csv"))
+write_csv_safe(ME_corr_export, fp_source("wgcna_module_eigengene_correlation_matrix.csv"))
+
+ME_corr_pairs <- if (length(module_order_supermodule) >= 2) {
+  pair_idx <- utils::combn(module_order_supermodule, 2, simplify = FALSE)
+  purrr::map_dfr(pair_idx, function(pair) {
+    r_val <- unname(ME_corr_mat[pair[[1]], pair[[2]]])
+    tibble::tibble(
+      module_a = pair[[1]],
+      module_b = pair[[2]],
+      r = r_val,
+      abs_r = abs(r_val)
+    )
+  })
+} else {
+  tibble::tibble(module_a = character(), module_b = character(), r = numeric(), abs_r = numeric())
+}
+
+pair_ann <- present_supermodule_annotation %>%
+  dplyr::select("module_eigengene", "ModuleColor", "Supermodule", "top_GO_label")
+ME_corr_pairs <- ME_corr_pairs %>%
+  dplyr::left_join(pair_ann, by = c("module_a" = "module_eigengene")) %>%
+  dplyr::rename(ModuleColor_a = "ModuleColor", Supermodule_a = "Supermodule", top_GO_label_a = "top_GO_label") %>%
+  dplyr::left_join(pair_ann, by = c("module_b" = "module_eigengene")) %>%
+  dplyr::rename(ModuleColor_b = "ModuleColor", Supermodule_b = "Supermodule", top_GO_label_b = "top_GO_label") %>%
+  dplyr::mutate(same_supermodule = .data$Supermodule_a == .data$Supermodule_b)
+write_csv_safe(ME_corr_pairs, fp_supertab("wgcna_module_eigengene_correlation_pairs.csv"))
+
+within_supermodule_corr_summary <- ME_corr_pairs %>%
+  dplyr::filter(.data$same_supermodule, .data$Supermodule_a != "Unassigned") %>%
+  dplyr::group_by(Supermodule = .data$Supermodule_a) %>%
+  dplyr::summarise(
+    n_module_pairs = dplyr::n(),
+    median_abs_r = stats::median(.data$abs_r, na.rm = TRUE),
+    max_abs_r = max(.data$abs_r, na.rm = TRUE),
+    mean_abs_r = mean(.data$abs_r, na.rm = TRUE),
+    eigengene_supported = .data$median_abs_r >= 0.5 | .data$max_abs_r >= 0.6,
+    .groups = "drop"
+  )
+
+between_supermodule_corr_summary <- ME_corr_pairs %>%
+  dplyr::filter(!.data$same_supermodule) %>%
+  dplyr::mutate(
+    supermodule_pair = paste(
+      pmin(as.character(.data$Supermodule_a), as.character(.data$Supermodule_b)),
+      pmax(as.character(.data$Supermodule_a), as.character(.data$Supermodule_b)),
+      sep = " vs "
+    )
+  ) %>%
+  dplyr::group_by(.data$supermodule_pair) %>%
+  dplyr::summarise(
+    n_module_pairs = dplyr::n(),
+    median_abs_r = stats::median(.data$abs_r, na.rm = TRUE),
+    max_abs_r = max(.data$abs_r, na.rm = TRUE),
+    mean_abs_r = mean(.data$abs_r, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+write_csv_safe(within_supermodule_corr_summary, fp_supertab("wgcna_within_supermodule_eigengene_correlation_summary.csv"))
+write_csv_safe(between_supermodule_corr_summary, fp_supertab("wgcna_between_supermodule_eigengene_correlation_summary.csv"))
+
+hub_module_sets <- WGCNA_modules_long %>%
+  add_supermodule_cols(supermodule_annotation, color_col = "ModuleColor") %>%
+  dplyr::group_by(.data$module_eigengene, .data$ModuleColor, .data$Supermodule) %>%
+  dplyr::arrange(dplyr::desc(.data$abs_kME), .by_group = TRUE) %>%
+  dplyr::mutate(.hub_keep = if ("is_top_hub_25" %in% names(.)) .data$is_top_hub_25 | dplyr::row_number() <= 25 else dplyr::row_number() <= 25) %>%
+  dplyr::filter(.data$.hub_keep) %>%
+  dplyr::summarise(top_hub_proteins = list(unique(as.character(.data$ProteinID))), .groups = "drop")
+
+hub_overlap_pairs <- if (nrow(hub_module_sets) >= 2) {
+  pair_idx <- utils::combn(seq_len(nrow(hub_module_sets)), 2, simplify = FALSE)
+  purrr::map_dfr(pair_idx, function(idx) {
+    a <- hub_module_sets[idx[[1]], ]
+    b <- hub_module_sets[idx[[2]], ]
+    set_a <- a$top_hub_proteins[[1]]
+    set_b <- b$top_hub_proteins[[1]]
+    union_n <- length(union(set_a, set_b))
+    tibble::tibble(
+      module_a = a$module_eigengene,
+      module_b = b$module_eigengene,
+      Supermodule_a = as.character(a$Supermodule),
+      Supermodule_b = as.character(b$Supermodule),
+      same_supermodule = as.character(a$Supermodule) == as.character(b$Supermodule),
+      hub_overlap_n = length(intersect(set_a, set_b)),
+      hub_union_n = union_n,
+      hub_jaccard = ifelse(union_n > 0, length(intersect(set_a, set_b)) / union_n, NA_real_)
+    )
+  })
+} else {
+  tibble::tibble(
+    module_a = character(), module_b = character(), Supermodule_a = character(), Supermodule_b = character(),
+    same_supermodule = logical(), hub_overlap_n = integer(), hub_union_n = integer(), hub_jaccard = numeric()
+  )
+}
+write_csv_safe(hub_overlap_pairs, fp_supertab("wgcna_top_hub_overlap_pairs.csv"))
+
+within_supermodule_hub_summary <- hub_overlap_pairs %>%
+  dplyr::filter(.data$same_supermodule, .data$Supermodule_a != "Unassigned") %>%
+  dplyr::group_by(Supermodule = .data$Supermodule_a) %>%
+  dplyr::summarise(
+    n_module_pairs = dplyr::n(),
+    median_hub_jaccard = stats::median(.data$hub_jaccard, na.rm = TRUE),
+    max_hub_jaccard = max(.data$hub_jaccard, na.rm = TRUE),
+    max_hub_overlap_n = max(.data$hub_overlap_n, na.rm = TRUE),
+    .groups = "drop"
+  )
+write_csv_safe(within_supermodule_hub_summary, fp_supertab("wgcna_within_supermodule_hub_overlap_summary.csv"))
+
+supermodule_validation_summary <- present_supermodule_annotation %>%
+  dplyr::filter(.data$Supermodule != "Unassigned") %>%
+  dplyr::count(.data$Supermodule, name = "n_modules_present") %>%
+  dplyr::left_join(within_supermodule_corr_summary, by = "Supermodule") %>%
+  dplyr::left_join(within_supermodule_hub_summary, by = "Supermodule", suffix = c("_eigengene", "_hub")) %>%
+  dplyr::mutate(
+    eigengene_supported = dplyr::coalesce(.data$eigengene_supported, FALSE),
+    hub_overlap_observed = dplyr::coalesce(.data$max_hub_overlap_n > 0, FALSE),
+    support_call = dplyr::case_when(
+      .data$n_modules_present < 2 ~ "single_module_interpretation_group",
+      .data$eigengene_supported & .data$hub_overlap_observed ~ "supported_by_eigengenes_and_hub_overlap",
+      .data$eigengene_supported ~ "supported_by_eigengene_correlation",
+      .data$hub_overlap_observed ~ "supported_by_hub_overlap_only",
+      TRUE ~ "weak_or_context_dependent_support"
+    )
+  ) %>%
+  dplyr::arrange(factor(.data$Supermodule, levels = supermodule_levels))
+write_csv_safe(supermodule_validation_summary, fp_supertab("wgcna_supermodule_validation_summary.csv"))
+write_csv_safe(supermodule_validation_summary, fp_source("wgcna_supermodule_validation_summary.csv"))
+
+ME_corr_long <- reshape2::melt(ME_corr_mat, varnames = c("module_x", "module_y"), value.name = "r") %>%
+  dplyr::left_join(pair_ann, by = c("module_x" = "module_eigengene")) %>%
+  dplyr::rename(Supermodule_x = "Supermodule") %>%
+  dplyr::left_join(pair_ann, by = c("module_y" = "module_eigengene")) %>%
+  dplyr::rename(Supermodule_y = "Supermodule") %>%
+  dplyr::mutate(
+    module_x = factor(.data$module_x, levels = module_order_supermodule),
+    module_y = factor(.data$module_y, levels = rev(module_order_supermodule)),
+    Supermodule_x = factor(.data$Supermodule_x, levels = supermodule_levels),
+    Supermodule_y = factor(.data$Supermodule_y, levels = rev(supermodule_levels))
+  )
+
+corr_heatmap <- ggplot(ME_corr_long, aes(x = module_x, y = module_y, fill = r)) +
+  geom_tile(color = "white", linewidth = 0.15) +
+  facet_grid(Supermodule_y ~ Supermodule_x, scales = "free", space = "free") +
+  scale_fill_gradient2(
+    limits = c(-1, 1), oob = scales::squish,
+    low = figure_diverging["low"], mid = figure_diverging["mid"], high = figure_diverging["high"]
+  ) +
+  labs(x = NULL, y = NULL, fill = "ME r") +
+  theme_publication() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.line = element_blank(),
+    axis.ticks = element_blank(),
+    panel.spacing = grid::unit(0.25, "lines")
+  )
+save_plot_publication(
+  corr_heatmap,
+  fp_superfig("wgcna_module_eigengene_correlation_heatmap.svg"),
+  width = figure_double_col,
+  height = max(4.4, 0.22 * length(module_order_supermodule) + 2.0)
+)
+
+module_effects_supermodule_plot_df <- ME_strata_contrast_stats %>%
+  dplyr::mutate(
+    Supermodule = factor(.data$Supermodule, levels = supermodule_levels),
+    module = factor(as.character(.data$module), levels = rev(module_order_supermodule))
+  )
+
+module_effects_by_supermodule <- ggplot(module_effects_supermodule_plot_df, aes(x = spatial_trait, y = module, fill = adjusted_delta)) +
+  geom_tile(color = "white", linewidth = 0.15) +
+  geom_text(aes(label = sig), size = 1.7, color = "black", na.rm = TRUE) +
+  facet_grid(Supermodule ~ contrast, scales = "free_y", space = "free_y") +
+  scale_y_discrete(labels = function(x) module_axis_labels(x, include_id = TRUE, width = 26)) +
+  scale_fill_gradient2(
+    limits = c(-strata_contrast_lim, strata_contrast_lim), oob = scales::squish,
+    low = figure_diverging["low"], mid = figure_diverging["mid"], high = figure_diverging["high"]
+  ) +
+  labs(x = paste(active_spatial_vars, collapse = " / "), y = NULL, fill = "Adjusted delta") +
+  theme_publication() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.line = element_blank(),
+    axis.ticks = element_blank(),
+    panel.spacing = grid::unit(0.35, "lines")
+  )
+save_plot_publication(
+  module_effects_by_supermodule,
+  fp_superfig("wgcna_module_effects_by_supermodule.svg"),
+  width = figure_double_col,
+  height = max(5.0, 0.34 * length(module_order_supermodule) + 2.2)
+)
+
+if (exists("df_combo2_supermodule") && nrow(df_combo2_supermodule)) {
+  trait_supermodule_plot_df <- df_combo2_supermodule %>%
+    dplyr::mutate(
+      Supermodule = factor(.data$Supermodule, levels = supermodule_levels),
+      module = factor(as.character(.data$module), levels = rev(module_order_supermodule))
+    )
+  module_trait_supermodule_heatmap <- ggplot(trait_supermodule_plot_df, aes(x = spatial_trait, y = module, fill = r)) +
+    geom_tile(color = "white", linewidth = 0.15) +
+    geom_text(aes(label = sig), size = 1.7, color = "black", na.rm = TRUE) +
+    facet_grid(Supermodule ~ condition, scales = "free_y", space = "free_y") +
+    scale_y_discrete(labels = function(x) module_axis_labels(x, include_id = TRUE, width = 26)) +
+    scale_fill_gradient2(
+      limits = c(-1, 1), oob = scales::squish,
+      low = figure_diverging["low"], mid = figure_diverging["mid"], high = figure_diverging["high"]
+    ) +
+    labs(x = paste(active_spatial_vars, collapse = " / "), y = NULL, fill = "Pearson r") +
+    theme_publication() +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      axis.line = element_blank(),
+      axis.ticks = element_blank(),
+      panel.spacing = grid::unit(0.35, "lines")
+    )
+  save_plot_publication(
+    module_trait_supermodule_heatmap,
+    fp_superfig("wgcna_module_trait_correlations_by_supermodule.svg"),
+    width = figure_double_col,
+    height = max(5.0, 0.34 * length(module_order_supermodule) + 2.2)
+  )
+}
+
+ME_scaled <- as.data.frame(scale(mergedMEs[, module_order_supermodule, drop = FALSE]))
+ME_scaled$Sample <- rownames(mergedMEs)
+supermodule_summary_scores <- ME_scaled %>%
+  tidyr::pivot_longer(cols = dplyr::all_of(module_order_supermodule), names_to = "module", values_to = "module_z") %>%
+  dplyr::left_join(
+    present_supermodule_annotation %>%
+      dplyr::select("module_eigengene", "Supermodule", "top_GO_label"),
+    by = c("module" = "module_eigengene")
+  ) %>%
+  dplyr::filter(.data$Supermodule != "Unassigned") %>%
+  dplyr::group_by(.data$Sample, .data$Supermodule) %>%
+  dplyr::summarise(
+    aggregate_supermodule_score = mean(.data$module_z, na.rm = TRUE),
+    n_member_modules = dplyr::n(),
+    .groups = "drop"
+  ) %>%
+  dplyr::left_join(
+    sample_info %>%
+      tibble::rownames_to_column("Sample") %>%
+      dplyr::select("Sample", "condition", dplyr::all_of(active_spatial_vars)),
+    by = "Sample"
+  ) %>%
+  dplyr::mutate(
+    Supermodule = factor(.data$Supermodule, levels = supermodule_levels),
+    condition = factor(.data$condition, levels = c("con", "res", "sus"))
+  )
+write_csv_safe(supermodule_summary_scores, fp_supertab("wgcna_supermodule_summary_scores.csv"))
+write_csv_safe(supermodule_summary_scores, fp_source("wgcna_supermodule_summary_scores.csv"))
+
+supermodule_summary_plot_df <- supermodule_summary_scores %>%
+  dplyr::group_by(.data$Supermodule, .data$condition) %>%
+  dplyr::summarise(
+    median_score = stats::median(.data$aggregate_supermodule_score, na.rm = TRUE),
+    mean_score = mean(.data$aggregate_supermodule_score, na.rm = TRUE),
+    se = stats::sd(.data$aggregate_supermodule_score, na.rm = TRUE) / sqrt(dplyr::n()),
+    .groups = "drop"
+  )
+supermodule_summary_scores_plot <- ggplot(supermodule_summary_scores, aes(x = condition, y = aggregate_supermodule_score, color = condition)) +
+  geom_point(position = position_jitter(width = 0.08, height = 0, seed = 1), size = 0.8, alpha = 0.45, shape = 16, stroke = 0) +
+  geom_point(data = supermodule_summary_plot_df, aes(y = mean_score), size = 1.9, color = "black", inherit.aes = TRUE) +
+  geom_errorbar(data = supermodule_summary_plot_df, aes(y = mean_score, ymin = mean_score - se, ymax = mean_score + se), width = 0.12, linewidth = 0.25, color = "black", inherit.aes = TRUE) +
+  facet_wrap(~ Supermodule, scales = "free_y", ncol = 2) +
+  scale_color_manual(values = figure_condition_cols, labels = figure_condition_labels, guide = "none") +
+  scale_x_discrete(labels = figure_condition_labels) +
+  labs(x = NULL, y = "Mean standardized module eigengene", title = "Aggregate supermodule score summary") +
+  theme_publication() +
+  theme(panel.grid.major.x = element_blank())
+save_plot_publication(
+  supermodule_summary_scores_plot,
+  fp_superfig("wgcna_supermodule_summary_scores.svg"),
+  width = figure_double_col,
+  height = 5.5
+)
+
+module_label_export <- module_label_table %>%
+  dplyr::mutate(
+    ModuleLabel_Final = dplyr::coalesce(.data$ModuleLabel_Final, .data$ModuleLabel_GO_BP, paste0("Module ", .data$ModuleColor)),
+    ModuleLabel_Source = dplyr::coalesce(.data$ModuleLabel_Source, "GO_BP_ORA_all_module")
+  ) %>%
+  dplyr::left_join(
+    supermodule_annotation %>%
+      dplyr::select(
+        "ModuleColor", "module_eigengene", "Supermodule",
+        "SupermoduleConfidence", "SupermoduleRationale",
+        "present_in_dataset", "manual_annotation"
+      ),
+    by = "ModuleColor"
+  )
+
+module_condition_top <- ME_contrast_stats %>%
+  dplyr::mutate(ModuleColor = sub("^ME", "", as.character(.data$module))) %>%
+  dplyr::arrange(dplyr::desc(abs(.data$adjusted_delta))) %>%
+  dplyr::group_by(.data$ModuleColor) %>%
+  dplyr::slice_head(n = 1) %>%
+  dplyr::ungroup() %>%
+  dplyr::transmute(
+    ModuleColor,
+    strongest_condition_contrast = as.character(.data$contrast),
+    strongest_condition_adjusted_delta = .data$adjusted_delta,
+    strongest_condition_fdr = .data$fdr
+  )
+
+module_strata_top <- ME_strata_contrast_stats %>%
+  dplyr::mutate(ModuleColor = sub("^ME", "", as.character(.data$module))) %>%
+  dplyr::arrange(dplyr::desc(abs(.data$adjusted_delta))) %>%
+  dplyr::group_by(.data$ModuleColor) %>%
+  dplyr::slice_head(n = 1) %>%
+  dplyr::ungroup() %>%
+  dplyr::transmute(
+    ModuleColor,
+    strongest_spatial_stratum = as.character(.data$spatial_trait),
+    strongest_spatial_strata_contrast = as.character(.data$contrast),
+    strongest_spatial_strata_adjusted_delta = .data$adjusted_delta,
+    strongest_spatial_strata_fdr = .data$fdr
+  )
+
+module_condition_omnibus <- stat_list %>%
+  dplyr::mutate(ModuleColor = sub("^ME", "", as.character(.data$module))) %>%
+  dplyr::transmute(
+    ModuleColor,
+    condition_model_p = .data$condition_model_p,
+    condition_model_fdr = .data$condition_model_fdr,
+    condition_model_formula = .data$model_formula
+  )
+
+WGCNA_module_priority_summary <- WGCNA_module_summary %>%
+  dplyr::left_join(
+    module_label_export %>%
+      dplyr::select(
+        "ModuleColor", "ModuleID", "module_eigengene", "ModuleLabel_Final", "ModuleLabel_Source",
+        "Supermodule", "SupermoduleConfidence", "SupermoduleRationale"
+      ),
+    by = c("ModuleColor", "ModuleID")
+  ) %>%
+  dplyr::left_join(module_condition_omnibus, by = "ModuleColor") %>%
+  dplyr::left_join(module_condition_top, by = "ModuleColor") %>%
+  dplyr::left_join(module_strata_top, by = "ModuleColor") %>%
+  dplyr::mutate(
+    priority_score = -log10(pmax(dplyr::coalesce(.data$condition_model_fdr, 1), .Machine$double.xmin)) +
+      abs(dplyr::coalesce(.data$strongest_condition_adjusted_delta, 0)) +
+      abs(dplyr::coalesce(.data$strongest_spatial_strata_adjusted_delta, 0)),
+    priority_rank = dplyr::min_rank(dplyr::desc(.data$priority_score))
+  ) %>%
+  dplyr::arrange(.data$priority_rank, .data$condition_model_fdr) %>%
+  dplyr::select(
+    "priority_rank", "priority_score",
+    "ModuleID", "ModuleColor", "module_eigengene", "ModuleLabel_Final", "ModuleLabel_Source",
+    "Supermodule", "SupermoduleConfidence", "SupermoduleRationale",
+    dplyr::any_of(c(
+      "n_features", "n_mapped_entrez", "mapping_rate", "median_abs_kME", "mean_abs_kME",
+      "condition_model_p", "condition_model_fdr", "strongest_condition_contrast",
+      "strongest_condition_adjusted_delta", "strongest_condition_fdr",
+      "strongest_spatial_stratum", "strongest_spatial_strata_contrast",
+      "strongest_spatial_strata_adjusted_delta", "strongest_spatial_strata_fdr",
+      "best_GO_BP", "best_GO_MF", "best_GO_CC", "best_GO_padj_BP", "best_GO_padj_MF", "best_GO_padj_CC",
+      "top_hub_proteins", "condition_model_formula"
+    )),
+    dplyr::contains("preservation_")
+  )
+
+WGCNA_module_definitions_for_downstream <- WGCNA_modules_long %>%
+  dplyr::select(-dplyr::any_of(c("ModuleLabel_Final", "ModuleLabel_Source"))) %>%
+  dplyr::left_join(
+    module_label_export %>%
+      dplyr::select(
+        "ModuleColor", "ModuleID", "module_eigengene", "ModuleLabel_Final", "ModuleLabel_Source",
+        "Supermodule", "SupermoduleConfidence", "SupermoduleRationale"
+      ),
+    by = c("ModuleColor", "ModuleID")
+  ) %>%
+  dplyr::select(
+    "ModuleSet", "ModuleID", "ModuleColor", "module_eigengene", "ModuleLabel_Final", "ModuleLabel_Source",
+    "Supermodule", "SupermoduleConfidence", "SupermoduleRationale",
+    dplyr::everything()
+  )
+
+write_csv_safe(WGCNA_module_priority_summary, fp_modtab("WGCNA_module_priority_summary.csv"))
+write_csv_safe(WGCNA_module_definitions_for_downstream, fp_modtab("WGCNA_module_definitions_for_downstream.csv"))
+write_csv_safe(WGCNA_module_definitions_for_downstream, fp_supertab("wgcna_module_results_with_supermodules.csv"))
+writexl::write_xlsx(
+  list(
+    priority_summary = WGCNA_module_priority_summary,
+    downstream_definitions = WGCNA_module_definitions_for_downstream,
+    module_name_map = module_label_export
+  ),
+  fp_modtab("WGCNA_module_contracts.xlsx")
+)
 
 manifest_category <- function(path) {
   path <- normalizePath(path, winslash = "/", mustWork = FALSE)
@@ -2050,9 +2978,11 @@ write_run_manifest(
     module_preservation_permutations = module_preservation_permutations,
     dataset_profile_requested = dataset_profile,
     dataset_profile_resolved = if (exists("dataset_profile_resolved")) dataset_profile_resolved else NA_character_,
+    module_definition_contract = fp_modtab("WGCNA_module_definitions_for_downstream.csv"),
+    module_priority_summary = fp_modtab("WGCNA_module_priority_summary.csv"),
     output_layout = ifelse(nzchar(output_dir_env), "custom_bundle", "canonical_module_paths")
   ),
-  notes = "Consumes precombined variancePartition-style matrices; see input_manifest.csv for exact inputs and hashes."
+  notes = "Dataset-scoped WGCNA module engine; see input_manifest.csv for exact inputs/hashes and WGCNA_module_contracts.xlsx for downstream module definitions."
 )
 output_manifest <- output_manifest %>%
   dplyr::mutate(
