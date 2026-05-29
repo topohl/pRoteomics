@@ -37,6 +37,22 @@ load_required_packages <- function(pkgs) {
 use_label_map <- FALSE   # TRUE = con/res/sus mapping
 comparison_name <- current_dataset()
 
+truthy_env <- function(name, default = FALSE) {
+  value <- Sys.getenv(name, unset = if (isTRUE(default)) "true" else "false")
+  tolower(value) %in% c("1", "true", "yes", "y")
+}
+
+has_cli_flag <- function(flags) {
+  any(commandArgs(trailingOnly = TRUE) %in% flags) ||
+    any(commandArgs(trailingOnly = FALSE) %in% flags)
+}
+
+force_rerun <- truthy_env("PROTEOMICS_FORCE_RERUN") ||
+  truthy_env("PROTEOMICS_GCT_FORCE_RERUN") ||
+  truthy_env("PROTEOMICS_RECOMPUTE") ||
+  truthy_env("PROTEOMICS_GCT_RECOMPUTE") ||
+  has_cli_flag(c("--force-rerun", "--recompute"))
+
 # -------------------------------
 # Input
 # -------------------------------
@@ -111,6 +127,10 @@ outdir <- file.path(CANONICAL_PATHS$processed, comparison_name)
 if (is_dry_run()) {
   outdir_fwd <- file.path(outdir, "forward")
   outdir_rev <- file.path(outdir, "reverse")
+  existing_tables <- c(
+    list.files(outdir_fwd, pattern = "\\.csv$", full.names = TRUE),
+    list.files(outdir_rev, pattern = "\\.csv$", full.names = TRUE)
+  )
   dry_run_line("Script", "01_preprocessing/03_gct_extractR.r")
   dry_run_line("Dry-run mode", "no output folders or CSV files will be created")
   dry_run_line("Resolved dataset", comparison_name)
@@ -120,6 +140,8 @@ if (is_dry_run()) {
   dry_run_line("Forward output directory", outdir_fwd)
   dry_run_line("Reverse output directory", outdir_rev)
   dry_run_line("Index output", file.path(outdir, "indexComparisons.csv"))
+  dry_run_line("Existing split contrast tables", length(existing_tables))
+  dry_run_line("Recompute existing tables", force_rerun)
   dry_run_line("Creates mapping inputs when run without --dry-run", outdir_fwd)
   quit(status = if (file.exists(gct_path)) 0 else 1, save = "no")
 }
@@ -350,17 +372,23 @@ written_index <- purrr::imap_dfr(by_comparison, function(cols, comp_key) {
     paste0(safe_name(comp2), ".csv")
   )
 
-  utils::write.csv(
-    df_out,
-    fwd_file,
-    row.names = FALSE,
-    quote = TRUE
-  )
-
-  message("Wrote: ", fwd_file)
+  fwd_status <- "computed"
+  if (file.exists(fwd_file) && !isTRUE(force_rerun)) {
+    fwd_status <- "skipped_existing"
+    message("Skipping existing table: ", fwd_file)
+  } else {
+    utils::write.csv(
+      df_out,
+      fwd_file,
+      row.names = FALSE,
+      quote = TRUE
+    )
+    message("Wrote: ", fwd_file)
+  }
 
   rev_file <- NA_character_
   rev_comp <- NA_character_
+  rev_status <- NA_character_
 
   if (stringr::str_detect(comp_key, "\\.over\\.")) {
 
@@ -411,14 +439,19 @@ written_index <- purrr::imap_dfr(by_comparison, function(cols, comp_key) {
       paste0(safe_name(rev_comp), ".csv")
     )
 
-    utils::write.csv(
-      df_rev,
-      rev_file,
-      row.names = FALSE,
-      quote = TRUE
-    )
-
-    message("Wrote reversed: ", rev_file)
+    if (file.exists(rev_file) && !isTRUE(force_rerun)) {
+      rev_status <- "skipped_existing"
+      message("Skipping existing reversed table: ", rev_file)
+    } else {
+      utils::write.csv(
+        df_rev,
+        rev_file,
+        row.names = FALSE,
+        quote = TRUE
+      )
+      rev_status <- "computed"
+      message("Wrote reversed: ", rev_file)
+    }
   }
 
   tibble::tibble(
@@ -428,7 +461,9 @@ written_index <- purrr::imap_dfr(by_comparison, function(cols, comp_key) {
     n_columns = length(cols),
     columns_used = paste(cols, collapse = ";"),
     forward_file = fwd_file,
-    reverse_file = rev_file
+    reverse_file = rev_file,
+    forward_status = fwd_status,
+    reverse_status = rev_status
   )
 })
 
@@ -454,6 +489,7 @@ write_run_manifest(
     comparison_name = comparison_name,
     input_stem = input_stem,
     use_label_map = use_label_map,
+    force_rerun = force_rerun,
     n_comparisons_exported = nrow(written_index)
   )
 )
