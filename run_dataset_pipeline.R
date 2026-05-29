@@ -26,7 +26,8 @@ steps <- c(
   "01_preprocessing/03_gct_extractR.r",
   "02_id_mapping/01_MapThatProt_batch.r",
   "04_differential_expression_enrichment/01_clusterProfiler.r",
-  "04_differential_expression_enrichment/02_compareGO.r"
+  "04_differential_expression_enrichment/02_compareGO.r",
+  "06_modules_WGCNA/01_WGCNA.r"
 )
 
 cat("Dataset pipeline\n")
