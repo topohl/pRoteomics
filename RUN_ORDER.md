@@ -178,16 +178,19 @@ Phase 3 canonicalized the safer downstream/helper scripts:
 Rscript 06_modules_WGCNA/01_WGCNA.r --dry-run
 Rscript 06_modules_WGCNA/02_module_spatial_networks.r --dry-run
 Rscript 06_modules_WGCNA/04_overlap_modules.r --dry-run
+Rscript 06_modules_WGCNA/05_wgcna_de_gsea_overlap.r --dry-run
 Rscript 06_modules_WGCNA/91_module_score.r --dry-run
 ```
 
-`91_module_score.r` is the canonical active module-score script. By default it consumes overlap/GSEA-derived modules. To score WGCNA modules from `01_WGCNA.r`, run with `PROTEOMICS_MODULE_DEFINITION_SOURCE=WGCNA`; the script then consumes `WGCNA_modules_long.xlsx` and, when available, `wgcna_final_model_state.rds` for eigengene scores. `90_module_score_v0.0.1.r` is retained only as an older reference and should not be used in the active run order.
+`91_module_score.r` is the canonical active module-score script. By default it consumes overlap/GSEA-derived modules. To score WGCNA modules from `01_WGCNA.r`, run with `PROTEOMICS_MODULE_DEFINITION_SOURCE=WGCNA`; the script then consumes the dataset-scoped WGCNA downstream definition contract and, when available, `wgcna_final_model_state.rds` for eigengene scores. Outputs are dataset-scoped under `module_score_v0.0.2/<dataset>`. `90_module_score_v0.0.1.r` is retained only as an older reference and should not be used in the active run order.
 
 `01_WGCNA.r` is dataset-aware and can be launched directly or through `run_dataset_pipeline.R`:
 
 ```bash
 Rscript 06_modules_WGCNA/01_WGCNA.r --dataset neuron_neuropil --dry-run
 Rscript 06_modules_WGCNA/01_WGCNA.r --dataset neuron_neuropil
+PROTEOMICS_MODULE_DEFINITION_SOURCE=wgcna Rscript 06_modules_WGCNA/91_module_score.r --dataset neuron_neuropil --dry-run
+PROTEOMICS_MODULE_DEFINITION_SOURCE=wgcna Rscript 06_modules_WGCNA/91_module_score.r --dataset neuron_neuropil
 ```
 
 It stages dataset-scoped WGCNA input workbooks under `data/processed/06_modules_WGCNA/01_WGCNA/<dataset>/inputs/` when upstream imputed matrices and metadata are available. Set `PROTEOMICS_WGCNA_EXPR_XLSX` and `PROTEOMICS_WGCNA_META_XLSX` only when intentionally using custom inputs. It exports stable color-based WGCNA module definitions plus a downstream contract and ranked biological module summary under:
@@ -198,6 +201,8 @@ results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_module_definiti
 results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_module_priority_summary.csv
 results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_module_contracts.xlsx
 ```
+
+`05_wgcna_de_gsea_overlap.r` is an optional bridge from WGCNA modules to DE/GSEA manifests. It writes `WGCNA_vs_DE_GSEA_overlap.csv/xlsx` under `results/tables/06_modules_WGCNA/05_wgcna_de_gsea_overlap/<dataset>/` and, when overlap inputs are available, appends strongest overlap columns to `WGCNA_module_priority_summary.csv`. Missing DE/GSEA inputs are recorded as skipped status rather than failing the WGCNA run.
 
 ## 7. Spatial network analyses
 
