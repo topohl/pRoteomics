@@ -1,6 +1,6 @@
 # ================================================================
 # Consumes:
-#   - processed neuropil protein matrix
+#   - dataset-resolved processed protein matrix
 #   - merged sample metadata
 #   - UniProt mapping and overlap-derived module definitions
 # Produces:
@@ -8,14 +8,25 @@
 # File contract:
 #   - docs/active_script_io_audit.tsv object 06_modules_WGCNA/91_module_score.r
 # ================================================================
-# General neuropil module score analysis with group-aware replicate QC
-# Spatial proteomics: neuron_neuropil, nuclei excluded
+# Dataset-aware module score analysis with group-aware replicate QC
 # ================================================================
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
+source(repo_path("R", "dataset_config.R"))
+source(repo_path("R", "dataset_inputs.R"))
 MODULE_ID <- "06_modules_WGCNA"
-SUBSTEP_ID <- "module_score_v0.0.2"
+args <- commandArgs(trailingOnly = TRUE)
+arg_value <- function(flag, default = "") {
+  hit <- which(args == flag)
+  if (!length(hit) || hit[1] == length(args)) return(default)
+  args[[hit[1] + 1]]
+}
+dataset_cli <- arg_value("--dataset", default = "")
+if (nzchar(dataset_cli)) Sys.setenv(PROTEOMICS_DATASET = validate_dataset(dataset_cli, source = "--dataset"))
+dataset_profile <- current_dataset()
+dataset_inputs <- resolve_dataset_inputs(dataset_profile, purpose = "module_score")
+SUBSTEP_ID <- file.path("module_score_v0.0.2", dataset_profile)
 CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
 
 # ------------------------------------------------
@@ -63,37 +74,13 @@ if (!module_definition_source %in% allowed_module_definition_sources) {
 resolve_module_score_protein_file <- function() {
   override <- Sys.getenv("PROTEOMICS_MODULE_SCORE_PROTEIN_FILE", unset = "")
   if (nzchar(override)) return(normalizePath(override, winslash = "/", mustWork = FALSE))
-
-  expected_name <- "20260218_pgmatrix_imputed_neuron_neuropil_180samples_missing70pct_with_metadata.xlsx"
-  direct <- first_existing_path(c(
-    path_processed("01_preprocessing", expected_name),
-    path_processed("01_preprocessing", "excel_convert", expected_name),
-    path_processed("morpheus", expected_name)
-  ))
-  if (!is.na(direct)) return(direct)
-
-  latest_matching_file(
-    path_processed("01_preprocessing"),
-    "^\\d{8}_pgmatrix_imputed_neuron_neuropil_[0-9]+samples_missing70pct_with_metadata\\.xlsx$"
-  )
+  dataset_inputs$expression_file
 }
 
 resolve_module_score_metadata_file <- function() {
   override <- Sys.getenv("PROTEOMICS_MODULE_SCORE_METADATA_FILE", unset = "")
   if (nzchar(override)) return(normalizePath(override, winslash = "/", mustWork = FALSE))
-
-  expected_name <- "sample_metadata_merged_clean_for_module_scores.xlsx"
-  direct <- first_existing_path(c(
-    path_metadata(expected_name),
-    path_results("module_scores", expected_name),
-    path_processed("01_preprocessing", expected_name)
-  ))
-  if (!is.na(direct)) return(direct)
-
-  latest_matching_file_anywhere(
-    c(path_metadata(), path_results("module_scores"), path_processed("01_preprocessing")),
-    paste0("^", expected_name, "$")
-  )
+  dataset_inputs$metadata_file
 }
 
 resolve_wgcna_state_file <- function() {
@@ -102,6 +89,7 @@ resolve_wgcna_state_file <- function() {
 
   latest_matching_file_anywhere(
     c(
+      path_processed("06_modules_WGCNA", "01_WGCNA", dataset_profile),
       path_processed("06_modules_WGCNA", "01_WGCNA"),
       path_results("06_modules_WGCNA"),
       path_results("tables", "06_modules_WGCNA"),
@@ -118,6 +106,7 @@ resolve_module_definitions_file <- function(source = module_definition_source) {
 
   if (identical(source, "overlap")) {
     direct <- first_existing_path(c(
+      path_results("tables", "06_modules_WGCNA", "04_overlap_modules", "Overlap_based_neuropil_modules_classified.xlsx"),
       path_results("tables", "06_modules_WGCNA", "overlap_modules", "Overlap_based_neuropil_modules_classified.xlsx"),
       path_results("tables", "06_modules_WGCNA", "03_overlap_modules", "Overlap_based_neuropil_modules_classified.xlsx")
     ))
@@ -127,11 +116,13 @@ resolve_module_definitions_file <- function(source = module_definition_source) {
 
   if (identical(source, "wgcna")) {
     direct <- first_existing_path(c(
+      path_results("tables", "06_modules_WGCNA", "01_WGCNA", dataset_profile, "modules", "WGCNA_module_definitions_for_downstream.csv"),
+      path_results("tables", "06_modules_WGCNA", "01_WGCNA", dataset_profile, "modules", "WGCNA_modules_long.xlsx"),
       path_results("tables", "06_modules_WGCNA", "01_WGCNA", "modules", "WGCNA_modules_long.xlsx"),
       path_results("tables", "06_modules_WGCNA", "01_WGCNA", "WGCNA_modules_long.xlsx")
     ))
     if (!is.na(direct)) return(direct)
-    return(latest_matching_file(path_results("tables", "06_modules_WGCNA"), "^WGCNA_modules_long\\.xlsx$"))
+    return(latest_matching_file(path_results("tables", "06_modules_WGCNA", "01_WGCNA", dataset_profile), "^WGCNA_modules_long\\.xlsx$"))
   }
 
   NA_character_
@@ -182,6 +173,8 @@ dir.create(dir_directional, recursive = TRUE, showWarnings = FALSE)
 
 if (is_dry_run()) {
   dry_run_line("Script", "06_modules_WGCNA/91_module_score.r")
+  dry_run_line("Dataset", dataset_profile)
+  dry_run_line("Resolved input diagnostics", paste(dataset_inputs$diagnostics, collapse = " | "))
   dry_run_line("Protein matrix", protein_file, if (file.exists(protein_file)) "PASS" else "FAIL")
   dry_run_line("Metadata file", metadata_file, if (file.exists(metadata_file)) "PASS" else "FAIL")
   dry_run_line("Mapping file", mapping_file, if (file.exists(mapping_file)) "PASS" else "FAIL")
@@ -191,6 +184,7 @@ if (is_dry_run()) {
     dry_run_line("WGCNA state", wgcna_state_file, if (!is.na(wgcna_state_file) && file.exists(wgcna_state_file)) "PASS" else "WARN")
   }
   dry_run_line("Output folders", paste(unlist(CANONICAL_PATHS), collapse = "; "))
+  dry_run_line("Expected dataset-scoped table root", dir_tables)
   quit(status = if (all(file.exists(c(protein_file, metadata_file, mapping_file, module_definitions_file)))) 0 else 1, save = "no")
 }
 input_paths <- c(
@@ -243,7 +237,12 @@ first <- dplyr::first
 # 2) LOAD METADATA
 # ------------------------------------------------
 
-metadata <- read_excel(metadata_file, sheet = "MergedMetadata_Clean") %>%
+metadata <- readxl::read_excel(metadata_file, sheet = "MergedMetadata_Clean") %>%
+  tibble::as_tibble()
+for (needed_col in c("Sample", "AnimalID", "Region", "Layer", "StressGroup", "Sex", "Batch", "ReplicateGroup", "CellTypeLayer", "Exclude")) {
+  if (!needed_col %in% names(metadata)) metadata[[needed_col]] <- NA
+}
+metadata <- metadata %>%
   mutate(
     Sample = as.character(Sample),
     AnimalID = as.character(AnimalID),
@@ -257,8 +256,12 @@ metadata <- read_excel(metadata_file, sheet = "MergedMetadata_Clean") %>%
     CellTypeLayer = as.character(CellTypeLayer),
     Exclude = as.logical(Exclude)
   ) %>%
-  filter(is.na(Exclude) | Exclude == FALSE) %>%
-  filter(CellTypeLayer == "neuron_neuropil")
+  filter(metadata_matches_dataset(., dataset_profile))
+
+if (nrow(metadata) == 0) {
+  stop("No metadata rows matched dataset filter for ", dataset_profile, ": ",
+       dataset_inputs$expected_filter$description, call. = FALSE)
+}
 
 # ------------------------------------------------
 # AUTOMATIC PROTEOMICS SCOPE LABEL
@@ -292,7 +295,7 @@ message("Detected proteomics scope: ", proteomics_scope)
 # 3) LOAD PROTEIN MATRIX FROM MORPHEUS FORMAT
 # ------------------------------------------------
 
-raw <- read_excel(protein_file, col_names = FALSE)
+raw <- readxl::read_excel(protein_file, col_names = FALSE)
 
 first_col <- as.character(raw[[1]])
 
@@ -440,7 +443,11 @@ standardize_module_definitions <- function(df, source) {
 # 5) GENERAL NEUROPIL MODULES
 # ------------------------------------------------
 
-modules_raw <- read_excel(module_definitions_file, sheet = module_definitions_sheet) %>%
+modules_raw <- if (grepl("\\.csv$", module_definitions_file, ignore.case = TRUE)) {
+  readr::read_csv(module_definitions_file, show_col_types = FALSE)
+} else {
+  readxl::read_excel(module_definitions_file, sheet = module_definitions_sheet)
+} %>%
   as_tibble()
 modules_standard <- standardize_module_definitions(modules_raw, module_definition_source)
 
@@ -539,7 +546,7 @@ write.xlsx(module_coverage, file.path(dir_qc, "module_gene_coverage.xlsx"), over
 if (identical(module_definition_source, "wgcna")) {
   overlap_defs_file <- resolve_module_definitions_file("overlap")
   if (!is.na(overlap_defs_file) && file.exists(overlap_defs_file)) {
-    overlap_raw <- read_excel(overlap_defs_file, sheet = "Modules_long") %>% as_tibble()
+    overlap_raw <- readxl::read_excel(overlap_defs_file, sheet = "Modules_long") %>% as_tibble()
     overlap_standard <- standardize_module_definitions(overlap_raw, "overlap")
     overlap_accession <- split(overlap_standard$UniProt, overlap_standard$ModuleID)
     overlap_mapped <- purrr::map(overlap_accession, ~ intersect(map_accessions_to_matrix_ids(.x, mapping_table), rownames(mat)))
