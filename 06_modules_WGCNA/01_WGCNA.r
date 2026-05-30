@@ -3,6 +3,133 @@
 # Outputs organized into canonical module folders by default
 # ================================ parallel-enabled
 
+early_args <- commandArgs(trailingOnly = TRUE)
+early_has_flag <- function(flag) flag %in% early_args
+early_arg_value <- function(flag, default = "") {
+  hit <- which(early_args == flag)
+  if (!length(hit) || hit[1] == length(early_args)) return(default)
+  early_args[[hit[1] + 1]]
+}
+if (early_has_flag("--dry-run") || tolower(Sys.getenv("PROTEOMICS_DRY_RUN", unset = "")) %in% c("1", "true", "yes")) {
+  paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
+  source(paths_file)
+  source(repo_path("R", "dataset_config.R"))
+  source(repo_path("R", "dataset_inputs.R"))
+  dataset_cli_early <- early_arg_value("--dataset", default = "")
+  if (nzchar(dataset_cli_early)) Sys.setenv(PROTEOMICS_DATASET = validate_dataset(dataset_cli_early, source = "--dataset"))
+  dataset_profile_early <- {
+    profile_override <- Sys.getenv("PROTEOMICS_WGCNA_DATASET_PROFILE", unset = "")
+    if (nzchar(dataset_cli_early)) validate_dataset(dataset_cli_early, source = "--dataset")
+    else if (nzchar(profile_override)) validate_dataset(profile_override, source = "PROTEOMICS_WGCNA_DATASET_PROFILE")
+    else current_dataset()
+  }
+  canonical_paths_early <- module_paths("06_modules_WGCNA", file.path("01_WGCNA", dataset_profile_early))
+  output_dir_env_early <- Sys.getenv("PROTEOMICS_WGCNA_OUTPUT_DIR", unset = "")
+  output_root_early <- if (nzchar(output_dir_env_early)) file.path(output_dir_env_early, dataset_profile_early) else canonical_paths_early$reports
+  subdirs_early <- if (nzchar(output_dir_env_early)) {
+    list(
+      figures_qc = file.path(output_root_early, "figures", "qc"),
+      figures_network = file.path(output_root_early, "figures", "network"),
+      figures_traits = file.path(output_root_early, "figures", "traits"),
+      figures_main = file.path(output_root_early, "figures", "main"),
+      tables_qc = file.path(output_root_early, "tables", "qc"),
+      tables_mapping = file.path(output_root_early, "tables", "mapping"),
+      tables_modules = file.path(output_root_early, "tables", "modules"),
+      tables_pres = file.path(output_root_early, "tables", "preservation"),
+      tables_traits = file.path(output_root_early, "tables", "traits"),
+      tables_supermodules = file.path(output_root_early, "tables", "supermodules"),
+      figures_supermodules = file.path(output_root_early, "figures", "supermodules"),
+      source_data = file.path(output_root_early, "source_data"),
+      state = file.path(output_root_early, "state"),
+      logs = file.path(output_root_early, "logs")
+    )
+  } else {
+    list(
+      figures_qc = file.path(canonical_paths_early$figures, "qc"),
+      figures_network = file.path(canonical_paths_early$figures, "network"),
+      figures_traits = file.path(canonical_paths_early$figures, "traits"),
+      figures_main = file.path(canonical_paths_early$figures, "main"),
+      tables_qc = file.path(canonical_paths_early$tables, "qc"),
+      tables_mapping = file.path(canonical_paths_early$tables, "mapping"),
+      tables_modules = file.path(canonical_paths_early$tables, "modules"),
+      tables_pres = file.path(canonical_paths_early$tables, "preservation"),
+      tables_traits = file.path(canonical_paths_early$tables, "traits"),
+      tables_supermodules = file.path(canonical_paths_early$tables, "supermodules"),
+      figures_supermodules = file.path(canonical_paths_early$figures, "supermodules"),
+      source_data = canonical_paths_early$source_data,
+      state = canonical_paths_early$processed,
+      logs = canonical_paths_early$logs
+    )
+  }
+  invisible(lapply(c(output_root_early, unlist(subdirs_early)), dir_create))
+  dataset_inputs_early <- resolve_dataset_inputs(dataset_profile_early, purpose = "wgcna")
+  expr_xlsx_env_early <- Sys.getenv("PROTEOMICS_WGCNA_EXPR_XLSX", unset = "")
+  meta_xlsx_env_early <- Sys.getenv("PROTEOMICS_WGCNA_META_XLSX", unset = "")
+  expr_xlsx_early <- if (nzchar(expr_xlsx_env_early)) expr_xlsx_env_early else path_processed("06_modules_WGCNA", "01_WGCNA", dataset_profile_early, "inputs", "wgcna_expression.xlsx")
+  meta_xlsx_early <- if (nzchar(meta_xlsx_env_early)) meta_xlsx_env_early else path_processed("06_modules_WGCNA", "01_WGCNA", dataset_profile_early, "inputs", "wgcna_sample_info.xlsx")
+  idmap_dat_early <- Sys.getenv("PROTEOMICS_WGCNA_IDMAP_DAT", unset = dataset_inputs_early$idmap_file)
+  wgcna_final_state_path_early <- file.path(subdirs_early$state, "wgcna_final_model_state.rds")
+  reuse_completed_analysis_early <- tolower(Sys.getenv("PROTEOMICS_WGCNA_REUSE_STATE", unset = "true")) %in% c("1", "true", "yes", "y")
+  force_full_analysis_early <- tolower(Sys.getenv("PROTEOMICS_WGCNA_FORCE_FULL", unset = "false")) %in% c("1", "true", "yes", "y")
+  can_stage_inputs_early <- file.exists(dataset_inputs_early$expression_file) && file.exists(dataset_inputs_early$metadata_file)
+  can_use_inputs_early <- file.exists(expr_xlsx_early) && file.exists(meta_xlsx_early)
+  can_use_cache_early <- file.exists(wgcna_final_state_path_early) && !force_full_analysis_early
+  can_write_outputs_early <- all(vapply(c(output_root_early, unlist(subdirs_early)), function(path) dir.exists(path) && file.access(path, 2) == 0, logical(1)))
+  sample_check_early <- "not checked"
+  sample_check_ok_early <- TRUE
+  if (can_use_inputs_early) {
+    sample_check_ok_early <- tryCatch({
+      if (!requireNamespace("readxl", quietly = TRUE)) stop("readxl unavailable for cheap workbook sample check")
+      first_existing_col_early <- function(df, candidates) {
+        nms_clean <- tolower(gsub("[^a-z0-9]", "", names(df)))
+        cand_clean <- tolower(gsub("[^a-z0-9]", "", candidates))
+        hit <- match(cand_clean, nms_clean)
+        hit <- hit[!is.na(hit)]
+        if (!length(hit)) return(NA_character_)
+        names(df)[hit[1]]
+      }
+      expr_head <- readxl::read_excel(expr_xlsx_early, n_max = 3)
+      meta_head <- readxl::read_excel(meta_xlsx_early, n_max = 1000)
+      sample_col <- first_existing_col_early(meta_head, dataset_inputs_early$sample_id_col_candidates)
+      if (is.na(sample_col)) {
+        sample_check_early <<- "metadata sample column not detected"
+        FALSE
+      } else {
+        expr_samples <- setdiff(names(expr_head), dataset_inputs_early$protein_id_col_candidates)
+        n_match <- length(intersect(expr_samples, as.character(meta_head[[sample_col]])))
+        sample_check_early <<- paste0(n_match, " matching sample IDs")
+        n_match > 0
+      }
+    }, error = function(e) {
+      sample_check_early <<- conditionMessage(e)
+      FALSE
+    })
+  } else if (can_stage_inputs_early) {
+    sample_check_early <- "staged files missing; canonical upstream exists and can be staged"
+  } else {
+    sample_check_early <- "staged files missing and canonical upstream cannot be staged"
+    sample_check_ok_early <- FALSE
+  }
+  downstream_contract_early <- file.path(subdirs_early$tables_modules, "WGCNA_module_definitions_for_downstream.csv")
+  dry_run_line("Script", "06_modules_WGCNA/01_WGCNA.r")
+  dry_run_line("Dataset", dataset_profile_early)
+  dry_run_line("Resolved input diagnostics", paste(dataset_inputs_early$diagnostics, collapse = " | "))
+  dry_run_line("Reuse cached final state", reuse_completed_analysis_early)
+  dry_run_line("Force full analysis", force_full_analysis_early)
+  dry_run_line("Cached state", wgcna_final_state_path_early, if (can_use_cache_early) "PASS" else if (reuse_completed_analysis_early) "WARN" else "INFO")
+  dry_run_line("Explicit/staged expression workbook", expr_xlsx_early, if (file.exists(expr_xlsx_early)) "PASS" else "WARN")
+  dry_run_line("Explicit/staged sample metadata workbook", meta_xlsx_early, if (file.exists(meta_xlsx_early)) "PASS" else "WARN")
+  dry_run_line("Canonical upstream expression", dataset_inputs_early$expression_file, if (file.exists(dataset_inputs_early$expression_file)) "PASS" else "FAIL")
+  dry_run_line("Canonical upstream metadata", dataset_inputs_early$metadata_file, if (file.exists(dataset_inputs_early$metadata_file)) "PASS" else "FAIL")
+  dry_run_line("Staged input generation", if (can_use_inputs_early) "already staged" else if (can_stage_inputs_early) "can be generated" else "cannot be generated", if (can_use_inputs_early || can_stage_inputs_early) "PASS" else "FAIL")
+  dry_run_line("Cheap sample matching", sample_check_early, if (sample_check_ok_early) "PASS" else "FAIL")
+  dry_run_line("Mouse idmapping", idmap_dat_early, if (file.exists(idmap_dat_early)) "PASS" else "FAIL")
+  dry_run_line("Output folders writable", paste(unlist(subdirs_early), collapse = "; "), if (can_write_outputs_early) "PASS" else "FAIL")
+  dry_run_line("Downstream module contract", downstream_contract_early, if (file.exists(downstream_contract_early)) "PASS" else "WARN")
+  dry_run_line("Optional DE/GSEA overlap bridge", repo_path("06_modules_WGCNA", "05_wgcna_de_gsea_overlap.r"), "WARN")
+  quit(status = if (file.exists(idmap_dat_early) && can_write_outputs_early && sample_check_ok_early && (can_use_inputs_early || can_stage_inputs_early || can_use_cache_early)) 0 else 1, save = "no")
+}
+
 # Packages
 required_pkgs <- c(
   "WGCNA", "flashClust", "curl", "readxl", "ggplot2", "svglite", "GO.db",
@@ -27,6 +154,7 @@ suppressWarnings(
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
 source(repo_path("R", "dataset_config.R"))
+source(repo_path("R", "dataset_inputs.R"))
 
 args <- commandArgs(trailingOnly = TRUE)
 arg_value <- function(flag, default = "") {
@@ -341,15 +469,7 @@ add_supermodule_cols <- function(df, annotation, module_col = "module", color_co
 }
 
 using_cached_final_state <- reuse_completed_analysis && !force_full_analysis && file.exists(wgcna_final_state_path)
-if (isTRUE(wgcna_dry_run) && using_cached_final_state) {
-  dry_run_line("Script", "06_modules_WGCNA/01_WGCNA.r")
-  dry_run_line("Dataset", dataset_profile)
-  dry_run_line("Cached state", wgcna_final_state_path, "PASS")
-  dry_run_line("Mode", "cached final state; figures/tables can be regenerated without rerunning WGCNA")
-  dry_run_line("Output folders", paste(unlist(subdirs), collapse = "; "))
-  quit(status = 0, save = "no")
-}
-if (using_cached_final_state) {
+if (!isTRUE(wgcna_dry_run) && using_cached_final_state) {
   message("Reusing completed WGCNA analysis from: ", wgcna_final_state_path)
   cached_state <- readRDS(wgcna_final_state_path)
   list2env(cached_state, envir = environment())
@@ -410,6 +530,7 @@ expr_xlsx_default <- path_processed(wgcna_module, "01_WGCNA", dataset_profile, "
 meta_xlsx_default <- path_processed(wgcna_module, "01_WGCNA", dataset_profile, "inputs", "wgcna_sample_info.xlsx")
 expr_xlsx <- if (nzchar(expr_xlsx_env)) expr_xlsx_env else expr_xlsx_default
 meta_xlsx <- if (nzchar(meta_xlsx_env)) meta_xlsx_env else meta_xlsx_default
+dataset_inputs <- resolve_dataset_inputs(dataset_profile, purpose = "wgcna")
 
 # ================================
 # Mouse-only mapping: robust idmapping parser + offline + SYMBOL/ALIAS + Entrez + UniProt gene_primary + QC
@@ -425,21 +546,7 @@ idmap_dat <- Sys.getenv("PROTEOMICS_WGCNA_IDMAP_DAT", unset = path_external("MOU
 find_latest_wgcna_upstream <- function(profile = dataset_profile) {
   override <- Sys.getenv("PROTEOMICS_WGCNA_UPSTREAM_XLSX", unset = "")
   if (nzchar(override)) return(override)
-
-  impute_dir <- path_processed("01_preprocessing", "impute")
-  if (!dir.exists(impute_dir)) return(NA_character_)
-
-  profile <- tolower(profile)
-  profile <- if (identical(profile, "auto") || identical(profile, "region_only")) "neuron_neuropil" else profile
-  pattern_profile <- paste0("^\\d{8}_pgmatrix_imputed_", profile, "_[0-9]+samples_missing70pct\\.xlsx$")
-  candidates <- list.files(impute_dir, pattern = pattern_profile, full.names = TRUE)
-  if (!length(candidates)) {
-    candidates <- list.files(impute_dir, pattern = "^\\d{8}_pgmatrix_imputed_.*_[0-9]+samples_missing70pct\\.xlsx$", full.names = TRUE)
-  }
-  if (!length(candidates)) return(NA_character_)
-
-  info <- file.info(candidates)
-  normalizePath(rownames(info)[order(info$mtime, decreasing = TRUE)[1]], winslash = "/", mustWork = FALSE)
+  resolve_dataset_inputs(profile, purpose = "wgcna")$expression_file
 }
 
 first_existing_col <- function(df, candidates) {
@@ -476,7 +583,7 @@ auto_prepare_wgcna_inputs <- function(expr_path, meta_path) {
   if (nzchar(expr_xlsx_env) || nzchar(meta_xlsx_env)) return(invisible(FALSE))
 
   upstream_xlsx <- find_latest_wgcna_upstream()
-  upstream_meta <- Sys.getenv("PROTEOMICS_WGCNA_UPSTREAM_META_XLSX", unset = path_metadata("TPE9_sample_metadata_males.xlsx"))
+  upstream_meta <- dataset_inputs$metadata_file
   if (is.na(upstream_xlsx) || !file.exists(upstream_xlsx) || !file.exists(upstream_meta)) return(invisible(FALSE))
 
   message("Preparing missing WGCNA input workbooks from: ", upstream_xlsx)
@@ -514,14 +621,18 @@ auto_prepare_wgcna_inputs <- function(expr_path, meta_path) {
   } else {
     NA_character_
   }
-  meta_out <- metadata %>%
-    dplyr::transmute(
-      row.names = .data[[".wgcna_sample"]],
-      region = tolower(as.character(.data[["region"]])),
-      layer = tolower(as.character(.data[["layer"]])),
-      celltype = as.character(.data[["celltype"]]),
-      ExpGroup = normalize_wgcna_group(.data[["ExpGroup"]])
-    )
+  region_col <- first_existing_col(metadata, c("region", "Region"))
+  layer_col <- first_existing_col(metadata, c("layer", "Layer"))
+  group_col <- first_existing_col(metadata, c("ExpGroup", "StressGroup", "group", "Group"))
+  if (is.na(region_col)) stop("Could not find a region column in upstream metadata: ", upstream_meta, call. = FALSE)
+  if (is.na(group_col)) stop("Could not find a condition/group column in upstream metadata: ", upstream_meta, call. = FALSE)
+  meta_out <- tibble::tibble(
+    row.names = metadata$.wgcna_sample,
+    region = tolower(as.character(metadata[[region_col]])),
+    layer = if (!is.na(layer_col)) tolower(as.character(metadata[[layer_col]])) else NA_character_,
+    celltype = as.character(metadata$celltype),
+    ExpGroup = normalize_wgcna_group(metadata[[group_col]])
+  )
 
   dir.create(dirname(expr_path), recursive = TRUE, showWarnings = FALSE)
   dir.create(dirname(meta_path), recursive = TRUE, showWarnings = FALSE)
@@ -552,22 +663,56 @@ stop_if_missing <- function(path) {
 
 if (isTRUE(wgcna_dry_run)) {
   upstream_xlsx <- find_latest_wgcna_upstream()
-  upstream_meta <- Sys.getenv("PROTEOMICS_WGCNA_UPSTREAM_META_XLSX", unset = path_metadata("TPE9_sample_metadata_males.xlsx"))
+  upstream_meta <- dataset_inputs$metadata_file
   can_stage_inputs <- file.exists(upstream_xlsx) && file.exists(upstream_meta)
   can_use_inputs <- file.exists(expr_xlsx) && file.exists(meta_xlsx)
   can_use_cache <- file.exists(wgcna_final_state_path) && !force_full_analysis
+  can_write_outputs <- all(vapply(c(output_dir, unlist(subdirs)), function(path) dir.exists(path) && file.access(path, 2) == 0, logical(1)))
+  downstream_contract <- fp_modtab("WGCNA_module_definitions_for_downstream.csv")
+  sample_check <- "not checked"
+  sample_check_ok <- TRUE
+  if (can_use_inputs) {
+    sample_check_ok <- tryCatch({
+      expr_head <- readxl::read_excel(expr_xlsx, n_max = 3)
+      meta_head <- readxl::read_excel(meta_xlsx, n_max = 1000)
+      sample_col <- first_existing_col(meta_head, dataset_inputs$sample_id_col_candidates)
+      if (is.na(sample_col)) {
+        sample_check <<- "metadata sample column not detected"
+        FALSE
+      } else {
+        expr_samples <- setdiff(names(expr_head), dataset_inputs$protein_id_col_candidates)
+        meta_samples <- as.character(meta_head[[sample_col]])
+        n_match <- length(intersect(expr_samples, meta_samples))
+        sample_check <<- paste0(n_match, " matching sample IDs")
+        n_match > 0
+      }
+    }, error = function(e) {
+      sample_check <<- conditionMessage(e)
+      FALSE
+    })
+  } else if (can_stage_inputs) {
+    sample_check <- "staged files missing; canonical upstream exists and can be staged"
+  } else {
+    sample_check <- "staged files missing and canonical upstream cannot be staged"
+    sample_check_ok <- FALSE
+  }
   dry_run_line("Script", "06_modules_WGCNA/01_WGCNA.r")
   dry_run_line("Dataset", dataset_profile)
+  dry_run_line("Resolved input diagnostics", paste(dataset_inputs$diagnostics, collapse = " | "))
   dry_run_line("Reuse cached final state", reuse_completed_analysis)
   dry_run_line("Force full analysis", force_full_analysis)
-  dry_run_line("Cached state", wgcna_final_state_path, if (can_use_cache) "PASS" else "WARN")
-  dry_run_line("Expression workbook", expr_xlsx, if (file.exists(expr_xlsx)) "PASS" else "WARN")
-  dry_run_line("Sample metadata workbook", meta_xlsx, if (file.exists(meta_xlsx)) "PASS" else "WARN")
-  dry_run_line("Stageable upstream expression", upstream_xlsx, if (file.exists(upstream_xlsx)) "PASS" else "WARN")
-  dry_run_line("Stageable upstream metadata", upstream_meta, if (file.exists(upstream_meta)) "PASS" else "WARN")
+  dry_run_line("Cached state", wgcna_final_state_path, if (can_use_cache) "PASS" else if (reuse_completed_analysis) "WARN" else "INFO")
+  dry_run_line("Explicit/staged expression workbook", expr_xlsx, if (file.exists(expr_xlsx)) "PASS" else "WARN")
+  dry_run_line("Explicit/staged sample metadata workbook", meta_xlsx, if (file.exists(meta_xlsx)) "PASS" else "WARN")
+  dry_run_line("Canonical upstream expression", upstream_xlsx, if (file.exists(upstream_xlsx)) "PASS" else "FAIL")
+  dry_run_line("Canonical upstream metadata", upstream_meta, if (file.exists(upstream_meta)) "PASS" else "FAIL")
+  dry_run_line("Staged input generation", if (can_use_inputs) "already staged" else if (can_stage_inputs) "can be generated" else "cannot be generated", if (can_use_inputs || can_stage_inputs) "PASS" else "FAIL")
+  dry_run_line("Cheap sample matching", sample_check, if (sample_check_ok) "PASS" else "FAIL")
   dry_run_line("Mouse idmapping", idmap_dat, if (file.exists(idmap_dat)) "PASS" else "FAIL")
-  dry_run_line("Output folders", paste(unlist(subdirs), collapse = "; "))
-  quit(status = if (can_use_cache || (file.exists(idmap_dat) && (can_use_inputs || can_stage_inputs))) 0 else 1, save = "no")
+  dry_run_line("Output folders writable", paste(unlist(subdirs), collapse = "; "), if (can_write_outputs) "PASS" else "FAIL")
+  dry_run_line("Downstream module contract", downstream_contract, if (file.exists(downstream_contract)) "PASS" else "WARN")
+  dry_run_line("Optional DE/GSEA overlap bridge", repo_path("06_modules_WGCNA", "05_wgcna_de_gsea_overlap.r"), "WARN")
+  quit(status = if (file.exists(idmap_dat) && can_write_outputs && sample_check_ok && (can_use_inputs || can_stage_inputs || can_use_cache)) 0 else 1, save = "no")
 }
 
 wgcna_inputs_auto_prepared <- auto_prepare_wgcna_inputs(expr_xlsx, meta_xlsx)
@@ -679,9 +824,33 @@ meta.data <- { stop_if_missing(meta_xlsx); read_head(meta_xlsx) }
 # --------------------------
 stop_if_missing(idmap_dat)
 input_manifest <- tibble::tibble(
-  role = c("expression_matrix", "sample_metadata", "mouse_idmapping"),
-  path = c(expr_xlsx, meta_xlsx, idmap_dat),
-  md5 = vapply(c(expr_xlsx, meta_xlsx, idmap_dat), file_hash, character(1))
+  role = c(
+    "canonical_upstream_expression_matrix",
+    "canonical_upstream_sample_metadata",
+    "staged_wgcna_expression_matrix",
+    "staged_wgcna_sample_metadata",
+    "expression_matrix",
+    "sample_metadata",
+    "mouse_idmapping"
+  ),
+  path = c(
+    dataset_inputs$expression_file,
+    dataset_inputs$metadata_file,
+    expr_xlsx_default,
+    meta_xlsx_default,
+    expr_xlsx,
+    meta_xlsx,
+    idmap_dat
+  ),
+  md5 = vapply(c(
+    dataset_inputs$expression_file,
+    dataset_inputs$metadata_file,
+    expr_xlsx_default,
+    meta_xlsx_default,
+    expr_xlsx,
+    meta_xlsx,
+    idmap_dat
+  ), file_hash, character(1))
 )
 if (isTRUE(wgcna_inputs_auto_prepared) && file.exists(fp_log("auto_prepared_input_manifest.csv"))) {
   input_manifest <- dplyr::bind_rows(
@@ -1480,7 +1649,8 @@ best_go_labels <- GO_enrichment_long %>%
     Label = vapply(.data$Description, compact_term, character(1)),
     BestTerm = .data$Description,
     BestTermPAdjust = .data$p.adjust,
-    BestTermQvalue = .data$qvalue
+    BestTermQvalue = .data$qvalue,
+    BestTermGeneRatio = .data$GeneRatio
   )
 best_go_wide <- best_go_labels %>%
   dplyr::select(.data$ModuleColor, .data$Ontology, .data$Label) %>%
@@ -1494,6 +1664,9 @@ best_term_padj_wide <- best_go_labels %>%
 best_term_qvalue_wide <- best_go_labels %>%
   dplyr::select(.data$ModuleColor, .data$Ontology, .data$BestTermQvalue) %>%
   tidyr::pivot_wider(names_from = .data$Ontology, values_from = .data$BestTermQvalue, names_prefix = "best_GO_qvalue_")
+best_term_gene_ratio_wide <- best_go_labels %>%
+  dplyr::select(.data$ModuleColor, .data$Ontology, .data$BestTermGeneRatio) %>%
+  tidyr::pivot_wider(names_from = .data$Ontology, values_from = .data$BestTermGeneRatio, names_prefix = "best_GO_gene_ratio_")
 
 module_label_table <- tibble::tibble(
   ModuleColor = module_colors,
@@ -1504,6 +1677,7 @@ module_label_table <- tibble::tibble(
   dplyr::left_join(best_term_wide, by = "ModuleColor") %>%
   dplyr::left_join(best_term_padj_wide, by = "ModuleColor") %>%
   dplyr::left_join(best_term_qvalue_wide, by = "ModuleColor") %>%
+  dplyr::left_join(best_term_gene_ratio_wide, by = "ModuleColor") %>%
   dplyr::mutate(
     ModuleLabel_GO_BP = dplyr::coalesce(.data$ModuleLabel_GO_BP, paste0("Module ", .data$ModuleColor)),
     ModuleLabel_GO_MF = dplyr::coalesce(.data$ModuleLabel_GO_MF, paste0("Module ", .data$ModuleColor)),
@@ -1513,7 +1687,19 @@ module_label_table <- tibble::tibble(
       !is.na(.data$ModuleLabel_Manual) & nzchar(.data$ModuleLabel_Manual) ~ "manual",
       !is.na(.data$best_GO_BP) & nzchar(.data$best_GO_BP) ~ "GO_BP_ORA_all_module",
       TRUE ~ "module_color"
-    )
+    ),
+    primary_label = .data$ModuleLabel_GO_BP,
+    alternative_label_MF = .data$ModuleLabel_GO_MF,
+    alternative_label_CC = .data$ModuleLabel_GO_CC,
+    label_padj_BP = .data$best_GO_padj_BP,
+    label_padj_MF = .data$best_GO_padj_MF,
+    label_padj_CC = .data$best_GO_padj_CC,
+    label_gene_ratio_BP = .data$best_GO_gene_ratio_BP,
+    label_gene_ratio_MF = .data$best_GO_gene_ratio_MF,
+    label_gene_ratio_CC = .data$best_GO_gene_ratio_CC,
+    label_source = .data$ModuleLabel_Source,
+    manual_label = .data$ModuleLabel_Manual,
+    final_label = .data$ModuleLabel_Final
   )
 module_name_map <- stats::setNames(module_label_table$ModuleLabel_Final, module_label_table$ModuleColor)
 
@@ -1541,6 +1727,10 @@ WGCNA_modules_long <- feature_module_tbl %>%
   dplyr::select(
     ModuleSet, ModuleID, ModuleColor,
     ModuleLabel_Final, ModuleLabel_Source, ModuleLabel_GO_BP, ModuleLabel_GO_MF, ModuleLabel_GO_CC, ModuleLabel_Manual,
+    primary_label, alternative_label_MF, alternative_label_CC,
+    label_padj_BP, label_padj_MF, label_padj_CC,
+    label_gene_ratio_BP, label_gene_ratio_MF, label_gene_ratio_CC,
+    label_source, manual_label, final_label,
     best_GO_BP, best_GO_MF, best_GO_CC, best_GO_padj_BP, best_GO_padj_MF, best_GO_padj_CC,
     ProteinID, UniProt, EntrezID, GeneSymbol, kME, abs_kME,
     GeneSignificanceP, GeneSignificanceFDR, is_core_kME_0.6, is_top_hub_25, Source
@@ -2920,6 +3110,21 @@ WGCNA_module_definitions_for_downstream <- WGCNA_modules_long %>%
       ),
     by = c("ModuleColor", "ModuleID")
   ) %>%
+  dplyr::left_join(
+    WGCNA_module_priority_summary %>%
+      dplyr::select(
+        "ModuleColor", "ModuleID",
+        dplyr::any_of(c(
+          "condition_model_p", "condition_model_fdr",
+          "strongest_condition_contrast", "strongest_condition_adjusted_delta", "strongest_condition_fdr",
+          "strongest_spatial_stratum", "strongest_spatial_strata_contrast",
+          "strongest_spatial_strata_adjusted_delta", "strongest_spatial_strata_fdr"
+        )),
+        dplyr::contains("preservation_")
+      ) %>%
+      dplyr::distinct(),
+    by = c("ModuleColor", "ModuleID")
+  ) %>%
   dplyr::select(
     "ModuleSet", "ModuleID", "ModuleColor", "module_eigengene", "ModuleLabel_Final", "ModuleLabel_Source",
     "Supermodule", "SupermoduleConfidence", "SupermoduleRationale",
@@ -2929,6 +3134,18 @@ WGCNA_module_definitions_for_downstream <- WGCNA_modules_long %>%
 write_csv_safe(WGCNA_module_priority_summary, fp_modtab("WGCNA_module_priority_summary.csv"))
 write_csv_safe(WGCNA_module_definitions_for_downstream, fp_modtab("WGCNA_module_definitions_for_downstream.csv"))
 write_csv_safe(WGCNA_module_definitions_for_downstream, fp_supertab("wgcna_module_results_with_supermodules.csv"))
+overlap_bridge_script <- repo_path("06_modules_WGCNA", "05_wgcna_de_gsea_overlap.r")
+if (file.exists(overlap_bridge_script)) {
+  tryCatch({
+    source(overlap_bridge_script)
+    overlap_summary <- run_wgcna_de_gsea_overlap(dataset_profile, dry_run = FALSE)
+    if (file.exists(fp_modtab("WGCNA_module_priority_summary.csv"))) {
+      WGCNA_module_priority_summary <- readr::read_csv(fp_modtab("WGCNA_module_priority_summary.csv"), show_col_types = FALSE)
+    }
+  }, error = function(e) {
+    warning("Optional WGCNA-to-DE/GSEA overlap bridge skipped: ", conditionMessage(e), call. = FALSE)
+  })
+}
 writexl::write_xlsx(
   list(
     priority_summary = WGCNA_module_priority_summary,
