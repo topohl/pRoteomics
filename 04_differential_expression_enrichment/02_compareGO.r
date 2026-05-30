@@ -44,8 +44,30 @@
 #' @author
 #'   Tobias Pohl
 
-paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
+script_file <- local({
+  frame_files <- vapply(sys.frames(), function(frame) {
+    file <- if (!is.null(frame$ofile)) frame$ofile else NA_character_
+    as.character(file)[1]
+  }, character(1))
+  frame_files <- frame_files[!is.na(frame_files) & nzchar(frame_files)]
+  if (length(frame_files) > 0) normalizePath(frame_files[[length(frame_files)]], winslash = "/", mustWork = FALSE) else NA_character_
+})
+script_dir <- if (!is.na(script_file)) dirname(script_file) else getwd()
+paths_candidates <- c(
+  file.path(getwd(), "R", "paths.R"),
+  file.path(getwd(), "..", "R", "paths.R"),
+  file.path(script_dir, "R", "paths.R"),
+  file.path(script_dir, "..", "R", "paths.R")
+)
+paths_file <- normalizePath(paths_candidates[file.exists(paths_candidates)][1], winslash = "/", mustWork = FALSE)
+if (is.na(paths_file) || !file.exists(paths_file)) {
+  stop("Could not find R/paths.R. Tried:\n", paste(paths_candidates, collapse = "\n"), call. = FALSE)
+}
+if (!nzchar(Sys.getenv("PROTEOMICS_PROJECT_ROOT", unset = ""))) {
+  Sys.setenv(PROTEOMICS_PROJECT_ROOT = dirname(dirname(paths_file)))
+}
 source(paths_file)
+source(repo_path("R", "dataset_config.R"))
 MODULE_ID <- "04_differential_expression_enrichment"
 SUBSTEP_ID <- "compareGO"
 CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
@@ -109,8 +131,8 @@ if (!isTRUE(DRY_RUN)) {
 # -----------------------------------------------------
 # Define Theme and Helper Functions
 # -----------------------------------------------------
-#' Nature-style ggplot2 theme for publication-quality figures
-theme_nature <- function(base_size = 9, base_family = "sans") {
+#' Publication-style ggplot2 theme for publication-quality figures
+theme_publication <- function(base_size = 9, base_family = "sans") {
   theme_minimal(base_size = base_size, base_family = base_family) +
     theme(
       # Text elements
@@ -159,7 +181,7 @@ theme_nature <- function(base_size = 9, base_family = "sans") {
 calc_dims <- function(df_plot) {
   n_cols <- length(unique(as.character(df_plot$Comparison)))
   n_rows <- length(unique(as.character(df_plot$Description)))
-  # Nature-style: optimize for single or dual column layouts (85mm or 180mm)
+  # Publication-style: optimize for single or dual column layouts (85mm or 180mm)
   w <- max(3.35, 3.35 + (n_cols * 0.5))  # Single column width ~85mm = 3.35 inches
   h <- max(5, 2.5 + (n_rows * 0.25))
   return(list(w = w, h = h))
@@ -323,9 +345,15 @@ if (!isTRUE(DRY_RUN)) {
 # -----------------------------------------------------
 
 `%||%` <- function(x, y) if (is.null(x)) y else x
+safe_filename <- function(x) {
+  x <- gsub("[^A-Za-z0-9._-]+", "_", as.character(x))
+  x <- gsub("^_+|_+$", "", x)
+  ifelse(nzchar(x), x, "unknown")
+}
+
 read_comparego_config <- function(config_path) {
   defaults <- list(
-    dataset = Sys.getenv("PROTEOMICS_COMPARISON", unset = "neuron_neuropil"),
+    dataset = current_dataset(),
     legacy_mode = FALSE,
     ontology = "BP",
     route_category = "phenotype_within_unit",
@@ -338,7 +366,9 @@ read_comparego_config <- function(config_path) {
     significant_only = TRUE,
     target_n_terms = 5,
     redundancy_threshold = 0.7,
-    min_set_size = 10
+    min_set_size = 10,
+    resume_raw_tables = TRUE,
+    force_raw_recompute = FALSE
   )
   if (file.exists(config_path) && requireNamespace("yaml", quietly = TRUE)) {
     yaml_cfg <- yaml::read_yaml(config_path)
@@ -366,7 +396,8 @@ as_repo_path <- function(path) {
 }
 comparego_cfg$clusterProfiler_manifest <- as_repo_path(comparego_cfg$clusterProfiler_manifest)
 comparego_cfg$uniprot_mapping_file <- as_repo_path(comparego_cfg$uniprot_mapping_file)
-DATASET <- as.character(comparego_cfg$dataset %||% Sys.getenv("PROTEOMICS_COMPARISON", unset = "neuron_neuropil"))
+DATASET <- current_dataset(default = comparego_cfg$dataset %||% "neuron_neuropil")
+comparego_cfg$dataset <- DATASET
 if (!nzchar(as.character(comparego_cfg$clusterProfiler_manifest))) {
   comparego_cfg$clusterProfiler_manifest <- path_processed(
     MODULE_ID, "clusterProfiler", DATASET, "clusterProfiler_manifest.csv"
@@ -401,6 +432,13 @@ if (isTRUE(DRY_RUN)) {
     add_diag("manifest_schema", if (length(missing_cols) == 0) "PASS" else "FAIL", paste(missing_cols, collapse = ", "))
     if (length(missing_cols) == 0) {
       if ("dataset" %in% names(dry_manifest)) {
+        dataset_missing <- is.na(dry_manifest$dataset) |
+          !nzchar(trimws(as.character(dry_manifest$dataset))) |
+          toupper(trimws(as.character(dry_manifest$dataset))) == "NA"
+        manifest_parent_dataset <- basename(dirname(normalizePath(manifest_path, winslash = "/", mustWork = FALSE)))
+        if (any(dataset_missing) && identical(manifest_parent_dataset, DATASET)) {
+          dry_manifest$dataset[dataset_missing] <- DATASET
+        }
         dry_manifest <- dry_manifest[dry_manifest$dataset == DATASET, , drop = FALSE]
         add_diag("dataset_filter", if (nrow(dry_manifest) > 0) "PASS" else "FAIL", paste0(DATASET, ": ", nrow(dry_manifest), " row(s)"))
       } else if (!legacy_mode) {
@@ -462,6 +500,9 @@ if (isTRUE(DRY_RUN)) {
   dry_run_line("Route category", comparego_cfg$route_category)
   dry_run_line("Route unit", comparego_cfg$route_unit)
   dry_run_line("Result types", paste(unlist(comparego_cfg$result_types), collapse = ", "))
+  dry_run_line("Dataset output tables", file.path(CANONICAL_PATHS$tables, DATASET))
+  dry_run_line("Dataset output figures", file.path(CANONICAL_PATHS$figures, DATASET))
+  dry_run_line("Dataset source data", file.path(CANONICAL_PATHS$source_data, DATASET))
   dry_run_dir <- file.path(CANONICAL_PATHS$reports, DATASET)
   dir.create(dry_run_dir, recursive = TRUE, showWarnings = FALSE)
   dry_run_file <- file.path(dry_run_dir, "compareGO_dry_run_diagnostics.csv")
@@ -475,6 +516,12 @@ if (!file.exists(manifest_path)) {
        "\nRun 04_differential_expression_enrichment/01_clusterProfiler.r first.", call. = FALSE)
 }
 cluster_manifest <- readr::read_csv(manifest_path, show_col_types = FALSE)
+if (ncol(cluster_manifest) == 0 ||
+    (ncol(cluster_manifest) == 1 && names(cluster_manifest)[[1]] %in% c("", "...1") && nrow(cluster_manifest) <= 1)) {
+  stop("clusterProfiler manifest is empty or malformed: ", manifest_path,
+       "\nRerun 04_differential_expression_enrichment/01_clusterProfiler.r, or rebuild the manifest from existing source-data outputs.",
+       call. = FALSE)
+}
 required_manifest_cols <- c(
   "analysis_id", "dataset", "run_id", "ontology", "result_type", "comparison",
   "route_category", "route_unit", "used_for_plot", "input_gene_file",
@@ -489,6 +536,17 @@ if (length(missing_manifest_cols) > 0) {
        call. = FALSE)
 }
 if ("dataset" %in% names(cluster_manifest)) {
+  dataset_missing <- is.na(cluster_manifest$dataset) |
+    !nzchar(trimws(as.character(cluster_manifest$dataset))) |
+    toupper(trimws(as.character(cluster_manifest$dataset))) == "NA"
+  manifest_parent_dataset <- basename(dirname(normalizePath(manifest_path, winslash = "/", mustWork = FALSE)))
+  if (any(dataset_missing) && identical(manifest_parent_dataset, DATASET)) {
+    warning(
+      "Filling ", sum(dataset_missing), " missing dataset value(s) in clusterProfiler manifest from dataset-specific path: ",
+      DATASET
+    )
+    cluster_manifest$dataset[dataset_missing] <- DATASET
+  }
   cluster_manifest <- cluster_manifest %>% filter(dataset == DATASET)
   if (nrow(cluster_manifest) == 0) {
     stop("No clusterProfiler manifest rows found for dataset='", DATASET, "'. ", 
@@ -703,13 +761,46 @@ analysis_params <- list(
   n_total_proteins = length(unique(na.omit(log2fc_long$gene_symbol)))
 )
 
+resume_raw_tables <- isTRUE(comparego_cfg$resume_raw_tables)
+force_raw_recompute <- isTRUE(comparego_cfg$force_raw_recompute)
+
+should_write_raw_table <- function(path) {
+  !isTRUE(resume_raw_tables) || isTRUE(force_raw_recompute) || !file.exists(path)
+}
+
+write_raw_csv <- function(x, path, ..., writer = utils::write.csv) {
+  if (!should_write_raw_table(path)) {
+    message("[SKIP raw table] Existing file kept: ", path)
+    return(invisible(path))
+  }
+  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+  writer(x, path, ...)
+  invisible(path)
+}
+
+write_raw_xlsx <- function(x, path, ...) {
+  if (!should_write_raw_table(path)) {
+    message("[SKIP raw table] Existing file kept: ", path)
+    return(invisible(path))
+  }
+  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+  writexl::write_xlsx(x, path = path, ...)
+  invisible(path)
+}
+
+write_xlsx <- write_raw_xlsx
+
 comparego_log_dir <- file.path(CANONICAL_PATHS$logs, DATASET)
 dir.create(comparego_log_dir, recursive = TRUE, showWarnings = FALSE)
 write_session_info(file.path(comparego_log_dir, "sessionInfo.txt"))
 write_config_snapshot(comparego_cfg, file.path(comparego_log_dir, "compareGO_config_snapshot.yml"))
 comparego_processed_dir <- file.path(CANONICAL_PATHS$processed, DATASET)
 dir.create(comparego_processed_dir, recursive = TRUE, showWarnings = FALSE)
-readr::write_csv(manifest_filtered, file.path(comparego_processed_dir, "compareGO_input_manifest.csv"))
+write_raw_csv(
+  manifest_filtered,
+  file.path(comparego_processed_dir, "compareGO_input_manifest.csv"),
+  writer = function(x, path, ...) readr::write_csv(x, path, ...)
+)
 
 uniprot_mapping_file_path <- as.character(comparego_cfg$uniprot_mapping_file)
 if (!file.exists(uniprot_mapping_file_path)) {
@@ -777,9 +868,10 @@ empty_tables <- unique(c(
 ))
 if (length(empty_tables) > 0) {
   message("[INFO] Empty enrichment tables will be excluded explicitly: ", paste(empty_tables, collapse = ", "))
-  readr::write_csv(
+  write_raw_csv(
     tibble(comparison = empty_tables, reason = "empty_enrichment_table"),
-    file.path(CANONICAL_PATHS$reports, "empty_clusterProfiler_inputs.csv")
+    file.path(CANONICAL_PATHS$reports, "empty_clusterProfiler_inputs.csv"),
+    writer = function(x, path, ...) readr::write_csv(x, path, ...)
   )
   enrichment_list <- enrichment_list[setdiff(names(enrichment_list), empty_tables)]
 }
@@ -808,8 +900,26 @@ combined_df <- bind_rows(
 # Remove whitespace from comparison names to avoid duplicates
 combined_df$Comparison <- str_trim(combined_df$Comparison)
 
+# Add manifest-derived grouping metadata for split figure exports.
+comparison_group_meta <- manifest_filtered %>%
+  distinct(Comparison = comparison, route_unit) %>%
+  mutate(
+    route_unit = ifelse(is.na(route_unit) | !nzchar(as.character(route_unit)), "all_units", as.character(route_unit)),
+    region = ifelse(grepl("_", route_unit), sub("_.*$", "", route_unit), route_unit),
+    layer = ifelse(grepl("_", route_unit), sub("^[^_]+_", "", route_unit), route_unit),
+    region_layer = ifelse(region == layer, region, paste(region, layer, sep = "_"))
+  )
+
+combined_df <- combined_df %>%
+  left_join(comparison_group_meta, by = "Comparison") %>%
+  mutate(
+    region = ifelse(is.na(region) | !nzchar(region), "unknown_region", region),
+    layer = ifelse(is.na(layer) | !nzchar(layer), "unknown_layer", layer),
+    region_layer = ifelse(is.na(region_layer) | !nzchar(region_layer), paste(region, layer, sep = "_"), region_layer)
+  )
+
 # Save combined enrichment data to Excel
-writexl::write_xlsx(
+write_raw_xlsx(
   combined_df, 
   path = file.path(subdirs$tables, paste0("Combined_Enrichment_Data.xlsx"))
 )
@@ -854,6 +964,11 @@ combined_df_best <- combined_df %>%
   group_by(Comparison, Description) %>%
   slice_max(abs(NES), n = 1, with_ties = FALSE) %>%
   ungroup()
+
+significant_term_descriptions <- combined_df_best %>%
+  filter(!is.na(p.adjust), p.adjust < 0.05) %>%
+  pull(Description) %>%
+  unique()
 
 # =========================================================
 # JACCARD FUNCTION
@@ -936,7 +1051,7 @@ if(nrow(candidate_pool) == 0) {
   # Ensure 'leading_edge' is character to avoid writexl warnings
   df_standard <- df_standard %>% mutate(leading_edge = as.character(NA))
   df_refined <- df_refined %>% mutate(leading_edge = as.character(NA))
-  writexl::write_xlsx(
+  write_raw_xlsx(
     list(
       Standard = df_standard,
       Refined = df_refined,
@@ -950,7 +1065,7 @@ if(nrow(candidate_pool) == 0) {
   comparison_plot_data <- tibble()
   lookup_df <- tibble()
   suppressWarnings({
-    writexl::write_xlsx(list(), path = file.path(subdirs$tables, "Matrix_Heatmap_NES.xlsx"))
+    write_raw_xlsx(list(), path = file.path(subdirs$tables, "Matrix_Heatmap_NES.xlsx"))
   })
 } else {
   comparisons <- unique(candidate_pool$Comparison)
@@ -985,7 +1100,7 @@ if(nrow(candidate_pool) == 0) {
   # Ensure 'leading_edge' is character to avoid writexl warnings
   df_standard <- df_standard %>% mutate(across(leading_edge, as.character))
   df_refined <- df_refined %>% mutate(across(leading_edge, as.character))
-  writexl::write_xlsx(
+  write_raw_xlsx(
     list(
       Standard = df_standard,
       Refined = df_refined,
@@ -996,20 +1111,25 @@ if(nrow(candidate_pool) == 0) {
   top_terms <- unique(df_refined$Description)
 }
 
+# Terms shown in compareGO figures must be significant in at least one comparison,
+# but all available comparison values for those terms remain visible in the plots.
+figure_top_terms <- intersect(top_terms, significant_term_descriptions)
+figure_top_terms_standard <- intersect(top_terms_standard, significant_term_descriptions)
+figure_top_terms_refined <- intersect(top_terms_refined, significant_term_descriptions)
 
 # -----------------------------------------------------
 # Plot Comparison: Standard vs Refined Selection
 # -----------------------------------------------------
 
-# Nature-style color palettes: Professional, publication-ready colors
+# Publication-style color palettes: Professional, publication-ready colors
 # Upregulation = warm orange/red, downregulation = cool blue, 0 = white
 custom_palette <- colorRampPalette(c("#0571B0", "white", "#CA0020"), space = "Lab")
 
 plot_data_standard <- combined_df %>%
-  filter(Description %in% top_terms_standard) %>%
+  filter(Description %in% figure_top_terms_standard) %>%
   mutate(Selection_Type = "Standard")
 plot_data_refined <- combined_df %>%
-  filter(Description %in% top_terms_refined) %>%
+  filter(Description %in% figure_top_terms_refined) %>%
   mutate(Selection_Type = "Refined")
 comparison_plot_data <- bind_rows(plot_data_standard, plot_data_refined) %>%
   mutate(Comparison = factor(Comparison, levels = unique(Comparison)))
@@ -1058,7 +1178,7 @@ if (nrow(comparison_plot_data) == 0 || all(is.na(comparison_plot_data$NES))) {
       y = "GO Term",
       x = "Comparison"
     ) +
-    theme_nature(base_size = 9) +
+    theme_publication(base_size = 9) +
     theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
 
   n_cols_comp <- length(unique(as.character(comparison_plot_data$Comparison)))
@@ -1082,14 +1202,15 @@ if (nrow(comparison_plot_data) == 0 || all(is.na(comparison_plot_data$NES))) {
 # -----------------------------------------------------
 
 lookup_df <- combined_df %>%
-  filter(Description %in% top_terms)
+  filter(Description %in% figure_top_terms)
+heatmap_lookup_df <- lookup_df
 
-if (nrow(lookup_df) == 0 || all(is.na(lookup_df$NES))) {
-  message("No data available for enrichment heatmap. Skipping heatmap generation.")
+if (nrow(heatmap_lookup_df) == 0 || all(is.na(heatmap_lookup_df$NES))) {
+  message("No data available for significant selected GO terms. Skipping heatmap generation.")
   heatmap_data <- matrix(numeric(0), nrow = 0, ncol = 0)
   heatmap_labels <- matrix(character(0), nrow = 0, ncol = 0)
 } else {
-  comparison_order <- lookup_df %>%
+  comparison_order <- heatmap_lookup_df %>%
     group_by(Comparison) %>%
     summarize(max_abs_NES = max(abs(NES), na.rm = TRUE), .groups = "drop") %>%
     filter(is.finite(max_abs_NES)) %>%
@@ -1097,20 +1218,20 @@ if (nrow(lookup_df) == 0 || all(is.na(lookup_df$NES))) {
     pull(Comparison)
   
   if (length(comparison_order) == 0) {
-    comparison_order <- unique(as.character(lookup_df$Comparison))
+    comparison_order <- unique(as.character(heatmap_lookup_df$Comparison))
   }
   
-  lookup_df <- lookup_df %>%
+  heatmap_lookup_df <- heatmap_lookup_df %>%
     mutate(Comparison = factor(Comparison, levels = comparison_order))
 
 # -----------------------------------------------------
 # Generate Enrichment Heatmap
 # -----------------------------------------------------
 
-  lookup_df <- lookup_df %>%
+  heatmap_lookup_df <- heatmap_lookup_df %>%
     mutate(sig_label = ifelse(p.adjust < 0.05, "*", ""))
 
-  heatmap_data <- lookup_df %>%
+  heatmap_data <- heatmap_lookup_df %>%
     dplyr::select(Description, Comparison, NES) %>%
     dplyr::group_by(Description, Comparison) %>%
     dplyr::summarise(NES = mean(NES, na.rm = TRUE), .groups = "drop") %>%
@@ -1122,8 +1243,8 @@ if (nrow(lookup_df) == 0 || all(is.na(lookup_df$NES))) {
   heatmap_data <- as.matrix(heatmap_data)
   heatmap_data[is.na(heatmap_data)] <- 0
   heatmap_data_export <- tibble::rownames_to_column(as.data.frame(heatmap_data), var = "RowNames")
-  writexl::write_xlsx(heatmap_data_export, path = file.path(subdirs$tables, "Matrix_Heatmap_NES.xlsx"))
-  heatmap_labels <- lookup_df %>%
+  write_raw_xlsx(heatmap_data_export, path = file.path(subdirs$tables, "Matrix_Heatmap_NES.xlsx"))
+  heatmap_labels <- heatmap_lookup_df %>%
     dplyr::select(Description, Comparison, sig_label) %>%
     dplyr::group_by(Description, Comparison) %>%
     dplyr::summarise(sig_label = ifelse(any(sig_label == "*"), "*", ""), .groups = "drop") %>%
@@ -1139,7 +1260,7 @@ if (nrow(lookup_df) == 0 || all(is.na(lookup_df$NES))) {
   cluster_rows_opt <- nrow(heatmap_data) >= 2
   cluster_cols_opt <- ncol(heatmap_data) >= 2
 
-  heatmap_plot <- pheatmap(
+  heatmap_plot <- pheatmap::pheatmap(
     heatmap_data,
     cluster_rows = cluster_rows_opt,
     cluster_cols = cluster_cols_opt,
@@ -1154,7 +1275,7 @@ if (nrow(lookup_df) == 0 || all(is.na(lookup_df$NES))) {
     cellheight = 15,
     show_rownames = TRUE,
     show_colnames = TRUE,
-    angle_col = 45,
+    angle_col = "45",
     silent = TRUE,
     legend = TRUE
   )
@@ -1166,6 +1287,69 @@ if (nrow(lookup_df) == 0 || all(is.na(lookup_df$NES))) {
   svg(output_file, width = 7, height = plot_height, family = "sans", pointsize = 10)
   grid::grid.draw(heatmap_plot$gtable)
   dev.off()
+
+  save_grouped_heatmaps <- function(plot_df, filename_stem = "Heatmap_Enrichment_Comparisons") {
+    group_specs <- c(region_layer = "region_layer", region = "region", layer = "layer")
+    for (group_name in names(group_specs)) {
+      group_col <- group_specs[[group_name]]
+      if (!group_col %in% names(plot_df)) next
+      out_dir <- file.path(subdirs$plots_main, paste0("by_", group_name))
+      dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+      for (group_value in sort(unique(as.character(plot_df[[group_col]])))) {
+        grouped_df <- plot_df %>% filter(.data[[group_col]] == group_value)
+        if (nrow(grouped_df) == 0 || all(is.na(grouped_df$NES))) next
+        grouped_df <- grouped_df %>%
+          mutate(sig_label = ifelse(p.adjust < 0.05, "*", ""))
+
+        grouped_heatmap_data <- grouped_df %>%
+          dplyr::select(Description, Comparison, NES) %>%
+          dplyr::group_by(Description, Comparison) %>%
+          dplyr::summarise(NES = mean(NES, na.rm = TRUE), .groups = "drop") %>%
+          tidyr::pivot_wider(names_from = Comparison, values_from = NES, values_fill = 0)
+
+        grouped_heatmap_data <- as.data.frame(grouped_heatmap_data)
+        rownames(grouped_heatmap_data) <- grouped_heatmap_data$Description
+        grouped_heatmap_data <- grouped_heatmap_data[, -which(names(grouped_heatmap_data) == "Description"), drop = FALSE]
+        grouped_heatmap_data <- as.matrix(grouped_heatmap_data)
+        grouped_heatmap_data[is.na(grouped_heatmap_data)] <- 0
+        if (nrow(grouped_heatmap_data) == 0 || ncol(grouped_heatmap_data) == 0) next
+
+        grouped_heatmap_labels <- grouped_df %>%
+          dplyr::select(Description, Comparison, sig_label) %>%
+          dplyr::group_by(Description, Comparison) %>%
+          dplyr::summarise(sig_label = ifelse(any(sig_label == "*"), "*", ""), .groups = "drop") %>%
+          tidyr::pivot_wider(names_from = Comparison, values_from = sig_label, values_fill = "") %>%
+          tibble::column_to_rownames("Description")
+
+        grouped_plot <- pheatmap::pheatmap(
+          grouped_heatmap_data,
+          cluster_rows = nrow(grouped_heatmap_data) >= 2,
+          cluster_cols = ncol(grouped_heatmap_data) >= 2,
+          display_numbers = grouped_heatmap_labels,
+          number_color = "#2C2C2C",
+          color = my_colors,
+          breaks = my_breaks,
+          fontsize = 9,
+          fontsize_number = 8,
+          border_color = "#E0E0E0",
+          cellwidth = 15,
+          cellheight = 15,
+          show_rownames = TRUE,
+          show_colnames = TRUE,
+          angle_col = "45",
+          silent = TRUE,
+          legend = TRUE
+        )
+
+        out_file <- file.path(out_dir, paste0(filename_stem, "_", safe_filename(group_value), ".svg"))
+        svg(out_file, width = max(4, 3 + ncol(grouped_heatmap_data) * 0.45), height = max(4, nrow(grouped_heatmap_data) * 0.3), family = "sans", pointsize = 10)
+        grid::grid.draw(grouped_plot$gtable)
+        dev.off()
+      }
+    }
+  }
+
+  save_grouped_heatmaps(heatmap_lookup_df)
 }
 
 # -----------------------------------------------------
@@ -1212,6 +1396,64 @@ order_dotplot <- function(df, desc_col = "Description", comp_col = "Comparison",
   return(list(row_order = row_order, col_order = col_order))
 }
 
+save_enrichment_dotplot <- function(plot_df, output_file, title) {
+  if (nrow(plot_df) == 0 || all(is.na(plot_df$NES))) return(invisible(FALSE))
+  ordering_res <- order_dotplot(plot_df)
+  plot_data <- plot_df %>%
+    mutate(
+      Comparison = factor(Comparison, levels = ordering_res$col_order),
+      Description = factor(Description, levels = ordering_res$row_order)
+    )
+  max_abs_nes <- max(abs(plot_data$NES), na.rm = TRUE)
+  p <- ggplot(plot_data, aes(
+    x = Comparison,
+    y = Description,
+    color = NES,
+    size = -log10(p.adjust)
+  )) +
+    geom_point(alpha = 0.85, stroke = 0.3) +
+    scale_color_gradientn(
+      colours = custom_palette(100),
+      name = "NES",
+      limits = c(-max_abs_nes, max_abs_nes)
+    ) +
+    scale_size_continuous(
+      name = expression(-log[10](italic(P)[adj])),
+      range = c(1.5, 5),
+      limits = c(0, NA)
+    ) +
+    scale_x_discrete(expand = expansion(mult = c(0.1, 0.1)), drop = FALSE) +
+    scale_y_discrete(labels = function(x) str_wrap(x, width = 50)) +
+    labs(title = title, x = NULL, y = NULL) +
+    theme_publication(base_size = 9) +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+      panel.grid.major.y = element_blank(),
+      legend.position = "right"
+    )
+
+  dims <- calc_dims(plot_data)
+  ggsave(output_file, plot = p, width = dims$w, height = dims$h, dpi = 300, device = "svg", limitsize = FALSE)
+  invisible(TRUE)
+}
+
+save_grouped_dotplots <- function(plot_df, filename_stem, title) {
+  group_specs <- c(region_layer = "region_layer", region = "region", layer = "layer")
+  for (group_name in names(group_specs)) {
+    group_col <- group_specs[[group_name]]
+    if (!group_col %in% names(plot_df)) next
+    out_dir <- file.path(subdirs$plots_main, paste0("by_", group_name))
+    dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+    for (group_value in sort(unique(as.character(plot_df[[group_col]])))) {
+      grouped_df <- plot_df %>% filter(.data[[group_col]] == group_value)
+      if (nrow(grouped_df) == 0 || all(is.na(grouped_df$NES))) next
+      out_file <- file.path(out_dir, paste0(filename_stem, "_", safe_filename(group_value), ".svg"))
+      save_enrichment_dotplot(grouped_df, out_file, paste(title, "-", group_value))
+    }
+  }
+  invisible(TRUE)
+}
+
 
 ## --- Dotplot: Top terms per comparison ---
 # Define top_df_per_comp if not already defined
@@ -1228,7 +1470,7 @@ if (!exists("top_df_per_comp")) {
 
 if (exists("top_df_per_comp") && nrow(top_df_per_comp) > 0) {
   df_per_comp_sub <- combined_df %>%
-    filter(Description %in% unique(top_df_per_comp$Description))
+    filter(Description %in% intersect(unique(top_df_per_comp$Description), significant_term_descriptions))
   if (nrow(df_per_comp_sub) > 0) {
     ordering_res <- order_dotplot(df_per_comp_sub)
     full_data_for_plot <- df_per_comp_sub %>%
@@ -1260,7 +1502,7 @@ if (exists("top_df_per_comp") && nrow(top_df_per_comp) > 0) {
         x = NULL,
         y = NULL
       ) +
-      theme_nature(base_size = 9) +
+      theme_publication(base_size = 9) +
       theme(
         axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
         panel.grid.major.y = element_blank(),
@@ -1269,6 +1511,7 @@ if (exists("top_df_per_comp") && nrow(top_df_per_comp) > 0) {
     dims_dotplot <- calc_dims(full_data_for_plot)
     output_dotplot <- file.path(subdirs$plots_main, "Dotplot_Enrichment_TopGenes_PerComp.svg")
     ggsave(output_dotplot, plot = dotplot, width = dims_dotplot$w, height = dims_dotplot$h, dpi = 300, device = "svg", limitsize = FALSE)
+    save_grouped_dotplots(df_per_comp_sub, "Dotplot_Enrichment_TopGenes_PerComp", "Top terms per comparison")
   } else {
     message("No data for top_df_per_comp dotplot.")
   }
@@ -1279,7 +1522,7 @@ if (exists("top_df_per_comp") && nrow(top_df_per_comp) > 0) {
 ## --- Dotplot: Overall top terms (refined) ---
 if (exists("top_terms") && length(top_terms) > 0) {
   df_top_sub <- combined_df %>%
-    filter(Description %in% top_terms)
+    filter(Description %in% figure_top_terms)
   if (nrow(df_top_sub) > 0) {
     ordering_res_top <- order_dotplot(df_top_sub)
     top_terms_all_data <- df_top_sub %>%
@@ -1311,7 +1554,7 @@ if (exists("top_terms") && length(top_terms) > 0) {
         x = NULL,
         y = NULL
       ) +
-      theme_nature(base_size = 9) +
+      theme_publication(base_size = 9) +
       theme(
         axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
         panel.grid.major.y = element_blank()
@@ -1319,6 +1562,7 @@ if (exists("top_terms") && length(top_terms) > 0) {
     dims_dotplot_top <- calc_dims(top_terms_all_data)
     output_dotplot_top <- file.path(subdirs$plots_main, "Dotplot_Enrichment_TopGenes_Overall.svg")
     ggsave(output_dotplot_top, plot = dotplot_top, width = dims_dotplot_top$w, height = dims_dotplot_top$h, dpi = 300, device = "svg", limitsize = FALSE)
+    save_grouped_dotplots(df_top_sub, "Dotplot_Enrichment_TopGenes_Overall", "Top terms (overall)")
   } else {
     message("No data for top_terms dotplot.")
   }
@@ -1362,7 +1606,7 @@ if (exists("top5_up_down_df") && !is.null(top5_up_down_df) && nrow(top5_up_down_
       x = NULL,
       y = NULL
     ) +
-    theme_nature(base_size = 9) +
+    theme_publication(base_size = 9) +
     theme(
       axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
       panel.grid.major.y = element_blank()
@@ -1370,6 +1614,7 @@ if (exists("top5_up_down_df") && !is.null(top5_up_down_df) && nrow(top5_up_down_
   dims_split <- calc_dims(plot_data_split)
   output_dotplot_split <- file.path(subdirs$plots_main, "Dotplot_Enrichment_Top5_Up_Down_PerComp.svg")
   ggsave(output_dotplot_split, plot = dotplot_split, width = dims_split$w, height = dims_split$h, dpi = 300, device = "svg", limitsize = FALSE)
+  save_grouped_dotplots(df_split_sub, "Dotplot_Enrichment_Top5_Up_Down_PerComp", "Top 5 up/down terms")
 }
 
 # -----------------------------------------------------
@@ -1472,7 +1717,7 @@ if (exists("top5_up_down_df") && !is.null(top5_up_down_df) && nrow(top5_up_down_
 core_gene_sets <- lapply(names(enrichment_list), function(name) {
   df <- enrichment_list[[name]]
   df_long <- df %>%
-    dplyr::select(Description, core_enrichment) %>%
+    dplyr::select(ID, Description, core_enrichment) %>%
     mutate(core_enrichment = str_split(core_enrichment, "/")) %>%
     unnest(core_enrichment) %>%
     mutate(Comparison = name)
@@ -1481,18 +1726,20 @@ core_gene_sets <- lapply(names(enrichment_list), function(name) {
 
 names(core_gene_sets) <- names(enrichment_list)
 core_genes_df <- bind_rows(core_gene_sets)
-write.csv(core_genes_df,
-          file = file.path(subdirs$gene_lists, "Core_Genes_All_Comparisons.csv"),
-          row.names = FALSE)
+write_raw_csv(core_genes_df,
+              file.path(subdirs$gene_lists, "Core_Genes_All_Comparisons.csv"),
+              row.names = FALSE)
 core_genes_df %>%
-  group_by(Comparison, Description) %>%
+  group_by(Comparison, ID, Description) %>%
   summarise(Genes = list(unique(core_enrichment)), .groups = "drop") %>%
-  rowwise() %>%
   mutate(file_name = file.path(
     subdirs$gene_lists,
-    paste0("CoreGene_", Comparison, "_", substr(make.names(Description), 1, 50), ".csv")
+    paste0("CoreGene_", make.names(Comparison), "_", make.names(ID), ".csv")
   )) %>%
-  pwalk(~ write.csv(data.frame(Gene = ..3), file = ..4, row.names = FALSE))
+  pmap(function(Comparison, ID, Description, Genes, file_name) {
+    dir.create(dirname(file_name), showWarnings = FALSE, recursive = TRUE)
+    write_raw_csv(data.frame(Gene = Genes), file_name, row.names = FALSE)
+  })
 
 # -----------------------------------------------------
 # Compute Jaccard Similarity of Core Genes Across Comparisons
@@ -1523,7 +1770,7 @@ number_col_mat <- matrix(ifelse(jaccard_matrix > 0.6, "white", "black"),
                          nrow = nrow(jaccard_matrix), ncol = ncol(jaccard_matrix),
                          dimnames = dimnames(jaccard_matrix))
 
-jaccard_heatmap <- pheatmap(
+jaccard_heatmap <- pheatmap::pheatmap(
   jaccard_matrix,
   main = "Jaccard similarity",
   color = colorRampPalette(c("white", "#0571B0"))(100),
@@ -1569,12 +1816,20 @@ core_long_df <- bind_rows(
 )
 
 # save enrichment list to excel for debugging
-writexl::write_xlsx(enrichment_list, file.path(subdirs$tables, "Enrichment_List_Debug.xlsx"))
+write_raw_xlsx(enrichment_list, file.path(subdirs$tables, "Enrichment_List_Debug.xlsx"))
 
 # save core_long_df for debugging
-write.csv(core_long_df, file.path(subdirs$tables, "Core_Enrichment_LongFormat.csv"), row.names = FALSE)
+write_raw_csv(core_long_df, file.path(subdirs$tables, "Core_Enrichment_LongFormat.csv"), row.names = FALSE)
 
-heatmap_df <- core_long_df %>%
+heatmap_core_long_df <- core_long_df %>%
+  filter(!is.na(p.adjust), p.adjust < 0.05)
+
+if (nrow(heatmap_core_long_df) == 0) {
+  message("No significant core-enrichment rows available for core enrichment heatmaps. Skipping core heatmap generation.")
+  heatmap_df <- tibble(Gene = character())
+  heatmap_matrix <- matrix(numeric(0), nrow = 0, ncol = 0)
+} else {
+heatmap_df <- heatmap_core_long_df %>%
   group_by(Gene, Comparison) %>%
   summarise(NES = mean(NES, na.rm = TRUE), .groups = "drop") %>%
   mutate(NES = ifelse(is.nan(NES) | is.infinite(NES), NA, NES)) %>%
@@ -1589,7 +1844,7 @@ nes_max <- max(heatmap_matrix, na.rm = TRUE)
 max_abs_nes <- max(abs(nes_min), abs(nes_max))
 breaks <- seq(-max_abs_nes, max_abs_nes, length.out = 101)
 # Use the custom_palette defined earlier for color
-heatmap_plot <- pheatmap(
+heatmap_plot <- pheatmap::pheatmap(
   heatmap_matrix,
   color = custom_palette(100),
   breaks = breaks,
@@ -1605,6 +1860,7 @@ output_file <- file.path(subdirs$core_enrichment_plots, "Heatmap_Overall_Core_En
 svg(output_file, width = 7.5, height = 7.5, family = "sans", pointsize = 10)
 grid::grid.draw(heatmap_plot$gtable)
 dev.off()
+}
 
 # Identify top 25 up/down genes by NES for supplementary tables/plots
 # -------------------
@@ -1636,6 +1892,7 @@ message("[INFO] Top/bottom 25 genes for heatmap are selected by NES (enrichment)
 
 # --- Data Preparation ---
 # Convert heatmap_df (wide: genes x comparisons) to long format for easier aggregation.
+if (nrow(heatmap_df) > 0 && ncol(heatmap_df) > 1) {
 long_heatmap_df <- heatmap_df %>%
   pivot_longer(-Gene, names_to = "Comparison", values_to = "NES")
 
@@ -1736,7 +1993,7 @@ breaks <- seq(-max_abs_nes, max_abs_nes, length.out = 101)
 
 # --- Add more info text on the plot ---
 library(grid)
-top_bottom_plot <- pheatmap(
+top_bottom_plot <- pheatmap::pheatmap(
   top_bottom_matrix,
   color = colorRampPalette(rev(brewer.pal(n = 7, name = "RdBu")))(100),
   breaks = breaks,
@@ -1754,7 +2011,7 @@ top_bottom_plot <- pheatmap(
   border_width = 0.5,
   cellwidth = 10,
   cellheight = 7,
-  angle_col = 45,
+  angle_col = "45",
   treeheight_row = 15,
   treeheight_col = 15,
   legend = TRUE,
@@ -1775,6 +2032,11 @@ info_text <- paste0(
 svg(file.path(subdirs$plots_main, "Heatmap_TopBottom_Enrichment.svg"), width = 4.5, height = 8.5, family="sans", pointsize = 10)
 grid::grid.draw(top_bottom_plot$gtable)
 dev.off()
+} else {
+  message("No significant data available for top/bottom core enrichment heatmap. Skipping plot generation.")
+  top_bottom_genes <- tibble(Gene = character(), Direction = character(), GO_Terms = character(), NES = character())
+  top_bottom_matrix <- matrix(numeric(0), nrow = 0, ncol = 0)
+}
 
 # -----------------------------------------------------
 # Generate Per-Comparison Heatmaps and Excel Files
@@ -1791,16 +2053,30 @@ uniprot_df <- if (file.exists(uniprot_mapping_file_path)) {
   data.frame(V1 = character(), V2 = character(), V3 = character())
 }
 
-uniprot_subset <- uniprot_df %>%
-  filter(V2 %in% c("Gene_Name", "UniProtKB-ID")) %>%
-  pivot_wider(names_from = V2, values_from = V3, values_fn = list) %>%
-  unnest(cols = everything()) %>%
-  distinct(V1, .keep_all = TRUE) %>%
-  dplyr::rename(UniprotID = V1)
-gene_synonyms <- uniprot_df %>%
-  filter(V2 == "Gene_Synonym") %>%
-  distinct(V1, .keep_all = TRUE) %>%
-  dplyr::rename(UniprotID = V1, Gene_Synonym = V3)
+uniprot_subset <- if (nrow(uniprot_df) > 0) {
+  uniprot_df %>%
+    filter(V2 %in% c("Gene_Name", "UniProtKB-ID")) %>%
+    pivot_wider(names_from = V2, values_from = V3, values_fn = list) %>%
+    unnest(cols = everything()) %>%
+    distinct(V1, .keep_all = TRUE) %>%
+    dplyr::rename(UniprotID = V1)
+} else {
+  tibble(UniprotID = character(), Gene_Name = character(), `UniProtKB-ID` = character())
+}
+if (!"Gene_Name" %in% names(uniprot_subset)) uniprot_subset$Gene_Name <- character(nrow(uniprot_subset))
+if (!"UniProtKB-ID" %in% names(uniprot_subset)) uniprot_subset$`UniProtKB-ID` <- character(nrow(uniprot_subset))
+uniprot_subset <- uniprot_subset %>% dplyr::select(UniprotID, Gene_Name, `UniProtKB-ID`)
+
+gene_synonyms <- if (nrow(uniprot_df) > 0) {
+  uniprot_df %>%
+    filter(V2 == "Gene_Synonym") %>%
+    distinct(V1, .keep_all = TRUE) %>%
+    dplyr::rename(UniprotID = V1, Gene_Synonym = V3)
+} else {
+  tibble(UniprotID = character(), Gene_Synonym = character())
+}
+if (!"Gene_Synonym" %in% names(gene_synonyms)) gene_synonyms$Gene_Synonym <- character(nrow(gene_synonyms))
+gene_synonyms <- gene_synonyms %>% dplyr::select(UniprotID, Gene_Synonym)
 gene_descriptions <- core_long_df %>%
   dplyr::select(Gene, Description) %>%
   distinct() %>%
@@ -1867,7 +2143,7 @@ for (comp in unique_comparisons) {
       x = expression(log[2] ~ Fold ~ Change),
       y = expression(-log[10](italic(P)[adj]))
     ) +
-    theme_nature(base_size = 9) +
+    theme_publication(base_size = 9) +
     theme(
       legend.position = "none"
     ) +
@@ -1933,7 +2209,7 @@ for (comp in unique_comparisons) {
   if (nrow(heatmap_matrix) >= 2) {
     max_abs <- max(abs(heatmap_matrix), na.rm = TRUE)
     breaks <- seq(-max_abs, max_abs, length.out = 101)
-    heatmap_plot <- pheatmap(
+    heatmap_plot <- pheatmap::pheatmap(
       heatmap_matrix,
       color = colorRampPalette(c("#0571B0", "white", "#CA0020"), space = "Lab")(100),
       breaks = breaks,
@@ -2094,7 +2370,7 @@ barplot_counts <- ggplot(term_counts, aes(x = Comparison, y = Count, fill = Dire
     y = "Number of significant terms (padj < 0.05)",
     fill = "Direction"
   ) +
-  theme_nature(base_size = 9) +
+  theme_publication(base_size = 9) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
 
 ggsave(file.path(subdirs$plots_main, "Barplot_Term_Counts.svg"), 
@@ -2117,7 +2393,7 @@ if (nrow(ridge_data) > 0 && length(unique(ridge_data$Comparison)) > 0) {
       x = "Normalized Enrichment Score (NES)",
       y = "Comparison"
     ) +
-    theme_nature(base_size = 9) +
+    theme_publication(base_size = 9) +
     theme(axis.text.y = element_text(size = 8))
   
   ggsave(file.path(subdirs$plots_main, "RidgePlot_NES_Distribution.svg"),
@@ -2175,7 +2451,7 @@ rownames(sim_matrix_full) <- sim_matrix_df$Comparison_1
 colnames(sim_matrix_full) <- colnames(sim_matrix_df)[-1]
 
 if (nrow(sim_matrix_full) > 1) {
-  sim_heatmap <- pheatmap(
+  sim_heatmap <- pheatmap::pheatmap(
     sim_matrix_full,
     main = "Gene overlap similarity (Jaccard)",
     color = colorRampPalette(c("white", "#0571B0"))(100),
@@ -2502,7 +2778,7 @@ if (exists("term_consistency") && nrow(term_consistency) > 0) {
         scale_fill_manual(values = c("Up" = "#CA0020", "Down" = "#0571B0")) +
         labs(title = "Term direction persistence across comparisons",
              y = "Frequency", fill = "Direction") +
-        theme_nature(base_size = 9) +
+        theme_publication(base_size = 9) +
         theme(axis.text.x = element_text(angle = 45, hjust = 1))
       
       print(p_alluvial)
@@ -2594,23 +2870,34 @@ if (length(comparison_files) > 0) {
       
       # Use UNIPROT IDs directly
       if (length(up_genes) > 0) {
-        ego_up <- tryCatch(
-          enrichGO(
-            gene = up_genes,
-            OrgDb = org.Mm.eg.db,
-            keyType = "UNIPROT",
-            ont = ont,
-            pAdjustMethod = "BH",
-            pvalueCutoff = 0.05,
-            qvalueCutoff = 0.2,
-            minGSSize = 10
-          ),
-          error = function(e) NULL
-        )
-        if (!is.null(ego_up) && nrow(as.data.frame(ego_up)) > 0) {
-          out_csv <- file.path(subdirs$go_enrichment, paste0("GO_", comp, "_Upregulated_", ont, ".csv"))
-          write.csv(as.data.frame(ego_up), out_csv, row.names = FALSE)
-          ego_df <- as.data.frame(ego_up) %>%
+        out_csv <- file.path(subdirs$go_enrichment, paste0("GO_", comp, "_Upregulated_", ont, ".csv"))
+        ego_up_df <- if (!should_write_raw_table(out_csv)) {
+          message("[SKIP raw table] Reusing GO enrichment CSV: ", out_csv)
+          read.csv(out_csv, stringsAsFactors = FALSE, check.names = FALSE)
+        } else {
+          ego_up <- tryCatch(
+            enrichGO(
+              gene = up_genes,
+              OrgDb = org.Mm.eg.db,
+              keyType = "UNIPROT",
+              ont = ont,
+              pAdjustMethod = "BH",
+              pvalueCutoff = 0.05,
+              qvalueCutoff = 0.2,
+              minGSSize = 10
+            ),
+            error = function(e) NULL
+          )
+          if (!is.null(ego_up) && nrow(as.data.frame(ego_up)) > 0) {
+            ego_up_df <- as.data.frame(ego_up)
+            write_raw_csv(ego_up_df, out_csv, row.names = FALSE)
+            ego_up_df
+          } else {
+            NULL
+          }
+        }
+        if (!is.null(ego_up_df) && nrow(ego_up_df) > 0) {
+          ego_df <- ego_up_df %>%
             dplyr::mutate(Count = as.numeric(Count)) %>%
             dplyr::filter(Count >= 10) %>%
             mutate(GeneRatio = sapply(strsplit(as.character(GeneRatio), "/"), function(x) as.numeric(x[1]) / as.numeric(x[2]))) %>%
@@ -2630,7 +2917,7 @@ if (length(comparison_files) > 0) {
                 title = paste0("Upregulated GO - ", comp),
                 y = "GO Term"
               ) +
-              theme_nature(base_size = 9) +
+              theme_publication(base_size = 9) +
               theme(
                 legend.position = "right"
               )
@@ -2652,23 +2939,34 @@ if (length(comparison_files) > 0) {
       
       # Use UNIPROT IDs directly
       if (length(down_genes) > 0) {
-        ego_down <- tryCatch(
-          enrichGO(
-            gene = down_genes,
-            OrgDb = org.Mm.eg.db,
-            keyType = "UNIPROT",
-            ont = ont,
-            pAdjustMethod = "BH",
-            pvalueCutoff = 0.05,
-            qvalueCutoff = 0.2,
-            minGSSize = 10
-          ),
-          error = function(e) NULL
-        )
-        if (!is.null(ego_down) && nrow(as.data.frame(ego_down)) > 0) {
-          out_csv <- file.path(subdirs$go_enrichment, paste0("GO_", comp, "_Downregulated_", ont, ".csv"))
-          write.csv(as.data.frame(ego_down), out_csv, row.names = FALSE)
-          ego_df <- as.data.frame(ego_down) %>%
+        out_csv <- file.path(subdirs$go_enrichment, paste0("GO_", comp, "_Downregulated_", ont, ".csv"))
+        ego_down_df <- if (!should_write_raw_table(out_csv)) {
+          message("[SKIP raw table] Reusing GO enrichment CSV: ", out_csv)
+          read.csv(out_csv, stringsAsFactors = FALSE, check.names = FALSE)
+        } else {
+          ego_down <- tryCatch(
+            enrichGO(
+              gene = down_genes,
+              OrgDb = org.Mm.eg.db,
+              keyType = "UNIPROT",
+              ont = ont,
+              pAdjustMethod = "BH",
+              pvalueCutoff = 0.05,
+              qvalueCutoff = 0.2,
+              minGSSize = 10
+            ),
+            error = function(e) NULL
+          )
+          if (!is.null(ego_down) && nrow(as.data.frame(ego_down)) > 0) {
+            ego_down_df <- as.data.frame(ego_down)
+            write_raw_csv(ego_down_df, out_csv, row.names = FALSE)
+            ego_down_df
+          } else {
+            NULL
+          }
+        }
+        if (!is.null(ego_down_df) && nrow(ego_down_df) > 0) {
+          ego_df <- ego_down_df %>%
             dplyr::mutate(Count = as.numeric(Count)) %>%
             dplyr::filter(Count >= 10) %>%
             mutate(GeneRatio = sapply(strsplit(as.character(GeneRatio), "/"), function(x) as.numeric(x[1]) / as.numeric(x[2]))) %>%
@@ -2688,7 +2986,7 @@ if (length(comparison_files) > 0) {
                 title = paste0("Downregulated GO - ", comp),
                 y = "GO Term"
               ) +
-              theme_nature(base_size = 9) +
+              theme_publication(base_size = 9) +
               theme(
                 legend.position = "right"
               )
@@ -2714,7 +3012,7 @@ if (length(comparison_files) > 0) {
 # --- Robust join for core_long_df heatmaps ---
 # USE CONSOLIDATED log2fc_long (loaded at beginning - NO REDUNDANT READS)
 # Save per-term core enrichment heatmaps in the correct subdirectory (core_enrichment_plots)
-core_long_df %>%
+heatmap_core_long_df %>%
   group_by(Description) %>%
   group_split() %>%
   walk(function(df_term) {
@@ -2765,7 +3063,7 @@ core_long_df %>%
     plot_height <- max(4, nrow(heatmap_matrix) * 0.15 + 1)
     # Save SVG only for publication-quality output
     svg(filename_svg, width = 5, height = plot_height, family = "sans", pointsize = 9)
-    pheatmap(
+    pheatmap::pheatmap(
       heatmap_matrix,
       color = colorRampPalette(c("#0571B0", "white", "#CA0020"), space = "Lab")(100),
       breaks = breaks,
@@ -2776,7 +3074,7 @@ core_long_df %>%
       cluster_rows = cluster_rows_option,
       cluster_cols = cluster_cols_option,
       border_color = "#E0E0E0",
-      angle_col = 45,
+      angle_col = "45",
       cellwidth = 12,
       cellheight = 10,
       legend = TRUE
@@ -2845,7 +3143,7 @@ if (!all(c("gene_symbol", "log2fc", "padj", "Comparison") %in% names(log2fc_long
         x = NULL,
         y = "Gene"
       ) +
-      theme_nature(base_size = 9) +
+      theme_publication(base_size = 9) +
       theme(
         axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)
       )
@@ -2857,7 +3155,50 @@ if (!all(c("gene_symbol", "log2fc", "padj", "Comparison") %in% names(log2fc_long
 }
 
 summary_file <- file.path(subdirs$gene_centric, paste0("GeneCentric_Log2FC_Summary.xlsx"))
-writexl::write_xlsx(gene_fc_summary, path = summary_file)
+write_raw_xlsx(gene_fc_summary, path = summary_file)
+
+write_supplementary_workbook <- function(sheets, path, max_excel_rows = 1048575L) {
+  sheets <- purrr::map(sheets, function(sheet) {
+    if (is.matrix(sheet)) {
+      as.data.frame(sheet, check.names = FALSE)
+    } else {
+      as.data.frame(sheet, check.names = FALSE)
+    }
+  })
+
+  oversized_dir <- file.path(
+    dirname(path),
+    paste0(tools::file_path_sans_ext(basename(path)), "_oversized_csv")
+  )
+
+  sheet_index <- purrr::imap_dfr(sheets, function(sheet, sheet_name) {
+    n_rows <- nrow(sheet)
+    n_cols <- ncol(sheet)
+    external_csv <- NA_character_
+    in_workbook <- n_rows <= max_excel_rows
+
+    if (!in_workbook) {
+      dir.create(oversized_dir, recursive = TRUE, showWarnings = FALSE)
+      external_csv <- file.path(oversized_dir, paste0(safe_filename(sheet_name), ".csv"))
+      write_raw_csv(sheet, external_csv, writer = function(x, path, ...) readr::write_csv(x, path, ...))
+      message("[EXPORT] Sheet '", sheet_name, "' has ", n_rows,
+              " rows; wrote full table to CSV instead of xlsx: ", external_csv)
+    }
+
+    tibble(
+      Sheet = sheet_name,
+      Rows = n_rows,
+      Columns = n_cols,
+      InWorkbook = in_workbook,
+      ExternalCSV = external_csv
+    )
+  })
+
+  workbook_sheets <- sheets[sheet_index$InWorkbook]
+  workbook_sheets <- c(list(Supplementary_Sheet_Index = sheet_index), workbook_sheets)
+  write_raw_xlsx(workbook_sheets, path = path)
+  invisible(sheet_index)
+}
 
 # -----------------------------------------------------
 # Generate Supplementary Tables (Merged)
@@ -2915,8 +3256,12 @@ supp_sig_proteins <- log2fc_long %>%
   arrange(Comparison, padj)
 
 supp_gene_centric <- gene_fc_summary %>%
-  left_join(uniprot_subset, by = c("gene_symbol" = "UniprotID")) %>%
-  dplyr::rename(Gene_Name = Gene_Name)
+  left_join(
+    uniprot_subset %>% dplyr::select(UniprotID, Gene_Name_mapped = Gene_Name),
+    by = c("gene_symbol" = "UniprotID")
+  ) %>%
+  mutate(Gene_Name = coalesce(Gene_Name, Gene_Name_mapped)) %>%
+  dplyr::select(-Gene_Name_mapped)
 
 supp_nes_matrix <- lookup_df %>%
   dplyr::select(Description, Comparison, NES) %>%
@@ -3008,7 +3353,7 @@ if (exists("top_bottom_matrix")) {
 }
 
 supp_output_path <- file.path(subdirs$tables, "Supplementary_Data.xlsx")
-writexl::write_xlsx(supp_list, path = supp_output_path)
+supp_sheet_index <- write_supplementary_workbook(supp_list, path = supp_output_path)
 
 # perform simplifyGOFromMultipleLists()
 # -----------------------------------------------------
@@ -3139,7 +3484,7 @@ if (length(go_results_list) >= 2) {
       left_join(go_annot, by = "ID") %>%
       left_join(desc_map, by = "ID")
     simplifygo_table_file <- file.path(subdirs$tables, "simplifyGO_MultipleLists_Results.xlsx")
-    writexl::write_xlsx(out_df, simplifygo_table_file)
+    write_raw_xlsx(out_df, simplifygo_table_file)
   } else {
     message("No clusters were found by simplifyEnrichment::cluster_terms or cluster size mismatch; skipping cluster assignment export.")
   }
@@ -3393,9 +3738,9 @@ comparison_proteins <- bind_cols(comparison_proteins, marker_counts_df)
 print(comparison_proteins %>% dplyr::select(Comparison, Inferred_CellType, Microglia_Markers, Astrocyte_Markers, Neuron_Markers))
 
 # Save summary CSV
-write.csv(comparison_proteins %>% dplyr::select(Comparison, Inferred_CellType, Microglia_Markers, Astrocyte_Markers, Neuron_Markers),
-          file = file.path(subdirs$tables, "Inferred_CellTypes_Per_Comparison.csv"),
-          row.names = FALSE)
+write_raw_csv(comparison_proteins %>% dplyr::select(Comparison, Inferred_CellType, Microglia_Markers, Astrocyte_Markers, Neuron_Markers),
+              file.path(subdirs$tables, "Inferred_CellTypes_Per_Comparison.csv"),
+              row.names = FALSE)
 
 # Save detailed Excel file: summary, marker counts, and protein lists
 library(writexl)
@@ -3406,7 +3751,7 @@ celltype_protein_lists <- comparison_proteins %>% dplyr::select(Comparison, Prot
 celltype_protein_long <- celltype_protein_lists %>% tidyr::unnest(Proteins)
 names(celltype_protein_long)[2] <- "Protein"
 
-writexl::write_xlsx(
+write_raw_xlsx(
   list(
     Summary = celltype_summary,
     Marker_Counts = celltype_marker_counts,

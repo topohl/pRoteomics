@@ -72,11 +72,26 @@ override_param <- function(params, key, value) {
   params
 }
 
+find_latest_upstream_protein_file <- function() {
+  impute_dir <- path_processed("01_preprocessing", "impute")
+  pattern <- "^\\d{8}_pgmatrix_imputed_neuron_neuropil_[0-9]+samples_missing70pct\\.xlsx$"
+
+  candidates <- list.files(impute_dir, pattern = pattern, full.names = TRUE)
+  if (length(candidates) > 0) {
+    info <- file.info(candidates)
+    return(normalizePath(rownames(info)[order(info$mtime, decreasing = TRUE)[1]], winslash = "/", mustWork = FALSE))
+  }
+
+  # Backward-compatible fallback for older runs before 01_impute.r wrote to the
+  # canonical impute subfolder.
+  path_processed("01_preprocessing", "20260218_pgmatrix_imputed_neuron_neuropil_180samples_missing70pct.xlsx")
+}
+
 # -------------------------------
 # 1) User parameters
 # -------------------------------
 params <- list(
-  protein_file = path_processed("01_preprocessing", "20260218_pgmatrix_imputed_neuron_neuropil_180samples_missing70pct.xlsx"),
+  protein_file = find_latest_upstream_protein_file(),
 
   metadata_file = path_metadata("TPE9_sample_metadata_males.xlsx"),
 
@@ -145,7 +160,7 @@ make_dirs <- function(base_dir) {
   dirs
 }
 
-theme_nature_network <- function(base_size = 8) {
+theme_publication_network <- function(base_size = 8) {
   ggplot2::theme_classic(base_size = base_size) +
     ggplot2::theme(
       text = ggplot2::element_text(family = "sans", colour = "black"),
@@ -780,7 +795,7 @@ saveRDS(network_object, file.path(dirs$processed, "network_spatial_relations_obj
 saveRDS(network_object, file.path(dirs$logs, "network_spatial_relations_objects.rds"))
 write_run_manifest(
   file.path(dirs$logs, "run_manifest.yml"),
-  inputs = as.list(stats::setNames(input_manifest$path, input_manifest$role)),
+  inputs = as.list(stats::setNames(input_manifest$path, input_manifest$input_type)),
   outputs = list(
     spatial_object = file.path(dirs$processed, "network_spatial_relations_objects.rds"),
     tables = dirs$tables,

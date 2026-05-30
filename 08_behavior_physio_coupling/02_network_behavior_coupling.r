@@ -127,7 +127,7 @@ make_dirs <- function(base_dir) {
   dirs
 }
 
-theme_nature_coupling <- function(base_size = 7) {
+theme_publication_coupling <- function(base_size = 7) {
   ggplot2::theme_classic(base_size = base_size) +
     ggplot2::theme(
       text = ggplot2::element_text(family = "sans", colour = "black"),
@@ -611,7 +611,7 @@ plot_edge_outcome_scatter <- function(data, edge_name, outcome, outfile, title =
       x = "Animal-level edge similarity (Spearman rho)",
       y = outcome
     ) +
-    theme_nature_coupling(base_size = 7)
+    theme_publication_coupling(base_size = 7)
 
   ggplot2::ggsave(outfile, p, width = 80, height = 70, units = "mm", device = svglite::svglite)
   invisible(p)
@@ -645,7 +645,7 @@ plot_correlation_forest <- function(cor_tbl, outfile, outcome_filter = NULL, top
       x = "Pearson r",
       y = NULL
     ) +
-    theme_nature_coupling(base_size = 7)
+    theme_publication_coupling(base_size = 7)
 
   ggplot2::ggsave(outfile, p, width = 110, height = 120, units = "mm", device = svglite::svglite)
   invisible(p)
@@ -670,7 +670,7 @@ plot_edge_group_distribution <- function(edge_scores, outfile) {
       x = NULL,
       y = "Spearman rho"
     ) +
-    theme_nature_coupling(base_size = 7) +
+    theme_publication_coupling(base_size = 7) +
     ggplot2::theme(legend.position = "none")
 
   ggplot2::ggsave(outfile, p, width = 180, height = 120, units = "mm", device = svglite::svglite)

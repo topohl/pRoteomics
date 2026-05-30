@@ -6,6 +6,25 @@ Canonical machine-readable outputs now belong under `data/processed/<module>/`. 
 
 ## 1. Preprocessing and metadata harmonization
 
+Dataset-scoped runs can be launched by setting `PROTEOMICS_DATASET` once:
+
+```powershell
+$env:PROTEOMICS_DATASET = "microglia"
+Rscript 01_preprocessing/03_gct_extractR.r --dry-run
+Rscript 02_id_mapping/01_MapThatProt_batch.r --dry-run
+Rscript 04_differential_expression_enrichment/01_clusterProfiler.r --dry-run
+Rscript 04_differential_expression_enrichment/02_compareGO.r --dry-run
+```
+
+Or with the launcher:
+
+```powershell
+Rscript run_dataset_pipeline.R --dataset microglia --dry-run
+Rscript run_dataset_pipeline.R --dataset microglia
+```
+
+Valid dataset families are `neuron_neuropil`, `neuron_soma`, and `microglia`. The shared `R/dataset_config.R` helper resolves `PROTEOMICS_DATASET` first, with backward-compatible fallback to `PROTEOMICS_COMPARISON` and `PROTEOMICS_GCT_COMPARISON`.
+
 ```text
 01_preprocessing/
 ```
@@ -37,9 +56,10 @@ data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv
 
 The current canonical contrast handoff is:
 
-```bash
-PROTEOMICS_GCT_COMPARISON=neuron_neuropil Rscript 01_preprocessing/03_gct_extractR.r --dry-run
-PROTEOMICS_COMPARISON=neuron_neuropil Rscript 02_id_mapping/01_MapThatProt_batch.r --dry-run
+```powershell
+$env:PROTEOMICS_DATASET = "microglia"
+Rscript 01_preprocessing/03_gct_extractR.r --dry-run
+Rscript 02_id_mapping/01_MapThatProt_batch.r --dry-run
 ```
 
 `03_gct_extractR.r` writes split contrast CSVs to:
@@ -49,11 +69,21 @@ data/processed/01_preprocessing/gct_extractR/<comparison>/forward/
 data/processed/01_preprocessing/gct_extractR/<comparison>/reverse/
 ```
 
-Run the GCT extraction and ID mapping once per biological dataset family, for example `neuron_neuropil`, `neuron_soma`, and `microglia`. `01_MapThatProt_batch.r` defaults to `PROTEOMICS_COMPARISON=neuron_neuropil` and `PROTEOMICS_MAP_DIRECTION=forward`; set `PROTEOMICS_COMPARISON` for each family. It writes clusterProfiler-ready files to:
+Run the GCT extraction and ID mapping once per biological dataset family, for example `neuron_neuropil`, `neuron_soma`, and `microglia`. `01_MapThatProt_batch.r` defaults to `PROTEOMICS_DATASET=neuron_neuropil` and `PROTEOMICS_MAP_DIRECTION=forward`; set `PROTEOMICS_DATASET` for each family. It writes clusterProfiler-ready files to:
 
 ```text
 data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/
 ```
+
+`03_gct_extractR.r` and `01_MapThatProt_batch.r` resume existing table outputs by default. Existing split/mapped CSV tables are skipped, and missing tables are still processed. To intentionally recompute table outputs, use either:
+
+```powershell
+$env:PROTEOMICS_RECOMPUTE = "true"
+Rscript 01_preprocessing/03_gct_extractR.r
+Rscript 02_id_mapping/01_MapThatProt_batch.r
+```
+
+or pass `--recompute` / `--force-rerun` to the script. Step-specific env vars are also available: `PROTEOMICS_GCT_RECOMPUTE=true` and `PROTEOMICS_MAPTHATPROT_RECOMPUTE=true`.
 
 Set `PROTEOMICS_MAP_DIRECTION=reverse` only when intentionally producing reverse contrasts.
 
@@ -145,14 +175,29 @@ Typical outputs include module assignments, module scores, module preservation s
 Phase 3 canonicalized the safer downstream/helper scripts:
 
 ```bash
+Rscript 06_modules_WGCNA/01_WGCNA.r --dry-run
 Rscript 06_modules_WGCNA/02_module_spatial_networks.r --dry-run
-Rscript 06_modules_WGCNA/03_overlap_modules.r --dry-run
-Rscript 06_modules_WGCNA/91_module_score_v0.0.2.r --dry-run
+Rscript 06_modules_WGCNA/04_overlap_modules.r --dry-run
+Rscript 06_modules_WGCNA/91_module_score.r --dry-run
 ```
 
-`91_module_score_v0.0.2.r` is the canonical active module-score script. `90_module_score_v0.0.1.r` is retained only as an older reference and should not be used in the active run order.
+`91_module_score.r` is the canonical active module-score script. By default it consumes overlap/GSEA-derived modules. To score WGCNA modules from `01_WGCNA.r`, run with `PROTEOMICS_MODULE_DEFINITION_SOURCE=WGCNA`; the script then consumes `WGCNA_modules_long.xlsx` and, when available, `wgcna_final_model_state.rds` for eigengene scores. `90_module_score_v0.0.1.r` is retained only as an older reference and should not be used in the active run order.
 
-`01_WGCNA v.2.0.0.r` now uses `R/paths.R` and writes an input manifest/hash table plus run manifest, but it still consumes precombined variancePartition-style matrices (`male.data.xlsx` and `sample_info.xlsx`). Generate those upstream or set `PROTEOMICS_WGCNA_EXPR_XLSX` and `PROTEOMICS_WGCNA_META_XLSX` explicitly.
+`01_WGCNA.r` is dataset-aware and can be launched directly or through `run_dataset_pipeline.R`:
+
+```bash
+Rscript 06_modules_WGCNA/01_WGCNA.r --dataset neuron_neuropil --dry-run
+Rscript 06_modules_WGCNA/01_WGCNA.r --dataset neuron_neuropil
+```
+
+It stages dataset-scoped WGCNA input workbooks under `data/processed/06_modules_WGCNA/01_WGCNA/<dataset>/inputs/` when upstream imputed matrices and metadata are available. Set `PROTEOMICS_WGCNA_EXPR_XLSX` and `PROTEOMICS_WGCNA_META_XLSX` only when intentionally using custom inputs. It exports stable color-based WGCNA module definitions plus a downstream contract and ranked biological module summary under:
+
+```text
+results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_modules_long.xlsx
+results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_module_definitions_for_downstream.csv
+results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_module_priority_summary.csv
+results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_module_contracts.xlsx
+```
 
 ## 7. Spatial network analyses
 

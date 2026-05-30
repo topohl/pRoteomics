@@ -98,26 +98,66 @@ row_zscore <- function(mat) {
 
 load_module_file <- function(module_file) {
   if (is.null(module_file) || !file.exists(module_file)) return(NULL)
+
   message2("Reading curated module file: ", module_file)
-  ext <- tools::file_ext(module_file)
-  if (tolower(ext) %in% c("xlsx", "xls")) {
-    df <- readxl::read_excel(module_file)
+
+  ext <- tolower(tools::file_ext(module_file))
+
+  if (ext %in% c("xlsx", "xls")) {
+    sheets <- readxl::excel_sheets(module_file)
+
+    if (!"Modules_long" %in% sheets) {
+      stop(
+        "Module workbook found, but sheet 'Modules_long' is missing. Available sheets: ",
+        paste(sheets, collapse = ", "),
+        call. = FALSE
+      )
+    }
+
+    df <- readxl::read_excel(module_file, sheet = "Modules_long")
   } else {
     df <- read.csv(module_file, stringsAsFactors = FALSE)
   }
+
   df <- as.data.frame(df)
-  nms <- names(df)
-  module_col <- nms[tolower(gsub("[^a-z0-9]", "", nms)) %in% c("module", "modulename", "set", "geneset")][1]
-  protein_col <- nms[tolower(gsub("[^a-z0-9]", "", nms)) %in% c("protein", "gene", "genes", "accession", "uniprot", "uniprotid")][1]
-  if (is.na(module_col) || is.na(protein_col)) {
-    warning("Module file found but required columns Module and Protein/Gene could not be detected. Using regex fallback.")
-    return(NULL)
+  names(df) <- trimws(names(df))
+
+  required_cols <- c("Module", "Protein")
+  missing_cols <- setdiff(required_cols, names(df))
+
+  if (length(missing_cols) > 0) {
+    stop(
+      "Curated module file is missing required column(s): ",
+      paste(missing_cols, collapse = ", "),
+      ". Available columns are: ",
+      paste(names(df), collapse = ", "),
+      call. = FALSE
+    )
   }
+
+  if ("Include" %in% names(df)) {
+    df <- df %>%
+      dplyr::filter(
+        Include %in% c(TRUE, "TRUE", "true", "Yes", "yes", "Y", "y", 1, "1")
+      )
+  }
+
   df %>%
-    transmute(Module = as.character(.data[[module_col]]), Protein = as.character(.data[[protein_col]])) %>%
-    filter(!is.na(Module), !is.na(Protein), Module != "", Protein != "") %>%
-    mutate(Module = safe_name(Module), ProteinNorm = normalise_id(Protein)) %>%
-    distinct(Module, ProteinNorm, .keep_all = TRUE)
+    dplyr::transmute(
+      Module = as.character(Module),
+      Protein = as.character(Protein)
+    ) %>%
+    dplyr::filter(
+      !is.na(Module),
+      !is.na(Protein),
+      Module != "",
+      Protein != ""
+    ) %>%
+    dplyr::mutate(
+      Module = safe_name(Module),
+      ProteinNorm = normalise_id(Protein)
+    ) %>%
+    dplyr::distinct(Module, ProteinNorm, .keep_all = TRUE)
 }
 
 regex_modules_from_proteins <- function(proteins) {
@@ -127,21 +167,22 @@ regex_modules_from_proteins <- function(proteins) {
       RNP_RNA_processing = str_detect(ProteinNorm, paste(c(
         "^hnrnp", "^snrnp", "^srsf", "^sf3", "^u2af", "^prpf", "^ddx", "^dhx",
         "^rbm", "^nono", "^pcbp", "^fus", "^matrin", "^pabp", "^pabpc", "^pabpn",
-        "^ncl", "^nol", "^nop", "^fbl"
+        "^ncl", "^nol", "^nop", "^fbl"  
       ), collapse = "|")),
       Ribosome_translation = str_detect(ProteinNorm, paste(c(
         "^rps", "^rpl", "^eif", "^eef", "^mrpl", "^mrps"
       ), collapse = "|")),
       Mito_bioenergetics = str_detect(ProteinNorm, paste(c(
-        "^nduf", "^cox", "^uqcr", "^atp5", "^sdh", "^cyc1", "^mt-", "^mdh", "^idha", "^id hb", "^ogdh"
+        "^nduf", "^cox", "^uqcr", "^atp5", "^sdh", "^cyc1", "^mt-", "^mdh", "^idha", "^idhb", "^ogdh"
       ), collapse = "|")),
       Endolysosomal_proteostasis = str_detect(ProteinNorm, paste(c(
-        "^lamp", "^ct s", "^ctsb", "^ctsd", "^ctsl", "^psm", "^ub", "^hspa", "^hspb", "^vps", "^rab", "^atg"
+        "^lamp", "^cts", "^ctsb", "^ctsd", "^ctsl", "^psm", "^uba", "^ubc", 
+        "^ubb", "^ube", "^ubqln", "^hspa", "^hspb", "^vps", "^rab", "^atg"
       ), collapse = "|"))
     ) %>%
     pivot_longer(cols = c(RNP_RNA_processing, Ribosome_translation, Mito_bioenergetics, Endolysosomal_proteostasis), names_to = "Module", values_to = "Member") %>%
     filter(Member) %>%
-    select(Module, Protein, ProteinNorm) %>%
+    dplyr::select(Module, Protein, ProteinNorm) %>%
     distinct()
 }
 
@@ -167,7 +208,7 @@ compute_module_scores <- function(expr, sample_md, module_map, min_module_size =
 
   score_df <- as.data.frame(score_mat) %>%
     rownames_to_column("SampleColumn") %>%
-    left_join(sample_md %>% select(SampleColumn, Region, Layer, RegionLayer, ExpGroup), by = "SampleColumn") %>%
+    left_join(sample_md %>% dplyr::select(SampleColumn, Region, Layer, RegionLayer, ExpGroup), by = "SampleColumn") %>%
     pivot_longer(cols = all_of(colnames(score_mat)), names_to = "Module", values_to = "ModuleScore")
 
   list(score_df = score_df, module_sizes = module_sizes, retained_module_map = module_map)
@@ -182,7 +223,7 @@ aggregate_module_region_layer <- function(score_df) {
 
 make_module_matrix <- function(module_region_df) {
   module_region_df %>%
-    select(Module, RegionLayer, MeanModuleScore) %>%
+    dplyr::select(Module, RegionLayer, MeanModuleScore) %>%
     pivot_wider(names_from = RegionLayer, values_from = MeanModuleScore) %>%
     column_to_rownames("Module") %>%
     as.matrix()
