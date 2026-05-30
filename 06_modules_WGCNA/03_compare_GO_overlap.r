@@ -11,19 +11,30 @@ library(tidyr)
 library(openxlsx)
 library(tibble)
 
+paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
+source(paths_file)
+
 # ------------------------------------------------
 # 1) SETTINGS
 # ------------------------------------------------
 
-main_dir <- "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/proteomics/Results/compareGO/BP/phenotype_within_unit"
-
-target_subdir <- "01_Tables_and_Data"
 target_file   <- "07_Top_Genes_Driving_TopTerms.xlsx"
 
 min_datasets <- 3
 
+comparego_dir <- path_results(
+  "tables",
+  "04_differential_expression_enrichment",
+  "compareGO",
+  "neuron_neuropil",
+  "BP",
+  "phenotype_within_unit"
+)
+
+aggregate_input_file <- file.path(comparego_dir, target_file)
+
 output_file <- file.path(
-  main_dir,
+  path_results("tables", "04_differential_expression_enrichment", "compareGO"),
   paste0("overlapping_proteins_min", min_datasets, "_datasets.xlsx")
 )
 
@@ -31,7 +42,7 @@ output_file <- file.path(
 expected_datasets <- c(
   "CA1_slm", "CA1_so", "CA1_sr",
   "CA2_slm", "CA2_so", "CA2_sr",
-  "CA3_sr",
+  "CA3_so","CA3_sr",
   "DG_mo", "DG_po"
 )
 
@@ -39,38 +50,43 @@ expected_datasets <- c(
 # 2) FIND INPUT FILES
 # ------------------------------------------------
 
-dataset_dirs <- list.dirs(main_dir, recursive = FALSE, full.names = TRUE)
-
 input_files <- tibble(
-  Dataset = basename(dataset_dirs),
-  File = file.path(dataset_dirs, target_subdir, target_file)
-) %>%
-  filter(Dataset %in% expected_datasets) %>%
-  mutate(File_exists = file.exists(File))
+  Input_type = "compareGO_aggregate_top_gene_drivers",
+  File = aggregate_input_file,
+  File_exists = file.exists(File)
+)
 
-missing_files <- input_files %>%
-  filter(!File_exists)
-
-input_files_found <- input_files %>%
-  filter(File_exists)
-
-if (nrow(input_files_found) == 0) {
-  stop("No input files found. Check main_dir, folder names, and target_file.")
+if (!file.exists(aggregate_input_file)) {
+  stop("No input file found. Expected compareGO output: ", aggregate_input_file, call. = FALSE)
 }
 
-message("Found ", nrow(input_files_found), " input files.")
-if (nrow(missing_files) > 0) {
-  message("Missing files in: ", paste(missing_files$Dataset, collapse = ", "))
-}
+message("Found compareGO input file: ", aggregate_input_file)
 
 # ------------------------------------------------
 # 3) READ AND STANDARDIZE DATA
 # ------------------------------------------------
 
-read_top_genes <- function(file, dataset) {
+compact_dataset_key <- function(x) {
+  x %>%
+    stringr::str_to_lower() %>%
+    stringr::str_replace_all("_", "")
+}
+
+dataset_lookup <- tibble(
+  Dataset = expected_datasets,
+  Dataset_key = compact_dataset_key(expected_datasets)
+)
+
+parse_dataset_from_comparison <- function(x) {
+  x_key <- compact_dataset_key(x)
+  detected <- dataset_lookup$Dataset[stringr::str_detect(x_key, dataset_lookup$Dataset_key)]
+  if (length(detected) == 0) NA_character_ else detected[[1]]
+}
+
+read_top_genes <- function(file) {
   df <- readxl::read_excel(file)
 
-  required_cols <- c("Description", "Gene", "Freq", "Mean_NES")
+  required_cols <- c("Description", "Gene", "Freq", "Mean_NES", "Comparisons")
   missing_cols <- setdiff(required_cols, names(df))
 
   if (length(missing_cols) > 0) {
@@ -83,22 +99,41 @@ read_top_genes <- function(file, dataset) {
 
   df %>%
     mutate(
-      Dataset = dataset,
       Description = as.character(Description),
       Gene = as.character(Gene),
       Gene = str_trim(Gene),
       Freq = suppressWarnings(as.numeric(Freq)),
-      Mean_NES = suppressWarnings(as.numeric(Mean_NES))
+      Mean_NES = suppressWarnings(as.numeric(Mean_NES)),
+      Comparisons = as.character(Comparisons)
     ) %>%
     filter(!is.na(Gene), Gene != "") %>%
-    distinct(Dataset, Description, Gene, .keep_all = TRUE)
+    tidyr::separate_rows(Comparisons, sep = ";\\s*") %>%
+    mutate(
+      Comparison = stringr::str_trim(Comparisons),
+      Dataset = purrr::map_chr(Comparison, parse_dataset_from_comparison)
+    ) %>%
+    filter(!is.na(Dataset), Dataset %in% expected_datasets) %>%
+    group_by(Dataset, Description, Gene) %>%
+    summarise(
+      Freq = n_distinct(Comparison),
+      Mean_NES = mean(Mean_NES, na.rm = TRUE),
+      Comparisons = paste(sort(unique(Comparison)), collapse = "; "),
+      .groups = "drop"
+    )
 }
 
-all_data <- purrr::map2_dfr(
-  input_files_found$File,
-  input_files_found$Dataset,
-  read_top_genes
-)
+all_data <- read_top_genes(aggregate_input_file)
+
+found_datasets <- sort(unique(all_data$Dataset))
+missing_datasets <- setdiff(expected_datasets, found_datasets)
+message("Detected datasets: ", paste(found_datasets, collapse = ", "))
+if (length(missing_datasets) > 0) {
+  message("Missing datasets in compareGO comparisons: ", paste(missing_datasets, collapse = ", "))
+}
+
+if (nrow(all_data) == 0) {
+  stop("No dataset-level rows could be parsed from the compareGO Comparisons column.", call. = FALSE)
+}
 
 # ------------------------------------------------
 # 4) DATASET-LEVEL OVERLAP

@@ -22,10 +22,9 @@
 #' @author Tobias Pohl
 #' ============================================================
 
-setwd("S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/Analysis/proteomics")
-
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
+source(repo_path("R", "dataset_config.R"))
 MODULE_ID <- "04_differential_expression_enrichment"
 SUBSTEP_ID <- "clusterProfiler"
 CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
@@ -188,7 +187,7 @@ read_config <- function(config_path) {
       cutoff = SIMPLIFY_CUTOFF
     ),
     analysis = list(
-      dataset = Sys.getenv("PROTEOMICS_COMPARISON", unset = "neuron_neuropil"),
+      dataset = current_dataset(),
       organism = "org.Mm.eg.db",
       ontology = "BP",
       top_gene_abs_log2fc = 1,
@@ -256,6 +255,12 @@ make_manifest_row <- function(result_type, ontology, comparison_name, dirs, inpu
                               plot_suffix = NA_character_, checkpoint_status = "computed",
                               condition = NA_character_, direction = NA_character_) {
   dataset <- get0("DATASET", ifnotfound = NA_character_)
+  if (length(dataset) != 1L || is.na(dataset) || !nzchar(as.character(dataset))) {
+    dataset <- Sys.getenv("PROTEOMICS_DATASET", unset = NA_character_)
+  }
+  if (length(dataset) != 1L || is.na(dataset) || !nzchar(as.character(dataset))) {
+    dataset <- Sys.getenv("PROTEOMICS_COMPARISON", unset = NA_character_)
+  }
   data.frame(
     analysis_id = paste("clusterProfiler", dataset, result_type, ontology, comparison_name, sep = "::"),
     dataset = dataset,
@@ -433,8 +438,8 @@ checkpoint_plot_suffix <- function() {
 }
 
 expected_checkpoint_outputs <- function(dirs, comparison_name, ont, plot_suffix = checkpoint_plot_suffix()) {
+  # Raw-data checkpoint only: figures are intentionally not part of this check.
   c(
-    flag = checkpoint_file_path(dirs),
     qc = file.path(dirs$results, "QC_summary.csv"),
     gsea_core_table = file.path(dirs$core_enrich_routed, paste0(comparison_name, plot_suffix, ".csv")),
     gsea_full_table = file.path(dirs$go_ont, paste0("GSEA_", ont, "_results_full.csv")),
@@ -511,12 +516,21 @@ load_background_universe <- function(cfg) {
 pretty_unit_name <- function(unit) {
   unit <- gsub("[^A-Za-z0-9]", "", as.character(unit))
   if (!nzchar(unit)) return("")
-  m <- regexec("^([A-Za-z]+[0-9]*)([A-Za-z0-9]+)$", unit)
+
+  known_suffixes <- c("hilus", "gcl", "slm", "po", "mo", "so", "sr", "sp", "sg", "ml")
+  for (suffix in known_suffixes) {
+    if (grepl(paste0(suffix, "$"), unit, ignore.case = TRUE)) {
+      prefix <- substr(unit, 1, nchar(unit) - nchar(suffix))
+      if (nzchar(prefix)) return(paste(toupper(prefix), tolower(suffix), sep = "_"))
+    }
+  }
+
+  m <- regexec("^([A-Z]+[0-9]*)([a-z][A-Za-z0-9]*)$", unit)
   mm <- regmatches(unit, m)[[1]]
   if (length(mm) == 3 && nzchar(mm[3])) {
     return(paste(toupper(mm[2]), tolower(mm[3]), sep = "_"))
   }
-  unit
+  toupper(unit)
 }
 
 parse_sample_token <- function(token, phenotypes = c("sus", "res", "con")) {
@@ -639,12 +653,16 @@ assert_comparison_route_examples <- function() {
       "CA1slmsus_CA1slmres",
       "CA1slmsus_CA1slmcon",
       "CA1sores_CA1socon",
+      "DGpores_DGpocon",
+      "DGmores_DGmocon",
       "CA1slmcon_CA1socon",
       "CA1slmsus_CA1socon",
       "CA1_so_res_CA1_so_con",
       "CA1_slm_con_CA1_so_con"
     ),
     category = c(
+      "phenotype_within_unit",
+      "phenotype_within_unit",
       "phenotype_within_unit",
       "phenotype_within_unit",
       "phenotype_within_unit",
@@ -659,6 +677,8 @@ assert_comparison_route_examples <- function() {
       "CA1_slm",
       "CA1_slm",
       "CA1_so",
+      "DG_po",
+      "DG_mo",
       "CA1_slm_vs_CA1_so",
       "CA1_slm_vs_CA1_so",
       "CA1_so",
@@ -703,21 +723,8 @@ as_repo_path <- function(path) {
   if (grepl("^([A-Za-z]:|/|~)", path)) return(path)
   repo_path(path)
 }
-DATASET <- as.character(cfg$analysis$dataset %||% Sys.getenv("PROTEOMICS_COMPARISON", unset = "neuron_neuropil"))
-allowed_datasets <- trimws(strsplit(
-  Sys.getenv("PROTEOMICS_ALLOWED_COMPARISONS", unset = "neuron_neuropil,neuron_soma,microglia"),
-  ",",
-  fixed = TRUE
-)[[1]])
-allowed_datasets <- allowed_datasets[nzchar(allowed_datasets)]
-if (length(allowed_datasets) > 0 && !DATASET %in% allowed_datasets) {
-  stop(
-    "clusterProfiler dataset='", DATASET, "' is not in the allowed dataset families: ",
-    paste(allowed_datasets, collapse = ", "),
-    ". Extend PROTEOMICS_ALLOWED_COMPARISONS if this is an intentional new family.",
-    call. = FALSE
-  )
-}
+DATASET <- current_dataset(default = cfg$analysis$dataset %||% "neuron_neuropil")
+cfg$analysis$dataset <- DATASET
 CANONICAL_PATHS <- lapply(CANONICAL_PATHS, function(path) file.path(path, DATASET))
 invisible(lapply(CANONICAL_PATHS, dir.create, recursive = TRUE, showWarnings = FALSE))
 
@@ -835,6 +842,9 @@ if (isTRUE(DRY_RUN)) {
     dry_run_line("Route counts", paste(utils::capture.output(print(route_counts, row.names = FALSE)), collapse = " | "))
   }
   dry_run_line("Ontology", cfg$analysis$ontology)
+  dry_run_line("Dataset processed output", CANONICAL_PATHS$processed)
+  dry_run_line("Dataset figures output", CANONICAL_PATHS$figures)
+  dry_run_line("Dataset source data", CANONICAL_PATHS$source_data)
   dry_run_line("Result manifest", file.path(CANONICAL_PATHS$processed, "clusterProfiler_manifest.csv"))
   dry_run_file <- file.path(CANONICAL_PATHS$reports, "clusterProfiler_dry_run_diagnostics.csv")
   write.csv(diagnostics, dry_run_file, row.names = FALSE)
@@ -1512,16 +1522,23 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
         "(Full)"
       }
       
-      p4 <- clusterProfiler::dotplot(go_enrich_for_plot, showCategory = 20, split = "ONTOLOGY") +
-        facet_grid(ONTOLOGY ~ ., scales = "free_y") +
-        labs(title = paste("GO Enrichment Dotplot", plot_label), 
-             x = "Gene Ratio", y = "GO Term", color = "p.adjust", size = "Count") +
-        scale_color_viridis_c(option = "magma", direction = -1) +
-        theme_minimal(base_size = 12) +
-        theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"), 
-              axis.text.x = element_text(angle = 45, hjust = 1))
-      
-      save_plot_organized(p4, paste0("GOenrich_dotplot", plot_suffix, ".svg"), dirs$plots_go)
+      tryCatch({
+        if ("ONTOLOGY" %in% colnames(go_enrich_for_plot@result)) {
+          p4 <- clusterProfiler::dotplot(go_enrich_for_plot, showCategory = 20, split = "ONTOLOGY") +
+            facet_grid(ONTOLOGY ~ ., scales = "free_y")
+        } else {
+          p4 <- clusterProfiler::dotplot(go_enrich_for_plot, showCategory = 20)
+        }
+        p4 <- p4 +
+          labs(title = paste("GO Enrichment Dotplot", plot_label),
+               x = "Gene Ratio", y = "GO Term", color = "p.adjust", size = "Count") +
+          scale_color_viridis_c(option = "magma", direction = -1) +
+          theme_minimal(base_size = 12) +
+          theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+                axis.text.x = element_text(angle = 45, hjust = 1))
+
+        save_plot_organized(p4, paste0("GOenrich_dotplot", plot_suffix, ".svg"), dirs$plots_go)
+      }, error = function(e) warning("GO enrich dotplot failed: ", e$message))
     }
     
     
@@ -1747,7 +1764,7 @@ if (length(qc_rows) > 0) {
 }
 
 manifest_rows <- lapply(results, function(x) x$manifest)
-manifest_rows <- manifest_rows[!vapply(manifest_rows, is.null, logical(1))]
+manifest_rows <- manifest_rows[!vapply(manifest_rows, function(x) is.null(x) || ncol(x) == 0, logical(1))]
 manifest <- if (length(manifest_rows) > 0) dplyr::bind_rows(manifest_rows) else {
   data.frame(matrix(ncol = length(manifest_columns), nrow = 0, dimnames = list(NULL, manifest_columns)))
 }

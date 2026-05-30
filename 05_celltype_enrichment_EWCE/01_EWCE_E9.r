@@ -7,7 +7,7 @@
 # File contract:
 #   - docs/active_script_io_audit.tsv object 05_celltype_enrichment_EWCE/01_EWCE_E9.r
 # ==========================================
-# EWCE E9: Nature-oriented proteomics workflow
+# EWCE E9: Publication-oriented proteomics workflow
 # ==========================================
 
 # This script keeps the original EWCE analysis intent, but adds:
@@ -27,10 +27,58 @@ MODULE_ID <- "05_celltype_enrichment_EWCE"
 SUBSTEP_ID <- "EWCE_E9"
 CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
 
+resolve_ewce_pg_matrix <- function() {
+  env_path <- Sys.getenv("PROTEOMICS_EWCE_MATRIX", unset = "")
+  if (nzchar(env_path)) {
+    return(normalizePath(env_path, winslash = "/", mustWork = FALSE))
+  }
+
+  imputation_qc_path <- path_processed("01_preprocessing", "impute", "imputation_qc.csv")
+  if (file.exists(imputation_qc_path)) {
+    imputation_qc <- utils::read.csv(imputation_qc_path, stringsAsFactors = FALSE, check.names = FALSE)
+    required_cols <- c("celltype_layer", "n_samples", "output_path")
+    if (all(required_cols %in% colnames(imputation_qc))) {
+      candidates <- imputation_qc[
+        imputation_qc$celltype_layer == "neuron_neuropil" &
+          imputation_qc$n_samples == 180 &
+          !is.na(imputation_qc$output_path) &
+          nzchar(imputation_qc$output_path),
+        ,
+        drop = FALSE
+      ]
+      candidates <- candidates[file.exists(candidates$output_path), , drop = FALSE]
+      if (nrow(candidates) > 0) {
+        candidates$mtime <- file.info(candidates$output_path)$mtime
+        candidates <- candidates[order(candidates$mtime, decreasing = TRUE), , drop = FALSE]
+        return(normalizePath(candidates$output_path[1], winslash = "/", mustWork = FALSE))
+      }
+    }
+  }
+
+  legacy_path <- path_processed("01_preprocessing", "20260218_pgmatrix_imputed_neuron_neuropil_180samples_missing70pct.xlsx")
+  if (file.exists(legacy_path)) {
+    return(normalizePath(legacy_path, winslash = "/", mustWork = FALSE))
+  }
+
+  discovered <- list.files(
+    path_processed("01_preprocessing", "impute"),
+    pattern = "pgmatrix_imputed_neuron_neuropil_180samples_missing70pct\\.xlsx$",
+    full.names = TRUE,
+    recursive = FALSE
+  )
+  discovered <- discovered[file.exists(discovered)]
+  if (length(discovered) > 0) {
+    discovered <- discovered[order(file.info(discovered)$mtime, decreasing = TRUE)]
+    return(normalizePath(discovered[1], winslash = "/", mustWork = FALSE))
+  }
+
+  legacy_path
+}
+
 # Local machines can override these by defining the variables before source()
-# or through PROTEOMICS_PROJECT_ROOT. Do not commit machine-specific paths.
+# or through PROTEOMICS_PROJECT_ROOT / PROTEOMICS_EWCE_MATRIX. Do not commit machine-specific paths.
 if (!exists("data_path", inherits = FALSE)) {
-  data_path <- path_processed("01_preprocessing", "20260218_pgmatrix_imputed_neuron_neuropil_180samples_missing70pct.xlsx")
+  data_path <- resolve_ewce_pg_matrix()
 }
 if (!exists("sample_metadata_path", inherits = FALSE)) {
   sample_metadata_path <- path_metadata("TPE9_sample_metadata_males.xlsx")
@@ -116,7 +164,7 @@ if (length(missing_raw_cols) > 0) {
 # 2. HELPERS
 # ==========================================
 
-theme_nature <- function() {
+theme_publication <- function() {
   ggplot2::theme_bw(base_size = 7) +
     ggplot2::theme(
       text = ggplot2::element_text(family = "sans", color = "black"),
@@ -775,10 +823,10 @@ sensitivity_tbl <- results_all %>%
   )
 
 # ==========================================
-# 5b. NATURE-ORIENTED SYNTHESIS (CACHE-PRESERVING)
+# 5b. PUBLICATION-ORIENTED SYNTHESIS (CACHE-PRESERVING)
 # ==========================================
 
-message("Step 4b: Building Nature-oriented synthesis tables...")
+message("Step 4b: Building Publication-oriented synthesis tables...")
 
 stratum_order <- c(
   "CA1_so", "CA1_sp", "CA1_sr", "CA1_slm",
@@ -879,7 +927,7 @@ high_confidence_hits <- primary_results %>%
     Target, Metric, TopN, AnnotLevel, N_Hits, N_Background
   )
 
-nature_top_celltypes <- primary_results %>%
+publication_top_celltypes <- primary_results %>%
   dplyr::filter(AnalysisType == "Differential") %>%
   dplyr::group_by(CellType) %>%
   dplyr::summarise(
@@ -892,14 +940,14 @@ nature_top_celltypes <- primary_results %>%
   dplyr::arrange(!Any_GlobalSignificant, Best_q_global, dplyr::desc(Max_abs_Z)) %>%
   dplyr::slice_head(n = 35)
 
-nature_diff_heatmap_tbl <- primary_results %>%
-  dplyr::filter(AnalysisType == "Differential", CellType %in% nature_top_celltypes$CellType) %>%
+publication_diff_heatmap_tbl <- primary_results %>%
+  dplyr::filter(AnalysisType == "Differential", CellType %in% publication_top_celltypes$CellType) %>%
   dplyr::mutate(
-    CellType = factor(CellType, levels = rev(nature_top_celltypes$CellType)),
+    CellType = factor(CellType, levels = rev(publication_top_celltypes$CellType)),
     Stratum = factor(Stratum, levels = stratum_order)
   )
 
-nature_robust_tbl <- sensitivity_tbl %>%
+publication_robust_tbl <- sensitivity_tbl %>%
   dplyr::filter(AnalysisType == "Differential", AnnotLevel == analysis_params$primary_annot_level) %>%
   dplyr::arrange(Min_q_global, dplyr::desc(Max_abs_Z)) %>%
   dplyr::mutate(
@@ -909,7 +957,7 @@ nature_robust_tbl <- sensitivity_tbl %>%
   dplyr::slice_head(n = 35)
 
 # ==========================================
-# 6. NATURE-STYLE VISUALIZATION
+# 6. PUBLICATION-STYLE VISUALIZATION
 # ==========================================
 
 message("Step 5: Building publication and extended-data figures...")
@@ -937,7 +985,7 @@ p1 <- ggplot2::ggplot(
   viridis::scale_color_viridis(option = "magma", name = "Z-score") +
   ggplot2::scale_size_area(max_size = 3, name = "|Z|") +
   ggplot2::scale_alpha_manual(values = c("FALSE" = 0.35, "TRUE" = 1), name = "Global FDR < 0.05") +
-  theme_nature() +
+  theme_publication() +
   ggplot2::labs(x = NULL, y = "Cell type", title = "Baseline cell-type enrichment") +
   ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
 
@@ -957,7 +1005,7 @@ p2 <- ggplot2::ggplot(
   ) +
   ggplot2::facet_wrap(~Stratum, nrow = 1) +
   ggplot2::scale_fill_gradient2(low = col_res, mid = "white", high = col_sus, midpoint = 0, name = "Z-score") +
-  theme_nature() +
+  theme_publication() +
   ggplot2::labs(x = NULL, y = "Cell type", title = "Modeled stress contrasts") +
   ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
 
@@ -965,7 +1013,7 @@ p3 <- ggplot2::ggplot(primary_results, ggplot2::aes(x = sd_from_mean, y = -log10
   ggplot2::geom_point(ggplot2::aes(color = AnalysisType), alpha = 0.65, size = 1) +
   ggplot2::scale_color_manual(values = c("Baseline" = col_baseline, "Differential" = col_sus)) +
   ggplot2::geom_hline(yintercept = -log10(analysis_params$fdr_alpha), linetype = "dashed", linewidth = 0.2) +
-  theme_nature() +
+  theme_publication() +
   ggplot2::labs(x = "Effect size (Z-score)", y = "-log10(global FDR)", title = "EWCE significance")
 
 p4 <- ggplot2::ggplot(
@@ -975,7 +1023,7 @@ p4 <- ggplot2::ggplot(
   ggplot2::geom_tile(color = "white", linewidth = 0.1) +
   ggplot2::facet_wrap(~Stratum, nrow = 1) +
   ggplot2::scale_fill_gradient2(low = col_res, mid = "white", high = col_sus, midpoint = 0, name = "Signed -log10(FDR)") +
-  theme_nature() +
+  theme_publication() +
   ggplot2::labs(x = NULL, y = "Cell type", title = "Direction and global significance") +
   ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
 
@@ -996,7 +1044,7 @@ p5 <- ggplot2::ggplot(
   ggplot2::geom_col(width = 0.8) +
   ggplot2::coord_flip() +
   viridis::scale_fill_viridis(option = "plasma", name = "-log10(global FDR)") +
-  theme_nature() +
+  theme_publication() +
   ggplot2::labs(x = NULL, y = "Max |Z-score|", title = "Top cell-type effects")
 
 p6 <- ggplot2::ggplot(
@@ -1006,7 +1054,7 @@ p6 <- ggplot2::ggplot(
   ggridges::geom_density_ridges(alpha = 0.7, scale = 0.9, color = "white", linewidth = 0.2) +
   ggplot2::scale_fill_manual(values = c("up" = col_sus, "down" = col_down), guide = "none") +
   ggplot2::geom_vline(xintercept = 0, linetype = "dashed", linewidth = 0.2) +
-  theme_nature() +
+  theme_publication() +
   ggplot2::labs(x = "Z-score", y = NULL, title = "Stratum effect distributions")
 
 p7 <- ggplot2::ggplot(
@@ -1023,16 +1071,16 @@ p7 <- ggplot2::ggplot(
   ggplot2::geom_col(width = 0.8) +
   ggplot2::coord_flip() +
   ggplot2::scale_fill_manual(values = c("FALSE" = "grey70", "TRUE" = col_sus), name = "Robust") +
-  theme_nature() +
+  theme_publication() +
   ggplot2::labs(x = NULL, y = "Significant top-N settings", title = "Hit-list sensitivity")
 
-nature_heatmap_fig <- ggplot2::ggplot(
-  nature_diff_heatmap_tbl,
+publication_heatmap_fig <- ggplot2::ggplot(
+  publication_diff_heatmap_tbl,
   ggplot2::aes(x = Stratum, y = CellType, fill = SignedSig_Global_Capped)
 ) +
   ggplot2::geom_tile(color = "white", linewidth = 0.12) +
   ggplot2::geom_point(
-    data = nature_diff_heatmap_tbl %>% dplyr::filter(Significant_Global),
+    data = publication_diff_heatmap_tbl %>% dplyr::filter(Significant_Global),
     ggplot2::aes(x = Stratum, y = CellType),
     inherit.aes = FALSE,
     shape = 21,
@@ -1050,7 +1098,7 @@ nature_heatmap_fig <- ggplot2::ggplot(
     limits = c(-10, 10),
     name = "Signed\n-log10(FDR)"
   ) +
-  theme_nature() +
+  theme_publication() +
   ggplot2::labs(
     x = NULL,
     y = "Cell type",
@@ -1062,8 +1110,8 @@ nature_heatmap_fig <- ggplot2::ggplot(
     legend.position = "right"
   )
 
-nature_robustness_fig <- ggplot2::ggplot(
-  nature_robust_tbl,
+publication_robustness_fig <- ggplot2::ggplot(
+  publication_robust_tbl,
   ggplot2::aes(x = RobustnessScore, y = FindingLabel)
 ) +
   ggplot2::geom_col(ggplot2::aes(fill = RobustAcrossTopN), width = 0.75) +
@@ -1076,7 +1124,7 @@ nature_robustness_fig <- ggplot2::ggplot(
   ggplot2::scale_fill_manual(values = c("FALSE" = "grey75", "TRUE" = col_sus), name = "Robust\nall Top-N") +
   viridis::scale_color_viridis(option = "plasma", name = "-log10\nmin FDR") +
   ggplot2::scale_size_area(max_size = 3.2, name = "Max |Z|") +
-  theme_nature() +
+  theme_publication() +
   ggplot2::labs(
     x = "Fraction of Top-N settings significant",
     y = NULL,
@@ -1115,10 +1163,10 @@ ggplot2::ggsave(file.path(dirs$svgs, "Fig1_EWCE_Summary.svg"), main_fig, width =
 ggplot2::ggsave(file.path(dirs$svgs, "Volcano_Panel.svg"), p3, width = 80, height = 80, units = "mm")
 ggplot2::ggsave(file.path(dirs$plots, "FigS1_EWCE_Additional_Visuals.pdf"), supp_fig, width = 180, height = 280, units = "mm", device = grDevices::cairo_pdf)
 ggplot2::ggsave(file.path(dirs$svgs, "FigS1_EWCE_Additional_Visuals.svg"), supp_fig, width = 180, height = 280, units = "mm")
-ggplot2::ggsave(file.path(dirs$plots, "Fig2_Primary_Differential_EWCE_Heatmap.pdf"), nature_heatmap_fig, width = 183, height = 170, units = "mm", device = grDevices::cairo_pdf)
-ggplot2::ggsave(file.path(dirs$svgs, "Fig2_Primary_Differential_EWCE_Heatmap.svg"), nature_heatmap_fig, width = 183, height = 170, units = "mm")
-ggplot2::ggsave(file.path(dirs$plots, "Fig3_Robust_EWCE_Findings.pdf"), nature_robustness_fig, width = 183, height = 160, units = "mm", device = grDevices::cairo_pdf)
-ggplot2::ggsave(file.path(dirs$svgs, "Fig3_Robust_EWCE_Findings.svg"), nature_robustness_fig, width = 183, height = 160, units = "mm")
+ggplot2::ggsave(file.path(dirs$plots, "Fig2_Primary_Differential_EWCE_Heatmap.pdf"), publication_heatmap_fig, width = 183, height = 170, units = "mm", device = grDevices::cairo_pdf)
+ggplot2::ggsave(file.path(dirs$svgs, "Fig2_Primary_Differential_EWCE_Heatmap.svg"), publication_heatmap_fig, width = 183, height = 170, units = "mm")
+ggplot2::ggsave(file.path(dirs$plots, "Fig3_Robust_EWCE_Findings.pdf"), publication_robustness_fig, width = 183, height = 160, units = "mm", device = grDevices::cairo_pdf)
+ggplot2::ggsave(file.path(dirs$svgs, "Fig3_Robust_EWCE_Findings.svg"), publication_robustness_fig, width = 183, height = 160, units = "mm")
 
 if (nrow(diff_heatmap_mat) > 2 && ncol(diff_heatmap_mat) > 2) {
   grDevices::pdf(file.path(dirs$plots, "FigS2_EWCE_ClusteredHeatmap.pdf"), width = 8, height = 10, family = "sans")
@@ -1197,13 +1245,13 @@ add_worksheet_safe(wb, "Input_Gene_Stats", input_gene_stats)
 add_worksheet_safe(wb, "Sample_Counts", sample_meta_qc)
 openxlsx::saveWorkbook(wb, file.path(dirs$tables, "Supplementary_Table_EWCE.xlsx"), overwrite = TRUE)
 
-nature_wb <- openxlsx::createWorkbook()
-add_worksheet_safe(nature_wb, "High_Confidence_Findings", high_confidence_hits)
-add_worksheet_safe(nature_wb, "Primary_Diff_Heatmap_Data", nature_diff_heatmap_tbl)
-add_worksheet_safe(nature_wb, "Robustness_Data", nature_robust_tbl)
-add_worksheet_safe(nature_wb, "Annotation_Consistency", annotation_consistency_tbl)
-add_worksheet_safe(nature_wb, "Top_CellTypes", nature_top_celltypes)
-openxlsx::saveWorkbook(nature_wb, file.path(dirs$tables, "High_Confidence_EWCE_Findings.xlsx"), overwrite = TRUE)
+publication_wb <- openxlsx::createWorkbook()
+add_worksheet_safe(publication_wb, "High_Confidence_Findings", high_confidence_hits)
+add_worksheet_safe(publication_wb, "Primary_Diff_Heatmap_Data", publication_diff_heatmap_tbl)
+add_worksheet_safe(publication_wb, "Robustness_Data", publication_robust_tbl)
+add_worksheet_safe(publication_wb, "Annotation_Consistency", annotation_consistency_tbl)
+add_worksheet_safe(publication_wb, "Top_CellTypes", publication_top_celltypes)
+openxlsx::saveWorkbook(publication_wb, file.path(dirs$tables, "High_Confidence_EWCE_Findings.xlsx"), overwrite = TRUE)
 
 source_wb <- openxlsx::createWorkbook()
 add_worksheet_safe(source_wb, "Fig1A_Baseline_Dotplot", primary_results %>% dplyr::filter(AnalysisType == "Baseline", Significant_Global))
@@ -1213,8 +1261,8 @@ add_worksheet_safe(source_wb, "FigS1A_Signed_Heatmap", primary_results %>% dplyr
 add_worksheet_safe(source_wb, "FigS1B_Top_CellTypes", top_celltypes)
 add_worksheet_safe(source_wb, "FigS1C_Distributions", primary_results %>% dplyr::filter(AnalysisType == "Differential"))
 add_worksheet_safe(source_wb, "FigS1D_Sensitivity", sensitivity_tbl)
-add_worksheet_safe(source_wb, "Fig2_Primary_Heatmap", nature_diff_heatmap_tbl)
-add_worksheet_safe(source_wb, "Fig3_Robust_Findings", nature_robust_tbl)
+add_worksheet_safe(source_wb, "Fig2_Primary_Heatmap", publication_diff_heatmap_tbl)
+add_worksheet_safe(source_wb, "Fig3_Robust_Findings", publication_robust_tbl)
 openxlsx::saveWorkbook(source_wb, file.path(dirs$source, "Source_Data_EWCE_Figures.xlsx"), overwrite = TRUE)
 
 saveRDS(
@@ -1230,8 +1278,8 @@ saveRDS(
     mapping_qc = mapping_qc,
     high_confidence_hits = high_confidence_hits,
     annotation_consistency_tbl = annotation_consistency_tbl,
-    nature_diff_heatmap_tbl = nature_diff_heatmap_tbl,
-    nature_robust_tbl = nature_robust_tbl,
+    publication_diff_heatmap_tbl = publication_diff_heatmap_tbl,
+    publication_robust_tbl = publication_robust_tbl,
     analysis_params = analysis_params
   ),
   file.path(dirs$data, "EWCE_results_full.rds")

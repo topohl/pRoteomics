@@ -1,6 +1,11 @@
 # ================================================================
-# Manuscript-grade QC figures for spatial proteomics
-# Ring-free Nature-style version
+# QC figures for spatial proteomics
+# This script generates QC figures for the main manuscript and supplemental materials, as well as summary tables. # nolint
+# Consumes an annotated QC stats file (e.g. from quicksearch) and produces consistent visualizations of key QC metrics across samples and cell types.
+# The main figure focuses on core QC metrics like protein/precursor counts, signal, mass accuracy, and a composite QC score, while the supplemental figure includes additional metrics and missingness estimates.
+# Outlier detection is performed using a robust z-score method, but outliers are not highlighted in the main figure to maintain visual clarity. Instead, a separate outlier summary figure and table are provided.
+# The script is designed to be flexible to varying QC metrics and sample annotations, and includes error handling for missing data. It also saves all outputs in a specified results directory.
+# Author: Tobias Pohl
 # ================================================================
 
 suppressPackageStartupMessages({
@@ -28,7 +33,7 @@ input_file <- Sys.getenv(
   unset = path_raw("pg_matrix", "quicksearch.stats.annotated.xlsx")
 )
 
-out_dir <- Sys.getenv("PROTEOMICS_QC_NATURE_DIR", unset = path_results("QC_Nature"))
+out_dir <- Sys.getenv("PROTEOMICS_QC_PUBLICATION_DIR", unset = path_results("QC_publication"))
 if (!file.exists(input_file)) stop("QC stats input not found: ", input_file, call. = FALSE)
 ensure_dir(out_dir)
 
@@ -84,7 +89,7 @@ qc <- qc %>%
 has_cols <- function(x) all(x %in% names(qc))
 
 # ================================================================
-# 4. Nature-style palette
+# 4. Publication-style palette
 # ================================================================
 
 celltype_cols <- c(
@@ -112,7 +117,7 @@ neutral_cols <- c(
 # 5. Theme and save helpers
 # ================================================================
 
-theme_nature_qc <- function(base_size = 7) {
+theme_publication_qc <- function(base_size = 7) {
   theme_classic(base_size = base_size) +
     theme(
       text = element_text(family = "Arial", colour = "black"),
@@ -268,7 +273,7 @@ plot_sample_bars <- function(df, yvar, ylab) {
     scale_fill_manual(values = celltype_cols) +
     scale_y_continuous(expand = expansion(mult = c(0, 0.06))) +
     labs(x = NULL, y = ylab) +
-    theme_nature_qc() +
+    theme_publication_qc() +
     theme(
       axis.text.x = element_blank(),
       axis.ticks.x = element_blank(),
@@ -282,7 +287,7 @@ plot_scatter_qc <- function(df, xvar, yvar, xlab, ylab, log_axes = FALSE) {
     geom_point(size = 1.4, alpha = 0.85) +
     scale_colour_manual(values = celltype_cols) +
     labs(x = xlab, y = ylab) +
-    theme_nature_qc() +
+    theme_publication_qc() +
     theme(aspect.ratio = 1)
 
   if (log_axes) {
@@ -312,7 +317,7 @@ plot_box_jitter <- function(df, yvar, ylab) {
     scale_fill_manual(values = celltype_cols) +
     scale_colour_manual(values = celltype_cols, guide = "none") +
     labs(x = NULL, y = ylab) +
-    theme_nature_qc() +
+    theme_publication_qc() +
     theme(
       axis.text.x = element_text(angle = 30, hjust = 1),
       legend.position = "none"
@@ -378,7 +383,7 @@ if ("QC.Score" %in% names(qc)) {
     geom_hline(yintercept = 0, linewidth = 0.25, linetype = "dashed", colour = neutral_cols["mid"]) +
     scale_fill_manual(values = celltype_cols) +
     labs(x = NULL, y = "Composite QC score") +
-    theme_nature_qc() +
+    theme_publication_qc() +
     theme(
       axis.text.x = element_blank(),
       axis.ticks.x = element_blank(),
@@ -452,7 +457,7 @@ if (length(pca_metrics) >= 3) {
         x = sprintf("PC1 (%.1f%%)", pve[1]),
         y = sprintf("PC2 (%.1f%%)", pve[2])
       ) +
-      theme_nature_qc() +
+      theme_publication_qc() +
       theme(aspect.ratio = 1)
   }
 }
@@ -507,7 +512,7 @@ if (length(qc_metrics) >= 3) {
         x = "MS1 signal",
         y = "Missing QC metric fraction"
       ) +
-      theme_nature_qc() +
+      theme_publication_qc() +
       theme(aspect.ratio = 1)
   } else {
     p_missing <- ggplot(
@@ -521,7 +526,7 @@ if (length(qc_metrics) >= 3) {
         x = NULL,
         y = "Missing QC metric fraction"
       ) +
-      theme_nature_qc() +
+      theme_publication_qc() +
       theme(
         axis.text.x = element_blank(),
         axis.ticks.x = element_blank()
@@ -573,7 +578,7 @@ if (length(cv_metrics) > 0) {
     scale_fill_manual(values = celltype_cols) +
     scale_y_continuous(labels = percent_format(accuracy = 1)) +
     labs(x = NULL, y = "Coefficient of variation") +
-    theme_nature_qc() +
+    theme_publication_qc() +
     theme(
       axis.text.x = element_text(angle = 35, hjust = 1)
     )
@@ -604,7 +609,7 @@ qc_main <- wrap_plots(main_plots, ncol = 3, guides = "collect") +
     plot.tag = element_text(size = 9, face = "bold")
   )
 
-save_svg(qc_main, "Fig_QC_main_Nature_style_no_rings.svg", width = 18, height = 18)
+save_svg(qc_main, "Fig_QC_main_publication_style_no_rings.svg", width = 18, height = 18)
 
 # ================================================================
 # 15. Supplemental QC figure
@@ -674,7 +679,7 @@ if (length(supp_plots) > 0) {
       plot.tag = element_text(size = 9, face = "bold")
     )
 
-  save_svg(qc_supp, "Fig_QC_supplemental_Nature_style_no_rings.svg", width = 18, height = 14)
+  save_svg(qc_supp, "Fig_QC_supplemental_publication_style_no_rings.svg", width = 18, height = 14)
 }
 
 # ================================================================
@@ -701,7 +706,7 @@ if ("max_abs_robust_z" %in% names(qc)) {
       x = NULL,
       y = "Maximum absolute robust z-score"
     ) +
-    theme_nature_qc() +
+    theme_publication_qc() +
     theme(
       axis.text.x = element_blank(),
       axis.ticks.x = element_blank()
@@ -737,7 +742,7 @@ if (length(pca_metrics) >= 3) {
     ) +
     coord_equal() +
     labs(x = NULL, y = NULL) +
-    theme_nature_qc() +
+    theme_publication_qc() +
     theme(
       axis.text.x = element_text(angle = 45, hjust = 1),
       legend.position = "right"
@@ -783,7 +788,7 @@ if ("batch" %in% names(qc) && "Normalisation.Instability" %in% names(qc)) {
       x = "Batch",
       y = "Normalisation instability"
     ) +
-    theme_nature_qc()
+    theme_publication_qc()
 
   save_svg(p_batch, "Fig_QC_batch_normalisation_instability.svg", width = 10, height = 7)
 }
@@ -871,10 +876,10 @@ cat("\nQC manuscript figures saved to:\n")
 cat(out_dir, "\n\n")
 
 cat("Main figure:\n")
-cat(" - Fig_QC_main_Nature_style_no_rings.svg\n\n")
+cat(" - Fig_QC_main_publication_style_no_rings.svg\n\n")
 
 cat("Supplemental figure:\n")
-cat(" - Fig_QC_supplemental_Nature_style_no_rings.svg\n\n")
+cat(" - Fig_QC_supplemental_publication_style_no_rings.svg\n\n")
 
 cat("Dedicated outlier figure:\n")
 cat(" - Fig_QC_outlier_summary.svg\n\n")

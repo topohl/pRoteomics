@@ -19,17 +19,17 @@ CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
 
 # ---- CONFIGURATION ----
 # Set mode: "excel" for sheets in one Excel file, "folder" for all Excel files in a folder
-mode <- "folder" # or "folder"
+mode <- Sys.getenv("PROTEOMICS_EXCEL_CONVERT_MODE", unset = "folder")
 
 # Define file paths. Environment variables allow local overrides without
 # committing machine-specific paths.
 file_path <- Sys.getenv(
     "PROTEOMICS_EXCEL_CONVERT_FILE",
-    unset = path_processed("pg_matrix", "imputed", "pg_matrix_groupfiltered_70percentvalid_imputed_updated_Feb2026.xlsx")
+    unset = path_processed("01_preprocessing", "impute", "20260526_pgmatrix_imputed_neuron_neuropil_180samples_missing70pct.xlsx")
 )
 folder_path <- Sys.getenv(
     "PROTEOMICS_EXCEL_CONVERT_FOLDER",
-    unset = path_processed("pg_matrix", "imputed", "grouped")
+    unset = path_processed("01_preprocessing", "impute")
 )
 metadata_path <- Sys.getenv(
     "PROTEOMICS_EXCEL_CONVERT_METADATA",
