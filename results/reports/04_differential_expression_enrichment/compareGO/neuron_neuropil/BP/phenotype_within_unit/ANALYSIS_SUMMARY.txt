@@ -1,0 +1,78 @@
+
+╔════════════════════════════════════════════════════════════════╗
+║           COMPARATIVE GO ENRICHMENT ANALYSIS - COMPLETE        ║
+╚════════════════════════════════════════════════════════════════╝
+
+ANALYSIS PARAMETERS:
+  • Ontology: BP
+  • Ensemble method: phenotype_within_unit
+  • Condition: 
+  • Comparisons analyzed: 30
+  • Total proteins: 5017
+  • Total GO terms: 110692
+  • Significant terms: 681
+
+OUTPUT STATISTICS:
+  • Tables exported: 20
+  • Main plots generated: 18
+  • Heatmaps created: 3239
+  • Volcano plots: 30
+  • GO enrichment plots: 0
+
+KEY FINDINGS:
+  • Top GO terms selected: 55
+  • Gene frequency: 4643 unique genes
+  • Comparisons analyzed: CA1slmres_CA1slmcon, CA1slmsus_CA1slmcon, CA1slmsus_CA1slmres, CA1sores_CA1socon, CA1sosus_CA1socon, CA1sosus_CA1sores, CA1srres_CA1srcon, CA1srsus_CA1srcon, CA1srsus_CA1srres, CA2slmres_CA2slmcon, CA2slmsus_CA2slmcon, CA2slmsus_CA2slmres, CA2sores_CA2socon, CA2sosus_CA2socon, CA2sosus_CA2sores, CA2srres_CA2srcon, CA2srsus_CA2srcon, CA2srsus_CA2srres, CA3sores_CA3socon, CA3sosus_CA3socon, CA3sosus_CA3sores, CA3srres_CA3srcon, CA3srsus_CA3srcon, CA3srsus_CA3srres, DGmores_DGmocon, DGmosus_DGmocon, DGmosus_DGmores, DGpores_DGpocon, DGposus_DGpocon, DGposus_DGpores
+
+OUTPUT DIRECTORY:
+  s:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/Analysis/proteomics/results/reports/04_differential_expression_enrichment/compareGO/neuron_neuropil/BP/phenotype_within_unit
+
+SUBDIRECTORIES:
+  01_Tables_and_Data/ ......... 23 files
+  02_Main_Plots/ ............ 21 files
+  03_Core_Enrichment_Heatmaps/ 3239 files
+  04_Gene_Lists/ ............ 110693 files
+  05_Volcano_Plots/ ......... 30 files
+  06_Significant_Proteins/ .. 12 files
+  07_Regulated_Protein_GO/ .. 6 files
+  08_Gene_Centric_Analysis/ . 2 files
+
+ADVANCED ANALYSES COMPLETED:
+  ✓ Summary statistics per comparison
+  ✓ Term consistency analysis
+  ✓ Gene importance ranking
+  ✓ Comparison gene similarity
+  ✓ Term count distribution
+  ✓ NES ridge distributions
+  ✓ Comparison similarity heatmap
+  ✓ Redundancy detailed report
+  ✓ Term-comparison matrix
+  ✓ Gene set intersections (UpSet)
+  ✓ Bootstrap stability analysis
+  ✓ Sankey flow diagram
+  ✓ Alluvial persistence diagram
+  ✓ Term hierarchy dendrogram
+  ✓ Reproducibility log
+
+PERFORMANCE:
+  • Total execution time: 191.8 minutes
+  • Started: 2026-05-27 09:54:06
+  • Ended: 2026-05-27 13:05:51
+
+NEXT STEPS:
+  1. Review summary statistics in 01_Tables_and_Data/
+  2. Examine main plots in 02_Main_Plots/
+  3. Check term consistency analysis
+  4. Review gene importance rankings
+  5. Examine redundancy report
+
+RECOMMENDED PUBLICATIONS FIGURES:
+  • Main: Heatmap_Enrichment_Comparisons.svg
+  • Main: Dotplot_Enrichment_TopGenes_Overall.svg
+  • Supplementary: Barplot_Term_Counts.svg
+  • Supplementary: RidgePlot_NES_Distribution.svg
+  • Supplementary: GO_Term_Overlap_Network.svg
+
+For questions or issues, see 09_Reproducibility_Log.xlsx
+╚════════════════════════════════════════════════════════════════╝
+

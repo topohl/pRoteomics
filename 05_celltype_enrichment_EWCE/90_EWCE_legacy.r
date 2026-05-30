@@ -118,7 +118,7 @@ consensus <- all_results_lvl1 %>%
 # ==========================================
 # 5. PUBLICATION VISUALIZATIONS
 # ==========================================
-theme_nature <- function() {
+theme_publication <- function() {
   theme_classic(base_size = 8) +
     theme(text = element_text(family = "sans", color = "black"),
           axis.text = element_text(size = 7, color = "black"), axis.title = element_text(size = 8, face = "bold"),
@@ -130,7 +130,7 @@ theme_nature <- function() {
 p1 <- ggplot(all_results_lvl1 %>% filter(grepl("interneurons|pyramidal", CellType)), 
               aes(x = Group, y = CellType, size = -log10(p), color = sd_from_mean)) +
   geom_point(alpha = 0.8) + scale_color_distiller(palette = "RdBu", direction = -1) +
-  theme_nature() + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  theme_publication() + theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 # FIG 3: Volcano Plot
 p3 <- ggplot(all_results_lvl2, aes(x = sd_from_mean, y = -log10(p))) +
@@ -138,40 +138,40 @@ p3 <- ggplot(all_results_lvl2, aes(x = sd_from_mean, y = -log10(p))) +
   geom_hline(yintercept = -log10(0.05), linetype = "dashed", linewidth = 0.3) +
   geom_text_repel(data = subset(all_results_lvl2, q < 0.05 & sd_from_mean > 3), 
                   aes(label = CellType), size = 2, max.overlaps = 20) +
-  scale_color_npg() + theme_nature()
+  scale_color_npg() + theme_publication()
 
 # FIG 4: Lollipop Plot
 sig_lvl2 <- all_results_lvl2 %>% filter(q < 0.05) %>% group_by(Group) %>% slice_max(sd_from_mean, n = 5) %>% ungroup()
 p4 <- ggplot(sig_lvl2, aes(x = reorder(CellType, sd_from_mean), y = sd_from_mean, color = Condition)) +
   geom_segment(aes(xend = CellType, yend = 0), linewidth = 0.5) + geom_point(size = 2) + coord_flip() + 
-  facet_wrap(~Group, scales = "free_y", ncol = 4) + scale_color_npg() + theme_nature()
+  facet_wrap(~Group, scales = "free_y", ncol = 4) + scale_color_npg() + theme_publication()
 
 # FIG 5: Ridge Plot (Specificity)
 p5 <- ggplot(gene_specificity_map %>% filter(SpecificityScore > 0.1), 
               aes(x = SpecificityScore, y = Condition, fill = Condition)) +
-  geom_density_ridges(alpha = 0.5, scale = 1.2) + scale_fill_npg() + theme_nature()
+  geom_density_ridges(alpha = 0.5, scale = 1.2) + scale_fill_npg() + theme_publication()
 
 # FIG 6: Consensus Pointrange
 p6 <- ggplot(consensus %>% filter(Mean_Z > 1), aes(x = reorder(CellType, Mean_Z), y = Mean_Z, color = Condition)) +
   geom_pointrange(aes(ymin = Mean_Z - SE, ymax = Mean_Z + SE), position = position_dodge(width = 0.5), size = 0.3) +
-  coord_flip() + scale_color_npg() + theme_nature()
+  coord_flip() + scale_color_npg() + theme_publication()
 
 # FIG 7: PCA
 p7 <- ggplot(pca_df, aes(x = PC1, y = PC2, color = Condition)) +
   geom_point(size = 3) + geom_text_repel(aes(label = Group), size = 2.5) +
-  scale_color_npg() + theme_nature()
+  scale_color_npg() + theme_publication()
 
 # FIG 8: Driver Bubble Plot
 drivers <- gene_specificity_map %>% group_by(Group, CellType) %>% slice_max(SpecificityScore, n=15) %>% ungroup()
 top_genes <- drivers %>% group_by(Condition) %>% slice_max(SpecificityScore, n=3, with_ties=FALSE) %>% pull(Gene) %>% unique()
 p8 <- ggplot(gene_specificity_map %>% filter(Gene %in% top_genes, SpecificityScore > 0.05), 
               aes(x = Condition, y = Gene, size = SpecificityScore, color = SpecificityScore)) +
-  geom_point(alpha = 0.8) + scale_color_viridis(option = "magma") + theme_nature()
+  geom_point(alpha = 0.8) + scale_color_viridis(option = "magma") + theme_publication()
 
 # FIG 10: t-SNE Plot
 p10 <- ggplot(tsne_df, aes(x = tSNE1, y = tSNE2, color = Condition)) +
   geom_point(size = 3) + geom_text_repel(aes(label = Group), size = 2.5) +
-  scale_color_npg() + theme_nature() + labs(title="t-SNE of Sample Cell-Type Profiles")
+  scale_color_npg() + theme_publication() + labs(title="t-SNE of Sample Cell-Type Profiles")
 
 # ==========================================
 # 6. EXPORT TABLES & VISUALS
@@ -276,7 +276,7 @@ sink(log_file, type = "output")
 sink(log_file, type = "message")
 
 cat("========================================================\n")
-cat("EWCE ANALYSIS PIPELINE - NATURE STYLE\n")
+cat("EWCE ANALYSIS PIPELINE - PUBLICATION STYLE\n")
 cat("Run Date:", as.character(Sys.Date()), "\n")
 cat("========================================================\n\n")
 
@@ -345,10 +345,10 @@ for (gname in colnames(exp_matrix)) {
 all_lvl2 <- all_lvl2 %>% group_by(Group) %>% mutate(q = p.adjust(p, method = "BH")) %>% ungroup()
 
 # ==========================================
-# 4. NATURE VISUALIZATION ENGINE
+# 4. PUBLICATION VISUALIZATION ENGINE
 # ==========================================
-theme_nature <- function() {
-  theme_classic(base_size = 7) + # Nature uses very small text
+theme_publication <- function() {
+  theme_classic(base_size = 7) + # Compact publication text
     theme(text = element_text(family = "sans"),
           axis.title = element_text(face = "bold"),
           strip.background = element_blank(),
@@ -363,12 +363,12 @@ pca <- prcomp(t(z_mat), scale. = TRUE)
 pca_df <- as.data.frame(pca$x) %>% rownames_to_column("Group") %>% mutate(Cond = gsub("_[0-9]+.*$", "", Group))
 p_pca <- ggplot(pca_df, aes(PC1, PC2, color=Cond)) + 
   geom_point(size=2) + geom_text_repel(aes(label=Group), size=1.8) + 
-  scale_color_npg() + theme_nature() + labs(title="a Signature PCA")
+  scale_color_npg() + theme_publication() + labs(title="a Signature PCA")
 
 # B: Broad Enrichment DotPlot
 p_dot <- ggplot(all_lvl1, aes(x = Group, y = CellType, size = -log10(p), color = sd_from_mean)) +
   geom_point() + scale_color_distiller(palette = "RdBu") + 
-  theme_nature() + theme(axis.text.x = element_text(angle=45, hjust=1)) +
+  theme_publication() + theme(axis.text.x = element_text(angle=45, hjust=1)) +
   labs(title="b Broad Cell Identity", color="Z-score", size="-log10(P)")
 
 # C: Granular Lollipop (Top Hits)
@@ -376,19 +376,19 @@ sig_hits <- all_lvl2 %>% filter(q < 0.05) %>% group_by(Group) %>% slice_max(sd_f
 p_loli <- ggplot(sig_hits, aes(x=reorder(CellType, sd_from_mean), y=sd_from_mean, color=Condition)) +
   geom_point(size=2) + geom_segment(aes(xend=CellType, yend=0)) + coord_flip() +
   facet_wrap(~Group, scales="free_y", ncol=2) + scale_color_npg() + 
-  theme_nature() + labs(title="c Top Subtype Hits", x=NULL, y="Enrichment Z-score")
+  theme_publication() + labs(title="c Top Subtype Hits", x=NULL, y="Enrichment Z-score")
 
 # D: Specificity Ridge
 p_ridge <- ggplot(gene_map %>% filter(Score > 0.1), aes(x=Score, y=Condition, fill=Condition)) +
   geom_density_ridges(alpha=0.6, scale=1.2) + scale_fill_npg() + 
-  theme_nature() + labs(title="d Marker Specificity Distribution")
+  theme_publication() + labs(title="d Marker Specificity Distribution")
 
 # ==========================================
 # 5. COMPOSITE ASSEMBLY & EXPORT
 # ==========================================
 cat("\nStep 3: Assembling and Exporting Figures...\n")
 
-# Assemble Figure 1 (Nature Style Multi-panel)
+# Assemble Figure 1 (Publication Style Multi-panel)
 figure_1 <- (p_pca | p_dot) / (p_loli | p_ridge) + plot_layout(widths = c(1, 1.5))
 
 ggsave(file.path(plot_path, "Figure_1_Composite.pdf"), figure_1, width = 180, height = 200, units = "mm")
@@ -455,7 +455,7 @@ log_con <- file(file.path(qc_path, paste0("Run_Log_", format(Sys.time(), "%Y%m%d
 sink(log_con, type = "output"); sink(log_con, type = "message")
 
 cat("========================================================\n")
-cat("EWCE NATURE-STYLE ANALYSIS PIPELINE\n")
+cat("EWCE PUBLICATION-STYLE ANALYSIS PIPELINE\n")
 cat("Run Started:", as.character(Sys.time()), "\n")
 cat("========================================================\n\n")
 
@@ -505,7 +505,7 @@ group_names <- colnames(exp_matrix_grouped)
 
 for (gname in group_names) {
   cat("Processing:", gname, "... ")
-  hits <- rownames(exp_matrix_grouped)[order(exp_matrix_grouped[, gname], decreasing = TRUE)[1:250]] # Nature usually prefers top 250
+  hits <- rownames(exp_matrix_grouped)[order(exp_matrix_grouped[, gname], decreasing = TRUE)[1:250]] # Use top 250 markers for compact reporting
   curr_cond <- gsub("_[0-9]+.*$", "", gname)
   
   # Enrichment (Level 1 and 2)
@@ -548,7 +548,7 @@ consensus <- all_results_lvl1 %>% group_by(Condition, CellType) %>%
 # ==========================================
 # 5. PUBLICATION VISUALS (Patchwork Assembly)
 # ==========================================
-theme_nature <- function() {
+theme_publication <- function() {
   theme_classic(base_size = 7) + 
     theme(text = element_text(family = "sans", color = "black"),
           axis.text = element_text(size = 6), axis.title = element_text(size = 7, face = "bold"),
@@ -557,23 +557,23 @@ theme_nature <- function() {
 
 # Panel A: PCA
 p_pca <- ggplot(pca_df, aes(PC1, PC2, color=Condition)) + geom_point(size=2) + 
-  geom_text_repel(aes(label=Group), size=1.5) + scale_color_npg() + theme_nature() + labs(title="A: Profile Similarity")
+  geom_text_repel(aes(label=Group), size=1.5) + scale_color_npg() + theme_publication() + labs(title="A: Profile Similarity")
 
 # Panel B: Identity DotPlot
 p_dot <- ggplot(all_results_lvl1 %>% filter(grepl("interneurons|pyramidal|astrocyte|microglia", CellType)), 
                 aes(x = Group, y = reorder(CellType, sd_from_mean), size = -log10(p), color = sd_from_mean)) +
-  geom_point() + scale_color_distiller(palette = "RdBu") + theme_nature() + 
+  geom_point() + scale_color_distiller(palette = "RdBu") + theme_publication() + 
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) + labs(title="B: Broad Enrichment")
 
 # Panel C: Volcano
 p_volc <- ggplot(all_results_lvl2, aes(sd_from_mean, -log10(p), color=Condition)) +
   geom_point(alpha=0.5, size=1) + geom_hline(yintercept = -log10(0.05), linetype="dashed", size=0.2) +
   geom_text_repel(data=subset(all_results_lvl2, q<0.05 & sd_from_mean>4), aes(label=CellType), size=1.5) +
-  scale_color_npg() + theme_nature() + labs(title="C: Subtype Significance")
+  scale_color_npg() + theme_publication() + labs(title="C: Subtype Significance")
 
 # Panel D: Spec Ridge
 p_ridge <- ggplot(gene_specificity_map %>% filter(SpecificityScore > 0.1), aes(SpecificityScore, Condition, fill=Condition)) +
-  geom_density_ridges(alpha=0.5) + scale_fill_npg() + theme_nature() + labs(title="D: Marker Specificity")
+  geom_density_ridges(alpha=0.5) + scale_fill_npg() + theme_publication() + labs(title="D: Marker Specificity")
 
 # COMBINE INTO FIGURE 1
 main_fig <- (p_pca | p_dot) / (p_volc | p_ridge) + plot_annotation(tag_levels = 'a')
@@ -640,7 +640,7 @@ log_con <- file(file.path(qc_path, paste0("Run_Log_", format(Sys.time(), "%Y%m%d
 sink(log_con, type = "output"); sink(log_con, type = "message")
 
 cat("========================================================\n")
-cat("EWCE NATURE-STYLE COMPREHENSIVE PIPELINE\n")
+cat("EWCE PUBLICATION-STYLE COMPREHENSIVE PIPELINE\n")
 cat("Run Started:", as.character(Sys.time()), "\n")
 cat("========================================================\n\n")
 
@@ -739,9 +739,9 @@ consensus <- all_results_lvl1 %>% group_by(Condition, CellType) %>%
   summarise(Mean_Z = mean(sd_from_mean), SE = sd(sd_from_mean)/sqrt(n()), .groups = "drop")
 
 # ==========================================
-# 5. NATURE-STYLE PLOTTING ENGINE
+# 5. PUBLICATION-STYLE PLOTTING ENGINE
 # ==========================================
-theme_nature <- function() {
+theme_publication <- function() {
   theme_classic(base_size = 8) + 
     theme(text = element_text(family = "sans", color = "black"),
           axis.text = element_text(size = 7), axis.title = element_text(size = 8, face = "bold"),
@@ -749,17 +749,17 @@ theme_nature <- function() {
 }
 
 # Individual Plot Definitions
-p_pca  <- ggplot(pca_df, aes(PC1, PC2, color=Condition)) + geom_point(size=3) + geom_text_repel(aes(label=Group), size=2) + scale_color_npg() + theme_nature() + labs(title="PCA: Sample Identity")
-p_tsne <- ggplot(tsne_df, aes(tSNE1, tSNE2, color=Condition)) + geom_point(size=3) + geom_text_repel(aes(label=Group), size=2) + scale_color_npg() + theme_nature() + labs(title="t-SNE: Clustering")
+p_pca  <- ggplot(pca_df, aes(PC1, PC2, color=Condition)) + geom_point(size=3) + geom_text_repel(aes(label=Group), size=2) + scale_color_npg() + theme_publication() + labs(title="PCA: Sample Identity")
+p_tsne <- ggplot(tsne_df, aes(tSNE1, tSNE2, color=Condition)) + geom_point(size=3) + geom_text_repel(aes(label=Group), size=2) + scale_color_npg() + theme_publication() + labs(title="t-SNE: Clustering")
 p_dot  <- ggplot(all_results_lvl1 %>% filter(grepl("neuron|astrocyte|microglia", CellType, ignore.case = T)), 
                 aes(x = Group, y = reorder(CellType, sd_from_mean), size = -log10(p), color = sd_from_mean)) +
-          geom_point() + scale_color_distiller(palette = "RdBu") + theme_nature() + theme(axis.text.x = element_text(angle = 45, hjust = 1)) + labs(title="Broad Identity")
+          geom_point() + scale_color_distiller(palette = "RdBu") + theme_publication() + theme(axis.text.x = element_text(angle = 45, hjust = 1)) + labs(title="Broad Identity")
 p_volc <- ggplot(all_results_lvl2, aes(sd_from_mean, -log10(p), color=Condition)) +
           geom_point(alpha=0.5) + geom_hline(yintercept = -log10(0.05), linetype="dashed", linewidth=0.3) +
           geom_text_repel(data=subset(all_results_lvl2, q<0.05 & sd_from_mean>3.5), aes(label=CellType), size=1.8) +
-          scale_color_npg() + theme_nature() + labs(title="Subtype Volcano")
+          scale_color_npg() + theme_publication() + labs(title="Subtype Volcano")
 p_ridge <- ggplot(gene_specificity_map %>% filter(SpecificityScore > 0.1), aes(SpecificityScore, Condition, fill=Condition)) +
-          geom_density_ridges(alpha=0.6) + scale_fill_npg() + theme_nature() + labs(title="Marker Distribution")
+          geom_density_ridges(alpha=0.6) + scale_fill_npg() + theme_publication() + labs(title="Marker Distribution")
 
 # Create Main Figure Composite
 main_fig <- (p_pca | p_dot) / (p_volc | p_ridge) + plot_annotation(tag_levels = 'A')
