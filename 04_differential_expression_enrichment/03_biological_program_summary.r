@@ -44,6 +44,8 @@ if (is_dry_run()) {
   dry_run_line("Dataset", DATASET)
   dry_run_line("Manifest", manifest_file, if (file.exists(manifest_file)) "PASS" else "FAIL")
   dry_run_line("Program summary", file.path(PATHS$tables, "program_summary.csv"))
+  dry_run_line("Program summary wide", file.path(PATHS$tables, "program_summary_wide.csv"))
+  dry_run_line("Program heatmap-ready table", file.path(PATHS$tables, "program_summary_heatmap_ready.csv"))
   dry_run_line("Program evidence", file.path(PATHS$source_data, "program_term_gene_evidence.csv"))
   dry_run_line("Program atlas heatmap", file.path(PATHS$figures, "program_atlas_heatmap.svg"))
   quit(status = if (file.exists(manifest_file)) 0 else 1, save = "no")
@@ -77,9 +79,26 @@ terms <- dplyr::bind_rows(term_tables)
 if (!nrow(terms)) {
   status <- tibble::tibble(dataset = DATASET, status = "skipped", reason = "No readable enrichment output tables from manifest.")
   readr::write_csv(status, file.path(PATHS$tables, "program_summary.csv"), na = "")
+  readr::write_csv(status, file.path(PATHS$tables, "program_summary_wide.csv"), na = "")
+  readr::write_csv(status, file.path(PATHS$tables, "program_summary_heatmap_ready.csv"), na = "")
   readr::write_csv(status, file.path(PATHS$source_data, "program_term_gene_evidence.csv"), na = "")
+  write_run_manifest(
+    file.path(PATHS$logs, "run_manifest.yml"),
+    inputs = list(manifest = manifest_file),
+    outputs = list(
+      program_summary = file.path(PATHS$tables, "program_summary.csv"),
+      program_summary_wide = file.path(PATHS$tables, "program_summary_wide.csv"),
+      heatmap_ready = file.path(PATHS$tables, "program_summary_heatmap_ready.csv"),
+      evidence = file.path(PATHS$source_data, "program_term_gene_evidence.csv")
+    ),
+    parameters = list(dataset = DATASET, program_patterns = biological_program_patterns()),
+    notes = "Skipped: no readable enrichment output tables from manifest."
+  )
   quit(status = 0, save = "no")
 }
+
+if (!"pvalue" %in% names(terms)) terms$pvalue <- NA_real_
+if (!"p.value" %in% names(terms)) terms$`p.value` <- NA_real_
 
 terms <- map_terms_to_programs(terms, "Description") %>%
   dplyr::filter(!is.na(.data$biological_program)) %>%
@@ -87,8 +106,29 @@ terms <- map_terms_to_programs(terms, "Description") %>%
     NES = if ("NES" %in% names(.)) suppressWarnings(as.numeric(.data$NES)) else NA_real_,
     p.adjust = if ("p.adjust" %in% names(.)) suppressWarnings(as.numeric(.data$p.adjust)) else NA_real_,
     FDR = .data$p.adjust,
-    core_genes = if ("core_enrichment" %in% names(.)) as.character(.data$core_enrichment) else NA_character_
+    core_genes = if ("core_enrichment" %in% names(.)) as.character(.data$core_enrichment) else NA_character_,
+    raw_p = dplyr::coalesce(
+      suppressWarnings(as.numeric(.data$pvalue)),
+      suppressWarnings(as.numeric(.data$p.value))
+    )
   )
+
+split_gene_tokens <- function(x) {
+  x <- stats::na.omit(as.character(x))
+  x <- x[nzchar(x)]
+  if (!length(x)) return(character())
+  genes <- unlist(strsplit(paste(x, collapse = "/"), "[/;,[:space:]]+"))
+  genes <- unique(genes[nzchar(genes)])
+  genes
+}
+
+frequent_genes <- function(x, n = 12L) {
+  genes <- unlist(lapply(x, split_gene_tokens), use.names = FALSE)
+  genes <- genes[nzchar(genes)]
+  if (!length(genes)) return(NA_character_)
+  tab <- sort(table(genes), decreasing = TRUE)
+  paste(names(tab)[seq_len(min(n, length(tab)))], collapse = ";")
+}
 
 evidence <- terms %>%
   dplyr::transmute(
@@ -101,6 +141,13 @@ evidence <- terms %>%
     ID = if ("ID" %in% names(terms)) as.character(.data$ID) else NA_character_,
     Description = as.character(.data$Description),
     NES,
+    effect_direction = dplyr::case_when(
+      is.na(.data$NES) ~ "undirected",
+      .data$NES > 0 ~ "positive_NES",
+      .data$NES < 0 ~ "negative_NES",
+      TRUE ~ "neutral"
+    ),
+    raw_p,
     p.adjust,
     FDR,
     core_genes,
@@ -113,15 +160,19 @@ program_summary <- evidence %>%
   dplyr::summarise(
     n_terms = dplyr::n(),
     min_fdr = suppressWarnings(min(.data$FDR, na.rm = TRUE)),
+    min_raw_p = suppressWarnings(min(.data$raw_p, na.rm = TRUE)),
     representative_NES = dplyr::first(.data$NES),
+    effect_direction = dplyr::first(.data$effect_direction),
     top_term = dplyr::first(.data$Description),
-    core_genes = paste(unique(unlist(strsplit(paste(stats::na.omit(.data$core_genes), collapse = "/"), "[/;]"))), collapse = ";"),
+    key_genes = frequent_genes(.data$core_genes),
     source_file = dplyr::first(.data$source_file),
     .groups = "drop"
   ) %>%
   dplyr::mutate(
     min_fdr = ifelse(is.infinite(.data$min_fdr), NA_real_, .data$min_fdr),
+    min_raw_p = ifelse(is.infinite(.data$min_raw_p), NA_real_, .data$min_raw_p),
     direction = dplyr::case_when(
+      !is.na(.data$effect_direction) ~ .data$effect_direction,
       is.na(.data$representative_NES) ~ "undirected",
       .data$representative_NES > 0 ~ "positive_NES",
       .data$representative_NES < 0 ~ "negative_NES",
@@ -133,11 +184,31 @@ program_summary <- evidence %>%
 readr::write_csv(program_summary, file.path(PATHS$tables, "program_summary.csv"), na = "")
 readr::write_csv(evidence, file.path(PATHS$source_data, "program_term_gene_evidence.csv"), na = "")
 
-plot_df <- program_summary %>%
+heatmap_ready <- program_summary %>%
   dplyr::mutate(
     comparison_label = paste(.data$comparison, .data$route_category, .data$route_unit, sep = " | "),
-    score = sign(dplyr::coalesce(.data$representative_NES, 0)) * -log10(pmax(dplyr::coalesce(.data$min_fdr, 1), .Machine$double.xmin))
+    signed_neg_log10_fdr = sign(dplyr::coalesce(.data$representative_NES, 0)) *
+      -log10(pmax(dplyr::coalesce(.data$min_fdr, 1), .Machine$double.xmin))
+  ) %>%
+  dplyr::select(
+    dataset, comparison, route_category, route_unit, comparison_label,
+    biological_program, direction, representative_NES, min_raw_p, min_fdr,
+    signed_neg_log10_fdr, n_terms, top_term, key_genes, source_file
   )
+readr::write_csv(heatmap_ready, file.path(PATHS$tables, "program_summary_heatmap_ready.csv"), na = "")
+
+program_wide <- heatmap_ready %>%
+  dplyr::mutate(cell_value = paste0(
+    direction,
+    "; NES=", ifelse(is.na(representative_NES), "NA", signif(representative_NES, 3)),
+    "; FDR=", ifelse(is.na(min_fdr), "NA", signif(min_fdr, 3)),
+    "; genes=", dplyr::coalesce(key_genes, "NA")
+  )) %>%
+  dplyr::select(dataset, comparison_label, biological_program, cell_value) %>%
+  tidyr::pivot_wider(names_from = biological_program, values_from = cell_value)
+readr::write_csv(program_wide, file.path(PATHS$tables, "program_summary_wide.csv"), na = "")
+
+plot_df <- heatmap_ready %>% dplyr::rename(score = "signed_neg_log10_fdr")
 if (nrow(plot_df)) {
   p <- ggplot2::ggplot(plot_df, ggplot2::aes(x = .data$comparison_label, y = .data$biological_program, fill = .data$score)) +
     ggplot2::geom_tile(color = "white", linewidth = 0.2) +
@@ -151,7 +222,13 @@ if (nrow(plot_df)) {
 write_run_manifest(
   file.path(PATHS$logs, "run_manifest.yml"),
   inputs = list(manifest = manifest_file, enrichment_tables = unique(evidence$source_file)),
-  outputs = list(program_summary = file.path(PATHS$tables, "program_summary.csv")),
+  outputs = list(
+    program_summary = file.path(PATHS$tables, "program_summary.csv"),
+    program_summary_wide = file.path(PATHS$tables, "program_summary_wide.csv"),
+    heatmap_ready = file.path(PATHS$tables, "program_summary_heatmap_ready.csv"),
+    evidence = file.path(PATHS$source_data, "program_term_gene_evidence.csv"),
+    heatmap = file.path(PATHS$figures, "program_atlas_heatmap.svg")
+  ),
   parameters = list(dataset = DATASET, program_patterns = biological_program_patterns()),
   notes = "Program mapping uses conservative regex on enrichment Description; claims remain exploratory unless independently supported."
 )
