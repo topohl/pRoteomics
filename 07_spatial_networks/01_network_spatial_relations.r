@@ -32,9 +32,15 @@
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
+source(repo_path("R", "dataset_config.R"))
+source(repo_path("R", "dataset_inputs.R"))
+source(repo_path("R", "validation_utils.R"))
+source(repo_path("R", "spatial_network_utils.R"))
 MODULE_ID <- "07_spatial_networks"
 SUBSTEP_ID <- "network_spatial_relations"
 CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
+SPATIAL_DATASET <- current_dataset()
+SPATIAL_INPUTS <- resolve_dataset_inputs(SPATIAL_DATASET, purpose = "wgcna")
 
 required_pkgs <- c(
   "readxl", "dplyr", "tidyr", "stringr", "purrr", "tibble", "ggplot2",
@@ -73,18 +79,8 @@ override_param <- function(params, key, value) {
 }
 
 find_latest_upstream_protein_file <- function() {
-  impute_dir <- path_processed("01_preprocessing", "impute")
-  pattern <- "^\\d{8}_pgmatrix_imputed_neuron_neuropil_[0-9]+samples_missing70pct\\.xlsx$"
-
-  candidates <- list.files(impute_dir, pattern = pattern, full.names = TRUE)
-  if (length(candidates) > 0) {
-    info <- file.info(candidates)
-    return(normalizePath(rownames(info)[order(info$mtime, decreasing = TRUE)[1]], winslash = "/", mustWork = FALSE))
-  }
-
-  # Backward-compatible fallback for older runs before 01_impute.r wrote to the
-  # canonical impute subfolder.
-  path_processed("01_preprocessing", "20260218_pgmatrix_imputed_neuron_neuropil_180samples_missing70pct.xlsx")
+  if (!is.na(SPATIAL_INPUTS$expression_file) && file.exists(SPATIAL_INPUTS$expression_file)) return(SPATIAL_INPUTS$expression_file)
+  path_processed("01_preprocessing", paste0("20260218_pgmatrix_imputed_", SPATIAL_DATASET, "_180samples_missing70pct.xlsx"))
 }
 
 # -------------------------------
@@ -93,7 +89,7 @@ find_latest_upstream_protein_file <- function() {
 params <- list(
   protein_file = find_latest_upstream_protein_file(),
 
-  metadata_file = path_metadata("TPE9_sample_metadata_males.xlsx"),
+  metadata_file = SPATIAL_INPUTS$metadata_file,
 
   output_dir = CANONICAL_PATHS$reports,
 
@@ -111,9 +107,8 @@ params <- list(
   # Recommended for spatial relation networks, because it avoids high-abundance proteins dominating.
   zscore_proteins = TRUE,
 
-  # If TRUE, keep only neuron neuropil samples from metadata column celltype_layer.
-  # This prevents soma/microglia samples from entering the spatial neuropil network.
-  filter_neuron_neuropil_only = TRUE,
+  # If TRUE, keep only samples matching PROTEOMICS_DATASET from metadata columns.
+  filter_dataset_only = TRUE,
 
   # Numeric ExpGroup recoding used by the EWCE metadata. Adjust here if EWCE_E9 used another coding.
   # Common Exp9 convention assumed here: 1 = CON, 2 = RES, 3 = SUS.
@@ -230,7 +225,11 @@ parse_sample_metadata_from_names <- function(sample_names) {
     ExpGroup = stringr::str_extract(SampleKey, regex("CON|RES|SUS|control|resilient|susceptible", ignore_case = TRUE)) %>% normalize_expgroup()
   ) %>%
     dplyr::mutate(
-      RegionLayer = ifelse(!is.na(Region) & !is.na(Layer), paste(Region, Layer, sep = "_"), NA_character_)
+      RegionLayer = dplyr::case_when(
+        SPATIAL_DATASET == "microglia" & !is.na(Region) ~ Region,
+        !is.na(Region) & !is.na(Layer) ~ paste(Region, Layer, sep = "_"),
+        TRUE ~ NA_character_
+      )
     )
 }
 
@@ -294,7 +293,11 @@ standardize_metadata <- function(metadata_df, sample_names, numeric_map = params
         is.na(Exclude) ~ FALSE,
         TRUE ~ NA
       ),
-      RegionLayer = ifelse(!is.na(Region) & !is.na(Layer), paste(Region, Layer, sep = "_"), NA_character_)
+      RegionLayer = dplyr::case_when(
+        SPATIAL_DATASET == "microglia" & !is.na(Region) ~ Region,
+        !is.na(Region) & !is.na(Layer) ~ paste(Region, Layer, sep = "_"),
+        TRUE ~ NA_character_
+      )
     ) %>%
     dplyr::select(
       SampleColumn, Region, Layer, RegionLayer, ExpGroup,
@@ -368,12 +371,15 @@ load_expression_matrix <- function(protein_file, metadata_file = NULL, min_nonmi
     dplyr::filter(SampleColumn %in% colnames(expr)) %>%
     dplyr::distinct(SampleColumn, .keep_all = TRUE)
 
-  if (isTRUE(params$filter_neuron_neuropil_only) && "CelltypeLayer" %in% names(sample_md)) {
+  if (isTRUE(params$filter_dataset_only)) {
     n_before <- nrow(sample_md)
-    sample_md <- sample_md %>%
-      dplyr::filter(is.na(Exclude) | Exclude == FALSE) %>%
-      dplyr::filter(CelltypeLayer == "neuron_neuropil")
-    message2("Filtered to neuron_neuropil non-excluded samples: ", nrow(sample_md), " / ", n_before)
+    sample_md_filter <- sample_md
+    sample_md_filter$CellTypeLayer <- sample_md_filter$CelltypeLayer
+    sample_md_filter$CellType <- sample_md_filter$Celltype
+    keep_dataset <- metadata_matches_dataset(sample_md_filter, SPATIAL_DATASET)
+    keep_nonexcluded <- is.na(sample_md$Exclude) | sample_md$Exclude == FALSE
+    sample_md <- sample_md[keep_nonexcluded & keep_dataset, , drop = FALSE]
+    message2("Filtered to ", SPATIAL_DATASET, " non-excluded samples: ", nrow(sample_md), " / ", n_before)
   }
 
   message2("Sample metadata group counts:")
@@ -600,6 +606,8 @@ dry_run_validate <- function(params) {
   dirs <- make_dirs(params$output_dir)
   missing_inputs <- validate_required_inputs(params)
   dry_run_line("Script", "07_spatial_networks/01_network_spatial_relations.r")
+  dry_run_line("Dataset", SPATIAL_DATASET)
+  dry_run_line("Resolved input diagnostics", paste(SPATIAL_INPUTS$diagnostics, collapse = " | "))
   dry_run_line("Protein matrix", params$protein_file, if (file.exists(params$protein_file)) "PASS" else "FAIL")
   dry_run_line("Sample metadata", params$metadata_file, if (file.exists(params$metadata_file)) "PASS" else "FAIL")
   dry_run_line("Canonical RDS", file.path(dirs$processed, "network_spatial_relations_objects.rds"))
@@ -622,6 +630,13 @@ dry_run_validate <- function(params) {
                  ifelse(is.na(protein_id_col), "WARN", "PASS"))
     dry_run_line("Metadata sample column", metadata_sample_col,
                  ifelse(is.na(metadata_sample_col), "FAIL", "PASS"))
+    if (!is.na(metadata_sample_col)) {
+      expr_cols <- setdiff(protein_cols, c("Gene", "Genes", "gene_symbol", "GeneSymbol", "Majority protein IDs", "Protein IDs", "Protein.IDs", "Accession", "UniprotID", "UniProt", "ID"))
+      md_preview <- readxl::read_excel(params$metadata_file, n_max = 1000)
+      overlap <- sample_overlap_summary(expr_cols, md_preview[[metadata_sample_col]])
+      dry_run_line("Cheap sample matching", paste0(overlap$n_overlap, " matching sample IDs"), if (overlap$n_overlap > 0) "PASS" else "FAIL")
+      if (overlap$n_overlap == 0) missing_inputs <- c(missing_inputs, params$metadata_file)
+    }
     if (is.na(metadata_sample_col)) missing_inputs <- c(missing_inputs, params$metadata_file)
   } else if (length(missing_inputs) == 0) {
     dry_run_line("Column validation", "install readxl to validate workbook headers", "WARN")
