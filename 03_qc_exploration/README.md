@@ -24,6 +24,15 @@ environment variables are still honored, and the shared defaults come from
 
 Recommended run order:
 
+0. `00_dataset_qc_report.r`
+   - Input: processed expression matrix plus sample metadata.
+   - Overrides: `PROTEOMICS_DATASET_QC_MATRIX_FILE`,
+     `PROTEOMICS_DATASET_QC_METADATA_FILE`.
+   - Output: canonical dataset-level QC tables, XLSX bundle, SVG figures, and
+     Markdown summary for missingness, imputation footprint, sample/protein
+     counts, PCA, metadata structure, abundance distributions, and outlier
+     flags under `results/*/03_qc_exploration/00_dataset_qc_report/<dataset>/`.
+
 1. `01_sample_qc_quicksearch.r`
    - Input: annotated quicksearch stats workbook, default
      `data/raw/pg_matrix/quicksearch.stats.annotated.xlsx`.
@@ -92,6 +101,7 @@ Recommended run order:
 
 ```bash
 for ds in neuron_neuropil neuron_soma microglia; do
+  Rscript 03_qc_exploration/00_dataset_qc_report.r --dataset "$ds" --dry-run
   Rscript 03_qc_exploration/01_sample_qc_quicksearch.r --dataset "$ds" --dry-run
   Rscript 03_qc_exploration/02_missingness_diagnostics.r --dataset "$ds" --dry-run
   Rscript 03_qc_exploration/03_replicate_consistency.r --dataset "$ds" --dry-run
@@ -108,4 +118,3 @@ Remove `--dry-run` after resolving missing private inputs.
 
 Legacy collaborator-specific or unsafe scripts live in `legacy/` and are not
 part of the canonical run order.
-
