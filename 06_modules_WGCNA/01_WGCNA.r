@@ -3146,11 +3146,93 @@ if (file.exists(overlap_bridge_script)) {
     warning("Optional WGCNA-to-DE/GSEA overlap bridge skipped: ", conditionMessage(e), call. = FALSE)
   })
 }
+
+WGCNA_module_preservation_summary <- WGCNA_module_priority_summary %>%
+  dplyr::select("ModuleID", "ModuleColor", dplyr::contains("preservation_")) %>%
+  dplyr::mutate(
+    preservation_min_Zsummary = {
+      z_cols <- grep("Zsummary", names(.), value = TRUE)
+      if (length(z_cols)) do.call(pmin, c(dplyr::select(., dplyr::all_of(z_cols)), na.rm = TRUE)) else NA_real_
+    },
+    preservation_interpretation = dplyr::case_when(
+      is.na(.data$preservation_min_Zsummary) ~ "not_estimable",
+      .data$preservation_min_Zsummary >= 10 ~ "strong",
+      .data$preservation_min_Zsummary >= 2 ~ "moderate",
+      TRUE ~ "weak_or_unstable"
+    ),
+    preservation_warning = dplyr::case_when(
+      is.na(.data$preservation_min_Zsummary) ~ "Preservation Zsummary not estimable for at least one comparison.",
+      .data$preservation_min_Zsummary < 2 ~ "Low preservation support; interpret module transferability cautiously.",
+      TRUE ~ NA_character_
+    )
+  )
+write_csv_safe(WGCNA_module_preservation_summary, fp_modtab("WGCNA_module_preservation_summary.csv"))
+
+gsea_overlap_file <- path_results("tables", "06_modules_WGCNA", "05_wgcna_de_gsea_overlap", dataset_profile, "WGCNA_vs_DE_GSEA_overlap.csv")
+WGCNA_module_GSEA_coregene_overlap <- if (file.exists(gsea_overlap_file)) {
+  readr::read_csv(gsea_overlap_file, show_col_types = FALSE) %>%
+    dplyr::select(dplyr::any_of(c(
+      "dataset", "ModuleID", "ModuleColor", "contrast", "route", "route_category",
+      "n_DE_overlap", "n_leading_edge_overlap", "jaccard_DE", "fisher_p", "fisher_fdr",
+      "top_overlap_proteins"
+    )))
+} else {
+  tibble::tibble(
+    dataset = dataset_profile,
+    status = "skipped",
+    reason = "Optional WGCNA-to-DE/GSEA overlap file was not available.",
+    expected_file = gsea_overlap_file
+  )
+}
+write_csv_safe(WGCNA_module_GSEA_coregene_overlap, fp_modtab("WGCNA_module_GSEA_coregene_overlap.csv"))
+
+WGCNA_module_evidence_rank <- WGCNA_module_priority_summary %>%
+  dplyr::left_join(
+    WGCNA_module_preservation_summary %>%
+      dplyr::select("ModuleID", "ModuleColor", "preservation_min_Zsummary", "preservation_interpretation"),
+    by = c("ModuleID", "ModuleColor")
+  ) %>%
+  dplyr::mutate(
+    condition_rank_component = -log10(pmax(dplyr::coalesce(.data$condition_model_fdr, 1), .Machine$double.xmin)),
+    strongest_condition_rank_component = -log10(pmax(dplyr::coalesce(.data$strongest_condition_fdr, 1), .Machine$double.xmin)),
+    effect_rank_component = abs(dplyr::coalesce(.data$strongest_condition_adjusted_delta, 0)),
+    hub_rank_component = dplyr::coalesce(.data$median_abs_kME, .data$mean_abs_kME, 0),
+    preservation_rank_component = dplyr::case_when(
+      is.na(.data$preservation_min_Zsummary) ~ 0,
+      .data$preservation_min_Zsummary >= 10 ~ 2,
+      .data$preservation_min_Zsummary >= 2 ~ 1,
+      TRUE ~ 0
+    ),
+    gsea_overlap_rank_component = dplyr::coalesce(.data$n_leading_edge_overlap, 0) + dplyr::coalesce(.data$n_DE_overlap, 0),
+    label_confidence_component = dplyr::case_when(
+      !is.na(.data$best_GO_padj_BP) & .data$best_GO_padj_BP <= 0.05 ~ 1,
+      !is.na(.data$best_GO_padj_BP) & .data$best_GO_padj_BP <= 0.10 ~ 0.5,
+      TRUE ~ 0
+    ),
+    evidence_score = .data$condition_rank_component +
+      .data$strongest_condition_rank_component +
+      .data$effect_rank_component +
+      .data$hub_rank_component +
+      .data$preservation_rank_component +
+      log1p(.data$gsea_overlap_rank_component) +
+      .data$label_confidence_component,
+    evidence_rank = dplyr::min_rank(dplyr::desc(.data$evidence_score)),
+    evidence_warning = dplyr::case_when(
+      is.na(.data$condition_model_fdr) ~ "Condition model unavailable; rank is exploratory.",
+      is.na(.data$preservation_min_Zsummary) ~ "Preservation unavailable; rank is exploratory.",
+      TRUE ~ NA_character_
+    )
+  ) %>%
+  dplyr::arrange(.data$evidence_rank)
+write_csv_safe(WGCNA_module_evidence_rank, fp_modtab("WGCNA_module_evidence_rank.csv"))
+
 writexl::write_xlsx(
   list(
     priority_summary = WGCNA_module_priority_summary,
     downstream_definitions = WGCNA_module_definitions_for_downstream,
-    module_name_map = module_label_export
+    module_name_map = module_label_export,
+    evidence_rank = WGCNA_module_evidence_rank,
+    preservation_summary = WGCNA_module_preservation_summary
   ),
   fp_modtab("WGCNA_module_contracts.xlsx")
 )
