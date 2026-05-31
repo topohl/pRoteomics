@@ -27,7 +27,7 @@ Rscript run_dataset_pipeline.R --dataset neuron_neuropil --stage modules --dry-r
 
 Valid dataset families are `neuron_neuropil`, `neuron_soma`, and `microglia`. The shared `R/dataset_config.R` helper resolves `PROTEOMICS_DATASET` first, with backward-compatible fallback to `PROTEOMICS_COMPARISON` and `PROTEOMICS_GCT_COMPARISON`.
 
-The launcher supports staged execution with `--stage core`, `--stage enrichment`, `--stage modules`, `--stage networks`, `--stage behavior`, `--stage export`, or `--stage all`. Each run writes a manifest under `results/logs/pipeline/` with dataset, selected stage, script statuses, timestamps, and exit codes. Dry-runs continue across steps so missing private inputs are visible in one report.
+The launcher supports staged execution with `--stage core`, `--stage qc`, `--stage enrichment`, `--stage modules`, `--stage networks`, `--stage behavior`, `--stage export`, or `--stage all`. Each run writes a manifest under `results/logs/pipeline/` with dataset, selected stage, script statuses, timestamps, and exit codes. Dry-runs continue across steps so missing private inputs are visible in one report.
 
 ```text
 01_preprocessing/
@@ -100,6 +100,7 @@ Set `PROTEOMICS_MAP_DIRECTION=reverse` only when intentionally producing reverse
 Canonical dataset-aware QC scripts are:
 
 ```bash
+Rscript 03_qc_exploration/00_dataset_qc_report.r --dataset neuron_neuropil --dry-run
 Rscript 03_qc_exploration/01_sample_qc_quicksearch.r --dataset neuron_neuropil --dry-run
 Rscript 03_qc_exploration/02_missingness_diagnostics.r --dataset neuron_neuropil --dry-run
 Rscript 03_qc_exploration/03_replicate_consistency.r --dataset neuron_neuropil --dry-run
@@ -115,6 +116,13 @@ missingness diagnostics, replicate consistency, marker abundance sanity checks,
 PCA/PC metadata confounding summaries, variance partitioning, and a compact
 QC-to-biology PASS/WARN/FAIL report. Optional PCA UMAP/t-SNE/clustering outputs
 are disabled by default and should be treated as exploratory only.
+
+`00_dataset_qc_report.r` is the recommended canonical report for manuscript
+triage. It summarizes missingness, the PCA-only imputation footprint,
+sample/protein counts, PCA, batch/sex/group/region/layer structure where
+metadata allows, abundance distributions, and robust outlier flags. It writes
+tidy tables, an XLSX bundle, SVGs, a Markdown summary, and `run_manifest.yml`
+under `results/*/03_qc_exploration/00_dataset_qc_report/<dataset>/`.
 
 See `03_qc_exploration/README.md` for input overrides, output paths, and legacy
 script status.
@@ -164,7 +172,15 @@ results/logs/04_differential_expression_enrichment/compareGO/<dataset>/
 results/reports/04_differential_expression_enrichment/compareGO/<dataset>/
 ```
 
-`03_biological_program_summary.r` maps manifest-selected GO/GSEA terms to conservative high-level biological programs and writes `program_summary.csv`, `program_term_gene_evidence.csv`, and `program_atlas_heatmap.svg` under `results/*/04_differential_expression_enrichment/biological_program_summary/<dataset>/`.
+`03_biological_program_summary.r` maps manifest-selected GO/GSEA terms to the
+seven conservative manuscript programs: RNA/RNP processing,
+ribosome/translation, mitochondria/OXPHOS/metabolism,
+proteostasis/ubiquitin/protein folding, synapse/vesicle organization,
+cytoskeleton/motility, and development/patterning. It writes
+`program_summary.csv`, `program_summary_wide.csv`,
+`program_summary_heatmap_ready.csv`, `program_term_gene_evidence.csv`, and
+`program_atlas_heatmap.svg` under
+`results/*/04_differential_expression_enrichment/biological_program_summary/<dataset>/`.
 
 ## 5. Cell-type enrichment
 
@@ -304,7 +320,32 @@ Rscript 09_export_pride_journal/02_make_sample_metadata.R --dry-run
 Rscript 09_export_pride_journal/03_make_supplementary_tables.R --dry-run
 Rscript 09_export_pride_journal/04_validate_pride_submission.R --dry-run
 Rscript 09_export_pride_journal/05_make_methods_summary.R --dry-run
+Rscript 09_export_pride_journal/06_make_biological_claims_table.R --dry-run
 ```
+
+`06_make_biological_claims_table.R` generates
+`results/tables/biological_claims_table.csv` and, when XLSX support is
+installed, `results/tables/biological_claims_table.xlsx`. Columns include
+dataset, region, layer/cell compartment, contrast, biological program,
+direction, key proteins/genes, evidence type, effect size/NES, raw p/FDR,
+robustness/stability metric, source file, figure/table target, and an
+interpretation note. Missing statistics are left as `NA`.
+
+## Recommended manuscript workflow
+
+```bash
+for ds in neuron_neuropil neuron_soma microglia; do
+  Rscript run_dataset_pipeline.R --dataset "$ds" --stage all --dry-run
+  Rscript run_dataset_pipeline.R --dataset "$ds" --stage core
+  Rscript run_dataset_pipeline.R --dataset "$ds" --stage qc
+  Rscript run_dataset_pipeline.R --dataset "$ds" --stage enrichment
+  Rscript run_dataset_pipeline.R --dataset "$ds" --stage modules
+done
+Rscript 09_export_pride_journal/06_make_biological_claims_table.R
+```
+
+Use `--stage networks`, `--stage behavior`, and `--stage export` after the core
+manuscript evidence tables have passed QC and manifest checks.
 
 Before running this step, copy local large files into the gitignored `pride_submission/` folder as needed:
 
