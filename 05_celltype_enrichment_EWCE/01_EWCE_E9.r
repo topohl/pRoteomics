@@ -23,14 +23,22 @@ set.seed(42)
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
+source(repo_path("R", "dataset_config.R"))
+source(repo_path("R", "dataset_inputs.R"))
+source(repo_path("R", "validation_utils.R"))
 MODULE_ID <- "05_celltype_enrichment_EWCE"
-SUBSTEP_ID <- "EWCE_E9"
+EWCE_DATASET <- current_dataset()
+SUBSTEP_ID <- file.path("EWCE_E9", EWCE_DATASET)
 CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
 
 resolve_ewce_pg_matrix <- function() {
   env_path <- Sys.getenv("PROTEOMICS_EWCE_MATRIX", unset = "")
   if (nzchar(env_path)) {
     return(normalizePath(env_path, winslash = "/", mustWork = FALSE))
+  }
+  dataset_inputs <- resolve_dataset_inputs(EWCE_DATASET, purpose = "wgcna")
+  if (!is.na(dataset_inputs$expression_file) && file.exists(dataset_inputs$expression_file)) {
+    return(dataset_inputs$expression_file)
   }
 
   imputation_qc_path <- path_processed("01_preprocessing", "impute", "imputation_qc.csv")
@@ -39,8 +47,7 @@ resolve_ewce_pg_matrix <- function() {
     required_cols <- c("celltype_layer", "n_samples", "output_path")
     if (all(required_cols %in% colnames(imputation_qc))) {
       candidates <- imputation_qc[
-        imputation_qc$celltype_layer == "neuron_neuropil" &
-          imputation_qc$n_samples == 180 &
+        imputation_qc$celltype_layer == EWCE_DATASET &
           !is.na(imputation_qc$output_path) &
           nzchar(imputation_qc$output_path),
         ,
@@ -55,14 +62,14 @@ resolve_ewce_pg_matrix <- function() {
     }
   }
 
-  legacy_path <- path_processed("01_preprocessing", "20260218_pgmatrix_imputed_neuron_neuropil_180samples_missing70pct.xlsx")
+  legacy_path <- path_processed("01_preprocessing", paste0("20260218_pgmatrix_imputed_", EWCE_DATASET, "_180samples_missing70pct.xlsx"))
   if (file.exists(legacy_path)) {
     return(normalizePath(legacy_path, winslash = "/", mustWork = FALSE))
   }
 
   discovered <- list.files(
     path_processed("01_preprocessing", "impute"),
-    pattern = "pgmatrix_imputed_neuron_neuropil_180samples_missing70pct\\.xlsx$",
+    pattern = paste0("pgmatrix_imputed_", EWCE_DATASET, "_[0-9]+samples_missing70pct\\.xlsx$"),
     full.names = TRUE,
     recursive = FALSE
   )
@@ -81,7 +88,7 @@ if (!exists("data_path", inherits = FALSE)) {
   data_path <- resolve_ewce_pg_matrix()
 }
 if (!exists("sample_metadata_path", inherits = FALSE)) {
-  sample_metadata_path <- path_metadata("TPE9_sample_metadata_males.xlsx")
+  sample_metadata_path <- resolve_dataset_inputs(EWCE_DATASET, purpose = "wgcna")$metadata_file
 }
 base_results <- CANONICAL_PATHS$reports
 dirs <- list(
@@ -95,9 +102,32 @@ dirs <- list(
 )
 
 if (is_dry_run()) {
+  sample_match <- "not checked"
+  sample_match_status <- "WARN"
+  if (file.exists(data_path) && file.exists(sample_metadata_path) && requireNamespace("readxl", quietly = TRUE)) {
+    sample_match <- tryCatch({
+      expr_head <- readxl::read_excel(data_path, n_max = 3)
+      md_head <- readxl::read_excel(sample_metadata_path, n_max = 1000)
+      sample_col <- detect_column(md_head, c("sample_id", "SampleID", "SampleColumn", "row.names", "Sample"))
+      expr_samples <- setdiff(names(expr_head), c("gene_symbol", "T: Protein.Names", "Genes", "Protein.Group"))
+      if (is.na(sample_col)) {
+        sample_match_status <<- "FAIL"
+        "metadata sample column not detected"
+      } else {
+        s <- sample_overlap_summary(expr_samples, md_head[[sample_col]])
+        sample_match_status <<- if (s$n_overlap > 0) "PASS" else "FAIL"
+        paste0(s$n_overlap, " matching sample IDs")
+      }
+    }, error = function(e) {
+      sample_match_status <<- "WARN"
+      conditionMessage(e)
+    })
+  }
   dry_run_line("Script", "05_celltype_enrichment_EWCE/01_EWCE_E9.r")
+  dry_run_line("Dataset", EWCE_DATASET)
   dry_run_line("Proteomics matrix", data_path, if (file.exists(data_path)) "PASS" else "FAIL")
   dry_run_line("Sample metadata", sample_metadata_path, if (file.exists(sample_metadata_path)) "PASS" else "FAIL")
+  dry_run_line("Cheap sample matching", sample_match, sample_match_status)
   dry_run_line("Output folders", paste(unlist(dirs), collapse = "; "))
   quit(status = if (file.exists(data_path) && file.exists(sample_metadata_path)) 0 else 1, save = "no")
 }
