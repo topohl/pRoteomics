@@ -34,6 +34,16 @@ stage_registry <- list(
     required = c(TRUE, TRUE),
     stringsAsFactors = FALSE
   ),
+  qc = data.frame(
+    script = c(
+      "03_qc_exploration/00_dataset_qc_report.r",
+      "03_qc_exploration/02_missingness_diagnostics.r",
+      "03_qc_exploration/05_pca_confounding_qc.r",
+      "03_qc_exploration/07_qc_biology_confounding_report.r"
+    ),
+    required = c(FALSE, FALSE, FALSE, FALSE),
+    stringsAsFactors = FALSE
+  ),
   enrichment = data.frame(
     script = c(
       "04_differential_expression_enrichment/01_clusterProfiler.r",
