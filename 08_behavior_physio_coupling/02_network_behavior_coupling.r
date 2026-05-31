@@ -31,6 +31,7 @@
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
+source(repo_path("R", "validation_utils.R"))
 MODULE_ID <- "08_behavior_physio_coupling"
 SUBSTEP_ID <- "network_behavior_coupling"
 CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
@@ -533,9 +534,39 @@ run_edge_behavior_correlations <- function(edge_joined, behavior_variables) {
     dplyr::group_modify(~ safe_cor(.x, "EdgeR", "OutcomeValue", method = "pearson")) %>%
     dplyr::ungroup() %>%
     dplyr::mutate(
-      p.adj_BH_within_outcome = ave(.data$p.value, .data$Outcome, FUN = function(p) p.adjust(p, method = "BH"))
+      p.adj_BH_within_outcome = ave(.data$p.value, .data$Outcome, FUN = function(p) p.adjust(p, method = "BH")),
+      p.adj_BH_all_edge_phenotype_tests = p.adjust(.data$p.value, method = "BH"),
+      interpretation_strength = vapply(seq_along(.data$p.value), function(i) {
+        interpretation_strength(
+          fdr = p.adj_BH_all_edge_phenotype_tests[[i]],
+          effect_size = estimate[[i]],
+          n = n[[i]]
+        )
+      }, character(1)),
+      limitations = dplyr::if_else(.data$n < 6, "n < 6; exploratory only", NA_character_)
     ) %>%
     dplyr::arrange(.data$Outcome, .data$p.value)
+}
+
+run_sex_stratified_correlations <- function(edge_joined, behavior_variables) {
+  if (!"Sex" %in% names(edge_joined)) return(tibble::tibble())
+  edge_joined %>%
+    tidyr::pivot_longer(
+      cols = dplyr::all_of(behavior_variables[behavior_variables %in% names(edge_joined)]),
+      names_to = "Outcome",
+      values_to = "OutcomeValue"
+    ) %>%
+    dplyr::filter(!is.na(.data$Sex)) %>%
+    dplyr::group_by(.data$Sex, .data$Analysis, .data$Phase, .data$Change, .data$window, .data$Edge, .data$Outcome) %>%
+    dplyr::group_modify(~ safe_cor(.x, "EdgeR", "OutcomeValue", method = "pearson")) %>%
+    dplyr::ungroup() %>%
+    dplyr::mutate(
+      p.adj_BH_all_sex_stratified_tests = p.adjust(.data$p.value, method = "BH"),
+      interpretation_strength = vapply(seq_along(.data$p.value), function(i) {
+        interpretation_strength(fdr = p.adj_BH_all_sex_stratified_tests[[i]], effect_size = estimate[[i]], n = n[[i]])
+      }, character(1)),
+      limitations = dplyr::if_else(.data$n < 6, "n < 6; exploratory only", NA_character_)
+    )
 }
 
 run_group_adjusted_models <- function(edge_joined) {
@@ -559,8 +590,11 @@ run_group_adjusted_models <- function(edge_joined) {
         change_i <- as.character(unique(dd$Change))[1]
         window_i <- as.character(unique(dd$window))[1]
 
-        formula_use <- if (length(unique(stats::na.omit(dd$Group))) >= 2) {
-          stats::as.formula(paste0(outcome, " ~ EdgeR + Group"))
+        covars <- c()
+        if ("Sex" %in% names(dd) && length(unique(stats::na.omit(dd$Sex))) >= 2) covars <- c(covars, "Sex")
+        if (length(unique(stats::na.omit(dd$Group))) >= 2) covars <- c(covars, "Group")
+        formula_use <- if (length(covars)) {
+          stats::as.formula(paste0(outcome, " ~ EdgeR + ", paste(covars, collapse = " + ")))
         } else {
           stats::as.formula(paste0(outcome, " ~ EdgeR"))
         }
@@ -577,6 +611,8 @@ run_group_adjusted_models <- function(edge_joined) {
             window = window_i,
             Edge = edge_i,
             Outcome = outcome,
+            fdr_all_model_terms = p.adjust(.data$p.value, method = "BH"),
+            limitations = dplyr::if_else(.data$n < 6, "n < 6; exploratory only", NA_character_),
             .before = 1
           )
       })
@@ -748,9 +784,43 @@ readr::write_csv(qc, file.path(dirs$tables, "qc_counts_edge_behavior.csv"))
 
 cor_tbl <- run_edge_behavior_correlations(edge_joined, params$behavior_variables)
 readr::write_csv(cor_tbl, file.path(dirs$tables, "edge_behavior_correlations.csv"))
+readr::write_csv(cor_tbl, file.path(dirs$tables, "edge_behavior_correlations_fdr_all_tests.csv"))
+
+sex_cor_tbl <- run_sex_stratified_correlations(edge_joined, params$behavior_variables)
+readr::write_csv(sex_cor_tbl, file.path(dirs$tables, "edge_behavior_correlations_sex_stratified.csv"))
 
 model_tbl <- run_group_adjusted_models(edge_joined)
+if (nrow(model_tbl) && "p.value" %in% names(model_tbl)) {
+  model_tbl <- model_tbl %>%
+    dplyr::mutate(
+      fdr_all_model_terms = p.adjust(.data$p.value, method = "BH"),
+      interpretation_strength = vapply(seq_along(.data$p.value), function(i) {
+        interpretation_strength(fdr = fdr_all_model_terms[[i]], effect_size = estimate[[i]], n = n[[i]])
+      }, character(1)),
+      limitations = dplyr::if_else(.data$n < 6, "n < 6; exploratory only", .data$limitations)
+    )
+}
 readr::write_csv(model_tbl, file.path(dirs$tables, "edge_behavior_group_adjusted_models.csv"))
+readr::write_csv(model_tbl, file.path(dirs$tables, "edge_behavior_model_summaries_fdr.csv"))
+
+figure_ready_coupling <- cor_tbl %>%
+  dplyr::filter(is.finite(.data$estimate)) %>%
+  dplyr::arrange(.data$p.adj_BH_all_edge_phenotype_tests, dplyr::desc(abs(.data$estimate))) %>%
+  dplyr::transmute(
+    Analysis,
+    Phase,
+    Change,
+    window,
+    Edge,
+    Outcome,
+    estimate,
+    p.value,
+    fdr = .data$p.adj_BH_all_edge_phenotype_tests,
+    n,
+    interpretation_strength,
+    limitations
+  )
+readr::write_csv(figure_ready_coupling, file.path(dirs$tables, "edge_behavior_figure_ready_table.csv"))
 
 # Focused tables for the biologically central edge.
 central_edge <- "CA1_slm - CA2_slm"
