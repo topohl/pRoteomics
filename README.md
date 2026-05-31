@@ -114,9 +114,9 @@ Purpose:
 - protein/peptide QC
 
 Representative scripts:
-- `03_pcaPlot.r`
+- `05_pca_confounding_qc.r`
 - `05_pcaPlot_v3.r`
-- `07_varPart.r`
+- `06_variance_partitioning.r`
 
 ---
 
@@ -131,7 +131,7 @@ Purpose:
 Representative scripts:
 - `01_clusterProfiler.r`
 - `02_compareGO.r`
-- `03_compare_pathways.r`
+- `04_compare_pathways.r`
 
 `01_clusterProfiler.r` now writes a manifest at:
 
