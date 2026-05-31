@@ -8,6 +8,31 @@
 # Author: Tobias Pohl
 # ================================================================
 
+early_paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
+source(early_paths_file)
+source(repo_path("R", "dataset_config.R"))
+source(repo_path("R", "dataset_inputs.R"))
+source(repo_path("R", "qc_exploration_utils.R"))
+early_run <- qc_args()
+if (early_run$dry_run) {
+  early_dataset <- early_run$dataset
+  early_paths <- qc_paths("01_sample_qc_quicksearch", early_dataset)
+  early_input <- Sys.getenv(
+    "PROTEOMICS_QC_STATS_FILE",
+    unset = path_raw("pg_matrix", "quicksearch.stats.annotated.xlsx")
+  )
+  early_out_dir <- Sys.getenv("PROTEOMICS_QC_PUBLICATION_DIR", unset = early_paths$figures)
+  early_table_dir <- Sys.getenv("PROTEOMICS_QC_TABLE_DIR", unset = early_paths$tables)
+  status <- qc_dry_run_contract(
+    "03_qc_exploration/01_sample_qc_quicksearch.r",
+    early_dataset,
+    matrix_file = early_input,
+    paths = list(figures = early_out_dir, tables = early_table_dir, logs = early_paths$logs),
+    extra = c("Uses PROTEOMICS_QC_STATS_FILE for quicksearch stats override.")
+  )
+  quit(status = status, save = "no")
+}
+
 suppressPackageStartupMessages({
   library(readxl)
   library(dplyr)
@@ -23,6 +48,15 @@ suppressPackageStartupMessages({
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
+source(repo_path("R", "dataset_config.R"))
+source(repo_path("R", "dataset_inputs.R"))
+source(repo_path("R", "qc_exploration_utils.R"))
+
+run <- qc_args()
+DATASET <- run$dataset
+MODULE_ID <- "03_qc_exploration"
+SUBSTEP_ID <- "01_sample_qc_quicksearch"
+CANONICAL_PATHS <- qc_paths(SUBSTEP_ID, DATASET)
 
 # ================================================================
 # 1. Paths
@@ -33,9 +67,27 @@ input_file <- Sys.getenv(
   unset = path_raw("pg_matrix", "quicksearch.stats.annotated.xlsx")
 )
 
-out_dir <- Sys.getenv("PROTEOMICS_QC_PUBLICATION_DIR", unset = path_results("QC_publication"))
-if (!file.exists(input_file)) stop("QC stats input not found: ", input_file, call. = FALSE)
+out_dir <- Sys.getenv("PROTEOMICS_QC_PUBLICATION_DIR", unset = CANONICAL_PATHS$figures)
+table_dir <- Sys.getenv("PROTEOMICS_QC_TABLE_DIR", unset = CANONICAL_PATHS$tables)
+if (run$dry_run) {
+  status <- qc_dry_run_contract(
+    "03_qc_exploration/01_sample_qc_quicksearch.r",
+    DATASET,
+    matrix_file = input_file,
+    paths = list(figures = out_dir, tables = table_dir, logs = CANONICAL_PATHS$logs),
+    extra = c("Uses PROTEOMICS_QC_STATS_FILE for quicksearch stats override.")
+  )
+  quit(status = status, save = "no")
+}
+if (!file.exists(input_file)) {
+  stop(
+    "QC stats input not found for dataset '", DATASET, "': ", input_file,
+    ". Set PROTEOMICS_QC_STATS_FILE to an annotated quicksearch stats workbook.",
+    call. = FALSE
+  )
+}
 ensure_dir(out_dir)
+ensure_dir(table_dir)
 
 # ================================================================
 # 2. Load and clean data
@@ -51,6 +103,14 @@ qc <- read_excel(input_file) %>%
     !grepl("background|blank|bg", celltype_layer, ignore.case = TRUE)
   ) %>%
   mutate(celltype_layer = factor(celltype_layer))
+
+if ("celltype_layer" %in% names(qc)) {
+  keep_dataset <- metadata_matches_dataset(qc, DATASET)
+  if (any(keep_dataset)) {
+    qc <- qc[keep_dataset, , drop = FALSE]
+    qc$celltype_layer <- droplevels(factor(qc$celltype_layer))
+  }
+}
 
 required_cols <- c("sample_id", "celltype_layer")
 missing_required <- setdiff(required_cols, names(qc))
@@ -770,7 +830,7 @@ if ("batch" %in% names(qc) && "Normalisation.Instability" %in% names(qc)) {
 
   write.csv(
     batch_results,
-    file = file.path(out_dir, "qc_batch_model_normalisation_instability.csv"),
+    file = file.path(table_dir, "qc_batch_model_normalisation_instability.csv"),
     row.names = FALSE
   )
 
@@ -831,20 +891,20 @@ qc_outliers <- qc_outlier_z %>%
 
 write.csv(
   qc_summary_by_celltype,
-  file = file.path(out_dir, "qc_summary_by_celltype_layer.csv"),
+  file = file.path(table_dir, "qc_summary_by_celltype_layer.csv"),
   row.names = FALSE
 )
 
 write.csv(
   qc_outliers,
-  file = file.path(out_dir, "qc_robust_outlier_table.csv"),
+  file = file.path(table_dir, "qc_robust_outlier_table.csv"),
   row.names = FALSE
 )
 
 if (!is.null(cv_summary)) {
   write.csv(
     cv_summary,
-    file = file.path(out_dir, "qc_cv_summary.csv"),
+    file = file.path(table_dir, "qc_cv_summary.csv"),
     row.names = FALSE
   )
 }
@@ -864,8 +924,16 @@ if (!is.null(batch_results)) {
 
 openxlsx::write.xlsx(
   xlsx_list,
-  file = file.path(out_dir, "qc_summary_tables.xlsx"),
+  file = file.path(table_dir, "qc_summary_tables.xlsx"),
   overwrite = TRUE
+)
+
+write_run_manifest(
+  file.path(CANONICAL_PATHS$logs, "run_manifest.yml"),
+  inputs = list(qc_stats = input_file),
+  outputs = list(figures = out_dir, tables = table_dir),
+  parameters = list(dataset = DATASET),
+  notes = "Dataset-aware sample-level quicksearch QC."
 )
 
 # ================================================================
