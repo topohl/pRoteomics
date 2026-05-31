@@ -21,9 +21,13 @@ Or with the launcher:
 ```powershell
 Rscript run_dataset_pipeline.R --dataset microglia --dry-run
 Rscript run_dataset_pipeline.R --dataset microglia
+Rscript run_dataset_pipeline.R --list-stages
+Rscript run_dataset_pipeline.R --dataset neuron_neuropil --stage modules --dry-run
 ```
 
 Valid dataset families are `neuron_neuropil`, `neuron_soma`, and `microglia`. The shared `R/dataset_config.R` helper resolves `PROTEOMICS_DATASET` first, with backward-compatible fallback to `PROTEOMICS_COMPARISON` and `PROTEOMICS_GCT_COMPARISON`.
+
+The launcher supports staged execution with `--stage core`, `--stage enrichment`, `--stage modules`, `--stage networks`, `--stage behavior`, `--stage export`, or `--stage all`. Each run writes a manifest under `results/logs/pipeline/` with dataset, selected stage, script statuses, timestamps, and exit codes. Dry-runs continue across steps so missing private inputs are visible in one report.
 
 ```text
 01_preprocessing/
@@ -93,7 +97,27 @@ Set `PROTEOMICS_MAP_DIRECTION=reverse` only when intentionally producing reverse
 03_qc_exploration/
 ```
 
-Typical outputs include PCA plots, variance summaries, protein/peptide QC, and sample-level QC reports.
+Canonical dataset-aware QC scripts are:
+
+```bash
+Rscript 03_qc_exploration/01_sample_qc_quicksearch.r --dataset neuron_neuropil --dry-run
+Rscript 03_qc_exploration/02_missingness_diagnostics.r --dataset neuron_neuropil --dry-run
+Rscript 03_qc_exploration/03_replicate_consistency.r --dataset neuron_neuropil --dry-run
+Rscript 03_qc_exploration/04_marker_rank_abundance_qc.r --dataset neuron_neuropil --dry-run
+Rscript 03_qc_exploration/05_pca_confounding_qc.r --dataset neuron_neuropil --dry-run
+Rscript 03_qc_exploration/06_variance_partitioning.r --dataset neuron_neuropil --dry-run
+Rscript 03_qc_exploration/07_qc_biology_confounding_report.r --dataset neuron_neuropil --dry-run
+```
+
+Repeat with `--dataset neuron_soma` and `--dataset microglia`, or set
+`PROTEOMICS_DATASET`. Typical outputs include sample-level quicksearch QC,
+missingness diagnostics, replicate consistency, marker abundance sanity checks,
+PCA/PC metadata confounding summaries, variance partitioning, and a compact
+QC-to-biology PASS/WARN/FAIL report. Optional PCA UMAP/t-SNE/clustering outputs
+are disabled by default and should be treated as exploratory only.
+
+See `03_qc_exploration/README.md` for input overrides, output paths, and legacy
+script status.
 
 ## 4. Differential expression and enrichment
 
@@ -115,6 +139,7 @@ Dry-run validation without launching analyses:
 ```bash
 Rscript 04_differential_expression_enrichment/01_clusterProfiler.r --dry-run
 Rscript 04_differential_expression_enrichment/02_compareGO.r --dry-run
+Rscript 04_differential_expression_enrichment/03_biological_program_summary.r --dry-run
 ```
 
 Set `analysis.dataset` in `config/clusterProfiler_config.yml` and `dataset` in `config/compareGO_config.yml` before each dataset family run. Leave mapped paths empty in the configs to use the dataset-aware defaults. `01_clusterProfiler.r` reads mapped contrast CSVs and writes:
@@ -138,6 +163,8 @@ results/source_data/04_differential_expression_enrichment/compareGO/<dataset>/
 results/logs/04_differential_expression_enrichment/compareGO/<dataset>/
 results/reports/04_differential_expression_enrichment/compareGO/<dataset>/
 ```
+
+`03_biological_program_summary.r` maps manifest-selected GO/GSEA terms to conservative high-level biological programs and writes `program_summary.csv`, `program_term_gene_evidence.csv`, and `program_atlas_heatmap.svg` under `results/*/04_differential_expression_enrichment/biological_program_summary/<dataset>/`.
 
 ## 5. Cell-type enrichment
 
@@ -200,6 +227,14 @@ results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_modules_long.xl
 results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_module_definitions_for_downstream.csv
 results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_module_priority_summary.csv
 results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_module_contracts.xlsx
+```
+
+Additional module evidence exports:
+
+```text
+results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_module_evidence_rank.csv
+results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_module_preservation_summary.csv
+results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_module_GSEA_coregene_overlap.csv
 ```
 
 `05_wgcna_de_gsea_overlap.r` is an optional bridge from WGCNA modules to DE/GSEA manifests. It writes `WGCNA_vs_DE_GSEA_overlap.csv/xlsx` under `results/tables/06_modules_WGCNA/05_wgcna_de_gsea_overlap/<dataset>/` and, when overlap inputs are available, appends strongest overlap columns to `WGCNA_module_priority_summary.csv`. Missing DE/GSEA inputs are recorded as skipped status rather than failing the WGCNA run.
