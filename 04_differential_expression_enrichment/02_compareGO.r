@@ -68,6 +68,9 @@ if (!nzchar(Sys.getenv("PROTEOMICS_PROJECT_ROOT", unset = ""))) {
 }
 source(paths_file)
 source(repo_path("R", "dataset_config.R"))
+source(repo_path("R", "validation_utils.R"))
+source(repo_path("R", "enrichment_io.R"))
+source(repo_path("R", "enrichment_plots.R"))
 MODULE_ID <- "04_differential_expression_enrichment"
 SUBSTEP_ID <- "compareGO"
 CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
