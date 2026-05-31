@@ -26,9 +26,12 @@
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
+source(repo_path("R", "dataset_config.R"))
+source(repo_path("R", "spatial_network_utils.R"))
 MODULE_ID <- "07_spatial_networks"
 SUBSTEP_ID <- "bootstrap_network_stability"
 CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
+NETWORK_DATASET <- current_dataset()
 
 params <- list(
   spatial_rds = path_processed("07_spatial_networks", "network_spatial_relations", "network_spatial_relations_objects.rds"),
@@ -240,6 +243,33 @@ utils::write.csv(boot_tbl, file.path(dirs$tables, "bootstrap_edge_values_long.cs
 edge_summary <- summarise_bootstrap_edges(boot_tbl, params$consensus_frequency_threshold)
 utils::write.csv(edge_summary, file.path(dirs$tables, "bootstrap_edge_stability_summary.csv"), row.names = FALSE)
 
+edge_validation <- edge_summary %>%
+  dplyr::mutate(
+    edge_id = make_edge_id(.data$Source, .data$Target),
+    dataset = NETWORK_DATASET,
+    group = "all",
+    observed_r = .data$MeanR,
+    bootstrap_median = .data$MedianR,
+    bootstrap_ci_low = .data$MinR,
+    bootstrap_ci_high = .data$MaxR,
+    permutation_p = NA_real_,
+    fdr = NA_real_,
+    n_animals = dplyr::n_distinct(sample_md$AnimalID),
+    n_proteins = nrow(expr),
+    stability_score = .data$StabilityFrequency,
+    interpretation_strength = vapply(.data$StabilityFrequency, function(s) {
+      network_interpretation_strength(fdr = NA_real_, stability_score = s, n_animals = dplyr::n_distinct(sample_md$AnimalID))
+    }, character(1))
+  ) %>%
+  dplyr::rename(source = Source, target = Target) %>%
+  dplyr::select(
+    "edge_id", "source", "target", "dataset", "group",
+    "observed_r", "bootstrap_median", "bootstrap_ci_low", "bootstrap_ci_high",
+    "permutation_p", "fdr", "n_animals", "n_proteins", "stability_score",
+    "interpretation_strength", dplyr::everything()
+  )
+utils::write.csv(edge_validation, file.path(dirs$tables, "edge_bootstrap_validation_summary.csv"), row.names = FALSE)
+
 node_summary <- node_stability_summary(edge_summary)
 utils::write.csv(node_summary, file.path(dirs$tables, "bootstrap_node_stability_summary.csv"), row.names = FALSE)
 
@@ -272,6 +302,7 @@ write_run_manifest(
   outputs = list(
     bootstrap_long = file.path(dirs$tables, "bootstrap_edge_values_long.csv"),
     edge_summary = file.path(dirs$tables, "bootstrap_edge_stability_summary.csv"),
+    edge_validation = file.path(dirs$tables, "edge_bootstrap_validation_summary.csv"),
     node_summary = file.path(dirs$tables, "bootstrap_node_stability_summary.csv"),
     consensus_edges = file.path(dirs$tables, "consensus_edges.csv"),
     networks = dirs$networks
