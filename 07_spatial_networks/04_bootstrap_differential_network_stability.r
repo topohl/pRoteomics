@@ -24,9 +24,12 @@
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
+source(repo_path("R", "dataset_config.R"))
+source(repo_path("R", "spatial_network_utils.R"))
 MODULE_ID <- "07_spatial_networks"
 SUBSTEP_ID <- "bootstrap_differential_network_stability"
 CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
+NETWORK_DATASET <- current_dataset()
 
 required_pkgs <- c(
   "dplyr", "tidyr", "stringr", "purrr", "tibble", "ggplot2",
@@ -445,6 +448,34 @@ utils::write.csv(boot_tbl, file.path(dirs$tables, "bootstrap_differential_edge_v
 edge_summary <- summarise_differential_bootstrap(boot_tbl, params)
 utils::write.csv(edge_summary, file.path(dirs$tables, "bootstrap_differential_edge_stability_summary.csv"), row.names = FALSE)
 
+edge_validation <- edge_summary %>%
+  dplyr::mutate(
+    edge_id = make_edge_id(.data$Source, .data$Target),
+    dataset = NETWORK_DATASET,
+    group = .data$Comparison,
+    observed_r = .data$MeanDeltaR,
+    bootstrap_median = .data$MedianDeltaR,
+    bootstrap_ci_low = .data$DeltaR_Q025,
+    bootstrap_ci_high = .data$DeltaR_Q975,
+    permutation_p = pmin(.data$Prob_DeltaR_LessThan0, .data$Prob_DeltaR_GreaterThan0, na.rm = TRUE) * 2,
+    permutation_p = pmin(.data$permutation_p, 1),
+    fdr = stats::p.adjust(.data$permutation_p, method = "BH"),
+    n_animals = dplyr::n_distinct(sample_md$AnimalID),
+    n_proteins = nrow(expr),
+    stability_score = .data$DifferentialFrequency,
+    interpretation_strength = vapply(seq_len(dplyr::n()), function(i) {
+      network_interpretation_strength(fdr = fdr[[i]], stability_score = stability_score[[i]], n_animals = n_animals[[i]])
+    }, character(1))
+  ) %>%
+  dplyr::rename(source = Source, target = Target) %>%
+  dplyr::select(
+    "edge_id", "source", "target", "dataset", "group",
+    "observed_r", "bootstrap_median", "bootstrap_ci_low", "bootstrap_ci_high",
+    "permutation_p", "fdr", "n_animals", "n_proteins", "stability_score",
+    "interpretation_strength", dplyr::everything()
+  )
+utils::write.csv(edge_validation, file.path(dirs$tables, "edge_bootstrap_permutation_validation_summary.csv"), row.names = FALSE)
+
 candidate_summary <- extract_candidate_edges(edge_summary, params$candidate_edges)
 utils::write.csv(candidate_summary, file.path(dirs$tables, "candidate_edge_differential_stability_summary.csv"), row.names = FALSE)
 
@@ -490,6 +521,7 @@ write_run_manifest(
   outputs = list(
     bootstrap_long = file.path(dirs$tables, "bootstrap_differential_edge_values_long.csv"),
     edge_summary = file.path(dirs$tables, "bootstrap_differential_edge_stability_summary.csv"),
+    edge_validation = file.path(dirs$tables, "edge_bootstrap_permutation_validation_summary.csv"),
     stable_edges = file.path(dirs$tables, "stable_differential_edges.csv"),
     networks = dirs$networks
   ),
