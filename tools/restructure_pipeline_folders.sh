@@ -58,21 +58,21 @@ move_if_exists "Mapping/MapThatProt_batch.r" "02_id_mapping/02_MapThatProt_batch
 move_if_exists "Mapping/MapThatProt_batch_WGCNAtoClusterProfiler.r" "02_id_mapping/03_MapThatProt_batch_WGCNAtoClusterProfiler.r"
 
 # 03 QC / exploratory structure
-move_if_exists "Analysis/qc_protein_peptide_plot.r" "03_qc_exploration/01_qc_protein_peptide_plot.r"
-move_if_exists "Analysis/rank_abundance_plot_E9.r" "03_qc_exploration/02_rank_abundance_plot_E9.r"
-move_if_exists "Analysis/pcaPlot.r" "03_qc_exploration/03_pcaPlot.r"
+move_if_exists "Analysis/qc_protein_peptide_plot.r" "03_qc_exploration/01_sample_qc_quicksearch.r"
+move_if_exists "Analysis/rank_abundance_plot_E9.r" "03_qc_exploration/04_marker_rank_abundance_qc.r"
+move_if_exists "Analysis/pcaPlot.r" "03_qc_exploration/05_pca_confounding_qc.r"
 move_if_exists "Analysis/pcaPlot_v2.r" "03_qc_exploration/04_pcaPlot_v2.r"
 move_if_exists "Analysis/pcaPlot_v3.r" "03_qc_exploration/05_pcaPlot_v3.r"
 move_if_exists "Analysis/pcaPlot_Neha.r" "03_qc_exploration/06_pcaPlot_Neha.r"
-move_if_exists "Analysis/varPart.r" "03_qc_exploration/07_varPart.r"
+move_if_exists "Analysis/varPart.r" "03_qc_exploration/06_variance_partitioning.r"
 move_if_exists "Analysis/boxplotBonanza.r" "03_qc_exploration/08_boxplotBonanza.r"
 
 # 04 differential expression / enrichment
 move_if_exists "Analysis/clusterProfiler.r" "04_differential_expression_enrichment/01_clusterProfiler.r"
 move_if_exists "Analysis/compareGO.r" "04_differential_expression_enrichment/02_compareGO.r"
-move_if_exists "Analysis/compare_pathways.r" "04_differential_expression_enrichment/03_compare_pathways.r"
-move_if_exists "Analysis/compare_sig_expr.r" "04_differential_expression_enrichment/04_compare_sig_expr.r"
-move_if_exists "Analysis/control_strata_enrichment_figures.r" "04_differential_expression_enrichment/05_control_strata_enrichment_figures.r"
+move_if_exists "Analysis/compare_pathways.r" "04_differential_expression_enrichment/04_compare_pathways.r"
+move_if_exists "Analysis/compare_sig_expr.r" "04_differential_expression_enrichment/05_compare_sig_expr.r"
+move_if_exists "Analysis/control_strata_enrichment_figures.r" "04_differential_expression_enrichment/07_control_strata_enrichment_figures.r"
 
 # 05 cell-type enrichment / EWCE
 move_if_exists "Analysis/EWCE_E9.r" "05_celltype_enrichment_EWCE/01_EWCE_E9.r"
