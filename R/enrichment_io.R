@@ -12,25 +12,21 @@ biological_program_patterns <- function() {
   data.frame(
     biological_program = c(
       "RNA_RNP_processing",
-      "Translation_Ribosome",
-      "Mitochondria_OXPHOS_Energy",
-      "Synapse_Vesicle",
+      "Ribosome_Translation",
+      "Mitochondria_OXPHOS_Metabolism",
       "Proteostasis_Ubiquitin_Folding",
+      "Synapse_Vesicle_Organization",
       "Cytoskeleton_Motility",
-      "Immune_Microglia",
-      "Myelin_Glial",
-      "Stress_Hormone_Response"
+      "Development_Patterning"
     ),
     pattern = c(
-      "rna|ribonucleoprotein|splice|splicing|mrna|transcription|nucleolus|ribosome biogenesis",
-      "translation|ribosom|peptide biosynthetic|trna|elongation|initiation factor",
-      "mitochond|oxidative phosphorylation|electron transport|respiratory chain|atp synthesis|oxidoreduct|energy",
-      "synap|vesicle|neurotransmitter|axon|dendrit|postsynap|presynap|exocytosis|endocytosis",
+      "rna|ribonucleoprotein|rnp|splice|splicing|mrna|ncrna|rrna|trna|nucleolus|ribonucle|rna processing",
+      "translation|ribosom|peptide biosynthetic|cytoplasmic translation|translational initiation|elongation factor|initiation factor",
+      "mitochond|oxidative phosphorylation|oxphos|electron transport|respiratory chain|atp synthesis|oxidoreduct|metabol|glycolys|tricarboxylic|acetyl.coa|energy",
       "proteas|ubiquitin|folding|chaperone|heat shock|proteostasis|protein quality",
+      "synap|vesicle|neurotransmitter|axon|dendrit|postsynap|presynap|exocytosis|endocytosis|synaptic organization",
       "cytoskeleton|actin|tubulin|microtubule|motility|adhesion|migration|extracellular matrix",
-      "immune|microglia|inflamm|complement|cytokine|phagocyt|antigen|interferon|leukocyte",
-      "myelin|oligodendro|glial|axon ensheath|ensheathment",
-      "stress|glucocorticoid|corticosterone|hormone|response to stimulus|oxidative stress|apoptotic"
+      "develop|pattern|morphogen|differentiation|neurogenesis|gliogenesis|axon guidance|cell fate|regionalization|dorsal.ventral|anterior.posterior"
     ),
     stringsAsFactors = FALSE
   )
