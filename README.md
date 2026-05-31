@@ -71,6 +71,23 @@ raw proteomics matrices + metadata
 → PRIDE / ProteomeXchange package metadata generation
 ```
 
+Recommended manuscript workflow:
+
+```bash
+for ds in neuron_neuropil neuron_soma microglia; do
+  Rscript run_dataset_pipeline.R --dataset "$ds" --stage all --dry-run
+  Rscript run_dataset_pipeline.R --dataset "$ds" --stage core
+  Rscript run_dataset_pipeline.R --dataset "$ds" --stage qc
+  Rscript run_dataset_pipeline.R --dataset "$ds" --stage enrichment
+  Rscript run_dataset_pipeline.R --dataset "$ds" --stage modules
+done
+Rscript 09_export_pride_journal/06_make_biological_claims_table.R
+```
+
+Resolve dry-run failures before launching full analyses. The claim table is an
+evidence index for manuscript drafting; it uses `NA` rather than inventing
+missing statistics.
+
 ---
 
 # Main analysis modules
@@ -114,9 +131,15 @@ Purpose:
 - protein/peptide QC
 
 Representative scripts:
+- `00_dataset_qc_report.r`
 - `05_pca_confounding_qc.r`
-- `05_pcaPlot_v3.r`
 - `06_variance_partitioning.r`
+
+`00_dataset_qc_report.r` is the canonical one-stop dataset QC report. It reads
+the dataset-resolved matrix and metadata, then writes missingness, imputation
+footprint, sample/protein counts, PCA, metadata structure, abundance
+distribution, and outlier tables/figures under
+`results/*/03_qc_exploration/00_dataset_qc_report/<dataset>/`.
 
 ---
 
@@ -131,6 +154,7 @@ Purpose:
 Representative scripts:
 - `01_clusterProfiler.r`
 - `02_compareGO.r`
+- `03_biological_program_summary.r`
 - `04_compare_pathways.r`
 
 `01_clusterProfiler.r` now writes a manifest at:
@@ -146,7 +170,15 @@ Dry-run checks are available:
 ```bash
 Rscript 04_differential_expression_enrichment/01_clusterProfiler.r --dry-run
 Rscript 04_differential_expression_enrichment/02_compareGO.r --dry-run
+Rscript 04_differential_expression_enrichment/03_biological_program_summary.r --dataset neuron_neuropil --dry-run
 ```
+
+`03_biological_program_summary.r` conservatively groups redundant GO/GSEA terms
+into seven manuscript programs: RNA/RNP processing, ribosome/translation,
+mitochondria/OXPHOS/metabolism, proteostasis/ubiquitin/protein folding,
+synapse/vesicle organization, cytoskeleton/motility, and
+development/patterning. It writes tidy, wide, heatmap-ready, and SVG heatmap
+outputs for each dataset.
 
 ---
 
@@ -174,10 +206,18 @@ Purpose:
 
 Representative scripts:
 - `01_WGCNA.r`
-- `02_WGCNAtraitpreservation.r`
-- `03_module_spatial_networks.r`
+- `05_wgcna_de_gsea_overlap.r`
+- `91_module_score.r`
 
-Phase 3 canonicalized the safer helper/downstream scripts `02_module_spatial_networks.r`, `03_overlap_modules.r`, and `91_module_score_v0.0.2.r`. The central `01_WGCNA v.2.0.0.r` remains documented for a data-aware path refactor.
+`01_WGCNA.r` is the canonical dataset-aware WGCNA entrypoint. It supports
+`--dataset neuron_neuropil`, `--dataset neuron_soma`, `--dataset microglia`,
+and `--dry-run`; stages WGCNA inputs from canonical processed matrices and
+metadata when available; and writes dataset-scoped module contracts, logs,
+state, tables, figures, and manifests under
+`data/processed/06_modules_WGCNA/01_WGCNA/<dataset>/` and
+`results/*/06_modules_WGCNA/01_WGCNA/<dataset>/`. Manually staged
+variancePartition-style workbooks are legacy fallback inputs only via
+`PROTEOMICS_WGCNA_EXPR_XLSX` and `PROTEOMICS_WGCNA_META_XLSX`.
 
 ---
 
