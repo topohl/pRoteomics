@@ -12,11 +12,10 @@ if (length(missing)) stop("Missing required package(s): ", paste(missing, collap
 suppressPackageStartupMessages(invisible(lapply(required_pkgs, library, character.only = TRUE)))
 
 claim_columns <- c(
-  "claim_id", "dataset", "cell_type", "region", "layer", "region_layer", "contrast",
-  "group_direction", "biological_program", "evidence_type", "statistic_name",
-  "statistic_value", "p_value", "fdr", "n", "core_genes", "module_id",
-  "module_label", "source_file", "figure_panel_candidate", "interpretation_strength",
-  "limitations"
+  "claim_id", "dataset", "region", "layer_cell_compartment", "contrast",
+  "biological_program", "direction", "key_proteins_genes", "evidence_type",
+  "effect_size_NES", "raw_p", "FDR", "robustness_stability_metric",
+  "source_file", "figure_table_target", "interpretation_note"
 )
 
 empty_claims <- function() {
@@ -37,22 +36,30 @@ collect_program_claims <- function(dataset) {
   f <- path_results("tables", "04_differential_expression_enrichment", "biological_program_summary", dataset, "program_summary.csv")
   df <- read_csv_if_exists(f)
   if (is.null(df) || !nrow(df) || !"biological_program" %in% names(df)) return(empty_claims())
+  for (col in c("route_category", "route_unit", "min_raw_p", "min_fdr", "representative_NES", "key_genes", "core_genes", "n_terms", "top_term")) {
+    if (!col %in% names(df)) df[[col]] <- NA
+  }
   df %>%
     dplyr::transmute(
       dataset = dataset,
-      cell_type = dataset,
+      region = .data$route_unit,
+      layer_cell_compartment = .data$route_category,
       contrast = .data$comparison,
-      group_direction = .data$direction,
+      direction = .data$direction,
       biological_program = .data$biological_program,
+      key_proteins_genes = dplyr::coalesce(.data$key_genes, .data$core_genes),
       evidence_type = "GSEA_program_summary",
-      statistic_name = "representative_NES",
-      statistic_value = .data$representative_NES,
-      fdr = .data$min_fdr,
-      core_genes = .data$core_genes,
+      effect_size_NES = .data$representative_NES,
+      raw_p = .data$min_raw_p,
+      FDR = .data$min_fdr,
+      robustness_stability_metric = paste0("n_terms=", .data$n_terms),
       source_file = f,
-      figure_panel_candidate = "program_atlas_heatmap",
-      interpretation_strength = vapply(seq_along(.data$min_fdr), function(i) interpretation_strength(fdr = .data$min_fdr[[i]], effect_size = .data$representative_NES[[i]], n = NA), character(1)),
-      limitations = "Program mapping is regex-based and should be interpreted as thematic synthesis."
+      figure_table_target = "program_atlas_heatmap; manuscript program summary table",
+      interpretation_note = paste0(
+        vapply(seq_along(.data$min_fdr), function(i) interpretation_strength(fdr = .data$min_fdr[[i]], effect_size = .data$representative_NES[[i]], n = NA), character(1)),
+        "; top term: ", dplyr::coalesce(.data$top_term, "NA"),
+        "; regex-based thematic synthesis"
+      )
     ) %>%
     standardize_claims()
 }
@@ -69,20 +76,25 @@ collect_wgcna_claims <- function(dataset) {
   df %>%
     dplyr::transmute(
       dataset = dataset,
-      cell_type = dataset,
       contrast = .data$strongest_condition_contrast,
       biological_program = dplyr::coalesce(.data$Supermodule, .data$ModuleLabel_Final),
+      direction = dplyr::case_when(
+        suppressWarnings(as.numeric(.data$strongest_condition_adjusted_delta)) > 0 ~ "positive_effect",
+        suppressWarnings(as.numeric(.data$strongest_condition_adjusted_delta)) < 0 ~ "negative_effect",
+        TRUE ~ NA_character_
+      ),
       evidence_type = "WGCNA_module",
-      statistic_name = "condition_model_fdr",
-      statistic_value = .data$condition_model_fdr,
-      p_value = .data$condition_model_p,
-      fdr = .data$condition_model_fdr,
-      module_id = .data$ModuleID,
-      module_label = .data$ModuleLabel_Final,
+      effect_size_NES = .data$strongest_condition_adjusted_delta,
+      raw_p = .data$condition_model_p,
+      FDR = .data$condition_model_fdr,
+      robustness_stability_metric = if ("preservation_Zsummary_median" %in% names(df)) .data$preservation_Zsummary_median else NA,
+      key_proteins_genes = paste(.data$ModuleID, .data$ModuleLabel_Final, sep = ": "),
       source_file = f,
-      figure_panel_candidate = "WGCNA_module_priority",
-      interpretation_strength = vapply(seq_along(.data$condition_model_fdr), function(i) interpretation_strength(fdr = .data$condition_model_fdr[[i]], effect_size = .data$strongest_condition_adjusted_delta[[i]], n = NA), character(1)),
-      limitations = dplyr::coalesce(.data$evidence_warning, "Low-n module evidence; prioritize replicated or convergent modules.")
+      figure_table_target = "WGCNA_module_priority; WGCNA module evidence table",
+      interpretation_note = paste0(
+        vapply(seq_along(.data$condition_model_fdr), function(i) interpretation_strength(fdr = .data$condition_model_fdr[[i]], effect_size = .data$strongest_condition_adjusted_delta[[i]], n = NA), character(1)),
+        "; ", dplyr::coalesce(.data$evidence_warning, "Low-n module evidence; prioritize replicated or convergent modules.")
+      )
     ) %>%
     standardize_claims()
 }
@@ -92,6 +104,9 @@ collect_overlap_claims <- function(dataset) {
   df <- read_csv_if_exists(f)
   if (is.null(df) || !nrow(df) || !"ModuleID" %in% names(df)) return(empty_claims())
   if ("status" %in% names(df)) return(empty_claims())
+  for (col in c("Supermodule", "jaccard_DE", "n_DE_overlap", "top_overlap_proteins")) {
+    if (!col %in% names(df)) df[[col]] <- NA
+  }
   df %>%
     dplyr::arrange(.data$fisher_fdr) %>%
     dplyr::group_by(.data$ModuleID, .data$ModuleColor) %>%
@@ -99,20 +114,21 @@ collect_overlap_claims <- function(dataset) {
     dplyr::ungroup() %>%
     dplyr::transmute(
       dataset = dataset,
-      cell_type = dataset,
       contrast = .data$contrast,
+      biological_program = if ("Supermodule" %in% names(df)) .data$Supermodule else NA,
+      direction = NA_character_,
       evidence_type = "WGCNA_DE_GSEA_overlap",
-      statistic_name = "fisher_fdr",
-      statistic_value = .data$fisher_fdr,
-      p_value = .data$fisher_p,
-      fdr = .data$fisher_fdr,
-      n = .data$n_DE_overlap,
-      core_genes = .data$top_overlap_proteins,
-      module_id = .data$ModuleID,
+      effect_size_NES = if ("jaccard_DE" %in% names(df)) .data$jaccard_DE else NA,
+      raw_p = .data$fisher_p,
+      FDR = .data$fisher_fdr,
+      robustness_stability_metric = paste0("n_DE_overlap=", .data$n_DE_overlap),
+      key_proteins_genes = .data$top_overlap_proteins,
       source_file = f,
-      figure_panel_candidate = "WGCNA_vs_DE_GSEA_overlap",
-      interpretation_strength = vapply(seq_along(.data$fisher_fdr), function(i) interpretation_strength(fdr = .data$fisher_fdr[[i]], effect_size = .data$jaccard_DE[[i]], n = .data$n_DE_overlap[[i]]), character(1)),
-      limitations = "Overlap supports convergence, not causality."
+      figure_table_target = "WGCNA_vs_DE_GSEA_overlap",
+      interpretation_note = paste0(
+        vapply(seq_along(.data$fisher_fdr), function(i) interpretation_strength(fdr = .data$fisher_fdr[[i]], effect_size = .data$jaccard_DE[[i]], n = .data$n_DE_overlap[[i]]), character(1)),
+        "; overlap supports convergence, not causality."
+      )
     ) %>%
     standardize_claims()
 }
@@ -126,16 +142,15 @@ collect_behavior_claims <- function() {
       dataset = current_dataset(),
       contrast = .data$Edge,
       biological_program = .data$Outcome,
+      direction = dplyr::case_when(.data$estimate > 0 ~ "positive_correlation", .data$estimate < 0 ~ "negative_correlation", TRUE ~ "neutral"),
       evidence_type = "network_behavior_coupling",
-      statistic_name = "pearson_r",
-      statistic_value = .data$estimate,
-      p_value = .data$p.value,
-      fdr = .data$fdr,
-      n = .data$n,
+      effect_size_NES = .data$estimate,
+      raw_p = .data$p.value,
+      FDR = .data$fdr,
+      robustness_stability_metric = paste0("n=", .data$n),
       source_file = f,
-      figure_panel_candidate = "edge_behavior_correlation_forest",
-      interpretation_strength = .data$interpretation_strength,
-      limitations = .data$limitations
+      figure_table_target = "edge_behavior_correlation_forest",
+      interpretation_note = paste(.data$interpretation_strength, .data$limitations, sep = "; ")
     ) %>%
     standardize_claims()
 }
@@ -157,8 +172,7 @@ claims <- dplyr::bind_rows(
   standardize_claims() %>%
   dplyr::mutate(
     claim_id = sprintf("CLAIM_%04d", dplyr::row_number()),
-    interpretation_strength = dplyr::coalesce(.data$interpretation_strength, "exploratory"),
-    limitations = dplyr::coalesce(.data$limitations, "Conservative evidence table; review source files before manuscript claims.")
+    interpretation_note = dplyr::coalesce(.data$interpretation_note, "No interpretation note available; review source file before manuscript use.")
   )
 
 dir_create(path_results("tables"))
