@@ -11,11 +11,11 @@ This inventory covers active R scripts discovered before refactoring. Legacy/tes
 - `01_preprocessing/05_metadata_create.r`: refactored in Phase 3; no committed active machine path remains.
 - `01_preprocessing/06_merged_metadata_module_score.r`: `S:/...` processed matrix, behavior inputs and module-score output roots.
 - `02_id_mapping/01_MapThatProt_batch.r`: refactored in Phase 4; no committed active machine path or `setwd()` remains.
-- `03_qc_exploration/01_qc_protein_peptide_plot.r`: `S:/...` QC workbook input and result folder.
-- `03_qc_exploration/02_rank_abundance_plot_E9.r`: `S:/...` imputed matrix inputs and QC result folder.
-- `03_qc_exploration/03_pcaPlot.r`: `S:/...` GCT input and PCA output folder.
+- `03_qc_exploration/01_sample_qc_quicksearch.r`: `S:/...` QC workbook input and result folder.
+- `03_qc_exploration/04_marker_rank_abundance_qc.r`: `S:/...` imputed matrix inputs and QC result folder.
+- `03_qc_exploration/05_pca_confounding_qc.r`: `S:/...` GCT input and PCA output folder.
 - `03_qc_exploration/06_pcaPlot_Neha.r`: `S:/...` Neha collaboration GCT input and PCA output folder.
-- `03_qc_exploration/07_varPart.r`: `S:/...` variance-partition inputs and output folder.
+- `03_qc_exploration/06_variance_partitioning.r`: `S:/...` variance-partition inputs and output folder.
 - `03_qc_exploration/08_boxplotBonanza.r`: `S:/...` and `C:/...` local input/output paths.
 - `04_differential_expression_enrichment/01_clusterProfiler.r`: refactored to repo-relative config defaults; no committed active machine path remains.
 - `04_differential_expression_enrichment/02_compareGO.r`: refactored to manifest/config defaults; no committed active machine path remains.
