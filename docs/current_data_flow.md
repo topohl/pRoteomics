@@ -9,6 +9,7 @@ This audit was generated before targeted refactoring of the clusterProfiler to c
 - `setwd()` is present in active ID mapping and GCT/pathview workflows; path helpers should be used instead, and unavoidable working-directory changes should restore `oldwd`.
 - Package auto-installation is present in several scripts. The refactored priority scripts now expose `AUTO_INSTALL_MISSING_PACKAGES` and default to fail-fast behavior.
 - Per-script input/output/dependency/refactor status is maintained in `docs/active_script_io_audit.tsv`.
+- Follow-up scientific guardrails and refactor candidates are tracked in `docs/refactor_backlog.md`.
 
 ## Module Refactor Status
 
@@ -64,6 +65,8 @@ compareGO reads that manifest, requires the `dataset` column unless `legacy_mode
 
 This makes the data flow explicit and reproducible while preserving the biological route classification. By default, compareGO consumes only `result_type == GSEA_GO` and `used_for_plot == TRUE`. `GSEA_KEGG` rows are recorded by clusterProfiler for provenance and can be selected intentionally by `config/compareGO_config.yml`, but ORA and custom/NK3R outputs are not compareGO inputs unless future analysis logic explicitly supports them. Legacy mixed mapped folders such as `data/processed/02_id_mapping/mapped/forward/per_file/` are no longer accepted silently; migrate them into `mapped/<dataset>/<direction>/per_file/`.
 
+`04_differential_expression_enrichment/03_biological_program_summary.r` is an additive interpretation layer over these manifest-selected outputs. It writes dataset-scoped program summaries under `results/tables`, source evidence under `results/source_data`, and a heatmap under `results/figures` for `biological_program_summary/<dataset>/`.
+
 Checkpoint behavior: if clusterProfiler skips a completed comparison, it reconstructs manifest rows from existing canonical GSEA_GO/GSEA_KEGG source-data tables when present and marks `checkpoint_status = reconstructed_from_checkpoint`. If a checkpoint predates canonical source-data outputs, rerun with `force_rerun: true` to refresh the manifest.
 
 Dry-run commands:
@@ -112,6 +115,7 @@ The old technical folder roots map as follows:
 | `core_enrichment` | `results/source_data/04_differential_expression_enrichment/clusterProfiler/` plus manifest rows | compareGO should consume the manifest, not recursively discover this folder. |
 | `module_scores` | `data/processed/06_modules_WGCNA/` and `results/tables/06_modules_WGCNA/` | Machine-readable scores belong in processed; publication tables in results/tables. |
 | `WGCNA_modules_long` | `results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/` plus `data/processed/06_modules_WGCNA/01_WGCNA/<dataset>/wgcna_final_model_state.rds` | Color-stable WGCNA module definitions are reusable inputs for dataset-scoped `91_module_score.r` when `PROTEOMICS_MODULE_DEFINITION_SOURCE=WGCNA`; GO labels are display metadata, not eigengene column names. |
+| `biological_claims_table` | `results/tables/biological_claims_table.csv` and optional `.xlsx` | Conservative cross-analysis evidence table for manuscript figure planning; claims remain limited by each source analysis. |
 | `EWCE_E9_Results` | `data/processed/05_celltype_enrichment_EWCE/EWCE_E9/` and `results/*/05_celltype_enrichment_EWCE/EWCE_E9/` | EWCE caches stay in processed/cache. |
 | `network_spatial_relations` | `data/processed/07_spatial_networks/network_spatial_relations/` and `results/*/07_spatial_networks/network_spatial_relations/` | Producer script remains documented for later; downstream scripts now expect this canonical RDS. |
 
