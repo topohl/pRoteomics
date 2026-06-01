@@ -25,7 +25,7 @@ runtime:
   workers: -1
   future_globals_max_size_mb: 8000
   resume_if_complete: true
-  force_rerun: false
+  force_rerun: true
   prewarm_workers: true
   show_progress: true
   show_step_progress: true
