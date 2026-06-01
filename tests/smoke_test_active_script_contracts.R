@@ -33,7 +33,7 @@ for (script in active_scripts) {
   }
 }
 
-pipeline_txt <- paste(readLines(repo_path("run_dataset_pipeline.R"), warn = FALSE), collapse = "\n")
+pipeline_txt <- paste(readLines(repo_path("pipeline.yml"), warn = FALSE), collapse = "\n")
 for (dataset in c("neuron_neuropil", "neuron_soma", "microglia")) {
   ok <- tryCatch({
     source(repo_path("R", "dataset_config.R"), local = TRUE)
@@ -50,7 +50,7 @@ for (needle in c("03_qc_exploration/00_dataset_qc_report.r", "06_modules_WGCNA/0
 enrichment_order <- c(
   "04_differential_expression_enrichment/01_clusterProfiler.r",
   "04_differential_expression_enrichment/02_compareGO.r",
-  "04_differential_expression_enrichment/04_neuropil_contamination_annotation.r",
+  "04_differential_expression_enrichment/04_neuropil_reference_annotation.r",
   "04_differential_expression_enrichment/05_microglia_targeted_signature_enrichment.r",
   "04_differential_expression_enrichment/03_biological_program_summary.r"
 )
