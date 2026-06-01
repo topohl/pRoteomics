@@ -1,0 +1,8 @@
+module_eigengene,ModuleColor,Supermodule_Manual,ManualConfidence,ManualRationale
+MEkhaki,khaki,RNA processing / translation regulation,moderate-high,"Top GO label is regulatory ncRNA-mediated gene silencing; mechanistically close to RNA regulation."
+MEcoral,coral,RNA processing / translation regulation,high,"Top GO label is cytoplasmic translational initiation; complements RNA processing modules."
+MEmediumaquamarine,mediumaquamarine,Proteostasis / post-translational regulation,high,"Top GO label is ubiquitin-dependent protein catabolic process, consistent with proteostasis."
+MElightpink,lightpink,Proteostasis / post-translational regulation,high,"Top GO label is protein folding, consistent with chaperone/proteostasis biology."
+MEaquamarine,aquamarine,Energy metabolism / mitochondrial support,moderate-high,"Top GO label is acetyl-CoA biosynthetic process, linked to metabolic support."
+MEdeepskyblue,deepskyblue,Synaptic and vesicle organization,high,"Top GO label is synapse organization."
+MElightblue,lightblue,Synaptic and vesicle organization,high,"Top GO label is vesicle organization, linked to synaptic vesicle/trafficking biology."
