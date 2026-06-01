@@ -5,6 +5,7 @@ source(paths_file)
 
 active_scripts <- c(
   "03_qc_exploration/00_dataset_qc_report.r",
+  "04_differential_expression_enrichment/05_microglia_targeted_signature_enrichment.r",
   "04_differential_expression_enrichment/03_biological_program_summary.r",
   "06_modules_WGCNA/01_WGCNA.r",
   "06_modules_WGCNA/05_wgcna_de_gsea_overlap.r",
@@ -43,6 +44,43 @@ for (dataset in c("neuron_neuropil", "neuron_soma", "microglia")) {
 for (needle in c("03_qc_exploration/00_dataset_qc_report.r", "06_modules_WGCNA/01_WGCNA.r")) {
   if (!grepl(needle, pipeline_txt, fixed = TRUE)) {
     fail <- c(fail, paste("Pipeline does not include expected script:", needle))
+  }
+}
+
+enrichment_order <- c(
+  "04_differential_expression_enrichment/01_clusterProfiler.r",
+  "04_differential_expression_enrichment/02_compareGO.r",
+  "04_differential_expression_enrichment/04_neuropil_contamination_annotation.r",
+  "04_differential_expression_enrichment/05_microglia_targeted_signature_enrichment.r",
+  "04_differential_expression_enrichment/03_biological_program_summary.r"
+)
+order_idx <- vapply(enrichment_order, function(x) {
+  m <- regexpr(x, pipeline_txt, fixed = TRUE)
+  as.integer(m[[1]])
+}, integer(1))
+if (any(order_idx <= 0) || is.unsorted(order_idx, strictly = TRUE)) {
+  fail <- c(fail, "Pipeline enrichment stage order does not match required clusterProfiler -> compareGO -> neuropil -> microglia signature -> biological program summary sequence")
+}
+
+micro_sig_txt <- paste(readLines(repo_path("04_differential_expression_enrichment", "05_microglia_targeted_signature_enrichment.r"), warn = FALSE), collapse = "\n")
+for (needle in c(
+  "left_unit", "right_unit", "left_region", "right_region", "left_condition", "right_condition", "contrast_class",
+  "microglia_signature_enrichment_with_contrast_class.csv",
+  "microglia_signature_within_region_condition.csv",
+  "microglia_signature_cross_region_same_condition.csv",
+  "microglia_signature_cross_region_cross_condition.csv",
+  "microglia_signature_leading_edge_recurrence.csv",
+  "microglia_signature_claims_ready.csv"
+)) {
+  if (!grepl(needle, micro_sig_txt, fixed = TRUE)) {
+    fail <- c(fail, paste("Microglia signature script missing expected contract marker:", needle))
+  }
+}
+
+claims_export_txt <- paste(readLines(repo_path("09_export_pride_journal", "06_make_biological_claims_table.R"), warn = FALSE), collapse = "\n")
+for (needle in c("microglia_signature_claims_ready.csv", "collect_microglia_signature_claims", "microglia_signature_enrichment")) {
+  if (!grepl(needle, claims_export_txt, fixed = TRUE)) {
+    fail <- c(fail, paste("Claims export missing expected microglia signature integration marker:", needle))
   }
 }
 
