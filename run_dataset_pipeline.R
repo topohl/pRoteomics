@@ -170,10 +170,15 @@ run_one_step <- function(stage, script, required) {
   )
 }
 
-results <- do.call(rbind, lapply(seq_len(nrow(steps)), function(i) {
+results <- data.frame()
+for (i in seq_len(nrow(steps))) {
   res <- run_one_step(steps$stage[[i]], steps$script[[i]], steps$required[[i]])
-  res
-}))
+  results <- rbind(results, res)
+  if (identical(res$status, "failed_required") || identical(res$status, "missing_required")) {
+    message("[FAIL] Required step failed; stopping pipeline before downstream stages.")
+    break
+  }
+}
 
 utils::write.csv(results, manifest_path, row.names = FALSE)
 
