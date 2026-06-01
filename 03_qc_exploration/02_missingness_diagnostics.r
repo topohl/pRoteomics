@@ -43,7 +43,7 @@ terms <- qc_metadata_terms(meta)
 by_term <- dplyr::bind_rows(lapply(terms, function(term) {
   sample_missing |>
     dplyr::filter(!is.na(.data[[term]]), nzchar(as.character(.data[[term]]))) |>
-    dplyr::group_by(value = .data[[term]]) |>
+    dplyr::group_by(value = as.character(.data[[term]])) |>
     dplyr::summarise(term = term, n = dplyr::n(),
                      mean_missing = mean(missing_fraction, na.rm = TRUE),
                      median_missing = median(missing_fraction, na.rm = TRUE), .groups = "drop")
