@@ -6,6 +6,7 @@ source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "validation_utils.R"))
 source(repo_path("R", "enrichment_io.R"))
 source(repo_path("R", "enrichment_plots.R"))
+source(repo_path("R", "plotting_nature.R"))
 
 args <- commandArgs(trailingOnly = TRUE)
 arg_value <- function(flag, default = "") {
@@ -332,12 +333,18 @@ readr::write_csv(program_summary_integrated, file.path(PATHS$tables, "program_su
 
 plot_df <- heatmap_ready %>% dplyr::rename(score = "signed_neg_log10_fdr")
 if (nrow(plot_df)) {
-  p <- ggplot2::ggplot(plot_df, ggplot2::aes(x = .data$comparison_label, y = .data$biological_program, fill = .data$score)) +
+  p <- ggplot2::ggplot(
+    plot_df %>%
+      dplyr::mutate(
+        comparison_label = clean_comparison_label(.data$comparison_label),
+        biological_program = clean_program_label(.data$biological_program)
+      ),
+    ggplot2::aes(x = .data$comparison_label, y = .data$biological_program, fill = .data$score)
+  ) +
     ggplot2::geom_tile(color = "white", linewidth = 0.2) +
     ggplot2::scale_fill_gradient2(low = "#2166AC", mid = "white", high = "#B2182B", na.value = "grey90", name = "signed -log10 FDR") +
     ggplot2::labs(x = NULL, y = NULL, title = paste("Biological program atlas:", DATASET)) +
-    ggplot2::theme_minimal(base_size = 8) +
-    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1), panel.grid = ggplot2::element_blank())
+    theme_nature_heatmap(7)
   save_plot_dual(p, file.path(PATHS$figures, "program_atlas_heatmap.svg"), width = max(6, length(unique(plot_df$comparison_label)) * 0.35), height = 4.8)
 }
 
