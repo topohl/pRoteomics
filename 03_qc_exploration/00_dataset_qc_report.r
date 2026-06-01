@@ -92,10 +92,11 @@ robust_z <- function(x) {
 outlier_metrics <- intersect(c("missing_fraction", "n_proteins_detected", "median_abundance", "mean_abundance"), names(sample_qc))
 outlier_z <- as.data.frame(lapply(sample_qc[outlier_metrics], robust_z), check.names = FALSE)
 names(outlier_z) <- paste0(outlier_metrics, "_robust_z")
+outlier_z_abs <- lapply(outlier_z, abs)
 sample_outliers <- dplyr::bind_cols(sample_qc["Sample"], outlier_z) |>
   dplyr::mutate(
     n_outlier_metrics = rowSums(abs(dplyr::across(dplyr::ends_with("_robust_z"))) > 3, na.rm = TRUE),
-    max_abs_robust_z = do.call(pmax, c(lapply(dplyr::select(., dplyr::ends_with("_robust_z")), function(x) abs(x)), na.rm = TRUE)),
+    max_abs_robust_z = do.call(pmax, c(outlier_z_abs, na.rm = TRUE)),
     outlier_flag = dplyr::case_when(
       .data$n_outlier_metrics >= 2 ~ "FAIL",
       .data$max_abs_robust_z > 3 ~ "WARN",
