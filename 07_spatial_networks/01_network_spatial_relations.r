@@ -40,6 +40,7 @@ MODULE_ID <- "07_spatial_networks"
 SUBSTEP_ID <- "network_spatial_relations"
 CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
 SPATIAL_DATASET <- current_dataset()
+assert_dataset_capability(SPATIAL_DATASET, "layer", analysis = "spatial network analysis")
 SPATIAL_INPUTS <- resolve_dataset_inputs(SPATIAL_DATASET, purpose = "wgcna")
 
 required_pkgs <- c(
