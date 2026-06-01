@@ -78,6 +78,13 @@ CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
 # Package installation policy. Keep FALSE for reproducible, fail-fast runs.
 AUTO_INSTALL_MISSING_PACKAGES <- FALSE
 DRY_RUN <- is_dry_run()
+
+first_existing_path <- function(paths) {
+  paths <- unique(normalizePath(paths[nzchar(paths)], winslash = "/", mustWork = FALSE))
+  hit <- paths[file.exists(paths)]
+  if (length(hit) == 0) return(NA_character_)
+  hit[[1]]
+}
 if (!isTRUE(DRY_RUN)) {
   early_config_candidates <- c(
     file.path(getwd(), "compareGO_config.yml"),
@@ -948,10 +955,16 @@ add_microglia_neuropil_annotations <- function(df) {
     if (!col %in% names(df)) df[[col]] <- if (grepl("fraction|NES|jaccard|specificity", col)) NA_real_ else NA_character_
   }
 
-  neuropil_path <- file.path(
-    path_results("tables", MODULE_ID, "neuropil_contamination_annotation", DATASET),
-    "microglia_neuropil_annotation_latest.csv"
-  )
+  neuropil_path <- first_existing_path(c(
+    file.path(
+      path_results("tables", MODULE_ID, "neuropil_reference_annotation", DATASET),
+      "microglia_neuropil_annotation_latest.csv"
+    ),
+    file.path(
+      path_results("tables", MODULE_ID, "neuropil_contamination_annotation", DATASET),
+      "microglia_neuropil_annotation_latest.csv"
+    )
+  ))
   sig_path <- file.path(
     path_results("tables", MODULE_ID, "microglia_targeted_signature_enrichment", DATASET),
     "microglia_signature_enrichment_with_neuropil_reference.csv"
