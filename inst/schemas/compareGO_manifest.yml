@@ -1,0 +1,14 @@
+name: compareGO_manifest
+required_columns: [dataset, output_table]
+columns:
+  dataset: {type: character}
+  analysis_id: {type: character}
+  comparison: {type: character}
+  ontology: {type: character}
+  result_type: {type: character}
+  route_category: {type: character}
+  route_unit: {type: character}
+  input_manifest: {type: character}
+  output_table: {type: character}
+  output_plot: {type: character}
+  config_hash: {type: character}
