@@ -12,8 +12,6 @@ result_types:
 run_id: ""
 clusterProfiler_config_hash: ""
 
-# Leave empty to use:
-# data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv
 clusterProfiler_manifest: ""
 uniprot_mapping_file: data/external/MOUSE_10090_idmapping.dat
 
@@ -21,6 +19,9 @@ significant_only: true
 target_n_terms: 5
 redundancy_threshold: 0.7
 min_set_size: 10
+
+resume_raw_tables: false
+force_raw_recompute: true
 
 # Example local overrides:
 # neuron_neuropil:
