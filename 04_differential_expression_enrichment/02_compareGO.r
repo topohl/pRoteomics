@@ -938,10 +938,14 @@ add_microglia_neuropil_annotations <- function(df) {
     "interpretation_class", "gene_overlap_fraction", "gene_jaccard",
     "neuropil_marker_fraction", "microglia_marker_fraction",
     "microglia_signature_class", "microglia_signature_NES",
-    "neuropil_reference_NES", "reference_match_type"
+    "neuropil_reference_NES", "reference_match_type",
+    "signature_source", "signature_confidence",
+    "reference_microglia_specificity", "reference_neuron_specificity",
+    "reference_astrocyte_specificity", "reference_oligodendrocyte_specificity",
+    "reference_celltype_support"
   )
   for (col in annotation_cols) {
-    if (!col %in% names(df)) df[[col]] <- if (grepl("fraction|NES|jaccard", col)) NA_real_ else NA_character_
+    if (!col %in% names(df)) df[[col]] <- if (grepl("fraction|NES|jaccard|specificity", col)) NA_real_ else NA_character_
   }
 
   neuropil_path <- file.path(
@@ -980,23 +984,49 @@ add_microglia_neuropil_annotations <- function(df) {
 
   sig_annot <- optional_read_csv(sig_path)
   if (!is.null(sig_annot) && nrow(sig_annot) && "comparison" %in% names(sig_annot)) {
+    sig_defaults <- list(
+      signature_source = NA_character_,
+      signature_confidence = NA_character_,
+      reference_microglia_specificity = NA_real_,
+      reference_neuron_specificity = NA_real_,
+      reference_astrocyte_specificity = NA_real_,
+      reference_oligodendrocyte_specificity = NA_real_,
+      reference_celltype_support = NA_character_
+    )
+    for (nm in names(sig_defaults)) {
+      if (!nm %in% names(sig_annot)) sig_annot[[nm]] <- sig_defaults[[nm]]
+    }
     sig_lookup <- sig_annot %>%
       dplyr::group_by(.data$comparison) %>%
       dplyr::arrange(.data$padj, dplyr::desc(abs(.data$NES)), .by_group = TRUE) %>%
       dplyr::summarise(
         microglia_signature_class_ann = mode_value(.data$microglia_signature_class),
+        signature_source_ann = mode_value(.data$signature_source),
+        signature_confidence_ann = mode_value(.data$signature_confidence),
         microglia_signature_NES_ann = dplyr::first(.data$NES),
         neuropil_reference_NES_ann = dplyr::first(.data$neuropil_reference_NES),
         reference_match_type_ann = mode_value(.data$reference_match_type),
+        reference_microglia_specificity_ann = dplyr::first(.data$reference_microglia_specificity),
+        reference_neuron_specificity_ann = dplyr::first(.data$reference_neuron_specificity),
+        reference_astrocyte_specificity_ann = dplyr::first(.data$reference_astrocyte_specificity),
+        reference_oligodendrocyte_specificity_ann = dplyr::first(.data$reference_oligodendrocyte_specificity),
+        reference_celltype_support_ann = mode_value(.data$reference_celltype_support),
         .groups = "drop"
       )
     df <- df %>%
       dplyr::left_join(sig_lookup, by = c("Comparison" = "comparison")) %>%
       dplyr::mutate(
         microglia_signature_class = dplyr::coalesce(.data$microglia_signature_class_ann, .data$microglia_signature_class),
+        signature_source = dplyr::coalesce(.data$signature_source_ann, .data$signature_source),
+        signature_confidence = dplyr::coalesce(.data$signature_confidence_ann, .data$signature_confidence),
         microglia_signature_NES = dplyr::coalesce(.data$microglia_signature_NES_ann, .data$microglia_signature_NES),
         neuropil_reference_NES = dplyr::coalesce(.data$neuropil_reference_NES_ann, .data$neuropil_reference_NES),
-        reference_match_type = dplyr::coalesce(.data$reference_match_type_ann, .data$reference_match_type)
+        reference_match_type = dplyr::coalesce(.data$reference_match_type_ann, .data$reference_match_type),
+        reference_microglia_specificity = dplyr::coalesce(.data$reference_microglia_specificity_ann, .data$reference_microglia_specificity),
+        reference_neuron_specificity = dplyr::coalesce(.data$reference_neuron_specificity_ann, .data$reference_neuron_specificity),
+        reference_astrocyte_specificity = dplyr::coalesce(.data$reference_astrocyte_specificity_ann, .data$reference_astrocyte_specificity),
+        reference_oligodendrocyte_specificity = dplyr::coalesce(.data$reference_oligodendrocyte_specificity_ann, .data$reference_oligodendrocyte_specificity),
+        reference_celltype_support = dplyr::coalesce(.data$reference_celltype_support_ann, .data$reference_celltype_support)
       ) %>%
       dplyr::select(-dplyr::ends_with("_ann"))
   }
@@ -1683,7 +1713,7 @@ if (nrow(annotation_dotplot_df) > 0) {
     geom_point(alpha = 0.85) +
     scale_color_gradient2(low = "#2166AC", mid = "white", high = "#B2182B", name = "NES") +
     labs(x = NULL, y = NULL, size = "-log10 FDR", shape = "Annotation") +
-    theme_nature(base_size = 8) +
+    theme_publication(base_size = 8) +
     theme(axis.text.x = element_text(angle = 45, hjust = 1))
   ggsave(
     file.path(subdirs$plots_main, "compareGO_microglia_neuropil_signature_annotation_dotplot.svg"),
@@ -1855,7 +1885,7 @@ core_genes_df <- bind_rows(core_gene_sets)
 write_raw_csv(core_genes_df,
               file.path(subdirs$gene_lists, "Core_Genes_All_Comparisons.csv"),
               row.names = FALSE)
-core_genes_df %>%
+invisible(core_genes_df %>%
   group_by(Comparison, ID, Description) %>%
   summarise(Genes = list(unique(core_enrichment)), .groups = "drop") %>%
   mutate(file_name = file.path(
@@ -1865,7 +1895,7 @@ core_genes_df %>%
   pmap(function(Comparison, ID, Description, Genes, file_name) {
     dir.create(dirname(file_name), showWarnings = FALSE, recursive = TRUE)
     write_raw_csv(data.frame(Gene = Genes), file_name, row.names = FALSE)
-  })
+  }))
 
 # -----------------------------------------------------
 # Compute Jaccard Similarity of Core Genes Across Comparisons
@@ -3361,7 +3391,11 @@ supp_enrichment <- combined_df %>%
                   "interpretation_class", "gene_overlap_fraction", "gene_jaccard",
                   "neuropil_marker_fraction", "microglia_marker_fraction",
                   "microglia_signature_class", "microglia_signature_NES",
-                  "neuropil_reference_NES", "reference_match_type"
+                  "neuropil_reference_NES", "reference_match_type",
+                  "signature_source", "signature_confidence",
+                  "reference_microglia_specificity", "reference_neuron_specificity",
+                  "reference_astrocyte_specificity", "reference_oligodendrocyte_specificity",
+                  "reference_celltype_support"
                 ))) %>%
   mutate(
     leading_edge = vapply(leading_edge, function(x) {
