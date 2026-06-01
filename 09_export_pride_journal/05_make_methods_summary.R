@@ -22,7 +22,7 @@ lines <- c(
   "1. Raw/vendor MS files and search outputs are staged locally under pride_submission/.",
   "2. Canonical processed quantitative matrices live under data/processed/01_preprocessing/.",
   "3. Mapped protein/contrast tables live under data/processed/02_id_mapping/.",
-  "4. Differential-expression and enrichment outputs live under data/processed and results for module 04.",
+  "4. Differential abundance and enrichment outputs live under data/processed and results for module 04.",
   "5. Figure source data live under results/source_data/.",
   "",
   "## Reproducibility Metadata",
