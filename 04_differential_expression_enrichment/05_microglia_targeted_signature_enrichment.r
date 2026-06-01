@@ -160,29 +160,51 @@ collapse_neuropil_layer_to_region <- function(unit) {
   parse_region_from_unit(unit)
 }
 
+classify_contrast_class <- function(left_region, right_region, left_condition, right_condition) {
+  if (is.na(left_region) || is.na(right_region) || is.na(left_condition) || is.na(right_condition)) {
+    return("unclassified")
+  }
+  if (left_region == right_region && left_condition != right_condition) return("within_region_condition")
+  if (left_region != right_region && left_condition == right_condition) return("cross_region_same_condition")
+  if (left_region != right_region && left_condition != right_condition) return("cross_region_cross_condition")
+  if (left_region == right_region && left_condition == right_condition) return("same_region_same_condition")
+  "unclassified"
+}
+
 parse_comparison <- function(comparison) {
   parts <- strsplit(sub("\\.csv$", "", basename(comparison)), "_", fixed = TRUE)[[1]]
   left <- parts[[1]]
   right <- if (length(parts) >= 2) parts[[2]] else NA_character_
   left_parsed <- extract_unit_condition(left)
   right_parsed <- extract_unit_condition(right)
+  left_region <- parse_region_from_unit(left_parsed$unit)
+  right_region <- parse_region_from_unit(right_parsed$unit)
+  contrast_class <- classify_contrast_class(left_region, right_region, left_parsed$condition, right_parsed$condition)
   cond_pair <- paste(na.omit(c(left_parsed$condition, right_parsed$condition)), collapse = "_vs_")
   if (!nzchar(cond_pair)) cond_pair <- NA_character_
   tibble::tibble(
     comparison = sub("\\.csv$", "", basename(comparison)),
     left_unit = left_parsed$unit,
     right_unit = right_parsed$unit,
+    left_region = left_region,
+    right_region = right_region,
     left_condition = left_parsed$condition,
     right_condition = right_parsed$condition,
+    contrast_class = contrast_class,
     condition_pair = cond_pair,
-    region = parse_region_from_unit(left_parsed$unit),
+    region = left_region,
     layer = ifelse(grepl("microglia", tolower(left)), NA_character_, sub("^[Cc][Aa][123]|^[Dd][Gg]", "", left_parsed$unit)),
     region_level_unit = collapse_neuropil_layer_to_region(left_parsed$unit)
   )
 }
 
 map_comparison_to_region_level <- function(comparison) {
-  parse_comparison(comparison) %>% dplyr::select(.data$comparison, .data$region, .data$region_level_unit, .data$condition_pair)
+  parse_comparison(comparison) %>%
+    dplyr::select(
+      .data$comparison, .data$region, .data$region_level_unit, .data$condition_pair,
+      .data$left_unit, .data$right_unit, .data$left_region, .data$right_region,
+      .data$left_condition, .data$right_condition, .data$contrast_class
+    )
 }
 
 prepare_ranked_contrast <- function(path, dataset) {
@@ -207,7 +229,14 @@ prepare_ranked_contrast <- function(path, dataset) {
     region = meta$region[[1]],
     layer = meta$layer[[1]],
     region_level_unit = meta$region_level_unit[[1]],
-    condition_pair = meta$condition_pair[[1]]
+    condition_pair = meta$condition_pair[[1]],
+    left_unit = meta$left_unit[[1]],
+    right_unit = meta$right_unit[[1]],
+    left_region = meta$left_region[[1]],
+    right_region = meta$right_region[[1]],
+    left_condition = meta$left_condition[[1]],
+    right_condition = meta$right_condition[[1]],
+    contrast_class = meta$contrast_class[[1]]
   )
 }
 
@@ -574,7 +603,10 @@ run_signature_enrichment <- function(ranked, term2gene, reference_specificity = 
       names(stats) <- df$gene
       res <- run_one_gsea(stats, term2gene, methods)
       if (!nrow(res)) return(tibble())
-      meta <- df[1, c("dataset", "comparison", "region", "layer", "region_level_unit", "condition_pair", "input_file")]
+      meta <- df[1, c(
+        "dataset", "comparison", "region", "layer", "region_level_unit", "condition_pair", "input_file",
+        "left_unit", "right_unit", "left_region", "right_region", "left_condition", "right_condition", "contrast_class"
+      )]
       dplyr::bind_cols(meta[rep(1, nrow(res)), ], res) %>%
         dplyr::mutate(
           matched_genes = purrr::map_chr(.data$signature, ~paste(intersect(term2gene$gene[term2gene$term == .x], names(stats)), collapse = ";")),
@@ -683,12 +715,105 @@ classify_signature_rows <- function(df) {
     )
 }
 
+split_token_field <- function(x) {
+  if (is.null(x) || length(x) == 0 || is.na(x) || !nzchar(as.character(x))) return(character())
+  out <- unlist(strsplit(as.character(x), "[/;,|[:space:]]+"), use.names = FALSE)
+  out <- normalize_id(out)
+  unique(out[nzchar(out)])
+}
+
+build_leading_edge_recurrence <- function(df) {
+  if (!nrow(df)) return(tibble::tibble())
+  sig <- df %>% dplyr::filter(!is.na(.data$padj) & .data$padj < 0.05)
+  if (!nrow(sig)) return(tibble::tibble())
+
+  long <- sig %>%
+    dplyr::mutate(
+      direction_sign = dplyr::case_when(
+        .data$NES > 0 ~ "up",
+        .data$NES < 0 ~ "down",
+        TRUE ~ "neutral"
+      ),
+      region_pair = ifelse(!is.na(.data$left_region) & !is.na(.data$right_region), paste(.data$left_region, .data$right_region, sep = "_vs_"), NA_character_),
+      proteins = purrr::map2(.data$leading_edge, .data$matched_genes, ~unique(c(split_token_field(.x), split_token_field(.y))))
+    ) %>%
+    dplyr::filter(lengths(.data$proteins) > 0) %>%
+    tidyr::unnest_longer(.data$proteins, values_to = "protein") %>%
+    dplyr::filter(!is.na(.data$protein), nzchar(.data$protein))
+
+  long %>%
+    dplyr::group_by(
+      .data$signature, .data$protein, .data$contrast_class, .data$direction_sign,
+      .data$region_pair, .data$condition_pair
+    ) %>%
+    dplyr::summarise(
+      n_rows = dplyr::n(),
+      n_comparisons = dplyr::n_distinct(.data$comparison),
+      min_fdr = min(.data$padj, na.rm = TRUE),
+      median_fdr = stats::median(.data$padj, na.rm = TRUE),
+      mean_nes = mean(.data$NES, na.rm = TRUE),
+      median_nes = stats::median(.data$NES, na.rm = TRUE),
+      max_abs_nes = max(abs(.data$NES), na.rm = TRUE),
+      example_comparison = dplyr::first(.data$comparison),
+      .groups = "drop"
+    ) %>%
+    dplyr::arrange(dplyr::desc(.data$n_comparisons), .data$min_fdr, dplyr::desc(abs(.data$median_nes)))
+}
+
+build_claims_ready <- function(df) {
+  if (!nrow(df)) return(tibble::tibble())
+  df %>%
+    dplyr::filter(
+      !is.na(.data$padj) & .data$padj < 0.05,
+      .data$reference_celltype_support == "microglia_supported",
+      .data$contrast_class %in% c("within_region_condition", "cross_region_same_condition")
+    ) %>%
+    dplyr::mutate(
+      claim_type = dplyr::case_when(
+        .data$contrast_class == "within_region_condition" ~ "within_region_condition_microglia_program",
+        .data$contrast_class == "cross_region_same_condition" ~ "regional_microglia_program",
+        TRUE ~ NA_character_
+      ),
+      claim_interpretation_note = dplyr::case_when(
+        .data$contrast_class == "within_region_condition" ~ "Condition-sensitive microglia program within matched region.",
+        .data$contrast_class == "cross_region_same_condition" ~ "Regional microglia specialization within matched condition.",
+        TRUE ~ "Exploratory only."
+      )
+    ) %>%
+    dplyr::arrange(.data$padj, dplyr::desc(abs(.data$NES)))
+}
+
+write_review_xlsx <- function(all_tbl, within_tbl, cross_same_tbl, cross_cross_tbl, recurrence_tbl, claims_tbl, diagnostics_tbl) {
+  if (!requireNamespace("writexl", quietly = TRUE)) return(invisible(FALSE))
+  out <- file.path(PATHS$tables, "microglia_signature_enrichment_review.xlsx")
+  writexl::write_xlsx(
+    list(
+      all = all_tbl,
+      within_region_condition = within_tbl,
+      cross_region_same_condition = cross_same_tbl,
+      cross_region_cross_condition = cross_cross_tbl,
+      leading_edge_recurrence = recurrence_tbl,
+      claims_ready = claims_tbl,
+      diagnostics = diagnostics_tbl
+    ),
+    path = out
+  )
+  invisible(TRUE)
+}
+
 write_empty_outputs <- function(reason, diagnostics) {
   empty <- tibble::tibble(dataset = DATASET, status = reason, run_id = RUN_ID)
   files <- c(
     "microglia_signature_enrichment.csv",
     "microglia_signature_enrichment_with_neuropil_reference.csv",
+    "microglia_signature_enrichment_with_contrast_class.csv",
     "microglia_signature_enrichment_summary.csv",
+    "microglia_signature_within_region_condition.csv",
+    "microglia_signature_cross_region_same_condition.csv",
+    "microglia_signature_cross_region_cross_condition.csv",
+    "microglia_signature_unclassified_technical.csv",
+    "microglia_signature_leading_edge_recurrence.csv",
+    "microglia_signature_claims_ready.csv",
     "empirical_microglia_enriched_signature.csv",
     "empirical_neuropil_shared_signature.csv",
     "empirical_microglia_signature_diagnostics.csv",
@@ -720,6 +845,13 @@ if (isTRUE(DRY_RUN)) {
   dry_run_line("Input contrasts", input_dir, ifelse(dir.exists(input_dir), "PASS", "WARN"))
   dry_run_line("Neuropil reference contrasts", reference_dir, ifelse(dir.exists(reference_dir), "PASS", "WARN"))
   dry_run_line("Output tables", PATHS$tables)
+  dry_run_line("With contrast class", file.path(PATHS$tables, "microglia_signature_enrichment_with_contrast_class.csv"))
+  dry_run_line("Within-region condition", file.path(PATHS$tables, "microglia_signature_within_region_condition.csv"))
+  dry_run_line("Cross-region same-condition", file.path(PATHS$tables, "microglia_signature_cross_region_same_condition.csv"))
+  dry_run_line("Cross-region cross-condition", file.path(PATHS$tables, "microglia_signature_cross_region_cross_condition.csv"))
+  dry_run_line("Leading-edge recurrence", file.path(PATHS$tables, "microglia_signature_leading_edge_recurrence.csv"))
+  dry_run_line("Claims-ready", file.path(PATHS$tables, "microglia_signature_claims_ready.csv"))
+  dry_run_line("Review workbook (optional writexl)", file.path(PATHS$tables, "microglia_signature_enrichment_review.xlsx"))
   dry_run_line("Empirical microglia signature", file.path(PATHS$tables, "empirical_microglia_enriched_signature.csv"))
   dry_run_line("Empirical neuropil-shared signature", file.path(PATHS$tables, "empirical_neuropil_shared_signature.csv"))
   readr::write_csv(dry_diag, file.path(PATHS$tables, "microglia_signature_diagnostics.csv"))
@@ -789,24 +921,69 @@ with_reference <- attach_neuropil_reference(micro_enrichment, neuropil_enrichmen
   classify_signature_rows() %>%
   dplyr::arrange(.data$padj, dplyr::desc(abs(.data$NES)))
 
-summary_tbl <- with_reference %>%
-  dplyr::count(.data$microglia_signature_class, .data$signature, .data$reference_match_type, name = "n_contrasts") %>%
-  dplyr::arrange(.data$microglia_signature_class, dplyr::desc(.data$n_contrasts))
+with_contrast <- with_reference %>%
+  dplyr::mutate(
+    contrast_class = dplyr::coalesce(
+      .data$contrast_class,
+      purrr::pmap_chr(
+        list(.data$left_region, .data$right_region, .data$left_condition, .data$right_condition),
+        classify_contrast_class
+      )
+    ),
+    region_pair = ifelse(!is.na(.data$left_region) & !is.na(.data$right_region), paste(.data$left_region, .data$right_region, sep = "_vs_"), NA_character_),
+    condition_pair = dplyr::coalesce(
+      .data$condition_pair,
+      ifelse(!is.na(.data$left_condition) & !is.na(.data$right_condition), paste(.data$left_condition, .data$right_condition, sep = "_vs_"), NA_character_)
+    ),
+    direction_sign = dplyr::case_when(
+      .data$NES > 0 ~ "up",
+      .data$NES < 0 ~ "down",
+      TRUE ~ "neutral"
+    )
+  )
+
+within_region_tbl <- with_contrast %>% dplyr::filter(.data$contrast_class == "within_region_condition")
+cross_region_same_tbl <- with_contrast %>% dplyr::filter(.data$contrast_class == "cross_region_same_condition")
+cross_region_cross_tbl <- with_contrast %>% dplyr::filter(.data$contrast_class == "cross_region_cross_condition")
+unclassified_technical_tbl <- with_contrast %>% dplyr::filter(.data$contrast_class %in% c("same_region_same_condition", "unclassified"))
+leading_edge_recurrence <- build_leading_edge_recurrence(with_contrast)
+claims_ready <- build_claims_ready(with_contrast)
+
+summary_tbl <- with_contrast %>%
+  dplyr::count(.data$contrast_class, .data$microglia_signature_class, .data$signature, .data$reference_match_type, name = "n_contrasts") %>%
+  dplyr::arrange(.data$contrast_class, .data$microglia_signature_class, dplyr::desc(.data$n_contrasts))
 
 readr::write_csv(micro_enrichment, file.path(PATHS$tables, "microglia_signature_enrichment.csv"), na = "")
 readr::write_csv(with_reference, file.path(PATHS$tables, "microglia_signature_enrichment_with_neuropil_reference.csv"), na = "")
+readr::write_csv(with_contrast, file.path(PATHS$tables, "microglia_signature_enrichment_with_contrast_class.csv"), na = "")
 readr::write_csv(summary_tbl, file.path(PATHS$tables, "microglia_signature_enrichment_summary.csv"), na = "")
+readr::write_csv(within_region_tbl, file.path(PATHS$tables, "microglia_signature_within_region_condition.csv"), na = "")
+readr::write_csv(cross_region_same_tbl, file.path(PATHS$tables, "microglia_signature_cross_region_same_condition.csv"), na = "")
+readr::write_csv(cross_region_cross_tbl, file.path(PATHS$tables, "microglia_signature_cross_region_cross_condition.csv"), na = "")
+readr::write_csv(unclassified_technical_tbl, file.path(PATHS$tables, "microglia_signature_unclassified_technical.csv"), na = "")
+readr::write_csv(leading_edge_recurrence, file.path(PATHS$tables, "microglia_signature_leading_edge_recurrence.csv"), na = "")
+readr::write_csv(claims_ready, file.path(PATHS$tables, "microglia_signature_claims_ready.csv"), na = "")
 readr::write_csv(diagnostics, file.path(PATHS$tables, "microglia_signature_diagnostics.csv"), na = "")
 readr::write_csv(empirical_signatures$microglia, file.path(PATHS$tables, "empirical_microglia_enriched_signature.csv"), na = "")
 readr::write_csv(empirical_signatures$shared, file.path(PATHS$tables, "empirical_neuropil_shared_signature.csv"), na = "")
 readr::write_csv(empirical_signatures$diagnostics, file.path(PATHS$tables, "empirical_microglia_signature_diagnostics.csv"), na = "")
-readr::write_csv(with_reference %>% dplyr::filter(.data$microglia_signature_class %in% c("microglia_enriched_empirical", "microglia_enriched_reference_supported")), file.path(PATHS$tables, "robust_microglia_signatures.csv"), na = "")
-readr::write_csv(with_reference %>% dplyr::filter(.data$microglia_signature_class == "mixed_microenvironment"), file.path(PATHS$tables, "mixed_microenvironment_signatures.csv"), na = "")
-readr::write_csv(with_reference %>% dplyr::filter(.data$microglia_signature_class == "neuropil_shared"), file.path(PATHS$tables, "neuropil_shared_signatures.csv"), na = "")
-readr::write_csv(with_reference %>% dplyr::filter(.data$microglia_signature_class == "ambiguous"), file.path(PATHS$tables, "ambiguous_signatures.csv"), na = "")
+readr::write_csv(with_contrast %>% dplyr::filter(.data$microglia_signature_class %in% c("microglia_enriched_empirical", "microglia_enriched_reference_supported")), file.path(PATHS$tables, "robust_microglia_signatures.csv"), na = "")
+readr::write_csv(with_contrast %>% dplyr::filter(.data$microglia_signature_class == "mixed_microenvironment"), file.path(PATHS$tables, "mixed_microenvironment_signatures.csv"), na = "")
+readr::write_csv(with_contrast %>% dplyr::filter(.data$microglia_signature_class == "neuropil_shared"), file.path(PATHS$tables, "neuropil_shared_signatures.csv"), na = "")
+readr::write_csv(with_contrast %>% dplyr::filter(.data$microglia_signature_class == "ambiguous"), file.path(PATHS$tables, "ambiguous_signatures.csv"), na = "")
 
-if (nrow(with_reference)) {
-  dot_df <- with_reference %>% dplyr::mutate(sig_label = ifelse(!is.na(.data$padj) & .data$padj < 0.05, "FDR<0.05", "nominal/unthresholded"))
+write_review_xlsx(
+  all_tbl = with_contrast,
+  within_tbl = within_region_tbl,
+  cross_same_tbl = cross_region_same_tbl,
+  cross_cross_tbl = cross_region_cross_tbl,
+  recurrence_tbl = leading_edge_recurrence,
+  claims_tbl = claims_ready,
+  diagnostics_tbl = diagnostics
+)
+
+if (nrow(with_contrast)) {
+  dot_df <- with_contrast %>% dplyr::mutate(sig_label = ifelse(!is.na(.data$padj) & .data$padj < 0.05, "FDR<0.05", "nominal/unthresholded"))
   p1 <- ggplot2::ggplot(dot_df, ggplot2::aes(x = .data$comparison, y = .data$signature, color = .data$NES, size = -log10(pmax(.data$padj, .Machine$double.xmin)))) +
     ggplot2::geom_point(alpha = 0.85) +
     ggplot2::scale_color_gradient2(low = "#2166AC", mid = "white", high = "#B2182B", name = "NES") +
@@ -827,7 +1004,7 @@ if (nrow(with_reference)) {
     ggplot2::ggsave(file.path(PATHS$figures, "microglia_vs_neuropil_signature_NES_scatter.svg"), p2, width = 6.2, height = 4.6)
   }
 
-  p3 <- with_reference %>%
+  p3 <- with_contrast %>%
     dplyr::count(.data$microglia_signature_class, name = "n") %>%
     ggplot2::ggplot(ggplot2::aes(x = reorder(.data$microglia_signature_class, .data$n), y = .data$n, fill = .data$microglia_signature_class)) +
     ggplot2::geom_col(show.legend = FALSE) +
@@ -835,6 +1012,55 @@ if (nrow(with_reference)) {
     ggplot2::labs(x = NULL, y = "Signature-contrast rows") +
     ggplot2::theme_minimal(base_size = 9)
   ggplot2::ggsave(file.path(PATHS$figures, "microglia_signature_classification_barplot.svg"), p3, width = 5.8, height = 3.8)
+
+  p4 <- with_contrast %>%
+    dplyr::count(.data$contrast_class, name = "n_rows") %>%
+    ggplot2::ggplot(ggplot2::aes(x = reorder(.data$contrast_class, .data$n_rows), y = .data$n_rows, fill = .data$contrast_class)) +
+    ggplot2::geom_col(width = 0.75, alpha = 0.95, show.legend = FALSE) +
+    ggplot2::coord_flip() +
+    ggplot2::labs(x = NULL, y = "Signature rows", title = "Microglia signatures by contrast class") +
+    ggplot2::theme_minimal(base_size = 9) +
+    ggplot2::theme(panel.grid.minor = ggplot2::element_blank())
+  ggplot2::ggsave(file.path(PATHS$figures, "microglia_signature_contrast_class_overview.svg"), p4, width = 6.2, height = 4.1)
+
+  if (nrow(cross_region_same_tbl)) {
+    heat_df <- cross_region_same_tbl %>%
+      dplyr::group_by(.data$signature, .data$region_pair) %>%
+      dplyr::arrange(.data$padj, dplyr::desc(abs(.data$NES)), .by_group = TRUE) %>%
+      dplyr::summarise(nes_rep = dplyr::first(.data$NES), fdr_rep = dplyr::first(.data$padj), .groups = "drop")
+    p5 <- ggplot2::ggplot(heat_df, ggplot2::aes(x = .data$region_pair, y = .data$signature, fill = .data$nes_rep)) +
+      ggplot2::geom_tile(color = "white", linewidth = 0.2) +
+      ggplot2::scale_fill_gradient2(low = "#2166AC", mid = "white", high = "#B2182B", midpoint = 0, name = "NES") +
+      ggplot2::labs(x = "Region pair", y = "Signature", title = "Regional programs (same condition only)") +
+      ggplot2::theme_minimal(base_size = 9) +
+      ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1), panel.grid = ggplot2::element_blank())
+    ggplot2::ggsave(file.path(PATHS$figures, "microglia_signature_region_program_heatmap.svg"), p5, width = max(6, length(unique(heat_df$region_pair)) * 0.45), height = max(4.2, length(unique(heat_df$signature)) * 0.20))
+  }
+
+  if (nrow(within_region_tbl)) {
+    p6 <- ggplot2::ggplot(within_region_tbl, ggplot2::aes(x = .data$comparison, y = .data$signature, color = .data$NES, size = -log10(pmax(.data$padj, .Machine$double.xmin)))) +
+      ggplot2::geom_point(alpha = 0.85) +
+      ggplot2::scale_color_gradient2(low = "#2166AC", mid = "white", high = "#B2182B", midpoint = 0, name = "NES") +
+      ggplot2::labs(x = NULL, y = NULL, size = "-log10 FDR", title = "Within-region condition contrasts") +
+      ggplot2::theme_minimal(base_size = 8.5) +
+      ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1), panel.grid = ggplot2::element_blank())
+    ggplot2::ggsave(file.path(PATHS$figures, "microglia_signature_within_region_condition_dotplot.svg"), p6, width = max(6.5, length(unique(within_region_tbl$comparison)) * 0.35), height = 4.8)
+  }
+
+  if (nrow(leading_edge_recurrence)) {
+    rec_plot <- leading_edge_recurrence %>%
+      dplyr::group_by(.data$protein) %>%
+      dplyr::summarise(total_recurrence = sum(.data$n_comparisons, na.rm = TRUE), .groups = "drop") %>%
+      dplyr::arrange(dplyr::desc(.data$total_recurrence)) %>%
+      dplyr::slice_head(n = 20)
+    p7 <- ggplot2::ggplot(rec_plot, ggplot2::aes(x = reorder(.data$protein, .data$total_recurrence), y = .data$total_recurrence)) +
+      ggplot2::geom_col(fill = "#4C78A8", alpha = 0.9) +
+      ggplot2::coord_flip() +
+      ggplot2::labs(x = "Leading-edge protein", y = "Recurrence across significant rows", title = "Leading-edge recurrence (top proteins)") +
+      ggplot2::theme_minimal(base_size = 9) +
+      ggplot2::theme(panel.grid.minor = ggplot2::element_blank())
+    ggplot2::ggsave(file.path(PATHS$figures, "microglia_signature_leading_edge_recurrence.svg"), p7, width = 6.4, height = 4.6)
+  }
 }
 
 writeLines(c(
@@ -848,12 +1074,16 @@ writeLines(c(
   "All detected proteins in each mapped contrast table are used as the ranked universe.",
   "Neuropil is used as a reference annotation layer; no intensities or logFC values are subtracted.",
   "Microglia region-only contrasts are compared to neuropil references after collapsing neuropil layer units to parent regions where possible.",
+  "Contrast metadata is parsed explicitly (left/right unit, region, condition, and contrast_class).",
+  "Condition_pair alone is not interpreted as a stress/condition effect without contrast_class context.",
   "",
   "Signature evidence:",
   "Curated microglia programs are retained as exploratory/manual biological programs.",
   "Empirical signatures are derived from proteins repeatedly high-ranking in microglia ROI contrasts relative to neuropil reference contrasts.",
   "Reference-atlas signatures and per-row specificity columns are imported from EWCE/ewceData when available and skipped softly otherwise.",
-  "Classification prioritizes empirical and reference-backed evidence over curated-only programs."
+  "Classification prioritizes empirical and reference-backed evidence over curated-only programs.",
+  "Claims-ready rows are restricted to within_region_condition and cross_region_same_condition contrasts with FDR<0.05 and microglia-supported reference specificity.",
+  "Cross_region_cross_condition contrasts are retained as exploratory/confounded outputs and excluded from claims-ready exports."
 ), file.path(PATHS$reports, "microglia_signature_methods_note.txt"))
 
 write_run_manifest(
@@ -866,3 +1096,5 @@ write_run_manifest(
 
 message("Microglia-targeted signature enrichment completed.")
 message("Annotated table: ", file.path(PATHS$tables, "microglia_signature_enrichment_with_neuropil_reference.csv"))
+message("Contrast-class table: ", file.path(PATHS$tables, "microglia_signature_enrichment_with_contrast_class.csv"))
+message("Claims-ready table: ", file.path(PATHS$tables, "microglia_signature_claims_ready.csv"))
