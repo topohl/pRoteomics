@@ -350,6 +350,11 @@ ensure_module_label_schema <- function(df) {
   }
   df
 }
+safe_max <- function(x) {
+  x <- x[is.finite(x)]
+  if (!length(x)) return(NA_real_)
+  max(x)
+}
 log_session <- function() {
   writeLines(capture.output(utils::sessionInfo()), fp_log("session_info.txt"))
 }
@@ -2789,7 +2794,7 @@ within_supermodule_corr_summary <- ME_corr_pairs %>%
   dplyr::summarise(
     n_module_pairs = dplyr::n(),
     median_abs_r = stats::median(.data$abs_r, na.rm = TRUE),
-    max_abs_r = max(.data$abs_r, na.rm = TRUE),
+    max_abs_r = safe_max(.data$abs_r),
     mean_abs_r = mean(.data$abs_r, na.rm = TRUE),
     eigengene_supported = .data$median_abs_r >= 0.5 | .data$max_abs_r >= 0.6,
     .groups = "drop"
@@ -2808,7 +2813,7 @@ between_supermodule_corr_summary <- ME_corr_pairs %>%
   dplyr::summarise(
     n_module_pairs = dplyr::n(),
     median_abs_r = stats::median(.data$abs_r, na.rm = TRUE),
-    max_abs_r = max(.data$abs_r, na.rm = TRUE),
+    max_abs_r = safe_max(.data$abs_r),
     mean_abs_r = mean(.data$abs_r, na.rm = TRUE),
     .groups = "drop"
   )
@@ -2857,8 +2862,8 @@ within_supermodule_hub_summary <- hub_overlap_pairs %>%
   dplyr::summarise(
     n_module_pairs = dplyr::n(),
     median_hub_jaccard = stats::median(.data$hub_jaccard, na.rm = TRUE),
-    max_hub_jaccard = max(.data$hub_jaccard, na.rm = TRUE),
-    max_hub_overlap_n = max(.data$hub_overlap_n, na.rm = TRUE),
+    max_hub_jaccard = safe_max(.data$hub_jaccard),
+    max_hub_overlap_n = safe_max(.data$hub_overlap_n),
     .groups = "drop"
   )
 write_csv_safe(within_supermodule_hub_summary, fp_supertab("wgcna_within_supermodule_hub_overlap_summary.csv"))
