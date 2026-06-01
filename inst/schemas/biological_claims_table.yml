@@ -1,0 +1,35 @@
+name: biological_claims_table
+required_columns:
+  - claim_id
+  - dataset
+  - biological_program
+  - evidence_type
+  - claim_grade
+  - primary_evidence
+  - orthogonal_support
+  - major_limitation
+  - safe_interpretation
+  - unsafe_overinterpretation
+columns:
+  claim_id: {type: character}
+  dataset: {type: character}
+  region: {type: character}
+  layer_cell_compartment: {type: character}
+  contrast: {type: character}
+  biological_program: {type: character}
+  direction: {type: character}
+  key_proteins_genes: {type: character}
+  evidence_type: {type: character}
+  effect_size_NES: {type: numeric}
+  raw_p: {type: numeric}
+  FDR: {type: numeric}
+  robustness_stability_metric: {type: character}
+  source_file: {type: character}
+  figure_table_target: {type: character}
+  interpretation_note: {type: character}
+  claim_grade: {type: character}
+  primary_evidence: {type: character}
+  orthogonal_support: {type: character}
+  major_limitation: {type: character}
+  safe_interpretation: {type: character}
+  unsafe_overinterpretation: {type: character}
