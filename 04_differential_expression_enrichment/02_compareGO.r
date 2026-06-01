@@ -2764,7 +2764,7 @@ if (length(upset_data) >= 2) {
     svg(file.path(subdirs$plots_main, "UpSet_Gene_Intersections.svg"), 
         width = 8, height = 6, family = "sans", pointsize = 10)
     suppressWarnings(
-      upset(fromList(upset_data), order.by = "freq", nsets = length(upset_data))
+      print(upset(fromList(upset_data), order.by = "freq", nsets = length(upset_data)))
     )
     dev.off()
     message("[EXPORT] UpSet plot saved")
@@ -2879,25 +2879,61 @@ if (exists("top_terms") && length(top_terms) > 0 && length(unique(combined_df$Co
       tally() %>%
       dplyr::rename(value = n)
     
-    # Create nodes
-    comp_nodes <- unique(sankey_data$Comparison)
-    term_nodes <- unique(sankey_data$Description)
-    all_nodes <- c(comp_nodes, term_nodes)
-    node_df <- data.frame(name = all_nodes, id = 0:(length(all_nodes)-1))
-    
-    # Create links
-    sankey_data$source <- match(sankey_data$Comparison, all_nodes) - 1
-    sankey_data$target <- match(sankey_data$Description, all_nodes) - 1
-    
-    svg(file.path(subdirs$plots_main, "Sankey_Comparison_Terms_Flow.svg"),
-        width = 10, height = 8, family = "sans", pointsize = 9)
-    
-    networkD3::sankeyNetwork(Links = sankey_data %>% dplyr::select(source, target, value),
-                              Nodes = node_df,
-                              Source = "source", Target = "target", Value = "value",
-                              NodeID = "name", fontSize = 12, fontFamily = "sans",
-                              margin = list(left = 50, right = 50, top = 50, bottom = 50))
-    dev.off()
+    if (nrow(sankey_data) > 0) {
+      comp_nodes <- unique(sankey_data$Comparison)
+      term_nodes <- unique(sankey_data$Description)
+      all_nodes <- c(comp_nodes, term_nodes)
+      node_df <- data.frame(name = all_nodes, id = 0:(length(all_nodes) - 1))
+      sankey_links <- sankey_data %>%
+        mutate(
+          source = match(Comparison, all_nodes) - 1,
+          target = match(Description, all_nodes) - 1
+        ) %>%
+        dplyr::select(source, target, value)
+
+      sankey_widget <- networkD3::sankeyNetwork(
+        Links = as.data.frame(sankey_links),
+        Nodes = node_df,
+        Source = "source",
+        Target = "target",
+        Value = "value",
+        NodeID = "name",
+        fontSize = 12,
+        fontFamily = "sans",
+        margin = list(left = 50, right = 50, top = 50, bottom = 50)
+      )
+      tryCatch(
+        htmlwidgets::saveWidget(
+          sankey_widget,
+          file.path(subdirs$plots_main, "Sankey_Comparison_Terms_Flow.html"),
+          selfcontained = FALSE
+        ),
+        error = function(e) message("[WARN] Interactive Sankey HTML export failed: ", e$message)
+      )
+
+      sankey_static <- sankey_data %>%
+        mutate(
+          Comparison = factor(Comparison, levels = unique(Comparison)),
+          Description = stringr::str_wrap(Description, width = 45)
+        )
+      p_sankey <- ggplot(sankey_static, aes(axis1 = Comparison, axis2 = Description, y = value)) +
+        ggalluvial::geom_alluvium(aes(fill = Comparison), alpha = 0.45, width = 0.18) +
+        ggalluvial::geom_stratum(width = 0.18, fill = "grey95", color = "grey35", linewidth = 0.25) +
+        geom_text(stat = "stratum", aes(label = after_stat(stratum)), size = 2.4) +
+        scale_x_discrete(limits = c("Comparison", "GO term"), expand = c(0.08, 0.08)) +
+        labs(title = "Comparison-to-term flow", x = NULL, y = "Significant term links") +
+        theme_publication(base_size = 8) +
+        theme(legend.position = "none")
+      ggsave(
+        file.path(subdirs$plots_main, "Sankey_Comparison_Terms_Flow.svg"),
+        plot = p_sankey,
+        width = 10,
+        height = 7,
+        dpi = 300,
+        device = "svg",
+        limitsize = FALSE
+      )
+    }
     message("[EXPORT] Sankey diagram saved")
   }, error = function(e) {
     message("[WARN] Sankey diagram generation failed: ", e$message)
@@ -2988,10 +3024,72 @@ if (exists("term_consistency") && nrow(term_consistency) > 1) {
   })
 }
 
+message("[PLOT] Creating GO term overlap network...")
+tryCatch({
+  require_or_stop(c("igraph", "ggraph"))
+  library(igraph)
+  library(ggraph)
+  network_jaccard_threshold <- 0.2
+  network_terms <- combined_df %>%
+    filter(Description %in% top_terms) %>%
+    mutate(core_genes = strsplit(as.character(core_enrichment), "/")) %>%
+    dplyr::select(Description, Comparison, core_genes)
+  term_gene_map <- network_terms %>%
+    group_by(Description) %>%
+    reframe(Genes = list(unique(unlist(core_genes))))
+  if (nrow(term_gene_map) >= 2 && all(lengths(term_gene_map$Genes) > 0)) {
+    term_pairs <- t(combn(term_gene_map$Description, 2))
+    term_pairs_df <- data.frame(Term1 = term_pairs[, 1], Term2 = term_pairs[, 2], stringsAsFactors = FALSE)
+    get_genes <- function(term) term_gene_map$Genes[term_gene_map$Description == term][[1]]
+    term_pairs_df$Jaccard <- mapply(function(a, b) {
+      genes_a <- get_genes(a)
+      genes_b <- get_genes(b)
+      if (length(genes_a) == 0 || length(genes_b) == 0) return(0)
+      length(intersect(genes_a, genes_b)) / length(union(genes_a, genes_b))
+    }, term_pairs_df$Term1, term_pairs_df$Term2)
+    edges <- term_pairs_df %>% filter(Jaccard > network_jaccard_threshold)
+    nodes <- combined_df %>%
+      filter(Description %in% top_terms) %>%
+      group_by(Description) %>%
+      summarise(Max_NES = NES[which.max(abs(NES))], Min_padj = min(p.adjust, na.rm = TRUE), .groups = "drop") %>%
+      mutate(Significant = Min_padj < 0.05, Label = stringr::str_wrap(Description, width = 40))
+    if (nrow(nodes) >= 2 && nrow(edges) > 0) {
+      net <- graph_from_data_frame(d = edges, vertices = nodes, directed = FALSE)
+      network_plot_file <- file.path(subdirs$plots_main, "GO_Term_Overlap_Network.svg")
+      svg(network_plot_file, width = 7, height = 7, family = "sans", pointsize = 9)
+      print(
+        ggraph(net, layout = "fr") +
+          geom_edge_link(aes(width = Jaccard), color = "#0571B0", alpha = 0.25, lineend = "round") +
+          geom_node_point(aes(color = Max_NES, size = Significant), show.legend = TRUE, stroke = 0.5, alpha = 0.9) +
+          geom_node_text(aes(label = Label), repel = TRUE, size = 2.8, color = "#2C2C2C") +
+          scale_color_gradientn(colours = custom_palette(100), name = "Max NES") +
+          scale_size_manual(values = c(`TRUE` = 5, `FALSE` = 2.5), name = "Sig.") +
+          scale_edge_width(range = c(0.4, 1.8)) +
+          labs(title = paste0("GO Term Overlap Network (Jaccard > ", network_jaccard_threshold, ")")) +
+          theme_void() +
+          theme(plot.title = element_text(color = "#2C2C2C", size = 10, face = "bold", hjust = 0.5, margin = margin(b = 5)))
+      )
+      dev.off()
+      message("[EXPORT] GO term overlap network saved")
+    } else {
+      message("[INFO] GO term overlap network skipped: not enough nodes or edges.")
+    }
+  } else {
+    message("[INFO] GO term overlap network skipped: not enough GO terms with genes.")
+  }
+}, error = function(e) {
+  message("[WARN] GO term overlap network generation failed: ", e$message)
+})
+
 message("[INFO] ========================================")
 message("[INFO] Enhanced analysis section complete!")
 message("[INFO] Generated 15+ new tables and visualizations")
 message("[INFO] ========================================")
+
+if (tolower(Sys.getenv("PROTEOMICS_COMPAREGO_QUICK_PLOTS", unset = "")) %in% c("1", "true", "yes")) {
+  message("[INFO] PROTEOMICS_COMPAREGO_QUICK_PLOTS=true; stopping after compareGO summary/advanced plots.")
+  quit(status = 0, save = "no")
+}
 
 # =====================================================
 # Run GO Enrichment on Up/Downregulated Proteins
