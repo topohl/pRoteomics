@@ -223,10 +223,16 @@ mode_value <- function(x) {
   names(sort(table(x), decreasing = TRUE))[[1]]
 }
 
-latest_neuropil_annotation <- file.path(
-  path_results("tables", MODULE_ID, "neuropil_contamination_annotation", DATASET),
-  "microglia_neuropil_annotation_latest.csv"
-)
+latest_neuropil_annotation <- first_existing_path(c(
+  file.path(
+    path_results("tables", MODULE_ID, "neuropil_reference_annotation", DATASET),
+    "microglia_neuropil_annotation_latest.csv"
+  ),
+  file.path(
+    path_results("tables", MODULE_ID, "neuropil_contamination_annotation", DATASET),
+    "microglia_neuropil_annotation_latest.csv"
+  )
+))
 latest_microglia_signature <- first_existing_path(c(
   file.path(
     path_results("tables", MODULE_ID, "microglia_targeted_signature_enrichment", DATASET),
