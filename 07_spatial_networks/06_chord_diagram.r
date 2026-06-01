@@ -11,9 +11,12 @@
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
+source(repo_path("R", "dataset_config.R"))
 MODULE_ID <- "07_spatial_networks"
 SUBSTEP_ID <- "chord_diagram"
 CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
+NETWORK_DATASET <- current_dataset()
+assert_dataset_capability(NETWORK_DATASET, "layer", analysis = "spatial chord overlap analysis")
 
 in_dir  <- path_processed("02_id_mapping", "mapped", "neuron-phenotypeWithinUnit")
 out_dir <- CANONICAL_PATHS$figures
