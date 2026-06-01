@@ -287,6 +287,7 @@ calculate_program_summary <- function(enrichment_df, driver_by_dataset) {
     dplyr::summarise(
       n_terms = dplyr::n_distinct(.data$Description),
       n_sig_terms = dplyr::n_distinct(.data$Description[!is.na(.data$p.adjust) & .data$p.adjust < 0.05]),
+      min_fdr = suppressWarnings(min(.data$p.adjust, na.rm = TRUE)),
       mean_NES = mean(.data$NES, na.rm = TRUE),
       median_NES = median(.data$NES, na.rm = TRUE),
       mean_signed_log10FDR = mean(sign(.data$NES) * -log10(pmax(.data$p.adjust, .Machine$double.xmin)), na.rm = TRUE),
@@ -310,6 +311,7 @@ calculate_program_summary <- function(enrichment_df, driver_by_dataset) {
   )
 
   base_summary %>%
+    dplyr::mutate(min_fdr = ifelse(is.infinite(.data$min_fdr), NA_real_, .data$min_fdr)) %>%
     dplyr::select(-dplyr::all_of(c("term_set", "comparison_set")))
 }
 
