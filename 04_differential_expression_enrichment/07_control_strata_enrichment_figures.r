@@ -20,6 +20,9 @@ set.seed(17)
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
+source(repo_path("R", "dataset_config.R"))
+CONTROL_STRATA_DATASET <- current_dataset()
+assert_dataset_capability(CONTROL_STRATA_DATASET, "layer", analysis = "control-strata layer enrichment analysis")
 
 # ------------------------------- Parameters -----------------------------
 region_of_interest <- "CA2"               # Set here to "CA1", "CA2", "CA3", etc.
