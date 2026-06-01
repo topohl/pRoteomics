@@ -723,9 +723,9 @@ qc_palette <- c(
 )
 
 group_palette <- c(
-  CON = "#3e3c6f",
-  RES = "#c6c3bb",
-  SUS = "#e63a47"
+  CON = "#6C757D",
+  RES = "#2A9D8F",
+  SUS = "#E76F51"
 )
 
 qc_thresholds <- list(
@@ -2745,9 +2745,9 @@ contrast_order <- c(
 )
 
 heat_cols <- c(
-  low  = "#3D5A80",   # muted blue
-  mid  = "#F7F4EF",   # warm off-white
-  high = "#B23A34",   # muted red
+  low  = "#3B6FB6",   # cool low
+  mid  = "#F8FAFC",   # neutral midpoint
+  high = "#C84C5A",   # warm high
   ink  = "#3F3F3F",
   grid = "#FFFFFF"
 )
