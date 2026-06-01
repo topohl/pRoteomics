@@ -5,6 +5,7 @@ source(paths_file)
 source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "validation_utils.R"))
 source(repo_path("R", "enrichment_io.R"))
+source(repo_path("R", "schema_validation.R"))
 
 required_pkgs <- c("dplyr", "readr", "tibble", "stringr")
 missing <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
@@ -15,7 +16,9 @@ claim_columns <- c(
   "claim_id", "dataset", "region", "layer_cell_compartment", "contrast",
   "biological_program", "direction", "key_proteins_genes", "evidence_type",
   "effect_size_NES", "raw_p", "FDR", "robustness_stability_metric",
-  "source_file", "figure_table_target", "interpretation_note"
+  "source_file", "figure_table_target", "interpretation_note",
+  "claim_grade", "primary_evidence", "orthogonal_support", "major_limitation",
+  "safe_interpretation", "unsafe_overinterpretation"
 )
 
 empty_claims <- function() {
@@ -28,6 +31,31 @@ standardize_claims <- function(df) {
   for (col in claim_columns) if (!col %in% names(df)) df[[col]] <- NA
   df <- df[, claim_columns, drop = FALSE]
   df
+}
+
+grade_claim <- function(evidence_type, fdr, interpretation_note) {
+  evidence_type <- as.character(evidence_type)
+  note <- tolower(as.character(interpretation_note))
+  has_da <- grepl("de|differential|overlap", tolower(evidence_type))
+  has_enrichment <- grepl("gsea|enrichment|program", tolower(evidence_type))
+  has_module <- grepl("wgcna|module|network", tolower(evidence_type))
+  fdr <- suppressWarnings(as.numeric(fdr))
+  if (grepl("confound|unsafe|ambiguous", note)) return("X")
+  if (isTRUE(has_da && has_enrichment && has_module)) return("A")
+  if (isTRUE(has_da && has_enrichment)) return("B")
+  if (isTRUE(has_enrichment || has_module)) return("C")
+  if (!is.na(fdr) && fdr <= 0.05) return("C")
+  "D"
+}
+
+primary_evidence_label <- function(evidence_type) {
+  dplyr::case_when(
+    grepl("WGCNA_DE_GSEA_overlap", evidence_type, ignore.case = TRUE) ~ "DA/GSEA overlap with WGCNA module evidence",
+    grepl("GSEA|program|enrichment", evidence_type, ignore.case = TRUE) ~ "Enrichment/program summary",
+    grepl("WGCNA|module", evidence_type, ignore.case = TRUE) ~ "Module/network evidence",
+    grepl("behavior", evidence_type, ignore.case = TRUE) ~ "Behavior/network association",
+    TRUE ~ evidence_type
+  )
 }
 
 latest_csv <- function(root, pattern) latest_file(root, pattern)
@@ -211,8 +239,31 @@ claims <- dplyr::bind_rows(
   standardize_claims() %>%
   dplyr::mutate(
     claim_id = sprintf("CLAIM_%04d", dplyr::row_number()),
-    interpretation_note = dplyr::coalesce(.data$interpretation_note, "No interpretation note available; review source file before manuscript use.")
+    interpretation_note = dplyr::coalesce(.data$interpretation_note, "No interpretation note available; review source file before manuscript use."),
+    claim_grade = vapply(seq_along(.data$evidence_type), function(i) grade_claim(.data$evidence_type[[i]], .data$FDR[[i]], .data$interpretation_note[[i]]), character(1)),
+    primary_evidence = primary_evidence_label(.data$evidence_type),
+    orthogonal_support = dplyr::case_when(
+      grepl("overlap", .data$evidence_type, ignore.case = TRUE) ~ "WGCNA module and DA/GSEA convergence",
+      grepl("microglia_signature", .data$evidence_type, ignore.case = TRUE) ~ "Microglia-targeted signature evidence",
+      grepl("WGCNA_module", .data$evidence_type, ignore.case = TRUE) ~ "Module evidence; seek DA/enrichment support before strong biological claims",
+      TRUE ~ "Review companion DA, enrichment, module, and QC outputs"
+    ),
+    major_limitation = dplyr::case_when(
+      .data$dataset == "microglia" ~ "Microglia dataset is microglia-enriched ROI/local microenvironment, not purified microglia; region-only interpretation.",
+      .data$claim_grade %in% c("C", "D") ~ "Single evidence stream or exploratory evidence; avoid causal or cell-intrinsic claims.",
+      TRUE ~ "Observational proteomics; causal direction is not established."
+    ),
+    safe_interpretation = dplyr::case_when(
+      .data$dataset == "microglia" ~ paste0("In microglia-enriched ROIs, evidence supports a local microenvironment-associated ", .data$biological_program, " signal."),
+      TRUE ~ paste0("Evidence supports an association between ", .data$biological_program, " and the specified dataset/contrast.")
+    ),
+    unsafe_overinterpretation = dplyr::case_when(
+      .data$dataset == "microglia" ~ "Do not claim purified microglial cell-intrinsic regulation or subtractive neuropil correction from these data alone.",
+      TRUE ~ "Do not claim causality, mechanism, or cell-type specificity without independent validation."
+    )
   )
+
+validate_table_schema(claims, "biological_claims_table", strict = TRUE)
 
 dir_create(path_results("tables"))
 csv_out <- path_results("tables", "biological_claims_table.csv")
@@ -223,3 +274,11 @@ if (requireNamespace("writexl", quietly = TRUE)) {
 }
 
 message("Biological claims table written: ", csv_out)
+
+write_run_manifest(
+  path_results("logs", "09_export_pride_journal", "biological_claims_table", "run_manifest.yml"),
+  inputs = list(source_files = unique(claims$source_file)),
+  outputs = list(csv = csv_out, xlsx = if (file.exists(xlsx_out)) xlsx_out else NA_character_),
+  parameters = list(datasets = valid_datasets(), schema = "biological_claims_table"),
+  notes = "Evidence-graded manuscript claim table. Missing statistics remain NA."
+)
