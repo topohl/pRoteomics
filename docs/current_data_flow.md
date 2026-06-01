@@ -1,6 +1,6 @@
 # Current Data Flow Audit
 
-This audit was generated before targeted refactoring of the clusterProfiler to compareGO contract. The repository contains R scripts across preprocessing, ID mapping, QC, differential-expression/enrichment, EWCE, WGCNA, spatial networks, behavior coupling, PRIDE helpers, testing and deprecated folders.
+This audit was generated before targeted refactoring of the clusterProfiler to compareGO contract. The repository contains R scripts across preprocessing, ID mapping, QC, differential abundance/enrichment, EWCE, WGCNA, spatial networks, behavior coupling, PRIDE helpers, testing and deprecated folders.
 
 ## Global Findings
 
@@ -81,7 +81,7 @@ Rscript 04_differential_expression_enrichment/02_compareGO.r --dry-run
 Repository outputs should be separated as:
 
 - canonical processed quantitative matrices: processed proteomics matrices suitable for PRIDE supplementary processed-data upload
-- differential-expression result tables: canonical contrast-level statistics suitable for supplements
+- differential abundance result tables: canonical contrast-level statistics suitable for supplements
 - enrichment-derived secondary analyses: GO/KEGG/EWCE/WGCNA/network derivatives generally suited for journal supplements, not raw PRIDE redundancy
 - figure-only outputs: SVG/PNG/PDF files excluded from PRIDE unless specifically requested by the journal
 - source-data tables: exact data behind figures under `results/source_data/`
@@ -96,7 +96,7 @@ Phase 3 applied targeted path-only refactors where script behavior could be pres
 - `05_celltype_enrichment_EWCE/01_EWCE_E9.r`
 - `06_modules_WGCNA/02_module_spatial_networks.r`
 - `06_modules_WGCNA/04_overlap_modules.r`
-- `06_modules_WGCNA/91_module_score.r`
+- `06_modules_WGCNA/03_score_module_activity.R` (`91_module_score.r` is legacy compatibility)
 - `07_spatial_networks/02_differential_networks.r`
 - `07_spatial_networks/03_bootstrap_network_stability.r`
 - `07_spatial_networks/04_bootstrap_differential_network_stability.r`
@@ -114,7 +114,7 @@ The old technical folder roots map as follows:
 | `Plots`, `figures` | `results/figures/<module>/<substep>/` | Figure source tables should be written separately under `results/source_data/`. |
 | `core_enrichment` | `results/source_data/04_differential_expression_enrichment/clusterProfiler/` plus manifest rows | compareGO should consume the manifest, not recursively discover this folder. |
 | `module_scores` | `data/processed/06_modules_WGCNA/` and `results/tables/06_modules_WGCNA/` | Machine-readable scores belong in processed; publication tables in results/tables. |
-| `WGCNA_modules_long` | `results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/` plus `data/processed/06_modules_WGCNA/01_WGCNA/<dataset>/wgcna_final_model_state.rds` | Color-stable WGCNA module definitions are reusable inputs for dataset-scoped `91_module_score.r` when `PROTEOMICS_MODULE_DEFINITION_SOURCE=WGCNA`; GO labels are display metadata, not eigengene column names. |
+| `WGCNA_modules_long` | `results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/` plus `data/processed/06_modules_WGCNA/01_WGCNA/<dataset>/wgcna_final_model_state.rds` | Color-stable WGCNA module definitions are reusable inputs for dataset-scoped `03_score_module_activity.R` when `PROTEOMICS_MODULE_DEFINITION_SOURCE=WGCNA`; GO labels are display metadata, not eigengene column names. |
 | `biological_claims_table` | `results/tables/biological_claims_table.csv` and optional `.xlsx` | Conservative cross-analysis evidence table for manuscript figure planning; claims remain limited by each source analysis. |
 | `EWCE_E9_Results` | `data/processed/05_celltype_enrichment_EWCE/EWCE_E9/` and `results/*/05_celltype_enrichment_EWCE/EWCE_E9/` | EWCE caches stay in processed/cache. |
 | `network_spatial_relations` | `data/processed/07_spatial_networks/network_spatial_relations/` and `results/*/07_spatial_networks/network_spatial_relations/` | Producer script remains documented for later; downstream scripts now expect this canonical RDS. |
