@@ -27,7 +27,7 @@ Dry-run mode prints pass/fail diagnostics and target output paths without copyin
 Journal supplementary tables should be generated from canonical outputs:
 
 - mapped protein/contrast tables from `data/processed/02_id_mapping/`
-- differential-expression results from `data/processed/04_differential_expression_enrichment/`
+- differential abundance results from `data/processed/04_differential_expression_enrichment/`
 - enrichment summaries from `results/tables/04_differential_expression_enrichment/`
 - EWCE, WGCNA and network summary tables when used in the manuscript
 
@@ -43,6 +43,6 @@ Avoid uploading duplicated routed enrichment exports to PRIDE. Preserve provenan
 
 ## Provenance Chain
 
-Raw/vendor files -> preprocessing matrices -> mapped protein IDs -> differential-expression contrasts -> clusterProfiler manifest-backed enrichment tables -> compareGO source data/tables/figures -> PRIDE/journal manifests.
+Raw/vendor files -> preprocessing matrices -> mapped protein IDs -> differential abundance contrasts -> clusterProfiler manifest-backed enrichment tables -> compareGO source data/tables/figures -> PRIDE/journal manifests.
 
 Each exported table should include or be paired with metadata for originating script, input files, analysis date, organism database version, filtering thresholds, imputation method, statistical model, FDR method, software/package versions, ontology/database version and simplification status.
