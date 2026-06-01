@@ -1,0 +1,11 @@
+testthat::test_that("manifest writing records inputs and session info", {
+  source(testthat::test_path("..", "..", "R", "paths.R"))
+  tmp <- tempfile("manifest-", fileext = ".yml")
+  input <- tempfile("input-")
+  writeLines("hello", input)
+  write_run_manifest(tmp, inputs = list(input = input), outputs = list(out = "none"), parameters = list(test = TRUE))
+  testthat::expect_true(file.exists(tmp))
+  testthat::expect_true(file.exists(file.path(dirname(tmp), "sessionInfo.txt")))
+  txt <- readLines(tmp, warn = FALSE)
+  testthat::expect_true(any(grepl("input_hashes", txt)))
+})
