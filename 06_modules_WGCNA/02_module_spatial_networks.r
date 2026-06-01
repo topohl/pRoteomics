@@ -48,6 +48,9 @@ params <- list(
   run_group_specific_profiles = TRUE
 )
 
+figure_diverging <- c(low = "#3B6FB6", mid = "#F8FAFC", high = "#C84C5A")
+figure_condition_cols <- c(CON = "#6C757D", RES = "#2A9D8F", SUS = "#E76F51")
+
 if (is_dry_run()) {
   dry_run_line("Script", "06_modules_WGCNA/02_module_spatial_networks.r")
   dry_run_line("Spatial RDS", params$spatial_rds, if (file.exists(params$spatial_rds)) "PASS" else "FAIL")
@@ -247,7 +250,7 @@ plot_module_heatmap <- function(module_matrix, outfile) {
   pheatmap::pheatmap(
     module_matrix,
     scale = "row",
-    color = colorRampPalette(c("#457B9D", "white", "#E63946"))(101),
+    color = colorRampPalette(c(figure_diverging["low"], figure_diverging["mid"], figure_diverging["high"]))(101),
     border_color = NA,
     fontsize = 7,
     main = "Module spatial profiles",
@@ -280,9 +283,10 @@ plot_module_network <- function(edges, outfile, title) {
 plot_group_module_profiles <- function(group_df, outfile) {
   p <- ggplot(group_df, aes(x = RegionLayer, y = MeanModuleScore, group = ExpGroup, shape = ExpGroup)) +
     geom_hline(yintercept = 0, linewidth = 0.25, colour = "grey70") +
-    geom_point(size = 1.8, position = position_dodge(width = 0.45)) +
+    geom_point(aes(color = ExpGroup), size = 1.8, position = position_dodge(width = 0.45)) +
     geom_errorbar(aes(ymin = MeanModuleScore - SEModuleScore, ymax = MeanModuleScore + SEModuleScore), width = 0.15, linewidth = 0.25, position = position_dodge(width = 0.45)) +
     facet_wrap(~ Module, scales = "free_y", ncol = 2) +
+    scale_color_manual(values = figure_condition_cols, drop = FALSE) +
     labs(x = NULL, y = "Module score", title = "Group-specific spatial module profiles") +
     theme_classic(base_size = 8) +
     theme(axis.text.x = element_text(angle = 45, hjust = 1, colour = "black"), axis.text.y = element_text(colour = "black"), strip.background = element_blank(), strip.text = element_text(face = "bold"))
