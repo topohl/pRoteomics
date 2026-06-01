@@ -333,6 +333,23 @@ write_tsv_safe <- function(x, path) {
 `%||%` <- function(x, y) {
   if (is.null(x) || length(x) == 0 || (length(x) == 1 && is.na(x))) y else x
 }
+ensure_module_label_schema <- function(df) {
+  char_cols <- c(
+    "ModuleLabel_Manual", "ModuleLabel_GO_BP", "ModuleLabel_GO_MF", "ModuleLabel_GO_CC",
+    "ModuleLabel_Final", "ModuleLabel_Source",
+    "best_GO_BP", "best_GO_MF", "best_GO_CC",
+    "best_GO_qvalue_BP", "best_GO_qvalue_MF", "best_GO_qvalue_CC",
+    "best_GO_gene_ratio_BP", "best_GO_gene_ratio_MF", "best_GO_gene_ratio_CC"
+  )
+  numeric_cols <- c("best_GO_padj_BP", "best_GO_padj_MF", "best_GO_padj_CC")
+  for (col in char_cols) {
+    if (!col %in% names(df)) df[[col]] <- NA_character_
+  }
+  for (col in numeric_cols) {
+    if (!col %in% names(df)) df[[col]] <- NA_real_
+  }
+  df
+}
 log_session <- function() {
   writeLines(capture.output(utils::sessionInfo()), fp_log("session_info.txt"))
 }
@@ -475,8 +492,8 @@ if (!isTRUE(wgcna_dry_run) && using_cached_final_state) {
   list2env(cached_state, envir = environment())
   if (exists("module_summary")) WGCNA_module_summary <- module_summary
   if (exists("module_preservation")) module_preservation_long <- module_preservation
-  if (exists("module_label_table") && !"ModuleLabel_Final" %in% names(module_label_table)) {
-    module_label_table <- module_label_table %>%
+  if (exists("module_label_table")) {
+    module_label_table <- ensure_module_label_schema(module_label_table) %>%
       dplyr::mutate(
         ModuleLabel_Final = dplyr::coalesce(.data$ModuleLabel_Manual, .data$ModuleLabel_GO_BP, paste0("Module ", .data$ModuleColor)),
         ModuleLabel_Source = dplyr::case_when(
@@ -1678,6 +1695,7 @@ module_label_table <- tibble::tibble(
   dplyr::left_join(best_term_padj_wide, by = "ModuleColor") %>%
   dplyr::left_join(best_term_qvalue_wide, by = "ModuleColor") %>%
   dplyr::left_join(best_term_gene_ratio_wide, by = "ModuleColor") %>%
+  ensure_module_label_schema() %>%
   dplyr::mutate(
     ModuleLabel_GO_BP = dplyr::coalesce(.data$ModuleLabel_GO_BP, paste0("Module ", .data$ModuleColor)),
     ModuleLabel_GO_MF = dplyr::coalesce(.data$ModuleLabel_GO_MF, paste0("Module ", .data$ModuleColor)),
@@ -3142,10 +3160,13 @@ if (file.exists(overlap_bridge_script)) {
     if (file.exists(fp_modtab("WGCNA_module_priority_summary.csv"))) {
       WGCNA_module_priority_summary <- readr::read_csv(fp_modtab("WGCNA_module_priority_summary.csv"), show_col_types = FALSE)
     }
+    WGCNA_module_priority_summary <- ensure_module_label_schema(WGCNA_module_priority_summary)
   }, error = function(e) {
     warning("Optional WGCNA-to-DE/GSEA overlap bridge skipped: ", conditionMessage(e), call. = FALSE)
   })
 }
+
+WGCNA_module_priority_summary <- ensure_module_label_schema(WGCNA_module_priority_summary)
 
 WGCNA_module_preservation_summary <- WGCNA_module_priority_summary %>%
   dplyr::select("ModuleID", "ModuleColor", dplyr::contains("preservation_")) %>%
