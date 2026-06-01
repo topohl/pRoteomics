@@ -5,7 +5,7 @@ columns:
   entrez_id: {type: character}
   gene_symbol: {type: character}
   log2FoldChange: {type: numeric}
-  pvalue: {type: numeric}
-  padj: {type: numeric}
+  pvalue: {type: numeric, range: {min: 0, max: 1}}
+  padj: {type: numeric, range: {min: 0, max: 1}}
   contrast: {type: character}
-  dataset: {type: character}
+  dataset: {type: character, allowed_values: [neuron_neuropil, neuron_soma, microglia]}

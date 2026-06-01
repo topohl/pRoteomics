@@ -1,7 +1,7 @@
 name: wgcna_module_contract
 required_columns: [dataset, ModuleID, ProteinID]
 columns:
-  dataset: {type: character}
+  dataset: {type: character, allowed_values: [neuron_neuropil, neuron_soma, microglia]}
   ModuleID: {type: character}
   ModuleColor: {type: character}
   ProteinID: {type: character}
