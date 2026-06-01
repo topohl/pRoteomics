@@ -344,7 +344,7 @@ if (nrow(plot_df)) {
     ggplot2::geom_tile(color = "white", linewidth = 0.2) +
     ggplot2::scale_fill_gradient2(low = "#2166AC", mid = "white", high = "#B2182B", na.value = "grey90", name = "signed -log10 FDR") +
     ggplot2::labs(x = NULL, y = NULL, title = paste("Biological program atlas:", DATASET)) +
-    theme_nature_heatmap(7)
+    theme_nature_heatmap(7, base_family = "sans")
   save_plot_dual(p, file.path(PATHS$figures, "program_atlas_heatmap.svg"), width = max(6, length(unique(plot_df$comparison_label)) * 0.35), height = 4.8)
 }
 
