@@ -41,10 +41,14 @@ results/figures/
 results/tables/
 results/source_data/
 results/logs/
+results/reports/
 results/reports/**/*.html
 results/reports/**/*.pdf
 results/reports/**/dry_run_diagnostics.csv
 results/reports/**/*_dry_run_diagnostics.csv
+Rplots.pdf
+tmp_*_stdout.log
+tmp_*_stderr.log
 
 # PRIDE/journal staging
 pride_submission/
