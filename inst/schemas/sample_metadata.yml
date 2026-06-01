@@ -1,0 +1,11 @@
+name: sample_metadata
+required_columns: [sample_id, dataset]
+columns:
+  sample_id: {type: character}
+  dataset: {type: character}
+  animal_id: {type: character}
+  region: {type: character}
+  layer: {type: character}
+  celltype_roi: {type: character}
+  condition: {type: character}
+  raw_file_name: {type: character}
