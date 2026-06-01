@@ -44,6 +44,106 @@ if (!length(missing_required)) {
 
 `%||%` <- function(x, y) if (is.null(x) || length(x) == 0) y else x
 
+FIG_WIDTH_SINGLE <- 3.5
+FIG_WIDTH_DOUBLE <- 7.2
+FIG_HEIGHT_SHORT <- 2.6
+FIG_HEIGHT_STANDARD <- 4.2
+FIG_HEIGHT_TALL <- 5.2
+FONT_SIZE_PANEL <- 7.0
+FONT_SIZE_AXIS <- 7.0
+FONT_SIZE_TICKS <- 6.5
+FONT_SIZE_STRIP <- 7.0
+FONT_SIZE_LEGEND <- 6.5
+
+palette_diverging <- c(low = "#3C5488", mid = "#F7F7F7", high = "#B23A48")
+palette_signature_class <- c(
+  microglia_enriched_empirical = "#3C5488",
+  microglia_enriched_reference_supported = "#4DBBD5",
+  curated_microglia_program = "#91D1C2",
+  mixed_microenvironment = "#7E6148",
+  neuropil_shared = "#E64B35",
+  ambiguous = "#8F8F8F"
+)
+palette_contrast_class <- c(
+  within_region_condition = "#3C5488",
+  cross_region_same_condition = "#00A087",
+  cross_region_cross_condition = "#E64B35",
+  same_region_same_condition = "#7E6148",
+  unclassified = "#8F8F8F"
+)
+palette_direction <- c(up = "#B23A48", down = "#3C5488", neutral = "#8F8F8F")
+
+theme_manuscript <- function(base_size = FONT_SIZE_PANEL, grid = c("none", "x", "y", "xy")) {
+  grid <- match.arg(grid)
+  theme <- ggplot2::theme_classic(base_size = base_size, base_family = "sans") +
+    ggplot2::theme(
+      plot.title = ggplot2::element_text(face = "bold", size = FONT_SIZE_PANEL, hjust = 0),
+      plot.subtitle = ggplot2::element_text(size = FONT_SIZE_LEGEND, color = "#4D4D4D"),
+      axis.title = ggplot2::element_text(face = "plain", color = "black", size = FONT_SIZE_AXIS),
+      axis.text = ggplot2::element_text(color = "black", size = FONT_SIZE_TICKS),
+      axis.line = ggplot2::element_line(color = "black", linewidth = 0.3),
+      axis.ticks = ggplot2::element_line(color = "black", linewidth = 0.3),
+      axis.ticks.length = grid::unit(1.4, "mm"),
+      legend.title = ggplot2::element_text(face = "plain", size = FONT_SIZE_LEGEND),
+      legend.text = ggplot2::element_text(color = "black", size = FONT_SIZE_LEGEND),
+      legend.key = ggplot2::element_blank(),
+      legend.background = ggplot2::element_blank(),
+      legend.box.background = ggplot2::element_blank(),
+      legend.box.spacing = grid::unit(0.8, "mm"),
+      legend.spacing.x = grid::unit(0.8, "mm"),
+      legend.margin = ggplot2::margin(0, 0, 0, 0),
+      plot.background = ggplot2::element_rect(fill = "white", color = NA),
+      panel.background = ggplot2::element_rect(fill = "white", color = NA),
+      strip.background = ggplot2::element_blank(),
+      strip.text = ggplot2::element_text(face = "bold", color = "black", size = FONT_SIZE_STRIP),
+      panel.border = ggplot2::element_blank(),
+      plot.margin = ggplot2::margin(3, 4, 2, 3)
+    )
+
+  if (grid == "none") {
+    theme <- theme + ggplot2::theme(panel.grid = ggplot2::element_blank())
+  } else if (grid == "x") {
+    theme <- theme + ggplot2::theme(
+      panel.grid.major.x = ggplot2::element_line(color = "#E6E6E6", linewidth = 0.25),
+      panel.grid.major.y = ggplot2::element_blank(),
+      panel.grid.minor = ggplot2::element_blank()
+    )
+  } else if (grid == "y") {
+    theme <- theme + ggplot2::theme(
+      panel.grid.major.y = ggplot2::element_line(color = "#E6E6E6", linewidth = 0.25),
+      panel.grid.major.x = ggplot2::element_blank(),
+      panel.grid.minor = ggplot2::element_blank()
+    )
+  } else {
+    theme <- theme + ggplot2::theme(
+      panel.grid.major = ggplot2::element_line(color = "#E6E6E6", linewidth = 0.25),
+      panel.grid.minor = ggplot2::element_blank()
+    )
+  }
+
+  theme
+}
+
+scale_fill_diverging <- function(name = "NES") {
+  ggplot2::scale_fill_gradient2(
+    low = palette_diverging[["low"]],
+    mid = palette_diverging[["mid"]],
+    high = palette_diverging[["high"]],
+    midpoint = 0,
+    name = name
+  )
+}
+
+scale_color_diverging <- function(name = "NES") {
+  ggplot2::scale_color_gradient2(
+    low = palette_diverging[["low"]],
+    mid = palette_diverging[["mid"]],
+    high = palette_diverging[["high"]],
+    midpoint = 0,
+    name = name
+  )
+}
+
 pick_col <- function(df, candidates) {
   detect_column(df, candidates, required = FALSE)
 }
@@ -738,7 +838,7 @@ build_leading_edge_recurrence <- function(df) {
       proteins = purrr::map2(.data$leading_edge, .data$matched_genes, ~unique(c(split_token_field(.x), split_token_field(.y))))
     ) %>%
     dplyr::filter(lengths(.data$proteins) > 0) %>%
-    tidyr::unnest_longer(.data$proteins, values_to = "protein") %>%
+    tidyr::unnest_longer("proteins", values_to = "protein") %>%
     dplyr::filter(!is.na(.data$protein), nzchar(.data$protein))
 
   long %>%
@@ -983,83 +1083,161 @@ write_review_xlsx(
 )
 
 if (nrow(with_contrast)) {
-  dot_df <- with_contrast %>% dplyr::mutate(sig_label = ifelse(!is.na(.data$padj) & .data$padj < 0.05, "FDR<0.05", "nominal/unthresholded"))
-  p1 <- ggplot2::ggplot(dot_df, ggplot2::aes(x = .data$comparison, y = .data$signature, color = .data$NES, size = -log10(pmax(.data$padj, .Machine$double.xmin)))) +
-    ggplot2::geom_point(alpha = 0.85) +
-    ggplot2::scale_color_gradient2(low = "#2166AC", mid = "white", high = "#B2182B", name = "NES") +
-    ggplot2::labs(x = NULL, y = NULL, size = "-log10 FDR") +
-    ggplot2::theme_minimal(base_size = 8) +
-    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1), panel.grid = ggplot2::element_blank())
-  ggplot2::ggsave(file.path(PATHS$figures, "microglia_signature_dotplot.svg"), p1, width = max(7, length(unique(dot_df$comparison)) * 0.35), height = 4.8)
+  dot_df <- with_contrast %>%
+    dplyr::mutate(
+      sig_label = ifelse(!is.na(.data$padj) & .data$padj < 0.05, "FDR<0.05", "nominal/unthresholded"),
+      comparison = stats::reorder(.data$comparison, .data$NES, FUN = median, na.rm = TRUE),
+      signature = stats::reorder(.data$signature, abs(.data$NES), FUN = median, na.rm = TRUE),
+      plot_size = pmin(6, pmax(1.5, -log10(pmax(.data$padj, .Machine$double.xmin)))),
+      contrast_class = factor(
+        .data$contrast_class,
+        levels = c("within_region_condition", "cross_region_same_condition", "cross_region_cross_condition", "same_region_same_condition", "unclassified")
+      )
+    )
+  p1 <- ggplot2::ggplot(dot_df, ggplot2::aes(x = .data$comparison, y = .data$signature)) +
+    ggplot2::geom_point(
+      ggplot2::aes(fill = .data$NES, size = .data$plot_size),
+      shape = 21, color = "black", stroke = 0.2, alpha = 0.92
+    ) +
+    ggplot2::facet_grid(rows = ggplot2::vars(.data$contrast_class), scales = "free_x", space = "free_x") +
+    scale_fill_diverging(name = "NES") +
+    ggplot2::scale_size_continuous(name = expression(-log[10]~FDR), range = c(1.2, 5.0)) +
+    ggplot2::labs(x = NULL, y = NULL) +
+    theme_manuscript(base_size = FONT_SIZE_PANEL, grid = "none") +
+    ggplot2::theme(
+      axis.text.x = ggplot2::element_text(angle = 55, hjust = 1, vjust = 1),
+      legend.position = "bottom",
+      legend.direction = "horizontal",
+      legend.box = "horizontal",
+      strip.placement = "outside",
+      panel.spacing.x = grid::unit(1.2, "mm"),
+      panel.spacing.y = grid::unit(1.0, "mm")
+    )
+  ggplot2::ggsave(
+    file.path(PATHS$figures, "microglia_signature_dotplot.svg"),
+    p1,
+    width = max(FIG_WIDTH_DOUBLE, length(unique(dot_df$comparison)) * 0.22),
+    height = max(FIG_HEIGHT_STANDARD, length(unique(dot_df$signature)) * 0.18),
+    units = "in",
+    limitsize = FALSE
+  )
 
   scatter_df <- dot_df %>% dplyr::filter(!is.na(.data$neuropil_reference_NES))
   if (nrow(scatter_df)) {
     p2 <- ggplot2::ggplot(scatter_df, ggplot2::aes(x = .data$neuropil_reference_NES, y = .data$NES, color = .data$microglia_signature_class)) +
-      ggplot2::geom_hline(yintercept = 0, color = "grey75") +
-      ggplot2::geom_vline(xintercept = 0, color = "grey75") +
-      ggplot2::geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey55") +
-      ggplot2::geom_point(alpha = 0.8) +
+      ggplot2::geom_hline(yintercept = 0, color = "#BDBDBD", linewidth = 0.3) +
+      ggplot2::geom_vline(xintercept = 0, color = "#BDBDBD", linewidth = 0.3) +
+      ggplot2::geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "#7F7F7F", linewidth = 0.35) +
+      ggplot2::geom_point(size = 2.2, alpha = 0.9) +
+      ggplot2::stat_smooth(method = "lm", se = FALSE, color = "black", linewidth = 0.35, linetype = "solid") +
+      ggplot2::scale_color_manual(values = palette_signature_class, drop = FALSE, name = "Signature class") +
       ggplot2::labs(x = "Neuropil reference NES", y = "Microglia ROI NES", color = "Class") +
-      ggplot2::theme_minimal(base_size = 9)
-    ggplot2::ggsave(file.path(PATHS$figures, "microglia_vs_neuropil_signature_NES_scatter.svg"), p2, width = 6.2, height = 4.6)
+      theme_manuscript(base_size = FONT_SIZE_PANEL, grid = "none") +
+      ggplot2::theme(
+        legend.position = "bottom",
+        legend.direction = "horizontal"
+      ) +
+      ggplot2::coord_equal()
+    ggplot2::ggsave(file.path(PATHS$figures, "microglia_vs_neuropil_signature_NES_scatter.svg"), p2, width = FIG_WIDTH_SINGLE + 0.4, height = FIG_WIDTH_SINGLE + 0.2, units = "in")
   }
 
-  p3 <- with_contrast %>%
+  p3_df <- with_contrast %>%
     dplyr::count(.data$microglia_signature_class, name = "n") %>%
-    ggplot2::ggplot(ggplot2::aes(x = reorder(.data$microglia_signature_class, .data$n), y = .data$n, fill = .data$microglia_signature_class)) +
-    ggplot2::geom_col(show.legend = FALSE) +
-    ggplot2::coord_flip() +
-    ggplot2::labs(x = NULL, y = "Signature-contrast rows") +
-    ggplot2::theme_minimal(base_size = 9)
-  ggplot2::ggsave(file.path(PATHS$figures, "microglia_signature_classification_barplot.svg"), p3, width = 5.8, height = 3.8)
+    dplyr::mutate(microglia_signature_class = stats::reorder(.data$microglia_signature_class, .data$n))
+  p3 <- ggplot2::ggplot(p3_df, ggplot2::aes(y = .data$microglia_signature_class, x = .data$n, color = .data$microglia_signature_class)) +
+    ggplot2::geom_segment(ggplot2::aes(x = 0, xend = .data$n, yend = .data$microglia_signature_class), linewidth = 0.6, alpha = 0.85, show.legend = FALSE) +
+    ggplot2::geom_point(size = 2.8, show.legend = FALSE) +
+    ggplot2::scale_color_manual(values = palette_signature_class, drop = FALSE) +
+    ggplot2::labs(x = "Signature-contrast rows", y = NULL) +
+    theme_manuscript(base_size = FONT_SIZE_PANEL, grid = "x")
+  ggplot2::ggsave(file.path(PATHS$figures, "microglia_signature_classification_barplot.svg"), p3, width = FIG_WIDTH_SINGLE + 0.7, height = FIG_HEIGHT_SHORT + 0.8, units = "in")
 
-  p4 <- with_contrast %>%
+  p4_df <- with_contrast %>%
     dplyr::count(.data$contrast_class, name = "n_rows") %>%
-    ggplot2::ggplot(ggplot2::aes(x = reorder(.data$contrast_class, .data$n_rows), y = .data$n_rows, fill = .data$contrast_class)) +
-    ggplot2::geom_col(width = 0.75, alpha = 0.95, show.legend = FALSE) +
-    ggplot2::coord_flip() +
-    ggplot2::labs(x = NULL, y = "Signature rows", title = "Microglia signatures by contrast class") +
-    ggplot2::theme_minimal(base_size = 9) +
-    ggplot2::theme(panel.grid.minor = ggplot2::element_blank())
-  ggplot2::ggsave(file.path(PATHS$figures, "microglia_signature_contrast_class_overview.svg"), p4, width = 6.2, height = 4.1)
+    dplyr::mutate(contrast_class = stats::reorder(.data$contrast_class, .data$n_rows))
+  p4 <- ggplot2::ggplot(p4_df, ggplot2::aes(y = .data$contrast_class, x = .data$n_rows, color = .data$contrast_class)) +
+    ggplot2::geom_segment(ggplot2::aes(x = 0, xend = .data$n_rows, yend = .data$contrast_class), linewidth = 0.7, alpha = 0.9, show.legend = FALSE) +
+    ggplot2::geom_point(size = 3.0, show.legend = FALSE) +
+    ggplot2::scale_color_manual(values = palette_contrast_class, drop = FALSE) +
+    ggplot2::labs(x = "Signature rows", y = NULL) +
+    theme_manuscript(base_size = FONT_SIZE_PANEL, grid = "x")
+  ggplot2::ggsave(file.path(PATHS$figures, "microglia_signature_contrast_class_overview.svg"), p4, width = FIG_WIDTH_SINGLE + 0.9, height = FIG_HEIGHT_SHORT + 0.9, units = "in")
 
   if (nrow(cross_region_same_tbl)) {
     heat_df <- cross_region_same_tbl %>%
       dplyr::group_by(.data$signature, .data$region_pair) %>%
       dplyr::arrange(.data$padj, dplyr::desc(abs(.data$NES)), .by_group = TRUE) %>%
-      dplyr::summarise(nes_rep = dplyr::first(.data$NES), fdr_rep = dplyr::first(.data$padj), .groups = "drop")
+      dplyr::summarise(nes_rep = dplyr::first(.data$NES), fdr_rep = dplyr::first(.data$padj), .groups = "drop") %>%
+      dplyr::mutate(
+        region_pair = stats::reorder(.data$region_pair, .data$nes_rep, FUN = median, na.rm = TRUE),
+        signature = stats::reorder(.data$signature, abs(.data$nes_rep), FUN = max, na.rm = TRUE),
+        fdr_flag = !is.na(.data$fdr_rep) & .data$fdr_rep < 0.05
+      )
     p5 <- ggplot2::ggplot(heat_df, ggplot2::aes(x = .data$region_pair, y = .data$signature, fill = .data$nes_rep)) +
-      ggplot2::geom_tile(color = "white", linewidth = 0.2) +
-      ggplot2::scale_fill_gradient2(low = "#2166AC", mid = "white", high = "#B2182B", midpoint = 0, name = "NES") +
-      ggplot2::labs(x = "Region pair", y = "Signature", title = "Regional programs (same condition only)") +
-      ggplot2::theme_minimal(base_size = 9) +
-      ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1), panel.grid = ggplot2::element_blank())
-    ggplot2::ggsave(file.path(PATHS$figures, "microglia_signature_region_program_heatmap.svg"), p5, width = max(6, length(unique(heat_df$region_pair)) * 0.45), height = max(4.2, length(unique(heat_df$signature)) * 0.20))
+      ggplot2::geom_tile(color = "white", linewidth = 0.25) +
+      ggplot2::geom_point(data = dplyr::filter(heat_df, .data$fdr_flag), shape = 21, size = 1.4, stroke = 0.2, fill = "black", color = "black") +
+      scale_fill_diverging(name = "NES") +
+      ggplot2::labs(x = "Region pair", y = "Signature") +
+      theme_manuscript(base_size = FONT_SIZE_PANEL, grid = "none") +
+      ggplot2::theme(
+        axis.text.x = ggplot2::element_text(angle = 45, hjust = 1, vjust = 1),
+        legend.position = "bottom",
+        legend.direction = "horizontal"
+      )
+    ggplot2::ggsave(file.path(PATHS$figures, "microglia_signature_region_program_heatmap.svg"), p5, width = max(FIG_WIDTH_DOUBLE - 0.2, length(unique(heat_df$region_pair)) * 0.42), height = max(FIG_HEIGHT_STANDARD, length(unique(heat_df$signature)) * 0.19), units = "in", limitsize = FALSE)
   }
 
   if (nrow(within_region_tbl)) {
-    p6 <- ggplot2::ggplot(within_region_tbl, ggplot2::aes(x = .data$comparison, y = .data$signature, color = .data$NES, size = -log10(pmax(.data$padj, .Machine$double.xmin)))) +
-      ggplot2::geom_point(alpha = 0.85) +
-      ggplot2::scale_color_gradient2(low = "#2166AC", mid = "white", high = "#B2182B", midpoint = 0, name = "NES") +
-      ggplot2::labs(x = NULL, y = NULL, size = "-log10 FDR", title = "Within-region condition contrasts") +
-      ggplot2::theme_minimal(base_size = 8.5) +
-      ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1), panel.grid = ggplot2::element_blank())
-    ggplot2::ggsave(file.path(PATHS$figures, "microglia_signature_within_region_condition_dotplot.svg"), p6, width = max(6.5, length(unique(within_region_tbl$comparison)) * 0.35), height = 4.8)
+    within_plot_df <- within_region_tbl %>%
+      dplyr::mutate(
+        comparison = stats::reorder(.data$comparison, .data$NES, FUN = median, na.rm = TRUE),
+        signature = stats::reorder(.data$signature, abs(.data$NES), FUN = median, na.rm = TRUE),
+        plot_size = pmin(6, pmax(1.5, -log10(pmax(.data$padj, .Machine$double.xmin)))),
+        left_region = factor(.data$left_region, levels = c("CA1", "CA2", "CA3", "DG"))
+      )
+    p6 <- ggplot2::ggplot(within_plot_df, ggplot2::aes(x = .data$comparison, y = .data$signature)) +
+      ggplot2::geom_point(
+        ggplot2::aes(fill = .data$NES, size = .data$plot_size),
+        shape = 21, color = "black", stroke = 0.22, alpha = 0.95
+      ) +
+      ggplot2::facet_grid(rows = ggplot2::vars(.data$left_region), scales = "free_x", space = "free_x") +
+      scale_fill_diverging(name = "NES") +
+      ggplot2::scale_size_continuous(name = expression(-log[10]~FDR), range = c(1.3, 5.2)) +
+      ggplot2::labs(x = NULL, y = NULL) +
+      theme_manuscript(base_size = FONT_SIZE_PANEL, grid = "none") +
+      ggplot2::theme(
+        axis.text.x = ggplot2::element_text(angle = 55, hjust = 1, vjust = 1),
+        legend.position = "bottom",
+        legend.direction = "horizontal",
+        strip.placement = "outside",
+        panel.spacing.x = grid::unit(1.0, "mm"),
+        panel.spacing.y = grid::unit(1.0, "mm")
+      )
+    ggplot2::ggsave(file.path(PATHS$figures, "microglia_signature_within_region_condition_dotplot.svg"), p6, width = max(FIG_WIDTH_DOUBLE - 0.4, length(unique(within_plot_df$comparison)) * 0.26), height = max(FIG_HEIGHT_STANDARD, length(unique(within_plot_df$signature)) * 0.18), units = "in", limitsize = FALSE)
   }
 
   if (nrow(leading_edge_recurrence)) {
     rec_plot <- leading_edge_recurrence %>%
       dplyr::group_by(.data$protein) %>%
-      dplyr::summarise(total_recurrence = sum(.data$n_comparisons, na.rm = TRUE), .groups = "drop") %>%
+      dplyr::summarise(
+        total_recurrence = sum(.data$n_comparisons, na.rm = TRUE),
+        dominant_direction = names(sort(table(.data$direction_sign), decreasing = TRUE))[1],
+        .groups = "drop"
+      ) %>%
       dplyr::arrange(dplyr::desc(.data$total_recurrence)) %>%
-      dplyr::slice_head(n = 20)
-    p7 <- ggplot2::ggplot(rec_plot, ggplot2::aes(x = reorder(.data$protein, .data$total_recurrence), y = .data$total_recurrence)) +
-      ggplot2::geom_col(fill = "#4C78A8", alpha = 0.9) +
-      ggplot2::coord_flip() +
-      ggplot2::labs(x = "Leading-edge protein", y = "Recurrence across significant rows", title = "Leading-edge recurrence (top proteins)") +
-      ggplot2::theme_minimal(base_size = 9) +
-      ggplot2::theme(panel.grid.minor = ggplot2::element_blank())
-    ggplot2::ggsave(file.path(PATHS$figures, "microglia_signature_leading_edge_recurrence.svg"), p7, width = 6.4, height = 4.6)
+      dplyr::slice_head(n = 18) %>%
+      dplyr::mutate(protein = stats::reorder(.data$protein, .data$total_recurrence))
+    p7 <- ggplot2::ggplot(rec_plot, ggplot2::aes(y = .data$protein, x = .data$total_recurrence, color = .data$dominant_direction)) +
+      ggplot2::geom_segment(ggplot2::aes(x = 0, xend = .data$total_recurrence, yend = .data$protein), linewidth = 0.7, alpha = 0.9, show.legend = FALSE) +
+      ggplot2::geom_point(size = 2.8, show.legend = TRUE) +
+      ggplot2::scale_color_manual(values = palette_direction, drop = FALSE, name = "Direction") +
+      ggplot2::labs(x = "Recurrence across significant rows", y = "Leading-edge protein") +
+      theme_manuscript(base_size = FONT_SIZE_PANEL, grid = "x") +
+      ggplot2::theme(
+        legend.position = "bottom",
+        legend.direction = "horizontal"
+      )
+    ggplot2::ggsave(file.path(PATHS$figures, "microglia_signature_leading_edge_recurrence.svg"), p7, width = FIG_WIDTH_SINGLE + 1.1, height = FIG_HEIGHT_STANDARD, units = "in")
   }
 }
 
