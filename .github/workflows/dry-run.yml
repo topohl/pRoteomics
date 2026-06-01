@@ -1,0 +1,30 @@
+name: Pipeline dry-run
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  dry-run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-r@v2
+
+      - name: Install lightweight CI packages
+        shell: Rscript {0}
+        run: |
+          install.packages(c("yaml", "testthat"), repos = "https://cloud.r-project.org")
+
+      - name: Validate tests
+        run: Rscript tests/testthat.R
+
+      - name: List stages
+        run: Rscript run_dataset_pipeline.R --list-stages
+
+      - name: QC dry-run
+        run: Rscript run_dataset_pipeline.R --dataset neuron_neuropil --stage qc --dry-run
+
+      - name: Microglia enrichment dry-run
+        run: Rscript run_dataset_pipeline.R --dataset microglia --stage enrichment --dry-run
