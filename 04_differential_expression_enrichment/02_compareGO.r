@@ -771,9 +771,9 @@ should_write_raw_table <- function(path) {
   !isTRUE(resume_raw_tables) || isTRUE(force_raw_recompute) || !file.exists(path)
 }
 
-write_raw_csv <- function(x, path, ..., writer = utils::write.csv) {
+write_raw_csv <- function(x, path, ..., writer = utils::write.csv, quiet_skip = FALSE) {
   if (!should_write_raw_table(path)) {
-    message("[SKIP raw table] Existing file kept: ", path)
+    if (!isTRUE(quiet_skip)) message("[SKIP raw table] Existing file kept: ", path)
     return(invisible(path))
   }
   dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
@@ -1882,20 +1882,25 @@ core_gene_sets <- lapply(names(enrichment_list), function(name) {
 
 names(core_gene_sets) <- names(enrichment_list)
 core_genes_df <- bind_rows(core_gene_sets)
-write_raw_csv(core_genes_df,
-              file.path(subdirs$gene_lists, "Core_Genes_All_Comparisons.csv"),
-              row.names = FALSE)
-invisible(core_genes_df %>%
-  group_by(Comparison, ID, Description) %>%
-  summarise(Genes = list(unique(core_enrichment)), .groups = "drop") %>%
-  mutate(file_name = file.path(
-    subdirs$gene_lists,
-    paste0("CoreGene_", make.names(Comparison), "_", make.names(ID), ".csv")
-  )) %>%
-  pmap(function(Comparison, ID, Description, Genes, file_name) {
-    dir.create(dirname(file_name), showWarnings = FALSE, recursive = TRUE)
-    write_raw_csv(data.frame(Gene = Genes), file_name, row.names = FALSE)
-  }))
+core_genes_all_file <- file.path(subdirs$gene_lists, "Core_Genes_All_Comparisons.csv")
+write_individual_core_gene_lists <- should_write_raw_table(core_genes_all_file)
+write_raw_csv(core_genes_df, core_genes_all_file, row.names = FALSE)
+
+if (isTRUE(write_individual_core_gene_lists)) {
+  invisible(core_genes_df %>%
+    group_by(Comparison, ID, Description) %>%
+    summarise(Genes = list(unique(core_enrichment)), .groups = "drop") %>%
+    mutate(file_name = file.path(
+      subdirs$gene_lists,
+      paste0("CoreGene_", make.names(Comparison), "_", make.names(ID), ".csv")
+    )) %>%
+    pmap(function(Comparison, ID, Description, Genes, file_name) {
+      dir.create(dirname(file_name), showWarnings = FALSE, recursive = TRUE)
+      write_raw_csv(data.frame(Gene = Genes), file_name, row.names = FALSE, quiet_skip = TRUE)
+    }))
+} else {
+  message("[SKIP raw table] Existing per-term core gene lists kept: ", subdirs$gene_lists)
+}
 
 # -----------------------------------------------------
 # Compute Jaccard Similarity of Core Genes Across Comparisons
