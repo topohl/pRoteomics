@@ -113,6 +113,13 @@ qc_sample_metadata_from_names <- function(samples) {
   )
 }
 
+qc_make_feature_ids <- function(ids, prefix = "unannotated_protein") {
+  ids <- trimws(as.character(ids))
+  missing <- is.na(ids) | !nzchar(ids) | tolower(ids) %in% c("na", "nan")
+  ids[missing] <- paste0(prefix, "_", which(missing))
+  make.unique(ids)
+}
+
 qc_read_gct_v13 <- function(path) {
   lines <- readLines(path, warn = FALSE)
   if (length(lines) < 4L || trimws(lines[[1]]) != "#1.3") stop("Expected strict GCT v1.3 file: ", path, call. = FALSE)
@@ -138,7 +145,7 @@ qc_read_gct_v13 <- function(path) {
   split <- strsplit(expr_lines, "\t", fixed = TRUE)
   ids <- vapply(split, `[`, character(1), 1L)
   mat <- do.call(rbind, lapply(split, function(x) suppressWarnings(as.numeric(x[(n_row_meta + 1L):(n_row_meta + n_samples)]))))
-  rownames(mat) <- make.unique(ids)
+  rownames(mat) <- qc_make_feature_ids(ids)
   colnames(mat) <- sample_ids
   list(mat = mat, meta = meta, source = "gct")
 }
@@ -159,7 +166,7 @@ qc_read_expression <- function(matrix_file, metadata_file = NA_character_, datas
     sample_cols <- setdiff(numeric_cols, id_col)
     if (length(sample_cols) < 2L) stop("Could not detect at least two numeric sample columns in: ", matrix_file, call. = FALSE)
     mat <- as.matrix(data.frame(lapply(df[sample_cols], function(x) as.numeric(as.character(x))), check.names = FALSE))
-    rownames(mat) <- make.unique(as.character(df[[id_col]]))
+    rownames(mat) <- qc_make_feature_ids(df[[id_col]])
     colnames(mat) <- sample_cols
     meta <- qc_sample_metadata_from_names(sample_cols)
   }
