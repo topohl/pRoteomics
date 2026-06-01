@@ -1,0 +1,6 @@
+name: protein_matrix
+required_columns: [protein_id]
+columns:
+  protein_id: {type: character}
+  gene_symbol: {type: character}
+  uniprot_id: {type: character}
