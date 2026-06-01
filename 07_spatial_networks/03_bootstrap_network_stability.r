@@ -32,6 +32,7 @@ MODULE_ID <- "07_spatial_networks"
 SUBSTEP_ID <- "bootstrap_network_stability"
 CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
 NETWORK_DATASET <- current_dataset()
+assert_dataset_capability(NETWORK_DATASET, "layer", analysis = "bootstrap spatial network stability analysis")
 
 params <- list(
   spatial_rds = path_processed("07_spatial_networks", "network_spatial_relations", "network_spatial_relations_objects.rds"),
