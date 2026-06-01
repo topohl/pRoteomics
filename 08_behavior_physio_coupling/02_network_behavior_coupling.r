@@ -31,10 +31,13 @@
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
+source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "validation_utils.R"))
 MODULE_ID <- "08_behavior_physio_coupling"
 SUBSTEP_ID <- "network_behavior_coupling"
 CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
+BEHAVIOR_DATASET <- current_dataset()
+assert_dataset_capability(BEHAVIOR_DATASET, "layer", analysis = "network-behavior coupling")
 
 required_pkgs <- c(
   "dplyr", "tidyr", "stringr", "purrr", "tibble", "readr", "readxl",
