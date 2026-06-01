@@ -47,6 +47,9 @@ if (is_dry_run()) {
   dry_run_line("Program summary wide", file.path(PATHS$tables, "program_summary_wide.csv"))
   dry_run_line("Program heatmap-ready table", file.path(PATHS$tables, "program_summary_heatmap_ready.csv"))
   dry_run_line("Program evidence", file.path(PATHS$source_data, "program_term_gene_evidence.csv"))
+  dry_run_line("Neuropil-annotated summary", file.path(PATHS$tables, "program_summary_neuropil_annotated.csv"))
+  dry_run_line("Microglia signature-annotated summary", file.path(PATHS$tables, "program_summary_microglia_signature_annotated.csv"))
+  dry_run_line("Integrated interpretation", file.path(PATHS$tables, "program_summary_integrated_interpretation.csv"))
   dry_run_line("Program atlas heatmap", file.path(PATHS$figures, "program_atlas_heatmap.svg"))
   quit(status = if (file.exists(manifest_file)) 0 else 1, save = "no")
 }
@@ -207,6 +210,113 @@ program_wide <- heatmap_ready %>%
   dplyr::select(dataset, comparison_label, biological_program, cell_value) %>%
   tidyr::pivot_wider(names_from = biological_program, values_from = cell_value)
 readr::write_csv(program_wide, file.path(PATHS$tables, "program_summary_wide.csv"), na = "")
+
+optional_read_csv <- function(path) {
+  if (is.na(path) || !file.exists(path)) return(NULL)
+  tryCatch(readr::read_csv(path, show_col_types = FALSE), error = function(e) NULL)
+}
+
+mode_value <- function(x) {
+  x <- stats::na.omit(as.character(x))
+  x <- x[nzchar(x)]
+  if (!length(x)) return(NA_character_)
+  names(sort(table(x), decreasing = TRUE))[[1]]
+}
+
+latest_neuropil_annotation <- file.path(
+  path_results("tables", MODULE_ID, "neuropil_contamination_annotation", DATASET),
+  "microglia_neuropil_annotation_latest.csv"
+)
+latest_microglia_signature <- file.path(
+  path_results("tables", MODULE_ID, "microglia_targeted_signature_enrichment", DATASET),
+  "microglia_signature_enrichment_with_neuropil_reference.csv"
+)
+
+neuropil_annotation <- optional_read_csv(latest_neuropil_annotation)
+signature_annotation <- optional_read_csv(latest_microglia_signature)
+
+program_summary_neuropil <- program_summary
+if (!is.null(neuropil_annotation) && nrow(neuropil_annotation) && "comparison" %in% names(neuropil_annotation)) {
+  neuropil_by_comparison <- neuropil_annotation %>%
+    dplyr::group_by(.data$comparison) %>%
+    dplyr::summarise(
+      interpretation_class = mode_value(.data$interpretation_class),
+      gene_overlap_fraction = suppressWarnings(mean(.data$gene_overlap_fraction, na.rm = TRUE)),
+      gene_jaccard = suppressWarnings(mean(.data$gene_jaccard, na.rm = TRUE)),
+      neuropil_marker_fraction = suppressWarnings(mean(.data$neuropil_marker_fraction, na.rm = TRUE)),
+      microglia_marker_fraction = suppressWarnings(mean(.data$microglia_marker_fraction, na.rm = TRUE)),
+      .groups = "drop"
+    ) %>%
+    dplyr::mutate(dplyr::across(where(is.numeric), ~ifelse(is.nan(.x), NA_real_, .x)))
+  program_summary_neuropil <- program_summary %>%
+    dplyr::left_join(neuropil_by_comparison, by = "comparison")
+} else {
+  program_summary_neuropil <- program_summary_neuropil %>%
+    dplyr::mutate(
+      interpretation_class = NA_character_,
+      gene_overlap_fraction = NA_real_,
+      gene_jaccard = NA_real_,
+      neuropil_marker_fraction = NA_real_,
+      microglia_marker_fraction = NA_real_
+    )
+}
+
+program_summary_signature <- program_summary
+if (!is.null(signature_annotation) && nrow(signature_annotation) && "comparison" %in% names(signature_annotation)) {
+  signature_by_comparison <- signature_annotation %>%
+    dplyr::group_by(.data$comparison) %>%
+    dplyr::arrange(.data$padj, dplyr::desc(abs(.data$NES)), .by_group = TRUE) %>%
+    dplyr::summarise(
+      microglia_signature_class = mode_value(.data$microglia_signature_class),
+      top_microglia_signature = dplyr::first(.data$signature),
+      microglia_signature_NES = dplyr::first(.data$NES),
+      neuropil_reference_NES = dplyr::first(.data$neuropil_reference_NES),
+      reference_match_type = mode_value(.data$reference_match_type),
+      .groups = "drop"
+    )
+  program_summary_signature <- program_summary %>%
+    dplyr::left_join(signature_by_comparison, by = "comparison")
+} else {
+  program_summary_signature <- program_summary_signature %>%
+    dplyr::mutate(
+      microglia_signature_class = NA_character_,
+      top_microglia_signature = NA_character_,
+      microglia_signature_NES = NA_real_,
+      neuropil_reference_NES = NA_real_,
+      reference_match_type = NA_character_
+    )
+}
+
+program_summary_integrated <- program_summary_neuropil %>%
+  dplyr::left_join(
+    program_summary_signature %>%
+      dplyr::select(
+        dataset, comparison, route_category, route_unit, biological_program,
+        microglia_signature_class, top_microglia_signature,
+        microglia_signature_NES, neuropil_reference_NES, reference_match_type
+      ),
+    by = c("dataset", "comparison", "route_category", "route_unit", "biological_program")
+  ) %>%
+  dplyr::mutate(
+    integrated_interpretation = dplyr::case_when(
+      .data$microglia_signature_class == "microglia_enriched" & !.data$interpretation_class %in% c("neuropil_sensitive", "neuropil_marker_enriched") ~ "microglia_supported_program",
+      .data$microglia_signature_class == "neuropil_shared" | .data$interpretation_class %in% c("neuropil_sensitive", "neuropil_marker_enriched") ~ "neuropil_shared_or_sensitive_program",
+      .data$microglia_signature_class == "mixed_microenvironment" | .data$interpretation_class == "mixed_microenvironment" ~ "mixed_microenvironment_program",
+      is.na(.data$microglia_signature_class) & is.na(.data$interpretation_class) ~ "unannotated_program",
+      TRUE ~ "ambiguous_program"
+    ),
+    interpretation_note = dplyr::case_when(
+      .data$integrated_interpretation == "microglia_supported_program" ~ "Supported by microglia-targeted signatures with weak/absent or weaker neuropil reference signal.",
+      .data$integrated_interpretation == "neuropil_shared_or_sensitive_program" ~ "Shared with or sensitive to neuropil reference; do not interpret as microglia-intrinsic without orthogonal support.",
+      .data$integrated_interpretation == "mixed_microenvironment_program" ~ "Present in microglia ROI and neuropil reference in a pattern consistent with local microenvironment biology.",
+      .data$integrated_interpretation == "unannotated_program" ~ "No optional neuropil or microglia signature annotation was available.",
+      TRUE ~ "Weak, discordant, broad, or partially missing annotation support."
+    )
+  )
+
+readr::write_csv(program_summary_neuropil, file.path(PATHS$tables, "program_summary_neuropil_annotated.csv"), na = "")
+readr::write_csv(program_summary_signature, file.path(PATHS$tables, "program_summary_microglia_signature_annotated.csv"), na = "")
+readr::write_csv(program_summary_integrated, file.path(PATHS$tables, "program_summary_integrated_interpretation.csv"), na = "")
 
 plot_df <- heatmap_ready %>% dplyr::rename(score = "signed_neg_log10_fdr")
 if (nrow(plot_df)) {
