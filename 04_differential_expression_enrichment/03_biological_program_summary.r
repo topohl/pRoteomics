@@ -227,10 +227,16 @@ latest_neuropil_annotation <- file.path(
   path_results("tables", MODULE_ID, "neuropil_contamination_annotation", DATASET),
   "microglia_neuropil_annotation_latest.csv"
 )
-latest_microglia_signature <- file.path(
-  path_results("tables", MODULE_ID, "microglia_targeted_signature_enrichment", DATASET),
-  "microglia_signature_enrichment_with_neuropil_reference.csv"
-)
+latest_microglia_signature <- first_existing_path(c(
+  file.path(
+    path_results("tables", MODULE_ID, "microglia_targeted_signature_enrichment", DATASET),
+    "microglia_signature_enrichment_with_contrast_class.csv"
+  ),
+  file.path(
+    path_results("tables", MODULE_ID, "microglia_targeted_signature_enrichment", DATASET),
+    "microglia_signature_enrichment_with_neuropil_reference.csv"
+  )
+))
 
 neuropil_annotation <- optional_read_csv(latest_neuropil_annotation)
 signature_annotation <- optional_read_csv(latest_microglia_signature)
@@ -263,26 +269,15 @@ if (!is.null(neuropil_annotation) && nrow(neuropil_annotation) && "comparison" %
 
 program_summary_signature <- program_summary
 if (!is.null(signature_annotation) && nrow(signature_annotation) && "comparison" %in% names(signature_annotation)) {
-  sig_defaults <- list(
-    signature_source = NA_character_,
-    signature_confidence = NA_character_,
-    reference_celltype_support = NA_character_
-  )
-  for (nm in names(sig_defaults)) {
-    if (!nm %in% names(signature_annotation)) signature_annotation[[nm]] <- sig_defaults[[nm]]
-  }
   signature_by_comparison <- signature_annotation %>%
     dplyr::group_by(.data$comparison) %>%
     dplyr::arrange(.data$padj, dplyr::desc(abs(.data$NES)), .by_group = TRUE) %>%
     dplyr::summarise(
       microglia_signature_class = mode_value(.data$microglia_signature_class),
-      signature_source = mode_value(.data$signature_source),
-      signature_confidence = mode_value(.data$signature_confidence),
       top_microglia_signature = dplyr::first(.data$signature),
       microglia_signature_NES = dplyr::first(.data$NES),
       neuropil_reference_NES = dplyr::first(.data$neuropil_reference_NES),
       reference_match_type = mode_value(.data$reference_match_type),
-      reference_celltype_support = mode_value(.data$reference_celltype_support),
       .groups = "drop"
     )
   program_summary_signature <- program_summary %>%
@@ -291,13 +286,10 @@ if (!is.null(signature_annotation) && nrow(signature_annotation) && "comparison"
   program_summary_signature <- program_summary_signature %>%
     dplyr::mutate(
       microglia_signature_class = NA_character_,
-      signature_source = NA_character_,
-      signature_confidence = NA_character_,
       top_microglia_signature = NA_character_,
       microglia_signature_NES = NA_real_,
       neuropil_reference_NES = NA_real_,
-      reference_match_type = NA_character_,
-      reference_celltype_support = NA_character_
+      reference_match_type = NA_character_
     )
 }
 
@@ -306,26 +298,21 @@ program_summary_integrated <- program_summary_neuropil %>%
     program_summary_signature %>%
       dplyr::select(
         dataset, comparison, route_category, route_unit, biological_program,
-        microglia_signature_class, signature_source, signature_confidence,
-        top_microglia_signature, microglia_signature_NES, neuropil_reference_NES,
-        reference_match_type, reference_celltype_support
+        microglia_signature_class, top_microglia_signature,
+        microglia_signature_NES, neuropil_reference_NES, reference_match_type
       ),
     by = c("dataset", "comparison", "route_category", "route_unit", "biological_program")
   ) %>%
   dplyr::mutate(
     integrated_interpretation = dplyr::case_when(
-      .data$microglia_signature_class == "microglia_enriched_empirical" & !.data$interpretation_class %in% c("neuropil_sensitive", "neuropil_marker_enriched") ~ "microglia_empirical_program",
-      .data$microglia_signature_class == "microglia_enriched_reference_supported" & !.data$interpretation_class %in% c("neuropil_sensitive", "neuropil_marker_enriched") ~ "microglia_reference_supported_program",
-      .data$microglia_signature_class == "curated_microglia_program" & !.data$interpretation_class %in% c("neuropil_sensitive", "neuropil_marker_enriched") ~ "curated_microglia_program",
+      .data$microglia_signature_class %in% c("microglia_enriched_empirical", "microglia_enriched_reference_supported", "curated_microglia_program") & !.data$interpretation_class %in% c("neuropil_sensitive", "neuropil_marker_enriched") ~ "microglia_supported_program",
       .data$microglia_signature_class == "neuropil_shared" | .data$interpretation_class %in% c("neuropil_sensitive", "neuropil_marker_enriched") ~ "neuropil_shared_or_sensitive_program",
       .data$microglia_signature_class == "mixed_microenvironment" | .data$interpretation_class == "mixed_microenvironment" ~ "mixed_microenvironment_program",
       is.na(.data$microglia_signature_class) & is.na(.data$interpretation_class) ~ "unannotated_program",
       TRUE ~ "ambiguous_program"
     ),
     interpretation_note = dplyr::case_when(
-      .data$integrated_interpretation == "microglia_empirical_program" ~ "Supported by data-derived microglia ROI signatures relative to neuropil reference ranks.",
-      .data$integrated_interpretation == "microglia_reference_supported_program" ~ "Supported by EWCE/reference-atlas microglia specificity evidence with weak/absent or weaker neuropil reference signal.",
-      .data$integrated_interpretation == "curated_microglia_program" ~ "Curated microglia program only; interpret as exploratory unless independently supported.",
+      .data$integrated_interpretation == "microglia_supported_program" ~ "Supported by microglia-targeted signatures with weak/absent or weaker neuropil reference signal.",
       .data$integrated_interpretation == "neuropil_shared_or_sensitive_program" ~ "Shared with or sensitive to neuropil reference; do not interpret as microglia-intrinsic without orthogonal support.",
       .data$integrated_interpretation == "mixed_microenvironment_program" ~ "Present in microglia ROI and neuropil reference in a pattern consistent with local microenvironment biology.",
       .data$integrated_interpretation == "unannotated_program" ~ "No optional neuropil or microglia signature annotation was available.",
