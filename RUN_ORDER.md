@@ -140,6 +140,9 @@ The manifest-backed order is:
 ```r
 source("04_differential_expression_enrichment/01_clusterProfiler.r")
 source("04_differential_expression_enrichment/02_compareGO.r")
+source("04_differential_expression_enrichment/03_biological_program_summary.r")
+source("04_differential_expression_enrichment/04_neuropil_contamination_annotation.r")
+source("04_differential_expression_enrichment/05_microglia_targeted_signature_enrichment.r")
 ```
 
 Dry-run validation without launching analyses:
@@ -148,6 +151,8 @@ Dry-run validation without launching analyses:
 Rscript 04_differential_expression_enrichment/01_clusterProfiler.r --dry-run
 Rscript 04_differential_expression_enrichment/02_compareGO.r --dry-run
 Rscript 04_differential_expression_enrichment/03_biological_program_summary.r --dry-run
+Rscript 04_differential_expression_enrichment/04_neuropil_contamination_annotation.r --dry-run
+Rscript 04_differential_expression_enrichment/05_microglia_targeted_signature_enrichment.r --dataset microglia --dry-run
 ```
 
 Set `analysis.dataset` in `config/clusterProfiler_config.yml` and `dataset` in `config/compareGO_config.yml` before each dataset family run. Leave mapped paths empty in the configs to use the dataset-aware defaults. `01_clusterProfiler.r` reads mapped contrast CSVs and writes:
@@ -181,6 +186,25 @@ cytoskeleton/motility, and development/patterning. It writes
 `program_summary_heatmap_ready.csv`, `program_term_gene_evidence.csv`, and
 `program_atlas_heatmap.svg` under
 `results/*/04_differential_expression_enrichment/biological_program_summary/<dataset>/`.
+
+### Microglia-enriched ROI interpretation
+
+Microglia ROIs are interpreted as microglia-enriched local microenvironment
+samples, not purified microglia. QC indicates that these ROIs can resemble
+neuropil samples for neuropil/synaptic proteins while still showing higher
+microglia-marker abundance.
+
+The enrichment stage therefore uses neuropil as a reference annotation layer
+plus microglia-targeted signature enrichment. It does not subtract neuropil
+intensities or logFC values, because dataset families may be separately
+normalized and imputed. Microglia data are region-only; when compared with the
+region + layer neuropil reference, neuropil layer units are collapsed to parent
+regions rather than treated as one-to-one layer equivalents.
+
+For microglia runs, `04_neuropil_contamination_annotation.r` writes optional
+GO/GSEA term annotations and `05_microglia_targeted_signature_enrichment.r`
+writes method-backed microglia program enrichments under
+`results/tables/04_differential_expression_enrichment/`.
 
 ## 5. Cell-type enrichment
 
