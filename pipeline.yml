@@ -1,0 +1,218 @@
+version: 1
+description: "Publication-facing pRoteomics pipeline registry. This file is the canonical active script list."
+datasets:
+  - neuron_neuropil
+  - neuron_soma
+  - microglia
+stages:
+  core:
+    description: "Preprocessing handoff and identifier mapping."
+    scripts:
+      - script: "01_preprocessing/03_gct_extractR.r"
+        required: true
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        expected_inputs: ["data/raw or configured GCT/export source", "data/metadata/"]
+        expected_outputs: ["data/processed/01_preprocessing/gct_extractR/<dataset>/"]
+        manifests: ["run_manifest.yml where implemented"]
+      - script: "02_id_mapping/01_MapThatProt_batch.r"
+        required: true
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        expected_inputs: ["data/processed/01_preprocessing/gct_extractR/<dataset>/"]
+        expected_outputs: ["data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/"]
+        manifests: ["mapping reports", "run_manifest.yml where implemented"]
+  qc:
+    description: "Dataset QC and exploratory checks."
+    scripts:
+      - script: "03_qc_exploration/00_dataset_qc_report.r"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        expected_inputs: ["dataset-resolved matrix", "sample metadata"]
+        expected_outputs: ["results/reports/03_qc_exploration/00_dataset_qc_report/<dataset>/"]
+        manifests: ["run_manifest.yml"]
+      - script: "03_qc_exploration/02_missingness_diagnostics.r"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        expected_inputs: ["dataset-resolved matrix"]
+        expected_outputs: ["results/reports/03_qc_exploration/02_missingness_diagnostics/<dataset>/"]
+        manifests: ["run_manifest.yml where implemented"]
+      - script: "03_qc_exploration/05_pca_confounding_qc.r"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        expected_inputs: ["dataset-resolved matrix", "sample metadata"]
+        expected_outputs: ["results/reports/03_qc_exploration/05_pca_confounding_qc/<dataset>/"]
+        manifests: ["run_manifest.yml where implemented"]
+      - script: "03_qc_exploration/07_qc_biology_confounding_report.r"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        expected_inputs: ["QC summaries"]
+        expected_outputs: ["results/reports/03_qc_exploration/07_qc_biology_confounding_report/<dataset>/"]
+        manifests: ["run_manifest.yml where implemented"]
+  enrichment:
+    description: "Differential abundance handoff, enrichment, term comparison, ROI annotations, and EWCE."
+    scripts:
+      - script: "04_differential_expression_enrichment/01_clusterProfiler.r"
+        required: true
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        expected_inputs: ["data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv"]
+        expected_outputs: ["data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv"]
+        manifests: ["clusterProfiler_manifest.csv", "run_manifest.yml where implemented"]
+      - script: "04_differential_expression_enrichment/02_compareGO.r"
+        required: true
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        expected_inputs: ["clusterProfiler_manifest.csv"]
+        expected_outputs: ["data/processed/04_differential_expression_enrichment/compareGO/<dataset>/compareGO_input_manifest.csv"]
+        manifests: ["compareGO_input_manifest.csv", "run_manifest.yml where implemented"]
+      - script: "04_differential_expression_enrichment/04_neuropil_reference_annotation.r"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        expected_inputs: ["current dataset clusterProfiler manifest", "neuron_neuropil clusterProfiler manifest"]
+        expected_outputs: ["results/tables/04_differential_expression_enrichment/neuropil_reference_annotation/<dataset>/"]
+        manifests: ["run_manifest.yml where implemented"]
+      - script: "04_differential_expression_enrichment/05_microglia_targeted_signature_enrichment.r"
+        required: false
+        datasets: ["microglia"]
+        expected_inputs: ["microglia enrichment tables"]
+        expected_outputs: ["results/tables/04_differential_expression_enrichment/microglia_targeted_signature_enrichment/microglia/"]
+        manifests: ["run_manifest.yml where implemented"]
+      - script: "04_differential_expression_enrichment/03_biological_program_summary.r"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        expected_inputs: ["compareGO/clusterProfiler outputs"]
+        expected_outputs: ["results/tables/04_differential_expression_enrichment/biological_program_summary/<dataset>/"]
+        manifests: ["run_manifest.yml where implemented"]
+      - script: "05_celltype_enrichment_EWCE/01_EWCE_E9.r"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        expected_inputs: ["dataset-resolved differential abundance/enrichment inputs"]
+        expected_outputs: ["results/tables/05_celltype_enrichment_EWCE/EWCE_E9/"]
+        manifests: ["run_manifest.yml where implemented"]
+  modules:
+    description: "WGCNA, module overlap, and module activity scoring."
+    scripts:
+      - script: "06_modules_WGCNA/01_WGCNA.r"
+        required: true
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        expected_inputs: ["dataset-resolved matrix", "sample metadata"]
+        expected_outputs: ["results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/"]
+        manifests: ["WGCNA module contract", "run_manifest.yml where implemented"]
+      - script: "06_modules_WGCNA/05_wgcna_de_gsea_overlap.r"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        expected_inputs: ["WGCNA module contract", "DE/GSEA manifests"]
+        expected_outputs: ["results/tables/06_modules_WGCNA/05_wgcna_de_gsea_overlap/<dataset>/"]
+        manifests: ["run_manifest.yml where implemented"]
+      - script: "06_modules_WGCNA/03_score_module_activity.R"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        expected_inputs: ["module definition contract", "dataset-resolved matrix", "sample metadata"]
+        expected_outputs: ["results/tables/06_modules_WGCNA/module_score_v0.0.2/<dataset>/"]
+        manifests: ["run_manifest.yml where implemented"]
+  networks:
+    description: "Spatial network generation, differential networks, stability, and chord figures."
+    scripts:
+      - script: "07_spatial_networks/01_network_spatial_relations.r"
+        required: true
+        datasets: ["neuron_neuropil", "neuron_soma"]
+        expected_inputs: ["region/layer-resolved matrix and metadata"]
+        expected_outputs: ["data/processed/07_spatial_networks/network_spatial_relations/network_spatial_relations_objects.rds"]
+        manifests: ["run_manifest.yml where implemented"]
+      - script: "07_spatial_networks/02_differential_networks.r"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma"]
+        expected_inputs: ["network_spatial_relations_objects.rds"]
+        expected_outputs: ["results/tables/07_spatial_networks/"]
+        manifests: ["run_manifest.yml where implemented"]
+      - script: "07_spatial_networks/03_bootstrap_network_stability.r"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma"]
+        expected_inputs: ["network tables"]
+        expected_outputs: ["results/tables/07_spatial_networks/"]
+        manifests: ["run_manifest.yml where implemented"]
+      - script: "07_spatial_networks/04_bootstrap_differential_network_stability.r"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma"]
+        expected_inputs: ["differential network tables"]
+        expected_outputs: ["results/tables/07_spatial_networks/"]
+        manifests: ["run_manifest.yml where implemented"]
+      - script: "07_spatial_networks/05_bootstrap_differential_network_figures.r"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma"]
+        expected_inputs: ["bootstrap differential network summaries"]
+        expected_outputs: ["results/figures/07_spatial_networks/"]
+        manifests: ["run_manifest.yml where implemented"]
+      - script: "07_spatial_networks/06_chord_diagram.r"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma"]
+        expected_inputs: ["network edge tables"]
+        expected_outputs: ["results/figures/07_spatial_networks/"]
+        manifests: ["run_manifest.yml where implemented"]
+  behavior:
+    description: "Network and proteomic coupling to behavior/physiology."
+    scripts:
+      - script: "08_behavior_physio_coupling/02_network_behavior_coupling.r"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        expected_inputs: ["data/external/behavior/", "network/module outputs"]
+        expected_outputs: ["results/tables/08_behavior_physio_coupling/network_behavior_coupling/"]
+        manifests: ["run_manifest.yml where implemented"]
+  export:
+    description: "PRIDE, manuscript, source-data, and reviewer export layer."
+    scripts:
+      - script: "09_export_pride_journal/01_make_pride_manifest.R"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        expected_inputs: ["analysis outputs", "local pride_submission payload"]
+        expected_outputs: ["pride_submission/manifests/pride_file_manifest.tsv"]
+        manifests: ["validation_report.tsv"]
+      - script: "09_export_pride_journal/02_make_sample_metadata.R"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        expected_inputs: ["data/metadata/"]
+        expected_outputs: ["pride_submission/metadata/sample_metadata.tsv"]
+        manifests: ["validation_report.tsv where implemented"]
+      - script: "09_export_pride_journal/03_make_supplementary_tables.R"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        expected_inputs: ["results/tables/"]
+        expected_outputs: ["pride_submission/supplementary_tables/"]
+        manifests: ["validation_report.tsv where implemented"]
+      - script: "09_export_pride_journal/04_validate_pride_submission.R"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        expected_inputs: ["pride_submission/"]
+        expected_outputs: ["pride_submission/validation/validation_report.tsv"]
+        manifests: ["validation_report.tsv"]
+      - script: "09_export_pride_journal/05_make_methods_summary.R"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        expected_inputs: ["pipeline.yml", "run manifests", "sessionInfo.txt files"]
+        expected_outputs: ["pride_submission/methods/methods_summary.md"]
+        manifests: ["run_manifest.yml where implemented"]
+      - script: "09_export_pride_journal/06_make_biological_claims_table.R"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        expected_inputs: ["program summaries", "WGCNA evidence", "microglia signature evidence"]
+        expected_outputs: ["results/tables/biological_claims_table.csv"]
+        manifests: ["run_manifest.yml"]
+      - script: "09_export_pride_journal/07_export_manuscript_figures.R"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        expected_inputs: ["results/figures/"]
+        expected_outputs: ["results/manuscript/figure_*/"]
+        manifests: ["run_manifest.yml"]
+      - script: "09_export_pride_journal/08_export_source_data.R"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        expected_inputs: ["results/tables/", "results/source_data/"]
+        expected_outputs: ["results/manuscript/source_data/", "results/manuscript/supplementary_tables/"]
+        manifests: ["run_manifest.yml"]
+legacy:
+  - script: "06_modules_WGCNA/91_module_score.r"
+    replacement: "06_modules_WGCNA/03_score_module_activity.R"
+    status: "compatibility wrapper target; retained for old commands"
+  - script: "04_differential_expression_enrichment/04_neuropil_contamination_annotation.r"
+    replacement: "04_differential_expression_enrichment/04_neuropil_reference_annotation.r"
+    status: "compatibility wrapper target; avoid contamination language in manuscript-facing names"
+  - script: "09_pride_submission/00_make_pride_package.R"
+    replacement: "09_export_pride_journal/"
+    status: "legacy code helper; generated payload belongs in gitignored pride_submission/"
