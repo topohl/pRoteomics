@@ -921,6 +921,91 @@ combined_df <- combined_df %>%
     region_layer = ifelse(is.na(region_layer) | !nzchar(region_layer), paste(region, layer, sep = "_"), region_layer)
   )
 
+optional_read_csv <- function(path) {
+  if (is.na(path) || !file.exists(path)) return(NULL)
+  tryCatch(readr::read_csv(path, show_col_types = FALSE), error = function(e) NULL)
+}
+
+mode_value <- function(x) {
+  x <- stats::na.omit(as.character(x))
+  x <- x[nzchar(x)]
+  if (!length(x)) return(NA_character_)
+  names(sort(table(x), decreasing = TRUE))[[1]]
+}
+
+add_microglia_neuropil_annotations <- function(df) {
+  annotation_cols <- c(
+    "interpretation_class", "gene_overlap_fraction", "gene_jaccard",
+    "neuropil_marker_fraction", "microglia_marker_fraction",
+    "microglia_signature_class", "microglia_signature_NES",
+    "neuropil_reference_NES", "reference_match_type"
+  )
+  for (col in annotation_cols) {
+    if (!col %in% names(df)) df[[col]] <- if (grepl("fraction|NES|jaccard", col)) NA_real_ else NA_character_
+  }
+
+  neuropil_path <- file.path(
+    path_results("tables", MODULE_ID, "neuropil_contamination_annotation", DATASET),
+    "microglia_neuropil_annotation_latest.csv"
+  )
+  sig_path <- file.path(
+    path_results("tables", MODULE_ID, "microglia_targeted_signature_enrichment", DATASET),
+    "microglia_signature_enrichment_with_neuropil_reference.csv"
+  )
+
+  neuropil_annot <- optional_read_csv(neuropil_path)
+  if (!is.null(neuropil_annot) && nrow(neuropil_annot) && all(c("comparison", "term_description") %in% names(neuropil_annot))) {
+    neuropil_lookup <- neuropil_annot %>%
+      dplyr::group_by(.data$comparison, .data$term_description) %>%
+      dplyr::summarise(
+        interpretation_class_ann = mode_value(.data$interpretation_class),
+        gene_overlap_fraction_ann = suppressWarnings(mean(.data$gene_overlap_fraction, na.rm = TRUE)),
+        gene_jaccard_ann = suppressWarnings(mean(.data$gene_jaccard, na.rm = TRUE)),
+        neuropil_marker_fraction_ann = suppressWarnings(mean(.data$neuropil_marker_fraction, na.rm = TRUE)),
+        microglia_marker_fraction_ann = suppressWarnings(mean(.data$microglia_marker_fraction, na.rm = TRUE)),
+        .groups = "drop"
+      ) %>%
+      dplyr::mutate(dplyr::across(where(is.numeric), ~ifelse(is.nan(.x), NA_real_, .x)))
+    df <- df %>%
+      dplyr::left_join(neuropil_lookup, by = c("Comparison" = "comparison", "Description" = "term_description")) %>%
+      dplyr::mutate(
+        interpretation_class = dplyr::coalesce(.data$interpretation_class_ann, .data$interpretation_class),
+        gene_overlap_fraction = dplyr::coalesce(.data$gene_overlap_fraction_ann, .data$gene_overlap_fraction),
+        gene_jaccard = dplyr::coalesce(.data$gene_jaccard_ann, .data$gene_jaccard),
+        neuropil_marker_fraction = dplyr::coalesce(.data$neuropil_marker_fraction_ann, .data$neuropil_marker_fraction),
+        microglia_marker_fraction = dplyr::coalesce(.data$microglia_marker_fraction_ann, .data$microglia_marker_fraction)
+      ) %>%
+      dplyr::select(-dplyr::ends_with("_ann"))
+  }
+
+  sig_annot <- optional_read_csv(sig_path)
+  if (!is.null(sig_annot) && nrow(sig_annot) && "comparison" %in% names(sig_annot)) {
+    sig_lookup <- sig_annot %>%
+      dplyr::group_by(.data$comparison) %>%
+      dplyr::arrange(.data$padj, dplyr::desc(abs(.data$NES)), .by_group = TRUE) %>%
+      dplyr::summarise(
+        microglia_signature_class_ann = mode_value(.data$microglia_signature_class),
+        microglia_signature_NES_ann = dplyr::first(.data$NES),
+        neuropil_reference_NES_ann = dplyr::first(.data$neuropil_reference_NES),
+        reference_match_type_ann = mode_value(.data$reference_match_type),
+        .groups = "drop"
+      )
+    df <- df %>%
+      dplyr::left_join(sig_lookup, by = c("Comparison" = "comparison")) %>%
+      dplyr::mutate(
+        microglia_signature_class = dplyr::coalesce(.data$microglia_signature_class_ann, .data$microglia_signature_class),
+        microglia_signature_NES = dplyr::coalesce(.data$microglia_signature_NES_ann, .data$microglia_signature_NES),
+        neuropil_reference_NES = dplyr::coalesce(.data$neuropil_reference_NES_ann, .data$neuropil_reference_NES),
+        reference_match_type = dplyr::coalesce(.data$reference_match_type_ann, .data$reference_match_type)
+      ) %>%
+      dplyr::select(-dplyr::ends_with("_ann"))
+  }
+
+  df
+}
+
+combined_df <- add_microglia_neuropil_annotations(combined_df)
+
 # Save combined enrichment data to Excel
 write_raw_xlsx(
   combined_df, 
@@ -1571,6 +1656,44 @@ if (exists("top_terms") && length(top_terms) > 0) {
   }
 } else {
   message("top_terms is empty; skipping overall top terms dotplot.")
+}
+
+annotation_dotplot_df <- combined_df %>%
+  dplyr::filter(
+    !is.na(.data$microglia_signature_class) |
+      !is.na(.data$interpretation_class) |
+      !is.na(.data$reference_match_type)
+  ) %>%
+  dplyr::mutate(
+    annotation_class = dplyr::coalesce(.data$microglia_signature_class, .data$interpretation_class, "annotated"),
+    annotation_score = dplyr::coalesce(.data$microglia_signature_NES, .data$NES)
+  )
+if (nrow(annotation_dotplot_df) > 0) {
+  annotation_dotplot_df <- annotation_dotplot_df %>%
+    dplyr::group_by(.data$Comparison) %>%
+    dplyr::slice_min(order_by = .data$p.adjust, n = 12, with_ties = FALSE) %>%
+    dplyr::ungroup()
+  microglia_annotation_dotplot <- ggplot(annotation_dotplot_df, aes(
+    x = Comparison,
+    y = Description,
+    color = annotation_score,
+    size = -log10(pmax(p.adjust, .Machine$double.xmin)),
+    shape = annotation_class
+  )) +
+    geom_point(alpha = 0.85) +
+    scale_color_gradient2(low = "#2166AC", mid = "white", high = "#B2182B", name = "NES") +
+    labs(x = NULL, y = NULL, size = "-log10 FDR", shape = "Annotation") +
+    theme_nature(base_size = 8) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  ggsave(
+    file.path(subdirs$plots_main, "compareGO_microglia_neuropil_signature_annotation_dotplot.svg"),
+    plot = microglia_annotation_dotplot,
+    width = max(7, length(unique(annotation_dotplot_df$Comparison)) * 0.35),
+    height = max(4.5, length(unique(annotation_dotplot_df$Description)) * 0.18),
+    dpi = 300,
+    device = "svg",
+    limitsize = FALSE
+  )
 }
 
 # Dotplot: Top 5 up/down terms per comparison (if selected)
@@ -3233,7 +3356,13 @@ combined_df$core_enrichment_gene <- mapped_genes
 supp_enrichment <- combined_df %>%
   dplyr::select(Comparison, ID, Description, setSize, 
                 pvalue, p.adjust, qvalue, NES, rank, leading_edge,
-                core_enrichment, core_enrichment_gene) %>%
+                core_enrichment, core_enrichment_gene,
+                dplyr::any_of(c(
+                  "interpretation_class", "gene_overlap_fraction", "gene_jaccard",
+                  "neuropil_marker_fraction", "microglia_marker_fraction",
+                  "microglia_signature_class", "microglia_signature_NES",
+                  "neuropil_reference_NES", "reference_match_type"
+                ))) %>%
   mutate(
     leading_edge = vapply(leading_edge, function(x) {
       if (is.null(x) || all(is.na(x))) return(NA_character_)
