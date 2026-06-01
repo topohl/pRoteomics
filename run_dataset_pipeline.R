@@ -49,9 +49,11 @@ stage_registry <- list(
       "04_differential_expression_enrichment/01_clusterProfiler.r",
       "04_differential_expression_enrichment/02_compareGO.r",
       "04_differential_expression_enrichment/03_biological_program_summary.r",
+      "04_differential_expression_enrichment/04_neuropil_contamination_annotation.r",
+      "04_differential_expression_enrichment/05_microglia_targeted_signature_enrichment.r",
       "05_celltype_enrichment_EWCE/01_EWCE_E9.r"
     ),
-    required = c(TRUE, TRUE, FALSE, FALSE),
+    required = c(TRUE, TRUE, FALSE, FALSE, FALSE, FALSE),
     stringsAsFactors = FALSE
   ),
   modules = data.frame(
