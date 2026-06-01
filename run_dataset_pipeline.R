@@ -4,6 +4,7 @@ paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.
 source(paths_file)
 source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "validation_utils.R"))
+source(repo_path("R", "pipeline_registry.R"))
 setwd(repo_root())
 
 args <- commandArgs(trailingOnly = TRUE)
@@ -25,96 +26,26 @@ list_stages <- has_flag("--list-stages")
 Sys.setenv(PROTEOMICS_DATASET = dataset)
 if (isTRUE(dry_run)) Sys.setenv(PROTEOMICS_DRY_RUN = "true")
 
-stage_registry <- list(
-  core = data.frame(
-    script = c(
-      "01_preprocessing/03_gct_extractR.r",
-      "02_id_mapping/01_MapThatProt_batch.r"
-    ),
-    required = c(TRUE, TRUE),
-    stringsAsFactors = FALSE
-  ),
-  qc = data.frame(
-    script = c(
-      "03_qc_exploration/00_dataset_qc_report.r",
-      "03_qc_exploration/02_missingness_diagnostics.r",
-      "03_qc_exploration/05_pca_confounding_qc.r",
-      "03_qc_exploration/07_qc_biology_confounding_report.r"
-    ),
-    required = c(FALSE, FALSE, FALSE, FALSE),
-    stringsAsFactors = FALSE
-  ),
-  enrichment = data.frame(
-    script = c(
-      "04_differential_expression_enrichment/01_clusterProfiler.r",
-      "04_differential_expression_enrichment/02_compareGO.r",
-      "04_differential_expression_enrichment/04_neuropil_contamination_annotation.r",
-      "04_differential_expression_enrichment/05_microglia_targeted_signature_enrichment.r",
-      "04_differential_expression_enrichment/03_biological_program_summary.r",
-      "05_celltype_enrichment_EWCE/01_EWCE_E9.r"
-    ),
-    required = c(TRUE, TRUE, FALSE, FALSE, FALSE, FALSE),
-    stringsAsFactors = FALSE
-  ),
-  modules = data.frame(
-    script = c(
-      "06_modules_WGCNA/01_WGCNA.r",
-      "06_modules_WGCNA/05_wgcna_de_gsea_overlap.r",
-      "06_modules_WGCNA/91_module_score.r"
-    ),
-    required = c(TRUE, FALSE, FALSE),
-    stringsAsFactors = FALSE
-  ),
-  networks = data.frame(
-    script = c(
-      "07_spatial_networks/01_network_spatial_relations.r",
-      "07_spatial_networks/02_differential_networks.r",
-      "07_spatial_networks/03_bootstrap_network_stability.r",
-      "07_spatial_networks/04_bootstrap_differential_network_stability.r",
-      "07_spatial_networks/05_bootstrap_differential_network_figures.r",
-      "07_spatial_networks/06_chord_diagram.r"
-    ),
-    required = c(TRUE, FALSE, FALSE, FALSE, FALSE, FALSE),
-    stringsAsFactors = FALSE
-  ),
-  behavior = data.frame(
-    script = c("08_behavior_physio_coupling/02_network_behavior_coupling.r"),
-    required = c(FALSE),
-    stringsAsFactors = FALSE
-  ),
-  export = data.frame(
-    script = c(
-      "09_export_pride_journal/01_make_pride_manifest.R",
-      "09_export_pride_journal/02_make_sample_metadata.R",
-      "09_export_pride_journal/03_make_supplementary_tables.R",
-      "09_export_pride_journal/04_validate_pride_submission.R",
-      "09_export_pride_journal/05_make_methods_summary.R",
-      "09_export_pride_journal/06_make_biological_claims_table.R"
-    ),
-    required = c(FALSE, FALSE, FALSE, FALSE, FALSE, FALSE),
-    stringsAsFactors = FALSE
-  )
-)
+registry <- read_pipeline_registry(repo_path("pipeline.yml"))
+validate_pipeline_scripts_exist(registry)
+validate_run_order_against_registry(registry)
 
-valid_stages <- c(names(stage_registry), "all")
+valid_stages <- c(pipeline_stage_names(registry), "all")
 if (!stage_arg %in% valid_stages) {
   stop("Unsupported --stage: ", stage_arg, ". Use one of: ", paste(valid_stages, collapse = ", "), call. = FALSE)
 }
 
 if (isTRUE(list_stages)) {
-  cat("Available stages:\n")
-  for (nm in names(stage_registry)) {
+  cat("Available stages from pipeline.yml:\n")
+  for (nm in pipeline_stage_names(registry)) {
     cat("\n", nm, "\n", sep = "")
-    print(stage_registry[[nm]], row.names = FALSE)
+    print(pipeline_steps(registry, nm, dataset = dataset)[, c("script", "required", "supported_datasets")], row.names = FALSE)
   }
   quit(status = 0, save = "no")
 }
 
-selected_stages <- if (identical(stage_arg, "all")) names(stage_registry) else stage_arg
-steps <- do.call(rbind, lapply(selected_stages, function(stage) {
-  transform(stage_registry[[stage]], stage = stage)
-}))
-steps <- steps[, c("stage", "script", "required")]
+selected_stages <- if (identical(stage_arg, "all")) pipeline_stage_names(registry) else stage_arg
+steps <- pipeline_steps(registry, selected_stages, dataset = dataset)
 
 manifest_dir <- path_results("logs", "pipeline")
 dir_create(manifest_dir)
@@ -125,14 +56,32 @@ manifest_path <- file.path(
 
 cat("Dataset pipeline\n")
 cat("Resolved dataset:", dataset, "\n")
+cat("Dataset interpretation:", dataset_interpretation(dataset), "\n")
 cat("Stage:", stage_arg, "\n")
 cat("Dry run:", dry_run, "\n")
 cat("Project root:", repo_root(), "\n")
+cat("Registry:", repo_path("pipeline.yml"), "\n")
 cat("Manifest:", manifest_path, "\n\n")
 
-run_one_step <- function(stage, script, required) {
-  script_path <- repo_path(script)
+run_one_step <- function(stage, script, required, supported) {
   started_at <- Sys.time()
+  if (!isTRUE(supported)) {
+    message("[SKIP] ", script, " does not support dataset ", dataset)
+    return(data.frame(
+      dataset = dataset,
+      selected_stage = stage_arg,
+      stage = stage,
+      script = script,
+      required = required,
+      status = "skipped_unsupported_dataset",
+      exit_code = 0L,
+      started_at = format(started_at, "%Y-%m-%d %H:%M:%S %Z"),
+      finished_at = format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z"),
+      stringsAsFactors = FALSE
+    ))
+  }
+
+  script_path <- repo_path(script)
   if (!file.exists(script_path)) {
     status <- if (isTRUE(required)) "missing_required" else "missing_optional"
     message(if (isTRUE(required)) "[FAIL] " else "[WARN] ", "Pipeline script missing: ", script)
@@ -172,7 +121,7 @@ run_one_step <- function(stage, script, required) {
 
 results <- data.frame()
 for (i in seq_len(nrow(steps))) {
-  res <- run_one_step(steps$stage[[i]], steps$script[[i]], steps$required[[i]])
+  res <- run_one_step(steps$stage[[i]], steps$script[[i]], steps$required[[i]], steps$supported[[i]])
   results <- rbind(results, res)
   if (identical(res$status, "failed_required") || identical(res$status, "missing_required")) {
     message("[FAIL] Required step failed; stopping pipeline before downstream stages.")
