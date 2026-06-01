@@ -15,7 +15,11 @@ jobs:
       - name: Install lightweight CI packages
         shell: Rscript {0}
         run: |
-          install.packages(c("yaml", "testthat"), repos = "https://cloud.r-project.org")
+          install.packages(c(
+            "yaml", "testthat", "digest",
+            "readr", "readxl", "dplyr", "tidyr", "stringr", "purrr", "tibble",
+            "ggplot2", "svglite", "scales", "forcats", "broom", "openxlsx"
+          ), repos = "https://cloud.r-project.org")
 
       - name: Validate tests
         run: Rscript tests/testthat.R
