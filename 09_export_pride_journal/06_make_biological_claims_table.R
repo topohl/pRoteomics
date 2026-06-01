@@ -155,6 +155,44 @@ collect_behavior_claims <- function() {
     standardize_claims()
 }
 
+collect_microglia_signature_claims <- function(dataset) {
+  f <- path_results(
+    "tables",
+    "04_differential_expression_enrichment",
+    "microglia_targeted_signature_enrichment",
+    dataset,
+    "microglia_signature_claims_ready.csv"
+  )
+  df <- read_csv_if_exists(f)
+  if (is.null(df) || !nrow(df) || !"signature" %in% names(df)) return(empty_claims())
+  for (col in c("comparison", "left_region", "right_region", "left_unit", "left_condition", "right_condition", "claim_type", "NES", "pvalue", "padj", "matched_genes", "contrast_class")) {
+    if (!col %in% names(df)) df[[col]] <- NA
+  }
+  df %>%
+    dplyr::transmute(
+      dataset = dataset,
+      region = ifelse(!is.na(.data$left_region) & !is.na(.data$right_region), paste(.data$left_region, .data$right_region, sep = "_vs_"), .data$left_region),
+      layer_cell_compartment = .data$left_unit,
+      contrast = .data$comparison,
+      direction = dplyr::case_when(.data$NES > 0 ~ "positive_NES", .data$NES < 0 ~ "negative_NES", TRUE ~ "neutral"),
+      biological_program = .data$signature,
+      key_proteins_genes = .data$matched_genes,
+      evidence_type = "microglia_signature_enrichment",
+      effect_size_NES = .data$NES,
+      raw_p = .data$pvalue,
+      FDR = .data$padj,
+      robustness_stability_metric = paste0("contrast_class=", .data$contrast_class, "; claim_type=", .data$claim_type),
+      source_file = f,
+      figure_table_target = "microglia_signature_claims_ready",
+      interpretation_note = dplyr::case_when(
+        .data$claim_type == "within_region_condition_microglia_program" ~ "Within-region condition contrast; conservative microglia-supported claim.",
+        .data$claim_type == "regional_microglia_program" ~ "Cross-region same-condition contrast; conservative regional microglia program claim.",
+        TRUE ~ "Microglia signature enrichment claim-ready row."
+      )
+    ) %>%
+    standardize_claims()
+}
+
 if (is_dry_run()) {
   dry_run_line("Script", "09_export_pride_journal/06_make_biological_claims_table.R")
   dry_run_line("Datasets", paste(valid_datasets(), collapse = ", "))
@@ -167,6 +205,7 @@ claims <- dplyr::bind_rows(
   lapply(valid_datasets(), collect_program_claims),
   lapply(valid_datasets(), collect_wgcna_claims),
   lapply(valid_datasets(), collect_overlap_claims),
+  lapply(valid_datasets(), collect_microglia_signature_claims),
   list(collect_behavior_claims())
 ) %>%
   standardize_claims() %>%
