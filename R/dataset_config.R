@@ -4,6 +4,35 @@ valid_datasets <- function() {
   c("neuron_neuropil", "neuron_soma", "microglia")
 }
 
+dataset_contracts <- function() {
+  list(
+    neuron_neuropil = list(
+      label = "Neuron neuropil",
+      region = TRUE,
+      layer = TRUE,
+      celltype_roi = FALSE,
+      purified_celltype = FALSE,
+      interpretation = "Region/layer-resolved neuron neuropil proteomics."
+    ),
+    neuron_soma = list(
+      label = "Neuron soma",
+      region = TRUE,
+      layer = TRUE,
+      celltype_roi = FALSE,
+      purified_celltype = FALSE,
+      interpretation = "Region/layer-resolved neuronal soma-enriched proteomics."
+    ),
+    microglia = list(
+      label = "Microglia-enriched ROI",
+      region = TRUE,
+      layer = FALSE,
+      celltype_roi = TRUE,
+      purified_celltype = FALSE,
+      interpretation = "Region-resolved microglia-enriched ROI/local microenvironment proteomics; not purified microglia."
+    )
+  )
+}
+
 normalize_dataset <- function(x) {
   x <- tolower(trimws(as.character(x)))
   x <- gsub("[[:space:]-]+", "_", x)
@@ -40,4 +69,32 @@ current_dataset <- function(default = "neuron_neuropil") {
     return(validate_dataset(unname(hit), source = names(hit)))
   }
   validate_dataset(default, source = "default dataset")
+}
+
+dataset_capabilities <- function(dataset = current_dataset()) {
+  dataset <- validate_dataset(dataset)
+  dataset_contracts()[[dataset]]
+}
+
+dataset_has_capability <- function(dataset = current_dataset(), capability) {
+  caps <- dataset_capabilities(dataset)
+  if (!capability %in% names(caps)) {
+    stop("Unknown dataset capability: ", capability, call. = FALSE)
+  }
+  isTRUE(caps[[capability]])
+}
+
+assert_dataset_capability <- function(dataset = current_dataset(), capability, analysis = "analysis") {
+  if (!dataset_has_capability(dataset, capability)) {
+    stop(
+      "Dataset '", dataset, "' does not support ", capability, "-level ", analysis,
+      ". Dataset interpretation: ", dataset_capabilities(dataset)$interpretation,
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
+}
+
+dataset_interpretation <- function(dataset = current_dataset()) {
+  dataset_capabilities(dataset)$interpretation
 }
