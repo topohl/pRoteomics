@@ -1,0 +1,11 @@
+name: mapped_contrast
+required_columns: [gene_id, log2FoldChange]
+columns:
+  gene_id: {type: character}
+  entrez_id: {type: character}
+  gene_symbol: {type: character}
+  log2FoldChange: {type: numeric}
+  pvalue: {type: numeric}
+  padj: {type: numeric}
+  contrast: {type: character}
+  dataset: {type: character}
