@@ -11,21 +11,34 @@ results/reports/<module>/<substep>/<dataset>/
 results/logs/<module>/<substep>/<dataset>/
 ```
 
-Major downstream tables should be validated with `validate_table_schema(df, schema_name, strict = TRUE)` before writing. Active scripts should write:
+Major downstream tables should be validated with `validate_table_schema(df, schema_name, strict = TRUE)` before writing.
 
-- `run_manifest.yml`
-- `sessionInfo.txt`
-- config snapshot where applicable
-- input file hashes where applicable
+## Required Final Tables
 
-The manuscript export layer collects final outputs under:
+| output | schema or contract | expected location |
+|---|---|---|
+| clusterProfiler manifest | `clusterProfiler_manifest.yml` | `data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv` |
+| compareGO input manifest | `compareGO_manifest.yml` | `data/processed/04_differential_expression_enrichment/compareGO/<dataset>/compareGO_input_manifest.csv` |
+| biological program summary | documented in `docs/file_contracts.tsv` | `results/tables/04_differential_expression_enrichment/biological_program_summary/<dataset>/program_summary.csv` |
+| targeted microglia ROI signature claims | documented in `docs/file_contracts.tsv` | `results/tables/04_differential_expression_enrichment/microglia_targeted_signature_enrichment/microglia/microglia_signature_claims_ready.csv` |
+| WGCNA module definitions | `wgcna_module_contract.yml` | `results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_module_definitions_for_downstream.csv` |
+| biological claims table | `biological_claims_table.yml` | `results/tables/biological_claims_table.csv` |
+
+## Manuscript And Source Data
+
+The active export layer in `09_export_pride_journal/` collects final products under:
 
 ```text
-results/manuscript/figure_1/
-results/manuscript/figure_2/
+results/manuscript/figure_*/
 results/manuscript/extended_data/
 results/manuscript/supplementary_tables/
 results/manuscript/source_data/
+pride_submission/metadata/
+pride_submission/processed_data/
+pride_submission/supplementary_tables/
+pride_submission/methods/
+pride_submission/manifests/
+pride_submission/validation/
 ```
 
-These export scripts collect final products only; they do not recompute analyses.
+Export scripts collect final products only; they do not recompute scientific analyses. Active scripts should also write `run_manifest.yml`, `sessionInfo.txt`, config snapshots, and input file hashes where applicable.
