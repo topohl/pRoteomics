@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 
-# Neuropil contamination annotation workflow
+# Neuropil reference annotation workflow
 #
 # This script annotates microglia-enriched GO/GSEA results using a separately
 # processed neuropil dataset as a reference layer. It does not subtract raw
@@ -18,7 +18,7 @@ source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "validation_utils.R"))
 
 MODULE_ID <- "04_differential_expression_enrichment"
-SUBSTEP_ID <- "neuropil_contamination_annotation"
+SUBSTEP_ID <- "neuropil_reference_annotation"
 CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
 
 DATASET <- current_dataset()
@@ -30,7 +30,7 @@ DRY_RUN <- is_dry_run()
 CANONICAL_PATHS <- lapply(CANONICAL_PATHS, function(path) file.path(path, DATASET))
 invisible(lapply(CANONICAL_PATHS, dir_create))
 
-message("Neuropil contamination annotation")
+message("Neuropil reference annotation")
 message("Dataset: ", DATASET)
 message("Neuropil reference dataset: ", REFERENCE_DATASET)
 message("Dry run: ", DRY_RUN)
@@ -434,7 +434,7 @@ write_outputs <- function(annotated, diagnostics) {
   readr::write_csv(diagnostics, diagnostics_csv)
 
   methods_note <- c(
-    "Neuropil contamination annotation",
+    "Neuropil reference annotation",
     "",
     paste0("Dataset: ", DATASET),
     paste0("Reference dataset: ", REFERENCE_DATASET),
@@ -486,7 +486,7 @@ if (isTRUE(DRY_RUN)) {
       CANONICAL_PATHS$reports
     )
   )
-  dry_run_line("Script", "04_neuropil_contamination_annotation.r")
+  dry_run_line("Script", "04_neuropil_reference_annotation.r")
   dry_run_line("Dataset", DATASET, diagnostics$status[1])
   dry_run_line("Reference dataset", REFERENCE_DATASET)
   dry_run_line("Microglia/current manifest", microglia_manifest$path, diagnostics$status[3])
