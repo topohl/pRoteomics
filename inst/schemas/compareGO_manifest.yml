@@ -1,7 +1,7 @@
 name: compareGO_manifest
 required_columns: [dataset, output_table]
 columns:
-  dataset: {type: character}
+  dataset: {type: character, allowed_values: [neuron_neuropil, neuron_soma, microglia]}
   analysis_id: {type: character}
   comparison: {type: character}
   ontology: {type: character}
