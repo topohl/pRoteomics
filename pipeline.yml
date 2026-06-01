@@ -98,7 +98,7 @@ stages:
       - script: "06_modules_WGCNA/05_wgcna_de_gsea_overlap.r"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
-        expected_inputs: ["WGCNA module contract", "DE/GSEA manifests"]
+        expected_inputs: ["WGCNA module contract", "differential abundance/GSEA manifests"]
         expected_outputs: ["results/tables/06_modules_WGCNA/05_wgcna_de_gsea_overlap/<dataset>/"]
         manifests: ["run_manifest.yml where implemented"]
       - script: "06_modules_WGCNA/03_score_module_activity.R"
@@ -151,7 +151,7 @@ stages:
     scripts:
       - script: "08_behavior_physio_coupling/02_network_behavior_coupling.r"
         required: false
-        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        datasets: ["neuron_neuropil", "neuron_soma"]
         expected_inputs: ["data/external/behavior/", "network/module outputs"]
         expected_outputs: ["results/tables/08_behavior_physio_coupling/network_behavior_coupling/"]
         manifests: ["run_manifest.yml where implemented"]
