@@ -1,0 +1,13 @@
+name: wgcna_module_contract
+required_columns: [dataset, ModuleID, ProteinID]
+columns:
+  dataset: {type: character}
+  ModuleID: {type: character}
+  ModuleColor: {type: character}
+  ProteinID: {type: character}
+  UniProt: {type: character}
+  GeneSymbol: {type: character}
+  EntrezID: {type: character}
+  kME: {type: numeric}
+  ModuleLabel_Final: {type: character}
+  Supermodule: {type: character}
