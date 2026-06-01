@@ -4,9 +4,9 @@ This guide separates statistical output from biological claims. The project has 
 
 ## Analysis Layers
 
-**Differential expression**
+**Differential abundance**
 
-DE contrasts identify proteins with condition-associated abundance changes within a dataset and route. DE supports statements about measured protein abundance in the sampled compartment. It does not by itself establish pathway activity, cell-type origin, or causality.
+Differential abundance contrasts identify proteins with condition-associated abundance changes within a dataset and route. DA supports statements about measured protein abundance in the sampled compartment. It does not by itself establish pathway activity, cell-type origin, or causality.
 
 **GSEA and clusterProfiler**
 
@@ -22,7 +22,7 @@ compareGO harmonizes manifest-selected enrichment outputs across comparisons and
 
 **WGCNA**
 
-WGCNA modules are protein co-expression groups. The strongest evidence comes from modules that combine low condition-model FDR, robust adjusted deltas, high hub strength, interpretable GO labels, preservation, and DE/GSEA core-gene overlap. Module labels are display aids; module color/ID remains the stable contract.
+WGCNA modules are protein co-abundance groups. The strongest evidence comes from modules that combine low condition-model FDR, robust adjusted deltas, high hub strength, interpretable GO labels, preservation, and DA/GSEA core-gene overlap. Module labels are display aids; module color/ID remains the stable contract.
 
 **Module scores**
 
@@ -38,7 +38,7 @@ Behavior coupling links animal-level proteomic summaries to behavior/physiology.
 
 ## Stress/Social Instability Biology Checks
 
-These axes are biologically motivated lenses for social instability stress interpretation. They should not be treated as stress-specific proof on their own. Use them when effects converge across DE/GSEA, biological program summaries, WGCNA/module scores, spatial network changes, behavior/physiology coupling, and QC/confounding checks.
+These axes are biologically motivated lenses for social instability stress interpretation. They should not be treated as stress-specific proof on their own. Use them when effects converge across DA/GSEA, biological program summaries, WGCNA/module scores, spatial network changes, behavior/physiology coupling, and QC/confounding checks.
 
 **HPA/glucocorticoid signaling**
 
@@ -86,8 +86,8 @@ Before converting any stress-relevant axis into a manuscript claim, check whethe
 
 Confirmatory-leaning evidence:
 
-- FDR-controlled DE/GSEA or WGCNA effects.
-- WGCNA modules with preservation and DE/GSEA overlap support.
+- FDR-controlled DA/GSEA or WGCNA effects.
+- WGCNA modules with preservation and DA/GSEA overlap support.
 - Spatial edges with bootstrap stability and FDR/permutation support.
 - Behavior models with adequate n, FDR support, and sensitivity consistency.
 
@@ -102,7 +102,7 @@ Exploratory evidence:
 ## Manuscript Figure Roadmap
 
 1. Dataset and contract overview: sample counts, dataset filters, input manifests.
-2. DE/GSEA atlas: compareGO heatmaps plus biological program summary.
+2. DA/GSEA atlas: compareGO heatmaps plus biological program summary.
 3. WGCNA module panel: module evidence rank, module labels, top hubs, preservation.
 4. Module score validation: per-sample/per-animal module score shifts and directional robustness.
 5. Spatial network panel: only bootstrap-supported edges in main figures, full edge tables in supplement.
