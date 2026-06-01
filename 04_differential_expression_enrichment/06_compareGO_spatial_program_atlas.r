@@ -6,6 +6,7 @@
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
+source(repo_path("R", "plotting_nature.R"))
 dataset_config_file <- repo_path("R", "dataset_config.R")
 if (!file.exists(dataset_config_file)) {
   stop("Missing required config: ", dataset_config_file, call. = FALSE)
@@ -56,6 +57,7 @@ program_dictionary <- list(
   Mitochondria_OXPHOS = c("mitochond", "oxidative phosphorylation", "electron transport", "respiratory chain", "atp synthesis", "nadh", "proton transmembrane"),
   Proteostasis_Lysosome = c("proteas", "proteolysis", "ubiquitin", "lysosom", "autophag", "vacuolar", "folding", "chaperone"),
   Synapse_Plasticity = c("synap", "dendrit", "axon", "neurotransmitter", "vesicle", "plasticity", "glutamate", "postsynaptic", "presynaptic"),
+  Development_Patterning = c("develop", "pattern", "morphogen", "differentiation", "neurogenesis", "gliogenesis", "axon guidance", "cell fate", "regionalization"),
   Immune_Microglia = c("immune", "inflamm", "complement", "microgl", "cytokine", "interferon", "antigen", "phagocyt", "leukocyte", "myeloid"),
   Cytoskeleton_Transport = c("cytoskeleton", "actin", "tubulin", "microtub", "transport", "traffick", "vesicle-mediated", "motor protein")
 )
@@ -63,6 +65,17 @@ program_dictionary <- list(
 program_levels <- c(names(program_dictionary), "Other")
 contrast_levels <- c("RES_vs_CON", "SUS_vs_CON", "SUS_vs_RES")
 region_levels <- c("CA1", "CA2", "CA3", "DG")
+publication_program_labels <- c(
+  "RNA/RNP processing",
+  "Ribosome/translation",
+  "Mitochondria/OXPHOS/metabolism",
+  "Proteostasis/ubiquitin/protein folding",
+  "Synapse/vesicle organization",
+  "Cytoskeleton/motility",
+  "Development/patterning"
+)
+atlas_min_recurrent_units <- as.integer(Sys.getenv("PROTEOMICS_PUBLICATION_ATLAS_MIN_RECURRENT_UNITS", unset = "2"))
+divergence_delta_threshold <- as.numeric(Sys.getenv("PROTEOMICS_PUBLICATION_DIVERGENCE_DELTA_NES", unset = "0.25"))
 
 is_truthy_env <- function(name) {
   tolower(Sys.getenv(name, unset = "")) %in% c("1", "true", "yes", "y")
@@ -264,15 +277,7 @@ load_dataset_atlas <- function(files) {
 }
 
 order_spatial_units <- function(units) {
-  units <- unique(as.character(units))
-  unit_df <- tibble::tibble(spatial_unit = units) %>%
-    tidyr::separate(.data$spatial_unit, into = c("region", "layer"), sep = "_", fill = "right", remove = FALSE) %>%
-    dplyr::mutate(
-      region = factor(.data$region, levels = region_levels),
-      layer = dplyr::coalesce(.data$layer, "")
-    ) %>%
-    dplyr::arrange(.data$region, .data$layer)
-  unit_df$spatial_unit
+  anatomical_spatial_unit_levels(units)
 }
 
 calculate_program_summary <- function(enrichment_df, driver_by_dataset) {
@@ -442,6 +447,241 @@ plot_compartment_comparison <- function(summary_df, output_file) {
   ggplot2::ggsave(output_file, p, width = 10, height = 7, device = "svg", limitsize = FALSE)
 }
 
+publication_color_limits <- function(x, cap = 2.5) {
+  lim <- suppressWarnings(stats::quantile(abs(x), probs = 0.98, na.rm = TRUE, names = FALSE))
+  if (!is.finite(lim) || lim <= 0) lim <- suppressWarnings(max(abs(x), na.rm = TRUE))
+  if (!is.finite(lim) || lim <= 0) lim <- 1
+  lim <- min(lim, cap)
+  c(-lim, lim)
+}
+
+sig_size_breaks <- function(x) {
+  x <- sort(unique(as.numeric(x[is.finite(x) & x > 0])))
+  if (!length(x)) return(c(1, 2, 3))
+  unique(round(stats::quantile(x, probs = c(0, 0.5, 1), names = FALSE)))
+}
+
+prepare_publication_summary <- function(summary_df, min_recurrent_units = atlas_min_recurrent_units) {
+  summary_df %>%
+    dplyr::mutate(
+      program = clean_program_label(.data$program_class),
+      dataset_compartment = as.character(.data$dataset),
+      dataset_compartment_label = clean_spatial_unit_label(.data$dataset_label),
+      comparison = as.character(.data$phenotype_contrast),
+      comparison_label = clean_comparison_label(.data$comparison),
+      spatial_unit_label = clean_spatial_unit_label(.data$spatial_unit),
+      region = as.character(.data$region),
+      layer = as.character(.data$layer),
+      significant_term_count = as.integer(.data$n_sig_terms),
+      mean_NES = as.numeric(.data$mean_NES),
+      min_recurrent_units = min_recurrent_units,
+      interpretable_program = .data$program %in% publication_program_labels,
+      nonzero_signal = .data$significant_term_count > 0
+    ) %>%
+    dplyr::group_by(.data$program) %>%
+    dplyr::mutate(
+      recurrent_units = dplyr::n_distinct(paste(.data$dataset_compartment, .data$spatial_unit)[.data$nonzero_signal]),
+      recurrent_comparisons = dplyr::n_distinct(.data$comparison[.data$nonzero_signal]),
+      passes_recurrence_filter = .data$recurrent_units >= .data$min_recurrent_units | .data$recurrent_comparisons >= .data$min_recurrent_units,
+      publication_include = .data$interpretable_program & .data$nonzero_signal & .data$passes_recurrence_filter,
+      filter_reason = dplyr::case_when(
+        !.data$interpretable_program ~ "excluded_non_manuscript_program",
+        !.data$nonzero_signal ~ "excluded_zero_significant_terms",
+        !.data$passes_recurrence_filter ~ "excluded_below_recurrence_threshold",
+        TRUE ~ "included"
+      )
+    ) %>%
+    dplyr::ungroup()
+}
+
+plot_spatial_program_atlas_publication <- function(summary_df, figure_file, source_file, min_recurrent_units = atlas_min_recurrent_units) {
+  source_df <- prepare_publication_summary(summary_df, min_recurrent_units)
+  readr::write_csv(source_df, source_file, na = "")
+  plot_df <- source_df %>%
+    dplyr::filter(.data$publication_include) %>%
+    dplyr::mutate(
+      spatial_unit_label = factor(.data$spatial_unit_label, levels = clean_spatial_unit_label(anatomical_spatial_unit_levels(unique(.data$spatial_unit)))),
+      program = factor(.data$program, levels = rev(publication_program_labels)),
+      comparison_label = factor(.data$comparison_label, levels = clean_comparison_label(contrast_levels)),
+      dataset_compartment_label = factor(.data$dataset_compartment_label, levels = clean_spatial_unit_label(dataset_label(proteomics_dataset_order)))
+    )
+  if (!nrow(plot_df)) return(invisible(FALSE))
+  lims <- publication_color_limits(plot_df$mean_NES)
+  p <- ggplot2::ggplot(plot_df, ggplot2::aes(.data$spatial_unit_label, .data$program, color = .data$mean_NES, size = .data$significant_term_count)) +
+    ggplot2::geom_point(alpha = 0.9) +
+    ggplot2::facet_grid(.data$dataset_compartment_label ~ .data$comparison_label, scales = "free_x", space = "free_x") +
+    ggplot2::scale_color_gradient2(low = "#3B4CC0", mid = "white", high = "#B40426", midpoint = 0, limits = lims, oob = scales::squish, name = "Mean NES") +
+    ggplot2::scale_size_continuous(range = c(1.0, 4.2), breaks = sig_size_breaks(plot_df$significant_term_count), name = "Sig. terms") +
+    ggplot2::labs(x = NULL, y = NULL) +
+    theme_nature_dotplot(7)
+  save_nature_svg(p, figure_file, width_mm = 180, height_mm = 105)
+}
+
+plot_neuropil_focus_publication <- function(summary_df, figure_file, source_file, min_recurrent_units = 1L) {
+  source_df <- prepare_publication_summary(summary_df, min_recurrent_units) %>%
+    dplyr::filter(.data$dataset_compartment == "neuron_neuropil")
+  if (!nrow(source_df)) {
+    readr::write_csv(source_df, source_file, na = "")
+    return(invisible(FALSE))
+  }
+  available_focus <- intersect(clean_comparison_label(contrast_levels), unique(source_df$comparison_label))
+  if (length(available_focus)) source_df <- dplyr::filter(source_df, .data$comparison_label %in% available_focus)
+  readr::write_csv(source_df, source_file, na = "")
+  plot_df <- source_df %>%
+    dplyr::filter(.data$interpretable_program, .data$nonzero_signal) %>%
+    dplyr::mutate(
+      spatial_unit_label = factor(.data$spatial_unit_label, levels = clean_spatial_unit_label(anatomical_spatial_unit_levels(unique(.data$spatial_unit)))),
+      program = factor(.data$program, levels = rev(publication_program_labels)),
+      comparison_label = factor(.data$comparison_label, levels = clean_comparison_label(contrast_levels))
+    )
+  if (!nrow(plot_df)) return(invisible(FALSE))
+  lims <- publication_color_limits(plot_df$mean_NES)
+  p <- ggplot2::ggplot(plot_df, ggplot2::aes(.data$spatial_unit_label, .data$program, color = .data$mean_NES, size = .data$significant_term_count)) +
+    ggplot2::geom_point(alpha = 0.92) +
+    ggplot2::facet_wrap(~comparison_label, nrow = 1, scales = "free_x") +
+    ggplot2::scale_color_gradient2(low = "#3B4CC0", mid = "white", high = "#B40426", midpoint = 0, limits = lims, oob = scales::squish, name = "Mean NES") +
+    ggplot2::scale_size_continuous(range = c(1.0, 4.0), breaks = sig_size_breaks(plot_df$significant_term_count), name = "Sig. terms") +
+    ggplot2::labs(x = NULL, y = NULL) +
+    theme_nature_dotplot(7)
+  save_nature_svg(p, figure_file, width_mm = 180, height_mm = 72)
+}
+
+plot_compartment_comparison_publication <- function(summary_df, figure_file, source_file) {
+  source_df <- prepare_publication_summary(summary_df, min_recurrent_units = 1L) %>%
+    dplyr::filter(.data$interpretable_program, .data$nonzero_signal) %>%
+    dplyr::group_by(.data$dataset_compartment, .data$dataset_compartment_label, .data$comparison, .data$comparison_label, .data$region, .data$program) %>%
+    dplyr::summarise(
+      mean_NES = mean(.data$mean_NES, na.rm = TRUE),
+      significant_term_count = sum(.data$significant_term_count, na.rm = TRUE),
+      enriched_units = dplyr::n_distinct(.data$spatial_unit[.data$significant_term_count > 0]),
+      min_fdr = suppressWarnings(min(.data$min_fdr, na.rm = TRUE)),
+      .groups = "drop"
+    ) %>%
+    dplyr::mutate(min_fdr = ifelse(is.infinite(.data$min_fdr), NA_real_, .data$min_fdr))
+  readr::write_csv(source_df, source_file, na = "")
+  if (!nrow(source_df)) return(invisible(FALSE))
+  plot_df <- source_df %>%
+    dplyr::mutate(
+      program = factor(.data$program, levels = rev(publication_program_labels)),
+      region = factor(.data$region, levels = region_levels),
+      dataset_compartment_label = factor(.data$dataset_compartment_label, levels = clean_spatial_unit_label(dataset_label(proteomics_dataset_order))),
+      comparison_label = factor(.data$comparison_label, levels = clean_comparison_label(contrast_levels))
+    )
+  lims <- publication_color_limits(plot_df$mean_NES)
+  p <- ggplot2::ggplot(plot_df, ggplot2::aes(.data$region, .data$program, color = .data$mean_NES, size = .data$enriched_units)) +
+    ggplot2::geom_point(alpha = 0.9) +
+    ggplot2::facet_grid(.data$dataset_compartment_label ~ .data$comparison_label) +
+    ggplot2::scale_color_gradient2(low = "#3B4CC0", mid = "white", high = "#B40426", midpoint = 0, limits = lims, oob = scales::squish, name = "Mean NES") +
+    ggplot2::scale_size_continuous(range = c(1.0, 4.0), breaks = sig_size_breaks(plot_df$enriched_units), name = "Enriched units") +
+    ggplot2::labs(x = NULL, y = NULL) +
+    theme_nature_dotplot(7)
+  save_nature_svg(p, figure_file, width_mm = 170, height_mm = 105)
+}
+
+plot_res_sus_divergence_publication <- function(behavior_df, figure_file, source_file, delta_threshold = divergence_delta_threshold) {
+  source_df <- behavior_df %>%
+    dplyr::mutate(
+      program = clean_program_label(.data$program_class),
+      dataset_compartment = as.character(.data$dataset),
+      dataset_compartment_label = clean_spatial_unit_label(.data$dataset_label),
+      spatial_unit_label = clean_spatial_unit_label(.data$spatial_unit),
+      RES_value = as.numeric(.data$RES_vs_CON_mean_NES),
+      SUS_value = as.numeric(.data$SUS_vs_CON_mean_NES),
+      delta = .data$SUS_value - .data$RES_value,
+      abs_delta = abs(.data$delta),
+      divergence_threshold = delta_threshold,
+      divergence_class = dplyr::case_when(
+        is.na(.data$RES_value) | is.na(.data$SUS_value) ~ "weak/ambiguous",
+        abs(.data$RES_value) < 0.15 & abs(.data$SUS_value) < 0.15 ~ "weak/ambiguous",
+        sign(.data$RES_value) != sign(.data$SUS_value) & abs(.data$RES_value) >= 0.15 & abs(.data$SUS_value) >= 0.15 ~ "opposite direction",
+        .data$RES_value >= 0.15 & .data$SUS_value >= 0.15 & .data$abs_delta < delta_threshold ~ "shared up",
+        .data$RES_value <= -0.15 & .data$SUS_value <= -0.15 & .data$abs_delta < delta_threshold ~ "shared down",
+        .data$RES_value - .data$SUS_value >= delta_threshold ~ "RES-biased",
+        .data$SUS_value - .data$RES_value >= delta_threshold ~ "SUS-biased",
+        TRUE ~ "weak/ambiguous"
+      ),
+      label_candidate = .data$program %in% publication_program_labels & is.finite(.data$abs_delta)
+    )
+  readr::write_csv(source_df, source_file, na = "")
+  plot_df <- source_df %>%
+    dplyr::filter(.data$program %in% publication_program_labels, !is.na(.data$RES_value), !is.na(.data$SUS_value))
+  if (!nrow(plot_df)) return(invisible(FALSE))
+  labels_df <- plot_df %>%
+    dplyr::arrange(dplyr::desc(.data$abs_delta)) %>%
+    dplyr::slice_head(n = 8) %>%
+    dplyr::mutate(point_label = paste(.data$spatial_unit_label, .data$program, sep = "\n"))
+  lim <- max(abs(c(plot_df$RES_value, plot_df$SUS_value)), na.rm = TRUE)
+  if (!is.finite(lim) || lim <= 0) lim <- 1
+  p <- ggplot2::ggplot(plot_df, ggplot2::aes(.data$RES_value, .data$SUS_value, color = .data$divergence_class)) +
+    ggplot2::geom_hline(yintercept = 0, color = "grey75", linewidth = 0.25) +
+    ggplot2::geom_vline(xintercept = 0, color = "grey75", linewidth = 0.25) +
+    ggplot2::geom_abline(slope = 1, intercept = 0, color = "grey65", linewidth = 0.25, linetype = "dashed") +
+    ggplot2::geom_point(alpha = 0.85, size = 1.8) +
+    ggplot2::scale_color_manual(
+      values = c("shared up" = "#B40426", "shared down" = "#3B4CC0", "RES-biased" = "#009E73", "SUS-biased" = "#D55E00", "opposite direction" = "#7A3E9D", "weak/ambiguous" = "grey65"),
+      name = NULL
+    ) +
+    ggplot2::coord_equal(xlim = c(-lim, lim), ylim = c(-lim, lim)) +
+    ggplot2::labs(x = "RES vs CON mean NES", y = "SUS vs CON mean NES") +
+    theme_nature_dotplot(7) +
+    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 0))
+  if (requireNamespace("ggrepel", quietly = TRUE)) {
+    p <- p + ggrepel::geom_text_repel(data = labels_df, ggplot2::aes(label = .data$point_label), size = 2, min.segment.length = 0, max.overlaps = 12, show.legend = FALSE)
+  } else {
+    p <- p + ggplot2::geom_text(data = labels_df, ggplot2::aes(label = .data$point_label), size = 2, check_overlap = TRUE, vjust = -0.6, show.legend = FALSE)
+  }
+  save_nature_svg(p, figure_file, width_mm = 90, height_mm = 82)
+}
+
+plot_driver_recurrence_topdrivers_publication <- function(driver_df, figure_file, source_file, max_drivers = 20L) {
+  source_df <- driver_df %>%
+    dplyr::mutate(program = clean_program_label(.data$program_class), gene_or_protein = as.character(.data$Gene)) %>%
+    dplyr::filter(.data$program %in% publication_program_labels, nzchar(.data$gene_or_protein)) %>%
+    dplyr::group_by(.data$program, .data$gene_or_protein) %>%
+    dplyr::summarise(
+      recurrence_count = dplyr::n_distinct(.data$unit_label),
+      significant_term_count = sum(.data$n_terms, na.rm = TRUE),
+      spatial_unit_support = paste(sort(unique(.data$unit_label)), collapse = "; "),
+      .groups = "drop"
+    ) %>%
+    dplyr::arrange(dplyr::desc(.data$recurrence_count), dplyr::desc(.data$significant_term_count), .data$program, .data$gene_or_protein) %>%
+    dplyr::slice_head(n = max_drivers)
+  readr::write_csv(source_df, source_file, na = "")
+  if (!nrow(source_df)) return(invisible(FALSE))
+  plot_df <- source_df %>%
+    dplyr::mutate(
+      driver_label = factor(.data$gene_or_protein, levels = rev(unique(.data$gene_or_protein))),
+      program = factor(.data$program, levels = publication_program_labels)
+    )
+  p <- ggplot2::ggplot(plot_df, ggplot2::aes(.data$recurrence_count, .data$driver_label, fill = .data$program)) +
+    ggplot2::geom_col(width = 0.72, color = "black", linewidth = 0.15) +
+    ggplot2::facet_grid(.data$program ~ ., scales = "free_y", space = "free_y") +
+    ggplot2::scale_fill_manual(values = c("#4477AA", "#66CCEE", "#228833", "#CCBB44", "#EE6677", "#AA3377", "#BBBBBB"), guide = "none") +
+    ggplot2::labs(x = "Spatial-unit recurrence", y = NULL) +
+    theme_nature_base(7) +
+    ggplot2::theme(panel.grid.major.x = ggplot2::element_line(colour = "grey90", linewidth = 0.2))
+  save_nature_svg(p, figure_file, width_mm = 90, height_mm = 95)
+}
+
+write_publication_provenance <- function(paths, analyzed_datasets, row_counts) {
+  writeLines(
+    c(
+      "compareGO spatial program atlas publication outputs",
+      paste0("Datasets analyzed: ", paste(analyzed_datasets, collapse = ", ")),
+      paste0("Manuscript programs: ", paste(publication_program_labels, collapse = "; ")),
+      paste0("Atlas minimum recurrent units/comparisons: ", atlas_min_recurrent_units),
+      paste0("Divergence delta NES threshold: ", divergence_delta_threshold),
+      paste0("Rows before publication filtering: ", row_counts$before),
+      paste0("Rows after publication filtering: ", row_counts$after),
+      "Figures:",
+      paste0("  ", paste(paths$figures, collapse = "\n  ")),
+      "Source data:",
+      paste0("  ", paste(paths$source_data, collapse = "\n  "))
+    ),
+    file.path(CANONICAL_PATHS$reports, "compareGO_spatial_program_atlas_publication_provenance.txt")
+  )
+}
+
 write_outputs <- function(enrichment_df, summary_df, behavior_df, driver_df, diagnostics) {
   source_dir <- CANONICAL_PATHS$source_data
   table_dir <- CANONICAL_PATHS$tables
@@ -508,12 +748,41 @@ main <- function() {
   plot_driver_recurrence(driver_recurrence, file.path(CANONICAL_PATHS$figures, "Fig_LeadingEdgeDriverRecurrence.svg"))
   plot_compartment_comparison(program_summary, file.path(CANONICAL_PATHS$figures, "Fig_Compartment_Comparison.svg"))
 
+  publication_figures <- c(
+    spatial_atlas = file.path(CANONICAL_PATHS$figures, "Fig_SpatialProgramAtlas_dotheatmap_publication.svg"),
+    neuropil_focus = file.path(CANONICAL_PATHS$figures, "Fig_SpatialProgramAtlas_neuropil_focus_publication.svg"),
+    compartment = file.path(CANONICAL_PATHS$figures, "Fig_Compartment_Comparison_publication.svg"),
+    divergence = file.path(CANONICAL_PATHS$figures, "Fig_RES_SUS_divergence_publication.svg"),
+    topdrivers = file.path(CANONICAL_PATHS$figures, "Fig_LeadingEdgeDriverRecurrence_topdrivers_publication.svg")
+  )
+  publication_source <- c(
+    spatial_atlas = file.path(CANONICAL_PATHS$source_data, "source_data_SpatialProgramAtlas_publication.csv"),
+    neuropil_focus = file.path(CANONICAL_PATHS$source_data, "source_data_SpatialProgramAtlas_neuropil_focus_publication.csv"),
+    compartment = file.path(CANONICAL_PATHS$source_data, "source_data_Compartment_Comparison_publication.csv"),
+    divergence = file.path(CANONICAL_PATHS$source_data, "source_data_RES_SUS_divergence_publication.csv"),
+    topdrivers = file.path(CANONICAL_PATHS$source_data, "source_data_LeadingEdgeDriverRecurrence_topdrivers_publication.csv")
+  )
+
+  publication_source_df <- prepare_publication_summary(program_summary, atlas_min_recurrent_units)
+  plot_spatial_program_atlas_publication(program_summary, publication_figures[["spatial_atlas"]], publication_source[["spatial_atlas"]], atlas_min_recurrent_units)
+  plot_neuropil_focus_publication(program_summary, publication_figures[["neuropil_focus"]], publication_source[["neuropil_focus"]])
+  plot_compartment_comparison_publication(program_summary, publication_figures[["compartment"]], publication_source[["compartment"]])
+  plot_res_sus_divergence_publication(behavior_df, publication_figures[["divergence"]], publication_source[["divergence"]], divergence_delta_threshold)
+  plot_driver_recurrence_topdrivers_publication(driver_recurrence, publication_figures[["topdrivers"]], publication_source[["topdrivers"]])
+
+  write_publication_provenance(
+    paths = list(figures = unname(publication_figures), source_data = unname(publication_source)),
+    analyzed_datasets = vapply(files, `[[`, character(1), "dataset"),
+    row_counts = list(before = nrow(program_summary), after = sum(publication_source_df$publication_include, na.rm = TRUE))
+  )
+
   writeLines(
     c(
       "compareGO spatial program atlas complete",
       paste0("Datasets requested: ", paste(datasets, collapse = ", ")),
       paste0("Datasets analyzed: ", paste(vapply(files, `[[`, character(1), "dataset"), collapse = ", ")),
       paste0("Program summary rows: ", nrow(program_summary)),
+      paste0("Publication atlas rows: ", sum(publication_source_df$publication_include, na.rm = TRUE)),
       paste0("Figures directory: ", CANONICAL_PATHS$figures)
     ),
     file.path(CANONICAL_PATHS$reports, "compareGO_spatial_program_atlas_summary.txt")
