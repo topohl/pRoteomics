@@ -38,6 +38,7 @@ SUBSTEP_ID <- "network_behavior_coupling"
 CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
 BEHAVIOR_DATASET <- current_dataset()
 assert_dataset_capability(BEHAVIOR_DATASET, "layer", analysis = "network-behavior coupling")
+behavior_spatial_unit <- if (BEHAVIOR_DATASET == "neuron_neuropil") "region_layer" else "region"
 
 required_pkgs <- c(
   "dplyr", "tidyr", "stringr", "purrr", "tibble", "readr", "readxl",
@@ -50,8 +51,16 @@ invisible(lapply(required_pkgs, library, character.only = TRUE))
 # -------------------------------
 # 1) Parameters
 # -------------------------------
+resolve_spatial_rds <- function() {
+  override <- Sys.getenv("PROTEOMICS_SPATIAL_NETWORK_OBJECT", unset = "")
+  if (nzchar(override)) return(normalizePath(override, winslash = "/", mustWork = FALSE))
+  scoped <- path_processed("07_spatial_networks", "network_spatial_relations", BEHAVIOR_DATASET, behavior_spatial_unit, "network_spatial_relations_objects.rds")
+  if (file.exists(scoped)) return(scoped)
+  path_processed("07_spatial_networks", "network_spatial_relations", "network_spatial_relations_objects.rds")
+}
+
 params <- list(
-  spatial_rds = path_processed("07_spatial_networks", "network_spatial_relations", "network_spatial_relations_objects.rds"),
+  spatial_rds = resolve_spatial_rds(),
 
   movement_auc_file = path_external("behavior", "auc_individual_animals_firstChangeActive.csv"),
 
