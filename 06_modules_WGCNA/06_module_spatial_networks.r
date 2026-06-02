@@ -1,7 +1,7 @@
 # ================================================================
 # Consumes:
 #   - spatial network RDS from data/processed/07_spatial_networks/network_spatial_relations/
-#   - dataset/source-scoped module score output from 06_modules_WGCNA/05_module_score.r
+#   - dataset/source-scoped module score output from 06_modules_WGCNA/03_score_module_activity.R
 # Produces:
 #   - module spatial network tables/figures/network files/logs in canonical module folders
 # File contract:
@@ -21,7 +21,7 @@
 #
 # Inputs:
 #   1) spatial_rds from network_spatial_relations.r
-#   2) module_scores_per_sample.csv from 05_module_score.r
+#   2) module_scores_per_sample.csv from 03_score_module_activity.R
 #
 # Outputs:
 #   - module scores per sample and region/layer
@@ -97,7 +97,7 @@ if (is_dry_run()) {
 if (!file.exists(params$spatial_rds)) stop("spatial_rds not found: ", params$spatial_rds, call. = FALSE)
 if (!file.exists(params$module_score_file) && !allow_regex_fallback) {
   stop("Module score output not found: ", params$module_score_file,
-       ". Run 06_modules_WGCNA/05_module_score.r for dataset=", dataset_profile,
+       ". Run 06_modules_WGCNA/03_score_module_activity.R for dataset=", dataset_profile,
        " and module_definition_source=", module_definition_source,
        ", or explicitly allow regex fallback with PROTEOMICS_ALLOW_REGEX_MODULE_FALLBACK=true / --allow-regex-fallback.",
        call. = FALSE)
@@ -384,7 +384,7 @@ expr <- obj$expression_matrix
 sample_md <- obj$sample_metadata
 
 if (file.exists(params$module_score_file)) {
-  message2("Reading module score output from 05_module_score.r: ", params$module_score_file)
+  message2("Reading module score output from 03_score_module_activity.R: ", params$module_score_file)
   score_df <- load_module_score_file(params$module_score_file)
   if (!nrow(score_df)) {
     stop("Module score file contained no rows for dataset/source: ", dataset_profile, " / ", module_definition_source, call. = FALSE)
@@ -483,7 +483,7 @@ write_run_manifest(
     min_module_size = params$min_module_size,
     min_abs_module_similarity = params$min_abs_module_similarity
   ),
-  notes = "Consumes dataset/source-scoped module scores from 05_module_score.r."
+  notes = "Consumes dataset/source-scoped module scores from 03_score_module_activity.R."
 )
 
 message2("Finished module-level spatial network analysis")
