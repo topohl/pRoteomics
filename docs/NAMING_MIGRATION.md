@@ -4,7 +4,11 @@ Backward-compatible wrappers or retained scripts keep old commands working. Pref
 
 | old name | preferred name | status | rationale |
 |---|---|---|---|
-| `06_modules_WGCNA/91_module_score.r` | `06_modules_WGCNA/03_score_module_activity.R` | old implementation retained; new wrapper is active in `pipeline.yml` | Active-order, task-based module activity wording. |
+| `06_modules_WGCNA/03_overlap_modules.r` | `06_modules_WGCNA/02_curated_overlap_programs.r` | wrapper only | Curated overlap-derived biological programs are distinct from WGCNA modules. |
+| `06_modules_WGCNA/04_overlap_modules.r` | `06_modules_WGCNA/02_curated_overlap_programs.r` | wrapper only | Curated overlap-derived biological programs are distinct from WGCNA modules. |
+| `06_modules_WGCNA/05_module_score.r` | `06_modules_WGCNA/03_score_module_activity.R` | wrapper only | Active-order, task-based module activity wording. |
+| `06_modules_WGCNA/05_wgcna_de_gsea_overlap.r` | `06_modules_WGCNA/04_wgcna_de_gsea_overlap.r` | wrapper only | Clean active module-stage ordering. |
+| `06_modules_WGCNA/91_module_score.r` | `06_modules_WGCNA/03_score_module_activity.R` | wrapper only | Active-order, task-based module activity wording. |
 | `04_differential_expression_enrichment/04_neuropil_contamination_annotation.r` | `04_differential_expression_enrichment/04_neuropil_reference_annotation.r` | old implementation retained; new wrapper is active in `pipeline.yml` | Avoids "contamination" language; neuropil is a reference annotation, not subtraction. |
 | `04_differential_expression_enrichment/01_clusterProfiler.r` | `04_differential_expression_enrichment/01_run_enrichment_clusterprofiler.r` | proposed future alias | Task-based name; not changed in this refactor to avoid broad script churn. |
 | `04_differential_expression_enrichment/02_compareGO.r` | `04_differential_expression_enrichment/02_compare_enrichment_terms.r` | proposed future alias | Tool-independent description of term comparison. |
