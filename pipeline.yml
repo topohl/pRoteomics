@@ -14,6 +14,12 @@ stages:
         expected_inputs: ["data/raw or configured GCT/export source", "data/metadata/"]
         expected_outputs: ["data/processed/01_preprocessing/gct_extractR/<dataset>/"]
         manifests: ["run_manifest.yml where implemented"]
+      - script: "01_preprocessing/06_merged_metadata_module_score.r"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        expected_inputs: ["dataset-resolved *_with_metadata.xlsx matrix", "behavior/physiology source tables"]
+        expected_outputs: ["results/module_scores/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx"]
+        manifests: ["xlsx sheets include QC tabs"]
       - script: "02_id_mapping/01_MapThatProt_batch.r"
         required: true
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
@@ -104,7 +110,7 @@ stages:
       - script: "06_modules_WGCNA/03_score_module_activity.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
-        expected_inputs: ["module definition contract", "dataset-resolved matrix", "sample metadata"]
+        expected_inputs: ["module definition contract", "dataset-resolved matrix", "results/module_scores/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx"]
         expected_outputs: ["results/tables/06_modules_WGCNA/module_score/<dataset>/<module_definition_source>/"]
         manifests: ["run_manifest.yml", "module_feature_mapping_trace.csv", "module_gene_coverage.csv"]
       - script: "06_modules_WGCNA/04_wgcna_de_gsea_overlap.r"
@@ -118,9 +124,9 @@ stages:
     scripts:
       - script: "07_spatial_networks/01_network_spatial_relations.r"
         required: true
-        datasets: ["neuron_neuropil", "neuron_soma"]
-        expected_inputs: ["region/layer-resolved matrix and metadata"]
-        expected_outputs: ["data/processed/07_spatial_networks/network_spatial_relations/network_spatial_relations_objects.rds"]
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        expected_inputs: ["dataset-resolved matrix and metadata with valid spatial unit metadata"]
+        expected_outputs: ["data/processed/07_spatial_networks/network_spatial_relations/<dataset>/<spatial_unit>/network_spatial_relations_objects.rds"]
         manifests: ["run_manifest.yml where implemented"]
       - script: "07_spatial_networks/02_differential_networks.r"
         required: false
