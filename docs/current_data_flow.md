@@ -118,7 +118,7 @@ The old technical folder roots map as follows:
 | `WGCNA_modules_long` | `results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/` plus `data/processed/06_modules_WGCNA/01_WGCNA/<dataset>/wgcna_final_model_state.rds` | Color-stable WGCNA module definitions are reusable inputs for dataset-scoped `03_score_module_activity.R` when `PROTEOMICS_MODULE_DEFINITION_SOURCE=WGCNA`; GO labels are display metadata, not eigengene column names. |
 | `biological_claims_table` | `results/tables/biological_claims_table.csv` and optional `.xlsx` | Conservative cross-analysis evidence table for manuscript figure planning; claims remain limited by each source analysis. |
 | `EWCE_E9_Results` | `data/processed/05_celltype_enrichment_EWCE/EWCE_E9/` and `results/*/05_celltype_enrichment_EWCE/EWCE_E9/` | EWCE caches stay in processed/cache. |
-| `network_spatial_relations` | `data/processed/07_spatial_networks/network_spatial_relations/` and `results/*/07_spatial_networks/network_spatial_relations/` | Producer script remains documented for later; downstream scripts now expect this canonical RDS. |
+| `network_spatial_relations` | `data/processed/07_spatial_networks/network_spatial_relations/<dataset>/<spatial_unit>/` and `results/*/07_spatial_networks/network_spatial_relations/<dataset>/<spatial_unit>/` | Dataset-aware spatial network producer. `neuron_neuropil` uses region/layer units; `neuron_soma` and `microglia` use region units. |
 
 Scripts left unchanged in Phase 3 are documented because they are central producers, exploratory notebooks-as-scripts, superseded versions, or require data-aware confirmation of file contracts before changing paths:
 
@@ -133,9 +133,9 @@ Scripts left unchanged in Phase 3 are documented because they are central produc
 
 Phase 4 fixed the main remaining spatial-network dependency gap. `07_spatial_networks/01_network_spatial_relations.r` now writes the canonical downstream object:
 
-`data/processed/07_spatial_networks/network_spatial_relations/network_spatial_relations_objects.rds`
+`data/processed/07_spatial_networks/network_spatial_relations/<dataset>/<spatial_unit>/network_spatial_relations_objects.rds`
 
-The object preserves the legacy downstream structure (`expression_matrix`, `sample_metadata`, `region_layer_matrix`, `overall_spearman`, `overall_jaccard`, `nodes`, `group_specific`) and adds an input manifest with file hashes. Tables, figures, source data, network files, logs, and reports are split across the canonical `data/processed/07_spatial_networks/network_spatial_relations/` and `results/*/07_spatial_networks/network_spatial_relations/` folders.
+The object records `dataset`, `spatial_unit`, `spatial_col`, `spatial_label_col`, `spatial_unit_matrix`, and preserves the legacy downstream structure (`expression_matrix`, `sample_metadata`, `region_layer_matrix`, `overall_spearman`, `overall_jaccard`, `nodes`, `group_specific`). Tables, figures, source data, network files, logs, and reports are split across dataset- and spatial-unit-scoped canonical folders.
 
 Phase 4 also canonicalized the preprocessing to ID-mapping contract:
 
