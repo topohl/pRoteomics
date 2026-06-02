@@ -98,10 +98,8 @@ resolve_module_score_metadata_file <- function() {
   override <- Sys.getenv("PROTEOMICS_MODULE_SCORE_METADATA_FILE", unset = "")
   if (nzchar(override)) return(normalizePath(override, winslash = "/", mustWork = FALSE))
   if (!is.na(dataset_inputs$metadata_file) && file.exists(dataset_inputs$metadata_file)) return(dataset_inputs$metadata_file)
-  first_existing_path(c(
-    path_results("module_scores", "sample_metadata_merged_clean_for_module_scores.xlsx"),
-    path_metadata("sample_metadata_merged_clean_for_module_scores.xlsx")
-  ))
+  if (!is.na(dataset_inputs$metadata_file)) return(dataset_inputs$metadata_file)
+  NA_character_
 }
 
 resolve_wgcna_state_file <- function() {
@@ -271,7 +269,7 @@ first <- dplyr::first
 
 metadata <- readxl::read_excel(metadata_file, sheet = "MergedMetadata_Clean") %>%
   tibble::as_tibble()
-for (needed_col in c("Sample", "AnimalID", "Region", "Layer", "StressGroup", "Sex", "Batch", "ReplicateGroup", "CellTypeLayer", "Exclude")) {
+for (needed_col in c("Sample", "AnimalID", "Region", "Layer", "RegionLayer", "SpatialUnit", "SpatialLabel", "StressGroup", "Sex", "Batch", "ReplicateGroup", "CellTypeLayer", "Exclude")) {
   if (!needed_col %in% names(metadata)) metadata[[needed_col]] <- NA
 }
 metadata <- metadata %>%
@@ -280,7 +278,24 @@ metadata <- metadata %>%
     AnimalID = as.character(AnimalID),
     Region = as.character(Region),
     Layer = as.character(Layer),
-    RegionLayer = paste(Region, Layer, sep = "_"),
+    RegionLayer = as.character(RegionLayer),
+    RegionLayer = dplyr::case_when(
+      !is.na(RegionLayer) & nzchar(RegionLayer) ~ RegionLayer,
+      dataset_profile %in% c("microglia", "neuron_soma") ~ Region,
+      TRUE ~ paste(Region, Layer, sep = "_")
+    ),
+    SpatialUnit = as.character(SpatialUnit),
+    SpatialUnit = dplyr::case_when(
+      !is.na(SpatialUnit) & nzchar(SpatialUnit) ~ SpatialUnit,
+      dataset_profile %in% c("microglia", "neuron_soma") ~ "region",
+      TRUE ~ "region_layer"
+    ),
+    SpatialLabel = as.character(SpatialLabel),
+    SpatialLabel = dplyr::case_when(
+      !is.na(SpatialLabel) & nzchar(SpatialLabel) ~ SpatialLabel,
+      dataset_profile %in% c("microglia", "neuron_soma") ~ Region,
+      TRUE ~ RegionLayer
+    ),
     StressGroup = factor(StressGroup, levels = c("CON", "RES", "SUS")),
     Sex = factor(Sex),
     Batch = factor(Batch),
@@ -357,10 +372,58 @@ protein_df <- protein_df %>%
   filter(!is.na(ProteinID), ProteinID != "") %>%
   distinct(ProteinID, .keep_all = TRUE)
 
-sample_cols <- intersect(colnames(protein_df), metadata$Sample)
+protein_sample_ids <- setdiff(colnames(protein_df), "ProteinID")
+metadata_sample_ids <- unique(as.character(metadata$Sample))
+sample_cols <- intersect(protein_sample_ids, metadata_sample_ids)
+
+guess_sample_scope <- function(samples) {
+  samples <- unique(as.character(samples))
+  samples <- samples[!is.na(samples) & nzchar(samples)]
+  if (!length(samples)) return("unknown")
+  first_tokens <- vapply(strsplit(samples, "[_-]"), function(x) x[1], character(1), USE.NAMES = FALSE)
+  dominant_token <- names(sort(table(first_tokens), decreasing = TRUE))[1]
+  paste0("dominant_token=", dominant_token)
+}
+
+write_overlap_diagnostics <- function() {
+  protein_preview <- head(protein_sample_ids, 20)
+  metadata_preview <- head(metadata_sample_ids, 20)
+  diag_row <- data.frame(
+    dataset = dataset_profile,
+    protein_file = protein_file,
+    metadata_file = metadata_file,
+    n_protein_samples = length(protein_sample_ids),
+    n_metadata_samples = length(metadata_sample_ids),
+    n_intersection = length(sample_cols),
+    protein_first_20_samples = paste(protein_preview, collapse = ";"),
+    metadata_first_20_samples = paste(metadata_preview, collapse = ";"),
+    guessed_protein_sample_prefix_scope = guess_sample_scope(protein_sample_ids),
+    guessed_metadata_sample_prefix_scope = guess_sample_scope(metadata_sample_ids),
+    stringsAsFactors = FALSE
+  )
+  utils::write.csv(diag_row, file.path(dir_qc, "module_score_sample_overlap_diagnostics.csv"), row.names = FALSE, na = "")
+  utils::write.csv(
+    data.frame(dataset = dataset_profile, sample = protein_sample_ids, stringsAsFactors = FALSE),
+    file.path(dir_qc, "protein_matrix_sample_columns.csv"),
+    row.names = FALSE,
+    na = ""
+  )
+  utils::write.csv(
+    data.frame(dataset = dataset_profile, sample = metadata_sample_ids, stringsAsFactors = FALSE),
+    file.path(dir_qc, "metadata_sample_ids.csv"),
+    row.names = FALSE,
+    na = ""
+  )
+}
 
 if (length(sample_cols) == 0) {
-  stop("No matching sample names between protein matrix and metadata.")
+  write_overlap_diagnostics()
+  stop(
+    "No matching sample names between protein matrix and metadata. This usually means the module-score metadata workbook was generated for another dataset. Run:\n",
+    "Rscript 01_preprocessing/06_merged_metadata_module_score.r --dataset <dataset>\n",
+    "or set PROTEOMICS_MODULE_SCORE_METADATA_FILE to the dataset-specific metadata workbook.",
+    call. = FALSE
+  )
 }
 
 metadata <- metadata %>%
@@ -421,6 +484,9 @@ standardize_module_definitions <- function(df, source) {
   df <- tibble::as_tibble(df)
   if (identical(source, "wgcna") || all(c("ModuleID", "ProteinID", "UniProt") %in% names(df))) {
     if (!"ModuleSet" %in% names(df)) df$ModuleSet <- "WGCNA"
+    if (!"ModuleColor" %in% names(df)) {
+      df$ModuleColor <- stringr::str_replace(as.character(df$ModuleID), "^WGCNA_", "")
+    }
     if (!"ModuleLabel_GO_BP" %in% names(df)) df$ModuleLabel_GO_BP <- df$ModuleID
     if (!"ModuleLabel_Manual" %in% names(df)) df$ModuleLabel_Manual <- NA_character_
     if (!"GeneSymbol" %in% names(df)) df$GeneSymbol <- NA_character_
@@ -431,6 +497,7 @@ standardize_module_definitions <- function(df, source) {
       transmute(
         ModuleSet = as.character(.data$ModuleSet),
         ModuleID = as.character(.data$ModuleID),
+        ModuleColor = as.character(.data$ModuleColor),
         ModuleName = as.character(dplyr::coalesce(.data$ModuleLabel_Manual, .data$ModuleLabel_GO_BP, .data$ModuleID)),
         ProteinID = toupper(as.character(.data$ProteinID)),
         UniProt = toupper(as.character(.data$UniProt)),
@@ -555,8 +622,8 @@ trace_result <- function(module_id, source_id, source_id_type, matched_matrix_id
 resolve_direct_matrix_id <- function(id) {
   id_norm <- normalize_module_identifier(id)
   if (!nzchar(id_norm)) return(NA_character_)
-  hit <- matrix_lookup[[id_norm]]
-  if (is.null(hit)) NA_character_ else hit
+  hit <- unname(matrix_lookup[id_norm])
+  if (!length(hit) || is.na(hit) || !nzchar(hit)) NA_character_ else hit
 }
 
 resolve_uniprot_matrix_ids <- function(uniprot) {
@@ -594,8 +661,8 @@ map_module_feature <- function(row, source) {
       return(trace_result(module_id, row$UniProt, "UniProt", paste(mapped, collapse = ";"), "UniProt_mapping", FALSE, TRUE, "UniProt maps to multiple matrix IDs"))
     }
     if (length(mapped) == 1) {
-      found <- matrix_lookup[[mapped]]
-      if (!is.null(found)) {
+      found <- unname(matrix_lookup[mapped])
+      if (length(found) == 1 && !is.na(found) && nzchar(found)) {
         return(trace_result(module_id, row$UniProt, "UniProt", found, "UniProt_mapping", TRUE))
       }
       return(trace_result(module_id, row$UniProt, "UniProt", mapped, "UniProt_mapping", FALSE, FALSE, "Mapped matrix ID not found in expression matrix"))
@@ -609,8 +676,8 @@ map_module_feature <- function(row, source) {
       return(trace_result(module_id, row$GeneSymbol, "GeneSymbol", paste(mapped, collapse = ";"), "GeneSymbol_unambiguous", FALSE, TRUE, "GeneSymbol maps to multiple matrix IDs"))
     }
     if (length(mapped) == 1) {
-      found <- matrix_lookup[[mapped]]
-      if (!is.null(found)) {
+      found <- unname(matrix_lookup[mapped])
+      if (length(found) == 1 && !is.na(found) && nzchar(found)) {
         return(trace_result(module_id, row$GeneSymbol, "GeneSymbol", found, "GeneSymbol_unambiguous", TRUE))
       }
       return(trace_result(module_id, row$GeneSymbol, "GeneSymbol", mapped, "GeneSymbol_unambiguous", FALSE, FALSE, "GeneSymbol mapped matrix ID not found in expression matrix"))
@@ -1686,6 +1753,8 @@ make_scores_animal <- function(df, analysis_label) {
       Region,
       Layer,
       RegionLayer,
+      SpatialUnit,
+      SpatialLabel,
       CellType,
       CellTypeLayer,
       StressGroup,
@@ -2952,8 +3021,8 @@ preferred_module_order <- c(
 )
 
 module_order <- c(
-  preferred_module_order[preferred_module_order %in% names(modules_accession)],
-  setdiff(names(modules_accession), preferred_module_order)
+  preferred_module_order[preferred_module_order %in% names(modules)],
+  setdiff(names(modules), preferred_module_order)
 )
 
 clean_module_label <- function(x) {
