@@ -4,6 +4,7 @@ paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.
 source(paths_file)
 source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "dataset_inputs.R"))
+source(repo_path("R", "module_contracts.R"))
 
 packages <- c("dplyr", "tidyr", "readr", "stringr", "tibble", "purrr")
 missing_packages <- packages[!vapply(packages, requireNamespace, logical(1), quietly = TRUE)]
@@ -37,7 +38,7 @@ write_overlap_xlsx <- function(sheets, path) {
 }
 
 tokenize_proteins <- function(x) {
-  x <- toupper(trimws(as.character(x)))
+  x <- normalize_module_identifier(x)
   x <- unlist(strsplit(x, "[;/,|[:space:]]+"))
   unique(x[nzchar(x) & !is.na(x)])
 }
@@ -76,6 +77,7 @@ run_wgcna_de_gsea_overlap <- function(dataset = current_dataset(), dry_run = is_
 
   wgcna_modules_dir <- path_results("tables", "06_modules_WGCNA", "01_WGCNA", dataset, "modules")
   definitions_file <- file.path(wgcna_modules_dir, "WGCNA_module_definitions_for_downstream.csv")
+  universe_file <- file.path(wgcna_modules_dir, "WGCNA_feature_universe.csv")
   priority_file <- file.path(wgcna_modules_dir, "WGCNA_module_priority_summary.csv")
   cluster_manifest <- find_latest(
     path_results("reports", "04_differential_expression_enrichment", "clusterProfiler", dataset),
@@ -87,18 +89,26 @@ run_wgcna_de_gsea_overlap <- function(dataset = current_dataset(), dry_run = is_
   ))
 
   if (isTRUE(dry_run)) {
-    dry_run_line("Script", "06_modules_WGCNA/05_wgcna_de_gsea_overlap.r")
+    dry_run_line("Script", "06_modules_WGCNA/02_wgcna_de_gsea_overlap.r")
     dry_run_line("Dataset", dataset)
     dry_run_line("WGCNA downstream definitions", definitions_file, if (file.exists(definitions_file)) "PASS" else "WARN")
+    dry_run_line("WGCNA Fisher background universe", universe_file, if (file.exists(universe_file)) "PASS" else "FAIL")
     dry_run_line("clusterProfiler manifest", cluster_manifest, if (file.exists(cluster_manifest)) "PASS" else "WARN")
     dry_run_line("compareGO input manifest", compare_manifest, if (file.exists(compare_manifest)) "PASS" else "WARN")
     dry_run_line("Output overlap table", out_csv)
-    return(invisible(!file.exists(definitions_file) || file.exists(cluster_manifest) || file.exists(compare_manifest)))
+    return(invisible(file.exists(definitions_file) && file.exists(universe_file) && (file.exists(cluster_manifest) || file.exists(compare_manifest))))
   }
 
   if (!file.exists(definitions_file)) {
     status <- empty_overlap_status(dataset, paste("Missing WGCNA downstream definitions:", definitions_file))
     readr::write_csv(status, status_csv, na = "")
+    return(invisible(status))
+  }
+  if (!file.exists(universe_file)) {
+    status <- empty_overlap_status(dataset, paste("Missing WGCNA Fisher-test universe:", universe_file))
+    readr::write_csv(status, status_csv, na = "")
+    readr::write_csv(status, out_csv, na = "")
+    write_overlap_xlsx(list(status = status), out_xlsx)
     return(invisible(status))
   }
   if (!file.exists(cluster_manifest) && !file.exists(compare_manifest)) {
@@ -110,6 +120,22 @@ run_wgcna_de_gsea_overlap <- function(dataset = current_dataset(), dry_run = is_
   }
 
   modules_raw <- readr::read_csv(definitions_file, show_col_types = FALSE)
+  validate_wgcna_module_definitions(modules_raw, "WGCNA downstream definitions")
+  universe_raw <- readr::read_csv(universe_file, show_col_types = FALSE)
+  require_module_contract_columns(universe_raw, c("ProteinID", "UniProt", "GeneSymbol", "included_in_wgcna"), "WGCNA feature universe")
+  universe <- unique(c(
+    tokenize_proteins(universe_raw$ProteinID),
+    tokenize_proteins(universe_raw$UniProt),
+    tokenize_proteins(universe_raw$GeneSymbol)
+  ))
+  universe <- universe[nzchar(universe)]
+  if (!length(universe)) {
+    status <- empty_overlap_status(dataset, paste("WGCNA feature universe was empty:", universe_file))
+    readr::write_csv(status, status_csv, na = "")
+    readr::write_csv(status, out_csv, na = "")
+    write_overlap_xlsx(list(status = status), out_xlsx)
+    return(invisible(status))
+  }
   for (needed_col in c("UniProt", "ProteinID", "GeneSymbol")) {
     if (!needed_col %in% names(modules_raw)) modules_raw[[needed_col]] <- NA_character_
   }
@@ -156,9 +182,12 @@ run_wgcna_de_gsea_overlap <- function(dataset = current_dataset(), dry_run = is_
       le_set <- read_leading_edge_set(output_table)
       if (!length(de_set) && !length(le_set)) return(tibble::tibble())
       purrr::pmap_dfr(list(modules$ModuleID, modules$ModuleColor, modules$module_proteins), function(ModuleID, ModuleColor, module_set) {
+        module_set <- intersect(module_set, universe)
+        de_set <- intersect(de_set, universe)
+        le_set <- intersect(le_set, universe)
+        signature_set <- union(de_set, le_set)
         de_overlap <- intersect(module_set, de_set)
         le_overlap <- intersect(module_set, le_set)
-        universe <- unique(c(module_set, de_set, le_set))
         fisher_p <- NA_real_
         if (length(universe) && length(de_set)) {
           a <- length(de_overlap)
@@ -174,6 +203,10 @@ run_wgcna_de_gsea_overlap <- function(dataset = current_dataset(), dry_run = is_
           contrast = as.character(contrast),
           route = as.character(route),
           route_category = as.character(route_category),
+          universe_type = "WGCNA_feature_universe",
+          n_universe = length(universe),
+          n_module_in_universe = length(module_set),
+          n_signature_in_universe = length(signature_set),
           n_module_proteins = length(module_set),
           n_DE_proteins = length(de_set),
           n_leading_edge_proteins = length(le_set),
