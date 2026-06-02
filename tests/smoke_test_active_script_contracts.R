@@ -8,7 +8,9 @@ active_scripts <- c(
   "04_differential_expression_enrichment/05_microglia_targeted_signature_enrichment.r",
   "04_differential_expression_enrichment/03_biological_program_summary.r",
   "06_modules_WGCNA/01_WGCNA.r",
-  "06_modules_WGCNA/05_wgcna_de_gsea_overlap.r",
+  "06_modules_WGCNA/02_curated_overlap_programs.r",
+  "06_modules_WGCNA/03_score_module_activity.R",
+  "06_modules_WGCNA/04_wgcna_de_gsea_overlap.r",
   "09_export_pride_journal/06_make_biological_claims_table.R",
   "run_dataset_pipeline.R"
 )
