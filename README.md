@@ -28,7 +28,7 @@ R/                                   shared path, registry, validation, and data
 04_differential_expression_enrichment/ differential abundance and enrichment analyses
 05_celltype_enrichment_EWCE/         EWCE analyses
 06_modules_WGCNA/                    WGCNA, curated overlap programs, and source-scoped module activity analyses
-07_spatial_networks/                 layer-resolved spatial network analyses
+07_spatial_networks/                 dataset-aware region or region/layer spatial network analyses
 08_behavior_physio_coupling/         behavior/physiology coupling
 09_export_pride_journal/             active PRIDE, manuscript, and source-data export module
 09_pride_submission/                 legacy helper code only
