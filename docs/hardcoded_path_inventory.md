@@ -22,9 +22,9 @@ This inventory covers active R scripts discovered before refactoring. Legacy/tes
 - `05_celltype_enrichment_EWCE/01_EWCE_E9.r`: refactored in Phase 3; no committed active machine path remains.
 - `06_modules_WGCNA/01_WGCNA v.2.0.0.r`: `S:/...` inputs/outputs; central WGCNA model producer, documented for data-aware refactor.
 - `06_modules_WGCNA/02_module_spatial_networks.r`: refactored in Phase 3; no committed active machine path remains.
-- `06_modules_WGCNA/03_overlap_modules.r`: refactored in Phase 3; no committed active machine path remains.
+- `06_modules_WGCNA/02_curated_overlap_programs.r`: canonical curated overlap program builder; old overlap entrypoints are wrappers only.
 - `06_modules_WGCNA/90_module_score_v0.0.1.r`: `S:/...` inputs/outputs; older superseded module-score version.
-- `06_modules_WGCNA/91_module_score_v0.0.2.r`: refactored in Phase 3; no committed active machine path remains.
+- `06_modules_WGCNA/03_score_module_activity.R`: canonical source-scoped module activity scorer; old module-score entrypoints are wrappers only.
 - `07_spatial_networks/01_network_spatial_relations.r`: refactored in Phase 4; no committed active machine path remains.
 - `07_spatial_networks/02_differential_networks.r`: refactored in Phase 3; no committed active machine path remains.
 - `07_spatial_networks/03_bootstrap_network_stability.r`: refactored in Phase 3; no committed active machine path remains.
@@ -48,6 +48,6 @@ Use `config/*.local.yml` for private machine paths and keep those files ignored 
 
 ## Safe-To-Refactor Assessment
 
-- Already partially/refactored: `04_differential_expression_enrichment/01_clusterProfiler.r`, `04_differential_expression_enrichment/02_compareGO.r`, `01_preprocessing/03_gct_extractR.r`, `01_preprocessing/04_format_metadata.r`, `01_preprocessing/05_metadata_create.r`, `02_id_mapping/01_MapThatProt_batch.r`, `05_celltype_enrichment_EWCE/01_EWCE_E9.r`, `06_modules_WGCNA/02_module_spatial_networks.r`, `06_modules_WGCNA/03_overlap_modules.r`, `06_modules_WGCNA/91_module_score_v0.0.2.r`, `07_spatial_networks/01_network_spatial_relations.r`, `07_spatial_networks/02_differential_networks.r`, `07_spatial_networks/03_bootstrap_network_stability.r`, `07_spatial_networks/04_bootstrap_differential_network_stability.r`, `07_spatial_networks/05_bootstrap_differential_network_figures.r`, `07_spatial_networks/06_chord_diagram.r`, and `08_behavior_physio_coupling/02_network_behavior_coupling.r`.
+- Already partially/refactored: `04_differential_expression_enrichment/01_clusterProfiler.r`, `04_differential_expression_enrichment/02_compareGO.r`, `01_preprocessing/03_gct_extractR.r`, `01_preprocessing/04_format_metadata.r`, `01_preprocessing/05_metadata_create.r`, `02_id_mapping/01_MapThatProt_batch.r`, `05_celltype_enrichment_EWCE/01_EWCE_E9.r`, `06_modules_WGCNA/02_module_spatial_networks.r`, `06_modules_WGCNA/02_curated_overlap_programs.r`, `06_modules_WGCNA/03_score_module_activity.R`, `07_spatial_networks/01_network_spatial_relations.r`, `07_spatial_networks/02_differential_networks.r`, `07_spatial_networks/03_bootstrap_network_stability.r`, `07_spatial_networks/04_bootstrap_differential_network_stability.r`, `07_spatial_networks/05_bootstrap_differential_network_figures.r`, `07_spatial_networks/06_chord_diagram.r`, and `08_behavior_physio_coupling/02_network_behavior_coupling.r`.
 - Requires data-aware review before edits: `01_preprocessing/01_impute.r`, `01_preprocessing/02_excel_convert.r`, `01_preprocessing/06_merged_metadata_module_score.r`, `03_qc_exploration/*.r`, `06_modules_WGCNA/01_WGCNA v.2.0.0.r`, `06_modules_WGCNA/90_module_score_v0.0.1.r`, and `08_behavior_physio_coupling/01_correlate_proteomics_with_behavior.r`.
 - Leave unchanged unless explicitly revived: `05_celltype_enrichment_EWCE/90_EWCE_legacy.r`, `90_testing/`, `99_deprecated/`.
