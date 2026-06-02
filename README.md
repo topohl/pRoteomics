@@ -27,7 +27,7 @@ R/                                   shared path, registry, validation, and data
 03_qc_exploration/                   QC and confounding checks
 04_differential_expression_enrichment/ differential abundance and enrichment analyses
 05_celltype_enrichment_EWCE/         EWCE analyses
-06_modules_WGCNA/                    WGCNA and module activity analyses
+06_modules_WGCNA/                    WGCNA, curated overlap programs, and source-scoped module activity analyses
 07_spatial_networks/                 layer-resolved spatial network analyses
 08_behavior_physio_coupling/         behavior/physiology coupling
 09_export_pride_journal/             active PRIDE, manuscript, and source-data export module
@@ -55,6 +55,8 @@ Layer-level network and strata analyses assert the `layer` capability. Microglia
 Active scripts are listed only in `pipeline.yml`. `09_export_pride_journal/` is the active export module. `09_pride_submission/` is retained as legacy helper code and should not be used as the active PRIDE workflow.
 
 Legacy filenames are tracked in the `legacy` section of `pipeline.yml` and documented in `docs/NAMING_MIGRATION.md`; use the replacement names listed in the active registry.
+
+Module activity scoring is source-scoped: `06_modules_WGCNA/03_score_module_activity.R` writes under `results/tables/06_modules_WGCNA/module_score/<dataset>/<module_definition_source>/`. `module_definition_source` can be `wgcna`, `overlap`, or `custom`; curated overlap programs are biological program sets and are distinct from WGCNA modules.
 
 ## Reviewer Docs
 
