@@ -12,6 +12,19 @@ library(janitor)
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
+source(repo_path("R", "dataset_config.R"))
+source(repo_path("R", "dataset_inputs.R"))
+
+args <- commandArgs(trailingOnly = TRUE)
+arg_value <- function(flag, default = "") {
+  hit <- which(args == flag)
+  if (!length(hit) || hit[1] == length(args)) return(default)
+  args[[hit[1] + 1]]
+}
+dataset_cli <- arg_value("--dataset", default = "")
+if (nzchar(dataset_cli)) Sys.setenv(PROTEOMICS_DATASET = validate_dataset(dataset_cli, source = "--dataset"))
+dataset_profile <- current_dataset()
+dataset_inputs <- resolve_dataset_inputs(dataset_profile, purpose = "module_score")
 
 # ------------------------------------------------
 # 1) PATHS
@@ -52,19 +65,7 @@ analysis_root <- function() {
 resolve_module_score_proteomics_file <- function() {
   override <- Sys.getenv("PROTEOMICS_MODULE_SCORE_PROTEOMICS_FILE", unset = "")
   if (nzchar(override)) return(normalizePath(override, winslash = "/", mustWork = FALSE))
-
-  expected_name <- "20260218_pgmatrix_imputed_neuron_neuropil_180samples_missing70pct_with_metadata.xlsx"
-  direct <- first_existing_path(c(
-    path_processed("morpheus", expected_name),
-    path_processed("01_preprocessing", expected_name),
-    path_processed("01_preprocessing", "excel_convert", expected_name)
-  ))
-  if (!is.na(direct)) return(direct)
-
-  latest_matching_file(
-    path_processed("01_preprocessing"),
-    "^\\d{8}_pgmatrix_imputed_neuron_neuropil_[0-9]+samples_missing70pct_with_metadata\\.xlsx$"
-  )
+  dataset_inputs$expression_file
 }
 
 resolve_module_score_auc_all_file <- function() {
@@ -146,11 +147,27 @@ message("Using proteomics workbook: ", proteomics_file)
 message("Using AUC all file: ", auc_all_file)
 message("Using AUC first active file: ", auc_first_file)
 message("Using behavior z-score workbook: ", behavior_file)
+message("Resolved dataset: ", dataset_profile)
+message("Resolved dataset inputs diagnostics: ", paste(dataset_inputs$diagnostics, collapse = " | "))
 
-out_dir <- Sys.getenv("PROTEOMICS_MODULE_SCORE_OUTPUT_DIR", unset = path_results("module_scores"))
+out_dir <- Sys.getenv("PROTEOMICS_MODULE_SCORE_OUTPUT_DIR", unset = path_results("module_scores", dataset_profile))
 ensure_dir(out_dir)
 
 out_file <- file.path(out_dir, "sample_metadata_merged_clean_for_module_scores.xlsx")
+global_compat_out_file <- path_results("module_scores", "sample_metadata_merged_clean_for_module_scores.xlsx")
+write_global_compat <- identical(dataset_profile, "neuron_neuropil") || tolower(Sys.getenv("PROTEOMICS_WRITE_GLOBAL_MODULE_SCORE_METADATA_COMPAT", unset = "")) %in% c("1", "true", "yes")
+
+if (is_dry_run()) {
+  dry_run_line("Script", "01_preprocessing/06_merged_metadata_module_score.r")
+  dry_run_line("Dataset", dataset_profile)
+  dry_run_line("Proteomics workbook", proteomics_file, if (file.exists(proteomics_file)) "PASS" else "FAIL")
+  dry_run_line("AUC all file", auc_all_file, if (file.exists(auc_all_file)) "PASS" else "FAIL")
+  dry_run_line("AUC first active file", auc_first_file, if (file.exists(auc_first_file)) "PASS" else "FAIL")
+  dry_run_line("Behavior z-score workbook", behavior_file, if (file.exists(behavior_file)) "PASS" else "FAIL")
+  dry_run_line("Dataset-scoped output", out_file)
+  dry_run_line("Legacy global compatibility copy", if (write_global_compat) global_compat_out_file else "disabled")
+  quit(status = if (all(file.exists(c(proteomics_file, auc_all_file, auc_first_file, behavior_file)))) 0 else 1, save = "no")
+}
 
 # ------------------------------------------------
 # 2) HELPERS
@@ -248,7 +265,9 @@ sample_meta <- sample_meta %>%
     AnimalID_join = standardize_animal_id(AnimalID),
     Region = as.character(region),
     Layer = as.character(layer),
-    RegionLayer = paste(Region, Layer, sep = "_"),
+    RegionLayer = if (dataset_profile %in% c("microglia", "neuron_soma")) Region else paste(Region, Layer, sep = "_"),
+    SpatialUnit = if (dataset_profile %in% c("microglia", "neuron_soma")) "region" else "region_layer",
+    SpatialLabel = if (dataset_profile %in% c("microglia", "neuron_soma")) Region else RegionLayer,
     CellType = as.character(celltype),
     CellTypeLayer = as.character(celltype_layer),
     ReplicateGroup = as.character(ReplicateGroup),
@@ -424,6 +443,8 @@ merged_meta_clean <- merged_meta %>%
     Region,
     Layer,
     RegionLayer,
+    SpatialUnit,
+    SpatialLabel,
     CellType,
     CellTypeLayer,
     ReplicateGroup,
@@ -450,7 +471,9 @@ merged_meta_clean <- merged_meta %>%
   mutate(
     Region = factor(Region),
     Layer = factor(Layer),
-    RegionLayer = factor(paste(Region, Layer, sep = "_")),
+    RegionLayer = factor(as.character(RegionLayer)),
+    SpatialUnit = factor(SpatialUnit),
+    SpatialLabel = factor(SpatialLabel),
     CellType = factor(CellType),
     CellTypeLayer = factor(CellTypeLayer),
     ReplicateGroup = factor(ReplicateGroup),
@@ -544,4 +567,19 @@ write.xlsx(
   overwrite = TRUE
 )
 
-cat("Done.\nSaved clean merged metadata to:\n", out_file, "\n")
+if (isTRUE(write_global_compat)) {
+  ensure_dir(dirname(global_compat_out_file))
+  file.copy(out_file, global_compat_out_file, overwrite = TRUE)
+  if (!identical(dataset_profile, "neuron_neuropil")) {
+    warning(
+      "Wrote legacy global compatibility metadata copy from dataset '", dataset_profile,
+      "'. Dataset-aware scripts should consume dataset-scoped metadata at: ", out_file,
+      call. = FALSE
+    )
+  }
+}
+
+cat("Done.\nResolved dataset:", dataset_profile,
+    "\nSaved clean merged metadata to:\n", out_file,
+    if (isTRUE(write_global_compat)) paste0("\nLegacy compatibility copy:\n", global_compat_out_file) else "",
+    "\n")
