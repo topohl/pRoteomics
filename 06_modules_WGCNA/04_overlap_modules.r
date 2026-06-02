@@ -1,13 +1,13 @@
 # ================================================================
 # Consumes:
-#   - compareGO overlap table from canonical results/tables
+#   - global compareGO recurrent-protein overlap table from canonical results/tables
 #   - UniProt mapping file from data/external
 # Produces:
-#   - overlap-derived module definitions under data/processed and results/tables
+#   - curated overlap program definitions under global-scoped results/data folders
 # File contract:
-#   - docs/active_script_io_audit.tsv object 06_modules_WGCNA/03_overlap_modules.r
+#   - docs/active_script_io_audit.tsv object 06_modules_WGCNA/04_overlap_modules.r
 # ================================================================
-# Build overlap-based neuropil modules from recurrent proteins
+# Build curated overlap programs from recurrent proteins
 # Requires overlap table with columns:
 # Gene, N_datasets, Datasets
 # ================================================================
@@ -22,8 +22,9 @@ library(openxlsx)
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
+source(repo_path("R", "module_contracts.R"))
 MODULE_ID <- "06_modules_WGCNA"
-SUBSTEP_ID <- "overlap_modules"
+SUBSTEP_ID <- file.path("04_overlap_modules", "global")
 CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
 
 # ------------------------------------------------
@@ -40,10 +41,14 @@ dir.create(saving_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(CANONICAL_PATHS$processed, recursive = TRUE, showWarnings = FALSE)
 
 if (is_dry_run()) {
-  dry_run_line("Script", "06_modules_WGCNA/03_overlap_modules.r")
+  dry_run_line("Script", "06_modules_WGCNA/04_overlap_modules.r")
+  dry_run_line("Dataset", "global")
+  dry_run_line("Module source", "curated_overlap_programs")
   dry_run_line("Overlap file", overlap_file, if (file.exists(overlap_file)) "PASS" else "FAIL")
   dry_run_line("Mapping file", mapping_file, if (file.exists(mapping_file)) "PASS" else "FAIL")
   dry_run_line("Output folders", paste(unlist(CANONICAL_PATHS), collapse = "; "))
+  dry_run_line("Expected output workbook", file.path(saving_dir, "curated_overlap_programs.xlsx"))
+  dry_run_line("Expected manifest", file.path(CANONICAL_PATHS$logs, "curated_overlap_programs_manifest.yml"))
   quit(status = if (file.exists(overlap_file) && file.exists(mapping_file)) 0 else 1, save = "no")
 }
 if (!file.exists(overlap_file)) stop("Overlap file not found: ", overlap_file, call. = FALSE)
@@ -277,8 +282,11 @@ module_defs <- list(
 
 module_long <- imap_dfr(module_defs, function(accessions, module_name) {
   tibble(
+    ModuleSet = "curated_overlap_programs",
+    ModuleID = module_name,
     Module = module_name,
-    UniProt = accessions
+    UniProt = accessions,
+    Source = "global_compareGO_recurrent_proteins"
   )
 }) %>%
   left_join(
@@ -295,7 +303,9 @@ module_long <- imap_dfr(module_defs, function(accessions, module_name) {
       ),
     by = "UniProt"
   ) %>%
+  mutate(GeneSymbol = GeneName) %>%
   arrange(Module, desc(N_datasets), GeneName, UniProt)
+validate_curated_overlap_programs(module_long, "curated overlap programs")
 
 module_summary <- module_long %>%
   count(Module, name = "n_proteins") %>%
@@ -344,18 +354,45 @@ for (mod in names(module_defs)) {
 
 saveWorkbook(
   wb,
+  file.path(saving_dir, "curated_overlap_programs.xlsx"),
+  overwrite = TRUE
+)
+saveWorkbook(
+  wb,
   file.path(saving_dir, "Overlap_based_neuropil_modules_classified.xlsx"),
   overwrite = TRUE
 )
 
 saveRDS(
   module_defs,
-  file.path(CANONICAL_PATHS$processed, "Overlap_based_neuropil_modules_classified.rds")
+  file.path(CANONICAL_PATHS$processed, "curated_overlap_programs.rds")
 )
 
 write_csv(
   module_long,
-  file.path(CANONICAL_PATHS$processed, "Overlap_based_neuropil_modules_classified_long.csv")
+  file.path(CANONICAL_PATHS$processed, "curated_overlap_programs_long.csv")
+)
+write_csv(
+  module_long,
+  file.path(saving_dir, "curated_overlap_programs_long.csv")
+)
+write_run_manifest(
+  file.path(CANONICAL_PATHS$logs, "curated_overlap_programs_manifest.yml"),
+  inputs = list(
+    overlap_file = overlap_file,
+    mapping_file = mapping_file
+  ),
+  outputs = list(
+    workbook = file.path(saving_dir, "curated_overlap_programs.xlsx"),
+    long_csv = file.path(saving_dir, "curated_overlap_programs_long.csv"),
+    processed_rds = file.path(CANONICAL_PATHS$processed, "curated_overlap_programs.rds")
+  ),
+  parameters = list(
+    dataset_scope = "global",
+    ModuleSet = "curated_overlap_programs",
+    min_datasets = 3
+  ),
+  notes = "Global recurrent-protein overlap input encoded explicitly as global-scoped curated overlap programs."
 )
 write_session_info(file.path(CANONICAL_PATHS$logs, "sessionInfo.txt"))
 
