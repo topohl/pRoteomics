@@ -30,15 +30,24 @@ MODULE_ID <- "07_spatial_networks"
 SUBSTEP_ID <- "differential_networks"
 CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
 NETWORK_DATASET <- current_dataset()
-assert_dataset_capability(NETWORK_DATASET, "layer", analysis = "differential spatial network analysis")
+assert_dataset_capability(NETWORK_DATASET, "region", analysis = "differential spatial network analysis")
+spatial_unit <- if (NETWORK_DATASET == "neuron_neuropil") "region_layer" else "region"
 
 required_pkgs <- c("dplyr", "tidyr", "stringr", "purrr", "tibble", "ggplot2", "igraph", "ggraph", "openxlsx", "svglite")
 missing <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
 if (length(missing) > 0) stop("Missing required R package(s): ", paste(missing, collapse = ", "), ". Install them explicitly before running this script.", call. = FALSE)
 invisible(lapply(required_pkgs, library, character.only = TRUE))
 
+resolve_spatial_rds <- function() {
+  override <- Sys.getenv("PROTEOMICS_SPATIAL_NETWORK_OBJECT", unset = "")
+  if (nzchar(override)) return(normalizePath(override, winslash = "/", mustWork = FALSE))
+  scoped <- path_processed("07_spatial_networks", "network_spatial_relations", NETWORK_DATASET, spatial_unit, "network_spatial_relations_objects.rds")
+  if (file.exists(scoped)) return(scoped)
+  path_processed("07_spatial_networks", "network_spatial_relations", "network_spatial_relations_objects.rds")
+}
+
 params <- list(
-  spatial_rds = path_processed("07_spatial_networks", "network_spatial_relations", "network_spatial_relations_objects.rds"),
+  spatial_rds = resolve_spatial_rds(),
   output_dir = CANONICAL_PATHS$reports,
   group_order = c("CON", "RES", "SUS"),
   comparisons = list(c("CON", "RES"), c("CON", "SUS"), c("RES", "SUS")),
@@ -49,6 +58,8 @@ params <- list(
 
 if (is_dry_run()) {
   dry_run_line("Script", "07_spatial_networks/02_differential_networks.r")
+  dry_run_line("Dataset", NETWORK_DATASET)
+  dry_run_line("Spatial unit", spatial_unit)
   dry_run_line("Spatial RDS", params$spatial_rds, if (file.exists(params$spatial_rds)) "PASS" else "FAIL")
   dry_run_line("Output folders", paste(unlist(CANONICAL_PATHS), collapse = "; "))
   quit(status = if (file.exists(params$spatial_rds)) 0 else 1, save = "no")
