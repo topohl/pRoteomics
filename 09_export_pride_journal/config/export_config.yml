@@ -1,0 +1,114 @@
+# Canonical export contract for pRoteomics PRIDE/journal handoff.
+# Reproducibility entry point: pg_matrix onward (not raw-MS acquisition/search).
+
+export_level: pg_matrix_onward
+
+scope_note: >
+  This repository documents and exports analysis from the protein-group (pg_matrix)
+  quantification stage onward. Raw/vendor MS files, original search-engine outputs,
+  FASTA/search parameters, and acquisition metadata may exist externally but are
+  not required to rerun the committed workflow.
+
+datasets:
+  - neuron_neuropil
+  - neuron_soma
+  - microglia
+
+interpretation_scope:
+  neuron_neuropil: "Region- and layer-resolved neuron neuropil proteomics."
+  neuron_soma: "Region-resolved neuronal soma-enriched proteomics where metadata support it."
+  microglia: "Microglia-enriched ROI/local microenvironment; not purified microglia."
+
+canonical_inputs:
+  pg_matrix:
+    description: "Original pg_matrix TSV and optional vendor QC workbook (private; reference or copy)."
+    paths:
+      - data/raw/pg_matrix/quicksearch.pg_matrix.tsv
+      - data/raw/pg_matrix/quicksearch.stats.annotated.xlsx
+  sample_metadata:
+    description: "Primary sample metadata workbook used from pg_matrix onward."
+    paths:
+      - data/metadata/TPE9_sample_metadata_males.xlsx
+      - data/metadata/sample_metadata_clean.tsv
+      - data/metadata/sample_metadata_clean.csv
+      - results/analysis_ready/sample_metadata_clean.tsv
+      - results/analysis_ready/sample_metadata_clean.csv
+  processed_preprocessing:
+    root: data/processed/01_preprocessing
+    per_dataset_subdirs:
+      - impute
+      - gct_extractR
+      - protigy_output
+      - excel_convert
+      - morpheus
+  processed_id_mapping:
+    root: data/processed/02_id_mapping/mapped
+  processed_de_enrichment:
+    root: data/processed/04_differential_expression_enrichment
+  qc_reports:
+    root: results/reports/03_qc_exploration
+
+canonical_outputs:
+  pride_submission_root: pride_submission
+  metadata_dir: pride_submission/metadata
+  processed_data_dir: pride_submission/processed_data
+  supplementary_tables_dir: pride_submission/supplementary_tables
+  methods_dir: pride_submission/methods
+  manifests_dir: pride_submission/manifests
+  validation_dir: pride_submission/validation
+  manuscript_tables_dir: results/manuscript/supplementary_tables
+  manuscript_source_data_dir: results/manuscript/source_data
+  biological_claims_dir: results/tables
+
+# Materials that may be deposited externally; not part of repo reproducibility entry point.
+missing_external:
+  raw_ms_vendor:
+    description: "Vendor/raw MS files (e.g. .raw, .wiff, .d)."
+    typical_locations:
+      - data/raw/
+      - pride_submission/raw/
+    validation_severity: INFO
+  search_engine_outputs:
+    description: "Original search-engine protein/peptide tables."
+    typical_locations:
+      - data/external/search_results/
+      - pride_submission/search_results/
+    validation_severity: INFO
+  fasta_database:
+    description: "FASTA/database files used upstream of pg_matrix."
+    typical_locations:
+      - data/external/
+    validation_severity: WARN
+  search_parameters:
+    description: "Search parameter files (e.g. MaxQuant mqpar.xml)."
+    typical_locations:
+      - data/external/
+      - pride_submission/methods/
+    validation_severity: WARN
+
+supplementary_table_globs:
+  - "results/tables/04_differential_expression_enrichment/biological_program_summary/*/*.csv"
+  - "results/tables/04_differential_expression_enrichment/microglia_targeted_signature_enrichment/*/*.csv"
+  - "results/tables/06_modules_WGCNA/01_WGCNA/*/modules/WGCNA_module_evidence_rank.csv"
+  - "results/source_data/04_differential_expression_enrichment/**/*.csv"
+
+manifest:
+  default_include_derived_results: false
+  default_recursive_scan: false
+  hash_algorithm: sha256
+
+validation_rules:
+  pg_matrix_onward:
+    pg_matrix_present: FAIL
+    sample_metadata_present: FAIL
+    processed_matrix_package_present: FAIL
+    id_mapping_present: WARN
+    sdrf_like_metadata_present: FAIL
+    pride_manifest_present: WARN
+    methods_summary_present: WARN
+    raw_ms_vendor_present: INFO
+    search_engine_outputs_present: INFO
+    fasta_database_present: WARN
+    search_parameters_present: WARN
+    supplementary_tables_present: WARN
+    biological_claims_present: INFO
