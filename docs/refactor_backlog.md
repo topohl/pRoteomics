@@ -107,7 +107,7 @@ Highest-value targets:
 
 ```text
 04_differential_expression_enrichment summaries
-06_modules_WGCNA/91_module_score.r
+06_modules_WGCNA/03_score_module_activity.R
 08_behavior_physio_coupling scripts
 09_export_pride_journal/06_make_biological_claims_table.R
 ```
