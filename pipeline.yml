@@ -168,51 +168,63 @@ stages:
         expected_outputs: ["results/tables/08_behavior_physio_coupling/network_behavior_coupling/"]
         manifests: ["run_manifest.yml where implemented"]
   export:
-    description: "PRIDE, manuscript, source-data, and reviewer export layer."
+    description: "PRIDE processed-data (pg_matrix onward), manuscript, and reviewer export layer."
     scripts:
+      - script: "09_export_pride_journal/RUN_EXPORT.R"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        expected_inputs: ["data/raw/pg_matrix/", "data/metadata/", "data/processed/", "09_export_pride_journal/config/export_config.yml"]
+        expected_outputs: ["pride_submission/"]
+        manifests: ["pride_file_manifest.tsv", "validation_report.tsv", "validation_summary.md"]
       - script: "09_export_pride_journal/01_make_pride_manifest.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
-        expected_inputs: ["analysis outputs", "local pride_submission payload"]
+        expected_inputs: ["canonical processed paths", "pride_submission/"]
         expected_outputs: ["pride_submission/manifests/pride_file_manifest.tsv"]
         manifests: ["validation_report.tsv"]
       - script: "09_export_pride_journal/02_make_sample_metadata.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         expected_inputs: ["data/metadata/"]
-        expected_outputs: ["pride_submission/metadata/sample_metadata.tsv"]
+        expected_outputs: ["pride_submission/metadata/sample_metadata.tsv", "pride_submission/metadata/sdrf_like_metadata.tsv"]
         manifests: ["validation_report.tsv where implemented"]
-      - script: "09_export_pride_journal/03_make_supplementary_tables.R"
+      - script: "09_export_pride_journal/03_export_processed_pg_matrix_package.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
-        expected_inputs: ["results/tables/"]
+        expected_inputs: ["data/raw/pg_matrix/", "data/processed/01_preprocessing/", "data/processed/02_id_mapping/"]
+        expected_outputs: ["pride_submission/processed_data/", "pride_submission/processed_data/data_dictionary_processed_matrices.tsv"]
+        manifests: ["validation_report.tsv where implemented"]
+      - script: "09_export_pride_journal/04_make_supplementary_tables.R"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        expected_inputs: ["results/tables/", "results/source_data/"]
         expected_outputs: ["pride_submission/supplementary_tables/"]
         manifests: ["validation_report.tsv where implemented"]
-      - script: "09_export_pride_journal/04_validate_pride_submission.R"
+      - script: "09_export_pride_journal/05_validate_pride_submission.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         expected_inputs: ["pride_submission/"]
-        expected_outputs: ["pride_submission/validation/validation_report.tsv"]
+        expected_outputs: ["pride_submission/validation/validation_report.tsv", "pride_submission/validation/validation_summary.md"]
         manifests: ["validation_report.tsv"]
-      - script: "09_export_pride_journal/05_make_methods_summary.R"
+      - script: "09_export_pride_journal/06_make_methods_summary.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
-        expected_inputs: ["pipeline.yml", "run manifests", "sessionInfo.txt files"]
-        expected_outputs: ["pride_submission/methods/methods_summary.md"]
+        expected_inputs: ["pipeline.yml", "run manifests", "sessionInfo.txt files", "renv.lock"]
+        expected_outputs: ["pride_submission/methods/methods_summary.md", "pride_submission/methods/known_limitations.md"]
         manifests: ["run_manifest.yml where implemented"]
-      - script: "09_export_pride_journal/06_make_biological_claims_table.R"
+      - script: "09_export_pride_journal/07_make_biological_claims_table.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         expected_inputs: ["program summaries", "WGCNA evidence", "microglia signature evidence"]
         expected_outputs: ["results/tables/biological_claims_table.csv"]
         manifests: ["run_manifest.yml"]
-      - script: "09_export_pride_journal/07_export_manuscript_figures.R"
+      - script: "09_export_pride_journal/08_export_manuscript_figures.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         expected_inputs: ["results/figures/"]
         expected_outputs: ["results/manuscript/figure_*/"]
         manifests: ["run_manifest.yml"]
-      - script: "09_export_pride_journal/08_export_source_data.R"
+      - script: "09_export_pride_journal/09_export_source_data.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         expected_inputs: ["results/tables/", "results/source_data/"]
