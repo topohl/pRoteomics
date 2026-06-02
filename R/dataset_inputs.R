@@ -100,14 +100,25 @@ resolve_dataset_inputs <- function(dataset = current_dataset(), purpose = c("wgc
         paste0("^\\d{8}_pgmatrix_imputed_", dataset, "_[0-9]+samples_missing70pct_with_metadata\\.xlsx$")
       )
     }
-    metadata_file <- if (nzchar(explicit_metadata)) {
-      normalizePath(explicit_metadata, winslash = "/", mustWork = FALSE)
-    } else {
-      first_existing_path(c(
-        path_metadata("sample_metadata_merged_clean_for_module_scores.xlsx"),
-        path_results("module_scores", "sample_metadata_merged_clean_for_module_scores.xlsx"),
-        path_processed("01_preprocessing", "sample_metadata_merged_clean_for_module_scores.xlsx")
-      ))
+    metadata_candidates <- c(
+      path_results("module_scores", dataset, "sample_metadata_merged_clean_for_module_scores.xlsx"),
+      path_processed("01_preprocessing", dataset, "sample_metadata_merged_clean_for_module_scores.xlsx")
+    )
+    metadata_file <- first_existing_path(metadata_candidates)
+    if (is.na(metadata_file) && nzchar(explicit_metadata)) {
+      metadata_file <- normalizePath(explicit_metadata, winslash = "/", mustWork = FALSE)
+    }
+    allow_global_metadata_fallback <- tolower(Sys.getenv("PROTEOMICS_ALLOW_GLOBAL_MODULE_SCORE_METADATA", unset = "")) %in% c("1", "true", "yes")
+    if (is.na(metadata_file) && isTRUE(allow_global_metadata_fallback)) {
+      global_metadata <- normalizePath(path_results("module_scores", "sample_metadata_merged_clean_for_module_scores.xlsx"), winslash = "/", mustWork = FALSE)
+      if (file.exists(global_metadata)) {
+        warning(
+          "Using legacy global module-score metadata fallback: ", global_metadata,
+          " for dataset '", dataset, "'. Regenerate dataset-scoped metadata at results/module_scores/<dataset>/",
+          call. = FALSE
+        )
+        metadata_file <- global_metadata
+      }
     }
     matrix_format <- "morpheus_with_metadata_rows"
   }
