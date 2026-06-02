@@ -4,15 +4,15 @@
 #   - sample metadata from data/metadata/
 # Produces:
 #   - canonical spatial network object:
-#     data/processed/07_spatial_networks/network_spatial_relations/network_spatial_relations_objects.rds
-#   - tables/figures/source data/logs/reports under results/*/07_spatial_networks/network_spatial_relations/
+#     data/processed/07_spatial_networks/network_spatial_relations/<dataset>/<spatial_unit>/network_spatial_relations_objects.rds
+#   - tables/figures/source data/logs/reports under results/*/07_spatial_networks/network_spatial_relations/<dataset>/<spatial_unit>/
 # File contract:
 #   - docs/file_contracts.tsv object spatial_network_objects
 # ================================================================
-# Spatial layer-region network analysis for proteomics matrices
+# Spatial-unit network analysis for proteomics matrices
 # ================================================================
 # Purpose:
-#   Quantify relationships between hippocampal region/layer units from
+#   Quantify relationships between hippocampal spatial units from
 #   protein expression data and export network-ready tables and figures.
 #
 # Main outputs:
@@ -37,10 +37,27 @@ source(repo_path("R", "dataset_inputs.R"))
 source(repo_path("R", "validation_utils.R"))
 source(repo_path("R", "spatial_network_utils.R"))
 MODULE_ID <- "07_spatial_networks"
-SUBSTEP_ID <- "network_spatial_relations"
-CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
+args <- commandArgs(trailingOnly = TRUE)
+arg_value <- function(flag, default = "") {
+  hit <- which(args == flag)
+  if (!length(hit) || hit[1] == length(args)) return(default)
+  args[[hit[1] + 1]]
+}
+dataset_cli <- arg_value("--dataset", default = "")
+if (nzchar(dataset_cli)) {
+  Sys.setenv(PROTEOMICS_DATASET = validate_dataset(dataset_cli, source = "--dataset"))
+}
+message2 <- function(...) message(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), " | ", ...)
 SPATIAL_DATASET <- current_dataset()
-assert_dataset_capability(SPATIAL_DATASET, "layer", analysis = "spatial network analysis")
+assert_dataset_capability(SPATIAL_DATASET, "region", analysis = "spatial network analysis")
+message2("Resolved dataset: ", SPATIAL_DATASET)
+message2("Dataset source: ", if (nzchar(dataset_cli)) "--dataset" else "environment/default")
+spatial_unit <- if (identical(SPATIAL_DATASET, "neuron_neuropil")) "region_layer" else "region"
+spatial_col <- if (identical(spatial_unit, "region_layer")) "RegionLayer" else "Region"
+spatial_label_col <- "SpatialLabel"
+message2("Resolved spatial_unit: ", spatial_unit)
+SUBSTEP_ID <- file.path("network_spatial_relations", SPATIAL_DATASET, spatial_unit)
+CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
 SPATIAL_INPUTS <- resolve_dataset_inputs(SPATIAL_DATASET, purpose = "wgcna")
 
 required_pkgs <- c(
@@ -81,7 +98,11 @@ override_param <- function(params, key, value) {
 
 find_latest_upstream_protein_file <- function() {
   if (!is.na(SPATIAL_INPUTS$expression_file) && file.exists(SPATIAL_INPUTS$expression_file)) return(SPATIAL_INPUTS$expression_file)
-  path_processed("01_preprocessing", paste0("20260218_pgmatrix_imputed_", SPATIAL_DATASET, "_180samples_missing70pct.xlsx"))
+  latest_matching_file(
+    path_processed("01_preprocessing", "impute"),
+    paste0("^\\d{8}_pgmatrix_imputed_", SPATIAL_DATASET, "_[0-9]+samples_missing70pct\\.xlsx$"),
+    recursive = FALSE
+  )
 }
 
 # -------------------------------
@@ -127,12 +148,13 @@ params <- override_param(params, "protein_file", Sys.getenv("PROTEOMICS_SPATIAL_
 params <- override_param(params, "metadata_file", Sys.getenv("PROTEOMICS_SPATIAL_METADATA_FILE", unset = ""))
 params <- override_param(params, "protein_file", local_cfg$protein_file %||% local_cfg$paths$protein_file)
 params <- override_param(params, "metadata_file", local_cfg$metadata_file %||% local_cfg$paths$metadata_file)
+message2("Resolved protein_file: ", params$protein_file)
+message2("Resolved metadata_file: ", params$metadata_file)
+message2("Resolved output folders: ", paste(unlist(CANONICAL_PATHS), collapse = "; "))
 
 # -------------------------------
 # 2) Helpers
 # -------------------------------
-message2 <- function(...) message(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), " | ", ...)
-
 safe_name <- function(x) {
   x %>%
     as.character() %>%
@@ -227,10 +249,12 @@ parse_sample_metadata_from_names <- function(sample_names) {
   ) %>%
     dplyr::mutate(
       RegionLayer = dplyr::case_when(
-        SPATIAL_DATASET == "microglia" & !is.na(Region) ~ Region,
-        !is.na(Region) & !is.na(Layer) ~ paste(Region, Layer, sep = "_"),
+        SPATIAL_DATASET == "neuron_neuropil" & !is.na(Region) & !is.na(Layer) ~ paste(Region, Layer, sep = "_"),
+        SPATIAL_DATASET != "neuron_neuropil" & !is.na(Region) ~ Region,
         TRUE ~ NA_character_
-      )
+      ),
+      SpatialUnit = spatial_unit,
+      SpatialLabel = if (spatial_unit == "region_layer") RegionLayer else Region
     )
 }
 
@@ -280,8 +304,8 @@ standardize_metadata <- function(metadata_df, sample_names, numeric_map = params
       Exclude = if (!is.na(exclude_col) && exclude_col %in% names(out)) as.character(.data[[exclude_col]]) else NA_character_
     ) %>%
     dplyr::mutate(
-      Region = ifelse(is.na(Region) | Region == "", parsed$Region, Region),
-      Layer = ifelse(is.na(Layer) | Layer == "" | toupper(Layer) == "NA", parsed$Layer, Layer),
+      Region = ifelse(!is.na(parsed$Region), parsed$Region, Region),
+      Layer = ifelse(!is.na(parsed$Layer), parsed$Layer, Layer),
       ExpGroup = ifelse(is.na(ExpGroup) | ExpGroup == "" | toupper(ExpGroup) == "NA", parsed$ExpGroup, ExpGroup),
       Region = toupper(Region),
       Layer = tolower(Layer),
@@ -295,13 +319,15 @@ standardize_metadata <- function(metadata_df, sample_names, numeric_map = params
         TRUE ~ NA
       ),
       RegionLayer = dplyr::case_when(
-        SPATIAL_DATASET == "microglia" & !is.na(Region) ~ Region,
-        !is.na(Region) & !is.na(Layer) ~ paste(Region, Layer, sep = "_"),
+        SPATIAL_DATASET == "neuron_neuropil" & !is.na(Region) & !is.na(Layer) ~ paste(Region, Layer, sep = "_"),
+        SPATIAL_DATASET != "neuron_neuropil" & !is.na(Region) ~ Region,
         TRUE ~ NA_character_
-      )
+      ),
+      SpatialUnit = spatial_unit,
+      SpatialLabel = if (spatial_unit == "region_layer") RegionLayer else Region
     ) %>%
     dplyr::select(
-      SampleColumn, Region, Layer, RegionLayer, ExpGroup,
+      SampleColumn, Region, Layer, RegionLayer, SpatialUnit, SpatialLabel, ExpGroup,
       CelltypeLayer, Celltype, Exclude, dplyr::everything()
     )
 
@@ -385,12 +411,12 @@ load_expression_matrix <- function(protein_file, metadata_file = NULL, min_nonmi
 
   message2("Sample metadata group counts:")
   print(sample_md %>% dplyr::count(ExpGroup, sort = TRUE))
-  message2("Sample metadata region/layer counts:")
-  print(sample_md %>% dplyr::count(RegionLayer, sort = TRUE))
+  message2("Sample metadata spatial-unit counts:")
+  print(sample_md %>% dplyr::count(SpatialUnit, SpatialLabel, sort = TRUE))
 
-  usable_samples <- sample_md %>% dplyr::filter(!is.na(RegionLayer)) %>% dplyr::pull(SampleColumn)
+  usable_samples <- sample_md %>% dplyr::filter(!is.na(SpatialLabel)) %>% dplyr::pull(SampleColumn)
   if (length(usable_samples) < 4) {
-    stop("Could not identify enough samples with RegionLayer metadata. Check metadata_file or sample names.")
+    stop("Could not identify enough samples with spatial-unit metadata. Check metadata_file or sample names.")
   }
 
   expr <- expr[, usable_samples, drop = FALSE]
@@ -399,19 +425,19 @@ load_expression_matrix <- function(protein_file, metadata_file = NULL, min_nonmi
   list(expr = expr, sample_metadata = sample_md, protein_id_col = protein_col)
 }
 
-aggregate_region_layer_expression <- function(expr, sample_md) {
+aggregate_spatial_unit_expression <- function(expr, sample_md) {
   sample_order <- match(colnames(expr), sample_md$SampleColumn)
   md <- sample_md[sample_order, ]
 
   long <- as.data.frame(expr) %>%
     tibble::rownames_to_column("Protein") %>%
     tidyr::pivot_longer(-Protein, names_to = "SampleColumn", values_to = "Expression") %>%
-    dplyr::left_join(md %>% dplyr::select(SampleColumn, Region, Layer, RegionLayer, ExpGroup), by = "SampleColumn")
+    dplyr::left_join(md %>% dplyr::select(SampleColumn, Region, Layer, RegionLayer, SpatialUnit, SpatialLabel, ExpGroup), by = "SampleColumn")
 
   agg <- long %>%
-    dplyr::group_by(Protein, RegionLayer) %>%
+    dplyr::group_by(Protein, SpatialLabel) %>%
     dplyr::summarise(MeanExpression = mean(Expression, na.rm = TRUE), .groups = "drop") %>%
-    tidyr::pivot_wider(names_from = RegionLayer, values_from = MeanExpression) %>%
+    tidyr::pivot_wider(names_from = SpatialLabel, values_from = MeanExpression) %>%
     tibble::column_to_rownames("Protein") %>%
     as.matrix()
 
@@ -420,9 +446,27 @@ aggregate_region_layer_expression <- function(expr, sample_md) {
   agg
 }
 
+# Compatibility alias for older callers.
+aggregate_region_layer_expression <- aggregate_spatial_unit_expression
+
 compute_similarity_edges <- function(unit_matrix, min_abs_r = 0.6) {
   cor_mat <- suppressWarnings(cor(unit_matrix, method = "spearman", use = "pairwise.complete.obs"))
+  if (is.null(dim(cor_mat))) {
+    unit_name <- colnames(unit_matrix)[1] %||% "spatial_unit_1"
+    cor_mat <- matrix(1, nrow = 1, ncol = 1, dimnames = list(unit_name, unit_name))
+  }
   units <- colnames(cor_mat)
+
+  if (length(units) < 2) {
+    edges <- tibble::tibble(
+      Source = character(),
+      Target = character(),
+      SpearmanR = numeric(),
+      AbsSpearmanR = numeric(),
+      Direction = character()
+    )
+    return(list(cor_mat = cor_mat, all_edges = edges, filtered_edges = edges))
+  }
 
   edges <- expand.grid(Source = units, Target = units, stringsAsFactors = FALSE) %>%
     tibble::as_tibble() %>%
@@ -473,10 +517,10 @@ compute_top_protein_jaccard_edges <- function(unit_matrix, top_n = 100, min_jacc
 
 make_node_table <- function(sample_md, edge_tbl = NULL) {
   nodes <- sample_md %>%
-  dplyr::filter(!is.na(RegionLayer)) %>%
-  dplyr::count(Region, Layer, RegionLayer, name = "NSamples") %>%
-  dplyr::rename(name = RegionLayer) %>%
-  dplyr::select(name, Region, Layer, NSamples)
+  dplyr::filter(!is.na(SpatialLabel)) %>%
+  dplyr::count(SpatialLabel, SpatialUnit, Region, Layer, name = "NSamples") %>%
+  dplyr::rename(name = SpatialLabel) %>%
+  dplyr::select(name, SpatialUnit, Region, Layer, NSamples)
 
   if (!is.null(edge_tbl) && nrow(edge_tbl) > 0) {
     g <- igraph::graph_from_data_frame(edge_tbl %>% dplyr::select(Source, Target), directed = FALSE, vertices = nodes)
@@ -564,7 +608,7 @@ run_group_specific <- function(expr, sample_md, dirs, params) {
     expr_grp <- expr[, grp_samples, drop = FALSE]
     md_grp <- sample_md %>% dplyr::filter(SampleColumn %in% grp_samples)
 
-    unit_mat <- aggregate_region_layer_expression(expr_grp, md_grp)
+    unit_mat <- aggregate_spatial_unit_expression(expr_grp, md_grp)
     if (ncol(unit_mat) < 3) next
 
     sim <- compute_similarity_edges(unit_mat, params$min_abs_spearman_r)
@@ -608,9 +652,12 @@ dry_run_validate <- function(params) {
   missing_inputs <- validate_required_inputs(params)
   dry_run_line("Script", "07_spatial_networks/01_network_spatial_relations.r")
   dry_run_line("Dataset", SPATIAL_DATASET)
+  dry_run_line("spatial_unit", spatial_unit)
+  dry_run_line("spatial_col", spatial_col)
+  dry_run_line("spatial_label_col", spatial_label_col)
   dry_run_line("Resolved input diagnostics", paste(SPATIAL_INPUTS$diagnostics, collapse = " | "))
-  dry_run_line("Protein matrix", params$protein_file, if (file.exists(params$protein_file)) "PASS" else "FAIL")
-  dry_run_line("Sample metadata", params$metadata_file, if (file.exists(params$metadata_file)) "PASS" else "FAIL")
+  dry_run_line("protein_file", params$protein_file, if (file.exists(params$protein_file)) "PASS" else "FAIL")
+  dry_run_line("metadata_file", params$metadata_file, if (file.exists(params$metadata_file)) "PASS" else "FAIL")
   dry_run_line("Canonical RDS", file.path(dirs$processed, "network_spatial_relations_objects.rds"))
   dry_run_line("Output folders", paste(unlist(dirs), collapse = "; "))
 
@@ -672,7 +719,7 @@ log_file <- file.path(dirs$logs, paste0("network_spatial_relations_run_", format
 sink(log_file, split = TRUE)
 on.exit({ if (sink.number() > 0) sink(); }, add = TRUE)
 
-message2("Starting spatial layer-region network analysis")
+message2("Starting spatial network analysis using dataset=", SPATIAL_DATASET, ", spatial_unit=", spatial_unit)
 print(params)
 
 loaded <- load_expression_matrix(
@@ -684,7 +731,7 @@ loaded <- load_expression_matrix(
 
 expr <- loaded$expr
 sample_md <- loaded$sample_metadata
-required_sample_cols <- c("SampleColumn", "Region", "Layer", "RegionLayer")
+required_sample_cols <- c("SampleColumn", "Region", "RegionLayer", "SpatialUnit", "SpatialLabel")
 missing_sample_cols <- setdiff(required_sample_cols, names(sample_md))
 if (length(missing_sample_cols) > 0) {
   stop("Standardized sample metadata missing required columns: ", paste(missing_sample_cols, collapse = ", "), call. = FALSE)
@@ -696,12 +743,23 @@ if (isTRUE(params$run_group_specific_networks)) {
 }
 
 message2("Expression matrix retained: ", nrow(expr), " proteins x ", ncol(expr), " samples")
-message2("Region/layer units: ", paste(sort(unique(sample_md$RegionLayer)), collapse = ", "))
+unit_message_label <- if (spatial_unit == "region_layer") "Region/layer units" else "Region units"
+message2(unit_message_label, ": ", paste(sort(unique(sample_md$SpatialLabel)), collapse = ", "))
 
 # Save standardized metadata used by the script.
 utils::write.csv(sample_md, file.path(dirs$tables, "standardized_sample_metadata_used.csv"), row.names = FALSE)
 
-unit_matrix <- aggregate_region_layer_expression(expr, sample_md)
+unit_matrix <- aggregate_spatial_unit_expression(expr, sample_md)
+utils::write.csv(
+  as.data.frame(unit_matrix) %>% tibble::rownames_to_column("Protein"),
+  file.path(dirs$tables, "spatial_unit_mean_expression_matrix.csv"),
+  row.names = FALSE
+)
+utils::write.csv(
+  as.data.frame(unit_matrix) %>% tibble::rownames_to_column("Protein"),
+  file.path(dirs$source_data, "spatial_unit_mean_expression_matrix.csv"),
+  row.names = FALSE
+)
 utils::write.csv(
   as.data.frame(unit_matrix) %>% tibble::rownames_to_column("Protein"),
   file.path(dirs$tables, "region_layer_mean_expression_matrix.csv"),
@@ -712,24 +770,27 @@ utils::write.csv(
   file.path(dirs$source_data, "region_layer_mean_expression_matrix.csv"),
   row.names = FALSE
 )
+message2("Compatibility aliases written: region_layer_mean_expression_matrix.csv")
 
 # Overall spatial similarity network.
-message2("Computing overall region/layer Spearman similarity network")
+message2("Computing overall ", spatial_unit, " Spearman similarity network")
 sim <- compute_similarity_edges(unit_matrix, params$min_abs_spearman_r)
 nodes <- make_node_table(sample_md, sim$filtered_edges)
 
 utils::write.csv(sim$all_edges, file.path(dirs$tables, "overall_spearman_all_edges.csv"), row.names = FALSE)
 utils::write.csv(sim$filtered_edges, file.path(dirs$tables, "overall_spearman_filtered_edges.csv"), row.names = FALSE)
 utils::write.csv(nodes, file.path(dirs$tables, "overall_nodes_centrality.csv"), row.names = FALSE)
+utils::write.csv(as.data.frame(sim$cor_mat) %>% tibble::rownames_to_column("SpatialLabel"), file.path(dirs$tables, "spatial_unit_spearman_correlation_matrix.csv"), row.names = FALSE)
 utils::write.csv(as.data.frame(sim$cor_mat) %>% tibble::rownames_to_column("RegionLayer"), file.path(dirs$tables, "overall_spearman_correlation_matrix.csv"), row.names = FALSE)
 utils::write.csv(sim$all_edges, file.path(dirs$source_data, "overall_spearman_all_edges.csv"), row.names = FALSE)
 utils::write.csv(sim$filtered_edges, file.path(dirs$source_data, "overall_spearman_filtered_edges.csv"), row.names = FALSE)
+utils::write.csv(as.data.frame(sim$cor_mat) %>% tibble::rownames_to_column("SpatialLabel"), file.path(dirs$source_data, "spatial_unit_spearman_correlation_matrix.csv"), row.names = FALSE)
 utils::write.csv(as.data.frame(sim$cor_mat) %>% tibble::rownames_to_column("RegionLayer"), file.path(dirs$source_data, "overall_spearman_correlation_matrix.csv"), row.names = FALSE)
 
 plot_similarity_heatmap(
   sim$cor_mat,
   file.path(dirs$figures, "overall_spearman_heatmap.pdf"),
-  "Spatial expression similarity across region/layer units"
+  if (spatial_unit == "region_layer") "Spatial expression similarity across region/layer units" else "Spatial expression similarity across regions"
 )
 plot_network(
   nodes,
@@ -751,9 +812,13 @@ utils::write.csv(jac$all_edges, file.path(dirs$source_data, "overall_top_protein
 utils::write.csv(jac$filtered_edges, file.path(dirs$source_data, "overall_top_protein_jaccard_filtered_edges.csv"), row.names = FALSE)
 
 # Export top-protein set membership in long format.
-top_set_long <- purrr::imap_dfr(jac$top_sets, ~ tibble::tibble(RegionLayer = .y, Protein = .x))
+top_set_long <- purrr::imap_dfr(jac$top_sets, ~ tibble::tibble(SpatialLabel = .y, Protein = .x)) %>%
+  dplyr::mutate(RegionLayer = .data$SpatialLabel)
+utils::write.csv(top_set_long, file.path(dirs$tables, "top_protein_sets_by_spatial_unit.csv"), row.names = FALSE)
+utils::write.csv(top_set_long, file.path(dirs$source_data, "top_protein_sets_by_spatial_unit.csv"), row.names = FALSE)
 utils::write.csv(top_set_long, file.path(dirs$tables, "top_protein_sets_by_region_layer.csv"), row.names = FALSE)
 utils::write.csv(top_set_long, file.path(dirs$source_data, "top_protein_sets_by_region_layer.csv"), row.names = FALSE)
+message2("Compatibility aliases written: top_protein_sets_by_region_layer.csv")
 
 plot_network(
   jac_nodes,
@@ -793,10 +858,16 @@ openxlsx::writeData(wb, "Top_Protein_Sets", top_set_long)
 openxlsx::saveWorkbook(wb, file.path(dirs$tables, "network_spatial_relations_summary.xlsx"), overwrite = TRUE)
 
 network_object <- list(
+  dataset = SPATIAL_DATASET,
+  spatial_unit = spatial_unit,
+  spatial_col = spatial_col,
+  spatial_label_col = spatial_label_col,
   params = params,
   input_manifest = input_manifest,
   expression_matrix = expr,
   sample_metadata = sample_md,
+  spatial_unit_matrix = unit_matrix,
+  # Compatibility alias for downstream scripts that still expect this field.
   region_layer_matrix = unit_matrix,
   overall_spearman = sim,
   overall_jaccard = jac,
@@ -809,6 +880,14 @@ network_object <- list(
 saveRDS(network_object, file.path(dirs$processed, "network_spatial_relations_objects.rds"))
 # Compatibility/debug copy kept with logs; downstream scripts should not consume this path.
 saveRDS(network_object, file.path(dirs$logs, "network_spatial_relations_objects.rds"))
+if (SPATIAL_DATASET == "neuron_neuropil" && spatial_unit == "region_layer") {
+  legacy_object_path <- path_processed("07_spatial_networks", "network_spatial_relations", "network_spatial_relations_objects.rds")
+  dir.create(dirname(legacy_object_path), recursive = TRUE, showWarnings = FALSE)
+  saveRDS(network_object, legacy_object_path)
+  message2("Legacy compatibility object written for neuron_neuropil: ", legacy_object_path)
+} else {
+  legacy_object_path <- NA_character_
+}
 write_run_manifest(
   file.path(dirs$logs, "run_manifest.yml"),
   inputs = as.list(stats::setNames(input_manifest$path, input_manifest$input_type)),
@@ -818,10 +897,16 @@ write_run_manifest(
     figures = dirs$figures,
     source_data = dirs$source_data
   ),
-  parameters = params,
+  parameters = modifyList(params, list(
+    dataset = SPATIAL_DATASET,
+    spatial_unit = spatial_unit,
+    spatial_col = spatial_col,
+    spatial_label_col = spatial_label_col,
+    legacy_neuropil_object = legacy_object_path
+  )),
   notes = "Edges represent molecular profile similarity/overlap; thresholds and parameters are captured in params."
 )
 
-message2("Finished spatial layer-region network analysis")
+message2("Finished spatial network analysis using dataset=", SPATIAL_DATASET, ", spatial_unit=", spatial_unit)
 message2("Output directory: ", params$output_dir)
 message2("Important caution: edges represent similarity/overlap, not causal protein-protein interactions.")
