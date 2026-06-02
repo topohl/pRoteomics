@@ -38,7 +38,7 @@ jobs:
             "04_differential_expression_enrichment/01_clusterProfiler.r"
             "04_differential_expression_enrichment/02_compareGO.r"
             "07_spatial_networks/01_network_spatial_relations.r"
-            "09_export_pride_journal/04_validate_pride_submission.R"
+            "09_export_pride_journal/05_validate_pride_submission.R"
           )
           for script in "${scripts[@]}"; do
             echo "::group::$script --dry-run"
