@@ -1,7 +1,7 @@
 # ================================================================
 # Consumes:
 #   - spatial network RDS from data/processed/07_spatial_networks/network_spatial_relations/
-#   - optional curated module file from data/processed/06_modules_WGCNA/
+#   - dataset/source-scoped module score output from 06_modules_WGCNA/05_module_score.r
 # Produces:
 #   - module spatial network tables/figures/network files/logs in canonical module folders
 # File contract:
@@ -21,8 +21,7 @@
 #
 # Inputs:
 #   1) spatial_rds from network_spatial_relations.r
-#   2) optional module_file with columns Module and Protein
-#      If missing, conservative regex modules are created from protein names.
+#   2) module_scores_per_sample.csv from 05_module_score.r
 #
 # Outputs:
 #   - module scores per sample and region/layer
@@ -34,13 +33,47 @@
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
+source(repo_path("R", "dataset_config.R"))
+source(repo_path("R", "module_contracts.R"))
 MODULE_ID <- "06_modules_WGCNA"
-SUBSTEP_ID <- "module_spatial_networks"
+args <- commandArgs(trailingOnly = TRUE)
+arg_value <- function(flag, default = "") {
+  hit <- which(args == flag)
+  if (!length(hit) || hit[1] == length(args)) return(default)
+  args[[hit[1] + 1]]
+}
+has_flag <- function(flag) flag %in% args
+dataset_arg <- arg_value("--dataset", Sys.getenv("PROTEOMICS_DATASET", unset = ""))
+module_source_arg <- arg_value("--module-definition-source", Sys.getenv("PROTEOMICS_MODULE_DEFINITION_SOURCE", unset = ""))
+if (!nzchar(dataset_arg)) {
+  stop("06_module_spatial_networks.r requires --dataset or PROTEOMICS_DATASET.", call. = FALSE)
+}
+if (!nzchar(module_source_arg)) {
+  stop("06_module_spatial_networks.r requires --module-definition-source or PROTEOMICS_MODULE_DEFINITION_SOURCE.", call. = FALSE)
+}
+dataset_profile <- validate_dataset(dataset_arg, source = "module_spatial_networks")
+module_definition_source <- tolower(module_source_arg)
+if (!module_definition_source %in% c("wgcna", "overlap", "custom")) {
+  stop("Unsupported module_definition_source: ", module_definition_source, call. = FALSE)
+}
+SUBSTEP_ID <- file.path("module_spatial_networks", dataset_profile, module_definition_source)
 CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
+
+resolve_module_score_file <- function() {
+  override <- Sys.getenv("PROTEOMICS_MODULE_SPATIAL_SCORE_FILE", unset = "")
+  if (nzchar(override)) return(normalizePath(override, winslash = "/", mustWork = FALSE))
+  csv <- path_results("tables", "06_modules_WGCNA", "module_score", dataset_profile, module_definition_source, "module_scores_per_sample.csv")
+  xlsx <- path_results("tables", "06_modules_WGCNA", "module_score", dataset_profile, module_definition_source, "module_scores_per_sample.xlsx")
+  if (file.exists(csv)) return(csv)
+  xlsx
+}
+
+allow_regex_fallback <- tolower(Sys.getenv("PROTEOMICS_ALLOW_REGEX_MODULE_FALLBACK", unset = "false")) %in% c("1", "true", "yes", "y") ||
+  has_flag("--allow-regex-fallback")
 
 params <- list(
   spatial_rds = path_processed("07_spatial_networks", "network_spatial_relations", "network_spatial_relations_objects.rds"),
-  module_file = path_processed("06_modules_WGCNA", "module_scores", "curated_neuropil_modules.xlsx"),
+  module_score_file = resolve_module_score_file(),
   output_dir = CANONICAL_PATHS$reports,
   min_module_size = 5,
   min_abs_module_similarity = 0.50,
@@ -52,17 +85,27 @@ figure_diverging <- c(low = "#3B6FB6", mid = "#F8FAFC", high = "#C84C5A")
 figure_condition_cols <- c(CON = "#6C757D", RES = "#2A9D8F", SUS = "#E76F51")
 
 if (is_dry_run()) {
-  dry_run_line("Script", "06_modules_WGCNA/02_module_spatial_networks.r")
+  dry_run_line("Script", "06_modules_WGCNA/06_module_spatial_networks.r")
+  dry_run_line("Dataset", dataset_profile)
+  dry_run_line("Module definition source", module_definition_source)
   dry_run_line("Spatial RDS", params$spatial_rds, if (file.exists(params$spatial_rds)) "PASS" else "FAIL")
-  dry_run_line("Module file", params$module_file, if (file.exists(params$module_file)) "PASS" else "WARN")
+  dry_run_line("Module score producer output", params$module_score_file, if (file.exists(params$module_score_file)) "PASS" else "FAIL")
+  dry_run_line("Regex fallback allowed", allow_regex_fallback)
   dry_run_line("Output folders", paste(unlist(CANONICAL_PATHS), collapse = "; "))
-  quit(status = if (file.exists(params$spatial_rds)) 0 else 1, save = "no")
+  quit(status = if (file.exists(params$spatial_rds) && file.exists(params$module_score_file)) 0 else 1, save = "no")
 }
 if (!file.exists(params$spatial_rds)) stop("spatial_rds not found: ", params$spatial_rds, call. = FALSE)
+if (!file.exists(params$module_score_file) && !allow_regex_fallback) {
+  stop("Module score output not found: ", params$module_score_file,
+       ". Run 06_modules_WGCNA/05_module_score.r for dataset=", dataset_profile,
+       " and module_definition_source=", module_definition_source,
+       ", or explicitly allow regex fallback with PROTEOMICS_ALLOW_REGEX_MODULE_FALLBACK=true / --allow-regex-fallback.",
+       call. = FALSE)
+}
 
 required_pkgs <- c(
   "dplyr", "tidyr", "stringr", "purrr", "tibble", "ggplot2", "pheatmap",
-  "igraph", "ggraph", "openxlsx", "svglite", "readxl"
+  "igraph", "ggraph", "openxlsx", "svglite", "readxl", "readr"
 )
 missing <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
 if (length(missing) > 0) stop("Missing required R package(s): ", paste(missing, collapse = ", "), ". Install them explicitly before running this script.", call. = FALSE)
@@ -161,6 +204,30 @@ load_module_file <- function(module_file) {
       ProteinNorm = normalise_id(Protein)
     ) %>%
     dplyr::distinct(Module, ProteinNorm, .keep_all = TRUE)
+}
+
+load_module_score_file <- function(path) {
+  ext <- tolower(tools::file_ext(path))
+  df <- if (ext %in% c("xlsx", "xls")) {
+    readxl::read_excel(path)
+  } else {
+    readr::read_csv(path, show_col_types = FALSE)
+  }
+  df <- tibble::as_tibble(df)
+  validate_module_score_output(df, "module spatial network input scores")
+  for (col in c("Module", "SampleColumn", "ExpGroup", "StressGroup", "Region", "Layer", "RegionLayer")) {
+    if (!col %in% names(df)) df[[col]] <- NA_character_
+  }
+  df %>%
+    dplyr::filter(.data$dataset == dataset_profile, .data$module_definition_source == module_definition_source) %>%
+    dplyr::mutate(
+      Module = as.character(dplyr::coalesce(.data$Module, .data$ModuleID)),
+      SampleColumn = as.character(dplyr::coalesce(.data$SampleColumn, .data$Sample)),
+      ExpGroup = as.character(dplyr::coalesce(.data$ExpGroup, .data$StressGroup)),
+      Region = as.character(.data$Region),
+      Layer = as.character(.data$Layer),
+      RegionLayer = as.character(dplyr::coalesce(.data$RegionLayer, paste(.data$Region, .data$Layer, sep = "_")))
+    )
 }
 
 regex_modules_from_proteins <- function(proteins) {
@@ -316,17 +383,37 @@ obj <- readRDS(params$spatial_rds)
 expr <- obj$expression_matrix
 sample_md <- obj$sample_metadata
 
-modules <- load_module_file(params$module_file)
-if (is.null(modules)) {
+if (file.exists(params$module_score_file)) {
+  message2("Reading module score output from 05_module_score.r: ", params$module_score_file)
+  score_df <- load_module_score_file(params$module_score_file)
+  if (!nrow(score_df)) {
+    stop("Module score file contained no rows for dataset/source: ", dataset_profile, " / ", module_definition_source, call. = FALSE)
+  }
+  matched_modules <- score_df %>%
+    dplyr::select("Module", "ModuleID", "ModuleSet", "module_definition_source", "n_found_in_matrix", "coverage_fraction") %>%
+    dplyr::distinct()
+  scores <- list(
+    score_df = score_df,
+    module_sizes = matched_modules %>% dplyr::select(Module, NMatched = n_found_in_matrix) %>% dplyr::distinct(),
+    retained_module_map = matched_modules
+  )
+} else if (allow_regex_fallback) {
   message2("Using regex-based fallback module definitions.")
   modules <- regex_modules_from_proteins(rownames(expr))
+  matched_modules <- match_modules_to_expression(modules, expr)
+  scores <- compute_module_scores(expr, sample_md, matched_modules, params$min_module_size)
+  score_df <- scores$score_df %>%
+    dplyr::mutate(
+      dataset = dataset_profile,
+      module_definition_source = module_definition_source,
+      ScoreType = "regex_fallback_mean_z_score",
+      scoring_method = "regex_fallback_mean_z_score"
+    )
+} else {
+  stop("Module score file unavailable and regex fallback is disabled.", call. = FALSE)
 }
-
-matched_modules <- match_modules_to_expression(modules, expr)
 utils::write.csv(matched_modules, file.path(dirs$tables, "matched_module_membership.csv"), row.names = FALSE)
 
-scores <- compute_module_scores(expr, sample_md, matched_modules, params$min_module_size)
-score_df <- scores$score_df
 utils::write.csv(score_df, file.path(dirs$tables, "module_scores_per_sample.csv"), row.names = FALSE)
 utils::write.csv(scores$module_sizes, file.path(dirs$tables, "module_sizes_before_filter.csv"), row.names = FALSE)
 utils::write.csv(scores$retained_module_map, file.path(dirs$tables, "retained_module_membership.csv"), row.names = FALSE)
@@ -378,5 +465,28 @@ saveRDS(
   file.path(dirs$logs, "module_spatial_networks_objects.rds")
 )
 
+write_run_manifest(
+  file.path(dirs$logs, "module_spatial_networks_run_manifest.yml"),
+  inputs = list(
+    spatial_rds = params$spatial_rds,
+    module_score_file = params$module_score_file
+  ),
+  outputs = list(
+    tables = dirs$tables,
+    figures = dirs$figures,
+    networks = dirs$networks
+  ),
+  parameters = list(
+    dataset = dataset_profile,
+    module_definition_source = module_definition_source,
+    allow_regex_fallback = allow_regex_fallback,
+    min_module_size = params$min_module_size,
+    min_abs_module_similarity = params$min_abs_module_similarity
+  ),
+  notes = "Consumes dataset/source-scoped module scores from 05_module_score.r."
+)
+
 message2("Finished module-level spatial network analysis")
-message2("Caution: regex fallback modules are exploratory. Prefer curated module_file for publication analyses.")
+if (allow_regex_fallback && !file.exists(params$module_score_file)) {
+  message2("Caution: regex fallback modules are exploratory and were used only because explicit fallback was enabled.")
+}
