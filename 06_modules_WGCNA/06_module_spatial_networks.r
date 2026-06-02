@@ -56,6 +56,7 @@ module_definition_source <- tolower(module_source_arg)
 if (!module_definition_source %in% c("wgcna", "overlap", "custom")) {
   stop("Unsupported module_definition_source: ", module_definition_source, call. = FALSE)
 }
+spatial_unit <- if (dataset_profile == "neuron_neuropil") "region_layer" else "region"
 SUBSTEP_ID <- file.path("module_spatial_networks", dataset_profile, module_definition_source)
 CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
 
@@ -71,8 +72,16 @@ resolve_module_score_file <- function() {
 allow_regex_fallback <- tolower(Sys.getenv("PROTEOMICS_ALLOW_REGEX_MODULE_FALLBACK", unset = "false")) %in% c("1", "true", "yes", "y") ||
   has_flag("--allow-regex-fallback")
 
+resolve_spatial_rds <- function() {
+  override <- Sys.getenv("PROTEOMICS_SPATIAL_NETWORK_OBJECT", unset = "")
+  if (nzchar(override)) return(normalizePath(override, winslash = "/", mustWork = FALSE))
+  scoped <- path_processed("07_spatial_networks", "network_spatial_relations", dataset_profile, spatial_unit, "network_spatial_relations_objects.rds")
+  if (file.exists(scoped)) return(scoped)
+  path_processed("07_spatial_networks", "network_spatial_relations", "network_spatial_relations_objects.rds")
+}
+
 params <- list(
-  spatial_rds = path_processed("07_spatial_networks", "network_spatial_relations", "network_spatial_relations_objects.rds"),
+  spatial_rds = resolve_spatial_rds(),
   module_score_file = resolve_module_score_file(),
   output_dir = CANONICAL_PATHS$reports,
   min_module_size = 5,
@@ -87,6 +96,7 @@ figure_condition_cols <- c(CON = "#6C757D", RES = "#2A9D8F", SUS = "#E76F51")
 if (is_dry_run()) {
   dry_run_line("Script", "06_modules_WGCNA/06_module_spatial_networks.r")
   dry_run_line("Dataset", dataset_profile)
+  dry_run_line("Spatial unit", spatial_unit)
   dry_run_line("Module definition source", module_definition_source)
   dry_run_line("Spatial RDS", params$spatial_rds, if (file.exists(params$spatial_rds)) "PASS" else "FAIL")
   dry_run_line("Module score producer output", params$module_score_file, if (file.exists(params$module_score_file)) "PASS" else "FAIL")
@@ -215,7 +225,7 @@ load_module_score_file <- function(path) {
   }
   df <- tibble::as_tibble(df)
   validate_module_score_output(df, "module spatial network input scores")
-  for (col in c("Module", "SampleColumn", "ExpGroup", "StressGroup", "Region", "Layer", "RegionLayer")) {
+  for (col in c("Module", "SampleColumn", "ExpGroup", "StressGroup", "Region", "Layer", "RegionLayer", "SpatialUnit", "SpatialLabel")) {
     if (!col %in% names(df)) df[[col]] <- NA_character_
   }
   df %>%
@@ -226,7 +236,10 @@ load_module_score_file <- function(path) {
       ExpGroup = as.character(dplyr::coalesce(.data$ExpGroup, .data$StressGroup)),
       Region = as.character(.data$Region),
       Layer = as.character(.data$Layer),
-      RegionLayer = as.character(dplyr::coalesce(.data$RegionLayer, paste(.data$Region, .data$Layer, sep = "_")))
+      RegionLayer = as.character(dplyr::coalesce(.data$RegionLayer, paste(.data$Region, .data$Layer, sep = "_"))),
+      SpatialUnit = as.character(dplyr::coalesce(.data$SpatialUnit, spatial_unit)),
+      SpatialLabel = as.character(dplyr::coalesce(.data$SpatialLabel, if (spatial_unit == "region_layer") .data$RegionLayer else .data$Region)),
+      RegionLayer = dplyr::coalesce(.data$SpatialLabel, .data$RegionLayer)
     )
 }
 
@@ -278,7 +291,7 @@ compute_module_scores <- function(expr, sample_md, module_map, min_module_size =
 
   score_df <- as.data.frame(score_mat) %>%
     rownames_to_column("SampleColumn") %>%
-    left_join(sample_md %>% dplyr::select(SampleColumn, Region, Layer, RegionLayer, ExpGroup), by = "SampleColumn") %>%
+    left_join(sample_md %>% dplyr::select(SampleColumn, Region, Layer, RegionLayer, SpatialUnit, SpatialLabel, ExpGroup), by = "SampleColumn") %>%
     pivot_longer(cols = all_of(colnames(score_mat)), names_to = "Module", values_to = "ModuleScore")
 
   list(score_df = score_df, module_sizes = module_sizes, retained_module_map = module_map)
