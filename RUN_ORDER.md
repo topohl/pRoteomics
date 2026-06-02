@@ -52,7 +52,7 @@ Network and network-behavior stages are layer-resolved and therefore exclude `mi
 | `core` | GCT/export handoff and UniProt/identifier mapping. |
 | `qc` | Dataset QC, missingness, PCA/confounding, and QC-to-biology summaries. |
 | `enrichment` | Differential abundance handoff, clusterProfiler/GSEA, compareGO, biological program summaries, neuropil reference annotations, targeted microglia ROI signatures, and EWCE. |
-| `modules` | WGCNA, WGCNA-to-differential abundance/GSEA overlap, and module activity scoring. |
+| `modules` | WGCNA, curated overlap programs, source-scoped module activity scoring, and WGCNA-to-differential abundance/GSEA overlap. |
 | `networks` | Region/layer spatial networks, differential networks, stability, and chord figures for layer-capable datasets. |
 | `behavior` | Network/proteomics coupling to behavior and physiology where inputs support the requested analysis. |
 | `export` | Active PRIDE, manuscript, biological claims, figure, and source-data export. |
@@ -63,11 +63,34 @@ The active entrypoints are the scripts listed in `pipeline.yml`. Publication-fac
 
 ```text
 04_differential_expression_enrichment/04_neuropil_reference_annotation.r
+06_modules_WGCNA/01_WGCNA.r
+06_modules_WGCNA/02_curated_overlap_programs.r
 06_modules_WGCNA/03_score_module_activity.R
+06_modules_WGCNA/04_wgcna_de_gsea_overlap.r
 09_export_pride_journal/06_make_biological_claims_table.R
 09_export_pride_journal/07_export_manuscript_figures.R
 09_export_pride_journal/08_export_source_data.R
 ```
+
+`06_modules_WGCNA/02_curated_overlap_programs.r` builds curated overlap-derived neuropil programs from recurrent compareGO proteins; these are distinct from WGCNA modules. `06_modules_WGCNA/03_score_module_activity.R` scores either WGCNA modules or curated overlap programs depending on dataset and `PROTEOMICS_MODULE_DEFINITION_SOURCE`. Defaults are `wgcna` for `microglia` and `neuron_soma`, and `overlap` for `neuron_neuropil`. Outputs use `module_score/<dataset>/<module_definition_source>/`.
+
+```bash
+Rscript 06_modules_WGCNA/02_curated_overlap_programs.r --dry-run
+Rscript 06_modules_WGCNA/03_score_module_activity.R --dataset microglia --dry-run
+Rscript 06_modules_WGCNA/03_score_module_activity.R --dataset neuron_soma --dry-run
+Rscript 06_modules_WGCNA/03_score_module_activity.R --dataset neuron_neuropil --dry-run
+Rscript 06_modules_WGCNA/04_wgcna_de_gsea_overlap.r --dataset microglia --dry-run
+```
+
+PowerShell override example:
+
+```powershell
+$env:PROTEOMICS_MODULE_DEFINITION_SOURCE="wgcna"
+Rscript 06_modules_WGCNA/03_score_module_activity.R --dataset neuron_neuropil --dry-run
+Remove-Item Env:\PROTEOMICS_MODULE_DEFINITION_SOURCE
+```
+
+`05_module_score.r` and `91_module_score.r` are wrappers only. `03_overlap_modules.r` and `04_overlap_modules.r` are wrappers only. `05_wgcna_de_gsea_overlap.r` is a wrapper only.
 
 Legacy filenames and historical helper folders are listed under the `legacy` block of `pipeline.yml` and in `docs/NAMING_MIGRATION.md`; they should not be presented as active scripts.
 
