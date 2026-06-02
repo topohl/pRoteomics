@@ -32,10 +32,19 @@ MODULE_ID <- "07_spatial_networks"
 SUBSTEP_ID <- "bootstrap_network_stability"
 CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
 NETWORK_DATASET <- current_dataset()
-assert_dataset_capability(NETWORK_DATASET, "layer", analysis = "bootstrap spatial network stability analysis")
+assert_dataset_capability(NETWORK_DATASET, "region", analysis = "bootstrap spatial network stability analysis")
+spatial_unit <- if (NETWORK_DATASET == "neuron_neuropil") "region_layer" else "region"
+
+resolve_spatial_rds <- function() {
+  override <- Sys.getenv("PROTEOMICS_SPATIAL_NETWORK_OBJECT", unset = "")
+  if (nzchar(override)) return(normalizePath(override, winslash = "/", mustWork = FALSE))
+  scoped <- path_processed("07_spatial_networks", "network_spatial_relations", NETWORK_DATASET, spatial_unit, "network_spatial_relations_objects.rds")
+  if (file.exists(scoped)) return(scoped)
+  path_processed("07_spatial_networks", "network_spatial_relations", "network_spatial_relations_objects.rds")
+}
 
 params <- list(
-  spatial_rds = path_processed("07_spatial_networks", "network_spatial_relations", "network_spatial_relations_objects.rds"),
+  spatial_rds = resolve_spatial_rds(),
   output_dir = CANONICAL_PATHS$reports,
   n_boot = 250,
   edge_abs_r_threshold = 0.50,
@@ -45,6 +54,8 @@ params <- list(
 
 if (is_dry_run()) {
   dry_run_line("Script", "07_spatial_networks/03_bootstrap_network_stability.r")
+  dry_run_line("Dataset", NETWORK_DATASET)
+  dry_run_line("Spatial unit", spatial_unit)
   dry_run_line("Spatial RDS", params$spatial_rds, if (file.exists(params$spatial_rds)) "PASS" else "FAIL")
   dry_run_line("Output folders", paste(unlist(CANONICAL_PATHS), collapse = "; "))
   quit(status = if (file.exists(params$spatial_rds)) 0 else 1, save = "no")
