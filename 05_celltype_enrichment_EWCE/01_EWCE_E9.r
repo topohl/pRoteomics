@@ -137,7 +137,7 @@ if (!file.exists(sample_metadata_path)) stop("Sample metadata not found: ", samp
 
 cran_packages <- c(
   "readxl", "dplyr", "tibble", "tidyr", "ggplot2", "pheatmap",
-  "svglite", "ggridges", "ggrepel", "ggsci", "viridis",
+  "svglite", "ggrepel", "ggsci", "viridis",
   "openxlsx", "stringr", "patchwork", "future", "future.apply",
   "digest"
 )
@@ -880,8 +880,85 @@ format_metric_label <- function(contrast, direction) {
   paste(format_contrast_label(contrast), stringr::str_to_title(as.character(direction)))
 }
 
-cap_signed_value <- function(x, limit = 10) {
+# Symmetric cap for signed -log10(FDR): keeps diverging heatmap readable when q -> 0.
+SIGNED_LOG10Q_CAP <- 10L
+
+cap_signed_value <- function(x, limit = SIGNED_LOG10Q_CAP) {
   pmax(pmin(x, limit), -limit)
+}
+
+# Cell types ranked for heatmaps: significant first, then best global FDR, then |Z|.
+rank_celltypes_by_evidence <- function(
+    df,
+    celltype_col = "CellType",
+    q_col = "q_global",
+    z_col = "sd_from_mean",
+    sig_col = "Significant_Global"
+) {
+  df %>%
+    dplyr::group_by(.data[[celltype_col]]) %>%
+    dplyr::summarise(
+      best_q_global = min(.data[[q_col]], na.rm = TRUE),
+      max_abs_z = max(abs(.data[[z_col]]), na.rm = TRUE),
+      any_sig = any(.data[[sig_col]] %in% TRUE, na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    dplyr::arrange(
+      dplyr::desc(any_sig),
+      best_q_global,
+      dplyr::desc(max_abs_z)
+    ) %>%
+    dplyr::pull(.data[[celltype_col]])
+}
+
+# Small dots on heatmap tiles: Significant_Global == TRUE; light/dark fill picks dot color.
+geom_heatmap_sig_dots <- function(
+    data,
+    x,
+    y,
+    fill_col = "sd_from_mean",
+    sig_col = "Significant_Global",
+    fill_limit = NULL
+) {
+  sig_data <- data[data[[sig_col]] %in% TRUE, , drop = FALSE]
+  if (nrow(sig_data) == 0) {
+    return(ggplot2::geom_blank())
+  }
+  mid_threshold <- if (is.null(fill_limit)) {
+    stats::median(abs(sig_data[[fill_col]]), na.rm = TRUE)
+  } else {
+    max(abs(fill_limit)) * 0.45
+  }
+  sig_data$.dot_fill <- ifelse(abs(sig_data[[fill_col]]) >= mid_threshold, "white", "black")
+  sig_data$.x <- sig_data[[x]]
+  sig_data$.y <- sig_data[[y]]
+  ggplot2::geom_point(
+    data = sig_data,
+    ggplot2::aes(x = .x, y = .y),
+    inherit.aes = FALSE,
+    shape = 16,
+    size = 0.55,
+    color = sig_data$.dot_fill,
+    show.legend = FALSE
+  )
+}
+
+scale_fill_signed_z <- function(
+    name = "Z-score",
+    low = "#0072B2",
+    mid = "white",
+    high = "#D55E00",
+    midpoint = 0,
+    limits = NULL
+) {
+  ggplot2::scale_fill_gradient2(
+    low = low,
+    mid = mid,
+    high = high,
+    midpoint = midpoint,
+    limits = limits,
+    name = name
+  )
 }
 
 primary_results <- primary_results %>%
@@ -973,8 +1050,11 @@ publication_top_celltypes <- primary_results %>%
 publication_diff_heatmap_tbl <- primary_results %>%
   dplyr::filter(AnalysisType == "Differential", CellType %in% publication_top_celltypes$CellType) %>%
   dplyr::mutate(
+    # Rows: best global FDR, then max |Z| (most informative cell types at top of heatmap).
     CellType = factor(CellType, levels = rev(publication_top_celltypes$CellType)),
-    Stratum = factor(Stratum, levels = stratum_order)
+    Stratum = factor(Stratum, levels = stratum_order),
+    # Plotted fill matches SignedSig_Global_Capped (±SIGNED_LOG10Q_CAP) in the figure legend.
+    SignedSig_Global_Plot = SignedSig_Global_Capped
   )
 
 publication_robust_tbl <- sensitivity_tbl %>%
@@ -997,44 +1077,94 @@ col_sus      <- "#D55E00"
 col_res      <- "#0072B2"
 col_down     <- "#009E73"
 
-baseline_plot_tbl <- primary_results %>%
-  dplyr::filter(AnalysisType == "Baseline")
+# Color mapping only: symmetric cap so a few extreme bootstrap Z values do not wash out mid-tones.
+HEATMAP_Z_COLOR_CAP <- max(
+  3,
+  stats::quantile(abs(primary_results$sd_from_mean), 0.99, na.rm = TRUE, names = FALSE)
+)
 
-p1 <- ggplot2::ggplot(
-  baseline_plot_tbl,
-  ggplot2::aes(
-    x = Metric,
-    y = CellType,
-    size = abs(sd_from_mean),
-    color = sd_from_mean,
-    alpha = Significant_Global
+baseline_top_celltypes <- primary_results %>%
+  dplyr::filter(AnalysisType == "Baseline") %>%
+  dplyr::group_by(CellType) %>%
+  dplyr::summarise(
+    best_q_global = min(q_global, na.rm = TRUE),
+    max_abs_z = max(abs(sd_from_mean), na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  dplyr::arrange(best_q_global, dplyr::desc(max_abs_z)) %>%
+  dplyr::slice_head(n = 25)
+
+baseline_celltype_order <- rank_celltypes_by_evidence(
+  primary_results %>% dplyr::filter(AnalysisType == "Baseline", CellType %in% baseline_top_celltypes$CellType)
+)
+
+baseline_heatmap_tbl <- primary_results %>%
+  dplyr::filter(AnalysisType == "Baseline", CellType %in% baseline_top_celltypes$CellType) %>%
+  dplyr::mutate(
+    Metric = factor(Metric, levels = analysis_params$conditions),
+    CellType = factor(CellType, levels = rev(baseline_celltype_order)),
+    sd_from_mean_plot = cap_signed_value(sd_from_mean, HEATMAP_Z_COLOR_CAP)
   )
+
+# Fig 1A: signed Z uses a diverging fill (0 = no shift); sequential scales misrepresent direction.
+p1 <- ggplot2::ggplot(
+  baseline_heatmap_tbl,
+  ggplot2::aes(x = Metric, y = CellType, fill = sd_from_mean_plot)
 ) +
-  ggplot2::geom_point() +
+  ggplot2::geom_tile(color = "white", linewidth = 0.1) +
+  geom_heatmap_sig_dots(
+    baseline_heatmap_tbl,
+    x = "Metric",
+    y = "CellType",
+    fill_col = "sd_from_mean_plot",
+    fill_limit = c(-HEATMAP_Z_COLOR_CAP, HEATMAP_Z_COLOR_CAP)
+  ) +
   ggplot2::facet_wrap(~Stratum, nrow = 1) +
-  viridis::scale_color_viridis(option = "magma", name = "Z-score") +
-  ggplot2::scale_size_area(max_size = 3, name = "|Z|") +
-  ggplot2::scale_alpha_manual(values = c("FALSE" = 0.35, "TRUE" = 1), name = "Global FDR < 0.05") +
+  scale_fill_signed_z(
+    name = "Z-score",
+    low = col_res,
+    high = col_sus,
+    limits = c(-HEATMAP_Z_COLOR_CAP, HEATMAP_Z_COLOR_CAP)
+  ) +
   theme_publication() +
   ggplot2::labs(x = NULL, y = "Cell type", title = "Baseline cell-type enrichment") +
   ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
 
+diff_celltype_order <- rank_celltypes_by_evidence(
+  primary_results %>% dplyr::filter(AnalysisType == "Differential")
+)
+
+diff_metric_order <- c(
+  "Sus_vs_Con_up", "Sus_vs_Con_down", "Res_vs_Con_up", "Res_vs_Con_down"
+)
+diff_metric_order <- diff_metric_order[diff_metric_order %in% unique(primary_results$Metric[primary_results$AnalysisType == "Differential"])]
+diff_metric_order <- c(diff_metric_order, setdiff(unique(primary_results$Metric[primary_results$AnalysisType == "Differential"]), diff_metric_order))
+
+diff_heatmap_tbl <- primary_results %>%
+  dplyr::filter(AnalysisType == "Differential") %>%
+  dplyr::mutate(
+    Metric = factor(Metric, levels = diff_metric_order),
+    CellType = factor(CellType, levels = rev(diff_celltype_order)),
+    sd_from_mean_plot = cap_signed_value(sd_from_mean, HEATMAP_Z_COLOR_CAP),
+    SignedSig_Global_Plot = SignedSig_Global_Capped
+  )
+
 p2 <- ggplot2::ggplot(
-  primary_results %>% dplyr::filter(AnalysisType == "Differential"),
-  ggplot2::aes(x = Metric, y = CellType, fill = sd_from_mean)
+  diff_heatmap_tbl,
+  ggplot2::aes(x = Metric, y = CellType, fill = sd_from_mean_plot)
 ) +
   ggplot2::geom_tile(color = "white", linewidth = 0.1) +
-  ggplot2::geom_point(
-    data = primary_results %>% dplyr::filter(AnalysisType == "Differential", Significant_Global),
-    ggplot2::aes(x = Metric, y = CellType),
-    inherit.aes = FALSE,
-    shape = 21,
-    size = 0.8,
-    stroke = 0.2,
-    fill = "black"
+  geom_heatmap_sig_dots(
+    diff_heatmap_tbl,
+    x = "Metric",
+    y = "CellType",
+    fill_col = "sd_from_mean_plot",
+    fill_limit = c(-HEATMAP_Z_COLOR_CAP, HEATMAP_Z_COLOR_CAP)
   ) +
   ggplot2::facet_wrap(~Stratum, nrow = 1) +
-  ggplot2::scale_fill_gradient2(low = col_res, mid = "white", high = col_sus, midpoint = 0, name = "Z-score") +
+  scale_fill_signed_z(
+    limits = c(-HEATMAP_Z_COLOR_CAP, HEATMAP_Z_COLOR_CAP)
+  ) +
   theme_publication() +
   ggplot2::labs(x = NULL, y = "Cell type", title = "Modeled stress contrasts") +
   ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
@@ -1047,12 +1177,26 @@ p3 <- ggplot2::ggplot(primary_results, ggplot2::aes(x = sd_from_mean, y = -log10
   ggplot2::labs(x = "Effect size (Z-score)", y = "-log10(global FDR)", title = "EWCE significance")
 
 p4 <- ggplot2::ggplot(
-  primary_results %>% dplyr::filter(AnalysisType == "Differential"),
-  ggplot2::aes(x = Metric, y = CellType, fill = SignedSig_Global)
+  diff_heatmap_tbl,
+  ggplot2::aes(x = Metric, y = CellType, fill = SignedSig_Global_Plot)
 ) +
   ggplot2::geom_tile(color = "white", linewidth = 0.1) +
+  geom_heatmap_sig_dots(
+    diff_heatmap_tbl,
+    x = "Metric",
+    y = "CellType",
+    fill_col = "SignedSig_Global_Plot",
+    fill_limit = c(-SIGNED_LOG10Q_CAP, SIGNED_LOG10Q_CAP)
+  ) +
   ggplot2::facet_wrap(~Stratum, nrow = 1) +
-  ggplot2::scale_fill_gradient2(low = col_res, mid = "white", high = col_sus, midpoint = 0, name = "Signed -log10(FDR)") +
+  ggplot2::scale_fill_gradient2(
+    low = col_res,
+    mid = "white",
+    high = col_sus,
+    midpoint = 0,
+    limits = c(-SIGNED_LOG10Q_CAP, SIGNED_LOG10Q_CAP),
+    name = "Signed -log10(FDR)"
+  ) +
   theme_publication() +
   ggplot2::labs(x = NULL, y = "Cell type", title = "Direction and global significance") +
   ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
@@ -1065,59 +1209,90 @@ top_celltypes <- primary_results %>%
     .groups = "drop"
   ) %>%
   dplyr::arrange(dplyr::desc(max_abs_effect)) %>%
-  dplyr::slice_head(n = 20)
+  dplyr::slice_head(n = 20) %>%
+  dplyr::mutate(
+    neglog10_q_global = -log10(pmax(best_q_global, 1e-300)),
+    CellType = factor(CellType, levels = rev(CellType))
+  )
 
 p5 <- ggplot2::ggplot(
   top_celltypes,
-  ggplot2::aes(x = reorder(CellType, max_abs_effect), y = max_abs_effect, fill = -log10(pmax(best_q_global, 1e-300)))
+  ggplot2::aes(x = max_abs_effect, y = CellType, color = neglog10_q_global)
 ) +
-  ggplot2::geom_col(width = 0.8) +
-  ggplot2::coord_flip() +
-  viridis::scale_fill_viridis(option = "plasma", name = "-log10(global FDR)") +
+  ggplot2::geom_segment(
+    ggplot2::aes(x = 0, xend = max_abs_effect, yend = CellType),
+    linewidth = 0.25,
+    color = "grey55"
+  ) +
+  ggplot2::geom_point(size = 1.6, stroke = 0) +
+  viridis::scale_color_viridis(option = "plasma", name = "-log10(global FDR)") +
   theme_publication() +
-  ggplot2::labs(x = NULL, y = "Max |Z-score|", title = "Top cell-type effects")
+  ggplot2::labs(x = "Max |Z-score|", y = NULL, title = "Top cell-type effects")
 
+p6_strip_tbl <- primary_results %>%
+  dplyr::filter(AnalysisType == "Differential") %>%
+  dplyr::mutate(
+    Stratum = factor(Stratum, levels = stratum_order),
+    Direction = factor(Direction, levels = c("up", "down"))
+  )
+
+# Jittered points (no KDE/ridges): avoids implying smooth densities in sparse strata.
 p6 <- ggplot2::ggplot(
-  primary_results %>% dplyr::filter(AnalysisType == "Differential"),
-  ggplot2::aes(x = sd_from_mean, y = Stratum, fill = Direction)
+  p6_strip_tbl,
+  ggplot2::aes(x = sd_from_mean, y = Stratum, color = Direction)
 ) +
-  ggridges::geom_density_ridges(alpha = 0.7, scale = 0.9, color = "white", linewidth = 0.2) +
-  ggplot2::scale_fill_manual(values = c("up" = col_sus, "down" = col_down), guide = "none") +
-  ggplot2::geom_vline(xintercept = 0, linetype = "dashed", linewidth = 0.2) +
+  ggplot2::geom_jitter(
+    position = ggplot2::position_jitter(width = 0, height = 0.22),
+    size = 0.45,
+    alpha = 0.55,
+    stroke = 0
+  ) +
+  ggplot2::scale_color_manual(
+    values = c("up" = col_sus, "down" = col_down),
+    labels = c("up" = "Up", "down" = "Down"),
+    name = NULL
+  ) +
+  ggplot2::geom_vline(xintercept = 0, linetype = "dashed", linewidth = 0.2, color = "grey35") +
   theme_publication() +
-  ggplot2::labs(x = "Z-score", y = NULL, title = "Stratum effect distributions")
+  ggplot2::labs(x = "Z-score", y = NULL, title = "Stratum-level EWCE effects (raw points)")
+
+sensitivity_plot_tbl <- sensitivity_tbl %>%
+  dplyr::filter(AnnotLevel == analysis_params$primary_annot_level) %>%
+  dplyr::arrange(Min_q_global, dplyr::desc(Max_abs_Z)) %>%
+  dplyr::slice_head(n = 30) %>%
+  dplyr::mutate(
+    FindingLabel = factor(
+      paste(Stratum, Metric, CellType, sep = " | "),
+      levels = rev(unique(paste(Stratum, Metric, CellType, sep = " | ")))
+    )
+  )
 
 p7 <- ggplot2::ggplot(
-  sensitivity_tbl %>%
-    dplyr::filter(AnnotLevel == analysis_params$primary_annot_level) %>%
-    dplyr::arrange(Min_q_global) %>%
-    dplyr::slice_head(n = 30),
-  ggplot2::aes(
-    x = reorder(paste(Stratum, Metric, CellType, sep = " | "), -log10(Min_q_global)),
-    y = N_TopN_GlobalSig,
-    fill = RobustAcrossTopN
-  )
+  sensitivity_plot_tbl,
+  ggplot2::aes(x = N_TopN_GlobalSig, y = FindingLabel, color = RobustAcrossTopN)
 ) +
-  ggplot2::geom_col(width = 0.8) +
-  ggplot2::coord_flip() +
-  ggplot2::scale_fill_manual(values = c("FALSE" = "grey70", "TRUE" = col_sus), name = "Robust") +
+  ggplot2::geom_segment(
+    ggplot2::aes(x = 0, xend = N_TopN_GlobalSig, yend = FindingLabel),
+    linewidth = 0.25,
+    color = "grey70"
+  ) +
+  ggplot2::geom_point(size = 1.5, stroke = 0) +
+  ggplot2::scale_color_manual(values = c("FALSE" = "grey55", "TRUE" = col_sus), name = "Robust") +
+  ggplot2::scale_x_continuous(breaks = sort(unique(sensitivity_plot_tbl$N_TopN_Tested))) +
   theme_publication() +
-  ggplot2::labs(x = NULL, y = "Significant top-N settings", title = "Hit-list sensitivity")
+  ggplot2::labs(x = "Significant top-N settings", y = NULL, title = "Hit-list sensitivity")
 
 publication_heatmap_fig <- ggplot2::ggplot(
   publication_diff_heatmap_tbl,
-  ggplot2::aes(x = Stratum, y = CellType, fill = SignedSig_Global_Capped)
+  ggplot2::aes(x = Stratum, y = CellType, fill = SignedSig_Global_Plot)
 ) +
   ggplot2::geom_tile(color = "white", linewidth = 0.12) +
-  ggplot2::geom_point(
-    data = publication_diff_heatmap_tbl %>% dplyr::filter(Significant_Global),
-    ggplot2::aes(x = Stratum, y = CellType),
-    inherit.aes = FALSE,
-    shape = 21,
-    fill = "black",
-    color = "white",
-    stroke = 0.15,
-    size = 0.85
+  geom_heatmap_sig_dots(
+    publication_diff_heatmap_tbl,
+    x = "Stratum",
+    y = "CellType",
+    fill_col = "SignedSig_Global_Plot",
+    fill_limit = c(-SIGNED_LOG10Q_CAP, SIGNED_LOG10Q_CAP)
   ) +
   ggplot2::facet_grid(. ~ MetricLabel, scales = "free_x", space = "free_x") +
   ggplot2::scale_fill_gradient2(
@@ -1125,7 +1300,7 @@ publication_heatmap_fig <- ggplot2::ggplot(
     mid = "white",
     high = col_sus,
     midpoint = 0,
-    limits = c(-10, 10),
+    limits = c(-SIGNED_LOG10Q_CAP, SIGNED_LOG10Q_CAP),
     name = "Signed\n-log10(FDR)"
   ) +
   theme_publication() +
@@ -1144,14 +1319,22 @@ publication_robustness_fig <- ggplot2::ggplot(
   publication_robust_tbl,
   ggplot2::aes(x = RobustnessScore, y = FindingLabel)
 ) +
-  ggplot2::geom_col(ggplot2::aes(fill = RobustAcrossTopN), width = 0.75) +
+  ggplot2::geom_segment(
+    ggplot2::aes(x = 0, xend = RobustnessScore, yend = FindingLabel),
+    linewidth = 0.3,
+    color = "grey80"
+  ) +
   ggplot2::geom_point(
-    ggplot2::aes(size = Max_abs_Z, color = -log10(pmax(Min_q_global, 1e-300))),
+    ggplot2::aes(
+      size = Max_abs_Z,
+      fill = RobustAcrossTopN,
+      color = -log10(pmax(Min_q_global, 1e-300))
+    ),
     shape = 21,
     stroke = 0.2
   ) +
+  ggplot2::scale_fill_manual(values = c("FALSE" = "grey85", "TRUE" = col_sus), name = "Robust\nall Top-N") +
   ggplot2::scale_x_continuous(limits = c(0, 1), breaks = c(0, 0.5, 1)) +
-  ggplot2::scale_fill_manual(values = c("FALSE" = "grey75", "TRUE" = col_sus), name = "Robust\nall Top-N") +
   viridis::scale_color_viridis(option = "plasma", name = "-log10\nmin FDR") +
   ggplot2::scale_size_area(max_size = 3.2, name = "Max |Z|") +
   theme_publication() +
@@ -1284,15 +1467,41 @@ add_worksheet_safe(publication_wb, "Top_CellTypes", publication_top_celltypes)
 openxlsx::saveWorkbook(publication_wb, file.path(dirs$tables, "High_Confidence_EWCE_Findings.xlsx"), overwrite = TRUE)
 
 source_wb <- openxlsx::createWorkbook()
-add_worksheet_safe(source_wb, "Fig1A_Baseline_Dotplot", primary_results %>% dplyr::filter(AnalysisType == "Baseline", Significant_Global))
-add_worksheet_safe(source_wb, "Fig1B_Diff_Heatmap", primary_results %>% dplyr::filter(AnalysisType == "Differential"))
+add_worksheet_safe(source_wb, "Fig1A_Baseline_Heatmap", baseline_heatmap_tbl)
+add_worksheet_safe(source_wb, "Fig1B_Diff_Heatmap", diff_heatmap_tbl)
 add_worksheet_safe(source_wb, "Fig1C_Volcano", primary_results)
-add_worksheet_safe(source_wb, "FigS1A_Signed_Heatmap", primary_results %>% dplyr::filter(AnalysisType == "Differential"))
+add_worksheet_safe(
+  source_wb,
+  "FigS1A_Signed_Heatmap",
+  diff_heatmap_tbl %>% dplyr::select(dplyr::any_of(c(
+    "Stratum", "Region", "Layer", "Metric", "CellType", "Direction",
+    "sd_from_mean", "SignedSig_Global", "SignedSig_Global_Plot", "Significant_Global", "q_global"
+  )))
+)
 add_worksheet_safe(source_wb, "FigS1B_Top_CellTypes", top_celltypes)
-add_worksheet_safe(source_wb, "FigS1C_Distributions", primary_results %>% dplyr::filter(AnalysisType == "Differential"))
-add_worksheet_safe(source_wb, "FigS1D_Sensitivity", sensitivity_tbl)
-add_worksheet_safe(source_wb, "Fig2_Primary_Heatmap", publication_diff_heatmap_tbl)
+add_worksheet_safe(source_wb, "FigS1C_Stratum_Strip", p6_strip_tbl)
+add_worksheet_safe(source_wb, "FigS1D_Sensitivity", sensitivity_plot_tbl)
+add_worksheet_safe(
+  source_wb,
+  "Fig2_Primary_Heatmap",
+  publication_diff_heatmap_tbl %>% dplyr::select(dplyr::any_of(c(
+    "Stratum", "MetricLabel", "CellType", "Direction", "sd_from_mean",
+    "SignedSig_Global", "SignedSig_Global_Plot", "Significant_Global", "q_global"
+  )))
+)
 add_worksheet_safe(source_wb, "Fig3_Robust_Findings", publication_robust_tbl)
+add_worksheet_safe(
+  source_wb,
+  "Plot_Caps",
+  tibble::tibble(
+    Parameter = c("HEATMAP_Z_COLOR_CAP", "SIGNED_LOG10Q_CAP"),
+    Value = c(HEATMAP_Z_COLOR_CAP, SIGNED_LOG10Q_CAP),
+    Note = c(
+      "Symmetric cap applied to sd_from_mean for heatmap fill only (Fig1A, Fig1B, FigS1 panels).",
+      paste0("Symmetric cap on sign(q)*-log10(q) for signed FDR heatmaps (Fig2, FigS1A, Fig4); raw values in SignedSig_Global.")
+    )
+  )
+)
 openxlsx::saveWorkbook(source_wb, file.path(dirs$source, "Source_Data_EWCE_Figures.xlsx"), overwrite = TRUE)
 
 saveRDS(
@@ -1326,6 +1535,8 @@ reproducibility_lines <- c(
   paste0("Primary top-N: ", analysis_params$primary_top_n),
   paste0("Primary annotation level: ", analysis_params$primary_annot_level),
   paste0("Measured proteome background size: ", length(background_universe)),
+  paste0("Heatmap Z color cap (99th percentile, min 3): ", HEATMAP_Z_COLOR_CAP),
+  paste0("Signed -log10(FDR) color cap: +/-", SIGNED_LOG10Q_CAP),
   "",
   "Session info:",
   capture.output(utils::sessionInfo())
