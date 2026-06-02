@@ -10,6 +10,8 @@ dataset_contracts <- function() {
       label = "Neuron neuropil",
       region = TRUE,
       layer = TRUE,
+      region_layer = TRUE,
+      spatial_unit = "region_layer",
       celltype_roi = FALSE,
       purified_celltype = FALSE,
       interpretation = "Region/layer-resolved neuron neuropil proteomics."
@@ -17,15 +19,19 @@ dataset_contracts <- function() {
     neuron_soma = list(
       label = "Neuron soma",
       region = TRUE,
-      layer = TRUE,
+      layer = FALSE,
+      region_layer = FALSE,
+      spatial_unit = "region",
       celltype_roi = FALSE,
       purified_celltype = FALSE,
-      interpretation = "Region/layer-resolved neuronal soma-enriched proteomics."
+      interpretation = "Region-resolved neuronal soma-enriched proteomics; one soma layer only, so not layer-resolved."
     ),
     microglia = list(
       label = "Microglia-enriched ROI",
       region = TRUE,
       layer = FALSE,
+      region_layer = FALSE,
+      spatial_unit = "region",
       celltype_roi = TRUE,
       purified_celltype = FALSE,
       interpretation = "Region-resolved microglia-enriched ROI/local microenvironment proteomics; not purified microglia."
@@ -97,4 +103,12 @@ assert_dataset_capability <- function(dataset = current_dataset(), capability, a
 
 dataset_interpretation <- function(dataset = current_dataset()) {
   dataset_capabilities(dataset)$interpretation
+}
+
+dataset_spatial_unit <- function(dataset = current_dataset()) {
+  dataset_capabilities(dataset)$spatial_unit
+}
+
+dataset_supports_region_layer <- function(dataset = current_dataset()) {
+  dataset_has_capability(dataset, "region_layer")
 }
