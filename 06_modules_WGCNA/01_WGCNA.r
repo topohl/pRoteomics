@@ -111,6 +111,8 @@ if (early_has_flag("--dry-run") || tolower(Sys.getenv("PROTEOMICS_DRY_RUN", unse
     sample_check_ok_early <- FALSE
   }
   downstream_contract_early <- file.path(subdirs_early$tables_modules, "WGCNA_module_definitions_for_downstream.csv")
+  feature_universe_early <- file.path(subdirs_early$tables_modules, "WGCNA_feature_universe.csv")
+  wgcna_manifest_early <- file.path(subdirs_early$logs, "wgcna_run_manifest.yml")
   dry_run_line("Script", "06_modules_WGCNA/01_WGCNA.r")
   dry_run_line("Dataset", dataset_profile_early)
   dry_run_line("Resolved input diagnostics", paste(dataset_inputs_early$diagnostics, collapse = " | "))
@@ -126,7 +128,9 @@ if (early_has_flag("--dry-run") || tolower(Sys.getenv("PROTEOMICS_DRY_RUN", unse
   dry_run_line("Mouse idmapping", idmap_dat_early, if (file.exists(idmap_dat_early)) "PASS" else "FAIL")
   dry_run_line("Output folders writable", paste(unlist(subdirs_early), collapse = "; "), if (can_write_outputs_early) "PASS" else "FAIL")
   dry_run_line("Downstream module contract", downstream_contract_early, if (file.exists(downstream_contract_early)) "PASS" else "WARN")
-  dry_run_line("Optional DE/GSEA overlap bridge", repo_path("06_modules_WGCNA", "05_wgcna_de_gsea_overlap.r"), "WARN")
+  dry_run_line("WGCNA feature universe", feature_universe_early, if (file.exists(feature_universe_early)) "PASS" else "WARN")
+  dry_run_line("WGCNA run manifest", wgcna_manifest_early, if (file.exists(wgcna_manifest_early)) "PASS" else "WARN")
+  dry_run_line("Optional DE/GSEA overlap bridge", repo_path("06_modules_WGCNA", "02_wgcna_de_gsea_overlap.r"), "WARN")
   quit(status = if (file.exists(idmap_dat_early) && can_write_outputs_early && sample_check_ok_early && (can_use_inputs_early || can_stage_inputs_early || can_use_cache_early)) 0 else 1, save = "no")
 }
 
@@ -155,6 +159,7 @@ paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.
 source(paths_file)
 source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "dataset_inputs.R"))
+source(repo_path("R", "module_contracts.R"))
 
 args <- commandArgs(trailingOnly = TRUE)
 arg_value <- function(flag, default = "") {
@@ -407,7 +412,51 @@ merge_cut_height <- 0.25
 module_preservation_permutations <- 100
 reuse_completed_analysis <- tolower(Sys.getenv("PROTEOMICS_WGCNA_REUSE_STATE", unset = "true")) %in% c("1", "true", "yes", "y")
 force_full_analysis <- tolower(Sys.getenv("PROTEOMICS_WGCNA_FORCE_FULL", unset = "false")) %in% c("1", "true", "yes", "y")
+reuse_stale_state <- tolower(Sys.getenv("PROTEOMICS_WGCNA_REUSE_STALE_STATE", unset = "false")) %in% c("1", "true", "yes", "y")
 wgcna_final_state_path <- fp_state("wgcna_final_model_state.rds")
+wgcna_run_manifest_path <- fp_log("wgcna_run_manifest.yml")
+
+current_staged_input_paths <- function() {
+  dataset_inputs_now <- resolve_dataset_inputs(dataset_profile, purpose = "wgcna")
+  expr_env <- Sys.getenv("PROTEOMICS_WGCNA_EXPR_XLSX", unset = "")
+  meta_env <- Sys.getenv("PROTEOMICS_WGCNA_META_XLSX", unset = "")
+  idmap_env <- Sys.getenv("PROTEOMICS_WGCNA_IDMAP_DAT", unset = "")
+  c(
+    expression_matrix = if (nzchar(expr_env)) expr_env else path_processed(wgcna_module, "01_WGCNA", dataset_profile, "inputs", "wgcna_expression.xlsx"),
+    sample_metadata = if (nzchar(meta_env)) meta_env else path_processed(wgcna_module, "01_WGCNA", dataset_profile, "inputs", "wgcna_sample_info.xlsx"),
+    mouse_idmapping = if (nzchar(idmap_env)) idmap_env else dataset_inputs_now$idmap_file
+  )
+}
+
+check_wgcna_cached_state_freshness <- function(manifest_path, current_paths, allow_stale = FALSE) {
+  current_hashes <- vapply(current_paths, file_hash, character(1))
+  if (!file.exists(manifest_path)) {
+    warning("Cached WGCNA state has no wgcna_run_manifest.yml to compare input hashes: ", manifest_path, call. = FALSE)
+    return(invisible(list(status = "manifest_missing", stale = NA, current_hashes = current_hashes)))
+  }
+  if (!requireNamespace("yaml", quietly = TRUE)) {
+    warning("yaml package unavailable; cannot compare cached WGCNA manifest hashes.", call. = FALSE)
+    return(invisible(list(status = "yaml_missing", stale = NA, current_hashes = current_hashes)))
+  }
+  manifest <- yaml::read_yaml(manifest_path)
+  previous <- unlist(manifest$input_hashes, recursive = TRUE, use.names = TRUE)
+  if (!length(previous)) {
+    warning("Cached WGCNA manifest contains no input_hashes: ", manifest_path, call. = FALSE)
+    return(invisible(list(status = "hashes_missing", stale = NA, current_hashes = current_hashes)))
+  }
+  comparable <- intersect(names(current_hashes), names(previous))
+  stale_roles <- comparable[!is.na(current_hashes[comparable]) & !is.na(previous[comparable]) & current_hashes[comparable] != previous[comparable]]
+  if (length(stale_roles)) {
+    msg <- paste0(
+      "Cached WGCNA state appears stale for input role(s): ",
+      paste(stale_roles, collapse = ", "),
+      ". Set PROTEOMICS_WGCNA_REUSE_STALE_STATE=true to reuse anyway."
+    )
+    if (allow_stale) warning(msg, call. = FALSE) else stop(msg, call. = FALSE)
+    return(invisible(list(status = "stale_allowed", stale = TRUE, stale_roles = stale_roles, current_hashes = current_hashes)))
+  }
+  invisible(list(status = "fresh", stale = FALSE, current_hashes = current_hashes))
+}
 
 # Optional: safe svg helper
 save_svg <- function(path, width, height, expr) {
@@ -897,6 +946,11 @@ report_supermodule_annotation <- function(annotation) {
 
 using_cached_final_state <- reuse_completed_analysis && !force_full_analysis && file.exists(wgcna_final_state_path)
 if (!isTRUE(wgcna_dry_run) && using_cached_final_state) {
+  cache_reuse_check <- check_wgcna_cached_state_freshness(
+    wgcna_run_manifest_path,
+    current_staged_input_paths(),
+    allow_stale = reuse_stale_state
+  )
   message("Reusing completed WGCNA analysis from: ", wgcna_final_state_path)
   cached_state <- readRDS(wgcna_final_state_path)
   list2env(cached_state, envir = environment())
@@ -1096,6 +1150,7 @@ if (isTRUE(wgcna_dry_run)) {
   can_use_cache <- file.exists(wgcna_final_state_path) && !force_full_analysis
   can_write_outputs <- all(vapply(c(output_dir, unlist(subdirs)), function(path) dir.exists(path) && file.access(path, 2) == 0, logical(1)))
   downstream_contract <- fp_modtab("WGCNA_module_definitions_for_downstream.csv")
+  feature_universe <- fp_modtab("WGCNA_feature_universe.csv")
   sample_check <- "not checked"
   sample_check_ok <- TRUE
   if (can_use_inputs) {
@@ -1138,7 +1193,9 @@ if (isTRUE(wgcna_dry_run)) {
   dry_run_line("Mouse idmapping", idmap_dat, if (file.exists(idmap_dat)) "PASS" else "FAIL")
   dry_run_line("Output folders writable", paste(unlist(subdirs), collapse = "; "), if (can_write_outputs) "PASS" else "FAIL")
   dry_run_line("Downstream module contract", downstream_contract, if (file.exists(downstream_contract)) "PASS" else "WARN")
-  dry_run_line("Optional DE/GSEA overlap bridge", repo_path("06_modules_WGCNA", "05_wgcna_de_gsea_overlap.r"), "WARN")
+  dry_run_line("WGCNA feature universe", feature_universe, if (file.exists(feature_universe)) "PASS" else "WARN")
+  dry_run_line("WGCNA run manifest", wgcna_run_manifest_path, if (file.exists(wgcna_run_manifest_path)) "PASS" else "WARN")
+  dry_run_line("Optional DE/GSEA overlap bridge", repo_path("06_modules_WGCNA", "02_wgcna_de_gsea_overlap.r"), "WARN")
   quit(status = if (file.exists(idmap_dat) && can_write_outputs && sample_check_ok && (can_use_inputs || can_stage_inputs || can_use_cache)) 0 else 1, save = "no")
 }
 
@@ -2152,8 +2209,14 @@ WGCNA_modules_long <- feature_module_tbl %>%
     ProteinID, UniProt, EntrezID, GeneSymbol, kME, abs_kME,
     GeneSignificanceP, GeneSignificanceFDR, is_core_kME_0.6, is_top_hub_25, Source
   )
+validate_wgcna_module_definitions(WGCNA_modules_long, "WGCNA_modules_long")
 write_csv_safe(WGCNA_modules_long, fp_modtab("WGCNA_modules_long.csv"))
 writexl::write_xlsx(list(WGCNA_modules_long = WGCNA_modules_long), fp_modtab("WGCNA_modules_long.xlsx"))
+WGCNA_feature_universe <- WGCNA_modules_long %>%
+  dplyr::select("ProteinID", "UniProt", "GeneSymbol", "EntrezID", "ModuleColor", "ModuleID") %>%
+  dplyr::distinct() %>%
+  dplyr::mutate(included_in_wgcna = TRUE)
+write_csv_safe(WGCNA_feature_universe, fp_modtab("WGCNA_feature_universe.csv"))
 write_csv_safe(module_label_table, fp_modtab("module_name_map.csv"))
 write_tsv_safe(module_label_table, fp_modtab("module_name_map.tsv"))
 
@@ -3547,10 +3610,11 @@ WGCNA_module_definitions_for_downstream <- WGCNA_modules_long %>%
     dplyr::everything()
   )
 
+validate_wgcna_module_definitions(WGCNA_module_definitions_for_downstream, "WGCNA_module_definitions_for_downstream")
 write_csv_safe(WGCNA_module_priority_summary, fp_modtab("WGCNA_module_priority_summary.csv"))
 write_csv_safe(WGCNA_module_definitions_for_downstream, fp_modtab("WGCNA_module_definitions_for_downstream.csv"))
 write_csv_safe(WGCNA_module_definitions_for_downstream, fp_supertab("wgcna_module_results_with_supermodules.csv"))
-overlap_bridge_script <- repo_path("06_modules_WGCNA", "05_wgcna_de_gsea_overlap.r")
+overlap_bridge_script <- repo_path("06_modules_WGCNA", "02_wgcna_de_gsea_overlap.r")
 if (file.exists(overlap_bridge_script)) {
   tryCatch({
     source(overlap_bridge_script)
@@ -3701,6 +3765,31 @@ write_run_manifest(
     output_layout = ifelse(nzchar(output_dir_env), "custom_bundle", "canonical_module_paths")
   ),
   notes = "Dataset-scoped WGCNA module engine; see input_manifest.csv for exact inputs/hashes and WGCNA_module_contracts.xlsx for downstream module definitions."
+)
+staged_manifest_paths <- current_staged_input_paths()
+write_run_manifest(
+  wgcna_run_manifest_path,
+  inputs = as.list(staged_manifest_paths),
+  outputs = list(
+    wgcna_final_model_state = wgcna_final_state_path,
+    module_definition_contract = fp_modtab("WGCNA_module_definitions_for_downstream.csv"),
+    feature_universe = fp_modtab("WGCNA_feature_universe.csv"),
+    module_priority_summary = fp_modtab("WGCNA_module_priority_summary.csv")
+  ),
+  parameters = list(
+    dataset = dataset_profile,
+    dataset_profile_resolved = if (exists("dataset_profile_resolved")) dataset_profile_resolved else dataset_profile,
+    soft_threshold_rsquared = soft_threshold_rsquared,
+    selected_soft_power = if (exists("softPower")) softPower else NA,
+    min_module_size = min_module_size,
+    deep_split = deep_split,
+    merge_cut_height = merge_cut_height,
+    module_preservation_permutations = module_preservation_permutations,
+    cache_reused = isTRUE(using_cached_final_state),
+    cache_reuse_check = if (exists("cache_reuse_check")) cache_reuse_check$status else "not_reused",
+    stale_cache_allowed = isTRUE(reuse_stale_state)
+  ),
+  notes = "WGCNA run manifest for cache freshness and downstream module-contract consumers."
 )
 output_manifest <- output_manifest %>%
   dplyr::mutate(
