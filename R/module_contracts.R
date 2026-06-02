@@ -51,11 +51,17 @@ validate_module_score_output <- function(df, artifact = "module score output") {
   require_module_contract_columns(
     df,
     c(
-      "dataset", "module_definition_source", "ModuleID", "Sample",
+      "dataset", "module_definition_source", "ModuleID",
       "ModuleScore", "ScoreType", "n_found_in_matrix", "coverage_fraction"
     ),
     artifact
   )
+  if (!any(c("Sample", "AnimalID") %in% colnames(df))) {
+    stop(
+      artifact, " is missing required key column(s): expected Sample or AnimalID.",
+      call. = FALSE
+    )
+  }
   invisible(TRUE)
 }
 
