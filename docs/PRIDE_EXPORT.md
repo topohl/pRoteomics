@@ -1,8 +1,15 @@
 # PRIDE Export
 
-`09_export_pride_journal/` is the active code module for PRIDE, journal, and manuscript export. The folder `09_pride_submission/` is retained as legacy helper code only.
+`09_export_pride_journal/` is the active code module for **processed-data PRIDE deposition** and **journal reproducibility** from the **pg_matrix** stage onward. `09_pride_submission/` is legacy helper code only.
 
-Generated deposition payloads belong in the gitignored `pride_submission/` directory:
+## Scope
+
+- **In scope**: pg_matrix reference, sample metadata, processed matrices/tables, manifests, methods/limitations, validation.
+- **Out of scope for repo reproducibility**: raw/vendor MS files, search-engine outputs, FASTA, search parameters (may exist externally).
+
+See [`09_export_pride_journal/README.md`](../09_export_pride_journal/README.md) for commands and output layout.
+
+## Generated payload (gitignored)
 
 ```text
 pride_submission/metadata/
@@ -13,17 +20,12 @@ pride_submission/manifests/
 pride_submission/validation/
 ```
 
-Active export commands:
+## Commands
 
 ```bash
-Rscript 09_export_pride_journal/01_make_pride_manifest.R --dry-run
-Rscript 09_export_pride_journal/02_make_sample_metadata.R --dry-run
-Rscript 09_export_pride_journal/03_make_supplementary_tables.R --dry-run
-Rscript 09_export_pride_journal/04_validate_pride_submission.R --dry-run
-Rscript 09_export_pride_journal/05_make_methods_summary.R --dry-run
-Rscript 09_export_pride_journal/06_make_biological_claims_table.R --dry-run
-Rscript 09_export_pride_journal/07_export_manuscript_figures.R --dry-run
-Rscript 09_export_pride_journal/08_export_source_data.R --dry-run
+Rscript 09_export_pride_journal/RUN_EXPORT.R --dataset all --export-level pg_matrix_onward
+Rscript 09_export_pride_journal/RUN_EXPORT.R --dataset microglia --export-level pg_matrix_onward --dry-run
+Rscript 09_export_pride_journal/05_validate_pride_submission.R --export-level pg_matrix_onward
 ```
 
-Large raw/vendor files should be uploaded to PRIDE and never committed to GitHub.
+Large raw/vendor files should be uploaded to PRIDE separately and must not be committed to GitHub.
