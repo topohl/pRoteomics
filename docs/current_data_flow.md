@@ -14,7 +14,7 @@ This audit was generated before targeted refactoring of the clusterProfiler to c
 ## Module Refactor Status
 
 - Refactored first: `04_differential_expression_enrichment/01_clusterProfiler.r` and `04_differential_expression_enrichment/02_compareGO.r`, because this handoff had the highest stale-file and duplicate-file risk.
-- Safe next candidates: `05_celltype_enrichment_EWCE/01_EWCE_E9.r`, `06_modules_WGCNA/02_module_spatial_networks.r`, `06_modules_WGCNA/04_overlap_modules.r`, `07_spatial_networks/03_bootstrap_network_stability.r`, `07_spatial_networks/04_bootstrap_differential_network_stability.r`, and `07_spatial_networks/05_bootstrap_differential_network_figures.r`; these can mostly be refactored through parameter/config path changes.
+- Safe next candidates: `05_celltype_enrichment_EWCE/01_EWCE_E9.r`, `06_modules_WGCNA/06_module_spatial_networks.r`, `07_spatial_networks/03_bootstrap_network_stability.r`, `07_spatial_networks/04_bootstrap_differential_network_stability.r`, and `07_spatial_networks/05_bootstrap_differential_network_figures.r`; these can mostly be refactored through parameter/config path changes.
 - Higher-risk candidates: `06_modules_WGCNA/01_WGCNA v.2.0.0.r`, `07_spatial_networks/01_network_spatial_relations.r`, and `08_behavior_physio_coupling/01_correlate_proteomics_with_behavior.r`; these are central producers or depend on external behavior data and should be changed with input data available.
 - Keep documented unless revived: `05_celltype_enrichment_EWCE/90_EWCE_legacy.r`, `90_testing/`, and `99_deprecated/`.
 
@@ -95,8 +95,9 @@ Phase 3 applied targeted path-only refactors where script behavior could be pres
 - `01_preprocessing/05_metadata_create.r`
 - `05_celltype_enrichment_EWCE/01_EWCE_E9.r`
 - `06_modules_WGCNA/02_module_spatial_networks.r`
-- `06_modules_WGCNA/04_overlap_modules.r`
-- `06_modules_WGCNA/03_score_module_activity.R` (`91_module_score.r` is legacy compatibility)
+- `06_modules_WGCNA/02_curated_overlap_programs.r`
+- `06_modules_WGCNA/03_score_module_activity.R`
+- `06_modules_WGCNA/04_wgcna_de_gsea_overlap.r`
 - `07_spatial_networks/02_differential_networks.r`
 - `07_spatial_networks/03_bootstrap_network_stability.r`
 - `07_spatial_networks/04_bootstrap_differential_network_stability.r`
@@ -124,7 +125,7 @@ Scripts left unchanged in Phase 3 are documented because they are central produc
 - `01_preprocessing/01_impute.r`, `01_preprocessing/02_excel_convert.r`, `01_preprocessing/03_gct_extractR.r`, `01_preprocessing/06_merged_metadata_module_score.r`
 - `02_id_mapping/01_MapThatProt_batch.r`
 - `03_qc_exploration/*.r`
-- `06_modules_WGCNA/01_WGCNA v.2.0.0.r`, `06_modules_WGCNA/03_overlap_modules.r`, `06_modules_WGCNA/90_module_score_v0.0.1.r`
+- `06_modules_WGCNA/01_WGCNA v.2.0.0.r`, `06_modules_WGCNA/90_module_score_v0.0.1.r`
 - `07_spatial_networks/01_network_spatial_relations.r`
 - `08_behavior_physio_coupling/01_correlate_proteomics_with_behavior.r`
 
