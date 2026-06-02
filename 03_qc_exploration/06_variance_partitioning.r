@@ -20,7 +20,7 @@ if (run$dry_run) {
   quit(status = status, save = "no")
 }
 
-required_pkgs <- c("dplyr", "tidyr", "ggplot2", "svglite", "variancePartition")
+required_pkgs <- c("dplyr", "tidyr", "ggplot2", "svglite", "variancePartition", "reformulas")
 missing_pkgs <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
 if (length(missing_pkgs)) stop("Missing required R package(s): ", paste(missing_pkgs, collapse = ", "), call. = FALSE)
 suppressPackageStartupMessages(invisible(lapply(required_pkgs, library, character.only = TRUE)))
