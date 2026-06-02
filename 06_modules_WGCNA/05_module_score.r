@@ -15,6 +15,7 @@ paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.
 source(paths_file)
 source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "dataset_inputs.R"))
+source(repo_path("R", "module_contracts.R"))
 MODULE_ID <- "06_modules_WGCNA"
 args <- commandArgs(trailingOnly = TRUE)
 arg_value <- function(flag, default = "") {
@@ -26,7 +27,31 @@ dataset_cli <- arg_value("--dataset", default = "")
 if (nzchar(dataset_cli)) Sys.setenv(PROTEOMICS_DATASET = validate_dataset(dataset_cli, source = "--dataset"))
 dataset_profile <- current_dataset()
 dataset_inputs <- resolve_dataset_inputs(dataset_profile, purpose = "module_score")
-SUBSTEP_ID <- file.path("module_score_v0.0.2", dataset_profile)
+module_score_version <- "0.0.2"
+
+default_module_definition_source <- function(dataset) {
+  dplyr::case_when(
+    dataset %in% c("microglia", "neuron_soma") ~ "wgcna",
+    dataset == "neuron_neuropil" ~ "overlap",
+    TRUE ~ "wgcna"
+  )
+}
+
+module_definition_source_override <- Sys.getenv("PROTEOMICS_MODULE_DEFINITION_SOURCE", unset = "")
+module_definition_source <- tolower(if (nzchar(module_definition_source_override)) {
+  module_definition_source_override
+} else {
+  default_module_definition_source(dataset_profile)
+})
+allowed_module_definition_sources <- c("overlap", "wgcna", "custom")
+if (!module_definition_source %in% allowed_module_definition_sources) {
+  stop(
+    "Unsupported PROTEOMICS_MODULE_DEFINITION_SOURCE: ", module_definition_source,
+    ". Use one of: ", paste(allowed_module_definition_sources, collapse = ", "),
+    call. = FALSE
+  )
+}
+SUBSTEP_ID <- file.path("module_score", dataset_profile, module_definition_source)
 CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
 
 # ------------------------------------------------
@@ -61,16 +86,6 @@ latest_matching_file_anywhere <- function(roots, pattern) {
   normalizePath(rownames(info)[order(info$mtime, decreasing = TRUE)[1]], winslash = "/", mustWork = FALSE)
 }
 
-module_definition_source <- tolower(Sys.getenv("PROTEOMICS_MODULE_DEFINITION_SOURCE", unset = "overlap"))
-allowed_module_definition_sources <- c("overlap", "wgcna", "custom")
-if (!module_definition_source %in% allowed_module_definition_sources) {
-  stop(
-    "Unsupported PROTEOMICS_MODULE_DEFINITION_SOURCE: ", module_definition_source,
-    ". Use one of: ", paste(allowed_module_definition_sources, collapse = ", "),
-    call. = FALSE
-  )
-}
-
 resolve_module_score_protein_file <- function() {
   override <- Sys.getenv("PROTEOMICS_MODULE_SCORE_PROTEIN_FILE", unset = "")
   if (nzchar(override)) return(normalizePath(override, winslash = "/", mustWork = FALSE))
@@ -80,7 +95,11 @@ resolve_module_score_protein_file <- function() {
 resolve_module_score_metadata_file <- function() {
   override <- Sys.getenv("PROTEOMICS_MODULE_SCORE_METADATA_FILE", unset = "")
   if (nzchar(override)) return(normalizePath(override, winslash = "/", mustWork = FALSE))
-  dataset_inputs$metadata_file
+  if (!is.na(dataset_inputs$metadata_file) && file.exists(dataset_inputs$metadata_file)) return(dataset_inputs$metadata_file)
+  first_existing_path(c(
+    path_results("module_scores", "sample_metadata_merged_clean_for_module_scores.xlsx"),
+    path_metadata("sample_metadata_merged_clean_for_module_scores.xlsx")
+  ))
 }
 
 resolve_wgcna_state_file <- function() {
@@ -106,12 +125,16 @@ resolve_module_definitions_file <- function(source = module_definition_source) {
 
   if (identical(source, "overlap")) {
     direct <- first_existing_path(c(
+      path_results("tables", "06_modules_WGCNA", "04_overlap_modules", "global", "curated_overlap_programs.xlsx"),
       path_results("tables", "06_modules_WGCNA", "04_overlap_modules", "Overlap_based_neuropil_modules_classified.xlsx"),
       path_results("tables", "06_modules_WGCNA", "overlap_modules", "Overlap_based_neuropil_modules_classified.xlsx"),
       path_results("tables", "06_modules_WGCNA", "03_overlap_modules", "Overlap_based_neuropil_modules_classified.xlsx")
     ))
     if (!is.na(direct)) return(direct)
-    return(latest_matching_file(path_results("tables", "06_modules_WGCNA"), "^Overlap_based_neuropil_modules_classified\\.xlsx$"))
+    return(first_existing_path(c(
+      latest_matching_file(path_results("tables", "06_modules_WGCNA"), "^curated_overlap_programs\\.xlsx$"),
+      latest_matching_file(path_results("tables", "06_modules_WGCNA"), "^Overlap_based_neuropil_modules_classified\\.xlsx$")
+    )))
   }
 
   if (identical(source, "wgcna")) {
@@ -172,19 +195,31 @@ dir.create(dir_group_qc, recursive = TRUE, showWarnings = FALSE)
 dir.create(dir_directional, recursive = TRUE, showWarnings = FALSE)
 
 if (is_dry_run()) {
-  dry_run_line("Script", "06_modules_WGCNA/91_module_score.r")
+  dry_run_line("Script", "06_modules_WGCNA/05_module_score.r")
   dry_run_line("Dataset", dataset_profile)
+  dry_run_line("Module source override", if (nzchar(module_definition_source_override)) module_definition_source_override else "not set; dataset-aware default used")
   dry_run_line("Resolved input diagnostics", paste(dataset_inputs$diagnostics, collapse = " | "))
   dry_run_line("Protein matrix", protein_file, if (file.exists(protein_file)) "PASS" else "FAIL")
   dry_run_line("Metadata file", metadata_file, if (file.exists(metadata_file)) "PASS" else "FAIL")
   dry_run_line("Mapping file", mapping_file, if (file.exists(mapping_file)) "PASS" else "FAIL")
   dry_run_line("Module definition source", module_definition_source)
+  dry_run_line(
+    "Will score",
+    if (identical(module_definition_source, "wgcna")) "WGCNA modules" else if (identical(module_definition_source, "overlap")) "curated overlap programs" else "custom module definitions"
+  )
   dry_run_line("Module definitions", module_definitions_file, if (file.exists(module_definitions_file)) "PASS" else "FAIL")
+  producer_artifact <- if (identical(module_definition_source, "wgcna")) {
+    path_results("tables", "06_modules_WGCNA", "01_WGCNA", dataset_profile, "modules", "WGCNA_module_definitions_for_downstream.csv")
+  } else {
+    path_results("tables", "06_modules_WGCNA", "04_overlap_modules", "global", "curated_overlap_programs.xlsx")
+  }
+  dry_run_line("Producer artifact exists", producer_artifact, if (file.exists(producer_artifact)) "PASS" else "WARN")
   if (identical(module_definition_source, "wgcna")) {
     dry_run_line("WGCNA state", wgcna_state_file, if (!is.na(wgcna_state_file) && file.exists(wgcna_state_file)) "PASS" else "WARN")
   }
   dry_run_line("Output folders", paste(unlist(CANONICAL_PATHS), collapse = "; "))
-  dry_run_line("Expected dataset-scoped table root", dir_tables)
+  dry_run_line("Expected dataset/source-scoped table root", dir_tables)
+  dry_run_line("Expected mapping trace", file.path(dir_tables, "module_feature_mapping_trace.csv"))
   quit(status = if (all(file.exists(c(protein_file, metadata_file, mapping_file, module_definitions_file)))) 0 else 1, save = "no")
 }
 input_paths <- c(
@@ -419,16 +454,20 @@ standardize_module_definitions <- function(df, source) {
       call. = FALSE
     )
   }
+  if (!"GeneName" %in% colnames(df) && "GeneSymbol" %in% colnames(df)) df$GeneName <- df$GeneSymbol
   if (!"GeneName" %in% colnames(df)) df$GeneName <- NA_character_
   if (!"Direction" %in% colnames(df)) df$Direction <- NA_character_
   if (!"Weight" %in% colnames(df)) df$Weight <- NA_real_
   if (!"Source" %in% colnames(df)) df$Source <- "Overlap_based_neuropil_modules_classified.xlsx"
+  if (!"ModuleSet" %in% colnames(df)) df$ModuleSet <- "curated_overlap_programs"
+  if (!"ModuleID" %in% colnames(df)) df$ModuleID <- df$Module
+  if (!"ModuleName" %in% colnames(df)) df$ModuleName <- df$ModuleID
 
   df %>%
     transmute(
-      ModuleSet = "overlap",
-      ModuleID = as.character(.data$Module),
-      ModuleName = as.character(.data$Module),
+      ModuleSet = as.character(.data$ModuleSet),
+      ModuleID = as.character(.data$ModuleID),
+      ModuleName = as.character(.data$ModuleName),
       ProteinID = toupper(as.character(.data$UniProt)),
       UniProt = toupper(as.character(.data$UniProt)),
       GeneSymbol = as.character(.data$GeneName),
@@ -450,6 +489,11 @@ modules_raw <- if (grepl("\\.csv$", module_definitions_file, ignore.case = TRUE)
 } %>%
   as_tibble()
 modules_standard <- standardize_module_definitions(modules_raw, module_definition_source)
+if (identical(module_definition_source, "wgcna")) {
+  validate_wgcna_module_definitions(modules_standard, "standardized WGCNA module definitions")
+} else if (identical(module_definition_source, "overlap")) {
+  validate_curated_overlap_programs(modules_standard, "standardized curated overlap programs")
+}
 
 modules_long <- modules_standard %>%
   mutate(
@@ -465,16 +509,6 @@ if (nrow(modules_long) == 0) {
 }
 
 module_names_from_sheet <- unique(modules_long$Module)
-
-modules_accession <- setNames(
-  lapply(module_names_from_sheet, function(module_name) {
-    modules_long %>%
-      filter(Module == module_name) %>%
-      pull(UniProt) %>%
-      unique()
-  }),
-  module_names_from_sheet
-)
 
 module_definition_summary <- modules_long %>%
   group_by(Module) %>%
@@ -496,22 +530,135 @@ write.xlsx(
   overwrite = TRUE
 )
 
-modules_mapped <-purrr::imap(
-  modules_accession,
-  ~ map_accessions_to_matrix_ids(.x, mapping_table)
-)
+matrix_ids <- rownames(mat)
+matrix_ids_norm <- normalize_module_identifier(matrix_ids)
+matrix_lookup <- stats::setNames(matrix_ids, matrix_ids_norm)
+uniprot_to_matrix <- split(mapping_table$MatrixID, mapping_table$Accession)
+gene_to_matrix <- mapping_table %>%
+  dplyr::filter(!is.na(.data$GeneSymbol), nzchar(.data$GeneSymbol), !is.na(.data$MatrixID), nzchar(.data$MatrixID)) %>%
+  dplyr::mutate(GeneSymbolNorm = normalize_gene_symbol(.data$GeneSymbol)) %>%
+  dplyr::group_by(.data$GeneSymbolNorm) %>%
+  dplyr::summarise(MatrixIDs = list(unique(normalize_module_identifier(.data$MatrixID))), .groups = "drop")
+gene_lookup <- stats::setNames(gene_to_matrix$MatrixIDs, gene_to_matrix$GeneSymbolNorm)
 
-modules <-purrr::imap(
-  modules_mapped,
-  ~ intersect(.x, rownames(mat))
+trace_result <- function(module_id, source_id, source_id_type, matched_matrix_id, match_strategy,
+                         matched, ambiguous = FALSE, reason = "") {
+  tibble::tibble(
+    ModuleID = module_id,
+    source_id = as.character(source_id),
+    source_id_type = source_id_type,
+    matched_matrix_id = as.character(matched_matrix_id),
+    match_strategy = match_strategy,
+    matched = isTRUE(matched),
+    ambiguous = isTRUE(ambiguous),
+    reason = reason
+  )
+}
+
+resolve_direct_matrix_id <- function(id) {
+  id_norm <- normalize_module_identifier(id)
+  if (!nzchar(id_norm)) return(NA_character_)
+  hit <- matrix_lookup[[id_norm]]
+  if (is.null(hit)) NA_character_ else hit
+}
+
+resolve_uniprot_matrix_ids <- function(uniprot) {
+  acc <- normalize_module_identifier(uniprot)
+  if (!nzchar(acc)) return(character())
+  ids <- uniprot_to_matrix[[acc]]
+  unique(normalize_module_identifier(ids))
+}
+
+resolve_gene_matrix_ids <- function(gene_symbol) {
+  gene <- normalize_gene_symbol(gene_symbol)
+  if (!nzchar(gene)) return(character())
+  ids <- gene_lookup[[gene]]
+  if (is.null(ids)) character() else unique(ids)
+}
+
+map_module_feature <- function(row, source) {
+  module_id <- as.character(row$ModuleID)
+  protein_id <- normalize_module_identifier(row$ProteinID)
+  uniprot <- normalize_module_identifier(row$UniProt)
+  gene_symbol <- normalize_gene_symbol(row$GeneSymbol)
+
+  try_direct <- function() {
+    if (!nzchar(protein_id)) return(NULL)
+    direct <- resolve_direct_matrix_id(protein_id)
+    if (!is.na(direct)) {
+      return(trace_result(module_id, row$ProteinID, "ProteinID", direct, "ProteinID_direct", TRUE))
+    }
+    NULL
+  }
+  try_uniprot <- function() {
+    if (!nzchar(uniprot)) return(NULL)
+    mapped <- resolve_uniprot_matrix_ids(uniprot)
+    if (length(mapped) > 1) {
+      return(trace_result(module_id, row$UniProt, "UniProt", paste(mapped, collapse = ";"), "UniProt_mapping", FALSE, TRUE, "UniProt maps to multiple matrix IDs"))
+    }
+    if (length(mapped) == 1) {
+      found <- matrix_lookup[[mapped]]
+      if (!is.null(found)) {
+        return(trace_result(module_id, row$UniProt, "UniProt", found, "UniProt_mapping", TRUE))
+      }
+      return(trace_result(module_id, row$UniProt, "UniProt", mapped, "UniProt_mapping", FALSE, FALSE, "Mapped matrix ID not found in expression matrix"))
+    }
+    NULL
+  }
+  try_gene <- function() {
+    if (!nzchar(gene_symbol)) return(NULL)
+    mapped <- resolve_gene_matrix_ids(gene_symbol)
+    if (length(mapped) > 1) {
+      return(trace_result(module_id, row$GeneSymbol, "GeneSymbol", paste(mapped, collapse = ";"), "GeneSymbol_unambiguous", FALSE, TRUE, "GeneSymbol maps to multiple matrix IDs"))
+    }
+    if (length(mapped) == 1) {
+      found <- matrix_lookup[[mapped]]
+      if (!is.null(found)) {
+        return(trace_result(module_id, row$GeneSymbol, "GeneSymbol", found, "GeneSymbol_unambiguous", TRUE))
+      }
+      return(trace_result(module_id, row$GeneSymbol, "GeneSymbol", mapped, "GeneSymbol_unambiguous", FALSE, FALSE, "GeneSymbol mapped matrix ID not found in expression matrix"))
+    }
+    NULL
+  }
+
+  attempts <- if (identical(source, "wgcna")) {
+    list(try_direct, try_uniprot, try_gene)
+  } else {
+    list(try_uniprot, try_direct, try_gene)
+  }
+  for (attempt in attempts) {
+    res <- attempt()
+    if (!is.null(res)) return(res)
+  }
+
+  source_id <- if (identical(source, "wgcna") && nzchar(protein_id)) row$ProteinID else if (nzchar(uniprot)) row$UniProt else row$GeneSymbol
+  source_type <- if (identical(source, "wgcna") && nzchar(protein_id)) "ProteinID" else if (nzchar(uniprot)) "UniProt" else "GeneSymbol"
+  trace_result(module_id, source_id, source_type, NA_character_, "unmapped", FALSE, FALSE, "No usable identifier mapped to expression matrix")
+}
+
+mapping_trace <- purrr::pmap_dfr(
+  modules_standard %>% dplyr::select(ModuleID, ProteinID, UniProt, GeneSymbol),
+  ~ map_module_feature(list(ModuleID = ..1, ProteinID = ..2, UniProt = ..3, GeneSymbol = ..4), module_definition_source)
 )
+readr::write_csv(mapping_trace, file.path(dir_tables, "module_feature_mapping_trace.csv"), na = "")
+
+modules <- mapping_trace %>%
+  dplyr::filter(.data$matched, !is.na(.data$matched_matrix_id), nzchar(.data$matched_matrix_id)) %>%
+  dplyr::distinct(.data$ModuleID, .data$matched_matrix_id) %>%
+  split(.$ModuleID) %>%
+  purrr::map(~ .x$matched_matrix_id)
+modules <- stats::setNames(lapply(module_names_from_sheet, function(module_name) {
+  ids <- modules[[module_name]]
+  if (is.null(ids)) character() else unique(ids)
+}), module_names_from_sheet)
 
 module_size_check <- tibble(
-  Module = names(modules_accession),
-  n_accessions = lengths(modules_accession),
-  n_mapped = lengths(modules_mapped),
+  Module = module_names_from_sheet,
+  n_accessions = as.integer(table(factor(modules_standard$ModuleID, levels = module_names_from_sheet))),
+  n_mapped = mapping_trace %>% dplyr::filter(.data$ModuleID %in% module_names_from_sheet, !is.na(.data$matched_matrix_id), nzchar(.data$matched_matrix_id)) %>% dplyr::count(.data$ModuleID) %>% tibble::deframe() %>% .[module_names_from_sheet] %>% as.integer(),
   n_found = lengths(modules)
-)
+)  
+module_size_check$n_mapped[is.na(module_size_check$n_mapped)] <- 0L
 
 print(module_size_check)
 
@@ -525,23 +672,53 @@ write.xlsx(
 # 6) MODULE COVERAGE QC
 # ------------------------------------------------
 
-module_coverage <- imap_dfr(modules_accession, function(accessions, module_name) {
-  mapped_ids <- modules_mapped[[module_name]]
-  found_ids <- modules[[module_name]]
-
-  tibble(
-    Module = module_name,
-    n_accessions_input = length(accessions),
-    n_mapped_to_matrix_id = length(mapped_ids),
-    n_found_in_matrix = length(found_ids),
-    accessions_input = paste(accessions, collapse = "; "),
-    mapped_matrix_ids = paste(mapped_ids, collapse = "; "),
-    found_matrix_ids = paste(found_ids, collapse = "; "),
-    missing_after_mapping = paste(setdiff(mapped_ids, rownames(mat)), collapse = "; ")
+module_coverage <- modules_standard %>%
+  dplyr::group_by(.data$ModuleSet, .data$ModuleID) %>%
+  dplyr::summarise(
+    n_accessions_input = dplyr::n_distinct(dplyr::coalesce(.data$UniProt, .data$ProteinID, .data$GeneSymbol)),
+    accessions_input = paste(unique(stats::na.omit(dplyr::coalesce(.data$UniProt, .data$ProteinID, .data$GeneSymbol))), collapse = "; "),
+    .groups = "drop"
+  ) %>%
+  dplyr::left_join(
+    mapping_trace %>%
+      dplyr::group_by(.data$ModuleID) %>%
+      dplyr::summarise(
+        n_mapped_to_matrix_id = dplyr::n_distinct(.data$matched_matrix_id[!is.na(.data$matched_matrix_id) & nzchar(.data$matched_matrix_id)]),
+        n_found_in_matrix = dplyr::n_distinct(.data$matched_matrix_id[.data$matched & !is.na(.data$matched_matrix_id) & nzchar(.data$matched_matrix_id)]),
+        mapped_matrix_ids = paste(unique(.data$matched_matrix_id[!is.na(.data$matched_matrix_id) & nzchar(.data$matched_matrix_id)]), collapse = "; "),
+        found_matrix_ids = paste(unique(.data$matched_matrix_id[.data$matched & !is.na(.data$matched_matrix_id) & nzchar(.data$matched_matrix_id)]), collapse = "; "),
+        mapping_ambiguous_n = sum(.data$ambiguous, na.rm = TRUE),
+        mapping_unmatched_n = sum(!.data$matched, na.rm = TRUE),
+        .groups = "drop"
+      ),
+    by = "ModuleID"
+  ) %>%
+  dplyr::mutate(
+    Module = .data$ModuleID,
+    coverage_fraction = dplyr::if_else(.data$n_accessions_input > 0, .data$n_found_in_matrix / .data$n_accessions_input, NA_real_),
+    low_coverage_warning = .data$coverage_fraction < 0.2 | .data$n_found_in_matrix < 5,
+    coverage_status = dplyr::case_when(
+      .data$n_found_in_matrix < 5 ~ "fail_n_found_lt_5",
+      .data$coverage_fraction < 0.2 ~ "warn_coverage_lt_0.2",
+      TRUE ~ "ok"
+    )
   )
-})
 
 write.xlsx(module_coverage, file.path(dir_qc, "module_gene_coverage.xlsx"), overwrite = TRUE)
+readr::write_csv(module_coverage, file.path(dir_tables, "module_gene_coverage.csv"), na = "")
+
+low_coverage_modules <- module_coverage %>%
+  dplyr::filter(.data$low_coverage_warning)
+if (nrow(low_coverage_modules)) {
+  warning(
+    "Low module feature coverage detected for ",
+    nrow(low_coverage_modules),
+    " module(s): ",
+    paste(low_coverage_modules$ModuleID, collapse = ", "),
+    ". Modules with n_found_in_matrix < 5 will score as NA; see module_gene_coverage.csv and module_feature_mapping_trace.csv.",
+    call. = FALSE
+  )
+}
 
 if (identical(module_definition_source, "wgcna")) {
   overlap_defs_file <- resolve_module_definitions_file("overlap")
@@ -633,6 +810,42 @@ compute_pca_module_score <- function(mat_z, genes, min_genes = 5) {
   score
 }
 
+module_contract_metadata <- module_coverage %>%
+  dplyr::select(
+    "ModuleSet", "ModuleID", "n_accessions_input", "n_mapped_to_matrix_id",
+    "n_found_in_matrix", "coverage_fraction", "coverage_status", "low_coverage_warning"
+  )
+
+add_module_score_contract_cols <- function(df, score_type, score_col = "ModuleScore") {
+  if (!"ModuleID" %in% names(df)) df$ModuleID <- df$Module
+  if (!"Module" %in% names(df)) df$Module <- df$ModuleID
+  if (!"ModuleScore" %in% names(df) && score_col %in% names(df)) df$ModuleScore <- df[[score_col]]
+  df %>%
+    dplyr::mutate(
+      dataset = dataset_profile,
+      module_definition_source = module_definition_source,
+      scoring_method = score_type,
+      ScoreType = score_type,
+      ModuleID = as.character(.data$ModuleID),
+      Module = as.character(.data$Module)
+    ) %>%
+    dplyr::left_join(module_contract_metadata, by = "ModuleID") %>%
+    dplyr::mutate(
+      module_score_qc_flag = dplyr::case_when(
+        .data$n_found_in_matrix < 5 ~ "n_found_lt_5",
+        .data$coverage_fraction < 0.2 ~ "coverage_lt_0.2",
+        TRUE ~ "ok"
+      )
+    ) %>%
+    dplyr::relocate(
+      "dataset", "module_definition_source", "ModuleSet", "ModuleID", "Module",
+      "Sample", "ScoreType", "scoring_method", "ModuleScore",
+      "n_accessions_input", "n_mapped_to_matrix_id", "n_found_in_matrix",
+      "coverage_fraction", "module_score_qc_flag",
+      .before = dplyr::everything()
+    )
+}
+
 # ------------------------------------------------
 # 9) COMPUTE MODULE SCORES
 # ------------------------------------------------
@@ -644,8 +857,8 @@ scores_df <- imap_dfr(modules, function(genes, module_name) {
     ModuleScore = compute_module_score(mat_z, genes)
   )
 }) %>%
-  mutate(ScoreType = "mean_z_score") %>%
-  left_join(metadata, by = "Sample")
+  left_join(metadata, by = "Sample") %>%
+  add_module_score_contract_cols("mean_z_score")
 
 pca_scores_df <- imap_dfr(modules, function(genes, module_name) {
   tibble(
@@ -654,10 +867,17 @@ pca_scores_df <- imap_dfr(modules, function(genes, module_name) {
     PC1_ModuleScore = compute_pca_module_score(mat_z, genes)
   )
 }) %>%
-  left_join(metadata, by = "Sample")
+  dplyr::mutate(ModuleScore = .data$PC1_ModuleScore) %>%
+  left_join(metadata, by = "Sample") %>%
+  add_module_score_contract_cols("pca_pc1_score", score_col = "PC1_ModuleScore")
+
+validate_module_score_output(scores_df, "mean z-score module score output")
+validate_module_score_output(pca_scores_df, "PCA module score output")
 
 write.xlsx(scores_df, file.path(dir_tables, "module_scores_per_sample.xlsx"), overwrite = TRUE)
+readr::write_csv(scores_df, file.path(dir_tables, "module_scores_per_sample.csv"), na = "")
 write.xlsx(pca_scores_df, file.path(dir_tables, "module_scores_pca_sensitivity.xlsx"), overwrite = TRUE)
+readr::write_csv(pca_scores_df, file.path(dir_tables, "module_scores_pca_sensitivity.csv"), na = "")
 
 eigengene_scores_df <- tibble()
 eigengene_sign_alignment_qc <- tibble()
@@ -702,13 +922,16 @@ if (identical(module_definition_source, "wgcna") && !is.na(wgcna_state_file) && 
         ScoreType = "eigengene_score"
       ) %>%
       select(.data$Sample, .data$Module, .data$ModuleScore, .data$ScoreType) %>%
-      left_join(metadata, by = "Sample")
+      left_join(metadata, by = "Sample") %>%
+      add_module_score_contract_cols("eigengene_score")
   }
 }
 write.xlsx(eigengene_sign_alignment_qc, file.path(dir_qc, "eigengene_sign_alignment_QC.xlsx"), overwrite = TRUE)
 readr::write_csv(eigengene_sign_alignment_qc, file.path(dir_qc, "eigengene_sign_alignment_QC.csv"), na = "")
 if (nrow(eigengene_scores_df)) {
+  validate_module_score_output(eigengene_scores_df, "eigengene module score output")
   write.xlsx(eigengene_scores_df, file.path(dir_tables, "module_scores_eigengene_per_sample.xlsx"), overwrite = TRUE)
+  readr::write_csv(eigengene_scores_df, file.path(dir_tables, "module_scores_eigengene_per_sample.csv"), na = "")
 }
 
 # ------------------------------------------------
@@ -1451,6 +1674,17 @@ make_scores_animal <- function(df, analysis_label) {
 
   df %>%
     group_by(
+      dataset,
+      module_definition_source,
+      ModuleSet,
+      ModuleID,
+      ScoreType,
+      scoring_method,
+      n_accessions_input,
+      n_mapped_to_matrix_id,
+      n_found_in_matrix,
+      coverage_fraction,
+      module_score_qc_flag,
       AnimalID,
       Region,
       Layer,
@@ -1591,6 +1825,12 @@ proteomics_file_qc <- export_behavior_proteomics_input(
 write.xlsx(scores_animal_all, file.path(dir_tables, paste0("module_scores_per_animal_regionlayer_", analysis_primary, ".xlsx")), overwrite = TRUE)
 write.xlsx(scores_animal_qc_sensitivity, file.path(dir_tables, paste0("module_scores_per_animal_regionlayer_", analysis_qc_sensitivity, ".xlsx")), overwrite = TRUE)
 write.xlsx(scores_df_qc_sensitivity, file.path(dir_tables, paste0("module_scores_per_sample_", analysis_qc_sensitivity, ".xlsx")), overwrite = TRUE)
+validate_module_score_output(scores_animal_all, "animal-level primary module score output")
+validate_module_score_output(scores_animal_qc_sensitivity, "animal-level QC-sensitivity module score output")
+validate_module_score_output(scores_df_qc_sensitivity, "sample-level QC-sensitivity module score output")
+readr::write_csv(scores_animal_all, file.path(dir_tables, paste0("module_scores_per_animal_regionlayer_", analysis_primary, ".csv")), na = "")
+readr::write_csv(scores_animal_qc_sensitivity, file.path(dir_tables, paste0("module_scores_per_animal_regionlayer_", analysis_qc_sensitivity, ".csv")), na = "")
+readr::write_csv(scores_df_qc_sensitivity, file.path(dir_tables, paste0("module_scores_per_sample_", analysis_qc_sensitivity, ".csv")), na = "")
 
 # ------------------------------------------------
 # 12) PARAMETRIC AND NONPARAMETRIC GROUP STATISTICS
@@ -3339,5 +3579,34 @@ for (rl in region_layers) {
     }
   }
 }
+
+write_run_manifest(
+  file.path(dir_qc, "module_score_run_manifest.yml"),
+  inputs = list(
+    protein_matrix = protein_file,
+    metadata = metadata_file,
+    id_mapping = mapping_file,
+    module_definitions = module_definitions_file,
+    wgcna_state = wgcna_state_file
+  ),
+  outputs = list(
+    tables = dir_tables,
+    figures = dir_plots,
+    logs = dir_qc,
+    mapping_trace = file.path(dir_tables, "module_feature_mapping_trace.csv"),
+    coverage = file.path(dir_tables, "module_gene_coverage.csv"),
+    module_scores_per_sample = file.path(dir_tables, "module_scores_per_sample.csv")
+  ),
+  parameters = list(
+    dataset = dataset_profile,
+    module_definition_source = module_definition_source,
+    module_definition_source_override = if (nzchar(module_definition_source_override)) module_definition_source_override else NA_character_,
+    module_score_version = module_score_version,
+    min_genes = 5,
+    low_coverage_fraction_threshold = 0.2,
+    low_coverage_found_threshold = 5
+  ),
+  notes = "Dataset/source-scoped module score contract. Version is stored here, not in the output folder name."
+)
 
 cat("Done. Results saved to:\n", saving_dir, "\n")
