@@ -11,7 +11,7 @@ active_scripts <- c(
   "06_modules_WGCNA/02_curated_overlap_programs.r",
   "06_modules_WGCNA/03_score_module_activity.R",
   "06_modules_WGCNA/04_wgcna_de_gsea_overlap.r",
-  "09_export_pride_journal/06_make_biological_claims_table.R",
+  "09_export_pride_journal/07_make_biological_claims_table.R",
   "run_dataset_pipeline.R"
 )
 
@@ -79,7 +79,7 @@ for (needle in c(
   }
 }
 
-claims_export_txt <- paste(readLines(repo_path("09_export_pride_journal", "06_make_biological_claims_table.R"), warn = FALSE), collapse = "\n")
+claims_export_txt <- paste(readLines(repo_path("09_export_pride_journal", "07_make_biological_claims_table.R"), warn = FALSE), collapse = "\n")
 for (needle in c("microglia_signature_claims_ready.csv", "collect_microglia_signature_claims", "microglia_signature_enrichment")) {
   if (!grepl(needle, claims_export_txt, fixed = TRUE)) {
     fail <- c(fail, paste("Claims export missing expected microglia signature integration marker:", needle))
