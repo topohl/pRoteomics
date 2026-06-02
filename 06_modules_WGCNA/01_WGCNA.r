@@ -130,7 +130,7 @@ if (early_has_flag("--dry-run") || tolower(Sys.getenv("PROTEOMICS_DRY_RUN", unse
   dry_run_line("Downstream module contract", downstream_contract_early, if (file.exists(downstream_contract_early)) "PASS" else "WARN")
   dry_run_line("WGCNA feature universe", feature_universe_early, if (file.exists(feature_universe_early)) "PASS" else "WARN")
   dry_run_line("WGCNA run manifest", wgcna_manifest_early, if (file.exists(wgcna_manifest_early)) "PASS" else "WARN")
-  dry_run_line("Optional DE/GSEA overlap bridge", repo_path("06_modules_WGCNA", "02_wgcna_de_gsea_overlap.r"), "WARN")
+  dry_run_line("Optional DE/GSEA overlap bridge", repo_path("06_modules_WGCNA", "04_wgcna_de_gsea_overlap.r"), "WARN")
   quit(status = if (file.exists(idmap_dat_early) && can_write_outputs_early && sample_check_ok_early && (can_use_inputs_early || can_stage_inputs_early || can_use_cache_early)) 0 else 1, save = "no")
 }
 
@@ -1195,7 +1195,7 @@ if (isTRUE(wgcna_dry_run)) {
   dry_run_line("Downstream module contract", downstream_contract, if (file.exists(downstream_contract)) "PASS" else "WARN")
   dry_run_line("WGCNA feature universe", feature_universe, if (file.exists(feature_universe)) "PASS" else "WARN")
   dry_run_line("WGCNA run manifest", wgcna_run_manifest_path, if (file.exists(wgcna_run_manifest_path)) "PASS" else "WARN")
-  dry_run_line("Optional DE/GSEA overlap bridge", repo_path("06_modules_WGCNA", "02_wgcna_de_gsea_overlap.r"), "WARN")
+  dry_run_line("Optional DE/GSEA overlap bridge", repo_path("06_modules_WGCNA", "04_wgcna_de_gsea_overlap.r"), "WARN")
   quit(status = if (file.exists(idmap_dat) && can_write_outputs && sample_check_ok && (can_use_inputs || can_stage_inputs || can_use_cache)) 0 else 1, save = "no")
 }
 
@@ -3611,10 +3611,15 @@ WGCNA_module_definitions_for_downstream <- WGCNA_modules_long %>%
   )
 
 validate_wgcna_module_definitions(WGCNA_module_definitions_for_downstream, "WGCNA_module_definitions_for_downstream")
+WGCNA_feature_universe <- WGCNA_modules_long %>%
+  dplyr::select("ProteinID", "UniProt", "GeneSymbol", "EntrezID", "ModuleColor", "ModuleID") %>%
+  dplyr::distinct() %>%
+  dplyr::mutate(included_in_wgcna = TRUE)
 write_csv_safe(WGCNA_module_priority_summary, fp_modtab("WGCNA_module_priority_summary.csv"))
 write_csv_safe(WGCNA_module_definitions_for_downstream, fp_modtab("WGCNA_module_definitions_for_downstream.csv"))
+write_csv_safe(WGCNA_feature_universe, fp_modtab("WGCNA_feature_universe.csv"))
 write_csv_safe(WGCNA_module_definitions_for_downstream, fp_supertab("wgcna_module_results_with_supermodules.csv"))
-overlap_bridge_script <- repo_path("06_modules_WGCNA", "02_wgcna_de_gsea_overlap.r")
+overlap_bridge_script <- repo_path("06_modules_WGCNA", "04_wgcna_de_gsea_overlap.r")
 if (file.exists(overlap_bridge_script)) {
   tryCatch({
     source(overlap_bridge_script)
@@ -3629,6 +3634,11 @@ if (file.exists(overlap_bridge_script)) {
 }
 
 WGCNA_module_priority_summary <- ensure_module_label_schema(WGCNA_module_priority_summary)
+for (optional_numeric_col in c("n_leading_edge_overlap", "n_DE_overlap")) {
+  if (!optional_numeric_col %in% names(WGCNA_module_priority_summary)) {
+    WGCNA_module_priority_summary[[optional_numeric_col]] <- 0
+  }
+}
 
 WGCNA_module_preservation_summary <- WGCNA_module_priority_summary %>%
   dplyr::select("ModuleID", "ModuleColor", dplyr::contains("preservation_")) %>%
@@ -3651,7 +3661,7 @@ WGCNA_module_preservation_summary <- WGCNA_module_priority_summary %>%
   )
 write_csv_safe(WGCNA_module_preservation_summary, fp_modtab("WGCNA_module_preservation_summary.csv"))
 
-gsea_overlap_file <- path_results("tables", "06_modules_WGCNA", "05_wgcna_de_gsea_overlap", dataset_profile, "WGCNA_vs_DE_GSEA_overlap.csv")
+gsea_overlap_file <- path_results("tables", "06_modules_WGCNA", "04_wgcna_de_gsea_overlap", dataset_profile, "WGCNA_vs_DE_GSEA_overlap.csv")
 WGCNA_module_GSEA_coregene_overlap <- if (file.exists(gsea_overlap_file)) {
   readr::read_csv(gsea_overlap_file, show_col_types = FALSE) %>%
     dplyr::select(dplyr::any_of(c(
