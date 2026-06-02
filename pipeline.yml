@@ -87,7 +87,7 @@ stages:
         expected_outputs: ["results/tables/05_celltype_enrichment_EWCE/EWCE_E9/"]
         manifests: ["run_manifest.yml where implemented"]
   modules:
-    description: "WGCNA, module overlap, and module activity scoring."
+    description: "WGCNA, curated overlap programs, module activity scoring, and WGCNA/DE/GSEA overlap."
     scripts:
       - script: "06_modules_WGCNA/01_WGCNA.r"
         required: true
@@ -95,17 +95,23 @@ stages:
         expected_inputs: ["dataset-resolved matrix", "sample metadata"]
         expected_outputs: ["results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/"]
         manifests: ["WGCNA module contract", "run_manifest.yml where implemented"]
-      - script: "06_modules_WGCNA/05_wgcna_de_gsea_overlap.r"
+      - script: "06_modules_WGCNA/02_curated_overlap_programs.r"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
-        expected_inputs: ["WGCNA module contract", "differential abundance/GSEA manifests"]
-        expected_outputs: ["results/tables/06_modules_WGCNA/05_wgcna_de_gsea_overlap/<dataset>/"]
-        manifests: ["run_manifest.yml where implemented"]
+        expected_inputs: ["global recurrent compareGO proteins", "UniProt mapping"]
+        expected_outputs: ["results/tables/06_modules_WGCNA/curated_overlap_programs/global/"]
+        manifests: ["curated_overlap_programs_manifest.yml"]
       - script: "06_modules_WGCNA/03_score_module_activity.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         expected_inputs: ["module definition contract", "dataset-resolved matrix", "sample metadata"]
-        expected_outputs: ["results/tables/06_modules_WGCNA/module_score_v0.0.2/<dataset>/"]
+        expected_outputs: ["results/tables/06_modules_WGCNA/module_score/<dataset>/<module_definition_source>/"]
+        manifests: ["run_manifest.yml", "module_feature_mapping_trace.csv", "module_gene_coverage.csv"]
+      - script: "06_modules_WGCNA/04_wgcna_de_gsea_overlap.r"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        expected_inputs: ["WGCNA module contract", "differential abundance/GSEA manifests"]
+        expected_outputs: ["results/tables/06_modules_WGCNA/04_wgcna_de_gsea_overlap/<dataset>/"]
         manifests: ["run_manifest.yml where implemented"]
   networks:
     description: "Spatial network generation, differential networks, stability, and chord figures."
@@ -207,9 +213,21 @@ stages:
         expected_outputs: ["results/manuscript/source_data/", "results/manuscript/supplementary_tables/"]
         manifests: ["run_manifest.yml"]
 legacy:
+  - script: "06_modules_WGCNA/03_overlap_modules.r"
+    replacement: "06_modules_WGCNA/02_curated_overlap_programs.r"
+    status: "deprecated compatibility wrapper; curated overlap programs are not WGCNA modules"
+  - script: "06_modules_WGCNA/04_overlap_modules.r"
+    replacement: "06_modules_WGCNA/02_curated_overlap_programs.r"
+    status: "deprecated compatibility wrapper; curated overlap programs are not WGCNA modules"
+  - script: "06_modules_WGCNA/05_module_score.r"
+    replacement: "06_modules_WGCNA/03_score_module_activity.R"
+    status: "deprecated compatibility wrapper"
+  - script: "06_modules_WGCNA/05_wgcna_de_gsea_overlap.r"
+    replacement: "06_modules_WGCNA/04_wgcna_de_gsea_overlap.r"
+    status: "deprecated compatibility wrapper"
   - script: "06_modules_WGCNA/91_module_score.r"
     replacement: "06_modules_WGCNA/03_score_module_activity.R"
-    status: "compatibility wrapper target; retained for old commands"
+    status: "legacy compatibility wrapper"
   - script: "04_differential_expression_enrichment/04_neuropil_contamination_annotation.r"
     replacement: "04_differential_expression_enrichment/04_neuropil_reference_annotation.r"
     status: "compatibility wrapper target; avoid contamination language in manuscript-facing names"
