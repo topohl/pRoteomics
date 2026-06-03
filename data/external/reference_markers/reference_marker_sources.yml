@@ -1,0 +1,70 @@
+version: 2026-06-03
+default_allow_download_env: PROTEOMICS_REFERENCE_MARKERS_ALLOW_DOWNLOAD
+default_allow_download: false
+notes:
+  - Reference marker import is cached, versioned, and optional.
+  - Live downloads are disabled unless PROTEOMICS_REFERENCE_MARKERS_ALLOW_DOWNLOAD=true.
+  - ROI microglia samples are not treated as purified microglia.
+sources:
+  - source_name: ewce
+    source_version: package
+    source_type: package
+    package: EWCE
+    data_package: ewceData
+    local_dir: data/external/reference_markers/ewce
+    import_mode: package_or_cache
+    allow_download: false
+    source_reference: EWCE/ewceData package data if installed; otherwise cached local files.
+    notes: Optional package source; failures are recorded without stopping.
+  - source_name: zeisel_linnarsson
+    source_version: cached_local
+    source_type: local_file
+    local_dir: data/external/reference_markers/zeisel_linnarsson
+    file_patterns:
+      - "*.csv"
+      - "*.tsv"
+      - "*.xlsx"
+      - "*.rds"
+    import_mode: cache
+    allow_download: false
+    source_reference: Zeisel/Linnarsson cached local marker or expression tables.
+    notes: Local-file import only by default.
+  - source_name: dropviz_saunders
+    source_version: cached_local
+    source_type: local_file
+    local_dir: data/external/reference_markers/dropviz_saunders
+    file_patterns:
+      - "*.csv"
+      - "*.tsv"
+      - "*.xlsx"
+      - "*.rds"
+    import_mode: cache
+    allow_download: false
+    source_reference: DropViz/Saunders cached local marker or expression tables.
+    notes: Local-file import only by default.
+  - source_name: allen_celltypes
+    source_version: cached_local
+    source_type: local_file
+    local_dir: data/external/reference_markers/allen_celltypes
+    file_patterns:
+      - "*.csv"
+      - "*.tsv"
+      - "*.xlsx"
+      - "*.rds"
+    import_mode: cache
+    allow_download: false
+    source_reference: Allen cell types cached local marker or expression tables.
+    notes: Local-file import only by default.
+  - source_name: brainrnaseq_barres
+    source_version: cached_local
+    source_type: local_file
+    local_dir: data/external/reference_markers/brainrnaseq_barres
+    file_patterns:
+      - "*.csv"
+      - "*.tsv"
+      - "*.xlsx"
+      - "*.rds"
+    import_mode: cache
+    allow_download: false
+    source_reference: BrainRNAseq/Barres cached local marker or expression tables.
+    notes: Local-file import only by default.
