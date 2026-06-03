@@ -33,18 +33,25 @@ dataset_label <- function(ds) {
 }
 
 effect_sentence <- function(row, level = "supermodule") {
+  row_get <- function(name, default = NA) {
+    if (name %in% names(row)) row[[name]][[1]] else default
+  }
   ds_label <- dataset_label(row$dataset)
-  id <- if (level == "supermodule") row$supermodule_id else row$module_id
-  label <- if (level == "supermodule") row$Supermodule_FinalLabel %||% row$supermodule_label else row$module_label %||% row$ModuleID
-  cls <- row$dominant_microenvironment_class %||% row$microenvironment_class %||% NA_character_
-  direction <- ifelse(is.na(row$estimate), "is altered", ifelse(row$estimate > 0, "is higher", "is lower"))
-  spatial <- ifelse(is.na(row$spatial_unit) || row$spatial_unit == "global_spatial_adjusted", "after spatial adjustment", paste0("in ", row$spatial_unit))
-  scope <- ifelse("effect_scope" %in% names(row) && !is.na(row$effect_scope), paste0(" (", row$effect_scope, ")"), "")
-  base <- paste(ds_label, level, id, "annotated as", label, direction, "for", row$contrast, spatial, scope)
+  id <- if (level == "supermodule") row_get("supermodule_id") else row_get("module_id")
+  label <- if (level == "supermodule") row_get("Supermodule_FinalLabel", row_get("supermodule_label")) else row_get("module_label", row_get("ModuleID"))
+  cls <- row_get("dominant_microenvironment_class", row_get("microenvironment_class"))
+  estimate <- suppressWarnings(as.numeric(row_get("estimate")))
+  direction <- ifelse(is.na(estimate), "is altered", ifelse(estimate > 0, "is higher", "is lower"))
+  spatial_unit <- row_get("spatial_unit")
+  spatial <- ifelse(is.na(spatial_unit) || spatial_unit == "global_spatial_adjusted", "after spatial adjustment", paste0("in ", spatial_unit))
+  effect_scope <- row_get("effect_scope")
+  scope <- ifelse(!is.na(effect_scope), paste0(" (", effect_scope, ")"), "")
+  base <- paste(ds_label, level, id, "annotated as", label, direction, "for", row_get("contrast"), spatial, scope)
   base <- gsub("[[:space:]]+\\(", " (", base)
   if (row$dataset != "microglia" || is.na(cls)) return(paste0(base, "."))
-  if (cls == "microglia_supported") return(paste0(base, "; this ROI signal is microglia-supported."))
-  if (cls == "shared_microenvironment") return(paste0(base, "; this ROI signal is shared local microenvironment, not purified microglial regulation."))
+  if (cls == "microglia_supported") return(paste0(base, "; this ROI signal has microglia-supported ROI signal evidence."))
+  if (cls == "microglia_state_or_activation_supported") return(paste0(base, "; this ROI signal has microglia state/phagolysosomal support."))
+  if (cls == "shared_microenvironment") return(paste0(base, "; this ROI signal is shared local microenvironment signal, not purified microglial regulation."))
   if (cls == "neuropil_sensitive") return(paste0(base, "; this ROI signal is neuropil-sensitive; do not interpret as purified microglial regulation."))
   if (cls == "other_cellular_or_vascular_sensitive") return(paste0(base, "; this ROI signal shows other cellular/vascular marker support; interpret cautiously."))
   paste0(base, "; microenvironment support is ambiguous.")
@@ -67,7 +74,13 @@ make_dataset_summary <- function(ds) {
   if (is.null(super_effects)) super_effects <- empty_group_effects(ds, "supermodule", "missing supermodule_group_effects.csv")
   if (is.null(module_annot)) module_annot <- data.frame(dataset = ds, ModuleID = character(), microenvironment_class = character())
   if (is.null(super_annot)) super_annot <- data.frame(dataset = ds, SupermoduleID = character(), Supermodule_FinalLabel = character(), dominant_microenvironment_class = character())
-  for (nm in c("fraction_modules_other_cellular_or_vascular_sensitive", "Supermodule_LabelSource", "Supermodule_LabelConfidence", "ManualReviewRequired")) {
+  for (nm in c(
+    "dominant_microenvironment_class", "fraction_modules_microglia_supported",
+    "fraction_modules_microglia_state_or_activation_supported", "fraction_modules_shared_microenvironment",
+    "fraction_modules_neuropil_sensitive", "fraction_modules_other_cellular_or_vascular_sensitive",
+    "fraction_modules_ambiguous", "marker_registry_version", "empirical_marker_set_version",
+    "classification_rationale", "Supermodule_LabelSource", "Supermodule_LabelConfidence", "ManualReviewRequired"
+  )) {
     if (!nm %in% names(super_annot)) super_annot[[nm]] <- NA
   }
   super_annot <- super_annot |>
@@ -138,11 +151,13 @@ make_dataset_summary <- function(ds) {
       dplyr::filter(!is.na(.data$p_value)) |>
       dplyr::mutate(panel = "A group effect", x = .data$contrast, y = .data$supermodule_id, value = .data$estimate)
     comp_panel <- super_annot |>
-      dplyr::select(.data$SupermoduleID, dplyr::starts_with("fraction_modules_")) |>
-      tidyr::pivot_longer(-.data$SupermoduleID, names_to = "class", values_to = "value") |>
+      dplyr::select("SupermoduleID", dplyr::starts_with("fraction_modules_")) |>
+      tidyr::pivot_longer(cols = -dplyr::all_of("SupermoduleID"), names_to = "class", values_to = "value") |>
       dplyr::mutate(panel = "B microenvironment composition", x = .data$class, y = .data$SupermoduleID)
+    x_col <- if ("empirical_neuropil_enriched_fraction" %in% names(micro_modules)) "empirical_neuropil_enriched_fraction" else if ("canonical_neuronal_synaptic_neuropil_fraction" %in% names(micro_modules)) "canonical_neuronal_synaptic_neuropil_fraction" else "neuropil_synaptic_neuronal_marker_fraction"
+    y_col <- if ("empirical_microglia_roi_enriched_fraction" %in% names(micro_modules)) "empirical_microglia_roi_enriched_fraction" else if ("canonical_microglia_homeostatic_fraction" %in% names(micro_modules)) "canonical_microglia_homeostatic_fraction" else "microglia_marker_fraction"
     module_panel <- micro_modules |>
-      dplyr::mutate(panel = "C module marker evidence", x = as.character(round(.data$neuropil_synaptic_neuronal_marker_fraction, 2)), y = as.character(round(.data$microglia_marker_fraction, 2)), value = as.numeric(.data$microglia_marker_fraction))
+      dplyr::mutate(panel = "C module marker evidence", x = as.character(round(.data[[x_col]], 2)), y = as.character(round(.data[[y_col]], 2)), value = as.numeric(.data[[y_col]]))
     panel_df <- dplyr::bind_rows(
       effect_panel[, c("panel", "x", "y", "value")],
       comp_panel[, c("panel", "x", "y", "value")],
