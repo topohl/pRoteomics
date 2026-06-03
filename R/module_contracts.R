@@ -65,6 +65,41 @@ validate_module_score_output <- function(df, artifact = "module score output") {
   invisible(TRUE)
 }
 
+validate_wgcna_group_effects <- function(df, artifact = "WGCNA group effects") {
+  require_module_contract_columns(
+    df,
+    c(
+      "dataset", "level", "spatial_unit", "contrast", "estimate", "SE",
+      "p_value", "FDR_within_dataset_level", "FDR_global", "direction",
+      "n_samples", "formula_used", "dropped_covariates",
+      "rank_deficient_model", "model_warning"
+    ),
+    artifact
+  )
+  if (!any(c("module_id", "supermodule_id") %in% colnames(df))) {
+    stop(artifact, " must contain module_id or supermodule_id.", call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
+validate_wgcna_module_annotation <- function(df, artifact = "WGCNA module biological annotation") {
+  require_module_contract_columns(
+    df,
+    c("dataset", "ModuleID", "ModuleColor", "n_proteins", "microenvironment_class", "interpretation_note"),
+    artifact
+  )
+  invisible(TRUE)
+}
+
+validate_wgcna_interpretable_summary <- function(df, artifact = "WGCNA interpretable summary") {
+  require_module_contract_columns(
+    df,
+    c("dataset", "level", "contrast", "estimate", "p_value", "FDR_global", "interpretation_sentence"),
+    artifact
+  )
+  invisible(TRUE)
+}
+
 write_contract_validation_status <- function(path, artifact, ok, message = "") {
   dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
   utils::write.csv(
