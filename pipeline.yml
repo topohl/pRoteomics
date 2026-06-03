@@ -59,12 +59,24 @@ stages:
         expected_inputs: ["dataset-resolved matrix", "sample metadata"]
         expected_outputs: ["results/reports/03_qc_exploration/04_marker_rank_abundance_qc/<dataset>/"]
         manifests: ["run_manifest.yml where implemented"]
+      - script: "03_qc_exploration/04b_import_reference_marker_sources.r"
+        required: false
+        datasets: ["global"]
+        expected_inputs: ["data/external/reference_markers/reference_marker_sources.yml", "optional cached local marker files", "optional EWCE/ewceData package data"]
+        expected_outputs: ["config/marker_panels/wgcna_reference_marker_sets.csv", "results/tables/03_qc_exploration/reference_marker_import/"]
+        manifests: ["run_manifest.yml"]
       - script: "03_qc_exploration/05_pca_confounding_qc.r"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         expected_inputs: ["dataset-resolved matrix", "sample metadata"]
         expected_outputs: ["results/reports/03_qc_exploration/05_pca_confounding_qc/<dataset>/"]
         manifests: ["run_manifest.yml where implemented"]
+      - script: "03_qc_exploration/05_empirical_roi_marker_discovery.r"
+        required: false
+        datasets: ["global"]
+        expected_inputs: ["dataset-resolved matrices and metadata for neuron_neuropil, neuron_soma, microglia"]
+        expected_outputs: ["results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv"]
+        manifests: ["run_manifest.yml"]
       - script: "03_qc_exploration/06_variance_partitioning.r"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
@@ -117,7 +129,7 @@ stages:
         expected_outputs: ["results/tables/05_celltype_enrichment_EWCE/EWCE_E9/"]
         manifests: ["run_manifest.yml where implemented"]
   modules:
-    description: "WGCNA, curated overlap programs, module activity scoring, and WGCNA/DE/GSEA overlap."
+    description: "WGCNA, curated overlap programs, module activity scoring, marker evidence annotation, and WGCNA/DE/GSEA overlap."
     scripts:
       - script: "06_modules_WGCNA/01_WGCNA.r"
         required: true
