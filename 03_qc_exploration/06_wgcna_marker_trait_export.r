@@ -54,38 +54,54 @@ primary_panels <- c(
 marker_sets <- marker_sets[primary_panels]
 
 protein_key <- normalize_gene_token(rownames(mat))
+z_mat <- t(scale(t(mat)))
+z_mat[!is.finite(z_mat)] <- NA_real_
 sample_scores <- lapply(names(marker_sets), function(panel) {
   idx <- which(protein_key %in% normalize_gene_token(marker_sets[[panel]]))
-  score <- if (length(idx)) colMeans(mat[idx, , drop = FALSE], na.rm = TRUE) else rep(NA_real_, ncol(mat))
+  raw_score <- if (length(idx)) colMeans(mat[idx, , drop = FALSE], na.rm = TRUE) else rep(NA_real_, ncol(mat))
+  z_score <- if (length(idx)) colMeans(z_mat[idx, , drop = FALSE], na.rm = TRUE) else rep(NA_real_, ncol(mat))
   data.frame(
     Sample = colnames(mat),
     marker_panel = panel,
     n_markers_detected = length(idx),
-    marker_score = score,
+    raw_marker_score = raw_score,
+    z_marker_score = z_score,
     stringsAsFactors = FALSE
   )
 }) |>
   dplyr::bind_rows()
 
 wide_score <- sample_scores |>
-  dplyr::select(.data$Sample, .data$marker_panel, .data$marker_score) |>
-  tidyr::pivot_wider(names_from = .data$marker_panel, values_from = .data$marker_score, names_glue = "{marker_panel}_score")
+  dplyr::select("Sample", "marker_panel", "raw_marker_score", "z_marker_score") |>
+  tidyr::pivot_wider(
+    names_from = "marker_panel",
+    values_from = c("raw_marker_score", "z_marker_score"),
+    names_glue = "{sub('_marker_score$', '', .value)}_{marker_panel}_score"
+  )
 wide_n <- sample_scores |>
-  dplyr::select(.data$Sample, .data$marker_panel, .data$n_markers_detected) |>
-  tidyr::pivot_wider(names_from = .data$marker_panel, values_from = .data$n_markers_detected, names_glue = "n_{marker_panel}_detected")
+  dplyr::select("Sample", "marker_panel", "n_markers_detected") |>
+  tidyr::pivot_wider(names_from = "marker_panel", values_from = "n_markers_detected", names_glue = "n_{marker_panel}_detected")
 
 traits <- meta |>
-  dplyr::select(dplyr::any_of(c("Sample", "Region", "Layer", "RegionLayer", "SpatialUnit", "SpatialLabel", "StressGroup", "ExpGroup", "Sex", "Batch"))) |>
+  dplyr::select(dplyr::any_of(c("Sample", "AnimalID", "Region", "Layer", "RegionLayer", "SpatialUnit", "SpatialLabel", "StressGroup", "ExpGroup", "Sex", "Batch"))) |>
   dplyr::mutate(dataset = DATASET, .before = .data$Sample) |>
   dplyr::left_join(wide_score, by = "Sample") |>
   dplyr::left_join(wide_n, by = "Sample") |>
   dplyr::mutate(
-    microglia_minus_neuropil_score = .data$microglia_score - .data$neuronal_synaptic_neuropil_score,
-    microglia_to_neuropil_ratio = dplyr::if_else(
-      is.finite(.data$neuronal_synaptic_neuropil_score) & .data$neuronal_synaptic_neuropil_score != 0,
-      .data$microglia_score / .data$neuronal_synaptic_neuropil_score,
+    raw_microglia_minus_neuropil_score = .data$raw_microglia_score - .data$raw_neuronal_synaptic_neuropil_score,
+    raw_microglia_to_neuropil_ratio = dplyr::if_else(
+      is.finite(.data$raw_neuronal_synaptic_neuropil_score) & .data$raw_neuronal_synaptic_neuropil_score != 0,
+      .data$raw_microglia_score / .data$raw_neuronal_synaptic_neuropil_score,
       NA_real_
     ),
+    z_microglia_minus_neuropil_score = .data$z_microglia_score - .data$z_neuronal_synaptic_neuropil_score,
+    z_microglia_to_neuropil_ratio = dplyr::if_else(
+      is.finite(.data$z_neuronal_synaptic_neuropil_score) & .data$z_neuronal_synaptic_neuropil_score != 0,
+      .data$z_microglia_score / .data$z_neuronal_synaptic_neuropil_score,
+      NA_real_
+    ),
+    microglia_minus_neuropil_score = .data$raw_microglia_minus_neuropil_score,
+    microglia_to_neuropil_ratio = .data$raw_microglia_to_neuropil_ratio,
     interpretation_note = "Marker scores are WGCNA annotation traits only; not purity estimates and not default covariates."
   )
 
@@ -98,28 +114,30 @@ summary_tbl <- sample_scores |>
     dataset = DATASET,
     n_samples = dplyr::n_distinct(.data$Sample),
     n_markers_detected = max(.data$n_markers_detected, na.rm = TRUE),
-    mean_score = mean(.data$marker_score, na.rm = TRUE),
-    median_score = stats::median(.data$marker_score, na.rm = TRUE),
+    mean_raw_score = mean(.data$raw_marker_score, na.rm = TRUE),
+    median_raw_score = stats::median(.data$raw_marker_score, na.rm = TRUE),
+    mean_z_score = mean(.data$z_marker_score, na.rm = TRUE),
+    median_z_score = stats::median(.data$z_marker_score, na.rm = TRUE),
     .groups = "drop"
   )
 write_table_and_source(summary_tbl, PATHS$tables, PATHS$source_data, "marker_trait_summary_by_dataset.csv")
 
 p_summary <- sample_scores |>
   dplyr::mutate(marker_panel = factor(.data$marker_panel, levels = rev(primary_panels))) |>
-  ggplot2::ggplot(ggplot2::aes(x = .data$marker_panel, y = .data$marker_score)) +
+  ggplot2::ggplot(ggplot2::aes(x = .data$marker_panel, y = .data$z_marker_score)) +
   ggplot2::geom_boxplot(outlier.shape = NA, linewidth = 0.25, fill = "grey92", color = "grey35") +
   ggplot2::geom_point(position = ggplot2::position_jitter(width = 0.12), size = 1, alpha = 0.7, color = "#2F6F73") +
   ggplot2::coord_flip() +
-  ggplot2::labs(x = NULL, y = "Mean marker abundance") +
+  ggplot2::labs(x = NULL, y = "Mean marker z-score") +
   ggplot2::theme_classic(base_size = 8)
 ggplot2::ggsave(file.path(PATHS$figures, "marker_trait_summary_by_dataset.svg"), p_summary,
                 width = 150, height = 100, units = "mm", device = svglite::svglite)
 
 if (DATASET == "microglia") {
   p_micro <- traits |>
-    ggplot2::ggplot(ggplot2::aes(x = .data$neuronal_synaptic_neuropil_score, y = .data$microglia_score, color = .data$SpatialLabel)) +
+    ggplot2::ggplot(ggplot2::aes(x = .data$z_neuronal_synaptic_neuropil_score, y = .data$z_microglia_score, color = .data$SpatialLabel)) +
     ggplot2::geom_point(size = 2, alpha = 0.85) +
-    ggplot2::labs(x = "Neuronal/synaptic neuropil marker score", y = "Microglia marker score", color = "Spatial label") +
+    ggplot2::labs(x = "Neuronal/synaptic neuropil marker z-score", y = "Microglia marker z-score", color = "Spatial label") +
     ggplot2::theme_classic(base_size = 8) +
     ggplot2::theme(legend.position = "bottom")
   ggplot2::ggsave(file.path(PATHS$figures, "microglia_vs_neuropil_marker_score.svg"), p_micro,
