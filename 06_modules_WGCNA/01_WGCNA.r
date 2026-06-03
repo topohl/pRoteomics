@@ -131,6 +131,9 @@ if (early_has_flag("--dry-run") || tolower(Sys.getenv("PROTEOMICS_DRY_RUN", unse
   dry_run_line("WGCNA feature universe", feature_universe_early, if (file.exists(feature_universe_early)) "PASS" else "WARN")
   dry_run_line("WGCNA run manifest", wgcna_manifest_early, if (file.exists(wgcna_manifest_early)) "PASS" else "WARN")
   dry_run_line("Optional DE/GSEA overlap bridge", repo_path("06_modules_WGCNA", "04_wgcna_de_gsea_overlap.r"), "WARN")
+  dry_run_line("Downstream group effects", repo_path("06_modules_WGCNA", "05_module_supermodule_group_effects.r"), "INFO")
+  dry_run_line("Downstream biological annotation", repo_path("06_modules_WGCNA", "06_annotate_module_microenvironment.r"), "INFO")
+  dry_run_line("Downstream interpretable summary", repo_path("06_modules_WGCNA", "07_wgcna_interpretable_summary.r"), "INFO")
   quit(status = if (file.exists(idmap_dat_early) && can_write_outputs_early && sample_check_ok_early && (can_use_inputs_early || can_stage_inputs_early || can_use_cache_early)) 0 else 1, save = "no")
 }
 
