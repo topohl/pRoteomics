@@ -72,6 +72,27 @@ empty_overlap_status <- function(dataset, reason) {
   )
 }
 
+overlap_stats <- function(module_set, signature_set, universe) {
+  module_set <- intersect(unique(module_set), universe)
+  signature_set <- intersect(unique(signature_set), universe)
+  overlap <- intersect(module_set, signature_set)
+  p <- NA_real_
+  if (length(universe) && length(module_set) && length(signature_set)) {
+    a <- length(overlap)
+    b <- length(module_set) - a
+    c <- length(signature_set) - a
+    d <- max(length(universe) - a - b - c, 0)
+    p <- stats::fisher.test(matrix(c(a, b, c, d), nrow = 2), alternative = "greater")$p.value
+  }
+  list(
+    n_signature = length(signature_set),
+    n_overlap = length(overlap),
+    jaccard = if (length(union(module_set, signature_set))) length(overlap) / length(union(module_set, signature_set)) else NA_real_,
+    fisher_p = p,
+    overlap_proteins = paste(utils::head(overlap, 25), collapse = ";")
+  )
+}
+
 run_wgcna_de_gsea_overlap <- function(dataset = current_dataset(), dry_run = is_dry_run()) {
   dataset <- validate_dataset(dataset)
   out_paths <- create_module_dirs("06_modules_WGCNA", file.path("04_wgcna_de_gsea_overlap", dataset))
@@ -189,17 +210,10 @@ run_wgcna_de_gsea_overlap <- function(dataset = current_dataset(), dry_run = is_
         module_set <- intersect(module_set, universe)
         de_set <- intersect(de_set, universe)
         le_set <- intersect(le_set, universe)
-        signature_set <- union(de_set, le_set)
-        de_overlap <- intersect(module_set, de_set)
-        le_overlap <- intersect(module_set, le_set)
-        fisher_p <- NA_real_
-        if (length(universe) && length(de_set)) {
-          a <- length(de_overlap)
-          b <- length(module_set) - a
-          c <- length(de_set) - a
-          d <- max(length(universe) - a - b - c, 0)
-          fisher_p <- stats::fisher.test(matrix(c(a, b, c, d), nrow = 2))$p.value
-        }
+        union_set <- union(de_set, le_set)
+        de <- overlap_stats(module_set, de_set, universe)
+        le <- overlap_stats(module_set, le_set, universe)
+        both <- overlap_stats(module_set, union_set, universe)
         tibble::tibble(
           dataset = dataset,
           ModuleID = ModuleID,
@@ -210,15 +224,31 @@ run_wgcna_de_gsea_overlap <- function(dataset = current_dataset(), dry_run = is_
           universe_type = "WGCNA_feature_universe",
           n_universe = length(universe),
           n_module_in_universe = length(module_set),
-          n_signature_in_universe = length(signature_set),
+          n_signature_in_universe = length(union_set),
           n_module_proteins = length(module_set),
-          n_DE_proteins = length(de_set),
-          n_leading_edge_proteins = length(le_set),
-          n_DE_overlap = length(de_overlap),
-          n_leading_edge_overlap = length(le_overlap),
-          jaccard_DE = if (length(union(module_set, de_set))) length(de_overlap) / length(union(module_set, de_set)) else NA_real_,
-          fisher_p = fisher_p,
-          top_overlap_proteins = paste(utils::head(unique(c(de_overlap, le_overlap)), 25), collapse = ";")
+          input_status = dplyr::case_when(
+            length(de_set) > 0L & length(le_set) > 0L ~ "DE_and_leading_edge_available",
+            length(de_set) > 0L ~ "DE_only_available",
+            length(le_set) > 0L ~ "leading_edge_only_available",
+            TRUE ~ "no_readable_input"
+          ),
+          n_DE_proteins = de$n_signature,
+          n_leading_edge_proteins = le$n_signature,
+          n_union_DE_leading_edge_proteins = both$n_signature,
+          n_DE_overlap = de$n_overlap,
+          n_leading_edge_overlap = le$n_overlap,
+          n_union_DE_leading_edge_overlap = both$n_overlap,
+          jaccard_DE = de$jaccard,
+          jaccard_leading_edge = le$jaccard,
+          jaccard_union_DE_leading_edge = both$jaccard,
+          fisher_p_DE = de$fisher_p,
+          fisher_p_leading_edge = le$fisher_p,
+          fisher_p_union_DE_leading_edge = both$fisher_p,
+          fisher_p = both$fisher_p,
+          top_DE_overlap_proteins = de$overlap_proteins,
+          top_leading_edge_overlap_proteins = le$overlap_proteins,
+          top_union_overlap_proteins = both$overlap_proteins,
+          top_overlap_proteins = both$overlap_proteins
         )
       })
     }
@@ -233,11 +263,18 @@ run_wgcna_de_gsea_overlap <- function(dataset = current_dataset(), dry_run = is_
   }
 
   rows <- rows %>%
-    dplyr::mutate(fisher_fdr = stats::p.adjust(.data$fisher_p, method = "BH")) %>%
-    dplyr::arrange(.data$fisher_fdr, dplyr::desc(.data$n_DE_overlap), dplyr::desc(.data$n_leading_edge_overlap))
+    dplyr::mutate(
+      fisher_fdr_DE = stats::p.adjust(.data$fisher_p_DE, method = "BH"),
+      fisher_fdr_leading_edge = stats::p.adjust(.data$fisher_p_leading_edge, method = "BH"),
+      fisher_fdr_union_DE_leading_edge = stats::p.adjust(.data$fisher_p_union_DE_leading_edge, method = "BH"),
+      fisher_fdr = .data$fisher_fdr_union_DE_leading_edge,
+      best_overlap_fdr = pmin(.data$fisher_fdr_DE, .data$fisher_fdr_leading_edge, .data$fisher_fdr_union_DE_leading_edge, na.rm = TRUE),
+      best_overlap_fdr = ifelse(is.infinite(.data$best_overlap_fdr), NA_real_, .data$best_overlap_fdr)
+    ) %>%
+    dplyr::arrange(.data$best_overlap_fdr, dplyr::desc(.data$n_union_DE_leading_edge_overlap), dplyr::desc(.data$n_DE_overlap), dplyr::desc(.data$n_leading_edge_overlap))
   summary <- rows %>%
     dplyr::group_by(.data$ModuleID, .data$ModuleColor) %>%
-    dplyr::arrange(.data$fisher_fdr, dplyr::desc(.data$n_DE_overlap), dplyr::desc(.data$n_leading_edge_overlap), .by_group = TRUE) %>%
+    dplyr::arrange(.data$best_overlap_fdr, dplyr::desc(.data$n_union_DE_leading_edge_overlap), dplyr::desc(.data$n_DE_overlap), dplyr::desc(.data$n_leading_edge_overlap), .by_group = TRUE) %>%
     dplyr::slice_head(n = 1) %>%
     dplyr::ungroup() %>%
     dplyr::transmute(
@@ -245,17 +282,37 @@ run_wgcna_de_gsea_overlap <- function(dataset = current_dataset(), dry_run = is_
       ModuleColor,
       strongest_DE_GSEA_contrast = .data$contrast,
       strongest_DE_GSEA_route = .data$route,
+      input_status,
       n_DE_overlap,
       n_leading_edge_overlap,
+      n_union_DE_leading_edge_overlap,
       jaccard_DE,
+      jaccard_leading_edge,
+      jaccard_union_DE_leading_edge,
+      fisher_p_DE,
+      fisher_fdr_DE,
+      fisher_p_leading_edge,
+      fisher_fdr_leading_edge,
+      fisher_p_union_DE_leading_edge,
+      fisher_fdr_union_DE_leading_edge,
       fisher_p,
       fisher_fdr,
+      best_overlap_fdr,
       top_overlap_proteins
     )
 
   readr::write_csv(rows, out_csv, na = "")
   write_overlap_xlsx(list(overlap_long = rows, strongest_overlap_per_module = summary), out_xlsx)
-  readr::write_csv(empty_overlap_status(dataset, "completed") %>% dplyr::mutate(status = "completed"), status_csv, na = "")
+  availability <- rows %>%
+    dplyr::distinct(.data$contrast, .data$route, .data$route_category, .data$input_status) %>%
+    dplyr::count(.data$input_status, name = "n_manifest_entries")
+  status <- empty_overlap_status(dataset, "completed") %>%
+    dplyr::mutate(
+      status = "completed",
+      input_availability = paste(paste0(availability$input_status, "=", availability$n_manifest_entries), collapse = ";"),
+      test_semantics = "Separate Fisher enrichment tests for DE, GSEA leading edge, and union(DE, leading edge); alternative='greater'."
+    )
+  readr::write_csv(status, status_csv, na = "")
 
   if (file.exists(priority_file)) {
     priority <- readr::read_csv(priority_file, show_col_types = FALSE) %>%
