@@ -407,7 +407,7 @@ log_session()
 
 # Analysis parameters reported with outputs
 sample_tree_cut_height <- 80
-sample_tree_plot_height <- 40
+sample_tree_plot_height <- sample_tree_cut_height
 soft_threshold_rsquared <- 0.80
 min_module_size <- 30
 deep_split <- 2
@@ -810,7 +810,13 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
     dplyr::left_join(contrast_evidence, by = "Supermodule_DataDriven") %>%
     dplyr::mutate(
       n_fdr_lt_0.05 = dplyr::coalesce(.data$n_fdr_lt_0.05, 0L) + dplyr::coalesce(.data$n_condition_fdr_lt_0.05, 0L),
-      n_fdr_lt_0.10 = dplyr::coalesce(.data$n_fdr_lt_0.10, 0L) + dplyr::coalesce(.data$n_condition_fdr_lt_0.10, 0L)
+      n_fdr_lt_0.10 = dplyr::coalesce(.data$n_fdr_lt_0.10, 0L) + dplyr::coalesce(.data$n_condition_fdr_lt_0.10, 0L),
+      GO_label_confidence_class = dplyr::case_when(
+        is.finite(.data$min_GO_padj) & .data$min_GO_padj <= 0.05 ~ "GO_supported",
+        is.finite(.data$min_GO_padj) & .data$min_GO_padj <= 0.20 ~ "suggestive_GO",
+        !is.na(.data$top_hub_symbols) & nzchar(.data$top_hub_symbols) & (is.na(.data$min_GO_padj) | .data$min_GO_padj > 0.20) ~ "hub_only",
+        TRUE ~ "unresolved"
+      )
     )
 
   proposals <- purrr::pmap_dfr(evidence, function(...) {
@@ -859,6 +865,10 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
       Supermodule = .data$Supermodule_FinalLabel,
       SupermoduleConfidence = .data$Supermodule_LabelConfidence,
       SupermoduleRationale = .data$Supermodule_LabelRationale,
+      GO_label_confidence_class = dplyr::case_when(
+        .data$manual_annotation & !.data$GO_label_confidence_class %in% c("GO_supported", "suggestive_GO") ~ "manual_only",
+        TRUE ~ .data$GO_label_confidence_class
+      ),
       NamingConflict = .data$manual_annotation & !is.na(.data$Supermodule_ProposedName) & .data$Supermodule_Manual != .data$Supermodule_ProposedName,
       ManualReviewRequired = .data$NamingConflict | .data$Supermodule_NamingConfidence %in% c("low", "unresolved") | .data$Supermodule_NameSource == "unresolved"
     )
@@ -884,6 +894,7 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
         Supermodule = .data$Supermodule_FinalLabel,
         SupermoduleConfidence = .data$Supermodule_LabelConfidence,
         SupermoduleRationale = .data$Supermodule_LabelRationale,
+        GO_label_confidence_class = "manual_absent_from_dataset",
         NamingConflict = FALSE,
         ManualReviewRequired = FALSE
       )
@@ -891,6 +902,12 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
     dplyr::mutate(
       present_in_dataset = dplyr::coalesce(.data$present_in_dataset, FALSE),
       manual_annotation = dplyr::coalesce(.data$manual_annotation, FALSE),
+      annotation_scope = dplyr::if_else(.data$present_in_dataset, "present_dataset_module", "manual_absent_from_dataset"),
+      manual_label_status = dplyr::case_when(
+        .data$present_in_dataset & .data$manual_annotation ~ "manual_label_present_for_dataset_module",
+        .data$present_in_dataset ~ "no_manual_label_for_dataset_module",
+        TRUE ~ "manual_label_absent_from_dataset"
+      ),
       Supermodule_DataDrivenID = dplyr::coalesce(.data$Supermodule_DataDrivenID, .data$Supermodule_DataDriven),
       Supermodule_DataDrivenLabel = dplyr::coalesce(.data$Supermodule_DataDrivenLabel, .data$Supermodule_ProposedName, "Unresolved module cluster"),
       Supermodule_FinalLabel = dplyr::coalesce(.data$Supermodule_FinalLabel, .data$Supermodule_DataDrivenLabel, "Unresolved module cluster"),
@@ -899,7 +916,8 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
       Supermodule_LabelRationale = dplyr::coalesce(.data$Supermodule_LabelRationale, .data$Supermodule_Rationale, "No coherent annotation evidence was detected."),
       Supermodule = dplyr::coalesce(as.character(.data$Supermodule), .data$Supermodule_FinalLabel, "Unresolved module cluster"),
       SupermoduleConfidence = dplyr::coalesce(.data$SupermoduleConfidence, .data$Supermodule_LabelConfidence, "unresolved"),
-      SupermoduleRationale = dplyr::coalesce(.data$SupermoduleRationale, .data$Supermodule_LabelRationale, "No coherent annotation evidence was detected.")
+      SupermoduleRationale = dplyr::coalesce(.data$SupermoduleRationale, .data$Supermodule_LabelRationale, "No coherent annotation evidence was detected."),
+      GO_label_confidence_class = dplyr::coalesce(.data$GO_label_confidence_class, "unresolved")
     )
 
   if (!is.null(module_label_table) && nrow(module_label_table)) {
@@ -962,17 +980,17 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
   write_csv_safe(evidence, fp_supertab("wgcna_supermodule_evidence_table.csv"))
   write_csv_safe(
     evidence_summary_export %>%
-      dplyr::select(
+      dplyr::select(dplyr::any_of(c(
         "Supermodule_DataDriven", "member_modules", "member_module_colors", "n_modules",
         "Supermodule_DataDrivenLabel", "Supermodule_CuratedLabel", "Supermodule_FinalLabel",
         "Supermodule_LabelSource", "Supermodule_LabelConfidence", "Supermodule_LabelRationale",
-        "ManualReviewRequired",
+        "GO_label_confidence_class", "ManualReviewRequired",
         "Supermodule_ProposedName", "Supermodule_NameSource", "Supermodule_NamingConfidence",
         "Supermodule_Rationale", "top_GO_BP_terms", "top_GO_MF_terms", "top_GO_CC_terms",
         "n_modules_with_GO_support", "min_GO_padj", "median_GO_padj",
         "top_hub_symbols", "top_hub_uniprot", "hub_theme_candidates",
         "strongest_trait_associations", "strongest_condition_contrasts", "n_fdr_lt_0.05", "n_fdr_lt_0.10"
-      ),
+      ))),
     fp_supertab("wgcna_supermodule_summary.csv")
   )
   write_csv_safe(annotation %>% dplyr::filter(.data$NamingConflict), fp_supertab("wgcna_supermodule_naming_conflicts.csv"))
@@ -1706,7 +1724,8 @@ sampleTree <- hclust(dist(expression.data), method = "average")
 svg(file = fp_qc("sample_clustering_outliers.svg"), width = figure_single_col * 1.4, height = 3.8, family = figure_font)
 par(cex = 0.6, mar = c(0, 4, 2, 0))
 plot(sampleTree, main = "Sample clustering to detect outliers", sub = "", xlab = "", cex.main = 2)
-abline(h = sample_tree_plot_height, col = "red")
+abline(h = sample_tree_cut_height, col = "red")
+graphics::mtext(paste0("Outlier cut height = ", sample_tree_cut_height), side = 3, line = 0.1, cex = 0.7, col = "red")
 dev.off()
 
 cut.sampleTree <- cutreeStatic(sampleTree, cutHeight = sample_tree_cut_height, minSize = 10)
@@ -1931,7 +1950,7 @@ plot_trait_heatmap <- function(matCorr, matFdr, cols, file) {
                  setStdMargins = FALSE,
                  cex.text = 0.6,
                  zlim = c(-1, 1),
-                 main = "Module-trait relationships")
+                 main = "Descriptive module-trait screening")
   dev.off()
 }
 
@@ -1953,7 +1972,10 @@ write_csv_safe(
   reshape2::melt(MEcorr, varnames = c("module", "trait"), value.name = "r") |>
     dplyr::mutate(
       p = as.vector(MEp),
-      fdr = as.vector(MEfdr)
+      fdr = as.vector(MEfdr),
+      inference_role = "descriptive_screening",
+      primary_group_effect_script = "06_modules_WGCNA/05_module_supermodule_group_effects.r",
+      source_note = "Module-trait and condition one-hot correlations are QC/exploration only; final CON/RES/SUS inference uses adjusted eigengene/supermodule models from 05_module_supermodule_group_effects.r."
     ),
   fp_source("ME_trait_correlations.csv")
 )
@@ -1985,7 +2007,7 @@ for (nm in names(contrasts)) {
                  textMatrix = txt,
                  setStdMargins = FALSE,
                   cex.text = 0.8, zlim = c(-1,1),
-                  main = "Module-trait relationships")
+                  main = "Descriptive module-condition screening")
   dev.off()
 }
 
@@ -2838,7 +2860,7 @@ p_legend_heat <- panel_plot(dfs[[1]], legend = "right")
 legend_only <- cowplot::get_legend(p_legend_heat)
 
 combo <- wrap_plots(plots, nrow = 1, guides = "collect") +
-  plot_annotation(title = paste("Module-trait relationships:", paste(c(active_spatial_vars, "condition"), collapse = ", ")))
+  plot_annotation(title = paste("Descriptive module-trait screening:", paste(c(active_spatial_vars, "condition"), collapse = ", ")))
 
 main_trait_panel <- cowplot::plot_grid(combo, legend_only, rel_widths = c(1, 0.08))
 save_plot_publication(main_trait_panel, fp_mainfig("panel_module_trait_relationships_spatial.svg"),
@@ -2959,7 +2981,10 @@ ME_contrast_stats <- ME_long %>%
   dplyr::mutate(
     fdr = p.adjust(.data$p, method = "BH"),
     sig = sig_dot(.data$fdr),
-    contrast = factor(.data$contrast, levels = contrast_specs$contrast)
+    contrast = factor(.data$contrast, levels = contrast_specs$contrast),
+    inference_role = "descriptive_screening",
+    primary_group_effect_script = "06_modules_WGCNA/05_module_supermodule_group_effects.r",
+    source_note = "Pairwise eigengene condition panels from 01_WGCNA.r are QC/exploration only; final CON/RES/SUS inference uses adjusted module and supermodule models from 05_module_supermodule_group_effects.r."
   )
 supermodule_annotation <- build_supermodule_annotation(
   module_label_table = module_label_table,
