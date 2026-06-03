@@ -79,7 +79,8 @@ make_dataset_summary <- function(ds) {
     "fraction_modules_microglia_state_or_activation_supported", "fraction_modules_shared_microenvironment",
     "fraction_modules_neuropil_sensitive", "fraction_modules_other_cellular_or_vascular_sensitive",
     "fraction_modules_ambiguous", "marker_registry_version", "empirical_marker_set_version",
-    "classification_rationale", "Supermodule_LabelSource", "Supermodule_LabelConfidence", "ManualReviewRequired"
+    "classification_rationale", "Supermodule_LabelSource", "Supermodule_LabelConfidence",
+    "GO_label_confidence_class", "annotation_scope", "manual_label_status", "ManualReviewRequired"
   )) {
     if (!nm %in% names(super_annot)) super_annot[[nm]] <- NA
   }
@@ -104,7 +105,15 @@ make_dataset_summary <- function(ds) {
 
   top_super <- super_join |>
     dplyr::filter(!is.na(.data$p_value)) |>
-    dplyr::arrange(.data$FDR_global, .data$p_value, dplyr::desc(abs(.data$estimate))) |>
+    dplyr::mutate(.evidence_order = dplyr::case_when(
+      .data$evidence_status == "robust_FDR" ~ 1L,
+      .data$evidence_status == "suggestive_FDR10" ~ 2L,
+      .data$evidence_status == "nominal_only" ~ 3L,
+      .data$evidence_status == "model_unstable" ~ 4L,
+      TRUE ~ 5L
+    )) |>
+    dplyr::arrange(.data$.evidence_order, .data$FDR_global, .data$p_value, dplyr::desc(abs(.data$estimate))) |>
+    dplyr::select(-".evidence_order") |>
     dplyr::slice_head(n = 50)
 
   write_table_and_source(super_join, paths$tables, paths$source_data, "WGCNA_supermodule_group_effects_interpretable.csv")
