@@ -27,6 +27,43 @@ source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "dataset_inputs.R"))
 source(repo_path("R", "validation_utils.R"))
 MODULE_ID <- "05_celltype_enrichment_EWCE"
+
+args <- commandArgs(trailingOnly = TRUE)
+arg_value <- function(flag, default = "") {
+  hit <- which(args == flag)
+  if (!length(hit) || hit[1] == length(args)) return(default)
+  args[[hit[1] + 1]]
+}
+
+dataset_cli <- arg_value("--dataset", default = "")
+if (nzchar(dataset_cli)) {
+  Sys.setenv(PROTEOMICS_DATASET = validate_dataset(dataset_cli, source = "--dataset"))
+}
+
+infer_dataset_from_path <- function(path) {
+  if (is.null(path) || !length(path) || is.na(path) || !nzchar(path)) return(NA_character_)
+  normalized_path <- normalize_dataset(path)
+  hits <- valid_datasets()[vapply(
+    valid_datasets(),
+    function(dataset) grepl(dataset, normalized_path, fixed = TRUE),
+    logical(1)
+  )]
+  if (length(hits) == 1L) hits else NA_character_
+}
+
+dataset_env_names <- c("PROTEOMICS_DATASET", "PROTEOMICS_COMPARISON", "PROTEOMICS_GCT_COMPARISON")
+has_dataset_override <- any(nzchar(Sys.getenv(dataset_env_names, unset = "")))
+if (!has_dataset_override) {
+  explicit_matrix_paths <- c(
+    Sys.getenv("PROTEOMICS_EWCE_MATRIX", unset = ""),
+    Sys.getenv("PROTEOMICS_WGCNA_UPSTREAM_XLSX", unset = "")
+  )
+  inferred_dataset <- unique(stats::na.omit(vapply(explicit_matrix_paths, infer_dataset_from_path, character(1))))
+  if (length(inferred_dataset) == 1L) {
+    Sys.setenv(PROTEOMICS_DATASET = validate_dataset(inferred_dataset, source = "input path"))
+  }
+}
+
 EWCE_DATASET <- current_dataset()
 SUBSTEP_ID <- file.path("EWCE_E9", EWCE_DATASET)
 CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
@@ -125,6 +162,10 @@ if (is_dry_run()) {
   }
   dry_run_line("Script", "05_celltype_enrichment_EWCE/01_EWCE_E9.r")
   dry_run_line("Dataset", EWCE_DATASET)
+  dry_run_line(
+    "Dataset source",
+    if (nzchar(dataset_cli)) "--dataset" else if (has_dataset_override) "environment" else "input path/default"
+  )
   dry_run_line("Proteomics matrix", data_path, if (file.exists(data_path)) "PASS" else "FAIL")
   dry_run_line("Sample metadata", sample_metadata_path, if (file.exists(sample_metadata_path)) "PASS" else "FAIL")
   dry_run_line("Cheap sample matching", sample_match, sample_match_status)
@@ -1106,7 +1147,7 @@ baseline_heatmap_tbl <- primary_results %>%
     sd_from_mean_plot = cap_signed_value(sd_from_mean, HEATMAP_Z_COLOR_CAP)
   )
 
-# Fig 1A: signed Z uses a diverging fill (0 = no shift); sequential scales misrepresent direction.
+# Fig 1A: only positive values, use sequential color scale
 p1 <- ggplot2::ggplot(
   baseline_heatmap_tbl,
   ggplot2::aes(x = Metric, y = CellType, fill = sd_from_mean_plot)
@@ -1117,14 +1158,14 @@ p1 <- ggplot2::ggplot(
     x = "Metric",
     y = "CellType",
     fill_col = "sd_from_mean_plot",
-    fill_limit = c(-HEATMAP_Z_COLOR_CAP, HEATMAP_Z_COLOR_CAP)
+    fill_limit = c(0, HEATMAP_Z_COLOR_CAP)
   ) +
   ggplot2::facet_wrap(~Stratum, nrow = 1) +
-  scale_fill_signed_z(
+  ggplot2::scale_fill_gradient(
     name = "Z-score",
-    low = col_res,
+    low = "white",
     high = col_sus,
-    limits = c(-HEATMAP_Z_COLOR_CAP, HEATMAP_Z_COLOR_CAP)
+    limits = c(0, HEATMAP_Z_COLOR_CAP)
   ) +
   theme_publication() +
   ggplot2::labs(x = NULL, y = "Cell type", title = "Baseline cell-type enrichment") +
