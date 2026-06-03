@@ -26,6 +26,7 @@ if (run$dry_run) {
     paths = PATHS,
     extra = c(
       "Writes WGCNA marker traits by sample to tables and source_data.",
+      "Uses reference marker registry and empirical ROI marker sets when present; legacy panels remain fallback.",
       "Marker scores are annotation traits only, not purity estimates and not default covariates."
     )
   )
@@ -45,13 +46,9 @@ if (!file.exists(matrix_file)) {
 expr <- qc_read_expression(matrix_file, metadata_file, DATASET)
 mat <- expr$mat
 meta <- standardize_wgcna_metadata(expr$meta, DATASET)
-marker_sets <- wgcna_marker_sets()
-primary_panels <- c(
-  "microglia", "neuronal_synaptic_neuropil", "nuclear_soma", "astrocyte",
-  "oligodendrocyte_myelin", "endothelial_pericyte_vascular",
-  "mitochondrial_oxphos", "ribosomal_translation", "rnp_rna_processing"
-)
-marker_sets <- marker_sets[primary_panels]
+marker_sets <- load_wgcna_marker_sets()
+marker_source_metadata <- attr(marker_sets, "marker_source_metadata")
+primary_panels <- names(marker_sets)
 
 protein_key <- normalize_gene_token(rownames(mat))
 z_mat <- t(scale(t(mat)))
@@ -84,26 +81,33 @@ wide_n <- sample_scores |>
 
 traits <- meta |>
   dplyr::select(dplyr::any_of(c("Sample", "AnimalID", "Region", "Layer", "RegionLayer", "SpatialUnit", "SpatialLabel", "StressGroup", "ExpGroup", "Sex", "Batch"))) |>
-  dplyr::mutate(dataset = DATASET, .before = .data$Sample) |>
+  dplyr::mutate(dataset = DATASET, .before = "Sample") |>
   dplyr::left_join(wide_score, by = "Sample") |>
-  dplyr::left_join(wide_n, by = "Sample") |>
-  dplyr::mutate(
-    raw_microglia_minus_neuropil_score = .data$raw_microglia_score - .data$raw_neuronal_synaptic_neuropil_score,
-    raw_microglia_to_neuropil_ratio = dplyr::if_else(
-      is.finite(.data$raw_neuronal_synaptic_neuropil_score) & .data$raw_neuronal_synaptic_neuropil_score != 0,
-      .data$raw_microglia_score / .data$raw_neuronal_synaptic_neuropil_score,
-      NA_real_
-    ),
-    z_microglia_minus_neuropil_score = .data$z_microglia_score - .data$z_neuronal_synaptic_neuropil_score,
-    z_microglia_to_neuropil_ratio = dplyr::if_else(
-      is.finite(.data$z_neuronal_synaptic_neuropil_score) & .data$z_neuronal_synaptic_neuropil_score != 0,
-      .data$z_microglia_score / .data$z_neuronal_synaptic_neuropil_score,
-      NA_real_
-    ),
-    microglia_minus_neuropil_score = .data$raw_microglia_minus_neuropil_score,
-    microglia_to_neuropil_ratio = .data$raw_microglia_to_neuropil_ratio,
-    interpretation_note = "Marker scores are WGCNA annotation traits only; not purity estimates and not default covariates."
-  )
+  dplyr::left_join(wide_n, by = "Sample")
+
+add_pair_scores <- function(df, micro_panel, neuro_panel, prefix = "") {
+  raw_micro <- paste0("raw_", micro_panel, "_score")
+  raw_neuro <- paste0("raw_", neuro_panel, "_score")
+  z_micro <- paste0("z_", micro_panel, "_score")
+  z_neuro <- paste0("z_", neuro_panel, "_score")
+  out_prefix <- if (nzchar(prefix)) paste0(prefix, "_") else ""
+  if (all(c(raw_micro, raw_neuro) %in% names(df))) {
+    df[[paste0("raw_", out_prefix, "microglia_minus_neuropil_score")]] <- df[[raw_micro]] - df[[raw_neuro]]
+    df[[paste0("raw_", out_prefix, "microglia_to_neuropil_ratio")]] <- ifelse(is.finite(df[[raw_neuro]]) & df[[raw_neuro]] != 0, df[[raw_micro]] / df[[raw_neuro]], NA_real_)
+  }
+  if (all(c(z_micro, z_neuro) %in% names(df))) {
+    df[[paste0("z_", out_prefix, "microglia_minus_neuropil_score")]] <- df[[z_micro]] - df[[z_neuro]]
+    df[[paste0("z_", out_prefix, "microglia_to_neuropil_ratio")]] <- ifelse(is.finite(df[[z_neuro]]) & df[[z_neuro]] != 0, df[[z_micro]] / df[[z_neuro]], NA_real_)
+  }
+  df
+}
+
+traits <- add_pair_scores(traits, "canonical_microglia_homeostatic", "canonical_neuronal_synaptic_neuropil")
+traits <- add_pair_scores(traits, "microglia", "neuronal_synaptic_neuropil")
+traits <- add_pair_scores(traits, "empirical_microglia_roi_enriched", "empirical_neuropil_enriched", "empirical")
+if (!"microglia_minus_neuropil_score" %in% names(traits) && "raw_microglia_minus_neuropil_score" %in% names(traits)) traits$microglia_minus_neuropil_score <- traits$raw_microglia_minus_neuropil_score
+if (!"microglia_to_neuropil_ratio" %in% names(traits) && "raw_microglia_to_neuropil_ratio" %in% names(traits)) traits$microglia_to_neuropil_ratio <- traits$raw_microglia_to_neuropil_ratio
+traits$interpretation_note <- "Marker scores are WGCNA annotation traits only; not purity estimates and not default covariates."
 
 out_file <- "wgcna_marker_traits_by_sample.csv"
 write_table_and_source(traits, PATHS$tables, PATHS$source_data, out_file)
@@ -134,8 +138,17 @@ ggplot2::ggsave(file.path(PATHS$figures, "marker_trait_summary_by_dataset.svg"),
                 width = 150, height = 100, units = "mm", device = svglite::svglite)
 
 if (DATASET == "microglia") {
+  micro_x <- "z_canonical_neuronal_synaptic_neuropil_score"
+  micro_y <- "z_canonical_microglia_homeostatic_score"
+  if (all(c("z_empirical_neuropil_enriched_score", "z_empirical_microglia_roi_enriched_score") %in% names(traits))) {
+    micro_x <- "z_empirical_neuropil_enriched_score"
+    micro_y <- "z_empirical_microglia_roi_enriched_score"
+  } else if (!all(c(micro_x, micro_y) %in% names(traits)) && all(c("z_neuronal_synaptic_neuropil_score", "z_microglia_score") %in% names(traits))) {
+    micro_x <- "z_neuronal_synaptic_neuropil_score"
+    micro_y <- "z_microglia_score"
+  }
   p_micro <- traits |>
-    ggplot2::ggplot(ggplot2::aes(x = .data$z_neuronal_synaptic_neuropil_score, y = .data$z_microglia_score, color = .data$SpatialLabel)) +
+    ggplot2::ggplot(ggplot2::aes(x = .data[[micro_x]], y = .data[[micro_y]], color = .data$SpatialLabel)) +
     ggplot2::geom_point(size = 2, alpha = 0.85) +
     ggplot2::labs(x = "Neuronal/synaptic neuropil marker z-score", y = "Microglia marker z-score", color = "Spatial label") +
     ggplot2::theme_classic(base_size = 8) +
@@ -152,7 +165,13 @@ write_run_manifest(
     source_traits = file.path(PATHS$source_data, out_file),
     figures = PATHS$figures
   ),
-  parameters = list(dataset = DATASET, marker_panels = primary_panels),
+  parameters = list(
+    dataset = DATASET,
+    marker_panels = primary_panels,
+    marker_source_hierarchy = unique(marker_source_metadata$marker_source %||% "unknown"),
+    marker_registry_version = attr(marker_sets, "marker_registry_version") %||% NA_character_,
+    empirical_marker_set_version = attr(marker_sets, "empirical_marker_set_version") %||% NA_character_
+  ),
   notes = "Marker scores are annotation traits for WGCNA reporting/interpretation only; they are not purity estimates and are not default model covariates."
 )
 
