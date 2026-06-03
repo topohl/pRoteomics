@@ -1,6 +1,8 @@
 testthat::test_that("WGCNA downstream entrypoints exist", {
   source(testthat::test_path("..", "..", "R", "paths.R"))
   scripts <- c(
+    "03_qc_exploration/04b_import_reference_marker_sources.r",
+    "03_qc_exploration/05_empirical_roi_marker_discovery.r",
     "03_qc_exploration/06_wgcna_marker_trait_export.r",
     "06_modules_WGCNA/05_module_supermodule_group_effects.r",
     "06_modules_WGCNA/06_annotate_module_microenvironment.r",
@@ -16,6 +18,8 @@ testthat::test_that("WGCNA downstream dry-runs report contracts", {
   old_wd <- setwd(repo_path())
   on.exit(setwd(old_wd), add = TRUE)
   cases <- list(
+    c("03_qc_exploration/04b_import_reference_marker_sources.r", "--dry-run"),
+    c("03_qc_exploration/05_empirical_roi_marker_discovery.r", "--dry-run"),
     c("03_qc_exploration/06_wgcna_marker_trait_export.r", "--dataset", "microglia", "--dry-run"),
     c("06_modules_WGCNA/05_module_supermodule_group_effects.r", "--dataset", "microglia", "--dry-run"),
     c("06_modules_WGCNA/06_annotate_module_microenvironment.r", "--dataset", "microglia", "--dry-run"),
@@ -26,6 +30,60 @@ testthat::test_that("WGCNA downstream dry-runs report contracts", {
     testthat::expect_equal(attr(out, "status") %||% 0L, 0L, info = paste(args, collapse = " "))
     testthat::expect_true(any(grepl("\\[DRY-RUN", out)), info = paste(args, collapse = " "))
   }
+})
+
+testthat::test_that("marker source manifest is parseable", {
+  source(testthat::test_path("..", "..", "R", "paths.R"))
+  manifest <- repo_path("data", "external", "reference_markers", "reference_marker_sources.yml")
+  testthat::expect_true(file.exists(manifest))
+  testthat::skip_if_not_installed("yaml")
+  parsed <- yaml::read_yaml(manifest)
+  testthat::expect_true(length(parsed$sources) >= 5)
+  testthat::expect_true(all(c("ewce", "zeisel_linnarsson", "dropviz_saunders", "allen_celltypes", "brainrnaseq_barres") %in% vapply(parsed$sources, `[[`, character(1), "source_name")))
+})
+
+testthat::test_that("marker registry helpers load registry, empirical sets, and legacy fallback", {
+  source(testthat::test_path("..", "..", "R", "wgcna_downstream_utils.R"))
+  registry_file <- tempfile(fileext = ".csv")
+  empirical_file <- tempfile(fileext = ".csv")
+  utils::write.csv(data.frame(
+    marker_set = "canonical_microglia_homeostatic",
+    cell_class = "microglia",
+    cell_state = "homeostatic_identity",
+    gene_symbol = c("P2ry12", "Tmem119"),
+    source_type = "test",
+    source_name = "test_registry",
+    source_reference = "test",
+    selection_rule = "test",
+    confidence = "test",
+    use_for = "annotation",
+    notes = "",
+    stringsAsFactors = FALSE
+  ), registry_file, row.names = FALSE)
+  utils::write.csv(data.frame(
+    marker_set = "empirical_microglia_roi_enriched",
+    ProteinID = "Aif1",
+    GeneSymbol = "Aif1",
+    marker_source = "test_empirical",
+    stringsAsFactors = FALSE
+  ), empirical_file, row.names = FALSE)
+  old_registry <- Sys.getenv("PROTEOMICS_WGCNA_MARKER_REGISTRY_FILE", unset = NA_character_)
+  old_empirical <- Sys.getenv("PROTEOMICS_WGCNA_EMPIRICAL_MARKER_FILE", unset = NA_character_)
+  on.exit({
+    if (is.na(old_registry)) Sys.unsetenv("PROTEOMICS_WGCNA_MARKER_REGISTRY_FILE") else Sys.setenv(PROTEOMICS_WGCNA_MARKER_REGISTRY_FILE = old_registry)
+    if (is.na(old_empirical)) Sys.unsetenv("PROTEOMICS_WGCNA_EMPIRICAL_MARKER_FILE") else Sys.setenv(PROTEOMICS_WGCNA_EMPIRICAL_MARKER_FILE = old_empirical)
+  }, add = TRUE)
+  Sys.setenv(PROTEOMICS_WGCNA_MARKER_REGISTRY_FILE = registry_file, PROTEOMICS_WGCNA_EMPIRICAL_MARKER_FILE = empirical_file)
+  registry <- read_wgcna_marker_registry()
+  testthat::expect_true(all(c("marker_set", "gene_symbol", "gene_token") %in% names(registry)))
+  sets <- load_wgcna_marker_sets(quiet = TRUE)
+  testthat::expect_true("canonical_microglia_homeostatic" %in% names(sets))
+  testthat::expect_true("empirical_microglia_roi_enriched" %in% names(sets))
+
+  Sys.setenv(PROTEOMICS_WGCNA_MARKER_REGISTRY_FILE = tempfile(), PROTEOMICS_WGCNA_EMPIRICAL_MARKER_FILE = tempfile())
+  fallback <- suppressWarnings(load_wgcna_marker_sets(quiet = TRUE))
+  testthat::expect_true("microglia" %in% names(fallback))
+  testthat::expect_equal(attr(fallback, "marker_source_metadata")$marker_source[[1]], "legacy_hardcoded_fallback")
 })
 
 testthat::test_that("WGCNA downstream schemas expose required columns", {
@@ -47,15 +105,24 @@ testthat::test_that("WGCNA downstream schemas expose required columns", {
     n_proteins = integer(), microenvironment_class = character(),
     microglia_evidence = logical(), neuropil_evidence = logical(),
     other_cellular_evidence = logical(), classification_threshold = numeric(),
+    canonical_microglia_evidence = logical(),
+    empirical_microglia_roi_evidence = logical(),
+    canonical_neuropil_evidence = logical(),
+    empirical_neuropil_evidence = logical(),
+    empirical_shared_microenvironment_evidence = logical(),
+    microglia_state_or_activation_evidence = logical(),
+    peripheral_myeloid_caution_evidence = logical(),
+    marker_registry_version = character(),
+    empirical_marker_set_version = character(),
     classification_rationale = character(),
     interpretation_note = character()
   )
   testthat::expect_silent(validate_wgcna_module_annotation(annot_df))
   testthat::expect_true(all(c(
-    "microglia_supported", "shared_microenvironment", "neuropil_sensitive",
+    "microglia_supported", "microglia_state_or_activation_supported", "shared_microenvironment", "neuropil_sensitive",
     "other_cellular_or_vascular_sensitive", "ambiguous"
   ) %in% c(
-    "microglia_supported", "shared_microenvironment", "neuropil_sensitive",
+    "microglia_supported", "microglia_state_or_activation_supported", "shared_microenvironment", "neuropil_sensitive",
     "other_cellular_or_vascular_sensitive", "ambiguous"
   )))
 
