@@ -99,6 +99,108 @@ wgcna_marker_sets <- function() {
   )
 }
 
+wgcna_registry_required_columns <- c(
+  "marker_set", "cell_class", "cell_state", "gene_symbol", "source_type",
+  "source_name", "source_reference", "selection_rule", "confidence", "use_for", "notes"
+)
+
+read_wgcna_marker_registry <- function(path = Sys.getenv("PROTEOMICS_WGCNA_MARKER_REGISTRY_FILE", unset = "")) {
+  if (!nzchar(path)) path <- repo_path("config", "marker_panels", "wgcna_reference_marker_sets.csv")
+  path <- normalizePath(path, winslash = "/", mustWork = FALSE)
+  registry <- safe_read_csv(path)
+  if (is.null(registry) || !nrow(registry)) return(NULL)
+  missing <- setdiff(wgcna_registry_required_columns, names(registry))
+  if (length(missing)) stop("Marker registry is missing required column(s): ", paste(missing, collapse = ", "), call. = FALSE)
+  registry$gene_symbol <- as.character(registry$gene_symbol)
+  registry$gene_token <- normalize_gene_token(registry$gene_symbol)
+  registry <- registry[nzchar(registry$gene_token) & !is.na(registry$gene_token), , drop = FALSE]
+  attr(registry, "marker_registry_file") <- path
+  attr(registry, "marker_registry_version") <- paste(unique(registry$source_name), collapse = ";")
+  registry
+}
+
+marker_registry_to_sets <- function(registry) {
+  if (is.null(registry) || !nrow(registry)) return(list())
+  split(as.character(registry$gene_symbol), as.character(registry$marker_set)) |>
+    lapply(function(x) unique(x[nzchar(normalize_gene_token(x))]))
+}
+
+read_empirical_roi_marker_sets <- function(path = Sys.getenv("PROTEOMICS_WGCNA_EMPIRICAL_MARKER_FILE", unset = "")) {
+  if (!nzchar(path)) path <- path_results("tables", "03_qc_exploration", "05_empirical_roi_marker_discovery", "empirical_roi_marker_sets.csv")
+  path <- normalizePath(path, winslash = "/", mustWork = FALSE)
+  empirical <- safe_read_csv(path)
+  if (is.null(empirical) || !nrow(empirical)) return(NULL)
+  required <- c("marker_set", "GeneSymbol")
+  missing <- setdiff(required, names(empirical))
+  if (length(missing)) stop("Empirical marker file is missing required column(s): ", paste(missing, collapse = ", "), call. = FALSE)
+  empirical$gene_symbol <- as.character(empirical$GeneSymbol)
+  empirical$gene_token <- normalize_gene_token(empirical$gene_symbol)
+  empirical <- empirical[nzchar(empirical$gene_token) & !is.na(empirical$gene_token), , drop = FALSE]
+  attr(empirical, "empirical_marker_file") <- path
+  attr(empirical, "empirical_marker_set_version") <- paste(unique(empirical$marker_source %||% "empirical_roi_marker_sets"), collapse = ";")
+  empirical
+}
+
+load_wgcna_marker_sets <- function(include_empirical = TRUE, include_legacy_aliases = TRUE, quiet = FALSE) {
+  registry <- read_wgcna_marker_registry()
+  empirical <- if (isTRUE(include_empirical)) read_empirical_roi_marker_sets() else NULL
+  sets <- list()
+  metadata <- data.frame(marker_set = character(), marker_source = character(), source_file = character(), stringsAsFactors = FALSE)
+
+  if (!is.null(registry)) {
+    ref_sets <- marker_registry_to_sets(registry)
+    sets <- c(sets, ref_sets)
+    metadata <- rbind(metadata, data.frame(
+      marker_set = names(ref_sets),
+      marker_source = "reference_registry",
+      source_file = attr(registry, "marker_registry_file") %||% NA_character_,
+      stringsAsFactors = FALSE
+    ))
+  }
+
+  if (!is.null(empirical)) {
+    emp_sets <- split(as.character(empirical$GeneSymbol), as.character(empirical$marker_set)) |>
+      lapply(function(x) unique(x[nzchar(normalize_gene_token(x))]))
+    sets <- c(sets, emp_sets)
+    metadata <- rbind(metadata, data.frame(
+      marker_set = names(emp_sets),
+      marker_source = "empirical_roi_marker_sets",
+      source_file = attr(empirical, "empirical_marker_file") %||% NA_character_,
+      stringsAsFactors = FALSE
+    ))
+  }
+
+  if (!length(sets)) {
+    if (!isTRUE(quiet)) warning("Falling back to legacy hard-coded WGCNA marker panels; run 03_qc_exploration/04b_import_reference_marker_sources.r to create the registry.", call. = FALSE)
+    sets <- wgcna_marker_sets()
+    metadata <- data.frame(marker_set = names(sets), marker_source = "legacy_hardcoded_fallback", source_file = NA_character_, stringsAsFactors = FALSE)
+  } else if (isTRUE(include_legacy_aliases)) {
+    legacy <- wgcna_marker_sets()
+    alias_map <- c(
+      microglia = "canonical_microglia_homeostatic",
+      neuronal_synaptic_neuropil = "canonical_neuronal_synaptic_neuropil",
+      neuropil_synaptic_neuronal = "canonical_neuronal_synaptic_neuropil",
+      nuclear_soma = "canonical_neuronal_soma_nuclear",
+      astrocyte = "canonical_astrocyte",
+      oligodendrocyte_myelin = "canonical_oligodendrocyte_myelin",
+      endothelial_pericyte_vascular = "canonical_endothelial_vascular",
+      mitochondrial_oxphos = "canonical_mitochondrial_oxphos",
+      ribosomal_translation = "canonical_ribosomal_translation",
+      rnp_rna_processing = "canonical_rnp_rna_processing"
+    )
+    for (alias in names(alias_map)) {
+      target <- unname(alias_map[[alias]])
+      if (!alias %in% names(sets)) sets[[alias]] <- sets[[target]] %||% legacy[[alias]]
+    }
+  }
+
+  sets <- sets[!duplicated(names(sets))]
+  attr(sets, "marker_source_metadata") <- metadata
+  attr(sets, "marker_registry_version") <- if (!is.null(registry)) attr(registry, "marker_registry_version") else NA_character_
+  attr(sets, "empirical_marker_set_version") <- if (!is.null(empirical)) attr(empirical, "empirical_marker_set_version") else NA_character_
+  sets
+}
+
 standardize_wgcna_metadata <- function(meta, dataset) {
   meta <- as.data.frame(meta, check.names = FALSE, stringsAsFactors = FALSE)
   sample_col <- first_present_col(meta, c("Sample", "sample", "SampleID", "sample_id", "row.names"))
