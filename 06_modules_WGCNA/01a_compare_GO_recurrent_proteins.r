@@ -13,11 +13,22 @@ library(tibble)
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
+source(repo_path("R", "dataset_config.R"))
 
 # ------------------------------------------------
 # 1) SETTINGS
 # ------------------------------------------------
 
+args <- commandArgs(trailingOnly = TRUE)
+value_after <- function(flag, default = "") {
+  hit <- which(args == flag)
+  if (!length(hit) || hit[[1]] == length(args)) return(default)
+  args[[hit[[1]] + 1L]]
+}
+
+DATASET <- validate_dataset(value_after("--dataset", Sys.getenv("PROTEOMICS_DATASET", unset = NA_character_)), source = "--dataset")
+Sys.setenv(PROTEOMICS_DATASET = DATASET)
+dry_run <- is_dry_run()
 target_file   <- "07_Top_Genes_Driving_TopTerms.xlsx"
 
 min_datasets <- 3
@@ -26,25 +37,44 @@ comparego_dir <- path_results(
   "tables",
   "04_differential_expression_enrichment",
   "compareGO",
-  "neuron_neuropil",
+  DATASET,
   "BP",
   "phenotype_within_unit"
 )
 
 aggregate_input_file <- file.path(comparego_dir, target_file)
 
-output_file <- file.path(
-  path_results("tables", "04_differential_expression_enrichment", "compareGO"),
-  paste0("overlapping_proteins_min", min_datasets, "_datasets.xlsx")
+output_dir <- path_results(
+  "tables",
+  "04_differential_expression_enrichment",
+  "compareGO",
+  DATASET,
+  "recurrent_top_gene_drivers"
+)
+dir_create(output_dir)
+
+output_file <- file.path(output_dir, paste0("overlapping_proteins_min", min_datasets, "_spatial_units.xlsx"))
+
+expected_spatial_units <- switch(
+  DATASET,
+  neuron_neuropil = c(
+    "CA1_slm", "CA1_so", "CA1_sr",
+    "CA2_slm", "CA2_so", "CA2_sr",
+    "CA3_so", "CA3_sr",
+    "DG_mo", "DG_po"
+  ),
+  neuron_soma = c("CA1", "CA2", "CA3", "DG"),
+  microglia = c("CA1", "CA2", "CA3", "DG")
 )
 
-# Optional: restrict to expected datasets
-expected_datasets <- c(
-  "CA1_slm", "CA1_so", "CA1_sr",
-  "CA2_slm", "CA2_so", "CA2_sr",
-  "CA3_so","CA3_sr",
-  "DG_mo", "DG_po"
-)
+if (dry_run) {
+  dry_run_line("Script", "06_modules_WGCNA/01a_compare_GO_recurrent_proteins.r")
+  dry_run_line("Dataset", DATASET)
+  dry_run_line("compareGO aggregate top-gene file", aggregate_input_file, if (file.exists(aggregate_input_file)) "PASS" else "FAIL")
+  dry_run_line("Expected spatial units", paste(expected_spatial_units, collapse = ", "), "INFO")
+  dry_run_line("Output workbook", output_file, "INFO")
+  quit(status = if (file.exists(aggregate_input_file)) 0L else 1L, save = "no")
+}
 
 # ------------------------------------------------
 # 2) FIND INPUT FILES
@@ -73,8 +103,8 @@ compact_dataset_key <- function(x) {
 }
 
 dataset_lookup <- tibble(
-  Dataset = expected_datasets,
-  Dataset_key = compact_dataset_key(expected_datasets)
+  Dataset = expected_spatial_units,
+  Dataset_key = compact_dataset_key(expected_spatial_units)
 )
 
 parse_dataset_from_comparison <- function(x) {
@@ -112,7 +142,7 @@ read_top_genes <- function(file) {
       Comparison = stringr::str_trim(Comparisons),
       Dataset = purrr::map_chr(Comparison, parse_dataset_from_comparison)
     ) %>%
-    filter(!is.na(Dataset), Dataset %in% expected_datasets) %>%
+    filter(!is.na(Dataset), Dataset %in% expected_spatial_units) %>%
     group_by(Dataset, Description, Gene) %>%
     summarise(
       Freq = n_distinct(Comparison),
@@ -125,10 +155,10 @@ read_top_genes <- function(file) {
 all_data <- read_top_genes(aggregate_input_file)
 
 found_datasets <- sort(unique(all_data$Dataset))
-missing_datasets <- setdiff(expected_datasets, found_datasets)
+missing_datasets <- setdiff(expected_spatial_units, found_datasets)
 message("Detected datasets: ", paste(found_datasets, collapse = ", "))
 if (length(missing_datasets) > 0) {
-  message("Missing datasets in compareGO comparisons: ", paste(missing_datasets, collapse = ", "))
+  message("Missing expected spatial units in compareGO comparisons: ", paste(missing_datasets, collapse = ", "))
 }
 
 if (nrow(all_data) == 0) {
