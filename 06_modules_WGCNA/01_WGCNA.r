@@ -656,6 +656,7 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
     graphics::abline(h = cut_height, col = "red", lty = 2)
     grDevices::dev.off()
   } else {
+    hc <- NULL
     cluster_id <- "SM01"
   }
 
@@ -665,6 +666,55 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
       DataDrivenClusterSize = as.integer(tabulate(match(.data$Supermodule_DataDriven, unique(.data$Supermodule_DataDriven)))[match(.data$Supermodule_DataDriven, unique(.data$Supermodule_DataDriven))]),
       SupermoduleCutHeight = cut_height
     )
+
+  sensitivity_cut_heights <- c(0.25, 0.30, 0.35, 0.40, 0.45)
+  primary_groups <- split(clusters$module_eigengene, clusters$Supermodule_DataDriven)
+  sensitivity_rows <- purrr::map_dfr(sensitivity_cut_heights, function(ch) {
+    if (length(module_names) >= 2L && !is.null(hc)) {
+      raw <- stats::cutree(hc, h = ch)
+      levels_ch <- unique(raw[hc$order])
+      map_ch <- stats::setNames(sprintf("SM%02d", seq_along(levels_ch)), levels_ch)
+      sid <- unname(map_ch[as.character(raw)])
+    } else {
+      sid <- "SM01"
+    }
+    groups <- split(module_names, sid)
+    purrr::imap_dfr(groups, function(members, smid) {
+      jac <- vapply(primary_groups, function(primary_members) {
+        length(intersect(members, primary_members)) / length(union(members, primary_members))
+      }, numeric(1))
+      best <- names(jac)[which.max(jac)]
+      tibble::tibble(
+        dataset = dataset,
+        cut_height = ch,
+        n_supermodules = length(groups),
+        supermodule_id = smid,
+        member_modules = paste(members, collapse = ";"),
+        primary_cut_height = cut_height,
+        matched_primary_supermodule_id = best %||% NA_character_,
+        jaccard_to_primary_supermodule = if (length(jac)) max(jac, na.rm = TRUE) else NA_real_,
+        stable_primary_match = if (length(jac)) max(jac, na.rm = TRUE) >= 0.80 else NA
+      )
+    })
+  })
+  write_csv_safe(sensitivity_rows, fp_supertab("supermodule_clustering_sensitivity.csv"))
+  if (nrow(sensitivity_rows)) {
+    p_sensitivity <- ggplot2::ggplot(
+      sensitivity_rows,
+      ggplot2::aes(x = factor(.data$cut_height), y = .data$n_supermodules, group = 1)
+    ) +
+      ggplot2::geom_line(linewidth = 0.35) +
+      ggplot2::geom_point(ggplot2::aes(color = .data$stable_primary_match), size = 1.6) +
+      ggplot2::labs(x = "Cut height", y = "Number of supermodules", color = "Stable primary match") +
+      ggplot2::theme_classic(base_size = figure_base_size) +
+      ggplot2::theme(legend.position = "bottom")
+    ggplot2::ggsave(
+      fp_superfig("supermodule_clustering_sensitivity.svg"),
+      p_sensitivity,
+      width = figure_single_col,
+      height = 3.2
+    )
+  }
 
   go_evidence <- clusters %>%
     dplyr::group_by(.data$Supermodule_DataDriven) %>%
@@ -792,9 +842,23 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
     dplyr::left_join(manual_present, by = c("module_eigengene", "ModuleColor")) %>%
     dplyr::mutate(
       manual_annotation = !is.na(.data$Supermodule_Manual) & nzchar(.data$Supermodule_Manual),
-      Supermodule = dplyr::coalesce(.data$Supermodule_Manual, .data$Supermodule_ProposedName, paste("Unresolved module cluster", .data$Supermodule_DataDriven)),
-      SupermoduleConfidence = dplyr::coalesce(.data$ManualConfidence, .data$Supermodule_NamingConfidence, "unresolved"),
-      SupermoduleRationale = dplyr::coalesce(.data$ManualRationale, .data$Supermodule_Rationale),
+      Supermodule_DataDrivenID = .data$Supermodule_DataDriven,
+      Supermodule_DataDrivenLabel = dplyr::coalesce(.data$Supermodule_ProposedName, paste("Unresolved module cluster", .data$Supermodule_DataDriven)),
+      Supermodule_CuratedLabel = dplyr::if_else(.data$manual_annotation, as.character(.data$Supermodule_Manual), NA_character_),
+      Supermodule_FinalLabel = dplyr::coalesce(.data$Supermodule_CuratedLabel, .data$Supermodule_DataDrivenLabel),
+      Supermodule_LabelSource = dplyr::case_when(
+        .data$manual_annotation ~ "curated_override",
+        !is.na(.data$Supermodule_NameSource) ~ .data$Supermodule_NameSource,
+        TRUE ~ "unresolved"
+      ),
+      Supermodule_LabelConfidence = dplyr::coalesce(.data$ManualConfidence, .data$Supermodule_NamingConfidence, "unresolved"),
+      Supermodule_LabelRationale = dplyr::case_when(
+        .data$manual_annotation ~ paste0("Curated override: ", dplyr::coalesce(.data$ManualRationale, "No curated rationale recorded."), " Data-driven label was: ", .data$Supermodule_DataDrivenLabel),
+        TRUE ~ dplyr::coalesce(.data$Supermodule_Rationale, "No coherent annotation evidence was detected.")
+      ),
+      Supermodule = .data$Supermodule_FinalLabel,
+      SupermoduleConfidence = .data$Supermodule_LabelConfidence,
+      SupermoduleRationale = .data$Supermodule_LabelRationale,
       NamingConflict = .data$manual_annotation & !is.na(.data$Supermodule_ProposedName) & .data$Supermodule_Manual != .data$Supermodule_ProposedName,
       ManualReviewRequired = .data$NamingConflict | .data$Supermodule_NamingConfidence %in% c("low", "unresolved") | .data$Supermodule_NameSource == "unresolved"
     )
@@ -804,15 +868,22 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
     manual_absent %>%
       dplyr::mutate(
         Supermodule_DataDriven = NA_character_,
+        Supermodule_DataDrivenID = NA_character_,
         DataDrivenClusterSize = NA_integer_,
         SupermoduleCutHeight = cut_height,
         Supermodule_ProposedName = NA_character_,
+        Supermodule_DataDrivenLabel = NA_character_,
+        Supermodule_CuratedLabel = .data$Supermodule_Manual,
+        Supermodule_FinalLabel = .data$Supermodule_Manual,
+        Supermodule_LabelSource = "curated_absent_from_dataset",
+        Supermodule_LabelConfidence = .data$ManualConfidence,
+        Supermodule_LabelRationale = .data$ManualRationale,
         Supermodule_NameSource = "manual_absent_from_dataset",
         Supermodule_NamingConfidence = "not_applicable",
         Supermodule_Rationale = NA_character_,
-        Supermodule = .data$Supermodule_Manual,
-        SupermoduleConfidence = .data$ManualConfidence,
-        SupermoduleRationale = .data$ManualRationale,
+        Supermodule = .data$Supermodule_FinalLabel,
+        SupermoduleConfidence = .data$Supermodule_LabelConfidence,
+        SupermoduleRationale = .data$Supermodule_LabelRationale,
         NamingConflict = FALSE,
         ManualReviewRequired = FALSE
       )
@@ -820,9 +891,15 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
     dplyr::mutate(
       present_in_dataset = dplyr::coalesce(.data$present_in_dataset, FALSE),
       manual_annotation = dplyr::coalesce(.data$manual_annotation, FALSE),
-      Supermodule = dplyr::coalesce(as.character(.data$Supermodule), "Unresolved module cluster"),
-      SupermoduleConfidence = dplyr::coalesce(.data$SupermoduleConfidence, "unresolved"),
-      SupermoduleRationale = dplyr::coalesce(.data$SupermoduleRationale, "No coherent annotation evidence was detected.")
+      Supermodule_DataDrivenID = dplyr::coalesce(.data$Supermodule_DataDrivenID, .data$Supermodule_DataDriven),
+      Supermodule_DataDrivenLabel = dplyr::coalesce(.data$Supermodule_DataDrivenLabel, .data$Supermodule_ProposedName, "Unresolved module cluster"),
+      Supermodule_FinalLabel = dplyr::coalesce(.data$Supermodule_FinalLabel, .data$Supermodule_DataDrivenLabel, "Unresolved module cluster"),
+      Supermodule_LabelSource = dplyr::coalesce(.data$Supermodule_LabelSource, .data$Supermodule_NameSource, "unresolved"),
+      Supermodule_LabelConfidence = dplyr::coalesce(.data$Supermodule_LabelConfidence, .data$Supermodule_NamingConfidence, "unresolved"),
+      Supermodule_LabelRationale = dplyr::coalesce(.data$Supermodule_LabelRationale, .data$Supermodule_Rationale, "No coherent annotation evidence was detected."),
+      Supermodule = dplyr::coalesce(as.character(.data$Supermodule), .data$Supermodule_FinalLabel, "Unresolved module cluster"),
+      SupermoduleConfidence = dplyr::coalesce(.data$SupermoduleConfidence, .data$Supermodule_LabelConfidence, "unresolved"),
+      SupermoduleRationale = dplyr::coalesce(.data$SupermoduleRationale, .data$Supermodule_LabelRationale, "No coherent annotation evidence was detected.")
     )
 
   if (!is.null(module_label_table) && nrow(module_label_table)) {
@@ -865,12 +942,31 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
   cluster_export <- clusters %>%
     dplyr::left_join(evidence, by = "Supermodule_DataDriven") %>%
     dplyr::select("module_eigengene", "ModuleColor", "Supermodule_DataDriven", "DataDrivenClusterSize", "SupermoduleCutHeight", dplyr::everything())
+  evidence_summary_export <- evidence %>%
+    dplyr::left_join(
+      annotation %>%
+        dplyr::filter(.data$present_in_dataset) %>%
+        dplyr::distinct(
+          .data$Supermodule_DataDriven,
+          .data$Supermodule_DataDrivenLabel,
+          .data$Supermodule_CuratedLabel,
+          .data$Supermodule_FinalLabel,
+          .data$Supermodule_LabelSource,
+          .data$Supermodule_LabelConfidence,
+          .data$Supermodule_LabelRationale,
+          .data$ManualReviewRequired
+        ),
+      by = "Supermodule_DataDriven"
+    )
   write_csv_safe(cluster_export, fp_supertab("wgcna_supermodule_eigengene_clusters.csv"))
   write_csv_safe(evidence, fp_supertab("wgcna_supermodule_evidence_table.csv"))
   write_csv_safe(
-    evidence %>%
+    evidence_summary_export %>%
       dplyr::select(
         "Supermodule_DataDriven", "member_modules", "member_module_colors", "n_modules",
+        "Supermodule_DataDrivenLabel", "Supermodule_CuratedLabel", "Supermodule_FinalLabel",
+        "Supermodule_LabelSource", "Supermodule_LabelConfidence", "Supermodule_LabelRationale",
+        "ManualReviewRequired",
         "Supermodule_ProposedName", "Supermodule_NameSource", "Supermodule_NamingConfidence",
         "Supermodule_Rationale", "top_GO_BP_terms", "top_GO_MF_terms", "top_GO_CC_terms",
         "n_modules_with_GO_support", "min_GO_padj", "median_GO_padj",
