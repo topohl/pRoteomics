@@ -71,7 +71,8 @@ validate_wgcna_group_effects <- function(df, artifact = "WGCNA group effects") {
     c(
       "dataset", "level", "spatial_unit", "contrast", "estimate", "SE",
       "p_value", "FDR_within_dataset_level", "FDR_global", "direction",
-      "n_samples", "formula_used", "dropped_covariates",
+      "effect_scope", "SpatialUnitType", "model_type", "has_repeated_animals",
+      "n_animals", "n_samples", "formula_requested", "formula_used", "dropped_covariates",
       "rank_deficient_model", "model_warning"
     ),
     artifact
@@ -85,7 +86,11 @@ validate_wgcna_group_effects <- function(df, artifact = "WGCNA group effects") {
 validate_wgcna_module_annotation <- function(df, artifact = "WGCNA module biological annotation") {
   require_module_contract_columns(
     df,
-    c("dataset", "ModuleID", "ModuleColor", "n_proteins", "microenvironment_class", "interpretation_note"),
+    c(
+      "dataset", "ModuleID", "ModuleColor", "n_proteins", "microenvironment_class",
+      "microglia_evidence", "neuropil_evidence", "other_cellular_evidence",
+      "classification_threshold", "classification_rationale", "interpretation_note"
+    ),
     artifact
   )
   invisible(TRUE)
