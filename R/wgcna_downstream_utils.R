@@ -103,6 +103,8 @@ standardize_wgcna_metadata <- function(meta, dataset) {
   meta <- as.data.frame(meta, check.names = FALSE, stringsAsFactors = FALSE)
   sample_col <- first_present_col(meta, c("Sample", "sample", "SampleID", "sample_id", "row.names"))
   if (is.na(sample_col)) meta$Sample <- rownames(meta) else meta$Sample <- as.character(meta[[sample_col]])
+  animal_col <- first_present_col(meta, c("AnimalID", "Animal", "MouseID", "mouse_id", "animal_id", "subject", "donor"))
+  meta$AnimalID <- if (!is.na(animal_col)) as.character(meta[[animal_col]]) else NA_character_
   for (target in c("Region", "Layer", "Sex", "Batch")) {
     col <- first_present_col(meta, c(target, tolower(target), if (target == "Batch") c("plate", "run", "batch_id") else character()))
     meta[[target]] <- if (!is.na(col)) as.character(meta[[col]]) else NA_character_
@@ -188,9 +190,11 @@ empty_group_effects <- function(dataset, level, reason) {
   data.frame(
     dataset = dataset, level = level, module_id = NA_character_, supermodule_id = NA_character_,
     module_label = NA_character_, supermodule_label = NA_character_, spatial_unit = NA_character_,
+    effect_scope = NA_character_, SpatialUnitType = NA_character_, model_type = NA_character_,
+    has_repeated_animals = NA, n_animals = NA_integer_,
     contrast = NA_character_, estimate = NA_real_, SE = NA_real_, statistic = NA_real_,
     p_value = NA_real_, FDR_within_dataset_level = NA_real_, FDR_global = NA_real_,
-    direction = NA_character_, n_samples = 0L, formula_used = NA_character_,
+    direction = NA_character_, n_samples = 0L, formula_requested = NA_character_, formula_used = NA_character_,
     dropped_covariates = NA_character_, rank_deficient_model = NA, model_warning = reason,
     stringsAsFactors = FALSE
   )
@@ -198,9 +202,10 @@ empty_group_effects <- function(dataset, level, reason) {
 
 required_group_effect_columns <- c(
   "dataset", "level", "module_id", "supermodule_id", "module_label", "supermodule_label",
-  "spatial_unit", "contrast", "estimate", "SE", "statistic", "p_value",
+  "spatial_unit", "effect_scope", "SpatialUnitType", "model_type", "has_repeated_animals",
+  "n_animals", "contrast", "estimate", "SE", "statistic", "p_value",
   "FDR_within_dataset_level", "FDR_global", "direction", "n_samples",
-  "formula_used", "dropped_covariates", "rank_deficient_model", "model_warning"
+  "formula_requested", "formula_used", "dropped_covariates", "rank_deficient_model", "model_warning"
 )
 
 required_module_annotation_columns <- c(
