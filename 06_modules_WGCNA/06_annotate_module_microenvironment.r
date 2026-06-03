@@ -1,0 +1,273 @@
+#!/usr/bin/env Rscript
+#
+# Annotate WGCNA modules and supermodules with biological and microenvironment evidence.
+
+paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
+source(paths_file)
+source(repo_path("R", "wgcna_downstream_utils.R"))
+
+required_pkgs <- c("dplyr", "tidyr", "tibble", "ggplot2", "svglite", "readr")
+missing_pkgs <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
+if (length(missing_pkgs) && !is_dry_run()) stop("Missing required R package(s): ", paste(missing_pkgs, collapse = ", "), call. = FALSE)
+if (!length(missing_pkgs)) suppressPackageStartupMessages(invisible(lapply(required_pkgs, library, character.only = TRUE)))
+
+run <- wgcna_cli()
+DATASET <- run$dataset
+PATHS <- wgcna_downstream_paths("module_annotation", DATASET)
+FILES <- resolve_wgcna_files(DATASET)
+force_microglia <- tolower(Sys.getenv("PROTEOMICS_FORCE_MICROGLIA_MODULE_ANNOTATION", unset = "false")) %in% c("1", "true", "yes")
+
+if (run$dry_run) {
+  invisible(lapply(unlist(PATHS), dir_create))
+  dry_run_line("Script", "06_modules_WGCNA/06_annotate_module_microenvironment.r")
+  dry_run_line("Dataset", DATASET)
+  dry_run_line("Module definitions", FILES$definitions, if (file.exists(FILES$definitions)) "PASS" else "WARN")
+  dry_run_line("GO enrichment", FILES$go, if (file.exists(FILES$go)) "PASS" else "WARN")
+  dry_run_line("Supermodule annotation", FILES$supermodule_annotation, if (file.exists(FILES$supermodule_annotation)) "PASS" else "WARN")
+  dry_run_line("Group effects", path_results("tables", "06_modules_WGCNA", "group_effects", DATASET), "INFO")
+  if (DATASET == "microglia" || force_microglia) dry_run_line("Neuropil reference annotation", FILES$neuropil_annotation, if (file.exists(FILES$neuropil_annotation)) "PASS" else "WARN")
+  dry_run_line("Output tables", PATHS$tables)
+  quit(status = 0, save = "no")
+}
+
+if (DATASET != "microglia" && force_microglia) {
+  warning("Forcing microglia-specific module annotation outside dataset == microglia.", call. = FALSE)
+}
+
+definitions <- safe_read_csv(FILES$definitions)
+if (is.null(definitions) || !nrow(definitions)) {
+  module_annot <- data.frame(dataset = DATASET, ModuleID = NA_character_, ModuleColor = NA_character_, n_proteins = 0L, microenvironment_class = "missing_module_definitions", interpretation_note = WGCNA_ROI_NOTE)
+  super_annot <- data.frame(dataset = DATASET, SupermoduleID = NA_character_, n_member_modules = 0L, dominant_microenvironment_class = "missing_module_definitions", interpretation_note = WGCNA_ROI_NOTE)
+  write_table_and_source(module_annot, PATHS$tables, PATHS$source_data, "WGCNA_module_biological_annotation.csv")
+  write_table_and_source(super_annot, PATHS$tables, PATHS$source_data, "WGCNA_supermodule_biological_annotation.csv")
+  write_run_manifest(file.path(PATHS$logs, "run_manifest.yml"), inputs = FILES, outputs = list(tables = PATHS$tables), parameters = list(dataset = DATASET), notes = WGCNA_ROI_NOTE)
+  quit(status = 0, save = "no")
+}
+
+validate_wgcna_module_definitions(definitions, "WGCNA downstream definitions")
+marker_sets <- wgcna_marker_sets()
+module_summary <- safe_read_csv(FILES$module_summary)
+go <- safe_read_csv(FILES$go)
+super_ann <- safe_read_csv(FILES$supermodule_annotation)
+super_summary <- safe_read_csv(FILES$supermodule_summary)
+module_effects <- safe_read_csv(path_results("tables", "06_modules_WGCNA", "group_effects", DATASET, "module_group_effects.csv"))
+super_effects <- safe_read_csv(path_results("tables", "06_modules_WGCNA", "group_effects", DATASET, "supermodule_group_effects.csv"))
+neuropil_ref <- if (DATASET == "microglia" || force_microglia) safe_read_csv(FILES$neuropil_annotation) else NULL
+
+panel_names <- c(
+  "microglia", "neuropil_synaptic_neuronal", "astrocyte", "oligodendrocyte_myelin",
+  "endothelial_pericyte_vascular", "mitochondrial_oxphos", "ribosomal_translation", "rnp_rna_processing"
+)
+
+marker_stats_for <- function(genes) {
+  genes_key <- normalize_gene_token(genes)
+  out <- lapply(panel_names, function(panel) {
+    markers <- normalize_gene_token(marker_sets[[panel]] %||% character())
+    hits <- genes[genes_key %in% markers]
+    data.frame(
+      panel = panel,
+      fraction = if (length(genes)) length(unique(normalize_gene_token(hits))) / length(unique(genes_key)) else NA_real_,
+      hits = paste(unique(hits), collapse = ";"),
+      stringsAsFactors = FALSE
+    )
+  }) |> dplyr::bind_rows()
+  frac <- stats::setNames(out$fraction, paste0(out$panel, "_marker_fraction"))
+  hits <- stats::setNames(out$hits, paste0(out$panel, "_marker_hits"))
+  as.list(c(frac, hits))
+}
+
+top_go_for_module <- function(module_color) {
+  if (is.null(go) || !nrow(go)) return(list(top_GO_BP_labels = NA_character_, top_GO_MF_labels = NA_character_, top_GO_CC_labels = NA_character_))
+  color_col <- first_present_col(go, c("ModuleColor", "module", "ModuleID"))
+  desc_col <- first_present_col(go, c("Description", "description", "term_description", "ID"))
+  ont_col <- first_present_col(go, c("ONTOLOGY", "ontology"))
+  padj_col <- first_present_col(go, c("p.adjust", "p_adj", "padj", "qvalue"))
+  if (is.na(color_col) || is.na(desc_col)) return(list(top_GO_BP_labels = NA_character_, top_GO_MF_labels = NA_character_, top_GO_CC_labels = NA_character_))
+  tab <- go |> dplyr::filter(as.character(.data[[color_col]]) %in% c(as.character(module_color), paste0("ME", module_color)))
+  if (nrow(tab) && !is.na(padj_col)) tab <- tab |> dplyr::arrange(.data[[padj_col]])
+  one <- function(ont) {
+    x <- if (!is.na(ont_col)) tab |> dplyr::filter(toupper(as.character(.data[[ont_col]])) == ont) else tab
+    paste(utils::head(unique(as.character(x[[desc_col]])), 5), collapse = ";")
+  }
+  list(top_GO_BP_labels = one("BP"), top_GO_MF_labels = one("MF"), top_GO_CC_labels = one("CC"))
+}
+
+classify_module <- function(row) {
+  micro <- as.numeric(row$microglia_marker_fraction)
+  neuro <- as.numeric(row$neuropil_synaptic_neuronal_marker_fraction)
+  robust <- as.integer(row$n_microglia_robust_term_overlaps %||% 0)
+  sensitive <- as.integer(row$n_neuropil_sensitive_term_overlaps %||% 0)
+  mixed <- as.integer(row$n_mixed_microenvironment_term_overlaps %||% 0)
+  if ((is.finite(micro) && micro >= 0.10 && (!is.finite(neuro) || neuro < 0.10)) || robust > 0) return("microglia_supported")
+  if ((is.finite(micro) && micro >= 0.10 && is.finite(neuro) && neuro >= 0.10) || mixed > 0) return("shared_microenvironment")
+  if ((is.finite(neuro) && neuro >= 0.10) || sensitive > 0) return("neuropil_sensitive")
+  "ambiguous"
+}
+
+module_neuropil_reference_counts <- function(module_color) {
+  empty <- data.frame(
+    n_microglia_robust_term_overlaps = 0L,
+    n_neuropil_sensitive_term_overlaps = 0L,
+    n_mixed_microenvironment_term_overlaps = 0L,
+    n_ambiguous_term_overlaps = 0L,
+    best_overlapping_microglia_terms = NA_character_,
+    best_overlapping_neuropil_terms = NA_character_,
+    stringsAsFactors = FALSE
+  )
+  if (is.null(go) || !nrow(go) || is.null(neuropil_ref) || !nrow(neuropil_ref)) return(empty)
+  color_col <- first_present_col(go, c("ModuleColor", "module", "ModuleID"))
+  desc_col <- first_present_col(go, c("Description", "description", "term_description", "ID"))
+  ref_desc_col <- first_present_col(neuropil_ref, c("term_description", "Description", "description", "term_id", "ID"))
+  class_col <- first_present_col(neuropil_ref, c("interpretation_class", "microenvironment_class"))
+  if (is.na(color_col) || is.na(desc_col) || is.na(ref_desc_col) || is.na(class_col)) return(empty)
+  module_terms <- go |>
+    dplyr::filter(as.character(.data[[color_col]]) %in% c(as.character(module_color), paste0("ME", module_color))) |>
+    dplyr::mutate(term_key = toupper(trimws(as.character(.data[[desc_col]])))) |>
+    dplyr::filter(nzchar(.data$term_key))
+  ref_terms <- neuropil_ref |>
+    dplyr::mutate(term_key = toupper(trimws(as.character(.data[[ref_desc_col]])))) |>
+    dplyr::filter(nzchar(.data$term_key))
+  hit <- dplyr::inner_join(module_terms, ref_terms, by = "term_key")
+  if (!nrow(hit)) return(empty)
+  cls <- as.character(hit[[class_col]])
+  data.frame(
+    n_microglia_robust_term_overlaps = sum(cls == "microglia_robust", na.rm = TRUE),
+    n_neuropil_sensitive_term_overlaps = sum(cls %in% c("neuropil_sensitive", "neuropil_marker_enriched"), na.rm = TRUE),
+    n_mixed_microenvironment_term_overlaps = sum(cls == "mixed_microenvironment", na.rm = TRUE),
+    n_ambiguous_term_overlaps = sum(cls == "ambiguous", na.rm = TRUE),
+    best_overlapping_microglia_terms = paste(utils::head(unique(hit$term_key[cls == "microglia_robust"]), 5), collapse = ";"),
+    best_overlapping_neuropil_terms = paste(utils::head(unique(hit$term_key[cls %in% c("neuropil_sensitive", "neuropil_marker_enriched")]), 5), collapse = ";"),
+    stringsAsFactors = FALSE
+  )
+}
+
+module_rows <- definitions |>
+  dplyr::mutate(
+    ProteinToken = dplyr::coalesce(as.character(.data$GeneSymbol), as.character(.data$ProteinID), as.character(.data$UniProt))
+  ) |>
+  dplyr::group_by(.data$ModuleID, .data$ModuleColor) |>
+  dplyr::summarise(
+    n_proteins = dplyr::n(),
+    proteins = list(unique(.data$ProteinToken)),
+    top_hub_proteins = paste(utils::head(.data$ProteinToken[order(abs(as.numeric(.data$kME %||% .data$Weight)), decreasing = TRUE)], 25), collapse = ";"),
+    n_top_hub_25 = min(25L, dplyr::n()),
+    n_core_kME_0_6 = sum(abs(as.numeric(.data$kME %||% .data$Weight)) >= 0.6, na.rm = TRUE),
+    module_eigengene = dplyr::first(as.character(.data$module_eigengene %||% paste0("ME", .data$ModuleColor))),
+    module_label = dplyr::first(as.character(.data$ModuleLabel_Final %||% .data$ModuleID)),
+    .groups = "drop"
+  )
+
+stats_list <- lapply(seq_len(nrow(module_rows)), function(i) {
+  c(marker_stats_for(module_rows$proteins[[i]]), top_go_for_module(module_rows$ModuleColor[[i]]))
+})
+stats_df <- dplyr::bind_rows(lapply(stats_list, as.data.frame, stringsAsFactors = FALSE))
+
+module_annot <- dplyr::bind_cols(module_rows |> dplyr::select(-.data$proteins), stats_df) |>
+  dplyr::mutate(dataset = DATASET, .before = .data$ModuleID)
+fraction_cols <- grep("_marker_fraction$", names(module_annot), value = TRUE)
+module_annot[fraction_cols] <- lapply(module_annot[fraction_cols], function(x) suppressWarnings(as.numeric(x)))
+
+if (DATASET == "microglia" || force_microglia) {
+  ref_counts <- dplyr::bind_rows(lapply(module_annot$ModuleColor, module_neuropil_reference_counts))
+  module_annot <- module_annot |>
+    dplyr::bind_cols(ref_counts)
+} else {
+  module_annot <- module_annot |>
+    dplyr::mutate(
+      n_microglia_robust_term_overlaps = NA_integer_,
+      n_neuropil_sensitive_term_overlaps = NA_integer_,
+      n_mixed_microenvironment_term_overlaps = NA_integer_,
+      n_ambiguous_term_overlaps = NA_integer_,
+      best_overlapping_microglia_terms = NA_character_,
+      best_overlapping_neuropil_terms = NA_character_
+    )
+}
+
+module_annot$microenvironment_class <- vapply(seq_len(nrow(module_annot)), function(i) classify_module(module_annot[i, , drop = FALSE]), character(1))
+module_annot$interpretation_note <- WGCNA_ROI_NOTE
+
+if (!is.null(module_effects) && nrow(module_effects)) {
+  changed <- module_effects |>
+    dplyr::filter(!is.na(.data$FDR_global), .data$FDR_global < 0.10) |>
+    dplyr::group_by(.data$module_id) |>
+    dplyr::summarise(Changed_in_group_contrasts = paste(unique(paste(.data$spatial_unit, .data$contrast, sep = ":")), collapse = ";"), .groups = "drop")
+  module_annot <- module_annot |> dplyr::left_join(changed, by = c("ModuleID" = "module_id"))
+}
+
+if (is.null(super_ann) || !nrow(super_ann)) {
+  super_annot <- data.frame(dataset = DATASET, SupermoduleID = NA_character_, Supermodule_FinalLabel = NA_character_, n_member_modules = 0L, dominant_microenvironment_class = "missing_supermodule_annotation", interpretation_note = WGCNA_ROI_NOTE)
+} else {
+  smap <- super_ann |>
+    dplyr::mutate(
+      SupermoduleID = dplyr::coalesce(as.character(.data$Supermodule_DataDriven), as.character(.data$Supermodule)),
+      Supermodule_FinalLabel = dplyr::coalesce(as.character(.data$Supermodule), .data$SupermoduleID),
+      Supermodule_ShortLabel = .data$SupermoduleID
+    ) |>
+    dplyr::select(dplyr::any_of(c("ModuleColor", "module_eigengene", "SupermoduleID", "Supermodule_FinalLabel", "Supermodule_ShortLabel", "SupermoduleConfidence", "SupermoduleRationale")))
+  super_annot <- module_annot |>
+    dplyr::left_join(smap, by = c("ModuleColor" = "ModuleColor")) |>
+    dplyr::filter(!is.na(.data$SupermoduleID)) |>
+    dplyr::group_by(.data$dataset, .data$SupermoduleID, .data$Supermodule_FinalLabel, .data$Supermodule_ShortLabel) |>
+    dplyr::summarise(
+      n_member_modules = dplyr::n_distinct(.data$ModuleID),
+      member_modules = paste(unique(.data$ModuleID), collapse = ";"),
+      fraction_modules_microglia_supported = mean(.data$microenvironment_class == "microglia_supported"),
+      fraction_modules_shared_microenvironment = mean(.data$microenvironment_class == "shared_microenvironment"),
+      fraction_modules_neuropil_sensitive = mean(.data$microenvironment_class == "neuropil_sensitive"),
+      fraction_modules_ambiguous = mean(.data$microenvironment_class == "ambiguous"),
+      dominant_microenvironment_class = names(sort(table(.data$microenvironment_class), decreasing = TRUE))[1],
+      dominant_GO_terms = paste(utils::head(unique(c(split_tokens(.data$top_GO_BP_labels), split_tokens(.data$top_GO_MF_labels), split_tokens(.data$top_GO_CC_labels))), 10), collapse = ";"),
+      top_hub_proteins = paste(utils::head(unique(split_tokens(.data$top_hub_proteins)), 30), collapse = ";"),
+      label_confidence = dplyr::first(.data$SupermoduleConfidence %||% NA_character_),
+      interpretation_note = WGCNA_ROI_NOTE,
+      .groups = "drop"
+    )
+}
+
+write_table_and_source(module_annot, PATHS$tables, PATHS$source_data, "WGCNA_module_biological_annotation.csv")
+write_table_and_source(super_annot, PATHS$tables, PATHS$source_data, "WGCNA_supermodule_biological_annotation.csv")
+if (requireNamespace("writexl", quietly = TRUE)) {
+  writexl::write_xlsx(list(modules = module_annot, supermodules = super_annot), file.path(PATHS$tables, "WGCNA_module_microenvironment_annotation.xlsx"))
+}
+
+marker_long <- module_annot |>
+  dplyr::select(.data$ModuleID, dplyr::ends_with("_marker_fraction")) |>
+  tidyr::pivot_longer(-.data$ModuleID, names_to = "marker_panel", values_to = "fraction")
+if (nrow(marker_long)) {
+  p <- ggplot2::ggplot(marker_long, ggplot2::aes(x = .data$marker_panel, y = .data$ModuleID, fill = .data$fraction)) +
+    ggplot2::geom_tile() +
+    ggplot2::scale_fill_gradient(low = "white", high = "#2F6F73", na.value = "grey90") +
+    ggplot2::labs(x = NULL, y = NULL, fill = "Fraction") +
+    ggplot2::theme_classic(base_size = 8) +
+    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 35, hjust = 1))
+  ggplot2::ggsave(file.path(PATHS$figures, "module_marker_fraction_heatmap.svg"), p, width = 170, height = 120, units = "mm", device = svglite::svglite)
+}
+if (nrow(super_annot) && "dominant_microenvironment_class" %in% names(super_annot)) {
+  comp <- super_annot |>
+    dplyr::select(.data$SupermoduleID, dplyr::starts_with("fraction_modules_")) |>
+    tidyr::pivot_longer(-.data$SupermoduleID, names_to = "class", values_to = "fraction")
+  p2 <- ggplot2::ggplot(comp, ggplot2::aes(x = .data$SupermoduleID, y = .data$fraction, fill = .data$class)) +
+    ggplot2::geom_col() +
+    ggplot2::labs(x = NULL, y = "Fraction of member modules", fill = NULL) +
+    ggplot2::theme_classic(base_size = 8) +
+    ggplot2::theme(legend.position = "bottom")
+  ggplot2::ggsave(file.path(PATHS$figures, "supermodule_microenvironment_composition.svg"), p2, width = 140, height = 90, units = "mm", device = svglite::svglite)
+}
+if (DATASET == "microglia" || force_microglia) {
+  p3 <- ggplot2::ggplot(module_annot, ggplot2::aes(x = .data$neuropil_synaptic_neuronal_marker_fraction, y = .data$microglia_marker_fraction, color = .data$microenvironment_class)) +
+    ggplot2::geom_point(size = 2) +
+    ggplot2::labs(x = "Neuropil marker fraction", y = "Microglia marker fraction", color = "Class") +
+    ggplot2::theme_classic(base_size = 8) +
+    ggplot2::theme(legend.position = "bottom")
+  ggplot2::ggsave(file.path(PATHS$figures, "microglia_vs_neuropil_module_evidence.svg"), p3, width = 120, height = 95, units = "mm", device = svglite::svglite)
+}
+
+write_run_manifest(
+  file.path(PATHS$logs, "run_manifest.yml"),
+  inputs = FILES,
+  outputs = list(tables = PATHS$tables, source_data = PATHS$source_data, figures = PATHS$figures),
+  parameters = list(dataset = DATASET, force_microglia_annotation = force_microglia),
+  notes = WGCNA_ROI_NOTE
+)
+
+message("WGCNA module/supermodule biological annotation complete for dataset: ", DATASET)
