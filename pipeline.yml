@@ -35,17 +35,41 @@ stages:
         expected_inputs: ["dataset-resolved matrix", "sample metadata"]
         expected_outputs: ["results/reports/03_qc_exploration/00_dataset_qc_report/<dataset>/"]
         manifests: ["run_manifest.yml"]
+      - script: "03_qc_exploration/01_sample_qc_quicksearch.r"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        expected_inputs: ["annotated quicksearch stats workbook"]
+        expected_outputs: ["results/figures/03_qc_exploration/01_sample_qc_quicksearch/<dataset>/", "results/tables/03_qc_exploration/01_sample_qc_quicksearch/<dataset>/"]
+        manifests: ["run_manifest.yml where implemented"]
       - script: "03_qc_exploration/02_missingness_diagnostics.r"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         expected_inputs: ["dataset-resolved matrix"]
         expected_outputs: ["results/reports/03_qc_exploration/02_missingness_diagnostics/<dataset>/"]
         manifests: ["run_manifest.yml where implemented"]
+      - script: "03_qc_exploration/03_replicate_consistency.r"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        expected_inputs: ["dataset-resolved matrix", "sample metadata"]
+        expected_outputs: ["results/reports/03_qc_exploration/03_replicate_consistency/<dataset>/"]
+        manifests: ["run_manifest.yml where implemented"]
+      - script: "03_qc_exploration/04_marker_rank_abundance_qc.r"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        expected_inputs: ["dataset-resolved matrix", "sample metadata"]
+        expected_outputs: ["results/reports/03_qc_exploration/04_marker_rank_abundance_qc/<dataset>/"]
+        manifests: ["run_manifest.yml where implemented"]
       - script: "03_qc_exploration/05_pca_confounding_qc.r"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         expected_inputs: ["dataset-resolved matrix", "sample metadata"]
         expected_outputs: ["results/reports/03_qc_exploration/05_pca_confounding_qc/<dataset>/"]
+        manifests: ["run_manifest.yml where implemented"]
+      - script: "03_qc_exploration/06_variance_partitioning.r"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        expected_inputs: ["dataset-resolved matrix", "sample metadata"]
+        expected_outputs: ["results/reports/03_qc_exploration/06_variance_partitioning/<dataset>/"]
         manifests: ["run_manifest.yml where implemented"]
       - script: "03_qc_exploration/07_qc_biology_confounding_report.r"
         required: false
