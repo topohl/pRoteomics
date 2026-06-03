@@ -290,12 +290,14 @@ make_supermodule_eigengenes <- function(module_eigengenes, super_map) {
 
 empty_group_effects <- function(dataset, level, reason) {
   data.frame(
-    dataset = dataset, level = level, module_id = NA_character_, supermodule_id = NA_character_,
+    dataset = dataset, level = level, endpoint_id = NA_character_, endpoint_label = NA_character_,
+    module_id = NA_character_, supermodule_id = NA_character_,
     module_label = NA_character_, supermodule_label = NA_character_, spatial_unit = NA_character_,
     effect_scope = NA_character_, SpatialUnitType = NA_character_, model_type = NA_character_,
     has_repeated_animals = NA, n_animals = NA_integer_,
     contrast = NA_character_, estimate = NA_real_, SE = NA_real_, statistic = NA_real_,
     p_value = NA_real_, FDR_within_dataset_level = NA_real_, FDR_global = NA_real_,
+    evidence_status = "not_supported",
     direction = NA_character_, n_samples = 0L, formula_requested = NA_character_, formula_used = NA_character_,
     dropped_covariates = NA_character_, rank_deficient_model = NA, model_warning = reason,
     stringsAsFactors = FALSE
@@ -303,10 +305,10 @@ empty_group_effects <- function(dataset, level, reason) {
 }
 
 required_group_effect_columns <- c(
-  "dataset", "level", "module_id", "supermodule_id", "module_label", "supermodule_label",
+  "dataset", "level", "endpoint_id", "endpoint_label", "module_id", "supermodule_id", "module_label", "supermodule_label",
   "spatial_unit", "effect_scope", "SpatialUnitType", "model_type", "has_repeated_animals",
   "n_animals", "contrast", "estimate", "SE", "statistic", "p_value",
-  "FDR_within_dataset_level", "FDR_global", "direction", "n_samples",
+  "FDR_within_dataset_level", "FDR_global", "evidence_status", "direction", "n_samples",
   "formula_requested", "formula_used", "dropped_covariates", "rank_deficient_model", "model_warning"
 )
 
