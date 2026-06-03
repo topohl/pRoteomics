@@ -38,6 +38,26 @@ Main answers:
 - Interpretable supermodule summary: `results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_supermodule_group_effects_interpretable.csv`
 - Microglia ROI support class: `results/tables/06_modules_WGCNA/module_annotation/microglia/WGCNA_module_biological_annotation.csv` and `WGCNA_supermodule_biological_annotation.csv`
 
+Group-effect outputs use explicit effect scopes:
+
+- `within_spatial_unit`: `eigengene ~ StressGroup + Sex + Batch`
+- `spatial_adjusted_global`: `eigengene ~ StressGroup + SpatialLabel + Sex + Batch`
+- `stress_by_spatial_interaction`: `eigengene ~ StressGroup * SpatialLabel + Sex + Batch`
+
+When repeated `AnimalID` values are present and `lmerTest` is installed, the
+group-effect script adds `(1 | AnimalID)` and records `model_type =
+lmerTest_lmer`; otherwise it uses `lm` and records the fallback. Marker-trait
+correlations are written as annotation-only sensitivity outputs under
+`results/tables/06_modules_WGCNA/group_effects/<dataset>/`.
+
+Microglia ROI module classes are conservative:
+`microglia_supported`, `shared_microenvironment`, `neuropil_sensitive`,
+`other_cellular_or_vascular_sensitive`, or `ambiguous`.
+
+Supermodule naming is auditable. `01_WGCNA.r` exports data-driven IDs/labels,
+curated labels, final labels, label source/confidence/rationale, manual-review
+flags, and clustering sensitivity across cut heights 0.25-0.45.
+
 Optional existing downstream:
 
 ```bash
