@@ -243,10 +243,14 @@ The intended WGCNA downstream order for each dataset is:
 
 ```bash
 Rscript 06_modules_WGCNA/01_WGCNA.r --dataset <dataset>
+Rscript 03_qc_exploration/04b_import_reference_marker_sources.r
+Rscript 03_qc_exploration/05_empirical_roi_marker_discovery.r
 Rscript 03_qc_exploration/06_wgcna_marker_trait_export.r --dataset <dataset>
+Rscript 04_differential_expression_enrichment/04_neuropil_contamination_annotation.r --dataset microglia
 Rscript 06_modules_WGCNA/05_module_supermodule_group_effects.r --dataset <dataset>
 Rscript 06_modules_WGCNA/06_annotate_module_microenvironment.r --dataset <dataset>
 Rscript 06_modules_WGCNA/07_wgcna_interpretable_summary.r --dataset <dataset>
+Rscript 06_modules_WGCNA/07_wgcna_interpretable_summary.r --dataset all
 ```
 
 For microglia-enriched ROI interpretation, also run the neuropil reference
@@ -260,12 +264,19 @@ These WGCNA downstream scripts answer group effects and interpretation without
 changing primary network construction. Microglia ROI WGCNA uses all proteins
 detected after the existing filtering/imputation; neuropil/microglia evidence is
 used for annotation, reporting, plotting, and sensitivity interpretation only.
+Reference marker import is cached/versioned/optional and offline by default; set
+`PROTEOMICS_REFERENCE_MARKERS_ALLOW_DOWNLOAD=true` only when intentionally
+allowing live downloads. Empirical marker discovery uses ROI/dataset contrasts
+across `neuron_neuropil`, `neuron_soma`, and `microglia`; CON/RES/SUS contrasts
+must not define marker sets.
 
 Phase 3 canonicalized the safer downstream/helper scripts, and the newer
 downstream interpretation layer adds dry-run checks:
 
 ```bash
 Rscript 06_modules_WGCNA/01_WGCNA.r --dry-run
+Rscript 03_qc_exploration/04b_import_reference_marker_sources.r --dry-run
+Rscript 03_qc_exploration/05_empirical_roi_marker_discovery.r --dry-run
 Rscript 03_qc_exploration/06_wgcna_marker_trait_export.r --dataset microglia --dry-run
 Rscript 06_modules_WGCNA/05_module_supermodule_group_effects.r --dataset microglia --dry-run
 Rscript 06_modules_WGCNA/06_annotate_module_microenvironment.r --dataset microglia --dry-run
