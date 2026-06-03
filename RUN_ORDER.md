@@ -239,17 +239,43 @@ Rscript 05_celltype_enrichment_EWCE/01_EWCE_E9.r --dry-run
 
 Typical outputs include module assignments, module scores, module preservation statistics, and trait correlations.
 
-Phase 3 canonicalized the safer downstream/helper scripts:
+The intended WGCNA downstream order for each dataset is:
+
+```bash
+Rscript 06_modules_WGCNA/01_WGCNA.r --dataset <dataset>
+Rscript 03_qc_exploration/06_wgcna_marker_trait_export.r --dataset <dataset>
+Rscript 06_modules_WGCNA/05_module_supermodule_group_effects.r --dataset <dataset>
+Rscript 06_modules_WGCNA/06_annotate_module_microenvironment.r --dataset <dataset>
+Rscript 06_modules_WGCNA/07_wgcna_interpretable_summary.r --dataset <dataset>
+```
+
+For microglia-enriched ROI interpretation, also run the neuropil reference
+annotation before module annotation when the DE/GSEA manifests are available:
+
+```bash
+Rscript 04_differential_expression_enrichment/04_neuropil_contamination_annotation.r --dataset microglia
+```
+
+These WGCNA downstream scripts answer group effects and interpretation without
+changing primary network construction. Microglia ROI WGCNA uses all proteins
+detected after the existing filtering/imputation; neuropil/microglia evidence is
+used for annotation, reporting, plotting, and sensitivity interpretation only.
+
+Phase 3 canonicalized the safer downstream/helper scripts, and the newer
+downstream interpretation layer adds dry-run checks:
 
 ```bash
 Rscript 06_modules_WGCNA/01_WGCNA.r --dry-run
+Rscript 03_qc_exploration/06_wgcna_marker_trait_export.r --dataset microglia --dry-run
+Rscript 06_modules_WGCNA/05_module_supermodule_group_effects.r --dataset microglia --dry-run
+Rscript 06_modules_WGCNA/06_annotate_module_microenvironment.r --dataset microglia --dry-run
+Rscript 06_modules_WGCNA/07_wgcna_interpretable_summary.r --dataset all --dry-run
 Rscript 01_preprocessing/06_merged_metadata_module_score.r --dataset microglia --dry-run
 Rscript 01_preprocessing/06_merged_metadata_module_score.r --dataset neuron_soma --dry-run
 Rscript 01_preprocessing/06_merged_metadata_module_score.r --dataset neuron_neuropil --dry-run
-Rscript 06_modules_WGCNA/02_module_spatial_networks.r --dry-run
-Rscript 06_modules_WGCNA/04_overlap_modules.r --dry-run
-Rscript 06_modules_WGCNA/05_wgcna_de_gsea_overlap.r --dry-run
-Rscript 06_modules_WGCNA/91_module_score.r --dry-run
+Rscript 06_modules_WGCNA/03_score_module_activity.R --dataset microglia --dry-run
+Rscript 06_modules_WGCNA/04_wgcna_de_gsea_overlap.r --dataset microglia --dry-run
+Rscript 06_modules_WGCNA/06_module_spatial_networks.r --dataset microglia --module-definition-source wgcna --dry-run
 ```
 
 `06_modules_WGCNA/03_score_module_activity.R` is the canonical active module-score script. By default it consumes dataset-aware module definitions (source-scoped by dataset and `PROTEOMICS_MODULE_DEFINITION_SOURCE`) and dataset-scoped merged metadata from:
@@ -300,9 +326,51 @@ Additional module evidence exports:
 results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_module_evidence_rank.csv
 results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_module_preservation_summary.csv
 results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_module_GSEA_coregene_overlap.csv
+results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_module_supermodule_annotation.csv
+results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_supermodule_summary.csv
 ```
 
-`05_wgcna_de_gsea_overlap.r` is an optional bridge from WGCNA modules to DE/GSEA manifests. It writes `WGCNA_vs_DE_GSEA_overlap.csv/xlsx` under `results/tables/06_modules_WGCNA/05_wgcna_de_gsea_overlap/<dataset>/` and, when overlap inputs are available, appends strongest overlap columns to `WGCNA_module_priority_summary.csv`. Missing DE/GSEA inputs are recorded as skipped status rather than failing the WGCNA run.
+The new group-effect outputs are:
+
+```text
+results/tables/06_modules_WGCNA/group_effects/<dataset>/module_group_effects.csv
+results/tables/06_modules_WGCNA/group_effects/<dataset>/supermodule_group_effects.csv
+results/tables/06_modules_WGCNA/group_effects/<dataset>/supermodule_composition.csv
+```
+
+The first table answers which modules differ between CON/RES/SUS; the second
+answers which supermodules differ between CON/RES/SUS, including spatial unit
+and spatial-adjusted/global contrasts where estimable.
+
+The biological interpretation outputs are:
+
+```text
+results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_module_biological_annotation.csv
+results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_supermodule_biological_annotation.csv
+results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_supermodule_group_effects_interpretable.csv
+results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_module_group_effects_interpretable.csv
+```
+
+For microglia, the annotation tables answer whether changed ROI
+modules/supermodules are microglia-supported, shared local microenvironment,
+neuropil-sensitive, or ambiguous. The wording is intentionally conservative:
+microglia ROIs are not treated as purified microglia, and neuropil evidence is
+not subtracted or removed from the primary WGCNA.
+
+Optional existing downstream scripts remain useful:
+
+```bash
+Rscript 06_modules_WGCNA/03_score_module_activity.R --dataset <dataset>
+Rscript 06_modules_WGCNA/04_wgcna_de_gsea_overlap.r --dataset <dataset>
+Rscript 06_modules_WGCNA/06_module_spatial_networks.r --dataset <dataset> --module-definition-source wgcna
+```
+
+There is a numbering conflict: the existing `06_module_spatial_networks.r` now
+shares the `06_` prefix with the new annotation script. It was not renamed here
+to avoid breaking existing calls; a later cleanup can move spatial networks to a
+non-conflicting number with a compatibility wrapper.
+
+`04_wgcna_de_gsea_overlap.r` is an optional bridge from WGCNA modules to DE/GSEA manifests. It writes `WGCNA_vs_DE_GSEA_overlap.csv/xlsx` under `results/tables/06_modules_WGCNA/04_wgcna_de_gsea_overlap/<dataset>/` and, when overlap inputs are available, appends strongest overlap columns to `WGCNA_module_priority_summary.csv`. Missing DE/GSEA inputs are recorded as skipped status rather than failing the WGCNA run.
 
 ## 7. Spatial network analyses
 
@@ -357,9 +425,10 @@ Rscript 08_behavior_physio_coupling/02_network_behavior_coupling.r --dry-run
 ```r
 source("09_export_pride_journal/01_make_pride_manifest.R")
 source("09_export_pride_journal/02_make_sample_metadata.R")
-source("09_export_pride_journal/03_make_supplementary_tables.R")
-source("09_export_pride_journal/04_validate_pride_submission.R")
-source("09_export_pride_journal/05_make_methods_summary.R")
+source("09_export_pride_journal/03_export_processed_pg_matrix_package.R")
+source("09_export_pride_journal/04_make_supplementary_tables.R")
+source("09_export_pride_journal/05_validate_pride_submission.R")
+source("09_export_pride_journal/06_make_methods_summary.R")
 ```
 
 Dry-run validation:
@@ -367,13 +436,14 @@ Dry-run validation:
 ```bash
 Rscript 09_export_pride_journal/01_make_pride_manifest.R --dry-run
 Rscript 09_export_pride_journal/02_make_sample_metadata.R --dry-run
-Rscript 09_export_pride_journal/03_make_supplementary_tables.R --dry-run
-Rscript 09_export_pride_journal/04_validate_pride_submission.R --dry-run
-Rscript 09_export_pride_journal/05_make_methods_summary.R --dry-run
-Rscript 09_export_pride_journal/06_make_biological_claims_table.R --dry-run
+Rscript 09_export_pride_journal/03_export_processed_pg_matrix_package.R --dry-run
+Rscript 09_export_pride_journal/04_make_supplementary_tables.R --dry-run
+Rscript 09_export_pride_journal/05_validate_pride_submission.R --dry-run
+Rscript 09_export_pride_journal/06_make_methods_summary.R --dry-run
+Rscript 09_export_pride_journal/07_make_biological_claims_table.R --dry-run
 ```
 
-`06_make_biological_claims_table.R` generates
+`07_make_biological_claims_table.R` generates
 `results/tables/biological_claims_table.csv` and, when XLSX support is
 installed, `results/tables/biological_claims_table.xlsx`. Columns include
 dataset, region, layer/cell compartment, contrast, biological program,
@@ -391,7 +461,7 @@ for ds in neuron_neuropil neuron_soma microglia; do
   Rscript run_dataset_pipeline.R --dataset "$ds" --stage enrichment
   Rscript run_dataset_pipeline.R --dataset "$ds" --stage modules
 done
-Rscript 09_export_pride_journal/06_make_biological_claims_table.R
+Rscript 09_export_pride_journal/07_make_biological_claims_table.R
 ```
 
 Use `--stage networks`, `--stage behavior`, and `--stage export` after the core
