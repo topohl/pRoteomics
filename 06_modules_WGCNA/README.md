@@ -8,10 +8,14 @@ Run per dataset:
 
 ```bash
 Rscript 06_modules_WGCNA/01_WGCNA.r --dataset <dataset>
+Rscript 03_qc_exploration/04b_import_reference_marker_sources.r
+Rscript 03_qc_exploration/05_empirical_roi_marker_discovery.r
 Rscript 03_qc_exploration/06_wgcna_marker_trait_export.r --dataset <dataset>
+Rscript 04_differential_expression_enrichment/04_neuropil_contamination_annotation.r --dataset microglia
 Rscript 06_modules_WGCNA/05_module_supermodule_group_effects.r --dataset <dataset>
 Rscript 06_modules_WGCNA/06_annotate_module_microenvironment.r --dataset <dataset>
 Rscript 06_modules_WGCNA/07_wgcna_interpretable_summary.r --dataset <dataset>
+Rscript 06_modules_WGCNA/07_wgcna_interpretable_summary.r --dataset all
 ```
 
 Valid datasets are `neuron_neuropil`, `neuron_soma`, and `microglia`.
@@ -30,6 +34,10 @@ Important constraints:
 - Neuropil-overlap proteins are not removed from primary microglia WGCNA.
 - Marker and neuropil evidence is used only for annotation, reporting, plotting,
   and sensitivity interpretation.
+- Marker sets are loaded from `config/marker_panels/wgcna_reference_marker_sets.csv`,
+  then empirical ROI sets if present, then legacy hard-coded panels only as fallback.
+- Reference marker import is offline by default; live downloads require
+  `PROTEOMICS_REFERENCE_MARKERS_ALLOW_DOWNLOAD=true`.
 
 Main answers:
 
@@ -51,7 +59,8 @@ correlations are written as annotation-only sensitivity outputs under
 `results/tables/06_modules_WGCNA/group_effects/<dataset>/`.
 
 Microglia ROI module classes are conservative:
-`microglia_supported`, `shared_microenvironment`, `neuropil_sensitive`,
+`microglia_supported`, `microglia_state_or_activation_supported`,
+`shared_microenvironment`, `neuropil_sensitive`,
 `other_cellular_or_vascular_sensitive`, or `ambiguous`.
 
 Supermodule naming is auditable. `01_WGCNA.r` exports data-driven IDs/labels,
