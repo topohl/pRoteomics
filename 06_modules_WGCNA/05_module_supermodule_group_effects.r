@@ -47,6 +47,8 @@ status_row <- function(level, endpoint_id, endpoint_label, spatial_unit, effect_
   tibble::tibble(
     dataset = DATASET,
     level = level,
+    endpoint_id = endpoint_id,
+    endpoint_label = endpoint_label,
     module_id = if (level == "module") endpoint_id else NA_character_,
     supermodule_id = if (level == "supermodule") endpoint_id else NA_character_,
     module_label = if (level == "module") endpoint_label else NA_character_,
@@ -64,6 +66,7 @@ status_row <- function(level, endpoint_id, endpoint_label, spatial_unit, effect_
     p_value = NA_real_,
     FDR_within_dataset_level = NA_real_,
     FDR_global = NA_real_,
+    evidence_status = "not_supported",
     direction = NA_character_,
     n_samples = if (is.null(dat)) 0L else nrow(dat),
     formula_requested = formula_requested,
@@ -136,6 +139,8 @@ contrast_rows <- function(fit_info, dat, level, endpoint_id, endpoint_label, spa
       return(tibble::tibble(
         dataset = DATASET,
         level = level,
+        endpoint_id = endpoint_id,
+        endpoint_label = endpoint_label,
         module_id = if (level == "module") endpoint_id else NA_character_,
         supermodule_id = if (level == "supermodule") endpoint_id else NA_character_,
         module_label = if (level == "module") endpoint_label else NA_character_,
@@ -153,6 +158,7 @@ contrast_rows <- function(fit_info, dat, level, endpoint_id, endpoint_label, spa
         p_value = as.numeric(contr$p.value),
         FDR_within_dataset_level = NA_real_,
         FDR_global = NA_real_,
+        evidence_status = NA_character_,
         direction = dplyr::case_when(estimate > 0 ~ "higher", estimate < 0 ~ "lower", TRUE ~ "zero"),
         n_samples = nrow(dat),
         formula_requested = fit_info$formula_requested,
@@ -178,6 +184,8 @@ contrast_rows <- function(fit_info, dat, level, endpoint_id, endpoint_label, spa
       est <- means$mean[match(parts[[1]], means$StressGroup)] - means$mean[match(parts[[2]], means$StressGroup)]
       tibble::tibble(
         dataset = DATASET, level = level,
+        endpoint_id = endpoint_id,
+        endpoint_label = endpoint_label,
         module_id = if (level == "module") endpoint_id else NA_character_,
         supermodule_id = if (level == "supermodule") endpoint_id else NA_character_,
         module_label = if (level == "module") endpoint_label else NA_character_,
@@ -190,6 +198,7 @@ contrast_rows <- function(fit_info, dat, level, endpoint_id, endpoint_label, spa
         statistic = if (!is.null(tt)) unname(tt$statistic) else NA_real_,
         p_value = if (!is.null(tt)) tt$p.value else NA_real_,
         FDR_within_dataset_level = NA_real_, FDR_global = NA_real_,
+        evidence_status = NA_character_,
         direction = dplyr::case_when(est > 0 ~ "higher", est < 0 ~ "lower", TRUE ~ "zero"),
         n_samples = nrow(dat), formula_requested = fit_info$formula_requested,
         formula_used = fit_info$formula_used, dropped_covariates = paste(dropped, collapse = ";"),
@@ -307,6 +316,47 @@ correlate_marker_traits <- function(eigengenes, endpoint_map, marker_traits, lev
   out
 }
 
+classify_group_effect_evidence <- function(df) {
+  warn <- if ("model_warning" %in% names(df)) tolower(as.character(df$model_warning)) else rep("", nrow(df))
+  warn[is.na(warn)] <- ""
+  rank_def <- if ("rank_deficient_model" %in% names(df)) suppressWarnings(as.logical(df$rank_deficient_model)) else rep(FALSE, nrow(df))
+  rank_def[is.na(rank_def)] <- FALSE
+  unstable <- rank_def |
+    grepl("rank|singular|not estimable|failed|unavailable|t-test|too few|empty", warn)
+  dplyr::case_when(
+    is.na(df$p_value) ~ "not_supported",
+    unstable ~ "model_unstable",
+    !is.na(df$FDR_global) & df$FDR_global <= 0.05 ~ "robust_FDR",
+    !is.na(df$FDR_global) & df$FDR_global <= 0.10 ~ "suggestive_FDR10",
+    !is.na(df$FDR_within_dataset_level) & df$FDR_within_dataset_level <= 0.05 ~ "robust_FDR",
+    !is.na(df$FDR_within_dataset_level) & df$FDR_within_dataset_level <= 0.10 ~ "suggestive_FDR10",
+    !is.na(df$p_value) & df$p_value < 0.05 ~ "nominal_only",
+    TRUE ~ "not_supported"
+  )
+}
+
+rank_group_effects <- function(df) {
+  for (nm in required_group_effect_columns) if (!nm %in% names(df)) df[[nm]] <- NA
+  out <- df |>
+    dplyr::mutate(
+      endpoint_id = dplyr::coalesce(.data$endpoint_id, ifelse(.data$level == "module", .data$module_id, .data$supermodule_id)),
+      endpoint_label = dplyr::coalesce(.data$endpoint_label, ifelse(.data$level == "module", .data$module_label, .data$supermodule_label))
+    )
+  out$evidence_status <- classify_group_effect_evidence(out)
+  out |>
+    dplyr::mutate(
+      evidence_rank = dplyr::case_when(
+        .data$evidence_status == "robust_FDR" ~ 1L,
+        .data$evidence_status == "suggestive_FDR10" ~ 2L,
+        .data$evidence_status == "nominal_only" ~ 3L,
+        .data$evidence_status == "model_unstable" ~ 4L,
+        TRUE ~ 5L
+      )
+    ) |>
+    dplyr::arrange(.data$evidence_rank, .data$FDR_global, .data$FDR_within_dataset_level, .data$p_value, dplyr::desc(abs(.data$estimate))) |>
+    dplyr::select(-"evidence_rank")
+}
+
 state <- tryCatch(load_wgcna_state(FILES$state), error = function(e) e)
 if (inherits(state, "error")) {
   msg <- conditionMessage(state)
@@ -322,9 +372,9 @@ if (inherits(state, "error")) {
   maps <- make_endpoint_maps(module_eig, definitions, super_ann)
   super <- make_supermodule_eigengenes(module_eig, maps$super_map)
   comp <- super$composition |>
-    dplyr::mutate(dataset = DATASET, .before = .data$supermodule_id) |>
+    dplyr::mutate(dataset = DATASET, .before = "supermodule_id") |>
     dplyr::left_join(maps$super_map |> dplyr::distinct(SupermoduleID, SupermoduleLabel), by = c("supermodule_id" = "SupermoduleID")) |>
-    dplyr::rename(supermodule_label = .data$SupermoduleLabel)
+    dplyr::rename(supermodule_label = "SupermoduleLabel")
 
   module_out <- if (LEVEL %in% c("module", "both")) run_effects(module_eig, maps$module_map, "module", state) else empty_group_effects(DATASET, "module", "not requested")
   super_endpoint_map <- comp |> dplyr::transmute(endpoint_col = .data$supermodule_eigengene, endpoint_id = .data$supermodule_id, endpoint_label = .data$supermodule_label)
@@ -341,6 +391,8 @@ module_out$FDR_global <- all_fdr[seq_len(nrow(module_out))]
 super_out$FDR_global <- all_fdr[seq_len(nrow(super_out)) + nrow(module_out)]
 module_out$FDR_within_dataset_level <- stats::p.adjust(module_out$p_value, method = "BH")
 super_out$FDR_within_dataset_level <- stats::p.adjust(super_out$p_value, method = "BH")
+module_out <- rank_group_effects(module_out)
+super_out <- rank_group_effects(super_out)
 module_out <- module_out[, required_group_effect_columns]
 super_out <- super_out[, required_group_effect_columns]
 
