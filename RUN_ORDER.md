@@ -342,6 +342,15 @@ The first table answers which modules differ between CON/RES/SUS; the second
 answers which supermodules differ between CON/RES/SUS, including spatial unit
 and spatial-adjusted/global contrasts where estimable.
 
+`05_module_supermodule_group_effects.r` reports three explicit effect scopes:
+`within_spatial_unit`, `spatial_adjusted_global`, and
+`stress_by_spatial_interaction`. If repeated `AnimalID` values exist and
+`lmerTest` is available, it uses `lmerTest::lmer(... + (1 | AnimalID))`;
+otherwise it uses `lm` and records the fallback in `model_type` and
+`model_warning`. Marker traits are not model covariates by default; they are
+reported separately in `module_marker_trait_correlations.csv` and
+`supermodule_marker_trait_correlations.csv`.
+
 The biological interpretation outputs are:
 
 ```text
@@ -353,9 +362,21 @@ results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_module_gro
 
 For microglia, the annotation tables answer whether changed ROI
 modules/supermodules are microglia-supported, shared local microenvironment,
-neuropil-sensitive, or ambiguous. The wording is intentionally conservative:
-microglia ROIs are not treated as purified microglia, and neuropil evidence is
-not subtracted or removed from the primary WGCNA.
+neuropil-sensitive, other-cellular/vascular-sensitive, or ambiguous. The wording
+is intentionally conservative: microglia ROIs are not treated as purified
+microglia, and neuropil evidence is not subtracted or removed from the primary
+WGCNA.
+
+`01_WGCNA.r` also writes auditable supermodule naming and robustness diagnostics:
+
+```text
+results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/supermodule_clustering_sensitivity.csv
+results/figures/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/supermodule_clustering_sensitivity.svg
+```
+
+Manual config labels in `config/wgcna_supermodules/<dataset>.csv` are retained
+as curated overrides, while data-driven labels, curated labels, final labels,
+label source/confidence/rationale, and `ManualReviewRequired` are exported.
 
 Optional existing downstream scripts remain useful:
 
