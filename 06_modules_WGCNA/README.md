@@ -1,80 +1,124 @@
-# WGCNA Modules And Downstream Interpretation
+# WGCNA Modules And Group Effects
 
-`01_WGCNA.r` remains the primary network-construction script. The downstream
-scripts added here test group effects, add biological annotation, and create
-human-readable summaries without changing the primary WGCNA protein universe.
+This folder builds WGCNA modules/supermodules and answers the primary biological
+question:
 
-Run per dataset:
+**Which WGCNA modules and supermodules differ between CON, RES, and SUS across
+microglia, neuron_soma, and neuron_neuropil?**
 
-```bash
+The primary inference layer is:
+
+```powershell
+Rscript 06_modules_WGCNA/05_module_supermodule_group_effects.r --dataset <dataset> --level both
+```
+
+`01_WGCNA.r` builds networks and exports QC/descriptive screens. Its
+module-trait and condition/eigengene heatmaps are useful for exploration, but
+they are not the final group-effect inference.
+
+## Recommended Run Order
+
+```powershell
 Rscript 06_modules_WGCNA/01_WGCNA.r --dataset <dataset>
-Rscript 03_qc_exploration/04b_import_reference_marker_sources.r
-Rscript 03_qc_exploration/05_empirical_roi_marker_discovery.r
-Rscript 03_qc_exploration/06_wgcna_marker_trait_export.r --dataset <dataset>
-Rscript 04_differential_expression_enrichment/04_neuropil_contamination_annotation.r --dataset microglia
-Rscript 06_modules_WGCNA/05_module_supermodule_group_effects.r --dataset <dataset>
+Rscript 06_modules_WGCNA/05_module_supermodule_group_effects.r --dataset <dataset> --level both
+Rscript 06_modules_WGCNA/04_wgcna_de_gsea_overlap.r --dataset <dataset>
 Rscript 06_modules_WGCNA/06_annotate_module_microenvironment.r --dataset <dataset>
 Rscript 06_modules_WGCNA/07_wgcna_interpretable_summary.r --dataset <dataset>
+```
+
+Run the final cross-dataset summary after all datasets are complete:
+
+```powershell
 Rscript 06_modules_WGCNA/07_wgcna_interpretable_summary.r --dataset all
 ```
 
-Valid datasets are `neuron_neuropil`, `neuron_soma`, and `microglia`.
+## Dataset Spatial Units
 
-For microglia-enriched ROI interpretation, also run the neuropil reference
-annotation when DE/GSEA manifests exist:
+`microglia` and `neuron_soma` use `region`.
 
-```bash
-Rscript 04_differential_expression_enrichment/04_neuropil_contamination_annotation.r --dataset microglia
+`neuron_neuropil` uses `region_layer`.
+
+`05_module_supermodule_group_effects.r` records this in `SpatialUnitType` and
+uses `spatial_unit` for the tested region or region-layer.
+
+## Interpretation Hierarchy
+
+Use evidence in this order:
+
+1. Primary adjusted WGCNA eigengene and supermodule models from `05_module_supermodule_group_effects.r`
+2. Secondary module/program score robustness and behavior coupling from `03_score_module_activity.R`
+3. DE/GSEA overlap support from `04_wgcna_de_gsea_overlap.r`
+4. Descriptive module-trait and condition heatmaps from `01_WGCNA.r`
+
+The group-effect tables include ranked module and supermodule rows with model
+metadata, FDRs, and `evidence_status`:
+`robust_FDR`, `suggestive_FDR10`, `nominal_only`, `model_unstable`, or
+`not_supported`.
+
+Main outputs:
+
+- `results/tables/06_modules_WGCNA/group_effects/<dataset>/module_group_effects.csv`
+- `results/tables/06_modules_WGCNA/group_effects/<dataset>/supermodule_group_effects.csv`
+- `results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_supermodule_group_effects_interpretable.csv`
+- `results/tables/06_modules_WGCNA/interpretable_summary/all/WGCNA_cross_dataset_supermodule_program_summary.csv`
+
+## Supermodule Annotation
+
+`01_WGCNA.r` keeps data-driven eigengene clustering and sensitivity outputs.
+Supermodule annotations include `GO_label_confidence_class`:
+`GO_supported`, `suggestive_GO`, `manual_only`, `hub_only`, `unresolved`, or
+`manual_absent_from_dataset`.
+
+Manual labels absent from the active dataset are retained for audit but marked
+with `present_in_dataset = FALSE`, `annotation_scope =
+manual_absent_from_dataset`, and `manual_label_status =
+manual_label_absent_from_dataset`.
+
+## Secondary Module Scores
+
+`03_score_module_activity.R` is a secondary module/program scoring and
+behavior-coupling layer. It preserves mapping trace, coverage QC, replicate QC,
+and behavior-coupling exports. It records `PROTEOMICS_MODULE_DEFINITION_SOURCE`
+or the dataset fallback in `module_score_run_metadata.csv`; primary WGCNA
+eigengene group effects still come from `05_module_supermodule_group_effects.r`.
+
+Example explicit score-source runs:
+
+```powershell
+$env:PROTEOMICS_MODULE_DEFINITION_SOURCE = "wgcna"
+Rscript 06_modules_WGCNA/03_score_module_activity.R --dataset microglia
+Rscript 06_modules_WGCNA/03_score_module_activity.R --dataset neuron_soma
+
+$env:PROTEOMICS_MODULE_DEFINITION_SOURCE = "overlap"
+Rscript 06_modules_WGCNA/03_score_module_activity.R --dataset neuron_neuropil
+Remove-Item Env:\PROTEOMICS_MODULE_DEFINITION_SOURCE
 ```
 
-Important constraints:
+## Example PowerShell Commands
 
-- Microglia ROI samples are not treated as purified microglia.
-- Neuropil intensities and logFC values are not subtracted.
-- Neuropil-overlap proteins are not removed from primary microglia WGCNA.
-- Marker and neuropil evidence is used only for annotation, reporting, plotting,
-  and sensitivity interpretation.
-- Marker sets are loaded from `config/marker_panels/wgcna_reference_marker_sets.csv`,
-  then empirical ROI sets if present, then legacy hard-coded panels only as fallback.
-- Reference marker import is offline by default; live downloads require
-  `PROTEOMICS_REFERENCE_MARKERS_ALLOW_DOWNLOAD=true`.
-
-Main answers:
-
-- Changed modules: `results/tables/06_modules_WGCNA/group_effects/<dataset>/module_group_effects.csv`
-- Changed supermodules: `results/tables/06_modules_WGCNA/group_effects/<dataset>/supermodule_group_effects.csv`
-- Interpretable supermodule summary: `results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_supermodule_group_effects_interpretable.csv`
-- Microglia ROI support class: `results/tables/06_modules_WGCNA/module_annotation/microglia/WGCNA_module_biological_annotation.csv` and `WGCNA_supermodule_biological_annotation.csv`
-
-Group-effect outputs use explicit effect scopes:
-
-- `within_spatial_unit`: `eigengene ~ StressGroup + Sex + Batch`
-- `spatial_adjusted_global`: `eigengene ~ StressGroup + SpatialLabel + Sex + Batch`
-- `stress_by_spatial_interaction`: `eigengene ~ StressGroup * SpatialLabel + Sex + Batch`
-
-When repeated `AnimalID` values are present and `lmerTest` is installed, the
-group-effect script adds `(1 | AnimalID)` and records `model_type =
-lmerTest_lmer`; otherwise it uses `lm` and records the fallback. Marker-trait
-correlations are written as annotation-only sensitivity outputs under
-`results/tables/06_modules_WGCNA/group_effects/<dataset>/`.
-
-Microglia ROI module classes are conservative:
-`microglia_supported`, `microglia_state_or_activation_supported`,
-`shared_microenvironment`, `neuropil_sensitive`,
-`other_cellular_or_vascular_sensitive`, or `ambiguous`.
-
-Supermodule naming is auditable. `01_WGCNA.r` exports data-driven IDs/labels,
-curated labels, final labels, label source/confidence/rationale, manual-review
-flags, and clustering sensitivity across cut heights 0.25-0.45.
-
-Optional existing downstream:
-
-```bash
-Rscript 06_modules_WGCNA/03_score_module_activity.R --dataset <dataset>
-Rscript 06_modules_WGCNA/04_wgcna_de_gsea_overlap.r --dataset <dataset>
-Rscript 06_modules_WGCNA/06_module_spatial_networks.r --dataset <dataset> --module-definition-source wgcna
+```powershell
+Rscript 06_modules_WGCNA/01_WGCNA.r --dataset microglia
+Rscript 06_modules_WGCNA/05_module_supermodule_group_effects.r --dataset microglia --level both
+Rscript 06_modules_WGCNA/04_wgcna_de_gsea_overlap.r --dataset microglia
+Rscript 06_modules_WGCNA/06_annotate_module_microenvironment.r --dataset microglia
+Rscript 06_modules_WGCNA/07_wgcna_interpretable_summary.r --dataset microglia
 ```
 
-Note: `06_module_spatial_networks.r` already used the `06_` prefix before the
-new annotation script was added. It was not renamed to avoid breaking existing
-calls.
+```powershell
+Rscript 06_modules_WGCNA/01_WGCNA.r --dataset neuron_soma
+Rscript 06_modules_WGCNA/05_module_supermodule_group_effects.r --dataset neuron_soma --level both
+Rscript 06_modules_WGCNA/04_wgcna_de_gsea_overlap.r --dataset neuron_soma
+Rscript 06_modules_WGCNA/06_annotate_module_microenvironment.r --dataset neuron_soma
+Rscript 06_modules_WGCNA/07_wgcna_interpretable_summary.r --dataset neuron_soma
+```
+
+```powershell
+Rscript 06_modules_WGCNA/01_WGCNA.r --dataset neuron_neuropil
+Rscript 06_modules_WGCNA/05_module_supermodule_group_effects.r --dataset neuron_neuropil --level both
+Rscript 06_modules_WGCNA/04_wgcna_de_gsea_overlap.r --dataset neuron_neuropil
+Rscript 06_modules_WGCNA/06_annotate_module_microenvironment.r --dataset neuron_neuropil
+Rscript 06_modules_WGCNA/07_wgcna_interpretable_summary.r --dataset neuron_neuropil
+```
+
+Note: `06_module_spatial_networks.r` keeps its existing name to avoid breaking
+older calls.
