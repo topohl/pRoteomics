@@ -40,6 +40,7 @@ default_module_definition_source <- function(dataset) {
 }
 
 module_definition_source_override <- Sys.getenv("PROTEOMICS_MODULE_DEFINITION_SOURCE", unset = "")
+module_definition_source_was_explicit <- nzchar(module_definition_source_override)
 module_definition_source <- tolower(if (nzchar(module_definition_source_override)) {
   module_definition_source_override
 } else {
@@ -50,6 +51,14 @@ if (!module_definition_source %in% allowed_module_definition_sources) {
   stop(
     "Unsupported PROTEOMICS_MODULE_DEFINITION_SOURCE: ", module_definition_source,
     ". Use one of: ", paste(allowed_module_definition_sources, collapse = ", "),
+    call. = FALSE
+  )
+}
+if (!module_definition_source_was_explicit) {
+  warning(
+    "PROTEOMICS_MODULE_DEFINITION_SOURCE is not set; using recorded dataset fallback '",
+    module_definition_source,
+    "'. Set PROTEOMICS_MODULE_DEFINITION_SOURCE=wgcna, overlap, or custom to make this secondary scoring source explicit.",
     call. = FALSE
   )
 }
@@ -192,7 +201,8 @@ dir.create(dir_directional, recursive = TRUE, showWarnings = FALSE)
 if (is_dry_run()) {
   dry_run_line("Script", "06_modules_WGCNA/03_score_module_activity.R")
   dry_run_line("Dataset", dataset_profile)
-  dry_run_line("Module source override", if (nzchar(module_definition_source_override)) module_definition_source_override else "not set; dataset-aware default used")
+  dry_run_line("Module source override", if (nzchar(module_definition_source_override)) module_definition_source_override else paste0("not set; recorded dataset fallback used: ", module_definition_source))
+  dry_run_line("Inference role", "secondary robustness/program scoring; primary WGCNA eigengene group effects come from 06_modules_WGCNA/05_module_supermodule_group_effects.r")
   dry_run_line("Resolved input diagnostics", paste(dataset_inputs$diagnostics, collapse = " | "))
   dry_run_line("Protein matrix", protein_file, if (file.exists(protein_file)) "PASS" else "FAIL")
   dry_run_line("Metadata file", metadata_file, if (file.exists(metadata_file)) "PASS" else "FAIL")
@@ -217,6 +227,19 @@ if (is_dry_run()) {
   dry_run_line("Expected mapping trace", file.path(dir_tables, "module_feature_mapping_trace.csv"))
   quit(status = if (all(file.exists(c(protein_file, metadata_file, mapping_file, module_definitions_file)))) 0 else 1, save = "no")
 }
+module_score_role_note <- "Secondary module/program scoring and behavior-coupling layer. Primary WGCNA module and supermodule CON/RES/SUS inference uses eigengene models from 06_modules_WGCNA/05_module_supermodule_group_effects.r."
+module_score_run_metadata <- tibble::tibble(
+  dataset = dataset_profile,
+  module_definition_source = module_definition_source,
+  module_definition_source_explicit = module_definition_source_was_explicit,
+  module_definition_source_env = if (module_definition_source_was_explicit) module_definition_source_override else NA_character_,
+  module_definition_source_resolution = if (module_definition_source_was_explicit) "PROTEOMICS_MODULE_DEFINITION_SOURCE" else "recorded_dataset_fallback",
+  inference_role = "secondary_module_score_robustness_behavior_coupling",
+  primary_wgcna_inference_script = "06_modules_WGCNA/05_module_supermodule_group_effects.r",
+  interpretation_note = module_score_role_note
+)
+readr::write_csv(module_score_run_metadata, file.path(dir_tables, "module_score_run_metadata.csv"), na = "")
+readr::write_csv(module_score_run_metadata, file.path(dir_qc, "module_score_run_metadata.csv"), na = "")
 input_paths <- c(
   "Protein matrix" = protein_file,
   "Metadata file" = metadata_file,
@@ -3651,6 +3674,7 @@ score_outputs_manifest <- list(
   module_scores_per_sample_xlsx = file.path(dir_tables, "module_scores_per_sample.xlsx"),
   module_feature_mapping_trace_csv = file.path(dir_tables, "module_feature_mapping_trace.csv"),
   module_gene_coverage_csv = file.path(dir_tables, "module_gene_coverage.csv"),
+  module_score_run_metadata_csv = file.path(dir_tables, "module_score_run_metadata.csv"),
   module_scores_pca_sensitivity_csv = file.path(dir_tables, "module_scores_pca_sensitivity.csv"),
   module_scores_pca_sensitivity_xlsx = file.path(dir_tables, "module_scores_pca_sensitivity.xlsx")
 )
@@ -3672,6 +3696,8 @@ write_run_manifest(
   parameters = list(
     dataset = dataset_profile,
     module_definition_source = module_definition_source,
+    module_definition_source_explicit = module_definition_source_was_explicit,
+    module_definition_source_resolution = if (module_definition_source_was_explicit) "PROTEOMICS_MODULE_DEFINITION_SOURCE" else "recorded_dataset_fallback",
     module_definition_source_override = if (nzchar(module_definition_source_override)) module_definition_source_override else NA_character_,
     module_score_version = module_score_version,
     module_definitions_sheet = module_definitions_sheet,
@@ -3682,7 +3708,7 @@ write_run_manifest(
     low_coverage_fraction_threshold = 0.2,
     low_coverage_found_threshold = 5
   ),
-  notes = "Dataset/source-scoped module score contract. Version is stored here, not in the output folder name."
+  notes = module_score_role_note
 )
 
 cat("Done. Results saved to:\n", saving_dir, "\n")
