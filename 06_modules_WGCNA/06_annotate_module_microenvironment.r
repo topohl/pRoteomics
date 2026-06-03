@@ -16,6 +16,8 @@ DATASET <- run$dataset
 PATHS <- wgcna_downstream_paths("module_annotation", DATASET)
 FILES <- resolve_wgcna_files(DATASET)
 force_microglia <- tolower(Sys.getenv("PROTEOMICS_FORCE_MICROGLIA_MODULE_ANNOTATION", unset = "false")) %in% c("1", "true", "yes")
+classification_threshold <- suppressWarnings(as.numeric(Sys.getenv("PROTEOMICS_WGCNA_MARKER_FRACTION_THRESHOLD", unset = "0.10")))
+if (!is.finite(classification_threshold)) classification_threshold <- 0.10
 
 if (run$dry_run) {
   invisible(lapply(unlist(PATHS), dir_create))
@@ -95,13 +97,45 @@ top_go_for_module <- function(module_color) {
 classify_module <- function(row) {
   micro <- as.numeric(row$microglia_marker_fraction)
   neuro <- as.numeric(row$neuropil_synaptic_neuronal_marker_fraction)
+  astro <- as.numeric(row$astrocyte_marker_fraction)
+  oligo <- as.numeric(row$oligodendrocyte_myelin_marker_fraction)
+  vascular <- as.numeric(row$endothelial_pericyte_vascular_marker_fraction)
   robust <- as.integer(row$n_microglia_robust_term_overlaps %||% 0)
   sensitive <- as.integer(row$n_neuropil_sensitive_term_overlaps %||% 0)
-  mixed <- as.integer(row$n_mixed_microenvironment_term_overlaps %||% 0)
-  if ((is.finite(micro) && micro >= 0.10 && (!is.finite(neuro) || neuro < 0.10)) || robust > 0) return("microglia_supported")
-  if ((is.finite(micro) && micro >= 0.10 && is.finite(neuro) && neuro >= 0.10) || mixed > 0) return("shared_microenvironment")
-  if ((is.finite(neuro) && neuro >= 0.10) || sensitive > 0) return("neuropil_sensitive")
+  microglia_evidence <- (is.finite(micro) && micro >= classification_threshold) || robust > 0
+  neuropil_evidence <- (is.finite(neuro) && neuro >= classification_threshold) || sensitive > 0
+  other_cellular_evidence <- any(c(astro, oligo, vascular) >= classification_threshold, na.rm = TRUE)
+  if (microglia_evidence && neuropil_evidence) return("shared_microenvironment")
+  if (microglia_evidence && !neuropil_evidence && !other_cellular_evidence) return("microglia_supported")
+  if (neuropil_evidence && !microglia_evidence) return("neuropil_sensitive")
+  if (other_cellular_evidence && !microglia_evidence) return("other_cellular_or_vascular_sensitive")
   "ambiguous"
+}
+
+classify_rationale <- function(row) {
+  micro <- as.numeric(row$microglia_marker_fraction)
+  neuro <- as.numeric(row$neuropil_synaptic_neuronal_marker_fraction)
+  astro <- as.numeric(row$astrocyte_marker_fraction)
+  oligo <- as.numeric(row$oligodendrocyte_myelin_marker_fraction)
+  vascular <- as.numeric(row$endothelial_pericyte_vascular_marker_fraction)
+  robust <- as.integer(row$n_microglia_robust_term_overlaps %||% 0)
+  sensitive <- as.integer(row$n_neuropil_sensitive_term_overlaps %||% 0)
+  microglia_evidence <- (is.finite(micro) && micro >= classification_threshold) || robust > 0
+  neuropil_evidence <- (is.finite(neuro) && neuro >= classification_threshold) || sensitive > 0
+  other_cellular_evidence <- any(c(astro, oligo, vascular) >= classification_threshold, na.rm = TRUE)
+  list(
+    microglia_evidence = microglia_evidence,
+    neuropil_evidence = neuropil_evidence,
+    other_cellular_evidence = other_cellular_evidence,
+    classification_rationale = paste0(
+      "threshold=", classification_threshold,
+      "; microglia_fraction=", signif(micro, 3), "; microglia_terms=", robust,
+      "; neuropil_fraction=", signif(neuro, 3), "; neuropil_terms=", sensitive,
+      "; astrocyte_fraction=", signif(astro, 3),
+      "; oligodendrocyte_fraction=", signif(oligo, 3),
+      "; vascular_fraction=", signif(vascular, 3)
+    )
+  )
 }
 
 module_neuropil_reference_counts <- function(module_color) {
@@ -183,6 +217,9 @@ if (DATASET == "microglia" || force_microglia) {
     )
 }
 
+evidence_df <- dplyr::bind_rows(lapply(seq_len(nrow(module_annot)), function(i) as.data.frame(classify_rationale(module_annot[i, , drop = FALSE]), stringsAsFactors = FALSE)))
+module_annot <- dplyr::bind_cols(module_annot, evidence_df)
+module_annot$classification_threshold <- classification_threshold
 module_annot$microenvironment_class <- vapply(seq_len(nrow(module_annot)), function(i) classify_module(module_annot[i, , drop = FALSE]), character(1))
 module_annot$interpretation_note <- WGCNA_ROI_NOTE
 
@@ -197,13 +234,17 @@ if (!is.null(module_effects) && nrow(module_effects)) {
 if (is.null(super_ann) || !nrow(super_ann)) {
   super_annot <- data.frame(dataset = DATASET, SupermoduleID = NA_character_, Supermodule_FinalLabel = NA_character_, n_member_modules = 0L, dominant_microenvironment_class = "missing_supermodule_annotation", interpretation_note = WGCNA_ROI_NOTE)
 } else {
-  smap <- super_ann |>
+  super_ann2 <- super_ann
+  for (nm in c("Supermodule_DataDrivenID", "Supermodule_DataDrivenLabel", "Supermodule_CuratedLabel", "Supermodule_FinalLabel", "Supermodule_LabelSource", "Supermodule_LabelConfidence", "Supermodule_LabelRationale", "ManualReviewRequired", "Supermodule_DataDriven", "Supermodule", "SupermoduleConfidence", "SupermoduleRationale")) {
+    if (!nm %in% names(super_ann2)) super_ann2[[nm]] <- NA_character_
+  }
+  smap <- super_ann2 |>
     dplyr::mutate(
-      SupermoduleID = dplyr::coalesce(as.character(.data$Supermodule_DataDriven), as.character(.data$Supermodule)),
-      Supermodule_FinalLabel = dplyr::coalesce(as.character(.data$Supermodule), .data$SupermoduleID),
+      SupermoduleID = dplyr::coalesce(as.character(.data$Supermodule_DataDrivenID), as.character(.data$Supermodule_DataDriven), as.character(.data$Supermodule)),
+      Supermodule_FinalLabel = dplyr::coalesce(as.character(.data$Supermodule_FinalLabel), as.character(.data$Supermodule), .data$SupermoduleID),
       Supermodule_ShortLabel = .data$SupermoduleID
     ) |>
-    dplyr::select(dplyr::any_of(c("ModuleColor", "module_eigengene", "SupermoduleID", "Supermodule_FinalLabel", "Supermodule_ShortLabel", "SupermoduleConfidence", "SupermoduleRationale")))
+    dplyr::select(dplyr::any_of(c("ModuleColor", "module_eigengene", "SupermoduleID", "Supermodule_DataDrivenLabel", "Supermodule_CuratedLabel", "Supermodule_FinalLabel", "Supermodule_ShortLabel", "Supermodule_LabelSource", "Supermodule_LabelConfidence", "Supermodule_LabelRationale", "ManualReviewRequired", "SupermoduleConfidence", "SupermoduleRationale")))
   super_annot <- module_annot |>
     dplyr::left_join(smap, by = c("ModuleColor" = "ModuleColor")) |>
     dplyr::filter(!is.na(.data$SupermoduleID)) |>
@@ -214,14 +255,33 @@ if (is.null(super_ann) || !nrow(super_ann)) {
       fraction_modules_microglia_supported = mean(.data$microenvironment_class == "microglia_supported"),
       fraction_modules_shared_microenvironment = mean(.data$microenvironment_class == "shared_microenvironment"),
       fraction_modules_neuropil_sensitive = mean(.data$microenvironment_class == "neuropil_sensitive"),
+      fraction_modules_other_cellular_or_vascular_sensitive = mean(.data$microenvironment_class == "other_cellular_or_vascular_sensitive"),
       fraction_modules_ambiguous = mean(.data$microenvironment_class == "ambiguous"),
       dominant_microenvironment_class = names(sort(table(.data$microenvironment_class), decreasing = TRUE))[1],
       dominant_GO_terms = paste(utils::head(unique(c(split_tokens(.data$top_GO_BP_labels), split_tokens(.data$top_GO_MF_labels), split_tokens(.data$top_GO_CC_labels))), 10), collapse = ";"),
       top_hub_proteins = paste(utils::head(unique(split_tokens(.data$top_hub_proteins)), 30), collapse = ";"),
-      label_confidence = dplyr::first(.data$SupermoduleConfidence %||% NA_character_),
+      Supermodule_DataDrivenLabel = dplyr::first(.data$Supermodule_DataDrivenLabel),
+      Supermodule_CuratedLabel = dplyr::first(.data$Supermodule_CuratedLabel),
+      Supermodule_LabelSource = dplyr::first(.data$Supermodule_LabelSource),
+      Supermodule_LabelConfidence = dplyr::first(.data$Supermodule_LabelConfidence),
+      Supermodule_LabelRationale = dplyr::first(.data$Supermodule_LabelRationale),
+      ManualReviewRequired = dplyr::first(.data$ManualReviewRequired),
+      label_confidence = dplyr::coalesce(dplyr::first(.data$Supermodule_LabelConfidence), dplyr::first(.data$SupermoduleConfidence %||% NA_character_)),
       interpretation_note = WGCNA_ROI_NOTE,
       .groups = "drop"
     )
+  if (DATASET == "microglia" || force_microglia) {
+    super_annot <- super_annot |>
+      dplyr::mutate(
+        Supermodule_FinalLabel = dplyr::case_when(
+          .data$dominant_microenvironment_class == "shared_microenvironment" & grepl("synap|vesicle|neur", .data$Supermodule_FinalLabel, ignore.case = TRUE) ~ paste0("shared local microenvironment / ", .data$Supermodule_FinalLabel),
+          .data$dominant_microenvironment_class == "neuropil_sensitive" & grepl("synap|vesicle|neur", .data$Supermodule_FinalLabel, ignore.case = TRUE) ~ paste0("neuropil-sensitive ", .data$Supermodule_FinalLabel),
+          .data$dominant_microenvironment_class == "microglia_supported" & grepl("phago|lyso|complement|immune", .data$Supermodule_FinalLabel, ignore.case = TRUE) ~ paste0("microglia-supported ", .data$Supermodule_FinalLabel),
+          .data$dominant_microenvironment_class == "ambiguous" ~ paste0(.data$Supermodule_FinalLabel, " / ambiguous local ROI program"),
+          TRUE ~ .data$Supermodule_FinalLabel
+        )
+      )
+  }
 }
 
 write_table_and_source(module_annot, PATHS$tables, PATHS$source_data, "WGCNA_module_biological_annotation.csv")
