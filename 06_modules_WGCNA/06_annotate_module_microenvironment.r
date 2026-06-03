@@ -292,7 +292,7 @@ if (is.null(super_ann) || !nrow(super_ann)) {
   super_annot <- data.frame(dataset = DATASET, SupermoduleID = NA_character_, Supermodule_FinalLabel = NA_character_, n_member_modules = 0L, dominant_microenvironment_class = "missing_supermodule_annotation", interpretation_note = WGCNA_ROI_NOTE)
 } else {
   super_ann2 <- super_ann
-  for (nm in c("Supermodule_DataDrivenID", "Supermodule_DataDrivenLabel", "Supermodule_CuratedLabel", "Supermodule_FinalLabel", "Supermodule_LabelSource", "Supermodule_LabelConfidence", "Supermodule_LabelRationale", "ManualReviewRequired", "Supermodule_DataDriven", "Supermodule", "SupermoduleConfidence", "SupermoduleRationale")) {
+  for (nm in c("Supermodule_DataDrivenID", "Supermodule_DataDrivenLabel", "Supermodule_CuratedLabel", "Supermodule_FinalLabel", "Supermodule_LabelSource", "Supermodule_LabelConfidence", "Supermodule_LabelRationale", "GO_label_confidence_class", "annotation_scope", "manual_label_status", "ManualReviewRequired", "Supermodule_DataDriven", "Supermodule", "SupermoduleConfidence", "SupermoduleRationale")) {
     if (!nm %in% names(super_ann2)) super_ann2[[nm]] <- NA_character_
   }
   smap <- super_ann2 |>
@@ -301,7 +301,7 @@ if (is.null(super_ann) || !nrow(super_ann)) {
       Supermodule_FinalLabel = dplyr::coalesce(as.character(.data$Supermodule_FinalLabel), as.character(.data$Supermodule), .data$SupermoduleID),
       Supermodule_ShortLabel = .data$SupermoduleID
     ) |>
-    dplyr::select(dplyr::any_of(c("ModuleColor", "module_eigengene", "SupermoduleID", "Supermodule_DataDrivenLabel", "Supermodule_CuratedLabel", "Supermodule_FinalLabel", "Supermodule_ShortLabel", "Supermodule_LabelSource", "Supermodule_LabelConfidence", "Supermodule_LabelRationale", "ManualReviewRequired", "SupermoduleConfidence", "SupermoduleRationale")))
+    dplyr::select(dplyr::any_of(c("ModuleColor", "module_eigengene", "SupermoduleID", "Supermodule_DataDrivenLabel", "Supermodule_CuratedLabel", "Supermodule_FinalLabel", "Supermodule_ShortLabel", "Supermodule_LabelSource", "Supermodule_LabelConfidence", "Supermodule_LabelRationale", "GO_label_confidence_class", "annotation_scope", "manual_label_status", "ManualReviewRequired", "SupermoduleConfidence", "SupermoduleRationale")))
   super_annot <- module_annot |>
     dplyr::left_join(smap, by = c("ModuleColor" = "ModuleColor")) |>
     dplyr::filter(!is.na(.data$SupermoduleID)) |>
@@ -323,6 +323,9 @@ if (is.null(super_ann) || !nrow(super_ann)) {
       Supermodule_LabelSource = dplyr::first(.data$Supermodule_LabelSource),
       Supermodule_LabelConfidence = dplyr::first(.data$Supermodule_LabelConfidence),
       Supermodule_LabelRationale = dplyr::first(.data$Supermodule_LabelRationale),
+      GO_label_confidence_class = dplyr::first(.data$GO_label_confidence_class),
+      annotation_scope = dplyr::first(.data$annotation_scope),
+      manual_label_status = dplyr::first(.data$manual_label_status),
       ManualReviewRequired = dplyr::first(.data$ManualReviewRequired),
       label_confidence = dplyr::coalesce(dplyr::first(.data$Supermodule_LabelConfidence), dplyr::first(.data$SupermoduleConfidence %||% NA_character_)),
       marker_registry_version = dplyr::first(.data$marker_registry_version),
