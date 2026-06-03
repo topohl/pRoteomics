@@ -89,7 +89,14 @@ validate_wgcna_module_annotation <- function(df, artifact = "WGCNA module biolog
     c(
       "dataset", "ModuleID", "ModuleColor", "n_proteins", "microenvironment_class",
       "microglia_evidence", "neuropil_evidence", "other_cellular_evidence",
-      "classification_threshold", "classification_rationale", "interpretation_note"
+      "canonical_microglia_evidence", "empirical_microglia_roi_evidence",
+      "canonical_neuropil_evidence", "empirical_neuropil_evidence",
+      "empirical_shared_microenvironment_evidence",
+      "microglia_state_or_activation_evidence",
+      "peripheral_myeloid_caution_evidence",
+      "classification_threshold", "classification_rationale",
+      "marker_registry_version", "empirical_marker_set_version",
+      "interpretation_note"
     ),
     artifact
   )
