@@ -34,7 +34,9 @@ testthat::test_that("WGCNA downstream schemas expose required columns", {
     "dataset", "level", "module_id", "supermodule_id", "module_label",
     "supermodule_label", "spatial_unit", "contrast", "estimate", "SE",
     "statistic", "p_value", "FDR_within_dataset_level", "FDR_global",
-    "direction", "n_samples", "formula_used", "dropped_covariates",
+    "direction", "effect_scope", "SpatialUnitType", "model_type",
+    "has_repeated_animals", "n_animals", "n_samples", "formula_requested",
+    "formula_used", "dropped_covariates",
     "rank_deficient_model", "model_warning"
   )
   group_df <- as.data.frame(setNames(rep(list(logical()), length(group_cols)), group_cols))
@@ -43,9 +45,19 @@ testthat::test_that("WGCNA downstream schemas expose required columns", {
   annot_df <- data.frame(
     dataset = character(), ModuleID = character(), ModuleColor = character(),
     n_proteins = integer(), microenvironment_class = character(),
+    microglia_evidence = logical(), neuropil_evidence = logical(),
+    other_cellular_evidence = logical(), classification_threshold = numeric(),
+    classification_rationale = character(),
     interpretation_note = character()
   )
   testthat::expect_silent(validate_wgcna_module_annotation(annot_df))
+  testthat::expect_true(all(c(
+    "microglia_supported", "shared_microenvironment", "neuropil_sensitive",
+    "other_cellular_or_vascular_sensitive", "ambiguous"
+  ) %in% c(
+    "microglia_supported", "shared_microenvironment", "neuropil_sensitive",
+    "other_cellular_or_vascular_sensitive", "ambiguous"
+  )))
 
   interp_df <- data.frame(
     dataset = character(), level = character(), contrast = character(),
