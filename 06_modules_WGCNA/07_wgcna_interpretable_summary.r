@@ -39,12 +39,15 @@ effect_sentence <- function(row, level = "supermodule") {
   cls <- row$dominant_microenvironment_class %||% row$microenvironment_class %||% NA_character_
   direction <- ifelse(is.na(row$estimate), "is altered", ifelse(row$estimate > 0, "is higher", "is lower"))
   spatial <- ifelse(is.na(row$spatial_unit) || row$spatial_unit == "global_spatial_adjusted", "after spatial adjustment", paste0("in ", row$spatial_unit))
-  base <- paste(ds_label, level, id, "annotated as", label, direction, "for", row$contrast, spatial)
-  if (row$dataset == "microglia" && !is.na(cls) && cls %in% c("shared_microenvironment", "neuropil_sensitive")) {
-    paste0(base, "; interpret as ROI microenvironment signal, not purified microglial regulation.")
-  } else {
-    paste0(base, ".")
-  }
+  scope <- ifelse("effect_scope" %in% names(row) && !is.na(row$effect_scope), paste0(" (", row$effect_scope, ")"), "")
+  base <- paste(ds_label, level, id, "annotated as", label, direction, "for", row$contrast, spatial, scope)
+  base <- gsub("[[:space:]]+\\(", " (", base)
+  if (row$dataset != "microglia" || is.na(cls)) return(paste0(base, "."))
+  if (cls == "microglia_supported") return(paste0(base, "; this ROI signal is microglia-supported."))
+  if (cls == "shared_microenvironment") return(paste0(base, "; this ROI signal is shared local microenvironment, not purified microglial regulation."))
+  if (cls == "neuropil_sensitive") return(paste0(base, "; this ROI signal is neuropil-sensitive; do not interpret as purified microglial regulation."))
+  if (cls == "other_cellular_or_vascular_sensitive") return(paste0(base, "; this ROI signal shows other cellular/vascular marker support; interpret cautiously."))
+  paste0(base, "; microenvironment support is ambiguous.")
 }
 
 add_interpretation_sentences <- function(df, level) {
@@ -64,6 +67,9 @@ make_dataset_summary <- function(ds) {
   if (is.null(super_effects)) super_effects <- empty_group_effects(ds, "supermodule", "missing supermodule_group_effects.csv")
   if (is.null(module_annot)) module_annot <- data.frame(dataset = ds, ModuleID = character(), microenvironment_class = character())
   if (is.null(super_annot)) super_annot <- data.frame(dataset = ds, SupermoduleID = character(), Supermodule_FinalLabel = character(), dominant_microenvironment_class = character())
+  for (nm in c("fraction_modules_other_cellular_or_vascular_sensitive", "Supermodule_LabelSource", "Supermodule_LabelConfidence", "ManualReviewRequired")) {
+    if (!nm %in% names(super_annot)) super_annot[[nm]] <- NA
+  }
   super_annot <- super_annot |>
     dplyr::arrange(.data$SupermoduleID) |>
     dplyr::distinct(.data$dataset, .data$SupermoduleID, .keep_all = TRUE)
@@ -97,9 +103,12 @@ make_dataset_summary <- function(ds) {
 
   plot_super <- super_join |> dplyr::filter(!is.na(.data$p_value), .data$spatial_unit != "global_spatial_adjusted")
   if (nrow(plot_super)) {
-    p <- ggplot2::ggplot(plot_super, ggplot2::aes(x = .data$contrast, y = .data$Supermodule_FinalLabel %||% .data$supermodule_id, fill = .data$estimate)) +
+    plot_super <- plot_super |>
+      dplyr::mutate(sig = dplyr::case_when(.data$FDR_global < 0.05 ~ "**", .data$FDR_global < 0.10 ~ "*", TRUE ~ ""))
+    p <- ggplot2::ggplot(plot_super, ggplot2::aes(x = .data$contrast, y = dplyr::coalesce(.data$Supermodule_FinalLabel, .data$supermodule_id), fill = .data$estimate)) +
       ggplot2::geom_tile() +
-      ggplot2::facet_wrap(~ spatial_unit, scales = "free_y") +
+      ggplot2::geom_text(ggplot2::aes(label = .data$sig), size = 2.2) +
+      ggplot2::facet_grid(effect_scope ~ spatial_unit, scales = "free_y", space = "free_y") +
       ggplot2::scale_fill_gradient2(low = "#3B6FB6", mid = "grey96", high = "#C84C5A") +
       ggplot2::labs(x = NULL, y = NULL, fill = "Estimate") +
       ggplot2::theme_classic(base_size = 8) +
@@ -121,6 +130,32 @@ make_dataset_summary <- function(ds) {
       ggplot2::theme_classic(base_size = 8) +
       ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 35, hjust = 1))
     ggplot2::ggsave(file.path(paths$figures, "module_effects_by_supermodule.svg"), p3, width = 170, height = 130, units = "mm", device = svglite::svglite)
+  }
+
+  if (ds == "microglia" && nrow(super_join)) {
+    micro_modules <- module_annot
+    effect_panel <- super_join |>
+      dplyr::filter(!is.na(.data$p_value)) |>
+      dplyr::mutate(panel = "A group effect", x = .data$contrast, y = .data$supermodule_id, value = .data$estimate)
+    comp_panel <- super_annot |>
+      dplyr::select(.data$SupermoduleID, dplyr::starts_with("fraction_modules_")) |>
+      tidyr::pivot_longer(-.data$SupermoduleID, names_to = "class", values_to = "value") |>
+      dplyr::mutate(panel = "B microenvironment composition", x = .data$class, y = .data$SupermoduleID)
+    module_panel <- micro_modules |>
+      dplyr::mutate(panel = "C module marker evidence", x = as.character(round(.data$neuropil_synaptic_neuronal_marker_fraction, 2)), y = as.character(round(.data$microglia_marker_fraction, 2)), value = as.numeric(.data$microglia_marker_fraction))
+    panel_df <- dplyr::bind_rows(
+      effect_panel[, c("panel", "x", "y", "value")],
+      comp_panel[, c("panel", "x", "y", "value")],
+      module_panel[, c("panel", "x", "y", "value")]
+    )
+    p_micro <- ggplot2::ggplot(panel_df, ggplot2::aes(x = .data$x, y = .data$y, color = .data$value)) +
+      ggplot2::geom_point(size = 1.8, alpha = 0.85) +
+      ggplot2::facet_wrap(~ panel, scales = "free") +
+      ggplot2::scale_color_gradient2(low = "#3B6FB6", mid = "grey85", high = "#C84C5A", na.value = "grey60") +
+      ggplot2::labs(x = NULL, y = NULL, color = "Value") +
+      ggplot2::theme_classic(base_size = 8) +
+      ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 35, hjust = 1), legend.position = "bottom")
+    ggplot2::ggsave(file.path(paths$figures, "microglia_supermodule_interpretation_panel.svg"), p_micro, width = 190, height = 120, units = "mm", device = svglite::svglite)
   }
 
   write_run_manifest(
