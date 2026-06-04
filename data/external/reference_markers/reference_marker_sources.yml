@@ -45,16 +45,13 @@ sources:
   - source_name: allen_celltypes
     source_version: cached_local
     source_type: local_file
-    local_dir: data/external/reference_markers/allen_celltypes
+    local_dir: data/external/reference_markers/derived
     file_patterns:
-      - "*.csv"
-      - "*.tsv"
-      - "*.xlsx"
-      - "*.rds"
+      - "allen_mouse_ctx_hip_10x_marker_panels_top.csv"
     import_mode: cache
     allow_download: false
-    source_reference: Allen cell types cached local marker or expression tables.
-    notes: Local-file import only by default.
+    source_reference: Allen Mouse Whole Cortex and Hippocampus 10x derived broad cell-type marker panels.
+    notes: Local-file import of derived top marker panels only by default.
   - source_name: brainrnaseq_barres
     source_version: cached_local
     source_type: local_file
