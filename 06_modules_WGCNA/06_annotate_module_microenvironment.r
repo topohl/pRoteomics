@@ -44,7 +44,7 @@ if (is.null(definitions) || !nrow(definitions)) {
   super_annot <- data.frame(dataset = DATASET, SupermoduleID = NA_character_, n_member_modules = 0L, dominant_microenvironment_class = "missing_module_definitions", interpretation_note = WGCNA_ROI_NOTE)
   write_table_and_source(module_annot, PATHS$tables, PATHS$source_data, "WGCNA_module_biological_annotation.csv")
   write_table_and_source(super_annot, PATHS$tables, PATHS$source_data, "WGCNA_supermodule_biological_annotation.csv")
-  write_run_manifest(file.path(PATHS$logs, "run_manifest.yml"), inputs = FILES, outputs = list(tables = PATHS$tables), parameters = list(dataset = DATASET), notes = WGCNA_ROI_NOTE)
+  write_run_manifest(file.path(PATHS$logs, "run_manifest.yml"), inputs = FILES, outputs = list(tables = PATHS$tables), parameters = list(dataset = DATASET), notes = paste(WGCNA_ROI_NOTE, "Improved annotation separates vascular basement membrane/BBB/mural, astrocyte/endfoot, oligodendrocyte/myelin, neuropil, and microglia-supported ROI evidence; labels are annotation only."))
   quit(status = 0, save = "no")
 }
 
@@ -60,7 +60,104 @@ module_effects <- safe_read_csv(path_results("tables", "06_modules_WGCNA", "grou
 super_effects <- safe_read_csv(path_results("tables", "06_modules_WGCNA", "group_effects", DATASET, "supermodule_group_effects.csv"))
 neuropil_ref <- if (DATASET == "microglia" || force_microglia) safe_read_csv(FILES$neuropil_annotation) else NULL
 
+
+# Add a small, local compartment marker layer for microenvironment interpretation.
+# These sets supplement the registry; they do not replace curated external marker sets.
+extra_microenvironment_marker_sets <- list(
+  basement_membrane_perivascular_ecm = c(
+    "Agrn", "Hspg2", "Lamb1", "Lamb2", "Lamc1", "Lama2", "Lama4", "Lama5",
+    "Col4a1", "Col4a2", "Nid1", "Nid2", "Bcam", "Tinagl1", "Serpinh1"
+  ),
+  bbb_endothelial_transport = c(
+    "Slc2a1", "Abcb1a", "Abcb1b", "Abcg2", "Cldn5", "Pecam1", "Kdr", "Flt1",
+    "Tek", "Vwf", "Esam", "Mfsd2a", "Ocln", "Cav1"
+  ),
+  pericyte_mural_ng2 = c(
+    "Cspg4", "Pdgfrb", "Rgs5", "Kcnj8", "Abcc9", "Des", "Acta2", "Tagln",
+    "Mcam", "Notch3", "Anpep"
+  ),
+  astrocyte_endfoot_gliovascular = c(
+    "Aqp4", "Gfap", "Aldh1l1", "Slc1a2", "Slc1a3", "Gja1", "Glul", "Aldoc",
+    "Dtna", "Dag1"
+  ),
+  integrin_ecm_adhesion = c(
+    "Itga1", "Itga2", "Itga5", "Itga6", "Itgb1", "Tln1", "Tln2", "Vcl",
+    "Parva", "Parvb", "Pxn"
+  )
+)
+
+for (nm in names(extra_microenvironment_marker_sets)) {
+  if (!nm %in% names(marker_sets)) marker_sets[[nm]] <- extra_microenvironment_marker_sets[[nm]]
+}
 panel_names <- names(marker_sets)
+
+compact_label <- function(x, n = 3L) {
+  x <- unique(trimws(as.character(x)))
+  x <- x[nzchar(x) & !is.na(x)]
+  paste(utils::head(x, n), collapse = "; ")
+}
+
+clean_term_label <- function(x) {
+  x <- as.character(x)
+  x <- gsub("_", " ", x)
+  x <- gsub("\\bGO\\b", "", x, ignore.case = TRUE)
+  x <- gsub("\\s+", " ", x)
+  trimws(x)
+}
+
+generic_supermodule_label <- function(x) {
+  x <- tolower(as.character(x))
+  is.na(x) | !nzchar(x) |
+    grepl("hub-supported|module cluster|ambiguous|unlabelled|unknown|mixed$", x)
+}
+
+label_from_evidence <- function(row) {
+  frac <- function(candidates) {
+    hit <- candidates[candidates %in% names(row)][1]
+    if (length(hit) && !is.na(hit)) suppressWarnings(as.numeric(row[[hit]])) else NA_real_
+  }
+  max_frac <- function(...) {
+    vals <- c(...)
+    vals <- vals[is.finite(vals)]
+    if (length(vals)) max(vals) else NA_real_
+  }
+
+  bm <- max_frac(frac(c("basement_membrane_perivascular_ecm_fraction", "basement_membrane_perivascular_ecm_marker_fraction")))
+  bbb <- max_frac(frac(c("bbb_endothelial_transport_fraction", "bbb_endothelial_transport_marker_fraction")), frac(c("canonical_endothelial_vascular_fraction", "endothelial_pericyte_vascular_marker_fraction")))
+  mural <- max_frac(frac(c("pericyte_mural_ng2_fraction", "pericyte_mural_ng2_marker_fraction")), frac(c("canonical_pericyte_vascular_fraction")))
+  adhesion <- max_frac(frac(c("integrin_ecm_adhesion_fraction", "integrin_ecm_adhesion_marker_fraction")))
+  micro <- max_frac(frac(c("empirical_microglia_roi_high_confidence_fraction", "empirical_microglia_roi_enriched_fraction")), frac(c("canonical_microglia_homeostatic_fraction", "microglia_marker_fraction")))
+  micro_state <- frac(c("canonical_microglia_phagolysosomal_state_fraction"))
+  neuro <- max_frac(frac(c("empirical_neuropil_sensitive_high_confidence_fraction", "empirical_neuropil_enriched_fraction")), frac(c("canonical_neuronal_synaptic_neuropil_fraction", "neuropil_synaptic_neuronal_marker_fraction")))
+  astro <- max_frac(frac(c("astrocyte_endfoot_gliovascular_fraction", "astrocyte_endfoot_gliovascular_marker_fraction")), frac(c("canonical_astrocyte_fraction", "astrocyte_marker_fraction")))
+  oligo <- max_frac(frac(c("canonical_oligodendrocyte_myelin_fraction", "oligodendrocyte_myelin_marker_fraction")), frac(c("canonical_opc_fraction")))
+  mito <- frac(c("canonical_mitochondrial_oxphos_fraction", "mitochondrial_oxphos_marker_fraction"))
+  ribo <- frac(c("canonical_ribosomal_translation_fraction", "ribosomal_translation_marker_fraction"))
+  rnp <- frac(c("canonical_rnp_rna_processing_fraction", "rnp_rna_processing_marker_fraction"))
+
+  vascular_ecm <- max_frac(bm, bbb, mural, adhesion)
+  if (is.finite(vascular_ecm) && vascular_ecm >= classification_threshold && max_frac(bm, adhesion) >= max_frac(bbb, mural, 0)) return("perivascular basement membrane / ECM")
+  if (is.finite(max_frac(bbb, mural)) && max_frac(bbb, mural) >= classification_threshold) return("BBB / vascular mural")
+  if (is.finite(micro_state) && micro_state >= classification_threshold) return("microglia phagolysosomal / activation")
+  if (is.finite(micro) && micro >= classification_threshold && !is.finite(neuro)) return("microglia-enriched ROI")
+  if (is.finite(micro) && micro >= classification_threshold && is.finite(neuro) && neuro >= classification_threshold) return("shared microglia-neuropil microenvironment")
+  if (is.finite(neuro) && neuro >= classification_threshold) return("neuronal synaptic / neuropil")
+  if (is.finite(astro) && astro >= classification_threshold) return("astrocyte / endfoot")
+  if (is.finite(oligo) && oligo >= classification_threshold) return("oligodendrocyte / myelin")
+  if (is.finite(mito) && mito >= classification_threshold) return("mitochondrial / OXPHOS")
+  if (is.finite(ribo) && ribo >= classification_threshold) return("ribosomal translation")
+  if (is.finite(rnp) && rnp >= classification_threshold) return("RNA processing / RNP")
+  "mixed / low-specificity"
+}
+
+confidence_from_evidence <- function(row) {
+  vals <- suppressWarnings(as.numeric(unlist(row[grep("(_marker_fraction|_fraction)$", names(row), value = TRUE)])))
+  vals <- vals[is.finite(vals)]
+  if (!length(vals)) return("low")
+  m <- max(vals)
+  if (m >= 0.30) "high" else if (m >= classification_threshold) "moderate" else "low"
+}
+
 
 marker_stats_for <- function(genes) {
   genes_key <- normalize_gene_token(genes)
@@ -107,29 +204,42 @@ classify_module <- function(row) {
     vals <- vals[is.finite(vals)]
     if (length(vals)) max(vals) else NA_real_
   }
+
   micro <- max_frac(frac(c("empirical_microglia_roi_high_confidence_fraction", "empirical_microglia_roi_enriched_fraction")), frac(c("canonical_microglia_homeostatic_fraction", "microglia_marker_fraction")))
   micro_state <- frac(c("canonical_microglia_phagolysosomal_state_fraction"))
   neuro <- max_frac(frac(c("empirical_neuropil_sensitive_high_confidence_fraction", "empirical_neuropil_enriched_fraction")), frac(c("canonical_neuronal_synaptic_neuropil_fraction", "neuropil_synaptic_neuronal_marker_fraction")))
   shared <- frac(c("empirical_microglia_neuropil_shared_fraction"))
-  astro <- frac(c("canonical_astrocyte_fraction", "astrocyte_marker_fraction"))
+
+  astro <- max_frac(frac(c("astrocyte_endfoot_gliovascular_fraction", "astrocyte_endfoot_gliovascular_marker_fraction")), frac(c("canonical_astrocyte_fraction", "astrocyte_marker_fraction")))
   oligo <- max_frac(frac(c("canonical_oligodendrocyte_myelin_fraction", "oligodendrocyte_myelin_marker_fraction")), frac(c("canonical_opc_fraction")))
   vascular <- max_frac(frac(c("canonical_endothelial_vascular_fraction", "endothelial_pericyte_vascular_marker_fraction")), frac(c("canonical_pericyte_vascular_fraction")))
+  bm_ecm <- max_frac(frac(c("basement_membrane_perivascular_ecm_fraction", "basement_membrane_perivascular_ecm_marker_fraction")), frac(c("integrin_ecm_adhesion_fraction", "integrin_ecm_adhesion_marker_fraction")))
+  bbb_mural <- max_frac(frac(c("bbb_endothelial_transport_fraction", "bbb_endothelial_transport_marker_fraction")), frac(c("pericyte_mural_ng2_fraction", "pericyte_mural_ng2_marker_fraction")))
   peripheral <- frac(c("canonical_peripheral_myeloid_caution_fraction"))
+
   robust <- as.integer(row$n_microglia_robust_term_overlaps %||% 0)
   sensitive <- as.integer(row$n_neuropil_sensitive_term_overlaps %||% 0)
   mixed <- as.integer(row$n_mixed_microenvironment_term_overlaps %||% 0)
+
   microglia_evidence <- (is.finite(micro) && micro >= classification_threshold) || robust > 0
   microglia_state_evidence <- is.finite(micro_state) && micro_state >= classification_threshold
   neuropil_evidence <- (is.finite(neuro) && neuro >= classification_threshold) || sensitive > 0
   shared_evidence <- (is.finite(shared) && shared >= classification_threshold) || mixed > 0
-  other_cellular_evidence <- any(c(astro, oligo, vascular) >= classification_threshold, na.rm = TRUE)
+  vascular_ecm_evidence <- is.finite(max_frac(vascular, bm_ecm, bbb_mural)) && max_frac(vascular, bm_ecm, bbb_mural) >= classification_threshold
+  astro_evidence <- is.finite(astro) && astro >= classification_threshold
+  oligo_evidence <- is.finite(oligo) && oligo >= classification_threshold
+  peripheral_evidence <- is.finite(peripheral) && peripheral >= classification_threshold
+
   if ((microglia_evidence && neuropil_evidence) || shared_evidence) return("shared_microenvironment")
-  if (microglia_evidence && !neuropil_evidence && !other_cellular_evidence) return("microglia_supported")
+  if (is.finite(bm_ecm) && bm_ecm >= classification_threshold) return("vascular_basement_membrane_ecm")
+  if (vascular_ecm_evidence) return("vascular_bbb_mural")
   if (microglia_state_evidence && !neuropil_evidence) return("microglia_state_or_activation_supported")
+  if (microglia_evidence && !neuropil_evidence && !vascular_ecm_evidence && !astro_evidence && !oligo_evidence) return("microglia_supported")
   if (neuropil_evidence && !microglia_evidence) return("neuropil_sensitive")
-  if (other_cellular_evidence && !microglia_evidence) return("other_cellular_or_vascular_sensitive")
-  if (is.finite(peripheral) && peripheral >= classification_threshold && !microglia_evidence) return("other_cellular_or_vascular_sensitive")
-  "ambiguous"
+  if (astro_evidence) return("astrocyte_or_endfoot_sensitive")
+  if (oligo_evidence) return("oligodendrocyte_or_myelin_sensitive")
+  if (peripheral_evidence && !microglia_evidence) return("peripheral_myeloid_caution")
+  "ambiguous_or_mixed"
 }
 
 classify_rationale <- function(row) {
@@ -276,6 +386,9 @@ evidence_df <- dplyr::bind_rows(lapply(seq_len(nrow(module_annot)), function(i) 
 module_annot <- dplyr::bind_cols(module_annot, evidence_df)
 module_annot$classification_threshold <- classification_threshold
 module_annot$microenvironment_class <- vapply(seq_len(nrow(module_annot)), function(i) classify_module(module_annot[i, , drop = FALSE]), character(1))
+module_annot$microenvironment_label <- vapply(seq_len(nrow(module_annot)), function(i) label_from_evidence(module_annot[i, , drop = FALSE]), character(1))
+module_annot$microenvironment_confidence <- vapply(seq_len(nrow(module_annot)), function(i) confidence_from_evidence(module_annot[i, , drop = FALSE]), character(1))
+module_annot$module_display_label <- paste0(module_annot$ModuleID, " — ", module_annot$microenvironment_label)
 module_annot$marker_registry_version <- marker_registry_version
 module_annot$empirical_marker_set_version <- empirical_marker_set_version
 module_annot$interpretation_note <- WGCNA_ROI_NOTE
@@ -313,9 +426,14 @@ if (is.null(super_ann) || !nrow(super_ann)) {
       fraction_modules_microglia_state_or_activation_supported = mean(.data$microenvironment_class == "microglia_state_or_activation_supported"),
       fraction_modules_shared_microenvironment = mean(.data$microenvironment_class == "shared_microenvironment"),
       fraction_modules_neuropil_sensitive = mean(.data$microenvironment_class == "neuropil_sensitive"),
-      fraction_modules_other_cellular_or_vascular_sensitive = mean(.data$microenvironment_class == "other_cellular_or_vascular_sensitive"),
-      fraction_modules_ambiguous = mean(.data$microenvironment_class == "ambiguous"),
+      fraction_modules_vascular_basement_membrane_ecm = mean(.data$microenvironment_class == "vascular_basement_membrane_ecm"),
+      fraction_modules_vascular_bbb_mural = mean(.data$microenvironment_class == "vascular_bbb_mural"),
+      fraction_modules_astrocyte_or_endfoot_sensitive = mean(.data$microenvironment_class == "astrocyte_or_endfoot_sensitive"),
+      fraction_modules_oligodendrocyte_or_myelin_sensitive = mean(.data$microenvironment_class == "oligodendrocyte_or_myelin_sensitive"),
+      fraction_modules_peripheral_myeloid_caution = mean(.data$microenvironment_class == "peripheral_myeloid_caution"),
+      fraction_modules_ambiguous_or_mixed = mean(.data$microenvironment_class == "ambiguous_or_mixed"),
       dominant_microenvironment_class = names(sort(table(.data$microenvironment_class), decreasing = TRUE))[1],
+      dominant_module_labels = compact_label(.data$microenvironment_label, 3L),
       dominant_GO_terms = paste(utils::head(unique(c(split_tokens(.data$top_GO_BP_labels), split_tokens(.data$top_GO_MF_labels), split_tokens(.data$top_GO_CC_labels))), 10), collapse = ";"),
       top_hub_proteins = paste(utils::head(unique(split_tokens(.data$top_hub_proteins)), 30), collapse = ";"),
       Supermodule_DataDrivenLabel = dplyr::first(.data$Supermodule_DataDrivenLabel),
@@ -332,15 +450,33 @@ if (is.null(super_ann) || !nrow(super_ann)) {
       empirical_marker_set_version = dplyr::first(.data$empirical_marker_set_version),
       interpretation_note = WGCNA_ROI_NOTE,
       .groups = "drop"
+    ) |>
+    dplyr::mutate(
+      Supermodule_FinalLabel_Original = .data$Supermodule_FinalLabel,
+      Supermodule_FinalLabel = dplyr::case_when(
+        generic_supermodule_label(.data$Supermodule_FinalLabel) & !is.na(.data$dominant_module_labels) & nzchar(.data$dominant_module_labels) ~ .data$dominant_module_labels,
+        TRUE ~ .data$Supermodule_FinalLabel
+      ),
+      Supermodule_LabelRationale = paste0(
+        dplyr::coalesce(.data$Supermodule_LabelRationale, ""),
+        ifelse(generic_supermodule_label(.data$Supermodule_FinalLabel_Original), "; fallback_label_from_member_module_microenvironment_labels", "")
+      ),
+      ManualReviewRequired = dplyr::case_when(
+        generic_supermodule_label(.data$Supermodule_FinalLabel_Original) ~ TRUE,
+        .data$dominant_microenvironment_class %in% c("ambiguous_or_mixed", "shared_microenvironment") ~ TRUE,
+        TRUE ~ suppressWarnings(as.logical(.data$ManualReviewRequired))
+      )
     )
   if (DATASET == "microglia" || force_microglia) {
     super_annot <- super_annot |>
       dplyr::mutate(
         Supermodule_FinalLabel = dplyr::case_when(
+          .data$dominant_microenvironment_class == "vascular_basement_membrane_ecm" & !grepl("vascular|ECM|basement|BBB", .data$Supermodule_FinalLabel, ignore.case = TRUE) ~ paste0("perivascular ECM / ", .data$Supermodule_FinalLabel),
+          .data$dominant_microenvironment_class == "vascular_bbb_mural" & !grepl("vascular|BBB|mural|pericyte", .data$Supermodule_FinalLabel, ignore.case = TRUE) ~ paste0("BBB / vascular mural / ", .data$Supermodule_FinalLabel),
           .data$dominant_microenvironment_class == "shared_microenvironment" & grepl("synap|vesicle|neur", .data$Supermodule_FinalLabel, ignore.case = TRUE) ~ paste0("shared local microenvironment / ", .data$Supermodule_FinalLabel),
           .data$dominant_microenvironment_class == "neuropil_sensitive" & grepl("synap|vesicle|neur", .data$Supermodule_FinalLabel, ignore.case = TRUE) ~ paste0("neuropil-sensitive ", .data$Supermodule_FinalLabel),
           .data$dominant_microenvironment_class == "microglia_supported" & grepl("phago|lyso|complement|immune", .data$Supermodule_FinalLabel, ignore.case = TRUE) ~ paste0("microglia-supported ", .data$Supermodule_FinalLabel),
-          .data$dominant_microenvironment_class == "ambiguous" ~ paste0(.data$Supermodule_FinalLabel, " / ambiguous local ROI program"),
+          .data$dominant_microenvironment_class == "ambiguous_or_mixed" ~ paste0(.data$Supermodule_FinalLabel, " / mixed local ROI program"),
           TRUE ~ .data$Supermodule_FinalLabel
         )
       )
@@ -356,13 +492,13 @@ if (requireNamespace("writexl", quietly = TRUE)) {
 marker_fraction_plot_cols <- paste0(names(marker_sets), "_fraction")
 marker_fraction_plot_cols <- marker_fraction_plot_cols[marker_fraction_plot_cols %in% names(module_annot)]
 marker_long <- module_annot |>
-  dplyr::select("ModuleID", dplyr::all_of(marker_fraction_plot_cols)) |>
-  tidyr::pivot_longer(cols = -dplyr::all_of("ModuleID"), names_to = "marker_panel", values_to = "fraction")
+  dplyr::select("module_display_label", dplyr::all_of(marker_fraction_plot_cols)) |>
+  tidyr::pivot_longer(cols = -dplyr::all_of("module_display_label"), names_to = "marker_panel", values_to = "fraction")
 if (nrow(marker_long)) {
-  p <- ggplot2::ggplot(marker_long, ggplot2::aes(x = .data$marker_panel, y = .data$ModuleID, fill = .data$fraction)) +
+  p <- ggplot2::ggplot(marker_long, ggplot2::aes(x = .data$marker_panel, y = .data$module_display_label, fill = .data$fraction)) +
     ggplot2::geom_tile() +
-    ggplot2::scale_fill_gradient(low = "white", high = "#2F6F73", na.value = "grey90") +
-    ggplot2::labs(x = NULL, y = NULL, fill = "Fraction") +
+    ggplot2::scale_fill_gradient(low = "grey97", high = "#2F6F73", na.value = "grey90") +
+    ggplot2::labs(x = NULL, y = NULL, fill = "Marker\nfraction", title = "Module marker evidence") +
     ggplot2::theme_classic(base_size = 8) +
     ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 35, hjust = 1))
   ggplot2::ggsave(file.path(PATHS$figures, "module_marker_fraction_heatmap.svg"), p, width = 170, height = 120, units = "mm", device = svglite::svglite)
@@ -400,7 +536,7 @@ write_run_manifest(
     marker_registry_version = marker_registry_version,
     empirical_marker_set_version = empirical_marker_set_version
   ),
-  notes = WGCNA_ROI_NOTE
+  notes = paste(WGCNA_ROI_NOTE, "Improved annotation separates vascular basement membrane/BBB/mural, astrocyte/endfoot, oligodendrocyte/myelin, neuropil, and microglia-supported ROI evidence; labels are annotation only.")
 )
 
 message("WGCNA module/supermodule biological annotation complete for dataset: ", DATASET)
