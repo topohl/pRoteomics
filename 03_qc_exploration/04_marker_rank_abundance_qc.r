@@ -6,6 +6,7 @@ source(paths_file)
 source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "dataset_inputs.R"))
 source(repo_path("R", "qc_exploration_utils.R"))
+source(repo_path("R", "wgcna_downstream_utils.R"))
 
 run <- qc_args()
 DATASET <- run$dataset
@@ -40,19 +41,39 @@ expr <- qc_read_expression(matrix_file, metadata_file, DATASET)
 mat <- expr$mat
 meta <- expr$meta
 
-marker_sets <- list(
-  neuronal_synaptic_neuropil = c("Stxbp1", "Gpm6a", "Nptn", "Sh3gl2", "Atp6v1g2", "Snap25", "Syn1", "Syp", "Dlg4", "Camk2a"),
-  nuclear_soma = c("H2ac1", "H4c1", "H3-3a", "H1-4", "H1-3", "Matr3", "Srsf3", "Ddx39b"),
-  microglia = c("Aif1", "Tmem119", "P2ry12", "Cx3cr1", "Csf1r", "C1qa", "C1qb", "Hexb", "Mertk"),
-  astrocyte = c("Gfap", "Aqp4", "Aldh1l1", "Slc1a2", "Slc1a3", "Aldoc"),
-  oligodendrocyte_myelin = c("Mbp", "Mog", "Plp1", "Cnp", "Mag", "Mobp"),
-  endothelial_pericyte_vascular = c("Pecam1", "Cldn5", "Kdr", "Rgs5", "Pdgfrb", "Vtn"),
-  mitochondrial_oxphos = c("Ndufs1", "Ndufa9", "Sdha", "Uqcrc2", "Cox4i1", "Atp5f1a", "Atp5f1b"),
-  ribosomal_translation = c("Rpl3", "Rpl4", "Rpl5", "Rps3", "Rps6", "Eef1a1", "Eef2"),
-  rnp_rna_processing = c("Hnrnpa2b1", "Hnrnpc", "Sfpq", "Snrnp70", "Ddx5", "Ddx17", "Pabpc1")
+marker_sets <- load_wgcna_marker_sets(include_empirical = FALSE)
+marker_source_metadata <- attr(marker_sets, "marker_source_metadata")
+marker_registry_version <- attr(marker_sets, "marker_registry_version") %||% NA_character_
+if ("reference_microglia_pvm" %in% names(marker_sets)) {
+  marker_sets$microglia <- marker_sets$reference_microglia_pvm
+}
+preferred_panels <- c(
+  "microglia",
+  "reference_microglia_pvm",
+  "reference_cortical_excitatory_neuron",
+  "reference_hippocampal_excitatory_neuron",
+  "reference_inhibitory_interneuron",
+  "reference_astrocyte",
+  "reference_oligodendrocyte",
+  "reference_vascular",
+  "canonical_microglia_homeostatic",
+  "canonical_microglia_phagolysosomal_state",
+  "canonical_neuronal_synaptic_neuropil",
+  "canonical_neuronal_soma_nuclear",
+  "canonical_astrocyte",
+  "canonical_oligodendrocyte_myelin",
+  "canonical_endothelial_vascular",
+  "mitochondrial_oxphos",
+  "ribosomal_translation",
+  "rnp_rna_processing"
 )
+preferred_panels <- preferred_panels[preferred_panels %in% names(marker_sets)]
+marker_sets <- marker_sets[unique(c(preferred_panels, names(marker_sets)))]
+attr(marker_sets, "marker_source_metadata") <- marker_source_metadata
+attr(marker_sets, "marker_registry_version") <- marker_registry_version
+if (!length(marker_sets)) stop("No marker panels available for rank-abundance QC.", call. = FALSE)
 
-gene_norm <- function(x) toupper(gsub("[^A-Za-z0-9]", "", x))
+gene_norm <- normalize_gene_token
 protein_ids <- rownames(mat)
 protein_key <- gene_norm(sub("_MOUSE$", "", protein_ids, ignore.case = TRUE))
 
@@ -96,10 +117,12 @@ rank_data <- long |>
 
 marker_lookup <- dplyr::bind_rows(lapply(names(marker_sets), function(panel) {
   data.frame(marker_panel = panel, marker = marker_sets[[panel]], marker_key = gene_norm(marker_sets[[panel]]))
-}))
+})) |>
+  dplyr::filter(nzchar(.data$marker_key)) |>
+  dplyr::distinct(.data$marker_panel, .data$marker_key, .keep_all = TRUE)
 rank_data <- rank_data |>
   dplyr::mutate(marker_key = gene_norm(sub("_MOUSE$", "", Protein, ignore.case = TRUE))) |>
-  dplyr::left_join(marker_lookup, by = "marker_key") |>
+  dplyr::left_join(marker_lookup, by = "marker_key", relationship = "many-to-many") |>
   dplyr::mutate(marker_panel = ifelse(is.na(marker_panel), "none", marker_panel))
 
 qc_write_csv(rank_data, file.path(PATHS$tables, "rank_abundance_table.csv"))
@@ -136,6 +159,7 @@ summary_vars <- intersect(c("Group", "group", "ExpGroup", "Region", "region", "L
 summary_vars <- summary_vars[!duplicated(tolower(summary_vars))]
 if (length(summary_vars)) {
   score_summary <- sample_scores |>
+    dplyr::mutate(dplyr::across(dplyr::all_of(summary_vars), as.character)) |>
     tidyr::pivot_longer(dplyr::all_of(summary_vars), names_to = "metadata_term", values_to = "metadata_value") |>
     dplyr::filter(!is.na(metadata_value), nzchar(as.character(metadata_value))) |>
     dplyr::group_by(marker_panel, metadata_term, metadata_value) |>
@@ -156,10 +180,20 @@ if (length(summary_vars)) {
 
 write_run_manifest(
   file.path(PATHS$logs, "run_manifest.yml"),
-  inputs = list(matrix = matrix_file, metadata = metadata_file),
+  inputs = list(
+    matrix = matrix_file,
+    metadata = metadata_file,
+    marker_registry = Sys.getenv("PROTEOMICS_WGCNA_MARKER_REGISTRY_FILE", unset = repo_path("config", "marker_panels", "wgcna_reference_marker_sets.csv"))
+  ),
   outputs = list(figures = PATHS$figures, tables = PATHS$tables),
-  parameters = list(dataset = DATASET, marker_sets = names(marker_sets)),
-  notes = "Marker abundance/compartment sanity checks only; not cell-type purity estimates."
+  parameters = list(
+    dataset = DATASET,
+    marker_sets = names(marker_sets),
+    marker_source_hierarchy = unique(marker_source_metadata$marker_source %||% "unknown"),
+    marker_registry_version = attr(marker_sets, "marker_registry_version") %||% NA_character_,
+    allen_microglia_alias = if ("reference_microglia_pvm" %in% names(marker_sets)) "microglia uses reference_microglia_pvm" else NA_character_
+  ),
+  notes = "Marker abundance/compartment sanity checks only; not cell-type purity estimates. Allen microglia markers are labelled microglia_pvm in the source and aliased to microglia for this QC view when present."
 )
 
 message("Rank-abundance and marker QC complete for dataset: ", DATASET)
