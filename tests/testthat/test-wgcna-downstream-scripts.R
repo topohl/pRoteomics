@@ -40,6 +40,9 @@ testthat::test_that("marker source manifest is parseable", {
   parsed <- yaml::read_yaml(manifest)
   testthat::expect_true(length(parsed$sources) >= 5)
   testthat::expect_true(all(c("ewce", "zeisel_linnarsson", "dropviz_saunders", "allen_celltypes", "brainrnaseq_barres") %in% vapply(parsed$sources, `[[`, character(1), "source_name")))
+  allen <- parsed$sources[[which(vapply(parsed$sources, `[[`, character(1), "source_name") == "allen_celltypes")]]
+  testthat::expect_equal(allen$local_dir, "data/external/reference_markers/derived")
+  testthat::expect_true("allen_mouse_ctx_hip_10x_marker_panels_top.csv" %in% unlist(allen$file_patterns, use.names = FALSE))
 })
 
 testthat::test_that("marker registry helpers load registry, empirical sets, and legacy fallback", {
