@@ -15,8 +15,8 @@ manifest_file <- Sys.getenv(
   unset = path_external("reference_markers", "reference_marker_sources.yml")
 )
 allow_download <- tolower(Sys.getenv("PROTEOMICS_REFERENCE_MARKERS_ALLOW_DOWNLOAD", unset = "false")) %in% c("1", "true", "yes", "y")
-top_n <- suppressWarnings(as.integer(Sys.getenv("PROTEOMICS_REFERENCE_MARKER_TOP_N_PER_CLASS", unset = "50")))
-if (!is.finite(top_n) || top_n < 1L) top_n <- 50L
+top_n <- suppressWarnings(as.integer(Sys.getenv("PROTEOMICS_REFERENCE_MARKER_TOP_N_PER_CLASS", unset = "100")))
+if (!is.finite(top_n) || top_n < 1L) top_n <- 100L
 min_specificity <- suppressWarnings(as.numeric(Sys.getenv("PROTEOMICS_REFERENCE_MARKER_MIN_SPECIFICITY", unset = NA_character_)))
 
 if (dry_run) {
@@ -75,8 +75,15 @@ read_any_table <- function(path) {
 coerce_marker_table <- function(df, source) {
   if (is.null(df) || !is.data.frame(df) || !nrow(df)) return(NULL)
   gene_col <- first_present_col(df, c("gene_symbol", "GeneSymbol", "gene", "Gene", "symbol", "marker", "Marker"))
-  class_col <- first_present_col(df, c("cell_class", "cell_type", "celltype", "CellType", "class", "cluster", "reference_cell_label"))
-  score_col <- first_present_col(df, c("specificity_score", "specificity", "auc", "score", "logFC", "avg_log2FC", "rank"))
+  class_col <- first_present_col(df, c("cell_class", "cell_type", "celltype", "CellType", "panel_name", "class", "cluster", "reference_cell_label"))
+  score_col <- first_present_col(df, c("marker_rank_score", "specificity_score", "specificity_ratio", "specificity", "auc", "score", "logFC", "avg_log2FC", "rank"))
+  mean_target_col <- first_present_col(df, c("mean_target", "mean_expr", "mean_expression", "avg_expr", "avg_expression"))
+  mean_other_col <- first_present_col(df, c("mean_other", "mean_other_mean_expr", "max_other_mean_expr"))
+  pct_target_col <- first_present_col(df, c("pct_target", "frac_clusters_expr_gt_0", "pct_expr", "pct.1"))
+  pct_other_col <- first_present_col(df, c("pct_other", "pct.2"))
+  evidence_col <- first_present_col(df, c("evidence_type", "selection_rule"))
+  use_for_col <- first_present_col(df, c("use_for"))
+  reference_col <- first_present_col(df, c("reference_source", "source_reference"))
   if (is.na(gene_col) || is.na(class_col)) return(NULL)
   out <- data.frame(
     source_name = source$source_name %||% "unknown",
@@ -86,17 +93,19 @@ coerce_marker_table <- function(df, source) {
     cell_class = as.character(df[[class_col]]),
     cell_state = NA_character_,
     reference_cell_label = as.character(df[[class_col]]),
-    mean_target = NA_real_,
-    mean_other = NA_real_,
+    mean_target = if (!is.na(mean_target_col)) suppressWarnings(as.numeric(df[[mean_target_col]])) else NA_real_,
+    mean_other = if (!is.na(mean_other_col)) suppressWarnings(as.numeric(df[[mean_other_col]])) else NA_real_,
     logFC_target_vs_other = if (!is.na(score_col) && grepl("log", score_col, ignore.case = TRUE)) suppressWarnings(as.numeric(df[[score_col]])) else NA_real_,
     specificity_score = if (!is.na(score_col)) suppressWarnings(as.numeric(df[[score_col]])) else NA_real_,
-    pct_target = NA_real_,
-    pct_other = NA_real_,
+    pct_target = if (!is.na(pct_target_col)) suppressWarnings(as.numeric(df[[pct_target_col]])) else NA_real_,
+    pct_other = if (!is.na(pct_other_col)) suppressWarnings(as.numeric(df[[pct_other_col]])) else NA_real_,
     rank_within_source = NA_integer_,
-    selection_rule = "cached_marker_table",
+    selection_rule = if (!is.na(evidence_col)) as.character(df[[evidence_col]]) else "cached_marker_table",
     selected = TRUE,
     confidence = "external_cached",
     notes = source$notes %||% "",
+    source_reference = if (!is.na(reference_col)) as.character(df[[reference_col]]) else source$source_reference %||% source$source_name %||% "unknown",
+    use_for = if (!is.na(use_for_col)) as.character(df[[use_for_col]]) else "annotation_reporting_sensitivity_interpretation",
     stringsAsFactors = FALSE
   )
   out <- out[nzchar(normalize_gene_token(out$gene_symbol)), , drop = FALSE]
@@ -177,7 +186,7 @@ registry_external <- if (nrow(dplyr::bind_rows(external_evidence))) {
     dplyr::transmute(
       marker_set = paste0("reference_", safe_filename(tolower(.data$cell_class))),
       cell_class, cell_state, gene_symbol, source_type, source_name,
-      source_reference = source_name, selection_rule, confidence, use_for = "annotation_reporting_sensitivity_interpretation", notes
+      source_reference, selection_rule, confidence, use_for, notes
     )
 } else {
   data.frame()
