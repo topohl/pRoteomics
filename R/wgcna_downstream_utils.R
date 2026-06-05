@@ -14,6 +14,49 @@ WGCNA_ROI_NOTE <- "microglia-enriched ROI/local microenvironment; annotation onl
   if (is.null(x) || length(x) == 0L || (length(x) == 1L && is.na(x))) y else x
 }
 
+shorten_supermodule_label <- function(x, max_chars = 45) {
+  vapply(as.character(x), function(z) {
+    z <- trimws(z)
+    if (is.na(z) || !nzchar(z)) return("Unresolved / mixed")
+    z <- gsub("\\s+([0-9]+)\\s+[Mm]odules?$", "", z)
+    z <- gsub("\\b[Mm]odules?\\b", "", z)
+    z <- gsub("\\s*\\([^)]*modules?[^)]*\\)", "", z, ignore.case = TRUE)
+    z <- gsub("\\b(process|regulation|pathway|of|the|cellular|biological|positive|negative)\\b", "", z, ignore.case = TRUE)
+    z <- gsub("\\s+", " ", z)
+    parts <- trimws(unlist(strsplit(z, "\\s*[;/|]\\s*", perl = TRUE), use.names = FALSE))
+    parts <- parts[nzchar(parts)]
+    if (length(parts)) z <- paste(utils::head(parts, 2), collapse = " / ")
+    z <- stringr::str_squish(z)
+    if (!nzchar(z)) z <- "Unresolved / mixed"
+    if (nchar(z) > max_chars) {
+      words <- unlist(strsplit(z, "\\s+"), use.names = FALSE)
+      keep <- character()
+      for (word in words) {
+        cand <- paste(c(keep, word), collapse = " ")
+        if (nchar(cand) > max_chars) break
+        keep <- c(keep, word)
+      }
+      z <- if (length(keep)) paste(keep, collapse = " ") else substr(z, 1, max_chars)
+    }
+    z
+  }, character(1))
+}
+
+macroprogram_display <- function(x) {
+  vapply(as.character(x), function(z) {
+    z0 <- tolower(trimws(z %||% ""))
+    if (!nzchar(z0)) return("Unresolved / mixed")
+    if (grepl("ecm|adhesion|basement membrane|collagen|laminin|integrin", z0)) return("Perivascular ECM / adhesion")
+    if (grepl("mitochondr|respiratory|oxidative|\\batp\\b|\\btca\\b|acetyl-coa", z0)) return("Mitochondrial metabolism")
+    if (grepl("\\brna\\b|ribosome|translation|splice|\\brnp\\b|ncrna", z0)) return("RNA / translation")
+    if (grepl("synapse|vesicle|postsynaptic|actin|cytoskeleton", z0)) return("Synaptic / cytoskeletal")
+    if (grepl("microglia|phagolysosomal|immune", z0)) return("Microglia state")
+    if (grepl("neuropil|neuronal", z0)) return("Neuropil / neuronal")
+    if (grepl("\\bbbb\\b|endothelial|pericyte|vascular", z0)) return("Vascular / BBB")
+    "Unresolved / mixed"
+  }, character(1))
+}
+
 wgcna_cli <- function(default_dataset = "neuron_neuropil", allow_all = FALSE) {
   args <- commandArgs(trailingOnly = TRUE)
   value_after <- function(flag, default = "") {
