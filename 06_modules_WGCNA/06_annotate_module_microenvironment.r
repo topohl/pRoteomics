@@ -6,7 +6,7 @@ paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.
 source(paths_file)
 source(repo_path("R", "wgcna_downstream_utils.R"))
 
-required_pkgs <- c("dplyr", "tidyr", "tibble", "ggplot2", "svglite", "readr")
+required_pkgs <- c("dplyr", "tidyr", "tibble", "ggplot2", "svglite", "readr", "stringr", "scales")
 missing_pkgs <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
 if (length(missing_pkgs) && !is_dry_run()) stop("Missing required R package(s): ", paste(missing_pkgs, collapse = ", "), call. = FALSE)
 if (!length(missing_pkgs)) suppressPackageStartupMessages(invisible(lapply(required_pkgs, library, character.only = TRUE)))
@@ -405,20 +405,24 @@ if (is.null(super_ann) || !nrow(super_ann)) {
   super_annot <- data.frame(dataset = DATASET, SupermoduleID = NA_character_, Supermodule_FinalLabel = NA_character_, n_member_modules = 0L, dominant_microenvironment_class = "missing_supermodule_annotation", interpretation_note = WGCNA_ROI_NOTE)
 } else {
   super_ann2 <- super_ann
-  for (nm in c("Supermodule_DataDrivenID", "Supermodule_DataDrivenLabel", "Supermodule_CuratedLabel", "Supermodule_FinalLabel", "Supermodule_LabelSource", "Supermodule_LabelConfidence", "Supermodule_LabelRationale", "GO_label_confidence_class", "annotation_scope", "manual_label_status", "ManualReviewRequired", "Supermodule_DataDriven", "Supermodule", "SupermoduleConfidence", "SupermoduleRationale")) {
+  for (nm in c("Supermodule_DataDrivenID", "Supermodule_DisplayLabel", "Supermodule_LongLabel", "Macroprogram_Display", "Supermodule_DataDrivenLabel", "Supermodule_CuratedLabel", "Supermodule_FinalLabel", "Supermodule_LabelSource", "Supermodule_LabelConfidence", "Supermodule_LabelRationale", "GO_label_confidence_class", "annotation_scope", "manual_label_status", "ManualReviewRequired", "Supermodule_DataDriven", "Supermodule", "SupermoduleConfidence", "SupermoduleRationale")) {
     if (!nm %in% names(super_ann2)) super_ann2[[nm]] <- NA_character_
   }
   smap <- super_ann2 |>
     dplyr::mutate(
       SupermoduleID = dplyr::coalesce(as.character(.data$Supermodule_DataDrivenID), as.character(.data$Supermodule_DataDriven), as.character(.data$Supermodule)),
       Supermodule_FinalLabel = dplyr::coalesce(as.character(.data$Supermodule_FinalLabel), as.character(.data$Supermodule), .data$SupermoduleID),
-      Supermodule_ShortLabel = .data$SupermoduleID
+      Supermodule_LongLabel = dplyr::coalesce(as.character(.data$Supermodule_LongLabel), .data$Supermodule_FinalLabel),
+      Macroprogram_Display = dplyr::coalesce(as.character(.data$Macroprogram_Display), macroprogram_display(.data$Supermodule_LongLabel)),
+      Supermodule_DisplayLabel = dplyr::coalesce(as.character(.data$Supermodule_DisplayLabel), paste0(.data$SupermoduleID, " | ", .data$Macroprogram_Display)),
+      Supermodule_DisplayLabel = shorten_supermodule_label(.data$Supermodule_DisplayLabel, max_chars = 45),
+      Supermodule_ShortLabel = .data$Supermodule_DisplayLabel
     ) |>
-    dplyr::select(dplyr::any_of(c("ModuleColor", "module_eigengene", "SupermoduleID", "Supermodule_DataDrivenLabel", "Supermodule_CuratedLabel", "Supermodule_FinalLabel", "Supermodule_ShortLabel", "Supermodule_LabelSource", "Supermodule_LabelConfidence", "Supermodule_LabelRationale", "GO_label_confidence_class", "annotation_scope", "manual_label_status", "ManualReviewRequired", "SupermoduleConfidence", "SupermoduleRationale")))
+    dplyr::select(dplyr::any_of(c("ModuleColor", "module_eigengene", "SupermoduleID", "Supermodule_DisplayLabel", "Supermodule_LongLabel", "Macroprogram_Display", "Supermodule_DataDrivenLabel", "Supermodule_CuratedLabel", "Supermodule_FinalLabel", "Supermodule_ShortLabel", "Supermodule_LabelSource", "Supermodule_LabelConfidence", "Supermodule_LabelRationale", "GO_label_confidence_class", "annotation_scope", "manual_label_status", "ManualReviewRequired", "SupermoduleConfidence", "SupermoduleRationale")))
   super_annot <- module_annot |>
     dplyr::left_join(smap, by = c("ModuleColor" = "ModuleColor")) |>
     dplyr::filter(!is.na(.data$SupermoduleID)) |>
-    dplyr::group_by(.data$dataset, .data$SupermoduleID, .data$Supermodule_FinalLabel, .data$Supermodule_ShortLabel) |>
+    dplyr::group_by(.data$dataset, .data$SupermoduleID, .data$Supermodule_DisplayLabel, .data$Supermodule_LongLabel, .data$Macroprogram_Display, .data$Supermodule_FinalLabel, .data$Supermodule_ShortLabel) |>
     dplyr::summarise(
       n_member_modules = dplyr::n_distinct(.data$ModuleID),
       member_modules = paste(unique(.data$ModuleID), collapse = ";"),
@@ -505,14 +509,30 @@ if (nrow(marker_long)) {
 }
 if (nrow(super_annot) && "dominant_microenvironment_class" %in% names(super_annot)) {
   comp <- super_annot |>
-    dplyr::select("SupermoduleID", dplyr::starts_with("fraction_modules_")) |>
-    tidyr::pivot_longer(cols = -dplyr::all_of("SupermoduleID"), names_to = "class", values_to = "fraction")
-  p2 <- ggplot2::ggplot(comp, ggplot2::aes(x = .data$SupermoduleID, y = .data$fraction, fill = .data$class)) +
-    ggplot2::geom_col() +
-    ggplot2::labs(x = NULL, y = "Fraction of member modules", fill = NULL) +
-    ggplot2::theme_classic(base_size = 8) +
-    ggplot2::theme(legend.position = "bottom")
-  ggplot2::ggsave(file.path(PATHS$figures, "supermodule_microenvironment_composition.svg"), p2, width = 140, height = 90, units = "mm", device = svglite::svglite)
+    dplyr::mutate(
+      Supermodule_DisplayLabel = dplyr::coalesce(.data$Supermodule_DisplayLabel, paste0(.data$SupermoduleID, " | ", .data$Macroprogram_Display), .data$SupermoduleID),
+      Supermodule_DisplayLabel = shorten_supermodule_label(.data$Supermodule_DisplayLabel, max_chars = 45),
+      plot_label = vapply(as.character(.data$Supermodule_DisplayLabel), function(z) paste(strwrap(z, width = 34), collapse = "\n"), character(1))
+    ) |>
+    dplyr::select("plot_label", "SupermoduleID", "Supermodule_DisplayLabel", "Supermodule_LongLabel", "Macroprogram_Display", dplyr::starts_with("fraction_modules_")) |>
+    tidyr::pivot_longer(cols = dplyr::starts_with("fraction_modules_"), names_to = "class", values_to = "fraction") |>
+    dplyr::mutate(
+      class = gsub("^fraction_modules_", "", .data$class),
+      class = gsub("_", " ", .data$class),
+      fraction = suppressWarnings(as.numeric(.data$fraction))
+    ) |>
+    dplyr::filter(is.finite(.data$fraction), .data$fraction > 0)
+  write_table_and_source(comp, PATHS$tables, PATHS$source_data, "WGCNA_supermodule_microenvironment_composition_source.csv")
+  if (nrow(comp)) {
+    fig_h <- max(90, 14 * length(unique(comp$plot_label)) + 35)
+    p2 <- ggplot2::ggplot(comp, ggplot2::aes(x = .data$fraction, y = stats::reorder(.data$plot_label, .data$SupermoduleID), fill = .data$class)) +
+      ggplot2::geom_col(width = 0.70) +
+      ggplot2::scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = ggplot2::expansion(mult = c(0, 0.02))) +
+      ggplot2::labs(x = "Fraction of member modules", y = NULL, fill = NULL) +
+      ggplot2::theme_classic(base_size = 8) +
+      ggplot2::theme(legend.position = "bottom", axis.text.y = ggplot2::element_text(size = 7.4))
+    ggplot2::ggsave(file.path(PATHS$figures, "supermodule_microenvironment_composition.svg"), p2, width = 165, height = fig_h, units = "mm", device = svglite::svglite)
+  }
 }
 if (DATASET == "microglia" || force_microglia) {
   x_col <- if ("empirical_neuropil_enriched_fraction" %in% names(module_annot)) "empirical_neuropil_enriched_fraction" else if ("canonical_neuronal_synaptic_neuropil_fraction" %in% names(module_annot)) "canonical_neuronal_synaptic_neuropil_fraction" else "neuropil_synaptic_neuronal_marker_fraction"
