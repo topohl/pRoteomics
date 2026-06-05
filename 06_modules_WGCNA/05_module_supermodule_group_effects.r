@@ -274,12 +274,14 @@ make_endpoint_maps <- function(module_eig, definitions, super_ann) {
   if (nrow(super_ann)) {
     super_map0 <- super_ann
     if ("present_in_dataset" %in% names(super_map0)) super_map0 <- super_map0 |> dplyr::filter(.data$present_in_dataset %in% c(TRUE, "TRUE", "true", 1))
-    for (nm in c("Supermodule_DataDrivenID", "Supermodule_DataDriven", "SupermoduleID", "Supermodule_FinalLabel", "Supermodule", "Supermodule_DataDrivenLabel")) if (!nm %in% names(super_map0)) super_map0[[nm]] <- NA_character_
+    for (nm in c("Supermodule_DataDrivenID", "Supermodule_DataDriven", "SupermoduleID", "Supermodule_DisplayLabel", "Macroprogram_Display", "Supermodule_LongLabel", "Supermodule_FinalLabel", "Supermodule", "Supermodule_DataDrivenLabel")) if (!nm %in% names(super_map0)) super_map0[[nm]] <- NA_character_
     super_map <- super_map0 |>
       dplyr::mutate(
         module_eigengene = as.character(.data$module_eigengene),
         SupermoduleID = dplyr::coalesce(as.character(.data$Supermodule_DataDrivenID), as.character(.data$Supermodule_DataDriven), as.character(.data$SupermoduleID), as.character(.data$Supermodule)),
-        SupermoduleLabel = dplyr::coalesce(as.character(.data$Supermodule_FinalLabel), as.character(.data$Supermodule_DataDrivenLabel), as.character(.data$Supermodule), .data$SupermoduleID)
+        SupermoduleLabel = dplyr::coalesce(as.character(.data$Supermodule_DisplayLabel), as.character(.data$Macroprogram_Display), as.character(.data$Supermodule_FinalLabel), as.character(.data$Supermodule_DataDrivenLabel), as.character(.data$Supermodule), .data$SupermoduleID),
+        Supermodule_LongLabel = dplyr::coalesce(as.character(.data$Supermodule_LongLabel), as.character(.data$Supermodule_FinalLabel), as.character(.data$Supermodule)),
+        Macroprogram_Display = as.character(.data$Macroprogram_Display)
       )
   } else {
     super_map <- data.frame(module_eigengene = character(), SupermoduleID = character(), SupermoduleLabel = character())
