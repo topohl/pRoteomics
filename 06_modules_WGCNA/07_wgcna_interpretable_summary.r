@@ -12,7 +12,7 @@ paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.
 source(paths_file)
 source(repo_path("R", "wgcna_downstream_utils.R"))
 
-required_pkgs <- c("dplyr", "tidyr", "tibble", "ggplot2", "svglite", "readr")
+required_pkgs <- c("dplyr", "tidyr", "tibble", "ggplot2", "svglite", "readr", "stringr", "scales")
 missing_pkgs <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
 if (length(missing_pkgs) && !is_dry_run()) {
   stop("Missing required R package(s): ", paste(missing_pkgs, collapse = ", "), call. = FALSE)
@@ -77,7 +77,7 @@ effect_sentence <- function(row, level = "supermodule") {
   ds_label <- dataset_label(row$dataset)
   id <- if (level == "supermodule") row_get("supermodule_id") else row_get("module_id")
   label <- if (level == "supermodule") {
-    row_get("Supermodule_FinalLabel", row_get("supermodule_label", row_get("supermodule_id")))
+    row_get("Supermodule_DisplayLabel", row_get("Macroprogram_Display", row_get("supermodule_label", row_get("supermodule_id"))))
   } else {
     row_get("module_label", row_get("ModuleID", row_get("module_id")))
   }
@@ -178,6 +178,8 @@ spatial_effect_rows <- function(df) {
 program_label_col <- function(df, level = "supermodule") {
   if (level == "supermodule") {
     coalesce_chr(
+      col_or_na(df, "Supermodule_DisplayLabel"),
+      col_or_na(df, "Macroprogram_Display"),
       col_or_na(df, "Supermodule_FinalLabel"),
       col_or_na(df, "Supermodule_FinalLabel.y"),
       col_or_na(df, "Supermodule_FinalLabel.x"),
@@ -281,7 +283,7 @@ build_module_supermodule_map <- function(module_effects, module_to_supermodule_m
       "supermodule_id", "Supermodule", "Supermodule_DataDrivenLabel"
     ))
     slabel_cols <- candidate_cols(map_df, c(
-      "Supermodule_FinalLabel", "SupermoduleLabel", "Supermodule_DataDrivenLabel",
+      "Supermodule_DisplayLabel", "Macroprogram_Display", "SupermoduleLabel", "Supermodule_FinalLabel", "Supermodule_DataDrivenLabel",
       "supermodule_label", "Supermodule", "SupermoduleID"
     ))
 
@@ -323,7 +325,7 @@ build_module_supermodule_map <- function(module_effects, module_to_supermodule_m
   if (!is.null(super_annot) && nrow(super_annot)) {
     ann <- as.data.frame(super_annot, stringsAsFactors = FALSE)
     sid_cols <- candidate_cols(ann, c("SupermoduleID", "supermodule_id", "Supermodule_DataDrivenID", "Supermodule_DataDriven", "Supermodule"))
-    label_cols <- candidate_cols(ann, c("Supermodule_FinalLabel", "SupermoduleLabel", "Supermodule_DataDrivenLabel", "supermodule_label"))
+    label_cols <- candidate_cols(ann, c("Supermodule_DisplayLabel", "Macroprogram_Display", "SupermoduleLabel", "Supermodule_FinalLabel", "Supermodule_DataDrivenLabel", "supermodule_label"))
     if (length(sid_cols) && length(label_cols)) {
       ann2 <- dplyr::bind_rows(lapply(seq_len(nrow(ann)), function(i) {
         sid_vals <- unlist(ann[i, sid_cols, drop = TRUE], use.names = FALSE)
@@ -471,16 +473,17 @@ plot_module_main_heatmap <- function(module_join, paths, ds) {
   if (!nrow(plot_df)) return(invisible(NULL))
 
   raw_id <- pretty_module_label(coalesce_chr(col_or_na(plot_df, "module_id"), col_or_na(plot_df, "ModuleID"), col_or_na(plot_df, "ModuleColor")))
-  ann_lab <- coalesce_chr(col_or_na(plot_df, "microenvironment_label"), program_label_col(plot_df, "module"))
+  ann_lab <- shorten_supermodule_label(coalesce_chr(col_or_na(plot_df, "microenvironment_label"), program_label_col(plot_df, "module")), max_chars = 28)
   plot_df$module_label_plot <- paste0(raw_id, " | ", ann_lab)
-  plot_df$module_label_plot <- label_wrap(plot_df$module_label_plot, 24)
-  plot_df$supermodule_plot <- label_wrap(pretty_program_label(plot_df$supermodule_label_for_module), 28)
+  plot_df$module_label_plot <- label_wrap(plot_df$module_label_plot, 26)
+  plot_df$supermodule_plot <- label_wrap(shorten_supermodule_label(pretty_program_label(plot_df$supermodule_label_for_module), max_chars = 45), 30)
 
+  max_modules <- 45L
   keep_modules <- plot_df |>
     dplyr::group_by(.data$module_label_plot) |>
     dplyr::summarise(best_p = min(.data$p_value, na.rm = TRUE), best_abs_estimate = max(abs(.data$estimate), na.rm = TRUE), .groups = "drop") |>
     dplyr::arrange(.data$best_p, dplyr::desc(.data$best_abs_estimate)) |>
-    dplyr::slice_head(n = 45) |>
+    dplyr::slice_head(n = max_modules) |>
     dplyr::pull(.data$module_label_plot)
 
   plot_df <- plot_df |>
@@ -495,6 +498,8 @@ plot_module_main_heatmap <- function(module_join, paths, ds) {
         TRUE ~ "n.s."
       )
     )
+  write_csv_safe2(plot_df, file.path(paths$source_data, "module_group_effects_main_dotplot_source.csv"))
+  fig_h <- max(120, 45 + 6.0 * length(unique(plot_df$module_label_plot)) + 5.0 * length(unique(plot_df$supermodule_plot)))
 
   p <- ggplot2::ggplot(plot_df, ggplot2::aes(x = .data$contrast, y = .data$module_label_plot)) +
     ggplot2::geom_point(
@@ -510,7 +515,7 @@ plot_module_main_heatmap <- function(module_join, paths, ds) {
     ggplot2::scale_alpha_manual(values = c("FDR < 0.05" = 1, "FDR < 0.10" = 0.9, "P < 0.05" = 0.70, "n.s." = 0.30), name = "Evidence") +
     ggplot2::labs(
       title = paste0(dataset_label(ds), ": module-level group effects"),
-      subtitle = "One row per WGCNA module; supermodule labels are attached from the module-to-supermodule map",
+      subtitle = paste0("One row per WGCNA module; showing strongest ", min(max_modules, length(unique(plot_df$module_label_plot))), " modules by P value/effect size"),
       x = NULL, y = NULL
     ) +
     theme_clean(base_size = 7.6) +
@@ -521,7 +526,7 @@ plot_module_main_heatmap <- function(module_join, paths, ds) {
       legend.position = "right"
     )
 
-  save_svg(p, file.path(paths$figures, "module_group_effects_main_dotplot.svg"), width = 185, height = 155)
+  save_svg(p, file.path(paths$figures, "module_group_effects_main_dotplot.svg"), width = 185, height = fig_h)
 
   # Also write a heatmap with effect-size fill for readers who prefer a matrix view.
   p_heat <- ggplot2::ggplot(plot_df, ggplot2::aes(x = .data$contrast, y = .data$module_label_plot, fill = .data$estimate)) +
@@ -531,7 +536,7 @@ plot_module_main_heatmap <- function(module_join, paths, ds) {
     ggplot2::scale_fill_gradient2(low = "#3B6FB6", mid = "grey96", high = "#C84C5A", midpoint = 0, name = "Estimate") +
     ggplot2::labs(
       title = paste0(dataset_label(ds), ": module-level group effects"),
-      subtitle = "Effect-size heatmap; asterisks mark FDR < 0.10 (*) and FDR < 0.05 (**)",
+      subtitle = paste0("Effect-size heatmap; showing strongest ", min(max_modules, length(unique(plot_df$module_label_plot))), " modules; asterisks mark FDR < 0.10 (*) and FDR < 0.05 (**)"),
       x = NULL, y = NULL
     ) +
     theme_clean(base_size = 7.4) +
@@ -542,7 +547,7 @@ plot_module_main_heatmap <- function(module_join, paths, ds) {
       legend.position = "right"
     )
 
-  save_svg(p_heat, file.path(paths$figures, "module_group_effects_main_heatmap.svg"), width = 185, height = 155)
+  save_svg(p_heat, file.path(paths$figures, "module_group_effects_main_heatmap.svg"), width = 185, height = fig_h)
 }
 
 plot_module_spatial_heatmap <- function(module_join, paths, ds) {
@@ -553,15 +558,16 @@ plot_module_spatial_heatmap <- function(module_join, paths, ds) {
   if (!nrow(plot_df)) return(invisible(NULL))
 
   raw_id <- pretty_module_label(coalesce_chr(col_or_na(plot_df, "module_id"), col_or_na(plot_df, "ModuleID"), col_or_na(plot_df, "ModuleColor")))
-  ann_lab <- coalesce_chr(col_or_na(plot_df, "microenvironment_label"), program_label_col(plot_df, "module"))
-  plot_df$module_label_plot <- label_wrap(paste0(raw_id, " | ", ann_lab), 22)
-  plot_df$supermodule_plot <- label_wrap(pretty_program_label(plot_df$supermodule_label_for_module), 25)
+  ann_lab <- shorten_supermodule_label(coalesce_chr(col_or_na(plot_df, "microenvironment_label"), program_label_col(plot_df, "module")), max_chars = 26)
+  plot_df$module_label_plot <- label_wrap(paste0(raw_id, " | ", ann_lab), 25)
+  plot_df$supermodule_plot <- label_wrap(shorten_supermodule_label(pretty_program_label(plot_df$supermodule_label_for_module), max_chars = 45), 30)
 
+  max_modules <- 35L
   keep_modules <- plot_df |>
     dplyr::group_by(.data$module_label_plot) |>
     dplyr::summarise(best_p = min(.data$p_value, na.rm = TRUE), best_abs_estimate = max(abs(.data$estimate), na.rm = TRUE), .groups = "drop") |>
     dplyr::arrange(.data$best_p, dplyr::desc(.data$best_abs_estimate)) |>
-    dplyr::slice_head(n = 35) |>
+    dplyr::slice_head(n = max_modules) |>
     dplyr::pull(.data$module_label_plot)
 
   plot_df <- plot_df |>
@@ -570,6 +576,8 @@ plot_module_spatial_heatmap <- function(module_join, paths, ds) {
       spatial_unit = factor(.data$spatial_unit, levels = unique(.data$spatial_unit)),
       contrast = factor(.data$contrast, levels = c("RES - CON", "SUS - CON", "RES - SUS"))
     )
+  write_csv_safe2(plot_df, file.path(paths$source_data, "module_group_effects_spatial_heatmap_source.csv"))
+  fig_h <- max(135, 50 + 6.5 * length(unique(plot_df$module_label_plot)) + 5.0 * length(unique(plot_df$supermodule_plot)))
 
   p <- ggplot2::ggplot(plot_df, ggplot2::aes(x = .data$spatial_unit, y = .data$module_label_plot, fill = .data$estimate)) +
     ggplot2::geom_tile(color = "white", linewidth = 0.18) +
@@ -581,7 +589,7 @@ plot_module_spatial_heatmap <- function(module_join, paths, ds) {
     ) +
     ggplot2::labs(
       title = paste0(dataset_label(ds), ": spatially resolved module effects"),
-      subtitle = paste0("Effect estimates across ", spatial_unit_label(ds), " tests; module labels are grouped by mapped supermodule"),
+      subtitle = paste0("Effect estimates across ", spatial_unit_label(ds), " tests; showing strongest ", min(max_modules, length(unique(plot_df$module_label_plot))), " modules"),
       x = spatial_unit_label(ds), y = NULL
     ) +
     theme_clean(base_size = 6.7) +
@@ -592,7 +600,7 @@ plot_module_spatial_heatmap <- function(module_join, paths, ds) {
       legend.position = "right"
     )
 
-  save_svg(p, file.path(paths$figures, "module_group_effects_spatial_heatmap.svg"), width = 210, height = 160)
+  save_svg(p, file.path(paths$figures, "module_group_effects_spatial_heatmap.svg"), width = 210, height = fig_h)
 }
 
 plot_supermodule_membership_overview <- function(module_join, super_join, paths, ds) {
@@ -722,33 +730,41 @@ plot_microglia_composition_heatmap <- function(super_annot, paths) {
 
   plot_df <- super_annot |>
     dplyr::mutate(
-      program_label = label_wrap(coalesce_chr(.data$Supermodule_FinalLabel, .data$SupermoduleID), 34)
+      program_label = coalesce_chr(
+        col_or_na(super_annot, "Supermodule_DisplayLabel"),
+        col_or_na(super_annot, "Macroprogram_Display"),
+        col_or_na(super_annot, "SupermoduleID")
+      ),
+      program_label = label_wrap(shorten_supermodule_label(.data$program_label, max_chars = 45), 34)
     ) |>
-    dplyr::select("program_label", dplyr::all_of(frac_cols)) |>
+    dplyr::select(dplyr::any_of(c("SupermoduleID", "Supermodule_DisplayLabel", "Supermodule_LongLabel", "Macroprogram_Display")), "program_label", dplyr::all_of(frac_cols)) |>
     tidyr::pivot_longer(cols = dplyr::all_of(frac_cols), names_to = "class", values_to = "fraction") |>
     dplyr::mutate(
       fraction = safe_num(.data$fraction),
       class = gsub("^fraction_modules_", "", .data$class),
       class = gsub("_", " ", .data$class)
-    )
+    ) |>
+    dplyr::filter(is.finite(.data$fraction), .data$fraction > 0)
 
   if (!nrow(plot_df)) return(invisible(NULL))
+  write_csv_safe2(plot_df, file.path(paths$source_data, "microglia_supermodule_annotation_composition_source.csv"))
+  fig_h <- max(105, 16 * length(unique(plot_df$program_label)) + 40)
 
-  p <- ggplot2::ggplot(plot_df, ggplot2::aes(x = .data$class, y = .data$program_label, fill = .data$fraction)) +
-    ggplot2::geom_tile(color = "white", linewidth = 0.25) +
-    ggplot2::scale_fill_gradient(low = "grey96", high = "#C84C5A", name = "Fraction", na.value = "grey92") +
+  p <- ggplot2::ggplot(plot_df, ggplot2::aes(x = .data$fraction, y = stats::reorder(.data$program_label, .data$SupermoduleID), fill = .data$class)) +
+    ggplot2::geom_col(width = 0.72) +
+    ggplot2::scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = ggplot2::expansion(mult = c(0, 0.02))) +
     ggplot2::labs(
       title = "Microglia ROI: supermodule annotation composition",
       subtitle = "Fractions summarize the module classes contributing to each supermodule",
-      x = NULL, y = NULL
+      x = "Fraction of member modules", y = NULL, fill = NULL
     ) +
     theme_clean(base_size = 7.5) +
     ggplot2::theme(
-      axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
-      legend.position = "right"
+      legend.position = "bottom",
+      axis.text.y = ggplot2::element_text(size = 7.2)
     )
 
-  save_svg(p, file.path(paths$figures, "microglia_supermodule_annotation_composition.svg"), width = 180, height = 120)
+  save_svg(p, file.path(paths$figures, "microglia_supermodule_annotation_composition.svg"), width = 180, height = fig_h)
 }
 
 plot_microglia_marker_evidence <- function(module_annot, paths) {
@@ -821,6 +837,9 @@ make_dataset_summary <- function(ds) {
   if (is.null(super_annot)) super_annot <- data.frame(dataset = ds, SupermoduleID = character(), Supermodule_FinalLabel = character(), dominant_microenvironment_class = character())
 
   needed_super_cols <- c(
+    "Supermodule_DisplayLabel",
+    "Supermodule_LongLabel",
+    "Macroprogram_Display",
     "dominant_microenvironment_class",
     "fraction_modules_microglia_supported",
     "fraction_modules_microglia_state_or_activation_supported",
@@ -854,7 +873,7 @@ make_dataset_summary <- function(ds) {
   super_join <- super_effects |>
     dplyr::left_join(super_annot, by = c("dataset" = "dataset", "supermodule_id" = "SupermoduleID")) |>
     add_interpretation_sentences("supermodule") |>
-    ensure_columns(c("Supermodule_FinalLabel", "supermodule_label", "supermodule_id", "dominant_microenvironment_class", "p_value", "estimate", "FDR_global", "contrast", "spatial_unit", "effect_scope", "evidence_status", "direction"))
+    ensure_columns(c("Supermodule_DisplayLabel", "Supermodule_LongLabel", "Macroprogram_Display", "Supermodule_FinalLabel", "supermodule_label", "supermodule_id", "dominant_microenvironment_class", "p_value", "estimate", "FDR_global", "contrast", "spatial_unit", "effect_scope", "evidence_status", "direction"))
 
   module_super_map <- build_module_supermodule_map(
     module_effects = module_join,
@@ -948,7 +967,12 @@ make_cross_dataset_summary <- function(summaries) {
   cross_base <- all_super |>
     add_plot_metrics() |>
     dplyr::mutate(
-      program_label = coalesce_chr(.data$Supermodule_FinalLabel, .data$supermodule_label, .data$supermodule_id),
+      program_label = coalesce_chr(
+        col_or_na(all_super, "Supermodule_DisplayLabel"),
+        col_or_na(all_super, "Macroprogram_Display"),
+        col_or_na(all_super, "supermodule_label"),
+        col_or_na(all_super, "supermodule_id")
+      ),
       is_global = !is.na(.data$spatial_unit) & .data$spatial_unit == "global_spatial_adjusted",
       row_priority = dplyr::case_when(
         .data$is_global ~ 1L,
