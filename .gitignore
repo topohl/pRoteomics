@@ -34,17 +34,17 @@ config/*.local.yaml
 *.local.yaml
 
 # Large data and generated outputs
-#data/raw/
-#data/external/
-#!data/external/
-#data/external/*
-#!data/external/reference_markers/
-#data/external/reference_markers/*
-#!data/external/reference_markers/reference_marker_sources.yml
-#!data/external/reference_markers/*/
-#data/external/reference_markers/*/*
-#!data/external/reference_markers/*/.gitkeep
-#data/processed/
+data/raw/
+data/external/
+!data/external/
+data/external/*
+!data/external/reference_markers/
+data/external/reference_markers/*
+!data/external/reference_markers/reference_marker_sources.yml
+!data/external/reference_markers/*/
+data/external/reference_markers/*/*
+!data/external/reference_markers/*/.gitkeep
+data/processed/
 results/figures/
 results/tables/
 results/source_data/
@@ -75,3 +75,4 @@ PRIDE_package/
 /results/module_scores/neuron_neuropil
 /results/module_scores/neuron_soma
 /results/module_scores
+/WGCNA_BACKUP_20260605_095556
