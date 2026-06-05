@@ -519,6 +519,58 @@ collapse_values <- function(x, n = 8, sep = "; ") {
   paste(utils::head(x, n), collapse = sep)
 }
 
+shorten_supermodule_label <- function(x, max_chars = 45) {
+  vapply(as.character(x), function(z) {
+    z <- trimws(z)
+    if (is.na(z) || !nzchar(z)) return("Unresolved / mixed")
+    z <- gsub("\\s+([0-9]+)\\s+[Mm]odules?$", "", z)
+    z <- gsub("\\b[Mm]odules?\\b", "", z)
+    z <- gsub("\\s*\\([^)]*modules?[^)]*\\)", "", z, ignore.case = TRUE)
+    z <- gsub("\\b(process|regulation|pathway|of|the|cellular|biological|positive|negative)\\b", "", z, ignore.case = TRUE)
+    z <- gsub("\\s+", " ", z)
+    parts <- trimws(unlist(strsplit(z, "\\s*[;/|]\\s*", perl = TRUE), use.names = FALSE))
+    parts <- parts[nzchar(parts)]
+    if (length(parts)) z <- paste(utils::head(parts, 2), collapse = " / ")
+    z <- stringr::str_squish(z)
+    if (!nzchar(z)) z <- "Unresolved / mixed"
+    if (nchar(z) > max_chars) {
+      words <- unlist(strsplit(z, "\\s+"), use.names = FALSE)
+      keep <- character()
+      for (word in words) {
+        cand <- paste(c(keep, word), collapse = " ")
+        if (nchar(cand) > max_chars) break
+        keep <- c(keep, word)
+      }
+      z <- if (length(keep)) paste(keep, collapse = " ") else substr(z, 1, max_chars)
+    }
+    z
+  }, character(1))
+}
+
+macroprogram_display <- function(x) {
+  vapply(as.character(x), function(z) {
+    z0 <- tolower(trimws(z %||% ""))
+    if (!nzchar(z0)) return("Unresolved / mixed")
+    if (grepl("ecm|adhesion|basement membrane|collagen|laminin|integrin", z0)) return("Perivascular ECM / adhesion")
+    if (grepl("mitochondr|respiratory|oxidative|\\batp\\b|\\btca\\b|acetyl-coa", z0)) return("Mitochondrial metabolism")
+    if (grepl("\\brna\\b|ribosome|translation|splice|\\brnp\\b|ncrna", z0)) return("RNA / translation")
+    if (grepl("synapse|vesicle|postsynaptic|actin|cytoskeleton", z0)) return("Synaptic / cytoskeletal")
+    if (grepl("microglia|phagolysosomal|immune", z0)) return("Microglia state")
+    if (grepl("neuropil|neuronal", z0)) return("Neuropil / neuronal")
+    if (grepl("\\bbbb\\b|endothelial|pericyte|vascular", z0)) return("Vascular / BBB")
+    "Unresolved / mixed"
+  }, character(1))
+}
+
+supermodule_cut_height_default <- function(dataset) {
+  switch(as.character(dataset),
+    neuron_neuropil = 0.35,
+    neuron_soma = 0.35,
+    microglia = 0.50,
+    0.35
+  )
+}
+
 read_manual_supermodule_config <- function(dataset) {
   config_path <- repo_path("config", "wgcna_supermodules", paste0(dataset, ".csv"))
   required_cols <- c("module_eigengene", "ModuleColor", "Supermodule_Manual", "ManualConfidence", "ManualRationale")
@@ -532,19 +584,42 @@ read_manual_supermodule_config <- function(dataset) {
       dplyr::mutate(
         module_eigengene = as.character(.data$module_eigengene),
         ModuleColor = as.character(.data$ModuleColor),
-        ManualSource = "dataset_config"
+        ManualSource = "dataset_manual_config",
+        manual_config_used = TRUE,
+        legacy_seed_used = FALSE
       ))
   }
 
-  manual_supermodule_seed %>%
-    dplyr::transmute(
-      module_eigengene = .data$module_eigengene,
-      ModuleColor = .data$ModuleColor,
-      Supermodule_Manual = as.character(.data$Supermodule),
-      ManualConfidence = .data$SupermoduleConfidence,
-      ManualRationale = .data$SupermoduleRationale,
-      ManualSource = "legacy_static_seed"
+  allow_legacy_seed <- tolower(Sys.getenv("PROTEOMICS_ALLOW_LEGACY_SUPERMODULE_SEED", unset = "false")) %in% c("1", "true", "yes", "y")
+  if (isTRUE(allow_legacy_seed)) {
+    warning(
+      "Using legacy static color-based supermodule seed because PROTEOMICS_ALLOW_LEGACY_SUPERMODULE_SEED=true. ",
+      "These labels are unsafe across WGCNA reruns/datasets and are marked legacy_static_seed.",
+      call. = FALSE
     )
+    return(manual_supermodule_seed %>%
+      dplyr::transmute(
+        module_eigengene = .data$module_eigengene,
+        ModuleColor = .data$ModuleColor,
+        Supermodule_Manual = as.character(.data$Supermodule),
+        ManualConfidence = .data$SupermoduleConfidence,
+        ManualRationale = .data$SupermoduleRationale,
+        ManualSource = "legacy_static_seed",
+        manual_config_used = FALSE,
+        legacy_seed_used = TRUE
+      ))
+  }
+
+  tibble::tibble(
+    module_eigengene = character(),
+    ModuleColor = character(),
+    Supermodule_Manual = character(),
+    ManualConfidence = character(),
+    ManualRationale = character(),
+    ManualSource = character(),
+    manual_config_used = logical(),
+    legacy_seed_used = logical()
+  )
 }
 
 summarise_top_go_terms <- function(go_df, module_colors, ontology) {
@@ -579,7 +654,7 @@ propose_supermodule_name <- function(go_terms, hubs = NA_character_, trait_summa
     label <- sub(" \\([0-9]+ modules\\)$", "", clean_go[[1]])
     return(list(
       name = compact_term(label),
-      source = "recurring_GO_theme",
+      source = "data_driven_GO",
       confidence = if (n_modules >= 2L) "high" else "low",
       rationale = paste0("Recurring GO support across ", n_modules_with_go_support, " member modules.")
     ))
@@ -588,15 +663,15 @@ propose_supermodule_name <- function(go_terms, hubs = NA_character_, trait_summa
     label <- sub(" \\([0-9]+ modules\\)$", "", clean_go[[1]])
     return(list(
       name = compact_term(label),
-      source = "singleton_GO_theme",
+      source = "data_driven_GO",
       confidence = "low",
-      rationale = "Single-module cluster; GO term is retained as a low-confidence descriptive label."
+      rationale = "Single-module supermodule; GO term is retained for audit only and should not be over-interpreted as a coherent supermodule theme."
     ))
   }
   if (length(clean_hubs) >= 3L) {
     return(list(
       name = "Hub-supported module cluster",
-      source = "hub_protein_pattern",
+      source = "data_driven_hub",
       confidence = if (n_modules >= 2L) "moderate" else "low",
       rationale = paste0("GO support was weak; top hubs include ", paste(utils::head(clean_hubs, 5), collapse = ", "), ".")
     ))
@@ -629,8 +704,9 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
     dplyr::anti_join(present, by = c("module_eigengene", "ModuleColor")) %>%
     dplyr::mutate(present_in_dataset = FALSE, manual_annotation = TRUE)
 
-  cut_height <- suppressWarnings(as.numeric(Sys.getenv("PROTEOMICS_WGCNA_SUPERMODULE_CUT_HEIGHT", unset = "0.35")))
-  if (!is.finite(cut_height)) cut_height <- 0.35
+  default_cut_height <- supermodule_cut_height_default(dataset)
+  cut_height <- suppressWarnings(as.numeric(Sys.getenv("PROTEOMICS_WGCNA_SUPERMODULE_CUT_HEIGHT", unset = as.character(default_cut_height))))
+  if (!is.finite(cut_height)) cut_height <- default_cut_height
   module_similarity <- stats::cor(mergedMEs[, module_names, drop = FALSE], use = "pairwise.complete.obs", method = "pearson")
   module_similarity[!is.finite(module_similarity)] <- 0
   diag(module_similarity) <- 1
@@ -667,7 +743,7 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
       SupermoduleCutHeight = cut_height
     )
 
-  sensitivity_cut_heights <- c(0.25, 0.30, 0.35, 0.40, 0.45)
+  sensitivity_cut_heights <- c(0.25, 0.35, 0.45, 0.50, 0.55, 0.65)
   primary_groups <- split(clusters$module_eigengene, clusters$Supermodule_DataDriven)
   sensitivity_rows <- purrr::map_dfr(sensitivity_cut_heights, function(ch) {
     if (length(module_names) >= 2L && !is.null(hc)) {
@@ -679,6 +755,10 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
       sid <- "SM01"
     }
     groups <- split(module_names, sid)
+    group_sizes <- lengths(groups)
+    n_singleton <- sum(group_sizes == 1L)
+    largest_size <- if (length(group_sizes)) max(group_sizes) else NA_integer_
+    median_size <- if (length(group_sizes)) stats::median(group_sizes) else NA_real_
     purrr::imap_dfr(groups, function(members, smid) {
       jac <- vapply(primary_groups, function(primary_members) {
         length(intersect(members, primary_members)) / length(union(members, primary_members))
@@ -688,6 +768,10 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
         dataset = dataset,
         cut_height = ch,
         n_supermodules = length(groups),
+        n_singleton_supermodules = n_singleton,
+        fraction_singleton_supermodules = if (length(groups)) n_singleton / length(groups) else NA_real_,
+        largest_cluster_size = largest_size,
+        median_cluster_size = median_size,
         supermodule_id = smid,
         member_modules = paste(members, collapse = ";"),
         primary_cut_height = cut_height,
@@ -698,6 +782,16 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
     })
   })
   write_csv_safe(sensitivity_rows, fp_supertab("supermodule_clustering_sensitivity.csv"))
+  primary_group_sizes <- lengths(primary_groups)
+  primary_singletons <- sum(primary_group_sizes == 1L)
+  primary_fraction_singleton <- if (length(primary_group_sizes)) primary_singletons / length(primary_group_sizes) else NA_real_
+  if (is.finite(primary_fraction_singleton) && primary_fraction_singleton > 0.50) {
+    warning(
+      "More than 50% of data-driven supermodules are singletons at cut height ", cut_height,
+      " (", primary_singletons, "/", length(primary_group_sizes), "). Interpret supermodule labels cautiously.",
+      call. = FALSE
+    )
+  }
   if (nrow(sensitivity_rows)) {
     p_sensitivity <- ggplot2::ggplot(
       sensitivity_rows,
@@ -853,7 +947,7 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
       Supermodule_CuratedLabel = dplyr::if_else(.data$manual_annotation, as.character(.data$Supermodule_Manual), NA_character_),
       Supermodule_FinalLabel = dplyr::coalesce(.data$Supermodule_CuratedLabel, .data$Supermodule_DataDrivenLabel),
       Supermodule_LabelSource = dplyr::case_when(
-        .data$manual_annotation ~ "curated_override",
+        .data$manual_annotation ~ dplyr::coalesce(.data$ManualSource, "dataset_manual_config"),
         !is.na(.data$Supermodule_NameSource) ~ .data$Supermodule_NameSource,
         TRUE ~ "unresolved"
       ),
@@ -885,7 +979,7 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
         Supermodule_DataDrivenLabel = NA_character_,
         Supermodule_CuratedLabel = .data$Supermodule_Manual,
         Supermodule_FinalLabel = .data$Supermodule_Manual,
-        Supermodule_LabelSource = "curated_absent_from_dataset",
+        Supermodule_LabelSource = dplyr::coalesce(.data$ManualSource, "dataset_manual_config"),
         Supermodule_LabelConfidence = .data$ManualConfidence,
         Supermodule_LabelRationale = .data$ManualRationale,
         Supermodule_NameSource = "manual_absent_from_dataset",
@@ -914,10 +1008,36 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
       Supermodule_LabelSource = dplyr::coalesce(.data$Supermodule_LabelSource, .data$Supermodule_NameSource, "unresolved"),
       Supermodule_LabelConfidence = dplyr::coalesce(.data$Supermodule_LabelConfidence, .data$Supermodule_NamingConfidence, "unresolved"),
       Supermodule_LabelRationale = dplyr::coalesce(.data$Supermodule_LabelRationale, .data$Supermodule_Rationale, "No coherent annotation evidence was detected."),
+      Supermodule_LabelConfidence = dplyr::case_when(
+        grepl("^high$", .data$Supermodule_LabelConfidence, ignore.case = TRUE) ~ "high",
+        grepl("moderate|suggest", .data$Supermodule_LabelConfidence, ignore.case = TRUE) ~ "moderate",
+        grepl("low", .data$Supermodule_LabelConfidence, ignore.case = TRUE) ~ "low",
+        TRUE ~ "unresolved"
+      ),
       Supermodule = dplyr::coalesce(as.character(.data$Supermodule), .data$Supermodule_FinalLabel, "Unresolved module cluster"),
       SupermoduleConfidence = dplyr::coalesce(.data$SupermoduleConfidence, .data$Supermodule_LabelConfidence, "unresolved"),
       SupermoduleRationale = dplyr::coalesce(.data$SupermoduleRationale, .data$Supermodule_LabelRationale, "No coherent annotation evidence was detected."),
-      GO_label_confidence_class = dplyr::coalesce(.data$GO_label_confidence_class, "unresolved")
+      GO_label_confidence_class = dplyr::coalesce(.data$GO_label_confidence_class, "unresolved"),
+      SupermoduleID = dplyr::coalesce(.data$Supermodule_DataDrivenID, .data$Supermodule_DataDriven),
+      Supermodule_LongLabel = dplyr::coalesce(.data$Supermodule_FinalLabel, .data$Supermodule_DataDrivenLabel, "Unresolved module cluster"),
+      Macroprogram_Display = macroprogram_display(paste(.data$Supermodule_LongLabel, .data$top_GO_BP_terms, .data$top_GO_MF_terms, .data$top_GO_CC_terms, .data$top_hub_symbols)),
+      Supermodule_DisplayLabel = paste0(
+        dplyr::coalesce(.data$SupermoduleID, "SM??"),
+        " | ",
+        dplyr::if_else(
+          .data$Macroprogram_Display == "Unresolved / mixed",
+          shorten_supermodule_label(.data$Supermodule_LongLabel, max_chars = 36),
+          .data$Macroprogram_Display
+        )
+      ),
+      Supermodule_DisplayLabel = shorten_supermodule_label(.data$Supermodule_DisplayLabel, max_chars = 45),
+      manual_config_used = dplyr::coalesce(.data$manual_config_used, FALSE),
+      legacy_seed_used = dplyr::coalesce(.data$legacy_seed_used, FALSE),
+      is_singleton_supermodule = dplyr::coalesce(.data$DataDrivenClusterSize == 1L, FALSE),
+      Supermodule_LabelRationale = paste0(
+        .data$Supermodule_LabelRationale,
+        " Supermodules are data-reduction/interpretation objects; macroprogram labels are display groupings, not independent discoveries."
+      )
     )
 
   if (!is.null(module_label_table) && nrow(module_label_table)) {
@@ -966,6 +1086,10 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
         dplyr::filter(.data$present_in_dataset) %>%
         dplyr::distinct(
           .data$Supermodule_DataDriven,
+          .data$SupermoduleID,
+          .data$Supermodule_DisplayLabel,
+          .data$Supermodule_LongLabel,
+          .data$Macroprogram_Display,
           .data$Supermodule_DataDrivenLabel,
           .data$Supermodule_CuratedLabel,
           .data$Supermodule_FinalLabel,
@@ -982,6 +1106,7 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
     evidence_summary_export %>%
       dplyr::select(dplyr::any_of(c(
         "Supermodule_DataDriven", "member_modules", "member_module_colors", "n_modules",
+        "SupermoduleID", "Supermodule_DisplayLabel", "Supermodule_LongLabel", "Macroprogram_Display",
         "Supermodule_DataDrivenLabel", "Supermodule_CuratedLabel", "Supermodule_FinalLabel",
         "Supermodule_LabelSource", "Supermodule_LabelConfidence", "Supermodule_LabelRationale",
         "GO_label_confidence_class", "ManualReviewRequired",
@@ -993,6 +1118,42 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
       ))),
     fp_supertab("wgcna_supermodule_summary.csv")
   )
+  label_source_manifest <- tibble::tibble(
+    dataset = dataset,
+    dataset_config_path = repo_path("config", "wgcna_supermodules", paste0(dataset, ".csv")),
+    dataset_config_exists = file.exists(repo_path("config", "wgcna_supermodules", paste0(dataset, ".csv"))),
+    manual_config_used = any(annotation$manual_config_used & annotation$present_in_dataset, na.rm = TRUE),
+    legacy_seed_used = any(annotation$legacy_seed_used, na.rm = TRUE),
+    label_mode = dplyr::case_when(
+      any(annotation$legacy_seed_used, na.rm = TRUE) ~ "legacy_static_seed",
+      any(annotation$manual_config_used & annotation$present_in_dataset, na.rm = TRUE) ~ "dataset_manual_config_plus_data_driven",
+      TRUE ~ "data_driven_only"
+    ),
+    supermodule_cut_height = cut_height,
+    default_cut_height_for_dataset = default_cut_height,
+    singleton_warning = is.finite(primary_fraction_singleton) && primary_fraction_singleton > 0.50,
+    interpretation_note = "Supermodules are data-reduction/interpretation objects; macroprogram labels are display groupings, not independent discoveries."
+  )
+  write_csv_safe(label_source_manifest, fp_supertab("supermodule_label_source_manifest.csv"))
+  supermodule_label_audit <- annotation %>%
+    dplyr::mutate(
+      dataset = dataset,
+      n_member_modules = .data$DataDrivenClusterSize,
+      whether_singleton = .data$is_singleton_supermodule,
+      whether_manual_config_was_used = .data$manual_config_used,
+      whether_legacy_seed_was_used = .data$legacy_seed_used,
+      LabelSource = .data$Supermodule_LabelSource,
+      LabelConfidence = .data$Supermodule_LabelConfidence,
+      LabelRationale = .data$Supermodule_LabelRationale
+    ) %>%
+    dplyr::select(dplyr::any_of(c(
+      "dataset", "module_eigengene", "ModuleColor", "SupermoduleID",
+      "Supermodule_DisplayLabel", "Supermodule_LongLabel", "Macroprogram_Display",
+      "LabelSource", "LabelConfidence", "LabelRationale", "n_member_modules",
+      "whether_singleton", "whether_manual_config_was_used", "whether_legacy_seed_was_used"
+    )))
+  write_csv_safe(supermodule_label_audit, fp_supertab("supermodule_label_audit.csv"))
+  write_csv_safe(supermodule_label_audit, fp_source("supermodule_label_audit.csv"))
   write_csv_safe(annotation %>% dplyr::filter(.data$NamingConflict), fp_supertab("wgcna_supermodule_naming_conflicts.csv"))
   write_csv_safe(annotation, fp_supertab("wgcna_module_supermodule_annotation.csv"))
   write_csv_safe(annotation, fp_source("wgcna_module_supermodule_annotation.csv"))
@@ -1013,7 +1174,9 @@ add_supermodule_cols <- function(df, annotation, module_col = "module", color_co
   if (!nrow(df)) return(df)
   ann <- annotation %>%
     dplyr::select(
-      "module_eigengene", "ModuleColor", "Supermodule",
+      "module_eigengene", "ModuleColor", "Supermodule", "SupermoduleID",
+      "Supermodule_DisplayLabel", "Supermodule_LongLabel", "Macroprogram_Display",
+      "Supermodule_LabelSource", "Supermodule_LabelConfidence", "Supermodule_LabelRationale",
       "SupermoduleConfidence", "SupermoduleRationale", "top_GO_label",
       "present_in_dataset", "manual_annotation"
     )
@@ -3894,6 +4057,10 @@ write_run_manifest(
     module_preservation_permutations = module_preservation_permutations,
     dataset_profile_requested = dataset_profile,
     dataset_profile_resolved = if (exists("dataset_profile_resolved")) dataset_profile_resolved else NA_character_,
+    supermodule_cut_height = if (exists("cut_height")) cut_height else NA_real_,
+    supermodule_default_cut_height = if (exists("default_cut_height")) default_cut_height else NA_real_,
+    supermodule_label_mode = if (exists("label_source_manifest") && nrow(label_source_manifest)) label_source_manifest$label_mode[[1]] else NA_character_,
+    supermodule_legacy_seed_allowed = tolower(Sys.getenv("PROTEOMICS_ALLOW_LEGACY_SUPERMODULE_SEED", unset = "false")) %in% c("1", "true", "yes", "y"),
     module_definition_contract = fp_modtab("WGCNA_module_definitions_for_downstream.csv"),
     module_priority_summary = fp_modtab("WGCNA_module_priority_summary.csv"),
     output_layout = ifelse(nzchar(output_dir_env), "custom_bundle", "canonical_module_paths")
@@ -3919,6 +4086,10 @@ write_run_manifest(
     deep_split = deep_split,
     merge_cut_height = merge_cut_height,
     module_preservation_permutations = module_preservation_permutations,
+    supermodule_cut_height = if (exists("cut_height")) cut_height else NA_real_,
+    supermodule_default_cut_height = if (exists("default_cut_height")) default_cut_height else NA_real_,
+    supermodule_label_mode = if (exists("label_source_manifest") && nrow(label_source_manifest)) label_source_manifest$label_mode[[1]] else NA_character_,
+    supermodule_legacy_seed_allowed = tolower(Sys.getenv("PROTEOMICS_ALLOW_LEGACY_SUPERMODULE_SEED", unset = "false")) %in% c("1", "true", "yes", "y"),
     cache_reused = isTRUE(using_cached_final_state),
     cache_reuse_check = if (exists("cache_reuse_check")) cache_reuse_check$status else "not_reused",
     stale_cache_allowed = isTRUE(reuse_stale_state)
