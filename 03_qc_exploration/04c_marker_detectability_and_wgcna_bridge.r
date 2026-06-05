@@ -208,11 +208,18 @@ read_marker_registry <- function(path) {
     marker_panel = as.character(df[[panel_col]]),
     cell_class = optional_col(c("cell_class", "celltype_class", "class", "cell_type_class")),
     cell_state = optional_col(c("cell_state", "state", "subclass", "cell_subclass", "signature_state")),
+    registry_fidelity_marker_class = optional_col(c("fidelity_marker_class", "marker_class")),
     requested_marker = as.character(df[[gene_col]]),
     source_type = optional_col(c("source_type", "source_category")),
     source_name = optional_col(c("source_name", "source", "reference_source")),
-    confidence = optional_col(c("confidence", "evidence", "evidence_level")),
+    source_reference = optional_col(c("source_reference", "reference", "url", "citation")),
+    source_term_or_category = optional_col(c("source_term_or_category", "source_term", "category", "term")),
+    evidence_level = optional_col(c("evidence_level", "evidence_code")),
+    confidence = optional_col(c("confidence", "evidence")),
     use_for = optional_col(c("use_for", "intended_use")),
+    fidelity_subpanel = optional_col(c("fidelity_subpanel", "subpanel")),
+    include_in_fidelity_score = optional_col(c("include_in_fidelity_score")),
+    marker_notes = optional_col(c("notes", "marker_notes")),
     stringsAsFactors = FALSE
   )
 
@@ -221,8 +228,10 @@ read_marker_registry <- function(path) {
     dplyr::mutate(
       marker_key = gene_norm(requested_marker),
       marker_compartment = classify_marker_compartment(marker_panel, cell_class, cell_state),
-      fidelity_marker_class = classify_fidelity_marker_class(marker_panel)
+      registry_fidelity_marker_class = dplyr::na_if(registry_fidelity_marker_class, ""),
+      fidelity_marker_class = dplyr::coalesce(registry_fidelity_marker_class, classify_fidelity_marker_class(marker_panel))
     ) |>
+    dplyr::select(-"registry_fidelity_marker_class") |>
     dplyr::filter(!is.na(marker_key), nzchar(marker_key)) |>
     dplyr::distinct(marker_panel, requested_marker, marker_key, .keep_all = TRUE)
 }
@@ -242,8 +251,14 @@ panel_metadata <- marker_lookup |>
     cell_state = first_nonempty(cell_state),
     source_type = first_nonempty(source_type),
     source_name = first_nonempty(source_name),
+    source_reference = first_nonempty(source_reference),
+    source_term_or_category = first_nonempty(source_term_or_category),
+    evidence_level = first_nonempty(evidence_level),
     confidence = first_nonempty(confidence),
     use_for = first_nonempty(use_for),
+    fidelity_subpanel = first_nonempty(fidelity_subpanel),
+    include_in_fidelity_score = first_nonempty(include_in_fidelity_score),
+    marker_notes = first_nonempty(marker_notes),
     .groups = "drop"
   )
 
@@ -294,7 +309,26 @@ rank_stats <- rank_data |>
 
 marker_detectability_by_protein <- marker_lookup |>
   dplyr::left_join(protein_stats, by = c("marker_key" = "protein_key")) |>
-  dplyr::group_by(dataset = DATASET, marker_panel, marker_compartment, fidelity_marker_class, cell_class, cell_state, source_type, source_name, confidence, use_for, requested_marker, marker_key) |>
+  dplyr::group_by(
+    dataset = DATASET,
+    marker_panel,
+    marker_compartment,
+    fidelity_marker_class,
+    fidelity_subpanel,
+    cell_class,
+    cell_state,
+    source_type,
+    source_name,
+    source_reference,
+    source_term_or_category,
+    evidence_level,
+    confidence,
+    use_for,
+    include_in_fidelity_score,
+    marker_notes,
+    requested_marker,
+    marker_key
+  ) |>
   dplyr::summarise(
     matched_protein_id = collapse_unique(Protein),
     detected = any(!is.na(Protein)),
@@ -361,7 +395,7 @@ panel_score_summary <- sample_scores |>
   )
 
 marker_detectability_by_panel <- marker_detectability_by_protein |>
-  dplyr::group_by(dataset, marker_panel, marker_compartment, fidelity_marker_class, cell_class, cell_state, source_type, source_name, confidence, use_for) |>
+  dplyr::group_by(dataset, marker_panel, marker_compartment, fidelity_marker_class, fidelity_subpanel, cell_class, cell_state, source_type, source_name, source_reference, evidence_level, confidence, use_for, include_in_fidelity_score) |>
   dplyr::summarise(
     n_markers_requested = dplyr::n_distinct(requested_marker),
     n_marker_keys_requested = dplyr::n_distinct(marker_key),
@@ -574,8 +608,14 @@ fidelity_marker_proteins_used <- marker_detectability_by_protein |>
     cell_state,
     source_type,
     source_name,
+    source_reference,
+    source_term_or_category,
+    evidence_level,
     confidence,
     use_for,
+    fidelity_subpanel,
+    include_in_fidelity_score,
+    marker_notes,
     requested_marker,
     marker_key,
     matched_protein_id,
@@ -606,6 +646,14 @@ fidelity_marker_proteins_used_deduplicated <- fidelity_marker_proteins_used |>
     matched_protein_id = collapse_unique(matched_protein_id),
     used_in_fidelity_score = any(used_in_fidelity_score, na.rm = TRUE),
     contributing_marker_panels = collapse_unique(marker_panel),
+    contributing_fidelity_subpanels = collapse_unique(fidelity_subpanel),
+    source_types = collapse_unique(source_type),
+    source_names = collapse_unique(source_name),
+    source_references = collapse_unique(source_reference),
+    source_terms_or_categories = collapse_unique(source_term_or_category),
+    evidence_levels = collapse_unique(evidence_level),
+    confidences = collapse_unique(confidence),
+    include_in_fidelity_score_values = collapse_unique(include_in_fidelity_score),
     n_marker_panels_containing_marker = dplyr::n_distinct(marker_panel),
     n_matched_protein_ids = max(n_matched_protein_ids, na.rm = TRUE),
     n_samples = dplyr::first(n_samples),
@@ -645,6 +693,12 @@ fidelity_duplicate_markers <- fidelity_marker_proteins_used_deduplicated |>
 marker_fidelity_protein_summary <- fidelity_marker_proteins_used |>
   dplyr::group_by(dataset, fidelity_marker_class, marker_panel) |>
   dplyr::summarise(
+    source_types = collapse_unique(source_type),
+    source_names = collapse_unique(source_name),
+    source_references = collapse_unique(source_reference),
+    evidence_levels = collapse_unique(evidence_level),
+    fidelity_subpanels = collapse_unique(fidelity_subpanel),
+    include_in_fidelity_score_values = collapse_unique(include_in_fidelity_score),
     n_requested_markers = dplyr::n_distinct(marker_key),
     n_used_markers = dplyr::n_distinct(marker_key[used_in_fidelity_score]),
     fraction_used_markers = ifelse(n_requested_markers > 0, n_used_markers / n_requested_markers, NA_real_),
@@ -663,6 +717,23 @@ marker_fidelity_protein_summary <- fidelity_marker_proteins_used |>
   ) |>
   dplyr::arrange(factor(fidelity_marker_class, levels = fidelity_marker_class_order, ordered = TRUE), marker_panel)
 
+marker_source_detectability_summary <- marker_detectability_by_protein |>
+  dplyr::group_by(dataset, source_name, source_type, confidence, evidence_level, use_for, include_in_fidelity_score) |>
+  dplyr::summarise(
+    n_marker_panels = dplyr::n_distinct(marker_panel),
+    marker_panels = collapse_unique(marker_panel),
+    marker_compartments = collapse_unique(marker_compartment),
+    fidelity_marker_classes = collapse_unique(fidelity_marker_class),
+    n_requested_markers = dplyr::n_distinct(marker_key),
+    n_detected_markers = dplyr::n_distinct(marker_key[detected]),
+    fraction_detected_markers = ifelse(n_requested_markers > 0, n_detected_markers / n_requested_markers, NA_real_),
+    n_used_fidelity_markers = dplyr::n_distinct(marker_key[!is.na(fidelity_marker_class) & nzchar(as.character(fidelity_marker_class)) & detected]),
+    source_terms_or_categories = collapse_unique(source_term_or_category),
+    source_references = collapse_unique(source_reference),
+    .groups = "drop"
+  ) |>
+  dplyr::arrange(source_name, source_type, confidence, evidence_level)
+
 # -----------------------------------------------------------------------------
 # Write tables
 # -----------------------------------------------------------------------------
@@ -679,6 +750,7 @@ qc_write_csv(fidelity_marker_proteins_used, file.path(PATHS$tables, "marker_fide
 qc_write_csv(fidelity_marker_proteins_used_deduplicated, file.path(PATHS$tables, "marker_fidelity_proteins_used_deduplicated.csv"))
 qc_write_csv(fidelity_duplicate_markers, file.path(PATHS$tables, "marker_fidelity_duplicate_marker_membership.csv"))
 qc_write_csv(marker_fidelity_protein_summary, file.path(PATHS$tables, "marker_fidelity_protein_summary.csv"))
+qc_write_csv(marker_source_detectability_summary, file.path(PATHS$tables, "marker_source_detectability_summary.csv"))
 qc_write_xlsx(
   list(
     panel_sample = sample_scores,
@@ -692,7 +764,8 @@ qc_write_xlsx(
     fidelity_proteins = fidelity_marker_proteins_used,
     fidelity_dedup = fidelity_marker_proteins_used_deduplicated,
     fidelity_dup = fidelity_duplicate_markers,
-    fidelity_prot_sum = marker_fidelity_protein_summary
+    fidelity_prot_sum = marker_fidelity_protein_summary,
+    source_summary = marker_source_detectability_summary
   ),
   file.path(PATHS$tables, "marker_detectability_qc.xlsx")
 )
@@ -1111,6 +1184,7 @@ notes <- c(
   "- marker_fidelity_proteins_used_deduplicated.csv is the score-level audit trail: one marker key per fidelity class, matching the deduplicated scoring logic.",
   "- marker_fidelity_duplicate_marker_membership.csv lists markers that occur in multiple panels but are counted only once in the fidelity score.",
   "- marker_fidelity_protein_summary.csv summarizes which requested markers matched proteins and which were missing for each fidelity marker panel.",
+  "- marker_source_detectability_summary.csv summarizes requested and detected markers by upstream source_name/source_type/evidence_level, so SynGO, GO/MGI, curated seed, and generic reference sources can be checked directly.",
   "- Low detectability or high missingness of canonical microglia markers can explain why WGCNA modules are driven by better-detected ECM, synaptic, vascular, mitochondrial, ribosomal, or microenvironment-associated proteins.",
   "- Marker abundance and WGCNA module assignment answer different questions: sample identity/abundance versus covariance/module topology.",
   "- Agreement in directionality between WGCNA eigengenes and previous GSEA/leading-edge results is robustness evidence even when module labels differ from marker-panel labels.", "",
