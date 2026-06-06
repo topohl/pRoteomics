@@ -89,6 +89,41 @@ testthat::test_that("marker registry helpers load registry, empirical sets, and 
   testthat::expect_equal(attr(fallback, "marker_source_metadata")$marker_source[[1]], "legacy_hardcoded_fallback")
 })
 
+testthat::test_that("supermodule display labels keep immutable IDs and cap singleton confidence", {
+  source(testthat::test_path("..", "..", "R", "wgcna_downstream_utils.R"))
+  testthat::expect_equal(
+    classify_supermodule_label_confidence(
+      n_modules = 1L,
+      go_class = "GO_supported",
+      has_coherent_hubs = TRUE,
+      microenvironment_class = "vascular_basement_membrane_ecm"
+    ),
+    "low"
+  )
+  lbl <- compose_supermodule_display_label("SM04", "Perivascular ECM")
+  testthat::expect_match(lbl, "^SM04\\s+")
+  testthat::expect_match(lbl, "Perivascular ECM")
+})
+
+testthat::test_that("legacy static supermodule seeds stay opt-in", {
+  script <- readLines(testthat::test_path("..", "..", "06_modules_WGCNA", "01_WGCNA.r"), warn = FALSE)
+  txt <- paste(script, collapse = "\n")
+  testthat::expect_true(grepl('PROTEOMICS_ALLOW_LEGACY_SUPERMODULE_SEED", unset = "false"', txt, fixed = TRUE))
+  testthat::expect_match(txt, "legacy_static_seed")
+})
+
+testthat::test_that("downstream supermodule labels prefer display label consistently", {
+  scripts <- c(
+    testthat::test_path("..", "..", "06_modules_WGCNA", "05_module_supermodule_group_effects.r"),
+    testthat::test_path("..", "..", "06_modules_WGCNA", "07_wgcna_interpretable_summary.r"),
+    testthat::test_path("..", "..", "09_export_pride_journal", "07_make_biological_claims_table.R")
+  )
+  txt <- paste(vapply(scripts, function(path) paste(readLines(path, warn = FALSE), collapse = "\n"), character(1)), collapse = "\n")
+  testthat::expect_match(txt, "Supermodule_DisplayLabel")
+  testthat::expect_true(grepl("SupermoduleLabel = dplyr::coalesce\\(as.character\\(\\.data\\$Supermodule_DisplayLabel\\), as.character\\(\\.data\\$Supermodule_FinalLabel\\), as.character\\(\\.data\\$Macroprogram_Display\\)", txt))
+  testthat::expect_true(grepl("biological_program = dplyr::coalesce\\(\\.data\\$Supermodule_DisplayLabel, \\.data\\$Supermodule_FinalLabel, \\.data\\$Macroprogram_Display", txt))
+})
+
 testthat::test_that("WGCNA downstream schemas expose required columns", {
   source(testthat::test_path("..", "..", "R", "module_contracts.R"))
   group_cols <- c(
