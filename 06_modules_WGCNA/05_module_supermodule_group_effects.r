@@ -279,7 +279,7 @@ make_endpoint_maps <- function(module_eig, definitions, super_ann) {
       dplyr::mutate(
         module_eigengene = as.character(.data$module_eigengene),
         SupermoduleID = dplyr::coalesce(as.character(.data$Supermodule_DataDrivenID), as.character(.data$Supermodule_DataDriven), as.character(.data$SupermoduleID), as.character(.data$Supermodule)),
-        SupermoduleLabel = dplyr::coalesce(as.character(.data$Supermodule_DisplayLabel), as.character(.data$Macroprogram_Display), as.character(.data$Supermodule_FinalLabel), as.character(.data$Supermodule_DataDrivenLabel), as.character(.data$Supermodule), .data$SupermoduleID),
+        SupermoduleLabel = dplyr::coalesce(as.character(.data$Supermodule_DisplayLabel), as.character(.data$Supermodule_FinalLabel), as.character(.data$Macroprogram_Display), as.character(.data$Supermodule_DataDrivenLabel), as.character(.data$Supermodule), .data$SupermoduleID),
         Supermodule_LongLabel = dplyr::coalesce(as.character(.data$Supermodule_LongLabel), as.character(.data$Supermodule_FinalLabel), as.character(.data$Supermodule)),
         Macroprogram_Display = as.character(.data$Macroprogram_Display)
       )
