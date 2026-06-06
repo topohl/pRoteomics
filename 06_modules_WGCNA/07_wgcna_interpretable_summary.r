@@ -77,7 +77,7 @@ effect_sentence <- function(row, level = "supermodule") {
   ds_label <- dataset_label(row$dataset)
   id <- if (level == "supermodule") row_get("supermodule_id") else row_get("module_id")
   label <- if (level == "supermodule") {
-    row_get("Supermodule_DisplayLabel", row_get("Macroprogram_Display", row_get("supermodule_label", row_get("supermodule_id"))))
+    row_get("Supermodule_DisplayLabel", row_get("Supermodule_FinalLabel", row_get("Macroprogram_Display", row_get("supermodule_label", row_get("supermodule_id")))))
   } else {
     row_get("module_label", row_get("ModuleID", row_get("module_id")))
   }
@@ -179,10 +179,10 @@ program_label_col <- function(df, level = "supermodule") {
   if (level == "supermodule") {
     coalesce_chr(
       col_or_na(df, "Supermodule_DisplayLabel"),
-      col_or_na(df, "Macroprogram_Display"),
       col_or_na(df, "Supermodule_FinalLabel"),
       col_or_na(df, "Supermodule_FinalLabel.y"),
       col_or_na(df, "Supermodule_FinalLabel.x"),
+      col_or_na(df, "Macroprogram_Display"),
       col_or_na(df, "supermodule_label_for_module"),
       col_or_na(df, "module_supermodule_label"),
       col_or_na(df, "supermodule_label"),
@@ -283,7 +283,7 @@ build_module_supermodule_map <- function(module_effects, module_to_supermodule_m
       "supermodule_id", "Supermodule", "Supermodule_DataDrivenLabel"
     ))
     slabel_cols <- candidate_cols(map_df, c(
-      "Supermodule_DisplayLabel", "Macroprogram_Display", "SupermoduleLabel", "Supermodule_FinalLabel", "Supermodule_DataDrivenLabel",
+      "Supermodule_DisplayLabel", "Supermodule_FinalLabel", "Macroprogram_Display", "SupermoduleLabel", "Supermodule_DataDrivenLabel",
       "supermodule_label", "Supermodule", "SupermoduleID"
     ))
 
@@ -325,7 +325,7 @@ build_module_supermodule_map <- function(module_effects, module_to_supermodule_m
   if (!is.null(super_annot) && nrow(super_annot)) {
     ann <- as.data.frame(super_annot, stringsAsFactors = FALSE)
     sid_cols <- candidate_cols(ann, c("SupermoduleID", "supermodule_id", "Supermodule_DataDrivenID", "Supermodule_DataDriven", "Supermodule"))
-    label_cols <- candidate_cols(ann, c("Supermodule_DisplayLabel", "Macroprogram_Display", "SupermoduleLabel", "Supermodule_FinalLabel", "Supermodule_DataDrivenLabel", "supermodule_label"))
+    label_cols <- candidate_cols(ann, c("Supermodule_DisplayLabel", "Supermodule_FinalLabel", "Macroprogram_Display", "SupermoduleLabel", "Supermodule_DataDrivenLabel", "supermodule_label"))
     if (length(sid_cols) && length(label_cols)) {
       ann2 <- dplyr::bind_rows(lapply(seq_len(nrow(ann)), function(i) {
         sid_vals <- unlist(ann[i, sid_cols, drop = TRUE], use.names = FALSE)
@@ -732,6 +732,7 @@ plot_microglia_composition_heatmap <- function(super_annot, paths) {
     dplyr::mutate(
       program_label = coalesce_chr(
         col_or_na(super_annot, "Supermodule_DisplayLabel"),
+        col_or_na(super_annot, "Supermodule_FinalLabel"),
         col_or_na(super_annot, "Macroprogram_Display"),
         col_or_na(super_annot, "SupermoduleID")
       ),
@@ -969,6 +970,7 @@ make_cross_dataset_summary <- function(summaries) {
     dplyr::mutate(
       program_label = coalesce_chr(
         col_or_na(all_super, "Supermodule_DisplayLabel"),
+        col_or_na(all_super, "Supermodule_FinalLabel"),
         col_or_na(all_super, "Macroprogram_Display"),
         col_or_na(all_super, "supermodule_label"),
         col_or_na(all_super, "supermodule_id")
