@@ -414,8 +414,7 @@ if (is.null(super_ann) || !nrow(super_ann)) {
       Supermodule_FinalLabel = dplyr::coalesce(as.character(.data$Supermodule_FinalLabel), as.character(.data$Supermodule), .data$SupermoduleID),
       Supermodule_LongLabel = dplyr::coalesce(as.character(.data$Supermodule_LongLabel), .data$Supermodule_FinalLabel),
       Macroprogram_Display = dplyr::coalesce(as.character(.data$Macroprogram_Display), macroprogram_display(.data$Supermodule_LongLabel)),
-      Supermodule_DisplayLabel = dplyr::coalesce(as.character(.data$Supermodule_DisplayLabel), paste0(.data$SupermoduleID, " | ", .data$Macroprogram_Display)),
-      Supermodule_DisplayLabel = shorten_supermodule_label(.data$Supermodule_DisplayLabel, max_chars = 45),
+      Supermodule_DisplayLabel = dplyr::coalesce(as.character(.data$Supermodule_DisplayLabel), compose_supermodule_display_label(.data$SupermoduleID, dplyr::coalesce(.data$Supermodule_FinalLabel, .data$Macroprogram_Display))),
       Supermodule_ShortLabel = .data$Supermodule_DisplayLabel
     ) |>
     dplyr::select(dplyr::any_of(c("ModuleColor", "module_eigengene", "SupermoduleID", "Supermodule_DisplayLabel", "Supermodule_LongLabel", "Macroprogram_Display", "Supermodule_DataDrivenLabel", "Supermodule_CuratedLabel", "Supermodule_FinalLabel", "Supermodule_ShortLabel", "Supermodule_LabelSource", "Supermodule_LabelConfidence", "Supermodule_LabelRationale", "GO_label_confidence_class", "annotation_scope", "manual_label_status", "ManualReviewRequired", "SupermoduleConfidence", "SupermoduleRationale")))
@@ -485,10 +484,70 @@ if (is.null(super_ann) || !nrow(super_ann)) {
         )
       )
   }
+  super_annot <- super_annot |>
+    dplyr::mutate(
+      microenvironment_label_component = supermodule_microenvironment_label(.data$dominant_microenvironment_class, dataset = DATASET),
+      has_active_manual_label = .data$manual_label_status == "manual_label_present_for_dataset_module" |
+        (!is.na(.data$Supermodule_CuratedLabel) & nzchar(as.character(.data$Supermodule_CuratedLabel))),
+      display_label_component = dplyr::case_when(
+        .data$has_active_manual_label ~ shorten_supermodule_label(.data$Supermodule_FinalLabel, max_chars = 30),
+        !is.na(.data$microenvironment_label_component) & nzchar(.data$microenvironment_label_component) ~ .data$microenvironment_label_component,
+        !is.na(.data$Macroprogram_Display) & nzchar(.data$Macroprogram_Display) & .data$Macroprogram_Display != "Unresolved / mixed" ~ .data$Macroprogram_Display,
+        TRUE ~ shorten_supermodule_label(.data$Supermodule_FinalLabel, max_chars = 30)
+      ),
+      Supermodule_DisplayLabel = compose_supermodule_display_label(.data$SupermoduleID, .data$display_label_component),
+      Supermodule_ShortLabel = .data$Supermodule_DisplayLabel,
+      Supermodule_LabelSource = dplyr::case_when(
+        .data$has_active_manual_label ~ .data$Supermodule_LabelSource,
+        !is.na(.data$microenvironment_label_component) & nzchar(.data$microenvironment_label_component) ~ paste0(dplyr::coalesce(.data$Supermodule_LabelSource, "data_driven"), "+microenvironment_annotation"),
+        TRUE ~ .data$Supermodule_LabelSource
+      ),
+      has_coherent_hubs = lengths(strsplit(dplyr::coalesce(.data$top_hub_proteins, ""), "[;,]")) >= 3L,
+      Supermodule_LabelConfidence = vapply(seq_len(dplyr::n()), function(i) {
+        classify_supermodule_label_confidence(
+          n_modules = n_member_modules[[i]],
+          go_class = GO_label_confidence_class[[i]],
+          has_coherent_hubs = has_coherent_hubs[[i]],
+          microenvironment_class = dominant_microenvironment_class[[i]]
+        )
+      }, character(1)),
+      Supermodule_LabelConfidence = dplyr::if_else(.data$has_active_manual_label & !is.na(.data$label_confidence), as.character(.data$label_confidence), .data$Supermodule_LabelConfidence),
+      Supermodule_LabelConfidence = dplyr::if_else(.data$n_member_modules <= 1L & .data$Supermodule_LabelConfidence == "high", "low", .data$Supermodule_LabelConfidence),
+      ManualReviewRequired = dplyr::case_when(
+        .data$dominant_microenvironment_class %in% c("ambiguous_or_mixed", "shared_microenvironment") ~ TRUE,
+        .data$n_member_modules <= 1L ~ TRUE,
+        TRUE ~ suppressWarnings(as.logical(.data$ManualReviewRequired))
+      ),
+      Supermodule_LabelRationale = paste0(
+        dplyr::coalesce(.data$Supermodule_LabelRationale, ""),
+        ifelse(!is.na(.data$microenvironment_label_component) & nzchar(.data$microenvironment_label_component),
+               paste0("; display_label_microenvironment_component=", .data$microenvironment_label_component),
+               "")
+      )
+    ) |>
+    dplyr::select(-dplyr::any_of(c("has_active_manual_label", "display_label_component", "has_coherent_hubs")))
 }
 
 write_table_and_source(module_annot, PATHS$tables, PATHS$source_data, "WGCNA_module_biological_annotation.csv")
 write_table_and_source(super_annot, PATHS$tables, PATHS$source_data, "WGCNA_supermodule_biological_annotation.csv")
+if (nrow(super_annot)) {
+  display_audit <- super_annot |>
+    dplyr::mutate(
+      is_singleton_supermodule = .data$n_member_modules <= 1L,
+      manual_review_required = suppressWarnings(as.logical(.data$ManualReviewRequired)),
+      label_rationale = .data$Supermodule_LabelRationale,
+      top_GO_BP_terms = dplyr::coalesce(.data$dominant_GO_terms, NA_character_),
+      top_hub_symbols = dplyr::coalesce(.data$top_hub_proteins, NA_character_)
+    ) |>
+    dplyr::select(dplyr::any_of(c(
+      "dataset", "SupermoduleID", "Supermodule_DisplayLabel", "Supermodule_FinalLabel",
+      "Supermodule_LabelSource", "Supermodule_LabelConfidence", "is_singleton_supermodule",
+      "n_member_modules", "GO_label_confidence_class", "dominant_microenvironment_class",
+      "top_GO_BP_terms", "top_hub_symbols", "label_rationale", "manual_review_required"
+    ))) |>
+    dplyr::rename(Supermodule_DataDriven = "SupermoduleID")
+  write_table_and_source(display_audit, PATHS$tables, PATHS$source_data, "WGCNA_supermodule_display_label_audit.csv")
+}
 if (requireNamespace("writexl", quietly = TRUE)) {
   writexl::write_xlsx(list(modules = module_annot, supermodules = super_annot), file.path(PATHS$tables, "WGCNA_module_microenvironment_annotation.xlsx"))
 }
@@ -510,8 +569,7 @@ if (nrow(marker_long)) {
 if (nrow(super_annot) && "dominant_microenvironment_class" %in% names(super_annot)) {
   comp <- super_annot |>
     dplyr::mutate(
-      Supermodule_DisplayLabel = dplyr::coalesce(.data$Supermodule_DisplayLabel, paste0(.data$SupermoduleID, " | ", .data$Macroprogram_Display), .data$SupermoduleID),
-      Supermodule_DisplayLabel = shorten_supermodule_label(.data$Supermodule_DisplayLabel, max_chars = 45),
+      Supermodule_DisplayLabel = dplyr::coalesce(.data$Supermodule_DisplayLabel, compose_supermodule_display_label(.data$SupermoduleID, dplyr::coalesce(.data$Supermodule_FinalLabel, .data$Macroprogram_Display)), .data$SupermoduleID),
       plot_label = vapply(as.character(.data$Supermodule_DisplayLabel), function(z) paste(strwrap(z, width = 34), collapse = "\n"), character(1))
     ) |>
     dplyr::select("plot_label", "SupermoduleID", "Supermodule_DisplayLabel", "Supermodule_LongLabel", "Macroprogram_Display", dplyr::starts_with("fraction_modules_")) |>
