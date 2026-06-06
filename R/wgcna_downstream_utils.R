@@ -57,6 +57,48 @@ macroprogram_display <- function(x) {
   }, character(1))
 }
 
+supermodule_microenvironment_label <- function(cls, dataset = current_dataset()) {
+  vapply(as.character(cls), function(z) {
+    z <- tolower(trimws(z %||% ""))
+    if (!nzchar(z)) return(NA_character_)
+    if (z %in% c("vascular_basement_membrane_ecm", "vascular/ecm")) return("Perivascular ECM")
+    if (z %in% c("vascular_bbb_mural", "vascular")) return("Vascular / BBB")
+    if (z %in% c("neuropil_sensitive", "neuropil")) return("Neuropil reference overlap")
+    if (z %in% c("astrocyte_or_endfoot_sensitive", "astrocyte")) return("Astrocyte / endfoot")
+    if (z %in% c("oligodendrocyte_or_myelin_sensitive", "oligodendrocyte/myelin")) return("Oligodendrocyte / myelin")
+    if (z %in% c("ambiguous_or_mixed", "shared_microenvironment", "mixed")) return("Mixed / unresolved")
+    if (identical(as.character(dataset), "microglia") && z %in% c("microglia_supported", "microglia_state_or_activation_supported")) return("Microglia-associated ROI")
+    NA_character_
+  }, character(1))
+}
+
+compose_supermodule_display_label <- function(supermodule_id, short_label) {
+  id <- as.character(supermodule_id)
+  id[is.na(id) | !nzchar(id)] <- "SM??"
+  label <- shorten_supermodule_label(short_label, max_chars = 30)
+  label[is.na(label) | !nzchar(label)] <- "Mixed / unresolved"
+  paste0(id, " \u00b7 ", label)
+}
+
+classify_supermodule_label_confidence <- function(n_modules, go_class = "unresolved",
+                                                  has_coherent_hubs = FALSE,
+                                                  microenvironment_class = NA_character_,
+                                                  high_unmapped_fraction = FALSE) {
+  n_modules <- suppressWarnings(as.integer(n_modules))
+  singleton <- is.na(n_modules) | n_modules <= 1L
+  go_class <- as.character(go_class %||% "unresolved")
+  micro_label <- supermodule_microenvironment_label(microenvironment_class)
+  micro_supported <- !is.na(micro_label) & nzchar(micro_label) & !micro_label %in% "Mixed / unresolved"
+  mixed_micro <- !is.na(micro_label) & micro_label == "Mixed / unresolved"
+  go_supported <- go_class %in% c("GO_supported", "data_driven_GO")
+  suggestive_go <- go_class %in% c("suggestive_GO", "manual_only")
+  if (singleton || isTRUE(high_unmapped_fraction) || mixed_micro) return("low")
+  if ((go_supported || micro_supported) && isTRUE(has_coherent_hubs)) return("high")
+  if ((go_supported && micro_supported) || (suggestive_go && isTRUE(has_coherent_hubs)) || (micro_supported && isTRUE(has_coherent_hubs))) return("medium")
+  if (isTRUE(has_coherent_hubs) || suggestive_go || go_supported || micro_supported) return("low")
+  "unresolved"
+}
+
 wgcna_cli <- function(default_dataset = "neuron_neuropil", allow_all = FALSE) {
   args <- commandArgs(trailingOnly = TRUE)
   value_after <- function(flag, default = "") {
