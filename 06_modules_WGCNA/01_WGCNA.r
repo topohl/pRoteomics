@@ -12,9 +12,10 @@ early_arg_value <- function(flag, default = "") {
 }
 if (early_has_flag("--dry-run") || tolower(Sys.getenv("PROTEOMICS_DRY_RUN", unset = "")) %in% c("1", "true", "yes")) {
   paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
-  source(paths_file)
-  source(repo_path("R", "dataset_config.R"))
-  source(repo_path("R", "dataset_inputs.R"))
+    source(paths_file)
+    source(repo_path("R", "dataset_config.R"))
+    source(repo_path("R", "dataset_inputs.R"))
+    source(repo_path("R", "protein_mapping_utils.R"))
   dataset_cli_early <- early_arg_value("--dataset", default = "")
   if (nzchar(dataset_cli_early)) Sys.setenv(PROTEOMICS_DATASET = validate_dataset(dataset_cli_early, source = "--dataset"))
   dataset_profile_early <- {
@@ -125,7 +126,11 @@ if (early_has_flag("--dry-run") || tolower(Sys.getenv("PROTEOMICS_DRY_RUN", unse
   dry_run_line("Canonical upstream metadata", dataset_inputs_early$metadata_file, if (file.exists(dataset_inputs_early$metadata_file)) "PASS" else "FAIL")
   dry_run_line("Staged input generation", if (can_use_inputs_early) "already staged" else if (can_stage_inputs_early) "can be generated" else "cannot be generated", if (can_use_inputs_early || can_stage_inputs_early) "PASS" else "FAIL")
   dry_run_line("Cheap sample matching", sample_check_early, if (sample_check_ok_early) "PASS" else "FAIL")
-  dry_run_line("Mouse idmapping", idmap_dat_early, if (file.exists(idmap_dat_early)) "PASS" else "FAIL")
+    dry_run_line("Mouse idmapping", idmap_dat_early, if (file.exists(idmap_dat_early)) "PASS" else "FAIL")
+    manual_mapping_path_early <- Sys.getenv("PROTEOMICS_MANUAL_MAPPING_FILE", unset = path_metadata("manual_mapping.xlsx"))
+    dry_run_line("Manual mapping file", manual_mapping_path_early, if (file.exists(manual_mapping_path_early)) "PASS" else "WARN")
+    dry_run_line("Manual mapping expected columns", "gene_symbol + mapped_gene_symbol; tolerated aliases: input/mapped, source_id/mapped_id, original/mapped")
+    dry_run_line("Unmapped biological interpretation", "UNMAPPED_* features retained for network construction but excluded from GO, annotation, hub labels, and claims", "INFO")
   dry_run_line("Output folders writable", paste(unlist(subdirs_early), collapse = "; "), if (can_write_outputs_early) "PASS" else "FAIL")
   dry_run_line("Downstream module contract", downstream_contract_early, if (file.exists(downstream_contract_early)) "PASS" else "WARN")
   dry_run_line("WGCNA feature universe", feature_universe_early, if (file.exists(feature_universe_early)) "PASS" else "WARN")
@@ -163,6 +168,7 @@ source(paths_file)
 source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "dataset_inputs.R"))
 source(repo_path("R", "module_contracts.R"))
+source(repo_path("R", "protein_mapping_utils.R"))
 
 args <- commandArgs(trailingOnly = TRUE)
 arg_value <- function(flag, default = "") {
@@ -562,6 +568,86 @@ macroprogram_display <- function(x) {
   }, character(1))
 }
 
+supermodule_microenvironment_label <- function(cls, dataset = dataset_profile) {
+  vapply(as.character(cls), function(z) {
+    z <- tolower(trimws(z %||% ""))
+    if (!nzchar(z)) return(NA_character_)
+    if (z %in% c("vascular_basement_membrane_ecm", "vascular/ecm")) return("Perivascular ECM")
+    if (z %in% c("vascular_bbb_mural", "vascular")) return("Vascular / BBB")
+    if (z %in% c("neuropil_sensitive", "neuropil")) return("Neuropil reference overlap")
+    if (z %in% c("astrocyte_or_endfoot_sensitive", "astrocyte")) return("Astrocyte / endfoot")
+    if (z %in% c("oligodendrocyte_or_myelin_sensitive", "oligodendrocyte/myelin")) return("Oligodendrocyte / myelin")
+    if (z %in% c("ambiguous_or_mixed", "shared_microenvironment", "mixed")) return("Mixed / unresolved")
+    if (identical(as.character(dataset), "microglia") && z %in% c("microglia_supported", "microglia_state_or_activation_supported")) return("Microglia-associated ROI")
+    NA_character_
+  }, character(1))
+}
+
+go_theme_from_terms <- function(go_terms, min_modules = 2L) {
+  terms <- unique(stats::na.omit(unlist(go_terms, use.names = FALSE)))
+  terms <- terms[nzchar(terms)]
+  if (!length(terms)) return(NA_character_)
+  parsed <- lapply(terms, function(term) {
+    n <- suppressWarnings(as.integer(sub("^.*\\(([0-9]+) modules?\\).*$", "\\1", term)))
+    if (!is.finite(n) || identical(as.character(n), term)) n <- NA_integer_
+    label <- sub("\\s*\\([0-9]+ modules?\\)\\s*$", "", term)
+    list(label = label, n = n)
+  })
+  keep <- vapply(parsed, function(x) is.na(x$n) || x$n >= min_modules, logical(1))
+  if (!any(keep)) return(NA_character_)
+  display <- macroprogram_display(vapply(parsed[keep], `[[`, character(1), "label"))[[1]]
+  if (!is.na(display) && nzchar(display) && display != "Unresolved / mixed") return(display)
+  shorten_supermodule_label(compact_term(parsed[keep][[1]]$label), max_chars = 28)
+}
+
+hub_theme_from_symbols <- function(hubs) {
+  hubs <- paste(stats::na.omit(as.character(hubs)), collapse = "; ")
+  if (!nzchar(trimws(hubs))) return(NA_character_)
+  display <- macroprogram_display(hubs)[[1]]
+  if (!is.na(display) && nzchar(display) && display != "Unresolved / mixed") return(display)
+  clean_hubs <- trimws(unlist(strsplit(hubs, "[;,]"), use.names = FALSE))
+  clean_hubs <- clean_hubs[nzchar(clean_hubs)]
+  if (length(clean_hubs) >= 3L) "Hub-supported cluster" else NA_character_
+}
+
+compose_supermodule_display_label <- function(supermodule_id, short_label) {
+  id <- as.character(supermodule_id)
+  id[is.na(id) | !nzchar(id)] <- "SM??"
+  label <- shorten_supermodule_label(short_label, max_chars = 30)
+  label[is.na(label) | !nzchar(label)] <- "Mixed / unresolved"
+  paste0(id, " \u00b7 ", label)
+}
+
+supermodule_short_label <- function(supermodule_id, microenvironment_class = NA_character_,
+                                    go_terms = character(), hub_symbols = NA_character_,
+                                    fallback = NA_character_, dataset = dataset_profile) {
+  micro_label <- supermodule_microenvironment_label(microenvironment_class, dataset = dataset)
+  go_label <- go_theme_from_terms(go_terms, min_modules = 2L)
+  hub_label <- hub_theme_from_symbols(hub_symbols)
+  out <- dplyr::coalesce(micro_label, go_label, hub_label, shorten_supermodule_label(fallback, max_chars = 30), "Mixed / unresolved")
+  out[out %in% c("Unresolved module cluster", "Unresolved / mixed")] <- "Mixed / unresolved"
+  out
+}
+
+classify_supermodule_label_confidence <- function(n_modules, go_class = "unresolved",
+                                                  has_coherent_hubs = FALSE,
+                                                  microenvironment_class = NA_character_,
+                                                  high_unmapped_fraction = FALSE) {
+  n_modules <- suppressWarnings(as.integer(n_modules))
+  singleton <- is.na(n_modules) | n_modules <= 1L
+  go_class <- as.character(go_class %||% "unresolved")
+  micro_label <- supermodule_microenvironment_label(microenvironment_class)
+  micro_supported <- !is.na(micro_label) & nzchar(micro_label) & !micro_label %in% "Mixed / unresolved"
+  mixed_micro <- !is.na(micro_label) & micro_label == "Mixed / unresolved"
+  go_supported <- go_class %in% c("GO_supported", "data_driven_GO")
+  suggestive_go <- go_class %in% c("suggestive_GO", "manual_only")
+  if (singleton || isTRUE(high_unmapped_fraction) || mixed_micro) return("low")
+  if ((go_supported || micro_supported) && isTRUE(has_coherent_hubs)) return("high")
+  if ((go_supported && micro_supported) || (suggestive_go && isTRUE(has_coherent_hubs)) || (micro_supported && isTRUE(has_coherent_hubs))) return("medium")
+  if (isTRUE(has_coherent_hubs) || suggestive_go || go_supported || micro_supported) return("low")
+  "unresolved"
+}
+
 supermodule_cut_height_default <- function(dataset) {
   switch(as.character(dataset),
     neuron_neuropil = 0.35,
@@ -846,6 +932,7 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
   hub_evidence <- if (!is.null(WGCNA_modules_long) && nrow(WGCNA_modules_long)) {
     WGCNA_modules_long %>%
       dplyr::filter(.data$ModuleColor %in% clusters$ModuleColor) %>%
+      dplyr::filter(.data$mapping_status != "unmapped") %>%
       dplyr::left_join(clusters[, c("ModuleColor", "Supermodule_DataDriven")], by = "ModuleColor") %>%
       dplyr::mutate(.hub_keep = dplyr::coalesce(.data$is_top_hub_25, FALSE) | dplyr::coalesce(.data$is_core_kME_0.6, FALSE)) %>%
       dplyr::filter(.data$.hub_keep) %>%
@@ -922,15 +1009,24 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
       n_modules = row$n_modules,
       n_modules_with_go_support = row$n_modules_with_GO_support
     )
+    has_coherent_hubs <- !is.na(row$top_hub_symbols) && nzchar(row$top_hub_symbols) &&
+      length(trimws(unlist(strsplit(row$top_hub_symbols, "[;,]"), use.names = FALSE))) >= 3L
+    short_label <- supermodule_short_label(
+      supermodule_id = row$Supermodule_DataDriven,
+      go_terms = c(row$top_GO_BP_terms, row$top_GO_MF_terms, row$top_GO_CC_terms),
+      hub_symbols = row$top_hub_symbols,
+      fallback = proposal$name,
+      dataset = dataset
+    )
     tibble::tibble(
       Supermodule_DataDriven = row$Supermodule_DataDriven,
       Supermodule_ProposedName = proposal$name %||% paste("Unresolved module cluster", row$Supermodule_DataDriven),
+      Supermodule_ShortLabel = short_label,
       Supermodule_NameSource = proposal$source,
-      Supermodule_NamingConfidence = dplyr::case_when(
-        proposal$confidence == "high" && (row$n_fdr_lt_0.10 > 0 || !is.na(row$hub_theme_candidates)) ~ "high",
-        proposal$confidence %in% c("high", "moderate") ~ "moderate",
-        proposal$confidence == "low" ~ "low",
-        TRUE ~ "unresolved"
+      Supermodule_NamingConfidence = classify_supermodule_label_confidence(
+        n_modules = row$n_modules,
+        go_class = row$GO_label_confidence_class,
+        has_coherent_hubs = has_coherent_hubs
       ),
       Supermodule_Rationale = proposal$rationale
     )
@@ -946,6 +1042,11 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
       Supermodule_DataDrivenLabel = dplyr::coalesce(.data$Supermodule_ProposedName, paste("Unresolved module cluster", .data$Supermodule_DataDriven)),
       Supermodule_CuratedLabel = dplyr::if_else(.data$manual_annotation, as.character(.data$Supermodule_Manual), NA_character_),
       Supermodule_FinalLabel = dplyr::coalesce(.data$Supermodule_CuratedLabel, .data$Supermodule_DataDrivenLabel),
+      Supermodule_ShortLabel = dplyr::if_else(
+        .data$manual_annotation,
+        shorten_supermodule_label(.data$Supermodule_CuratedLabel, max_chars = 30),
+        .data$Supermodule_ShortLabel
+      ),
       Supermodule_LabelSource = dplyr::case_when(
         .data$manual_annotation ~ dplyr::coalesce(.data$ManualSource, "dataset_manual_config"),
         !is.na(.data$Supermodule_NameSource) ~ .data$Supermodule_NameSource,
@@ -1005,15 +1106,17 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
       Supermodule_DataDrivenID = dplyr::coalesce(.data$Supermodule_DataDrivenID, .data$Supermodule_DataDriven),
       Supermodule_DataDrivenLabel = dplyr::coalesce(.data$Supermodule_DataDrivenLabel, .data$Supermodule_ProposedName, "Unresolved module cluster"),
       Supermodule_FinalLabel = dplyr::coalesce(.data$Supermodule_FinalLabel, .data$Supermodule_DataDrivenLabel, "Unresolved module cluster"),
+      Supermodule_ShortLabel = dplyr::coalesce(.data$Supermodule_ShortLabel, supermodule_short_label(.data$Supermodule_DataDrivenID, go_terms = .data$top_GO_BP_terms, hub_symbols = .data$top_hub_symbols, fallback = .data$Supermodule_FinalLabel, dataset = dataset)),
       Supermodule_LabelSource = dplyr::coalesce(.data$Supermodule_LabelSource, .data$Supermodule_NameSource, "unresolved"),
       Supermodule_LabelConfidence = dplyr::coalesce(.data$Supermodule_LabelConfidence, .data$Supermodule_NamingConfidence, "unresolved"),
       Supermodule_LabelRationale = dplyr::coalesce(.data$Supermodule_LabelRationale, .data$Supermodule_Rationale, "No coherent annotation evidence was detected."),
       Supermodule_LabelConfidence = dplyr::case_when(
         grepl("^high$", .data$Supermodule_LabelConfidence, ignore.case = TRUE) ~ "high",
-        grepl("moderate|suggest", .data$Supermodule_LabelConfidence, ignore.case = TRUE) ~ "moderate",
+        grepl("medium|moderate|suggest", .data$Supermodule_LabelConfidence, ignore.case = TRUE) ~ "medium",
         grepl("low", .data$Supermodule_LabelConfidence, ignore.case = TRUE) ~ "low",
         TRUE ~ "unresolved"
       ),
+      Supermodule_LabelConfidence = dplyr::if_else(.data$DataDrivenClusterSize <= 1L & .data$Supermodule_LabelConfidence == "high", "low", .data$Supermodule_LabelConfidence),
       Supermodule = dplyr::coalesce(as.character(.data$Supermodule), .data$Supermodule_FinalLabel, "Unresolved module cluster"),
       SupermoduleConfidence = dplyr::coalesce(.data$SupermoduleConfidence, .data$Supermodule_LabelConfidence, "unresolved"),
       SupermoduleRationale = dplyr::coalesce(.data$SupermoduleRationale, .data$Supermodule_LabelRationale, "No coherent annotation evidence was detected."),
@@ -1021,16 +1124,7 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
       SupermoduleID = dplyr::coalesce(.data$Supermodule_DataDrivenID, .data$Supermodule_DataDriven),
       Supermodule_LongLabel = dplyr::coalesce(.data$Supermodule_FinalLabel, .data$Supermodule_DataDrivenLabel, "Unresolved module cluster"),
       Macroprogram_Display = macroprogram_display(paste(.data$Supermodule_LongLabel, .data$top_GO_BP_terms, .data$top_GO_MF_terms, .data$top_GO_CC_terms, .data$top_hub_symbols)),
-      Supermodule_DisplayLabel = paste0(
-        dplyr::coalesce(.data$SupermoduleID, "SM??"),
-        " | ",
-        dplyr::if_else(
-          .data$Macroprogram_Display == "Unresolved / mixed",
-          shorten_supermodule_label(.data$Supermodule_LongLabel, max_chars = 36),
-          .data$Macroprogram_Display
-        )
-      ),
-      Supermodule_DisplayLabel = shorten_supermodule_label(.data$Supermodule_DisplayLabel, max_chars = 45),
+      Supermodule_DisplayLabel = compose_supermodule_display_label(.data$SupermoduleID, .data$Supermodule_ShortLabel),
       manual_config_used = dplyr::coalesce(.data$manual_config_used, FALSE),
       legacy_seed_used = dplyr::coalesce(.data$legacy_seed_used, FALSE),
       is_singleton_supermodule = dplyr::coalesce(.data$DataDrivenClusterSize == 1L, FALSE),
@@ -1107,7 +1201,7 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
       dplyr::select(dplyr::any_of(c(
         "Supermodule_DataDriven", "member_modules", "member_module_colors", "n_modules",
         "SupermoduleID", "Supermodule_DisplayLabel", "Supermodule_LongLabel", "Macroprogram_Display",
-        "Supermodule_DataDrivenLabel", "Supermodule_CuratedLabel", "Supermodule_FinalLabel",
+        "Supermodule_DataDrivenLabel", "Supermodule_CuratedLabel", "Supermodule_FinalLabel", "Supermodule_ShortLabel",
         "Supermodule_LabelSource", "Supermodule_LabelConfidence", "Supermodule_LabelRationale",
         "GO_label_confidence_class", "ManualReviewRequired",
         "Supermodule_ProposedName", "Supermodule_NameSource", "Supermodule_NamingConfidence",
@@ -1154,6 +1248,34 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
     )))
   write_csv_safe(supermodule_label_audit, fp_supertab("supermodule_label_audit.csv"))
   write_csv_safe(supermodule_label_audit, fp_source("supermodule_label_audit.csv"))
+  supermodule_display_label_audit <- annotation %>%
+    dplyr::mutate(dataset = dataset) %>%
+    dplyr::filter(.data$present_in_dataset) %>%
+    dplyr::group_by(.data$dataset, .data$Supermodule_DataDriven, .data$SupermoduleID) %>%
+    dplyr::summarise(
+      Supermodule_DisplayLabel = dplyr::first(.data$Supermodule_DisplayLabel),
+      Supermodule_FinalLabel = dplyr::first(.data$Supermodule_FinalLabel),
+      Supermodule_LabelSource = dplyr::first(.data$Supermodule_LabelSource),
+      Supermodule_LabelConfidence = dplyr::first(.data$Supermodule_LabelConfidence),
+      is_singleton_supermodule = dplyr::first(.data$is_singleton_supermodule),
+      n_member_modules = dplyr::first(.data$DataDrivenClusterSize),
+      GO_label_confidence_class = dplyr::first(.data$GO_label_confidence_class),
+      dominant_microenvironment_class = NA_character_,
+      top_GO_BP_terms = dplyr::first(.data$top_GO_BP_terms),
+      top_hub_symbols = dplyr::first(.data$top_hub_symbols),
+      label_rationale = dplyr::first(.data$Supermodule_LabelRationale),
+      manual_review_required = any(.data$ManualReviewRequired, na.rm = TRUE),
+      NamingConflict = any(.data$NamingConflict, na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    dplyr::select(dplyr::any_of(c(
+      "dataset", "Supermodule_DataDriven", "Supermodule_DisplayLabel", "Supermodule_FinalLabel",
+      "Supermodule_LabelSource", "Supermodule_LabelConfidence", "is_singleton_supermodule",
+      "n_member_modules", "GO_label_confidence_class", "dominant_microenvironment_class",
+      "top_GO_BP_terms", "top_hub_symbols", "label_rationale", "manual_review_required", "NamingConflict"
+    )))
+  write_csv_safe(supermodule_display_label_audit, fp_supertab("WGCNA_supermodule_display_label_audit.csv"))
+  write_csv_safe(supermodule_display_label_audit, fp_source("WGCNA_supermodule_display_label_audit.csv"))
   write_csv_safe(annotation %>% dplyr::filter(.data$NamingConflict), fp_supertab("wgcna_supermodule_naming_conflicts.csv"))
   write_csv_safe(annotation, fp_supertab("wgcna_module_supermodule_annotation.csv"))
   write_csv_safe(annotation, fp_source("wgcna_module_supermodule_annotation.csv"))
@@ -1471,6 +1593,10 @@ if (isTRUE(wgcna_dry_run)) {
   dry_run_line("Staged input generation", if (can_use_inputs) "already staged" else if (can_stage_inputs) "can be generated" else "cannot be generated", if (can_use_inputs || can_stage_inputs) "PASS" else "FAIL")
   dry_run_line("Cheap sample matching", sample_check, if (sample_check_ok) "PASS" else "FAIL")
   dry_run_line("Mouse idmapping", idmap_dat, if (file.exists(idmap_dat)) "PASS" else "FAIL")
+  manual_mapping_path <- Sys.getenv("PROTEOMICS_MANUAL_MAPPING_FILE", unset = path_metadata("manual_mapping.xlsx"))
+  dry_run_line("Manual mapping file", manual_mapping_path, if (file.exists(manual_mapping_path)) "PASS" else "WARN")
+  dry_run_line("Manual mapping expected columns", "gene_symbol + mapped_gene_symbol; tolerated aliases: input/mapped, source_id/mapped_id, original/mapped")
+  dry_run_line("Unmapped biological interpretation", "UNMAPPED_* features retained for network construction but excluded from GO, annotation, hub labels, and claims", "INFO")
   dry_run_line("Output folders writable", paste(unlist(subdirs), collapse = "; "), if (can_write_outputs) "PASS" else "FAIL")
   dry_run_line("Downstream module contract", downstream_contract, if (file.exists(downstream_contract)) "PASS" else "WARN")
   dry_run_line("WGCNA feature universe", feature_universe, if (file.exists(feature_universe)) "PASS" else "WARN")
@@ -1623,15 +1749,10 @@ if (isTRUE(wgcna_inputs_auto_prepared) && file.exists(fp_log("auto_prepared_inpu
   )
 }
 write_csv_safe(input_manifest, fp_log("input_manifest.csv"))
-idmap_tbl <- readr::read_tsv(idmap_dat, col_names = c("ACC","DB","VAL"), col_types = "ccc", progress = FALSE, quote = "", comment = "")
-idmap_uid <- idmap_tbl %>%
-  dplyr::filter(DB == "UniProtKB-ID" & grepl("_MOUSE\\s*$", VAL) & nzchar(ACC)) %>%
-  dplyr::transmute(
-    UNIPROT    = toupper(trimws(ACC)),
-    entry_full = toupper(trimws(VAL)),
-    entry_base = toupper(gsub("_MOUSE$", "", trimws(VAL)))
-  )
-entry_map <- idmap_uid %>% dplyr::distinct(entry_base, .keep_all = TRUE)
+idmap_tbl <- load_mouse_idmapping(idmap_dat)
+mouse_maps <- build_mouse_maps(idmap_tbl)
+entry_map <- mouse_maps$entry_map
+gene_map <- mouse_maps$gene_map
 if (!nrow(entry_map)) stop("entry_map is empty after robust parse")
 
 # Sentinel sanity check
@@ -1645,9 +1766,6 @@ if (length(missing_sentinels)) {
 # --------------------------
 # Mouse-only tokenization and classification
 # --------------------------
-normalize_token <- function(x) { x <- toupper(gsub("\\s+", "", x)); x <- gsub("\\u00A0", "", x); x <- gsub("\\.+", ".", x); x <- gsub("__+", "_", x); x }
-to_base_no_iso_mouse <- function(x) { x <- gsub("-\\d+$", "", x); gsub("_MOUSE$", "", x) }
-
 tokenize_mouse_only <- function(male_df) {
   tok <- male_df %>% tidyr::separate_rows(gene_symbol, sep = ";") %>% dplyr::mutate(token_raw = gene_symbol, token_up = normalize_token(gene_symbol))
   dropped_non_mouse <- tok %>% dplyr::filter(!grepl("_MOUSE$", token_up))
@@ -1796,6 +1914,32 @@ if (length(sym_left2)) {
   }
 }
 
+manual_mapping_path <- Sys.getenv("PROTEOMICS_MANUAL_MAPPING_FILE", unset = path_metadata("manual_mapping.xlsx"))
+manual_mapping <- read_manual_mapping_table(manual_mapping_path)
+manual_override_result <- apply_manual_mapping_override(
+  resolved = resolved2,
+  manual_mapping = manual_mapping,
+  entry_map = entry_map,
+  gene_map = gene_map,
+  override = TRUE
+)
+resolved2 <- manual_override_result$data
+manual_mapping_audit <- manual_override_result$audit
+if (!nrow(manual_mapping_audit)) {
+  manual_mapping_audit <- tibble::tibble(
+    original_token = character(),
+    token_base = character(),
+    manual_input = character(),
+    manual_mapped_gene_symbol = character(),
+    previous_accession = character(),
+    resolved_uniprot = character(),
+    previous_strategy = character(),
+    mapping_strategy = character(),
+    manual_mapping_used = logical()
+  )
+}
+write_tsv_safe(manual_mapping_audit, fp_maptab("manual_mapping_audit.tsv"))
+
 # --------------------------
 # Save unmapped lists and audits
 # --------------------------
@@ -1824,6 +1968,25 @@ write_tsv_safe(unmapped_summary, fp_maptab("unmapped_mouse_tokens_summary.tsv"))
 # Collapse to features and build expression matrix
 # --------------------------
 collapse_ids <- function(x) { x <- unique(x[!is.na(x) & nzchar(x)]); if (!length(x)) return(NA_character_); paste(x, collapse = ";") }
+collapse_bool <- function(x) any(as.logical(x), na.rm = TRUE)
+feature_mapping_pre <- resolved2 %>%
+  dplyr::group_by(.data$.row_id) %>%
+  dplyr::summarise(
+    original_token = collapse_ids(.data$token_raw),
+    resolved_uniprot = collapse_ids(.data$Resolved_UNIPROT),
+    mapping_strategy = collapse_ids(.data$strategy),
+    manual_mapping_used = collapse_bool(.data$manual_mapping_used),
+    .groups = "drop"
+  ) %>%
+  dplyr::right_join(male.data %>% dplyr::select(.row_id, original_input_token = gene_symbol), by = ".row_id") %>%
+  dplyr::mutate(
+    original_token = dplyr::coalesce(.data$original_token, as.character(.data$original_input_token), NA_character_),
+    resolved_uniprot = dplyr::coalesce(.data$resolved_uniprot, NA_character_),
+    mapping_strategy = dplyr::coalesce(.data$mapping_strategy, NA_character_),
+    manual_mapping_used = dplyr::coalesce(.data$manual_mapping_used, FALSE),
+    mapping_status = dplyr::if_else(!is.na(.data$resolved_uniprot) & nzchar(.data$resolved_uniprot), "mapped", "unmapped")
+  ) %>%
+  dplyr::arrange(.data$.row_id)
 male.norm <- resolved2 %>%
   dplyr::group_by(.row_id) %>%
   dplyr::summarise(gene_symbol = collapse_ids(Resolved_UNIPROT), .groups = "drop") %>%
@@ -1859,10 +2022,22 @@ fix_feature_ids <- function(nms) {
 }
 
 colnames(expression.data) <- fix_feature_ids(colnames(expression.data))
+feature_mapping_tbl <- feature_mapping_pre %>%
+  dplyr::mutate(
+    ProteinID = colnames(expression.data),
+    mapping_status = dplyr::case_when(
+      startsWith(.data$ProteinID, "UNMAPPED") ~ "unmapped",
+      !is.na(.data$resolved_uniprot) & nzchar(.data$resolved_uniprot) ~ "mapped",
+      TRUE ~ "unmapped"
+    ),
+    mapping_strategy = dplyr::if_else(.data$mapping_status == "unmapped" & (is.na(.data$mapping_strategy) | !nzchar(.data$mapping_strategy)), "unmapped_fallback", .data$mapping_strategy)
+  ) %>%
+  dplyr::select("ProteinID", "original_token", "resolved_uniprot", "mapping_strategy", "manual_mapping_used", "mapping_status", ".row_id")
+write_tsv_safe(feature_mapping_tbl, fp_maptab("wgcna_feature_mapping_audit.tsv"))
 
 # Save core outputs
 write_tsv_safe(resolved2, fp_maptab("resolved_tokens_mouse_only_robust.tsv"))
-saveRDS(list(expression = expression.data, male.norm = male.norm, mapping = resolved2),
+saveRDS(list(expression = expression.data, male.norm = male.norm, mapping = resolved2, feature_mapping = feature_mapping_tbl),
         file = fp_state("mouse_only_mapping_outputs_robust.rds"))
 
 # --------------------------
@@ -2288,6 +2463,15 @@ feature_module_tbl <- tibble::tibble(
   dplyr::mutate(
     EntrezID = as.character(.data$EntrezID),
     GeneSymbol = as.character(.data$GeneSymbol)
+  ) %>%
+  dplyr::left_join(
+    feature_mapping_tbl %>%
+      dplyr::select("ProteinID", "original_token", "resolved_uniprot", "mapping_strategy", "manual_mapping_used", "mapping_status"),
+    by = "ProteinID"
+  ) %>%
+  dplyr::mutate(
+    mapping_status = dplyr::coalesce(.data$mapping_status, ifelse(startsWith(.data$ProteinID, "UNMAPPED"), "unmapped", "mapped")),
+    manual_mapping_used = dplyr::coalesce(.data$manual_mapping_used, FALSE)
   )
 
 kME_long <- purrr::map_dfr(module_colors, function(module_color) {
@@ -2302,6 +2486,7 @@ kME_long <- purrr::map_dfr(module_colors, function(module_color) {
 
 make_module_sets <- function(module_color) {
   mod_tbl <- feature_module_tbl %>%
+    dplyr::filter(.data$mapping_status != "unmapped") %>%
     dplyr::filter(.data$ModuleColor == module_color) %>%
     dplyr::left_join(kME_long, by = "ProteinID") %>%
     dplyr::mutate(abs_kME = abs(.data$kME))
@@ -2490,14 +2675,16 @@ WGCNA_modules_long <- feature_module_tbl %>%
     label_gene_ratio_BP, label_gene_ratio_MF, label_gene_ratio_CC,
     label_source, manual_label, final_label,
     best_GO_BP, best_GO_MF, best_GO_CC, best_GO_padj_BP, best_GO_padj_MF, best_GO_padj_CC,
-    ProteinID, UniProt, EntrezID, GeneSymbol, kME, abs_kME,
+    ProteinID, UniProt, EntrezID, GeneSymbol,
+    original_token, resolved_uniprot, mapping_strategy, manual_mapping_used, mapping_status,
+    kME, abs_kME,
     GeneSignificanceP, GeneSignificanceFDR, is_core_kME_0.6, is_top_hub_25, Source
   )
 validate_wgcna_module_definitions(WGCNA_modules_long, "WGCNA_modules_long")
 write_csv_safe(WGCNA_modules_long, fp_modtab("WGCNA_modules_long.csv"))
 writexl::write_xlsx(list(WGCNA_modules_long = WGCNA_modules_long), fp_modtab("WGCNA_modules_long.xlsx"))
 WGCNA_feature_universe <- WGCNA_modules_long %>%
-  dplyr::select("ProteinID", "UniProt", "GeneSymbol", "EntrezID", "ModuleColor", "ModuleID") %>%
+  dplyr::select("ProteinID", "UniProt", "GeneSymbol", "EntrezID", "ModuleColor", "ModuleID", "original_token", "resolved_uniprot", "mapping_strategy", "manual_mapping_used", "mapping_status") %>%
   dplyr::distinct() %>%
   dplyr::mutate(included_in_wgcna = TRUE)
 write_csv_safe(WGCNA_feature_universe, fp_modtab("WGCNA_feature_universe.csv"))
@@ -2520,13 +2707,23 @@ make_wgcna_module_summary <- function(preservation_source = NULL) {
     dplyr::group_by(.data$ModuleID, .data$ModuleColor) %>%
     dplyr::summarise(
       n_features = dplyr::n(),
+      n_mapped_features = sum(.data$mapping_status != "unmapped", na.rm = TRUE),
+      n_unmapped_features = sum(.data$mapping_status == "unmapped", na.rm = TRUE),
       n_mapped_entrez = dplyr::n_distinct(.data$EntrezID[!is.na(.data$EntrezID) & nzchar(.data$EntrezID)]),
       median_abs_kME = stats::median(.data$abs_kME, na.rm = TRUE),
       mean_abs_kME = mean(.data$abs_kME, na.rm = TRUE),
-      top_hub_proteins = paste(utils::head(.data$ProteinID[order(.data$abs_kME, decreasing = TRUE)], 25), collapse = ";"),
+      top_hub_proteins = {
+        mapped_idx <- which(.data$mapping_status != "unmapped")
+        paste(utils::head(.data$ProteinID[mapped_idx][order(.data$abs_kME[mapped_idx], decreasing = TRUE)], 25), collapse = ";")
+      },
       .groups = "drop"
     ) %>%
-    dplyr::mutate(mapping_rate = .data$n_mapped_entrez / .data$n_features, .after = .data$n_mapped_entrez) %>%
+    dplyr::mutate(
+      fraction_mapped_features = .data$n_mapped_features / .data$n_features,
+      fraction_unmapped_features = .data$n_unmapped_features / .data$n_features,
+      mapping_rate = .data$n_mapped_entrez / .data$n_features,
+      .after = .data$n_mapped_entrez
+    ) %>%
     dplyr::left_join(best_term_wide, by = "ModuleColor") %>%
     dplyr::left_join(pres_wide, by = "ModuleColor")
 }
@@ -3788,7 +3985,9 @@ module_label_export <- module_label_table %>%
   dplyr::left_join(
     supermodule_annotation %>%
       dplyr::select(
-        "ModuleColor", "module_eigengene", "Supermodule",
+        "ModuleColor", "module_eigengene", "Supermodule", "SupermoduleID",
+        "Supermodule_DisplayLabel", "Supermodule_FinalLabel", "Macroprogram_Display",
+        "Supermodule_LabelSource", "Supermodule_LabelConfidence",
         "SupermoduleConfidence", "SupermoduleRationale",
         "present_in_dataset", "manual_annotation"
       ),
@@ -3836,7 +4035,9 @@ WGCNA_module_priority_summary <- WGCNA_module_summary %>%
     module_label_export %>%
       dplyr::select(
         "ModuleColor", "ModuleID", "module_eigengene", "ModuleLabel_Final", "ModuleLabel_Source",
-        "Supermodule", "SupermoduleConfidence", "SupermoduleRationale"
+        "Supermodule_DisplayLabel", "Supermodule_FinalLabel", "Macroprogram_Display",
+        "Supermodule", "SupermoduleID", "Supermodule_LabelSource", "Supermodule_LabelConfidence",
+        "SupermoduleConfidence", "SupermoduleRationale"
       ),
     by = c("ModuleColor", "ModuleID")
   ) %>%
@@ -3853,7 +4054,9 @@ WGCNA_module_priority_summary <- WGCNA_module_summary %>%
   dplyr::select(
     "priority_rank", "priority_score",
     "ModuleID", "ModuleColor", "module_eigengene", "ModuleLabel_Final", "ModuleLabel_Source",
-    "Supermodule", "SupermoduleConfidence", "SupermoduleRationale",
+    "Supermodule_DisplayLabel", "Supermodule_FinalLabel", "Macroprogram_Display",
+    "Supermodule", "SupermoduleID", "Supermodule_LabelSource", "Supermodule_LabelConfidence",
+    "SupermoduleConfidence", "SupermoduleRationale",
     dplyr::any_of(c(
       "n_features", "n_mapped_entrez", "mapping_rate", "median_abs_kME", "mean_abs_kME",
       "condition_model_p", "condition_model_fdr", "strongest_condition_contrast",
@@ -3872,7 +4075,9 @@ WGCNA_module_definitions_for_downstream <- WGCNA_modules_long %>%
     module_label_export %>%
       dplyr::select(
         "ModuleColor", "ModuleID", "module_eigengene", "ModuleLabel_Final", "ModuleLabel_Source",
-        "Supermodule", "SupermoduleConfidence", "SupermoduleRationale"
+        "Supermodule_DisplayLabel", "Supermodule_FinalLabel", "Macroprogram_Display",
+        "Supermodule", "SupermoduleID", "Supermodule_LabelSource", "Supermodule_LabelConfidence",
+        "SupermoduleConfidence", "SupermoduleRationale"
       ),
     by = c("ModuleColor", "ModuleID")
   ) %>%
@@ -3893,13 +4098,15 @@ WGCNA_module_definitions_for_downstream <- WGCNA_modules_long %>%
   ) %>%
   dplyr::select(
     "ModuleSet", "ModuleID", "ModuleColor", "module_eigengene", "ModuleLabel_Final", "ModuleLabel_Source",
-    "Supermodule", "SupermoduleConfidence", "SupermoduleRationale",
+    "Supermodule_DisplayLabel", "Supermodule_FinalLabel", "Macroprogram_Display",
+    "Supermodule", "SupermoduleID", "Supermodule_LabelSource", "Supermodule_LabelConfidence",
+    "SupermoduleConfidence", "SupermoduleRationale",
     dplyr::everything()
   )
 
 validate_wgcna_module_definitions(WGCNA_module_definitions_for_downstream, "WGCNA_module_definitions_for_downstream")
 WGCNA_feature_universe <- WGCNA_modules_long %>%
-  dplyr::select("ProteinID", "UniProt", "GeneSymbol", "EntrezID", "ModuleColor", "ModuleID") %>%
+  dplyr::select("ProteinID", "UniProt", "GeneSymbol", "EntrezID", "ModuleColor", "ModuleID", "original_token", "resolved_uniprot", "mapping_strategy", "manual_mapping_used", "mapping_status") %>%
   dplyr::distinct() %>%
   dplyr::mutate(included_in_wgcna = TRUE)
 write_csv_safe(WGCNA_module_priority_summary, fp_modtab("WGCNA_module_priority_summary.csv"))
