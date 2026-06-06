@@ -9,6 +9,7 @@ library(svglite)
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
+source(repo_path("R", "protein_mapping_utils.R"))
 MODULE_ID <- "08_behavior_physio_coupling"
 SUBSTEP_ID <- "correlate_proteomics_with_behavior"
 CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
@@ -43,111 +44,7 @@ target_metric <- "Movement"  # Set to NULL to keep all metrics
 # ExpGroup coding in proteomics metadata
 expgroup_map <- c("1" = "CON", "2" = "RES", "3" = "SUS")
 
-# --- 2b. UniProt Mapping Utilities (adapted from MapThatProt_batch logic) ---
-normalize_token <- function(x) {
-  x <- as.character(x)
-  x <- sub("\\s.*$", "", x)
-  x <- gsub("\\|\\|+", "|", x)
-  x <- toupper(gsub("\\s+", "", x))
-  x <- gsub("\\u00A0", "", x)
-  x <- gsub("\\.+", ".", x)
-  x <- gsub("__+", "_", x)
-  x
-}
-
-to_base_no_iso_mouse <- function(x) {
-  x <- gsub("-\\d+$", "", x)
-  gsub("_MOUSE$", "", x)
-}
-
-is_uniprot_ac <- function(x) {
-  grepl("^(?:[OPQ][0-9][A-Z0-9]{3}[0-9]|[A-NR-Z][0-9][A-Z0-9]{3}[0-9]|A0A[0-9A-Z]{7})$", x)
-}
-
-extract_ac <- function(s) {
-  s <- as.character(s)
-  m <- stringr::str_match(s, "(?i)(?:^|\\|)([OPQ][0-9][A-Z0-9]{3}[0-9]|[A-NR-Z][0-9][A-Z0-9]{3}[0-9]|A0A[0-9A-Z]{7})(?:\\-|\\||$|[^A-Z0-9])")
-  out <- ifelse(is.na(m[, 2]), NA_character_, toupper(m[, 2]))
-  gsub("-\\d+$", "", out)
-}
-
-load_mouse_idmapping <- function() {
-  candidate_paths <- c(
-    "MOUSE_10090_idmapping.dat",
-    file.path("Datasets", "MOUSE_10090_idmapping.dat")
-  )
-
-  mapping_path <- candidate_paths[file.exists(candidate_paths)][1]
-
-  if (is.na(mapping_path)) {
-    gz_url <- "https://ftp.uniprot.org/pub/databases/uniprot/knowledgebase/idmapping/by_organism/MOUSE_10090_idmapping.dat.gz"
-    gz_file <- "MOUSE_10090_idmapping.dat.gz"
-    mapping_path <- "MOUSE_10090_idmapping.dat"
-    options(timeout = 3600)
-    download.file(gz_url, gz_file, mode = "wb")
-    R.utils::gunzip(gz_file, destname = mapping_path, remove = TRUE)
-  }
-
-  readr::read_tsv(
-    mapping_path,
-    col_names = c("UniProt_Accession", "Type", "Value"),
-    col_types = "ccc",
-    quote = ""
-  )
-}
-
-build_mouse_maps <- function(uniprot_mapping) {
-  entry_map <- uniprot_mapping %>%
-    filter(Type == "UniProtKB-ID") %>%
-    transmute(
-      UNIPROT = toupper(trimws(UniProt_Accession)),
-      entry_full = toupper(trimws(Value)),
-      entry_base = toupper(gsub("_MOUSE$", "", trimws(Value)))
-    ) %>%
-    filter(grepl("_MOUSE\\s*$", entry_full), nzchar(UNIPROT)) %>%
-    distinct(entry_base, .keep_all = TRUE)
-
-  gene_map <- uniprot_mapping %>%
-    filter(Type %in% c("Gene_Name", "Gene_Name(synonym)", "Gene_Synonym")) %>%
-    transmute(
-      primaryAccession = toupper(trimws(UniProt_Accession)),
-      input = toupper(trimws(Value))
-    ) %>%
-    filter(nzchar(input), nzchar(primaryAccession)) %>%
-    mutate(pref = !startsWith(primaryAccession, "A0A")) %>%
-    arrange(desc(pref), primaryAccession, input) %>%
-    group_by(input) %>%
-    slice_head(n = 1) %>%
-    ungroup() %>%
-    dplyr::select(input, primaryAccession)
-
-  gene_map <- bind_rows(
-    gene_map,
-    entry_map %>% transmute(input = entry_base, primaryAccession = UNIPROT)
-  ) %>% distinct(input, .keep_all = TRUE)
-
-  list(entry_map = entry_map, gene_map = gene_map)
-}
-
-map_token_to_mouse_accession <- function(token, entry_map, gene_map) {
-  if (is.na(token) || !nzchar(trimws(token))) return(NA_character_)
-
-  token <- unlist(strsplit(as.character(token), ";", fixed = TRUE))[1]
-  token_up <- normalize_token(token)
-  token_base <- to_base_no_iso_mouse(token_up)
-  ac_guess <- extract_ac(token)
-
-  if (!is.na(ac_guess) && nzchar(ac_guess)) return(ac_guess)
-  if (is_uniprot_ac(token_base)) return(token_base)
-
-  hit_entry <- entry_map$UNIPROT[match(toupper(token_base), entry_map$entry_base)]
-  if (!is.na(hit_entry) && nzchar(hit_entry)) return(hit_entry)
-
-  hit_gene <- gene_map$primaryAccession[match(toupper(token_base), gene_map$input)]
-  if (!is.na(hit_gene) && nzchar(hit_gene)) return(hit_gene)
-
-  NA_character_
-}
+# --- 2b. UniProt Mapping Utilities ---
 
 normalize_mouse_id <- function(x) {
   x <- as.character(x)
@@ -192,7 +89,14 @@ normalize_meta_value <- function(x) {
 }
 
 
-uniprot_mapping <- load_mouse_idmapping()
+behavior_idmapping_candidates <- c(
+  "MOUSE_10090_idmapping.dat",
+  file.path("Datasets", "MOUSE_10090_idmapping.dat"),
+  path_external("MOUSE_10090_idmapping.dat")
+)
+behavior_idmapping_path <- behavior_idmapping_candidates[file.exists(behavior_idmapping_candidates)][1]
+if (is.na(behavior_idmapping_path)) behavior_idmapping_path <- "MOUSE_10090_idmapping.dat"
+uniprot_mapping <- load_mouse_idmapping(behavior_idmapping_path, auto_download = TRUE)
 maps <- build_mouse_maps(uniprot_mapping)
 
 leading_edge_accessions <- vapply(
