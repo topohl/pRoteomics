@@ -8,7 +8,7 @@ source(repo_path("R", "validation_utils.R"))
 source(repo_path("R", "enrichment_io.R"))
 source(repo_path("R", "schema_validation.R"))
 
-required_pkgs <- c("dplyr", "readr", "tibble", "stringr")
+required_pkgs <- c("dplyr", "readr", "tibble", "stringr", "tidyr")
 missing <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
 if (length(missing)) stop("Missing required package(s): ", paste(missing, collapse = ", "), call. = FALSE)
 suppressPackageStartupMessages(invisible(lapply(required_pkgs, library, character.only = TRUE)))
@@ -59,6 +59,33 @@ primary_evidence_label <- function(evidence_type) {
   )
 }
 
+supermodule_annotation_for_claims <- function(dataset) {
+  f <- path_results("tables", "06_modules_WGCNA", "module_annotation", dataset, "WGCNA_supermodule_biological_annotation.csv")
+  ann <- read_csv_if_exists(f)
+  if (is.null(ann) || !nrow(ann)) return(NULL)
+  for (col in c("dataset", "SupermoduleID", "Supermodule_DisplayLabel", "Supermodule_FinalLabel", "Macroprogram_Display", "dominant_microenvironment_class")) {
+    if (!col %in% names(ann)) ann[[col]] <- NA
+  }
+  ann %>%
+    dplyr::mutate(
+      dataset = dataset,
+      Supermodule_DisplayLabel = dplyr::coalesce(
+        as.character(.data$Supermodule_DisplayLabel),
+        as.character(.data$Supermodule_FinalLabel),
+        as.character(.data$Macroprogram_Display),
+        as.character(.data$SupermoduleID)
+      )
+    ) %>%
+    tidyr::pivot_longer(
+      cols = dplyr::any_of(c("SupermoduleID", "Supermodule_DisplayLabel", "Supermodule_FinalLabel", "Macroprogram_Display")),
+      names_to = "supermodule_claim_key_source",
+      values_to = "supermodule_claim_key"
+    ) %>%
+    dplyr::filter(!is.na(.data$supermodule_claim_key), nzchar(.data$supermodule_claim_key)) %>%
+    dplyr::distinct(.data$dataset, .data$supermodule_claim_key, .keep_all = TRUE) %>%
+    dplyr::select("dataset", "supermodule_claim_key", "Supermodule_DisplayLabel", "Supermodule_FinalLabel", "Macroprogram_Display", "dominant_microenvironment_class")
+}
+
 latest_csv <- function(root, pattern) latest_file(root, pattern)
 
 collect_program_claims <- function(dataset) {
@@ -98,15 +125,30 @@ collect_wgcna_claims <- function(dataset) {
   if (!file.exists(f)) f <- path_results("tables", "06_modules_WGCNA", "01_WGCNA", dataset, "modules", "WGCNA_module_priority_summary.csv")
   df <- read_csv_if_exists(f)
   if (is.null(df) || !nrow(df) || !"ModuleID" %in% names(df)) return(empty_claims())
-  for (col in c("Supermodule", "ModuleLabel_Final", "strongest_condition_contrast", "condition_model_fdr",
+  for (col in c("Supermodule_DisplayLabel", "Supermodule_FinalLabel", "Macroprogram_Display", "SupermoduleID", "Supermodule", "ModuleLabel_Final", "strongest_condition_contrast", "condition_model_fdr",
                 "condition_model_p", "strongest_condition_adjusted_delta", "evidence_warning")) {
     if (!col %in% names(df)) df[[col]] <- NA
+  }
+  super_ann <- supermodule_annotation_for_claims(dataset)
+  df <- df %>%
+    dplyr::mutate(
+      dataset = dataset,
+      supermodule_claim_key = dplyr::coalesce(as.character(.data$SupermoduleID), as.character(.data$Supermodule), as.character(.data$Supermodule_FinalLabel), as.character(.data$Macroprogram_Display))
+    )
+  if (!is.null(super_ann)) {
+    df <- df %>%
+      dplyr::left_join(super_ann, by = c("dataset", "supermodule_claim_key"), suffix = c("", ".annotation")) %>%
+      dplyr::mutate(
+        Supermodule_DisplayLabel = dplyr::coalesce(.data$Supermodule_DisplayLabel.annotation, .data$Supermodule_DisplayLabel),
+        Supermodule_FinalLabel = dplyr::coalesce(.data$Supermodule_FinalLabel.annotation, .data$Supermodule_FinalLabel),
+        Macroprogram_Display = dplyr::coalesce(.data$Macroprogram_Display.annotation, .data$Macroprogram_Display)
+      )
   }
   df %>%
     dplyr::transmute(
       dataset = dataset,
       contrast = .data$strongest_condition_contrast,
-      biological_program = dplyr::coalesce(.data$Supermodule, .data$ModuleLabel_Final),
+      biological_program = dplyr::coalesce(.data$Supermodule_DisplayLabel, .data$Supermodule_FinalLabel, .data$Macroprogram_Display, .data$Supermodule, .data$ModuleLabel_Final),
       direction = dplyr::case_when(
         suppressWarnings(as.numeric(.data$strongest_condition_adjusted_delta)) > 0 ~ "positive_effect",
         suppressWarnings(as.numeric(.data$strongest_condition_adjusted_delta)) < 0 ~ "negative_effect",
@@ -133,8 +175,23 @@ collect_overlap_claims <- function(dataset) {
   df <- read_csv_if_exists(f)
   if (is.null(df) || !nrow(df) || !"ModuleID" %in% names(df)) return(empty_claims())
   if ("status" %in% names(df)) return(empty_claims())
-  for (col in c("Supermodule", "jaccard_DE", "n_DE_overlap", "top_overlap_proteins")) {
+  for (col in c("Supermodule_DisplayLabel", "Supermodule_FinalLabel", "Macroprogram_Display", "SupermoduleID", "Supermodule", "jaccard_DE", "n_DE_overlap", "top_overlap_proteins")) {
     if (!col %in% names(df)) df[[col]] <- NA
+  }
+  super_ann <- supermodule_annotation_for_claims(dataset)
+  df <- df %>%
+    dplyr::mutate(
+      dataset = dataset,
+      supermodule_claim_key = dplyr::coalesce(as.character(.data$SupermoduleID), as.character(.data$Supermodule), as.character(.data$Supermodule_FinalLabel), as.character(.data$Macroprogram_Display))
+    )
+  if (!is.null(super_ann)) {
+    df <- df %>%
+      dplyr::left_join(super_ann, by = c("dataset", "supermodule_claim_key"), suffix = c("", ".annotation")) %>%
+      dplyr::mutate(
+        Supermodule_DisplayLabel = dplyr::coalesce(.data$Supermodule_DisplayLabel.annotation, .data$Supermodule_DisplayLabel),
+        Supermodule_FinalLabel = dplyr::coalesce(.data$Supermodule_FinalLabel.annotation, .data$Supermodule_FinalLabel),
+        Macroprogram_Display = dplyr::coalesce(.data$Macroprogram_Display.annotation, .data$Macroprogram_Display)
+      )
   }
   df %>%
     dplyr::arrange(.data$fisher_fdr) %>%
@@ -144,7 +201,7 @@ collect_overlap_claims <- function(dataset) {
     dplyr::transmute(
       dataset = dataset,
       contrast = .data$contrast,
-      biological_program = if ("Supermodule" %in% names(df)) .data$Supermodule else NA,
+      biological_program = dplyr::coalesce(.data$Supermodule_DisplayLabel, .data$Supermodule_FinalLabel, .data$Macroprogram_Display, .data$Supermodule),
       direction = NA_character_,
       evidence_type = "WGCNA_DE_GSEA_overlap",
       effect_size_NES = if ("jaccard_DE" %in% names(df)) .data$jaccard_DE else NA,
