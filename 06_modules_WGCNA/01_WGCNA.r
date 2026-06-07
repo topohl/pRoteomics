@@ -234,42 +234,53 @@ figure_diverging <- c(low = "#3B6FB6", mid = "#F8FAFC", high = "#C84C5A")
 figure_condition_cols <- c(con = "#6C757D", res = "#2A9D8F", sus = "#E76F51")
 figure_condition_labels <- c(con = "CON", res = "RES", sus = "SUS")
 
-# Module palette (20+ colors) for readable multi-module figures.
-# Values are standard R color names so module labels remain stable/portable.
+# Display palette for module figures.
+# WGCNA ModuleColor values remain the computational identifiers; these mXX
+# colors are used only for cleaner, publication-oriented plotting.
 module_color_palette <- c(
-  "m01" = "forestgreen",
-  "m02" = "khaki",
-  "m03" = "coral",
-  "m04" = "mediumaquamarine",
-  "m05" = "lightpink",
-  "m06" = "plum",
-  "m07" = "lemonchiffon",
-  "m08" = "aquamarine",
-  "m09" = "deepskyblue",
-  "m10" = "lightblue",
-  "m11" = "gold",
-  "m12" = "lavender",
-  "m13" = "saddlebrown",
-  "m14" = "steelblue",
-  "m15" = "darkcyan",
-  "m16" = "goldenrod",
-  "m17" = "lightsalmon",
-  "m18" = "peachpuff",
-  "m19" = "palegreen",
-  "m20" = "limegreen",
-  "m21" = "violet",
-  "m22" = "salmon",
-  "m23" = "mistyrose",
-  "m24" = "tomato",
-  "m25" = "hotpink",
-  "m26" = "sienna",
-  "m27" = "cadetblue",
-  "m28" = "orchid",
-  "m29" = "tan",
-  "m30" = "turquoise",
-  "m31" = "dodgerblue",
-  "m32" = "mediumpurple"
+  "m01" = "#1F4E79",  # deep blue
+  "m02" = "#6BAED6",  # light blue
+  "m03" = "#2B8CBE",  # mid blue
+  "m04" = "#08519C",  # navy blue
+  "m05" = "#238B45",  # green
+  "m06" = "#74C476",  # light green
+  "m07" = "#006D2C",  # dark green
+  "m08" = "#41AB5D",  # mid green
+  "m09" = "#E6550D",  # orange
+  "m10" = "#FDAE6B",  # light orange
+  "m11" = "#A63603",  # burnt orange
+  "m12" = "#F16913",  # vivid orange
+  "m13" = "#A50F15",  # deep red
+  "m14" = "#DE2D26",  # red
+  "m15" = "#FB6A4A",  # coral red
+  "m16" = "#67000D",  # burgundy
+  "m17" = "#54278F",  # purple
+  "m18" = "#756BB1",  # muted purple
+  "m19" = "#9E9AC8",  # lavender purple
+  "m20" = "#3F007D",  # dark purple
+  "m21" = "#7F2704",  # brown
+  "m22" = "#A6611A",  # ochre
+  "m23" = "#BF812D",  # warm brown
+  "m24" = "#8C510A",  # dark ochre
+  "m25" = "#4D4D4D",  # dark grey
+  "m26" = "#737373",  # mid grey
+  "m27" = "#969696",  # light grey
+  "m28" = "#252525",  # near black
+  "m29" = "#01665E",  # teal
+  "m30" = "#35978F",  # mid teal
+  "m31" = "#80CDC1",  # light teal
+  "m32" = "#003C30"   # dark teal
 )
+
+module_display_palette <- function(module_ids) {
+  module_ids <- as.character(module_ids)
+  unique_ids <- unique(module_ids[!is.na(module_ids) & nzchar(module_ids)])
+  mapped <- stats::setNames(
+    rep(module_color_palette, length.out = length(unique_ids)),
+    unique_ids
+  )
+  mapped[module_ids]
+}
 
 theme_publication <- function(base_size = figure_base_size) {
   ggplot2::theme_classic(base_size = base_size, base_family = figure_font) +
