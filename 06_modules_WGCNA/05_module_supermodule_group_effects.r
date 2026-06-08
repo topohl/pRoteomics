@@ -274,7 +274,8 @@ make_endpoint_maps <- function(module_eig, definitions, super_ann) {
   if (nrow(super_ann)) {
     super_map0 <- super_ann
     if ("present_in_dataset" %in% names(super_map0)) super_map0 <- super_map0 |> dplyr::filter(.data$present_in_dataset %in% c(TRUE, "TRUE", "true", 1))
-    for (nm in c("Supermodule_DataDrivenID", "Supermodule_DataDriven", "SupermoduleID", "Supermodule_DisplayLabel", "Macroprogram_Display", "Supermodule_LongLabel", "Supermodule_FinalLabel", "Supermodule", "Supermodule_DataDrivenLabel")) if (!nm %in% names(super_map0)) super_map0[[nm]] <- NA_character_
+    for (nm in c("Supermodule_DataDrivenID", "Supermodule_DataDriven", "SupermoduleID", "Supermodule_DisplayLabel", "Macroprogram_Display", "Supermodule_LongLabel", "Supermodule_FinalLabel", "Supermodule", "Supermodule_DataDrivenLabel", "supermodule_merge_rule")) if (!nm %in% names(super_map0)) super_map0[[nm]] <- NA_character_
+    if (!"supermodule_merge_cut_height" %in% names(super_map0)) super_map0$supermodule_merge_cut_height <- NA_real_
     super_map <- super_map0 |>
       dplyr::mutate(
         module_eigengene = as.character(.data$module_eigengene),
@@ -375,7 +376,16 @@ if (inherits(state, "error")) {
   super <- make_supermodule_eigengenes(module_eig, maps$super_map)
   comp <- super$composition |>
     dplyr::mutate(dataset = DATASET, .before = "supermodule_id") |>
-    dplyr::left_join(maps$super_map |> dplyr::distinct(SupermoduleID, SupermoduleLabel), by = c("supermodule_id" = "SupermoduleID")) |>
+    dplyr::left_join(
+      maps$super_map |>
+        dplyr::distinct(
+          .data$SupermoduleID,
+          .data$SupermoduleLabel,
+          .data$supermodule_merge_cut_height,
+          .data$supermodule_merge_rule
+        ),
+      by = c("supermodule_id" = "SupermoduleID")
+    ) |>
     dplyr::rename(supermodule_label = "SupermoduleLabel")
 
   module_out <- if (LEVEL %in% c("module", "both")) run_effects(module_eig, maps$module_map, "module", state) else empty_group_effects(DATASET, "module", "not requested")
