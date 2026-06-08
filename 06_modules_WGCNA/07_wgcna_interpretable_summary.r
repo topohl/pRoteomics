@@ -361,25 +361,55 @@ orient_contrasts_for_plot <- function(df) {
 
 region_plot_levels <- function() c("DG", "CA3", "CA2", "CA1")
 
-spatial_unit_plot_label <- function(x) {
-  z <- toupper(as.character(x))
-  z <- gsub("^HIPPOCAMPUS[_ -]?", "", z)
-  z <- gsub("[_-]", " ", z)
-  z <- stringr::str_squish(z)
-  dplyr::case_when(
-    grepl("\\bDG\\b|DENTATE", z) ~ "DG",
-    grepl("\\bCA3\\b", z) ~ "CA3",
-    grepl("\\bCA2\\b", z) ~ "CA2",
-    grepl("\\bCA1\\b", z) ~ "CA1",
-    TRUE ~ z
+neuropil_region_layer_levels <- function() {
+  c(
+    "CA1_so", "CA1_sr", "CA1_slm",
+    "CA2_so", "CA2_sr", "CA2_slm",
+    "CA3_so", "CA3_sr",
+    "DG_mo", "DG_po"
   )
 }
 
-apply_spatial_unit_order <- function(df) {
+spatial_unit_plot_label <- function(x, ds = NULL) {
+  x_raw <- as.character(x)
+
+  if (identical(ds, "neuron_neuropil")) {
+    out <- toupper(x_raw)
+    out <- sub("_", "_", out, fixed = TRUE)
+    out <- gsub("^CA([123])_", "CA\\1_", out)
+    out <- gsub("^DG_", "DG_", out)
+    return(out)
+  }
+
+  x_low <- tolower(x_raw)
+  dplyr::case_when(
+    grepl("^dg", x_low) ~ "DG",
+    grepl("^ca3", x_low) ~ "CA3",
+    grepl("^ca2", x_low) ~ "CA2",
+    grepl("^ca1", x_low) ~ "CA1",
+    TRUE ~ x_raw
+  )
+}
+
+apply_spatial_unit_order <- function(df, ds = NULL) {
   if (!nrow(df) || !"spatial_unit" %in% names(df)) return(df)
-  df$spatial_unit_raw <- as.character(df$spatial_unit)
-  labels <- spatial_unit_plot_label(df$spatial_unit_raw)
-  df$spatial_unit <- factor(labels, levels = c(region_plot_levels(), sort(setdiff(unique(labels), region_plot_levels()))))
+  raw <- if ("spatial_unit_raw" %in% names(df)) as.character(df$spatial_unit_raw) else as.character(df$spatial_unit)
+  labels <- spatial_unit_plot_label(raw, ds = ds)
+
+  spatial_levels <- if (identical(ds, "neuron_neuropil")) {
+    c(
+      "DG_MO", "DG_PO",
+      "CA3_SO", "CA3_SR",
+      "CA2_SO", "CA2_SR", "CA2_SLM",
+      "CA1_SO", "CA1_SR", "CA1_SLM"
+    )
+  } else {
+    c(region_plot_levels(), sort(setdiff(unique(labels), region_plot_levels())))
+  }
+
+  spatial_levels <- c(spatial_levels, sort(setdiff(unique(labels), spatial_levels)))
+  df$spatial_unit_raw <- raw
+  df$spatial_unit <- factor(labels, levels = spatial_levels)
   df
 }
 
@@ -706,7 +736,7 @@ plot_supermodule_spatial_heatmap <- function(super_join, paths, ds) {
 
   plot_df$program_label <- label_wrap(coalesce_chr(col_or_na(plot_df, "Supermodule_PlotLabel"), program_label_col(plot_df, "supermodule")), 30)
   plot_df <- plot_df |>
-    apply_spatial_unit_order() |>
+    apply_spatial_unit_order(ds = ds) |>
     dplyr::mutate(
       contrast = factor(.data$contrast, levels = contrast_plot_levels()),
       panel = paste(.data$contrast, .data$spatial_unit, sep = " | ")
@@ -821,7 +851,7 @@ plot_module_spatial_heatmap <- function(module_join, paths, ds) {
     dplyr::pull(.data$module_label_plot)
 
   plot_df <- plot_df |>
-    apply_spatial_unit_order() |>
+    apply_spatial_unit_order(ds = ds) |>
     dplyr::filter(.data$module_label_plot %in% keep_modules) |>
     dplyr::mutate(
       contrast = factor(.data$contrast, levels = contrast_plot_levels())
@@ -927,7 +957,7 @@ plot_top_supermodules <- function(top_super, paths, ds, n_modules = 10) {
     dplyr::mutate(
       program_label = label_wrap(.data$program_label_raw, 34),
       program_label = stats::reorder(.data$program_label, .data$max_abs_estimate),
-      neg_log10_q_plot = pmin(.data$neg_log10_q, 4)
+      neg_log10_q_plot = pmin(.data$neg_log10_q, 2.5)
     )
 
   x_max <- max(abs(plot_df$estimate), na.rm = TRUE)
@@ -969,10 +999,28 @@ plot_top_supermodules <- function(top_super, paths, ds, n_modules = 10) {
       drop = FALSE
     ) +
     ggplot2::scale_size_continuous(
-      range = c(1.6, 4.2),
+      range = c(1.8, 4.8),
       breaks = c(0.5, 1, 1.5, 2, 2.5),
       limits = c(0, 2.5),
       name = expression(-log[10]("FDR"))
+    ) +
+    ggplot2::guides(
+      size = ggplot2::guide_legend(
+        override.aes = list(
+          fill = "grey45",
+          color = "grey20",
+          alpha = 1,
+          stroke = 0.25
+        )
+      ),
+      fill = ggplot2::guide_legend(
+        override.aes = list(
+          size = 3,
+          color = "grey20",
+          alpha = 1,
+          stroke = 0.25
+        )
+      )
     ) +
     ggplot2::scale_x_continuous(
       limits = x_lim,
