@@ -659,13 +659,20 @@ classify_supermodule_label_confidence <- function(n_modules, go_class = "unresol
   "unresolved"
 }
 
-supermodule_cut_height_default <- function(dataset) {
+supermodule_merge_cut_height <- function(dataset) {
   switch(as.character(dataset),
-    neuron_neuropil = 0.35,
+    neuron_neuropil = 0.55,
     neuron_soma = 0.35,
-    microglia = 0.50,
-    0.35
+    microglia = 0.45,
+    0.40
   )
+}
+supermodule_cut_height_default <- supermodule_merge_cut_height
+selected_supermodule_merge_cut_height <- function(dataset) {
+  default_cut_height <- supermodule_merge_cut_height(dataset)
+  cut_height <- suppressWarnings(as.numeric(Sys.getenv("PROTEOMICS_WGCNA_SUPERMODULE_CUT_HEIGHT", unset = as.character(default_cut_height))))
+  if (!is.finite(cut_height)) cut_height <- default_cut_height
+  cut_height
 }
 
 read_manual_supermodule_config <- function(dataset) {
@@ -801,9 +808,9 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
     dplyr::anti_join(present, by = c("module_eigengene", "ModuleColor")) %>%
     dplyr::mutate(present_in_dataset = FALSE, manual_annotation = TRUE)
 
-  default_cut_height <- supermodule_cut_height_default(dataset)
-  cut_height <- suppressWarnings(as.numeric(Sys.getenv("PROTEOMICS_WGCNA_SUPERMODULE_CUT_HEIGHT", unset = as.character(default_cut_height))))
-  if (!is.finite(cut_height)) cut_height <- default_cut_height
+  default_cut_height <- supermodule_merge_cut_height(dataset)
+  cut_height <- selected_supermodule_merge_cut_height(dataset)
+  supermodule_merge_rule <- "hclust_average_on_1_minus_module_eigengene_correlation"
   module_similarity <- stats::cor(mergedMEs[, module_names, drop = FALSE], use = "pairwise.complete.obs", method = "pearson")
   module_similarity[!is.finite(module_similarity)] <- 0
   diag(module_similarity) <- 1
@@ -837,7 +844,9 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
     dplyr::mutate(
       Supermodule_DataDriven = cluster_id,
       DataDrivenClusterSize = as.integer(tabulate(match(.data$Supermodule_DataDriven, unique(.data$Supermodule_DataDriven)))[match(.data$Supermodule_DataDriven, unique(.data$Supermodule_DataDriven))]),
-      SupermoduleCutHeight = cut_height
+      SupermoduleCutHeight = cut_height,
+      supermodule_merge_cut_height = cut_height,
+      supermodule_merge_rule = supermodule_merge_rule
     )
 
   sensitivity_cut_heights <- c(0.25, 0.35, 0.45, 0.50, 0.55, 0.65)
@@ -1087,6 +1096,8 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
         Supermodule_DataDrivenID = NA_character_,
         DataDrivenClusterSize = NA_integer_,
         SupermoduleCutHeight = cut_height,
+        supermodule_merge_cut_height = cut_height,
+        supermodule_merge_rule = supermodule_merge_rule,
         Supermodule_ProposedName = NA_character_,
         Supermodule_DataDrivenLabel = NA_character_,
         Supermodule_CuratedLabel = .data$Supermodule_Manual,
@@ -1207,6 +1218,29 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
     )
   write_csv_safe(cluster_export, fp_supertab("wgcna_supermodule_eigengene_clusters.csv"))
   write_csv_safe(evidence, fp_supertab("wgcna_supermodule_evidence_table.csv"))
+  repeated_macroprogram_labels <- annotation %>%
+    dplyr::filter(.data$present_in_dataset) %>%
+    dplyr::distinct(.data$SupermoduleID, .data$Macroprogram_Display) %>%
+    dplyr::filter(!is.na(.data$Macroprogram_Display), nzchar(.data$Macroprogram_Display), .data$Macroprogram_Display != "Unresolved / mixed") %>%
+    dplyr::count(.data$Macroprogram_Display, name = "n_supermodules") %>%
+    dplyr::filter(.data$n_supermodules > 1L)
+  supermodule_compression_qc <- tibble::tibble(
+    dataset = dataset,
+    supermodule_merge_cut_height = cut_height,
+    supermodule_merge_rule = supermodule_merge_rule,
+    n_modules = length(module_names),
+    n_supermodules = length(primary_group_sizes),
+    n_singleton_supermodules = primary_singletons,
+    median_modules_per_supermodule = if (length(primary_group_sizes)) stats::median(primary_group_sizes) else NA_real_,
+    max_modules_per_supermodule = if (length(primary_group_sizes)) max(primary_group_sizes) else NA_integer_,
+    repeated_macroprogram_labels = if (nrow(repeated_macroprogram_labels)) {
+      paste0(repeated_macroprogram_labels$Macroprogram_Display, " (", repeated_macroprogram_labels$n_supermodules, ")", collapse = "; ")
+    } else {
+      ""
+    }
+  )
+  write_csv_safe(supermodule_compression_qc, fp_supertab("supermodule_compression_qc.csv"))
+  write_csv_safe(supermodule_compression_qc, fp_source("supermodule_compression_qc.csv"))
   write_csv_safe(
     evidence_summary_export %>%
       dplyr::select(dplyr::any_of(c(
@@ -1235,6 +1269,8 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
       TRUE ~ "data_driven_only"
     ),
     supermodule_cut_height = cut_height,
+    supermodule_merge_cut_height = cut_height,
+    supermodule_merge_rule = supermodule_merge_rule,
     default_cut_height_for_dataset = default_cut_height,
     singleton_warning = is.finite(primary_fraction_singleton) && primary_fraction_singleton > 0.50,
     interpretation_note = "Supermodules are data-reduction/interpretation objects; macroprogram labels are display groupings, not independent discoveries."
@@ -2172,7 +2208,8 @@ write_csv_safe(
       "sample_tree_cut_height", "sample_tree_plot_height",
       "soft_threshold_rsquared", "selected_soft_power",
       "network_type", "correlation_function", "bicor_maxPOutliers",
-      "deep_split", "min_module_size", "merge_cut_height",
+      "deep_split", "min_module_size", "module_merge_cut_height", "merge_cut_height",
+      "supermodule_merge_cut_height", "supermodule_merge_rule",
       "module_preservation_permutations", "dataset_profile_requested",
       "output_layout"
     ),
@@ -2180,7 +2217,9 @@ write_csv_safe(
       sample_tree_cut_height, sample_tree_plot_height,
       soft_threshold_rsquared, softPower,
       "signed", "bicor", 0.05,
-      deep_split, min_module_size, merge_cut_height,
+      deep_split, min_module_size, merge_cut_height, merge_cut_height,
+      selected_supermodule_merge_cut_height(dataset_profile),
+      "hclust_average_on_1_minus_module_eigengene_correlation",
       module_preservation_permutations, dataset_profile,
       ifelse(nzchar(output_dir_env), "custom_bundle", "canonical_module_paths")
     )
@@ -2901,7 +2940,10 @@ saveRDS(list(
     selected_soft_power = softPower,
     min_module_size = min_module_size,
     deep_split = deep_split,
+    module_merge_cut_height = merge_cut_height,
     merge_cut_height = merge_cut_height,
+    supermodule_merge_cut_height = selected_supermodule_merge_cut_height(dataset_profile_resolved),
+    supermodule_merge_rule = "hclust_average_on_1_minus_module_eigengene_correlation",
     module_preservation_permutations = module_preservation_permutations,
     dataset_profile = dataset_profile_resolved
   )
@@ -4271,12 +4313,15 @@ write_run_manifest(
     selected_soft_power = if (exists("softPower")) softPower else NA,
     min_module_size = min_module_size,
     deep_split = deep_split,
+    module_merge_cut_height = merge_cut_height,
     merge_cut_height = merge_cut_height,
     module_preservation_permutations = module_preservation_permutations,
     dataset_profile_requested = dataset_profile,
     dataset_profile_resolved = if (exists("dataset_profile_resolved")) dataset_profile_resolved else NA_character_,
-    supermodule_cut_height = if (exists("cut_height")) cut_height else NA_real_,
-    supermodule_default_cut_height = if (exists("default_cut_height")) default_cut_height else NA_real_,
+    supermodule_cut_height = selected_supermodule_merge_cut_height(if (exists("dataset_profile_resolved")) dataset_profile_resolved else dataset_profile),
+    supermodule_merge_cut_height = selected_supermodule_merge_cut_height(if (exists("dataset_profile_resolved")) dataset_profile_resolved else dataset_profile),
+    supermodule_default_cut_height = supermodule_merge_cut_height(if (exists("dataset_profile_resolved")) dataset_profile_resolved else dataset_profile),
+    supermodule_merge_rule = "hclust_average_on_1_minus_module_eigengene_correlation",
     supermodule_label_mode = if (exists("label_source_manifest") && nrow(label_source_manifest)) label_source_manifest$label_mode[[1]] else NA_character_,
     supermodule_legacy_seed_allowed = tolower(Sys.getenv("PROTEOMICS_ALLOW_LEGACY_SUPERMODULE_SEED", unset = "false")) %in% c("1", "true", "yes", "y"),
     module_definition_contract = fp_modtab("WGCNA_module_definitions_for_downstream.csv"),
@@ -4302,10 +4347,13 @@ write_run_manifest(
     selected_soft_power = if (exists("softPower")) softPower else NA,
     min_module_size = min_module_size,
     deep_split = deep_split,
+    module_merge_cut_height = merge_cut_height,
     merge_cut_height = merge_cut_height,
     module_preservation_permutations = module_preservation_permutations,
-    supermodule_cut_height = if (exists("cut_height")) cut_height else NA_real_,
-    supermodule_default_cut_height = if (exists("default_cut_height")) default_cut_height else NA_real_,
+    supermodule_cut_height = selected_supermodule_merge_cut_height(if (exists("dataset_profile_resolved")) dataset_profile_resolved else dataset_profile),
+    supermodule_merge_cut_height = selected_supermodule_merge_cut_height(if (exists("dataset_profile_resolved")) dataset_profile_resolved else dataset_profile),
+    supermodule_default_cut_height = supermodule_merge_cut_height(if (exists("dataset_profile_resolved")) dataset_profile_resolved else dataset_profile),
+    supermodule_merge_rule = "hclust_average_on_1_minus_module_eigengene_correlation",
     supermodule_label_mode = if (exists("label_source_manifest") && nrow(label_source_manifest)) label_source_manifest$label_mode[[1]] else NA_character_,
     supermodule_legacy_seed_allowed = tolower(Sys.getenv("PROTEOMICS_ALLOW_LEGACY_SUPERMODULE_SEED", unset = "false")) %in% c("1", "true", "yes", "y"),
     cache_reused = isTRUE(using_cached_final_state),
