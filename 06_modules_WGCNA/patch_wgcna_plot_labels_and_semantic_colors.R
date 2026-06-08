@@ -39,18 +39,6 @@ replace_block <- function(start_pattern, end_regex, replacement) {
   x <<- c(x[seq_len(s - 1L)], replacement, x[(e + 1L):length(x)])
 }
 
-replace_line <- function(pattern, replacement, fixed = TRUE) {
-  i <- find_one(pattern, fixed = fixed)
-  if (!length(i)) stop("Line not found: ", pattern, call. = FALSE)
-  x[[i]] <<- replacement
-}
-
-replace_first_literal <- function(pattern, replacement) {
-  i <- find_one(pattern, fixed = TRUE)
-  if (!length(i)) stop("Text not found: ", pattern, call. = FALSE)
-  x[[i]] <<- sub(pattern, replacement, x[[i]], fixed = TRUE)
-}
-
 # ------------------------------------------------------------------
 # 1) Vectorize dataset_label()
 # ------------------------------------------------------------------
@@ -73,8 +61,7 @@ replace_block(
 # ------------------------------------------------------------------
 # 2) Insert helper functions after ensure_columns()
 # ------------------------------------------------------------------
-helper_already <- any(grepl("make_supermodule_plot_label <- function", x, fixed = TRUE))
-if (!helper_already) {
+if (!any(grepl("make_supermodule_plot_label <- function", x, fixed = TRUE))) {
   s <- find_one("ensure_columns <- function(df, cols) {", fixed = TRUE)
   if (!length(s)) stop("ensure_columns() not found", call. = FALSE)
   e_rel <- grep("^}$", x[s:length(x)], perl = TRUE)
@@ -218,33 +205,7 @@ if (!helper_already) {
 }
 
 # ------------------------------------------------------------------
-# 3) Prefer canonical labels in fallback helper
-# ------------------------------------------------------------------
-old <- c(
-  "      col_or_na(df, \"Supermodule_DisplayLabel\"),",
-  "      col_or_na(df, \"Supermodule_FinalLabel\"),",
-  "      col_or_na(df, \"Supermodule_FinalLabel.y\"),",
-  "      col_or_na(df, \"Supermodule_FinalLabel.x\"),",
-  "      col_or_na(df, \"Macroprogram_Display\"),"
-)
-new <- c(
-  "      col_or_na(df, \"Supermodule_PlotLabel\"),",
-  "      col_or_na(df, \"Supermodule_DisplayLabel\"),",
-  "      col_or_na(df, \"Macroprogram_Display\"),",
-  "      col_or_na(df, \"Supermodule_ShortLabel\"),",
-  "      col_or_na(df, \"Supermodule_FinalLabel\"),",
-  "      col_or_na(df, \"Supermodule_FinalLabel.y\"),",
-  "      col_or_na(df, \"Supermodule_FinalLabel.x\"),"
-)
-for (i in seq_len(length(x) - length(old) + 1L)) {
-  if (identical(x[i:(i + length(old) - 1L)], old)) {
-    x <- c(x[seq_len(i - 1L)], new, x[(i + length(old)):length(x)])
-    break
-  }
-}
-
-# ------------------------------------------------------------------
-# 4) Add canonical labels after joins
+# 3) Add canonical labels after joins
 # ------------------------------------------------------------------
 needle <- "    ensure_columns(c(\"Supermodule_DisplayLabel\", \"Supermodule_LongLabel\", \"Macroprogram_Display\", \"Supermodule_FinalLabel\", \"supermodule_label\", \"supermodule_id\", \"dominant_microenvironment_class\", \"p_value\", \"estimate\", \"FDR_global\", \"contrast\", \"spatial_unit\", \"effect_scope\", \"evidence_status\", \"direction\"))"
 i <- grep(needle, x, fixed = TRUE)
@@ -258,7 +219,7 @@ if (length(i) && !any(grepl("super_join <- add_semantic_columns", x, fixed = TRU
 
 needle <- "  module_join <- attach_module_supermodules(module_join, module_super_map)"
 i <- grep(needle, x, fixed = TRUE)
-if (length(i) && !any(grepl("module_join\$ModulePlotLabel", x, perl = TRUE))) {
+if (length(i) && !any(grepl("module_join$ModulePlotLabel", x, fixed = TRUE))) {
   i <- i[[1]]
   x <- c(x[seq_len(i)],
          "  module_join$ModulePlotLabel <- make_module_plot_label(module_join)",
@@ -268,7 +229,7 @@ if (length(i) && !any(grepl("module_join\$ModulePlotLabel", x, perl = TRUE))) {
 }
 
 # ------------------------------------------------------------------
-# 5) Replace most plot label calls with canonical plot label fallback
+# 4) Plot label substitutions
 # ------------------------------------------------------------------
 x <- gsub("program_label_col\\(plot_df, \\\"supermodule\\\"\\)",
           "coalesce_chr(col_or_na(plot_df, \"Supermodule_PlotLabel\"), program_label_col(plot_df, \"supermodule\"))",
@@ -292,7 +253,7 @@ x <- gsub("plot_df\\$module_label_plot <- program_label_col\\(plot_df, \\\"modul
           x, perl = TRUE)
 
 # ------------------------------------------------------------------
-# 6) Add label QC outputs before existing summary tables
+# 5) QC outputs
 # ------------------------------------------------------------------
 qc_needle <- "  write_table_and_source(super_join, paths$tables, paths$source_data, \"WGCNA_supermodule_group_effects_interpretable.csv\")"
 i <- grep(qc_needle, x, fixed = TRUE)
@@ -321,37 +282,16 @@ if (length(i) && !any(grepl("WGCNA_supermodule_plot_label_qc.csv", x, fixed = TR
 }
 
 # ------------------------------------------------------------------
-# 7) Cross-dataset label priority
+# 6) Cross-dataset label priority and microglia reorder warning
 # ------------------------------------------------------------------
-old <- c(
-  "        col_or_na(all_super, \"Supermodule_DisplayLabel\"),",
-  "        col_or_na(all_super, \"Supermodule_FinalLabel\"),",
-  "        col_or_na(all_super, \"Macroprogram_Display\"),"
-)
-new <- c(
-  "        col_or_na(all_super, \"Supermodule_PlotLabel\"),",
-  "        col_or_na(all_super, \"Supermodule_DisplayLabel\"),",
-  "        col_or_na(all_super, \"Macroprogram_Display\"),",
-  "        col_or_na(all_super, \"Supermodule_FinalLabel\"),"
-)
-for (i in seq_len(length(x) - length(old) + 1L)) {
-  if (identical(x[i:(i + length(old) - 1L)], old)) {
-    x <- c(x[seq_len(i - 1L)], new, x[(i + length(old)):length(x)])
-    break
-  }
-}
-
-# ------------------------------------------------------------------
-# 8) Microglia composition: avoid reorder(character) warning.
-# ------------------------------------------------------------------
+# Keep this conservative: make_cross_dataset_summary will use Supermodule_PlotLabel
+# because program_label_col() now prioritizes it when present.
 old_line <- "  p <- ggplot2::ggplot(plot_df, ggplot2::aes(x = .data$fraction, y = stats::reorder(.data$program_label, .data$SupermoduleID), fill = .data$class)) +"
 new_line <- "  p <- ggplot2::ggplot(plot_df, ggplot2::aes(x = .data$fraction, y = .data$program_label, fill = .data$class)) +"
 hits <- grep(old_line, x, fixed = TRUE)
 if (length(hits)) x[hits] <- new_line
 
-# Validate minimally.
-required <- c("make_supermodule_plot_label <- function", "make_module_plot_label <- function",
-              "semantic_program_key <- function", "Supermodule_PlotLabel", "ModulePlotLabel")
+required <- c("make_supermodule_plot_label <- function", "make_module_plot_label <- function", "semantic_program_key <- function")
 missing <- required[!vapply(required, function(tok) any(grepl(tok, x, fixed = TRUE)), logical(1))]
 if (length(missing)) stop("Patch failed; missing: ", paste(missing, collapse = ", "), call. = FALSE)
 
