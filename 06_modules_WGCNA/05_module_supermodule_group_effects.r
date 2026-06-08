@@ -132,7 +132,7 @@ contrast_rows <- function(fit_info, dat, level, endpoint_id, endpoint_label, spa
       contr <- as.data.frame(emmeans::contrast(emm, method = list(
         "RES - CON" = c(-1, 1, 0),
         "SUS - CON" = c(-1, 0, 1),
-        "RES - SUS" = c(0, -1, 1)
+        "SUS - RES" = c(0, -1, 1)
       )))
       spatial_vals <- if (by_spatial && "SpatialLabel" %in% names(contr)) as.character(contr$SpatialLabel) else spatial_unit
       stat_col <- intersect(c("t.ratio", "z.ratio"), names(contr))[1]
@@ -171,7 +171,7 @@ contrast_rows <- function(fit_info, dat, level, endpoint_id, endpoint_label, spa
   }
 
   warning_note <- c(fit_info$warning, "emmeans unavailable or failed; used two-group t-test contrasts")
-  contrasts <- c("RES - CON", "SUS - CON", "RES - SUS")
+  contrasts <- c("RES - CON", "SUS - CON", "SUS - RES")
   units <- if (by_spatial) sort(unique(stats::na.omit(dat$SpatialLabel))) else spatial_unit
   dplyr::bind_rows(lapply(units, function(unit) {
     subdat <- if (by_spatial) dat[dat$SpatialLabel == unit, , drop = FALSE] else dat
