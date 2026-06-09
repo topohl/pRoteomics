@@ -1,4 +1,14 @@
 # ================================================================
+# Script: 07_spatial_networks/03_bootstrap_network_stability.r
+# Stage: networks
+# Scope: dataset_specific
+# Consumes: required data/processed/07_spatial_networks/network_spatial_relations/<dataset>/*/network_spatial_relations_objects.rds; optional none.
+# Produces: results/tables/07_spatial_networks/bootstrap_network_stability/.
+# Dataset behavior: runs for neuron_neuropil,neuron_soma according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: Bootstrap network stability.
+# ================================================================
+
+# ================================================================
 # Consumes:
 #   - spatial network RDS from data/processed/07_spatial_networks/network_spatial_relations/
 # Produces:

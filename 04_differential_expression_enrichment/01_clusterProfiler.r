@@ -1,3 +1,13 @@
+# ================================================================
+# Script: 04_differential_expression_enrichment/01_clusterProfiler.r
+# Stage: enrichment
+# Scope: dataset_specific
+# Consumes: required data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv; optional data/external/MOUSE_10090_idmapping.dat.
+# Produces: data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv.
+# Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: ClusterProfiler enrichment source for compareGO and program summaries.
+# ================================================================
+
 #' ============================================================
 #' Consumes:
 #'   - mapped contrast CSVs from data/processed/02_id_mapping/... (configurable)

@@ -1,3 +1,13 @@
+# ================================================================
+# Script: 03_qc_exploration/07_qc_biology_confounding_report.r
+# Stage: qc
+# Scope: dataset_specific
+# Consumes: required results/tables/03_qc_exploration/05_pca_confounding_qc/<dataset>/; results/tables/03_qc_exploration/06_variance_partitioning/<dataset>/; optional results/tables/03_qc_exploration/04_marker_rank_abundance_qc/<dataset>/.
+# Produces: results/reports/03_qc_exploration/07_qc_biology_confounding_report/<dataset>/.
+# Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: Summarizes QC biology/confounding evidence.
+# ================================================================
+
 # Combine QC, missingness, marker, PCA, and metadata into a compact confounding report.
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")

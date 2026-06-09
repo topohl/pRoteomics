@@ -1,3 +1,13 @@
+# ================================================================
+# Script: 08_behavior_physio_coupling/01_correlate_proteomics_with_behavior.r
+# Stage: coupling
+# Scope: dataset_specific
+# Consumes: required data/external/behavior/auc_individual_animals_firstChangeActive.csv; optional data/processed/morpheus/20260218_pgmatrix_imputed_neuron_soma_71samples_missing70pct_with_metadata.xlsx; data/external/MOUSE_10090_idmapping.dat.
+# Produces: results/figures/08_behavior_physio_coupling/01_correlate_proteomics_with_behavior/; results/tables/08_behavior_physio_coupling/01_correlate_proteomics_with_behavior/.
+# Dataset behavior: runs for neuron_soma according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: Legacy direct proteomics-behavior coupling retained as optional soma-only analysis.
+# ================================================================
+
 # --- 1. Load Necessary Libraries ---
 library(dplyr)
 library(tidyr)

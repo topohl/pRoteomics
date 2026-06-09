@@ -1,4 +1,14 @@
 # ================================================================
+# Script: 07_spatial_networks/05_bootstrap_differential_network_figures.r
+# Stage: networks
+# Scope: dataset_specific
+# Consumes: required results/tables/07_spatial_networks/bootstrap_differential_network_stability/01_Tables/bootstrap_differential_edge_stability_summary.csv; results/tables/07_spatial_networks/bootstrap_differential_network_stability/01_Tables/bootstrap_differential_edge_values_long.csv; optional results/tables/07_spatial_networks/bootstrap_differential_network_stability/01_Tables/candidate_edge_differential_stability_summary.csv.
+# Produces: results/figures/07_spatial_networks/bootstrap_differential_network_figures/.
+# Dataset behavior: runs for neuron_neuropil,neuron_soma according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: Figure layer after bootstrap differential network stability.
+# ================================================================
+
+# ================================================================
 # Consumes:
 #   - bootstrap differential network tables from canonical module output
 # Produces:

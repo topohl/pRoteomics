@@ -2,10 +2,10 @@
 # Script: 03_qc_exploration/01_sample_qc_quicksearch.r
 # Stage: qc
 # Scope: dataset_specific
-# Consumes: see pipeline.yml consumes_required/consumes_optional for this entry.
-# Produces: see pipeline.yml produces for canonical output roots.
-# Dataset behavior: follows pipeline.yml datasets and --dataset/PROTEOMICS_DATASET where supported.
-# Notes: active registry script; path-only refactor guardrail header.
+# Consumes: required data/raw/pg_matrix/quicksearch.stats.annotated.xlsx; optional data/metadata/*.xlsx.
+# Produces: results/figures/03_qc_exploration/01_sample_qc_quicksearch/<dataset>/; results/tables/03_qc_exploration/01_sample_qc_quicksearch/<dataset>/qc_summary_tables.xlsx.
+# Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: Quicksearch sample-level QC.
 # ================================================================
 
 # ================================================================

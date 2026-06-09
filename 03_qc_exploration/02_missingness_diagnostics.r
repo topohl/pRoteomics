@@ -1,3 +1,13 @@
+# ================================================================
+# Script: 03_qc_exploration/02_missingness_diagnostics.r
+# Stage: qc
+# Scope: dataset_specific
+# Consumes: required data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv; optional data/metadata/*.xlsx.
+# Produces: results/tables/03_qc_exploration/02_missingness_diagnostics/<dataset>/missingness_diagnostics.xlsx.
+# Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: Missingness diagnostics.
+# ================================================================
+
 # Dataset-aware missingness diagnostics before imputation when possible.
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")

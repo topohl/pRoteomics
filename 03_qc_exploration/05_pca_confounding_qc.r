@@ -1,3 +1,13 @@
+# ================================================================
+# Script: 03_qc_exploration/05_pca_confounding_qc.r
+# Stage: qc
+# Scope: dataset_specific
+# Consumes: required data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv; optional data/metadata/*.xlsx.
+# Produces: results/tables/03_qc_exploration/05_pca_confounding_qc/<dataset>/.
+# Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: PCA and confounding QC.
+# ================================================================
+
 # Dataset-aware PCA QC for spatial proteomics.
 # UMAP/t-SNE/clustering are explicitly optional exploratory outputs.
 

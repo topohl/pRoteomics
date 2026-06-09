@@ -1,4 +1,14 @@
 #!/usr/bin/env Rscript
+# ================================================================
+# Script: 09_export_pride_journal/02_make_sample_metadata.R
+# Stage: export
+# Scope: global
+# Consumes: required data/metadata/; optional 09_export_pride_journal/config/export_config.yml.
+# Produces: pride_submission/metadata/sample_metadata.tsv; pride_submission/metadata/sdrf_like_metadata.tsv.
+# Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: PRIDE sample metadata.
+# ================================================================
+
 # Creates SDRF-like sample metadata from pg_matrix-era metadata (not raw-MS acquisition design).
 # Fails clearly when mandatory fields cannot be resolved.
 

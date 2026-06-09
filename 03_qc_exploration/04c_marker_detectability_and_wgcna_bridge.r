@@ -1,3 +1,13 @@
+# ================================================================
+# Script: 03_qc_exploration/04c_marker_detectability_and_wgcna_bridge.r
+# Stage: qc
+# Scope: dataset_specific
+# Consumes: required data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv; optional config/marker_panels/wgcna_reference_marker_sets.csv; results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv; +1 more.
+# Produces: results/tables/03_qc_exploration/04c_marker_detectability_and_wgcna_bridge/<dataset>/.
+# Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: QC bridge into WGCNA marker interpretation; optional WGCNA state is used when present.
+# ================================================================
+
 # Marker-panel detectability and optional WGCNA marker-enrichment bridge.
 # This script is QC/interpreter support, not a formal purity or deconvolution analysis.
 # It reports individual marker-panel scores, broad marker-compartment scores,

@@ -1,4 +1,14 @@
 #!/usr/bin/env Rscript
+# ================================================================
+# Script: 09_export_pride_journal/01_make_pride_manifest.R
+# Stage: export
+# Scope: global
+# Consumes: required pride_submission/metadata/sample_metadata.tsv; pride_submission/metadata/sdrf_like_metadata.tsv; +1 more; optional results/tables/; results/source_data/.
+# Produces: pride_submission/manifests/pride_file_manifest.tsv.
+# Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: Manifest after metadata and processed-data export.
+# ================================================================
+
 # Creates pride_submission/manifests/pride_file_manifest.tsv from canonical export paths only.
 # Use --include-derived-results or --recursive for broader (non-default) scans.
 

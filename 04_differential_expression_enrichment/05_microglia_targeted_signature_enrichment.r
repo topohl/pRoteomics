@@ -1,5 +1,15 @@
 #!/usr/bin/env Rscript
 
+# ================================================================
+# Script: 04_differential_expression_enrichment/05_microglia_targeted_signature_enrichment.r
+# Stage: enrichment
+# Scope: dataset_specific
+# Consumes: required data/processed/04_differential_expression_enrichment/clusterProfiler/microglia/clusterProfiler_manifest.csv; optional config/marker_panels/wgcna_reference_marker_sets.csv; results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv.
+# Produces: results/tables/04_differential_expression_enrichment/microglia_targeted_signature_enrichment/microglia/.
+# Dataset behavior: runs for microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: Microglia-only targeted signature enrichment.
+# ================================================================
+
 # Microglia-targeted signature enrichment for ranked proteomics contrasts.
 #
 # The microglia dataset represents microglia-enriched ROI / local

@@ -1,3 +1,13 @@
+# ================================================================
+# Script: 04_differential_expression_enrichment/06_compareGO_spatial_program_atlas.r
+# Stage: enrichment
+# Scope: dataset_specific
+# Consumes: required data/processed/04_differential_expression_enrichment/compareGO/<dataset>/compareGO_input_manifest.csv; optional results/tables/04_differential_expression_enrichment/biological_program_summary/<dataset>/program_summary.csv.
+# Produces: results/tables/04_differential_expression_enrichment/compareGO_spatial_program_atlas/<dataset>/.
+# Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: Spatial program atlas from compareGO outputs.
+# ================================================================
+
 #' Spatial Program Atlas from compareGO outputs
 #'
 #' Consumes existing compareGO outputs across dataset families and synthesizes

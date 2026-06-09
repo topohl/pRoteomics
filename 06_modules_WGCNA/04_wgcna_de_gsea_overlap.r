@@ -1,4 +1,14 @@
 #!/usr/bin/env Rscript
+# ================================================================
+# Script: 06_modules_WGCNA/04_wgcna_de_gsea_overlap.r
+# Stage: modules_downstream
+# Scope: dataset_specific
+# Consumes: required results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/; data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv; +1 more; optional results/tables/04_differential_expression_enrichment/biological_program_summary/<dataset>/program_summary.csv.
+# Produces: results/tables/06_modules_WGCNA/04_wgcna_de_gsea_overlap/<dataset>/.
+# Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: Must run after WGCNA and enrichment.
+# ================================================================
+
 #
 # File contract:
 #   06_modules_WGCNA/04_wgcna_de_gsea_overlap.r

@@ -1,4 +1,14 @@
 # ================================================================
+# Script: 07_spatial_networks/04_bootstrap_differential_network_stability.r
+# Stage: networks
+# Scope: dataset_specific
+# Consumes: required results/tables/07_spatial_networks/differential_networks/<dataset>/; optional none.
+# Produces: results/tables/07_spatial_networks/bootstrap_differential_network_stability/01_Tables/bootstrap_differential_edge_stability_summary.csv.
+# Dataset behavior: runs for neuron_neuropil,neuron_soma according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: Bootstrap differential network stability.
+# ================================================================
+
+# ================================================================
 # Consumes:
 #   - group-specific spatial network RDS from canonical spatial-network output
 # Produces:

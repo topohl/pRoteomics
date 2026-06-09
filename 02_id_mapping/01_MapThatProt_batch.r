@@ -2,10 +2,10 @@
 # Script: 02_id_mapping/01_MapThatProt_batch.r
 # Stage: core
 # Scope: dataset_specific
-# Consumes: see pipeline.yml consumes_required/consumes_optional for this entry.
-# Produces: see pipeline.yml produces for canonical output roots.
-# Dataset behavior: follows pipeline.yml datasets and --dataset/PROTEOMICS_DATASET where supported.
-# Notes: active registry script; path-only refactor guardrail header.
+# Consumes: required data/processed/01_preprocessing/gct_extractR/<dataset>/forward/*.csv; data/external/MOUSE_10090_idmapping.dat; optional data/metadata/manual_mapping.xlsx.
+# Produces: data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv; results/tables/02_id_mapping/<dataset>/mapped/forward/summaries/*.csv.
+# Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: Maps GCT-derived protein IDs to UniProt/gene symbols; enrichment consumes these mapped files.
 # ================================================================
 
 #' Batch UniProt ID Mapping Script for Proteomics Data

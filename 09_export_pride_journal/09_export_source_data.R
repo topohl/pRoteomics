@@ -1,5 +1,15 @@
 #!/usr/bin/env Rscript
 
+# ================================================================
+# Script: 09_export_pride_journal/09_export_source_data.R
+# Stage: export
+# Scope: global
+# Consumes: required results/tables/; optional results/source_data/.
+# Produces: results/manuscript/source_data/; results/manuscript/supplementary_tables/; results/manuscript/source_data_export_manifest.csv.
+# Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: Manuscript source-data export.
+# ================================================================
+
 # Collect journal source-data tables without recomputing analyses (not raw-MS/search outputs).
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")

@@ -1,4 +1,14 @@
 # ================================================================
+# Script: 07_spatial_networks/01_network_spatial_relations.r
+# Stage: networks
+# Scope: dataset_specific
+# Consumes: required data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv; optional results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/.
+# Produces: data/processed/07_spatial_networks/network_spatial_relations/<dataset>/*/network_spatial_relations_objects.rds.
+# Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: Generates spatial relation objects; may use module annotations when present.
+# ================================================================
+
+# ================================================================
 # Consumes:
 #   - processed proteomics matrix from data/processed/01_preprocessing/
 #   - sample metadata from data/metadata/

@@ -1,3 +1,13 @@
+# ================================================================
+# Script: 03_qc_exploration/04_marker_rank_abundance_qc.r
+# Stage: qc
+# Scope: dataset_specific
+# Consumes: required data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv; optional config/marker_panels/wgcna_reference_marker_sets.csv; results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv.
+# Produces: results/tables/03_qc_exploration/04_marker_rank_abundance_qc/<dataset>/.
+# Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: Marker abundance QC; benefits from qc_global marker registries.
+# ================================================================
+
 # Dataset-aware rank-abundance and marker abundance sanity checks.
 # Marker panels are abundance/compartment checks, not definitive purity estimates.
 

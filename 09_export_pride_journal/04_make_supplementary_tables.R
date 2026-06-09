@@ -1,4 +1,14 @@
 #!/usr/bin/env Rscript
+# ================================================================
+# Script: 09_export_pride_journal/04_make_supplementary_tables.R
+# Stage: export
+# Scope: global
+# Consumes: required results/tables/; optional results/source_data/.
+# Produces: pride_submission/supplementary_tables/.
+# Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: PRIDE supplementary tables.
+# ================================================================
+
 # Journal/source-data supplementary tables (not PRIDE-required raw/search outputs).
 # Copies only config-listed globs by default; no recursive results/ scan.
 

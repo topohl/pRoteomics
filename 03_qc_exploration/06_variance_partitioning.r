@@ -1,3 +1,13 @@
+# ================================================================
+# Script: 03_qc_exploration/06_variance_partitioning.r
+# Stage: qc
+# Scope: dataset_specific
+# Consumes: required data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv; optional data/metadata/*.xlsx.
+# Produces: results/tables/03_qc_exploration/06_variance_partitioning/<dataset>/; results/reports/03_qc_exploration/06_variance_partitioning/<dataset>/.
+# Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: Variance partitioning; no WGCNA recomputation.
+# ================================================================
+
 # Dataset-aware variance partitioning for spatial proteomics.
 #
 # Key design choices:

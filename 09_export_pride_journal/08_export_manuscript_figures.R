@@ -1,5 +1,15 @@
 #!/usr/bin/env Rscript
 
+# ================================================================
+# Script: 09_export_pride_journal/08_export_manuscript_figures.R
+# Stage: export
+# Scope: global
+# Consumes: required results/figures/; optional none.
+# Produces: results/manuscript/figure_1/; results/manuscript/figure_2/; results/manuscript/extended_data/; +1 more.
+# Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: Manuscript figure export.
+# ================================================================
+
 # Collect final manuscript figures from module outputs (journal output; not PRIDE-required).
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")

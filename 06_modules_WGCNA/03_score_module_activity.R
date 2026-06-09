@@ -1,6 +1,16 @@
 #!/usr/bin/env Rscript
 
 # ================================================================
+# Script: 06_modules_WGCNA/03_score_module_activity.R
+# Stage: modules_downstream
+# Scope: dataset_specific
+# Consumes: required results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/; data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv; optional data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx.
+# Produces: results/tables/06_modules_WGCNA/module_score/<dataset>/.
+# Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: Scores existing module definitions against dataset matrices.
+# ================================================================
+
+# ================================================================
 # Consumes:
 #   - dataset-resolved processed protein matrix
 #   - merged sample metadata

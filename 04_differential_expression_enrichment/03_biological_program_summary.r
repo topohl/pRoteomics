@@ -1,5 +1,15 @@
 #!/usr/bin/env Rscript
 
+# ================================================================
+# Script: 04_differential_expression_enrichment/03_biological_program_summary.r
+# Stage: enrichment
+# Scope: dataset_specific
+# Consumes: required data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv; data/processed/04_differential_expression_enrichment/compareGO/<dataset>/compareGO_input_manifest.csv; optional results/tables/04_differential_expression_enrichment/neuropil_reference_annotation/<dataset>/; results/tables/04_differential_expression_enrichment/microglia_targeted_signature_enrichment/<dataset>/.
+# Produces: results/tables/04_differential_expression_enrichment/biological_program_summary/<dataset>/program_summary.csv.
+# Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: Runs after clusterProfiler and compareGO; uses annotations/signatures where supported.
+# ================================================================
+
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
 source(repo_path("R", "dataset_config.R"))

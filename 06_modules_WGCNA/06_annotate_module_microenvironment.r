@@ -1,4 +1,14 @@
 #!/usr/bin/env Rscript
+# ================================================================
+# Script: 06_modules_WGCNA/06_annotate_module_microenvironment.r
+# Stage: modules_downstream
+# Scope: dataset_specific
+# Consumes: required results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/; optional config/marker_panels/wgcna_reference_marker_sets.csv; results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv; +1 more.
+# Produces: results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_module_biological_annotation.csv; results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_supermodule_biological_annotation.csv.
+# Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: Consumes marker registry, empirical markers, WGCNA outputs, and neuropil annotations when present.
+# ================================================================
+
 #
 # Annotate WGCNA modules and supermodules with biological and microenvironment evidence.
 

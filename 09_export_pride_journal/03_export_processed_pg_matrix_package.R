@@ -1,4 +1,14 @@
 #!/usr/bin/env Rscript
+# ================================================================
+# Script: 09_export_pride_journal/03_export_processed_pg_matrix_package.R
+# Stage: export
+# Scope: global
+# Consumes: required data/raw/pg_matrix/; data/processed/01_preprocessing/; +1 more; optional none.
+# Produces: pride_submission/processed_data/; pride_submission/processed_data/data_dictionary_processed_matrices.tsv.
+# Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: Exports processed pg/mapped matrix package.
+# ================================================================
+
 # Stages processed quantitative data from pg_matrix onward into pride_submission/processed_data/.
 # Does not claim raw-MS/search reproducibility.
 

@@ -1,4 +1,14 @@
 #!/usr/bin/env Rscript
+# ================================================================
+# Script: 09_export_pride_journal/07_make_biological_claims_table.R
+# Stage: export
+# Scope: global
+# Consumes: required results/tables/04_differential_expression_enrichment/; results/tables/06_modules_WGCNA/; optional results/tables/08_behavior_physio_coupling/network_behavior_coupling/.
+# Produces: results/tables/biological_claims_table.csv; results/tables/biological_claims_table.xlsx.
+# Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: Final biological claims table.
+# ================================================================
+
 # Manuscript/journal biological claims index — not a PRIDE-required deposition artifact.
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")

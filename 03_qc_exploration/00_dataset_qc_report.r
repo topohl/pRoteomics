@@ -4,10 +4,10 @@
 # Script: 03_qc_exploration/00_dataset_qc_report.r
 # Stage: qc
 # Scope: dataset_specific
-# Consumes: see pipeline.yml consumes_required/consumes_optional for this entry.
-# Produces: see pipeline.yml produces for canonical output roots.
-# Dataset behavior: follows pipeline.yml datasets and --dataset/PROTEOMICS_DATASET where supported.
-# Notes: active registry script; path-only refactor guardrail header.
+# Consumes: required data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv; optional data/metadata/*.xlsx.
+# Produces: results/tables/03_qc_exploration/00_dataset_qc_report/<dataset>/dataset_qc_report.xlsx; results/reports/03_qc_exploration/00_dataset_qc_report/<dataset>/dataset_qc_summary.md.
+# Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: Baseline dataset QC.
 # ================================================================
 
 # Canonical one-stop dataset QC report.

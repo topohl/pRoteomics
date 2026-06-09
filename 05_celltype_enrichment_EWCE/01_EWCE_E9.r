@@ -1,3 +1,13 @@
+# ================================================================
+# Script: 05_celltype_enrichment_EWCE/01_EWCE_E9.r
+# Stage: enrichment
+# Scope: dataset_specific
+# Consumes: required data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv; optional data/processed/04_differential_expression_enrichment/compareGO/<dataset>/compareGO_input_manifest.csv.
+# Produces: results/tables/05_celltype_enrichment_EWCE/EWCE_E9/.
+# Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: EWCE after differential/enrichment inputs are available.
+# ================================================================
+
 # ==========================================
 # Consumes:
 #   - processed proteomics matrix from data/processed/01_preprocessing/ or local config override
