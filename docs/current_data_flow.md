@@ -67,6 +67,26 @@ This makes the data flow explicit and reproducible while preserving the biologic
 
 `04_differential_expression_enrichment/03_biological_program_summary.r` is an additive interpretation layer over these manifest-selected outputs. It writes dataset-scoped program summaries under `results/tables`, source evidence under `results/source_data`, and a heatmap under `results/figures` for `biological_program_summary/<dataset>/`.
 
+## Canonical Output Roots
+
+Active scripts should write reusable downstream data to `data/processed/<module>/<substep>/<dataset_or_global>/`, result tables to `results/tables/<module>/<substep>/<dataset_or_global>/`, figures to `results/figures/<module>/<substep>/<dataset_or_global>/`, source-data tables to `results/source_data/<module>/<substep>/<dataset_or_global>/`, reports to `results/reports/<module>/<substep>/<dataset_or_global>/`, and logs/manifests/session information to `results/logs/<module>/<substep>/<dataset_or_global>/`.
+
+Deprecated technical roots are not valid new output locations for active scripts: `Results/`, `Output/`, `Final/`, `Final2/`, `publication_ready/`, `Plots/`, `Datasets/`, and `results/module_scores/`. These strings may remain only in documentation, migration maps, or explicit read-only fallback warnings.
+
+## Module-Score Metadata Contract
+
+`01_preprocessing/06_merged_metadata_module_score.r` now writes the dataset-scoped module-score metadata workbook to:
+
+`data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx`
+
+Its QC tables, summary report, run manifest, and session info are split under:
+
+- `results/tables/01_preprocessing/06_merged_metadata_module_score/<dataset>/`
+- `results/reports/01_preprocessing/06_merged_metadata_module_score/<dataset>/`
+- `results/logs/01_preprocessing/06_merged_metadata_module_score/<dataset>/`
+
+`R/dataset_inputs.R` resolves module-score metadata in this order: canonical processed dataset path, explicit `PROTEOMICS_MODULE_SCORE_METADATA_FILE`, legacy dataset-scoped fallbacks with a warning, and legacy global fallback only when `PROTEOMICS_ALLOW_GLOBAL_MODULE_SCORE_METADATA=true`.
+
 Checkpoint behavior: if clusterProfiler skips a completed comparison, it reconstructs manifest rows from existing canonical GSEA_GO/GSEA_KEGG source-data tables when present and marks `checkpoint_status = reconstructed_from_checkpoint`. If a checkpoint predates canonical source-data outputs, rerun with `force_rerun: true` to refresh the manifest.
 
 Dry-run commands:
@@ -104,6 +124,7 @@ Phase 3 applied targeted path-only refactors where script behavior could be pres
 - `07_spatial_networks/05_bootstrap_differential_network_figures.r`
 - `07_spatial_networks/06_chord_diagram.r`
 - `08_behavior_physio_coupling/02_network_behavior_coupling.r`
+- `01_preprocessing/06_merged_metadata_module_score.r`
 
 The old technical folder roots map as follows:
 
@@ -114,7 +135,7 @@ The old technical folder roots map as follows:
 | `Results`, `Output`, `Final`, `Final2`, `publication_ready` | `results/{tables,figures,source_data,reports}/<module>/<substep>/` | These are deprecated technical containers unless preserved as compatibility copies. |
 | `Plots`, `figures` | `results/figures/<module>/<substep>/` | Figure source tables should be written separately under `results/source_data/`. |
 | `core_enrichment` | `results/source_data/04_differential_expression_enrichment/clusterProfiler/` plus manifest rows | compareGO should consume the manifest, not recursively discover this folder. |
-| `module_scores` | `data/processed/06_modules_WGCNA/` and `results/tables/06_modules_WGCNA/` | Machine-readable scores belong in processed; publication tables in results/tables. |
+| `module_scores` | `data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/` for metadata handoff; `data/processed/06_modules_WGCNA/` and `results/tables/06_modules_WGCNA/` for activity scores | `results/module_scores/` is a read-only legacy fallback only; fallback use emits warnings. |
 | `WGCNA_modules_long` | `results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/` plus `data/processed/06_modules_WGCNA/01_WGCNA/<dataset>/wgcna_final_model_state.rds` | Color-stable WGCNA module definitions are reusable inputs for dataset-scoped `03_score_module_activity.R` when `PROTEOMICS_MODULE_DEFINITION_SOURCE=WGCNA`; GO labels are display metadata, not eigengene column names. |
 | `biological_claims_table` | `results/tables/biological_claims_table.csv` and optional `.xlsx` | Conservative cross-analysis evidence table for manuscript figure planning; claims remain limited by each source analysis. |
 | `EWCE_E9_Results` | `data/processed/05_celltype_enrichment_EWCE/EWCE_E9/` and `results/*/05_celltype_enrichment_EWCE/EWCE_E9/` | EWCE caches stay in processed/cache. |
@@ -122,7 +143,7 @@ The old technical folder roots map as follows:
 
 Scripts left unchanged in Phase 3 are documented because they are central producers, exploratory notebooks-as-scripts, superseded versions, or require data-aware confirmation of file contracts before changing paths:
 
-- `01_preprocessing/01_impute.r`, `01_preprocessing/02_excel_convert.r`, `01_preprocessing/03_gct_extractR.r`, `01_preprocessing/06_merged_metadata_module_score.r`
+- `01_preprocessing/01_impute.r`, `01_preprocessing/02_excel_convert.r`, `01_preprocessing/03_gct_extractR.r`
 - `02_id_mapping/01_MapThatProt_batch.r`
 - `03_qc_exploration/*.r`
 - `06_modules_WGCNA/01_WGCNA v.2.0.0.r`, `06_modules_WGCNA/90_module_score_v0.0.1.r`
