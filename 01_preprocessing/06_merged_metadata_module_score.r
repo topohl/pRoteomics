@@ -1,4 +1,12 @@
 # ================================================================
+# Script: 01_preprocessing/06_merged_metadata_module_score.r
+# Stage: core
+# Scope: dataset_specific
+# Consumes: dataset-resolved proteomics workbook plus behavior AUC/z-score files.
+# Produces: data/processed metadata workbook and QC/report/log outputs.
+# Dataset behavior: runs once per dataset via --dataset or PROTEOMICS_DATASET.
+# Notes: preserves read-only legacy metadata fallbacks through R/dataset_inputs.R.
+# ================================================================
 # Build clean merged metadata sheet for module-score analysis
 # ================================================================
 
@@ -150,12 +158,20 @@ message("Using behavior z-score workbook: ", behavior_file)
 message("Resolved dataset: ", dataset_profile)
 message("Resolved dataset inputs diagnostics: ", paste(dataset_inputs$diagnostics, collapse = " | "))
 
-out_dir <- Sys.getenv("PROTEOMICS_MODULE_SCORE_OUTPUT_DIR", unset = path_results("module_scores", dataset_profile))
-ensure_dir(out_dir)
+module_id <- "01_preprocessing"
+substep_id <- "06_merged_metadata_module_score"
+processed_dir <- path_processed(module_id, substep_id, dataset_profile)
+tables_dir <- path_results("tables", module_id, substep_id, dataset_profile)
+reports_dir <- path_results("reports", module_id, substep_id, dataset_profile)
+logs_dir <- path_results("logs", module_id, substep_id, dataset_profile)
+invisible(lapply(c(processed_dir, tables_dir, reports_dir, logs_dir), ensure_dir))
 
-out_file <- file.path(out_dir, "sample_metadata_merged_clean_for_module_scores.xlsx")
-global_compat_out_file <- path_results("module_scores", "sample_metadata_merged_clean_for_module_scores.xlsx")
-write_global_compat <- identical(dataset_profile, "neuron_neuropil") || tolower(Sys.getenv("PROTEOMICS_WRITE_GLOBAL_MODULE_SCORE_METADATA_COMPAT", unset = "")) %in% c("1", "true", "yes")
+out_file <- file.path(processed_dir, "sample_metadata_merged_clean_for_module_scores.xlsx")
+qc_summary_file <- file.path(tables_dir, "metadata_merge_qc_summary.csv")
+unmatched_animals_file <- file.path(tables_dir, "metadata_merge_unmatched_animals.csv")
+id_overlap_file <- file.path(tables_dir, "metadata_merge_id_overlap.csv")
+report_file <- file.path(reports_dir, "metadata_merge_summary.md")
+manifest_file <- file.path(logs_dir, "run_manifest.yml")
 
 if (is_dry_run()) {
   dry_run_line("Script", "01_preprocessing/06_merged_metadata_module_score.r")
@@ -165,7 +181,8 @@ if (is_dry_run()) {
   dry_run_line("AUC first active file", auc_first_file, if (file.exists(auc_first_file)) "PASS" else "FAIL")
   dry_run_line("Behavior z-score workbook", behavior_file, if (file.exists(behavior_file)) "PASS" else "FAIL")
   dry_run_line("Dataset-scoped output", out_file)
-  dry_run_line("Legacy global compatibility copy", if (write_global_compat) global_compat_out_file else "disabled")
+  dry_run_line("QC summary table", qc_summary_file)
+  dry_run_line("Run manifest", manifest_file)
   quit(status = if (all(file.exists(c(proteomics_file, auc_all_file, auc_first_file, behavior_file)))) 0 else 1, save = "no")
 }
 
@@ -567,19 +584,44 @@ write.xlsx(
   overwrite = TRUE
 )
 
-if (isTRUE(write_global_compat)) {
-  ensure_dir(dirname(global_compat_out_file))
-  file.copy(out_file, global_compat_out_file, overwrite = TRUE)
-  if (!identical(dataset_profile, "neuron_neuropil")) {
-    warning(
-      "Wrote legacy global compatibility metadata copy from dataset '", dataset_profile,
-      "'. Dataset-aware scripts should consume dataset-scoped metadata at: ", out_file,
-      call. = FALSE
-    )
-  }
-}
+readr::write_csv(qc_missingness, qc_summary_file, na = "")
+readr::write_csv(unmatched_animals, unmatched_animals_file, na = "")
+readr::write_csv(id_overlap, id_overlap_file, na = "")
+
+report_lines <- c(
+  "# Module-Score Metadata Merge",
+  "",
+  paste0("- Dataset: ", dataset_profile),
+  paste0("- Samples: ", nrow(merged_meta_clean)),
+  paste0("- Animals: ", dplyr::n_distinct(merged_meta_clean$AnimalID)),
+  paste0("- Missing stress group: ", qc_missingness$missing_stress_group[[1]]),
+  paste0("- Missing CombZ: ", qc_missingness$missing_comb_z[[1]]),
+  paste0("- Missing AUC all: ", qc_missingness$missing_auc_all[[1]]),
+  paste0("- Missing AUC first active: ", qc_missingness$missing_auc_first[[1]])
+)
+writeLines(report_lines, report_file)
+
+write_run_manifest(
+  manifest_file,
+  inputs = list(
+    proteomics_workbook = proteomics_file,
+    auc_all = auc_all_file,
+    auc_first_active = auc_first_file,
+    behavior_zscore = behavior_file
+  ),
+  outputs = list(
+    metadata_workbook = out_file,
+    qc_summary = qc_summary_file,
+    unmatched_animals = unmatched_animals_file,
+    id_overlap = id_overlap_file,
+    report = report_file
+  ),
+  parameters = list(dataset = dataset_profile),
+  notes = "Canonical dataset-scoped metadata for module activity scoring."
+)
 
 cat("Done.\nResolved dataset:", dataset_profile,
     "\nSaved clean merged metadata to:\n", out_file,
-    if (isTRUE(write_global_compat)) paste0("\nLegacy compatibility copy:\n", global_compat_out_file) else "",
+    "\nSaved QC summary to:\n", qc_summary_file,
+    "\nSaved run manifest to:\n", manifest_file,
     "\n")
