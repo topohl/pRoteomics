@@ -1,4 +1,14 @@
 # ================================================================
+# Script: 07_spatial_networks/02_differential_networks.r
+# Stage: networks
+# Scope: dataset_specific
+# Consumes: required data/processed/07_spatial_networks/network_spatial_relations/<dataset>/*/network_spatial_relations_objects.rds; optional none.
+# Produces: results/tables/07_spatial_networks/differential_networks/<dataset>/.
+# Dataset behavior: runs for neuron_neuropil,neuron_soma according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: Differential networks after spatial relation generation.
+# ================================================================
+
+# ================================================================
 # Consumes:
 #   - group-specific spatial network RDS from canonical spatial-network output
 # Produces:

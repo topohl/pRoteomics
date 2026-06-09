@@ -1,4 +1,14 @@
 #!/usr/bin/env Rscript
+# ================================================================
+# Script: 03_qc_exploration/06_wgcna_marker_trait_export.r
+# Stage: qc
+# Scope: dataset_specific
+# Consumes: required results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/; optional config/marker_panels/wgcna_reference_marker_sets.csv.
+# Produces: results/tables/03_qc_exploration/06_wgcna_marker_trait_export/<dataset>/.
+# Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: Exports QC marker traits from existing WGCNA state; scheduled in QC but requires prior WGCNA outputs when run.
+# ================================================================
+
 #
 # Export sample-level marker and compartment traits for downstream WGCNA annotation.
 # These scores are annotation traits, not purity estimates and not default covariates.

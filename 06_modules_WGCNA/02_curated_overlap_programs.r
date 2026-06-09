@@ -1,4 +1,14 @@
 # ================================================================
+# Script: 06_modules_WGCNA/02_curated_overlap_programs.r
+# Stage: modules_downstream
+# Scope: global
+# Consumes: required results/tables/06_modules_WGCNA/01a_compare_GO_recurrent_proteins/; optional data/external/MOUSE_10090_idmapping.dat.
+# Produces: results/tables/06_modules_WGCNA/curated_overlap_programs/global/.
+# Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: Curated overlap programs are global and do not recompute WGCNA.
+# ================================================================
+
+# ================================================================
 # Consumes:
 #   - global compareGO recurrent-protein overlap table from canonical results/tables
 #   - UniProt mapping file from data/external

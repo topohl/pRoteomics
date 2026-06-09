@@ -1,4 +1,14 @@
 #!/usr/bin/env Rscript
+# ================================================================
+# Script: 09_export_pride_journal/06_make_methods_summary.R
+# Stage: export
+# Scope: global
+# Consumes: required pipeline.yml; optional results/logs/; renv.lock.
+# Produces: pride_submission/methods/methods_summary.md; pride_submission/methods/software_versions.tsv; pride_submission/methods/pipeline_steps.tsv; +1 more.
+# Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: Methods summary from registry/manifests.
+# ================================================================
+
 # Methods/provenance summary for pg_matrix-onward reproducibility (not raw-MS search).
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")

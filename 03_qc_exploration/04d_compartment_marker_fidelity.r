@@ -1,3 +1,13 @@
+# ================================================================
+# Script: 03_qc_exploration/04d_compartment_marker_fidelity.r
+# Stage: qc
+# Scope: dataset_specific
+# Consumes: required data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv; optional config/marker_panels/compartment_fidelity_marker_sets.csv; config/marker_panels/wgcna_reference_marker_sets.csv.
+# Produces: results/tables/03_qc_exploration/04d_compartment_marker_fidelity/<dataset>/.
+# Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: Compartment marker fidelity QC.
+# ================================================================
+
 # Cross-dataset compartment marker fidelity QC.
 #
 # Reads explicit soma/neuropil/microglia marker-fidelity score tables from

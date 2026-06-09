@@ -1,4 +1,14 @@
 #!/usr/bin/env Rscript
+# ================================================================
+# Script: 03_qc_exploration/05_empirical_roi_marker_discovery.r
+# Stage: qc_global
+# Scope: global
+# Consumes: required data/processed/02_id_mapping/mapped/neuron_neuropil/forward/per_file/*.csv; data/processed/02_id_mapping/mapped/neuron_soma/forward/per_file/*.csv; +1 more; optional config/marker_panels/wgcna_reference_marker_sets.csv.
+# Produces: results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv.
+# Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: Global because it compares all three dataset matrices.
+# ================================================================
+
 #
 # Discover experiment-specific ROI-enrichment marker sets across neuron neuropil, neuron soma, and microglia.
 

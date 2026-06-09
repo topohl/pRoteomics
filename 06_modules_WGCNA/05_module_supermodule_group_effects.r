@@ -1,4 +1,14 @@
 #!/usr/bin/env Rscript
+# ================================================================
+# Script: 06_modules_WGCNA/05_module_supermodule_group_effects.r
+# Stage: modules_downstream
+# Scope: dataset_specific
+# Consumes: required results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/; optional results/tables/06_modules_WGCNA/module_score/<dataset>/.
+# Produces: results/tables/06_modules_WGCNA/group_effects/<dataset>/module_group_effects.csv; results/tables/06_modules_WGCNA/group_effects/<dataset>/supermodule_group_effects.csv.
+# Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: Uses existing WGCNA state/supermodule annotation; safe to run without recomputing WGCNA.
+# ================================================================
+
 #
 # Test WGCNA module and supermodule eigengene differences between CON, RES, and SUS.
 

@@ -1,4 +1,14 @@
 #!/usr/bin/env Rscript
+# ================================================================
+# Script: 03_qc_exploration/04b_import_reference_marker_sources.r
+# Stage: qc_global
+# Scope: global
+# Consumes: required data/external/reference_markers/reference_marker_sources.yml; optional config/marker_panels/compartment_fidelity_marker_sets.csv; data/external/reference_markers/go_mgi/raw/mgi.gaf.gz; +3 more.
+# Produces: config/marker_panels/wgcna_reference_marker_sets.csv; results/tables/03_qc_exploration/reference_marker_import/.
+# Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: Creates the marker registry consumed by marker QC and WGCNA downstream annotation.
+# ================================================================
+
 #
 # Import cached/package-accessible reference marker evidence into a normalized WGCNA marker registry.
 #

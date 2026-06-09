@@ -1,4 +1,14 @@
 #!/usr/bin/env Rscript
+# ================================================================
+# Script: 06_modules_WGCNA/07_wgcna_interpretable_summary.r
+# Stage: modules_downstream
+# Scope: dataset_specific
+# Consumes: required results/tables/06_modules_WGCNA/group_effects/<dataset>/module_group_effects.csv; results/tables/06_modules_WGCNA/group_effects/<dataset>/supermodule_group_effects.csv; +2 more; optional results/tables/06_modules_WGCNA/04_wgcna_de_gsea_overlap/<dataset>/.
+# Produces: results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_interpretable_summary.xlsx.
+# Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: Runs after module/supermodule group effects and microenvironment annotation.
+# ================================================================
+
 #
 # Combine WGCNA group effects and biological annotation into interpretable summaries.
 #

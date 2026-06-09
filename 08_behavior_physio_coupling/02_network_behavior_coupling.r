@@ -1,4 +1,14 @@
 # ================================================================
+# Script: 08_behavior_physio_coupling/02_network_behavior_coupling.r
+# Stage: coupling
+# Scope: dataset_specific
+# Consumes: required data/processed/07_spatial_networks/network_spatial_relations/<dataset>/*/network_spatial_relations_objects.rds; data/external/behavior/auc_individual_animals_firstChangeActive.csv; +1 more; optional data/external/behavior/auc_individual_animals_all.csv; results/tables/06_modules_WGCNA/group_effects/<dataset>/module_group_effects.csv.
+# Produces: results/tables/08_behavior_physio_coupling/network_behavior_coupling/; results/figures/08_behavior_physio_coupling/network_behavior_coupling/.
+# Dataset behavior: runs for neuron_neuropil according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: Network/module/behavior coupling after networks and downstream module summaries.
+# ================================================================
+
+# ================================================================
 # Consumes:
 #   - spatial network RDS from canonical spatial-network output
 #   - external behavior/movement tables from data/external/behavior or local config override
