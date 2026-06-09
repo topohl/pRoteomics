@@ -22,8 +22,12 @@ claim_columns <- c(
   "safe_interpretation", "unsafe_overinterpretation"
 )
 
+numeric_claim_columns <- c("effect_size_NES", "raw_p", "FDR")
+character_claim_columns <- setdiff(claim_columns, numeric_claim_columns)
+
 empty_claims <- function() {
   out <- as.data.frame(setNames(rep(list(character()), length(claim_columns)), claim_columns), stringsAsFactors = FALSE)
+  for (col in numeric_claim_columns) out[[col]] <- numeric()
   out
 }
 
@@ -31,6 +35,8 @@ standardize_claims <- function(df) {
   if (is.null(df) || !nrow(df)) return(empty_claims())
   for (col in claim_columns) if (!col %in% names(df)) df[[col]] <- NA
   df <- df[, claim_columns, drop = FALSE]
+  for (col in numeric_claim_columns) df[[col]] <- suppressWarnings(as.numeric(df[[col]]))
+  for (col in character_claim_columns) df[[col]] <- as.character(df[[col]])
   df
 }
 
@@ -74,7 +80,10 @@ supermodule_annotation_for_claims <- function(dataset) {
         as.character(.data$Supermodule_FinalLabel),
         as.character(.data$Macroprogram_Display),
         as.character(.data$SupermoduleID)
-      )
+      ),
+      Supermodule_DisplayLabel_annotation = .data$Supermodule_DisplayLabel,
+      Supermodule_FinalLabel_annotation = .data$Supermodule_FinalLabel,
+      Macroprogram_Display_annotation = .data$Macroprogram_Display
     ) %>%
     tidyr::pivot_longer(
       cols = dplyr::any_of(c("SupermoduleID", "Supermodule_DisplayLabel", "Supermodule_FinalLabel", "Macroprogram_Display")),
@@ -83,7 +92,14 @@ supermodule_annotation_for_claims <- function(dataset) {
     ) %>%
     dplyr::filter(!is.na(.data$supermodule_claim_key), nzchar(.data$supermodule_claim_key)) %>%
     dplyr::distinct(.data$dataset, .data$supermodule_claim_key, .keep_all = TRUE) %>%
-    dplyr::select("dataset", "supermodule_claim_key", "Supermodule_DisplayLabel", "Supermodule_FinalLabel", "Macroprogram_Display", "dominant_microenvironment_class")
+    dplyr::transmute(
+      dataset = .data$dataset,
+      supermodule_claim_key = .data$supermodule_claim_key,
+      Supermodule_DisplayLabel = .data$Supermodule_DisplayLabel_annotation,
+      Supermodule_FinalLabel = .data$Supermodule_FinalLabel_annotation,
+      Macroprogram_Display = .data$Macroprogram_Display_annotation,
+      dominant_microenvironment_class = .data$dominant_microenvironment_class
+    )
 }
 
 latest_csv <- function(root, pattern) latest_file(root, pattern)
