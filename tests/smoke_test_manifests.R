@@ -4,12 +4,38 @@ paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.
 source(paths_file)
 source(repo_path("R", "validation_utils.R"))
 
-manifest_files <- c(
-  list.files(path_processed(), pattern = "manifest.*\\.csv$", recursive = TRUE, full.names = TRUE),
-  list.files(path_results(), pattern = "manifest.*\\.csv$", recursive = TRUE, full.names = TRUE)
-)
+full_manifest_sweep <- tolower(Sys.getenv("PROTEOMICS_MANIFEST_SMOKE_FULL", unset = "")) %in% c("1", "true", "yes")
+
+discover_manifest_files <- function() {
+  roots <- if (isTRUE(full_manifest_sweep)) {
+    c(path_processed(), path_results())
+  } else {
+    c(path_processed(), path_results("logs"), path_results("tables"))
+  }
+  rg <- Sys.which("rg")
+  if (nzchar(rg)) {
+    files <- system2(rg, c("--files", "--no-ignore", "-g", "*manifest*.csv", roots), stdout = TRUE, stderr = FALSE)
+    files <- normalizePath(files, winslash = "/", mustWork = FALSE)
+    files <- files[grepl("manifest.*\\.csv$", basename(files), ignore.case = TRUE)]
+    files <- files[grepl("/(data/processed|results)/", files)]
+    return(files)
+  }
+  unlist(lapply(roots, list.files, pattern = "manifest.*\\.csv$", recursive = TRUE, full.names = TRUE), use.names = FALSE)
+}
+
+manifest_files <- discover_manifest_files()
 manifest_files <- unique(manifest_files[file.exists(manifest_files)])
 manifest_files <- manifest_files[!grepl("results/logs/pipeline/pipeline_manifest_", manifest_files, fixed = TRUE)]
+
+manifest_limit <- suppressWarnings(as.integer(Sys.getenv("PROTEOMICS_MANIFEST_SMOKE_LIMIT", unset = "25")))
+if (!isTRUE(full_manifest_sweep) && length(manifest_files) > manifest_limit) {
+  info <- file.info(manifest_files)
+  manifest_files <- rownames(info)[order(info$mtime, decreasing = TRUE)][seq_len(manifest_limit)]
+  message(
+    "INFO smoke_test_manifests: validating newest ", manifest_limit,
+    " manifest CSVs; set PROTEOMICS_MANIFEST_SMOKE_FULL=true for full historical sweep"
+  )
+}
 
 fail <- character()
 if (!length(manifest_files)) {
