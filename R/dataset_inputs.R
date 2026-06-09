@@ -100,13 +100,30 @@ resolve_dataset_inputs <- function(dataset = current_dataset(), purpose = c("wgc
         paste0("^\\d{8}_pgmatrix_imputed_", dataset, "_[0-9]+samples_missing70pct_with_metadata\\.xlsx$")
       )
     }
-    metadata_candidates <- c(
+    canonical_metadata <- path_processed(
+      "01_preprocessing",
+      "06_merged_metadata_module_score",
+      dataset,
+      "sample_metadata_merged_clean_for_module_scores.xlsx"
+    )
+    metadata_file <- first_existing_path(c(canonical_metadata))
+    if (is.na(metadata_file) && nzchar(explicit_metadata)) {
+      metadata_file <- normalizePath(explicit_metadata, winslash = "/", mustWork = FALSE)
+    }
+    legacy_dataset_candidates <- c(
       path_results("module_scores", dataset, "sample_metadata_merged_clean_for_module_scores.xlsx"),
       path_processed("01_preprocessing", dataset, "sample_metadata_merged_clean_for_module_scores.xlsx")
     )
-    metadata_file <- first_existing_path(metadata_candidates)
-    if (is.na(metadata_file) && nzchar(explicit_metadata)) {
-      metadata_file <- normalizePath(explicit_metadata, winslash = "/", mustWork = FALSE)
+    if (is.na(metadata_file)) {
+      legacy_dataset_metadata <- first_existing_path(legacy_dataset_candidates)
+      if (!is.na(legacy_dataset_metadata)) {
+        warning(
+          "Using legacy dataset-scoped module-score metadata fallback: ", legacy_dataset_metadata,
+          ". Regenerate canonical metadata at data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/.",
+          call. = FALSE
+        )
+        metadata_file <- legacy_dataset_metadata
+      }
     }
     allow_global_metadata_fallback <- tolower(Sys.getenv("PROTEOMICS_ALLOW_GLOBAL_MODULE_SCORE_METADATA", unset = "")) %in% c("1", "true", "yes")
     if (is.na(metadata_file) && isTRUE(allow_global_metadata_fallback)) {
@@ -114,7 +131,7 @@ resolve_dataset_inputs <- function(dataset = current_dataset(), purpose = c("wgc
       if (file.exists(global_metadata)) {
         warning(
           "Using legacy global module-score metadata fallback: ", global_metadata,
-          " for dataset '", dataset, "'. Regenerate dataset-scoped metadata at results/module_scores/<dataset>/",
+          " for dataset '", dataset, "'. Regenerate canonical dataset-scoped metadata at data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/",
           call. = FALSE
         )
         metadata_file <- global_metadata
