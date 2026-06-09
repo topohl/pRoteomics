@@ -32,8 +32,13 @@ SIGNATURE_METHOD_PRIORITY <- SIGNATURE_METHOD_PRIORITY[nzchar(SIGNATURE_METHOD_P
 
 PATHS <- create_module_dirs(MODULE_ID, file.path(SUBSTEP_ID, DATASET))
 invisible(lapply(PATHS, dir_create))
+FIG_PATHS <- list(
+  main_candidate = file.path(PATHS$figures, "main_candidate"),
+  supplementary_qc = file.path(PATHS$figures, "supplementary_qc")
+)
+invisible(lapply(FIG_PATHS, dir_create))
 
-required_pkgs <- c("dplyr", "readr", "tidyr", "stringr", "purrr", "tibble", "ggplot2")
+required_pkgs <- c("dplyr", "readr", "tidyr", "stringr", "purrr", "tibble", "ggplot2", "scales")
 missing_required <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
 if (length(missing_required) && !isTRUE(DRY_RUN)) {
   stop("Missing required package(s): ", paste(missing_required, collapse = ", "), call. = FALSE)
@@ -130,6 +135,7 @@ scale_fill_diverging <- function(name = "NES") {
     mid = palette_diverging[["mid"]],
     high = palette_diverging[["high"]],
     midpoint = 0,
+    oob = scales::squish,
     name = name
   )
 }
@@ -140,8 +146,158 @@ scale_color_diverging <- function(name = "NES") {
     mid = palette_diverging[["mid"]],
     high = palette_diverging[["high"]],
     midpoint = 0,
+    oob = scales::squish,
     name = name
   )
+}
+
+scale_fill_NES <- scale_fill_diverging
+scale_color_NES <- scale_color_diverging
+
+fdr_size_value <- function(padj, cap = 8, floor_value = 0) {
+  out <- suppressWarnings(-log10(pmax(as.numeric(padj), .Machine$double.xmin)))
+  out[!is.finite(out) | is.na(out)] <- floor_value
+  pmin(cap, pmax(floor_value, out))
+}
+
+scale_size_fdr <- function(name = expression(-log[10]~FDR), max_size = 5.2, breaks = c(1, 2, 4, 6)) {
+  ggplot2::scale_size_area(
+    name = name,
+    max_size = max_size,
+    breaks = breaks,
+    limits = c(0, 8),
+    oob = scales::squish
+  )
+}
+
+compact_signature_label <- function(x, width = 18) {
+  wrap_plot_label(pretty_signature(x), width = width)
+}
+
+compact_comparison_label <- function(left_region, right_region, left_condition, right_condition, comparison, width = 14) {
+  wrap_plot_label(pretty_comparison_label(left_region, right_region, left_condition, right_condition, comparison), width = width)
+}
+
+compact_region_pair <- function(x) {
+  x <- as.character(x)
+  x <- gsub("\\s+", " ", x)
+  x <- gsub("_vs_", " vs ", x, fixed = TRUE)
+  trimws(x)
+}
+
+region_pair_levels <- function(x) {
+  preferred <- c("CA2 vs CA1", "CA3 vs CA1", "CA3 vs CA2", "DG vs CA1", "DG vs CA2", "DG vs CA3")
+  c(preferred[preferred %in% x], sort(setdiff(unique(x), preferred)))
+}
+
+ggsave_plot <- function(filename, plot, width, height, dpi = 450, ...) {
+  ext <- tolower(tools::file_ext(filename))
+  args <- list(filename = filename, plot = plot, width = width, height = height, units = "in", limitsize = FALSE, ...)
+  if (ext == "png") args$dpi <- dpi
+  if (ext %in% c("png", "tif", "tiff", "jpg", "jpeg") && capabilities("cairo")) args$type <- "cairo"
+  do.call(ggplot2::ggsave, args)
+}
+
+ggsave_publication <- function(base_path_no_ext, plot, width, height, dpi = 450, ...) {
+  ggsave_plot(paste0(base_path_no_ext, ".svg"), plot, width = width, height = height, ...)
+  ggsave_plot(paste0(base_path_no_ext, ".png"), plot, width = width, height = height, dpi = dpi, ...)
+}
+
+pretty_signature <- function(x) {
+  dplyr::case_when(
+    x == "homeostatic_microglia" ~ "Homeostatic",
+    x == "disease_associated_microglia_DAM" ~ "DAM",
+    x == "interferon_response_microglia" ~ "Interferon",
+    x == "phagolysosomal_microglia" ~ "Phagolysosomal",
+    x == "complement_phagocytosis" ~ "Complement / phagocytosis",
+    x == "antigen_presentation_MHC" ~ "MHC / antigen presentation",
+    x == "chemokine_cytokine_microglia" ~ "Chemokine / cytokine",
+    x == "lipid_metabolism_microglia" ~ "Lipid metabolism",
+    x == "synapse_pruning_microglia" ~ "Synapse pruning",
+    x == "oxidative_stress_mitochondrial_microglia" ~ "Oxidative / mitochondrial",
+    x == "empirical_microglia_enriched" ~ "Empirical microglia-enriched",
+    x == "empirical_neuropil_shared" ~ "Empirical microglia-neuropil shared",
+    x == "reference_atlas_EWCE_microglia_specific" ~ "Reference atlas microglia",
+    TRUE ~ stringr::str_to_sentence(gsub("_", " ", as.character(x)))
+  )
+}
+
+pretty_contrast_class <- function(x) {
+  dplyr::case_when(
+    x == "within_region_condition" ~ "Group effect within region",
+    x == "cross_region_same_condition" ~ "Regional effect within condition",
+    x == "cross_region_cross_condition" ~ "Mixed / not interpreted",
+    x == "same_region_same_condition" ~ "Technical / same group",
+    TRUE ~ "Unclassified"
+  )
+}
+
+pretty_experimental_question <- function(x) {
+  dplyr::case_when(
+    x == "group_effect_within_region" ~ "A. Group effect within region",
+    x == "regional_difference_pooled_groups" ~ "B. Regional difference, pooled across groups",
+    x == "regional_difference_by_group" ~ "C. Regional difference within group",
+    TRUE ~ "Exploratory mixed contrast"
+  )
+}
+
+pretty_signature_class <- function(x) {
+  dplyr::case_when(
+    x == "microglia_enriched_empirical" ~ "Empirical microglia",
+    x == "microglia_enriched_reference_supported" ~ "Reference-supported microglia",
+    x == "curated_microglia_program" ~ "Curated program",
+    x == "mixed_microenvironment" ~ "Mixed microenvironment",
+    x == "neuropil_shared" ~ "Neuropil-shared",
+    x == "ambiguous" ~ "Exploratory / ambiguous",
+    TRUE ~ stringr::str_to_sentence(gsub("_", " ", as.character(x)))
+  )
+}
+
+pretty_signature_source <- function(x) {
+  dplyr::case_when(
+    x == "curated" ~ "Curated microglia biology",
+    x == "empirical_microglia_vs_neuropil" ~ "Empirical ROI vs neuropil",
+    x == "reference_atlas_EWCE" ~ "Reference atlas / EWCE",
+    TRUE ~ stringr::str_to_sentence(gsub("_", " ", as.character(x)))
+  )
+}
+
+palette_signature_source <- c(
+  curated = "#4DBBD5",
+  empirical_microglia_vs_neuropil = "#3C5488",
+  reference_atlas_EWCE = "#00A087"
+)
+
+pretty_evidence_note <- function(x) {
+  dplyr::case_when(
+    x == "claim_ready_microglia_supported" ~ "Claim-ready",
+    x == "significant_but_neuropil_shared" ~ "Neuropil-shared",
+    x == "significant_but_cross_region_cross_condition" ~ "Mixed contrast",
+    x == "significant_exploratory" ~ "Exploratory",
+    TRUE ~ "Not significant"
+  )
+}
+
+pretty_condition <- function(x) {
+  x <- toupper(as.character(x))
+  x[is.na(x) | !nzchar(x)] <- "NA"
+  x
+}
+
+pretty_comparison_label <- function(left_region, right_region, left_condition, right_condition, comparison) {
+  same_region <- !is.na(left_region) & !is.na(right_region) & left_region == right_region
+  same_condition <- !is.na(left_condition) & !is.na(right_condition) & left_condition == right_condition
+  out <- dplyr::case_when(
+    same_region & !same_condition ~ paste0(left_region, ": ", pretty_condition(left_condition), " vs ", pretty_condition(right_condition)),
+    !same_region & same_condition ~ paste0(pretty_condition(left_condition), ": ", left_region, " vs ", right_region),
+    TRUE ~ paste0(left_region, " ", pretty_condition(left_condition), " vs ", right_region, " ", pretty_condition(right_condition))
+  )
+  out[is.na(left_region) | is.na(right_region)] <- as.character(comparison[is.na(left_region) | is.na(right_region)])
+  out
+}
+
+wrap_plot_label <- function(x, width = 24) {
+  vapply(as.character(x), function(z) paste(strwrap(z, width = width), collapse = "\n"), character(1))
 }
 
 pick_col <- function(df, candidates) {
@@ -883,7 +1039,92 @@ build_claims_ready <- function(df) {
     dplyr::arrange(.data$padj, dplyr::desc(abs(.data$NES)))
 }
 
-write_review_xlsx <- function(all_tbl, within_tbl, cross_same_tbl, cross_cross_tbl, recurrence_tbl, claims_tbl, diagnostics_tbl) {
+build_interpretation_summary <- function(df) {
+  if (!nrow(df)) return(tibble::tibble())
+  df %>%
+    dplyr::mutate(
+      significant = !is.na(.data$padj) & .data$padj < 0.05,
+      claim_ready = .data$significant &
+        .data$contrast_class %in% c("within_region_condition", "cross_region_same_condition") &
+        .data$reference_celltype_support == "microglia_supported" &
+        .data$microglia_signature_class %in% c("microglia_enriched_empirical", "microglia_enriched_reference_supported"),
+      exploratory_confounded = .data$contrast_class == "cross_region_cross_condition",
+      neuropil_shared_flag = .data$microglia_signature_class == "neuropil_shared"
+    ) %>%
+    dplyr::group_by(.data$contrast_class, .data$signature, .data$microglia_signature_class) %>%
+    dplyr::summarise(
+      n_tested_rows = dplyr::n(),
+      n_significant = sum(.data$significant, na.rm = TRUE),
+      n_claim_ready = sum(.data$claim_ready, na.rm = TRUE),
+      n_exploratory_confounded = sum(.data$significant & .data$exploratory_confounded, na.rm = TRUE),
+      n_neuropil_shared = sum(.data$significant & .data$neuropil_shared_flag, na.rm = TRUE),
+      median_NES_significant = ifelse(any(.data$significant), stats::median(.data$NES[.data$significant], na.rm = TRUE), NA_real_),
+      best_FDR = min(.data$padj, na.rm = TRUE),
+      best_comparison = .data$comparison[order(.data$padj, -abs(.data$NES), na.last = TRUE)][1],
+      evidence_note = dplyr::case_when(
+        any(.data$claim_ready) ~ "claim_ready_microglia_supported",
+        any(.data$significant & .data$neuropil_shared_flag) ~ "significant_but_neuropil_shared",
+        any(.data$significant & .data$exploratory_confounded) ~ "significant_but_cross_region_cross_condition",
+        any(.data$significant) ~ "significant_exploratory",
+        TRUE ~ "not_significant"
+      ),
+      .groups = "drop"
+    ) %>%
+    dplyr::mutate(best_FDR = ifelse(is.infinite(.data$best_FDR), NA_real_, .data$best_FDR)) %>%
+    dplyr::arrange(
+      dplyr::desc(.data$n_claim_ready),
+      dplyr::desc(.data$n_significant),
+      .data$best_FDR,
+      .data$contrast_class,
+      .data$signature
+    )
+}
+
+build_signature_direction_summary <- function(df) {
+  if (!nrow(df)) return(tibble::tibble())
+  df %>%
+    dplyr::filter(!is.na(.data$padj) & .data$padj < 0.05) %>%
+    dplyr::group_by(.data$contrast_class, .data$signature) %>%
+    dplyr::summarise(
+      n_significant = dplyr::n(),
+      n_up = sum(.data$NES > 0, na.rm = TRUE),
+      n_down = sum(.data$NES < 0, na.rm = TRUE),
+      median_NES = stats::median(.data$NES, na.rm = TRUE),
+      min_FDR = min(.data$padj, na.rm = TRUE),
+      dominant_class = names(sort(table(.data$microglia_signature_class), decreasing = TRUE))[1],
+      .groups = "drop"
+    ) %>%
+    dplyr::arrange(.data$contrast_class, dplyr::desc(abs(.data$median_NES)), .data$min_FDR)
+}
+
+build_regional_pooled_summary <- function(df) {
+  if (!nrow(df)) return(tibble::tibble())
+  df %>%
+    dplyr::filter(.data$contrast_class == "cross_region_same_condition") %>%
+    dplyr::group_by(.data$signature, .data$signature_label, .data$signature_source, .data$signature_source_label, .data$region_contrast_label, .data$microglia_signature_class, .data$microglia_signature_class_label) %>%
+    dplyr::summarise(
+      n_groups_tested = dplyr::n_distinct(.data$focal_group),
+      n_significant_groups = dplyr::n_distinct(.data$focal_group[!is.na(.data$padj) & .data$padj < 0.05]),
+      median_NES = stats::median(.data$NES, na.rm = TRUE),
+      mean_NES = mean(.data$NES, na.rm = TRUE),
+      min_FDR = min(.data$padj, na.rm = TRUE),
+      groups_with_signal = paste(unique(.data$focal_group[!is.na(.data$padj) & .data$padj < 0.05]), collapse = ";"),
+      interpretation = dplyr::case_when(
+        .data$n_significant_groups >= 2 ~ "consistent regional signal across groups",
+        .data$n_significant_groups == 1 ~ "regional signal in one group",
+        TRUE ~ "not significant"
+      ),
+      .groups = "drop"
+    ) %>%
+    dplyr::mutate(
+      min_FDR = ifelse(is.infinite(.data$min_FDR), NA_real_, .data$min_FDR),
+      experimental_question = "regional_difference_pooled_groups",
+      experimental_question_label = pretty_experimental_question(.data$experimental_question)
+    ) %>%
+    dplyr::arrange(dplyr::desc(.data$n_significant_groups), .data$min_FDR, dplyr::desc(abs(.data$median_NES)))
+}
+
+write_review_xlsx <- function(all_tbl, within_tbl, cross_same_tbl, cross_cross_tbl, recurrence_tbl, claims_tbl, interpretation_tbl, direction_tbl, regional_pooled_tbl, diagnostics_tbl) {
   if (!requireNamespace("writexl", quietly = TRUE)) return(invisible(FALSE))
   out <- file.path(PATHS$tables, "microglia_signature_enrichment_review.xlsx")
   writexl::write_xlsx(
@@ -894,6 +1135,9 @@ write_review_xlsx <- function(all_tbl, within_tbl, cross_same_tbl, cross_cross_t
       cross_region_cross_condition = cross_cross_tbl,
       leading_edge_recurrence = recurrence_tbl,
       claims_ready = claims_tbl,
+      interpretation_summary = interpretation_tbl,
+      direction_summary = direction_tbl,
+      regional_pooled_summary = regional_pooled_tbl,
       diagnostics = diagnostics_tbl
     ),
     path = out
@@ -914,6 +1158,9 @@ write_empty_outputs <- function(reason, diagnostics) {
     "microglia_signature_unclassified_technical.csv",
     "microglia_signature_leading_edge_recurrence.csv",
     "microglia_signature_claims_ready.csv",
+    "microglia_signature_interpretation_summary.csv",
+    "microglia_signature_direction_summary.csv",
+    "microglia_signature_regional_pooled_summary.csv",
     "empirical_microglia_enriched_signature.csv",
     "empirical_neuropil_shared_signature.csv",
     "empirical_microglia_signature_diagnostics.csv",
@@ -935,9 +1182,9 @@ if (isTRUE(DRY_RUN)) {
   dry_diag <- dplyr::bind_rows(
     diagnostics,
     tibble::tibble(
-      check = c("dataset", "reference_dataset", "input_dir", "reference_input_dir", "output_tables", "output_figures"),
-      status = c(ifelse(DATASET == "microglia", "PASS", "WARN"), "PASS", ifelse(dir.exists(input_dir), "PASS", "WARN"), ifelse(dir.exists(reference_dir), "PASS", "WARN"), "PASS", "PASS"),
-      detail = c(DATASET, REFERENCE_DATASET, input_dir, reference_dir, PATHS$tables, PATHS$figures)
+      check = c("dataset", "reference_dataset", "input_dir", "reference_input_dir", "output_tables", "output_figures", "main_candidate_figures", "supplementary_qc_figures"),
+      status = c(ifelse(DATASET == "microglia", "PASS", "WARN"), "PASS", ifelse(dir.exists(input_dir), "PASS", "WARN"), ifelse(dir.exists(reference_dir), "PASS", "WARN"), "PASS", "PASS", "PASS", "PASS"),
+      detail = c(DATASET, REFERENCE_DATASET, input_dir, reference_dir, PATHS$tables, PATHS$figures, FIG_PATHS$main_candidate, FIG_PATHS$supplementary_qc)
     )
   )
   dry_run_line("Script", "04_differential_expression_enrichment/05_microglia_targeted_signature_enrichment.r")
@@ -945,12 +1192,19 @@ if (isTRUE(DRY_RUN)) {
   dry_run_line("Input contrasts", input_dir, ifelse(dir.exists(input_dir), "PASS", "WARN"))
   dry_run_line("Neuropil reference contrasts", reference_dir, ifelse(dir.exists(reference_dir), "PASS", "WARN"))
   dry_run_line("Output tables", PATHS$tables)
+  dry_run_line("Main-candidate figures", FIG_PATHS$main_candidate)
+  dry_run_line("Supplementary/QC figures", FIG_PATHS$supplementary_qc)
+  dry_run_line("Main within-region dotplot", file.path(FIG_PATHS$main_candidate, "microglia_signature_within_region_condition_dotplot_main.svg"))
+  dry_run_line("Main microglia-vs-neuropil scatter", file.path(FIG_PATHS$main_candidate, "microglia_vs_neuropil_signature_NES_scatter_main.svg"))
+  dry_run_line("Main claim-ready effect plot", file.path(FIG_PATHS$main_candidate, "microglia_signature_claim_ready_effect_plot_main.svg"))
+  dry_run_line("Main region-by-group heatmap", file.path(FIG_PATHS$main_candidate, "microglia_signature_region_by_group_heatmap_main.svg"))
   dry_run_line("With contrast class", file.path(PATHS$tables, "microglia_signature_enrichment_with_contrast_class.csv"))
   dry_run_line("Within-region condition", file.path(PATHS$tables, "microglia_signature_within_region_condition.csv"))
   dry_run_line("Cross-region same-condition", file.path(PATHS$tables, "microglia_signature_cross_region_same_condition.csv"))
   dry_run_line("Cross-region cross-condition", file.path(PATHS$tables, "microglia_signature_cross_region_cross_condition.csv"))
   dry_run_line("Leading-edge recurrence", file.path(PATHS$tables, "microglia_signature_leading_edge_recurrence.csv"))
   dry_run_line("Claims-ready", file.path(PATHS$tables, "microglia_signature_claims_ready.csv"))
+  dry_run_line("Regional pooled summary", file.path(PATHS$tables, "microglia_signature_regional_pooled_summary.csv"))
   dry_run_line("Review workbook (optional writexl)", file.path(PATHS$tables, "microglia_signature_enrichment_review.xlsx"))
   dry_run_line("Empirical microglia signature", file.path(PATHS$tables, "empirical_microglia_enriched_signature.csv"))
   dry_run_line("Empirical neuropil-shared signature", file.path(PATHS$tables, "empirical_neuropil_shared_signature.csv"))
@@ -1039,7 +1293,20 @@ with_contrast <- with_reference %>%
       .data$NES > 0 ~ "up",
       .data$NES < 0 ~ "down",
       TRUE ~ "neutral"
-    )
+    ),
+    experimental_question = dplyr::case_when(
+      .data$contrast_class == "within_region_condition" ~ "group_effect_within_region",
+      .data$contrast_class == "cross_region_same_condition" ~ "regional_difference_by_group",
+      TRUE ~ "exploratory_mixed_contrast"
+    ),
+    experimental_question_label = pretty_experimental_question(.data$experimental_question),
+    comparison_label = pretty_comparison_label(.data$left_region, .data$right_region, .data$left_condition, .data$right_condition, .data$comparison),
+    region_contrast_label = ifelse(!is.na(.data$left_region) & !is.na(.data$right_region), paste(.data$left_region, .data$right_region, sep = " vs "), NA_character_),
+    group_contrast_label = ifelse(!is.na(.data$left_condition) & !is.na(.data$right_condition), paste(pretty_condition(.data$left_condition), pretty_condition(.data$right_condition), sep = " vs "), NA_character_),
+    focal_group = dplyr::if_else(.data$contrast_class == "cross_region_same_condition", pretty_condition(.data$left_condition), NA_character_),
+    signature_label = pretty_signature(.data$signature),
+    signature_source_label = pretty_signature_source(.data$signature_source),
+    microglia_signature_class_label = pretty_signature_class(.data$microglia_signature_class)
   )
 
 within_region_tbl <- with_contrast %>% dplyr::filter(.data$contrast_class == "within_region_condition")
@@ -1048,6 +1315,9 @@ cross_region_cross_tbl <- with_contrast %>% dplyr::filter(.data$contrast_class =
 unclassified_technical_tbl <- with_contrast %>% dplyr::filter(.data$contrast_class %in% c("same_region_same_condition", "unclassified"))
 leading_edge_recurrence <- build_leading_edge_recurrence(with_contrast)
 claims_ready <- build_claims_ready(with_contrast)
+interpretation_summary <- build_interpretation_summary(with_contrast)
+direction_summary <- build_signature_direction_summary(with_contrast)
+regional_pooled_summary <- build_regional_pooled_summary(with_contrast)
 
 summary_tbl <- with_contrast %>%
   dplyr::count(.data$contrast_class, .data$microglia_signature_class, .data$signature, .data$reference_match_type, name = "n_contrasts") %>%
@@ -1063,6 +1333,9 @@ readr::write_csv(cross_region_cross_tbl, file.path(PATHS$tables, "microglia_sign
 readr::write_csv(unclassified_technical_tbl, file.path(PATHS$tables, "microglia_signature_unclassified_technical.csv"), na = "")
 readr::write_csv(leading_edge_recurrence, file.path(PATHS$tables, "microglia_signature_leading_edge_recurrence.csv"), na = "")
 readr::write_csv(claims_ready, file.path(PATHS$tables, "microglia_signature_claims_ready.csv"), na = "")
+readr::write_csv(interpretation_summary, file.path(PATHS$tables, "microglia_signature_interpretation_summary.csv"), na = "")
+readr::write_csv(direction_summary, file.path(PATHS$tables, "microglia_signature_direction_summary.csv"), na = "")
+readr::write_csv(regional_pooled_summary, file.path(PATHS$tables, "microglia_signature_regional_pooled_summary.csv"), na = "")
 readr::write_csv(diagnostics, file.path(PATHS$tables, "microglia_signature_diagnostics.csv"), na = "")
 readr::write_csv(empirical_signatures$microglia, file.path(PATHS$tables, "empirical_microglia_enriched_signature.csv"), na = "")
 readr::write_csv(empirical_signatures$shared, file.path(PATHS$tables, "empirical_neuropil_shared_signature.csv"), na = "")
@@ -1079,30 +1352,52 @@ write_review_xlsx(
   cross_cross_tbl = cross_region_cross_tbl,
   recurrence_tbl = leading_edge_recurrence,
   claims_tbl = claims_ready,
+  interpretation_tbl = interpretation_summary,
+  direction_tbl = direction_summary,
+  regional_pooled_tbl = regional_pooled_summary,
   diagnostics_tbl = diagnostics
 )
 
 if (nrow(with_contrast)) {
+  manuscript_classes <- c(
+    "microglia_enriched_empirical",
+    "microglia_enriched_reference_supported",
+    "curated_microglia_program",
+    "neuropil_shared"
+  )
+
   dot_df <- with_contrast %>%
     dplyr::mutate(
       sig_label = ifelse(!is.na(.data$padj) & .data$padj < 0.05, "FDR<0.05", "nominal/unthresholded"),
-      comparison = stats::reorder(.data$comparison, .data$NES, FUN = median, na.rm = TRUE),
-      signature = stats::reorder(.data$signature, abs(.data$NES), FUN = median, na.rm = TRUE),
-      plot_size = pmin(6, pmax(1.5, -log10(pmax(.data$padj, .Machine$double.xmin)))),
+      significant = !is.na(.data$padj) & .data$padj < 0.05,
+      signature_label = compact_signature_label(.data$signature, width = 23),
+      comparison_label = compact_comparison_label(.data$left_region, .data$right_region, .data$left_condition, .data$right_condition, .data$comparison, width = 16),
+      contrast_class_label = pretty_contrast_class(.data$contrast_class),
+      signature_class_label = pretty_signature_class(.data$microglia_signature_class),
+      plot_size = fdr_size_value(.data$padj),
       contrast_class = factor(
         .data$contrast_class,
         levels = c("within_region_condition", "cross_region_same_condition", "cross_region_cross_condition", "same_region_same_condition", "unclassified")
-      )
+      ),
+      contrast_class_label = factor(
+        .data$contrast_class_label,
+        levels = pretty_contrast_class(c("within_region_condition", "cross_region_same_condition", "cross_region_cross_condition", "same_region_same_condition", "unclassified"))
+      ),
+      signature_label = stats::reorder(.data$signature_label, abs(.data$NES), FUN = median, na.rm = TRUE),
+      comparison_label = stats::reorder(.data$comparison_label, .data$NES, FUN = median, na.rm = TRUE)
     )
-  p1 <- ggplot2::ggplot(dot_df, ggplot2::aes(x = .data$comparison, y = .data$signature)) +
+  dot_sig_df <- dot_df %>% dplyr::filter(.data$significant)
+  if (!nrow(dot_sig_df)) dot_sig_df <- dot_df
+  p1 <- ggplot2::ggplot(dot_sig_df, ggplot2::aes(x = .data$comparison_label, y = .data$signature_label)) +
     ggplot2::geom_point(
-      ggplot2::aes(fill = .data$NES, size = .data$plot_size),
-      shape = 21, color = "black", stroke = 0.2, alpha = 0.92
+      ggplot2::aes(fill = .data$NES, size = .data$plot_size, shape = .data$signature_source),
+      color = "black", stroke = 0.2, alpha = 0.92
     ) +
-    ggplot2::facet_grid(rows = ggplot2::vars(.data$contrast_class), scales = "free_x", space = "free_x") +
-    scale_fill_diverging(name = "NES") +
-    ggplot2::scale_size_continuous(name = expression(-log[10]~FDR), range = c(1.2, 5.0)) +
-    ggplot2::labs(x = NULL, y = NULL) +
+    ggplot2::facet_grid(rows = ggplot2::vars(.data$contrast_class_label), scales = "free_x", space = "free_x") +
+    scale_fill_NES(name = "NES") +
+    ggplot2::scale_shape_manual(values = c(curated = 21, empirical_microglia_vs_neuropil = 22, reference_atlas_EWCE = 24), labels = pretty_signature_source(names(palette_signature_source)), drop = FALSE, name = "Signature source") +
+    scale_size_fdr(max_size = 5.0) +
+    ggplot2::labs(x = NULL, y = NULL, title = "Microglia signature enrichment across all interpretable and exploratory contrasts") +
     theme_manuscript(base_size = FONT_SIZE_PANEL, grid = "none") +
     ggplot2::theme(
       axis.text.x = ggplot2::element_text(angle = 55, hjust = 1, vjust = 1),
@@ -1113,97 +1408,250 @@ if (nrow(with_contrast)) {
       panel.spacing.x = grid::unit(1.2, "mm"),
       panel.spacing.y = grid::unit(1.0, "mm")
     )
-  ggplot2::ggsave(
-    file.path(PATHS$figures, "microglia_signature_dotplot.svg"),
+  ggsave_plot(
+    file.path(FIG_PATHS$supplementary_qc, "microglia_signature_dotplot.svg"),
     p1,
-    width = max(FIG_WIDTH_DOUBLE, length(unique(dot_df$comparison)) * 0.22),
-    height = max(FIG_HEIGHT_STANDARD, length(unique(dot_df$signature)) * 0.18),
-    units = "in",
-    limitsize = FALSE
+    width = max(FIG_WIDTH_DOUBLE, length(unique(dot_sig_df$comparison_label)) * 0.34),
+    height = max(FIG_HEIGHT_STANDARD, length(unique(dot_sig_df$signature_label)) * 0.25)
   )
 
-  scatter_df <- dot_df %>% dplyr::filter(!is.na(.data$neuropil_reference_NES))
+  scatter_df <- with_contrast %>%
+    dplyr::filter(!is.na(.data$NES), !is.na(.data$neuropil_reference_NES)) %>%
+    dplyr::mutate(
+      significant = !is.na(.data$padj) & .data$padj < 0.05,
+      interpretable = .data$microglia_signature_class %in% manuscript_classes,
+      point_alpha = ifelse(.data$significant & .data$interpretable, 0.9, 0.22)
+    )
   if (nrow(scatter_df)) {
-    p2 <- ggplot2::ggplot(scatter_df, ggplot2::aes(x = .data$neuropil_reference_NES, y = .data$NES, color = .data$microglia_signature_class)) +
+    scatter_n <- nrow(scatter_df)
+    scatter_r <- suppressWarnings(stats::cor(scatter_df$NES, scatter_df$neuropil_reference_NES, method = "pearson", use = "complete.obs"))
+    stronger_fraction <- mean(abs(scatter_df$NES) > abs(scatter_df$neuropil_reference_NES), na.rm = TRUE)
+    scatter_note <- paste0(
+      "n = ", scatter_n,
+      "\nr = ", ifelse(is.finite(scatter_r), sprintf("%.2f", scatter_r), "NA"),
+      "\n|microglia| > |neuropil|: ", scales::percent(stronger_fraction, accuracy = 1)
+    )
+    note_x <- min(scatter_df$neuropil_reference_NES, na.rm = TRUE)
+    note_y <- max(scatter_df$NES, na.rm = TRUE)
+    p2 <- ggplot2::ggplot(scatter_df, ggplot2::aes(x = .data$neuropil_reference_NES, y = .data$NES)) +
       ggplot2::geom_hline(yintercept = 0, color = "#BDBDBD", linewidth = 0.3) +
       ggplot2::geom_vline(xintercept = 0, color = "#BDBDBD", linewidth = 0.3) +
       ggplot2::geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "#7F7F7F", linewidth = 0.35) +
-      ggplot2::geom_point(size = 2.2, alpha = 0.9) +
-      ggplot2::stat_smooth(method = "lm", se = FALSE, color = "black", linewidth = 0.35, linetype = "solid") +
-      ggplot2::scale_color_manual(values = palette_signature_class, drop = FALSE, name = "Signature class") +
-      ggplot2::labs(x = "Neuropil reference NES", y = "Microglia ROI NES", color = "Class") +
+      ggplot2::geom_point(ggplot2::aes(fill = .data$NES, alpha = .data$point_alpha), shape = 21, size = 2.1, color = "black", stroke = 0.18) +
+      ggplot2::annotate("text", x = note_x, y = note_y, label = scatter_note, hjust = 0, vjust = 1, size = 2.0, lineheight = 0.95) +
+      scale_fill_NES(name = "Microglia NES") +
+      ggplot2::scale_alpha_identity() +
+      ggplot2::labs(x = "Neuropil reference NES", y = "Microglia ROI NES") +
       theme_manuscript(base_size = FONT_SIZE_PANEL, grid = "none") +
       ggplot2::theme(
         legend.position = "bottom",
         legend.direction = "horizontal"
       ) +
       ggplot2::coord_equal()
-    ggplot2::ggsave(file.path(PATHS$figures, "microglia_vs_neuropil_signature_NES_scatter.svg"), p2, width = FIG_WIDTH_SINGLE + 0.4, height = FIG_WIDTH_SINGLE + 0.2, units = "in")
+    ggsave_publication(file.path(FIG_PATHS$main_candidate, "microglia_vs_neuropil_signature_NES_scatter_main"), p2, width = FIG_WIDTH_SINGLE + 0.4, height = FIG_WIDTH_SINGLE + 0.2)
+    ggsave_plot(file.path(FIG_PATHS$supplementary_qc, "microglia_vs_neuropil_signature_NES_scatter.svg"), p2, width = FIG_WIDTH_SINGLE + 0.4, height = FIG_WIDTH_SINGLE + 0.2)
   }
 
-  p3_df <- with_contrast %>%
-    dplyr::count(.data$microglia_signature_class, name = "n") %>%
-    dplyr::mutate(microglia_signature_class = stats::reorder(.data$microglia_signature_class, .data$n))
-  p3 <- ggplot2::ggplot(p3_df, ggplot2::aes(y = .data$microglia_signature_class, x = .data$n, color = .data$microglia_signature_class)) +
-    ggplot2::geom_segment(ggplot2::aes(x = 0, xend = .data$n, yend = .data$microglia_signature_class), linewidth = 0.6, alpha = 0.85, show.legend = FALSE) +
+  p3_df <- dot_df %>%
+    dplyr::filter(.data$significant) %>%
+    dplyr::count(.data$microglia_signature_class, .data$signature_class_label, name = "n") %>%
+    dplyr::mutate(signature_class_label = stats::reorder(.data$signature_class_label, .data$n))
+  p3 <- ggplot2::ggplot(p3_df, ggplot2::aes(y = .data$signature_class_label, x = .data$n, color = .data$microglia_signature_class)) +
+    ggplot2::geom_segment(ggplot2::aes(x = 0, xend = .data$n, yend = .data$signature_class_label), linewidth = 0.6, alpha = 0.85, show.legend = FALSE) +
     ggplot2::geom_point(size = 2.8, show.legend = FALSE) +
     ggplot2::scale_color_manual(values = palette_signature_class, drop = FALSE) +
-    ggplot2::labs(x = "Signature-contrast rows", y = NULL) +
+    ggplot2::labs(x = "FDR-significant signature-contrast tests", y = NULL, title = "Evidence classification summary") +
     theme_manuscript(base_size = FONT_SIZE_PANEL, grid = "x")
-  ggplot2::ggsave(file.path(PATHS$figures, "microglia_signature_classification_barplot.svg"), p3, width = FIG_WIDTH_SINGLE + 0.7, height = FIG_HEIGHT_SHORT + 0.8, units = "in")
+  ggsave_plot(file.path(FIG_PATHS$supplementary_qc, "microglia_signature_classification_barplot.svg"), p3, width = FIG_WIDTH_SINGLE + 0.7, height = FIG_HEIGHT_SHORT + 0.8)
 
-  p4_df <- with_contrast %>%
-    dplyr::count(.data$contrast_class, name = "n_rows") %>%
-    dplyr::mutate(contrast_class = stats::reorder(.data$contrast_class, .data$n_rows))
-  p4 <- ggplot2::ggplot(p4_df, ggplot2::aes(y = .data$contrast_class, x = .data$n_rows, color = .data$contrast_class)) +
-    ggplot2::geom_segment(ggplot2::aes(x = 0, xend = .data$n_rows, yend = .data$contrast_class), linewidth = 0.7, alpha = 0.9, show.legend = FALSE) +
-    ggplot2::geom_point(size = 3.0, show.legend = FALSE) +
-    ggplot2::scale_color_manual(values = palette_contrast_class, drop = FALSE) +
-    ggplot2::labs(x = "Signature rows", y = NULL) +
-    theme_manuscript(base_size = FONT_SIZE_PANEL, grid = "x")
-  ggplot2::ggsave(file.path(PATHS$figures, "microglia_signature_contrast_class_overview.svg"), p4, width = FIG_WIDTH_SINGLE + 0.9, height = FIG_HEIGHT_SHORT + 0.9, units = "in")
+  p4_df <- interpretation_summary %>%
+    dplyr::filter(.data$n_significant > 0) %>%
+    dplyr::mutate(
+      contrast_class_label = pretty_contrast_class(.data$contrast_class),
+      evidence_label = pretty_evidence_note(.data$evidence_note)
+    ) %>%
+    dplyr::group_by(.data$contrast_class_label, .data$evidence_label) %>%
+    dplyr::summarise(n = sum(.data$n_significant, na.rm = TRUE), .groups = "drop") %>%
+    dplyr::mutate(
+      contrast_class_label = factor(.data$contrast_class_label, levels = rev(pretty_contrast_class(c("within_region_condition", "cross_region_same_condition", "cross_region_cross_condition")))),
+      evidence_label = factor(.data$evidence_label, levels = c("Claim-ready", "Neuropil-shared", "Mixed contrast", "Exploratory"))
+    )
+  p4 <- ggplot2::ggplot(p4_df, ggplot2::aes(y = .data$contrast_class_label, x = .data$n, fill = .data$evidence_label)) +
+    ggplot2::geom_col(width = 0.68, color = "white", linewidth = 0.2) +
+    ggplot2::scale_fill_manual(values = c("Claim-ready" = "#3C5488", "Neuropil-shared" = "#E64B35", "Mixed contrast" = "#7E6148", "Exploratory" = "#8F8F8F"), drop = FALSE, name = "Interpretation") +
+    ggplot2::labs(x = "FDR-significant signature-contrast tests", y = NULL, title = "Contrast class interpretation summary") +
+    theme_manuscript(base_size = FONT_SIZE_PANEL, grid = "x") +
+    ggplot2::theme(legend.position = "bottom")
+  ggsave_plot(file.path(FIG_PATHS$supplementary_qc, "microglia_signature_contrast_class_overview.svg"), p4, width = FIG_WIDTH_SINGLE + 1.4, height = FIG_HEIGHT_SHORT + 0.8)
 
-  if (nrow(cross_region_same_tbl)) {
-    heat_df <- cross_region_same_tbl %>%
-      dplyr::group_by(.data$signature, .data$region_pair) %>%
-      dplyr::arrange(.data$padj, dplyr::desc(abs(.data$NES)), .by_group = TRUE) %>%
-      dplyr::summarise(nes_rep = dplyr::first(.data$NES), fdr_rep = dplyr::first(.data$padj), .groups = "drop") %>%
+  if (nrow(regional_pooled_summary)) {
+    heat_df <- regional_pooled_summary %>%
       dplyr::mutate(
-        region_pair = stats::reorder(.data$region_pair, .data$nes_rep, FUN = median, na.rm = TRUE),
-        signature = stats::reorder(.data$signature, abs(.data$nes_rep), FUN = max, na.rm = TRUE),
-        fdr_flag = !is.na(.data$fdr_rep) & .data$fdr_rep < 0.05
+        region_pair_label = compact_region_pair(.data$region_contrast_label),
+        signature_label = wrap_plot_label(.data$signature_label, width = 23),
+        region_pair_label = stats::reorder(.data$region_pair_label, .data$median_NES, FUN = median, na.rm = TRUE),
+        signature_label = stats::reorder(.data$signature_label, abs(.data$median_NES), FUN = max, na.rm = TRUE),
+        plot_size = pmax(1, .data$n_significant_groups)
       )
-    p5 <- ggplot2::ggplot(heat_df, ggplot2::aes(x = .data$region_pair, y = .data$signature, fill = .data$nes_rep)) +
+    readr::write_csv(heat_df, file.path(PATHS$source_data, "microglia_signature_region_effects_pooled_source.csv"), na = "")
+    p5 <- ggplot2::ggplot(heat_df, ggplot2::aes(x = .data$region_pair_label, y = .data$signature_label, fill = .data$median_NES)) +
       ggplot2::geom_tile(color = "white", linewidth = 0.25) +
-      ggplot2::geom_point(data = dplyr::filter(heat_df, .data$fdr_flag), shape = 21, size = 1.4, stroke = 0.2, fill = "black", color = "black") +
-      scale_fill_diverging(name = "NES") +
-      ggplot2::labs(x = "Region pair", y = "Signature") +
+      ggplot2::geom_point(data = dplyr::filter(heat_df, .data$n_significant_groups > 0), ggplot2::aes(size = .data$plot_size), shape = 21, stroke = 0.2, fill = "black", color = "black") +
+      scale_fill_NES(name = "NES") +
+      ggplot2::scale_size_area(name = "Significant\ngroups", max_size = 3.2, breaks = c(1, 2, 3)) +
+      ggplot2::labs(x = "Region pair", y = NULL, title = "Regional program summary pooled across groups") +
       theme_manuscript(base_size = FONT_SIZE_PANEL, grid = "none") +
       ggplot2::theme(
         axis.text.x = ggplot2::element_text(angle = 45, hjust = 1, vjust = 1),
         legend.position = "bottom",
-        legend.direction = "horizontal"
+        legend.direction = "horizontal",
+        legend.box = "horizontal"
       )
-    ggplot2::ggsave(file.path(PATHS$figures, "microglia_signature_region_program_heatmap.svg"), p5, width = max(FIG_WIDTH_DOUBLE - 0.2, length(unique(heat_df$region_pair)) * 0.42), height = max(FIG_HEIGHT_STANDARD, length(unique(heat_df$signature)) * 0.19), units = "in", limitsize = FALSE)
+    ggsave_plot(file.path(FIG_PATHS$supplementary_qc, "microglia_signature_region_program_heatmap.svg"), p5, width = max(FIG_WIDTH_DOUBLE - 0.2, length(unique(heat_df$region_pair_label)) * 0.44), height = max(FIG_HEIGHT_STANDARD, length(unique(heat_df$signature_label)) * 0.25))
+  }
+
+  if (nrow(cross_region_same_tbl)) {
+    by_group_df <- cross_region_same_tbl %>%
+      dplyr::filter(!is.na(.data$padj) & .data$padj < 0.05) %>%
+      dplyr::mutate(
+        focal_group = pretty_condition(.data$left_condition),
+        region_pair_label = compact_region_pair(.data$region_contrast_label),
+        signature_label = compact_signature_label(.data$signature, width = 23),
+        plot_size = fdr_size_value(.data$padj),
+        focal_group = factor(.data$focal_group, levels = c("CON", "RES", "SUS")),
+        region_pair_label = stats::reorder(.data$region_pair_label, .data$NES, FUN = median, na.rm = TRUE),
+        signature_label = stats::reorder(.data$signature_label, abs(.data$NES), FUN = median, na.rm = TRUE)
+      )
+    if (nrow(by_group_df)) {
+      readr::write_csv(by_group_df, file.path(PATHS$source_data, "microglia_signature_region_effects_by_group_source.csv"), na = "")
+      p5b <- ggplot2::ggplot(by_group_df, ggplot2::aes(x = .data$region_pair_label, y = .data$signature_label)) +
+        ggplot2::geom_point(ggplot2::aes(fill = .data$NES, size = .data$plot_size, shape = .data$signature_source), color = "black", stroke = 0.22, alpha = 0.95) +
+        ggplot2::facet_grid(rows = ggplot2::vars(.data$focal_group), scales = "free_x", space = "free_x") +
+        scale_fill_NES(name = "NES") +
+        ggplot2::scale_shape_manual(values = c(curated = 21, empirical_microglia_vs_neuropil = 22, reference_atlas_EWCE = 24), labels = pretty_signature_source(names(palette_signature_source)), drop = FALSE, name = "Signature source") +
+        scale_size_fdr(max_size = 4.8) +
+        ggplot2::labs(x = "Region pair", y = NULL, title = "Regional effects within each experimental group") +
+        theme_manuscript(base_size = FONT_SIZE_PANEL, grid = "none") +
+        ggplot2::theme(
+          axis.text.x = ggplot2::element_text(angle = 45, hjust = 1, vjust = 1),
+          legend.position = "bottom",
+          legend.direction = "horizontal",
+          legend.box = "vertical",
+          panel.spacing.x = grid::unit(1.0, "mm")
+        )
+      ggsave_plot(file.path(FIG_PATHS$supplementary_qc, "microglia_signature_region_by_group_heatmap.svg"), p5b, width = max(FIG_WIDTH_DOUBLE, length(unique(by_group_df$region_pair_label)) * 0.54), height = max(FIG_HEIGHT_STANDARD, length(unique(by_group_df$signature_label)) * 0.28 + 1.0))
+    }
+
+    by_group_main_df <- cross_region_same_tbl %>%
+      dplyr::filter(
+        !is.na(.data$padj),
+        .data$padj < 0.10,
+        .data$microglia_signature_class %in% manuscript_classes
+      ) %>%
+      dplyr::mutate(
+        focal_group = factor(pretty_condition(.data$left_condition), levels = c("CON", "RES", "SUS")),
+        region_pair_label = compact_region_pair(.data$region_contrast_label),
+        region_pair_label = factor(.data$region_pair_label, levels = region_pair_levels(.data$region_pair_label)),
+        signature_label = compact_signature_label(.data$signature, width = 18),
+        signature_label = stats::reorder(.data$signature_label, abs(.data$NES), FUN = median, na.rm = TRUE),
+        plot_size = fdr_size_value(.data$padj),
+        point_alpha = ifelse(.data$padj < 0.05, 0.95, 0.45)
+      )
+    if (nrow(by_group_main_df)) {
+      p5b_main <- ggplot2::ggplot(by_group_main_df, ggplot2::aes(x = .data$region_pair_label, y = .data$signature_label)) +
+        ggplot2::geom_point(ggplot2::aes(fill = .data$NES, size = .data$plot_size, alpha = .data$point_alpha), shape = 21, color = "black", stroke = 0.18) +
+        ggplot2::facet_grid(rows = ggplot2::vars(.data$focal_group), scales = "free_x", space = "free_x") +
+        scale_fill_NES(name = "NES") +
+        scale_size_fdr(max_size = 4.7) +
+        ggplot2::scale_alpha_identity() +
+        ggplot2::labs(x = "Region pair", y = NULL) +
+        theme_manuscript(base_size = FONT_SIZE_PANEL, grid = "none") +
+        ggplot2::theme(
+          axis.text.x = ggplot2::element_text(angle = 45, hjust = 1, vjust = 1),
+          legend.position = "bottom",
+          legend.direction = "horizontal",
+          legend.box = "horizontal",
+          panel.spacing.x = grid::unit(0.9, "mm")
+        )
+      ggsave_publication(
+        file.path(FIG_PATHS$main_candidate, "microglia_signature_region_by_group_heatmap_main"),
+        p5b_main,
+        width = FIG_WIDTH_DOUBLE,
+        height = min(7.5, max(FIG_HEIGHT_STANDARD, length(unique(by_group_main_df$signature_label)) * 0.26 + 1.0))
+      )
+    }
   }
 
   if (nrow(within_region_tbl)) {
-    within_plot_df <- within_region_tbl %>%
+    within_main_df <- within_region_tbl %>%
+      dplyr::filter(
+        !is.na(.data$padj),
+        .data$padj < 0.05,
+        .data$microglia_signature_class %in% manuscript_classes
+      ) %>%
       dplyr::mutate(
-        comparison = stats::reorder(.data$comparison, .data$NES, FUN = median, na.rm = TRUE),
-        signature = stats::reorder(.data$signature, abs(.data$NES), FUN = median, na.rm = TRUE),
-        plot_size = pmin(6, pmax(1.5, -log10(pmax(.data$padj, .Machine$double.xmin)))),
+        comparison_label = compact_comparison_label(.data$left_region, .data$right_region, .data$left_condition, .data$right_condition, .data$comparison, width = 13),
+        signature_label = compact_signature_label(.data$signature, width = 18),
+        comparison_label = stats::reorder(.data$comparison_label, .data$NES, FUN = median, na.rm = TRUE),
+        signature_label = stats::reorder(.data$signature_label, abs(.data$NES), FUN = median, na.rm = TRUE),
+        plot_size = fdr_size_value(.data$padj),
         left_region = factor(.data$left_region, levels = c("CA1", "CA2", "CA3", "DG"))
       )
-    p6 <- ggplot2::ggplot(within_plot_df, ggplot2::aes(x = .data$comparison, y = .data$signature)) +
+    if (nrow(within_main_df)) {
+      p6_main <- ggplot2::ggplot(within_main_df, ggplot2::aes(x = .data$comparison_label, y = .data$signature_label)) +
+        ggplot2::geom_point(ggplot2::aes(fill = .data$NES, size = .data$plot_size), shape = 21, color = "black", stroke = 0.18, alpha = 0.95) +
+        ggplot2::facet_grid(rows = ggplot2::vars(.data$left_region), scales = "free_x", space = "free_x") +
+        scale_fill_NES(name = "NES") +
+        scale_size_fdr(max_size = 5.0) +
+        ggplot2::labs(x = NULL, y = NULL) +
+        theme_manuscript(base_size = FONT_SIZE_PANEL, grid = "none") +
+        ggplot2::theme(
+          axis.text.x = ggplot2::element_text(angle = 50, hjust = 1, vjust = 1),
+          legend.position = "bottom",
+          legend.direction = "horizontal",
+          legend.box = "horizontal",
+          strip.placement = "outside",
+          panel.spacing.x = grid::unit(1.0, "mm"),
+          panel.spacing.y = grid::unit(1.0, "mm")
+        )
+      ggsave_publication(
+        file.path(FIG_PATHS$main_candidate, "microglia_signature_within_region_condition_dotplot_main"),
+        p6_main,
+        width = FIG_WIDTH_DOUBLE,
+        height = min(7.0, max(FIG_HEIGHT_STANDARD, length(unique(within_main_df$signature_label)) * 0.26 + 1.0))
+      )
+    }
+
+    within_plot_df <- within_region_tbl %>%
+      dplyr::filter(!is.na(.data$padj) & .data$padj < 0.05) %>%
+      dplyr::mutate(
+        comparison_label = compact_comparison_label(.data$left_region, .data$right_region, .data$left_condition, .data$right_condition, .data$comparison, width = 16),
+        signature_label = compact_signature_label(.data$signature, width = 23),
+        comparison_label = stats::reorder(.data$comparison_label, .data$NES, FUN = median, na.rm = TRUE),
+        signature_label = stats::reorder(.data$signature_label, abs(.data$NES), FUN = median, na.rm = TRUE),
+        plot_size = fdr_size_value(.data$padj),
+        left_region = factor(.data$left_region, levels = c("CA1", "CA2", "CA3", "DG"))
+      )
+    if (nrow(within_plot_df)) readr::write_csv(within_plot_df, file.path(PATHS$source_data, "microglia_signature_group_effects_within_region_source.csv"), na = "")
+    if (!nrow(within_plot_df)) within_plot_df <- within_region_tbl %>%
+      dplyr::mutate(
+        comparison_label = compact_comparison_label(.data$left_region, .data$right_region, .data$left_condition, .data$right_condition, .data$comparison, width = 16),
+        signature_label = compact_signature_label(.data$signature, width = 23),
+        comparison_label = stats::reorder(.data$comparison_label, .data$NES, FUN = median, na.rm = TRUE),
+        signature_label = stats::reorder(.data$signature_label, abs(.data$NES), FUN = median, na.rm = TRUE),
+        plot_size = fdr_size_value(.data$padj),
+        left_region = factor(.data$left_region, levels = c("CA1", "CA2", "CA3", "DG"))
+      )
+    p6 <- ggplot2::ggplot(within_plot_df, ggplot2::aes(x = .data$comparison_label, y = .data$signature_label)) +
       ggplot2::geom_point(
-        ggplot2::aes(fill = .data$NES, size = .data$plot_size),
-        shape = 21, color = "black", stroke = 0.22, alpha = 0.95
+        ggplot2::aes(fill = .data$NES, size = .data$plot_size, shape = .data$signature_source),
+        color = "black", stroke = 0.22, alpha = 0.95
       ) +
       ggplot2::facet_grid(rows = ggplot2::vars(.data$left_region), scales = "free_x", space = "free_x") +
-      scale_fill_diverging(name = "NES") +
-      ggplot2::scale_size_continuous(name = expression(-log[10]~FDR), range = c(1.3, 5.2)) +
-      ggplot2::labs(x = NULL, y = NULL) +
+      scale_fill_NES(name = "NES") +
+      ggplot2::scale_shape_manual(values = c(curated = 21, empirical_microglia_vs_neuropil = 22, reference_atlas_EWCE = 24), labels = pretty_signature_source(names(palette_signature_source)), drop = FALSE, name = "Signature source") +
+      scale_size_fdr(max_size = 5.2) +
+      ggplot2::labs(x = NULL, y = NULL, title = "Group effects within region") +
       theme_manuscript(base_size = FONT_SIZE_PANEL, grid = "none") +
       ggplot2::theme(
         axis.text.x = ggplot2::element_text(angle = 55, hjust = 1, vjust = 1),
@@ -1213,12 +1661,14 @@ if (nrow(with_contrast)) {
         panel.spacing.x = grid::unit(1.0, "mm"),
         panel.spacing.y = grid::unit(1.0, "mm")
       )
-    ggplot2::ggsave(file.path(PATHS$figures, "microglia_signature_within_region_condition_dotplot.svg"), p6, width = max(FIG_WIDTH_DOUBLE - 0.4, length(unique(within_plot_df$comparison)) * 0.26), height = max(FIG_HEIGHT_STANDARD, length(unique(within_plot_df$signature)) * 0.18), units = "in", limitsize = FALSE)
+    ggsave_plot(file.path(FIG_PATHS$supplementary_qc, "microglia_signature_within_region_condition_dotplot.svg"), p6, width = max(FIG_WIDTH_DOUBLE - 0.4, length(unique(within_plot_df$comparison_label)) * 0.42), height = max(FIG_HEIGHT_STANDARD, length(unique(within_plot_df$signature_label)) * 0.26))
   }
 
   if (nrow(leading_edge_recurrence)) {
     rec_plot <- leading_edge_recurrence %>%
-      dplyr::group_by(.data$protein) %>%
+      dplyr::left_join(id_map %>% dplyr::group_by(.data$UNIPROT) %>% dplyr::summarise(gene_symbol = dplyr::first(.data$SYMBOL), .groups = "drop"), by = c("protein" = "UNIPROT")) %>%
+      dplyr::mutate(protein_label = dplyr::coalesce(.data$gene_symbol, .data$protein)) %>%
+      dplyr::group_by(.data$protein_label) %>%
       dplyr::summarise(
         total_recurrence = sum(.data$n_comparisons, na.rm = TRUE),
         dominant_direction = names(sort(table(.data$direction_sign), decreasing = TRUE))[1],
@@ -1226,18 +1676,143 @@ if (nrow(with_contrast)) {
       ) %>%
       dplyr::arrange(dplyr::desc(.data$total_recurrence)) %>%
       dplyr::slice_head(n = 18) %>%
-      dplyr::mutate(protein = stats::reorder(.data$protein, .data$total_recurrence))
-    p7 <- ggplot2::ggplot(rec_plot, ggplot2::aes(y = .data$protein, x = .data$total_recurrence, color = .data$dominant_direction)) +
-      ggplot2::geom_segment(ggplot2::aes(x = 0, xend = .data$total_recurrence, yend = .data$protein), linewidth = 0.7, alpha = 0.9, show.legend = FALSE) +
+      dplyr::mutate(protein_label = stats::reorder(.data$protein_label, .data$total_recurrence))
+    p7 <- ggplot2::ggplot(rec_plot, ggplot2::aes(y = .data$protein_label, x = .data$total_recurrence, color = .data$dominant_direction)) +
+      ggplot2::geom_segment(ggplot2::aes(x = 0, xend = .data$total_recurrence, yend = .data$protein_label), linewidth = 0.7, alpha = 0.9, show.legend = FALSE) +
       ggplot2::geom_point(size = 2.8, show.legend = TRUE) +
       ggplot2::scale_color_manual(values = palette_direction, drop = FALSE, name = "Direction") +
-      ggplot2::labs(x = "Recurrence across significant rows", y = "Leading-edge protein") +
+      ggplot2::labs(x = "Significant signature-contrast tests containing protein", y = "Leading-edge protein", title = "Leading-edge protein recurrence") +
       theme_manuscript(base_size = FONT_SIZE_PANEL, grid = "x") +
       ggplot2::theme(
         legend.position = "bottom",
         legend.direction = "horizontal"
       )
-    ggplot2::ggsave(file.path(PATHS$figures, "microglia_signature_leading_edge_recurrence.svg"), p7, width = FIG_WIDTH_SINGLE + 1.1, height = FIG_HEIGHT_STANDARD, units = "in")
+    ggsave_plot(file.path(FIG_PATHS$supplementary_qc, "microglia_signature_leading_edge_recurrence.svg"), p7, width = FIG_WIDTH_SINGLE + 1.1, height = FIG_HEIGHT_STANDARD)
+  }
+
+  if (nrow(interpretation_summary)) {
+    score_df <- interpretation_summary %>%
+      dplyr::filter(.data$n_significant > 0) %>%
+      dplyr::mutate(
+        contrast_class_label = factor(
+          pretty_contrast_class(.data$contrast_class),
+          levels = pretty_contrast_class(c("within_region_condition", "cross_region_same_condition", "cross_region_cross_condition", "same_region_same_condition", "unclassified"))
+        ),
+        signature_label = compact_signature_label(.data$signature, width = 23),
+        signature_label = stats::reorder(.data$signature_label, .data$n_significant, FUN = max, na.rm = TRUE),
+        evidence_note = factor(
+          .data$evidence_note,
+          levels = c(
+            "claim_ready_microglia_supported",
+            "significant_but_neuropil_shared",
+            "significant_but_cross_region_cross_condition",
+            "significant_exploratory",
+            "not_significant"
+          )
+        )
+      )
+    if (nrow(score_df)) {
+      evidence_palette <- c(
+        claim_ready_microglia_supported = "#3C5488",
+        significant_but_neuropil_shared = "#E64B35",
+        significant_but_cross_region_cross_condition = "#7E6148",
+        significant_exploratory = "#8F8F8F",
+        not_significant = "#D9D9D9"
+      )
+      p8 <- ggplot2::ggplot(score_df, ggplot2::aes(x = .data$contrast_class_label, y = .data$signature_label)) +
+        ggplot2::geom_point(ggplot2::aes(size = .data$n_significant, fill = .data$evidence_note), shape = 21, color = "black", stroke = 0.25, alpha = 0.95) +
+        ggplot2::scale_fill_manual(values = evidence_palette, labels = pretty_evidence_note(names(evidence_palette)), drop = FALSE, name = "Interpretation") +
+        ggplot2::scale_size_area(name = "Significant tests", max_size = 5.2, breaks = c(1, 2, 4, 8, 16)) +
+        ggplot2::labs(x = NULL, y = NULL, title = "Interpretation scoreboard") +
+        theme_manuscript(base_size = FONT_SIZE_PANEL, grid = "xy") +
+        ggplot2::theme(
+          axis.text.x = ggplot2::element_text(angle = 35, hjust = 1, vjust = 1),
+          legend.position = "bottom",
+          legend.direction = "horizontal",
+          legend.box = "vertical"
+        )
+      ggsave_plot(file.path(FIG_PATHS$supplementary_qc, "microglia_signature_interpretation_scoreboard.svg"), p8, width = FIG_WIDTH_DOUBLE - 0.1, height = max(FIG_HEIGHT_SHORT + 0.8, length(unique(score_df$signature_label)) * 0.27))
+    }
+  }
+
+  if (nrow(claims_ready)) {
+    claim_plot_df <- claims_ready %>%
+      dplyr::filter(
+        !is.na(.data$padj) & .data$padj < 0.05,
+        .data$contrast_class %in% c("within_region_condition", "cross_region_same_condition"),
+        .data$reference_celltype_support == "microglia_supported"
+      ) %>%
+      dplyr::mutate(
+        signature_label = compact_signature_label(.data$signature, width = 22),
+        comparison_label = compact_comparison_label(.data$left_region, .data$right_region, .data$left_condition, .data$right_condition, .data$comparison, width = 18),
+        contrast_class_label = pretty_contrast_class(.data$contrast_class),
+        neg_log10_fdr = fdr_size_value(.data$padj),
+        delta_vs_neuropil = .data$NES - .data$neuropil_reference_NES,
+        effect_label = paste(.data$comparison_label, .data$signature_label, sep = " | "),
+        effect_label = wrap_plot_label(.data$effect_label, width = 42),
+        effect_label = stats::reorder(.data$effect_label, .data$NES)
+      )
+    if (nrow(claim_plot_df)) {
+      readr::write_csv(claim_plot_df, file.path(PATHS$source_data, "microglia_signature_claim_ready_forest_source.csv"), na = "")
+      p10 <- ggplot2::ggplot(claim_plot_df, ggplot2::aes(y = .data$effect_label)) +
+        ggplot2::geom_vline(xintercept = 0, color = "#BDBDBD", linewidth = 0.3) +
+        ggplot2::geom_segment(
+          data = dplyr::filter(claim_plot_df, !is.na(.data$neuropil_reference_NES)),
+          ggplot2::aes(x = .data$neuropil_reference_NES, xend = .data$NES, yend = .data$effect_label),
+          color = "#BDBDBD", linewidth = 0.35
+        ) +
+        ggplot2::geom_point(
+          data = dplyr::filter(claim_plot_df, !is.na(.data$neuropil_reference_NES)),
+          ggplot2::aes(x = .data$neuropil_reference_NES),
+          shape = 21, fill = "white", color = "#9E9E9E", stroke = 0.35, size = 1.8
+        ) +
+        ggplot2::geom_point(ggplot2::aes(x = .data$NES, size = .data$neg_log10_fdr, fill = .data$NES), shape = 21, color = "black", stroke = 0.25, alpha = 0.96) +
+        scale_fill_NES(name = "Microglia NES") +
+        scale_size_fdr(max_size = 5.4) +
+        ggplot2::labs(x = "Enrichment score", y = NULL) +
+        theme_manuscript(base_size = FONT_SIZE_PANEL, grid = "x") +
+        ggplot2::theme(
+          axis.text.y = ggplot2::element_text(size = FONT_SIZE_TICKS - 0.3),
+          legend.position = "bottom",
+          legend.direction = "horizontal",
+          legend.box = "horizontal"
+        )
+      ggsave_publication(
+        file.path(FIG_PATHS$main_candidate, "microglia_signature_claim_ready_effect_plot_main"),
+        p10,
+        width = FIG_WIDTH_DOUBLE,
+        height = min(8.5, max(FIG_HEIGHT_STANDARD, nrow(claim_plot_df) * 0.18 + 1.2))
+      )
+      ggsave_plot(file.path(FIG_PATHS$supplementary_qc, "microglia_signature_claim_ready_effect_plot.svg"), p10, width = FIG_WIDTH_DOUBLE, height = min(8.5, max(FIG_HEIGHT_STANDARD, nrow(claim_plot_df) * 0.18 + 1.2)))
+    }
+  }
+
+  delta_df <- with_contrast %>%
+    dplyr::filter(!is.na(.data$padj), .data$padj < 0.05, !is.na(.data$neuropil_reference_NES)) %>%
+    dplyr::mutate(
+      NES_delta_vs_neuropil = .data$NES - .data$neuropil_reference_NES,
+      comparison_label = pretty_comparison_label(.data$left_region, .data$right_region, .data$left_condition, .data$right_condition, .data$comparison),
+      label = paste(.data$comparison_label, pretty_signature(.data$signature), sep = " | "),
+      label = wrap_plot_label(.data$label, width = 42),
+      label = stats::reorder(.data$label, .data$NES_delta_vs_neuropil),
+      microglia_signature_class = factor(.data$microglia_signature_class, levels = names(palette_signature_class))
+    ) %>%
+    dplyr::arrange(dplyr::desc(abs(.data$NES_delta_vs_neuropil)), .data$padj) %>%
+    dplyr::slice_head(n = 32)
+  if (nrow(delta_df)) {
+    p9 <- ggplot2::ggplot(delta_df, ggplot2::aes(y = .data$label, x = .data$NES_delta_vs_neuropil, color = .data$microglia_signature_class)) +
+      ggplot2::geom_vline(xintercept = 0, color = "#BDBDBD", linewidth = 0.3) +
+      ggplot2::geom_segment(ggplot2::aes(x = 0, xend = .data$NES_delta_vs_neuropil, yend = .data$label), linewidth = 0.45, alpha = 0.8, show.legend = FALSE) +
+      ggplot2::geom_point(size = 2.2) +
+      ggplot2::scale_color_manual(values = palette_signature_class, labels = pretty_signature_class(names(palette_signature_class)), drop = FALSE, name = "Evidence") +
+      ggplot2::labs(x = "Microglia ROI NES - neuropil reference NES", y = NULL, title = "Top microglia versus neuropil effect differences") +
+      theme_manuscript(base_size = FONT_SIZE_PANEL, grid = "x") +
+      ggplot2::theme(
+        axis.text.y = ggplot2::element_text(size = FONT_SIZE_TICKS - 0.3),
+        legend.position = "bottom",
+        legend.direction = "horizontal"
+      )
+    ggsave_plot(file.path(FIG_PATHS$supplementary_qc, "microglia_signature_neuropil_delta_top.svg"), p9, width = FIG_WIDTH_DOUBLE, height = max(FIG_HEIGHT_STANDARD, nrow(delta_df) * 0.13 + 1.2))
   }
 }
 
@@ -1254,6 +1829,8 @@ writeLines(c(
   "Microglia region-only contrasts are compared to neuropil references after collapsing neuropil layer units to parent regions where possible.",
   "Contrast metadata is parsed explicitly (left/right unit, region, condition, and contrast_class).",
   "Condition_pair alone is not interpreted as a stress/condition effect without contrast_class context.",
+  "Experimental readouts are split into: A) group effects within each region, B) regional differences pooled across experimental groups, and C) regional differences shown separately within CON/RES/SUS.",
+  "Cross-region cross-condition contrasts mix region and experimental group and are retained as exploratory/confounded context only.",
   "",
   "Signature evidence:",
   "Curated microglia programs are retained as exploratory/manual biological programs.",
