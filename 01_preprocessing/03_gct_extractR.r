@@ -1,3 +1,13 @@
+# ================================================================
+# Script: 01_preprocessing/03_gct_extractR.r
+# Stage: core
+# Scope: dataset_specific
+# Consumes: see pipeline.yml consumes_required/consumes_optional for this entry.
+# Produces: see pipeline.yml produces for canonical output roots.
+# Dataset behavior: follows pipeline.yml datasets and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: active registry script; path-only refactor guardrail header.
+# ================================================================
+
 # ===========================================================
 # Consumes:
 #   - ProTigy/limma GCT comparison output from data/processed/01_preprocessing/protigy_output/<comparison>/
