@@ -6,15 +6,15 @@ testthat::test_that("module-score metadata merge script is dataset-aware", {
   testthat::expect_true(grepl("PROTEOMICS_DATASET", txt, fixed = TRUE))
   testthat::expect_true(grepl("resolve_dataset_inputs(dataset_profile, purpose = \"module_score\")", txt, fixed = TRUE))
   testthat::expect_false(grepl("expected_name <- \"20260218_pgmatrix_imputed_neuron_neuropil", txt, fixed = TRUE))
-  testthat::expect_true(grepl("results/module_scores/<dataset>", txt, fixed = TRUE) || grepl("path_results(\"module_scores\", dataset_profile", txt, fixed = TRUE))
+  testthat::expect_true(grepl("data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>", txt, fixed = TRUE) || grepl("path_processed(module_id, substep_id, dataset_profile)", txt, fixed = TRUE))
 })
 
 testthat::test_that("dataset input resolution prefers dataset-scoped module metadata", {
   source(testthat::test_path("..", "..", "R", "paths.R"))
   txt <- paste(readLines(repo_path("R/dataset_inputs.R"), warn = FALSE), collapse = "\n")
 
-  testthat::expect_true(grepl("path_results(\"module_scores\", dataset, \"sample_metadata_merged_clean_for_module_scores.xlsx\")", txt, fixed = TRUE))
-  testthat::expect_true(grepl("path_processed(\"01_preprocessing\", dataset, \"sample_metadata_merged_clean_for_module_scores.xlsx\")", txt, fixed = TRUE))
+  testthat::expect_true(grepl("path_processed(\n      \"01_preprocessing\",\n      \"06_merged_metadata_module_score\"", txt, fixed = TRUE) || grepl("06_merged_metadata_module_score", txt, fixed = TRUE))
+  testthat::expect_true(grepl("legacy_dataset_candidates", txt, fixed = TRUE))
   testthat::expect_true(grepl("PROTEOMICS_ALLOW_GLOBAL_MODULE_SCORE_METADATA", txt, fixed = TRUE))
   testthat::expect_true(grepl("legacy global module-score metadata fallback", txt, fixed = TRUE))
 })
