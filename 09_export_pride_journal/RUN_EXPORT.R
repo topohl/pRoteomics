@@ -1,4 +1,14 @@
 #!/usr/bin/env Rscript
+# ================================================================
+# Script: 09_export_pride_journal/RUN_EXPORT.R
+# Stage: export
+# Scope: global
+# Consumes: required 09_export_pride_journal/01_make_pride_manifest.R; 09_export_pride_journal/02_make_sample_metadata.R; +3 more; optional 09_export_pride_journal/config/export_config.yml.
+# Produces: pride_submission/.
+# Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: Convenience export runner kept last; direct registry order above is preferred for dependency visibility.
+# ================================================================
+
 # Orchestrates pg_matrix-onward PRIDE/journal export.
 #
 # Usage:
@@ -10,7 +20,7 @@ paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.
 source(paths_file)
 source(repo_path("R", "export_helpers.R"))
 
-setwd(repo_root())
+Sys.setenv(PROTEOMICS_PROJECT_ROOT = repo_root())
 cli <- export_cli_args()
 extra <- commandArgs(trailingOnly = TRUE)
 extra <- extra[!extra %in% c("--skip-validation", "--skip-supplementary", "--skip-manuscript", "--skip-claims")]
