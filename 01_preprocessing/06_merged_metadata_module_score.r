@@ -2,11 +2,12 @@
 # Script: 01_preprocessing/06_merged_metadata_module_score.r
 # Stage: core
 # Scope: dataset_specific
-# Consumes: dataset-resolved proteomics workbook plus behavior AUC/z-score files.
-# Produces: data/processed metadata workbook and QC/report/log outputs.
-# Dataset behavior: runs once per dataset via --dataset or PROTEOMICS_DATASET.
-# Notes: preserves read-only legacy metadata fallbacks through R/dataset_inputs.R.
+# Consumes: required data/processed/01_preprocessing/**/*.xlsx; optional data/external/behavior/auc_individual_animals_all.csv; data/external/behavior/auc_individual_animals_firstChangeActive.csv; +1 more.
+# Produces: data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx; results/tables/01_preprocessing/06_merged_metadata_module_score/<dataset>/metadata_merge_qc_summary.csv; results/logs/01_preprocessing/06_merged_metadata_module_score/<dataset>/run_manifest.yml; +1 more.
+# Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: Builds behavior/physiology metadata used by module activity scoring.
 # ================================================================
+
 # Build clean merged metadata sheet for module-score analysis
 # ================================================================
 

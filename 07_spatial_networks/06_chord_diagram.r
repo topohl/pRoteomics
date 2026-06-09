@@ -1,3 +1,13 @@
+# ================================================================
+# Script: 07_spatial_networks/06_chord_diagram.r
+# Stage: networks
+# Scope: dataset_specific
+# Consumes: required data/processed/02_id_mapping/mapped/neuron-phenotypeWithinUnit/; optional results/tables/07_spatial_networks/.
+# Produces: results/figures/07_spatial_networks/chord_diagram/.
+# Dataset behavior: runs for neuron_neuropil,neuron_soma according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: Chord diagrams from mapped phenotype-within-unit edge/protein tables.
+# ================================================================
+
 # =========================================================
 # Consumes:
 #   - mapped contrast CSVs from data/processed/02_id_mapping

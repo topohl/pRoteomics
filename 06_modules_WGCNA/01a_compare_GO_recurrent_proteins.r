@@ -1,4 +1,14 @@
 # ================================================================
+# Script: 06_modules_WGCNA/01a_compare_GO_recurrent_proteins.r
+# Stage: modules_downstream
+# Scope: global
+# Consumes: required data/processed/04_differential_expression_enrichment/compareGO/neuron_neuropil/compareGO_input_manifest.csv; data/processed/04_differential_expression_enrichment/compareGO/neuron_soma/compareGO_input_manifest.csv; +1 more; optional none.
+# Produces: results/tables/06_modules_WGCNA/01a_compare_GO_recurrent_proteins/.
+# Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: Global recurrent GO/protein comparison used by curated overlap programs.
+# ================================================================
+
+# ================================================================
 # Compare overlapping proteins across GSEA top-gene Excel files
 # Keeps proteins present in at least N datasets
 # ================================================================

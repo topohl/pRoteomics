@@ -1,3 +1,13 @@
+# ================================================================
+# Script: 04_differential_expression_enrichment/02_compareGO.r
+# Stage: enrichment
+# Scope: dataset_specific
+# Consumes: required data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv; optional none.
+# Produces: data/processed/04_differential_expression_enrichment/compareGO/<dataset>/compareGO_input_manifest.csv; results/tables/04_differential_expression_enrichment/compareGO/<dataset>/.
+# Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: Consumes clusterProfiler output.
+# ================================================================
+
 #' compareGO.r - Comparative Gene Ontology Enrichment Analysis and Visualization
 #'
 #' Consumes:

@@ -1,4 +1,14 @@
 #!/usr/bin/env Rscript
+# ================================================================
+# Script: 09_export_pride_journal/05_validate_pride_submission.R
+# Stage: export
+# Scope: global
+# Consumes: required pride_submission/; optional data/raw/; data/external/search_results/; +3 more.
+# Produces: pride_submission/validation/validation_report.tsv; pride_submission/validation/validation_summary.md.
+# Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: Validation runs after export products exist.
+# ================================================================
+
 # Contract-aware validation for pg_matrix_onward PRIDE/journal staging.
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")

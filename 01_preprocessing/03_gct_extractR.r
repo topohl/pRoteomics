@@ -2,10 +2,10 @@
 # Script: 01_preprocessing/03_gct_extractR.r
 # Stage: core
 # Scope: dataset_specific
-# Consumes: see pipeline.yml consumes_required/consumes_optional for this entry.
-# Produces: see pipeline.yml produces for canonical output roots.
-# Dataset behavior: follows pipeline.yml datasets and --dataset/PROTEOMICS_DATASET where supported.
-# Notes: active registry script; path-only refactor guardrail header.
+# Consumes: required data/processed/01_preprocessing/protigy_output/<dataset>/*.gct; optional data/processed/01_preprocessing/protigy_output/<dataset>/protigy_manifest.csv; data/processed/01_preprocessing/protigy_output/protigy_manifest.csv.
+# Produces: data/processed/01_preprocessing/gct_extractR/<dataset>/forward/*.csv; data/processed/01_preprocessing/gct_extractR/<dataset>/reverse/*.csv; data/processed/01_preprocessing/gct_extractR/<dataset>/indexComparisons.csv.
+# Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: Creates dataset GCT comparison CSVs consumed by MapThatProt.
 # ================================================================
 
 # ===========================================================
