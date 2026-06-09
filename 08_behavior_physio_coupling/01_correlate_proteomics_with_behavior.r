@@ -19,7 +19,7 @@ ensure_dir(out_dir)
 # --- 2. Load Your Data Files ---
 proteomics_input_file <- Sys.getenv(
   "PROTEOMICS_BEHAVIOR_COR_PROTEOMICS_FILE",
-  unset = path_processed("morpheus", "20260218_pgmatrix_imputed_neuron_soma_71samples_missing70pct_with_metadata.xlsx")
+  unset = path_processed("01_preprocessing/excel_convert", "20260526_pgmatrix_imputed_neuron_soma_71samples_missing70pct_with_metadata.xlsx")
 )
 behavior_input_file <- Sys.getenv(
   "PROTEOMICS_BEHAVIOR_COR_BEHAVIOR_FILE",
@@ -86,6 +86,13 @@ normalize_meta_value <- function(x) {
   x[x %in% c("", "na", "n/a", "null")] <- NA_character_
   if (!is.null(nms)) names(x) <- nms
   x
+}
+
+diagnostic_id_table <- function(source, ids) {
+  tibble::tibble(
+    source = rep(source, length(ids)),
+    MouseID = as.character(ids)
+  )
 }
 
 
@@ -305,8 +312,8 @@ join_diagnostics <- dplyr::bind_rows(
   data.frame(metric = "animals_lost_from_behavior", value = length(beh_only))
 )
 write.csv(join_diagnostics, file.path(CANONICAL_PATHS$tables, "join_diagnostics_summary.csv"), row.names = FALSE)
-write.csv(data.frame(source = "proteomics_only", MouseID = prot_only), file.path(CANONICAL_PATHS$tables, "join_diagnostics_proteomics_only.csv"), row.names = FALSE)
-write.csv(data.frame(source = "behavior_only", MouseID = beh_only), file.path(CANONICAL_PATHS$tables, "join_diagnostics_behavior_only.csv"), row.names = FALSE)
+write.csv(diagnostic_id_table("proteomics_only", prot_only), file.path(CANONICAL_PATHS$tables, "join_diagnostics_proteomics_only.csv"), row.names = FALSE)
+write.csv(diagnostic_id_table("behavior_only", beh_only), file.path(CANONICAL_PATHS$tables, "join_diagnostics_behavior_only.csv"), row.names = FALSE)
 coverage_cols <- intersect(c("Sex", "sex", "Group", "window"), names(final_df))
 if (length(coverage_cols) > 0) {
   coverage <- final_df %>%
