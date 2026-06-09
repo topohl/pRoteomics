@@ -176,6 +176,12 @@ normalize_animal_id <- function(x) {
   x
 }
 
+first_existing_col <- function(df, candidates) {
+  hit <- candidates[candidates %in% names(df)]
+  if (!length(hit)) return(rep(NA_character_, nrow(df)))
+  as.character(df[[hit[[1]]]])
+}
+
 safe_cor <- function(data, x, y, method = "pearson") {
   d <- data %>%
     dplyr::filter(is.finite(.data[[x]]), is.finite(.data[[y]]))
@@ -278,23 +284,26 @@ load_spatial_object <- function(params) {
   storage.mode(expr) <- "numeric"
   expr[!is.finite(expr)] <- NA_real_
 
-  sample_md <- obj$sample_metadata %>%
+  sample_md_raw <- as.data.frame(obj$sample_metadata)
+  animal_id_raw <- first_existing_col(sample_md_raw, c("AnimalID", "AnimalNum", "animal_id", "animal"))
+  if (all(is.na(animal_id_raw)) && "SampleColumn" %in% names(sample_md_raw)) {
+    animal_id_raw <- as.character(sample_md_raw$SampleColumn)
+  }
+  sample_column_raw <- first_existing_col(sample_md_raw, c("SampleColumn", "sample_id", "sample", "SampleID"))
+
+  sample_md <- sample_md_raw %>%
     dplyr::mutate(
-      AnimalID = dplyr::case_when(
-        "AnimalID" %in% names(.) ~ as.character(.data$AnimalID),
-        "AnimalNum" %in% names(.) ~ as.character(.data$AnimalNum),
-        TRUE ~ NA_character_
-      ),
+      AnimalID = .env$animal_id_raw,
       AnimalID = dplyr::if_else(
         is.na(.data$AnimalID) | .data$AnimalID == "",
-        stringr::str_extract(.data$SampleColumn, "A[0-9]{3,4}"),
+        stringr::str_extract(.env$sample_column_raw, "A[0-9]{3,4}"),
         .data$AnimalID
       ),
       AnimalID = normalize_animal_id(.data$AnimalID),
       ExpGroup = toupper(as.character(.data$ExpGroup)),
       ExpGroup = factor(.data$ExpGroup, levels = params$group_levels),
       RegionLayer = as.character(.data$RegionLayer),
-      SampleColumn = as.character(.data$SampleColumn)
+      SampleColumn = as.character(.env$sample_column_raw)
     ) %>%
     dplyr::filter(
       .data$SampleColumn %in% colnames(expr),
