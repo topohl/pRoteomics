@@ -292,10 +292,10 @@ Rscript 06_modules_WGCNA/06_module_spatial_networks.r --dataset microglia --modu
 `06_modules_WGCNA/03_score_module_activity.R` is the canonical active module-score script. By default it consumes dataset-aware module definitions (source-scoped by dataset and `PROTEOMICS_MODULE_DEFINITION_SOURCE`) and dataset-scoped merged metadata from:
 
 ```text
-results/module_scores/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx
+data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx
 ```
 
-Legacy global compatibility metadata at `results/module_scores/sample_metadata_merged_clean_for_module_scores.xlsx` should only be used for older scripts.
+Legacy dataset/global compatibility metadata under `results/module_scores/` is read-only fallback input. The global fallback requires `PROTEOMICS_ALLOW_GLOBAL_MODULE_SCORE_METADATA=true`.
 
 To regenerate module-score merged metadata per dataset:
 
