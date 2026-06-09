@@ -24,7 +24,7 @@ stages:
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "core"
         scope: "dataset_specific"
-        produces: ["results/module_scores/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx", "results/module_scores/sample_metadata_merged_clean_for_module_scores.xlsx"]
+        produces: ["data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx", "results/tables/01_preprocessing/06_merged_metadata_module_score/<dataset>/metadata_merge_qc_summary.csv", "results/logs/01_preprocessing/06_merged_metadata_module_score/<dataset>/run_manifest.yml", "results/reports/01_preprocessing/06_merged_metadata_module_score/<dataset>/metadata_merge_summary.md"]
         consumes_required: ["data/processed/01_preprocessing/**/*.xlsx"]
         consumes_optional: ["data/external/behavior/auc_individual_animals_all.csv", "data/external/behavior/auc_individual_animals_firstChangeActive.csv", "data/external/behavior/E9_Behavior_Data.xlsx"]
         recomputes_core_state: false
@@ -316,7 +316,7 @@ stages:
         scope: "dataset_specific"
         produces: ["results/tables/06_modules_WGCNA/module_score/<dataset>/"]
         consumes_required: ["results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/", "data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv"]
-        consumes_optional: ["results/module_scores/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx"]
+        consumes_optional: ["data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx"]
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Scores existing module definitions against dataset matrices."
