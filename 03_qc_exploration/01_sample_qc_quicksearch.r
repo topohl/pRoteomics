@@ -1,4 +1,14 @@
 # ================================================================
+# Script: 03_qc_exploration/01_sample_qc_quicksearch.r
+# Stage: qc
+# Scope: dataset_specific
+# Consumes: see pipeline.yml consumes_required/consumes_optional for this entry.
+# Produces: see pipeline.yml produces for canonical output roots.
+# Dataset behavior: follows pipeline.yml datasets and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: active registry script; path-only refactor guardrail header.
+# ================================================================
+
+# ================================================================
 # QC figures for spatial proteomics
 # This script generates QC figures for the main manuscript and supplemental materials, as well as summary tables. # nolint
 # Consumes an annotated QC stats file (e.g. from quicksearch) and produces consistent visualizations of key QC metrics across samples and cell types.
