@@ -1,5 +1,15 @@
 #!/usr/bin/env Rscript
 
+# ================================================================
+# Script: 03_qc_exploration/00_dataset_qc_report.r
+# Stage: qc
+# Scope: dataset_specific
+# Consumes: see pipeline.yml consumes_required/consumes_optional for this entry.
+# Produces: see pipeline.yml produces for canonical output roots.
+# Dataset behavior: follows pipeline.yml datasets and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: active registry script; path-only refactor guardrail header.
+# ================================================================
+
 # Canonical one-stop dataset QC report.
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
