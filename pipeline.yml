@@ -248,28 +248,6 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Runs after clusterProfiler and compareGO; uses annotations/signatures where supported."
-      - script: "04_differential_expression_enrichment/04_compare_pathways.r"
-        required: false
-        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
-        stage: "enrichment"
-        scope: "dataset_specific"
-        produces: ["results/tables/04_differential_expression_enrichment/compare_pathways/<dataset>/"]
-        consumes_required: ["data/processed/04_differential_expression_enrichment/compareGO/<dataset>/compareGO_input_manifest.csv"]
-        consumes_optional: []
-        recomputes_core_state: false
-        safe_downstream_rerun: true
-        notes: "Optional pathway comparison downstream of compareGO."
-      - script: "04_differential_expression_enrichment/05_compare_sig_expr.r"
-        required: false
-        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
-        stage: "enrichment"
-        scope: "dataset_specific"
-        produces: ["results/tables/04_differential_expression_enrichment/compare_sig_expr/<dataset>/"]
-        consumes_required: ["data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv"]
-        consumes_optional: []
-        recomputes_core_state: false
-        safe_downstream_rerun: true
-        notes: "Optional significant-expression comparison."
       - script: "04_differential_expression_enrichment/06_compareGO_spatial_program_atlas.r"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
@@ -281,17 +259,6 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Spatial program atlas from compareGO outputs."
-      - script: "04_differential_expression_enrichment/07_control_strata_enrichment_figures.r"
-        required: false
-        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
-        stage: "enrichment"
-        scope: "dataset_specific"
-        produces: ["results/figures/04_differential_expression_enrichment/control_strata_enrichment_figures/<dataset>/"]
-        consumes_required: ["data/processed/04_differential_expression_enrichment/compareGO/<dataset>/compareGO_input_manifest.csv"]
-        consumes_optional: []
-        recomputes_core_state: false
-        safe_downstream_rerun: true
-        notes: "Figure layer for enrichment control strata."
       - script: "05_celltype_enrichment_EWCE/01_EWCE_E9.r"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
@@ -369,7 +336,7 @@ stages:
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "modules_downstream"
         scope: "dataset_specific"
-        produces: ["results/tables/06_modules_WGCNA/05_module_supermodule_group_effects/<dataset>/"]
+        produces: ["results/tables/06_modules_WGCNA/group_effects/<dataset>/module_group_effects.csv", "results/tables/06_modules_WGCNA/group_effects/<dataset>/supermodule_group_effects.csv"]
         consumes_required: ["results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/"]
         consumes_optional: ["results/tables/06_modules_WGCNA/module_score/<dataset>/"]
         recomputes_core_state: false
@@ -380,30 +347,19 @@ stages:
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "modules_downstream"
         scope: "dataset_specific"
-        produces: ["results/tables/06_modules_WGCNA/06_annotate_module_microenvironment/<dataset>/", "results/tables/06_modules_WGCNA/module_annotation/<dataset>/"]
+        produces: ["results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_module_biological_annotation.csv", "results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_supermodule_biological_annotation.csv"]
         consumes_required: ["results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/"]
         consumes_optional: ["config/marker_panels/wgcna_reference_marker_sets.csv", "results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv", "results/tables/04_differential_expression_enrichment/neuropil_reference_annotation/<dataset>/"]
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Consumes marker registry, empirical markers, WGCNA outputs, and neuropil annotations when present."
-      - script: "06_modules_WGCNA/06_module_spatial_networks.r"
-        required: false
-        datasets: ["neuron_neuropil", "neuron_soma"]
-        stage: "modules_downstream"
-        scope: "dataset_specific"
-        produces: ["results/tables/06_modules_WGCNA/06_module_spatial_networks/<dataset>/"]
-        consumes_required: ["results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/"]
-        consumes_optional: ["results/tables/07_spatial_networks/"]
-        recomputes_core_state: false
-        safe_downstream_rerun: true
-        notes: "Module-level spatial network helper; does not run WGCNA."
       - script: "06_modules_WGCNA/07_wgcna_interpretable_summary.r"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "modules_downstream"
         scope: "dataset_specific"
-        produces: ["results/tables/06_modules_WGCNA/07_wgcna_interpretable_summary/<dataset>/"]
-        consumes_required: ["results/tables/06_modules_WGCNA/05_module_supermodule_group_effects/<dataset>/", "results/tables/06_modules_WGCNA/06_annotate_module_microenvironment/<dataset>/"]
+        produces: ["results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_interpretable_summary.xlsx"]
+        consumes_required: ["results/tables/06_modules_WGCNA/group_effects/<dataset>/module_group_effects.csv", "results/tables/06_modules_WGCNA/group_effects/<dataset>/supermodule_group_effects.csv", "results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_module_biological_annotation.csv", "results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_supermodule_biological_annotation.csv"]
         consumes_optional: ["results/tables/06_modules_WGCNA/04_wgcna_de_gsea_overlap/<dataset>/"]
         recomputes_core_state: false
         safe_downstream_rerun: true
@@ -493,12 +449,12 @@ stages:
         notes: "Legacy direct proteomics-behavior coupling retained as optional soma-only analysis."
       - script: "08_behavior_physio_coupling/02_network_behavior_coupling.r"
         required: false
-        datasets: ["neuron_neuropil", "neuron_soma"]
+        datasets: ["neuron_neuropil"]
         stage: "coupling"
         scope: "dataset_specific"
         produces: ["results/tables/08_behavior_physio_coupling/network_behavior_coupling/", "results/figures/08_behavior_physio_coupling/network_behavior_coupling/"]
-        consumes_required: ["data/processed/07_spatial_networks/network_spatial_relations/<dataset>/*/network_spatial_relations_objects.rds"]
-        consumes_optional: ["data/external/behavior/auc_individual_animals_firstChangeActive.csv", "data/external/behavior/auc_individual_animals_all.csv", "data/external/behavior/E9_Behavior_Data.xlsx", "results/tables/06_modules_WGCNA/05_module_supermodule_group_effects/<dataset>/"]
+        consumes_required: ["data/processed/07_spatial_networks/network_spatial_relations/<dataset>/*/network_spatial_relations_objects.rds", "data/external/behavior/auc_individual_animals_firstChangeActive.csv", "data/external/behavior/E9_Behavior_Data.xlsx"]
+        consumes_optional: ["data/external/behavior/auc_individual_animals_all.csv", "results/tables/06_modules_WGCNA/group_effects/<dataset>/module_group_effects.csv"]
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Network/module/behavior coupling after networks and downstream module summaries."
@@ -631,9 +587,21 @@ legacy:
   - script: "04_differential_expression_enrichment/04_neuropil_contamination_annotation.r"
     replacement: "04_differential_expression_enrichment/04_neuropil_reference_annotation.r"
     status: "compatibility wrapper target; avoid contamination language in manuscript-facing names"
+  - script: "04_differential_expression_enrichment/04_compare_pathways.r"
+    replacement: "04_differential_expression_enrichment/03_biological_program_summary.r"
+    status: "bespoke learning-signature workbook comparison; not part of canonical dataset pipeline"
+  - script: "04_differential_expression_enrichment/05_compare_sig_expr.r"
+    replacement: "04_differential_expression_enrichment/03_biological_program_summary.r"
+    status: "bespoke learning-signature expression comparison; not part of canonical dataset pipeline"
+  - script: "04_differential_expression_enrichment/07_control_strata_enrichment_figures.r"
+    replacement: "04_differential_expression_enrichment/02_compareGO.r"
+    status: "bespoke control-strata figure helper requiring variancePartition-era inputs"
   - script: "05_celltype_enrichment_EWCE/90_EWCE_legacy.r"
     replacement: "05_celltype_enrichment_EWCE/01_EWCE_E9.r"
     status: "legacy EWCE script"
+  - script: "06_modules_WGCNA/06_module_spatial_networks.r"
+    replacement: "07_spatial_networks/01_network_spatial_relations.r"
+    status: "argument-driven module spatial network helper; excluded from canonical full pipeline"
   - script: "06_modules_WGCNA/legacy/02_wgcna_de_gsea_overlap.r"
     replacement: "06_modules_WGCNA/04_wgcna_de_gsea_overlap.r"
     status: "legacy compatibility wrapper"
