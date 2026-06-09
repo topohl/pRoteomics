@@ -1,3 +1,13 @@
+# ================================================================
+# Script: 02_id_mapping/01_MapThatProt_batch.r
+# Stage: core
+# Scope: dataset_specific
+# Consumes: see pipeline.yml consumes_required/consumes_optional for this entry.
+# Produces: see pipeline.yml produces for canonical output roots.
+# Dataset behavior: follows pipeline.yml datasets and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: active registry script; path-only refactor guardrail header.
+# ================================================================
+
 #' Batch UniProt ID Mapping Script for Proteomics Data
 #'
 #' This script processes proteomic comparison files in parallel to map gene symbols,
