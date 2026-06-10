@@ -97,6 +97,32 @@ write_session_info <- function(path = path_results("logs", "sessionInfo.txt")) {
   invisible(path)
 }
 
+git_commit_sha <- function() {
+  sha <- tryCatch(
+    system2("git", c("-C", repo_root(), "rev-parse", "HEAD"), stdout = TRUE, stderr = FALSE),
+    error = function(e) NA_character_
+  )
+  sha <- if (length(sha)) as.character(sha[[1]]) else NA_character_
+  if (is.na(sha) || !nzchar(sha)) NA_character_ else sha
+}
+
+run_context_metadata <- function() {
+  env_flags <- c(
+    "PROTEOMICS_DATASET",
+    "PROTEOMICS_DRY_RUN",
+    "PROTEOMICS_RECOMPUTE",
+    "PROTEOMICS_WGCNA_FORCE_FULL"
+  )
+  env <- as.list(Sys.getenv(env_flags, unset = NA_character_))
+  names(env) <- env_flags
+  list(
+    git_commit = git_commit_sha(),
+    r_version = paste(R.version$major, R.version$minor, sep = "."),
+    platform = R.version$platform,
+    environment = env
+  )
+}
+
 write_config_snapshot <- function(config, path) {
   dir_create(dirname(path))
   if (requireNamespace("yaml", quietly = TRUE)) {
@@ -126,6 +152,10 @@ write_run_manifest <- function(path, inputs = list(), outputs = list(), paramete
   manifest <- list(
     timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z"),
     repo_root = repo_root(),
+    git_commit = git_commit_sha(),
+    r_version = paste(R.version$major, R.version$minor, sep = "."),
+    platform = R.version$platform,
+    environment = run_context_metadata()$environment,
     inputs = inputs,
     input_hashes = input_hashes,
     outputs = outputs,
