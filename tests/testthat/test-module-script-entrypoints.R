@@ -30,11 +30,11 @@ testthat::test_that("module score implementation lives in 03_score_module_activi
 testthat::test_that("legacy module scripts are wrappers", {
   source(testthat::test_path("..", "..", "R", "paths.R"))
   cases <- list(
-    list(path = "06_modules_WGCNA/05_module_score.r", target = "03_score_module_activity.R", word = "Deprecated"),
-    list(path = "06_modules_WGCNA/91_module_score.r", target = "03_score_module_activity.R", word = "Legacy"),
-    list(path = "06_modules_WGCNA/03_overlap_modules.r", target = "02_curated_overlap_programs.r", word = "deprecated"),
-    list(path = "06_modules_WGCNA/04_overlap_modules.r", target = "02_curated_overlap_programs.r", word = "Deprecated"),
-    list(path = "06_modules_WGCNA/05_wgcna_de_gsea_overlap.r", target = "04_wgcna_de_gsea_overlap.r", word = "Deprecated")
+    list(path = "06_modules_WGCNA/legacy/05_module_score.r", target = "03_score_module_activity.R", word = "Deprecated"),
+    list(path = "06_modules_WGCNA/legacy/91_module_score.r", target = "03_score_module_activity.R", word = "Legacy"),
+    list(path = "06_modules_WGCNA/legacy/03_overlap_modules.r", target = "02_curated_overlap_programs.r", word = "deprecated"),
+    list(path = "06_modules_WGCNA/legacy/04_overlap_modules.r", target = "02_curated_overlap_programs.r", word = "Deprecated"),
+    list(path = "06_modules_WGCNA/legacy/05_wgcna_de_gsea_overlap.r", target = "04_wgcna_de_gsea_overlap.r", word = "Deprecated")
   )
   for (case in cases) {
     txt <- paste(readLines(repo_path(case$path), warn = FALSE), collapse = "\n")
@@ -43,29 +43,35 @@ testthat::test_that("legacy module scripts are wrappers", {
   }
 })
 
-testthat::test_that("pipeline modules stage uses canonical scripts and contracts", {
+testthat::test_that("pipeline module stages use canonical scripts and contracts", {
   source(testthat::test_path("..", "..", "R", "paths.R"))
   testthat::skip_if_not_installed("yaml")
   registry <- yaml::read_yaml(repo_path("pipeline.yml"))
-  modules <- registry$stages$modules$scripts
-  scripts <- vapply(modules, function(x) x$script, character(1))
-  expected <- c(
-    "06_modules_WGCNA/01_WGCNA.r",
+  modules_wgcna <- registry$stages$modules_wgcna$scripts
+  modules_downstream <- registry$stages$modules_downstream$scripts
+  scripts_wgcna <- vapply(modules_wgcna, function(x) x$script, character(1))
+  scripts_downstream <- vapply(modules_downstream, function(x) x$script, character(1))
+  testthat::expect_equal(scripts_wgcna, "06_modules_WGCNA/01_WGCNA.r")
+  expected_downstream <- c(
+    "06_modules_WGCNA/01a_compare_GO_recurrent_proteins.r",
     "06_modules_WGCNA/02_curated_overlap_programs.r",
     "06_modules_WGCNA/03_score_module_activity.R",
-    "06_modules_WGCNA/04_wgcna_de_gsea_overlap.r"
+    "06_modules_WGCNA/04_wgcna_de_gsea_overlap.r",
+    "06_modules_WGCNA/05_module_supermodule_group_effects.r",
+    "06_modules_WGCNA/06_annotate_module_microenvironment.r",
+    "06_modules_WGCNA/07_wgcna_interpretable_summary.r"
   )
-  testthat::expect_equal(scripts, expected)
+  testthat::expect_equal(scripts_downstream, expected_downstream)
   testthat::expect_false(any(c(
     "06_modules_WGCNA/03_overlap_modules.r",
     "06_modules_WGCNA/04_overlap_modules.r",
     "06_modules_WGCNA/05_module_score.r",
     "06_modules_WGCNA/05_wgcna_de_gsea_overlap.r",
     "06_modules_WGCNA/91_module_score.r"
-  ) %in% scripts))
+  ) %in% c(scripts_wgcna, scripts_downstream)))
   pipeline_txt <- paste(readLines(repo_path("pipeline.yml"), warn = FALSE), collapse = "\n")
-  testthat::expect_true(grepl("module_score/<dataset>/<module_definition_source>", pipeline_txt, fixed = TRUE))
-  active_txt <- paste(vapply(modules, function(x) paste(unlist(x), collapse = "\n"), character(1)), collapse = "\n")
+  testthat::expect_true(grepl("module_score/<dataset>/", pipeline_txt, fixed = TRUE))
+  active_txt <- paste(vapply(c(modules_wgcna, modules_downstream), function(x) paste(unlist(x), collapse = "\n"), character(1)), collapse = "\n")
   testthat::expect_false(grepl("module_score_v0.0.2", active_txt, fixed = TRUE))
 })
 
