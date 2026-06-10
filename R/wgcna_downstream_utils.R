@@ -411,6 +411,8 @@ empty_group_effects <- function(dataset, level, reason) {
     module_label = NA_character_, supermodule_label = NA_character_, spatial_unit = NA_character_,
     effect_scope = NA_character_, SpatialUnitType = NA_character_, model_type = NA_character_,
     has_repeated_animals = NA, n_animals = NA_integer_,
+    n_animals_total = NA_integer_, min_animals_per_group = NA_integer_,
+    animal_level_status = "mixed_or_unclear",
     contrast = NA_character_, estimate = NA_real_, SE = NA_real_, statistic = NA_real_,
     p_value = NA_real_, FDR_within_dataset_level = NA_real_, FDR_global = NA_real_,
     evidence_status = "not_supported",
@@ -423,7 +425,8 @@ empty_group_effects <- function(dataset, level, reason) {
 required_group_effect_columns <- c(
   "dataset", "level", "endpoint_id", "endpoint_label", "module_id", "supermodule_id", "module_label", "supermodule_label",
   "spatial_unit", "effect_scope", "SpatialUnitType", "model_type", "has_repeated_animals",
-  "n_animals", "contrast", "estimate", "SE", "statistic", "p_value",
+  "n_animals", "n_animals_total", "min_animals_per_group", "animal_level_status",
+  "contrast", "estimate", "SE", "statistic", "p_value",
   "FDR_within_dataset_level", "FDR_global", "evidence_status", "direction", "n_samples",
   "formula_requested", "formula_used", "dropped_covariates", "rank_deficient_model", "model_warning"
 )
