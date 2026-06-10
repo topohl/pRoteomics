@@ -6,9 +6,11 @@ current pipeline, but they would make the analysis more reproducible and make
 stress/social-instability biological claims harder to confound with technical
 structure.
 
-## Priority 1: Put QC Into the Main Dataset Pipeline
+## Completed: QC Is In the Main Dataset Pipeline
 
-Add a `qc` stage to `run_dataset_pipeline.R` between `core` and `enrichment`.
+`pipeline.yml` now includes `qc_global` and dataset-specific `qc` stages between
+`core` and `enrichment`; `run_dataset_pipeline.R` discovers these stage names
+directly from the registry.
 
 Recommended stage contents:
 
@@ -22,10 +24,10 @@ Recommended stage contents:
 03_qc_exploration/07_qc_biology_confounding_report.r
 ```
 
-Rationale: QC/confounding checks should be a normal dataset-stage output, not a
-manual side analysis. This is especially important for missingness, plate/batch
-effects, region/layer imbalance, animal-level pseudoreplication, marker
-contamination, and technical PCs.
+QC/confounding checks are now normal registry outputs rather than manual side
+analyses. This remains especially important for missingness, plate/batch effects,
+region/layer imbalance, animal-level pseudoreplication, marker contamination,
+and technical PCs.
 
 ## Priority 2: Feed QC Flags Into Biological Claims
 
@@ -169,4 +171,3 @@ Specific stale points to fix:
 - `03_qc_exploration/legacy/06_pcaPlot_Neha.r` and
   `03_qc_exploration/legacy/08_boxplotBonanza.r` should be marked legacy, not
   active canonical scripts.
-
