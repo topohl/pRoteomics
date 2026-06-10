@@ -88,3 +88,74 @@ interpretation_strength <- function(fdr = NA_real_, effect_size = NA_real_, n = 
   if (!is.na(fdr) && fdr <= 0.10 && (is.na(n) || n >= 6)) return("moderate")
   "exploratory"
 }
+
+known_pipeline_output_specs <- function() {
+  group_effect_cols <- c(
+    "dataset", "level", "endpoint_id", "endpoint_label", "contrast",
+    "estimate", "SE", "p_value", "FDR_within_dataset_level", "FDR_global",
+    "evidence_status", "n_samples", "n_animals", "model_type",
+    "formula_used", "rank_deficient_model", "model_warning"
+  )
+  list(
+    module_group_effects.csv = list(required_columns = group_effect_cols),
+    supermodule_group_effects.csv = list(required_columns = group_effect_cols)
+  )
+}
+
+validate_known_pipeline_output <- function(path, dataset = NULL) {
+  specs <- known_pipeline_output_specs()
+  filename <- basename(path)
+  if (!filename %in% names(specs)) {
+    return(data.frame(path = path, validation_status = "not_applicable", validation_message = "", stringsAsFactors = FALSE))
+  }
+  if (!file.exists(path)) {
+    return(data.frame(path = path, validation_status = "missing", validation_message = "Expected output file does not exist.", stringsAsFactors = FALSE))
+  }
+
+  df <- tryCatch(utils::read.csv(path, check.names = FALSE, stringsAsFactors = FALSE), error = function(e) e)
+  if (inherits(df, "error")) {
+    return(data.frame(path = path, validation_status = "error", validation_message = conditionMessage(df), stringsAsFactors = FALSE))
+  }
+
+  messages <- character()
+  required <- specs[[filename]]$required_columns
+  missing <- setdiff(required, names(df))
+  if (length(missing)) messages <- c(messages, paste0("Missing required column(s): ", paste(missing, collapse = ", ")))
+
+  if ("dataset" %in% names(df) && exists("valid_datasets", mode = "function")) {
+    observed <- unique(as.character(df$dataset[!is.na(df$dataset) & nzchar(as.character(df$dataset))]))
+    invalid <- setdiff(observed, valid_datasets())
+    if (length(invalid)) messages <- c(messages, paste0("Invalid dataset value(s): ", paste(invalid, collapse = ", ")))
+  }
+  if (!is.null(dataset) && "dataset" %in% names(df)) {
+    observed <- unique(as.character(df$dataset[!is.na(df$dataset) & nzchar(as.character(df$dataset))]))
+    mismatch <- setdiff(observed, dataset)
+    if (length(mismatch)) messages <- c(messages, paste0("Dataset values do not match selected dataset ", dataset, ": ", paste(mismatch, collapse = ", ")))
+  }
+
+  for (col in intersect(c("p_value", "FDR_within_dataset_level", "FDR_global"), names(df))) {
+    values <- suppressWarnings(as.numeric(df[[col]]))
+    bad <- !is.na(values) & (values < 0 | values > 1)
+    if (any(bad)) messages <- c(messages, paste0(col, " has value(s) outside [0, 1]."))
+  }
+  for (col in intersect(c("n_samples", "n_animals"), names(df))) {
+    values <- suppressWarnings(as.numeric(df[[col]]))
+    bad <- !is.na(values) & values < 0
+    if (any(bad)) messages <- c(messages, paste0(col, " has negative value(s)."))
+  }
+
+  data.frame(
+    path = path,
+    validation_status = if (length(messages)) "warning" else "ok",
+    validation_message = paste(messages, collapse = " | "),
+    stringsAsFactors = FALSE
+  )
+}
+
+validate_pipeline_outputs <- function(paths, dataset = NULL) {
+  paths <- unique(paths[file.exists(paths) & !dir.exists(paths)])
+  if (!length(paths)) {
+    return(data.frame(path = character(), validation_status = character(), validation_message = character(), stringsAsFactors = FALSE))
+  }
+  do.call(rbind, lapply(paths, validate_known_pipeline_output, dataset = dataset))
+}
