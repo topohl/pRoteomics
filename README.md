@@ -10,9 +10,11 @@ pRoteomics is the publication-facing spatial proteomics workflow for hippocampal
 Rscript run_dataset_pipeline.R --list-stages
 Rscript run_dataset_pipeline.R --dataset neuron_neuropil --stage qc --dry-run
 Rscript run_dataset_pipeline.R --dataset microglia --stage enrichment --dry-run
+Rscript run_dataset_pipeline.R --dataset microglia --stage modules_wgcna --dry-run
+Rscript run_dataset_pipeline.R --dataset microglia --stage modules_downstream --dry-run
 ```
 
-Use `--stage all` or a named stage (`core`, `qc`, `enrichment`, `modules`, `networks`, `behavior`, `export`) after private inputs are available.
+Use `--stage all` or a named stage (`core`, `qc_global`, `qc`, `enrichment`, `modules_wgcna`, `modules_downstream`, `networks`, `coupling`, `export`) after private inputs are available.
 
 ## Repository Map
 
