@@ -39,8 +39,10 @@ jobs:
       - name: Lightweight dry-run entrypoints
         shell: bash
         run: |
-          set +e
+          set -euo pipefail
+          Rscript run_dataset_pipeline.R --list-stages
           for dataset in neuron_neuropil neuron_soma microglia; do
-            Rscript run_dataset_pipeline.R --dataset "$dataset" --stage modules --dry-run
+            for stage in qc enrichment modules_wgcna modules_downstream; do
+              Rscript run_dataset_pipeline.R --dataset "$dataset" --stage "$stage" --dry-run
+            done
           done
-          exit 0
