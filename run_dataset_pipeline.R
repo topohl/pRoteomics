@@ -112,6 +112,17 @@ path_status <- function(paths, dataset) {
 
 join_paths <- function(x) paste(x, collapse = "|")
 
+expand_existing_output_paths <- function(paths, dataset) {
+  paths <- split_registry_paths(paths)
+  if (!length(paths)) return(character())
+  resolved <- unlist(lapply(paths, function(path) {
+    p <- resolve_registry_path(path, dataset = dataset)
+    if (grepl("[*?\\[]", p)) return(Sys.glob(p))
+    p
+  }), use.names = FALSE)
+  unique(resolved[file.exists(resolved) & !dir.exists(resolved)])
+}
+
 planned_status <- function(step, missing_required, missing_optional, missing_outputs) {
   if (!isTRUE(step$supported)) return("skipped_unsupported_dataset")
   if (length(missing_required) && isTRUE(step$required)) return(if (isTRUE(dry_run)) "would_fail_missing_input" else "missing_required_input")
@@ -120,7 +131,11 @@ planned_status <- function(step, missing_required, missing_optional, missing_out
   "pending"
 }
 
-make_result <- function(step, status, exit_code, started_at, finished_at, missing_required, missing_optional, missing_after, produced_before, produced_after) {
+make_result <- function(step, status, exit_code, started_at, finished_at, missing_required, missing_optional, missing_after, produced_before, produced_after, output_validation = NULL) {
+  if (is.null(output_validation) || !nrow(output_validation)) {
+    output_validation <- data.frame(path = character(), validation_status = character(), validation_message = character(), stringsAsFactors = FALSE)
+  }
+  context <- run_context_metadata()
   data.frame(
     dataset = step$dataset,
     selected_stage = selected_label,
@@ -137,6 +152,8 @@ make_result <- function(step, status, exit_code, started_at, finished_at, missin
     produced_outputs_before_run = join_paths(produced_before),
     produced_outputs_after_run = join_paths(produced_after),
     missing_expected_outputs_after_run = join_paths(missing_after),
+    output_validation_status = join_paths(unique(output_validation$validation_status)),
+    output_validation_messages = join_paths(output_validation$validation_message[nzchar(output_validation$validation_message)]),
     recomputes_core_state = step$recomputes_core_state,
     safe_downstream_rerun = step$safe_downstream_rerun,
     notes = step$notes,
@@ -144,6 +161,13 @@ make_result <- function(step, status, exit_code, started_at, finished_at, missin
     exit_code = as.integer(exit_code),
     started_at = fmt_time(started_at),
     finished_at = fmt_time(finished_at),
+    git_commit = context$git_commit,
+    r_version = context$r_version,
+    platform = context$platform,
+    env_PROTEOMICS_DATASET = Sys.getenv("PROTEOMICS_DATASET", unset = NA_character_),
+    env_PROTEOMICS_DRY_RUN = Sys.getenv("PROTEOMICS_DRY_RUN", unset = NA_character_),
+    env_PROTEOMICS_RECOMPUTE = Sys.getenv("PROTEOMICS_RECOMPUTE", unset = NA_character_),
+    env_PROTEOMICS_WGCNA_FORCE_FULL = Sys.getenv("PROTEOMICS_WGCNA_FORCE_FULL", unset = NA_character_),
     stringsAsFactors = FALSE
   )
 }
@@ -213,10 +237,21 @@ for (i in seq_len(nrow(steps))) {
   output_status_after <- path_status(step$produces, step$dataset)
   produced_after <- output_status_after$path[!is.na(output_status_after$exists) & output_status_after$exists]
   missing_after <- output_status_after$path[!is.na(output_status_after$exists) & !output_status_after$exists]
+  output_validation <- validate_pipeline_outputs(expand_existing_output_paths(step$produces, step$dataset), dataset = step$dataset)
+  validation_failed <- any(output_validation$validation_status %in% c("warning", "error", "missing"))
   status <- if (identical(exit_code, 0L)) "passed" else if (isTRUE(step$required)) "failed_required" else "failed_optional"
-  res <- make_result(step, status, exit_code, started_at, Sys.time(), missing_required, missing_optional, missing_after, produced_before, produced_after)
+  if (identical(status, "passed") && isTRUE(validation_failed)) {
+    if (isTRUE(step$required)) {
+      status <- "failed_required_output_validation"
+      exit_code <- 1L
+    } else {
+      status <- "passed_with_output_warnings"
+    }
+    message("[WARN] Output validation for ", step$script, ": ", join_paths(output_validation$validation_message[nzchar(output_validation$validation_message)]))
+  }
+  res <- make_result(step, status, exit_code, started_at, Sys.time(), missing_required, missing_optional, missing_after, produced_before, produced_after, output_validation)
   results <- rbind(results, res)
-  if (identical(status, "failed_required")) {
+  if (status %in% c("failed_required", "failed_required_output_validation")) {
     message("[FAIL] Required step failed; stopping pipeline before downstream stages.")
     break
   }
@@ -231,7 +266,7 @@ cat("Registry audit tables:\n")
 cat(" - ", file.path(manifest_dir, "unregistered_scripts.csv"), "\n", sep = "")
 cat(" - ", file.path(manifest_dir, "missing_registered_scripts.csv"), "\n", sep = "")
 
-failed_required <- results[results$status %in% c("missing_required_input", "missing_required_script", "failed_required"), , drop = FALSE]
+failed_required <- results[results$status %in% c("missing_required_input", "missing_required_script", "failed_required", "failed_required_output_validation"), , drop = FALSE]
 if (nrow(failed_required)) {
   cat("\nRequired step failures:\n")
   print(failed_required[, c("dataset", "stage", "script", "status", "exit_code", "missing_required_inputs")], row.names = FALSE)
