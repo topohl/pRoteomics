@@ -68,3 +68,50 @@ testthat::test_that("mapped contrast schema validates p-value ranges", {
   bad$padj <- 1.01
   testthat::expect_error(validate_table_schema(bad, "mapped_contrast", strict = FALSE), "padj outside allowed range")
 })
+
+testthat::test_that("WGCNA group-effect output validation checks required columns and ranges", {
+  source(testthat::test_path("..", "..", "R", "paths.R"))
+  source(repo_path("R", "dataset_config.R"))
+  source(repo_path("R", "validation_utils.R"))
+
+  good <- data.frame(
+    dataset = "microglia",
+    level = "module",
+    endpoint_id = "M1",
+    endpoint_label = "M1",
+    contrast = "SUS - CON",
+    estimate = 0.2,
+    SE = 0.1,
+    p_value = 0.03,
+    FDR_within_dataset_level = 0.05,
+    FDR_global = 0.08,
+    evidence_status = "nominal_only",
+    n_samples = 8L,
+    n_animals = 6L,
+    model_type = "lm",
+    formula_used = "eigengene ~ StressGroup",
+    rank_deficient_model = FALSE,
+    model_warning = "",
+    stringsAsFactors = FALSE
+  )
+  path <- tempfile("module_group_effects-", fileext = ".csv")
+  path <- file.path(dirname(path), "module_group_effects.csv")
+  utils::write.csv(good, path, row.names = FALSE)
+  ok <- validate_known_pipeline_output(path, dataset = "microglia")
+  testthat::expect_equal(ok$validation_status, "ok")
+
+  bad <- good
+  bad$p_value <- 1.2
+  bad$n_animals <- -1L
+  utils::write.csv(bad, path, row.names = FALSE)
+  warn <- validate_known_pipeline_output(path, dataset = "microglia")
+  testthat::expect_equal(warn$validation_status, "warning")
+  testthat::expect_match(warn$validation_message, "p_value")
+  testthat::expect_match(warn$validation_message, "n_animals")
+
+  missing_col <- good[, setdiff(names(good), "formula_used")]
+  utils::write.csv(missing_col, path, row.names = FALSE)
+  warn2 <- validate_known_pipeline_output(path, dataset = "microglia")
+  testthat::expect_equal(warn2$validation_status, "warning")
+  testthat::expect_match(warn2$validation_message, "formula_used")
+})
