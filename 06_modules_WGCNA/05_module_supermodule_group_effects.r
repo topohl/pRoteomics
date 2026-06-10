@@ -51,9 +51,32 @@ has_repeats <- function(dat) {
     any(table(dat$AnimalID[!is.na(dat$AnimalID) & nzchar(as.character(dat$AnimalID))]) > 1L)
 }
 
+animal_support_summary <- function(dat, model_type = NA_character_, min_animals_threshold = 3L) {
+  if (is.null(dat) || !nrow(dat) || !"AnimalID" %in% names(dat)) {
+    return(list(n_animals_total = NA_integer_, min_animals_per_group = NA_integer_, animal_level_status = "sample_level_only"))
+  }
+  animal <- as.character(dat$AnimalID)
+  usable <- !is.na(animal) & nzchar(animal)
+  if (!any(usable)) {
+    return(list(n_animals_total = NA_integer_, min_animals_per_group = NA_integer_, animal_level_status = "sample_level_only"))
+  }
+  dat2 <- dat[usable & !is.na(dat$StressGroup), , drop = FALSE]
+  n_total <- dplyr::n_distinct(dat2$AnimalID)
+  group_counts <- if (nrow(dat2)) tapply(dat2$AnimalID, dat2$StressGroup, function(x) length(unique(x))) else integer()
+  min_group <- if (length(group_counts)) min(as.integer(group_counts), na.rm = TRUE) else NA_integer_
+  status <- dplyr::case_when(
+    is.na(n_total) || n_total == 0L ~ "sample_level_only",
+    !is.na(min_group) && min_group < min_animals_threshold ~ "low_animal_count",
+    has_repeats(dat2) && !identical(as.character(model_type), "lmerTest_lmer") ~ "mixed_or_unclear",
+    TRUE ~ "animal_level"
+  )
+  list(n_animals_total = as.integer(n_total), min_animals_per_group = as.integer(min_group), animal_level_status = status)
+}
+
 status_row <- function(level, endpoint_id, endpoint_label, spatial_unit, effect_scope, reason,
                        formula_requested = NA_character_, formula_used = NA_character_,
                        model_type = NA_character_, dat = NULL) {
+  animal_support <- animal_support_summary(dat, model_type = model_type)
   tibble::tibble(
     dataset = DATASET,
     level = level,
@@ -69,6 +92,9 @@ status_row <- function(level, endpoint_id, endpoint_label, spatial_unit, effect_
     model_type = model_type,
     has_repeated_animals = if (is.null(dat)) NA else has_repeats(dat),
     n_animals = if (is.null(dat) || !"AnimalID" %in% names(dat)) NA_integer_ else dplyr::n_distinct(dat$AnimalID[!is.na(dat$AnimalID) & nzchar(as.character(dat$AnimalID))]),
+    n_animals_total = animal_support$n_animals_total,
+    min_animals_per_group = animal_support$min_animals_per_group,
+    animal_level_status = animal_support$animal_level_status,
     contrast = NA_character_,
     estimate = NA_real_,
     SE = NA_real_,
@@ -130,6 +156,7 @@ fit_model <- function(dat, rhs_terms, random_animal = TRUE) {
 }
 
 contrast_rows <- function(fit_info, dat, level, endpoint_id, endpoint_label, spatial_unit, effect_scope, by_spatial = FALSE, dropped = character()) {
+  animal_support <- animal_support_summary(dat, model_type = fit_info$model_type)
   if (is.null(fit_info$fit)) {
     return(status_row(level, endpoint_id, endpoint_label, spatial_unit, effect_scope, paste(fit_info$warning, collapse = "; "), fit_info$formula_requested, NA_character_, fit_info$model_type, dat))
   }
@@ -161,6 +188,9 @@ contrast_rows <- function(fit_info, dat, level, endpoint_id, endpoint_label, spa
         model_type = fit_info$model_type,
         has_repeated_animals = has_repeats(dat),
         n_animals = if ("AnimalID" %in% names(dat)) dplyr::n_distinct(dat$AnimalID[!is.na(dat$AnimalID) & nzchar(as.character(dat$AnimalID))]) else NA_integer_,
+        n_animals_total = animal_support$n_animals_total,
+        min_animals_per_group = animal_support$min_animals_per_group,
+        animal_level_status = animal_support$animal_level_status,
         contrast = as.character(contr$contrast),
         estimate = as.numeric(contr$estimate),
         SE = as.numeric(contr$SE),
@@ -185,6 +215,7 @@ contrast_rows <- function(fit_info, dat, level, endpoint_id, endpoint_label, spa
   units <- if (by_spatial) sort(unique(stats::na.omit(dat$SpatialLabel))) else spatial_unit
   dplyr::bind_rows(lapply(units, function(unit) {
     subdat <- if (by_spatial) dat[dat$SpatialLabel == unit, , drop = FALSE] else dat
+    fallback_animal_support <- animal_support_summary(subdat, model_type = paste0(fit_info$model_type, "_fallback_t_test"))
     means <- stats::aggregate(subdat$eigengene, list(StressGroup = subdat$StressGroup), mean, na.rm = TRUE)
     names(means)[2] <- "mean"
     dplyr::bind_rows(lapply(contrasts, function(contrast) {
@@ -201,8 +232,11 @@ contrast_rows <- function(fit_info, dat, level, endpoint_id, endpoint_label, spa
         module_label = if (level == "module") endpoint_label else NA_character_,
         supermodule_label = if (level == "supermodule") endpoint_label else NA_character_,
         spatial_unit = unit, effect_scope = effect_scope, SpatialUnitType = SpatialUnitType,
-        model_type = fit_info$model_type, has_repeated_animals = has_repeats(dat),
-        n_animals = if ("AnimalID" %in% names(dat)) dplyr::n_distinct(dat$AnimalID[!is.na(dat$AnimalID) & nzchar(as.character(dat$AnimalID))]) else NA_integer_,
+        model_type = paste0(fit_info$model_type, "_fallback_t_test"), has_repeated_animals = has_repeats(subdat),
+        n_animals = if ("AnimalID" %in% names(subdat)) dplyr::n_distinct(subdat$AnimalID[!is.na(subdat$AnimalID) & nzchar(as.character(subdat$AnimalID))]) else NA_integer_,
+        n_animals_total = fallback_animal_support$n_animals_total,
+        min_animals_per_group = fallback_animal_support$min_animals_per_group,
+        animal_level_status = fallback_animal_support$animal_level_status,
         contrast = contrast, estimate = est,
         SE = if (!is.null(tt)) unname(diff(tt$conf.int)) / (2 * 1.96) else NA_real_,
         statistic = if (!is.null(tt)) unname(tt$statistic) else NA_real_,
@@ -335,7 +369,8 @@ classify_group_effect_evidence <- function(df) {
   rank_def <- if ("rank_deficient_model" %in% names(df)) suppressWarnings(as.logical(df$rank_deficient_model)) else rep(FALSE, nrow(df))
   rank_def[is.na(rank_def)] <- FALSE
   unstable <- rank_def |
-    grepl("rank|singular|not estimable|failed|unavailable|t-test|too few|empty", warn)
+    grepl("rank|singular|not estimable|failed|unavailable|t-test|too few|empty", warn) |
+    grepl("fallback_t_test", tolower(as.character(df$model_type %||% "")))
   dplyr::case_when(
     is.na(df$p_value) ~ "not_supported",
     unstable ~ "model_unstable",
@@ -442,7 +477,7 @@ plot_effects <- function(df, path, title) {
 }
 plot_effects(module_out, file.path(PATHS$figures, "module_group_effect_dotplot.svg"), "Module group effects")
 plot_effects(super_out, file.path(PATHS$figures, "supermodule_effects_by_spatial_unit.svg"), "Supermodule group effects")
-plot_effects(super_out, file.path(PATHS$figures, "supermodule_group_effect_heatmap.svg"), "Supermodule group effects")
+plot_effects(super_out, file.path(PATHS$figures, "supermodule_group_effect_dotplot.svg"), "Supermodule group effects")
 
 write_run_manifest(
   file.path(PATHS$logs, "run_manifest.yml"),
