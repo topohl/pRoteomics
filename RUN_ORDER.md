@@ -22,12 +22,13 @@ Or with the launcher:
 Rscript run_dataset_pipeline.R --dataset microglia --dry-run
 Rscript run_dataset_pipeline.R --dataset microglia
 Rscript run_dataset_pipeline.R --list-stages
-Rscript run_dataset_pipeline.R --dataset neuron_neuropil --stage modules --dry-run
+Rscript run_dataset_pipeline.R --dataset neuron_neuropil --stage modules_wgcna --dry-run
+Rscript run_dataset_pipeline.R --dataset microglia --stage modules_downstream --dry-run
 ```
 
 Valid dataset families are `neuron_neuropil`, `neuron_soma`, and `microglia`. The shared `R/dataset_config.R` helper resolves `PROTEOMICS_DATASET` first, with backward-compatible fallback to `PROTEOMICS_COMPARISON` and `PROTEOMICS_GCT_COMPARISON`.
 
-The launcher supports staged execution with `--stage core`, `--stage qc`, `--stage enrichment`, `--stage modules`, `--stage networks`, `--stage behavior`, `--stage export`, or `--stage all`. Each run writes a manifest under `results/logs/pipeline/` with dataset, selected stage, script statuses, timestamps, and exit codes. Dry-runs continue across steps so missing private inputs are visible in one report.
+The launcher supports staged execution with `--stage core`, `--stage qc_global`, `--stage qc`, `--stage enrichment`, `--stage modules_wgcna`, `--stage modules_downstream`, `--stage networks`, `--stage coupling`, `--stage export`, or `--stage all`. Each run writes a manifest under `results/logs/pipeline/` with dataset, selected stage, script statuses, timestamps, and exit codes. Dry-runs continue across steps so missing private inputs are visible in one report.
 
 ```text
 01_preprocessing/
@@ -310,8 +311,6 @@ Rscript 01_preprocessing/06_merged_metadata_module_score.r --dataset neuron_neur
 ```bash
 Rscript 06_modules_WGCNA/01_WGCNA.r --dataset neuron_neuropil --dry-run
 Rscript 06_modules_WGCNA/01_WGCNA.r --dataset neuron_neuropil
-PROTEOMICS_MODULE_DEFINITION_SOURCE=wgcna Rscript 06_modules_WGCNA/91_module_score.r --dataset neuron_neuropil --dry-run
-PROTEOMICS_MODULE_DEFINITION_SOURCE=wgcna Rscript 06_modules_WGCNA/91_module_score.r --dataset neuron_neuropil
 ```
 
 Preferred module-score invocation examples:
@@ -491,12 +490,13 @@ for ds in neuron_neuropil neuron_soma microglia; do
   Rscript run_dataset_pipeline.R --dataset "$ds" --stage core
   Rscript run_dataset_pipeline.R --dataset "$ds" --stage qc
   Rscript run_dataset_pipeline.R --dataset "$ds" --stage enrichment
-  Rscript run_dataset_pipeline.R --dataset "$ds" --stage modules
+  Rscript run_dataset_pipeline.R --dataset "$ds" --stage modules_wgcna
+  Rscript run_dataset_pipeline.R --dataset "$ds" --stage modules_downstream
 done
 Rscript 09_export_pride_journal/07_make_biological_claims_table.R
 ```
 
-Use `--stage networks`, `--stage behavior`, and `--stage export` after the core
+Use `--stage networks`, `--stage coupling`, and `--stage export` after the core
 manuscript evidence tables have passed QC and manifest checks.
 
 Before running this step, copy local large files into the gitignored `pride_submission/` folder as needed:
