@@ -48,7 +48,9 @@
          ". Install them explicitly before running this script.", call. = FALSE)
   }
   invisible(lapply(required_pkgs, library, character.only = TRUE))
-  paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
+  paths_file <- c(file.path("R", "paths.R"), file.path("..", "R", "paths.R"), file.path("..", "..", "R", "paths.R"))
+  paths_file <- paths_file[file.exists(paths_file)][1]
+  if (is.na(paths_file)) stop("Could not locate R/paths.R", call. = FALSE)
   source(paths_file)
 
   ## ---------- 1. Configuration (USER INPUT) ----------

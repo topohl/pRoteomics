@@ -6,7 +6,9 @@ library(svglite)
 library(gridExtra)
 library(pheatmap)
 
-paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
+paths_file <- c(file.path("R", "paths.R"), file.path("..", "R", "paths.R"), file.path("..", "..", "R", "paths.R"))
+paths_file <- paths_file[file.exists(paths_file)][1]
+if (is.na(paths_file)) stop("Could not locate R/paths.R", call. = FALSE)
 source(paths_file)
 
 # Define file paths
