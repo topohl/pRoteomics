@@ -808,17 +808,33 @@ target_grid <- target_manifest %>%
   tidyr::crossing(AnnotLevel = analysis_params$annot_levels) %>%
   dplyr::mutate(TargetRun = paste(Target, paste0("top", TopN), paste0("annot", AnnotLevel), sep = "__"))
 
+ewce_cache_key <- function(row) {
+  digest::digest(list(
+    dataset = EWCE_DATASET,
+    target = row$Target,
+    top_n = row$TopN,
+    annot_level = row$AnnotLevel,
+    reps = analysis_params$reps,
+    seed = analysis_params$seed,
+    primary_annot_level = analysis_params$primary_annot_level,
+    background_size = length(background_universe),
+    ctd_genes = length(ref_genes_by_level[[row$AnnotLevel]])
+  ), algo = "xxhash64")
+}
+
 run_ewce_target <- function(target_run) {
-  cache_file <- file.path(dirs$cache, paste0(safe_file_stem(target_run), ".rds"))
+  row <- target_grid %>% dplyr::filter(TargetRun == target_run) %>% dplyr::slice(1)
+  cache_file <- file.path(dirs$cache, paste0(safe_file_stem(paste(target_run, ewce_cache_key(row), sep = "__")), ".rds"))
   if (file.exists(cache_file)) {
     return(readRDS(cache_file))
   }
 
-  row <- target_grid %>% dplyr::filter(TargetRun == target_run) %>% dplyr::slice(1)
   legacy_cache_file <- file.path(dirs$cache, paste0(safe_file_stem(paste(row$Target, paste0("annot", row$AnnotLevel), sep = "__")), ".rds"))
   if (file.exists(legacy_cache_file)) {
     legacy_out <- readRDS(legacy_cache_file)
-    if (all(legacy_out$TopN == row$TopN, na.rm = TRUE)) {
+    if (all(legacy_out$TopN == row$TopN, na.rm = TRUE) &&
+        all(legacy_out$AnnotLevel == row$AnnotLevel, na.rm = TRUE) &&
+        all(legacy_out$N_Background == length(intersect(background_universe, ref_genes_by_level[[row$AnnotLevel]])), na.rm = TRUE)) {
       saveRDS(legacy_out, cache_file)
       return(legacy_out)
     }
