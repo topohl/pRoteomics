@@ -95,6 +95,76 @@ evidence_file <- function(ds, domain, file, input_type) {
   list(evidence = ev, status = loaded$status)
 }
 
+spatial_program_evidence <- function(ds, file) {
+  loaded <- read_csv_optional(file, ds, "spatial_architecture", "spatial_program_summary", required = FALSE)
+  df <- loaded$data
+  if (is.null(df) || !nrow(df)) {
+    return(list(
+      evidence = availability_evidence(ds, "spatial_architecture", file, "Spatial program atlas unavailable."),
+      status = loaded$status
+    ))
+  }
+  if ("dataset" %in% names(df)) df <- df[as.character(df$dataset) %in% c(ds, "all", "global"), , drop = FALSE]
+  if (!nrow(df)) {
+    return(list(
+      evidence = availability_evidence(ds, "spatial_architecture", file, "Spatial program atlas has no rows for this dataset."),
+      status = loaded$status
+    ))
+  }
+  prog <- first_col(df, c("program_key", "biological_program", "program", "Description", "term_description"))
+  spatial <- first_col(df, c("spatial_unit", "route_unit", "region", "region_layer"))
+  fdr <- first_col(df, c("min_fdr", "FDR", "p.adjust", "fdr"))
+  est <- first_col(df, c("representative_NES", "mean_NES", "NES", "effect_size"))
+  ev <- standardize_evidence(data.frame(
+    dataset = ds,
+    evidence_domain = "spatial_architecture",
+    evidence_id = paste(ds, "spatial_architecture", seq_len(nrow(df)), sep = "::"),
+    program_label = if (!is.na(prog)) df[[prog]] else "Spatial architecture program",
+    entity_type = "spatial_program",
+    entity_id = if (!is.na(prog)) df[[prog]] else NA_character_,
+    spatial_unit = if (!is.na(spatial)) df[[spatial]] else NA_character_,
+    effect_size = if (!is.na(est)) num_or_na(df[[est]]) else NA_real_,
+    fdr = if (!is.na(fdr)) num_or_na(df[[fdr]]) else NA_real_,
+    support_count = 1,
+    source_file = file,
+    evidence_status = "spatial_program_evidence",
+    interpretation_note = "Spatial architecture evidence from compareGO spatial program atlas.",
+    qc_flag = "PASS",
+    stringsAsFactors = FALSE
+  ))
+  list(evidence = ev, status = loaded$status)
+}
+
+qc_report_evidence <- function(ds, file) {
+  exists <- file.exists(file)
+  status <- data.frame(
+    dataset = ds,
+    evidence_domain = "qc_confounding",
+    input_type = "qc_biology_confounding_summary",
+    path = normalizePath(file, winslash = "/", mustWork = FALSE),
+    required = FALSE,
+    status = if (exists) "present" else "missing_optional",
+    message = if (exists) "QC/confounding report available for manual claim review" else "QC/confounding report unavailable; atlas row flagged WARN",
+    n_rows = if (exists) 1L else 0L,
+    stringsAsFactors = FALSE
+  )
+  evidence <- standardize_evidence(data.frame(
+    dataset = ds,
+    evidence_domain = "qc_confounding",
+    evidence_id = paste(ds, "qc_confounding", if (exists) "available" else "missing", sep = "::"),
+    program_label = "QC/confounding context",
+    entity_type = "qc_report",
+    entity_id = basename(file),
+    support_count = if (exists) 1 else 0,
+    source_file = file,
+    evidence_status = if (exists) "qc_report_available" else "unavailable_optional_input",
+    interpretation_note = if (exists) "QC/confounding report is available and should be reviewed before strong manuscript wording." else "QC/confounding report missing; claims should remain conservative.",
+    qc_flag = if (exists) "PASS" else "WARN",
+    stringsAsFactors = FALSE
+  ))
+  list(evidence = evidence, status = status)
+}
+
 all_ev <- list()
 all_status <- empty_status()
 for (ds in integration_datasets(run$dataset)) {
@@ -106,7 +176,9 @@ for (ds in integration_datasets(run$dataset)) {
     evidence_file(ds, "microenvironment_marker", inputs$microenvironment, "microenvironment"),
     evidence_file(ds, "complex_organelle", inputs$complex_architecture, "complex_architecture"),
     evidence_file(ds, "robustness_sensitivity", inputs$robustness, "robustness"),
-    evidence_file(ds, "behavior_coupling", inputs$module_behavior, "module_behavior")
+    spatial_program_evidence(ds, inputs$spatial_program),
+    evidence_file(ds, "behavior_coupling", inputs$module_behavior, "module_behavior"),
+    qc_report_evidence(ds, inputs$qc_report)
   )
   all_ev <- c(all_ev, lapply(pieces, `[[`, "evidence"))
   all_status <- rbind(all_status, do.call(rbind, lapply(pieces, `[[`, "status")))
