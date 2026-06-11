@@ -144,6 +144,16 @@ frequent_genes <- function(x, n = 12L) {
   paste(names(tab)[seq_len(min(n, length(tab)))], collapse = ";")
 }
 
+strongest_term <- function(description, nes, direction = c("positive", "negative")) {
+  direction <- match.arg(direction)
+  nes <- suppressWarnings(as.numeric(nes))
+  ok <- is.finite(nes)
+  if (!any(ok)) return(NA_character_)
+  target <- if (direction == "positive") max(nes[ok], na.rm = TRUE) else min(nes[ok], na.rm = TRUE)
+  hit <- which(ok & nes == target)
+  as.character(description[hit[[1]]])
+}
+
 evidence <- terms %>%
   dplyr::transmute(
     dataset,
@@ -177,6 +187,11 @@ program_summary <- evidence %>%
     min_raw_p = suppressWarnings(min(.data$raw_p, na.rm = TRUE)),
     representative_NES = dplyr::first(.data$NES),
     effect_direction = dplyr::first(.data$effect_direction),
+    n_positive_terms = sum(.data$NES > 0, na.rm = TRUE),
+    n_negative_terms = sum(.data$NES < 0, na.rm = TRUE),
+    median_NES = suppressWarnings(stats::median(.data$NES, na.rm = TRUE)),
+    strongest_positive_term = strongest_term(.data$Description, .data$NES, "positive"),
+    strongest_negative_term = strongest_term(.data$Description, .data$NES, "negative"),
     top_term = dplyr::first(.data$Description),
     key_genes = frequent_genes(.data$core_genes),
     source_file = dplyr::first(.data$source_file),
@@ -185,6 +200,13 @@ program_summary <- evidence %>%
   dplyr::mutate(
     min_fdr = ifelse(is.infinite(.data$min_fdr), NA_real_, .data$min_fdr),
     min_raw_p = ifelse(is.infinite(.data$min_raw_p), NA_real_, .data$min_raw_p),
+    median_NES = ifelse(is.nan(.data$median_NES), NA_real_, .data$median_NES),
+    direction_consistency = dplyr::case_when(
+      .data$n_positive_terms > 0 & .data$n_negative_terms > 0 ~ "mixed_direction",
+      .data$n_positive_terms > 0 ~ "positive_only",
+      .data$n_negative_terms > 0 ~ "negative_only",
+      TRUE ~ "undirected"
+    ),
     direction = dplyr::case_when(
       !is.na(.data$effect_direction) ~ .data$effect_direction,
       is.na(.data$representative_NES) ~ "undirected",
@@ -207,7 +229,9 @@ heatmap_ready <- program_summary %>%
   dplyr::select(
     dataset, comparison, route_category, route_unit, comparison_label,
     biological_program, direction, representative_NES, min_raw_p, min_fdr,
-    signed_neg_log10_fdr, n_terms, top_term, key_genes, source_file
+    signed_neg_log10_fdr, n_terms, n_positive_terms, n_negative_terms,
+    median_NES, direction_consistency, strongest_positive_term,
+    strongest_negative_term, top_term, key_genes, source_file
   )
 readr::write_csv(heatmap_ready, file.path(PATHS$tables, "program_summary_heatmap_ready.csv"), na = "")
 
