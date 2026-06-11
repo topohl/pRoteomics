@@ -33,3 +33,11 @@ columns:
   major_limitation: {type: character}
   safe_interpretation: {type: character}
   unsafe_overinterpretation: {type: character}
+  missingness_confounded: {type: character}
+  plate_or_batch_confounded: {type: character}
+  region_layer_imbalance_risk: {type: character}
+  animal_pseudoreplication_risk: {type: character}
+  early_pc_association: {type: character}
+  marker_contamination_risk: {type: character}
+  qc_interpretation_flag: {type: character}
+  animal_level_status: {type: character}
