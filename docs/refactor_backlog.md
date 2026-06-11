@@ -31,7 +31,7 @@ and technical PCs.
 
 ## Priority 2: Feed QC Flags Into Biological Claims
 
-Extend `09_export_pride_journal/06_make_biological_claims_table.R` so each
+Extend `09_export_pride_journal/07_make_biological_claims_table.R` so each
 claim can carry QC/confounding context from:
 
 ```text
@@ -111,7 +111,7 @@ Highest-value targets:
 04_differential_expression_enrichment summaries
 06_modules_WGCNA/03_score_module_activity.R
 08_behavior_physio_coupling scripts
-09_export_pride_journal/06_make_biological_claims_table.R
+09_export_pride_journal/07_make_biological_claims_table.R
 ```
 
 Rationale: the biological unit is animal, not individual tissue punch/replicate.
