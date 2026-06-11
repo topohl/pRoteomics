@@ -35,9 +35,18 @@ if (isTRUE(dry_run)) {
 candidates <- unlist(lapply(table_roots[dir.exists(table_roots)], list.files, pattern = "\\.(csv|tsv|xlsx)$", recursive = TRUE, full.names = TRUE), use.names = FALSE)
 candidates <- candidates[!grepl("results/manuscript", normalizePath(candidates, winslash = "/", mustWork = FALSE), fixed = TRUE)]
 
+table_target_name <- function(path) {
+  root <- if (grepl("/source_data/", normalizePath(path, winslash = "/", mustWork = FALSE), fixed = TRUE)) path_results("source_data") else path_results("tables")
+  rel <- relative_to(path, root)
+  paste0(safe_filename(tools::file_path_sans_ext(rel)), ".", tolower(tools::file_ext(path)))
+}
+
 manifest <- data.frame(
   source_file = candidates,
-  target_file = file.path(ifelse(grepl("source_data", candidates, fixed = TRUE), target_source, target_supp), basename(candidates)),
+  target_file = file.path(
+    ifelse(grepl("source_data", candidates, fixed = TRUE), target_source, target_supp),
+    vapply(candidates, table_target_name, character(1))
+  ),
   stringsAsFactors = FALSE
 )
 if (nrow(manifest)) {
