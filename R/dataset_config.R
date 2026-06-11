@@ -24,7 +24,7 @@ dataset_contracts <- function() {
       spatial_unit = "region",
       celltype_roi = FALSE,
       purified_celltype = FALSE,
-      interpretation = "Region-resolved neuronal soma-enriched proteomics; one soma layer only, so not layer-resolved."
+      interpretation = "Region-resolved neuronal soma-enriched proteomics."
     ),
     microglia = list(
       label = "Microglia-enriched ROI",
@@ -75,6 +75,30 @@ current_dataset <- function(default = "neuron_neuropil") {
     return(validate_dataset(unname(hit), source = names(hit)))
   }
   validate_dataset(default, source = "default dataset")
+}
+
+cli_arg_value <- function(flag, default = "", args = commandArgs(trailingOnly = TRUE)) {
+  hit <- which(args == flag)
+  if (!length(hit) || hit[[1]] == length(args)) return(default)
+  args[[hit[[1]] + 1L]]
+}
+
+current_dataset_from_cli <- function(default = "neuron_neuropil",
+                                     flag = "--dataset",
+                                     allow_all = FALSE,
+                                     args = commandArgs(trailingOnly = TRUE)) {
+  dataset_cli <- cli_arg_value(flag, default = "", args = args)
+  if (nzchar(dataset_cli)) {
+    dataset_cli <- normalize_dataset(dataset_cli)
+    if (isTRUE(allow_all) && identical(dataset_cli, "all")) {
+      Sys.setenv(PROTEOMICS_DATASET = dataset_cli)
+      return(dataset_cli)
+    }
+    dataset_cli <- validate_dataset(dataset_cli, source = flag)
+    Sys.setenv(PROTEOMICS_DATASET = dataset_cli)
+    return(dataset_cli)
+  }
+  current_dataset(default = default)
 }
 
 dataset_capabilities <- function(dataset = current_dataset()) {
