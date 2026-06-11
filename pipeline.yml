@@ -253,12 +253,23 @@ stages:
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "enrichment"
         scope: "dataset_specific"
-        produces: ["results/tables/04_differential_expression_enrichment/compareGO_spatial_program_atlas/<dataset>/"]
+        produces: ["results/tables/04_differential_expression_enrichment/compareGO_spatial_atlas/spatial_program_summary.csv", "results/tables/04_differential_expression_enrichment/compareGO_spatial_atlas/compareGO_spatial_program_atlas_tables.xlsx", "results/source_data/04_differential_expression_enrichment/compareGO_spatial_atlas/spatial_atlas_enrichment_long.csv"]
         consumes_required: ["data/processed/04_differential_expression_enrichment/compareGO/<dataset>/compareGO_input_manifest.csv"]
         consumes_optional: ["results/tables/04_differential_expression_enrichment/biological_program_summary/<dataset>/program_summary.csv"]
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Spatial program atlas from compareGO outputs."
+      - script: "04_differential_expression_enrichment/07_external_stress_disease_signature_overlap.r"
+        required: false
+        datasets: ["global"]
+        stage: "enrichment"
+        scope: "global"
+        produces: ["results/tables/04_differential_expression_enrichment/external_stress_disease_signature_overlap/global/external_stress_disease_signature_overlap.csv", "results/source_data/04_differential_expression_enrichment/external_stress_disease_signature_overlap/global/external_stress_disease_signature_overlap.csv", "results/logs/04_differential_expression_enrichment/external_stress_disease_signature_overlap/global/run_manifest.yml"]
+        consumes_required: []
+        consumes_optional: ["data/external/stress_disease_signatures/*.csv", "results/tables/04_differential_expression_enrichment/biological_program_summary/neuron_neuropil/program_summary.csv", "results/tables/04_differential_expression_enrichment/biological_program_summary/neuron_soma/program_summary.csv", "results/tables/04_differential_expression_enrichment/biological_program_summary/microglia/program_summary.csv"]
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Offline-only overlap against cached stress/disease signatures; missing optional signatures become status rows."
       - script: "05_celltype_enrichment_EWCE/01_EWCE_E9.r"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
@@ -364,6 +375,28 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Runs after module/supermodule group effects and microenvironment annotation."
+      - script: "06_modules_WGCNA/08_module_complex_architecture.r"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        stage: "modules_downstream"
+        scope: "dataset_specific"
+        produces: ["results/tables/06_modules_WGCNA/module_complex_architecture/<dataset>/module_complex_architecture.csv", "results/source_data/06_modules_WGCNA/module_complex_architecture/<dataset>/module_complex_architecture.csv", "results/logs/06_modules_WGCNA/module_complex_architecture/<dataset>/run_manifest.yml"]
+        consumes_required: ["results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/"]
+        consumes_optional: ["results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_module_biological_annotation.csv", "config/marker_panels/wgcna_reference_marker_sets.csv"]
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Protein-complex/organelle architecture evidence from existing module definitions; no core WGCNA recomputation."
+      - script: "06_modules_WGCNA/09_module_robustness_sensitivity.r"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        stage: "modules_downstream"
+        scope: "dataset_specific"
+        produces: ["results/tables/06_modules_WGCNA/module_robustness_sensitivity/<dataset>/module_robustness_sensitivity.csv", "results/source_data/06_modules_WGCNA/module_robustness_sensitivity/<dataset>/module_robustness_sensitivity.csv", "results/logs/06_modules_WGCNA/module_robustness_sensitivity/<dataset>/run_manifest.yml"]
+        consumes_required: ["results/tables/06_modules_WGCNA/group_effects/<dataset>/module_group_effects.csv"]
+        consumes_optional: ["results/tables/06_modules_WGCNA/group_effects/<dataset>/supermodule_group_effects.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_module_preservation_summary.csv", "results/tables/03_qc_exploration/05_pca_confounding_qc/<dataset>/PCA_confounding_summary.csv", "results/tables/03_qc_exploration/06_variance_partitioning/<dataset>/group_technical_confounding_screen.csv"]
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Robustness/sensitivity synthesis from existing module effects, preservation, and QC/confounding outputs."
   networks:
     description: "Spatial network generation, differential networks, bootstrap stability, bootstrap figures, and chord diagrams."
     scripts:
@@ -458,6 +491,53 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Network/module/behavior coupling after networks and downstream module summaries."
+      - script: "08_behavior_physio_coupling/03_module_behavior_coupling.r"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        stage: "coupling"
+        scope: "dataset_specific"
+        produces: ["results/tables/08_behavior_physio_coupling/module_behavior_coupling/<dataset>/module_behavior_coupling.csv", "results/source_data/08_behavior_physio_coupling/module_behavior_coupling/<dataset>/module_behavior_coupling.csv", "results/logs/08_behavior_physio_coupling/module_behavior_coupling/<dataset>/run_manifest.yml"]
+        consumes_required: ["results/tables/06_modules_WGCNA/group_effects/<dataset>/module_group_effects.csv"]
+        consumes_optional: ["results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_module_group_effects_interpretable.csv", "results/tables/08_behavior_physio_coupling/network_behavior_coupling/edge_behavior_figure_ready_table.csv"]
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Module-level behavior/physiology coupling context; missing behavior inputs become status rows."
+  integration:
+    description: "Manuscript-level biological synthesis integrating enrichment, WGCNA, microenvironment, complex/organelle, robustness, spatial architecture, behavior, and QC evidence."
+    scripts:
+      - script: "10_biological_integration/01_cross_compartment_program_atlas.r"
+        required: false
+        datasets: ["global"]
+        stage: "integration"
+        scope: "global"
+        produces: ["results/tables/10_biological_integration/cross_compartment_program_atlas/global/cross_compartment_program_atlas.csv", "results/tables/10_biological_integration/cross_compartment_program_atlas/global/cross_compartment_program_atlas_long.csv", "results/source_data/10_biological_integration/cross_compartment_program_atlas/global/cross_compartment_program_atlas_long.csv", "results/logs/10_biological_integration/cross_compartment_program_atlas/global/run_manifest.yml"]
+        consumes_required: []
+        consumes_optional: ["results/tables/04_differential_expression_enrichment/biological_program_summary/", "results/tables/04_differential_expression_enrichment/external_stress_disease_signature_overlap/global/external_stress_disease_signature_overlap.csv", "results/tables/06_modules_WGCNA/interpretable_summary/", "results/tables/06_modules_WGCNA/module_annotation/", "results/tables/06_modules_WGCNA/module_complex_architecture/", "results/tables/06_modules_WGCNA/module_robustness_sensitivity/", "results/tables/08_behavior_physio_coupling/module_behavior_coupling/", "results/reports/03_qc_exploration/07_qc_biology_confounding_report/"]
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Global synthesis; optional missing evidence is represented explicitly in status rows."
+      - script: "10_biological_integration/02_manuscript_program_summary.r"
+        required: false
+        datasets: ["global"]
+        stage: "integration"
+        scope: "global"
+        produces: ["results/tables/10_biological_integration/manuscript_program_summary/global/manuscript_program_summary.csv", "results/source_data/10_biological_integration/manuscript_program_summary/global/manuscript_program_summary.csv", "results/logs/10_biological_integration/manuscript_program_summary/global/run_manifest.yml"]
+        consumes_required: []
+        consumes_optional: ["results/tables/10_biological_integration/cross_compartment_program_atlas/global/cross_compartment_program_atlas_long.csv", "results/tables/10_biological_integration/cross_compartment_program_atlas/global/cross_compartment_program_atlas.csv"]
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Manuscript-facing summary built from the integration atlas."
+      - script: "10_biological_integration/03_evidence_priority_matrix.r"
+        required: false
+        datasets: ["global"]
+        stage: "integration"
+        scope: "global"
+        produces: ["results/tables/10_biological_integration/evidence_priority_matrix/global/evidence_priority_matrix.csv", "results/source_data/10_biological_integration/evidence_priority_matrix/global/evidence_priority_matrix.csv", "results/logs/10_biological_integration/evidence_priority_matrix/global/run_manifest.yml"]
+        consumes_required: []
+        consumes_optional: ["results/tables/10_biological_integration/cross_compartment_program_atlas/global/cross_compartment_program_atlas_long.csv", "results/tables/10_biological_integration/manuscript_program_summary/global/manuscript_program_summary.csv", "results/tables/biological_claims_table.csv"]
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Ranks candidate manuscript programs by multi-stream evidence, robustness, behavior coupling, and QC flags."
   export:
     description: "PRIDE, manuscript, reviewer, source-data, and validation export layer."
     scripts:
@@ -523,10 +603,10 @@ stages:
         scope: "global"
         produces: ["results/tables/biological_claims_table.csv", "results/tables/biological_claims_table.xlsx"]
         consumes_required: ["results/tables/04_differential_expression_enrichment/", "results/tables/06_modules_WGCNA/"]
-        consumes_optional: ["results/tables/08_behavior_physio_coupling/network_behavior_coupling/"]
+        consumes_optional: ["results/tables/08_behavior_physio_coupling/network_behavior_coupling/", "results/tables/10_biological_integration/manuscript_program_summary/global/manuscript_program_summary.csv", "results/tables/10_biological_integration/evidence_priority_matrix/global/evidence_priority_matrix.csv"]
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "Final biological claims table."
+        notes: "Final biological claims table, including integration-stage manuscript summaries when available."
       - script: "09_export_pride_journal/08_export_manuscript_figures.R"
         required: false
         datasets: ["global"]
@@ -572,6 +652,15 @@ stages:
         safe_downstream_rerun: true
         notes: "Convenience export runner kept last; direct registry order above is preferred for dependency visibility."
 legacy:
+  - script: "04_differential_expression_enrichment/01_run_enrichment_clusterprofiler.r"
+    replacement: "04_differential_expression_enrichment/01_clusterProfiler.r"
+    status: "task-name compatibility wrapper; delegates to active dataset-aware implementation"
+  - script: "04_differential_expression_enrichment/02_compare_enrichment_terms.r"
+    replacement: "04_differential_expression_enrichment/02_compareGO.r"
+    status: "task-name compatibility wrapper; delegates to active dataset-aware implementation"
+  - script: "04_differential_expression_enrichment/03_summarize_biological_programs.r"
+    replacement: "04_differential_expression_enrichment/03_biological_program_summary.r"
+    status: "task-name compatibility wrapper; delegates to active dataset-aware implementation"
   - script: "01_preprocessing/01_impute.r"
     replacement: "01_preprocessing/03_gct_extractR.r"
     status: "older preprocessing branch not used by canonical registry"
