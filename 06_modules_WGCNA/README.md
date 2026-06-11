@@ -24,6 +24,8 @@ Rscript 06_modules_WGCNA/05_module_supermodule_group_effects.r --dataset <datase
 Rscript 06_modules_WGCNA/04_wgcna_de_gsea_overlap.r --dataset <dataset>
 Rscript 06_modules_WGCNA/06_annotate_module_microenvironment.r --dataset <dataset>
 Rscript 06_modules_WGCNA/07_wgcna_interpretable_summary.r --dataset <dataset>
+Rscript 06_modules_WGCNA/08_module_complex_architecture.r --dataset <dataset>
+Rscript 06_modules_WGCNA/09_module_robustness_sensitivity.r --dataset <dataset>
 ```
 
 Run the final cross-dataset summary after all datasets are complete:
@@ -120,5 +122,5 @@ Rscript 06_modules_WGCNA/06_annotate_module_microenvironment.r --dataset neuron_
 Rscript 06_modules_WGCNA/07_wgcna_interpretable_summary.r --dataset neuron_neuropil
 ```
 
-Note: `06_module_spatial_networks.r` keeps its existing name to avoid breaking
-older calls.
+Note: `06_module_spatial_networks.r` is a legacy optional helper. The canonical
+spatial-network stage lives in `07_spatial_networks/`.
