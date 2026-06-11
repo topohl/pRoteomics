@@ -16,7 +16,13 @@ testthat::test_that("pipeline.yml is valid and references existing active script
   testthat::expect_false(any(grepl("02_differential|03_bootstrap|04_bootstrap|05_bootstrap|06_chord", downstream_networks)))
 
   coupling_steps <- pipeline_steps(registry, "coupling", dataset = "microglia")
-  testthat::expect_false(any(coupling_steps$supported))
+  testthat::expect_true("08_behavior_physio_coupling/03_module_behavior_coupling.r" %in% coupling_steps$script[coupling_steps$supported])
+  testthat::expect_false("08_behavior_physio_coupling/02_network_behavior_coupling.r" %in% coupling_steps$script[coupling_steps$supported])
+
+  testthat::expect_true("integration" %in% pipeline_stage_names(registry))
+  stage_names <- pipeline_stage_names(registry)
+  testthat::expect_lt(match("coupling", stage_names), match("integration", stage_names))
+  testthat::expect_lt(match("integration", stage_names), match("export", stage_names))
 })
 
 testthat::test_that("documented dry-run stages are real registry stages", {
@@ -27,7 +33,7 @@ testthat::test_that("documented dry-run stages are real registry stages", {
   testthat::skip_if_not_installed("yaml")
   registry <- read_pipeline_registry(repo_path("pipeline.yml"))
   stage_names <- pipeline_stage_names(registry)
-  documented <- c("qc", "enrichment", "modules_wgcna", "modules_downstream")
+  documented <- c("qc", "enrichment", "modules_wgcna", "modules_downstream", "integration")
   testthat::expect_setequal(intersect(documented, stage_names), documented)
 
   readme <- paste(readLines(repo_path("README.md"), warn = FALSE), collapse = "\n")
