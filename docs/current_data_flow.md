@@ -15,7 +15,7 @@ This audit was generated before targeted refactoring of the clusterProfiler to c
 
 - Refactored first: `04_differential_expression_enrichment/01_clusterProfiler.r` and `04_differential_expression_enrichment/02_compareGO.r`, because this handoff had the highest stale-file and duplicate-file risk.
 - Safe next candidates: `05_celltype_enrichment_EWCE/01_EWCE_E9.r`, `06_modules_WGCNA/06_module_spatial_networks.r`, `07_spatial_networks/03_bootstrap_network_stability.r`, `07_spatial_networks/04_bootstrap_differential_network_stability.r`, and `07_spatial_networks/05_bootstrap_differential_network_figures.r`; these can mostly be refactored through parameter/config path changes.
-- Higher-risk candidates: `06_modules_WGCNA/01_WGCNA v.2.0.0.r`, `07_spatial_networks/01_network_spatial_relations.r`, and `08_behavior_physio_coupling/01_correlate_proteomics_with_behavior.r`; these are central producers or depend on external behavior data and should be changed with input data available.
+- Higher-risk candidates at the time of the audit were the WGCNA model producer, `07_spatial_networks/01_network_spatial_relations.r`, and `08_behavior_physio_coupling/01_correlate_proteomics_with_behavior.r`; these are central producers or depend on external behavior data and should be changed with input data available.
 - Keep documented unless revived: `05_celltype_enrichment_EWCE/90_EWCE_legacy.r`, `90_testing/`, and `99_deprecated/`.
 
 ## clusterProfiler to compareGO Before Refactor
@@ -114,7 +114,7 @@ Phase 3 applied targeted path-only refactors where script behavior could be pres
 - `01_preprocessing/04_format_metadata.r`
 - `01_preprocessing/05_metadata_create.r`
 - `05_celltype_enrichment_EWCE/01_EWCE_E9.r`
-- `06_modules_WGCNA/02_module_spatial_networks.r`
+- `06_modules_WGCNA/06_module_spatial_networks.r`
 - `06_modules_WGCNA/02_curated_overlap_programs.r`
 - `06_modules_WGCNA/03_score_module_activity.R`
 - `06_modules_WGCNA/04_wgcna_de_gsea_overlap.r`
