@@ -11,6 +11,12 @@ active_scripts <- c(
   "06_modules_WGCNA/02_curated_overlap_programs.r",
   "06_modules_WGCNA/03_score_module_activity.R",
   "06_modules_WGCNA/04_wgcna_de_gsea_overlap.r",
+  "06_modules_WGCNA/08_module_complex_architecture.r",
+  "06_modules_WGCNA/09_module_robustness_sensitivity.r",
+  "08_behavior_physio_coupling/03_module_behavior_coupling.r",
+  "10_biological_integration/01_cross_compartment_program_atlas.r",
+  "10_biological_integration/02_manuscript_program_summary.r",
+  "10_biological_integration/03_evidence_priority_matrix.r",
   "09_export_pride_journal/07_make_biological_claims_table.R",
   "run_dataset_pipeline.R"
 )
@@ -43,10 +49,15 @@ for (dataset in c("neuron_neuropil", "neuron_soma", "microglia")) {
   }, error = function(e) FALSE)
   if (!ok) fail <- c(fail, paste("Dataset validation failed:", dataset))
 }
-for (needle in c("03_qc_exploration/00_dataset_qc_report.r", "06_modules_WGCNA/01_WGCNA.r")) {
+for (needle in c("03_qc_exploration/00_dataset_qc_report.r", "06_modules_WGCNA/01_WGCNA.r", "10_biological_integration/01_cross_compartment_program_atlas.r")) {
   if (!grepl(needle, pipeline_txt, fixed = TRUE)) {
     fail <- c(fail, paste("Pipeline does not include expected script:", needle))
   }
+}
+
+stage_order <- vapply(c("coupling:", "integration:", "export:"), function(x) regexpr(x, pipeline_txt, fixed = TRUE)[[1]], integer(1))
+if (any(stage_order <= 0) || is.unsorted(stage_order, strictly = TRUE)) {
+  fail <- c(fail, "Pipeline stage order must include coupling -> integration -> export")
 }
 
 enrichment_order <- c(
@@ -83,6 +94,11 @@ claims_export_txt <- paste(readLines(repo_path("09_export_pride_journal", "07_ma
 for (needle in c("microglia_signature_claims_ready.csv", "collect_microglia_signature_claims", "microglia_signature_enrichment")) {
   if (!grepl(needle, claims_export_txt, fixed = TRUE)) {
     fail <- c(fail, paste("Claims export missing expected microglia signature integration marker:", needle))
+  }
+}
+for (needle in c("collect_integration_claims", "biological_integration_manuscript_summary", "manuscript_program_summary.csv")) {
+  if (!grepl(needle, claims_export_txt, fixed = TRUE)) {
+    fail <- c(fail, paste("Claims export missing expected biological integration marker:", needle))
   }
 }
 
