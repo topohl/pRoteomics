@@ -138,7 +138,7 @@ active_analysis_scripts <- function() {
     "01_preprocessing", "02_id_mapping", "03_qc_exploration",
     "04_differential_expression_enrichment", "05_celltype_enrichment_EWCE",
     "06_modules_WGCNA", "07_spatial_networks", "08_behavior_physio_coupling",
-    "09_export_pride_journal"
+    "09_export_pride_journal", "10_biological_integration"
   )
   files <- unlist(lapply(roots, function(root) {
     if (!dir.exists(repo_path(root))) return(character())
@@ -162,6 +162,7 @@ guess_stage_for_script <- function(script) {
   if (grepl("^06_modules_WGCNA", script)) return("modules_downstream")
   if (grepl("^07_spatial", script)) return("networks")
   if (grepl("^08_behavior", script)) return("coupling")
+  if (grepl("^10_biological", script)) return("integration")
   if (grepl("^09_export", script)) return("export")
   "unknown"
 }
