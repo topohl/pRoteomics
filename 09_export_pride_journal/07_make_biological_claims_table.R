@@ -380,9 +380,48 @@ collect_microglia_signature_claims <- function(dataset) {
     standardize_claims()
 }
 
+collect_integration_claims <- function() {
+  f <- path_results("tables", "10_biological_integration", "manuscript_program_summary", "global", "manuscript_program_summary.csv")
+  df <- read_csv_if_exists(f)
+  if (is.null(df) || !nrow(df) || !"program_key" %in% names(df)) return(empty_claims())
+  for (col in c("manuscript_claim_scope", "datasets_supported", "evidence_domains", "strongest_fdr", "strongest_evidence", "safe_manuscript_sentence", "main_limitation", "qc_flag")) {
+    if (!col %in% names(df)) df[[col]] <- NA
+  }
+  df <- df %>%
+    dplyr::mutate(
+      dataset_list = strsplit(as.character(.data$datasets_supported), ";", fixed = TRUE),
+      dataset_list = lapply(.data$dataset_list, function(x) {
+        x <- trimws(x)
+        x <- x[x %in% valid_datasets()]
+        if (length(x)) x else valid_datasets()
+      })
+    ) %>%
+    tidyr::unnest("dataset_list")
+  df %>%
+    dplyr::transmute(
+      dataset = .data$dataset_list,
+      region = NA_character_,
+      layer_cell_compartment = .data$datasets_supported,
+      contrast = .data$manuscript_claim_scope,
+      biological_program = .data$program_key,
+      direction = NA_character_,
+      key_proteins_genes = NA_character_,
+      evidence_type = "biological_integration_manuscript_summary",
+      effect_size_NES = NA_real_,
+      raw_p = NA_real_,
+      FDR = .data$strongest_fdr,
+      robustness_stability_metric = .data$evidence_domains,
+      source_file = f,
+      figure_table_target = "cross_compartment_program_atlas; evidence_priority_matrix",
+      interpretation_note = paste(.data$strongest_evidence, .data$safe_manuscript_sentence, .data$main_limitation, sep = "; ")
+    ) %>%
+    standardize_claims()
+}
+
 if (is_dry_run()) {
   dry_run_line("Script", "09_export_pride_journal/07_make_biological_claims_table.R")
   dry_run_line("Datasets", paste(valid_datasets(), collapse = ", "))
+  dry_run_line("Integration manuscript summary", path_results("tables", "10_biological_integration", "manuscript_program_summary", "global", "manuscript_program_summary.csv"), if (file.exists(path_results("tables", "10_biological_integration", "manuscript_program_summary", "global", "manuscript_program_summary.csv"))) "PASS" else "WARN")
   dry_run_line("Output CSV", path_results("tables", "biological_claims_table.csv"))
   dry_run_line("Output XLSX", path_results("tables", "biological_claims_table.xlsx"))
   quit(status = 0, save = "no")
@@ -393,7 +432,7 @@ claims <- dplyr::bind_rows(
   lapply(valid_datasets(), collect_wgcna_claims),
   lapply(valid_datasets(), collect_overlap_claims),
   lapply(valid_datasets(), collect_microglia_signature_claims),
-  list(collect_behavior_claims())
+  list(collect_behavior_claims(), collect_integration_claims())
 ) %>%
   standardize_claims() %>%
   dplyr::select(-dplyr::any_of(c(
