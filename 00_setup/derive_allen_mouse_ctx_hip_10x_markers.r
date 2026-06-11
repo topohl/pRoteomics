@@ -369,10 +369,17 @@ read_optional_detected_genes <- function(paths) {
 
 args <- commandArgs(trailingOnly = TRUE)
 
+script_file <- sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE)[1])
+script_dir <- if (!is.na(script_file) && nzchar(script_file)) {
+  dirname(normalizePath(script_file, winslash = "/", mustWork = FALSE))
+} else {
+  normalizePath(getwd(), winslash = "/", mustWork = FALSE)
+}
+
 repo_root <- if (length(args) >= 1) {
   args[[1]]
 } else {
-  "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/Analysis/proteomics"
+  if (basename(script_dir) == "00_setup") dirname(script_dir) else script_dir
 }
 
 repo_root <- normalizePath(repo_root, winslash = "/", mustWork = FALSE)
