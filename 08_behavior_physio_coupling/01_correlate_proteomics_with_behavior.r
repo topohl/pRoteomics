@@ -19,6 +19,7 @@ library(svglite)
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
+source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "protein_mapping_utils.R"))
 MODULE_ID <- "08_behavior_physio_coupling"
 SUBSTEP_ID <- "correlate_proteomics_with_behavior"
@@ -35,6 +36,22 @@ behavior_input_file <- Sys.getenv(
   "PROTEOMICS_BEHAVIOR_COR_BEHAVIOR_FILE",
   unset = path_external("behavior", "auc_individual_animals_firstChangeActive.csv")
 )
+target_region_env <- Sys.getenv("PROTEOMICS_BEHAVIOR_COR_REGION", unset = "ca1")
+target_layer_env <- Sys.getenv("PROTEOMICS_BEHAVIOR_COR_LAYER", unset = "sp")
+target_metric_env <- Sys.getenv("PROTEOMICS_BEHAVIOR_COR_METRIC", unset = "Movement")
+
+if (is_dry_run()) {
+  dry_run_line("Script", "08_behavior_physio_coupling/01_correlate_proteomics_with_behavior.r")
+  dry_run_line("Dataset", current_dataset_from_cli(default = "neuron_soma"))
+  dry_run_line("Proteomics input", proteomics_input_file, if (file.exists(proteomics_input_file)) "PASS" else "FAIL")
+  dry_run_line("Behavior input", behavior_input_file, if (file.exists(behavior_input_file)) "PASS" else "FAIL")
+  dry_run_line("Target region", target_region_env)
+  dry_run_line("Target layer", target_layer_env)
+  dry_run_line("Target metric", target_metric_env)
+  dry_run_line("Output directory", out_dir)
+  quit(status = if (file.exists(proteomics_input_file) && file.exists(behavior_input_file)) 0 else 1, save = "no")
+}
+
 if (!file.exists(proteomics_input_file)) stop("Proteomics behavior-correlation input not found: ", proteomics_input_file, call. = FALSE)
 if (!file.exists(behavior_input_file)) stop("Behavior correlation input not found: ", behavior_input_file, call. = FALSE)
 prot_data <- readxl::read_xlsx(proteomics_input_file, sheet = 1, col_names = TRUE, col_types = NULL, na = c("", "NA", "N/A"), trim_ws = TRUE, skip = 0) # Individual log2 intensities
@@ -47,9 +64,9 @@ leading_edge_ids <- c("E9Q557", "Q2VIS4", "Q9CQH5", "P97350", "Q02257",
 
 # --- 2c. Analysis Options ---
 # Set to NULL to keep all. Example for your case: target_layer <- "sr"
-target_region <- "ca1"
-target_layer  <- "sp"
-target_metric <- "Movement"  # Set to NULL to keep all metrics
+target_region <- if (tolower(target_region_env) %in% c("", "all", "none", "null")) NULL else target_region_env
+target_layer  <- if (tolower(target_layer_env) %in% c("", "all", "none", "null")) NULL else target_layer_env
+target_metric <- if (tolower(target_metric_env) %in% c("", "all", "none", "null")) NULL else target_metric_env
 
 # ExpGroup coding in proteomics metadata
 expgroup_map <- c("1" = "CON", "2" = "RES", "3" = "SUS")
