@@ -39,7 +39,7 @@ source(repo_path("R", "dataset_config.R"))
 MODULE_ID <- "07_spatial_networks"
 SUBSTEP_ID <- "differential_networks"
 CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
-NETWORK_DATASET <- current_dataset()
+NETWORK_DATASET <- current_dataset_from_cli()
 assert_dataset_capability(NETWORK_DATASET, "region", analysis = "differential spatial network analysis")
 spatial_unit <- if (NETWORK_DATASET == "neuron_neuropil") "region_layer" else "region"
 

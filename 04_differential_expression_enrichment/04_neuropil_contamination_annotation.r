@@ -21,7 +21,7 @@ MODULE_ID <- "04_differential_expression_enrichment"
 SUBSTEP_ID <- "neuropil_reference_annotation"
 CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
 
-DATASET <- current_dataset()
+DATASET <- current_dataset_from_cli()
 REFERENCE_DATASET <- Sys.getenv("PROTEOMICS_NEUROPIL_REFERENCE_DATASET", unset = "neuron_neuropil")
 REFERENCE_DATASET <- validate_dataset(REFERENCE_DATASET, source = "PROTEOMICS_NEUROPIL_REFERENCE_DATASET")
 RUN_ID <- format(Sys.time(), "%Y%m%d_%H%M%S")
