@@ -532,7 +532,7 @@ stages:
         datasets: ["global"]
         stage: "export"
         scope: "global"
-        produces: ["results/manuscript/figure_1/", "results/manuscript/figure_2/", "results/manuscript/extended_data/", "results/manuscript/figure_export_manifest.csv"]
+        produces: ["results/manuscript/figure_1/", "results/manuscript/figure_2/", "results/manuscript/extended_data/", "results/manuscript/figure_export_manifest.csv", "results/manuscript/figure_publication_audit.csv"]
         consumes_required: ["results/figures/"]
         consumes_optional: []
         recomputes_core_state: false
