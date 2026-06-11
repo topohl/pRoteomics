@@ -28,7 +28,7 @@ Rscript run_dataset_pipeline.R --dataset microglia --stage modules_downstream --
 
 Valid dataset families are `neuron_neuropil`, `neuron_soma`, and `microglia`. The shared `R/dataset_config.R` helper resolves `PROTEOMICS_DATASET` first, with backward-compatible fallback to `PROTEOMICS_COMPARISON` and `PROTEOMICS_GCT_COMPARISON`.
 
-The launcher supports staged execution with `--stage core`, `--stage qc_global`, `--stage qc`, `--stage enrichment`, `--stage modules_wgcna`, `--stage modules_downstream`, `--stage networks`, `--stage coupling`, `--stage export`, or `--stage all`. Each run writes a manifest under `results/logs/pipeline/` with dataset, selected stage, script statuses, timestamps, and exit codes. Dry-runs continue across steps so missing private inputs are visible in one report.
+The launcher supports staged execution with `--stage core`, `--stage qc_global`, `--stage qc`, `--stage enrichment`, `--stage modules_wgcna`, `--stage modules_downstream`, `--stage networks`, `--stage coupling`, `--stage integration`, `--stage export`, or `--stage all`. Each run writes a manifest under `results/logs/pipeline/` with dataset, selected stage, script statuses, timestamps, and exit codes. Dry-runs continue across steps so missing private inputs are visible in one report.
 
 ```text
 01_preprocessing/
@@ -251,6 +251,8 @@ Rscript 04_differential_expression_enrichment/04_neuropil_reference_annotation.r
 Rscript 06_modules_WGCNA/05_module_supermodule_group_effects.r --dataset <dataset>
 Rscript 06_modules_WGCNA/06_annotate_module_microenvironment.r --dataset <dataset>
 Rscript 06_modules_WGCNA/07_wgcna_interpretable_summary.r --dataset <dataset>
+Rscript 06_modules_WGCNA/08_module_complex_architecture.r --dataset <dataset>
+Rscript 06_modules_WGCNA/09_module_robustness_sensitivity.r --dataset <dataset>
 Rscript 06_modules_WGCNA/07_wgcna_interpretable_summary.r --dataset all
 ```
 
@@ -282,6 +284,8 @@ Rscript 03_qc_exploration/06_wgcna_marker_trait_export.r --dataset microglia --d
 Rscript 06_modules_WGCNA/05_module_supermodule_group_effects.r --dataset microglia --dry-run
 Rscript 06_modules_WGCNA/06_annotate_module_microenvironment.r --dataset microglia --dry-run
 Rscript 06_modules_WGCNA/07_wgcna_interpretable_summary.r --dataset all --dry-run
+Rscript 06_modules_WGCNA/08_module_complex_architecture.r --dataset all --dry-run
+Rscript 06_modules_WGCNA/09_module_robustness_sensitivity.r --dataset all --dry-run
 Rscript 01_preprocessing/06_merged_metadata_module_score.r --dataset microglia --dry-run
 Rscript 01_preprocessing/06_merged_metadata_module_score.r --dataset neuron_soma --dry-run
 Rscript 01_preprocessing/06_merged_metadata_module_score.r --dataset neuron_neuropil --dry-run
@@ -396,10 +400,9 @@ Rscript 06_modules_WGCNA/04_wgcna_de_gsea_overlap.r --dataset <dataset>
 Rscript 06_modules_WGCNA/06_module_spatial_networks.r --dataset <dataset> --module-definition-source wgcna
 ```
 
-There is a numbering conflict: the existing `06_module_spatial_networks.r` now
-shares the `06_` prefix with the new annotation script. It was not renamed here
-to avoid breaking existing calls; a later cleanup can move spatial networks to a
-non-conflicting number with a compatibility wrapper.
+`06_module_spatial_networks.r` is retained as a legacy optional helper and is not
+part of the canonical registry order. The active spatial-network stage starts in
+`07_spatial_networks/`.
 
 `04_wgcna_de_gsea_overlap.r` is an optional bridge from WGCNA modules to DE/GSEA manifests. It writes `WGCNA_vs_DE_GSEA_overlap.csv/xlsx` under `results/tables/06_modules_WGCNA/04_wgcna_de_gsea_overlap/<dataset>/` and, when overlap inputs are available, appends strongest overlap columns to `WGCNA_module_priority_summary.csv`. Missing DE/GSEA inputs are recorded as skipped status rather than failing the WGCNA run.
 
@@ -449,9 +452,37 @@ Dry-run:
 
 ```bash
 Rscript 08_behavior_physio_coupling/02_network_behavior_coupling.r --dry-run
+Rscript 08_behavior_physio_coupling/03_module_behavior_coupling.r --dataset all --dry-run
 ```
 
-## 9. PRIDE / ProteomeXchange and journal export
+## 9. Biological integration
+
+```text
+10_biological_integration/
+```
+
+This stage sits between coupling and export. It does not recompute enrichment,
+WGCNA, networks, or behavior models. It integrates existing evidence streams
+into manuscript-facing tables:
+
+```bash
+Rscript 10_biological_integration/01_cross_compartment_program_atlas.r --dry-run
+Rscript 10_biological_integration/02_manuscript_program_summary.r --dry-run
+Rscript 10_biological_integration/03_evidence_priority_matrix.r --dry-run
+```
+
+Primary outputs:
+
+```text
+results/tables/10_biological_integration/cross_compartment_program_atlas/global/cross_compartment_program_atlas.csv
+results/tables/10_biological_integration/manuscript_program_summary/global/manuscript_program_summary.csv
+results/tables/10_biological_integration/evidence_priority_matrix/global/evidence_priority_matrix.csv
+```
+
+Each script writes source-data mirrors, input status rows for missing optional
+evidence, and `run_manifest.yml`.
+
+## 10. PRIDE / ProteomeXchange and journal export
 
 ```r
 source("09_export_pride_journal/01_make_pride_manifest.R")
@@ -493,10 +524,11 @@ for ds in neuron_neuropil neuron_soma microglia; do
   Rscript run_dataset_pipeline.R --dataset "$ds" --stage modules_wgcna
   Rscript run_dataset_pipeline.R --dataset "$ds" --stage modules_downstream
 done
+Rscript run_dataset_pipeline.R --stage integration
 Rscript 09_export_pride_journal/07_make_biological_claims_table.R
 ```
 
-Use `--stage networks`, `--stage coupling`, and `--stage export` after the core
+Use `--stage networks`, `--stage coupling`, `--stage integration`, and `--stage export` after the core
 manuscript evidence tables have passed QC and manifest checks.
 
 Before running this step, copy local large files into the gitignored `pride_submission/` folder as needed:
