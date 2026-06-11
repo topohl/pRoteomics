@@ -29,7 +29,11 @@ claim_columns <- c(
   "effect_size_NES", "raw_p", "FDR", "robustness_stability_metric",
   "source_file", "figure_table_target", "interpretation_note",
   "claim_grade", "primary_evidence", "orthogonal_support", "major_limitation",
-  "safe_interpretation", "unsafe_overinterpretation"
+  "safe_interpretation", "unsafe_overinterpretation",
+  "missingness_confounded", "plate_or_batch_confounded",
+  "region_layer_imbalance_risk", "animal_pseudoreplication_risk",
+  "early_pc_association", "marker_contamination_risk",
+  "qc_interpretation_flag", "animal_level_status"
 )
 
 numeric_claim_columns <- c("effect_size_NES", "raw_p", "FDR")
@@ -72,6 +76,75 @@ primary_evidence_label <- function(evidence_type) {
     grepl("WGCNA|module", evidence_type, ignore.case = TRUE) ~ "Module/network evidence",
     grepl("behavior", evidence_type, ignore.case = TRUE) ~ "Behavior/network association",
     TRUE ~ evidence_type
+  )
+}
+
+contains_any <- function(x, patterns) {
+  x <- tolower(paste(stats::na.omit(as.character(x)), collapse = "\n"))
+  if (!nzchar(x)) return(FALSE)
+  any(vapply(patterns, grepl, logical(1), x = x, fixed = FALSE))
+}
+
+read_lines_if_exists <- function(path) {
+  if (!file.exists(path)) return(character())
+  readLines(path, warn = FALSE)
+}
+
+claim_qc_context <- function(dataset) {
+  missingness_lines <- read_lines_if_exists(path_results("reports", "03_qc_exploration", "02_missingness_diagnostics", dataset, "missingness_summary.md"))
+  qc_lines <- read_lines_if_exists(path_results("reports", "03_qc_exploration", "07_qc_biology_confounding_report", dataset, "qc_biology_confounding_summary.md"))
+  pca <- read_csv_if_exists(path_results("tables", "03_qc_exploration", "05_pca_confounding_qc", dataset, "PCA_confounding_summary.csv"))
+  variance <- read_csv_if_exists(path_results("tables", "03_qc_exploration", "06_variance_partitioning", dataset, "group_technical_confounding_screen.csv"))
+  marker <- read_csv_if_exists(path_results("tables", "03_qc_exploration", "04_marker_rank_abundance_qc", dataset, "marker_rank_summary.csv"))
+
+  pca_flag <- "not_available"
+  if (!is.null(pca) && nrow(pca)) {
+    p_cols <- intersect(c("q_value", "q", "FDR", "p_adj"), names(pca))
+    eta_cols <- intersect(c("eta2", "variance_explained", "r2"), names(pca))
+    p_vals <- if (length(p_cols)) suppressWarnings(as.numeric(pca[[p_cols[[1]]]])) else NA_real_
+    eta_vals <- if (length(eta_cols)) suppressWarnings(as.numeric(pca[[eta_cols[[1]]]])) else NA_real_
+    pca_flag <- if (any(!is.na(p_vals) & p_vals <= 0.10 & (!is.na(eta_vals) & eta_vals >= 0.15), na.rm = TRUE)) "possible" else "not_detected"
+  }
+
+  batch_flag <- "not_available"
+  if (!is.null(variance) && nrow(variance)) {
+    v_cols <- intersect(c("cramers_v_group_by_technical", "cramers_v", "eta2"), names(variance))
+    vals <- if (length(v_cols)) suppressWarnings(as.numeric(variance[[v_cols[[1]]]])) else NA_real_
+    batch_flag <- if (any(vals >= 0.5, na.rm = TRUE)) "possible" else "not_detected"
+  } else if (contains_any(c(missingness_lines, qc_lines), c("batch", "plate", "technical"))) {
+    batch_flag <- if (contains_any(c(missingness_lines, qc_lines), c("FAIL", "WARN", "confound"))) "possible" else "not_detected"
+  }
+
+  marker_flag <- "not_available"
+  if (!is.null(marker) && nrow(marker)) {
+    marker_flag <- if (contains_any(unlist(marker, use.names = FALSE), c("WARN", "FAIL", "contamination", "neuropil"))) "possible" else "not_detected"
+  }
+
+  data.frame(
+    dataset = dataset,
+    missingness_confounded = if (contains_any(missingness_lines, c("confounding: possible", "WARN", "FAIL"))) "possible" else if (length(missingness_lines)) "not_detected" else "not_available",
+    plate_or_batch_confounded = batch_flag,
+    region_layer_imbalance_risk = if (dataset == "neuron_neuropil" && contains_any(qc_lines, c("region", "layer", "imbalance", "WARN", "FAIL"))) "review_qc" else if (dataset == "neuron_neuropil") "not_detected" else "not_applicable",
+    animal_pseudoreplication_risk = "review_claim_animal_level_status",
+    early_pc_association = pca_flag,
+    marker_contamination_risk = marker_flag,
+    qc_interpretation_flag = dplyr::case_when(
+      contains_any(qc_lines, c("FAIL")) ~ "FAIL",
+      contains_any(c(qc_lines, missingness_lines), c("WARN", "possible")) ~ "WARN",
+      length(qc_lines) || length(missingness_lines) ~ "PASS",
+      TRUE ~ "not_available"
+    ),
+    stringsAsFactors = FALSE
+  )
+}
+
+infer_animal_level_status <- function(evidence_type, robustness_stability_metric, source_file) {
+  txt <- tolower(paste(evidence_type, robustness_stability_metric, source_file, sep = " "))
+  dplyr::case_when(
+    grepl("animal_level|n_animals|animal", txt) ~ "animal_level_or_reported",
+    grepl("behavior|network_behavior", txt) ~ "animal_level_expected",
+    grepl("wgcna|module", txt) ~ "review_source_table",
+    TRUE ~ "sample_level_or_unclear"
   )
 }
 
@@ -249,9 +322,11 @@ collect_behavior_claims <- function() {
   f <- path_results("tables", "08_behavior_physio_coupling", "network_behavior_coupling", "edge_behavior_figure_ready_table.csv")
   df <- read_csv_if_exists(f)
   if (is.null(df) || !nrow(df)) return(empty_claims())
+  if (!"dataset" %in% names(df)) df$dataset <- "neuron_neuropil"
+  df$dataset[is.na(df$dataset) | !nzchar(as.character(df$dataset))] <- "neuron_neuropil"
   df %>%
     dplyr::transmute(
-      dataset = current_dataset(),
+      dataset = vapply(.data$dataset, validate_dataset, character(1), source = "behavior claim dataset"),
       contrast = .data$Edge,
       biological_program = .data$Outcome,
       direction = dplyr::case_when(.data$estimate > 0 ~ "positive_correlation", .data$estimate < 0 ~ "negative_correlation", TRUE ~ "neutral"),
@@ -321,6 +396,13 @@ claims <- dplyr::bind_rows(
   list(collect_behavior_claims())
 ) %>%
   standardize_claims() %>%
+  dplyr::select(-dplyr::any_of(c(
+    "missingness_confounded", "plate_or_batch_confounded",
+    "region_layer_imbalance_risk", "animal_pseudoreplication_risk",
+    "early_pc_association", "marker_contamination_risk",
+    "qc_interpretation_flag", "animal_level_status"
+  ))) %>%
+  dplyr::left_join(dplyr::bind_rows(lapply(valid_datasets(), claim_qc_context)), by = "dataset") %>%
   dplyr::mutate(
     claim_id = sprintf("CLAIM_%04d", dplyr::row_number()),
     interpretation_note = dplyr::coalesce(.data$interpretation_note, "No interpretation note available; review source file before manuscript use."),
@@ -344,6 +426,12 @@ claims <- dplyr::bind_rows(
     unsafe_overinterpretation = dplyr::case_when(
       .data$dataset == "microglia" ~ "Do not claim purified microglial cell-intrinsic regulation or subtractive neuropil correction from these data alone.",
       TRUE ~ "Do not claim causality, mechanism, or cell-type specificity without independent validation."
+    ),
+    animal_level_status = infer_animal_level_status(.data$evidence_type, .data$robustness_stability_metric, .data$source_file),
+    animal_pseudoreplication_risk = dplyr::case_when(
+      .data$animal_level_status %in% c("animal_level_or_reported", "animal_level_expected") ~ "lower",
+      .data$animal_level_status == "review_source_table" ~ "review_source_table",
+      TRUE ~ "possible"
     )
   )
 
