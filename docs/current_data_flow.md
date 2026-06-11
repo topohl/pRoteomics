@@ -146,7 +146,7 @@ Scripts left unchanged in Phase 3 are documented because they are central produc
 - `01_preprocessing/01_impute.r`, `01_preprocessing/02_excel_convert.r`, `01_preprocessing/03_gct_extractR.r`
 - `02_id_mapping/01_MapThatProt_batch.r`
 - `03_qc_exploration/*.r`
-- `06_modules_WGCNA/01_WGCNA v.2.0.0.r`, `06_modules_WGCNA/90_module_score_v0.0.1.r`
+- `06_modules_WGCNA/01_WGCNA.r`, `06_modules_WGCNA/06_module_spatial_networks.r`
 - `07_spatial_networks/01_network_spatial_relations.r`
 - `08_behavior_physio_coupling/01_correlate_proteomics_with_behavior.r`
 
