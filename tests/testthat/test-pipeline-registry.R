@@ -11,8 +11,9 @@ testthat::test_that("pipeline.yml is valid and references existing active script
   testthat::expect_true("04_differential_expression_enrichment/01_clusterProfiler.r" %in% steps$script)
 
   network_steps <- pipeline_steps(registry, "networks", dataset = "microglia")
-  testthat::expect_false(any(network_steps$supported))
-  testthat::expect_false("microglia" %in% network_steps$supported_datasets)
+  testthat::expect_true("07_spatial_networks/01_network_spatial_relations.r" %in% network_steps$script)
+  downstream_networks <- setdiff(network_steps$script, "07_spatial_networks/01_network_spatial_relations.r")
+  testthat::expect_false(any(grepl("02_differential|03_bootstrap|04_bootstrap|05_bootstrap|06_chord", downstream_networks)))
 
   coupling_steps <- pipeline_steps(registry, "coupling", dataset = "microglia")
   testthat::expect_false(any(coupling_steps$supported))
