@@ -270,7 +270,7 @@ collect_wgcna_claims <- function(dataset) {
 }
 
 collect_overlap_claims <- function(dataset) {
-  f <- path_results("tables", "06_modules_WGCNA", "05_wgcna_de_gsea_overlap", dataset, "WGCNA_vs_DE_GSEA_overlap.csv")
+  f <- path_results("tables", "06_modules_WGCNA", "04_wgcna_de_gsea_overlap", dataset, "WGCNA_vs_DE_GSEA_overlap.csv")
   df <- read_csv_if_exists(f)
   if (is.null(df) || !nrow(df) || !"ModuleID" %in% names(df)) return(empty_claims())
   if ("status" %in% names(df)) return(empty_claims())
