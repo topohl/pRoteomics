@@ -14,7 +14,7 @@ Rscript run_dataset_pipeline.R --dataset microglia --stage modules_wgcna --dry-r
 Rscript run_dataset_pipeline.R --dataset microglia --stage modules_downstream --dry-run
 ```
 
-Use `--stage all` or a named stage (`core`, `qc_global`, `qc`, `enrichment`, `modules_wgcna`, `modules_downstream`, `networks`, `coupling`, `export`) after private inputs are available.
+Use `--stage all` or a named stage (`core`, `qc_global`, `qc`, `enrichment`, `modules_wgcna`, `modules_downstream`, `networks`, `coupling`, `integration`, `export`) after private inputs are available.
 
 ## Repository Map
 
@@ -32,6 +32,7 @@ R/                                   shared path, registry, validation, and data
 06_modules_WGCNA/                    WGCNA, curated overlap programs, and source-scoped module activity analyses
 07_spatial_networks/                 dataset-aware region or region/layer spatial network analyses
 08_behavior_physio_coupling/         behavior/physiology coupling
+10_biological_integration/           manuscript-level evidence synthesis
 09_export_pride_journal/             active PRIDE, manuscript, and source-data export module
 09_pride_submission/                 legacy helper code only
 pride_submission/                    generated, gitignored local deposition payload
@@ -62,6 +63,7 @@ Module activity scoring is source-scoped: `06_modules_WGCNA/03_score_module_acti
 
 ## Reviewer Docs
 
+- [Documentation map](docs/README.md)
 - [Run order](RUN_ORDER.md)
 - [Datasets](docs/DATASETS.md)
 - [Input contracts](docs/INPUT_CONTRACTS.md)
