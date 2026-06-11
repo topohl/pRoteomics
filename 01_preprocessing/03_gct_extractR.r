@@ -45,7 +45,7 @@ load_required_packages <- function(pkgs) {
 # -------------------------------
 
 use_label_map <- FALSE   # TRUE = con/res/sus mapping
-comparison_name <- current_dataset()
+comparison_name <- current_dataset_from_cli()
 
 truthy_env <- function(name, default = FALSE) {
   value <- Sys.getenv(name, unset = if (isTRUE(default)) "true" else "false")
