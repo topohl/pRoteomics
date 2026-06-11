@@ -66,7 +66,7 @@ Rscript 09_export_pride_journal/01_make_pride_manifest.R --dataset microglia --r
 | `08_export_manuscript_figures.R` | Figure collection for manuscript |
 | `09_export_source_data.R` | Source-data table collection for manuscript |
 
-Legacy numeric names (`03_make_supplementary_tables.R`, `04_validate_…`, etc.) forward to the scripts above for backward compatibility.
+Older numeric compatibility wrappers were removed; use the canonical script names above.
 
 ## Output folders
 
