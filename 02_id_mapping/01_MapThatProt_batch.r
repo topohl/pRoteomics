@@ -66,10 +66,11 @@ load_required_packages <- function(pkgs) {
 }
 
 # --- Configuration & Experimental Settings ---
-mapped_comparisons <- current_dataset()
+mapped_comparisons <- current_dataset_from_cli()
 map_direction <- Sys.getenv("PROTEOMICS_MAP_DIRECTION", unset = "forward")
 if (!map_direction %in% c("forward", "reverse")) stop("PROTEOMICS_MAP_DIRECTION must be 'forward' or 'reverse'.", call. = FALSE)
 map_reverse <- identical(map_direction, "reverse")
+allow_online_mapping <- tolower(Sys.getenv("PROTEOMICS_ALLOW_ONLINE_MAPPING", unset = "false")) %in% c("1", "true", "yes", "y")
 
 truthy_env <- function(name, default = FALSE) {
     value <- Sys.getenv(name, unset = if (isTRUE(default)) "true" else "false")
@@ -143,6 +144,7 @@ if (is_dry_run()) {
     dry_run_line("Already mapped table sets", sum(existing_complete))
     dry_run_line("Remaining table sets", sum(!existing_complete))
     dry_run_line("Recompute existing tables", force_rerun)
+    dry_run_line("Online UniProt fallback", if (allow_online_mapping) "enabled" else "disabled")
     if (!dir.exists(raw_dir) || length(csv_files) == 0) {
         dry_run_line("Required upstream step", "Rscript 01_preprocessing/03_gct_extractR.r without --dry-run")
     }
@@ -592,7 +594,7 @@ process_file <- function(data_path) {
     need_idx <- which((is.na(resolved$Resolved_UNIPROT) | !nzchar(resolved$Resolved_UNIPROT)) & resolved$id_class == "SYMBOL_OR_ALIAS")
     need_ids <- unique(toupper(resolved$token_base[need_idx]))
     sym_left2 <- unique(need_ids[grepl("^[A-Z0-9\\-]{2,}$", need_ids)])
-    if (length(sym_left2) && requireNamespace("UniProt.ws", quietly = TRUE)) {
+    if (length(sym_left2) && isTRUE(allow_online_mapping) && requireNamespace("UniProt.ws", quietly = TRUE)) {
         batch_vec <- split(sym_left2, ceiling(seq_along(sym_left2) / 50))
         picks <- list()
         for (b in batch_vec) {
@@ -626,7 +628,7 @@ process_file <- function(data_path) {
     # Strategy 10: Late-stage entry resolution explicitly pinging UniProt.ws
     need <- which(is.na(resolved$Resolved_UNIPROT) | !nzchar(resolved$Resolved_UNIPROT))
     idx_entry_ws <- need[resolved$id_class[need] %in% c("ENTRY","ENTRY_GUESS")]
-    if (length(idx_entry_ws) && requireNamespace("UniProt.ws", quietly = TRUE)) {
+    if (length(idx_entry_ws) && isTRUE(allow_online_mapping) && requireNamespace("UniProt.ws", quietly = TRUE)) {
         left_ids <- unique(toupper(ifelse(nz(resolved$entry_guess_up[idx_entry_ws]),
                                                                             resolved$entry_guess_up[idx_entry_ws],
                                                                             paste0(resolved$token_base[idx_entry_ws], "_MOUSE"))))
