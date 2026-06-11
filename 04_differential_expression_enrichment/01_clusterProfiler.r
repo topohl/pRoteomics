@@ -733,7 +733,7 @@ as_repo_path <- function(path) {
   if (grepl("^([A-Za-z]:|/|~)", path)) return(path)
   repo_path(path)
 }
-DATASET <- current_dataset(default = cfg$analysis$dataset %||% "neuron_neuropil")
+DATASET <- current_dataset_from_cli(default = cfg$analysis$dataset %||% "neuron_neuropil")
 cfg$analysis$dataset <- DATASET
 CANONICAL_PATHS <- lapply(CANONICAL_PATHS, function(path) file.path(path, DATASET))
 invisible(lapply(CANONICAL_PATHS, dir.create, recursive = TRUE, showWarnings = FALSE))

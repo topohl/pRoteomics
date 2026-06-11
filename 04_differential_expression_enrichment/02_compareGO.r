@@ -416,7 +416,7 @@ as_repo_path <- function(path) {
 }
 comparego_cfg$clusterProfiler_manifest <- as_repo_path(comparego_cfg$clusterProfiler_manifest)
 comparego_cfg$uniprot_mapping_file <- as_repo_path(comparego_cfg$uniprot_mapping_file)
-DATASET <- current_dataset(default = comparego_cfg$dataset %||% "neuron_neuropil")
+DATASET <- current_dataset_from_cli(default = comparego_cfg$dataset %||% "neuron_neuropil")
 comparego_cfg$dataset <- DATASET
 if (!nzchar(as.character(comparego_cfg$clusterProfiler_manifest))) {
   comparego_cfg$clusterProfiler_manifest <- path_processed(
