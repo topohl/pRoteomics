@@ -17,7 +17,13 @@ biological_program_patterns <- function() {
       "Proteostasis_Ubiquitin_Folding",
       "Synapse_Vesicle_Organization",
       "Cytoskeleton_Motility",
-      "Development_Patterning"
+      "Development_Patterning",
+      "HPA_Glucocorticoid_Response",
+      "Neuroimmune_Complement_Phagosome",
+      "ECM_Vascular_Barrier",
+      "Oxidative_Redox_Stress",
+      "Lipid_Myelin_Membrane",
+      "Autophagy_Lysosome"
     ),
     pattern = c(
       "rna|ribonucleoprotein|rnp|splice|splicing|mrna|ncrna|rrna|trna|nucleolus|ribonucle|rna processing",
@@ -26,7 +32,13 @@ biological_program_patterns <- function() {
       "proteas|ubiquitin|folding|chaperone|heat shock|proteostasis|protein quality",
       "synap|vesicle|neurotransmitter|axon|dendrit|postsynap|presynap|exocytosis|endocytosis|synaptic organization",
       "cytoskeleton|actin|tubulin|microtubule|motility|adhesion|migration|extracellular matrix",
-      "develop|pattern|morphogen|differentiation|neurogenesis|gliogenesis|axon guidance|cell fate|regionalization|dorsal.ventral|anterior.posterior"
+      "develop|pattern|morphogen|differentiation|neurogenesis|gliogenesis|axon guidance|cell fate|regionalization|dorsal.ventral|anterior.posterior",
+      "glucocorticoid|corticosterone|cortisol|steroid hormone|hpa axis|stress hormone|nr3c1|nuclear receptor subfamily 3 group c",
+      "microglia|immune|inflamm|cytokine|chemokine|complement|phagocyt|phagosome|lysosomal engulfment|antigen presentation|mhc",
+      "extracellular matrix|collagen|laminin|basement membrane|vascular|blood vessel|endothelial|pericyte|blood.brain barrier|barrier|integrin",
+      "oxidative stress|redox|reactive oxygen|ros|peroxid|glutathione|superoxide|oxidant|antioxidant",
+      "lipid|fatty acid|cholesterol|membrane|myelin|oligodendro|sphingolipid|phospholipid",
+      "autophag|lysosom|endosom|phagolysosom|vacuolar|proteolysis"
     ),
     stringsAsFactors = FALSE
   )
