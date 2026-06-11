@@ -127,16 +127,16 @@ These scripts still deserve a focused pass:
   - Consider replacing resolver code with `R/dataset_inputs.R` helpers or
     archiving if superseded.
 
-- `04_differential_expression_enrichment/04_compare_pathways.r`
+- `04_differential_expression_enrichment/legacy/04_compare_pathways.r`
   - Clarify whether it is canonical, optional, or legacy.
   - If retained, add dataset-aware inputs, dry-run, manifest, and documented
     output contracts.
 
-- `04_differential_expression_enrichment/05_compare_sig_expr.r`
+- `04_differential_expression_enrichment/legacy/05_compare_sig_expr.r`
   - Contains legacy path hints and older compareGO assumptions.
   - Either make it manifest-driven or move to a legacy folder.
 
-- `04_differential_expression_enrichment/07_control_strata_enrichment_figures.r`
+- `04_differential_expression_enrichment/legacy/07_control_strata_enrichment_figures.r`
   - Potentially useful figure logic, but it needs canonical input/output
     contracts and dry-run behavior.
 
