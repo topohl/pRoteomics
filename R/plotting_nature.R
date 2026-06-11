@@ -90,6 +90,12 @@ clean_program_label <- function(x) {
     Cytoskeleton_Motility = "Cytoskeleton/motility",
     Cytoskeleton_Transport = "Cytoskeleton/motility",
     Development_Patterning = "Development/patterning",
+    HPA_Glucocorticoid_Response = "HPA/glucocorticoid response",
+    Neuroimmune_Complement_Phagosome = "Neuroimmune/complement/phagosome",
+    ECM_Vascular_Barrier = "ECM/vascular barrier",
+    Oxidative_Redox_Stress = "Oxidative/redox stress",
+    Lipid_Myelin_Membrane = "Lipid/myelin/membrane",
+    Autophagy_Lysosome = "Autophagy/lysosome",
     Immune_Microglia = "Immune/microglia",
     Other = "Other"
   )
