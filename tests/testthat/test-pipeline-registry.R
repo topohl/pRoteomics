@@ -56,3 +56,25 @@ testthat::test_that("README and RUN_ORDER do not present legacy scripts as activ
   testthat::expect_true(grepl("09_pride_submission/", readme, fixed = TRUE))
   testthat::expect_true(grepl("legacy", readme, ignore.case = TRUE))
 })
+
+testthat::test_that("bespoke enrichment legacy scripts stay out of the active folder", {
+  source(testthat::test_path("..", "..", "R", "paths.R"))
+  source(repo_path("R", "pipeline_registry.R"))
+
+  testthat::skip_if_not_installed("yaml")
+  registry <- read_pipeline_registry(repo_path("pipeline.yml"))
+  steps <- pipeline_steps(registry, pipeline_stage_names(registry), dataset = "all", include_unsupported = TRUE)
+  moved <- c(
+    "04_differential_expression_enrichment/04_compare_pathways.r",
+    "04_differential_expression_enrichment/05_compare_sig_expr.r",
+    "04_differential_expression_enrichment/07_control_strata_enrichment_figures.r"
+  )
+  legacy <- c(
+    "04_differential_expression_enrichment/legacy/04_compare_pathways.r",
+    "04_differential_expression_enrichment/legacy/05_compare_sig_expr.r",
+    "04_differential_expression_enrichment/legacy/07_control_strata_enrichment_figures.r"
+  )
+  testthat::expect_false(any(file.exists(repo_path(moved))))
+  testthat::expect_true(all(file.exists(repo_path(legacy))))
+  testthat::expect_false(any(legacy %in% steps$script))
+})
