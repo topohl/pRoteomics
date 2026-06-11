@@ -27,20 +27,16 @@ testthat::test_that("module score implementation lives in 03_score_module_activi
   }
 })
 
-testthat::test_that("legacy module scripts are wrappers", {
+testthat::test_that("legacy module wrapper scripts have been removed", {
   source(testthat::test_path("..", "..", "R", "paths.R"))
-  cases <- list(
-    list(path = "06_modules_WGCNA/legacy/05_module_score.r", target = "03_score_module_activity.R", word = "Deprecated"),
-    list(path = "06_modules_WGCNA/legacy/91_module_score.r", target = "03_score_module_activity.R", word = "Legacy"),
-    list(path = "06_modules_WGCNA/legacy/03_overlap_modules.r", target = "02_curated_overlap_programs.r", word = "deprecated"),
-    list(path = "06_modules_WGCNA/legacy/04_overlap_modules.r", target = "02_curated_overlap_programs.r", word = "Deprecated"),
-    list(path = "06_modules_WGCNA/legacy/05_wgcna_de_gsea_overlap.r", target = "04_wgcna_de_gsea_overlap.r", word = "Deprecated")
+  removed <- c(
+    "06_modules_WGCNA/legacy/05_module_score.r",
+    "06_modules_WGCNA/legacy/91_module_score.r",
+    "06_modules_WGCNA/legacy/03_overlap_modules.r",
+    "06_modules_WGCNA/legacy/04_overlap_modules.r",
+    "06_modules_WGCNA/legacy/05_wgcna_de_gsea_overlap.r"
   )
-  for (case in cases) {
-    txt <- paste(readLines(repo_path(case$path), warn = FALSE), collapse = "\n")
-    testthat::expect_true(grepl(case$target, txt, fixed = TRUE), info = case$path)
-    testthat::expect_true(grepl(case$word, txt, ignore.case = TRUE), info = case$path)
-  }
+  testthat::expect_false(any(file.exists(repo_path(removed))))
 })
 
 testthat::test_that("pipeline module stages use canonical scripts and contracts", {
@@ -59,7 +55,9 @@ testthat::test_that("pipeline module stages use canonical scripts and contracts"
     "06_modules_WGCNA/04_wgcna_de_gsea_overlap.r",
     "06_modules_WGCNA/05_module_supermodule_group_effects.r",
     "06_modules_WGCNA/06_annotate_module_microenvironment.r",
-    "06_modules_WGCNA/07_wgcna_interpretable_summary.r"
+    "06_modules_WGCNA/07_wgcna_interpretable_summary.r",
+    "06_modules_WGCNA/08_module_complex_architecture.r",
+    "06_modules_WGCNA/09_module_robustness_sensitivity.r"
   )
   testthat::expect_equal(scripts_downstream, expected_downstream)
   testthat::expect_false(any(c(
@@ -75,17 +73,11 @@ testthat::test_that("pipeline module stages use canonical scripts and contracts"
   testthat::expect_false(grepl("module_score_v0.0.2", active_txt, fixed = TRUE))
 })
 
-testthat::test_that("pipeline legacy block maps old module names", {
+testthat::test_that("pipeline legacy block does not retain removed wrapper names", {
   source(testthat::test_path("..", "..", "R", "paths.R"))
   pipeline_txt <- paste(readLines(repo_path("pipeline.yml"), warn = FALSE), collapse = "\n")
-  for (pair in c(
-    "03_overlap_modules.r",
-    "04_overlap_modules.r",
-    "05_module_score.r",
-    "05_wgcna_de_gsea_overlap.r",
-    "91_module_score.r"
-  )) {
-    testthat::expect_true(grepl(pair, pipeline_txt, fixed = TRUE), info = pair)
+  for (pair in c("03_overlap_modules.r", "04_overlap_modules.r", "05_module_score.r", "05_wgcna_de_gsea_overlap.r", "91_module_score.r")) {
+    testthat::expect_false(grepl(pair, pipeline_txt, fixed = TRUE), info = pair)
   }
   for (target in c(
     "02_curated_overlap_programs.r",

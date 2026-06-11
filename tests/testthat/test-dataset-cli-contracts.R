@@ -6,7 +6,7 @@ testthat::test_that("dataset-scoped active scripts use shared CLI dataset resolu
     "02_id_mapping/01_MapThatProt_batch.r",
     "04_differential_expression_enrichment/01_clusterProfiler.r",
     "04_differential_expression_enrichment/02_compareGO.r",
-    "04_differential_expression_enrichment/04_neuropil_contamination_annotation.r",
+    "04_differential_expression_enrichment/04_neuropil_reference_annotation.r",
     "07_spatial_networks/02_differential_networks.r",
     "07_spatial_networks/03_bootstrap_network_stability.r",
     "07_spatial_networks/04_bootstrap_differential_network_stability.r",

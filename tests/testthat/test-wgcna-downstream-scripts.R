@@ -6,7 +6,9 @@ testthat::test_that("WGCNA downstream entrypoints exist", {
     "03_qc_exploration/06_wgcna_marker_trait_export.r",
     "06_modules_WGCNA/05_module_supermodule_group_effects.r",
     "06_modules_WGCNA/06_annotate_module_microenvironment.r",
-    "06_modules_WGCNA/07_wgcna_interpretable_summary.r"
+    "06_modules_WGCNA/07_wgcna_interpretable_summary.r",
+    "06_modules_WGCNA/08_module_complex_architecture.r",
+    "06_modules_WGCNA/09_module_robustness_sensitivity.r"
   )
   testthat::expect_true(all(file.exists(repo_path(scripts))))
 })
@@ -23,7 +25,9 @@ testthat::test_that("WGCNA downstream dry-runs report contracts", {
     c("03_qc_exploration/06_wgcna_marker_trait_export.r", "--dataset", "microglia", "--dry-run"),
     c("06_modules_WGCNA/05_module_supermodule_group_effects.r", "--dataset", "microglia", "--dry-run"),
     c("06_modules_WGCNA/06_annotate_module_microenvironment.r", "--dataset", "microglia", "--dry-run"),
-    c("06_modules_WGCNA/07_wgcna_interpretable_summary.r", "--dataset", "all", "--dry-run")
+    c("06_modules_WGCNA/07_wgcna_interpretable_summary.r", "--dataset", "all", "--dry-run"),
+    c("06_modules_WGCNA/08_module_complex_architecture.r", "--dataset", "all", "--dry-run"),
+    c("06_modules_WGCNA/09_module_robustness_sensitivity.r", "--dataset", "all", "--dry-run")
   )
   for (args in cases) {
     out <- suppressWarnings(system2(cmd, args, stdout = TRUE, stderr = TRUE))
@@ -170,4 +174,28 @@ testthat::test_that("WGCNA downstream schemas expose required columns", {
     interpretation_sentence = character()
   )
   testthat::expect_silent(validate_wgcna_interpretable_summary(interp_df))
+
+  atlas_df <- data.frame(
+    dataset = character(), evidence_domain = character(), evidence_id = character(),
+    program_label = character(), entity_type = character(), entity_id = character(),
+    source_file = character(), evidence_status = character(),
+    interpretation_note = character(), qc_flag = character()
+  )
+  testthat::expect_silent(validate_cross_compartment_program_atlas(atlas_df))
+
+  summary_df <- data.frame(
+    program_key = character(), manuscript_claim_scope = character(),
+    datasets_supported = character(), evidence_domains = character(),
+    strongest_evidence = character(), safe_manuscript_sentence = character(),
+    main_limitation = character(), qc_flag = character()
+  )
+  testthat::expect_silent(validate_manuscript_program_summary(summary_df))
+
+  priority_df <- data.frame(
+    priority_id = character(), program_key = character(), dataset = character(),
+    priority_tier = character(), evidence_domain_count = integer(),
+    strongest_fdr = numeric(), robustness_flag = character(),
+    behavior_flag = character(), qc_flag = character(), recommended_use = character()
+  )
+  testthat::expect_silent(validate_evidence_priority_matrix(priority_df))
 })
