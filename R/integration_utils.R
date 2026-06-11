@@ -18,7 +18,16 @@ integration_cli <- function(default_dataset = "all", allow_all = TRUE) {
     if (!length(hit) || hit[[1]] == length(args)) return(default)
     args[[hit[[1]] + 1L]]
   }
-  dataset <- value_after("--dataset", Sys.getenv("PROTEOMICS_DATASET", unset = default_dataset))
+  has_dataset_arg <- "--dataset" %in% args
+  env_dataset <- Sys.getenv("PROTEOMICS_DATASET", unset = "")
+  dataset_default <- if (isTRUE(allow_all) && identical(default_dataset, "all") && !has_dataset_arg) {
+    "all"
+  } else if (nzchar(env_dataset)) {
+    env_dataset
+  } else {
+    default_dataset
+  }
+  dataset <- value_after("--dataset", dataset_default)
   dataset <- normalize_dataset(dataset)
   if (isTRUE(allow_all) && identical(dataset, "all")) {
     Sys.setenv(PROTEOMICS_DATASET = dataset)
