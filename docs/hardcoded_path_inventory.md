@@ -22,9 +22,9 @@ This inventory covers active R scripts discovered before refactoring. Legacy/tes
 - `05_celltype_enrichment_EWCE/01_EWCE_E9.r`: refactored in Phase 3; no committed active machine path remains.
 - `06_modules_WGCNA/01_WGCNA v.2.0.0.r`: `S:/...` inputs/outputs; central WGCNA model producer, documented for data-aware refactor.
 - `06_modules_WGCNA/02_module_spatial_networks.r`: refactored in Phase 3; no committed active machine path remains.
-- `06_modules_WGCNA/02_curated_overlap_programs.r`: canonical curated overlap program builder; old overlap entrypoints are wrappers only.
+- `06_modules_WGCNA/02_curated_overlap_programs.r`: canonical curated overlap program builder; old overlap entrypoints were removed.
 - `06_modules_WGCNA/90_module_score_v0.0.1.r`: `S:/...` inputs/outputs; older superseded module-score version.
-- `06_modules_WGCNA/03_score_module_activity.R`: canonical source-scoped module activity scorer; old module-score entrypoints are wrappers only.
+- `06_modules_WGCNA/03_score_module_activity.R`: canonical source-scoped module activity scorer; old module-score entrypoints were removed.
 - `07_spatial_networks/01_network_spatial_relations.r`: refactored in Phase 4; no committed active machine path remains.
 - `07_spatial_networks/02_differential_networks.r`: refactored in Phase 3; no committed active machine path remains.
 - `07_spatial_networks/03_bootstrap_network_stability.r`: refactored in Phase 3; no committed active machine path remains.
