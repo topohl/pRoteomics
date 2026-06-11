@@ -112,6 +112,45 @@ validate_wgcna_interpretable_summary <- function(df, artifact = "WGCNA interpret
   invisible(TRUE)
 }
 
+validate_cross_compartment_program_atlas <- function(df, artifact = "cross-compartment program atlas") {
+  require_module_contract_columns(
+    df,
+    c(
+      "dataset", "evidence_domain", "evidence_id", "program_label",
+      "entity_type", "entity_id", "source_file", "evidence_status",
+      "interpretation_note", "qc_flag"
+    ),
+    artifact
+  )
+  invisible(TRUE)
+}
+
+validate_manuscript_program_summary <- function(df, artifact = "manuscript program summary") {
+  require_module_contract_columns(
+    df,
+    c(
+      "program_key", "manuscript_claim_scope", "datasets_supported",
+      "evidence_domains", "strongest_evidence", "safe_manuscript_sentence",
+      "main_limitation", "qc_flag"
+    ),
+    artifact
+  )
+  invisible(TRUE)
+}
+
+validate_evidence_priority_matrix <- function(df, artifact = "evidence priority matrix") {
+  require_module_contract_columns(
+    df,
+    c(
+      "priority_id", "program_key", "dataset", "priority_tier",
+      "evidence_domain_count", "strongest_fdr", "robustness_flag",
+      "behavior_flag", "qc_flag", "recommended_use"
+    ),
+    artifact
+  )
+  invisible(TRUE)
+}
+
 write_contract_validation_status <- function(path, artifact, ok, message = "") {
   dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
   utils::write.csv(
