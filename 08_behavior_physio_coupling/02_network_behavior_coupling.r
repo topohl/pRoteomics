@@ -46,7 +46,7 @@ source(repo_path("R", "validation_utils.R"))
 MODULE_ID <- "08_behavior_physio_coupling"
 SUBSTEP_ID <- "network_behavior_coupling"
 CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
-BEHAVIOR_DATASET <- current_dataset()
+BEHAVIOR_DATASET <- current_dataset_from_cli()
 assert_dataset_capability(BEHAVIOR_DATASET, "layer", analysis = "network-behavior coupling")
 behavior_spatial_unit <- if (BEHAVIOR_DATASET == "neuron_neuropil") "region_layer" else "region"
 
