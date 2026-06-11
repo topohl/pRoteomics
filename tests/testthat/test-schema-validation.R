@@ -26,6 +26,14 @@ testthat::test_that("schema validation catches missing columns and accepts valid
     major_limitation = "ROI, not purified microglia",
     safe_interpretation = "ROI-associated signal",
     unsafe_overinterpretation = "Purified microglia claim",
+    missingness_confounded = "not_detected",
+    plate_or_batch_confounded = "not_detected",
+    region_layer_imbalance_risk = "not_applicable",
+    animal_pseudoreplication_risk = "possible",
+    early_pc_association = "not_available",
+    marker_contamination_risk = "not_available",
+    qc_interpretation_flag = "not_available",
+    animal_level_status = "sample_level_or_unclear",
     stringsAsFactors = FALSE
   )
   testthat::expect_silent(validate_table_schema(good, "biological_claims_table", strict = TRUE))
