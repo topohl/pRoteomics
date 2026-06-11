@@ -142,7 +142,7 @@ The manifest-backed order is:
 source("04_differential_expression_enrichment/01_clusterProfiler.r")
 source("04_differential_expression_enrichment/02_compareGO.r")
 source("04_differential_expression_enrichment/03_biological_program_summary.r")
-source("04_differential_expression_enrichment/04_neuropil_contamination_annotation.r")
+source("04_differential_expression_enrichment/04_neuropil_reference_annotation.r")
 source("04_differential_expression_enrichment/05_microglia_targeted_signature_enrichment.r")
 ```
 
@@ -152,7 +152,7 @@ Dry-run validation without launching analyses:
 Rscript 04_differential_expression_enrichment/01_clusterProfiler.r --dry-run
 Rscript 04_differential_expression_enrichment/02_compareGO.r --dry-run
 Rscript 04_differential_expression_enrichment/03_biological_program_summary.r --dry-run
-Rscript 04_differential_expression_enrichment/04_neuropil_contamination_annotation.r --dry-run
+Rscript 04_differential_expression_enrichment/04_neuropil_reference_annotation.r --dry-run
 Rscript 04_differential_expression_enrichment/05_microglia_targeted_signature_enrichment.r --dataset microglia --dry-run
 ```
 
@@ -202,7 +202,7 @@ normalized and imputed. Microglia data are region-only; when compared with the
 region + layer neuropil reference, neuropil layer units are collapsed to parent
 regions rather than treated as one-to-one layer equivalents.
 
-For microglia runs, `04_neuropil_contamination_annotation.r` writes optional
+For microglia runs, `04_neuropil_reference_annotation.r` writes optional
 GO/GSEA term annotations and `05_microglia_targeted_signature_enrichment.r`
 writes method-backed microglia program enrichments under
 `results/tables/04_differential_expression_enrichment/`.
@@ -247,7 +247,7 @@ Rscript 06_modules_WGCNA/01_WGCNA.r --dataset <dataset>
 Rscript 03_qc_exploration/04b_import_reference_marker_sources.r
 Rscript 03_qc_exploration/05_empirical_roi_marker_discovery.r
 Rscript 03_qc_exploration/06_wgcna_marker_trait_export.r --dataset <dataset>
-Rscript 04_differential_expression_enrichment/04_neuropil_contamination_annotation.r --dataset microglia
+Rscript 04_differential_expression_enrichment/04_neuropil_reference_annotation.r --dataset microglia
 Rscript 06_modules_WGCNA/05_module_supermodule_group_effects.r --dataset <dataset>
 Rscript 06_modules_WGCNA/06_annotate_module_microenvironment.r --dataset <dataset>
 Rscript 06_modules_WGCNA/07_wgcna_interpretable_summary.r --dataset <dataset>
@@ -258,7 +258,7 @@ For microglia-enriched ROI interpretation, also run the neuropil reference
 annotation before module annotation when the DE/GSEA manifests are available:
 
 ```bash
-Rscript 04_differential_expression_enrichment/04_neuropil_contamination_annotation.r --dataset microglia
+Rscript 04_differential_expression_enrichment/04_neuropil_reference_annotation.r --dataset microglia
 ```
 
 These WGCNA downstream scripts answer group effects and interpretation without
