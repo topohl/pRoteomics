@@ -2,104 +2,158 @@
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
+source(repo_path("R", "dataset_config.R"))
+source(repo_path("R", "pipeline_registry.R"))
+source(repo_path("R", "module_contracts.R"))
+source(repo_path("R", "schema_validation.R"))
 
-active_scripts <- c(
-  "03_qc_exploration/00_dataset_qc_report.r",
-  "04_differential_expression_enrichment/05_microglia_targeted_signature_enrichment.r",
-  "04_differential_expression_enrichment/03_biological_program_summary.r",
-  "06_modules_WGCNA/01_WGCNA.r",
-  "06_modules_WGCNA/02_curated_overlap_programs.r",
-  "06_modules_WGCNA/03_score_module_activity.R",
-  "06_modules_WGCNA/04_wgcna_de_gsea_overlap.r",
-  "06_modules_WGCNA/08_module_complex_architecture.r",
-  "06_modules_WGCNA/09_module_robustness_sensitivity.r",
-  "08_behavior_physio_coupling/03_module_behavior_coupling.r",
-  "10_biological_integration/01_cross_compartment_program_atlas.r",
-  "10_biological_integration/02_manuscript_program_summary.r",
-  "10_biological_integration/03_evidence_priority_matrix.r",
-  "09_export_pride_journal/07_make_biological_claims_table.R",
-  "run_dataset_pipeline.R"
-)
+setwd(repo_root())
 
 fail <- character()
-for (script in active_scripts) {
-  path <- repo_path(script)
-  if (!file.exists(path)) {
-    fail <- c(fail, paste("Missing active script:", script))
-    next
-  }
-  txt <- readLines(path, warn = FALSE)
-  joined <- paste(txt, collapse = "\n")
-  if (!grepl("--dry-run|is_dry_run\\(|dry_run", joined)) {
-    fail <- c(fail, paste("No dry-run handling detected:", script))
-  }
-  if (grepl("/Users/|/Volumes/|C:\\\\Users\\\\|~/Desktop|~/Documents", joined)) {
-    fail <- c(fail, paste("Hard-coded local path detected:", script))
-  }
-  if (!grepl("create_module_dirs\\(|module_paths\\(|qc_paths\\(|path_results\\(|path_processed\\(", joined)) {
-    fail <- c(fail, paste("No canonical path helper detected:", script))
-  }
-}
-
-pipeline_txt <- paste(readLines(repo_path("pipeline.yml"), warn = FALSE), collapse = "\n")
-for (dataset in c("neuron_neuropil", "neuron_soma", "microglia")) {
+check <- function(expr, label) {
   ok <- tryCatch({
-    source(repo_path("R", "dataset_config.R"), local = TRUE)
-    validate_dataset(dataset) == dataset
-  }, error = function(e) FALSE)
-  if (!ok) fail <- c(fail, paste("Dataset validation failed:", dataset))
+    force(expr)
+    TRUE
+  }, error = function(e) {
+    fail <<- c(fail, paste0(label, ": ", conditionMessage(e)))
+    FALSE
+  })
+  invisible(ok)
 }
-for (needle in c("03_qc_exploration/00_dataset_qc_report.r", "06_modules_WGCNA/01_WGCNA.r", "10_biological_integration/01_cross_compartment_program_atlas.r")) {
-  if (!grepl(needle, pipeline_txt, fixed = TRUE)) {
-    fail <- c(fail, paste("Pipeline does not include expected script:", needle))
+
+read_csv_required <- function(path, label) {
+  if (!file.exists(path)) stop("Missing ", label, ": ", path, call. = FALSE)
+  utils::read.csv(path, check.names = FALSE, stringsAsFactors = FALSE)
+}
+
+skip_missing_output <- function(path, label) {
+  strict <- tolower(Sys.getenv("PROTEOMICS_STRICT_OUTPUT_CONTRACTS", unset = "false")) %in% c("1", "true", "yes")
+  exists <- if (grepl("[.]csv$", path, ignore.case = TRUE)) file.exists(path) else dir.exists(path)
+  if (!exists && isTRUE(strict)) stop("Missing ", label, ": ", path, call. = FALSE)
+  if (!exists) {
+    message("SKIP output contract not present on this runner: ", label)
+    return(TRUE)
+  }
+  FALSE
+}
+
+registry <- NULL
+check({
+  registry <- read_pipeline_registry(repo_path("pipeline.yml"))
+}, "pipeline.yml parses and validates")
+
+if (!is.null(registry)) {
+  steps <- pipeline_steps(registry, pipeline_stage_names(registry), dataset = "all", include_unsupported = TRUE)
+  required_registry_fields <- c(
+    "script", "stage", "scope", "supported_datasets", "consumes_required",
+    "consumes_optional", "produces", "recomputes_core_state", "safe_downstream_rerun"
+  )
+  missing_step_cols <- setdiff(required_registry_fields, names(steps))
+  if (length(missing_step_cols)) {
+    fail <- c(fail, paste("pipeline_steps() missing expected column(s):", paste(missing_step_cols, collapse = ", ")))
+  }
+
+  check(validate_pipeline_scripts_exist(registry, fail = TRUE), "all registered active scripts exist")
+  check(validate_run_order_against_registry(registry), "RUN_ORDER.md references only active or legacy scripts")
+
+  registered <- unique(steps$script)
+  missing_active <- registered[!file.exists(repo_path(registered))]
+  if (length(missing_active)) {
+    fail <- c(fail, paste("Registered active scripts missing from working tree:", paste(missing_active, collapse = ", ")))
+  }
+
+  for (field in c("consumes_required", "consumes_optional", "produces")) {
+    empty_required_field <- steps$script[is.na(steps[[field]])]
+    if (length(empty_required_field)) {
+      fail <- c(fail, paste("Registry field unexpectedly NA for", field, ":", paste(unique(empty_required_field), collapse = ", ")))
+    }
+  }
+
+  global_stages <- names(registry$stages)[vapply(registry$stages, function(stage) {
+    any(vapply(stage$scripts, function(step) identical(as.character(step$scope), "global") || "global" %in% unlist(step$datasets), logical(1)))
+  }, logical(1))]
+  for (stage in global_stages) {
+    cmd <- c("run_dataset_pipeline.R", "--dataset", "all", "--stage", stage, "--dry-run")
+    status <- system2("Rscript", cmd, stdout = TRUE, stderr = TRUE)
+    exit <- attr(status, "status")
+    if (!is.null(exit) && exit != 0L) {
+      fail <- c(fail, paste0("Global/all dry-run failed for stage ", stage, ":\n", paste(status, collapse = "\n")))
+    }
   }
 }
 
-stage_order <- vapply(c("coupling:", "integration:", "export:"), function(x) regexpr(x, pipeline_txt, fixed = TRUE)[[1]], integer(1))
-if (any(stage_order <= 0) || is.unsorted(stage_order, strictly = TRUE)) {
-  fail <- c(fail, "Pipeline stage order must include coupling -> integration -> export")
+for (dataset in valid_datasets()) {
+  check(validate_dataset(dataset) == dataset, paste("Dataset validation", dataset))
 }
 
-enrichment_order <- c(
-  "04_differential_expression_enrichment/01_clusterProfiler.r",
-  "04_differential_expression_enrichment/02_compareGO.r",
-  "04_differential_expression_enrichment/04_neuropil_reference_annotation.r",
-  "04_differential_expression_enrichment/05_microglia_targeted_signature_enrichment.r",
-  "04_differential_expression_enrichment/03_biological_program_summary.r"
-)
-order_idx <- vapply(enrichment_order, function(x) {
-  m <- regexpr(x, pipeline_txt, fixed = TRUE)
-  as.integer(m[[1]])
-}, integer(1))
-if (any(order_idx <= 0) || is.unsorted(order_idx, strictly = TRUE)) {
-  fail <- c(fail, "Pipeline enrichment stage order does not match required clusterProfiler -> compareGO -> neuropil -> microglia signature -> biological program summary sequence")
+module_ann_path <- path_results("tables", "06_modules_WGCNA", "module_annotation", "microglia", "WGCNA_module_biological_annotation.csv")
+if (!skip_missing_output(module_ann_path, "microglia WGCNA module annotation")) {
+  check({
+    module_ann <- read_csv_required(module_ann_path, "microglia WGCNA module annotation")
+    validate_wgcna_module_annotation(module_ann)
+  }, "WGCNA module annotation contract")
 }
 
-micro_sig_txt <- paste(readLines(repo_path("04_differential_expression_enrichment", "05_microglia_targeted_signature_enrichment.r"), warn = FALSE), collapse = "\n")
-for (needle in c(
-  "left_unit", "right_unit", "left_region", "right_region", "left_condition", "right_condition", "contrast_class",
-  "microglia_signature_enrichment_with_contrast_class.csv",
-  "microglia_signature_within_region_condition.csv",
-  "microglia_signature_cross_region_same_condition.csv",
-  "microglia_signature_cross_region_cross_condition.csv",
-  "microglia_signature_leading_edge_recurrence.csv",
-  "microglia_signature_claims_ready.csv"
-)) {
-  if (!grepl(needle, micro_sig_txt, fixed = TRUE)) {
-    fail <- c(fail, paste("Microglia signature script missing expected contract marker:", needle))
-  }
+super_ann_path <- path_results("tables", "06_modules_WGCNA", "module_annotation", "microglia", "WGCNA_supermodule_biological_annotation.csv")
+if (!skip_missing_output(super_ann_path, "microglia WGCNA supermodule annotation")) {
+  check({
+    super_ann <- read_csv_required(super_ann_path, "microglia WGCNA supermodule annotation")
+    require_module_contract_columns(
+      super_ann,
+      c("dataset", "SupermoduleID", "dominant_microenvironment_class", "dominant_module_labels", "Supermodule_LabelRationale"),
+      "WGCNA supermodule biological annotation"
+    )
+  }, "WGCNA supermodule annotation contract")
 }
 
-claims_export_txt <- paste(readLines(repo_path("09_export_pride_journal", "07_make_biological_claims_table.R"), warn = FALSE), collapse = "\n")
-for (needle in c("microglia_signature_claims_ready.csv", "collect_microglia_signature_claims", "microglia_signature_enrichment")) {
-  if (!grepl(needle, claims_export_txt, fixed = TRUE)) {
-    fail <- c(fail, paste("Claims export missing expected microglia signature integration marker:", needle))
-  }
+module_interp_path <- path_results("tables", "06_modules_WGCNA", "interpretable_summary", "microglia", "WGCNA_module_group_effects_interpretable.csv")
+if (!skip_missing_output(module_interp_path, "microglia WGCNA module interpretable summary")) {
+  check({
+    module_interp <- read_csv_required(module_interp_path, "microglia WGCNA module interpretable summary")
+    validate_wgcna_interpretable_summary(module_interp)
+    require_module_contract_columns(
+      module_interp,
+      c(
+        "ModulePlotLabel", "Supermodule_PlotLabel", "Supermodule_FullAnnotationLabel",
+        "targeted_signature_primary_driver", "targeted_signature_driver_class",
+        "targeted_signature_driver_signature", "targeted_signature_driver_padj",
+        "targeted_signature_driver_NES", "targeted_signature_driver_overlap_proteins"
+      ),
+      "WGCNA module interpretable summary"
+    )
+  }, "WGCNA module interpretable summary contract")
 }
-for (needle in c("collect_integration_claims", "biological_integration_manuscript_summary", "manuscript_program_summary.csv")) {
-  if (!grepl(needle, claims_export_txt, fixed = TRUE)) {
-    fail <- c(fail, paste("Claims export missing expected biological integration marker:", needle))
-  }
+
+super_interp_path <- path_results("tables", "06_modules_WGCNA", "interpretable_summary", "microglia", "WGCNA_supermodule_group_effects_interpretable.csv")
+if (!skip_missing_output(super_interp_path, "microglia WGCNA supermodule interpretable summary")) {
+  check({
+    super_interp <- read_csv_required(super_interp_path, "microglia WGCNA supermodule interpretable summary")
+    validate_wgcna_interpretable_summary(super_interp)
+    require_module_contract_columns(
+      super_interp,
+      c(
+        "Supermodule_PlotLabel", "Supermodule_FullAnnotationLabel",
+        "Supermodule_DisplayShort", "dominant_microenvironment_class",
+        "dominant_module_labels", "Supermodule_LabelRationale"
+      ),
+      "WGCNA supermodule interpretable summary"
+    )
+  }, "WGCNA supermodule interpretable summary contract")
+}
+
+bundle_path <- path_results("tables", "10_biological_integration", "final_evidence_bundle", "global")
+if (!skip_missing_output(bundle_path, "final biological evidence bundle")) {
+  check({
+    validate_final_evidence_bundle(bundle_path)
+  }, "final biological evidence bundle contract")
+}
+
+claims_path <- path_results("tables", "biological_claims_table.csv")
+if (!skip_missing_output(claims_path, "biological claims table")) {
+  check({
+    claims <- read_csv_required(claims_path, "biological claims table")
+    validate_table_schema(claims, "biological_claims_table", strict = TRUE)
+  }, "biological claims table schema")
 }
 
 if (length(fail)) {

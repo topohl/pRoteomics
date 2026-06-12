@@ -125,7 +125,10 @@ testthat::test_that("downstream supermodule labels prefer display label consiste
   txt <- paste(vapply(scripts, function(path) paste(readLines(path, warn = FALSE), collapse = "\n"), character(1)), collapse = "\n")
   testthat::expect_match(txt, "Supermodule_DisplayLabel")
   testthat::expect_true(grepl("SupermoduleLabel = dplyr::coalesce\\(as.character\\(\\.data\\$Supermodule_DisplayLabel\\), as.character\\(\\.data\\$Supermodule_FinalLabel\\), as.character\\(\\.data\\$Macroprogram_Display\\)", txt))
-  testthat::expect_true(grepl("biological_program = dplyr::coalesce\\(\\.data\\$Supermodule_DisplayLabel, \\.data\\$Supermodule_FinalLabel, \\.data\\$Macroprogram_Display", txt))
+  testthat::expect_true(grepl("biological_program = dplyr::coalesce\\(", txt))
+  testthat::expect_true(grepl("blank_to_na\\(\\.data\\$Supermodule_DisplayLabel\\)", txt))
+  testthat::expect_true(grepl("blank_to_na\\(\\.data\\$Supermodule_FinalLabel\\)", txt))
+  testthat::expect_true(grepl("blank_to_na\\(\\.data\\$Macroprogram_Display\\)", txt))
 })
 
 testthat::test_that("WGCNA downstream schemas expose required columns", {
