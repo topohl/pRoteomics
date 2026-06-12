@@ -1,12 +1,12 @@
 version: 2
-description: "Publication-facing proteomics pipeline registry with explicit script dependencies."
+description: "Canonical active proteomics pipeline registry. This file is the source of truth for runnable stages, script order, dataset support, inputs, outputs, and safe-rerun status."
 datasets:
   - neuron_neuropil
   - neuron_soma
   - microglia
 stages:
   core:
-    description: "Preprocessing handoff and identifier mapping."
+    description: "Core dataset handoff: split upstream contrast files, prepare module-score metadata, and map protein identifiers for downstream analyses."
     scripts:
       - script: "01_preprocessing/03_gct_extractR.r"
         required: true
@@ -18,7 +18,7 @@ stages:
         consumes_optional: ["data/processed/01_preprocessing/protigy_output/<dataset>/protigy_manifest.csv", "data/processed/01_preprocessing/protigy_output/protigy_manifest.csv"]
         recomputes_core_state: true
         safe_downstream_rerun: false
-        notes: "Creates dataset GCT comparison CSVs consumed by MapThatProt."
+        notes: "Creates dataset-scoped GCT comparison CSVs consumed by MapThatProt; rerun intentionally because this refreshes core handoff state."
       - script: "01_preprocessing/06_merged_metadata_module_score.r"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
@@ -29,7 +29,7 @@ stages:
         consumes_optional: ["data/external/behavior/auc_individual_animals_all.csv", "data/external/behavior/auc_individual_animals_firstChangeActive.csv", "data/external/behavior/E9_Behavior_Data.xlsx"]
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "Builds behavior/physiology metadata used by module activity scoring."
+        notes: "Builds dataset-scoped behavior/physiology metadata used by module activity scoring; does not change expression matrices."
       - script: "02_id_mapping/01_MapThatProt_batch.r"
         required: true
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
@@ -40,9 +40,9 @@ stages:
         consumes_optional: ["data/metadata/manual_mapping.xlsx"]
         recomputes_core_state: true
         safe_downstream_rerun: false
-        notes: "Maps GCT-derived protein IDs to UniProt/gene symbols; enrichment consumes these mapped files."
+        notes: "Maps GCT-derived protein IDs to UniProt/gene symbols; enrichment and WGCNA consume these mapped files."
   qc_global:
-    description: "Global marker/reference import and cross-dataset ROI marker discovery."
+    description: "Global marker/reference setup: import reference marker panels and discover empirical ROI marker sets across dataset families."
     scripts:
       - script: "03_qc_exploration/04b_import_reference_marker_sources.r"
         required: false
@@ -54,7 +54,7 @@ stages:
         consumes_optional: ["config/marker_panels/compartment_fidelity_marker_sets.csv", "data/external/reference_markers/go_mgi/raw/mgi.gaf.gz", "data/external/reference_markers/go_mgi/raw/go-basic.obo", "data/external/reference_markers/go_mgi/raw/HOM_MouseHumanSequence.rpt", "data/external/reference_markers/syngo/raw/"]
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "Creates the marker registry consumed by marker QC and WGCNA downstream annotation."
+        notes: "Creates the marker registry consumed by marker QC and WGCNA downstream annotation; offline/cached sources are preferred."
       - script: "03_qc_exploration/05_empirical_roi_marker_discovery.r"
         required: false
         datasets: ["global"]
@@ -65,9 +65,9 @@ stages:
         consumes_optional: ["config/marker_panels/wgcna_reference_marker_sets.csv"]
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "Global because it compares all three dataset matrices."
+        notes: "Global because marker discovery compares all three dataset matrices; CON/RES/SUS contrasts should not define marker sets."
   qc:
-    description: "Dataset QC reports, missingness, replicate consistency, marker abundance, PCA/confounding, variance partitioning, and biology/confounding summaries."
+    description: "Dataset QC: sample quality, missingness, replicate consistency, marker abundance, PCA/confounding, variance partitioning, and QC-to-biology summaries."
     scripts:
       - script: "03_qc_exploration/00_dataset_qc_report.r"
         required: false
@@ -134,7 +134,7 @@ stages:
         consumes_optional: ["config/marker_panels/wgcna_reference_marker_sets.csv", "results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/"]
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "QC bridge into WGCNA marker interpretation; optional WGCNA state is used when present."
+        notes: "QC bridge into WGCNA marker interpretation; optional WGCNA state is used when present, so stage placement is QC although it can benefit from prior modules_wgcna outputs."
       - script: "03_qc_exploration/04d_compartment_marker_fidelity.r"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
@@ -178,7 +178,7 @@ stages:
         consumes_optional: ["config/marker_panels/wgcna_reference_marker_sets.csv"]
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "Exports QC marker traits from existing WGCNA state; scheduled in QC but requires prior WGCNA outputs when run."
+        notes: "Exports QC marker traits from existing WGCNA state; confusing placement is retained for compatibility, but this script requires prior WGCNA outputs when run."
       - script: "03_qc_exploration/07_qc_biology_confounding_report.r"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
@@ -191,7 +191,7 @@ stages:
         safe_downstream_rerun: true
         notes: "Summarizes QC biology/confounding evidence."
   enrichment:
-    description: "Differential enrichment, GO comparisons, reference annotations, targeted signatures, biological summaries, and EWCE."
+    description: "Differential abundance interpretation: enrichment manifests, GO/GSEA comparisons, neuropil/reference annotations, targeted signatures, program summaries, external overlaps, and EWCE."
     scripts:
       - script: "04_differential_expression_enrichment/01_clusterProfiler.r"
         required: true
@@ -203,7 +203,7 @@ stages:
         consumes_optional: ["data/external/MOUSE_10090_idmapping.dat"]
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "ClusterProfiler enrichment source for compareGO and program summaries."
+        notes: "Creates the dataset-scoped clusterProfiler manifest consumed by compareGO and program summaries."
       - script: "04_differential_expression_enrichment/02_compareGO.r"
         required: true
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
@@ -214,7 +214,7 @@ stages:
         consumes_optional: []
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "Consumes clusterProfiler output."
+        notes: "Consumes only the manifest-selected clusterProfiler outputs for this dataset."
       - script: "04_differential_expression_enrichment/04_neuropil_reference_annotation.r"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
@@ -225,7 +225,7 @@ stages:
         consumes_optional: ["config/marker_panels/wgcna_reference_marker_sets.csv"]
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "Runs after neuron_neuropil enrichment exists."
+        notes: "Adds neuropil-reference annotation where supported; microglia uses this as context for ROI/local microenvironment interpretation, not subtraction."
       - script: "04_differential_expression_enrichment/05_microglia_targeted_signature_enrichment.r"
         required: false
         datasets: ["microglia"]
@@ -236,7 +236,7 @@ stages:
         consumes_optional: ["config/marker_panels/wgcna_reference_marker_sets.csv", "results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv"]
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "Microglia-only targeted signature enrichment."
+        notes: "Microglia-only targeted signature enrichment; supports conservative ROI annotation rather than purified-cell claims."
       - script: "04_differential_expression_enrichment/03_biological_program_summary.r"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
@@ -247,7 +247,7 @@ stages:
         consumes_optional: ["results/tables/04_differential_expression_enrichment/neuropil_reference_annotation/<dataset>/", "results/tables/04_differential_expression_enrichment/microglia_targeted_signature_enrichment/<dataset>/"]
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "Runs after clusterProfiler and compareGO; uses annotations/signatures where supported."
+        notes: "Runs after clusterProfiler and compareGO; summarizes conservative biological programs and uses annotations/signatures where supported."
       - script: "04_differential_expression_enrichment/06_compareGO_spatial_program_atlas.r"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
@@ -258,7 +258,7 @@ stages:
         consumes_optional: ["results/tables/04_differential_expression_enrichment/biological_program_summary/<dataset>/program_summary.csv"]
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "Spatial program atlas from compareGO outputs."
+        notes: "Builds a spatial program atlas from compareGO outputs without changing enrichment statistics."
       - script: "04_differential_expression_enrichment/07_external_stress_disease_signature_overlap.r"
         required: false
         datasets: ["global"]
@@ -280,9 +280,9 @@ stages:
         consumes_optional: ["data/processed/04_differential_expression_enrichment/compareGO/<dataset>/compareGO_input_manifest.csv"]
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "EWCE after differential/enrichment inputs are available."
+        notes: "EWCE after differential/enrichment inputs are available; retained in enrichment because it is a cell-type interpretation layer."
   modules_wgcna:
-    description: "Core WGCNA state generation only."
+    description: "WGCNA network/module construction only: build modules, eigengenes, module definitions, and supermodule clustering state."
     scripts:
       - script: "06_modules_WGCNA/01_WGCNA.r"
         required: true
@@ -294,9 +294,9 @@ stages:
         consumes_optional: ["data/metadata/*.xlsx", "config/marker_panels/wgcna_reference_marker_sets.csv"]
         recomputes_core_state: true
         safe_downstream_rerun: false
-        notes: "The only stage entry that recomputes core WGCNA state."
+        notes: "Network/module construction. This is the only stage entry that recomputes core WGCNA state; downstream annotation/reporting should use modules_downstream."
   modules_downstream:
-    description: "Curated overlap programs, scoring, WGCNA/DE/GSEA overlap, group effects, microenvironment annotation, and interpretable summaries."
+    description: "WGCNA downstream interpretation: curated overlap programs, module scoring, DE/GSEA overlap, group-effect modelling, biological annotation, interpretable summaries, and robustness/context layers."
     scripts:
       - script: "06_modules_WGCNA/01a_compare_GO_recurrent_proteins.r"
         required: false
@@ -308,7 +308,7 @@ stages:
         consumes_optional: []
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "Global recurrent GO/protein comparison used by curated overlap programs."
+        notes: "Global recurrent GO/protein comparison used by curated overlap programs; does not alter WGCNA modules."
       - script: "06_modules_WGCNA/02_curated_overlap_programs.r"
         required: false
         datasets: ["global"]
@@ -319,7 +319,7 @@ stages:
         consumes_optional: ["data/external/MOUSE_10090_idmapping.dat"]
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "Curated overlap programs are global and do not recompute WGCNA."
+        notes: "Curated overlap programs are global biological program sets and are distinct from WGCNA module construction."
       - script: "06_modules_WGCNA/03_score_module_activity.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
@@ -330,7 +330,7 @@ stages:
         consumes_optional: ["data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx"]
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "Scores existing module definitions against dataset matrices."
+        notes: "Module scoring layer: scores existing module definitions against dataset matrices; does not rebuild WGCNA modules."
       - script: "06_modules_WGCNA/04_wgcna_de_gsea_overlap.r"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
@@ -341,7 +341,7 @@ stages:
         consumes_optional: ["results/tables/04_differential_expression_enrichment/biological_program_summary/<dataset>/program_summary.csv"]
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "Must run after WGCNA and enrichment."
+        notes: "Bridge layer between WGCNA modules and DE/GSEA manifests; must run after WGCNA and enrichment."
       - script: "06_modules_WGCNA/05_module_supermodule_group_effects.r"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
@@ -352,18 +352,18 @@ stages:
         consumes_optional: ["results/tables/06_modules_WGCNA/module_score/<dataset>/"]
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "Uses existing WGCNA state/supermodule annotation; safe to run without recomputing WGCNA."
+        notes: "Group-effect modelling layer for modules and supermodules; uses existing WGCNA state and is safe to run without recomputing WGCNA."
       - script: "06_modules_WGCNA/06_annotate_module_microenvironment.r"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "modules_downstream"
         scope: "dataset_specific"
-        produces: ["results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_module_biological_annotation.csv", "results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_supermodule_biological_annotation.csv"]
+        produces: ["results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_module_biological_annotation.csv", "results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_supermodule_biological_annotation.csv", "results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_module_targeted_signature_overlap_details.csv"]
         consumes_required: ["results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/"]
         consumes_optional: ["config/marker_panels/wgcna_reference_marker_sets.csv", "results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv", "results/tables/04_differential_expression_enrichment/neuropil_reference_annotation/<dataset>/"]
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "Consumes marker registry, empirical markers, WGCNA outputs, and neuropil annotations when present."
+        notes: "Biological annotation layer. Consumes marker registry, empirical markers, WGCNA outputs, and neuropil annotations when present; microglia labels refer to ROI/local microenvironment unless explicit immune-state evidence is present."
       - script: "06_modules_WGCNA/07_wgcna_interpretable_summary.r"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
@@ -374,7 +374,7 @@ stages:
         consumes_optional: ["results/tables/06_modules_WGCNA/04_wgcna_de_gsea_overlap/<dataset>/"]
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "Runs after module/supermodule group effects and microenvironment annotation."
+        notes: "Manuscript-facing summary layer. Runs after group effects and biological annotation, preserving broad plot labels alongside full annotation/rationale fields."
       - script: "06_modules_WGCNA/08_module_complex_architecture.r"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
@@ -396,9 +396,9 @@ stages:
         consumes_optional: ["results/tables/06_modules_WGCNA/group_effects/<dataset>/supermodule_group_effects.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_module_preservation_summary.csv", "results/tables/03_qc_exploration/05_pca_confounding_qc/<dataset>/PCA_confounding_summary.csv", "results/tables/03_qc_exploration/06_variance_partitioning/<dataset>/group_technical_confounding_screen.csv"]
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "Robustness/sensitivity synthesis from existing module effects, preservation, and QC/confounding outputs."
+        notes: "Robustness/sensitivity synthesis from existing module effects, preservation, and QC/confounding outputs; no core WGCNA recomputation."
   networks:
-    description: "Spatial network generation, differential networks, bootstrap stability, bootstrap figures, and chord diagrams."
+    description: "Spatial network analyses: build spatial relation objects, differential networks, bootstrap stability summaries, figures, and chord diagrams."
     scripts:
       - script: "07_spatial_networks/01_network_spatial_relations.r"
         required: true
@@ -410,7 +410,7 @@ stages:
         consumes_optional: ["results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/"]
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "Generates spatial relation objects; may use module annotations when present."
+        notes: "Generates spatial relation objects; may use module annotations when present but does not recompute WGCNA."
       - script: "07_spatial_networks/02_differential_networks.r"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma"]
@@ -465,9 +465,9 @@ stages:
         consumes_optional: ["results/tables/07_spatial_networks/"]
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "Chord diagrams from mapped phenotype-within-unit edge/protein tables."
+        notes: "Chord diagrams from mapped phenotype-within-unit edge/protein tables; current stage placement is retained although the input path is legacy-shaped."
   coupling:
-    description: "Network, module, and proteomic coupling to behavior/physiology."
+    description: "Behavior/physiology coupling for networks, modules, and selected proteomic summaries."
     scripts:
       - script: "08_behavior_physio_coupling/01_correlate_proteomics_with_behavior.r"
         required: false
@@ -503,7 +503,7 @@ stages:
         safe_downstream_rerun: true
         notes: "Module-level behavior/physiology coupling context; missing behavior inputs become status rows."
   integration:
-    description: "Manuscript-level biological synthesis integrating enrichment, WGCNA, microenvironment, complex/organelle, robustness, spatial architecture, behavior, and QC evidence."
+    description: "Manuscript-level synthesis: integrate existing enrichment, WGCNA, microenvironment, complex/organelle, robustness, spatial, behavior, and QC evidence."
     scripts:
       - script: "10_biological_integration/01_cross_compartment_program_atlas.r"
         required: false
@@ -532,14 +532,14 @@ stages:
         datasets: ["global"]
         stage: "integration"
         scope: "global"
-        produces: ["results/tables/10_biological_integration/evidence_priority_matrix/global/evidence_priority_matrix.csv", "results/source_data/10_biological_integration/evidence_priority_matrix/global/evidence_priority_matrix.csv", "results/logs/10_biological_integration/evidence_priority_matrix/global/run_manifest.yml"]
+        produces: ["results/tables/10_biological_integration/evidence_priority_matrix/global/evidence_priority_matrix.csv", "results/source_data/10_biological_integration/evidence_priority_matrix/global/evidence_priority_matrix.csv", "results/tables/10_biological_integration/final_evidence_bundle/global/final_biological_evidence_bundle.xlsx", "results/tables/10_biological_integration/final_evidence_bundle/global/", "results/source_data/10_biological_integration/final_evidence_bundle/global/", "results/logs/10_biological_integration/final_evidence_bundle/global/run_manifest.yml", "results/logs/10_biological_integration/evidence_priority_matrix/global/run_manifest.yml"]
         consumes_required: []
         consumes_optional: ["results/tables/10_biological_integration/cross_compartment_program_atlas/global/cross_compartment_program_atlas_long.csv", "results/tables/10_biological_integration/manuscript_program_summary/global/manuscript_program_summary.csv", "results/tables/biological_claims_table.csv"]
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "Ranks candidate manuscript programs by multi-stream evidence, robustness, behavior coupling, and QC flags."
+        notes: "Ranks candidate manuscript programs and refreshes the final biological evidence bundle from existing downstream outputs."
   export:
-    description: "PRIDE, manuscript, reviewer, source-data, and validation export layer."
+    description: "Export layer for PRIDE, manuscript tables, reviewer materials, source data, methods summaries, and validation reports."
     scripts:
       - script: "09_export_pride_journal/02_make_sample_metadata.R"
         required: false
@@ -601,12 +601,12 @@ stages:
         datasets: ["global"]
         stage: "export"
         scope: "global"
-        produces: ["results/tables/biological_claims_table.csv", "results/tables/biological_claims_table.xlsx"]
+        produces: ["results/tables/biological_claims_table.csv", "results/tables/biological_claims_table.xlsx", "results/tables/10_biological_integration/final_evidence_bundle/global/final_biological_evidence_bundle.xlsx", "results/tables/10_biological_integration/final_evidence_bundle/global/"]
         consumes_required: ["results/tables/04_differential_expression_enrichment/", "results/tables/06_modules_WGCNA/"]
         consumes_optional: ["results/tables/08_behavior_physio_coupling/network_behavior_coupling/", "results/tables/10_biological_integration/manuscript_program_summary/global/manuscript_program_summary.csv", "results/tables/10_biological_integration/evidence_priority_matrix/global/evidence_priority_matrix.csv"]
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "Final biological claims table, including integration-stage manuscript summaries when available."
+        notes: "Final biological claims table, including integration-stage manuscript summaries when available; refreshes the final evidence bundle after claims are rebuilt."
       - script: "09_export_pride_journal/08_export_manuscript_figures.R"
         required: false
         datasets: ["global"]
