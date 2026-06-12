@@ -112,6 +112,14 @@ path_status <- function(paths, dataset) {
 
 join_paths <- function(x) paste(x, collapse = "|")
 
+compact_paths <- function(x, max_items = 4L) {
+  x <- x[nzchar(x)]
+  if (!length(x)) return("none")
+  shown <- head(x, max_items)
+  suffix <- if (length(x) > max_items) paste0(" | ... +", length(x) - max_items, " more") else ""
+  paste0(paste(shown, collapse = " | "), suffix)
+}
+
 expand_existing_output_paths <- function(paths, dataset) {
   paths <- split_registry_paths(paths)
   if (!length(paths)) return(character())
@@ -208,9 +216,10 @@ for (i in seq_len(nrow(steps))) {
       "\n",
       sep = ""
     )
-    if (length(missing_required)) cat("       missing required: ", join_paths(missing_required), "\n", sep = "")
-    if (length(missing_optional)) cat("       missing optional: ", join_paths(missing_optional), "\n", sep = "")
-    if (length(missing_outputs_before)) cat("       missing expected outputs now: ", join_paths(missing_outputs_before), "\n", sep = "")
+    cat("       required inputs missing: ", compact_paths(missing_required), "\n", sep = "")
+    cat("       optional inputs missing: ", compact_paths(missing_optional), "\n", sep = "")
+    cat("       expected outputs: ", compact_paths(path_status(step$produces, step$dataset)$path), "\n", sep = "")
+    cat("       expected outputs missing now: ", compact_paths(missing_outputs_before), "\n", sep = "")
     res <- make_result(step, status, 0L, started_at, Sys.time(), missing_required, missing_optional, missing_outputs_before, produced_before, produced_before)
     results <- rbind(results, res)
     if (identical(status, "missing_required_input")) break
