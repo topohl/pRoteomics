@@ -187,7 +187,7 @@ results <- data.frame()
 for (i in seq_len(nrow(steps))) {
   step <- steps[i, , drop = FALSE]
   started_at <- Sys.time()
-  Sys.setenv(PROTEOMICS_DATASET = if (identical(step$dataset, "global")) valid_datasets()[[1]] else step$dataset)
+  Sys.setenv(PROTEOMICS_DATASET = if (identical(step$dataset, "global")) "all" else step$dataset)
 
   required_status <- path_status(step$consumes_required, step$dataset)
   optional_status <- path_status(step$consumes_optional, step$dataset)
