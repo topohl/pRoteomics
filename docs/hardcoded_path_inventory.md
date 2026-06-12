@@ -1,5 +1,10 @@
 # Hard-Coded Path Inventory
 
+> Audit/historical snapshot. This inventory is retained for maintenance context
+> and may be stale unless explicitly refreshed. Use `pipeline.yml` as the active
+> source of truth and `WORKFLOW.md` / `RUN_ORDER.md` for current workflow
+> guidance.
+
 This inventory covers active R scripts discovered before refactoring. Legacy/testing/deprecated scripts also contain older paths and should remain excluded from canonical pipeline execution unless explicitly revived.
 
 ## Active Scripts With Machine-Specific Paths

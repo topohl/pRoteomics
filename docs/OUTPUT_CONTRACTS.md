@@ -13,6 +13,22 @@ results/logs/<module>/<substep>/<dataset>/
 
 Major downstream tables should be validated with `validate_table_schema(df, schema_name, strict = TRUE)` before writing.
 
+## Recommended Biological Results Entry Point
+
+Start manuscript-facing biological review with:
+
+```text
+results/tables/10_biological_integration/final_evidence_bundle/global/final_biological_evidence_bundle.xlsx
+```
+
+This workbook is a final evidence bundle assembled above the existing result tables. It does not recompute upstream statistics, WGCNA construction, model formulas, or thresholds. The `README` sheet explains each sheet, its upstream producer, and which columns are safest for manuscript interpretation. CSV mirrors in the same directory and under `results/source_data/10_biological_integration/final_evidence_bundle/global/` support traceable review.
+
+Final-facing dataset terminology in this bundle is:
+
+- `neuron_neuropil`: region/layer-resolved neuron neuropil
+- `neuron_soma`: region-resolved neuronal soma-enriched
+- `microglia`: region-resolved microglia-enriched ROI/local microenvironment, not purified microglia
+
 ## Required Final Tables
 
 | output | schema or contract | expected location |
@@ -38,6 +54,7 @@ Major downstream tables should be validated with `validate_table_schema(df, sche
 | cross-compartment program atlas | `validate_cross_compartment_program_atlas()` | `results/tables/10_biological_integration/cross_compartment_program_atlas/global/cross_compartment_program_atlas_long.csv`; `results/tables/10_biological_integration/cross_compartment_program_atlas/global/cross_compartment_program_atlas.csv` |
 | manuscript program summary | `validate_manuscript_program_summary()` | `results/tables/10_biological_integration/manuscript_program_summary/global/manuscript_program_summary.csv` |
 | evidence priority matrix | `validate_evidence_priority_matrix()` | `results/tables/10_biological_integration/evidence_priority_matrix/global/evidence_priority_matrix.csv` |
+| final biological evidence bundle | workbook/CSV bundle contract documented in workbook `README` sheet | `results/tables/10_biological_integration/final_evidence_bundle/global/final_biological_evidence_bundle.xlsx`; CSV sheets in the same directory |
 | spatial network object | dataset/spatial-unit spatial network contract | `data/processed/07_spatial_networks/network_spatial_relations/<dataset>/<spatial_unit>/network_spatial_relations_objects.rds`; `results/tables/07_spatial_networks/network_spatial_relations/<dataset>/<spatial_unit>/spatial_unit_mean_expression_matrix.csv`; `results/tables/07_spatial_networks/network_spatial_relations/<dataset>/<spatial_unit>/spatial_unit_spearman_correlation_matrix.csv`; `results/tables/07_spatial_networks/network_spatial_relations/<dataset>/<spatial_unit>/standardized_sample_metadata_used.csv`; `results/logs/07_spatial_networks/network_spatial_relations/<dataset>/<spatial_unit>/run_manifest.yml` |
 | biological claims table | `biological_claims_table.yml` | `results/tables/biological_claims_table.csv` |
 

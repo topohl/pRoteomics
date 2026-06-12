@@ -4,7 +4,7 @@
 # Stage: modules_downstream
 # Scope: dataset_specific
 # Consumes: required results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/; optional config/marker_panels/wgcna_reference_marker_sets.csv; results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv; +1 more.
-# Produces: results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_module_biological_annotation.csv; results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_supermodule_biological_annotation.csv.
+# Produces: results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_module_biological_annotation.csv; results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_supermodule_biological_annotation.csv; results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_module_targeted_signature_overlap_details.csv.
 # Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Consumes marker registry, empirical markers, WGCNA outputs, and neuropil annotations when present.
 # ================================================================
@@ -141,8 +141,11 @@ label_from_evidence <- function(row) {
   adhesion <- max_frac(frac(c("integrin_ecm_adhesion_fraction", "integrin_ecm_adhesion_marker_fraction")))
   micro <- max_frac(frac(c("empirical_microglia_roi_high_confidence_fraction", "empirical_microglia_roi_enriched_fraction")), frac(c("canonical_microglia_homeostatic_fraction", "microglia_marker_fraction")))
   micro_state <- frac(c("canonical_microglia_phagolysosomal_state_fraction"))
+  targeted_driver <- as.character(row$targeted_signature_primary_driver %||% NA_character_)
   targeted_micro <- suppressWarnings(as.integer(row$n_targeted_microglia_signature_overlaps %||% 0))
   targeted_claim <- suppressWarnings(as.integer(row$n_targeted_claim_ready_signature_overlaps %||% 0))
+  targeted_shared <- suppressWarnings(as.integer(row$n_targeted_neuropil_shared_overlaps %||% row$n_targeted_neuropil_shared_signature_overlaps %||% 0))
+  targeted_curated <- suppressWarnings(as.integer(row$n_targeted_curated_microglia_program_overlaps %||% 0))
   neuro <- max_frac(frac(c("empirical_neuropil_sensitive_high_confidence_fraction", "empirical_neuropil_enriched_fraction")), frac(c("canonical_neuronal_synaptic_neuropil_fraction", "neuropil_synaptic_neuronal_marker_fraction")))
   astro <- max_frac(frac(c("astrocyte_endfoot_gliovascular_fraction", "astrocyte_endfoot_gliovascular_marker_fraction")), frac(c("canonical_astrocyte_fraction", "astrocyte_marker_fraction")))
   oligo <- max_frac(frac(c("canonical_oligodendrocyte_myelin_fraction", "oligodendrocyte_myelin_marker_fraction")), frac(c("canonical_opc_fraction")))
@@ -153,7 +156,11 @@ label_from_evidence <- function(row) {
   vascular_ecm <- max_frac(bm, bbb, mural, adhesion)
   if (is.finite(vascular_ecm) && vascular_ecm >= classification_threshold && max_frac(bm, adhesion) >= max_frac(bbb, mural, 0)) return("perivascular basement membrane / ECM")
   if (is.finite(max_frac(bbb, mural)) && max_frac(bbb, mural) >= classification_threshold) return("BBB / vascular mural")
-  if (targeted_claim > 0 || targeted_micro > 1) return("targeted microglia signature overlap")
+  if (!is.na(targeted_driver) && nzchar(targeted_driver)) return(targeted_driver)
+  if (targeted_shared > 0 && (targeted_micro > 0 || targeted_curated > 0)) return("shared microglia-neuropil signature overlap")
+  if (targeted_claim > 0 || targeted_micro > 1) return("microglia-enriched signature overlap")
+  if (targeted_curated > 0) return("curated microglia-program overlap")
+  if (targeted_shared > 0) return("shared microglia-neuropil signature overlap")
   if (is.finite(micro_state) && micro_state >= classification_threshold) return("microglia phagolysosomal / activation")
   if (is.finite(micro) && micro >= classification_threshold && !is.finite(neuro)) return("microglia-enriched ROI")
   if (is.finite(micro) && micro >= classification_threshold && is.finite(neuro) && neuro >= classification_threshold) return("shared microglia-neuropil microenvironment")
@@ -370,16 +377,238 @@ signature_tokens <- function(...) {
   normalize_gene_token(unlist(strsplit(paste(fields, collapse = ";"), "[/;,|[:space:]]+"), use.names = FALSE))
 }
 
-module_targeted_signature_counts <- function(module_genes) {
-  empty <- data.frame(
+targeted_signature_detail_columns <- c(
+  "dataset", "ModuleID", "ModuleColor", "signature", "signature_source",
+  "microglia_signature_class", "contrast_class", "comparison", "NES", "padj",
+  "neuropil_reference_NES", "neuropil_reference_padj", "claim_ready",
+  "overlap_proteins", "n_overlap_proteins", "leading_edge", "matched_genes"
+)
+
+empty_targeted_signature_details <- function() {
+  out <- data.frame(
+    dataset = character(),
+    ModuleID = character(),
+    ModuleColor = character(),
+    signature = character(),
+    signature_source = character(),
+    microglia_signature_class = character(),
+    contrast_class = character(),
+    comparison = character(),
+    NES = numeric(),
+    padj = numeric(),
+    neuropil_reference_NES = numeric(),
+    neuropil_reference_padj = numeric(),
+    claim_ready = logical(),
+    overlap_proteins = character(),
+    n_overlap_proteins = integer(),
+    leading_edge = character(),
+    matched_genes = character(),
+    stringsAsFactors = FALSE
+  )
+  out[targeted_signature_detail_columns]
+}
+
+empty_targeted_signature_summary <- function() {
+  data.frame(
     n_targeted_microglia_signature_overlaps = 0L,
     n_targeted_claim_ready_signature_overlaps = 0L,
     n_targeted_neuropil_shared_signature_overlaps = 0L,
     n_targeted_signature_overlap_proteins = 0L,
     best_targeted_microglia_signatures = NA_character_,
+    n_targeted_microglia_enriched_empirical_overlaps = 0L,
+    n_targeted_microglia_enriched_reference_supported_overlaps = 0L,
+    n_targeted_curated_microglia_program_overlaps = 0L,
+    n_targeted_neuropil_shared_overlaps = 0L,
+    n_targeted_ambiguous_overlaps = 0L,
+    targeted_signature_primary_driver = NA_character_,
+    targeted_signature_driver_class = NA_character_,
+    targeted_signature_driver_signature = NA_character_,
+    targeted_signature_driver_padj = NA_real_,
+    targeted_signature_driver_NES = NA_real_,
+    targeted_signature_driver_overlap_proteins = NA_character_,
+    best_targeted_microglia_enriched_signatures = NA_character_,
+    best_targeted_curated_microglia_programs = NA_character_,
+    best_targeted_neuropil_shared_signatures = NA_character_,
     best_targeted_signature_overlap_proteins = NA_character_,
     stringsAsFactors = FALSE
   )
+}
+
+targeted_signature_claim_ready <- function(padj, contrast_class, microglia_signature_class) {
+  is.finite(padj) & padj < 0.05 &
+    contrast_class %in% c("within_region_condition", "cross_region_same_condition") &
+    microglia_signature_class %in% c("microglia_enriched_empirical", "microglia_enriched_reference_supported")
+}
+
+targeted_signature_driver_label <- function(empirical_n, reference_n, curated_n, shared_n, ambiguous_n) {
+  microglia_enriched_n <- empirical_n + reference_n
+  if (shared_n > 0 && (microglia_enriched_n > 0 || curated_n > 0 || shared_n >= max(microglia_enriched_n, curated_n, ambiguous_n))) {
+    return("shared microglia-neuropil signature overlap")
+  }
+  if (microglia_enriched_n > 0 && microglia_enriched_n >= max(curated_n, shared_n, ambiguous_n)) {
+    return("microglia-enriched signature overlap")
+  }
+  if (curated_n > 0 && curated_n >= max(microglia_enriched_n, shared_n, ambiguous_n)) {
+    return("curated microglia-program overlap")
+  }
+  if (shared_n > 0) return("shared microglia-neuropil signature overlap")
+  if (curated_n > 0) return("curated microglia-program overlap")
+  if (microglia_enriched_n > 0) return("microglia-enriched signature overlap")
+  if (ambiguous_n > 0) return("ambiguous targeted signature overlap")
+  NA_character_
+}
+
+build_module_targeted_signature_details <- function(module_rows_tbl) {
+  if (is.null(targeted_signature_ref) || !nrow(targeted_signature_ref)) return(empty_targeted_signature_details())
+  needed <- c("signature", "microglia_signature_class", "contrast_class", "matched_genes", "leading_edge", "padj")
+  if (!all(needed %in% names(targeted_signature_ref))) return(empty_targeted_signature_details())
+
+  sig <- targeted_signature_ref
+  optional_cols <- c("signature_source", "comparison", "NES", "neuropil_reference_NES", "neuropil_reference_padj")
+  for (nm in optional_cols) if (!nm %in% names(sig)) sig[[nm]] <- NA
+  sig <- sig |>
+    dplyr::mutate(
+      padj = suppressWarnings(as.numeric(.data$padj)),
+      NES = suppressWarnings(as.numeric(.data$NES)),
+      neuropil_reference_NES = suppressWarnings(as.numeric(.data$neuropil_reference_NES)),
+      neuropil_reference_padj = suppressWarnings(as.numeric(.data$neuropil_reference_padj)),
+      significant = !is.na(.data$padj) & .data$padj < 0.05,
+      claim_ready = targeted_signature_claim_ready(.data$padj, .data$contrast_class, .data$microglia_signature_class)
+    ) |>
+    dplyr::filter(.data$significant)
+  if (!nrow(sig)) return(empty_targeted_signature_details())
+
+  detail_rows <- lapply(seq_len(nrow(module_rows_tbl)), function(m) {
+    genes <- normalize_gene_token(module_rows_tbl$proteins[[m]])
+    genes <- unique(genes[nzchar(genes) & !is.na(genes)])
+    if (!length(genes)) return(NULL)
+    rows <- lapply(seq_len(nrow(sig)), function(i) {
+      tokens <- signature_tokens(sig$leading_edge[[i]], sig$matched_genes[[i]])
+      hits <- intersect(genes, tokens)
+      if (!length(hits)) return(NULL)
+      data.frame(
+        dataset = DATASET,
+        ModuleID = as.character(module_rows_tbl$ModuleID[[m]]),
+        ModuleColor = as.character(module_rows_tbl$ModuleColor[[m]]),
+        signature = as.character(sig$signature[[i]]),
+        signature_source = as.character(sig$signature_source[[i]]),
+        microglia_signature_class = as.character(sig$microglia_signature_class[[i]]),
+        contrast_class = as.character(sig$contrast_class[[i]]),
+        comparison = as.character(sig$comparison[[i]]),
+        NES = sig$NES[[i]],
+        padj = sig$padj[[i]],
+        neuropil_reference_NES = sig$neuropil_reference_NES[[i]],
+        neuropil_reference_padj = sig$neuropil_reference_padj[[i]],
+        claim_ready = isTRUE(sig$claim_ready[[i]]),
+        overlap_proteins = paste(hits, collapse = ";"),
+        n_overlap_proteins = length(unique(hits)),
+        leading_edge = as.character(sig$leading_edge[[i]]),
+        matched_genes = as.character(sig$matched_genes[[i]]),
+        stringsAsFactors = FALSE
+      )
+    })
+    dplyr::bind_rows(rows)
+  })
+  out <- dplyr::bind_rows(detail_rows)
+  if (!nrow(out)) return(empty_targeted_signature_details())
+  out[targeted_signature_detail_columns]
+}
+
+summarise_module_targeted_signature_details <- function(details, module_rows_tbl) {
+  empty <- empty_targeted_signature_summary()
+  if (is.null(details) || !nrow(details)) {
+    return(dplyr::bind_cols(module_rows_tbl |> dplyr::select("ModuleID", "ModuleColor"), empty[rep(1, nrow(module_rows_tbl)), , drop = FALSE]))
+  }
+  detail_summary <- details |>
+    dplyr::mutate(
+      overlap_key = paste(.data$signature, .data$comparison, sep = "||"),
+      class_group = dplyr::case_when(
+        .data$microglia_signature_class == "microglia_enriched_empirical" ~ "microglia_enriched_empirical",
+        .data$microglia_signature_class == "microglia_enriched_reference_supported" ~ "microglia_enriched_reference_supported",
+        .data$microglia_signature_class == "curated_microglia_program" ~ "curated_microglia_program",
+        .data$microglia_signature_class == "neuropil_shared" ~ "neuropil_shared",
+        TRUE ~ "ambiguous"
+      )
+    ) |>
+    dplyr::group_by(.data$ModuleID, .data$ModuleColor) |>
+    dplyr::group_modify(function(.x, .y) {
+      empirical_n <- dplyr::n_distinct(.x$overlap_key[.x$class_group == "microglia_enriched_empirical"])
+      reference_n <- dplyr::n_distinct(.x$overlap_key[.x$class_group == "microglia_enriched_reference_supported"])
+      curated_n <- dplyr::n_distinct(.x$overlap_key[.x$class_group == "curated_microglia_program"])
+      shared_n <- dplyr::n_distinct(.x$overlap_key[.x$class_group == "neuropil_shared"])
+      ambiguous_n <- dplyr::n_distinct(.x$overlap_key[.x$class_group == "ambiguous"])
+      primary_driver <- targeted_signature_driver_label(empirical_n, reference_n, curated_n, shared_n, ambiguous_n)
+      microglia_enriched <- .x |> dplyr::filter(.data$class_group %in% c("microglia_enriched_empirical", "microglia_enriched_reference_supported"))
+      curated <- .x |> dplyr::filter(.data$class_group == "curated_microglia_program")
+      shared <- .x |> dplyr::filter(.data$class_group == "neuropil_shared")
+      driver_pool <- .x |>
+        dplyr::mutate(
+          driver_priority = dplyr::case_when(
+            primary_driver == "shared microglia-neuropil signature overlap" & .data$class_group == "neuropil_shared" ~ 1L,
+            primary_driver == "microglia-enriched signature overlap" & .data$class_group %in% c("microglia_enriched_empirical", "microglia_enriched_reference_supported") ~ 1L,
+            primary_driver == "curated microglia-program overlap" & .data$class_group == "curated_microglia_program" ~ 1L,
+            primary_driver == "ambiguous targeted signature overlap" & .data$class_group == "ambiguous" ~ 1L,
+            .data$claim_ready ~ 2L,
+            .data$class_group %in% c("microglia_enriched_empirical", "microglia_enriched_reference_supported") ~ 3L,
+            .data$class_group == "neuropil_shared" ~ 4L,
+            .data$class_group == "curated_microglia_program" ~ 5L,
+            TRUE ~ 5L
+          )
+        ) |>
+        dplyr::arrange(.data$driver_priority, .data$padj, dplyr::desc(abs(.data$NES)), dplyr::desc(.data$n_overlap_proteins))
+      driver <- driver_pool[1, , drop = FALSE]
+      proteins <- signature_tokens(.x$overlap_proteins)
+      data.frame(
+        n_targeted_microglia_signature_overlaps = empirical_n + reference_n,
+        n_targeted_claim_ready_signature_overlaps = dplyr::n_distinct(.x$overlap_key[.x$claim_ready]),
+        n_targeted_neuropil_shared_signature_overlaps = shared_n,
+        n_targeted_signature_overlap_proteins = length(unique(proteins)),
+        best_targeted_microglia_signatures = paste(utils::head(unique(microglia_enriched$signature[order(microglia_enriched$padj)]), 5), collapse = ";"),
+        n_targeted_microglia_enriched_empirical_overlaps = empirical_n,
+        n_targeted_microglia_enriched_reference_supported_overlaps = reference_n,
+        n_targeted_curated_microglia_program_overlaps = curated_n,
+        n_targeted_neuropil_shared_overlaps = shared_n,
+        n_targeted_ambiguous_overlaps = ambiguous_n,
+        targeted_signature_primary_driver = primary_driver,
+        targeted_signature_driver_class = as.character(driver$microglia_signature_class[[1]]),
+        targeted_signature_driver_signature = as.character(driver$signature[[1]]),
+        targeted_signature_driver_padj = driver$padj[[1]],
+        targeted_signature_driver_NES = driver$NES[[1]],
+        targeted_signature_driver_overlap_proteins = as.character(driver$overlap_proteins[[1]]),
+        best_targeted_microglia_enriched_signatures = paste(utils::head(unique(microglia_enriched$signature[order(microglia_enriched$padj)]), 5), collapse = ";"),
+        best_targeted_curated_microglia_programs = paste(utils::head(unique(curated$signature[order(curated$padj)]), 5), collapse = ";"),
+        best_targeted_neuropil_shared_signatures = paste(utils::head(unique(shared$signature[order(shared$padj)]), 5), collapse = ";"),
+        best_targeted_signature_overlap_proteins = paste(utils::head(unique(proteins), 20), collapse = ";"),
+        stringsAsFactors = FALSE
+      )
+    }) |>
+    dplyr::ungroup()
+  out <- module_rows_tbl |>
+    dplyr::select("ModuleID", "ModuleColor") |>
+    dplyr::left_join(detail_summary, by = c("ModuleID", "ModuleColor"))
+  summary_cols <- names(empty)
+  for (nm in summary_cols) {
+    if (!nm %in% names(out)) out[[nm]] <- empty[[nm]][[1]]
+    if (is.integer(empty[[nm]])) out[[nm]][is.na(out[[nm]])] <- 0L
+    if (is.numeric(empty[[nm]])) out[[nm]][is.na(out[[nm]])] <- NA_real_
+  }
+  out[summary_cols] <- Map(function(x, template) {
+    if (is.integer(template)) {
+      x <- suppressWarnings(as.integer(x))
+      x[is.na(x)] <- 0L
+    } else if (is.numeric(template)) {
+      x <- suppressWarnings(as.numeric(x))
+    } else {
+      x <- as.character(x)
+      x[is.na(x) | !nzchar(x)] <- NA_character_
+    }
+    x
+  }, out[summary_cols], empty[summary_cols])
+  out
+}
+
+module_targeted_signature_counts <- function(module_genes) {
+  empty <- empty_targeted_signature_summary()
   if (is.null(targeted_signature_ref) || !nrow(targeted_signature_ref)) return(empty)
   needed <- c("signature", "microglia_signature_class", "contrast_class", "matched_genes", "leading_edge", "padj")
   if (!all(needed %in% names(targeted_signature_ref))) return(empty)
@@ -460,10 +689,13 @@ module_annot[fraction_cols] <- lapply(module_annot[fraction_cols], function(x) s
 
 if (DATASET == "microglia" || force_microglia) {
   ref_counts <- dplyr::bind_rows(lapply(module_annot$ModuleColor, module_neuropil_reference_counts))
-  targeted_counts <- dplyr::bind_rows(lapply(module_rows$proteins, module_targeted_signature_counts))
+  targeted_signature_details <- build_module_targeted_signature_details(module_rows)
+  targeted_counts <- summarise_module_targeted_signature_details(targeted_signature_details, module_rows) |>
+    dplyr::select(-"ModuleID", -"ModuleColor")
   module_annot <- module_annot |>
     dplyr::bind_cols(ref_counts, targeted_counts)
 } else {
+  targeted_signature_details <- empty_targeted_signature_details()
   module_annot <- module_annot |>
     dplyr::mutate(
       n_microglia_robust_term_overlaps = NA_integer_,
@@ -477,6 +709,20 @@ if (DATASET == "microglia" || force_microglia) {
       n_targeted_neuropil_shared_signature_overlaps = NA_integer_,
       n_targeted_signature_overlap_proteins = NA_integer_,
       best_targeted_microglia_signatures = NA_character_,
+      n_targeted_microglia_enriched_empirical_overlaps = NA_integer_,
+      n_targeted_microglia_enriched_reference_supported_overlaps = NA_integer_,
+      n_targeted_curated_microglia_program_overlaps = NA_integer_,
+      n_targeted_neuropil_shared_overlaps = NA_integer_,
+      n_targeted_ambiguous_overlaps = NA_integer_,
+      targeted_signature_primary_driver = NA_character_,
+      targeted_signature_driver_class = NA_character_,
+      targeted_signature_driver_signature = NA_character_,
+      targeted_signature_driver_padj = NA_real_,
+      targeted_signature_driver_NES = NA_real_,
+      targeted_signature_driver_overlap_proteins = NA_character_,
+      best_targeted_microglia_enriched_signatures = NA_character_,
+      best_targeted_curated_microglia_programs = NA_character_,
+      best_targeted_neuropil_shared_signatures = NA_character_,
       best_targeted_signature_overlap_proteins = NA_character_
     )
 }
@@ -629,6 +875,7 @@ if (is.null(super_ann) || !nrow(super_ann)) {
 
 write_table_and_source(module_annot, PATHS$tables, PATHS$source_data, "WGCNA_module_biological_annotation.csv")
 write_table_and_source(super_annot, PATHS$tables, PATHS$source_data, "WGCNA_supermodule_biological_annotation.csv")
+write_table_and_source(targeted_signature_details, PATHS$tables, PATHS$source_data, "WGCNA_module_targeted_signature_overlap_details.csv")
 if (nrow(super_annot)) {
   display_audit <- super_annot |>
     dplyr::mutate(
@@ -648,7 +895,10 @@ if (nrow(super_annot)) {
   write_table_and_source(display_audit, PATHS$tables, PATHS$source_data, "WGCNA_supermodule_display_label_audit.csv")
 }
 if (requireNamespace("writexl", quietly = TRUE)) {
-  writexl::write_xlsx(list(modules = module_annot, supermodules = super_annot), file.path(PATHS$tables, "WGCNA_module_microenvironment_annotation.xlsx"))
+  tryCatch(
+    writexl::write_xlsx(list(modules = module_annot, supermodules = super_annot), file.path(PATHS$tables, "WGCNA_module_microenvironment_annotation.xlsx")),
+    error = function(e) warning("Could not write WGCNA_module_microenvironment_annotation.xlsx: ", conditionMessage(e), call. = FALSE)
+  )
 }
 
 marker_fraction_plot_cols <- paste0(names(marker_sets), "_fraction")
@@ -702,26 +952,29 @@ if (DATASET == "microglia" || force_microglia) {
   ggplot2::ggsave(file.path(PATHS$figures, "microglia_vs_neuropil_module_evidence.svg"), p3, width = 120, height = 95, units = "mm", device = svglite::svglite)
 
   if ("n_targeted_microglia_signature_overlaps" %in% names(module_annot) &&
-      any(module_annot$n_targeted_microglia_signature_overlaps > 0, na.rm = TRUE)) {
+      any(module_annot$n_targeted_microglia_signature_overlaps > 0 |
+            module_annot$n_targeted_curated_microglia_program_overlaps > 0 |
+            module_annot$n_targeted_neuropil_shared_overlaps > 0, na.rm = TRUE)) {
     targeted_plot <- module_annot |>
       dplyr::mutate(
-        total_targeted = suppressWarnings(as.numeric(.data$n_targeted_microglia_signature_overlaps)),
+        microglia_enriched = suppressWarnings(as.numeric(.data$n_targeted_microglia_signature_overlaps)),
+        curated_program = suppressWarnings(as.numeric(.data$n_targeted_curated_microglia_program_overlaps)),
         claim_ready = suppressWarnings(as.numeric(.data$n_targeted_claim_ready_signature_overlaps)),
-        shared = suppressWarnings(as.numeric(.data$n_targeted_neuropil_shared_signature_overlaps)),
+        shared_neuropil = suppressWarnings(as.numeric(.data$n_targeted_neuropil_shared_overlaps)),
         module_display_label = dplyr::coalesce(.data$module_display_label, .data$ModuleID)
       ) |>
-      dplyr::filter(.data$total_targeted > 0 | .data$claim_ready > 0 | .data$shared > 0) |>
-      dplyr::arrange(dplyr::desc(.data$claim_ready), dplyr::desc(.data$total_targeted)) |>
-      dplyr::mutate(module_display_label = stats::reorder(.data$module_display_label, .data$total_targeted))
+      dplyr::filter(.data$microglia_enriched > 0 | .data$curated_program > 0 | .data$claim_ready > 0 | .data$shared_neuropil > 0) |>
+      dplyr::arrange(dplyr::desc(.data$claim_ready), dplyr::desc(.data$microglia_enriched), dplyr::desc(.data$shared_neuropil)) |>
+      dplyr::mutate(module_display_label = stats::reorder(.data$module_display_label, .data$microglia_enriched + .data$curated_program + .data$shared_neuropil))
     targeted_long <- targeted_plot |>
-      dplyr::select("module_display_label", total_targeted, claim_ready, shared) |>
+      dplyr::select("module_display_label", microglia_enriched, curated_program, claim_ready, shared_neuropil) |>
       tidyr::pivot_longer(cols = -dplyr::all_of("module_display_label"), names_to = "evidence", values_to = "n")
     write_table_and_source(targeted_long, PATHS$tables, PATHS$source_data, "WGCNA_module_targeted_microglia_signature_overlap_source.csv")
     p4 <- ggplot2::ggplot(targeted_long, ggplot2::aes(x = .data$n, y = .data$module_display_label, fill = .data$evidence)) +
       ggplot2::geom_col(position = "dodge", width = 0.68) +
       ggplot2::scale_fill_manual(
-        values = c(total_targeted = "#3C5488", claim_ready = "#00A087", shared = "#E64B35"),
-        labels = c(total_targeted = "microglia signature", claim_ready = "claim-ready", shared = "neuropil-shared"),
+        values = c(microglia_enriched = "#3C5488", curated_program = "#7E6148", claim_ready = "#00A087", shared_neuropil = "#E64B35"),
+        labels = c(microglia_enriched = "microglia-enriched", curated_program = "curated program", claim_ready = "claim-ready", shared_neuropil = "shared neuropil"),
         name = NULL
       ) +
       ggplot2::labs(x = "Overlapping targeted signatures", y = NULL) +
