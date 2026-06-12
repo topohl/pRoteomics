@@ -575,7 +575,7 @@ stages:
         safe_downstream_rerun: true
         notes: "PRIDE supplementary tables."
       - script: "09_export_pride_journal/01_make_pride_manifest.R"
-        required: false
+        required: true
         datasets: ["global"]
         stage: "export"
         scope: "global"
