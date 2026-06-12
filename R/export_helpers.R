@@ -63,7 +63,8 @@ resolve_export_datasets <- function(dataset_arg, config) {
 sha256_file <- function(path) {
   if (!file.exists(path)) return(NA_character_)
   if (requireNamespace("openssl", quietly = TRUE)) {
-    return(unname(openssl::sha256(file(path), algo = "sha256")))
+    hash <- openssl::sha256(file(path))
+    return(paste0(format(hash), collapse = ""))
   }
   unname(tools::md5sum(path))
 }
@@ -198,6 +199,16 @@ export_scope_label <- function(export_level = "pg_matrix_onward") {
   )
 }
 
+dataset_for_manifest_file <- function(f, datasets) {
+  f <- as.character(f)[[1]]
+  datasets <- as.character(datasets)
+  datasets <- datasets[nzchar(datasets)]
+  for (d in datasets) {
+    if (grepl(d, f, fixed = TRUE)) return(d)
+  }
+  "all"
+}
+
 manifest_rows_for_files <- function(files, datasets, config, hash_algo = "sha256") {
   if (!length(files)) {
     return(data.frame(
@@ -214,12 +225,7 @@ manifest_rows_for_files <- function(files, datasets, config, hash_algo = "sha256
   }
   info <- file.info(files)
   rel <- vapply(files, relative_to, character(1), root = repo_root())
-  ds <- vapply(files, function(f) {
-    for (d in datasets) {
-      if (grepl(d, f, fixed = TRUE)) return(d)
-    }
-  }, character(1))
-  ds[is.na(ds)] <- "all"
+  ds <- vapply(files, dataset_for_manifest_file, character(1), datasets = datasets)
   cats <- vapply(files, classify_export_category, character(1), config = config)
   hashes <- if (identical(hash_algo, "sha256")) vapply(files, sha256_file, character(1)) else unname(tools::md5sum(files))
   data.frame(
