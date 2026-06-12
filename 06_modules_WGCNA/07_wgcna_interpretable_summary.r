@@ -243,7 +243,7 @@ supermodule_broad_label <- function(x) {
     grepl("targeted microglia signature overlap", z) ~ "microglia-signature overlap",
     grepl("microglia[- ]enriched roi|microglia[- ]associated roi", z) ~ "microglia-associated ROI",
     grepl("shared microglia[- ]neuropil microenvironment|shared local microenvironment", z) ~ "shared microglia-neuropil ROI",
-    grepl("phagolysosom|phago|lysosom|complement|inflamm|immune activation|\\bdam\\b|dam[- ]like|disease[- ]associated microglia|antigen|interferon|cytokine|chemokine", z) ~ "microglia/immune",
+    grepl("phagolysosom|phago|lysosom|complement|inflamm|immune activation|\\bdam\\b|dam[- ]like|disease[- ]associated microglia|\\bmhc\\b|major histocompatibility|antigen|interferon|cytokine|chemokine", z) ~ "microglia/immune",
     grepl("mitochond|respirat|oxidative|\\batp\\b|acetyl|tca|electron transport", z) ~ "mitochondrial",
     grepl("\\brna\\b|translation|ribosom|splic|mrna|ncrna|rnp", z) ~ "RNA/translation",
     grepl("synap|vesicle|postsynap|presynap|cytoskeleton|actin|microtubule", z) ~ "synaptic/cytoskeletal",
