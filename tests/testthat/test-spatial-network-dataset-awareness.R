@@ -22,6 +22,6 @@ testthat::test_that("pipeline registry advertises scoped spatial network outputs
   producer <- scripts[[which(vapply(scripts, function(x) x$script, character(1)) == "07_spatial_networks/01_network_spatial_relations.r")]]
 
   testthat::expect_true("microglia" %in% producer$datasets)
-  testthat::expect_true(any(grepl("<dataset>/<spatial_unit>", producer$expected_outputs, fixed = TRUE)))
-  testthat::expect_true(any(grepl("valid spatial unit metadata", producer$expected_inputs, fixed = TRUE)))
+  testthat::expect_true(any(grepl("network_spatial_relations/<dataset>/*/network_spatial_relations_objects.rds", producer$produces, fixed = TRUE)))
+  testthat::expect_true(any(grepl("data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv", producer$consumes_required, fixed = TRUE)))
 })
