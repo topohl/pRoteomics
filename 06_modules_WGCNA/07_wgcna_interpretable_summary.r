@@ -240,13 +240,16 @@ roman_label <- function(i) {
 supermodule_broad_label <- function(x) {
   z <- tolower(as.character(x))
   dplyr::case_when(
+    grepl("targeted microglia signature overlap", z) ~ "microglia-signature overlap",
+    grepl("microglia[- ]enriched roi|microglia[- ]associated roi", z) ~ "microglia-associated ROI",
+    grepl("shared microglia[- ]neuropil microenvironment|shared local microenvironment", z) ~ "shared microglia-neuropil ROI",
+    grepl("phagolysosom|phago|lysosom|complement|inflamm|immune activation|\\bdam\\b|dam[- ]like|disease[- ]associated microglia|antigen|interferon|cytokine|chemokine", z) ~ "microglia/immune",
     grepl("mitochond|respirat|oxidative|\\batp\\b|acetyl|tca|electron transport", z) ~ "mitochondrial",
     grepl("\\brna\\b|translation|ribosom|splic|mrna|ncrna|rnp", z) ~ "RNA/translation",
     grepl("synap|vesicle|postsynap|presynap|cytoskeleton|actin|microtubule", z) ~ "synaptic/cytoskeletal",
     grepl("ecm|adhesion|collagen|laminin|integrin|basement membrane|extracellular matrix|perivascular", z) ~ "perivascular ECM",
     grepl("skin|keratin|epithelial|epiderm", z) ~ "epithelial/keratinocyte-like",
     grepl("stimulus|ion|cation|homeostasis|endosomal transport", z) ~ "stimulus/ion homeostasis",
-    grepl("microglia|immune|phago|lysosom|complement|inflamm", z) ~ "microglia/immune",
     grepl("vascular|bbb|endothelial|pericyte|blood vessel", z) ~ "vascular/BBB",
     TRUE ~ "mixed"
   )
@@ -267,9 +270,10 @@ add_short_supermodule_labels <- function(df) {
     rep("SM??", nrow(df))
   )
   full <- dplyr::coalesce(
-    clean_supermodule_label_value(col_or_na(df, "Supermodule_DisplayLabel")),
-    clean_supermodule_label_value(col_or_na(df, "Macroprogram_Display")),
     clean_supermodule_label_value(col_or_na(df, "Supermodule_FinalLabel")),
+    clean_supermodule_label_value(col_or_na(df, "Supermodule_LongLabel")),
+    clean_supermodule_label_value(col_or_na(df, "Macroprogram_Display")),
+    clean_supermodule_label_value(col_or_na(df, "Supermodule_DisplayLabel")),
     clean_supermodule_label_value(col_or_na(df, "supermodule_label")),
     id
   )
@@ -1305,8 +1309,10 @@ make_dataset_summary <- function(ds) {
     "marker_registry_version",
     "empirical_marker_set_version",
     "classification_rationale",
+    "dominant_module_labels",
     "Supermodule_LabelSource",
     "Supermodule_LabelConfidence",
+    "Supermodule_LabelRationale",
     "GO_label_confidence_class",
     "annotation_scope",
     "manual_label_status",
@@ -1501,8 +1507,21 @@ make_dataset_summary <- function(ds) {
       "Macroprogram_Display", "Supermodule_ShortLabel", "Supermodule_FinalLabel",
       "Supermodule_FullAnnotationLabel", "Supermodule_DisplayShort",
       "supermodule_label", "Supermodule_PlotLabel", "MacroprogramColorKey",
-      "SemanticProgramColor", "Supermodule_LabelConfidence", "DataDrivenClusterSize"
+      "SemanticProgramColor", "Supermodule_LabelConfidence", "DataDrivenClusterSize",
+      "dominant_microenvironment_class", "dominant_module_labels", "Supermodule_LabelRationale"
     ))), .keep_all = FALSE)
+  supermodule_label_audit <- super_join |>
+    dplyr::arrange(.data$supermodule_id) |>
+    dplyr::distinct(.data$supermodule_id, .keep_all = TRUE) |>
+    dplyr::transmute(
+      SupermoduleID = .data$supermodule_id,
+      Supermodule_PlotLabel,
+      Supermodule_FullAnnotationLabel,
+      Supermodule_DisplayShort,
+      dominant_microenvironment_class,
+      dominant_module_labels,
+      Supermodule_LabelRationale
+    )
   module_plot_label_qc <- module_join |>
     dplyr::distinct(dplyr::across(dplyr::any_of(c(
       "dataset", "module_id", "ModuleID", "ModuleColor", "module_eigengene",
@@ -1511,6 +1530,7 @@ make_dataset_summary <- function(ds) {
       "MacroprogramColorKey", "SemanticProgramColor"
     ))), .keep_all = FALSE)
   write_table_and_source(supermodule_plot_label_qc, paths$tables, paths$source_data, "WGCNA_supermodule_plot_label_qc.csv")
+  write_table_and_source(supermodule_label_audit, paths$tables, paths$source_data, "WGCNA_supermodule_label_audit.csv")
   write_table_and_source(module_plot_label_qc, paths$tables, paths$source_data, "WGCNA_module_plot_label_qc.csv")
 
   write_table_and_source(super_join, paths$tables, paths$source_data, "WGCNA_supermodule_group_effects_interpretable.csv")
