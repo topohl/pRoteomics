@@ -98,7 +98,45 @@ known_pipeline_output_specs <- function() {
   )
   list(
     module_group_effects.csv = list(required_columns = group_effect_cols),
-    supermodule_group_effects.csv = list(required_columns = group_effect_cols)
+    supermodule_group_effects.csv = list(required_columns = group_effect_cols),
+    WGCNA_module_biological_annotation.csv = list(
+      required_columns = c(
+        "dataset", "ModuleID", "ModuleColor", "microenvironment_class",
+        "microenvironment_label", "classification_rationale", "interpretation_note"
+      )
+    ),
+    WGCNA_supermodule_biological_annotation.csv = list(
+      required_columns = c(
+        "dataset", "SupermoduleID", "Supermodule_DisplayLabel",
+        "dominant_microenvironment_class", "dominant_module_labels",
+        "Supermodule_LabelRationale", "interpretation_note"
+      )
+    ),
+    WGCNA_module_group_effects_interpretable.csv = list(
+      required_columns = c(
+        "dataset", "level", "contrast", "estimate", "p_value", "FDR_global",
+        "interpretation_sentence", "ModulePlotLabel", "Supermodule_PlotLabel",
+        "Supermodule_FullAnnotationLabel"
+      )
+    ),
+    WGCNA_supermodule_group_effects_interpretable.csv = list(
+      required_columns = c(
+        "dataset", "level", "contrast", "estimate", "p_value", "FDR_global",
+        "interpretation_sentence", "Supermodule_PlotLabel",
+        "Supermodule_FullAnnotationLabel", "dominant_microenvironment_class",
+        "Supermodule_LabelRationale"
+      )
+    ),
+    biological_claims.csv = list(
+      required_columns = c(
+        "claim_id", "dataset", "biological_program", "evidence_type",
+        "claim_grade", "primary_evidence", "orthogonal_support",
+        "major_limitation", "safe_interpretation", "unsafe_overinterpretation",
+        "missingness_confounded", "plate_or_batch_confounded",
+        "region_layer_imbalance_risk", "animal_pseudoreplication_risk",
+        "marker_contamination_risk", "qc_interpretation_flag"
+      )
+    )
   )
 }
 
