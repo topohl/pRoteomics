@@ -151,6 +151,76 @@ validate_evidence_priority_matrix <- function(df, artifact = "evidence priority 
   invisible(TRUE)
 }
 
+validate_final_evidence_bundle <- function(bundle_dir, artifact = "final biological evidence bundle") {
+  required_sheets <- c(
+    "README", "input_status", "manuscript_program_summary",
+    "evidence_priority_matrix", "cross_compartment_program_atlas",
+    "wgcna_key_modules", "wgcna_key_supermodules",
+    "microglia_roi_signature_drivers", "qc_flags", "biological_claims"
+  )
+  if (!dir.exists(bundle_dir)) {
+    stop(artifact, " directory does not exist: ", bundle_dir, call. = FALSE)
+  }
+  missing <- required_sheets[!file.exists(file.path(bundle_dir, paste0(required_sheets, ".csv")))]
+  if (length(missing)) {
+    stop(artifact, " is missing CSV sheet mirror(s): ", paste(missing, collapse = ", "), call. = FALSE)
+  }
+
+  read_sheet <- function(sheet) {
+    utils::read.csv(file.path(bundle_dir, paste0(sheet, ".csv")), check.names = FALSE, stringsAsFactors = FALSE)
+  }
+
+  readme <- read_sheet("README")
+  require_module_contract_columns(readme, c("sheet", "produced_from", "meaning", "manuscript_safe_columns"), paste(artifact, "README sheet"))
+  missing_readme_rows <- setdiff(required_sheets, as.character(readme$sheet))
+  if (length(missing_readme_rows)) {
+    stop(artifact, " README sheet does not document: ", paste(missing_readme_rows, collapse = ", "), call. = FALSE)
+  }
+
+  input_status <- read_sheet("input_status")
+  require_module_contract_columns(input_status, c("input_name", "path", "status", "n_rows"), paste(artifact, "input_status sheet"))
+
+  claims <- read_sheet("biological_claims")
+  require_module_contract_columns(
+    claims,
+    c(
+      "claim_id", "dataset", "biological_program", "evidence_type",
+      "claim_grade", "primary_evidence", "orthogonal_support",
+      "major_limitation", "safe_interpretation", "unsafe_overinterpretation",
+      "missingness_confounded", "batch_or_plate_confounded",
+      "region_layer_imbalance_risk", "animal_pseudoreplication_risk",
+      "marker_contamination_or_roi_mixture_flag", "qc_interpretation_flag"
+    ),
+    paste(artifact, "biological_claims sheet")
+  )
+
+  modules <- read_sheet("wgcna_key_modules")
+  require_module_contract_columns(
+    modules,
+    c(
+      "dataset", "ModuleID", "ModuleColor", "targeted_signature_primary_driver",
+      "targeted_signature_driver_class", "targeted_signature_driver_signature",
+      "targeted_signature_driver_padj", "targeted_signature_driver_NES",
+      "targeted_signature_driver_overlap_proteins"
+    ),
+    paste(artifact, "wgcna_key_modules sheet")
+  )
+
+  drivers <- read_sheet("microglia_roi_signature_drivers")
+  require_module_contract_columns(
+    drivers,
+    c(
+      "ModuleID", "ModuleColor", "microenvironment_label",
+      "targeted_signature_primary_driver", "targeted_signature_driver_class",
+      "targeted_signature_driver_signature", "targeted_signature_driver_padj",
+      "targeted_signature_driver_NES", "targeted_signature_driver_overlap_proteins"
+    ),
+    paste(artifact, "microglia_roi_signature_drivers sheet")
+  )
+
+  invisible(TRUE)
+}
+
 write_contract_validation_status <- function(path, artifact, ok, message = "") {
   dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
   utils::write.csv(
