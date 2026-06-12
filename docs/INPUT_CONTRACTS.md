@@ -1,6 +1,6 @@
 # Input Contracts
 
-Input contracts are machine-readable in `inst/schemas/` and summarized here for reviewers. The schema files are authoritative for required columns, allowed dataset values, allowed claim grades, and p-value/FDR ranges.
+Input contracts are machine-readable in `inst/schemas/` and summarized here for reviewers. The schema files are authoritative for required columns, allowed dataset values, allowed claim grades, and p-value/FDR ranges. `pipeline.yml` remains the active source of truth for which scripts consume each input; see `docs/MAINTENANCE.md` before adding or changing a contract.
 
 | object | schema | required columns | expected location | notes |
 |---|---|---|---|---|
