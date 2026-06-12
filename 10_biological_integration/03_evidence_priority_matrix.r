@@ -10,6 +10,7 @@
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
 source(repo_path("R", "integration_utils.R"))
+source(repo_path("R", "final_evidence_bundle_utils.R"))
 
 SCRIPT_ID <- "10_biological_integration/03_evidence_priority_matrix.r"
 run <- integration_cli(default_dataset = "all", allow_all = TRUE)
@@ -91,4 +92,6 @@ invisible(write_integration_table(priority, paths, "evidence_priority_matrix.csv
 write_csv_safe(status, file.path(paths$reports, "input_status.csv"))
 write_csv_safe(status, file.path(paths$source_data, "evidence_priority_matrix_input_status.csv"))
 write_integration_manifest(paths, inputs, list(tables = paths$tables, source_data = paths$source_data), list(dataset = run$dataset), "Priority matrix ranks program evidence by convergence, robustness, behavior coupling, and QC flags.")
+bundle <- write_final_evidence_bundle(reason = "integration_priority_matrix")
+message("Final biological evidence bundle refreshed: ", bundle$bundle_dir)
 message("Evidence priority matrix complete: ", paths$tables)
