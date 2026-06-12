@@ -17,6 +17,7 @@ source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "validation_utils.R"))
 source(repo_path("R", "enrichment_io.R"))
 source(repo_path("R", "schema_validation.R"))
+source(repo_path("R", "final_evidence_bundle_utils.R"))
 
 required_pkgs <- c("dplyr", "readr", "tibble", "stringr", "tidyr")
 missing <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
@@ -77,6 +78,12 @@ primary_evidence_label <- function(evidence_type) {
     grepl("behavior", evidence_type, ignore.case = TRUE) ~ "Behavior/network association",
     TRUE ~ evidence_type
   )
+}
+
+blank_to_na <- function(x) {
+  x <- as.character(x)
+  x[is.na(x) | !nzchar(trimws(x))] <- NA_character_
+  x
 }
 
 contains_any <- function(x, patterns) {
@@ -247,7 +254,14 @@ collect_wgcna_claims <- function(dataset) {
     dplyr::transmute(
       dataset = dataset,
       contrast = .data$strongest_condition_contrast,
-      biological_program = dplyr::coalesce(.data$Supermodule_DisplayLabel, .data$Supermodule_FinalLabel, .data$Macroprogram_Display, .data$Supermodule, .data$ModuleLabel_Final),
+      biological_program = dplyr::coalesce(
+        blank_to_na(.data$Supermodule_DisplayLabel),
+        blank_to_na(.data$Supermodule_FinalLabel),
+        blank_to_na(.data$Macroprogram_Display),
+        blank_to_na(.data$Supermodule),
+        blank_to_na(.data$ModuleLabel_Final),
+        blank_to_na(.data$ModuleID)
+      ),
       direction = dplyr::case_when(
         suppressWarnings(as.numeric(.data$strongest_condition_adjusted_delta)) > 0 ~ "positive_effect",
         suppressWarnings(as.numeric(.data$strongest_condition_adjusted_delta)) < 0 ~ "negative_effect",
@@ -300,7 +314,13 @@ collect_overlap_claims <- function(dataset) {
     dplyr::transmute(
       dataset = dataset,
       contrast = .data$contrast,
-      biological_program = dplyr::coalesce(.data$Supermodule_DisplayLabel, .data$Supermodule_FinalLabel, .data$Macroprogram_Display, .data$Supermodule),
+      biological_program = dplyr::coalesce(
+        blank_to_na(.data$Supermodule_DisplayLabel),
+        blank_to_na(.data$Supermodule_FinalLabel),
+        blank_to_na(.data$Macroprogram_Display),
+        blank_to_na(.data$Supermodule),
+        blank_to_na(.data$ModuleID)
+      ),
       direction = NA_character_,
       evidence_type = "WGCNA_DE_GSEA_overlap",
       effect_size_NES = if ("jaccard_DE" %in% names(df)) .data$jaccard_DE else NA,
@@ -424,6 +444,7 @@ if (is_dry_run()) {
   dry_run_line("Integration manuscript summary", path_results("tables", "10_biological_integration", "manuscript_program_summary", "global", "manuscript_program_summary.csv"), if (file.exists(path_results("tables", "10_biological_integration", "manuscript_program_summary", "global", "manuscript_program_summary.csv"))) "PASS" else "WARN")
   dry_run_line("Output CSV", path_results("tables", "biological_claims_table.csv"))
   dry_run_line("Output XLSX", path_results("tables", "biological_claims_table.xlsx"))
+  dry_run_line("Final evidence bundle", path_results("tables", "10_biological_integration", "final_evidence_bundle", "global", "final_biological_evidence_bundle.xlsx"))
   quit(status = 0, save = "no")
 }
 
@@ -493,3 +514,6 @@ write_run_manifest(
   parameters = list(datasets = valid_datasets(), schema = "biological_claims_table"),
   notes = "Evidence-graded manuscript claim table. Missing statistics remain NA."
 )
+
+bundle <- write_final_evidence_bundle(reason = "biological_claims_table")
+message("Final biological evidence bundle refreshed: ", bundle$bundle_dir)
