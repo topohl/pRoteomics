@@ -1,5 +1,10 @@
 # Current Data Flow Audit
 
+> Audit/historical snapshot. This file is retained for refactor context and may
+> be stale unless explicitly refreshed. Use `pipeline.yml` as the active source
+> of truth, `WORKFLOW.md` for the conceptual workflow, and `RUN_ORDER.md` for
+> current command examples.
+
 This audit was generated before targeted refactoring of the clusterProfiler to compareGO contract. The repository contains R scripts across preprocessing, ID mapping, QC, differential abundance/enrichment, EWCE, WGCNA, spatial networks, behavior coupling, PRIDE helpers, testing and deprecated folders.
 
 ## Global Findings
