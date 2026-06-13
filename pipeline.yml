@@ -375,6 +375,17 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Manuscript-facing summary layer. Runs after group effects and biological annotation, preserving broad plot labels alongside full annotation/rationale fields."
+      - script: "06_modules_WGCNA/08_microglia_neuropil_independence.R"
+        required: false
+        datasets: ["microglia"]
+        stage: "modules_downstream"
+        scope: "dataset_specific"
+        produces: ["results/tables/06_modules_WGCNA/microglia_neuropil_independence/microglia/microglia_neuropil_independence_effects.csv", "results/tables/06_modules_WGCNA/microglia_neuropil_independence/microglia/microglia_module_neuropil_independence_classification.csv", "results/tables/06_modules_WGCNA/microglia_neuropil_independence/microglia/WGCNA_module_group_effects_interpretable_with_neuropil_independence.csv"]
+        consumes_required: ["results/tables/06_modules_WGCNA/interpretable_summary/microglia/WGCNA_module_group_effects_interpretable.csv", "results/tables/06_modules_WGCNA/01_WGCNA/microglia/modules/", "results/tables/06_modules_WGCNA/01_WGCNA/neuron_neuropil/modules/"]
+        consumes_optional: ["results/tables/03_qc_exploration/06_wgcna_marker_trait_export/microglia/wgcna_marker_traits_by_sample.csv", "results/tables/03_qc_exploration/06_wgcna_marker_trait_export/neuron_neuropil/wgcna_marker_traits_by_sample.csv"]
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Microglia-only sensitivity analysis testing whether module/signature group effects persist after matched region-level neuron_neuropil covariate adjustment; writes additive outputs only."
       - script: "06_modules_WGCNA/08_module_complex_architecture.r"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
