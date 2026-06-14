@@ -7,6 +7,7 @@ testthat::test_that("WGCNA downstream entrypoints exist", {
     "06_modules_WGCNA/05_module_supermodule_group_effects.r",
     "06_modules_WGCNA/06_annotate_module_microenvironment.r",
     "06_modules_WGCNA/07_wgcna_interpretable_summary.r",
+    "06_modules_WGCNA/08_microglia_neuropil_independence.R",
     "06_modules_WGCNA/08_module_complex_architecture.r",
     "06_modules_WGCNA/09_module_robustness_sensitivity.r"
   )
@@ -26,6 +27,7 @@ testthat::test_that("WGCNA downstream dry-runs report contracts", {
     c("06_modules_WGCNA/05_module_supermodule_group_effects.r", "--dataset", "microglia", "--dry-run"),
     c("06_modules_WGCNA/06_annotate_module_microenvironment.r", "--dataset", "microglia", "--dry-run"),
     c("06_modules_WGCNA/07_wgcna_interpretable_summary.r", "--dataset", "all", "--dry-run"),
+    c("06_modules_WGCNA/08_microglia_neuropil_independence.R", "--dataset", "microglia", "--dry-run"),
     c("06_modules_WGCNA/08_module_complex_architecture.r", "--dataset", "all", "--dry-run"),
     c("06_modules_WGCNA/09_module_robustness_sensitivity.r", "--dataset", "all", "--dry-run")
   )
