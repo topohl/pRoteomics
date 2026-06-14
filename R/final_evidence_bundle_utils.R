@@ -80,6 +80,29 @@ build_wgcna_key_modules <- function() {
   if (is.null(modules) || !nrow(modules)) {
     return(empty_bundle_table("WGCNA module interpretable summaries were not available."))
   }
+  micro_independence <- read_final_csv(path_results("tables", "06_modules_WGCNA", "microglia_neuropil_independence", "microglia", "microglia_module_neuropil_independence_classification.csv"))
+  if (!is.null(micro_independence) && nrow(micro_independence)) {
+    if (!"module_id" %in% names(micro_independence)) micro_independence$module_id <- NA_character_
+    if (!"endpoint_id" %in% names(micro_independence)) micro_independence$endpoint_id <- NA_character_
+    if (!"module_id" %in% names(modules)) modules$module_id <- NA_character_
+    if (!"ModuleID" %in% names(modules)) modules$ModuleID <- NA_character_
+    micro_independence <- micro_independence |>
+      dplyr::select(dplyr::any_of(c(
+        "dataset", "module_id", "endpoint_id", "neuropil_independence_classification",
+        "best_contrast", "min_p_before", "min_p_after", "max_percent_attenuation",
+        "matched_neuropil_covariate", "neuropil_covariate_source",
+        "neuropil_independence_note"
+      ))) |>
+      dplyr::mutate(module_join_id = dplyr::coalesce(.data$module_id, .data$endpoint_id)) |>
+      dplyr::distinct(.data$dataset, .data$module_join_id, .keep_all = TRUE)
+    modules <- modules |>
+      dplyr::mutate(module_join_id = dplyr::coalesce(.data$module_id, .data$ModuleID)) |>
+      dplyr::left_join(
+        micro_independence |> dplyr::select(-dplyr::any_of(c("module_id", "endpoint_id"))),
+        by = c("dataset", "module_join_id")
+      ) |>
+      dplyr::select(-"module_join_id")
+  }
   for (col in c("FDR_global", "FDR_within_dataset_level", "targeted_signature_driver_padj", "estimate")) {
     if (!col %in% names(modules)) modules[[col]] <- NA_real_
     modules[[col]] <- suppressWarnings(as.numeric(modules[[col]]))
@@ -105,6 +128,10 @@ build_wgcna_key_modules <- function() {
     "best_targeted_microglia_enriched_signatures",
     "best_targeted_curated_microglia_programs",
     "best_targeted_neuropil_shared_signatures",
+    "neuropil_independence_classification", "best_contrast",
+    "min_p_before", "min_p_after", "max_percent_attenuation",
+    "matched_neuropil_covariate", "neuropil_covariate_source",
+    "neuropil_independence_note",
     "best_wgcna_de_gsea_overlap", "interpretation_sentence"
   )
   select_existing(add_dataset_terminology(modules), cols)
@@ -162,6 +189,23 @@ build_microglia_roi_signature_drivers <- function() {
   if (!nrow(out)) empty_bundle_table("No targeted microglia ROI signature drivers were available.") else out
 }
 
+build_microglia_neuropil_independence <- function() {
+  tbl <- read_final_csv(path_results("tables", "06_modules_WGCNA", "microglia_neuropil_independence", "microglia", "microglia_neuropil_independence_effects.csv"))
+  if (is.null(tbl) || !nrow(tbl)) {
+    return(empty_bundle_table("Microglia neuropil-independence sensitivity analysis was not available."))
+  }
+  cols <- c(
+    "dataset", "dataset_terminology", "endpoint_type", "endpoint_id", "endpoint_label",
+    "module_id", "contrast", "estimate_before", "estimate_after",
+    "percent_attenuation", "p_before", "p_after", "FDR_before", "FDR_after",
+    "neuropil_covariate_beta", "neuropil_covariate_p", "classification",
+    "matched_neuropil_covariate", "matched_neuropil_label",
+    "neuropil_covariate_source", "neuropil_selection_spearman",
+    "n_samples", "n_matched_samples", "n_animals", "model_warning"
+  )
+  select_existing(add_dataset_terminology(tbl), cols)
+}
+
 build_qc_flags <- function(claims) {
   if (is.null(claims) || !nrow(claims) || !"dataset" %in% names(claims)) {
     return(empty_bundle_table("Biological claims QC flags were not available."))
@@ -190,7 +234,8 @@ build_bundle_readme <- function() {
     sheet = c(
       "README", "input_status", "manuscript_program_summary", "evidence_priority_matrix",
       "cross_compartment_program_atlas", "wgcna_key_modules", "wgcna_key_supermodules",
-      "microglia_roi_signature_drivers", "qc_flags", "biological_claims"
+      "microglia_roi_signature_drivers", "microglia_neuropil_independence",
+      "qc_flags", "biological_claims"
     ),
     produced_from = c(
       "10_biological_integration/03_evidence_priority_matrix.r and 09_export_pride_journal/07_make_biological_claims_table.R",
@@ -201,6 +246,7 @@ build_bundle_readme <- function() {
       "06_modules_WGCNA/07_wgcna_interpretable_summary.r",
       "06_modules_WGCNA/07_wgcna_interpretable_summary.r",
       "06_modules_WGCNA/06_annotate_module_microenvironment.r",
+      "06_modules_WGCNA/08_microglia_neuropil_independence.R",
       "09_export_pride_journal/07_make_biological_claims_table.R",
       "09_export_pride_journal/07_make_biological_claims_table.R"
     ),
@@ -213,6 +259,7 @@ build_bundle_readme <- function() {
       "Module-level WGCNA rows selected for manuscript inspection; includes targeted-signature driver columns when available.",
       "Supermodule-level WGCNA rows selected for manuscript inspection; includes original annotation and plotting labels.",
       "Microglia ROI/local microenvironment targeted-signature driver summary; not purified microglia evidence.",
+      "Sensitivity model comparing microglia group effects before and after matched region-level neuron_neuropil covariate adjustment.",
       "Dataset-level QC and confounding flags propagated from the claims table.",
       "Evidence-graded claim index with safe and unsafe wording guardrails."
     ),
@@ -225,6 +272,7 @@ build_bundle_readme <- function() {
       "ModulePlotLabel, Supermodule_PlotLabel, Supermodule_FullAnnotationLabel, microenvironment_label, targeted_signature_* driver columns, FDR columns, interpretation_sentence.",
       "Supermodule_PlotLabel, Supermodule_FullAnnotationLabel, dominant_microenvironment_class, dominant_module_labels, Supermodule_LabelRationale, FDR columns, interpretation_sentence.",
       "targeted_signature_primary_driver, targeted_signature_driver_class, targeted_signature_driver_signature, targeted_signature_driver_padj, targeted_signature_driver_NES, targeted_signature_driver_overlap_proteins.",
+      "classification, estimate_before, estimate_after, percent_attenuation, FDR_before, FDR_after, neuropil_covariate_beta, neuropil_covariate_p.",
       "missingness_confounded, batch_or_plate_confounded, region_layer_imbalance_risk, animal_pseudoreplication_risk, marker_contamination_or_roi_mixture_flag, qc_interpretation_flag.",
       "claim_grade, primary_evidence, orthogonal_support, major_limitation, safe_interpretation, unsafe_overinterpretation, QC flag columns."
     ),
@@ -237,6 +285,7 @@ build_bundle_readme <- function() {
       "Microglia/immune wording should be used only where explicit immune-state evidence supports it.",
       "Both broad plot labels and full annotation labels are retained.",
       "Neuropil-shared and curated-program evidence should not be described as purified microglial activation.",
+      "Adjustment is a sensitivity analysis, not causal subtraction of neuropil signal.",
       "QC flags are conservative and should be reviewed before strong wording.",
       "Claims remain observational unless supported by independent validation."
     ),
@@ -269,7 +318,8 @@ write_final_evidence_bundle <- function(reason = "integration") {
     cross_compartment_program_atlas = path_results("tables", "10_biological_integration", "cross_compartment_program_atlas", "global", "cross_compartment_program_atlas_long.csv"),
     biological_claims = path_results("tables", "biological_claims_table.csv"),
     microglia_module_annotation = path_results("tables", "06_modules_WGCNA", "module_annotation", "microglia", "WGCNA_module_biological_annotation.csv"),
-    microglia_targeted_signature_details = path_results("tables", "06_modules_WGCNA", "module_annotation", "microglia", "WGCNA_module_targeted_signature_overlap_details.csv")
+    microglia_targeted_signature_details = path_results("tables", "06_modules_WGCNA", "module_annotation", "microglia", "WGCNA_module_targeted_signature_overlap_details.csv"),
+    microglia_neuropil_independence = path_results("tables", "06_modules_WGCNA", "microglia_neuropil_independence", "microglia", "microglia_neuropil_independence_effects.csv")
   )
 
   manuscript <- add_dataset_terminology(read_final_csv(inputs$manuscript_program_summary) %||% empty_bundle_table("Manuscript program summary was not available."))
@@ -292,6 +342,7 @@ write_final_evidence_bundle <- function(reason = "integration") {
     wgcna_key_modules = build_wgcna_key_modules(),
     wgcna_key_supermodules = build_wgcna_key_supermodules(),
     microglia_roi_signature_drivers = build_microglia_roi_signature_drivers(),
+    microglia_neuropil_independence = build_microglia_neuropil_independence(),
     qc_flags = build_qc_flags(claims),
     biological_claims = claims
   )
