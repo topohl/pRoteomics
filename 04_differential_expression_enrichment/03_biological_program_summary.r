@@ -346,7 +346,8 @@ program_summary_integrated <- program_summary_neuropil %>%
   ) %>%
   dplyr::mutate(
     integrated_interpretation = dplyr::case_when(
-      .data$microglia_signature_class %in% c("microglia_enriched_empirical", "microglia_enriched_reference_supported", "curated_microglia_program") & !.data$interpretation_class %in% c("neuropil_sensitive", "neuropil_marker_enriched") ~ "microglia_supported_program",
+      .data$microglia_signature_class %in% c("microglia_enriched_empirical", "microglia_enriched_reference_supported") & !.data$interpretation_class %in% c("neuropil_sensitive", "neuropil_marker_enriched") ~ "microglia_supported_program",
+      .data$microglia_signature_class == "curated_microglia_program" & !.data$interpretation_class %in% c("neuropil_sensitive", "neuropil_marker_enriched") ~ "curated_microglia_relevant_program",
       .data$microglia_signature_class == "neuropil_shared" | .data$interpretation_class %in% c("neuropil_sensitive", "neuropil_marker_enriched") ~ "neuropil_shared_or_sensitive_program",
       .data$microglia_signature_class == "mixed_microenvironment" | .data$interpretation_class == "mixed_microenvironment" ~ "mixed_microenvironment_program",
       is.na(.data$microglia_signature_class) & is.na(.data$interpretation_class) ~ "unannotated_program",
@@ -354,6 +355,7 @@ program_summary_integrated <- program_summary_neuropil %>%
     ),
     interpretation_note = dplyr::case_when(
       .data$integrated_interpretation == "microglia_supported_program" ~ "Supported by microglia-targeted signatures with weak/absent or weaker neuropil reference signal.",
+      .data$integrated_interpretation == "curated_microglia_relevant_program" ~ "Curated microglia-relevant gene set; not microglia-specific or claim-ready without empirical/reference support.",
       .data$integrated_interpretation == "neuropil_shared_or_sensitive_program" ~ "Shared with or sensitive to neuropil reference; do not interpret as microglia-intrinsic without orthogonal support.",
       .data$integrated_interpretation == "mixed_microenvironment_program" ~ "Present in microglia ROI and neuropil reference in a pattern consistent with local microenvironment biology.",
       .data$integrated_interpretation == "unannotated_program" ~ "No optional neuropil or microglia signature annotation was available.",
