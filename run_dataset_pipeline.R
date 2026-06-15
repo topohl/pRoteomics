@@ -23,6 +23,17 @@ split_arg <- function(value) {
   unique(trimws(unlist(strsplit(value, ","), use.names = FALSE)))
 }
 
+split_env_arg <- function(value) {
+  value <- trimws(as.character(value %||% ""))
+  if (!nzchar(value)) return(character())
+  pairs <- unlist(strsplit(value, "\\|", fixed = FALSE), use.names = FALSE)
+  pairs <- pairs[nzchar(pairs)]
+  stats::setNames(
+    sub("^[^=]*=", "", pairs),
+    sub("=.*$", "", pairs)
+  )
+}
+
 stage_arg <- arg_value("--stage", default = "all")
 from_stage <- arg_value("--from-stage", default = "")
 dataset_arg <- normalize_dataset(arg_value("--dataset", default = current_dataset()))
@@ -30,6 +41,8 @@ exclude_stages <- split_arg(arg_value("--exclude-stage", default = ""))
 exclude_scripts <- gsub("\\\\", "/", split_arg(arg_value("--exclude-script", default = "")))
 dry_run <- has_flag("--dry-run") || has_flag("--plan") ||
   tolower(Sys.getenv("PROTEOMICS_DRY_RUN", unset = "")) %in% c("1", "true", "yes")
+strict_outputs <- has_flag("--strict-outputs") ||
+  tolower(Sys.getenv("PROTEOMICS_STRICT_OUTPUTS", unset = "")) %in% c("1", "true", "yes")
 list_stages <- has_flag("--list-stages")
 
 if (!identical(dataset_arg, "all")) dataset_arg <- validate_dataset(dataset_arg, source = "--dataset")
@@ -162,6 +175,7 @@ make_result <- function(step, status, exit_code, started_at, finished_at, missin
     missing_expected_outputs_after_run = join_paths(missing_after),
     output_validation_status = join_paths(unique(output_validation$validation_status)),
     output_validation_messages = join_paths(output_validation$validation_message[nzchar(output_validation$validation_message)]),
+    env_overrides = step$env %||% "",
     recomputes_core_state = step$recomputes_core_state,
     safe_downstream_rerun = step$safe_downstream_rerun,
     notes = step$notes,
@@ -176,6 +190,7 @@ make_result <- function(step, status, exit_code, started_at, finished_at, missin
     env_PROTEOMICS_DRY_RUN = Sys.getenv("PROTEOMICS_DRY_RUN", unset = NA_character_),
     env_PROTEOMICS_RECOMPUTE = Sys.getenv("PROTEOMICS_RECOMPUTE", unset = NA_character_),
     env_PROTEOMICS_WGCNA_FORCE_FULL = Sys.getenv("PROTEOMICS_WGCNA_FORCE_FULL", unset = NA_character_),
+    env_PROTEOMICS_MODULE_DEFINITION_SOURCE = Sys.getenv("PROTEOMICS_MODULE_DEFINITION_SOURCE", unset = NA_character_),
     stringsAsFactors = FALSE
   )
 }
@@ -187,6 +202,7 @@ cat("Selected stages:", paste(selected_stages, collapse = ", "), "\n")
 cat("Excluded stages:", ifelse(length(exclude_stages), paste(exclude_stages, collapse = ", "), "none"), "\n")
 cat("Excluded scripts:", ifelse(length(exclude_scripts), paste(exclude_scripts, collapse = ", "), "none"), "\n")
 cat("Dry run / plan:", dry_run, "\n")
+cat("Strict expected-output policy:", strict_outputs, "\n")
 cat("Project root:", repo_root(), "\n")
 cat("Registry:", repo_path("pipeline.yml"), "\n")
 cat("Manifest:", manifest_path, "\n\n")
@@ -240,7 +256,19 @@ for (i in seq_len(nrow(steps))) {
   }
 
   cat("==> Running ", step$stage, " :: ", step$script, " [", step$dataset, "]\n", sep = "")
-  exit_code <- system2("Rscript", script_path)
+  step_env <- split_env_arg(step$env)
+  old_env <- stats::setNames(vapply(names(step_env), Sys.getenv, character(1), unset = NA_character_), names(step_env))
+  if (length(step_env)) {
+    do.call(Sys.setenv, as.list(step_env))
+    cat("    env overrides: ", paste(paste(names(step_env), step_env, sep = "="), collapse = ", "), "\n", sep = "")
+  }
+  exit_code <- tryCatch(system2("Rscript", script_path), finally = {
+    if (length(old_env)) {
+      for (nm in names(old_env)) {
+        if (is.na(old_env[[nm]])) Sys.unsetenv(nm) else do.call(Sys.setenv, stats::setNames(as.list(old_env[[nm]]), nm))
+      }
+    }
+  })
   if (is.null(exit_code)) exit_code <- 0L
 
   output_status_after <- path_status(step$produces, step$dataset)
@@ -249,6 +277,20 @@ for (i in seq_len(nrow(steps))) {
   output_validation <- validate_pipeline_outputs(expand_existing_output_paths(step$produces, step$dataset), dataset = step$dataset)
   validation_failed <- any(output_validation$validation_status %in% c("warning", "error", "missing"))
   status <- if (identical(exit_code, 0L)) "passed" else if (isTRUE(step$required)) "failed_required" else "failed_optional"
+  if (length(missing_after)) {
+    if (isTRUE(step$required)) {
+      status <- "failed_required_missing_outputs"
+      exit_code <- 1L
+    } else if (isTRUE(strict_outputs)) {
+      status <- "failed_optional_missing_outputs"
+      if (identical(exit_code, 0L)) exit_code <- 1L
+    } else if (identical(exit_code, 0L)) {
+      status <- "passed_with_missing_outputs"
+    } else {
+      status <- "failed_optional_missing_outputs"
+    }
+    message("[WARN] Expected output(s) missing after ", step$script, ": ", join_paths(missing_after))
+  }
   if (identical(status, "passed") && isTRUE(validation_failed)) {
     if (isTRUE(step$required)) {
       status <- "failed_required_output_validation"
@@ -260,7 +302,7 @@ for (i in seq_len(nrow(steps))) {
   }
   res <- make_result(step, status, exit_code, started_at, Sys.time(), missing_required, missing_optional, missing_after, produced_before, produced_after, output_validation)
   results <- rbind(results, res)
-  if (status %in% c("failed_required", "failed_required_output_validation")) {
+  if (status %in% c("failed_required", "failed_required_missing_outputs", "failed_required_output_validation")) {
     message("[FAIL] Required step failed; stopping pipeline before downstream stages.")
     break
   }
@@ -275,10 +317,17 @@ cat("Registry audit tables:\n")
 cat(" - ", file.path(manifest_dir, "unregistered_scripts.csv"), "\n", sep = "")
 cat(" - ", file.path(manifest_dir, "missing_registered_scripts.csv"), "\n", sep = "")
 
-failed_required <- results[results$status %in% c("missing_required_input", "missing_required_script", "failed_required", "failed_required_output_validation"), , drop = FALSE]
+failed_required <- results[results$status %in% c("missing_required_input", "missing_required_script", "failed_required", "failed_required_missing_outputs", "failed_required_output_validation"), , drop = FALSE]
 if (nrow(failed_required)) {
   cat("\nRequired step failures:\n")
   print(failed_required[, c("dataset", "stage", "script", "status", "exit_code", "missing_required_inputs")], row.names = FALSE)
+  quit(status = 1, save = "no")
+}
+
+failed_optional_strict <- results[results$status %in% c("failed_optional_missing_outputs") & isTRUE(strict_outputs), , drop = FALSE]
+if (nrow(failed_optional_strict)) {
+  cat("\nOptional step output failures under --strict-outputs:\n")
+  print(failed_optional_strict[, c("dataset", "stage", "script", "status", "exit_code", "missing_expected_outputs_after_run")], row.names = FALSE)
   quit(status = 1, save = "no")
 }
 
