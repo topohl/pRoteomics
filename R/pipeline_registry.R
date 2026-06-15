@@ -46,6 +46,7 @@ pipeline_steps <- function(registry, selected_stages, dataset = current_dataset(
           consumes_required = paste(unlist(step$consumes_required %||% character(), use.names = FALSE), collapse = "|"),
           consumes_optional = paste(unlist(step$consumes_optional %||% character(), use.names = FALSE), collapse = "|"),
           produces = paste(unlist(step$produces %||% character(), use.names = FALSE), collapse = "|"),
+          env = paste(paste(names(step$env %||% list()), unlist(step$env %||% list(), use.names = FALSE), sep = "="), collapse = "|"),
           recomputes_core_state = isTRUE(step$recomputes_core_state),
           safe_downstream_rerun = isTRUE(step$safe_downstream_rerun),
           notes = paste(unlist(step$notes %||% character(), use.names = FALSE), collapse = " "),
@@ -122,6 +123,13 @@ validate_pipeline_registry <- function(registry, path = "pipeline.yml") {
       for (field in c("stage", "scope", "produces", "consumes_required", "consumes_optional", "recomputes_core_state", "safe_downstream_rerun", "notes")) {
         if (is.null(step[[field]])) {
           stop("Registry entry ", step$script, " is missing field: ", field, call. = FALSE)
+        }
+      }
+      if (!is.null(step$env)) {
+        bad_env <- names(step$env)
+        bad_env <- bad_env[is.na(bad_env) | !nzchar(bad_env)]
+        if (length(bad_env)) {
+          stop("Registry entry ", step$script, " has unnamed env values.", call. = FALSE)
         }
       }
     }
