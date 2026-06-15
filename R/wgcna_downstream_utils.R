@@ -156,6 +156,47 @@ first_present_col <- function(df, candidates) {
   names(df)[hit[[1]]]
 }
 
+normalize_wgcna_animal_id <- function(x) {
+  x <- toupper(trimws(as.character(x)))
+  x[x %in% c("", "NA", "N/A", "NULL", "NONE", "NAN")] <- NA_character_
+  out <- rep(NA_character_, length(x))
+  has_a_id <- !is.na(x) & grepl("(^|[^A-Z0-9])A0*[0-9]+([^A-Z0-9]|$)", x, perl = TRUE)
+  if (any(has_a_id)) {
+    token <- regmatches(x[has_a_id], regexpr("A0*[0-9]+", x[has_a_id], perl = TRUE))
+    digits <- sub("^A0*", "", token)
+    digits[digits == ""] <- "0"
+    out[has_a_id] <- paste0("A", digits)
+  }
+  remaining <- is.na(out) & !is.na(x)
+  if (any(remaining)) {
+    numeric_like <- grepl("^[0-9]+$", x[remaining])
+    vals <- x[remaining]
+    vals[numeric_like] <- paste0("A", sub("^0+", "", vals[numeric_like]))
+    vals[vals == "A"] <- "A0"
+    vals[!numeric_like] <- gsub("[^A-Z0-9]+", "", vals[!numeric_like])
+    vals[!nzchar(vals)] <- NA_character_
+    out[remaining] <- vals
+  }
+  out
+}
+
+infer_wgcna_animal_id <- function(meta, sample_values) {
+  aliases <- c(
+    "AnimalID", "AnimalNum", "AnimalNumber", "AnimalNo", "Animal",
+    "MouseID", "Mouse", "MouseNum", "MouseNumber", "mouse_id",
+    "animal_id", "animal_num", "animal_number", "subject", "SubjectID",
+    "donor", "DonorID", "ID", "animalid", "animalnum"
+  )
+  animal_col <- first_present_col(meta, aliases)
+  from_col <- if (!is.na(animal_col)) normalize_wgcna_animal_id(meta[[animal_col]]) else rep(NA_character_, nrow(meta))
+  missing <- is.na(from_col) | !nzchar(from_col)
+  if (any(missing)) {
+    parsed <- normalize_wgcna_animal_id(sample_values)
+    from_col[missing] <- parsed[missing]
+  }
+  from_col
+}
+
 normalize_gene_token <- function(x) {
   x <- toupper(trimws(as.character(x)))
   x <- sub("_MOUSE$", "", x, ignore.case = TRUE)
@@ -321,8 +362,7 @@ standardize_wgcna_metadata <- function(meta, dataset) {
   meta <- as.data.frame(meta, check.names = FALSE, stringsAsFactors = FALSE)
   sample_col <- first_present_col(meta, c("Sample", "sample", "SampleID", "sample_id", "row.names"))
   if (is.na(sample_col)) meta$Sample <- rownames(meta) else meta$Sample <- as.character(meta[[sample_col]])
-  animal_col <- first_present_col(meta, c("AnimalID", "Animal", "MouseID", "mouse_id", "animal_id", "subject", "donor"))
-  meta$AnimalID <- if (!is.na(animal_col)) as.character(meta[[animal_col]]) else NA_character_
+  meta$AnimalID <- infer_wgcna_animal_id(meta, meta$Sample)
   for (target in c("Region", "Layer", "Sex", "Batch")) {
     col <- first_present_col(meta, c(target, tolower(target), if (target == "Batch") c("plate", "run", "batch_id") else character()))
     meta[[target]] <- if (!is.na(col)) as.character(meta[[col]]) else NA_character_
