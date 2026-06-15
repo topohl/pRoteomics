@@ -5,6 +5,10 @@ if (!exists("repo_path", mode = "function")) {
   source(paths_file)
 }
 
+`%||%` <- function(x, y) {
+  if (is.null(x) || length(x) == 0L || (length(x) == 1L && is.na(x))) y else x
+}
+
 safe_name <- function(x, max_chars = 180) {
   x <- as.character(x)
   x <- gsub("[/\\\\:*?\"<>|]+", "_", x)
@@ -110,6 +114,15 @@ known_pipeline_output_specs <- function() {
         "dataset", "SupermoduleID", "Supermodule_DisplayLabel",
         "dominant_microenvironment_class", "dominant_module_labels",
         "Supermodule_LabelRationale", "interpretation_note"
+      ),
+      recommended_columns = c(
+        "Supermodule_ConservativeLabel", "Supermodule_CompositionLabel",
+        "Supermodule_CompositionShortLabel", "Supermodule_CompositionLabelSource",
+        "Supermodule_CompositionConfidence", "Supermodule_CompositionRationale",
+        "DominantMemberTheme", "DominantMemberThemeFraction", "SecondMemberTheme",
+        "SecondMemberThemeFraction", "TopMemberModuleLabels", "TopMemberGOTerms",
+        "n_member_modules_with_informative_labels",
+        "fraction_member_modules_with_informative_labels"
       )
     ),
     WGCNA_module_group_effects_interpretable.csv = list(
@@ -159,6 +172,9 @@ validate_known_pipeline_output <- function(path, dataset = NULL) {
   required <- specs[[filename]]$required_columns
   missing <- setdiff(required, names(df))
   if (length(missing)) messages <- c(messages, paste0("Missing required column(s): ", paste(missing, collapse = ", ")))
+  recommended <- specs[[filename]]$recommended_columns %||% character()
+  missing_recommended <- setdiff(recommended, names(df))
+  if (length(missing_recommended)) messages <- c(messages, paste0("Missing recommended optional column(s): ", paste(missing_recommended, collapse = ", ")))
 
   if ("dataset" %in% names(df) && exists("valid_datasets", mode = "function")) {
     observed <- unique(as.character(df$dataset[!is.na(df$dataset) & nzchar(as.character(df$dataset))]))
@@ -180,6 +196,44 @@ validate_known_pipeline_output <- function(path, dataset = NULL) {
     values <- suppressWarnings(as.numeric(df[[col]]))
     bad <- !is.na(values) & values < 0
     if (any(bad)) messages <- c(messages, paste0(col, " has negative value(s)."))
+  }
+
+  if (identical(filename, "WGCNA_supermodule_biological_annotation.csv")) {
+    if ("Supermodule_CompositionLabel" %in% names(df)) {
+      comp <- trimws(as.character(df$Supermodule_CompositionLabel))
+      comp_present <- !is.na(comp) & nzchar(comp)
+      unresolved <- comp_present & grepl("mixed|unresolved|low-specificity", comp, ignore.case = TRUE)
+      if (any(comp_present) && all(unresolved[comp_present])) {
+        messages <- c(messages, "All supermodule composition labels are mixed/unresolved; member-module biological labels may not be propagating.")
+      }
+    } else {
+      label_cols <- intersect(c("Supermodule_FinalLabel", "Supermodule_DisplayLabel", "dominant_module_labels"), names(df))
+      if (length(label_cols)) {
+        lab <- apply(df[label_cols], 1, paste, collapse = " ")
+        if (length(lab) && all(grepl("mixed|unresolved|low-specificity", lab, ignore.case = TRUE))) {
+          messages <- c(messages, "All supermodules are mixed/unresolved and no composition labels are available.")
+        }
+      }
+    }
+    if ("Supermodule_CompositionLabel" %in% names(df) &&
+        "Supermodule_CompositionConfidence" %in% names(df)) {
+      comp <- trimws(as.character(df$Supermodule_CompositionLabel))
+      conf <- trimws(as.character(df$Supermodule_CompositionConfidence))
+      if (any(!is.na(comp) & nzchar(comp)) && !any(!is.na(conf) & nzchar(conf))) {
+        messages <- c(messages, "Composition labels are present but all confidence values are missing.")
+      }
+    }
+    if (all(c("dataset", "dominant_microenvironment_class", "Supermodule_CompositionLabel") %in% names(df))) {
+      micro_rows <- as.character(df$dataset) == "microglia"
+      caution_dom <- as.character(df$dominant_microenvironment_class) %in% c(
+        "shared_microenvironment", "neuropil_sensitive",
+        "vascular_basement_membrane_ecm", "vascular_bbb_mural"
+      )
+      overclaim <- grepl("microglia activation|microglia state", as.character(df$Supermodule_CompositionLabel), ignore.case = TRUE)
+      if (any(micro_rows & caution_dom & overclaim, na.rm = TRUE)) {
+        messages <- c(messages, "Microglia composition labels overclaim microglia specificity despite shared/neuropil/vascular dominance.")
+      }
+    }
   }
 
   data.frame(
