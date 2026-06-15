@@ -83,6 +83,20 @@ behavior-coupling layer. It preserves mapping trace, coverage QC, replicate QC,
 and behavior-coupling exports. It records `PROTEOMICS_MODULE_DEFINITION_SOURCE`
 or the dataset fallback in `module_score_run_metadata.csv`; primary WGCNA
 eigengene group effects still come from `05_module_supermodule_group_effects.r`.
+When the score source is `wgcna`, the script also exports secondary
+supermodule eigengene score tables and supermodule directional robustness plots.
+
+Two module-score source modes are useful for `neuron_neuropil`:
+
+- `overlap`: curated biological programs from recurrent overlap proteins. This
+  remains the default fallback for neuron neuropil module scoring.
+- `wgcna`: data-driven co-expression modules from `01_WGCNA.r`. The default
+  pipeline also runs this as an additional neuron-neuropil score pass so the
+  curated-program plot and WGCNA module-score effect-size plot are both present.
+
+`microglia` and `neuron_soma` default to `wgcna`. Score tables preserve
+`ModuleID` as the stable technical join key and add `ModuleDisplayLabel` for
+readable plotting/export labels.
 
 Example explicit score-source runs:
 
@@ -92,6 +106,9 @@ Rscript 06_modules_WGCNA/03_score_module_activity.R --dataset microglia
 Rscript 06_modules_WGCNA/03_score_module_activity.R --dataset neuron_soma
 
 $env:PROTEOMICS_MODULE_DEFINITION_SOURCE = "overlap"
+Rscript 06_modules_WGCNA/03_score_module_activity.R --dataset neuron_neuropil
+
+$env:PROTEOMICS_MODULE_DEFINITION_SOURCE = "wgcna"
 Rscript 06_modules_WGCNA/03_score_module_activity.R --dataset neuron_neuropil
 Remove-Item Env:\PROTEOMICS_MODULE_DEFINITION_SOURCE
 ```
