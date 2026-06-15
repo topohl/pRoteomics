@@ -35,7 +35,7 @@ stages:
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "core"
         scope: "dataset_specific"
-        produces: ["data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv", "results/tables/02_id_mapping/<dataset>/mapped/forward/summaries/*.csv"]
+        produces: ["data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv", "results/tables/02_id_mapping/MapThatProt_batch/<dataset>/mapped/forward/summaries/*.csv"]
         consumes_required: ["data/processed/01_preprocessing/gct_extractR/<dataset>/forward/*.csv", "data/external/MOUSE_10090_idmapping.dat"]
         consumes_optional: ["data/metadata/manual_mapping.xlsx"]
         recomputes_core_state: true
@@ -300,22 +300,22 @@ stages:
     scripts:
       - script: "06_modules_WGCNA/01a_compare_GO_recurrent_proteins.r"
         required: false
-        datasets: ["global"]
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "modules_downstream"
-        scope: "global"
-        produces: ["results/tables/06_modules_WGCNA/01a_compare_GO_recurrent_proteins/"]
-        consumes_required: ["data/processed/04_differential_expression_enrichment/compareGO/neuron_neuropil/compareGO_input_manifest.csv", "data/processed/04_differential_expression_enrichment/compareGO/neuron_soma/compareGO_input_manifest.csv", "data/processed/04_differential_expression_enrichment/compareGO/microglia/compareGO_input_manifest.csv"]
+        scope: "dataset_specific"
+        produces: ["results/tables/04_differential_expression_enrichment/compareGO/<dataset>/recurrent_top_gene_drivers/overlapping_proteins_min3_spatial_units.xlsx"]
+        consumes_required: ["results/tables/04_differential_expression_enrichment/compareGO/<dataset>/BP/phenotype_within_unit/07_Top_Genes_Driving_TopTerms.xlsx"]
         consumes_optional: []
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "Global recurrent GO/protein comparison used by curated overlap programs; does not alter WGCNA modules."
+        notes: "Dataset-specific recurrent GO/protein comparison across spatial units; does not alter WGCNA modules."
       - script: "06_modules_WGCNA/02_curated_overlap_programs.r"
         required: false
         datasets: ["global"]
         stage: "modules_downstream"
         scope: "global"
         produces: ["results/tables/06_modules_WGCNA/curated_overlap_programs/global/"]
-        consumes_required: ["results/tables/06_modules_WGCNA/01a_compare_GO_recurrent_proteins/"]
+        consumes_required: ["results/tables/04_differential_expression_enrichment/compareGO/overlapping_proteins_min3_datasets.xlsx"]
         consumes_optional: ["data/external/MOUSE_10090_idmapping.dat"]
         recomputes_core_state: false
         safe_downstream_rerun: true
@@ -330,7 +330,20 @@ stages:
         consumes_optional: ["data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx"]
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "Module scoring layer: scores existing module definitions against dataset matrices; does not rebuild WGCNA modules."
+        notes: "Module scoring layer: scores existing module definitions against dataset matrices; does not rebuild WGCNA modules. Dataset fallback is overlap for neuron_neuropil and WGCNA for neuron_soma/microglia."
+      - script: "06_modules_WGCNA/03_score_module_activity.R"
+        required: false
+        datasets: ["neuron_neuropil"]
+        stage: "modules_downstream"
+        scope: "dataset_specific"
+        env:
+          PROTEOMICS_MODULE_DEFINITION_SOURCE: "wgcna"
+        produces: ["results/tables/06_modules_WGCNA/module_score/<dataset>/wgcna/"]
+        consumes_required: ["results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/", "data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv"]
+        consumes_optional: ["data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx"]
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Additional neuron_neuropil WGCNA-source module-score pass. Keeps the default curated-overlap score run and adds data-driven WGCNA module-score effect-size plots."
       - script: "06_modules_WGCNA/04_wgcna_de_gsea_overlap.r"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
@@ -427,7 +440,7 @@ stages:
         datasets: ["neuron_neuropil", "neuron_soma"]
         stage: "networks"
         scope: "dataset_specific"
-        produces: ["results/tables/07_spatial_networks/differential_networks/<dataset>/"]
+        produces: ["results/tables/07_spatial_networks/differential_networks/all_group_edges_long.csv", "results/tables/07_spatial_networks/differential_networks/rewiring_summary_counts.csv", "results/tables/07_spatial_networks/differential_networks/differential_networks_summary.xlsx"]
         consumes_required: ["data/processed/07_spatial_networks/network_spatial_relations/<dataset>/*/network_spatial_relations_objects.rds"]
         consumes_optional: []
         recomputes_core_state: false
@@ -450,7 +463,7 @@ stages:
         stage: "networks"
         scope: "dataset_specific"
         produces: ["results/tables/07_spatial_networks/bootstrap_differential_network_stability/01_Tables/bootstrap_differential_edge_stability_summary.csv"]
-        consumes_required: ["results/tables/07_spatial_networks/differential_networks/<dataset>/"]
+        consumes_required: ["data/processed/07_spatial_networks/network_spatial_relations/<dataset>/*/network_spatial_relations_objects.rds"]
         consumes_optional: []
         recomputes_core_state: false
         safe_downstream_rerun: true
@@ -485,7 +498,7 @@ stages:
         datasets: ["neuron_soma"]
         stage: "coupling"
         scope: "dataset_specific"
-        produces: ["results/figures/08_behavior_physio_coupling/01_correlate_proteomics_with_behavior/", "results/tables/08_behavior_physio_coupling/01_correlate_proteomics_with_behavior/"]
+        produces: ["results/figures/08_behavior_physio_coupling/correlate_proteomics_with_behavior/Figure3_AUC_vs_Proteomics.svg", "results/figures/08_behavior_physio_coupling/correlate_proteomics_with_behavior/SourceData_Figure3_Correlation.csv", "results/tables/08_behavior_physio_coupling/correlate_proteomics_with_behavior/join_diagnostics_summary.csv"]
         consumes_required: ["data/external/behavior/auc_individual_animals_firstChangeActive.csv"]
         consumes_optional: ["data/processed/morpheus/20260218_pgmatrix_imputed_neuron_soma_71samples_missing70pct_with_metadata.xlsx", "data/external/MOUSE_10090_idmapping.dat"]
         recomputes_core_state: false
@@ -651,17 +664,6 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Validation runs after export products exist."
-      - script: "09_export_pride_journal/RUN_EXPORT.R"
-        required: false
-        datasets: ["global"]
-        stage: "export"
-        scope: "global"
-        produces: ["pride_submission/"]
-        consumes_required: ["09_export_pride_journal/01_make_pride_manifest.R", "09_export_pride_journal/02_make_sample_metadata.R", "09_export_pride_journal/03_export_processed_pg_matrix_package.R", "09_export_pride_journal/04_make_supplementary_tables.R", "09_export_pride_journal/05_validate_pride_submission.R"]
-        consumes_optional: ["09_export_pride_journal/config/export_config.yml"]
-        recomputes_core_state: false
-        safe_downstream_rerun: true
-        notes: "Convenience export runner kept last; direct registry order above is preferred for dependency visibility."
 legacy:
   - script: "01_preprocessing/01_impute.r"
     replacement: "01_preprocessing/03_gct_extractR.r"
@@ -693,3 +695,6 @@ legacy:
   - script: "09_pride_submission/00_make_pride_package.R"
     replacement: "09_export_pride_journal/"
     status: "legacy code helper; generated payload belongs in gitignored pride_submission/"
+  - script: "09_export_pride_journal/RUN_EXPORT.R"
+    replacement: "run_dataset_pipeline.R --stage export"
+    status: "convenience export wrapper; excluded from canonical full pipeline to avoid re-running export steps already registered individually"
