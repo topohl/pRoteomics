@@ -28,6 +28,7 @@ source(paths_file)
 source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "dataset_inputs.R"))
 source(repo_path("R", "module_contracts.R"))
+source(repo_path("R", "wgcna_downstream_utils.R"))
 MODULE_ID <- "06_modules_WGCNA"
 args <- commandArgs(trailingOnly = TRUE)
 arg_value <- function(flag, default = "") {
@@ -40,6 +41,13 @@ if (nzchar(dataset_cli)) Sys.setenv(PROTEOMICS_DATASET = validate_dataset(datase
 dataset_profile <- current_dataset()
 dataset_inputs <- resolve_dataset_inputs(dataset_profile, purpose = "module_score")
 module_score_version <- "0.0.2"
+
+nonempty_label <- function(x) {
+  x <- as.character(x)
+  x <- stringr::str_squish(x)
+  x[is.na(x) | !nzchar(x) | toupper(x) %in% c("NA", "NAN")] <- NA_character_
+  x
+}
 
 default_module_definition_source <- function(dataset) {
   dplyr::case_when(
@@ -134,6 +142,15 @@ resolve_wgcna_state_file <- function() {
   normalizePath(candidates[1], winslash = "/", mustWork = FALSE)
 }
 
+resolve_supermodule_annotation_file <- function() {
+  override <- Sys.getenv("PROTEOMICS_SUPERMODULE_ANNOTATION_FILE", unset = "")
+  if (nzchar(override)) return(normalizePath(override, winslash = "/", mustWork = FALSE))
+  first_existing_path(c(
+    path_results("tables", "06_modules_WGCNA", "01_WGCNA", dataset_profile, "supermodules", "wgcna_module_supermodule_annotation.csv"),
+    path_results("source_data", "06_modules_WGCNA", "01_WGCNA", dataset_profile, "supermodules", "wgcna_module_supermodule_annotation.csv")
+  ))
+}
+
 resolve_module_definitions_file <- function(source = module_definition_source) {
   source <- tolower(source)
   override <- Sys.getenv("PROTEOMICS_MODULE_DEFINITIONS_FILE", unset = "")
@@ -185,6 +202,7 @@ mapping_file <- path_external("MOUSE_10090_idmapping.dat")
 module_definitions_file <- resolve_module_definitions_file(module_definition_source)
 module_definitions_sheet <- if (identical(module_definition_source, "wgcna")) "WGCNA_modules_long" else "Modules_long"
 wgcna_state_file <- if (identical(module_definition_source, "wgcna")) resolve_wgcna_state_file() else NA_character_
+supermodule_annotation_file <- if (identical(module_definition_source, "wgcna")) resolve_supermodule_annotation_file() else NA_character_
 
 saving_dir <- CANONICAL_PATHS$reports
 dir.create(saving_dir, recursive = TRUE, showWarnings = FALSE)
@@ -231,6 +249,7 @@ if (is_dry_run()) {
   dry_run_line("Producer artifact exists", producer_artifact, if (file.exists(producer_artifact)) "PASS" else "WARN")
   if (identical(module_definition_source, "wgcna")) {
     dry_run_line("WGCNA state", wgcna_state_file, if (!is.na(wgcna_state_file) && file.exists(wgcna_state_file)) "PASS" else "WARN")
+    dry_run_line("Supermodule annotation", supermodule_annotation_file, if (!is.na(supermodule_annotation_file) && file.exists(supermodule_annotation_file)) "PASS" else "WARN")
   }
   dry_run_line("Output folders", paste(unlist(CANONICAL_PATHS), collapse = "; "))
   dry_run_line("Expected dataset/source-scoped table root", dir_tables)
@@ -522,16 +541,32 @@ standardize_module_definitions <- function(df, source) {
     }
     if (!"ModuleLabel_GO_BP" %in% names(df)) df$ModuleLabel_GO_BP <- df$ModuleID
     if (!"ModuleLabel_Manual" %in% names(df)) df$ModuleLabel_Manual <- NA_character_
+    if (!"ModuleName" %in% names(df)) df$ModuleName <- df$ModuleID
     if (!"GeneSymbol" %in% names(df)) df$GeneSymbol <- NA_character_
     if (!"EntrezID" %in% names(df)) df$EntrezID <- NA_character_
     if (!"kME" %in% names(df)) df$kME <- NA_real_
     if (!"Source" %in% names(df)) df$Source <- "WGCNA_modules_long"
+    df <- df %>%
+      mutate(
+        .module_display_base = dplyr::coalesce(
+          nonempty_label(.data$ModuleLabel_Manual),
+          nonempty_label(.data$ModuleLabel_GO_BP),
+          nonempty_label(.data$ModuleName),
+          nonempty_label(.data$ModuleID)
+        ),
+        .module_display_id = stringr::str_replace(as.character(.data$ModuleID), "^WGCNA_", ""),
+        ModuleDisplayLabel = dplyr::case_when(
+          is.na(.data$.module_display_base) | .data$.module_display_base == .data$ModuleID ~ as.character(.data$ModuleID),
+          TRUE ~ paste0(.data$.module_display_base, "\n", .data$.module_display_id)
+        )
+      )
     return(df %>%
       transmute(
         ModuleSet = as.character(.data$ModuleSet),
         ModuleID = as.character(.data$ModuleID),
         ModuleColor = as.character(.data$ModuleColor),
-        ModuleName = as.character(dplyr::coalesce(.data$ModuleLabel_Manual, .data$ModuleLabel_GO_BP, .data$ModuleID)),
+        ModuleName = as.character(dplyr::coalesce(nonempty_label(.data$ModuleLabel_Manual), nonempty_label(.data$ModuleLabel_GO_BP), nonempty_label(.data$ModuleName), nonempty_label(.data$ModuleID))),
+        ModuleDisplayLabel = as.character(.data$ModuleDisplayLabel),
         ProteinID = toupper(as.character(.data$ProteinID)),
         UniProt = toupper(as.character(.data$UniProt)),
         GeneSymbol = as.character(.data$GeneSymbol),
@@ -559,12 +594,14 @@ standardize_module_definitions <- function(df, source) {
   if (!"ModuleSet" %in% colnames(df)) df$ModuleSet <- "curated_overlap_programs"
   if (!"ModuleID" %in% colnames(df)) df$ModuleID <- df$Module
   if (!"ModuleName" %in% colnames(df)) df$ModuleName <- df$ModuleID
+  if (!"ModuleDisplayLabel" %in% colnames(df)) df$ModuleDisplayLabel <- dplyr::coalesce(nonempty_label(df$ModuleName), nonempty_label(df$ModuleID))
 
   df %>%
     transmute(
       ModuleSet = as.character(.data$ModuleSet),
       ModuleID = as.character(.data$ModuleID),
       ModuleName = as.character(.data$ModuleName),
+      ModuleDisplayLabel = as.character(dplyr::coalesce(nonempty_label(.data$ModuleDisplayLabel), nonempty_label(.data$ModuleName), nonempty_label(.data$ModuleID))),
       ProteinID = toupper(as.character(.data$UniProt)),
       UniProt = toupper(as.character(.data$UniProt)),
       GeneSymbol = as.character(.data$GeneName),
@@ -606,6 +643,9 @@ if (nrow(modules_long) == 0) {
 }
 
 module_names_from_sheet <- unique(modules_long$Module)
+module_display_lookup <- modules_long %>%
+  dplyr::distinct(.data$ModuleID, .data$ModuleDisplayLabel) %>%
+  tibble::deframe()
 
 module_definition_summary <- modules_long %>%
   group_by(Module) %>%
@@ -908,9 +948,15 @@ compute_pca_module_score <- function(mat_z, genes, min_genes = 5) {
 }
 
 module_contract_metadata <- module_coverage %>%
+  dplyr::left_join(
+    modules_standard %>%
+      dplyr::distinct(.data$ModuleID, .data$ModuleName, .data$ModuleDisplayLabel),
+    by = "ModuleID"
+  ) %>%
   dplyr::select(
     "ModuleSet", "ModuleID", "n_accessions_input", "n_mapped_to_matrix_id",
-    "n_found_in_matrix", "coverage_fraction", "coverage_status", "low_coverage_warning"
+    "n_found_in_matrix", "coverage_fraction", "coverage_status", "low_coverage_warning",
+    "ModuleName", "ModuleDisplayLabel"
   )
 
 add_module_score_contract_cols <- function(df, score_type, score_col = "ModuleScore") {
@@ -936,7 +982,7 @@ add_module_score_contract_cols <- function(df, score_type, score_col = "ModuleSc
     ) %>%
     dplyr::relocate(
       "dataset", "module_definition_source", "ModuleSet", "ModuleID", "Module",
-      "Sample", "ScoreType", "scoring_method", "ModuleScore",
+      "ModuleName", "ModuleDisplayLabel", "Sample", "ScoreType", "scoring_method", "ModuleScore",
       "n_accessions_input", "n_mapped_to_matrix_id", "n_found_in_matrix",
       "coverage_fraction", "module_score_qc_flag",
       .before = dplyr::everything()
@@ -978,6 +1024,7 @@ readr::write_csv(pca_scores_df, file.path(dir_tables, "module_scores_pca_sensiti
 
 eigengene_scores_df <- tibble()
 eigengene_sign_alignment_qc <- tibble()
+wgcna_state <- NULL
 if (identical(module_definition_source, "wgcna") && !is.na(wgcna_state_file) && file.exists(wgcna_state_file)) {
   wgcna_state <- readRDS(wgcna_state_file)
   state_mEs <- wgcna_state$mergedMEs
@@ -1029,6 +1076,113 @@ if (nrow(eigengene_scores_df)) {
   validate_module_score_output(eigengene_scores_df, "eigengene module score output")
   write.xlsx(eigengene_scores_df, file.path(dir_tables, "module_scores_eigengene_per_sample.xlsx"), overwrite = TRUE)
   readr::write_csv(eigengene_scores_df, file.path(dir_tables, "module_scores_eigengene_per_sample.csv"), na = "")
+}
+
+supermodule_display_lookup <- character()
+supermodule_composition_df <- tibble()
+supermodule_scores_df <- tibble()
+if (identical(module_definition_source, "wgcna") &&
+    !is.null(wgcna_state) &&
+    !is.na(supermodule_annotation_file) &&
+    file.exists(supermodule_annotation_file)) {
+  super_ann <- readr::read_csv(supermodule_annotation_file, show_col_types = FALSE)
+  if (nrow(super_ann)) {
+    if ("present_in_dataset" %in% names(super_ann)) {
+      super_ann <- super_ann %>%
+        dplyr::filter(.data$present_in_dataset %in% c(TRUE, "TRUE", "true", 1))
+    }
+    for (nm in c(
+      "module_eigengene", "Supermodule_DataDrivenID", "Supermodule_DataDriven", "SupermoduleID",
+      "Supermodule_DisplayLabel", "Supermodule_FinalLabel", "Macroprogram_Display",
+      "Supermodule_DataDrivenLabel", "Supermodule", "Supermodule_LongLabel"
+    )) {
+      if (!nm %in% names(super_ann)) super_ann[[nm]] <- NA_character_
+    }
+    super_map <- super_ann %>%
+      dplyr::mutate(
+        module_eigengene = as.character(.data$module_eigengene),
+        SupermoduleID = dplyr::coalesce(
+          nonempty_label(.data$Supermodule_DataDrivenID),
+          nonempty_label(.data$Supermodule_DataDriven),
+          nonempty_label(.data$SupermoduleID),
+          nonempty_label(.data$Supermodule)
+        ),
+        SupermoduleDisplayLabel = dplyr::coalesce(
+          nonempty_label(.data$Supermodule_DisplayLabel),
+          nonempty_label(.data$Supermodule_FinalLabel),
+          nonempty_label(.data$Macroprogram_Display),
+          nonempty_label(.data$Supermodule_DataDrivenLabel),
+          nonempty_label(.data$Supermodule),
+          nonempty_label(.data$SupermoduleID)
+        )
+      ) %>%
+      dplyr::filter(!is.na(.data$SupermoduleID))
+
+    if (nrow(super_map)) {
+      module_eig <- extract_module_eigengenes(wgcna_state)
+      super <- make_supermodule_eigengenes(module_eig, super_map)
+      supermodule_composition_df <- super$composition %>%
+        dplyr::left_join(
+          super_map %>%
+            dplyr::distinct(.data$SupermoduleID, .data$SupermoduleDisplayLabel),
+          by = c("supermodule_id" = "SupermoduleID")
+        )
+
+      supermodule_display_lookup <- supermodule_composition_df %>%
+        dplyr::distinct(.data$supermodule_id, .data$SupermoduleDisplayLabel) %>%
+        dplyr::mutate(
+          SupermoduleDisplayLabel = dplyr::coalesce(nonempty_label(.data$SupermoduleDisplayLabel), nonempty_label(.data$supermodule_id))
+        ) %>%
+        tibble::deframe()
+
+      super_cols <- setdiff(colnames(super$eigengenes), "Sample")
+      if (length(super_cols)) {
+        supermodule_scores_df <- super$eigengenes %>%
+          tidyr::pivot_longer(
+            cols = dplyr::all_of(super_cols),
+            names_to = "supermodule_eigengene",
+            values_to = "ModuleScore"
+          ) %>%
+          dplyr::left_join(supermodule_composition_df, by = "supermodule_eigengene") %>%
+          dplyr::mutate(
+            ModuleSet = "WGCNA_supermodules",
+            ModuleID = as.character(.data$supermodule_id),
+            Module = as.character(.data$supermodule_id),
+            ModuleName = dplyr::coalesce(nonempty_label(.data$SupermoduleDisplayLabel), nonempty_label(.data$supermodule_id)),
+            ModuleDisplayLabel = .data$ModuleName,
+            dataset = dataset_profile,
+            module_definition_source = "wgcna",
+            ScoreType = "supermodule_eigengene_score",
+            scoring_method = "supermodule_eigengene_pc1_or_single_member",
+            n_accessions_input = NA_integer_,
+            n_mapped_to_matrix_id = NA_integer_,
+            n_found_in_matrix = NA_integer_,
+            coverage_fraction = NA_real_,
+            coverage_status = "supermodule_eigengene",
+            low_coverage_warning = FALSE,
+            module_score_qc_flag = "supermodule_eigengene",
+            n_member_modules = as.integer(.data$n_member_modules),
+            member_modules = as.character(.data$member_modules)
+          ) %>%
+          dplyr::select(
+            "dataset", "module_definition_source", "ModuleSet", "ModuleID", "Module",
+            "ModuleName", "ModuleDisplayLabel", "Sample", "ScoreType", "scoring_method", "ModuleScore",
+            "n_accessions_input", "n_mapped_to_matrix_id", "n_found_in_matrix",
+            "coverage_fraction", "module_score_qc_flag", "n_member_modules", "member_modules",
+            dplyr::everything()
+          ) %>%
+          dplyr::left_join(metadata, by = "Sample")
+      }
+    }
+  }
+}
+if (nrow(supermodule_composition_df)) {
+  readr::write_csv(supermodule_composition_df, file.path(dir_tables, "supermodule_score_composition.csv"), na = "")
+  write.xlsx(supermodule_composition_df, file.path(dir_tables, "supermodule_score_composition.xlsx"), overwrite = TRUE)
+}
+if (nrow(supermodule_scores_df)) {
+  readr::write_csv(supermodule_scores_df, file.path(dir_tables, "supermodule_scores_eigengene_per_sample.csv"), na = "")
+  write.xlsx(supermodule_scores_df, file.path(dir_tables, "supermodule_scores_eigengene_per_sample.xlsx"), overwrite = TRUE)
 }
 
 # ------------------------------------------------
@@ -1829,6 +1983,21 @@ scores_animal_qc_sensitivity <- make_scores_animal(
   analysis_qc_sensitivity
 )
 
+supermodule_scores_animal_all <- tibble()
+supermodule_scores_df_qc_sensitivity <- tibble()
+supermodule_scores_animal_qc_sensitivity <- tibble()
+if (nrow(supermodule_scores_df)) {
+  supermodule_scores_animal_all <- make_scores_animal(supermodule_scores_df, analysis_primary)
+  supermodule_scores_df_qc_sensitivity <- sample_qc_summary %>%
+    filter(!flagged_single_replicate) %>%
+    select(Sample) %>%
+    inner_join(supermodule_scores_df, by = "Sample")
+  supermodule_scores_animal_qc_sensitivity <- make_scores_animal(
+    supermodule_scores_df_qc_sensitivity,
+    analysis_qc_sensitivity
+  )
+}
+
 # ------------------------------------------------
 # EXPORT FOR BEHAVIOR-PROTEOMICS INTEGRATION
 # ------------------------------------------------
@@ -2512,6 +2681,99 @@ directional_region_module_matrix <- directional_effects %>%
     .groups = "drop"
   )
 
+supermodule_directional_outputs <- NULL
+if (nrow(supermodule_scores_animal_all) && nrow(supermodule_scores_animal_qc_sensitivity)) {
+  super_param_all <- make_parametric_stats_tables(supermodule_scores_animal_all, analysis_primary)
+  super_param_qc <- make_parametric_stats_tables(supermodule_scores_animal_qc_sensitivity, analysis_qc_sensitivity)
+  super_nonparam_all <- make_nonparametric_stats_tables(supermodule_scores_animal_all, analysis_primary)
+  super_nonparam_qc <- make_nonparametric_stats_tables(supermodule_scores_animal_qc_sensitivity, analysis_qc_sensitivity)
+
+  super_anova_out <- bind_rows(super_param_all$anova, super_param_qc$anova) %>%
+    group_by(Analysis, Effect) %>%
+    mutate(p_adj_global_BH = p.adjust(p.value, method = "BH")) %>%
+    ungroup() %>%
+    mutate(p.signif.global = signif_label(p_adj_global_BH))
+
+  super_contrasts_out <- bind_rows(super_param_all$contrasts, super_param_qc$contrasts) %>%
+    group_by(Analysis) %>%
+    mutate(p_adj_global_BH = p.adjust(p.value, method = "BH")) %>%
+    ungroup() %>%
+    mutate(p.signif.global = signif_label(p_adj_global_BH))
+
+  super_effect_sizes <- bind_rows(
+    make_effect_sizes(supermodule_scores_animal_all, analysis_primary),
+    make_effect_sizes(supermodule_scores_animal_qc_sensitivity, analysis_qc_sensitivity)
+  )
+
+  super_directional_effects <- super_contrasts_out %>%
+    left_join(
+      super_effect_sizes,
+      by = c("Analysis", "RegionLayer", "Module", "group1", "group2")
+    ) %>%
+    mutate(
+      contrast_label = paste(group2, "vs", group1),
+      estimate_group2_minus_group1 = -estimate,
+      estimate_se = SE,
+      estimate_df = df,
+      estimate_ci_half_width = ifelse(
+        is.finite(estimate_se) & is.finite(estimate_df),
+        qt(0.975, estimate_df) * estimate_se,
+        NA_real_
+      ),
+      estimate_ci_low = estimate_group2_minus_group1 - estimate_ci_half_width,
+      estimate_ci_high = estimate_group2_minus_group1 + estimate_ci_half_width,
+      direction = direction_label(Cohen_d),
+      signed_z = signed_z_from_p(p.value, Cohen_d),
+      p_nominal = p.value,
+      p_within_BH = p_adj_within_model_BH,
+      p_global_BH = p_adj_global_BH,
+      nominal_significant = is.finite(p_nominal) & p_nominal <= 0.05,
+      within_BH_significant = is.finite(p_within_BH) & p_within_BH <= 0.05,
+      global_BH_significant = is.finite(p_global_BH) & p_global_BH <= 0.05,
+      ci_preserves_direction = case_when(
+        Cohen_d > 0 ~ estimate_ci_low > 0,
+        Cohen_d < 0 ~ estimate_ci_high < 0,
+        TRUE ~ FALSE
+      ),
+      trend_same_direction = is.finite(Cohen_d) & abs(Cohen_d) >= 0.20,
+      robustness_note = case_when(
+        within_BH_significant & ci_preserves_direction ~ "significant_consistent_CI",
+        within_BH_significant ~ "significant_directional",
+        trend_same_direction ~ "directional_trend",
+        TRUE ~ "weak_or_unclear"
+      )
+    )
+
+  super_directional_consistency_by_module <- super_directional_effects %>%
+    group_by(Analysis, Module, group1, group2, contrast_label) %>%
+    group_modify(~ summarise_directional_consistency(.x)) %>%
+    ungroup()
+
+  supermodule_directional_outputs <- list(
+    Scores_sample_primary = supermodule_scores_df,
+    Scores_sample_sensitivity = supermodule_scores_df_qc_sensitivity,
+    Scores_animal_primary = supermodule_scores_animal_all,
+    Scores_animal_sensitivity = supermodule_scores_animal_qc_sensitivity,
+    SupermoduleComposition = supermodule_composition_df,
+    Parametric_ANOVA = super_anova_out,
+    Parametric_Contrasts = super_contrasts_out,
+    Parametric_EMMeans = bind_rows(super_param_all$emmeans, super_param_qc$emmeans),
+    Parametric_Diagnostics = bind_rows(super_param_all$diagnostics, super_param_qc$diagnostics),
+    Nonparametric_Omnibus = bind_rows(super_nonparam_all$omnibus, super_nonparam_qc$omnibus) %>%
+      group_by(Analysis) %>%
+      mutate(p_adj_global_BH = p.adjust(p.value, method = "BH")) %>%
+      ungroup(),
+    Nonparametric_Contrasts = bind_rows(super_nonparam_all$contrasts, super_nonparam_qc$contrasts) %>%
+      group_by(Analysis) %>%
+      mutate(p_adj_global_BH = p.adjust(p.value, method = "BH")) %>%
+      ungroup(),
+    DirectionalEffects = super_directional_effects,
+    DirectionalConsistency = super_directional_consistency_by_module
+  )
+  readr::write_csv(super_directional_effects, file.path(dir_tables, "supermodule_directional_effects.csv"), na = "")
+  readr::write_csv(super_directional_consistency_by_module, file.path(dir_tables, "supermodule_directional_consistency.csv"), na = "")
+}
+
 run_batch_alignment <- function(df) {
   if (!"Batch" %in% colnames(df)) {
     return(tibble(
@@ -2646,6 +2908,32 @@ module_correlation_structure <- bind_rows(scores_animal_all, scores_animal_qc_se
     )
   ) %>%
   ungroup()
+
+super_module_correlation_structure <- tibble()
+if (!is.null(supermodule_directional_outputs)) {
+  super_module_correlation_structure <- bind_rows(supermodule_scores_animal_all, supermodule_scores_animal_qc_sensitivity) %>%
+    group_by(Analysis, RegionLayer) %>%
+    group_modify(~ run_module_correlation_structure(.x)) %>%
+    ungroup() %>%
+    group_by(Analysis) %>%
+    mutate(
+      p_adj_BH = p.adjust(p, method = "BH"),
+      correlation_note = case_when(
+        is.finite(rho) & abs(rho) >= 0.70 & p_adj_BH <= 0.05 ~ "strong_supermodule_coherence",
+        is.finite(rho) & abs(rho) >= 0.50 ~ "moderate_supermodule_coherence",
+        TRUE ~ "limited_or_no_coherence"
+      )
+    ) %>%
+    ungroup()
+
+  supermodule_directional_outputs$CorrelationStructure <- super_module_correlation_structure
+  write.xlsx(
+    supermodule_directional_outputs,
+    file.path(dir_tables, "WGCNA_supermodule_score_statistics_full.xlsx"),
+    overwrite = TRUE
+  )
+  readr::write_csv(super_module_correlation_structure, file.path(dir_tables, "supermodule_score_correlation_structure.csv"), na = "")
+}
 
 make_module_member_animal_scores <- function(sample_ids, analysis_label) {
   sample_ids <- intersect(sample_ids, colnames(mat_z))
@@ -3059,8 +3347,16 @@ module_order <- c(
 )
 
 clean_module_label <- function(x) {
-  x %>%
+  x_chr <- as.character(x)
+  mapped <- unname(module_display_lookup[x_chr])
+  super_mapped <- unname(supermodule_display_lookup[x_chr])
+  mapped[is.na(mapped) | !nzchar(mapped)] <- super_mapped[is.na(mapped) | !nzchar(mapped)]
+  use_mapped <- !is.na(mapped) & nzchar(mapped)
+  out <- x_chr
+  out[use_mapped] <- mapped[use_mapped]
+  out %>%
     str_replace("^Neuropil_", "") %>%
+    str_replace("^WGCNA_", "WGCNA ") %>%
     str_replace_all("_", " ") %>%
     str_replace("RNP RNA processing main", "RNP/RNA\nmain") %>%
     str_replace("RNP RNA processing full", "RNP/RNA\nfull") %>%
@@ -3070,6 +3366,80 @@ clean_module_label <- function(x) {
     str_replace("endo lysosomal proteostasis", "Endo-lysosomal\nproteostasis") %>%
     str_replace("proteostasis", "Proteostasis") %>%
     str_replace("synaptic cytoskeleton", "Synaptic\ncytoskeleton")
+}
+
+dataset_display_label <- function(dataset) {
+  dplyr::case_when(
+    dataset == "neuron_neuropil" ~ "Neuron neuropil",
+    dataset == "neuron_soma" ~ "Neuron soma",
+    dataset == "microglia" ~ "Microglia",
+    TRUE ~ stringr::str_to_sentence(gsub("_", " ", as.character(dataset)))
+  )
+}
+
+module_source_display_label <- function(source) {
+  dplyr::case_when(
+    source == "overlap" ~ "curated-program",
+    source == "wgcna" ~ "WGCNA",
+    TRUE ~ as.character(source)
+  )
+}
+
+module_score_effect_title <- function() {
+  paste(dataset_display_label(dataset_profile), module_source_display_label(module_definition_source), "module-score effect sizes")
+}
+
+score_effect_title <- function(feature_level = "module") {
+  if (identical(feature_level, "supermodule")) {
+    return(paste(dataset_display_label(dataset_profile), "WGCNA supermodule eigengene effect sizes"))
+  }
+  module_score_effect_title()
+}
+
+directional_filename <- function(stem, analysis_label, ext) {
+  analysis_file_label <- dplyr::case_when(
+    analysis_label == analysis_primary ~ analysis_primary,
+    analysis_label == analysis_qc_sensitivity ~ "sensitivity",
+    TRUE ~ as.character(analysis_label)
+  )
+  paste0(stem, "_", dataset_profile, "_", module_definition_source, "_", analysis_file_label, ".", ext)
+}
+
+repo_relative_path <- function(path) {
+  root <- normalizePath(repo_root(), winslash = "/", mustWork = TRUE)
+  path_norm <- normalizePath(path, winslash = "/", mustWork = FALSE)
+  prefix <- paste0(root, "/")
+  if (startsWith(path_norm, prefix)) {
+    return(substr(path_norm, nchar(prefix) + 1L, nchar(path_norm)))
+  }
+  path
+}
+
+save_directional_plot <- function(plot, stem, analysis_label, width, height, legacy = FALSE) {
+  write_one <- function(target, ext) {
+    dir.create(dirname(target), recursive = TRUE, showWarnings = FALSE)
+    tmp <- tempfile(fileext = paste0(".", ext))
+    on.exit(unlink(tmp), add = TRUE)
+    ggsave(
+      tmp,
+      plot = plot,
+      width = width,
+      height = height,
+      units = "mm"
+    )
+    if (file.exists(target)) unlink(target)
+    ok <- file.copy(tmp, target, overwrite = TRUE)
+    if (!isTRUE(ok)) {
+      ok <- file.copy(tmp, repo_relative_path(target), overwrite = TRUE)
+    }
+    if (!isTRUE(ok)) stop("Could not copy plot to ", target, call. = FALSE)
+  }
+  for (ext in c("svg", "pdf")) {
+    write_one(file.path(dir_directional, directional_filename(stem, analysis_label, ext)), ext)
+    if (isTRUE(legacy)) {
+      write_one(file.path(dir_directional, paste0(stem, "_", analysis_label, ".", ext)), ext)
+    }
+  }
 }
 
 ordered_levels <- function(x, preferred) {
@@ -3166,7 +3536,7 @@ scale_effect_fill <- function(name, limits) {
 # 1) Main directional effect heatmap
 # -----------------------------
 
-plot_directional_effect_heatmap <- function(df, analysis_label) {
+plot_directional_effect_heatmap <- function(df, analysis_label, feature_level = "module") {
 
   plot_df <- df %>%
     filter(
@@ -3218,7 +3588,7 @@ plot_directional_effect_heatmap <- function(df, analysis_label) {
     scale_effect_fill("Cohen's d", limits = c(-max_abs_d, max_abs_d)) +
     coord_equal() +
     labs(
-      title = paste0("Neuropil module effect structure"),
+      title = score_effect_title(feature_level),
       subtitle = paste0(analysis_display_label(analysis_label), " | dots indicate BH-adjusted p <= 0.05; numbers shown for |d| >= 0.8")
     ) +
     theme_publication_heat(base_size = 7)
@@ -3228,7 +3598,7 @@ plot_directional_effect_heatmap <- function(df, analysis_label) {
 # 2) Module correlation heatmap
 # -----------------------------
 
-plot_module_correlation_heatmap <- function(df, analysis_label) {
+plot_module_correlation_heatmap <- function(df, analysis_label, feature_level = "module") {
 
   plot_df <- df %>%
     filter(
@@ -3301,7 +3671,7 @@ plot_module_correlation_heatmap <- function(df, analysis_label) {
     scale_effect_fill("Spearman\nrho", limits = c(-1, 1)) +
     coord_equal() +
     labs(
-      title = "Module correlation structure",
+      title = if (identical(feature_level, "supermodule")) "Supermodule correlation structure" else "Module correlation structure",
       subtitle = paste0(analysis_display_label(analysis_label), " | dots indicate BH-adjusted p <= 0.05")
     ) +
     theme_publication_heat(base_size = 6.5) +
@@ -3383,7 +3753,7 @@ plot_module_driver_consistency <- function(df, analysis_label) {
 # 4) Directional consistency dot plot
 # -----------------------------
 
-plot_directional_consistency <- function(df, analysis_label) {
+plot_directional_consistency <- function(df, analysis_label, feature_level = "module") {
 
   plot_df <- df %>%
     filter(
@@ -3440,7 +3810,7 @@ plot_directional_consistency <- function(df, analysis_label) {
     scale_color_manual(values = evidence_cols, drop = FALSE) +
     scale_size_continuous(range = c(1.4, 3.4), name = "|mean d|") +
     labs(
-      title = "Directional consistency across regions",
+      title = if (identical(feature_level, "supermodule")) "Supermodule directional consistency across regions" else "Directional consistency across regions",
       subtitle = paste0(analysis_display_label(analysis_label), " | dashed line marks 80% directional agreement"),
       x = "Fraction in dominant direction",
       y = NULL,
@@ -3477,77 +3847,80 @@ for (analysis_label in unique(directional_effects$Analysis)) {
   p_effect_heatmap <- plot_directional_effect_heatmap(directional_effects, analysis_label)
 
   if (!is.null(p_effect_heatmap)) {
-    ggsave(
-      file.path(dir_directional, paste0("publication_directional_effect_heatmap_", analysis_label, ".svg")),
-      plot = p_effect_heatmap,
-      width = 185,
-      height = 95,
-      units = "mm"
-    )
-    ggsave(
-      file.path(dir_directional, paste0("publication_directional_effect_heatmap_", analysis_label, ".pdf")),
-      plot = p_effect_heatmap,
-      width = 185,
-      height = 95,
-      units = "mm"
-    )
+    save_directional_plot(p_effect_heatmap, "publication_directional_effect_heatmap", analysis_label, width = 185, height = 95, legacy = TRUE)
   }
 
   p_consistency <- plot_directional_consistency(directional_consistency_by_module, analysis_label)
 
   if (!is.null(p_consistency)) {
-    ggsave(
-      file.path(dir_directional, paste0("publication_directional_consistency_by_module_", analysis_label, ".svg")),
-      plot = p_consistency,
-      width = 175,
-      height = 80,
-      units = "mm"
-    )
-    ggsave(
-      file.path(dir_directional, paste0("publication_directional_consistency_by_module_", analysis_label, ".pdf")),
-      plot = p_consistency,
-      width = 175,
-      height = 80,
-      units = "mm"
-    )
+    save_directional_plot(p_consistency, "publication_directional_consistency", analysis_label, width = 175, height = 80, legacy = TRUE)
   }
 
   p_module_cor <- plot_module_correlation_heatmap(module_correlation_structure, analysis_label)
 
   if (!is.null(p_module_cor)) {
-    ggsave(
-      file.path(dir_directional, paste0("publication_module_correlation_structure_", analysis_label, ".svg")),
-      plot = p_module_cor,
-      width = 195,
-      height = 120,
-      units = "mm"
-    )
-    ggsave(
-      file.path(dir_directional, paste0("publication_module_correlation_structure_", analysis_label, ".pdf")),
-      plot = p_module_cor,
-      width = 195,
-      height = 120,
-      units = "mm"
-    )
+    save_directional_plot(p_module_cor, "publication_module_correlation", analysis_label, width = 195, height = 120, legacy = TRUE)
   }
 
   p_driver_consistency <- plot_module_driver_consistency(module_driver_consistency, analysis_label)
 
   if (!is.null(p_driver_consistency)) {
-    ggsave(
-      file.path(dir_directional, paste0("publication_module_driver_consistency_", analysis_label, ".svg")),
-      plot = p_driver_consistency,
-      width = 185,
-      height = 95,
-      units = "mm"
+    save_directional_plot(p_driver_consistency, "publication_driver_consistency", analysis_label, width = 185, height = 95, legacy = TRUE)
+  }
+}
+
+if (!is.null(supermodule_directional_outputs)) {
+  for (analysis_label in unique(supermodule_directional_outputs$DirectionalEffects$Analysis)) {
+    p_super_effect_heatmap <- plot_directional_effect_heatmap(
+      supermodule_directional_outputs$DirectionalEffects,
+      analysis_label,
+      feature_level = "supermodule"
     )
-    ggsave(
-      file.path(dir_directional, paste0("publication_module_driver_consistency_", analysis_label, ".pdf")),
-      plot = p_driver_consistency,
-      width = 185,
-      height = 95,
-      units = "mm"
+
+    if (!is.null(p_super_effect_heatmap)) {
+      save_directional_plot(
+        p_super_effect_heatmap,
+        "publication_supermodule_effect_heatmap",
+        analysis_label,
+        width = 185,
+        height = 85,
+        legacy = FALSE
+      )
+    }
+
+    p_super_consistency <- plot_directional_consistency(
+      supermodule_directional_outputs$DirectionalConsistency,
+      analysis_label,
+      feature_level = "supermodule"
     )
+
+    if (!is.null(p_super_consistency)) {
+      save_directional_plot(
+        p_super_consistency,
+        "publication_supermodule_consistency",
+        analysis_label,
+        width = 175,
+        height = 75,
+        legacy = FALSE
+      )
+    }
+
+    p_super_cor <- plot_module_correlation_heatmap(
+      supermodule_directional_outputs$CorrelationStructure,
+      analysis_label,
+      feature_level = "supermodule"
+    )
+
+    if (!is.null(p_super_cor)) {
+      save_directional_plot(
+        p_super_cor,
+        "publication_supermodule_correlation",
+        analysis_label,
+        width = 185,
+        height = 105,
+        legacy = FALSE
+      )
+    }
   }
 }
 
@@ -3692,6 +4065,16 @@ if (exists("eigengene_scores_df") && nrow(eigengene_scores_df)) {
   score_outputs_manifest$module_scores_eigengene_per_sample_csv <- file.path(dir_tables, "module_scores_eigengene_per_sample.csv")
   score_outputs_manifest$module_scores_eigengene_per_sample_xlsx <- file.path(dir_tables, "module_scores_eigengene_per_sample.xlsx")
 }
+if (exists("supermodule_scores_df") && nrow(supermodule_scores_df)) {
+  score_outputs_manifest$supermodule_scores_eigengene_per_sample_csv <- file.path(dir_tables, "supermodule_scores_eigengene_per_sample.csv")
+  score_outputs_manifest$supermodule_scores_eigengene_per_sample_xlsx <- file.path(dir_tables, "supermodule_scores_eigengene_per_sample.xlsx")
+  score_outputs_manifest$supermodule_score_composition_csv <- file.path(dir_tables, "supermodule_score_composition.csv")
+  score_outputs_manifest$supermodule_directional_effects_csv <- file.path(dir_tables, "supermodule_directional_effects.csv")
+  score_outputs_manifest$supermodule_directional_consistency_csv <- file.path(dir_tables, "supermodule_directional_consistency.csv")
+  score_outputs_manifest$supermodule_score_correlation_structure_csv <- file.path(dir_tables, "supermodule_score_correlation_structure.csv")
+  score_outputs_manifest$supermodule_score_statistics_full_xlsx <- file.path(dir_tables, "WGCNA_supermodule_score_statistics_full.xlsx")
+  score_outputs_manifest$supermodule_directional_plot_pattern <- file.path(dir_directional, paste0("publication_supermodule_*_", dataset_profile, "_", module_definition_source, "_<analysis>.svg/pdf"))
+}
 
 write_run_manifest(
   file.path(dir_qc, "run_manifest.yml"),
@@ -3700,7 +4083,8 @@ write_run_manifest(
     metadata_file = metadata_file,
     mapping_file = mapping_file,
     module_definitions_file = module_definitions_file,
-    wgcna_state_file = if (identical(module_definition_source, "wgcna") && !is.na(wgcna_state_file)) wgcna_state_file else NULL
+    wgcna_state_file = if (identical(module_definition_source, "wgcna") && !is.na(wgcna_state_file)) wgcna_state_file else NULL,
+    supermodule_annotation_file = if (identical(module_definition_source, "wgcna") && !is.na(supermodule_annotation_file)) supermodule_annotation_file else NULL
   ),
   outputs = score_outputs_manifest,
   parameters = list(
@@ -3712,7 +4096,7 @@ write_run_manifest(
     module_score_version = module_score_version,
     module_definitions_sheet = module_definitions_sheet,
     output_substep = SUBSTEP_ID,
-    scoring_methods_used = paste(c("mean_z_score", "pca_pc1_score", if (exists("eigengene_scores_df") && nrow(eigengene_scores_df)) "eigengene_score" else NULL), collapse = ";"),
+    scoring_methods_used = paste(c("mean_z_score", "pca_pc1_score", if (exists("eigengene_scores_df") && nrow(eigengene_scores_df)) "eigengene_score" else NULL, if (exists("supermodule_scores_df") && nrow(supermodule_scores_df)) "supermodule_eigengene_score" else NULL), collapse = ";"),
     compute_module_score_min_genes = 5,
     compute_pca_module_score_min_genes = 5,
     low_coverage_fraction_threshold = 0.2,
