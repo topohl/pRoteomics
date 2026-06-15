@@ -117,12 +117,17 @@ Safe to rerun: yes.
 
 For microglia, targeted signature evidence is split into auditable classes:
 microglia-enriched empirical, microglia-enriched reference-supported, curated
-microglia program, neuropil-shared, and ambiguous. The module annotation table
-keeps legacy targeted-overlap columns and adds explicit driver columns such as
+microglia-relevant program, neuropil-shared, and ambiguous. Curated programs
+are not claim-ready by themselves; single generic mitochondrial overlaps are
+cautionary mitochondrial/oxidative-stress annotations rather than purified
+microglia specificity. The module annotation table keeps legacy targeted-overlap
+columns and adds explicit driver/caution columns such as
 `targeted_signature_primary_driver`, `targeted_signature_driver_class`,
 `targeted_signature_driver_signature`, `targeted_signature_driver_padj`,
 `targeted_signature_driver_NES`, and
-`targeted_signature_driver_overlap_proteins`.
+`targeted_signature_driver_overlap_proteins`, plus
+`n_unique_targeted_signatures`, `n_unique_targeted_overlap_proteins`, and
+`curated_program_overlap_warning`.
 
 ### 07_wgcna_interpretable_summary.r
 
