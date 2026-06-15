@@ -1316,7 +1316,21 @@ make_dataset_summary <- function(ds) {
     "GO_label_confidence_class",
     "annotation_scope",
     "manual_label_status",
-    "ManualReviewRequired"
+    "ManualReviewRequired",
+    "Supermodule_ConservativeLabel",
+    "Supermodule_CompositionLabel",
+    "Supermodule_CompositionShortLabel",
+    "Supermodule_CompositionLabelSource",
+    "Supermodule_CompositionConfidence",
+    "Supermodule_CompositionRationale",
+    "DominantMemberTheme",
+    "DominantMemberThemeFraction",
+    "SecondMemberTheme",
+    "SecondMemberThemeFraction",
+    "TopMemberModuleLabels",
+    "TopMemberGOTerms",
+    "n_member_modules_with_informative_labels",
+    "fraction_member_modules_with_informative_labels"
   )
   for (nm in needed_super_cols) {
     if (!nm %in% names(super_annot)) super_annot[[nm]] <- rep(NA, nrow(super_annot))
@@ -1364,6 +1378,11 @@ make_dataset_summary <- function(ds) {
       Supermodule_FinalLabel_from_super = "Supermodule_FinalLabel",
       Supermodule_FullAnnotationLabel_from_super = "Supermodule_FullAnnotationLabel",
       Supermodule_DisplayShort_from_super = "Supermodule_DisplayShort",
+      Supermodule_ConservativeLabel_from_super = "Supermodule_ConservativeLabel",
+      Supermodule_CompositionLabel_from_super = "Supermodule_CompositionLabel",
+      Supermodule_CompositionShortLabel_from_super = "Supermodule_CompositionShortLabel",
+      Supermodule_CompositionLabelSource_from_super = "Supermodule_CompositionLabelSource",
+      Supermodule_CompositionConfidence_from_super = "Supermodule_CompositionConfidence",
       supermodule_label_from_super = "supermodule_label",
       SemanticProgramColor_from_super = "SemanticProgramColor",
       MacroprogramColorKey_from_super = "MacroprogramColorKey"
@@ -1400,6 +1419,11 @@ make_dataset_summary <- function(ds) {
   )
   module_join$Supermodule_FullAnnotationLabel <- clean_label_value(module_join$Supermodule_FullAnnotationLabel_from_super)
   module_join$Supermodule_DisplayShort <- clean_label_value(module_join$Supermodule_DisplayShort_from_super)
+  module_join$Supermodule_ConservativeLabel <- clean_label_value(module_join$Supermodule_ConservativeLabel_from_super)
+  module_join$Supermodule_CompositionLabel <- clean_label_value(module_join$Supermodule_CompositionLabel_from_super)
+  module_join$Supermodule_CompositionShortLabel <- clean_label_value(module_join$Supermodule_CompositionShortLabel_from_super)
+  module_join$Supermodule_CompositionLabelSource <- clean_label_value(module_join$Supermodule_CompositionLabelSource_from_super)
+  module_join$Supermodule_CompositionConfidence <- clean_label_value(module_join$Supermodule_CompositionConfidence_from_super)
 
   module_supermodule_label_qc <- module_join |>
     dplyr::transmute(
@@ -1414,6 +1438,11 @@ make_dataset_summary <- function(ds) {
       Supermodule_FinalLabel = .data$Supermodule_FinalLabel_from_super,
       Supermodule_FullAnnotationLabel = .data$Supermodule_FullAnnotationLabel_from_super,
       Supermodule_DisplayShort = .data$Supermodule_DisplayShort_from_super,
+      Supermodule_ConservativeLabel = .data$Supermodule_ConservativeLabel_from_super,
+      Supermodule_CompositionLabel = .data$Supermodule_CompositionLabel_from_super,
+      Supermodule_CompositionShortLabel = .data$Supermodule_CompositionShortLabel_from_super,
+      Supermodule_CompositionLabelSource = .data$Supermodule_CompositionLabelSource_from_super,
+      Supermodule_CompositionConfidence = .data$Supermodule_CompositionConfidence_from_super,
       supermodule_label = .data$supermodule_label_from_super,
       supermodule_map_source_for_module
     ) |>
@@ -1438,6 +1467,11 @@ make_dataset_summary <- function(ds) {
       "Supermodule_FinalLabel_from_super",
       "Supermodule_FullAnnotationLabel_from_super",
       "Supermodule_DisplayShort_from_super",
+      "Supermodule_ConservativeLabel_from_super",
+      "Supermodule_CompositionLabel_from_super",
+      "Supermodule_CompositionShortLabel_from_super",
+      "Supermodule_CompositionLabelSource_from_super",
+      "Supermodule_CompositionConfidence_from_super",
       "supermodule_label_from_super",
       "SemanticProgramColor_from_super",
       "MacroprogramColorKey_from_super"
@@ -1508,7 +1542,14 @@ make_dataset_summary <- function(ds) {
       "Supermodule_FullAnnotationLabel", "Supermodule_DisplayShort",
       "supermodule_label", "Supermodule_PlotLabel", "MacroprogramColorKey",
       "SemanticProgramColor", "Supermodule_LabelConfidence", "DataDrivenClusterSize",
-      "dominant_microenvironment_class", "dominant_module_labels", "Supermodule_LabelRationale"
+      "dominant_microenvironment_class", "dominant_module_labels", "Supermodule_LabelRationale",
+      "Supermodule_ConservativeLabel", "Supermodule_CompositionLabel",
+      "Supermodule_CompositionShortLabel", "Supermodule_CompositionLabelSource",
+      "Supermodule_CompositionConfidence", "Supermodule_CompositionRationale",
+      "DominantMemberTheme", "DominantMemberThemeFraction", "SecondMemberTheme",
+      "SecondMemberThemeFraction", "TopMemberModuleLabels", "TopMemberGOTerms",
+      "n_member_modules_with_informative_labels", "fraction_member_modules_with_informative_labels",
+      "ManualReviewRequired"
     ))), .keep_all = FALSE)
   supermodule_label_audit <- super_join |>
     dplyr::arrange(.data$supermodule_id) |>
@@ -1520,6 +1561,21 @@ make_dataset_summary <- function(ds) {
       Supermodule_DisplayShort,
       dominant_microenvironment_class,
       dominant_module_labels,
+      Supermodule_ConservativeLabel,
+      Supermodule_CompositionLabel,
+      Supermodule_CompositionShortLabel,
+      Supermodule_CompositionLabelSource,
+      Supermodule_CompositionConfidence,
+      Supermodule_CompositionRationale,
+      DominantMemberTheme,
+      DominantMemberThemeFraction,
+      SecondMemberTheme,
+      SecondMemberThemeFraction,
+      TopMemberModuleLabels,
+      TopMemberGOTerms,
+      n_member_modules_with_informative_labels,
+      fraction_member_modules_with_informative_labels,
+      ManualReviewRequired,
       Supermodule_LabelRationale
     )
   module_plot_label_qc <- module_join |>
