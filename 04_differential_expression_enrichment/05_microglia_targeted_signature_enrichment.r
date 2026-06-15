@@ -255,7 +255,7 @@ pretty_signature_class <- function(x) {
   dplyr::case_when(
     x == "microglia_enriched_empirical" ~ "Empirical microglia",
     x == "microglia_enriched_reference_supported" ~ "Reference-supported microglia",
-    x == "curated_microglia_program" ~ "Curated program",
+    x == "curated_microglia_program" ~ "Curated microglia-relevant program",
     x == "mixed_microenvironment" ~ "Mixed microenvironment",
     x == "neuropil_shared" ~ "Neuropil-shared",
     x == "ambiguous" ~ "Exploratory / ambiguous",
@@ -265,7 +265,7 @@ pretty_signature_class <- function(x) {
 
 pretty_signature_source <- function(x) {
   dplyr::case_when(
-    x == "curated" ~ "Curated microglia biology",
+    x == "curated" ~ "Curated microglia-relevant biology",
     x == "empirical_microglia_vs_neuropil" ~ "Empirical ROI vs neuropil",
     x == "reference_atlas_EWCE" ~ "Reference atlas / EWCE",
     TRUE ~ stringr::str_to_sentence(gsub("_", " ", as.character(x)))
