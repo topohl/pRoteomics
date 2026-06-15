@@ -244,6 +244,162 @@ neuro_region <- neuro_covariates |>
   ) |>
   dplyr::mutate(dplyr::across(dplyr::all_of(covariate_cols), ~ ifelse(is.nan(.x), NA_real_, .x)))
 
+count_animal_region <- function(dat, source_label, count_col = "n_samples") {
+  dat |>
+    dplyr::mutate(
+      AnimalID = as.character(.data$AnimalID),
+      Region = as.character(.data$Region)
+    ) |>
+    dplyr::filter(!is.na(.data$AnimalID), nzchar(.data$AnimalID), !is.na(.data$Region), nzchar(.data$Region)) |>
+    dplyr::group_by(.data$AnimalID, .data$Region) |>
+    dplyr::summarise("{count_col}" := dplyr::n(), .groups = "drop") |>
+    dplyr::mutate(diagnostic_type = paste0(source_label, "_AnimalID_Region_counts"))
+}
+
+make_matching_diagnostics <- function(micro_dat, neuro_region, covariate_cols) {
+  none_row <- function(type, detail) {
+    tibble::tibble(
+      diagnostic_type = type,
+      AnimalID = NA_character_,
+      Region = NA_character_,
+      detail = detail
+    )
+  }
+
+  micro_counts <- count_animal_region(micro_dat, "microglia", "n_microglia_samples")
+  neuro_counts <- neuro_region |>
+    dplyr::select("AnimalID", "Region", "n_neuropil_regionlayer_samples") |>
+    dplyr::mutate(diagnostic_type = "neuropil_AnimalID_Region_counts")
+
+  matched_counts <- dplyr::inner_join(
+    micro_counts |> dplyr::select("AnimalID", "Region", "n_microglia_samples"),
+    neuro_counts |> dplyr::select("AnimalID", "Region", "n_neuropil_regionlayer_samples"),
+    by = c("AnimalID", "Region")
+  ) |>
+    dplyr::mutate(
+      diagnostic_type = "matched_AnimalID_Region_rows",
+      detail = "microglia and neuron_neuropil both present for AnimalID + Region"
+    )
+
+  unmatched_micro <- dplyr::anti_join(
+    micro_counts |> dplyr::select("AnimalID", "Region", "n_microglia_samples"),
+    neuro_counts |> dplyr::select("AnimalID", "Region", "n_neuropil_regionlayer_samples"),
+    by = c("AnimalID", "Region")
+  ) |>
+    dplyr::mutate(
+      n_neuropil_regionlayer_samples = NA_integer_,
+      diagnostic_type = "unmatched_microglia_AnimalID_Region",
+      detail = "microglia AnimalID + Region has no matched neuron_neuropil covariate row"
+    )
+
+  unmatched_neuro <- dplyr::anti_join(
+    neuro_counts |> dplyr::select("AnimalID", "Region", "n_neuropil_regionlayer_samples"),
+    micro_counts |> dplyr::select("AnimalID", "Region", "n_microglia_samples"),
+    by = c("AnimalID", "Region")
+  ) |>
+    dplyr::mutate(
+      n_microglia_samples = NA_integer_,
+      diagnostic_type = "unmatched_neuropil_AnimalID_Region",
+      detail = "neuron_neuropil AnimalID + Region has no matched microglia row"
+    )
+
+  unmatched_animal_ids <- tibble::tibble(
+    diagnostic_type = c(rep("unmatched_microglia_AnimalID", length(setdiff(unique(micro_counts$AnimalID), unique(neuro_counts$AnimalID)))),
+                        rep("unmatched_neuropil_AnimalID", length(setdiff(unique(neuro_counts$AnimalID), unique(micro_counts$AnimalID))))),
+    AnimalID = c(setdiff(unique(micro_counts$AnimalID), unique(neuro_counts$AnimalID)),
+                 setdiff(unique(neuro_counts$AnimalID), unique(micro_counts$AnimalID))),
+    Region = NA_character_,
+    detail = "AnimalID present in one dataset but absent from the other"
+  )
+
+  unmatched_regions <- tibble::tibble(
+    diagnostic_type = c(rep("unmatched_microglia_Region", length(setdiff(unique(micro_counts$Region), unique(neuro_counts$Region)))),
+                        rep("unmatched_neuropil_Region", length(setdiff(unique(neuro_counts$Region), unique(micro_counts$Region))))),
+    AnimalID = NA_character_,
+    Region = c(setdiff(unique(micro_counts$Region), unique(neuro_counts$Region)),
+               setdiff(unique(neuro_counts$Region), unique(micro_counts$Region))),
+    detail = "Region present in one dataset but absent from the other"
+  )
+
+  if (!nrow(unmatched_micro)) unmatched_micro <- none_row("unmatched_microglia_AnimalID_Region", "none; every microglia AnimalID + Region had a matched neuron_neuropil row")
+  if (!nrow(unmatched_neuro)) unmatched_neuro <- none_row("unmatched_neuropil_AnimalID_Region", "none; every neuron_neuropil AnimalID + Region had a matched microglia row")
+  if (!nrow(unmatched_animal_ids)) unmatched_animal_ids <- none_row("unmatched_AnimalID", "none; AnimalID sets overlapped completely between microglia and neuron_neuropil")
+  if (!nrow(unmatched_regions)) unmatched_regions <- none_row("unmatched_Region", "none; Region sets overlapped completely between microglia and neuron_neuropil")
+
+  matched_preview <- micro_dat |>
+    dplyr::mutate(
+      AnimalID = as.character(.data$AnimalID),
+      Region = as.character(.data$Region)
+    ) |>
+    dplyr::filter(!is.na(.data$AnimalID), nzchar(.data$AnimalID), !is.na(.data$Region), nzchar(.data$Region)) |>
+    dplyr::left_join(neuro_region, by = c("AnimalID", "Region"))
+
+  covariate_diagnostics <- dplyr::bind_rows(lapply(covariate_cols, function(cn) {
+    vals <- if (cn %in% names(matched_preview)) suppressWarnings(as.numeric(matched_preview[[cn]])) else numeric()
+    tibble::tibble(
+      diagnostic_type = "matched_neuropil_covariate_variance",
+      AnimalID = NA_character_,
+      Region = NA_character_,
+      neuropil_covariate = cn,
+      n_matched_rows = nrow(matched_preview),
+      n_finite_neuropil_values = sum(is.finite(vals)),
+      variance = if (sum(is.finite(vals)) >= 2L) stats::var(vals, na.rm = TRUE) else NA_real_,
+      detail = "finite variance is required before endpoint adjustment models can run"
+    )
+  }))
+
+  counts <- dplyr::bind_rows(
+    micro_counts |> dplyr::mutate(detail = "microglia rows by AnimalID + Region"),
+    neuro_counts |> dplyr::mutate(detail = "neuron_neuropil rows aggregated by AnimalID + Region"),
+    matched_counts,
+    unmatched_micro,
+    unmatched_neuro,
+    unmatched_animal_ids,
+    unmatched_regions,
+    covariate_diagnostics
+  )
+
+  for (nm in c("n_microglia_samples", "n_neuropil_regionlayer_samples", "n_matched_rows", "n_finite_neuropil_values")) {
+    if (!nm %in% names(counts)) counts[[nm]] <- NA_integer_
+  }
+  if (!"variance" %in% names(counts)) counts$variance <- NA_real_
+  if (!"neuropil_covariate" %in% names(counts)) counts$neuropil_covariate <- NA_character_
+  if (!"detail" %in% names(counts)) counts$detail <- NA_character_
+  counts |>
+    dplyr::select(
+      "diagnostic_type", "AnimalID", "Region", "n_microglia_samples",
+      "n_neuropil_regionlayer_samples", "neuropil_covariate", "n_matched_rows",
+      "n_finite_neuropil_values", "variance", "detail"
+    ) |>
+    dplyr::arrange(.data$diagnostic_type, .data$AnimalID, .data$Region, .data$neuropil_covariate)
+}
+
+matching_diagnostics <- make_matching_diagnostics(micro_dat, neuro_region, covariate_cols)
+write_table_and_source(
+  matching_diagnostics,
+  PATHS$tables,
+  PATHS$source_data,
+  "microglia_neuropil_matching_diagnostics.csv"
+)
+
+matched_variance <- matching_diagnostics |>
+  dplyr::filter(.data$diagnostic_type == "matched_neuropil_covariate_variance") |>
+  dplyr::filter(
+    !is.na(.data$neuropil_covariate),
+    is.finite(.data$variance),
+    .data$variance > 0,
+    .data$n_finite_neuropil_values >= 4L
+  )
+
+if (!nrow(matched_variance)) {
+  stop(
+    "No matched neuron_neuropil covariate with finite variance was available after AnimalID + Region matching. ",
+    "See ", file.path(PATHS$tables, "microglia_neuropil_matching_diagnostics.csv"),
+    " for microglia/neuropil AnimalID and Region counts, matched rows, unmatched AnimalIDs, and unmatched Regions.",
+    call. = FALSE
+  )
+}
+
 choose_covariate <- function(dat, endpoint_col) {
   candidates <- covariate_cols[covariate_cols %in% names(dat)]
   candidates <- candidates[vapply(dat[candidates], function(x) sum(is.finite(suppressWarnings(as.numeric(x)))) >= 4L && stats::var(suppressWarnings(as.numeric(x)), na.rm = TRUE) > 0, logical(1))]
