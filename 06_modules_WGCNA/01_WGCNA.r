@@ -578,7 +578,7 @@ macroprogram_display <- function(x) {
   vapply(as.character(x), function(z) {
     z0 <- tolower(trimws(z %||% ""))
     if (!nzchar(z0)) return("Unresolved / mixed")
-    if (grepl("ecm|adhesion|basement membrane|collagen|laminin|integrin", z0)) return("Perivascular ECM / adhesion")
+    if (grepl("ecm|extracellular matrix|basement membrane|collagen|laminin|nidogen|\\bagrn\\b|hspg2|perlecan|\\bcol4a[12]?\\b|\\blama[0-9]?\\b|\\blamb[0-9]?\\b|\\blamc[0-9]?\\b|\\bnid[12]\\b|\\bbcam\\b|serpinh1", z0)) return("Perivascular ECM / adhesion")
     if (grepl("mitochondr|respiratory|oxidative|\\batp\\b|\\btca\\b|acetyl-coa", z0)) return("Mitochondrial metabolism")
     if (grepl("\\brna\\b|ribosome|translation|splice|\\brnp\\b|ncrna", z0)) return("RNA / translation")
     if (grepl("synapse|vesicle|postsynaptic|actin|cytoskeleton", z0)) return("Synaptic / cytoskeletal")
@@ -628,7 +628,7 @@ hub_theme_from_symbols <- function(hubs) {
   if (!is.na(display) && nzchar(display) && display != "Unresolved / mixed") return(display)
   clean_hubs <- trimws(unlist(strsplit(hubs, "[;,]"), use.names = FALSE))
   clean_hubs <- clean_hubs[nzchar(clean_hubs)]
-  if (length(clean_hubs) >= 3L) "Hub-supported cluster" else NA_character_
+  NA_character_
 }
 
 compose_supermodule_display_label <- function(supermodule_id, short_label) {
@@ -784,10 +784,10 @@ propose_supermodule_name <- function(go_terms, hubs = NA_character_, trait_summa
   }
   if (length(clean_hubs) >= 3L) {
     return(list(
-      name = "Hub-supported module cluster",
-      source = "data_driven_hub",
-      confidence = if (n_modules >= 2L) "moderate" else "low",
-      rationale = paste0("GO support was weak; top hubs include ", paste(utils::head(clean_hubs, 5), collapse = ", "), ".")
+      name = "Unresolved module cluster",
+      source = "hub_audit_only",
+      confidence = "low",
+      rationale = paste0("GO support was weak; top hubs are retained for audit only (", paste(utils::head(clean_hubs, 5), collapse = ", "), ").")
     ))
   }
 
