@@ -159,6 +159,19 @@ member_theme_from_label <- function(x) {
   )
 }
 
+semantic_marker_panel_values <- function(row) {
+  candidate_cols <- grep("(_marker_fraction|_fraction)$", names(row), value = TRUE)
+  candidate_cols <- setdiff(candidate_cols, c(
+    "fraction_modules_neuropil_sensitive", "fraction_modules_vascular_basement_membrane_ecm",
+    "fraction_modules_vascular_bbb_mural", "fraction_modules_astrocyte_or_endfoot_sensitive",
+    "fraction_modules_oligodendrocyte_or_myelin_sensitive", "fraction_modules_peripheral_myeloid_caution",
+    "fraction_modules_ambiguous_or_mixed", "fraction_member_modules_with_informative_labels"
+  ))
+  if (!length(candidate_cols)) return(stats::setNames(numeric(), character()))
+  vals <- suppressWarnings(as.numeric(unlist(row[candidate_cols], use.names = FALSE)))
+  stats::setNames(vals, candidate_cols)
+}
+
 composition_short_label <- function(x) {
   x <- as.character(x)
   x <- sub("^mostly\\s+", "", x, ignore.case = TRUE)
@@ -918,11 +931,18 @@ module_annot$raw_hub_proteins <- as.character(module_annot$top_hub_proteins)
 module_annot$raw_marker_or_signature_label <- as.character(module_annot$microenvironment_label)
 semantic_df <- dplyr::bind_rows(lapply(seq_len(nrow(module_annot)), function(i) {
   row <- module_annot[i, , drop = FALSE]
+  bp <- split_label_terms(row$raw_GO_BP_terms)
+  mf <- split_label_terms(row$raw_GO_MF_terms)
+  cc <- split_label_terms(row$raw_GO_CC_terms)
   as.data.frame(wgcna_clean_semantic_label(
     raw_label = dplyr::coalesce(row$raw_module_label, row$raw_top_GO_label),
-    go_terms = c(split_label_terms(row$raw_GO_BP_terms), split_label_terms(row$raw_GO_MF_terms), split_label_terms(row$raw_GO_CC_terms)),
+    go_terms = c(bp, mf, cc),
     hubs = split_tokens(row$raw_hub_proteins),
-    marker_label = row$raw_marker_or_signature_label
+    marker_label = row$raw_marker_or_signature_label,
+    bp_terms = bp,
+    mf_terms = mf,
+    cc_terms = cc,
+    marker_panel_fractions = semantic_marker_panel_values(row)
   ), stringsAsFactors = FALSE)
 }))
 module_annot <- dplyr::bind_cols(module_annot, semantic_df)
@@ -956,6 +976,7 @@ module_annot$module_label_display <- dplyr::coalesce(
 module_annot$member_theme_label <- vapply(seq_len(nrow(module_annot)), function(i) {
   row <- module_annot[i, , drop = FALSE]
   first_informative_value(
+    row$module_specific_label,
     row$cleaned_biological_label,
     row$ModuleLabel_Final,
     row$module_label,
@@ -969,6 +990,7 @@ module_annot$member_theme_label <- vapply(seq_len(nrow(module_annot)), function(
 module_annot$member_theme_source <- vapply(seq_len(nrow(module_annot)), function(i) {
   row <- module_annot[i, , drop = FALSE]
   candidates <- list(
+    module_specific_label = row$module_specific_label,
     cleaned_biological_label = row$cleaned_biological_label,
     ModuleLabel_Final = row$ModuleLabel_Final,
     module_label = row$module_label,
@@ -981,7 +1003,10 @@ module_annot$member_theme_source <- vapply(seq_len(nrow(module_annot)), function
   hit <- names(candidates)[vapply(candidates, function(x) any(!is.na(informative_member_label(x))), logical(1))]
   if (length(hit)) hit[[1]] else if (length(split_tokens(row$top_hub_proteins))) "top_hub_proteins_audit_only" else "unresolved"
 }, character(1))
-module_annot$member_theme <- vapply(module_annot$member_theme_label, function(x) {
+module_annot$member_theme <- vapply(seq_len(nrow(module_annot)), function(i) {
+  program <- module_annot$module_program_primary[[i]]
+  if (!is.na(program) && nzchar(program)) return(program)
+  x <- module_annot$member_theme_label[[i]]
   theme <- member_theme_from_label(x)
   if (is.na(theme) || !nzchar(theme)) "mixed / low-specificity" else theme
 }, character(1))
@@ -1044,6 +1069,17 @@ if (is.null(super_ann) || !nrow(super_ann)) {
       raw_module_label = compact_label(.data$raw_module_label, 8L),
       raw_hub_proteins = paste(utils::head(unique(split_tokens(.data$raw_hub_proteins)), 30), collapse = ";"),
       raw_marker_or_signature_label = compact_label(.data$raw_marker_or_signature_label, 6L),
+      MemberModuleSpecificLabels = compact_label(.data$module_specific_label, 8L),
+      MemberProgramPrimaryCounts = wgcna_member_theme_summary(.data$module_program_primary)$counts_label,
+      MemberProgramSecondary = compact_label(.data$module_program_secondary, 8L),
+      MemberLabelDecisionRules = compact_label(.data$label_decision_rule, 8L),
+      MemberLabelWarnings = compact_label(.data$label_warning, 8L),
+      MemberAdhesionInterpretations = compact_label(.data$adhesion_interpretation, 8L),
+      MemberEvidenceBP = wgcna_collapse_terms(split_label_terms(.data$evidence_BP), n = 20L),
+      MemberEvidenceMF = wgcna_collapse_terms(split_label_terms(.data$evidence_MF), n = 20L),
+      MemberEvidenceCC = wgcna_collapse_terms(split_label_terms(.data$evidence_CC), n = 20L),
+      MemberEvidenceHubs = paste(utils::head(unique(split_tokens(.data$evidence_hubs)), 30), collapse = ";"),
+      MemberEvidenceMarkerPanels = compact_label(.data$evidence_marker_panels, 10L),
       microenvironment_caution_label = names(sort(table(.data$microenvironment_caution_label), decreasing = TRUE))[1],
       microenvironment_caution_class = names(sort(table(.data$microenvironment_caution_class), decreasing = TRUE))[1],
       microenvironment_caution_rationale = compact_label(.data$microenvironment_caution_rationale, 4L),
@@ -1087,6 +1123,14 @@ if (is.null(super_ann) || !nrow(super_ann)) {
       manual_label_status = dplyr::first(.data$manual_label_status),
       ManualReviewRequired = dplyr::first(.data$ManualReviewRequired),
       label_confidence = dplyr::coalesce(dplyr::first(.data$Supermodule_LabelConfidence), dplyr::first(.data$SupermoduleConfidence %||% NA_character_)),
+      label_decision_rule = "member_module_semantic_composition",
+      label_warning = compact_label(c(.data$label_warning, .data$themes_omitted_from_display_label), 10L),
+      adhesion_interpretation = compact_label(.data$adhesion_interpretation, 8L),
+      evidence_BP = wgcna_collapse_terms(split_label_terms(.data$evidence_BP), n = 20L),
+      evidence_MF = wgcna_collapse_terms(split_label_terms(.data$evidence_MF), n = 20L),
+      evidence_CC = wgcna_collapse_terms(split_label_terms(.data$evidence_CC), n = 20L),
+      evidence_hubs = paste(utils::head(unique(split_tokens(.data$evidence_hubs)), 30), collapse = ";"),
+      evidence_marker_panels = compact_label(.data$evidence_marker_panels, 10L),
       marker_registry_version = dplyr::first(.data$marker_registry_version),
       empirical_marker_set_version = dplyr::first(.data$empirical_marker_set_version),
       interpretation_note = WGCNA_ROI_NOTE,
@@ -1130,6 +1174,9 @@ if (is.null(super_ann) || !nrow(super_ann)) {
       cleaned_biological_label_source = .data$Supermodule_CompositionLabelSource,
       cleaned_biological_label_confidence = .data$Supermodule_CompositionConfidence,
       cleaned_biological_label_rationale = .data$Supermodule_CompositionRationale,
+      module_specific_label = .data$Supermodule_CompositionLabel,
+      module_program_primary = .data$DominantMemberTheme,
+      module_program_secondary = .data$SecondMemberTheme,
       GO_label_relevance_flag = dplyr::case_when(
         grepl("skin development|dorsal ventral pattern|binding sperm|zona pellucida|fertilization", .data$raw_module_label, ignore.case = TRUE) ~ "cleaned_or_context_checked",
         grepl("barrier / cell-junction|ontology artefact|regulatory module", .data$Supermodule_CompositionLabel, ignore.case = TRUE) ~ "cleaned_or_context_checked",
@@ -1224,6 +1271,10 @@ supermodule_composition_columns <- c(
   "cleaned_biological_label_source", "cleaned_biological_label_confidence",
   "cleaned_biological_label_rationale", "GO_label_relevance_flag",
   "GO_label_relevance_rationale",
+  "module_specific_label", "module_program_primary", "module_program_secondary",
+  "label_decision_rule", "label_warning", "adhesion_interpretation",
+  "evidence_BP", "evidence_MF", "evidence_CC", "evidence_hubs",
+  "evidence_marker_panels",
   "microenvironment_caution_label", "microenvironment_caution_class",
   "microenvironment_caution_rationale",
   "Supermodule_ConservativeLabel", "Supermodule_CompositionLabel",
@@ -1236,6 +1287,10 @@ supermodule_composition_columns <- c(
   "MemberThemeCounts", "MemberThemeFractions", "n_distinct_member_themes",
   "is_multi_theme_supermodule", "themes_above_display_threshold",
   "themes_omitted_from_display_label",
+  "MemberModuleSpecificLabels", "MemberProgramPrimaryCounts",
+  "MemberProgramSecondary", "MemberLabelDecisionRules", "MemberLabelWarnings",
+  "MemberAdhesionInterpretations", "MemberEvidenceBP", "MemberEvidenceMF",
+  "MemberEvidenceCC", "MemberEvidenceHubs", "MemberEvidenceMarkerPanels",
   "n_member_modules_with_informative_labels",
   "fraction_member_modules_with_informative_labels"
 )
@@ -1265,6 +1320,10 @@ if (nrow(super_annot)) {
       "cleaned_biological_label_source", "cleaned_biological_label_confidence",
       "cleaned_biological_label_rationale", "GO_label_relevance_flag",
       "GO_label_relevance_rationale",
+      "module_specific_label", "module_program_primary", "module_program_secondary",
+      "label_decision_rule", "label_warning", "adhesion_interpretation",
+      "evidence_BP", "evidence_MF", "evidence_CC", "evidence_hubs",
+      "evidence_marker_panels",
       "microenvironment_caution_label", "microenvironment_caution_class",
       "microenvironment_caution_rationale",
       "Supermodule_ConservativeLabel", "Supermodule_CompositionLabel",
@@ -1276,6 +1335,10 @@ if (nrow(super_annot)) {
       "MemberThemeCounts", "MemberThemeFractions", "n_distinct_member_themes",
       "is_multi_theme_supermodule", "themes_above_display_threshold",
       "themes_omitted_from_display_label",
+      "MemberModuleSpecificLabels", "MemberProgramPrimaryCounts",
+      "MemberProgramSecondary", "MemberLabelDecisionRules", "MemberLabelWarnings",
+      "MemberAdhesionInterpretations", "MemberEvidenceBP", "MemberEvidenceMF",
+      "MemberEvidenceCC", "MemberEvidenceHubs", "MemberEvidenceMarkerPanels",
       "Supermodule_LabelSource", "Supermodule_LabelConfidence", "is_singleton_supermodule",
       "n_member_modules", "GO_label_confidence_class", "dominant_microenvironment_class",
       "n_member_modules_with_informative_labels", "fraction_member_modules_with_informative_labels",

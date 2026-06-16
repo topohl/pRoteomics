@@ -152,6 +152,21 @@ if (!skip_missing_output(super_interp_path, "microglia WGCNA supermodule interpr
   }, "WGCNA supermodule interpretable summary contract")
 }
 
+score_pub_validation_path <- path_results("tables", "06_modules_WGCNA", "score_publication_summary", "microglia", "WGCNA_score_publication_validation.csv")
+if (!skip_missing_output(score_pub_validation_path, "microglia WGCNA score-publication validation")) {
+  check({
+    score_pub_validation <- read_csv_required(score_pub_validation_path, "microglia WGCNA score-publication validation")
+    require_module_contract_columns(
+      score_pub_validation,
+      c("validation_check", "validation_status", "validation_message"),
+      "WGCNA score-publication validation"
+    )
+    if (any(score_pub_validation$validation_status != "ok")) {
+      stop("Score-publication validation has non-ok rows.", call. = FALSE)
+    }
+  }, "WGCNA score-publication validation contract")
+}
+
 bundle_path <- path_results("tables", "10_biological_integration", "final_evidence_bundle", "global")
 if (!skip_missing_output(bundle_path, "final biological evidence bundle")) {
   check({

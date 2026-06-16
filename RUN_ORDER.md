@@ -142,19 +142,22 @@ Rscript 06_modules_WGCNA/04_wgcna_de_gsea_overlap.r --dataset <dataset> --dry-ru
 Rscript 06_modules_WGCNA/05_module_supermodule_group_effects.r --dataset <dataset> --dry-run
 Rscript 06_modules_WGCNA/06_annotate_module_microenvironment.r --dataset <dataset> --dry-run
 Rscript 06_modules_WGCNA/07_wgcna_interpretable_summary.r --dataset <dataset> --dry-run
+Rscript 06_modules_WGCNA/08_wgcna_score_publication_summary.R --dataset <dataset> --module-source wgcna --dry-run
 Rscript 06_modules_WGCNA/08_module_complex_architecture.r --dataset <dataset> --dry-run
 Rscript 06_modules_WGCNA/09_module_robustness_sensitivity.r --dataset <dataset> --dry-run
 Rscript 06_modules_WGCNA/07_wgcna_interpretable_summary.r --dataset all --dry-run
+Rscript 06_modules_WGCNA/08_wgcna_score_publication_summary.R --dataset all --module-source wgcna --dry-run
 ```
 
 Layer distinction:
 
 ```text
 06_modules_WGCNA/01_WGCNA.r                         network/module construction
-06_modules_WGCNA/03_score_module_activity.R         module scoring
-06_modules_WGCNA/05_module_supermodule_group_effects.r group-effect modelling
-06_modules_WGCNA/06_annotate_module_microenvironment.r biological annotation
-06_modules_WGCNA/07_wgcna_interpretable_summary.r   manuscript-facing summary
+06_modules_WGCNA/03_score_module_activity.R         score/statistics/QC producer; secondary robustness/behavior coupling
+06_modules_WGCNA/05_module_supermodule_group_effects.r primary WGCNA eigengene group-effect inference
+06_modules_WGCNA/06_annotate_module_microenvironment.r biological annotation / cleaned semantic label contract
+06_modules_WGCNA/07_wgcna_interpretable_summary.r   final WGCNA interpretable module/supermodule summary tables and plots
+06_modules_WGCNA/08_wgcna_score_publication_summary.R final score-derived publication plots using cleaned labels
 ```
 
 Key outputs:
@@ -167,6 +170,7 @@ results/tables/06_modules_WGCNA/group_effects/<dataset>/supermodule_group_effect
 results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_module_biological_annotation.csv
 results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_supermodule_biological_annotation.csv
 results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_interpretable_summary.xlsx
+results/figures/06_modules_WGCNA/score_publication_summary/<dataset>/
 ```
 
 `01_WGCNA.r` recomputes core WGCNA state. The downstream WGCNA scripts consume
