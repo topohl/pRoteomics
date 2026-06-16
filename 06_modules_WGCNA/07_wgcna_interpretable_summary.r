@@ -102,6 +102,66 @@ clean_supermodule_label_value <- function(x) {
   x
 }
 
+displayed_supermodule_theme_count <- function(label) {
+  vapply(as.character(label), function(z) {
+    z <- stringr::str_squish(z)
+    if (is.na(z) || !nzchar(z)) return(0L)
+    z <- sub(paste0("^SM[0-9]+\\s*(", intToUtf8(183), "|:|-)\\s*"), "", z, ignore.case = TRUE)
+    if (grepl("^mixed\\s+multi-program$", z, ignore.case = TRUE)) return(0L)
+    z <- sub("^mostly\\s+", "", z, ignore.case = TRUE)
+    z <- sub("^mixed:\\s*", "", z, ignore.case = TRUE)
+    parts <- trimws(unlist(strsplit(z, "\\s*;\\s*", perl = TRUE), use.names = FALSE))
+    parts <- parts[nzchar(parts) & !grepl("mixed / low-specificity|mixed / unresolved|unresolved / mixed", parts, ignore.case = TRUE)]
+    length(unique(parts))
+  }, integer(1))
+}
+
+member_theme_fraction_values <- function(x) {
+  parts <- trimws(unlist(strsplit(as.character(x), "\\s*;\\s*", perl = TRUE), use.names = FALSE))
+  parts <- parts[nzchar(parts) & grepl("=", parts, fixed = TRUE)]
+  vals <- suppressWarnings(as.numeric(sub("^.*=", "", parts)))
+  names(vals) <- trimws(sub("=.*$", "", parts))
+  vals[is.finite(vals)]
+}
+
+supermodule_theme_qc_warnings <- function(df) {
+  n <- nrow(df)
+  if (!n) return(character())
+  out <- character(n)
+  plot_label <- as.character(col_or_na(df, "Supermodule_PlotLabel"))
+  comp_label <- as.character(col_or_na(df, "Supermodule_CompositionLabel"))
+  fractions <- as.character(col_or_na(df, "MemberThemeFractions"))
+  omitted <- as.character(col_or_na(df, "themes_omitted_from_display_label"))
+  n_distinct <- suppressWarnings(as.integer(col_or_na(df, "n_distinct_member_themes")))
+  dominant_frac <- suppressWarnings(as.numeric(col_or_na(df, "DominantMemberThemeFraction")))
+  shown_n <- displayed_supermodule_theme_count(plot_label)
+
+  for (i in seq_len(n)) {
+    warn <- character()
+    vals <- member_theme_fraction_values(fractions[[i]])
+    informative_vals <- vals[names(vals) != "mixed / low-specificity"]
+    if (!length(vals)) {
+      warn <- c(warn, "MemberThemeFractions is empty")
+    }
+    if (!is.na(omitted[[i]]) && nzchar(trimws(omitted[[i]]))) {
+      warn <- c(warn, "themes_omitted_from_display_label is non-empty")
+    }
+    if (is.finite(n_distinct[[i]]) && n_distinct[[i]] >= 3L &&
+        length(informative_vals) >= 3L && all(informative_vals >= 0.20) &&
+        shown_n[[i]] < 3L) {
+      warn <- c(warn, "plot label shows fewer than 3 displayed themes despite >=3 member themes all at fraction >=0.20")
+    }
+    single_theme_display <- shown_n[[i]] <= 1L &&
+      !grepl("^SM[0-9]+\\s*(·|:|-)\\s*(mixed:|mixed multi-program|mixed / low-specificity|mixed / unresolved)", plot_label[[i]], ignore.case = TRUE) &&
+      !grepl("^(mixed:|mixed multi-program|mixed / low-specificity|mixed / unresolved)", comp_label[[i]], ignore.case = TRUE)
+    if ((!is.finite(dominant_frac[[i]]) || dominant_frac[[i]] < 0.60) && single_theme_display) {
+      warn <- c(warn, "supermodule without dominant theme >=0.60 is displayed as a single-theme program")
+    }
+    out[[i]] <- paste(unique(warn), collapse = " | ")
+  }
+  out
+}
+
 add_supermodule_id_prefix <- function(id, label) {
   id <- clean_label_value(id)
   label <- clean_label_value(label)
@@ -259,6 +319,7 @@ add_short_supermodule_labels <- function(df) {
   if (!nrow(df)) {
     df$Supermodule_FullAnnotationLabel <- character()
     df$Supermodule_DisplayShort <- character()
+    df$Supermodule_CleanPlotLabel <- character()
     df$Supermodule_PlotLabel <- character()
     return(df)
   }
@@ -270,6 +331,9 @@ add_short_supermodule_labels <- function(df) {
     rep("SM??", nrow(df))
   )
   full <- dplyr::coalesce(
+    clean_supermodule_label_value(col_or_na(df, "Supermodule_CompositionDisplayLabel")),
+    clean_supermodule_label_value(col_or_na(df, "Supermodule_CompositionLabel")),
+    clean_supermodule_label_value(col_or_na(df, "cleaned_biological_label")),
     clean_supermodule_label_value(col_or_na(df, "Supermodule_FinalLabel")),
     clean_supermodule_label_value(col_or_na(df, "Supermodule_LongLabel")),
     clean_supermodule_label_value(col_or_na(df, "Macroprogram_Display")),
@@ -289,9 +353,15 @@ add_short_supermodule_labels <- function(df) {
     ) |>
     dplyr::ungroup()
   suffix <- rank_df$suffix[match(id, rank_df$supermodule_id)]
-  display <- paste0(id, supermodule_label_sep(), broad, suffix)
+  clean_display <- dplyr::coalesce(
+    clean_supermodule_label_value(col_or_na(df, "Supermodule_CompositionDisplayLabel")),
+    clean_supermodule_label_value(col_or_na(df, "Supermodule_CompositionLabel")),
+    clean_supermodule_label_value(col_or_na(df, "Supermodule_CleanPlotLabel"))
+  )
+  display <- dplyr::coalesce(add_supermodule_id_prefix(id, clean_display), paste0(id, supermodule_label_sep(), broad, suffix))
   df$Supermodule_FullAnnotationLabel <- full
   df$Supermodule_DisplayShort <- paste0(broad, suffix)
+  df$Supermodule_CleanPlotLabel <- display
   df$Supermodule_PlotLabel <- display
   df
 }
@@ -500,6 +570,9 @@ spatial_effect_rows <- function(df) {
 program_label_col <- function(df, level = "supermodule") {
   if (level == "supermodule") {
     coalesce_chr(
+      col_or_na(df, "Supermodule_CleanPlotLabel"),
+      col_or_na(df, "Supermodule_CompositionDisplayLabel"),
+      col_or_na(df, "Supermodule_CompositionLabel"),
       col_or_na(df, "Supermodule_DisplayLabel"),
       col_or_na(df, "Supermodule_FinalLabel"),
       col_or_na(df, "Supermodule_FinalLabel.y"),
@@ -519,6 +592,8 @@ program_label_col <- function(df, level = "supermodule") {
     # Display labels should prefer the annotation table from 06_annotate_module_microenvironment.r.
     # The group-effect table from 05 usually only knows the raw WGCNA module label/color.
     coalesce_chr(
+      col_or_na(df, "Module_CleanPlotLabel"),
+      col_or_na(df, "cleaned_biological_label"),
       col_or_na(df, "module_display_label"),
       col_or_na(df, "ModuleLabel_Final"),
       col_or_na(df, "module_label.y"),
@@ -686,6 +761,21 @@ attach_module_supermodules <- function(module_join, module_super_map) {
   if (!is.null(module_super_map) && nrow(module_super_map)) {
     module_join <- module_join |>
       dplyr::left_join(module_super_map, by = "module_key")
+    module_join$module_supermodule_id <- dplyr::coalesce(
+      clean_label_value(col_or_na(module_join, "module_supermodule_id")),
+      clean_label_value(col_or_na(module_join, "module_supermodule_id.y")),
+      clean_label_value(col_or_na(module_join, "module_supermodule_id.x"))
+    )
+    module_join$module_supermodule_label <- dplyr::coalesce(
+      clean_label_value(col_or_na(module_join, "module_supermodule_label")),
+      clean_label_value(col_or_na(module_join, "module_supermodule_label.y")),
+      clean_label_value(col_or_na(module_join, "module_supermodule_label.x"))
+    )
+    module_join$module_supermodule_map_source <- dplyr::coalesce(
+      clean_label_value(col_or_na(module_join, "module_supermodule_map_source")),
+      clean_label_value(col_or_na(module_join, "module_supermodule_map_source.y")),
+      clean_label_value(col_or_na(module_join, "module_supermodule_map_source.x"))
+    )
   } else {
     module_join$module_supermodule_id <- NA_character_
     module_join$module_supermodule_label <- NA_character_
@@ -1317,16 +1407,33 @@ make_dataset_summary <- function(ds) {
     "annotation_scope",
     "manual_label_status",
     "ManualReviewRequired",
+    "raw_GO_BP_terms", "raw_GO_MF_terms", "raw_GO_CC_terms",
+    "raw_top_GO_label", "raw_module_label", "raw_hub_proteins",
+    "raw_marker_or_signature_label",
+    "cleaned_biological_label", "cleaned_biological_label_short",
+    "cleaned_biological_label_source", "cleaned_biological_label_confidence",
+    "cleaned_biological_label_rationale", "GO_label_relevance_flag",
+    "GO_label_relevance_rationale",
+    "microenvironment_caution_label", "microenvironment_caution_class",
+    "microenvironment_caution_rationale",
     "Supermodule_ConservativeLabel",
     "Supermodule_CompositionLabel",
     "Supermodule_CompositionShortLabel",
+    "Supermodule_CompositionDisplayLabel",
     "Supermodule_CompositionLabelSource",
     "Supermodule_CompositionConfidence",
     "Supermodule_CompositionRationale",
+    "Supermodule_CleanPlotLabel",
     "DominantMemberTheme",
     "DominantMemberThemeFraction",
     "SecondMemberTheme",
     "SecondMemberThemeFraction",
+    "MemberThemeCounts",
+    "MemberThemeFractions",
+    "n_distinct_member_themes",
+    "is_multi_theme_supermodule",
+    "themes_above_display_threshold",
+    "themes_omitted_from_display_label",
     "TopMemberModuleLabels",
     "TopMemberGOTerms",
     "n_member_modules_with_informative_labels",
@@ -1343,14 +1450,70 @@ make_dataset_summary <- function(ds) {
   module_join <- module_effects |>
     dplyr::left_join(module_annot, by = c("dataset" = "dataset", "module_id" = "ModuleID")) |>
     add_interpretation_sentences("module") |>
-    ensure_columns(c("module_label", "module_label.x", "module_label.y", "ModuleID", "ModuleColor", "module_id", "module_display_label", "microenvironment_label", "microenvironment_class", "microenvironment_confidence", "supermodule_label", "p_value", "estimate", "FDR_global", "contrast"))
+    ensure_columns(c(
+      "module_label", "module_label.x", "module_label.y", "ModuleID", "ModuleColor", "module_id",
+      "module_display_label", "ModuleLabel_Final", "endpoint_label", "Module_CleanPlotLabel",
+      "module_biological_label", "module_biological_label_short", "module_label_display",
+      "raw_GO_BP_terms", "raw_GO_MF_terms", "raw_GO_CC_terms", "raw_top_GO_label",
+      "raw_module_label", "raw_hub_proteins", "raw_marker_or_signature_label",
+      "cleaned_biological_label", "cleaned_biological_label_short",
+      "cleaned_biological_label_source", "cleaned_biological_label_confidence",
+      "cleaned_biological_label_rationale", "GO_label_relevance_flag",
+      "GO_label_relevance_rationale", "microenvironment_caution_label",
+      "microenvironment_caution_class", "microenvironment_caution_rationale",
+      "microenvironment_label", "microenvironment_class", "microenvironment_confidence",
+      "supermodule_label", "supermodule_id", "supermodule_id_for_module", "module_supermodule_id",
+      "p_value", "estimate", "FDR_global", "contrast"
+    ))
+  module_join$module_biological_label <- dplyr::coalesce(
+    clean_label_value(module_join$module_biological_label),
+    clean_label_value(module_join$cleaned_biological_label),
+    clean_label_value(module_join$ModuleLabel_Final),
+    clean_label_value(module_join$module_label.y),
+    clean_label_value(module_join$module_label.x),
+    clean_label_value(module_join$raw_top_GO_label),
+    clean_label_value(module_join$endpoint_label)
+  )
+  module_join$module_biological_label_short <- dplyr::coalesce(
+    clean_label_value(module_join$module_biological_label_short),
+    clean_label_value(module_join$cleaned_biological_label_short),
+    clean_label_value(module_join$module_biological_label)
+  )
+  module_join$module_label_display <- dplyr::coalesce(
+    clean_label_value(module_join$module_label_display),
+    clean_label_value(module_join$Module_CleanPlotLabel),
+    paste(module_join$module_id, module_join$module_biological_label_short, sep = " | ")
+  )
+  module_join$module_label <- dplyr::coalesce(
+    clean_label_value(module_join$module_label_display),
+    clean_label_value(module_join$Module_CleanPlotLabel),
+    clean_label_value(module_join$module_biological_label),
+    clean_label_value(module_join$module_display_label),
+    clean_label_value(module_join$module_id)
+  )
 
   super_join <- super_effects |>
     dplyr::left_join(super_annot, by = c("dataset" = "dataset", "supermodule_id" = "SupermoduleID")) |>
     add_interpretation_sentences("supermodule") |>
-    ensure_columns(c("Supermodule_DisplayLabel", "Supermodule_LongLabel", "Macroprogram_Display", "Supermodule_FinalLabel", "supermodule_label", "supermodule_id", "dominant_microenvironment_class", "p_value", "estimate", "FDR_global", "contrast", "spatial_unit", "effect_scope", "evidence_status", "direction"))
+    ensure_columns(c("Supermodule_DisplayLabel", "Supermodule_LongLabel", "Macroprogram_Display", "Supermodule_FinalLabel", "supermodule_label", "supermodule_id", "SupermoduleID", "Supermodule_CleanPlotLabel", "Supermodule_CompositionDisplayLabel", "Supermodule_CompositionLabel", "dominant_microenvironment_class", "p_value", "estimate", "FDR_global", "contrast", "spatial_unit", "effect_scope", "evidence_status", "direction", "MemberThemeCounts", "MemberThemeFractions", "n_distinct_member_themes", "is_multi_theme_supermodule", "themes_above_display_threshold", "themes_omitted_from_display_label"))
   super_join <- add_short_supermodule_labels(super_join)
+  super_join$SupermoduleID <- dplyr::coalesce(
+    clean_label_value(super_join$SupermoduleID),
+    clean_label_value(super_join$supermodule_id),
+    clean_label_value(col_or_na(super_join, "Supermodule_DataDrivenID")),
+    clean_label_value(col_or_na(super_join, "Supermodule_DataDriven"))
+  )
+  super_join$supermodule_id <- dplyr::coalesce(clean_label_value(super_join$supermodule_id), clean_label_value(super_join$SupermoduleID))
+  super_join$supermodule_label <- dplyr::coalesce(
+    clean_label_value(super_join$supermodule_label),
+    clean_label_value(super_join$Supermodule_CleanPlotLabel),
+    clean_label_value(super_join$Supermodule_CompositionDisplayLabel),
+    clean_label_value(super_join$Supermodule_CompositionLabel),
+    clean_label_value(super_join$Supermodule_PlotLabel),
+    clean_label_value(super_join$Supermodule_DisplayLabel)
+  )
   super_join <- add_semantic_columns(super_join)
+  super_join$supermodule_theme_label_qc_warning <- supermodule_theme_qc_warnings(super_join)
 
   module_super_map <- build_module_supermodule_map(
     module_effects = module_join,
@@ -1359,7 +1522,7 @@ make_dataset_summary <- function(ds) {
     super_annot = super_annot
   )
   module_join <- attach_module_supermodules(module_join, module_super_map)
-  module_join$ModulePlotLabel <- make_module_plot_label(module_join)
+  module_join$ModulePlotLabel <- dplyr::coalesce(clean_label_value(module_join$module_label_display), clean_label_value(module_join$Module_CleanPlotLabel), make_module_plot_label(module_join))
 
   # Use the richer supermodule annotation/effect table as authoritative label source
   # for module-level plots. The module-to-supermodule map may only carry IDs or
@@ -1381,8 +1544,19 @@ make_dataset_summary <- function(ds) {
       Supermodule_ConservativeLabel_from_super = "Supermodule_ConservativeLabel",
       Supermodule_CompositionLabel_from_super = "Supermodule_CompositionLabel",
       Supermodule_CompositionShortLabel_from_super = "Supermodule_CompositionShortLabel",
+      Supermodule_CompositionDisplayLabel_from_super = "Supermodule_CompositionDisplayLabel",
       Supermodule_CompositionLabelSource_from_super = "Supermodule_CompositionLabelSource",
       Supermodule_CompositionConfidence_from_super = "Supermodule_CompositionConfidence",
+      Supermodule_CleanPlotLabel_from_super = "Supermodule_CleanPlotLabel",
+      MemberThemeCounts_from_super = "MemberThemeCounts",
+      MemberThemeFractions_from_super = "MemberThemeFractions",
+      n_distinct_member_themes_from_super = "n_distinct_member_themes",
+      is_multi_theme_supermodule_from_super = "is_multi_theme_supermodule",
+      themes_above_display_threshold_from_super = "themes_above_display_threshold",
+      themes_omitted_from_display_label_from_super = "themes_omitted_from_display_label",
+      supermodule_theme_label_qc_warning_from_super = "supermodule_theme_label_qc_warning",
+      microenvironment_caution_label_from_super = "microenvironment_caution_label",
+      microenvironment_caution_class_from_super = "microenvironment_caution_class",
       supermodule_label_from_super = "supermodule_label",
       SemanticProgramColor_from_super = "SemanticProgramColor",
       MacroprogramColorKey_from_super = "MacroprogramColorKey"
@@ -1422,8 +1596,33 @@ make_dataset_summary <- function(ds) {
   module_join$Supermodule_ConservativeLabel <- clean_label_value(module_join$Supermodule_ConservativeLabel_from_super)
   module_join$Supermodule_CompositionLabel <- clean_label_value(module_join$Supermodule_CompositionLabel_from_super)
   module_join$Supermodule_CompositionShortLabel <- clean_label_value(module_join$Supermodule_CompositionShortLabel_from_super)
+  module_join$Supermodule_CompositionDisplayLabel <- clean_label_value(module_join$Supermodule_CompositionDisplayLabel_from_super)
   module_join$Supermodule_CompositionLabelSource <- clean_label_value(module_join$Supermodule_CompositionLabelSource_from_super)
   module_join$Supermodule_CompositionConfidence <- clean_label_value(module_join$Supermodule_CompositionConfidence_from_super)
+  module_join$Supermodule_CleanPlotLabel <- clean_label_value(module_join$Supermodule_CleanPlotLabel_from_super)
+  module_join$MemberThemeCounts <- clean_label_value(module_join$MemberThemeCounts_from_super)
+  module_join$MemberThemeFractions <- clean_label_value(module_join$MemberThemeFractions_from_super)
+  module_join$n_distinct_member_themes <- suppressWarnings(as.integer(module_join$n_distinct_member_themes_from_super))
+  module_join$is_multi_theme_supermodule <- suppressWarnings(as.logical(module_join$is_multi_theme_supermodule_from_super))
+  module_join$themes_above_display_threshold <- clean_label_value(module_join$themes_above_display_threshold_from_super)
+  module_join$themes_omitted_from_display_label <- clean_label_value(module_join$themes_omitted_from_display_label_from_super)
+  module_join$supermodule_theme_label_qc_warning <- clean_label_value(module_join$supermodule_theme_label_qc_warning_from_super)
+  module_join$microenvironment_caution_label_for_supermodule <- clean_label_value(module_join$microenvironment_caution_label_from_super)
+  module_join$microenvironment_caution_class_for_supermodule <- clean_label_value(module_join$microenvironment_caution_class_from_super)
+  module_join$supermodule_id <- dplyr::coalesce(
+    clean_label_value(module_join$supermodule_id),
+    clean_label_value(module_join$supermodule_id_for_module),
+    clean_label_value(module_join$module_supermodule_id),
+    clean_label_value(col_or_na(module_join, "SupermoduleID"))
+  )
+  module_join$supermodule_label <- dplyr::coalesce(
+    clean_label_value(module_join$supermodule_label),
+    clean_label_value(module_join$Supermodule_CleanPlotLabel),
+    clean_label_value(module_join$Supermodule_CompositionDisplayLabel),
+    clean_label_value(module_join$Supermodule_CompositionLabel),
+    clean_label_value(module_join$supermodule_label_for_module),
+    clean_label_value(module_join$Supermodule_PlotLabel)
+  )
 
   module_supermodule_label_qc <- module_join |>
     dplyr::transmute(
@@ -1441,8 +1640,19 @@ make_dataset_summary <- function(ds) {
       Supermodule_ConservativeLabel = .data$Supermodule_ConservativeLabel_from_super,
       Supermodule_CompositionLabel = .data$Supermodule_CompositionLabel_from_super,
       Supermodule_CompositionShortLabel = .data$Supermodule_CompositionShortLabel_from_super,
+      Supermodule_CompositionDisplayLabel = .data$Supermodule_CompositionDisplayLabel_from_super,
       Supermodule_CompositionLabelSource = .data$Supermodule_CompositionLabelSource_from_super,
       Supermodule_CompositionConfidence = .data$Supermodule_CompositionConfidence_from_super,
+      Supermodule_CleanPlotLabel = .data$Supermodule_CleanPlotLabel_from_super,
+      MemberThemeCounts = .data$MemberThemeCounts_from_super,
+      MemberThemeFractions = .data$MemberThemeFractions_from_super,
+      n_distinct_member_themes = .data$n_distinct_member_themes_from_super,
+      is_multi_theme_supermodule = .data$is_multi_theme_supermodule_from_super,
+      themes_above_display_threshold = .data$themes_above_display_threshold_from_super,
+      themes_omitted_from_display_label = .data$themes_omitted_from_display_label_from_super,
+      supermodule_theme_label_qc_warning = .data$supermodule_theme_label_qc_warning_from_super,
+      microenvironment_caution_label = .data$microenvironment_caution_label_from_super,
+      microenvironment_caution_class = .data$microenvironment_caution_class_from_super,
       supermodule_label = .data$supermodule_label_from_super,
       supermodule_map_source_for_module
     ) |>
@@ -1470,8 +1680,19 @@ make_dataset_summary <- function(ds) {
       "Supermodule_ConservativeLabel_from_super",
       "Supermodule_CompositionLabel_from_super",
       "Supermodule_CompositionShortLabel_from_super",
+      "Supermodule_CompositionDisplayLabel_from_super",
       "Supermodule_CompositionLabelSource_from_super",
       "Supermodule_CompositionConfidence_from_super",
+      "Supermodule_CleanPlotLabel_from_super",
+      "MemberThemeCounts_from_super",
+      "MemberThemeFractions_from_super",
+      "n_distinct_member_themes_from_super",
+      "is_multi_theme_supermodule_from_super",
+      "themes_above_display_threshold_from_super",
+      "themes_omitted_from_display_label_from_super",
+      "supermodule_theme_label_qc_warning_from_super",
+      "microenvironment_caution_label_from_super",
+      "microenvironment_caution_class_from_super",
       "supermodule_label_from_super",
       "SemanticProgramColor_from_super",
       "MacroprogramColorKey_from_super"
@@ -1480,7 +1701,7 @@ make_dataset_summary <- function(ds) {
   module_join <- add_semantic_columns(module_join)
 
   module_supermodule_join_qc <- module_join |>
-    dplyr::distinct(.data$module_id, .data$module_key, .data$module_display_label, .data$microenvironment_label, .data$supermodule_label_for_module, .data$supermodule_map_source_for_module)
+    dplyr::distinct(.data$module_id, .data$module_key, .data$module_label, .data$module_biological_label, .data$module_biological_label_short, .data$module_label_display, .data$module_display_label, .data$Module_CleanPlotLabel, .data$microenvironment_label, .data$microenvironment_caution_label, .data$supermodule_id, .data$supermodule_id_for_module, .data$supermodule_label, .data$supermodule_label_for_module, .data$Supermodule_CleanPlotLabel, .data$supermodule_map_source_for_module)
 
   write_table_and_source(
     module_supermodule_join_qc,
@@ -1542,12 +1763,23 @@ make_dataset_summary <- function(ds) {
       "Supermodule_FullAnnotationLabel", "Supermodule_DisplayShort",
       "supermodule_label", "Supermodule_PlotLabel", "MacroprogramColorKey",
       "SemanticProgramColor", "Supermodule_LabelConfidence", "DataDrivenClusterSize",
+      "Supermodule_CleanPlotLabel", "Supermodule_CompositionDisplayLabel",
+      "raw_GO_BP_terms", "raw_GO_MF_terms", "raw_GO_CC_terms",
+      "raw_top_GO_label", "raw_module_label", "raw_hub_proteins",
+      "raw_marker_or_signature_label", "cleaned_biological_label",
+      "cleaned_biological_label_short", "cleaned_biological_label_source",
+      "cleaned_biological_label_confidence", "GO_label_relevance_flag",
+      "GO_label_relevance_rationale", "microenvironment_caution_label",
+      "microenvironment_caution_class", "microenvironment_caution_rationale",
       "dominant_microenvironment_class", "dominant_module_labels", "Supermodule_LabelRationale",
       "Supermodule_ConservativeLabel", "Supermodule_CompositionLabel",
       "Supermodule_CompositionShortLabel", "Supermodule_CompositionLabelSource",
       "Supermodule_CompositionConfidence", "Supermodule_CompositionRationale",
       "DominantMemberTheme", "DominantMemberThemeFraction", "SecondMemberTheme",
       "SecondMemberThemeFraction", "TopMemberModuleLabels", "TopMemberGOTerms",
+      "MemberThemeCounts", "MemberThemeFractions", "n_distinct_member_themes",
+      "is_multi_theme_supermodule", "themes_above_display_threshold",
+      "themes_omitted_from_display_label", "supermodule_theme_label_qc_warning",
       "n_member_modules_with_informative_labels", "fraction_member_modules_with_informative_labels",
       "ManualReviewRequired"
     ))), .keep_all = FALSE)
@@ -1556,9 +1788,27 @@ make_dataset_summary <- function(ds) {
     dplyr::distinct(.data$supermodule_id, .keep_all = TRUE) |>
     dplyr::transmute(
       SupermoduleID = .data$supermodule_id,
+      Supermodule_CleanPlotLabel,
       Supermodule_PlotLabel,
       Supermodule_FullAnnotationLabel,
       Supermodule_DisplayShort,
+      raw_GO_BP_terms,
+      raw_GO_MF_terms,
+      raw_GO_CC_terms,
+      raw_top_GO_label,
+      raw_module_label,
+      raw_hub_proteins,
+      raw_marker_or_signature_label,
+      cleaned_biological_label,
+      cleaned_biological_label_short,
+      cleaned_biological_label_source,
+      cleaned_biological_label_confidence,
+      cleaned_biological_label_rationale,
+      GO_label_relevance_flag,
+      GO_label_relevance_rationale,
+      microenvironment_caution_label,
+      microenvironment_caution_class,
+      microenvironment_caution_rationale,
       dominant_microenvironment_class,
       dominant_module_labels,
       Supermodule_ConservativeLabel,
@@ -1571,6 +1821,13 @@ make_dataset_summary <- function(ds) {
       DominantMemberThemeFraction,
       SecondMemberTheme,
       SecondMemberThemeFraction,
+      MemberThemeCounts,
+      MemberThemeFractions,
+      n_distinct_member_themes,
+      is_multi_theme_supermodule,
+      themes_above_display_threshold,
+      themes_omitted_from_display_label,
+      supermodule_theme_label_qc_warning,
       TopMemberModuleLabels,
       TopMemberGOTerms,
       n_member_modules_with_informative_labels,
@@ -1582,7 +1839,19 @@ make_dataset_summary <- function(ds) {
     dplyr::distinct(dplyr::across(dplyr::any_of(c(
       "dataset", "module_id", "ModuleID", "ModuleColor", "module_eigengene",
       "ModuleDisplayID", "ModuleColorName", "ModulePlotLabel", "ModuleLabel_Final",
-      "microenvironment_label", "supermodule_id_for_module", "Supermodule_PlotLabel",
+      "Module_CleanPlotLabel", "module_biological_label", "module_biological_label_short",
+      "module_label_display", "module_label", "raw_GO_BP_terms", "raw_GO_MF_terms",
+      "raw_GO_CC_terms", "raw_top_GO_label", "raw_module_label", "raw_hub_proteins",
+      "raw_marker_or_signature_label", "cleaned_biological_label",
+      "cleaned_biological_label_short", "cleaned_biological_label_source",
+      "cleaned_biological_label_confidence", "GO_label_relevance_flag",
+      "GO_label_relevance_rationale", "microenvironment_label",
+      "microenvironment_caution_label", "microenvironment_caution_class",
+      "supermodule_id", "supermodule_id_for_module", "Supermodule_CleanPlotLabel",
+      "Supermodule_CompositionDisplayLabel", "Supermodule_PlotLabel",
+      "MemberThemeCounts", "MemberThemeFractions", "n_distinct_member_themes",
+      "is_multi_theme_supermodule", "themes_above_display_threshold",
+      "themes_omitted_from_display_label", "supermodule_theme_label_qc_warning",
       "MacroprogramColorKey", "SemanticProgramColor"
     ))), .keep_all = FALSE)
   write_table_and_source(supermodule_plot_label_qc, paths$tables, paths$source_data, "WGCNA_supermodule_plot_label_qc.csv")
