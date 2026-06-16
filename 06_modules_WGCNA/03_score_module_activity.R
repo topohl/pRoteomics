@@ -3880,7 +3880,7 @@ if (!is.null(supermodule_directional_outputs)) {
     if (!is.null(p_super_effect_heatmap)) {
       save_directional_plot(
         p_super_effect_heatmap,
-        "publication_supermodule_effect_heatmap",
+        "legacy_supermodule_effect_heatmap",
         analysis_label,
         width = 185,
         height = 85,
@@ -3897,7 +3897,7 @@ if (!is.null(supermodule_directional_outputs)) {
     if (!is.null(p_super_consistency)) {
       save_directional_plot(
         p_super_consistency,
-        "publication_supermodule_consistency",
+        "legacy_supermodule_consistency",
         analysis_label,
         width = 175,
         height = 75,
@@ -3914,7 +3914,7 @@ if (!is.null(supermodule_directional_outputs)) {
     if (!is.null(p_super_cor)) {
       save_directional_plot(
         p_super_cor,
-        "publication_supermodule_correlation",
+        "legacy_supermodule_correlation",
         analysis_label,
         width = 185,
         height = 105,
@@ -4073,7 +4073,7 @@ if (exists("supermodule_scores_df") && nrow(supermodule_scores_df)) {
   score_outputs_manifest$supermodule_directional_consistency_csv <- file.path(dir_tables, "supermodule_directional_consistency.csv")
   score_outputs_manifest$supermodule_score_correlation_structure_csv <- file.path(dir_tables, "supermodule_score_correlation_structure.csv")
   score_outputs_manifest$supermodule_score_statistics_full_xlsx <- file.path(dir_tables, "WGCNA_supermodule_score_statistics_full.xlsx")
-  score_outputs_manifest$supermodule_directional_plot_pattern <- file.path(dir_directional, paste0("publication_supermodule_*_", dataset_profile, "_", module_definition_source, "_<analysis>.svg/pdf"))
+  score_outputs_manifest$supermodule_directional_plot_pattern <- file.path(dir_directional, paste0("legacy_supermodule_*_", dataset_profile, "_", module_definition_source, "_<analysis>.svg/pdf"))
 }
 
 write_run_manifest(

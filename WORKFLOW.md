@@ -155,8 +155,16 @@ Key outputs to inspect:
 Safe to rerun: yes. These scripts consume existing WGCNA state and do not change
 network/module construction.
 
+Clarification: `06_modules_WGCNA/03_score_module_activity.R` is the
+score/statistics/QC producer and secondary robustness/behavior-coupling layer.
+It writes score tables, replicate QC, score-derived robustness statistics,
+correlation tables, and legacy/QC score plots. `06_modules_WGCNA/05_module_supermodule_group_effects.r`
+is the primary WGCNA eigengene group-effect inference layer.
+
 Before moving on: check model warnings, `evidence_status`, FDR columns, spatial
-unit fields, and whether module scores have adequate coverage.
+unit fields, whether module scores have adequate coverage, and whether the
+score-derived publication plots have been refreshed by
+`06_modules_WGCNA/08_wgcna_score_publication_summary.R` after labels are cleaned.
 
 ## 7. Biological Annotation
 
@@ -183,8 +191,8 @@ used conservatively and not interpreted as purified immune activation.
 
 ## 8. Interpretable Summaries
 
-Purpose: join WGCNA effects and biological annotation into manuscript-facing
-tables, source data, and figures.
+Purpose: join WGCNA effects and biological annotation into final interpretable
+module/supermodule summary tables, source data, and figures.
 
 Run command:
 
@@ -204,6 +212,31 @@ annotations.
 
 Before moving on: compare plot labels to full annotation labels, inspect label
 audit tables, and confirm source-data mirrors were written.
+
+## 8b. Score-Derived WGCNA Publication Plots
+
+Purpose: render final score-derived WGCNA supermodule robustness, consistency,
+and correlation plots from `03_score_module_activity.R` outputs using the
+cleaned semantic labels from `06_annotate_module_microenvironment.r` and
+`07_wgcna_interpretable_summary.r`.
+
+Run command:
+
+```bash
+Rscript 06_modules_WGCNA/08_wgcna_score_publication_summary.R --dataset <dataset> --module-source wgcna
+Rscript 06_modules_WGCNA/08_wgcna_score_publication_summary.R --dataset all --module-source wgcna
+```
+
+Key outputs to inspect:
+
+- `results/figures/06_modules_WGCNA/score_publication_summary/<dataset>/publication_supermodule_effect_heatmap_<dataset>_wgcna_<analysis>.svg`
+- `results/figures/06_modules_WGCNA/score_publication_summary/<dataset>/publication_supermodule_correlation_<dataset>_wgcna_<analysis>.svg`
+- `results/figures/06_modules_WGCNA/score_publication_summary/<dataset>/publication_supermodule_consistency_<dataset>_wgcna_<analysis>.svg`
+- `results/tables/06_modules_WGCNA/score_publication_summary/<dataset>/WGCNA_score_publication_validation.csv`
+
+Safe to rerun: yes. This is a final reporting layer over existing score-derived
+statistics and cleaned labels. It does not recompute WGCNA, scores, p-values,
+FDRs, effect sizes, rho values, or consistency statistics.
 
 ## 9. Integration And Export
 
