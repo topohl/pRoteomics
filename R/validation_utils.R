@@ -107,6 +107,17 @@ known_pipeline_output_specs <- function() {
       required_columns = c(
         "dataset", "ModuleID", "ModuleColor", "microenvironment_class",
         "microenvironment_label", "classification_rationale", "interpretation_note"
+      ),
+      recommended_columns = c(
+        "raw_GO_BP_terms", "raw_GO_MF_terms", "raw_GO_CC_terms",
+        "raw_top_GO_label", "raw_module_label", "raw_hub_proteins",
+        "raw_marker_or_signature_label", "cleaned_biological_label",
+        "cleaned_biological_label_short", "cleaned_biological_label_source",
+        "cleaned_biological_label_confidence", "GO_label_relevance_flag",
+        "GO_label_relevance_rationale", "microenvironment_caution_label",
+        "microenvironment_caution_class", "microenvironment_caution_rationale",
+        "Module_CleanPlotLabel", "module_biological_label",
+        "module_biological_label_short", "module_label_display"
       )
     ),
     WGCNA_supermodule_biological_annotation.csv = list(
@@ -117,10 +128,21 @@ known_pipeline_output_specs <- function() {
       ),
       recommended_columns = c(
         "Supermodule_ConservativeLabel", "Supermodule_CompositionLabel",
-        "Supermodule_CompositionShortLabel", "Supermodule_CompositionLabelSource",
+        "Supermodule_CompositionShortLabel", "Supermodule_CompositionDisplayLabel",
+        "Supermodule_CleanPlotLabel", "Supermodule_CompositionLabelSource",
         "Supermodule_CompositionConfidence", "Supermodule_CompositionRationale",
+        "raw_GO_BP_terms", "raw_GO_MF_terms", "raw_GO_CC_terms",
+        "raw_top_GO_label", "raw_module_label", "raw_hub_proteins",
+        "raw_marker_or_signature_label", "cleaned_biological_label",
+        "cleaned_biological_label_short", "cleaned_biological_label_source",
+        "cleaned_biological_label_confidence", "GO_label_relevance_flag",
+        "GO_label_relevance_rationale", "microenvironment_caution_label",
+        "microenvironment_caution_class", "microenvironment_caution_rationale",
         "DominantMemberTheme", "DominantMemberThemeFraction", "SecondMemberTheme",
         "SecondMemberThemeFraction", "TopMemberModuleLabels", "TopMemberGOTerms",
+        "MemberThemeCounts", "MemberThemeFractions", "n_distinct_member_themes",
+        "is_multi_theme_supermodule", "themes_above_display_threshold",
+        "themes_omitted_from_display_label",
         "n_member_modules_with_informative_labels",
         "fraction_member_modules_with_informative_labels"
       )
@@ -130,6 +152,14 @@ known_pipeline_output_specs <- function() {
         "dataset", "level", "contrast", "estimate", "p_value", "FDR_global",
         "interpretation_sentence", "ModulePlotLabel", "Supermodule_PlotLabel",
         "Supermodule_FullAnnotationLabel"
+      ),
+      recommended_columns = c(
+        "module_label", "module_biological_label", "module_biological_label_short",
+        "module_label_display", "supermodule_id", "Module_CleanPlotLabel",
+        "Supermodule_CleanPlotLabel", "Supermodule_CompositionDisplayLabel",
+        "Supermodule_CompositionLabel", "cleaned_biological_label",
+        "microenvironment_caution_label", "GO_label_relevance_flag",
+        "GO_label_relevance_rationale"
       )
     ),
     WGCNA_supermodule_group_effects_interpretable.csv = list(
@@ -138,6 +168,15 @@ known_pipeline_output_specs <- function() {
         "interpretation_sentence", "Supermodule_PlotLabel",
         "Supermodule_FullAnnotationLabel", "dominant_microenvironment_class",
         "Supermodule_LabelRationale"
+      ),
+      recommended_columns = c(
+        "Supermodule_CleanPlotLabel", "Supermodule_CompositionDisplayLabel",
+        "Supermodule_CompositionLabel", "cleaned_biological_label",
+        "microenvironment_caution_label", "GO_label_relevance_flag",
+        "GO_label_relevance_rationale", "TopMemberGOTerms",
+        "MemberThemeCounts", "MemberThemeFractions", "n_distinct_member_themes",
+        "is_multi_theme_supermodule", "themes_above_display_threshold",
+        "themes_omitted_from_display_label", "supermodule_theme_label_qc_warning"
       )
     ),
     biological_claims.csv = list(
@@ -151,6 +190,66 @@ known_pipeline_output_specs <- function() {
       )
     )
   )
+}
+
+validation_displayed_supermodule_theme_count <- function(label) {
+  vapply(as.character(label), function(z) {
+    z <- trimws(gsub("\\s+", " ", z))
+    if (is.na(z) || !nzchar(z)) return(0L)
+    z <- sub("^SM[0-9]+\\s*(Â·|·|:|-)\\s*", "", z, ignore.case = TRUE)
+    if (grepl("^mixed\\s+multi-program$", z, ignore.case = TRUE)) return(0L)
+    z <- sub("^mostly\\s+", "", z, ignore.case = TRUE)
+    z <- sub("^mixed:\\s*", "", z, ignore.case = TRUE)
+    parts <- trimws(unlist(strsplit(z, "\\s*;\\s*", perl = TRUE), use.names = FALSE))
+    parts <- parts[nzchar(parts) & !grepl("mixed / low-specificity|mixed / unresolved|unresolved / mixed", parts, ignore.case = TRUE)]
+    length(unique(parts))
+  }, integer(1))
+}
+
+validation_member_theme_fraction_values <- function(x) {
+  parts <- trimws(unlist(strsplit(as.character(x), "\\s*;\\s*", perl = TRUE), use.names = FALSE))
+  parts <- parts[nzchar(parts) & grepl("=", parts, fixed = TRUE)]
+  vals <- suppressWarnings(as.numeric(sub("^.*=", "", parts)))
+  names(vals) <- trimws(sub("=.*$", "", parts))
+  vals[is.finite(vals)]
+}
+
+append_supermodule_theme_audit_messages <- function(messages, df, context = "Supermodule") {
+  if (!nrow(df)) return(messages)
+  if ("MemberThemeFractions" %in% names(df)) {
+    empty_frac <- is.na(df$MemberThemeFractions) | !nzchar(trimws(as.character(df$MemberThemeFractions)))
+    if (any(empty_frac, na.rm = TRUE)) {
+      messages <- c(messages, paste0(context, " MemberThemeFractions is empty for one or more rows."))
+    }
+  }
+  if ("themes_omitted_from_display_label" %in% names(df)) {
+    omitted <- !is.na(df$themes_omitted_from_display_label) & nzchar(trimws(as.character(df$themes_omitted_from_display_label)))
+    if (any(omitted, na.rm = TRUE)) {
+      messages <- c(messages, paste0(context, " themes_omitted_from_display_label is non-empty for one or more rows."))
+    }
+  }
+  if (all(c("n_distinct_member_themes", "MemberThemeFractions", "Supermodule_PlotLabel") %in% names(df))) {
+    n_distinct <- suppressWarnings(as.integer(df$n_distinct_member_themes))
+    shown_n <- validation_displayed_supermodule_theme_count(df$Supermodule_PlotLabel)
+    hidden_three <- vapply(seq_len(nrow(df)), function(i) {
+      vals <- validation_member_theme_fraction_values(df$MemberThemeFractions[[i]])
+      vals <- vals[names(vals) != "mixed / low-specificity"]
+      is.finite(n_distinct[[i]]) && n_distinct[[i]] >= 3L && length(vals) >= 3L && all(vals >= 0.20) && shown_n[[i]] < 3L
+    }, logical(1))
+    if (any(hidden_three, na.rm = TRUE)) {
+      messages <- c(messages, paste0(context, " plot label shows fewer than 3 themes despite >=3 member themes all at fraction >=0.20."))
+    }
+  }
+  if (all(c("DominantMemberThemeFraction", "Supermodule_PlotLabel") %in% names(df))) {
+    dom <- suppressWarnings(as.numeric(df$DominantMemberThemeFraction))
+    shown_n <- validation_displayed_supermodule_theme_count(df$Supermodule_PlotLabel)
+    single_theme <- shown_n <= 1L &
+      !grepl("^SM[0-9]+\\s*(Â·|·|:|-)\\s*(mixed:|mixed multi-program|mixed / low-specificity|mixed / unresolved)", as.character(df$Supermodule_PlotLabel), ignore.case = TRUE)
+    if (any((!is.finite(dom) | dom < 0.60) & single_theme, na.rm = TRUE)) {
+      messages <- c(messages, paste0(context, " without dominant theme >=0.60 is displayed as a single-theme program."))
+    }
+  }
+  messages
 }
 
 validate_known_pipeline_output <- function(path, dataset = NULL) {
@@ -199,6 +298,31 @@ validate_known_pipeline_output <- function(path, dataset = NULL) {
   }
 
   if (identical(filename, "WGCNA_supermodule_biological_annotation.csv")) {
+    if (all(c("dataset", "microenvironment_caution_label") %in% names(df))) {
+      ds_vals <- unique(as.character(df$dataset[!is.na(df$dataset) & nzchar(as.character(df$dataset))]))
+      non_micro <- ds_vals[ds_vals %in% c("neuron_soma", "neuron_neuropil")]
+      if (length(non_micro) && any(grepl("shared microglia-neuropil ROI", as.character(df$microenvironment_caution_label), ignore.case = TRUE), na.rm = TRUE)) {
+        messages <- c(messages, "Neuron dataset outputs must not contain shared microglia-neuropil ROI caution labels.")
+      }
+    }
+    if (all(c("Supermodule_CleanPlotLabel", "Supermodule_CompositionLabel") %in% names(df))) {
+      clean_available <- !is.na(df$Supermodule_CleanPlotLabel) & nzchar(as.character(df$Supermodule_CleanPlotLabel)) |
+        !is.na(df$Supermodule_CompositionLabel) & nzchar(as.character(df$Supermodule_CompositionLabel))
+      if (nrow(df) && mean(clean_available, na.rm = TRUE) < 0.80) {
+        messages <- c(messages, "Supermodule_CleanPlotLabel or Supermodule_CompositionLabel is available for <=80% of supermodules.")
+      }
+    }
+    if ("TopMemberGOTerms" %in% names(df) && all(is.na(df$TopMemberGOTerms) | !nzchar(as.character(df$TopMemberGOTerms)))) {
+      messages <- c(messages, "TopMemberGOTerms is entirely empty; check WGCNA GO parsing if enrichment input exists.")
+    }
+    if (all(c("Supermodule_PlotLabel", "Supermodule_CleanPlotLabel", "Supermodule_CompositionLabel") %in% names(df))) {
+      plot_mixed <- grepl("^SM[0-9]+\\s*(·|:|-)\\s*(mixed / unresolved|mixed / low-specificity)$", as.character(df$Supermodule_PlotLabel), ignore.case = TRUE)
+      has_clean <- !is.na(df$Supermodule_CleanPlotLabel) & nzchar(as.character(df$Supermodule_CleanPlotLabel)) |
+        (!is.na(df$Supermodule_CompositionLabel) & nzchar(as.character(df$Supermodule_CompositionLabel)) & !grepl("mixed / low-specificity|mixed / unresolved", as.character(df$Supermodule_CompositionLabel), ignore.case = TRUE))
+      if (any(plot_mixed & has_clean, na.rm = TRUE)) {
+        messages <- c(messages, "Some Supermodule_PlotLabel values are only SMxx mixed despite available cleaned/composition labels.")
+      }
+    }
     if ("Supermodule_CompositionLabel" %in% names(df)) {
       comp <- trimws(as.character(df$Supermodule_CompositionLabel))
       comp_present <- !is.na(comp) & nzchar(comp)
@@ -233,7 +357,71 @@ validate_known_pipeline_output <- function(path, dataset = NULL) {
       if (any(micro_rows & caution_dom & overclaim, na.rm = TRUE)) {
         messages <- c(messages, "Microglia composition labels overclaim microglia specificity despite shared/neuropil/vascular dominance.")
       }
+      conflated <- micro_rows & grepl("shared microglia-neuropil ROI|neuropil-sensitive ROI|perivascular/ECM ROI|vascular/BBB ROI", as.character(df$Supermodule_CompositionLabel), ignore.case = TRUE)
+      if (any(conflated, na.rm = TRUE)) {
+        messages <- c(messages, "Microglia composition labels appear to contain ROI caution wording; composition and caution should be separate.")
+      }
     }
+    if (all(c("GO_label_relevance_flag", "cleaned_biological_label", "raw_module_label") %in% names(df))) {
+      suspicious_raw <- grepl("skin development|dorsal ventral pattern|binding sperm|zona pellucida|fertilization", as.character(df$raw_module_label), ignore.case = TRUE)
+      not_cleaned <- suspicious_raw & !as.character(df$GO_label_relevance_flag) %in% c("ontology_context_mismatch", "cleaned_or_context_checked", "cleaned_go_display")
+      if (any(not_cleaned, na.rm = TRUE)) {
+        messages <- c(messages, "Suspicious GO labels are present but not flagged as cleaned/context-checked.")
+      }
+    }
+    messages <- append_supermodule_theme_audit_messages(messages, df, context = "Supermodule annotation")
+  }
+
+  if (identical(filename, "WGCNA_module_group_effects_interpretable.csv")) {
+    if ("module_label" %in% names(df) && all(is.na(df$module_label) | !nzchar(as.character(df$module_label)))) {
+      messages <- c(messages, "Canonical module_label is entirely empty.")
+    }
+    if ("supermodule_id" %in% names(df) && all(is.na(df$supermodule_id) | !nzchar(as.character(df$supermodule_id)))) {
+      messages <- c(messages, "Canonical module-level supermodule_id is entirely empty.")
+    }
+    if (all(c("cleaned_biological_label", "module_label_display", "Module_CleanPlotLabel") %in% names(df))) {
+      has_clean <- !is.na(df$cleaned_biological_label) & nzchar(as.character(df$cleaned_biological_label))
+      has_display <- (!is.na(df$module_label_display) & nzchar(as.character(df$module_label_display))) |
+        (!is.na(df$Module_CleanPlotLabel) & nzchar(as.character(df$Module_CleanPlotLabel)))
+      if (any(has_clean & !has_display, na.rm = TRUE)) {
+        messages <- c(messages, "module_label_display or Module_CleanPlotLabel is empty despite cleaned_biological_label.")
+      }
+      mixed_user_label <- has_clean & grepl("mixed / low-specificity$", as.character(df$module_label_display), ignore.case = TRUE)
+      if (any(mixed_user_label, na.rm = TRUE)) {
+        messages <- c(messages, "User-facing module label is only mixed / low-specificity despite cleaned_biological_label.")
+      }
+    }
+    if (all(c("dataset", "microenvironment_caution_label") %in% names(df))) {
+      non_micro_rows <- as.character(df$dataset) %in% c("neuron_soma", "neuron_neuropil")
+      if (any(non_micro_rows & grepl("shared microglia-neuropil ROI", as.character(df$microenvironment_caution_label), ignore.case = TRUE), na.rm = TRUE)) {
+        messages <- c(messages, "Neuron module outputs must not contain shared microglia-neuropil ROI caution labels.")
+      }
+    }
+    if (all(c("Supermodule_PlotLabel", "Supermodule_CleanPlotLabel", "Supermodule_CompositionLabel") %in% names(df))) {
+      plot_mixed <- grepl("^SM[0-9]+\\s*(·|:|-)\\s*(mixed / unresolved|mixed / low-specificity)$", as.character(df$Supermodule_PlotLabel), ignore.case = TRUE)
+      has_clean <- !is.na(df$Supermodule_CleanPlotLabel) & nzchar(as.character(df$Supermodule_CleanPlotLabel)) |
+        (!is.na(df$Supermodule_CompositionLabel) & nzchar(as.character(df$Supermodule_CompositionLabel)) & !grepl("mixed / low-specificity|mixed / unresolved", as.character(df$Supermodule_CompositionLabel), ignore.case = TRUE))
+      if (any(plot_mixed & has_clean, na.rm = TRUE)) {
+        messages <- c(messages, "Module-level Supermodule_PlotLabel values include SMxx mixed despite available cleaned/composition labels.")
+      }
+    }
+  }
+
+  if (identical(filename, "WGCNA_supermodule_group_effects_interpretable.csv")) {
+    if (all(c("supermodule_id", "SupermoduleID") %in% names(df))) {
+      missing_super_id <- (!is.na(df$supermodule_id) & nzchar(as.character(df$supermodule_id))) &
+        (is.na(df$SupermoduleID) | !nzchar(as.character(df$SupermoduleID)))
+      if (any(missing_super_id, na.rm = TRUE)) {
+        messages <- c(messages, "SupermoduleID is empty where supermodule_id exists.")
+      }
+    }
+    if (all(c("dataset", "microenvironment_caution_label") %in% names(df))) {
+      non_micro_rows <- as.character(df$dataset) %in% c("neuron_soma", "neuron_neuropil")
+      if (any(non_micro_rows & grepl("shared microglia-neuropil ROI", as.character(df$microenvironment_caution_label), ignore.case = TRUE), na.rm = TRUE)) {
+        messages <- c(messages, "Neuron supermodule outputs must not contain shared microglia-neuropil ROI caution labels.")
+      }
+    }
+    messages <- append_supermodule_theme_audit_messages(messages, df, context = "Supermodule interpretable output")
   }
 
   data.frame(
