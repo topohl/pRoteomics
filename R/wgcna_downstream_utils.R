@@ -18,17 +18,19 @@ shorten_supermodule_label <- function(x, max_chars = 45) {
   vapply(as.character(x), function(z) {
     z <- trimws(z)
     if (is.na(z) || !nzchar(z)) return("Unresolved / mixed")
+    explicit_multi_theme <- grepl("^mixed:\\s*", z, ignore.case = TRUE)
     z <- gsub("\\s+([0-9]+)\\s+[Mm]odules?$", "", z)
     z <- gsub("\\b[Mm]odules?\\b", "", z)
     z <- gsub("\\s*\\([^)]*modules?[^)]*\\)", "", z, ignore.case = TRUE)
     z <- gsub("\\b(process|regulation|pathway|of|the|cellular|biological|positive|negative)\\b", "", z, ignore.case = TRUE)
     z <- gsub("\\s+", " ", z)
-    parts <- trimws(unlist(strsplit(z, "\\s*[;/|]\\s*", perl = TRUE), use.names = FALSE))
+    parts <- trimws(unlist(strsplit(z, "\\s*[;|]\\s*", perl = TRUE), use.names = FALSE))
     parts <- parts[nzchar(parts)]
-    if (length(parts)) z <- paste(utils::head(parts, 2), collapse = " / ")
+    if (length(parts) && !explicit_multi_theme) z <- paste(utils::head(parts, 2), collapse = " / ")
+    if (length(parts) && explicit_multi_theme) z <- paste(parts, collapse = "; ")
     z <- stringr::str_squish(z)
     if (!nzchar(z)) z <- "Unresolved / mixed"
-    if (nchar(z) > max_chars) {
+    if (nchar(z) > max_chars && !explicit_multi_theme) {
       words <- unlist(strsplit(z, "\\s+"), use.names = FALSE)
       keep <- character()
       for (word in words) {
@@ -40,6 +42,93 @@ shorten_supermodule_label <- function(x, max_chars = 45) {
     }
     z
   }, character(1))
+}
+
+wgcna_member_theme_priority <- function() {
+  c(
+    "mitochondrial / energy metabolism",
+    "translation / proteostasis",
+    "RNA/RNP regulatory module",
+    "synaptic/cytoskeletal trafficking",
+    "ECM/adhesion",
+    "barrier / cell-junction structural",
+    "neuronal signalling / regulatory",
+    "myelin / oligodendrocyte-associated",
+    "mixed / low-specificity"
+  )
+}
+
+wgcna_order_member_themes <- function(themes, fractions = NULL) {
+  themes <- as.character(themes)
+  if (!length(themes)) return(themes)
+  priority <- match(themes, wgcna_member_theme_priority())
+  priority[is.na(priority)] <- length(wgcna_member_theme_priority()) + seq_len(sum(is.na(priority)))
+  if (is.null(fractions)) fractions <- rep(0, length(themes))
+  fractions <- suppressWarnings(as.numeric(fractions))
+  fractions[is.na(fractions)] <- 0
+  themes[order(-fractions, priority, themes)]
+}
+
+wgcna_member_theme_summary <- function(member_theme, display_threshold = 0.20, dominant_threshold = 0.60) {
+  themes <- trimws(as.character(member_theme))
+  themes <- themes[!is.na(themes) & nzchar(themes)]
+  if (!length(themes)) {
+    return(list(
+      counts = setNames(integer(), character()),
+      fractions = setNames(numeric(), character()),
+      counts_label = "",
+      fractions_label = "",
+      n_distinct = 0L,
+      is_multi = FALSE,
+      themes_above_display_threshold = "",
+      display_label = "mixed / low-specificity",
+      themes_omitted_from_display_label = "",
+      displayed_themes = character()
+    ))
+  }
+  raw_counts <- table(themes)
+  raw_fracs <- as.numeric(raw_counts) / length(themes)
+  ord <- wgcna_order_member_themes(names(raw_counts), raw_fracs)
+  counts <- raw_counts[ord]
+  fractions <- setNames(as.numeric(counts) / length(themes), names(counts))
+  counts_label <- paste(paste0(names(counts), "=", as.integer(counts)), collapse = "; ")
+  fractions_label <- paste(paste0(names(fractions), "=", sprintf("%.2f", fractions)), collapse = "; ")
+  informative <- names(fractions)[names(fractions) != "mixed / low-specificity"]
+  above <- informative[fractions[informative] >= display_threshold]
+  above <- wgcna_order_member_themes(above, fractions[above])
+  dominant <- informative[fractions[informative] >= dominant_threshold]
+  dominant <- wgcna_order_member_themes(dominant, fractions[dominant])
+
+  if (length(dominant)) {
+    displayed <- dominant[[1]]
+    display_label <- paste0("mostly ", displayed)
+  } else if (length(above) >= 2L && length(above) <= 3L) {
+    displayed <- above
+    display_label <- paste0("mixed: ", paste(displayed, collapse = "; "))
+  } else if (length(above) > 3L) {
+    displayed <- character()
+    display_label <- "mixed multi-program"
+  } else if (length(above) == 1L && length(informative) == 1L) {
+    displayed <- above
+    display_label <- above[[1]]
+  } else {
+    displayed <- character()
+    display_label <- "mixed / low-specificity"
+  }
+
+  omitted <- setdiff(above, displayed)
+  list(
+    counts = counts,
+    fractions = fractions,
+    counts_label = counts_label,
+    fractions_label = fractions_label,
+    n_distinct = length(counts),
+    is_multi = length(counts) > 1L,
+    themes_above_display_threshold = paste(above, collapse = "; "),
+    display_label = display_label,
+    themes_omitted_from_display_label = paste(omitted, collapse = "; "),
+    displayed_themes = displayed
+  )
 }
 
 macroprogram_display <- function(x) {
@@ -208,6 +297,203 @@ split_tokens <- function(x) {
   out <- unlist(strsplit(x, "[/;,|[:space:]]+"), use.names = FALSE)
   out <- toupper(trimws(out))
   unique(out[nzchar(out) & !is.na(out)])
+}
+
+wgcna_split_label_terms <- function(x) {
+  vals <- unlist(strsplit(as.character(x), "\\s*[;|]\\s*"), use.names = FALSE)
+  vals <- gsub("_", " ", vals)
+  vals <- gsub("\\bGO\\b", "", vals, ignore.case = TRUE)
+  vals <- gsub("\\s+", " ", vals)
+  vals <- trimws(vals)
+  unique(vals[nzchar(vals) & !is.na(vals)])
+}
+
+wgcna_collapse_terms <- function(x, n = 5L) {
+  x <- unique(trimws(as.character(x)))
+  x <- x[nzchar(x) & !is.na(x)]
+  paste(utils::head(x, n), collapse = ";")
+}
+
+normalize_wgcna_module_key <- function(x) {
+  x <- as.character(x)
+  x <- trimws(x)
+  x <- sub("^WGCNA[_-]?", "", x, ignore.case = TRUE)
+  x <- sub("^ME", "", x, ignore.case = FALSE)
+  x <- sub("^#", "", x)
+  tolower(gsub("[^A-Za-z0-9]", "", x))
+}
+
+wgcna_go_terms_for_module <- function(go, module_color, n = 5L) {
+  empty <- list(
+    raw_GO_BP_terms = NA_character_,
+    raw_GO_MF_terms = NA_character_,
+    raw_GO_CC_terms = NA_character_,
+    raw_top_GO_label = NA_character_,
+    top_GO_BP_labels = NA_character_,
+    top_GO_MF_labels = NA_character_,
+    top_GO_CC_labels = NA_character_
+  )
+  if (is.null(go) || !nrow(go)) return(empty)
+  color_col <- first_present_col(go, c("ModuleColor", "module", "ModuleID", "module_color", "module_eigengene"))
+  desc_col <- first_present_col(go, c("Description", "description", "term_description", "ID"))
+  ont_col <- first_present_col(go, c("Ontology", "ONTOLOGY", "ontology"))
+  padj_col <- first_present_col(go, c("p.adjust", "p_adj", "padj", "qvalue", "FDR"))
+  gene_col <- first_present_col(go, c("geneID", "gene_id", "genes", "core_enrichment", "overlap_proteins"))
+  if (is.na(color_col) || is.na(desc_col)) return(empty)
+
+  target <- normalize_wgcna_module_key(module_color)
+  tab <- go[normalize_wgcna_module_key(go[[color_col]]) %in% target, , drop = FALSE]
+  if (!nrow(tab)) return(empty)
+  tab[[desc_col]] <- trimws(as.character(tab[[desc_col]]))
+  tab <- tab[nzchar(tab[[desc_col]]) & !is.na(tab[[desc_col]]), , drop = FALSE]
+  if (!nrow(tab)) return(empty)
+  if (is.na(ont_col)) {
+    tab$.__ontology <- "BP"
+    ont_col <- ".__ontology"
+  }
+  tab$.__ontology_norm <- toupper(trimws(as.character(tab[[ont_col]])))
+  tab$.__ontology_norm[!tab$.__ontology_norm %in% c("BP", "MF", "CC")] <- "BP"
+  tab$.__gene_key <- if (!is.na(gene_col)) as.character(tab[[gene_col]]) else ""
+  tab <- tab[!duplicated(paste(tab$.__ontology_norm, tab[[desc_col]], tab$.__gene_key, sep = "\r")), , drop = FALSE]
+  if (!is.na(padj_col)) {
+    tab$.__padj <- suppressWarnings(as.numeric(tab[[padj_col]]))
+    tab <- tab[order(is.na(tab$.__padj), tab$.__padj), , drop = FALSE]
+  }
+  one <- function(ont) wgcna_collapse_terms(tab[[desc_col]][tab$.__ontology_norm == ont], n = n)
+  bp <- one("BP")
+  mf <- one("MF")
+  cc <- one("CC")
+  top <- wgcna_collapse_terms(c(wgcna_split_label_terms(bp), wgcna_split_label_terms(mf), wgcna_split_label_terms(cc)), n = 1L)
+  list(
+    raw_GO_BP_terms = if (nzchar(bp)) bp else NA_character_,
+    raw_GO_MF_terms = if (nzchar(mf)) mf else NA_character_,
+    raw_GO_CC_terms = if (nzchar(cc)) cc else NA_character_,
+    raw_top_GO_label = if (nzchar(top)) top else NA_character_,
+    top_GO_BP_labels = if (nzchar(bp)) bp else NA_character_,
+    top_GO_MF_labels = if (nzchar(mf)) mf else NA_character_,
+    top_GO_CC_labels = if (nzchar(cc)) cc else NA_character_
+  )
+}
+
+wgcna_clean_semantic_label <- function(raw_label = NA_character_, go_terms = character(),
+                                       hubs = character(), marker_label = NA_character_) {
+  raw <- wgcna_collapse_terms(c(raw_label, go_terms), n = 8L)
+  raw_lower <- tolower(raw)
+  hubs_lower <- tolower(paste(hubs, collapse = " "))
+  marker_lower <- tolower(as.character(marker_label %||% ""))
+  evidence <- paste(raw_lower, hubs_lower, marker_lower)
+  flag <- "direct_or_suggestive"
+  rationale <- "display label follows module label or recurrent GO/member evidence."
+  manual <- FALSE
+
+  label <- dplyr::case_when(
+    grepl("skin development|keratinocyte|epiderm|cornified envelope|desmosome|adherens junction|cell-cell junction", evidence) ~ "barrier / cell-junction structural module",
+    grepl("binding sperm|fertilization|egg coat|zona pellucida", raw_lower) & grepl("synap|vesicle|secret|neuro|snap|stx|syp|chgb|nptx|scn|ank", evidence) ~ "synaptic / vesicle-neurosecretory module",
+    grepl("binding sperm|fertilization|egg coat|zona pellucida", raw_lower) & grepl("adhesion|glycoprotein|matrix|ecm|collagen|laminin", evidence) ~ "adhesion / glycoprotein module",
+    grepl("binding sperm|fertilization|egg coat|zona pellucida", raw_lower) ~ "low-confidence ontology artefact",
+    grepl("dorsal ventral pattern", raw_lower) & grepl("rna|rnp|splice|hnrnp|rpl|rps|ddx|rbm", evidence) ~ "RNA/RNP regulatory module",
+    grepl("dorsal ventral pattern", raw_lower) & grepl("signal|kinase|phosph|redox|neur|synap|cytoskeleton|actin|microtubule", evidence) ~ "neuronal signalling / regulatory module",
+    grepl("dorsal ventral pattern", raw_lower) ~ "mixed regulatory module",
+    grepl("generation precursor metabolites|precursor metabolites|acetyl coa|tca|respirat|oxidative|mitochond|electron transport|\\batp\\b|energy", evidence) ~ "mitochondrial / energy metabolism",
+    grepl("ensheathment neurons|myelin|oligodendro|\\bmbp\\b|\\bmag\\b|\\bmog\\b|\\bplp1\\b|\\bcnp\\b", evidence) ~ "myelin / oligodendrocyte-associated",
+    grepl("ribosom|translation|protein folding|proteasom|chaperon|proteostasis|ubiquitin", evidence) ~ "translation / proteostasis",
+    grepl("\\brna\\b|mrna|splice|rnp|ncrna|hnrnp|nucleolar|ribonucl", evidence) ~ "RNA/RNP regulatory module",
+    grepl("synap|vesicle|postsynap|presynap|neurotrans|axon|dendrit|cytoskeleton|actin|microtubule|traffick", evidence) ~ "synaptic/cytoskeletal trafficking",
+    grepl("ecm|extracellular matrix|collagen|laminin|basement membrane|integrin|adhesion", evidence) ~ "ECM/adhesion",
+    grepl("vascular|blood vessel|endothelial|pericyte|\\bbbb\\b|blood-brain barrier|mural", evidence) ~ "vascular / BBB",
+    grepl("lysosom|phago|complement|immune|inflamm|antigen|interferon|microglia", evidence) ~ "microglia/immune-associated ROI",
+    nzchar(raw) ~ shorten_supermodule_label(raw, max_chars = 42),
+    TRUE ~ "mixed / low-specificity"
+  )
+
+  if (grepl("skin development|keratinocyte|epiderm|cornified envelope|desmosome|adherens junction|cell-cell junction", evidence)) {
+    flag <- "ontology_context_mismatch"
+    rationale <- "skin/epithelial GO vocabulary reflects desmosome/cornified-envelope/cell-junction proteins; do not interpret as literal skin development in brain ROI proteomics."
+    manual <- TRUE
+  } else if (grepl("binding sperm|fertilization|egg coat|zona pellucida", raw_lower)) {
+    flag <- "ontology_context_mismatch"
+    rationale <- "fertilization/zona-pellucida GO vocabulary is not used literally; display label uses hubs or alternative GO evidence where available."
+    manual <- TRUE
+  } else if (grepl("dorsal ventral pattern", raw_lower)) {
+    flag <- "ontology_context_mismatch"
+    rationale <- "developmental patterning GO term is cleaned to regulatory biology for adult brain ROI proteomics; manual review recommended."
+    manual <- TRUE
+  } else if (grepl("generation precursor metabolites|ensheathment neurons", raw_lower)) {
+    flag <- "cleaned_go_display"
+    rationale <- "GO phrase was shortened to the supported biological theme for display while preserving raw terms."
+  }
+
+  confidence <- dplyr::case_when(
+    label %in% c("mixed / low-specificity", "low-confidence ontology artefact") ~ "low",
+    isTRUE(manual) ~ "low",
+    grepl("mostly|mixed:", label, ignore.case = TRUE) ~ "low",
+    nzchar(raw) ~ "medium",
+    TRUE ~ "low"
+  )
+
+  list(
+    cleaned_biological_label = label,
+    cleaned_biological_label_short = shorten_supermodule_label(label, max_chars = 34),
+    cleaned_biological_label_source = dplyr::case_when(
+      grepl("ontology_context_mismatch|cleaned_go_display", flag) ~ "cleaned_GO_or_hub_evidence",
+      nzchar(raw) ~ "GO_or_module_label",
+      TRUE ~ "unresolved"
+    ),
+    cleaned_biological_label_confidence = confidence,
+    cleaned_biological_label_rationale = rationale,
+    GO_label_relevance_flag = flag,
+    GO_label_relevance_rationale = rationale,
+    ManualReviewFromSemanticLabel = manual
+  )
+}
+
+wgcna_microenvironment_caution <- function(cls, label = NA_character_, rationale = NA_character_, dataset = current_dataset()) {
+  cls <- as.character(cls %||% NA_character_)
+  lab <- as.character(label %||% NA_character_)
+  ds <- as.character(dataset %||% current_dataset())
+  caution <- if (identical(ds, "microglia")) {
+    dplyr::case_when(
+      cls == "shared_microenvironment" ~ "shared microglia-neuropil ROI",
+      cls == "neuropil_sensitive" ~ "neuropil-sensitive microglia ROI",
+      cls == "vascular_basement_membrane_ecm" ~ "perivascular/ECM microglia ROI",
+      cls == "vascular_bbb_mural" ~ "vascular/BBB microglia ROI",
+      cls %in% c("microglia_supported", "microglia_state_or_activation_supported") ~ "microglia-supported ROI",
+      cls == "ambiguous_or_mixed" ~ "curated/shared ROI caution; not microglia-specific by itself",
+      TRUE ~ "curated/shared ROI caution; not microglia-specific by itself"
+    )
+  } else if (identical(ds, "neuron_soma")) {
+    dplyr::case_when(
+      cls %in% c("vascular_basement_membrane_ecm", "vascular_bbb_mural", "astrocyte_or_endfoot_sensitive", "oligodendrocyte_or_myelin_sensitive", "ambiguous_or_mixed") ~ "shared local tissue / marker-overlap caution",
+      TRUE ~ "neuronal soma-enriched tissue program"
+    )
+  } else if (identical(ds, "neuron_neuropil")) {
+    dplyr::case_when(
+      cls %in% c("vascular_basement_membrane_ecm", "vascular_bbb_mural", "astrocyte_or_endfoot_sensitive", "oligodendrocyte_or_myelin_sensitive", "ambiguous_or_mixed") ~ "shared local tissue / marker-overlap caution",
+      TRUE ~ "neuron-neuropil tissue program"
+    )
+  } else {
+    "not_applicable"
+  }
+  list(
+    microenvironment_caution_label = caution,
+    microenvironment_caution_class = cls,
+    microenvironment_caution_rationale = paste(c(na.omit(c(rationale, WGCNA_ROI_NOTE))), collapse = "; ")
+  )
+}
+
+compose_supermodule_composition_display <- function(composition_label, caution_label = NA_character_, dataset = current_dataset()) {
+  comp <- as.character(composition_label)
+  caution <- as.character(caution_label)
+  prefix <- dplyr::case_when(
+    identical(as.character(dataset), "microglia") & grepl("^shared", caution, ignore.case = TRUE) ~ "shared ROI: ",
+    identical(as.character(dataset), "microglia") & grepl("^neuropil", caution, ignore.case = TRUE) ~ "neuropil-sensitive ROI: ",
+    identical(as.character(dataset), "microglia") & grepl("perivascular|vascular|BBB", caution, ignore.case = TRUE) ~ "vascular/ECM ROI: ",
+    identical(as.character(dataset), "microglia") & grepl("microglia-supported", caution, ignore.case = TRUE) ~ "microglia-supported ROI: ",
+    TRUE ~ ""
+  )
+  out <- paste0(prefix, comp)
+  out[is.na(comp) | !nzchar(comp)] <- "mixed / low-specificity"
+  out
 }
 
 wgcna_marker_sets <- function() {
