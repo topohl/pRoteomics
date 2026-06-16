@@ -387,7 +387,18 @@ stages:
         consumes_optional: ["results/tables/06_modules_WGCNA/04_wgcna_de_gsea_overlap/<dataset>/"]
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "Manuscript-facing summary layer. Runs after group effects and biological annotation, preserving broad plot labels alongside full annotation/rationale fields."
+        notes: "Final WGCNA interpretable module/supermodule summary tables and plots. Runs after primary group effects and biological annotation, preserving broad plot labels alongside full annotation/rationale fields."
+      - script: "06_modules_WGCNA/08_wgcna_score_publication_summary.R"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        stage: "modules_downstream"
+        scope: "dataset_specific"
+        produces: ["results/figures/06_modules_WGCNA/score_publication_summary/<dataset>/publication_supermodule_effect_heatmap_<dataset>_wgcna_<analysis>.svg", "results/figures/06_modules_WGCNA/score_publication_summary/<dataset>/publication_supermodule_correlation_<dataset>_wgcna_<analysis>.svg", "results/figures/06_modules_WGCNA/score_publication_summary/<dataset>/publication_supermodule_consistency_<dataset>_wgcna_<analysis>.svg", "results/tables/06_modules_WGCNA/score_publication_summary/<dataset>/WGCNA_score_publication_validation.csv"]
+        consumes_required: ["results/tables/06_modules_WGCNA/module_score/<dataset>/wgcna/supermodule_directional_effects.csv", "results/tables/06_modules_WGCNA/module_score/<dataset>/wgcna/supermodule_directional_consistency.csv", "results/tables/06_modules_WGCNA/module_score/<dataset>/wgcna/supermodule_score_correlation_structure.csv", "results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_supermodule_biological_annotation.csv", "results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_supermodule_group_effects_interpretable.csv"]
+        consumes_optional: ["results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_module_biological_annotation.csv", "results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_module_group_effects_interpretable.csv", "results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_supermodule_label_audit.csv", "results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_supermodule_plot_label_qc.csv", "results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_module_plot_label_qc.csv"]
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Final publication rendering for score-derived WGCNA supermodule robustness/correlation outputs. Score/statistics computation stays in 03_score_module_activity.R; plot labels come from cleaned 06/07 semantic annotation."
       - script: "06_modules_WGCNA/08_microglia_neuropil_independence.R"
         required: false
         datasets: ["microglia"]

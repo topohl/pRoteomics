@@ -108,9 +108,6 @@ wgcna_member_theme_summary <- function(member_theme, display_threshold = 0.20, d
   } else if (length(above) > 3L) {
     displayed <- character()
     display_label <- "mixed multi-program"
-  } else if (length(above) == 1L && length(informative) == 1L) {
-    displayed <- above
-    display_label <- above[[1]]
   } else {
     displayed <- character()
     display_label <- "mixed / low-specificity"
@@ -135,7 +132,7 @@ macroprogram_display <- function(x) {
   vapply(as.character(x), function(z) {
     z0 <- tolower(trimws(z %||% ""))
     if (!nzchar(z0)) return("Unresolved / mixed")
-    if (grepl("ecm|adhesion|basement membrane|collagen|laminin|integrin", z0)) return("Perivascular ECM / adhesion")
+    if (grepl("ecm|extracellular matrix|basement membrane|collagen|laminin|nidogen|\\bagrn\\b|hspg2|perlecan|\\bcol4a[12]?\\b|\\blama[0-9]?\\b|\\blamb[0-9]?\\b|\\blamc[0-9]?\\b|\\bnid[12]\\b|\\bbcam\\b|serpinh1", z0)) return("Perivascular ECM / adhesion")
     if (grepl("mitochondr|respiratory|oxidative|\\batp\\b|\\btca\\b|acetyl-coa", z0)) return("Mitochondrial metabolism")
     if (grepl("\\brna\\b|ribosome|translation|splice|\\brnp\\b|ncrna", z0)) return("RNA / translation")
     if (grepl("synapse|vesicle|postsynaptic|actin|cytoskeleton", z0)) return("Synaptic / cytoskeletal")
@@ -314,6 +311,198 @@ wgcna_collapse_terms <- function(x, n = 5L) {
   paste(utils::head(x, n), collapse = ";")
 }
 
+wgcna_marker_panel_summary <- function(marker_panel_fractions = NULL) {
+  if (is.null(marker_panel_fractions)) return(list(label = "", values = numeric()))
+  if (is.data.frame(marker_panel_fractions)) {
+    nms <- names(marker_panel_fractions)
+    vals <- suppressWarnings(as.numeric(marker_panel_fractions[1, , drop = TRUE]))
+    names(vals) <- nms
+  } else {
+    vals <- suppressWarnings(as.numeric(marker_panel_fractions))
+    names(vals) <- names(marker_panel_fractions)
+  }
+  vals <- vals[is.finite(vals) & !is.na(names(vals)) & nzchar(names(vals))]
+  vals <- vals[order(vals, decreasing = TRUE)]
+  vals <- vals[vals > 0]
+  label <- if (length(vals)) paste0(names(utils::head(vals, 8L)), "=", sprintf("%.2f", utils::head(vals, 8L)), collapse = ";") else ""
+  list(label = label, values = vals)
+}
+
+wgcna_assign_semantic_program <- function(raw_label = NA_character_, go_terms = character(),
+                                          hubs = character(), marker_label = NA_character_,
+                                          bp_terms = NULL, mf_terms = NULL, cc_terms = NULL,
+                                          marker_panel_fractions = NULL) {
+  bp <- if (is.null(bp_terms)) character() else wgcna_split_label_terms(bp_terms)
+  mf <- if (is.null(mf_terms)) character() else wgcna_split_label_terms(mf_terms)
+  cc <- if (is.null(cc_terms)) character() else wgcna_split_label_terms(cc_terms)
+  all_go <- wgcna_split_label_terms(c(go_terms, bp, mf, cc))
+  raw_terms <- wgcna_split_label_terms(raw_label)
+  hub_tokens <- split_tokens(hubs)
+  marker_summary <- wgcna_marker_panel_summary(marker_panel_fractions)
+  marker_values <- marker_summary$values
+
+  bp_text <- tolower(paste(bp, collapse = " "))
+  mf_text <- tolower(paste(mf, collapse = " "))
+  cc_text <- tolower(paste(cc, collapse = " "))
+  evidence_text <- tolower(paste(raw_terms, all_go, hub_tokens, marker_label, marker_summary$label, collapse = " "))
+  hub_text <- tolower(paste(hub_tokens, collapse = " "))
+  marker_text <- tolower(paste(marker_label, marker_summary$label, collapse = " "))
+
+  has <- function(pattern, text = evidence_text) grepl(pattern, text, perl = TRUE)
+  panel_max <- function(pattern) {
+    hit <- grepl(pattern, names(marker_values), ignore.case = TRUE)
+    if (any(hit)) max(marker_values[hit], na.rm = TRUE) else NA_real_
+  }
+  ecm_panel <- panel_max("ecm|basement|matrix|collagen|laminin|perivascular")
+  vascular_panel <- panel_max("vascular|endothelial|pericyte|bbb|mural")
+  high_ecm_panel <- is.finite(ecm_panel) && ecm_panel >= 0.20
+  vascular_context <- is.finite(vascular_panel) && vascular_panel >= 0.20
+
+  explicit_ecm <- has("ecm|extracellular matrix|basement membrane|collagen|laminin|nidogen|\\bagrn\\b|hspg2|perlecan|\\bcol4a[12]?\\b|\\blama[0-9]?\\b|\\blamb[0-9]?\\b|\\blamc[0-9]?\\b|\\bnid[12]\\b|\\bbcam\\b|serpinh1")
+  adhesion_evidence <- has("adhesion|cell-cell adhesion mediator activity|cell adhesion molecule")
+  integrin_evidence <- has("integrin|\\bitga[0-9a-z]*\\b|\\bitgb[0-9a-z]*\\b")
+  synaptic_cc <- has("presynaptic membrane|postsynaptic density|synaptic membrane|synapse|postsynap|presynap", cc_text)
+  synaptic_evidence <- synaptic_cc || has("synap|vesicle|postsynap|presynap|neurotrans|axon|dendrit|scaffold|pdz|ankyrin|membrane raft|traffick|actin|cytoskeleton|microtubule")
+  ion_regulatory <- has("monoatomic ion transport|ion transport|cation transport|channel activity|regulation of.*ion transport", bp_text)
+  pdz_binding <- has("pdz domain binding", mf_text)
+
+  warnings <- character()
+  adhesion_interpretation <- NA_character_
+  if (adhesion_evidence && synaptic_cc) {
+    adhesion_interpretation <- "synaptic adhesion / membrane scaffold"
+  } else if ((adhesion_evidence || integrin_evidence) && (explicit_ecm || high_ecm_panel || vascular_context)) {
+    adhesion_interpretation <- "ECM-supported adhesion"
+  } else if (adhesion_evidence || integrin_evidence) {
+    adhesion_interpretation <- "ambiguous adhesion/integrin evidence without ECM context"
+    warnings <- c(warnings, "adhesion_or_integrin_without_explicit_ecm_context")
+  }
+
+  scores <- c(
+    `mitochondrial / energy metabolism` = as.integer(has("generation precursor metabolites|precursor metabolites|mitochond|respirat|oxidative|electron transport|\\batp\\b|\\btca\\b|acetyl[- ]coa|nad[hp]?|cytochrome")),
+    `translation / proteostasis` = as.integer(has("ribosom|translation|protein folding|proteasom|chaperon|proteostasis|ubiquitin|er stress")),
+    `RNA/RNP regulatory module` = as.integer(has("\\brna\\b|mrna|splice|\\brnp\\b|hnrnp|nucleolar|ribonucl|ncrna|ribonucleoprotein")),
+    `synaptic/cytoskeletal trafficking` = as.integer(synaptic_evidence),
+    `ECM/adhesion` = as.integer(explicit_ecm || high_ecm_panel || ((adhesion_evidence || integrin_evidence) && vascular_context)),
+    `barrier / cell-junction structural` = as.integer(has("skin development|keratinocyte|epiderm|cornified envelope|desmosome|adherens junction|cell-cell junction|tight junction|barrier")),
+    `neuronal signalling / regulatory` = as.integer(has("signal|kinase|phosph|redox|neuronal|neuron projection|stimulus|ion homeostasis")),
+    `myelin / oligodendrocyte-associated` = as.integer(has("ensheathment neurons|myelin|oligodendro|\\bmbp\\b|\\bmag\\b|\\bmog\\b|\\bplp1\\b|\\bcnp\\b")),
+    `microglia/immune-associated ROI` = as.integer(has("lysosom|phago|complement|immune|inflamm|antigen|interferon|microglia")),
+    `vascular / BBB` = as.integer(has("vascular|blood vessel|endothelial|pericyte|\\bbbb\\b|blood-brain barrier|mural"))
+  )
+  if (explicit_ecm || high_ecm_panel) scores[["ECM/adhesion"]] <- scores[["ECM/adhesion"]] + 1L
+  if (synaptic_cc) scores[["synaptic/cytoskeletal trafficking"]] <- scores[["synaptic/cytoskeletal trafficking"]] + 1L
+  if (ion_regulatory && synaptic_cc) scores[["synaptic/cytoskeletal trafficking"]] <- scores[["synaptic/cytoskeletal trafficking"]] + 1L
+
+  ontology_mismatch <- FALSE
+  label <- NA_character_
+  primary <- NA_character_
+  secondary <- NA_character_
+  rule <- "evidence_scoring_with_specificity_gates"
+  confidence <- "low"
+
+  if (synaptic_cc && (pdz_binding || adhesion_evidence) && ion_regulatory) {
+    label <- "synaptic membrane / ion-transport regulatory scaffold"
+    primary <- "synaptic/cytoskeletal trafficking"
+    secondary <- "neuronal signalling / regulatory"
+    confidence <- "high"
+    rule <- "synaptic_CC_plus_PDZ_or_adhesion_MF_plus_ion_transport_BP"
+  } else if (has("skin development|keratinocyte|epiderm|cornified envelope|desmosome|adherens junction|cell-cell junction")) {
+    label <- "barrier / cell-junction structural module"
+    primary <- "barrier / cell-junction structural"
+    confidence <- "low"
+    rule <- "brain_context_cleanup_for_epidermal_cell_junction_GO"
+    ontology_mismatch <- TRUE
+  } else if (has("binding sperm|fertilization|egg coat|zona pellucida", tolower(paste(raw_terms, collapse = " ")))) {
+    ontology_mismatch <- TRUE
+    if (synaptic_evidence) {
+      label <- "synaptic / vesicle-neurosecretory module"
+      primary <- "synaptic/cytoskeletal trafficking"
+      confidence <- "low"
+      rule <- "fertilization_GO_context_mismatch_cleaned_by_synaptic_evidence"
+    } else if (explicit_ecm || high_ecm_panel) {
+      label <- "ECM/adhesion"
+      primary <- "ECM/adhesion"
+      confidence <- "low"
+      rule <- "fertilization_GO_context_mismatch_cleaned_by_ECM_evidence"
+    } else {
+      label <- "low-confidence ontology artefact"
+      primary <- "mixed / low-specificity"
+      confidence <- "low"
+      rule <- "fertilization_GO_context_mismatch_without_specific_support"
+    }
+  } else if (has("dorsal ventral pattern", tolower(paste(raw_terms, collapse = " ")))) {
+    ontology_mismatch <- TRUE
+    if (scores[["RNA/RNP regulatory module"]] > 0L) {
+      label <- "RNA/RNP regulatory module"
+      primary <- "RNA/RNP regulatory module"
+    } else if (scores[["neuronal signalling / regulatory"]] > 0L || synaptic_evidence) {
+      label <- "neuronal signalling / regulatory module"
+      primary <- "neuronal signalling / regulatory"
+    } else {
+      label <- "mixed regulatory module"
+      primary <- "mixed / low-specificity"
+    }
+    confidence <- "low"
+    rule <- "developmental_patterning_GO_context_mismatch_cleaned_by_supporting_evidence"
+  }
+
+  if (is.na(primary) || !nzchar(primary)) {
+    ranked <- sort(scores, decreasing = TRUE)
+    positive <- ranked[ranked > 0]
+    if (length(positive)) {
+      primary <- names(positive)[[1]]
+      secondary <- if (length(positive) >= 2L) names(positive)[[2]] else NA_character_
+      label <- primary
+      confidence <- if (positive[[1]] >= 2L || (primary != "ECM/adhesion" && length(raw_terms) + length(all_go) > 0L)) "medium" else "low"
+    } else if (length(raw_terms) || length(all_go)) {
+      label <- shorten_supermodule_label(wgcna_collapse_terms(c(raw_terms, all_go), n = 4L), max_chars = 42)
+      primary <- "mixed / low-specificity"
+      confidence <- "low"
+      rule <- "no_specific_semantic_gate_matched_raw_label_retained_for_audit"
+      warnings <- c(warnings, "no_specific_semantic_program_classified")
+    } else {
+      label <- "mixed / low-specificity"
+      primary <- "mixed / low-specificity"
+      rule <- "no_semantic_evidence"
+      warnings <- c(warnings, "no_semantic_evidence")
+    }
+  }
+  if (is.na(secondary) || !nzchar(secondary)) {
+    ranked <- sort(scores, decreasing = TRUE)
+    positive <- names(ranked[ranked > 0])
+    secondary_candidates <- positive[positive != primary]
+    secondary <- if (length(secondary_candidates)) secondary_candidates[[1]] else NA_character_
+  }
+
+  flag <- dplyr::case_when(
+    ontology_mismatch ~ "ontology_context_mismatch",
+    rule %in% c("brain_context_cleanup_for_epidermal_cell_junction_GO") ~ "cleaned_go_display",
+    TRUE ~ "direct_or_suggestive"
+  )
+  rationale <- paste0(
+    "semantic classifier used BP/MF/CC/hub/marker-panel evidence with adhesion/ECM specificity gates; rule=", rule,
+    if (nzchar(marker_summary$label)) paste0("; marker_panels=", marker_summary$label) else ""
+  )
+
+  list(
+    module_specific_label = label,
+    module_program_primary = primary,
+    module_program_secondary = secondary,
+    label_confidence = confidence,
+    label_decision_rule = rule,
+    label_warning = paste(unique(warnings), collapse = ";"),
+    adhesion_interpretation = adhesion_interpretation %||% "",
+    evidence_BP = wgcna_collapse_terms(bp, n = 20L),
+    evidence_MF = wgcna_collapse_terms(mf, n = 20L),
+    evidence_CC = wgcna_collapse_terms(cc, n = 20L),
+    evidence_hubs = paste(utils::head(unique(hub_tokens), 30L), collapse = ";"),
+    evidence_marker_panels = marker_summary$label,
+    GO_label_relevance_flag = flag,
+    GO_label_relevance_rationale = rationale,
+    ManualReviewFromSemanticLabel = ontology_mismatch || length(warnings) > 0L
+  )
+}
+
 normalize_wgcna_module_key <- function(x) {
   x <- as.character(x)
   x <- trimws(x)
@@ -376,74 +565,44 @@ wgcna_go_terms_for_module <- function(go, module_color, n = 5L) {
 }
 
 wgcna_clean_semantic_label <- function(raw_label = NA_character_, go_terms = character(),
-                                       hubs = character(), marker_label = NA_character_) {
-  raw <- wgcna_collapse_terms(c(raw_label, go_terms), n = 8L)
-  raw_lower <- tolower(raw)
-  hubs_lower <- tolower(paste(hubs, collapse = " "))
-  marker_lower <- tolower(as.character(marker_label %||% ""))
-  evidence <- paste(raw_lower, hubs_lower, marker_lower)
-  flag <- "direct_or_suggestive"
-  rationale <- "display label follows module label or recurrent GO/member evidence."
-  manual <- FALSE
-
-  label <- dplyr::case_when(
-    grepl("skin development|keratinocyte|epiderm|cornified envelope|desmosome|adherens junction|cell-cell junction", evidence) ~ "barrier / cell-junction structural module",
-    grepl("binding sperm|fertilization|egg coat|zona pellucida", raw_lower) & grepl("synap|vesicle|secret|neuro|snap|stx|syp|chgb|nptx|scn|ank", evidence) ~ "synaptic / vesicle-neurosecretory module",
-    grepl("binding sperm|fertilization|egg coat|zona pellucida", raw_lower) & grepl("adhesion|glycoprotein|matrix|ecm|collagen|laminin", evidence) ~ "adhesion / glycoprotein module",
-    grepl("binding sperm|fertilization|egg coat|zona pellucida", raw_lower) ~ "low-confidence ontology artefact",
-    grepl("dorsal ventral pattern", raw_lower) & grepl("rna|rnp|splice|hnrnp|rpl|rps|ddx|rbm", evidence) ~ "RNA/RNP regulatory module",
-    grepl("dorsal ventral pattern", raw_lower) & grepl("signal|kinase|phosph|redox|neur|synap|cytoskeleton|actin|microtubule", evidence) ~ "neuronal signalling / regulatory module",
-    grepl("dorsal ventral pattern", raw_lower) ~ "mixed regulatory module",
-    grepl("generation precursor metabolites|precursor metabolites|acetyl coa|tca|respirat|oxidative|mitochond|electron transport|\\batp\\b|energy", evidence) ~ "mitochondrial / energy metabolism",
-    grepl("ensheathment neurons|myelin|oligodendro|\\bmbp\\b|\\bmag\\b|\\bmog\\b|\\bplp1\\b|\\bcnp\\b", evidence) ~ "myelin / oligodendrocyte-associated",
-    grepl("ribosom|translation|protein folding|proteasom|chaperon|proteostasis|ubiquitin", evidence) ~ "translation / proteostasis",
-    grepl("\\brna\\b|mrna|splice|rnp|ncrna|hnrnp|nucleolar|ribonucl", evidence) ~ "RNA/RNP regulatory module",
-    grepl("synap|vesicle|postsynap|presynap|neurotrans|axon|dendrit|cytoskeleton|actin|microtubule|traffick", evidence) ~ "synaptic/cytoskeletal trafficking",
-    grepl("ecm|extracellular matrix|collagen|laminin|basement membrane|integrin|adhesion", evidence) ~ "ECM/adhesion",
-    grepl("vascular|blood vessel|endothelial|pericyte|\\bbbb\\b|blood-brain barrier|mural", evidence) ~ "vascular / BBB",
-    grepl("lysosom|phago|complement|immune|inflamm|antigen|interferon|microglia", evidence) ~ "microglia/immune-associated ROI",
-    nzchar(raw) ~ shorten_supermodule_label(raw, max_chars = 42),
-    TRUE ~ "mixed / low-specificity"
+                                       hubs = character(), marker_label = NA_character_,
+                                       bp_terms = NULL, mf_terms = NULL, cc_terms = NULL,
+                                       marker_panel_fractions = NULL) {
+  semantic <- wgcna_assign_semantic_program(
+    raw_label = raw_label,
+    go_terms = go_terms,
+    hubs = hubs,
+    marker_label = marker_label,
+    bp_terms = bp_terms,
+    mf_terms = mf_terms,
+    cc_terms = cc_terms,
+    marker_panel_fractions = marker_panel_fractions
   )
+  raw <- wgcna_collapse_terms(c(raw_label, go_terms, bp_terms, mf_terms, cc_terms), n = 8L)
+  label <- semantic$module_specific_label
+  flag <- semantic$GO_label_relevance_flag
+  rationale <- semantic$GO_label_relevance_rationale
 
-  if (grepl("skin development|keratinocyte|epiderm|cornified envelope|desmosome|adherens junction|cell-cell junction", evidence)) {
-    flag <- "ontology_context_mismatch"
-    rationale <- "skin/epithelial GO vocabulary reflects desmosome/cornified-envelope/cell-junction proteins; do not interpret as literal skin development in brain ROI proteomics."
-    manual <- TRUE
-  } else if (grepl("binding sperm|fertilization|egg coat|zona pellucida", raw_lower)) {
-    flag <- "ontology_context_mismatch"
-    rationale <- "fertilization/zona-pellucida GO vocabulary is not used literally; display label uses hubs or alternative GO evidence where available."
-    manual <- TRUE
-  } else if (grepl("dorsal ventral pattern", raw_lower)) {
-    flag <- "ontology_context_mismatch"
-    rationale <- "developmental patterning GO term is cleaned to regulatory biology for adult brain ROI proteomics; manual review recommended."
-    manual <- TRUE
-  } else if (grepl("generation precursor metabolites|ensheathment neurons", raw_lower)) {
-    flag <- "cleaned_go_display"
-    rationale <- "GO phrase was shortened to the supported biological theme for display while preserving raw terms."
-  }
-
-  confidence <- dplyr::case_when(
-    label %in% c("mixed / low-specificity", "low-confidence ontology artefact") ~ "low",
-    isTRUE(manual) ~ "low",
-    grepl("mostly|mixed:", label, ignore.case = TRUE) ~ "low",
-    nzchar(raw) ~ "medium",
-    TRUE ~ "low"
-  )
-
-  list(
-    cleaned_biological_label = label,
-    cleaned_biological_label_short = shorten_supermodule_label(label, max_chars = 34),
-    cleaned_biological_label_source = dplyr::case_when(
-      grepl("ontology_context_mismatch|cleaned_go_display", flag) ~ "cleaned_GO_or_hub_evidence",
-      nzchar(raw) ~ "GO_or_module_label",
-      TRUE ~ "unresolved"
+  c(
+    list(
+      cleaned_biological_label = label,
+      cleaned_biological_label_short = shorten_supermodule_label(label, max_chars = 34),
+      cleaned_biological_label_source = dplyr::case_when(
+        grepl("ontology_context_mismatch|cleaned_go_display", flag) ~ "cleaned_GO_or_hub_evidence",
+        nzchar(raw) ~ "GO_or_module_label",
+        TRUE ~ "unresolved"
+      ),
+      cleaned_biological_label_confidence = semantic$label_confidence,
+      cleaned_biological_label_rationale = rationale,
+      GO_label_relevance_flag = flag,
+      GO_label_relevance_rationale = rationale,
+      ManualReviewFromSemanticLabel = semantic$ManualReviewFromSemanticLabel
     ),
-    cleaned_biological_label_confidence = confidence,
-    cleaned_biological_label_rationale = rationale,
-    GO_label_relevance_flag = flag,
-    GO_label_relevance_rationale = rationale,
-    ManualReviewFromSemanticLabel = manual
+    semantic[c(
+      "module_specific_label", "module_program_primary", "module_program_secondary",
+      "label_confidence", "label_decision_rule", "label_warning", "adhesion_interpretation",
+      "evidence_BP", "evidence_MF", "evidence_CC", "evidence_hubs", "evidence_marker_panels"
+    )]
   )
 }
 

@@ -111,6 +111,21 @@ testthat::test_that("supermodule display labels keep immutable IDs and cap singl
   testthat::expect_match(lbl, "Perivascular ECM")
 })
 
+testthat::test_that("semantic classifier treats synaptic adhesion scaffold as non-ECM", {
+  source(testthat::test_path("..", "..", "R", "wgcna_downstream_utils.R"))
+  assigned <- wgcna_assign_semantic_program(
+    bp_terms = "regulation of monoatomic ion transport",
+    mf_terms = c("PDZ domain binding", "cell-cell adhesion mediator activity"),
+    cc_terms = c("presynaptic membrane", "postsynaptic density", "synaptic membrane")
+  )
+  testthat::expect_equal(
+    assigned$module_specific_label,
+    "synaptic membrane / ion-transport regulatory scaffold"
+  )
+  testthat::expect_equal(assigned$module_program_primary, "synaptic/cytoskeletal trafficking")
+  testthat::expect_false(grepl("ECM/adhesion|Perivascular ECM / adhesion", paste(unlist(assigned), collapse = " "), ignore.case = TRUE))
+})
+
 testthat::test_that("legacy static supermodule seeds stay opt-in", {
   script <- readLines(testthat::test_path("..", "..", "06_modules_WGCNA", "01_WGCNA.r"), warn = FALSE)
   txt <- paste(script, collapse = "\n")
