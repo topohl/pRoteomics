@@ -100,7 +100,12 @@ if (!skip_missing_output(super_ann_path, "microglia WGCNA supermodule annotation
     super_ann <- read_csv_required(super_ann_path, "microglia WGCNA supermodule annotation")
     require_module_contract_columns(
       super_ann,
-      c("dataset", "SupermoduleID", "dominant_microenvironment_class", "dominant_module_labels", "Supermodule_LabelRationale"),
+      c(
+        "dataset", "SupermoduleID", "dominant_microenvironment_class", "dominant_module_labels",
+        "Supermodule_LabelRationale", "Supermodule_CompositionLabel",
+        "Supermodule_CompositionDisplayLabel", "Supermodule_CleanPlotLabel",
+        "microenvironment_caution_label", "raw_GO_BP_terms", "cleaned_biological_label"
+      ),
       "WGCNA supermodule biological annotation"
     )
   }, "WGCNA supermodule annotation contract")
@@ -115,6 +120,9 @@ if (!skip_missing_output(module_interp_path, "microglia WGCNA module interpretab
       module_interp,
       c(
         "ModulePlotLabel", "Supermodule_PlotLabel", "Supermodule_FullAnnotationLabel",
+        "module_label", "supermodule_id", "Module_CleanPlotLabel",
+        "Supermodule_CleanPlotLabel", "cleaned_biological_label",
+        "microenvironment_caution_label",
         "targeted_signature_primary_driver", "targeted_signature_driver_class",
         "targeted_signature_driver_signature", "targeted_signature_driver_padj",
         "targeted_signature_driver_NES", "targeted_signature_driver_overlap_proteins"
@@ -133,6 +141,9 @@ if (!skip_missing_output(super_interp_path, "microglia WGCNA supermodule interpr
       super_interp,
       c(
         "Supermodule_PlotLabel", "Supermodule_FullAnnotationLabel",
+        "Supermodule_CleanPlotLabel", "Supermodule_CompositionDisplayLabel",
+        "Supermodule_CompositionLabel", "cleaned_biological_label",
+        "microenvironment_caution_label",
         "Supermodule_DisplayShort", "dominant_microenvironment_class",
         "dominant_module_labels", "Supermodule_LabelRationale"
       ),
