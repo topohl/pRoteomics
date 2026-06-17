@@ -670,6 +670,7 @@ classify_supermodule_label_confidence <- function(n_modules, go_class = "unresol
 }
 
 supermodule_merge_cut_height <- function(dataset) {
+  dataset <- validate_dataset(dataset, source = "supermodule cut-height dataset")
   switch(as.character(dataset),
     neuron_neuropil = 0.55,
     neuron_soma = 0.35,
@@ -678,11 +679,41 @@ supermodule_merge_cut_height <- function(dataset) {
   )
 }
 supermodule_cut_height_default <- supermodule_merge_cut_height
-selected_supermodule_merge_cut_height <- function(dataset) {
+selected_supermodule_cut_height_info <- function(dataset) {
+  dataset_resolved <- validate_dataset(dataset, source = "supermodule cut-height dataset")
+  override_raw <- Sys.getenv("PROTEOMICS_WGCNA_SUPERMODULE_CUT_HEIGHT", unset = "")
+  override_used <- nzchar(trimws(override_raw))
+  override_value <- suppressWarnings(as.numeric(override_raw))
   default_cut_height <- supermodule_merge_cut_height(dataset)
-  cut_height <- suppressWarnings(as.numeric(Sys.getenv("PROTEOMICS_WGCNA_SUPERMODULE_CUT_HEIGHT", unset = as.character(default_cut_height))))
-  if (!is.finite(cut_height)) cut_height <- default_cut_height
-  cut_height
+  selected_cut_height <- if (override_used && is.finite(override_value)) override_value else default_cut_height
+  if (override_used && !is.finite(override_value)) {
+    warning(
+      "Ignoring non-finite PROTEOMICS_WGCNA_SUPERMODULE_CUT_HEIGHT='", override_raw,
+      "'; using dataset default ", default_cut_height, " for ", dataset_resolved, ".",
+      call. = FALSE
+    )
+    override_used <- FALSE
+  }
+  if (identical(dataset_resolved, "neuron_neuropil") &&
+      isTRUE(all.equal(selected_cut_height, default_cut_height)) == FALSE &&
+      !override_used) {
+    stop(
+      "Resolved dataset is neuron_neuropil but selected primary supermodule cut height is ",
+      selected_cut_height, " instead of the default 0.55, with no explicit ",
+      "PROTEOMICS_WGCNA_SUPERMODULE_CUT_HEIGHT override.",
+      call. = FALSE
+    )
+  }
+  list(
+    dataset_resolved = dataset_resolved,
+    default_cut_height = default_cut_height,
+    selected_cut_height = selected_cut_height,
+    override_env_value = override_raw,
+    override_used = override_used
+  )
+}
+selected_supermodule_merge_cut_height <- function(dataset) {
+  selected_supermodule_cut_height_info(dataset)$selected_cut_height
 }
 
 read_manual_supermodule_config <- function(dataset) {
@@ -803,6 +834,8 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
                                          mergedMEs, GO_enrichment_long = NULL, WGCNA_modules_long = NULL,
                                          WGCNA_module_summary = NULL, df_combo2 = NULL,
                                          ME_contrast_stats = NULL, dataset = dataset_profile) {
+  dataset_requested <- as.character(dataset)
+  dataset <- validate_dataset(dataset_requested, source = "build_supermodule_annotation(dataset)")
   module_names <- unique(as.character(module_names))
   module_names <- module_names[nzchar(module_names)]
   present <- tibble::tibble(
@@ -818,8 +851,11 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
     dplyr::anti_join(present, by = c("module_eigengene", "ModuleColor")) %>%
     dplyr::mutate(present_in_dataset = FALSE, manual_annotation = TRUE)
 
-  default_cut_height <- supermodule_merge_cut_height(dataset)
-  cut_height <- selected_supermodule_merge_cut_height(dataset)
+  cut_height_info <- selected_supermodule_cut_height_info(dataset)
+  dataset_resolved_for_cut_height <- cut_height_info$dataset_resolved
+  default_cut_height <- cut_height_info$default_cut_height
+  cut_height <- cut_height_info$selected_cut_height
+  primary_supermodule_cut_height <- cut_height
   supermodule_merge_rule <- "hclust_average_on_1_minus_module_eigengene_correlation"
   module_similarity <- stats::cor(mergedMEs[, module_names, drop = FALSE], use = "pairwise.complete.obs", method = "pearson")
   module_similarity[!is.finite(module_similarity)] <- 0
@@ -881,8 +917,14 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
       }, numeric(1))
       best <- names(jac)[which.max(jac)]
       tibble::tibble(
-        dataset = dataset,
+        dataset = dataset_resolved_for_cut_height,
+        dataset_requested = dataset_requested,
+        dataset_resolved = dataset_resolved_for_cut_height,
         cut_height = ch,
+        default_supermodule_cut_height = default_cut_height,
+        selected_supermodule_cut_height = primary_supermodule_cut_height,
+        supermodule_cut_height_override_env = cut_height_info$override_env_value,
+        supermodule_cut_height_override_used = cut_height_info$override_used,
         n_supermodules = length(groups),
         n_singleton_supermodules = n_singleton,
         fraction_singleton_supermodules = if (length(groups)) n_singleton / length(groups) else NA_real_,
@@ -890,13 +932,23 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
         median_cluster_size = median_size,
         supermodule_id = smid,
         member_modules = paste(members, collapse = ";"),
-        primary_cut_height = cut_height,
+        primary_cut_height = primary_supermodule_cut_height,
         matched_primary_supermodule_id = best %||% NA_character_,
         jaccard_to_primary_supermodule = if (length(jac)) max(jac, na.rm = TRUE) else NA_real_,
         stable_primary_match = if (length(jac)) max(jac, na.rm = TRUE) >= 0.80 else NA
       )
     })
   })
+  if (nrow(sensitivity_rows)) {
+    primary_cut_values <- unique(sensitivity_rows$primary_cut_height[is.finite(sensitivity_rows$primary_cut_height)])
+    if (length(primary_cut_values) != 1L) {
+      stop(
+        "supermodule_clustering_sensitivity primary_cut_height must contain exactly one finite selected primary cut height; observed: ",
+        paste(primary_cut_values, collapse = ", "),
+        call. = FALSE
+      )
+    }
+  }
   write_csv_safe(sensitivity_rows, fp_supertab("supermodule_clustering_sensitivity.csv"))
   primary_group_sizes <- lengths(primary_groups)
   primary_singletons <- sum(primary_group_sizes == 1L)
@@ -1235,7 +1287,13 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
     dplyr::count(.data$Macroprogram_Display, name = "n_supermodules") %>%
     dplyr::filter(.data$n_supermodules > 1L)
   supermodule_compression_qc <- tibble::tibble(
-    dataset = dataset,
+    dataset = dataset_resolved_for_cut_height,
+    dataset_requested = dataset_requested,
+    dataset_resolved = dataset_resolved_for_cut_height,
+    default_supermodule_cut_height = default_cut_height,
+    selected_supermodule_cut_height = primary_supermodule_cut_height,
+    supermodule_cut_height_override_env = cut_height_info$override_env_value,
+    supermodule_cut_height_override_used = cut_height_info$override_used,
     supermodule_merge_cut_height = cut_height,
     supermodule_merge_rule = supermodule_merge_rule,
     n_modules = length(module_names),
@@ -1268,9 +1326,11 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
     fp_supertab("wgcna_supermodule_summary.csv")
   )
   label_source_manifest <- tibble::tibble(
-    dataset = dataset,
-    dataset_config_path = repo_path("config", "wgcna_supermodules", paste0(dataset, ".csv")),
-    dataset_config_exists = file.exists(repo_path("config", "wgcna_supermodules", paste0(dataset, ".csv"))),
+    dataset = dataset_resolved_for_cut_height,
+    dataset_requested = dataset_requested,
+    dataset_resolved = dataset_resolved_for_cut_height,
+    dataset_config_path = repo_path("config", "wgcna_supermodules", paste0(dataset_resolved_for_cut_height, ".csv")),
+    dataset_config_exists = file.exists(repo_path("config", "wgcna_supermodules", paste0(dataset_resolved_for_cut_height, ".csv"))),
     manual_config_used = any(annotation$manual_config_used & annotation$present_in_dataset, na.rm = TRUE),
     legacy_seed_used = any(annotation$legacy_seed_used, na.rm = TRUE),
     label_mode = dplyr::case_when(
@@ -1282,6 +1342,9 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
     supermodule_merge_cut_height = cut_height,
     supermodule_merge_rule = supermodule_merge_rule,
     default_cut_height_for_dataset = default_cut_height,
+    selected_cut_height_for_dataset = primary_supermodule_cut_height,
+    supermodule_cut_height_override_env = cut_height_info$override_env_value,
+    supermodule_cut_height_override_used = cut_height_info$override_used,
     singleton_warning = is.finite(primary_fraction_singleton) && primary_fraction_singleton > 0.50,
     interpretation_note = "Supermodules are data-reduction/interpretation objects; macroprogram labels are display groupings, not independent discoveries."
   )
@@ -3321,7 +3384,7 @@ supermodule_annotation <- build_supermodule_annotation(
   WGCNA_module_summary = if (exists("WGCNA_module_summary")) WGCNA_module_summary else NULL,
   df_combo2 = if (exists("df_combo2")) df_combo2 else NULL,
   ME_contrast_stats = NULL,
-  dataset = dataset_profile
+  dataset = dataset_profile_resolved
 )
 supermodule_levels <- unique(c(supermodule_levels, supermodule_annotation$Supermodule[supermodule_annotation$present_in_dataset]))
 
@@ -3418,7 +3481,7 @@ supermodule_annotation <- build_supermodule_annotation(
   WGCNA_module_summary = if (exists("WGCNA_module_summary")) WGCNA_module_summary else NULL,
   df_combo2 = if (exists("df_combo2")) df_combo2 else NULL,
   ME_contrast_stats = ME_contrast_stats,
-  dataset = dataset_profile
+  dataset = dataset_profile_resolved
 )
 supermodule_levels <- unique(c(supermodule_levels, supermodule_annotation$Supermodule[supermodule_annotation$present_in_dataset]))
 report_supermodule_annotation(supermodule_annotation)
