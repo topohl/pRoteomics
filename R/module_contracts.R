@@ -187,6 +187,11 @@ validate_final_evidence_bundle <- function(bundle_dir, artifact = "final biologi
       "claim_id", "dataset", "biological_program", "evidence_type",
       "claim_grade", "primary_evidence", "orthogonal_support",
       "major_limitation", "safe_interpretation", "unsafe_overinterpretation",
+      "claim_allowed", "claim_gate_status", "claim_downgrade_reason",
+      "primary_model_status", "animal_level_gate", "qc_gate",
+      "missingness_gate", "batch_confound_gate", "marker_contamination_gate",
+      "microglia_roi_gate", "neuropil_independence_gate", "robustness_gate",
+      "evidence_independence_gate",
       "missingness_confounded", "batch_or_plate_confounded",
       "region_layer_imbalance_risk", "animal_pseudoreplication_risk",
       "marker_contamination_or_roi_mixture_flag", "qc_interpretation_flag"

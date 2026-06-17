@@ -41,7 +41,8 @@ The second command should not run microglia network scripts because `pipeline.ym
 - Active scripts listed in `pipeline.yml` exist.
 - `RUN_ORDER.md` does not present unregistered scripts as active.
 - Dataset capability helpers reject layer-level microglia analyses.
-- Table schemas reject invalid datasets, invalid claim grades, and p/FDR values outside `[0, 1]`.
+- Table schemas reject invalid datasets, invalid claim grades, invalid biological claim gate statuses, and p/FDR values outside `[0, 1]`.
+- The biological claims table treats `claim_grade` as descriptive only. Manuscript eligibility is controlled by `claim_allowed` and `claim_gate_status`; `missing_evidence` explicitly blocks a claim until the named upstream gate evidence is available.
 
 ## Expected Limitations Without Private Data
 
