@@ -29,6 +29,12 @@ Final-facing dataset terminology in this bundle is:
 - `neuron_soma`: region-resolved neuronal soma-enriched
 - `microglia`: region-resolved microglia-enriched ROI/local microenvironment, not purified microglia
 
+## Biological Claim Gate
+
+`results/tables/biological_claims_table.csv` is a reviewer-facing claim gate, not only a claim index. `claim_grade` remains a descriptive evidence label for backwards compatibility. Manuscript eligibility is determined by `claim_allowed` and `claim_gate_status`.
+
+Rows with `claim_allowed=TRUE` and `claim_gate_status=allowed` are eligible for manuscript wording after source-row review. Rows with `claim_gate_status=missing_evidence` or `blocked` must not be promoted to manuscript claims until the listed `claim_downgrade_reason` gates are resolved. Microglia dataset claims default to "microglia-enriched ROI/local microenvironment" wording; purified or cell-intrinsic microglia wording is blocked unless targeted microglia support, marker-fidelity evidence, and neuropil-independence evidence are all available.
+
 ## Required Final Tables
 
 | output | schema or contract | expected location |
