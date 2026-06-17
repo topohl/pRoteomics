@@ -10,6 +10,19 @@ required_columns:
   - major_limitation
   - safe_interpretation
   - unsafe_overinterpretation
+  - claim_allowed
+  - claim_gate_status
+  - claim_downgrade_reason
+  - primary_model_status
+  - animal_level_gate
+  - qc_gate
+  - missingness_gate
+  - batch_confound_gate
+  - marker_contamination_gate
+  - microglia_roi_gate
+  - neuropil_independence_gate
+  - robustness_gate
+  - evidence_independence_gate
 columns:
   claim_id: {type: character}
   dataset: {type: character, allowed_values: [neuron_neuropil, neuron_soma, microglia]}
@@ -33,6 +46,19 @@ columns:
   major_limitation: {type: character}
   safe_interpretation: {type: character}
   unsafe_overinterpretation: {type: character}
+  claim_allowed: {type: logical}
+  claim_gate_status: {type: character, allowed_values: [allowed, blocked, missing_evidence]}
+  claim_downgrade_reason: {type: character}
+  primary_model_status: {type: character, allowed_values: [pass, fail, missing_evidence]}
+  animal_level_gate: {type: character, allowed_values: [pass, fail, missing_evidence]}
+  qc_gate: {type: character, allowed_values: [pass, fail, missing_evidence]}
+  missingness_gate: {type: character, allowed_values: [pass, fail, missing_evidence]}
+  batch_confound_gate: {type: character, allowed_values: [pass, fail, missing_evidence]}
+  marker_contamination_gate: {type: character, allowed_values: [pass, fail, missing_evidence]}
+  microglia_roi_gate: {type: character, allowed_values: [pass, fail, missing_evidence, not_applicable]}
+  neuropil_independence_gate: {type: character, allowed_values: [pass, fail, missing_evidence, not_applicable]}
+  robustness_gate: {type: character, allowed_values: [pass, fail, missing_evidence]}
+  evidence_independence_gate: {type: character, allowed_values: [pass, fail, missing_evidence]}
   missingness_confounded: {type: character}
   plate_or_batch_confounded: {type: character}
   region_layer_imbalance_risk: {type: character}

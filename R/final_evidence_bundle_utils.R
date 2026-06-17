@@ -257,7 +257,12 @@ build_qc_flags <- function(claims) {
     "region_layer_imbalance_risk", "animal_pseudoreplication_risk",
     "early_pc_association", "marker_contamination_risk",
     "marker_contamination_or_roi_mixture_flag", "qc_interpretation_flag",
-    "animal_level_status"
+    "animal_level_status", "claim_allowed", "claim_gate_status",
+    "claim_downgrade_reason", "primary_model_status", "animal_level_gate",
+    "qc_gate", "missingness_gate", "batch_confound_gate",
+    "marker_contamination_gate", "microglia_roi_gate",
+    "neuropil_independence_gate", "robustness_gate",
+    "evidence_independence_gate"
   )
   add_dataset_terminology(claims) |>
     select_existing(cols) |>
@@ -296,7 +301,7 @@ build_bundle_readme <- function() {
       "Microglia ROI/local microenvironment targeted-signature summary; curated single-protein or neuropil-shared evidence is cautionary, not purified microglia evidence.",
       "Sensitivity model comparing microglia group effects before and after matched region-level neuron_neuropil covariate adjustment.",
       "Dataset-level QC and confounding flags propagated from the claims table.",
-      "Evidence-graded claim index with safe and unsafe wording guardrails."
+      "Reviewer-facing claim gate. claim_grade is descriptive; claim_allowed and claim_gate_status determine manuscript eligibility."
     ),
     manuscript_safe_columns = c(
       "Use this sheet as documentation only.",
@@ -309,7 +314,7 @@ build_bundle_readme <- function() {
       "targeted_signature_primary_driver, targeted_signature_driver_class, targeted_signature_driver_signature, targeted_signature_driver_padj, targeted_signature_driver_NES, targeted_signature_driver_overlap_proteins, targeted_signature_driver_evidence_tier, curated_program_overlap_warning.",
       "classification, estimate_before, estimate_after, percent_attenuation, FDR_before, FDR_after, neuropil_covariate_beta, neuropil_covariate_p.",
       "missingness_confounded, batch_or_plate_confounded, region_layer_imbalance_risk, animal_pseudoreplication_risk, marker_contamination_or_roi_mixture_flag, qc_interpretation_flag.",
-      "claim_grade, primary_evidence, orthogonal_support, major_limitation, safe_interpretation, unsafe_overinterpretation, QC flag columns."
+      "claim_allowed, claim_gate_status, claim_downgrade_reason, gate columns, claim_grade, primary_evidence, orthogonal_support, major_limitation, safe_interpretation, unsafe_overinterpretation, QC flag columns."
     ),
     notes = c(
       "Final-facing terminology: neuron_neuropil = region/layer-resolved neuron neuropil; neuron_soma = region-resolved neuronal soma-enriched; microglia = region-resolved microglia-enriched ROI/local microenvironment, not purified microglia.",
@@ -322,7 +327,7 @@ build_bundle_readme <- function() {
       "Neuropil-shared and curated-program evidence should not be described as purified microglial activation.",
       "Adjustment is a sensitivity analysis, not causal subtraction of neuropil signal.",
       "QC flags are conservative and should be reviewed before strong wording.",
-      "Claims remain observational unless supported by independent validation."
+      "claim_grade is not an eligibility decision. Use only rows with claim_allowed=TRUE and claim_gate_status=allowed for manuscript claims; missing_evidence blocks eligibility until the source evidence is present."
     ),
     stringsAsFactors = FALSE
   )
