@@ -133,6 +133,16 @@ testthat::test_that("legacy static supermodule seeds stay opt-in", {
   testthat::expect_match(txt, "legacy_static_seed")
 })
 
+testthat::test_that("supermodule sensitivity export uses fixed primary cut height", {
+  script <- readLines(testthat::test_path("..", "..", "06_modules_WGCNA", "01_WGCNA.r"), warn = FALSE)
+  txt <- paste(script, collapse = "\n")
+  testthat::expect_match(txt, "primary_supermodule_cut_height <- cut_height")
+  testthat::expect_match(txt, "primary_cut_height = primary_supermodule_cut_height")
+  testthat::expect_false(grepl("primary_cut_height\\s*=\\s*cut_height", txt))
+  testthat::expect_match(txt, "primary_cut_height must contain exactly one finite selected primary cut height")
+  testthat::expect_match(txt, "dataset_profile_resolved")
+})
+
 testthat::test_that("downstream supermodule labels prefer display label consistently", {
   scripts <- c(
     testthat::test_path("..", "..", "06_modules_WGCNA", "05_module_supermodule_group_effects.r"),
