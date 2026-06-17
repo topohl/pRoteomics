@@ -229,9 +229,9 @@ Rscript 06_modules_WGCNA/08_wgcna_score_publication_summary.R --dataset all --mo
 
 Key outputs to inspect:
 
-- `results/figures/06_modules_WGCNA/score_publication_summary/<dataset>/publication_supermodule_effect_heatmap_<dataset>_wgcna_<analysis>.svg`
-- `results/figures/06_modules_WGCNA/score_publication_summary/<dataset>/publication_supermodule_correlation_<dataset>_wgcna_<analysis>.svg`
-- `results/figures/06_modules_WGCNA/score_publication_summary/<dataset>/publication_supermodule_consistency_<dataset>_wgcna_<analysis>.svg`
+- `results/figures/06_modules_WGCNA/score_publication_summary/<dataset>/publication_supermodule_effect_heatmap_<dataset>_wgcna_{primary_all_replicates,sensitivity}.svg`
+- `results/figures/06_modules_WGCNA/score_publication_summary/<dataset>/publication_supermodule_correlation_<dataset>_wgcna_{primary_all_replicates,sensitivity}.svg`
+- `results/figures/06_modules_WGCNA/score_publication_summary/<dataset>/publication_supermodule_consistency_<dataset>_wgcna_{primary_all_replicates,sensitivity}.svg`
 - `results/tables/06_modules_WGCNA/score_publication_summary/<dataset>/WGCNA_score_publication_validation.csv`
 
 Safe to rerun: yes. This is a final reporting layer over existing score-derived
