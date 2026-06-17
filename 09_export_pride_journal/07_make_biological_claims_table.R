@@ -31,6 +31,11 @@ claim_columns <- c(
   "source_file", "figure_table_target", "interpretation_note",
   "claim_grade", "primary_evidence", "orthogonal_support", "major_limitation",
   "safe_interpretation", "unsafe_overinterpretation",
+  "claim_allowed", "claim_gate_status", "claim_downgrade_reason",
+  "primary_model_status", "animal_level_gate", "qc_gate",
+  "missingness_gate", "batch_confound_gate", "marker_contamination_gate",
+  "microglia_roi_gate", "neuropil_independence_gate", "robustness_gate",
+  "evidence_independence_gate",
   "missingness_confounded", "plate_or_batch_confounded",
   "region_layer_imbalance_risk", "animal_pseudoreplication_risk",
   "early_pc_association", "marker_contamination_risk",
@@ -38,7 +43,8 @@ claim_columns <- c(
 )
 
 numeric_claim_columns <- c("effect_size_NES", "raw_p", "FDR")
-character_claim_columns <- setdiff(claim_columns, numeric_claim_columns)
+logical_claim_columns <- c("claim_allowed")
+character_claim_columns <- setdiff(claim_columns, c(numeric_claim_columns, logical_claim_columns))
 
 empty_claims <- function() {
   out <- as.data.frame(setNames(rep(list(character()), length(claim_columns)), claim_columns), stringsAsFactors = FALSE)
@@ -51,6 +57,7 @@ standardize_claims <- function(df) {
   for (col in claim_columns) if (!col %in% names(df)) df[[col]] <- NA
   df <- df[, claim_columns, drop = FALSE]
   for (col in numeric_claim_columns) df[[col]] <- suppressWarnings(as.numeric(df[[col]]))
+  for (col in logical_claim_columns) df[[col]] <- as.logical(df[[col]])
   for (col in character_claim_columns) df[[col]] <- as.character(df[[col]])
   df
 }
@@ -153,6 +160,121 @@ infer_animal_level_status <- function(evidence_type, robustness_stability_metric
     grepl("wgcna|module", txt) ~ "review_source_table",
     TRUE ~ "sample_level_or_unclear"
   )
+}
+
+gate_from_flag <- function(x, pass_values, fail_values = c("possible", "FAIL", "WARN", "review_qc")) {
+  x <- as.character(x)
+  dplyr::case_when(
+    is.na(x) | !nzchar(trimws(x)) | x %in% c("not_available", "review_source_table") ~ "missing_evidence",
+    x %in% pass_values ~ "pass",
+    x %in% fail_values ~ "fail",
+    TRUE ~ "missing_evidence"
+  )
+}
+
+claim_text_contains <- function(df, patterns) {
+  txt <- tolower(paste(
+    df$biological_program, df$evidence_type, df$interpretation_note,
+    df$safe_interpretation, df$primary_evidence, df$orthogonal_support,
+    sep = " "
+  ))
+  grepl(paste(patterns, collapse = "|"), txt, perl = TRUE)
+}
+
+evidence_domain_count <- function(x) {
+  vapply(as.character(x), function(z) {
+    if (is.na(z) || !nzchar(trimws(z))) return(0L)
+    parts <- trimws(unlist(strsplit(z, ";", fixed = TRUE), use.names = FALSE))
+    length(unique(parts[nzchar(parts)]))
+  }, integer(1))
+}
+
+microglia_neuropil_independence_available <- function() {
+  paths <- c(
+    path_results("tables", "06_modules_WGCNA", "microglia_neuropil_independence", "microglia", "microglia_neuropil_independence_effects.csv"),
+    path_results("tables", "06_modules_WGCNA", "microglia_neuropil_independence", "microglia", "microglia_module_neuropil_independence_classification.csv")
+  )
+  any(file.exists(paths))
+}
+
+add_claim_gates <- function(claims) {
+  if (is.null(claims) || !nrow(claims)) return(standardize_claims(claims))
+
+  claims$claim_allowed <- FALSE
+  claims$primary_model_status <- dplyr::case_when(
+    !file.exists(as.character(claims$source_file)) ~ "missing_evidence",
+    is.na(claims$FDR) ~ "missing_evidence",
+    claims$FDR <= 0.10 ~ "pass",
+    TRUE ~ "fail"
+  )
+  claims$animal_level_gate <- dplyr::case_when(
+    claims$animal_level_status %in% c("animal_level_or_reported", "animal_level_expected") ~ "pass",
+    claims$animal_level_status == "review_source_table" ~ "missing_evidence",
+    TRUE ~ "fail"
+  )
+  claims$qc_gate <- gate_from_flag(claims$qc_interpretation_flag, pass_values = "PASS")
+  claims$missingness_gate <- gate_from_flag(claims$missingness_confounded, pass_values = c("not_detected", "not_applicable"))
+  claims$batch_confound_gate <- gate_from_flag(claims$plate_or_batch_confounded, pass_values = c("not_detected", "not_applicable"))
+  claims$marker_contamination_gate <- gate_from_flag(claims$marker_contamination_risk, pass_values = c("not_detected", "not_applicable"))
+
+  purified_or_intrinsic <- claims$dataset == "microglia" & claim_text_contains(
+    claims,
+    c("purified\\s+microglia", "cell[- ]intrinsic", "intrinsic\\s+microglia", "isolated\\s+microglia")
+  )
+  targeted_microglia_support <- claims$dataset == "microglia" &
+    grepl("microglia_signature|targeted_microglia|curated_microglia", claims$evidence_type, ignore.case = TRUE)
+  marker_fidelity_pass <- claims$marker_contamination_gate == "pass"
+  neuropil_available <- microglia_neuropil_independence_available()
+
+  claims$microglia_roi_gate <- dplyr::case_when(
+    claims$dataset != "microglia" ~ "not_applicable",
+    !purified_or_intrinsic ~ "pass",
+    targeted_microglia_support & marker_fidelity_pass & neuropil_available ~ "pass",
+    !targeted_microglia_support | !neuropil_available ~ "missing_evidence",
+    TRUE ~ "fail"
+  )
+  claims$neuropil_independence_gate <- dplyr::case_when(
+    claims$dataset != "microglia" ~ "not_applicable",
+    purified_or_intrinsic & neuropil_available ~ "pass",
+    purified_or_intrinsic & !neuropil_available ~ "missing_evidence",
+    TRUE ~ "not_applicable"
+  )
+  claims$robustness_gate <- dplyr::case_when(
+    is.na(claims$robustness_stability_metric) | !nzchar(trimws(as.character(claims$robustness_stability_metric))) ~ "missing_evidence",
+    grepl("not_available|unavailable", claims$robustness_stability_metric, ignore.case = TRUE) ~ "missing_evidence",
+    TRUE ~ "pass"
+  )
+  domains <- evidence_domain_count(claims$robustness_stability_metric)
+  claims$evidence_independence_gate <- dplyr::case_when(
+    grepl("overlap", claims$evidence_type, ignore.case = TRUE) ~ "pass",
+    grepl("biological_integration", claims$evidence_type, ignore.case = TRUE) & domains >= 2L ~ "pass",
+    grepl("WGCNA_DE_GSEA_overlap", claims$evidence_type, ignore.case = TRUE) ~ "pass",
+    TRUE ~ "fail"
+  )
+
+  gate_cols <- c(
+    "primary_model_status", "animal_level_gate", "qc_gate", "missingness_gate",
+    "batch_confound_gate", "marker_contamination_gate", "microglia_roi_gate",
+    "neuropil_independence_gate", "robustness_gate", "evidence_independence_gate"
+  )
+  gate_matrix <- claims[, gate_cols, drop = FALSE]
+  missing_gate <- apply(gate_matrix == "missing_evidence", 1, any, na.rm = TRUE)
+  fail_gate <- apply(gate_matrix == "fail", 1, any, na.rm = TRUE)
+  pass_or_na <- function(x) all(x %in% c("pass", "not_applicable"))
+  claims$claim_allowed <- apply(gate_matrix, 1, pass_or_na)
+  claims$claim_gate_status <- dplyr::case_when(
+    claims$claim_allowed ~ "allowed",
+    missing_gate ~ "missing_evidence",
+    fail_gate ~ "blocked",
+    TRUE ~ "blocked"
+  )
+  claims$claim_downgrade_reason <- vapply(seq_len(nrow(claims)), function(i) {
+    blockers <- gate_cols[as.character(gate_matrix[i, ]) %in% c("missing_evidence", "fail")]
+    if (!length(blockers)) return("none")
+    paste(paste0(blockers, "=", as.character(gate_matrix[i, blockers])), collapse = "; ")
+  }, character(1))
+
+  standardize_claims(claims)
 }
 
 supermodule_annotation_for_claims <- function(dataset) {
@@ -493,7 +615,8 @@ claims <- dplyr::bind_rows(
       .data$animal_level_status == "review_source_table" ~ "review_source_table",
       TRUE ~ "possible"
     )
-  )
+  ) %>%
+  add_claim_gates()
 
 validate_table_schema(claims, "biological_claims_table", strict = TRUE)
 
