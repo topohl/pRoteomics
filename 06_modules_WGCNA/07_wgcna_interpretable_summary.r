@@ -107,7 +107,13 @@ displayed_supermodule_theme_count <- function(label) {
     z <- stringr::str_squish(z)
     if (is.na(z) || !nzchar(z)) return(0L)
     z <- sub(paste0("^SM[0-9]+\\s*(", intToUtf8(183), "|:|-)\\s*"), "", z, ignore.case = TRUE)
+    z <- sub("^[^:]{1,80}:\\s*(?=(mostly\\s+|mixed:|mixed\\s+multi-program|mixed /))", "", z, perl = TRUE, ignore.case = TRUE)
     if (grepl("^mixed\\s+multi-program$", z, ignore.case = TRUE)) return(0L)
+    if (grepl("^mixed:\\s*", z, ignore.case = TRUE)) {
+      parts <- trimws(unlist(strsplit(sub("^mixed:\\s*", "", z, ignore.case = TRUE), "\\s*;\\s*", perl = TRUE), use.names = FALSE))
+      parts <- parts[nzchar(parts) & !grepl("mixed / low-specificity|mixed / unresolved|unresolved / mixed", parts, ignore.case = TRUE)]
+      return(max(2L, length(unique(parts))))
+    }
     z <- sub("^mostly\\s+", "", z, ignore.case = TRUE)
     z <- sub("^mixed:\\s*", "", z, ignore.case = TRUE)
     parts <- trimws(unlist(strsplit(z, "\\s*;\\s*", perl = TRUE), use.names = FALSE))
