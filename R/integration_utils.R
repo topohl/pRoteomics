@@ -49,6 +49,19 @@ integration_paths <- function(substep, dataset = "global") {
 read_csv_optional <- function(path, dataset = "global", evidence_domain = "input",
                               input_type = basename(path), required = FALSE) {
   exists <- file.exists(path)
+  record_input_resolution(
+    script = Sys.getenv("PROTEOMICS_SCRIPT_ID", unset = NA_character_),
+    dataset = dataset,
+    stage = "integration",
+    input_name = input_type,
+    expected_path = path,
+    resolved_path = path,
+    resolution_mode = if (exists) "canonical" else if (required) "missing_required" else "missing_optional",
+    strict_mode = strict_inputs_enabled(),
+    allowed_in_strict_mode = TRUE,
+    producer_script_or_artifact_id = evidence_domain,
+    warning = if (!exists && isTRUE(required)) "Required integration input missing." else NA_character_
+  )
   status <- data.frame(
     dataset = dataset,
     evidence_domain = evidence_domain,
@@ -224,10 +237,27 @@ write_integration_manifest <- function(paths, inputs, outputs, parameters, notes
 
 dry_run_inputs <- function(label, inputs) {
   dry_run_line("Script", label)
+  old_script <- Sys.getenv("PROTEOMICS_SCRIPT_ID", unset = NA_character_)
+  Sys.setenv(PROTEOMICS_SCRIPT_ID = label)
+  on.exit({
+    if (is.na(old_script)) Sys.unsetenv("PROTEOMICS_SCRIPT_ID") else Sys.setenv(PROTEOMICS_SCRIPT_ID = old_script)
+  }, add = TRUE)
   nms <- names(inputs)
   for (i in seq_along(inputs)) {
     nm <- nms[[i]] %||% paste0("input_", i)
     path <- inputs[[i]]
+    record_input_resolution(
+      script = label,
+      dataset = Sys.getenv("PROTEOMICS_DATASET", unset = "global"),
+      stage = "integration",
+      input_name = nm,
+      expected_path = path,
+      resolved_path = path,
+      resolution_mode = if (file.exists(path) || dir.exists(path)) "canonical" else "missing_optional",
+      strict_mode = strict_inputs_enabled(),
+      allowed_in_strict_mode = TRUE,
+      producer_script_or_artifact_id = "dry_run_inputs"
+    )
     dry_run_line(nm, path, if (file.exists(path) || dir.exists(path)) "PASS" else "WARN")
   }
 }
