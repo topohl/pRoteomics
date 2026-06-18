@@ -23,6 +23,7 @@ renv::restore()
 Rscript run_dataset_pipeline.R --list-stages
 Rscript run_dataset_pipeline.R --dataset neuron_neuropil --stage qc --dry-run
 Rscript run_dataset_pipeline.R --dataset microglia --stage enrichment --dry-run
+Rscript run_dataset_pipeline.R --dataset all --stage export --dry-run --strict-inputs
 Rscript tests/testthat.R
 ```
 
@@ -42,7 +43,22 @@ The second command should not run microglia network scripts because `pipeline.ym
 - `RUN_ORDER.md` does not present unregistered scripts as active.
 - Dataset capability helpers reject layer-level microglia analyses.
 - Table schemas reject invalid datasets, invalid claim grades, invalid biological claim gate statuses, and p/FDR values outside `[0, 1]`.
-- The biological claims table treats `claim_grade` as descriptive only. Manuscript eligibility is controlled by `claim_allowed` and `claim_gate_status`; `missing_evidence` explicitly blocks a claim until the named upstream gate evidence is available.
+- The biological claims table treats `claim_grade` as descriptive only. Manuscript eligibility is controlled by `claim_type`, `claim_allowed`, and `claim_gate_status`; `missing_required` blocks a claim, while `missing_optional`, `not_applicable`, and `diagnostic_only` document claim-type-specific evidence availability.
+- Microglia-neuropil independence separates predeclared adjustment families from the exploratory best-Spearman diagnostic. Only predeclared primary/secondary rows in `microglia_neuropil_independence_claim_gate.csv` can support stronger microglia-specific wording; exploratory best-match rows are diagnostic and never claim-enabling on their own.
+- Microglia ROI/local-microenvironment wording remains conservative. `neuropil_sensitive` rows block or downgrade microglia-specific/cell-intrinsic interpretation, while inconclusive rows remain diagnostic/contextual unless a predeclared adjustment passes.
+- GO-derived enrichment labels preserve `raw_top_GO_term` and `representative_GO_terms`; reviewers should use `safe_program_label`, `term_label_risk`, `label_confidence`, and `claim_use_class` for manuscript wording. Tissue-mismatched GO labels are flagged and conservatively relabeled, not silently discarded.
+- Strict input mode is available through `--strict-inputs` or `PROTEOMICS_STRICT_INPUTS=true`. In strict mode, claim-critical and manuscript-facing scripts fail on missing required canonical inputs instead of selecting the newest matching file or a legacy fallback.
+- Reviewer audit CSVs under `results/reviewer_audit/` summarize gate evidence availability, allowed/downgraded/disallowed claim counts, GO-label risk, claim-use classes, microglia-neuropil independence/covariate selection, and input resolution provenance by dataset and claim type.
+
+## Input Provenance Audit
+
+Manuscript-facing reruns append rows to:
+
+```text
+results/reviewer_audit/input_resolution_audit.csv
+```
+
+This table records expected and resolved paths, resolution mode, strict-mode policy, SHA-256 hash, file modification time, and fallback warnings. Non-strict exploratory fallbacks remain auditable; strict reviewer runs make latest-file fallback impossible for claim-critical inputs.
 
 ## Expected Limitations Without Private Data
 
