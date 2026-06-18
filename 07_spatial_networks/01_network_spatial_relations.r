@@ -47,6 +47,8 @@ source(repo_path("R", "dataset_inputs.R"))
 source(repo_path("R", "validation_utils.R"))
 source(repo_path("R", "spatial_network_utils.R"))
 MODULE_ID <- "07_spatial_networks"
+SCRIPT_ID <- "07_spatial_networks/01_network_spatial_relations.r"
+Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 args <- commandArgs(trailingOnly = TRUE)
 arg_value <- function(flag, default = "") {
   hit <- which(args == flag)
@@ -68,7 +70,7 @@ spatial_label_col <- "SpatialLabel"
 message2("Resolved spatial_unit: ", spatial_unit)
 SUBSTEP_ID <- file.path("network_spatial_relations", SPATIAL_DATASET, spatial_unit)
 CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
-SPATIAL_INPUTS <- resolve_dataset_inputs(SPATIAL_DATASET, purpose = "wgcna")
+SPATIAL_INPUTS <- resolve_dataset_inputs(SPATIAL_DATASET, purpose = "wgcna", script = SCRIPT_ID, stage = "networks")
 
 required_pkgs <- c(
   "readxl", "dplyr", "tidyr", "stringr", "purrr", "tibble", "ggplot2",
@@ -108,11 +110,7 @@ override_param <- function(params, key, value) {
 
 find_latest_upstream_protein_file <- function() {
   if (!is.na(SPATIAL_INPUTS$expression_file) && file.exists(SPATIAL_INPUTS$expression_file)) return(SPATIAL_INPUTS$expression_file)
-  latest_matching_file(
-    path_processed("01_preprocessing", "impute"),
-    paste0("^\\d{8}_pgmatrix_imputed_", SPATIAL_DATASET, "_[0-9]+samples_missing70pct\\.xlsx$"),
-    recursive = FALSE
-  )
+  SPATIAL_INPUTS$expression_file
 }
 
 # -------------------------------
@@ -158,6 +156,30 @@ params <- override_param(params, "protein_file", Sys.getenv("PROTEOMICS_SPATIAL_
 params <- override_param(params, "metadata_file", Sys.getenv("PROTEOMICS_SPATIAL_METADATA_FILE", unset = ""))
 params <- override_param(params, "protein_file", local_cfg$protein_file %||% local_cfg$paths$protein_file)
 params <- override_param(params, "metadata_file", local_cfg$metadata_file %||% local_cfg$paths$metadata_file)
+record_input_resolution(
+  script = SCRIPT_ID,
+  dataset = SPATIAL_DATASET,
+  stage = "networks",
+  input_name = "spatial_network_protein_file",
+  expected_path = SPATIAL_INPUTS$expression_file,
+  resolved_path = params$protein_file,
+  resolution_mode = if (identical(params$protein_file, SPATIAL_INPUTS$expression_file)) "canonical" else "explicit_or_local_override",
+  strict_mode = strict_inputs_enabled(),
+  allowed_in_strict_mode = TRUE,
+  producer_script_or_artifact_id = "01_preprocessing/impute"
+)
+record_input_resolution(
+  script = SCRIPT_ID,
+  dataset = SPATIAL_DATASET,
+  stage = "networks",
+  input_name = "spatial_network_metadata_file",
+  expected_path = SPATIAL_INPUTS$metadata_file,
+  resolved_path = params$metadata_file,
+  resolution_mode = if (identical(params$metadata_file, SPATIAL_INPUTS$metadata_file)) "canonical" else "explicit_or_local_override",
+  strict_mode = strict_inputs_enabled(),
+  allowed_in_strict_mode = TRUE,
+  producer_script_or_artifact_id = "data/metadata/TPE9_sample_metadata_males.xlsx"
+)
 message2("Resolved protein_file: ", params$protein_file)
 message2("Resolved metadata_file: ", params$metadata_file)
 message2("Resolved output folders: ", paste(unlist(CANONICAL_PATHS), collapse = "; "))
