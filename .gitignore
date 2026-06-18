@@ -70,6 +70,7 @@ PRIDE_package/
 *.Rds
 *.RDS
 *.csv
+!config/marker_panels/*.csv
 /results/manuscript
 /results/module_scores/microglia
 /results/module_scores/neuron_neuropil
