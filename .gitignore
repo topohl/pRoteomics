@@ -57,6 +57,13 @@ results/reports/**/*_dry_run_diagnostics.csv
 Rplots.pdf
 tmp_*_stdout.log
 tmp_*_stderr.log
+results/
+/data/processed/
+/results/
+/figures/
+/supplementary_tables/
+/cache/
+/logs/
 
 # PRIDE/journal staging
 pride_submission/
