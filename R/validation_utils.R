@@ -97,12 +97,83 @@ known_pipeline_output_specs <- function() {
   group_effect_cols <- c(
     "dataset", "level", "endpoint_id", "endpoint_label", "contrast",
     "estimate", "SE", "p_value", "FDR_within_dataset_level", "FDR_global",
-    "evidence_status", "n_samples", "n_animals", "model_type",
-    "formula_used", "rank_deficient_model", "model_warning"
+    "evidence_status", "n_samples", "n_animals", "n_animals_total",
+    "n_animals_per_group", "min_animals_per_group", "n_samples_total",
+    "n_samples_per_group", "animal_level_status", "pseudoreplication_guard",
+    "model_type", "model_family", "model_formula", "primary_model_stable",
+    "claim_allowed_model", "model_downgrade_reason", "fallback_used",
+    "fallback_type", "formula_used", "rank_deficient_model", "singular_model",
+    "emmeans_success", "animal_random_effect_used", "biological_replicate_unit",
+    "model_warning"
   )
   list(
     module_group_effects.csv = list(required_columns = group_effect_cols),
     supermodule_group_effects.csv = list(required_columns = group_effect_cols),
+    WGCNA_parameter_audit.csv = list(
+      required_columns = c(
+        "dataset", "n_samples", "n_animals", "n_features_input",
+        "n_features_after_filter", "missingness_filter", "imputation_source",
+        "normalization_source", "correlation_method", "network_type", "TOM_type",
+        "soft_power", "scale_free_R2", "mean_connectivity", "min_module_size",
+        "merge_cut_height", "deepSplit", "pamRespectsDendro", "random_seed",
+        "supermodule_cut_height", "input_hashes", "provenance"
+      )
+    ),
+    wgcna_robustness_claim_gate.csv = list(
+      required_columns = c(
+        "dataset", "module_or_supermodule_id", "level", "contrast",
+        "robustness_gate", "preservation_status", "sensitivity_status",
+        "direction_stability", "confounding_status", "claim_gate_eligible",
+        "robustness_downgrade_reason"
+      )
+    ),
+    microglia_neuropil_independence_claim_gate.csv = list(
+      required_columns = c(
+        "module_or_supermodule_id", "contrast", "biological_program",
+        "microenvironment_class", "adjustment_mode", "covariate_family",
+        "primary_effect_status", "primary_effect_claim_relevant",
+        "primary_effect_threshold",
+        "independence_classification", "claim_gate_eligible", "downgrade_reason",
+        "n_matched_animals", "min_animals_per_group", "effect_before",
+        "effect_after", "effect_before_abs", "effect_before_near_zero",
+        "percent_attenuation", "percent_attenuation_reliable",
+        "direction_preserved", "audit_group_n",
+        "eligible_without_primary_effect_count"
+      )
+    ),
+    microglia_neuropil_covariate_selection_audit.csv = list(
+      required_columns = c(
+        "candidate_covariates", "predeclared_covariates_available",
+        "selected_primary_covariate", "selected_secondary_covariate",
+        "selected_exploratory_covariate", "selection_rule",
+        "primary_claim_gate_eligible", "secondary_claim_gate_eligible",
+        "exploratory_claim_gate_eligible"
+      )
+    ),
+    wgcna_microenvironment_threshold_sensitivity.csv = list(
+      required_columns = c(
+        "dataset", "module_or_supermodule_id", "level",
+        "class_at_0.05", "class_at_0.10", "class_at_0.20",
+        "primary_class", "annotation_stable_across_thresholds",
+        "classification_flip_reason", "marker_fraction_primary",
+        "marker_panels_supporting", "claim_relevance"
+      )
+    ),
+    wgcna_label_confidence_audit.csv = list(
+      required_columns = c(
+        "dataset", "module_or_supermodule_id", "level",
+        "raw_annotation_label", "cleaned_annotation_label", "safe_display_label",
+        "label_confidence", "label_basis", "label_downgrade_reason",
+        "annotation_stable_across_thresholds", "unsafe_interpretation"
+      )
+    ),
+    wgcna_annotation_source_audit.csv = list(
+      required_columns = c(
+        "dataset", "panel_version", "panel_id", "source_type", "source_reference",
+        "allowed_use", "claim_role", "caution_note", "n_markers",
+        "config_file", "config_hash"
+      )
+    ),
     WGCNA_module_biological_annotation.csv = list(
       required_columns = c(
         "dataset", "ModuleID", "ModuleColor", "microenvironment_class",
@@ -117,7 +188,12 @@ known_pipeline_output_specs <- function() {
         "GO_label_relevance_rationale", "microenvironment_caution_label",
         "microenvironment_caution_class", "microenvironment_caution_rationale",
         "Module_CleanPlotLabel", "module_biological_label",
-        "module_biological_label_short", "module_label_display"
+        "module_biological_label_short", "module_label_display",
+        "annotation_confidence", "annotation_basis", "annotation_downgrade_reason",
+        "annotation_stable_across_thresholds", "unsafe_interpretation",
+        "raw_annotation_label", "cleaned_annotation_label", "safe_display_label",
+        "label_confidence", "label_basis", "label_downgrade_reason",
+        "marker_fraction_primary", "marker_panels_supporting"
       )
     ),
     WGCNA_supermodule_biological_annotation.csv = list(
@@ -144,7 +220,12 @@ known_pipeline_output_specs <- function() {
         "is_multi_theme_supermodule", "themes_above_display_threshold",
         "themes_omitted_from_display_label",
         "n_member_modules_with_informative_labels",
-        "fraction_member_modules_with_informative_labels"
+        "fraction_member_modules_with_informative_labels",
+        "annotation_confidence", "annotation_basis", "annotation_downgrade_reason",
+        "annotation_stable_across_thresholds", "unsafe_interpretation",
+        "raw_annotation_label", "cleaned_annotation_label", "safe_display_label",
+        "label_confidence", "label_basis", "label_downgrade_reason",
+        "marker_fraction_primary", "marker_panels_supporting"
       )
     ),
     WGCNA_module_group_effects_interpretable.csv = list(
@@ -181,10 +262,14 @@ known_pipeline_output_specs <- function() {
     ),
     biological_claims.csv = list(
       required_columns = c(
-        "claim_id", "dataset", "biological_program", "evidence_type",
+        "claim_id", "dataset", "biological_program", "evidence_type", "claim_type",
+        "claim_use_class", "raw_top_GO_term", "representative_GO_terms",
+        "semantic_parent_label", "safe_program_label", "term_label_risk",
+        "label_confidence", "label_basis", "label_downgrade_reason",
         "claim_grade", "primary_evidence", "orthogonal_support",
         "major_limitation", "safe_interpretation", "unsafe_overinterpretation",
         "claim_allowed", "claim_gate_status", "claim_downgrade_reason",
+        "model_fit_status", "statistical_evidence_status", "claim_gate_model_status",
         "primary_model_status", "animal_level_gate", "qc_gate",
         "missingness_gate", "batch_confound_gate", "marker_contamination_gate",
         "microglia_roi_gate", "neuropil_independence_gate", "robustness_gate",
