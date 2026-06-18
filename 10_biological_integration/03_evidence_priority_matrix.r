@@ -13,6 +13,7 @@ source(repo_path("R", "integration_utils.R"))
 source(repo_path("R", "final_evidence_bundle_utils.R"))
 
 SCRIPT_ID <- "10_biological_integration/03_evidence_priority_matrix.r"
+Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 run <- integration_cli(default_dataset = "all", allow_all = TRUE)
 paths <- integration_paths("evidence_priority_matrix", "global")
 inputs <- list(
