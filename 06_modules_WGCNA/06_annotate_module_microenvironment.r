@@ -28,11 +28,50 @@ FILES <- resolve_wgcna_files(DATASET)
 force_microglia <- tolower(Sys.getenv("PROTEOMICS_FORCE_MICROGLIA_MODULE_ANNOTATION", unset = "false")) %in% c("1", "true", "yes")
 classification_threshold <- suppressWarnings(as.numeric(Sys.getenv("PROTEOMICS_WGCNA_MARKER_FRACTION_THRESHOLD", unset = "0.10")))
 if (!is.finite(classification_threshold)) classification_threshold <- 0.10
+marker_threshold_sensitivity_values <- c(0.05, 0.10, 0.20)
+supplemental_marker_panel_file <- Sys.getenv(
+  "PROTEOMICS_WGCNA_MICROENV_MARKER_PANEL_FILE",
+  unset = repo_path("config", "marker_panels", "microenvironment_marker_panels.csv")
+)
+supplemental_marker_panel_file <- normalizePath(supplemental_marker_panel_file, winslash = "/", mustWork = FALSE)
+supplemental_marker_panel_hash <- if (file.exists(supplemental_marker_panel_file)) unname(tools::md5sum(supplemental_marker_panel_file)) else NA_character_
 
 as_count0 <- function(x) {
   y <- suppressWarnings(as.integer(x %||% 0L))
   y[is.na(y)] <- 0L
   y
+}
+
+read_microenvironment_marker_panels <- function(path = supplemental_marker_panel_file) {
+  required <- c(
+    "panel_id", "marker_symbol", "source_type", "source_reference",
+    "allowed_use", "claim_role", "caution_note"
+  )
+  panels <- safe_read_csv(path)
+  if (is.null(panels) || !nrow(panels)) {
+    stop("Missing supplemental microenvironment marker panel config: ", path, call. = FALSE)
+  }
+  missing <- setdiff(required, names(panels))
+  if (length(missing)) {
+    stop("Supplemental microenvironment marker panel config is missing required column(s): ", paste(missing, collapse = ", "), call. = FALSE)
+  }
+  panels <- panels |>
+    dplyr::mutate(
+      panel_id = as.character(.data$panel_id),
+      marker_symbol = as.character(.data$marker_symbol),
+      source_type = as.character(.data$source_type),
+      allowed_use = as.character(.data$allowed_use),
+      claim_role = as.character(.data$claim_role),
+      gene_token = normalize_gene_token(.data$marker_symbol)
+    ) |>
+    dplyr::filter(nzchar(.data$panel_id), nzchar(.data$gene_token))
+  valid_source <- c("external_reference", "empirical_this_study", "curated_local", "diagnostic")
+  valid_use <- c("QC_only", "annotation", "claim_support")
+  valid_role <- c("primary_support", "orthogonal_support", "context_only", "caution_only")
+  if (any(!panels$source_type %in% valid_source)) stop("Invalid source_type in supplemental marker panel config.", call. = FALSE)
+  if (any(!panels$allowed_use %in% valid_use)) stop("Invalid allowed_use in supplemental marker panel config.", call. = FALSE)
+  if (any(!panels$claim_role %in% valid_role)) stop("Invalid claim_role in supplemental marker panel config.", call. = FALSE)
+  panels
 }
 
 if (run$dry_run) {
@@ -47,6 +86,8 @@ if (run$dry_run) {
   if (DATASET == "microglia" || force_microglia) dry_run_line("Targeted microglia signature enrichment", path_results("tables", "04_differential_expression_enrichment", "microglia_targeted_signature_enrichment", "microglia", "microglia_signature_enrichment_with_contrast_class.csv"), if (file.exists(path_results("tables", "04_differential_expression_enrichment", "microglia_targeted_signature_enrichment", "microglia", "microglia_signature_enrichment_with_contrast_class.csv"))) "PASS" else "WARN")
   dry_run_line("Marker registry", Sys.getenv("PROTEOMICS_WGCNA_MARKER_REGISTRY_FILE", unset = repo_path("config", "marker_panels", "wgcna_reference_marker_sets.csv")), "INFO")
   dry_run_line("Empirical ROI marker sets", Sys.getenv("PROTEOMICS_WGCNA_EMPIRICAL_MARKER_FILE", unset = path_results("tables", "03_qc_exploration", "05_empirical_roi_marker_discovery", "empirical_roi_marker_sets.csv")), "INFO")
+  dry_run_line("Supplemental microenvironment marker panels", supplemental_marker_panel_file, if (file.exists(supplemental_marker_panel_file)) "PASS" else "FAIL")
+  dry_run_line("Microenvironment threshold sensitivity audit", path_results("reviewer_audit", "wgcna_microenvironment_threshold_sensitivity.csv"), "INFO")
   dry_run_line("Output tables", PATHS$tables)
   quit(status = 0, save = "no")
 }
@@ -69,6 +110,9 @@ validate_wgcna_module_definitions(definitions, "WGCNA downstream definitions")
 marker_sets <- load_wgcna_marker_sets()
 marker_registry_version <- attr(marker_sets, "marker_registry_version") %||% NA_character_
 empirical_marker_set_version <- attr(marker_sets, "empirical_marker_set_version") %||% NA_character_
+supplemental_marker_panels <- read_microenvironment_marker_panels(supplemental_marker_panel_file)
+supplemental_marker_sets <- split(as.character(supplemental_marker_panels$marker_symbol), as.character(supplemental_marker_panels$panel_id)) |>
+  lapply(function(x) unique(x[nzchar(normalize_gene_token(x))]))
 module_summary <- safe_read_csv(FILES$module_summary)
 go <- safe_read_csv(FILES$go)
 super_ann <- safe_read_csv(FILES$supermodule_annotation)
@@ -79,34 +123,8 @@ neuropil_ref <- if (DATASET == "microglia" || force_microglia) safe_read_csv(FIL
 targeted_signature_file <- path_results("tables", "04_differential_expression_enrichment", "microglia_targeted_signature_enrichment", "microglia", "microglia_signature_enrichment_with_contrast_class.csv")
 targeted_signature_ref <- if (DATASET == "microglia" || force_microglia) safe_read_csv(targeted_signature_file) else NULL
 
-
-# Add a small, local compartment marker layer for microenvironment interpretation.
-# These sets supplement the registry; they do not replace curated external marker sets.
-extra_microenvironment_marker_sets <- list(
-  basement_membrane_perivascular_ecm = c(
-    "Agrn", "Hspg2", "Lamb1", "Lamb2", "Lamc1", "Lama2", "Lama4", "Lama5",
-    "Col4a1", "Col4a2", "Nid1", "Nid2", "Bcam", "Tinagl1", "Serpinh1"
-  ),
-  bbb_endothelial_transport = c(
-    "Slc2a1", "Abcb1a", "Abcb1b", "Abcg2", "Cldn5", "Pecam1", "Kdr", "Flt1",
-    "Tek", "Vwf", "Esam", "Mfsd2a", "Ocln", "Cav1"
-  ),
-  pericyte_mural_ng2 = c(
-    "Cspg4", "Pdgfrb", "Rgs5", "Kcnj8", "Abcc9", "Des", "Acta2", "Tagln",
-    "Mcam", "Notch3", "Anpep"
-  ),
-  astrocyte_endfoot_gliovascular = c(
-    "Aqp4", "Gfap", "Aldh1l1", "Slc1a2", "Slc1a3", "Gja1", "Glul", "Aldoc",
-    "Dtna", "Dag1"
-  ),
-  integrin_ecm_adhesion = c(
-    "Itga1", "Itga2", "Itga5", "Itga6", "Itgb1", "Tln1", "Tln2", "Vcl",
-    "Parva", "Parvb", "Pxn"
-  )
-)
-
-for (nm in names(extra_microenvironment_marker_sets)) {
-  if (!nm %in% names(marker_sets)) marker_sets[[nm]] <- extra_microenvironment_marker_sets[[nm]]
+for (nm in names(supplemental_marker_sets)) {
+  if (!nm %in% names(marker_sets)) marker_sets[[nm]] <- supplemental_marker_sets[[nm]]
 }
 panel_names <- names(marker_sets)
 
@@ -335,6 +353,63 @@ classify_module <- function(row) {
   if (oligo_evidence) return("oligodendrocyte_or_myelin_sensitive")
   if (peripheral_evidence && !microglia_evidence) return("peripheral_myeloid_caution")
   "ambiguous_or_mixed"
+}
+
+classify_module_at_threshold <- function(row, threshold) {
+  old_threshold <- classification_threshold
+  assign("classification_threshold", threshold, envir = environment(classify_module))
+  on.exit(assign("classification_threshold", old_threshold, envir = environment(classify_module)), add = TRUE)
+  classify_module(row)
+}
+
+supporting_marker_panels <- function(row, threshold = classification_threshold) {
+  vals <- semantic_marker_panel_values(row)
+  vals <- vals[is.finite(vals) & vals >= threshold]
+  if (!length(vals)) return(NA_character_)
+  paste(names(sort(vals, decreasing = TRUE)), collapse = ";")
+}
+
+primary_marker_fraction <- function(row) {
+  vals <- semantic_marker_panel_values(row)
+  vals <- vals[is.finite(vals)]
+  if (length(vals)) max(vals) else NA_real_
+}
+
+annotation_basis_for <- function(row) {
+  marker_frac <- primary_marker_fraction(row)
+  targeted <- as_count0(row$n_targeted_microglia_signature_overlaps) +
+    as_count0(row$n_targeted_claim_ready_signature_overlaps) +
+    as_count0(row$n_targeted_curated_microglia_program_overlaps)
+  go_hits <- as_count0(row$n_microglia_robust_term_overlaps) +
+    as_count0(row$n_neuropil_sensitive_term_overlaps) +
+    as_count0(row$n_mixed_microenvironment_term_overlaps)
+  dplyr::case_when(
+    is.finite(marker_frac) & marker_frac >= classification_threshold & targeted > 0 ~ "mixed",
+    targeted > 0 ~ "targeted_signature",
+    is.finite(marker_frac) & marker_frac >= classification_threshold ~ "marker_panel",
+    go_hits > 0 ~ "GO",
+    TRUE ~ "insufficient"
+  )
+}
+
+annotation_confidence_for <- function(confidence, stable, basis) {
+  confidence <- as.character(confidence)
+  basis <- as.character(basis)
+  dplyr::case_when(
+    !isTRUE(stable) ~ "low",
+    basis == "insufficient" ~ "unresolved",
+    confidence == "high" ~ "high",
+    confidence %in% c("moderate", "medium") ~ "moderate",
+    TRUE ~ "low"
+  )
+}
+
+annotation_downgrade_for <- function(class_at_0.05, class_at_0.10, class_at_0.20, basis, confidence) {
+  reasons <- character()
+  if (length(unique(c(class_at_0.05, class_at_0.10, class_at_0.20))) > 1L) reasons <- c(reasons, "threshold_unstable")
+  if (identical(as.character(basis), "insufficient")) reasons <- c(reasons, "insufficient_annotation_evidence")
+  if (as.character(confidence) %in% c("low", "unresolved")) reasons <- c(reasons, "low_annotation_confidence")
+  if (length(reasons)) paste(unique(reasons), collapse = ";") else "not_applicable"
 }
 
 classify_rationale <- function(row) {
@@ -908,6 +983,21 @@ module_annot$microenvironment_label <- vapply(seq_len(nrow(module_annot)), funct
 module_annot$microenvironment_confidence <- vapply(seq_len(nrow(module_annot)), function(i) confidence_from_evidence(module_annot[i, , drop = FALSE]), character(1))
 module_annot$microenvironment_confidence <- vapply(seq_len(nrow(module_annot)), function(i) targeted_signature_caution_confidence(module_annot[i, , drop = FALSE], module_annot$microenvironment_confidence[[i]]), character(1))
 module_annot$module_display_label <- paste0(module_annot$ModuleID, " — ", module_annot$microenvironment_label)
+module_threshold_classes <- dplyr::bind_cols(
+  module_annot |> dplyr::select("dataset", module_or_supermodule_id = "ModuleID"),
+  dplyr::bind_cols(lapply(marker_threshold_sensitivity_values, function(thr) {
+    out <- vapply(seq_len(nrow(module_annot)), function(i) classify_module_at_threshold(module_annot[i, , drop = FALSE], thr), character(1))
+    tibble::tibble(!!paste0("class_at_", sprintf("%.2f", thr)) := out)
+  }))
+)
+module_annot$annotation_basis <- vapply(seq_len(nrow(module_annot)), function(i) annotation_basis_for(module_annot[i, , drop = FALSE]), character(1))
+module_annot$marker_fraction_primary <- vapply(seq_len(nrow(module_annot)), function(i) primary_marker_fraction(module_annot[i, , drop = FALSE]), numeric(1))
+module_annot$marker_panels_supporting <- vapply(seq_len(nrow(module_annot)), function(i) supporting_marker_panels(module_annot[i, , drop = FALSE], classification_threshold), character(1))
+module_annot$annotation_stable_across_thresholds <- module_threshold_classes$`class_at_0.05` == module_threshold_classes$`class_at_0.10` &
+  module_threshold_classes$`class_at_0.10` == module_threshold_classes$`class_at_0.20`
+module_annot$annotation_confidence <- vapply(seq_len(nrow(module_annot)), function(i) annotation_confidence_for(module_annot$microenvironment_confidence[[i]], module_annot$annotation_stable_across_thresholds[[i]], module_annot$annotation_basis[[i]]), character(1))
+module_annot$annotation_downgrade_reason <- vapply(seq_len(nrow(module_annot)), function(i) annotation_downgrade_for(module_threshold_classes$`class_at_0.05`[[i]], module_threshold_classes$`class_at_0.10`[[i]], module_threshold_classes$`class_at_0.20`[[i]], module_annot$annotation_basis[[i]], module_annot$annotation_confidence[[i]]), character(1))
+module_annot$unsafe_interpretation <- "Do not treat marker-panel microenvironment annotation as a purified cell-type or causal claim without claim-gate support."
 module_annot$raw_GO_BP_terms <- dplyr::coalesce(as.character(module_annot$raw_GO_BP_terms), as.character(module_annot$top_GO_BP_labels))
 module_annot$raw_GO_MF_terms <- dplyr::coalesce(as.character(module_annot$raw_GO_MF_terms), as.character(module_annot$top_GO_MF_labels))
 module_annot$raw_GO_CC_terms <- dplyr::coalesce(as.character(module_annot$raw_GO_CC_terms), as.character(module_annot$top_GO_CC_labels))
@@ -972,6 +1062,17 @@ module_annot$module_label_display <- dplyr::coalesce(
   informative_member_label(module_annot$Module_CleanPlotLabel),
   paste(module_annot$ModuleID, module_annot$module_biological_label_short, sep = " | ")
 )
+module_annot$raw_annotation_label <- module_annot$raw_marker_or_signature_label
+module_annot$cleaned_annotation_label <- module_annot$cleaned_biological_label
+module_annot$safe_display_label <- dplyr::coalesce(
+  informative_member_label(module_annot$Module_CleanPlotLabel),
+  informative_member_label(module_annot$module_label_display),
+  informative_member_label(module_annot$module_biological_label),
+  as.character(module_annot$ModuleID)
+)
+module_annot$label_confidence <- module_annot$annotation_confidence
+module_annot$label_basis <- module_annot$annotation_basis
+module_annot$label_downgrade_reason <- module_annot$annotation_downgrade_reason
 
 module_annot$member_theme_label <- vapply(seq_len(nrow(module_annot)), function(i) {
   row <- module_annot[i, , drop = FALSE]
@@ -1263,6 +1364,48 @@ if (is.null(super_ann) || !nrow(super_ann)) {
     dplyr::select(-dplyr::any_of(c("has_active_manual_label", "display_label_component", "has_coherent_hubs", "member_theme_fraction_summary", "member_theme_label_sources", "any_member_semantic_manual_review", "Supermodule_CompositionLabel_FromAllMemberThemes")))
 }
 
+if (nrow(super_annot) && exists("smap")) {
+  super_threshold_classes <- module_threshold_classes |>
+    dplyr::left_join(module_annot |> dplyr::select(module_or_supermodule_id = "ModuleID", ModuleColor), by = "module_or_supermodule_id") |>
+    dplyr::left_join(smap |> dplyr::select("ModuleColor", "SupermoduleID"), by = "ModuleColor") |>
+    dplyr::filter(!is.na(.data$SupermoduleID)) |>
+    dplyr::group_by(.data$dataset, module_or_supermodule_id = .data$SupermoduleID) |>
+    dplyr::summarise(
+      class_at_0.05 = names(sort(table(.data$`class_at_0.05`), decreasing = TRUE))[1],
+      class_at_0.10 = names(sort(table(.data$`class_at_0.10`), decreasing = TRUE))[1],
+      class_at_0.20 = names(sort(table(.data$`class_at_0.20`), decreasing = TRUE))[1],
+      .groups = "drop"
+    )
+  super_annot <- super_annot |>
+    dplyr::left_join(super_threshold_classes, by = c("dataset", "SupermoduleID" = "module_or_supermodule_id")) |>
+    dplyr::mutate(
+      annotation_stable_across_thresholds = .data$`class_at_0.05` == .data$`class_at_0.10` & .data$`class_at_0.10` == .data$`class_at_0.20`,
+      marker_fraction_primary = dplyr::coalesce(suppressWarnings(as.numeric(.data$DominantMemberThemeFraction)), suppressWarnings(as.numeric(.data$fraction_member_modules_with_informative_labels))),
+      marker_panels_supporting = .data$MemberEvidenceMarkerPanels,
+      annotation_basis = dplyr::case_when(
+        !is.na(.data$marker_panels_supporting) & nzchar(as.character(.data$marker_panels_supporting)) ~ "marker_panel",
+        !is.na(.data$TopMemberGOTerms) & nzchar(as.character(.data$TopMemberGOTerms)) ~ "GO",
+        .data$n_member_modules_with_informative_labels > 0L ~ "hub/member_composition",
+        TRUE ~ "insufficient"
+      ),
+      annotation_confidence = dplyr::case_when(
+        !.data$annotation_stable_across_thresholds ~ "low",
+        .data$Supermodule_CompositionConfidence %in% c("high") ~ "high",
+        .data$Supermodule_CompositionConfidence %in% c("medium", "moderate") ~ "moderate",
+        .data$annotation_basis == "insufficient" ~ "unresolved",
+        TRUE ~ "low"
+      ),
+      annotation_downgrade_reason = vapply(seq_len(dplyr::n()), function(i) annotation_downgrade_for(`class_at_0.05`[[i]], `class_at_0.10`[[i]], `class_at_0.20`[[i]], annotation_basis[[i]], annotation_confidence[[i]]), character(1)),
+      unsafe_interpretation = "Do not treat supermodule composition annotation as a purified cell-type or causal claim without claim-gate support.",
+      raw_annotation_label = .data$raw_marker_or_signature_label,
+      cleaned_annotation_label = .data$cleaned_biological_label,
+      safe_display_label = dplyr::coalesce(.data$Supermodule_CleanPlotLabel, .data$Supermodule_CompositionDisplayLabel, .data$Supermodule_DisplayLabel, .data$SupermoduleID),
+      label_confidence = .data$annotation_confidence,
+      label_basis = .data$annotation_basis,
+      label_downgrade_reason = .data$annotation_downgrade_reason
+    )
+}
+
 supermodule_composition_columns <- c(
   "raw_GO_BP_terms", "raw_GO_MF_terms", "raw_GO_CC_terms",
   "raw_top_GO_label", "raw_module_label", "raw_hub_proteins",
@@ -1292,11 +1435,124 @@ supermodule_composition_columns <- c(
   "MemberAdhesionInterpretations", "MemberEvidenceBP", "MemberEvidenceMF",
   "MemberEvidenceCC", "MemberEvidenceHubs", "MemberEvidenceMarkerPanels",
   "n_member_modules_with_informative_labels",
-  "fraction_member_modules_with_informative_labels"
+  "fraction_member_modules_with_informative_labels",
+  "annotation_confidence", "annotation_basis", "annotation_downgrade_reason",
+  "annotation_stable_across_thresholds", "unsafe_interpretation",
+  "raw_annotation_label", "cleaned_annotation_label", "safe_display_label",
+  "label_confidence", "label_basis", "label_downgrade_reason",
+  "marker_fraction_primary", "marker_panels_supporting",
+  "class_at_0.05", "class_at_0.10", "class_at_0.20"
 )
 for (nm in supermodule_composition_columns) {
   if (!nm %in% names(super_annot)) super_annot[[nm]] <- NA
 }
+
+audit_dir <- path_results("reviewer_audit")
+dir_create(audit_dir)
+replace_dataset_audit <- function(path, rows) {
+  old <- safe_read_csv(path)
+  if (!is.null(old) && nrow(old) && "dataset" %in% names(old)) {
+    old <- old |> dplyr::filter(.data$dataset != DATASET)
+  }
+  if (!is.null(old)) old[] <- lapply(old, as.character)
+  rows[] <- lapply(rows, as.character)
+  out <- dplyr::bind_rows(old, rows)
+  readr::write_csv(out, path, na = "")
+  invisible(out)
+}
+
+module_threshold_audit <- module_threshold_classes |>
+  dplyr::mutate(
+    level = "module",
+    primary_class = module_annot$microenvironment_class,
+    annotation_stable_across_thresholds = module_annot$annotation_stable_across_thresholds,
+    classification_flip_reason = dplyr::case_when(
+      .data$annotation_stable_across_thresholds ~ "not_applicable",
+      TRUE ~ paste0("threshold_sensitive: ", .data$`class_at_0.05`, " -> ", .data$`class_at_0.10`, " -> ", .data$`class_at_0.20`)
+    ),
+    marker_fraction_primary = module_annot$marker_fraction_primary,
+    marker_panels_supporting = module_annot$marker_panels_supporting,
+    claim_relevance = dplyr::case_when(
+      module_annot$annotation_confidence %in% c("high", "moderate") & module_annot$annotation_stable_across_thresholds ~ "annotation_context",
+      TRUE ~ "annotation_only_or_caution"
+    )
+  ) |>
+  dplyr::select(
+    "dataset", "module_or_supermodule_id", "level",
+    "class_at_0.05", "class_at_0.10", "class_at_0.20",
+    "primary_class", "annotation_stable_across_thresholds",
+    "classification_flip_reason", "marker_fraction_primary",
+    "marker_panels_supporting", "claim_relevance"
+  )
+
+super_threshold_audit <- if (nrow(super_annot)) {
+  super_annot |>
+    dplyr::transmute(
+      dataset = .data$dataset,
+      module_or_supermodule_id = .data$SupermoduleID,
+      level = "supermodule",
+      `class_at_0.05` = as.character(.data$`class_at_0.05`),
+      `class_at_0.10` = as.character(.data$`class_at_0.10`),
+      `class_at_0.20` = as.character(.data$`class_at_0.20`),
+      primary_class = as.character(.data$dominant_microenvironment_class),
+      annotation_stable_across_thresholds = suppressWarnings(as.logical(.data$annotation_stable_across_thresholds)),
+      classification_flip_reason = dplyr::case_when(
+        .data$annotation_stable_across_thresholds ~ "not_applicable",
+        TRUE ~ paste0("threshold_sensitive: ", .data$`class_at_0.05`, " -> ", .data$`class_at_0.10`, " -> ", .data$`class_at_0.20`)
+      ),
+      marker_fraction_primary = suppressWarnings(as.numeric(.data$marker_fraction_primary)),
+      marker_panels_supporting = as.character(.data$marker_panels_supporting),
+      claim_relevance = dplyr::case_when(
+        .data$annotation_confidence %in% c("high", "moderate") & .data$annotation_stable_across_thresholds ~ "annotation_context",
+        TRUE ~ "annotation_only_or_caution"
+      )
+    )
+} else {
+  module_threshold_audit[0, ]
+}
+threshold_audit <- dplyr::bind_rows(module_threshold_audit, super_threshold_audit)
+replace_dataset_audit(file.path(audit_dir, "wgcna_microenvironment_threshold_sensitivity.csv"), threshold_audit)
+
+label_confidence_audit <- dplyr::bind_rows(
+  module_annot |>
+    dplyr::transmute(
+      dataset = .data$dataset, module_or_supermodule_id = .data$ModuleID, level = "module",
+      raw_annotation_label = .data$raw_annotation_label, cleaned_annotation_label = .data$cleaned_annotation_label,
+      safe_display_label = .data$safe_display_label, label_confidence = .data$label_confidence,
+      label_basis = .data$label_basis, label_downgrade_reason = .data$label_downgrade_reason,
+      annotation_stable_across_thresholds = .data$annotation_stable_across_thresholds,
+      unsafe_interpretation = .data$unsafe_interpretation
+    ),
+  super_annot |>
+    dplyr::transmute(
+      dataset = .data$dataset, module_or_supermodule_id = .data$SupermoduleID, level = "supermodule",
+      raw_annotation_label = .data$raw_annotation_label, cleaned_annotation_label = .data$cleaned_annotation_label,
+      safe_display_label = .data$safe_display_label, label_confidence = .data$label_confidence,
+      label_basis = .data$label_basis, label_downgrade_reason = .data$label_downgrade_reason,
+      annotation_stable_across_thresholds = suppressWarnings(as.logical(.data$annotation_stable_across_thresholds)),
+      unsafe_interpretation = .data$unsafe_interpretation
+    )
+)
+replace_dataset_audit(file.path(audit_dir, "wgcna_label_confidence_audit.csv"), label_confidence_audit)
+
+annotation_source_audit <- supplemental_marker_panels |>
+  dplyr::count(
+    panel_version = dplyr::coalesce(as.character(.data$panel_version), "unversioned"),
+    panel_id = .data$panel_id,
+    source_type = .data$source_type,
+    source_reference = .data$source_reference,
+    allowed_use = .data$allowed_use,
+    claim_role = .data$claim_role,
+    caution_note = .data$caution_note,
+    name = "n_markers"
+  ) |>
+  dplyr::mutate(
+    dataset = DATASET,
+    config_file = supplemental_marker_panel_file,
+    config_hash = supplemental_marker_panel_hash,
+    .before = "panel_version"
+  )
+replace_dataset_audit(file.path(audit_dir, "wgcna_annotation_source_audit.csv"), annotation_source_audit)
 
 write_table_and_source(module_annot, PATHS$tables, PATHS$source_data, "WGCNA_module_biological_annotation.csv")
 write_table_and_source(super_annot, PATHS$tables, PATHS$source_data, "WGCNA_supermodule_biological_annotation.csv")
@@ -1460,14 +1716,27 @@ if (DATASET == "microglia" || force_microglia) {
 
 write_run_manifest(
   file.path(PATHS$logs, "run_manifest.yml"),
-  inputs = c(FILES, targeted_microglia_signature_enrichment = targeted_signature_file),
-  outputs = list(tables = PATHS$tables, source_data = PATHS$source_data, figures = PATHS$figures),
+  inputs = c(FILES, targeted_microglia_signature_enrichment = targeted_signature_file, supplemental_microenvironment_marker_panels = supplemental_marker_panel_file),
+  outputs = list(
+    tables = PATHS$tables,
+    source_data = PATHS$source_data,
+    figures = PATHS$figures,
+    reviewer_audit = c(
+      wgcna_microenvironment_threshold_sensitivity = file.path(audit_dir, "wgcna_microenvironment_threshold_sensitivity.csv"),
+      wgcna_label_confidence_audit = file.path(audit_dir, "wgcna_label_confidence_audit.csv"),
+      wgcna_annotation_source_audit = file.path(audit_dir, "wgcna_annotation_source_audit.csv")
+    )
+  ),
   parameters = list(
     dataset = DATASET,
     force_microglia_annotation = force_microglia,
     classification_threshold = classification_threshold,
+    threshold_sensitivity_values = paste(marker_threshold_sensitivity_values, collapse = ","),
     marker_registry_version = marker_registry_version,
-    empirical_marker_set_version = empirical_marker_set_version
+    empirical_marker_set_version = empirical_marker_set_version,
+    supplemental_marker_panel_file = supplemental_marker_panel_file,
+    supplemental_marker_panel_hash = supplemental_marker_panel_hash,
+    supplemental_marker_panel_version = paste(unique(supplemental_marker_panels$panel_version %||% "unversioned"), collapse = ";")
   ),
   notes = paste(WGCNA_ROI_NOTE, "Improved annotation separates vascular basement membrane/BBB/mural, astrocyte/endfoot, oligodendrocyte/myelin, neuropil, and microglia-supported ROI evidence; labels are annotation only.")
 )
