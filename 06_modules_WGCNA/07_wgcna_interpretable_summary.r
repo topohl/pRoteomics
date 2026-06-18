@@ -1443,7 +1443,13 @@ make_dataset_summary <- function(ds) {
     "TopMemberModuleLabels",
     "TopMemberGOTerms",
     "n_member_modules_with_informative_labels",
-    "fraction_member_modules_with_informative_labels"
+    "fraction_member_modules_with_informative_labels",
+    "annotation_confidence", "annotation_basis", "annotation_downgrade_reason",
+    "annotation_stable_across_thresholds", "unsafe_interpretation",
+    "raw_annotation_label", "cleaned_annotation_label", "safe_display_label",
+    "label_confidence", "label_basis", "label_downgrade_reason",
+    "marker_fraction_primary", "marker_panels_supporting",
+    "class_at_0.05", "class_at_0.10", "class_at_0.20"
   )
   for (nm in needed_super_cols) {
     if (!nm %in% names(super_annot)) super_annot[[nm]] <- rep(NA, nrow(super_annot))
@@ -1787,6 +1793,11 @@ make_dataset_summary <- function(ds) {
       "is_multi_theme_supermodule", "themes_above_display_threshold",
       "themes_omitted_from_display_label", "supermodule_theme_label_qc_warning",
       "n_member_modules_with_informative_labels", "fraction_member_modules_with_informative_labels",
+      "annotation_confidence", "annotation_basis", "annotation_downgrade_reason",
+      "annotation_stable_across_thresholds", "unsafe_interpretation",
+      "raw_annotation_label", "cleaned_annotation_label", "safe_display_label",
+      "label_confidence", "label_basis", "label_downgrade_reason",
+      "marker_fraction_primary", "marker_panels_supporting",
       "ManualReviewRequired"
     ))), .keep_all = FALSE)
   supermodule_label_audit <- super_join |>
@@ -1838,6 +1849,19 @@ make_dataset_summary <- function(ds) {
       TopMemberGOTerms,
       n_member_modules_with_informative_labels,
       fraction_member_modules_with_informative_labels,
+      annotation_confidence,
+      annotation_basis,
+      annotation_downgrade_reason,
+      annotation_stable_across_thresholds,
+      unsafe_interpretation,
+      raw_annotation_label,
+      cleaned_annotation_label,
+      safe_display_label,
+      label_confidence,
+      label_basis,
+      label_downgrade_reason,
+      marker_fraction_primary,
+      marker_panels_supporting,
       ManualReviewRequired,
       Supermodule_LabelRationale
     )
@@ -1853,6 +1877,11 @@ make_dataset_summary <- function(ds) {
       "cleaned_biological_label_confidence", "GO_label_relevance_flag",
       "GO_label_relevance_rationale", "microenvironment_label",
       "microenvironment_caution_label", "microenvironment_caution_class",
+      "annotation_confidence", "annotation_basis", "annotation_downgrade_reason",
+      "annotation_stable_across_thresholds", "unsafe_interpretation",
+      "raw_annotation_label", "cleaned_annotation_label", "safe_display_label",
+      "label_confidence", "label_basis", "label_downgrade_reason",
+      "marker_fraction_primary", "marker_panels_supporting",
       "supermodule_id", "supermodule_id_for_module", "Supermodule_CleanPlotLabel",
       "Supermodule_CompositionDisplayLabel", "Supermodule_PlotLabel",
       "MemberThemeCounts", "MemberThemeFractions", "n_distinct_member_themes",
