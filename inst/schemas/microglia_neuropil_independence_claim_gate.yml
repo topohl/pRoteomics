@@ -1,0 +1,33 @@
+name: microglia_neuropil_independence_claim_gate
+required_columns:
+  - module_or_supermodule_id
+  - contrast
+  - biological_program
+  - microenvironment_class
+  - adjustment_mode
+  - covariate_family
+  - independence_classification
+  - claim_gate_eligible
+  - downgrade_reason
+  - n_matched_animals
+  - min_animals_per_group
+  - effect_before
+  - effect_after
+  - percent_attenuation
+  - direction_preserved
+columns:
+  module_or_supermodule_id: {type: character}
+  contrast: {type: character}
+  biological_program: {type: character}
+  microenvironment_class: {type: character}
+  adjustment_mode: {type: character, allowed_values: [predeclared_primary, predeclared_secondary, exploratory_best_spearman]}
+  covariate_family: {type: character}
+  independence_classification: {type: character, allowed_values: [neuropil_independent, partially_neuropil_adjusted, neuropil_sensitive, inconclusive_low_power, inconclusive_missing_match, exploratory_only]}
+  claim_gate_eligible: {type: logical}
+  downgrade_reason: {type: character}
+  n_matched_animals: {type: integer}
+  min_animals_per_group: {type: integer}
+  effect_before: {type: numeric}
+  effect_after: {type: numeric}
+  percent_attenuation: {type: numeric}
+  direction_preserved: {type: logical}

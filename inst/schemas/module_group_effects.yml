@@ -1,0 +1,55 @@
+name: module_group_effects
+required_columns:
+  - dataset
+  - level
+  - module_id
+  - contrast
+  - estimate
+  - p_value
+  - FDR_global
+  - model_family
+  - model_formula
+  - primary_model_stable
+  - claim_allowed_model
+  - model_downgrade_reason
+  - fallback_used
+  - fallback_type
+  - rank_deficient_model
+  - singular_model
+  - emmeans_success
+  - animal_random_effect_used
+  - biological_replicate_unit
+  - n_animals_total
+  - n_animals_per_group
+  - min_animals_per_group
+  - n_samples_total
+  - n_samples_per_group
+  - animal_level_status
+  - pseudoreplication_guard
+columns:
+  dataset: {type: character, allowed_values: [neuron_neuropil, neuron_soma, microglia]}
+  level: {type: character, allowed_values: [module]}
+  module_id: {type: character}
+  contrast: {type: character}
+  estimate: {type: numeric}
+  p_value: {type: numeric, range: {min: 0, max: 1}}
+  FDR_global: {type: numeric, range: {min: 0, max: 1}}
+  model_family: {type: character}
+  model_formula: {type: character}
+  primary_model_stable: {type: logical}
+  claim_allowed_model: {type: logical}
+  model_downgrade_reason: {type: character}
+  fallback_used: {type: logical}
+  fallback_type: {type: character}
+  rank_deficient_model: {type: logical}
+  singular_model: {type: logical}
+  emmeans_success: {type: logical}
+  animal_random_effect_used: {type: logical}
+  biological_replicate_unit: {type: character}
+  n_animals_total: {type: integer}
+  n_animals_per_group: {type: character}
+  min_animals_per_group: {type: integer}
+  n_samples_total: {type: integer}
+  n_samples_per_group: {type: character}
+  animal_level_status: {type: character, allowed_values: [animal_level, repeated_sample_mixed_model, sample_level_or_unclear, insufficient_animals, missing_animal_id]}
+  pseudoreplication_guard: {type: character}

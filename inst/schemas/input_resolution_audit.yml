@@ -1,0 +1,31 @@
+name: input_resolution_audit
+required_columns:
+  - script
+  - dataset
+  - stage
+  - input_name
+  - expected_path
+  - resolved_path
+  - resolution_mode
+  - strict_mode
+  - allowed_in_strict_mode
+  - file_exists
+  - file_hash_sha256
+  - file_mtime
+  - producer_script_or_artifact_id
+  - warning
+columns:
+  script: {type: character}
+  dataset: {type: character}
+  stage: {type: character}
+  input_name: {type: character}
+  expected_path: {type: character}
+  resolved_path: {type: character}
+  resolution_mode: {type: character}
+  strict_mode: {type: logical}
+  allowed_in_strict_mode: {type: logical}
+  file_exists: {type: logical}
+  file_hash_sha256: {type: character}
+  file_mtime: {type: character}
+  producer_script_or_artifact_id: {type: character}
+  warning: {type: character}

@@ -1,0 +1,23 @@
+name: microglia_neuropil_covariate_selection_audit
+required_columns:
+  - candidate_covariates
+  - predeclared_covariates_available
+  - selected_primary_covariate
+  - selected_secondary_covariate
+  - selected_exploratory_covariate
+  - selection_rule
+  - primary_claim_gate_eligible
+  - secondary_claim_gate_eligible
+  - exploratory_claim_gate_eligible
+columns:
+  endpoint_id: {type: character}
+  module_or_supermodule_id: {type: character}
+  candidate_covariates: {type: character}
+  predeclared_covariates_available: {type: character}
+  selected_primary_covariate: {type: character}
+  selected_secondary_covariate: {type: character}
+  selected_exploratory_covariate: {type: character}
+  selection_rule: {type: character}
+  primary_claim_gate_eligible: {type: logical}
+  secondary_claim_gate_eligible: {type: logical}
+  exploratory_claim_gate_eligible: {type: logical}

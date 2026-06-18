@@ -1,0 +1,25 @@
+name: wgcna_robustness_claim_gate
+required_columns:
+  - dataset
+  - module_or_supermodule_id
+  - level
+  - contrast
+  - robustness_gate
+  - preservation_status
+  - sensitivity_status
+  - direction_stability
+  - confounding_status
+  - claim_gate_eligible
+  - robustness_downgrade_reason
+columns:
+  dataset: {type: character, allowed_values: [neuron_neuropil, neuron_soma, microglia]}
+  module_or_supermodule_id: {type: character}
+  level: {type: character, allowed_values: [module, supermodule]}
+  contrast: {type: character}
+  robustness_gate: {type: character, allowed_values: [pass, missing_required]}
+  preservation_status: {type: character}
+  sensitivity_status: {type: character}
+  direction_stability: {type: character}
+  confounding_status: {type: character}
+  claim_gate_eligible: {type: logical}
+  robustness_downgrade_reason: {type: character}
