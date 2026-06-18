@@ -51,26 +51,106 @@ has_repeats <- function(dat) {
     any(table(dat$AnimalID[!is.na(dat$AnimalID) & nzchar(as.character(dat$AnimalID))]) > 1L)
 }
 
+collapse_counts <- function(x, group) {
+  if (is.null(x) || is.null(group) || !length(x)) return(NA_character_)
+  ok <- !is.na(group) & nzchar(as.character(group))
+  if (!any(ok)) return(NA_character_)
+  counts <- tapply(x[ok], group[ok], function(z) length(unique(stats::na.omit(as.character(z)))))
+  if (!length(counts)) return(NA_character_)
+  paste(paste0(names(counts), "=", as.integer(counts)), collapse = ";")
+}
+
 animal_support_summary <- function(dat, model_type = NA_character_, min_animals_threshold = 3L) {
   if (is.null(dat) || !nrow(dat) || !"AnimalID" %in% names(dat)) {
-    return(list(n_animals_total = NA_integer_, min_animals_per_group = NA_integer_, animal_level_status = "sample_level_only"))
+    return(list(
+      n_animals_total = NA_integer_, n_animals_per_group = NA_character_,
+      min_animals_per_group = NA_integer_, n_samples_total = if (is.null(dat)) 0L else nrow(dat),
+      n_samples_per_group = NA_character_, animal_level_status = "missing_animal_id",
+      pseudoreplication_guard = "missing_animal_id",
+      biological_replicate_unit = "sample_or_unknown"
+    ))
   }
   animal <- as.character(dat$AnimalID)
   usable <- !is.na(animal) & nzchar(animal)
   if (!any(usable)) {
-    return(list(n_animals_total = NA_integer_, min_animals_per_group = NA_integer_, animal_level_status = "sample_level_only"))
+    return(list(
+      n_animals_total = NA_integer_, n_animals_per_group = NA_character_,
+      min_animals_per_group = NA_integer_, n_samples_total = nrow(dat),
+      n_samples_per_group = collapse_counts(seq_len(nrow(dat)), dat$StressGroup),
+      animal_level_status = "missing_animal_id",
+      pseudoreplication_guard = "missing_animal_id",
+      biological_replicate_unit = "sample_or_unknown"
+    ))
   }
   dat2 <- dat[usable & !is.na(dat$StressGroup), , drop = FALSE]
   n_total <- dplyr::n_distinct(dat2$AnimalID)
   group_counts <- if (nrow(dat2)) tapply(dat2$AnimalID, dat2$StressGroup, function(x) length(unique(x))) else integer()
   min_group <- if (length(group_counts)) min(as.integer(group_counts), na.rm = TRUE) else NA_integer_
+  repeated <- has_repeats(dat2)
+  used_mixed <- identical(as.character(model_type), "lmerTest_lmer")
   status <- dplyr::case_when(
-    is.na(n_total) || n_total == 0L ~ "sample_level_only",
-    !is.na(min_group) && min_group < min_animals_threshold ~ "low_animal_count",
-    has_repeats(dat2) && !identical(as.character(model_type), "lmerTest_lmer") ~ "mixed_or_unclear",
+    is.na(n_total) || n_total == 0L ~ "missing_animal_id",
+    !is.na(min_group) && min_group < min_animals_threshold ~ "insufficient_animals",
+    repeated && used_mixed ~ "repeated_sample_mixed_model",
+    repeated && !used_mixed ~ "sample_level_or_unclear",
     TRUE ~ "animal_level"
   )
-  list(n_animals_total = as.integer(n_total), min_animals_per_group = as.integer(min_group), animal_level_status = status)
+  guard <- dplyr::case_when(
+    status %in% c("animal_level", "repeated_sample_mixed_model") ~ "pass",
+    status == "insufficient_animals" ~ "insufficient_animals",
+    status == "missing_animal_id" ~ "missing_animal_id",
+    TRUE ~ "sample_level_or_unclear"
+  )
+  list(
+    n_animals_total = as.integer(n_total),
+    n_animals_per_group = collapse_counts(dat2$AnimalID, dat2$StressGroup),
+    min_animals_per_group = as.integer(min_group),
+    n_samples_total = nrow(dat),
+    n_samples_per_group = collapse_counts(seq_len(nrow(dat)), dat$StressGroup),
+    animal_level_status = status,
+    pseudoreplication_guard = guard,
+    biological_replicate_unit = if (status %in% c("animal_level", "repeated_sample_mixed_model")) "animal" else "sample_or_unknown"
+  )
+}
+
+add_claim_model_fields <- function(df) {
+  if (is.null(df) || !nrow(df)) return(df)
+  warn <- tolower(as.character(df$model_warning %||% ""))
+  warn[is.na(warn)] <- ""
+  model_type <- tolower(as.character(df$model_type %||% ""))
+  formula_used <- as.character(df$formula_used %||% NA_character_)
+  rank_def <- suppressWarnings(as.logical(df$rank_deficient_model))
+  rank_def[is.na(rank_def)] <- FALSE
+  fallback <- grepl("fallback|t_test|t-test", model_type) | grepl("fallback|t-test", warn)
+  emmeans_ok <- !(grepl("emmeans.*failed|emmeans unavailable|emmeans.*unavailable", warn) | fallback)
+  singular <- grepl("singular", warn)
+  primary_stable <- !fallback & !rank_def & !singular & emmeans_ok & !is.na(df$p_value)
+  downgrade <- character(nrow(df))
+  for (i in seq_len(nrow(df))) {
+    reasons <- c(
+      if (isTRUE(fallback[[i]])) "diagnostic_only_model_fallback" else NULL,
+      if (isTRUE(rank_def[[i]])) "rank_deficient_model" else NULL,
+      if (isTRUE(singular[[i]])) "singular_model" else NULL,
+      if (!isTRUE(emmeans_ok[[i]])) "emmeans_failed_or_unavailable" else NULL,
+      if (is.na(df$p_value[[i]])) "missing_model_p_value" else NULL
+    )
+    downgrade[[i]] <- if (length(reasons)) paste(unique(reasons), collapse = ";") else "none"
+  }
+  df$model_family <- dplyr::case_when(
+    grepl("lmertest_lmer", model_type) ~ "linear_mixed_model",
+    grepl("lm", model_type) ~ "linear_model",
+    TRUE ~ as.character(df$model_type)
+  )
+  df$model_formula <- dplyr::coalesce(formula_used, as.character(df$formula_requested))
+  df$primary_model_stable <- primary_stable
+  df$claim_allowed_model <- primary_stable
+  df$model_downgrade_reason <- downgrade
+  df$fallback_used <- fallback
+  df$fallback_type <- ifelse(fallback, "two_group_t_test_diagnostic", "none")
+  df$singular_model <- singular
+  df$emmeans_success <- emmeans_ok
+  df$animal_random_effect_used <- grepl("lmertest_lmer", model_type)
+  df
 }
 
 status_row <- function(level, endpoint_id, endpoint_label, spatial_unit, effect_scope, reason,
@@ -93,8 +173,12 @@ status_row <- function(level, endpoint_id, endpoint_label, spatial_unit, effect_
     has_repeated_animals = if (is.null(dat)) NA else has_repeats(dat),
     n_animals = if (is.null(dat) || !"AnimalID" %in% names(dat)) NA_integer_ else dplyr::n_distinct(dat$AnimalID[!is.na(dat$AnimalID) & nzchar(as.character(dat$AnimalID))]),
     n_animals_total = animal_support$n_animals_total,
+    n_animals_per_group = animal_support$n_animals_per_group,
     min_animals_per_group = animal_support$min_animals_per_group,
+    n_samples_total = animal_support$n_samples_total,
+    n_samples_per_group = animal_support$n_samples_per_group,
     animal_level_status = animal_support$animal_level_status,
+    pseudoreplication_guard = animal_support$pseudoreplication_guard,
     contrast = NA_character_,
     estimate = NA_real_,
     SE = NA_real_,
@@ -109,8 +193,12 @@ status_row <- function(level, endpoint_id, endpoint_label, spatial_unit, effect_
     formula_used = formula_used,
     dropped_covariates = NA_character_,
     rank_deficient_model = NA,
+    singular_model = grepl("singular", tolower(reason)),
+    emmeans_success = FALSE,
+    animal_random_effect_used = identical(model_type, "lmerTest_lmer"),
+    biological_replicate_unit = animal_support$biological_replicate_unit,
     model_warning = reason
-  )
+  ) |> add_claim_model_fields()
 }
 
 valid_covariates <- function(dat, covars, protect = character()) {
@@ -145,13 +233,15 @@ fit_model <- function(dat, rhs_terms, random_animal = TRUE) {
     X <- if (use_lmer && requireNamespace("lme4", quietly = TRUE)) lme4::getME(fit, "X") else stats::model.matrix(fit)
     qr(X)$rank < ncol(X)
   }, error = function(e) NA)
+  singular <- tryCatch(use_lmer && requireNamespace("lme4", quietly = TRUE) && lme4::isSingular(fit), error = function(e) NA)
   list(
     fit = fit,
     warning = warning_text,
     model_type = if (use_lmer) "lmerTest_lmer" else "lm",
     formula_requested = formula_requested,
     formula_used = paste(deparse(stats::formula(fit)), collapse = ""),
-    rank_deficient = rank_deficient
+    rank_deficient = rank_deficient,
+    singular = singular
   )
 }
 
@@ -189,8 +279,12 @@ contrast_rows <- function(fit_info, dat, level, endpoint_id, endpoint_label, spa
         has_repeated_animals = has_repeats(dat),
         n_animals = if ("AnimalID" %in% names(dat)) dplyr::n_distinct(dat$AnimalID[!is.na(dat$AnimalID) & nzchar(as.character(dat$AnimalID))]) else NA_integer_,
         n_animals_total = animal_support$n_animals_total,
+        n_animals_per_group = animal_support$n_animals_per_group,
         min_animals_per_group = animal_support$min_animals_per_group,
+        n_samples_total = animal_support$n_samples_total,
+        n_samples_per_group = animal_support$n_samples_per_group,
         animal_level_status = animal_support$animal_level_status,
+        pseudoreplication_guard = animal_support$pseudoreplication_guard,
         contrast = as.character(contr$contrast),
         estimate = as.numeric(contr$estimate),
         SE = as.numeric(contr$SE),
@@ -205,8 +299,12 @@ contrast_rows <- function(fit_info, dat, level, endpoint_id, endpoint_label, spa
         formula_used = fit_info$formula_used,
         dropped_covariates = paste(dropped, collapse = ";"),
         rank_deficient_model = fit_info$rank_deficient,
+        singular_model = fit_info$singular,
+        emmeans_success = TRUE,
+        animal_random_effect_used = identical(fit_info$model_type, "lmerTest_lmer"),
+        biological_replicate_unit = animal_support$biological_replicate_unit,
         model_warning = paste(fit_info$warning, collapse = "; ")
-      ))
+      ) |> add_claim_model_fields())
     }
   }
 
@@ -235,8 +333,12 @@ contrast_rows <- function(fit_info, dat, level, endpoint_id, endpoint_label, spa
         model_type = paste0(fit_info$model_type, "_fallback_t_test"), has_repeated_animals = has_repeats(subdat),
         n_animals = if ("AnimalID" %in% names(subdat)) dplyr::n_distinct(subdat$AnimalID[!is.na(subdat$AnimalID) & nzchar(as.character(subdat$AnimalID))]) else NA_integer_,
         n_animals_total = fallback_animal_support$n_animals_total,
+        n_animals_per_group = fallback_animal_support$n_animals_per_group,
         min_animals_per_group = fallback_animal_support$min_animals_per_group,
+        n_samples_total = fallback_animal_support$n_samples_total,
+        n_samples_per_group = fallback_animal_support$n_samples_per_group,
         animal_level_status = fallback_animal_support$animal_level_status,
+        pseudoreplication_guard = fallback_animal_support$pseudoreplication_guard,
         contrast = contrast, estimate = est,
         SE = if (!is.null(tt)) unname(diff(tt$conf.int)) / (2 * 1.96) else NA_real_,
         statistic = if (!is.null(tt)) unname(tt$statistic) else NA_real_,
@@ -246,8 +348,13 @@ contrast_rows <- function(fit_info, dat, level, endpoint_id, endpoint_label, spa
         direction = dplyr::case_when(est > 0 ~ "higher", est < 0 ~ "lower", TRUE ~ "zero"),
         n_samples = nrow(dat), formula_requested = fit_info$formula_requested,
         formula_used = fit_info$formula_used, dropped_covariates = paste(dropped, collapse = ";"),
-        rank_deficient_model = fit_info$rank_deficient, model_warning = paste(warning_note, collapse = "; ")
-      )
+        rank_deficient_model = fit_info$rank_deficient,
+        singular_model = fit_info$singular,
+        emmeans_success = FALSE,
+        animal_random_effect_used = identical(fit_info$model_type, "lmerTest_lmer"),
+        biological_replicate_unit = fallback_animal_support$biological_replicate_unit,
+        model_warning = paste(warning_note, collapse = "; ")
+      ) |> add_claim_model_fields()
     }))
   }))
 }
