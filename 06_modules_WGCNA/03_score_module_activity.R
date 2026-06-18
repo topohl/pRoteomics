@@ -30,6 +30,8 @@ source(repo_path("R", "dataset_inputs.R"))
 source(repo_path("R", "module_contracts.R"))
 source(repo_path("R", "wgcna_downstream_utils.R"))
 MODULE_ID <- "06_modules_WGCNA"
+SCRIPT_ID <- "06_modules_WGCNA/03_score_module_activity.R"
+Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 args <- commandArgs(trailingOnly = TRUE)
 arg_value <- function(flag, default = "") {
   hit <- which(args == flag)
@@ -39,7 +41,7 @@ arg_value <- function(flag, default = "") {
 dataset_cli <- arg_value("--dataset", default = "")
 if (nzchar(dataset_cli)) Sys.setenv(PROTEOMICS_DATASET = validate_dataset(dataset_cli, source = "--dataset"))
 dataset_profile <- current_dataset()
-dataset_inputs <- resolve_dataset_inputs(dataset_profile, purpose = "module_score")
+dataset_inputs <- resolve_dataset_inputs(dataset_profile, purpose = "module_score", script = SCRIPT_ID, stage = "modules_downstream")
 module_score_version <- "0.0.2"
 
 nonempty_label <- function(x) {
@@ -131,52 +133,72 @@ resolve_module_score_metadata_file <- function() {
 
 resolve_wgcna_state_file <- function() {
   override <- Sys.getenv("PROTEOMICS_WGCNA_STATE_FILE", unset = "")
-  if (nzchar(override)) return(normalizePath(override, winslash = "/", mustWork = FALSE))
-
-  candidates <- c(
-    path_processed("06_modules_WGCNA", "01_WGCNA", dataset_profile, "wgcna_final_model_state.rds"),
-    path_results("source_data", "06_modules_WGCNA", "01_WGCNA", dataset_profile, "wgcna_final_model_state.rds")
+  resolve_input_path(
+    input_name = "wgcna_final_model_state",
+    expected_path = path_processed("06_modules_WGCNA", "01_WGCNA", dataset_profile, "wgcna_final_model_state.rds"),
+    explicit_path = override,
+    fallback_paths = path_results("source_data", "06_modules_WGCNA", "01_WGCNA", dataset_profile, "wgcna_final_model_state.rds"),
+    required = FALSE,
+    script = SCRIPT_ID,
+    dataset = dataset_profile,
+    stage = "modules_downstream",
+    producer_script_or_artifact_id = "06_modules_WGCNA/01_WGCNA.r"
   )
-  candidates <- candidates[file.exists(candidates)]
-  if (length(candidates) == 0) return(NA_character_)
-  normalizePath(candidates[1], winslash = "/", mustWork = FALSE)
 }
 
 resolve_supermodule_annotation_file <- function() {
   override <- Sys.getenv("PROTEOMICS_SUPERMODULE_ANNOTATION_FILE", unset = "")
-  if (nzchar(override)) return(normalizePath(override, winslash = "/", mustWork = FALSE))
-  first_existing_path(c(
-    path_results("tables", "06_modules_WGCNA", "01_WGCNA", dataset_profile, "supermodules", "wgcna_module_supermodule_annotation.csv"),
-    path_results("source_data", "06_modules_WGCNA", "01_WGCNA", dataset_profile, "supermodules", "wgcna_module_supermodule_annotation.csv")
-  ))
+  resolve_input_path(
+    input_name = "wgcna_supermodule_annotation",
+    expected_path = path_results("tables", "06_modules_WGCNA", "01_WGCNA", dataset_profile, "supermodules", "wgcna_module_supermodule_annotation.csv"),
+    explicit_path = override,
+    fallback_paths = path_results("source_data", "06_modules_WGCNA", "01_WGCNA", dataset_profile, "supermodules", "wgcna_module_supermodule_annotation.csv"),
+    required = FALSE,
+    script = SCRIPT_ID,
+    dataset = dataset_profile,
+    stage = "modules_downstream",
+    producer_script_or_artifact_id = "06_modules_WGCNA/01_WGCNA.r"
+  )
 }
 
 resolve_module_definitions_file <- function(source = module_definition_source) {
   source <- tolower(source)
   override <- Sys.getenv("PROTEOMICS_MODULE_DEFINITIONS_FILE", unset = "")
-  if (nzchar(override)) return(normalizePath(override, winslash = "/", mustWork = FALSE))
 
   if (identical(source, "overlap")) {
-    direct <- first_existing_path(c(
-      path_results("tables", "06_modules_WGCNA", "curated_overlap_programs", "global", "curated_overlap_programs.xlsx"),
-      path_results("tables", "06_modules_WGCNA", "curated_overlap_programs", "global", "Overlap_based_neuropil_modules_classified.xlsx")
+    return(resolve_input_path(
+      input_name = "overlap_module_definitions",
+      expected_path = path_results("tables", "06_modules_WGCNA", "curated_overlap_programs", "global", "curated_overlap_programs.xlsx"),
+      explicit_path = override,
+      fallback_paths = path_results("tables", "06_modules_WGCNA", "curated_overlap_programs", "global", "Overlap_based_neuropil_modules_classified.xlsx"),
+      latest_roots = path_results("tables", "06_modules_WGCNA"),
+      latest_pattern = "^curated_overlap_programs\\.xlsx$|^Overlap_based_neuropil_modules_classified\\.xlsx$",
+      required = TRUE,
+      script = SCRIPT_ID,
+      dataset = dataset_profile,
+      stage = "modules_downstream",
+      producer_script_or_artifact_id = "06_modules_WGCNA/04_wgcna_de_gsea_overlap.r"
     ))
-    if (!is.na(direct)) return(direct)
-    return(first_existing_path(c(
-      latest_matching_file(path_results("tables", "06_modules_WGCNA"), "^curated_overlap_programs\\.xlsx$"),
-      latest_matching_file(path_results("tables", "06_modules_WGCNA"), "^Overlap_based_neuropil_modules_classified\\.xlsx$")
-    )))
   }
 
   if (identical(source, "wgcna")) {
-    direct <- first_existing_path(c(
-      path_results("tables", "06_modules_WGCNA", "01_WGCNA", dataset_profile, "modules", "WGCNA_module_definitions_for_downstream.csv"),
-      path_results("tables", "06_modules_WGCNA", "01_WGCNA", dataset_profile, "modules", "WGCNA_modules_long.xlsx"),
-      path_results("tables", "06_modules_WGCNA", "01_WGCNA", "modules", "WGCNA_modules_long.xlsx"),
-      path_results("tables", "06_modules_WGCNA", "01_WGCNA", "WGCNA_modules_long.xlsx")
+    return(resolve_input_path(
+      input_name = "wgcna_module_definitions",
+      expected_path = path_results("tables", "06_modules_WGCNA", "01_WGCNA", dataset_profile, "modules", "WGCNA_module_definitions_for_downstream.csv"),
+      explicit_path = override,
+      fallback_paths = c(
+        path_results("tables", "06_modules_WGCNA", "01_WGCNA", dataset_profile, "modules", "WGCNA_modules_long.xlsx"),
+        path_results("tables", "06_modules_WGCNA", "01_WGCNA", "modules", "WGCNA_modules_long.xlsx"),
+        path_results("tables", "06_modules_WGCNA", "01_WGCNA", "WGCNA_modules_long.xlsx")
+      ),
+      latest_roots = path_results("tables", "06_modules_WGCNA", "01_WGCNA", dataset_profile),
+      latest_pattern = "^WGCNA_modules_long\\.xlsx$",
+      required = TRUE,
+      script = SCRIPT_ID,
+      dataset = dataset_profile,
+      stage = "modules_downstream",
+      producer_script_or_artifact_id = "06_modules_WGCNA/01_WGCNA.r"
     ))
-    if (!is.na(direct)) return(direct)
-    return(latest_matching_file(path_results("tables", "06_modules_WGCNA", "01_WGCNA", dataset_profile), "^WGCNA_modules_long\\.xlsx$"))
   }
 
   NA_character_
