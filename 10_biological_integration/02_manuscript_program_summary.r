@@ -12,6 +12,7 @@ source(paths_file)
 source(repo_path("R", "integration_utils.R"))
 
 SCRIPT_ID <- "10_biological_integration/02_manuscript_program_summary.r"
+Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 run <- integration_cli(default_dataset = "all", allow_all = TRUE)
 paths <- integration_paths("manuscript_program_summary", "global")
 inputs <- list(
