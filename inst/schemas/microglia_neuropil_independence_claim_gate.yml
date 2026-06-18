@@ -6,6 +6,9 @@ required_columns:
   - microenvironment_class
   - adjustment_mode
   - covariate_family
+  - primary_effect_status
+  - primary_effect_claim_relevant
+  - primary_effect_threshold
   - independence_classification
   - claim_gate_eligible
   - downgrade_reason
@@ -13,8 +16,13 @@ required_columns:
   - min_animals_per_group
   - effect_before
   - effect_after
+  - effect_before_abs
+  - effect_before_near_zero
   - percent_attenuation
+  - percent_attenuation_reliable
   - direction_preserved
+  - audit_group_n
+  - eligible_without_primary_effect_count
 columns:
   module_or_supermodule_id: {type: character}
   contrast: {type: character}
@@ -22,12 +30,20 @@ columns:
   microenvironment_class: {type: character}
   adjustment_mode: {type: character, allowed_values: [predeclared_primary, predeclared_secondary, exploratory_best_spearman]}
   covariate_family: {type: character}
-  independence_classification: {type: character, allowed_values: [neuropil_independent, partially_neuropil_adjusted, neuropil_sensitive, inconclusive_low_power, inconclusive_missing_match, exploratory_only]}
+  primary_effect_status: {type: character, allowed_values: [FDR_pass, nominal_only, no_primary_effect, missing_effect_statistic, not_applicable]}
+  primary_effect_claim_relevant: {type: logical}
+  primary_effect_threshold: {type: character}
+  independence_classification: {type: character, allowed_values: [neuropil_independent, partially_neuropil_adjusted, neuropil_sensitive, inconclusive_low_power, inconclusive_missing_match, diagnostic_no_primary_effect, inconclusive_no_primary_effect, exploratory_only, mixed_or_covariate_sensitive]}
   claim_gate_eligible: {type: logical}
   downgrade_reason: {type: character}
   n_matched_animals: {type: integer}
   min_animals_per_group: {type: integer}
   effect_before: {type: numeric}
   effect_after: {type: numeric}
+  effect_before_abs: {type: numeric}
+  effect_before_near_zero: {type: logical}
   percent_attenuation: {type: numeric}
+  percent_attenuation_reliable: {type: logical}
   direction_preserved: {type: logical}
+  audit_group_n: {type: integer}
+  eligible_without_primary_effect_count: {type: integer}
