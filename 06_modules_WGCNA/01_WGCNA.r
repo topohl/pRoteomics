@@ -4435,6 +4435,76 @@ write_run_manifest(
   ),
   notes = "WGCNA run manifest for cache freshness and downstream module-contract consumers."
 )
+
+write_wgcna_parameter_audit <- function() {
+  state <- if (exists("expression.data") && exists("mergedMEs")) {
+    list(
+      expression.data = expression.data,
+      sample_info = if (exists("sample_info")) sample_info else NULL,
+      softPower = if (exists("softPower")) softPower else NA,
+      parameters = list(
+        selected_soft_power = if (exists("softPower")) softPower else NA,
+        network_type = "signed",
+        correlation_function = "bicor",
+        min_module_size = min_module_size,
+        deep_split = deep_split,
+        merge_cut_height = merge_cut_height,
+        supermodule_merge_cut_height = selected_supermodule_merge_cut_height(if (exists("dataset_profile_resolved")) dataset_profile_resolved else dataset_profile)
+      )
+    )
+  } else if (file.exists(wgcna_final_state_path)) {
+    tryCatch(readRDS(wgcna_final_state_path), error = function(e) list())
+  } else {
+    list()
+  }
+  params <- state$parameters %||% list()
+  expr <- state$expression.data %||% if (exists("expression.data")) expression.data else NULL
+  meta <- state$sample_info %||% if (exists("sample_info")) sample_info else NULL
+  feature_universe_path <- fp_modtab("WGCNA_feature_universe.csv")
+  feature_universe <- if (file.exists(feature_universe_path)) readr::read_csv(feature_universe_path, show_col_types = FALSE, progress = FALSE) else NULL
+  fit_path <- fp_qctab("soft_threshold_fit_indices.csv")
+  fit_indices_audit <- if (file.exists(fit_path)) readr::read_csv(fit_path, show_col_types = FALSE, progress = FALSE) else NULL
+  selected_power <- params$selected_soft_power %||% params$softPower %||% state$softPower %||% if (exists("softPower")) softPower else NA
+  selected_row <- if (!is.null(fit_indices_audit) && nrow(fit_indices_audit) && "Power" %in% names(fit_indices_audit)) {
+    fit_indices_audit[match(suppressWarnings(as.numeric(selected_power)), suppressWarnings(as.numeric(fit_indices_audit$Power))), , drop = FALSE]
+  } else {
+    data.frame()
+  }
+  staged_paths <- current_staged_input_paths()
+  input_hash_label <- paste(
+    paste0(names(staged_paths), "=", vapply(staged_paths, file_hash, character(1))),
+    collapse = ";"
+  )
+  audit <- tibble::tibble(
+    dataset = if (exists("dataset_profile_resolved")) dataset_profile_resolved else dataset_profile,
+    n_samples = if (!is.null(expr)) nrow(expr) else NA_integer_,
+    n_animals = if (!is.null(meta) && "AnimalID" %in% names(meta)) length(unique(stats::na.omit(meta$AnimalID))) else NA_integer_,
+    n_features_input = if (!is.null(feature_universe) && "included_in_wgcna" %in% names(feature_universe)) nrow(feature_universe) else NA_integer_,
+    n_features_after_filter = if (!is.null(expr)) ncol(expr) else NA_integer_,
+    missingness_filter = "goodSamplesGenes plus sample tree retention; see qc/sample_filtering_qc.csv and qc/gene_filtering_qc.csv",
+    imputation_source = "none_recorded_by_WGCNA_script",
+    normalization_source = "canonical staged WGCNA expression input; see logs/input_manifest.csv",
+    correlation_method = params$correlation_function %||% "bicor",
+    network_type = params$network_type %||% "signed",
+    TOM_type = params$TOM_type %||% params$network_type %||% "signed",
+    soft_power = selected_power,
+    scale_free_R2 = if (nrow(selected_row) && "SFT.R.sq" %in% names(selected_row)) selected_row$SFT.R.sq[[1]] else NA_real_,
+    mean_connectivity = if (nrow(selected_row) && "mean.k." %in% names(selected_row)) selected_row$mean.k.[[1]] else NA_real_,
+    min_module_size = params$min_module_size %||% min_module_size,
+    merge_cut_height = params$merge_cut_height %||% merge_cut_height,
+    deepSplit = params$deep_split %||% deep_split,
+    pamRespectsDendro = FALSE,
+    random_seed = 12345L,
+    supermodule_cut_height = params$supermodule_merge_cut_height %||% selected_supermodule_merge_cut_height(if (exists("dataset_profile_resolved")) dataset_profile_resolved else dataset_profile),
+    input_hashes = input_hash_label,
+    provenance = paste0("wgcna_final_state=", normalizePath(wgcna_final_state_path, winslash = "/", mustWork = FALSE), "; run_manifest=", normalizePath(wgcna_run_manifest_path, winslash = "/", mustWork = FALSE))
+  )
+  write_csv_safe(audit, fp_modtab("WGCNA_parameter_audit.csv"))
+  write_csv_safe(audit, fp_source("WGCNA_parameter_audit.csv"))
+  invisible(audit)
+}
+write_wgcna_parameter_audit()
+
 output_manifest <- output_manifest %>%
   dplyr::mutate(
     exists = file.exists(.data$path),
