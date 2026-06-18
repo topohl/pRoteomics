@@ -43,10 +43,12 @@ dry_run <- has_flag("--dry-run") || has_flag("--plan") ||
   tolower(Sys.getenv("PROTEOMICS_DRY_RUN", unset = "")) %in% c("1", "true", "yes")
 strict_outputs <- has_flag("--strict-outputs") ||
   tolower(Sys.getenv("PROTEOMICS_STRICT_OUTPUTS", unset = "")) %in% c("1", "true", "yes")
+strict_inputs <- has_flag("--strict-inputs") || strict_inputs_enabled()
 list_stages <- has_flag("--list-stages")
 
 if (!identical(dataset_arg, "all")) dataset_arg <- validate_dataset(dataset_arg, source = "--dataset")
 if (isTRUE(dry_run)) Sys.setenv(PROTEOMICS_DRY_RUN = "true")
+if (isTRUE(strict_inputs)) Sys.setenv(PROTEOMICS_STRICT_INPUTS = "true")
 
 registry <- read_pipeline_registry(repo_path("pipeline.yml"))
 validate_pipeline_scripts_exist(registry, fail = TRUE)
@@ -188,6 +190,7 @@ make_result <- function(step, status, exit_code, started_at, finished_at, missin
     platform = context$platform,
     env_PROTEOMICS_DATASET = Sys.getenv("PROTEOMICS_DATASET", unset = NA_character_),
     env_PROTEOMICS_DRY_RUN = Sys.getenv("PROTEOMICS_DRY_RUN", unset = NA_character_),
+    env_PROTEOMICS_STRICT_INPUTS = Sys.getenv("PROTEOMICS_STRICT_INPUTS", unset = NA_character_),
     env_PROTEOMICS_RECOMPUTE = Sys.getenv("PROTEOMICS_RECOMPUTE", unset = NA_character_),
     env_PROTEOMICS_WGCNA_FORCE_FULL = Sys.getenv("PROTEOMICS_WGCNA_FORCE_FULL", unset = NA_character_),
     env_PROTEOMICS_MODULE_DEFINITION_SOURCE = Sys.getenv("PROTEOMICS_MODULE_DEFINITION_SOURCE", unset = NA_character_),
@@ -202,6 +205,7 @@ cat("Selected stages:", paste(selected_stages, collapse = ", "), "\n")
 cat("Excluded stages:", ifelse(length(exclude_stages), paste(exclude_stages, collapse = ", "), "none"), "\n")
 cat("Excluded scripts:", ifelse(length(exclude_scripts), paste(exclude_scripts, collapse = ", "), "none"), "\n")
 cat("Dry run / plan:", dry_run, "\n")
+cat("Strict input policy:", strict_inputs, "\n")
 cat("Strict expected-output policy:", strict_outputs, "\n")
 cat("Project root:", repo_root(), "\n")
 cat("Registry:", repo_path("pipeline.yml"), "\n")
