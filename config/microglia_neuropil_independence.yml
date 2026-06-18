@@ -1,0 +1,61 @@
+predeclared_adjustments:
+  primary_family: global_neuropil_score
+  minimum_matched_animals: 6
+  minimum_matched_samples: 6
+  minimum_animals_per_group: 2
+  primary_effect_fdr_threshold: 0.05
+  primary_effect_nominal_p_threshold: 0.05
+  nominal_primary_effect_claim_relevant: false
+  near_zero_effect_abs_threshold: 1.0e-6
+  families:
+    - covariate_family: global_neuropil_score
+      selection_rule: fixed_predeclared_family_priority
+      preferred_covariates:
+        - z_empirical_neuropil_sensitive_high_confidence_score
+        - z_empirical_neuropil_enriched_score
+        - z_neuropil_synaptic_neuronal_score
+        - z_canonical_neuronal_synaptic_neuropil_score
+        - z_neuronal_synaptic_neuropil_score
+        - z_reference_cortical_excitatory_neuron_score
+        - z_reference_hippocampal_excitatory_neuron_score
+        - z_reference_inhibitory_interneuron_score
+      regex: "(neuropil|neuronal_synaptic|excitatory_neuron|inhibitory_interneuron)"
+    - covariate_family: mitochondrial_neuropil_score
+      selection_rule: fixed_predeclared_family_priority
+      preferred_covariates:
+        - z_canonical_mitochondrial_oxphos_score
+        - z_mitochondrial_oxphos_score
+      regex: "mitochond|oxphos|respirat|energy"
+    - covariate_family: synaptic_neuropil_score
+      selection_rule: fixed_predeclared_family_priority
+      preferred_covariates:
+        - z_fidelity_neuropil_synaptic_vesicle_score
+        - z_fidelity_neuropil_postsynaptic_density_score
+        - z_fidelity_neuropil_active_zone_score
+        - z_fidelity_neuropil_dendritic_spine_score
+        - z_canonical_neuronal_synaptic_neuropil_score
+        - z_neuronal_synaptic_neuropil_score
+      regex: "synap|postsynap|presynap|vesicle|active_zone|dendritic_spine"
+    - covariate_family: ECM_adhesion_neuropil_score
+      selection_rule: fixed_predeclared_family_priority
+      preferred_covariates:
+        - z_reference_vascular_score
+        - z_canonical_endothelial_vascular_score
+        - z_endothelial_pericyte_vascular_score
+      regex: "ecm|adhesion|vascular|endothelial|pericyte|basement"
+    - covariate_family: RNA_translation_neuropil_score
+      selection_rule: fixed_predeclared_family_priority
+      preferred_covariates:
+        - z_canonical_ribosomal_translation_score
+        - z_ribosomal_translation_score
+        - z_canonical_rnp_rna_processing_score
+        - z_rnp_rna_processing_score
+      regex: "ribosomal|translation|rnp|rna_processing"
+    - covariate_family: cytoskeletal_neuropil_score
+      selection_rule: fixed_predeclared_family_priority
+      preferred_covariates: []
+      regex: "cytoskel|actin|microtubule|tubulin"
+exploratory_adjustments:
+  - covariate_family: exploratory_best_spearman
+    adjustment_mode: exploratory_best_spearman
+    selection_rule: strongest_absolute_spearman_per_endpoint
