@@ -1,0 +1,62 @@
+panel_version,panel_id,marker_symbol,source_type,source_reference,allowed_use,claim_role,caution_note
+2026-06-18,basement_membrane_perivascular_ecm,Agrn,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,ROI/shared microenvironment marker panel; not primary claim support by itself.
+2026-06-18,basement_membrane_perivascular_ecm,Hspg2,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,ROI/shared microenvironment marker panel; not primary claim support by itself.
+2026-06-18,basement_membrane_perivascular_ecm,Lamb1,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,ROI/shared microenvironment marker panel; not primary claim support by itself.
+2026-06-18,basement_membrane_perivascular_ecm,Lamb2,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,ROI/shared microenvironment marker panel; not primary claim support by itself.
+2026-06-18,basement_membrane_perivascular_ecm,Lamc1,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,ROI/shared microenvironment marker panel; not primary claim support by itself.
+2026-06-18,basement_membrane_perivascular_ecm,Lama2,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,ROI/shared microenvironment marker panel; not primary claim support by itself.
+2026-06-18,basement_membrane_perivascular_ecm,Lama4,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,ROI/shared microenvironment marker panel; not primary claim support by itself.
+2026-06-18,basement_membrane_perivascular_ecm,Lama5,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,ROI/shared microenvironment marker panel; not primary claim support by itself.
+2026-06-18,basement_membrane_perivascular_ecm,Col4a1,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,ROI/shared microenvironment marker panel; not primary claim support by itself.
+2026-06-18,basement_membrane_perivascular_ecm,Col4a2,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,ROI/shared microenvironment marker panel; not primary claim support by itself.
+2026-06-18,basement_membrane_perivascular_ecm,Nid1,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,ROI/shared microenvironment marker panel; not primary claim support by itself.
+2026-06-18,basement_membrane_perivascular_ecm,Nid2,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,ROI/shared microenvironment marker panel; not primary claim support by itself.
+2026-06-18,basement_membrane_perivascular_ecm,Bcam,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,ROI/shared microenvironment marker panel; not primary claim support by itself.
+2026-06-18,basement_membrane_perivascular_ecm,Tinagl1,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,ROI/shared microenvironment marker panel; not primary claim support by itself.
+2026-06-18,basement_membrane_perivascular_ecm,Serpinh1,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,ROI/shared microenvironment marker panel; not primary claim support by itself.
+2026-06-18,bbb_endothelial_transport,Slc2a1,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,BBB/endothelial ROI marker panel; not primary claim support by itself.
+2026-06-18,bbb_endothelial_transport,Abcb1a,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,BBB/endothelial ROI marker panel; not primary claim support by itself.
+2026-06-18,bbb_endothelial_transport,Abcb1b,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,BBB/endothelial ROI marker panel; not primary claim support by itself.
+2026-06-18,bbb_endothelial_transport,Abcg2,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,BBB/endothelial ROI marker panel; not primary claim support by itself.
+2026-06-18,bbb_endothelial_transport,Cldn5,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,BBB/endothelial ROI marker panel; not primary claim support by itself.
+2026-06-18,bbb_endothelial_transport,Pecam1,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,BBB/endothelial ROI marker panel; not primary claim support by itself.
+2026-06-18,bbb_endothelial_transport,Kdr,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,BBB/endothelial ROI marker panel; not primary claim support by itself.
+2026-06-18,bbb_endothelial_transport,Flt1,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,BBB/endothelial ROI marker panel; not primary claim support by itself.
+2026-06-18,bbb_endothelial_transport,Tek,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,BBB/endothelial ROI marker panel; not primary claim support by itself.
+2026-06-18,bbb_endothelial_transport,Vwf,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,BBB/endothelial ROI marker panel; not primary claim support by itself.
+2026-06-18,bbb_endothelial_transport,Esam,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,BBB/endothelial ROI marker panel; not primary claim support by itself.
+2026-06-18,bbb_endothelial_transport,Mfsd2a,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,BBB/endothelial ROI marker panel; not primary claim support by itself.
+2026-06-18,bbb_endothelial_transport,Ocln,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,BBB/endothelial ROI marker panel; not primary claim support by itself.
+2026-06-18,bbb_endothelial_transport,Cav1,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,BBB/endothelial ROI marker panel; not primary claim support by itself.
+2026-06-18,pericyte_mural_ng2,Cspg4,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,Pericyte/mural ROI marker panel; not primary claim support by itself.
+2026-06-18,pericyte_mural_ng2,Pdgfrb,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,Pericyte/mural ROI marker panel; not primary claim support by itself.
+2026-06-18,pericyte_mural_ng2,Rgs5,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,Pericyte/mural ROI marker panel; not primary claim support by itself.
+2026-06-18,pericyte_mural_ng2,Kcnj8,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,Pericyte/mural ROI marker panel; not primary claim support by itself.
+2026-06-18,pericyte_mural_ng2,Abcc9,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,Pericyte/mural ROI marker panel; not primary claim support by itself.
+2026-06-18,pericyte_mural_ng2,Des,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,Pericyte/mural ROI marker panel; not primary claim support by itself.
+2026-06-18,pericyte_mural_ng2,Acta2,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,Pericyte/mural ROI marker panel; not primary claim support by itself.
+2026-06-18,pericyte_mural_ng2,Tagln,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,Pericyte/mural ROI marker panel; not primary claim support by itself.
+2026-06-18,pericyte_mural_ng2,Mcam,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,Pericyte/mural ROI marker panel; not primary claim support by itself.
+2026-06-18,pericyte_mural_ng2,Notch3,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,Pericyte/mural ROI marker panel; not primary claim support by itself.
+2026-06-18,pericyte_mural_ng2,Anpep,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,Pericyte/mural ROI marker panel; not primary claim support by itself.
+2026-06-18,astrocyte_endfoot_gliovascular,Aqp4,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,Astrocyte/endfoot ROI marker panel; not primary claim support by itself.
+2026-06-18,astrocyte_endfoot_gliovascular,Gfap,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,Astrocyte/endfoot ROI marker panel; not primary claim support by itself.
+2026-06-18,astrocyte_endfoot_gliovascular,Aldh1l1,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,Astrocyte/endfoot ROI marker panel; not primary claim support by itself.
+2026-06-18,astrocyte_endfoot_gliovascular,Slc1a2,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,Astrocyte/endfoot ROI marker panel; not primary claim support by itself.
+2026-06-18,astrocyte_endfoot_gliovascular,Slc1a3,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,Astrocyte/endfoot ROI marker panel; not primary claim support by itself.
+2026-06-18,astrocyte_endfoot_gliovascular,Gja1,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,Astrocyte/endfoot ROI marker panel; not primary claim support by itself.
+2026-06-18,astrocyte_endfoot_gliovascular,Glul,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,Astrocyte/endfoot ROI marker panel; not primary claim support by itself.
+2026-06-18,astrocyte_endfoot_gliovascular,Aldoc,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,Astrocyte/endfoot ROI marker panel; not primary claim support by itself.
+2026-06-18,astrocyte_endfoot_gliovascular,Dtna,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,Astrocyte/endfoot ROI marker panel; not primary claim support by itself.
+2026-06-18,astrocyte_endfoot_gliovascular,Dag1,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,Astrocyte/endfoot ROI marker panel; not primary claim support by itself.
+2026-06-18,integrin_ecm_adhesion,Itga1,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,ECM adhesion ROI marker panel; not primary claim support by itself.
+2026-06-18,integrin_ecm_adhesion,Itga2,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,ECM adhesion ROI marker panel; not primary claim support by itself.
+2026-06-18,integrin_ecm_adhesion,Itga5,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,ECM adhesion ROI marker panel; not primary claim support by itself.
+2026-06-18,integrin_ecm_adhesion,Itga6,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,ECM adhesion ROI marker panel; not primary claim support by itself.
+2026-06-18,integrin_ecm_adhesion,Itgb1,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,ECM adhesion ROI marker panel; not primary claim support by itself.
+2026-06-18,integrin_ecm_adhesion,Tln1,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,ECM adhesion ROI marker panel; not primary claim support by itself.
+2026-06-18,integrin_ecm_adhesion,Tln2,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,ECM adhesion ROI marker panel; not primary claim support by itself.
+2026-06-18,integrin_ecm_adhesion,Vcl,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,ECM adhesion ROI marker panel; not primary claim support by itself.
+2026-06-18,integrin_ecm_adhesion,Parva,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,ECM adhesion ROI marker panel; not primary claim support by itself.
+2026-06-18,integrin_ecm_adhesion,Parvb,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,ECM adhesion ROI marker panel; not primary claim support by itself.
+2026-06-18,integrin_ecm_adhesion,Pxn,curated_local,Pass4 local microenvironment annotation panel,annotation,context_only,ECM adhesion ROI marker panel; not primary claim support by itself.
