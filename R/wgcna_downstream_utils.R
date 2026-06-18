@@ -897,12 +897,22 @@ empty_group_effects <- function(dataset, level, reason) {
     effect_scope = NA_character_, SpatialUnitType = NA_character_, model_type = NA_character_,
     has_repeated_animals = NA, n_animals = NA_integer_,
     n_animals_total = NA_integer_, min_animals_per_group = NA_integer_,
-    animal_level_status = "mixed_or_unclear",
+    n_animals_per_group = NA_character_, n_samples_total = 0L,
+    n_samples_per_group = NA_character_, animal_level_status = "sample_level_or_unclear",
+    pseudoreplication_guard = "unclear_biological_replicate_unit",
     contrast = NA_character_, estimate = NA_real_, SE = NA_real_, statistic = NA_real_,
     p_value = NA_real_, FDR_within_dataset_level = NA_real_, FDR_global = NA_real_,
     evidence_status = "not_supported",
     direction = NA_character_, n_samples = 0L, formula_requested = NA_character_, formula_used = NA_character_,
-    dropped_covariates = NA_character_, rank_deficient_model = NA, model_warning = reason,
+    dropped_covariates = NA_character_,
+    model_family = NA_character_, model_formula = NA_character_,
+    primary_model_stable = FALSE, claim_allowed_model = FALSE,
+    model_downgrade_reason = reason,
+    fallback_used = NA, fallback_type = NA_character_,
+    rank_deficient_model = NA, singular_model = NA, emmeans_success = NA,
+    animal_random_effect_used = NA,
+    biological_replicate_unit = NA_character_,
+    model_warning = reason,
     stringsAsFactors = FALSE
   )
 }
@@ -910,10 +920,15 @@ empty_group_effects <- function(dataset, level, reason) {
 required_group_effect_columns <- c(
   "dataset", "level", "endpoint_id", "endpoint_label", "module_id", "supermodule_id", "module_label", "supermodule_label",
   "spatial_unit", "effect_scope", "SpatialUnitType", "model_type", "has_repeated_animals",
-  "n_animals", "n_animals_total", "min_animals_per_group", "animal_level_status",
+  "n_animals", "n_animals_total", "n_animals_per_group", "min_animals_per_group",
+  "n_samples_total", "n_samples_per_group", "animal_level_status", "pseudoreplication_guard",
   "contrast", "estimate", "SE", "statistic", "p_value",
   "FDR_within_dataset_level", "FDR_global", "evidence_status", "direction", "n_samples",
-  "formula_requested", "formula_used", "dropped_covariates", "rank_deficient_model", "model_warning"
+  "formula_requested", "formula_used", "dropped_covariates",
+  "model_family", "model_formula", "primary_model_stable", "claim_allowed_model",
+  "model_downgrade_reason", "fallback_used", "fallback_type",
+  "rank_deficient_model", "singular_model", "emmeans_success",
+  "animal_random_effect_used", "biological_replicate_unit", "model_warning"
 )
 
 required_module_annotation_columns <- c(

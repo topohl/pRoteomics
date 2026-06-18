@@ -61,7 +61,12 @@ dataset_filter_contract <- function(dataset = current_dataset()) {
   )
 }
 
-resolve_dataset_inputs <- function(dataset = current_dataset(), purpose = c("wgcna", "module_score")) {
+resolve_dataset_inputs <- function(
+  dataset = current_dataset(),
+  purpose = c("wgcna", "module_score"),
+  script = Sys.getenv("PROTEOMICS_SCRIPT_ID", unset = NA_character_),
+  stage = NA_character_
+) {
   purpose <- match.arg(purpose)
   dataset <- validate_dataset(dataset)
   filter_contract <- dataset_filter_contract(dataset)
@@ -70,73 +75,76 @@ resolve_dataset_inputs <- function(dataset = current_dataset(), purpose = c("wgc
   if (identical(purpose, "wgcna")) {
     explicit_expression <- Sys.getenv("PROTEOMICS_WGCNA_UPSTREAM_XLSX", unset = "")
     explicit_metadata <- Sys.getenv("PROTEOMICS_WGCNA_UPSTREAM_META_XLSX", unset = "")
-    expression_file <- if (nzchar(explicit_expression)) {
-      normalizePath(explicit_expression, winslash = "/", mustWork = FALSE)
-    } else {
-      latest_matching_file(
-        path_processed("01_preprocessing", "impute"),
-        paste0("^\\d{8}_pgmatrix_imputed_", dataset, "_[0-9]+samples_missing70pct\\.xlsx$"),
-        recursive = FALSE
-      )
-    }
-    metadata_file <- if (nzchar(explicit_metadata)) {
-      normalizePath(explicit_metadata, winslash = "/", mustWork = FALSE)
-    } else {
-      path_metadata("TPE9_sample_metadata_males.xlsx")
-    }
+    expression_file <- resolve_input_path(
+      input_name = "wgcna_imputed_expression_matrix",
+      expected_path = NA_character_,
+      explicit_path = explicit_expression,
+      latest_roots = path_processed("01_preprocessing", "impute"),
+      latest_pattern = paste0("^\\d{8}_pgmatrix_imputed_", dataset, "_[0-9]+samples_missing70pct\\.xlsx$"),
+      recursive = FALSE,
+      required = TRUE,
+      script = script,
+      dataset = dataset,
+      stage = stage,
+      producer_script_or_artifact_id = "01_preprocessing/impute"
+    )
+    metadata_file <- resolve_input_path(
+      input_name = "wgcna_sample_metadata",
+      expected_path = path_metadata("TPE9_sample_metadata_males.xlsx"),
+      explicit_path = explicit_metadata,
+      required = TRUE,
+      script = script,
+      dataset = dataset,
+      stage = stage,
+      producer_script_or_artifact_id = "data/metadata/TPE9_sample_metadata_males.xlsx"
+    )
     matrix_format <- "imputed_expression_wide"
   } else {
     explicit_expression <- Sys.getenv("PROTEOMICS_MODULE_SCORE_PROTEIN_FILE", unset = "")
     explicit_metadata <- Sys.getenv("PROTEOMICS_MODULE_SCORE_METADATA_FILE", unset = "")
-    expression_file <- if (nzchar(explicit_expression)) {
-      normalizePath(explicit_expression, winslash = "/", mustWork = FALSE)
-    } else {
-      latest_matching_file_anywhere(
-        c(
-          path_processed("01_preprocessing"),
-          path_processed("01_preprocessing", "excel_convert"),
-          path_processed("morpheus")
-        ),
-        paste0("^\\d{8}_pgmatrix_imputed_", dataset, "_[0-9]+samples_missing70pct_with_metadata\\.xlsx$")
-      )
-    }
+    expression_file <- resolve_input_path(
+      input_name = "module_score_protein_matrix_with_metadata",
+      expected_path = NA_character_,
+      explicit_path = explicit_expression,
+      latest_roots = c(
+        path_processed("01_preprocessing"),
+        path_processed("01_preprocessing", "excel_convert"),
+        path_processed("morpheus")
+      ),
+      latest_pattern = paste0("^\\d{8}_pgmatrix_imputed_", dataset, "_[0-9]+samples_missing70pct_with_metadata\\.xlsx$"),
+      required = TRUE,
+      script = script,
+      dataset = dataset,
+      stage = stage,
+      producer_script_or_artifact_id = "01_preprocessing/02_excel_convert.r"
+    )
     canonical_metadata <- path_processed(
       "01_preprocessing",
       "06_merged_metadata_module_score",
       dataset,
       "sample_metadata_merged_clean_for_module_scores.xlsx"
     )
-    metadata_file <- first_existing_path(c(canonical_metadata))
-    if (is.na(metadata_file) && nzchar(explicit_metadata)) {
-      metadata_file <- normalizePath(explicit_metadata, winslash = "/", mustWork = FALSE)
-    }
     legacy_dataset_candidates <- c(
       path_results("module_scores", dataset, "sample_metadata_merged_clean_for_module_scores.xlsx"),
       path_processed("01_preprocessing", dataset, "sample_metadata_merged_clean_for_module_scores.xlsx")
     )
-    if (is.na(metadata_file)) {
-      legacy_dataset_metadata <- first_existing_path(legacy_dataset_candidates)
-      if (!is.na(legacy_dataset_metadata)) {
-        warning(
-          "Using legacy dataset-scoped module-score metadata fallback: ", legacy_dataset_metadata,
-          ". Regenerate canonical metadata at data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/.",
-          call. = FALSE
-        )
-        metadata_file <- legacy_dataset_metadata
-      }
-    }
     allow_global_metadata_fallback <- tolower(Sys.getenv("PROTEOMICS_ALLOW_GLOBAL_MODULE_SCORE_METADATA", unset = "")) %in% c("1", "true", "yes")
-    if (is.na(metadata_file) && isTRUE(allow_global_metadata_fallback)) {
-      global_metadata <- normalizePath(path_results("module_scores", "sample_metadata_merged_clean_for_module_scores.xlsx"), winslash = "/", mustWork = FALSE)
-      if (file.exists(global_metadata)) {
-        warning(
-          "Using legacy global module-score metadata fallback: ", global_metadata,
-          " for dataset '", dataset, "'. Regenerate canonical dataset-scoped metadata at data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/",
-          call. = FALSE
-        )
-        metadata_file <- global_metadata
-      }
-    }
+    # Legacy global module-score metadata fallback remains exploratory-only:
+    # "legacy global module-score metadata fallback".
+    metadata_file <- resolve_input_path(
+      input_name = "module_score_sample_metadata",
+      expected_path = canonical_metadata,
+      explicit_path = explicit_metadata,
+      fallback_paths = c(
+        legacy_dataset_candidates,
+        if (isTRUE(allow_global_metadata_fallback)) path_results("module_scores", "sample_metadata_merged_clean_for_module_scores.xlsx") else character()
+      ),
+      required = TRUE,
+      script = script,
+      dataset = dataset,
+      stage = stage,
+      producer_script_or_artifact_id = "01_preprocessing/06_merged_metadata_module_score.r"
+    )
     matrix_format <- "morpheus_with_metadata_rows"
   }
 
@@ -148,6 +156,20 @@ resolve_dataset_inputs <- function(dataset = current_dataset(), purpose = c("wgc
     paste0("metadata_file_exists=", file.exists(metadata_file)),
     paste0("idmap_file_exists=", file.exists(idmap_file)),
     filter_contract$description
+  )
+
+  record_input_resolution(
+    script = script,
+    dataset = dataset,
+    stage = stage,
+    input_name = paste0(purpose, "_uniprot_id_mapping"),
+    expected_path = idmap_file,
+    resolved_path = idmap_file,
+    resolution_mode = if (file.exists(idmap_file)) "canonical" else "missing",
+    strict_mode = strict_inputs_enabled(),
+    allowed_in_strict_mode = TRUE,
+    producer_script_or_artifact_id = "data/external/MOUSE_10090_idmapping.dat",
+    warning = NA_character_
   )
 
   list(

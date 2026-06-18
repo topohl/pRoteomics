@@ -72,8 +72,14 @@ validate_wgcna_group_effects <- function(df, artifact = "WGCNA group effects") {
       "dataset", "level", "spatial_unit", "contrast", "estimate", "SE",
       "p_value", "FDR_within_dataset_level", "FDR_global", "direction",
       "effect_scope", "SpatialUnitType", "model_type", "has_repeated_animals",
-      "n_animals", "n_samples", "formula_requested", "formula_used", "dropped_covariates",
-      "rank_deficient_model", "model_warning"
+      "n_animals", "n_animals_total", "n_animals_per_group", "min_animals_per_group",
+      "n_samples", "n_samples_total", "n_samples_per_group",
+      "animal_level_status", "pseudoreplication_guard",
+      "formula_requested", "formula_used", "dropped_covariates",
+      "model_family", "model_formula", "primary_model_stable", "claim_allowed_model",
+      "model_downgrade_reason", "fallback_used", "fallback_type",
+      "rank_deficient_model", "singular_model", "emmeans_success",
+      "animal_random_effect_used", "biological_replicate_unit", "model_warning"
     ),
     artifact
   )
@@ -184,10 +190,14 @@ validate_final_evidence_bundle <- function(bundle_dir, artifact = "final biologi
   require_module_contract_columns(
     claims,
     c(
-      "claim_id", "dataset", "biological_program", "evidence_type",
+      "claim_id", "dataset", "biological_program", "evidence_type", "claim_type",
+      "claim_use_class", "raw_top_GO_term", "representative_GO_terms",
+      "semantic_parent_label", "safe_program_label", "term_label_risk",
+      "label_confidence", "label_basis", "label_downgrade_reason",
       "claim_grade", "primary_evidence", "orthogonal_support",
       "major_limitation", "safe_interpretation", "unsafe_overinterpretation",
       "claim_allowed", "claim_gate_status", "claim_downgrade_reason",
+      "model_fit_status", "statistical_evidence_status", "claim_gate_model_status",
       "primary_model_status", "animal_level_gate", "qc_gate",
       "missingness_gate", "batch_confound_gate", "marker_contamination_gate",
       "microglia_roi_gate", "neuropil_independence_gate", "robustness_gate",
