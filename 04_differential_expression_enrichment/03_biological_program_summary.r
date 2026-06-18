@@ -18,6 +18,8 @@ source(repo_path("R", "enrichment_io.R"))
 source(repo_path("R", "enrichment_plots.R"))
 source(repo_path("R", "plotting_nature.R"))
 
+SCRIPT_ID <- "04_differential_expression_enrichment/03_biological_program_summary.r"
+Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 args <- commandArgs(trailingOnly = TRUE)
 arg_value <- function(flag, default = "") {
   hit <- which(args == flag)
@@ -40,12 +42,25 @@ if (length(missing)) {
 suppressPackageStartupMessages(invisible(lapply(required_pkgs, library, character.only = TRUE)))
 
 latest_manifest <- function() {
-  first_existing_path(c(
-    path_processed("04_differential_expression_enrichment", "compareGO", DATASET, "compareGO_input_manifest.csv"),
-    latest_file(path_processed("04_differential_expression_enrichment", "compareGO", DATASET), "^compareGO_input_manifest.*\\.csv$"),
-    latest_file(path_processed("04_differential_expression_enrichment", "clusterProfiler", DATASET), "^clusterProfiler_manifest.*\\.csv$"),
-    latest_file(path_results("reports", "04_differential_expression_enrichment", "clusterProfiler", DATASET), "^clusterProfiler_manifest.*\\.csv$")
-  ))
+  resolve_input_path(
+    input_name = "biological_program_summary_enrichment_manifest",
+    expected_path = path_processed("04_differential_expression_enrichment", "compareGO", DATASET, "compareGO_input_manifest.csv"),
+    fallback_paths = c(
+      path_processed("04_differential_expression_enrichment", "clusterProfiler", DATASET, "clusterProfiler_manifest.csv"),
+      path_results("reports", "04_differential_expression_enrichment", "clusterProfiler", DATASET, "clusterProfiler_manifest.csv")
+    ),
+    latest_roots = c(
+      path_processed("04_differential_expression_enrichment", "compareGO", DATASET),
+      path_processed("04_differential_expression_enrichment", "clusterProfiler", DATASET),
+      path_results("reports", "04_differential_expression_enrichment", "clusterProfiler", DATASET)
+    ),
+    latest_pattern = "^compareGO_input_manifest.*\\.csv$|^clusterProfiler_manifest.*\\.csv$",
+    required = TRUE,
+    script = SCRIPT_ID,
+    dataset = DATASET,
+    stage = "enrichment",
+    producer_script_or_artifact_id = "04_differential_expression_enrichment/02_compareGO.r"
+  )
 }
 
 manifest_file <- latest_manifest()
@@ -278,6 +293,31 @@ latest_microglia_signature <- first_existing_path(c(
     "microglia_signature_enrichment_with_neuropil_reference.csv"
   )
 ))
+
+record_input_resolution(
+  script = SCRIPT_ID,
+  dataset = DATASET,
+  stage = "enrichment",
+  input_name = "neuropil_reference_annotation",
+  expected_path = file.path(path_results("tables", MODULE_ID, "neuropil_reference_annotation", DATASET), "microglia_neuropil_annotation_latest.csv"),
+  resolved_path = latest_neuropil_annotation,
+  resolution_mode = if (!is.na(latest_neuropil_annotation) && file.exists(latest_neuropil_annotation)) "canonical_or_compatibility" else "missing",
+  strict_mode = strict_inputs_enabled(),
+  allowed_in_strict_mode = TRUE,
+  producer_script_or_artifact_id = "04_differential_expression_enrichment/neuropil_reference_annotation"
+)
+record_input_resolution(
+  script = SCRIPT_ID,
+  dataset = DATASET,
+  stage = "enrichment",
+  input_name = "microglia_targeted_signature_annotation",
+  expected_path = file.path(path_results("tables", MODULE_ID, "microglia_targeted_signature_enrichment", DATASET), "microglia_signature_enrichment_with_contrast_class.csv"),
+  resolved_path = latest_microglia_signature,
+  resolution_mode = if (!is.na(latest_microglia_signature) && file.exists(latest_microglia_signature)) "canonical_or_compatibility" else "missing",
+  strict_mode = strict_inputs_enabled(),
+  allowed_in_strict_mode = TRUE,
+  producer_script_or_artifact_id = "04_differential_expression_enrichment/05_microglia_targeted_signature_enrichment.r"
+)
 
 neuropil_annotation <- optional_read_csv(latest_neuropil_annotation)
 signature_annotation <- optional_read_csv(latest_microglia_signature)
