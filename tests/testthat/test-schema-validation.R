@@ -13,6 +13,16 @@ testthat::test_that("schema validation catches missing columns and accepts valid
     direction = "positive_NES",
     key_proteins_genes = "AIF1",
     evidence_type = "microglia_signature_enrichment",
+    claim_type = "microglia_signature",
+    claim_use_class = "blocked",
+    raw_top_GO_term = NA_character_,
+    representative_GO_terms = NA_character_,
+    semantic_parent_label = NA_character_,
+    safe_program_label = "microglia_signature",
+    term_label_risk = "not_applicable",
+    label_confidence = "not_applicable",
+    label_basis = "not_applicable",
+    label_downgrade_reason = "not_applicable",
     effect_size_NES = 1.2,
     raw_p = 0.01,
     FDR = 0.04,
@@ -27,14 +37,17 @@ testthat::test_that("schema validation catches missing columns and accepts valid
     safe_interpretation = "ROI-associated signal",
     unsafe_overinterpretation = "Purified microglia claim",
     claim_allowed = FALSE,
-    claim_gate_status = "missing_evidence",
-    claim_downgrade_reason = "animal_level_gate=fail; marker_contamination_gate=missing_evidence",
+    claim_gate_status = "disallowed",
+    claim_downgrade_reason = "animal_level_gate=fail; marker_contamination_gate=missing_required",
+    model_fit_status = "pass",
+    statistical_evidence_status = "pass",
+    claim_gate_model_status = "pass",
     primary_model_status = "pass",
     animal_level_gate = "fail",
-    qc_gate = "missing_evidence",
+    qc_gate = "missing_optional",
     missingness_gate = "pass",
     batch_confound_gate = "pass",
-    marker_contamination_gate = "missing_evidence",
+    marker_contamination_gate = "missing_required",
     microglia_roi_gate = "pass",
     neuropil_independence_gate = "not_applicable",
     robustness_gate = "pass",
@@ -109,9 +122,27 @@ testthat::test_that("WGCNA group-effect output validation checks required column
     evidence_status = "nominal_only",
     n_samples = 8L,
     n_animals = 6L,
+    n_animals_total = 6L,
+    n_animals_per_group = "CON=3;SUS=3",
+    min_animals_per_group = 3L,
+    n_samples_total = 8L,
+    n_samples_per_group = "CON=4;SUS=4",
+    animal_level_status = "animal_level",
+    pseudoreplication_guard = "pass",
     model_type = "lm",
+    model_family = "linear_model",
+    model_formula = "eigengene ~ StressGroup",
+    primary_model_stable = TRUE,
+    claim_allowed_model = TRUE,
+    model_downgrade_reason = "none",
+    fallback_used = FALSE,
+    fallback_type = NA_character_,
     formula_used = "eigengene ~ StressGroup",
     rank_deficient_model = FALSE,
+    singular_model = FALSE,
+    emmeans_success = TRUE,
+    animal_random_effect_used = FALSE,
+    biological_replicate_unit = "animal",
     model_warning = "",
     stringsAsFactors = FALSE
   )
@@ -135,4 +166,54 @@ testthat::test_that("WGCNA group-effect output validation checks required column
   warn2 <- validate_known_pipeline_output(path, dataset = "microglia")
   testthat::expect_equal(warn2$validation_status, "warning")
   testthat::expect_match(warn2$validation_message, "formula_used")
+})
+
+testthat::test_that("microglia neuropil independence audit schemas validate", {
+  source(testthat::test_path("..", "..", "R", "paths.R"))
+  source(repo_path("R", "schema_validation.R"))
+  testthat::skip_if_not_installed("yaml")
+
+  claim_gate <- data.frame(
+    module_or_supermodule_id = "WGCNA_#000000",
+    contrast = "SUS - CON",
+    biological_program = "microglia-enriched ROI program",
+    microenvironment_class = "microglia_supported",
+    adjustment_mode = "predeclared_primary",
+    covariate_family = "global_neuropil_score",
+    primary_effect_status = "FDR_pass",
+    primary_effect_claim_relevant = TRUE,
+    primary_effect_threshold = "FDR<=0.05; nominal_p<=0.05 diagnostic_only",
+    independence_classification = "neuropil_independent",
+    claim_gate_eligible = TRUE,
+    downgrade_reason = "none",
+    n_matched_animals = 6L,
+    min_animals_per_group = 2L,
+    effect_before = 0.4,
+    effect_after = 0.35,
+    effect_before_abs = 0.4,
+    effect_before_near_zero = FALSE,
+    percent_attenuation = 12.5,
+    percent_attenuation_reliable = TRUE,
+    direction_preserved = TRUE,
+    audit_group_n = 1L,
+    eligible_without_primary_effect_count = 0L,
+    stringsAsFactors = FALSE
+  )
+  testthat::expect_silent(validate_table_schema(claim_gate, "microglia_neuropil_independence_claim_gate", strict = TRUE))
+
+  selection <- data.frame(
+    endpoint_id = "WGCNA_#000000",
+    module_or_supermodule_id = "WGCNA_#000000",
+    candidate_covariates = "z_reference_cortical_excitatory_neuron_score",
+    predeclared_covariates_available = "global_neuropil_score=z_reference_cortical_excitatory_neuron_score",
+    selected_primary_covariate = "z_reference_cortical_excitatory_neuron_score",
+    selected_secondary_covariate = "",
+    selected_exploratory_covariate = "WGCNA_#111111",
+    selection_rule = "predeclared=fixed family priority; exploratory=strongest absolute Spearman",
+    primary_claim_gate_eligible = TRUE,
+    secondary_claim_gate_eligible = FALSE,
+    exploratory_claim_gate_eligible = FALSE,
+    stringsAsFactors = FALSE
+  )
+  testthat::expect_silent(validate_table_schema(selection, "microglia_neuropil_covariate_selection_audit", strict = FALSE))
 })

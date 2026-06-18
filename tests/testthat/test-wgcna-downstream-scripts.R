@@ -165,9 +165,16 @@ testthat::test_that("WGCNA downstream schemas expose required columns", {
     "supermodule_label", "spatial_unit", "contrast", "estimate", "SE",
     "statistic", "p_value", "FDR_within_dataset_level", "FDR_global",
     "direction", "effect_scope", "SpatialUnitType", "model_type",
-    "has_repeated_animals", "n_animals", "n_samples", "formula_requested",
+    "has_repeated_animals", "n_animals", "n_animals_total",
+    "n_animals_per_group", "min_animals_per_group", "n_samples",
+    "n_samples_total", "n_samples_per_group", "animal_level_status",
+    "pseudoreplication_guard", "formula_requested",
     "formula_used", "dropped_covariates",
-    "rank_deficient_model", "model_warning"
+    "model_family", "model_formula", "primary_model_stable",
+    "claim_allowed_model", "model_downgrade_reason", "fallback_used",
+    "fallback_type", "rank_deficient_model", "singular_model",
+    "emmeans_success", "animal_random_effect_used",
+    "biological_replicate_unit", "model_warning"
   )
   group_df <- as.data.frame(setNames(rep(list(logical()), length(group_cols)), group_cols))
   testthat::expect_silent(validate_wgcna_group_effects(group_df))
