@@ -1,0 +1,47 @@
+name: WGCNA_parameter_audit
+required_columns:
+  - dataset
+  - n_samples
+  - n_animals
+  - n_features_input
+  - n_features_after_filter
+  - missingness_filter
+  - imputation_source
+  - normalization_source
+  - correlation_method
+  - network_type
+  - TOM_type
+  - soft_power
+  - scale_free_R2
+  - mean_connectivity
+  - min_module_size
+  - merge_cut_height
+  - deepSplit
+  - pamRespectsDendro
+  - random_seed
+  - supermodule_cut_height
+  - input_hashes
+  - provenance
+columns:
+  dataset: {type: character, allowed_values: [neuron_neuropil, neuron_soma, microglia]}
+  n_samples: {type: integer}
+  n_animals: {type: integer}
+  n_features_input: {type: integer}
+  n_features_after_filter: {type: integer}
+  missingness_filter: {type: character}
+  imputation_source: {type: character}
+  normalization_source: {type: character}
+  correlation_method: {type: character}
+  network_type: {type: character}
+  TOM_type: {type: character}
+  soft_power: {type: numeric}
+  scale_free_R2: {type: numeric}
+  mean_connectivity: {type: numeric}
+  min_module_size: {type: integer}
+  merge_cut_height: {type: numeric}
+  deepSplit: {type: integer}
+  pamRespectsDendro: {type: logical}
+  random_seed: {type: integer}
+  supermodule_cut_height: {type: numeric}
+  input_hashes: {type: character}
+  provenance: {type: character}

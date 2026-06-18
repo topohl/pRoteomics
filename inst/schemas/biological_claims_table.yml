@@ -4,6 +4,16 @@ required_columns:
   - dataset
   - biological_program
   - evidence_type
+  - claim_type
+  - claim_use_class
+  - raw_top_GO_term
+  - representative_GO_terms
+  - semantic_parent_label
+  - safe_program_label
+  - term_label_risk
+  - label_confidence
+  - label_basis
+  - label_downgrade_reason
   - claim_grade
   - primary_evidence
   - orthogonal_support
@@ -13,6 +23,9 @@ required_columns:
   - claim_allowed
   - claim_gate_status
   - claim_downgrade_reason
+  - model_fit_status
+  - statistical_evidence_status
+  - claim_gate_model_status
   - primary_model_status
   - animal_level_gate
   - qc_gate
@@ -33,6 +46,16 @@ columns:
   direction: {type: character}
   key_proteins_genes: {type: character}
   evidence_type: {type: character}
+  claim_type: {type: character, allowed_values: [wgcna_group_effect, enrichment_program, module_annotation, microglia_signature, microglia_roi_context, behavior_association, integration_summary, export_context]}
+  claim_use_class: {type: character, allowed_values: [primary_claim, supporting_claim, suggestive_context, annotation_only, blocked]}
+  raw_top_GO_term: {type: character}
+  representative_GO_terms: {type: character}
+  semantic_parent_label: {type: character}
+  safe_program_label: {type: character}
+  term_label_risk: {type: character, allowed_values: [none, tissue_mismatched_top_term, broad_developmental_GO, low_specificity_GO, non_neural_surface_label, single_term_driven, mixed_unresolved, not_applicable]}
+  label_confidence: {type: character, allowed_values: [high, moderate, low, not_applicable]}
+  label_basis: {type: character}
+  label_downgrade_reason: {type: character}
   effect_size_NES: {type: numeric}
   raw_p: {type: numeric, range: {min: 0, max: 1}}
   FDR: {type: numeric, range: {min: 0, max: 1}}
@@ -47,18 +70,21 @@ columns:
   safe_interpretation: {type: character}
   unsafe_overinterpretation: {type: character}
   claim_allowed: {type: logical}
-  claim_gate_status: {type: character, allowed_values: [allowed, blocked, missing_evidence]}
+  claim_gate_status: {type: character, allowed_values: [allowed, downgraded, disallowed]}
   claim_downgrade_reason: {type: character}
-  primary_model_status: {type: character, allowed_values: [pass, fail, missing_evidence]}
-  animal_level_gate: {type: character, allowed_values: [pass, fail, missing_evidence]}
-  qc_gate: {type: character, allowed_values: [pass, fail, missing_evidence]}
-  missingness_gate: {type: character, allowed_values: [pass, fail, missing_evidence]}
-  batch_confound_gate: {type: character, allowed_values: [pass, fail, missing_evidence]}
-  marker_contamination_gate: {type: character, allowed_values: [pass, fail, missing_evidence]}
-  microglia_roi_gate: {type: character, allowed_values: [pass, fail, missing_evidence, not_applicable]}
-  neuropil_independence_gate: {type: character, allowed_values: [pass, fail, missing_evidence, not_applicable]}
-  robustness_gate: {type: character, allowed_values: [pass, fail, missing_evidence]}
-  evidence_independence_gate: {type: character, allowed_values: [pass, fail, missing_evidence]}
+  model_fit_status: {type: character, allowed_values: [pass, singular, rank_deficient, fallback, failed, not_applicable]}
+  statistical_evidence_status: {type: character, allowed_values: [pass, nominal_only, FDR_fail, missing_p_or_FDR, not_applicable]}
+  claim_gate_model_status: {type: character, allowed_values: [pass, fail, diagnostic_only, missing_required, not_applicable]}
+  primary_model_status: {type: character, allowed_values: [pass, fail, missing_required, missing_optional, not_applicable, diagnostic_only]}
+  animal_level_gate: {type: character, allowed_values: [pass, fail, missing_required, missing_optional, not_applicable, diagnostic_only]}
+  qc_gate: {type: character, allowed_values: [pass, fail, missing_required, missing_optional, not_applicable, diagnostic_only]}
+  missingness_gate: {type: character, allowed_values: [pass, fail, missing_required, missing_optional, not_applicable, diagnostic_only]}
+  batch_confound_gate: {type: character, allowed_values: [pass, fail, missing_required, missing_optional, not_applicable, diagnostic_only]}
+  marker_contamination_gate: {type: character, allowed_values: [pass, fail, missing_required, missing_optional, not_applicable, diagnostic_only]}
+  microglia_roi_gate: {type: character, allowed_values: [pass, fail, missing_required, missing_optional, not_applicable, diagnostic_only]}
+  neuropil_independence_gate: {type: character, allowed_values: [pass, fail, missing_required, missing_optional, not_applicable, diagnostic_only]}
+  robustness_gate: {type: character, allowed_values: [pass, fail, missing_required, missing_optional, not_applicable, diagnostic_only]}
+  evidence_independence_gate: {type: character, allowed_values: [pass, fail, missing_required, missing_optional, not_applicable, diagnostic_only]}
   missingness_confounded: {type: character}
   plate_or_batch_confounded: {type: character}
   region_layer_imbalance_risk: {type: character}
