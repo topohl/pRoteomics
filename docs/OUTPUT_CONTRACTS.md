@@ -80,6 +80,22 @@ For GO-derived enrichment claims, raw statistical evidence is separated from man
 
 Blocked rows must not use positive manuscript-claim wording. Their `safe_interpretation` starts with `Not claim-eligible` and includes gate reasons. Reviewer audit tables are written to `results/reviewer_audit/claim_gate_evidence_availability.csv`, `results/reviewer_audit/claim_gate_summary.csv`, `results/reviewer_audit/go_label_risk_audit.csv`, `results/reviewer_audit/go_label_safe_interpretation_audit.csv`, `results/reviewer_audit/claim_use_class_summary.csv`, `results/reviewer_audit/blocked_claim_wording_audit.csv`, `results/reviewer_audit/wgcna_claim_source_audit.csv`, `results/reviewer_audit/wgcna_label_completeness_audit.csv`, `results/reviewer_audit/wgcna_label_confidence_audit.csv`, `results/reviewer_audit/wgcna_annotation_source_audit.csv`, `results/reviewer_audit/wgcna_microenvironment_threshold_sensitivity.csv`, `results/reviewer_audit/microglia_neuropil_independence_claim_gate.csv`, and `results/reviewer_audit/microglia_neuropil_covariate_selection_audit.csv`.
 
+`claim_allowed` is the gate-level eligibility decision; `claim_use_class` is the
+permitted narrative role after label confidence and evidence context are
+considered. `supporting_claim` may use cautious positive wording,
+`suggestive_context` must identify itself as contextual and not standalone,
+`annotation_only` is retained for label provenance/audit transparency, and
+`blocked` starts with `Not claim-eligible`. Microglia rows retain ROI/local
+microenvironment wording because the samples are not purified microglia.
+Supermodule neuropil independence remains `missing_required` unless a direct
+supermodule eigengene or score endpoint was tested.
+
+The final reviewer index is
+`results/reviewer_audit/final_reviewer_audit_manifest.csv`. Its companion
+`final_evidence_bundle_validation.csv` reports machine-readable PASS/FAIL
+checks, while `final_claim_gate_summary.csv` provides the fully stratified
+claim-gate counts. Both are also included in the final evidence workbook.
+
 ## Input Resolution Audit
 
 Claim-critical and manuscript-facing runs append input provenance to:

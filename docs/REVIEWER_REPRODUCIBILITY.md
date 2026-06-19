@@ -49,6 +49,9 @@ The second command should not run microglia network scripts because `pipeline.ym
 - GO-derived enrichment labels preserve `raw_top_GO_term` and `representative_GO_terms`; reviewers should use `safe_program_label`, `term_label_risk`, `label_confidence`, and `claim_use_class` for manuscript wording. Tissue-mismatched GO labels are flagged and conservatively relabeled, not silently discarded.
 - Strict input mode is available through `--strict-inputs` or `PROTEOMICS_STRICT_INPUTS=true`. In strict mode, claim-critical and manuscript-facing scripts fail on missing required canonical inputs instead of selecting the newest matching file or a legacy fallback.
 - Reviewer audit CSVs under `results/reviewer_audit/` summarize gate evidence availability, allowed/downgraded/disallowed claim counts, GO-label risk, claim-use classes, microglia-neuropil independence/covariate selection, and input resolution provenance by dataset and claim type.
+- `claim_allowed` records whether required gates permit a row; `claim_use_class` records how that row may be narrated. Supporting claims may use cautious positive wording, suggestive context cannot stand alone, annotation-only rows are provenance records, and blocked rows are not claim-eligible.
+- Microglia wording remains limited to microglia-enriched ROI/local microenvironment evidence because these are not purified microglia. Module-level neuropil diagnostics never certify supermodules; without direct supermodule endpoints, supermodule neuropil independence is `missing_required` with `no_direct_supermodule_independence_test`.
+- Start final review at `results/reviewer_audit/final_reviewer_audit_manifest.csv`; require every row in `final_evidence_bundle_validation.csv` to report `PASS` before manuscript handoff.
 
 ## Input Provenance Audit
 
