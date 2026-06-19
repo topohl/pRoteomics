@@ -208,6 +208,7 @@ is_incomplete_wgcna_label <- function(x) {
     grepl("(mostly|mixed:)\\s*$", z_low) |
     grepl("[/;:]\\s*$", z_low) |
     grepl("shared roi:\\s*(mostly|mixed:)?\\s*$", z_low) |
+    grepl("shared roi:\\s*mixed:\\s*signal[\\.!?]*\\s*$", z_low) |
     grepl("^sm[0-9]+\\s*(·|\\u00b7|:|-)\\s*(shared roi:\\s*)?(mostly|mixed:)?\\s*$", z_low)
 }
 
@@ -225,6 +226,7 @@ contains_incomplete_wgcna_label_text <- function(x) {
     grepl(paste0("\\bsm[0-9]+", sm_sep, "shared\\s+roi:\\s*mixed:\\s*(?:[\\.;,\\)]|$)"), z, perl = TRUE) |
     grepl("\\bshared\\s+roi:\\s*mostly\\b", z, perl = TRUE) |
     grepl("\\bshared\\s+roi:\\s*mixed:\\s*(?:[\\.;,\\)]|$)", z, perl = TRUE) |
+    grepl("\\b(?:sm[0-9]+\\s*(?:[^[:alnum:][:space:]]|:)\\s*)?shared\\s+roi:\\s*mixed:\\s*signal[\\.!?]*", z, perl = TRUE) |
     grepl("\\bshared\\s+roi:\\s*(?:mostly|mixed:)\\s+[^\\.;,\\)]*[/;:]\\s*(?:[\\.;,\\)]|$)", z, perl = TRUE) |
     grepl("\\b(?:mostly|mixed:)\\s*(?:[\\.;,\\)]|$)", z, perl = TRUE)
 }
@@ -249,6 +251,8 @@ replace_incomplete_wgcna_label_text <- function(x, replacement) {
   if (length(repl) == 1L && length(out) > 1L) repl <- rep(repl, length(out))
   repl[is.na(repl) | !nzchar(repl)] <- "shared ROI module with incomplete biological label"
   patterns <- c(
+    "\\bSM[0-9]+\\s*(?:[^[:alnum:][:space:]]|:)\\s*shared\\s+ROI:\\s*mixed:\\s*signal[\\.!?]*",
+    "\\bshared\\s+ROI:\\s*mixed:\\s*signal[\\.!?]*",
     "\\bSM[0-9]+\\s*(?:[^[:alnum:][:space:]]|:)\\s*shared\\s+ROI:\\s*(?:mostly|mixed:)\\s+[^\\.;,\\)]*[/;:]\\s*",
     "\\bshared\\s+ROI:\\s*(?:mostly|mixed:)\\s+[^\\.;,\\)]*[/;:]\\s*",
     "\\bSM[0-9]+\\s*(?:[^[:alnum:][:space:]]|:)\\s*shared\\s+ROI:\\s*mostly\\b",
@@ -347,15 +351,19 @@ repair_incomplete_wgcna_labels <- function(claims) {
     out
   }
   claims$label_downgrade_reason[incomplete] <- append_reason(claims$label_downgrade_reason[incomplete], "incomplete_wgcna_label")
-  fallback_label <- "shared ROI module with incomplete biological label"
-  claims$biological_program[still_bad & incomplete_program] <- fallback_label
-  claims$safe_program_label[still_bad] <- fallback_label
+  fallback_label <- ifelse(
+    grepl("\\bSM[0-9]+\\b|supermodule", paste(claims$biological_program, claims$evidence_type), ignore.case = TRUE),
+    "shared ROI mixed multi-program module",
+    "mixed multi-program WGCNA module"
+  )
+  claims$biological_program[still_bad & incomplete_program] <- fallback_label[still_bad & incomplete_program]
+  claims$safe_program_label[still_bad] <- fallback_label[still_bad]
   claims$safe_interpretation[still_bad & incomplete_safe_text] <- replace_incomplete_wgcna_label_text(
     claims$safe_interpretation[still_bad & incomplete_safe_text],
-    fallback_label
+    fallback_label[still_bad & incomplete_safe_text]
   )
-  unrepaired_open <- still_bad & !(claims$claim_use_class %in% "blocked")
-  claims$claim_use_class[unrepaired_open] <- "annotation_only"
+  low_confidence_open <- incomplete & claims$label_confidence == "low" & !(claims$claim_use_class %in% "blocked")
+  claims$claim_use_class[low_confidence_open] <- "annotation_only"
   claims
 }
 
@@ -648,6 +656,34 @@ positive_blocked_wording <- function(x) {
   grepl("\\bevidence supports\\b|\\bsupports an association\\b|\\bsupports a local\\b", x)
 }
 
+strong_support_wording <- function(x) {
+  x <- tolower(as.character(x))
+  x[is.na(x)] <- ""
+  grepl("\\bevidence supports\\b|\\bsupports an association\\b|\\bsupports a local\\b|\\bevidence (?:demonstrates|establishes|confirms)\\b", x, perl = TRUE)
+}
+
+harmonize_claim_use_class_wording <- function(claims) {
+  if (is.null(claims) || !nrow(claims)) return(claims)
+  label <- dplyr::coalesce(blank_to_na(claims$safe_program_label), blank_to_na(claims$biological_program), "unspecified program")
+  suggestive <- claims$claim_use_class == "suggestive_context"
+  annotation <- claims$claim_use_class == "annotation_only"
+  supporting_missing <- claims$claim_use_class == "supporting_claim" &
+    (is.na(claims$safe_interpretation) | !nzchar(trimws(claims$safe_interpretation)))
+  claims$safe_interpretation[suggestive] <- paste0(
+    "Suggestive/contextual evidence only for '", label[suggestive],
+    "'; do not use as a standalone manuscript claim."
+  )
+  claims$safe_interpretation[annotation] <- paste0(
+    "Annotation/audit transparency only: '", label[annotation],
+    "' is retained for label provenance, not manuscript evidence."
+  )
+  claims$safe_interpretation[supporting_missing] <- paste0(
+    "Evidence supports cautious use of '", label[supporting_missing],
+    "' as supporting evidence for the specified dataset/contrast."
+  )
+  claims
+}
+
 write_blocked_claim_wording_audit <- function(claims) {
   audit_dir <- path_results("reviewer_audit")
   dir_create(audit_dir)
@@ -658,6 +694,42 @@ write_blocked_claim_wording_audit <- function(claims) {
       "claim_gate_status", "claim_downgrade_reason", "safe_interpretation"
     )
   readr::write_csv(audit, file.path(audit_dir, "blocked_claim_wording_audit.csv"), na = "")
+  invisible(audit)
+}
+
+write_claim_use_class_wording_audit <- function(claims) {
+  audit_dir <- path_results("reviewer_audit")
+  dir_create(audit_dir)
+  incomplete_allowed <- claims$claim_allowed &
+    (grepl("WGCNA|module", claims$evidence_type, ignore.case = TRUE) | claims$claim_type == "wgcna_group_effect") &
+    (has_incomplete_wgcna_label(claims$biological_program) |
+       has_incomplete_wgcna_label(claims$safe_program_label) |
+       contains_incomplete_wgcna_label_text(claims$safe_interpretation))
+  checks <- list(
+    blocked_positive_wording = (!claims$claim_allowed | claims$claim_use_class == "blocked") & strong_support_wording(claims$safe_interpretation),
+    suggestive_strong_wording = claims$claim_use_class == "suggestive_context" & strong_support_wording(claims$safe_interpretation),
+    annotation_strong_wording = claims$claim_use_class == "annotation_only" & strong_support_wording(claims$safe_interpretation),
+    supporting_missing_safe_interpretation = claims$claim_use_class == "supporting_claim" & (is.na(claims$safe_interpretation) | !nzchar(trimws(claims$safe_interpretation))),
+    allowed_incomplete_wgcna_label = incomplete_allowed
+  )
+  audit <- dplyr::bind_rows(lapply(names(checks), function(check_name) {
+    flagged <- which(checks[[check_name]] %in% TRUE)
+    tibble::tibble(
+      check_name = check_name,
+      severe_issue_count = length(flagged),
+      status = ifelse(length(flagged) == 0L, "PASS", "FAIL"),
+      example_claim_ids = ifelse(length(flagged) == 0L, "none", paste(utils::head(claims$claim_id[flagged], 12), collapse = ";")),
+      notes = dplyr::case_when(
+        check_name == "blocked_positive_wording" ~ "Blocked rows must start with the established not-claim-eligible wording.",
+        check_name == "suggestive_strong_wording" ~ "Suggestive/contextual rows cannot use positive support wording.",
+        check_name == "annotation_strong_wording" ~ "Annotation-only rows are provenance/audit records, not manuscript evidence.",
+        check_name == "supporting_missing_safe_interpretation" ~ "Supporting claims require non-empty cautious interpretation text.",
+        TRUE ~ "Allowed WGCNA rows require complete reviewer-facing labels."
+      )
+    )
+  }))
+  validate_table_schema(audit, "claim_use_class_wording_audit", strict = TRUE)
+  readr::write_csv(audit, file.path(audit_dir, "claim_use_class_wording_audit.csv"), na = "")
   invisible(audit)
 }
 
@@ -731,13 +803,24 @@ read_microglia_neuropil_claim_gate <- function() {
   for (col in c(
     "module_or_supermodule_id", "contrast", "adjustment_mode",
     "independence_classification", "claim_gate_eligible", "downgrade_reason",
-    "primary_effect_claim_relevant", "primary_effect_status"
+    "primary_effect_claim_relevant", "primary_effect_status", "endpoint_scope",
+    "source_level", "direct_independence_tested", "direct_supermodule_test"
   )) {
     if (!col %in% names(gate)) gate[[col]] <- NA
   }
+  gate$source_level <- dplyr::coalesce(as.character(gate$source_level), "module")
+  gate$endpoint_scope <- dplyr::coalesce(as.character(gate$endpoint_scope), gate$source_level)
+  gate$direct_independence_tested <- dplyr::coalesce(
+    suppressWarnings(as.logical(gate$direct_independence_tested)),
+    gate$source_level == "module"
+  )
+  gate$direct_supermodule_test <- dplyr::coalesce(
+    suppressWarnings(as.logical(gate$direct_supermodule_test)),
+    FALSE
+  )
   gate %>%
     dplyr::filter(.data$adjustment_mode %in% c("predeclared_primary", "predeclared_secondary")) %>%
-    dplyr::group_by(.data$module_or_supermodule_id, .data$contrast) %>%
+    dplyr::group_by(.data$module_or_supermodule_id, .data$contrast, .data$endpoint_scope, .data$source_level) %>%
     dplyr::summarise(
       neuropil_predeclared_claim_gate_eligible = any(suppressWarnings(as.logical(.data$claim_gate_eligible)), na.rm = TRUE),
       neuropil_predeclared_sensitive = any(.data$independence_classification == "neuropil_sensitive", na.rm = TRUE),
@@ -850,13 +933,19 @@ add_claim_gates <- function(claims) {
   neuropil_available <- microglia_neuropil_independence_available()
   neuropil_gate <- read_microglia_neuropil_claim_gate()
   if (!is.null(neuropil_gate) && nrow(neuropil_gate)) {
+    claim_source_level <- dplyr::case_when(
+      claims$evidence_type == "WGCNA_supermodule_group_effect" ~ "supermodule",
+      grepl("WGCNA_module", claims$evidence_type, ignore.case = TRUE) ~ "module",
+      TRUE ~ NA_character_
+    )
     claim_lookup <- data.frame(
       row_id = seq_len(nrow(claims)),
       module_or_supermodule_id = sub(":.*$", "", as.character(claims$key_proteins_genes)),
       contrast = as.character(claims$contrast),
+      source_level = claim_source_level,
       stringsAsFactors = FALSE
     ) %>%
-      dplyr::left_join(neuropil_gate, by = c("module_or_supermodule_id", "contrast")) %>%
+      dplyr::left_join(neuropil_gate, by = c("module_or_supermodule_id", "contrast", "source_level")) %>%
       dplyr::arrange(.data$row_id)
     claims$neuropil_predeclared_claim_gate_eligible <- claim_lookup$neuropil_predeclared_claim_gate_eligible
     claims$neuropil_predeclared_sensitive <- claim_lookup$neuropil_predeclared_sensitive
@@ -897,6 +986,9 @@ add_claim_gates <- function(claims) {
     neuropil_available ~ "missing_required",
     TRUE ~ "missing_required"
   )
+  no_direct_supermodule_test <- claims$evidence_type == "WGCNA_supermodule_group_effect" &
+    req$neuropil_independence & is.na(claims$neuropil_predeclared_claim_gate_eligible)
+  claims$neuropil_independence_gate[no_direct_supermodule_test] <- "missing_required"
   claims$robustness_gate <- dplyr::case_when(
     !req$robustness ~ "missing_optional",
     grepl("robustness_gate=pass", claims$robustness_stability_metric, ignore.case = TRUE) ~ "pass",
@@ -937,6 +1029,10 @@ add_claim_gates <- function(claims) {
     if (!length(relevant)) return("none")
     paste(paste0(relevant, "=", as.character(gate_matrix[i, relevant])), collapse = "; ")
   }, character(1))
+  claims$claim_downgrade_reason[no_direct_supermodule_test] <- paste0(
+    claims$claim_downgrade_reason[no_direct_supermodule_test],
+    "; no_direct_supermodule_independence_test"
+  )
 
   standardize_claims(claims)
 }
@@ -1037,6 +1133,121 @@ write_go_label_audits <- function(claims) {
     claim_use_class_summary = use_summary,
     go_label_safe_interpretation = safe_alignment
   ))
+}
+
+write_final_claim_gate_summary <- function(claims) {
+  audit_dir <- path_results("reviewer_audit")
+  dir_create(audit_dir)
+  group_cols <- c(
+    "dataset", "claim_type", "evidence_type", "claim_allowed", "claim_gate_status",
+    "claim_use_class", "primary_model_status", "animal_level_gate", "microglia_roi_gate",
+    "neuropil_independence_gate", "robustness_gate", "evidence_independence_gate"
+  )
+  summary <- claims |>
+    dplyr::count(dplyr::across(dplyr::all_of(group_cols)), name = "n_claims") |>
+    dplyr::arrange(.data$dataset, .data$claim_type, .data$evidence_type, .data$claim_use_class)
+  validate_table_schema(summary, "final_claim_gate_summary", strict = TRUE)
+  readr::write_csv(summary, file.path(audit_dir, "final_claim_gate_summary.csv"), na = "")
+  invisible(summary)
+}
+
+final_reviewer_audit_specs <- function() {
+  audit_dir <- path_results("reviewer_audit")
+  tibble::tribble(
+    ~audit_file, ~path, ~schema_name, ~produced_by_script, ~reviewer_use, ~manuscript_use_allowed, ~notes,
+    "biological_claims_table.csv", path_results("tables", "biological_claims_table.csv"), "biological_claims_table", SCRIPT_ID, "Row-level claim eligibility and wording", TRUE, "Use only rows whose claim gates and claim_use_class permit manuscript use.",
+    "claim_gate_summary.csv", file.path(audit_dir, "claim_gate_summary.csv"), NA_character_, SCRIPT_ID, "High-level claim-gate counts", FALSE, "Audit summary only.",
+    "final_claim_gate_summary.csv", file.path(audit_dir, "final_claim_gate_summary.csv"), "final_claim_gate_summary", SCRIPT_ID, "Fully stratified final claim-gate counts", FALSE, "Audit summary only.",
+    "claim_use_class_summary.csv", file.path(audit_dir, "claim_use_class_summary.csv"), NA_character_, SCRIPT_ID, "Claim-use-class and GO-risk counts", FALSE, "Audit summary only.",
+    "blocked_claim_wording_audit.csv", file.path(audit_dir, "blocked_claim_wording_audit.csv"), NA_character_, SCRIPT_ID, "Blocked positive-wording exceptions", FALSE, "Expected to contain zero rows.",
+    "claim_use_class_wording_audit.csv", file.path(audit_dir, "claim_use_class_wording_audit.csv"), "claim_use_class_wording_audit", SCRIPT_ID, "Final wording consistency checks", FALSE, "All severe_issue_count values must be zero.",
+    "wgcna_label_completeness_audit.csv", file.path(audit_dir, "wgcna_label_completeness_audit.csv"), NA_character_, SCRIPT_ID, "Incomplete WGCNA label exceptions", FALSE, "Allowed-row exceptions must be absent.",
+    "wgcna_claim_source_audit.csv", file.path(audit_dir, "wgcna_claim_source_audit.csv"), NA_character_, SCRIPT_ID, "WGCNA source and use-class provenance", FALSE, "Audit summary only.",
+    "wgcna_label_confidence_audit.csv", file.path(audit_dir, "wgcna_label_confidence_audit.csv"), NA_character_, "06_modules_WGCNA/06_annotate_module_microenvironment.r", "WGCNA label confidence", FALSE, "Audit summary only.",
+    "wgcna_annotation_source_audit.csv", file.path(audit_dir, "wgcna_annotation_source_audit.csv"), NA_character_, "06_modules_WGCNA/06_annotate_module_microenvironment.r", "WGCNA annotation provenance", FALSE, "Audit summary only.",
+    "wgcna_microenvironment_threshold_sensitivity.csv", file.path(audit_dir, "wgcna_microenvironment_threshold_sensitivity.csv"), NA_character_, "06_modules_WGCNA/06_annotate_module_microenvironment.r", "Threshold sensitivity", FALSE, "Diagnostic audit only.",
+    "microglia_neuropil_independence_claim_gate.csv", file.path(audit_dir, "microglia_neuropil_independence_claim_gate.csv"), "microglia_neuropil_independence_claim_gate", "06_modules_WGCNA/08_microglia_neuropil_independence.R", "Direct module-level independence claim gate", FALSE, "Module endpoints only unless endpoint_scope explicitly says supermodule.",
+    "microglia_neuropil_covariate_selection_audit.csv", file.path(audit_dir, "microglia_neuropil_covariate_selection_audit.csv"), "microglia_neuropil_covariate_selection_audit", "06_modules_WGCNA/08_microglia_neuropil_independence.R", "Covariate selection provenance", FALSE, "Exploratory rows are diagnostic only.",
+    "microglia_neuropil_independence_endpoint_scope_audit.csv", file.path(audit_dir, "microglia_neuropil_independence_endpoint_scope_audit.csv"), "microglia_neuropil_independence_endpoint_scope_audit", "06_modules_WGCNA/08_microglia_neuropil_independence.R", "Endpoint-scope certification", FALSE, "Supermodule claims require a direct supermodule endpoint.",
+    "input_resolution_audit.csv", file.path(audit_dir, "input_resolution_audit.csv"), NA_character_, "R/paths.R and claim-critical scripts", "Input path and hash provenance", FALSE, "Provenance only.",
+    "final_evidence_bundle_validation.csv", file.path(audit_dir, "final_evidence_bundle_validation.csv"), "final_evidence_bundle_validation", SCRIPT_ID, "Machine-readable final PASS/FAIL checks", FALSE, "Every check must pass.",
+    "final_reviewer_audit_manifest.csv", file.path(audit_dir, "final_reviewer_audit_manifest.csv"), "final_reviewer_audit_manifest", SCRIPT_ID, "Index of final reviewer evidence", FALSE, "Start reviewer audit here."
+  )
+}
+
+schema_validation_status <- function(path, schema_name) {
+  if (is.na(schema_name) || !nzchar(schema_name) || !file.exists(path)) return(FALSE)
+  dat <- tryCatch(readr::read_csv(path, show_col_types = FALSE), error = function(e) NULL)
+  if (is.null(dat)) return(FALSE)
+  isTRUE(tryCatch({ validate_table_schema(dat, schema_name, strict = TRUE); TRUE }, error = function(e) FALSE))
+}
+
+write_final_reviewer_audit_manifest <- function() {
+  specs <- final_reviewer_audit_specs()
+  manifest_name <- "final_reviewer_audit_manifest.csv"
+  manifest <- specs |>
+    dplyr::rowwise() |>
+    dplyr::mutate(
+      exists = ifelse(.data$audit_file == manifest_name, TRUE, file.exists(.data$path)),
+      n_rows = if (.data$audit_file == manifest_name) nrow(specs) else if (file.exists(.data$path)) {
+        max(0L, length(readLines(.data$path, warn = FALSE)) - 1L)
+      } else 0L,
+      schema_validated = ifelse(.data$audit_file == manifest_name, TRUE, schema_validation_status(.data$path, .data$schema_name))
+    ) |>
+    dplyr::ungroup() |>
+    dplyr::select("audit_file", "exists", "n_rows", "schema_validated", "produced_by_script", "reviewer_use", "manuscript_use_allowed", "notes")
+  validate_table_schema(manifest, "final_reviewer_audit_manifest", strict = TRUE)
+  out <- path_results("reviewer_audit", manifest_name)
+  readr::write_csv(manifest, out, na = "")
+  invisible(manifest)
+}
+
+write_final_evidence_bundle_validation <- function(claims, manifest = NULL) {
+  gate_cols <- c("primary_model_status", "animal_level_gate", "qc_gate", "missingness_gate", "batch_confound_gate", "marker_contamination_gate", "microglia_roi_gate", "neuropil_independence_gate", "robustness_gate", "evidence_independence_gate")
+  allowed_bad_gate <- claims$claim_allowed & apply(claims[, gate_cols, drop = FALSE], 1, function(x) any(x %in% c("fail", "missing_required")))
+  incomplete_allowed <- claims$claim_allowed &
+    (grepl("WGCNA|module", claims$evidence_type, ignore.case = TRUE) | claims$claim_type == "wgcna_group_effect") &
+    (has_incomplete_wgcna_label(claims$biological_program) | has_incomplete_wgcna_label(claims$safe_program_label) | contains_incomplete_wgcna_label_text(claims$safe_interpretation))
+  neuropil <- read_csv_if_exists(path_results("reviewer_audit", "microglia_neuropil_independence_claim_gate.csv"))
+  exploratory_eligible <- if (is.null(neuropil)) 0L else sum(neuropil$adjustment_mode == "exploratory_best_spearman" & suppressWarnings(as.logical(neuropil$claim_gate_eligible)), na.rm = TRUE)
+  eligible_without_primary <- if (is.null(neuropil)) 0L else sum(suppressWarnings(as.logical(neuropil$claim_gate_eligible)) & !suppressWarnings(as.logical(neuropil$primary_effect_claim_relevant)), na.rm = TRUE)
+  scope <- read_csv_if_exists(path_results("reviewer_audit", "microglia_neuropil_independence_endpoint_scope_audit.csv"))
+  direct_supermodule <- !is.null(scope) && any(scope$source_level == "supermodule" & suppressWarnings(as.logical(scope$direct_independence_tested)), na.rm = TRUE)
+  supermodule_direct_misuse <- if (direct_supermodule) 0L else sum(claims$evidence_type == "WGCNA_supermodule_group_effect" & claims$neuropil_independence_gate == "pass", na.rm = TRUE)
+  schema_ok <- isTRUE(tryCatch({ validate_table_schema(claims, "biological_claims_table", strict = TRUE); TRUE }, error = function(e) FALSE))
+  manifest_missing <- if (is.null(manifest)) 0L else sum(!manifest$exists)
+  violations <- c(
+    no_allowed_fail_or_missing_required_gates = sum(allowed_bad_gate, na.rm = TRUE),
+    no_blocked_positive_support_wording = sum((!claims$claim_allowed | claims$claim_use_class == "blocked") & strong_support_wording(claims$safe_interpretation), na.rm = TRUE),
+    no_suggestive_context_strong_support_wording = sum(claims$claim_use_class == "suggestive_context" & strong_support_wording(claims$safe_interpretation), na.rm = TRUE),
+    no_annotation_only_strong_support_wording = sum(claims$claim_use_class == "annotation_only" & strong_support_wording(claims$safe_interpretation), na.rm = TRUE),
+    no_allowed_incomplete_wgcna_labels = sum(incomplete_allowed, na.rm = TRUE),
+    no_exploratory_neuropil_rows_claim_gate_eligible = exploratory_eligible,
+    no_neuropil_eligible_without_primary_effect = eligible_without_primary,
+    no_supermodule_claim_directly_tested_without_endpoint = supermodule_direct_misuse,
+    biological_claims_table_schema_valid = ifelse(schema_ok, 0L, 1L),
+    all_manifest_listed_audit_files_exist = manifest_missing
+  )
+  validation <- tibble::tibble(
+    validation_check = names(violations),
+    status = ifelse(violations == 0L, "PASS", "FAIL"),
+    n_violations = as.integer(violations),
+    details = c(
+      "Allowed claims cannot retain fail or missing_required gates.",
+      "Blocked rows cannot use positive support wording.",
+      "Suggestive/contextual rows cannot use positive support wording.",
+      "Annotation-only rows cannot use positive support wording.",
+      "Allowed WGCNA rows require complete reviewer-facing labels.",
+      "Exploratory best-Spearman adjustments are diagnostic only.",
+      "Neuropil claim eligibility requires a claim-relevant primary effect.",
+      "Supermodule claims require direct supermodule endpoint testing.",
+      "Strict biological_claims_table schema validation.",
+      "Every file indexed by the final reviewer manifest exists."
+    )
+  )
+  validate_table_schema(validation, "final_evidence_bundle_validation", strict = TRUE)
+  readr::write_csv(validation, path_results("reviewer_audit", "final_evidence_bundle_validation.csv"), na = "")
+  invisible(validation)
 }
 
 supermodule_annotation_for_claims <- function(dataset) {
@@ -1527,6 +1738,10 @@ if (is_dry_run()) {
   dry_run_line("Blocked claim wording audit", path_results("reviewer_audit", "blocked_claim_wording_audit.csv"))
   dry_run_line("WGCNA claim source audit", path_results("reviewer_audit", "wgcna_claim_source_audit.csv"))
   dry_run_line("WGCNA label completeness audit", path_results("reviewer_audit", "wgcna_label_completeness_audit.csv"))
+  dry_run_line("Claim-use-class wording audit", path_results("reviewer_audit", "claim_use_class_wording_audit.csv"))
+  dry_run_line("Final claim-gate summary", path_results("reviewer_audit", "final_claim_gate_summary.csv"))
+  dry_run_line("Final reviewer audit manifest", path_results("reviewer_audit", "final_reviewer_audit_manifest.csv"))
+  dry_run_line("Final evidence bundle validation", path_results("reviewer_audit", "final_evidence_bundle_validation.csv"))
   dry_run_line("Final evidence bundle", path_results("tables", "10_biological_integration", "final_evidence_bundle", "global", "final_biological_evidence_bundle.xlsx"))
   quit(status = 0, save = "no")
 }
@@ -1586,6 +1801,7 @@ claims <- dplyr::bind_rows(
   add_go_label_interpretation() %>%
   add_claim_use_class() %>%
   repair_incomplete_wgcna_labels() %>%
+  harmonize_claim_use_class_wording() %>%
   sync_go_safe_interpretation() %>%
   apply_blocked_claim_wording() %>%
   standardize_claims()
@@ -1607,6 +1823,12 @@ go_label_audits <- write_go_label_audits(claims)
 blocked_wording_audit <- write_blocked_claim_wording_audit(claims)
 wgcna_claim_source_audit <- write_wgcna_claim_source_audit(claims)
 wgcna_label_completeness_audit <- write_wgcna_label_completeness_audit(claims)
+claim_use_class_wording_audit <- write_claim_use_class_wording_audit(claims)
+final_claim_gate_summary <- write_final_claim_gate_summary(claims)
+final_evidence_bundle_validation <- write_final_evidence_bundle_validation(claims)
+final_reviewer_audit_manifest <- write_final_reviewer_audit_manifest()
+final_evidence_bundle_validation <- write_final_evidence_bundle_validation(claims, final_reviewer_audit_manifest)
+final_reviewer_audit_manifest <- write_final_reviewer_audit_manifest()
 
 message("Biological claims table written: ", csv_out)
 
@@ -1623,7 +1845,11 @@ write_run_manifest(
     go_label_safe_interpretation_audit = path_results("reviewer_audit", "go_label_safe_interpretation_audit.csv"),
     blocked_claim_wording_audit = path_results("reviewer_audit", "blocked_claim_wording_audit.csv"),
     wgcna_claim_source_audit = path_results("reviewer_audit", "wgcna_claim_source_audit.csv"),
-    wgcna_label_completeness_audit = path_results("reviewer_audit", "wgcna_label_completeness_audit.csv")
+    wgcna_label_completeness_audit = path_results("reviewer_audit", "wgcna_label_completeness_audit.csv"),
+    claim_use_class_wording_audit = path_results("reviewer_audit", "claim_use_class_wording_audit.csv"),
+    final_claim_gate_summary = path_results("reviewer_audit", "final_claim_gate_summary.csv"),
+    final_reviewer_audit_manifest = path_results("reviewer_audit", "final_reviewer_audit_manifest.csv"),
+    final_evidence_bundle_validation = path_results("reviewer_audit", "final_evidence_bundle_validation.csv")
   ),
   parameters = list(datasets = valid_datasets(), schema = "biological_claims_table"),
   notes = "Reviewer-facing manuscript claim gate. claim_grade is descriptive; claim_allowed and claim_gate_status determine eligibility. Missing statistics remain NA."
