@@ -191,6 +191,13 @@ Inspect:
 - `results/tables/06_modules_WGCNA/microglia_neuropil_independence/microglia/microglia_module_neuropil_independence_classification.csv`
 - `results/reviewer_audit/microglia_neuropil_independence_claim_gate.csv`
 - `results/reviewer_audit/microglia_neuropil_covariate_selection_audit.csv`
+- `results/reviewer_audit/microglia_neuropil_independence_endpoint_scope_audit.csv`
+
+Outputs identify module, targeted-signature, supermodule, or unavailable
+endpoint scope explicitly. The current direct endpoints are module eigengenes
+and targeted-signature scores. Module diagnostics can support module claims,
+but cannot certify supermodule claims; absent a direct supermodule endpoint,
+the latter report `no_direct_supermodule_independence_test`.
 
 Only `predeclared_primary` and `predeclared_secondary` rows can make a
 neuropil-independence gate eligible, and only when the baseline microglia
