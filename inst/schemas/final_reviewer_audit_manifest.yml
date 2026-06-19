@@ -1,0 +1,11 @@
+name: final_reviewer_audit_manifest
+required_columns: [audit_file, exists, n_rows, schema_validated, produced_by_script, reviewer_use, manuscript_use_allowed, notes]
+columns:
+  audit_file: {type: character}
+  exists: {type: logical}
+  n_rows: {type: integer}
+  schema_validated: {type: logical}
+  produced_by_script: {type: character}
+  reviewer_use: {type: character}
+  manuscript_use_allowed: {type: logical}
+  notes: {type: character}

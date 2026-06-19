@@ -1,0 +1,7 @@
+name: final_evidence_bundle_validation
+required_columns: [validation_check, status, n_violations, details]
+columns:
+  validation_check: {type: character}
+  status: {type: character, allowed_values: [PASS, FAIL]}
+  n_violations: {type: integer}
+  details: {type: character}
