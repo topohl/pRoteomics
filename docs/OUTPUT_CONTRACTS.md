@@ -55,6 +55,16 @@ enable microglia-specific or cell-intrinsic wording by themselves.
 inconclusive classifications are diagnostic/contextual unless other required
 predeclared evidence passes.
 
+Every independence endpoint reports `endpoint_scope`, `source_level`, and
+`direct_independence_tested`. Module-level diagnostics may be consumed by
+`WGCNA_module` and `WGCNA_module_group_effect` rows only; they do not certify
+`WGCNA_supermodule_group_effect` rows. Without a direct
+`supermodule_eigengene` or `supermodule_score` endpoint, the supermodule gate
+is `missing_required` with reason
+`no_direct_supermodule_independence_test`. Endpoint availability and claim
+consumption are summarized in
+`results/reviewer_audit/microglia_neuropil_independence_endpoint_scope_audit.csv`.
+
 Percent attenuation is guarded against near-zero baseline effects using
 `effect_before_abs`, `effect_before_near_zero`, and
 `percent_attenuation_reliable`. If attenuation is unstable because the baseline
