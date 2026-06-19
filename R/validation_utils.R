@@ -129,7 +129,8 @@ known_pipeline_output_specs <- function() {
     ),
     microglia_neuropil_independence_claim_gate.csv = list(
       required_columns = c(
-        "module_or_supermodule_id", "contrast", "biological_program",
+        "module_or_supermodule_id", "endpoint_type", "endpoint_scope", "source_level",
+        "direct_independence_tested", "direct_supermodule_test", "contrast", "biological_program",
         "microenvironment_class", "adjustment_mode", "covariate_family",
         "primary_effect_status", "primary_effect_claim_relevant",
         "primary_effect_threshold",
@@ -148,6 +149,12 @@ known_pipeline_output_specs <- function() {
         "selected_exploratory_covariate", "selection_rule",
         "primary_claim_gate_eligible", "secondary_claim_gate_eligible",
         "exploratory_claim_gate_eligible"
+      )
+    ),
+    microglia_neuropil_independence_endpoint_scope_audit.csv = list(
+      required_columns = c(
+        "endpoint_type", "endpoint_scope", "source_level", "n_endpoints",
+        "direct_independence_tested", "consumed_by_claim_type", "notes"
       )
     ),
     wgcna_microenvironment_threshold_sensitivity.csv = list(
