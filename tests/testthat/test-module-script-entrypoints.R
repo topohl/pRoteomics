@@ -52,10 +52,12 @@ testthat::test_that("pipeline module stages use canonical scripts and contracts"
     "06_modules_WGCNA/01a_compare_GO_recurrent_proteins.r",
     "06_modules_WGCNA/02_curated_overlap_programs.r",
     "06_modules_WGCNA/03_score_module_activity.R",
+    "06_modules_WGCNA/03_score_module_activity.R",
     "06_modules_WGCNA/04_wgcna_de_gsea_overlap.r",
     "06_modules_WGCNA/05_module_supermodule_group_effects.r",
     "06_modules_WGCNA/06_annotate_module_microenvironment.r",
     "06_modules_WGCNA/07_wgcna_interpretable_summary.r",
+    "06_modules_WGCNA/08_wgcna_score_publication_summary.R",
     "06_modules_WGCNA/08_microglia_neuropil_independence.R",
     "06_modules_WGCNA/08_module_complex_architecture.r",
     "06_modules_WGCNA/09_module_robustness_sensitivity.r"

@@ -382,7 +382,7 @@ stages:
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "modules_downstream"
         scope: "dataset_specific"
-        produces: ["results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_interpretable_summary.xlsx"]
+        produces: ["results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_interpretable_summary.xlsx", "results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_label_candidates.csv", "results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_final_label_lookup.csv"]
         consumes_required: ["results/tables/06_modules_WGCNA/group_effects/<dataset>/module_group_effects.csv", "results/tables/06_modules_WGCNA/group_effects/<dataset>/supermodule_group_effects.csv", "results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_module_biological_annotation.csv", "results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_supermodule_biological_annotation.csv"]
         consumes_optional: ["results/tables/06_modules_WGCNA/04_wgcna_de_gsea_overlap/<dataset>/"]
         recomputes_core_state: false
@@ -401,11 +401,11 @@ stages:
           - "results/figures/06_modules_WGCNA/score_publication_summary/<dataset>/publication_supermodule_consistency_<dataset>_wgcna_primary_all_replicates.svg"
           - "results/figures/06_modules_WGCNA/score_publication_summary/<dataset>/publication_supermodule_consistency_<dataset>_wgcna_sensitivity.svg"
           - "results/tables/06_modules_WGCNA/score_publication_summary/<dataset>/WGCNA_score_publication_validation.csv"
-        consumes_required: ["results/tables/06_modules_WGCNA/module_score/<dataset>/wgcna/supermodule_directional_effects.csv", "results/tables/06_modules_WGCNA/module_score/<dataset>/wgcna/supermodule_directional_consistency.csv", "results/tables/06_modules_WGCNA/module_score/<dataset>/wgcna/supermodule_score_correlation_structure.csv", "results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_supermodule_biological_annotation.csv", "results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_supermodule_group_effects_interpretable.csv"]
-        consumes_optional: ["results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_module_biological_annotation.csv", "results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_module_group_effects_interpretable.csv", "results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_supermodule_label_audit.csv", "results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_supermodule_plot_label_qc.csv", "results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_module_plot_label_qc.csv"]
+        consumes_required: ["results/tables/06_modules_WGCNA/module_score/<dataset>/wgcna/supermodule_directional_effects.csv", "results/tables/06_modules_WGCNA/module_score/<dataset>/wgcna/supermodule_directional_consistency.csv", "results/tables/06_modules_WGCNA/module_score/<dataset>/wgcna/supermodule_score_correlation_structure.csv", "results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_final_label_lookup.csv"]
+        consumes_optional: []
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "Final publication rendering for score-derived WGCNA supermodule robustness/correlation outputs. Score/statistics computation stays in 03_score_module_activity.R; plot labels come from cleaned 06/07 semantic annotation."
+        notes: "Final publication rendering only. Score/statistics computation stays in 03_score_module_activity.R; every rendered label must come from the canonical final lookup produced by 07_wgcna_interpretable_summary.r."
       - script: "06_modules_WGCNA/08_microglia_neuropil_independence.R"
         required: false
         datasets: ["microglia"]
