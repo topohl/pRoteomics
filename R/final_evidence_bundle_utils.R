@@ -289,7 +289,7 @@ build_qc_flags <- function(claims) {
 build_bundle_readme <- function() {
   data.frame(
     sheet = c(
-      "README", "input_status", "manuscript_program_summary", "evidence_priority_matrix",
+      "README", "input_status", "reviewer_audit_manifest", "final_validation", "manuscript_program_summary", "evidence_priority_matrix",
       "cross_compartment_program_atlas", "wgcna_key_modules", "wgcna_key_supermodules",
       "microglia_roi_signature_drivers", "microglia_neuropil_independence",
       "qc_flags", "biological_claims"
@@ -297,6 +297,8 @@ build_bundle_readme <- function() {
     produced_from = c(
       "10_biological_integration/03_evidence_priority_matrix.r and 09_export_pride_journal/07_make_biological_claims_table.R",
       "Final bundle input scanner",
+      "09_export_pride_journal/07_make_biological_claims_table.R",
+      "09_export_pride_journal/07_make_biological_claims_table.R",
       "10_biological_integration/02_manuscript_program_summary.r",
       "10_biological_integration/03_evidence_priority_matrix.r",
       "10_biological_integration/01_cross_compartment_program_atlas.r",
@@ -310,6 +312,8 @@ build_bundle_readme <- function() {
     meaning = c(
       "Plain-language index for the workbook.",
       "Which optional upstream tables were present when the bundle was assembled.",
+      "Index of final reviewer-facing claim and audit tables, their availability, row counts, and schema-validation status.",
+      "Machine-readable PASS/FAIL checks for final claim wording, gate consistency, endpoint scope, schemas, and manifest completeness.",
       "High-level program synthesis for manuscript drafting.",
       "Program-level priority tiers based on evidence convergence and QC flags.",
       "Long evidence atlas across enrichment, WGCNA, microenvironment, robustness, behavior, and QC streams.",
@@ -323,6 +327,8 @@ build_bundle_readme <- function() {
     manuscript_safe_columns = c(
       "Use this sheet as documentation only.",
       "status, n_rows, path.",
+      "audit_file, exists, n_rows, schema_validated, produced_by_script, reviewer_use, manuscript_use_allowed, notes.",
+      "validation_check, status, n_violations, details.",
       "program_key, manuscript_claim_scope, strongest_evidence, safe_manuscript_sentence, main_limitation, qc_flag.",
       "priority_tier, evidence_domain_count, strongest_fdr, robustness_flag, behavior_flag, qc_flag, recommended_use.",
       "program_label, evidence_domain, contrast, effect_size, fdr, support_count, evidence_strength, interpretation_note, qc_flag.",
@@ -336,6 +342,8 @@ build_bundle_readme <- function() {
     notes = c(
       "Final-facing terminology: neuron_neuropil = region/layer-resolved neuron neuropil; neuron_soma = region-resolved neuronal soma-enriched; microglia = region-resolved microglia-enriched ROI/local microenvironment, not purified microglia.",
       "Missing optional inputs are expected in some partial reruns and should limit manuscript strength.",
+      "Start the reviewer audit here; manuscript_use_allowed refers to the table type, while row-level eligibility remains in biological_claims.",
+      "Every validation row should report PASS before final reviewer handoff.",
       "Use for narrative synthesis, then verify source rows.",
       "Tiering is a prioritization aid, not a new statistical test.",
       "This is an evidence index, not a causal model.",
@@ -376,13 +384,17 @@ write_final_evidence_bundle <- function(reason = "integration") {
     biological_claims = path_results("tables", "biological_claims_table.csv"),
     microglia_module_annotation = path_results("tables", "06_modules_WGCNA", "module_annotation", "microglia", "WGCNA_module_biological_annotation.csv"),
     microglia_targeted_signature_details = path_results("tables", "06_modules_WGCNA", "module_annotation", "microglia", "WGCNA_module_targeted_signature_overlap_details.csv"),
-    microglia_neuropil_independence = path_results("tables", "06_modules_WGCNA", "microglia_neuropil_independence", "microglia", "microglia_neuropil_independence_effects.csv")
+    microglia_neuropil_independence = path_results("tables", "06_modules_WGCNA", "microglia_neuropil_independence", "microglia", "microglia_neuropil_independence_effects.csv"),
+    reviewer_audit_manifest = path_results("reviewer_audit", "final_reviewer_audit_manifest.csv"),
+    final_validation = path_results("reviewer_audit", "final_evidence_bundle_validation.csv")
   )
 
   manuscript <- add_dataset_terminology(read_final_csv(inputs$manuscript_program_summary) %||% empty_bundle_table("Manuscript program summary was not available."))
   priority <- add_dataset_terminology(read_final_csv(inputs$evidence_priority_matrix) %||% empty_bundle_table("Evidence priority matrix was not available."))
   atlas <- add_dataset_terminology(read_final_csv(inputs$cross_compartment_program_atlas) %||% empty_bundle_table("Cross-compartment program atlas was not available."))
   claims <- add_dataset_terminology(read_final_csv(inputs$biological_claims) %||% empty_bundle_table("Biological claims table was not available."))
+  reviewer_audit_manifest <- read_final_csv(inputs$reviewer_audit_manifest) %||% empty_bundle_table("Final reviewer audit manifest was not available.")
+  final_validation <- read_final_csv(inputs$final_validation) %||% empty_bundle_table("Final evidence validation was not available.")
   if ("plate_or_batch_confounded" %in% names(claims) && !"batch_or_plate_confounded" %in% names(claims)) {
     claims$batch_or_plate_confounded <- claims$plate_or_batch_confounded
   }
@@ -393,6 +405,8 @@ write_final_evidence_bundle <- function(reason = "integration") {
   sheets <- list(
     README = build_bundle_readme(),
     input_status = bundle_input_status(inputs),
+    reviewer_audit_manifest = reviewer_audit_manifest,
+    final_validation = final_validation,
     manuscript_program_summary = manuscript,
     evidence_priority_matrix = priority,
     cross_compartment_program_atlas = atlas,
