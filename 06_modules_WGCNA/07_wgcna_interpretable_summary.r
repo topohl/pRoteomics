@@ -21,6 +21,8 @@
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
 source(repo_path("R", "wgcna_downstream_utils.R"))
+source(repo_path("R", "wgcna_labeling_utils.R"))
+source(repo_path("R", "schema_validation.R"))
 
 required_pkgs <- c("dplyr", "tidyr", "tibble", "ggplot2", "svglite", "readr", "stringr", "scales")
 missing_pkgs <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
@@ -576,6 +578,7 @@ spatial_effect_rows <- function(df) {
 program_label_col <- function(df, level = "supermodule") {
   if (level == "supermodule") {
     coalesce_chr(
+      col_or_na(df, "Supermodule_PlotLabel"),
       col_or_na(df, "Supermodule_CleanPlotLabel"),
       col_or_na(df, "Supermodule_CompositionDisplayLabel"),
       col_or_na(df, "Supermodule_CompositionLabel"),
@@ -598,6 +601,7 @@ program_label_col <- function(df, level = "supermodule") {
     # Display labels should prefer the annotation table from 06_annotate_module_microenvironment.r.
     # The group-effect table from 05 usually only knows the raw WGCNA module label/color.
     coalesce_chr(
+      col_or_na(df, "ModulePlotLabel"),
       col_or_na(df, "Module_CleanPlotLabel"),
       col_or_na(df, "cleaned_biological_label"),
       col_or_na(df, "module_display_label"),
@@ -1712,6 +1716,37 @@ make_dataset_summary <- function(ds) {
 
   module_join <- add_semantic_columns(module_join)
 
+  label_candidates <- wgcna_make_label_candidates(module_join, super_join, dataset = ds) |>
+    wgcna_score_label_candidates() |>
+    wgcna_select_final_labels()
+  final_label_lookup <- wgcna_build_final_label_lookup(label_candidates, module_join, super_join, dataset = ds)
+  wgcna_validate_label_lookup(final_label_lookup)
+  validate_table_schema(label_candidates, "wgcna_label_candidates", strict = TRUE)
+  validate_table_schema(final_label_lookup, "wgcna_final_label_lookup", strict = TRUE)
+
+  module_final_labels <- final_label_lookup |>
+    dplyr::filter(.data$level == "module") |>
+    dplyr::select(module_id = "entity_id", canonical_module_plot_label = "final_plot_label")
+  super_final_labels <- final_label_lookup |>
+    dplyr::filter(.data$level == "supermodule") |>
+    dplyr::select(supermodule_id = "entity_id", canonical_supermodule_plot_label = "final_plot_label")
+
+  module_join <- module_join |>
+    dplyr::left_join(module_final_labels, by = "module_id") |>
+    dplyr::left_join(super_final_labels, by = "supermodule_id") |>
+    dplyr::mutate(
+      ModulePlotLabel = dplyr::coalesce(.data$canonical_module_plot_label, .data$ModulePlotLabel),
+      Supermodule_PlotLabel = dplyr::coalesce(.data$canonical_supermodule_plot_label, .data$Supermodule_PlotLabel)
+    ) |>
+    dplyr::select(-"canonical_module_plot_label", -"canonical_supermodule_plot_label")
+  super_join <- super_join |>
+    dplyr::left_join(super_final_labels, by = "supermodule_id") |>
+    dplyr::mutate(
+      Supermodule_PlotLabel = dplyr::coalesce(.data$canonical_supermodule_plot_label, .data$Supermodule_PlotLabel),
+      supermodule_label = .data$Supermodule_PlotLabel
+    ) |>
+    dplyr::select(-"canonical_supermodule_plot_label")
+
   module_supermodule_join_qc <- module_join |>
     dplyr::distinct(.data$module_id, .data$module_key, .data$module_label, .data$module_biological_label, .data$module_biological_label_short, .data$module_label_display, .data$module_display_label, .data$Module_CleanPlotLabel, .data$microenvironment_label, .data$microenvironment_caution_label, .data$supermodule_id, .data$supermodule_id_for_module, .data$supermodule_label, .data$supermodule_label_for_module, .data$Supermodule_CleanPlotLabel, .data$supermodule_map_source_for_module)
 
@@ -1892,6 +1927,8 @@ make_dataset_summary <- function(ds) {
   write_table_and_source(supermodule_plot_label_qc, paths$tables, paths$source_data, "WGCNA_supermodule_plot_label_qc.csv")
   write_table_and_source(supermodule_label_audit, paths$tables, paths$source_data, "WGCNA_supermodule_label_audit.csv")
   write_table_and_source(module_plot_label_qc, paths$tables, paths$source_data, "WGCNA_module_plot_label_qc.csv")
+  write_table_and_source(label_candidates, paths$tables, paths$source_data, "WGCNA_label_candidates.csv")
+  write_table_and_source(final_label_lookup, paths$tables, paths$source_data, "WGCNA_final_label_lookup.csv")
 
   write_table_and_source(super_join, paths$tables, paths$source_data, "WGCNA_supermodule_group_effects_interpretable.csv")
   write_table_and_source(module_join, paths$tables, paths$source_data, "WGCNA_module_group_effects_interpretable.csv")
@@ -1899,7 +1936,7 @@ make_dataset_summary <- function(ds) {
 
   if (requireNamespace("writexl", quietly = TRUE)) {
     writexl::write_xlsx(
-      list(supermodules = super_join, modules = module_join, top_supermodules = top_super),
+      list(supermodules = super_join, modules = module_join, top_supermodules = top_super, label_candidates = label_candidates, final_label_lookup = final_label_lookup),
       file.path(paths$tables, "WGCNA_interpretable_summary.xlsx")
     )
   }
@@ -1929,7 +1966,13 @@ make_dataset_summary <- function(ds) {
       supermodule_composition = path_results("tables", "06_modules_WGCNA", "group_effects", ds, "supermodule_composition.csv"),
       module_to_supermodule_map = path_results("tables", "06_modules_WGCNA", "group_effects", ds, "module_to_supermodule_map_with_annotations.csv")
     ),
-    outputs = list(tables = paths$tables, source_data = paths$source_data, figures = paths$figures),
+    outputs = list(
+      tables = paths$tables,
+      source_data = paths$source_data,
+      figures = paths$figures,
+      label_candidates = file.path(paths$tables, "WGCNA_label_candidates.csv"),
+      final_label_lookup = file.path(paths$tables, "WGCNA_final_label_lookup.csv")
+    ),
     parameters = list(dataset = ds),
     notes = "Interpretable layer. Supermodules are treated as compressed overview units; module-level dotplots/heatmaps are exported as the biological-resolution view after explicitly joining the module-to-supermodule map; WGCNA_module_supermodule_join_qc.csv records whether labels came from 06 annotations and whether modules mapped to supermodules. Main heatmaps use global spatial-adjusted rows where available; spatial rows are plotted separately."
   )
