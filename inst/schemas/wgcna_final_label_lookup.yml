@@ -1,0 +1,21 @@
+name: wgcna_final_label_lookup
+required_columns: [dataset, level, entity_id, parent_entity_id, n_member_modules, raw_top_GO_label, best_data_driven_label, parent_program, microenvironment_context, final_plot_label, label_confidence, label_basis, label_score, manual_review_required, ontology_mismatch_flag, independent_evidence_recorded, label_rationale, unsafe_interpretation]
+columns:
+  dataset: {type: character}
+  level: {type: character, allowed_values: [module, supermodule]}
+  entity_id: {type: character}
+  parent_entity_id: {type: character}
+  n_member_modules: {type: integer}
+  raw_top_GO_label: {type: character}
+  best_data_driven_label: {type: character}
+  parent_program: {type: character}
+  microenvironment_context: {type: character}
+  final_plot_label: {type: character}
+  label_confidence: {type: character, allowed_values: [high, moderate, low, not_applicable]}
+  label_basis: {type: character}
+  label_score: {type: numeric}
+  manual_review_required: {type: logical}
+  ontology_mismatch_flag: {type: logical}
+  independent_evidence_recorded: {type: logical}
+  label_rationale: {type: character}
+  unsafe_interpretation: {type: character}
