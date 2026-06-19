@@ -51,6 +51,7 @@ if (is_dry_run()) {
   dry_run_line("Output tables", PATHS$tables)
   dry_run_line("Reviewer claim gate audit", path_results("reviewer_audit", "microglia_neuropil_independence_claim_gate.csv"))
   dry_run_line("Reviewer covariate selection audit", path_results("reviewer_audit", "microglia_neuropil_covariate_selection_audit.csv"))
+  dry_run_line("Reviewer endpoint scope audit", path_results("reviewer_audit", "microglia_neuropil_independence_endpoint_scope_audit.csv"))
   for (nm in names(inputs)) dry_run_line(nm, inputs[[nm]], if (file.exists(inputs[[nm]])) "PASS" else "WARN")
   quit(status = 0, save = "no")
 }
@@ -61,6 +62,15 @@ clean_chr <- function(x) {
   x <- as.character(x)
   x[is.na(x) | !nzchar(trimws(x))] <- NA_character_
   x
+}
+
+endpoint_scope_for <- function(endpoint_type) {
+  dplyr::case_when(
+    endpoint_type == "module_eigengene" ~ "module",
+    endpoint_type == "targeted_signature_score" ~ "targeted_signature",
+    endpoint_type %in% c("supermodule_eigengene", "supermodule_score") ~ "supermodule",
+    TRUE ~ "unavailable"
+  )
 }
 
 as_int <- function(x, default) {
@@ -371,9 +381,15 @@ selection_audit_row <- function(endpoint_row, dat0, predeclared_choices, explora
   }), use.names = FALSE)
   primary <- vapply(predeclared_choices, function(x) if (identical(x$adjustment_mode, "predeclared_primary")) x$covariate_id else NA_character_, character(1))
   secondary <- vapply(predeclared_choices, function(x) if (identical(x$adjustment_mode, "predeclared_secondary")) x$covariate_id else NA_character_, character(1))
+  direct_tested <- length(predeclared_choices) > 0L || length(exploratory_choice) > 0L
   tibble::tibble(
     endpoint_id = endpoint_row$endpoint_id[[1]],
-    module_or_supermodule_id = ifelse(endpoint_row$endpoint_type[[1]] == "module_eigengene", endpoint_row$endpoint_id[[1]], NA_character_),
+    module_or_supermodule_id = ifelse(endpoint_row$endpoint_type[[1]] %in% c("module_eigengene", "supermodule_eigengene", "supermodule_score"), endpoint_row$endpoint_id[[1]], NA_character_),
+    endpoint_type = endpoint_row$endpoint_type[[1]],
+    endpoint_scope = endpoint_scope_for(endpoint_row$endpoint_type[[1]]),
+    source_level = endpoint_scope_for(endpoint_row$endpoint_type[[1]]),
+    direct_independence_tested = direct_tested,
+    direct_supermodule_test = direct_tested && endpoint_scope_for(endpoint_row$endpoint_type[[1]]) == "supermodule",
     candidate_covariates = paste(available, collapse = ";"),
     predeclared_covariates_available = paste(predeclared_available, collapse = ";"),
     selected_primary_covariate = paste(stats::na.omit(primary), collapse = ";"),
@@ -449,6 +465,10 @@ fit_endpoint_adjustment <- function(endpoint_row, dat0, cov_choice) {
     dplyr::mutate(
       dataset = "microglia",
       endpoint_type = endpoint_row$endpoint_type,
+      endpoint_scope = endpoint_scope_for(endpoint_row$endpoint_type),
+      source_level = endpoint_scope_for(endpoint_row$endpoint_type),
+      direct_independence_tested = TRUE,
+      direct_supermodule_test = endpoint_scope_for(endpoint_row$endpoint_type) == "supermodule",
       endpoint_id = endpoint_row$endpoint_id,
       endpoint_label = endpoint_row$endpoint_label,
       module_id = ifelse(endpoint_row$endpoint_type == "module_eigengene", endpoint_row$endpoint_id, NA_character_),
@@ -487,6 +507,10 @@ empty_adjustment_rows <- function(endpoint_row, reason, class = "inconclusive_mi
   tibble::tibble(
     dataset = "microglia",
     endpoint_type = endpoint_row$endpoint_type,
+    endpoint_scope = endpoint_scope_for(endpoint_row$endpoint_type),
+    source_level = endpoint_scope_for(endpoint_row$endpoint_type),
+    direct_independence_tested = FALSE,
+    direct_supermodule_test = FALSE,
     endpoint_id = endpoint_row$endpoint_id,
     endpoint_label = endpoint_row$endpoint_label,
     module_id = ifelse(endpoint_row$endpoint_type == "module_eigengene", endpoint_row$endpoint_id, NA_character_),
@@ -572,7 +596,9 @@ if (!nrow(endpoint_rows)) {
     "inconclusive_missing_match"
   )
   selection_audit <- tibble::tibble(
-    endpoint_id = character(), module_or_supermodule_id = character(), candidate_covariates = character(),
+    endpoint_id = character(), module_or_supermodule_id = character(), endpoint_type = character(),
+    endpoint_scope = character(), source_level = character(), direct_independence_tested = logical(),
+    direct_supermodule_test = logical(), candidate_covariates = character(),
     predeclared_covariates_available = character(), selected_primary_covariate = character(),
     selected_secondary_covariate = character(), selected_exploratory_covariate = character(),
     selection_rule = character(), primary_claim_gate_eligible = logical(),
@@ -651,7 +677,8 @@ results <- results |>
     classification = .data$independence_classification
   ) |>
   dplyr::relocate(
-    "dataset", "endpoint_type", "endpoint_id", "endpoint_label", "module_id", "contrast",
+    "dataset", "endpoint_type", "endpoint_scope", "source_level", "direct_independence_tested",
+    "direct_supermodule_test", "endpoint_id", "endpoint_label", "module_id", "contrast",
     "adjustment_mode", "covariate_family", "covariate_selection_rule", "covariate_source_dataset",
     "covariate_source_module_or_score", "matched_by", "n_matched_animals", "n_matched_samples",
     "min_animals_per_group", "model_before_adjustment", "model_after_adjustment",
@@ -710,6 +737,11 @@ module_classification <- results |>
   ) |>
   dplyr::mutate(
     dplyr::across(c("min_p_before", "min_p_after", "max_percent_attenuation"), ~ ifelse(is.infinite(.x), NA_real_, .x)),
+    endpoint_type = "module_eigengene",
+    endpoint_scope = "module",
+    source_level = "module",
+    direct_independence_tested = TRUE,
+    direct_supermodule_test = FALSE,
     neuropil_independence_note = "Classification from paired baseline versus AnimalID + Region matched neuron_neuropil-adjusted models. Only predeclared primary/secondary adjustments are claim-gate eligible."
   )
 
@@ -725,6 +757,11 @@ claim_gate_audit <- results |>
   ) |>
   dplyr::transmute(
     module_or_supermodule_id = .data$module_id,
+    endpoint_type = .data$endpoint_type,
+    endpoint_scope = .data$endpoint_scope,
+    source_level = .data$source_level,
+    direct_independence_tested = .data$direct_independence_tested,
+    direct_supermodule_test = .data$direct_supermodule_test,
     contrast = .data$contrast,
     biological_program = dplyr::coalesce(.data$cleaned_biological_label, .data$safe_display_label, .data$module_biological_label, .data$endpoint_label),
     microenvironment_class = .data$microenvironment_class,
@@ -765,6 +802,28 @@ claim_gate_audit <- claim_gate_audit |>
   ) |>
   dplyr::mutate(eligible_without_primary_effect_count = eligible_without_primary)
 
+endpoint_scope_audit <- results |>
+  dplyr::filter(!is.na(.data$endpoint_type), .data$endpoint_scope != "unavailable") |>
+  dplyr::distinct(.data$endpoint_type, .data$endpoint_scope, .data$source_level, .data$endpoint_id, .data$direct_independence_tested) |>
+  dplyr::group_by(.data$endpoint_type, .data$endpoint_scope, .data$source_level, .data$direct_independence_tested) |>
+  dplyr::summarise(n_endpoints = dplyr::n(), .groups = "drop") |>
+  dplyr::mutate(
+    consumed_by_claim_type = dplyr::case_when(
+      .data$endpoint_scope == "module" ~ "WGCNA_module;WGCNA_module_group_effect",
+      .data$endpoint_scope == "targeted_signature" ~ "targeted_signature_diagnostic",
+      .data$endpoint_scope == "supermodule" ~ "WGCNA_supermodule_group_effect",
+      TRUE ~ "none"
+    ),
+    notes = "Direct endpoint-level neuropil-independence model was run."
+  ) |>
+  dplyr::bind_rows(tibble::tibble(
+    endpoint_type = "unavailable", endpoint_scope = "unavailable", source_level = "supermodule",
+    n_endpoints = 0L, direct_independence_tested = FALSE,
+    consumed_by_claim_type = "WGCNA_supermodule_group_effect",
+    notes = "no_direct_supermodule_independence_test"
+  )) |>
+  dplyr::select("endpoint_type", "endpoint_scope", "source_level", "n_endpoints", "direct_independence_tested", "consumed_by_claim_type", "notes")
+
 write_table_and_source(results, PATHS$tables, PATHS$source_data, "microglia_neuropil_independence_effects.csv")
 write_table_and_source(module_classification, PATHS$tables, PATHS$source_data, "microglia_module_neuropil_independence_classification.csv")
 write_table_and_source(signature_results, PATHS$tables, PATHS$source_data, "microglia_targeted_signature_neuropil_independence_effects.csv")
@@ -773,8 +832,10 @@ audit_dir <- path_results("reviewer_audit")
 dir_create(audit_dir)
 validate_table_schema(claim_gate_audit, "microglia_neuropil_independence_claim_gate", strict = TRUE)
 validate_table_schema(selection_audit, "microglia_neuropil_covariate_selection_audit", strict = FALSE)
+validate_table_schema(endpoint_scope_audit, "microglia_neuropil_independence_endpoint_scope_audit", strict = TRUE)
 readr::write_csv(claim_gate_audit, file.path(audit_dir, "microglia_neuropil_independence_claim_gate.csv"), na = "")
 readr::write_csv(selection_audit, file.path(audit_dir, "microglia_neuropil_covariate_selection_audit.csv"), na = "")
+readr::write_csv(endpoint_scope_audit, file.path(audit_dir, "microglia_neuropil_independence_endpoint_scope_audit.csv"), na = "")
 
 interp <- read_csv_optional2(inputs$microglia_interpretable)
 if (nrow(interp) && nrow(module_classification)) {
@@ -792,7 +853,8 @@ if (requireNamespace("writexl", quietly = TRUE)) {
       module_classification = module_classification,
       targeted_signatures = signature_results,
       claim_gate_audit = claim_gate_audit,
-      covariate_selection_audit = selection_audit
+      covariate_selection_audit = selection_audit,
+      endpoint_scope_audit = endpoint_scope_audit
     ),
     file.path(PATHS$tables, "microglia_neuropil_independence.xlsx")
   )
@@ -806,7 +868,8 @@ write_run_manifest(
     source_data = PATHS$source_data,
     reviewer_audit = c(
       claim_gate = file.path(audit_dir, "microglia_neuropil_independence_claim_gate.csv"),
-      covariate_selection = file.path(audit_dir, "microglia_neuropil_covariate_selection_audit.csv")
+      covariate_selection = file.path(audit_dir, "microglia_neuropil_covariate_selection_audit.csv"),
+      endpoint_scope = file.path(audit_dir, "microglia_neuropil_independence_endpoint_scope_audit.csv")
     )
   ),
   parameters = list(
