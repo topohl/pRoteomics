@@ -1,5 +1,10 @@
 name: microglia_neuropil_covariate_selection_audit
 required_columns:
+  - endpoint_type
+  - endpoint_scope
+  - source_level
+  - direct_independence_tested
+  - direct_supermodule_test
   - candidate_covariates
   - predeclared_covariates_available
   - selected_primary_covariate
@@ -12,6 +17,11 @@ required_columns:
 columns:
   endpoint_id: {type: character}
   module_or_supermodule_id: {type: character}
+  endpoint_type: {type: character}
+  endpoint_scope: {type: character, allowed_values: [module, targeted_signature, supermodule, unavailable]}
+  source_level: {type: character, allowed_values: [module, targeted_signature, supermodule]}
+  direct_independence_tested: {type: logical}
+  direct_supermodule_test: {type: logical}
   candidate_covariates: {type: character}
   predeclared_covariates_available: {type: character}
   selected_primary_covariate: {type: character}
