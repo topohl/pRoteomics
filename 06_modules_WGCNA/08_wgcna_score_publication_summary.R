@@ -11,6 +11,7 @@
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
 source(repo_path("R", "wgcna_downstream_utils.R"))
+source(repo_path("R", "wgcna_labeling_utils.R"))
 
 required_pkgs <- c("dplyr", "tidyr", "tibble", "ggplot2", "svglite", "readr", "stringr", "scales")
 missing_pkgs <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
@@ -158,7 +159,8 @@ first_existing_csv <- function(paths) {
   if (length(hit)) hit[[1]] else NA_character_
 }
 
-canonical_supermodule_labels <- function(dataset) {
+legacy_multifile_supermodule_labels_frozen <- function(dataset) {
+  stop("Legacy multi-file label fallback is disabled; use WGCNA_final_label_lookup.csv.", call. = FALSE)
   candidates <- c(
     path_results("tables", "06_modules_WGCNA", "interpretable_summary", dataset, "WGCNA_supermodule_label_audit.csv"),
     path_results("tables", "06_modules_WGCNA", "interpretable_summary", dataset, "WGCNA_supermodule_plot_label_qc.csv"),
@@ -230,7 +232,8 @@ canonical_supermodule_labels <- function(dataset) {
     dplyr::distinct(.data$supermodule_id, .keep_all = TRUE)
 }
 
-canonical_module_labels <- function(dataset) {
+legacy_multifile_module_labels_frozen <- function(dataset) {
+  stop("Legacy multi-file label fallback is disabled; use WGCNA_final_label_lookup.csv.", call. = FALSE)
   candidates <- c(
     path_results("tables", "06_modules_WGCNA", "interpretable_summary", dataset, "WGCNA_module_plot_label_qc.csv"),
     path_results("tables", "06_modules_WGCNA", "interpretable_summary", dataset, "WGCNA_module_group_effects_interpretable.csv"),
@@ -273,13 +276,62 @@ canonical_module_labels <- function(dataset) {
     dplyr::distinct(.data$module_id, .keep_all = TRUE)
 }
 
+canonical_final_label_lookup <- function(dataset) {
+  path <- path_results("tables", "06_modules_WGCNA", "interpretable_summary", dataset, "WGCNA_final_label_lookup.csv")
+  lookup <- read_csv_required(path, "canonical WGCNA final label lookup produced by 07_wgcna_interpretable_summary.r")
+  wgcna_validate_label_lookup(lookup)
+  if (!all(lookup$dataset == dataset)) {
+    stop("Canonical WGCNA final label lookup contains rows for the wrong dataset: ", path, call. = FALSE)
+  }
+  lookup
+}
+
+canonical_supermodule_labels <- function(lookup) {
+  lookup |>
+    dplyr::filter(.data$level == "supermodule") |>
+    dplyr::transmute(
+      supermodule_id = .data$entity_id,
+      final_plot_label = .data$final_plot_label,
+      final_plot_label_short = label_wrap(.data$final_plot_label, width = 34),
+      final_label_source = "WGCNA_final_label_lookup.csv",
+      raw_label = dplyr::coalesce(.data$raw_top_GO_label, .data$entity_id),
+      raw_label_source = "WGCNA_final_label_lookup.csv",
+      raw_label_rationale = .data$label_rationale,
+      cleaned_label_available = TRUE,
+      source_file = "WGCNA_final_label_lookup.csv"
+    )
+}
+
+canonical_module_labels <- function(lookup) {
+  lookup |>
+    dplyr::filter(.data$level == "module") |>
+    dplyr::transmute(
+      module_id = .data$entity_id,
+      final_plot_label = .data$final_plot_label,
+      final_label_source = "WGCNA_final_label_lookup.csv",
+      raw_label = dplyr::coalesce(.data$raw_top_GO_label, .data$entity_id),
+      raw_label_source = "WGCNA_final_label_lookup.csv",
+      raw_label_rationale = .data$label_rationale
+    )
+}
+
+validate_render_ids_in_lookup <- function(ids, labels, id_col, context) {
+  ids <- unique(as.character(ids[!is.na(ids) & nzchar(as.character(ids))]))
+  available <- unique(as.character(labels[[id_col]]))
+  missing <- setdiff(ids, available)
+  if (length(missing)) {
+    stop("Rendered ", context, " IDs are absent from WGCNA_final_label_lookup.csv: ", paste(missing, collapse = ", "), call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
 attach_supermodule_labels <- function(df, labels, module_col = "Module") {
+  validate_render_ids_in_lookup(df[[module_col]], labels, "supermodule_id", module_col)
   out <- df |>
     dplyr::left_join(labels, by = stats::setNames("supermodule_id", module_col)) |>
     dplyr::mutate(
       raw_score_module_id = .data[[module_col]],
-      final_plot_label = dplyr::coalesce(.data$final_plot_label, as.character(.data[[module_col]])),
-      final_plot_label_short = dplyr::coalesce(.data$final_plot_label_short, label_wrap(.data$final_plot_label, width = 34))
+      final_plot_label_short = label_wrap(.data$final_plot_label, width = 34)
     )
   out
 }
@@ -503,7 +555,8 @@ run_one_dataset <- function(dataset, module_source = "wgcna") {
     dry_run_line("Dataset", dataset)
     dry_run_line("Module source", module_source)
     dry_run_line("Score directional effects", paths$directional_effects, if (file.exists(paths$directional_effects)) "PASS" else "FAIL")
-    dry_run_line("Clean labels", path_results("tables", "06_modules_WGCNA", "interpretable_summary", dataset), "INFO")
+    label_lookup_path <- path_results("tables", "06_modules_WGCNA", "interpretable_summary", dataset, "WGCNA_final_label_lookup.csv")
+    dry_run_line("Canonical final label lookup", label_lookup_path, if (file.exists(label_lookup_path)) "PASS" else "FAIL")
     dry_run_line("Output figures", out_fig)
     return(invisible(NULL))
   }
@@ -511,8 +564,12 @@ run_one_dataset <- function(dataset, module_source = "wgcna") {
   effects_raw <- read_csv_required(paths$directional_effects, "supermodule directional effects")
   consistency_raw <- read_csv_required(paths$directional_consistency, "supermodule directional consistency")
   corr_raw <- read_csv_required(paths$correlation_structure, "supermodule score correlation structure")
-  labels <- canonical_supermodule_labels(dataset)
-  module_labels <- canonical_module_labels(dataset)
+  final_label_lookup <- canonical_final_label_lookup(dataset)
+  labels <- canonical_supermodule_labels(final_label_lookup)
+  module_labels <- canonical_module_labels(final_label_lookup)
+  validate_render_ids_in_lookup(effects_raw$Module, labels, "supermodule_id", "effect")
+  validate_render_ids_in_lookup(consistency_raw$Module, labels, "supermodule_id", "consistency")
+  validate_render_ids_in_lookup(c(corr_raw$module1, corr_raw$module2), labels, "supermodule_id", "correlation")
 
   effects <- attach_supermodule_labels(effects_raw, labels, "Module")
   consistency <- attach_supermodule_labels(consistency_raw, labels, "Module")
@@ -520,10 +577,8 @@ run_one_dataset <- function(dataset, module_source = "wgcna") {
     dplyr::left_join(labels |> dplyr::select(module1 = "supermodule_id", module1_label = "final_plot_label", module1_label_short = "final_plot_label_short"), by = "module1") |>
     dplyr::left_join(labels |> dplyr::select(module2 = "supermodule_id", module2_label = "final_plot_label", module2_label_short = "final_plot_label_short"), by = "module2") |>
     dplyr::mutate(
-      module1_label = dplyr::coalesce(.data$module1_label, .data$module1),
-      module2_label = dplyr::coalesce(.data$module2_label, .data$module2),
-      module1_label_short = dplyr::coalesce(.data$module1_label_short, label_wrap(.data$module1_label, width = 34)),
-      module2_label_short = dplyr::coalesce(.data$module2_label_short, label_wrap(.data$module2_label, width = 34))
+      module1_label_short = label_wrap(.data$module1_label, width = 34),
+      module2_label_short = label_wrap(.data$module2_label, width = 34)
     )
 
   analysis_seen <- sort(unique(c(effects$Analysis, consistency$Analysis, corr$Analysis)))
@@ -633,17 +688,11 @@ run_one_dataset <- function(dataset, module_source = "wgcna") {
   write_run_manifest(
     file.path(out_logs, "run_manifest.yml"),
     inputs = c(paths, list(
-      supermodule_annotation = path_results("tables", "06_modules_WGCNA", "module_annotation", dataset, "WGCNA_supermodule_biological_annotation.csv"),
-      module_annotation = path_results("tables", "06_modules_WGCNA", "module_annotation", dataset, "WGCNA_module_biological_annotation.csv"),
-      interpretable_supermodules = path_results("tables", "06_modules_WGCNA", "interpretable_summary", dataset, "WGCNA_supermodule_group_effects_interpretable.csv"),
-      interpretable_modules = path_results("tables", "06_modules_WGCNA", "interpretable_summary", dataset, "WGCNA_module_group_effects_interpretable.csv"),
-      supermodule_label_audit = path_results("tables", "06_modules_WGCNA", "interpretable_summary", dataset, "WGCNA_supermodule_label_audit.csv"),
-      supermodule_plot_label_qc = path_results("tables", "06_modules_WGCNA", "interpretable_summary", dataset, "WGCNA_supermodule_plot_label_qc.csv"),
-      module_plot_label_qc = path_results("tables", "06_modules_WGCNA", "interpretable_summary", dataset, "WGCNA_module_plot_label_qc.csv")
+      final_label_lookup = path_results("tables", "06_modules_WGCNA", "interpretable_summary", dataset, "WGCNA_final_label_lookup.csv")
     )),
     outputs = list(figures = out_fig, tables = out_tables, source_data = out_source),
     parameters = list(dataset = dataset, module_source = module_source, analyses = paste(analysis_expected, collapse = ";")),
-    notes = "Final score-derived WGCNA supermodule publication plots. Score/statistics computation stays in 03_score_module_activity.R; labels come from 06/07 cleaned semantic annotation."
+    notes = "Final score-derived WGCNA supermodule publication plots. Score/statistics computation stays in 03_score_module_activity.R; every rendered label comes only from the canonical lookup produced by 07."
   )
 
   message("WGCNA score publication summary complete for dataset: ", dataset)
