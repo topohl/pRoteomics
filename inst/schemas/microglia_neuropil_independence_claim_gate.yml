@@ -1,6 +1,11 @@
 name: microglia_neuropil_independence_claim_gate
 required_columns:
   - module_or_supermodule_id
+  - endpoint_type
+  - endpoint_scope
+  - source_level
+  - direct_independence_tested
+  - direct_supermodule_test
   - contrast
   - biological_program
   - microenvironment_class
@@ -25,6 +30,11 @@ required_columns:
   - eligible_without_primary_effect_count
 columns:
   module_or_supermodule_id: {type: character}
+  endpoint_type: {type: character}
+  endpoint_scope: {type: character, allowed_values: [module, targeted_signature, supermodule, unavailable]}
+  source_level: {type: character, allowed_values: [module, targeted_signature, supermodule]}
+  direct_independence_tested: {type: logical}
+  direct_supermodule_test: {type: logical}
   contrast: {type: character}
   biological_program: {type: character}
   microenvironment_class: {type: character}

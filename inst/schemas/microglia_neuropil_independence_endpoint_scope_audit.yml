@@ -1,0 +1,17 @@
+name: microglia_neuropil_independence_endpoint_scope_audit
+required_columns:
+  - endpoint_type
+  - endpoint_scope
+  - source_level
+  - n_endpoints
+  - direct_independence_tested
+  - consumed_by_claim_type
+  - notes
+columns:
+  endpoint_type: {type: character}
+  endpoint_scope: {type: character, allowed_values: [module, targeted_signature, supermodule, unavailable]}
+  source_level: {type: character, allowed_values: [module, targeted_signature, supermodule]}
+  n_endpoints: {type: integer}
+  direct_independence_tested: {type: logical}
+  consumed_by_claim_type: {type: character}
+  notes: {type: character}
