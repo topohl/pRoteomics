@@ -1,0 +1,8 @@
+name: claim_use_class_wording_audit
+required_columns: [check_name, severe_issue_count, status, example_claim_ids, notes]
+columns:
+  check_name: {type: character, allowed_values: [blocked_positive_wording, suggestive_strong_wording, annotation_strong_wording, supporting_missing_safe_interpretation, allowed_incomplete_wgcna_label]}
+  severe_issue_count: {type: integer}
+  status: {type: character, allowed_values: [PASS, FAIL]}
+  example_claim_ids: {type: character}
+  notes: {type: character}

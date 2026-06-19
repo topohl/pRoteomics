@@ -1,0 +1,16 @@
+name: final_claim_gate_summary
+required_columns: [dataset, claim_type, evidence_type, claim_allowed, claim_gate_status, claim_use_class, primary_model_status, animal_level_gate, microglia_roi_gate, neuropil_independence_gate, robustness_gate, evidence_independence_gate, n_claims]
+columns:
+  dataset: {type: character}
+  claim_type: {type: character}
+  evidence_type: {type: character}
+  claim_allowed: {type: logical}
+  claim_gate_status: {type: character}
+  claim_use_class: {type: character}
+  primary_model_status: {type: character}
+  animal_level_gate: {type: character}
+  microglia_roi_gate: {type: character}
+  neuropil_independence_gate: {type: character}
+  robustness_gate: {type: character}
+  evidence_independence_gate: {type: character}
+  n_claims: {type: integer}
