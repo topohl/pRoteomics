@@ -173,6 +173,21 @@ known_pipeline_output_specs <- function() {
     final_evidence_bundle_validation.csv = list(
       required_columns = c("validation_check", "status", "n_violations", "details")
     ),
+    WGCNA_label_candidates.csv = list(
+      required_columns = c(
+        "dataset", "level", "entity_id", "candidate_label", "candidate_source",
+        "evidence_strength", "hub_support", "marker_context_support", "genericity_penalty",
+        "ontology_mismatch_flag", "conflict_penalty", "final_label_score", "selected_label", "rejection_reason"
+      )
+    ),
+    WGCNA_final_label_lookup.csv = list(
+      required_columns = c(
+        "dataset", "level", "entity_id", "parent_entity_id", "n_member_modules",
+        "raw_top_GO_label", "best_data_driven_label", "parent_program", "microenvironment_context",
+        "final_plot_label", "label_confidence", "label_basis", "label_score",
+        "manual_review_required", "ontology_mismatch_flag", "label_rationale", "unsafe_interpretation"
+      )
+    ),
     wgcna_microenvironment_threshold_sensitivity.csv = list(
       required_columns = c(
         "dataset", "module_or_supermodule_id", "level",
