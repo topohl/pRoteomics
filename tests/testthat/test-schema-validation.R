@@ -175,6 +175,11 @@ testthat::test_that("microglia neuropil independence audit schemas validate", {
 
   claim_gate <- data.frame(
     module_or_supermodule_id = "WGCNA_#000000",
+    endpoint_type = "module_eigengene",
+    endpoint_scope = "module",
+    source_level = "module",
+    direct_independence_tested = TRUE,
+    direct_supermodule_test = FALSE,
     contrast = "SUS - CON",
     biological_program = "microglia-enriched ROI program",
     microenvironment_class = "microglia_supported",
@@ -204,6 +209,11 @@ testthat::test_that("microglia neuropil independence audit schemas validate", {
   selection <- data.frame(
     endpoint_id = "WGCNA_#000000",
     module_or_supermodule_id = "WGCNA_#000000",
+    endpoint_type = "module_eigengene",
+    endpoint_scope = "module",
+    source_level = "module",
+    direct_independence_tested = TRUE,
+    direct_supermodule_test = FALSE,
     candidate_covariates = "z_reference_cortical_excitatory_neuron_score",
     predeclared_covariates_available = "global_neuropil_score=z_reference_cortical_excitatory_neuron_score",
     selected_primary_covariate = "z_reference_cortical_excitatory_neuron_score",
@@ -216,4 +226,31 @@ testthat::test_that("microglia neuropil independence audit schemas validate", {
     stringsAsFactors = FALSE
   )
   testthat::expect_silent(validate_table_schema(selection, "microglia_neuropil_covariate_selection_audit", strict = FALSE))
+})
+
+testthat::test_that("final reviewer audit schemas validate", {
+  source(testthat::test_path("..", "..", "R", "paths.R"))
+  source(repo_path("R", "schema_validation.R"))
+  testthat::skip_if_not_installed("yaml")
+
+  wording <- data.frame(
+    check_name = "suggestive_strong_wording", severe_issue_count = 0L,
+    status = "PASS", example_claim_ids = "", notes = "No exceptions.",
+    stringsAsFactors = FALSE
+  )
+  testthat::expect_silent(validate_table_schema(wording, "claim_use_class_wording_audit", strict = TRUE))
+
+  validation <- data.frame(
+    validation_check = "no_suggestive_context_strong_support_wording",
+    status = "PASS", n_violations = 0L, details = "No exceptions.",
+    stringsAsFactors = FALSE
+  )
+  testthat::expect_silent(validate_table_schema(validation, "final_evidence_bundle_validation", strict = TRUE))
+
+  manifest <- data.frame(
+    audit_file = "biological_claims_table.csv", exists = TRUE, n_rows = 1L,
+    schema_validated = TRUE, produced_by_script = "test", reviewer_use = "test",
+    manuscript_use_allowed = TRUE, notes = "test", stringsAsFactors = FALSE
+  )
+  testthat::expect_silent(validate_table_schema(manifest, "final_reviewer_audit_manifest", strict = TRUE))
 })
