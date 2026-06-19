@@ -157,6 +157,22 @@ known_pipeline_output_specs <- function() {
         "direct_independence_tested", "consumed_by_claim_type", "notes"
       )
     ),
+    claim_use_class_wording_audit.csv = list(
+      required_columns = c("check_name", "severe_issue_count", "status", "example_claim_ids", "notes")
+    ),
+    final_claim_gate_summary.csv = list(
+      required_columns = c(
+        "dataset", "claim_type", "evidence_type", "claim_allowed", "claim_gate_status",
+        "claim_use_class", "primary_model_status", "animal_level_gate", "microglia_roi_gate",
+        "neuropil_independence_gate", "robustness_gate", "evidence_independence_gate", "n_claims"
+      )
+    ),
+    final_reviewer_audit_manifest.csv = list(
+      required_columns = c("audit_file", "exists", "n_rows", "schema_validated", "produced_by_script", "reviewer_use", "manuscript_use_allowed", "notes")
+    ),
+    final_evidence_bundle_validation.csv = list(
+      required_columns = c("validation_check", "status", "n_violations", "details")
+    ),
     wgcna_microenvironment_threshold_sensitivity.csv = list(
       required_columns = c(
         "dataset", "module_or_supermodule_id", "level",
