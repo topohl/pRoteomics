@@ -153,6 +153,12 @@ readable tables, source data, and plots. It should preserve both broad plotting
 labels and full annotation labels so figures stay compact without hiding the
 underlying rationale.
 
+Final label choice is centralized here through pure helpers in
+`R/wgcna_labeling_utils.R`. Biological labels, parent programs, and
+microenvironment context remain separate. The resulting canonical lookup is
+the only label source used by `08_wgcna_score_publication_summary.R`; that
+script renders score-derived plots but does not choose labels.
+
 Run:
 
 ```bash
@@ -165,6 +171,8 @@ Inspect:
 - `results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_interpretable_summary.xlsx`
 - `results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_supermodule_group_effects_interpretable.csv`
 - `results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_supermodule_label_audit.csv`
+- `results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_label_candidates.csv`
+- `results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_final_label_lookup.csv`
 - `results/source_data/06_modules_WGCNA/interpretable_summary/<dataset>/`
 
 Safe to rerun: yes.
