@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 # ================================================================
-# Script: 04_differential_expression_enrichment/07_external_stress_disease_signature_overlap.r
+# Script: 04_differential_expression_enrichment/08_external_stress_disease_signature_overlap.r
 # Stage: enrichment
 # Scope: global
 # Consumes: optional external cached stress/disease signatures and enrichment program summaries.
@@ -11,7 +11,7 @@ paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.
 source(paths_file)
 source(repo_path("R", "integration_utils.R"))
 
-SCRIPT_ID <- "04_differential_expression_enrichment/07_external_stress_disease_signature_overlap.r"
+SCRIPT_ID <- "04_differential_expression_enrichment/08_external_stress_disease_signature_overlap.r"
 paths <- create_module_dirs("04_differential_expression_enrichment", "external_stress_disease_signature_overlap/global")
 signature_dir <- Sys.getenv("PROTEOMICS_EXTERNAL_SIGNATURE_DIR", unset = path_external("stress_disease_signatures"))
 signature_files <- Sys.glob(file.path(signature_dir, "*.csv"))

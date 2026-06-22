@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 # ================================================================
-# Script: 09_export_pride_journal/05_validate_pride_submission.R
+# Script: 09_export_pride_journal/10_validate_pride_submission.R
 # Stage: export
 # Scope: global
 # Consumes: required pride_submission/; optional data/raw/; data/external/search_results/; +3 more.
@@ -151,7 +151,7 @@ report_tsv <- pride_submission_dir("validation", "validation_report.tsv")
 summary_md <- pride_submission_dir("validation", "validation_summary.md")
 
 if (isTRUE(cli$dry_run)) {
-  dry_run_line("Script", "09_export_pride_journal/05_validate_pride_submission.R")
+  dry_run_line("Script", "09_export_pride_journal/10_validate_pride_submission.R")
   dry_run_line("Export level", export_level)
   apply(checks, 1, function(row) dry_run_line(row[["check"]], row[["detail"]], row[["status"]]))
   quit(status = 0, save = "no")

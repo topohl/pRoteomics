@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 # ================================================================
-# Script: 09_export_pride_journal/01_make_pride_manifest.R
+# Script: 09_export_pride_journal/05_make_pride_manifest.R
 # Stage: export
 # Scope: global
 # Consumes: required pride_submission/metadata/sample_metadata.tsv; pride_submission/metadata/sdrf_like_metadata.tsv; +1 more; optional results/tables/; results/source_data/.
@@ -55,7 +55,7 @@ files <- collect_canonical_files()
 manifest_target <- pride_submission_dir("manifests", "pride_file_manifest.tsv")
 
 if (isTRUE(cli$dry_run)) {
-  dry_run_line("Script", "09_export_pride_journal/01_make_pride_manifest.R")
+  dry_run_line("Script", "09_export_pride_journal/05_make_pride_manifest.R")
   dry_run_line("Export level", export_level)
   dry_run_line("Datasets", paste(datasets, collapse = ", "))
   dry_run_line("Include derived results", cli$include_derived_results)

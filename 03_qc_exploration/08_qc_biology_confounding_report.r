@@ -1,5 +1,5 @@
 # ================================================================
-# Script: 03_qc_exploration/07_qc_biology_confounding_report.r
+# Script: 03_qc_exploration/08_qc_biology_confounding_report.r
 # Stage: qc
 # Scope: dataset_specific
 # Consumes: required results/tables/03_qc_exploration/05_pca_confounding_qc/<dataset>/; results/tables/03_qc_exploration/06_variance_partitioning/<dataset>/; optional results/tables/03_qc_exploration/04_marker_rank_abundance_qc/<dataset>/.
@@ -22,7 +22,7 @@ PATHS <- qc_paths("07_qc_biology_confounding_report", DATASET)
 matrix_file <- qc_resolve_matrix(DATASET, env = "PROTEOMICS_CONFOUNDING_MATRIX_FILE")
 metadata_file <- qc_resolve_metadata(DATASET, env = "PROTEOMICS_CONFOUNDING_METADATA_FILE")
 if (run$dry_run) {
-  status <- qc_dry_run_contract("03_qc_exploration/07_qc_biology_confounding_report.r", DATASET,
+  status <- qc_dry_run_contract("03_qc_exploration/08_qc_biology_confounding_report.r", DATASET,
                                 matrix_file = matrix_file, metadata_file = metadata_file, paths = PATHS,
                                 extra = c("Also reuses upstream QC tables when present; otherwise recomputes minimal metrics."))
   quit(status = status, save = "no")

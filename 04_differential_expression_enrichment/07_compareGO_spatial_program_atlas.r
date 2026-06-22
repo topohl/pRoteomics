@@ -1,5 +1,5 @@
 # ================================================================
-# Script: 04_differential_expression_enrichment/06_compareGO_spatial_program_atlas.r
+# Script: 04_differential_expression_enrichment/07_compareGO_spatial_program_atlas.r
 # Stage: enrichment
 # Scope: dataset_specific
 # Consumes: required data/processed/04_differential_expression_enrichment/compareGO/<dataset>/compareGO_input_manifest.csv; optional results/tables/04_differential_expression_enrichment/biological_program_summary/<dataset>/program_summary.csv.

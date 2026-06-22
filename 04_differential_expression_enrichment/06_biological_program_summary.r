@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript
 
 # ================================================================
-# Script: 04_differential_expression_enrichment/03_biological_program_summary.r
+# Script: 04_differential_expression_enrichment/06_biological_program_summary.r
 # Stage: enrichment
 # Scope: dataset_specific
 # Consumes: required data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv; data/processed/04_differential_expression_enrichment/compareGO/<dataset>/compareGO_input_manifest.csv; optional results/tables/04_differential_expression_enrichment/neuropil_reference_annotation/<dataset>/; results/tables/04_differential_expression_enrichment/microglia_targeted_signature_enrichment/<dataset>/.
@@ -18,7 +18,7 @@ source(repo_path("R", "enrichment_io.R"))
 source(repo_path("R", "enrichment_plots.R"))
 source(repo_path("R", "plotting_nature.R"))
 
-SCRIPT_ID <- "04_differential_expression_enrichment/03_biological_program_summary.r"
+SCRIPT_ID <- "04_differential_expression_enrichment/06_biological_program_summary.r"
 Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 args <- commandArgs(trailingOnly = TRUE)
 arg_value <- function(flag, default = "") {
@@ -66,7 +66,7 @@ latest_manifest <- function() {
 manifest_file <- latest_manifest()
 
 if (is_dry_run()) {
-  dry_run_line("Script", "04_differential_expression_enrichment/03_biological_program_summary.r")
+  dry_run_line("Script", "04_differential_expression_enrichment/06_biological_program_summary.r")
   dry_run_line("Dataset", DATASET)
   dry_run_line("Manifest", manifest_file, if (file.exists(manifest_file)) "PASS" else "FAIL")
   dry_run_line("Program summary", file.path(PATHS$tables, "program_summary.csv"))
