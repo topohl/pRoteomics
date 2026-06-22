@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 # ================================================================
-# Script: 06_modules_WGCNA/08_module_complex_architecture.r
+# Script: 06_modules_WGCNA/10_module_complex_architecture.r
 # Stage: modules_downstream
 # Scope: dataset_specific
 # Consumes: existing WGCNA module definitions and biological annotations.
@@ -12,7 +12,7 @@ source(paths_file)
 source(repo_path("R", "integration_utils.R"))
 source(repo_path("R", "wgcna_downstream_utils.R"))
 
-SCRIPT_ID <- "06_modules_WGCNA/08_module_complex_architecture.r"
+SCRIPT_ID <- "06_modules_WGCNA/10_module_complex_architecture.r"
 run <- integration_cli(allow_all = TRUE)
 
 complex_sets <- list(
