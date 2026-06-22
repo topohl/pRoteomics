@@ -108,7 +108,7 @@ for ds in neuron_neuropil neuron_soma microglia; do
   Rscript 03_qc_exploration/04_marker_rank_abundance_qc.r --dataset "$ds" --dry-run
   Rscript 03_qc_exploration/05_pca_confounding_qc.r --dataset "$ds" --dry-run
   Rscript 03_qc_exploration/06_variance_partitioning.r --dataset "$ds" --dry-run
-  Rscript 03_qc_exploration/07_qc_biology_confounding_report.r --dataset "$ds" --dry-run
+  Rscript 03_qc_exploration/08_qc_biology_confounding_report.r --dataset "$ds" --dry-run
 done
 ```
 
