@@ -2,7 +2,7 @@ testthat::test_that("biological integration entrypoints exist and dry-run", {
   source(testthat::test_path("..", "..", "R", "paths.R"))
   `%||%` <- function(x, y) if (is.null(x) || length(x) == 0L || is.na(x)) y else x
   scripts <- c(
-    "04_differential_expression_enrichment/07_external_stress_disease_signature_overlap.r",
+    "04_differential_expression_enrichment/08_external_stress_disease_signature_overlap.r",
     "08_behavior_physio_coupling/03_module_behavior_coupling.r",
     "10_biological_integration/01_cross_compartment_program_atlas.r",
     "10_biological_integration/02_manuscript_program_summary.r",
@@ -14,7 +14,7 @@ testthat::test_that("biological integration entrypoints exist and dry-run", {
   old_wd <- setwd(repo_path())
   on.exit(setwd(old_wd), add = TRUE)
   cases <- list(
-    c("04_differential_expression_enrichment/07_external_stress_disease_signature_overlap.r", "--dry-run"),
+    c("04_differential_expression_enrichment/08_external_stress_disease_signature_overlap.r", "--dry-run"),
     c("08_behavior_physio_coupling/03_module_behavior_coupling.r", "--dataset", "microglia", "--dry-run"),
     c("10_biological_integration/01_cross_compartment_program_atlas.r", "--dry-run"),
     c("10_biological_integration/02_manuscript_program_summary.r", "--dry-run"),
