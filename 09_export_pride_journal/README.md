@@ -40,15 +40,15 @@ Individual steps:
 Rscript 09_export_pride_journal/02_make_sample_metadata.R --dataset microglia
 Rscript 09_export_pride_journal/03_export_processed_pg_matrix_package.R --dataset microglia
 Rscript 09_export_pride_journal/04_make_supplementary_tables.R --dataset microglia
-Rscript 09_export_pride_journal/01_make_pride_manifest.R --dataset microglia
-Rscript 09_export_pride_journal/05_validate_pride_submission.R --export-level pg_matrix_onward
+Rscript 09_export_pride_journal/05_make_pride_manifest.R --dataset microglia
+Rscript 09_export_pride_journal/10_validate_pride_submission.R --export-level pg_matrix_onward
 ```
 
 Optional broader manifest (non-default):
 
 ```bash
-Rscript 09_export_pride_journal/01_make_pride_manifest.R --dataset microglia --include-derived-results
-Rscript 09_export_pride_journal/01_make_pride_manifest.R --dataset microglia --recursive
+Rscript 09_export_pride_journal/05_make_pride_manifest.R --dataset microglia --include-derived-results
+Rscript 09_export_pride_journal/05_make_pride_manifest.R --dataset microglia --recursive
 ```
 
 ## Script map
