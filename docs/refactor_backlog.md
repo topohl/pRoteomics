@@ -21,7 +21,7 @@ Recommended stage contents:
 03_qc_exploration/04_marker_rank_abundance_qc.r
 03_qc_exploration/05_pca_confounding_qc.r
 03_qc_exploration/06_variance_partitioning.r
-03_qc_exploration/07_qc_biology_confounding_report.r
+03_qc_exploration/08_qc_biology_confounding_report.r
 ```
 
 QC/confounding checks are now normal registry outputs rather than manual side
@@ -78,7 +78,7 @@ should remain broad enough to avoid false precision from regex-only mapping.
 
 ## Priority 4: Add Direction-Consistency to Program Summaries
 
-Extend `04_differential_expression_enrichment/03_biological_program_summary.r`
+Extend `04_differential_expression_enrichment/06_biological_program_summary.r`
 with direction-consistency fields:
 
 ```text
