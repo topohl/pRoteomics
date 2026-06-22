@@ -1166,9 +1166,9 @@ final_reviewer_audit_specs <- function() {
     "wgcna_label_confidence_audit.csv", file.path(audit_dir, "wgcna_label_confidence_audit.csv"), NA_character_, "06_modules_WGCNA/06_annotate_module_microenvironment.r", "WGCNA label confidence", FALSE, "Audit summary only.",
     "wgcna_annotation_source_audit.csv", file.path(audit_dir, "wgcna_annotation_source_audit.csv"), NA_character_, "06_modules_WGCNA/06_annotate_module_microenvironment.r", "WGCNA annotation provenance", FALSE, "Audit summary only.",
     "wgcna_microenvironment_threshold_sensitivity.csv", file.path(audit_dir, "wgcna_microenvironment_threshold_sensitivity.csv"), NA_character_, "06_modules_WGCNA/06_annotate_module_microenvironment.r", "Threshold sensitivity", FALSE, "Diagnostic audit only.",
-    "microglia_neuropil_independence_claim_gate.csv", file.path(audit_dir, "microglia_neuropil_independence_claim_gate.csv"), "microglia_neuropil_independence_claim_gate", "06_modules_WGCNA/08_microglia_neuropil_independence.R", "Direct module-level independence claim gate", FALSE, "Module endpoints only unless endpoint_scope explicitly says supermodule.",
-    "microglia_neuropil_covariate_selection_audit.csv", file.path(audit_dir, "microglia_neuropil_covariate_selection_audit.csv"), "microglia_neuropil_covariate_selection_audit", "06_modules_WGCNA/08_microglia_neuropil_independence.R", "Covariate selection provenance", FALSE, "Exploratory rows are diagnostic only.",
-    "microglia_neuropil_independence_endpoint_scope_audit.csv", file.path(audit_dir, "microglia_neuropil_independence_endpoint_scope_audit.csv"), "microglia_neuropil_independence_endpoint_scope_audit", "06_modules_WGCNA/08_microglia_neuropil_independence.R", "Endpoint-scope certification", FALSE, "Supermodule claims require a direct supermodule endpoint.",
+    "microglia_neuropil_independence_claim_gate.csv", file.path(audit_dir, "microglia_neuropil_independence_claim_gate.csv"), "microglia_neuropil_independence_claim_gate", "06_modules_WGCNA/09_microglia_neuropil_independence.R", "Direct module-level independence claim gate", FALSE, "Module endpoints only unless endpoint_scope explicitly says supermodule.",
+    "microglia_neuropil_covariate_selection_audit.csv", file.path(audit_dir, "microglia_neuropil_covariate_selection_audit.csv"), "microglia_neuropil_covariate_selection_audit", "06_modules_WGCNA/09_microglia_neuropil_independence.R", "Covariate selection provenance", FALSE, "Exploratory rows are diagnostic only.",
+    "microglia_neuropil_independence_endpoint_scope_audit.csv", file.path(audit_dir, "microglia_neuropil_independence_endpoint_scope_audit.csv"), "microglia_neuropil_independence_endpoint_scope_audit", "06_modules_WGCNA/09_microglia_neuropil_independence.R", "Endpoint-scope certification", FALSE, "Supermodule claims require a direct supermodule endpoint.",
     "input_resolution_audit.csv", file.path(audit_dir, "input_resolution_audit.csv"), NA_character_, "R/paths.R and claim-critical scripts", "Input path and hash provenance", FALSE, "Provenance only.",
     "final_evidence_bundle_validation.csv", file.path(audit_dir, "final_evidence_bundle_validation.csv"), "final_evidence_bundle_validation", SCRIPT_ID, "Machine-readable final PASS/FAIL checks", FALSE, "Every check must pass.",
     "final_reviewer_audit_manifest.csv", file.path(audit_dir, "final_reviewer_audit_manifest.csv"), "final_reviewer_audit_manifest", SCRIPT_ID, "Index of final reviewer evidence", FALSE, "Start reviewer audit here."
@@ -1302,7 +1302,7 @@ collect_program_claims <- function(dataset) {
     script = SCRIPT_ID,
     dataset = dataset,
     stage = "export",
-    producer_script_or_artifact_id = "04_differential_expression_enrichment/03_biological_program_summary.r"
+    producer_script_or_artifact_id = "04_differential_expression_enrichment/06_biological_program_summary.r"
   )
   df <- read_csv_if_exists(f)
   if (is.null(df) || !nrow(df) || !"biological_program" %in% names(df)) return(empty_claims())
