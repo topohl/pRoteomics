@@ -70,7 +70,7 @@ compareGO reads that manifest, requires the `dataset` column unless `legacy_mode
 
 This makes the data flow explicit and reproducible while preserving the biological route classification. By default, compareGO consumes only `result_type == GSEA_GO` and `used_for_plot == TRUE`. `GSEA_KEGG` rows are recorded by clusterProfiler for provenance and can be selected intentionally by `config/compareGO_config.yml`, but ORA and custom/NK3R outputs are not compareGO inputs unless future analysis logic explicitly supports them. Legacy mixed mapped folders such as `data/processed/02_id_mapping/mapped/forward/per_file/` are no longer accepted silently; migrate them into `mapped/<dataset>/<direction>/per_file/`.
 
-`04_differential_expression_enrichment/03_biological_program_summary.r` is an additive interpretation layer over these manifest-selected outputs. It writes dataset-scoped program summaries under `results/tables`, source evidence under `results/source_data`, and a heatmap under `results/figures` for `biological_program_summary/<dataset>/`.
+`04_differential_expression_enrichment/06_biological_program_summary.r` is an additive interpretation layer over these manifest-selected outputs. It writes dataset-scoped program summaries under `results/tables`, source evidence under `results/source_data`, and a heatmap under `results/figures` for `biological_program_summary/<dataset>/`.
 
 ## Canonical Output Roots
 
