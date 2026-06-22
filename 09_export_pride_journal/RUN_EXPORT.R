@@ -3,7 +3,7 @@
 # Script: 09_export_pride_journal/RUN_EXPORT.R
 # Stage: export
 # Scope: global
-# Consumes: required 09_export_pride_journal/01_make_pride_manifest.R; 09_export_pride_journal/02_make_sample_metadata.R; +3 more; optional 09_export_pride_journal/config/export_config.yml.
+# Consumes: required 09_export_pride_journal/05_make_pride_manifest.R; 09_export_pride_journal/02_make_sample_metadata.R; +3 more; optional 09_export_pride_journal/config/export_config.yml.
 # Produces: pride_submission/.
 # Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Convenience export runner kept last; direct registry order above is preferred for dependency visibility.
@@ -55,8 +55,8 @@ if (!cli$skip_manuscript) {
   steps <- c(steps, "09_export_pride_journal/09_export_source_data.R", "09_export_pride_journal/08_export_manuscript_figures.R")
 }
 if (!cli$skip_claims) steps <- c(steps, "09_export_pride_journal/07_make_biological_claims_table.R")
-steps <- c(steps, "09_export_pride_journal/06_make_methods_summary.R", "09_export_pride_journal/01_make_pride_manifest.R")
-if (!cli$skip_validation) steps <- c(steps, "09_export_pride_journal/05_validate_pride_submission.R")
+steps <- c(steps, "09_export_pride_journal/06_make_methods_summary.R", "09_export_pride_journal/05_make_pride_manifest.R")
+if (!cli$skip_validation) steps <- c(steps, "09_export_pride_journal/10_validate_pride_submission.R")
 
 statuses <- vapply(steps, run_script, integer(1))
 cat("\nExport runner finished. Steps:", length(steps), " Failures:", sum(statuses != 0L), "\n")
