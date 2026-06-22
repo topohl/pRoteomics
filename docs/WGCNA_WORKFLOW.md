@@ -190,7 +190,7 @@ the exploratory strongest-Spearman match.
 Run:
 
 ```bash
-Rscript 06_modules_WGCNA/08_microglia_neuropil_independence.R --dataset microglia
+Rscript 06_modules_WGCNA/09_microglia_neuropil_independence.R --dataset microglia
 ```
 
 Inspect:

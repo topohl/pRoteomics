@@ -25,7 +25,7 @@ pride_submission/validation/
 ```bash
 Rscript 09_export_pride_journal/RUN_EXPORT.R --dataset all --export-level pg_matrix_onward
 Rscript 09_export_pride_journal/RUN_EXPORT.R --dataset microglia --export-level pg_matrix_onward --dry-run
-Rscript 09_export_pride_journal/05_validate_pride_submission.R --export-level pg_matrix_onward
+Rscript 09_export_pride_journal/10_validate_pride_submission.R --export-level pg_matrix_onward
 ```
 
 Large raw/vendor files should be uploaded to PRIDE separately and must not be committed to GitHub.
