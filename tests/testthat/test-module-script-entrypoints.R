@@ -58,9 +58,9 @@ testthat::test_that("pipeline module stages use canonical scripts and contracts"
     "06_modules_WGCNA/06_annotate_module_microenvironment.r",
     "06_modules_WGCNA/07_wgcna_interpretable_summary.r",
     "06_modules_WGCNA/08_wgcna_score_publication_summary.R",
-    "06_modules_WGCNA/08_microglia_neuropil_independence.R",
-    "06_modules_WGCNA/08_module_complex_architecture.r",
-    "06_modules_WGCNA/09_module_robustness_sensitivity.r"
+    "06_modules_WGCNA/09_microglia_neuropil_independence.R",
+    "06_modules_WGCNA/10_module_complex_architecture.r",
+    "06_modules_WGCNA/11_module_robustness_sensitivity.r"
   )
   testthat::expect_equal(scripts_downstream, expected_downstream)
   testthat::expect_false(any(c(

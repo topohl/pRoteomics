@@ -3,13 +3,13 @@ testthat::test_that("WGCNA downstream entrypoints exist", {
   scripts <- c(
     "03_qc_exploration/04b_import_reference_marker_sources.r",
     "03_qc_exploration/05_empirical_roi_marker_discovery.r",
-    "03_qc_exploration/06_wgcna_marker_trait_export.r",
+    "03_qc_exploration/07_wgcna_marker_trait_export.r",
     "06_modules_WGCNA/05_module_supermodule_group_effects.r",
     "06_modules_WGCNA/06_annotate_module_microenvironment.r",
     "06_modules_WGCNA/07_wgcna_interpretable_summary.r",
-    "06_modules_WGCNA/08_microglia_neuropil_independence.R",
-    "06_modules_WGCNA/08_module_complex_architecture.r",
-    "06_modules_WGCNA/09_module_robustness_sensitivity.r"
+    "06_modules_WGCNA/09_microglia_neuropil_independence.R",
+    "06_modules_WGCNA/10_module_complex_architecture.r",
+    "06_modules_WGCNA/11_module_robustness_sensitivity.r"
   )
   testthat::expect_true(all(file.exists(repo_path(scripts))))
 })
@@ -23,13 +23,13 @@ testthat::test_that("WGCNA downstream dry-runs report contracts", {
   cases <- list(
     c("03_qc_exploration/04b_import_reference_marker_sources.r", "--dry-run"),
     c("03_qc_exploration/05_empirical_roi_marker_discovery.r", "--dry-run"),
-    c("03_qc_exploration/06_wgcna_marker_trait_export.r", "--dataset", "microglia", "--dry-run"),
+    c("03_qc_exploration/07_wgcna_marker_trait_export.r", "--dataset", "microglia", "--dry-run"),
     c("06_modules_WGCNA/05_module_supermodule_group_effects.r", "--dataset", "microglia", "--dry-run"),
     c("06_modules_WGCNA/06_annotate_module_microenvironment.r", "--dataset", "microglia", "--dry-run"),
     c("06_modules_WGCNA/07_wgcna_interpretable_summary.r", "--dataset", "all", "--dry-run"),
-    c("06_modules_WGCNA/08_microglia_neuropil_independence.R", "--dataset", "microglia", "--dry-run"),
-    c("06_modules_WGCNA/08_module_complex_architecture.r", "--dataset", "all", "--dry-run"),
-    c("06_modules_WGCNA/09_module_robustness_sensitivity.r", "--dataset", "all", "--dry-run")
+    c("06_modules_WGCNA/09_microglia_neuropil_independence.R", "--dataset", "microglia", "--dry-run"),
+    c("06_modules_WGCNA/10_module_complex_architecture.r", "--dataset", "all", "--dry-run"),
+    c("06_modules_WGCNA/11_module_robustness_sensitivity.r", "--dataset", "all", "--dry-run")
   )
   for (args in cases) {
     out <- suppressWarnings(system2(cmd, args, stdout = TRUE, stderr = TRUE))

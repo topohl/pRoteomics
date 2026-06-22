@@ -44,6 +44,20 @@ check({
 
 if (!is.null(registry)) {
   steps <- pipeline_steps(registry, pipeline_stage_names(registry), dataset = "all", include_unsupported = TRUE)
+  registry_entries <- do.call(rbind, lapply(names(registry$stages), function(stage) {
+    data.frame(
+      stage = stage,
+      script = vapply(registry$stages[[stage]]$scripts, function(x) as.character(x$script), character(1)),
+      stringsAsFactors = FALSE
+    )
+  }))
+  registry_scripts_in_order <- unique(registry_entries$script)
+  duplicate_script_exemptions <- "06_modules_WGCNA/03_score_module_activity.R"
+  prefix_exemptions <- c(
+    "03_qc_exploration/04_marker_rank_abundance_qc.r",
+    "03_qc_exploration/04c_marker_detectability_and_wgcna_bridge.r",
+    "03_qc_exploration/04d_compartment_marker_fidelity.r"
+  )
   required_registry_fields <- c(
     "script", "stage", "scope", "supported_datasets", "consumes_required",
     "consumes_optional", "produces", "recomputes_core_state", "safe_downstream_rerun"
@@ -55,6 +69,49 @@ if (!is.null(registry)) {
 
   check(validate_pipeline_scripts_exist(registry, fail = TRUE), "all registered active scripts exist")
   check(validate_run_order_against_registry(registry), "RUN_ORDER.md references only active or legacy scripts")
+
+  duplicate_scripts <- names(which(table(registry_entries$script) > 1L))
+  unexpected_duplicate_scripts <- setdiff(duplicate_scripts, duplicate_script_exemptions)
+  if (length(unexpected_duplicate_scripts)) {
+    fail <- c(fail, paste("Duplicate active filenames without exemption:", paste(unexpected_duplicate_scripts, collapse = ", ")))
+  }
+
+  prefix_entries <- unique(registry_entries)
+  prefix_entries$folder <- dirname(prefix_entries$script)
+  prefix_entries$prefix <- suppressWarnings(as.integer(sub("^([0-9]+).*$", "\\1", basename(prefix_entries$script))))
+  prefix_entries <- prefix_entries[!prefix_entries$script %in% prefix_exemptions, , drop = FALSE]
+  prefix_keys <- paste(prefix_entries$stage, prefix_entries$folder, sep = "::")
+  for (key in unique(prefix_keys)) {
+    idx <- which(prefix_keys == key)
+    prefixes <- prefix_entries$prefix[idx]
+    if (anyDuplicated(prefixes)) {
+      fail <- c(fail, paste("Duplicate active numeric prefixes in", key, ":", paste(prefix_entries$script[idx], collapse = ", ")))
+    }
+    if (length(prefixes) > 1L && any(diff(prefixes) < 0L)) {
+      fail <- c(fail, paste("Active numeric prefixes contradict pipeline.yml order in", key, ":", paste(prefix_entries$script[idx], collapse = ", ")))
+    }
+  }
+
+  run_order_lines <- readLines(repo_path("RUN_ORDER.md"), warn = FALSE)
+  direct_matches <- regexec("^Rscript[[:space:]]+([0-9]{2}_[^[:space:]]+\\.[Rr])(?:[[:space:]]|$)", run_order_lines)
+  direct_scripts <- unique(vapply(regmatches(run_order_lines, direct_matches), function(x) if (length(x) >= 2L) x[[2]] else NA_character_, character(1)))
+  direct_scripts <- direct_scripts[!is.na(direct_scripts)]
+  if (!identical(direct_scripts, registry_scripts_in_order)) {
+    fail <- c(fail, paste0(
+      "RUN_ORDER.md direct commands do not match pipeline.yml order. Expected: ",
+      paste(registry_scripts_in_order, collapse = ", "), " | Found: ", paste(direct_scripts, collapse = ", ")
+    ))
+  }
+
+  audit_path <- repo_path("docs", "active_script_io_audit.tsv")
+  if (file.exists(audit_path)) {
+    documented <- utils::read.delim(audit_path, check.names = FALSE, stringsAsFactors = FALSE)
+    documented_active <- unique(documented[[1]][grepl("^active", documented[[2]])])
+    hidden_documented_active <- setdiff(documented_active, registry_scripts_in_order)
+    if (length(hidden_documented_active)) {
+      fail <- c(fail, paste("Scripts documented as active but absent from pipeline.yml:", paste(hidden_documented_active, collapse = ", ")))
+    }
+  }
 
   registered <- unique(steps$script)
   missing_active <- registered[!file.exists(repo_path(registered))]
