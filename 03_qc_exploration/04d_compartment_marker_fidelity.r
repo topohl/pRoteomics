@@ -1,10 +1,10 @@
 # ================================================================
 # Script: 03_qc_exploration/04d_compartment_marker_fidelity.r
-# Stage: qc
-# Scope: dataset_specific
-# Consumes: required data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv; optional config/marker_panels/compartment_fidelity_marker_sets.csv; config/marker_panels/wgcna_reference_marker_sets.csv.
-# Produces: results/tables/03_qc_exploration/04d_compartment_marker_fidelity/<dataset>/.
-# Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+# Stage: qc_cross_dataset
+# Scope: global
+# Consumes: required results/tables/03_qc_exploration/04c_marker_detectability_and_wgcna_bridge/neuron_soma/marker_fidelity_by_sample.csv; results/tables/03_qc_exploration/04c_marker_detectability_and_wgcna_bridge/neuron_neuropil/marker_fidelity_by_sample.csv; results/tables/03_qc_exploration/04c_marker_detectability_and_wgcna_bridge/microglia/marker_fidelity_by_sample.csv.
+# Produces: results/tables/03_qc_exploration/04d_compartment_marker_fidelity/global/.
+# Dataset behavior: runs once globally after dataset-specific 04c outputs are available.
 # Notes: Compartment marker fidelity QC.
 # ================================================================
 
@@ -36,8 +36,8 @@ source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "dataset_inputs.R"))
 source(repo_path("R", "qc_exploration_utils.R"))
 
-run <- qc_args()
-DATASET <- run$dataset
+dry_run <- is_dry_run()
+DATASET <- "global"
 SUBSTEP_ID <- "04d_compartment_marker_fidelity"
 SOURCE_SUBSTEP_ID <- "04c_marker_detectability_and_wgcna_bridge"
 PATHS <- qc_paths(SUBSTEP_ID, DATASET)
@@ -67,7 +67,7 @@ fidelity_files <- stats::setNames(vapply(compartment_datasets, fidelity_file_for
 legacy_score_files <- stats::setNames(vapply(compartment_datasets, legacy_score_file_for_dataset, character(1)), compartment_datasets)
 fidelity_protein_files <- stats::setNames(vapply(compartment_datasets, fidelity_protein_file_for_dataset, character(1)), compartment_datasets)
 
-if (run$dry_run) {
+if (dry_run) {
   status <- qc_dry_run_contract(
     "03_qc_exploration/04d_compartment_marker_fidelity.r",
     DATASET,
@@ -579,10 +579,10 @@ summary_plot_scores <- summary_scores |>
   )
 
 scatter_panel_width_pt <- 92
-scatter_panel_height_pt <- 126
+scatter_panel_height_pt <- 100
 scatter_n_panels <- max(1L, dplyr::n_distinct(plot_scores$marker_class))
-scatter_width_mm <- max(170, pt_to_mm(scatter_panel_width_pt * scatter_n_panels + 54))
-scatter_height_mm <- max(88, pt_to_mm(scatter_panel_height_pt + 34))
+scatter_width_mm <- max(110, pt_to_mm(scatter_panel_width_pt * scatter_n_panels + 54))
+scatter_height_mm <- max(55, pt_to_mm(scatter_panel_height_pt + 34))
 
 # Distribution plot: light raw data + mean/SEM summary in the same visual
 # language as the compact grouped dot plots used elsewhere in the project.
