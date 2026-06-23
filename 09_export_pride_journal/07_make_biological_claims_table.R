@@ -117,7 +117,7 @@ claim_qc_context <- function(dataset) {
   pca <- read_csv_if_exists(path_results("tables", "03_qc_exploration", "05_pca_confounding_qc", dataset, "PCA_confounding_summary.csv"))
   variance <- read_csv_if_exists(path_results("tables", "03_qc_exploration", "06_variance_partitioning", dataset, "group_technical_confounding_screen.csv"))
   marker <- read_csv_if_exists(path_results("tables", "03_qc_exploration", "04_marker_rank_abundance_qc", dataset, "marker_score_summary_by_metadata.csv"))
-  fidelity <- read_csv_if_exists(path_results("tables", "03_qc_exploration", "04d_compartment_marker_fidelity", dataset, "compartment_marker_fidelity_summary.csv"))
+  fidelity <- read_csv_if_exists(path_results("tables", "03_qc_exploration", "04d_compartment_marker_fidelity", "global", "compartment_marker_fidelity_summary.csv"))
 
   pca_flag <- "not_available"
   if (!is.null(pca) && nrow(pca)) {
