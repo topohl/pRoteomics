@@ -183,11 +183,11 @@ if (length(color_term) && !is.na(color_term)) {
 }
 
 if (run$run_embeddings) {
-  message("Dataset QC UMAP is exploratory only and should not be used as primary evidence.")
+  message("Dataset QC UMAP/t-SNE are exploratory only and should not be used as primary evidence.")
+  embedding_input <- pca$x[, seq_len(min(20L, ncol(pca$x))), drop = FALSE]
   if (requireNamespace("uwot", quietly = TRUE)) {
     set.seed(20260623)
-    umap_input <- pca$x[, seq_len(min(20L, ncol(pca$x))), drop = FALSE]
-    umap <- uwot::umap(umap_input, n_threads = 1)
+    umap <- uwot::umap(embedding_input, n_threads = 1)
     umap_scores <- data.frame(Sample = rownames(pca$x), UMAP1 = umap[, 1], UMAP2 = umap[, 2], check.names = FALSE) |>
       dplyr::left_join(sample_qc, by = "Sample")
     qc_write_csv(umap_scores, file.path(PATHS$tables, "dataset_qc_exploratory_umap_scores.csv"))
@@ -214,6 +214,43 @@ if (run$run_embeddings) {
     }
   } else {
     warning("Package 'uwot' is not installed; skipped dataset QC exploratory UMAP outputs.", call. = FALSE)
+  }
+  if (requireNamespace("Rtsne", quietly = TRUE)) {
+    perplexity <- min(30L, floor((nrow(embedding_input) - 1L) / 3L))
+    if (perplexity >= 1L) {
+      set.seed(20260623)
+      tsne <- Rtsne::Rtsne(embedding_input, dims = 2, perplexity = perplexity, pca = FALSE,
+                           theta = 0.5, check_duplicates = FALSE, verbose = FALSE)
+      tsne_scores <- data.frame(Sample = rownames(pca$x), TSNE1 = tsne$Y[, 1], TSNE2 = tsne$Y[, 2],
+                                tsne_perplexity = perplexity, check.names = FALSE) |>
+        dplyr::left_join(sample_qc, by = "Sample")
+      qc_write_csv(tsne_scores, file.path(PATHS$tables, "dataset_qc_exploratory_tsne_scores.csv"))
+      if (length(color_term) && !is.na(color_term) && color_term %in% names(tsne_scores)) {
+        keep <- !is.na(tsne_scores[[color_term]]) & nzchar(as.character(tsne_scores[[color_term]]))
+        if (sum(keep) >= 3L && length(unique(tsne_scores[[color_term]][keep])) >= 2L) {
+          tsne_plot_df <- tsne_scores[keep, ]
+          tsne_plot_df[[color_term]] <- factor(tsne_plot_df[[color_term]])
+          p_tsne <- ggplot2::ggplot(tsne_plot_df, ggplot2::aes(TSNE1, TSNE2, color = .data[[color_term]])) +
+            ggplot2::geom_point(size = 2, alpha = 0.85) +
+            ggplot2::scale_color_manual(values = qc_embedding_palette(nlevels(tsne_plot_df[[color_term]]))) +
+            ggplot2::labs(
+              title = "Exploratory t-SNE",
+              subtitle = sprintf("Not primary evidence; computed from the first up to 20 PCs, perplexity %d", perplexity),
+              x = "t-SNE1",
+              y = "t-SNE2",
+              color = color_term
+            ) +
+            ggplot2::coord_equal() +
+            ggplot2::guides(color = ggplot2::guide_legend(nrow = qc_legend_rows(tsne_plot_df[[color_term]]), byrow = TRUE, override.aes = list(alpha = 1, size = 2))) +
+            theme_embedding()
+          qc_save_square_svg(file.path(PATHS$figures, "dataset_qc_tsne.svg"), p_tsne, size_mm = 90)
+        }
+      }
+    } else {
+      warning("Too few samples for dataset QC exploratory t-SNE; skipped t-SNE outputs.", call. = FALSE)
+    }
+  } else {
+    warning("Package 'Rtsne' is not installed; skipped dataset QC exploratory t-SNE outputs.", call. = FALSE)
   }
 }
 
@@ -259,7 +296,7 @@ summary_lines <- c(
   paste0("Raw missing fraction: ", signif(mean(is.na(raw_mat)), 3)),
   paste0("Input appears imputed: ", input_appears_imputed),
   paste0("Outlier flags: PASS=", sum(sample_outliers$outlier_flag == "PASS"), "; WARN=", sum(sample_outliers$outlier_flag == "WARN"), "; FAIL=", sum(sample_outliers$outlier_flag == "FAIL")),
-  paste0("Exploratory UMAP requested: ", run$run_embeddings, " (not primary evidence)"),
+  paste0("Exploratory UMAP/t-SNE requested: ", run$run_embeddings, " (not primary evidence)"),
   "",
   "No statistics are invented here: unavailable metadata terms simply do not appear in the association tables."
 )
