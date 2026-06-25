@@ -163,18 +163,58 @@ qc_write_xlsx(
 )
 
 theme_qc <- function() ggplot2::theme_classic(base_size = 8) + ggplot2::theme(legend.position = "bottom")
+theme_embedding <- function() qc_embedding_theme(base_size = 8)
 color_term <- intersect(c("Group", "group", "ExpGroup", "Region", "region", "Layer", "layer", "batch", "plate", "Sex", "sex"), names(pca_scores))[1]
 if (length(color_term) && !is.na(color_term)) {
-  p_pca <- ggplot2::ggplot(pca_scores, ggplot2::aes(PC1, PC2, color = .data[[color_term]])) +
+  pca_plot_df <- pca_scores
+  pca_plot_df[[color_term]] <- factor(pca_plot_df[[color_term]])
+  p_pca <- ggplot2::ggplot(pca_plot_df, ggplot2::aes(PC1, PC2, color = .data[[color_term]])) +
     ggplot2::geom_point(size = 2, alpha = 0.85) +
+    ggplot2::scale_color_manual(values = qc_embedding_palette(nlevels(pca_plot_df[[color_term]]))) +
     ggplot2::labs(
       x = sprintf("PC1 (%.1f%%)", 100 * var_explained[[1]]),
       y = sprintf("PC2 (%.1f%%)", 100 * var_explained[[2]]),
       color = color_term
     ) +
-    theme_qc()
-  ggplot2::ggsave(file.path(PATHS$figures, "dataset_qc_pca.svg"), p_pca,
-                  width = 120, height = 95, units = "mm", device = svglite::svglite)
+    ggplot2::coord_equal() +
+    ggplot2::guides(color = ggplot2::guide_legend(nrow = qc_legend_rows(pca_plot_df[[color_term]]), byrow = TRUE, override.aes = list(alpha = 1, size = 2))) +
+    theme_embedding()
+  qc_save_square_svg(file.path(PATHS$figures, "dataset_qc_pca.svg"), p_pca, size_mm = 90)
+}
+
+if (run$run_embeddings) {
+  message("Dataset QC UMAP is exploratory only and should not be used as primary evidence.")
+  if (requireNamespace("uwot", quietly = TRUE)) {
+    set.seed(20260623)
+    umap_input <- pca$x[, seq_len(min(20L, ncol(pca$x))), drop = FALSE]
+    umap <- uwot::umap(umap_input, n_threads = 1)
+    umap_scores <- data.frame(Sample = rownames(pca$x), UMAP1 = umap[, 1], UMAP2 = umap[, 2], check.names = FALSE) |>
+      dplyr::left_join(sample_qc, by = "Sample")
+    qc_write_csv(umap_scores, file.path(PATHS$tables, "dataset_qc_exploratory_umap_scores.csv"))
+    if (length(color_term) && !is.na(color_term) && color_term %in% names(umap_scores)) {
+      keep <- !is.na(umap_scores[[color_term]]) & nzchar(as.character(umap_scores[[color_term]]))
+      if (sum(keep) >= 3L && length(unique(umap_scores[[color_term]][keep])) >= 2L) {
+        umap_plot_df <- umap_scores[keep, ]
+        umap_plot_df[[color_term]] <- factor(umap_plot_df[[color_term]])
+        p_umap <- ggplot2::ggplot(umap_plot_df, ggplot2::aes(UMAP1, UMAP2, color = .data[[color_term]])) +
+          ggplot2::geom_point(size = 2, alpha = 0.85) +
+          ggplot2::scale_color_manual(values = qc_embedding_palette(nlevels(umap_plot_df[[color_term]]))) +
+          ggplot2::labs(
+            title = "Exploratory UMAP",
+            subtitle = "Not primary evidence; computed from the first up to 20 PCs",
+            x = "UMAP1",
+            y = "UMAP2",
+            color = color_term
+          ) +
+          ggplot2::coord_equal() +
+          ggplot2::guides(color = ggplot2::guide_legend(nrow = qc_legend_rows(umap_plot_df[[color_term]]), byrow = TRUE, override.aes = list(alpha = 1, size = 2))) +
+          theme_embedding()
+        qc_save_square_svg(file.path(PATHS$figures, "dataset_qc_umap.svg"), p_umap, size_mm = 90)
+      }
+    }
+  } else {
+    warning("Package 'uwot' is not installed; skipped dataset QC exploratory UMAP outputs.", call. = FALSE)
+  }
 }
 
 p_missing <- ggplot2::ggplot(sample_qc, ggplot2::aes(stats::reorder(.data$Sample, .data$missing_fraction), .data$missing_fraction)) +
@@ -219,6 +259,7 @@ summary_lines <- c(
   paste0("Raw missing fraction: ", signif(mean(is.na(raw_mat)), 3)),
   paste0("Input appears imputed: ", input_appears_imputed),
   paste0("Outlier flags: PASS=", sum(sample_outliers$outlier_flag == "PASS"), "; WARN=", sum(sample_outliers$outlier_flag == "WARN"), "; FAIL=", sum(sample_outliers$outlier_flag == "FAIL")),
+  paste0("Exploratory UMAP requested: ", run$run_embeddings, " (not primary evidence)"),
   "",
   "No statistics are invented here: unavailable metadata terms simply do not appear in the association tables."
 )
@@ -228,7 +269,7 @@ write_run_manifest(
   file.path(PATHS$logs, "run_manifest.yml"),
   inputs = list(matrix = matrix_file, metadata = metadata_file),
   outputs = list(tables = PATHS$tables, figures = PATHS$figures, reports = PATHS$reports),
-  parameters = list(dataset = DATASET, input_appears_imputed = input_appears_imputed),
+  parameters = list(dataset = DATASET, input_appears_imputed = input_appears_imputed, run_embeddings = run$run_embeddings),
   notes = "Canonical dataset-level QC report combining missingness, imputation footprint, counts, PCA, metadata structure, abundance distributions, and outlier flags."
 )
 
