@@ -135,17 +135,6 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "QC bridge into WGCNA marker interpretation; optional WGCNA state is used when present, so stage placement is QC although it can benefit from prior modules_wgcna outputs."
-      - script: "03_qc_exploration/04d_compartment_marker_fidelity.r"
-        required: false
-        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
-        stage: "qc"
-        scope: "dataset_specific"
-        produces: ["results/tables/03_qc_exploration/04d_compartment_marker_fidelity/<dataset>/"]
-        consumes_required: ["data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv"]
-        consumes_optional: ["config/marker_panels/compartment_fidelity_marker_sets.csv", "config/marker_panels/wgcna_reference_marker_sets.csv"]
-        recomputes_core_state: false
-        safe_downstream_rerun: true
-        notes: "Compartment marker fidelity QC."
       - script: "03_qc_exploration/05_pca_confounding_qc.r"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
@@ -168,7 +157,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Variance partitioning; no WGCNA recomputation."
-      - script: "03_qc_exploration/06_wgcna_marker_trait_export.r"
+      - script: "03_qc_exploration/07_wgcna_marker_trait_export.r"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "qc"
@@ -179,7 +168,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Exports QC marker traits from existing WGCNA state; confusing placement is retained for compatibility, but this script requires prior WGCNA outputs when run."
-      - script: "03_qc_exploration/07_qc_biology_confounding_report.r"
+      - script: "03_qc_exploration/08_qc_biology_confounding_report.r"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "qc"
@@ -190,6 +179,20 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Summarizes QC biology/confounding evidence."
+  qc_cross_dataset:
+    description: "Cross-dataset QC summaries that require completed dataset-specific QC outputs."
+    scripts:
+      - script: "03_qc_exploration/04d_compartment_marker_fidelity.r"
+        required: false
+        datasets: ["global"]
+        stage: "qc_cross_dataset"
+        scope: "global"
+        produces: ["results/tables/03_qc_exploration/04d_compartment_marker_fidelity/global/", "results/figures/03_qc_exploration/04d_compartment_marker_fidelity/global/", "results/reports/03_qc_exploration/04d_compartment_marker_fidelity/global/"]
+        consumes_required: ["results/tables/03_qc_exploration/04c_marker_detectability_and_wgcna_bridge/neuron_soma/marker_fidelity_by_sample.csv", "results/tables/03_qc_exploration/04c_marker_detectability_and_wgcna_bridge/neuron_neuropil/marker_fidelity_by_sample.csv", "results/tables/03_qc_exploration/04c_marker_detectability_and_wgcna_bridge/microglia/marker_fidelity_by_sample.csv"]
+        consumes_optional: ["results/tables/03_qc_exploration/04c_marker_detectability_and_wgcna_bridge/neuron_soma/marker_detectability_by_sample.csv", "results/tables/03_qc_exploration/04c_marker_detectability_and_wgcna_bridge/neuron_neuropil/marker_detectability_by_sample.csv", "results/tables/03_qc_exploration/04c_marker_detectability_and_wgcna_bridge/microglia/marker_detectability_by_sample.csv", "results/tables/03_qc_exploration/04c_marker_detectability_and_wgcna_bridge/neuron_soma/marker_fidelity_proteins_used_deduplicated.csv", "results/tables/03_qc_exploration/04c_marker_detectability_and_wgcna_bridge/neuron_neuropil/marker_fidelity_proteins_used_deduplicated.csv", "results/tables/03_qc_exploration/04c_marker_detectability_and_wgcna_bridge/microglia/marker_fidelity_proteins_used_deduplicated.csv"]
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Global cross-dataset compartment marker fidelity QC; runs once after the three dataset-specific 04c steps."
   enrichment:
     description: "Differential abundance interpretation: enrichment manifests, GO/GSEA comparisons, neuropil/reference annotations, targeted signatures, program summaries, external overlaps, and EWCE."
     scripts:
@@ -237,7 +240,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Microglia-only targeted signature enrichment; supports conservative ROI annotation rather than purified-cell claims."
-      - script: "04_differential_expression_enrichment/03_biological_program_summary.r"
+      - script: "04_differential_expression_enrichment/06_biological_program_summary.r"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "enrichment"
@@ -248,7 +251,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Runs after clusterProfiler and compareGO; summarizes conservative biological programs and uses annotations/signatures where supported."
-      - script: "04_differential_expression_enrichment/06_compareGO_spatial_program_atlas.r"
+      - script: "04_differential_expression_enrichment/07_compareGO_spatial_program_atlas.r"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "enrichment"
@@ -259,7 +262,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Builds a spatial program atlas from compareGO outputs without changing enrichment statistics."
-      - script: "04_differential_expression_enrichment/07_external_stress_disease_signature_overlap.r"
+      - script: "04_differential_expression_enrichment/08_external_stress_disease_signature_overlap.r"
         required: false
         datasets: ["global"]
         stage: "enrichment"
@@ -406,7 +409,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Final publication rendering only. Score/statistics computation stays in 03_score_module_activity.R; every rendered label must come from the canonical final lookup produced by 07_wgcna_interpretable_summary.r."
-      - script: "06_modules_WGCNA/08_microglia_neuropil_independence.R"
+      - script: "06_modules_WGCNA/09_microglia_neuropil_independence.R"
         required: false
         datasets: ["microglia"]
         stage: "modules_downstream"
@@ -417,7 +420,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Microglia-only sensitivity analysis testing whether module/signature group effects persist after matched region-level neuron_neuropil covariate adjustment. Predeclared config-driven adjustments are separated from exploratory strongest-Spearman matching; exploratory rows are diagnostic only and cannot enable microglia-specific claim wording."
-      - script: "06_modules_WGCNA/08_module_complex_architecture.r"
+      - script: "06_modules_WGCNA/10_module_complex_architecture.r"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "modules_downstream"
@@ -428,7 +431,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Protein-complex/organelle architecture evidence from existing module definitions; no core WGCNA recomputation."
-      - script: "06_modules_WGCNA/09_module_robustness_sensitivity.r"
+      - script: "06_modules_WGCNA/11_module_robustness_sensitivity.r"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "modules_downstream"
@@ -580,6 +583,37 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Ranks candidate manuscript programs and refreshes the final biological evidence bundle from existing downstream outputs."
+      - script: "10_biological_integration/04_wgcna_circular_atlas.R"
+        required: false
+        datasets: ["global"]
+        stage: "integration"
+        scope: "global"
+        produces:
+          - "results/figures/10_biological_integration/wgcna_circular_atlas/global/"
+          - "results/tables/10_biological_integration/wgcna_circular_atlas/global/wgcna_circular_atlas_segments.csv"
+          - "results/tables/10_biological_integration/wgcna_circular_atlas/global/wgcna_circular_atlas_metrics.csv"
+          - "results/source_data/10_biological_integration/wgcna_circular_atlas/global/"
+          - "results/reports/10_biological_integration/wgcna_circular_atlas/global/wgcna_circular_atlas_input_status.csv"
+          - "results/logs/10_biological_integration/wgcna_circular_atlas/global/run_manifest.yml"
+        consumes_required:
+          - "results/tables/06_modules_WGCNA/"
+        consumes_optional:
+          - "results/tables/biological_claims_table.csv"
+          - "results/tables/10_biological_integration/evidence_priority_matrix/global/evidence_priority_matrix.csv"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Global circular WGCNA atlas from existing module, supermodule, annotation, and group-effect outputs; does not recompute WGCNA or alter claim gates."
+      - script: "10_biological_integration/04_wgcna_cross_compartment_overview.R"
+        required: false
+        datasets: ["global"]
+        stage: "integration"
+        scope: "global"
+        produces: ["results/tables/10_biological_integration/wgcna_cross_compartment_overview/global/", "results/source_data/10_biological_integration/wgcna_cross_compartment_overview/global/", "results/figures/10_biological_integration/wgcna_cross_compartment_overview/global/", "results/logs/10_biological_integration/wgcna_cross_compartment_overview/global/", "results/reports/10_biological_integration/wgcna_cross_compartment_overview/global/"]
+        consumes_required: ["results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_module_summary.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_module_definitions_for_downstream.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_supermodule_summary.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_module_supermodule_annotation.csv", "results/tables/06_modules_WGCNA/group_effects/<dataset>/module_group_effects.csv", "results/tables/06_modules_WGCNA/group_effects/<dataset>/supermodule_group_effects.csv", "results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_final_label_lookup.csv", "results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_supermodule_group_effects_interpretable.csv"]
+        consumes_optional: ["results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/supermodule_clustering_sensitivity.csv", "results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_module_biological_annotation.csv", "results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_supermodule_biological_annotation.csv", "results/tables/biological_claims_table.csv", "results/tables/10_biological_integration/final_evidence_bundle/global/final_biological_evidence_bundle.xlsx"]
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Read-only compact WGCNA/supermodule overview across datasets; uses existing labels, group effects, and claim gates without recomputing WGCNA."
   export:
     description: "Export layer for PRIDE, manuscript tables, reviewer materials, source data, methods summaries, and validation reports."
     scripts:
@@ -616,7 +650,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "PRIDE supplementary tables."
-      - script: "09_export_pride_journal/01_make_pride_manifest.R"
+      - script: "09_export_pride_journal/05_make_pride_manifest.R"
         required: true
         datasets: ["global"]
         stage: "export"
@@ -671,7 +705,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Manuscript source-data export."
-      - script: "09_export_pride_journal/05_validate_pride_submission.R"
+      - script: "09_export_pride_journal/10_validate_pride_submission.R"
         required: false
         datasets: ["global"]
         stage: "export"
@@ -696,10 +730,10 @@ legacy:
     replacement: "01_preprocessing/06_merged_metadata_module_score.r"
     status: "older metadata helper"
   - script: "04_differential_expression_enrichment/legacy/04_compare_pathways.r"
-    replacement: "04_differential_expression_enrichment/03_biological_program_summary.r"
+    replacement: "04_differential_expression_enrichment/06_biological_program_summary.r"
     status: "bespoke learning-signature workbook comparison; not part of canonical dataset pipeline"
   - script: "04_differential_expression_enrichment/legacy/05_compare_sig_expr.r"
-    replacement: "04_differential_expression_enrichment/03_biological_program_summary.r"
+    replacement: "04_differential_expression_enrichment/06_biological_program_summary.r"
     status: "bespoke learning-signature expression comparison; not part of canonical dataset pipeline"
   - script: "04_differential_expression_enrichment/legacy/07_control_strata_enrichment_figures.r"
     replacement: "04_differential_expression_enrichment/02_compareGO.r"

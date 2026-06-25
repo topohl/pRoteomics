@@ -213,6 +213,46 @@ qc_write_xlsx <- function(x, path) {
   invisible(path)
 }
 
+qc_embedding_palette <- function(n) {
+  base <- c("#0072B2", "#D55E00", "#009E73", "#CC79A7", "#E69F00", "#56B4E9", "#F0E442", "#000000")
+  if (n <= length(base)) return(base[seq_len(n)])
+  grDevices::hcl.colors(n, palette = "Dark 3")
+}
+
+qc_legend_rows <- function(x, max_per_row = 4L) {
+  n <- length(unique(stats::na.omit(as.character(x))))
+  max(1L, ceiling(n / max_per_row))
+}
+
+qc_embedding_theme <- function(base_size = 8) {
+  ggplot2::theme_classic(base_size = base_size) +
+    ggplot2::theme(
+      panel.background = ggplot2::element_rect(fill = "white", color = NA),
+      plot.background = ggplot2::element_rect(fill = "white", color = NA),
+      axis.line = ggplot2::element_line(color = "black", linewidth = 0.3),
+      axis.ticks = ggplot2::element_line(color = "black", linewidth = 0.25),
+      axis.title = ggplot2::element_text(size = base_size),
+      axis.text = ggplot2::element_text(size = base_size - 1),
+      legend.position = "bottom",
+      legend.background = ggplot2::element_blank(),
+      legend.key = ggplot2::element_blank(),
+      legend.key.size = grid::unit(3, "mm"),
+      legend.text = ggplot2::element_text(size = base_size - 1),
+      legend.title = ggplot2::element_text(size = base_size - 1),
+      legend.spacing.x = grid::unit(1.5, "mm"),
+      legend.margin = ggplot2::margin(t = 1, r = 0, b = 0, l = 0),
+      plot.title = ggplot2::element_text(size = base_size, face = "bold", hjust = 0),
+      plot.subtitle = ggplot2::element_text(size = base_size - 1, hjust = 0),
+      strip.text = ggplot2::element_text(size = base_size, face = "bold"),
+      aspect.ratio = 1
+    )
+}
+
+qc_save_square_svg <- function(filename, plot, size_mm = 90) {
+  ggplot2::ggsave(filename, plot, width = size_mm, height = size_mm, units = "mm", device = svglite::svglite)
+  invisible(filename)
+}
+
 qc_safe_lm_p <- function(y, x) {
   ok <- is.finite(y) & !is.na(x) & nzchar(as.character(x))
   if (sum(ok) < 4L || length(unique(x[ok])) < 2L) return(NA_real_)

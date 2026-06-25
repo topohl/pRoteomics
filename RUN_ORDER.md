@@ -29,6 +29,7 @@ Use `--dataset all` for global registry stages such as `integration` and
 Rscript run_dataset_pipeline.R --dataset <dataset> --stage core
 Rscript run_dataset_pipeline.R --dataset all --stage qc_global
 Rscript run_dataset_pipeline.R --dataset <dataset> --stage qc
+Rscript run_dataset_pipeline.R --dataset all --stage qc_cross_dataset
 Rscript run_dataset_pipeline.R --dataset <dataset> --stage enrichment
 Rscript run_dataset_pipeline.R --dataset <dataset> --stage modules_wgcna
 Rscript run_dataset_pipeline.R --dataset <dataset> --stage modules_downstream
@@ -82,11 +83,11 @@ Rscript 03_qc_exploration/02_missingness_diagnostics.r --dataset <dataset> --dry
 Rscript 03_qc_exploration/03_replicate_consistency.r --dataset <dataset> --dry-run
 Rscript 03_qc_exploration/04_marker_rank_abundance_qc.r --dataset <dataset> --dry-run
 Rscript 03_qc_exploration/04c_marker_detectability_and_wgcna_bridge.r --dataset <dataset> --dry-run
-Rscript 03_qc_exploration/04d_compartment_marker_fidelity.r --dataset <dataset> --dry-run
 Rscript 03_qc_exploration/05_pca_confounding_qc.r --dataset <dataset> --dry-run
 Rscript 03_qc_exploration/06_variance_partitioning.r --dataset <dataset> --dry-run
-Rscript 03_qc_exploration/06_wgcna_marker_trait_export.r --dataset <dataset> --dry-run
-Rscript 03_qc_exploration/07_qc_biology_confounding_report.r --dataset <dataset> --dry-run
+Rscript 03_qc_exploration/07_wgcna_marker_trait_export.r --dataset <dataset> --dry-run
+Rscript 03_qc_exploration/08_qc_biology_confounding_report.r --dataset <dataset> --dry-run
+Rscript 03_qc_exploration/04d_compartment_marker_fidelity.r --dataset all --dry-run
 ```
 
 Key outputs:
@@ -107,9 +108,9 @@ Rscript 04_differential_expression_enrichment/01_clusterProfiler.r --dataset <da
 Rscript 04_differential_expression_enrichment/02_compareGO.r --dataset <dataset> --dry-run
 Rscript 04_differential_expression_enrichment/04_neuropil_reference_annotation.r --dataset <dataset> --dry-run
 Rscript 04_differential_expression_enrichment/05_microglia_targeted_signature_enrichment.r --dataset microglia --dry-run
-Rscript 04_differential_expression_enrichment/03_biological_program_summary.r --dataset <dataset> --dry-run
-Rscript 04_differential_expression_enrichment/06_compareGO_spatial_program_atlas.r --dataset <dataset> --dry-run
-Rscript 04_differential_expression_enrichment/07_external_stress_disease_signature_overlap.r --dry-run
+Rscript 04_differential_expression_enrichment/06_biological_program_summary.r --dataset <dataset> --dry-run
+Rscript 04_differential_expression_enrichment/07_compareGO_spatial_program_atlas.r --dataset <dataset> --dry-run
+Rscript 04_differential_expression_enrichment/08_external_stress_disease_signature_overlap.r --dry-run
 Rscript 05_celltype_enrichment_EWCE/01_EWCE_E9.r --dataset <dataset> --dry-run
 ```
 
@@ -143,8 +144,9 @@ Rscript 06_modules_WGCNA/05_module_supermodule_group_effects.r --dataset <datase
 Rscript 06_modules_WGCNA/06_annotate_module_microenvironment.r --dataset <dataset> --dry-run
 Rscript 06_modules_WGCNA/07_wgcna_interpretable_summary.r --dataset <dataset> --dry-run
 Rscript 06_modules_WGCNA/08_wgcna_score_publication_summary.R --dataset <dataset> --module-source wgcna --dry-run
-Rscript 06_modules_WGCNA/08_module_complex_architecture.r --dataset <dataset> --dry-run
-Rscript 06_modules_WGCNA/09_module_robustness_sensitivity.r --dataset <dataset> --dry-run
+Rscript 06_modules_WGCNA/09_microglia_neuropil_independence.R --dataset microglia --dry-run
+Rscript 06_modules_WGCNA/10_module_complex_architecture.r --dataset <dataset> --dry-run
+Rscript 06_modules_WGCNA/11_module_robustness_sensitivity.r --dataset <dataset> --dry-run
 Rscript 06_modules_WGCNA/07_wgcna_interpretable_summary.r --dataset all --dry-run
 Rscript 06_modules_WGCNA/08_wgcna_score_publication_summary.R --dataset all --module-source wgcna --dry-run
 ```
@@ -238,10 +240,12 @@ Direct script commands:
 Rscript 09_export_pride_journal/02_make_sample_metadata.R --dry-run
 Rscript 09_export_pride_journal/03_export_processed_pg_matrix_package.R --dry-run
 Rscript 09_export_pride_journal/04_make_supplementary_tables.R --dry-run
-Rscript 09_export_pride_journal/01_make_pride_manifest.R --dry-run
-Rscript 09_export_pride_journal/05_validate_pride_submission.R --dry-run
+Rscript 09_export_pride_journal/05_make_pride_manifest.R --dry-run
 Rscript 09_export_pride_journal/06_make_methods_summary.R --dry-run
 Rscript 09_export_pride_journal/07_make_biological_claims_table.R --dry-run
+Rscript 09_export_pride_journal/08_export_manuscript_figures.R --dry-run
+Rscript 09_export_pride_journal/09_export_source_data.R --dry-run
+Rscript 09_export_pride_journal/10_validate_pride_submission.R --dry-run
 ```
 
 Key outputs:

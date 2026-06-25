@@ -305,7 +305,7 @@ build_bundle_readme <- function() {
       "06_modules_WGCNA/07_wgcna_interpretable_summary.r",
       "06_modules_WGCNA/07_wgcna_interpretable_summary.r",
       "06_modules_WGCNA/06_annotate_module_microenvironment.r",
-      "06_modules_WGCNA/08_microglia_neuropil_independence.R",
+      "06_modules_WGCNA/09_microglia_neuropil_independence.R",
       "09_export_pride_journal/07_make_biological_claims_table.R",
       "09_export_pride_journal/07_make_biological_claims_table.R"
     ),
