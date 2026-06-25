@@ -77,21 +77,26 @@ theme_qc <- function() {
   ggplot2::theme_classic(base_size = 8) +
     ggplot2::theme(legend.position = "bottom", strip.text = ggplot2::element_text(face = "bold"))
 }
+theme_embedding <- function() qc_embedding_theme(base_size = 8)
 
 plot_pca_by <- function(term) {
   if (!term %in% names(scores)) return(invisible(NULL))
   keep <- !is.na(scores[[term]]) & nzchar(as.character(scores[[term]]))
   if (sum(keep) < 3L || length(unique(scores[[term]][keep])) < 2L) return(invisible(NULL))
-  p <- ggplot(scores[keep, ], aes(PC1, PC2, color = .data[[term]])) +
+  plot_df <- scores[keep, ]
+  plot_df[[term]] <- factor(plot_df[[term]])
+  p <- ggplot(plot_df, aes(PC1, PC2, color = .data[[term]])) +
     geom_point(size = 2, alpha = 0.85) +
+    scale_color_manual(values = qc_embedding_palette(nlevels(plot_df[[term]]))) +
     labs(
       x = sprintf("PC1 (%.1f%%)", 100 * var_explained[[1]]),
       y = sprintf("PC2 (%.1f%%)", 100 * var_explained[[2]]),
       color = term
     ) +
-    theme_qc()
-  ggsave(file.path(PATHS$figures, paste0("pca_by_", safe_filename(term), ".svg")),
-         p, width = 120, height = 95, units = "mm", device = svglite::svglite)
+    coord_equal() +
+    guides(color = guide_legend(nrow = qc_legend_rows(plot_df[[term]]), byrow = TRUE, override.aes = list(alpha = 1, size = 2))) +
+    theme_embedding()
+  qc_save_square_svg(file.path(PATHS$figures, paste0("pca_by_", safe_filename(term), ".svg")), p, size_mm = 90)
 }
 
 terms <- qc_metadata_terms(meta)
@@ -165,11 +170,75 @@ for (pc in intersect(c("PC1", "PC2"), names(loadings))) {
 
 if (run$run_embeddings) {
   message("UMAP/t-SNE are exploratory only and should not be used as primary evidence in small or structured spatial proteomics datasets.")
+  embedding_input <- pca$x[, seq_len(min(20L, ncol(pca$x))), drop = FALSE]
   if (requireNamespace("uwot", quietly = TRUE)) {
-    emb <- uwot::umap(pca$x[, seq_len(min(20L, ncol(pca$x))), drop = FALSE])
+    set.seed(20260623)
+    emb <- uwot::umap(embedding_input, n_threads = 1)
     emb_df <- data.frame(Sample = rownames(pca$x), UMAP1 = emb[, 1], UMAP2 = emb[, 2]) |>
       dplyr::left_join(meta, by = "Sample")
     qc_write_csv(emb_df, file.path(PATHS$tables, "exploratory_umap_scores.csv"))
+    plot_umap_by <- function(term) {
+      if (!term %in% names(emb_df)) return(invisible(NULL))
+      keep <- !is.na(emb_df[[term]]) & nzchar(as.character(emb_df[[term]]))
+      if (sum(keep) < 3L || length(unique(emb_df[[term]][keep])) < 2L) return(invisible(NULL))
+      plot_df <- emb_df[keep, ]
+      plot_df[[term]] <- factor(plot_df[[term]])
+      p <- ggplot(plot_df, aes(UMAP1, UMAP2, color = .data[[term]])) +
+        geom_point(size = 2, alpha = 0.85) +
+        scale_color_manual(values = qc_embedding_palette(nlevels(plot_df[[term]]))) +
+        labs(
+          title = "Exploratory UMAP",
+          subtitle = "Not primary evidence; computed from the first up to 20 PCs",
+          x = "UMAP1",
+          y = "UMAP2",
+          color = term
+        ) +
+        coord_equal() +
+        guides(color = guide_legend(nrow = qc_legend_rows(plot_df[[term]]), byrow = TRUE, override.aes = list(alpha = 1, size = 2))) +
+        theme_embedding()
+      qc_save_square_svg(file.path(PATHS$figures, paste0("umap_by_", safe_filename(term), ".svg")), p, size_mm = 90)
+    }
+    invisible(lapply(unique(c("Group", "group", "ExpGroup", "Region", "region", "Layer", "layer", "ReplicateGroup", "AnimalID", "plate", terms)), plot_umap_by))
+  } else {
+    warning("Package 'uwot' is not installed; skipped exploratory UMAP outputs.", call. = FALSE)
+  }
+  if (requireNamespace("Rtsne", quietly = TRUE)) {
+    perplexity <- min(30L, floor((nrow(embedding_input) - 1L) / 3L))
+    if (perplexity >= 1L) {
+      set.seed(20260623)
+      tsne <- Rtsne::Rtsne(embedding_input, dims = 2, perplexity = perplexity, pca = FALSE,
+                           theta = 0.5, check_duplicates = FALSE, verbose = FALSE)
+      tsne_df <- data.frame(Sample = rownames(pca$x), TSNE1 = tsne$Y[, 1], TSNE2 = tsne$Y[, 2],
+                            tsne_perplexity = perplexity) |>
+        dplyr::left_join(meta, by = "Sample")
+      qc_write_csv(tsne_df, file.path(PATHS$tables, "exploratory_tsne_scores.csv"))
+      plot_tsne_by <- function(term) {
+        if (!term %in% names(tsne_df)) return(invisible(NULL))
+        keep <- !is.na(tsne_df[[term]]) & nzchar(as.character(tsne_df[[term]]))
+        if (sum(keep) < 3L || length(unique(tsne_df[[term]][keep])) < 2L) return(invisible(NULL))
+        plot_df <- tsne_df[keep, ]
+        plot_df[[term]] <- factor(plot_df[[term]])
+        p <- ggplot(plot_df, aes(TSNE1, TSNE2, color = .data[[term]])) +
+          geom_point(size = 2, alpha = 0.85) +
+          scale_color_manual(values = qc_embedding_palette(nlevels(plot_df[[term]]))) +
+          labs(
+            title = "Exploratory t-SNE",
+            subtitle = sprintf("Not primary evidence; computed from the first up to 20 PCs, perplexity %d", perplexity),
+            x = "t-SNE1",
+            y = "t-SNE2",
+            color = term
+          ) +
+          coord_equal() +
+          guides(color = guide_legend(nrow = qc_legend_rows(plot_df[[term]]), byrow = TRUE, override.aes = list(alpha = 1, size = 2))) +
+          theme_embedding()
+        qc_save_square_svg(file.path(PATHS$figures, paste0("tsne_by_", safe_filename(term), ".svg")), p, size_mm = 90)
+      }
+      invisible(lapply(unique(c("Group", "group", "ExpGroup", "Region", "region", "Layer", "layer", "ReplicateGroup", "AnimalID", "plate", terms)), plot_tsne_by))
+    } else {
+      warning("Too few samples for exploratory t-SNE; skipped t-SNE outputs.", call. = FALSE)
+    }
+  } else {
+    warning("Package 'Rtsne' is not installed; skipped exploratory t-SNE outputs.", call. = FALSE)
   }
 }
 
