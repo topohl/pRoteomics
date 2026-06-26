@@ -605,6 +605,8 @@ stages:
           - "results/figures/10_biological_integration/wgcna_circular_atlas/global/wgcna_circular_atlas_main.pdf"
           - "results/figures/10_biological_integration/wgcna_circular_atlas/global/wgcna_circular_atlas_selected_only.svg"
           - "results/figures/10_biological_integration/wgcna_circular_atlas/global/wgcna_circular_atlas_selected_only.pdf"
+          - "results/figures/10_biological_integration/wgcna_circular_atlas/global/wgcna_circular_heatmap_all_datasets.svg"
+          - "results/figures/10_biological_integration/wgcna_circular_atlas/global/wgcna_circular_heatmap_all_datasets.pdf"
           - "results/figures/10_biological_integration/wgcna_circular_atlas/global/wgcna_circular_heatmap_neuron_neuropil.svg"
           - "results/figures/10_biological_integration/wgcna_circular_atlas/global/wgcna_circular_heatmap_neuron_neuropil.pdf"
           - "results/figures/10_biological_integration/wgcna_circular_atlas/global/wgcna_circular_heatmap_neuron_soma.svg"
@@ -619,6 +621,7 @@ stages:
           - "results/source_data/10_biological_integration/wgcna_circular_atlas/global/wgcna_circular_atlas_plot_source.csv"
           - "results/source_data/10_biological_integration/wgcna_circular_atlas/global/wgcna_circular_heatmap_source_supermodule.csv"
           - "results/source_data/10_biological_integration/wgcna_circular_atlas/global/wgcna_circular_heatmap_source_module.csv"
+          - "results/source_data/10_biological_integration/wgcna_circular_atlas/global/wgcna_circular_heatmap_layout_all_datasets.csv"
           - "results/reports/10_biological_integration/wgcna_circular_atlas/global/wgcna_circular_atlas_input_status.csv"
           - "results/logs/10_biological_integration/wgcna_circular_atlas/global/run_manifest.yml"
         consumes_required:
