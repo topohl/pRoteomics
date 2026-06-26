@@ -12,21 +12,26 @@ source(paths_file)
 source(repo_path("R", "wgcna_downstream_utils.R"))
 
 required_pkgs <- c("dplyr", "readr", "tibble", "tidyr", "stringr")
-missing_pkgs <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
+plot_pkgs <- c("circlize", "svglite", "ggplot2", "scales")
+all_required_pkgs <- unique(c(required_pkgs, plot_pkgs))
+missing_pkgs <- all_required_pkgs[!vapply(all_required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
 if (length(missing_pkgs) && !is_dry_run()) {
   stop("Missing required R package(s): ", paste(missing_pkgs, collapse = ", "), call. = FALSE)
 }
-if (!length(missing_pkgs)) {
-  suppressPackageStartupMessages(invisible(lapply(required_pkgs, library, character.only = TRUE)))
+available_pkgs <- all_required_pkgs[vapply(all_required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
+if (length(available_pkgs)) {
+  suppressPackageStartupMessages(invisible(lapply(available_pkgs, library, character.only = TRUE)))
 }
 
-run <- wgcna_cli(allow_all = TRUE)
+run <- wgcna_cli(default_dataset = "all", allow_all = TRUE)
 DATASET_ARG <- run$dataset
 
 table_dir <- path_results("tables", "10_biological_integration", "wgcna_circular_atlas", "global")
 source_dir <- path_results("source_data", "10_biological_integration", "wgcna_circular_atlas", "global")
 report_dir <- path_results("reports", "10_biological_integration", "wgcna_circular_atlas", "global")
-invisible(lapply(c(table_dir, source_dir, report_dir), dir_create))
+figure_dir <- path_results("figures", "10_biological_integration", "wgcna_circular_atlas", "global")
+log_dir <- path_results("logs", "10_biological_integration", "wgcna_circular_atlas", "global")
+invisible(lapply(c(table_dir, source_dir, report_dir, figure_dir, log_dir), dir_create))
 
 out_segments <- file.path(source_dir, "wgcna_circular_atlas_segments.csv")
 out_metrics <- file.path(table_dir, "wgcna_circular_atlas_metrics.csv")
@@ -39,6 +44,26 @@ out_neuropil_availability <- file.path(report_dir, "neuron_neuropil_supermodule_
 out_duplicate_audit <- file.path(report_dir, "wgcna_circular_atlas_duplicate_source_audit.csv")
 out_effect_scope_audit <- file.path(report_dir, "wgcna_circular_atlas_effect_scope_audit.csv")
 out_local_support <- file.path(table_dir, "wgcna_circular_atlas_local_support_summary.csv")
+out_plot_source <- file.path(source_dir, "wgcna_circular_atlas_plot_source.csv")
+out_main_svg <- file.path(figure_dir, "wgcna_circular_atlas_main.svg")
+out_main_pdf <- file.path(figure_dir, "wgcna_circular_atlas_main.pdf")
+out_selected_svg <- file.path(figure_dir, "wgcna_circular_atlas_selected_only.svg")
+out_selected_pdf <- file.path(figure_dir, "wgcna_circular_atlas_selected_only.pdf")
+out_heatmap_source_supermodule <- file.path(source_dir, "wgcna_circular_heatmap_source_supermodule.csv")
+out_heatmap_source_module <- file.path(source_dir, "wgcna_circular_heatmap_source_module.csv")
+heatmap_svg_paths <- c(
+  neuron_neuropil = file.path(figure_dir, "wgcna_circular_heatmap_neuron_neuropil.svg"),
+  neuron_soma = file.path(figure_dir, "wgcna_circular_heatmap_neuron_soma.svg"),
+  microglia = file.path(figure_dir, "wgcna_circular_heatmap_microglia.svg")
+)
+heatmap_pdf_paths <- c(
+  neuron_neuropil = file.path(figure_dir, "wgcna_circular_heatmap_neuron_neuropil.pdf"),
+  neuron_soma = file.path(figure_dir, "wgcna_circular_heatmap_neuron_soma.pdf"),
+  microglia = file.path(figure_dir, "wgcna_circular_heatmap_microglia.pdf")
+)
+out_rect_modules_svg <- file.path(figure_dir, "wgcna_region_layer_heatmap_all_modules.svg")
+out_rect_modules_pdf <- file.path(figure_dir, "wgcna_region_layer_heatmap_all_modules.pdf")
+out_run_manifest <- file.path(log_dir, "run_manifest.yml")
 
 dataset_label <- function(ds) {
   vapply(as.character(ds), function(x) {
@@ -1008,6 +1033,867 @@ select_table_rows <- function(segments) {
     )
 }
 
+parse_spatial_unit <- function(x) {
+  raw <- tolower(gsub("[^a-z0-9]+", "_", clean_chr(x)))
+  raw <- gsub("^_+|_+$", "", raw)
+  raw[!nzchar(raw) | is.na(raw) | raw %in% c("global", "global_spatial_adjusted", "all_spatial_units", "na")] <- "no_local_support"
+
+  display <- toupper(raw)
+  display <- gsub("_", " ", display)
+  display[raw == "no_local_support"] <- "No local support"
+
+  region <- dplyr::case_when(
+    grepl("^ca1($|_)", raw) ~ "CA1",
+    grepl("^ca2($|_)|^ca3($|_)", raw) ~ "CA2/3",
+    grepl("^dg($|_)", raw) ~ "DG",
+    raw == "no_local_support" ~ "Global/no local support",
+    TRUE ~ "Other"
+  )
+
+  layer <- dplyr::case_when(
+    raw == "no_local_support" ~ "No local support",
+    grepl("_slm$", raw) ~ "SLM",
+    grepl("_so$", raw) ~ "SO",
+    grepl("_sr$", raw) ~ "SR",
+    grepl("_sp$", raw) ~ "SP",
+    grepl("_mo$", raw) ~ "MO",
+    grepl("_po$", raw) ~ "PO",
+    grepl("_ml$", raw) ~ "ML",
+    grepl("_gcl$", raw) ~ "GCL",
+    grepl("_hilus$", raw) ~ "Hilus",
+    TRUE ~ display
+  )
+
+  tibble::tibble(
+    parsed_spatial_region = region,
+    parsed_spatial_layer_or_unit = layer,
+    parsed_spatial_unit_display = display
+  )
+}
+
+prepare_circular_plot_source <- function(segments) {
+  dataset_order <- c("neuron_neuropil", "neuron_soma", "microglia")
+  parsed_spatial <- parse_spatial_unit(segments$best_local_spatial_unit)
+  segments |>
+    dplyr::bind_cols(parsed_spatial) |>
+    dplyr::mutate(
+      dataset = factor(.data$dataset, levels = dataset_order),
+      dataset_label = dataset_label(as.character(.data$dataset)),
+      present_in_selected_table = .data$present_in_selected_table %in% TRUE,
+      evidence_status_segments = dplyr::coalesce(na_if_blank_chr(.data$evidence_status_segments), "missing_effect_test"),
+      evidence_priority = as.integer(dplyr::coalesce(status_priority[.data$evidence_status_segments], 99L)),
+      abs_effect_for_order = abs(as_num(.data$strongest_estimate_segments)),
+      abs_effect_for_order = dplyr::if_else(is.na(.data$abs_effect_for_order), -Inf, .data$abs_effect_for_order),
+      segment_broad_program_class = dplyr::coalesce(na_if_blank_chr(.data$segment_broad_program_class), "Unresolved / mixed"),
+      segment_cleaned_label = dplyr::coalesce(na_if_blank_chr(.data$segment_cleaned_label), .data$supermodule_id)
+    ) |>
+    dplyr::arrange(
+      .data$dataset,
+      dplyr::desc(.data$present_in_selected_table),
+      .data$evidence_priority,
+      dplyr::desc(.data$abs_effect_for_order),
+      .data$supermodule_id
+    ) |>
+    dplyr::group_by(.data$dataset) |>
+    dplyr::mutate(
+      plot_index = dplyr::row_number(),
+      plot_order = .data$plot_index,
+      sector_x_left = .data$plot_index - 0.48,
+      sector_x_right = .data$plot_index + 0.48,
+      high_effect_rank = dplyr::min_rank(dplyr::desc(.data$abs_effect_for_order)),
+      label_shown = .data$present_in_selected_table |
+        (
+          .data$evidence_status_segments %in% c("robust_FDR", "suggestive_FDR10") &
+            !is.infinite(.data$abs_effect_for_order) &
+            .data$high_effect_rank <= 1L
+        ),
+      label_for_plot = .data$label_shown,
+      label_text = dplyr::if_else(
+        .data$label_shown,
+        paste0(.data$supermodule_id, ": ", vapply(strwrap(.data$segment_cleaned_label, width = 28, simplify = FALSE), paste, character(1), collapse = "\n")),
+        NA_character_
+      ),
+      local_support_fraction = dplyr::if_else(
+        !is.na(as_num(.data$n_spatial_units_tested)) & as_num(.data$n_spatial_units_tested) > 0,
+        pmin(1, as_num(.data$n_spatial_units_FDR05) / as_num(.data$n_spatial_units_tested)),
+        0
+      )
+    ) |>
+    dplyr::ungroup() |>
+    dplyr::mutate(dataset = as.character(.data$dataset))
+}
+
+atlas_program_colors <- function(programs) {
+  programs <- sort(unique(dplyr::coalesce(na_if_blank_chr(programs), "Unresolved / mixed")))
+  base <- c(
+    "Mitochondrial metabolism" = "#1B9E77",
+    "RNA / translation" = "#D95F02",
+    "Synaptic / cytoskeletal" = "#7570B3",
+    "Perivascular ECM / adhesion" = "#66A61E",
+    "Microglia state" = "#E7298A",
+    "Neuropil / neuronal" = "#A6761D",
+    "Unresolved / mixed" = "#9E9E9E",
+    "mixed / low-specificity" = "#9E9E9E"
+  )
+  missing <- setdiff(programs, names(base))
+  if (length(missing)) {
+    extra <- grDevices::hcl.colors(length(missing), palette = "Dark 3")
+    names(extra) <- missing
+    base <- c(base, extra)
+  }
+  base[programs]
+}
+
+atlas_evidence_colors <- function(statuses) {
+  base <- c(
+    robust_FDR = "#0B6E4F",
+    suggestive_FDR10 = "#65A30D",
+    nominal_only = "#F59E0B",
+    model_unstable = "#8B5CF6",
+    not_supported = "#BDBDBD",
+    missing_effect_test = "#F3F4F6"
+  )
+  statuses <- sort(unique(dplyr::coalesce(na_if_blank_chr(statuses), "missing_effect_test")))
+  missing <- setdiff(statuses, names(base))
+  if (length(missing)) {
+    extra <- grDevices::hcl.colors(length(missing), palette = "Set 3")
+    names(extra) <- missing
+    base <- c(base, extra)
+  }
+  base[statuses]
+}
+
+atlas_spatial_colors <- function(regions) {
+  base <- c(
+    "CA1" = "#0072B2",
+    "CA2/3" = "#56B4E9",
+    "DG" = "#009E73",
+    "Global/no local support" = "#D9D9D9",
+    "Other" = "#CC79A7"
+  )
+  regions <- sort(unique(dplyr::coalesce(na_if_blank_chr(regions), "Global/no local support")))
+  missing <- setdiff(regions, names(base))
+  if (length(missing)) {
+    extra <- grDevices::hcl.colors(length(missing), palette = "Set 2")
+    names(extra) <- missing
+    base <- c(base, extra)
+  }
+  base[regions]
+}
+
+render_circular_atlas <- function(plot_source, svg_path, pdf_path, selected_only = FALSE) {
+  if (!nrow(plot_source)) return(invisible(FALSE))
+
+  dataset_order <- c("neuron_neuropil", "neuron_soma", "microglia")
+  plot_source <- plot_source |>
+    dplyr::filter(.data$dataset %in% dataset_order) |>
+    dplyr::filter(!isTRUE(selected_only) | .data$present_in_selected_table %in% TRUE) |>
+    dplyr::mutate(dataset = factor(.data$dataset, levels = dataset_order)) |>
+    dplyr::arrange(.data$dataset, .data$plot_order) |>
+    dplyr::group_by(.data$dataset) |>
+    dplyr::mutate(
+      plot_index = dplyr::row_number(),
+      sector_x_left = .data$plot_index - 0.48,
+      sector_x_right = .data$plot_index + 0.48,
+      label_text = dplyr::if_else(
+        isTRUE(selected_only) | .data$label_shown,
+        paste0(.data$supermodule_id, ": ", vapply(strwrap(.data$segment_cleaned_label, width = if (isTRUE(selected_only)) 34 else 28, simplify = FALSE), paste, character(1), collapse = "\n")),
+        NA_character_
+      )
+    ) |>
+    dplyr::ungroup()
+  if (!nrow(plot_source)) return(invisible(FALSE))
+
+  program_cols <- atlas_program_colors(plot_source$segment_broad_program_class)
+  evidence_cols <- atlas_evidence_colors(plot_source$evidence_status_segments)
+  spatial_cols <- atlas_spatial_colors(plot_source$parsed_spatial_region)
+  finite_effects <- as_num(plot_source$strongest_estimate_segments)
+  finite_effects <- finite_effects[is.finite(finite_effects)]
+  effect_limit <- if (length(finite_effects)) stats::quantile(abs(finite_effects), 0.95, na.rm = TRUE, names = FALSE) else 1
+  effect_limit <- max(effect_limit, 1e-6)
+  effect_col_fun <- circlize::colorRamp2(c(-effect_limit, 0, effect_limit), c("#2166AC", "#F7F7F7", "#B2182B"))
+  effect_colors <- ifelse(
+    is.finite(as_num(plot_source$strongest_estimate_segments)),
+    effect_col_fun(pmax(-effect_limit, pmin(effect_limit, as_num(plot_source$strongest_estimate_segments)))),
+    "#ECEFF1"
+  )
+  plot_source$program_color <- unname(program_cols[plot_source$segment_broad_program_class])
+  plot_source$evidence_color <- unname(evidence_cols[plot_source$evidence_status_segments])
+  plot_source$spatial_color <- unname(spatial_cols[plot_source$parsed_spatial_region])
+  plot_source$effect_color <- effect_colors
+
+  draw_one <- function() {
+    old_par <- graphics::par(no.readonly = TRUE)
+    on.exit({
+      circlize::circos.clear()
+      graphics::par(old_par)
+    }, add = TRUE)
+    graphics::par(mar = c(1.8, 1.4, 3.0, 1.4), xpd = NA, family = "sans")
+    circlize::circos.clear()
+    counts <- plot_source |>
+      dplyr::count(.data$dataset, name = "n") |>
+      dplyr::arrange(factor(.data$dataset, levels = dataset_order))
+    xlim <- cbind(rep(0.5, nrow(counts)), counts$n + 0.5)
+    rownames(xlim) <- as.character(counts$dataset)
+    gap_after <- rep(12, nrow(counts))
+    gap_after[length(gap_after)] <- 18
+    circlize::circos.par(
+      start.degree = 88,
+      gap.after = gap_after,
+      track.margin = c(0.004, 0.004),
+      cell.padding = c(0, 0, 0, 0)
+    )
+    circlize::circos.initialize(factors = counts$dataset, xlim = xlim)
+
+    sector_rows <- function() {
+      ds <- circlize::CELL_META$sector.index
+      plot_source[as.character(plot_source$dataset) == ds, , drop = FALSE]
+    }
+
+    circlize::circos.trackPlotRegion(
+      ylim = c(0, 1), track.height = if (isTRUE(selected_only)) 0.22 else 0.18, bg.border = NA,
+      panel.fun = function(x, y) {
+        ds <- circlize::CELL_META$sector.index
+        d <- sector_rows()
+        circlize::circos.text(mean(circlize::CELL_META$xlim), 0.94, dataset_label(ds),
+                              facing = "bending.inside", niceFacing = TRUE, font = 2, cex = 0.72)
+        lab <- d[!is.na(d$label_text) & nzchar(d$label_text), , drop = FALSE]
+        if (nrow(lab)) {
+          circlize::circos.text(lab$plot_index, 0.06, lab$label_text,
+                                facing = "clockwise", niceFacing = TRUE, adj = c(0, 0.5), cex = if (isTRUE(selected_only)) 0.42 else 0.25)
+        }
+      }
+    )
+
+    circlize::circos.trackPlotRegion(
+      ylim = c(0, 1), track.height = 0.075, bg.border = NA,
+      panel.fun = function(x, y) {
+        d <- sector_rows()
+        circlize::circos.rect(d$sector_x_left, 0, d$sector_x_right, 1, col = d$program_color, border = "white", lwd = 0.25)
+      }
+    )
+    circlize::circos.trackPlotRegion(
+      ylim = c(0, 1), track.height = 0.075, bg.border = NA,
+      panel.fun = function(x, y) {
+        d <- sector_rows()
+        circlize::circos.rect(d$sector_x_left, 0, d$sector_x_right, 1, col = d$effect_color, border = "white", lwd = 0.25)
+      }
+    )
+    circlize::circos.trackPlotRegion(
+      ylim = c(0, 1), track.height = 0.075, bg.border = NA,
+      panel.fun = function(x, y) {
+        d <- sector_rows()
+        circlize::circos.rect(d$sector_x_left, 0, d$sector_x_right, 1, col = d$evidence_color, border = "white", lwd = 0.25)
+      }
+    )
+    circlize::circos.trackPlotRegion(
+      ylim = c(0, 1), track.height = 0.075, bg.border = NA,
+      panel.fun = function(x, y) {
+        d <- sector_rows()
+        circlize::circos.rect(d$sector_x_left, 0, d$sector_x_right, 1, col = d$spatial_color, border = "white", lwd = 0.25)
+      }
+    )
+    circlize::circos.trackPlotRegion(
+      ylim = c(0, 1), track.height = 0.08, bg.border = NA,
+      panel.fun = function(x, y) {
+        d <- sector_rows()
+        circlize::circos.rect(d$sector_x_left, 0, d$sector_x_right, 1, col = "#F5F5F5", border = "white", lwd = 0.25)
+        circlize::circos.rect(d$sector_x_left, 0, d$sector_x_right, d$local_support_fraction, col = "#4D4D4D", border = NA)
+      }
+    )
+    circlize::circos.trackPlotRegion(
+      ylim = c(0, 1), track.height = 0.07, bg.border = NA,
+      panel.fun = function(x, y) {
+        d <- sector_rows()
+        circlize::circos.rect(d$sector_x_left, 0, d$sector_x_right, 1, col = "#FAFAFA", border = "white", lwd = 0.25)
+        sel <- d[d$present_in_selected_table %in% TRUE, , drop = FALSE]
+        if (nrow(sel)) circlize::circos.points(sel$plot_index, rep(0.5, nrow(sel)), pch = 16, cex = 0.45, col = "black")
+      }
+    )
+
+    graphics::title(if (isTRUE(selected_only)) "WGCNA Circular Atlas: Selected Supermodules" else "WGCNA Circular Atlas", line = 1.1, cex.main = 1.05)
+    graphics::mtext(
+      "Outer to inner: labels, broad program, strongest effect, evidence status, best local spatial unit, local FDR05 support fraction, selected-table marker. Microglia-enriched ROI / local microenvironment.",
+      side = 1, line = 0.35, cex = 0.50, col = "#444444"
+    )
+    graphics::legend(
+      "bottomleft",
+      legend = names(program_cols),
+      fill = unname(program_cols),
+      border = NA,
+      bty = "n",
+      cex = 0.42,
+      ncol = 2,
+      title = "Broad program"
+    )
+    graphics::legend(
+      "topright",
+      legend = c("negative", "near zero", "positive"),
+      fill = c("#2166AC", "#F7F7F7", "#B2182B"),
+      border = NA,
+      bty = "n",
+      cex = 0.45,
+      title = "Strongest effect"
+    )
+    graphics::legend(
+      "right",
+      legend = names(evidence_cols),
+      fill = unname(evidence_cols),
+      border = NA,
+      bty = "n",
+      cex = 0.43,
+      title = "Evidence status"
+    )
+    graphics::legend(
+      "bottomright",
+      legend = names(spatial_cols),
+      fill = unname(spatial_cols),
+      border = NA,
+      bty = "n",
+      cex = 0.45,
+      title = "Best local unit"
+    )
+    graphics::legend(
+      "topleft",
+      legend = c("selected-table marker", "local support fraction"),
+      pch = c(16, 15),
+      col = c("black", "#4D4D4D"),
+      bty = "n",
+      cex = 0.45,
+      title = "Inner tracks"
+    )
+  }
+
+  dir_create(dirname(svg_path))
+  dir_create(dirname(pdf_path))
+  svglite::svglite(svg_path, width = 12, height = 12, bg = "white")
+  draw_one()
+  grDevices::dev.off()
+  grDevices::pdf(pdf_path, width = 12, height = 12, onefile = FALSE, useDingbats = FALSE)
+  draw_one()
+  grDevices::dev.off()
+  invisible(TRUE)
+}
+
+is_real_spatial_unit <- function(x) {
+  z <- tolower(clean_chr(x))
+  nzchar(z) & !z %in% c("global", "global_spatial_adjusted", "all_spatial_units", "na")
+}
+
+contrast_block <- function(x) {
+  fam <- contrast_family(x)
+  dplyr::case_when(
+    fam == "RES_CON" ~ "RES-CON",
+    fam == "SUS_CON" ~ "SUS-CON",
+    fam == "SUS_RES" ~ "SUS-RES",
+    TRUE ~ clean_chr(x)
+  )
+}
+
+contrast_block_order <- function(x) {
+  block <- contrast_block(x)
+  dplyr::case_when(
+    block == "RES-CON" ~ 1L,
+    block == "SUS-CON" ~ 2L,
+    block == "SUS-RES" ~ 3L,
+    TRUE ~ 99L
+  )
+}
+
+spatial_order_value <- function(region, layer_or_unit, unit) {
+  unit <- tolower(clean_chr(unit))
+  layer <- toupper(clean_chr(layer_or_unit))
+  dplyr::case_when(
+    region == "CA1" & layer == "SO" ~ 101L,
+    region == "CA1" & layer == "SP" ~ 102L,
+    region == "CA1" & layer == "SR" ~ 103L,
+    region == "CA1" & layer == "SLM" ~ 104L,
+    region == "CA1" ~ 109L,
+    region == "CA2/3" & grepl("^ca2", unit) & layer == "SO" ~ 201L,
+    region == "CA2/3" & grepl("^ca2", unit) & layer == "SR" ~ 202L,
+    region == "CA2/3" & grepl("^ca2", unit) & layer == "SLM" ~ 203L,
+    region == "CA2/3" & grepl("^ca2", unit) ~ 209L,
+    region == "CA2/3" & grepl("^ca3", unit) & layer == "SO" ~ 221L,
+    region == "CA2/3" & grepl("^ca3", unit) & layer == "SR" ~ 222L,
+    region == "CA2/3" & grepl("^ca3", unit) ~ 229L,
+    region == "CA2/3" ~ 240L,
+    region == "DG" & layer == "MO" ~ 301L,
+    region == "DG" & layer == "ML" ~ 302L,
+    region == "DG" & layer == "GCL" ~ 303L,
+    region == "DG" & layer == "PO" ~ 304L,
+    region == "DG" ~ 309L,
+    region == "Other" ~ 900L,
+    TRUE ~ 999L
+  )
+}
+
+effect_support_class <- function(p_value, fdr_within, fdr_global) {
+  fdr <- dplyr::coalesce(as_num(fdr_within), as_num(fdr_global))
+  p <- as_num(p_value)
+  dplyr::case_when(
+    !is.na(fdr) & fdr <= 0.05 ~ "FDR05",
+    !is.na(fdr) & fdr <= 0.10 ~ "FDR10",
+    !is.na(p) & p <= 0.05 ~ "nominal",
+    TRUE ~ "none"
+  )
+}
+
+local_effect_rows <- function(df, level) {
+  if (is.null(df) || !nrow(df)) return(tibble::tibble())
+  key_col <- if (identical(level, "supermodule")) "supermodule_id" else "module_id"
+  local_df <- df |>
+    dplyr::filter(is_real_spatial_unit(.data$spatial_unit))
+  if (!nrow(local_df)) return(tibble::tibble())
+  parsed <- parse_spatial_unit(local_df$spatial_unit)
+  local_df |>
+    dplyr::bind_cols(parsed) |>
+    dplyr::mutate(
+      level = level,
+      endpoint_key = clean_chr(.data[[key_col]]),
+      contrast_block = contrast_block(.data$contrast),
+      contrast_block_order = contrast_block_order(.data$contrast),
+      spatial_order = spatial_order_value(.data$parsed_spatial_region, .data$parsed_spatial_layer_or_unit, .data$spatial_unit),
+      effect_scope_order = dplyr::case_when(
+        .data$effect_scope == "within_spatial_unit" ~ 1L,
+        .data$effect_scope == "stress_by_spatial_interaction" ~ 2L,
+        TRUE ~ 9L
+      ),
+      p_value_num = as_num(.data$p_value),
+      FDR_within_num = as_num(.data$FDR_within_dataset_level),
+      FDR_global_num = as_num(.data$FDR_global),
+      effect_abs = abs(as_num(.data$estimate)),
+      support_class = effect_support_class(.data$p_value, .data$FDR_within_dataset_level, .data$FDR_global)
+    ) |>
+    dplyr::arrange(
+      .data$dataset, .data$endpoint_key, .data$spatial_unit, .data$contrast_block,
+      .data$effect_scope_order,
+      dplyr::coalesce(.data$FDR_within_num, .data$FDR_global_num, Inf),
+      .data$p_value_num,
+      dplyr::desc(.data$effect_abs)
+    ) |>
+    dplyr::group_by(.data$dataset, .data$endpoint_key, .data$spatial_unit, .data$contrast_block) |>
+    dplyr::slice(1) |>
+    dplyr::ungroup()
+}
+
+module_supermodule_map <- function(dataset) {
+  path <- dataset_source_paths(dataset)$module_supermodule_annotation
+  ann <- read_csv_quiet(path)
+  if (is.null(ann) || !nrow(ann)) {
+    return(tibble::tibble(
+      dataset = character(),
+      module_id_annotation = character(),
+      module_label_key = character(),
+      supermodule_id = character(),
+      supermodule_label = character()
+    ))
+  }
+  supermodule_id_col <- first_existing_col(ann, c("SupermoduleID", "Supermodule_DataDrivenID", "Supermodule_DataDriven"))
+  supermodule_label_col <- first_nonblank_col(ann, c("Supermodule_DisplayLabel", "Supermodule_FinalLabel", "Supermodule", "Supermodule_DataDrivenLabel"))
+  module_id_col <- first_existing_col(ann, c("ModuleID", "module_id"))
+  module_label_col <- first_nonblank_col(ann, c("ModuleLabel_Final", "top_GO_label", "ModuleLabel_GO_BP"))
+
+  ann |>
+    dplyr::transmute(
+      dataset = dataset,
+      module_id_annotation = if (!is.na(module_id_col)) clean_chr(.data[[module_id_col]]) else NA_character_,
+      module_label_key = if (!is.na(module_label_col)) clean_chr(.data[[module_label_col]]) else NA_character_,
+      supermodule_id = if (!is.na(supermodule_id_col)) clean_chr(.data[[supermodule_id_col]]) else NA_character_,
+      supermodule_label = if (!is.na(supermodule_label_col)) clean_chr(.data[[supermodule_label_col]]) else NA_character_
+    ) |>
+    dplyr::filter(nzchar(.data$module_label_key) | nzchar(.data$module_id_annotation)) |>
+    dplyr::distinct(.data$dataset, .data$module_label_key, .data$module_id_annotation, .keep_all = TRUE)
+}
+
+build_heatmap_sources <- function(datasets, segments, selected_audit) {
+  segment_meta <- segments |>
+    dplyr::mutate(
+      supermodule_id = clean_chr(.data$supermodule_id),
+      selected_or_priority_flag = .data$present_in_selected_table %in% TRUE |
+        .data$evidence_status_segments %in% c("robust_FDR", "suggestive_FDR10")
+    ) |>
+    dplyr::select(
+      "dataset", "supermodule_id",
+      supermodule_label = "segment_cleaned_label",
+      selected_or_priority_flag,
+      segment_broad_program_class = "segment_broad_program_class",
+      strongest_estimate_segments = "strongest_estimate_segments",
+      evidence_status_segments = "evidence_status_segments"
+    )
+
+  supermodule_rows <- lapply(datasets, function(ds) {
+    path <- dataset_source_paths(ds)$supermodule_group_effects
+    df <- read_csv_quiet(path)
+    local <- local_effect_rows(df, "supermodule")
+    if (!nrow(local)) return(tibble::tibble())
+    local |>
+      dplyr::left_join(segment_meta, by = c("dataset", "supermodule_id")) |>
+      dplyr::mutate(
+        module_id = NA_character_,
+        module_label = NA_character_,
+        supermodule_label = dplyr::coalesce(
+          na_if_blank_chr(.data$supermodule_label.x),
+          na_if_blank_chr(.data$supermodule_label.y),
+          na_if_blank_chr(.data$endpoint_label),
+          .data$supermodule_id
+        ),
+        selected_or_priority_flag = .data$selected_or_priority_flag %in% TRUE
+      )
+  })
+
+  module_rows <- lapply(datasets, function(ds) {
+    path <- path_results("tables", "06_modules_WGCNA", "group_effects", ds, "module_group_effects.csv")
+    df <- read_csv_quiet(path)
+    local <- local_effect_rows(df, "module")
+    if (!nrow(local)) return(tibble::tibble())
+    map <- module_supermodule_map(ds)
+    local <- local |>
+      dplyr::mutate(module_label_key = clean_chr(.data$module_label)) |>
+      dplyr::left_join(map, by = c("dataset", "module_label_key")) |>
+      dplyr::mutate(
+        supermodule_id = dplyr::coalesce(
+          na_if_blank_chr(.data$supermodule_id.y),
+          na_if_blank_chr(.data$supermodule_id.x),
+          "unmapped"
+        ),
+        supermodule_label_from_map = dplyr::coalesce(
+          na_if_blank_chr(.data$supermodule_label.y),
+          na_if_blank_chr(.data$supermodule_label.x)
+        )
+      ) |>
+      dplyr::select(-dplyr::any_of(c("supermodule_id.x", "supermodule_id.y", "supermodule_label.x", "supermodule_label.y"))) |>
+      dplyr::left_join(segment_meta, by = c("dataset", "supermodule_id")) |>
+      dplyr::mutate(
+        supermodule_id = dplyr::coalesce(na_if_blank_chr(.data$supermodule_id), "unmapped"),
+        supermodule_label = dplyr::coalesce(na_if_blank_chr(.data$supermodule_label_from_map), na_if_blank_chr(.data$supermodule_label), "Unmapped module"),
+        selected_or_priority_flag = .data$selected_or_priority_flag %in% TRUE |
+          .data$evidence_status %in% c("robust_FDR", "suggestive_FDR10")
+      )
+    local
+  })
+
+  format_source <- function(df, level_name) {
+    if (is.null(df) || !nrow(df)) return(tibble::tibble())
+    df |>
+      dplyr::transmute(
+        dataset,
+        level = level_name,
+        module_id = if ("module_id" %in% names(df)) na_if_blank_chr(.data$module_id) else NA_character_,
+        supermodule_id = na_if_blank_chr(.data$supermodule_id),
+        module_label = if ("module_label" %in% names(df)) na_if_blank_chr(.data$module_label) else NA_character_,
+        supermodule_label = na_if_blank_chr(.data$supermodule_label),
+        spatial_unit = clean_chr(.data$spatial_unit),
+        parsed_region = .data$parsed_spatial_region,
+        parsed_layer_or_unit = .data$parsed_spatial_layer_or_unit,
+        contrast = clean_chr(.data$contrast),
+        contrast_block = .data$contrast_block,
+        effect_scope = clean_chr(.data$effect_scope),
+        estimate = as_num(.data$estimate),
+        p_value = as_num(.data$p_value),
+        FDR_global = as_num(.data$FDR_global),
+        FDR_within_dataset_level = as_num(.data$FDR_within_dataset_level),
+        evidence_status = clean_chr(.data$evidence_status),
+        support_class = .data$support_class,
+        selected_or_priority_flag = .data$selected_or_priority_flag %in% TRUE,
+        plot_sector_order = NA_integer_,
+        plot_track_order = NA_integer_,
+        angular_order = NA_integer_,
+        ring_order = NA_integer_,
+        contrast_ring = NA_character_,
+        contrast_ring_order = NA_integer_,
+        internal_contrast_label_position = NA_character_,
+        spatial_order = .data$spatial_order,
+        contrast_block_order = .data$contrast_block_order
+      )
+  }
+
+  supermodule <- format_source(dplyr::bind_rows(supermodule_rows), "supermodule")
+  module <- format_source(dplyr::bind_rows(module_rows), "module")
+
+  order_sources <- function(df) {
+    if (!nrow(df)) return(df)
+    sector_meta <- df |>
+      dplyr::group_by(.data$dataset, .data$supermodule_id) |>
+      dplyr::summarise(
+        selected = any(.data$selected_or_priority_flag, na.rm = TRUE),
+        best_support = min(dplyr::coalesce(status_priority[.data$evidence_status], 99L), na.rm = TRUE),
+        max_abs_effect = max(abs(.data$estimate), na.rm = TRUE),
+        .groups = "drop"
+      ) |>
+      dplyr::mutate(
+        best_support = dplyr::if_else(is.infinite(.data$best_support), 99, as.numeric(.data$best_support)),
+        max_abs_effect = dplyr::if_else(is.infinite(.data$max_abs_effect), 0, .data$max_abs_effect)
+      ) |>
+      dplyr::arrange(
+        .data$dataset,
+        dplyr::desc(.data$selected),
+        .data$best_support,
+        dplyr::desc(.data$max_abs_effect),
+        .data$supermodule_id
+      ) |>
+      dplyr::group_by(.data$dataset) |>
+      dplyr::mutate(plot_sector_order = dplyr::row_number()) |>
+      dplyr::ungroup() |>
+      dplyr::select("dataset", "supermodule_id", "plot_sector_order")
+
+    spatial_meta <- df |>
+      dplyr::distinct(.data$dataset, .data$spatial_unit, .data$parsed_region, .data$parsed_layer_or_unit, .data$spatial_order) |>
+      dplyr::arrange(.data$dataset, .data$spatial_order, .data$spatial_unit) |>
+      dplyr::group_by(.data$dataset) |>
+      dplyr::mutate(spatial_unit_order = dplyr::row_number()) |>
+      dplyr::ungroup() |>
+      dplyr::select("dataset", "spatial_unit", "spatial_unit_order")
+
+    track_meta <- df |>
+      dplyr::distinct(.data$dataset, .data$contrast_block, .data$spatial_unit, .data$parsed_region, .data$parsed_layer_or_unit, .data$contrast_block_order, .data$spatial_order) |>
+      dplyr::arrange(.data$dataset, .data$contrast_block_order, .data$spatial_order, .data$spatial_unit) |>
+      dplyr::group_by(.data$dataset) |>
+      dplyr::mutate(plot_track_order = dplyr::row_number()) |>
+      dplyr::ungroup() |>
+      dplyr::select("dataset", "contrast_block", "spatial_unit", "plot_track_order")
+
+    df |>
+      dplyr::select(-dplyr::any_of(c("plot_sector_order", "plot_track_order", "angular_order", "ring_order"))) |>
+      dplyr::left_join(sector_meta, by = c("dataset", "supermodule_id")) |>
+      dplyr::left_join(spatial_meta, by = c("dataset", "spatial_unit")) |>
+      dplyr::left_join(track_meta, by = c("dataset", "contrast_block", "spatial_unit")) |>
+      dplyr::group_by(.data$dataset) |>
+      dplyr::mutate(
+        angular_order = (.data$plot_sector_order - 1L) * max(.data$spatial_unit_order, na.rm = TRUE) + .data$spatial_unit_order,
+        ring_order = .data$contrast_block_order,
+        contrast_ring = .data$contrast_block,
+        contrast_ring_order = .data$ring_order,
+        internal_contrast_label_position = "left_annulus"
+      ) |>
+      dplyr::ungroup() |>
+      dplyr::arrange(.data$dataset, .data$angular_order, .data$ring_order, .data$module_id)
+  }
+
+  list(
+    supermodule = order_sources(supermodule),
+    module = order_sources(module)
+  )
+}
+
+render_dataset_circular_heatmap <- function(source_supermodule, dataset_name, svg_path, pdf_path) {
+  df <- source_supermodule |> dplyr::filter(.data$dataset == .env$dataset_name)
+  if (!nrow(df)) return(invisible(FALSE))
+  df <- df |>
+    dplyr::mutate(
+      sector_id = paste0(sprintf("%03d", .data$angular_order), "::", .data$supermodule_id, "::", .data$spatial_unit),
+      spatial_label = toupper(gsub("_", " ", .data$spatial_unit)),
+      sector_label = paste0(.data$supermodule_id, ": ", .data$supermodule_label)
+    )
+  sector_meta <- df |>
+    dplyr::distinct(
+      .data$sector_id,
+      .data$supermodule_id,
+      .data$sector_label,
+      .data$plot_sector_order,
+      .data$spatial_unit,
+      .data$spatial_label,
+      .data$angular_order,
+      .data$selected_or_priority_flag
+    ) |>
+    dplyr::arrange(.data$angular_order) |>
+    dplyr::group_by(.data$supermodule_id) |>
+    dplyr::mutate(
+      spatial_index_in_supermodule = dplyr::row_number(),
+      n_spatial_in_supermodule = dplyr::n(),
+      label_sector = .data$spatial_index_in_supermodule == ceiling(.data$n_spatial_in_supermodule / 2),
+      gap_after = dplyr::if_else(.data$spatial_index_in_supermodule == .data$n_spatial_in_supermodule, 3.2, 0.18)
+    ) |>
+    dplyr::ungroup()
+
+  spatial_meta <- sector_meta |>
+    dplyr::distinct(
+      .data$spatial_unit,
+      .data$spatial_label,
+      .data$angular_order
+    ) |>
+    dplyr::group_by(.data$spatial_unit, .data$spatial_label) |>
+    dplyr::summarise(first_angular_order = min(.data$angular_order), .groups = "drop") |>
+    dplyr::arrange(.data$first_angular_order)
+
+  ring_meta <- df |>
+    dplyr::distinct(.data$contrast_block, .data$ring_order) |>
+    dplyr::arrange(.data$ring_order)
+
+  effects <- as_num(df$estimate)
+  lim <- if (any(is.finite(effects))) stats::quantile(abs(effects[is.finite(effects)]), 0.95, na.rm = TRUE, names = FALSE) else 1
+  lim <- max(lim, 1e-6)
+  col_fun <- circlize::colorRamp2(c(-lim, 0, lim), c("#2166AC", "#F7F7F7", "#B2182B"))
+  contrast_cols <- c("RES-CON" = "#4E79A7", "SUS-CON" = "#F28E2B", "SUS-RES" = "#59A14F")
+  ring_meta$contrast_color <- unname(contrast_cols[ring_meta$contrast_block])
+  ring_meta$contrast_color[is.na(ring_meta$contrast_color)] <- "#757575"
+  ring_label_meta <- ring_meta |>
+    dplyr::mutate(
+      label_x = -0.60,
+      label_y = c(0.075, 0, -0.075)[seq_len(dplyr::n())]
+    )
+
+  draw_one <- function() {
+    old_par <- graphics::par(no.readonly = TRUE)
+    on.exit({
+      circlize::circos.clear()
+      graphics::par(old_par)
+    }, add = TRUE)
+    graphics::par(mar = c(1.5, 1.1, 2.8, 1.0), xpd = NA, family = "sans")
+    circlize::circos.clear()
+    circlize::circos.par(
+      start.degree = 88,
+      gap.after = c(head(sector_meta$gap_after, -1), 8),
+      track.margin = c(0.0015, 0.0015),
+      cell.padding = c(0, 0, 0, 0)
+    )
+    circlize::circos.initialize(factors = factor(sector_meta$sector_id, levels = sector_meta$sector_id), xlim = cbind(rep(0, nrow(sector_meta)), rep(1, nrow(sector_meta))))
+
+    circlize::circos.trackPlotRegion(
+      ylim = c(0, 1), track.height = 0.112, bg.border = NA,
+      panel.fun = function(x, y) {
+        sid <- circlize::CELL_META$sector.index
+        meta <- sector_meta[sector_meta$sector_id == sid, , drop = FALSE]
+        if (isTRUE(meta$label_sector[[1]])) {
+          lab <- vapply(strwrap(meta$sector_label[[1]], width = 24, simplify = FALSE), paste, character(1), collapse = "\n")
+          circlize::circos.text(
+            0.5, 0.08, lab,
+            facing = "clockwise",
+            niceFacing = TRUE,
+            adj = c(0, 0.5),
+            cex = if (isTRUE(meta$selected_or_priority_flag[[1]])) 0.32 else 0.25,
+            font = if (isTRUE(meta$selected_or_priority_flag[[1]])) 2 else 1
+          )
+        }
+      }
+    )
+
+    if (nrow(spatial_meta) <= 10) {
+      circlize::circos.trackPlotRegion(
+        ylim = c(0, 1), track.height = 0.026, bg.border = NA,
+        panel.fun = function(x, y) {
+          sid <- circlize::CELL_META$sector.index
+          meta <- sector_meta[sector_meta$sector_id == sid, , drop = FALSE]
+          first_supermodule <- meta$plot_sector_order[[1]] == min(sector_meta$plot_sector_order, na.rm = TRUE)
+          if (isTRUE(first_supermodule)) {
+            circlize::circos.text(0.5, 0.5, meta$spatial_label[[1]], facing = "clockwise", niceFacing = TRUE, cex = 0.22)
+          }
+        }
+      )
+    }
+
+    for (ring_i in seq_len(nrow(ring_meta))) {
+      ring <- ring_meta[ring_i, , drop = FALSE]
+      circlize::circos.trackPlotRegion(
+        ylim = c(0, 1), track.height = 0.064, bg.border = NA,
+        panel.fun = function(x, y) {
+          sid <- circlize::CELL_META$sector.index
+          meta <- sector_meta[sector_meta$sector_id == sid, , drop = FALSE]
+          cell <- df[df$sector_id == sid & df$contrast_block == ring$contrast_block[[1]], , drop = FALSE]
+          fill <- "#ECEFF1"
+          if (nrow(cell) && is.finite(cell$estimate[[1]])) {
+            fill <- col_fun(pmax(-lim, pmin(lim, cell$estimate[[1]])))
+          }
+          border_col <- if (isTRUE(meta$spatial_index_in_supermodule[[1]] == meta$n_spatial_in_supermodule[[1]])) "#2B2B2B" else "white"
+          circlize::circos.rect(0, 0, 1, 1, col = fill, border = border_col, lwd = if (identical(border_col, "white")) 0.10 else 0.35)
+          if (nrow(cell) && cell$support_class[[1]] %in% c("FDR05", "FDR10", "nominal")) {
+            pch <- if (cell$support_class[[1]] == "FDR05") 16 else if (cell$support_class[[1]] == "FDR10") 1 else 3
+            circlize::circos.points(0.5, 0.5, pch = pch, cex = 0.30, col = "black")
+          }
+        }
+      )
+    }
+
+    graphics::text(
+      x = ring_label_meta$label_x,
+      y = ring_label_meta$label_y,
+      labels = ring_label_meta$contrast_block,
+      col = ring_label_meta$contrast_color,
+      cex = 0.58,
+      font = 2,
+      adj = c(0.5, 0.5)
+    )
+
+    graphics::title(paste0("Circular WGCNA Spatial Heatmap: ", dataset_label(dataset_name)), line = 1.1, cex.main = 1.0)
+    if (identical(dataset_name, "microglia")) {
+      graphics::mtext("Microglia-enriched ROI / local microenvironment; not purified cell-intrinsic evidence.", side = 3, line = 0.1, cex = 0.58, col = "#444444")
+    }
+    graphics::mtext("Angular tiles are supermodule x spatial unit. The three concentric heatmap rings are contrasts.", side = 1, line = 0.35, cex = 0.54, col = "#444444")
+    graphics::legend("bottomleft", legend = c("negative", "near zero", "positive"),
+                     fill = c("#2166AC", "#F7F7F7", "#B2182B"), border = NA, bty = "n", cex = 0.48, title = "Estimate")
+    graphics::legend("topleft", legend = c("FDR <= 0.05", "FDR <= 0.10", "p <= 0.05"),
+                     pch = c(16, 1, 3), col = "black", bty = "n", cex = 0.48, title = "Support marker")
+    spatial_summary <- spatial_meta |>
+      dplyr::arrange(.data$first_angular_order) |>
+      dplyr::summarise(units = paste(.data$spatial_label, collapse = ", "), .groups = "drop")
+    graphics::legend("topright", legend = spatial_summary$units,
+                     bty = "n", cex = 0.34, title = "Spatial unit order")
+  }
+
+  dir_create(dirname(svg_path))
+  svglite::svglite(svg_path, width = 10.5, height = 10.5, bg = "white")
+  draw_one()
+  grDevices::dev.off()
+  grDevices::pdf(pdf_path, width = 10.5, height = 10.5, onefile = FALSE, useDingbats = FALSE)
+  draw_one()
+  grDevices::dev.off()
+  invisible(TRUE)
+}
+
+render_rectangular_module_heatmap <- function(source_module, svg_path, pdf_path) {
+  if (is.null(source_module) || !nrow(source_module)) return(invisible(FALSE))
+  df <- source_module |>
+    dplyr::mutate(
+      row_label = paste(.data$dataset, .data$supermodule_id, dplyr::coalesce(.data$module_label, .data$module_id), sep = " | "),
+      col_label = paste(.data$contrast_block, toupper(gsub("_", " ", .data$spatial_unit)), sep = " | "),
+      row_order = paste(sprintf("%02d", .data$plot_sector_order), .data$supermodule_id, dplyr::coalesce(.data$module_label, .data$module_id)),
+      col_order = paste(sprintf("%02d", .data$plot_track_order), .data$col_label),
+      support_shape = dplyr::case_when(
+        .data$support_class == "FDR05" ~ "FDR <= 0.05",
+        .data$support_class == "FDR10" ~ "FDR <= 0.10",
+        .data$support_class == "nominal" ~ "p <= 0.05",
+        TRUE ~ NA_character_
+      )
+    )
+  lim <- stats::quantile(abs(df$estimate[is.finite(df$estimate)]), 0.95, na.rm = TRUE, names = FALSE)
+  lim <- max(lim, 1e-6)
+  row_levels <- df |>
+    dplyr::distinct(.data$dataset, .data$row_label, .data$row_order) |>
+    dplyr::arrange(.data$dataset, .data$row_order) |>
+    dplyr::pull(.data$row_label)
+  col_levels <- df |>
+    dplyr::distinct(.data$dataset, .data$col_label, .data$col_order) |>
+    dplyr::arrange(.data$dataset, .data$col_order) |>
+    dplyr::pull(.data$col_label) |>
+    unique()
+  df$row_label <- factor(df$row_label, levels = rev(unique(row_levels)))
+  df$col_label <- factor(df$col_label, levels = unique(col_levels))
+  p <- ggplot2::ggplot(df, ggplot2::aes(.data$col_label, .data$row_label)) +
+    ggplot2::geom_tile(ggplot2::aes(fill = .data$estimate), color = "white", linewidth = 0.08) +
+    ggplot2::geom_point(
+      data = df |> dplyr::filter(!is.na(.data$support_shape)),
+      ggplot2::aes(shape = .data$support_shape),
+      size = 0.8,
+      color = "black",
+      stroke = 0.25
+    ) +
+    ggplot2::facet_grid(dataset ~ ., scales = "free_y", space = "free_y") +
+    ggplot2::scale_fill_gradient2(low = "#2166AC", mid = "#F7F7F7", high = "#B2182B", midpoint = 0, limits = c(-lim, lim), oob = scales::squish, name = "Estimate") +
+    ggplot2::scale_shape_manual(values = c("FDR <= 0.05" = 16, "FDR <= 0.10" = 1, "p <= 0.05" = 3), name = "Support") +
+    ggplot2::labs(x = "Contrast x spatial unit", y = "Dataset | supermodule | module", title = "WGCNA Module Region/Layer Heatmap") +
+    ggplot2::theme_minimal(base_size = 7) +
+    ggplot2::theme(
+      panel.grid = ggplot2::element_blank(),
+      axis.text.x = ggplot2::element_text(angle = 55, hjust = 1, vjust = 1, size = 5),
+      axis.text.y = ggplot2::element_text(size = 4.5),
+      strip.text.y = ggplot2::element_text(angle = 0, face = "bold"),
+      legend.position = "right"
+    )
+  dir_create(dirname(svg_path))
+  ggplot2::ggsave(svg_path, p, width = 13, height = 12, units = "in", bg = "white")
+  ggplot2::ggsave(pdf_path, p, width = 13, height = 12, units = "in", bg = "white", device = grDevices::cairo_pdf)
+  invisible(TRUE)
+}
+
 if (run$dry_run) {
   ds <- available_datasets()
   dry_run_line("Script", "10_biological_integration/04_wgcna_circular_atlas.R")
@@ -1026,6 +1912,20 @@ if (run$dry_run) {
   dry_run_line("Duplicate source audit output", out_duplicate_audit)
   dry_run_line("Effect scope audit output", out_effect_scope_audit)
   dry_run_line("Local support summary output", out_local_support)
+  dry_run_line("Plot source output", out_plot_source)
+  dry_run_line("Main circular atlas SVG output", out_main_svg)
+  dry_run_line("Main circular atlas PDF output", out_main_pdf)
+  dry_run_line("Selected-only circular atlas SVG output", out_selected_svg)
+  dry_run_line("Selected-only circular atlas PDF output", out_selected_pdf)
+  dry_run_line("Circular heatmap supermodule source output", out_heatmap_source_supermodule)
+  dry_run_line("Circular heatmap module source output", out_heatmap_source_module)
+  for (ds_name in names(heatmap_svg_paths)) {
+    dry_run_line(paste0("Circular heatmap SVG output (", ds_name, ")"), heatmap_svg_paths[[ds_name]])
+    dry_run_line(paste0("Circular heatmap PDF output (", ds_name, ")"), heatmap_pdf_paths[[ds_name]])
+  }
+  dry_run_line("Rectangular all-module heatmap SVG output", out_rect_modules_svg)
+  dry_run_line("Rectangular all-module heatmap PDF output", out_rect_modules_pdf)
+  dry_run_line("Run manifest output", out_run_manifest)
   dry_run_line("Neuron neuropil availability audit output", out_neuropil_availability)
   quit(status = 0, save = "no")
 }
@@ -1110,11 +2010,19 @@ local_support_summary <- segments |>
     claim_display_status
   )
 
+plot_source <- prepare_circular_plot_source(segments)
+heatmap_sources <- build_heatmap_sources(available_datasets(), segments, selected_audit)
+heatmap_source_supermodule <- heatmap_sources$supermodule
+heatmap_source_module <- heatmap_sources$module
+
 metrics <- tibble::tibble(
   metric = c(
     "n_segments",
     "n_selected_table_rows",
     "n_datasets",
+    "n_plot_labels",
+    "n_circular_heatmap_supermodule_cells",
+    "n_circular_heatmap_module_cells",
     "n_protein_count_source_column",
     "effect_scope_priority",
     "contrast_priority",
@@ -1127,6 +2035,9 @@ metrics <- tibble::tibble(
     as.character(nrow(segments)),
     as.character(nrow(selected_audit)),
     as.character(dplyr::n_distinct(segments$dataset)),
+    as.character(sum(plot_source$label_shown, na.rm = TRUE)),
+    as.character(nrow(heatmap_source_supermodule)),
+    as.character(nrow(heatmap_source_module)),
     "No direct n_proteins source column found; computed from existing 01_WGCNA/<dataset>/modules/genes_in_module_*.csv member files when available",
     "spatial_adjusted_global; within_spatial_unit; stress_by_spatial_interaction",
     "SUS-RES pair; SUS-CON pair; RES-CON pair, preserving source contrast orientation",
@@ -1164,6 +2075,76 @@ readr::write_csv(neuropil_availability_audit, out_neuropil_availability)
 readr::write_csv(duplicate_audit, out_duplicate_audit)
 readr::write_csv(effect_scope_audit, out_effect_scope_audit)
 readr::write_csv(local_support_summary, out_local_support)
+readr::write_csv(plot_source, out_plot_source)
+readr::write_csv(heatmap_source_supermodule, out_heatmap_source_supermodule)
+readr::write_csv(heatmap_source_module, out_heatmap_source_module)
+
+render_circular_atlas(plot_source, out_main_svg, out_main_pdf)
+render_circular_atlas(plot_source, out_selected_svg, out_selected_pdf, selected_only = TRUE)
+for (ds_name in intersect(names(heatmap_svg_paths), unique(heatmap_source_supermodule$dataset))) {
+  render_dataset_circular_heatmap(
+    heatmap_source_supermodule,
+    ds_name,
+    heatmap_svg_paths[[ds_name]],
+    heatmap_pdf_paths[[ds_name]]
+  )
+}
+render_rectangular_module_heatmap(heatmap_source_module, out_rect_modules_svg, out_rect_modules_pdf)
+
+write_run_manifest(
+  out_run_manifest,
+  inputs = list(
+    wgcna_tables_root = path_results("tables", "06_modules_WGCNA"),
+    biological_claims_table = path_results("tables", "biological_claims_table.csv")
+  ),
+  outputs = list(
+    segments = out_segments,
+    metrics = out_metrics,
+    input_status = out_status,
+    logic_audit = out_logic_audit,
+    count_audit = out_count_audit,
+    join_audit = out_join_audit,
+    selected_table_audit = out_selected_audit,
+    duplicate_source_audit = out_duplicate_audit,
+    effect_scope_audit = out_effect_scope_audit,
+    local_support_summary = out_local_support,
+    plot_source = out_plot_source,
+    circular_heatmap_source_supermodule = out_heatmap_source_supermodule,
+    circular_heatmap_source_module = out_heatmap_source_module,
+    main_svg = out_main_svg,
+    main_pdf = out_main_pdf,
+    selected_only_svg = out_selected_svg,
+    selected_only_pdf = out_selected_pdf,
+    circular_heatmap_svg = as.list(heatmap_svg_paths),
+    circular_heatmap_pdf = as.list(heatmap_pdf_paths),
+    rectangular_module_heatmap_svg = out_rect_modules_svg,
+    rectangular_module_heatmap_pdf = out_rect_modules_pdf,
+    neuron_neuropil_availability = out_neuropil_availability
+  ),
+  parameters = list(
+    script = "10_biological_integration/04_wgcna_circular_atlas.R",
+    dataset_argument = DATASET_ARG,
+    downstream_only = TRUE,
+    circular_plot_tracks = c(
+      "broad program",
+      "strongest effect estimate",
+      "evidence status",
+      "best local spatial unit",
+      "local spatial FDR05 support fraction",
+      "selected-table marker"
+    ),
+    circular_heatmap_inputs = c(
+      "results/tables/06_modules_WGCNA/group_effects/<dataset>/supermodule_group_effects.csv",
+      "results/tables/06_modules_WGCNA/group_effects/<dataset>/module_group_effects.csv",
+      "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_module_supermodule_annotation.csv"
+    )
+  ),
+  notes = c(
+    "Circular atlas figure uses already assembled segment rows and copied source statistics.",
+    "No WGCNA models, module/supermodule definitions, p-values, FDRs, or claim gates are recomputed or altered.",
+    "Microglia labels refer to microglia-enriched ROI/local microenvironment evidence, not purified cell-intrinsic claims."
+  )
+)
 
 if (nrow(duplicate_audit) && any(!duplicate_audit$collapse_safe, na.rm = TRUE)) {
   warning(
@@ -1201,4 +2182,18 @@ cat(" - ", out_selected_audit, "\n", sep = "")
 cat(" - ", out_duplicate_audit, "\n", sep = "")
 cat(" - ", out_effect_scope_audit, "\n", sep = "")
 cat(" - ", out_local_support, "\n", sep = "")
+cat(" - ", out_plot_source, "\n", sep = "")
+cat(" - ", out_heatmap_source_supermodule, "\n", sep = "")
+cat(" - ", out_heatmap_source_module, "\n", sep = "")
+cat(" - ", out_main_svg, "\n", sep = "")
+cat(" - ", out_main_pdf, "\n", sep = "")
+cat(" - ", out_selected_svg, "\n", sep = "")
+cat(" - ", out_selected_pdf, "\n", sep = "")
+for (ds_name in names(heatmap_svg_paths)) {
+  cat(" - ", heatmap_svg_paths[[ds_name]], "\n", sep = "")
+  cat(" - ", heatmap_pdf_paths[[ds_name]], "\n", sep = "")
+}
+cat(" - ", out_rect_modules_svg, "\n", sep = "")
+cat(" - ", out_rect_modules_pdf, "\n", sep = "")
+cat(" - ", out_run_manifest, "\n", sep = "")
 cat(" - ", out_neuropil_availability, "\n", sep = "")
