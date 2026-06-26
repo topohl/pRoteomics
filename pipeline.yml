@@ -207,6 +207,17 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Creates the dataset-scoped clusterProfiler manifest consumed by compareGO and program summaries."
+      - script: "04_differential_expression_enrichment/01b_gsea_protein_direction_audit.r"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        stage: "enrichment"
+        scope: "dataset_specific"
+        produces: ["results/tables/04_differential_expression_enrichment/01b_gsea_protein_direction_audit/<dataset>/<ontology>/gsea_term_direction_audit.csv", "results/tables/04_differential_expression_enrichment/01b_gsea_protein_direction_audit/<dataset>/<ontology>/gsea_contrast_direction_summary.csv", "results/tables/04_differential_expression_enrichment/01b_gsea_protein_direction_audit/<dataset>/<ontology>/ora_pooled_direction_warning.csv", "results/tables/04_differential_expression_enrichment/01b_gsea_protein_direction_audit/<dataset>/<ontology>/input_status.csv", "results/logs/04_differential_expression_enrichment/01b_gsea_protein_direction_audit/<dataset>/<ontology>/run_manifest.yml"]
+        consumes_required: ["data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv", "data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv"]
+        consumes_optional: ["results/source_data/04_differential_expression_enrichment/clusterProfiler/<dataset>/"]
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Optional read-only diagnostic audit of GSEA NES direction against leading/core protein log2fc direction; does not alter enrichment outputs."
       - script: "04_differential_expression_enrichment/02_compareGO.r"
         required: true
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
