@@ -1,18 +1,12 @@
 #!/usr/bin/env Rscript
 
 # Directionality audit: compare ProTigy forward logFC signs against raw/imputed abundance means.
-#
-# This is a diagnostic handoff check. It does not change downstream data.
-# It answers whether a ProTigy forward contrast behaves like left-minus-right
-# in the pre-ProTigy abundance matrix, or whether the exported logFC appears
-# reversed relative to the biological comparison label.
+# Diagnostic only. It does not alter forward/reverse contrast files or downstream outputs.
 
 suppressPackageStartupMessages({
-  required_pkgs <- c("readxl", "readr", "dplyr", "tidyr", "stringr", "tibble", "purrr")
-  missing_pkgs <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
-  if (length(missing_pkgs)) {
-    stop("Missing required package(s): ", paste(missing_pkgs, collapse = ", "), call. = FALSE)
-  }
+  pkgs <- c("readxl", "readr", "dplyr", "stringr", "tibble")
+  missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
+  if (length(missing)) stop("Missing required package(s): ", paste(missing, collapse = ", "), call. = FALSE)
 })
 
 source(if (file.exists(file.path("R", "script_runtime.R"))) file.path("R", "script_runtime.R") else file.path("..", "R", "script_runtime.R"))
@@ -24,16 +18,13 @@ runtime <- init_script_runtime(
   default_dataset = "neuron_neuropil"
 )
 dataset <- runtime$dataset
-Sys.setenv(PROTEOMICS_DATASET = dataset)
-Sys.setenv(PROTEOMICS_SCRIPT_ID = runtime$script)
+Sys.setenv(PROTEOMICS_DATASET = dataset, PROTEOMICS_SCRIPT_ID = runtime$script)
 
 module_id <- "01_preprocessing/03b_directionality_audit_raw_vs_protigy"
 out_dir <- path_results("tables", module_id, dataset)
 log_dir <- path_results("logs", module_id, dataset)
 dir_create(out_dir)
 dir_create(log_dir)
-
-message("Directionality audit dataset: ", dataset)
 
 `%||%` <- function(x, y) {
   if (is.null(x) || length(x) == 0L || (length(x) == 1L && is.na(x))) y else x
@@ -66,12 +57,7 @@ first_existing_col <- function(df, candidates) {
   names(df)[hit[[1]]]
 }
 
-file_hash_or_na <- function(path) {
-  if (!file.exists(path) || dir.exists(path)) return(NA_character_)
-  file_hash_sha256(path) %||% file_hash(path)
-}
-
-parse_forward_fallback <- function(label) {
+parse_compact_label <- function(label) {
   label <- norm_token(label)
   m <- stringr::str_match(label, "^([a-z0-9]+?)(con|res|sus)_([a-z0-9]+?)(con|res|sus)$")
   if (is.na(m[1, 1])) return(NULL)
@@ -97,11 +83,10 @@ parse_forward_fallback <- function(label) {
   )
 }
 
-parse_comparison <- function(comparison, parsed_forward_comparison = NA_character_) {
+parse_comparison <- function(comparison, parsed_forward_comparison) {
   label_map <- c("1" = "con", "2" = "res", "3" = "sus", "con" = "con", "res" = "res", "sus" = "sus")
-  comp <- as.character(comparison %||% NA_character_)
   m <- stringr::str_match(
-    comp,
+    as.character(comparison),
     "^([A-Za-z0-9]+)_([A-Za-z0-9]+)_([123]|con|res|sus)\\.over\\.([A-Za-z0-9]+)_([A-Za-z0-9]+)_([123]|con|res|sus)$"
   )
   if (!is.na(m[1, 1])) {
@@ -116,18 +101,9 @@ parse_comparison <- function(comparison, parsed_forward_comparison = NA_characte
       right_group = unname(label_map[[tolower(m[1, 7])]])
     ))
   }
-  fallback <- parse_forward_fallback(parsed_forward_comparison)
+  fallback <- parse_compact_label(parsed_forward_comparison)
   if (!is.null(fallback)) return(fallback)
-  list(
-    parsed = FALSE,
-    parse_mode = "failed",
-    left_region = NA_character_,
-    left_token = NA_character_,
-    left_group = NA_character_,
-    right_region = NA_character_,
-    right_token = NA_character_,
-    right_group = NA_character_
-  )
+  list(parsed = FALSE, parse_mode = "failed")
 }
 
 prepare_metadata <- function(metadata, sample_candidates) {
@@ -137,6 +113,7 @@ prepare_metadata <- function(metadata, sample_candidates) {
   layer_col <- first_existing_col(metadata, c("layer", "Layer"))
   celltype_col <- first_existing_col(metadata, c("celltype", "CellType"))
   celltype_layer_col <- first_existing_col(metadata, c("celltype_layer", "CellTypeLayer", "cell_type_layer", "Cell.Type.Layer"))
+  exclude_col <- first_existing_col(metadata, c("exclude", "Exclude"))
 
   if (is.na(sample_col)) stop("Could not find sample identifier column in metadata.", call. = FALSE)
   if (is.na(group_col)) stop("Could not find group/ExpGroup column in metadata.", call. = FALSE)
@@ -147,52 +124,49 @@ prepare_metadata <- function(metadata, sample_candidates) {
     region = if (!is.na(region_col)) norm_token(metadata[[region_col]]) else NA_character_,
     layer = if (!is.na(layer_col)) norm_token(metadata[[layer_col]]) else NA_character_,
     celltype = if (!is.na(celltype_col)) norm_token(metadata[[celltype_col]]) else NA_character_,
-    celltype_layer = if (!is.na(celltype_layer_col)) norm_token(metadata[[celltype_layer_col]]) else NA_character_
+    celltype_layer = if (!is.na(celltype_layer_col)) norm_token(metadata[[celltype_layer_col]]) else NA_character_,
+    exclude = if (!is.na(exclude_col)) as.logical(metadata[[exclude_col]]) else FALSE
   ) |>
     dplyr::filter(!is.na(.data$sample_id), nzchar(.data$sample_id)) |>
+    dplyr::filter(is.na(.data$exclude) | .data$exclude != TRUE) |>
     dplyr::distinct(.data$sample_id, .keep_all = TRUE)
-
-  if ("exclude" %in% names(metadata)) {
-    keep <- is.na(metadata$exclude) | metadata$exclude != TRUE
-    out <- out[keep[match(out$sample_id, as.character(metadata[[sample_col]]))] %||% TRUE, , drop = FALSE]
-  }
   out
 }
 
-match_side_samples <- function(meta, side_region, side_token, side_group) {
-  matched_fields <- c("group")
+match_side_samples <- function(meta, region, token, group) {
+  keep <- !is.na(meta$sample_id) & meta$group == group
+  matched_fields <- "group"
   warnings <- character()
-  keep <- !is.na(meta$sample_id) & meta$group == side_group
 
-  if (!is.na(side_region) && nzchar(side_region)) {
-    if (any(meta$region == side_region, na.rm = TRUE)) {
-      keep <- keep & meta$region == side_region
+  if (!is.na(region) && nzchar(region)) {
+    if (any(meta$region == region, na.rm = TRUE)) {
+      keep <- keep & meta$region == region
       matched_fields <- c(matched_fields, "region")
     } else {
-      warnings <- c(warnings, paste0("region_not_found_in_metadata:", side_region))
+      warnings <- c(warnings, paste0("region_not_found:", region))
     }
   }
 
-  if (!is.na(side_token) && nzchar(side_token)) {
+  if (!is.na(token) && nzchar(token)) {
     token_matched <- FALSE
-    if (any(meta$layer == side_token, na.rm = TRUE)) {
-      keep <- keep & meta$layer == side_token
+    if (any(meta$layer == token, na.rm = TRUE)) {
+      keep <- keep & meta$layer == token
       matched_fields <- c(matched_fields, "layer")
       token_matched <- TRUE
-    } else if (any(meta$celltype_layer == side_token, na.rm = TRUE)) {
-      keep <- keep & meta$celltype_layer == side_token
+    } else if (any(meta$celltype_layer == token, na.rm = TRUE)) {
+      keep <- keep & meta$celltype_layer == token
       matched_fields <- c(matched_fields, "celltype_layer")
       token_matched <- TRUE
-    } else if (any(meta$celltype == side_token, na.rm = TRUE)) {
-      keep <- keep & meta$celltype == side_token
+    } else if (any(meta$celltype == token, na.rm = TRUE)) {
+      keep <- keep & meta$celltype == token
       matched_fields <- c(matched_fields, "celltype")
       token_matched <- TRUE
-    } else if (side_token %in% c("neuron", "neuropil", "neuron_neuropil", "soma", "neuron_soma", "microglia", "microglial")) {
+    } else {
       token_norm <- dplyr::case_when(
-        side_token == "neuropil" ~ "neuron_neuropil",
-        side_token == "soma" ~ "neuron_soma",
-        side_token == "microglial" ~ "microglia",
-        TRUE ~ side_token
+        token == "neuropil" ~ "neuron_neuropil",
+        token == "soma" ~ "neuron_soma",
+        token == "microglial" ~ "microglia",
+        TRUE ~ token
       )
       if (any(meta$celltype == token_norm, na.rm = TRUE)) {
         keep <- keep & meta$celltype == token_norm
@@ -200,9 +174,7 @@ match_side_samples <- function(meta, side_region, side_token, side_group) {
         token_matched <- TRUE
       }
     }
-    if (!token_matched) {
-      warnings <- c(warnings, paste0("stratum_token_not_matched_to_metadata:", side_token))
-    }
+    if (!token_matched) warnings <- c(warnings, paste0("stratum_token_not_matched:", token))
   }
 
   list(
@@ -213,31 +185,30 @@ match_side_samples <- function(meta, side_region, side_token, side_group) {
   )
 }
 
-summarise_audit <- function(audit, comparison_label, parsed, left, right) {
-  sig_col <- if ("padj" %in% names(audit) && any(is.finite(audit$padj))) "padj" else if ("pval" %in% names(audit) && any(is.finite(audit$pval))) "pval" else NA_character_
+summarise_one <- function(audit, parsed, left, right, comparison_label) {
   audit <- audit |>
     dplyr::mutate(
-      significant = if (!is.na(sig_col)) .data[[sig_col]] <= 0.05 else FALSE,
+      significant = dplyr::case_when(
+        is.finite(.data$padj) ~ .data$padj <= 0.05,
+        is.finite(.data$pval) ~ .data$pval <= 0.05,
+        TRUE ~ FALSE
+      ),
       valid_sign = is.finite(.data$log2fc) & is.finite(.data$raw_delta_left_minus_right) & .data$log2fc != 0 & .data$raw_delta_left_minus_right != 0,
       sign_agrees = dplyr::if_else(.data$valid_sign, sign(.data$log2fc) == sign(.data$raw_delta_left_minus_right), NA)
     )
-
   n_valid <- sum(audit$valid_sign, na.rm = TRUE)
-  frac_agree <- if (n_valid > 0L) mean(audit$sign_agrees[audit$valid_sign], na.rm = TRUE) else NA_real_
+  frac_agree <- if (n_valid) mean(audit$sign_agrees[audit$valid_sign], na.rm = TRUE) else NA_real_
   cor_pearson <- if (n_valid >= 3L) suppressWarnings(stats::cor(audit$log2fc, audit$raw_delta_left_minus_right, use = "pairwise.complete.obs", method = "pearson")) else NA_real_
   cor_spearman <- if (n_valid >= 3L) suppressWarnings(stats::cor(audit$log2fc, audit$raw_delta_left_minus_right, use = "pairwise.complete.obs", method = "spearman")) else NA_real_
-
   orientation <- dplyr::case_when(
     n_valid < 10L ~ "insufficient_overlap",
     is.finite(cor_pearson) & cor_pearson >= 0.80 & is.finite(frac_agree) & frac_agree >= 0.80 ~ "forward_matches_raw_left_minus_right",
     is.finite(cor_pearson) & cor_pearson <= -0.80 & is.finite(frac_agree) & frac_agree <= 0.20 ~ "forward_appears_reversed_vs_raw_left_minus_right",
     TRUE ~ "mixed_or_model_dependent"
   )
-
   tibble::tibble(
     dataset = dataset,
     comparison = comparison_label,
-    parsed = parsed$parsed,
     parse_mode = parsed$parse_mode,
     left_label = paste(stats::na.omit(c(parsed$left_region, parsed$left_token, parsed$left_group)), collapse = "_"),
     right_label = paste(stats::na.omit(c(parsed$right_region, parsed$right_token, parsed$right_group)), collapse = "_"),
@@ -259,7 +230,6 @@ summarise_audit <- function(audit, comparison_label, parsed, left, right) {
     cor_log2fc_raw_delta_spearman = cor_spearman,
     inferred_forward_orientation = orientation,
     n_significant = sum(audit$significant, na.rm = TRUE),
-    significant_metric = sig_col %||% NA_character_,
     n_significant_protigy_positive = sum(audit$significant & audit$log2fc > 0, na.rm = TRUE),
     n_significant_protigy_negative = sum(audit$significant & audit$log2fc < 0, na.rm = TRUE),
     n_significant_raw_left_higher = sum(audit$significant & audit$raw_delta_left_minus_right > 0, na.rm = TRUE),
@@ -268,63 +238,29 @@ summarise_audit <- function(audit, comparison_label, parsed, left, right) {
   )
 }
 
-dataset_inputs <- resolve_dataset_inputs(dataset, purpose = "wgcna", script = runtime$script, stage = runtime$stage)
-expr_xlsx <- Sys.getenv("PROTEOMICS_DIRECTIONALITY_RAW_XLSX", unset = dataset_inputs$expression_file)
-meta_xlsx <- Sys.getenv("PROTEOMICS_DIRECTIONALITY_METADATA_XLSX", unset = dataset_inputs$metadata_file)
-gct_extract_dir <- Sys.getenv(
-  "PROTEOMICS_DIRECTIONALITY_GCT_EXTRACT_DIR",
-  unset = path_processed("01_preprocessing", "gct_extractR", dataset)
-)
-index_path <- file.path(gct_extract_dir, "indexComparisons.csv")
-forward_dir <- file.path(gct_extract_dir, "forward")
+inputs <- resolve_dataset_inputs(dataset, purpose = "wgcna", script = runtime$script, stage = runtime$stage)
+expr_xlsx <- Sys.getenv("PROTEOMICS_DIRECTIONALITY_RAW_XLSX", unset = inputs$expression_file)
+meta_xlsx <- Sys.getenv("PROTEOMICS_DIRECTIONALITY_METADATA_XLSX", unset = inputs$metadata_file)
+gct_dir <- Sys.getenv("PROTEOMICS_DIRECTIONALITY_GCT_EXTRACT_DIR", unset = path_processed("01_preprocessing", "gct_extractR", dataset))
+index_path <- file.path(gct_dir, "indexComparisons.csv")
+forward_dir <- file.path(gct_dir, "forward")
 
 if (isTRUE(runtime$dry_run)) {
   message("[dry-run] expression workbook: ", expr_xlsx, " exists=", file.exists(expr_xlsx))
   message("[dry-run] metadata workbook: ", meta_xlsx, " exists=", file.exists(meta_xlsx))
-  message("[dry-run] GCT extract index: ", index_path, " exists=", file.exists(index_path))
-  message("[dry-run] forward contrast directory: ", forward_dir, " exists=", dir.exists(forward_dir))
-  message("[dry-run] outputs: ", out_dir)
+  message("[dry-run] GCT extraction index: ", index_path, " exists=", file.exists(index_path))
+  message("[dry-run] GCT forward directory: ", forward_dir, " exists=", dir.exists(forward_dir))
   quit(status = if (file.exists(expr_xlsx) && file.exists(meta_xlsx) && file.exists(index_path) && dir.exists(forward_dir)) 0 else 1, save = "no")
 }
 
 if (!file.exists(expr_xlsx)) stop("Expression workbook not found: ", expr_xlsx, call. = FALSE)
 if (!file.exists(meta_xlsx)) stop("Metadata workbook not found: ", meta_xlsx, call. = FALSE)
 if (!file.exists(index_path)) stop("GCT extraction index not found: ", index_path, call. = FALSE)
-if (!dir.exists(forward_dir)) stop("Forward GCT extraction directory not found: ", forward_dir, call. = FALSE)
+if (!dir.exists(forward_dir)) stop("GCT forward directory not found: ", forward_dir, call. = FALSE)
 
 expr <- as.data.frame(readxl::read_excel(expr_xlsx))
 metadata <- as.data.frame(readxl::read_excel(meta_xlsx))
 index <- readr::read_csv(index_path, show_col_types = FALSE)
-
-protein_col <- first_existing_col(expr, dataset_inputs$protein_id_col_candidates)
-if (is.na(protein_col)) {
-  stop("Could not find a protein identifier column in expression workbook: ", expr_xlsx, call. = FALSE)
-}
-
-non_sample_cols <- unique(c(dataset_inputs$protein_id_col_candidates, "Protein.Group", "First.Protein.Description", protein_col))
-candidate_sample_cols <- setdiff(names(expr), non_sample_cols)
-numeric_fraction <- vapply(candidate_sample_cols, function(cc) {
-  vals <- suppressWarnings(as.numeric(as.character(expr[[cc]])))
-  mean(!is.na(vals))
-}, numeric(1))
-sample_cols <- candidate_sample_cols[numeric_fraction >= 0.70]
-if (length(sample_cols) < 4L) {
-  stop("Could not detect expression sample columns in: ", expr_xlsx, call. = FALSE)
-}
-
-expr_num <- expr[, sample_cols, drop = FALSE]
-expr_num[] <- lapply(expr_num, function(x) suppressWarnings(as.numeric(as.character(x))))
-expr_num <- as.data.frame(expr_num, check.names = FALSE)
-expr_num$gene_symbol <- as.character(expr[[protein_col]])
-expr_num <- expr_num[!is.na(expr_num$gene_symbol) & nzchar(expr_num$gene_symbol), , drop = FALSE]
-
-meta_prepared <- prepare_metadata(metadata, dataset_inputs$sample_id_col_candidates)
-matched_samples <- intersect(sample_cols, meta_prepared$sample_id)
-if (!length(matched_samples)) {
-  stop("No expression sample columns matched metadata sample IDs.", call. = FALSE)
-}
-meta_prepared <- meta_prepared |>
-  dplyr::filter(.data$sample_id %in% sample_cols)
 
 if (!all(c("comparison", "parsed_forward_comparison", "forward_file") %in% names(index))) {
   stop("indexComparisons.csv must contain comparison, parsed_forward_comparison, and forward_file columns.", call. = FALSE)
@@ -341,15 +277,35 @@ if (nzchar(comparison_arg)) {
 }
 if (!nrow(index)) stop("No GCT forward comparisons matched the requested audit selection.", call. = FALSE)
 
+protein_col <- first_existing_col(expr, inputs$protein_id_col_candidates)
+if (is.na(protein_col)) stop("Could not find protein identifier column in expression workbook: ", expr_xlsx, call. = FALSE)
+
+non_sample_cols <- unique(c(inputs$protein_id_col_candidates, "Protein.Group", "First.Protein.Description", protein_col))
+candidate_sample_cols <- setdiff(names(expr), non_sample_cols)
+numeric_fraction <- vapply(candidate_sample_cols, function(cc) {
+  vals <- suppressWarnings(as.numeric(as.character(expr[[cc]])))
+  mean(!is.na(vals))
+}, numeric(1))
+sample_cols <- candidate_sample_cols[numeric_fraction >= 0.70]
+if (length(sample_cols) < 4L) stop("Could not detect expression sample columns in: ", expr_xlsx, call. = FALSE)
+
+expr_num <- expr[, sample_cols, drop = FALSE]
+expr_num[] <- lapply(expr_num, function(x) suppressWarnings(as.numeric(as.character(x))))
+expr_num <- as.data.frame(expr_num, check.names = FALSE)
+expr_num$gene_symbol <- as.character(expr[[protein_col]])
+expr_num <- expr_num[!is.na(expr_num$gene_symbol) & nzchar(expr_num$gene_symbol), , drop = FALSE]
+
+meta_prepared <- prepare_metadata(metadata, inputs$sample_id_col_candidates) |>
+  dplyr::filter(.data$sample_id %in% sample_cols)
+if (!nrow(meta_prepared)) stop("No expression sample columns matched metadata sample IDs.", call. = FALSE)
+
 all_audits <- list()
 all_summaries <- list()
 
 for (i in seq_len(nrow(index))) {
   row <- index[i, , drop = FALSE]
   forward_file <- as.character(row$forward_file)
-  if (!file.exists(forward_file)) {
-    forward_file <- file.path(forward_dir, basename(forward_file))
-  }
+  if (!file.exists(forward_file)) forward_file <- file.path(forward_dir, basename(forward_file))
   if (!file.exists(forward_file)) {
     warning("Skipping missing forward contrast file: ", as.character(row$forward_file), call. = FALSE)
     next
@@ -357,7 +313,7 @@ for (i in seq_len(nrow(index))) {
 
   parsed <- parse_comparison(row$comparison, row$parsed_forward_comparison)
   if (!isTRUE(parsed$parsed)) {
-    warning("Could not parse comparison strata for: ", row$comparison, call. = FALSE)
+    warning("Skipping unparsable comparison: ", as.character(row$comparison), call. = FALSE)
     next
   }
 
@@ -365,24 +321,21 @@ for (i in seq_len(nrow(index))) {
   right <- match_side_samples(meta_prepared, parsed$right_region, parsed$right_token, parsed$right_group)
   left_samples <- intersect(left$sample_ids, sample_cols)
   right_samples <- intersect(right$sample_ids, sample_cols)
-
   if (length(left_samples) < 1L || length(right_samples) < 1L) {
-    warning("Skipping comparison with missing left/right raw samples: ", row$parsed_forward_comparison, call. = FALSE)
+    warning("Skipping comparison with missing left/right raw samples: ", as.character(row$parsed_forward_comparison), call. = FALSE)
     next
   }
 
-  left_mean <- rowMeans(as.matrix(expr_num[, left_samples, drop = FALSE]), na.rm = TRUE)
-  right_mean <- rowMeans(as.matrix(expr_num[, right_samples, drop = FALSE]), na.rm = TRUE)
-  left_nonmiss <- rowSums(!is.na(as.matrix(expr_num[, left_samples, drop = FALSE])))
-  right_nonmiss <- rowSums(!is.na(as.matrix(expr_num[, right_samples, drop = FALSE])))
+  left_mat <- as.matrix(expr_num[, left_samples, drop = FALSE])
+  right_mat <- as.matrix(expr_num[, right_samples, drop = FALSE])
   raw_delta <- tibble::tibble(
     gene_symbol = expr_num$gene_symbol,
-    raw_left_mean = left_mean,
-    raw_right_mean = right_mean,
-    raw_delta_left_minus_right = left_mean - right_mean,
-    raw_left_n_nonmissing = left_nonmiss,
-    raw_right_n_nonmissing = right_nonmiss
+    raw_left_mean = rowMeans(left_mat, na.rm = TRUE),
+    raw_right_mean = rowMeans(right_mat, na.rm = TRUE),
+    raw_left_n_nonmissing = rowSums(!is.na(left_mat)),
+    raw_right_n_nonmissing = rowSums(!is.na(right_mat))
   ) |>
+    dplyr::mutate(raw_delta_left_minus_right = .data$raw_left_mean - .data$raw_right_mean) |>
     dplyr::filter(is.finite(.data$raw_delta_left_minus_right)) |>
     dplyr::group_by(.data$gene_symbol) |>
     dplyr::summarise(
@@ -395,18 +348,14 @@ for (i in seq_len(nrow(index))) {
     )
 
   de <- readr::read_csv(forward_file, show_col_types = FALSE)
-  log_col <- first_existing_col(de, c("log2fc", "logFC", "RawlogFC", "rawlog2fc"))
-  if (is.na(log_col)) {
-    warning("Skipping contrast without logFC/log2fc column: ", forward_file, call. = FALSE)
-    next
-  }
   de_gene_col <- first_existing_col(de, c("gene_symbol", "T: Protein.Names", "Genes", "Protein.Group", "ProteinID", "UniProt"))
-  if (is.na(de_gene_col)) {
-    warning("Skipping contrast without protein ID column: ", forward_file, call. = FALSE)
-    next
-  }
+  log_col <- first_existing_col(de, c("log2fc", "logFC", "RawlogFC", "rawlog2fc"))
   pval_col <- first_existing_col(de, c("pval", "P.Value", "p.value", "PValue"))
   padj_col <- first_existing_col(de, c("padj", "adj.P.Val", "FDR", "qvalue", "q.value"))
+  if (is.na(de_gene_col) || is.na(log_col)) {
+    warning("Skipping contrast without protein ID or logFC column: ", forward_file, call. = FALSE)
+    next
+  }
 
   de_small <- tibble::tibble(
     gene_symbol = as.character(de[[de_gene_col]]),
@@ -431,21 +380,19 @@ for (i in seq_len(nrow(index))) {
       sign_agrees_forward_vs_raw_delta = dplyr::if_else(.data$valid_sign, .data$protigy_sign == .data$raw_sign_left_minus_right, NA)
     ) |>
     dplyr::select(
-      .data$dataset, .data$comparison, .data$parsed_forward_comparison, .data$forward_file,
-      .data$left_label, .data$right_label, .data$gene_symbol, .data$log2fc, .data$pval, .data$padj,
-      .data$raw_left_mean, .data$raw_right_mean, .data$raw_delta_left_minus_right,
-      .data$raw_left_n_nonmissing, .data$raw_right_n_nonmissing,
-      .data$protigy_sign, .data$raw_sign_left_minus_right,
-      .data$valid_sign, .data$sign_agrees_forward_vs_raw_delta
+      dataset, comparison, parsed_forward_comparison, forward_file, left_label, right_label,
+      gene_symbol, log2fc, pval, padj, raw_left_mean, raw_right_mean,
+      raw_delta_left_minus_right, raw_left_n_nonmissing, raw_right_n_nonmissing,
+      protigy_sign, raw_sign_left_minus_right, valid_sign, sign_agrees_forward_vs_raw_delta
     )
 
   if (!nrow(audit)) {
-    warning("No overlapping protein IDs between ProTigy and raw matrix for: ", row$parsed_forward_comparison, call. = FALSE)
+    warning("No overlapping protein IDs between ProTigy and raw matrix for: ", as.character(row$parsed_forward_comparison), call. = FALSE)
     next
   }
 
   all_audits[[length(all_audits) + 1L]] <- audit
-  all_summaries[[length(all_summaries) + 1L]] <- summarise_audit(audit, as.character(row$comparison), parsed, left, right)
+  all_summaries[[length(all_summaries) + 1L]] <- summarise_one(audit, parsed, left, right, as.character(row$comparison))
 }
 
 if (!length(all_audits)) {
@@ -455,7 +402,6 @@ if (!length(all_audits)) {
 audit_long <- dplyr::bind_rows(all_audits)
 summary_tbl <- dplyr::bind_rows(all_summaries) |>
   dplyr::arrange(.data$inferred_forward_orientation, .data$comparison)
-
 decision_tbl <- summary_tbl |>
   dplyr::count(.data$inferred_forward_orientation, name = "n_comparisons") |>
   dplyr::mutate(
@@ -468,7 +414,7 @@ decision_tbl <- summary_tbl |>
       TRUE ~ "Unclassified orientation."
     )
   ) |>
-  dplyr::select(.data$dataset, .data$inferred_forward_orientation, .data$n_comparisons, .data$interpretation)
+  dplyr::select(dataset, inferred_forward_orientation, n_comparisons, interpretation)
 
 audit_path <- file.path(out_dir, "directionality_audit_raw_vs_protigy_by_protein.csv")
 summary_path <- file.path(out_dir, "directionality_audit_summary.csv")
@@ -491,18 +437,8 @@ write_input_status(input_rows, input_status_path, dry_run = FALSE)
 finish_script_runtime(
   runtime,
   manifest_path = manifest_path,
-  inputs = c(
-    pre_protigy_expression_matrix = expr_xlsx,
-    sample_metadata = meta_xlsx,
-    gct_extract_index = index_path,
-    gct_extract_forward_dir = forward_dir
-  ),
-  outputs = c(
-    protein_level_audit = audit_path,
-    comparison_summary = summary_path,
-    decision_summary = decision_path,
-    input_status = input_status_path
-  ),
+  inputs = c(pre_protigy_expression_matrix = expr_xlsx, sample_metadata = meta_xlsx, gct_extract_index = index_path, gct_extract_forward_dir = forward_dir),
+  outputs = c(protein_level_audit = audit_path, comparison_summary = summary_path, decision_summary = decision_path, input_status = input_status_path),
   notes = c(
     "Diagnostic-only directionality audit; no downstream data are modified.",
     "Positive raw_delta_left_minus_right means the left comparison group has higher raw/imputed abundance than the right comparison group.",
