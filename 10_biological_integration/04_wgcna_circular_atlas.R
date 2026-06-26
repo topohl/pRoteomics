@@ -1438,6 +1438,94 @@ effect_support_class <- function(p_value, fdr_within, fdr_global) {
   )
 }
 
+polar_layout_parameters <- function() {
+  list(
+    inner_radius = 0.48,
+    outer_radius = 0.94,
+    radial_gap = 0.014,
+    label_wedge_degrees = 18,
+    data_start_degrees = 189,
+    unit_gap_degrees = 0.08,
+    supermodule_gap_degrees = 1.15,
+    label_theta_degrees = 180
+  )
+}
+
+add_polar_layout_columns <- function(df) {
+  if (is.null(df) || !nrow(df)) return(df)
+  params <- polar_layout_parameters()
+  ring_thickness <- (params$outer_radius - params$inner_radius - 2 * params$radial_gap) / 3
+
+  make_dataset_layout <- function(d) {
+    sector_meta <- d |>
+      dplyr::distinct(.data$angular_order, .data$plot_sector_order, .data$spatial_unit) |>
+      dplyr::arrange(.data$angular_order) |>
+      dplyr::group_by(.data$plot_sector_order) |>
+      dplyr::mutate(
+        spatial_index_in_supermodule = dplyr::row_number(),
+        n_spatial_in_supermodule = dplyr::n()
+      ) |>
+      dplyr::ungroup()
+    n_tiles <- nrow(sector_meta)
+    if (!n_tiles) return(d)
+    n_supermodule_gaps <- dplyr::n_distinct(sector_meta$plot_sector_order)
+    n_unit_gaps <- max(0, n_tiles - n_supermodule_gaps)
+    available_degrees <- 360 - params$label_wedge_degrees -
+      n_supermodule_gaps * params$supermodule_gap_degrees -
+      n_unit_gaps * params$unit_gap_degrees
+    tile_degrees <- available_degrees / n_tiles
+    gap_after <- dplyr::if_else(
+      sector_meta$spatial_index_in_supermodule == sector_meta$n_spatial_in_supermodule,
+      params$supermodule_gap_degrees,
+      params$unit_gap_degrees
+    )
+    theta_start <- numeric(n_tiles)
+    cursor <- params$data_start_degrees
+    for (i in seq_len(n_tiles)) {
+      theta_start[[i]] <- cursor
+      cursor <- cursor + tile_degrees + gap_after[[i]]
+    }
+    sector_meta <- sector_meta |>
+      dplyr::mutate(
+        theta_start = theta_start,
+        theta_end = .data$theta_start + tile_degrees,
+        theta_mid = (.data$theta_start + .data$theta_end) / 2
+      ) |>
+      dplyr::select("angular_order", "theta_start", "theta_end", "theta_mid")
+
+    ring_meta <- d |>
+      dplyr::distinct(.data$ring_order, .data$contrast_ring) |>
+      dplyr::arrange(.data$ring_order) |>
+      dplyr::mutate(
+        radius_outer = params$outer_radius - (.data$ring_order - 1) * (ring_thickness + params$radial_gap),
+        radius_inner = .data$radius_outer - ring_thickness,
+        radius_mid = (.data$radius_inner + .data$radius_outer) / 2,
+        label_theta = params$label_theta_degrees + c(4, 0, -4)[seq_len(dplyr::n())],
+        label_x = cos(.data$label_theta * pi / 180) * .data$radius_mid + 0.045,
+        label_y = sin(.data$label_theta * pi / 180) * .data$radius_mid,
+        label_drawn = TRUE
+      ) |>
+      dplyr::select(
+        "ring_order", "radius_inner", "radius_outer", "radius_mid",
+        "label_theta", "label_x", "label_y", "label_drawn"
+      )
+
+    d |>
+      dplyr::select(-dplyr::any_of(c(
+        "theta_start", "theta_end", "theta_mid",
+        "radius_inner", "radius_outer", "radius_mid",
+        "label_x", "label_y", "label_drawn"
+      ))) |>
+      dplyr::left_join(sector_meta, by = "angular_order") |>
+      dplyr::left_join(ring_meta, by = "ring_order")
+  }
+
+  df |>
+    dplyr::group_by(.data$dataset) |>
+    dplyr::group_modify(~ make_dataset_layout(.x)) |>
+    dplyr::ungroup()
+}
+
 local_effect_rows <- function(df, level) {
   if (is.null(df) || !nrow(df)) return(tibble::tibble())
   key_col <- if (identical(level, "supermodule")) "supermodule_id" else "module_id"
@@ -1680,32 +1768,36 @@ render_dataset_circular_heatmap <- function(source_supermodule, dataset_name, sv
   if (!nrow(df)) return(invisible(FALSE))
   df <- df |>
     dplyr::mutate(
-      sector_id = paste0(sprintf("%03d", .data$angular_order), "::", .data$supermodule_id, "::", .data$spatial_unit),
       spatial_label = toupper(gsub("_", " ", .data$spatial_unit)),
       sector_label = paste0(.data$supermodule_id, ": ", .data$supermodule_label)
     )
+
   sector_meta <- df |>
     dplyr::distinct(
-      .data$sector_id,
       .data$supermodule_id,
       .data$sector_label,
       .data$plot_sector_order,
-      .data$spatial_unit,
-      .data$spatial_label,
-      .data$angular_order,
-      .data$selected_or_priority_flag
+      .data$selected_or_priority_flag,
+      .data$theta_start,
+      .data$theta_end
     ) |>
-    dplyr::arrange(.data$angular_order) |>
     dplyr::group_by(.data$supermodule_id) |>
-    dplyr::mutate(
-      spatial_index_in_supermodule = dplyr::row_number(),
-      n_spatial_in_supermodule = dplyr::n(),
-      label_sector = .data$spatial_index_in_supermodule == ceiling(.data$n_spatial_in_supermodule / 2),
-      gap_after = dplyr::if_else(.data$spatial_index_in_supermodule == .data$n_spatial_in_supermodule, 3.2, 0.18)
+    dplyr::summarise(
+      sector_label = dplyr::first(.data$sector_label),
+      plot_sector_order = dplyr::first(.data$plot_sector_order),
+      selected_or_priority_flag = any(.data$selected_or_priority_flag, na.rm = TRUE),
+      theta_start = min(.data$theta_start, na.rm = TRUE),
+      theta_end = max(.data$theta_end, na.rm = TRUE),
+      theta_mid = (.data$theta_start + .data$theta_end) / 2,
+      .groups = "drop"
     ) |>
-    dplyr::ungroup()
+    dplyr::mutate(
+      label_rank = dplyr::min_rank(.data$plot_sector_order),
+      label_drawn = .data$selected_or_priority_flag %in% TRUE
+    ) |>
+    dplyr::arrange(.data$plot_sector_order)
 
-  spatial_meta <- sector_meta |>
+  spatial_meta <- df |>
     dplyr::distinct(
       .data$spatial_unit,
       .data$spatial_label,
@@ -1716,124 +1808,150 @@ render_dataset_circular_heatmap <- function(source_supermodule, dataset_name, sv
     dplyr::arrange(.data$first_angular_order)
 
   ring_meta <- df |>
-    dplyr::distinct(.data$contrast_block, .data$ring_order) |>
+    dplyr::distinct(
+      .data$contrast_block,
+      .data$contrast_ring,
+      .data$ring_order,
+      .data$radius_inner,
+      .data$radius_outer,
+      .data$radius_mid,
+      .data$label_x,
+      .data$label_y
+    ) |>
     dplyr::arrange(.data$ring_order)
 
   effects <- as_num(df$estimate)
   lim <- if (any(is.finite(effects))) stats::quantile(abs(effects[is.finite(effects)]), 0.95, na.rm = TRUE, names = FALSE) else 1
   lim <- max(lim, 1e-6)
-  col_fun <- circlize::colorRamp2(c(-lim, 0, lim), c("#2166AC", "#F7F7F7", "#B2182B"))
+  color_fun <- grDevices::colorRampPalette(c("#2166AC", "#F7F7F7", "#B2182B"))
+  palette <- color_fun(257)
+  effect_col <- function(x) {
+    ifelse(
+      is.finite(x),
+      palette[pmax(1L, pmin(length(palette), as.integer(round(scales::rescale(pmax(-lim, pmin(lim, x)), to = c(1, length(palette)), from = c(-lim, lim))))))],
+      "#ECEFF1"
+    )
+  }
   contrast_cols <- c("RES-CON" = "#4E79A7", "SUS-CON" = "#F28E2B", "SUS-RES" = "#59A14F")
   ring_meta$contrast_color <- unname(contrast_cols[ring_meta$contrast_block])
   ring_meta$contrast_color[is.na(ring_meta$contrast_color)] <- "#757575"
-  ring_label_meta <- ring_meta |>
-    dplyr::mutate(
-      label_x = -0.60,
-      label_y = c(0.075, 0, -0.075)[seq_len(dplyr::n())]
+
+  annular_polygon <- function(theta_start, theta_end, radius_inner, radius_outer, n = 8) {
+    theta_outer <- seq(theta_start, theta_end, length.out = n) * pi / 180
+    theta_inner <- seq(theta_end, theta_start, length.out = n) * pi / 180
+    list(
+      x = c(cos(theta_outer) * radius_outer, cos(theta_inner) * radius_inner),
+      y = c(sin(theta_outer) * radius_outer, sin(theta_inner) * radius_inner)
     )
+  }
+
+  arc_points <- function(theta_start, theta_end, radius, n = 80) {
+    theta <- seq(theta_start, theta_end, length.out = n) * pi / 180
+    list(x = cos(theta) * radius, y = sin(theta) * radius)
+  }
 
   draw_one <- function() {
     old_par <- graphics::par(no.readonly = TRUE)
     on.exit({
-      circlize::circos.clear()
       graphics::par(old_par)
     }, add = TRUE)
-    graphics::par(mar = c(1.5, 1.1, 2.8, 1.0), xpd = NA, family = "sans")
-    circlize::circos.clear()
-    circlize::circos.par(
-      start.degree = 88,
-      gap.after = c(head(sector_meta$gap_after, -1), 8),
-      track.margin = c(0.0015, 0.0015),
-      cell.padding = c(0, 0, 0, 0)
-    )
-    circlize::circos.initialize(factors = factor(sector_meta$sector_id, levels = sector_meta$sector_id), xlim = cbind(rep(0, nrow(sector_meta)), rep(1, nrow(sector_meta))))
+    graphics::par(mar = c(0.6, 0.6, 0.6, 0.6), xpd = NA, family = "sans")
+    graphics::plot.new()
+    graphics::plot.window(xlim = c(-1.12, 1.48), ylim = c(-1.08, 1.08), asp = 1)
+    graphics::rect(-2, -2, 2, 2, col = "white", border = NA)
 
-    circlize::circos.trackPlotRegion(
-      ylim = c(0, 1), track.height = 0.112, bg.border = NA,
-      panel.fun = function(x, y) {
-        sid <- circlize::CELL_META$sector.index
-        meta <- sector_meta[sector_meta$sector_id == sid, , drop = FALSE]
-        if (isTRUE(meta$label_sector[[1]])) {
-          lab <- vapply(strwrap(meta$sector_label[[1]], width = 24, simplify = FALSE), paste, character(1), collapse = "\n")
-          circlize::circos.text(
-            0.5, 0.08, lab,
-            facing = "clockwise",
-            niceFacing = TRUE,
-            adj = c(0, 0.5),
-            cex = if (isTRUE(meta$selected_or_priority_flag[[1]])) 0.32 else 0.25,
-            font = if (isTRUE(meta$selected_or_priority_flag[[1]])) 2 else 1
-          )
-        }
+    for (i in seq_len(nrow(df))) {
+      tile <- df[i, , drop = FALSE]
+      poly <- annular_polygon(tile$theta_start[[1]], tile$theta_end[[1]], tile$radius_inner[[1]], tile$radius_outer[[1]])
+      border_col <- if (tile$support_class[[1]] == "FDR05") "#111111" else if (tile$support_class[[1]] == "FDR10") "#4D4D4D" else "white"
+      graphics::polygon(
+        poly$x,
+        poly$y,
+        col = effect_col(tile$estimate[[1]]),
+        border = border_col,
+        lwd = if (tile$support_class[[1]] %in% c("FDR05", "FDR10")) 0.45 else 0.16
+      )
+      if (tile$support_class[[1]] %in% c("FDR05", "FDR10", "nominal")) {
+        theta <- tile$theta_mid[[1]] * pi / 180
+        x <- cos(theta) * tile$radius_mid[[1]]
+        y <- sin(theta) * tile$radius_mid[[1]]
+        pch <- if (tile$support_class[[1]] == "FDR05") 16 else if (tile$support_class[[1]] == "FDR10") 1 else 3
+        graphics::points(x, y, pch = pch, cex = 0.42, col = "#111111", lwd = 0.55)
       }
-    )
+    }
 
-    if (nrow(spatial_meta) <= 10) {
-      circlize::circos.trackPlotRegion(
-        ylim = c(0, 1), track.height = 0.026, bg.border = NA,
-        panel.fun = function(x, y) {
-          sid <- circlize::CELL_META$sector.index
-          meta <- sector_meta[sector_meta$sector_id == sid, , drop = FALSE]
-          first_supermodule <- meta$plot_sector_order[[1]] == min(sector_meta$plot_sector_order, na.rm = TRUE)
-          if (isTRUE(first_supermodule)) {
-            circlize::circos.text(0.5, 0.5, meta$spatial_label[[1]], facing = "clockwise", niceFacing = TRUE, cex = 0.22)
-          }
-        }
+    for (i in seq_len(nrow(sector_meta))) {
+      sector <- sector_meta[i, , drop = FALSE]
+      for (theta in c(sector$theta_start[[1]], sector$theta_end[[1]])) {
+        rad <- theta * pi / 180
+        graphics::segments(
+          cos(rad) * min(ring_meta$radius_inner),
+          sin(rad) * min(ring_meta$radius_inner),
+          cos(rad) * max(ring_meta$radius_outer),
+          sin(rad) * max(ring_meta$radius_outer),
+          col = "#333333",
+          lwd = 0.35
+        )
+      }
+      if (isTRUE(sector$label_drawn[[1]])) {
+        theta <- sector$theta_mid[[1]] * pi / 180
+        x <- cos(theta) * 1.015
+        y <- sin(theta) * 1.015
+        angle <- (sector$theta_mid[[1]] + 90) %% 360
+        if (angle > 180) angle <- angle - 180
+        lab <- vapply(strwrap(sector$sector_label[[1]], width = 20, simplify = FALSE), paste, character(1), collapse = "\n")
+        graphics::text(x, y, labels = lab, srt = angle, cex = 0.55, font = 2, col = "#222222")
+      }
+    }
+
+    for (i in seq_len(nrow(ring_meta))) {
+      graphics::text(
+        x = ring_meta$label_x[[i]],
+        y = ring_meta$label_y[[i]],
+        labels = ring_meta$contrast_block[[i]],
+        col = ring_meta$contrast_color[[i]],
+        cex = 0.86,
+        font = 2,
+        adj = c(0.5, 0.5)
       )
     }
 
-    for (ring_i in seq_len(nrow(ring_meta))) {
-      ring <- ring_meta[ring_i, , drop = FALSE]
-      circlize::circos.trackPlotRegion(
-        ylim = c(0, 1), track.height = 0.064, bg.border = NA,
-        panel.fun = function(x, y) {
-          sid <- circlize::CELL_META$sector.index
-          meta <- sector_meta[sector_meta$sector_id == sid, , drop = FALSE]
-          cell <- df[df$sector_id == sid & df$contrast_block == ring$contrast_block[[1]], , drop = FALSE]
-          fill <- "#ECEFF1"
-          if (nrow(cell) && is.finite(cell$estimate[[1]])) {
-            fill <- col_fun(pmax(-lim, pmin(lim, cell$estimate[[1]])))
-          }
-          border_col <- if (isTRUE(meta$spatial_index_in_supermodule[[1]] == meta$n_spatial_in_supermodule[[1]])) "#2B2B2B" else "white"
-          circlize::circos.rect(0, 0, 1, 1, col = fill, border = border_col, lwd = if (identical(border_col, "white")) 0.10 else 0.35)
-          if (nrow(cell) && cell$support_class[[1]] %in% c("FDR05", "FDR10", "nominal")) {
-            pch <- if (cell$support_class[[1]] == "FDR05") 16 else if (cell$support_class[[1]] == "FDR10") 1 else 3
-            circlize::circos.points(0.5, 0.5, pch = pch, cex = 0.30, col = "black")
-          }
-        }
-      )
-    }
-
-    graphics::text(
-      x = ring_label_meta$label_x,
-      y = ring_label_meta$label_y,
-      labels = ring_label_meta$contrast_block,
-      col = ring_label_meta$contrast_color,
-      cex = 0.58,
-      font = 2,
-      adj = c(0.5, 0.5)
-    )
-
-    graphics::title(paste0("Circular WGCNA Spatial Heatmap: ", dataset_label(dataset_name)), line = 1.1, cex.main = 1.0)
+    graphics::text(0, 0.045, dataset_label(dataset_name), cex = 1.05, font = 2, col = "#222222")
     if (identical(dataset_name, "microglia")) {
-      graphics::mtext("Microglia-enriched ROI / local microenvironment; not purified cell-intrinsic evidence.", side = 3, line = 0.1, cex = 0.58, col = "#444444")
+      graphics::text(0, -0.055, "Microglia-enriched ROI /\nlocal microenvironment", cex = 0.62, col = "#555555")
+    } else {
+      graphics::text(0, -0.055, "supermodule x spatial unit", cex = 0.68, col = "#555555")
     }
-    graphics::mtext("Angular tiles are supermodule x spatial unit. The three concentric heatmap rings are contrasts.", side = 1, line = 0.35, cex = 0.54, col = "#444444")
-    graphics::legend("bottomleft", legend = c("negative", "near zero", "positive"),
-                     fill = c("#2166AC", "#F7F7F7", "#B2182B"), border = NA, bty = "n", cex = 0.48, title = "Estimate")
-    graphics::legend("topleft", legend = c("FDR <= 0.05", "FDR <= 0.10", "p <= 0.05"),
-                     pch = c(16, 1, 3), col = "black", bty = "n", cex = 0.48, title = "Support marker")
+
+    gradient_x <- seq(1.08, 1.38, length.out = 60)
+    for (i in seq_len(length(gradient_x) - 1)) {
+      graphics::rect(gradient_x[[i]], -0.75, gradient_x[[i + 1]], -0.70, col = palette[round(seq(1, length(palette), length.out = length(gradient_x) - 1))[[i]]], border = NA)
+    }
+    graphics::text(1.23, -0.66, "Estimate", cex = 0.72, font = 2)
+    graphics::text(c(1.08, 1.23, 1.38), -0.80, labels = c("-", "0", "+"), cex = 0.65)
+    graphics::legend(
+      1.06, 0.76,
+      legend = c("FDR <= 0.05", "FDR <= 0.10", "p <= 0.05"),
+      pch = c(16, 1, 3),
+      col = "#111111",
+      bty = "n",
+      cex = 0.68,
+      pt.cex = 0.85,
+      title = "Support"
+    )
     spatial_summary <- spatial_meta |>
       dplyr::arrange(.data$first_angular_order) |>
       dplyr::summarise(units = paste(.data$spatial_label, collapse = ", "), .groups = "drop")
-    graphics::legend("topright", legend = spatial_summary$units,
-                     bty = "n", cex = 0.34, title = "Spatial unit order")
+    spatial_lines <- paste(strwrap(spatial_summary$units, width = 34), collapse = "\n")
+    graphics::text(1.23, 0.42, "Spatial order", cex = 0.72, font = 2)
+    graphics::text(1.23, 0.31, spatial_lines, cex = 0.65, col = "#444444")
   }
 
   dir_create(dirname(svg_path))
-  svglite::svglite(svg_path, width = 10.5, height = 10.5, bg = "white")
+  svglite::svglite(svg_path, width = 7.5, height = 7.5, bg = "white")
   draw_one()
   grDevices::dev.off()
-  grDevices::pdf(pdf_path, width = 10.5, height = 10.5, onefile = FALSE, useDingbats = FALSE)
+  grDevices::pdf(pdf_path, width = 7.5, height = 7.5, onefile = FALSE, useDingbats = FALSE)
   draw_one()
   grDevices::dev.off()
   invisible(TRUE)
@@ -1919,6 +2037,7 @@ if (run$dry_run) {
   dry_run_line("Selected-only circular atlas PDF output", out_selected_pdf)
   dry_run_line("Circular heatmap supermodule source output", out_heatmap_source_supermodule)
   dry_run_line("Circular heatmap module source output", out_heatmap_source_module)
+  dry_run_line("Circular heatmap geometry", "Custom polar tile renderer; contrast labels anchored at theta=180 degrees and each contrast ring mid-radius")
   for (ds_name in names(heatmap_svg_paths)) {
     dry_run_line(paste0("Circular heatmap SVG output (", ds_name, ")"), heatmap_svg_paths[[ds_name]])
     dry_run_line(paste0("Circular heatmap PDF output (", ds_name, ")"), heatmap_pdf_paths[[ds_name]])
@@ -2012,8 +2131,8 @@ local_support_summary <- segments |>
 
 plot_source <- prepare_circular_plot_source(segments)
 heatmap_sources <- build_heatmap_sources(available_datasets(), segments, selected_audit)
-heatmap_source_supermodule <- heatmap_sources$supermodule
-heatmap_source_module <- heatmap_sources$module
+heatmap_source_supermodule <- add_polar_layout_columns(heatmap_sources$supermodule)
+heatmap_source_module <- add_polar_layout_columns(heatmap_sources$module)
 
 metrics <- tibble::tibble(
   metric = c(
