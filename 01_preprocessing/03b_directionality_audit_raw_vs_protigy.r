@@ -2,6 +2,11 @@
 
 # Directionality audit: compare ProTigy forward logFC signs against raw/imputed abundance means.
 # Diagnostic only. It does not alter forward/reverse contrast files or downstream outputs.
+#
+# When AnimalID is available, raw deltas are computed at animal level:
+#   1) average matched ROI/sample columns within each animal and contrast side
+#   2) average those animal means within the left and right contrast groups
+# This avoids treating left/right/spatial ROI columns from the same animal as independent animals.
 
 suppressPackageStartupMessages({
   pkgs <- c("readxl", "readr", "dplyr", "stringr", "tibble")
@@ -109,6 +114,7 @@ parse_comparison <- function(comparison, parsed_forward_comparison) {
 prepare_metadata <- function(metadata, sample_candidates) {
   sample_col <- first_existing_col(metadata, sample_candidates)
   group_col <- first_existing_col(metadata, c("ExpGroup", "StressGroup", "group", "Group", "condition", "Condition"))
+  animal_col <- first_existing_col(metadata, c("AnimalID", "Animal", "AnimalNum", "animal_id", "animal"))
   region_col <- first_existing_col(metadata, c("region", "Region"))
   layer_col <- first_existing_col(metadata, c("layer", "Layer"))
   celltype_col <- first_existing_col(metadata, c("celltype", "CellType"))
@@ -120,6 +126,7 @@ prepare_metadata <- function(metadata, sample_candidates) {
 
   out <- tibble::tibble(
     sample_id = as.character(metadata[[sample_col]]),
+    animal_id = if (!is.na(animal_col)) as.character(metadata[[animal_col]]) else NA_character_,
     group = normalize_group(metadata[[group_col]]),
     region = if (!is.na(region_col)) norm_token(metadata[[region_col]]) else NA_character_,
     layer = if (!is.na(layer_col)) norm_token(metadata[[layer_col]]) else NA_character_,
@@ -130,6 +137,10 @@ prepare_metadata <- function(metadata, sample_candidates) {
     dplyr::filter(!is.na(.data$sample_id), nzchar(.data$sample_id)) |>
     dplyr::filter(is.na(.data$exclude) | .data$exclude != TRUE) |>
     dplyr::distinct(.data$sample_id, .keep_all = TRUE)
+
+  if (!all(is.na(out$animal_id))) {
+    out$animal_id[is.na(out$animal_id) | !nzchar(out$animal_id)] <- out$sample_id[is.na(out$animal_id) | !nzchar(out$animal_id)]
+  }
   out
 }
 
@@ -177,15 +188,45 @@ match_side_samples <- function(meta, region, token, group) {
     if (!token_matched) warnings <- c(warnings, paste0("stratum_token_not_matched:", token))
   }
 
+  side_meta <- meta[keep, , drop = FALSE]
   list(
-    sample_ids = meta$sample_id[keep],
-    n_samples = sum(keep, na.rm = TRUE),
+    sample_ids = side_meta$sample_id,
+    animal_ids = unique(stats::na.omit(side_meta$animal_id)),
+    n_samples = nrow(side_meta),
+    n_animals = length(unique(stats::na.omit(side_meta$animal_id))),
     matched_fields = paste(unique(matched_fields), collapse = ";"),
-    warning = paste(unique(warnings), collapse = ";")
+    warning = paste(unique(warnings), collapse = ";"),
+    metadata = side_meta
   )
 }
 
-summarise_one <- function(audit, parsed, left, right, comparison_label) {
+animal_level_means <- function(expr_df, side, sample_cols) {
+  side_meta <- side$metadata |>
+    dplyr::filter(.data$sample_id %in% sample_cols)
+  if (!nrow(side_meta)) stop("No side metadata rows matched expression columns.", call. = FALSE)
+
+  use_animal_level <- any(!is.na(side_meta$animal_id) & nzchar(side_meta$animal_id))
+  if (!use_animal_level) side_meta$animal_id <- side_meta$sample_id
+  side_meta$animal_id[is.na(side_meta$animal_id) | !nzchar(side_meta$animal_id)] <- side_meta$sample_id[is.na(side_meta$animal_id) | !nzchar(side_meta$animal_id)]
+
+  animals <- unique(side_meta$animal_id)
+  mat <- as.matrix(expr_df[, side_meta$sample_id, drop = FALSE])
+  animal_mat <- vapply(animals, function(animal) {
+    animal_samples <- side_meta$sample_id[side_meta$animal_id == animal]
+    rowMeans(as.matrix(expr_df[, animal_samples, drop = FALSE]), na.rm = TRUE)
+  }, numeric(nrow(expr_df)))
+  if (is.null(dim(animal_mat))) animal_mat <- matrix(animal_mat, ncol = 1L, dimnames = list(NULL, animals))
+  colnames(animal_mat) <- animals
+
+  list(
+    mean = rowMeans(animal_mat, na.rm = TRUE),
+    n_animals = rowSums(is.finite(animal_mat)),
+    n_nonmissing_samples = rowSums(!is.na(mat)),
+    method = if (use_animal_level) "animal_level_mean_of_roi_means" else "sample_level_mean_no_animal_id"
+  )
+}
+
+summarise_one <- function(audit, parsed, left, right, comparison_label, raw_delta_method) {
   audit <- audit |>
     dplyr::mutate(
       significant = dplyr::case_when(
@@ -220,6 +261,9 @@ summarise_one <- function(audit, parsed, left, right, comparison_label) {
     right_token = parsed$right_token,
     left_n_samples = left$n_samples,
     right_n_samples = right$n_samples,
+    left_n_animals = left$n_animals,
+    right_n_animals = right$n_animals,
+    raw_delta_method = raw_delta_method,
     left_matched_fields = left$matched_fields,
     right_matched_fields = right$matched_fields,
     matching_warning = paste(unique(c(left$warning, right$warning)[nzchar(c(left$warning, right$warning))]), collapse = ";"),
@@ -326,24 +370,32 @@ for (i in seq_len(nrow(index))) {
     next
   }
 
-  left_mat <- as.matrix(expr_num[, left_samples, drop = FALSE])
-  right_mat <- as.matrix(expr_num[, right_samples, drop = FALSE])
+  left_stats <- animal_level_means(expr_num, left, sample_cols)
+  right_stats <- animal_level_means(expr_num, right, sample_cols)
+  raw_delta_method <- if (identical(left_stats$method, right_stats$method)) left_stats$method else paste(left_stats$method, right_stats$method, sep = ";")
+
   raw_delta <- tibble::tibble(
     gene_symbol = expr_num$gene_symbol,
-    raw_left_mean = rowMeans(left_mat, na.rm = TRUE),
-    raw_right_mean = rowMeans(right_mat, na.rm = TRUE),
-    raw_left_n_nonmissing = rowSums(!is.na(left_mat)),
-    raw_right_n_nonmissing = rowSums(!is.na(right_mat))
+    raw_left_mean = left_stats$mean,
+    raw_right_mean = right_stats$mean,
+    raw_delta_left_minus_right = left_stats$mean - right_stats$mean,
+    raw_left_n_animals = left_stats$n_animals,
+    raw_right_n_animals = right_stats$n_animals,
+    raw_left_n_nonmissing = left_stats$n_nonmissing_samples,
+    raw_right_n_nonmissing = right_stats$n_nonmissing_samples,
+    raw_delta_method = raw_delta_method
   ) |>
-    dplyr::mutate(raw_delta_left_minus_right = .data$raw_left_mean - .data$raw_right_mean) |>
     dplyr::filter(is.finite(.data$raw_delta_left_minus_right)) |>
     dplyr::group_by(.data$gene_symbol) |>
     dplyr::summarise(
       raw_left_mean = mean(.data$raw_left_mean, na.rm = TRUE),
       raw_right_mean = mean(.data$raw_right_mean, na.rm = TRUE),
       raw_delta_left_minus_right = mean(.data$raw_delta_left_minus_right, na.rm = TRUE),
+      raw_left_n_animals = max(.data$raw_left_n_animals, na.rm = TRUE),
+      raw_right_n_animals = max(.data$raw_right_n_animals, na.rm = TRUE),
       raw_left_n_nonmissing = max(.data$raw_left_n_nonmissing, na.rm = TRUE),
       raw_right_n_nonmissing = max(.data$raw_right_n_nonmissing, na.rm = TRUE),
+      raw_delta_method = dplyr::first(.data$raw_delta_method),
       .groups = "drop"
     )
 
@@ -382,7 +434,8 @@ for (i in seq_len(nrow(index))) {
     dplyr::select(
       dataset, comparison, parsed_forward_comparison, forward_file, left_label, right_label,
       gene_symbol, log2fc, pval, padj, raw_left_mean, raw_right_mean,
-      raw_delta_left_minus_right, raw_left_n_nonmissing, raw_right_n_nonmissing,
+      raw_delta_left_minus_right, raw_delta_method, raw_left_n_animals, raw_right_n_animals,
+      raw_left_n_nonmissing, raw_right_n_nonmissing,
       protigy_sign, raw_sign_left_minus_right, valid_sign, sign_agrees_forward_vs_raw_delta
     )
 
@@ -392,7 +445,7 @@ for (i in seq_len(nrow(index))) {
   }
 
   all_audits[[length(all_audits) + 1L]] <- audit
-  all_summaries[[length(all_summaries) + 1L]] <- summarise_one(audit, parsed, left, right, as.character(row$comparison))
+  all_summaries[[length(all_summaries) + 1L]] <- summarise_one(audit, parsed, left, right, as.character(row$comparison), raw_delta_method)
 }
 
 if (!length(all_audits)) {
@@ -407,8 +460,8 @@ decision_tbl <- summary_tbl |>
   dplyr::mutate(
     dataset = dataset,
     interpretation = dplyr::case_when(
-      .data$inferred_forward_orientation == "forward_matches_raw_left_minus_right" ~ "ProTigy forward logFC agrees with raw left-minus-right abundance means for these comparisons.",
-      .data$inferred_forward_orientation == "forward_appears_reversed_vs_raw_left_minus_right" ~ "ProTigy forward logFC appears reversed relative to raw left-minus-right abundance means for these comparisons.",
+      .data$inferred_forward_orientation == "forward_matches_raw_left_minus_right" ~ "ProTigy forward logFC agrees with animal-level raw left-minus-right abundance means for these comparisons.",
+      .data$inferred_forward_orientation == "forward_appears_reversed_vs_raw_left_minus_right" ~ "ProTigy forward logFC appears reversed relative to animal-level raw left-minus-right abundance means for these comparisons.",
       .data$inferred_forward_orientation == "mixed_or_model_dependent" ~ "Direction cannot be resolved globally; inspect matching warnings, spatial strata, model design, and protein-level rows.",
       .data$inferred_forward_orientation == "insufficient_overlap" ~ "Insufficient protein overlap to infer direction reliably.",
       TRUE ~ "Unclassified orientation."
@@ -441,6 +494,7 @@ finish_script_runtime(
   outputs = c(protein_level_audit = audit_path, comparison_summary = summary_path, decision_summary = decision_path, input_status = input_status_path),
   notes = c(
     "Diagnostic-only directionality audit; no downstream data are modified.",
+    "When AnimalID is present, raw deltas are animal-level means of matched ROI/sample means.",
     "Positive raw_delta_left_minus_right means the left comparison group has higher raw/imputed abundance than the right comparison group.",
     "Use this to verify whether ProTigy forward logFC signs agree with raw/imputed abundance means before interpreting GSEA direction."
   )
