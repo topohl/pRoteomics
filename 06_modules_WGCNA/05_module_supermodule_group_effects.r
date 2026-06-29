@@ -49,9 +49,13 @@ if (run$dry_run) {
   dry_run_line("Selected SUS-RES PCA scree SVG", file.path(PATHS$figures, "selected_sus_res_supermodule_pca_eigenvalue_scree.svg"))
   dry_run_line("Selected SUS-RES PCA selection audit", file.path(PATHS$tables, "selected_sus_res_supermodule_pca_selection_audit.csv"))
   dry_run_line("Selected SUS-RES supermodule contents", file.path(PATHS$tables, "selected_sus_res_supermodule_contents.csv"))
-  dry_run_line("Selected SUS-RES supermodule contents for boss", file.path(PATHS$tables, "selected_sus_res_supermodule_contents_for_boss.csv"))
+  dry_run_line("Selected SUS-RES supermodule interpretation", file.path(PATHS$tables, "selected_sus_res_supermodule_interpretation.csv"))
   dry_run_line("Selected SUS-RES interpretation summary", file.path(PATHS$tables, "selected_sus_res_supermodule_interpretation_summary.csv"))
   dry_run_line("Selected SUS-RES member loading SVG", file.path(PATHS$figures, "selected_sus_res_supermodule_member_loading_plot.svg"))
+  dry_run_line("All supermodule eigengene group values", file.path(PATHS$tables, "all_supermodule_eigengene_group_values.csv"))
+  dry_run_line("All supermodule eigengene group SVG", file.path(PATHS$figures, "all_supermodule_eigengene_group_plot.svg"))
+  dry_run_line("All supermodule eigengene spatial group values", file.path(PATHS$tables, "all_supermodule_eigengene_spatial_group_values.csv"))
+  dry_run_line("All supermodule eigengene spatial group SVG", file.path(PATHS$figures, "all_supermodule_eigengene_spatial_group_plot.svg"))
   dry_run_line("All supermodule member loading SVG", file.path(PATHS$figures, "all_supermodule_member_loading_plot.svg"))
   dry_run_line("All supermodule contents summary", file.path(PATHS$tables, "all_supermodule_contents_summary.csv"))
   dry_run_line("All supermodule region/layer effects", file.path(PATHS$tables, "all_supermodule_region_layer_effects.csv"))
@@ -449,6 +453,79 @@ run_effects <- function(eigengenes, endpoint_map, level, state) {
     interaction <- fit_endpoint_scope(dat, col, map$endpoint_id, map$endpoint_label, level, "stress_by_spatial_interaction")
     dplyr::bind_rows(within, global, interaction)
   }))
+}
+
+empty_supermodule_eigengene_group_values <- function() {
+  tibble::tibble(
+    dataset = character(),
+    Sample = character(),
+    supermodule_id = character(),
+    supermodule_label = character(),
+    supermodule_eigengene = character(),
+    eigengene = numeric(),
+    eigengene_z = numeric(),
+    StressGroup = character(),
+    AnimalID = character(),
+    Sex = character(),
+    Batch = character(),
+    SpatialLabel = character(),
+    SpatialUnitType = character()
+  )
+}
+
+all_supermodule_eigengene_group_values <- function(super_eigengenes, super_endpoint_map, state, dataset, spatial_unit_type) {
+  if (is.null(super_eigengenes) || !nrow(super_eigengenes) || is.null(super_endpoint_map) || !nrow(super_endpoint_map)) {
+    return(empty_supermodule_eigengene_group_values())
+  }
+  meta <- standardize_wgcna_metadata(state$sample_info, dataset)
+  for (nm in c("AnimalID", "Sex", "Batch", "SpatialLabel", "StressGroup")) {
+    if (!nm %in% names(meta)) meta[[nm]] <- NA_character_
+  }
+  endpoint_map <- super_endpoint_map |>
+    dplyr::filter(.data$endpoint_col %in% names(super_eigengenes)) |>
+    dplyr::transmute(
+      supermodule_eigengene = as.character(.data$endpoint_col),
+      supermodule_id = as.character(.data$endpoint_id),
+      supermodule_label = as.character(dplyr::coalesce(.data$endpoint_label, .data$endpoint_id))
+    ) |>
+    dplyr::distinct(.data$supermodule_eigengene, .keep_all = TRUE)
+  if (!nrow(endpoint_map)) return(empty_supermodule_eigengene_group_values())
+
+  joined <- dplyr::inner_join(
+    meta |>
+      dplyr::select("Sample", "StressGroup", "AnimalID", "Sex", "Batch", "SpatialLabel"),
+    super_eigengenes |>
+      dplyr::select("Sample", dplyr::all_of(endpoint_map$supermodule_eigengene)),
+    by = "Sample"
+  )
+  if (!nrow(joined)) return(empty_supermodule_eigengene_group_values())
+
+  joined |>
+    tidyr::pivot_longer(
+      cols = dplyr::all_of(endpoint_map$supermodule_eigengene),
+      names_to = "supermodule_eigengene",
+      values_to = "eigengene"
+    ) |>
+    dplyr::left_join(endpoint_map, by = "supermodule_eigengene") |>
+    dplyr::group_by(.data$supermodule_id) |>
+    dplyr::mutate(
+      eigengene_z = {
+        mu <- mean(.data$eigengene, na.rm = TRUE)
+        sig <- stats::sd(.data$eigengene, na.rm = TRUE)
+        if (is.finite(sig) && sig > 0) (.data$eigengene - mu) / sig else NA_real_
+      }
+    ) |>
+    dplyr::ungroup() |>
+    dplyr::mutate(
+      dataset = dataset,
+      StressGroup = factor(as.character(.data$StressGroup), levels = c("CON", "RES", "SUS")),
+      SpatialUnitType = spatial_unit_type
+    ) |>
+    dplyr::arrange(.data$supermodule_id, .data$Sample) |>
+    dplyr::select(
+      "dataset", "Sample", "supermodule_id", "supermodule_label", "supermodule_eigengene",
+      "eigengene", "eigengene_z", "StressGroup", "AnimalID", "Sex", "Batch", "SpatialLabel", "SpatialUnitType"
+    )
 }
 
 make_endpoint_maps <- function(module_eig, definitions, super_ann) {
@@ -907,6 +984,156 @@ spatial_order_value <- function(region, layer_or_unit, unit) {
     region == "Global/no local support" ~ 998L,
     TRUE ~ 999L
   )
+}
+
+order_spatial_labels_for_plot <- function(labels) {
+  labels <- unique(as.character(labels))
+  labels <- labels[!is.na(labels) & nzchar(labels)]
+  if (!length(labels)) return(labels)
+  parsed <- parse_spatial_unit_for_effects(labels)
+  order_df <- tibble::tibble(SpatialLabel = labels) |>
+    dplyr::bind_cols(parsed) |>
+    dplyr::mutate(spatial_order = spatial_order_value(.data$parsed_region, .data$parsed_layer_or_unit, .data$SpatialLabel)) |>
+    dplyr::arrange(.data$spatial_order, .data$SpatialLabel)
+  order_df$SpatialLabel
+}
+
+plot_all_supermodule_eigengene_group <- function(values, path) {
+  plot_df <- values |>
+    dplyr::filter(
+      is.finite(.data$eigengene_z),
+      !is.na(.data$StressGroup),
+      as.character(.data$StressGroup) %in% c("CON", "RES", "SUS")
+    ) |>
+    dplyr::mutate(
+      StressGroup = factor(as.character(.data$StressGroup), levels = c("CON", "RES", "SUS")),
+      supermodule_plot_label = compact_supermodule_label(.data$supermodule_id, .data$supermodule_label, width = 22L)
+    )
+  if (!nrow(plot_df)) {
+    p <- ggplot2::ggplot() +
+      ggplot2::annotate("text", x = 0, y = 0, label = "No all-supermodule eigengene group values available", size = 3) +
+      ggplot2::labs(title = "All supermodule eigengenes by stress group") +
+      ggplot2::theme_void()
+    ggplot2::ggsave(path, p, width = 180, height = 105, units = "mm", device = svglite::svglite)
+    return(invisible(path))
+  }
+
+  n_supermodules <- dplyr::n_distinct(plot_df$supermodule_id)
+  ncol <- dplyr::case_when(
+    n_supermodules <= 4L ~ 2L,
+    n_supermodules <= 9L ~ 3L,
+    TRUE ~ 4L
+  )
+  height_mm <- max(115, 48 * ceiling(n_supermodules / ncol))
+  p <- ggplot2::ggplot(plot_df, ggplot2::aes(x = .data$StressGroup, y = .data$eigengene_z)) +
+    ggplot2::geom_boxplot(
+      ggplot2::aes(fill = .data$StressGroup),
+      width = 0.58,
+      outlier.shape = NA,
+      alpha = 0.42,
+      linewidth = 0.25,
+      color = "grey30"
+    ) +
+    ggplot2::geom_point(
+      ggplot2::aes(color = .data$StressGroup),
+      position = ggplot2::position_jitter(width = 0.12, height = 0),
+      size = 0.75,
+      alpha = 0.72,
+      stroke = 0
+    ) +
+    ggplot2::facet_wrap(~supermodule_plot_label, ncol = ncol) +
+    ggplot2::scale_fill_manual(values = c("CON" = "#8B8F96", "RES" = "#4F7CAC", "SUS" = "#B8664B"), drop = FALSE) +
+    ggplot2::scale_color_manual(values = c("CON" = "#62666D", "RES" = "#315E8A", "SUS" = "#8F4330"), drop = FALSE) +
+    ggplot2::labs(
+      x = NULL,
+      y = "Supermodule eigengene (z)",
+      title = "All supermodule eigengenes by stress group"
+    ) +
+    ggplot2::theme_minimal(base_size = 8) +
+    ggplot2::theme(
+      panel.grid.minor = ggplot2::element_blank(),
+      panel.grid.major.x = ggplot2::element_blank(),
+      panel.grid.major.y = ggplot2::element_line(color = "grey90", linewidth = 0.2),
+      axis.line = ggplot2::element_line(color = "grey35", linewidth = 0.2),
+      axis.ticks = ggplot2::element_line(color = "grey35", linewidth = 0.2),
+      axis.text.x = ggplot2::element_text(size = 6.5),
+      axis.text.y = ggplot2::element_text(size = 6.5),
+      strip.text = ggplot2::element_text(size = 7, face = "bold", lineheight = 0.95),
+      legend.position = "none",
+      plot.title = ggplot2::element_text(face = "bold", size = 11)
+    )
+  ggplot2::ggsave(path, p, width = 215, height = height_mm, units = "mm", device = svglite::svglite, limitsize = FALSE)
+}
+
+plot_all_supermodule_eigengene_spatial_group <- function(values, path) {
+  plot_df <- values |>
+    dplyr::filter(
+      is.finite(.data$eigengene_z),
+      !is.na(.data$StressGroup),
+      as.character(.data$StressGroup) %in% c("CON", "RES", "SUS"),
+      !is.na(.data$SpatialLabel),
+      nzchar(as.character(.data$SpatialLabel))
+    ) |>
+    dplyr::mutate(
+      StressGroup = factor(as.character(.data$StressGroup), levels = c("CON", "RES", "SUS")),
+      supermodule_plot_label = compact_supermodule_label(.data$supermodule_id, .data$supermodule_label, width = 22L)
+    )
+  if (!nrow(plot_df)) {
+    p <- ggplot2::ggplot() +
+      ggplot2::annotate("text", x = 0, y = 0, label = "No all-supermodule spatial eigengene group values available", size = 3) +
+      ggplot2::labs(title = "All supermodule eigengenes by spatial unit and stress group") +
+      ggplot2::theme_void()
+    ggplot2::ggsave(path, p, width = 190, height = 105, units = "mm", device = svglite::svglite)
+    return(invisible(path))
+  }
+
+  spatial_levels <- order_spatial_labels_for_plot(plot_df$SpatialLabel)
+  plot_df$SpatialLabel <- factor(as.character(plot_df$SpatialLabel), levels = spatial_levels)
+  n_supermodules <- dplyr::n_distinct(plot_df$supermodule_id)
+  n_spatial <- length(spatial_levels)
+  ncol <- if (n_spatial >= 6L || n_supermodules <= 4L) 2L else 3L
+  height_mm <- max(125, 52 * ceiling(n_supermodules / ncol))
+  width_mm <- max(205, min(290, 140 + 12 * n_spatial))
+  dodge <- ggplot2::position_dodge(width = 0.72)
+  p <- ggplot2::ggplot(plot_df, ggplot2::aes(x = .data$SpatialLabel, y = .data$eigengene_z, fill = .data$StressGroup, color = .data$StressGroup)) +
+    ggplot2::geom_boxplot(
+      position = dodge,
+      width = 0.62,
+      outlier.shape = NA,
+      alpha = 0.36,
+      linewidth = 0.23,
+      color = "grey35"
+    ) +
+    ggplot2::geom_point(
+      position = ggplot2::position_jitterdodge(jitter.width = 0.12, jitter.height = 0, dodge.width = 0.72),
+      size = 0.55,
+      alpha = 0.62,
+      stroke = 0
+    ) +
+    ggplot2::facet_wrap(~supermodule_plot_label, ncol = ncol) +
+    ggplot2::scale_fill_manual(values = c("CON" = "#8B8F96", "RES" = "#4F7CAC", "SUS" = "#B8664B"), drop = FALSE) +
+    ggplot2::scale_color_manual(values = c("CON" = "#62666D", "RES" = "#315E8A", "SUS" = "#8F4330"), drop = FALSE) +
+    ggplot2::labs(
+      x = "Spatial unit",
+      y = "Supermodule eigengene (z)",
+      fill = NULL,
+      color = NULL,
+      title = "All supermodule eigengenes by spatial unit and stress group"
+    ) +
+    ggplot2::theme_minimal(base_size = 8) +
+    ggplot2::theme(
+      panel.grid.minor = ggplot2::element_blank(),
+      panel.grid.major.x = ggplot2::element_blank(),
+      panel.grid.major.y = ggplot2::element_line(color = "grey90", linewidth = 0.2),
+      axis.line = ggplot2::element_line(color = "grey35", linewidth = 0.2),
+      axis.ticks = ggplot2::element_line(color = "grey35", linewidth = 0.2),
+      axis.text.x = ggplot2::element_text(angle = 45, hjust = 1, size = 5.6),
+      axis.text.y = ggplot2::element_text(size = 6),
+      strip.text = ggplot2::element_text(size = 7, face = "bold", lineheight = 0.95),
+      legend.position = "bottom",
+      plot.title = ggplot2::element_text(face = "bold", size = 11)
+    )
+  ggplot2::ggsave(path, p, width = width_mm, height = height_mm, units = "mm", device = svglite::svglite, limitsize = FALSE)
 }
 
 select_sus_res_supermodules <- function(super_effects, dataset, max_n = 2L) {
@@ -1950,6 +2177,8 @@ if (inherits(state, "error")) {
   super_pca_input_audit <- supermodule_pca_input_audit(data.frame(Sample = character()), data.frame(), DATASET)
   super_pca_eigenvalues <- supermodule_pca_eigenvalues(data.frame(Sample = character()), data.frame(), DATASET)
   super_pca_member_loadings <- supermodule_pca_member_loadings(data.frame(Sample = character()), data.frame(), DATASET)
+  all_supermodule_eigengene_group_values_tbl <- empty_supermodule_eigengene_group_values()
+  all_supermodule_eigengene_spatial_group_values_tbl <- empty_supermodule_eigengene_group_values()
 } else {
   module_eig <- extract_module_eigengenes(state)
   maps <- make_endpoint_maps(module_eig, definitions, super_ann)
@@ -1971,6 +2200,8 @@ if (inherits(state, "error")) {
   module_out <- if (LEVEL %in% c("module", "both")) run_effects(module_eig, maps$module_map, "module", state) else empty_group_effects(DATASET, "module", "not requested")
   super_endpoint_map <- comp |> dplyr::transmute(endpoint_col = .data$supermodule_eigengene, endpoint_id = .data$supermodule_id, endpoint_label = .data$supermodule_label)
   super_out <- if (LEVEL %in% c("supermodule", "both") && nrow(super_endpoint_map)) run_effects(super$eigengenes, super_endpoint_map, "supermodule", state) else empty_group_effects(DATASET, "supermodule", "not requested or no supermodules")
+  all_supermodule_eigengene_group_values_tbl <- all_supermodule_eigengene_group_values(super$eigengenes, super_endpoint_map, state, DATASET, SpatialUnitType)
+  all_supermodule_eigengene_spatial_group_values_tbl <- all_supermodule_eigengene_group_values_tbl
 
   marker_traits <- safe_read_csv(FILES$marker_traits)
   module_marker <- correlate_marker_traits(module_eig, maps$module_map, marker_traits, "module")
@@ -2038,7 +2269,9 @@ write_table_and_source(selected_sus_res_pca, PATHS$tables, PATHS$source_data, "s
 write_table_and_source(selected_sus_res_contents, PATHS$tables, PATHS$source_data, "selected_sus_res_supermodule_contents.csv")
 write_table_and_source(all_supermodule_contents, PATHS$tables, PATHS$source_data, "all_supermodule_contents_summary.csv")
 write_table_and_source(selected_sus_res_interpretation_summary, PATHS$tables, PATHS$source_data, "selected_sus_res_supermodule_interpretation_summary.csv")
-write_table_and_source(selected_sus_res_interpretation_summary, PATHS$tables, PATHS$source_data, "selected_sus_res_supermodule_contents_for_boss.csv")
+write_table_and_source(selected_sus_res_interpretation_summary, PATHS$tables, PATHS$source_data, "selected_sus_res_supermodule_interpretation.csv")
+write_table_and_source(all_supermodule_eigengene_group_values_tbl, PATHS$tables, PATHS$source_data, "all_supermodule_eigengene_group_values.csv")
+write_table_and_source(all_supermodule_eigengene_spatial_group_values_tbl, PATHS$tables, PATHS$source_data, "all_supermodule_eigengene_spatial_group_values.csv")
 write_table_and_source(all_supermodule_region_layer_effects, PATHS$tables, PATHS$source_data, "all_supermodule_region_layer_effects.csv")
 write_table_and_source(all_supermodule_region_layer_cohend_effects, PATHS$tables, PATHS$source_data, "all_supermodule_region_layer_cohend_effects.csv")
 write_table_and_source(all_sus_res_region_layer_effects, PATHS$tables, PATHS$source_data, "all_sus_res_supermodule_region_layer_effects.csv")
@@ -2065,6 +2298,8 @@ plot_effects(module_out, file.path(PATHS$figures, "module_group_effect_dotplot.s
 plot_effects(super_out, file.path(PATHS$figures, "supermodule_effects_by_spatial_unit.svg"), "Supermodule group effects")
 plot_effects(super_out, file.path(PATHS$figures, "supermodule_group_effect_dotplot.svg"), "Supermodule group effects")
 plot_supermodule_pca_scree(super_pca_eigenvalues, file.path(PATHS$figures, "supermodule_pca_eigenvalue_scree.svg"))
+plot_all_supermodule_eigengene_group(all_supermodule_eigengene_group_values_tbl, file.path(PATHS$figures, "all_supermodule_eigengene_group_plot.svg"))
+plot_all_supermodule_eigengene_spatial_group(all_supermodule_eigengene_spatial_group_values_tbl, file.path(PATHS$figures, "all_supermodule_eigengene_spatial_group_plot.svg"))
 plot_selected_sus_res_pca_scree(selected_sus_res_pca, selected_sus_res_audit, file.path(PATHS$figures, "selected_sus_res_supermodule_pca_eigenvalue_scree.svg"))
 plot_all_supermodule_member_loadings(super_pca_member_loadings, file.path(PATHS$figures, "all_supermodule_member_loading_plot.svg"))
 plot_selected_sus_res_member_loadings(selected_sus_res_loadings, file.path(PATHS$figures, "selected_sus_res_supermodule_member_loading_plot.svg"))
