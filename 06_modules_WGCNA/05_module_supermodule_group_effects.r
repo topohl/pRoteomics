@@ -53,9 +53,12 @@ if (run$dry_run) {
   dry_run_line("Selected SUS-RES interpretation summary", file.path(PATHS$tables, "selected_sus_res_supermodule_interpretation_summary.csv"))
   dry_run_line("Selected SUS-RES member loading SVG", file.path(PATHS$figures, "selected_sus_res_supermodule_member_loading_plot.svg"))
   dry_run_line("All supermodule eigengene group values", file.path(PATHS$tables, "all_supermodule_eigengene_group_values.csv"))
+  dry_run_line("All supermodule eigengene group significance", file.path(PATHS$tables, "all_supermodule_eigengene_group_significance.csv"))
   dry_run_line("All supermodule eigengene group SVG", file.path(PATHS$figures, "all_supermodule_eigengene_group_plot.svg"))
   dry_run_line("All supermodule eigengene spatial group values", file.path(PATHS$tables, "all_supermodule_eigengene_spatial_group_values.csv"))
+  dry_run_line("All supermodule eigengene spatial group significance", file.path(PATHS$tables, "all_supermodule_eigengene_spatial_group_significance.csv"))
   dry_run_line("All supermodule eigengene spatial group SVG", file.path(PATHS$figures, "all_supermodule_eigengene_spatial_group_plot.svg"))
+  dry_run_line("All supermodule label audit", file.path(PATHS$tables, "all_supermodule_label_audit.csv"))
   dry_run_line("All supermodule member loading SVG", file.path(PATHS$figures, "all_supermodule_member_loading_plot.svg"))
   dry_run_line("All supermodule contents summary", file.path(PATHS$tables, "all_supermodule_contents_summary.csv"))
   dry_run_line("All supermodule region/layer effects", file.path(PATHS$tables, "all_supermodule_region_layer_effects.csv"))
@@ -69,6 +72,14 @@ if (run$dry_run) {
 }
 
 if (!length(missing_pkgs)) theme_set(theme_classic(base_size = 8))
+
+stress_group_fill_colors <- function() {
+  c(CON = "#8B8F96", RES = "#4F7CAC", SUS = "#B8664B")
+}
+
+stress_group_point_colors <- function() {
+  c(CON = "#62666D", RES = "#315E8A", SUS = "#8F4330")
+}
 
 has_repeats <- function(dat) {
   "AnimalID" %in% names(dat) &&
@@ -91,6 +102,115 @@ collapse_unique_values <- function(x, max_n = 12L) {
   if (!length(x)) return(NA_character_)
   if (length(x) > max_n) return(paste(c(utils::head(x, max_n), "..."), collapse = "; "))
   paste(x, collapse = "; ")
+}
+
+coalesce_nonempty <- function(...) {
+  vals <- list(...)
+  if (!length(vals)) return(NA_character_)
+  len <- max(vapply(vals, length, integer(1)), 1L)
+  vals <- lapply(vals, function(x) {
+    x <- as.character(x)
+    if (length(x) == 1L && len > 1L) x <- rep(x, len)
+    x[is.na(x) | !nzchar(trimws(x))] <- NA_character_
+    x
+  })
+  Reduce(dplyr::coalesce, vals)
+}
+
+supermodule_label_sep <- function() paste0(" ", intToUtf8(183), " ")
+
+clean_supermodule_label_candidate <- function(x) {
+  x <- trimws(gsub("\\s+", " ", as.character(x)))
+  x[x %in% c("", "NA", "NaN", "NULL", "None")] <- NA_character_
+  x
+}
+
+is_generic_supermodule_label <- function(x) {
+  x <- clean_supermodule_label_candidate(x)
+  z <- tolower(x)
+  is.na(z) | !nzchar(z) |
+    grepl("hub-supported", z, fixed = TRUE) |
+    grepl("module cluster", z, fixed = TRUE) |
+    grepl("ambiguous", z, fixed = TRUE) |
+    grepl("unlabelled", z, fixed = TRUE) |
+    grepl("unknown", z, fixed = TRUE) |
+    grepl("\\bmixed$", z, perl = TRUE) |
+    grepl("^unresolved module cluster$", z, ignore.case = TRUE)
+}
+
+strip_supermodule_id_prefix <- function(id, label) {
+  id <- clean_supermodule_label_candidate(id)
+  label <- clean_supermodule_label_candidate(label)
+  out <- label
+  ok <- !is.na(id) & nzchar(id) & !is.na(out) & nzchar(out)
+  if (any(ok)) {
+    pattern <- paste0("^", gsub("([][{}()+*^$|\\\\?.])", "\\\\\\1", id[ok]), "\\s*(", intToUtf8(183), "|:|-|/|\\|)?\\s*")
+    out[ok] <- mapply(function(lbl, pat) sub(pat, "", lbl, ignore.case = TRUE, perl = TRUE), out[ok], pattern, USE.NAMES = FALSE)
+  }
+  out
+}
+
+add_supermodule_id_prefix <- function(id, label) {
+  id <- clean_supermodule_label_candidate(id)
+  label <- clean_supermodule_label_candidate(label)
+  label <- strip_supermodule_id_prefix(id, label)
+  fallback <- paste0(dplyr::coalesce(id, "SM??"), supermodule_label_sep(), "Mixed / unresolved")
+  out <- ifelse(!is.na(label) & nzchar(label), paste0(dplyr::coalesce(id, "SM??"), supermodule_label_sep(), label), fallback)
+  out
+}
+
+supermodule_label_priority <- function() {
+  c(
+    "Supermodule_CompositionDisplayLabel",
+    "Supermodule_CompositionLabel",
+    "cleaned_biological_label",
+    "Supermodule_FinalLabel",
+    "Supermodule_LongLabel",
+    "Macroprogram_Display",
+    "Supermodule_DisplayLabel",
+    "Supermodule_DataDrivenLabel",
+    "Supermodule",
+    "SupermoduleID"
+  )
+}
+
+resolve_supermodule_labels <- function(df, id_col = "SupermoduleID") {
+  df <- as.data.frame(df, check.names = FALSE, stringsAsFactors = FALSE)
+  n <- nrow(df)
+  empty <- tibble::tibble(
+    supermodule_id = character(),
+    resolved_supermodule_label = character(),
+    resolved_supermodule_plot_label = character(),
+    label_source = character(),
+    is_generic_original_label = logical()
+  )
+  if (!n) return(empty)
+  if (!id_col %in% names(df)) df[[id_col]] <- NA_character_
+  id <- coalesce_nonempty(df[[id_col]], col_if_present(df, "Supermodule_DataDrivenID"), col_if_present(df, "Supermodule_DataDriven"), col_if_present(df, "Supermodule"))
+  id[is.na(id) | !nzchar(id)] <- "SM??"
+  priority <- supermodule_label_priority()
+  for (nm in priority) if (!nm %in% names(df)) df[[nm]] <- NA_character_
+  first_raw <- coalesce_nonempty(df[[priority[[1]]]], df[[priority[[2]]]], df[[priority[[3]]]], df[[priority[[4]]]], df[[priority[[5]]]], df[[priority[[6]]]], df[[priority[[7]]]], df[[priority[[8]]]], df[[priority[[9]]]], df[[priority[[10]]]])
+  resolved_value <- rep(NA_character_, n)
+  source <- rep(NA_character_, n)
+  for (nm in priority) {
+    cand <- clean_supermodule_label_candidate(df[[nm]])
+    cand[is_generic_supermodule_label(cand)] <- NA_character_
+    take <- is.na(resolved_value) & !is.na(cand) & nzchar(cand)
+    resolved_value[take] <- cand[take]
+    source[take] <- nm
+  }
+  fallback <- is.na(resolved_value) | !nzchar(resolved_value)
+  resolved_value[fallback] <- "Mixed / unresolved"
+  source[fallback] <- "fallback_mixed_unresolved"
+  resolved_label <- add_supermodule_id_prefix(id, resolved_value)
+  tibble::tibble(
+    supermodule_id = id,
+    resolved_supermodule_label = resolved_label,
+    resolved_supermodule_plot_label = resolved_label,
+    label_source = source,
+    is_generic_original_label = is_generic_supermodule_label(first_raw)
+  )
 }
 
 col_if_present <- function(df, nm, default = NA_character_) {
@@ -528,6 +648,83 @@ all_supermodule_eigengene_group_values <- function(super_eigengenes, super_endpo
     )
 }
 
+empty_supermodule_eigengene_significance <- function() {
+  tibble::tibble(
+    dataset = character(),
+    supermodule_id = character(),
+    supermodule_label = character(),
+    effect_scope = character(),
+    spatial_unit = character(),
+    contrast = character(),
+    estimate = numeric(),
+    SE = numeric(),
+    statistic = numeric(),
+    p_value = numeric(),
+    FDR_within_dataset_level = numeric(),
+    FDR_global = numeric(),
+    evidence_status = character(),
+    BH_q = numeric(),
+    significance_class = character(),
+    significance_label = character()
+  )
+}
+
+contrast_display_label <- function(x) {
+  gsub("\\s+", "", gsub("\u2013|\u2014", "-", as.character(x)))
+}
+
+add_bh_significance_labels <- function(df) {
+  if (is.null(df) || !nrow(df)) return(empty_supermodule_eigengene_significance())
+  for (nm in names(empty_supermodule_eigengene_significance())) if (!nm %in% names(df)) df[[nm]] <- NA
+  out <- df |>
+    dplyr::mutate(
+      BH_q = suppressWarnings(as.numeric(.data$FDR_within_dataset_level)),
+      p_value = suppressWarnings(as.numeric(.data$p_value)),
+      significance_class = dplyr::case_when(
+        !is.na(.data$BH_q) & .data$BH_q <= 0.05 ~ "BH q <= 0.05",
+        !is.na(.data$BH_q) & .data$BH_q <= 0.10 ~ "BH q <= 0.10",
+        !is.na(.data$p_value) & .data$p_value < 0.05 ~ "nominal p < 0.05",
+        TRUE ~ "not significant"
+      ),
+      significance_label = dplyr::case_when(
+        .data$significance_class == "BH q <= 0.05" ~ "**",
+        .data$significance_class == "BH q <= 0.10" ~ "*",
+        .data$significance_class == "nominal p < 0.05" ~ "nom.",
+        TRUE ~ ""
+      ),
+      contrast = contrast_display_label(.data$contrast)
+    ) |>
+    dplyr::select(dplyr::all_of(names(empty_supermodule_eigengene_significance())))
+  out
+}
+
+all_supermodule_eigengene_significance <- function(super_effects, effect_scope) {
+  if (is.null(super_effects) || !nrow(super_effects)) return(empty_supermodule_eigengene_significance())
+  keep_contrasts <- c("RES-CON", "SUS-CON", "SUS-RES")
+  super_effects |>
+    dplyr::filter(
+      .data$level == "supermodule",
+      .data$effect_scope == effect_scope,
+      contrast_display_label(.data$contrast) %in% keep_contrasts
+    ) |>
+    dplyr::transmute(
+      dataset = .data$dataset,
+      supermodule_id = as.character(.data$supermodule_id),
+      supermodule_label = as.character(dplyr::coalesce(.data$supermodule_label, .data$endpoint_label, .data$supermodule_id)),
+      effect_scope = .data$effect_scope,
+      spatial_unit = as.character(.data$spatial_unit),
+      contrast = .data$contrast,
+      estimate = suppressWarnings(as.numeric(.data$estimate)),
+      SE = suppressWarnings(as.numeric(.data$SE)),
+      statistic = suppressWarnings(as.numeric(.data$statistic)),
+      p_value = suppressWarnings(as.numeric(.data$p_value)),
+      FDR_within_dataset_level = suppressWarnings(as.numeric(.data$FDR_within_dataset_level)),
+      FDR_global = suppressWarnings(as.numeric(.data$FDR_global)),
+      evidence_status = as.character(.data$evidence_status)
+    ) |>
+    add_bh_significance_labels()
+}
+
 make_endpoint_maps <- function(module_eig, definitions, super_ann) {
   module_map <- data.frame(endpoint_col = setdiff(names(module_eig), "Sample"), stringsAsFactors = FALSE) |>
     dplyr::mutate(module_eigengene = .data$endpoint_col, ModuleColor = module_col_to_id(.data$endpoint_col))
@@ -541,15 +738,37 @@ make_endpoint_maps <- function(module_eig, definitions, super_ann) {
   if (nrow(super_ann)) {
     super_map0 <- super_ann
     if ("present_in_dataset" %in% names(super_map0)) super_map0 <- super_map0 |> dplyr::filter(.data$present_in_dataset %in% c(TRUE, "TRUE", "true", 1))
-    for (nm in c("Supermodule_DataDrivenID", "Supermodule_DataDriven", "SupermoduleID", "Supermodule_DisplayLabel", "Macroprogram_Display", "Supermodule_LongLabel", "Supermodule_FinalLabel", "Supermodule", "Supermodule_DataDrivenLabel", "supermodule_merge_rule")) if (!nm %in% names(super_map0)) super_map0[[nm]] <- NA_character_
+    for (nm in c(
+      "Supermodule_DataDrivenID", "Supermodule_DataDriven", "SupermoduleID",
+      "Supermodule_CompositionDisplayLabel", "Supermodule_CompositionLabel", "cleaned_biological_label",
+      "Supermodule_DisplayLabel", "Macroprogram_Display", "Supermodule_LongLabel",
+      "Supermodule_FinalLabel", "Supermodule", "Supermodule_DataDrivenLabel",
+      "supermodule_merge_rule"
+    )) if (!nm %in% names(super_map0)) super_map0[[nm]] <- NA_character_
     if (!"supermodule_merge_cut_height" %in% names(super_map0)) super_map0$supermodule_merge_cut_height <- NA_real_
     super_map <- super_map0 |>
       dplyr::mutate(
         module_eigengene = as.character(.data$module_eigengene),
-        SupermoduleID = dplyr::coalesce(as.character(.data$Supermodule_DataDrivenID), as.character(.data$Supermodule_DataDriven), as.character(.data$SupermoduleID), as.character(.data$Supermodule)),
-        SupermoduleLabel = dplyr::coalesce(as.character(.data$Supermodule_DisplayLabel), as.character(.data$Supermodule_FinalLabel), as.character(.data$Macroprogram_Display), as.character(.data$Supermodule_DataDrivenLabel), as.character(.data$Supermodule), .data$SupermoduleID),
-        Supermodule_LongLabel = dplyr::coalesce(as.character(.data$Supermodule_LongLabel), as.character(.data$Supermodule_FinalLabel), as.character(.data$Supermodule)),
+        SupermoduleID = coalesce_nonempty(as.character(.data$Supermodule_DataDrivenID), as.character(.data$Supermodule_DataDriven), as.character(.data$SupermoduleID), as.character(.data$Supermodule)),
+        Supermodule_LongLabel = coalesce_nonempty(as.character(.data$Supermodule_LongLabel), as.character(.data$Supermodule_FinalLabel), as.character(.data$Supermodule)),
         Macroprogram_Display = as.character(.data$Macroprogram_Display)
+      )
+    resolved <- resolve_supermodule_labels(super_map, id_col = "SupermoduleID")
+    super_map <- super_map |>
+      dplyr::left_join(
+        resolved |>
+          dplyr::select(
+            "supermodule_id", "resolved_supermodule_label",
+            "resolved_supermodule_plot_label", "label_source",
+            "is_generic_original_label"
+          ),
+        by = c("SupermoduleID" = "supermodule_id")
+      ) |>
+      dplyr::mutate(
+        SupermoduleLabel = .data$resolved_supermodule_label,
+        Supermodule_PlotLabel = .data$resolved_supermodule_plot_label,
+        Supermodule_LabelSource = .data$label_source,
+        Supermodule_LabelWasGenericOriginal = .data$is_generic_original_label
       )
   } else {
     super_map <- data.frame(module_eigengene = character(), SupermoduleID = character(), SupermoduleLabel = character())
@@ -578,6 +797,86 @@ supermodule_annotation_meta <- function(super_map) {
       .data$supermodule_merge_cut_height,
       .data$supermodule_merge_rule
     )
+}
+
+all_supermodule_label_audit <- function(comp, super_map, super_summary, dataset) {
+  empty <- tibble::tibble(
+    dataset = character(),
+    supermodule_id = character(),
+    resolved_supermodule_label = character(),
+    resolved_supermodule_plot_label = character(),
+    label_source = character(),
+    Supermodule_CompositionDisplayLabel = character(),
+    Supermodule_CompositionLabel = character(),
+    cleaned_biological_label = character(),
+    Supermodule_FinalLabel = character(),
+    Supermodule_LongLabel = character(),
+    Macroprogram_Display = character(),
+    Supermodule_DisplayLabel = character(),
+    Supermodule_DataDrivenLabel = character(),
+    Supermodule = character(),
+    is_generic_original_label = logical(),
+    n_member_modules = integer()
+  )
+  annotation_src <- if (!is.null(super_map) && nrow(super_map) && "SupermoduleID" %in% names(super_map)) {
+    super_map |>
+      dplyr::transmute(
+        supermodule_id = as.character(.data$SupermoduleID),
+        Supermodule_CompositionDisplayLabel = as.character(col_if_present(super_map, "Supermodule_CompositionDisplayLabel")),
+        Supermodule_CompositionLabel = as.character(col_if_present(super_map, "Supermodule_CompositionLabel")),
+        cleaned_biological_label = as.character(col_if_present(super_map, "cleaned_biological_label")),
+        Supermodule_FinalLabel = as.character(col_if_present(super_map, "Supermodule_FinalLabel")),
+        Supermodule_LongLabel = as.character(col_if_present(super_map, "Supermodule_LongLabel")),
+        Macroprogram_Display = as.character(col_if_present(super_map, "Macroprogram_Display")),
+        Supermodule_DisplayLabel = as.character(col_if_present(super_map, "Supermodule_DisplayLabel")),
+        Supermodule_DataDrivenLabel = as.character(col_if_present(super_map, "Supermodule_DataDrivenLabel")),
+        Supermodule = as.character(col_if_present(super_map, "Supermodule"))
+      ) |>
+      dplyr::filter(!is.na(.data$supermodule_id), nzchar(.data$supermodule_id)) |>
+      dplyr::distinct(.data$supermodule_id, .keep_all = TRUE)
+  } else if (!is.null(super_summary) && nrow(super_summary) && "SupermoduleID" %in% names(super_summary)) {
+    super_summary |>
+      dplyr::transmute(
+        supermodule_id = as.character(.data$SupermoduleID),
+        Supermodule_CompositionDisplayLabel = as.character(col_if_present(super_summary, "Supermodule_CompositionDisplayLabel")),
+        Supermodule_CompositionLabel = as.character(col_if_present(super_summary, "Supermodule_CompositionLabel")),
+        cleaned_biological_label = as.character(col_if_present(super_summary, "cleaned_biological_label")),
+        Supermodule_FinalLabel = as.character(col_if_present(super_summary, "Supermodule_FinalLabel")),
+        Supermodule_LongLabel = as.character(col_if_present(super_summary, "Supermodule_LongLabel")),
+        Macroprogram_Display = as.character(col_if_present(super_summary, "Macroprogram_Display")),
+        Supermodule_DisplayLabel = as.character(col_if_present(super_summary, "Supermodule_DisplayLabel")),
+        Supermodule_DataDrivenLabel = as.character(col_if_present(super_summary, "Supermodule_DataDrivenLabel")),
+        Supermodule = as.character(col_if_present(super_summary, "Supermodule"))
+      ) |>
+      dplyr::filter(!is.na(.data$supermodule_id), nzchar(.data$supermodule_id)) |>
+      dplyr::distinct(.data$supermodule_id, .keep_all = TRUE)
+  } else {
+    empty[, c(
+      "supermodule_id", "Supermodule_CompositionDisplayLabel", "Supermodule_CompositionLabel",
+      "cleaned_biological_label", "Supermodule_FinalLabel", "Supermodule_LongLabel",
+      "Macroprogram_Display", "Supermodule_DisplayLabel", "Supermodule_DataDrivenLabel",
+      "Supermodule"
+    ), drop = FALSE]
+  }
+  if (!nrow(annotation_src)) return(empty)
+  member_counts <- if (!is.null(comp) && nrow(comp) && "supermodule_id" %in% names(comp)) {
+    comp |>
+      dplyr::transmute(
+        supermodule_id = as.character(.data$supermodule_id),
+        n_member_modules = suppressWarnings(as.integer(col_if_present(comp, "n_member_modules", NA_integer_)))
+      ) |>
+      dplyr::distinct(.data$supermodule_id, .keep_all = TRUE)
+  } else {
+    tibble::tibble(supermodule_id = character(), n_member_modules = integer())
+  }
+  resolved <- resolve_supermodule_labels(annotation_src, id_col = "supermodule_id")
+  annotation_src |>
+    dplyr::left_join(resolved, by = "supermodule_id") |>
+    dplyr::left_join(member_counts, by = "supermodule_id") |>
+    dplyr::mutate(
+      dataset = dataset
+    ) |>
+    dplyr::select(dplyr::all_of(names(empty)))
 }
 
 normalize_module_eigengene_key <- function(x) {
@@ -824,12 +1123,7 @@ supermodule_pca_member_loadings <- function(module_eigengenes, super_map, datase
 
 compact_supermodule_label <- function(supermodule_id, supermodule_label, width = 26L) {
   supermodule_id <- as.character(supermodule_id)
-  label <- mapply(
-    function(sid, lbl) gsub(paste0("^", sid, "\\s*(/|:|-|\\|)\\s*"), "", as.character(lbl), ignore.case = TRUE),
-    supermodule_id,
-    as.character(supermodule_label),
-    USE.NAMES = FALSE
-  )
+  label <- strip_supermodule_id_prefix(supermodule_id, supermodule_label)
   missing_label <- is.na(label) | !nzchar(label)
   label[missing_label] <- supermodule_id[missing_label]
   paste0(supermodule_id, "\n", wrap_plot_label(label, width = width))
@@ -998,7 +1292,7 @@ order_spatial_labels_for_plot <- function(labels) {
   order_df$SpatialLabel
 }
 
-plot_all_supermodule_eigengene_group <- function(values, path) {
+plot_all_supermodule_eigengene_group <- function(values, significance, path) {
   plot_df <- values |>
     dplyr::filter(
       is.finite(.data$eigengene_z),
@@ -1024,6 +1318,30 @@ plot_all_supermodule_eigengene_group <- function(values, path) {
     n_supermodules <= 9L ~ 3L,
     TRUE ~ 4L
   )
+  y_range <- range(plot_df$eigengene_z, na.rm = TRUE)
+  y_pad <- max(0.35, diff(y_range) * 0.08)
+  annot_df <- if (!is.null(significance) && nrow(significance)) {
+    significance |>
+      dplyr::filter(
+        .data$effect_scope == "spatial_adjusted_global",
+        nzchar(as.character(.data$significance_label))
+      ) |>
+      dplyr::mutate(
+        contrast_order = match(.data$contrast, c("RES-CON", "SUS-CON", "SUS-RES")),
+        sig_text = paste(.data$contrast, .data$significance_label)
+      ) |>
+      dplyr::arrange(.data$supermodule_id, .data$contrast_order) |>
+      dplyr::group_by(.data$supermodule_id) |>
+      dplyr::summarise(significance_text = paste(.data$sig_text, collapse = ", "), .groups = "drop") |>
+      dplyr::inner_join(
+        plot_df |>
+          dplyr::distinct(.data$supermodule_id, .data$supermodule_plot_label),
+        by = "supermodule_id"
+      ) |>
+      dplyr::mutate(x = 2, y = max(plot_df$eigengene_z, na.rm = TRUE) + y_pad * 0.35)
+  } else {
+    tibble::tibble(supermodule_id = character(), supermodule_plot_label = character(), significance_text = character(), x = numeric(), y = numeric())
+  }
   height_mm <- max(115, 48 * ceiling(n_supermodules / ncol))
   p <- ggplot2::ggplot(plot_df, ggplot2::aes(x = .data$StressGroup, y = .data$eigengene_z)) +
     ggplot2::geom_boxplot(
@@ -1042,12 +1360,14 @@ plot_all_supermodule_eigengene_group <- function(values, path) {
       stroke = 0
     ) +
     ggplot2::facet_wrap(~supermodule_plot_label, ncol = ncol) +
-    ggplot2::scale_fill_manual(values = c("CON" = "#8B8F96", "RES" = "#4F7CAC", "SUS" = "#B8664B"), drop = FALSE) +
-    ggplot2::scale_color_manual(values = c("CON" = "#62666D", "RES" = "#315E8A", "SUS" = "#8F4330"), drop = FALSE) +
+    ggplot2::scale_fill_manual(values = stress_group_fill_colors(), drop = FALSE) +
+    ggplot2::scale_color_manual(values = stress_group_point_colors(), drop = FALSE) +
+    ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0.05, 0.16))) +
     ggplot2::labs(
       x = NULL,
       y = "Supermodule eigengene (z)",
-      title = "All supermodule eigengenes by stress group"
+      title = "All supermodule eigengenes by stress group",
+      subtitle = "Text labels use within-dataset BH q from spatial-adjusted global supermodule models."
     ) +
     ggplot2::theme_minimal(base_size = 8) +
     ggplot2::theme(
@@ -1060,12 +1380,24 @@ plot_all_supermodule_eigengene_group <- function(values, path) {
       axis.text.y = ggplot2::element_text(size = 6.5),
       strip.text = ggplot2::element_text(size = 7, face = "bold", lineheight = 0.95),
       legend.position = "none",
-      plot.title = ggplot2::element_text(face = "bold", size = 11)
+      plot.title = ggplot2::element_text(face = "bold", size = 11),
+      plot.subtitle = ggplot2::element_text(size = 7.2, color = "grey35")
     )
+  if (nrow(annot_df)) {
+    p <- p +
+      ggplot2::geom_text(
+        data = annot_df,
+        ggplot2::aes(x = .data$x, y = .data$y, label = .data$significance_text),
+        inherit.aes = FALSE,
+        size = 2.05,
+        color = "grey20",
+        vjust = 0
+      )
+  }
   ggplot2::ggsave(path, p, width = 215, height = height_mm, units = "mm", device = svglite::svglite, limitsize = FALSE)
 }
 
-plot_all_supermodule_eigengene_spatial_group <- function(values, path) {
+plot_all_supermodule_eigengene_spatial_group <- function(values, significance, path) {
   plot_df <- values |>
     dplyr::filter(
       is.finite(.data$eigengene_z),
@@ -1094,6 +1426,26 @@ plot_all_supermodule_eigengene_spatial_group <- function(values, path) {
   ncol <- if (n_spatial >= 6L || n_supermodules <= 4L) 2L else 3L
   height_mm <- max(125, 52 * ceiling(n_supermodules / ncol))
   width_mm <- max(205, min(290, 140 + 12 * n_spatial))
+  y_range <- range(plot_df$eigengene_z, na.rm = TRUE)
+  y_pad <- max(0.35, diff(y_range) * 0.08)
+  annot_df <- if (!is.null(significance) && nrow(significance)) {
+    plot_max <- plot_df |>
+      dplyr::group_by(.data$supermodule_id, .data$SpatialLabel, .data$supermodule_plot_label) |>
+      dplyr::summarise(y = max(.data$eigengene_z, na.rm = TRUE) + y_pad * 0.35, .groups = "drop")
+    significance |>
+      dplyr::filter(
+        .data$effect_scope == "within_spatial_unit",
+        .data$contrast == "SUS-RES",
+        nzchar(as.character(.data$significance_label))
+      ) |>
+      dplyr::mutate(
+        SpatialLabel = as.character(.data$spatial_unit)
+      ) |>
+      dplyr::inner_join(plot_max, by = c("supermodule_id", "SpatialLabel")) |>
+      dplyr::mutate(SpatialLabel = factor(.data$SpatialLabel, levels = spatial_levels))
+  } else {
+    tibble::tibble(supermodule_id = character(), SpatialLabel = factor(character(), levels = spatial_levels), supermodule_plot_label = character(), y = numeric(), significance_label = character())
+  }
   dodge <- ggplot2::position_dodge(width = 0.72)
   p <- ggplot2::ggplot(plot_df, ggplot2::aes(x = .data$SpatialLabel, y = .data$eigengene_z, fill = .data$StressGroup, color = .data$StressGroup)) +
     ggplot2::geom_boxplot(
@@ -1111,14 +1463,16 @@ plot_all_supermodule_eigengene_spatial_group <- function(values, path) {
       stroke = 0
     ) +
     ggplot2::facet_wrap(~supermodule_plot_label, ncol = ncol) +
-    ggplot2::scale_fill_manual(values = c("CON" = "#8B8F96", "RES" = "#4F7CAC", "SUS" = "#B8664B"), drop = FALSE) +
-    ggplot2::scale_color_manual(values = c("CON" = "#62666D", "RES" = "#315E8A", "SUS" = "#8F4330"), drop = FALSE) +
+    ggplot2::scale_fill_manual(values = stress_group_fill_colors(), drop = FALSE) +
+    ggplot2::scale_color_manual(values = stress_group_point_colors(), drop = FALSE) +
+    ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0.05, 0.17))) +
     ggplot2::labs(
       x = "Spatial unit",
       y = "Supermodule eigengene (z)",
       fill = NULL,
       color = NULL,
-      title = "All supermodule eigengenes by spatial unit and stress group"
+      title = "All supermodule eigengenes by spatial unit and stress group",
+      subtitle = "SUS-RES labels use within-dataset BH q from spatially matched within-unit supermodule models."
     ) +
     ggplot2::theme_minimal(base_size = 8) +
     ggplot2::theme(
@@ -1131,8 +1485,20 @@ plot_all_supermodule_eigengene_spatial_group <- function(values, path) {
       axis.text.y = ggplot2::element_text(size = 6),
       strip.text = ggplot2::element_text(size = 7, face = "bold", lineheight = 0.95),
       legend.position = "bottom",
-      plot.title = ggplot2::element_text(face = "bold", size = 11)
+      plot.title = ggplot2::element_text(face = "bold", size = 11),
+      plot.subtitle = ggplot2::element_text(size = 7.2, color = "grey35")
     )
+  if (nrow(annot_df)) {
+    p <- p +
+      ggplot2::geom_text(
+        data = annot_df,
+        ggplot2::aes(x = .data$SpatialLabel, y = .data$y, label = .data$significance_label),
+        inherit.aes = FALSE,
+        size = 2,
+        color = "grey20",
+        vjust = 0
+      )
+  }
   ggplot2::ggsave(path, p, width = width_mm, height = height_mm, units = "mm", device = svglite::svglite, limitsize = FALSE)
 }
 
@@ -1713,10 +2079,11 @@ selected_sus_res_supermodule_contents <- function(selected, pca_eigenvalues, com
     dplyr::select("supermodule_id", pca_PC1_variance_explained = "variance_explained")
 
   summary_meta <- if (!is.null(super_summary) && nrow(super_summary) && "SupermoduleID" %in% names(super_summary)) {
+    resolved_summary_labels <- resolve_supermodule_labels(super_summary, id_col = "SupermoduleID") |>
+      dplyr::select(supermodule_id, resolved_supermodule_label)
     super_summary |>
       dplyr::transmute(
         supermodule_id = as.character(.data$SupermoduleID),
-        summary_label = dplyr::coalesce(col_if_present(super_summary, "Supermodule_DisplayLabel"), col_if_present(super_summary, "Supermodule_FinalLabel"), as.character(.data$SupermoduleID)),
         summary_member_modules = col_if_present(super_summary, "member_modules"),
         summary_n_member_modules = suppressWarnings(as.integer(col_if_present(super_summary, "n_modules", NA_integer_))),
         top_GO_BP_terms = col_if_present(super_summary, "top_GO_BP_terms"),
@@ -1725,6 +2092,9 @@ selected_sus_res_supermodule_contents <- function(selected, pca_eigenvalues, com
         top_hub_symbols = col_if_present(super_summary, "top_hub_symbols"),
         top_hub_proteins_summary = dplyr::coalesce(col_if_present(super_summary, "top_hub_proteins"), col_if_present(super_summary, "top_hub_uniprot"))
       ) |>
+      dplyr::left_join(resolved_summary_labels, by = "supermodule_id") |>
+      dplyr::mutate(summary_label = .data$resolved_supermodule_label) |>
+      dplyr::select(-"resolved_supermodule_label") |>
       dplyr::distinct(.data$supermodule_id, .keep_all = TRUE)
   } else {
     tibble::tibble(
@@ -1907,11 +2277,12 @@ all_supermodule_contents_summary <- function(pca_eigenvalues, comp, definitions,
         selection_message = "all_supermodules"
       )
   } else if (!is.null(super_summary) && nrow(super_summary) && "SupermoduleID" %in% names(super_summary)) {
+    resolved_summary_labels <- resolve_supermodule_labels(super_summary, id_col = "SupermoduleID") |>
+      dplyr::select(supermodule_id, resolved_supermodule_label)
     super_summary |>
       dplyr::transmute(
         dataset = dataset,
         supermodule_id = as.character(.data$SupermoduleID),
-        supermodule_label = dplyr::coalesce(col_if_present(super_summary, "Supermodule_DisplayLabel"), col_if_present(super_summary, "Supermodule_FinalLabel"), as.character(.data$SupermoduleID)),
         contrast = NA_character_,
         estimate = NA_real_,
         p_value = NA_real_,
@@ -1921,7 +2292,10 @@ all_supermodule_contents_summary <- function(pca_eigenvalues, comp, definitions,
         selection_support = "all_supermodules",
         selection_rank = dplyr::row_number(),
         selection_message = "all_supermodules"
-      )
+      ) |>
+      dplyr::left_join(resolved_summary_labels, by = "supermodule_id") |>
+      dplyr::mutate(supermodule_label = .data$resolved_supermodule_label) |>
+      dplyr::select(-"resolved_supermodule_label")
   } else {
     tibble::tibble(
       dataset = character(), supermodule_id = character(), supermodule_label = character(),
@@ -2179,6 +2553,7 @@ if (inherits(state, "error")) {
   super_pca_member_loadings <- supermodule_pca_member_loadings(data.frame(Sample = character()), data.frame(), DATASET)
   all_supermodule_eigengene_group_values_tbl <- empty_supermodule_eigengene_group_values()
   all_supermodule_eigengene_spatial_group_values_tbl <- empty_supermodule_eigengene_group_values()
+  all_supermodule_label_audit_tbl <- all_supermodule_label_audit(data.frame(), data.frame(), data.frame(), DATASET)
 } else {
   module_eig <- extract_module_eigengenes(state)
   maps <- make_endpoint_maps(module_eig, definitions, super_ann)
@@ -2202,6 +2577,7 @@ if (inherits(state, "error")) {
   super_out <- if (LEVEL %in% c("supermodule", "both") && nrow(super_endpoint_map)) run_effects(super$eigengenes, super_endpoint_map, "supermodule", state) else empty_group_effects(DATASET, "supermodule", "not requested or no supermodules")
   all_supermodule_eigengene_group_values_tbl <- all_supermodule_eigengene_group_values(super$eigengenes, super_endpoint_map, state, DATASET, SpatialUnitType)
   all_supermodule_eigengene_spatial_group_values_tbl <- all_supermodule_eigengene_group_values_tbl
+  all_supermodule_label_audit_tbl <- all_supermodule_label_audit(comp, maps$super_map, super_summary, DATASET)
 
   marker_traits <- safe_read_csv(FILES$marker_traits)
   module_marker <- correlate_marker_traits(module_eig, maps$module_map, marker_traits, "module")
@@ -2218,6 +2594,8 @@ module_out <- rank_group_effects(module_out)
 super_out <- rank_group_effects(super_out)
 module_out <- module_out[, required_group_effect_columns]
 super_out <- super_out[, required_group_effect_columns]
+all_supermodule_eigengene_group_significance <- all_supermodule_eigengene_significance(super_out, "spatial_adjusted_global")
+all_supermodule_eigengene_spatial_group_significance <- all_supermodule_eigengene_significance(super_out, "within_spatial_unit")
 selected_sus_res_audit <- select_sus_res_supermodules(super_out, DATASET, max_n = 2L)
 selected_sus_res_pca <- selected_sus_res_pca_eigenvalues(super_pca_eigenvalues, selected_sus_res_audit)
 selected_sus_res_contents <- selected_sus_res_supermodule_contents(
@@ -2271,7 +2649,10 @@ write_table_and_source(all_supermodule_contents, PATHS$tables, PATHS$source_data
 write_table_and_source(selected_sus_res_interpretation_summary, PATHS$tables, PATHS$source_data, "selected_sus_res_supermodule_interpretation_summary.csv")
 write_table_and_source(selected_sus_res_interpretation_summary, PATHS$tables, PATHS$source_data, "selected_sus_res_supermodule_interpretation.csv")
 write_table_and_source(all_supermodule_eigengene_group_values_tbl, PATHS$tables, PATHS$source_data, "all_supermodule_eigengene_group_values.csv")
+write_table_and_source(all_supermodule_eigengene_group_significance, PATHS$tables, PATHS$source_data, "all_supermodule_eigengene_group_significance.csv")
 write_table_and_source(all_supermodule_eigengene_spatial_group_values_tbl, PATHS$tables, PATHS$source_data, "all_supermodule_eigengene_spatial_group_values.csv")
+write_table_and_source(all_supermodule_eigengene_spatial_group_significance, PATHS$tables, PATHS$source_data, "all_supermodule_eigengene_spatial_group_significance.csv")
+write_table_and_source(all_supermodule_label_audit_tbl, PATHS$tables, PATHS$source_data, "all_supermodule_label_audit.csv")
 write_table_and_source(all_supermodule_region_layer_effects, PATHS$tables, PATHS$source_data, "all_supermodule_region_layer_effects.csv")
 write_table_and_source(all_supermodule_region_layer_cohend_effects, PATHS$tables, PATHS$source_data, "all_supermodule_region_layer_cohend_effects.csv")
 write_table_and_source(all_sus_res_region_layer_effects, PATHS$tables, PATHS$source_data, "all_sus_res_supermodule_region_layer_effects.csv")
@@ -2298,8 +2679,8 @@ plot_effects(module_out, file.path(PATHS$figures, "module_group_effect_dotplot.s
 plot_effects(super_out, file.path(PATHS$figures, "supermodule_effects_by_spatial_unit.svg"), "Supermodule group effects")
 plot_effects(super_out, file.path(PATHS$figures, "supermodule_group_effect_dotplot.svg"), "Supermodule group effects")
 plot_supermodule_pca_scree(super_pca_eigenvalues, file.path(PATHS$figures, "supermodule_pca_eigenvalue_scree.svg"))
-plot_all_supermodule_eigengene_group(all_supermodule_eigengene_group_values_tbl, file.path(PATHS$figures, "all_supermodule_eigengene_group_plot.svg"))
-plot_all_supermodule_eigengene_spatial_group(all_supermodule_eigengene_spatial_group_values_tbl, file.path(PATHS$figures, "all_supermodule_eigengene_spatial_group_plot.svg"))
+plot_all_supermodule_eigengene_group(all_supermodule_eigengene_group_values_tbl, all_supermodule_eigengene_group_significance, file.path(PATHS$figures, "all_supermodule_eigengene_group_plot.svg"))
+plot_all_supermodule_eigengene_spatial_group(all_supermodule_eigengene_spatial_group_values_tbl, all_supermodule_eigengene_spatial_group_significance, file.path(PATHS$figures, "all_supermodule_eigengene_spatial_group_plot.svg"))
 plot_selected_sus_res_pca_scree(selected_sus_res_pca, selected_sus_res_audit, file.path(PATHS$figures, "selected_sus_res_supermodule_pca_eigenvalue_scree.svg"))
 plot_all_supermodule_member_loadings(super_pca_member_loadings, file.path(PATHS$figures, "all_supermodule_member_loading_plot.svg"))
 plot_selected_sus_res_member_loadings(selected_sus_res_loadings, file.path(PATHS$figures, "selected_sus_res_supermodule_member_loading_plot.svg"))
