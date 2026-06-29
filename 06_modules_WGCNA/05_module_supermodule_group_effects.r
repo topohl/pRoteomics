@@ -15,6 +15,7 @@
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
 source(repo_path("R", "wgcna_downstream_utils.R"))
+source(repo_path("R", "wgcna_labeling_utils.R"))
 
 required_pkgs <- c("dplyr", "tidyr", "tibble", "ggplot2", "svglite", "readr", "scales")
 missing_pkgs <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
@@ -117,6 +118,50 @@ coalesce_nonempty <- function(...) {
   Reduce(dplyr::coalesce, vals)
 }
 
+wrap_final_plot_label <- function(x, width = 34L) {
+  vapply(as.character(x), function(z) paste(strwrap(z, width = width), collapse = "\n"), character(1))
+}
+
+read_final_label_lookup <- function(dataset) {
+  path <- path_results(
+    "tables", "06_modules_WGCNA", "interpretable_summary",
+    dataset, "WGCNA_final_label_lookup.csv"
+  )
+  if (!file.exists(path)) return(NULL)
+  lookup <- readr::read_csv(path, show_col_types = FALSE, progress = FALSE)
+  wgcna_validate_label_lookup(lookup)
+  lookup |>
+    dplyr::filter(.data$dataset == dataset)
+}
+
+final_supermodule_label_lookup <- function(dataset) {
+  lookup <- read_final_label_lookup(dataset)
+  if (is.null(lookup) || !nrow(lookup)) {
+    out <- tibble::tibble(
+      supermodule_id = character(),
+      final_plot_label = character(),
+      final_plot_label_short = character(),
+      final_label_source = character(),
+      raw_label = character(),
+      label_rationale = character()
+    )
+    attr(out, "lookup_present") <- !is.null(lookup)
+    return(out)
+  }
+  out <- lookup |>
+    dplyr::filter(.data$level == "supermodule") |>
+    dplyr::transmute(
+      supermodule_id = as.character(.data$entity_id),
+      final_plot_label = as.character(.data$final_plot_label),
+      final_plot_label_short = wrap_final_plot_label(.data$final_plot_label, width = 34L),
+      final_label_source = "WGCNA_final_label_lookup.csv",
+      raw_label = dplyr::coalesce(.data$raw_top_GO_label, .data$entity_id),
+      label_rationale = .data$label_rationale
+    )
+  attr(out, "lookup_present") <- TRUE
+  out
+}
+
 supermodule_label_sep <- function() paste0(" ", intToUtf8(183), " ")
 
 clean_supermodule_label_candidate <- function(x) {
@@ -214,8 +259,10 @@ resolve_supermodule_labels <- function(df, id_col = "SupermoduleID") {
   )
 }
 
-canonical_supermodule_label_lookup <- function(supermodule_contents, comp, super_ann, super_endpoint_map) {
+canonical_supermodule_label_lookup <- function(supermodule_contents, comp, super_ann, super_endpoint_map, final_labels = final_supermodule_label_lookup(DATASET)) {
+  final_lookup_present <- isTRUE(attr(final_labels, "lookup_present"))
   ids <- unique(c(
+    as.character(col_if_present(final_labels, "supermodule_id")),
     as.character(col_if_present(supermodule_contents, "supermodule_id")),
     as.character(col_if_present(comp, "supermodule_id")),
     as.character(col_if_present(super_ann, "SupermoduleID")),
@@ -226,6 +273,9 @@ canonical_supermodule_label_lookup <- function(supermodule_contents, comp, super
   ids <- ids[!is.na(ids) & nzchar(ids)]
   empty <- tibble::tibble(
     supermodule_id = character(),
+    final_plot_label_from_lookup = character(),
+    final_plot_label_short_from_lookup = character(),
+    final_label_source = character(),
     canonical_supermodule_label = character(),
     canonical_supermodule_plot_label = character(),
     label_source = character(),
@@ -238,7 +288,9 @@ canonical_supermodule_label_lookup <- function(supermodule_contents, comp, super
     Supermodule_FinalLabel = character(),
     Supermodule_LongLabel = character(),
     Macroprogram_Display = character(),
-    Supermodule_DisplayLabel = character()
+    Supermodule_DisplayLabel = character(),
+    fallback_used = logical(),
+    lookup_present = logical()
   )
   if (!length(ids)) return(empty)
 
@@ -260,7 +312,22 @@ canonical_supermodule_label_lookup <- function(supermodule_contents, comp, super
     out
   }
 
+  final_lookup <- if (!is.null(final_labels) && nrow(final_labels)) {
+    final_labels |>
+      dplyr::transmute(
+        supermodule_id = as.character(.data$supermodule_id),
+        final_plot_label_from_lookup = as.character(.data$final_plot_label),
+        final_plot_label_short_from_lookup = as.character(.data$final_plot_label_short),
+        final_label_source = as.character(.data$final_label_source)
+      ) |>
+      dplyr::filter(!is.na(.data$supermodule_id), nzchar(.data$supermodule_id)) |>
+      dplyr::distinct(.data$supermodule_id, .keep_all = TRUE)
+  } else {
+    empty[, c("supermodule_id", "final_plot_label_from_lookup", "final_plot_label_short_from_lookup", "final_label_source"), drop = FALSE]
+  }
+
   base <- tibble::tibble(supermodule_id = ids) |>
+    dplyr::left_join(final_lookup, by = "supermodule_id") |>
     dplyr::left_join(first_by_id(supermodule_contents, "supermodule_id", "supermodule_label", "supermodule_contents_label"), by = "supermodule_id") |>
     dplyr::left_join(first_by_id(comp, "supermodule_id", "supermodule_label", "comp_label"), by = "supermodule_id") |>
     dplyr::left_join(first_by_id(super_endpoint_map, "endpoint_id", "endpoint_label", "endpoint_label"), by = "supermodule_id")
@@ -298,8 +365,10 @@ canonical_supermodule_label_lookup <- function(supermodule_contents, comp, super
     "Supermodule_LongLabel", "Macroprogram_Display", "Supermodule_DisplayLabel",
     "endpoint_label", "supermodule_id"
   )
-  resolved <- rep(NA_character_, nrow(base))
-  source <- rep(NA_character_, nrow(base))
+  resolved <- clean_supermodule_label_candidate(base$final_plot_label_from_lookup)
+  final_has_label <- !is.na(resolved) & nzchar(resolved)
+  resolved[!final_has_label] <- NA_character_
+  source <- ifelse(final_has_label, "WGCNA_final_label_lookup.csv", NA_character_)
   for (nm in candidate_order) {
     cand <- clean_supermodule_label_candidate(base[[nm]])
     if (nm != "supermodule_id") cand[is_generic_supermodule_label(cand)] <- NA_character_
@@ -311,11 +380,18 @@ canonical_supermodule_label_lookup <- function(supermodule_contents, comp, super
   resolved[fallback] <- "Mixed / unresolved"
   source[fallback] <- "fallback_mixed_unresolved"
   canonical <- add_supermodule_id_prefix(base$supermodule_id, resolved)
+  plot_label <- dplyr::coalesce(
+    clean_supermodule_label_candidate(base$final_plot_label_short_from_lookup),
+    wrap_final_plot_label(canonical, width = 34L)
+  )
+  plot_label[!final_has_label] <- wrap_final_plot_label(canonical[!final_has_label], width = 34L)
   base |>
     dplyr::mutate(
       canonical_supermodule_label = canonical,
-      canonical_supermodule_plot_label = canonical,
-      label_source = source
+      canonical_supermodule_plot_label = plot_label,
+      label_source = source,
+      fallback_used = .data$label_source == "fallback_mixed_unresolved",
+      lookup_present = final_lookup_present
     ) |>
     dplyr::select(dplyr::all_of(names(empty)))
 }
@@ -335,12 +411,10 @@ apply_canonical_supermodule_labels <- function(df, canonical_lookup) {
   if ("supermodule_label" %in% names(out)) {
     out$supermodule_label <- dplyr::coalesce(out$canonical_supermodule_label_lookup, out$supermodule_label)
   }
-  if ("canonical_supermodule_label" %in% names(out)) {
-    out$canonical_supermodule_label <- dplyr::coalesce(out$canonical_supermodule_label_lookup, out$canonical_supermodule_label)
-  }
-  if ("canonical_supermodule_plot_label" %in% names(out)) {
-    out$canonical_supermodule_plot_label <- dplyr::coalesce(out$canonical_supermodule_plot_label_lookup, out$canonical_supermodule_plot_label)
-  }
+  if (!"canonical_supermodule_label" %in% names(out)) out$canonical_supermodule_label <- NA_character_
+  if (!"canonical_supermodule_plot_label" %in% names(out)) out$canonical_supermodule_plot_label <- NA_character_
+  out$canonical_supermodule_label <- dplyr::coalesce(out$canonical_supermodule_label_lookup, out$canonical_supermodule_label)
+  out$canonical_supermodule_plot_label <- dplyr::coalesce(out$canonical_supermodule_plot_label_lookup, out$canonical_supermodule_plot_label)
   out |>
     dplyr::select(-dplyr::any_of(c("canonical_supermodule_label_lookup", "canonical_supermodule_plot_label_lookup")))
 }
@@ -349,6 +423,9 @@ all_supermodule_label_audit <- function(dataset, canonical_lookup, eigengene_val
   empty <- tibble::tibble(
     dataset = character(),
     supermodule_id = character(),
+    final_plot_label_from_lookup = character(),
+    final_plot_label_short_from_lookup = character(),
+    final_label_source = character(),
     canonical_supermodule_label = character(),
     canonical_supermodule_plot_label = character(),
     label_source = character(),
@@ -364,19 +441,34 @@ all_supermodule_label_audit <- function(dataset, canonical_lookup, eigengene_val
     Supermodule_FinalLabel = character(),
     Supermodule_LongLabel = character(),
     Macroprogram_Display = character(),
-    Supermodule_DisplayLabel = character()
+    Supermodule_DisplayLabel = character(),
+    fallback_used = logical(),
+    lookup_present = logical(),
+    label_qc_warning = character()
   )
   if (is.null(canonical_lookup) || !nrow(canonical_lookup)) return(empty)
-  eig_labels <- if (!is.null(eigengene_values) && nrow(eigengene_values) && all(c("supermodule_id", "supermodule_label") %in% names(eigengene_values))) {
+  eig_labels <- if (!is.null(eigengene_values) && nrow(eigengene_values) && "supermodule_id" %in% names(eigengene_values)) {
     eigengene_values |>
-      dplyr::transmute(supermodule_id = as.character(.data$supermodule_id), label_used_in_eigengene_group_plot = as.character(.data$supermodule_label)) |>
+      dplyr::transmute(
+        supermodule_id = as.character(.data$supermodule_id),
+        label_used_in_eigengene_group_plot = dplyr::coalesce(
+          as.character(.data$canonical_supermodule_plot_label),
+          as.character(.data$supermodule_label)
+        )
+      ) |>
       dplyr::distinct(.data$supermodule_id, .keep_all = TRUE)
   } else {
     tibble::tibble(supermodule_id = character(), label_used_in_eigengene_group_plot = character())
   }
-  cohend_labels <- if (!is.null(cohend_source) && nrow(cohend_source) && all(c("supermodule_id", "supermodule_label") %in% names(cohend_source))) {
+  cohend_labels <- if (!is.null(cohend_source) && nrow(cohend_source) && "supermodule_id" %in% names(cohend_source)) {
     cohend_source |>
-      dplyr::transmute(supermodule_id = as.character(.data$supermodule_id), label_used_in_cohend_heatmap_source = as.character(.data$supermodule_label)) |>
+      dplyr::transmute(
+        supermodule_id = as.character(.data$supermodule_id),
+        label_used_in_cohend_heatmap_source = dplyr::coalesce(
+          as.character(.data$canonical_supermodule_plot_label),
+          as.character(.data$supermodule_label)
+        )
+      ) |>
       dplyr::distinct(.data$supermodule_id, .keep_all = TRUE)
   } else {
     tibble::tibble(supermodule_id = character(), label_used_in_cohend_heatmap_source = character())
@@ -386,9 +478,15 @@ all_supermodule_label_audit <- function(dataset, canonical_lookup, eigengene_val
     dplyr::left_join(eig_labels, by = "supermodule_id") |>
     dplyr::left_join(cohend_labels, by = "supermodule_id") |>
     dplyr::mutate(
-      label_used_in_eigengene_group_plot = dplyr::coalesce(.data$label_used_in_eigengene_group_plot, .data$canonical_supermodule_label),
-      label_used_in_cohend_heatmap_source = dplyr::coalesce(.data$label_used_in_cohend_heatmap_source, .data$canonical_supermodule_label),
-      labels_match_eigengene_vs_cohend = .data$label_used_in_eigengene_group_plot == .data$label_used_in_cohend_heatmap_source
+      label_used_in_eigengene_group_plot = dplyr::coalesce(.data$label_used_in_eigengene_group_plot, .data$canonical_supermodule_plot_label, .data$canonical_supermodule_label),
+      label_used_in_cohend_heatmap_source = dplyr::coalesce(.data$label_used_in_cohend_heatmap_source, .data$canonical_supermodule_plot_label, .data$canonical_supermodule_label),
+      labels_match_eigengene_vs_cohend = .data$label_used_in_eigengene_group_plot == .data$label_used_in_cohend_heatmap_source,
+      label_qc_warning = dplyr::case_when(
+        !(.data$lookup_present %in% TRUE) ~ "final_lookup_missing",
+        is.na(.data$final_plot_label_from_lookup) | !nzchar(.data$final_plot_label_from_lookup) ~ "id_absent_from_final_lookup",
+        .data$fallback_used %in% TRUE ~ "fallback_mixed_unresolved_used",
+        TRUE ~ "ok"
+      )
     ) |>
     dplyr::select(dplyr::all_of(names(empty)))
 }
@@ -1461,6 +1559,7 @@ order_spatial_labels_for_plot <- function(labels) {
 }
 
 plot_all_supermodule_eigengene_group <- function(values, significance, path) {
+  if (!"canonical_supermodule_plot_label" %in% names(values)) values$canonical_supermodule_plot_label <- NA_character_
   plot_df <- values |>
     dplyr::filter(
       is.finite(.data$eigengene_z),
@@ -1469,7 +1568,10 @@ plot_all_supermodule_eigengene_group <- function(values, significance, path) {
     ) |>
     dplyr::mutate(
       StressGroup = factor(as.character(.data$StressGroup), levels = c("CON", "RES", "SUS")),
-      supermodule_plot_label = compact_supermodule_label(.data$supermodule_id, .data$supermodule_label, width = 22L)
+      supermodule_plot_label = dplyr::coalesce(
+        as.character(.data$canonical_supermodule_plot_label),
+        compact_supermodule_label(.data$supermodule_id, .data$supermodule_label, width = 22L)
+      )
     )
   if (!nrow(plot_df)) {
     p <- ggplot2::ggplot() +
@@ -1572,6 +1674,7 @@ plot_all_supermodule_eigengene_group <- function(values, significance, path) {
 }
 
 plot_all_supermodule_eigengene_spatial_group <- function(values, significance, path) {
+  if (!"canonical_supermodule_plot_label" %in% names(values)) values$canonical_supermodule_plot_label <- NA_character_
   plot_df <- values |>
     dplyr::filter(
       is.finite(.data$eigengene_z),
@@ -1582,7 +1685,10 @@ plot_all_supermodule_eigengene_spatial_group <- function(values, significance, p
     ) |>
     dplyr::mutate(
       StressGroup = factor(as.character(.data$StressGroup), levels = c("CON", "RES", "SUS")),
-      supermodule_plot_label = compact_supermodule_label(.data$supermodule_id, .data$supermodule_label, width = 22L)
+      supermodule_plot_label = dplyr::coalesce(
+        as.character(.data$canonical_supermodule_plot_label),
+        compact_supermodule_label(.data$supermodule_id, .data$supermodule_label, width = 22L)
+      )
     )
   if (!nrow(plot_df)) {
     p <- ggplot2::ggplot() +
@@ -2089,10 +2195,14 @@ sus_res_region_layer_effect_source <- function(super_effects) {
 }
 
 plot_all_sus_res_region_layer_effects <- function(effect_source, path) {
+  if (!"canonical_supermodule_plot_label" %in% names(effect_source)) effect_source$canonical_supermodule_plot_label <- NA_character_
   plot_df <- effect_source |>
     dplyr::filter(is.finite(.data$estimate_sus_minus_res), !is.na(.data$p_value)) |>
     dplyr::mutate(
-      supermodule_plot_label = compact_supermodule_label(.data$supermodule_id, .data$supermodule_label, width = 22L),
+      supermodule_plot_label = dplyr::coalesce(
+        as.character(.data$canonical_supermodule_plot_label),
+        compact_supermodule_label(.data$supermodule_id, .data$supermodule_label, width = 22L)
+      ),
       spatial_unit_label = dplyr::coalesce(.data$spatial_unit_label, "GLOBAL"),
       support_class = factor(.data$support_class, levels = c("FDR05", "FDR10", "nominal", "none")),
       neg_log10_p = pmin(8, -log10(pmax(.data$p_value, .Machine$double.xmin)))
@@ -2147,10 +2257,14 @@ plot_all_sus_res_region_layer_effects <- function(effect_source, path) {
 }
 
 plot_all_supermodule_region_layer_heatmap <- function(effect_source, path) {
+  if (!"canonical_supermodule_plot_label" %in% names(effect_source)) effect_source$canonical_supermodule_plot_label <- NA_character_
   plot_df <- effect_source |>
     dplyr::filter(is.finite(.data$estimate), !is.na(.data$p_value)) |>
     dplyr::mutate(
-      supermodule_plot_label = compact_supermodule_label(.data$supermodule_id, .data$supermodule_label, width = 22L),
+      supermodule_plot_label = dplyr::coalesce(
+        as.character(.data$canonical_supermodule_plot_label),
+        compact_supermodule_label(.data$supermodule_id, .data$supermodule_label, width = 22L)
+      ),
       spatial_plot_label = paste(.data$parsed_region, .data$parsed_layer_or_unit, sep = " / "),
       spatial_plot_label = gsub(" / Layer not available$", "", .data$spatial_plot_label),
       support_marker = dplyr::case_when(
