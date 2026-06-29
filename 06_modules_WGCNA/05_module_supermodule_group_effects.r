@@ -43,6 +43,10 @@ if (run$dry_run) {
   dry_run_line("Supermodule PCA eigenvalue tables", file.path(PATHS$tables, "supermodule_pca_eigenvalues.csv"))
   dry_run_line("Supermodule PCA eigenvalue source data", file.path(PATHS$source_data, "supermodule_pca_eigenvalues.csv"))
   dry_run_line("Supermodule PCA eigenvalue scree SVG", file.path(PATHS$figures, "supermodule_pca_eigenvalue_scree.svg"))
+  dry_run_line("Supermodule PCA input audit", file.path(PATHS$tables, "supermodule_pca_input_audit.csv"))
+  dry_run_line("Selected SUS-RES PCA eigenvalues", file.path(PATHS$tables, "selected_sus_res_supermodule_pca_eigenvalues.csv"))
+  dry_run_line("Selected SUS-RES PCA scree SVG", file.path(PATHS$figures, "selected_sus_res_supermodule_pca_eigenvalue_scree.svg"))
+  dry_run_line("Selected SUS-RES PCA selection audit", file.path(PATHS$tables, "selected_sus_res_supermodule_pca_selection_audit.csv"))
   quit(status = 0, save = "no")
 }
 
@@ -467,6 +471,75 @@ supermodule_annotation_meta <- function(super_map) {
     )
 }
 
+normalize_module_eigengene_key <- function(x) {
+  x <- as.character(x)
+  x <- trimws(x)
+  x <- sub("^WGCNA_", "", x, ignore.case = TRUE)
+  x <- sub("^ME", "", x, ignore.case = TRUE)
+  toupper(x)
+}
+
+collapse_examples <- function(x, n = 8L) {
+  x <- unique(as.character(x))
+  x <- x[!is.na(x) & nzchar(x)]
+  paste(utils::head(x, n), collapse = ";")
+}
+
+reconcile_supermodule_map_to_module_eigengenes <- function(super_map, module_eigengenes, definitions = data.frame()) {
+  if (is.null(super_map) || !nrow(super_map)) return(super_map)
+  me_cols <- setdiff(names(module_eigengenes), "Sample")
+  if (!length(me_cols) || !"module_eigengene" %in% names(super_map)) return(super_map)
+  super_map$module_eigengene_original <- as.character(super_map$module_eigengene)
+  exact <- match(super_map$module_eigengene_original, me_cols)
+  norm_cols <- normalize_module_eigengene_key(me_cols)
+  norm_map <- match(normalize_module_eigengene_key(super_map$module_eigengene_original), norm_cols)
+  label_resolved <- rep(NA_character_, nrow(super_map))
+  if (nrow(definitions) && all(c("module_eigengene", "ModuleLabel_Final") %in% names(definitions)) && "ModuleLabel_Final" %in% names(super_map)) {
+    label_lookup <- definitions |>
+      dplyr::filter(.data$module_eigengene %in% me_cols) |>
+      dplyr::transmute(
+        module_label_key = trimws(as.character(.data$ModuleLabel_Final)),
+        module_eigengene_lookup = as.character(.data$module_eigengene)
+      ) |>
+      dplyr::filter(nzchar(.data$module_label_key), !is.na(.data$module_label_key)) |>
+      dplyr::distinct(.data$module_label_key, .data$module_eigengene_lookup) |>
+      dplyr::group_by(.data$module_label_key) |>
+      dplyr::filter(dplyr::n_distinct(.data$module_eigengene_lookup) == 1L) |>
+      dplyr::ungroup() |>
+      dplyr::distinct(.data$module_label_key, .keep_all = TRUE)
+    label_hit <- match(trimws(as.character(super_map$ModuleLabel_Final)), label_lookup$module_label_key)
+    label_resolved <- label_lookup$module_eigengene_lookup[label_hit]
+  }
+  resolved <- dplyr::coalesce(
+    ifelse(!is.na(exact), me_cols[exact], NA_character_),
+    ifelse(!is.na(norm_map), me_cols[norm_map], NA_character_),
+    label_resolved
+  )
+  super_map$module_eigengene_match_method <- dplyr::case_when(
+    !is.na(exact) ~ "exact",
+    is.na(exact) & !is.na(norm_map) ~ "normalized_ME_prefix",
+    is.na(exact) & is.na(norm_map) & !is.na(label_resolved) ~ "module_label_lookup",
+    TRUE ~ "unmatched"
+  )
+  super_map$module_eigengene <- dplyr::coalesce(resolved, super_map$module_eigengene_original)
+  super_map
+}
+
+supermodule_pca_input_audit <- function(module_eigengenes, super_map, dataset) {
+  me_cols <- setdiff(names(module_eigengenes), "Sample")
+  if (is.null(super_map)) super_map <- data.frame()
+  map_vals <- if ("module_eigengene" %in% names(super_map)) super_map$module_eigengene else character()
+  original_vals <- if ("module_eigengene_original" %in% names(super_map)) super_map$module_eigengene_original else map_vals
+  tibble::tibble(
+    dataset = dataset,
+    n_module_eigengene_columns = length(me_cols),
+    n_supermodule_map_rows = nrow(super_map),
+    n_supermodule_map_rows_matched_to_module_eigengenes = sum(map_vals %in% me_cols, na.rm = TRUE),
+    example_module_eigengene_columns = collapse_examples(me_cols),
+    example_supermodule_map_module_eigengenes = collapse_examples(original_vals)
+  )
+}
+
 supermodule_pca_eigenvalues <- function(module_eigengenes, super_map, dataset) {
   me_cols <- setdiff(names(module_eigengenes), "Sample")
   super_map <- super_map[super_map$module_eigengene %in% me_cols & !is.na(super_map$SupermoduleID), , drop = FALSE]
@@ -563,13 +636,26 @@ plot_supermodule_pca_scree <- function(pca_eigenvalues, path) {
     )
   if (!nrow(plot_df)) {
     p <- ggplot2::ggplot() +
-      ggplot2::annotate("text", x = 0, y = 0, label = "No variable supermodule PCA components available", size = 3) +
+      ggplot2::annotate("text", x = 0, y = 0, label = "No variable supermodule PCA components available\nSee supermodule_pca_input_audit.csv", size = 3) +
       ggplot2::labs(title = "Supermodule PCA eigenvalue scree") +
       ggplot2::theme_void()
   } else {
+    line_df <- plot_df |>
+      dplyr::group_by(.data$facet_label) |>
+      dplyr::filter(dplyr::n() > 1L) |>
+      dplyr::ungroup()
     p <- ggplot2::ggplot(plot_df, ggplot2::aes(x = .data$pc_label)) +
-      ggplot2::geom_col(ggplot2::aes(y = .data$variance_explained), fill = "#4E79A7", width = 0.72) +
-      ggplot2::geom_line(ggplot2::aes(y = .data$cumulative_variance_explained, group = 1), color = "#D95F02", linewidth = 0.35) +
+      ggplot2::geom_col(ggplot2::aes(y = .data$variance_explained), fill = "#4E79A7", width = 0.72)
+    if (nrow(line_df)) {
+      p <- p +
+        ggplot2::geom_line(
+          data = line_df,
+          ggplot2::aes(y = .data$cumulative_variance_explained, group = 1),
+          color = "#D95F02",
+          linewidth = 0.35
+        )
+    }
+    p <- p +
       ggplot2::geom_point(ggplot2::aes(y = .data$cumulative_variance_explained), color = "#D95F02", size = 0.75) +
       ggplot2::facet_wrap(~facet_label, scales = "free_x") +
       ggplot2::scale_y_continuous(labels = function(x) paste0(round(100 * x), "%"), limits = c(0, 1)) +
@@ -579,6 +665,153 @@ plot_supermodule_pca_scree <- function(pca_eigenvalues, path) {
         axis.text.x = ggplot2::element_text(angle = 45, hjust = 1, size = 5),
         strip.text = ggplot2::element_text(size = 6)
       )
+  }
+  ggplot2::ggsave(path, p, width = 210, height = 180, units = "mm", device = svglite::svglite)
+}
+
+standardize_contrast_key <- function(x) {
+  toupper(gsub("[[:space:]]+", "", gsub("–", "-", as.character(x))))
+}
+
+select_sus_res_supermodules <- function(super_effects, dataset, max_n = 2L) {
+  no_selection_row <- function(message) tibble::tibble(
+    dataset = dataset,
+    supermodule_id = NA_character_,
+    supermodule_label = NA_character_,
+    contrast = "SUS-RES",
+    estimate = NA_real_,
+    p_value = NA_real_,
+    FDR_within_dataset_level = NA_real_,
+    FDR_global = NA_real_,
+    selection_support = "none",
+    selection_rank = NA_integer_,
+    selection_message = message
+  )
+  if (is.null(super_effects) || !nrow(super_effects)) {
+    return(no_selection_row("no supermodule group-effect rows available"))
+  }
+  sus_res <- super_effects |>
+    dplyr::filter(standardize_contrast_key(.data$contrast) == "SUS-RES") |>
+    dplyr::mutate(
+      p_value = suppressWarnings(as.numeric(.data$p_value)),
+      FDR_within_dataset_level = suppressWarnings(as.numeric(.data$FDR_within_dataset_level)),
+      FDR_global = suppressWarnings(as.numeric(.data$FDR_global)),
+      estimate = suppressWarnings(as.numeric(.data$estimate)),
+      support_rank = dplyr::case_when(
+        !is.na(.data$FDR_within_dataset_level) & .data$FDR_within_dataset_level <= 0.05 ~ 1L,
+        !is.na(.data$FDR_within_dataset_level) & .data$FDR_within_dataset_level <= 0.10 ~ 2L,
+        !is.na(.data$p_value) & .data$p_value < 0.05 ~ 3L,
+        TRUE ~ 99L
+      ),
+      selection_support = dplyr::case_when(
+        .data$support_rank == 1L ~ "FDR_within_dataset_level <= 0.05",
+        .data$support_rank == 2L ~ "FDR_within_dataset_level <= 0.10",
+        .data$support_rank == 3L ~ "nominal p_value < 0.05",
+        TRUE ~ "not_selected"
+      ),
+      sort_fdr = dplyr::coalesce(.data$FDR_within_dataset_level, .data$FDR_global, Inf),
+      sort_p = dplyr::coalesce(.data$p_value, Inf),
+      supermodule_label = dplyr::coalesce(.data$supermodule_label, .data$endpoint_label, .data$supermodule_id)
+    ) |>
+    dplyr::filter(.data$support_rank < 99L) |>
+    dplyr::arrange(.data$support_rank, .data$sort_fdr, .data$sort_p, dplyr::desc(abs(.data$estimate))) |>
+    dplyr::group_by(.data$supermodule_id) |>
+    dplyr::slice(1) |>
+    dplyr::ungroup() |>
+    dplyr::slice_head(n = max_n) |>
+    dplyr::mutate(selection_rank = dplyr::row_number(), selection_message = "selected") |>
+    dplyr::select(
+      "dataset", "supermodule_id", "supermodule_label", "contrast", "estimate", "p_value",
+      "FDR_within_dataset_level", "FDR_global", "selection_support",
+      "selection_rank", "selection_message"
+    )
+  if (!nrow(sus_res)) {
+    return(no_selection_row("No SUS-RES significant supermodule eigengenes selected"))
+  }
+  sus_res
+}
+
+selected_sus_res_pca_eigenvalues <- function(pca_eigenvalues, selected) {
+  if (is.null(selected) || !nrow(selected) || !"supermodule_id" %in% names(selected)) {
+    return(pca_eigenvalues[0, , drop = FALSE])
+  }
+  selected <- selected |> dplyr::filter(.data$selection_message == "selected")
+  if (!nrow(selected)) {
+    return(pca_eigenvalues[0, , drop = FALSE])
+  }
+  pca_eigenvalues |>
+    dplyr::inner_join(
+      selected |>
+        dplyr::select(
+          "supermodule_id",
+          selected_supermodule_label = "supermodule_label",
+          sus_res_estimate = "estimate",
+          sus_res_p_value = "p_value",
+          sus_res_FDR_within_dataset_level = "FDR_within_dataset_level",
+          sus_res_FDR_global = "FDR_global",
+          "selection_support",
+          "selection_rank"
+        ),
+      by = "supermodule_id"
+    ) |>
+    dplyr::arrange(.data$selection_rank, .data$pc)
+}
+
+plot_selected_sus_res_pca_scree <- function(selected_pca, selected, path) {
+  if (!nrow(selected) || all(selected$selection_message != "selected")) {
+    p <- ggplot2::ggplot() +
+      ggplot2::annotate("text", x = 0, y = 0, label = "No SUS-RES significant supermodule eigengenes selected", size = 3) +
+      ggplot2::labs(title = "Selected SUS-RES supermodule PCA eigenvalue scree") +
+      ggplot2::theme_void()
+  } else {
+    plot_df <- selected_pca |>
+      dplyr::filter(!is.na(.data$pc), is.finite(.data$variance_explained)) |>
+      dplyr::mutate(
+        pc_label = paste0("PC", .data$pc),
+        facet_label = paste0(
+          .data$supermodule_id, ": ", .data$supermodule_label,
+          "\nSUS-RES est=", signif(.data$sus_res_estimate, 3),
+          ", p=", signif(.data$sus_res_p_value, 3),
+          ", FDR=", signif(.data$sus_res_FDR_within_dataset_level, 3)
+        )
+      )
+    if (!nrow(plot_df)) {
+      p <- ggplot2::ggplot() +
+        ggplot2::annotate("text", x = 0, y = 0, label = "No PCA eigenvalues available for selected SUS-RES supermodules", size = 3) +
+        ggplot2::labs(title = "Selected SUS-RES supermodule PCA eigenvalue scree") +
+        ggplot2::theme_void()
+    } else {
+      line_df <- plot_df |>
+        dplyr::group_by(.data$facet_label) |>
+        dplyr::filter(dplyr::n() > 1L) |>
+        dplyr::ungroup()
+      p <- ggplot2::ggplot(plot_df, ggplot2::aes(x = .data$pc_label)) +
+        ggplot2::geom_col(ggplot2::aes(y = .data$variance_explained), fill = "#4E79A7", width = 0.72)
+      if (nrow(line_df)) {
+        p <- p +
+          ggplot2::geom_line(
+            data = line_df,
+            ggplot2::aes(y = .data$cumulative_variance_explained, group = 1),
+            color = "#D95F02",
+            linewidth = 0.35
+          )
+      }
+      p <- p +
+        ggplot2::geom_point(ggplot2::aes(y = .data$cumulative_variance_explained), color = "#D95F02", size = 0.75) +
+        ggplot2::facet_wrap(~facet_label, scales = "free_x") +
+        ggplot2::scale_y_continuous(labels = function(x) paste0(round(100 * x), "%"), limits = c(0, 1)) +
+        ggplot2::labs(
+          x = NULL,
+          y = "Variance explained",
+          title = "Selected SUS-RES supermodule PCA eigenvalue scree",
+          subtitle = "Selection: up to two SUS-RES supermodule effects prioritized by within-dataset FDR, nominal p-value, and absolute estimate"
+        ) +
+        ggplot2::theme(
+          legend.position = "none",
+          axis.text.x = ggplot2::element_text(angle = 45, hjust = 1, size = 6),
+          strip.text = ggplot2::element_text(size = 6)
+        )
+    }
   }
   ggplot2::ggsave(path, p, width = 210, height = 180, units = "mm", device = svglite::svglite)
 }
@@ -667,12 +900,15 @@ if (inherits(state, "error")) {
   comp <- data.frame(dataset = DATASET, supermodule_id = NA_character_, n_member_modules = 0L, member_modules = NA_character_, stringsAsFactors = FALSE)
   module_marker <- tibble::tibble()
   super_marker <- tibble::tibble()
+  super_pca_input_audit <- supermodule_pca_input_audit(data.frame(Sample = character()), data.frame(), DATASET)
   super_pca_eigenvalues <- supermodule_pca_eigenvalues(data.frame(Sample = character()), data.frame(), DATASET)
 } else {
   module_eig <- extract_module_eigengenes(state)
   definitions <- safe_read_csv(FILES$definitions) %||% data.frame()
   super_ann <- safe_read_csv(FILES$supermodule_annotation) %||% data.frame()
   maps <- make_endpoint_maps(module_eig, definitions, super_ann)
+  maps$super_map <- reconcile_supermodule_map_to_module_eigengenes(maps$super_map, module_eig, definitions)
+  super_pca_input_audit <- supermodule_pca_input_audit(module_eig, maps$super_map, DATASET)
   super_pca_eigenvalues <- supermodule_pca_eigenvalues(module_eig, maps$super_map, DATASET)
   super <- make_supermodule_eigengenes(module_eig, maps$super_map)
   comp0 <- super$composition
@@ -704,11 +940,16 @@ module_out <- rank_group_effects(module_out)
 super_out <- rank_group_effects(super_out)
 module_out <- module_out[, required_group_effect_columns]
 super_out <- super_out[, required_group_effect_columns]
+selected_sus_res_audit <- select_sus_res_supermodules(super_out, DATASET, max_n = 2L)
+selected_sus_res_pca <- selected_sus_res_pca_eigenvalues(super_pca_eigenvalues, selected_sus_res_audit)
 
 write_table_and_source(module_out, PATHS$tables, PATHS$source_data, "module_group_effects.csv")
 write_table_and_source(super_out, PATHS$tables, PATHS$source_data, "supermodule_group_effects.csv")
 write_table_and_source(comp, PATHS$tables, PATHS$source_data, "supermodule_composition.csv")
+write_table_and_source(super_pca_input_audit, PATHS$tables, PATHS$source_data, "supermodule_pca_input_audit.csv")
 write_table_and_source(super_pca_eigenvalues, PATHS$tables, PATHS$source_data, "supermodule_pca_eigenvalues.csv")
+write_table_and_source(selected_sus_res_audit, PATHS$tables, PATHS$source_data, "selected_sus_res_supermodule_pca_selection_audit.csv")
+write_table_and_source(selected_sus_res_pca, PATHS$tables, PATHS$source_data, "selected_sus_res_supermodule_pca_eigenvalues.csv")
 write_table_and_source(module_marker, PATHS$tables, PATHS$source_data, "module_marker_trait_correlations.csv")
 write_table_and_source(super_marker, PATHS$tables, PATHS$source_data, "supermodule_marker_trait_correlations.csv")
 
@@ -732,6 +973,7 @@ plot_effects(module_out, file.path(PATHS$figures, "module_group_effect_dotplot.s
 plot_effects(super_out, file.path(PATHS$figures, "supermodule_effects_by_spatial_unit.svg"), "Supermodule group effects")
 plot_effects(super_out, file.path(PATHS$figures, "supermodule_group_effect_dotplot.svg"), "Supermodule group effects")
 plot_supermodule_pca_scree(super_pca_eigenvalues, file.path(PATHS$figures, "supermodule_pca_eigenvalue_scree.svg"))
+plot_selected_sus_res_pca_scree(selected_sus_res_pca, selected_sus_res_audit, file.path(PATHS$figures, "selected_sus_res_supermodule_pca_eigenvalue_scree.svg"))
 
 write_run_manifest(
   file.path(PATHS$logs, "run_manifest.yml"),
