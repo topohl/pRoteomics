@@ -933,6 +933,10 @@ empty_supermodule_eigengene_significance <- function() {
     supermodule_label = character(),
     canonical_supermodule_label = character(),
     contrast = character(),
+    contrast_block = character(),
+    bracket_group_1 = character(),
+    bracket_group_2 = character(),
+    bracket_label = character(),
     spatial_unit = character(),
     SpatialLabel = character(),
     effect_scope = character(),
@@ -946,7 +950,10 @@ empty_supermodule_eigengene_significance <- function() {
     significance_label = character(),
     significance_source = character(),
     significance_rule = character(),
-    metric_used = character()
+    metric_used = character(),
+    local_directional_rows_excluded_from_global = logical(),
+    source_path = character(),
+    plotted_as_bracket = logical()
   )
 }
 
@@ -954,26 +961,78 @@ contrast_display_label <- function(x) {
   gsub("\\s+", "", gsub("\u2013|\u2014", "-", as.character(x)))
 }
 
+is_global_directional_spatial_unit <- function(x) {
+  key <- tolower(gsub("[^a-z0-9]+", "_", as.character(x)))
+  key <- gsub("^_+|_+$", "", key)
+  key %in% c("global", "global_spatial_adjusted", "all_spatial_units", "all", "overall")
+}
+
+is_local_directional_spatial_unit <- function(x) {
+  !is_global_directional_spatial_unit(x) & !is.na(x) & nzchar(as.character(x))
+}
+
+bh_sig_label <- function(q) {
+  q <- suppressWarnings(as.numeric(q))
+  dplyr::case_when(
+    !is.na(q) & q <= 0.05 ~ "**",
+    !is.na(q) & q <= 0.10 ~ "*",
+    TRUE ~ ""
+  )
+}
+
+format_adjusted_p_label <- function(q) {
+  q <- suppressWarnings(as.numeric(q))
+  dplyr::case_when(
+    is.na(q) ~ "",
+    q < 0.001 ~ "P_adj < 0.001",
+    q < 0.01 ~ "P_adj < 0.01",
+    q <= 0.05 ~ "P_adj < 0.05",
+    TRUE ~ ""
+  )
+}
+
+pairwise_bracket_groups <- function(contrast) {
+  block <- contrast_block(contrast)
+  tibble::tibble(
+    contrast_block = block,
+    bracket_group_1 = dplyr::case_when(
+      block == "RES-CON" ~ "CON",
+      block == "SUS-CON" ~ "CON",
+      block == "SUS-RES" ~ "RES",
+      TRUE ~ NA_character_
+    ),
+    bracket_group_2 = dplyr::case_when(
+      block == "RES-CON" ~ "RES",
+      block == "SUS-CON" ~ "SUS",
+      block == "SUS-RES" ~ "SUS",
+      TRUE ~ NA_character_
+    )
+  )
+}
+
 add_bh_significance_labels <- function(df) {
   if (is.null(df) || !nrow(df)) return(empty_supermodule_eigengene_significance())
   for (nm in names(empty_supermodule_eigengene_significance())) if (!nm %in% names(df)) df[[nm]] <- NA
+  bracket_groups <- pairwise_bracket_groups(df$contrast)
   out <- df |>
     dplyr::mutate(
       BH_q = suppressWarnings(as.numeric(.data$BH_q)),
       p_value = suppressWarnings(as.numeric(.data$p_value)),
-      significance_label = dplyr::case_when(
-        !is.na(.data$BH_q) & .data$BH_q <= 0.05 ~ "**",
-        !is.na(.data$BH_q) & .data$BH_q <= 0.10 ~ "*",
-        TRUE ~ ""
-      ),
-      contrast = contrast_display_label(.data$contrast)
+      significance_label = bh_sig_label(.data$BH_q),
+      contrast = contrast_display_label(.data$contrast),
+      contrast_block = bracket_groups$contrast_block,
+      bracket_group_1 = dplyr::coalesce(.data$bracket_group_1, bracket_groups$bracket_group_1),
+      bracket_group_2 = dplyr::coalesce(.data$bracket_group_2, bracket_groups$bracket_group_2),
+      bracket_label = format_adjusted_p_label(.data$BH_q),
+      plotted_as_bracket = !is.na(.data$BH_q) & .data$BH_q <= 0.05 & nzchar(.data$bracket_label)
     ) |>
     dplyr::select(dplyr::all_of(names(empty_supermodule_eigengene_significance())))
   out
 }
 
 directional_score_significance_rows <- function(dataset, canonical_lookup) {
-  score <- safe_read_csv(supermodule_score_effects_path(dataset))
+  path <- supermodule_score_effects_path(dataset)
+  score <- safe_read_csv(path)
   if (is.null(score) || !nrow(score)) return(empty_supermodule_eigengene_significance())
   required <- c("Analysis", "RegionLayer", "Module", "Cohen_d", "p_adj_within_model_BH")
   if (length(setdiff(required, names(score)))) return(empty_supermodule_eigengene_significance())
@@ -994,7 +1053,7 @@ directional_score_significance_rows <- function(dataset, canonical_lookup) {
       spatial_unit = as.character(.data$RegionLayer),
       SpatialLabel = .data$spatial_unit,
       effect_scope = dplyr::case_when(
-        tolower(.data$spatial_unit) %in% c("global", "all", "all_spatial_units", "all_regions", "all_region_layers", "global_spatial_adjusted") ~ "directional_score_global",
+        is_global_directional_spatial_unit(.data$spatial_unit) ~ "directional_score_global",
         TRUE ~ "directional_score_spatial"
       ),
       estimate = suppressWarnings(as.numeric(.data$Cohen_d)),
@@ -1004,16 +1063,29 @@ directional_score_significance_rows <- function(dataset, canonical_lookup) {
       FDR_within_dataset_level = .data$p_adj_within_model_BH,
       FDR_global = suppressWarnings(as.numeric(col_if_present(score, "p_adj_global_BH"))),
       BH_q = .data$p_adj_within_model_BH,
-      significance_source = "directional_score",
-      significance_rule = "BH_q = p_adj_within_model_BH; labels shown for BH_q <= 0.10",
-      metric_used = "Cohen_d"
+      significance_source = dplyr::case_when(
+        .data$effect_scope == "directional_score_global" ~ "directional_score_global",
+        TRUE ~ "directional_score_region_layer"
+      ),
+      significance_rule = dplyr::case_when(
+        .data$effect_scope == "directional_score_global" ~ "global/all-spatial adjusted p-value from directional-score contrast",
+        TRUE ~ "spatially matched adjusted p-value from directional-score contrast"
+      ),
+      metric_used = "Cohen_d",
+      local_directional_rows_excluded_from_global = FALSE,
+      source_path = path
     ) |>
-    dplyr::filter(.data$Analysis == "primary_all_replicates", .data$contrast == "SUS-RES", nzchar(.data$supermodule_id)) |>
+    dplyr::filter(
+      .data$Analysis == "primary_all_replicates",
+      contrast_block(.data$contrast) %in% c("RES-CON", "SUS-CON", "SUS-RES"),
+      nzchar(.data$supermodule_id)
+    ) |>
     dplyr::select(
       "dataset", "supermodule_id", "contrast", "spatial_unit", "SpatialLabel", "effect_scope",
       "estimate", "Cohen_d", "p_value", "p_adj_within_model_BH",
       "FDR_within_dataset_level", "FDR_global", "BH_q",
-      "significance_source", "significance_rule", "metric_used"
+      "significance_source", "significance_rule", "metric_used",
+      "local_directional_rows_excluded_from_global", "source_path"
     )
   if (!nrow(out)) return(empty_supermodule_eigengene_significance())
   out |>
@@ -1031,7 +1103,7 @@ super_out_significance_rows <- function(super_effects, effect_scope, canonical_l
     dplyr::filter(
       .data$level == "supermodule",
       .data$effect_scope == effect_scope,
-      contrast_display_label(.data$contrast) == "SUS-RES"
+      contrast_block(.data$contrast) %in% c("RES-CON", "SUS-CON", "SUS-RES")
     ) |>
     dplyr::transmute(
       dataset = .data$dataset,
@@ -1047,9 +1119,19 @@ super_out_significance_rows <- function(super_effects, effect_scope, canonical_l
       FDR_within_dataset_level = suppressWarnings(as.numeric(.data$FDR_within_dataset_level)),
       FDR_global = suppressWarnings(as.numeric(.data$FDR_global)),
       BH_q = .data$FDR_within_dataset_level,
-      significance_source = "supermodule_group_effects",
-      significance_rule = "BH_q = FDR_within_dataset_level; labels shown for BH_q <= 0.10",
-      metric_used = "eigengene_model_estimate"
+      significance_source = dplyr::case_when(
+        .env$effect_scope == "spatial_adjusted_global" ~ "spatial_adjusted_global_model",
+        .env$effect_scope == "within_spatial_unit" ~ "within_spatial_unit_model_fallback",
+        TRUE ~ "supermodule_group_effects"
+      ),
+      significance_rule = dplyr::case_when(
+        .env$effect_scope == "spatial_adjusted_global" ~ "spatial-adjusted global model FDR_within_dataset_level for pairwise contrast",
+        .env$effect_scope == "within_spatial_unit" ~ "spatially matched FDR_within_dataset_level for pairwise contrast",
+        TRUE ~ "BH_q = FDR_within_dataset_level"
+      ),
+      metric_used = "eigengene_model_estimate",
+      local_directional_rows_excluded_from_global = FALSE,
+      source_path = NA_character_
     ) |>
     dplyr::left_join(canonical_lookup |> dplyr::select("supermodule_id", "canonical_supermodule_label"), by = "supermodule_id") |>
     dplyr::mutate(
@@ -1060,15 +1142,54 @@ super_out_significance_rows <- function(super_effects, effect_scope, canonical_l
 }
 
 choose_group_significance <- function(directional_rows, fallback_rows) {
-  directional_global <- directional_rows |> dplyr::filter(.data$effect_scope == "directional_score_global")
-  if (nrow(directional_global)) return(directional_global)
-  fallback_rows
+  local_excluded <- !is.null(directional_rows) && nrow(directional_rows) &&
+    any(is_local_directional_spatial_unit(directional_rows$spatial_unit), na.rm = TRUE)
+  directional_global <- if (!is.null(directional_rows) && nrow(directional_rows)) {
+    directional_rows |>
+      dplyr::filter(
+        .data$effect_scope == "directional_score_global",
+        is_global_directional_spatial_unit(.data$spatial_unit)
+      )
+  } else {
+    empty_supermodule_eigengene_significance()
+  }
+  out <- if (nrow(directional_global)) directional_global else fallback_rows
+  if (is.null(out) || !nrow(out)) return(empty_supermodule_eigengene_significance())
+  out |>
+    dplyr::mutate(local_directional_rows_excluded_from_global = local_excluded) |>
+    add_bh_significance_labels()
 }
 
 choose_spatial_significance <- function(directional_rows, fallback_rows) {
-  directional_spatial <- directional_rows |> dplyr::filter(.data$effect_scope == "directional_score_spatial")
-  if (nrow(directional_spatial)) return(directional_spatial)
-  fallback_rows
+  directional_spatial <- if (!is.null(directional_rows) && nrow(directional_rows)) {
+    directional_rows |>
+      dplyr::filter(
+        .data$effect_scope == "directional_score_spatial",
+        is_local_directional_spatial_unit(.data$spatial_unit)
+      )
+  } else {
+    empty_supermodule_eigengene_significance()
+  }
+  fallback_spatial <- if (!is.null(fallback_rows) && nrow(fallback_rows)) {
+    fallback_rows |>
+      dplyr::filter(is_local_directional_spatial_unit(.data$spatial_unit))
+  } else {
+    empty_supermodule_eigengene_significance()
+  }
+  if (!nrow(directional_spatial)) return(add_bh_significance_labels(fallback_spatial))
+  if (!nrow(fallback_spatial)) return(add_bh_significance_labels(directional_spatial))
+  fallback_missing <- fallback_spatial |>
+    dplyr::anti_join(
+      directional_spatial |>
+        dplyr::distinct(
+          .data$supermodule_id,
+          SpatialLabel = as.character(.data$SpatialLabel),
+          .data$contrast_block
+        ),
+      by = c("supermodule_id", "SpatialLabel", "contrast_block")
+    )
+  dplyr::bind_rows(directional_spatial, fallback_missing) |>
+    add_bh_significance_labels()
 }
 
 make_endpoint_maps <- function(module_eig, definitions, super_ann) {
@@ -1558,6 +1679,108 @@ order_spatial_labels_for_plot <- function(labels) {
   order_df$SpatialLabel
 }
 
+make_pairwise_bracket_annotations <- function(plot_df, significance_df,
+                                              y_col = "eigengene_z",
+                                              spatial = FALSE,
+                                              dodge_width = 0.72) {
+  empty <- list(
+    segments = tibble::tibble(),
+    text = tibble::tibble()
+  )
+  if (is.null(plot_df) || !nrow(plot_df) || is.null(significance_df) || !nrow(significance_df)) return(empty)
+  sig <- significance_df |>
+    dplyr::filter(
+      .data$plotted_as_bracket %in% TRUE,
+      !is.na(.data$BH_q),
+      .data$BH_q <= 0.05,
+      nzchar(as.character(.data$bracket_label)),
+      .data$contrast_block %in% c("RES-CON", "SUS-CON", "SUS-RES")
+    ) |>
+    dplyr::mutate(
+      bracket_span = dplyr::case_when(
+        .data$contrast_block == "SUS-CON" ~ 2L,
+        TRUE ~ 1L
+      ),
+      bracket_order = dplyr::case_when(
+        .data$contrast_block == "RES-CON" ~ 1L,
+        .data$contrast_block == "SUS-RES" ~ 2L,
+        .data$contrast_block == "SUS-CON" ~ 3L,
+        TRUE ~ 99L
+      )
+    )
+  if (!nrow(sig)) return(empty)
+
+  y_vals <- suppressWarnings(as.numeric(plot_df[[y_col]]))
+  y_range <- range(y_vals[is.finite(y_vals)], na.rm = TRUE)
+  if (!all(is.finite(y_range))) y_range <- c(0, 1)
+  y_span <- max(1, diff(y_range))
+  base_pad <- max(0.18, y_span * 0.07)
+  y_step <- max(0.18, y_span * 0.08)
+  tick <- max(0.05, y_span * 0.025)
+  label_pad <- max(0.06, y_span * 0.025)
+
+  group_pos <- c(CON = 1, RES = 2, SUS = 3)
+  if (isTRUE(spatial)) {
+    spatial_levels <- levels(plot_df$SpatialLabel)
+    if (is.null(spatial_levels)) spatial_levels <- unique(as.character(plot_df$SpatialLabel))
+    spatial_index <- tibble::tibble(SpatialLabel = spatial_levels, spatial_x = seq_along(spatial_levels))
+    dodge_offsets <- c(CON = -dodge_width / 3, RES = 0, SUS = dodge_width / 3)
+    y_base <- plot_df |>
+      dplyr::group_by(.data$supermodule_id, .data$SpatialLabel, .data$supermodule_plot_label) |>
+      dplyr::summarise(y_base = max(.data[[y_col]], na.rm = TRUE) + base_pad, .groups = "drop") |>
+      dplyr::mutate(SpatialLabel = as.character(.data$SpatialLabel))
+    brackets <- sig |>
+      dplyr::mutate(SpatialLabel = as.character(dplyr::coalesce(.data$SpatialLabel, .data$spatial_unit))) |>
+      dplyr::inner_join(y_base, by = c("supermodule_id", "SpatialLabel")) |>
+      dplyr::left_join(spatial_index, by = "SpatialLabel") |>
+      dplyr::filter(!is.na(.data$spatial_x)) |>
+      dplyr::arrange(.data$supermodule_id, .data$SpatialLabel, .data$bracket_order, .data$BH_q) |>
+      dplyr::group_by(.data$supermodule_id, .data$SpatialLabel) |>
+      dplyr::mutate(
+        bracket_rank = dplyr::row_number(),
+        y = .data$y_base + (.data$bracket_rank - 1L) * y_step,
+        x = .data$spatial_x + unname(dodge_offsets[.data$bracket_group_1]),
+        xend = .data$spatial_x + unname(dodge_offsets[.data$bracket_group_2]),
+        xmid = (.data$x + .data$xend) / 2,
+        y_text = .data$y + label_pad
+      ) |>
+      dplyr::ungroup()
+  } else {
+    y_base <- plot_df |>
+      dplyr::group_by(.data$supermodule_id, .data$supermodule_plot_label) |>
+      dplyr::summarise(y_base = max(.data[[y_col]], na.rm = TRUE) + base_pad, .groups = "drop")
+    brackets <- sig |>
+      dplyr::inner_join(y_base, by = "supermodule_id") |>
+      dplyr::arrange(.data$supermodule_id, .data$bracket_order, .data$BH_q) |>
+      dplyr::group_by(.data$supermodule_id) |>
+      dplyr::mutate(
+        bracket_rank = dplyr::row_number(),
+        y = .data$y_base + (.data$bracket_rank - 1L) * y_step,
+        x = unname(group_pos[.data$bracket_group_1]),
+        xend = unname(group_pos[.data$bracket_group_2]),
+        xmid = (.data$x + .data$xend) / 2,
+        y_text = .data$y + label_pad
+      ) |>
+      dplyr::ungroup()
+  }
+  if (!nrow(brackets)) return(empty)
+  segment_base <- brackets |>
+    dplyr::select(dplyr::any_of(c("supermodule_id", "supermodule_plot_label", "SpatialLabel")), "x", "xend", "y", "bracket_label")
+  segments <- dplyr::bind_rows(
+    segment_base |> dplyr::mutate(yend = .data$y, segment_type = "horizontal"),
+    segment_base |> dplyr::transmute(dplyr::across(dplyr::any_of(c("supermodule_id", "supermodule_plot_label", "SpatialLabel"))), x = .data$x, xend = .data$x, y = .data$y - tick, yend = .data$y, bracket_label = .data$bracket_label, segment_type = "left_tick"),
+    segment_base |> dplyr::transmute(dplyr::across(dplyr::any_of(c("supermodule_id", "supermodule_plot_label", "SpatialLabel"))), x = .data$xend, xend = .data$xend, y = .data$y - tick, yend = .data$y, bracket_label = .data$bracket_label, segment_type = "right_tick")
+  )
+  text <- brackets |>
+    dplyr::transmute(
+      dplyr::across(dplyr::any_of(c("supermodule_id", "supermodule_plot_label", "SpatialLabel"))),
+      x = .data$xmid,
+      y = .data$y_text,
+      label = .data$bracket_label
+    )
+  list(segments = segments, text = text)
+}
+
 plot_all_supermodule_eigengene_group <- function(values, significance, path) {
   if (!"canonical_supermodule_plot_label" %in% names(values)) values$canonical_supermodule_plot_label <- NA_character_
   plot_df <- values |>
@@ -1590,34 +1813,12 @@ plot_all_supermodule_eigengene_group <- function(values, significance, path) {
   )
   y_range <- range(plot_df$eigengene_z, na.rm = TRUE)
   y_pad <- max(0.35, diff(y_range) * 0.08)
-  subtitle <- if (!is.null(significance) && nrow(significance) && any(significance$significance_source == "directional_score", na.rm = TRUE)) {
-    "SUS-RES labels use BH q from directional score models."
+  subtitle <- if (!is.null(significance) && nrow(significance) && any(significance$significance_source == "directional_score_global", na.rm = TRUE)) {
+    "Brackets show significant global BH-adjusted pairwise contrasts."
   } else {
-    "SUS-RES labels use within-dataset BH q from spatial-adjusted supermodule models."
+    "Brackets show significant spatial-adjusted global BH-adjusted pairwise contrasts."
   }
-  annot_df <- if (!is.null(significance) && nrow(significance)) {
-    significance |>
-      dplyr::filter(
-        .data$contrast == "SUS-RES",
-        nzchar(as.character(.data$significance_label))
-      ) |>
-      dplyr::mutate(
-        sig_text = paste("SUS-RES", .data$significance_label)
-      ) |>
-      dplyr::arrange(.data$supermodule_id, .data$BH_q) |>
-      dplyr::group_by(.data$supermodule_id) |>
-      dplyr::slice(1L) |>
-      dplyr::ungroup() |>
-      dplyr::transmute(supermodule_id = .data$supermodule_id, significance_text = .data$sig_text) |>
-      dplyr::inner_join(
-        plot_df |>
-          dplyr::distinct(.data$supermodule_id, .data$supermodule_plot_label),
-        by = "supermodule_id"
-      ) |>
-      dplyr::mutate(x = 2, y = max(plot_df$eigengene_z, na.rm = TRUE) + y_pad * 0.35)
-  } else {
-    tibble::tibble(supermodule_id = character(), supermodule_plot_label = character(), significance_text = character(), x = numeric(), y = numeric())
-  }
+  bracket_ann <- make_pairwise_bracket_annotations(plot_df, significance, spatial = FALSE)
   height_mm <- max(115, 48 * ceiling(n_supermodules / ncol))
   p <- ggplot2::ggplot(plot_df, ggplot2::aes(x = .data$StressGroup, y = .data$eigengene_z)) +
     ggplot2::geom_boxplot(
@@ -1638,7 +1839,7 @@ plot_all_supermodule_eigengene_group <- function(values, significance, path) {
     ggplot2::facet_wrap(~supermodule_plot_label, ncol = ncol) +
     ggplot2::scale_fill_manual(values = stress_group_fills(0.35), drop = FALSE) +
     ggplot2::scale_color_manual(values = stress_group_colors(), drop = FALSE) +
-    ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0.05, 0.16))) +
+    ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0.05, 0.28))) +
     ggplot2::labs(
       x = NULL,
       y = "Supermodule eigengene (z)",
@@ -1659,15 +1860,23 @@ plot_all_supermodule_eigengene_group <- function(values, significance, path) {
       plot.title = ggplot2::element_text(face = "bold", size = 11),
       plot.subtitle = ggplot2::element_text(size = 7.2, color = "grey35")
     )
-  if (nrow(annot_df)) {
+  if (nrow(bracket_ann$segments)) {
     p <- p +
-      ggplot2::geom_text(
-        data = annot_df,
-        ggplot2::aes(x = .data$x, y = .data$y, label = .data$significance_text),
+      ggplot2::geom_segment(
+        data = bracket_ann$segments,
+        ggplot2::aes(x = .data$x, xend = .data$xend, y = .data$y, yend = .data$yend),
         inherit.aes = FALSE,
-        size = 2.05,
+        linewidth = 0.23,
+        color = "grey20"
+      ) +
+      ggplot2::geom_text(
+        data = bracket_ann$text,
+        ggplot2::aes(x = .data$x, y = .data$y, label = .data$label),
+        inherit.aes = FALSE,
+        size = 1.85,
         color = "grey20",
-        vjust = 0
+        vjust = 0,
+        lineheight = 0.9
       )
   }
   ggplot2::ggsave(path, p, width = 215, height = height_mm, units = "mm", device = svglite::svglite, limitsize = FALSE)
@@ -1708,23 +1917,7 @@ plot_all_supermodule_eigengene_spatial_group <- function(values, significance, p
   width_mm <- max(205, min(290, 140 + 12 * n_spatial))
   y_range <- range(plot_df$eigengene_z, na.rm = TRUE)
   y_pad <- max(0.35, diff(y_range) * 0.08)
-  annot_df <- if (!is.null(significance) && nrow(significance)) {
-    plot_max <- plot_df |>
-      dplyr::group_by(.data$supermodule_id, .data$SpatialLabel, .data$supermodule_plot_label) |>
-      dplyr::summarise(y = max(.data$eigengene_z, na.rm = TRUE) + y_pad * 0.35, .groups = "drop")
-    significance |>
-      dplyr::filter(
-        .data$contrast == "SUS-RES",
-        nzchar(as.character(.data$significance_label))
-      ) |>
-      dplyr::mutate(
-        SpatialLabel = as.character(dplyr::coalesce(.data$SpatialLabel, .data$spatial_unit))
-      ) |>
-      dplyr::inner_join(plot_max, by = c("supermodule_id", "SpatialLabel")) |>
-      dplyr::mutate(SpatialLabel = factor(.data$SpatialLabel, levels = spatial_levels))
-  } else {
-    tibble::tibble(supermodule_id = character(), SpatialLabel = factor(character(), levels = spatial_levels), supermodule_plot_label = character(), y = numeric(), significance_label = character())
-  }
+  bracket_ann <- make_pairwise_bracket_annotations(plot_df, significance, spatial = TRUE, dodge_width = 0.72)
   dodge <- ggplot2::position_dodge(width = 0.72)
   p <- ggplot2::ggplot(plot_df, ggplot2::aes(x = .data$SpatialLabel, y = .data$eigengene_z, fill = .data$StressGroup, color = .data$StressGroup)) +
     ggplot2::geom_boxplot(
@@ -1744,14 +1937,14 @@ plot_all_supermodule_eigengene_spatial_group <- function(values, significance, p
     ggplot2::facet_wrap(~supermodule_plot_label, ncol = ncol) +
     ggplot2::scale_fill_manual(values = stress_group_fills(0.35), drop = FALSE) +
     ggplot2::scale_color_manual(values = stress_group_colors(), drop = FALSE) +
-    ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0.05, 0.17))) +
+    ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0.05, 0.3))) +
     ggplot2::labs(
       x = "Spatial unit",
       y = "Supermodule eigengene (z)",
       fill = NULL,
       color = NULL,
       title = "All supermodule eigengenes by spatial unit and stress group",
-      subtitle = "SUS-RES labels use spatially matched BH q."
+      subtitle = "Brackets show significant spatially matched BH-adjusted pairwise contrasts; directional-score p_adj_within_model_BH is preferred."
     ) +
     ggplot2::theme_minimal(base_size = 8) +
     ggplot2::theme(
@@ -1767,15 +1960,23 @@ plot_all_supermodule_eigengene_spatial_group <- function(values, significance, p
       plot.title = ggplot2::element_text(face = "bold", size = 11),
       plot.subtitle = ggplot2::element_text(size = 7.2, color = "grey35")
     )
-  if (nrow(annot_df)) {
+  if (nrow(bracket_ann$segments)) {
     p <- p +
-      ggplot2::geom_text(
-        data = annot_df,
-        ggplot2::aes(x = .data$SpatialLabel, y = .data$y, label = .data$significance_label),
+      ggplot2::geom_segment(
+        data = bracket_ann$segments,
+        ggplot2::aes(x = .data$x, xend = .data$xend, y = .data$y, yend = .data$yend),
         inherit.aes = FALSE,
-        size = 2,
+        linewidth = 0.22,
+        color = "grey20"
+      ) +
+      ggplot2::geom_text(
+        data = bracket_ann$text,
+        ggplot2::aes(x = .data$x, y = .data$y, label = .data$label),
+        inherit.aes = FALSE,
+        size = 1.75,
         color = "grey20",
-        vjust = 0
+        vjust = 0,
+        lineheight = 0.9
       )
   }
   ggplot2::ggsave(path, p, width = width_mm, height = height_mm, units = "mm", device = svglite::svglite, limitsize = FALSE)
