@@ -953,7 +953,11 @@ empty_supermodule_eigengene_significance <- function() {
     metric_used = character(),
     local_directional_rows_excluded_from_global = logical(),
     source_path = character(),
-    plotted_as_bracket = logical()
+    plotted_as_bracket = logical(),
+    duplicate_rows_before_dedup = integer(),
+    duplicate_key = character(),
+    dedup_rank = integer(),
+    dedup_source_priority = integer()
   )
 }
 
@@ -1028,6 +1032,59 @@ add_bh_significance_labels <- function(df) {
     ) |>
     dplyr::select(dplyr::all_of(names(empty_supermodule_eigengene_significance())))
   out
+}
+
+deduplicate_significance_for_brackets <- function(sig, spatial = FALSE) {
+  if (is.null(sig) || !nrow(sig)) return(empty_supermodule_eigengene_significance())
+  sig <- add_bh_significance_labels(sig)
+  if (!nrow(sig)) return(sig)
+  if (!"dataset" %in% names(sig)) sig$dataset <- DATASET
+  sig$SpatialLabel <- as.character(dplyr::coalesce(sig$SpatialLabel, sig$spatial_unit))
+  key_cols <- if (isTRUE(spatial)) {
+    c("dataset", "supermodule_id", "SpatialLabel", "contrast_block")
+  } else {
+    c("dataset", "supermodule_id", "contrast_block")
+  }
+  sig |>
+    dplyr::mutate(
+      contrast_block = contrast_block(.data$contrast),
+      BH_q = suppressWarnings(as.numeric(.data$BH_q)),
+      p_value = suppressWarnings(as.numeric(.data$p_value)),
+      dedup_source_priority = dplyr::case_when(
+        .data$significance_source == "directional_score_region_layer" ~ 1L,
+        .data$significance_source == "directional_score_global" ~ 1L,
+        .data$significance_source == "within_spatial_unit_model_fallback" ~ 2L,
+        .data$significance_source == "spatial_adjusted_global_model" ~ 2L,
+        TRUE ~ 9L
+      ),
+      duplicate_key = if (isTRUE(spatial)) {
+        paste(.data$dataset, .data$supermodule_id, .data$SpatialLabel, .data$contrast_block, sep = "|")
+      } else {
+        paste(.data$dataset, .data$supermodule_id, .data$contrast_block, sep = "|")
+      }
+    ) |>
+    dplyr::filter(
+      .data$contrast_block %in% c("RES-CON", "SUS-CON", "SUS-RES"),
+      is.finite(.data$BH_q),
+      .data$BH_q <= 0.05
+    ) |>
+    dplyr::group_by(dplyr::across(dplyr::all_of(key_cols))) |>
+    dplyr::mutate(duplicate_rows_before_dedup = dplyr::n()) |>
+    dplyr::ungroup() |>
+    dplyr::arrange(
+      dplyr::across(dplyr::all_of(key_cols)),
+      .data$dedup_source_priority,
+      .data$BH_q,
+      .data$p_value
+    ) |>
+    dplyr::group_by(dplyr::across(dplyr::all_of(key_cols))) |>
+    dplyr::mutate(
+      dedup_rank = dplyr::row_number(),
+      plotted_as_bracket = .data$dedup_rank == 1L
+    ) |>
+    dplyr::filter(.data$dedup_rank == 1L) |>
+    dplyr::ungroup() |>
+    dplyr::select(dplyr::all_of(names(empty_supermodule_eigengene_significance())))
 }
 
 directional_score_significance_rows <- function(dataset, canonical_lookup) {
@@ -1153,11 +1210,10 @@ choose_group_significance <- function(directional_rows, fallback_rows) {
   } else {
     empty_supermodule_eigengene_significance()
   }
-  out <- if (nrow(directional_global)) directional_global else fallback_rows
-  if (is.null(out) || !nrow(out)) return(empty_supermodule_eigengene_significance())
-  out |>
+  fallback_global <- if (!is.null(fallback_rows) && nrow(fallback_rows)) fallback_rows else empty_supermodule_eigengene_significance()
+  dplyr::bind_rows(directional_global, fallback_global) |>
     dplyr::mutate(local_directional_rows_excluded_from_global = local_excluded) |>
-    add_bh_significance_labels()
+    deduplicate_significance_for_brackets(spatial = FALSE)
 }
 
 choose_spatial_significance <- function(directional_rows, fallback_rows) {
@@ -1176,20 +1232,28 @@ choose_spatial_significance <- function(directional_rows, fallback_rows) {
   } else {
     empty_supermodule_eigengene_significance()
   }
-  if (!nrow(directional_spatial)) return(add_bh_significance_labels(fallback_spatial))
-  if (!nrow(fallback_spatial)) return(add_bh_significance_labels(directional_spatial))
-  fallback_missing <- fallback_spatial |>
-    dplyr::anti_join(
-      directional_spatial |>
-        dplyr::distinct(
-          .data$supermodule_id,
-          SpatialLabel = as.character(.data$SpatialLabel),
-          .data$contrast_block
-        ),
-      by = c("supermodule_id", "SpatialLabel", "contrast_block")
-    )
-  dplyr::bind_rows(directional_spatial, fallback_missing) |>
-    add_bh_significance_labels()
+  dplyr::bind_rows(directional_spatial, fallback_spatial) |>
+    deduplicate_significance_for_brackets(spatial = TRUE)
+}
+
+validate_unique_plotted_brackets <- function(sig, spatial = FALSE) {
+  if (is.null(sig) || !nrow(sig)) return(invisible(TRUE))
+  plotted <- sig |>
+    dplyr::filter(.data$plotted_as_bracket %in% TRUE)
+  if (!nrow(plotted)) return(invisible(TRUE))
+  dup <- if (isTRUE(spatial)) {
+    plotted |>
+      dplyr::count(.data$dataset, .data$supermodule_id, .data$SpatialLabel, .data$contrast_block, name = "n") |>
+      dplyr::filter(.data$n > 1L)
+  } else {
+    plotted |>
+      dplyr::count(.data$dataset, .data$supermodule_id, .data$contrast_block, name = "n") |>
+      dplyr::filter(.data$n > 1L)
+  }
+  if (nrow(dup)) {
+    stop("Duplicate plotted bracket annotations remain after de-duplication.", call. = FALSE)
+  }
+  invisible(TRUE)
 }
 
 make_endpoint_maps <- function(module_eig, definitions, super_ann) {
@@ -1708,6 +1772,14 @@ make_pairwise_bracket_annotations <- function(plot_df, significance_df,
         TRUE ~ 99L
       )
     )
+  sig <- if (isTRUE(spatial)) {
+    sig |>
+      dplyr::mutate(SpatialLabel = as.character(dplyr::coalesce(.data$SpatialLabel, .data$spatial_unit))) |>
+      dplyr::distinct(.data$supermodule_id, .data$SpatialLabel, .data$contrast_block, .data$bracket_group_1, .data$bracket_group_2, .keep_all = TRUE)
+  } else {
+    sig |>
+      dplyr::distinct(.data$supermodule_id, .data$contrast_block, .data$bracket_group_1, .data$bracket_group_2, .keep_all = TRUE)
+  }
   if (!nrow(sig)) return(empty)
 
   y_vals <- suppressWarnings(as.numeric(plot_df[[y_col]]))
@@ -3118,6 +3190,8 @@ global_super_out_significance <- super_out_significance_rows(super_out, "spatial
 spatial_super_out_significance <- super_out_significance_rows(super_out, "within_spatial_unit", canonical_supermodule_lookup)
 all_supermodule_eigengene_group_significance <- choose_group_significance(directional_significance_rows, global_super_out_significance)
 all_supermodule_eigengene_spatial_group_significance <- choose_spatial_significance(directional_significance_rows, spatial_super_out_significance)
+validate_unique_plotted_brackets(all_supermodule_eigengene_group_significance, spatial = FALSE)
+validate_unique_plotted_brackets(all_supermodule_eigengene_spatial_group_significance, spatial = TRUE)
 selected_sus_res_loadings <- selected_sus_res_member_loadings(super_pca_member_loadings, selected_sus_res_audit, selected_sus_res_contents)
 selected_sus_res_interpretation_summary <- selected_sus_res_supermodule_interpretation_summary(selected_sus_res_contents, selected_sus_res_loadings)
 all_supermodule_region_layer_effects <- apply_canonical_supermodule_labels(all_supermodule_region_layer_effect_source(super_out), canonical_supermodule_lookup)
