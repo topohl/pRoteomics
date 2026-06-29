@@ -40,6 +40,9 @@ if (run$dry_run) {
   dry_run_line("Supermodule annotation", FILES$supermodule_annotation, if (file.exists(FILES$supermodule_annotation)) "PASS" else "WARN")
   dry_run_line("Optional marker traits", FILES$marker_traits, if (file.exists(FILES$marker_traits)) "PASS" else "WARN")
   dry_run_line("Output tables", PATHS$tables)
+  dry_run_line("Supermodule PCA eigenvalue tables", file.path(PATHS$tables, "supermodule_pca_eigenvalues.csv"))
+  dry_run_line("Supermodule PCA eigenvalue source data", file.path(PATHS$source_data, "supermodule_pca_eigenvalues.csv"))
+  dry_run_line("Supermodule PCA eigenvalue scree SVG", file.path(PATHS$figures, "supermodule_pca_eigenvalue_scree.svg"))
   quit(status = 0, save = "no")
 }
 
@@ -441,12 +444,156 @@ make_endpoint_maps <- function(module_eig, definitions, super_ann) {
   list(module_map = module_map, super_map = super_map)
 }
 
+empty_supermodule_composition <- function() {
+  data.frame(
+    supermodule_id = character(),
+    supermodule_eigengene = character(),
+    n_member_modules = integer(),
+    member_modules = character(),
+    stringsAsFactors = FALSE
+  )
+}
+
+supermodule_annotation_meta <- function(super_map) {
+  for (nm in c("SupermoduleID", "SupermoduleLabel", "supermodule_merge_cut_height", "supermodule_merge_rule")) {
+    if (!nm %in% names(super_map)) super_map[[nm]] <- NA
+  }
+  super_map |>
+    dplyr::distinct(
+      .data$SupermoduleID,
+      .data$SupermoduleLabel,
+      .data$supermodule_merge_cut_height,
+      .data$supermodule_merge_rule
+    )
+}
+
+supermodule_pca_eigenvalues <- function(module_eigengenes, super_map, dataset) {
+  me_cols <- setdiff(names(module_eigengenes), "Sample")
+  super_map <- super_map[super_map$module_eigengene %in% me_cols & !is.na(super_map$SupermoduleID), , drop = FALSE]
+  if (!nrow(super_map)) {
+    return(tibble::tibble(
+      dataset = character(), supermodule_id = character(), supermodule_label = character(),
+      pc = integer(), eigenvalue = numeric(), variance_explained = numeric(),
+      cumulative_variance_explained = numeric(), n_member_modules = integer(),
+      n_variable_member_modules = integer(), n_samples_used = integer(),
+      member_modules = character(), pca_status = character()
+    ))
+  }
+
+  dplyr::bind_rows(lapply(unique(super_map$SupermoduleID), function(sid) {
+    sm <- super_map[super_map$SupermoduleID == sid, , drop = FALSE]
+    members <- unique(sm$module_eigengene)
+    label <- dplyr::coalesce(na.omit(as.character(sm$SupermoduleLabel))[1], sid)
+    vals <- module_eigengenes[, members, drop = FALSE]
+    variable <- vapply(vals, function(z) stats::var(as.numeric(z), na.rm = TRUE) > 0, logical(1))
+    vals <- vals[, variable, drop = FALSE]
+    n_complete <- if (ncol(vals)) sum(stats::complete.cases(vals)) else 0L
+    base <- tibble::tibble(
+      dataset = dataset,
+      supermodule_id = sid,
+      supermodule_label = label,
+      n_member_modules = length(members),
+      n_variable_member_modules = ncol(vals),
+      n_samples_used = n_complete,
+      member_modules = paste(members, collapse = ";")
+    )
+    if (!ncol(vals)) {
+      return(dplyr::mutate(
+        base,
+        pc = NA_integer_,
+        eigenvalue = NA_real_,
+        variance_explained = NA_real_,
+        cumulative_variance_explained = NA_real_,
+        pca_status = "no_variable_member_modules"
+      ))
+    }
+    if (ncol(vals) == 1L) {
+      return(dplyr::mutate(
+        base,
+        pc = 1L,
+        eigenvalue = 1,
+        variance_explained = 1,
+        cumulative_variance_explained = 1,
+        pca_status = "singleton_or_single_variable_module"
+      ))
+    }
+    vals_complete <- vals[stats::complete.cases(vals), , drop = FALSE]
+    if (nrow(vals_complete) < 2L) {
+      return(dplyr::mutate(
+        base,
+        pc = NA_integer_,
+        eigenvalue = NA_real_,
+        variance_explained = NA_real_,
+        cumulative_variance_explained = NA_real_,
+        pca_status = "too_few_complete_samples"
+      ))
+    }
+    pca <- tryCatch(stats::prcomp(vals_complete, center = TRUE, scale. = TRUE), error = function(e) e)
+    if (inherits(pca, "error")) {
+      return(dplyr::mutate(
+        base,
+        pc = NA_integer_,
+        eigenvalue = NA_real_,
+        variance_explained = NA_real_,
+        cumulative_variance_explained = NA_real_,
+        pca_status = paste0("pca_failed: ", conditionMessage(pca))
+      ))
+    }
+    eigenvalues <- pca$sdev^2
+    variance <- eigenvalues / sum(eigenvalues)
+    dplyr::bind_cols(
+      base[rep(1L, length(eigenvalues)), , drop = FALSE],
+      tibble::tibble(
+        pc = seq_along(eigenvalues),
+        eigenvalue = eigenvalues,
+        variance_explained = variance,
+        cumulative_variance_explained = cumsum(variance),
+        pca_status = "ok"
+      )
+    )
+  }))
+}
+
+plot_supermodule_pca_scree <- function(pca_eigenvalues, path) {
+  plot_df <- pca_eigenvalues |>
+    dplyr::filter(!is.na(.data$pc), is.finite(.data$variance_explained)) |>
+    dplyr::mutate(
+      pc_label = paste0("PC", .data$pc),
+      facet_label = paste0(.data$supermodule_id, ": ", .data$supermodule_label)
+    )
+  if (!nrow(plot_df)) {
+    p <- ggplot2::ggplot() +
+      ggplot2::annotate("text", x = 0, y = 0, label = "No variable supermodule PCA components available", size = 3) +
+      ggplot2::labs(title = "Supermodule PCA eigenvalue scree") +
+      ggplot2::theme_void()
+  } else {
+    p <- ggplot2::ggplot(plot_df, ggplot2::aes(x = .data$pc_label)) +
+      ggplot2::geom_col(ggplot2::aes(y = .data$variance_explained), fill = "#4E79A7", width = 0.72) +
+      ggplot2::geom_line(ggplot2::aes(y = .data$cumulative_variance_explained, group = 1), color = "#D95F02", linewidth = 0.35) +
+      ggplot2::geom_point(ggplot2::aes(y = .data$cumulative_variance_explained), color = "#D95F02", size = 0.75) +
+      ggplot2::facet_wrap(~facet_label, scales = "free_x") +
+      ggplot2::scale_y_continuous(labels = function(x) paste0(round(100 * x), "%"), limits = c(0, 1)) +
+      ggplot2::labs(x = NULL, y = "Variance explained", title = "Supermodule PCA eigenvalue scree") +
+      ggplot2::theme(
+        legend.position = "none",
+        axis.text.x = ggplot2::element_text(angle = 45, hjust = 1, size = 5),
+        strip.text = ggplot2::element_text(size = 6)
+      )
+  }
+  ggplot2::ggsave(path, p, width = 210, height = 180, units = "mm", device = svglite::svglite)
+}
+
 correlate_marker_traits <- function(eigengenes, endpoint_map, marker_traits, level) {
   if (is.null(marker_traits) || !nrow(marker_traits)) return(tibble::tibble())
   trait_cols <- grep("^(z|raw)_.+_(score|ratio)$|^z_microglia_minus_neuropil_score$|^z_microglia_to_neuropil_ratio$|^raw_microglia_minus_neuropil_score$|^raw_microglia_to_neuropil_ratio$", names(marker_traits), value = TRUE)
   trait_cols <- trait_cols[vapply(marker_traits[trait_cols], is.numeric, logical(1))]
   dat <- dplyr::inner_join(eigengenes, marker_traits[, c("Sample", trait_cols), drop = FALSE], by = "Sample")
   endpoint_cols <- intersect(endpoint_map$endpoint_col, names(dat))
+  if (!length(endpoint_cols) || !length(trait_cols)) return(tibble::tibble(
+    dataset = character(), level = character(), module_id = character(), supermodule_id = character(),
+    marker_trait = character(), correlation = numeric(), p_value = numeric(), FDR = numeric(),
+    n_samples = integer(), interpretation_note = character()
+  ))
   rows <- lapply(endpoint_cols, function(ec) {
     map <- endpoint_map[match(ec, endpoint_map$endpoint_col), , drop = FALSE]
     dplyr::bind_rows(lapply(trait_cols, function(tc) {
@@ -520,22 +667,20 @@ if (inherits(state, "error")) {
   comp <- data.frame(dataset = DATASET, supermodule_id = NA_character_, n_member_modules = 0L, member_modules = NA_character_, stringsAsFactors = FALSE)
   module_marker <- tibble::tibble()
   super_marker <- tibble::tibble()
+  super_pca_eigenvalues <- supermodule_pca_eigenvalues(data.frame(Sample = character()), data.frame(), DATASET)
 } else {
   module_eig <- extract_module_eigengenes(state)
   definitions <- safe_read_csv(FILES$definitions) %||% data.frame()
   super_ann <- safe_read_csv(FILES$supermodule_annotation) %||% data.frame()
   maps <- make_endpoint_maps(module_eig, definitions, super_ann)
+  super_pca_eigenvalues <- supermodule_pca_eigenvalues(module_eig, maps$super_map, DATASET)
   super <- make_supermodule_eigengenes(module_eig, maps$super_map)
-  comp <- super$composition |>
+  comp0 <- super$composition
+  if (is.null(comp0) || !"supermodule_id" %in% names(comp0)) comp0 <- empty_supermodule_composition()
+  comp <- comp0 |>
     dplyr::mutate(dataset = DATASET, .before = "supermodule_id") |>
     dplyr::left_join(
-      maps$super_map |>
-        dplyr::distinct(
-          .data$SupermoduleID,
-          .data$SupermoduleLabel,
-          .data$supermodule_merge_cut_height,
-          .data$supermodule_merge_rule
-        ),
+      supermodule_annotation_meta(maps$super_map),
       by = c("supermodule_id" = "SupermoduleID")
     ) |>
     dplyr::rename(supermodule_label = "SupermoduleLabel")
@@ -563,6 +708,7 @@ super_out <- super_out[, required_group_effect_columns]
 write_table_and_source(module_out, PATHS$tables, PATHS$source_data, "module_group_effects.csv")
 write_table_and_source(super_out, PATHS$tables, PATHS$source_data, "supermodule_group_effects.csv")
 write_table_and_source(comp, PATHS$tables, PATHS$source_data, "supermodule_composition.csv")
+write_table_and_source(super_pca_eigenvalues, PATHS$tables, PATHS$source_data, "supermodule_pca_eigenvalues.csv")
 write_table_and_source(module_marker, PATHS$tables, PATHS$source_data, "module_marker_trait_correlations.csv")
 write_table_and_source(super_marker, PATHS$tables, PATHS$source_data, "supermodule_marker_trait_correlations.csv")
 
@@ -585,6 +731,7 @@ plot_effects <- function(df, path, title) {
 plot_effects(module_out, file.path(PATHS$figures, "module_group_effect_dotplot.svg"), "Module group effects")
 plot_effects(super_out, file.path(PATHS$figures, "supermodule_effects_by_spatial_unit.svg"), "Supermodule group effects")
 plot_effects(super_out, file.path(PATHS$figures, "supermodule_group_effect_dotplot.svg"), "Supermodule group effects")
+plot_supermodule_pca_scree(super_pca_eigenvalues, file.path(PATHS$figures, "supermodule_pca_eigenvalue_scree.svg"))
 
 write_run_manifest(
   file.path(PATHS$logs, "run_manifest.yml"),
