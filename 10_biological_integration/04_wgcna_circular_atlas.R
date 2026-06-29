@@ -52,6 +52,12 @@ out_selected_pdf <- file.path(figure_dir, "wgcna_circular_atlas_selected_only.pd
 out_heatmap_source_supermodule <- file.path(source_dir, "wgcna_circular_heatmap_source_supermodule.csv")
 out_heatmap_source_module <- file.path(source_dir, "wgcna_circular_heatmap_source_module.csv")
 out_heatmap_layout_all_datasets <- file.path(source_dir, "wgcna_circular_heatmap_layout_all_datasets.csv")
+out_publication_heatmap_source <- file.path(source_dir, "wgcna_circular_publication_supermodule_effect_heatmap_source.csv")
+out_publication_heatmap_layout_all_datasets <- file.path(source_dir, "wgcna_circular_publication_supermodule_effect_heatmap_layout_all_datasets.csv")
+out_source_comparison_audit <- file.path(report_dir, "wgcna_circular_vs_publication_heatmap_source_audit.csv")
+out_supermodule_id_comparison <- file.path(report_dir, "wgcna_circular_vs_publication_supermodule_id_comparison.csv")
+out_metric_consistency_audit <- file.path(report_dir, "wgcna_circular_metric_consistency_audit.csv")
+out_module_mapping_audit <- file.path(report_dir, "wgcna_module_supermodule_mapping_audit.csv")
 heatmap_svg_paths <- c(
   neuron_neuropil = file.path(figure_dir, "wgcna_circular_heatmap_neuron_neuropil.svg"),
   neuron_soma = file.path(figure_dir, "wgcna_circular_heatmap_neuron_soma.svg"),
@@ -64,6 +70,18 @@ heatmap_pdf_paths <- c(
 )
 out_heatmap_all_svg <- file.path(figure_dir, "wgcna_circular_heatmap_all_datasets.svg")
 out_heatmap_all_pdf <- file.path(figure_dir, "wgcna_circular_heatmap_all_datasets.pdf")
+out_publication_heatmap_all_svg <- file.path(figure_dir, "wgcna_circular_publication_supermodule_effect_heatmap_all_datasets.svg")
+out_publication_heatmap_all_pdf <- file.path(figure_dir, "wgcna_circular_publication_supermodule_effect_heatmap_all_datasets.pdf")
+publication_heatmap_svg_paths <- c(
+  neuron_neuropil = file.path(figure_dir, "wgcna_circular_publication_supermodule_effect_heatmap_neuron_neuropil.svg"),
+  neuron_soma = file.path(figure_dir, "wgcna_circular_publication_supermodule_effect_heatmap_neuron_soma.svg"),
+  microglia = file.path(figure_dir, "wgcna_circular_publication_supermodule_effect_heatmap_microglia.svg")
+)
+publication_heatmap_pdf_paths <- c(
+  neuron_neuropil = file.path(figure_dir, "wgcna_circular_publication_supermodule_effect_heatmap_neuron_neuropil.pdf"),
+  neuron_soma = file.path(figure_dir, "wgcna_circular_publication_supermodule_effect_heatmap_neuron_soma.pdf"),
+  microglia = file.path(figure_dir, "wgcna_circular_publication_supermodule_effect_heatmap_microglia.pdf")
+)
 out_rect_modules_svg <- file.path(figure_dir, "wgcna_region_layer_heatmap_all_modules.svg")
 out_rect_modules_pdf <- file.path(figure_dir, "wgcna_region_layer_heatmap_all_modules.pdf")
 out_run_manifest <- file.path(log_dir, "run_manifest.yml")
@@ -113,7 +131,7 @@ col_or_na <- function(df, nm, default = NA_character_) {
 
 read_csv_quiet <- function(path) {
   if (!file.exists(path)) return(NULL)
-  readr::read_csv(path, show_col_types = FALSE, progress = FALSE)
+  readr::read_csv(path, show_col_types = FALSE, progress = FALSE, name_repair = "unique")
 }
 
 as_num <- function(x) suppressWarnings(as.numeric(x))
@@ -196,6 +214,80 @@ strip_supermodule_prefix <- function(label, supermodule_id) {
     USE.NAMES = FALSE
   )
   out
+}
+
+label_wrap <- function(x, width = 34) {
+  vapply(as.character(x), function(z) paste(strwrap(z, width = width), collapse = "\n"), character(1))
+}
+
+score_contrast_order <- c("RES vs CON", "SUS vs CON", "SUS vs RES")
+
+score_contrast_block <- function(x) {
+  x <- clean_chr(x)
+  dplyr::case_when(
+    x %in% c("RES vs CON", "RES-CON", "RES - CON") ~ "RES-CON",
+    x %in% c("SUS vs CON", "SUS-CON", "SUS - CON") ~ "SUS-CON",
+    x %in% c("SUS vs RES", "SUS-RES", "SUS - RES", "RES - SUS") ~ "SUS-RES",
+    TRUE ~ x
+  )
+}
+
+score_contrast_order_value <- function(x) {
+  match(score_contrast_block(x), c("RES-CON", "SUS-CON", "SUS-RES"))
+}
+
+publication_score_paths <- function(dataset) {
+  list(
+    supermodule_directional_effects = path_results("tables", "06_modules_WGCNA", "module_score", dataset, "wgcna", "supermodule_directional_effects.csv"),
+    publication_heatmap_source = path_results("source_data", "06_modules_WGCNA", "score_publication_summary", dataset, "publication_supermodule_effect_heatmap_source.csv"),
+    final_label_lookup = path_results("tables", "06_modules_WGCNA", "interpretable_summary", dataset, "WGCNA_final_label_lookup.csv")
+  )
+}
+
+canonical_supermodule_labels_local <- function(dataset) {
+  lookup <- read_csv_quiet(publication_score_paths(dataset)$final_label_lookup)
+  if (is.null(lookup) || !nrow(lookup)) {
+    return(tibble::tibble(
+      dataset = character(),
+      supermodule_id = character(),
+      final_plot_label = character(),
+      final_plot_label_short = character(),
+      raw_label = character()
+    ))
+  }
+  lookup |>
+    dplyr::filter(.data$level == "supermodule") |>
+    dplyr::transmute(
+      dataset = dataset,
+      supermodule_id = clean_chr(.data$entity_id),
+      final_plot_label = clean_chr(.data$final_plot_label),
+      final_plot_label_short = label_wrap(.data$final_plot_label, width = 34),
+      raw_label = if ("raw_top_GO_label" %in% names(lookup)) dplyr::coalesce(na_if_blank_chr(.data$raw_top_GO_label), .data$entity_id) else .data$entity_id
+    ) |>
+    dplyr::filter(nzchar(.data$supermodule_id)) |>
+    dplyr::distinct(.data$dataset, .data$supermodule_id, .keep_all = TRUE)
+}
+
+canonical_module_parent_lookup <- function(dataset) {
+  lookup <- read_csv_quiet(publication_score_paths(dataset)$final_label_lookup)
+  if (is.null(lookup) || !nrow(lookup)) {
+    return(tibble::tibble(
+      dataset = character(),
+      module_id_lookup = character(),
+      supermodule_id_lookup = character(),
+      module_label_lookup = character()
+    ))
+  }
+  lookup |>
+    dplyr::filter(.data$level == "module") |>
+    dplyr::transmute(
+      dataset = dataset,
+      module_id_lookup = clean_chr(.data$entity_id),
+      supermodule_id_lookup = clean_chr(.data$parent_entity_id),
+      module_label_lookup = clean_chr(.data$final_plot_label)
+    ) |>
+    dplyr::filter(nzchar(.data$module_id_lookup), nzchar(.data$supermodule_id_lookup)) |>
+    dplyr::distinct(.data$dataset, .data$module_id_lookup, .keep_all = TRUE)
 }
 
 same_values <- function(x, numeric = FALSE, tolerance = 1e-12) {
@@ -1053,7 +1145,7 @@ select_table_rows <- function(segments) {
 }
 
 parse_spatial_unit <- function(x) {
-  raw <- tolower(gsub("[^a-z0-9]+", "_", clean_chr(x)))
+  raw <- gsub("[^a-z0-9]+", "_", tolower(clean_chr(x)))
   raw <- gsub("^_+|_+$", "", raw)
   raw[!nzchar(raw) | is.na(raw) | raw %in% c("global", "global_spatial_adjusted", "all_spatial_units", "na")] <- "no_local_support"
 
@@ -1063,14 +1155,15 @@ parse_spatial_unit <- function(x) {
 
   region <- dplyr::case_when(
     grepl("^ca1($|_)", raw) ~ "CA1",
-    grepl("^ca2($|_)|^ca3($|_)", raw) ~ "CA2/3",
+    grepl("^ca2($|_)", raw) ~ "CA2",
+    grepl("^ca3($|_)", raw) ~ "CA3",
     grepl("^dg($|_)", raw) ~ "DG",
     raw == "no_local_support" ~ "Global/no local support",
     TRUE ~ "Other"
   )
 
   layer <- dplyr::case_when(
-    raw == "no_local_support" ~ "No local support",
+    raw == "no_local_support" ~ "Layer not available",
     grepl("_slm$", raw) ~ "SLM",
     grepl("_so$", raw) ~ "SO",
     grepl("_sr$", raw) ~ "SR",
@@ -1080,7 +1173,7 @@ parse_spatial_unit <- function(x) {
     grepl("_ml$", raw) ~ "ML",
     grepl("_gcl$", raw) ~ "GCL",
     grepl("_hilus$", raw) ~ "Hilus",
-    TRUE ~ display
+    TRUE ~ "Layer not available"
   )
 
   tibble::tibble(
@@ -1185,7 +1278,8 @@ atlas_evidence_colors <- function(statuses) {
 atlas_spatial_colors <- function(regions) {
   base <- c(
     "CA1" = "#0072B2",
-    "CA2/3" = "#56B4E9",
+    "CA2" = "#56B4E9",
+    "CA3" = "#8DB8DD",
     "DG" = "#009E73",
     "Global/no local support" = "#D9D9D9",
     "Other" = "#CC79A7"
@@ -1428,14 +1522,14 @@ spatial_order_value <- function(region, layer_or_unit, unit) {
     region == "CA1" & layer == "SR" ~ 103L,
     region == "CA1" & layer == "SLM" ~ 104L,
     region == "CA1" ~ 109L,
-    region == "CA2/3" & grepl("^ca2", unit) & layer == "SO" ~ 201L,
-    region == "CA2/3" & grepl("^ca2", unit) & layer == "SR" ~ 202L,
-    region == "CA2/3" & grepl("^ca2", unit) & layer == "SLM" ~ 203L,
-    region == "CA2/3" & grepl("^ca2", unit) ~ 209L,
-    region == "CA2/3" & grepl("^ca3", unit) & layer == "SO" ~ 221L,
-    region == "CA2/3" & grepl("^ca3", unit) & layer == "SR" ~ 222L,
-    region == "CA2/3" & grepl("^ca3", unit) ~ 229L,
-    region == "CA2/3" ~ 240L,
+    region == "CA2" & layer == "SO" ~ 201L,
+    region == "CA2" & layer == "SR" ~ 202L,
+    region == "CA2" & layer == "SLM" ~ 203L,
+    region == "CA2" ~ 209L,
+    region == "CA3" & layer == "SO" ~ 221L,
+    region == "CA3" & layer == "SR" ~ 222L,
+    region == "CA3" & layer == "SLM" ~ 223L,
+    region == "CA3" ~ 229L,
     region == "DG" & layer == "MO" ~ 301L,
     region == "DG" & layer == "ML" ~ 302L,
     region == "DG" & layer == "GCL" ~ 303L,
@@ -1642,21 +1736,23 @@ local_effect_rows <- function(df, level) {
 module_supermodule_map <- function(dataset) {
   path <- dataset_source_paths(dataset)$module_supermodule_annotation
   ann <- read_csv_quiet(path)
+  lookup_map <- canonical_module_parent_lookup(dataset)
   if (is.null(ann) || !nrow(ann)) {
-    return(tibble::tibble(
+    ann_map <- tibble::tibble(
       dataset = character(),
       module_id_annotation = character(),
       module_label_key = character(),
       supermodule_id = character(),
       supermodule_label = character()
-    ))
+    )
+    return(list(annotation = ann_map, lookup = lookup_map))
   }
   supermodule_id_col <- first_existing_col(ann, c("SupermoduleID", "Supermodule_DataDrivenID", "Supermodule_DataDriven"))
   supermodule_label_col <- first_nonblank_col(ann, c("Supermodule_DisplayLabel", "Supermodule_FinalLabel", "Supermodule", "Supermodule_DataDrivenLabel"))
   module_id_col <- first_existing_col(ann, c("ModuleID", "module_id"))
   module_label_col <- first_nonblank_col(ann, c("ModuleLabel_Final", "top_GO_label", "ModuleLabel_GO_BP"))
 
-  ann |>
+  ann_map <- ann |>
     dplyr::transmute(
       dataset = dataset,
       module_id_annotation = if (!is.na(module_id_col)) clean_chr(.data[[module_id_col]]) else NA_character_,
@@ -1666,6 +1762,7 @@ module_supermodule_map <- function(dataset) {
     ) |>
     dplyr::filter(nzchar(.data$module_label_key) | nzchar(.data$module_id_annotation)) |>
     dplyr::distinct(.data$dataset, .data$module_label_key, .data$module_id_annotation, .keep_all = TRUE)
+  list(annotation = ann_map, lookup = lookup_map)
 }
 
 build_heatmap_sources <- function(datasets, segments, selected_audit) {
@@ -1711,20 +1808,58 @@ build_heatmap_sources <- function(datasets, segments, selected_audit) {
     if (!nrow(local)) return(tibble::tibble())
     map <- module_supermodule_map(ds)
     local <- local |>
-      dplyr::mutate(module_label_key = clean_chr(.data$module_label)) |>
-      dplyr::left_join(map, by = c("dataset", "module_label_key")) |>
+      dplyr::mutate(
+        module_label_key = clean_chr(.data$module_label),
+        module_id_key = clean_chr(.data$module_id)
+      ) |>
+      dplyr::left_join(map$lookup, by = c("dataset", "module_id_key" = "module_id_lookup")) |>
+      dplyr::left_join(
+        map$annotation |>
+          dplyr::select(
+            "dataset",
+            module_id_key = "module_id_annotation",
+            supermodule_id_annotation = "supermodule_id",
+            supermodule_label_annotation = "supermodule_label"
+          ) |>
+          dplyr::filter(nzchar(.data$module_id_key)) |>
+          dplyr::distinct(.data$dataset, .data$module_id_key, .keep_all = TRUE),
+        by = c("dataset", "module_id_key")
+      ) |>
+      dplyr::left_join(
+        map$annotation |>
+          dplyr::filter(nzchar(.data$module_label_key)) |>
+          dplyr::select(
+            "dataset", "module_label_key",
+            supermodule_id_label_fallback = "supermodule_id",
+            supermodule_label_label_fallback = "supermodule_label"
+          ) |>
+          dplyr::distinct(.data$dataset, .data$module_label_key, .keep_all = TRUE),
+        by = c("dataset", "module_label_key")
+      ) |>
       dplyr::mutate(
         supermodule_id = dplyr::coalesce(
-          na_if_blank_chr(.data$supermodule_id.y),
-          na_if_blank_chr(.data$supermodule_id.x),
+          na_if_blank_chr(.data$supermodule_id_lookup),
+          na_if_blank_chr(.data$supermodule_id_annotation),
+          na_if_blank_chr(.data$supermodule_id_label_fallback),
+          na_if_blank_chr(.data$supermodule_id),
           "unmapped"
         ),
         supermodule_label_from_map = dplyr::coalesce(
-          na_if_blank_chr(.data$supermodule_label.y),
-          na_if_blank_chr(.data$supermodule_label.x)
+          na_if_blank_chr(.data$supermodule_label_annotation),
+          na_if_blank_chr(.data$supermodule_label_label_fallback),
+          na_if_blank_chr(.data$supermodule_label)
+        ),
+        module_supermodule_mapping_method = dplyr::case_when(
+          nzchar(na_if_blank_chr(.data$supermodule_id_lookup)) ~ "final_label_lookup_module_id",
+          nzchar(na_if_blank_chr(.data$supermodule_id_annotation)) ~ "annotation_module_id",
+          nzchar(na_if_blank_chr(.data$supermodule_id_label_fallback)) ~ "annotation_label_fallback",
+          TRUE ~ "unmapped"
         )
       ) |>
-      dplyr::select(-dplyr::any_of(c("supermodule_id.x", "supermodule_id.y", "supermodule_label.x", "supermodule_label.y"))) |>
+      dplyr::select(-dplyr::any_of(c(
+        "supermodule_id_lookup", "supermodule_id_annotation", "supermodule_id_label_fallback",
+        "supermodule_label", "supermodule_label_annotation", "supermodule_label_label_fallback", "module_label_lookup"
+      ))) |>
       dplyr::left_join(segment_meta, by = c("dataset", "supermodule_id")) |>
       dplyr::mutate(
         supermodule_id = dplyr::coalesce(na_if_blank_chr(.data$supermodule_id), "unmapped"),
@@ -1759,6 +1894,7 @@ build_heatmap_sources <- function(datasets, segments, selected_audit) {
         evidence_status = clean_chr(.data$evidence_status),
         support_class = .data$support_class,
         selected_or_priority_flag = .data$selected_or_priority_flag %in% TRUE,
+        module_supermodule_mapping_method = if ("module_supermodule_mapping_method" %in% names(df)) clean_chr(.data$module_supermodule_mapping_method) else NA_character_,
         plot_sector_order = NA_integer_,
         plot_track_order = NA_integer_,
         angular_order = NA_integer_,
@@ -1839,13 +1975,351 @@ build_heatmap_sources <- function(datasets, segments, selected_audit) {
   )
 }
 
+order_heatmap_source <- function(df) {
+  if (is.null(df) || !nrow(df)) return(df)
+  sector_meta <- df |>
+    dplyr::group_by(.data$dataset, .data$supermodule_id) |>
+    dplyr::summarise(
+      selected = any(.data$selected_or_priority_flag, na.rm = TRUE),
+      best_support = min(dplyr::coalesce(status_priority[.data$evidence_status], 99L), na.rm = TRUE),
+      max_abs_effect = max(abs(.data$estimate), na.rm = TRUE),
+      .groups = "drop"
+    ) |>
+    dplyr::mutate(
+      best_support = dplyr::if_else(is.infinite(.data$best_support), 99, as.numeric(.data$best_support)),
+      max_abs_effect = dplyr::if_else(is.infinite(.data$max_abs_effect), 0, .data$max_abs_effect)
+    ) |>
+    dplyr::arrange(
+      .data$dataset,
+      dplyr::desc(.data$selected),
+      .data$best_support,
+      dplyr::desc(.data$max_abs_effect),
+      .data$supermodule_id
+    ) |>
+    dplyr::group_by(.data$dataset) |>
+    dplyr::mutate(plot_sector_order = dplyr::row_number()) |>
+    dplyr::ungroup() |>
+    dplyr::select("dataset", "supermodule_id", "plot_sector_order")
+
+  spatial_meta <- df |>
+    dplyr::distinct(.data$dataset, .data$spatial_unit, .data$parsed_region, .data$parsed_layer_or_unit, .data$spatial_order) |>
+    dplyr::arrange(.data$dataset, .data$spatial_order, .data$spatial_unit) |>
+    dplyr::group_by(.data$dataset) |>
+    dplyr::mutate(spatial_unit_order = dplyr::row_number()) |>
+    dplyr::ungroup() |>
+    dplyr::select("dataset", "spatial_unit", "spatial_unit_order")
+
+  track_meta <- df |>
+    dplyr::distinct(.data$dataset, .data$contrast_block, .data$spatial_unit, .data$contrast_block_order, .data$spatial_order) |>
+    dplyr::arrange(.data$dataset, .data$contrast_block_order, .data$spatial_order, .data$spatial_unit) |>
+    dplyr::group_by(.data$dataset) |>
+    dplyr::mutate(plot_track_order = dplyr::row_number()) |>
+    dplyr::ungroup() |>
+    dplyr::select("dataset", "contrast_block", "spatial_unit", "plot_track_order")
+
+  df |>
+    dplyr::select(-dplyr::any_of(c("plot_sector_order", "plot_track_order", "angular_order", "ring_order"))) |>
+    dplyr::left_join(sector_meta, by = c("dataset", "supermodule_id")) |>
+    dplyr::left_join(spatial_meta, by = c("dataset", "spatial_unit")) |>
+    dplyr::left_join(track_meta, by = c("dataset", "contrast_block", "spatial_unit")) |>
+    dplyr::group_by(.data$dataset) |>
+    dplyr::mutate(
+      angular_order = (.data$plot_sector_order - 1L) * max(.data$spatial_unit_order, na.rm = TRUE) + .data$spatial_unit_order,
+      ring_order = .data$contrast_block_order,
+      contrast_ring = .data$contrast_block,
+      contrast_ring_order = .data$ring_order,
+      internal_contrast_label_position = "top_annulus"
+    ) |>
+    dplyr::ungroup() |>
+    dplyr::arrange(.data$dataset, .data$angular_order, .data$ring_order, .data$module_id)
+}
+
+build_publication_heatmap_source <- function(datasets, analysis = "primary_all_replicates") {
+  rows <- lapply(datasets, function(ds) {
+    path <- publication_score_paths(ds)$supermodule_directional_effects
+    effects <- read_csv_quiet(path)
+    if (is.null(effects) || !nrow(effects)) return(tibble::tibble())
+    labels <- canonical_supermodule_labels_local(ds)
+    required <- c("Analysis", "RegionLayer", "Module", "Cohen_d", "contrast_label", "p_adj_within_model_BH")
+    missing <- setdiff(required, names(effects))
+    if (length(missing)) {
+      stop("Publication score source is missing required columns for ", ds, ": ", paste(missing, collapse = ", "), call. = FALSE)
+    }
+    effects$within_BH_flag_input <- if ("within_BH_significant" %in% names(effects)) {
+      clean_chr(effects$within_BH_significant) %in% c("TRUE", "true", "1")
+    } else {
+      rep(FALSE, nrow(effects))
+    }
+    parsed <- parse_spatial_unit(effects$RegionLayer)
+    effects |>
+      dplyr::bind_cols(parsed) |>
+      dplyr::mutate(dataset = ds) |>
+      dplyr::filter(.data$Analysis == .env$analysis) |>
+      dplyr::left_join(labels, by = c("dataset", "Module" = "supermodule_id")) |>
+      dplyr::mutate(
+        contrast_block = score_contrast_block(.data$contrast_label),
+        contrast_block_order = score_contrast_order_value(.data$contrast_block),
+        p_adj_within_num = as_num(.data$p_adj_within_model_BH),
+        within_BH_flag = .data$within_BH_flag_input,
+        support_class = dplyr::if_else(.data$within_BH_flag | (!is.na(.data$p_adj_within_num) & .data$p_adj_within_num <= 0.05), "FDR05", "none"),
+        evidence_status = dplyr::if_else(.data$support_class == "FDR05", "robust_FDR", "not_supported"),
+        supermodule_label = dplyr::coalesce(na_if_blank_chr(.data$final_plot_label), clean_chr(.data$Module)),
+        supermodule_label_short = dplyr::coalesce(na_if_blank_chr(.data$final_plot_label_short), clean_chr(.data$Module)),
+        spatial_order = spatial_order_value(.data$parsed_spatial_region, .data$parsed_spatial_layer_or_unit, .data$RegionLayer)
+      ) |>
+      dplyr::transmute(
+        dataset = .data$dataset,
+        dataset_label = dataset_label(.data$dataset),
+        level = "supermodule_publication_score",
+        module_id = NA_character_,
+        supermodule_id = clean_chr(.data$Module),
+        module_label = NA_character_,
+        supermodule_label = .data$supermodule_label,
+        supermodule_label_short = .data$supermodule_label_short,
+        spatial_unit = clean_chr(.data$RegionLayer),
+        parsed_region = .data$parsed_spatial_region,
+        parsed_layer_or_unit = .data$parsed_spatial_layer_or_unit,
+        contrast = clean_chr(.data$contrast_label),
+        contrast_block = .data$contrast_block,
+        effect_scope = "publication_score_region_layer",
+        estimate = as_num(.data$Cohen_d),
+        Cohen_d = as_num(.data$Cohen_d),
+        p_value = as_num(dplyr::coalesce(.data$p.value, .data$p_nominal)),
+        p_adj_within_model_BH = as_num(.data$p_adj_within_model_BH),
+        p_adj_global_BH = as_num(.data$p_adj_global_BH),
+        FDR_global = as_num(.data$p_adj_global_BH),
+        FDR_within_dataset_level = as_num(.data$p_adj_within_model_BH),
+        evidence_status = .data$evidence_status,
+        support_class = .data$support_class,
+        selected_or_priority_flag = TRUE,
+        module_supermodule_mapping_method = NA_character_,
+        source_name = "publication_score_supermodule_directional_effects",
+        source_path = .env$path,
+        analysis = .data$Analysis,
+        analysis_column_used = "Analysis",
+        metric_used = "Cohen_d",
+        significance_marker_column = "within_BH_significant/p_adj_within_model_BH",
+        significance_rule = "within_BH_significant == TRUE or p_adj_within_model_BH <= 0.05",
+        plot_sector_order = NA_integer_,
+        plot_track_order = NA_integer_,
+        angular_order = NA_integer_,
+        ring_order = NA_integer_,
+        contrast_ring = NA_character_,
+        contrast_ring_order = NA_integer_,
+        internal_contrast_label_position = NA_character_,
+        spatial_order = .data$spatial_order,
+        contrast_block_order = .data$contrast_block_order
+      ) |>
+      dplyr::filter(!is.na(.data$contrast_block_order), is.finite(.data$estimate), nzchar(.data$supermodule_id), nzchar(.data$spatial_unit))
+  })
+  order_heatmap_source(dplyr::bind_rows(rows))
+}
+
+collapse_values <- function(x, max_n = 80) {
+  x <- sort(unique(clean_chr(x)))
+  x <- x[nzchar(x)]
+  if (!length(x)) return("")
+  if (length(x) > max_n) return(paste0(paste(x[seq_len(max_n)], collapse = ";"), ";..."))
+  paste(x, collapse = ";")
+}
+
+source_summary_row <- function(dataset, source_name, source_path, df, metric_used, analysis_column_used, significance_marker_column, significance_rule, notes) {
+  if (is.null(df)) df <- tibble::tibble()
+  module_col <- first_existing_col(df, c("Module", "supermodule_id", "endpoint_id"))
+  region_col <- first_existing_col(df, c("RegionLayer", "spatial_unit"))
+  contrast_col <- first_existing_col(df, c("contrast_label", "Contrast", "contrast", "contrast_block"))
+  analysis_values <- if (!is.na(analysis_column_used) && analysis_column_used %in% names(df)) collapse_values(df[[analysis_column_used]]) else ""
+  nonblank_n <- function(x) {
+    x <- na_if_blank_chr(x)
+    dplyr::n_distinct(x[!is.na(x)])
+  }
+  tibble::tibble(
+    dataset = dataset,
+    source_name = source_name,
+    source_path = source_path,
+    metric_used = metric_used,
+    analysis_column_used = analysis_column_used,
+    analysis_values_present = analysis_values,
+    n_rows = nrow(df),
+    n_unique_supermodules = if (!is.na(module_col)) nonblank_n(df[[module_col]]) else 0L,
+    supermodule_ids = if (!is.na(module_col)) collapse_values(df[[module_col]]) else "",
+    n_unique_region_layers = if (!is.na(region_col)) nonblank_n(df[[region_col]]) else 0L,
+    region_layer_values = if (!is.na(region_col)) collapse_values(df[[region_col]]) else "",
+    contrast_values = if (!is.na(contrast_col)) collapse_values(df[[contrast_col]]) else "",
+    significance_marker_column = significance_marker_column,
+    significance_rule = significance_rule,
+    notes = notes
+  )
+}
+
+build_source_lineage_audit <- function(datasets, heatmap_source_supermodule, heatmap_source_module, publication_source) {
+  rows <- lapply(datasets, function(ds) {
+    paths <- dataset_source_paths(ds)
+    score_paths <- publication_score_paths(ds)
+    dplyr::bind_rows(
+      source_summary_row(
+        ds, "circular_supermodule_source", out_heatmap_source_supermodule,
+        heatmap_source_supermodule |> dplyr::filter(.data$dataset == ds),
+        "estimate", "effect_scope", "FDR_within_dataset_level/FDR_global", "FDR <= 0.05 or <= 0.10 in group-effect source",
+        "Generated by this script from group_effects/<dataset>/supermodule_group_effects.csv; retained as group-effect estimate circular atlas."
+      ),
+      source_summary_row(
+        ds, "circular_module_source", out_heatmap_source_module,
+        heatmap_source_module |> dplyr::filter(.data$dataset == ds),
+        "estimate", "effect_scope", "FDR_within_dataset_level/FDR_global", "FDR <= 0.05 or <= 0.10 in group-effect source",
+        "Generated by this script from group_effects/<dataset>/module_group_effects.csv; module-to-supermodule mapping audited separately."
+      ),
+      source_summary_row(
+        ds, "circular_publication_matched_source", out_publication_heatmap_source,
+        publication_source |> dplyr::filter(.data$dataset == ds),
+        "Cohen_d", "Analysis", "within_BH_significant/p_adj_within_model_BH", "within_BH_significant == TRUE or p_adj_within_model_BH <= 0.05",
+        "Generated by this script from module_score/<dataset>/wgcna/supermodule_directional_effects.csv, Analysis == primary_all_replicates."
+      ),
+      source_summary_row(
+        ds, "publication_score_directional_effects", score_paths$supermodule_directional_effects,
+        read_csv_quiet(score_paths$supermodule_directional_effects),
+        "Cohen_d", "Analysis", "within_BH_significant/p_adj_within_model_BH", "within_BH_significant == TRUE or p_adj_within_model_BH <= 0.05",
+        "Primary table consumed by 06_modules_WGCNA/08_wgcna_score_publication_summary.R."
+      ),
+      source_summary_row(
+        ds, "publication_heatmap_source", score_paths$publication_heatmap_source,
+        read_csv_quiet(score_paths$publication_heatmap_source),
+        "Cohen_d", "Analysis", "within_BH_significant/p_adj_within_model_BH", "within_BH_significant == TRUE or p_adj_within_model_BH <= 0.05",
+        "Source data written by 06_modules_WGCNA/08_wgcna_score_publication_summary.R."
+      ),
+      source_summary_row(
+        ds, "group_effects_supermodule_source", paths$supermodule_group_effects,
+        read_csv_quiet(paths$supermodule_group_effects),
+        "estimate", "effect_scope", "FDR_within_dataset_level/FDR_global", "group-effect FDR columns",
+        "Old circular heatmap source; not directly comparable to publication score heatmap."
+      ),
+      source_summary_row(
+        ds, "group_effects_module_source", path_results("tables", "06_modules_WGCNA", "group_effects", ds, "module_group_effects.csv"),
+        read_csv_quiet(path_results("tables", "06_modules_WGCNA", "group_effects", ds, "module_group_effects.csv")),
+        "estimate", "effect_scope", "FDR_within_dataset_level/FDR_global", "group-effect FDR columns",
+        "Old rectangular module heatmap source; not directly comparable to publication score heatmap."
+      )
+    )
+  })
+  dplyr::bind_rows(rows)
+}
+
+ids_from <- function(df, cols) {
+  if (is.null(df) || !nrow(df)) return(character())
+  col <- first_existing_col(df, cols)
+  if (is.na(col)) return(character())
+  sort(unique(na_if_blank_chr(df[[col]])))
+}
+
+build_supermodule_id_comparison <- function(datasets, heatmap_source_supermodule) {
+  rows <- lapply(datasets, function(ds) {
+    score_paths <- publication_score_paths(ds)
+    paths <- dataset_source_paths(ds)
+    pub_source <- read_csv_quiet(score_paths$publication_heatmap_source)
+    score_source <- read_csv_quiet(score_paths$supermodule_directional_effects)
+    group_source <- read_csv_quiet(paths$supermodule_group_effects)
+    lookup <- canonical_supermodule_labels_local(ds)
+    circular <- heatmap_source_supermodule |> dplyr::filter(.data$dataset == ds)
+    pub_ids <- union(ids_from(pub_source, c("Module")), ids_from(score_source, c("Module")))
+    circular_ids <- ids_from(circular, c("supermodule_id"))
+    group_ids <- ids_from(group_source, c("supermodule_id", "endpoint_id"))
+    lookup_ids <- ids_from(lookup, c("supermodule_id"))
+    all_ids <- sort(unique(c(pub_ids, circular_ids, group_ids, lookup_ids)))
+    pub_labels <- if (!is.null(pub_source) && nrow(pub_source) && all(c("Module", "final_plot_label") %in% names(pub_source))) {
+      pub_source |>
+        dplyr::transmute(supermodule_id = clean_chr(.data$Module), publication_label = clean_chr(.data$final_plot_label)) |>
+        dplyr::distinct(.data$supermodule_id, .keep_all = TRUE)
+    } else {
+      tibble::tibble(supermodule_id = character(), publication_label = character())
+    }
+    tibble::tibble(dataset = ds, supermodule_id = all_ids) |>
+      dplyr::left_join(pub_labels, by = "supermodule_id") |>
+      dplyr::left_join(
+        circular |>
+          dplyr::transmute(supermodule_id = clean_chr(.data$supermodule_id), circular_label = clean_chr(.data$supermodule_label)) |>
+          dplyr::distinct(.data$supermodule_id, .keep_all = TRUE),
+        by = "supermodule_id"
+      ) |>
+      dplyr::mutate(
+        in_publication_score_heatmap = .data$supermodule_id %in% pub_ids,
+        in_circular_supermodule_source = .data$supermodule_id %in% circular_ids,
+        in_group_effects_supermodule_source = .data$supermodule_id %in% group_ids,
+        in_final_label_lookup = .data$supermodule_id %in% lookup_ids,
+        mismatch_reason = dplyr::case_when(
+          !.data$in_publication_score_heatmap & .data$in_circular_supermodule_source ~ "present_only_in_group_effect_circular_source",
+          .data$in_publication_score_heatmap & !.data$in_circular_supermodule_source ~ "present_only_in_publication_score_source",
+          .data$in_publication_score_heatmap & !.data$in_final_label_lookup ~ "publication_id_missing_from_final_label_lookup",
+          .data$in_circular_supermodule_source & !.data$in_group_effects_supermodule_source ~ "circular_id_missing_from_group_effects",
+          TRUE ~ "matched_or_not_applicable"
+        )
+      )
+  })
+  dplyr::bind_rows(rows) |>
+    dplyr::select(
+      "dataset", "supermodule_id",
+      "in_publication_score_heatmap", "in_circular_supermodule_source",
+      "in_group_effects_supermodule_source", "in_final_label_lookup",
+      "publication_label", "circular_label", "mismatch_reason"
+    )
+}
+
+build_metric_consistency_audit <- function(heatmap_source_supermodule, publication_source) {
+  tibble::tibble(
+    check = c(
+      "old_circular_fill_metric",
+      "old_circular_support_columns",
+      "publication_matched_fill_metric",
+      "publication_matched_support_columns",
+      "currently_comparable_to_publication_heatmap"
+    ),
+    result = c(
+      if ("estimate" %in% names(heatmap_source_supermodule)) "estimate" else "missing",
+      paste(intersect(c("p_value", "FDR_within_dataset_level", "FDR_global"), names(heatmap_source_supermodule)), collapse = ";"),
+      if ("Cohen_d" %in% names(publication_source) && identical(unique(publication_source$metric_used), "Cohen_d")) "Cohen_d" else "missing_or_mixed",
+      paste(intersect(c("p_adj_within_model_BH", "p_adj_global_BH", "support_class"), names(publication_source)), collapse = ";"),
+      "old wgcna_circular_heatmap_* outputs are not comparable; new wgcna_circular_publication_supermodule_effect_heatmap_* outputs are publication-matched"
+    ),
+    comparable_to_publication_heatmap = c(FALSE, FALSE, TRUE, TRUE, TRUE),
+    notes = c(
+      "Old circular heatmap source is group_effects/<dataset>/supermodule_group_effects.csv.",
+      "Old circular support markers use group-effect FDR columns.",
+      "Publication-matched circular source uses module_score/<dataset>/wgcna/supermodule_directional_effects.csv.",
+      "Publication-matched markers use within_BH_significant/p_adj_within_model_BH <= 0.05.",
+      "Use the publication-matched filenames for manuscript comparison against 08_wgcna_score_publication_summary.R."
+    )
+  )
+}
+
+build_module_mapping_audit <- function(source_module) {
+  if (is.null(source_module) || !nrow(source_module)) {
+    return(tibble::tibble(
+      dataset = character(), n_module_rows = integer(), n_mapped_by_module_id = integer(),
+      n_mapped_by_label_fallback = integer(), n_unmapped = integer(),
+      unmapped_module_ids = character(), unmapped_module_labels = character()
+    ))
+  }
+  source_module |>
+    dplyr::distinct(.data$dataset, .data$module_id, .data$module_label, .data$module_supermodule_mapping_method) |>
+    dplyr::group_by(.data$dataset) |>
+    dplyr::summarise(
+      n_module_rows = dplyr::n(),
+      n_mapped_by_module_id = sum(.data$module_supermodule_mapping_method %in% c("final_label_lookup_module_id", "annotation_module_id"), na.rm = TRUE),
+      n_mapped_by_label_fallback = sum(.data$module_supermodule_mapping_method == "annotation_label_fallback", na.rm = TRUE),
+      n_unmapped = sum(.data$module_supermodule_mapping_method == "unmapped" | is.na(.data$module_supermodule_mapping_method), na.rm = TRUE),
+      unmapped_module_ids = collapse_values(.data$module_id[.data$module_supermodule_mapping_method == "unmapped" | is.na(.data$module_supermodule_mapping_method)]),
+      unmapped_module_labels = collapse_values(.data$module_label[.data$module_supermodule_mapping_method == "unmapped" | is.na(.data$module_supermodule_mapping_method)]),
+      .groups = "drop"
+    )
+}
+
 spatial_region_colors <- function(regions) {
   base <- c(
-    "CA1" = "#4E79A7",
-    "CA2/3" = "#8AB6D6",
-    "DG" = "#59A14F",
-    "Other" = "#B07AA1",
-    "Global/no local support" = "#D9D9D9"
+    "CA1" = "#3B6EA8",
+    "CA2" = "#5AAE8A",
+    "CA3" = "#8DB8DD",
+    "DG" = "#C68E38",
+    "Other" = "#8A7CA8",
+    "Global/no local support" = "#C9CDD2"
   )
   regions <- sort(unique(dplyr::coalesce(na_if_blank_chr(regions), "Other")))
   missing <- setdiff(regions, names(base))
@@ -1858,23 +2332,17 @@ spatial_region_colors <- function(regions) {
 }
 
 spatial_layer_colors <- function(layers) {
-  layers <- sort(unique(dplyr::coalesce(na_if_blank_chr(layers), "Other")))
+  layers <- sort(unique(dplyr::coalesce(na_if_blank_chr(layers), "Layer not available")))
   base <- c(
-    "SO" = "#2F6B9A",
-    "SP" = "#6FA8DC",
-    "SR" = "#9FC5E8",
-    "SLM" = "#CFE2F3",
-    "MO" = "#38761D",
-    "ML" = "#6AA84F",
-    "GCL" = "#93C47D",
-    "PO" = "#B6D7A8",
-    "Hilus" = "#274E13",
-    "CA1" = "#4E79A7",
-    "CA2" = "#7EA6C8",
-    "CA3" = "#A9C7DC",
-    "DG" = "#59A14F",
-    "Other" = "#B07AA1",
-    "No local support" = "#D9D9D9"
+    "SO" = "#2F5D8C",
+    "SP" = "#5C8EC1",
+    "SR" = "#8DB8DD",
+    "SLM" = "#BFD6EA",
+    "MO" = "#6B9D45",
+    "ML" = "#92B96B",
+    "SG" = "#BCD18D",
+    "PO" = "#D7C56D",
+    "Layer not available" = "#D0D3D6"
   )
   missing <- setdiff(layers, names(base))
   if (length(missing)) {
@@ -1909,7 +2377,8 @@ supermodule_band_colors <- function(ids) {
   stats::setNames(rep(base_cols, length.out = length(ids)), ids)
 }
 
-render_dataset_circular_heatmap <- function(source_supermodule, dataset_name, svg_path, pdf_path, combined = FALSE) {
+render_dataset_circular_heatmap <- function(source_supermodule, dataset_name, svg_path, pdf_path, combined = FALSE, atlas_label = "Group-effect estimate circular atlas", fill_label = "Estimate", support_labels = c("adj. p <= 0.05", "adj. p <= 0.10"), supermodule_label_mode = c("priority_full", "all_ids")) {
+  supermodule_label_mode <- match.arg(supermodule_label_mode)
   df <- if (isTRUE(combined)) source_supermodule else source_supermodule |> dplyr::filter(.data$dataset == .env$dataset_name)
   if (!nrow(df)) return(invisible(FALSE))
   df <- df |>
@@ -1947,13 +2416,14 @@ render_dataset_circular_heatmap <- function(source_supermodule, dataset_name, sv
       .groups = "drop"
     ) |>
     dplyr::mutate(
-      label_drawn = .data$selected_or_priority_flag %in% TRUE
+      label_drawn = if (identical(.env$supermodule_label_mode, "all_ids")) TRUE else .data$selected_or_priority_flag %in% TRUE,
+      label_text_for_draw = if (identical(.env$supermodule_label_mode, "all_ids")) .data$supermodule_id else .data$sector_label
     ) |>
     dplyr::group_by(.data$dataset) |>
     dplyr::mutate(label_rank = dplyr::min_rank(.data$plot_sector_order)) |>
     dplyr::ungroup() |>
     dplyr::arrange(.data$dataset, .data$plot_sector_order)
-  max_supermodule_labels <- if (isTRUE(combined)) 3L else if (identical(dataset_name, "neuron_neuropil")) 6L else 5L
+  max_supermodule_labels <- if (identical(supermodule_label_mode, "all_ids")) Inf else if (isTRUE(combined)) 3L else if (identical(dataset_name, "neuron_neuropil")) 6L else 5L
   sector_meta <- sector_meta |>
     dplyr::mutate(label_drawn = .data$label_drawn & .data$label_rank <= .env$max_supermodule_labels)
 
@@ -2066,9 +2536,9 @@ render_dataset_circular_heatmap <- function(source_supermodule, dataset_name, sv
     for (i in seq_len(nrow(region_tiles))) {
       tile <- region_tiles[i, , drop = FALSE]
       layer_poly <- annular_polygon(tile$theta_start[[1]], tile$theta_end[[1]], tile$layer_radius_inner[[1]], tile$layer_radius_outer[[1]])
-      graphics::polygon(layer_poly$x, layer_poly$y, col = tile$layer_color[[1]], border = "white", lwd = 0.10)
+      graphics::polygon(layer_poly$x, layer_poly$y, col = tile$layer_color[[1]], border = "white", lwd = 0.12)
       poly <- annular_polygon(tile$theta_start[[1]], tile$theta_end[[1]], tile$region_radius_inner[[1]], tile$region_radius_outer[[1]])
-      graphics::polygon(poly$x, poly$y, col = tile$region_color[[1]], border = "white", lwd = 0.12)
+      graphics::polygon(poly$x, poly$y, col = tile$region_color[[1]], border = "white", lwd = 0.14)
     }
 
     for (i in seq_len(nrow(df))) {
@@ -2122,14 +2592,27 @@ render_dataset_circular_heatmap <- function(source_supermodule, dataset_name, sv
         theta <- sector$theta_mid[[1]] * pi / 180
         x0 <- cos(theta) * sector$supermodule_band_outer[[1]]
         y0 <- sin(theta) * sector$supermodule_band_outer[[1]]
-        x1 <- cos(theta) * 1.06
-        y1 <- sin(theta) * 1.06
-        x <- cos(theta) * 1.15
-        y <- sin(theta) * 1.15
+        label_radius <- if (identical(supermodule_label_mode, "all_ids")) 1.075 else 1.15
+        leader_radius <- if (identical(supermodule_label_mode, "all_ids")) 1.035 else 1.06
+        x1 <- cos(theta) * leader_radius
+        y1 <- sin(theta) * leader_radius
+        x <- cos(theta) * label_radius
+        y <- sin(theta) * label_radius
         orient <- readable_radial_label(sector$theta_mid[[1]])
-        lab <- vapply(strwrap(sector$sector_label[[1]], width = 20, simplify = FALSE), paste, character(1), collapse = "\n")
-        graphics::segments(x0, y0, x1, y1, col = "#555555", lwd = 0.35)
-        graphics::text(x, y, labels = lab, srt = orient$angle, cex = 0.56, font = 2, col = "#222222")
+        lab <- if (identical(supermodule_label_mode, "all_ids")) {
+          sector$label_text_for_draw[[1]]
+        } else {
+          vapply(strwrap(sector$label_text_for_draw[[1]], width = 20, simplify = FALSE), paste, character(1), collapse = "\n")
+        }
+        graphics::segments(x0, y0, x1, y1, col = "#666666", lwd = if (identical(supermodule_label_mode, "all_ids")) 0.25 else 0.35)
+        graphics::text(
+          x, y,
+          labels = lab,
+          srt = orient$angle,
+          cex = if (identical(supermodule_label_mode, "all_ids")) 0.62 else 0.56,
+          font = 2,
+          col = "#222222"
+        )
       }
     }
 
@@ -2164,23 +2647,24 @@ render_dataset_circular_heatmap <- function(source_supermodule, dataset_name, sv
       )
     }
 
-    center_title <- if (isTRUE(combined)) "WGCNA\nspatial atlas" else dataset_label(dataset_name)
+    center_title <- if (isTRUE(combined)) paste("WGCNA", "spatial atlas", sep = "\n") else dataset_label(dataset_name)
     graphics::text(0, if (isTRUE(combined)) 0.018 else 0.045, center_title, cex = if (isTRUE(combined)) 0.82 else 1.05, font = 2, col = "#222222")
+    graphics::text(0, if (isTRUE(combined)) -0.105 else -0.105, atlas_label, cex = if (isTRUE(combined)) 0.48 else 0.56, col = "#555555")
     if (identical(dataset_name, "microglia") && !isTRUE(combined)) {
-      graphics::text(0, -0.055, "Microglia-enriched ROI /\nlocal microenvironment", cex = 0.62, col = "#555555")
+      graphics::text(0, -0.175, "Microglia-enriched ROI /\nlocal microenvironment", cex = 0.56, col = "#555555")
     } else if (!isTRUE(combined)) {
-      graphics::text(0, -0.055, "supermodule x spatial unit", cex = 0.64, col = "#555555")
+      graphics::text(0, -0.175, "supermodule x spatial unit", cex = 0.56, col = "#555555")
     }
 
     gradient_x <- seq(1.28, 1.58, length.out = 60)
     for (i in seq_len(length(gradient_x) - 1)) {
       graphics::rect(gradient_x[[i]], -0.75, gradient_x[[i + 1]], -0.70, col = palette[round(seq(1, length(palette), length.out = length(gradient_x) - 1))[[i]]], border = NA)
     }
-    graphics::text(1.43, -0.66, "Estimate", cex = 0.72, font = 2)
+    graphics::text(1.43, -0.66, fill_label, cex = 0.72, font = 2)
     graphics::text(c(1.28, 1.43, 1.58), -0.80, labels = c("-", "0", "+"), cex = 0.65)
     graphics::legend(
       1.25, 0.76,
-      legend = c("adj. p <= 0.05", "adj. p <= 0.10"),
+      legend = support_labels,
       pch = c(16, 1),
       col = "#111111",
       bty = "n",
@@ -2195,16 +2679,16 @@ render_dataset_circular_heatmap <- function(source_supermodule, dataset_name, sv
       border = NA,
       bty = "n",
       cex = 0.66,
-      title = "Region"
+      title = "Region ring"
     )
     graphics::legend(
-      1.25, 0.12,
+      1.25, 0.08,
       legend = names(layer_cols),
       fill = unname(layer_cols),
       border = NA,
       bty = "n",
-      cex = 0.58,
-      title = "Layer/unit"
+      cex = 0.56,
+      title = "Layer ring"
     )
     spatial_summary <- spatial_meta |>
       dplyr::arrange(.data$first_angular_order) |>
@@ -2309,12 +2793,22 @@ if (run$dry_run) {
   dry_run_line("Circular heatmap supermodule source output", out_heatmap_source_supermodule)
   dry_run_line("Circular heatmap module source output", out_heatmap_source_module)
   dry_run_line("Circular heatmap all-datasets layout source output", out_heatmap_layout_all_datasets)
+  dry_run_line("Publication-matched circular source output", out_publication_heatmap_source)
+  dry_run_line("Publication-matched circular all-datasets layout source output", out_publication_heatmap_layout_all_datasets)
+  dry_run_line("Circular-vs-publication source audit output", out_source_comparison_audit)
+  dry_run_line("Circular-vs-publication supermodule ID comparison output", out_supermodule_id_comparison)
+  dry_run_line("Circular metric consistency audit output", out_metric_consistency_audit)
+  dry_run_line("Module-supermodule mapping audit output", out_module_mapping_audit)
   dry_run_line("Circular heatmap all-datasets SVG output", out_heatmap_all_svg)
   dry_run_line("Circular heatmap all-datasets PDF output", out_heatmap_all_pdf)
+  dry_run_line("Publication-matched circular all-datasets SVG output", out_publication_heatmap_all_svg)
+  dry_run_line("Publication-matched circular all-datasets PDF output", out_publication_heatmap_all_pdf)
   dry_run_line("Circular heatmap geometry", "Custom polar tile renderer; top contrast labels anchored at theta=90 degrees; separate inner layer and region rings; support markers use adjusted p/FDR only")
   for (ds_name in names(heatmap_svg_paths)) {
     dry_run_line(paste0("Circular heatmap SVG output (", ds_name, ")"), heatmap_svg_paths[[ds_name]])
     dry_run_line(paste0("Circular heatmap PDF output (", ds_name, ")"), heatmap_pdf_paths[[ds_name]])
+    dry_run_line(paste0("Publication-matched circular heatmap SVG output (", ds_name, ")"), publication_heatmap_svg_paths[[ds_name]])
+    dry_run_line(paste0("Publication-matched circular heatmap PDF output (", ds_name, ")"), publication_heatmap_pdf_paths[[ds_name]])
   }
   dry_run_line("Rectangular all-module heatmap SVG output", out_rect_modules_svg)
   dry_run_line("Rectangular all-module heatmap PDF output", out_rect_modules_pdf)
@@ -2408,6 +2902,13 @@ heatmap_sources <- build_heatmap_sources(available_datasets(), segments, selecte
 heatmap_source_supermodule <- add_polar_layout_columns(heatmap_sources$supermodule)
 heatmap_source_module <- add_polar_layout_columns(heatmap_sources$module)
 heatmap_layout_all_datasets <- add_polar_layout_columns(heatmap_sources$supermodule, combined = TRUE)
+publication_heatmap_source <- build_publication_heatmap_source(available_datasets(), analysis = "primary_all_replicates")
+publication_heatmap_source_layout <- add_polar_layout_columns(publication_heatmap_source)
+publication_heatmap_layout_all_datasets <- add_polar_layout_columns(publication_heatmap_source, combined = TRUE)
+source_lineage_audit <- build_source_lineage_audit(available_datasets(), heatmap_source_supermodule, heatmap_source_module, publication_heatmap_source_layout)
+supermodule_id_comparison <- build_supermodule_id_comparison(available_datasets(), heatmap_source_supermodule)
+metric_consistency_audit <- build_metric_consistency_audit(heatmap_source_supermodule, publication_heatmap_source_layout)
+module_mapping_audit <- build_module_mapping_audit(heatmap_source_module)
 
 metrics <- tibble::tibble(
   metric = c(
@@ -2473,6 +2974,12 @@ readr::write_csv(plot_source, out_plot_source)
 readr::write_csv(heatmap_source_supermodule, out_heatmap_source_supermodule)
 readr::write_csv(heatmap_source_module, out_heatmap_source_module)
 readr::write_csv(heatmap_layout_all_datasets, out_heatmap_layout_all_datasets)
+readr::write_csv(publication_heatmap_source_layout, out_publication_heatmap_source)
+readr::write_csv(publication_heatmap_layout_all_datasets, out_publication_heatmap_layout_all_datasets)
+readr::write_csv(source_lineage_audit, out_source_comparison_audit)
+readr::write_csv(supermodule_id_comparison, out_supermodule_id_comparison)
+readr::write_csv(metric_consistency_audit, out_metric_consistency_audit)
+readr::write_csv(module_mapping_audit, out_module_mapping_audit)
 
 render_circular_atlas(plot_source, out_main_svg, out_main_pdf)
 render_circular_atlas(plot_source, out_selected_svg, out_selected_pdf, selected_only = TRUE)
@@ -2481,14 +2988,41 @@ render_dataset_circular_heatmap(
   "all_datasets",
   out_heatmap_all_svg,
   out_heatmap_all_pdf,
-  combined = TRUE
+  combined = TRUE,
+  atlas_label = "Group-effect estimate circular atlas",
+  fill_label = "Estimate"
 )
 for (ds_name in intersect(names(heatmap_svg_paths), unique(heatmap_source_supermodule$dataset))) {
   render_dataset_circular_heatmap(
     heatmap_source_supermodule,
     ds_name,
     heatmap_svg_paths[[ds_name]],
-    heatmap_pdf_paths[[ds_name]]
+    heatmap_pdf_paths[[ds_name]],
+    atlas_label = "Group-effect estimate circular atlas",
+    fill_label = "Estimate"
+  )
+}
+render_dataset_circular_heatmap(
+  publication_heatmap_layout_all_datasets,
+  "all_datasets",
+  out_publication_heatmap_all_svg,
+  out_publication_heatmap_all_pdf,
+  combined = TRUE,
+  atlas_label = "Score-derived supermodule effect heatmap",
+  fill_label = "Cohen's d",
+  support_labels = c("within BH <= 0.05", "not used"),
+  supermodule_label_mode = "all_ids"
+)
+for (ds_name in intersect(names(publication_heatmap_svg_paths), unique(publication_heatmap_source_layout$dataset))) {
+  render_dataset_circular_heatmap(
+    publication_heatmap_source_layout,
+    ds_name,
+    publication_heatmap_svg_paths[[ds_name]],
+    publication_heatmap_pdf_paths[[ds_name]],
+    atlas_label = "Score-derived supermodule effect heatmap",
+    fill_label = "Cohen's d",
+    support_labels = c("within BH <= 0.05", "not used"),
+    supermodule_label_mode = "all_ids"
   )
 }
 render_rectangular_module_heatmap(heatmap_source_module, out_rect_modules_svg, out_rect_modules_pdf)
@@ -2514,14 +3048,24 @@ write_run_manifest(
     circular_heatmap_source_supermodule = out_heatmap_source_supermodule,
     circular_heatmap_source_module = out_heatmap_source_module,
     circular_heatmap_layout_all_datasets = out_heatmap_layout_all_datasets,
+    publication_circular_heatmap_source = out_publication_heatmap_source,
+    publication_circular_heatmap_layout_all_datasets = out_publication_heatmap_layout_all_datasets,
+    circular_vs_publication_source_audit = out_source_comparison_audit,
+    circular_vs_publication_supermodule_id_comparison = out_supermodule_id_comparison,
+    circular_metric_consistency_audit = out_metric_consistency_audit,
+    module_supermodule_mapping_audit = out_module_mapping_audit,
     main_svg = out_main_svg,
     main_pdf = out_main_pdf,
     selected_only_svg = out_selected_svg,
     selected_only_pdf = out_selected_pdf,
     circular_heatmap_all_datasets_svg = out_heatmap_all_svg,
     circular_heatmap_all_datasets_pdf = out_heatmap_all_pdf,
+    publication_circular_heatmap_all_datasets_svg = out_publication_heatmap_all_svg,
+    publication_circular_heatmap_all_datasets_pdf = out_publication_heatmap_all_pdf,
     circular_heatmap_svg = as.list(heatmap_svg_paths),
     circular_heatmap_pdf = as.list(heatmap_pdf_paths),
+    publication_circular_heatmap_svg = as.list(publication_heatmap_svg_paths),
+    publication_circular_heatmap_pdf = as.list(publication_heatmap_pdf_paths),
     rectangular_module_heatmap_svg = out_rect_modules_svg,
     rectangular_module_heatmap_pdf = out_rect_modules_pdf,
     neuron_neuropil_availability = out_neuropil_availability
@@ -2549,7 +3093,9 @@ write_run_manifest(
     circular_heatmap_inputs = c(
       "results/tables/06_modules_WGCNA/group_effects/<dataset>/supermodule_group_effects.csv",
       "results/tables/06_modules_WGCNA/group_effects/<dataset>/module_group_effects.csv",
-      "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_module_supermodule_annotation.csv"
+      "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_module_supermodule_annotation.csv",
+      "results/tables/06_modules_WGCNA/module_score/<dataset>/wgcna/supermodule_directional_effects.csv",
+      "results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_final_label_lookup.csv"
     )
   ),
   notes = c(
@@ -2599,15 +3145,25 @@ cat(" - ", out_plot_source, "\n", sep = "")
 cat(" - ", out_heatmap_source_supermodule, "\n", sep = "")
 cat(" - ", out_heatmap_source_module, "\n", sep = "")
 cat(" - ", out_heatmap_layout_all_datasets, "\n", sep = "")
+cat(" - ", out_publication_heatmap_source, "\n", sep = "")
+cat(" - ", out_publication_heatmap_layout_all_datasets, "\n", sep = "")
+cat(" - ", out_source_comparison_audit, "\n", sep = "")
+cat(" - ", out_supermodule_id_comparison, "\n", sep = "")
+cat(" - ", out_metric_consistency_audit, "\n", sep = "")
+cat(" - ", out_module_mapping_audit, "\n", sep = "")
 cat(" - ", out_main_svg, "\n", sep = "")
 cat(" - ", out_main_pdf, "\n", sep = "")
 cat(" - ", out_selected_svg, "\n", sep = "")
 cat(" - ", out_selected_pdf, "\n", sep = "")
 cat(" - ", out_heatmap_all_svg, "\n", sep = "")
 cat(" - ", out_heatmap_all_pdf, "\n", sep = "")
+cat(" - ", out_publication_heatmap_all_svg, "\n", sep = "")
+cat(" - ", out_publication_heatmap_all_pdf, "\n", sep = "")
 for (ds_name in names(heatmap_svg_paths)) {
   cat(" - ", heatmap_svg_paths[[ds_name]], "\n", sep = "")
   cat(" - ", heatmap_pdf_paths[[ds_name]], "\n", sep = "")
+  cat(" - ", publication_heatmap_svg_paths[[ds_name]], "\n", sep = "")
+  cat(" - ", publication_heatmap_pdf_paths[[ds_name]], "\n", sep = "")
 }
 cat(" - ", out_rect_modules_svg, "\n", sep = "")
 cat(" - ", out_rect_modules_pdf, "\n", sep = "")
