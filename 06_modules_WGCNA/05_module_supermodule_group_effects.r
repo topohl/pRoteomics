@@ -43,12 +43,22 @@ if (run$dry_run) {
   dry_run_line("Supermodule PCA eigenvalue tables", file.path(PATHS$tables, "supermodule_pca_eigenvalues.csv"))
   dry_run_line("Supermodule PCA eigenvalue source data", file.path(PATHS$source_data, "supermodule_pca_eigenvalues.csv"))
   dry_run_line("Supermodule PCA eigenvalue scree SVG", file.path(PATHS$figures, "supermodule_pca_eigenvalue_scree.svg"))
+  dry_run_line("Supermodule PCA member loadings", file.path(PATHS$tables, "supermodule_pca_member_loadings.csv"))
   dry_run_line("Supermodule PCA input audit", file.path(PATHS$tables, "supermodule_pca_input_audit.csv"))
   dry_run_line("Selected SUS-RES PCA eigenvalues", file.path(PATHS$tables, "selected_sus_res_supermodule_pca_eigenvalues.csv"))
   dry_run_line("Selected SUS-RES PCA scree SVG", file.path(PATHS$figures, "selected_sus_res_supermodule_pca_eigenvalue_scree.svg"))
   dry_run_line("Selected SUS-RES PCA selection audit", file.path(PATHS$tables, "selected_sus_res_supermodule_pca_selection_audit.csv"))
   dry_run_line("Selected SUS-RES supermodule contents", file.path(PATHS$tables, "selected_sus_res_supermodule_contents.csv"))
+  dry_run_line("Selected SUS-RES supermodule contents for boss", file.path(PATHS$tables, "selected_sus_res_supermodule_contents_for_boss.csv"))
   dry_run_line("Selected SUS-RES interpretation summary", file.path(PATHS$tables, "selected_sus_res_supermodule_interpretation_summary.csv"))
+  dry_run_line("Selected SUS-RES member loading SVG", file.path(PATHS$figures, "selected_sus_res_supermodule_member_loading_plot.svg"))
+  dry_run_line("All supermodule member loading SVG", file.path(PATHS$figures, "all_supermodule_member_loading_plot.svg"))
+  dry_run_line("All supermodule contents summary", file.path(PATHS$tables, "all_supermodule_contents_summary.csv"))
+  dry_run_line("All supermodule region/layer effects", file.path(PATHS$tables, "all_supermodule_region_layer_effects.csv"))
+  dry_run_line("All supermodule region/layer Cohen's d effects", file.path(PATHS$tables, "all_supermodule_region_layer_cohend_effects.csv"))
+  dry_run_line("All supermodule region/layer heatmap SVG", file.path(PATHS$figures, "all_supermodule_region_layer_effect_heatmap.svg"))
+  dry_run_line("All SUS-RES region/layer effects SVG", file.path(PATHS$figures, "all_sus_res_supermodule_region_layer_effects.svg"))
+  dry_run_line("All SUS-RES region/layer effects source", file.path(PATHS$source_data, "all_sus_res_supermodule_region_layer_effects.csv"))
   dry_run_line("Selected SUS-RES effect summary SVG", file.path(PATHS$figures, "selected_sus_res_supermodule_effect_summary.svg"))
   dry_run_line("Selected SUS-RES contents overview SVG", file.path(PATHS$figures, "selected_sus_res_supermodule_contents_overview.svg"))
   quit(status = 0, save = "no")
@@ -649,17 +659,116 @@ supermodule_pca_eigenvalues <- function(module_eigengenes, super_map, dataset) {
   }))
 }
 
-plot_supermodule_pca_scree <- function(pca_eigenvalues, path) {
+supermodule_pca_member_loadings <- function(module_eigengenes, super_map, dataset) {
+  me_cols <- setdiff(names(module_eigengenes), "Sample")
+  super_map <- super_map[super_map$module_eigengene %in% me_cols & !is.na(super_map$SupermoduleID), , drop = FALSE]
+  empty <- tibble::tibble(
+    dataset = character(), supermodule_id = character(), supermodule_label = character(),
+    module_eigengene = character(), module_eigengene_original = character(),
+    module_id = character(), module_label = character(), pc = integer(),
+    loading = numeric(), abs_loading = numeric(), loading_rank = integer(),
+    n_member_modules = integer(), n_variable_member_modules = integer(),
+    n_samples_used = integer(), pca_status = character()
+  )
+  if (!nrow(super_map)) return(empty)
+
+  dplyr::bind_rows(lapply(unique(super_map$SupermoduleID), function(sid) {
+    sm <- super_map[super_map$SupermoduleID == sid, , drop = FALSE]
+    members <- unique(sm$module_eigengene)
+    label <- dplyr::coalesce(na.omit(as.character(sm$SupermoduleLabel))[1], sid)
+    vals <- module_eigengenes[, members, drop = FALSE]
+    variable <- vapply(vals, function(z) stats::var(as.numeric(z), na.rm = TRUE) > 0, logical(1))
+    variable_members <- names(variable)[variable]
+    n_complete <- if (length(variable_members)) sum(stats::complete.cases(vals[, variable_members, drop = FALSE])) else 0L
+    module_meta_src <- sm |>
+      dplyr::distinct(.data$module_eigengene, .keep_all = TRUE)
+    for (nm in c("module_eigengene_original", "ModuleID", "ModuleLabel_Final")) {
+      if (!nm %in% names(module_meta_src)) module_meta_src[[nm]] <- NA_character_
+    }
+    module_meta <- module_meta_src |>
+      dplyr::transmute(
+        module_eigengene = .data$module_eigengene,
+        module_eigengene_original = dplyr::coalesce(.data$module_eigengene_original, .data$module_eigengene),
+        module_id = dplyr::coalesce(.data$ModuleID, paste0("WGCNA_", sub("^ME", "", .data$module_eigengene))),
+        module_label = dplyr::coalesce(.data$ModuleLabel_Final, .data$module_id)
+      )
+    base <- module_meta |>
+      dplyr::mutate(
+        dataset = dataset,
+        supermodule_id = sid,
+        supermodule_label = label,
+        pc = 1L,
+        n_member_modules = length(members),
+        n_variable_member_modules = length(variable_members),
+        n_samples_used = n_complete,
+        .before = "module_eigengene"
+      )
+    if (!length(variable_members)) {
+      return(base |>
+        dplyr::mutate(loading = NA_real_, abs_loading = NA_real_, loading_rank = NA_integer_, pca_status = "no_variable_member_modules") |>
+        dplyr::select(dplyr::all_of(names(empty))))
+    }
+    if (length(variable_members) == 1L) {
+      out <- base |>
+        dplyr::filter(.data$module_eigengene == variable_members[[1]]) |>
+        dplyr::mutate(loading = 1, abs_loading = 1, loading_rank = 1L, pca_status = "singleton_or_single_variable_module")
+      return(out |> dplyr::select(dplyr::all_of(names(empty))))
+    }
+    vals_complete <- vals[stats::complete.cases(vals[, variable_members, drop = FALSE]), variable_members, drop = FALSE]
+    if (nrow(vals_complete) < 2L) {
+      return(base |>
+        dplyr::filter(.data$module_eigengene %in% variable_members) |>
+        dplyr::mutate(loading = NA_real_, abs_loading = NA_real_, loading_rank = NA_integer_, pca_status = "too_few_complete_samples") |>
+        dplyr::select(dplyr::all_of(names(empty))))
+    }
+    pca <- tryCatch(stats::prcomp(vals_complete, center = TRUE, scale. = TRUE), error = function(e) e)
+    if (inherits(pca, "error")) {
+      return(base |>
+        dplyr::filter(.data$module_eigengene %in% variable_members) |>
+        dplyr::mutate(loading = NA_real_, abs_loading = NA_real_, loading_rank = NA_integer_, pca_status = paste0("pca_failed: ", conditionMessage(pca))) |>
+        dplyr::select(dplyr::all_of(names(empty))))
+    }
+    sign_flip <- tryCatch({
+      mean_vec <- rowMeans(vals_complete, na.rm = TRUE)
+      stats::cor(pca$x[, 1L], mean_vec, use = "pairwise.complete.obs") < 0
+    }, error = function(e) FALSE)
+    loading <- pca$rotation[, 1L]
+    if (isTRUE(sign_flip)) loading <- -loading
+    load_df <- tibble::tibble(module_eigengene = names(loading), loading = as.numeric(loading))
+    base |>
+      dplyr::filter(.data$module_eigengene %in% variable_members) |>
+      dplyr::left_join(load_df, by = "module_eigengene") |>
+      dplyr::mutate(abs_loading = abs(.data$loading), pca_status = "ok") |>
+      dplyr::arrange(dplyr::desc(.data$abs_loading), .data$module_eigengene) |>
+      dplyr::mutate(loading_rank = dplyr::row_number()) |>
+      dplyr::select(dplyr::all_of(names(empty)))
+  }))
+}
+
+compact_supermodule_label <- function(supermodule_id, supermodule_label, width = 26L) {
+  supermodule_id <- as.character(supermodule_id)
+  label <- mapply(
+    function(sid, lbl) gsub(paste0("^", sid, "\\s*(/|:|-|\\|)\\s*"), "", as.character(lbl), ignore.case = TRUE),
+    supermodule_id,
+    as.character(supermodule_label),
+    USE.NAMES = FALSE
+  )
+  missing_label <- is.na(label) | !nzchar(label)
+  label[missing_label] <- supermodule_id[missing_label]
+  paste0(supermodule_id, "\n", wrap_plot_label(label, width = width))
+}
+
+plot_supermodule_pca_scree <- function(pca_eigenvalues, path, max_pc = 5L, title = "Supermodule PCA eigenvalue scree") {
   plot_df <- pca_eigenvalues |>
-    dplyr::filter(!is.na(.data$pc), is.finite(.data$variance_explained)) |>
+    dplyr::filter(!is.na(.data$pc), .data$pc <= max_pc, is.finite(.data$variance_explained)) |>
     dplyr::mutate(
       pc_label = paste0("PC", .data$pc),
-      facet_label = paste0(.data$supermodule_id, ": ", .data$supermodule_label)
+      facet_label = compact_supermodule_label(.data$supermodule_id, .data$supermodule_label, width = 24L)
     )
   if (!nrow(plot_df)) {
     p <- ggplot2::ggplot() +
       ggplot2::annotate("text", x = 0, y = 0, label = "No variable supermodule PCA components available\nSee supermodule_pca_input_audit.csv", size = 3) +
-      ggplot2::labs(title = "Supermodule PCA eigenvalue scree") +
+      ggplot2::labs(title = title) +
       ggplot2::theme_void()
   } else {
     line_df <- plot_df |>
@@ -667,32 +776,137 @@ plot_supermodule_pca_scree <- function(pca_eigenvalues, path) {
       dplyr::filter(dplyr::n() > 1L) |>
       dplyr::ungroup()
     p <- ggplot2::ggplot(plot_df, ggplot2::aes(x = .data$pc_label)) +
-      ggplot2::geom_col(ggplot2::aes(y = .data$variance_explained), fill = "#4E79A7", width = 0.72)
+      ggplot2::geom_col(ggplot2::aes(y = .data$variance_explained), fill = "#7FA6C9", width = 0.64)
     if (nrow(line_df)) {
       p <- p +
         ggplot2::geom_line(
           data = line_df,
           ggplot2::aes(y = .data$cumulative_variance_explained, group = 1),
-          color = "#D95F02",
-          linewidth = 0.35
+          color = "#C66A2B",
+          linewidth = 0.3
         )
     }
     p <- p +
-      ggplot2::geom_point(ggplot2::aes(y = .data$cumulative_variance_explained), color = "#D95F02", size = 0.75) +
-      ggplot2::facet_wrap(~facet_label, scales = "free_x") +
-      ggplot2::scale_y_continuous(labels = function(x) paste0(round(100 * x), "%"), limits = c(0, 1)) +
-      ggplot2::labs(x = NULL, y = "Variance explained", title = "Supermodule PCA eigenvalue scree") +
+      ggplot2::geom_point(ggplot2::aes(y = .data$cumulative_variance_explained), color = "#C66A2B", size = 1.05) +
+      ggplot2::facet_wrap(~facet_label, ncol = 3) +
+      ggplot2::scale_y_continuous(labels = function(x) paste0(round(100 * x), "%"), limits = c(0, 1), expand = ggplot2::expansion(mult = c(0, 0.05))) +
+      ggplot2::labs(x = NULL, y = "Variance explained", title = title, subtitle = paste0("Bars show per-PC variance; points/line show cumulative variance. Display limited to first ", max_pc, " PCs.")) +
+      ggplot2::theme_minimal(base_size = 9) +
       ggplot2::theme(
+        panel.grid.minor = ggplot2::element_blank(),
+        panel.grid.major.x = ggplot2::element_blank(),
+        panel.spacing = grid::unit(5, "mm"),
         legend.position = "none",
-        axis.text.x = ggplot2::element_text(angle = 45, hjust = 1, size = 5),
-        strip.text = ggplot2::element_text(size = 6)
+        axis.text.x = ggplot2::element_text(size = 7),
+        axis.text.y = ggplot2::element_text(size = 7),
+        strip.text = ggplot2::element_text(size = 8, face = "bold", lineheight = 0.95),
+        plot.title = ggplot2::element_text(face = "bold", size = 11),
+        plot.subtitle = ggplot2::element_text(size = 8, color = "grey35")
       )
   }
-  ggplot2::ggsave(path, p, width = 210, height = 180, units = "mm", device = svglite::svglite)
+  ggplot2::ggsave(path, p, width = 210, height = 170, units = "mm", device = svglite::svglite)
 }
 
 standardize_contrast_key <- function(x) {
-  toupper(gsub("[[:space:]]+", "", gsub("–", "-", as.character(x))))
+  x <- gsub("[\u2010-\u2015]", "-", as.character(x))
+  toupper(gsub("[[:space:]]+", "", x))
+}
+
+is_sus_res_contrast <- function(x) {
+  standardize_contrast_key(x) %in% c("SUS-RES", "RES-SUS")
+}
+
+orient_sus_minus_res_estimate <- function(estimate, contrast) {
+  key <- standardize_contrast_key(contrast)
+  out <- suppressWarnings(as.numeric(estimate))
+  out[key == "RES-SUS"] <- -out[key == "RES-SUS"]
+  out
+}
+
+contrast_block <- function(x) {
+  key <- standardize_contrast_key(x)
+  dplyr::case_when(
+    key %in% c("RES-CON", "CON-RES") ~ "RES-CON",
+    key %in% c("SUS-CON", "CON-SUS") ~ "SUS-CON",
+    key %in% c("SUS-RES", "RES-SUS") ~ "SUS-RES",
+    TRUE ~ as.character(x)
+  )
+}
+
+contrast_block_order <- function(x) {
+  block <- contrast_block(x)
+  dplyr::case_when(
+    block == "RES-CON" ~ 1L,
+    block == "SUS-CON" ~ 2L,
+    block == "SUS-RES" ~ 3L,
+    TRUE ~ 99L
+  )
+}
+
+parse_spatial_unit_for_effects <- function(x) {
+  raw <- gsub("[^a-z0-9]+", "_", tolower(as.character(x)))
+  raw <- gsub("^_+|_+$", "", raw)
+  raw[!nzchar(raw) | is.na(raw) | raw %in% c("global", "global_spatial_adjusted", "all_spatial_units", "na")] <- "no_local_support"
+  display <- toupper(gsub("_", " ", raw))
+  display[raw == "no_local_support"] <- "No local support"
+  region <- dplyr::case_when(
+    grepl("^ca1($|_)", raw) ~ "CA1",
+    grepl("^ca2($|_)", raw) ~ "CA2",
+    grepl("^ca3($|_)", raw) ~ "CA3",
+    grepl("^dg($|_)", raw) ~ "DG",
+    raw == "no_local_support" ~ "Global/no local support",
+    TRUE ~ "Other"
+  )
+  layer <- dplyr::case_when(
+    raw == "no_local_support" ~ "Layer not available",
+    grepl("_slm$", raw) ~ "SLM",
+    grepl("_so$", raw) ~ "SO",
+    grepl("_sr$", raw) ~ "SR",
+    grepl("_sp$", raw) ~ "SP",
+    grepl("_mo$", raw) ~ "MO",
+    grepl("_po$", raw) ~ "PO",
+    grepl("_ml$", raw) ~ "ML",
+    grepl("_gcl$", raw) ~ "GCL",
+    grepl("_hilus$", raw) ~ "Hilus",
+    TRUE ~ "Layer not available"
+  )
+  tibble::tibble(
+    parsed_region = region,
+    parsed_layer_or_unit = layer,
+    parsed_spatial_unit_display = display
+  )
+}
+
+effect_support_class <- function(p_value, fdr_within, fdr_global) {
+  fdr <- dplyr::coalesce(suppressWarnings(as.numeric(fdr_within)), suppressWarnings(as.numeric(fdr_global)))
+  p <- suppressWarnings(as.numeric(p_value))
+  dplyr::case_when(
+    !is.na(fdr) & fdr <= 0.05 ~ "FDR05",
+    !is.na(fdr) & fdr <= 0.10 ~ "FDR10",
+    !is.na(p) & p < 0.05 ~ "nominal",
+    TRUE ~ "none"
+  )
+}
+
+spatial_order_value <- function(region, layer_or_unit, unit) {
+  unit <- tolower(as.character(unit))
+  layer <- toupper(as.character(layer_or_unit))
+  dplyr::case_when(
+    region == "CA1" & layer == "SO" ~ 101L,
+    region == "CA1" & layer == "SP" ~ 102L,
+    region == "CA1" & layer == "SR" ~ 103L,
+    region == "CA1" & layer == "SLM" ~ 104L,
+    region == "CA1" ~ 109L,
+    region == "CA2" ~ 201L,
+    region == "CA3" ~ 221L,
+    region == "DG" & layer == "MO" ~ 301L,
+    region == "DG" & layer == "ML" ~ 302L,
+    region == "DG" & layer == "GCL" ~ 303L,
+    region == "DG" & layer == "PO" ~ 304L,
+    region == "DG" ~ 309L,
+    region == "Global/no local support" ~ 998L,
+    TRUE ~ 999L
+  )
 }
 
 select_sus_res_supermodules <- function(super_effects, dataset, max_n = 2L) {
@@ -714,12 +928,13 @@ select_sus_res_supermodules <- function(super_effects, dataset, max_n = 2L) {
     return(no_selection_row("no supermodule group-effect rows available"))
   }
   sus_res <- super_effects |>
-    dplyr::filter(standardize_contrast_key(.data$contrast) == "SUS-RES") |>
+    dplyr::filter(is_sus_res_contrast(.data$contrast)) |>
     dplyr::mutate(
       p_value = suppressWarnings(as.numeric(.data$p_value)),
       FDR_within_dataset_level = suppressWarnings(as.numeric(.data$FDR_within_dataset_level)),
       FDR_global = suppressWarnings(as.numeric(.data$FDR_global)),
-      estimate = suppressWarnings(as.numeric(.data$estimate)),
+      estimate = orient_sus_minus_res_estimate(.data$estimate, .data$contrast),
+      contrast = "SUS - RES",
       support_rank = dplyr::case_when(
         !is.na(.data$FDR_within_dataset_level) & .data$FDR_within_dataset_level <= 0.05 ~ 1L,
         !is.na(.data$FDR_within_dataset_level) & .data$FDR_within_dataset_level <= 0.10 ~ 2L,
@@ -788,11 +1003,11 @@ plot_selected_sus_res_pca_scree <- function(selected_pca, selected, path) {
       ggplot2::theme_void()
   } else {
     plot_df <- selected_pca |>
-      dplyr::filter(!is.na(.data$pc), is.finite(.data$variance_explained)) |>
+      dplyr::filter(!is.na(.data$pc), .data$pc <= 5L, is.finite(.data$variance_explained)) |>
       dplyr::mutate(
         pc_label = paste0("PC", .data$pc),
         facet_label = paste0(
-          .data$supermodule_id, ": ", .data$supermodule_label,
+          compact_supermodule_label(.data$supermodule_id, .data$supermodule_label, width = 24L),
           "\nSUS-RES est=", signif(.data$sus_res_estimate, 3),
           ", p=", signif(.data$sus_res_p_value, 3),
           ", FDR=", signif(.data$sus_res_FDR_within_dataset_level, 3)
@@ -809,34 +1024,432 @@ plot_selected_sus_res_pca_scree <- function(selected_pca, selected, path) {
         dplyr::filter(dplyr::n() > 1L) |>
         dplyr::ungroup()
       p <- ggplot2::ggplot(plot_df, ggplot2::aes(x = .data$pc_label)) +
-        ggplot2::geom_col(ggplot2::aes(y = .data$variance_explained), fill = "#4E79A7", width = 0.72)
+        ggplot2::geom_col(ggplot2::aes(y = .data$variance_explained), fill = "#7FA6C9", width = 0.64)
       if (nrow(line_df)) {
         p <- p +
           ggplot2::geom_line(
             data = line_df,
             ggplot2::aes(y = .data$cumulative_variance_explained, group = 1),
-            color = "#D95F02",
-            linewidth = 0.35
+            color = "#C66A2B",
+            linewidth = 0.3
           )
       }
       p <- p +
-        ggplot2::geom_point(ggplot2::aes(y = .data$cumulative_variance_explained), color = "#D95F02", size = 0.75) +
-        ggplot2::facet_wrap(~facet_label, scales = "free_x") +
-        ggplot2::scale_y_continuous(labels = function(x) paste0(round(100 * x), "%"), limits = c(0, 1)) +
+        ggplot2::geom_point(ggplot2::aes(y = .data$cumulative_variance_explained), color = "#C66A2B", size = 1.05) +
+        ggplot2::facet_wrap(~facet_label, ncol = 2) +
+        ggplot2::scale_y_continuous(labels = function(x) paste0(round(100 * x), "%"), limits = c(0, 1), expand = ggplot2::expansion(mult = c(0, 0.05))) +
         ggplot2::labs(
           x = NULL,
           y = "Variance explained",
           title = "Selected SUS-RES supermodule PCA eigenvalue scree",
-          subtitle = "Selection: up to two SUS-RES supermodule effects prioritized by within-dataset FDR, nominal p-value, and absolute estimate"
+          subtitle = "Bars show per-PC variance; points/line show cumulative variance. Display limited to first 5 PCs."
         ) +
+        ggplot2::theme_minimal(base_size = 9) +
         ggplot2::theme(
+          panel.grid.minor = ggplot2::element_blank(),
+          panel.grid.major.x = ggplot2::element_blank(),
+          panel.spacing = grid::unit(5, "mm"),
           legend.position = "none",
-          axis.text.x = ggplot2::element_text(angle = 45, hjust = 1, size = 6),
-          strip.text = ggplot2::element_text(size = 6)
+          axis.text.x = ggplot2::element_text(size = 7),
+          axis.text.y = ggplot2::element_text(size = 7),
+          strip.text = ggplot2::element_text(size = 8, face = "bold", lineheight = 0.95),
+          plot.title = ggplot2::element_text(face = "bold", size = 11),
+          plot.subtitle = ggplot2::element_text(size = 8, color = "grey35")
         )
     }
   }
-  ggplot2::ggsave(path, p, width = 210, height = 180, units = "mm", device = svglite::svglite)
+  ggplot2::ggsave(path, p, width = 185, height = 115, units = "mm", device = svglite::svglite)
+}
+
+selected_sus_res_member_loadings <- function(member_loadings, selected, contents) {
+  if (is.null(selected) || !nrow(selected) || all(selected$selection_message != "selected")) {
+    return(member_loadings[0, , drop = FALSE])
+  }
+  selected <- selected |> dplyr::filter(.data$selection_message == "selected")
+  content_meta <- if (!is.null(contents) && nrow(contents)) {
+    contents |>
+      dplyr::select("supermodule_id", "contrast", "estimate", "p_value", "FDR_within_dataset_level", "FDR_global", "evidence_status", "selection_support")
+  } else {
+    tibble::tibble(
+      supermodule_id = character(), contrast = character(), estimate = numeric(), p_value = numeric(),
+      FDR_within_dataset_level = numeric(), FDR_global = numeric(), evidence_status = character(), selection_support = character()
+    )
+  }
+  member_loadings |>
+    dplyr::inner_join(selected |> dplyr::select("supermodule_id", "selection_rank"), by = "supermodule_id") |>
+    dplyr::left_join(content_meta, by = "supermodule_id") |>
+    dplyr::arrange(.data$selection_rank, .data$loading_rank)
+}
+
+plot_selected_sus_res_member_loadings <- function(selected_loadings, path) {
+  plot_df <- selected_loadings |>
+    dplyr::filter(is.finite(.data$abs_loading)) |>
+    dplyr::group_by(.data$supermodule_id) |>
+    dplyr::slice_max(.data$abs_loading, n = 8, with_ties = FALSE) |>
+    dplyr::ungroup() |>
+    dplyr::mutate(
+      module_plot_label = dplyr::coalesce(.data$module_label, .data$module_id, .data$module_eigengene),
+      module_plot_label = paste0(.data$module_plot_label, "\n", .data$module_id),
+      facet_label = paste0(
+        compact_supermodule_label(.data$supermodule_id, .data$supermodule_label, width = 24L),
+        "\nSUS-RES est=", signif(.data$estimate, 3), ", p=", signif(.data$p_value, 3),
+        ", FDR=", signif(.data$FDR_within_dataset_level, 3)
+      ),
+      signed_direction = ifelse(.data$loading >= 0, "positive PC1 loading", "negative PC1 loading")
+    )
+  if (!nrow(plot_df)) {
+    p <- ggplot2::ggplot() +
+      ggplot2::annotate("text", x = 0, y = 0, label = "No PCA member loadings available for selected SUS-RES supermodules", size = 3) +
+      ggplot2::labs(title = "Selected SUS-RES supermodule PC1 member loadings") +
+      ggplot2::theme_void()
+  } else {
+    plot_df <- plot_df |>
+      dplyr::group_by(.data$facet_label) |>
+      dplyr::mutate(module_plot_label = stats::reorder(.data$module_plot_label, .data$abs_loading)) |>
+      dplyr::ungroup()
+    p <- ggplot2::ggplot(plot_df, ggplot2::aes(x = .data$module_plot_label, y = .data$abs_loading, fill = .data$signed_direction)) +
+      ggplot2::geom_col(width = 0.66, color = "grey30", linewidth = 0.15) +
+      ggplot2::coord_flip() +
+      ggplot2::facet_wrap(~facet_label, scales = "free_y", ncol = 1) +
+      ggplot2::scale_fill_manual(values = c("positive PC1 loading" = "#7FA6C9", "negative PC1 loading" = "#D8A070")) +
+      ggplot2::labs(
+        x = NULL,
+        y = "|PC1 loading|",
+        fill = NULL,
+        title = "Selected SUS-RES supermodule PC1 member loadings",
+        subtitle = "Higher absolute loading indicates stronger contribution of a member module to the supermodule eigengene."
+      ) +
+      ggplot2::theme_minimal(base_size = 9) +
+      ggplot2::theme(
+        panel.grid.minor = ggplot2::element_blank(),
+        panel.grid.major.y = ggplot2::element_blank(),
+        strip.text = ggplot2::element_text(size = 8, face = "bold", lineheight = 0.95),
+        axis.text.y = ggplot2::element_text(size = 7),
+        legend.position = "bottom",
+        plot.title = ggplot2::element_text(face = "bold", size = 11),
+        plot.subtitle = ggplot2::element_text(size = 8, color = "grey35")
+      )
+  }
+  ggplot2::ggsave(path, p, width = 190, height = 125, units = "mm", device = svglite::svglite)
+}
+
+plot_all_supermodule_member_loadings <- function(member_loadings, path, max_modules_per_supermodule = 5L) {
+  plot_df <- member_loadings |>
+    dplyr::filter(is.finite(.data$abs_loading)) |>
+    dplyr::group_by(.data$supermodule_id) |>
+    dplyr::slice_max(.data$abs_loading, n = max_modules_per_supermodule, with_ties = FALSE) |>
+    dplyr::ungroup() |>
+    dplyr::mutate(
+      module_plot_label = dplyr::coalesce(.data$module_label, .data$module_id, .data$module_eigengene),
+      facet_label = compact_supermodule_label(.data$supermodule_id, .data$supermodule_label, width = 20L),
+      signed_direction = ifelse(.data$loading >= 0, "positive PC1 loading", "negative PC1 loading")
+    )
+  if (!nrow(plot_df)) {
+    p <- ggplot2::ggplot() +
+      ggplot2::annotate("text", x = 0, y = 0, label = "No PCA member loadings available", size = 3) +
+      ggplot2::labs(title = "All supermodule PC1 member loadings") +
+      ggplot2::theme_void()
+  } else {
+    plot_df <- plot_df |>
+      dplyr::group_by(.data$facet_label) |>
+      dplyr::mutate(module_plot_label = stats::reorder(.data$module_plot_label, .data$abs_loading)) |>
+      dplyr::ungroup()
+    n_supermodules <- dplyr::n_distinct(plot_df$supermodule_id)
+    p <- ggplot2::ggplot(plot_df, ggplot2::aes(x = .data$module_plot_label, y = .data$abs_loading, fill = .data$signed_direction)) +
+      ggplot2::geom_col(width = 0.64, color = "grey35", linewidth = 0.12) +
+      ggplot2::coord_flip() +
+      ggplot2::facet_wrap(~facet_label, scales = "free_y", ncol = 3) +
+      ggplot2::scale_fill_manual(values = c("positive PC1 loading" = "#7FA6C9", "negative PC1 loading" = "#D8A070")) +
+      ggplot2::labs(
+        x = NULL,
+        y = "|PC1 loading|",
+        fill = NULL,
+        title = "All supermodule PC1 member loadings",
+        subtitle = paste0("Top ", max_modules_per_supermodule, " member modules per supermodule by absolute PC1 loading.")
+      ) +
+      ggplot2::theme_minimal(base_size = 8) +
+      ggplot2::theme(
+        panel.grid.minor = ggplot2::element_blank(),
+        panel.grid.major.y = ggplot2::element_blank(),
+        strip.text = ggplot2::element_text(size = 7, face = "bold", lineheight = 0.95),
+        axis.text.y = ggplot2::element_text(size = 5.5),
+        axis.text.x = ggplot2::element_text(size = 6),
+        legend.position = "bottom",
+        plot.title = ggplot2::element_text(face = "bold", size = 11),
+        plot.subtitle = ggplot2::element_text(size = 8, color = "grey35")
+      )
+  }
+  height_mm <- if (exists("n_supermodules", inherits = FALSE)) max(150, 34 * ceiling(n_supermodules / 3)) else 120
+  ggplot2::ggsave(path, p, width = 230, height = height_mm, units = "mm", device = svglite::svglite, limitsize = FALSE)
+}
+
+all_supermodule_region_layer_effect_source <- function(super_effects) {
+  if (is.null(super_effects) || !nrow(super_effects)) {
+    return(tibble::tibble(
+      dataset = character(), supermodule_id = character(), supermodule_label = character(),
+      spatial_unit = character(), spatial_unit_label = character(), effect_scope = character(),
+      SpatialUnitType = character(), parsed_region = character(), parsed_layer_or_unit = character(),
+      contrast = character(), contrast_block = character(), contrast_block_order = integer(),
+      estimate = numeric(), estimate_sus_minus_res = numeric(), p_value = numeric(),
+      FDR_within_dataset_level = numeric(), FDR_global = numeric(),
+      evidence_status = character(), support_class = character(), spatial_order = integer()
+    ))
+  }
+  parsed <- parse_spatial_unit_for_effects(super_effects$spatial_unit)
+  super_effects |>
+    dplyr::bind_cols(parsed) |>
+    dplyr::mutate(
+      estimate = suppressWarnings(as.numeric(.data$estimate)),
+      estimate_sus_minus_res = dplyr::if_else(is_sus_res_contrast(.data$contrast), orient_sus_minus_res_estimate(.data$estimate, .data$contrast), NA_real_),
+      p_value = suppressWarnings(as.numeric(.data$p_value)),
+      FDR_within_dataset_level = suppressWarnings(as.numeric(.data$FDR_within_dataset_level)),
+      FDR_global = suppressWarnings(as.numeric(.data$FDR_global)),
+      support_class = effect_support_class(.data$p_value, .data$FDR_within_dataset_level, .data$FDR_global),
+      spatial_unit = dplyr::coalesce(.data$spatial_unit, "global"),
+      spatial_unit_label = .data$parsed_spatial_unit_display,
+      spatial_order = spatial_order_value(.data$parsed_region, .data$parsed_layer_or_unit, .data$spatial_unit),
+      supermodule_label = dplyr::coalesce(.data$supermodule_label, .data$endpoint_label, .data$supermodule_id),
+      contrast_block = contrast_block(.data$contrast),
+      contrast_block_order = contrast_block_order(.data$contrast)
+    ) |>
+    dplyr::select(
+      "dataset", "supermodule_id", "supermodule_label", "spatial_unit", "spatial_unit_label",
+      "effect_scope", "SpatialUnitType", "parsed_region", "parsed_layer_or_unit",
+      "contrast", "contrast_block", "contrast_block_order", "estimate", "estimate_sus_minus_res",
+      "p_value", "FDR_within_dataset_level", "FDR_global", "evidence_status", "support_class", "spatial_order"
+    )
+}
+
+supermodule_score_effects_path <- function(dataset) {
+  path_results("tables", "06_modules_WGCNA", "module_score", dataset, "wgcna", "supermodule_directional_effects.csv")
+}
+
+publication_supermodule_region_layer_effect_source <- function(dataset, supermodule_contents) {
+  path <- supermodule_score_effects_path(dataset)
+  score <- safe_read_csv(path)
+  empty <- tibble::tibble(
+    dataset = character(), supermodule_id = character(), supermodule_label = character(),
+    spatial_unit = character(), spatial_unit_label = character(), effect_scope = character(),
+    SpatialUnitType = character(), parsed_region = character(), parsed_layer_or_unit = character(),
+    contrast = character(), contrast_block = character(), contrast_block_order = integer(),
+    estimate = numeric(), estimate_sus_minus_res = numeric(), Cohen_d = numeric(),
+    p_value = numeric(), FDR_within_dataset_level = numeric(), FDR_global = numeric(),
+    p_adj_within_model_BH = numeric(), p_adj_global_BH = numeric(),
+    evidence_status = character(), support_class = character(), spatial_order = integer(),
+    metric_used = character(), source_name = character(), source_path = character(),
+    analysis = character(), significance_marker_column = character(), significance_rule = character()
+  )
+  if (is.null(score) || !nrow(score)) return(empty)
+  required <- c("Analysis", "RegionLayer", "Module", "Cohen_d", "p_adj_within_model_BH")
+  if (length(setdiff(required, names(score)))) return(empty)
+
+  label_lookup <- if (!is.null(supermodule_contents) && nrow(supermodule_contents)) {
+    supermodule_contents |>
+      dplyr::transmute(
+        supermodule_id = as.character(.data$supermodule_id),
+        supermodule_label_lookup = as.character(.data$supermodule_label)
+      ) |>
+      dplyr::distinct(.data$supermodule_id, .keep_all = TRUE)
+  } else {
+    tibble::tibble(supermodule_id = character(), supermodule_label_lookup = character())
+  }
+
+  within_flag <- if ("within_BH_significant" %in% names(score)) {
+    trimws(as.character(score$within_BH_significant)) %in% c("TRUE", "true", "True", "1")
+  } else {
+    rep(FALSE, nrow(score))
+  }
+  contrast_source <- dplyr::coalesce(
+    col_if_present(score, "Contrast"),
+    col_if_present(score, "contrast_label"),
+    col_if_present(score, "contrast")
+  )
+  p_nominal <- dplyr::coalesce(
+    suppressWarnings(as.numeric(col_if_present(score, "p.value"))),
+    suppressWarnings(as.numeric(col_if_present(score, "p_nominal")))
+  )
+  parsed <- parse_spatial_unit_for_effects(score$RegionLayer)
+
+  score |>
+    dplyr::bind_cols(parsed) |>
+    dplyr::mutate(
+      dataset = dataset,
+      supermodule_id = as.character(.data$Module),
+      supermodule_label = .data$supermodule_id,
+      spatial_unit = as.character(.data$RegionLayer),
+      spatial_unit_label = .data$parsed_spatial_unit_display,
+      effect_scope = "publication_score_region_layer",
+      SpatialUnitType = SpatialUnitType,
+      contrast = as.character(.env$contrast_source),
+      contrast_block = contrast_block(.data$contrast),
+      contrast_block_order = contrast_block_order(.data$contrast),
+      estimate = suppressWarnings(as.numeric(.data$Cohen_d)),
+      Cohen_d = .data$estimate,
+      estimate_sus_minus_res = dplyr::if_else(.data$contrast_block == "SUS-RES", orient_sus_minus_res_estimate(.data$estimate, .data$contrast), NA_real_),
+      p_value = .env$p_nominal,
+      p_adj_within_model_BH = suppressWarnings(as.numeric(.data$p_adj_within_model_BH)),
+      p_adj_global_BH = suppressWarnings(as.numeric(col_if_present(score, "p_adj_global_BH"))),
+      FDR_within_dataset_level = .data$p_adj_within_model_BH,
+      FDR_global = .data$p_adj_global_BH,
+      support_class = dplyr::if_else(.env$within_flag | (!is.na(.data$p_adj_within_model_BH) & .data$p_adj_within_model_BH <= 0.05), "FDR05", "none"),
+      evidence_status = dplyr::if_else(.data$support_class == "FDR05", "robust_FDR", "not_supported"),
+      spatial_order = spatial_order_value(.data$parsed_region, .data$parsed_layer_or_unit, .data$spatial_unit),
+      metric_used = "Cohen_d",
+      source_name = "publication_score_supermodule_directional_effects",
+      source_path = path,
+      analysis = as.character(.data$Analysis),
+      significance_marker_column = "within_BH_significant/p_adj_within_model_BH",
+      significance_rule = "within_BH_significant == TRUE or p_adj_within_model_BH <= 0.05"
+    ) |>
+    dplyr::filter(.data$analysis == "primary_all_replicates") |>
+    dplyr::left_join(label_lookup, by = "supermodule_id") |>
+    dplyr::mutate(supermodule_label = dplyr::coalesce(.data$supermodule_label_lookup, .data$supermodule_label)) |>
+    dplyr::select(
+      "dataset", "supermodule_id", "supermodule_label", "spatial_unit", "spatial_unit_label",
+      "effect_scope", "SpatialUnitType", "parsed_region", "parsed_layer_or_unit",
+      "contrast", "contrast_block", "contrast_block_order", "estimate", "estimate_sus_minus_res",
+      "Cohen_d", "p_value", "FDR_within_dataset_level", "FDR_global",
+      "p_adj_within_model_BH", "p_adj_global_BH", "evidence_status", "support_class",
+      "spatial_order", "metric_used", "source_name", "source_path", "analysis",
+      "significance_marker_column", "significance_rule"
+    ) |>
+    dplyr::filter(is.finite(.data$estimate), nzchar(.data$supermodule_id), nzchar(.data$spatial_unit))
+}
+
+sus_res_region_layer_effect_source <- function(super_effects) {
+  all_supermodule_region_layer_effect_source(super_effects) |>
+    dplyr::filter(.data$contrast_block == "SUS-RES") |>
+    dplyr::mutate(contrast = "SUS - RES")
+}
+
+plot_all_sus_res_region_layer_effects <- function(effect_source, path) {
+  plot_df <- effect_source |>
+    dplyr::filter(is.finite(.data$estimate_sus_minus_res), !is.na(.data$p_value)) |>
+    dplyr::mutate(
+      supermodule_plot_label = compact_supermodule_label(.data$supermodule_id, .data$supermodule_label, width = 22L),
+      spatial_unit_label = dplyr::coalesce(.data$spatial_unit_label, "GLOBAL"),
+      support_class = factor(.data$support_class, levels = c("FDR05", "FDR10", "nominal", "none")),
+      neg_log10_p = pmin(8, -log10(pmax(.data$p_value, .Machine$double.xmin)))
+    )
+  if (!nrow(plot_df)) {
+    p <- ggplot2::ggplot() +
+      ggplot2::annotate("text", x = 0, y = 0, label = "No SUS-RES region/layer supermodule effects available", size = 3) +
+      ggplot2::labs(title = "All SUS-RES supermodule effects by region/layer") +
+      ggplot2::theme_void()
+  } else {
+    uses_cohend <- "metric_used" %in% names(plot_df) && any(plot_df$metric_used == "Cohen_d", na.rm = TRUE)
+    fill_label <- if (uses_cohend) "SUS-RES\nCohen's d" else "SUS-RES\nestimate"
+    subtitle <- if (uses_cohend) {
+      "Values are Cohen's d oriented as SUS minus RES; markers use within-model BH adjusted p <= 0.05."
+    } else {
+      "Estimates are oriented as SUS minus RES; positive values are higher in SUS."
+    }
+    spatial_levels <- plot_df |>
+      dplyr::distinct(.data$spatial_unit_label) |>
+      dplyr::pull(.data$spatial_unit_label)
+    supermodule_levels <- plot_df |>
+      dplyr::group_by(.data$supermodule_plot_label) |>
+      dplyr::summarise(best = max(abs(.data$estimate_sus_minus_res), na.rm = TRUE), .groups = "drop") |>
+      dplyr::arrange(.data$best, .data$supermodule_plot_label) |>
+      dplyr::pull(.data$supermodule_plot_label)
+    plot_df$spatial_unit_label <- factor(plot_df$spatial_unit_label, levels = spatial_levels)
+    plot_df$supermodule_plot_label <- factor(plot_df$supermodule_plot_label, levels = supermodule_levels)
+    p <- ggplot2::ggplot(plot_df, ggplot2::aes(x = .data$spatial_unit_label, y = .data$supermodule_plot_label)) +
+      ggplot2::geom_point(ggplot2::aes(fill = .data$estimate_sus_minus_res, size = .data$neg_log10_p, shape = .data$support_class), color = "grey25", stroke = 0.22, alpha = 0.92) +
+      ggplot2::facet_wrap(~effect_scope, scales = "free_x") +
+      ggplot2::scale_fill_gradient2(low = "#3B6EA8", mid = "grey96", high = "#B84A4A", midpoint = 0, name = fill_label) +
+      ggplot2::scale_size_continuous(range = c(1.4, 4.6), name = "-log10 p") +
+      ggplot2::scale_shape_manual(values = c("FDR05" = 21, "FDR10" = 22, "nominal" = 24, "none" = 21), labels = c("FDR <= 0.05", "FDR <= 0.10", "nominal p < 0.05", "not supported"), drop = FALSE, name = "Support") +
+      ggplot2::labs(
+        x = "Region / layer",
+        y = NULL,
+        title = "All SUS-RES supermodule effects by region/layer",
+        subtitle = subtitle
+      ) +
+      ggplot2::theme_minimal(base_size = 8) +
+      ggplot2::theme(
+        panel.grid = ggplot2::element_line(color = "grey90", linewidth = 0.2),
+        axis.text.x = ggplot2::element_text(angle = 45, hjust = 1, size = 6),
+        axis.text.y = ggplot2::element_text(size = 5.5),
+        strip.text = ggplot2::element_text(size = 8, face = "bold"),
+        legend.position = "right",
+        plot.title = ggplot2::element_text(face = "bold", size = 11),
+        plot.subtitle = ggplot2::element_text(size = 8, color = "grey35")
+      )
+  }
+  ggplot2::ggsave(path, p, width = 235, height = 165, units = "mm", device = svglite::svglite)
+}
+
+plot_all_supermodule_region_layer_heatmap <- function(effect_source, path) {
+  plot_df <- effect_source |>
+    dplyr::filter(is.finite(.data$estimate), !is.na(.data$p_value)) |>
+    dplyr::mutate(
+      supermodule_plot_label = compact_supermodule_label(.data$supermodule_id, .data$supermodule_label, width = 22L),
+      spatial_plot_label = paste(.data$parsed_region, .data$parsed_layer_or_unit, sep = " / "),
+      spatial_plot_label = gsub(" / Layer not available$", "", .data$spatial_plot_label),
+      support_marker = dplyr::case_when(
+        .data$support_class == "FDR05" ~ "FDR <= 0.05",
+        .data$support_class == "FDR10" ~ "FDR <= 0.10",
+        .data$support_class == "nominal" ~ "nominal p < 0.05",
+        TRUE ~ NA_character_
+      )
+    )
+  if (!nrow(plot_df)) {
+    p <- ggplot2::ggplot() +
+      ggplot2::annotate("text", x = 0, y = 0, label = "No supermodule region/layer effects available", size = 3) +
+      ggplot2::labs(title = "All supermodule effects by region/layer") +
+      ggplot2::theme_void()
+  } else {
+    uses_cohend <- "metric_used" %in% names(plot_df) && any(plot_df$metric_used == "Cohen_d", na.rm = TRUE)
+    fill_label <- if (uses_cohend) "Cohen's d" else "Estimate"
+    subtitle <- if (uses_cohend) {
+      "Tile fill is Cohen's d from the publication score source; markers use within-model BH adjusted p <= 0.05."
+    } else {
+      "Tile fill is the source model estimate; markers use the same FDR/nominal support classes as the circular heatmap source."
+    }
+    spatial_levels <- plot_df |>
+      dplyr::distinct(.data$spatial_plot_label, .data$spatial_order) |>
+      dplyr::arrange(.data$spatial_order, .data$spatial_plot_label) |>
+      dplyr::pull(.data$spatial_plot_label)
+    supermodule_levels <- plot_df |>
+      dplyr::group_by(.data$supermodule_plot_label) |>
+      dplyr::summarise(best = max(abs(.data$estimate), na.rm = TRUE), .groups = "drop") |>
+      dplyr::arrange(.data$best, .data$supermodule_plot_label) |>
+      dplyr::pull(.data$supermodule_plot_label)
+    plot_df$spatial_plot_label <- factor(plot_df$spatial_plot_label, levels = unique(spatial_levels))
+    plot_df$supermodule_plot_label <- factor(plot_df$supermodule_plot_label, levels = unique(supermodule_levels))
+    lim <- stats::quantile(abs(plot_df$estimate[is.finite(plot_df$estimate)]), 0.95, na.rm = TRUE, names = FALSE)
+    lim <- max(lim, 1e-6)
+    p <- ggplot2::ggplot(plot_df, ggplot2::aes(x = .data$spatial_plot_label, y = .data$supermodule_plot_label)) +
+      ggplot2::geom_tile(ggplot2::aes(fill = .data$estimate), color = "white", linewidth = 0.12) +
+      ggplot2::geom_point(
+        data = plot_df |> dplyr::filter(!is.na(.data$support_marker)),
+        ggplot2::aes(shape = .data$support_marker),
+        size = 1.15,
+        color = "black",
+        stroke = 0.25
+      ) +
+      ggplot2::facet_grid(rows = ggplot2::vars(.data$contrast_block), cols = ggplot2::vars(.data$effect_scope), scales = "free_x", space = "free_x") +
+      ggplot2::scale_fill_gradient2(low = "#3B6EA8", mid = "grey96", high = "#B84A4A", midpoint = 0, limits = c(-lim, lim), oob = scales::squish, name = fill_label) +
+      ggplot2::scale_shape_manual(values = c("FDR <= 0.05" = 16, "FDR <= 0.10" = 1, "nominal p < 0.05" = 4), name = "Support") +
+      ggplot2::labs(
+        x = "Region / layer",
+        y = NULL,
+        title = "All supermodule effects by region/layer",
+        subtitle = subtitle
+      ) +
+      ggplot2::theme_minimal(base_size = 7) +
+      ggplot2::theme(
+        panel.grid = ggplot2::element_blank(),
+        axis.text.x = ggplot2::element_text(angle = 45, hjust = 1, size = 5.5),
+        axis.text.y = ggplot2::element_text(size = 5.2),
+        strip.text = ggplot2::element_text(size = 7, face = "bold"),
+        legend.position = "right",
+        plot.title = ggplot2::element_text(face = "bold", size = 11),
+        plot.subtitle = ggplot2::element_text(size = 8, color = "grey35")
+      )
+  }
+  ggplot2::ggsave(path, p, width = 250, height = 180, units = "mm", device = svglite::svglite, limitsize = FALSE)
 }
 
 split_member_modules <- function(x) {
@@ -845,7 +1458,7 @@ split_member_modules <- function(x) {
   z[nzchar(z)]
 }
 
-selected_sus_res_supermodule_contents <- function(selected, pca_eigenvalues, comp, definitions, super_ann, super_summary, modules_long, module_summary, dataset) {
+selected_sus_res_supermodule_contents <- function(selected, pca_eigenvalues, comp, definitions, super_ann, super_summary, modules_long, module_summary, go_enrichment, module_name_map, dataset) {
   empty <- tibble::tibble(
     dataset = character(), supermodule_id = character(), supermodule_label = character(),
     contrast = character(), estimate = numeric(), p_value = numeric(),
@@ -856,9 +1469,9 @@ selected_sus_res_supermodule_contents <- function(selected, pca_eigenvalues, com
     top_hub_symbols = character(), top_hub_proteins = character(), top_core_kME_proteins = character(),
     selection_support = character(), selection_message = character()
   )
-  if (is.null(selected) || !nrow(selected) || all(selected$selection_message != "selected")) return(empty)
+  if (is.null(selected) || !nrow(selected) || all(!selected$selection_message %in% c("selected", "all_supermodules"))) return(empty)
   selected <- selected |>
-    dplyr::filter(.data$selection_message == "selected") |>
+    dplyr::filter(.data$selection_message %in% c("selected", "all_supermodules")) |>
     dplyr::mutate(
       effect_support_label = dplyr::case_when(
         !is.na(.data$FDR_within_dataset_level) & .data$FDR_within_dataset_level <= 0.05 ~ "FDR <= 0.05",
@@ -906,6 +1519,17 @@ selected_sus_res_supermodule_contents <- function(selected, pca_eigenvalues, com
   } else {
     tibble::tibble(module_eigengene = character(), ModuleID = character(), ModuleLabel_Final = character())
   }
+  name_map_lookup <- if (!is.null(module_name_map) && nrow(module_name_map) && "ModuleID" %in% names(module_name_map)) {
+    module_name_map |>
+      dplyr::transmute(
+        ModuleID = as.character(.data$ModuleID),
+        ModuleLabel_Final = dplyr::coalesce(col_if_present(module_name_map, "ModuleLabel_Final"), col_if_present(module_name_map, "final_label"), col_if_present(module_name_map, "primary_label"))
+      ) |>
+      dplyr::filter(nzchar(.data$ModuleID)) |>
+      dplyr::distinct(.data$ModuleID, .keep_all = TRUE)
+  } else {
+    tibble::tibble(ModuleID = character(), ModuleLabel_Final = character())
+  }
 
   ann_module_meta <- if (!is.null(super_ann) && nrow(super_ann) && "SupermoduleID" %in% names(super_ann)) {
     super_ann |>
@@ -929,10 +1553,11 @@ selected_sus_res_supermodule_contents <- function(selected, pca_eigenvalues, com
       )
     })) |>
       dplyr::left_join(definition_lookup, by = "module_eigengene") |>
+      dplyr::left_join(name_map_lookup, by = "ModuleID", suffix = c("", "_name_map")) |>
       dplyr::filter(nzchar(.data$supermodule_id)) |>
       dplyr::mutate(
         module_key = dplyr::coalesce(.data$ModuleID, .data$module_eigengene),
-        module_label = dplyr::coalesce(.data$ModuleLabel_Final, .data$module_key)
+        module_label = dplyr::coalesce(.data$ModuleLabel_Final, .data$ModuleLabel_Final_name_map, .data$module_key)
       ) |>
       dplyr::distinct(.data$supermodule_id, .data$module_key, .keep_all = TRUE)
   } else {
@@ -941,6 +1566,20 @@ selected_sus_res_supermodule_contents <- function(selected, pca_eigenvalues, com
         module_key = dplyr::coalesce(.data$ModuleID, .data$module_eigengene),
         module_label = dplyr::coalesce(.data$ModuleLabel_Final, .data$module_key)
       )
+  }
+
+  go_terms_for <- function(module_ids, ontology, max_n = 5L) {
+    if (is.null(go_enrichment) || !nrow(go_enrichment) || !all(c("ModuleID", "Ontology", "Description") %in% names(go_enrichment))) {
+      return(NA_character_)
+    }
+    out <- go_enrichment |>
+      dplyr::filter(.data$ModuleID %in% module_ids, .data$Ontology == ontology) |>
+      dplyr::mutate(p_adjust_num = if ("p.adjust" %in% names(go_enrichment)) suppressWarnings(as.numeric(.data[["p.adjust"]])) else NA_real_) |>
+      dplyr::arrange(.data$p_adjust_num, .data$Description) |>
+      dplyr::distinct(.data$Description, .keep_all = TRUE) |>
+      dplyr::slice_head(n = max_n) |>
+      dplyr::pull(.data$Description)
+    collapse_unique_values(out, max_n = max_n)
   }
 
   module_summary_hubs <- if (!is.null(module_summary) && nrow(module_summary) && "ModuleID" %in% names(module_summary)) {
@@ -1006,9 +1645,9 @@ selected_sus_res_supermodule_contents <- function(selected, pca_eigenvalues, com
       n_member_modules = if (length(member_ids)) length(member_ids) else first_value(sm$summary_n_member_modules, NA_integer_),
       member_modules = if (length(member_ids)) paste(member_ids, collapse = ";") else first_value(sm$summary_member_modules, NA_character_),
       member_module_labels = collapse_unique_values(member_labels, max_n = 16L),
-      top_GO_BP_terms = first_value(sm$top_GO_BP_terms, NA_character_),
-      top_GO_MF_terms = first_value(sm$top_GO_MF_terms, NA_character_),
-      top_GO_CC_terms = first_value(sm$top_GO_CC_terms, NA_character_),
+      top_GO_BP_terms = dplyr::coalesce(first_value(sm$top_GO_BP_terms, NA_character_), go_terms_for(member_ids, "BP")),
+      top_GO_MF_terms = dplyr::coalesce(first_value(sm$top_GO_MF_terms, NA_character_), go_terms_for(member_ids, "MF")),
+      top_GO_CC_terms = dplyr::coalesce(first_value(sm$top_GO_CC_terms, NA_character_), go_terms_for(member_ids, "CC")),
       top_hub_symbols = first_value(sm$top_hub_symbols, NA_character_),
       top_hub_proteins = dplyr::coalesce(first_value(sm$top_hub_proteins_summary, NA_character_), collapse_unique_values(module_hubs$top_hub_proteins_module, max_n = 20L)),
       top_core_kME_proteins = collapse_unique_values(core, max_n = 20L),
@@ -1020,14 +1659,92 @@ selected_sus_res_supermodule_contents <- function(selected, pca_eigenvalues, com
     dplyr::select(dplyr::all_of(names(empty)))
 }
 
-selected_sus_res_supermodule_interpretation_summary <- function(contents) {
+all_supermodule_contents_summary <- function(pca_eigenvalues, comp, definitions, super_ann, super_summary, modules_long, module_summary, go_enrichment, module_name_map, dataset) {
+  pc1 <- pca_eigenvalues |>
+    dplyr::filter(.data$pc == 1L) |>
+    dplyr::select("supermodule_id", pca_PC1_variance_explained = "variance_explained")
+  selected_like <- if (!is.null(comp) && nrow(comp) && "supermodule_id" %in% names(comp)) {
+    comp |>
+      dplyr::transmute(
+        dataset = dataset,
+        supermodule_id = as.character(.data$supermodule_id),
+        supermodule_label = dplyr::coalesce(col_if_present(comp, "supermodule_label"), as.character(.data$supermodule_id)),
+        contrast = NA_character_,
+        estimate = NA_real_,
+        p_value = NA_real_,
+        FDR_within_dataset_level = NA_real_,
+        FDR_global = NA_real_,
+        evidence_status = "not_applicable_composition_summary",
+        selection_support = "all_supermodules",
+        selection_rank = dplyr::row_number(),
+        selection_message = "all_supermodules"
+      )
+  } else if (!is.null(super_summary) && nrow(super_summary) && "SupermoduleID" %in% names(super_summary)) {
+    super_summary |>
+      dplyr::transmute(
+        dataset = dataset,
+        supermodule_id = as.character(.data$SupermoduleID),
+        supermodule_label = dplyr::coalesce(col_if_present(super_summary, "Supermodule_DisplayLabel"), col_if_present(super_summary, "Supermodule_FinalLabel"), as.character(.data$SupermoduleID)),
+        contrast = NA_character_,
+        estimate = NA_real_,
+        p_value = NA_real_,
+        FDR_within_dataset_level = NA_real_,
+        FDR_global = NA_real_,
+        evidence_status = "not_applicable_composition_summary",
+        selection_support = "all_supermodules",
+        selection_rank = dplyr::row_number(),
+        selection_message = "all_supermodules"
+      )
+  } else {
+    tibble::tibble(
+      dataset = character(), supermodule_id = character(), supermodule_label = character(),
+      contrast = character(), estimate = numeric(), p_value = numeric(),
+      FDR_within_dataset_level = numeric(), FDR_global = numeric(),
+      evidence_status = character(), selection_support = character(),
+      selection_rank = integer(), selection_message = character()
+    )
+  }
+  out <- selected_sus_res_supermodule_contents(
+    selected_like,
+    pca_eigenvalues,
+    comp,
+    definitions,
+    super_ann,
+    super_summary,
+    modules_long,
+    module_summary,
+    go_enrichment,
+    module_name_map,
+    dataset
+  )
+  out |>
+    dplyr::select(-dplyr::any_of(c("selection_support", "selection_message"))) |>
+    dplyr::left_join(pc1, by = "supermodule_id", suffix = c("", "_from_pc1")) |>
+    dplyr::mutate(pca_PC1_variance_explained = dplyr::coalesce(.data$pca_PC1_variance_explained, .data$pca_PC1_variance_explained_from_pc1)) |>
+    dplyr::select(-dplyr::any_of("pca_PC1_variance_explained_from_pc1"))
+}
+
+selected_sus_res_supermodule_interpretation_summary <- function(contents, selected_loadings = NULL) {
   if (is.null(contents) || !nrow(contents)) {
     return(tibble::tibble(
       dataset = character(), supermodule_id = character(), supermodule_label = character(),
       selection_support = character(), interpretation_sentence = character()
     ))
   }
+  loading_summary <- if (!is.null(selected_loadings) && nrow(selected_loadings)) {
+    selected_loadings |>
+      dplyr::filter(is.finite(.data$abs_loading)) |>
+      dplyr::arrange(.data$supermodule_id, dplyr::desc(.data$abs_loading), .data$module_label) |>
+      dplyr::group_by(.data$supermodule_id) |>
+      dplyr::summarise(
+        strongest_contributing_modules = collapse_unique_values(dplyr::coalesce(.data$module_label, .data$module_id, .data$module_eigengene), max_n = 3L),
+        .groups = "drop"
+      )
+  } else {
+    tibble::tibble(supermodule_id = character(), strongest_contributing_modules = character())
+  }
   contents |>
+    dplyr::left_join(loading_summary, by = "supermodule_id") |>
     dplyr::mutate(
       support_phrase = dplyr::case_when(
         !is.na(.data$FDR_within_dataset_level) & .data$FDR_within_dataset_level <= 0.05 ~ "FDR-significant",
@@ -1046,8 +1763,8 @@ selected_sus_res_supermodule_interpretation_summary <- function(contents) {
         " SUS-RES supermodule eigengene effect (estimate=", signif(.data$estimate, 3),
         ", p=", signif(.data$p_value, 3), ", FDR=", signif(.data$FDR_within_dataset_level, 3),
         "), with the eigengene ", .data$direction_phrase, ". PC1 explains ", .data$pc1_pct,
-        " of member-module variance. Member module labels: ",
-        dplyr::coalesce(.data$member_module_labels, "not available"),
+        " of member-module variance. The strongest contributing modules are ",
+        dplyr::coalesce(.data$strongest_contributing_modules, .data$member_module_labels, "not available"),
         ". Top biology: ", dplyr::coalesce(.data$top_GO_BP_terms, "not available"),
         ". Top hubs/core proteins: ",
         dplyr::coalesce(.data$top_hub_symbols, .data$top_core_kME_proteins, "not available"), "."
@@ -1057,7 +1774,7 @@ selected_sus_res_supermodule_interpretation_summary <- function(contents) {
       "dataset", "supermodule_id", "supermodule_label", "contrast",
       "estimate", "p_value", "FDR_within_dataset_level", "FDR_global",
       "evidence_status", "selection_support", "pca_PC1_variance_explained",
-      "n_member_modules", "member_module_labels", "top_GO_BP_terms",
+      "n_member_modules", "member_module_labels", "strongest_contributing_modules", "top_GO_BP_terms",
       "top_hub_symbols", "top_core_kME_proteins", "interpretation_sentence"
     )
 }
@@ -1219,6 +1936,8 @@ super_ann <- safe_read_csv(FILES$supermodule_annotation) %||% data.frame()
 module_summary <- safe_read_csv(FILES$module_summary) %||% data.frame()
 super_summary <- safe_read_csv(FILES$supermodule_summary) %||% data.frame()
 modules_long <- safe_read_csv(file.path(dirname(FILES$module_summary), "WGCNA_modules_long.csv")) %||% data.frame()
+go_enrichment <- safe_read_csv(FILES$go) %||% data.frame()
+module_name_map <- safe_read_csv(file.path(dirname(FILES$module_summary), "module_name_map.csv")) %||% data.frame()
 
 state <- tryCatch(load_wgcna_state(FILES$state), error = function(e) e)
 if (inherits(state, "error")) {
@@ -1230,12 +1949,14 @@ if (inherits(state, "error")) {
   super_marker <- tibble::tibble()
   super_pca_input_audit <- supermodule_pca_input_audit(data.frame(Sample = character()), data.frame(), DATASET)
   super_pca_eigenvalues <- supermodule_pca_eigenvalues(data.frame(Sample = character()), data.frame(), DATASET)
+  super_pca_member_loadings <- supermodule_pca_member_loadings(data.frame(Sample = character()), data.frame(), DATASET)
 } else {
   module_eig <- extract_module_eigengenes(state)
   maps <- make_endpoint_maps(module_eig, definitions, super_ann)
   maps$super_map <- reconcile_supermodule_map_to_module_eigengenes(maps$super_map, module_eig, definitions)
   super_pca_input_audit <- supermodule_pca_input_audit(module_eig, maps$super_map, DATASET)
   super_pca_eigenvalues <- supermodule_pca_eigenvalues(module_eig, maps$super_map, DATASET)
+  super_pca_member_loadings <- supermodule_pca_member_loadings(module_eig, maps$super_map, DATASET)
   super <- make_supermodule_eigengenes(module_eig, maps$super_map)
   comp0 <- super$composition
   if (is.null(comp0) || !"supermodule_id" %in% names(comp0)) comp0 <- empty_supermodule_composition()
@@ -1277,19 +1998,50 @@ selected_sus_res_contents <- selected_sus_res_supermodule_contents(
   super_summary,
   modules_long,
   module_summary,
+  go_enrichment,
+  module_name_map,
   DATASET
 )
-selected_sus_res_interpretation_summary <- selected_sus_res_supermodule_interpretation_summary(selected_sus_res_contents)
+all_supermodule_contents <- all_supermodule_contents_summary(
+  super_pca_eigenvalues,
+  comp,
+  definitions,
+  super_ann,
+  super_summary,
+  modules_long,
+  module_summary,
+  go_enrichment,
+  module_name_map,
+  DATASET
+)
+selected_sus_res_loadings <- selected_sus_res_member_loadings(super_pca_member_loadings, selected_sus_res_audit, selected_sus_res_contents)
+selected_sus_res_interpretation_summary <- selected_sus_res_supermodule_interpretation_summary(selected_sus_res_contents, selected_sus_res_loadings)
+all_supermodule_region_layer_effects <- all_supermodule_region_layer_effect_source(super_out)
+all_supermodule_region_layer_cohend_effects <- publication_supermodule_region_layer_effect_source(DATASET, all_supermodule_contents)
+all_supermodule_region_layer_heatmap_source <- if (nrow(all_supermodule_region_layer_cohend_effects)) {
+  all_supermodule_region_layer_cohend_effects
+} else {
+  all_supermodule_region_layer_effects
+}
+all_sus_res_region_layer_effects <- all_supermodule_region_layer_heatmap_source |>
+  dplyr::filter(.data$contrast_block == "SUS-RES") |>
+  dplyr::mutate(contrast = "SUS - RES")
 
 write_table_and_source(module_out, PATHS$tables, PATHS$source_data, "module_group_effects.csv")
 write_table_and_source(super_out, PATHS$tables, PATHS$source_data, "supermodule_group_effects.csv")
 write_table_and_source(comp, PATHS$tables, PATHS$source_data, "supermodule_composition.csv")
 write_table_and_source(super_pca_input_audit, PATHS$tables, PATHS$source_data, "supermodule_pca_input_audit.csv")
 write_table_and_source(super_pca_eigenvalues, PATHS$tables, PATHS$source_data, "supermodule_pca_eigenvalues.csv")
+write_table_and_source(super_pca_member_loadings, PATHS$tables, PATHS$source_data, "supermodule_pca_member_loadings.csv")
 write_table_and_source(selected_sus_res_audit, PATHS$tables, PATHS$source_data, "selected_sus_res_supermodule_pca_selection_audit.csv")
 write_table_and_source(selected_sus_res_pca, PATHS$tables, PATHS$source_data, "selected_sus_res_supermodule_pca_eigenvalues.csv")
 write_table_and_source(selected_sus_res_contents, PATHS$tables, PATHS$source_data, "selected_sus_res_supermodule_contents.csv")
+write_table_and_source(all_supermodule_contents, PATHS$tables, PATHS$source_data, "all_supermodule_contents_summary.csv")
 write_table_and_source(selected_sus_res_interpretation_summary, PATHS$tables, PATHS$source_data, "selected_sus_res_supermodule_interpretation_summary.csv")
+write_table_and_source(selected_sus_res_interpretation_summary, PATHS$tables, PATHS$source_data, "selected_sus_res_supermodule_contents_for_boss.csv")
+write_table_and_source(all_supermodule_region_layer_effects, PATHS$tables, PATHS$source_data, "all_supermodule_region_layer_effects.csv")
+write_table_and_source(all_supermodule_region_layer_cohend_effects, PATHS$tables, PATHS$source_data, "all_supermodule_region_layer_cohend_effects.csv")
+write_table_and_source(all_sus_res_region_layer_effects, PATHS$tables, PATHS$source_data, "all_sus_res_supermodule_region_layer_effects.csv")
 write_table_and_source(module_marker, PATHS$tables, PATHS$source_data, "module_marker_trait_correlations.csv")
 write_table_and_source(super_marker, PATHS$tables, PATHS$source_data, "supermodule_marker_trait_correlations.csv")
 
@@ -1314,6 +2066,10 @@ plot_effects(super_out, file.path(PATHS$figures, "supermodule_effects_by_spatial
 plot_effects(super_out, file.path(PATHS$figures, "supermodule_group_effect_dotplot.svg"), "Supermodule group effects")
 plot_supermodule_pca_scree(super_pca_eigenvalues, file.path(PATHS$figures, "supermodule_pca_eigenvalue_scree.svg"))
 plot_selected_sus_res_pca_scree(selected_sus_res_pca, selected_sus_res_audit, file.path(PATHS$figures, "selected_sus_res_supermodule_pca_eigenvalue_scree.svg"))
+plot_all_supermodule_member_loadings(super_pca_member_loadings, file.path(PATHS$figures, "all_supermodule_member_loading_plot.svg"))
+plot_selected_sus_res_member_loadings(selected_sus_res_loadings, file.path(PATHS$figures, "selected_sus_res_supermodule_member_loading_plot.svg"))
+plot_all_supermodule_region_layer_heatmap(all_supermodule_region_layer_heatmap_source, file.path(PATHS$figures, "all_supermodule_region_layer_effect_heatmap.svg"))
+plot_all_sus_res_region_layer_effects(all_sus_res_region_layer_effects, file.path(PATHS$figures, "all_sus_res_supermodule_region_layer_effects.svg"))
 plot_selected_sus_res_supermodule_effect_summary(selected_sus_res_contents, file.path(PATHS$figures, "selected_sus_res_supermodule_effect_summary.svg"))
 plot_selected_sus_res_supermodule_contents_overview(selected_sus_res_contents, file.path(PATHS$figures, "selected_sus_res_supermodule_contents_overview.svg"))
 
