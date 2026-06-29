@@ -47,6 +47,10 @@ if (run$dry_run) {
   dry_run_line("Selected SUS-RES PCA eigenvalues", file.path(PATHS$tables, "selected_sus_res_supermodule_pca_eigenvalues.csv"))
   dry_run_line("Selected SUS-RES PCA scree SVG", file.path(PATHS$figures, "selected_sus_res_supermodule_pca_eigenvalue_scree.svg"))
   dry_run_line("Selected SUS-RES PCA selection audit", file.path(PATHS$tables, "selected_sus_res_supermodule_pca_selection_audit.csv"))
+  dry_run_line("Selected SUS-RES supermodule contents", file.path(PATHS$tables, "selected_sus_res_supermodule_contents.csv"))
+  dry_run_line("Selected SUS-RES interpretation summary", file.path(PATHS$tables, "selected_sus_res_supermodule_interpretation_summary.csv"))
+  dry_run_line("Selected SUS-RES effect summary SVG", file.path(PATHS$figures, "selected_sus_res_supermodule_effect_summary.svg"))
+  dry_run_line("Selected SUS-RES contents overview SVG", file.path(PATHS$figures, "selected_sus_res_supermodule_contents_overview.svg"))
   quit(status = 0, save = "no")
 }
 
@@ -65,6 +69,24 @@ collapse_counts <- function(x, group) {
   counts <- tapply(x[ok], group[ok], function(z) length(unique(stats::na.omit(as.character(z)))))
   if (!length(counts)) return(NA_character_)
   paste(paste0(names(counts), "=", as.integer(counts)), collapse = ";")
+}
+
+collapse_unique_values <- function(x, max_n = 12L) {
+  x <- unique(trimws(as.character(x)))
+  x <- x[!is.na(x) & nzchar(x)]
+  if (!length(x)) return(NA_character_)
+  if (length(x) > max_n) return(paste(c(utils::head(x, max_n), "..."), collapse = "; "))
+  paste(x, collapse = "; ")
+}
+
+col_if_present <- function(df, nm, default = NA_character_) {
+  if (!is.null(df) && nm %in% names(df)) return(df[[nm]])
+  rep(default, if (is.null(df)) 0L else nrow(df))
+}
+
+first_value <- function(x, default = NA) {
+  if (is.null(x) || !length(x)) return(default)
+  x[[1]]
 }
 
 animal_support_summary <- function(dat, model_type = NA_character_, min_animals_threshold = 3L) {
@@ -683,6 +705,7 @@ select_sus_res_supermodules <- function(super_effects, dataset, max_n = 2L) {
     p_value = NA_real_,
     FDR_within_dataset_level = NA_real_,
     FDR_global = NA_real_,
+    evidence_status = NA_character_,
     selection_support = "none",
     selection_rank = NA_integer_,
     selection_message = message
@@ -722,7 +745,7 @@ select_sus_res_supermodules <- function(super_effects, dataset, max_n = 2L) {
     dplyr::mutate(selection_rank = dplyr::row_number(), selection_message = "selected") |>
     dplyr::select(
       "dataset", "supermodule_id", "supermodule_label", "contrast", "estimate", "p_value",
-      "FDR_within_dataset_level", "FDR_global", "selection_support",
+      "FDR_within_dataset_level", "FDR_global", "evidence_status", "selection_support",
       "selection_rank", "selection_message"
     )
   if (!nrow(sus_res)) {
@@ -816,6 +839,305 @@ plot_selected_sus_res_pca_scree <- function(selected_pca, selected, path) {
   ggplot2::ggsave(path, p, width = 210, height = 180, units = "mm", device = svglite::svglite)
 }
 
+split_member_modules <- function(x) {
+  z <- unlist(strsplit(as.character(x %||% ""), ";", fixed = TRUE))
+  z <- trimws(z)
+  z[nzchar(z)]
+}
+
+selected_sus_res_supermodule_contents <- function(selected, pca_eigenvalues, comp, definitions, super_ann, super_summary, modules_long, module_summary, dataset) {
+  empty <- tibble::tibble(
+    dataset = character(), supermodule_id = character(), supermodule_label = character(),
+    contrast = character(), estimate = numeric(), p_value = numeric(),
+    FDR_within_dataset_level = numeric(), FDR_global = numeric(), evidence_status = character(),
+    pca_PC1_variance_explained = numeric(), n_member_modules = integer(),
+    member_modules = character(), member_module_labels = character(),
+    top_GO_BP_terms = character(), top_GO_MF_terms = character(), top_GO_CC_terms = character(),
+    top_hub_symbols = character(), top_hub_proteins = character(), top_core_kME_proteins = character(),
+    selection_support = character(), selection_message = character()
+  )
+  if (is.null(selected) || !nrow(selected) || all(selected$selection_message != "selected")) return(empty)
+  selected <- selected |>
+    dplyr::filter(.data$selection_message == "selected") |>
+    dplyr::mutate(
+      effect_support_label = dplyr::case_when(
+        !is.na(.data$FDR_within_dataset_level) & .data$FDR_within_dataset_level <= 0.05 ~ "FDR <= 0.05",
+        !is.na(.data$FDR_within_dataset_level) & .data$FDR_within_dataset_level <= 0.10 ~ "FDR <= 0.10",
+        !is.na(.data$p_value) & .data$p_value < 0.05 ~ "nominal-only p < 0.05",
+        TRUE ~ "not selected"
+      )
+    )
+
+  pc1 <- pca_eigenvalues |>
+    dplyr::filter(.data$pc == 1L) |>
+    dplyr::select("supermodule_id", pca_PC1_variance_explained = "variance_explained")
+
+  summary_meta <- if (!is.null(super_summary) && nrow(super_summary) && "SupermoduleID" %in% names(super_summary)) {
+    super_summary |>
+      dplyr::transmute(
+        supermodule_id = as.character(.data$SupermoduleID),
+        summary_label = dplyr::coalesce(col_if_present(super_summary, "Supermodule_DisplayLabel"), col_if_present(super_summary, "Supermodule_FinalLabel"), as.character(.data$SupermoduleID)),
+        summary_member_modules = col_if_present(super_summary, "member_modules"),
+        summary_n_member_modules = suppressWarnings(as.integer(col_if_present(super_summary, "n_modules", NA_integer_))),
+        top_GO_BP_terms = col_if_present(super_summary, "top_GO_BP_terms"),
+        top_GO_MF_terms = col_if_present(super_summary, "top_GO_MF_terms"),
+        top_GO_CC_terms = col_if_present(super_summary, "top_GO_CC_terms"),
+        top_hub_symbols = col_if_present(super_summary, "top_hub_symbols"),
+        top_hub_proteins_summary = dplyr::coalesce(col_if_present(super_summary, "top_hub_proteins"), col_if_present(super_summary, "top_hub_uniprot"))
+      ) |>
+      dplyr::distinct(.data$supermodule_id, .keep_all = TRUE)
+  } else {
+    tibble::tibble(
+      supermodule_id = character(), summary_label = character(), summary_member_modules = character(),
+      summary_n_member_modules = integer(), top_GO_BP_terms = character(), top_GO_MF_terms = character(),
+      top_GO_CC_terms = character(), top_hub_symbols = character(), top_hub_proteins_summary = character()
+    )
+  }
+
+  definition_lookup <- if (!is.null(definitions) && nrow(definitions)) {
+    definitions |>
+      dplyr::transmute(
+        module_eigengene = as.character(col_if_present(definitions, "module_eigengene")),
+        ModuleID = as.character(col_if_present(definitions, "ModuleID")),
+        ModuleLabel_Final = as.character(col_if_present(definitions, "ModuleLabel_Final"))
+      ) |>
+      dplyr::filter(nzchar(.data$module_eigengene) | nzchar(.data$ModuleID)) |>
+      dplyr::distinct()
+  } else {
+    tibble::tibble(module_eigengene = character(), ModuleID = character(), ModuleLabel_Final = character())
+  }
+
+  ann_module_meta <- if (!is.null(super_ann) && nrow(super_ann) && "SupermoduleID" %in% names(super_ann)) {
+    super_ann |>
+      dplyr::transmute(
+        supermodule_id = as.character(.data$SupermoduleID),
+        module_eigengene = as.character(col_if_present(super_ann, "module_eigengene")),
+        ModuleID = as.character(col_if_present(super_ann, "ModuleID")),
+        ModuleLabel_Final = as.character(col_if_present(super_ann, "ModuleLabel_Final"))
+      ) |>
+      dplyr::filter(nzchar(.data$supermodule_id)) |>
+      dplyr::distinct()
+  } else {
+    tibble::tibble(supermodule_id = character(), module_eigengene = character(), ModuleID = character(), ModuleLabel_Final = character())
+  }
+
+  comp_long <- if (!is.null(comp) && nrow(comp) && all(c("supermodule_id", "member_modules") %in% names(comp))) {
+    dplyr::bind_rows(lapply(seq_len(nrow(comp)), function(i) {
+      tibble::tibble(
+        supermodule_id = as.character(comp$supermodule_id[[i]]),
+        module_eigengene = split_member_modules(comp$member_modules[[i]])
+      )
+    })) |>
+      dplyr::left_join(definition_lookup, by = "module_eigengene") |>
+      dplyr::filter(nzchar(.data$supermodule_id)) |>
+      dplyr::mutate(
+        module_key = dplyr::coalesce(.data$ModuleID, .data$module_eigengene),
+        module_label = dplyr::coalesce(.data$ModuleLabel_Final, .data$module_key)
+      ) |>
+      dplyr::distinct(.data$supermodule_id, .data$module_key, .keep_all = TRUE)
+  } else {
+    ann_module_meta |>
+      dplyr::mutate(
+        module_key = dplyr::coalesce(.data$ModuleID, .data$module_eigengene),
+        module_label = dplyr::coalesce(.data$ModuleLabel_Final, .data$module_key)
+      )
+  }
+
+  module_summary_hubs <- if (!is.null(module_summary) && nrow(module_summary) && "ModuleID" %in% names(module_summary)) {
+    module_summary |>
+      dplyr::transmute(ModuleID = as.character(.data$ModuleID), top_hub_proteins_module = col_if_present(module_summary, "top_hub_proteins"))
+  } else {
+    tibble::tibble(ModuleID = character(), top_hub_proteins_module = character())
+  }
+
+  module_long_ranked <- if (!is.null(modules_long) && nrow(modules_long) && "ModuleID" %in% names(modules_long)) {
+    modules_long |>
+      dplyr::mutate(
+        ModuleID = as.character(.data$ModuleID),
+        abs_kME_num = suppressWarnings(as.numeric(col_if_present(modules_long, "abs_kME", NA_real_))),
+        is_core = as.character(col_if_present(modules_long, "is_core_kME_0.6", FALSE)) %in% c("TRUE", "true", "1"),
+        is_hub = as.character(col_if_present(modules_long, "is_top_hub_25", FALSE)) %in% c("TRUE", "true", "1"),
+        protein_label = dplyr::coalesce(
+          col_if_present(modules_long, "GeneSymbol"),
+          col_if_present(modules_long, "ProteinID"),
+          col_if_present(modules_long, "UniProt"),
+          col_if_present(modules_long, "resolved_uniprot")
+        )
+      )
+  } else {
+    tibble::tibble(ModuleID = character(), abs_kME_num = numeric(), is_core = logical(), is_hub = logical(), protein_label = character())
+  }
+
+  rows <- lapply(selected$supermodule_id, function(sid) {
+    sel <- selected[selected$supermodule_id == sid, , drop = FALSE][1, , drop = FALSE]
+    members <- comp_long |> dplyr::filter(.data$supermodule_id == sid)
+    member_ids <- unique(members$module_key)
+    member_ids <- member_ids[!is.na(member_ids) & nzchar(member_ids)]
+    member_labels <- unique(members$module_label)
+    member_labels <- member_labels[!is.na(member_labels) & nzchar(member_labels)]
+    module_hubs <- module_summary_hubs |> dplyr::filter(.data$ModuleID %in% member_ids)
+    long_hits <- module_long_ranked |> dplyr::filter(.data$ModuleID %in% member_ids)
+    core <- long_hits |>
+      dplyr::filter(.data$is_core %in% TRUE) |>
+      dplyr::arrange(dplyr::desc(.data$abs_kME_num)) |>
+      dplyr::pull(.data$protein_label)
+    if (!length(core)) {
+      core <- long_hits |>
+        dplyr::arrange(dplyr::desc(.data$abs_kME_num)) |>
+        dplyr::slice_head(n = 12) |>
+        dplyr::pull(.data$protein_label)
+    }
+    sm <- summary_meta |> dplyr::filter(.data$supermodule_id == sid)
+    pc1_value <- pc1 |>
+      dplyr::filter(.data$supermodule_id == sid) |>
+      dplyr::pull(.data$pca_PC1_variance_explained) |>
+      first_value(NA_real_)
+    tibble::tibble(
+      dataset = dataset,
+      supermodule_id = sid,
+      supermodule_label = dplyr::coalesce(first_value(sel$supermodule_label, NA_character_), first_value(sm$summary_label, NA_character_), sid),
+      contrast = sel$contrast[[1]],
+      estimate = sel$estimate[[1]],
+      p_value = sel$p_value[[1]],
+      FDR_within_dataset_level = sel$FDR_within_dataset_level[[1]],
+      FDR_global = sel$FDR_global[[1]],
+      evidence_status = sel$evidence_status[[1]],
+      pca_PC1_variance_explained = pc1_value,
+      n_member_modules = if (length(member_ids)) length(member_ids) else first_value(sm$summary_n_member_modules, NA_integer_),
+      member_modules = if (length(member_ids)) paste(member_ids, collapse = ";") else first_value(sm$summary_member_modules, NA_character_),
+      member_module_labels = collapse_unique_values(member_labels, max_n = 16L),
+      top_GO_BP_terms = first_value(sm$top_GO_BP_terms, NA_character_),
+      top_GO_MF_terms = first_value(sm$top_GO_MF_terms, NA_character_),
+      top_GO_CC_terms = first_value(sm$top_GO_CC_terms, NA_character_),
+      top_hub_symbols = first_value(sm$top_hub_symbols, NA_character_),
+      top_hub_proteins = dplyr::coalesce(first_value(sm$top_hub_proteins_summary, NA_character_), collapse_unique_values(module_hubs$top_hub_proteins_module, max_n = 20L)),
+      top_core_kME_proteins = collapse_unique_values(core, max_n = 20L),
+      selection_support = sel$selection_support[[1]],
+      selection_message = sel$selection_message[[1]]
+    )
+  })
+  dplyr::bind_rows(rows) |>
+    dplyr::select(dplyr::all_of(names(empty)))
+}
+
+selected_sus_res_supermodule_interpretation_summary <- function(contents) {
+  if (is.null(contents) || !nrow(contents)) {
+    return(tibble::tibble(
+      dataset = character(), supermodule_id = character(), supermodule_label = character(),
+      selection_support = character(), interpretation_sentence = character()
+    ))
+  }
+  contents |>
+    dplyr::mutate(
+      support_phrase = dplyr::case_when(
+        !is.na(.data$FDR_within_dataset_level) & .data$FDR_within_dataset_level <= 0.05 ~ "FDR-significant",
+        !is.na(.data$FDR_within_dataset_level) & .data$FDR_within_dataset_level <= 0.10 ~ "FDR-suggestive",
+        !is.na(.data$p_value) & .data$p_value < 0.05 ~ "nominal-only",
+        TRUE ~ "not significant"
+      ),
+      direction_phrase = dplyr::case_when(
+        !is.na(.data$estimate) & .data$estimate > 0 ~ "higher in SUS than RES",
+        !is.na(.data$estimate) & .data$estimate < 0 ~ "lower in SUS than RES",
+        TRUE ~ "different between SUS and RES"
+      ),
+      pc1_pct = ifelse(is.na(.data$pca_PC1_variance_explained), "NA", paste0(round(100 * .data$pca_PC1_variance_explained), "%")),
+      interpretation_sentence = paste0(
+        .data$supermodule_id, " (", .data$supermodule_label, ") is a ", .data$support_phrase,
+        " SUS-RES supermodule eigengene effect (estimate=", signif(.data$estimate, 3),
+        ", p=", signif(.data$p_value, 3), ", FDR=", signif(.data$FDR_within_dataset_level, 3),
+        "), with the eigengene ", .data$direction_phrase, ". PC1 explains ", .data$pc1_pct,
+        " of member-module variance. Member module labels: ",
+        dplyr::coalesce(.data$member_module_labels, "not available"),
+        ". Top biology: ", dplyr::coalesce(.data$top_GO_BP_terms, "not available"),
+        ". Top hubs/core proteins: ",
+        dplyr::coalesce(.data$top_hub_symbols, .data$top_core_kME_proteins, "not available"), "."
+      )
+    ) |>
+    dplyr::select(
+      "dataset", "supermodule_id", "supermodule_label", "contrast",
+      "estimate", "p_value", "FDR_within_dataset_level", "FDR_global",
+      "evidence_status", "selection_support", "pca_PC1_variance_explained",
+      "n_member_modules", "member_module_labels", "top_GO_BP_terms",
+      "top_hub_symbols", "top_core_kME_proteins", "interpretation_sentence"
+    )
+}
+
+shorten_terms <- function(x, max_chars = 95L) {
+  x <- as.character(x)
+  x[is.na(x) | !nzchar(x)] <- "not available"
+  vapply(x, function(z) {
+    first_terms <- strsplit(z, ";", fixed = TRUE)[[1]]
+    first_terms <- trimws(first_terms)
+    out <- paste(utils::head(first_terms[nzchar(first_terms)], 2), collapse = "; ")
+    if (!nzchar(out)) out <- "not available"
+    if (nchar(out) > max_chars) paste0(substr(out, 1, max_chars - 3L), "...") else out
+  }, character(1))
+}
+
+wrap_plot_label <- function(x, width = 36L) {
+  vapply(as.character(x), function(z) paste(strwrap(z, width = width), collapse = "\n"), character(1))
+}
+
+plot_selected_sus_res_supermodule_effect_summary <- function(contents, path) {
+  if (is.null(contents) || !nrow(contents)) {
+    p <- ggplot2::ggplot() +
+      ggplot2::annotate("text", x = 0, y = 0, label = "No SUS-RES significant supermodule eigengenes selected", size = 3) +
+      ggplot2::labs(title = "Selected SUS-RES supermodule effects") +
+      ggplot2::theme_void()
+  } else {
+    plot_df <- contents |>
+      dplyr::mutate(
+        support_class = dplyr::case_when(
+          !is.na(.data$FDR_within_dataset_level) & .data$FDR_within_dataset_level <= 0.05 ~ "FDR <= 0.05",
+          !is.na(.data$FDR_within_dataset_level) & .data$FDR_within_dataset_level <= 0.10 ~ "FDR <= 0.10",
+          !is.na(.data$p_value) & .data$p_value < 0.05 ~ "nominal-only p < 0.05",
+          TRUE ~ "not significant"
+        ),
+        label = paste0(.data$supermodule_id, "\n", wrap_plot_label(.data$supermodule_label, width = 28L)),
+        stat_label = paste0("p=", signif(.data$p_value, 2), "\nFDR=", signif(.data$FDR_within_dataset_level, 2))
+      ) |>
+      dplyr::arrange(.data$estimate)
+    plot_df$label <- factor(plot_df$label, levels = plot_df$label)
+    p <- ggplot2::ggplot(plot_df, ggplot2::aes(x = .data$label, y = .data$estimate, fill = .data$support_class)) +
+      ggplot2::geom_hline(yintercept = 0, color = "grey55", linewidth = 0.25) +
+      ggplot2::geom_col(width = 0.64, color = "grey25", linewidth = 0.2) +
+      ggplot2::geom_text(ggplot2::aes(label = .data$stat_label), hjust = ifelse(plot_df$estimate < 0, 1.05, -0.05), size = 2.4) +
+      ggplot2::coord_flip(clip = "off") +
+      ggplot2::scale_fill_manual(values = c("FDR <= 0.05" = "#0B6E4F", "FDR <= 0.10" = "#65A30D", "nominal-only p < 0.05" = "#F59E0B", "not significant" = "#BDBDBD"), drop = FALSE) +
+      ggplot2::labs(x = NULL, y = "SUS-RES eigengene estimate", fill = "Selection support", title = "Selected SUS-RES supermodule eigengene effects") +
+      ggplot2::theme(legend.position = "bottom", axis.text.y = ggplot2::element_text(size = 6), plot.margin = ggplot2::margin(5.5, 36, 5.5, 5.5))
+  }
+  ggplot2::ggsave(path, p, width = 185, height = 105, units = "mm", device = svglite::svglite)
+}
+
+plot_selected_sus_res_supermodule_contents_overview <- function(contents, path) {
+  if (is.null(contents) || !nrow(contents)) {
+    p <- ggplot2::ggplot() +
+      ggplot2::annotate("text", x = 0, y = 0, label = "No SUS-RES significant supermodule eigengenes selected", size = 3) +
+      ggplot2::labs(title = "Selected SUS-RES supermodule contents") +
+      ggplot2::theme_void()
+  } else {
+    plot_df <- contents |>
+      dplyr::mutate(
+        label = paste0(.data$supermodule_id, "\n", wrap_plot_label(.data$supermodule_label, width = 28L)),
+        pc1_pct = pmax(0, pmin(1, .data$pca_PC1_variance_explained)),
+        pc1_label = paste0(round(100 * .data$pc1_pct), "% PC1"),
+        biology_label = wrap_plot_label(paste0("Modules: ", .data$member_module_labels, "\nGO: ", shorten_terms(.data$top_GO_BP_terms)), width = 58L)
+      ) |>
+      dplyr::arrange(dplyr::desc(.data$pc1_pct))
+    plot_df$label <- factor(plot_df$label, levels = rev(plot_df$label))
+    p <- ggplot2::ggplot(plot_df, ggplot2::aes(x = .data$label, y = .data$pc1_pct)) +
+      ggplot2::geom_col(fill = "#4E79A7", width = 0.62) +
+      ggplot2::geom_text(ggplot2::aes(label = .data$pc1_label), hjust = -0.08, size = 2.5) +
+      ggplot2::geom_text(ggplot2::aes(y = 0.02, label = .data$biology_label), hjust = 0, size = 2.35, color = "grey15") +
+      ggplot2::coord_flip(clip = "off") +
+      ggplot2::scale_y_continuous(labels = function(x) paste0(round(100 * x), "%"), limits = c(0, 1.22)) +
+      ggplot2::labs(x = NULL, y = "PC1 variance explained", title = "Selected SUS-RES supermodule contents") +
+      ggplot2::theme(legend.position = "none", axis.text.y = ggplot2::element_text(size = 6), plot.margin = ggplot2::margin(5.5, 34, 5.5, 5.5))
+  }
+  ggplot2::ggsave(path, p, width = 205, height = 115, units = "mm", device = svglite::svglite)
+}
+
 correlate_marker_traits <- function(eigengenes, endpoint_map, marker_traits, level) {
   if (is.null(marker_traits) || !nrow(marker_traits)) return(tibble::tibble())
   trait_cols <- grep("^(z|raw)_.+_(score|ratio)$|^z_microglia_minus_neuropil_score$|^z_microglia_to_neuropil_ratio$|^raw_microglia_minus_neuropil_score$|^raw_microglia_to_neuropil_ratio$", names(marker_traits), value = TRUE)
@@ -892,6 +1214,12 @@ rank_group_effects <- function(df) {
     dplyr::select(-"evidence_rank")
 }
 
+definitions <- safe_read_csv(FILES$definitions) %||% data.frame()
+super_ann <- safe_read_csv(FILES$supermodule_annotation) %||% data.frame()
+module_summary <- safe_read_csv(FILES$module_summary) %||% data.frame()
+super_summary <- safe_read_csv(FILES$supermodule_summary) %||% data.frame()
+modules_long <- safe_read_csv(file.path(dirname(FILES$module_summary), "WGCNA_modules_long.csv")) %||% data.frame()
+
 state <- tryCatch(load_wgcna_state(FILES$state), error = function(e) e)
 if (inherits(state, "error")) {
   msg <- conditionMessage(state)
@@ -904,8 +1232,6 @@ if (inherits(state, "error")) {
   super_pca_eigenvalues <- supermodule_pca_eigenvalues(data.frame(Sample = character()), data.frame(), DATASET)
 } else {
   module_eig <- extract_module_eigengenes(state)
-  definitions <- safe_read_csv(FILES$definitions) %||% data.frame()
-  super_ann <- safe_read_csv(FILES$supermodule_annotation) %||% data.frame()
   maps <- make_endpoint_maps(module_eig, definitions, super_ann)
   maps$super_map <- reconcile_supermodule_map_to_module_eigengenes(maps$super_map, module_eig, definitions)
   super_pca_input_audit <- supermodule_pca_input_audit(module_eig, maps$super_map, DATASET)
@@ -942,6 +1268,18 @@ module_out <- module_out[, required_group_effect_columns]
 super_out <- super_out[, required_group_effect_columns]
 selected_sus_res_audit <- select_sus_res_supermodules(super_out, DATASET, max_n = 2L)
 selected_sus_res_pca <- selected_sus_res_pca_eigenvalues(super_pca_eigenvalues, selected_sus_res_audit)
+selected_sus_res_contents <- selected_sus_res_supermodule_contents(
+  selected_sus_res_audit,
+  super_pca_eigenvalues,
+  comp,
+  definitions,
+  super_ann,
+  super_summary,
+  modules_long,
+  module_summary,
+  DATASET
+)
+selected_sus_res_interpretation_summary <- selected_sus_res_supermodule_interpretation_summary(selected_sus_res_contents)
 
 write_table_and_source(module_out, PATHS$tables, PATHS$source_data, "module_group_effects.csv")
 write_table_and_source(super_out, PATHS$tables, PATHS$source_data, "supermodule_group_effects.csv")
@@ -950,6 +1288,8 @@ write_table_and_source(super_pca_input_audit, PATHS$tables, PATHS$source_data, "
 write_table_and_source(super_pca_eigenvalues, PATHS$tables, PATHS$source_data, "supermodule_pca_eigenvalues.csv")
 write_table_and_source(selected_sus_res_audit, PATHS$tables, PATHS$source_data, "selected_sus_res_supermodule_pca_selection_audit.csv")
 write_table_and_source(selected_sus_res_pca, PATHS$tables, PATHS$source_data, "selected_sus_res_supermodule_pca_eigenvalues.csv")
+write_table_and_source(selected_sus_res_contents, PATHS$tables, PATHS$source_data, "selected_sus_res_supermodule_contents.csv")
+write_table_and_source(selected_sus_res_interpretation_summary, PATHS$tables, PATHS$source_data, "selected_sus_res_supermodule_interpretation_summary.csv")
 write_table_and_source(module_marker, PATHS$tables, PATHS$source_data, "module_marker_trait_correlations.csv")
 write_table_and_source(super_marker, PATHS$tables, PATHS$source_data, "supermodule_marker_trait_correlations.csv")
 
@@ -974,6 +1314,8 @@ plot_effects(super_out, file.path(PATHS$figures, "supermodule_effects_by_spatial
 plot_effects(super_out, file.path(PATHS$figures, "supermodule_group_effect_dotplot.svg"), "Supermodule group effects")
 plot_supermodule_pca_scree(super_pca_eigenvalues, file.path(PATHS$figures, "supermodule_pca_eigenvalue_scree.svg"))
 plot_selected_sus_res_pca_scree(selected_sus_res_pca, selected_sus_res_audit, file.path(PATHS$figures, "selected_sus_res_supermodule_pca_eigenvalue_scree.svg"))
+plot_selected_sus_res_supermodule_effect_summary(selected_sus_res_contents, file.path(PATHS$figures, "selected_sus_res_supermodule_effect_summary.svg"))
+plot_selected_sus_res_supermodule_contents_overview(selected_sus_res_contents, file.path(PATHS$figures, "selected_sus_res_supermodule_contents_overview.svg"))
 
 write_run_manifest(
   file.path(PATHS$logs, "run_manifest.yml"),
