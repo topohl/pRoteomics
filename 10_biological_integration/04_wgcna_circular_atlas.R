@@ -54,6 +54,7 @@ out_heatmap_source_module <- file.path(source_dir, "wgcna_circular_heatmap_sourc
 out_heatmap_layout_all_datasets <- file.path(source_dir, "wgcna_circular_heatmap_layout_all_datasets.csv")
 out_publication_heatmap_source <- file.path(source_dir, "wgcna_circular_publication_supermodule_effect_heatmap_source.csv")
 out_publication_heatmap_layout_all_datasets <- file.path(source_dir, "wgcna_circular_publication_supermodule_effect_heatmap_layout_all_datasets.csv")
+out_supermodule_callout_source <- file.path(source_dir, "wgcna_supermodule_callout_source.csv")
 out_source_comparison_audit <- file.path(report_dir, "wgcna_circular_vs_publication_heatmap_source_audit.csv")
 out_supermodule_id_comparison <- file.path(report_dir, "wgcna_circular_vs_publication_supermodule_id_comparison.csv")
 out_metric_consistency_audit <- file.path(report_dir, "wgcna_circular_metric_consistency_audit.csv")
@@ -84,6 +85,8 @@ publication_heatmap_pdf_paths <- c(
 )
 out_rect_modules_svg <- file.path(figure_dir, "wgcna_region_layer_heatmap_all_modules.svg")
 out_rect_modules_pdf <- file.path(figure_dir, "wgcna_region_layer_heatmap_all_modules.pdf")
+out_supermodule_callout_svg <- file.path(figure_dir, "wgcna_supermodule_callout.svg")
+out_supermodule_callout_pdf <- file.path(figure_dir, "wgcna_supermodule_callout.pdf")
 out_run_manifest <- file.path(log_dir, "run_manifest.yml")
 
 dataset_label <- function(ds) {
@@ -2115,6 +2118,317 @@ build_publication_heatmap_source <- function(datasets, analysis = "primary_all_r
   order_heatmap_source(dplyr::bind_rows(rows))
 }
 
+effect_symbol_for_callout <- function(x) {
+  dplyr::case_when(
+    is.na(x) | !is.finite(x) | abs(x) < 0.3 ~ "\u2013",
+    x >= 0.8 ~ "\u2191\u2191",
+    x >= 0.3 ~ "\u2191",
+    x <= -0.8 ~ "\u2193\u2193",
+    x <= -0.3 ~ "\u2193",
+    TRUE ~ "\u2013"
+  )
+}
+
+support_label_for_callout <- function(x) {
+  dplyr::case_when(
+    x == "robust_FDR" ~ "q<.05",
+    x == "suggestive_FDR10" ~ "q<.10",
+    x == "nominal_only" ~ "nom.",
+    TRUE ~ "ctx"
+  )
+}
+
+format_local_unit_callout <- function(unit, n_fdr05, n_tested) {
+  unit <- na_if_blank_chr(unit)
+  label <- dplyr::if_else(!is.na(unit) & as_num(n_fdr05) > 0, unit, "Global")
+  label <- gsub("_", " ", label)
+  label <- stringr::str_to_upper(label)
+  label <- dplyr::if_else(label == "GLOBAL", "Global", label)
+  label <- gsub("\\bCA1\\b.*\\bSR\\b", "CA1 SR", label)
+  label <- gsub("\\bCA3\\b.*", "CA3", label)
+  label <- gsub("\\bDG\\b.*", "DG", label)
+  has_counts <- !is.na(as_num(n_fdr05)) & !is.na(as_num(n_tested)) & as_num(n_fdr05) > 0 & as_num(n_tested) > 0
+  dplyr::if_else(has_counts, paste0(label, " (", as.integer(as_num(n_fdr05)), "/", as.integer(as_num(n_tested)), ")"), label)
+}
+
+clean_callout_display_label <- function(label, broad_program_class) {
+  label <- na_if_blank_chr(label)
+  broad_program_class <- na_if_blank_chr(broad_program_class)
+  weak_label <- is.na(label) | grepl("mixed\\s*/\\s*low-specificity|low-specificity|unresolved", label, ignore.case = TRUE)
+  replacement <- dplyr::if_else(
+    !is.na(broad_program_class) & !grepl("mixed|unresolved", broad_program_class, ignore.case = TRUE),
+    broad_program_class,
+    "Mixed program"
+  )
+  out <- dplyr::if_else(weak_label, replacement, label)
+  out <- gsub("_", " ", out)
+  out <- gsub("\\s+", " ", out)
+  out <- gsub("\\s*/\\s*", " / ", out)
+  stringr::str_to_sentence(out)
+}
+
+build_supermodule_callout_source <- function(segments, selected_audit, heatmap_source_supermodule, publication_heatmap_source_layout) {
+  contrast_levels <- c("RES-CON", "SUS-CON", "SUS-RES")
+  dataset_order <- c("neuron_neuropil", "neuron_soma", "microglia")
+  dataset_limits <- c(neuron_neuropil = 3L, neuron_soma = 3L, microglia = 3L)
+
+  selected_meta <- selected_audit |>
+    dplyr::select("dataset", "supermodule_id", "selected_rank", "selection_support_status") |>
+    dplyr::distinct(.data$dataset, .data$supermodule_id, .keep_all = TRUE)
+
+  segment_meta <- segments |>
+    dplyr::left_join(selected_meta, by = c("dataset", "supermodule_id")) |>
+    dplyr::mutate(
+      dataset = clean_chr(.data$dataset),
+      supermodule_id = clean_chr(.data$supermodule_id),
+      dataset_label = dataset_label(.data$dataset),
+      cleaned_label = dplyr::coalesce(na_if_blank_chr(.data$segment_cleaned_label), .data$supermodule_id),
+      broad_program_class = dplyr::coalesce(na_if_blank_chr(.data$segment_broad_program_class), "Unresolved / mixed"),
+      evidence_status_segments = dplyr::coalesce(na_if_blank_chr(.data$evidence_status_segments), "contextual"),
+      selection_support_status = dplyr::coalesce(na_if_blank_chr(.data$selection_support_status), .data$evidence_status_segments),
+      support_label = support_label_for_callout(.data$selection_support_status),
+      evidence_priority = dplyr::coalesce(status_priority[.data$selection_support_status], status_priority[.data$evidence_status_segments], 99L),
+      segment_abs_effect = abs(as_num(.data$strongest_estimate_segments)),
+      n_spatial_units_FDR05 = as.integer(as_num(.data$n_spatial_units_FDR05)),
+      n_spatial_units_tested = as.integer(as_num(.data$n_spatial_units_tested)),
+      best_local_spatial_unit = format_local_unit_callout(.data$best_local_spatial_unit, .data$n_spatial_units_FDR05, .data$n_spatial_units_tested),
+      local_label = .data$best_local_spatial_unit
+    ) |>
+    dplyr::select(
+      "dataset", "dataset_label", "supermodule_id", "selected_rank", "cleaned_label",
+      "broad_program_class", "support_label", "evidence_status_segments", "selection_support_status", "evidence_priority",
+      "segment_abs_effect", "strongest_estimate_segments", "best_local_spatial_unit",
+      "n_spatial_units_FDR05", "n_spatial_units_tested", "local_label"
+    )
+
+  pub_effects <- publication_heatmap_source_layout |>
+    dplyr::filter(.data$contrast_block %in% contrast_levels) |>
+    dplyr::group_by(.data$dataset, .data$supermodule_id, contrast = .data$contrast_block) |>
+    dplyr::arrange(dplyr::desc(abs(as_num(.data$estimate))), .by_group = TRUE) |>
+    dplyr::summarise(effect_value = dplyr::first(as_num(.data$estimate)), .groups = "drop") |>
+    dplyr::mutate(effect_source = "publication_heatmap_source_layout.Cohen_d")
+
+  fallback_effects <- heatmap_source_supermodule |>
+    dplyr::filter(.data$contrast_block %in% contrast_levels) |>
+    dplyr::group_by(.data$dataset, .data$supermodule_id, contrast = .data$contrast_block) |>
+    dplyr::arrange(dplyr::coalesce(status_priority[.data$evidence_status], 99L), dplyr::desc(abs(as_num(.data$estimate))), .by_group = TRUE) |>
+    dplyr::summarise(effect_value = dplyr::first(as_num(.data$estimate)), .groups = "drop") |>
+    dplyr::mutate(effect_source = "heatmap_source_supermodule.estimate")
+
+  segment_fallback <- segment_meta |>
+    tidyr::crossing(contrast = contrast_levels) |>
+    dplyr::mutate(
+      effect_value = as_num(.data$strongest_estimate_segments),
+      effect_source = "segments.strongest_estimate_segments"
+    ) |>
+    dplyr::select("dataset", "supermodule_id", "contrast", "effect_value", "effect_source")
+
+  effect_grid <- segment_meta |>
+    dplyr::select("dataset", "supermodule_id") |>
+    tidyr::crossing(contrast = contrast_levels) |>
+    dplyr::left_join(pub_effects, by = c("dataset", "supermodule_id", "contrast")) |>
+    dplyr::rename(pub_effect_value = "effect_value", pub_effect_source = "effect_source") |>
+    dplyr::left_join(fallback_effects, by = c("dataset", "supermodule_id", "contrast")) |>
+    dplyr::rename(group_effect_value = "effect_value", group_effect_source = "effect_source") |>
+    dplyr::left_join(segment_fallback, by = c("dataset", "supermodule_id", "contrast")) |>
+    dplyr::rename(segment_effect_value = "effect_value", segment_effect_source = "effect_source") |>
+    dplyr::mutate(
+      effect_value = dplyr::coalesce(.data$pub_effect_value, .data$group_effect_value, .data$segment_effect_value),
+      effect_source = dplyr::case_when(
+        !is.na(.data$pub_effect_value) ~ .data$pub_effect_source,
+        !is.na(.data$group_effect_value) ~ .data$group_effect_source,
+        !is.na(.data$segment_effect_value) ~ .data$segment_effect_source,
+        TRUE ~ "unavailable"
+      )
+    ) |>
+    dplyr::select("dataset", "supermodule_id", "contrast", "effect_value", "effect_source")
+
+  ranking <- effect_grid |>
+    dplyr::group_by(.data$dataset, .data$supermodule_id) |>
+    dplyr::summarise(
+      max_abs_effect = suppressWarnings(max(abs(.data$effect_value), na.rm = TRUE)),
+      .groups = "drop"
+    ) |>
+    dplyr::mutate(max_abs_effect = dplyr::if_else(is.infinite(.data$max_abs_effect), 0, .data$max_abs_effect)) |>
+    dplyr::right_join(segment_meta, by = c("dataset", "supermodule_id")) |>
+    dplyr::mutate(
+      selected_rank_order = dplyr::coalesce(as_num(.data$selected_rank), Inf),
+      dataset_limit = as.integer(.env$dataset_limits[.data$dataset])
+    ) |>
+    dplyr::arrange(
+      factor(.data$dataset, levels = dataset_order),
+      .data$selected_rank_order,
+      .data$evidence_priority,
+      dplyr::desc(.data$max_abs_effect),
+      .data$supermodule_id
+    ) |>
+    dplyr::group_by(.data$dataset) |>
+    dplyr::mutate(display_rank = dplyr::row_number()) |>
+    dplyr::ungroup() |>
+    dplyr::filter(.data$display_rank <= .data$dataset_limit)
+
+  ranking |>
+    dplyr::select(-dplyr::any_of(c("strongest_estimate_segments", "selected_rank_order", "dataset_limit"))) |>
+    dplyr::left_join(effect_grid, by = c("dataset", "supermodule_id")) |>
+    dplyr::mutate(
+      contrast = factor(.data$contrast, levels = contrast_levels),
+      effect_symbol = effect_symbol_for_callout(.data$effect_value)
+    ) |>
+    dplyr::arrange(factor(.data$dataset, levels = dataset_order), .data$display_rank, .data$contrast) |>
+    dplyr::select(
+      "dataset", "dataset_label", "supermodule_id", "selected_rank", "cleaned_label",
+      "broad_program_class", "contrast", "effect_value", "effect_source", "effect_symbol",
+      "support_label", "evidence_status_segments", "best_local_spatial_unit",
+      "n_spatial_units_FDR05", "n_spatial_units_tested", "local_label", "display_rank"
+    )
+}
+
+render_supermodule_callout <- function(callout_source, svg_path, pdf_path) {
+  if (is.null(callout_source) || !nrow(callout_source)) {
+    warning("No rows available for WGCNA supermodule callout.", call. = FALSE)
+    return(invisible(NULL))
+  }
+
+  contrast_levels <- c("RES-CON", "SUS-CON", "SUS-RES")
+  dataset_order <- c("neuron_neuropil", "neuron_soma", "microglia")
+  label_rows <- callout_source |>
+    dplyr::distinct(
+      .data$dataset, .data$dataset_label, .data$supermodule_id, .data$display_rank,
+      .data$cleaned_label, .data$support_label, .data$best_local_spatial_unit
+    ) |>
+    dplyr::arrange(factor(.data$dataset, levels = dataset_order), .data$display_rank) |>
+    dplyr::group_by(.data$dataset) |>
+    dplyr::mutate(row_in_dataset = dplyr::row_number()) |>
+    dplyr::ungroup() |>
+    dplyr::mutate(
+      display_label = clean_callout_display_label(.data$cleaned_label, callout_source$broad_program_class[match(paste(.data$dataset, .data$supermodule_id), paste(callout_source$dataset, callout_source$supermodule_id))]),
+      display_label = stringr::str_trunc(.data$display_label, 32),
+      local_display = stringr::str_trunc(.data$best_local_spatial_unit, 12)
+    )
+
+  block_meta <- label_rows |>
+    dplyr::count(.data$dataset, .data$dataset_label, name = "n_rows") |>
+    dplyr::arrange(factor(.data$dataset, levels = dataset_order)) |>
+    dplyr::mutate(
+      dataset_label = dplyr::if_else(.data$dataset == "microglia", "Microglia ROI / local microenvironment", .data$dataset_label),
+      block_height = (.data$n_rows - 1) * 0.62,
+      block_index = dplyr::row_number(),
+      block_start = cumsum(dplyr::lag(.data$block_height + 0.85, default = 0)),
+      block_end = .data$block_start + .data$block_height,
+      header_y = -(.data$block_start - 0.45),
+      sep_y = -(.data$block_end + 0.35)
+    )
+
+  label_rows <- label_rows |>
+    dplyr::left_join(block_meta |> dplyr::select("dataset", "block_start"), by = "dataset") |>
+    dplyr::mutate(y = -(.data$block_start + (.data$row_in_dataset - 1) * 0.62))
+
+  plot_df <- callout_source |>
+    dplyr::mutate(contrast = factor(.data$contrast, levels = contrast_levels)) |>
+    dplyr::left_join(label_rows |> dplyr::select("dataset", "supermodule_id", "y"), by = c("dataset", "supermodule_id")) |>
+    dplyr::mutate(tile_x = c("RES-CON" = 0.615, "SUS-CON" = 0.655, "SUS-RES" = 0.695)[as.character(.data$contrast)])
+
+  effect_limit <- stats::quantile(abs(plot_df$effect_value[is.finite(plot_df$effect_value)]), 0.95, na.rm = TRUE, names = FALSE)
+  if (!is.finite(effect_limit) || effect_limit < 0.8) effect_limit <- 0.8
+
+  header_y <- max(block_meta$header_y) + 0.03
+  footer_y <- min(block_meta$sep_y) - 0.38
+
+  p <- ggplot2::ggplot() +
+    ggplot2::geom_hline(
+      data = label_rows,
+      ggplot2::aes(yintercept = .data$y - 0.31),
+      color = "#E5E7EB",
+      linewidth = 0.18
+    ) +
+    ggplot2::geom_hline(
+      data = block_meta,
+      ggplot2::aes(yintercept = .data$sep_y),
+      color = "#CBD0D6",
+      linewidth = 0.28
+    ) +
+    ggplot2::geom_tile(
+      data = plot_df,
+      ggplot2::aes(x = .data$tile_x, y = .data$y, fill = .data$effect_value),
+      width = 0.034,
+      height = 0.24,
+      color = "#FFFFFF",
+      linewidth = 0.18
+    ) +
+    ggplot2::geom_text(
+      data = label_rows,
+      ggplot2::aes(x = 0.035, y = .data$y, label = .data$supermodule_id),
+      hjust = 0,
+      size = 2.25,
+      fontface = "bold",
+      color = "#111827",
+      family = "sans"
+    ) +
+    ggplot2::geom_text(
+      data = label_rows,
+      ggplot2::aes(x = 0.15, y = .data$y, label = .data$display_label),
+      hjust = 0,
+      size = 2.05,
+      color = "#263238",
+      family = "sans"
+    ) +
+    ggplot2::geom_text(
+      data = label_rows,
+      ggplot2::aes(x = 0.79, y = .data$y, label = .data$support_label),
+      hjust = 0.5,
+      size = 1.9,
+      color = "#374151",
+      family = "sans"
+    ) +
+    ggplot2::geom_text(
+      data = label_rows,
+      ggplot2::aes(x = 0.88, y = .data$y, label = .data$local_display),
+      hjust = 0,
+      size = 1.85,
+      color = "#374151",
+      family = "sans"
+    ) +
+    ggplot2::geom_text(
+      data = block_meta,
+      ggplot2::aes(x = 0.035, y = .data$header_y, label = .data$dataset_label),
+      hjust = 0,
+      size = 2.25,
+      fontface = "bold",
+      color = "#111827",
+      family = "sans"
+    ) +
+    ggplot2::annotate("text", x = 0.655, y = header_y, label = "Effect", size = 1.85, fontface = "bold", color = "#4B5563", family = "sans") +
+    ggplot2::annotate("text", x = 0.655, y = header_y - 0.20, label = "R-C  S-C  S-R", size = 1.55, color = "#6B7280", family = "sans") +
+    ggplot2::annotate("text", x = 0.79, y = header_y, label = "q", size = 1.85, fontface = "bold", color = "#4B5563", family = "sans") +
+    ggplot2::annotate("text", x = 0.88, y = header_y, label = "Local", hjust = 0, size = 1.85, fontface = "bold", color = "#4B5563", family = "sans") +
+    ggplot2::annotate("text", x = 0.035, y = footer_y, hjust = 0, label = "Effect: Cohen's d, R-C/S-C/S-R. Labels are conservative; microglia = ROI/local microenvironment.", size = 1.65, color = "#6B7280", family = "sans") +
+    ggplot2::scale_fill_gradient2(
+      low = "#4E79A7",
+      mid = "#F7F7F7",
+      high = "#C65A54",
+      midpoint = 0,
+      limits = c(-effect_limit, effect_limit),
+      oob = scales::squish,
+      na.value = "#F1F3F5",
+      guide = "none"
+    ) +
+    ggplot2::coord_cartesian(xlim = c(0, 1), ylim = c(footer_y - 0.22, max(block_meta$header_y) + 0.25), clip = "off") +
+    ggplot2::labs(
+      title = "Key WGCNA supermodules"
+    ) +
+    ggplot2::theme_void(base_family = "sans") +
+    ggplot2::theme(
+      plot.title = ggplot2::element_text(size = 9.5, face = "bold", color = "#111827", margin = ggplot2::margin(b = 2)),
+      plot.margin = ggplot2::margin(8, 10, 16, 8)
+    )
+
+  dir_create(dirname(svg_path))
+  dir_create(dirname(pdf_path))
+  ggplot2::ggsave(svg_path, p, width = 4.8, height = 6.2, units = "in", bg = "white")
+  ggplot2::ggsave(pdf_path, p, width = 4.8, height = 6.2, units = "in", bg = "white", device = grDevices::cairo_pdf)
+  invisible(p)
+}
+
 collapse_values <- function(x, max_n = 80) {
   x <- sort(unique(clean_chr(x)))
   x <- x[nzchar(x)]
@@ -2803,6 +3117,9 @@ if (run$dry_run) {
   dry_run_line("Circular heatmap all-datasets PDF output", out_heatmap_all_pdf)
   dry_run_line("Publication-matched circular all-datasets SVG output", out_publication_heatmap_all_svg)
   dry_run_line("Publication-matched circular all-datasets PDF output", out_publication_heatmap_all_pdf)
+  dry_run_line("Supermodule callout source output", out_supermodule_callout_source)
+  dry_run_line("Supermodule callout SVG output", out_supermodule_callout_svg)
+  dry_run_line("Supermodule callout PDF output", out_supermodule_callout_pdf)
   dry_run_line("Circular heatmap geometry", "Custom polar tile renderer; top contrast labels anchored at theta=90 degrees; separate inner layer and region rings; support markers use adjusted p/FDR only")
   for (ds_name in names(heatmap_svg_paths)) {
     dry_run_line(paste0("Circular heatmap SVG output (", ds_name, ")"), heatmap_svg_paths[[ds_name]])
@@ -2905,6 +3222,7 @@ heatmap_layout_all_datasets <- add_polar_layout_columns(heatmap_sources$supermod
 publication_heatmap_source <- build_publication_heatmap_source(available_datasets(), analysis = "primary_all_replicates")
 publication_heatmap_source_layout <- add_polar_layout_columns(publication_heatmap_source)
 publication_heatmap_layout_all_datasets <- add_polar_layout_columns(publication_heatmap_source, combined = TRUE)
+supermodule_callout_source <- build_supermodule_callout_source(segments, selected_audit, heatmap_source_supermodule, publication_heatmap_source_layout)
 source_lineage_audit <- build_source_lineage_audit(available_datasets(), heatmap_source_supermodule, heatmap_source_module, publication_heatmap_source_layout)
 supermodule_id_comparison <- build_supermodule_id_comparison(available_datasets(), heatmap_source_supermodule)
 metric_consistency_audit <- build_metric_consistency_audit(heatmap_source_supermodule, publication_heatmap_source_layout)
@@ -2918,6 +3236,7 @@ metrics <- tibble::tibble(
     "n_plot_labels",
     "n_circular_heatmap_supermodule_cells",
     "n_circular_heatmap_module_cells",
+    "n_supermodule_callout_rows",
     "n_protein_count_source_column",
     "effect_scope_priority",
     "contrast_priority",
@@ -2933,6 +3252,7 @@ metrics <- tibble::tibble(
     as.character(sum(plot_source$label_shown, na.rm = TRUE)),
     as.character(nrow(heatmap_source_supermodule)),
     as.character(nrow(heatmap_source_module)),
+    as.character(nrow(supermodule_callout_source)),
     "No direct n_proteins source column found; computed from existing 01_WGCNA/<dataset>/modules/genes_in_module_*.csv member files when available",
     "spatial_adjusted_global; within_spatial_unit; stress_by_spatial_interaction",
     "SUS-RES pair; SUS-CON pair; RES-CON pair, preserving source contrast orientation",
@@ -2976,6 +3296,7 @@ readr::write_csv(heatmap_source_module, out_heatmap_source_module)
 readr::write_csv(heatmap_layout_all_datasets, out_heatmap_layout_all_datasets)
 readr::write_csv(publication_heatmap_source_layout, out_publication_heatmap_source)
 readr::write_csv(publication_heatmap_layout_all_datasets, out_publication_heatmap_layout_all_datasets)
+readr::write_csv(supermodule_callout_source, out_supermodule_callout_source)
 readr::write_csv(source_lineage_audit, out_source_comparison_audit)
 readr::write_csv(supermodule_id_comparison, out_supermodule_id_comparison)
 readr::write_csv(metric_consistency_audit, out_metric_consistency_audit)
@@ -3026,6 +3347,7 @@ for (ds_name in intersect(names(publication_heatmap_svg_paths), unique(publicati
   )
 }
 render_rectangular_module_heatmap(heatmap_source_module, out_rect_modules_svg, out_rect_modules_pdf)
+render_supermodule_callout(supermodule_callout_source, out_supermodule_callout_svg, out_supermodule_callout_pdf)
 
 write_run_manifest(
   out_run_manifest,
@@ -3050,6 +3372,7 @@ write_run_manifest(
     circular_heatmap_layout_all_datasets = out_heatmap_layout_all_datasets,
     publication_circular_heatmap_source = out_publication_heatmap_source,
     publication_circular_heatmap_layout_all_datasets = out_publication_heatmap_layout_all_datasets,
+    supermodule_callout_source = out_supermodule_callout_source,
     circular_vs_publication_source_audit = out_source_comparison_audit,
     circular_vs_publication_supermodule_id_comparison = out_supermodule_id_comparison,
     circular_metric_consistency_audit = out_metric_consistency_audit,
@@ -3068,6 +3391,8 @@ write_run_manifest(
     publication_circular_heatmap_pdf = as.list(publication_heatmap_pdf_paths),
     rectangular_module_heatmap_svg = out_rect_modules_svg,
     rectangular_module_heatmap_pdf = out_rect_modules_pdf,
+    supermodule_callout_svg = out_supermodule_callout_svg,
+    supermodule_callout_pdf = out_supermodule_callout_pdf,
     neuron_neuropil_availability = out_neuropil_availability
   ),
   parameters = list(
@@ -3113,6 +3438,29 @@ if (nrow(duplicate_audit) && any(!duplicate_audit$collapse_safe, na.rm = TRUE)) 
   )
 }
 
+callout_missing_cohend <- supermodule_callout_source |>
+  dplyr::filter(.data$effect_source != "publication_heatmap_source_layout.Cohen_d")
+callout_missing_effect <- supermodule_callout_source |>
+  dplyr::filter(is.na(.data$effect_value) | !is.finite(.data$effect_value))
+if (nrow(callout_missing_cohend)) {
+  warning(
+    "Supermodule callout used non-Cohen's d fallback values for ",
+    nrow(callout_missing_cohend),
+    " supermodule-contrast row(s). See effect_source in: ",
+    out_supermodule_callout_source,
+    call. = FALSE
+  )
+}
+if (nrow(callout_missing_effect)) {
+  warning(
+    "Supermodule callout has unavailable effect values for ",
+    nrow(callout_missing_effect),
+    " supermodule-contrast row(s). See: ",
+    out_supermodule_callout_source,
+    call. = FALSE
+  )
+}
+
 cat("\nWGCNA circular atlas audit summary\n")
 cat("Source supermodules per dataset:\n")
 print(count_audit |> dplyr::select("dataset", "n_supermodules_source"))
@@ -3128,6 +3476,10 @@ cat("Selected-table rows by source evidence status:\n")
 print(selected_audit |> dplyr::count(.data$dataset, .data$source_evidence_status, name = "n"))
 cat("Selected-table rows by selection support status:\n")
 print(selected_audit |> dplyr::count(.data$dataset, .data$selection_support_status, name = "n"))
+cat("Supermodule callout rows:", nrow(supermodule_callout_source), "\n")
+cat("Supermodule callout effect sources:\n")
+print(supermodule_callout_source |> dplyr::count(.data$effect_source, name = "n"))
+cat("Supermodule callout missing effect rows:", nrow(callout_missing_effect), "\n")
 cat("Numeric validation passed:", all(logic_audit$numeric_match, na.rm = TRUE), "\n")
 cat("Duplicate collapse unsafe:", if (nrow(duplicate_audit)) any(!duplicate_audit$collapse_safe, na.rm = TRUE) else FALSE, "\n")
 cat("Outputs:\n")
@@ -3147,6 +3499,7 @@ cat(" - ", out_heatmap_source_module, "\n", sep = "")
 cat(" - ", out_heatmap_layout_all_datasets, "\n", sep = "")
 cat(" - ", out_publication_heatmap_source, "\n", sep = "")
 cat(" - ", out_publication_heatmap_layout_all_datasets, "\n", sep = "")
+cat(" - ", out_supermodule_callout_source, "\n", sep = "")
 cat(" - ", out_source_comparison_audit, "\n", sep = "")
 cat(" - ", out_supermodule_id_comparison, "\n", sep = "")
 cat(" - ", out_metric_consistency_audit, "\n", sep = "")
@@ -3159,6 +3512,8 @@ cat(" - ", out_heatmap_all_svg, "\n", sep = "")
 cat(" - ", out_heatmap_all_pdf, "\n", sep = "")
 cat(" - ", out_publication_heatmap_all_svg, "\n", sep = "")
 cat(" - ", out_publication_heatmap_all_pdf, "\n", sep = "")
+cat(" - ", out_supermodule_callout_svg, "\n", sep = "")
+cat(" - ", out_supermodule_callout_pdf, "\n", sep = "")
 for (ds_name in names(heatmap_svg_paths)) {
   cat(" - ", heatmap_svg_paths[[ds_name]], "\n", sep = "")
   cat(" - ", heatmap_pdf_paths[[ds_name]], "\n", sep = "")
