@@ -210,7 +210,9 @@ strip_supermodule_prefix <- function(label, supermodule_id) {
   has_id <- nzchar(supermodule_id)
   out[has_id] <- mapply(
     function(lbl, sid) {
-      trimws(gsub(paste0("^", sid, "\\s*(/|:|-|\\|)\\s*"), "", lbl, ignore.case = TRUE))
+      lbl <- trimws(gsub(paste0("^\\s*", sid, "\\s*(/|:|-|\\||\u00b7)\\s*"), "", lbl, ignore.case = TRUE))
+      lbl <- trimws(gsub("^\\s*SM[0-9]+\\s*(/|:|-|\\||\u00b7)\\s*", "", lbl, ignore.case = TRUE))
+      trimws(gsub("^\\s*(dominant|singleton|mixed)\\s*(/|:|-|\\||\u00b7)\\s*", "", lbl, ignore.case = TRUE))
     },
     out[has_id],
     supermodule_id[has_id],
@@ -2140,50 +2142,120 @@ support_label_for_callout <- function(x) {
 
 format_local_unit_callout <- function(unit, n_fdr05, n_tested) {
   unit <- na_if_blank_chr(unit)
-  label <- dplyr::if_else(!is.na(unit) & as_num(n_fdr05) > 0, unit, "Global")
+  label <- dplyr::if_else(!is.na(unit) & as_num(n_fdr05) > 0, unit, "")
   label <- gsub("_", " ", label)
   label <- stringr::str_to_upper(label)
-  label <- dplyr::if_else(label == "GLOBAL", "Global", label)
+  label <- dplyr::if_else(label == "GLOBAL", "", label)
   label <- gsub("\\bCA1\\b.*\\bSR\\b", "CA1 SR", label)
   label <- gsub("\\bCA3\\b.*", "CA3", label)
   label <- gsub("\\bDG\\b.*", "DG", label)
   has_counts <- !is.na(as_num(n_fdr05)) & !is.na(as_num(n_tested)) & as_num(n_fdr05) > 0 & as_num(n_tested) > 0
-  dplyr::if_else(has_counts, paste0(label, " (", as.integer(as_num(n_fdr05)), "/", as.integer(as_num(n_tested)), ")"), label)
+  dplyr::if_else(has_counts & nzchar(label), paste0(label, " ", as.integer(as_num(n_fdr05)), "/", as.integer(as_num(n_tested))), label)
 }
 
-clean_callout_display_label <- function(label, broad_program_class) {
-  label <- na_if_blank_chr(label)
-  broad_program_class <- na_if_blank_chr(broad_program_class)
-  weak_label <- is.na(label) | grepl("mixed\\s*/\\s*low-specificity|low-specificity|unresolved", label, ignore.case = TRUE)
-  replacement <- dplyr::if_else(
-    !is.na(broad_program_class) & !grepl("mixed|unresolved", broad_program_class, ignore.case = TRUE),
-    broad_program_class,
-    "Mixed program"
+is_weak_callout_label <- function(x) {
+  x <- tolower(clean_chr(x))
+  !nzchar(x) |
+    x %in% c("shared microenvironment", "mixed / low-specificity", "unresolved / mixed", "hub-supported cluster", "low-specificity") |
+    grepl("^shared[ _-]+microenvironment$", x) |
+    grepl("mixed\\s*/\\s*low-specificity|unresolved\\s*/\\s*mixed|hub-supported cluster|low-specificity", x)
+}
+
+fix_scientific_abbreviations <- function(x) {
+  out <- clean_chr(x)
+  replacements <- c(
+    "\\brna\\b" = "RNA",
+    "\\bdna\\b" = "DNA",
+    "\\becm\\b" = "ECM",
+    "\\batp\\b" = "ATP",
+    "\\boxphos\\b" = "OXPHOS",
+    "\\ber\\b" = "ER",
+    "\\bgo\\b" = "GO"
   )
-  out <- dplyr::if_else(weak_label, replacement, label)
+  for (pat in names(replacements)) {
+    out <- gsub(pat, replacements[[pat]], out, ignore.case = TRUE, perl = TRUE)
+  }
+  out
+}
+
+capitalize_first <- function(x) {
+  x <- clean_chr(x)
+  has_text <- nzchar(x)
+  x[has_text] <- paste0(toupper(substr(x[has_text], 1, 1)), substr(x[has_text], 2, nchar(x[has_text])))
+  x
+}
+
+normalize_callout_label <- function(label, supermodule_id) {
+  out <- strip_supermodule_prefix(label, supermodule_id)
   out <- gsub("_", " ", out)
+  out <- gsub("\\s*(/|:|-|\\||\u00b7)\\s*", " / ", out)
+  out <- gsub("^\\s*(dominant|singleton|mixed)\\s*/\\s*", "", out, ignore.case = TRUE)
   out <- gsub("\\s+", " ", out)
   out <- gsub("\\s*/\\s*", " / ", out)
-  stringr::str_to_sentence(out)
+  out <- trimws(out)
+  out <- dplyr::case_when(
+    is.na(na_if_blank_chr(out)) ~ "Mixed program",
+    grepl("^shared microenvironment$", out, ignore.case = TRUE) ~ "Spatial microenvironment",
+    grepl("^mixed / low-specificity$", out, ignore.case = TRUE) ~ "Mixed program",
+    grepl("^unresolved / mixed$", out, ignore.case = TRUE) ~ "Mixed program",
+    grepl("^low-specificity$", out, ignore.case = TRUE) ~ "Mixed program",
+    grepl("^hub-supported cluster$", out, ignore.case = TRUE) ~ "Mixed program",
+    grepl("^synaptic$", out, ignore.case = TRUE) ~ "Synaptic program",
+    grepl("^rna$", out, ignore.case = TRUE) ~ "RNA regulation",
+    TRUE ~ out
+  )
+  capitalize_first(fix_scientific_abbreviations(out))
+}
+
+pick_callout_label <- function(final_plot_label, segment_cleaned_label, segment_broad_program_class, supermodule_id) {
+  candidates <- tibble::tibble(
+    label = c(final_plot_label, segment_cleaned_label, segment_broad_program_class, "Mixed program"),
+    source = c("final_plot_label", "segment_cleaned_label", "segment_broad_program_class", "fallback")
+  ) |>
+    dplyr::mutate(
+      label = na_if_blank_chr(.data$label),
+      weak = is_weak_callout_label(.data$label)
+    )
+  good <- candidates |> dplyr::filter(!is.na(.data$label), !.data$weak)
+  picked <- if (nrow(good)) good[1, ] else candidates |> dplyr::filter(!is.na(.data$label)) |> dplyr::slice(1)
+  visible <- normalize_callout_label(picked$label[[1]], supermodule_id)
+  tibble::tibble(
+    callout_display_label = visible,
+    callout_label_source = picked$source[[1]],
+    callout_label_informative = !is_weak_callout_label(visible) & !visible %in% c("Mixed program", "Spatial microenvironment")
+  )
 }
 
 build_supermodule_callout_source <- function(segments, selected_audit, heatmap_source_supermodule, publication_heatmap_source_layout) {
   contrast_levels <- c("RES-CON", "SUS-CON", "SUS-RES")
   dataset_order <- c("neuron_neuropil", "neuron_soma", "microglia")
-  dataset_limits <- c(neuron_neuropil = 3L, neuron_soma = 3L, microglia = 3L)
+  dataset_limits <- c(neuron_neuropil = 3L, neuron_soma = 3L, microglia = 2L)
 
   selected_meta <- selected_audit |>
     dplyr::select("dataset", "supermodule_id", "selected_rank", "selection_support_status") |>
     dplyr::distinct(.data$dataset, .data$supermodule_id, .keep_all = TRUE)
 
+  canonical_labels <- dplyr::bind_rows(lapply(sort(unique(clean_chr(segments$dataset))), function(ds) {
+    canonical_supermodule_labels_local(ds) |>
+      dplyr::transmute(
+        dataset = .data$dataset,
+        supermodule_id = .data$supermodule_id,
+        final_plot_label = na_if_blank_chr(.data$final_plot_label)
+      )
+  })) |>
+    dplyr::distinct(.data$dataset, .data$supermodule_id, .keep_all = TRUE)
+
   segment_meta <- segments |>
     dplyr::left_join(selected_meta, by = c("dataset", "supermodule_id")) |>
+    dplyr::left_join(canonical_labels, by = c("dataset", "supermodule_id")) |>
     dplyr::mutate(
       dataset = clean_chr(.data$dataset),
       supermodule_id = clean_chr(.data$supermodule_id),
       dataset_label = dataset_label(.data$dataset),
       cleaned_label = dplyr::coalesce(na_if_blank_chr(.data$segment_cleaned_label), .data$supermodule_id),
       broad_program_class = dplyr::coalesce(na_if_blank_chr(.data$segment_broad_program_class), "Unresolved / mixed"),
+      segment_cleaned_label = na_if_blank_chr(.data$segment_cleaned_label),
+      segment_broad_program_class = na_if_blank_chr(.data$segment_broad_program_class),
       evidence_status_segments = dplyr::coalesce(na_if_blank_chr(.data$evidence_status_segments), "contextual"),
       selection_support_status = dplyr::coalesce(na_if_blank_chr(.data$selection_support_status), .data$evidence_status_segments),
       support_label = support_label_for_callout(.data$selection_support_status),
@@ -2193,9 +2265,23 @@ build_supermodule_callout_source <- function(segments, selected_audit, heatmap_s
       n_spatial_units_tested = as.integer(as_num(.data$n_spatial_units_tested)),
       best_local_spatial_unit = format_local_unit_callout(.data$best_local_spatial_unit, .data$n_spatial_units_FDR05, .data$n_spatial_units_tested),
       local_label = .data$best_local_spatial_unit
-    ) |>
+    )
+
+  label_picks <- dplyr::bind_rows(mapply(
+    pick_callout_label,
+    segment_meta$final_plot_label,
+    segment_meta$segment_cleaned_label,
+    segment_meta$segment_broad_program_class,
+    segment_meta$supermodule_id,
+    SIMPLIFY = FALSE
+  ))
+
+  segment_meta <- segment_meta |>
+    dplyr::bind_cols(label_picks) |>
     dplyr::select(
       "dataset", "dataset_label", "supermodule_id", "selected_rank", "cleaned_label",
+      "final_plot_label", "segment_cleaned_label", "segment_broad_program_class",
+      "callout_display_label", "callout_label_source", "callout_label_informative",
       "broad_program_class", "support_label", "evidence_status_segments", "selection_support_status", "evidence_priority",
       "segment_abs_effect", "strongest_estimate_segments", "best_local_spatial_unit",
       "n_spatial_units_FDR05", "n_spatial_units_tested", "local_label"
@@ -2243,7 +2329,7 @@ build_supermodule_callout_source <- function(segments, selected_audit, heatmap_s
     ) |>
     dplyr::select("dataset", "supermodule_id", "contrast", "effect_value", "effect_source")
 
-  ranking <- effect_grid |>
+  ranking_base <- effect_grid |>
     dplyr::group_by(.data$dataset, .data$supermodule_id) |>
     dplyr::summarise(
       max_abs_effect = suppressWarnings(max(abs(.data$effect_value), na.rm = TRUE)),
@@ -2253,22 +2339,31 @@ build_supermodule_callout_source <- function(segments, selected_audit, heatmap_s
     dplyr::right_join(segment_meta, by = c("dataset", "supermodule_id")) |>
     dplyr::mutate(
       selected_rank_order = dplyr::coalesce(as_num(.data$selected_rank), Inf),
-      dataset_limit = as.integer(.env$dataset_limits[.data$dataset])
+      dataset_limit = as.integer(.env$dataset_limits[.data$dataset]),
+      label_duplicate_penalty = dplyr::if_else(
+        !.data$callout_label_informative & duplicated(paste(.data$dataset, .data$callout_display_label)),
+        1L,
+        0L
+      )
     ) |>
     dplyr::arrange(
       factor(.data$dataset, levels = dataset_order),
-      .data$selected_rank_order,
       .data$evidence_priority,
       dplyr::desc(.data$max_abs_effect),
+      dplyr::desc(.data$callout_label_informative),
+      .data$label_duplicate_penalty,
+      .data$selected_rank_order,
       .data$supermodule_id
     ) |>
     dplyr::group_by(.data$dataset) |>
-    dplyr::mutate(display_rank = dplyr::row_number()) |>
-    dplyr::ungroup() |>
-    dplyr::filter(.data$display_rank <= .data$dataset_limit)
+    dplyr::mutate(
+      display_rank = dplyr::row_number(),
+      plot_display_flag = .data$display_rank <= .data$dataset_limit
+    ) |>
+    dplyr::ungroup()
 
-  ranking |>
-    dplyr::select(-dplyr::any_of(c("strongest_estimate_segments", "selected_rank_order", "dataset_limit"))) |>
+  ranking_base |>
+    dplyr::select(-dplyr::any_of(c("strongest_estimate_segments", "selected_rank_order", "dataset_limit", "label_duplicate_penalty"))) |>
     dplyr::left_join(effect_grid, by = c("dataset", "supermodule_id")) |>
     dplyr::mutate(
       contrast = factor(.data$contrast, levels = contrast_levels),
@@ -2277,9 +2372,11 @@ build_supermodule_callout_source <- function(segments, selected_audit, heatmap_s
     dplyr::arrange(factor(.data$dataset, levels = dataset_order), .data$display_rank, .data$contrast) |>
     dplyr::select(
       "dataset", "dataset_label", "supermodule_id", "selected_rank", "cleaned_label",
+      "final_plot_label", "segment_cleaned_label", "segment_broad_program_class",
+      "callout_display_label", "callout_label_source",
       "broad_program_class", "contrast", "effect_value", "effect_source", "effect_symbol",
       "support_label", "evidence_status_segments", "best_local_spatial_unit",
-      "n_spatial_units_FDR05", "n_spatial_units_tested", "local_label", "display_rank"
+      "n_spatial_units_FDR05", "n_spatial_units_tested", "local_label", "display_rank", "plot_display_flag"
     )
 }
 
@@ -2291,19 +2388,33 @@ render_supermodule_callout <- function(callout_source, svg_path, pdf_path) {
 
   contrast_levels <- c("RES-CON", "SUS-CON", "SUS-RES")
   dataset_order <- c("neuron_neuropil", "neuron_soma", "microglia")
+  display_source <- callout_source |>
+    dplyr::filter(.data$plot_display_flag %in% TRUE)
+  if (!nrow(display_source)) display_source <- callout_source
+
   label_rows <- callout_source |>
+    dplyr::filter(.data$plot_display_flag %in% TRUE) |>
     dplyr::distinct(
       .data$dataset, .data$dataset_label, .data$supermodule_id, .data$display_rank,
-      .data$cleaned_label, .data$support_label, .data$best_local_spatial_unit
+      .data$callout_display_label, .data$support_label, .data$best_local_spatial_unit,
+      .data$n_spatial_units_FDR05
     ) |>
     dplyr::arrange(factor(.data$dataset, levels = dataset_order), .data$display_rank) |>
     dplyr::group_by(.data$dataset) |>
     dplyr::mutate(row_in_dataset = dplyr::row_number()) |>
     dplyr::ungroup() |>
     dplyr::mutate(
-      display_label = clean_callout_display_label(.data$cleaned_label, callout_source$broad_program_class[match(paste(.data$dataset, .data$supermodule_id), paste(callout_source$dataset, callout_source$supermodule_id))]),
-      display_label = stringr::str_trunc(.data$display_label, 32),
-      local_display = stringr::str_trunc(.data$best_local_spatial_unit, 12)
+      display_label = stringr::str_trunc(.data$callout_display_label, 32),
+      support_display = dplyr::case_when(
+        .data$support_label %in% c("q<.05", "q<.10") ~ .data$support_label,
+        TRUE ~ ""
+      ),
+      support_color = dplyr::case_when(
+        .data$support_label %in% c("q<.05", "q<.10") ~ "#374151",
+        .data$support_label == "nom." ~ "#B8BEC6",
+        TRUE ~ "#FFFFFF"
+      ),
+      local_display = dplyr::if_else(as_num(.data$n_spatial_units_FDR05) > 0, stringr::str_trunc(.data$best_local_spatial_unit, 12), "")
     )
 
   block_meta <- label_rows |>
@@ -2311,19 +2422,19 @@ render_supermodule_callout <- function(callout_source, svg_path, pdf_path) {
     dplyr::arrange(factor(.data$dataset, levels = dataset_order)) |>
     dplyr::mutate(
       dataset_label = dplyr::if_else(.data$dataset == "microglia", "Microglia ROI / local microenvironment", .data$dataset_label),
-      block_height = (.data$n_rows - 1) * 0.62,
+      block_height = (.data$n_rows - 1) * 0.52,
       block_index = dplyr::row_number(),
-      block_start = cumsum(dplyr::lag(.data$block_height + 0.85, default = 0)),
+      block_start = cumsum(dplyr::lag(.data$block_height + 0.70, default = 0)),
       block_end = .data$block_start + .data$block_height,
       header_y = -(.data$block_start - 0.45),
-      sep_y = -(.data$block_end + 0.35)
+      sep_y = -(.data$block_end + 0.28)
     )
 
   label_rows <- label_rows |>
     dplyr::left_join(block_meta |> dplyr::select("dataset", "block_start"), by = "dataset") |>
-    dplyr::mutate(y = -(.data$block_start + (.data$row_in_dataset - 1) * 0.62))
+    dplyr::mutate(y = -(.data$block_start + (.data$row_in_dataset - 1) * 0.52))
 
-  plot_df <- callout_source |>
+  plot_df <- display_source |>
     dplyr::mutate(contrast = factor(.data$contrast, levels = contrast_levels)) |>
     dplyr::left_join(label_rows |> dplyr::select("dataset", "supermodule_id", "y"), by = c("dataset", "supermodule_id")) |>
     dplyr::mutate(tile_x = c("RES-CON" = 0.615, "SUS-CON" = 0.655, "SUS-RES" = 0.695)[as.character(.data$contrast)])
@@ -2336,16 +2447,10 @@ render_supermodule_callout <- function(callout_source, svg_path, pdf_path) {
 
   p <- ggplot2::ggplot() +
     ggplot2::geom_hline(
-      data = label_rows,
-      ggplot2::aes(yintercept = .data$y - 0.31),
-      color = "#E5E7EB",
-      linewidth = 0.18
-    ) +
-    ggplot2::geom_hline(
       data = block_meta,
       ggplot2::aes(yintercept = .data$sep_y),
-      color = "#CBD0D6",
-      linewidth = 0.28
+      color = "#D4D8DE",
+      linewidth = 0.24
     ) +
     ggplot2::geom_tile(
       data = plot_df,
@@ -2374,10 +2479,9 @@ render_supermodule_callout <- function(callout_source, svg_path, pdf_path) {
     ) +
     ggplot2::geom_text(
       data = label_rows,
-      ggplot2::aes(x = 0.79, y = .data$y, label = .data$support_label),
+      ggplot2::aes(x = 0.79, y = .data$y, label = .data$support_display, color = .data$support_color),
       hjust = 0.5,
       size = 1.9,
-      color = "#374151",
       family = "sans"
     ) +
     ggplot2::geom_text(
@@ -2399,9 +2503,9 @@ render_supermodule_callout <- function(callout_source, svg_path, pdf_path) {
     ) +
     ggplot2::annotate("text", x = 0.655, y = header_y, label = "Effect", size = 1.85, fontface = "bold", color = "#4B5563", family = "sans") +
     ggplot2::annotate("text", x = 0.655, y = header_y - 0.20, label = "R-C  S-C  S-R", size = 1.55, color = "#6B7280", family = "sans") +
-    ggplot2::annotate("text", x = 0.79, y = header_y, label = "q", size = 1.85, fontface = "bold", color = "#4B5563", family = "sans") +
+    ggplot2::annotate("text", x = 0.79, y = header_y, label = "Support", size = 1.85, fontface = "bold", color = "#4B5563", family = "sans") +
     ggplot2::annotate("text", x = 0.88, y = header_y, label = "Local", hjust = 0, size = 1.85, fontface = "bold", color = "#4B5563", family = "sans") +
-    ggplot2::annotate("text", x = 0.035, y = footer_y, hjust = 0, label = "Effect: Cohen's d, R-C/S-C/S-R. Labels are conservative; microglia = ROI/local microenvironment.", size = 1.65, color = "#6B7280", family = "sans") +
+    ggplot2::annotate("text", x = 0.035, y = footer_y, hjust = 0, label = "Effect: Cohen's d. R-C/S-C/S-R = RES-CON/SUS-CON/SUS-RES. Labels are conservative; microglia = ROI/local microenvironment.", size = 1.55, color = "#6B7280", family = "sans") +
     ggplot2::scale_fill_gradient2(
       low = "#4E79A7",
       mid = "#F7F7F7",
@@ -2412,6 +2516,7 @@ render_supermodule_callout <- function(callout_source, svg_path, pdf_path) {
       na.value = "#F1F3F5",
       guide = "none"
     ) +
+    ggplot2::scale_color_identity() +
     ggplot2::coord_cartesian(xlim = c(0, 1), ylim = c(footer_y - 0.22, max(block_meta$header_y) + 0.25), clip = "off") +
     ggplot2::labs(
       title = "Key WGCNA supermodules"
@@ -2424,8 +2529,8 @@ render_supermodule_callout <- function(callout_source, svg_path, pdf_path) {
 
   dir_create(dirname(svg_path))
   dir_create(dirname(pdf_path))
-  ggplot2::ggsave(svg_path, p, width = 4.8, height = 6.2, units = "in", bg = "white")
-  ggplot2::ggsave(pdf_path, p, width = 4.8, height = 6.2, units = "in", bg = "white", device = grDevices::cairo_pdf)
+  ggplot2::ggsave(svg_path, p, width = 4.8, height = 5.6, units = "in", bg = "white")
+  ggplot2::ggsave(pdf_path, p, width = 4.8, height = 5.6, units = "in", bg = "white", device = grDevices::cairo_pdf)
   invisible(p)
 }
 
