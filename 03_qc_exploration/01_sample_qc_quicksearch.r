@@ -78,6 +78,7 @@ input_file <- Sys.getenv(
 )
 
 out_dir <- Sys.getenv("PROTEOMICS_QC_PUBLICATION_DIR", unset = CANONICAL_PATHS$figures)
+global_out_dir <- path_results("figures", MODULE_ID, SUBSTEP_ID, "global")
 table_dir <- Sys.getenv("PROTEOMICS_QC_TABLE_DIR", unset = CANONICAL_PATHS$tables)
 if (run$dry_run) {
   status <- qc_dry_run_contract(
@@ -97,6 +98,7 @@ if (!file.exists(input_file)) {
   )
 }
 ensure_dir(out_dir)
+ensure_dir(global_out_dir)
 ensure_dir(table_dir)
 
 # ================================================================
@@ -113,6 +115,43 @@ qc <- read_excel(input_file) %>%
     !grepl("background|blank|bg", celltype_layer, ignore.case = TRUE)
   ) %>%
   mutate(celltype_layer = factor(celltype_layer))
+
+add_qc_compartment <- function(df) {
+  candidate_cols <- intersect(c("celltype_layer", "CellTypeLayer", "celltype", "CellType"), names(df))
+  df$qc_compartment <- NA_character_
+
+  for (col in candidate_cols) {
+    vals <- trimws(as.character(df[[col]]))
+    vals[!nzchar(vals)] <- NA_character_
+    compartment_key <- tolower(vals)
+    compartment_key <- gsub("[ -]+", "_", compartment_key)
+
+    mapped <- case_when(
+      compartment_key %in% c("microglia", "microglial") ~ "microglia",
+      compartment_key %in% c("neuron_neuropil", "neuropil") ~ "neuropil",
+      compartment_key %in% c("neuron_soma", "soma") ~ "soma",
+      TRUE ~ NA_character_
+    )
+
+    fill <- is.na(df$qc_compartment) & !is.na(mapped)
+    df$qc_compartment[fill] <- mapped[fill]
+  }
+
+  unmatched <- sort(unique(as.character(df$celltype_layer[is.na(df$qc_compartment)])))
+  unmatched <- unmatched[!is.na(unmatched) & nzchar(unmatched)]
+  if (length(unmatched) > 0) {
+    warning(
+      "Unmatched non-background celltype_layer values for global QC compartments: ",
+      paste(unmatched, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  df$qc_compartment <- factor(df$qc_compartment, levels = c("microglia", "neuropil", "soma"))
+  df
+}
+
+qc_global <- add_qc_compartment(qc)
 
 if ("celltype_layer" %in% names(qc)) {
   keep_dataset <- metadata_matches_dataset(qc, DATASET)
@@ -155,6 +194,9 @@ qc_metrics <- intersect(qc_metrics_all, names(qc))
 
 qc <- qc %>%
   mutate(across(all_of(qc_metrics), as.numeric))
+
+qc_global <- qc_global %>%
+  mutate(across(all_of(intersect(qc_metrics_all, names(qc_global))), as.numeric))
 
 has_cols <- function(x) all(x %in% names(qc))
 
@@ -213,6 +255,17 @@ theme_publication_qc <- function(base_size = 7) {
 save_svg <- function(plot, filename, width, height) {
   ggsave(
     filename = file.path(out_dir, filename),
+    plot = plot,
+    width = width,
+    height = height,
+    units = "cm",
+    device = svglite
+  )
+}
+
+save_global_svg <- function(plot, filename, width, height) {
+  ggsave(
+    filename = file.path(global_out_dir, filename),
     plot = plot,
     width = width,
     height = height,
@@ -352,6 +405,36 @@ plot_sample_bars <- function(df, yvar, ylab) {
     )
 }
 
+global_compartment_cols <- c(
+  "microglia" = "#a7d8d5",
+  "neuropil" = "#156959",
+  "soma" = "#757476"
+)
+
+plot_global_sample_bars <- function(df, yvar, ylab) {
+  df %>%
+    filter(!is.na(qc_compartment), !is.na(.data[[yvar]])) %>%
+    arrange(qc_compartment, .data[[yvar]]) %>%
+    mutate(
+      sample_key = paste(qc_compartment, sample_id, row_number(), sep = "__"),
+      sample_order = factor(sample_key, levels = sample_key)
+    ) %>%
+    ggplot(aes(x = sample_order, y = .data[[yvar]], fill = qc_compartment)) +
+    geom_col(width = 1, colour = NA) +
+    facet_grid(. ~ qc_compartment, scales = "free_x", space = "free_x") +
+    scale_fill_manual(values = global_compartment_cols) +
+    scale_x_discrete(expand = expansion(add = 0)) +
+    scale_y_continuous(expand = expansion(mult = c(0, 0.06))) +
+    labs(x = NULL, y = ylab) +
+    theme_publication_qc() +
+    theme(
+      axis.text.x = element_blank(),
+      axis.ticks.x = element_blank(),
+      legend.position = "none",
+      panel.spacing.x = unit(1.5, "mm")
+    )
+}
+
 plot_scatter_qc <- function(df, xvar, yvar, xlab, ylab, log_axes = FALSE) {
   p <- ggplot(df, aes(x = .data[[xvar]], y = .data[[yvar]], colour = celltype_layer)) +
     geom_point(size = 1.4, alpha = 0.85) +
@@ -406,6 +489,16 @@ if ("Proteins.Identified" %in% names(qc)) {
 p_precursor <- NULL
 if ("Precursors.Identified" %in% names(qc)) {
   p_precursor <- plot_sample_bars(qc, "Precursors.Identified", "Precursors identified")
+}
+
+p_global_protein <- NULL
+if ("Proteins.Identified" %in% names(qc_global)) {
+  p_global_protein <- plot_global_sample_bars(qc_global, "Proteins.Identified", "Proteins identified")
+}
+
+p_global_precursor <- NULL
+if ("Precursors.Identified" %in% names(qc_global)) {
+  p_global_precursor <- plot_global_sample_bars(qc_global, "Precursors.Identified", "Precursors identified")
 }
 
 p_signal <- NULL
@@ -680,6 +773,24 @@ qc_main <- wrap_plots(main_plots, ncol = 3, guides = "collect") +
   )
 
 save_svg(qc_main, "Fig_QC_main_publication_style_no_rings.svg", width = 18, height = 18)
+
+global_qc_files <- character()
+
+if (!is.null(p_global_protein)) {
+  save_global_svg(p_global_protein, "Fig_QC_global_proteins_identified.svg", width = 12, height = 12)
+  global_qc_files <- c(global_qc_files, "Fig_QC_global_proteins_identified.svg")
+}
+
+if (!is.null(p_global_precursor)) {
+  save_global_svg(p_global_precursor, "Fig_QC_global_precursors_identified.svg", width = 12, height = 12)
+  global_qc_files <- c(global_qc_files, "Fig_QC_global_precursors_identified.svg")
+}
+
+if (!is.null(p_global_protein) && !is.null(p_global_precursor)) {
+  qc_global_depth_bars <- p_global_protein / p_global_precursor
+  save_global_svg(qc_global_depth_bars, "Fig_QC_global_depth_bars.svg", width = 12, height = 12)
+  global_qc_files <- c(global_qc_files, "Fig_QC_global_depth_bars.svg")
+}
 
 # ================================================================
 # 15. Supplemental QC figure
@@ -961,6 +1072,14 @@ cat(" - Fig_QC_supplemental_publication_style_no_rings.svg\n\n")
 
 cat("Dedicated outlier figure:\n")
 cat(" - Fig_QC_outlier_summary.svg\n\n")
+
+cat("Global sample-depth figures:\n")
+cat(global_out_dir, "\n")
+if (length(global_qc_files) > 0) {
+  cat(paste0(" - ", global_qc_files, collapse = "\n"), "\n\n")
+} else {
+  cat(" - none generated; required depth columns were not present.\n\n")
+}
 
 cat("Tables:\n")
 cat(" - qc_summary_tables.xlsx\n")
