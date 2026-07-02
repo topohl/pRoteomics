@@ -2167,6 +2167,7 @@ fix_scientific_abbreviations <- function(x) {
     "\\brna\\b" = "RNA",
     "\\bdna\\b" = "DNA",
     "\\becm\\b" = "ECM",
+    "\\brnp\\b" = "RNP",
     "\\batp\\b" = "ATP",
     "\\boxphos\\b" = "OXPHOS",
     "\\ber\\b" = "ER",
@@ -2202,6 +2203,10 @@ normalize_callout_label <- function(label, supermodule_id) {
     grepl("^hub-supported cluster$", out, ignore.case = TRUE) ~ "Mixed program",
     grepl("^synaptic$", out, ignore.case = TRUE) ~ "Synaptic program",
     grepl("^rna$", out, ignore.case = TRUE) ~ "RNA regulation",
+    grepl("^synaptic\\s*/\\s*cytoskeletal trafficking$", out, ignore.case = TRUE) ~ "Synaptic trafficking",
+    grepl("^mitochondrial\\s*/\\s*energy metabolism$", out, ignore.case = TRUE) ~ "Mitochondrial metabolism",
+    grepl("^mitochondrial\\s*/\\s*energy metabolism;\\s*synaptic\\s*/\\s*cytoskeletal trafficking$", out, ignore.case = TRUE) ~ "Mitochondrial / synaptic program",
+    grepl("^barrier\\s*/\\s*cell\\s*/\\s*junction structural$", out, ignore.case = TRUE) ~ "Barrier / junction structure",
     TRUE ~ out
   )
   capitalize_first(fix_scientific_abbreviations(out))
@@ -2229,7 +2234,8 @@ pick_callout_label <- function(final_plot_label, segment_cleaned_label, segment_
 build_supermodule_callout_source <- function(segments, selected_audit, heatmap_source_supermodule, publication_heatmap_source_layout) {
   contrast_levels <- c("RES-CON", "SUS-CON", "SUS-RES")
   dataset_order <- c("neuron_neuropil", "neuron_soma", "microglia")
-  dataset_limits <- c(neuron_neuropil = 3L, neuron_soma = 3L, microglia = 2L)
+  dataset_limits <- c(neuron_neuropil = 3L, neuron_soma = 2L, microglia = 2L)
+  dataset_extra_limits <- c(neuron_neuropil = 3L, neuron_soma = 3L, microglia = 2L)
 
   selected_meta <- selected_audit |>
     dplyr::select("dataset", "supermodule_id", "selected_rank", "selection_support_status") |>
@@ -2340,11 +2346,9 @@ build_supermodule_callout_source <- function(segments, selected_audit, heatmap_s
     dplyr::mutate(
       selected_rank_order = dplyr::coalesce(as_num(.data$selected_rank), Inf),
       dataset_limit = as.integer(.env$dataset_limits[.data$dataset]),
-      label_duplicate_penalty = dplyr::if_else(
-        !.data$callout_label_informative & duplicated(paste(.data$dataset, .data$callout_display_label)),
-        1L,
-        0L
-      )
+      dataset_extra_limit = as.integer(.env$dataset_extra_limits[.data$dataset]),
+      label_seen = duplicated(paste(.data$dataset, .data$callout_display_label)),
+      label_duplicate_penalty = dplyr::if_else(.data$label_seen, 1L, 0L)
     ) |>
     dplyr::arrange(
       factor(.data$dataset, levels = dataset_order),
@@ -2358,12 +2362,17 @@ build_supermodule_callout_source <- function(segments, selected_audit, heatmap_s
     dplyr::group_by(.data$dataset) |>
     dplyr::mutate(
       display_rank = dplyr::row_number(),
-      plot_display_flag = .data$display_rank <= .data$dataset_limit
+      rank_label_seen = duplicated(.data$callout_display_label),
+      plot_display_flag = .data$display_rank <= .data$dataset_limit |
+        (
+          .data$display_rank <= .data$dataset_extra_limit &
+            (.data$support_label %in% c("q<.05", "q<.10") | !.data$rank_label_seen)
+        )
     ) |>
     dplyr::ungroup()
 
   ranking_base |>
-    dplyr::select(-dplyr::any_of(c("strongest_estimate_segments", "selected_rank_order", "dataset_limit", "label_duplicate_penalty"))) |>
+    dplyr::select(-dplyr::any_of(c("strongest_estimate_segments", "selected_rank_order", "dataset_limit", "dataset_extra_limit", "label_seen", "rank_label_seen", "label_duplicate_penalty"))) |>
     dplyr::left_join(effect_grid, by = c("dataset", "supermodule_id")) |>
     dplyr::mutate(
       contrast = factor(.data$contrast, levels = contrast_levels),
@@ -2404,40 +2413,41 @@ render_supermodule_callout <- function(callout_source, svg_path, pdf_path) {
     dplyr::mutate(row_in_dataset = dplyr::row_number()) |>
     dplyr::ungroup() |>
     dplyr::mutate(
-      display_label = stringr::str_trunc(.data$callout_display_label, 32),
+      display_label = .data$callout_display_label,
       support_display = dplyr::case_when(
         .data$support_label %in% c("q<.05", "q<.10") ~ .data$support_label,
         TRUE ~ ""
       ),
-      support_color = dplyr::case_when(
-        .data$support_label %in% c("q<.05", "q<.10") ~ "#374151",
-        .data$support_label == "nom." ~ "#B8BEC6",
-        TRUE ~ "#FFFFFF"
-      ),
-      local_display = dplyr::if_else(as_num(.data$n_spatial_units_FDR05) > 0, stringr::str_trunc(.data$best_local_spatial_unit, 12), "")
+      local_display = dplyr::if_else(as_num(.data$n_spatial_units_FDR05) > 0, stringr::str_trunc(.data$best_local_spatial_unit, 12), ""),
+      note = dplyr::case_when(
+        nzchar(.data$support_display) & nzchar(.data$local_display) ~ paste(.data$support_display, .data$local_display, sep = " \u00b7 "),
+        nzchar(.data$support_display) ~ .data$support_display,
+        nzchar(.data$local_display) ~ .data$local_display,
+        TRUE ~ ""
+      )
     )
 
   block_meta <- label_rows |>
     dplyr::count(.data$dataset, .data$dataset_label, name = "n_rows") |>
     dplyr::arrange(factor(.data$dataset, levels = dataset_order)) |>
     dplyr::mutate(
-      dataset_label = dplyr::if_else(.data$dataset == "microglia", "Microglia ROI / local microenvironment", .data$dataset_label),
-      block_height = (.data$n_rows - 1) * 0.52,
+      dataset_label = dplyr::if_else(.data$dataset == "microglia", "Microglia ROI", .data$dataset_label),
+      block_height = (.data$n_rows - 1) * 0.46,
       block_index = dplyr::row_number(),
-      block_start = cumsum(dplyr::lag(.data$block_height + 0.70, default = 0)),
+      block_start = cumsum(dplyr::lag(.data$block_height + 0.60, default = 0)),
       block_end = .data$block_start + .data$block_height,
       header_y = -(.data$block_start - 0.45),
-      sep_y = -(.data$block_end + 0.28)
+      sep_y = -(.data$block_end + 0.22)
     )
 
   label_rows <- label_rows |>
     dplyr::left_join(block_meta |> dplyr::select("dataset", "block_start"), by = "dataset") |>
-    dplyr::mutate(y = -(.data$block_start + (.data$row_in_dataset - 1) * 0.52))
+    dplyr::mutate(y = -(.data$block_start + (.data$row_in_dataset - 1) * 0.46))
 
   plot_df <- display_source |>
     dplyr::mutate(contrast = factor(.data$contrast, levels = contrast_levels)) |>
     dplyr::left_join(label_rows |> dplyr::select("dataset", "supermodule_id", "y"), by = c("dataset", "supermodule_id")) |>
-    dplyr::mutate(tile_x = c("RES-CON" = 0.615, "SUS-CON" = 0.655, "SUS-RES" = 0.695)[as.character(.data$contrast)])
+    dplyr::mutate(tile_x = c("RES-CON" = 0.575, "SUS-CON" = 0.615, "SUS-RES" = 0.655)[as.character(.data$contrast)])
 
   effect_limit <- stats::quantile(abs(plot_df$effect_value[is.finite(plot_df$effect_value)]), 0.95, na.rm = TRUE, names = FALSE)
   if (!is.finite(effect_limit) || effect_limit < 0.8) effect_limit <- 0.8
@@ -2456,7 +2466,7 @@ render_supermodule_callout <- function(callout_source, svg_path, pdf_path) {
       data = plot_df,
       ggplot2::aes(x = .data$tile_x, y = .data$y, fill = .data$effect_value),
       width = 0.034,
-      height = 0.24,
+      height = 0.21,
       color = "#FFFFFF",
       linewidth = 0.18
     ) +
@@ -2479,14 +2489,7 @@ render_supermodule_callout <- function(callout_source, svg_path, pdf_path) {
     ) +
     ggplot2::geom_text(
       data = label_rows,
-      ggplot2::aes(x = 0.79, y = .data$y, label = .data$support_display, color = .data$support_color),
-      hjust = 0.5,
-      size = 1.9,
-      family = "sans"
-    ) +
-    ggplot2::geom_text(
-      data = label_rows,
-      ggplot2::aes(x = 0.88, y = .data$y, label = .data$local_display),
+      ggplot2::aes(x = 0.73, y = .data$y, label = .data$note),
       hjust = 0,
       size = 1.85,
       color = "#374151",
@@ -2501,11 +2504,8 @@ render_supermodule_callout <- function(callout_source, svg_path, pdf_path) {
       color = "#111827",
       family = "sans"
     ) +
-    ggplot2::annotate("text", x = 0.655, y = header_y, label = "Effect", size = 1.85, fontface = "bold", color = "#4B5563", family = "sans") +
-    ggplot2::annotate("text", x = 0.655, y = header_y - 0.20, label = "R-C  S-C  S-R", size = 1.55, color = "#6B7280", family = "sans") +
-    ggplot2::annotate("text", x = 0.79, y = header_y, label = "Support", size = 1.85, fontface = "bold", color = "#4B5563", family = "sans") +
-    ggplot2::annotate("text", x = 0.88, y = header_y, label = "Local", hjust = 0, size = 1.85, fontface = "bold", color = "#4B5563", family = "sans") +
-    ggplot2::annotate("text", x = 0.035, y = footer_y, hjust = 0, label = "Effect: Cohen's d. R-C/S-C/S-R = RES-CON/SUS-CON/SUS-RES. Labels are conservative; microglia = ROI/local microenvironment.", size = 1.55, color = "#6B7280", family = "sans") +
+    ggplot2::annotate("text", x = 0.615, y = header_y, label = "R-C  S-C  S-R", size = 1.55, color = "#6B7280", family = "sans") +
+    ggplot2::annotate("text", x = 0.035, y = footer_y, hjust = 0, label = "d = Cohen's d; R-C/S-C/S-R = RES-CON/SUS-CON/SUS-RES; microglia = ROI/local microenvironment.", size = 1.5, color = "#6B7280", family = "sans") +
     ggplot2::scale_fill_gradient2(
       low = "#4E79A7",
       mid = "#F7F7F7",
@@ -2516,7 +2516,6 @@ render_supermodule_callout <- function(callout_source, svg_path, pdf_path) {
       na.value = "#F1F3F5",
       guide = "none"
     ) +
-    ggplot2::scale_color_identity() +
     ggplot2::coord_cartesian(xlim = c(0, 1), ylim = c(footer_y - 0.22, max(block_meta$header_y) + 0.25), clip = "off") +
     ggplot2::labs(
       title = "Key WGCNA supermodules"
@@ -2529,8 +2528,8 @@ render_supermodule_callout <- function(callout_source, svg_path, pdf_path) {
 
   dir_create(dirname(svg_path))
   dir_create(dirname(pdf_path))
-  ggplot2::ggsave(svg_path, p, width = 4.8, height = 5.6, units = "in", bg = "white")
-  ggplot2::ggsave(pdf_path, p, width = 4.8, height = 5.6, units = "in", bg = "white", device = grDevices::cairo_pdf)
+  ggplot2::ggsave(svg_path, p, width = 4.6, height = 5.0, units = "in", bg = "white")
+  ggplot2::ggsave(pdf_path, p, width = 4.6, height = 5.0, units = "in", bg = "white", device = grDevices::cairo_pdf)
   invisible(p)
 }
 
