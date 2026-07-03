@@ -31,10 +31,14 @@ bool_arg <- function(flag, default = FALSE, args = runtime$args) {
 TARGET_MODULE <- script_arg_value("--target-module", "WGCNA_#4D4D4D", args = runtime$args)
 METRIC <- script_arg_value("--metric", "spearman", args = runtime$args)
 if (!METRIC %in% c("spearman", "delta_r2")) stop("--metric must be spearman or delta_r2.", call. = FALSE)
+INCLUDE_EXPLORATORY <- bool_arg("--include-exploratory", FALSE, args = runtime$args)
 
 thresholds <- list(
   high_abs_spearman = 0.5,
+  moderate_abs_spearman = 0.30,
   high_jaccard = 0.15,
+  high_overlap_fraction_microglia = 0.50,
+  moderate_overlap_fraction_microglia = 0.25,
   low_abs_spearman = 0.25,
   low_jaccard = 0.05
 )
@@ -47,6 +51,7 @@ if (length(missing_pkgs) && !isTRUE(runtime$dry_run)) {
 if (!length(missing_pkgs)) suppressPackageStartupMessages(invisible(lapply(required_pkgs, library, character.only = TRUE)))
 
 PATHS <- create_module_dirs("06_modules_WGCNA", file.path("microglia_roi_specificity", "microglia"))
+REPORT_DIR <- path_results("reports", "06_modules_WGCNA", "microglia_roi_specificity", "microglia")
 FILES_MICRO <- resolve_wgcna_files("microglia")
 FILES_NEUROPIL <- resolve_wgcna_files("neuron_neuropil")
 FILES_SOMA <- resolve_wgcna_files("neuron_soma")
@@ -80,11 +85,13 @@ if (isTRUE(runtime$dry_run)) {
   dry_run_line("Target module", TARGET_MODULE)
   dry_run_line("Metric", METRIC)
   dry_run_line("Include neuron_soma", INCLUDE_SOMA)
+  dry_run_line("Include exploratory in default figures", INCLUDE_EXPLORATORY)
   for (nm in names(required_inputs)) dry_run_line(nm, required_inputs[[nm]], if (file.exists(required_inputs[[nm]])) "PASS" else "FAIL")
   for (nm in setdiff(names(inputs), names(required_inputs))) dry_run_line(nm, inputs[[nm]], if (file.exists(inputs[[nm]])) "PASS" else "WARN")
   dry_run_line("Output tables", PATHS$tables)
   dry_run_line("Output source data", PATHS$source_data)
   dry_run_line("Output figures", PATHS$figures)
+  dry_run_line("Output reports", REPORT_DIR)
   dry_run_line("Output logs", PATHS$logs)
   quit(status = if (all(file.exists(unlist(required_inputs, use.names = FALSE)))) 0 else 1, save = "no")
 }
@@ -415,15 +422,38 @@ overlap_neuropil <- overlap_one_compartment(micro_sets, module_protein_sets(comp
 overlap_soma <- if (isTRUE(INCLUDE_SOMA)) overlap_one_compartment(micro_sets, module_protein_sets(compartments$neuron_soma$defs), "neuron_soma") else tibble::tibble()
 overlap_long <- dplyr::bind_rows(overlap_neuropil, overlap_soma)
 
-best_overlap <- overlap_long |>
+best_jaccard_overlap <- overlap_long |>
   dplyr::group_by(.data$module_id, .data$other_compartment) |>
   dplyr::slice_max(order_by = .data$jaccard, n = 1, with_ties = FALSE) |>
   dplyr::ungroup() |>
-  dplyr::select(.data$module_id, .data$other_compartment, .data$other_module_id, .data$jaccard) |>
+  dplyr::select(
+    "module_id", "other_compartment", "other_module_id", "n_other_module_proteins",
+    "n_overlap", "jaccard", "overlap_fraction_microglia", "overlap_fraction_other"
+  ) |>
   tidyr::pivot_wider(
-    names_from = .data$other_compartment,
-    values_from = c(.data$other_module_id, .data$jaccard),
-    names_glue = "{other_compartment}_{.value}"
+    names_from = "other_compartment",
+    values_from = c(
+      "other_module_id", "n_other_module_proteins", "n_overlap",
+      "jaccard", "overlap_fraction_microglia", "overlap_fraction_other"
+    ),
+    names_glue = "{other_compartment}_best_jaccard_{.value}"
+  )
+
+best_microglia_fraction_overlap <- overlap_long |>
+  dplyr::group_by(.data$module_id, .data$other_compartment) |>
+  dplyr::slice_max(order_by = .data$overlap_fraction_microglia, n = 1, with_ties = FALSE) |>
+  dplyr::ungroup() |>
+  dplyr::select(
+    "module_id", "other_compartment", "other_module_id", "n_other_module_proteins",
+    "n_overlap", "jaccard", "overlap_fraction_microglia", "overlap_fraction_other"
+  ) |>
+  tidyr::pivot_wider(
+    names_from = "other_compartment",
+    values_from = c(
+      "other_module_id", "n_other_module_proteins", "n_overlap",
+      "jaccard", "overlap_fraction_microglia", "overlap_fraction_other"
+    ),
+    names_glue = "{other_compartment}_best_microglia_fraction_{.value}"
   )
 
 annotation <- read_csv_optional(ANNOTATION_FILE)
@@ -461,10 +491,13 @@ best_coupling <- coupling_long |>
   dplyr::group_by(.data$module_id, .data$covariate_source_compartment) |>
   dplyr::slice_max(order_by = .data$abs_spearman, n = 1, with_ties = FALSE) |>
   dplyr::ungroup() |>
-  dplyr::select(.data$module_id, .data$covariate_source_compartment, .data$abs_spearman, .data$covariate_family, .data$covariate_label, .data$matched_covariate_spearman_p) |>
+  dplyr::select(
+    "module_id", "covariate_source_compartment", "abs_spearman",
+    "covariate_family", "covariate_label", "matched_covariate_spearman_p"
+  ) |>
   tidyr::pivot_wider(
-    names_from = .data$covariate_source_compartment,
-    values_from = c(.data$abs_spearman, .data$covariate_family, .data$covariate_label, .data$matched_covariate_spearman_p),
+    names_from = "covariate_source_compartment",
+    values_from = c("abs_spearman", "covariate_family", "covariate_label", "matched_covariate_spearman_p"),
     names_glue = "{covariate_source_compartment}_{.value}"
   )
 
@@ -473,28 +506,137 @@ marker_support_score <- function(row) {
   any(is.finite(vals) & vals > 0, na.rm = TRUE)
 }
 
+shared_local_classes <- c(
+  "shared_microenvironment", "vascular_basement_membrane_ecm", "astrocyte_endfoot",
+  "astrocyte_or_endfoot_sensitive", "oligodendrocyte_myelin",
+  "oligodendrocyte_or_myelin_sensitive", "neuropil_sensitive", "vascular_bbb_mural"
+)
+
+max_finite <- function(...) {
+  vals <- as_num(unlist(list(...)))
+  vals <- vals[is.finite(vals)]
+  if (!length(vals)) NA_real_ else max(vals)
+}
+
+ensure_columns <- function(dat, cols, value = NA) {
+  for (col in cols) {
+    if (!col %in% names(dat)) dat[[col]] <- value
+  }
+  dat
+}
+
+fmt_fraction_label <- function(n_overlap, denom, frac) {
+  n_overlap <- as_num(n_overlap)
+  denom <- as_num(denom)
+  frac <- as_num(frac)
+  if (!is.finite(n_overlap) || !is.finite(denom) || !is.finite(frac)) return(NA_character_)
+  paste0(as.integer(n_overlap), "/", as.integer(denom), " (", round(100 * frac), "%)")
+}
+
+source_of_max <- function(neuropil_value, soma_value, neuropil_source = "neuron_neuropil", soma_source = "neuron_soma") {
+  neuropil_value <- as_num(neuropil_value)
+  soma_value <- as_num(soma_value)
+  if (!is.finite(neuropil_value) && !is.finite(soma_value)) return(NA_character_)
+  if (!is.finite(soma_value) || (is.finite(neuropil_value) && neuropil_value >= soma_value)) return(neuropil_source)
+  soma_source
+}
+
 classify_specificity <- function(row) {
   cls <- as.character(row$microenvironment_class %||% NA_character_)
-  shared_classes <- c("shared_microenvironment", "vascular_basement_membrane_ecm", "astrocyte_endfoot", "astrocyte_or_endfoot_sensitive", "oligodendrocyte_myelin", "oligodendrocyte_or_myelin_sensitive", "neuropil_sensitive", "vascular_bbb_mural")
-  best_neuro <- as_num(row$neuron_neuropil_abs_spearman)
-  best_soma <- as_num(row$neuron_soma_abs_spearman)
-  jac_neuro <- as_num(row$neuron_neuropil_jaccard)
-  jac_soma <- as_num(row$neuron_soma_jaccard)
-  strong_coupled <- any(c(best_neuro, best_soma) >= thresholds$high_abs_spearman, na.rm = TRUE) || any(c(jac_neuro, jac_soma) >= thresholds$high_jaccard, na.rm = TRUE)
-  low_coupled <- all(c(best_neuro, best_soma)[is.finite(c(best_neuro, best_soma))] <= thresholds$low_abs_spearman) &&
-    all(c(jac_neuro, jac_soma)[is.finite(c(jac_neuro, jac_soma))] <= thresholds$low_jaccard)
+  best_neuro <- as_num(row$best_neuropil_abs_spearman)
+  best_soma <- as_num(row$best_soma_abs_spearman)
+  jac_neuro <- as_num(row$best_jaccard_matching_neuropil_jaccard)
+  jac_soma <- as_num(row$best_jaccard_matching_soma_jaccard)
+  frac_neuro <- as_num(row$best_matching_neuropil_overlap_fraction_microglia)
+  frac_soma <- as_num(row$best_matching_soma_overlap_fraction_microglia)
+  coupling_vals <- c(best_neuro, best_soma)
+  overlap_vals <- c(frac_neuro, frac_soma)
+  jaccard_vals <- c(jac_neuro, jac_soma)
+  strong_coupled <- any(coupling_vals >= thresholds$high_abs_spearman, na.rm = TRUE) ||
+    any(jaccard_vals >= thresholds$high_jaccard, na.rm = TRUE) ||
+    any(overlap_vals >= thresholds$high_overlap_fraction_microglia, na.rm = TRUE)
+  low_coupled <- all(coupling_vals[is.finite(coupling_vals)] <= thresholds$low_abs_spearman) &&
+    all(jaccard_vals[is.finite(jaccard_vals)] <= thresholds$low_jaccard) &&
+    all(overlap_vals[is.finite(overlap_vals)] < thresholds$moderate_overlap_fraction_microglia)
   micro_support <- marker_support_score(row)
-  if (!is.na(cls) && cls %in% shared_classes) return("local_microenvironment_or_shared")
+  if (!is.na(cls) && cls %in% shared_local_classes) return("local_microenvironment_or_shared")
   if (isTRUE(strong_coupled)) return("neuropil_coupled_or_shared")
   if (isTRUE(micro_support) && isTRUE(low_coupled)) return("microglia_roi_enriched")
   "ambiguous_diagnostic"
+}
+
+specificity_evidence_tier <- function(row) {
+  cls <- as.character(row$microenvironment_class %||% NA_character_)
+  shared_local <- !is.na(cls) && cls %in% shared_local_classes
+  max_spearman <- max_finite(row$best_neuropil_abs_spearman, row$best_soma_abs_spearman)
+  max_micro_frac <- max_finite(
+    row$best_matching_neuropil_overlap_fraction_microglia,
+    row$best_matching_soma_overlap_fraction_microglia
+  )
+  micro_support <- marker_support_score(row)
+  if (isTRUE(shared_local) &&
+      is.finite(max_spearman) && max_spearman >= thresholds$high_abs_spearman) {
+    return("shared_local_program_high_score_coupling")
+  }
+  if (isTRUE(shared_local) &&
+      is.finite(max_spearman) && max_spearman >= thresholds$moderate_abs_spearman &&
+      max_spearman < thresholds$high_abs_spearman &&
+      is.finite(max_micro_frac) && max_micro_frac >= thresholds$high_overlap_fraction_microglia) {
+    return("shared_local_program_moderate_score_coupling_high_protein_sharing")
+  }
+  if (isTRUE(shared_local) &&
+      is.finite(max_micro_frac) && max_micro_frac >= thresholds$high_overlap_fraction_microglia) {
+    return("shared_local_program_high_protein_sharing")
+  }
+  if (isTRUE(micro_support) &&
+      (!is.finite(max_spearman) || max_spearman < thresholds$low_abs_spearman) &&
+      (!is.finite(max_micro_frac) || max_micro_frac < thresholds$moderate_overlap_fraction_microglia)) {
+    return("microglia_roi_enriched_candidate")
+  }
+  "shared_or_ambiguous_diagnostic"
+}
+
+specificity_archetype <- function(row) {
+  max_score <- as_num(row$max_score_coupling)
+  max_share <- as_num(row$max_protein_sharing)
+  cls <- as.character(row$microenvironment_class %||% NA_character_)
+  micro_support <- marker_support_score(row)
+  shared_local <- !is.na(cls) && cls %in% shared_local_classes
+  if (is.finite(max_score) && is.finite(max_share) &&
+      max_score >= thresholds$high_abs_spearman && max_share >= thresholds$high_overlap_fraction_microglia) {
+    return("strongly_coupled_and_shared")
+  }
+  if (is.finite(max_score) && max_score >= thresholds$high_abs_spearman &&
+      (!is.finite(max_share) || max_share < thresholds$high_overlap_fraction_microglia)) {
+    return("score_coupled_shared_state")
+  }
+  if ((!is.finite(max_score) || max_score < thresholds$high_abs_spearman) &&
+      is.finite(max_share) && max_share >= thresholds$high_overlap_fraction_microglia) {
+    return("compositionally_shared_modest_coupling")
+  }
+  if (is.finite(max_score) && is.finite(max_share) &&
+      max_score < thresholds$low_abs_spearman && max_share < thresholds$moderate_overlap_fraction_microglia &&
+      isTRUE(micro_support) && !isTRUE(shared_local)) {
+    return("microglia_roi_enriched_candidate")
+  }
+  "shared_or_ambiguous_diagnostic"
+}
+
+archetype_interpretation <- function(archetype) {
+  dplyr::case_when(
+    archetype == "strongly_coupled_and_shared" ~ "Module activity and protein composition are both shared across compartments; not microglia-restricted.",
+    archetype == "score_coupled_shared_state" ~ "Module activity tracks matched cross-compartment scores; interpret as shared state/coupled ROI signal.",
+    archetype == "compositionally_shared_modest_coupling" ~ "Module activity is not strongly coupled, but most proteins are shared across compartments; interpret as local/shared program.",
+    archetype == "microglia_roi_enriched_candidate" ~ "Low cross-compartment coupling and low protein sharing with microglia evidence; candidate microglia ROI-enriched module.",
+    TRUE ~ "Mixed or incomplete evidence; keep as diagnostic and avoid purified cell-type wording."
+  )
 }
 
 interpret_note <- function(row) {
   class <- row$microglia_roi_specificity_class
   cls <- as.character(row$microenvironment_class %||% NA_character_)
   if (identical(row$module_id, TARGET_MODULE) && cls %in% c("shared_microenvironment", "vascular_basement_membrane_ecm", "vascular_bbb_mural")) {
-    return("Best interpreted as microglia ROI-associated local ECM/microenvironment, not purified microglia-restricted.")
+    return("ECM/adhesion local microenvironment module; not purified microglia-restricted. Score coupling is modest/moderate, but protein sharing with large neuron_neuropil/soma modules is high.")
   }
   dplyr::case_when(
     class == "local_microenvironment_or_shared" ~ "Annotation and marker context indicate a local/shared ROI microenvironment diagnostic category.",
@@ -507,7 +649,35 @@ interpret_note <- function(row) {
 summary_tbl <- micro_base |>
   dplyr::left_join(annotation_slim, by = c("module_id" = "ModuleID")) |>
   dplyr::left_join(best_coupling, by = "module_id") |>
-  dplyr::left_join(best_overlap, by = "module_id") |>
+  dplyr::left_join(best_jaccard_overlap, by = "module_id") |>
+  dplyr::left_join(best_microglia_fraction_overlap, by = "module_id") |>
+  ensure_columns(c(
+    "cleaned_biological_label_short", "module_biological_label_short", "cleaned_biological_label",
+    "module_biological_label", "microenvironment_class", "microenvironment_label",
+    "neuron_neuropil_abs_spearman", "neuron_neuropil_covariate_family",
+    "neuron_neuropil_covariate_label", "neuron_neuropil_matched_covariate_spearman_p",
+    "neuron_soma_abs_spearman", "neuron_soma_covariate_family",
+    "neuron_neuropil_best_microglia_fraction_other_module_id",
+    "neuron_neuropil_best_microglia_fraction_jaccard",
+    "neuron_neuropil_best_microglia_fraction_n_overlap",
+    "neuron_neuropil_best_microglia_fraction_n_other_module_proteins",
+    "neuron_neuropil_best_microglia_fraction_overlap_fraction_microglia",
+    "neuron_neuropil_best_microglia_fraction_overlap_fraction_other",
+    "neuron_neuropil_best_jaccard_other_module_id",
+    "neuron_neuropil_best_jaccard_jaccard",
+    "neuron_neuropil_best_jaccard_overlap_fraction_microglia",
+    "neuron_soma_best_microglia_fraction_other_module_id",
+    "neuron_soma_best_microglia_fraction_jaccard",
+    "neuron_soma_best_microglia_fraction_n_overlap",
+    "neuron_soma_best_microglia_fraction_n_other_module_proteins",
+    "neuron_soma_best_microglia_fraction_overlap_fraction_microglia",
+    "neuron_soma_best_microglia_fraction_overlap_fraction_other",
+    "neuron_soma_best_jaccard_other_module_id",
+    "neuron_soma_best_jaccard_jaccard",
+    "neuron_soma_best_jaccard_overlap_fraction_microglia",
+    "canonical_microglia_evidence", "empirical_microglia_roi_evidence",
+    "microglia_state_or_activation_evidence"
+  )) |>
   dplyr::mutate(
     compact_label = compact_module_label(.data$module_id, dplyr::coalesce(clean_chr(.data$cleaned_biological_label_short), clean_chr(.data$module_biological_label_short), clean_chr(.data$endpoint_label))),
     cleaned_biological_label = dplyr::coalesce(clean_chr(.data$cleaned_biological_label), clean_chr(.data$module_biological_label), clean_chr(.data$endpoint_label)),
@@ -517,13 +687,62 @@ summary_tbl <- micro_base |>
     best_neuropil_p = .data$neuron_neuropil_matched_covariate_spearman_p,
     best_soma_abs_spearman = .data$neuron_soma_abs_spearman %||% NA_real_,
     best_soma_covariate_family = .data$neuron_soma_covariate_family %||% NA_character_,
-    best_matching_neuropil_module = .data$neuron_neuropil_other_module_id,
-    best_matching_neuropil_jaccard = .data$neuron_neuropil_jaccard,
-    best_matching_soma_module = .data$neuron_soma_other_module_id %||% NA_character_,
-    best_matching_soma_jaccard = .data$neuron_soma_jaccard %||% NA_real_
+    best_matching_neuropil_module = .data$neuron_neuropil_best_microglia_fraction_other_module_id,
+    best_matching_neuropil_jaccard = .data$neuron_neuropil_best_microglia_fraction_jaccard,
+    best_matching_neuropil_n_overlap = .data$neuron_neuropil_best_microglia_fraction_n_overlap,
+    best_matching_neuropil_n_other_module_proteins = .data$neuron_neuropil_best_microglia_fraction_n_other_module_proteins,
+    best_matching_neuropil_overlap_fraction_microglia = .data$neuron_neuropil_best_microglia_fraction_overlap_fraction_microglia,
+    best_matching_neuropil_overlap_fraction_other = .data$neuron_neuropil_best_microglia_fraction_overlap_fraction_other,
+    best_jaccard_matching_neuropil_module = .data$neuron_neuropil_best_jaccard_other_module_id,
+    best_jaccard_matching_neuropil_jaccard = .data$neuron_neuropil_best_jaccard_jaccard,
+    best_jaccard_matching_neuropil_overlap_fraction_microglia = .data$neuron_neuropil_best_jaccard_overlap_fraction_microglia,
+    best_matching_soma_module = .data$neuron_soma_best_microglia_fraction_other_module_id %||% NA_character_,
+    best_matching_soma_jaccard = .data$neuron_soma_best_microglia_fraction_jaccard %||% NA_real_,
+    best_matching_soma_n_overlap = .data$neuron_soma_best_microglia_fraction_n_overlap %||% NA_real_,
+    best_matching_soma_n_other_module_proteins = .data$neuron_soma_best_microglia_fraction_n_other_module_proteins %||% NA_real_,
+    best_matching_soma_overlap_fraction_microglia = .data$neuron_soma_best_microglia_fraction_overlap_fraction_microglia %||% NA_real_,
+    best_matching_soma_overlap_fraction_other = .data$neuron_soma_best_microglia_fraction_overlap_fraction_other %||% NA_real_,
+    best_jaccard_matching_soma_module = .data$neuron_soma_best_jaccard_other_module_id %||% NA_character_,
+    best_jaccard_matching_soma_jaccard = .data$neuron_soma_best_jaccard_jaccard %||% NA_real_,
+    best_jaccard_matching_soma_overlap_fraction_microglia = .data$neuron_soma_best_jaccard_overlap_fraction_microglia %||% NA_real_,
+    max_abs_spearman = pmax(.data$best_neuropil_abs_spearman, .data$best_soma_abs_spearman, na.rm = TRUE),
+    max_overlap_fraction_microglia = pmax(.data$best_matching_neuropil_overlap_fraction_microglia, .data$best_matching_soma_overlap_fraction_microglia, na.rm = TRUE),
+    max_score_coupling = .data$max_abs_spearman,
+    max_protein_sharing = .data$max_overlap_fraction_microglia
+  ) |>
+  dplyr::mutate(
+    max_abs_spearman = ifelse(is.infinite(.data$max_abs_spearman), NA_real_, .data$max_abs_spearman),
+    max_overlap_fraction_microglia = ifelse(is.infinite(.data$max_overlap_fraction_microglia), NA_real_, .data$max_overlap_fraction_microglia),
+    max_score_coupling = ifelse(is.infinite(.data$max_score_coupling), NA_real_, .data$max_score_coupling),
+    max_protein_sharing = ifelse(is.infinite(.data$max_protein_sharing), NA_real_, .data$max_protein_sharing)
   )
 
 summary_tbl$microglia_roi_specificity_class <- vapply(seq_len(nrow(summary_tbl)), function(i) classify_specificity(summary_tbl[i, , drop = FALSE]), character(1))
+summary_tbl$specificity_evidence_tier <- vapply(seq_len(nrow(summary_tbl)), function(i) specificity_evidence_tier(summary_tbl[i, , drop = FALSE]), character(1))
+summary_tbl$max_score_coupling_source <- vapply(seq_len(nrow(summary_tbl)), function(i) {
+  source_of_max(summary_tbl$best_neuropil_abs_spearman[[i]], summary_tbl$best_soma_abs_spearman[[i]])
+}, character(1))
+summary_tbl$max_protein_sharing_source <- vapply(seq_len(nrow(summary_tbl)), function(i) {
+  source_of_max(summary_tbl$best_matching_neuropil_overlap_fraction_microglia[[i]], summary_tbl$best_matching_soma_overlap_fraction_microglia[[i]])
+}, character(1))
+summary_tbl$best_neuropil_sharing_label <- vapply(seq_len(nrow(summary_tbl)), function(i) {
+  fmt_fraction_label(
+    summary_tbl$best_matching_neuropil_n_overlap[[i]],
+    overlap_long$n_microglia_module_proteins[match(summary_tbl$module_id[[i]], overlap_long$module_id)],
+    summary_tbl$best_matching_neuropil_overlap_fraction_microglia[[i]]
+  )
+}, character(1))
+summary_tbl$best_soma_sharing_label <- vapply(seq_len(nrow(summary_tbl)), function(i) {
+  fmt_fraction_label(
+    summary_tbl$best_matching_soma_n_overlap[[i]],
+    overlap_long$n_microglia_module_proteins[match(summary_tbl$module_id[[i]], overlap_long$module_id)],
+    summary_tbl$best_matching_soma_overlap_fraction_microglia[[i]]
+  )
+}, character(1))
+summary_tbl$specificity_archetype <- vapply(seq_len(nrow(summary_tbl)), function(i) specificity_archetype(summary_tbl[i, , drop = FALSE]), character(1))
+summary_tbl$interpretation <- archetype_interpretation(summary_tbl$specificity_archetype)
+summary_tbl$boss_interpretation <- summary_tbl$interpretation
+summary_tbl$boss_interpretation[summary_tbl$module_id == "WGCNA_#4D4D4D"] <- "ECM/adhesion local microenvironment module: modest score coupling but high protein sharing; not microglia-restricted."
 summary_tbl$interpretation_note <- vapply(seq_len(nrow(summary_tbl)), function(i) interpret_note(summary_tbl[i, , drop = FALSE]), character(1))
 
 summary_tbl <- summary_tbl |>
@@ -538,8 +757,20 @@ summary_tbl <- summary_tbl |>
     "best_neuropil_abs_spearman", "best_neuropil_covariate_family", "best_neuropil_covariate_label", "best_neuropil_p",
     "best_soma_abs_spearman", "best_soma_covariate_family",
     "best_matching_neuropil_module", "best_matching_neuropil_jaccard",
+    "best_matching_neuropil_n_overlap", "best_matching_neuropil_n_other_module_proteins",
+    "best_matching_neuropil_overlap_fraction_microglia", "best_matching_neuropil_overlap_fraction_other",
+    "best_jaccard_matching_neuropil_module", "best_jaccard_matching_neuropil_jaccard",
+    "best_jaccard_matching_neuropil_overlap_fraction_microglia",
     "best_matching_soma_module", "best_matching_soma_jaccard",
-    "microglia_roi_specificity_class", "interpretation_note",
+    "best_matching_soma_n_overlap", "best_matching_soma_n_other_module_proteins",
+    "best_matching_soma_overlap_fraction_microglia", "best_matching_soma_overlap_fraction_other",
+    "best_jaccard_matching_soma_module", "best_jaccard_matching_soma_jaccard",
+    "best_jaccard_matching_soma_overlap_fraction_microglia",
+    "max_abs_spearman", "max_overlap_fraction_microglia",
+    "max_score_coupling", "max_score_coupling_source", "max_protein_sharing", "max_protein_sharing_source",
+    "best_neuropil_sharing_label", "best_soma_sharing_label",
+    "microglia_roi_specificity_class", "specificity_evidence_tier", "specificity_archetype",
+    "interpretation", "boss_interpretation", "interpretation_note",
     dplyr::everything()
   )
 
@@ -548,17 +779,33 @@ plot_source <- summary_tbl |>
     module_id = .data$module_id,
     compact_label = .data$compact_label,
     microglia_roi_specificity_class = .data$microglia_roi_specificity_class,
+    specificity_evidence_tier = .data$specificity_evidence_tier,
+    specificity_archetype = .data$specificity_archetype,
+    max_score_coupling = .data$max_score_coupling,
+    max_score_coupling_source = .data$max_score_coupling_source,
+    max_protein_sharing = .data$max_protein_sharing,
+    max_protein_sharing_source = .data$max_protein_sharing_source,
+    best_neuropil_sharing_label = .data$best_neuropil_sharing_label,
+    best_soma_sharing_label = .data$best_soma_sharing_label,
     microenvironment_class = .data$microenvironment_class,
     microenvironment_label = .data$microenvironment_label,
     matched_neuropil_coupling = .data$best_neuropil_abs_spearman,
     matched_soma_coupling = .data$best_soma_abs_spearman,
     best_neuropil_module_overlap = .data$best_matching_neuropil_jaccard,
     best_soma_module_overlap = .data$best_matching_soma_jaccard,
+    best_neuropil_protein_sharing = .data$best_matching_neuropil_overlap_fraction_microglia,
+    best_soma_protein_sharing = .data$best_matching_soma_overlap_fraction_microglia,
     microglia_support_score = pmax(as_num(.data$canonical_microglia_evidence), as_num(.data$empirical_microglia_roi_evidence), as_num(.data$microglia_state_or_activation_evidence), na.rm = TRUE),
+    shared_ecm_evidence = .data$microenvironment_class %in% shared_local_classes,
     highlight_target = .data$module_id == TARGET_MODULE,
+    interpretation = .data$interpretation,
+    boss_interpretation = .data$boss_interpretation,
     interpretation_note = .data$interpretation_note
   ) |>
-  dplyr::mutate(microglia_support_score = ifelse(is.infinite(.data$microglia_support_score), NA_real_, .data$microglia_support_score))
+  dplyr::mutate(
+    microglia_support_score = ifelse(is.infinite(.data$microglia_support_score), NA_real_, .data$microglia_support_score),
+    microglia_roi_evidence = is.finite(.data$microglia_support_score) & .data$microglia_support_score > 0
+  )
 
 write_table_and_source(summary_tbl, PATHS$tables, PATHS$source_data, "microglia_roi_specificity_summary.csv")
 write_table_and_source(coupling_long, PATHS$tables, PATHS$source_data, "microglia_matched_neuropil_coupling_long.csv")
@@ -588,32 +835,186 @@ theme_compact <- ggplot2::theme_classic(base_size = 7, base_family = "sans") +
     plot.margin = ggplot2::margin(3, 4, 3, 3, "pt")
   )
 
+decision_labels <- c(
+  `WGCNA_#4D4D4D` = "#4D4D4D \u00b7 ECM",
+  `WGCNA_#006D2C` = "#006D2C \u00b7 RNA/RNP",
+  `WGCNA_#08519C` = "#08519C \u00b7 syn/cytosk.",
+  `WGCNA_#969696` = "#969696 \u00b7 actin",
+  `WGCNA_#1F4E79` = "#1F4E79 \u00b7 mito gene",
+  `WGCNA_#7F2704` = "#7F2704 \u00b7 Acetyl-CoA",
+  `WGCNA_#9E9AC8` = "#9E9AC8 \u00b7 translation"
+)
+
+decision_source <- summary_tbl |>
+  dplyr::transmute(
+    module_id = .data$module_id,
+    compact_label = .data$compact_label,
+    decision_label = unname(decision_labels[.data$module_id]),
+    max_score_coupling = .data$max_score_coupling,
+    max_score_coupling_source = .data$max_score_coupling_source,
+    max_protein_sharing = .data$max_protein_sharing,
+    max_protein_sharing_source = .data$max_protein_sharing_source,
+    specificity_archetype = .data$specificity_archetype,
+    microglia_roi_specificity_class = .data$microglia_roi_specificity_class,
+    best_neuropil_sharing_label = .data$best_neuropil_sharing_label,
+    best_soma_sharing_label = .data$best_soma_sharing_label,
+    boss_interpretation = .data$boss_interpretation,
+    label_key_module = .data$module_id %in% names(decision_labels)
+  ) |>
+  dplyr::filter(is.finite(.data$max_score_coupling), is.finite(.data$max_protein_sharing))
+write_csv_safe2(decision_source, file.path(PATHS$source_data, "microglia_roi_specificity_decision_map_source.csv"))
+
+decision_palette <- c(
+  strongly_coupled_and_shared = "#7A3B46",
+  score_coupled_shared_state = "#6D8FB3",
+  compositionally_shared_modest_coupling = "#176B57",
+  microglia_roi_enriched_candidate = "#C4A24D",
+  shared_or_ambiguous_diagnostic = "#8A8F93"
+)
+decision_legend_labels <- c(
+  strongly_coupled_and_shared = "Strongly coupled and shared",
+  score_coupled_shared_state = "Score-coupled shared state",
+  compositionally_shared_modest_coupling = "Shared proteins, modest coupling",
+  microglia_roi_enriched_candidate = "ROI-enriched candidate",
+  shared_or_ambiguous_diagnostic = "Ambiguous/shared diagnostic"
+)
+
+decision_plot <- ggplot2::ggplot(decision_source, ggplot2::aes(x = .data$max_score_coupling, y = .data$max_protein_sharing)) +
+  ggplot2::geom_hline(yintercept = thresholds$high_overlap_fraction_microglia, linetype = "dashed", linewidth = 0.25, colour = "#B8BFC0") +
+  ggplot2::geom_vline(xintercept = thresholds$high_abs_spearman, linetype = "dashed", linewidth = 0.25, colour = "#B8BFC0") +
+  ggplot2::annotate("label", x = 0.78, y = 0.94, label = "shared/coupled", size = 1.9, colour = "#5F6568", fill = "#F7F8F8", linewidth = 0, label.padding = grid::unit(1.4, "pt")) +
+  ggplot2::annotate("label", x = 0.18, y = 0.57, label = "shared proteins,\nmodest coupling", size = 1.9, colour = "#5F6568", fill = "#F7F8F8", linewidth = 0, label.padding = grid::unit(1.4, "pt"), lineheight = 0.9) +
+  ggplot2::annotate("label", x = 0.78, y = 0.16, label = "coupled state", size = 1.9, colour = "#5F6568", fill = "#F7F8F8", linewidth = 0, label.padding = grid::unit(1.4, "pt")) +
+  ggplot2::annotate("label", x = 0.20, y = 0.16, label = "candidate\nenriched zone", size = 1.9, colour = "#5F6568", fill = "#F7F8F8", linewidth = 0, label.padding = grid::unit(1.4, "pt"), lineheight = 0.9) +
+  ggplot2::geom_point(ggplot2::aes(fill = .data$specificity_archetype), shape = 21, size = 2.2, stroke = 0.25, colour = "white", alpha = 0.95) +
+  ggplot2::scale_fill_manual(values = decision_palette, labels = decision_legend_labels, name = NULL) +
+  ggplot2::scale_x_continuous(limits = c(0, 1), expand = ggplot2::expansion(mult = c(0.02, 0.04))) +
+  ggplot2::scale_y_continuous(limits = c(0, 1), expand = ggplot2::expansion(mult = c(0.03, 0.04))) +
+  ggplot2::labs(
+    title = "Microglia ROI specificity map",
+    x = "Matched score coupling",
+    y = "Protein sharing across compartments",
+    caption = "Low coupling + low sharing would support ROI-enriched candidates; high values indicate shared/coupled programs. No StressGroup contrasts used.\nx: max |Spearman rho| with matched neuropil/soma scores; y: max fraction of microglia-module proteins found in a matched neuron module."
+  ) +
+  theme_compact +
+  ggplot2::theme(
+    legend.position = "bottom",
+    legend.direction = "horizontal",
+    legend.key.size = grid::unit(3.5, "mm"),
+    legend.text = ggplot2::element_text(size = 5.3),
+    plot.caption = ggplot2::element_text(size = 5.3, hjust = 0, colour = "#5F6568", lineheight = 0.92, margin = ggplot2::margin(t = 3)),
+    plot.margin = ggplot2::margin(7, 8, 9, 6, "pt")
+  ) +
+  ggplot2::guides(fill = ggplot2::guide_legend(nrow = 2, byrow = TRUE, override.aes = list(size = 2.2)))
+
+decision_label_source <- decision_source |> dplyr::filter(.data$label_key_module, !is.na(.data$decision_label))
+if (requireNamespace("ggrepel", quietly = TRUE)) {
+  decision_plot <- decision_plot +
+    ggrepel::geom_text_repel(
+      data = decision_label_source,
+      ggplot2::aes(label = .data$decision_label),
+      size = 2.0,
+      segment.size = 0.18,
+      segment.colour = "#8A8F93",
+      box.padding = 0.18,
+      point.padding = 0.08,
+      force = 2,
+      force_pull = 0.35,
+      max.overlaps = Inf,
+      seed = 9
+    )
+} else {
+  decision_plot <- decision_plot +
+    ggplot2::geom_text(
+      data = decision_label_source,
+      ggplot2::aes(label = .data$decision_label),
+      size = 2.0,
+      hjust = -0.04,
+      vjust = -0.25,
+      check_overlap = TRUE
+    )
+}
+decision_files <- save_svg_pdf(decision_plot, "microglia_roi_specificity_decision_map", 55, 80)
+
 row_levels <- rev(plot_source$compact_label[order(plot_source$matched_neuropil_coupling, na.last = TRUE)])
-fingerprint_long <- plot_source |>
+fingerprint_continuous <- plot_source |>
   dplyr::mutate(compact_label = factor(.data$compact_label, levels = row_levels)) |>
   tidyr::pivot_longer(
-    cols = c("matched_neuropil_coupling", "matched_soma_coupling", "best_neuropil_module_overlap", "best_soma_module_overlap", "microglia_support_score"),
+    cols = c("matched_neuropil_coupling", "matched_soma_coupling", "best_neuropil_protein_sharing", "best_soma_protein_sharing"),
     names_to = "diagnostic_axis",
     values_to = "value"
   ) |>
   dplyr::mutate(
     value_display = pmin(pmax(.data$value, 0), 1),
+    value_type = "continuous",
+    evidence_present = NA,
     diagnostic_axis = factor(
       .data$diagnostic_axis,
-      levels = c("matched_neuropil_coupling", "matched_soma_coupling", "best_neuropil_module_overlap", "best_soma_module_overlap", "microglia_support_score"),
-      labels = c("Neuropil\ncoupling", "Soma\ncoupling", "Neuropil\noverlap", "Soma\noverlap", "Microglia\nsupport")
+      levels = c("matched_neuropil_coupling", "matched_soma_coupling", "best_neuropil_protein_sharing", "best_soma_protein_sharing"),
+      labels = c("Neuropil\nscore", "Soma\nscore", "Neuropil\nprotein", "Soma\nprotein")
     )
   )
+
+fingerprint_binary <- plot_source |>
+  dplyr::mutate(compact_label = factor(.data$compact_label, levels = row_levels)) |>
+  tidyr::pivot_longer(
+    cols = c("microglia_roi_evidence"),
+    names_to = "diagnostic_axis",
+    values_to = "evidence_present"
+  ) |>
+  dplyr::mutate(
+    value = NA_real_,
+    value_display = NA_real_,
+    value_type = "binary",
+    diagnostic_axis = factor(
+      .data$diagnostic_axis,
+      levels = c("microglia_roi_evidence"),
+      labels = c("Microglia\nROI ev.")
+    )
+  )
+
+fingerprint_long <- dplyr::bind_rows(fingerprint_continuous, fingerprint_binary)
 write_csv_safe2(fingerprint_long, file.path(PATHS$source_data, "microglia_roi_specificity_fingerprint_source.csv"))
 
-fingerprint_plot <- ggplot2::ggplot(fingerprint_long, ggplot2::aes(x = .data$diagnostic_axis, y = .data$compact_label)) +
-  ggplot2::geom_point(ggplot2::aes(size = .data$value_display, fill = .data$value_display), shape = 21, colour = "white", stroke = 0.15) +
-  ggplot2::geom_point(data = fingerprint_long |> dplyr::filter(.data$highlight_target), shape = 21, fill = NA, colour = "#176B57", size = 3.2, stroke = 0.35) +
-  ggplot2::scale_fill_gradient(low = "#E8ECEC", high = "#176B57", na.value = "grey94", limits = c(0, 1), oob = scales::squish, name = "Metric") +
+fingerprint_axis_levels <- c("Neuropil\nscore", "Soma\nscore", "Neuropil\nprotein", "Soma\nprotein", "Microglia\nROI ev.")
+fingerprint_plot <- ggplot2::ggplot(fingerprint_long, ggplot2::aes(x = factor(.data$diagnostic_axis, levels = fingerprint_axis_levels), y = .data$compact_label)) +
+  ggplot2::geom_point(
+    data = fingerprint_continuous,
+    ggplot2::aes(size = .data$value_display, fill = .data$value_display),
+    shape = 21,
+    colour = "white",
+    stroke = 0.15
+  ) +
+  ggplot2::geom_point(
+    data = fingerprint_binary |> dplyr::filter(.data$evidence_present %in% TRUE),
+    shape = 3,
+    colour = "#2D3436",
+    size = 1.8,
+    stroke = 0.35
+  ) +
+  ggplot2::geom_point(
+    data = fingerprint_continuous |> dplyr::filter(.data$highlight_target),
+    shape = 21,
+    fill = NA,
+    colour = "#176B57",
+    size = 3.2,
+    stroke = 0.35
+  ) +
+  ggplot2::scale_fill_gradient(low = "#E8ECEC", high = "#176B57", na.value = "grey94", limits = c(0, 1), oob = scales::squish, name = "Coupling / sharing") +
   ggplot2::scale_size(range = c(0.7, 3.0), limits = c(0, 1), guide = "none") +
-  ggplot2::labs(title = "Microglia ROI specificity fingerprint", x = NULL, y = NULL, caption = "Contrast-free diagnostics; cross-compartment overlap is sharing, not contamination by itself.") +
+  ggplot2::labs(title = "Microglia ROI module fingerprint", x = NULL, y = NULL, caption = "Score columns show |Spearman rho|; protein columns show fraction of microglia-module proteins found in best matching cross-compartment module. + indicates microglia ROI evidence.") +
   theme_compact +
-  ggplot2::theme(legend.position = "right")
+  ggplot2::theme(
+    legend.position = "right",
+    legend.key.height = grid::unit(12, "mm"),
+    legend.key.width = grid::unit(3, "mm"),
+    legend.title = ggplot2::element_text(size = 5.5),
+    legend.text = ggplot2::element_text(size = 5),
+    axis.text.x = ggplot2::element_text(size = 5.5),
+    plot.caption = ggplot2::element_text(size = 5.3, hjust = 0, colour = "#5F6568", lineheight = 0.92, margin = ggplot2::margin(t = 3)),
+    plot.margin = ggplot2::margin(6, 8, 8, 6, "pt")
+  ) +
+  ggplot2::guides(fill = ggplot2::guide_colourbar(barheight = grid::unit(16, "mm"), barwidth = grid::unit(3, "mm")))
 fingerprint_files <- save_svg_pdf(fingerprint_plot, "microglia_roi_specificity_fingerprint", 105, 75)
 
 coupling_plot_source <- coupling_long |>
@@ -626,40 +1027,134 @@ coupling_plot_source <- coupling_long |>
   )
 write_csv_safe2(coupling_plot_source, file.path(PATHS$source_data, "microglia_cross_compartment_coupling_heatmap_source.csv"))
 
-coupling_plot <- ggplot2::ggplot(coupling_plot_source, ggplot2::aes(x = .data$family_label, y = .data$module_label, fill = .data$plot_value)) +
+coupling_plot_display <- coupling_plot_source |>
+  dplyr::filter(isTRUE(INCLUDE_EXPLORATORY) | .data$covariate_family != "exploratory_best_spearman") |>
+  dplyr::mutate(
+    family_label = factor(
+      as.character(.data$family_label),
+      levels = unname(family_display[if (isTRUE(INCLUDE_EXPLORATORY)) c(family_order, "exploratory_best_spearman") else family_order])
+    )
+  )
+coupling_facet_labels <- c(neuron_neuropil = "Neuropil", neuron_soma = "Soma")
+
+coupling_plot <- ggplot2::ggplot(coupling_plot_display, ggplot2::aes(x = .data$family_label, y = .data$module_label, fill = .data$plot_value)) +
   ggplot2::geom_tile(colour = "white", linewidth = 0.2) +
-  ggplot2::facet_wrap(~ covariate_source_compartment, nrow = 1) +
-  ggplot2::scale_fill_gradient(low = "#F7F8F8", high = "#176B57", na.value = "grey92", limits = c(0, if (METRIC == "delta_r2") max(coupling_plot_source$plot_value, na.rm = TRUE) else 1), oob = scales::squish, name = if (METRIC == "delta_r2") "Delta adj. R2" else "|Spearman r|") +
-  ggplot2::labs(title = "Matched cross-compartment coupling", x = NULL, y = NULL, caption = "No StressGroup contrasts are used in these specificity metrics.") +
+  ggplot2::facet_wrap(~ covariate_source_compartment, nrow = 1, labeller = ggplot2::as_labeller(coupling_facet_labels)) +
+  ggplot2::scale_fill_gradient(low = "#F7F8F8", high = "#176B57", na.value = "grey92", limits = c(0, if (METRIC == "delta_r2") max(coupling_plot_display$plot_value, na.rm = TRUE) else 1), oob = scales::squish, name = if (METRIC == "delta_r2") "Delta adj. R2" else "|Spearman r|") +
+  ggplot2::labs(title = "Matched score coupling", x = NULL, y = NULL, caption = "Values show |Spearman rho| between microglia module scores and matched cross-compartment scores. No StressGroup contrasts used.") +
   theme_compact +
-  ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 35, hjust = 1), legend.position = "right")
+  ggplot2::theme(
+    plot.title = ggplot2::element_text(face = "bold", size = 8),
+    axis.text.x = ggplot2::element_text(angle = 35, hjust = 1),
+    legend.position = "right",
+    plot.caption = ggplot2::element_text(size = 5.3, hjust = 0, colour = "#5F6568", lineheight = 0.92, margin = ggplot2::margin(t = 3)),
+    plot.margin = ggplot2::margin(6, 8, 8, 6, "pt")
+  )
 coupling_files <- save_svg_pdf(coupling_plot, "microglia_cross_compartment_coupling_heatmap", 110, 75)
 
 card_files <- character()
 target_summary <- summary_tbl |> dplyr::filter(.data$module_id == TARGET_MODULE)
 if (nrow(target_summary)) {
   target_coupling <- coupling_long |>
-    dplyr::filter(.data$module_id == TARGET_MODULE, .data$covariate_source_compartment == "neuron_neuropil", .data$covariate_family %in% c(family_order, "exploratory_best_spearman")) |>
-    dplyr::mutate(family_label = factor(dplyr::coalesce(unname(family_display[.data$covariate_family]), .data$covariate_family), levels = rev(unname(family_display[c(family_order, "exploratory_best_spearman")]))))
-  write_csv_safe2(target_coupling, file.path(PATHS$source_data, "WGCNA_4D4D4D_roi_specificity_card_source.csv"))
-  card_note <- target_summary$interpretation_note[[1]]
-  card_title <- compact_module_label(TARGET_MODULE, target_summary$endpoint_label[[1]])
-  card_sub <- paste0(
-    "Class: ", target_summary$microglia_roi_specificity_class[[1]],
-    " | Annotation: ", target_summary$microenvironment_class[[1]] %||% "unavailable",
-    "\nBest neuropil overlap: ", target_summary$best_matching_neuropil_module[[1]] %||% "NA",
-    " (J=", signif(target_summary$best_matching_neuropil_jaccard[[1]], 2), ")",
-    if (isTRUE(INCLUDE_SOMA)) paste0("; best soma overlap: ", target_summary$best_matching_soma_module[[1]] %||% "NA", " (J=", signif(target_summary$best_matching_soma_jaccard[[1]], 2), ")") else ""
+    dplyr::filter(.data$module_id == TARGET_MODULE, .data$covariate_family %in% family_order) |>
+    dplyr::mutate(family_label = dplyr::coalesce(unname(family_display[.data$covariate_family]), .data$covariate_family))
+  card_note <- "Shared local ECM signal; not microglia-restricted."
+  card_title <- if (identical(TARGET_MODULE, "WGCNA_#4D4D4D")) "#4D4D4D \u00b7 ECM/adhesion" else compact_module_label(TARGET_MODULE, target_summary$endpoint_label[[1]])
+  fmt_num <- function(x, digits = 2) ifelse(is.finite(as_num(x)), format(round(as_num(x), digits), nsmall = digits), "NA")
+  fmt_pct <- function(x) ifelse(is.finite(as_num(x)), paste0(round(100 * as_num(x)), "%"), "NA")
+  share_text <- function(prefix, n_overlap, denom, frac) {
+    if (!is.finite(as_num(n_overlap)) || !is.finite(as_num(denom))) return(paste0(prefix, " NA"))
+    paste0(prefix, " ", as.integer(n_overlap), "/", as.integer(denom), " (", fmt_pct(frac), ")")
+  }
+  n_microglia_proteins <- overlap_long |>
+    dplyr::filter(.data$module_id == TARGET_MODULE) |>
+    dplyr::pull(.data$n_microglia_module_proteins) |>
+    unique()
+  n_microglia_proteins <- n_microglia_proteins[is.finite(n_microglia_proteins)][1] %||% NA_real_
+  card_metrics <- tibble::tibble(
+    metric = c("Neuropil score coupling", "Soma score coupling", "Neuropil protein sharing", "Soma protein sharing"),
+    value = c(
+      target_summary$best_neuropil_abs_spearman[[1]],
+      target_summary$best_soma_abs_spearman[[1]],
+      target_summary$best_matching_neuropil_overlap_fraction_microglia[[1]],
+      target_summary$best_matching_soma_overlap_fraction_microglia[[1]]
+    ),
+    display_value = c(
+      fmt_num(target_summary$best_neuropil_abs_spearman[[1]]),
+      fmt_num(target_summary$best_soma_abs_spearman[[1]]),
+      target_summary$best_neuropil_sharing_label[[1]],
+      target_summary$best_soma_sharing_label[[1]]
+    ),
+    matched_module = c(
+      target_summary$best_neuropil_covariate_label[[1]],
+      target_summary$best_soma_covariate_family[[1]] %||% NA_character_,
+      target_summary$best_matching_neuropil_module[[1]],
+      target_summary$best_matching_soma_module[[1]]
+    ),
+    n_overlap = c(NA_real_, NA_real_, target_summary$best_matching_neuropil_n_overlap[[1]], target_summary$best_matching_soma_n_overlap[[1]]),
+    n_microglia_module_proteins = c(NA_real_, NA_real_, n_microglia_proteins, n_microglia_proteins),
+    n_other_module_proteins = c(NA_real_, NA_real_, target_summary$best_matching_neuropil_n_other_module_proteins[[1]], target_summary$best_matching_soma_n_other_module_proteins[[1]]),
+    jaccard = c(NA_real_, NA_real_, target_summary$best_matching_neuropil_jaccard[[1]], target_summary$best_matching_soma_jaccard[[1]]),
+    interpretation_note = target_summary$boss_interpretation[[1]]
+  ) |>
+    dplyr::mutate(metric = factor(.data$metric, levels = rev(.data$metric)))
+  card_source <- dplyr::bind_rows(
+    target_coupling |> dplyr::mutate(source_section = "predeclared_score_coupling"),
+    card_metrics |> dplyr::mutate(source_section = "card_summary_metric")
   )
-  card_plot <- ggplot2::ggplot(target_coupling, ggplot2::aes(x = .data$abs_spearman, y = .data$family_label)) +
-    ggplot2::geom_col(width = 0.65, fill = "#176B57") +
+  write_csv_safe2(card_source, file.path(PATHS$source_data, "WGCNA_4D4D4D_roi_specificity_card_source.csv"))
+  card_sub <- "Local ECM / shared microenvironment"
+  card_plot <- ggplot2::ggplot(card_metrics, ggplot2::aes(x = .data$value, y = .data$metric)) +
+    ggplot2::geom_col(width = 0.62, fill = "#176B57") +
+    ggplot2::geom_text(ggplot2::aes(label = .data$display_value), hjust = -0.08, size = 2.0, colour = "#2D3436") +
     ggplot2::geom_vline(xintercept = thresholds$high_abs_spearman, linetype = "dashed", colour = "#C94A5A", linewidth = 0.25) +
-    ggplot2::scale_x_continuous(limits = c(0, 1), expand = ggplot2::expansion(mult = c(0, 0.04))) +
-    ggplot2::labs(title = card_title, subtitle = card_sub, x = "|Spearman r| with matched neuron_neuropil", y = NULL, caption = card_note) +
+    ggplot2::annotate("label", x = thresholds$high_abs_spearman + 0.055, y = 4.48, label = "high", size = 1.8, colour = "#C94A5A", fill = "white", linewidth = 0, label.padding = grid::unit(0.8, "pt"), hjust = 0) +
+    ggplot2::scale_x_continuous(limits = c(0, 1.08), breaks = c(0, 0.5, 1), expand = ggplot2::expansion(mult = c(0, 0.01))) +
+    ggplot2::labs(title = card_title, subtitle = card_sub, x = "Score coupling or protein sharing", y = NULL, caption = card_note) +
     theme_compact +
-    ggplot2::theme(plot.subtitle = ggplot2::element_text(size = 6, colour = "#5F6568"), plot.caption = ggplot2::element_text(size = 5.3, hjust = 0, colour = "#5F6568"))
+    ggplot2::theme(
+      plot.subtitle = ggplot2::element_text(size = 6.2, colour = "#5F6568", margin = ggplot2::margin(b = 3)),
+      plot.caption = ggplot2::element_text(size = 5.5, hjust = 0, colour = "#5F6568", margin = ggplot2::margin(t = 3)),
+      plot.margin = ggplot2::margin(7, 12, 7, 7, "pt")
+    )
   card_files <- save_svg_pdf(card_plot, "WGCNA_4D4D4D_roi_specificity_card", 105, 70)
 }
+
+dir_create(REPORT_DIR)
+interpretation_guide <- file.path(REPORT_DIR, "microglia_roi_specificity_interpretation_guide.md")
+writeLines(
+  c(
+    "# How to interpret microglia ROI specificity diagnostics",
+    "",
+    "## What the analysis asks",
+    "",
+    "This analysis does not test stress-group effects. It asks whether microglia WGCNA modules look specific to the microglia ROI dataset or are shared/coupled with matched neuron-neuropil and neuron-soma measurements.",
+    "",
+    "## Two independent axes",
+    "",
+    "- Score coupling = module activity moves with matched cross-compartment scores.",
+    "- Protein sharing = the same proteins are present in cross-compartment modules.",
+    "",
+    "## How to read the specificity map",
+    "",
+    "- Low coupling + low sharing = best candidate enriched zone.",
+    "- High coupling = shared/coupled state.",
+    "- High protein sharing = shared/local composition.",
+    "- High both = strongly shared/coupled.",
+    "",
+    "## Main result",
+    "",
+    "Most microglia WGCNA modules are best interpreted as shared/local ROI programs rather than purified microglia-restricted modules.",
+    "",
+    "Most microglia WGCNA modules are shared/local ROI programs rather than purified microglia-restricted modules. The ECM/adhesion module is not highly score-coupled to matched neuropil/soma, but its proteins are strongly shared across compartments, supporting a local ECM/shared microenvironment interpretation.",
+    "",
+    "## #4D4D4D interpretation",
+    "",
+    "The ECM/adhesion module shows modest score coupling but high protein sharing with neuron-neuropil/soma modules, supporting a local ECM/shared microenvironment interpretation rather than microglia specificity."
+  ),
+  interpretation_guide,
+  useBytes = TRUE
+)
 
 write_run_manifest(
   file.path(PATHS$logs, "run_manifest.yml"),
@@ -667,15 +1162,24 @@ write_run_manifest(
   outputs = list(
     tables = PATHS$tables,
     source_data = PATHS$source_data,
-    figures = c(fingerprint_files, coupling_files, card_files)
+    figures = c(decision_files, fingerprint_files, coupling_files, card_files),
+    reports = interpretation_guide
   ),
   parameters = list(
     dataset = "microglia",
     target_module = TARGET_MODULE,
     include_soma = INCLUDE_SOMA,
+    include_exploratory = INCLUDE_EXPLORATORY,
     metric = METRIC,
     thresholds = thresholds,
+    specificity_archetype_thresholds = list(
+      high_score_coupling = thresholds$high_abs_spearman,
+      high_protein_sharing = thresholds$high_overlap_fraction_microglia,
+      low_score_coupling = thresholds$low_abs_spearman,
+      low_protein_sharing = thresholds$moderate_overlap_fraction_microglia
+    ),
     model = "module_score ~ matched_cross_compartment_score + SpatialLabel + Sex + Batch + optional (1 | AnimalID)",
+    stressgroup_contrasts_used = FALSE,
     stressgroup_contrast_models_refit = FALSE,
     wgcna_recomputed = FALSE
   ),
