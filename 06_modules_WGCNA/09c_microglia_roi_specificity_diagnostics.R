@@ -59,8 +59,8 @@ CONFIG_FILE <- repo_path("config", "microglia_neuropil_independence.yml")
 ANNOTATION_FILE <- path_results("tables", "06_modules_WGCNA", "module_annotation", "microglia", "WGCNA_module_biological_annotation.csv")
 TARGETED_FILE <- path_results("tables", "06_modules_WGCNA", "module_annotation", "microglia", "WGCNA_module_targeted_signature_overlap_details.csv")
 LABEL_LOOKUP_FILE <- path_results("tables", "06_modules_WGCNA", "interpretable_summary", "microglia", "WGCNA_final_label_lookup.csv")
-include_soma_default <- file.exists(FILES_SOMA$state) && file.exists(FILES_SOMA$definitions)
-INCLUDE_SOMA <- bool_arg("--include-soma", include_soma_default, args = runtime$args) && include_soma_default
+soma_available <- file.exists(FILES_SOMA$state) && file.exists(FILES_SOMA$definitions)
+INCLUDE_SOMA <- bool_arg("--include-soma", FALSE, args = runtime$args) && soma_available
 
 inputs <- list(
   config = CONFIG_FILE,
@@ -85,6 +85,7 @@ if (isTRUE(runtime$dry_run)) {
   dry_run_line("Target module", TARGET_MODULE)
   dry_run_line("Metric", METRIC)
   dry_run_line("Include neuron_soma", INCLUDE_SOMA)
+  dry_run_line("Neuron_soma files available", soma_available)
   dry_run_line("Include exploratory in default figures", INCLUDE_EXPLORATORY)
   for (nm in names(required_inputs)) dry_run_line(nm, required_inputs[[nm]], if (file.exists(required_inputs[[nm]])) "PASS" else "FAIL")
   for (nm in setdiff(names(inputs), names(required_inputs))) dry_run_line(nm, inputs[[nm]], if (file.exists(inputs[[nm]])) "PASS" else "WARN")
@@ -836,13 +837,13 @@ theme_compact <- ggplot2::theme_classic(base_size = 7, base_family = "sans") +
   )
 
 decision_labels <- c(
-  `WGCNA_#4D4D4D` = "#4D4D4D \u00b7 ECM",
-  `WGCNA_#006D2C` = "#006D2C \u00b7 RNA/RNP",
-  `WGCNA_#08519C` = "#08519C \u00b7 syn/cytosk.",
-  `WGCNA_#969696` = "#969696 \u00b7 actin",
-  `WGCNA_#1F4E79` = "#1F4E79 \u00b7 mito gene",
-  `WGCNA_#7F2704` = "#7F2704 \u00b7 Acetyl-CoA",
-  `WGCNA_#9E9AC8` = "#9E9AC8 \u00b7 translation"
+  `WGCNA_#4D4D4D` = "#4D4D4D ECM",
+  `WGCNA_#006D2C` = "#006D2C RNA",
+  `WGCNA_#08519C` = "#08519C syn/cyto",
+  `WGCNA_#969696` = "#969696 actin",
+  `WGCNA_#1F4E79` = "#1F4E79 mito",
+  `WGCNA_#7F2704` = "#7F2704 AcCoA",
+  `WGCNA_#9E9AC8` = "#9E9AC8 transl."
 )
 
 decision_source <- summary_tbl |>
@@ -850,62 +851,75 @@ decision_source <- summary_tbl |>
     module_id = .data$module_id,
     compact_label = .data$compact_label,
     decision_label = unname(decision_labels[.data$module_id]),
+    neuropil_score_coupling = .data$best_neuropil_abs_spearman,
+    neuropil_protein_sharing = .data$best_matching_neuropil_overlap_fraction_microglia,
     max_score_coupling = .data$max_score_coupling,
     max_score_coupling_source = .data$max_score_coupling_source,
     max_protein_sharing = .data$max_protein_sharing,
     max_protein_sharing_source = .data$max_protein_sharing_source,
     specificity_archetype = .data$specificity_archetype,
+    neuropil_specificity_archetype = dplyr::case_when(
+      .data$best_neuropil_abs_spearman >= thresholds$high_abs_spearman &
+        .data$best_matching_neuropil_overlap_fraction_microglia >= thresholds$high_overlap_fraction_microglia ~ "Strongly neuropil-coupled/shared",
+      .data$best_neuropil_abs_spearman >= thresholds$high_abs_spearman &
+        .data$best_matching_neuropil_overlap_fraction_microglia < thresholds$high_overlap_fraction_microglia ~ "Neuropil score-coupled",
+      .data$best_neuropil_abs_spearman < thresholds$high_abs_spearman &
+        .data$best_matching_neuropil_overlap_fraction_microglia >= thresholds$high_overlap_fraction_microglia ~ "Shared proteins, modest coupling",
+      .data$best_neuropil_abs_spearman < thresholds$low_abs_spearman &
+        .data$best_matching_neuropil_overlap_fraction_microglia < thresholds$moderate_overlap_fraction_microglia &
+        pmax(as_num(.data$canonical_microglia_evidence), as_num(.data$empirical_microglia_roi_evidence), as_num(.data$microglia_state_or_activation_evidence), na.rm = TRUE) > 0 &
+        !(.data$microenvironment_class %in% shared_local_classes) ~ "Microglia ROI-enriched candidate",
+      TRUE ~ "Ambiguous low-neuropil diagnostic"
+    ),
     microglia_roi_specificity_class = .data$microglia_roi_specificity_class,
     best_neuropil_sharing_label = .data$best_neuropil_sharing_label,
     best_soma_sharing_label = .data$best_soma_sharing_label,
     boss_interpretation = .data$boss_interpretation,
     label_key_module = .data$module_id %in% names(decision_labels)
   ) |>
-  dplyr::filter(is.finite(.data$max_score_coupling), is.finite(.data$max_protein_sharing))
+  dplyr::filter(is.finite(.data$neuropil_score_coupling), is.finite(.data$neuropil_protein_sharing))
 write_csv_safe2(decision_source, file.path(PATHS$source_data, "microglia_roi_specificity_decision_map_source.csv"))
 
 decision_palette <- c(
-  strongly_coupled_and_shared = "#7A3B46",
-  score_coupled_shared_state = "#6D8FB3",
-  compositionally_shared_modest_coupling = "#176B57",
-  microglia_roi_enriched_candidate = "#C4A24D",
-  shared_or_ambiguous_diagnostic = "#8A8F93"
-)
-decision_legend_labels <- c(
-  strongly_coupled_and_shared = "Strongly coupled and shared",
-  score_coupled_shared_state = "Score-coupled shared state",
-  compositionally_shared_modest_coupling = "Shared proteins, modest coupling",
-  microglia_roi_enriched_candidate = "ROI-enriched candidate",
-  shared_or_ambiguous_diagnostic = "Ambiguous/shared diagnostic"
+  `Strongly neuropil-coupled/shared` = "#7A3B46",
+  `Neuropil score-coupled` = "#6D8FB3",
+  `Shared proteins, modest coupling` = "#176B57",
+  `Microglia ROI-enriched candidate` = "#C4A24D",
+  `Ambiguous low-neuropil diagnostic` = "#8A8F93"
 )
 
-decision_plot <- ggplot2::ggplot(decision_source, ggplot2::aes(x = .data$max_score_coupling, y = .data$max_protein_sharing)) +
-  ggplot2::geom_hline(yintercept = thresholds$high_overlap_fraction_microglia, linetype = "dashed", linewidth = 0.25, colour = "#B8BFC0") +
-  ggplot2::geom_vline(xintercept = thresholds$high_abs_spearman, linetype = "dashed", linewidth = 0.25, colour = "#B8BFC0") +
-  ggplot2::annotate("label", x = 0.78, y = 0.94, label = "shared/coupled", size = 1.9, colour = "#5F6568", fill = "#F7F8F8", linewidth = 0, label.padding = grid::unit(1.4, "pt")) +
-  ggplot2::annotate("label", x = 0.18, y = 0.57, label = "shared proteins,\nmodest coupling", size = 1.9, colour = "#5F6568", fill = "#F7F8F8", linewidth = 0, label.padding = grid::unit(1.4, "pt"), lineheight = 0.9) +
-  ggplot2::annotate("label", x = 0.78, y = 0.16, label = "coupled state", size = 1.9, colour = "#5F6568", fill = "#F7F8F8", linewidth = 0, label.padding = grid::unit(1.4, "pt")) +
-  ggplot2::annotate("label", x = 0.20, y = 0.16, label = "candidate\nenriched zone", size = 1.9, colour = "#5F6568", fill = "#F7F8F8", linewidth = 0, label.padding = grid::unit(1.4, "pt"), lineheight = 0.9) +
-  ggplot2::geom_point(ggplot2::aes(fill = .data$specificity_archetype), shape = 21, size = 2.2, stroke = 0.25, colour = "white", alpha = 0.95) +
-  ggplot2::scale_fill_manual(values = decision_palette, labels = decision_legend_labels, name = NULL) +
-  ggplot2::scale_x_continuous(limits = c(0, 1), expand = ggplot2::expansion(mult = c(0.02, 0.04))) +
-  ggplot2::scale_y_continuous(limits = c(0, 1), expand = ggplot2::expansion(mult = c(0.03, 0.04))) +
+decision_plot <- ggplot2::ggplot(decision_source, ggplot2::aes(x = .data$neuropil_score_coupling, y = .data$neuropil_protein_sharing)) +
+  ggplot2::geom_hline(yintercept = thresholds$high_overlap_fraction_microglia, linetype = "dashed", linewidth = 0.18, colour = "#C6CCCD") +
+  ggplot2::geom_vline(xintercept = thresholds$high_abs_spearman, linetype = "dashed", linewidth = 0.18, colour = "#C6CCCD") +
+  ggplot2::annotate("label", x = 0.80, y = 0.93, label = "shared/coupled", size = 1.55, colour = "#6A7072", fill = "#FAFBFB", linewidth = 0, label.padding = grid::unit(0.8, "pt")) +
+  ggplot2::annotate("label", x = 0.18, y = 0.61, label = "shared proteins\nmodest coupling", size = 1.55, colour = "#6A7072", fill = "#FAFBFB", linewidth = 0, label.padding = grid::unit(0.8, "pt"), lineheight = 0.86) +
+  ggplot2::annotate("label", x = 0.80, y = 0.13, label = "coupled state", size = 1.55, colour = "#6A7072", fill = "#FAFBFB", linewidth = 0, label.padding = grid::unit(0.8, "pt")) +
+  ggplot2::annotate("label", x = 0.22, y = 0.14, label = "low neuropil\ncoupling/sharing\ncandidate only with\nmicroglia evidence", size = 1.45, colour = "#6A7072", fill = "#FAFBFB", linewidth = 0, label.padding = grid::unit(0.8, "pt"), lineheight = 0.84) +
+  ggplot2::geom_point(ggplot2::aes(fill = .data$neuropil_specificity_archetype), shape = 21, size = 1.75, stroke = 0.22, colour = "white", alpha = 0.95) +
+  ggplot2::scale_fill_manual(values = decision_palette, name = NULL) +
+  ggplot2::scale_x_continuous(limits = c(0, 1), breaks = c(0, 0.5, 1), expand = ggplot2::expansion(mult = c(0.02, 0.04))) +
+  ggplot2::scale_y_continuous(limits = c(0, 1), breaks = c(0, 0.5, 1), expand = ggplot2::expansion(mult = c(0.03, 0.04))) +
   ggplot2::labs(
     title = "Microglia ROI specificity map",
-    x = "Matched score coupling",
-    y = "Protein sharing across compartments",
-    caption = "Low coupling + low sharing would support ROI-enriched candidates; high values indicate shared/coupled programs. No StressGroup contrasts used.\nx: max |Spearman rho| with matched neuropil/soma scores; y: max fraction of microglia-module proteins found in a matched neuron module."
+    x = "Matched neuropil score coupling",
+    y = "Protein sharing with neuropil modules",
+    caption = "x: |Spearman rho| with matched neuron-neuropil scores.\ny: fraction of module proteins in the best matching neuropil module.\nLower-left needs microglia evidence plus no shared/local annotation.\nNo StressGroup contrasts used."
   ) +
   theme_compact +
   ggplot2::theme(
+    plot.title = ggplot2::element_text(face = "bold", size = 7.6),
+    axis.title = ggplot2::element_text(size = 6.2, colour = "#2D3436"),
+    axis.text = ggplot2::element_text(size = 5.2, colour = "#2D3436"),
     legend.position = "bottom",
     legend.direction = "horizontal",
-    legend.key.size = grid::unit(3.5, "mm"),
-    legend.text = ggplot2::element_text(size = 5.3),
-    plot.caption = ggplot2::element_text(size = 5.3, hjust = 0, colour = "#5F6568", lineheight = 0.92, margin = ggplot2::margin(t = 3)),
-    plot.margin = ggplot2::margin(7, 8, 9, 6, "pt")
+    legend.key.size = grid::unit(2.8, "mm"),
+    legend.text = ggplot2::element_text(size = 4.7),
+    legend.margin = ggplot2::margin(t = -2, b = -2, unit = "pt"),
+    legend.box.margin = ggplot2::margin(t = -2, b = -2, unit = "pt"),
+    plot.caption = ggplot2::element_text(size = 4.65, hjust = 0, colour = "#5F6568", lineheight = 0.90, margin = ggplot2::margin(t = 2)),
+    plot.margin = ggplot2::margin(5, 5, 5, 5, "pt")
   ) +
-  ggplot2::guides(fill = ggplot2::guide_legend(nrow = 2, byrow = TRUE, override.aes = list(size = 2.2)))
+  ggplot2::guides(fill = ggplot2::guide_legend(nrow = 2, byrow = TRUE, override.aes = list(size = 1.8)))
 
 decision_label_source <- decision_source |> dplyr::filter(.data$label_key_module, !is.na(.data$decision_label))
 if (requireNamespace("ggrepel", quietly = TRUE)) {
@@ -913,12 +927,12 @@ if (requireNamespace("ggrepel", quietly = TRUE)) {
     ggrepel::geom_text_repel(
       data = decision_label_source,
       ggplot2::aes(label = .data$decision_label),
-      size = 2.0,
-      segment.size = 0.18,
+      size = 1.65,
+      segment.size = 0.14,
       segment.colour = "#8A8F93",
-      box.padding = 0.18,
-      point.padding = 0.08,
-      force = 2,
+      box.padding = 0.12,
+      point.padding = 0.06,
+      force = 2.8,
       force_pull = 0.35,
       max.overlaps = Inf,
       seed = 9
@@ -928,19 +942,19 @@ if (requireNamespace("ggrepel", quietly = TRUE)) {
     ggplot2::geom_text(
       data = decision_label_source,
       ggplot2::aes(label = .data$decision_label),
-      size = 2.0,
+      size = 1.65,
       hjust = -0.04,
       vjust = -0.25,
       check_overlap = TRUE
     )
 }
-decision_files <- save_svg_pdf(decision_plot, "microglia_roi_specificity_decision_map", 55, 80)
+decision_files <- save_svg_pdf(decision_plot, "microglia_roi_specificity_decision_map", 55, 60)
 
 row_levels <- rev(plot_source$compact_label[order(plot_source$matched_neuropil_coupling, na.last = TRUE)])
 fingerprint_continuous <- plot_source |>
   dplyr::mutate(compact_label = factor(.data$compact_label, levels = row_levels)) |>
   tidyr::pivot_longer(
-    cols = c("matched_neuropil_coupling", "matched_soma_coupling", "best_neuropil_protein_sharing", "best_soma_protein_sharing"),
+    cols = c("matched_neuropil_coupling", "best_neuropil_protein_sharing"),
     names_to = "diagnostic_axis",
     values_to = "value"
   ) |>
@@ -950,8 +964,8 @@ fingerprint_continuous <- plot_source |>
     evidence_present = NA,
     diagnostic_axis = factor(
       .data$diagnostic_axis,
-      levels = c("matched_neuropil_coupling", "matched_soma_coupling", "best_neuropil_protein_sharing", "best_soma_protein_sharing"),
-      labels = c("Neuropil\nscore", "Soma\nscore", "Neuropil\nprotein", "Soma\nprotein")
+      levels = c("matched_neuropil_coupling", "best_neuropil_protein_sharing"),
+      labels = c("Neuropil\nscore", "Neuropil\nprotein")
     )
   )
 
@@ -976,7 +990,7 @@ fingerprint_binary <- plot_source |>
 fingerprint_long <- dplyr::bind_rows(fingerprint_continuous, fingerprint_binary)
 write_csv_safe2(fingerprint_long, file.path(PATHS$source_data, "microglia_roi_specificity_fingerprint_source.csv"))
 
-fingerprint_axis_levels <- c("Neuropil\nscore", "Soma\nscore", "Neuropil\nprotein", "Soma\nprotein", "Microglia\nROI ev.")
+fingerprint_axis_levels <- c("Neuropil\nscore", "Neuropil\nprotein", "Microglia\nROI ev.")
 fingerprint_plot <- ggplot2::ggplot(fingerprint_long, ggplot2::aes(x = factor(.data$diagnostic_axis, levels = fingerprint_axis_levels), y = .data$compact_label)) +
   ggplot2::geom_point(
     data = fingerprint_continuous,
@@ -1016,6 +1030,62 @@ fingerprint_plot <- ggplot2::ggplot(fingerprint_long, ggplot2::aes(x = factor(.d
   ) +
   ggplot2::guides(fill = ggplot2::guide_colourbar(barheight = grid::unit(16, "mm"), barwidth = grid::unit(3, "mm")))
 fingerprint_files <- save_svg_pdf(fingerprint_plot, "microglia_roi_specificity_fingerprint", 105, 75)
+
+fingerprint_with_soma_files <- character()
+if (isTRUE(INCLUDE_SOMA)) {
+  fingerprint_with_soma_continuous <- plot_source |>
+    dplyr::mutate(compact_label = factor(.data$compact_label, levels = row_levels)) |>
+    tidyr::pivot_longer(
+      cols = c("matched_neuropil_coupling", "matched_soma_coupling", "best_neuropil_protein_sharing", "best_soma_protein_sharing"),
+      names_to = "diagnostic_axis",
+      values_to = "value"
+    ) |>
+    dplyr::mutate(
+      value_display = pmin(pmax(.data$value, 0), 1),
+      value_type = "continuous",
+      evidence_present = NA,
+      diagnostic_axis = factor(
+        .data$diagnostic_axis,
+        levels = c("matched_neuropil_coupling", "matched_soma_coupling", "best_neuropil_protein_sharing", "best_soma_protein_sharing"),
+        labels = c("Neuropil\nscore", "Soma\nscore", "Neuropil\nprotein", "Soma\nprotein")
+      )
+    )
+  fingerprint_with_soma_binary <- fingerprint_binary
+  fingerprint_with_soma_long <- dplyr::bind_rows(fingerprint_with_soma_continuous, fingerprint_with_soma_binary)
+  write_csv_safe2(fingerprint_with_soma_long, file.path(PATHS$source_data, "microglia_roi_specificity_fingerprint_with_soma_source.csv"))
+  fingerprint_with_soma_axis_levels <- c("Neuropil\nscore", "Soma\nscore", "Neuropil\nprotein", "Soma\nprotein", "Microglia\nROI ev.")
+  fingerprint_with_soma_plot <- ggplot2::ggplot(fingerprint_with_soma_long, ggplot2::aes(x = factor(.data$diagnostic_axis, levels = fingerprint_with_soma_axis_levels), y = .data$compact_label)) +
+    ggplot2::geom_point(
+      data = fingerprint_with_soma_continuous,
+      ggplot2::aes(size = .data$value_display, fill = .data$value_display),
+      shape = 21,
+      colour = "white",
+      stroke = 0.15
+    ) +
+    ggplot2::geom_point(
+      data = fingerprint_with_soma_binary |> dplyr::filter(.data$evidence_present %in% TRUE),
+      shape = 3,
+      colour = "#2D3436",
+      size = 1.8,
+      stroke = 0.35
+    ) +
+    ggplot2::scale_fill_gradient(low = "#E8ECEC", high = "#176B57", na.value = "grey94", limits = c(0, 1), oob = scales::squish, name = "Coupling / sharing") +
+    ggplot2::scale_size(range = c(0.7, 3.0), limits = c(0, 1), guide = "none") +
+    ggplot2::labs(title = "Microglia ROI module fingerprint with soma context", x = NULL, y = NULL, caption = "Score columns show |Spearman rho|; protein columns show fraction of microglia-module proteins found in best matching cross-compartment module. + indicates microglia ROI evidence.") +
+    theme_compact +
+    ggplot2::theme(
+      legend.position = "right",
+      legend.key.height = grid::unit(12, "mm"),
+      legend.key.width = grid::unit(3, "mm"),
+      legend.title = ggplot2::element_text(size = 5.5),
+      legend.text = ggplot2::element_text(size = 5),
+      axis.text.x = ggplot2::element_text(size = 5.5),
+      plot.caption = ggplot2::element_text(size = 5.3, hjust = 0, colour = "#5F6568", lineheight = 0.92, margin = ggplot2::margin(t = 3)),
+      plot.margin = ggplot2::margin(6, 8, 8, 6, "pt")
+    ) +
+    ggplot2::guides(fill = ggplot2::guide_colourbar(barheight = grid::unit(16, "mm"), barwidth = grid::unit(3, "mm")))
+  fingerprint_with_soma_files <- save_svg_pdf(fingerprint_with_soma_plot, "microglia_roi_specificity_fingerprint_with_soma", 105, 75)
+}
 
 coupling_plot_source <- coupling_long |>
   dplyr::filter(.data$covariate_family %in% c(family_order, "exploratory_best_spearman")) |>
@@ -1058,7 +1128,7 @@ if (nrow(target_summary)) {
   target_coupling <- coupling_long |>
     dplyr::filter(.data$module_id == TARGET_MODULE, .data$covariate_family %in% family_order) |>
     dplyr::mutate(family_label = dplyr::coalesce(unname(family_display[.data$covariate_family]), .data$covariate_family))
-  card_note <- "Shared local ECM signal; not microglia-restricted."
+  card_note <- "Shared local ECM signal in the microglia ROI; not microglia-restricted."
   card_title <- if (identical(TARGET_MODULE, "WGCNA_#4D4D4D")) "#4D4D4D \u00b7 ECM/adhesion" else compact_module_label(TARGET_MODULE, target_summary$endpoint_label[[1]])
   fmt_num <- function(x, digits = 2) ifelse(is.finite(as_num(x)), format(round(as_num(x), digits), nsmall = digits), "NA")
   fmt_pct <- function(x) ifelse(is.finite(as_num(x)), paste0(round(100 * as_num(x)), "%"), "NA")
@@ -1071,7 +1141,7 @@ if (nrow(target_summary)) {
     dplyr::pull(.data$n_microglia_module_proteins) |>
     unique()
   n_microglia_proteins <- n_microglia_proteins[is.finite(n_microglia_proteins)][1] %||% NA_real_
-  card_metrics <- tibble::tibble(
+  card_metrics_all <- tibble::tibble(
     metric = c("Neuropil score coupling", "Soma score coupling", "Neuropil protein sharing", "Soma protein sharing"),
     value = c(
       target_summary$best_neuropil_abs_spearman[[1]],
@@ -1098,9 +1168,12 @@ if (nrow(target_summary)) {
     interpretation_note = target_summary$boss_interpretation[[1]]
   ) |>
     dplyr::mutate(metric = factor(.data$metric, levels = rev(.data$metric)))
+  card_metrics <- card_metrics_all |>
+    dplyr::filter(as.character(.data$metric) %in% c("Neuropil score coupling", "Neuropil protein sharing")) |>
+    dplyr::mutate(metric = factor(as.character(.data$metric), levels = rev(c("Neuropil score coupling", "Neuropil protein sharing"))))
   card_source <- dplyr::bind_rows(
     target_coupling |> dplyr::mutate(source_section = "predeclared_score_coupling"),
-    card_metrics |> dplyr::mutate(source_section = "card_summary_metric")
+    card_metrics_all |> dplyr::mutate(source_section = "card_summary_metric")
   )
   write_csv_safe2(card_source, file.path(PATHS$source_data, "WGCNA_4D4D4D_roi_specificity_card_source.csv"))
   card_sub <- "Local ECM / shared microenvironment"
@@ -1108,7 +1181,7 @@ if (nrow(target_summary)) {
     ggplot2::geom_col(width = 0.62, fill = "#176B57") +
     ggplot2::geom_text(ggplot2::aes(label = .data$display_value), hjust = -0.08, size = 2.0, colour = "#2D3436") +
     ggplot2::geom_vline(xintercept = thresholds$high_abs_spearman, linetype = "dashed", colour = "#C94A5A", linewidth = 0.25) +
-    ggplot2::annotate("label", x = thresholds$high_abs_spearman + 0.055, y = 4.48, label = "high", size = 1.8, colour = "#C94A5A", fill = "white", linewidth = 0, label.padding = grid::unit(0.8, "pt"), hjust = 0) +
+    ggplot2::annotate("label", x = thresholds$high_abs_spearman + 0.055, y = 2.35, label = "high", size = 1.8, colour = "#C94A5A", fill = "white", linewidth = 0, label.padding = grid::unit(0.8, "pt"), hjust = 0) +
     ggplot2::scale_x_continuous(limits = c(0, 1.08), breaks = c(0, 0.5, 1), expand = ggplot2::expansion(mult = c(0, 0.01))) +
     ggplot2::labs(title = card_title, subtitle = card_sub, x = "Score coupling or protein sharing", y = NULL, caption = card_note) +
     theme_compact +
@@ -1118,6 +1191,22 @@ if (nrow(target_summary)) {
       plot.margin = ggplot2::margin(7, 12, 7, 7, "pt")
     )
   card_files <- save_svg_pdf(card_plot, "WGCNA_4D4D4D_roi_specificity_card", 105, 70)
+  if (isTRUE(INCLUDE_SOMA)) {
+    card_with_soma_plot <- ggplot2::ggplot(card_metrics_all, ggplot2::aes(x = .data$value, y = .data$metric)) +
+      ggplot2::geom_col(width = 0.62, fill = "#176B57") +
+      ggplot2::geom_text(ggplot2::aes(label = .data$display_value), hjust = -0.08, size = 2.0, colour = "#2D3436") +
+      ggplot2::geom_vline(xintercept = thresholds$high_abs_spearman, linetype = "dashed", colour = "#C94A5A", linewidth = 0.25) +
+      ggplot2::annotate("label", x = thresholds$high_abs_spearman + 0.055, y = 4.48, label = "high", size = 1.8, colour = "#C94A5A", fill = "white", linewidth = 0, label.padding = grid::unit(0.8, "pt"), hjust = 0) +
+      ggplot2::scale_x_continuous(limits = c(0, 1.08), breaks = c(0, 0.5, 1), expand = ggplot2::expansion(mult = c(0, 0.01))) +
+      ggplot2::labs(title = card_title, subtitle = paste0(card_sub, " + soma context"), x = "Score coupling or protein sharing", y = NULL, caption = card_note) +
+      theme_compact +
+      ggplot2::theme(
+        plot.subtitle = ggplot2::element_text(size = 6.2, colour = "#5F6568", margin = ggplot2::margin(b = 3)),
+        plot.caption = ggplot2::element_text(size = 5.5, hjust = 0, colour = "#5F6568", margin = ggplot2::margin(t = 3)),
+        plot.margin = ggplot2::margin(7, 12, 7, 7, "pt")
+      )
+    card_files <- c(card_files, save_svg_pdf(card_with_soma_plot, "WGCNA_4D4D4D_roi_specificity_card_with_soma", 105, 70))
+  }
 }
 
 dir_create(REPORT_DIR)
@@ -1129,6 +1218,10 @@ writeLines(
     "## What the analysis asks",
     "",
     "This analysis does not test stress-group effects. It asks whether microglia WGCNA modules look specific to the microglia ROI dataset or are shared/coupled with matched neuron-neuropil and neuron-soma measurements.",
+    "",
+    "The primary specificity diagnostic compares microglia ROI modules to matched neuron-neuropil signals from the same AnimalID + Region.",
+    "",
+    "Soma comparisons are optional cross-compartment context and are not required for the main neuropil-specific interpretation.",
     "",
     "## Two independent axes",
     "",
@@ -1162,7 +1255,7 @@ write_run_manifest(
   outputs = list(
     tables = PATHS$tables,
     source_data = PATHS$source_data,
-    figures = c(decision_files, fingerprint_files, coupling_files, card_files),
+    figures = c(decision_files, fingerprint_files, fingerprint_with_soma_files, coupling_files, card_files),
     reports = interpretation_guide
   ),
   parameters = list(
