@@ -466,6 +466,9 @@ stages:
           - "results/tables/06_modules_WGCNA/microglia_roi_specificity/microglia/"
           - "results/source_data/06_modules_WGCNA/microglia_roi_specificity/microglia/"
           - "results/figures/06_modules_WGCNA/microglia_roi_specificity/microglia/"
+          - "results/reports/06_modules_WGCNA/microglia_roi_specificity/microglia/"
+          - "results/figures/06_modules_WGCNA/microglia_roi_specificity/microglia/microglia_roi_specificity_decision_map.svg"
+          - "results/figures/06_modules_WGCNA/microglia_roi_specificity/microglia/microglia_roi_specificity_decision_map.pdf"
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Contrast-free diagnostic of microglia ROI module specificity, matched neuropil/soma coupling, and cross-compartment module sharing. Does not test StressGroup effects and does not enable purified cell-type claims without supporting evidence."
