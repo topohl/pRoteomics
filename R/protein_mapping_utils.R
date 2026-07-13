@@ -241,3 +241,153 @@ apply_manual_mapping_override <- function(resolved, manual_mapping, entry_map, g
   )
   list(data = resolved, audit = audit)
 }
+
+tokenize_wgcna_mouse_only <- function(male_df, dropped_non_mouse_path = NULL) {
+  tok <- male_df |>
+    dplyr::mutate(gene_symbol = as.character(.data$gene_symbol)) |>
+    tidyr::separate_rows("gene_symbol", sep = ";") |>
+    dplyr::mutate(
+      token_raw = .data$gene_symbol,
+      token_up = normalize_token(.data$gene_symbol)
+    )
+  dropped_non_mouse <- tok |>
+    dplyr::filter(is.na(.data$token_up) | !grepl("_MOUSE$", .data$token_up))
+  if (!is.null(dropped_non_mouse_path) && nrow(dropped_non_mouse)) {
+    if (exists("write_tsv_safe", mode = "function")) {
+      write_tsv_safe(dropped_non_mouse, dropped_non_mouse_path)
+    } else if (requireNamespace("readr", quietly = TRUE)) {
+      readr::write_tsv(dropped_non_mouse, dropped_non_mouse_path)
+    } else {
+      utils::write.table(dropped_non_mouse, dropped_non_mouse_path, sep = "\t", row.names = FALSE, quote = FALSE)
+    }
+  }
+  tok |>
+    dplyr::filter(!is.na(.data$token_up), grepl("_MOUSE$", .data$token_up)) |>
+    dplyr::mutate(
+      token_base = to_base_no_iso_mouse(.data$token_up),
+      looks_ac = grepl("^[OPQ][0-9][A-Z0-9]{3}[0-9]$|^[A-NR-Z][0-9][A-Z0-9]{3}[0-9]$|^A0A[0-9A-Z]{7}$", .data$token_base),
+      looks_entry = grepl("^[A-Z0-9][A-Z0-9\\-\\.]+$", .data$token_base),
+      id_class = dplyr::case_when(
+        .data$looks_ac ~ "UNIPROT_AC_MOUSE",
+        .data$looks_entry ~ "UNIPROT_ENTRY",
+        TRUE ~ "UNKNOWN"
+      ),
+      Resolved_UNIPROT = NA_character_,
+      strategy = NA_character_
+    )
+}
+
+collapse_wgcna_ids <- function(x) {
+  x <- unique(x[!is.na(x) & nzchar(x)])
+  if (!length(x)) return(NA_character_)
+  paste(x, collapse = ";")
+}
+
+collapse_wgcna_bool <- function(x) any(as.logical(x), na.rm = TRUE)
+
+build_wgcna_feature_exclusion_audit <- function(male_data, resolved) {
+  row_tokens <- male_data |>
+    dplyr::transmute(.row_id = .data$.row_id, original_input_token = as.character(.data$gene_symbol)) |>
+    tidyr::separate_rows("original_input_token", sep = ";") |>
+    dplyr::mutate(token_up = normalize_token(.data$original_input_token))
+
+  has_mouse <- row_tokens |>
+    dplyr::group_by(.data$.row_id) |>
+    dplyr::summarise(has_mouse_identifier = any(!is.na(.data$token_up) & grepl("_MOUSE$", .data$token_up)), .groups = "drop")
+
+  mapped_rows <- resolved |>
+    dplyr::group_by(.data$.row_id) |>
+    dplyr::summarise(has_resolved_uniprot = any(!is.na(.data$Resolved_UNIPROT) & nzchar(.data$Resolved_UNIPROT)), .groups = "drop")
+
+  male_data |>
+    dplyr::transmute(.row_id = .data$.row_id, original_input_token = as.character(.data$gene_symbol)) |>
+    dplyr::left_join(has_mouse, by = ".row_id") |>
+    dplyr::left_join(mapped_rows, by = ".row_id") |>
+    dplyr::mutate(
+      has_mouse_identifier = dplyr::coalesce(.data$has_mouse_identifier, FALSE),
+      has_resolved_uniprot = dplyr::coalesce(.data$has_resolved_uniprot, FALSE),
+      is_blank_identifier = is.na(.data$original_input_token) | !nzchar(trimws(.data$original_input_token)),
+      exclusion_category = dplyr::case_when(
+        .data$is_blank_identifier ~ "blank_identifier",
+        !.data$has_mouse_identifier ~ "non_mouse_identifier",
+        !.data$has_resolved_uniprot ~ "unresolved_mouse_identifier",
+        TRUE ~ NA_character_
+      ),
+      exclusion_reason = dplyr::case_when(
+        .data$exclusion_category == "blank_identifier" ~ "Original identifier is blank or missing.",
+        .data$exclusion_category == "non_mouse_identifier" ~ "No semicolon-separated token ends with _MOUSE.",
+        .data$exclusion_category == "unresolved_mouse_identifier" ~ "At least one _MOUSE token was present but none resolved to a UniProt accession.",
+        TRUE ~ NA_character_
+      )
+    ) |>
+    dplyr::filter(!is.na(.data$exclusion_category)) |>
+    dplyr::select(".row_id", "original_input_token", "exclusion_category", "exclusion_reason") |>
+    dplyr::arrange(.data$.row_id)
+}
+
+build_wgcna_input_tables <- function(male_data, resolved) {
+  feature_mapping_pre <- resolved |>
+    dplyr::group_by(.data$.row_id) |>
+    dplyr::summarise(
+      original_token = collapse_wgcna_ids(.data$token_raw),
+      resolved_uniprot = collapse_wgcna_ids(.data$Resolved_UNIPROT),
+      mapping_strategy = collapse_wgcna_ids(.data$strategy),
+      manual_mapping_used = collapse_wgcna_bool(.data$manual_mapping_used),
+      .groups = "drop"
+    ) |>
+    dplyr::right_join(male_data |> dplyr::transmute(.row_id = .data$.row_id, original_input_token = .data$gene_symbol), by = ".row_id") |>
+    dplyr::mutate(
+      original_token = dplyr::coalesce(.data$original_token, as.character(.data$original_input_token), NA_character_),
+      resolved_uniprot = dplyr::coalesce(.data$resolved_uniprot, NA_character_),
+      mapping_strategy = dplyr::coalesce(.data$mapping_strategy, NA_character_),
+      manual_mapping_used = dplyr::coalesce(.data$manual_mapping_used, FALSE),
+      mapping_status = dplyr::if_else(!is.na(.data$resolved_uniprot) & nzchar(.data$resolved_uniprot), "mapped", "unmapped")
+    ) |>
+    dplyr::arrange(.data$.row_id)
+
+  included_row_ids <- feature_mapping_pre |>
+    dplyr::filter(.data$mapping_status == "mapped") |>
+    dplyr::select(".row_id")
+
+  exclusion_audit <- build_wgcna_feature_exclusion_audit(male_data, resolved)
+
+  male_norm <- resolved |>
+    dplyr::group_by(.data$.row_id) |>
+    dplyr::summarise(gene_symbol = collapse_wgcna_ids(.data$Resolved_UNIPROT), .groups = "drop") |>
+    dplyr::semi_join(included_row_ids, by = ".row_id") |>
+    dplyr::left_join(male_data |> dplyr::select(-dplyr::all_of("gene_symbol")), by = ".row_id") |>
+    dplyr::arrange(.data$.row_id) |>
+    dplyr::select(-dplyr::all_of(".row_id")) |>
+    dplyr::mutate(gene_symbol = dplyr::na_if(.data$gene_symbol, ""))
+
+  feature_mapping_final <- feature_mapping_pre |>
+    dplyr::semi_join(included_row_ids, by = ".row_id") |>
+    dplyr::arrange(.data$.row_id)
+
+  list(
+    male_norm = male_norm,
+    feature_mapping_pre = feature_mapping_pre,
+    feature_mapping_final = feature_mapping_final,
+    exclusion_audit = exclusion_audit
+  )
+}
+
+validate_wgcna_expression_inputs <- function(expression_data, feature_mapping_tbl, exclusion_audit) {
+  if (any(startsWith(colnames(expression_data), "UNMAPPED"))) {
+    stop("Final WGCNA expression matrix contains UNMAPPED feature IDs.", call. = FALSE)
+  }
+  missing_accession <- is.na(feature_mapping_tbl$resolved_uniprot) | !nzchar(feature_mapping_tbl$resolved_uniprot)
+  if (any(missing_accession)) {
+    stop("Final WGCNA feature mapping contains rows without resolved UniProt accessions.", call. = FALSE)
+  }
+  if (ncol(expression_data) != nrow(feature_mapping_tbl)) {
+    stop("Final WGCNA expression matrix and feature mapping audit have different feature counts.", call. = FALSE)
+  }
+  if (nrow(exclusion_audit)) {
+    excluded_final <- intersect(exclusion_audit$.row_id, feature_mapping_tbl$.row_id)
+    if (length(excluded_final)) {
+      stop("Excluded blank, non-mouse, or unresolved rows appear in expression.data.", call. = FALSE)
+    }
+  }
+  invisible(TRUE)
+}
