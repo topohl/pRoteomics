@@ -22,6 +22,7 @@ paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.
 source(paths_file)
 source(repo_path("R", "wgcna_downstream_utils.R"))
 source(repo_path("R", "wgcna_labeling_utils.R"))
+source(repo_path("R", "module_contracts.R"))
 source(repo_path("R", "schema_validation.R"))
 
 required_pkgs <- c("dplyr", "tidyr", "tibble", "ggplot2", "svglite", "readr", "stringr", "scales")
@@ -1393,6 +1394,8 @@ make_dataset_summary <- function(ds) {
   if (is.null(module_effects)) module_effects <- empty_group_effects(ds, "module", "missing module_group_effects.csv")
   if (is.null(super_effects)) super_effects <- empty_group_effects(ds, "supermodule", "missing supermodule_group_effects.csv")
   if (is.null(module_annot)) module_annot <- data.frame(dataset = character(), ModuleID = character(), microenvironment_class = character())
+  module_annot <- wgcna_normalize_module_ids(module_annot)
+  module_effects <- wgcna_normalize_module_ids(module_effects, module_annot, id_col = "module_id", legacy_col = "module_legacy_id")
   if (is.null(super_annot)) super_annot <- data.frame(dataset = character(), SupermoduleID = character(), Supermodule_FinalLabel = character(), dominant_microenvironment_class = character())
 
   needed_super_cols <- c(

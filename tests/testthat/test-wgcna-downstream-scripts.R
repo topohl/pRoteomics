@@ -180,7 +180,8 @@ testthat::test_that("WGCNA downstream schemas expose required columns", {
   testthat::expect_silent(validate_wgcna_group_effects(group_df))
 
   annot_df <- data.frame(
-    dataset = character(), ModuleID = character(), ModuleColor = character(),
+    dataset = character(), ModuleID = character(), ModuleLegacyID = character(),
+    ModuleColor = character(), ModuleColorName = character(), ModuleColorLabel = character(),
     n_proteins = integer(), microenvironment_class = character(),
     microglia_evidence = logical(), neuropil_evidence = logical(),
     other_cellular_evidence = logical(), classification_threshold = numeric(),

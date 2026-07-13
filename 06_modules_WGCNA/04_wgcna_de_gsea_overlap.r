@@ -326,8 +326,11 @@ run_wgcna_de_gsea_overlap <- function(dataset = current_dataset(), dry_run = is_
 
   if (file.exists(priority_file)) {
     priority <- readr::read_csv(priority_file, show_col_types = FALSE) %>%
-      dplyr::select(-dplyr::any_of(names(summary)[!names(summary) %in% c("ModuleID", "ModuleColor")])) %>%
-      dplyr::left_join(summary, by = c("ModuleID", "ModuleColor"))
+      dplyr::select(-dplyr::any_of(names(summary)[!names(summary) %in% c("ModuleID", "ModuleLegacyID", "ModuleColor", "ModuleColorName", "ModuleColorLabel")])) %>%
+      dplyr::left_join(
+        summary %>% dplyr::select(-dplyr::any_of(c("ModuleLegacyID", "ModuleColor", "ModuleColorName", "ModuleColorLabel"))),
+        by = "ModuleID"
+      )
     readr::write_csv(priority, priority_file, na = "")
   }
   invisible(summary)

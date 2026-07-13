@@ -14,6 +14,105 @@ normalize_gene_symbol <- function(x) {
   x
 }
 
+wgcna_publication_module_palette <- function() {
+  c(
+    deep_steel_blue = "#486A8A",
+    muted_sky_blue = "#7FA6C1",
+    slate_blue = "#5D7894",
+    blue_grey = "#8AA0AF",
+    deep_teal = "#2F6F73",
+    sea_teal = "#5B9992",
+    pale_teal = "#9CC9BF",
+    dark_sea_green = "#4E7D66",
+    sage_green = "#7FA37A",
+    olive_green = "#8A9364",
+    moss_green = "#637A52",
+    lichen_green = "#A8B58A",
+    muted_ochre = "#B08A4A",
+    sand_ochre = "#C5A46D",
+    clay = "#A66E5A",
+    terracotta = "#B67861",
+    umber = "#7F6654",
+    taupe = "#9A8977",
+    warm_grey = "#8E8A82",
+    cool_grey = "#7E8A8F",
+    charcoal_grey = "#5D6468",
+    light_grey = "#C8CDD0",
+    mauve = "#9B7895",
+    dusty_lilac = "#B39AB2",
+    heather = "#7D6F8F",
+    plum_grey = "#6F5F73",
+    muted_rose = "#B9878A",
+    dusty_raspberry = "#9B6672",
+    spruce = "#3F6B5B",
+    petrol_blue = "#3F6E82",
+    celadon = "#86B49D",
+    graphite = "#4F5457"
+  )
+}
+
+wgcna_module_color_metadata <- function(module_colors, palette = wgcna_publication_module_palette()) {
+  module_colors <- sort(unique(as.character(module_colors)))
+  module_colors <- module_colors[!is.na(module_colors) & nzchar(module_colors)]
+  if (length(module_colors) > length(palette)) {
+    stop(
+      "WGCNA publication palette has ", length(palette), " colours but ",
+      length(module_colors), " modules were detected; add unique colours instead of recycling.",
+      call. = FALSE
+    )
+  }
+  idx <- seq_along(module_colors)
+  module_ids <- sprintf("WGCNA_m%02d", idx)
+  color_names <- names(palette)[idx]
+  color_labels <- gsub("_", " ", color_names)
+  data.frame(
+    ModuleID = module_ids,
+    ModuleLegacyID = paste0("WGCNA_", module_colors),
+    ModuleColor = unname(palette[idx]),
+    ModuleColorName = color_names,
+    ModuleColorLabel = color_labels,
+    WGCNAInternalColor = module_colors,
+    stringsAsFactors = FALSE
+  )
+}
+
+wgcna_apply_module_metadata <- function(df, module_meta,
+                                        internal_color_col = "ModuleColor",
+                                        dataset_col = NULL) {
+  if (!internal_color_col %in% names(df)) return(df)
+  meta <- module_meta
+  if (!is.null(dataset_col) && dataset_col %in% names(df) && dataset_col %in% names(meta)) {
+    by_cols <- stats::setNames(c(dataset_col, "WGCNAInternalColor"), c(dataset_col, internal_color_col))
+  } else {
+    by_cols <- stats::setNames("WGCNAInternalColor", internal_color_col)
+  }
+  drop_cols <- intersect(c("ModuleID", "ModuleLegacyID", "ModuleColor", "ModuleColorName", "ModuleColorLabel"), names(df))
+  df |>
+    dplyr::select(-dplyr::any_of(drop_cols)) |>
+    dplyr::left_join(meta, by = by_cols) |>
+    dplyr::select(-dplyr::any_of("WGCNAInternalColor"))
+}
+
+wgcna_normalize_module_ids <- function(df, module_lookup = NULL, id_col = "ModuleID",
+                                       legacy_col = "ModuleLegacyID") {
+  if (!id_col %in% names(df) && legacy_col %in% names(df)) df[[id_col]] <- df[[legacy_col]]
+  if (!id_col %in% names(df)) return(df)
+  df[[id_col]] <- as.character(df[[id_col]])
+  if (!legacy_col %in% names(df)) df[[legacy_col]] <- NA_character_
+  legacy_like <- grepl("^WGCNA_#", df[[id_col]])
+  df[[legacy_col]][legacy_like & (is.na(df[[legacy_col]]) | !nzchar(df[[legacy_col]]))] <- df[[id_col]][legacy_like]
+  if (!is.null(module_lookup) && all(c("ModuleID", "ModuleLegacyID") %in% names(module_lookup))) {
+    hit <- match(df[[id_col]], module_lookup$ModuleLegacyID)
+    replace <- legacy_like & !is.na(hit)
+    df[[id_col]][replace] <- module_lookup$ModuleID[hit[replace]]
+    miss_legacy <- is.na(df[[legacy_col]]) | !nzchar(df[[legacy_col]])
+    hit2 <- match(df[[id_col]], module_lookup$ModuleID)
+    fill <- miss_legacy & !is.na(hit2)
+    df[[legacy_col]][fill] <- module_lookup$ModuleLegacyID[hit2[fill]]
+  }
+  df
+}
+
 require_module_contract_columns <- function(df, cols, artifact = "artifact") {
   missing <- setdiff(cols, colnames(df))
   if (length(missing)) {
@@ -29,9 +128,16 @@ require_module_contract_columns <- function(df, cols, artifact = "artifact") {
 validate_wgcna_module_definitions <- function(df, artifact = "WGCNA module definitions") {
   require_module_contract_columns(
     df,
-    c("ModuleSet", "ModuleID", "ModuleColor", "ProteinID", "UniProt", "GeneSymbol"),
+    c("ModuleSet", "ModuleID", "ModuleLegacyID", "ModuleColor", "ModuleColorName", "ModuleColorLabel", "ProteinID", "UniProt", "GeneSymbol"),
     artifact
   )
+  bad_id <- !grepl("^WGCNA_m[0-9]{2,}$", as.character(df$ModuleID))
+  if (any(bad_id, na.rm = TRUE)) {
+    stop(artifact, " must use stable ModuleID values such as WGCNA_m01, not colour labels.", call. = FALSE)
+  }
+  if (any(duplicated(unique(df[, c("ModuleID", "ModuleColor"), drop = FALSE])$ModuleID))) {
+    stop(artifact, " has non-unique ModuleID to ModuleColor mappings.", call. = FALSE)
+  }
   if (!any(c("kME", "Weight") %in% colnames(df))) {
     stop(artifact, " must contain kME or Weight.", call. = FALSE)
   }
@@ -93,7 +199,8 @@ validate_wgcna_module_annotation <- function(df, artifact = "WGCNA module biolog
   require_module_contract_columns(
     df,
     c(
-      "dataset", "ModuleID", "ModuleColor", "n_proteins", "microenvironment_class",
+      "dataset", "ModuleID", "ModuleLegacyID", "ModuleColor", "ModuleColorName", "ModuleColorLabel",
+      "n_proteins", "microenvironment_class",
       "microglia_evidence", "neuropil_evidence", "other_cellular_evidence",
       "canonical_microglia_evidence", "empirical_microglia_roi_evidence",
       "canonical_neuropil_evidence", "empirical_neuropil_evidence",

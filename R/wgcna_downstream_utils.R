@@ -932,7 +932,8 @@ required_group_effect_columns <- c(
 )
 
 required_module_annotation_columns <- c(
-  "dataset", "ModuleID", "ModuleColor", "n_proteins", "microenvironment_class", "interpretation_note"
+  "dataset", "ModuleID", "ModuleLegacyID", "ModuleColor", "ModuleColorName", "ModuleColorLabel",
+  "n_proteins", "microenvironment_class", "interpretation_note"
 )
 
 required_interpretable_columns <- c(

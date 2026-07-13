@@ -214,7 +214,7 @@ known_pipeline_output_specs <- function() {
     ),
     WGCNA_module_biological_annotation.csv = list(
       required_columns = c(
-        "dataset", "ModuleID", "ModuleColor", "microenvironment_class",
+        "dataset", "ModuleID", "ModuleLegacyID", "ModuleColor", "ModuleColorName", "ModuleColorLabel", "microenvironment_class",
         "microenvironment_label", "classification_rationale", "interpretation_note"
       ),
       recommended_columns = c(
