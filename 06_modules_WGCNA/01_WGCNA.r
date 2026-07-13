@@ -140,7 +140,7 @@ if (early_has_flag("--dry-run") || tolower(Sys.getenv("PROTEOMICS_DRY_RUN", unse
     manual_mapping_path_early <- Sys.getenv("PROTEOMICS_MANUAL_MAPPING_FILE", unset = path_metadata("manual_mapping.xlsx"))
     dry_run_line("Manual mapping file", manual_mapping_path_early, if (file.exists(manual_mapping_path_early)) "PASS" else "WARN")
     dry_run_line("Manual mapping expected columns", "gene_symbol + mapped_gene_symbol; tolerated aliases: input/mapped, source_id/mapped_id, original/mapped")
-    dry_run_line("Unmapped biological interpretation", "UNMAPPED_* features retained for network construction but excluded from GO, annotation, hub labels, and claims", "INFO")
+    dry_run_line("Unmapped biological interpretation", "Only rows with resolved mouse UniProt accessions enter WGCNA; excluded blank, non-mouse, and unresolved mouse rows are audited", "INFO")
   dry_run_line("Output folders writable", paste(unlist(subdirs_early), collapse = "; "), if (can_write_outputs_early) "PASS" else "FAIL")
   dry_run_line("Downstream module contract", downstream_contract_early, if (file.exists(downstream_contract_early)) "PASS" else "WARN")
   dry_run_line("WGCNA feature universe", feature_universe_early, if (file.exists(feature_universe_early)) "PASS" else "WARN")
@@ -1716,7 +1716,7 @@ if (isTRUE(wgcna_dry_run)) {
   manual_mapping_path <- Sys.getenv("PROTEOMICS_MANUAL_MAPPING_FILE", unset = path_metadata("manual_mapping.xlsx"))
   dry_run_line("Manual mapping file", manual_mapping_path, if (file.exists(manual_mapping_path)) "PASS" else "WARN")
   dry_run_line("Manual mapping expected columns", "gene_symbol + mapped_gene_symbol; tolerated aliases: input/mapped, source_id/mapped_id, original/mapped")
-  dry_run_line("Unmapped biological interpretation", "UNMAPPED_* features retained for network construction but excluded from GO, annotation, hub labels, and claims", "INFO")
+  dry_run_line("Unmapped biological interpretation", "Only rows with resolved mouse UniProt accessions enter WGCNA; excluded blank, non-mouse, and unresolved mouse rows are audited", "INFO")
   dry_run_line("Output folders writable", paste(unlist(subdirs), collapse = "; "), if (can_write_outputs) "PASS" else "FAIL")
   dry_run_line("Downstream module contract", downstream_contract, if (file.exists(downstream_contract)) "PASS" else "WARN")
   dry_run_line("WGCNA feature universe", feature_universe, if (file.exists(feature_universe)) "PASS" else "WARN")
@@ -1886,26 +1886,7 @@ if (length(missing_sentinels)) {
 # --------------------------
 # Mouse-only tokenization and classification
 # --------------------------
-tokenize_mouse_only <- function(male_df) {
-  tok <- male_df %>% tidyr::separate_rows(gene_symbol, sep = ";") %>% dplyr::mutate(token_raw = gene_symbol, token_up = normalize_token(gene_symbol))
-  dropped_non_mouse <- tok %>% dplyr::filter(!grepl("_MOUSE$", token_up))
-  if (nrow(dropped_non_mouse)) write_tsv_safe(dropped_non_mouse, fp_maptab("dropped_non_mouse_tokens.tsv"))
-  tok %>%
-    dplyr::filter(grepl("_MOUSE$", token_up)) %>%
-    dplyr::mutate(
-      token_base = to_base_no_iso_mouse(token_up),
-      looks_ac   = grepl("^[OPQ][0-9][A-Z0-9]{3}[0-9]$|^[A-NR-Z][0-9][A-Z0-9]{3}[0-9]$|^A0A[0-9A-Z]{7}$", token_base),
-      looks_entry= grepl("^[A-Z0-9][A-Z0-9\\-\\.]+$", token_base),
-      id_class = dplyr::case_when(
-        looks_ac    ~ "UNIPROT_AC_MOUSE",
-        looks_entry ~ "UNIPROT_ENTRY",
-        TRUE        ~ "UNKNOWN"
-      ),
-      Resolved_UNIPROT = NA_character_,
-      strategy = NA_character_
-    )
-}
-resolved2 <- tokenize_mouse_only(male.data)
+resolved2 <- tokenize_wgcna_mouse_only(male.data, dropped_non_mouse_path = fp_maptab("dropped_non_mouse_tokens.tsv"))
 
 # --------------------------
 # Mapping stack
@@ -2087,35 +2068,16 @@ write_tsv_safe(unmapped_summary, fp_maptab("unmapped_mouse_tokens_summary.tsv"))
 # --------------------------
 # Collapse to features and build expression matrix
 # --------------------------
-collapse_ids <- function(x) { x <- unique(x[!is.na(x) & nzchar(x)]); if (!length(x)) return(NA_character_); paste(x, collapse = ";") }
-collapse_bool <- function(x) any(as.logical(x), na.rm = TRUE)
-feature_mapping_pre <- resolved2 %>%
-  dplyr::group_by(.data$.row_id) %>%
-  dplyr::summarise(
-    original_token = collapse_ids(.data$token_raw),
-    resolved_uniprot = collapse_ids(.data$Resolved_UNIPROT),
-    mapping_strategy = collapse_ids(.data$strategy),
-    manual_mapping_used = collapse_bool(.data$manual_mapping_used),
-    .groups = "drop"
-  ) %>%
-  dplyr::right_join(male.data %>% dplyr::select(.row_id, original_input_token = gene_symbol), by = ".row_id") %>%
-  dplyr::mutate(
-    original_token = dplyr::coalesce(.data$original_token, as.character(.data$original_input_token), NA_character_),
-    resolved_uniprot = dplyr::coalesce(.data$resolved_uniprot, NA_character_),
-    mapping_strategy = dplyr::coalesce(.data$mapping_strategy, NA_character_),
-    manual_mapping_used = dplyr::coalesce(.data$manual_mapping_used, FALSE),
-    mapping_status = dplyr::if_else(!is.na(.data$resolved_uniprot) & nzchar(.data$resolved_uniprot), "mapped", "unmapped")
-  ) %>%
-  dplyr::arrange(.data$.row_id)
-male.norm <- resolved2 %>%
-  dplyr::group_by(.row_id) %>%
-  dplyr::summarise(gene_symbol = collapse_ids(Resolved_UNIPROT), .groups = "drop") %>%
-  dplyr::right_join(male.data %>% dplyr::select(-gene_symbol, .row_id), by = ".row_id") %>%
-  dplyr::select(-.row_id) %>%
-  dplyr::mutate(gene_symbol = dplyr::na_if(gene_symbol, ""))
+input_tables <- build_wgcna_input_tables(male.data, resolved2)
+feature_mapping_pre <- input_tables$feature_mapping_pre
+feature_mapping_final <- input_tables$feature_mapping_final
+exclusion_audit <- input_tables$exclusion_audit
+write_tsv_safe(exclusion_audit, fp_maptab("wgcna_feature_exclusion_audit.tsv"))
+male.norm <- input_tables$male_norm
 
 to_numeric_matrix <- function(male_norm, qc_dir = subdirs$logs) {
   if (!"gene_symbol" %in% names(male_norm)) stop("male.norm must contain gene_symbol")
+  if (!nrow(male_norm)) stop("No resolved mouse UniProt features remain for WGCNA expression matrix.", call. = FALSE)
   expr <- as.data.frame(
     lapply(male_norm[, -1, drop = FALSE], function(x) suppressWarnings(as.numeric(x))),
     check.names = FALSE
@@ -2124,7 +2086,7 @@ to_numeric_matrix <- function(male_norm, qc_dir = subdirs$logs) {
   mat <- as.data.frame(t(expr))
   feat <- male_norm$gene_symbol
   empty <- which(!nzchar(ifelse(is.na(feat), "", feat)))
-  if (length(empty)) feat[empty] <- paste0("UNMAPPED_", seq_along(empty))
+  if (length(empty)) stop("Cannot build WGCNA expression matrix with empty resolved UniProt feature IDs.", call. = FALSE)
   feat <- make.unique(feat, sep = "_")
   colnames(mat) <- feat
   if (any(!nzchar(colnames(mat)) | is.na(colnames(mat)))) stop("Empty/NA feature names after repair")
@@ -2137,12 +2099,12 @@ expression.data <- to_numeric_matrix(male.norm)
 fix_feature_ids <- function(nms) {
   first <- sub(";.*$", "", nms)
   first <- toupper(trimws(first))
-  first[is.na(first) | !nzchar(first)] <- "UNMAPPED"
+  if (any(is.na(first) | !nzchar(first))) stop("Final WGCNA feature IDs include empty values.", call. = FALSE)
   make.unique(first, sep = "_")
 }
 
 colnames(expression.data) <- fix_feature_ids(colnames(expression.data))
-feature_mapping_tbl <- feature_mapping_pre %>%
+feature_mapping_tbl <- feature_mapping_final %>%
   dplyr::mutate(
     ProteinID = colnames(expression.data),
     mapping_status = dplyr::case_when(
@@ -2153,6 +2115,7 @@ feature_mapping_tbl <- feature_mapping_pre %>%
     mapping_strategy = dplyr::if_else(.data$mapping_status == "unmapped" & (is.na(.data$mapping_strategy) | !nzchar(.data$mapping_strategy)), "unmapped_fallback", .data$mapping_strategy)
   ) %>%
   dplyr::select("ProteinID", "original_token", "resolved_uniprot", "mapping_strategy", "manual_mapping_used", "mapping_status", ".row_id")
+validate_wgcna_expression_inputs(expression.data, feature_mapping_tbl, exclusion_audit)
 write_tsv_safe(feature_mapping_tbl, fp_maptab("wgcna_feature_mapping_audit.tsv"))
 
 # Save core outputs
