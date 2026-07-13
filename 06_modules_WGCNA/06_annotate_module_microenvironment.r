@@ -98,7 +98,12 @@ if (DATASET != "microglia" && force_microglia) {
 
 definitions <- safe_read_csv(FILES$definitions)
 if (is.null(definitions) || !nrow(definitions)) {
-  module_annot <- data.frame(dataset = DATASET, ModuleID = NA_character_, ModuleColor = NA_character_, n_proteins = 0L, microenvironment_class = "missing_module_definitions", interpretation_note = WGCNA_ROI_NOTE)
+  module_annot <- data.frame(
+    dataset = DATASET, ModuleID = NA_character_, ModuleLegacyID = NA_character_,
+    ModuleColor = NA_character_, ModuleColorName = NA_character_, ModuleColorLabel = NA_character_,
+    n_proteins = 0L, microenvironment_class = "missing_module_definitions",
+    interpretation_note = WGCNA_ROI_NOTE
+  )
   super_annot <- data.frame(dataset = DATASET, SupermoduleID = NA_character_, supermodule_id = NA_character_, n_member_modules = 0L, dominant_microenvironment_class = "missing_module_definitions", interpretation_note = WGCNA_ROI_NOTE)
   write_table_and_source(module_annot, PATHS$tables, PATHS$source_data, "WGCNA_module_biological_annotation.csv")
   write_table_and_source(super_annot, PATHS$tables, PATHS$source_data, "WGCNA_supermodule_biological_annotation.csv")
@@ -821,8 +826,11 @@ summarise_module_targeted_signature_details <- function(details, module_rows_tbl
     }) |>
     dplyr::ungroup()
   out <- module_rows_tbl |>
-    dplyr::select("ModuleID", "ModuleColor") |>
-    dplyr::left_join(detail_summary, by = c("ModuleID", "ModuleColor"))
+    dplyr::select(dplyr::any_of(c("ModuleID", "ModuleLegacyID", "ModuleColor", "ModuleColorName", "ModuleColorLabel"))) |>
+    dplyr::left_join(
+      detail_summary |> dplyr::select(-dplyr::any_of(c("ModuleColor", "ModuleLegacyID", "ModuleColorName", "ModuleColorLabel"))),
+      by = "ModuleID"
+    )
   summary_cols <- names(empty)
   for (nm in summary_cols) {
     if (!nm %in% names(out)) out[[nm]] <- empty[[nm]][[1]]
@@ -1141,7 +1149,7 @@ if (is.null(super_ann) || !nrow(super_ann)) {
       Supermodule_DisplayLabel = dplyr::coalesce(as.character(.data$Supermodule_DisplayLabel), compose_supermodule_display_label(.data$SupermoduleID, dplyr::coalesce(.data$Supermodule_FinalLabel, .data$Macroprogram_Display))),
       Supermodule_ShortLabel = .data$Supermodule_DisplayLabel
     ) |>
-    dplyr::select(dplyr::any_of(c("ModuleColor", "module_eigengene", "SupermoduleID", "Supermodule_DisplayLabel", "Supermodule_LongLabel", "Macroprogram_Display", "Supermodule_DataDrivenLabel", "Supermodule_CuratedLabel", "Supermodule_FinalLabel", "Supermodule_ShortLabel", "Supermodule_LabelSource", "Supermodule_LabelConfidence", "Supermodule_LabelRationale", "GO_label_confidence_class", "annotation_scope", "manual_label_status", "ManualReviewRequired", "SupermoduleConfidence", "SupermoduleRationale")))
+    dplyr::select(dplyr::any_of(c("ModuleID", "ModuleLegacyID", "ModuleColor", "module_eigengene", "SupermoduleID", "Supermodule_DisplayLabel", "Supermodule_LongLabel", "Macroprogram_Display", "Supermodule_DataDrivenLabel", "Supermodule_CuratedLabel", "Supermodule_FinalLabel", "Supermodule_ShortLabel", "Supermodule_LabelSource", "Supermodule_LabelConfidence", "Supermodule_LabelRationale", "GO_label_confidence_class", "annotation_scope", "manual_label_status", "ManualReviewRequired", "SupermoduleConfidence", "SupermoduleRationale")))
   super_annot <- module_annot |>
     dplyr::left_join(smap, by = c("ModuleColor" = "ModuleColor")) |>
     dplyr::filter(!is.na(.data$SupermoduleID)) |>
@@ -1365,9 +1373,15 @@ if (is.null(super_ann) || !nrow(super_ann)) {
 }
 
 if (nrow(super_annot) && exists("smap")) {
-  super_threshold_classes <- module_threshold_classes |>
-    dplyr::left_join(module_annot |> dplyr::select(module_or_supermodule_id = "ModuleID", ModuleColor), by = "module_or_supermodule_id") |>
-    dplyr::left_join(smap |> dplyr::select("ModuleColor", "SupermoduleID"), by = "ModuleColor") |>
+  super_threshold_base <- if ("ModuleID" %in% names(smap)) {
+    module_threshold_classes |>
+      dplyr::left_join(smap |> dplyr::select("ModuleID", "SupermoduleID"), by = c("module_or_supermodule_id" = "ModuleID"))
+  } else {
+    module_threshold_classes |>
+      dplyr::left_join(module_annot |> dplyr::select(module_or_supermodule_id = "ModuleID", ModuleColor), by = "module_or_supermodule_id") |>
+      dplyr::left_join(smap |> dplyr::select("ModuleColor", "SupermoduleID"), by = "ModuleColor")
+  }
+  super_threshold_classes <- super_threshold_base |>
     dplyr::filter(!is.na(.data$SupermoduleID)) |>
     dplyr::group_by(.data$dataset, module_or_supermodule_id = .data$SupermoduleID) |>
     dplyr::summarise(
