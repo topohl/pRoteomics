@@ -25,6 +25,7 @@ if (early_has_flag("--dry-run") || tolower(Sys.getenv("PROTEOMICS_DRY_RUN", unse
     source(paths_file)
     source(repo_path("R", "dataset_config.R"))
     source(repo_path("R", "dataset_inputs.R"))
+    source(repo_path("R", "module_contracts.R"))
     source(repo_path("R", "protein_mapping_utils.R"))
   dataset_cli_early <- early_arg_value("--dataset", default = "")
   if (nzchar(dataset_cli_early)) Sys.setenv(PROTEOMICS_DATASET = validate_dataset(dataset_cli_early, source = "--dataset"))
@@ -84,7 +85,19 @@ if (early_has_flag("--dry-run") || tolower(Sys.getenv("PROTEOMICS_DRY_RUN", unse
   force_full_analysis_early <- tolower(Sys.getenv("PROTEOMICS_WGCNA_FORCE_FULL", unset = "false")) %in% c("1", "true", "yes", "y")
   can_stage_inputs_early <- file.exists(dataset_inputs_early$expression_file) && file.exists(dataset_inputs_early$metadata_file)
   can_use_inputs_early <- file.exists(expr_xlsx_early) && file.exists(meta_xlsx_early)
-  can_use_cache_early <- file.exists(wgcna_final_state_path_early) && !force_full_analysis_early
+  staged_identity_ok_early <- if (!file.exists(expr_xlsx_early) || !requireNamespace("readxl", quietly = TRUE)) FALSE else {
+    staged_names_early <- names(readxl::read_excel(expr_xlsx_early, n_max = 1))
+    "ProteinGroupID" %in% staged_names_early || all(c("Protein.Group", "T: Protein.Names") %in% staged_names_early)
+  }
+  cache_contract_error_early <- NA_character_
+  cache_contract_ok_early <- if (!file.exists(wgcna_final_state_path_early)) FALSE else tryCatch({
+    validate_wgcna_cached_state(readRDS(wgcna_final_state_path_early))
+    TRUE
+  }, error = function(e) {
+    cache_contract_error_early <<- conditionMessage(e)
+    FALSE
+  })
+  can_use_cache_early <- cache_contract_ok_early && !force_full_analysis_early
   can_write_outputs_early <- all(vapply(c(output_root_early, unlist(subdirs_early)), function(path) dir.exists(path) && file.access(path, 2) == 0, logical(1)))
   sample_check_early <- "not checked"
   sample_check_ok_early <- TRUE
@@ -130,17 +143,19 @@ if (early_has_flag("--dry-run") || tolower(Sys.getenv("PROTEOMICS_DRY_RUN", unse
   dry_run_line("Reuse cached final state", reuse_completed_analysis_early)
   dry_run_line("Force full analysis", force_full_analysis_early)
   dry_run_line("Cached state", wgcna_final_state_path_early, if (can_use_cache_early) "PASS" else if (reuse_completed_analysis_early) "WARN" else "INFO")
+  dry_run_line("Cached feature-key contract", if (cache_contract_ok_early) wgcna_feature_key_contract_version() else cache_contract_error_early, if (cache_contract_ok_early) "PASS" else "WARN")
   dry_run_line("Explicit/staged expression workbook", expr_xlsx_early, if (file.exists(expr_xlsx_early)) "PASS" else "WARN")
   dry_run_line("Explicit/staged sample metadata workbook", meta_xlsx_early, if (file.exists(meta_xlsx_early)) "PASS" else "WARN")
   dry_run_line("Canonical upstream expression", dataset_inputs_early$expression_file, if (file.exists(dataset_inputs_early$expression_file)) "PASS" else "FAIL")
   dry_run_line("Canonical upstream metadata", dataset_inputs_early$metadata_file, if (file.exists(dataset_inputs_early$metadata_file)) "PASS" else "FAIL")
-  dry_run_line("Staged input generation", if (can_use_inputs_early) "already staged" else if (can_stage_inputs_early) "can be generated" else "cannot be generated", if (can_use_inputs_early || can_stage_inputs_early) "PASS" else "FAIL")
+  dry_run_line("Staged feature-key contract", if (staged_identity_ok_early) "canonical ProteinGroupID/member provenance available" else "legacy staging requires canonical restaging", if (staged_identity_ok_early) "PASS" else if (can_stage_inputs_early) "WARN" else "FAIL")
+  dry_run_line("Staged input generation", if (can_use_inputs_early && staged_identity_ok_early) "already staged" else if (can_stage_inputs_early) "can be generated/restaged" else "cannot be generated", if ((can_use_inputs_early && staged_identity_ok_early) || can_stage_inputs_early) "PASS" else "FAIL")
   dry_run_line("Cheap sample matching", sample_check_early, if (sample_check_ok_early) "PASS" else "FAIL")
     dry_run_line("Mouse idmapping", idmap_dat_early, if (file.exists(idmap_dat_early)) "PASS" else "FAIL")
     manual_mapping_path_early <- Sys.getenv("PROTEOMICS_MANUAL_MAPPING_FILE", unset = path_metadata("manual_mapping.xlsx"))
     dry_run_line("Manual mapping file", manual_mapping_path_early, if (file.exists(manual_mapping_path_early)) "PASS" else "WARN")
     dry_run_line("Manual mapping expected columns", "gene_symbol + mapped_gene_symbol; tolerated aliases: input/mapped, source_id/mapped_id, original/mapped")
-    dry_run_line("Unmapped biological interpretation", "Only rows with resolved mouse UniProt accessions enter WGCNA; excluded blank, non-mouse, and unresolved mouse rows are audited", "INFO")
+    dry_run_line("Protein-group inclusion policy", "Quantitatively valid unresolved and ambiguous groups remain in WGCNA; gene/protein claims are gated separately. Mixed-species/contaminant and QC-failing rows are excluded with reasons.", "INFO")
   dry_run_line("Output folders writable", paste(unlist(subdirs_early), collapse = "; "), if (can_write_outputs_early) "PASS" else "FAIL")
   dry_run_line("Downstream module contract", downstream_contract_early, if (file.exists(downstream_contract_early)) "PASS" else "WARN")
   dry_run_line("WGCNA feature universe", feature_universe_early, if (file.exists(feature_universe_early)) "PASS" else "WARN")
@@ -149,7 +164,7 @@ if (early_has_flag("--dry-run") || tolower(Sys.getenv("PROTEOMICS_DRY_RUN", unse
   dry_run_line("Downstream group effects", repo_path("06_modules_WGCNA", "05_module_supermodule_group_effects.r"), "INFO")
   dry_run_line("Downstream biological annotation", repo_path("06_modules_WGCNA", "06_annotate_module_microenvironment.r"), "INFO")
   dry_run_line("Downstream interpretable summary", repo_path("06_modules_WGCNA", "07_wgcna_interpretable_summary.r"), "INFO")
-  quit(status = if (file.exists(idmap_dat_early) && can_write_outputs_early && sample_check_ok_early && (can_use_inputs_early || can_stage_inputs_early || can_use_cache_early)) 0 else 1, save = "no")
+  quit(status = if (file.exists(idmap_dat_early) && can_write_outputs_early && sample_check_ok_early && ((can_use_inputs_early && staged_identity_ok_early) || can_stage_inputs_early || can_use_cache_early)) 0 else 1, save = "no")
 }
 
 # Packages
@@ -1458,6 +1473,7 @@ if (!isTRUE(wgcna_dry_run) && using_cached_final_state) {
   )
   message("Reusing completed WGCNA analysis from: ", wgcna_final_state_path)
   cached_state <- readRDS(wgcna_final_state_path)
+  validate_wgcna_cached_state(cached_state)
   list2env(cached_state, envir = environment())
   if (exists("module_summary")) WGCNA_module_summary <- module_summary
   if (exists("module_preservation")) module_preservation_long <- module_preservation
@@ -1565,8 +1581,20 @@ profile_from_upstream_name <- function(path) {
 }
 
 auto_prepare_wgcna_inputs <- function(expr_path, meta_path) {
-  if (file.exists(expr_path) && file.exists(meta_path)) return(invisible(FALSE))
-  if (nzchar(expr_xlsx_env) || nzchar(meta_xlsx_env)) return(invisible(FALSE))
+  staged_is_canonical <- FALSE
+  if (file.exists(expr_path)) {
+    staged_header <- names(readxl::read_excel(expr_path, n_max = 1))
+    staged_is_canonical <- "ProteinGroupID" %in% staged_header ||
+      all(c("Protein.Group", "T: Protein.Names") %in% staged_header)
+  }
+  if (file.exists(expr_path) && file.exists(meta_path) && staged_is_canonical) return(invisible(FALSE))
+  if ((nzchar(expr_xlsx_env) || nzchar(meta_xlsx_env)) && !staged_is_canonical) {
+    stop(
+      "Explicit WGCNA expression input lacks ProteinGroupID or complete Protein.Group/T: Protein.Names provenance. ",
+      "Restage it under the Phase 1B canonical feature contract.",
+      call. = FALSE
+    )
+  }
 
   upstream_xlsx <- find_latest_wgcna_upstream()
   upstream_meta <- dataset_inputs$metadata_file
@@ -1585,9 +1613,17 @@ auto_prepare_wgcna_inputs <- function(expr_path, meta_path) {
   sample_cols <- candidate_cols[numeric_fraction >= 0.70]
   if (length(sample_cols) < 4) stop("Could not detect expression sample columns in upstream WGCNA input: ", upstream_xlsx, call. = FALSE)
 
-  expr_out <- upstream[, sample_cols, drop = FALSE]
-  expr_out[] <- lapply(expr_out, function(x) suppressWarnings(as.numeric(as.character(x))))
-  expr_out <- dplyr::bind_cols(tibble::tibble(gene_symbol = as.character(upstream[[gene_col]])), tibble::as_tibble(expr_out))
+  expr_values <- upstream[, sample_cols, drop = FALSE]
+  expr_values[] <- lapply(expr_values, function(x) suppressWarnings(as.numeric(as.character(x))))
+  annotation_cols <- intersect(
+    c("ProteinGroupID", "source_feature_id", "original_identifier", "Protein.Group", "T: Protein.Names", "Genes", "First.Protein.Description"),
+    names(upstream)
+  )
+  expr_out <- dplyr::bind_cols(
+    tibble::as_tibble(upstream[, annotation_cols, drop = FALSE]),
+    tibble::tibble(gene_symbol = as.character(upstream[[gene_col]])),
+    tibble::as_tibble(expr_values)
+  )
 
   metadata <- as.data.frame(readxl::read_excel(upstream_meta))
   sample_col <- first_existing_col(metadata, c("sample_id", "SampleID", "SampleColumn", "row.names"))
@@ -1652,6 +1688,10 @@ if (isTRUE(wgcna_dry_run)) {
   upstream_meta <- dataset_inputs$metadata_file
   can_stage_inputs <- file.exists(upstream_xlsx) && file.exists(upstream_meta)
   can_use_inputs <- file.exists(expr_xlsx) && file.exists(meta_xlsx)
+  staged_identity_ok <- if (!file.exists(expr_xlsx)) FALSE else {
+    staged_names <- names(readxl::read_excel(expr_xlsx, n_max = 1))
+    "ProteinGroupID" %in% staged_names || all(c("Protein.Group", "T: Protein.Names") %in% staged_names)
+  }
   can_use_cache <- file.exists(wgcna_final_state_path) && !force_full_analysis
   can_write_outputs <- all(vapply(c(output_dir, unlist(subdirs)), function(path) dir.exists(path) && file.access(path, 2) == 0, logical(1)))
   downstream_contract <- fp_modtab("WGCNA_module_definitions_for_downstream.csv")
@@ -1693,19 +1733,20 @@ if (isTRUE(wgcna_dry_run)) {
   dry_run_line("Explicit/staged sample metadata workbook", meta_xlsx, if (file.exists(meta_xlsx)) "PASS" else "WARN")
   dry_run_line("Canonical upstream expression", upstream_xlsx, if (file.exists(upstream_xlsx)) "PASS" else "FAIL")
   dry_run_line("Canonical upstream metadata", upstream_meta, if (file.exists(upstream_meta)) "PASS" else "FAIL")
-  dry_run_line("Staged input generation", if (can_use_inputs) "already staged" else if (can_stage_inputs) "can be generated" else "cannot be generated", if (can_use_inputs || can_stage_inputs) "PASS" else "FAIL")
+  dry_run_line("Staged feature-key contract", if (staged_identity_ok) "canonical ProteinGroupID/member provenance available" else "legacy staging requires canonical restaging", if (staged_identity_ok) "PASS" else if (can_stage_inputs) "WARN" else "FAIL")
+  dry_run_line("Staged input generation", if (can_use_inputs && staged_identity_ok) "already staged" else if (can_stage_inputs) "can be generated/restaged" else "cannot be generated", if ((can_use_inputs && staged_identity_ok) || can_stage_inputs) "PASS" else "FAIL")
   dry_run_line("Cheap sample matching", sample_check, if (sample_check_ok) "PASS" else "FAIL")
   dry_run_line("Mouse idmapping", idmap_dat, if (file.exists(idmap_dat)) "PASS" else "FAIL")
   manual_mapping_path <- Sys.getenv("PROTEOMICS_MANUAL_MAPPING_FILE", unset = path_metadata("manual_mapping.xlsx"))
   dry_run_line("Manual mapping file", manual_mapping_path, if (file.exists(manual_mapping_path)) "PASS" else "WARN")
   dry_run_line("Manual mapping expected columns", "gene_symbol + mapped_gene_symbol; tolerated aliases: input/mapped, source_id/mapped_id, original/mapped")
-  dry_run_line("Unmapped biological interpretation", "Only rows with resolved mouse UniProt accessions enter WGCNA; excluded blank, non-mouse, and unresolved mouse rows are audited", "INFO")
+  dry_run_line("Protein-group inclusion policy", "Quantitatively valid unresolved and ambiguous groups remain in WGCNA; gene/protein claims are gated separately. Mixed-species/contaminant and QC-failing rows are excluded with reasons.", "INFO")
   dry_run_line("Output folders writable", paste(unlist(subdirs), collapse = "; "), if (can_write_outputs) "PASS" else "FAIL")
   dry_run_line("Downstream module contract", downstream_contract, if (file.exists(downstream_contract)) "PASS" else "WARN")
   dry_run_line("WGCNA feature universe", feature_universe, if (file.exists(feature_universe)) "PASS" else "WARN")
   dry_run_line("WGCNA run manifest", wgcna_run_manifest_path, if (file.exists(wgcna_run_manifest_path)) "PASS" else "WARN")
   dry_run_line("Optional DE/GSEA overlap bridge", repo_path("06_modules_WGCNA", "04_wgcna_de_gsea_overlap.r"), "WARN")
-  quit(status = if (file.exists(idmap_dat) && can_write_outputs && sample_check_ok && (can_use_inputs || can_stage_inputs || can_use_cache)) 0 else 1, save = "no")
+  quit(status = if (file.exists(idmap_dat) && can_write_outputs && sample_check_ok && ((can_use_inputs && staged_identity_ok) || can_stage_inputs || can_use_cache)) 0 else 1, save = "no")
 }
 
 wgcna_inputs_auto_prepared <- auto_prepare_wgcna_inputs(expr_xlsx, meta_xlsx)
@@ -1869,6 +1910,12 @@ if (length(missing_sentinels)) {
 # --------------------------
 # Mouse-only tokenization and classification
 # --------------------------
+manual_mapping_path <- Sys.getenv("PROTEOMICS_MANUAL_MAPPING_FILE", unset = path_metadata("manual_mapping.xlsx"))
+manual_mapping <- read_manual_mapping_table(manual_mapping_path)
+
+# Retained temporarily as an inactive compatibility audit while downstream
+# mapping reports transition to the canonical member bridge.
+if (FALSE) {
 resolved2 <- tokenize_wgcna_mouse_only(male.data, dropped_non_mouse_path = fp_maptab("dropped_non_mouse_tokens.tsv"))
 
 # --------------------------
@@ -2047,64 +2094,57 @@ write_tsv_safe(unmapped_tokens, fp_maptab("unmapped_mouse_tokens.tsv"))
 
 unmapped_summary <- unmapped_tokens %>% dplyr::count(id_class, reason, token_base, name = "n") %>% dplyr::arrange(dplyr::desc(n))
 write_tsv_safe(unmapped_summary, fp_maptab("unmapped_mouse_tokens_summary.tsv"))
+}
 
 # --------------------------
-# Collapse to features and build expression matrix
+# Build the canonical one-row/one-feature WGCNA matrix
 # --------------------------
-input_tables <- build_wgcna_input_tables(male.data, resolved2)
-feature_mapping_pre <- input_tables$feature_mapping_pre
-feature_mapping_final <- input_tables$feature_mapping_final
-exclusion_audit <- input_tables$exclusion_audit
-write_tsv_safe(exclusion_audit, fp_maptab("wgcna_feature_exclusion_audit.tsv"))
-male.norm <- input_tables$male_norm
-
-to_numeric_matrix <- function(male_norm, qc_dir = subdirs$logs) {
-  if (!"gene_symbol" %in% names(male_norm)) stop("male.norm must contain gene_symbol")
-  if (!nrow(male_norm)) stop("No resolved mouse UniProt features remain for WGCNA expression matrix.", call. = FALSE)
-  expr <- as.data.frame(
-    lapply(male_norm[, -1, drop = FALSE], function(x) suppressWarnings(as.numeric(x))),
-    check.names = FALSE
+wgcna_canonical <- build_wgcna_canonical_features(
+  df_raw = male.data,
+  dataset = dataset_profile,
+  source_file = expr_xlsx,
+  entry_map = entry_map,
+  gene_map = gene_map,
+  accession_gene_map = mouse_maps$accession_gene_map,
+  reviewed_map = mouse_maps$reviewed_map,
+  manual_mapping = manual_mapping,
+  strict = TRUE
+)
+expression.data <- wgcna_canonical$expression_data
+wgcna_feature_table <- wgcna_canonical$feature_table
+wgcna_member_bridge <- wgcna_canonical$member_bridge
+feature_mapping_tbl <- wgcna_feature_table %>%
+  dplyr::filter(.data$included_in_wgcna) %>%
+  dplyr::transmute(
+    ProteinGroupID = .data$ProteinGroupID,
+    ProteinID = .data$ProteinGroupID,
+    original_token = .data$original_identifier,
+    resolved_uniprot = .data$representative_accession,
+    mapping_strategy = .data$representative_selection_rule,
+    manual_mapping_used = FALSE,
+    mapping_status = .data$mapping_status,
+    .row_id = .data$source_row_id
   )
-  if (!all(vapply(expr, is.numeric, logical(1)))) stop("Non-numeric columns remain after coercion")
-  mat <- as.data.frame(t(expr))
-  feat <- male_norm$gene_symbol
-  empty <- which(!nzchar(ifelse(is.na(feat), "", feat)))
-  if (length(empty)) stop("Cannot build WGCNA expression matrix with empty resolved UniProt feature IDs.", call. = FALSE)
-  feat <- make.unique(feat, sep = "_")
-  colnames(mat) <- feat
-  if (any(!nzchar(colnames(mat)) | is.na(colnames(mat)))) stop("Empty/NA feature names after repair")
-  utils::write.table(utils::head(mat[, 1:min(10, ncol(mat)), drop = FALSE]), file.path(qc_dir, "expression_head10.tsv"), sep = "\t", row.names = TRUE, quote = FALSE)
-  mat
-}
-expression.data <- to_numeric_matrix(male.norm)
-
-# Force single accession per feature name and ensure uniqueness
-fix_feature_ids <- function(nms) {
-  first <- sub(";.*$", "", nms)
-  first <- toupper(trimws(first))
-  if (any(is.na(first) | !nzchar(first))) stop("Final WGCNA feature IDs include empty values.", call. = FALSE)
-  make.unique(first, sep = "_")
-}
-
-colnames(expression.data) <- fix_feature_ids(colnames(expression.data))
-feature_mapping_tbl <- feature_mapping_final %>%
-  dplyr::mutate(
-    ProteinID = colnames(expression.data),
-    mapping_status = dplyr::case_when(
-      startsWith(.data$ProteinID, "UNMAPPED") ~ "unmapped",
-      !is.na(.data$resolved_uniprot) & nzchar(.data$resolved_uniprot) ~ "mapped",
-      TRUE ~ "unmapped"
-    ),
-    mapping_strategy = dplyr::if_else(.data$mapping_status == "unmapped" & (is.na(.data$mapping_strategy) | !nzchar(.data$mapping_strategy)), "unmapped_fallback", .data$mapping_strategy)
-  ) %>%
-  dplyr::select("ProteinID", "original_token", "resolved_uniprot", "mapping_strategy", "manual_mapping_used", "mapping_status", ".row_id")
-validate_wgcna_expression_inputs(expression.data, feature_mapping_tbl, exclusion_audit)
+validate_wgcna_feature_alignment(expression.data, wgcna_feature_table)
 write_tsv_safe(feature_mapping_tbl, fp_maptab("wgcna_feature_mapping_audit.tsv"))
-
-# Save core outputs
-write_tsv_safe(resolved2, fp_maptab("resolved_tokens_mouse_only_robust.tsv"))
-saveRDS(list(expression = expression.data, male.norm = male.norm, mapping = resolved2, feature_mapping = feature_mapping_tbl),
-        file = fp_state("mouse_only_mapping_outputs_robust.rds"))
+write_csv_safe(wgcna_feature_table, fp_maptab("WGCNA_canonical_feature_table.csv"))
+write_csv_safe(wgcna_member_bridge, fp_maptab("WGCNA_protein_group_member_bridge.csv"))
+write_csv_safe(wgcna_canonical$collision_audit, fp_maptab("WGCNA_ProteinGroupID_collision_audit.csv"))
+write_csv_safe(wgcna_feature_universe_audit(wgcna_feature_table, dataset_profile), fp_maptab("WGCNA_feature_universe_audit.csv"))
+utils::write.table(
+  utils::head(expression.data[, seq_len(min(10, ncol(expression.data))), drop = FALSE]),
+  fp_log("expression_head10.tsv"), sep = "\t", row.names = TRUE, quote = FALSE
+)
+saveRDS(
+  list(
+    feature_key_contract_version = wgcna_feature_key_contract_version(),
+    feature_key_fingerprint = wgcna_feature_key_fingerprint(colnames(expression.data)),
+    expression = expression.data,
+    feature_table = wgcna_feature_table,
+    member_bridge = wgcna_member_bridge
+  ),
+  file = fp_state("canonical_protein_group_mapping_outputs.rds")
+)
 
 # --------------------------
 # QC and sample clustering
@@ -2115,14 +2155,20 @@ sample_qc <- tibble::tibble(
   good_samples_genes = as.logical(gsg$goodSamples)
 )
 gene_qc <- tibble::tibble(
-  gene = colnames(expression.data),
+  ProteinGroupID = colnames(expression.data),
   good_samples_genes = as.logical(gsg$goodGenes)
 )
 if (!gsg$allOK) {
   if (sum(!gsg$goodGenes) > 0) printFlush(paste("Removing genes:", paste(names(expression.data)[!gsg$goodGenes], collapse = ", ")))
   if (sum(!gsg$goodSamples) > 0) printFlush(paste("Removing samples:", paste(rownames(expression.data)[!gsg$goodSamples], collapse = ", ")))
+  excluded_qc_ids <- colnames(expression.data)[!gsg$goodGenes]
+  wgcna_feature_table$included_in_wgcna[wgcna_feature_table$ProteinGroupID %in% excluded_qc_ids] <- FALSE
+  wgcna_feature_table$wgcna_exclusion_reason[wgcna_feature_table$ProteinGroupID %in% excluded_qc_ids] <- "expression_qc"
   expression.data <- expression.data[gsg$goodSamples == TRUE, gsg$goodGenes == TRUE]
 }
+validate_wgcna_feature_alignment(expression.data, wgcna_feature_table)
+write_csv_safe(wgcna_feature_table, fp_maptab("WGCNA_canonical_feature_table.csv"))
+write_csv_safe(wgcna_feature_universe_audit(wgcna_feature_table, dataset_profile), fp_maptab("WGCNA_feature_universe_audit.csv"))
 
 sampleTree <- hclust(dist(expression.data), method = "average")
 svg(file = fp_qc("sample_clustering_outliers.svg"), width = figure_single_col * 1.4, height = 3.8, family = figure_font)
@@ -2454,7 +2500,7 @@ for (module in modules_of_interest) {
   if (!any(moduleGenes)) next
   mmcol <- paste0("MM", module); if (!mmcol %in% colnames(geneModuleMembership)) next
   gene_info <- data.frame(
-    Gene = colnames(expression.data)[moduleGenes],
+    ProteinGroupID = colnames(expression.data)[moduleGenes],
     Module = module,
     ModuleMembership = geneModuleMembership[moduleGenes, mmcol],
     GeneSignificance = geneTraitSignificance[moduleGenes, "GS.ExpGroup"],
@@ -2468,18 +2514,13 @@ for (module in modules_of_interest) {
 # WGCNA module contract and GO enrichment exports
 # ==========================
 all_feature_ids <- colnames(expression.data)
-is_uniprot_accession <- function(x) {
-  grepl("^[OPQ][0-9][A-Z0-9]{3}[0-9]$|^[A-NR-Z][0-9][A-Z0-9]{3}[0-9]$|^A0A[0-9A-Z]{7}$", x)
-}
-feature_to_acc <- strsplit(all_feature_ids, ";", fixed = TRUE)
-feature_to_acc <- lapply(feature_to_acc, function(v) {
-  v <- toupper(trimws(v))
-  v[is_uniprot_accession(v)]
-})
-names(feature_to_acc) <- all_feature_ids
-feature_primary_acc <- vapply(feature_to_acc, function(x) if (length(x)) x[1] else NA_character_, character(1))
-
-acc_universe <- unique(stats::na.omit(unlist(feature_to_acc, use.names = FALSE)))
+network_feature_table <- wgcna_feature_table %>%
+  dplyr::filter(.data$included_in_wgcna) %>%
+  dplyr::slice(match(all_feature_ids, .data$ProteinGroupID))
+validate_wgcna_feature_alignment(expression.data, wgcna_feature_table)
+annotation_feature_table <- network_feature_table %>%
+  dplyr::filter(.data$gene_level_claim_allowed)
+acc_universe <- unique(stats::na.omit(annotation_feature_table$representative_accession))
 if (length(acc_universe)) {
   map_df <- tryCatch(
     suppressWarnings(clusterProfiler::bitr(
@@ -2528,45 +2569,47 @@ module_color_names <- stats::setNames(module_color_metadata$ModuleColorName, mod
 module_color_labels <- stats::setNames(module_color_metadata$ModuleColorLabel, module_color_metadata$ModuleColor)
 
 feature_module_tbl <- tibble::tibble(
-  ProteinID = all_feature_ids,
-  UniProt = unname(feature_primary_acc[all_feature_ids]),
-  EntrezID = unname(acc_to_entrez[feature_primary_acc[all_feature_ids]]),
-  GeneSymbol = unname(acc_to_symbol[feature_primary_acc[all_feature_ids]]),
+  ProteinGroupID = all_feature_ids,
   ModuleColor = as.character(mergedColors[all_feature_ids]),
   ModuleID = unname(module_ids[as.character(mergedColors[all_feature_ids])]),
   ModuleLegacyID = unname(module_legacy_ids[as.character(mergedColors[all_feature_ids])]),
   ModuleColorName = unname(module_color_names[as.character(mergedColors[all_feature_ids])]),
   ModuleColorLabel = unname(module_color_labels[as.character(mergedColors[all_feature_ids])])
 ) %>%
+  dplyr::left_join(network_feature_table, by = "ProteinGroupID") %>%
   dplyr::mutate(
-    EntrezID = as.character(.data$EntrezID),
-    GeneSymbol = as.character(.data$GeneSymbol)
-  ) %>%
-  dplyr::left_join(
-    feature_mapping_tbl %>%
-      dplyr::select("ProteinID", "original_token", "resolved_uniprot", "mapping_strategy", "manual_mapping_used", "mapping_status"),
-    by = "ProteinID"
-  ) %>%
-  dplyr::mutate(
-    mapping_status = dplyr::coalesce(.data$mapping_status, ifelse(startsWith(.data$ProteinID, "UNMAPPED"), "unmapped", "mapped")),
-    manual_mapping_used = dplyr::coalesce(.data$manual_mapping_used, FALSE)
+    ProteinID = .data$ProteinGroupID,
+    RepresentativeUniProt = .data$representative_accession,
+    MemberUniProts = .data$member_accessions,
+    GeneSymbols = .data$member_gene_symbols,
+    UniProt = .data$representative_accession,
+    GeneSymbol = dplyr::if_else(.data$gene_level_claim_allowed, .data$representative_gene_symbol, NA_character_),
+    EntrezID = dplyr::if_else(
+      .data$gene_level_claim_allowed,
+      as.character(unname(acc_to_entrez[.data$representative_accession])),
+      NA_character_
+    ),
+    original_token = .data$original_identifier,
+    resolved_uniprot = .data$representative_accession,
+    mapping_strategy = .data$representative_selection_rule,
+    manual_mapping_used = FALSE
   )
 
 kME_long <- purrr::map_dfr(module_colors, function(module_color) {
   mm_col <- paste0("MM", module_color)
-  module_features <- feature_module_tbl$ProteinID[feature_module_tbl$ModuleColor == module_color]
+  module_features <- feature_module_tbl$ProteinGroupID[feature_module_tbl$ModuleColor == module_color]
   if (!mm_col %in% colnames(geneModuleMembership)) return(NULL)
   tibble::tibble(
-    ProteinID = module_features,
+    ProteinGroupID = module_features,
     kME = as.numeric(geneModuleMembership[module_features, mm_col, drop = TRUE])
   )
 })
 
 make_module_sets <- function(module_color) {
   mod_tbl <- feature_module_tbl %>%
-    dplyr::filter(.data$mapping_status != "unmapped") %>%
+    dplyr::filter(.data$gene_level_claim_allowed) %>%
     dplyr::filter(.data$ModuleColor == module_color) %>%
-    dplyr::left_join(kME_long, by = "ProteinID") %>%
+    dplyr::left_join(kME_long, by = "ProteinGroupID") %>%
     dplyr::mutate(abs_kME = abs(.data$kME))
   core_tbl <- mod_tbl %>% dplyr::filter(is.finite(.data$abs_kME), .data$abs_kME >= 0.6)
   hub_tbl <- mod_tbl %>% dplyr::arrange(dplyr::desc(.data$abs_kME)) %>% dplyr::slice_head(n = 25)
@@ -2586,7 +2629,11 @@ enrich_module_set <- function(module_color, set_name, set_tbl, ontology,
     Ontology = ontology,
     ModuleSize = nrow(set_tbl),
     MappedModuleSize = length(mapped_genes),
-    UniverseSize = length(universe_entrez)
+    UniverseSize = length(universe_entrez),
+    TotalQuantitativeModuleFeatures = sum(feature_module_tbl$ModuleColor == module_color),
+    ExcludedFromGeneAnnotation = sum(
+      feature_module_tbl$ModuleColor == module_color & !feature_module_tbl$gene_level_claim_allowed
+    )
   )
   if (length(universe_entrez) < min_universe_n) {
     return(list(result = NULL, qc = dplyr::mutate(qc_base, status = "skipped", reason = "universe_too_small")))
@@ -2735,38 +2782,45 @@ module_label_table <- tibble::tibble(
 module_name_map <- stats::setNames(module_label_table$ModuleLabel_Final, module_label_table$ModuleColor)
 
 top_hub_flags <- feature_module_tbl %>%
-  dplyr::left_join(kME_long, by = "ProteinID") %>%
+  dplyr::left_join(kME_long, by = "ProteinGroupID") %>%
   dplyr::mutate(abs_kME = abs(.data$kME)) %>%
   dplyr::group_by(.data$ModuleColor) %>%
   dplyr::arrange(dplyr::desc(.data$abs_kME), .by_group = TRUE) %>%
   dplyr::mutate(is_top_hub_25 = dplyr::row_number() <= pmin(25L, dplyr::n())) %>%
   dplyr::ungroup() %>%
-  dplyr::select(.data$ProteinID, .data$is_top_hub_25)
+  dplyr::select(.data$ProteinGroupID, .data$is_top_hub_25)
 
 WGCNA_modules_long <- feature_module_tbl %>%
   dplyr::left_join(
     module_label_table %>% dplyr::select(-dplyr::any_of(c("ModuleColor", "ModuleLegacyID", "ModuleColorName", "ModuleColorLabel"))),
     by = "ModuleID"
   ) %>%
-  dplyr::left_join(kME_long, by = "ProteinID") %>%
-  dplyr::left_join(top_hub_flags, by = "ProteinID") %>%
+  dplyr::left_join(kME_long, by = "ProteinGroupID") %>%
+  dplyr::left_join(top_hub_flags, by = "ProteinGroupID") %>%
   dplyr::mutate(
+    dataset = dataset_profile,
     ModuleSet = "WGCNA",
     abs_kME = abs(.data$kME),
-    GeneSignificanceP = GSPvalue[.data$ProteinID, "p.GS.ExpGroup"],
-    GeneSignificanceFDR = GSPvalue[.data$ProteinID, "FDR.GS.ExpGroup"],
+    GeneSignificanceP = GSPvalue[.data$ProteinGroupID, "p.GS.ExpGroup"],
+    GeneSignificanceFDR = GSPvalue[.data$ProteinGroupID, "FDR.GS.ExpGroup"],
     is_core_kME_0.6 = is.finite(.data$abs_kME) & .data$abs_kME >= 0.6,
     Source = "01_WGCNA.r"
   ) %>%
   dplyr::select(
-    ModuleSet, ModuleID, ModuleLegacyID, ModuleColor, ModuleColorName, ModuleColorLabel,
+    dataset, ModuleSet, ModuleID, ModuleLegacyID, ModuleColor, ModuleColorName, ModuleColorLabel,
     ModuleLabel_Final, ModuleLabel_Source, ModuleLabel_GO_BP, ModuleLabel_GO_MF, ModuleLabel_GO_CC, ModuleLabel_Manual,
     primary_label, alternative_label_MF, alternative_label_CC,
     label_padj_BP, label_padj_MF, label_padj_CC,
     label_gene_ratio_BP, label_gene_ratio_MF, label_gene_ratio_CC,
     label_source, manual_label, final_label,
     best_GO_BP, best_GO_MF, best_GO_CC, best_GO_padj_BP, best_GO_padj_MF, best_GO_padj_CC,
-    ProteinID, UniProt, EntrezID, GeneSymbol,
+    ProteinGroupID, ProteinID, FeatureDisplayLabel,
+    original_identifier, member_identifiers_original, member_identifiers_canonical,
+    member_accessions, member_gene_symbols, RepresentativeUniProt, MemberUniProts, GeneSymbols,
+    representative_accession, representative_gene_symbol, representative_selection_rule,
+    n_members_canonical, n_mapped_accessions, n_unmapped_members, n_gene_symbols, same_gene_group,
+    protein_group_ambiguity_class, gene_level_claim_allowed, protein_level_claim_allowed,
+    UniProt, EntrezID, GeneSymbol,
     original_token, resolved_uniprot, mapping_strategy, manual_mapping_used, mapping_status,
     kME, abs_kME,
     GeneSignificanceP, GeneSignificanceFDR, is_core_kME_0.6, is_top_hub_25, Source
@@ -2774,10 +2828,19 @@ WGCNA_modules_long <- feature_module_tbl %>%
 validate_wgcna_module_definitions(WGCNA_modules_long, "WGCNA_modules_long")
 write_csv_safe(WGCNA_modules_long, fp_modtab("WGCNA_modules_long.csv"))
 writexl::write_xlsx(list(WGCNA_modules_long = WGCNA_modules_long), fp_modtab("WGCNA_modules_long.xlsx"))
-WGCNA_feature_universe <- WGCNA_modules_long %>%
-  dplyr::select("ProteinID", "UniProt", "GeneSymbol", "EntrezID", "ModuleID", "ModuleLegacyID", "ModuleColor", "ModuleColorName", "ModuleColorLabel", "original_token", "resolved_uniprot", "mapping_strategy", "manual_mapping_used", "mapping_status") %>%
-  dplyr::distinct() %>%
-  dplyr::mutate(included_in_wgcna = TRUE)
+WGCNA_feature_universe <- wgcna_feature_table %>%
+  dplyr::left_join(
+    WGCNA_modules_long %>%
+      dplyr::select("ProteinGroupID", "ModuleID", "ModuleLegacyID", "ModuleColor", "ModuleColorName", "ModuleColorLabel", "EntrezID") %>%
+      dplyr::distinct(),
+    by = "ProteinGroupID"
+  ) %>%
+  dplyr::mutate(
+    ProteinID = .data$ProteinGroupID,
+    RepresentativeUniProt = .data$representative_accession,
+    MemberUniProts = .data$member_accessions,
+    GeneSymbols = .data$member_gene_symbols
+  )
 write_csv_safe(WGCNA_feature_universe, fp_modtab("WGCNA_feature_universe.csv"))
 write_csv_safe(module_label_table, fp_modtab("module_name_map.csv"))
 write_tsv_safe(module_label_table, fp_modtab("module_name_map.tsv"))
@@ -2805,7 +2868,7 @@ make_wgcna_module_summary <- function(preservation_source = NULL) {
       mean_abs_kME = mean(.data$abs_kME, na.rm = TRUE),
       top_hub_proteins = {
         mapped_idx <- which(.data$mapping_status != "unmapped")
-        paste(utils::head(.data$ProteinID[mapped_idx][order(.data$abs_kME[mapped_idx], decreasing = TRUE)], 25), collapse = ";")
+        paste(utils::head(.data$ProteinGroupID[mapped_idx][order(.data$abs_kME[mapped_idx], decreasing = TRUE)], 25), collapse = ";")
       },
       .groups = "drop"
     ) %>%
@@ -2957,12 +3020,17 @@ write_csv_safe(module_preservation_long, fp_source("module_preservation.csv"))
 WGCNA_module_summary <- make_wgcna_module_summary(module_preservation_long)
 write_csv_safe(WGCNA_module_summary, fp_modtab("WGCNA_module_summary.csv"))
 saveRDS(list(
+  feature_key_contract_version = wgcna_feature_key_contract_version(),
+  feature_key_fingerprint = wgcna_feature_key_fingerprint(colnames(expression.data)),
   expression.data = expression.data,
+  wgcna_feature_table = wgcna_feature_table,
+  wgcna_member_bridge = wgcna_member_bridge,
+  WGCNA_feature_universe = WGCNA_feature_universe,
   sample_info = sample_info,
   mergedColors = mergedColors,
   mergedMEs = mergedMEs,
   kME = WGCNA_modules_long %>%
-    dplyr::select(.data$ModuleID, .data$ModuleLegacyID, .data$ModuleColor, .data$ModuleColorName, .data$ModuleColorLabel, .data$ProteinID, .data$UniProt, .data$EntrezID, .data$GeneSymbol, .data$kME, .data$abs_kME),
+    dplyr::select(.data$ModuleID, .data$ModuleLegacyID, .data$ModuleColor, .data$ModuleColorName, .data$ModuleColorLabel, .data$ProteinGroupID, .data$ProteinID, .data$RepresentativeUniProt, .data$MemberUniProts, .data$GeneSymbols, .data$EntrezID, .data$GeneSymbol, .data$kME, .data$abs_kME),
   WGCNA_modules_long = WGCNA_modules_long,
   module_summary = WGCNA_module_summary,
   GO_enrichment = GO_enrichment_long,
@@ -3873,7 +3941,7 @@ hub_module_sets <- WGCNA_modules_long %>%
   dplyr::arrange(dplyr::desc(.data$abs_kME), .by_group = TRUE) %>%
   dplyr::mutate(.hub_keep = if ("is_top_hub_25" %in% names(.)) .data$is_top_hub_25 | dplyr::row_number() <= 25 else dplyr::row_number() <= 25) %>%
   dplyr::filter(.data$.hub_keep) %>%
-  dplyr::summarise(top_hub_proteins = list(unique(as.character(.data$ProteinID))), .groups = "drop")
+  dplyr::summarise(top_hub_proteins = list(unique(as.character(.data$ProteinGroupID))), .groups = "drop")
 
 hub_overlap_pairs <- if (nrow(hub_module_sets) >= 2) {
   pair_idx <- utils::combn(seq_len(nrow(hub_module_sets)), 2, simplify = FALSE)
@@ -4212,10 +4280,6 @@ WGCNA_module_definitions_for_downstream <- WGCNA_modules_long %>%
   )
 
 validate_wgcna_module_definitions(WGCNA_module_definitions_for_downstream, "WGCNA_module_definitions_for_downstream")
-WGCNA_feature_universe <- WGCNA_modules_long %>%
-  dplyr::select("ProteinID", "UniProt", "GeneSymbol", "EntrezID", "ModuleID", "ModuleLegacyID", "ModuleColor", "ModuleColorName", "ModuleColorLabel", "original_token", "resolved_uniprot", "mapping_strategy", "manual_mapping_used", "mapping_status") %>%
-  dplyr::distinct() %>%
-  dplyr::mutate(included_in_wgcna = TRUE)
 write_csv_safe(WGCNA_module_priority_summary, fp_modtab("WGCNA_module_priority_summary.csv"))
 write_csv_safe(WGCNA_module_definitions_for_downstream, fp_modtab("WGCNA_module_definitions_for_downstream.csv"))
 write_csv_safe(WGCNA_feature_universe, fp_modtab("WGCNA_feature_universe.csv"))
@@ -4397,6 +4461,8 @@ write_run_manifest(
   parameters = list(
     dataset = dataset_profile,
     dataset_profile_resolved = if (exists("dataset_profile_resolved")) dataset_profile_resolved else dataset_profile,
+    feature_key_contract_version = wgcna_feature_key_contract_version(),
+    feature_key_fingerprint = wgcna_feature_key_fingerprint(colnames(expression.data)),
     soft_threshold_rsquared = soft_threshold_rsquared,
     selected_soft_power = if (exists("softPower")) softPower else NA,
     min_module_size = min_module_size,
