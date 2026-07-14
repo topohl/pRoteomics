@@ -89,9 +89,16 @@ testthat::test_that("mapped contrast schema validates p-value ranges", {
   testthat::skip_if_not_installed("yaml")
 
   good <- data.frame(
-    gene_id = "Aif1",
-    log2FoldChange = 0.5,
-    pvalue = 0.2,
+    ProteinGroupID = "PG:microglia:ABC123",
+    original_identifier = "AIF1_MOUSE",
+    member_accessions = "P55008",
+    member_gene_symbols = "AIF1",
+    protein_group_ambiguity_class = "single_accession_single_gene",
+    gene_level_claim_allowed = TRUE,
+    protein_level_claim_allowed = TRUE,
+    mapping_status = "mapped",
+    log2fc = 0.5,
+    pval = 0.2,
     padj = 0.8,
     dataset = "microglia",
     stringsAsFactors = FALSE
@@ -101,6 +108,37 @@ testthat::test_that("mapped contrast schema validates p-value ranges", {
   bad <- good
   bad$padj <- 1.01
   testthat::expect_error(validate_table_schema(bad, "mapped_contrast", strict = FALSE), "padj outside allowed range")
+
+  missing_key <- good[, setdiff(names(good), "ProteinGroupID")]
+  testthat::expect_error(validate_table_schema(missing_key, "mapped_contrast", strict = FALSE), "Missing required")
+
+  bad_class <- good
+  bad_class$protein_group_ambiguity_class <- "first_member_primary"
+  testthat::expect_error(validate_table_schema(bad_class, "mapped_contrast", strict = FALSE), "protein_group_ambiguity_class has invalid")
+})
+
+testthat::test_that("WGCNA module schema requires canonical protein-group identity", {
+  source(testthat::test_path("..", "..", "R", "paths.R"))
+  source(repo_path("R", "schema_validation.R"))
+  testthat::skip_if_not_installed("yaml")
+
+  good <- data.frame(
+    dataset = "microglia",
+    ProteinGroupID = "PG:microglia:ABC123",
+    ModuleID = "WGCNA_m01",
+    ModuleColor = "#486A8A",
+    member_accessions = "P55008",
+    member_gene_symbols = "AIF1",
+    protein_group_ambiguity_class = "single_accession_single_gene",
+    gene_level_claim_allowed = TRUE,
+    protein_level_claim_allowed = TRUE,
+    mapping_status = "mapped",
+    kME = 0.8,
+    stringsAsFactors = FALSE
+  )
+  testthat::expect_silent(validate_table_schema(good, "wgcna_module_contract", strict = FALSE))
+  missing_key <- good[, setdiff(names(good), "ProteinGroupID")]
+  testthat::expect_error(validate_table_schema(missing_key, "wgcna_module_contract", strict = FALSE), "Missing required")
 })
 
 testthat::test_that("WGCNA group-effect output validation checks required columns and ranges", {
