@@ -1,10 +1,32 @@
 name: wgcna_module_contract
-required_columns: [dataset, ModuleID, ProteinID]
+required_columns:
+  - dataset
+  - ProteinGroupID
+  - ModuleID
+  - ModuleColor
+  - member_accessions
+  - member_gene_symbols
+  - protein_group_ambiguity_class
+  - gene_level_claim_allowed
+  - protein_level_claim_allowed
 columns:
   dataset: {type: character, allowed_values: [neuron_neuropil, neuron_soma, microglia]}
+  ProteinGroupID: {type: character}
   ModuleID: {type: character}
   ModuleColor: {type: character}
   ProteinID: {type: character}
+  member_accessions: {type: character}
+  member_gene_symbols: {type: character}
+  protein_group_ambiguity_class:
+    type: character
+    allowed_values: [single_accession_single_gene, multi_accession_same_gene, multi_gene_indistinguishable, explicit_master_with_subordinate_members, mixed_species_or_contaminant, partially_mapped_group, unresolved_group]
+  gene_level_claim_allowed: {type: logical}
+  protein_level_claim_allowed: {type: logical}
+  mapping_status: {type: character, allowed_values: [mapped, partially_mapped, unmapped]}
+  FeatureDisplayLabel: {type: character}
+  RepresentativeUniProt: {type: character}
+  MemberUniProts: {type: character}
+  GeneSymbols: {type: character}
   UniProt: {type: character}
   GeneSymbol: {type: character}
   EntrezID: {type: character}

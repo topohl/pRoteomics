@@ -128,7 +128,13 @@ require_module_contract_columns <- function(df, cols, artifact = "artifact") {
 validate_wgcna_module_definitions <- function(df, artifact = "WGCNA module definitions") {
   require_module_contract_columns(
     df,
-    c("ModuleSet", "ModuleID", "ModuleLegacyID", "ModuleColor", "ModuleColorName", "ModuleColorLabel", "ProteinID", "UniProt", "GeneSymbol"),
+    c(
+      "ModuleSet", "ModuleID", "ModuleLegacyID", "ModuleColor", "ModuleColorName", "ModuleColorLabel",
+      "ProteinGroupID", "ProteinID", "member_accessions", "member_gene_symbols",
+      "original_identifier", "representative_accession", "representative_gene_symbol",
+      "protein_group_ambiguity_class", "n_mapped_accessions", "n_gene_symbols",
+      "gene_level_claim_allowed", "protein_level_claim_allowed", "mapping_status", "FeatureDisplayLabel"
+    ),
     artifact
   )
   bad_id <- !grepl("^WGCNA_m[0-9]{2,}$", as.character(df$ModuleID))
@@ -141,7 +147,77 @@ validate_wgcna_module_definitions <- function(df, artifact = "WGCNA module defin
   if (!any(c("kME", "Weight") %in% colnames(df))) {
     stop(artifact, " must contain kME or Weight.", call. = FALSE)
   }
+  if (anyNA(df$ProteinGroupID) || any(!nzchar(as.character(df$ProteinGroupID)))) {
+    stop(artifact, " contains missing ProteinGroupID values.", call. = FALSE)
+  }
+  if (any(as.character(df$ProteinID) != as.character(df$ProteinGroupID), na.rm = TRUE)) {
+    stop(artifact, " ProteinID must be a deprecated alias of ProteinGroupID.", call. = FALSE)
+  }
   invisible(TRUE)
+}
+
+wgcna_feature_key_contract_version <- function() "protein_group_id_v1"
+
+wgcna_feature_key_fingerprint <- function(protein_group_ids) {
+  ids <- as.character(protein_group_ids)
+  if (anyNA(ids) || any(!nzchar(ids))) stop("Cannot fingerprint missing ProteinGroupID values.", call. = FALSE)
+  if (anyDuplicated(ids)) stop("Cannot fingerprint duplicate ProteinGroupID values.", call. = FALSE)
+  if (!exists("stable_pg_hash", mode = "function")) stop("stable_pg_hash() must be loaded before fingerprinting WGCNA features.", call. = FALSE)
+  stable_pg_hash(paste(ids, collapse = "\n"))
+}
+
+validate_wgcna_feature_alignment <- function(expression_data, feature_table) {
+  require_module_contract_columns(feature_table, "ProteinGroupID", "WGCNA feature table")
+  ids <- as.character(feature_table$ProteinGroupID[feature_table$included_in_wgcna %in% TRUE])
+  if (anyNA(ids) || any(!nzchar(ids))) stop("WGCNA feature table contains missing ProteinGroupID values.", call. = FALSE)
+  if (anyDuplicated(ids)) stop("WGCNA feature table contains duplicate ProteinGroupID values; make.unique() repair is forbidden.", call. = FALSE)
+  if (!identical(colnames(expression_data), ids)) stop("Expression features and canonical WGCNA annotation rows are misaligned.", call. = FALSE)
+  invisible(TRUE)
+}
+
+validate_wgcna_cached_state <- function(state, expected_feature_ids = NULL) {
+  rerun <- "Full WGCNA rerun required under the Phase 1B ProteinGroupID feature-key contract."
+  if (!is.list(state) || !identical(state$feature_key_contract_version, wgcna_feature_key_contract_version())) {
+    stop("Legacy WGCNA cached state lacks the Phase 1B feature-key contract. ", rerun, call. = FALSE)
+  }
+  expr <- state$expression.data
+  ids <- if (!is.null(expr)) colnames(expr) else character()
+  if (!length(ids) || anyNA(ids) || any(!nzchar(ids)) || anyDuplicated(ids)) {
+    stop("Cached WGCNA state lacks valid canonical ProteinGroupID columns. ", rerun, call. = FALSE)
+  }
+  if (any(!grepl("^PG:", ids))) {
+    stop("Cached WGCNA state contains legacy accession or repaired feature identifiers. ", rerun, call. = FALSE)
+  }
+  fingerprint <- wgcna_feature_key_fingerprint(ids)
+  if (!identical(state$feature_key_fingerprint, fingerprint)) {
+    stop("Cached WGCNA feature-key fingerprint is invalid. ", rerun, call. = FALSE)
+  }
+  if (!is.null(expected_feature_ids) && !identical(ids, as.character(expected_feature_ids))) {
+    stop("Cached WGCNA feature keys differ from current canonical features. ", rerun, call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
+wgcna_feature_universe_audit <- function(feature_table, dataset) {
+  cls <- as.character(feature_table$protein_group_ambiguity_class)
+  included <- feature_table$included_in_wgcna %in% TRUE
+  tibble::tibble(
+    dataset = dataset,
+    total_expression_features = nrow(feature_table),
+    features_with_ProteinGroupID = sum(!is.na(feature_table$ProteinGroupID) & nzchar(feature_table$ProteinGroupID)),
+    ProteinGroupID_collisions = sum(duplicated(feature_table$ProteinGroupID)),
+    single_accession_groups = sum(cls == "single_accession_single_gene"),
+    same_gene_multi_accession_groups = sum(cls == "multi_accession_same_gene"),
+    multi_gene_groups = sum(cls == "multi_gene_indistinguishable"),
+    partially_mapped_groups = sum(cls == "partially_mapped_group"),
+    unresolved_groups = sum(cls == "unresolved_group"),
+    mixed_species_or_contaminant_groups = sum(cls == "mixed_species_or_contaminant"),
+    features_included_in_WGCNA = sum(included),
+    features_excluded_from_WGCNA = sum(!included),
+    features_eligible_for_gene_level_annotation = sum(included & feature_table$gene_level_claim_allowed),
+    features_eligible_for_protein_level_claims = sum(included & feature_table$protein_level_claim_allowed),
+    features_excluded_only_from_annotation = sum(included & !feature_table$gene_level_claim_allowed)
+  )
 }
 
 validate_curated_overlap_programs <- function(df, artifact = "curated overlap programs") {
