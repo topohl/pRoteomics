@@ -1,5 +1,5 @@
 name: clusterProfiler_manifest
-required_columns: [dataset, output_table]
+required_columns: [dataset, output_table, protein_group_contract_version, gene_mapping_policy, primary_gene_level_eligibility_rule, duplicate_gene_collapse_rule, rank_statistic_column, rank_statistic_type, rank_statistic_fallback_used, universe_definition]
 columns:
   dataset: {type: character, allowed_values: [neuron_neuropil, neuron_soma, microglia]}
   analysis_id: {type: character}
@@ -14,4 +14,15 @@ columns:
   output_table: {type: character}
   output_plot: {type: character}
   input_hash: {type: character}
+  gene_input_file: {type: character}
+  protein_group_contract_version: {type: character}
+  gene_mapping_policy: {type: character}
+  primary_gene_level_eligibility_rule: {type: character}
+  ambiguous_group_policy: {type: character}
+  duplicate_gene_collapse_rule: {type: character}
+  rank_statistic_column: {type: character}
+  rank_statistic_type: {type: character}
+  rank_statistic_fallback_used: {type: logical}
+  ORA_direction: {type: character}
+  universe_definition: {type: character}
   config_hash: {type: character}

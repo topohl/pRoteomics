@@ -633,7 +633,11 @@ if (length(missing_tables) > 0) {
        paste(missing_tables, collapse = "\n"), call. = FALSE)
 }
 
-log2fc_files <- unique(manifest_filtered$input_gene_file)
+# Phase 1C-A manifests carry a collapsed gene-level input with ProteinGroupID provenance.
+# Older manifests retain explicit legacy compatibility through input_gene_file.
+manifest_filtered$gene_input_file <- if ("gene_input_file" %in% names(manifest_filtered)) as.character(manifest_filtered$gene_input_file) else NA_character_
+manifest_filtered$comparison_input_file <- ifelse(!is.na(manifest_filtered$gene_input_file) & file.exists(manifest_filtered$gene_input_file), manifest_filtered$gene_input_file, manifest_filtered$input_gene_file)
+log2fc_files <- unique(manifest_filtered$comparison_input_file)
 missing_log2fc <- log2fc_files[!file.exists(log2fc_files)]
 if (length(missing_log2fc) > 0) {
   stop("Manifest references missing mapped/log2FC file(s):\n",
@@ -669,7 +673,7 @@ find_matching_col <- function(df, candidates) {
 
 normalize_log2fc_columns <- function(df) {
   gene_col <- find_matching_col(df, c(
-    "gene_symbol", "gene", "genes", "symbol", "genesymbol",
+    "GeneSymbol", "gene_symbol", "gene", "genes", "symbol", "genesymbol",
     "uniprot", "uniprotid", "uniprot_accession", "uniprotaccession", "protein", "id"
   ))
   log2fc_col <- find_matching_col(df, c(
@@ -2266,7 +2270,7 @@ gene_descriptions <- core_long_df %>%
   distinct() %>%
   group_by(Gene) %>%
   summarize(Description = paste(unique(Description), collapse = "; "), .groups = "drop")
-log2fc_files <- unique(manifest_filtered$input_gene_file)
+log2fc_files <- unique(manifest_filtered$comparison_input_file)
 
 log2fc_df_list <- lapply(log2fc_files, function(f) {
   df <- read_csv(f, col_types = cols()) %>%
