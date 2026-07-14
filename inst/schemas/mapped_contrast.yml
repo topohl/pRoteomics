@@ -1,11 +1,58 @@
 name: mapped_contrast
-required_columns: [gene_id, log2FoldChange]
+required_columns:
+  - ProteinGroupID
+  - original_identifier
+  - member_accessions
+  - member_gene_symbols
+  - protein_group_ambiguity_class
+  - gene_level_claim_allowed
+  - protein_level_claim_allowed
+  - mapping_status
 columns:
-  gene_id: {type: character}
-  entrez_id: {type: character}
+  ProteinGroupID: {type: character}
+  source_file: {type: character}
+  source_feature_id: {type: character}
+  source_row_id: {type: numeric}
+  original_identifier: {type: character}
+  member_identifiers_original: {type: character}
+  member_identifiers_canonical: {type: character}
+  member_accessions: {type: character}
+  member_gene_symbols: {type: character}
+  representative_accession: {type: character}
+  representative_gene_symbol: {type: character}
+  representative_selection_rule: {type: character}
+  n_members_original: {type: numeric}
+  n_members_canonical: {type: numeric}
+  n_mapped_accessions: {type: numeric}
+  n_unmapped_members: {type: numeric}
+  n_gene_symbols: {type: numeric}
+  same_gene_group: {type: logical}
+  protein_group_ambiguity_class:
+    type: character
+    allowed_values:
+      - single_accession_single_gene
+      - multi_accession_same_gene
+      - multi_gene_indistinguishable
+      - explicit_master_with_subordinate_members
+      - mixed_species_or_contaminant
+      - partially_mapped_group
+      - unresolved_group
+  gene_level_claim_allowed: {type: logical}
+  protein_level_claim_allowed: {type: logical}
+  mapping_status:
+    type: character
+    allowed_values: [mapped, partially_mapped, unmapped]
   gene_symbol: {type: character}
+  gene_symbol_compatibility_status:
+    type: character
+    allowed_values: [deprecated_display_only]
   log2FoldChange: {type: numeric}
+  log2fc: {type: numeric}
+  logFC: {type: numeric}
   pvalue: {type: numeric, range: {min: 0, max: 1}}
+  pval: {type: numeric, range: {min: 0, max: 1}}
+  P.Value: {type: numeric, range: {min: 0, max: 1}}
   padj: {type: numeric, range: {min: 0, max: 1}}
+  adj.P.Val: {type: numeric, range: {min: 0, max: 1}}
   contrast: {type: character}
   dataset: {type: character, allowed_values: [neuron_neuropil, neuron_soma, microglia]}

@@ -32,11 +32,11 @@ testthat::test_that("manual override resolves before UNMAPPED fallback", {
   testthat::expect_false(startsWith(out$data$Resolved_UNIPROT, "UNMAPPED"))
 })
 
-testthat::test_that("WGCNA prevents UNMAPPED features from entering network inputs", {
+testthat::test_that("WGCNA separates quantitative inclusion from annotation eligibility", {
   script <- paste(readLines(testthat::test_path("..", "..", "06_modules_WGCNA", "01_WGCNA.r"), warn = FALSE), collapse = "\n")
   testthat::expect_match(script, "manual_mapping_audit.tsv", fixed = TRUE)
-  testthat::expect_match(script, "wgcna_feature_exclusion_audit.tsv", fixed = TRUE)
-  testthat::expect_match(script, "validate_wgcna_expression_inputs", fixed = TRUE)
+  testthat::expect_match(script, "WGCNA_feature_universe_audit.csv", fixed = TRUE)
+  testthat::expect_match(script, "validate_wgcna_feature_alignment", fixed = TRUE)
   testthat::expect_false(grepl("paste0(\"UNMAPPED_\"", script, fixed = TRUE))
 })
 
@@ -45,6 +45,111 @@ testthat::test_that("MapThatProt and WGCNA source shared protein mapping utiliti
   wgcna <- paste(readLines(testthat::test_path("..", "..", "06_modules_WGCNA", "01_WGCNA.r"), warn = FALSE), collapse = "\n")
   testthat::expect_match(mapthatprot, "protein_mapping_utils.R", fixed = TRUE)
   testthat::expect_match(wgcna, "protein_mapping_utils.R", fixed = TRUE)
+})
+
+testthat::test_that("canonical protein-group mapping preserves rows and members", {
+  testthat::skip_if_not_installed("dplyr")
+  source(testthat::test_path("..", "..", "R", "protein_mapping_utils.R"))
+
+  entry_map <- data.frame(
+    UNIPROT = c("Q9CQH5", "P12345", "Q8K1A0", "Q9D0M3", "P99999"),
+    entry_full = c("FOO_MOUSE", "BAR_MOUSE", "BAZ_MOUSE", "ISO_MOUSE", "HUM_MOUSE"),
+    entry_base = c("FOO", "BAR", "BAZ", "ISO", "HUM"),
+    stringsAsFactors = FALSE
+  )
+  gene_map <- data.frame(
+    input = c("FOO", "BAR", "BAZ", "ISO", "HUM", "Q9CQH5", "P12345", "Q8K1A0", "Q9D0M3"),
+    primaryAccession = c("Q9CQH5", "P12345", "Q8K1A0", "Q9D0M3", "P99999", "Q9CQH5", "P12345", "Q8K1A0", "Q9D0M3"),
+    stringsAsFactors = FALSE
+  )
+  accession_gene_map <- data.frame(
+    UNIPROT = c("Q9CQH5", "P12345", "Q8K1A0", "Q9D0M3", "P99999"),
+    gene_symbol = c("GENEA", "GENEA", "GENEB", "ISO", "HUM"),
+    stringsAsFactors = FALSE
+  )
+
+  build <- function(ids, source_file = "contrast_a.csv", extra = list()) {
+    df <- data.frame(gene_symbol = ids, log2fc = seq_along(ids), pval = 0.05, custom_stat = 10, stringsAsFactors = FALSE)
+    for (nm in names(extra)) df[[nm]] <- extra[[nm]]
+    build_canonical_protein_group_tables(
+      df, "microglia", source_file, entry_map, gene_map, accession_gene_map,
+      strict = TRUE
+    )
+  }
+
+  single <- build("FOO_MOUSE")
+  testthat::expect_equal(nrow(single$wide), 1L)
+  testthat::expect_equal(single$wide$protein_group_ambiguity_class, "single_accession_single_gene")
+  testthat::expect_true(single$wide$gene_level_claim_allowed)
+  testthat::expect_true(single$wide$protein_level_claim_allowed)
+
+  same_gene <- build("FOO_MOUSE; BAR_MOUSE")
+  testthat::expect_equal(same_gene$wide$protein_group_ambiguity_class, "multi_accession_same_gene")
+  testthat::expect_true(same_gene$wide$gene_level_claim_allowed)
+  testthat::expect_false(same_gene$wide$protein_level_claim_allowed)
+
+  multi_gene <- build("FOO_MOUSE;BAZ_MOUSE")
+  testthat::expect_equal(multi_gene$wide$protein_group_ambiguity_class, "multi_gene_indistinguishable")
+  testthat::expect_false(multi_gene$wide$gene_level_claim_allowed)
+
+  isoform <- build("sp|Q9D0M3-2|ISO_MOUSE;Q9D0M3")
+  testthat::expect_equal(isoform$wide$protein_group_ambiguity_class, "single_accession_single_gene")
+
+  partial <- build("FOO_MOUSE;NOHIT_MOUSE")
+  testthat::expect_equal(partial$wide$protein_group_ambiguity_class, "partially_mapped_group")
+  testthat::expect_equal(partial$wide$n_unmapped_members, 1L)
+
+  unresolved <- build("NOHIT_MOUSE")
+  testthat::expect_equal(unresolved$wide$protein_group_ambiguity_class, "unresolved_group")
+  testthat::expect_equal(unresolved$wide$mapping_status, "unmapped")
+
+  mixed <- build("FOO_MOUSE;HUM_HUMAN")
+  testthat::expect_equal(mixed$wide$protein_group_ambiguity_class, "mixed_species_or_contaminant")
+
+  contaminant <- build("FOO_MOUSE;CON__KRT_MOUSE")
+  testthat::expect_equal(contaminant$wide$protein_group_ambiguity_class, "mixed_species_or_contaminant")
+
+  repeated <- build(" FOO_MOUSE ; FOO_MOUSE ")
+  testthat::expect_equal(repeated$wide$n_members_original, 2L)
+  testthat::expect_equal(repeated$wide$n_members_canonical, 1L)
+  testthat::expect_equal(nrow(repeated$bridge), 2L)
+
+  delimiter <- split_protein_group_members("FOO_MOUSE; BAR_MOUSE, BAZ_MOUSE / ISO_MOUSE")
+  testthat::expect_equal(delimiter, c("FOO_MOUSE", "BAR_MOUSE", "BAZ_MOUSE", "ISO_MOUSE"))
+
+  forward <- build("FOO_MOUSE;BAR_MOUSE")
+  reverse <- build("BAR_MOUSE;FOO_MOUSE", source_file = "contrast_b.csv")
+  testthat::expect_equal(forward$wide$protein_group_ambiguity_class, reverse$wide$protein_group_ambiguity_class)
+  testthat::expect_equal(forward$wide$ProteinGroupID, reverse$wide$ProteinGroupID)
+  testthat::expect_equal(forward$wide$member_identifiers_canonical, reverse$wide$member_identifiers_canonical)
+
+  master_df <- data.frame(gene_symbol = "FOO_MOUSE;BAR_MOUSE", Master.Protein = "BAR_MOUSE", logFC = 1, stringsAsFactors = FALSE)
+  master <- build_canonical_protein_group_tables(master_df, "microglia", "master.csv", entry_map, gene_map, accession_gene_map, strict = TRUE)
+  testthat::expect_equal(master$wide$protein_group_ambiguity_class, "explicit_master_with_subordinate_members")
+  testthat::expect_equal(master$wide$representative_selection_rule, "explicit_upstream_master")
+
+  no_master <- build("FOO_MOUSE;BAR_MOUSE")
+  testthat::expect_false(no_master$wide$protein_group_ambiguity_class == "explicit_master_with_subordinate_members")
+
+  same_a <- build("FOO_MOUSE;BAR_MOUSE", source_file = "a.csv")
+  same_b <- build("BAR_MOUSE;FOO_MOUSE", source_file = "b.csv")
+  testthat::expect_equal(same_a$wide$ProteinGroupID, same_b$wide$ProteinGroupID)
+
+  distinct_df <- data.frame(feature_id = c("feature_1", "feature_2"), gene_symbol = c("FOO_MOUSE;BAR_MOUSE", "BAR_MOUSE;FOO_MOUSE"), stringsAsFactors = FALSE)
+  distinct <- build_canonical_protein_group_tables(distinct_df, "microglia", "distinct.csv", entry_map, gene_map, accession_gene_map, strict = TRUE)
+  testthat::expect_equal(length(unique(distinct$wide$ProteinGroupID)), 2L)
+
+  collision_df <- data.frame(gene_symbol = c("FOO_MOUSE;BAR_MOUSE", "BAR_MOUSE;FOO_MOUSE"), stringsAsFactors = FALSE)
+  testthat::expect_error(
+    build_canonical_protein_group_tables(collision_df, "microglia", "collision.csv", entry_map, gene_map, accession_gene_map, strict = TRUE),
+    "Unstable ProteinGroupID"
+  )
+
+  stats <- build("FOO_MOUSE")
+  testthat::expect_true("custom_stat" %in% names(stats$wide))
+  testthat::expect_equal(nrow(stats$wide), 1L)
+  testthat::expect_equal(nrow(stats$bridge), 1L)
+  testthat::expect_false(any(is.na(stats$bridge$member_identifier_original)))
 })
 
 testthat::test_that("WGCNA input tables include only resolved mouse UniProt rows and audit exclusions", {
