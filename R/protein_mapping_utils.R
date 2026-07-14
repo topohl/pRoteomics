@@ -417,7 +417,7 @@ resolve_protein_group_member <- function(member_identifier, entry_map, gene_map,
       manual_mapping_used = FALSE,
       stringsAsFactors = FALSE
     )
-    manual_out <- apply_manual_mapping_override(manual, manual_mapping, entry_map, gene_map, manual_override = manual_override)$data
+    manual_out <- apply_manual_mapping_override(manual, manual_mapping, entry_map, gene_map, override = manual_override)$data
     if (isTRUE(manual_out$manual_mapping_used[1])) {
       acc <- manual_out$Resolved_UNIPROT[1]
       strategy <- manual_out$strategy[1]
