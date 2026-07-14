@@ -35,6 +35,7 @@
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
 source(repo_path("R", "dataset_config.R"))
+source(repo_path("R", "protein_group_enrichment_utils.R"))
 MODULE_ID <- "04_differential_expression_enrichment"
 SUBSTEP_ID <- "clusterProfiler"
 CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
@@ -204,6 +205,9 @@ read_config <- function(config_path) {
       pvalue_cutoff = 1,
       qvalue_cutoff = 1,
       p_adjust_method = "BH",
+      strict_protein_group_contract = TRUE,
+      ora_pvalue_threshold = 0.05,
+      ora_fdr_threshold = 0.05,
       min_gs_size = 10,
       max_gs_size = 800
     ),
@@ -253,7 +257,10 @@ read_config <- function(config_path) {
 manifest_columns <- c(
   "analysis_id", "dataset", "run_id", "ontology", "result_type", "contrast", "comparison",
   "route_category", "route_unit", "condition", "direction", "simplified",
-  "plot_suffix", "used_for_plot", "input_gene_file", "input_hash",
+  "plot_suffix", "used_for_plot", "input_gene_file", "gene_input_file", "input_hash",
+  "protein_group_contract_version", "gene_mapping_policy", "primary_gene_level_eligibility_rule",
+  "ambiguous_group_policy", "duplicate_gene_collapse_rule", "rank_statistic_column",
+  "rank_statistic_type", "rank_statistic_fallback_used", "ORA_direction", "universe_definition",
   "config_file", "config_hash", "output_table", "output_plot",
   "n_genes", "n_terms", "empty_result", "checkpoint_status", "created_at"
 )
@@ -263,7 +270,8 @@ make_manifest_row <- function(result_type, ontology, comparison_name, dirs, inpu
                               n_genes = NA_integer_, n_terms = NA_integer_,
                               simplified = FALSE, used_for_plot = FALSE,
                               plot_suffix = NA_character_, checkpoint_status = "computed",
-                              condition = NA_character_, direction = NA_character_) {
+                              condition = NA_character_, direction = NA_character_, gene_input_file = NA_character_,
+                              rank_statistic = NULL, ora_direction = NA_character_, universe_definition = NA_character_) {
   dataset <- get0("DATASET", ifnotfound = NA_character_)
   if (length(dataset) != 1L || is.na(dataset) || !nzchar(as.character(dataset))) {
     dataset <- Sys.getenv("PROTEOMICS_DATASET", unset = NA_character_)
@@ -287,7 +295,18 @@ make_manifest_row <- function(result_type, ontology, comparison_name, dirs, inpu
     plot_suffix = plot_suffix,
     used_for_plot = isTRUE(used_for_plot),
     input_gene_file = input_gene_file,
+    gene_input_file = gene_input_file,
     input_hash = file_hash(input_gene_file),
+    protein_group_contract_version = canonical_enrichment_contract_version(),
+    gene_mapping_policy = "eligible_single_or_same_gene_groups; median_finite_statistics",
+    primary_gene_level_eligibility_rule = "gene_level_claim_allowed && class in {single_accession_single_gene,multi_accession_same_gene}",
+    ambiguous_group_policy = "retain_in_evidence_exclude_from_primary_gene_enrichment",
+    duplicate_gene_collapse_rule = "median_finite_statistics",
+    rank_statistic_column = if (is.null(rank_statistic)) NA_character_ else rank_statistic$column,
+    rank_statistic_type = if (is.null(rank_statistic)) NA_character_ else rank_statistic$type,
+    rank_statistic_fallback_used = if (is.null(rank_statistic)) NA else rank_statistic$fallback_used,
+    ORA_direction = ora_direction,
+    universe_definition = universe_definition,
     config_file = config_path,
     config_hash = file_hash(config_path),
     output_table = output_table,
@@ -476,27 +495,9 @@ write_completed_checkpoint <- function(dirs) {
 }
 
 prepare_gene_vectors <- function(df, top_gene_abs_log2fc = 1) {
-  colnames(df)[1] <- "gene_symbol"
-  original_gene_list <- df$log2fc
-  names(original_gene_list) <- df$gene_symbol
-
-  gene_list <- sort(na.omit(original_gene_list), decreasing = TRUE)
-  gene_list <- gene_list[!duplicated(names(gene_list))]
-
-  top_gene_list <- gene_list
-  top_genes <- names(top_gene_list)[abs(top_gene_list) > top_gene_abs_log2fc]
-  if (length(top_genes) > 0) {
-    top_genes <- names(sort(top_gene_list[top_genes], decreasing = TRUE))
-  } else {
-    top_genes <- character(0)
-  }
-
-  list(
-    original_gene_list = original_gene_list,
-    gene_list = gene_list,
-    fc_for_cnet = gene_list,
-    top_genes = top_genes
-  )
+  inputs <- build_enrichment_gene_inputs(df, strict = isTRUE(getOption("clusterProfiler.strict_protein_group_contract", TRUE)))
+  list(original_gene_list = inputs$ranked, gene_list = inputs$ranked, fc_for_cnet = inputs$ranked,
+       top_genes = names(inputs$ranked)[abs(inputs$ranked) > top_gene_abs_log2fc], inputs = inputs)
 }
 
 load_background_universe <- function(cfg) {
@@ -801,6 +802,7 @@ analysis_params <- list(
   max_gs_size = as.integer(cfg$analysis$max_gs_size),
   top_gene_abs_log2fc = as.numeric(cfg$analysis$top_gene_abs_log2fc)
 )
+options(clusterProfiler.strict_protein_group_contract = isTRUE(cfg$analysis$strict_protein_group_contract))
 
 runtime_params <- list(
   workers = as.integer(cfg$runtime$workers),
@@ -1112,27 +1114,41 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
       return(list(status = "FAILED", comparison = comparison_name, error = "Data file is empty", qc = qc, manifest = dplyr::bind_rows(manifest_rows)))
     }
 
-    if (!"log2fc" %in% colnames(df)) {
-      if ("logFC" %in% colnames(df)) {
-        colnames(df)[colnames(df) == "logFC"] <- "log2fc"
-      } else {
-        write_log_line(comparison_log, "ERROR", comparison_name, "INPUT", "No log2fc/logFC column")
-        qc$status <- "FAILED"
-        qc$runtime_seconds <- as.numeric(difftime(Sys.time(), run_start, units = "secs"))
-        write.csv(qc, qc_path, row.names = FALSE)
-        return(list(status = "FAILED", comparison = comparison_name, error = "No log2fc column", qc = qc, manifest = dplyr::bind_rows(manifest_rows)))
-      }
-    }
-
     vectors <- prepare_gene_vectors(df, top_gene_abs_log2fc = analysis_params$top_gene_abs_log2fc)
     original_gene_list <- vectors$original_gene_list
     gene_list <- vectors$gene_list
     fc_for_cnet <- vectors$fc_for_cnet
     top_genes <- vectors$top_genes
+    gene_inputs <- vectors$inputs
+    audit_root <- file.path(dirs$results, "protein_group_audits")
+    dir.create(audit_root, recursive = TRUE, showWarnings = FALSE)
+    write.csv(gene_inputs$transformation, file.path(audit_root, "protein_group_to_gene_transformation_audit.csv"), row.names = FALSE)
+    write.csv(gene_inputs$transformation[gene_inputs$transformation$eligibility_status == "excluded", , drop = FALSE], file.path(audit_root, "eligibility_audit.csv"), row.names = FALSE)
+    write.csv(gene_inputs$collapse, file.path(audit_root, "duplicate_gene_collapse_audit.csv"), row.names = FALSE)
+    gene_input_file <- file.path(audit_root, "collapsed_gene_input.csv")
+    gene_input <- gene_inputs$collapse
+    if (nrow(gene_input)) gene_input$log2fc <- gene_input$collapsed_statistic
+    write.csv(gene_input, gene_input_file, row.names = FALSE)
+    write.csv(gene_inputs$collapse, file.path(audit_root, "leading_edge_provenance.csv"), row.names = FALSE)
+    aggregate_audit <- data.frame(total_ProteinGroupIDs = nrow(gene_inputs$transformation),
+      eligible_single_accession_groups = sum(gene_inputs$transformation$protein_group_ambiguity_class == "single_accession_single_gene" & gene_inputs$transformation$eligibility_status == "eligible"),
+      eligible_same_gene_multi_accession_groups = sum(gene_inputs$transformation$protein_group_ambiguity_class == "multi_accession_same_gene" & gene_inputs$transformation$eligibility_status == "eligible"),
+      excluded_multi_gene_groups = sum(gene_inputs$transformation$protein_group_ambiguity_class == "multi_gene_indistinguishable"),
+      excluded_partially_mapped_groups = sum(gene_inputs$transformation$protein_group_ambiguity_class == "partially_mapped_group"),
+      excluded_unresolved_groups = sum(gene_inputs$transformation$protein_group_ambiguity_class == "unresolved_group"),
+      excluded_mixed_species_or_contaminant_groups = sum(gene_inputs$transformation$protein_group_ambiguity_class == "mixed_species_or_contaminant"),
+      eligible_genes_before_duplicate_collapse = sum(gene_inputs$transformation$eligibility_status == "eligible"), genes_after_duplicate_collapse = nrow(gene_inputs$collapse),
+      genes_with_multiple_ProteinGroupIDs = sum(gene_inputs$collapse$n_protein_groups_for_gene > 1), genes_with_discordant_directions = sum(gene_inputs$collapse$discordant_direction),
+      rank_statistic_column = gene_inputs$statistic$column, rank_statistic_type = gene_inputs$statistic$type,
+      rank_statistic_fallback_used = gene_inputs$statistic$fallback_used, gene_collapse_rule = "median_finite_statistics", stringsAsFactors = FALSE)
+    write.csv(aggregate_audit, file.path(audit_root, "per_contrast_aggregate_audit.csv"), row.names = FALSE)
+    write.csv(data.frame(GeneSymbol = names(gene_inputs$sensitivity$median), median_statistic = unname(gene_inputs$sensitivity$median),
+      max_abs_signed_statistic = unname(gene_inputs$sensitivity$max_abs_signed[names(gene_inputs$sensitivity$median)]), stringsAsFactors = FALSE),
+      file.path(audit_root, "rank_statistic_sensitivity_audit.csv"), row.names = FALSE)
 
     qc$n_input_rows <- nrow(df)
-    qc$n_non_na_log2fc <- sum(!is.na(df$log2fc))
-    qc$n_unique_gene_ids <- length(unique(df[[1]]))
+    qc$n_non_na_log2fc <- sum(is.finite(gene_inputs$transformation$source_statistic))
+    qc$n_unique_gene_ids <- length(gene_list)
     qc$n_top_genes <- length(top_genes)
     write_log_line(comparison_log, "INFO", comparison_name, "QC", paste0("rows=", qc$n_input_rows,
                                                                             ", nonNA_log2fc=", qc$n_non_na_log2fc,
@@ -1143,7 +1159,7 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
     # GSEA (GO) WITH OPTIONAL SIMPLIFICATION
     # ----------------------------------------------------
     # Ensure OrgDb is passed as object
-    gse <- gseGO(geneList = gene_list, ont = ont, keyType = "UNIPROT", 
+    gse <- gseGO(geneList = gene_list, ont = ont, keyType = "SYMBOL",
                  minGSSize = analysis_params$min_gs_size,
                  maxGSSize = analysis_params$max_gs_size,
                  pvalueCutoff = analysis_params$pvalue_cutoff,
@@ -1269,6 +1285,7 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
       comparison_name = comparison_name,
       dirs = dirs,
       input_gene_file = data_path,
+      gene_input_file = gene_input_file,
       config_path = config_path,
       output_table = gsea_core_table,
       output_plot = if (file.exists(gsea_plot)) gsea_plot else NA_character_,
@@ -1276,7 +1293,9 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
       n_terms = nrow(gse_for_export@result),
       simplified = identical(plot_suffix, "_simplified"),
       used_for_plot = TRUE,
-      plot_suffix = plot_suffix
+      plot_suffix = plot_suffix,
+      rank_statistic = gene_inputs$statistic,
+      universe_definition = "eligible tested genes after ProteinGroupID-to-gene transformation and median duplicate collapse"
     )
     qc$n_gsea_terms <- nrow(gse@result)
     print_progress_step(comparison_name, "GSEA", paste0("terms=", qc$n_gsea_terms), runtime_params$show_step_progress)
@@ -1284,9 +1303,19 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
     # ----------------------------------------------------
     # ORA WITH OPTIONAL SIMPLIFICATION
     # ----------------------------------------------------
-    ora_universe <- if (length(background_universe) > 0) background_universe else names(gene_list)
-    if(length(top_genes) > 0) {
-      ora <- enrichGO(gene = top_genes, ont = ont, keyType = "UNIPROT", 
+    ora_universe <- names(gene_list)
+    ora_inputs <- build_ora_inputs(gene_inputs$collapse, p_threshold = cfg$analysis$ora_pvalue_threshold, fdr_threshold = cfg$analysis$ora_fdr_threshold, fc_threshold = analysis_params$top_gene_abs_log2fc)
+    write.csv(data.frame(GeneSymbol = ora_inputs$universe, ORA_direction = "universe", stringsAsFactors = FALSE), file.path(audit_root, "ora_universe_audit.csv"), row.names = FALSE)
+    write.csv(data.frame(GeneSymbol = ora_inputs$up, ORA_direction = "upregulated", stringsAsFactors = FALSE), file.path(audit_root, "ora_upregulated_input_audit.csv"), row.names = FALSE)
+    write.csv(data.frame(GeneSymbol = ora_inputs$down, ORA_direction = "downregulated", stringsAsFactors = FALSE), file.path(audit_root, "ora_downregulated_input_audit.csv"), row.names = FALSE)
+    for (ora_direction in c("up", "down")) {
+      ora_genes <- ora_inputs[[ora_direction]]
+      if (length(ora_genes) == length(ora_universe)) {
+        write.csv(data.frame(result_type = "annotation_coverage", ORA_direction = ora_direction, universe_definition = "eligible_tested_genes_after_median_collapse"), file.path(dirs$ora, paste0("ORA_", ont, "_", ora_direction, "_annotation_coverage.csv")), row.names = FALSE)
+        next
+      }
+      if(length(ora_genes) > 0) {
+      ora <- enrichGO(gene = ora_genes, ont = ont, keyType = "SYMBOL",
                       universe = ora_universe,
                       minGSSize = analysis_params$min_gs_size,
                       maxGSSize = analysis_params$max_gs_size,
@@ -1326,23 +1355,24 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
         }
 
         ora_plot <- clusterProfiler::dotplot(ora_for_plot, showCategory = 10) + 
-          labs(title = paste("ORA", ont, "- Top Regulated Genes", plot_label)) + 
+          labs(title = paste("ORA", ont, "-", ora_direction, "regulated genes", plot_label)) +
           scale_x_continuous(limits = c(0, 1))
-        save_plot_organized(ora_plot, paste0("ORA_", ont, "_dotplot", plot_suffix, ".svg"), dirs$plots_ora)
+        save_plot_organized(ora_plot, paste0("ORA_", ont, "_", ora_direction, "_dotplot", plot_suffix, ".svg"), dirs$plots_ora)
       }
 
       # Save results
       write.csv(ora@result, 
-                file = file.path(dirs$ora, paste0("ORA_", ont, "_results_full.csv")), 
+                file = file.path(dirs$ora, paste0("ORA_", ont, "_", ora_direction, "_results_full.csv")),
                 row.names = FALSE)
 
       if (PERFORM_SIMPLIFICATION && !is.null(ora_simplified)) {
         write.csv(ora_simplified@result, 
-                  file = file.path(dirs$ora, paste0("ORA_", ont, "_results_simplified.csv")), 
+                  file = file.path(dirs$ora, paste0("ORA_", ont, "_", ora_direction, "_results_simplified.csv")),
                   row.names = FALSE)
       }
       qc$n_ora_terms <- nrow(ora@result)
       print_progress_step(comparison_name, "ORA", paste0("terms=", qc$n_ora_terms), runtime_params$show_step_progress)
+      }
     }
 
     # ----------------------------------------------------

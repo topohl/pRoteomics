@@ -9,6 +9,8 @@ columns:
   route_category: {type: character}
   route_unit: {type: character}
   input_manifest: {type: character}
+  gene_input_file: {type: character}
+  protein_group_contract_version: {type: character}
   output_table: {type: character}
   output_plot: {type: character}
   config_hash: {type: character}

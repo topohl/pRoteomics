@@ -141,6 +141,17 @@ testthat::test_that("WGCNA module schema requires canonical protein-group identi
   testthat::expect_error(validate_table_schema(missing_key, "wgcna_module_contract", strict = FALSE), "Missing required")
 })
 
+testthat::test_that("clusterProfiler manifest records the protein-group enrichment contract", {
+  source(testthat::test_path("..", "..", "R", "paths.R"))
+  source(repo_path("R", "schema_validation.R"))
+  testthat::skip_if_not_installed("yaml")
+  good <- data.frame(dataset = "microglia", output_table = "out.csv", protein_group_contract_version = "protein_group_enrichment_v1",
+    gene_mapping_policy = "median", primary_gene_level_eligibility_rule = "allowed", duplicate_gene_collapse_rule = "median_finite_statistics",
+    rank_statistic_column = "t", rank_statistic_type = "moderated_or_signed_inferential", rank_statistic_fallback_used = FALSE,
+    universe_definition = "eligible tested genes", stringsAsFactors = FALSE)
+  testthat::expect_silent(validate_table_schema(good, "clusterProfiler_manifest", strict = FALSE))
+})
+
 testthat::test_that("WGCNA group-effect output validation checks required columns and ranges", {
   source(testthat::test_path("..", "..", "R", "paths.R"))
   source(repo_path("R", "dataset_config.R"))

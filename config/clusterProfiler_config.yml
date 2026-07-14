@@ -14,6 +14,10 @@ analysis:
   organism: org.Mm.eg.db
   ontology: BP
   top_gene_abs_log2fc: 1
+  # Publication-facing runs require the Phase 1A canonical protein-group contract.
+  strict_protein_group_contract: true
+  ora_pvalue_threshold: 0.05
+  ora_fdr_threshold: 0.05
   pvalue_cutoff: 1
   qvalue_cutoff: 1
   p_adjust_method: BH
