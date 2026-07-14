@@ -33,10 +33,11 @@ validate_table_schema <- function(df, schema_name, strict = TRUE) {
   value_errors <- character()
   for (col in intersect(names(col_defs), names(df))) {
     expected <- col_defs[[col]]$type %||% "any"
+    all_missing <- all(is.na(df[[col]]))
     ok <- switch(
       expected,
       any = TRUE,
-      character = is.character(df[[col]]) || is.factor(df[[col]]),
+      character = is.character(df[[col]]) || is.factor(df[[col]]) || all_missing,
       numeric = is.numeric(df[[col]]) || is.integer(df[[col]]) || all(is.na(df[[col]]) | suppressWarnings(!is.na(as.numeric(df[[col]])))),
       integer = is.integer(df[[col]]) || all(is.na(df[[col]]) | suppressWarnings(!is.na(as.integer(df[[col]])))),
       logical = is.logical(df[[col]]) || all(is.na(df[[col]]) | tolower(as.character(df[[col]])) %in% c("true", "false", "0", "1")),
