@@ -584,10 +584,18 @@ build_canonical_protein_group_tables <- function(df_raw, dataset, source_file,
       bridge$member_identifier_normalized
     )
     identity_members <- sort(unique(identity_members[!is.na(identity_members) & nzchar(identity_members)]), method = "radix")
+    membership_basis <- paste(identity_members, collapse = ";")
+    source_membership_basis <- if (feature_is_membership && !is.na(source_feature_id) && nzchar(source_feature_id)) {
+      paste(canonical_member_set(split_protein_group_members(source_feature_id)), collapse = ";")
+    } else {
+      ""
+    }
     id_basis <- if (!is.na(source_feature_id) && nzchar(source_feature_id) && !feature_is_membership) {
       paste(dataset, "source_feature_id", source_feature_id, sep = "|")
+    } else if (feature_is_membership && nzchar(source_membership_basis) && !identical(source_membership_basis, membership_basis)) {
+      paste(dataset, "canonical_members", membership_basis, "source_membership_discriminator", source_membership_basis, sep = "|")
     } else {
-      paste(dataset, "canonical_members", paste(identity_members, collapse = ";"), sep = "|")
+      paste(dataset, "canonical_members", membership_basis, sep = "|")
     }
     protein_group_id <- if (!is.na(feature_col) && identical(feature_col, "ProteinGroupID")) {
       source_feature_id
@@ -610,6 +618,7 @@ build_canonical_protein_group_tables <- function(df_raw, dataset, source_file,
     bridge$source_file <- basename(source_file)
     bridge$source_feature_id <- source_feature_id
     bridge$source_row_id <- i
+    bridge$original_identifier <- original_identifier
 
     mapped_accessions <- unique(stats::na.omit(bridge$member_accession))
     mapped_genes <- unique(stats::na.omit(bridge$member_gene_symbol))
@@ -659,6 +668,7 @@ build_canonical_protein_group_tables <- function(df_raw, dataset, source_file,
   bridge <- dplyr::bind_rows(bridges) |>
     dplyr::select(dplyr::all_of(c(
       "ProteinGroupID", "source_file", "source_feature_id", "source_row_id",
+      "original_identifier",
       "member_identifier_original", "member_identifier_normalized",
       "member_rank_original", "member_rank_canonical",
       "member_accession", "member_gene_symbol", "member_species",
