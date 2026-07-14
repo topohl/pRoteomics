@@ -5,11 +5,37 @@ layers around the WGCNA scripts without changing the registered run order.
 
 ## Inputs
 
-Core WGCNA construction consumes dataset-scoped mapped protein contrast files:
+Core WGCNA construction stages dataset-scoped imputed expression workbooks with
+the original protein-group annotation columns:
 
 ```text
-data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv
+data/processed/01_preprocessing/impute/*pgmatrix_imputed_<dataset>*.xlsx
 ```
+
+Expression columns are keyed by canonical `ProteinGroupID`. The complete member
+set is retained in `WGCNA_canonical_feature_table.csv` and
+`WGCNA_protein_group_member_bridge.csv`. `ProteinID` is a deprecated downstream
+alias of `ProteinGroupID`; `RepresentativeUniProt` and `FeatureDisplayLabel` are
+display fields only. Quantitatively valid multi-gene, partially mapped and
+unresolved groups remain in the network but are excluded from primary gene-level
+GO annotation. Confirmed mixed-species or contaminant groups are excluded with an
+explicit reason.
+
+Identity construction is shared with Phase 1A. An existing `ProteinGroupID` or
+opaque stable source feature ID is preserved/preferred. Membership fields such as
+`Protein.Group` are canonicalized and matched through the sorted mapped-member set,
+with a canonical source-membership discriminator only when it carries additional
+stable feature information (for example an isoform-qualified group). This makes
+member order irrelevant and lets entry-name contrast rows and accession-based
+expression rows converge when their mapped membership is equivalent. Rows that
+remain indistinguishable after these fields are applied fail validation; row order
+and filenames are never used to repair identity.
+
+Legacy module consumers may still read `UniProt`/`GeneSymbol`; those columns now
+mirror representative display annotations and must not be treated as quantitative
+keys. Such consumers remain compatibility-only until their own protein-group-aware
+migration. The canonical handoff key is `ProteinGroupID`, with `MemberUniProts`
+and `GeneSymbols` carrying complete mapped membership.
 
 Downstream WGCNA interpretation may also consume:
 
@@ -50,6 +76,8 @@ Inspect:
 
 Safe to rerun: no for routine interpretation updates. Rerun intentionally when
 input matrices, WGCNA settings, or module construction choices change.
+States predating the `protein_group_id_v1` feature-key contract, or states whose
+ordered feature fingerprint differs, are rejected and require a full WGCNA rerun.
 
 ### 03_score_module_activity.R
 
