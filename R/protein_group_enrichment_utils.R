@@ -134,3 +134,59 @@ build_ora_inputs <- function(collapse, p_values = NULL, fdr_values = NULL, logfc
   list(universe = sort(unique(collapse$GeneSymbol)), up = sort(unique(collapse$GeneSymbol[sig & stat > 0])),
     down = sort(unique(collapse$GeneSymbol[sig & stat < 0])), annotation_coverage = FALSE)
 }
+
+make_ora_input_audit <- function(genes, direction) {
+  genes <- as.character(genes)
+  data.frame(
+    GeneSymbol = genes,
+    ORA_direction = rep(as.character(direction), length(genes)),
+    stringsAsFactors = FALSE
+  )
+}
+
+gsea_input_diagnostics <- function(gene_list, symbol_keys) {
+  genes <- names(gene_list)
+  non_empty <- !is.na(genes) & nzchar(genes)
+  matched <- unique(genes[non_empty & genes %in% symbol_keys])
+  values <- suppressWarnings(as.numeric(gene_list))
+  data.frame(
+    total_ranked_genes = length(gene_list),
+    non_empty_unique_gene_names = length(unique(genes[non_empty])),
+    orgdb_symbol_matches = length(matched),
+    orgdb_symbol_match_fraction = if (sum(non_empty) == 0) 0 else length(matched) / length(unique(genes[non_empty])),
+    finite_rank_statistics = sum(is.finite(values)),
+    unique_rank_statistic_values = length(unique(values[is.finite(values)])),
+    duplicated_gene_names = sum(duplicated(genes[non_empty])),
+    min_rank_statistic = if (any(is.finite(values))) min(values[is.finite(values)]) else NA_real_,
+    max_rank_statistic = if (any(is.finite(values))) max(values[is.finite(values)]) else NA_real_,
+    stringsAsFactors = FALSE
+  )
+}
+
+validate_gsea_input <- function(gene_list, diagnostics, minimum_symbol_matches = 10L) {
+  genes <- names(gene_list)
+  values <- suppressWarnings(as.numeric(gene_list))
+  valid <- is.numeric(gene_list) && !is.null(genes) && all(!is.na(genes) & nzchar(genes)) &&
+    !anyDuplicated(genes) && all(is.finite(values)) && diagnostics$orgdb_symbol_matches >= minimum_symbol_matches
+  if (!valid) {
+    stop("GO GSEA input precondition failed: ranked_genes=", diagnostics$total_ranked_genes,
+      ", non_empty_unique_gene_names=", diagnostics$non_empty_unique_gene_names,
+      ", orgdb_symbol_matches=", diagnostics$orgdb_symbol_matches,
+      ", finite_rank_statistics=", diagnostics$finite_rank_statistics,
+      ", duplicated_gene_names=", diagnostics$duplicated_gene_names,
+      ", required_orgdb_symbol_matches=", minimum_symbol_matches, call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
+gsea_result_table <- function(gse, diagnostics) {
+  details <- paste0("ranked_genes=", diagnostics$total_ranked_genes,
+    ", orgdb_symbol_matches=", diagnostics$orgdb_symbol_matches)
+  if (is.null(gse)) stop("GO GSEA returned NULL: ", details, call. = FALSE)
+  if (!inherits(gse, "gseaResult") && !inherits(gse, "enrichResult")) {
+    stop("GO GSEA returned invalid result class: ", paste(class(gse), collapse = "/"), "; ", details, call. = FALSE)
+  }
+  result <- if (isS4(gse)) methods::slot(gse, "result") else gse$result
+  if (!is.data.frame(result)) stop("GO GSEA returned result without a usable result data.frame: ", details, call. = FALSE)
+  result
+}
