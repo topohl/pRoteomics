@@ -35,6 +35,7 @@
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
 source(repo_path("R", "dataset_config.R"))
+source(repo_path("R", "protein_mapping_utils.R"))
 source(repo_path("R", "protein_group_enrichment_utils.R"))
 MODULE_ID <- "04_differential_expression_enrichment"
 SUBSTEP_ID <- "clusterProfiler"
@@ -298,8 +299,8 @@ make_manifest_row <- function(result_type, ontology, comparison_name, dirs, inpu
     gene_input_file = gene_input_file,
     input_hash = file_hash(input_gene_file),
     protein_group_contract_version = canonical_enrichment_contract_version(),
-    gene_mapping_policy = "eligible_single_or_same_gene_groups; median_finite_statistics",
-    primary_gene_level_eligibility_rule = "gene_level_claim_allowed && class in {single_accession_single_gene,multi_accession_same_gene}",
+    gene_mapping_policy = "Stage02 accession-first official mouse SYMBOL/ENTREZ; median_finite_statistics after annotation",
+    primary_gene_level_eligibility_rule = "gene_level_claim_allowed && concordant official gene annotation && class in {single_accession_single_gene,multi_accession_same_gene}",
     ambiguous_group_policy = "retain_in_evidence_exclude_from_primary_gene_enrichment",
     duplicate_gene_collapse_rule = "median_finite_statistics",
     rank_statistic_column = if (is.null(rank_statistic)) NA_character_ else rank_statistic$column,
@@ -1045,7 +1046,7 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
     n_unique_gene_ids = NA_integer_,
     n_top_genes = NA_integer_,
     n_background_universe = length(background_universe),
-    n_id_mapped_uniprot_to_entrez = NA_integer_,
+    n_id_mapped_symbol_to_entrez = NA_integer_,
     n_gsea_terms = NA_integer_,
     n_ora_terms = NA_integer_,
     n_kegg_terms = NA_integer_,
@@ -1114,22 +1115,57 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
       return(list(status = "FAILED", comparison = comparison_name, error = "Data file is empty", qc = qc, manifest = dplyr::bind_rows(manifest_rows)))
     }
 
+    strict_gene_contract <- isTRUE(getOption("clusterProfiler.strict_protein_group_contract", TRUE))
+    annotation_required <- c("official_gene_symbol", "official_entrez_id", "protein_group_gene_annotation_status",
+      "gene_annotation_contract_version", "uniprot_mapping_file_hash", "orgdb_package_version")
+    missing_annotation <- setdiff(annotation_required, names(df))
+    annotation_fallback <- NULL
+    if (length(missing_annotation)) {
+      fallback_enabled <- tolower(Sys.getenv("PROTEOMICS_ALLOW_ENRICHMENT_GENE_ANNOTATION_FALLBACK", unset = "false")) %in% c("1", "true", "yes", "y")
+      if (strict_gene_contract || !fallback_enabled) {
+        stop("Mapped contrast lacks precomputed official mouse gene annotation: ", paste(missing_annotation, collapse = ", "),
+          ". Regenerate Stage 02 outputs. Compatibility fallback requires non-strict mode and PROTEOMICS_ALLOW_ENRICHMENT_GENE_ANNOTATION_FALLBACK=true.", call. = FALSE)
+      }
+      fallback_accessions <- unique(unlist(lapply(df$member_accessions, split_protein_group_members), use.names = FALSE))
+      fallback_maps <- build_mouse_gene_annotation_maps(org_db_obj, fallback_accessions)
+      annotation_fallback <- apply_enrichment_gene_annotation_fallback(df, fallback_maps)
+      df <- annotation_fallback$data
+      warning("Using explicitly enabled enrichment gene-annotation compatibility fallback; publication-facing runs must regenerate Stage 02.", call. = FALSE)
+    }
+
     vectors <- prepare_gene_vectors(df, top_gene_abs_log2fc = analysis_params$top_gene_abs_log2fc)
     original_gene_list <- vectors$original_gene_list
     gene_list <- vectors$gene_list
     fc_for_cnet <- vectors$fc_for_cnet
     top_genes <- vectors$top_genes
     gene_inputs <- vectors$inputs
+    gene_namespace <- canonical_enrichment_gene_namespace()
+    if (!identical(gene_namespace, "SYMBOL")) stop("Unsupported canonical enrichment gene namespace: ", gene_namespace)
+    symbol_keys <- AnnotationDbi::keys(org_db_obj, keytype = gene_namespace)
+    symbol_validation <- validate_precomputed_enrichment_symbols(gene_inputs$collapse, symbol_keys)
+    if (any(!symbol_validation$exact_match)) {
+      stop("Precomputed official_gene_symbol contains values that are not exact org.Mm.eg.db SYMBOL keys; rerun Stage 02 annotation.", call. = FALSE)
+    }
+    resolved_gene_collapse <- gene_inputs$collapse
+    original_gene_list <- gene_inputs$ranked
+    gene_list <- gene_inputs$ranked
+    fc_for_cnet <- gene_inputs$ranked
+    top_genes <- names(gene_list)[abs(gene_list) > analysis_params$top_gene_abs_log2fc]
     audit_root <- file.path(dirs$results, "protein_group_audits")
     dir.create(audit_root, recursive = TRUE, showWarnings = FALSE)
     write.csv(gene_inputs$transformation, file.path(audit_root, "protein_group_to_gene_transformation_audit.csv"), row.names = FALSE)
     write.csv(gene_inputs$transformation[gene_inputs$transformation$eligibility_status == "excluded", , drop = FALSE], file.path(audit_root, "eligibility_audit.csv"), row.names = FALSE)
     write.csv(gene_inputs$collapse, file.path(audit_root, "duplicate_gene_collapse_audit.csv"), row.names = FALSE)
+    write.csv(symbol_validation, file.path(audit_root, "symbol_resolution_validation_audit.csv"), row.names = FALSE)
+    if (!is.null(annotation_fallback)) {
+      write.csv(annotation_fallback$accession_audit, file.path(audit_root, "compatibility_fallback_accession_annotation_audit.csv"), row.names = FALSE)
+      write.csv(annotation_fallback$protein_group_audit, file.path(audit_root, "compatibility_fallback_protein_group_annotation_audit.csv"), row.names = FALSE)
+    }
     gene_input_file <- file.path(audit_root, "collapsed_gene_input.csv")
-    gene_input <- gene_inputs$collapse
+    gene_input <- resolved_gene_collapse
     if (nrow(gene_input)) gene_input$log2fc <- gene_input$collapsed_statistic
     write.csv(gene_input, gene_input_file, row.names = FALSE)
-    write.csv(gene_inputs$collapse, file.path(audit_root, "leading_edge_provenance.csv"), row.names = FALSE)
+    write.csv(resolved_gene_collapse, file.path(audit_root, "leading_edge_provenance.csv"), row.names = FALSE)
     aggregate_audit <- data.frame(total_ProteinGroupIDs = nrow(gene_inputs$transformation),
       eligible_single_accession_groups = sum(gene_inputs$transformation$protein_group_ambiguity_class == "single_accession_single_gene" & gene_inputs$transformation$eligibility_status == "eligible"),
       eligible_same_gene_multi_accession_groups = sum(gene_inputs$transformation$protein_group_ambiguity_class == "multi_accession_same_gene" & gene_inputs$transformation$eligibility_status == "eligible"),
@@ -1137,7 +1173,7 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
       excluded_partially_mapped_groups = sum(gene_inputs$transformation$protein_group_ambiguity_class == "partially_mapped_group"),
       excluded_unresolved_groups = sum(gene_inputs$transformation$protein_group_ambiguity_class == "unresolved_group"),
       excluded_mixed_species_or_contaminant_groups = sum(gene_inputs$transformation$protein_group_ambiguity_class == "mixed_species_or_contaminant"),
-      eligible_genes_before_duplicate_collapse = sum(gene_inputs$transformation$eligibility_status == "eligible"), genes_after_duplicate_collapse = nrow(gene_inputs$collapse),
+      eligible_genes_before_duplicate_collapse = sum(gene_inputs$transformation$eligibility_status == "eligible"), genes_after_duplicate_collapse = nrow(resolved_gene_collapse),
       genes_with_multiple_ProteinGroupIDs = sum(gene_inputs$collapse$n_protein_groups_for_gene > 1), genes_with_discordant_directions = sum(gene_inputs$collapse$discordant_direction),
       rank_statistic_column = gene_inputs$statistic$column, rank_statistic_type = gene_inputs$statistic$type,
       rank_statistic_fallback_used = gene_inputs$statistic$fallback_used, gene_collapse_rule = "median_finite_statistics", stringsAsFactors = FALSE)
@@ -1158,8 +1194,7 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
     # ----------------------------------------------------
     # GSEA (GO) WITH OPTIONAL SIMPLIFICATION
     # ----------------------------------------------------
-    # Ensure OrgDb is passed as object
-    symbol_keys <- AnnotationDbi::keys(org_db_obj, keytype = "SYMBOL")
+    # Ensure OrgDb is passed as object and the canonical namespace is SYMBOL.
     gsea_diagnostics <- gsea_input_diagnostics(gene_list, symbol_keys)
     write.csv(gsea_diagnostics, file.path(audit_root, "gsea_input_diagnostics.csv"), row.names = FALSE)
     validate_gsea_input(gene_list, gsea_diagnostics)
@@ -1314,7 +1349,7 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
     # ORA WITH OPTIONAL SIMPLIFICATION
     # ----------------------------------------------------
     ora_universe <- names(gene_list)
-    ora_inputs <- build_ora_inputs(gene_inputs$collapse, p_threshold = cfg$analysis$ora_pvalue_threshold, fdr_threshold = cfg$analysis$ora_fdr_threshold, fc_threshold = analysis_params$top_gene_abs_log2fc)
+    ora_inputs <- build_ora_inputs(resolved_gene_collapse, p_threshold = cfg$analysis$ora_pvalue_threshold, fdr_threshold = cfg$analysis$ora_fdr_threshold, fc_threshold = analysis_params$top_gene_abs_log2fc)
     write.csv(make_ora_input_audit(ora_inputs$universe, "universe"), file.path(audit_root, "ora_universe_audit.csv"), row.names = FALSE)
     write.csv(make_ora_input_audit(ora_inputs$up, "upregulated"), file.path(audit_root, "ora_upregulated_input_audit.csv"), row.names = FALSE)
     write.csv(make_ora_input_audit(ora_inputs$down, "downregulated"), file.path(audit_root, "ora_downregulated_input_audit.csv"), row.names = FALSE)
@@ -1332,11 +1367,12 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
                       pvalueCutoff = analysis_params$pvalue_cutoff,
                       OrgDb = org_db_obj,
                       pAdjustMethod = analysis_params$p_adjust_method)
+      ora_results <- enrichment_result_table(ora, paste("GO ORA", ora_direction), required = TRUE)
 
       # Simplify ONLY if requested
       ora_simplified <- NULL
 
-      if (PERFORM_SIMPLIFICATION && nrow(ora@result) > 0) {
+      if (PERFORM_SIMPLIFICATION && nrow(ora_results) > 0) {
         ora_simplified <- tryCatch({
           simplify(ora, cutoff = SIMPLIFY_CUTOFF, by = "p.adjust", select_fun = min)
         }, error = function(e) {
@@ -1356,8 +1392,9 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
       } else {
         ora_for_plot <- ora
       }
+      ora_for_plot_results <- enrichment_result_table(ora_for_plot, paste("GO ORA plot", ora_direction), required = TRUE)
 
-      if (nrow(ora_for_plot@result) > 0) {
+      if (nrow(ora_for_plot_results) > 0) {
         plot_label <- if(PERFORM_SIMPLIFICATION && USE_SIMPLIFIED_FOR_PLOTS && !is.null(ora_simplified)) {
           "(Simplified)"
         } else {
@@ -1371,16 +1408,16 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
       }
 
       # Save results
-      write.csv(ora@result, 
+      write.csv(ora_results,
                 file = file.path(dirs$ora, paste0("ORA_", ont, "_", ora_direction, "_results_full.csv")),
                 row.names = FALSE)
 
       if (PERFORM_SIMPLIFICATION && !is.null(ora_simplified)) {
-        write.csv(ora_simplified@result, 
+        write.csv(enrichment_result_table(ora_simplified, paste("simplified GO ORA", ora_direction), required = TRUE),
                   file = file.path(dirs$ora, paste0("ORA_", ont, "_", ora_direction, "_results_simplified.csv")),
                   row.names = FALSE)
       }
-      qc$n_ora_terms <- nrow(ora@result)
+      qc$n_ora_terms <- nrow(ora_results)
       print_progress_step(comparison_name, "ORA", paste0("terms=", qc$n_ora_terms), runtime_params$show_step_progress)
       }
     }
@@ -1388,19 +1425,15 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
     # ----------------------------------------------------
     # KEGG GSEA (No simplification - KEGG specific)
     # ----------------------------------------------------
-    ids <- tryCatch({
-      bitr(names(original_gene_list), fromType = "UNIPROT", toType = "ENTREZID", OrgDb = org_db_obj)
-    }, error = function(e) NULL)
+    ids <- unique(resolved_gene_collapse[, c("GeneSymbol", "EntrezID"), drop = FALSE])
+    names(ids) <- c("SYMBOL", "ENTREZID")
+    kegg_inputs <- prepare_kegg_symbol_ranks(resolved_gene_collapse, ids)
+    write.csv(kegg_inputs$audit, file.path(audit_root, "kegg_symbol_to_entrez_audit.csv"), row.names = FALSE)
+    write.csv(kegg_inputs$collapse, file.path(audit_root, "kegg_duplicate_entrez_collapse_audit.csv"), row.names = FALSE)
+    kegg_gene_list <- kegg_inputs$ranked
+    qc$n_id_mapped_symbol_to_entrez <- length(kegg_gene_list)
 
-    if(!is.null(ids)) {
-      dedup_ids <- ids[!duplicated(ids$UNIPROT), ]
-      qc$n_id_mapped_uniprot_to_entrez <- nrow(dedup_ids)
-      df2 <- merge(df, dedup_ids, by.x = "gene_symbol", by.y = "UNIPROT")
-
-      kegg_gene_list <- df2$log2fc
-      names(kegg_gene_list) <- df2$ENTREZID
-      kegg_gene_list <- kegg_gene_list[!duplicated(names(kegg_gene_list))]
-      kegg_gene_list <- sort(na.omit(kegg_gene_list), decreasing = TRUE)
+    if(length(kegg_gene_list) > 0) {
 
       kk2 <- gseKEGG(geneList = kegg_gene_list, organism = "mmu", 
                      minGSSize = analysis_params$min_gs_size,
@@ -1408,8 +1441,9 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
                      pvalueCutoff = analysis_params$pvalue_cutoff,
                      pAdjustMethod = analysis_params$p_adjust_method,
                      keyType = "ncbi-geneid", verbose = FALSE)
+      kk2_results <- enrichment_result_table(kk2, "KEGG GSEA", required = FALSE)
 
-      if (!is.null(kk2) && nrow(kk2@result) > 0) {
+      if (nrow(kk2_results) > 0) {
         kegg_dot <- clusterProfiler::dotplot(kk2, showCategory = 10, split = ".sign") + 
           facet_wrap(~ .sign, nrow = 1) + 
           labs(title = "KEGG GSEA") + 
@@ -1429,19 +1463,19 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
         }, error=function(e){})
 
         save_plot_organized(gseaplot(kk2, by = "all", title = kk2$Description[1], geneSetID = 1), "KEGG_plot.svg", dirs$plots_kegg)
-        write.csv(kk2@result, file = file.path(dirs$kegg, "KEGG_GSEA_results.csv"), row.names = FALSE)
+        write.csv(kk2_results, file = file.path(dirs$kegg, "KEGG_GSEA_results.csv"), row.names = FALSE)
         # Also save the version used for plots to core_enrich
-        write.csv(kk2@result, file = file.path(dirs$core_enrich, paste0(comparison_name, "_KEGG.csv")), row.names = FALSE)
-        write.csv(kk2@result, file = file.path(dirs$core_enrich_routed, paste0(comparison_name, "_KEGG.csv")), row.names = FALSE)
+        write.csv(kk2_results, file = file.path(dirs$core_enrich, paste0(comparison_name, "_KEGG.csv")), row.names = FALSE)
+        write.csv(kk2_results, file = file.path(dirs$core_enrich_routed, paste0(comparison_name, "_KEGG.csv")), row.names = FALSE)
 
         # Additionally, save to core_enrich with ontology set to 'KEGG'
         core_enrich_kegg_dir <- file.path(CANONICAL_PATHS$source_data, "KEGG")
         if (!dir.exists(core_enrich_kegg_dir)) dir.create(core_enrich_kegg_dir, recursive = TRUE)
-        write.csv(kk2@result, file = file.path(core_enrich_kegg_dir, paste0(comparison_name, "_KEGG.csv")), row.names = FALSE)
+        write.csv(kk2_results, file = file.path(core_enrich_kegg_dir, paste0(comparison_name, "_KEGG.csv")), row.names = FALSE)
 
         core_enrich_kegg_routed_dir <- file.path(CANONICAL_PATHS$source_data, "KEGG", dirs$route_category, dirs$route_unit)
         if (!dir.exists(core_enrich_kegg_routed_dir)) dir.create(core_enrich_kegg_routed_dir, recursive = TRUE)
-        write.csv(kk2@result, file = file.path(core_enrich_kegg_routed_dir, paste0(comparison_name, "_KEGG.csv")), row.names = FALSE)
+        write.csv(kk2_results, file = file.path(core_enrich_kegg_routed_dir, paste0(comparison_name, "_KEGG.csv")), row.names = FALSE)
         kegg_core_table <- file.path(core_enrich_kegg_routed_dir, paste0(comparison_name, "_KEGG.csv"))
         kegg_plot <- file.path(dirs$plots_kegg, "KEGG_dotplot.svg")
         manifest_rows[[length(manifest_rows) + 1]] <- make_manifest_row(
@@ -1454,12 +1488,12 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
           output_table = kegg_core_table,
           output_plot = if (file.exists(kegg_plot)) kegg_plot else NA_character_,
           n_genes = length(kegg_gene_list),
-          n_terms = nrow(kk2@result),
+          n_terms = nrow(kk2_results),
           simplified = FALSE,
           used_for_plot = TRUE,
           plot_suffix = "_KEGG"
         )
-        qc$n_kegg_terms <- nrow(kk2@result)
+        qc$n_kegg_terms <- nrow(kk2_results)
       } else {
         # Create empty file so we know it ran but found nothing
         write.csv(data.frame(), file = file.path(dirs$kegg, "KEGG_GSEA_results_EMPTY.csv"))
@@ -1491,15 +1525,16 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
     # ----------------------------------------------------
     # EnrichGO Analysis (ALL ontologies) WITH OPTIONAL SIMPLIFICATION
     # ----------------------------------------------------
-    go_universe <- if (length(background_universe) > 0) background_universe else names(gene_list)
+    go_universe <- names(gene_list)
     go_enrich <- enrichGO(gene = names(gene_list), universe = go_universe, 
-                          OrgDb = org_db_obj, keyType = 'UNIPROT', readable = TRUE, 
+                          OrgDb = org_db_obj, keyType = gene_namespace, readable = TRUE,
                 ont = ont,
                 pvalueCutoff = analysis_params$pvalue_cutoff,
                 qvalueCutoff = analysis_params$qvalue_cutoff,
                 pAdjustMethod = analysis_params$p_adjust_method,
                 minGSSize = analysis_params$min_gs_size,
                 maxGSSize = analysis_params$max_gs_size)
+    go_enrich_results <- enrichment_result_table(go_enrich, "general GO enrichment", required = TRUE)
     
     
     # Initialize simplified version as NULL
@@ -1515,7 +1550,7 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
           enrichGO(gene = names(gene_list), 
                    universe = go_universe, 
                    OrgDb = org_db_obj, 
-                   keyType = 'UNIPROT', 
+                   keyType = gene_namespace,
                    readable = TRUE, 
                    ont = ont_type,
                    pvalueCutoff = analysis_params$pvalue_cutoff,
@@ -1528,8 +1563,10 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
           NULL
         })
         
+        go_single_results <- enrichment_result_table(go_single, paste("general GO enrichment", ont_type), required = FALSE)
+
         # Simplify if results exist
-        if (!is.null(go_single) && nrow(go_single@result) > 0) {
+        if (nrow(go_single_results) > 0) {
           go_simplified <- tryCatch({
             simplify(go_single, cutoff = SIMPLIFY_CUTOFF, by = "p.adjust", select_fun = min)
           }, error = function(e) {
@@ -1539,11 +1576,11 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
           
           # Store results as data.frame
           if (is(go_simplified, "enrichResult")) {
-            simplified_results_list[[ont_type]] <- go_simplified@result
+            simplified_results_list[[ont_type]] <- enrichment_result_table(go_simplified, paste("simplified general GO enrichment", ont_type), required = FALSE)
           } else if (is.data.frame(go_simplified)) {
             simplified_results_list[[ont_type]] <- go_simplified
           } else {
-            simplified_results_list[[ont_type]] <- go_single@result
+            simplified_results_list[[ont_type]] <- go_single_results
           }
         }
       }
@@ -1562,10 +1599,11 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
     } else {
       go_enrich_for_plot <- go_enrich
     }
+    go_enrich_for_plot_results <- enrichment_result_table(go_enrich_for_plot, "general GO enrichment plot", required = TRUE)
     
     
     # Plot with selected version
-    if (nrow(go_enrich_for_plot@result) > 0) {
+    if (nrow(go_enrich_for_plot_results) > 0) {
       plot_label <- if(PERFORM_SIMPLIFICATION && USE_SIMPLIFIED_FOR_PLOTS && !is.null(go_enrich_simplified)) {
         "(Simplified)"
       } else {
@@ -1573,7 +1611,7 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
       }
       
       tryCatch({
-        if ("ONTOLOGY" %in% colnames(go_enrich_for_plot@result)) {
+        if ("ONTOLOGY" %in% colnames(go_enrich_for_plot_results)) {
           p4 <- clusterProfiler::dotplot(go_enrich_for_plot, showCategory = 20, split = "ONTOLOGY") +
             facet_grid(ONTOLOGY ~ ., scales = "free_y")
         } else {
@@ -1593,13 +1631,13 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
     
     
     # Save results
-    write.csv(go_enrich@result, 
+    write.csv(go_enrich_results,
               file = file.path(dirs$go_ont, paste0("enrichGO_ALL_results_full.csv")), 
               row.names = FALSE)
-    print_progress_step(comparison_name, "enrichGO", paste0("terms=", nrow(go_enrich@result)), runtime_params$show_step_progress)
+    print_progress_step(comparison_name, "enrichGO", paste0("terms=", nrow(go_enrich_results)), runtime_params$show_step_progress)
     
     if (PERFORM_SIMPLIFICATION && !is.null(go_enrich_simplified)) {
-      write.csv(go_enrich_simplified@result, 
+      write.csv(enrichment_result_table(go_enrich_simplified, "simplified general GO enrichment", required = TRUE),
                 file = file.path(dirs$go_ont, paste0("enrichGO_ALL_results_simplified.csv")), 
                 row.names = FALSE)
     }
@@ -1615,12 +1653,9 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
      }
     
     if(!is.null(selected_entrez)) {
-      selected_df <- merge(df, selected_entrez, by.x = "gene_symbol", by.y = "UNIPROT")
-      if(nrow(selected_df) > 0) {
-        selected_kegg_list <- selected_df$log2fc
-        names(selected_kegg_list) <- selected_df$ENTREZID
-        selected_kegg_list <- selected_kegg_list[!duplicated(names(selected_kegg_list))]
-        selected_kegg_list <- sort(na.omit(selected_kegg_list), decreasing = TRUE)
+      selected_ids <- unique(as.character(selected_entrez$ENTREZID))
+      selected_kegg_list <- kegg_gene_list[names(kegg_gene_list) %in% selected_ids]
+      if(length(selected_kegg_list) > 0) {
         
         gsea_kegg_selected <- gseKEGG(geneList = selected_kegg_list, organism = "mmu", 
                                       minGSSize = analysis_params$min_gs_size,
@@ -1628,14 +1663,15 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
                                       pvalueCutoff = analysis_params$pvalue_cutoff,
                                       pAdjustMethod = analysis_params$p_adjust_method,
                                       keyType = "ncbi-geneid", verbose = FALSE)
-        
-        if (!is.null(gsea_kegg_selected) && nrow(gsea_kegg_selected@result) > 0) {
+        gsea_kegg_selected_results <- enrichment_result_table(gsea_kegg_selected, "predefined UniProt KEGG GSEA", required = FALSE)
+
+        if (nrow(gsea_kegg_selected_results) > 0) {
           kegg_selected_dot <- clusterProfiler::dotplot(gsea_kegg_selected, showCategory = 10, split = ".sign") + 
             facet_wrap(~ .sign, nrow = 1) + 
             labs(title = "KEGG GSEA (Predefined)") + 
             theme_minimal()
           save_plot_organized(kegg_selected_dot, "KEGG_Predefined_dotplot.svg", dirs$plots_kegg)
-          write.csv(gsea_kegg_selected@result, file = file.path(dirs$kegg, "KEGG_GSEA_Predefined_UniProt.csv"), row.names = FALSE)
+          write.csv(gsea_kegg_selected_results, file = file.path(dirs$kegg, "KEGG_GSEA_Predefined_UniProt.csv"), row.names = FALSE)
           
           tryCatch({
             save_plot_organized(emapplot(pairwise_termsim(gsea_kegg_selected), showCategory = 10), "KEGG_Predefined_emap.svg", dirs$plots_kegg)
@@ -1659,10 +1695,7 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
     # ----------------------------------------------------
     if (length(nk3r_genes) > 0) {
       term2gene_nk3r <- data.frame(term = rep("NK3R-signalling", length(nk3r_genes)), gene = nk3r_genes)
-      custom_gene_list <- df$log2fc
-      names(custom_gene_list) <- df$gene_symbol
-      custom_gene_list <- sort(na.omit(custom_gene_list), decreasing = TRUE)
-      custom_gene_list <- custom_gene_list[!duplicated(names(custom_gene_list))]
+      custom_gene_list <- gene_list
       
       gsea_nk3r <- clusterProfiler::GSEA(geneList = custom_gene_list, TERM2GENE = term2gene_nk3r, 
                                          pvalueCutoff = analysis_params$pvalue_cutoff,
