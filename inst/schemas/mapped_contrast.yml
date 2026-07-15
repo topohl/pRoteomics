@@ -4,6 +4,12 @@ required_columns:
   - original_identifier
   - member_accessions
   - member_gene_symbols
+  - official_gene_symbol
+  - official_entrez_id
+  - protein_group_gene_annotation_status
+  - gene_annotation_contract_version
+  - uniprot_mapping_file_hash
+  - orgdb_package_version
   - protein_group_ambiguity_class
   - gene_level_claim_allowed
   - protein_level_claim_allowed
@@ -17,7 +23,17 @@ columns:
   member_identifiers_original: {type: character}
   member_identifiers_canonical: {type: character}
   member_accessions: {type: character}
+  member_gene_symbols_submitted: {type: character}
   member_gene_symbols: {type: character}
+  official_gene_symbol: {type: character}
+  official_entrez_id: {type: character}
+  protein_group_gene_annotation_status:
+    type: character
+    allowed_values: [concordant_official_gene, incomplete_or_ambiguous_member_annotation, conflicting_member_annotations, no_mapped_accessions]
+  all_member_accessions_gene_annotated: {type: logical}
+  gene_annotation_contract_version: {type: character}
+  uniprot_mapping_file_hash: {type: character}
+  orgdb_package_version: {type: character}
   representative_accession: {type: character}
   representative_gene_symbol: {type: character}
   representative_selection_rule: {type: character}
