@@ -1159,18 +1159,27 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
     # GSEA (GO) WITH OPTIONAL SIMPLIFICATION
     # ----------------------------------------------------
     # Ensure OrgDb is passed as object
-    gse <- gseGO(geneList = gene_list, ont = ont, keyType = "SYMBOL",
-                 minGSSize = analysis_params$min_gs_size,
-                 maxGSSize = analysis_params$max_gs_size,
-                 pvalueCutoff = analysis_params$pvalue_cutoff,
-                 verbose = FALSE,
-                 OrgDb = org_db_obj,
-                 pAdjustMethod = analysis_params$p_adjust_method)
+    symbol_keys <- AnnotationDbi::keys(org_db_obj, keytype = "SYMBOL")
+    gsea_diagnostics <- gsea_input_diagnostics(gene_list, symbol_keys)
+    write.csv(gsea_diagnostics, file.path(audit_root, "gsea_input_diagnostics.csv"), row.names = FALSE)
+    validate_gsea_input(gene_list, gsea_diagnostics)
+    gse <- withCallingHandlers(
+      gseGO(geneList = gene_list, ont = ont, keyType = "SYMBOL",
+            minGSSize = analysis_params$min_gs_size,
+            maxGSSize = analysis_params$max_gs_size,
+            pvalueCutoff = analysis_params$pvalue_cutoff,
+            verbose = FALSE,
+            OrgDb = org_db_obj,
+            pAdjustMethod = analysis_params$p_adjust_method),
+      warning = function(w) write_log_line(comparison_log, "WARNING", comparison_name, "GSEA_MAPPING", conditionMessage(w)),
+      message = function(m) write_log_line(comparison_log, "INFO", comparison_name, "GSEA_MAPPING", conditionMessage(m))
+    )
+    gse_results <- gsea_result_table(gse, gsea_diagnostics)
 
     # Perform simplification ONLY if requested
     gse_simplified <- NULL  # Initialize as NULL
 
-    if (PERFORM_SIMPLIFICATION && !is.null(gse) && nrow(gse@result) > 0) {
+    if (PERFORM_SIMPLIFICATION && nrow(gse_results) > 0) {
       gse_temp <- tryCatch({
         simplify(gse, cutoff = SIMPLIFY_CUTOFF, by = "p.adjust", select_fun = min)
       }, error = function(e) {
@@ -1254,12 +1263,12 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
     }
 
     # Save results based on whether simplification was performed
-    write.csv(gse@result, 
+    write.csv(gse_results,
               file = file.path(dirs$go_ont, paste0("GSEA_", ont, "_results_full.csv")), 
               row.names = FALSE)
 
     if (PERFORM_SIMPLIFICATION && !is.null(gse_simplified)) {
-      write.csv(gse_simplified@result, 
+      write.csv(gsea_result_table(gse_simplified, gsea_diagnostics),
                 file = file.path(dirs$go_ont, paste0("GSEA_", ont, "_results_simplified.csv")), 
                 row.names = FALSE)
     }
@@ -1271,10 +1280,11 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
       gse
     }
 
-    write.csv(gse_for_export@result, 
+    gse_export_results <- gsea_result_table(gse_for_export, gsea_diagnostics)
+    write.csv(gse_export_results,
               file = file.path(dirs$core_enrich, paste0(comparison_name, plot_suffix, ".csv")), 
               row.names = FALSE)
-    write.csv(gse_for_export@result,
+    write.csv(gse_export_results,
           file = file.path(dirs$core_enrich_routed, paste0(comparison_name, plot_suffix, ".csv")),
           row.names = FALSE)
     gsea_core_table <- file.path(dirs$core_enrich_routed, paste0(comparison_name, plot_suffix, ".csv"))
@@ -1290,14 +1300,14 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
       output_table = gsea_core_table,
       output_plot = if (file.exists(gsea_plot)) gsea_plot else NA_character_,
       n_genes = length(gene_list),
-      n_terms = nrow(gse_for_export@result),
+      n_terms = nrow(gse_export_results),
       simplified = identical(plot_suffix, "_simplified"),
       used_for_plot = TRUE,
       plot_suffix = plot_suffix,
       rank_statistic = gene_inputs$statistic,
       universe_definition = "eligible tested genes after ProteinGroupID-to-gene transformation and median duplicate collapse"
     )
-    qc$n_gsea_terms <- nrow(gse@result)
+    qc$n_gsea_terms <- nrow(gse_results)
     print_progress_step(comparison_name, "GSEA", paste0("terms=", qc$n_gsea_terms), runtime_params$show_step_progress)
 
     # ----------------------------------------------------
@@ -1305,9 +1315,9 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
     # ----------------------------------------------------
     ora_universe <- names(gene_list)
     ora_inputs <- build_ora_inputs(gene_inputs$collapse, p_threshold = cfg$analysis$ora_pvalue_threshold, fdr_threshold = cfg$analysis$ora_fdr_threshold, fc_threshold = analysis_params$top_gene_abs_log2fc)
-    write.csv(data.frame(GeneSymbol = ora_inputs$universe, ORA_direction = "universe", stringsAsFactors = FALSE), file.path(audit_root, "ora_universe_audit.csv"), row.names = FALSE)
-    write.csv(data.frame(GeneSymbol = ora_inputs$up, ORA_direction = "upregulated", stringsAsFactors = FALSE), file.path(audit_root, "ora_upregulated_input_audit.csv"), row.names = FALSE)
-    write.csv(data.frame(GeneSymbol = ora_inputs$down, ORA_direction = "downregulated", stringsAsFactors = FALSE), file.path(audit_root, "ora_downregulated_input_audit.csv"), row.names = FALSE)
+    write.csv(make_ora_input_audit(ora_inputs$universe, "universe"), file.path(audit_root, "ora_universe_audit.csv"), row.names = FALSE)
+    write.csv(make_ora_input_audit(ora_inputs$up, "upregulated"), file.path(audit_root, "ora_upregulated_input_audit.csv"), row.names = FALSE)
+    write.csv(make_ora_input_audit(ora_inputs$down, "downregulated"), file.path(audit_root, "ora_downregulated_input_audit.csv"), row.names = FALSE)
     for (ora_direction in c("up", "down")) {
       ora_genes <- ora_inputs[[ora_direction]]
       if (length(ora_genes) == length(ora_universe)) {
