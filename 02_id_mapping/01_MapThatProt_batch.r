@@ -2,7 +2,7 @@
 # Script: 02_id_mapping/01_MapThatProt_batch.r
 # Stage: core
 # Scope: dataset_specific
-# Consumes: required data/processed/01_preprocessing/gct_extractR/<dataset>/forward/*.csv; data/external/MOUSE_10090_idmapping.dat; optional data/metadata/manual_mapping.xlsx.
+# Consumes: required data/processed/01_preprocessing/gct_extractR/<dataset>/forward/*.csv; data/external/MOUSE_10090_idmapping.dat; optional manual protein and gene-annotation mapping tables.
 # Produces: data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv; results/tables/02_id_mapping/<dataset>/mapped/forward/summaries/*.csv.
 # Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Maps GCT-derived protein IDs to UniProt/gene symbols; enrichment consumes these mapped files.
@@ -10,22 +10,19 @@
 
 #' Batch UniProt ID Mapping Script for Proteomics Data
 #'
-#' This script processes proteomic comparison files in parallel to map gene symbols,
-#' UniProtKB entry names, and aliases to canonical UniProt accessions. It supports
-#' multiple mapping strategies including local mapping files, OrgDb annotations,
-#' UniProt.ws queries, and manual overrides. The script enforces a _MOUSE filter
-#' to ensure species-specific mapping and outputs mapped/unmapped datasets with
-#' detailed mapping strategy reports.
+#' This script maps protein identifiers to canonical UniProt accessions using the
+#' local mouse UniProt dictionary and optional manual overrides. Official mouse
+#' SYMBOL and ENTREZ annotations are then resolved from org.Mm.eg.db.
 #'
 #' Key features:
 #' - Parallel processing of multiple CSV files using doParallel
-#' - Multi-strategy mapping cascade (accession detection, entry name lookup,
-#'   gene symbol resolution, family prefix matching, OrgDb, UniProt.ws)
+#' - Deterministic local accession, entry-name, and gene-name/synonym mapping
+#' - Accession-first official mouse SYMBOL/ENTREZ annotation from org.Mm.eg.db
 #' - Manual mapping override support via Excel file
 #' - Comprehensive mapping statistics and unmapped protein tracking
 #' - Species-specific filtering (_MOUSE suffix enforcement)
 #' 
-#' Dependencies: dplyr, stringr, tidyr, purrr, readr, R.utils, foreach, doParallel, readxl, AnnotationDbi, org.Mm.eg.db, UniProt.ws
+#' Dependencies: dplyr, stringr, tidyr, purrr, readr, R.utils, foreach, doParallel, readxl, AnnotationDbi, org.Mm.eg.db
 #' 
 #' @title MapThatProt_batch
 #' 
@@ -70,7 +67,6 @@ mapped_comparisons <- current_dataset_from_cli()
 map_direction <- Sys.getenv("PROTEOMICS_MAP_DIRECTION", unset = "forward")
 if (!map_direction %in% c("forward", "reverse")) stop("PROTEOMICS_MAP_DIRECTION must be 'forward' or 'reverse'.", call. = FALSE)
 map_reverse <- identical(map_direction, "reverse")
-allow_online_mapping <- tolower(Sys.getenv("PROTEOMICS_ALLOW_ONLINE_MAPPING", unset = "false")) %in% c("1", "true", "yes", "y")
 
 truthy_env <- function(name, default = FALSE) {
     value <- Sys.getenv(name, unset = if (isTRUE(default)) "true" else "false")
@@ -102,6 +98,8 @@ unmapped_dir <- path_processed(MODULE_ID, "unmapped", mapped_comparisons, map_di
 unmapped_summary_dir <- file.path(CANONICAL_PATHS$tables, mapped_comparisons, "unmapped", map_direction, "summaries")
 member_bridge_dir <- path_processed(MODULE_ID, "member_bridge", mapped_comparisons, map_direction, "per_file")
 protein_group_audit_dir <- file.path(CANONICAL_PATHS$tables, mapped_comparisons, "protein_groups", map_direction, "audits")
+accession_annotation_audit_dir <- file.path(CANONICAL_PATHS$tables, mapped_comparisons, "gene_annotation", map_direction, "accessions")
+protein_group_annotation_audit_dir <- file.path(CANONICAL_PATHS$tables, mapped_comparisons, "gene_annotation", map_direction, "protein_groups")
 report_dir <- file.path(CANONICAL_PATHS$reports, mapped_comparisons, "mapping_reports", map_direction)
 
 # Initialize output folder structure
@@ -113,6 +111,8 @@ dir.create(unmapped_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(unmapped_summary_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(member_bridge_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(protein_group_audit_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(accession_annotation_audit_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(protein_group_annotation_audit_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(report_dir, recursive = TRUE, showWarnings = FALSE)
 
 # --- Reference Databases ---
@@ -148,11 +148,11 @@ if (is_dry_run()) {
     dry_run_line("Already mapped table sets", sum(existing_complete))
     dry_run_line("Remaining table sets", sum(!existing_complete))
     dry_run_line("Recompute existing tables", force_rerun)
-    dry_run_line("Online UniProt fallback", if (allow_online_mapping) "enabled" else "disabled")
     if (!dir.exists(raw_dir) || length(csv_files) == 0) {
         dry_run_line("Required upstream step", "Rscript 01_preprocessing/03_gct_extractR.r without --dry-run")
     }
     dry_run_line("UniProt mapping file", uniprot_mapping_file_path, if (file.exists(uniprot_mapping_file_path)) "PASS" else "FAIL")
+    dry_run_line("Manual gene annotation overrides", Sys.getenv("PROTEOMICS_MANUAL_GENE_ANNOTATION_FILE", unset = path_metadata("manual_gene_annotation_overrides.csv")), "optional")
     dry_run_line("Mapped output directory", mapped_dir)
     dry_run_line("Unmapped output directory", unmapped_dir)
     dry_run_line("Member bridge output directory", member_bridge_dir)
@@ -182,15 +182,19 @@ if (!file.exists(uniprot_mapping_file_path)) {
 }
 
 cat("Checking and loading required libraries...\n")
-load_required_packages(c("dplyr", "stringr", "tidyr", "purrr", "readr", "R.utils", "foreach", "doParallel", "readxl", "openxlsx", "AnnotationDbi", "org.Mm.eg.db", "UniProt.ws"))
+load_required_packages(c("dplyr", "stringr", "tidyr", "purrr", "readr", "R.utils", "foreach", "doParallel", "readxl", "openxlsx", "AnnotationDbi", "org.Mm.eg.db"))
 write_session_info(file.path(CANONICAL_PATHS$logs, "sessionInfo.txt"))
 utils::write.csv(
     data.frame(
         comparison_family = mapped_comparisons,
         map_direction = map_direction,
-        input_type = c("raw_contrast_directory", "uniprot_mapping", "manual_mapping"),
-        path = c(raw_dir, uniprot_mapping_file_path, Sys.getenv("PROTEOMICS_MANUAL_MAPPING_FILE", unset = path_metadata("manual_mapping.xlsx"))),
-        md5 = c(NA_character_, file_hash(uniprot_mapping_file_path), file_hash(Sys.getenv("PROTEOMICS_MANUAL_MAPPING_FILE", unset = path_metadata("manual_mapping.xlsx")))),
+        input_type = c("raw_contrast_directory", "uniprot_mapping", "manual_protein_mapping", "manual_gene_annotation"),
+        path = c(raw_dir, uniprot_mapping_file_path,
+            Sys.getenv("PROTEOMICS_MANUAL_MAPPING_FILE", unset = path_metadata("manual_mapping.xlsx")),
+            Sys.getenv("PROTEOMICS_MANUAL_GENE_ANNOTATION_FILE", unset = path_metadata("manual_gene_annotation_overrides.csv"))),
+        md5 = c(NA_character_, file_hash(uniprot_mapping_file_path),
+            file_hash(Sys.getenv("PROTEOMICS_MANUAL_MAPPING_FILE", unset = path_metadata("manual_mapping.xlsx"))),
+            file_hash(Sys.getenv("PROTEOMICS_MANUAL_GENE_ANNOTATION_FILE", unset = path_metadata("manual_gene_annotation_overrides.csv")))),
         stringsAsFactors = FALSE
     ),
     file.path(CANONICAL_PATHS$logs, mapped_comparisons, paste0("MapThatProt_batch_input_manifest_", map_direction, ".csv")),
@@ -205,14 +209,11 @@ entry_map <- mouse_maps$entry_map
 gene_map <- mouse_maps$gene_map
 accession_gene_map <- mouse_maps$accession_gene_map
 reviewed_map <- mouse_maps$reviewed_map
-
-# Extract core UniProtKB canonical accessions to Entry name mapping
-entry_name_to_accession <- uniprot_mapping %>%
-    filter(Type == "UniProtKB-ID") %>%
-    dplyr::select(UniProt_Accession, UniProtKB_ID = Value) %>%
-    distinct(UniProtKB_ID, .keep_all = TRUE)
-
-if (nrow(entry_name_to_accession) == 0) stop("No UniProtKB-ID mappings found in mapping file.")
+uniprot_mapping_file_hash <- file_hash(uniprot_mapping_file_path)
+gene_annotation_maps <- build_mouse_gene_annotation_maps(
+    org.Mm.eg.db,
+    accessions = unique(accession_gene_map$UNIPROT)
+)
 
 cat("Found", length(csv_files), "CSV files to process in", raw_dir, "\n")
 
@@ -224,6 +225,8 @@ manual_mapping_path <- Sys.getenv("PROTEOMICS_MANUAL_MAPPING_FILE", unset = path
 manual_override <- TRUE  # TRUE enforces curation over algorithmic mapping
 
 manual_mapping <- read_manual_mapping_table(manual_mapping_path)
+manual_gene_annotation_path <- Sys.getenv("PROTEOMICS_MANUAL_GENE_ANNOTATION_FILE", unset = path_metadata("manual_gene_annotation_overrides.csv"))
+manual_gene_annotation_overrides <- read_manual_gene_annotation_overrides(manual_gene_annotation_path)
 if (is.null(manual_mapping)) {
     cat("Notice: Manual mapping Excel not found at:", manual_mapping_path, "\n")
 }
@@ -299,12 +302,16 @@ process_file <- function(data_path) {
     bridge_file <- file.path(member_bridge_dir, paste0(base, "_member_bridge.csv"))
     audit_file <- file.path(protein_group_audit_dir, paste0(base, "_protein_group_summary.csv"))
     collision_file <- file.path(protein_group_audit_dir, paste0(base, "_ProteinGroupID_collision_audit.csv"))
+    accession_annotation_file <- file.path(accession_annotation_audit_dir, paste0(base, "_accession_gene_annotation_audit.csv"))
+    protein_group_annotation_file <- file.path(protein_group_annotation_audit_dir, paste0(base, "_protein_group_gene_annotation_audit.csv"))
     info_table_file <- file.path(info_dir, paste0(base, "_mapping_info.csv"))
     info_summary_file <- file.path(info_dir, paste0(base, "_info.txt"))
     mapped_summary_file <- file.path(mapped_summary_dir, paste0(base, "_summary.csv"))
     unmapped_summary_file <- file.path(unmapped_summary_dir, paste0(base, "_summary.csv"))
 
-    expected_tables <- c(mapped_file, unmapped_file, bridge_file, audit_file, collision_file, info_table_file, mapped_summary_file, unmapped_summary_file)
+    expected_tables <- c(mapped_file, unmapped_file, bridge_file, audit_file, collision_file,
+        accession_annotation_file, protein_group_annotation_file,
+        info_table_file, mapped_summary_file, unmapped_summary_file)
     if (!isTRUE(force_rerun) && all(file.exists(expected_tables))) {
         return(load_existing_processed_result(data_path, mapped_file, unmapped_file, info_table_file))
     }
@@ -333,6 +340,9 @@ process_file <- function(data_path) {
         reviewed_map = reviewed_map,
         manual_mapping = manual_mapping,
         manual_override = manual_override,
+        gene_annotation_maps = gene_annotation_maps,
+        manual_gene_annotation_overrides = manual_gene_annotation_overrides,
+        uniprot_mapping_file_hash = uniprot_mapping_file_hash,
         strict = TRUE
     )
 
@@ -340,6 +350,8 @@ process_file <- function(data_path) {
     member_bridge <- canonical$bridge
     protein_group_summary <- canonical$summary
     collision_audit <- canonical$collision_audit
+    accession_annotation_audit <- canonical$accession_annotation_audit
+    protein_group_annotation_audit <- canonical$protein_group_annotation_audit
 
     mapping_info <- df_mapped %>%
         dplyr::transmute(
@@ -391,6 +403,8 @@ process_file <- function(data_path) {
     readr::write_csv(member_bridge, bridge_file)
     readr::write_csv(protein_group_summary, audit_file)
     readr::write_csv(collision_audit, collision_file)
+    readr::write_csv(accession_annotation_audit, accession_annotation_file)
+    readr::write_csv(protein_group_annotation_audit, protein_group_annotation_file)
     readr::write_csv(mapping_info, info_table_file)
     readr::write_tsv(manual_mapping_audit, file.path(info_dir, paste0(base, "_manual_mapping_audit.tsv")))
 
@@ -450,16 +464,19 @@ cat("Initiating parallel mapping cascade for all files...\n")
 results <- foreach(i = seq_along(csv_files),
                    .packages = c("dplyr", "stringr", "tidyr", "purrr", "readr", "R.utils", "tibble"),
                    .export = c(
-                       "uniprot_mapping", "entry_name_to_accession", "entry_map", "gene_map",
+                       "entry_map", "gene_map",
                        "accession_gene_map", "reviewed_map", "mapped_dir", "unmapped_dir",
                        "member_bridge_dir", "protein_group_audit_dir", "info_dir", "mapped_summary_dir",
-                       "unmapped_summary_dir", "mapped_comparisons",
+                       "unmapped_summary_dir", "accession_annotation_audit_dir", "protein_group_annotation_audit_dir",
+                       "gene_annotation_maps", "manual_gene_annotation_overrides", "uniprot_mapping_file_hash", "mapped_comparisons",
                        "map_direction", "force_rerun", "manual_mapping", "manual_override",
                        "load_existing_processed_result", "process_file",
                        "normalize_token", "to_base_no_iso_mouse", "is_uniprot_ac", "extract_ac", "extract_entry",
                        "split_protein_group_members", "normalize_member_identifier", "canonical_member_set",
                        "detect_source_feature_columns", "stable_pg_hash", "parse_member_identifier",
-                       "lookup_accession_gene", "resolve_protein_group_member", "classify_protein_group",
+                       "lookup_accession_gene", "normalize_manual_gene_annotation_overrides",
+                       "resolve_mouse_gene_annotation", "assess_protein_group_gene_annotation",
+                       "mouse_gene_annotation_contract_version", "resolve_protein_group_member", "classify_protein_group",
                        "protein_group_claim_rules", "select_representative_member",
                        "validate_protein_group_id_collisions", "build_canonical_protein_group_tables"
                    )) %dopar% {
