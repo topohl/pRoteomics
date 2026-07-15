@@ -59,3 +59,33 @@ testthat::test_that("ORA significance uses collapsed FDR without effect-dependen
   x <- build_ora_inputs(d, fdr_threshold = .05, fc_threshold = 1)
   testthat::expect_equal(x$up, "A"); testthat::expect_length(x$down, 0)
 })
+
+testthat::test_that("ORA input audits preserve direction for empty and non-empty inputs", {
+  source(testthat::test_path("..", "..", "R", "protein_group_enrichment_utils.R"))
+  empty <- make_ora_input_audit(character(), "upregulated")
+  testthat::expect_equal(names(empty), c("GeneSymbol", "ORA_direction"))
+  testthat::expect_equal(nrow(empty), 0L)
+
+  one <- make_ora_input_audit("A", "downregulated")
+  testthat::expect_equal(one$GeneSymbol, "A")
+  testthat::expect_equal(one$ORA_direction, "downregulated")
+
+  multiple <- make_ora_input_audit(c("A", "B"), "universe")
+  testthat::expect_equal(multiple$GeneSymbol, c("A", "B"))
+  testthat::expect_equal(multiple$ORA_direction, c("universe", "universe"))
+})
+
+testthat::test_that("GSEA diagnostics and result guards handle null, malformed, and empty results", {
+  source(testthat::test_path("..", "..", "R", "protein_group_enrichment_utils.R"))
+  ranks <- c(A = 2, B = -1, C = .5)
+  diagnostics <- gsea_input_diagnostics(ranks, c("A", "C", "X"))
+  testthat::expect_equal(diagnostics$orgdb_symbol_matches, 2)
+  testthat::expect_equal(diagnostics$finite_rank_statistics, 3)
+  testthat::expect_equal(diagnostics$unique_rank_statistic_values, 3)
+  testthat::expect_error(gsea_result_table(NULL, diagnostics), "GO GSEA returned NULL: ranked_genes=3, orgdb_symbol_matches=2")
+  testthat::expect_error(gsea_result_table(structure(list(), class = "not_gsea"), diagnostics), "invalid result class")
+  empty <- structure(list(result = data.frame()), class = "gseaResult")
+  non_empty <- structure(list(result = data.frame(ID = "GO:1")), class = "gseaResult")
+  testthat::expect_equal(nrow(gsea_result_table(empty, diagnostics)), 0L)
+  testthat::expect_equal(nrow(gsea_result_table(non_empty, diagnostics)), 1L)
+})
