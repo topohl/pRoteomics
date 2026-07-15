@@ -137,6 +137,218 @@ build_mouse_maps <- function(uniprot_mapping) {
   )
 }
 
+mouse_gene_annotation_contract_version <- function() "mouse_gene_annotation_v1"
+
+build_mouse_gene_annotation_maps <- function(org_db_obj, accessions = NULL) {
+  symbol_keys <- as.character(AnnotationDbi::keys(org_db_obj, keytype = "SYMBOL"))
+  symbol_map <- suppressMessages(AnnotationDbi::select(
+    org_db_obj, keys = symbol_keys, keytype = "SYMBOL", columns = "ENTREZID"
+  ))
+  symbol_map <- unique(symbol_map[!is.na(symbol_map$SYMBOL) & nzchar(symbol_map$SYMBOL), c("SYMBOL", "ENTREZID"), drop = FALSE])
+
+  alias_keys <- as.character(AnnotationDbi::keys(org_db_obj, keytype = "ALIAS"))
+  alias_map <- suppressMessages(AnnotationDbi::select(
+    org_db_obj, keys = alias_keys, keytype = "ALIAS", columns = c("SYMBOL", "ENTREZID")
+  ))
+  alias_map <- unique(alias_map[!is.na(alias_map$ALIAS) & nzchar(alias_map$ALIAS) &
+    !is.na(alias_map$SYMBOL) & nzchar(alias_map$SYMBOL), c("ALIAS", "SYMBOL", "ENTREZID"), drop = FALSE])
+
+  valid_accessions <- as.character(AnnotationDbi::keys(org_db_obj, keytype = "UNIPROT"))
+  if (!is.null(accessions)) valid_accessions <- intersect(toupper(as.character(accessions)), valid_accessions)
+  uniprot_map <- if (length(valid_accessions)) suppressMessages(AnnotationDbi::select(
+    org_db_obj, keys = valid_accessions, keytype = "UNIPROT", columns = c("SYMBOL", "ENTREZID")
+  )) else data.frame(UNIPROT = character(), SYMBOL = character(), ENTREZID = character(), stringsAsFactors = FALSE)
+  uniprot_map <- unique(uniprot_map[!is.na(uniprot_map$UNIPROT) & nzchar(uniprot_map$UNIPROT) &
+    !is.na(uniprot_map$SYMBOL) & nzchar(uniprot_map$SYMBOL), c("UNIPROT", "SYMBOL", "ENTREZID"), drop = FALSE])
+
+  list(
+    uniprot_map = uniprot_map,
+    symbol_map = symbol_map,
+    alias_map = alias_map,
+    orgdb_package_version = as.character(utils::packageVersion("org.Mm.eg.db")),
+    annotation_contract_version = mouse_gene_annotation_contract_version()
+  )
+}
+
+normalize_manual_gene_annotation_overrides <- function(overrides) {
+  empty <- data.frame(lookup_value = character(), official_gene_symbol = character(), official_entrez_id = character(), stringsAsFactors = FALSE)
+  if (is.null(overrides) || !is.data.frame(overrides) || !nrow(overrides)) return(empty)
+  nms <- tolower(gsub("[^a-z0-9]+", "_", names(overrides)))
+  names(overrides) <- nms
+  lookup_col <- intersect(c("lookup_value", "member_accession", "uniprot", "submitted_gene_symbol", "gene_symbol"), nms)
+  symbol_col <- intersect(c("official_gene_symbol", "resolved_gene_symbol", "symbol"), nms)
+  entrez_col <- intersect(c("official_entrez_id", "entrezid", "entrez_id"), nms)
+  if (!length(lookup_col) || !length(symbol_col)) return(empty)
+  data.frame(
+    lookup_value = toupper(trimws(as.character(overrides[[lookup_col[[1]]]]))),
+    official_gene_symbol = trimws(as.character(overrides[[symbol_col[[1]]]])),
+    official_entrez_id = if (length(entrez_col)) trimws(as.character(overrides[[entrez_col[[1]]]])) else NA_character_,
+    stringsAsFactors = FALSE
+  )
+}
+
+read_manual_gene_annotation_overrides <- function(path = Sys.getenv("PROTEOMICS_MANUAL_GENE_ANNOTATION_FILE", unset = "")) {
+  if (!nzchar(path)) {
+    path <- if (exists("path_metadata", mode = "function")) path_metadata("manual_gene_annotation_overrides.csv") else file.path("data", "metadata", "manual_gene_annotation_overrides.csv")
+  }
+  if (!file.exists(path)) return(structure(NULL, path = path, status = "missing"))
+  ext <- tolower(tools::file_ext(path))
+  raw <- if (ext %in% c("xlsx", "xls")) {
+    if (!requireNamespace("readxl", quietly = TRUE)) stop("readxl is required for manual gene annotation workbooks.", call. = FALSE)
+    readxl::read_excel(path, sheet = 1)
+  } else if (requireNamespace("readr", quietly = TRUE)) {
+    readr::read_csv(path, show_col_types = FALSE)
+  } else {
+    utils::read.csv(path, check.names = FALSE, stringsAsFactors = FALSE)
+  }
+  out <- normalize_manual_gene_annotation_overrides(as.data.frame(raw))
+  attr(out, "path") <- path
+  attr(out, "status") <- if (nrow(out)) "loaded" else "empty_or_invalid"
+  out
+}
+
+resolve_mouse_gene_annotation <- function(member_accession, submitted_gene_symbol,
+                                           annotation_maps, manual_overrides = NULL) {
+  accession <- toupper(trimws(as.character(member_accession)))
+  submitted <- trimws(as.character(submitted_gene_symbol))
+  if (is.na(accession)) accession <- ""
+  if (is.na(submitted)) submitted <- ""
+  manual <- normalize_manual_gene_annotation_overrides(manual_overrides)
+  manual_hits <- manual[toupper(manual$lookup_value) %in% unique(c(accession, toupper(submitted))), , drop = FALSE]
+  manual_symbols <- sort(unique(manual_hits$official_gene_symbol[nzchar(manual_hits$official_gene_symbol)]), method = "radix")
+
+  make_result <- function(symbol = NA_character_, entrez = NA_character_, status, strategy,
+                          candidates = character(), secondary_conflict = FALSE, manual_used = FALSE) {
+    data.frame(
+      submitted_gene_symbol = if (nzchar(submitted)) submitted else NA_character_,
+      official_gene_symbol = symbol,
+      official_entrez_id = entrez,
+      gene_annotation_status = status,
+      gene_annotation_strategy = strategy,
+      gene_annotation_candidates = paste(sort(unique(candidates), method = "radix"), collapse = ";"),
+      gene_annotation_secondary_conflict = secondary_conflict,
+      gene_annotation_manual_override_used = manual_used,
+      gene_annotation_contract_version = if (is.null(annotation_maps$annotation_contract_version)) mouse_gene_annotation_contract_version() else annotation_maps$annotation_contract_version,
+      orgdb_package_version = if (is.null(annotation_maps$orgdb_package_version)) NA_character_ else annotation_maps$orgdb_package_version,
+      stringsAsFactors = FALSE
+    )
+  }
+
+  use_manual <- function() {
+    if (length(manual_symbols) != 1L) return(NULL)
+    rows <- manual_hits[manual_hits$official_gene_symbol == manual_symbols[[1]], , drop = FALSE]
+    entrez <- sort(unique(rows$official_entrez_id[!is.na(rows$official_entrez_id) & nzchar(rows$official_entrez_id)]), method = "radix")
+    make_result(manual_symbols[[1]], if (length(entrez) == 1L) entrez[[1]] else NA_character_,
+      "resolved", "manual_annotation_override", manual_symbols, manual_used = TRUE)
+  }
+
+  accession_rows <- annotation_maps$uniprot_map[annotation_maps$uniprot_map$UNIPROT == accession, , drop = FALSE]
+  accession_symbols <- sort(unique(accession_rows$SYMBOL[!is.na(accession_rows$SYMBOL) & nzchar(accession_rows$SYMBOL)]), method = "radix")
+  if (length(accession_symbols) == 1L) {
+    symbol_rows <- accession_rows[accession_rows$SYMBOL == accession_symbols[[1]], , drop = FALSE]
+    entrez <- sort(unique(as.character(symbol_rows$ENTREZID[!is.na(symbol_rows$ENTREZID) & nzchar(as.character(symbol_rows$ENTREZID))])), method = "radix")
+    alias_symbols <- sort(unique(annotation_maps$alias_map$SYMBOL[annotation_maps$alias_map$ALIAS == submitted]), method = "radix")
+    secondary_conflict <- length(alias_symbols) > 0L && any(alias_symbols != accession_symbols[[1]])
+    return(make_result(accession_symbols[[1]], if (length(entrez) == 1L) entrez[[1]] else NA_character_,
+      "resolved", "unique_uniprot_to_symbol", accession_symbols, secondary_conflict))
+  }
+  if (length(accession_symbols) > 1L) {
+    override <- use_manual()
+    if (!is.null(override)) return(override)
+    return(make_result(status = "ambiguous", strategy = "ambiguous_uniprot_mapping", candidates = accession_symbols))
+  }
+
+  exact_rows <- annotation_maps$symbol_map[annotation_maps$symbol_map$SYMBOL == submitted, , drop = FALSE]
+  if (nrow(exact_rows)) {
+    entrez <- sort(unique(as.character(exact_rows$ENTREZID[!is.na(exact_rows$ENTREZID)])), method = "radix")
+    return(make_result(submitted, if (length(entrez) == 1L) entrez[[1]] else NA_character_, "resolved", "exact_symbol_match", submitted))
+  }
+
+  ci_symbols <- sort(unique(annotation_maps$symbol_map$SYMBOL[tolower(annotation_maps$symbol_map$SYMBOL) == tolower(submitted)]), method = "radix")
+  if (length(ci_symbols) == 1L) {
+    rows <- annotation_maps$symbol_map[annotation_maps$symbol_map$SYMBOL == ci_symbols[[1]], , drop = FALSE]
+    entrez <- sort(unique(as.character(rows$ENTREZID[!is.na(rows$ENTREZID)])), method = "radix")
+    return(make_result(ci_symbols[[1]], if (length(entrez) == 1L) entrez[[1]] else NA_character_, "resolved", "unique_case_insensitive_symbol", ci_symbols))
+  }
+  if (length(ci_symbols) > 1L) return(make_result(status = "ambiguous", strategy = "ambiguous_case_insensitive_symbol", candidates = ci_symbols))
+
+  alias_rows <- annotation_maps$alias_map[annotation_maps$alias_map$ALIAS == submitted, , drop = FALSE]
+  alias_symbols <- sort(unique(alias_rows$SYMBOL[!is.na(alias_rows$SYMBOL) & nzchar(alias_rows$SYMBOL)]), method = "radix")
+  if (length(alias_symbols) == 1L) {
+    entrez <- sort(unique(as.character(alias_rows$ENTREZID[alias_rows$SYMBOL == alias_symbols[[1]] & !is.na(alias_rows$ENTREZID)])), method = "radix")
+    return(make_result(alias_symbols[[1]], if (length(entrez) == 1L) entrez[[1]] else NA_character_, "resolved", "unique_alias_to_symbol", alias_symbols))
+  }
+  if (length(alias_symbols) > 1L) return(make_result(status = "ambiguous", strategy = "ambiguous_alias_mapping", candidates = alias_symbols))
+
+  override <- use_manual()
+  if (!is.null(override)) return(override)
+  make_result(status = "unresolved", strategy = "unresolved_gene_annotation")
+}
+
+assess_protein_group_gene_annotation <- function(member_bridge) {
+  relevant <- member_bridge[!is.na(member_bridge$member_accession) & nzchar(member_bridge$member_accession), , drop = FALSE]
+  if (!nrow(relevant)) {
+    return(data.frame(official_gene_symbol = NA_character_, official_entrez_id = NA_character_,
+      protein_group_gene_annotation_status = "no_mapped_accessions", all_member_accessions_gene_annotated = FALSE, stringsAsFactors = FALSE))
+  }
+  resolved <- !is.na(relevant$member_gene_symbol) & nzchar(relevant$member_gene_symbol) & relevant$gene_annotation_status == "resolved"
+  symbols <- sort(unique(relevant$member_gene_symbol[resolved]), method = "radix")
+  entrez <- sort(unique(relevant$member_entrez_id[resolved & !is.na(relevant$member_entrez_id) & nzchar(relevant$member_entrez_id)]), method = "radix")
+  all_resolved <- all(resolved)
+  status <- if (!all_resolved) "incomplete_or_ambiguous_member_annotation" else if (length(symbols) != 1L || length(entrez) > 1L) "conflicting_member_annotations" else "concordant_official_gene"
+  data.frame(
+    official_gene_symbol = if (identical(status, "concordant_official_gene")) symbols[[1]] else NA_character_,
+    official_entrez_id = if (identical(status, "concordant_official_gene") && length(entrez) == 1L) entrez[[1]] else NA_character_,
+    protein_group_gene_annotation_status = status,
+    all_member_accessions_gene_annotated = all_resolved,
+    stringsAsFactors = FALSE
+  )
+}
+
+apply_enrichment_gene_annotation_fallback <- function(df, annotation_maps,
+                                                       uniprot_mapping_file_hash = NA_character_) {
+  required <- c("ProteinGroupID", "member_accessions", "member_gene_symbols")
+  missing <- setdiff(required, names(df))
+  if (length(missing)) stop("Compatibility annotation fallback is missing: ", paste(missing, collapse = ", "), call. = FALSE)
+  bridge_rows <- list()
+  group_rows <- vector("list", nrow(df))
+  for (i in seq_len(nrow(df))) {
+    accessions <- split_protein_group_members(df$member_accessions[[i]])
+    submitted <- split_protein_group_members(df$member_gene_symbols[[i]])
+    member_rows <- lapply(seq_along(accessions), function(j) {
+      submitted_j <- if (length(submitted) == 1L) submitted[[1]] else if (length(submitted) == length(accessions)) submitted[[j]] else NA_character_
+      annotation <- resolve_mouse_gene_annotation(accessions[[j]], submitted_j, annotation_maps)
+      data.frame(ProteinGroupID = as.character(df$ProteinGroupID[[i]]), member_accession = toupper(accessions[[j]]),
+        member_gene_symbol_submitted = submitted_j, member_gene_symbol = annotation$official_gene_symbol,
+        member_entrez_id = annotation$official_entrez_id, gene_annotation_status = annotation$gene_annotation_status,
+        gene_annotation_strategy = paste0("enrichment_compatibility_fallback|", annotation$gene_annotation_strategy),
+        gene_annotation_candidates = annotation$gene_annotation_candidates,
+        gene_annotation_secondary_conflict = annotation$gene_annotation_secondary_conflict,
+        gene_annotation_manual_override_used = annotation$gene_annotation_manual_override_used,
+        gene_annotation_contract_version = "enrichment_compatibility_fallback_v1",
+        uniprot_mapping_file_hash = uniprot_mapping_file_hash,
+        orgdb_package_version = annotation$orgdb_package_version, stringsAsFactors = FALSE)
+    })
+    bridge <- if (length(member_rows)) do.call(rbind, member_rows) else data.frame(
+      member_accession = character(), member_gene_symbol = character(), member_entrez_id = character(),
+      gene_annotation_status = character(), stringsAsFactors = FALSE)
+    group <- assess_protein_group_gene_annotation(bridge)
+    group_rows[[i]] <- cbind(data.frame(ProteinGroupID = as.character(df$ProteinGroupID[[i]]), stringsAsFactors = FALSE), group)
+    bridge_rows[[i]] <- bridge
+  }
+  groups <- do.call(rbind, group_rows)
+  df$official_gene_symbol <- groups$official_gene_symbol
+  df$official_entrez_id <- groups$official_entrez_id
+  df$protein_group_gene_annotation_status <- groups$protein_group_gene_annotation_status
+  df$all_member_accessions_gene_annotated <- groups$all_member_accessions_gene_annotated
+  df$gene_level_claim_allowed <- as.logical(df$gene_level_claim_allowed) &
+    df$protein_group_gene_annotation_status == "concordant_official_gene"
+  df$gene_annotation_contract_version <- "enrichment_compatibility_fallback_v1"
+  df$uniprot_mapping_file_hash <- uniprot_mapping_file_hash
+  df$orgdb_package_version <- annotation_maps$orgdb_package_version
+  list(data = df, accession_audit = do.call(rbind, bridge_rows), protein_group_audit = groups)
+}
+
 map_token_to_mouse_accession <- function(token, entry_map, gene_map) {
   if (is.na(token) || !nzchar(trimws(token))) return(NA_character_)
   token <- unlist(strsplit(as.character(token), ";", fixed = TRUE), use.names = FALSE)[1]
@@ -377,7 +589,10 @@ lookup_accession_gene <- function(accession, accession_gene_map = NULL, gene_map
 
 resolve_protein_group_member <- function(member_identifier, entry_map, gene_map,
                                          accession_gene_map = NULL, reviewed_map = NULL,
-                                         manual_mapping = NULL, manual_override = TRUE) {
+                                         manual_mapping = NULL, manual_override = TRUE,
+                                         gene_annotation_maps = NULL,
+                                         manual_gene_annotation_overrides = NULL,
+                                         uniprot_mapping_file_hash = NA_character_) {
   parsed <- parse_member_identifier(member_identifier)
   acc <- parsed$parsed_accession
   strategy <- NA_character_
@@ -425,7 +640,24 @@ resolve_protein_group_member <- function(member_identifier, entry_map, gene_map,
     }
   }
 
-  gene <- if (!is.na(acc) && nzchar(acc)) lookup_accession_gene(acc, accession_gene_map, gene_map) else NA_character_
+  submitted_gene <- if (!is.na(acc) && nzchar(acc)) lookup_accession_gene(acc, accession_gene_map, gene_map) else NA_character_
+  if (!is.null(gene_annotation_maps)) {
+    annotation <- resolve_mouse_gene_annotation(acc, submitted_gene, gene_annotation_maps, manual_gene_annotation_overrides)
+    gene <- annotation$official_gene_symbol[[1]]
+    entrez <- annotation$official_entrez_id[[1]]
+  } else {
+    gene <- submitted_gene
+    entrez <- NA_character_
+    annotation <- data.frame(
+      gene_annotation_status = ifelse(!is.na(gene) && nzchar(gene), "resolved", "unresolved"),
+      gene_annotation_strategy = "legacy_uniprot_gene_name",
+      gene_annotation_candidates = ifelse(!is.na(gene), gene, ""),
+      gene_annotation_secondary_conflict = FALSE,
+      gene_annotation_manual_override_used = FALSE,
+      gene_annotation_contract_version = "legacy_uniprot_gene_name",
+      orgdb_package_version = NA_character_, stringsAsFactors = FALSE
+    )
+  }
   reviewed_status <- NA_character_
   if (!is.null(reviewed_map) && nrow(reviewed_map) && !is.na(acc) && nzchar(acc)) {
     reviewed_status <- reviewed_map$reviewed_status[match(acc, reviewed_map$UNIPROT)]
@@ -435,7 +667,17 @@ resolve_protein_group_member <- function(member_identifier, entry_map, gene_map,
     member_identifier_original = as.character(member_identifier),
     member_identifier_normalized = parsed$member_identifier_normalized,
     member_accession = ifelse(!is.na(acc) && nzchar(acc), toupper(acc), NA_character_),
+    member_gene_symbol_submitted = submitted_gene,
     member_gene_symbol = gene,
+    member_entrez_id = entrez,
+    gene_annotation_status = annotation$gene_annotation_status[[1]],
+    gene_annotation_strategy = annotation$gene_annotation_strategy[[1]],
+    gene_annotation_candidates = annotation$gene_annotation_candidates[[1]],
+    gene_annotation_secondary_conflict = annotation$gene_annotation_secondary_conflict[[1]],
+    gene_annotation_manual_override_used = annotation$gene_annotation_manual_override_used[[1]],
+    gene_annotation_contract_version = annotation$gene_annotation_contract_version[[1]],
+    orgdb_package_version = annotation$orgdb_package_version[[1]],
+    uniprot_mapping_file_hash = uniprot_mapping_file_hash,
     member_species = parsed$member_species,
     member_mapping_status = ifelse(!is.na(acc) && nzchar(acc), "mapped", "unmapped"),
     mapping_strategy = ifelse(!is.na(strategy) && nzchar(strategy), strategy, "unmapped"),
@@ -520,6 +762,9 @@ build_canonical_protein_group_tables <- function(df_raw, dataset, source_file,
                                                  reviewed_map = NULL,
                                                  manual_mapping = NULL,
                                                  manual_override = TRUE,
+                                                 gene_annotation_maps = NULL,
+                                                 manual_gene_annotation_overrides = NULL,
+                                                 uniprot_mapping_file_hash = NA_character_,
                                                  strict = TRUE,
                                                  identifier_col = NULL,
                                                  feature_col = NULL) {
@@ -547,14 +792,27 @@ build_canonical_protein_group_tables <- function(df_raw, dataset, source_file,
                           accession_gene_map = accession_gene_map,
                           reviewed_map = reviewed_map,
                           manual_mapping = manual_mapping,
-                          manual_override = manual_override)
+                          manual_override = manual_override,
+                          gene_annotation_maps = gene_annotation_maps,
+                          manual_gene_annotation_overrides = manual_gene_annotation_overrides,
+                          uniprot_mapping_file_hash = uniprot_mapping_file_hash)
     bridge <- if (length(member_tbls)) dplyr::bind_rows(member_tbls) else data.frame()
     if (!nrow(bridge)) {
       bridge <- data.frame(
         member_identifier_original = NA_character_,
         member_identifier_normalized = NA_character_,
         member_accession = NA_character_,
+        member_gene_symbol_submitted = NA_character_,
         member_gene_symbol = NA_character_,
+        member_entrez_id = NA_character_,
+        gene_annotation_status = "unresolved",
+        gene_annotation_strategy = "unresolved_gene_annotation",
+        gene_annotation_candidates = "",
+        gene_annotation_secondary_conflict = FALSE,
+        gene_annotation_manual_override_used = FALSE,
+        gene_annotation_contract_version = if (is.null(gene_annotation_maps)) "legacy_uniprot_gene_name" else gene_annotation_maps$annotation_contract_version,
+        orgdb_package_version = if (is.null(gene_annotation_maps)) NA_character_ else gene_annotation_maps$orgdb_package_version,
+        uniprot_mapping_file_hash = uniprot_mapping_file_hash,
         member_species = NA_character_,
         member_mapping_status = "unmapped",
         mapping_strategy = "unmapped",
@@ -572,8 +830,18 @@ build_canonical_protein_group_tables <- function(df_raw, dataset, source_file,
       source_cols$explicit_master %in% names(row) &&
       !is.na(row[[source_cols$explicit_master]][1]) &&
       nzchar(as.character(row[[source_cols$explicit_master]][1]))
+    group_annotation <- if (is.null(gene_annotation_maps)) {
+      genes <- unique(stats::na.omit(bridge$member_gene_symbol))
+      data.frame(official_gene_symbol = if (length(genes) == 1L) genes[[1]] else NA_character_, official_entrez_id = NA_character_,
+        protein_group_gene_annotation_status = if (length(genes) == 1L) "legacy_uniprot_gene_name" else "legacy_ambiguous_gene_name",
+        all_member_accessions_gene_annotated = length(genes) == 1L, stringsAsFactors = FALSE)
+    } else assess_protein_group_gene_annotation(bridge)
     ambiguity_class <- classify_protein_group(bridge, explicit_master_present)
     claims <- protein_group_claim_rules(ambiguity_class)
+    if (!is.null(gene_annotation_maps)) {
+      claims$gene_level_claim_allowed <- claims$gene_level_claim_allowed &&
+        identical(group_annotation$protein_group_gene_annotation_status[[1]], "concordant_official_gene")
+    }
     representative <- select_representative_member(bridge, row, source_cols)
 
     feature_is_membership <- !is.na(feature_col) && feature_col %in%
@@ -621,6 +889,7 @@ build_canonical_protein_group_tables <- function(df_raw, dataset, source_file,
     bridge$original_identifier <- original_identifier
 
     mapped_accessions <- unique(stats::na.omit(bridge$member_accession))
+    submitted_genes <- unique(stats::na.omit(bridge$member_gene_symbol_submitted))
     mapped_genes <- unique(stats::na.omit(bridge$member_gene_symbol))
     stat_cols <- setdiff(names(row), unique(stats::na.omit(c(
       identifier_col, feature_col, source_cols$explicit_master,
@@ -637,7 +906,15 @@ build_canonical_protein_group_tables <- function(df_raw, dataset, source_file,
         member_identifiers_original = paste(members_original, collapse = ";"),
         member_identifiers_canonical = paste(members_canonical, collapse = ";"),
         member_accessions = paste(mapped_accessions, collapse = ";"),
+        member_gene_symbols_submitted = paste(submitted_genes, collapse = ";"),
         member_gene_symbols = paste(mapped_genes, collapse = ";"),
+        official_gene_symbol = group_annotation$official_gene_symbol[[1]],
+        official_entrez_id = group_annotation$official_entrez_id[[1]],
+        protein_group_gene_annotation_status = group_annotation$protein_group_gene_annotation_status[[1]],
+        all_member_accessions_gene_annotated = group_annotation$all_member_accessions_gene_annotated[[1]],
+        gene_annotation_contract_version = if (is.null(gene_annotation_maps)) "legacy_uniprot_gene_name" else gene_annotation_maps$annotation_contract_version,
+        uniprot_mapping_file_hash = uniprot_mapping_file_hash,
+        orgdb_package_version = if (is.null(gene_annotation_maps)) NA_character_ else gene_annotation_maps$orgdb_package_version,
         representative_accession = representative$accession,
         representative_gene_symbol = representative$gene_symbol,
         representative_selection_rule = representative$rule,
@@ -671,8 +948,11 @@ build_canonical_protein_group_tables <- function(df_raw, dataset, source_file,
       "original_identifier",
       "member_identifier_original", "member_identifier_normalized",
       "member_rank_original", "member_rank_canonical",
-      "member_accession", "member_gene_symbol", "member_species",
+      "member_accession", "member_gene_symbol_submitted", "member_gene_symbol", "member_entrez_id", "member_species",
       "member_mapping_status", "mapping_strategy", "manual_mapping_used",
+      "gene_annotation_status", "gene_annotation_strategy", "gene_annotation_candidates",
+      "gene_annotation_secondary_conflict", "gene_annotation_manual_override_used",
+      "gene_annotation_contract_version", "uniprot_mapping_file_hash", "orgdb_package_version",
       "reviewed_status", "contaminant_status",
       "unique_peptide_count", "razor_peptide_count",
       "sequence_coverage", "identification_confidence"
@@ -718,7 +998,24 @@ build_canonical_protein_group_tables <- function(df_raw, dataset, source_file,
       compatibility_note = "deprecated audit: all members are retained in the member bridge"
     )
 
-  list(wide = wide, bridge = bridge, summary = summary, collision_audit = collisions, deprecated_dropped_log = deprecated_dropped_log)
+  protein_group_annotation_audit <- wide |>
+    dplyr::select(dplyr::all_of(c("ProteinGroupID", "source_file", "source_feature_id", "source_row_id",
+      "member_accessions", "member_gene_symbols", "official_gene_symbol", "official_entrez_id",
+      "protein_group_gene_annotation_status", "all_member_accessions_gene_annotated",
+      "gene_level_claim_allowed", "gene_annotation_contract_version",
+      "uniprot_mapping_file_hash", "orgdb_package_version")))
+  accession_annotation_audit <- bridge |>
+    dplyr::select(dplyr::all_of(c("ProteinGroupID", "source_file", "source_row_id",
+      "member_identifier_original", "member_accession", "member_gene_symbol_submitted",
+      "member_gene_symbol", "member_entrez_id", "gene_annotation_status",
+      "gene_annotation_strategy", "gene_annotation_candidates",
+      "gene_annotation_secondary_conflict", "gene_annotation_manual_override_used",
+      "gene_annotation_contract_version", "uniprot_mapping_file_hash", "orgdb_package_version")))
+
+  list(wide = wide, bridge = bridge, summary = summary, collision_audit = collisions,
+    accession_annotation_audit = accession_annotation_audit,
+    protein_group_annotation_audit = protein_group_annotation_audit,
+    deprecated_dropped_log = deprecated_dropped_log)
 }
 
 wgcna_feature_display_label <- function(feature_table) {
