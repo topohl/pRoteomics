@@ -1,6 +1,8 @@
 # Canonical ProteinGroupID-to-gene transformation for differential enrichment.
 
-canonical_enrichment_contract_version <- function() "protein_group_enrichment_v1"
+canonical_enrichment_contract_version <- function() "protein_group_enrichment_v2_official_mouse_gene_annotation"
+
+canonical_enrichment_gene_namespace <- function() "SYMBOL"
 
 find_enrichment_column <- function(df, candidates) {
   normalized <- tolower(gsub("[^a-z0-9]", "", names(df)))
@@ -14,7 +16,9 @@ require_canonical_enrichment_input <- function(df, strict = TRUE) {
   required <- c("ProteinGroupID", "original_identifier", "member_accessions",
     "member_gene_symbols", "representative_accession", "representative_gene_symbol",
     "representative_selection_rule", "protein_group_ambiguity_class",
-    "gene_level_claim_allowed", "protein_level_claim_allowed", "mapping_status")
+    "gene_level_claim_allowed", "protein_level_claim_allowed", "mapping_status",
+    "official_gene_symbol", "official_entrez_id", "protein_group_gene_annotation_status",
+    "gene_annotation_contract_version", "uniprot_mapping_file_hash", "orgdb_package_version")
   missing <- setdiff(required, names(df))
   if (length(missing) && isTRUE(strict)) {
     stop("Canonical ProteinGroupID enrichment input is required; missing: ", paste(missing, collapse = ", "),
@@ -51,6 +55,12 @@ protein_group_gene_transform <- function(df, statistic = NULL, strict = TRUE) {
     df$representative_selection_rule <- "legacy_compatibility_only"
     df$protein_group_ambiguity_class <- "single_accession_single_gene"
     df$gene_level_claim_allowed <- TRUE; df$protein_level_claim_allowed <- FALSE; df$mapping_status <- "legacy_compatibility"
+    df$official_gene_symbol <- as.character(df[[gene_col]])
+    df$official_entrez_id <- NA_character_
+    df$protein_group_gene_annotation_status <- "legacy_enrichment_compatibility"
+    df$gene_annotation_contract_version <- "legacy_enrichment_compatibility"
+    df$uniprot_mapping_file_hash <- NA_character_
+    df$orgdb_package_version <- NA_character_
   }
   if (anyNA(df$ProteinGroupID) || any(!nzchar(as.character(df$ProteinGroupID))) || anyDuplicated(df$ProteinGroupID))
     stop("Missing or duplicate ProteinGroupID; enrichment identity cannot be repaired.", call. = FALSE)
@@ -62,15 +72,20 @@ protein_group_gene_transform <- function(df, statistic = NULL, strict = TRUE) {
   rows <- lapply(seq_len(nrow(df)), function(i) {
     cls <- as.character(df$protein_group_ambiguity_class[[i]])
     allowed <- isTRUE(df$gene_level_claim_allowed[[i]]) && cls %in% allowed_classes
-    genes <- split_gene_symbols(df$member_gene_symbols[[i]])
-    eligible <- allowed && length(genes) == 1L
-    reason <- if (eligible) "eligible_primary_gene_level" else if (!cls %in% allowed_classes) paste0("excluded_", cls) else if (!isTRUE(df$gene_level_claim_allowed[[i]])) "gene_level_claim_not_allowed" else "same_gene_group_without_exactly_one_mapped_gene"
-    data.frame(ProteinGroupID = as.character(df$ProteinGroupID[[i]]), GeneSymbol = if (eligible) genes[[1]] else NA_character_,
+    gene <- as.character(df$official_gene_symbol[[i]])
+    annotation_status <- as.character(df$protein_group_gene_annotation_status[[i]])
+    annotation_eligible <- identical(annotation_status, "concordant_official_gene") || (!isTRUE(strict) && identical(annotation_status, "legacy_enrichment_compatibility"))
+    eligible <- allowed && annotation_eligible && !is.na(gene) && nzchar(gene)
+    reason <- if (eligible) "eligible_primary_gene_level" else if (!cls %in% allowed_classes) paste0("excluded_", cls) else if (!isTRUE(df$gene_level_claim_allowed[[i]])) "gene_level_claim_not_allowed" else if (!annotation_eligible) paste0("excluded_gene_annotation_", annotation_status) else "missing_official_gene_symbol"
+    data.frame(ProteinGroupID = as.character(df$ProteinGroupID[[i]]), GeneSymbol = if (eligible) gene else NA_character_,
+      EntrezID = if (eligible) as.character(df$official_entrez_id[[i]]) else NA_character_,
       source_statistic = values[[i]], source_statistic_column = statistic$column,
       source_p_value = if (!is.na(p_col)) suppressWarnings(as.numeric(df[[p_col]][[i]])) else NA_real_,
       source_fdr = if (!is.na(fdr_col)) suppressWarnings(as.numeric(df[[fdr_col]][[i]])) else NA_real_,
       source_logfc = if (!is.na(fc_col)) suppressWarnings(as.numeric(df[[fc_col]][[i]])) else NA_real_,
       protein_group_ambiguity_class = cls, gene_level_claim_allowed = isTRUE(df$gene_level_claim_allowed[[i]]),
+      protein_group_gene_annotation_status = annotation_status,
+      gene_annotation_contract_version = as.character(df$gene_annotation_contract_version[[i]]),
       eligibility_status = if (eligible) "eligible" else "excluded", exclusion_reason = reason,
       original_identifier = as.character(df$original_identifier[[i]]), member_accessions = as.character(df$member_accessions[[i]]),
       member_gene_symbols = as.character(df$member_gene_symbols[[i]]), stringsAsFactors = FALSE)
@@ -85,6 +100,7 @@ collapse_protein_group_genes <- function(transform) {
   groups <- split(eligible, eligible$GeneSymbol)
   out <- lapply(groups, function(x) {
     stats <- x$source_statistic
+    entrez <- if ("EntrezID" %in% names(x)) sort(unique(x$EntrezID[!is.na(x$EntrezID) & nzchar(x$EntrezID)]), method = "radix") else character()
     median_optional <- function(column) {
       if (!column %in% names(x)) return(NA_real_)
       values <- x[[column]]
@@ -92,7 +108,8 @@ collapse_protein_group_genes <- function(transform) {
       stats::median(values[is.finite(values)])
     }
     signs <- sign(stats[is.finite(stats)])
-    data.frame(GeneSymbol = x$GeneSymbol[[1]], gene_collapse_rule = "median_finite_statistics",
+    data.frame(GeneSymbol = x$GeneSymbol[[1]], EntrezID = if (length(entrez) == 1L) entrez[[1]] else NA_character_,
+      gene_collapse_rule = "median_finite_statistics",
       n_protein_groups_for_gene = nrow(x), contributing_ProteinGroupIDs = paste(x$ProteinGroupID, collapse = ";"),
       individual_statistics = paste(format(stats, trim = TRUE, scientific = FALSE), collapse = ";"),
       collapsed_statistic = stats::median(stats[is.finite(stats)]),
@@ -119,6 +136,134 @@ build_enrichment_gene_inputs <- function(df, strict = TRUE) {
     list(median = ranked, max_abs_signed = maxabs[order(maxabs, decreasing = TRUE)], unique_groups_only = ranked[collapsed$n_protein_groups_for_gene == 1L])
   } else list(median = numeric(), max_abs_signed = numeric(), unique_groups_only = numeric())
   list(statistic = statistic, transformation = transform, collapse = collapsed, ranked = ranked, sensitivity = sensitivity)
+}
+
+# Backward-compatibility resolver only. Active strict enrichment consumes Stage 02 official symbols.
+resolve_enrichment_symbols <- function(collapse, symbol_keys) {
+  required <- c("GeneSymbol", "collapsed_statistic", "contributing_ProteinGroupIDs")
+  missing <- setdiff(required, names(collapse))
+  if (length(missing)) stop("Symbol resolution input is missing: ", paste(missing, collapse = ", "), call. = FALSE)
+
+  keys <- sort(unique(as.character(symbol_keys[!is.na(symbol_keys) & nzchar(symbol_keys)])), method = "radix")
+  submitted <- as.character(collapse$GeneSymbol)
+  lower_keys <- tolower(keys)
+  resolved <- rep(NA_character_, length(submitted))
+  status <- rep("unmatched_symbol", length(submitted))
+  exact <- !is.na(submitted) & nzchar(submitted) & submitted %in% keys
+  resolved[exact] <- submitted[exact]
+  status[exact] <- "exact_symbol_match"
+
+  for (i in which(!exact & !is.na(submitted) & nzchar(submitted))) {
+    hits <- unique(keys[lower_keys == tolower(submitted[[i]])])
+    if (length(hits) == 1L) {
+      resolved[[i]] <- hits[[1]]
+      status[[i]] <- "case_normalized_symbol_match"
+    } else if (length(hits) > 1L) {
+      status[[i]] <- "ambiguous_case_insensitive_match"
+    }
+  }
+
+  included <- !is.na(resolved) & nzchar(resolved)
+  audit <- data.frame(
+    submitted_GeneSymbol = submitted,
+    resolved_GeneSymbol = resolved,
+    symbol_resolution_status = status,
+    exact_match = exact,
+    case_normalized = status == "case_normalized_symbol_match",
+    ambiguous_case_match = status == "ambiguous_case_insensitive_match",
+    included_in_enrichment = included,
+    contributing_ProteinGroupIDs = as.character(collapse$contributing_ProteinGroupIDs),
+    stringsAsFactors = FALSE
+  )
+  provenance_columns <- intersect(c("individual_statistics", "collapsed_statistic", "gene_collapse_rule",
+    "contributing_original_identifiers", "contributing_member_accessions", "contributing_member_gene_symbols",
+    "discordant_direction"), names(collapse))
+  if (length(provenance_columns)) audit <- cbind(audit, collapse[, provenance_columns, drop = FALSE])
+
+  resolved_collapse <- collapse[included, , drop = FALSE]
+  if (!nrow(resolved_collapse)) return(list(audit = audit, collapse = resolved_collapse, ranked = numeric()))
+  resolved_collapse$submitted_GeneSymbol <- resolved_collapse$GeneSymbol
+  resolved_collapse$GeneSymbol <- resolved[included]
+  resolved_collapse <- resolved_collapse[order(resolved_collapse$GeneSymbol, resolved_collapse$submitted_GeneSymbol, method = "radix"), , drop = FALSE]
+
+  if (anyDuplicated(resolved_collapse$GeneSymbol)) {
+    combine_text <- function(x) paste(sort(unique(as.character(x[!is.na(x) & nzchar(as.character(x))])), method = "radix"), collapse = ";")
+    combine_numeric <- function(x) if (any(is.finite(x))) stats::median(x[is.finite(x)]) else NA_real_
+    resolved_collapse <- do.call(rbind, lapply(split(resolved_collapse, resolved_collapse$GeneSymbol), function(x) {
+      out <- x[1, , drop = FALSE]
+      out$submitted_GeneSymbol <- combine_text(x$submitted_GeneSymbol)
+      out$collapsed_statistic <- combine_numeric(x$collapsed_statistic)
+      for (nm in intersect(c("collapsed_p_value", "collapsed_fdr", "collapsed_logfc"), names(x))) out[[nm]] <- combine_numeric(x[[nm]])
+      if ("n_protein_groups_for_gene" %in% names(x)) out$n_protein_groups_for_gene <- sum(x$n_protein_groups_for_gene)
+      for (nm in intersect(c("contributing_ProteinGroupIDs", "individual_statistics", "contributing_original_identifiers",
+        "contributing_member_accessions", "contributing_member_gene_symbols"), names(x))) out[[nm]] <- combine_text(x[[nm]])
+      if ("direction_pattern" %in% names(x)) out$direction_pattern <- combine_text(x$direction_pattern)
+      if ("discordant_direction" %in% names(x)) out$discordant_direction <- any(x$discordant_direction)
+      out
+    }))
+    rownames(resolved_collapse) <- NULL
+  }
+
+  ranked <- stats::setNames(resolved_collapse$collapsed_statistic, resolved_collapse$GeneSymbol)
+  ranked <- ranked[order(ranked, decreasing = TRUE)]
+  list(audit = audit, collapse = resolved_collapse, ranked = ranked)
+}
+
+validate_precomputed_enrichment_symbols <- function(collapse, symbol_keys) {
+  required <- c("GeneSymbol", "contributing_ProteinGroupIDs")
+  missing <- setdiff(required, names(collapse))
+  if (length(missing)) stop("Official symbol validation input is missing: ", paste(missing, collapse = ", "), call. = FALSE)
+  submitted <- as.character(collapse$GeneSymbol)
+  exact <- !is.na(submitted) & nzchar(submitted) & submitted %in% symbol_keys
+  data.frame(
+    submitted_GeneSymbol = submitted,
+    resolved_GeneSymbol = ifelse(exact, submitted, NA_character_),
+    symbol_resolution_status = ifelse(exact, "precomputed_exact_symbol_validated", "invalid_precomputed_official_symbol"),
+    exact_match = exact,
+    case_normalized = FALSE,
+    ambiguous_case_match = FALSE,
+    included_in_enrichment = exact,
+    contributing_ProteinGroupIDs = as.character(collapse$contributing_ProteinGroupIDs),
+    stringsAsFactors = FALSE
+  )
+}
+
+prepare_kegg_symbol_ranks <- function(collapse, symbol_to_entrez) {
+  required <- c("GeneSymbol", "collapsed_statistic", "contributing_ProteinGroupIDs")
+  missing <- setdiff(required, names(collapse))
+  if (length(missing)) stop("KEGG rank input is missing: ", paste(missing, collapse = ", "), call. = FALSE)
+  if (!all(c("SYMBOL", "ENTREZID") %in% names(symbol_to_entrez))) {
+    stop("SYMBOL-to-ENTREZ mapping must contain SYMBOL and ENTREZID columns.", call. = FALSE)
+  }
+
+  mapping <- unique(data.frame(SYMBOL = as.character(symbol_to_entrez$SYMBOL), ENTREZID = as.character(symbol_to_entrez$ENTREZID), stringsAsFactors = FALSE))
+  mapping <- mapping[!is.na(mapping$SYMBOL) & nzchar(mapping$SYMBOL) & !is.na(mapping$ENTREZID) & nzchar(mapping$ENTREZID), , drop = FALSE]
+  rows <- lapply(seq_len(nrow(collapse)), function(i) {
+    ids <- sort(unique(mapping$ENTREZID[mapping$SYMBOL == collapse$GeneSymbol[[i]]]), method = "radix")
+    data.frame(GeneSymbol = collapse$GeneSymbol[[i]], ENTREZID = if (length(ids) == 1L) ids[[1]] else NA_character_,
+      entrez_mapping_status = if (!length(ids)) "unmapped_symbol" else if (length(ids) == 1L) "unique_entrez_match" else "ambiguous_entrez_match",
+      n_entrez_matches = length(ids), included_in_kegg = length(ids) == 1L,
+      collapsed_statistic = collapse$collapsed_statistic[[i]],
+      contributing_ProteinGroupIDs = collapse$contributing_ProteinGroupIDs[[i]], stringsAsFactors = FALSE)
+  })
+  audit <- if (length(rows)) do.call(rbind, rows) else data.frame(GeneSymbol = character(), ENTREZID = character(), entrez_mapping_status = character(),
+    n_entrez_matches = integer(), included_in_kegg = logical(), collapsed_statistic = numeric(), contributing_ProteinGroupIDs = character(), stringsAsFactors = FALSE)
+  included <- audit[audit$included_in_kegg, , drop = FALSE]
+  if (!nrow(included)) return(list(ranked = numeric(), audit = audit, collapse = data.frame()))
+
+  collapsed_entrez <- do.call(rbind, lapply(split(included, included$ENTREZID), function(x) data.frame(
+    ENTREZID = x$ENTREZID[[1]],
+    collapsed_statistic = stats::median(x$collapsed_statistic[is.finite(x$collapsed_statistic)]),
+    gene_collapse_rule = "median_finite_statistics_for_duplicate_entrez",
+    n_symbols_for_entrez = nrow(x),
+    contributing_GeneSymbols = paste(sort(unique(x$GeneSymbol), method = "radix"), collapse = ";"),
+    contributing_ProteinGroupIDs = paste(sort(unique(x$contributing_ProteinGroupIDs), method = "radix"), collapse = ";"),
+    stringsAsFactors = FALSE)))
+  rownames(collapsed_entrez) <- NULL
+  ranked <- stats::setNames(collapsed_entrez$collapsed_statistic, collapsed_entrez$ENTREZID)
+  ranked <- ranked[is.finite(ranked)]
+  ranked <- ranked[order(ranked, decreasing = TRUE)]
+  list(ranked = ranked, audit = audit, collapse = collapsed_entrez)
 }
 
 build_ora_inputs <- function(collapse, p_values = NULL, fdr_values = NULL, logfc = NULL, p_threshold = 0.05, fdr_threshold = 0.05, fc_threshold = 1) {
@@ -179,14 +324,26 @@ validate_gsea_input <- function(gene_list, diagnostics, minimum_symbol_matches =
   invisible(TRUE)
 }
 
-gsea_result_table <- function(gse, diagnostics) {
-  details <- paste0("ranked_genes=", diagnostics$total_ranked_genes,
+enrichment_result_table <- function(result, analysis_label, diagnostics = NULL, required = TRUE) {
+  details <- if (is.null(diagnostics)) "" else paste0(": ranked_genes=", diagnostics$total_ranked_genes,
     ", orgdb_symbol_matches=", diagnostics$orgdb_symbol_matches)
-  if (is.null(gse)) stop("GO GSEA returned NULL: ", details, call. = FALSE)
-  if (!inherits(gse, "gseaResult") && !inherits(gse, "enrichResult")) {
-    stop("GO GSEA returned invalid result class: ", paste(class(gse), collapse = "/"), "; ", details, call. = FALSE)
+  fail <- function(message) {
+    full <- paste0(analysis_label, " ", message, details)
+    if (isTRUE(required)) stop(full, call. = FALSE)
+    warning(full, call. = FALSE)
+    out <- data.frame()
+    attr(out, "skipped_reason") <- full
+    out
   }
-  result <- if (isS4(gse)) methods::slot(gse, "result") else gse$result
-  if (!is.data.frame(result)) stop("GO GSEA returned result without a usable result data.frame: ", details, call. = FALSE)
-  result
+  if (is.null(result)) return(fail("returned NULL"))
+  if (!inherits(result, "gseaResult") && !inherits(result, "enrichResult")) {
+    return(fail(paste0("returned invalid result class: ", paste(class(result), collapse = "/"))))
+  }
+  table <- if (isS4(result)) methods::slot(result, "result") else result$result
+  if (!is.data.frame(table)) return(fail("returned no usable result data.frame"))
+  table
+}
+
+gsea_result_table <- function(gse, diagnostics) {
+  enrichment_result_table(gse, "GO GSEA", diagnostics = diagnostics, required = TRUE)
 }
