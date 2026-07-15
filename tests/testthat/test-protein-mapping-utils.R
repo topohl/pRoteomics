@@ -32,6 +32,60 @@ testthat::test_that("manual override resolves before UNMAPPED fallback", {
   testthat::expect_false(startsWith(out$data$Resolved_UNIPROT, "UNMAPPED"))
 })
 
+testthat::test_that("mouse gene annotation is accession-first and audits ambiguity", {
+  source(testthat::test_path("..", "..", "R", "protein_mapping_utils.R"))
+  maps <- list(
+    uniprot_map = data.frame(UNIPROT = c("P1", "P2", "P2"), SYMBOL = c("GeneA", "GeneB", "GeneC"), ENTREZID = c("1", "2", "3"), stringsAsFactors = FALSE),
+    symbol_map = data.frame(SYMBOL = c("GeneA", "Submitted"), ENTREZID = c("1", "9"), stringsAsFactors = FALSE),
+    alias_map = data.frame(ALIAS = "OLD", SYMBOL = "GeneA", ENTREZID = "1", stringsAsFactors = FALSE),
+    orgdb_package_version = "test", annotation_contract_version = "mouse_gene_annotation_v1"
+  )
+  accession_first <- resolve_mouse_gene_annotation("P1", "OLD", maps)
+  testthat::expect_equal(accession_first$official_gene_symbol, "GeneA")
+  testthat::expect_equal(accession_first$gene_annotation_strategy, "unique_uniprot_to_symbol")
+  ambiguous <- resolve_mouse_gene_annotation("P2", "Submitted", maps)
+  testthat::expect_equal(ambiguous$gene_annotation_status, "ambiguous")
+  testthat::expect_true(is.na(ambiguous$official_gene_symbol))
+  override <- data.frame(lookup_value = "P2", official_gene_symbol = "GeneB", official_entrez_id = "2")
+  curated <- resolve_mouse_gene_annotation("P2", "Submitted", maps, override)
+  testthat::expect_equal(curated$official_gene_symbol, "GeneB")
+  testthat::expect_true(curated$gene_annotation_manual_override_used)
+})
+
+testthat::test_that("protein-group gene claims require accession concordance", {
+  source(testthat::test_path("..", "..", "R", "protein_mapping_utils.R"))
+  bridge <- data.frame(member_accession = c("P1", "P2"), member_gene_symbol = c("GeneA", "GeneA"),
+    member_entrez_id = c("1", "1"), gene_annotation_status = "resolved", stringsAsFactors = FALSE)
+  testthat::expect_equal(assess_protein_group_gene_annotation(bridge)$protein_group_gene_annotation_status, "concordant_official_gene")
+  bridge$member_gene_symbol[[2]] <- "GeneB"
+  testthat::expect_equal(assess_protein_group_gene_annotation(bridge)$protein_group_gene_annotation_status, "conflicting_member_annotations")
+})
+
+testthat::test_that("canonical Stage 02 tables carry versioned official gene audits", {
+  testthat::skip_if_not_installed("dplyr")
+  source(testthat::test_path("..", "..", "R", "protein_mapping_utils.R"))
+  entry <- data.frame(UNIPROT = c("P11111", "P22222"), entry_full = c("OLD1_MOUSE", "OLD2_MOUSE"),
+    entry_base = c("OLD1", "OLD2"), stringsAsFactors = FALSE)
+  genes <- data.frame(input = c("OLD1", "OLD2"), primaryAccession = c("P11111", "P22222"), stringsAsFactors = FALSE)
+  accession_genes <- data.frame(UNIPROT = c("P11111", "P22222"), gene_symbol = c("OLD1", "OLD2"), stringsAsFactors = FALSE)
+  maps <- list(
+    uniprot_map = data.frame(UNIPROT = c("P11111", "P22222"), SYMBOL = "GeneA", ENTREZID = "1"),
+    symbol_map = data.frame(SYMBOL = "GeneA", ENTREZID = "1"),
+    alias_map = data.frame(ALIAS = c("OLD1", "OLD2"), SYMBOL = "GeneA", ENTREZID = "1"),
+    orgdb_package_version = "test", annotation_contract_version = "mouse_gene_annotation_v1"
+  )
+  out <- build_canonical_protein_group_tables(data.frame(gene_symbol = "OLD1_MOUSE;OLD2_MOUSE", t = 2),
+    "microglia", "synthetic.csv", entry, genes, accession_genes, gene_annotation_maps = maps,
+    uniprot_mapping_file_hash = "abc", strict = TRUE)
+  testthat::expect_equal(out$wide$official_gene_symbol, "GeneA")
+  testthat::expect_equal(out$wide$official_entrez_id, "1")
+  testthat::expect_equal(out$wide$member_gene_symbols_submitted, "OLD1;OLD2")
+  testthat::expect_true(out$wide$gene_level_claim_allowed)
+  testthat::expect_equal(nrow(out$accession_annotation_audit), 2L)
+  testthat::expect_equal(out$protein_group_annotation_audit$gene_annotation_contract_version, "mouse_gene_annotation_v1")
+  testthat::expect_equal(out$protein_group_annotation_audit$uniprot_mapping_file_hash, "abc")
+})
+
 testthat::test_that("WGCNA separates quantitative inclusion from annotation eligibility", {
   script <- paste(readLines(testthat::test_path("..", "..", "06_modules_WGCNA", "01_WGCNA.r"), warn = FALSE), collapse = "\n")
   testthat::expect_match(script, "manual_mapping_audit.tsv", fixed = TRUE)
