@@ -149,12 +149,12 @@ setupPackages <- function() {
 # ----------------------------------------------------
 # 2. DIRECTORY ORGANIZATION FUNCTIONS
 # ----------------------------------------------------
-create_analysis_dirs <- function(base_dir, comparison_name, ontology) {
+analysis_dir_paths <- function(base_dir, comparison_name, ontology) {
   route <- classify_comparison_route(comparison_name)
   results_root <- file.path(CANONICAL_PATHS$processed, route$category, route$unit_folder, comparison_name)
   plots_root <- file.path(CANONICAL_PATHS$figures, route$category, route$unit_folder, comparison_name)
 
-  dirs <- list(
+  list(
     results = results_root,
     go_ont = file.path(results_root, "GO", ontology),
     kegg = file.path(results_root, "KEGG"),
@@ -170,10 +170,30 @@ create_analysis_dirs <- function(base_dir, comparison_name, ontology) {
     route_category = route$category,
     route_unit = route$unit_folder
   )
+}
+
+create_analysis_dirs <- function(base_dir, comparison_name, ontology) {
+  dirs <- analysis_dir_paths(base_dir, comparison_name, ontology)
   # Create only actual directory paths, not metadata fields.
   dir_fields <- c("results", "go_ont", "kegg", "ora", "custom", "pathview", "plots_go", "plots_kegg", "plots_ora", "plots_custom", "core_enrich", "core_enrich_routed")
   lapply(dirs[dir_fields], function(d) if (!dir.exists(d)) dir.create(d, recursive = TRUE))
   return(dirs)
+}
+
+expected_analysis_output_paths <- function(base_dir, comparison_name, ontology) {
+  dirs <- analysis_dir_paths(base_dir, comparison_name, ontology)
+  directory_fields <- c(
+    "results", "go_ont", "kegg", "ora", "custom", "pathview",
+    "plots_go", "plots_kegg", "plots_ora", "plots_custom", "core_enrich", "core_enrich_routed"
+  )
+  c(
+    unlist(dirs[directory_fields], use.names = FALSE),
+    file.path(dirs$results, "QC_summary.csv"),
+    file.path(dirs$results, "protein_group_audits", "compatibility_fallback_protein_group_annotation_audit.csv"),
+    file.path(dirs$go_ont, paste0("GSEA_", ontology, "_results_simplified.csv")),
+    file.path(dirs$core_enrich_routed, paste0(comparison_name, "_simplified.csv")),
+    file.path(dirs$plots_go, paste0("GSEA_", ontology, "_dotplot_simplified.svg"))
+  )
 }
 
 save_plot_organized <- function(plot, filename, directory) {
@@ -859,6 +879,22 @@ runtime_params <- list(
   dry_run = isTRUE(cfg$runtime$dry_run)
 )
 
+analysis_comparison_names <- vapply(comparison_list, paste, collapse = "_", character(1))
+expected_output_paths <- c(
+  unlist(lapply(
+    analysis_comparison_names,
+    function(comparison_name) expected_analysis_output_paths(working_base, comparison_name, ont)
+  ), use.names = FALSE),
+  file.path(CANONICAL_PATHS$processed, "clusterProfiler_manifest.csv"),
+  file.path(CANONICAL_PATHS$reports, "clusterProfiler_manifest_YYYYMMDD_HHMMSS.csv"),
+  file.path(CANONICAL_PATHS$reports, "clusterProfiler_run_summary_YYYYMMDD_HHMMSS.csv")
+)
+output_path_audit <- validate_clusterprofiler_output_path_lengths(expected_output_paths)
+message(
+  "[Path preflight] ", nrow(output_path_audit), " expected output path(s) checked; maximum length=",
+  if (nrow(output_path_audit)) max(output_path_audit$path_length) else 0L, "."
+)
+
 if (isTRUE(DRY_RUN)) {
   expected_dirs <- unlist(CANONICAL_PATHS, use.names = TRUE)
   route_qc <- if (length(comparison_names) > 0) {
@@ -901,6 +937,7 @@ if (isTRUE(DRY_RUN)) {
   dry_run_line("Dataset processed output", CANONICAL_PATHS$processed)
   dry_run_line("Dataset figures output", CANONICAL_PATHS$figures)
   dry_run_line("Dataset source data", CANONICAL_PATHS$source_data)
+  dry_run_line("Maximum expected output path length", if (nrow(output_path_audit)) max(output_path_audit$path_length) else 0L)
   dry_run_line("Result manifest", file.path(CANONICAL_PATHS$processed, "clusterProfiler_manifest.csv"))
   dry_run_file <- file.path(CANONICAL_PATHS$reports, "clusterProfiler_dry_run_diagnostics.csv")
   write.csv(diagnostics, dry_run_file, row.names = FALSE)
@@ -996,6 +1033,13 @@ if (isTRUE(runtime_params$resume_if_complete) && !isTRUE(runtime_params$force_re
 } else if (isTRUE(runtime_params$force_rerun)) {
   cat("Resume check disabled: force_rerun=TRUE, all comparisons will be recomputed.\n")
 }
+
+completed_comparison_names <- if (length(completed_results)) {
+  vapply(completed_results, function(x) as.character(x$comparison)[1], character(1))
+} else character()
+pending_comparison_names <- if (length(comparison_list)) {
+  vapply(comparison_list, paste, collapse = "_", character(1))
+} else character()
 
 if (length(comparison_list) > 0) {
 
@@ -1904,23 +1948,70 @@ results <- c(completed_results, results)
   results <- completed_results
 }
 
+expected_result_comparisons <- c(completed_comparison_names, pending_comparison_names)
+worker_assessment <- assess_clusterprofiler_worker_results(results, expected_result_comparisons)
+master_exit_status <- clusterprofiler_master_exit_status(worker_assessment)
+
+# Normalize malformed and failed returns before producing run-level artifacts.
+results <- lapply(seq_len(nrow(worker_assessment)), function(i) {
+  assessment <- worker_assessment[i, , drop = FALSE]
+  original <- if (i <= length(results) && is.list(results[[i]])) results[[i]] else list()
+  if (!identical(assessment$analysis_status[[1]], "failed")) return(original)
+
+  comparison_name <- assessment$comparison[[1]]
+  error_message <- assessment$error[[1]]
+  existing_manifest <- if (is.data.frame(original$manifest) &&
+      all(manifest_columns %in% names(original$manifest))) {
+    original$manifest[, manifest_columns, drop = FALSE]
+  } else {
+    data.frame(matrix(ncol = length(manifest_columns), nrow = 0, dimnames = list(NULL, manifest_columns)))
+  }
+  go_rows <- if (nrow(existing_manifest)) !is.na(existing_manifest$result_type) & existing_manifest$result_type == "GSEA_GO" else logical()
+  if (sum(go_rows) == 1L) {
+    existing_manifest$analysis_status[go_rows] <- "failed"
+    existing_manifest$empty_result[go_rows] <- FALSE
+    existing_manifest$error_message[go_rows] <- error_message
+  } else {
+    if (length(go_rows) && any(go_rows)) existing_manifest <- existing_manifest[!go_rows, , drop = FALSE]
+    dirs <- if (comparison_name %in% expected_result_comparisons) {
+      analysis_dir_paths(working_base, comparison_name, ont)
+    } else NULL
+    failed_row <- make_failed_manifest_row(
+      comparison_name = comparison_name,
+      dirs = dirs,
+      input_gene_file = file.path(mapped_data_base, paste0(comparison_name, ".csv")),
+      config_path = config_path,
+      ontology = ont,
+      error_message = error_message,
+      result_type = "GSEA_GO"
+    )
+    existing_manifest <- dplyr::bind_rows(existing_manifest, failed_row)
+  }
+  qc <- if (is.data.frame(original$qc)) original$qc else data.frame(
+    comparison = comparison_name, status = "ERROR", runtime_seconds = NA_real_, stringsAsFactors = FALSE
+  )
+  list(
+    status = "ERROR", comparison = comparison_name, error = error_message,
+    qc = qc, manifest = existing_manifest
+  )
+})
+
 # Print summary
 cat("\n==============================================\n")
 cat("PARALLEL ANALYSIS SUMMARY\n")
 cat("==============================================\n\n")
 
-for (result in results) {
-  if (result$status == "SUCCESS") {
-    cat("✓", result$comparison, "- COMPLETED\n")
-  } else if (result$status == "SKIPPED") {
-    cat("○", result$comparison, "- SKIPPED (checkpoint exists)\n")
+for (i in seq_len(nrow(worker_assessment))) {
+  row <- worker_assessment[i, , drop = FALSE]
+  if (row$analysis_status == "failed") {
+    cat("FAILED", row$comparison, "-", row$error, "\n")
   } else {
-    cat("✗", result$comparison, "- FAILED:", result$error, "\n")
+    cat(toupper(row$analysis_status), row$comparison, "\n")
   }
 }
 
 cat("\n==============================================\n")
-cat("ALL COMPARISONS COMPLETED!\n")
+cat(paste(clusterprofiler_master_summary_lines(worker_assessment), collapse = "\n"), "\n")
 cat("==============================================\n\n")
 
 # ----------------------------------------------------
@@ -1929,13 +2020,15 @@ cat("==============================================\n\n")
 summary_dir <- CANONICAL_PATHS$reports
 dir.create(summary_dir, recursive = TRUE, showWarnings = FALSE)
 
-status_vec <- vapply(results, function(x) x$status, character(1))
-error_vec <- vapply(results, function(x) ifelse(is.null(x$error), NA_character_, x$error), character(1))
-comparison_vec <- vapply(results, function(x) x$comparison, character(1))
+status_vec <- worker_assessment$worker_status
+analysis_status_vec <- worker_assessment$analysis_status
+error_vec <- worker_assessment$error
+comparison_vec <- worker_assessment$comparison
 
 run_summary <- data.frame(
   comparison = comparison_vec,
   status = status_vec,
+  analysis_status = analysis_status_vec,
   error = error_vec,
   stringsAsFactors = FALSE
 )
@@ -1959,22 +2052,31 @@ manifest <- if (length(manifest_rows) > 0) dplyr::bind_rows(manifest_rows) else 
 validate_clusterprofiler_manifest_contract(manifest, strict = TRUE, require_files = TRUE)
 validate_table_schema(manifest, "clusterProfiler_manifest", strict = TRUE)
 manifest_file <- file.path(CANONICAL_PATHS$processed, "clusterProfiler_manifest.csv")
-write.csv(manifest, manifest_file, row.names = FALSE)
-write.csv(manifest, file.path(CANONICAL_PATHS$reports, paste0("clusterProfiler_manifest_", run_id, ".csv")), row.names = FALSE)
+write_csv_strict(manifest, manifest_file, "clusterProfiler manifest")
+write_csv_strict(
+  manifest,
+  file.path(CANONICAL_PATHS$reports, paste0("clusterProfiler_manifest_", run_id, ".csv")),
+  "clusterProfiler manifest snapshot"
+)
 
 summary_txt <- file.path(summary_dir, paste0("clusterProfiler_run_summary_", run_id, ".txt"))
+master_counts <- clusterprofiler_master_status_counts(worker_assessment)
 summary_lines <- c(
   "clusterProfiler parallel run summary",
   paste0("Run ID: ", run_id),
   paste0("Timestamp: ", format(Sys.time(), "%Y-%m-%d %H:%M:%S")),
   paste0("Config: ", config_path),
   paste0("Total comparisons: ", length(results)),
-  paste0("SUCCESS: ", sum(status_vec == "SUCCESS")),
-  paste0("SKIPPED: ", sum(status_vec == "SKIPPED")),
-  paste0("FAILED/ERROR: ", sum(status_vec %in% c("FAILED", "ERROR"))),
+  paste0("success_with_terms: ", master_counts[["success_with_terms"]]),
+  paste0("success_zero_terms: ", master_counts[["success_zero_terms"]]),
+  paste0("failed: ", master_counts[["failed"]]),
   paste0("Master log: ", master_log),
   paste0("Manifest: ", manifest_file),
   paste0("Run summary CSV: ", run_summary_file)
 )
 writeLines(summary_lines, con = summary_txt)
 write_log_line(master_log, "INFO", "GLOBAL", "SUMMARY", paste0("Run summary written: ", run_summary_file))
+if (master_exit_status != 0L) {
+  write_log_line(master_log, "ERROR", "GLOBAL", "SUMMARY", "One or more comparisons failed; exiting with status 1.")
+}
+quit(status = master_exit_status, save = "no")
