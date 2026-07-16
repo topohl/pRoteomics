@@ -1,16 +1,52 @@
 name: compareGO_manifest
-required_columns: [dataset, output_table]
+required_columns: [dataset, comparison, result_type, ontology, analysis_status, comparego_analysis_status, input_manifest, term_comparison_file, term_gene_provenance_output_file, analysis_status_summary_file, enrichment_contract_version, comparego_contract_version]
 columns:
-  dataset: {type: character, allowed_values: [neuron_neuropil, neuron_soma, microglia]}
   analysis_id: {type: character}
-  comparison: {type: character}
+  dataset: {type: character, allowed_values: [neuron_neuropil, neuron_soma, microglia]}
+  run_id: {type: character}
   ontology: {type: character}
-  result_type: {type: character}
+  result_type: {type: character, allowed_values: [GSEA_GO]}
+  contrast: {type: character}
+  comparison: {type: character}
   route_category: {type: character}
   route_unit: {type: character}
-  input_manifest: {type: character}
+  condition: {type: character}
+  direction: {type: character}
+  simplified: {type: logical}
+  plot_suffix: {type: character}
+  used_for_plot: {type: logical}
+  input_gene_file: {type: character}
   gene_input_file: {type: character}
+  input_hash: {type: character}
+  collapsed_gene_input_file: {type: character}
+  collapsed_gene_provenance_file: {type: character}
+  term_gene_provenance_file: {type: character}
+  enrichment_contract_version: {type: character, allowed_values: [clusterProfiler_manifest_v3_term_gene_provenance]}
+  gene_annotation_contract_version: {type: character}
   protein_group_contract_version: {type: character}
+  gene_mapping_policy: {type: character}
+  primary_gene_level_eligibility_rule: {type: character}
+  ambiguous_group_policy: {type: character}
+  duplicate_gene_collapse_rule: {type: character}
+  rank_statistic_column: {type: character}
+  rank_statistic_type: {type: character}
+  rank_statistic_fallback_used: {type: logical}
+  ORA_direction: {type: character}
+  universe_definition: {type: character}
+  config_file: {type: character}
+  config_hash: {type: character}
   output_table: {type: character}
   output_plot: {type: character}
-  config_hash: {type: character}
+  n_genes: {type: integer}
+  n_terms: {type: integer}
+  analysis_status: {type: character, allowed_values: [success_with_terms, success_zero_terms, failed]}
+  empty_result: {type: logical}
+  error_message: {type: character}
+  checkpoint_status: {type: character}
+  created_at: {type: character}
+  input_manifest: {type: character}
+  comparego_contract_version: {type: character, allowed_values: [compareGO_manifest_v3_term_gene_provenance]}
+  comparego_analysis_status: {type: character, allowed_values: [included, completed_zero_terms, recorded_failed]}
+  term_comparison_file: {type: character}
+  term_gene_provenance_output_file: {type: character}
+  analysis_status_summary_file: {type: character}

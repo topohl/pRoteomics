@@ -80,6 +80,7 @@ source(paths_file)
 source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "validation_utils.R"))
 source(repo_path("R", "enrichment_io.R"))
+source(repo_path("R", "schema_validation.R"))
 source(repo_path("R", "enrichment_plots.R"))
 MODULE_ID <- "04_differential_expression_enrichment"
 SUBSTEP_ID <- "compareGO"
@@ -88,6 +89,7 @@ CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
 # Package installation policy. Keep FALSE for reproducible, fail-fast runs.
 AUTO_INSTALL_MISSING_PACKAGES <- FALSE
 DRY_RUN <- is_dry_run()
+LEGACY_COMPAREGO_TAIL_ENABLED <- FALSE
 
 first_existing_path <- function(paths) {
   paths <- unique(normalizePath(paths[nzchar(paths)], winslash = "/", mustWork = FALSE))
@@ -124,13 +126,13 @@ require_or_stop <- function(pkgs, bioc = FALSE) {
 # -----------------------------------------------------
 
 # Ensure 'rlang' version >= 1.1.7 is installed before running this script.
-if (!isTRUE(DRY_RUN) && (!requireNamespace("rlang", quietly=TRUE) || packageVersion("rlang") < "1.1.7")) {
+if (isTRUE(LEGACY_COMPAREGO_TAIL_ENABLED) && !isTRUE(DRY_RUN) && (!requireNamespace("rlang", quietly=TRUE) || packageVersion("rlang") < "1.1.7")) {
     stop("Please install 'rlang' version >= 1.1.7 manually before running this script.")
 }
-if (!isTRUE(DRY_RUN) && !requireNamespace("simplifyEnrichment", quietly=TRUE)) {
+if (isTRUE(LEGACY_COMPAREGO_TAIL_ENABLED) && !isTRUE(DRY_RUN) && !requireNamespace("simplifyEnrichment", quietly=TRUE)) {
     stop("Please install 'simplifyEnrichment' manually before running this script.")
 }
-if (!isTRUE(DRY_RUN)) {
+if (isTRUE(LEGACY_COMPAREGO_TAIL_ENABLED) && !isTRUE(DRY_RUN)) {
   library(simplifyEnrichment)
   library(dplyr)
   library(stringr)
@@ -143,8 +145,8 @@ cran_required <- c(
   "readr", "pheatmap", "tibble", "RColorBrewer", "writexl", "scales",
   "ggrepel", "magick"
 )
-require_or_stop(cran_required)
-if (!isTRUE(DRY_RUN)) {
+if (isTRUE(LEGACY_COMPAREGO_TAIL_ENABLED)) require_or_stop(cran_required)
+if (isTRUE(LEGACY_COMPAREGO_TAIL_ENABLED) && !isTRUE(DRY_RUN)) {
   suppressPackageStartupMessages(invisible(lapply(cran_required, library, character.only = TRUE)))
 }
 
@@ -345,8 +347,10 @@ calc_comparison_similarity <- function(core_genes_df) {
 # =====================================================
 
 # Load additional packages for new analyses
-require_or_stop(c("ggridges", "UpSetR", "networkD3", "alluvial", "ggalluvial"))
-if (!isTRUE(DRY_RUN)) {
+if (isTRUE(LEGACY_COMPAREGO_TAIL_ENABLED)) {
+  require_or_stop(c("ggridges", "UpSetR", "networkD3", "alluvial", "ggalluvial"))
+}
+if (isTRUE(LEGACY_COMPAREGO_TAIL_ENABLED) && !isTRUE(DRY_RUN)) {
   suppressPackageStartupMessages({
     library(ggridges)
     library(UpSetR)
@@ -433,6 +437,129 @@ condition <- as.character(comparego_cfg$route_unit)
 base_project_path <- repo_root()
 
 manifest_path <- as.character(comparego_cfg$clusterProfiler_manifest)
+
+# Phase 1C-B1 canonical execution path. The legacy analysis tail below is retained
+# only as non-executable historical code until its plotting helpers are migrated.
+if (isTRUE(legacy_mode)) {
+  stop("compareGO production execution requires the canonical clusterProfiler manifest; legacy_mode is disabled.", call. = FALSE)
+}
+canonical_manifest_path <- path_processed(
+  MODULE_ID, "clusterProfiler", DATASET, "clusterProfiler_manifest.csv"
+)
+if (!identical(
+    normalizePath(manifest_path, winslash = "/", mustWork = FALSE),
+    normalizePath(canonical_manifest_path, winslash = "/", mustWork = FALSE))) {
+  stop("compareGO must read the canonical dataset-specific clusterProfiler manifest: ",
+    canonical_manifest_path, call. = FALSE)
+}
+configured_result_types <- as.character(unlist(comparego_cfg$result_types))
+unsupported_configured_types <- setdiff(configured_result_types, canonical_comparego_result_types())
+if (length(unsupported_configured_types)) {
+  stop("compareGO configuration requests unsupported result_type value(s): ",
+    paste(unsupported_configured_types, collapse = ", "), call. = FALSE)
+}
+if (!file.exists(manifest_path)) {
+  stop("clusterProfiler manifest not found: ", manifest_path,
+    "\nRun 04_differential_expression_enrichment/01_clusterProfiler.r first.", call. = FALSE)
+}
+
+canonical_cluster_manifest <- utils::read.csv(
+  manifest_path, stringsAsFactors = FALSE, check.names = FALSE
+)
+validate_clusterprofiler_manifest_contract(
+  canonical_cluster_manifest, strict = TRUE, require_files = TRUE
+)
+canonical_scope <- canonical_cluster_manifest[
+  canonical_cluster_manifest$dataset == DATASET &
+    canonical_cluster_manifest$route_category == ensemble_profiling,
+  , drop = FALSE
+]
+if (nzchar(condition)) {
+  canonical_scope <- canonical_scope[
+    canonical_scope$route_unit == condition, , drop = FALSE
+  ]
+}
+if (nzchar(as.character(comparego_cfg$run_id))) {
+  canonical_scope <- canonical_scope[
+    canonical_scope$run_id == as.character(comparego_cfg$run_id), , drop = FALSE
+  ]
+}
+if (nzchar(as.character(comparego_cfg$clusterProfiler_config_hash))) {
+  canonical_scope <- canonical_scope[
+    canonical_scope$config_hash == as.character(comparego_cfg$clusterProfiler_config_hash), , drop = FALSE
+  ]
+}
+canonical_selected <- canonical_scope[
+  canonical_scope$ontology == ont & canonical_scope$result_type %in% configured_result_types,
+  , drop = FALSE
+]
+if (!nrow(canonical_selected)) {
+  stop("No canonical clusterProfiler manifest rows matched the compareGO dataset and routing configuration.", call. = FALSE)
+}
+canonical_key <- paste(
+  canonical_selected$dataset, canonical_selected$comparison,
+  canonical_selected$result_type, canonical_selected$ontology, sep = "|"
+)
+if (anyDuplicated(canonical_key)) {
+  stop("Duplicate canonical compareGO manifest identities detected; pin one run/config before comparison.", call. = FALSE)
+}
+
+canonical_outputs <- collect_canonical_comparego_outputs(
+  rbind(
+    canonical_selected,
+    canonical_scope[!canonical_scope$result_type %in% canonical_comparego_result_types(), , drop = FALSE]
+  ),
+  strict = TRUE, require_files = TRUE
+)
+if (isTRUE(DRY_RUN)) {
+  message("[DRY RUN] Canonical compareGO manifest and provenance validation passed for ",
+    nrow(canonical_selected), " analysis row(s).")
+  quit(status = 0, save = "no")
+}
+
+comparego_processed_dir <- file.path(CANONICAL_PATHS$processed, DATASET)
+comparego_table_dir <- file.path(
+  CANONICAL_PATHS$tables, DATASET, ont, ensemble_profiling,
+  if (nzchar(condition)) condition else "all_route_units"
+)
+dir.create(comparego_processed_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(comparego_table_dir, recursive = TRUE, showWarnings = FALSE)
+term_comparison_file <- file.path(comparego_table_dir, "compareGO_term_comparison.csv")
+term_gene_provenance_output_file <- file.path(comparego_table_dir, "compareGO_term_gene_provenance.csv")
+analysis_status_summary_file <- file.path(comparego_table_dir, "compareGO_analysis_status_summary.csv")
+comparego_input_manifest_file <- file.path(comparego_processed_dir, "compareGO_input_manifest.csv")
+
+utils::write.csv(canonical_outputs$terms, term_comparison_file, row.names = FALSE)
+utils::write.csv(canonical_outputs$provenance, term_gene_provenance_output_file, row.names = FALSE)
+utils::write.csv(canonical_outputs$status, analysis_status_summary_file, row.names = FALSE)
+
+comparego_manifest <- canonical_outputs$input_manifest
+comparego_manifest$input_manifest <- manifest_path
+comparego_manifest$comparego_contract_version <- canonical_comparego_manifest_contract_version()
+comparego_status_key <- paste(
+  canonical_outputs$status$dataset, canonical_outputs$status$comparison,
+  canonical_outputs$status$result_type, canonical_outputs$status$ontology, sep = "|"
+)
+comparego_manifest_key <- paste(
+  comparego_manifest$dataset, comparego_manifest$comparison,
+  comparego_manifest$result_type, comparego_manifest$ontology, sep = "|"
+)
+comparego_manifest$comparego_analysis_status <- canonical_outputs$status$comparego_action[
+  match(comparego_manifest_key, comparego_status_key)
+]
+comparego_manifest$term_comparison_file <- term_comparison_file
+comparego_manifest$term_gene_provenance_output_file <- term_gene_provenance_output_file
+comparego_manifest$analysis_status_summary_file <- analysis_status_summary_file
+comparego_manifest$output_table <- term_comparison_file
+validate_comparego_manifest_contract(comparego_manifest, require_files = TRUE)
+validate_table_schema(comparego_manifest, "compareGO_manifest", strict = TRUE)
+utils::write.csv(comparego_manifest, comparego_input_manifest_file, row.names = FALSE)
+
+message("[INFO] Canonical compareGO completed: ", nrow(canonical_outputs$terms),
+  " term row(s), ", nrow(canonical_outputs$provenance), " term-gene provenance row(s).")
+quit(status = 0, save = "no")
+
+# LEGACY_COMPAREGO_TAIL_DISABLED_BY_CANONICAL_EXIT
 if (isTRUE(DRY_RUN)) {
   diagnostics <- data.frame(check = character(), status = character(), detail = character(), stringsAsFactors = FALSE)
   add_diag <- function(check, status, detail) {

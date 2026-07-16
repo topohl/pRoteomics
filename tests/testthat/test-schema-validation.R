@@ -151,11 +151,45 @@ testthat::test_that("clusterProfiler manifest records the protein-group enrichme
   source(testthat::test_path("..", "..", "R", "paths.R"))
   source(repo_path("R", "schema_validation.R"))
   testthat::skip_if_not_installed("yaml")
-  good <- data.frame(dataset = "microglia", output_table = "out.csv", protein_group_contract_version = "protein_group_enrichment_v1",
+  good <- data.frame(dataset = "microglia", comparison = "cmp", result_type = "GSEA_GO", ontology = "BP",
+    analysis_status = "success_zero_terms", n_terms = 0L, output_table = "out.csv",
+    collapsed_gene_input_file = "collapsed.csv", collapsed_gene_provenance_file = "collapsed_provenance.csv",
+    term_gene_provenance_file = "term_provenance.csv",
+    enrichment_contract_version = "clusterProfiler_manifest_v3_term_gene_provenance",
+    gene_annotation_contract_version = "mouse_gene_annotation_v1",
+    protein_group_contract_version = "protein_group_enrichment_v3_term_gene_provenance",
     gene_mapping_policy = "median", primary_gene_level_eligibility_rule = "allowed", duplicate_gene_collapse_rule = "median_finite_statistics",
     rank_statistic_column = "t", rank_statistic_type = "moderated_or_signed_inferential", rank_statistic_fallback_used = FALSE,
     universe_definition = "eligible tested genes", stringsAsFactors = FALSE)
   testthat::expect_silent(validate_table_schema(good, "clusterProfiler_manifest", strict = FALSE))
+})
+
+testthat::test_that("term-gene provenance schema preserves character Entrez identifiers", {
+  source(testthat::test_path("..", "..", "R", "paths.R"))
+  source(repo_path("R", "schema_validation.R"))
+  testthat::skip_if_not_installed("yaml")
+  good <- data.frame(
+    dataset = "microglia", comparison = "cmp", result_type = "GSEA_GO", ontology = "BP",
+    term_id = "GO:1", term_description = "term", official_gene_symbol = "GeneA",
+    official_entrez_id = "001", ProteinGroupID = "PG1", member_accessions = "P1",
+    protein_group_gene_annotation_status = "concordant_official_gene",
+    gene_level_claim_allowed = TRUE, rank_statistic = 2, core_enrichment_member = TRUE,
+    enrichment_contract_version = "protein_group_enrichment_v3_term_gene_provenance",
+    gene_annotation_contract_version = "mouse_gene_annotation_v1", stringsAsFactors = FALSE
+  )
+  testthat::expect_type(good$official_entrez_id, "character")
+  testthat::expect_silent(validate_table_schema(good, "enrichment_term_gene_provenance", strict = TRUE))
+})
+
+testthat::test_that("enrichment manifest schemas match the columns written by shared contracts", {
+  source(testthat::test_path("..", "..", "R", "paths.R"))
+  source(repo_path("R", "enrichment_io.R"))
+  source(repo_path("R", "schema_validation.R"))
+  testthat::skip_if_not_installed("yaml")
+  cluster_schema <- read_table_schema("clusterProfiler_manifest")
+  compare_schema <- read_table_schema("compareGO_manifest")
+  testthat::expect_setequal(names(cluster_schema$columns), clusterprofiler_manifest_columns())
+  testthat::expect_setequal(names(compare_schema$columns), comparego_manifest_columns())
 })
 
 testthat::test_that("WGCNA group-effect output validation checks required columns and ranges", {
