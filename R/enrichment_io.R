@@ -37,6 +37,176 @@ comparego_manifest_columns <- function() c(
   "analysis_status_summary_file"
 )
 
+clusterprofiler_output_path_audit <- function(paths, safe_limit = 240L) {
+  paths <- unique(as.character(paths))
+  paths <- paths[!is.na(paths) & nzchar(paths)]
+  normalized <- normalizePath(paths, winslash = "/", mustWork = FALSE)
+  out <- data.frame(
+    path = normalized,
+    path_length = nchar(normalized, type = "chars"),
+    safe_limit = as.integer(safe_limit),
+    within_safe_limit = nchar(normalized, type = "chars") <= as.integer(safe_limit),
+    stringsAsFactors = FALSE
+  )
+  out[order(out$path_length, decreasing = TRUE, out$path, method = "radix"), , drop = FALSE]
+}
+
+validate_clusterprofiler_output_path_lengths <- function(paths, safe_limit = 240L) {
+  audit <- clusterprofiler_output_path_audit(paths, safe_limit = safe_limit)
+  excessive <- audit[!audit$within_safe_limit, , drop = FALSE]
+  if (nrow(excessive)) {
+    stop(
+      "Expected clusterProfiler output path exceeds the safe Windows/R path limit of ",
+      as.integer(safe_limit), " characters (maximum expected length: ", max(excessive$path_length), "). ",
+      "Run the repository from a shorter project root such as P:\\ before launching workers. ",
+      "Longest path: ", excessive$path[[1]],
+      call. = FALSE
+    )
+  }
+  audit
+}
+
+clusterprofiler_worker_error <- function(result, fallback) {
+  if (!is.list(result) || is.null(result$error) || !length(result$error) ||
+      is.na(result$error[[1]]) || !nzchar(as.character(result$error[[1]]))) {
+    return(fallback)
+  }
+  as.character(result$error[[1]])
+}
+
+assess_clusterprofiler_worker_result <- function(result, expected_comparison) {
+  failed <- function(message, worker_status = "MALFORMED", manifest_has_failure = FALSE) {
+    data.frame(
+      comparison = as.character(expected_comparison), worker_status = worker_status,
+      analysis_status = "failed", error = as.character(message),
+      manifest_has_failure = isTRUE(manifest_has_failure), stringsAsFactors = FALSE
+    )
+  }
+  if (!is.list(result)) return(failed("Worker returned a missing or malformed result object."))
+  required <- c("status", "comparison", "manifest")
+  if (length(setdiff(required, names(result)))) {
+    return(failed("Worker result object is missing required fields: status, comparison, manifest."))
+  }
+  worker_status <- as.character(result$status)[1]
+  comparison <- as.character(result$comparison)[1]
+  if (is.na(worker_status) || !nzchar(worker_status) || is.na(comparison) || !nzchar(comparison)) {
+    return(failed("Worker result contains an empty status or comparison."))
+  }
+  if (!identical(comparison, as.character(expected_comparison))) {
+    return(failed(
+      paste0("Worker comparison identity mismatch: expected ", expected_comparison, ", received ", comparison, "."),
+      worker_status = worker_status
+    ))
+  }
+  manifest <- result$manifest
+  manifest_is_table <- is.data.frame(manifest)
+  manifest_has_failure <- manifest_is_table && all(c("result_type", "analysis_status") %in% names(manifest)) &&
+    any(manifest$result_type == "GSEA_GO" & manifest$analysis_status == "failed", na.rm = TRUE)
+  if (!worker_status %in% c("SUCCESS", "SKIPPED")) {
+    return(failed(
+      clusterprofiler_worker_error(result, paste0("Worker returned status ", worker_status, ".")),
+      worker_status = worker_status, manifest_has_failure = manifest_has_failure
+    ))
+  }
+  if (!manifest_is_table || !all(c("result_type", "analysis_status", "n_terms") %in% names(manifest))) {
+    return(failed("Successful worker returned a missing or malformed manifest.", worker_status = worker_status))
+  }
+  primary <- manifest[manifest$result_type == "GSEA_GO", , drop = FALSE]
+  if (nrow(primary) != 1L) {
+    return(failed("Successful worker must return exactly one primary GSEA_GO manifest row.", worker_status = worker_status))
+  }
+  primary_status <- as.character(primary$analysis_status[[1]])
+  n_terms <- suppressWarnings(as.integer(primary$n_terms[[1]]))
+  if (identical(primary_status, "success_with_terms") && !is.na(n_terms) && n_terms > 0L) {
+    category <- "success_with_terms"
+  } else if (identical(primary_status, "success_zero_terms") && identical(n_terms, 0L)) {
+    category <- "success_zero_terms"
+  } else {
+    return(failed(
+      paste0("Primary GSEA_GO manifest has inconsistent analysis_status/n_terms: ",
+        primary_status, "/", ifelse(is.na(n_terms), "NA", n_terms), "."),
+      worker_status = worker_status, manifest_has_failure = manifest_has_failure
+    ))
+  }
+  data.frame(
+    comparison = comparison, worker_status = worker_status, analysis_status = category,
+    error = NA_character_, manifest_has_failure = FALSE, stringsAsFactors = FALSE
+  )
+}
+
+assess_clusterprofiler_worker_results <- function(results, expected_comparisons) {
+  if (!is.list(results)) results <- list(results)
+  expected_comparisons <- as.character(expected_comparisons)
+  n_rows <- max(length(results), length(expected_comparisons))
+  if (!n_rows) {
+    return(data.frame(
+      comparison = character(), worker_status = character(), analysis_status = character(),
+      error = character(), manifest_has_failure = logical(), stringsAsFactors = FALSE
+    ))
+  }
+  rows <- lapply(seq_len(n_rows), function(i) {
+    if (i > length(expected_comparisons)) {
+      return(data.frame(
+        comparison = paste0("unexpected_worker_result_", i), worker_status = "MALFORMED",
+        analysis_status = "failed", error = "Received an unexpected extra worker result object.",
+        manifest_has_failure = FALSE, stringsAsFactors = FALSE
+      ))
+    }
+    result <- if (i <= length(results)) results[[i]] else NULL
+    assess_clusterprofiler_worker_result(result, expected_comparisons[[i]])
+  })
+  do.call(rbind, rows)
+}
+
+clusterprofiler_master_status_counts <- function(assessment) {
+  statuses <- c("success_with_terms", "success_zero_terms", "failed")
+  counts <- setNames(integer(length(statuses)), statuses)
+  observed <- table(factor(assessment$analysis_status, levels = statuses))
+  counts[] <- as.integer(observed)
+  counts
+}
+
+clusterprofiler_master_exit_status <- function(assessment) {
+  if (any(assessment$analysis_status == "failed")) 1L else 0L
+}
+
+clusterprofiler_master_summary_lines <- function(assessment) {
+  counts <- clusterprofiler_master_status_counts(assessment)
+  final <- if (counts[["failed"]] > 0L) {
+    paste0("RUN FAILED: ", counts[["failed"]], " comparison(s) failed.")
+  } else {
+    "ALL COMPARISONS COMPLETED SUCCESSFULLY."
+  }
+  c(
+    paste0("success_with_terms: ", counts[["success_with_terms"]]),
+    paste0("success_zero_terms: ", counts[["success_zero_terms"]]),
+    paste0("failed: ", counts[["failed"]]),
+    final
+  )
+}
+
+write_csv_strict <- function(x, path, label = "CSV output") {
+  parent <- dirname(path)
+  if (!dir.exists(parent)) {
+    stop(label, " parent directory does not exist: ", parent, call. = FALSE)
+  }
+  tryCatch(
+    utils::write.csv(x, path, row.names = FALSE),
+    error = function(e) stop("Failed to write ", label, " to ", path, ": ", conditionMessage(e), call. = FALSE)
+  )
+  if (!file.exists(path) || is.na(file.info(path)$size) || file.info(path)$size <= 0) {
+    stop("Failed to verify written ", label, ": ", path, call. = FALSE)
+  }
+  written <- tryCatch(
+    utils::read.csv(path, stringsAsFactors = FALSE, check.names = FALSE),
+    error = function(e) stop("Failed to read back written ", label, " at ", path, ": ", conditionMessage(e), call. = FALSE)
+  )
+  if (!identical(names(written), names(x)) || nrow(written) != nrow(x)) {
+    stop("Written ", label, " failed row/column verification: ", path, call. = FALSE)
+  }
+  invisible(path)
+}
+
 term_gene_provenance_columns <- function() c(
   "dataset", "comparison", "result_type", "ontology", "term_id", "term_description",
   "official_gene_symbol", "official_entrez_id", "ProteinGroupID", "member_accessions",
