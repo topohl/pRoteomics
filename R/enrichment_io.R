@@ -37,6 +37,21 @@ comparego_manifest_columns <- function() c(
   "analysis_status_summary_file"
 )
 
+clusterprofiler_compatibility_fallback_enabled <- function(strict_mode, fallback_requested) {
+  !isTRUE(strict_mode) && isTRUE(fallback_requested)
+}
+
+clusterprofiler_compatibility_fallback_audit_paths <- function(audit_root, enabled = FALSE) {
+  if (!isTRUE(enabled)) return(character(0))
+  file.path(
+    audit_root,
+    c(
+      "compatibility_fallback_accession_annotation_audit.csv",
+      "compatibility_fallback_protein_group_annotation_audit.csv"
+    )
+  )
+}
+
 clusterprofiler_output_path_audit <- function(paths, safe_limit = 240L) {
   paths <- unique(as.character(paths))
   paths <- paths[!is.na(paths) & nzchar(paths)]
