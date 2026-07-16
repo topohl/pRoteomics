@@ -180,20 +180,48 @@ create_analysis_dirs <- function(base_dir, comparison_name, ontology) {
   return(dirs)
 }
 
-expected_analysis_output_paths <- function(base_dir, comparison_name, ontology) {
+expected_analysis_output_paths <- function(base_dir, comparison_name, ontology,
+                                           compatibility_fallback_enabled = FALSE,
+                                           mapped_data_base = NULL,
+                                           perform_simplification = FALSE,
+                                           use_simplified_for_plots = FALSE) {
   dirs <- analysis_dir_paths(base_dir, comparison_name, ontology)
   directory_fields <- c(
     "results", "go_ont", "kegg", "ora", "custom", "pathview",
     "plots_go", "plots_kegg", "plots_ora", "plots_custom", "core_enrich", "core_enrich_routed"
   )
-  c(
+  audit_root <- file.path(dirs$results, "protein_group_audits")
+  plot_suffix <- if (isTRUE(perform_simplification) && isTRUE(use_simplified_for_plots)) {
+    "_simplified"
+  } else {
+    "_full"
+  }
+  active_paths <- c(
     unlist(dirs[directory_fields], use.names = FALSE),
+    if (!is.null(mapped_data_base) && nzchar(mapped_data_base)) {
+      file.path(mapped_data_base, paste0(comparison_name, ".csv"))
+    },
     file.path(dirs$results, "QC_summary.csv"),
-    file.path(dirs$results, "protein_group_audits", "compatibility_fallback_protein_group_annotation_audit.csv"),
-    file.path(dirs$go_ont, paste0("GSEA_", ontology, "_results_simplified.csv")),
-    file.path(dirs$core_enrich_routed, paste0(comparison_name, "_simplified.csv")),
-    file.path(dirs$plots_go, paste0("GSEA_", ontology, "_dotplot_simplified.svg"))
+    file.path(audit_root, "collapsed_gene_input.csv"),
+    file.path(audit_root, "collapsed_gene_input_provenance.csv"),
+    file.path(audit_root, "gsea_go_term_gene_provenance.csv"),
+    file.path(dirs$go_ont, paste0("GSEA_", ontology, "_results_full.csv")),
+    file.path(dirs$go_ont, "enrichGO_ALL_results_full.csv"),
+    file.path(dirs$core_enrich_routed, paste0(comparison_name, plot_suffix, ".csv")),
+    file.path(dirs$plots_go, paste0("GSEA_", ontology, "_dotplot", plot_suffix, ".svg")),
+    clusterprofiler_compatibility_fallback_audit_paths(
+      audit_root,
+      enabled = compatibility_fallback_enabled
+    )
   )
+  if (isTRUE(perform_simplification)) {
+    active_paths <- c(
+      active_paths,
+      file.path(dirs$go_ont, paste0("GSEA_", ontology, "_results_simplified.csv")),
+      file.path(dirs$go_ont, "enrichGO_ALL_results_simplified.csv")
+    )
+  }
+  active_paths
 }
 
 save_plot_organized <- function(plot, filename, directory) {
@@ -867,6 +895,14 @@ analysis_params <- list(
   top_gene_abs_log2fc = as.numeric(cfg$analysis$top_gene_abs_log2fc)
 )
 options(clusterProfiler.strict_protein_group_contract = isTRUE(cfg$analysis$strict_protein_group_contract))
+compatibility_fallback_requested <- tolower(Sys.getenv(
+  "PROTEOMICS_ALLOW_ENRICHMENT_GENE_ANNOTATION_FALLBACK",
+  unset = "false"
+)) %in% c("1", "true", "yes", "y")
+compatibility_fallback_enabled <- clusterprofiler_compatibility_fallback_enabled(
+  strict_mode = isTRUE(getOption("clusterProfiler.strict_protein_group_contract", TRUE)),
+  fallback_requested = compatibility_fallback_requested
+)
 
 runtime_params <- list(
   workers = as.integer(cfg$runtime$workers),
@@ -883,7 +919,15 @@ analysis_comparison_names <- vapply(comparison_list, paste, collapse = "_", char
 expected_output_paths <- c(
   unlist(lapply(
     analysis_comparison_names,
-    function(comparison_name) expected_analysis_output_paths(working_base, comparison_name, ont)
+    function(comparison_name) expected_analysis_output_paths(
+      working_base,
+      comparison_name,
+      ont,
+      compatibility_fallback_enabled = compatibility_fallback_enabled,
+      mapped_data_base = mapped_data_base,
+      perform_simplification = PERFORM_SIMPLIFICATION,
+      use_simplified_for_plots = USE_SIMPLIFIED_FOR_PLOTS
+    )
   ), use.names = FALSE),
   file.path(CANONICAL_PATHS$processed, "clusterProfiler_manifest.csv"),
   file.path(CANONICAL_PATHS$reports, "clusterProfiler_manifest_YYYYMMDD_HHMMSS.csv"),
@@ -1215,8 +1259,12 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
     missing_annotation <- setdiff(annotation_required, names(df))
     annotation_fallback <- NULL
     if (length(missing_annotation)) {
-      fallback_enabled <- tolower(Sys.getenv("PROTEOMICS_ALLOW_ENRICHMENT_GENE_ANNOTATION_FALLBACK", unset = "false")) %in% c("1", "true", "yes", "y")
-      if (strict_gene_contract || !fallback_enabled) {
+      fallback_requested <- tolower(Sys.getenv("PROTEOMICS_ALLOW_ENRICHMENT_GENE_ANNOTATION_FALLBACK", unset = "false")) %in% c("1", "true", "yes", "y")
+      fallback_enabled <- clusterprofiler_compatibility_fallback_enabled(
+        strict_mode = strict_gene_contract,
+        fallback_requested = fallback_requested
+      )
+      if (!fallback_enabled) {
         stop("Mapped contrast lacks precomputed official mouse gene annotation: ", paste(missing_annotation, collapse = ", "),
           ". Regenerate Stage 02 outputs. Compatibility fallback requires non-strict mode and PROTEOMICS_ALLOW_ENRICHMENT_GENE_ANNOTATION_FALLBACK=true.", call. = FALSE)
       }
