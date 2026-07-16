@@ -1,6 +1,6 @@
 # Canonical ProteinGroupID-to-gene transformation for differential enrichment.
 
-canonical_enrichment_contract_version <- function() "protein_group_enrichment_v2_official_mouse_gene_annotation"
+canonical_enrichment_contract_version <- function() "protein_group_enrichment_v3_term_gene_provenance"
 
 canonical_enrichment_gene_namespace <- function() "SYMBOL"
 
@@ -136,6 +136,114 @@ build_enrichment_gene_inputs <- function(df, strict = TRUE) {
     list(median = ranked, max_abs_signed = maxabs[order(maxabs, decreasing = TRUE)], unique_groups_only = ranked[collapsed$n_protein_groups_for_gene == 1L])
   } else list(median = numeric(), max_abs_signed = numeric(), unique_groups_only = numeric())
   list(statistic = statistic, transformation = transform, collapse = collapsed, ranked = ranked, sensitivity = sensitivity)
+}
+
+empty_enrichment_term_gene_provenance <- function() {
+  data.frame(
+    dataset = character(), comparison = character(), result_type = character(),
+    ontology = character(), term_id = character(), term_description = character(),
+    official_gene_symbol = character(), official_entrez_id = character(),
+    ProteinGroupID = character(), member_accessions = character(),
+    protein_group_gene_annotation_status = character(), gene_level_claim_allowed = logical(),
+    rank_statistic = numeric(), core_enrichment_member = logical(),
+    enrichment_contract_version = character(), gene_annotation_contract_version = character(),
+    stringsAsFactors = FALSE
+  )
+}
+
+build_enrichment_term_gene_provenance <- function(gsea_table, collapsed_gene_input,
+                                                  transformation, dataset, comparison,
+                                                  result_type, ontology, strict = TRUE,
+                                                  core_identifier = c("SYMBOL", "ENTREZID")) {
+  core_identifier <- match.arg(core_identifier)
+  required_result <- c("ID", "Description", "core_enrichment")
+  missing_result <- setdiff(required_result, names(gsea_table))
+  if (length(missing_result)) {
+    stop("GSEA result table is missing term-provenance columns: ",
+      paste(missing_result, collapse = ", "), call. = FALSE)
+  }
+  required_collapse <- c("GeneSymbol", "EntrezID", "collapsed_statistic", "contributing_ProteinGroupIDs")
+  missing_collapse <- setdiff(required_collapse, names(collapsed_gene_input))
+  if (length(missing_collapse)) {
+    stop("Collapsed gene provenance is missing: ", paste(missing_collapse, collapse = ", "), call. = FALSE)
+  }
+  required_transform <- c("ProteinGroupID", "GeneSymbol", "EntrezID", "member_accessions",
+    "protein_group_gene_annotation_status", "gene_level_claim_allowed",
+    "gene_annotation_contract_version", "eligibility_status")
+  missing_transform <- setdiff(required_transform, names(transformation))
+  if (length(missing_transform)) {
+    stop("Protein-group transformation provenance is missing: ",
+      paste(missing_transform, collapse = ", "), call. = FALSE)
+  }
+  if (!nrow(gsea_table)) return(empty_enrichment_term_gene_provenance())
+
+  collapse <- collapsed_gene_input
+  collapse$GeneSymbol <- as.character(collapse$GeneSymbol)
+  collapse$EntrezID <- as.character(collapse$EntrezID)
+  transform <- transformation[
+    transformation$eligibility_status == "eligible" &
+      transformation$gene_level_claim_allowed %in% TRUE,
+    , drop = FALSE
+  ]
+  identifier_column <- if (identical(core_identifier, "SYMBOL")) "GeneSymbol" else "EntrezID"
+  collapse_ids <- as.character(collapse[[identifier_column]])
+
+  rows <- list()
+  for (term_index in seq_len(nrow(gsea_table))) {
+    core_values <- trimws(unlist(strsplit(as.character(gsea_table$core_enrichment[[term_index]]), "/", fixed = TRUE)))
+    core_values <- sort(unique(core_values[!is.na(core_values) & nzchar(core_values)]), method = "radix")
+    missing_core <- setdiff(core_values, collapse_ids)
+    if (length(missing_core) && isTRUE(strict)) {
+      stop("Core-enrichment identifier(s) absent from collapsed official-gene provenance for ",
+        dataset, "/", comparison, "/", result_type, ": ", paste(missing_core, collapse = ", "),
+        call. = FALSE)
+    }
+    core_values <- intersect(core_values, collapse_ids)
+    for (core_value in core_values) {
+      collapse_rows <- collapse[collapse_ids == core_value, , drop = FALSE]
+      for (collapse_index in seq_len(nrow(collapse_rows))) {
+        collapsed_row <- collapse_rows[collapse_index, , drop = FALSE]
+        contributor_ids <- trimws(unlist(strsplit(
+          as.character(collapsed_row$contributing_ProteinGroupIDs[[1]]), ";", fixed = TRUE
+        )))
+        contributor_ids <- sort(unique(contributor_ids[nzchar(contributor_ids)]), method = "radix")
+        contributor_rows <- transform[transform$ProteinGroupID %in% contributor_ids, , drop = FALSE]
+        missing_contributors <- setdiff(contributor_ids, contributor_rows$ProteinGroupID)
+        if (length(missing_contributors) && isTRUE(strict)) {
+          stop("Collapsed official gene references ineligible or missing ProteinGroupID contributor(s): ",
+            paste(missing_contributors, collapse = ", "), call. = FALSE)
+        }
+        contributor_rows <- contributor_rows[order(contributor_rows$ProteinGroupID, method = "radix"), , drop = FALSE]
+        for (contributor_index in seq_len(nrow(contributor_rows))) {
+          contributor <- contributor_rows[contributor_index, , drop = FALSE]
+          rows[[length(rows) + 1L]] <- data.frame(
+            dataset = as.character(dataset), comparison = as.character(comparison),
+            result_type = as.character(result_type), ontology = as.character(ontology),
+            term_id = as.character(gsea_table$ID[[term_index]]),
+            term_description = as.character(gsea_table$Description[[term_index]]),
+            official_gene_symbol = as.character(collapsed_row$GeneSymbol[[1]]),
+            official_entrez_id = as.character(collapsed_row$EntrezID[[1]]),
+            ProteinGroupID = as.character(contributor$ProteinGroupID[[1]]),
+            member_accessions = as.character(contributor$member_accessions[[1]]),
+            protein_group_gene_annotation_status = as.character(contributor$protein_group_gene_annotation_status[[1]]),
+            gene_level_claim_allowed = isTRUE(contributor$gene_level_claim_allowed[[1]]),
+            rank_statistic = as.numeric(collapsed_row$collapsed_statistic[[1]]),
+            core_enrichment_member = TRUE,
+            enrichment_contract_version = canonical_enrichment_contract_version(),
+            gene_annotation_contract_version = as.character(contributor$gene_annotation_contract_version[[1]]),
+            stringsAsFactors = FALSE
+          )
+        }
+      }
+    }
+  }
+  if (!length(rows)) return(empty_enrichment_term_gene_provenance())
+  out <- do.call(rbind, rows)
+  out <- unique(out)
+  ordering <- order(out$dataset, out$comparison, out$result_type, out$ontology,
+    out$term_id, out$official_gene_symbol, out$ProteinGroupID, method = "radix")
+  rownames(out) <- NULL
+  out[ordering, names(empty_enrichment_term_gene_provenance()), drop = FALSE]
 }
 
 # Backward-compatibility resolver only. Active strict enrichment consumes Stage 02 official symbols.

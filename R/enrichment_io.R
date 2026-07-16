@@ -8,6 +8,238 @@ if (!exists("safe_name", mode = "function")) {
   source(repo_path("R", "validation_utils.R"))
 }
 
+canonical_clusterprofiler_manifest_contract_version <- function() {
+  "clusterProfiler_manifest_v3_term_gene_provenance"
+}
+
+canonical_comparego_manifest_contract_version <- function() {
+  "compareGO_manifest_v3_term_gene_provenance"
+}
+
+canonical_comparego_result_types <- function() "GSEA_GO"
+
+clusterprofiler_manifest_columns <- function() c(
+  "analysis_id", "dataset", "run_id", "ontology", "result_type", "contrast", "comparison",
+  "route_category", "route_unit", "condition", "direction", "simplified", "plot_suffix",
+  "used_for_plot", "input_gene_file", "gene_input_file", "input_hash",
+  "collapsed_gene_input_file", "collapsed_gene_provenance_file", "term_gene_provenance_file",
+  "enrichment_contract_version", "gene_annotation_contract_version", "protein_group_contract_version",
+  "gene_mapping_policy", "primary_gene_level_eligibility_rule", "ambiguous_group_policy",
+  "duplicate_gene_collapse_rule", "rank_statistic_column", "rank_statistic_type",
+  "rank_statistic_fallback_used", "ORA_direction", "universe_definition", "config_file",
+  "config_hash", "output_table", "output_plot", "n_genes", "n_terms", "analysis_status",
+  "empty_result", "error_message", "checkpoint_status", "created_at"
+)
+
+comparego_manifest_columns <- function() c(
+  clusterprofiler_manifest_columns(), "input_manifest", "comparego_contract_version",
+  "comparego_analysis_status", "term_comparison_file", "term_gene_provenance_output_file",
+  "analysis_status_summary_file"
+)
+
+term_gene_provenance_columns <- function() c(
+  "dataset", "comparison", "result_type", "ontology", "term_id", "term_description",
+  "official_gene_symbol", "official_entrez_id", "ProteinGroupID", "member_accessions",
+  "protein_group_gene_annotation_status", "gene_level_claim_allowed", "rank_statistic",
+  "core_enrichment_member", "enrichment_contract_version", "gene_annotation_contract_version"
+)
+
+validate_term_gene_provenance_contract <- function(x, strict = TRUE) {
+  missing <- setdiff(term_gene_provenance_columns(), names(x))
+  if (length(missing)) {
+    stop("Term-gene provenance is missing required columns: ", paste(missing, collapse = ", "), call. = FALSE)
+  }
+  if (!is.character(x$official_entrez_id)) {
+    stop("Term-gene provenance official_entrez_id must remain character.", call. = FALSE)
+  }
+  if (isTRUE(strict) && any(x$gene_level_claim_allowed %in% FALSE, na.rm = TRUE)) {
+    stop("Ineligible protein groups are not permitted in strict term-gene provenance.", call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
+validate_gsea_result_table_contract <- function(x, context = "GSEA result") {
+  required <- c("ID", "Description", "NES", "p.adjust", "setSize", "core_enrichment")
+  missing <- setdiff(required, names(x))
+  if (length(missing)) {
+    stop(context, " is missing required columns: ", paste(missing, collapse = ", "), call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
+validate_clusterprofiler_manifest_contract <- function(manifest, strict = TRUE, require_files = TRUE) {
+  required <- c(
+    "dataset", "comparison", "result_type", "ontology", "analysis_status", "n_terms",
+    "output_table", "collapsed_gene_input_file", "collapsed_gene_provenance_file",
+    "term_gene_provenance_file", "enrichment_contract_version",
+    "gene_annotation_contract_version"
+  )
+  missing <- setdiff(required, names(manifest))
+  if (length(missing)) {
+    stop("clusterProfiler manifest is missing required columns: ", paste(missing, collapse = ", "), call. = FALSE)
+  }
+  expected_version <- canonical_clusterprofiler_manifest_contract_version()
+  if (isTRUE(strict) && any(is.na(manifest$enrichment_contract_version) |
+      manifest$enrichment_contract_version != expected_version)) {
+    stop("Stale clusterProfiler manifest contract; expected ", expected_version, ".", call. = FALSE)
+  }
+  allowed_status <- c("success_with_terms", "success_zero_terms", "failed")
+  invalid_status <- setdiff(unique(as.character(manifest$analysis_status)), allowed_status)
+  if (length(invalid_status)) {
+    stop("clusterProfiler manifest has unsupported analysis_status: ", paste(invalid_status, collapse = ", "), call. = FALSE)
+  }
+  supported_results <- c("GSEA_GO", "GSEA_KEGG")
+  invalid_results <- setdiff(unique(as.character(manifest$result_type)), supported_results)
+  if (length(invalid_results)) {
+    stop("clusterProfiler manifest has unsupported result_type: ", paste(invalid_results, collapse = ", "), call. = FALSE)
+  }
+  success <- manifest$analysis_status %in% c("success_with_terms", "success_zero_terms")
+  zero <- manifest$analysis_status == "success_zero_terms"
+  with_terms <- manifest$analysis_status == "success_with_terms"
+  if (any(zero & (is.na(manifest$n_terms) | manifest$n_terms != 0))) {
+    stop("success_zero_terms rows must record n_terms = 0.", call. = FALSE)
+  }
+  if (any(with_terms & (is.na(manifest$n_terms) | manifest$n_terms <= 0))) {
+    stop("success_with_terms rows must record n_terms > 0.", call. = FALSE)
+  }
+  if (isTRUE(require_files) && any(success)) {
+    file_columns <- c("output_table", "collapsed_gene_input_file", "collapsed_gene_provenance_file", "term_gene_provenance_file")
+    for (column in file_columns) {
+      paths <- as.character(manifest[[column]][success])
+      missing_paths <- is.na(paths) | !nzchar(paths) | !file.exists(paths)
+      if (any(missing_paths)) {
+        stop("Successful clusterProfiler manifest row references missing ", column, ": ",
+          paste(paths[missing_paths], collapse = ", "), call. = FALSE)
+      }
+    }
+  }
+  invisible(TRUE)
+}
+
+validate_comparego_manifest_contract <- function(manifest, require_files = TRUE) {
+  required <- c(
+    "dataset", "comparison", "result_type", "ontology", "analysis_status",
+    "comparego_analysis_status", "input_manifest", "term_comparison_file",
+    "term_gene_provenance_output_file", "analysis_status_summary_file",
+    "enrichment_contract_version", "comparego_contract_version"
+  )
+  missing <- setdiff(required, names(manifest))
+  if (length(missing)) {
+    stop("compareGO manifest is missing required columns: ", paste(missing, collapse = ", "), call. = FALSE)
+  }
+  if (any(manifest$comparego_contract_version != canonical_comparego_manifest_contract_version())) {
+    stop("Stale compareGO manifest contract.", call. = FALSE)
+  }
+  if (any(!manifest$result_type %in% canonical_comparego_result_types())) {
+    stop("compareGO manifest contains unsupported result_type.", call. = FALSE)
+  }
+  allowed_actions <- c("included", "completed_zero_terms", "recorded_failed")
+  if (any(!manifest$comparego_analysis_status %in% allowed_actions)) {
+    stop("compareGO manifest contains unsupported comparego_analysis_status.", call. = FALSE)
+  }
+  if (isTRUE(require_files)) {
+    file_columns <- c("input_manifest", "term_comparison_file", "term_gene_provenance_output_file", "analysis_status_summary_file")
+    for (column in file_columns) {
+      paths <- unique(as.character(manifest[[column]]))
+      if (any(is.na(paths) | !nzchar(paths) | !file.exists(paths))) {
+        stop("compareGO manifest references missing ", column, ".", call. = FALSE)
+      }
+    }
+  }
+  invisible(TRUE)
+}
+
+read_csv_contract <- function(path, character_columns = character()) {
+  x <- utils::read.csv(path, stringsAsFactors = FALSE, check.names = FALSE,
+    colClasses = if (length(character_columns)) c(setNames(rep("character", length(character_columns)), character_columns)) else NA)
+  x
+}
+
+collect_canonical_comparego_outputs <- function(manifest, strict = TRUE, require_files = TRUE) {
+  validate_clusterprofiler_manifest_contract(manifest, strict = strict, require_files = require_files)
+  supported <- canonical_comparego_result_types()
+  unsupported <- manifest[!manifest$result_type %in% supported, , drop = FALSE]
+  selected <- manifest[manifest$result_type %in% supported, , drop = FALSE]
+  if (!nrow(selected)) stop("No supported canonical compareGO result types were selected.", call. = FALSE)
+  selected <- selected[order(selected$dataset, selected$comparison, selected$ontology, selected$result_type, method = "radix"), , drop = FALSE]
+
+  term_rows <- list()
+  provenance_rows <- list()
+  status_rows <- list()
+  for (i in seq_len(nrow(selected))) {
+    row <- selected[i, , drop = FALSE]
+    status_rows[[i]] <- data.frame(
+      dataset = as.character(row$dataset), comparison = as.character(row$comparison),
+      result_type = as.character(row$result_type), ontology = as.character(row$ontology),
+      analysis_status = as.character(row$analysis_status), n_terms = as.integer(row$n_terms),
+      comparego_action = if (row$analysis_status == "failed") "recorded_failed" else if (row$analysis_status == "success_zero_terms") "completed_zero_terms" else "included",
+      stringsAsFactors = FALSE
+    )
+    if (row$analysis_status == "failed") next
+    terms <- read_csv_contract(as.character(row$output_table))
+    validate_gsea_result_table_contract(terms, paste0(row$dataset, "/", row$comparison))
+    if (nrow(terms) != as.integer(row$n_terms)) {
+      stop("Manifest n_terms does not match result table for ", row$dataset, "/", row$comparison, ".", call. = FALSE)
+    }
+    if (nrow(terms)) {
+      terms$term_id <- as.character(terms$ID)
+      terms$term_description <- as.character(terms$Description)
+      terms$dataset <- as.character(row$dataset)
+      terms$comparison <- as.character(row$comparison)
+      terms$result_type <- as.character(row$result_type)
+      terms$ontology <- as.character(row$ontology)
+      term_rows[[length(term_rows) + 1L]] <- terms
+    }
+    provenance <- read_csv_contract(as.character(row$term_gene_provenance_file), character_columns = "official_entrez_id")
+    validate_term_gene_provenance_contract(provenance, strict = strict)
+    if (!nrow(terms) && nrow(provenance)) {
+      stop("Zero-term GSEA result has non-empty term-gene provenance for ",
+        row$dataset, "/", row$comparison, ".", call. = FALSE)
+    }
+    if (nrow(provenance) && any(!provenance$term_id %in% as.character(terms$ID))) {
+      stop("Term-gene provenance contains term IDs absent from the declared GSEA result.", call. = FALSE)
+    }
+    if (nrow(provenance)) {
+      expected <- c(dataset = as.character(row$dataset), comparison = as.character(row$comparison),
+        result_type = as.character(row$result_type), ontology = as.character(row$ontology))
+      for (column in names(expected)) {
+        if (any(as.character(provenance[[column]]) != expected[[column]])) {
+          stop("Term-gene provenance metadata does not match manifest field ", column, ".", call. = FALSE)
+        }
+      }
+      provenance_rows[[length(provenance_rows) + 1L]] <- provenance
+    }
+  }
+  empty_terms <- data.frame(
+    ID = character(), Description = character(), NES = numeric(), p.adjust = numeric(),
+    setSize = integer(), core_enrichment = character(), term_id = character(),
+    term_description = character(), dataset = character(), comparison = character(),
+    result_type = character(), ontology = character(), stringsAsFactors = FALSE
+  )
+  empty_provenance <- as.data.frame(setNames(lapply(term_gene_provenance_columns(), function(column) {
+    if (column %in% c("gene_level_claim_allowed", "core_enrichment_member")) logical()
+    else if (column == "rank_statistic") numeric() else character()
+  }), term_gene_provenance_columns()), stringsAsFactors = FALSE)
+  terms <- if (length(term_rows)) do.call(rbind, term_rows) else empty_terms
+  provenance <- if (length(provenance_rows)) do.call(rbind, provenance_rows) else empty_provenance
+  status <- do.call(rbind, status_rows)
+  if (nrow(unsupported)) {
+    unsupported_status <- data.frame(
+      dataset = as.character(unsupported$dataset), comparison = as.character(unsupported$comparison),
+      result_type = as.character(unsupported$result_type), ontology = as.character(unsupported$ontology),
+      analysis_status = as.character(unsupported$analysis_status), n_terms = as.integer(unsupported$n_terms),
+      comparego_action = "skipped_unsupported_result_type", stringsAsFactors = FALSE
+    )
+    status <- rbind(status, unsupported_status)
+  }
+  if (nrow(terms)) terms <- terms[order(terms$dataset, terms$comparison, terms$ontology, terms$ID, method = "radix"), , drop = FALSE]
+  if (nrow(provenance)) provenance <- provenance[order(provenance$dataset, provenance$comparison, provenance$ontology,
+    provenance$term_id, provenance$official_gene_symbol, provenance$ProteinGroupID, method = "radix"), , drop = FALSE]
+  status <- status[order(status$dataset, status$comparison, status$result_type, status$ontology, method = "radix"), , drop = FALSE]
+  rownames(terms) <- rownames(provenance) <- rownames(status) <- NULL
+  list(input_manifest = selected, terms = terms, provenance = provenance, status = status)
+}
+
 biological_program_patterns <- function() {
   data.frame(
     biological_program = c(

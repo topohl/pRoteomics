@@ -37,6 +37,8 @@ source(paths_file)
 source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "protein_mapping_utils.R"))
 source(repo_path("R", "protein_group_enrichment_utils.R"))
+source(repo_path("R", "enrichment_io.R"))
+source(repo_path("R", "schema_validation.R"))
 MODULE_ID <- "04_differential_expression_enrichment"
 SUBSTEP_ID <- "clusterProfiler"
 CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
@@ -255,16 +257,7 @@ read_config <- function(config_path) {
   cfg
 }
 
-manifest_columns <- c(
-  "analysis_id", "dataset", "run_id", "ontology", "result_type", "contrast", "comparison",
-  "route_category", "route_unit", "condition", "direction", "simplified",
-  "plot_suffix", "used_for_plot", "input_gene_file", "gene_input_file", "input_hash",
-  "protein_group_contract_version", "gene_mapping_policy", "primary_gene_level_eligibility_rule",
-  "ambiguous_group_policy", "duplicate_gene_collapse_rule", "rank_statistic_column",
-  "rank_statistic_type", "rank_statistic_fallback_used", "ORA_direction", "universe_definition",
-  "config_file", "config_hash", "output_table", "output_plot",
-  "n_genes", "n_terms", "empty_result", "checkpoint_status", "created_at"
-)
+manifest_columns <- clusterprofiler_manifest_columns()
 
 make_manifest_row <- function(result_type, ontology, comparison_name, dirs, input_gene_file,
                               config_path, output_table, output_plot = NA_character_,
@@ -272,7 +265,12 @@ make_manifest_row <- function(result_type, ontology, comparison_name, dirs, inpu
                               simplified = FALSE, used_for_plot = FALSE,
                               plot_suffix = NA_character_, checkpoint_status = "computed",
                               condition = NA_character_, direction = NA_character_, gene_input_file = NA_character_,
-                              rank_statistic = NULL, ora_direction = NA_character_, universe_definition = NA_character_) {
+                              rank_statistic = NULL, ora_direction = NA_character_, universe_definition = NA_character_,
+                              collapsed_gene_input_file = gene_input_file,
+                              collapsed_gene_provenance_file = NA_character_,
+                              term_gene_provenance_file = NA_character_,
+                              gene_annotation_contract_version = NA_character_,
+                              analysis_status = NULL, error_message = NA_character_) {
   dataset <- get0("DATASET", ifnotfound = NA_character_)
   if (length(dataset) != 1L || is.na(dataset) || !nzchar(as.character(dataset))) {
     dataset <- Sys.getenv("PROTEOMICS_DATASET", unset = NA_character_)
@@ -280,6 +278,11 @@ make_manifest_row <- function(result_type, ontology, comparison_name, dirs, inpu
   if (length(dataset) != 1L || is.na(dataset) || !nzchar(as.character(dataset))) {
     dataset <- Sys.getenv("PROTEOMICS_COMPARISON", unset = NA_character_)
   }
+  if (is.null(analysis_status)) {
+    analysis_status <- if (is.na(n_terms) || n_terms == 0) "success_zero_terms" else "success_with_terms"
+  }
+  route_category <- if (is.null(dirs)) NA_character_ else dirs$route_category
+  route_unit <- if (is.null(dirs)) NA_character_ else dirs$route_unit
   data.frame(
     analysis_id = paste("clusterProfiler", dataset, result_type, ontology, comparison_name, sep = "::"),
     dataset = dataset,
@@ -288,8 +291,8 @@ make_manifest_row <- function(result_type, ontology, comparison_name, dirs, inpu
     result_type = result_type,
     contrast = comparison_name,
     comparison = comparison_name,
-    route_category = dirs$route_category,
-    route_unit = dirs$route_unit,
+    route_category = route_category,
+    route_unit = route_unit,
     condition = condition,
     direction = direction,
     simplified = isTRUE(simplified),
@@ -298,6 +301,11 @@ make_manifest_row <- function(result_type, ontology, comparison_name, dirs, inpu
     input_gene_file = input_gene_file,
     gene_input_file = gene_input_file,
     input_hash = file_hash(input_gene_file),
+    collapsed_gene_input_file = collapsed_gene_input_file,
+    collapsed_gene_provenance_file = collapsed_gene_provenance_file,
+    term_gene_provenance_file = term_gene_provenance_file,
+    enrichment_contract_version = canonical_clusterprofiler_manifest_contract_version(),
+    gene_annotation_contract_version = gene_annotation_contract_version,
     protein_group_contract_version = canonical_enrichment_contract_version(),
     gene_mapping_policy = "Stage02 accession-first official mouse SYMBOL/ENTREZ; median_finite_statistics after annotation",
     primary_gene_level_eligibility_rule = "gene_level_claim_allowed && concordant official gene annotation && class in {single_accession_single_gene,multi_accession_same_gene}",
@@ -314,11 +322,23 @@ make_manifest_row <- function(result_type, ontology, comparison_name, dirs, inpu
     output_plot = output_plot,
     n_genes = n_genes,
     n_terms = n_terms,
-    empty_result = isTRUE(is.na(n_terms) || n_terms == 0),
+    analysis_status = analysis_status,
+    empty_result = identical(analysis_status, "success_zero_terms"),
+    error_message = error_message,
     checkpoint_status = checkpoint_status,
     created_at = format(Sys.time(), "%Y-%m-%d %H:%M:%S %z"),
     stringsAsFactors = FALSE
   )[manifest_columns]
+}
+
+make_failed_manifest_row <- function(comparison_name, dirs, input_gene_file, config_path,
+                                     ontology, error_message, result_type = "GSEA_GO") {
+  make_manifest_row(
+    result_type = result_type, ontology = ontology, comparison_name = comparison_name,
+    dirs = dirs, input_gene_file = input_gene_file, config_path = config_path,
+    output_table = NA_character_, n_terms = NA_integer_, analysis_status = "failed",
+    error_message = as.character(error_message), used_for_plot = FALSE
+  )
 }
 
 count_table_rows <- function(path) {
@@ -329,8 +349,17 @@ count_table_rows <- function(path) {
 
 reconstruct_checkpoint_manifest <- function(dirs, comparison_name, data_path, config_path, ont, plot_suffix) {
   rows <- list()
+  audit_root <- file.path(dirs$results, "protein_group_audits")
+  collapsed_input <- file.path(audit_root, "collapsed_gene_input.csv")
+  collapsed_provenance <- file.path(audit_root, "collapsed_gene_input_provenance.csv")
+  gene_contract <- if (file.exists(collapsed_input)) {
+    input <- read.csv(collapsed_input, stringsAsFactors = FALSE, check.names = FALSE)
+    versions <- unique(as.character(input$gene_annotation_contract_version))
+    if (length(versions) == 1L) versions else NA_character_
+  } else NA_character_
   gsea_table <- file.path(dirs$core_enrich_routed, paste0(comparison_name, plot_suffix, ".csv"))
-  if (file.exists(gsea_table)) {
+  go_term_provenance <- file.path(audit_root, "gsea_go_term_gene_provenance.csv")
+  if (all(file.exists(c(gsea_table, collapsed_input, collapsed_provenance, go_term_provenance)))) {
     gsea_plot <- file.path(dirs$plots_go, paste0("GSEA_", ont, "_dotplot", plot_suffix, ".svg"))
     rows[[length(rows) + 1]] <- make_manifest_row(
       result_type = "GSEA_GO",
@@ -346,12 +375,18 @@ reconstruct_checkpoint_manifest <- function(dirs, comparison_name, data_path, co
       simplified = identical(plot_suffix, "_simplified"),
       used_for_plot = TRUE,
       plot_suffix = plot_suffix,
+      gene_input_file = collapsed_input,
+      collapsed_gene_input_file = collapsed_input,
+      collapsed_gene_provenance_file = collapsed_provenance,
+      term_gene_provenance_file = go_term_provenance,
+      gene_annotation_contract_version = gene_contract,
       checkpoint_status = "reconstructed_from_checkpoint"
     )
   }
 
   kegg_table <- file.path(CANONICAL_PATHS$source_data, "KEGG", dirs$route_category, dirs$route_unit, paste0(comparison_name, "_KEGG.csv"))
-  if (file.exists(kegg_table)) {
+  kegg_term_provenance <- file.path(audit_root, "gsea_kegg_term_gene_provenance.csv")
+  if (all(file.exists(c(kegg_table, collapsed_input, collapsed_provenance, kegg_term_provenance)))) {
     kegg_plot <- file.path(dirs$plots_kegg, "KEGG_dotplot.svg")
     rows[[length(rows) + 1]] <- make_manifest_row(
       result_type = "GSEA_KEGG",
@@ -367,6 +402,11 @@ reconstruct_checkpoint_manifest <- function(dirs, comparison_name, data_path, co
       simplified = FALSE,
       used_for_plot = TRUE,
       plot_suffix = "_KEGG",
+      gene_input_file = collapsed_input,
+      collapsed_gene_input_file = collapsed_input,
+      collapsed_gene_provenance_file = collapsed_provenance,
+      term_gene_provenance_file = kegg_term_provenance,
+      gene_annotation_contract_version = gene_contract,
       checkpoint_status = "reconstructed_from_checkpoint"
     )
   }
@@ -473,7 +513,10 @@ expected_checkpoint_outputs <- function(dirs, comparison_name, ont, plot_suffix 
     qc = file.path(dirs$results, "QC_summary.csv"),
     gsea_core_table = file.path(dirs$core_enrich_routed, paste0(comparison_name, plot_suffix, ".csv")),
     gsea_full_table = file.path(dirs$go_ont, paste0("GSEA_", ont, "_results_full.csv")),
-    enrichgo_table = file.path(dirs$go_ont, "enrichGO_ALL_results_full.csv")
+    enrichgo_table = file.path(dirs$go_ont, "enrichGO_ALL_results_full.csv"),
+    collapsed_gene_input = file.path(dirs$results, "protein_group_audits", "collapsed_gene_input.csv"),
+    collapsed_gene_provenance = file.path(dirs$results, "protein_group_audits", "collapsed_gene_input_provenance.csv"),
+    term_gene_provenance = file.path(dirs$results, "protein_group_audits", "gsea_go_term_gene_provenance.csv")
   )
 }
 
@@ -1053,6 +1096,8 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
     stringsAsFactors = FALSE
   )
   manifest_rows <- list()
+  dirs <- NULL
+  data_path <- file.path(mapped_data_base, paste0(comparison_name, ".csv"))
 
   cat("Analyzing comparison:", comparison_name, "\n")
   write_log_line(comparison_log, "INFO", comparison_name, "START", "Comparison analysis started")
@@ -1080,7 +1125,6 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
     # can still reconstruct manifest rows from existing canonical outputs.
     file_name <- paste0(comparison_name, ".csv")
     cat("Looking for data file:", file_name, "\n")
-    data_path <- file.path(mapped_data_base, file_name)
     cat("Full data path:", data_path, "\n")
 
     if (isTRUE(runtime_params$resume_if_complete) &&
@@ -1099,6 +1143,9 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
       qc$status <- "FAILED"
       qc$runtime_seconds <- as.numeric(difftime(Sys.time(), run_start, units = "secs"))
       write.csv(qc, qc_path, row.names = FALSE)
+      manifest_rows <- list(make_failed_manifest_row(
+        comparison_name, dirs, data_path, config_path, ont, "File not found", "GSEA_GO"
+      ))
       return(list(status = "FAILED", comparison = comparison_name, error = "File not found", qc = qc, manifest = dplyr::bind_rows(manifest_rows)))
     }
 
@@ -1112,6 +1159,9 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
       qc$status <- "FAILED"
       qc$runtime_seconds <- as.numeric(difftime(Sys.time(), run_start, units = "secs"))
       write.csv(qc, qc_path, row.names = FALSE)
+      manifest_rows <- list(make_failed_manifest_row(
+        comparison_name, dirs, data_path, config_path, ont, "Data file is empty", "GSEA_GO"
+      ))
       return(list(status = "FAILED", comparison = comparison_name, error = "Data file is empty", qc = qc, manifest = dplyr::bind_rows(manifest_rows)))
     }
 
@@ -1147,6 +1197,19 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
       stop("Precomputed official_gene_symbol contains values that are not exact org.Mm.eg.db SYMBOL keys; rerun Stage 02 annotation.", call. = FALSE)
     }
     resolved_gene_collapse <- gene_inputs$collapse
+    gene_contract_versions <- sort(unique(as.character(
+      gene_inputs$transformation$gene_annotation_contract_version[
+        gene_inputs$transformation$eligibility_status == "eligible"
+      ]
+    )), method = "radix")
+    gene_contract_versions <- gene_contract_versions[!is.na(gene_contract_versions) & nzchar(gene_contract_versions)]
+    if (length(gene_contract_versions) != 1L) {
+      stop("Eligible protein groups must share exactly one gene_annotation_contract_version; found: ",
+        paste(gene_contract_versions, collapse = ", "), call. = FALSE)
+    }
+    resolved_gene_collapse$official_gene_symbol <- as.character(resolved_gene_collapse$GeneSymbol)
+    resolved_gene_collapse$official_entrez_id <- as.character(resolved_gene_collapse$EntrezID)
+    resolved_gene_collapse$gene_annotation_contract_version <- gene_contract_versions[[1]]
     original_gene_list <- gene_inputs$ranked
     gene_list <- gene_inputs$ranked
     fc_for_cnet <- gene_inputs$ranked
@@ -1165,7 +1228,8 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
     gene_input <- resolved_gene_collapse
     if (nrow(gene_input)) gene_input$log2fc <- gene_input$collapsed_statistic
     write.csv(gene_input, gene_input_file, row.names = FALSE)
-    write.csv(resolved_gene_collapse, file.path(audit_root, "leading_edge_provenance.csv"), row.names = FALSE)
+    collapsed_gene_provenance_file <- file.path(audit_root, "collapsed_gene_input_provenance.csv")
+    write.csv(resolved_gene_collapse, collapsed_gene_provenance_file, row.names = FALSE)
     aggregate_audit <- data.frame(total_ProteinGroupIDs = nrow(gene_inputs$transformation),
       eligible_single_accession_groups = sum(gene_inputs$transformation$protein_group_ambiguity_class == "single_accession_single_gene" & gene_inputs$transformation$eligibility_status == "eligible"),
       eligible_same_gene_multi_accession_groups = sum(gene_inputs$transformation$protein_group_ambiguity_class == "multi_accession_same_gene" & gene_inputs$transformation$eligibility_status == "eligible"),
@@ -1323,6 +1387,19 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
           file = file.path(dirs$core_enrich_routed, paste0(comparison_name, plot_suffix, ".csv")),
           row.names = FALSE)
     gsea_core_table <- file.path(dirs$core_enrich_routed, paste0(comparison_name, plot_suffix, ".csv"))
+    go_term_gene_provenance <- build_enrichment_term_gene_provenance(
+      gsea_table = gse_export_results,
+      collapsed_gene_input = resolved_gene_collapse,
+      transformation = gene_inputs$transformation,
+      dataset = DATASET,
+      comparison = comparison_name,
+      result_type = "GSEA_GO",
+      ontology = ont,
+      strict = TRUE,
+      core_identifier = "SYMBOL"
+    )
+    go_term_gene_provenance_file <- file.path(audit_root, "gsea_go_term_gene_provenance.csv")
+    write.csv(go_term_gene_provenance, go_term_gene_provenance_file, row.names = FALSE)
     gsea_plot <- file.path(dirs$plots_go, paste0("GSEA_", ont, "_dotplot", plot_suffix, ".svg"))
     manifest_rows[[length(manifest_rows) + 1]] <- make_manifest_row(
       result_type = "GSEA_GO",
@@ -1331,6 +1408,10 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
       dirs = dirs,
       input_gene_file = data_path,
       gene_input_file = gene_input_file,
+      collapsed_gene_input_file = gene_input_file,
+      collapsed_gene_provenance_file = collapsed_gene_provenance_file,
+      term_gene_provenance_file = go_term_gene_provenance_file,
+      gene_annotation_contract_version = gene_contract_versions[[1]],
       config_path = config_path,
       output_table = gsea_core_table,
       output_plot = if (file.exists(gsea_plot)) gsea_plot else NA_character_,
@@ -1443,7 +1524,8 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
                      keyType = "ncbi-geneid", verbose = FALSE)
       kk2_results <- enrichment_result_table(kk2, "KEGG GSEA", required = FALSE)
 
-      if (nrow(kk2_results) > 0) {
+      kegg_failure <- attr(kk2_results, "skipped_reason")
+      if (is.null(kegg_failure) && nrow(kk2_results) > 0) {
         kegg_dot <- clusterProfiler::dotplot(kk2, showCategory = 10, split = ".sign") + 
           facet_wrap(~ .sign, nrow = 1) + 
           labs(title = "KEGG GSEA") + 
@@ -1461,43 +1543,49 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
         tryCatch({
           save_plot_organized(ridgeplot(kk2), "KEGG_ridge.svg", dirs$plots_kegg)
         }, error=function(e){})
-
         save_plot_organized(gseaplot(kk2, by = "all", title = kk2$Description[1], geneSetID = 1), "KEGG_plot.svg", dirs$plots_kegg)
+      }
+      if (is.null(kegg_failure)) {
         write.csv(kk2_results, file = file.path(dirs$kegg, "KEGG_GSEA_results.csv"), row.names = FALSE)
-        # Also save the version used for plots to core_enrich
         write.csv(kk2_results, file = file.path(dirs$core_enrich, paste0(comparison_name, "_KEGG.csv")), row.names = FALSE)
         write.csv(kk2_results, file = file.path(dirs$core_enrich_routed, paste0(comparison_name, "_KEGG.csv")), row.names = FALSE)
-
-        # Additionally, save to core_enrich with ontology set to 'KEGG'
-        core_enrich_kegg_dir <- file.path(CANONICAL_PATHS$source_data, "KEGG")
-        if (!dir.exists(core_enrich_kegg_dir)) dir.create(core_enrich_kegg_dir, recursive = TRUE)
-        write.csv(kk2_results, file = file.path(core_enrich_kegg_dir, paste0(comparison_name, "_KEGG.csv")), row.names = FALSE)
-
         core_enrich_kegg_routed_dir <- file.path(CANONICAL_PATHS$source_data, "KEGG", dirs$route_category, dirs$route_unit)
-        if (!dir.exists(core_enrich_kegg_routed_dir)) dir.create(core_enrich_kegg_routed_dir, recursive = TRUE)
-        write.csv(kk2_results, file = file.path(core_enrich_kegg_routed_dir, paste0(comparison_name, "_KEGG.csv")), row.names = FALSE)
+        dir.create(core_enrich_kegg_routed_dir, recursive = TRUE, showWarnings = FALSE)
         kegg_core_table <- file.path(core_enrich_kegg_routed_dir, paste0(comparison_name, "_KEGG.csv"))
-        kegg_plot <- file.path(dirs$plots_kegg, "KEGG_dotplot.svg")
-        manifest_rows[[length(manifest_rows) + 1]] <- make_manifest_row(
+        write.csv(kk2_results, file = kegg_core_table, row.names = FALSE)
+        kegg_term_gene_provenance <- build_enrichment_term_gene_provenance(
+          gsea_table = kk2_results,
+          collapsed_gene_input = resolved_gene_collapse,
+          transformation = gene_inputs$transformation,
+          dataset = DATASET,
+          comparison = comparison_name,
           result_type = "GSEA_KEGG",
           ontology = "KEGG",
-          comparison_name = comparison_name,
-          dirs = dirs,
-          input_gene_file = data_path,
-          config_path = config_path,
-          output_table = kegg_core_table,
+          strict = TRUE,
+          core_identifier = "ENTREZID"
+        )
+        kegg_term_gene_provenance_file <- file.path(audit_root, "gsea_kegg_term_gene_provenance.csv")
+        write.csv(kegg_term_gene_provenance, kegg_term_gene_provenance_file, row.names = FALSE)
+        kegg_plot <- file.path(dirs$plots_kegg, "KEGG_dotplot.svg")
+        manifest_rows[[length(manifest_rows) + 1]] <- make_manifest_row(
+          result_type = "GSEA_KEGG", ontology = "KEGG", comparison_name = comparison_name,
+          dirs = dirs, input_gene_file = data_path, gene_input_file = gene_input_file,
+          collapsed_gene_input_file = gene_input_file,
+          collapsed_gene_provenance_file = collapsed_gene_provenance_file,
+          term_gene_provenance_file = kegg_term_gene_provenance_file,
+          gene_annotation_contract_version = gene_contract_versions[[1]],
+          config_path = config_path, output_table = kegg_core_table,
           output_plot = if (file.exists(kegg_plot)) kegg_plot else NA_character_,
-          n_genes = length(kegg_gene_list),
-          n_terms = nrow(kk2_results),
-          simplified = FALSE,
-          used_for_plot = TRUE,
-          plot_suffix = "_KEGG"
+          n_genes = length(kegg_gene_list), n_terms = nrow(kk2_results), simplified = FALSE,
+          used_for_plot = TRUE, plot_suffix = "_KEGG", rank_statistic = gene_inputs$statistic,
+          universe_definition = "eligible tested genes with precomputed unique official ENTREZID after median duplicate collapse"
         )
         qc$n_kegg_terms <- nrow(kk2_results)
       } else {
-        # Create empty file so we know it ran but found nothing
-        write.csv(data.frame(), file = file.path(dirs$kegg, "KEGG_GSEA_results_EMPTY.csv"))
-        qc$n_kegg_terms <- 0
+        manifest_rows[[length(manifest_rows) + 1]] <- make_failed_manifest_row(
+          comparison_name, dirs, data_path, config_path, "KEGG", kegg_failure, "GSEA_KEGG"
+        )
+        qc$n_kegg_terms <- NA_integer_
       }
       print_progress_step(comparison_name, "KEGG", paste0("terms=", qc$n_kegg_terms), runtime_params$show_step_progress)
 
@@ -1520,6 +1608,11 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
       } else {
         message("No path_ids provided; skipping pathview for ", comparison_name)
       }
+    } else {
+      manifest_rows[[length(manifest_rows) + 1]] <- make_failed_manifest_row(
+        comparison_name, dirs, data_path, config_path, "KEGG",
+        "No eligible precomputed official ENTREZID values were available for KEGG GSEA.", "GSEA_KEGG"
+      )
     }
     
     # ----------------------------------------------------
@@ -1730,6 +1823,18 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
     qc$status <- "ERROR"
     qc$runtime_seconds <- as.numeric(difftime(Sys.time(), run_start, units = "secs"))
     write_log_line(comparison_log, "ERROR", comparison_name, "UNHANDLED", conditionMessage(e))
+    existing <- dplyr::bind_rows(manifest_rows)
+    if (nrow(existing) && any(existing$result_type == "GSEA_GO")) {
+      go_rows <- existing$result_type == "GSEA_GO"
+      existing$analysis_status[go_rows] <- "failed"
+      existing$empty_result[go_rows] <- FALSE
+      existing$error_message[go_rows] <- conditionMessage(e)
+      manifest_rows <- list(existing)
+    } else {
+      manifest_rows[[length(manifest_rows) + 1L]] <- make_failed_manifest_row(
+        comparison_name, dirs, data_path, config_path, ont, conditionMessage(e), "GSEA_GO"
+      )
+    }
     return(list(status = "ERROR", comparison = comparison_name, error = conditionMessage(e), qc = qc, manifest = dplyr::bind_rows(manifest_rows)))
   })
 }
@@ -1851,6 +1956,8 @@ manifest_rows <- manifest_rows[!vapply(manifest_rows, function(x) is.null(x) || 
 manifest <- if (length(manifest_rows) > 0) dplyr::bind_rows(manifest_rows) else {
   data.frame(matrix(ncol = length(manifest_columns), nrow = 0, dimnames = list(NULL, manifest_columns)))
 }
+validate_clusterprofiler_manifest_contract(manifest, strict = TRUE, require_files = TRUE)
+validate_table_schema(manifest, "clusterProfiler_manifest", strict = TRUE)
 manifest_file <- file.path(CANONICAL_PATHS$processed, "clusterProfiler_manifest.csv")
 write.csv(manifest, manifest_file, row.names = FALSE)
 write.csv(manifest, file.path(CANONICAL_PATHS$reports, paste0("clusterProfiler_manifest_", run_id, ".csv")), row.names = FALSE)

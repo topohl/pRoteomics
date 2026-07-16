@@ -1,0 +1,19 @@
+name: enrichment_term_gene_provenance
+required_columns: [dataset, comparison, result_type, ontology, term_id, term_description, official_gene_symbol, official_entrez_id, ProteinGroupID, member_accessions, protein_group_gene_annotation_status, gene_level_claim_allowed, rank_statistic, core_enrichment_member, enrichment_contract_version, gene_annotation_contract_version]
+columns:
+  dataset: {type: character, allowed_values: [neuron_neuropil, neuron_soma, microglia]}
+  comparison: {type: character}
+  result_type: {type: character, allowed_values: [GSEA_GO, GSEA_KEGG]}
+  ontology: {type: character}
+  term_id: {type: character}
+  term_description: {type: character}
+  official_gene_symbol: {type: character}
+  official_entrez_id: {type: character}
+  ProteinGroupID: {type: character}
+  member_accessions: {type: character}
+  protein_group_gene_annotation_status: {type: character}
+  gene_level_claim_allowed: {type: logical}
+  rank_statistic: {type: numeric}
+  core_enrichment_member: {type: logical}
+  enrichment_contract_version: {type: character, allowed_values: [protein_group_enrichment_v3_term_gene_provenance]}
+  gene_annotation_contract_version: {type: character}

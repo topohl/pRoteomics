@@ -112,6 +112,8 @@ The table records `script`, `dataset`, `stage`, `input_name`, expected and resol
 |---|---|---|
 | clusterProfiler manifest | `clusterProfiler_manifest.yml` | `data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv` |
 | compareGO input manifest | `compareGO_manifest.yml` | `data/processed/04_differential_expression_enrichment/compareGO/<dataset>/compareGO_input_manifest.csv` |
+| clusterProfiler term-gene provenance | `enrichment_term_gene_provenance.yml` | manifest-declared per-comparison `protein_group_audits/gsea_{go,kegg}_term_gene_provenance.csv` |
+| compareGO canonical tables | manifest-declared term and provenance contracts | `results/tables/04_differential_expression_enrichment/compareGO/<dataset>/<ontology>/<route_category>/<route_unit>/compareGO_{term_comparison,term_gene_provenance,analysis_status_summary}.csv` |
 | biological program summary | documented in `docs/file_contracts.tsv` | `results/tables/04_differential_expression_enrichment/biological_program_summary/<dataset>/program_summary.csv` |
 | targeted microglia ROI signature claims | documented in `docs/file_contracts.tsv` | `results/tables/04_differential_expression_enrichment/microglia_targeted_signature_enrichment/microglia/microglia_signature_claims_ready.csv` |
 | module-score merged metadata | module-score metadata merge contract | `data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx`; QC/report/log sidecars under `results/{tables,reports,logs}/01_preprocessing/06_merged_metadata_module_score/<dataset>/` |
