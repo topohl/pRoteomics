@@ -10,6 +10,12 @@ if (!exists("validate_dataset", mode = "function")) {
 if (!exists("resolve_dataset_inputs", mode = "function")) {
   source(repo_path("R", "dataset_inputs.R"))
 }
+if (!exists("build_canonical_protein_group_tables", mode = "function")) {
+  source(repo_path("R", "protein_mapping_utils.R"))
+}
+if (!exists("wgcna_feature_key_fingerprint", mode = "function")) {
+  source(repo_path("R", "module_contracts.R"))
+}
 
 qc_args <- function(default_dataset = "neuron_neuropil") {
   args <- commandArgs(trailingOnly = TRUE)
@@ -114,6 +120,8 @@ qc_sample_metadata_from_names <- function(samples) {
 }
 
 qc_make_feature_ids <- function(ids, prefix = "unannotated_protein") {
+  # Legacy display-only helper for non-gene-aware diagnostics. These repaired
+  # labels are never a quantitative identity and must not be joined to genes.
   ids <- trimws(as.character(ids))
   missing <- is.na(ids) | !nzchar(ids) | tolower(ids) %in% c("na", "nan")
   ids[missing] <- paste0(prefix, "_", which(missing))
@@ -192,7 +200,465 @@ qc_read_expression <- function(matrix_file, metadata_file = NA_character_, datas
   }
   rownames(meta) <- colnames(mat)
   meta$Sample <- colnames(mat)
+  list(
+    mat = mat,
+    meta = meta,
+    feature_identity_contract = "legacy_display_labels_only",
+    source_row_provenance = data.frame(source_row_id = seq_len(nrow(mat)), display_label = rownames(mat))
+  )
+}
+
+qc_detect_sample_columns <- function(df) {
+  annotation_columns <- unique(c(
+    detect_source_provenance_columns(df),
+    "First.Protein.Description", "Description", ".row_id", "source_row_id",
+    "member_identifiers_original", "member_identifiers_canonical",
+    "member_accessions", "member_gene_symbols", "representative_accession",
+    "representative_gene_symbol", "protein_group_ambiguity_class",
+    "gene_level_claim_allowed", "protein_level_claim_allowed", "mapping_status"
+  ))
+  candidates <- setdiff(names(df), annotation_columns)
+  candidates[vapply(df[candidates], function(x) {
+    vals <- suppressWarnings(as.numeric(as.character(x)))
+    mean(!is.na(vals)) >= 0.7
+  }, logical(1))]
+}
+
+qc_build_mapping_context <- function(idmap_file = path_external("MOUSE_10090_idmapping.dat"),
+                                     manual_mapping_file = Sys.getenv(
+                                       "PROTEOMICS_MANUAL_MAPPING_FILE",
+                                       unset = path_metadata("manual_mapping.xlsx")
+                                     ),
+                                     manual_gene_annotation_file = Sys.getenv(
+                                       "PROTEOMICS_MANUAL_GENE_ANNOTATION_FILE",
+                                       unset = path_metadata("manual_gene_annotation_overrides.csv")
+                                     )) {
+  required <- c("dplyr", "AnnotationDbi", "org.Mm.eg.db")
+  missing <- required[!vapply(required, requireNamespace, logical(1), quietly = TRUE)]
+  if (length(missing)) {
+    stop("Canonical QC mapping requires package(s): ", paste(missing, collapse = ", "), call. = FALSE)
+  }
+  idmap <- load_mouse_idmapping(idmap_file)
+  maps <- build_mouse_maps(idmap)
+  orgdb <- getExportedValue("org.Mm.eg.db", "org.Mm.eg.db")
+  annotation_maps <- build_mouse_gene_annotation_maps(
+    orgdb,
+    accessions = unique(maps$accession_gene_map$UNIPROT)
+  )
+  list(
+    entry_map = maps$entry_map,
+    gene_map = maps$gene_map,
+    accession_gene_map = maps$accession_gene_map,
+    reviewed_map = maps$reviewed_map,
+    manual_mapping = read_manual_mapping_table(manual_mapping_file),
+    gene_annotation_maps = annotation_maps,
+    manual_gene_annotation_overrides = read_manual_gene_annotation_overrides(manual_gene_annotation_file),
+    idmap_file = normalizePath(idmap_file, winslash = "/", mustWork = FALSE),
+    idmap_sha256 = file_hash_sha256(idmap_file),
+    manual_mapping_file = normalizePath(manual_mapping_file, winslash = "/", mustWork = FALSE),
+    manual_gene_annotation_file = normalizePath(manual_gene_annotation_file, winslash = "/", mustWork = FALSE)
+  )
+}
+
+qc_align_sample_metadata <- function(mat, metadata_file = NA_character_, dataset = current_dataset()) {
+  meta <- qc_sample_metadata_from_names(colnames(mat))
+  if (!is.na(metadata_file) && file.exists(metadata_file)) {
+    meta0 <- qc_read_table(metadata_file)
+    sample_col <- qc_first_col(meta0, c(
+      "Sample", "sample", "sample_id", "SampleID", "SampleColumn", "row.names",
+      "shortname", "sampleNumber"
+    ))
+    if (!is.na(sample_col)) {
+      meta0[[sample_col]] <- as.character(meta0[[sample_col]])
+      keep <- match(colnames(mat), meta0[[sample_col]])
+      if (any(!is.na(keep))) {
+        matched <- meta0[keep, , drop = FALSE]
+        for (nm in names(matched)) meta[[nm]] <- matched[[nm]]
+      }
+    }
+  }
+  keep <- metadata_matches_dataset(meta, dataset)
+  if (any(keep) && sum(keep) < nrow(meta)) {
+    mat <- mat[, keep, drop = FALSE]
+    meta <- meta[keep, , drop = FALSE]
+  }
+  rownames(meta) <- colnames(mat)
+  meta$Sample <- colnames(mat)
   list(mat = mat, meta = meta)
+}
+
+qc_validate_canonical_expression <- function(mat, feature_table) {
+  if (!"ProteinGroupID" %in% names(feature_table)) {
+    stop("Canonical QC feature table lacks ProteinGroupID.", call. = FALSE)
+  }
+  ids <- as.character(feature_table$ProteinGroupID)
+  if (anyNA(ids) || any(!nzchar(ids)) || anyDuplicated(ids)) {
+    stop("Canonical QC feature table has a missing or duplicate ProteinGroupID; label repair is forbidden.", call. = FALSE)
+  }
+  if (!identical(rownames(mat), ids)) {
+    stop("Canonical QC matrix and feature table are not aligned by ordered ProteinGroupID.", call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
+qc_validate_source_row_preservation <- function(source_rows, feature_table) {
+  if (nrow(source_rows) != nrow(feature_table)) {
+    stop("Canonical QC construction lost quantitative source rows before eligibility filtering.", call. = FALSE)
+  }
+  if (!"source_row_id" %in% names(feature_table) ||
+      !identical(as.integer(feature_table$source_row_id), seq_len(nrow(source_rows)))) {
+    stop("Canonical QC source-row provenance is incomplete or reordered.", call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
+qc_feature_universe_reconciliation <- function(feature_table, dataset) {
+  data.frame(
+    dataset = dataset,
+    quantitative_features = nrow(feature_table),
+    unique_ProteinGroupID = length(unique(feature_table$ProteinGroupID)),
+    wgcna_eligible_features = sum(feature_table$wgcna_eligible %in% TRUE),
+    marker_eligible_features = sum(feature_table$marker_eligible %in% TRUE),
+    enrichment_eligible_features = sum(feature_table$enrichment_eligible %in% TRUE),
+    multi_member_groups = sum(feature_table$n_members_canonical > 1L),
+    missing_legacy_display_identifiers = sum(is.na(feature_table$original_identifier) | !nzchar(feature_table$original_identifier)),
+    stringsAsFactors = FALSE
+  )
+}
+
+qc_load_canonical_expression <- function(matrix_file, metadata_file = NA_character_,
+                                         dataset = current_dataset(), mapping_context = NULL,
+                                         sample_columns = NULL, strict = TRUE) {
+  if (!file.exists(matrix_file)) stop("Canonical QC expression source not found: ", matrix_file, call. = FALSE)
+  dataset <- validate_dataset(dataset)
+  raw <- qc_read_table(matrix_file)
+  raw$.source_row_id <- seq_len(nrow(raw))
+  if (is.null(sample_columns)) sample_columns <- qc_detect_sample_columns(raw)
+  if (length(sample_columns) < 2L) {
+    stop("Could not detect at least two quantitative sample columns in canonical QC source: ", matrix_file, call. = FALSE)
+  }
+  if (is.null(mapping_context)) mapping_context <- qc_build_mapping_context()
+
+  identifier_col <- if ("original_identifier" %in% names(raw)) {
+    "original_identifier"
+  } else if ("T: Protein.Names" %in% names(raw)) {
+    "T: Protein.Names"
+  } else if ("gene_symbol" %in% names(raw)) {
+    "gene_symbol"
+  } else if ("Protein.Group" %in% names(raw)) {
+    "Protein.Group"
+  } else names(raw)[[1]]
+  feature_col <- if ("ProteinGroupID" %in% names(raw)) {
+    "ProteinGroupID"
+  } else if ("source_feature_id" %in% names(raw)) {
+    "source_feature_id"
+  } else if ("Protein.Group" %in% names(raw)) {
+    "Protein.Group"
+  } else NA_character_
+
+  canonical <- build_canonical_protein_group_tables(
+    df_raw = raw,
+    dataset = dataset,
+    source_file = matrix_file,
+    entry_map = mapping_context$entry_map,
+    gene_map = mapping_context$gene_map,
+    accession_gene_map = mapping_context$accession_gene_map,
+    reviewed_map = mapping_context$reviewed_map,
+    manual_mapping = mapping_context$manual_mapping,
+    gene_annotation_maps = mapping_context$gene_annotation_maps,
+    manual_gene_annotation_overrides = mapping_context$manual_gene_annotation_overrides,
+    uniprot_mapping_file_hash = mapping_context$idmap_sha256 %||% NA_character_,
+    strict = strict,
+    identifier_col = identifier_col,
+    feature_col = feature_col
+  )
+
+  canonical_columns <- setdiff(names(canonical$wide), c(sample_columns, ".source_row_id"))
+  feature_table <- canonical$wide[, canonical_columns, drop = FALSE]
+  qc_validate_source_row_preservation(raw, feature_table)
+  feature_table$FeatureDisplayLabel <- wgcna_feature_display_label(feature_table)
+  feature_table$wgcna_eligible <- feature_table$protein_group_ambiguity_class != "mixed_species_or_contaminant"
+  feature_table$wgcna_exclusion_reason <- dplyr::case_when(
+    feature_table$wgcna_eligible ~ NA_character_,
+    nzchar(feature_table$source_provenance_exclusion_reason) ~ feature_table$source_provenance_exclusion_reason,
+    TRUE ~ "mixed_species_or_contaminant_member_evidence"
+  )
+
+  eligible_member <- canonical$bridge |>
+    dplyr::mutate(
+      eligible_official_mouse_member = .data$gene_annotation_status == "resolved" &
+        !is.na(.data$member_gene_symbol) & nzchar(.data$member_gene_symbol) &
+        .data$contaminant_status != "contaminant" &
+        (is.na(.data$member_species) | .data$member_species == "mouse")
+    ) |>
+    dplyr::group_by(.data$ProteinGroupID) |>
+    dplyr::summarise(has_eligible_official_mouse_member = any(.data$eligible_official_mouse_member), .groups = "drop")
+  feature_table <- feature_table |>
+    dplyr::left_join(eligible_member, by = "ProteinGroupID") |>
+    dplyr::mutate(
+      has_eligible_official_mouse_member = dplyr::coalesce(.data$has_eligible_official_mouse_member, FALSE),
+      annotation_source_identifier_eligible = !is.na(.data$original_identifier) & nzchar(trimws(.data$original_identifier)),
+      marker_eligible = .data$wgcna_eligible & .data$annotation_source_identifier_eligible &
+        .data$has_eligible_official_mouse_member,
+      marker_exclusion_reason = dplyr::case_when(
+        .data$marker_eligible ~ NA_character_,
+        !.data$wgcna_eligible ~ .data$wgcna_exclusion_reason,
+        !.data$annotation_source_identifier_eligible ~ "blank_legacy_display_identifier_not_gene_claim_eligible",
+        TRUE ~ "no_eligible_official_mouse_member"
+      ),
+      enrichment_eligible = .data$wgcna_eligible & .data$annotation_source_identifier_eligible &
+        .data$gene_level_claim_allowed,
+      enrichment_exclusion_reason = dplyr::case_when(
+        .data$enrichment_eligible ~ NA_character_,
+        !.data$wgcna_eligible ~ .data$wgcna_exclusion_reason,
+        !.data$annotation_source_identifier_eligible ~ "blank_legacy_display_identifier_not_gene_claim_eligible",
+        TRUE ~ "gene_level_claim_not_allowed"
+      )
+    )
+
+  mat <- as.matrix(data.frame(lapply(raw[sample_columns], function(x) {
+    suppressWarnings(as.numeric(as.character(x)))
+  }), check.names = FALSE))
+  rownames(mat) <- feature_table$ProteinGroupID
+  colnames(mat) <- sample_columns
+  aligned <- qc_align_sample_metadata(mat, metadata_file, dataset)
+  mat <- aligned$mat
+  meta <- aligned$meta
+  qc_validate_canonical_expression(mat, feature_table)
+
+  contract_version <- wgcna_feature_key_contract_version()
+  feature_fingerprint <- wgcna_feature_key_fingerprint(feature_table$ProteinGroupID)
+  wgcna_fingerprint <- wgcna_feature_key_fingerprint(feature_table$ProteinGroupID[feature_table$wgcna_eligible])
+  source_path <- normalizePath(matrix_file, winslash = "/", mustWork = TRUE)
+  source_sha256 <- file_hash_sha256(source_path)
+  input_manifest <- data.frame(
+    input_role = c("post_filter_imputed_quantitative_matrix", "sample_metadata", "mouse_uniprot_idmapping", "manual_protein_mapping", "manual_gene_annotation"),
+    resolved_path = c(
+      source_path,
+      normalizePath(metadata_file, winslash = "/", mustWork = FALSE),
+      mapping_context$idmap_file %||% NA_character_,
+      mapping_context$manual_mapping_file %||% NA_character_,
+      mapping_context$manual_gene_annotation_file %||% NA_character_
+    ),
+    sha256 = vapply(c(
+      source_path, metadata_file,
+      mapping_context$idmap_file %||% NA_character_,
+      mapping_context$manual_mapping_file %||% NA_character_,
+      mapping_context$manual_gene_annotation_file %||% NA_character_
+    ), file_hash_sha256, character(1)),
+    exists = file.exists(c(
+      source_path, metadata_file,
+      mapping_context$idmap_file %||% NA_character_,
+      mapping_context$manual_mapping_file %||% NA_character_,
+      mapping_context$manual_gene_annotation_file %||% NA_character_
+    )),
+    stringsAsFactors = FALSE
+  )
+  exclusion_audit <- dplyr::bind_rows(
+    feature_table |> dplyr::transmute(ProteinGroupID, source_row_id, eligibility_layer = "wgcna", included = wgcna_eligible, exclusion_reason = wgcna_exclusion_reason),
+    feature_table |> dplyr::transmute(ProteinGroupID, source_row_id, eligibility_layer = "marker", included = marker_eligible, exclusion_reason = marker_exclusion_reason),
+    feature_table |> dplyr::transmute(ProteinGroupID, source_row_id, eligibility_layer = "enrichment", included = enrichment_eligible, exclusion_reason = enrichment_exclusion_reason)
+  )
+  source_row_provenance <- feature_table |>
+    dplyr::select(dplyr::all_of(c(
+      "ProteinGroupID", "source_file", "source_feature_id", "source_row_id",
+      "original_identifier", "member_identifier_source", "member_identifiers_original",
+      "source_provenance_columns", "source_provenance_values",
+      "contaminant_source_evidence", "non_mouse_source_evidence"
+    )))
+
+  list(
+    mat = mat,
+    meta = meta,
+    feature_table = feature_table,
+    member_bridge = canonical$bridge,
+    collision_audit = canonical$collision_audit,
+    exclusion_audit = exclusion_audit,
+    source_path = source_path,
+    source_sha256 = source_sha256,
+    contract_version = contract_version,
+    feature_fingerprint = feature_fingerprint,
+    wgcna_feature_fingerprint = wgcna_fingerprint,
+    source_row_provenance = source_row_provenance,
+    input_manifest = input_manifest,
+    feature_universe_reconciliation = qc_feature_universe_reconciliation(feature_table, dataset),
+    sample_columns = sample_columns
+  )
+}
+
+qc_official_gene_key <- function(x) {
+  x <- toupper(trimws(as.character(x)))
+  x[is.na(x)] <- ""
+  x
+}
+
+qc_match_markers_to_protein_groups <- function(marker_registry, member_bridge, feature_table,
+                                               panel_col = "marker_panel", gene_col = "marker_gene",
+                                               class_col = NULL) {
+  required_marker <- c(panel_col, gene_col)
+  if (length(setdiff(required_marker, names(marker_registry)))) {
+    stop("Marker registry lacks panel/gene columns required for canonical matching.", call. = FALSE)
+  }
+  qc_validate_canonical_expression(
+    matrix(nrow = nrow(feature_table), ncol = 0L, dimnames = list(feature_table$ProteinGroupID, NULL)),
+    feature_table
+  )
+  registry <- marker_registry |>
+    dplyr::mutate(
+      marker_panel = as.character(.data[[panel_col]]),
+      requested_marker = as.character(.data[[gene_col]]),
+      marker_gene_key = qc_official_gene_key(.data[[gene_col]])
+    ) |>
+    dplyr::filter(nzchar(.data$marker_panel), nzchar(.data$marker_gene_key)) |>
+    dplyr::distinct(.data$marker_panel, .data$marker_gene_key, .keep_all = TRUE)
+  eligible_ids <- feature_table$ProteinGroupID[feature_table$marker_eligible %in% TRUE]
+  members <- member_bridge |>
+    dplyr::filter(
+      .data$ProteinGroupID %in% eligible_ids,
+      .data$gene_annotation_status == "resolved",
+      !is.na(.data$member_gene_symbol), nzchar(.data$member_gene_symbol),
+      .data$contaminant_status != "contaminant",
+      is.na(.data$member_species) | .data$member_species == "mouse"
+    ) |>
+    dplyr::mutate(marker_gene_key = qc_official_gene_key(.data$member_gene_symbol))
+  expanded <- registry |>
+    dplyr::inner_join(members, by = "marker_gene_key", relationship = "many-to-many") |>
+    dplyr::distinct(.data$marker_panel, .data$ProteinGroupID, .data$marker_gene_key,
+                    .data$member_identifier_original, .data$member_accession, .keep_all = TRUE)
+
+  collapse_values <- function(x) paste(sort(unique(as.character(x[!is.na(x) & nzchar(as.character(x))]))), collapse = ";")
+  matches <- expanded |>
+    dplyr::group_by(.data$marker_panel, .data$ProteinGroupID) |>
+    dplyr::summarise(
+      requested_markers = collapse_values(.data$requested_marker),
+      matched_official_genes = collapse_values(.data$member_gene_symbol),
+      matched_member_accessions = collapse_values(.data$member_accession),
+      matched_member_identifiers = collapse_values(.data$member_identifier_original),
+      n_matched_official_genes = dplyr::n_distinct(.data$member_gene_symbol),
+      n_matched_members = dplyr::n_distinct(.data$member_identifier_original),
+      marker_classes = if (!is.null(class_col) && class_col %in% names(expanded)) collapse_values(.data[[class_col]]) else "",
+      .groups = "drop"
+    )
+  conflicts <- matches |>
+    dplyr::group_by(.data$ProteinGroupID) |>
+    dplyr::summarise(
+      n_marker_panels = dplyr::n_distinct(.data$marker_panel),
+      matched_marker_panels = collapse_values(.data$marker_panel),
+      n_marker_classes = length(unique(unlist(strsplit(.data$marker_classes[nzchar(.data$marker_classes)], ";", fixed = TRUE)))),
+      .groups = "drop"
+    ) |>
+    dplyr::mutate(
+      conflicting_marker_panels = .data$n_marker_panels > 1L,
+      conflicting_marker_classes = .data$n_marker_classes > 1L
+    )
+  matches <- matches |>
+    dplyr::left_join(conflicts, by = "ProteinGroupID") |>
+    dplyr::mutate(primary_score_eligible = !.data$conflicting_marker_classes)
+  unmatched <- registry |>
+    dplyr::anti_join(expanded |> dplyr::distinct(.data$marker_panel, .data$marker_gene_key),
+                     by = c("marker_panel", "marker_gene_key"))
+  list(matches = matches, expanded = expanded, conflicts = conflicts, unmatched = unmatched)
+}
+
+qc_validate_optional_wgcna_bridge <- function(state_file, canonical, strict = FALSE) {
+  result <- data.frame(
+    bridge_path = as.character(state_file),
+    validation_status = "not_available",
+    contract_version = canonical$contract_version,
+    expected_feature_fingerprint = canonical$wgcna_feature_fingerprint,
+    observed_feature_fingerprint = NA_character_,
+    reason = "WGCNA state not found",
+    stringsAsFactors = FALSE
+  )
+  if (is.na(state_file) || !file.exists(state_file)) return(result)
+  state <- tryCatch(readRDS(state_file), error = function(e) e)
+  if (inherits(state, "error")) {
+    result$validation_status <- "rejected"
+    result$reason <- conditionMessage(state)
+  } else {
+    error <- tryCatch({
+      validate_wgcna_cached_state(
+        state,
+        expected_feature_ids = canonical$feature_table$ProteinGroupID[canonical$feature_table$wgcna_eligible]
+      )
+      NULL
+    }, error = function(e) e)
+    if (is.null(error)) {
+      result$validation_status <- "validated"
+      result$observed_feature_fingerprint <- state$feature_key_fingerprint
+      result$reason <- NA_character_
+    } else {
+      result$validation_status <- "rejected"
+      result$reason <- conditionMessage(error)
+    }
+  }
+  if (isTRUE(strict) && result$validation_status != "validated") stop(result$reason, call. = FALSE)
+  result
+}
+
+qc_add_input_manifest_paths <- function(canonical, paths) {
+  if (!length(paths)) return(canonical)
+  roles <- names(paths)
+  if (is.null(roles) || any(!nzchar(roles))) stop("Additional canonical QC inputs require named roles.", call. = FALSE)
+  paths <- as.character(paths)
+  extra <- data.frame(
+    input_role = roles,
+    resolved_path = vapply(paths, normalizePath, character(1), winslash = "/", mustWork = FALSE),
+    sha256 = vapply(paths, file_hash_sha256, character(1)),
+    exists = file.exists(paths),
+    stringsAsFactors = FALSE
+  )
+  canonical$input_manifest <- dplyr::bind_rows(canonical$input_manifest, extra) |>
+    dplyr::distinct(.data$input_role, .data$resolved_path, .keep_all = TRUE)
+  canonical
+}
+
+qc_write_canonical_feature_artifacts <- function(canonical, table_dir, marker_matches = NULL,
+                                                 wgcna_validation = NULL) {
+  qc_write_csv(canonical$feature_universe_reconciliation, file.path(table_dir, "feature_universe_reconciliation.csv"))
+  qc_write_csv(canonical$feature_table, file.path(table_dir, "canonical_feature_table.csv"))
+  qc_write_csv(canonical$member_bridge, file.path(table_dir, "protein_group_member_bridge.csv"))
+  qc_write_csv(canonical$source_row_provenance, file.path(table_dir, "source_row_provenance.csv"))
+  qc_write_csv(canonical$exclusion_audit, file.path(table_dir, "protein_group_exclusion_audit.csv"))
+  qc_write_csv(
+    canonical$feature_table |> dplyr::filter(.data$n_members_canonical > 1L),
+    file.path(table_dir, "multi_member_group_audit.csv")
+  )
+  qc_write_csv(canonical$input_manifest, file.path(table_dir, "input_path_hash_manifest.csv"))
+  qc_write_csv(data.frame(
+    contract_version = canonical$contract_version,
+    ordered_quantitative_feature_fingerprint = canonical$feature_fingerprint,
+    ordered_wgcna_eligible_feature_fingerprint = canonical$wgcna_feature_fingerprint,
+    n_quantitative_features = nrow(canonical$feature_table),
+    n_wgcna_eligible_features = sum(canonical$feature_table$wgcna_eligible),
+    stringsAsFactors = FALSE
+  ), file.path(table_dir, "feature_contract.csv"))
+  if (!is.null(marker_matches)) {
+    qc_write_csv(marker_matches$matches, file.path(table_dir, "marker_to_ProteinGroupID_provenance.csv"))
+    qc_write_csv(
+      marker_matches$expanded,
+      file.path(table_dir, "marker_to_ProteinGroupID_member_provenance.csv")
+    )
+    qc_write_csv(
+      marker_matches$conflicts |>
+        dplyr::filter(.data$conflicting_marker_panels) |>
+        dplyr::left_join(
+          canonical$feature_table |>
+            dplyr::select(
+              .data$ProteinGroupID,
+              .data$source_feature_id,
+              .data$member_accessions,
+              .data$official_gene_symbols
+            ),
+          by = "ProteinGroupID"
+        ),
+      file.path(table_dir, "conflicting_marker_panel_audit.csv")
+    )
+  }
+  if (!is.null(wgcna_validation)) {
+    qc_write_csv(wgcna_validation, file.path(table_dir, "wgcna_feature_contract_validation.csv"))
+  }
+  invisible(table_dir)
 }
 
 qc_write_csv <- function(x, path) {
