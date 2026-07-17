@@ -63,7 +63,7 @@ wgcna_candidate_rows <- function(df, level, id_col, source_columns, dataset = NU
       candidate_label = label,
       candidate_source = source,
       evidence_strength = as.numeric(spec$strength),
-      hub_support = as.numeric(!is.na(hub_text) & nzchar(hub_text)),
+      hub_support = if (identical(level, "supermodule")) 0 else as.numeric(!is.na(hub_text) & nzchar(hub_text)),
       marker_context_support = as.numeric(!is.na(marker_text) & nzchar(marker_text)),
       genericity_penalty = as.numeric(is.na(label) | grepl("^(mixed|unresolved|unknown|unlabelled)|low-specificity|^SM[0-9]+$|^WGCNA_", label, ignore.case = TRUE)),
       ontology_mismatch_flag = mismatch,
@@ -104,7 +104,8 @@ wgcna_score_label_candidates <- function(candidates) {
   if (is.null(candidates) || !nrow(candidates)) return(candidates)
   candidates |>
     dplyr::mutate(
-      final_label_score = .data$evidence_strength + 0.75 * .data$hub_support +
+      hub_score_contribution = dplyr::if_else(.data$level == "supermodule", 0, 0.75 * .data$hub_support),
+      final_label_score = .data$evidence_strength + .data$hub_score_contribution +
         0.35 * .data$marker_context_support - 1.5 * .data$genericity_penalty -
         1.25 * as.numeric(.data$ontology_mismatch_flag) - 0.75 * .data$conflict_penalty
     )
@@ -232,6 +233,7 @@ wgcna_build_final_label_lookup <- function(selected_candidates, module_rows, sup
       ),
       unsafe_interpretation = wgcna_label_clean(wgcna_label_col(supermodule_rows, "unsafe_interpretation")),
       independent_go = !is.na(wgcna_label_clean(wgcna_label_col(supermodule_rows, "raw_top_GO_label"))),
+      authoritative_supermodule_label = wgcna_label_clean(wgcna_label_col(supermodule_rows, "Supermodule_DisplayLabel")),
       dominant_label = wgcna_label_clean(wgcna_label_col(supermodule_rows, "DominantMemberTheme")),
       dominant_fraction = suppressWarnings(as.numeric(wgcna_label_col(supermodule_rows, "DominantMemberThemeFraction", NA_real_))),
       member_fractions = wgcna_label_clean(wgcna_label_col(supermodule_rows, "MemberThemeFractions"))
@@ -245,12 +247,17 @@ wgcna_build_final_label_lookup <- function(selected_candidates, module_rows, sup
       best_data_driven_label = dplyr::coalesce(.data$best_data_driven_label, "mixed / unresolved"),
       final_plot_label = dplyr::if_else(
         .data$level == "supermodule",
-        mapply(wgcna_supermodule_plot_label, .data$entity_id, .data$n_member_modules,
-               dplyr::coalesce(.data$dominant_label, .data$best_data_driven_label),
-               .data$dominant_fraction, .data$member_fractions, USE.NAMES = FALSE),
+        dplyr::coalesce(
+          .data$authoritative_supermodule_label,
+          mapply(wgcna_supermodule_plot_label, .data$entity_id, .data$n_member_modules,
+                 dplyr::coalesce(.data$dominant_label, .data$best_data_driven_label),
+                 .data$dominant_fraction, .data$member_fractions, USE.NAMES = FALSE)
+        ),
         paste0(.data$entity_id, " · ", .data$best_data_driven_label)
       ),
       label_confidence = dplyr::case_when(
+        .data$level == "supermodule" & .data$n_member_modules <= 1L ~ "low",
+        .data$level == "supermodule" ~ dplyr::coalesce(.data$annotation_confidence, "low"),
         .data$ontology_mismatch_flag & !(.data$hub_support > 0 | .data$independent_go) ~ "low",
         .data$label_score >= 5.5 ~ "high",
         .data$label_score >= 3.5 ~ "moderate",
