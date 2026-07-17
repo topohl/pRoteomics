@@ -2,7 +2,7 @@
 # Script: 03_qc_exploration/04c_marker_detectability_and_wgcna_bridge.r
 # Stage: qc
 # Scope: dataset_specific
-# Consumes: required data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv; optional config/marker_panels/wgcna_reference_marker_sets.csv; results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv; +1 more.
+# Consumes: required Stage 01 post-filter/imputed quantitative matrix, mouse UniProt mapping, sample metadata and marker registry; optional validated current WGCNA state/module bridge.
 # Produces: results/tables/03_qc_exploration/04c_marker_detectability_and_wgcna_bridge/<dataset>/.
 # Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: QC bridge into WGCNA marker interpretation; optional WGCNA state is used when present.
@@ -56,7 +56,7 @@ if (!file.exists(matrix_file)) {
        ". Set PROTEOMICS_MARKER_DETECTABILITY_MATRIX_FILE or PROTEOMICS_QC_MATRIX_FILE.", call. = FALSE)
 }
 
-expr <- qc_read_expression(matrix_file, metadata_file, DATASET)
+expr <- qc_load_canonical_expression(matrix_file, metadata_file, DATASET)
 mat <- expr$mat
 meta <- expr$meta
 
@@ -248,9 +248,14 @@ read_marker_registry <- function(path) {
 
 marker_lookup <- read_marker_registry(marker_file)
 marker_sets <- split(marker_lookup$requested_marker, marker_lookup$marker_panel)
-protein_ids <- rownames(mat)
-protein_key <- gene_norm(protein_ids)
-universe <- unique(protein_key[!is.na(protein_key) & nzchar(protein_key)])
+expr <- qc_add_input_manifest_paths(expr, c(marker_registry = marker_file))
+marker_matches <- qc_match_markers_to_protein_groups(
+  marker_lookup, expr$member_bridge, expr$feature_table,
+  panel_col = "marker_panel", gene_col = "requested_marker",
+  class_col = "fidelity_marker_class"
+)
+protein_ids <- expr$feature_table$ProteinGroupID
+universe <- expr$feature_table$ProteinGroupID[expr$feature_table$wgcna_eligible]
 
 panel_metadata <- marker_lookup |>
   dplyr::group_by(marker_panel) |>
@@ -277,8 +282,8 @@ panel_metadata <- marker_lookup |>
 # -----------------------------------------------------------------------------
 
 long <- as.data.frame(mat, check.names = FALSE) |>
-  tibble::rownames_to_column("Protein") |>
-  tidyr::pivot_longer(-Protein, names_to = "Sample", values_to = "Log2Intensity") |>
+  tibble::rownames_to_column("ProteinGroupID") |>
+  tidyr::pivot_longer(-ProteinGroupID, names_to = "Sample", values_to = "Log2Intensity") |>
   dplyr::left_join(meta, by = "Sample")
 
 rank_group_cols <- intersect(c("Region", "region", "Layer", "layer", "Group", "group", "ExpGroup", "Sex", "sex", "plate", "batch"), names(meta))
@@ -287,38 +292,51 @@ if (!length(rank_group_cols)) rank_group_cols <- "Sample"
 rank_data <- long |>
   dplyr::mutate(RankGroup = do.call(paste, c(dplyr::across(dplyr::all_of(rank_group_cols)), sep = " | "))) |>
   dplyr::filter(!is.na(Log2Intensity), !is.na(RankGroup), nzchar(RankGroup)) |>
-  dplyr::group_by(RankGroup, Protein) |>
+  dplyr::group_by(RankGroup, ProteinGroupID) |>
   dplyr::summarise(MeanLog2 = mean(Log2Intensity, na.rm = TRUE), .groups = "drop") |>
   dplyr::group_by(RankGroup) |>
   dplyr::arrange(dplyr::desc(MeanLog2), .by_group = TRUE) |>
   dplyr::mutate(Rank = dplyr::row_number()) |>
-  dplyr::ungroup() |>
-  dplyr::mutate(protein_key = gene_norm(Protein))
+  dplyr::ungroup()
 
-protein_stats <- data.frame(Protein = protein_ids, protein_key = protein_key, stringsAsFactors = FALSE) |>
+protein_stats <- data.frame(ProteinGroupID = protein_ids, stringsAsFactors = FALSE) |>
   dplyr::rowwise() |>
   dplyr::mutate(
     n_samples = ncol(mat),
-    n_nonmissing = sum(is.finite(mat[Protein, ])),
+    n_nonmissing = sum(is.finite(mat[ProteinGroupID, ])),
     fraction_nonmissing = n_nonmissing / n_samples,
-    mean_log2_abundance = ifelse(n_nonmissing > 0, mean(mat[Protein, ], na.rm = TRUE), NA_real_),
-    median_log2_abundance = ifelse(n_nonmissing > 0, median(mat[Protein, ], na.rm = TRUE), NA_real_),
-    sd_log2_abundance = ifelse(n_nonmissing > 1, stats::sd(mat[Protein, ], na.rm = TRUE), NA_real_),
+    mean_log2_abundance = ifelse(n_nonmissing > 0, mean(mat[ProteinGroupID, ], na.rm = TRUE), NA_real_),
+    median_log2_abundance = ifelse(n_nonmissing > 0, median(mat[ProteinGroupID, ], na.rm = TRUE), NA_real_),
+    sd_log2_abundance = ifelse(n_nonmissing > 1, stats::sd(mat[ProteinGroupID, ], na.rm = TRUE), NA_real_),
     cv_like = ifelse(is.finite(sd_log2_abundance) && is.finite(mean_log2_abundance) && abs(mean_log2_abundance) > .Machine$double.eps,
                      sd_log2_abundance / abs(mean_log2_abundance), NA_real_)
   ) |>
   dplyr::ungroup()
 
 rank_stats <- rank_data |>
-  dplyr::group_by(protein_key) |>
+  dplyr::group_by(ProteinGroupID) |>
   dplyr::summarise(mean_rank = mean(Rank, na.rm = TRUE), median_rank = median(Rank, na.rm = TRUE), .groups = "drop")
 
 # -----------------------------------------------------------------------------
 # Marker-panel detectability
 # -----------------------------------------------------------------------------
 
-marker_detectability_by_protein <- marker_lookup |>
-  dplyr::left_join(protein_stats, by = c("marker_key" = "protein_key")) |>
+marker_match_rows <- marker_lookup |>
+  dplyr::mutate(marker_gene_key = qc_official_gene_key(.data$requested_marker)) |>
+  dplyr::left_join(
+    marker_matches$expanded |>
+      dplyr::select("marker_panel", "marker_gene_key", "ProteinGroupID", "member_gene_symbol", "member_accession", "member_identifier_original") |>
+      dplyr::distinct(),
+    by = c("marker_panel", "marker_gene_key"), relationship = "many-to-many"
+  ) |>
+  dplyr::left_join(protein_stats, by = "ProteinGroupID") |>
+  dplyr::left_join(rank_stats, by = "ProteinGroupID") |>
+  dplyr::left_join(
+    marker_matches$conflicts |> dplyr::select("ProteinGroupID", "conflicting_marker_panels", "conflicting_marker_classes"),
+    by = "ProteinGroupID"
+  )
+
+marker_detectability_by_protein <- marker_match_rows |>
   dplyr::group_by(
     dataset = DATASET,
     marker_panel,
@@ -340,9 +358,14 @@ marker_detectability_by_protein <- marker_lookup |>
     marker_key
   ) |>
   dplyr::summarise(
-    matched_protein_id = collapse_unique(Protein),
-    detected = any(!is.na(Protein)),
-    n_matched_protein_ids = sum(!is.na(Protein)),
+    matched_protein_id = collapse_unique(ProteinGroupID),
+    matched_official_genes = collapse_unique(member_gene_symbol),
+    matched_member_accessions = collapse_unique(member_accession),
+    matched_member_identifiers = collapse_unique(member_identifier_original),
+    detected = any(!is.na(ProteinGroupID)),
+    n_matched_protein_ids = dplyr::n_distinct(ProteinGroupID[!is.na(ProteinGroupID)]),
+    conflicting_marker_panels = any(conflicting_marker_panels, na.rm = TRUE),
+    conflicting_marker_classes = any(conflicting_marker_classes, na.rm = TRUE),
     n_samples = dplyr::first(n_samples[!is.na(n_samples)]) %||% ncol(mat),
     n_nonmissing = ifelse(all(is.na(n_nonmissing)), 0L, sum(n_nonmissing, na.rm = TRUE)),
     fraction_nonmissing = ifelse(n_matched_protein_ids > 0, max(fraction_nonmissing, na.rm = TRUE), 0),
@@ -350,9 +373,10 @@ marker_detectability_by_protein <- marker_lookup |>
     median_log2_abundance = ifelse(n_matched_protein_ids > 0, median(median_log2_abundance, na.rm = TRUE), NA_real_),
     sd_log2_abundance = ifelse(n_matched_protein_ids > 0, mean(sd_log2_abundance, na.rm = TRUE), NA_real_),
     cv_like = ifelse(n_matched_protein_ids > 0, mean(cv_like, na.rm = TRUE), NA_real_),
+    mean_rank = ifelse(n_matched_protein_ids > 0, mean(mean_rank, na.rm = TRUE), NA_real_),
+    median_rank = ifelse(n_matched_protein_ids > 0, median(median_rank, na.rm = TRUE), NA_real_),
     .groups = "drop"
   ) |>
-  dplyr::left_join(rank_stats, by = c("marker_key" = "protein_key")) |>
   dplyr::mutate(
     matched_protein_id = ifelse(nzchar(matched_protein_id), matched_protein_id, NA_character_),
     fraction_nonmissing = ifelse(is.finite(fraction_nonmissing), fraction_nonmissing, 0),
@@ -365,7 +389,8 @@ marker_detectability_by_protein <- marker_lookup |>
 sample_scores <- lapply(names(marker_sets), function(panel) {
   panel_meta <- panel_metadata[panel_metadata$marker_panel == panel, , drop = FALSE]
   genes <- gene_norm(marker_sets[[panel]])
-  idx <- which(protein_key %in% genes)
+  ids <- marker_matches$matches$ProteinGroupID[marker_matches$matches$marker_panel == panel]
+  idx <- which(expr$feature_table$ProteinGroupID %in% ids)
   if (!length(idx)) {
     out <- data.frame(
       dataset = DATASET,
@@ -382,8 +407,8 @@ sample_scores <- lapply(names(marker_sets), function(panel) {
       Sample = colnames(mat),
       marker_panel = panel,
       marker_score = colMeans(mat[idx, , drop = FALSE], na.rm = TRUE),
-      n_detected_markers = length(unique(protein_key[idx])),
-      fraction_detected_markers = length(unique(protein_key[idx])) / length(unique(genes)),
+      n_detected_markers = length(unique(ids)),
+      fraction_detected_markers = dplyr::n_distinct(marker_matches$expanded$marker_gene_key[marker_matches$expanded$marker_panel == panel]) / length(unique(genes)),
       stringsAsFactors = FALSE
     )
   }
@@ -437,7 +462,9 @@ compartment_keys <- marker_lookup |>
 sample_compartment_scores <- lapply(seq_len(nrow(compartment_keys)), function(i) {
   comp <- compartment_keys$marker_compartment[[i]]
   genes <- unique(compartment_keys$requested_keys[[i]])
-  idx <- which(protein_key %in% genes)
+  panels <- marker_lookup$marker_panel[marker_lookup$marker_compartment == comp]
+  ids <- unique(marker_matches$matches$ProteinGroupID[marker_matches$matches$marker_panel %in% panels])
+  idx <- which(expr$feature_table$ProteinGroupID %in% ids)
   if (!length(idx)) {
     data.frame(
       dataset = DATASET,
@@ -454,8 +481,8 @@ sample_compartment_scores <- lapply(seq_len(nrow(compartment_keys)), function(i)
       Sample = colnames(mat),
       marker_compartment = comp,
       marker_compartment_score = colMeans(mat[idx, , drop = FALSE], na.rm = TRUE),
-      n_detected_markers = length(unique(protein_key[idx])),
-      fraction_detected_markers = length(unique(protein_key[idx])) / length(unique(genes)),
+      n_detected_markers = length(ids),
+      fraction_detected_markers = dplyr::n_distinct(marker_matches$expanded$marker_gene_key[marker_matches$expanded$marker_panel %in% panels]) / length(unique(genes)),
       stringsAsFactors = FALSE
     )
   }
@@ -513,7 +540,11 @@ if (nrow(fidelity_lookup)) {
   fidelity_sample_scores <- lapply(seq_len(nrow(fidelity_keys)), function(i) {
     cls <- as.character(fidelity_keys$fidelity_marker_class[[i]])
     genes <- unique(fidelity_keys$requested_keys[[i]])
-    idx <- which(protein_key %in% genes)
+    panels <- fidelity_lookup$marker_panel[as.character(fidelity_lookup$fidelity_marker_class) == cls]
+    ids <- unique(marker_matches$matches$ProteinGroupID[
+      marker_matches$matches$marker_panel %in% panels & marker_matches$matches$primary_score_eligible
+    ])
+    idx <- which(expr$feature_table$ProteinGroupID %in% ids)
 
     if (!length(idx)) {
       data.frame(
@@ -531,8 +562,10 @@ if (nrow(fidelity_lookup)) {
         Sample = colnames(mat),
         fidelity_marker_class = cls,
         fidelity_marker_score = colMeans(mat[idx, , drop = FALSE], na.rm = TRUE),
-        n_detected_markers = length(unique(protein_key[idx])),
-        fraction_detected_markers = length(unique(protein_key[idx])) / length(unique(genes)),
+        n_detected_markers = length(ids),
+        fraction_detected_markers = dplyr::n_distinct(marker_matches$expanded$marker_gene_key[
+          marker_matches$expanded$marker_panel %in% panels & marker_matches$expanded$ProteinGroupID %in% ids
+        ]) / length(unique(genes)),
         stringsAsFactors = FALSE
       )
     }
@@ -607,7 +640,8 @@ fidelity_marker_proteins_used <- marker_detectability_by_protein |>
   dplyr::filter(!is.na(fidelity_marker_class), nzchar(as.character(fidelity_marker_class))) |>
   dplyr::mutate(
     fidelity_marker_class = factor(fidelity_marker_class, levels = fidelity_marker_class_order, ordered = TRUE),
-    used_in_fidelity_score = detected & !is.na(matched_protein_id) & nzchar(as.character(matched_protein_id))
+    used_in_fidelity_score = detected & !conflicting_marker_classes &
+      !is.na(matched_protein_id) & nzchar(as.character(matched_protein_id))
   ) |>
   dplyr::transmute(
     dataset,
@@ -629,6 +663,8 @@ fidelity_marker_proteins_used <- marker_detectability_by_protein |>
     requested_marker,
     marker_key,
     matched_protein_id,
+    conflicting_marker_panels,
+    conflicting_marker_classes,
     used_in_fidelity_score,
     n_matched_protein_ids,
     n_samples,
@@ -950,13 +986,19 @@ read_wgcna_modules <- function(path) {
   if (is.na(path) || !file.exists(path)) return(NULL)
   df <- tryCatch(qc_read_table(path), error = function(e) NULL)
   if (is.null(df) || !nrow(df)) return(NULL)
-  protein_col <- qc_first_col(df, c("Protein", "protein", "ProteinID", "protein_id", "gene", "gene_symbol", "Gene", "feature", "Feature", "id"))
-  module_col <- qc_first_col(df, c("module", "Module", "module_label", "module_color", "color", "WGCNA_module"))
+  protein_col <- qc_first_col(df, c("ProteinGroupID"))
+  module_col <- qc_first_col(df, c("ModuleID", "module", "Module", "module_label", "module_color", "color", "WGCNA_module"))
   if (is.na(protein_col) || is.na(module_col)) return(NULL)
   df |>
-    dplyr::transmute(module = as.character(.data[[module_col]]), Protein = as.character(.data[[protein_col]]), protein_key = gene_norm(.data[[protein_col]])) |>
-    dplyr::filter(!is.na(module), nzchar(module), !is.na(protein_key), nzchar(protein_key)) |>
-    dplyr::distinct(module, Protein, protein_key)
+    dplyr::transmute(module = as.character(.data[[module_col]]), ProteinGroupID = as.character(.data[[protein_col]])) |>
+    dplyr::filter(!is.na(module), nzchar(module), !is.na(ProteinGroupID), nzchar(ProteinGroupID)) |>
+    dplyr::distinct(module, ProteinGroupID)
+}
+
+find_wgcna_state <- function(dataset) {
+  override <- Sys.getenv("PROTEOMICS_WGCNA_STATE_FILE", unset = "")
+  if (nzchar(override)) return(override)
+  path_processed("06_modules_WGCNA", "01_WGCNA", dataset, "wgcna_final_model_state.rds")
 }
 
 run_enrichment <- function(feature_keys, feature_col, modules, universe, dataset) {
@@ -997,13 +1039,19 @@ run_enrichment <- function(feature_keys, feature_col, modules, universe, dataset
 
 module_file <- find_wgcna_modules(DATASET)
 module_df <- read_wgcna_modules(module_file)
+wgcna_state_file <- find_wgcna_state(DATASET)
+expr <- qc_add_input_manifest_paths(expr, c(wgcna_state_optional = wgcna_state_file, wgcna_modules_optional = module_file))
+wgcna_validation <- qc_validate_optional_wgcna_bridge(wgcna_state_file, expr)
+qc_write_canonical_feature_artifacts(expr, PATHS$tables, marker_matches, wgcna_validation)
+qc_write_csv(wgcna_validation, file.path(PATHS$tables, "wgcna_feature_contract_validation.csv"))
+if (!identical(wgcna_validation$validation_status[[1]], "validated")) module_df <- NULL
 if (!is.null(module_df) && nrow(module_df)) {
-  modules <- split(module_df$protein_key, module_df$module)
+  modules <- split(module_df$ProteinGroupID, module_df$module)
 
-  marker_panel_keys <- marker_lookup |>
-    dplyr::filter(marker_key %in% universe) |>
+  marker_panel_keys <- marker_matches$matches |>
+    dplyr::filter(.data$ProteinGroupID %in% universe) |>
     dplyr::group_by(marker_panel) |>
-    dplyr::summarise(keys = list(unique(marker_key)), .groups = "drop")
+    dplyr::summarise(keys = list(unique(ProteinGroupID)), .groups = "drop")
 
   enrich <- run_enrichment(marker_panel_keys, "marker_panel", modules, universe, DATASET) |>
     dplyr::rename(marker_panel = feature, panel_size_detected = feature_size_detected) |>
@@ -1021,10 +1069,11 @@ if (!is.null(module_df) && nrow(module_df)) {
   ggsave(file.path(PATHS$figures, "wgcna_module_marker_panel_enrichment_heatmap.svg"), p_wgcna,
          width = 170, height = max(90, min(240, 4 * length(unique(heat_wgcna$module)))), units = "mm", device = svglite::svglite)
 
-  marker_compartment_keys <- marker_lookup |>
-    dplyr::filter(marker_key %in% universe, !is.na(marker_compartment), nzchar(marker_compartment)) |>
+  marker_compartment_keys <- marker_matches$matches |>
+    dplyr::left_join(panel_metadata |> dplyr::select("marker_panel", "marker_compartment"), by = "marker_panel") |>
+    dplyr::filter(.data$ProteinGroupID %in% universe, !is.na(marker_compartment), nzchar(marker_compartment)) |>
     dplyr::group_by(marker_compartment) |>
-    dplyr::summarise(keys = list(unique(marker_key)), .groups = "drop")
+    dplyr::summarise(keys = list(unique(ProteinGroupID)), .groups = "drop")
 
   enrich_comp <- run_enrichment(marker_compartment_keys, "marker_compartment", modules, universe, DATASET) |>
     dplyr::rename(marker_compartment = feature, compartment_size_detected = feature_size_detected)
@@ -1041,11 +1090,13 @@ if (!is.null(module_df) && nrow(module_df)) {
   ggsave(file.path(PATHS$figures, "wgcna_module_marker_compartment_enrichment_heatmap.svg"), p_wgcna_comp,
          width = 150, height = max(90, min(240, 4 * length(unique(heat_wgcna_comp$module)))), units = "mm", device = svglite::svglite)
 
-  fidelity_marker_keys <- marker_lookup |>
-    dplyr::filter(marker_key %in% universe, !is.na(fidelity_marker_class), nzchar(fidelity_marker_class)) |>
+  fidelity_marker_keys <- marker_matches$matches |>
+    dplyr::left_join(panel_metadata |> dplyr::select("marker_panel", "fidelity_marker_class"), by = "marker_panel") |>
+    dplyr::filter(.data$ProteinGroupID %in% universe, .data$primary_score_eligible,
+                  !is.na(fidelity_marker_class), nzchar(fidelity_marker_class)) |>
     dplyr::mutate(fidelity_marker_class = factor(fidelity_marker_class, levels = fidelity_marker_class_order, ordered = TRUE)) |>
     dplyr::group_by(fidelity_marker_class) |>
-    dplyr::summarise(keys = list(unique(marker_key)), .groups = "drop") |>
+    dplyr::summarise(keys = list(unique(ProteinGroupID)), .groups = "drop") |>
     dplyr::arrange(fidelity_marker_class)
 
   if (nrow(fidelity_marker_keys)) {
@@ -1066,7 +1117,7 @@ if (!is.null(module_df) && nrow(module_df)) {
            width = 120, height = max(90, min(240, 4 * length(unique(heat_wgcna_fidelity$module)))), units = "mm", device = svglite::svglite)
   }
 } else {
-  message("No WGCNA module assignment table found for dataset ", DATASET, "; skipping WGCNA marker-panel, marker-compartment, and marker-fidelity enrichment bridge.")
+  message("No current canonical WGCNA bridge validated for dataset ", DATASET, "; skipping module marker enrichment.")
 }
 
 # -----------------------------------------------------------------------------
@@ -1210,7 +1261,9 @@ writeLines(notes, file.path(PATHS$reports, "marker_detectability_interpretation_
 
 write_run_manifest(
   file.path(PATHS$logs, "run_manifest.yml"),
-  inputs = list(matrix = matrix_file, metadata = metadata_file, marker_panels = marker_file, wgcna_modules = module_file),
+  inputs = list(matrix = matrix_file, metadata = metadata_file, marker_panels = marker_file,
+                canonical_input_manifest = file.path(PATHS$tables, "input_path_hash_manifest.csv"),
+                wgcna_modules = module_file, wgcna_state = wgcna_state_file),
   outputs = list(figures = PATHS$figures, tables = PATHS$tables, reports = PATHS$reports),
   parameters = list(
     dataset = DATASET,
