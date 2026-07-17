@@ -2,7 +2,7 @@
 # Script: 03_qc_exploration/04_marker_rank_abundance_qc.r
 # Stage: qc
 # Scope: dataset_specific
-# Consumes: required data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv; optional config/marker_panels/wgcna_reference_marker_sets.csv; results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv.
+# Consumes: required Stage 01 post-filter/imputed quantitative matrix, mouse UniProt mapping, sample metadata; optional manual mappings and marker registry.
 # Produces: results/tables/03_qc_exploration/04_marker_rank_abundance_qc/<dataset>/.
 # Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Marker abundance QC; benefits from qc_global marker registries.
@@ -47,7 +47,7 @@ if (!file.exists(matrix_file)) {
        ". Set PROTEOMICS_RANK_ABUNDANCE_MATRIX_FILE or PROTEOMICS_QC_MATRIX_FILE.", call. = FALSE)
 }
 
-expr <- qc_read_expression(matrix_file, metadata_file, DATASET)
+expr <- qc_load_canonical_expression(matrix_file, metadata_file, DATASET)
 mat <- expr$mat
 meta <- expr$meta
 
@@ -83,13 +83,24 @@ attr(marker_sets, "marker_source_metadata") <- marker_source_metadata
 attr(marker_sets, "marker_registry_version") <- marker_registry_version
 if (!length(marker_sets)) stop("No marker panels available for rank-abundance QC.", call. = FALSE)
 
-gene_norm <- normalize_gene_token
-protein_ids <- rownames(mat)
-protein_key <- gene_norm(sub("_MOUSE$", "", protein_ids, ignore.case = TRUE))
+marker_registry <- dplyr::bind_rows(lapply(names(marker_sets), function(panel) {
+  data.frame(marker_panel = panel, marker_gene = marker_sets[[panel]], stringsAsFactors = FALSE)
+}))
+marker_registry_file <- Sys.getenv(
+  "PROTEOMICS_WGCNA_MARKER_REGISTRY_FILE",
+  unset = repo_path("config", "marker_panels", "wgcna_reference_marker_sets.csv")
+)
+expr <- qc_add_input_manifest_paths(expr, c(marker_registry = marker_registry_file))
+marker_matches <- qc_match_markers_to_protein_groups(
+  marker_registry, expr$member_bridge, expr$feature_table,
+  panel_col = "marker_panel", gene_col = "marker_gene"
+)
+qc_write_canonical_feature_artifacts(expr, PATHS$tables, marker_matches)
 
 sample_scores <- lapply(names(marker_sets), function(panel) {
-  genes <- marker_sets[[panel]]
-  idx <- which(protein_key %in% gene_norm(genes))
+  ids <- marker_matches$matches$ProteinGroupID[marker_matches$matches$marker_panel == panel]
+  idx <- match(ids, expr$feature_table$ProteinGroupID, nomatch = 0L)
+  idx <- unique(idx[idx > 0L])
   if (!length(idx)) {
     return(data.frame(Sample = colnames(mat), marker_panel = panel, n_markers_detected = 0L,
                       marker_score = NA_real_, stringsAsFactors = FALSE))
@@ -110,14 +121,14 @@ if (!length(rank_group_cols)) rank_group_cols <- "Sample"
 rank_group_cols <- unique(c(intersect(c("Region", "region", "Layer", "layer"), rank_group_cols), rank_group_cols[1]))
 
 long <- as.data.frame(mat, check.names = FALSE) |>
-  tibble::rownames_to_column("Protein") |>
-  tidyr::pivot_longer(-Protein, names_to = "Sample", values_to = "Log2Intensity") |>
+  tibble::rownames_to_column("ProteinGroupID") |>
+  tidyr::pivot_longer(-ProteinGroupID, names_to = "Sample", values_to = "Log2Intensity") |>
   dplyr::left_join(meta, by = "Sample")
 
 rank_data <- long |>
   dplyr::mutate(RankGroup = do.call(paste, c(dplyr::across(dplyr::all_of(rank_group_cols)), sep = " | "))) |>
   dplyr::filter(!is.na(Log2Intensity), !is.na(RankGroup), nzchar(RankGroup)) |>
-  dplyr::group_by(RankGroup, Protein) |>
+  dplyr::group_by(RankGroup, ProteinGroupID) |>
   dplyr::summarise(MeanLog2 = mean(Log2Intensity, na.rm = TRUE), .groups = "drop") |>
   dplyr::mutate(LinearValue = 2^MeanLog2) |>
   dplyr::group_by(RankGroup) |>
@@ -125,15 +136,17 @@ rank_data <- long |>
   dplyr::mutate(Rank = dplyr::row_number()) |>
   dplyr::ungroup()
 
-marker_lookup <- dplyr::bind_rows(lapply(names(marker_sets), function(panel) {
-  data.frame(marker_panel = panel, marker = marker_sets[[panel]], marker_key = gene_norm(marker_sets[[panel]]))
-})) |>
-  dplyr::filter(nzchar(.data$marker_key)) |>
-  dplyr::distinct(.data$marker_panel, .data$marker_key, .keep_all = TRUE)
 rank_data <- rank_data |>
-  dplyr::mutate(marker_key = gene_norm(sub("_MOUSE$", "", Protein, ignore.case = TRUE))) |>
-  dplyr::left_join(marker_lookup, by = "marker_key", relationship = "many-to-many") |>
-  dplyr::mutate(marker_panel = ifelse(is.na(marker_panel), "none", marker_panel))
+  dplyr::left_join(
+    expr$feature_table |> dplyr::select("ProteinGroupID", "FeatureDisplayLabel", "original_identifier", "member_accessions", "member_gene_symbols"),
+    by = "ProteinGroupID"
+  ) |>
+  dplyr::left_join(
+    marker_matches$matches |> dplyr::select("ProteinGroupID", "marker_panel", "matched_official_genes", "matched_member_accessions", "conflicting_marker_panels"),
+    by = "ProteinGroupID",
+    relationship = "many-to-many"
+  ) |>
+  dplyr::mutate(marker_panel = ifelse(is.na(.data$marker_panel), "none", .data$marker_panel))
 
 qc_write_csv(rank_data, file.path(PATHS$tables, "rank_abundance_table.csv"))
 qc_write_csv(sample_scores, file.path(PATHS$tables, "marker_scores_by_sample.csv"))
@@ -153,7 +166,7 @@ p_rank <- ggplot(plot_data, aes(Rank, LinearValue)) +
   geom_point(data = label_data, aes(color = marker_panel), size = 1.2) +
   ggrepel::geom_label_repel(
     data = label_data,
-    aes(label = Protein, fill = marker_panel),
+    aes(label = FeatureDisplayLabel, fill = marker_panel),
     color = "white", size = 2, label.size = 0, max.overlaps = 100
   ) +
   scale_y_log10(labels = scales::label_number()) +
@@ -193,7 +206,8 @@ write_run_manifest(
   inputs = list(
     matrix = matrix_file,
     metadata = metadata_file,
-    marker_registry = Sys.getenv("PROTEOMICS_WGCNA_MARKER_REGISTRY_FILE", unset = repo_path("config", "marker_panels", "wgcna_reference_marker_sets.csv"))
+    canonical_input_manifest = file.path(PATHS$tables, "input_path_hash_manifest.csv"),
+    marker_registry = marker_registry_file
   ),
   outputs = list(figures = PATHS$figures, tables = PATHS$tables),
   parameters = list(

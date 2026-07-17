@@ -3,10 +3,10 @@
 # Script: 03_qc_exploration/07_wgcna_marker_trait_export.r
 # Stage: qc
 # Scope: dataset_specific
-# Consumes: required results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/; optional config/marker_panels/wgcna_reference_marker_sets.csv.
+# Consumes: required Stage 01 post-filter/imputed quantitative matrix, mouse UniProt mapping, sample metadata; optional marker registry and manual mappings.
 # Produces: results/tables/03_qc_exploration/06_wgcna_marker_trait_export/<dataset>/.
 # Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
-# Notes: Exports QC marker traits from existing WGCNA state; scheduled in QC but requires prior WGCNA outputs when run.
+# Notes: Exports marker traits for later WGCNA annotation without depending on a completed WGCNA run.
 # ================================================================
 
 #
@@ -53,24 +53,37 @@ if (!file.exists(matrix_file)) {
        ". Set PROTEOMICS_WGCNA_MARKER_TRAIT_MATRIX_FILE or PROTEOMICS_QC_MATRIX_FILE.", call. = FALSE)
 }
 
-expr <- qc_read_expression(matrix_file, metadata_file, DATASET)
+expr <- qc_load_canonical_expression(matrix_file, metadata_file, DATASET)
 mat <- expr$mat
 meta <- standardize_wgcna_metadata(expr$meta, DATASET)
 marker_sets <- load_wgcna_marker_sets()
 marker_source_metadata <- attr(marker_sets, "marker_source_metadata")
 primary_panels <- names(marker_sets)
 
-protein_key <- normalize_gene_token(rownames(mat))
+marker_registry <- dplyr::bind_rows(lapply(names(marker_sets), function(panel) {
+  data.frame(marker_panel = panel, marker_gene = marker_sets[[panel]], stringsAsFactors = FALSE)
+}))
+marker_registry_file <- Sys.getenv(
+  "PROTEOMICS_WGCNA_MARKER_REGISTRY_FILE",
+  unset = repo_path("config", "marker_panels", "wgcna_reference_marker_sets.csv")
+)
+expr <- qc_add_input_manifest_paths(expr, c(marker_registry = marker_registry_file))
+marker_matches <- qc_match_markers_to_protein_groups(
+  marker_registry, expr$member_bridge, expr$feature_table,
+  panel_col = "marker_panel", gene_col = "marker_gene"
+)
+qc_write_canonical_feature_artifacts(expr, PATHS$tables, marker_matches)
 z_mat <- t(scale(t(mat)))
 z_mat[!is.finite(z_mat)] <- NA_real_
 sample_scores <- lapply(names(marker_sets), function(panel) {
-  idx <- which(protein_key %in% normalize_gene_token(marker_sets[[panel]]))
+  ids <- marker_matches$matches$ProteinGroupID[marker_matches$matches$marker_panel == panel]
+  idx <- which(expr$feature_table$ProteinGroupID %in% ids)
   raw_score <- if (length(idx)) colMeans(mat[idx, , drop = FALSE], na.rm = TRUE) else rep(NA_real_, ncol(mat))
   z_score <- if (length(idx)) colMeans(z_mat[idx, , drop = FALSE], na.rm = TRUE) else rep(NA_real_, ncol(mat))
   data.frame(
     Sample = colnames(mat),
     marker_panel = panel,
-    n_markers_detected = length(idx),
+    n_markers_detected = length(unique(ids)),
     raw_marker_score = raw_score,
     z_marker_score = z_score,
     stringsAsFactors = FALSE
@@ -169,7 +182,11 @@ if (DATASET == "microglia") {
 
 write_run_manifest(
   file.path(PATHS$logs, "run_manifest.yml"),
-  inputs = list(matrix = matrix_file, metadata = metadata_file),
+  inputs = list(
+    matrix = matrix_file,
+    metadata = metadata_file,
+    canonical_input_manifest = file.path(PATHS$tables, "input_path_hash_manifest.csv")
+  ),
   outputs = list(
     traits = file.path(PATHS$tables, out_file),
     source_traits = file.path(PATHS$source_data, out_file),
