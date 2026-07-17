@@ -4,7 +4,7 @@
 # Script: 04_differential_expression_enrichment/06_biological_program_summary.r
 # Stage: enrichment
 # Scope: dataset_specific
-# Consumes: required data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv; data/processed/04_differential_expression_enrichment/compareGO/<dataset>/compareGO_input_manifest.csv; optional results/tables/04_differential_expression_enrichment/neuropil_reference_annotation/<dataset>/; results/tables/04_differential_expression_enrichment/microglia_targeted_signature_enrichment/<dataset>/.
+# Consumes: canonical compareGO manifest and declared term/provenance/status tables; optional canonical neuropil-reference and targeted-signature annotations.
 # Produces: results/tables/04_differential_expression_enrichment/biological_program_summary/<dataset>/program_summary.csv.
 # Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Runs after clusterProfiler and compareGO; uses annotations/signatures where supported.
@@ -41,31 +41,12 @@ if (length(missing)) {
 }
 suppressPackageStartupMessages(invisible(lapply(required_pkgs, library, character.only = TRUE)))
 
-latest_manifest <- function() {
-  resolve_input_path(
-    input_name = "biological_program_summary_enrichment_manifest",
-    expected_path = path_processed("04_differential_expression_enrichment", "compareGO", DATASET, "compareGO_input_manifest.csv"),
-    fallback_paths = c(
-      path_processed("04_differential_expression_enrichment", "clusterProfiler", DATASET, "clusterProfiler_manifest.csv"),
-      path_results("reports", "04_differential_expression_enrichment", "clusterProfiler", DATASET, "clusterProfiler_manifest.csv")
-    ),
-    latest_roots = c(
-      path_processed("04_differential_expression_enrichment", "compareGO", DATASET),
-      path_processed("04_differential_expression_enrichment", "clusterProfiler", DATASET),
-      path_results("reports", "04_differential_expression_enrichment", "clusterProfiler", DATASET)
-    ),
-    latest_pattern = "^compareGO_input_manifest.*\\.csv$|^clusterProfiler_manifest.*\\.csv$",
-    required = TRUE,
-    script = SCRIPT_ID,
-    dataset = DATASET,
-    stage = "enrichment",
-    producer_script_or_artifact_id = "04_differential_expression_enrichment/02_compareGO.r"
-  )
-}
-
-manifest_file <- latest_manifest()
+manifest_file <- canonical_comparego_manifest_path(DATASET)
 
 if (is_dry_run()) {
+  if (file.exists(manifest_file)) {
+    read_canonical_comparego_manifest(manifest_file, DATASET, require_files = FALSE)
+  }
   dry_run_line("Script", "04_differential_expression_enrichment/06_biological_program_summary.r")
   dry_run_line("Dataset", DATASET)
   dry_run_line("Manifest", manifest_file, if (file.exists(manifest_file)) "PASS" else "FAIL")
@@ -81,82 +62,51 @@ if (is_dry_run()) {
 }
 
 if (!file.exists(manifest_file)) {
-  stop("No compareGO/clusterProfiler manifest found for dataset: ", DATASET, call. = FALSE)
+  stop("Canonical compareGO manifest not found for dataset ", DATASET, ": ", manifest_file, call. = FALSE)
 }
 
-manifest <- readr::read_csv(manifest_file, show_col_types = FALSE)
-if ("dataset" %in% names(manifest)) manifest <- dplyr::filter(manifest, .data$dataset == DATASET)
-if (!"output_table" %in% names(manifest)) stop("Manifest lacks output_table column: ", manifest_file, call. = FALSE)
-path_qc <- validate_manifest_paths(manifest, path_cols = "output_table", allow_missing = TRUE)
+bundle <- read_canonical_comparego_bundle(manifest_file, DATASET)
+manifest <- bundle$manifest
+path_qc <- validate_manifest_paths(
+  manifest,
+  path_cols = c("term_comparison_file", "term_gene_provenance_output_file", "analysis_status_summary_file"),
+  allow_missing = FALSE
+)
 readr::write_csv(path_qc, file.path(PATHS$logs, "program_summary_manifest_path_qc.csv"), na = "")
+route_identity <- manifest %>%
+  dplyr::select(.data$dataset, .data$comparison, .data$result_type, .data$ontology,
+    .data$route_category, .data$route_unit) %>%
+  dplyr::distinct()
+terms <- bundle$terms %>%
+  dplyr::left_join(route_identity, by = c("dataset", "comparison", "result_type", "ontology"))
 
-term_tables <- lapply(seq_len(nrow(manifest)), function(i) {
-  table_path <- as.character(manifest$output_table[[i]])
-  if (is.na(table_path) || !file.exists(table_path)) return(NULL)
-  tbl <- tryCatch(readr::read_csv(table_path, show_col_types = FALSE), error = function(e) NULL)
-  if (is.null(tbl) || !"Description" %in% names(tbl)) return(NULL)
-  tbl$dataset <- DATASET
-  tbl$comparison <- if ("comparison" %in% names(manifest)) manifest$comparison[[i]] else if ("contrast" %in% names(manifest)) manifest$contrast[[i]] else NA_character_
-  tbl$route_category <- if ("route_category" %in% names(manifest)) manifest$route_category[[i]] else NA_character_
-  tbl$route_unit <- if ("route_unit" %in% names(manifest)) manifest$route_unit[[i]] else NA_character_
-  tbl$result_type <- if ("result_type" %in% names(manifest)) manifest$result_type[[i]] else NA_character_
-  tbl$source_file <- table_path
-  tbl
-})
-terms <- dplyr::bind_rows(term_tables)
+if (!"pvalue" %in% names(terms)) terms$pvalue <- rep(NA_real_, nrow(terms))
+if (!"p.value" %in% names(terms)) terms$`p.value` <- rep(NA_real_, nrow(terms))
 
-if (!nrow(terms)) {
-  status <- tibble::tibble(dataset = DATASET, status = "skipped", reason = "No readable enrichment output tables from manifest.")
-  readr::write_csv(status, file.path(PATHS$tables, "program_summary.csv"), na = "")
-  readr::write_csv(status, file.path(PATHS$tables, "program_summary_wide.csv"), na = "")
-  readr::write_csv(status, file.path(PATHS$tables, "program_summary_heatmap_ready.csv"), na = "")
-  readr::write_csv(status, file.path(PATHS$source_data, "program_term_gene_evidence.csv"), na = "")
-  write_run_manifest(
-    file.path(PATHS$logs, "run_manifest.yml"),
-    inputs = list(manifest = manifest_file),
-    outputs = list(
-      program_summary = file.path(PATHS$tables, "program_summary.csv"),
-      program_summary_wide = file.path(PATHS$tables, "program_summary_wide.csv"),
-      heatmap_ready = file.path(PATHS$tables, "program_summary_heatmap_ready.csv"),
-      evidence = file.path(PATHS$source_data, "program_term_gene_evidence.csv")
-    ),
-    parameters = list(dataset = DATASET, program_patterns = biological_program_patterns()),
-    notes = "Skipped: no readable enrichment output tables from manifest."
-  )
-  quit(status = 0, save = "no")
-}
-
-if (!"pvalue" %in% names(terms)) terms$pvalue <- NA_real_
-if (!"p.value" %in% names(terms)) terms$`p.value` <- NA_real_
-
-terms <- map_terms_to_programs(terms, "Description") %>%
+terms <- map_terms_to_programs(terms, "term_description") %>%
   dplyr::filter(!is.na(.data$biological_program)) %>%
   dplyr::mutate(
+    ID = as.character(.data$term_id),
+    Description = as.character(.data$term_description),
     NES = if ("NES" %in% names(.)) suppressWarnings(as.numeric(.data$NES)) else NA_real_,
     p.adjust = if ("p.adjust" %in% names(.)) suppressWarnings(as.numeric(.data$p.adjust)) else NA_real_,
     FDR = .data$p.adjust,
-    core_genes = if ("core_enrichment" %in% names(.)) as.character(.data$core_enrichment) else NA_character_,
+    source_file = bundle$term_source,
+    term_provenance_source = bundle$provenance_source,
+    comparego_manifest_source = bundle$manifest_source,
     raw_p = dplyr::coalesce(
       suppressWarnings(as.numeric(.data$pvalue)),
       suppressWarnings(as.numeric(.data$p.value))
     )
   )
 
-split_gene_tokens <- function(x) {
-  x <- stats::na.omit(as.character(x))
-  x <- x[nzchar(x)]
-  if (!length(x)) return(character())
-  genes <- unlist(strsplit(paste(x, collapse = "/"), "[/;,[:space:]]+"))
-  genes <- unique(genes[nzchar(genes)])
-  genes
-}
-
 frequent_genes <- function(x, n = 12L) {
-  genes <- unlist(lapply(x, split_gene_tokens), use.names = FALSE)
+  genes <- stats::na.omit(as.character(x))
   genes <- genes[nzchar(genes)]
   if (!length(genes)) return(NA_character_)
-  tab <- sort(table(genes), decreasing = TRUE)
-  paste(names(tab)[seq_len(min(n, length(tab)))], collapse = ";")
+  tab <- as.data.frame(table(genes), stringsAsFactors = FALSE)
+  tab <- tab[order(-tab$Freq, tab$genes, method = "radix"), , drop = FALSE]
+  paste(tab$genes[seq_len(min(n, nrow(tab)))], collapse = ";")
 }
 
 strongest_term <- function(description, nes, direction = c("positive", "negative")) {
@@ -169,7 +119,7 @@ strongest_term <- function(description, nes, direction = c("positive", "negative
   as.character(description[hit[[1]]])
 }
 
-evidence <- terms %>%
+term_evidence <- terms %>%
   dplyr::transmute(
     dataset,
     comparison,
@@ -188,12 +138,48 @@ evidence <- terms %>%
     ),
     raw_p,
     p.adjust,
-    FDR,
-    core_genes,
-    source_file
+    FDR, source_file, term_provenance_source, comparego_manifest_source
   )
 
-program_summary <- evidence %>%
+evidence <- bundle$provenance %>%
+  dplyr::filter(.data$gene_level_claim_allowed, .data$core_enrichment_member) %>%
+  dplyr::inner_join(
+    terms %>%
+      dplyr::select(.data$dataset, .data$comparison, .data$result_type, .data$ontology,
+        .data$term_id, .data$term_description, .data$route_category, .data$route_unit,
+        .data$biological_program, .data$NES, raw_p = .data$raw_p,
+        p.adjust = .data$p.adjust, FDR = .data$FDR),
+    by = c("dataset", "comparison", "result_type", "ontology", "term_id", "term_description")
+  ) %>%
+  dplyr::mutate(
+    effect_direction = dplyr::case_when(
+      is.na(.data$NES) ~ "undirected",
+      .data$NES > 0 ~ "positive_NES",
+      .data$NES < 0 ~ "negative_NES",
+      TRUE ~ "neutral"
+    ),
+    term_provenance_source = bundle$provenance_source,
+    comparego_manifest_source = bundle$manifest_source
+  ) %>%
+  dplyr::select(
+    dataset, comparison, route_category, route_unit, result_type, ontology,
+    biological_program, term_id, term_description, official_gene_symbol,
+    official_entrez_id, ProteinGroupID, member_accessions,
+    protein_group_gene_annotation_status, gene_level_claim_allowed,
+    rank_statistic, core_enrichment_member, NES, effect_direction, raw_p,
+    p.adjust, FDR, term_provenance_source, comparego_manifest_source
+  ) %>%
+  dplyr::arrange(.data$dataset, .data$comparison, .data$ontology, .data$term_id,
+    .data$official_gene_symbol, .data$ProteinGroupID)
+
+key_gene_summary <- evidence %>%
+  dplyr::distinct(.data$dataset, .data$comparison, .data$route_category, .data$route_unit,
+    .data$biological_program, .data$term_id, .data$official_gene_symbol) %>%
+  dplyr::group_by(.data$dataset, .data$comparison, .data$route_category, .data$route_unit,
+    .data$biological_program) %>%
+  dplyr::summarise(key_genes = frequent_genes(.data$official_gene_symbol), .groups = "drop")
+
+program_summary <- term_evidence %>%
   dplyr::group_by(.data$dataset, .data$comparison, .data$route_category, .data$route_unit, .data$biological_program) %>%
   dplyr::arrange(.data$FDR, dplyr::desc(abs(.data$NES)), .by_group = TRUE) %>%
   dplyr::summarise(
@@ -208,7 +194,6 @@ program_summary <- evidence %>%
     strongest_positive_term = strongest_term(.data$Description, .data$NES, "positive"),
     strongest_negative_term = strongest_term(.data$Description, .data$NES, "negative"),
     top_term = dplyr::first(.data$Description),
-    key_genes = frequent_genes(.data$core_genes),
     source_file = dplyr::first(.data$source_file),
     .groups = "drop"
   ) %>%
@@ -230,10 +215,15 @@ program_summary <- evidence %>%
       TRUE ~ "neutral"
     )
   ) %>%
+  dplyr::left_join(
+    key_gene_summary,
+    by = c("dataset", "comparison", "route_category", "route_unit", "biological_program")
+  ) %>%
   dplyr::arrange(.data$min_fdr, .data$dataset, .data$comparison, .data$biological_program)
 
 readr::write_csv(program_summary, file.path(PATHS$tables, "program_summary.csv"), na = "")
 readr::write_csv(evidence, file.path(PATHS$source_data, "program_term_gene_evidence.csv"), na = "")
+readr::write_csv(bundle$status, file.path(PATHS$tables, "program_analysis_status.csv"), na = "")
 
 heatmap_ready <- program_summary %>%
   dplyr::mutate(
@@ -273,26 +263,14 @@ mode_value <- function(x) {
   names(sort(table(x), decreasing = TRUE))[[1]]
 }
 
-latest_neuropil_annotation <- first_existing_path(c(
-  file.path(
-    path_results("tables", MODULE_ID, "neuropil_reference_annotation", DATASET),
-    "microglia_neuropil_annotation_latest.csv"
-  ),
-  file.path(
-    path_results("tables", MODULE_ID, "neuropil_contamination_annotation", DATASET),
-    "microglia_neuropil_annotation_latest.csv"
-  )
-))
-latest_microglia_signature <- first_existing_path(c(
-  file.path(
-    path_results("tables", MODULE_ID, "microglia_targeted_signature_enrichment", DATASET),
-    "microglia_signature_enrichment_with_contrast_class.csv"
-  ),
-  file.path(
-    path_results("tables", MODULE_ID, "microglia_targeted_signature_enrichment", DATASET),
-    "microglia_signature_enrichment_with_neuropil_reference.csv"
-  )
-))
+neuropil_annotation_path <- file.path(
+  path_results("tables", MODULE_ID, "neuropil_reference_annotation", DATASET),
+  "microglia_neuropil_annotation_latest.csv"
+)
+microglia_signature_path <- file.path(
+  path_results("tables", MODULE_ID, "microglia_targeted_signature_enrichment", DATASET),
+  "microglia_signature_enrichment_with_contrast_class.csv"
+)
 
 record_input_resolution(
   script = SCRIPT_ID,
@@ -300,8 +278,8 @@ record_input_resolution(
   stage = "enrichment",
   input_name = "neuropil_reference_annotation",
   expected_path = file.path(path_results("tables", MODULE_ID, "neuropil_reference_annotation", DATASET), "microglia_neuropil_annotation_latest.csv"),
-  resolved_path = latest_neuropil_annotation,
-  resolution_mode = if (!is.na(latest_neuropil_annotation) && file.exists(latest_neuropil_annotation)) "canonical_or_compatibility" else "missing",
+  resolved_path = neuropil_annotation_path,
+  resolution_mode = if (file.exists(neuropil_annotation_path)) "canonical" else "missing",
   strict_mode = strict_inputs_enabled(),
   allowed_in_strict_mode = TRUE,
   producer_script_or_artifact_id = "04_differential_expression_enrichment/neuropil_reference_annotation"
@@ -312,15 +290,15 @@ record_input_resolution(
   stage = "enrichment",
   input_name = "microglia_targeted_signature_annotation",
   expected_path = file.path(path_results("tables", MODULE_ID, "microglia_targeted_signature_enrichment", DATASET), "microglia_signature_enrichment_with_contrast_class.csv"),
-  resolved_path = latest_microglia_signature,
-  resolution_mode = if (!is.na(latest_microglia_signature) && file.exists(latest_microglia_signature)) "canonical_or_compatibility" else "missing",
+  resolved_path = microglia_signature_path,
+  resolution_mode = if (file.exists(microglia_signature_path)) "canonical" else "missing",
   strict_mode = strict_inputs_enabled(),
   allowed_in_strict_mode = TRUE,
   producer_script_or_artifact_id = "04_differential_expression_enrichment/05_microglia_targeted_signature_enrichment.r"
 )
 
-neuropil_annotation <- optional_read_csv(latest_neuropil_annotation)
-signature_annotation <- optional_read_csv(latest_microglia_signature)
+neuropil_annotation <- optional_read_csv(neuropil_annotation_path)
+signature_annotation <- optional_read_csv(microglia_signature_path)
 
 program_summary_neuropil <- program_summary
 if (!is.null(neuropil_annotation) && nrow(neuropil_annotation) && "comparison" %in% names(neuropil_annotation)) {
@@ -426,12 +404,18 @@ if (nrow(plot_df)) {
 
 write_run_manifest(
   file.path(PATHS$logs, "run_manifest.yml"),
-  inputs = list(manifest = manifest_file, enrichment_tables = unique(evidence$source_file)),
+  inputs = list(
+    manifest = manifest_file,
+    term_comparison = bundle$term_source,
+    term_gene_provenance = bundle$provenance_source,
+    analysis_status = bundle$status_source
+  ),
   outputs = list(
     program_summary = file.path(PATHS$tables, "program_summary.csv"),
     program_summary_wide = file.path(PATHS$tables, "program_summary_wide.csv"),
     heatmap_ready = file.path(PATHS$tables, "program_summary_heatmap_ready.csv"),
     evidence = file.path(PATHS$source_data, "program_term_gene_evidence.csv"),
+    analysis_status = file.path(PATHS$tables, "program_analysis_status.csv"),
     heatmap = file.path(PATHS$figures, "program_atlas_heatmap.svg")
   ),
   parameters = list(dataset = DATASET, program_patterns = biological_program_patterns()),

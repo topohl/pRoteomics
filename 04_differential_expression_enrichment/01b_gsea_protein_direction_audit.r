@@ -2,7 +2,7 @@
 # Script: 04_differential_expression_enrichment/01b_gsea_protein_direction_audit.r
 # Stage: enrichment
 # Scope: dataset_specific
-# Consumes: clusterProfiler manifest/output tables and mapped forward protein files.
+# Consumes: canonical clusterProfiler manifest, collapsed-gene inputs, and term-gene provenance.
 # Produces: diagnostic GSEA/protein direction audit CSVs under results/tables and run_manifest.yml under results/logs.
 # Dataset behavior: runs for neuron_neuropil, neuron_soma, microglia via --dataset.
 # Notes: Read-only diagnostic. Does not modify ProTigy, mapped, clusterProfiler, or compareGO outputs.
@@ -11,6 +11,7 @@
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
 source(repo_path("R", "script_runtime.R"))
+source(repo_path("R", "enrichment_io.R"))
 
 MODULE_ID <- "04_differential_expression_enrichment"
 SUBSTEP_ID <- "01b_gsea_protein_direction_audit"
@@ -48,101 +49,8 @@ read_csv_base <- function(path) {
   utils::read.csv(path, stringsAsFactors = FALSE, check.names = FALSE)
 }
 
-as_logical_manifest <- function(x) {
-  if (is.logical(x)) return(x %in% TRUE)
-  tolower(trimws(as.character(x))) %in% c("true", "t", "1", "yes")
-}
-
 canonical_manifest_path <- function(dataset) {
-  path_processed(MODULE_ID, "clusterProfiler", dataset, "clusterProfiler_manifest.csv")
-}
-
-discover_manifest <- function(dataset) {
-  canonical <- canonical_manifest_path(dataset)
-  if (file.exists(canonical)) return(normalizePath(canonical, winslash = "/", mustWork = FALSE))
-
-  candidates <- c(
-    list.files(
-      path_processed(MODULE_ID, "clusterProfiler", dataset),
-      pattern = "^clusterProfiler_manifest.*\\.csv$",
-      full.names = TRUE,
-      recursive = TRUE
-    ),
-    list.files(
-      path_results("tables", MODULE_ID, "01_clusterProfiler", dataset),
-      pattern = "^clusterProfiler_manifest.*\\.csv$",
-      full.names = TRUE,
-      recursive = TRUE
-    ),
-    list.files(
-      path_results("tables", MODULE_ID, "clusterProfiler", dataset),
-      pattern = "^clusterProfiler_manifest.*\\.csv$",
-      full.names = TRUE,
-      recursive = TRUE
-    )
-  )
-  candidates <- candidates[file.exists(candidates)]
-  if (!length(candidates)) return(normalizePath(canonical, winslash = "/", mustWork = FALSE))
-  info <- file.info(candidates)
-  normalizePath(rownames(info)[order(info$mtime, decreasing = TRUE)[1]], winslash = "/", mustWork = FALSE)
-}
-
-fill_missing_manifest_dataset <- function(manifest, dataset, manifest_path) {
-  if (!"dataset" %in% names(manifest)) return(manifest)
-  dataset_missing <- is.na(manifest$dataset) |
-    !nzchar(trimws(as.character(manifest$dataset))) |
-    toupper(trimws(as.character(manifest$dataset))) == "NA"
-  manifest_parent_dataset <- basename(dirname(normalizePath(manifest_path, winslash = "/", mustWork = FALSE)))
-  if (any(dataset_missing) && identical(manifest_parent_dataset, dataset)) {
-    manifest$dataset[dataset_missing] <- dataset
-  }
-  manifest
-}
-
-normalize_col_key <- function(x) {
-  gsub("[^a-z0-9]+", "", tolower(trimws(as.character(x))))
-}
-
-rename_first_alias <- function(df, target, aliases) {
-  keys <- normalize_col_key(names(df))
-  alias_keys <- normalize_col_key(aliases)
-  hit <- which(keys %in% alias_keys)
-  if (length(hit)) names(df)[hit[[1]]] <- target
-  df
-}
-
-normalize_protein_table <- function(df, path) {
-  df <- rename_first_alias(df, "gene_symbol", c("gene_symbol", "gene", "genes", "symbol", "UNIPROT", "id"))
-  df <- rename_first_alias(df, "log2fc", c("log2fc", "logFC", "log2foldchange", "avg_log2FC"))
-  df <- rename_first_alias(df, "pvalue", c("pvalue", "pval", "p.value"))
-  df <- rename_first_alias(df, "padj", c("padj", "adj.P.Val", "p.adjust", "FDR", "qvalue"))
-
-  required <- c("gene_symbol", "log2fc")
-  missing <- setdiff(required, names(df))
-  if (length(missing)) {
-    stop("Mapped protein table is missing required normalized column(s) ",
-         paste(missing, collapse = ", "), ": ", path, call. = FALSE)
-  }
-
-  df$gene_symbol <- trimws(as.character(df$gene_symbol))
-  df$log2fc <- suppressWarnings(as.numeric(df$log2fc))
-  df <- df[!is.na(df$gene_symbol) & nzchar(df$gene_symbol), , drop = FALSE]
-  df <- df[!is.na(df$log2fc), , drop = FALSE]
-  df <- df[!duplicated(df$gene_symbol), , drop = FALSE]
-  df
-}
-
-validate_gsea_table <- function(df, path) {
-  required <- c("ID", "Description", "NES", "p.adjust", "core_enrichment")
-  missing <- setdiff(required, names(df))
-  if (length(missing)) {
-    stop("GSEA table is missing required column(s) ",
-         paste(missing, collapse = ", "), ": ", path, call. = FALSE)
-  }
-  df$NES <- suppressWarnings(as.numeric(df$NES))
-  df$`p.adjust` <- suppressWarnings(as.numeric(df$`p.adjust`))
-  df$core_enrichment <- as.character(df$core_enrichment)
-  df
+  canonical_clusterprofiler_manifest_path(dataset)
 }
 
 sign_label <- function(x) {
@@ -154,18 +62,77 @@ sign_label <- function(x) {
 }
 
 parse_comparison_sides <- function(comparison) {
-  comp <- tolower(as.character(comparison))
+  comparison <- as.character(comparison)
+  out <- data.frame(
+    formal_contrast = comparison,
+    positive_side_label = rep("positive_log2fc_side", length(comparison)),
+    negative_side_label = rep("negative_log2fc_side", length(comparison)),
+    stringsAsFactors = FALSE
+  )
+  if (!length(comparison)) return(out)
+
+  comp <- tolower(comparison)
   compact <- gsub("[^a-z0-9.]+", "_", comp)
-  if (grepl("2\\.over\\.1|res[_-]?con|con[_-]?res", compact)) {
-    return(list(formal_contrast = comparison, positive_side_label = "RES", negative_side_label = "CON"))
+  has_label_pair <- function(x, left, right) {
+    left_right <- paste0("(^|_)[a-z0-9.]*", left, "(_|$).*[a-z0-9.]*", right, "(_|$)")
+    right_left <- paste0("(^|_)[a-z0-9.]*", right, "(_|$).*[a-z0-9.]*", left, "(_|$)")
+    grepl(left_right, x) | grepl(right_left, x)
   }
-  if (grepl("3\\.over\\.2|sus[_-]?res|res[_-]?sus", compact)) {
-    return(list(formal_contrast = comparison, positive_side_label = "SUS", negative_side_label = "RES"))
+  res_con <- !is.na(compact) & (grepl("2\\.over\\.1", compact) | has_label_pair(compact, "res", "con"))
+  sus_res <- !is.na(compact) & (grepl("3\\.over\\.2", compact) | has_label_pair(compact, "sus", "res"))
+  sus_con <- !is.na(compact) & (grepl("3\\.over\\.1", compact) | has_label_pair(compact, "sus", "con"))
+
+  out$positive_side_label[res_con] <- "RES"
+  out$negative_side_label[res_con] <- "CON"
+  out$positive_side_label[sus_res] <- "SUS"
+  out$negative_side_label[sus_res] <- "RES"
+  out$positive_side_label[sus_con] <- "SUS"
+  out$negative_side_label[sus_con] <- "CON"
+  out
+}
+
+make_status_summary_rows <- function(status) {
+  status_only <- status |>
+    dplyr::filter(.data$analysis_status != "success_with_terms") |>
+    dplyr::select(dataset, ontology, comparison, analysis_status)
+  status_only <- dplyr::bind_cols(
+    status_only,
+    parse_comparison_sides(status_only$comparison)
+  )
+  n_status <- nrow(status_only)
+  interpretation <- rep(NA_character_, n_status)
+  failed <- !is.na(status_only$analysis_status) & status_only$analysis_status == "failed"
+  completed <- !is.na(status_only$analysis_status) & !failed
+  interpretation[failed] <- "Upstream GSEA analysis failed; excluded from direction audit."
+  interpretation[completed] <- "Upstream GSEA completed successfully with zero terms."
+
+  status_only |>
+    dplyr::transmute(
+      dataset, ontology, contrast = .data$comparison,
+      formal_contrast, positive_side_label, negative_side_label,
+      analysis_status,
+      n_terms = rep(0L, n_status),
+      n_consistent = rep(0L, n_status),
+      n_weak_or_mixed_core = rep(0L, n_status),
+      n_inconsistent = rep(0L, n_status),
+      frac_consistent = rep(NA_real_, n_status),
+      dominant_problem = rep(NA_character_, n_status),
+      interpretation = interpretation
+    )
+}
+
+assert_bind_rows_compatible <- function(left, right, context) {
+  if (!identical(names(left), names(right))) {
+    stop(context, " tables have different column names or order.", call. = FALSE)
   }
-  if (grepl("3\\.over\\.1|sus[_-]?con|con[_-]?sus", compact)) {
-    return(list(formal_contrast = comparison, positive_side_label = "SUS", negative_side_label = "CON"))
+  left_types <- vapply(left, typeof, character(1))
+  right_types <- vapply(right, typeof, character(1))
+  if (!identical(left_types, right_types)) {
+    incompatible <- names(left_types)[left_types != right_types]
+    detail <- paste0(incompatible, " (", left_types[incompatible], " vs ", right_types[incompatible], ")")
+    stop(context, " tables have incompatible column types: ", paste(detail, collapse = ", "), call. = FALSE)
   }
-  list(formal_contrast = comparison, positive_side_label = "positive_log2fc_side", negative_side_label = "negative_log2fc_side")
+  invisible(TRUE)
 }
 
 side_from_sign <- function(sign_value, positive_side, negative_side) {
@@ -194,45 +161,39 @@ input_status_rows <- function(manifest_path, manifest_filtered, output_paths) {
                      n_rows = if (file.exists(manifest_path)) nrow(read_csv_base(manifest_path)) else NA_integer_)
   )
   if (!is.null(manifest_filtered) && nrow(manifest_filtered)) {
-    rows <- c(rows, lapply(seq_len(nrow(manifest_filtered)), function(i) {
-      input_status_row(
-        paste0("gsea_output_table:", manifest_filtered$comparison[[i]]),
-        manifest_filtered$output_table[[i]],
-        dataset = DATASET,
-        required = TRUE
-      )
-    }))
-    rows <- c(rows, lapply(seq_len(nrow(manifest_filtered)), function(i) {
-      input_status_row(
-        paste0("mapped_input_file:", manifest_filtered$comparison[[i]]),
-        manifest_filtered$input_gene_file[[i]],
-        dataset = DATASET,
-        required = TRUE
-      )
-    }))
+    successful <- manifest_filtered$analysis_status %in% c("success_with_terms", "success_zero_terms")
+    required_paths <- c("output_table", "collapsed_gene_input_file", "term_gene_provenance_file")
+    for (column in required_paths) {
+      rows <- c(rows, lapply(which(successful), function(i) {
+        input_status_row(
+          paste0(column, ":", manifest_filtered$comparison[[i]]),
+          manifest_filtered[[column]][[i]], dataset = DATASET, required = TRUE
+        )
+      }))
+    }
   }
   do.call(rbind, rows)
 }
 
-manifest_path <- discover_manifest(DATASET)
+manifest_path <- canonical_manifest_path(DATASET)
 manifest_exists <- file.exists(manifest_path)
-manifest <- if (manifest_exists) read_csv_base(manifest_path) else data.frame()
-if (manifest_exists) manifest <- fill_missing_manifest_dataset(manifest, DATASET, manifest_path)
-
-required_manifest_cols <- c("dataset", "ontology", "result_type", "used_for_plot", "comparison", "input_gene_file", "output_table")
-missing_manifest_cols <- if (manifest_exists) setdiff(required_manifest_cols, names(manifest)) else required_manifest_cols
-
-manifest_filtered <- data.frame()
-if (manifest_exists && !length(missing_manifest_cols)) {
-  manifest$used_for_plot <- as_logical_manifest(manifest$used_for_plot)
-  manifest_filtered <- manifest[
-    manifest$dataset == DATASET &
-      toupper(as.character(manifest$ontology)) == ONTOLOGY &
-      manifest$result_type == "GSEA_GO" &
-      manifest$used_for_plot %in% TRUE,
-    ,
-    drop = FALSE
+manifest <- if (manifest_exists) {
+  read_canonical_clusterprofiler_manifest(
+    manifest_path, DATASET, strict = TRUE,
+    require_files = !isTRUE(runtime$dry_run)
+  )
+} else {
+  data.frame()
+}
+manifest_filtered <- if (nrow(manifest)) {
+  manifest[
+    toupper(as.character(manifest$ontology)) == ONTOLOGY & manifest$result_type == "GSEA_GO",
+    , drop = FALSE
   ]
+} else {
+  data.frame()
+}
+if (nrow(manifest_filtered)) {
   if (nzchar(COMPARISON_FILTER)) {
     manifest_filtered <- manifest_filtered[
       grepl(COMPARISON_FILTER, manifest_filtered$comparison, fixed = TRUE),
@@ -250,8 +211,7 @@ if (isTRUE(runtime$dry_run)) {
   dry_run_line("Comparison filter", if (nzchar(COMPARISON_FILTER)) COMPARISON_FILTER else "<none>")
   dry_run_line("Manifest", manifest_path, if (manifest_exists) "PASS" else "FAIL")
   dry_run_line("Manifest rows", if (manifest_exists) nrow(manifest) else 0L)
-  dry_run_line("Filtered GSEA_GO plot rows", nrow(manifest_filtered))
-  if (length(missing_manifest_cols)) dry_run_line("Missing manifest columns", paste(missing_manifest_cols, collapse = ", "), "FAIL")
+  dry_run_line("Filtered canonical GSEA_GO rows", nrow(manifest_filtered))
   dry_run_line("Output term audit", output_paths$term_audit)
   dry_run_line("Output contrast summary", output_paths$contrast_summary)
   dry_run_line("Output ORA warning", output_paths$ora_warning)
@@ -275,135 +235,126 @@ if (!manifest_exists) {
   stop("clusterProfiler manifest not found: ", manifest_path,
        "\nRun 04_differential_expression_enrichment/01_clusterProfiler.r first.", call. = FALSE)
 }
-if (length(missing_manifest_cols)) {
-  stop("clusterProfiler manifest is missing required column(s): ",
-       paste(missing_manifest_cols, collapse = ", "), call. = FALSE)
-}
 if (!nrow(manifest_filtered)) {
   stop("No manifest rows matched dataset=", DATASET, ", ontology=", ONTOLOGY,
-       ", result_type=GSEA_GO, used_for_plot=TRUE",
+       ", result_type=GSEA_GO",
        if (nzchar(COMPARISON_FILTER)) paste0(", comparison containing '", COMPARISON_FILTER, "'") else "",
        ".", call. = FALSE)
 }
 
-missing_tables <- manifest_filtered$output_table[!file.exists(manifest_filtered$output_table)]
-missing_inputs <- manifest_filtered$input_gene_file[!file.exists(manifest_filtered$input_gene_file)]
-if (length(missing_tables) || length(missing_inputs)) {
-  write_input_status(status_df, output_paths$input_status, dry_run = FALSE)
-  stop("Required audit input(s) are missing.\nMissing GSEA table(s): ",
-       paste(missing_tables, collapse = "; "),
-       "\nMissing mapped protein file(s): ", paste(missing_inputs, collapse = "; "),
-       call. = FALSE)
-}
+bundle <- read_canonical_clusterprofiler_bundle(
+  manifest_path, DATASET, result_types = "GSEA_GO", ontology = ONTOLOGY,
+  comparisons = manifest_filtered$comparison, strict = TRUE
+)
 
 top_abs_threshold <- load_threshold()
-term_rows <- list()
-ora_rows <- list()
+identity_columns <- c("dataset", "comparison", "result_type", "ontology")
+term_identity_columns <- c(identity_columns, "term_id")
+manifest_identity <- bundle$manifest |>
+  dplyr::select(dplyr::all_of(c(identity_columns, "analysis_status", "n_terms", "route_category",
+    "route_unit", "output_table", "collapsed_gene_input_file", "term_gene_provenance_file")))
 
-for (i in seq_len(nrow(manifest_filtered))) {
-  row <- manifest_filtered[i, , drop = FALSE]
-  comparison <- as.character(row$comparison[[1]])
-  sides <- parse_comparison_sides(comparison)
+term_meta <- bundle$terms |>
+  dplyr::transmute(
+    dataset, comparison, result_type, ontology, term_id,
+    NES = suppressWarnings(as.numeric(.data$NES)),
+    p.adjust = suppressWarnings(as.numeric(.data$`p.adjust`))
+  ) |>
+  dplyr::left_join(manifest_identity, by = identity_columns)
 
-  gsea <- validate_gsea_table(read_csv_base(row$output_table[[1]]), row$output_table[[1]])
-  protein <- normalize_protein_table(read_csv_base(row$input_gene_file[[1]]), row$input_gene_file[[1]])
-
-  if (!nrow(gsea)) next
-
-  core_long <- gsea |>
-    dplyr::mutate(
-      contrast = comparison,
-      core_gene = strsplit(as.character(.data$core_enrichment), "/", fixed = TRUE)
-    ) |>
-    tidyr::unnest(core_gene) |>
-    dplyr::mutate(core_gene = trimws(as.character(.data$core_gene))) |>
-    dplyr::filter(!is.na(.data$core_gene), nzchar(.data$core_gene)) |>
-    dplyr::left_join(
-      protein[, c("gene_symbol", "log2fc"), drop = FALSE],
-      by = c("core_gene" = "gene_symbol")
-    )
-
-  audit_one <- core_long |>
-    dplyr::group_by(.data$contrast, .data$ID, .data$Description) |>
-    dplyr::summarise(
-      NES = dplyr::first(.data$NES),
-      p.adjust = dplyr::first(.data$`p.adjust`),
-      n_core = dplyr::n_distinct(.data$core_gene),
-      n_core_mapped = sum(!is.na(.data$log2fc)),
-      median_core_log2fc = ifelse(all(is.na(.data$log2fc)), NA_real_, stats::median(.data$log2fc, na.rm = TRUE)),
-      mean_core_log2fc = ifelse(all(is.na(.data$log2fc)), NA_real_, mean(.data$log2fc, na.rm = TRUE)),
-      frac_core_positive = ifelse(sum(!is.na(.data$log2fc)) > 0, mean(.data$log2fc > 0, na.rm = TRUE), NA_real_),
-      frac_core_negative = ifelse(sum(!is.na(.data$log2fc)) > 0, mean(.data$log2fc < 0, na.rm = TRUE), NA_real_),
-      .groups = "drop"
-    ) |>
-    dplyr::mutate(
-      dataset = DATASET,
-      ontology = ONTOLOGY,
-      formal_contrast = sides$formal_contrast,
-      positive_side_label = sides$positive_side_label,
-      negative_side_label = sides$negative_side_label,
-      NES_sign = sign_label(.data$NES),
-      median_core_sign = sign_label(.data$median_core_log2fc),
-      direction_consistent = !is.na(.data$NES_sign) & !is.na(.data$median_core_sign) & .data$NES_sign == .data$median_core_sign,
-      direction_strength = pmax(.data$frac_core_positive, .data$frac_core_negative, na.rm = TRUE),
-      direction_strength = ifelse(is.infinite(.data$direction_strength), NA_real_, .data$direction_strength),
-      classification = dplyr::case_when(
-        .data$n_core_mapped < 3 | is.na(.data$direction_strength) | .data$direction_strength < 0.60 ~ "weak_or_mixed_core",
-        .data$direction_consistent ~ "consistent",
-        TRUE ~ "inconsistent_check_mapping_or_contrast"
-      ),
-      NES_biological_side = vapply(.data$NES_sign, side_from_sign, character(1),
-                                   positive_side = sides$positive_side_label,
-                                   negative_side = sides$negative_side_label),
-      core_median_biological_side = vapply(.data$median_core_sign, side_from_sign, character(1),
-                                           positive_side = sides$positive_side_label,
-                                           negative_side = sides$negative_side_label),
-      input_gene_file = row$input_gene_file[[1]],
-      output_table = row$output_table[[1]]
-    ) |>
-    dplyr::select(dplyr::all_of(c(
-      "dataset", "ontology", "contrast", "formal_contrast",
-      "positive_side_label", "negative_side_label",
-      "NES_biological_side", "core_median_biological_side",
-      "ID", "Description", "NES", "p.adjust",
-      "n_core", "n_core_mapped", "median_core_log2fc",
-      "mean_core_log2fc", "frac_core_positive", "frac_core_negative",
-      "NES_sign", "median_core_sign", "direction_consistent",
-      "direction_strength", "classification",
-      "input_gene_file", "output_table"
-    )))
-
-  term_rows[[length(term_rows) + 1L]] <- audit_one
-
-  ora_rows[[length(ora_rows) + 1L]] <- data.frame(
-    dataset = DATASET,
-    ontology = ONTOLOGY,
-    contrast = comparison,
-    formal_contrast = sides$formal_contrast,
-    positive_side_label = sides$positive_side_label,
-    negative_side_label = sides$negative_side_label,
-    n_positive_log2fc = sum(protein$log2fc > 0, na.rm = TRUE),
-    n_negative_log2fc = sum(protein$log2fc < 0, na.rm = TRUE),
-    top_abs_log2fc_threshold = top_abs_threshold,
-    n_top_abs_log2fc = sum(abs(protein$log2fc) > top_abs_threshold, na.rm = TRUE),
-    n_top_positive = sum(protein$log2fc > top_abs_threshold, na.rm = TRUE),
-    n_top_negative = sum(protein$log2fc < -top_abs_threshold, na.rm = TRUE),
-    note = "Current ORA/top-regulated GO is based on abs(log2fc) and is not direction-specific unless split into positive and negative log2fc sets.",
-    input_gene_file = row$input_gene_file[[1]],
-    stringsAsFactors = FALSE
+if (nrow(term_meta)) {
+  missing_provenance <- dplyr::anti_join(
+    term_meta |> dplyr::distinct(dplyr::across(dplyr::all_of(term_identity_columns))),
+    bundle$provenance |> dplyr::distinct(dplyr::across(dplyr::all_of(term_identity_columns))),
+    by = term_identity_columns
   )
+  if (nrow(missing_provenance)) {
+    stop("Canonical GSEA term is missing required term-gene provenance.", call. = FALSE)
+  }
 }
 
-term_audit <- dplyr::bind_rows(term_rows)
-ora_warning <- dplyr::bind_rows(ora_rows)
+contributors <- join_term_provenance_to_collapsed_genes(
+  bundle$provenance |>
+    dplyr::filter(.data$core_enrichment_member, .data$gene_level_claim_allowed),
+  bundle$collapsed,
+  strict = TRUE
+) |>
+  dplyr::left_join(term_meta, by = term_identity_columns)
 
-if (!nrow(term_audit)) {
-  stop("No GSEA terms were available for audit after reading matched manifest rows.", call. = FALSE)
-}
+term_gene_values <- contributors |>
+  dplyr::distinct(dplyr::across(dplyr::all_of(c(term_identity_columns, "official_gene_symbol"))),
+    .keep_all = TRUE)
+term_metrics <- term_gene_values |>
+  dplyr::group_by(dplyr::across(dplyr::all_of(term_identity_columns))) |>
+  dplyr::summarise(
+    NES = dplyr::first(.data$NES), p.adjust = dplyr::first(.data$p.adjust),
+    n_core = dplyr::n_distinct(.data$official_gene_symbol),
+    n_core_mapped = sum(is.finite(.data$collapsed_logfc)),
+    median_core_log2fc = ifelse(all(!is.finite(.data$collapsed_logfc)), NA_real_, stats::median(.data$collapsed_logfc, na.rm = TRUE)),
+    mean_core_log2fc = ifelse(all(!is.finite(.data$collapsed_logfc)), NA_real_, mean(.data$collapsed_logfc, na.rm = TRUE)),
+    frac_core_positive = ifelse(any(is.finite(.data$collapsed_logfc)), mean(.data$collapsed_logfc > 0, na.rm = TRUE), NA_real_),
+    frac_core_negative = ifelse(any(is.finite(.data$collapsed_logfc)), mean(.data$collapsed_logfc < 0, na.rm = TRUE), NA_real_),
+    .groups = "drop"
+  )
 
-summary <- term_audit |>
+term_audit <- contributors |>
+  dplyr::select(-dplyr::any_of(c("NES", "p.adjust"))) |>
+  dplyr::left_join(term_metrics, by = term_identity_columns)
+term_audit <- dplyr::bind_cols(
+  term_audit,
+  parse_comparison_sides(term_audit$comparison)
+) |>
+  dplyr::rowwise() |>
+  dplyr::mutate(
+    contrast = .data$comparison,
+    NES_sign = sign_label(.data$NES),
+    log2fc_sign = sign_label(.data$collapsed_logfc),
+    median_core_sign = sign_label(.data$median_core_log2fc),
+    direction_consistent = !is.na(.data$NES_sign) && !is.na(.data$log2fc_sign) && .data$NES_sign == .data$log2fc_sign,
+    direction_strength = max(.data$frac_core_positive, .data$frac_core_negative, na.rm = TRUE),
+    direction_strength = dplyr::if_else(is.infinite(.data$direction_strength), NA_real_, as.numeric(.data$direction_strength), ptype = double()),
+    classification = dplyr::case_when(
+      .data$n_core_mapped < 3 || is.na(.data$direction_strength) || .data$direction_strength < 0.60 ~ "weak_or_mixed_core",
+      sign_label(.data$NES) == sign_label(.data$median_core_log2fc) ~ "consistent",
+      TRUE ~ "inconsistent_check_mapping_or_contrast"
+    ),
+    concordance_status = dplyr::case_when(
+      is.na(.data$NES_sign) || is.na(.data$log2fc_sign) ~ "direction_unavailable",
+      .data$direction_consistent ~ "concordant",
+      TRUE ~ "discordant"
+    ),
+    NES_biological_side = side_from_sign(.data$NES_sign, .data$positive_side_label, .data$negative_side_label),
+    core_median_biological_side = side_from_sign(.data$median_core_sign, .data$positive_side_label, .data$negative_side_label),
+    source_manifest = bundle$manifest_source,
+    collapsed_gene_input_file = .data$source_file,
+    term_provenance_file = .data$term_gene_provenance_file
+  ) |>
+  dplyr::ungroup() |>
+  dplyr::arrange(.data$dataset, .data$comparison, .data$ontology, .data$term_id,
+    .data$official_gene_symbol, .data$ProteinGroupID)
+
+term_summary <- term_metrics |>
+  dplyr::left_join(manifest_identity, by = identity_columns)
+term_summary <- dplyr::bind_cols(
+  term_summary,
+  parse_comparison_sides(term_summary$comparison)
+) |>
+  dplyr::rowwise() |>
+  dplyr::mutate(
+    contrast = .data$comparison,
+    direction_strength = max(.data$frac_core_positive, .data$frac_core_negative, na.rm = TRUE),
+    direction_strength = dplyr::if_else(is.infinite(.data$direction_strength), NA_real_, as.numeric(.data$direction_strength), ptype = double()),
+    classification = dplyr::case_when(
+      .data$n_core_mapped < 3 || is.na(.data$direction_strength) || .data$direction_strength < 0.60 ~ "weak_or_mixed_core",
+      sign_label(.data$NES) == sign_label(.data$median_core_log2fc) ~ "consistent",
+      TRUE ~ "inconsistent_check_mapping_or_contrast"
+    )
+  ) |>
+  dplyr::ungroup()
+
+summary_with_terms <- term_summary |>
   dplyr::group_by(.data$dataset, .data$ontology, .data$contrast, .data$formal_contrast,
-                  .data$positive_side_label, .data$negative_side_label) |>
+                  .data$positive_side_label, .data$negative_side_label, .data$analysis_status) |>
   dplyr::summarise(
     n_terms = dplyr::n(),
     n_consistent = sum(.data$classification == "consistent", na.rm = TRUE),
@@ -412,7 +363,7 @@ summary <- term_audit |>
     .groups = "drop"
   ) |>
   dplyr::mutate(
-    frac_consistent = ifelse(.data$n_terms > 0, .data$n_consistent / .data$n_terms, NA_real_),
+    frac_consistent = dplyr::if_else(.data$n_terms > 0L, .data$n_consistent / .data$n_terms, NA_real_, ptype = double()),
     dominant_problem = dplyr::case_when(
       .data$n_consistent >= .data$n_weak_or_mixed_core & .data$n_consistent >= .data$n_inconsistent ~ "mostly_consistent",
       .data$n_weak_or_mixed_core >= .data$n_inconsistent ~ "weak_or_mixed_core",
@@ -424,6 +375,36 @@ summary <- term_audit |>
       TRUE ~ "Potential mapping, contrast, or sign mismatch; inspect affected terms."
     )
   )
+
+status_only <- make_status_summary_rows(bundle$status)
+assert_bind_rows_compatible(summary_with_terms, status_only, "GSEA direction summary")
+summary <- dplyr::bind_rows(summary_with_terms, status_only) |>
+  dplyr::arrange(.data$dataset, .data$ontology, .data$contrast)
+
+ora_warning <- bundle$manifest |>
+  dplyr::filter(.data$analysis_status != "failed")
+ora_warning <- dplyr::bind_cols(
+  ora_warning,
+  parse_comparison_sides(ora_warning$comparison)
+) |>
+  dplyr::rowwise() |>
+  dplyr::mutate(
+    values = list(bundle$collapsed$collapsed_logfc[bundle$collapsed$comparison == .data$comparison & bundle$collapsed$ontology == .data$ontology])
+  ) |>
+  dplyr::transmute(
+    dataset, ontology, contrast = .data$comparison, formal_contrast,
+    positive_side_label, negative_side_label,
+    n_positive_log2fc = sum(unlist(.data$values) > 0, na.rm = TRUE),
+    n_negative_log2fc = sum(unlist(.data$values) < 0, na.rm = TRUE),
+    top_abs_log2fc_threshold = top_abs_threshold,
+    n_top_abs_log2fc = sum(abs(unlist(.data$values)) > top_abs_threshold, na.rm = TRUE),
+    n_top_positive = sum(unlist(.data$values) > top_abs_threshold, na.rm = TRUE),
+    n_top_negative = sum(unlist(.data$values) < -top_abs_threshold, na.rm = TRUE),
+    note = "Directional diagnostic uses canonical collapsed log2fc values; enrichment results are unchanged.",
+    collapsed_gene_input_file
+  ) |>
+  dplyr::ungroup() |>
+  dplyr::arrange(.data$dataset, .data$ontology, .data$contrast)
 
 dir_create(tables_dir)
 dir_create(logs_dir)
@@ -439,7 +420,8 @@ finish_script_runtime(
   inputs = c(
     clusterProfiler_manifest = manifest_path,
     stats::setNames(unique(manifest_filtered$output_table), paste0("gsea_table_", seq_along(unique(manifest_filtered$output_table)))),
-    stats::setNames(unique(manifest_filtered$input_gene_file), paste0("mapped_input_", seq_along(unique(manifest_filtered$input_gene_file))))
+    stats::setNames(unique(manifest_filtered$collapsed_gene_input_file), paste0("collapsed_gene_input_", seq_along(unique(manifest_filtered$collapsed_gene_input_file)))),
+    stats::setNames(unique(manifest_filtered$term_gene_provenance_file), paste0("term_gene_provenance_", seq_along(unique(manifest_filtered$term_gene_provenance_file))))
   ),
   status = "completed",
   notes = c(
@@ -449,6 +431,6 @@ finish_script_runtime(
 )
 
 message("[INFO] GSEA/protein direction audit complete.")
-message("[INFO] Audited contrasts: ", length(unique(term_audit$contrast)))
-message("[INFO] Audited GSEA terms: ", nrow(term_audit))
+message("[INFO] Audited contrasts: ", length(unique(summary$contrast)))
+message("[INFO] Audited GSEA terms: ", nrow(term_summary))
 message("[INFO] Outputs: ", tables_dir)

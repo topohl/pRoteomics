@@ -240,6 +240,19 @@ validate_term_gene_provenance_contract <- function(x, strict = TRUE) {
   if (isTRUE(strict) && any(x$gene_level_claim_allowed %in% FALSE, na.rm = TRUE)) {
     stop("Ineligible protein groups are not permitted in strict term-gene provenance.", call. = FALSE)
   }
+  if (isTRUE(strict) && any(as.character(x$protein_group_gene_annotation_status) != "concordant_official_gene")) {
+    stop("Ambiguous protein-group annotations are not permitted in strict term-gene provenance.", call. = FALSE)
+  }
+  identity_columns <- c("dataset", "comparison", "result_type", "ontology", "term_id",
+    "official_gene_symbol", "ProteinGroupID")
+  if (nrow(x) && any(vapply(x[identity_columns], function(value) {
+      any(is.na(value) | !nzchar(trimws(as.character(value))))
+    }, logical(1)))) {
+    stop("Term-gene provenance contains missing canonical identity values.", call. = FALSE)
+  }
+  if (nrow(x) && anyDuplicated(x[identity_columns])) {
+    stop("Term-gene provenance contains duplicate canonical term/gene/ProteinGroupID rows.", call. = FALSE)
+  }
   invisible(TRUE)
 }
 
@@ -335,9 +348,217 @@ validate_comparego_manifest_contract <- function(manifest, require_files = TRUE)
 }
 
 read_csv_contract <- function(path, character_columns = character()) {
+  header <- utils::read.csv(path, stringsAsFactors = FALSE, check.names = FALSE, nrows = 0L)
+  character_columns <- intersect(character_columns, names(header))
   x <- utils::read.csv(path, stringsAsFactors = FALSE, check.names = FALSE,
     colClasses = if (length(character_columns)) c(setNames(rep("character", length(character_columns)), character_columns)) else NA)
   x
+}
+
+canonical_clusterprofiler_manifest_path <- function(dataset, repository_root = repo_path()) {
+  file.path(repository_root, "data", "processed", "04_differential_expression_enrichment",
+    "clusterProfiler", as.character(dataset), "clusterProfiler_manifest.csv")
+}
+
+canonical_comparego_manifest_path <- function(dataset, repository_root = repo_path()) {
+  file.path(repository_root, "data", "processed", "04_differential_expression_enrichment",
+    "compareGO", as.character(dataset), "compareGO_input_manifest.csv")
+}
+
+resolve_repository_contract_path <- function(path, repository_root = repo_path()) {
+  path <- as.character(path)
+  out <- rep(NA_character_, length(path))
+  usable <- !is.na(path) & nzchar(trimws(path))
+  if (!any(usable)) return(out)
+  values <- path[usable]
+  absolute <- grepl("^[A-Za-z]:[/\\\\]", values) | grepl("^[/\\\\]{1,2}", values)
+  values[!absolute] <- file.path(repository_root, values[!absolute])
+  out[usable] <- normalizePath(values, winslash = "/", mustWork = FALSE)
+  out
+}
+
+resolve_manifest_contract_paths <- function(manifest, path_columns, repository_root = repo_path()) {
+  for (column in intersect(path_columns, names(manifest))) {
+    manifest[[column]] <- resolve_repository_contract_path(manifest[[column]], repository_root)
+  }
+  manifest
+}
+
+read_canonical_clusterprofiler_manifest <- function(path, dataset, strict = TRUE,
+                                                    require_files = TRUE,
+                                                    repository_root = repo_path()) {
+  if (!file.exists(path)) stop("Canonical clusterProfiler manifest not found: ", path, call. = FALSE)
+  manifest <- read_csv_contract(path)
+  manifest <- resolve_manifest_contract_paths(
+    manifest,
+    c("output_table", "collapsed_gene_input_file", "collapsed_gene_provenance_file", "term_gene_provenance_file"),
+    repository_root
+  )
+  validate_clusterprofiler_manifest_contract(manifest, strict = strict, require_files = require_files)
+  manifest <- manifest[as.character(manifest$dataset) == as.character(dataset), , drop = FALSE]
+  if (!nrow(manifest)) stop("Canonical clusterProfiler manifest has no rows for dataset ", dataset, ".", call. = FALSE)
+  manifest[order(manifest$dataset, manifest$comparison, manifest$result_type, manifest$ontology, method = "radix"), , drop = FALSE]
+}
+
+read_canonical_comparego_manifest <- function(path, dataset, require_files = TRUE,
+                                              repository_root = repo_path()) {
+  if (!file.exists(path)) stop("Canonical compareGO manifest not found: ", path, call. = FALSE)
+  manifest <- read_csv_contract(path)
+  manifest <- resolve_manifest_contract_paths(
+    manifest,
+    c("input_manifest", "term_comparison_file", "term_gene_provenance_output_file", "analysis_status_summary_file"),
+    repository_root
+  )
+  validate_comparego_manifest_contract(manifest, require_files = require_files)
+  manifest <- manifest[as.character(manifest$dataset) == as.character(dataset), , drop = FALSE]
+  if (!nrow(manifest)) stop("Canonical compareGO manifest has no rows for dataset ", dataset, ".", call. = FALSE)
+  manifest[order(manifest$dataset, manifest$comparison, manifest$result_type, manifest$ontology, method = "radix"), , drop = FALSE]
+}
+
+empty_collapsed_gene_contract <- function() {
+  data.frame(
+    dataset = character(), comparison = character(), result_type = character(), ontology = character(),
+    official_gene_symbol = character(), official_entrez_id = character(), collapsed_statistic = numeric(),
+    collapsed_logfc = numeric(), contributing_ProteinGroupIDs = character(), source_file = character(),
+    stringsAsFactors = FALSE
+  )
+}
+
+join_term_provenance_to_collapsed_genes <- function(provenance, collapsed, strict = TRUE) {
+  validate_term_gene_provenance_contract(provenance, strict = strict)
+  identity <- c("dataset", "comparison", "result_type", "ontology", "official_gene_symbol")
+  required_collapsed <- c(identity, "collapsed_statistic", "collapsed_logfc",
+    "contributing_ProteinGroupIDs", "source_file")
+  missing <- setdiff(required_collapsed, names(collapsed))
+  if (length(missing)) {
+    stop("Collapsed canonical gene input is missing required downstream columns: ",
+      paste(missing, collapse = ", "), call. = FALSE)
+  }
+  out <- merge(
+    provenance,
+    collapsed[required_collapsed],
+    by = identity,
+    all.x = TRUE,
+    sort = FALSE
+  )
+  if (nrow(out) && any(!is.finite(out$collapsed_statistic) | !is.finite(out$collapsed_logfc))) {
+    stop("Canonical term-gene provenance could not be joined to finite collapsed rank/log2fc values.", call. = FALSE)
+  }
+  out <- out[order(out$dataset, out$comparison, out$result_type, out$ontology,
+    out$term_id, out$official_gene_symbol, out$ProteinGroupID, method = "radix"), , drop = FALSE]
+  rownames(out) <- NULL
+  out
+}
+
+read_canonical_clusterprofiler_bundle <- function(manifest_path, dataset,
+                                                  result_types = "GSEA_GO",
+                                                  ontology = NULL,
+                                                  comparisons = NULL,
+                                                  strict = TRUE,
+                                                  repository_root = repo_path()) {
+  manifest <- read_canonical_clusterprofiler_manifest(
+    manifest_path, dataset, strict = strict, require_files = TRUE,
+    repository_root = repository_root
+  )
+  manifest <- manifest[manifest$result_type %in% result_types, , drop = FALSE]
+  if (!is.null(ontology)) manifest <- manifest[toupper(manifest$ontology) %in% toupper(ontology), , drop = FALSE]
+  if (!is.null(comparisons)) manifest <- manifest[manifest$comparison %in% comparisons, , drop = FALSE]
+  if (!nrow(manifest)) stop("No supported canonical clusterProfiler manifest rows matched the requested identity.", call. = FALSE)
+
+  collected <- collect_canonical_comparego_outputs(manifest, strict = strict, require_files = TRUE)
+  collapsed_rows <- list()
+  success <- manifest$analysis_status %in% c("success_with_terms", "success_zero_terms")
+  for (i in which(success)) {
+    row <- manifest[i, , drop = FALSE]
+    collapsed <- read_csv_contract(
+      as.character(row$collapsed_gene_input_file),
+      character_columns = "official_entrez_id"
+    )
+    required <- c("official_gene_symbol", "official_entrez_id", "collapsed_statistic",
+      "collapsed_logfc", "contributing_ProteinGroupIDs")
+    missing <- setdiff(required, names(collapsed))
+    if (length(missing)) {
+      stop("Collapsed canonical gene input is missing required columns: ", paste(missing, collapse = ", "), call. = FALSE)
+    }
+    if (!is.character(collapsed$official_entrez_id)) {
+      stop("Collapsed canonical gene input official_entrez_id must remain character.", call. = FALSE)
+    }
+    if (anyDuplicated(collapsed$official_gene_symbol)) {
+      stop("Collapsed canonical gene input contains duplicate official_gene_symbol values.", call. = FALSE)
+    }
+    collapsed$dataset <- as.character(row$dataset)
+    collapsed$comparison <- as.character(row$comparison)
+    collapsed$result_type <- as.character(row$result_type)
+    collapsed$ontology <- as.character(row$ontology)
+    collapsed$source_file <- as.character(row$collapsed_gene_input_file)
+    collapsed_rows[[length(collapsed_rows) + 1L]] <- collapsed
+  }
+  collapsed <- if (length(collapsed_rows)) do.call(rbind, collapsed_rows) else empty_collapsed_gene_contract()
+  if (nrow(collapsed)) {
+    collapsed <- collapsed[order(collapsed$dataset, collapsed$comparison, collapsed$ontology,
+      collapsed$official_gene_symbol, method = "radix"), , drop = FALSE]
+  }
+  rownames(manifest) <- rownames(collapsed) <- NULL
+  list(
+    manifest = manifest,
+    terms = collected$terms,
+    provenance = collected$provenance,
+    status = collected$status,
+    collapsed = collapsed,
+    manifest_source = normalizePath(manifest_path, winslash = "/", mustWork = FALSE)
+  )
+}
+
+read_single_declared_contract_table <- function(paths, label, character_columns = character()) {
+  paths <- sort(unique(as.character(paths[!is.na(paths) & nzchar(paths)])), method = "radix")
+  if (length(paths) != 1L) stop("Canonical compareGO manifest must declare exactly one ", label, ".", call. = FALSE)
+  if (!file.exists(paths[[1]])) stop("Declared ", label, " does not exist: ", paths[[1]], call. = FALSE)
+  list(path = paths[[1]], data = read_csv_contract(paths[[1]], character_columns = character_columns))
+}
+
+read_canonical_comparego_bundle <- function(manifest_path, dataset, repository_root = repo_path()) {
+  manifest <- read_canonical_comparego_manifest(
+    manifest_path, dataset, require_files = TRUE, repository_root = repository_root
+  )
+  terms <- read_single_declared_contract_table(manifest$term_comparison_file, "compareGO term comparison")
+  provenance <- read_single_declared_contract_table(
+    manifest$term_gene_provenance_output_file, "compareGO term-gene provenance", "official_entrez_id"
+  )
+  status <- read_single_declared_contract_table(manifest$analysis_status_summary_file, "compareGO analysis-status summary")
+  required_terms <- c("dataset", "comparison", "result_type", "ontology", "term_id", "term_description", "NES", "p.adjust")
+  missing_terms <- setdiff(required_terms, names(terms$data))
+  if (length(missing_terms)) stop("compareGO term comparison is missing required columns: ", paste(missing_terms, collapse = ", "), call. = FALSE)
+  validate_term_gene_provenance_contract(provenance$data, strict = TRUE)
+  required_status <- c("dataset", "comparison", "result_type", "ontology", "analysis_status", "n_terms", "comparego_action")
+  missing_status <- setdiff(required_status, names(status$data))
+  if (length(missing_status)) stop("compareGO analysis-status summary is missing required columns: ", paste(missing_status, collapse = ", "), call. = FALSE)
+  if (nrow(provenance$data)) {
+    term_keys <- paste(terms$data$dataset, terms$data$comparison, terms$data$result_type,
+      terms$data$ontology, terms$data$term_id, sep = "\r")
+    provenance_keys <- paste(provenance$data$dataset, provenance$data$comparison,
+      provenance$data$result_type, provenance$data$ontology, provenance$data$term_id, sep = "\r")
+    if (any(!provenance_keys %in% term_keys)) {
+      stop("compareGO term-gene provenance contains terms absent from the declared term comparison.", call. = FALSE)
+    }
+  }
+  for (x in list(terms$data, provenance$data, status$data)) {
+    if (nrow(x) && any(as.character(x$dataset) != as.character(dataset))) {
+      stop("Canonical compareGO output contains dataset identity inconsistent with its manifest.", call. = FALSE)
+    }
+  }
+  terms$data <- terms$data[order(terms$data$dataset, terms$data$comparison, terms$data$ontology,
+    terms$data$term_id, method = "radix"), , drop = FALSE]
+  provenance$data <- provenance$data[order(provenance$data$dataset, provenance$data$comparison,
+    provenance$data$ontology, provenance$data$term_id, provenance$data$official_gene_symbol,
+    provenance$data$ProteinGroupID, method = "radix"), , drop = FALSE]
+  status$data <- status$data[order(status$data$dataset, status$data$comparison,
+    status$data$result_type, status$data$ontology, method = "radix"), , drop = FALSE]
+  rownames(terms$data) <- rownames(provenance$data) <- rownames(status$data) <- NULL
+  list(
+    manifest = manifest, terms = terms$data, provenance = provenance$data, status = status$data,
+    manifest_source = normalizePath(manifest_path, winslash = "/", mustWork = FALSE),
+    term_source = terms$path, provenance_source = provenance$path, status_source = status$path
+  )
 }
 
 collect_canonical_comparego_outputs <- function(manifest, strict = TRUE, require_files = TRUE) {

@@ -25,6 +25,7 @@ paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.
 source(paths_file)
 source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "validation_utils.R"))
+source(repo_path("R", "enrichment_io.R"))
 
 MODULE_ID <- "04_differential_expression_enrichment"
 SUBSTEP_ID <- "neuropil_reference_annotation"
@@ -69,46 +70,22 @@ if (length(missing_pkgs) == 0) {
 
 marker_sets <- list(
   microglia = c(
-    "AIF1", "P2RY12", "TMEM119", "CX3CR1", "CSF1R", "TYROBP", "HEXB",
-    "C1QA", "C1QB", "C1QC", "ITGAM", "SPI1", "TREM2", "LAPTM5"
+    "Aif1", "P2ry12", "Tmem119", "Cx3cr1", "Csf1r", "Tyrobp", "Hexb",
+    "C1qa", "C1qb", "C1qc", "Itgam", "Spi1", "Trem2", "Laptm5"
   ),
   neuropil_synaptic_neuronal = c(
-    "SYN1", "SYP", "SNAP25", "STX1A", "STXBP1", "DLG4", "CAMK2A", "CAMK2B",
-    "MAP2", "NEFL", "NEFM", "RBFOX3", "TUBB3", "GRIN1", "GRIA1", "VAMP2"
+    "Syn1", "Syp", "Snap25", "Stx1a", "Stxbp1", "Dlg4", "Camk2a", "Camk2b",
+    "Map2", "Nefl", "Nefm", "Rbfox3", "Tubb3", "Grin1", "Gria1", "Vamp2"
   ),
-  astrocyte = c("GFAP", "ALDH1L1", "AQP4", "SLC1A3", "SLC1A2", "GLUL", "GJA1"),
-  oligodendrocyte_myelin = c("MBP", "PLP1", "MAG", "MOG", "MOBP", "CNP", "CLDN11"),
-  endothelial_pericyte = c("PECAM1", "CLDN5", "KDR", "FLT1", "PDGFRB", "RGS5", "ACTA2")
+  astrocyte = c("Gfap", "Aldh1l1", "Aqp4", "Slc1a3", "Slc1a2", "Glul", "Gja1"),
+  oligodendrocyte_myelin = c("Mbp", "Plp1", "Mag", "Mog", "Mobp", "Cnp", "Cldn11"),
+  endothelial_pericyte = c("Pecam1", "Cldn5", "Kdr", "Flt1", "Pdgfrb", "Rgs5", "Acta2")
 )
 
 normalize_id <- function(x) {
   x <- as.character(x)
   x <- trimws(x)
-  x <- gsub("^ +| +$", "", x)
-  toupper(x)
-}
-
-split_gene_field <- function(x) {
-  if (is.null(x) || length(x) == 0 || is.na(x) || !nzchar(as.character(x))) return(character(0))
-  genes <- unlist(strsplit(as.character(x), "[/;,|[:space:]]+"), use.names = FALSE)
-  genes <- normalize_id(genes)
-  unique(genes[nzchar(genes)])
-}
-
-pick_col <- function(df, candidates) {
-  hit <- candidates[candidates %in% colnames(df)][1]
-  if (is.na(hit)) NA_character_ else hit
-}
-
-safe_read_csv <- function(path) {
-  if (is.na(path) || !nzchar(path) || !file.exists(path)) return(NULL)
-  tryCatch(
-    readr::read_csv(path, show_col_types = FALSE, progress = FALSE),
-    error = function(e) {
-      warning("Failed to read CSV: ", path, " | ", e$message)
-      NULL
-    }
-  )
+  x[nzchar(x)]
 }
 
 manifest_path <- function(dataset) {
@@ -122,21 +99,14 @@ manifest_path <- function(dataset) {
 
 load_manifest <- function(dataset) {
   path <- manifest_path(dataset)
-  manifest <- safe_read_csv(path)
-  if (is.null(manifest)) {
-    return(list(path = path, data = tibble(), status = "missing"))
-  }
-  if (!"dataset" %in% colnames(manifest)) manifest$dataset <- dataset
-  list(path = path, data = manifest, status = "loaded")
-}
-
-resolve_table_path <- function(path) {
-  if (is.null(path) || length(path) == 0 || is.na(path) || !nzchar(path)) return(NA_character_)
-  path <- as.character(path)
-  if (file.exists(path)) return(normalizePath(path, winslash = "/", mustWork = FALSE))
-  candidate <- repo_path(path)
-  if (file.exists(candidate)) return(normalizePath(candidate, winslash = "/", mustWork = FALSE))
-  normalizePath(path, winslash = "/", mustWork = FALSE)
+  if (!file.exists(path)) return(list(path = path, data = data.frame(), bundle = NULL, status = "missing"))
+  manifest <- read_canonical_clusterprofiler_manifest(
+    path, dataset, strict = TRUE, require_files = !isTRUE(DRY_RUN)
+  )
+  bundle <- if (isTRUE(DRY_RUN)) NULL else read_canonical_clusterprofiler_bundle(
+    path, dataset, result_types = "GSEA_GO", strict = TRUE
+  )
+  list(path = path, data = manifest, bundle = bundle, status = "loaded")
 }
 
 make_empty_annotation <- function(reason) {
@@ -149,80 +119,45 @@ make_empty_annotation <- function(reason) {
   )
 }
 
-extract_enrichment_tables <- function(manifest, dataset_label) {
-  if (nrow(manifest) == 0) return(tibble())
-
-  table_col <- pick_col(manifest, c("output_table", "result_table", "table_path", "path"))
-  if (is.na(table_col)) {
-    warning("Manifest has no output table column for dataset: ", dataset_label)
-    return(tibble())
-  }
-
-  comparison_col <- pick_col(manifest, c("comparison", "comparison_name", "Comparison"))
-  result_type_col <- pick_col(manifest, c("result_type", "type", "analysis_type"))
-  ontology_col <- pick_col(manifest, c("ontology", "ONTOLOGY"))
-  route_category_col <- pick_col(manifest, c("route_category", "category"))
-  route_unit_col <- pick_col(manifest, c("route_unit", "unit_folder", "unit"))
-
-  rows <- vector("list", nrow(manifest))
-  for (i in seq_len(nrow(manifest))) {
-    table_path_i <- resolve_table_path(manifest[[table_col]][[i]])
-    tab <- safe_read_csv(table_path_i)
-    if (is.null(tab) || nrow(tab) == 0) next
-
-    if (!"ID" %in% colnames(tab) && "id" %in% colnames(tab)) tab$ID <- tab$id
-    if (!"Description" %in% colnames(tab) && "description" %in% colnames(tab)) tab$Description <- tab$description
-
-    if (!"ID" %in% colnames(tab) && !"Description" %in% colnames(tab)) next
-
-    tab$.source_dataset <- dataset_label
-    tab$.source_table <- table_path_i
-    tab$.manifest_row <- i
-    tab$.comparison <- if (!is.na(comparison_col)) as.character(manifest[[comparison_col]][[i]]) else NA_character_
-    tab$.result_type <- if (!is.na(result_type_col)) as.character(manifest[[result_type_col]][[i]]) else NA_character_
-    tab$.ontology_manifest <- if (!is.na(ontology_col)) as.character(manifest[[ontology_col]][[i]]) else NA_character_
-    tab$.route_category <- if (!is.na(route_category_col)) as.character(manifest[[route_category_col]][[i]]) else NA_character_
-    tab$.route_unit <- if (!is.na(route_unit_col)) as.character(manifest[[route_unit_col]][[i]]) else NA_character_
-    rows[[i]] <- tab
-  }
-
-  dplyr::bind_rows(rows)
-}
-
-prepare_terms <- function(df) {
-  if (nrow(df) == 0) return(tibble())
-
-  gene_col <- pick_col(df, c("core_enrichment", "geneID", "gene_id", "genes", "leading_edge"))
-  padj_col <- pick_col(df, c("p.adjust", "p_adj", "padj", "qvalue"))
-  nes_col <- pick_col(df, c("NES", "nes", "enrichmentScore", "score"))
-  ontology_col <- pick_col(df, c("ONTOLOGY", "ontology", ".ontology_manifest"))
-
-  df %>%
-    mutate(
-      term_id = if ("ID" %in% colnames(.)) as.character(.data$ID) else NA_character_,
-      term_description = if ("Description" %in% colnames(.)) as.character(.data$Description) else term_id,
-      term_key = ifelse(!is.na(term_id) & nzchar(term_id), term_id, term_description),
-      comparison = .data$.comparison,
-      result_type = .data$.result_type,
-      ontology = if (!is.na(ontology_col)) as.character(.data[[ontology_col]]) else NA_character_,
-      route_category = .data$.route_category,
-      route_unit = .data$.route_unit,
-      p_adjust = if (!is.na(padj_col)) suppressWarnings(as.numeric(.data[[padj_col]])) else NA_real_,
-      score = if (!is.na(nes_col)) suppressWarnings(as.numeric(.data[[nes_col]])) else NA_real_,
-      gene_string = if (!is.na(gene_col)) as.character(.data[[gene_col]]) else NA_character_
-    ) %>%
-    rowwise() %>%
-    mutate(
-      genes = list(split_gene_field(gene_string)),
-      n_genes = length(genes)
-    ) %>%
-    ungroup() %>%
-    select(
-      source_dataset = .data$.source_dataset,
-      source_table = .data$.source_table,
-      comparison, result_type, ontology, route_category, route_unit,
-      term_id, term_description, term_key, p_adjust, score, gene_string, genes, n_genes
+prepare_terms <- function(bundle) {
+  manifest_identity <- bundle$manifest %>%
+    select(dataset, comparison, result_type, ontology, route_category, route_unit,
+      output_table, term_gene_provenance_file, analysis_status)
+  provenance <- bundle$provenance %>%
+    filter(.data$gene_level_claim_allowed, .data$core_enrichment_member) %>%
+    group_by(.data$dataset, .data$comparison, .data$result_type, .data$ontology,
+      .data$term_id, .data$term_description) %>%
+    summarise(
+      genes = list(sort(unique(as.character(.data$official_gene_symbol)), method = "radix")),
+      official_gene_symbol = paste(sort(unique(as.character(.data$official_gene_symbol)), method = "radix"), collapse = ";"),
+      ProteinGroupID = paste(sort(unique(as.character(.data$ProteinGroupID)), method = "radix"), collapse = ";"),
+      member_accessions = paste(sort(unique(as.character(.data$member_accessions)), method = "radix"), collapse = ";"),
+      protein_group_gene_annotation_status = paste(sort(unique(as.character(.data$protein_group_gene_annotation_status)), method = "radix"), collapse = ";"),
+      gene_level_claim_allowed = all(.data$gene_level_claim_allowed),
+      .groups = "drop"
     )
+  terms <- bundle$terms %>%
+    transmute(
+      dataset, comparison, result_type, ontology, term_id, term_description,
+      p_adjust = suppressWarnings(as.numeric(.data$`p.adjust`)),
+      score = suppressWarnings(as.numeric(.data$NES))
+    ) %>%
+    left_join(provenance, by = c("dataset", "comparison", "result_type", "ontology", "term_id", "term_description")) %>%
+    left_join(manifest_identity, by = c("dataset", "comparison", "result_type", "ontology"))
+  if (nrow(terms) && any(vapply(terms$genes, is.null, logical(1)))) {
+    stop("Canonical enrichment term is missing required term-gene provenance.", call. = FALSE)
+  }
+  terms %>%
+    mutate(
+      source_dataset = .data$dataset,
+      source_table = .data$output_table,
+      source_manifest = bundle$manifest_source,
+      source_term_provenance = .data$term_gene_provenance_file,
+      term_key = paste(.data$result_type, .data$ontology, .data$term_id, sep = "::"),
+      gene_string = .data$official_gene_symbol,
+      n_genes = lengths(.data$genes)
+    ) %>%
+    arrange(.data$dataset, .data$comparison, .data$result_type, .data$ontology, .data$term_id)
 }
 
 marker_fraction <- function(genes, marker_vector) {
@@ -348,7 +283,28 @@ find_best_neuropil_match <- function(m_row, neuropil_terms) {
 }
 
 annotate_microglia_terms <- function(microglia_terms, neuropil_terms) {
-  if (nrow(microglia_terms) == 0) return(tibble())
+  if (nrow(microglia_terms) == 0) {
+    return(tibble(
+      dataset = character(), comparison = character(), result_type = character(), ontology = character(),
+      term_id = character(), term_description = character(), p_adjust = numeric(), score = numeric(),
+      official_gene_symbol = character(), ProteinGroupID = character(), member_accessions = character(),
+      protein_group_gene_annotation_status = character(), gene_level_claim_allowed = logical(),
+      route_category = character(), route_unit = character(), output_table = character(),
+      term_gene_provenance_file = character(), analysis_status = character(),
+      source_dataset = character(), source_table = character(), source_manifest = character(),
+      source_term_provenance = character(), term_key = character(), gene_string = character(),
+      n_genes = integer(), reference_dataset = character(), microglia_marker_fraction = numeric(),
+      neuropil_marker_fraction = numeric(), astrocyte_marker_fraction = numeric(),
+      oligodendrocyte_marker_fraction = numeric(), vascular_marker_fraction = numeric(),
+      microglia_marker_hits = character(), neuropil_marker_hits = character(),
+      astrocyte_marker_hits = character(), oligodendrocyte_marker_hits = character(),
+      vascular_marker_hits = character(), same_direction_as_neuropil = logical(),
+      interpretation_class = character(), neuropil_term_present = logical(),
+      neuropil_comparison = character(), neuropil_p_adjust = numeric(), neuropil_score = numeric(),
+      neuropil_source_table = character(), gene_overlap_fraction = numeric(),
+      gene_jaccard = numeric(), overlapping_genes = character()
+    ))
+  }
 
   annotations <- vector("list", nrow(microglia_terms))
   for (i in seq_len(nrow(microglia_terms))) {
@@ -399,7 +355,7 @@ annotate_microglia_terms <- function(microglia_terms, neuropil_terms) {
   bind_rows(annotations)
 }
 
-write_outputs <- function(annotated, diagnostics) {
+write_outputs <- function(annotated, diagnostics, analysis_status = tibble()) {
   table_dir <- CANONICAL_PATHS$tables
   figure_dir <- CANONICAL_PATHS$figures
   report_dir <- CANONICAL_PATHS$reports
@@ -409,6 +365,7 @@ write_outputs <- function(annotated, diagnostics) {
   annotation_csv <- file.path(table_dir, paste0("microglia_neuropil_annotation_", RUN_ID, ".csv"))
   latest_csv <- file.path(table_dir, "microglia_neuropil_annotation_latest.csv")
   summary_csv <- file.path(table_dir, paste0("microglia_neuropil_annotation_summary_", RUN_ID, ".csv"))
+  status_csv <- file.path(table_dir, "microglia_neuropil_analysis_status.csv")
   diagnostics_csv <- file.path(report_dir, paste0("neuropil_annotation_diagnostics_", RUN_ID, ".csv"))
 
   if (nrow(annotated) > 0) {
@@ -435,11 +392,12 @@ write_outputs <- function(annotated, diagnostics) {
       ggsave(file.path(figure_dir, paste0("neuropil_annotation_class_counts_", RUN_ID, ".svg")), p, width = 7, height = 4)
     }
   } else {
-    readr::write_csv(tibble(), annotation_csv)
-    readr::write_csv(tibble(), latest_csv)
-    readr::write_csv(tibble(), summary_csv)
+    readr::write_csv(annotated, annotation_csv)
+    readr::write_csv(annotated, latest_csv)
+    readr::write_csv(tibble(interpretation_class = character(), result_type = character(), ontology = character(), n_terms = integer()), summary_csv)
   }
 
+  readr::write_csv(analysis_status, status_csv)
   readr::write_csv(diagnostics, diagnostics_csv)
 
   methods_note <- c(
@@ -459,7 +417,7 @@ write_outputs <- function(annotated, diagnostics) {
   )
   writeLines(methods_note, file.path(report_dir, paste0("neuropil_annotation_methods_note_", RUN_ID, ".txt")))
 
-  invisible(list(annotation = annotation_csv, summary = summary_csv, diagnostics = diagnostics_csv))
+  invisible(list(annotation = annotation_csv, summary = summary_csv, status = status_csv, diagnostics = diagnostics_csv))
 }
 
 microglia_manifest <- load_manifest(DATASET)
@@ -501,36 +459,38 @@ if (isTRUE(DRY_RUN)) {
   dry_run_line("Microglia/current manifest", microglia_manifest$path, diagnostics$status[3])
   dry_run_line("Neuropil reference manifest", neuropil_manifest$path, diagnostics$status[4])
   dry_run_line("Output tables", CANONICAL_PATHS$tables)
-  write_outputs(tibble(), diagnostics)
+  write_outputs(annotate_microglia_terms(tibble(), tibble()), diagnostics, tibble())
   quit(status = 0, save = "no")
 }
 
 if (DATASET != "microglia" && tolower(Sys.getenv("PROTEOMICS_FORCE_NEUROPIL_ANNOTATION", unset = "false")) != "true") {
   diagnostics <- make_empty_annotation("skipped_non_microglia_dataset")
-  write_outputs(tibble(), diagnostics)
+  write_outputs(annotate_microglia_terms(tibble(), tibble()), diagnostics, tibble())
   message("Skipping neuropil annotation because DATASET != microglia. Set PROTEOMICS_FORCE_NEUROPIL_ANNOTATION=true to force.")
   quit(status = 0, save = "no")
 }
 
 if (microglia_manifest$status != "loaded" || nrow(microglia_manifest$data) == 0) {
   diagnostics <- make_empty_annotation("missing_current_dataset_clusterProfiler_manifest")
-  write_outputs(tibble(), diagnostics)
+  write_outputs(annotate_microglia_terms(tibble(), tibble()), diagnostics, tibble())
   warning("Current dataset clusterProfiler manifest missing or empty: ", microglia_manifest$path)
   quit(status = 0, save = "no")
 }
 
 if (neuropil_manifest$status != "loaded" || nrow(neuropil_manifest$data) == 0) {
   diagnostics <- make_empty_annotation("missing_neuropil_reference_clusterProfiler_manifest")
-  write_outputs(tibble(), diagnostics)
+  write_outputs(annotate_microglia_terms(tibble(), tibble()), diagnostics, tibble())
   warning("Neuropil reference clusterProfiler manifest missing or empty: ", neuropil_manifest$path)
   quit(status = 0, save = "no")
 }
 
-microglia_tables <- extract_enrichment_tables(microglia_manifest$data, DATASET)
-neuropil_tables <- extract_enrichment_tables(neuropil_manifest$data, REFERENCE_DATASET)
-
-microglia_terms <- prepare_terms(microglia_tables)
-neuropil_terms <- prepare_terms(neuropil_tables)
+microglia_terms <- prepare_terms(microglia_manifest$bundle)
+neuropil_terms <- prepare_terms(neuropil_manifest$bundle)
+analysis_status <- dplyr::bind_rows(
+  microglia_manifest$bundle$status %>% dplyr::mutate(source_role = "target", source_manifest = microglia_manifest$path),
+  neuropil_manifest$bundle$status %>% dplyr::mutate(source_role = "neuropil_reference", source_manifest = neuropil_manifest$path)
+) %>%
+  dplyr::arrange(.data$source_role, .data$dataset, .data$comparison, .data$result_type, .data$ontology)
 
 annotated <- annotate_microglia_terms(microglia_terms, neuropil_terms)
 
@@ -556,7 +516,7 @@ diagnostics <- tibble(
   )
 )
 
-outputs <- write_outputs(annotated, diagnostics)
+outputs <- write_outputs(annotated, diagnostics, analysis_status)
 message("Neuropil annotation completed.")
 message("Annotation table: ", outputs$annotation)
 message("Summary table: ", outputs$summary)
