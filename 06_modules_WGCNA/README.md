@@ -67,9 +67,19 @@ Main outputs:
 ## Supermodule Annotation
 
 `01_WGCNA.r` keeps data-driven eigengene clustering and sensitivity outputs.
-Supermodule annotations include `GO_label_confidence_class`:
-`GO_supported`, `suggestive_GO`, `manual_only`, `hub_only`, `unresolved`, or
-`manual_absent_from_dataset`.
+These are eigengene meta-modules (co-varying module blocks) constructed by
+average linkage on `1 - signed Pearson module-eigengene correlation`; they are
+not protein-overlap clusters. WGCNA modules partition proteins, so protein or
+hub overlap is retained only as a partition-integrity audit and never supports
+supermodule coherence or confidence.
+
+Every computational operation uses `dataset + SupermoduleID`; biological and
+display labels are metadata. GO naming uses `ModuleProteinSetType == "all"`
+and counts a member module only when `p.adjust <= 0.05`. High confidence
+requires the same term in every member module. Medium confidence requires at
+least two and at least half. Other multi-module clusters are conservatively
+mixed/unresolved; singletons are explicitly `singleton` with low confidence.
+The sensitivity grid is `0.25, 0.35, 0.45, 0.50, 0.55, 0.65`.
 
 Manual labels absent from the active dataset are retained for audit but marked
 with `present_in_dataset = FALSE`, `annotation_scope =

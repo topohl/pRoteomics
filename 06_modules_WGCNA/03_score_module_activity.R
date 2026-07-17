@@ -4,7 +4,7 @@
 # Script: 06_modules_WGCNA/03_score_module_activity.R
 # Stage: modules_downstream
 # Scope: dataset_specific
-# Consumes: required results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/; data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv; optional data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx.
+# Consumes: required results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/; data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv; optional merged score metadata and the authoritative supermodule annotation.
 # Produces: results/tables/06_modules_WGCNA/module_score/<dataset>/.
 # Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Scores existing module definitions against dataset matrices.
@@ -1122,12 +1122,12 @@ if (identical(module_definition_source, "wgcna") &&
     }
     super_map <- super_ann %>%
       dplyr::mutate(
+        dataset = dataset_profile,
         module_eigengene = as.character(.data$module_eigengene),
         SupermoduleID = dplyr::coalesce(
           nonempty_label(.data$Supermodule_DataDrivenID),
           nonempty_label(.data$Supermodule_DataDriven),
-          nonempty_label(.data$SupermoduleID),
-          nonempty_label(.data$Supermodule)
+          nonempty_label(.data$SupermoduleID)
         ),
         SupermoduleDisplayLabel = dplyr::coalesce(
           nonempty_label(.data$Supermodule_DisplayLabel),
@@ -1142,19 +1142,29 @@ if (identical(module_definition_source, "wgcna") &&
 
     if (nrow(super_map)) {
       module_eig <- extract_module_eigengenes(wgcna_state)
+      validate_supermodule_member_map(
+        super_map,
+        expected_modules = setdiff(names(module_eig), "Sample"),
+        artifact = "module-score supermodule annotation",
+        module_col = "module_eigengene",
+        display_col = "SupermoduleDisplayLabel"
+      )
       super <- make_supermodule_eigengenes(module_eig, super_map)
       supermodule_composition_df <- super$composition %>%
         dplyr::left_join(
           super_map %>%
-            dplyr::distinct(.data$SupermoduleID, .data$SupermoduleDisplayLabel),
-          by = c("supermodule_id" = "SupermoduleID")
+            dplyr::distinct(.data$dataset, .data$SupermoduleID, .keep_all = TRUE) %>%
+            dplyr::select("dataset", "SupermoduleID", "SupermoduleDisplayLabel"),
+          by = c("dataset", "supermodule_id" = "SupermoduleID")
         )
 
       supermodule_display_lookup <- supermodule_composition_df %>%
-        dplyr::distinct(.data$supermodule_id, .data$SupermoduleDisplayLabel) %>%
+        dplyr::filter(.data$dataset == dataset_profile) %>%
+        dplyr::distinct(.data$dataset, .data$supermodule_id, .keep_all = TRUE) %>%
         dplyr::mutate(
           SupermoduleDisplayLabel = dplyr::coalesce(nonempty_label(.data$SupermoduleDisplayLabel), nonempty_label(.data$supermodule_id))
         ) %>%
+        dplyr::select(.data$supermodule_id, .data$SupermoduleDisplayLabel) %>%
         tibble::deframe()
 
       super_cols <- setdiff(colnames(super$eigengenes), "Sample")
