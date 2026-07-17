@@ -3,7 +3,7 @@
 # Script: 03_qc_exploration/05_empirical_roi_marker_discovery.r
 # Stage: qc_global
 # Scope: global
-# Consumes: required data/processed/02_id_mapping/mapped/neuron_neuropil/forward/per_file/*.csv; data/processed/02_id_mapping/mapped/neuron_soma/forward/per_file/*.csv; +1 more; optional config/marker_panels/wgcna_reference_marker_sets.csv.
+# Consumes: required Stage 01 post-filter/imputed quantitative matrices for all datasets, mouse UniProt mapping, sample metadata; optional manual mappings.
 # Produces: results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv.
 # Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Global because it compares all three dataset matrices.
@@ -59,23 +59,39 @@ suppressPackageStartupMessages(invisible(lapply(required_pkgs, library, characte
 
 read_dataset <- function(ds) {
   if (!file.exists(inputs[[ds]]$matrix)) stop("Missing empirical marker matrix for ", ds, ": ", inputs[[ds]]$matrix, call. = FALSE)
-  expr <- qc_read_expression(inputs[[ds]]$matrix, inputs[[ds]]$metadata, ds)
+  expr <- qc_load_canonical_expression(inputs[[ds]]$matrix, inputs[[ds]]$metadata, ds)
+  qc_write_canonical_feature_artifacts(expr, file.path(PATHS$tables, ds))
   mat <- expr$mat
-  gene <- rownames(mat)
-  data.frame(
+  feature_stats <- data.frame(
     dataset = ds,
-    ProteinID = gene,
-    GeneSymbol = gene,
-    gene_token = normalize_gene_token(gene),
+    ProteinGroupID = expr$feature_table$ProteinGroupID,
     detection_rate = rowMeans(is.finite(mat) & !is.na(mat)),
     mean_abundance = rowMeans(mat, na.rm = TRUE),
     stringsAsFactors = FALSE
-  ) |>
-    dplyr::filter(nzchar(.data$gene_token)) |>
+  )
+  eligible_members <- expr$member_bridge |>
+    dplyr::filter(
+      .data$ProteinGroupID %in% expr$feature_table$ProteinGroupID[expr$feature_table$marker_eligible],
+      .data$gene_annotation_status == "resolved",
+      !is.na(.data$member_gene_symbol), nzchar(.data$member_gene_symbol),
+      .data$contaminant_status != "contaminant",
+      is.na(.data$member_species) | .data$member_species == "mouse"
+    ) |>
+    dplyr::transmute(
+      ProteinGroupID = .data$ProteinGroupID,
+      GeneSymbol = .data$member_gene_symbol,
+      gene_token = qc_official_gene_key(.data$member_gene_symbol),
+      matched_member_accession = .data$member_accession
+    ) |>
+    dplyr::distinct()
+  eligible_members |>
+    dplyr::left_join(feature_stats, by = "ProteinGroupID") |>
     dplyr::group_by(.data$gene_token) |>
     dplyr::summarise(
-      ProteinID = dplyr::first(.data$ProteinID),
+      ProteinGroupID = paste(sort(unique(.data$ProteinGroupID)), collapse = ";"),
+      ProteinID = paste(sort(unique(.data$ProteinGroupID)), collapse = ";"),
       GeneSymbol = dplyr::first(.data$GeneSymbol),
+      matched_member_accessions = paste(sort(unique(stats::na.omit(.data$matched_member_accession))), collapse = ";"),
       detection_rate = safe_max(.data$detection_rate),
       mean_abundance = safe_max(.data$mean_abundance),
       .groups = "drop"
@@ -85,11 +101,11 @@ read_dataset <- function(ds) {
 
 stats_long <- dplyr::bind_rows(lapply(DATASETS, read_dataset))
 wide <- stats_long |>
-  dplyr::select("gene_token", "ProteinID", "GeneSymbol", "dataset", "detection_rate", "mean_abundance") |>
+  dplyr::select("gene_token", "ProteinGroupID", "ProteinID", "GeneSymbol", "matched_member_accessions", "dataset", "detection_rate", "mean_abundance") |>
   tidyr::pivot_wider(
     names_from = "dataset",
-    values_from = c("detection_rate", "mean_abundance", "ProteinID", "GeneSymbol"),
-    values_fn = list(detection_rate = max, mean_abundance = max, ProteinID = dplyr::first, GeneSymbol = dplyr::first)
+    values_from = c("detection_rate", "mean_abundance", "ProteinGroupID", "ProteinID", "GeneSymbol", "matched_member_accessions"),
+    values_fn = list(detection_rate = max, mean_abundance = max, ProteinGroupID = dplyr::first, ProteinID = dplyr::first, GeneSymbol = dplyr::first, matched_member_accessions = dplyr::first)
   )
 
 first_nonmissing <- function(...) {
@@ -101,8 +117,10 @@ safe_diff <- function(a, b) ifelse(is.finite(a) & is.finite(b), a - b, NA_real_)
 
 wide <- wide |>
   dplyr::mutate(
+    ProteinGroupID = mapply(first_nonmissing, .data$ProteinGroupID_microglia, .data$ProteinGroupID_neuron_neuropil, .data$ProteinGroupID_neuron_soma),
     ProteinID = mapply(first_nonmissing, .data$ProteinID_microglia, .data$ProteinID_neuron_neuropil, .data$ProteinID_neuron_soma),
     GeneSymbol = mapply(first_nonmissing, .data$GeneSymbol_microglia, .data$GeneSymbol_neuron_neuropil, .data$GeneSymbol_neuron_soma),
+    matched_member_accessions = mapply(first_nonmissing, .data$matched_member_accessions_microglia, .data$matched_member_accessions_neuron_neuropil, .data$matched_member_accessions_neuron_soma),
     detection_rate_microglia = .data$detection_rate_microglia,
     detection_rate_neuropil = .data$detection_rate_neuron_neuropil,
     detection_rate_soma = .data$detection_rate_neuron_soma,
@@ -143,7 +161,7 @@ make_set <- function(marker_set, keep, comparison, confidence, notes) {
   tab |>
     dplyr::transmute(
       marker_set = marker_set,
-      ProteinID, GeneSymbol, dataset_enriched_in, comparison,
+      ProteinGroupID, ProteinID, GeneSymbol, matched_member_accessions, dataset_enriched_in, comparison,
       logFC_microglia_vs_neuropil, logFC_microglia_vs_soma,
       logFC_neuropil_vs_microglia, logFC_soma_vs_microglia,
       p_value, FDR,
@@ -200,7 +218,7 @@ out <- dplyr::bind_rows(
 
 if (!nrow(out)) {
   out <- data.frame(
-    marker_set = character(), ProteinID = character(), GeneSymbol = character(),
+    marker_set = character(), ProteinGroupID = character(), ProteinID = character(), GeneSymbol = character(), matched_member_accessions = character(),
     dataset_enriched_in = character(), comparison = character(),
     logFC_microglia_vs_neuropil = numeric(), logFC_microglia_vs_soma = numeric(),
     logFC_neuropil_vs_microglia = numeric(), logFC_soma_vs_microglia = numeric(),
