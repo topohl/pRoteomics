@@ -161,10 +161,18 @@ build_mouse_gene_annotation_maps <- function(org_db_obj, accessions = NULL) {
   uniprot_map <- unique(uniprot_map[!is.na(uniprot_map$UNIPROT) & nzchar(uniprot_map$UNIPROT) &
     !is.na(uniprot_map$SYMBOL) & nzchar(uniprot_map$SYMBOL), c("UNIPROT", "SYMBOL", "ENTREZID"), drop = FALSE])
 
+  make_index <- function(df, key) {
+    split(df, as.character(df[[key]]), drop = TRUE)
+  }
+
   list(
     uniprot_map = uniprot_map,
     symbol_map = symbol_map,
     alias_map = alias_map,
+    uniprot_index = make_index(uniprot_map, "UNIPROT"),
+    symbol_index = make_index(symbol_map, "SYMBOL"),
+    symbol_ci_index = split(symbol_map, tolower(as.character(symbol_map$SYMBOL)), drop = TRUE),
+    alias_index = make_index(alias_map, "ALIAS"),
     orgdb_package_version = as.character(utils::packageVersion("org.Mm.eg.db")),
     annotation_contract_version = mouse_gene_annotation_contract_version()
   )
@@ -191,7 +199,12 @@ read_manual_gene_annotation_overrides <- function(path = Sys.getenv("PROTEOMICS_
   if (!nzchar(path)) {
     path <- if (exists("path_metadata", mode = "function")) path_metadata("manual_gene_annotation_overrides.csv") else file.path("data", "metadata", "manual_gene_annotation_overrides.csv")
   }
-  if (!file.exists(path)) return(structure(NULL, path = path, status = "missing"))
+  if (!file.exists(path)) {
+    out <- normalize_manual_gene_annotation_overrides(NULL)
+    attr(out, "path") <- path
+    attr(out, "status") <- "missing"
+    return(out)
+  }
   ext <- tolower(tools::file_ext(path))
   raw <- if (ext %in% c("xlsx", "xls")) {
     if (!requireNamespace("readxl", quietly = TRUE)) stop("readxl is required for manual gene annotation workbooks.", call. = FALSE)
@@ -242,7 +255,10 @@ resolve_mouse_gene_annotation <- function(member_accession, submitted_gene_symbo
       "resolved", "manual_annotation_override", manual_symbols, manual_used = TRUE)
   }
 
-  accession_rows <- annotation_maps$uniprot_map[annotation_maps$uniprot_map$UNIPROT == accession, , drop = FALSE]
+  accession_rows <- if (!is.null(annotation_maps$uniprot_index)) {
+    indexed <- annotation_maps$uniprot_index[[accession]]
+    if (is.null(indexed)) annotation_maps$uniprot_map[0, , drop = FALSE] else indexed
+  } else annotation_maps$uniprot_map[annotation_maps$uniprot_map$UNIPROT == accession, , drop = FALSE]
   accession_symbols <- sort(unique(accession_rows$SYMBOL[!is.na(accession_rows$SYMBOL) & nzchar(accession_rows$SYMBOL)]), method = "radix")
   if (length(accession_symbols) == 1L) {
     symbol_rows <- accession_rows[accession_rows$SYMBOL == accession_symbols[[1]], , drop = FALSE]
@@ -258,13 +274,20 @@ resolve_mouse_gene_annotation <- function(member_accession, submitted_gene_symbo
     return(make_result(status = "ambiguous", strategy = "ambiguous_uniprot_mapping", candidates = accession_symbols))
   }
 
-  exact_rows <- annotation_maps$symbol_map[annotation_maps$symbol_map$SYMBOL == submitted, , drop = FALSE]
+  exact_rows <- if (!is.null(annotation_maps$symbol_index)) {
+    indexed <- annotation_maps$symbol_index[[submitted]]
+    if (is.null(indexed)) annotation_maps$symbol_map[0, , drop = FALSE] else indexed
+  } else annotation_maps$symbol_map[annotation_maps$symbol_map$SYMBOL == submitted, , drop = FALSE]
   if (nrow(exact_rows)) {
     entrez <- sort(unique(as.character(exact_rows$ENTREZID[!is.na(exact_rows$ENTREZID)])), method = "radix")
     return(make_result(submitted, if (length(entrez) == 1L) entrez[[1]] else NA_character_, "resolved", "exact_symbol_match", submitted))
   }
 
-  ci_symbols <- sort(unique(annotation_maps$symbol_map$SYMBOL[tolower(annotation_maps$symbol_map$SYMBOL) == tolower(submitted)]), method = "radix")
+  ci_rows <- if (!is.null(annotation_maps$symbol_ci_index)) {
+    indexed <- annotation_maps$symbol_ci_index[[tolower(submitted)]]
+    if (is.null(indexed)) annotation_maps$symbol_map[0, , drop = FALSE] else indexed
+  } else annotation_maps$symbol_map[tolower(annotation_maps$symbol_map$SYMBOL) == tolower(submitted), , drop = FALSE]
+  ci_symbols <- sort(unique(ci_rows$SYMBOL), method = "radix")
   if (length(ci_symbols) == 1L) {
     rows <- annotation_maps$symbol_map[annotation_maps$symbol_map$SYMBOL == ci_symbols[[1]], , drop = FALSE]
     entrez <- sort(unique(as.character(rows$ENTREZID[!is.na(rows$ENTREZID)])), method = "radix")
@@ -272,7 +295,10 @@ resolve_mouse_gene_annotation <- function(member_accession, submitted_gene_symbo
   }
   if (length(ci_symbols) > 1L) return(make_result(status = "ambiguous", strategy = "ambiguous_case_insensitive_symbol", candidates = ci_symbols))
 
-  alias_rows <- annotation_maps$alias_map[annotation_maps$alias_map$ALIAS == submitted, , drop = FALSE]
+  alias_rows <- if (!is.null(annotation_maps$alias_index)) {
+    indexed <- annotation_maps$alias_index[[submitted]]
+    if (is.null(indexed)) annotation_maps$alias_map[0, , drop = FALSE] else indexed
+  } else annotation_maps$alias_map[annotation_maps$alias_map$ALIAS == submitted, , drop = FALSE]
   alias_symbols <- sort(unique(alias_rows$SYMBOL[!is.na(alias_rows$SYMBOL) & nzchar(alias_rows$SYMBOL)]), method = "radix")
   if (length(alias_symbols) == 1L) {
     entrez <- sort(unique(as.character(alias_rows$ENTREZID[alias_rows$SYMBOL == alias_symbols[[1]] & !is.na(alias_rows$ENTREZID)])), method = "radix")
@@ -369,7 +395,10 @@ read_manual_mapping_table <- function(path = Sys.getenv("PROTEOMICS_MANUAL_MAPPI
     path <- if (exists("path_metadata", mode = "function")) path_metadata("manual_mapping.xlsx") else file.path("data", "metadata", "manual_mapping.xlsx")
   }
   if (!file.exists(path)) {
-    return(structure(NULL, path = path, status = "missing"))
+    out <- data.frame(gene_symbol = character(), mapped_gene_symbol = character(), stringsAsFactors = FALSE)
+    attr(out, "path") <- path
+    attr(out, "status") <- "missing"
+    return(out)
   }
   ext <- tolower(tools::file_ext(path))
   mm <- tryCatch({
@@ -383,7 +412,10 @@ read_manual_mapping_table <- function(path = Sys.getenv("PROTEOMICS_MANUAL_MAPPI
     }
   }, error = function(e) NULL)
   if (is.null(mm) || !is.data.frame(mm) || !nrow(mm)) {
-    return(structure(NULL, path = path, status = "empty_or_unreadable"))
+    out <- data.frame(gene_symbol = character(), mapped_gene_symbol = character(), stringsAsFactors = FALSE)
+    attr(out, "path") <- path
+    attr(out, "status") <- "empty_or_unreadable"
+    return(out)
   }
   names(mm) <- tolower(gsub("[^a-z0-9]+", "_", trimws(names(mm))))
   input_col <- intersect(c("gene_symbol", "input", "source_id", "original", "original_symbol", "symbol", "token_raw"), names(mm))
@@ -545,6 +577,54 @@ detect_source_feature_columns <- function(df) {
   )
 }
 
+detect_source_provenance_columns <- function(df) {
+  candidates <- c(
+    "ProteinGroupID", "protein_group_id", "source_feature_id", "feature_id", "FeatureID",
+    "Protein.Group", "Protein Group", "T: Protein.Group",
+    "original_identifier", "gene_symbol", "T: Protein.Names", "Protein.Names",
+    "Genes", "ProteinID", "UniProt", "row_id", "id"
+  )
+  intersect(candidates, names(df))
+}
+
+classify_source_provenance <- function(row, provenance_columns = detect_source_provenance_columns(row)) {
+  provenance_columns <- intersect(provenance_columns, names(row))
+  values <- if (length(provenance_columns)) {
+    vapply(provenance_columns, function(nm) as.character(row[[nm]][1]), character(1))
+  } else character()
+  present <- !is.na(values) & nzchar(trimws(values))
+  values <- values[present]
+  columns <- provenance_columns[present]
+  normalized <- toupper(trimws(values))
+
+  # Stable source identifiers use several common contaminant/decoy prefixes.
+  # This deliberately does not inspect free-text protein descriptions: a valid
+  # mouse keratin must not become a contaminant merely because of its name.
+  contaminant_hit <- grepl(
+    "(^|[;|,/[:space:]])(?:CON__|CONT?_|CONTAMINANT(?:_|:)?|REV__|REVERSE_|DECOY_)",
+    normalized, perl = TRUE
+  )
+  non_mouse_hit <- grepl("_(?:HUMAN|RAT)(?:$|[;|,/[:space:]])", normalized, perl = TRUE)
+
+  evidence <- function(hit) {
+    if (!any(hit)) return("")
+    paste(paste0(columns[hit], "=", values[hit]), collapse = ";")
+  }
+  reasons <- c(
+    if (any(contaminant_hit)) "contaminant_source_provenance",
+    if (any(non_mouse_hit)) "non_mouse_source_provenance"
+  )
+  list(
+    source_provenance_columns = paste(columns, collapse = ";"),
+    source_provenance_values = paste(values, collapse = ";"),
+    contaminant_source_evidence = evidence(contaminant_hit),
+    non_mouse_source_evidence = evidence(non_mouse_hit),
+    source_provenance_exclusion_reason = paste(reasons, collapse = ";"),
+    source_provenance_contaminant = any(contaminant_hit),
+    source_provenance_non_mouse = any(non_mouse_hit)
+  )
+}
+
 stable_pg_hash <- function(x) {
   f <- tempfile("protein_group_id_")
   on.exit(unlink(f), add = TRUE)
@@ -562,7 +642,10 @@ parse_member_identifier <- function(member_identifier) {
     grepl("_RAT\\b", token_norm) ~ "rat",
     TRUE ~ NA_character_
   )
-  contaminant <- grepl("(^|[_|])CON(__|_)|(^|[_|])REV(__|_)|CONTAM|KERATIN|TRYPSIN", token_norm)
+  contaminant <- grepl(
+    "(^|[|;,:/])(?:CON__|CONT?_|CONTAMINANT(?:_|:)?|REV__|REVERSE_|DECOY_)",
+    token_norm, perl = TRUE
+  )
   list(
     member_identifier_normalized = token_norm,
     parsed_accession = accession,
@@ -688,12 +771,15 @@ resolve_protein_group_member <- function(member_identifier, entry_map, gene_map,
   )
 }
 
-classify_protein_group <- function(member_bridge, explicit_master_present = FALSE) {
+classify_protein_group <- function(member_bridge, explicit_master_present = FALSE,
+                                   source_provenance = NULL) {
   mapped <- member_bridge[member_bridge$member_mapping_status == "mapped", , drop = FALSE]
   n_mapped <- length(unique(stats::na.omit(mapped$member_accession)))
   genes <- unique(stats::na.omit(mapped$member_gene_symbol))
-  contaminant <- any(member_bridge$contaminant_status == "contaminant", na.rm = TRUE)
-  non_mouse <- any(!is.na(member_bridge$member_species) & member_bridge$member_species != "mouse")
+  contaminant <- any(member_bridge$contaminant_status == "contaminant", na.rm = TRUE) ||
+    isTRUE(source_provenance$source_provenance_contaminant)
+  non_mouse <- any(!is.na(member_bridge$member_species) & member_bridge$member_species != "mouse") ||
+    isTRUE(source_provenance$source_provenance_non_mouse)
   partially_mapped <- n_mapped > 0 && any(member_bridge$member_mapping_status != "mapped")
 
   if (contaminant || non_mouse) return("mixed_species_or_contaminant")
@@ -769,6 +855,7 @@ build_canonical_protein_group_tables <- function(df_raw, dataset, source_file,
                                                  identifier_col = NULL,
                                                  feature_col = NULL) {
   source_cols <- detect_source_feature_columns(df_raw)
+  provenance_cols <- detect_source_provenance_columns(df_raw)
   if (is.null(identifier_col)) identifier_col <- source_cols$original_identifier
   if (is.na(identifier_col)) identifier_col <- names(df_raw)[1]
   if (is.null(feature_col)) feature_col <- source_cols$feature_id
@@ -783,9 +870,18 @@ build_canonical_protein_group_tables <- function(df_raw, dataset, source_file,
   for (i in seq_len(nrow(df_raw))) {
     row <- df_raw[i, , drop = FALSE]
     original_identifier <- as.character(row[[identifier_col]][1])
-    members_original <- split_protein_group_members(original_identifier)
-    members_canonical <- canonical_member_set(members_original)
     source_feature_id <- if (!is.na(feature_col) && feature_col %in% names(row)) as.character(row[[feature_col]][1]) else NA_character_
+    member_identifier_source <- identifier_col
+    member_identifier_value <- original_identifier
+    if ((!length(split_protein_group_members(member_identifier_value))) &&
+        !is.na(feature_col) && feature_col %in% c("Protein.Group", "Protein Group", "T: Protein.Group") &&
+        !is.na(source_feature_id) && nzchar(source_feature_id)) {
+      member_identifier_source <- feature_col
+      member_identifier_value <- source_feature_id
+    }
+    members_original <- split_protein_group_members(member_identifier_value)
+    members_canonical <- canonical_member_set(members_original)
+    source_provenance <- classify_source_provenance(row, provenance_cols)
 
     member_tbls <- lapply(members_original, resolve_protein_group_member,
                           entry_map = entry_map, gene_map = gene_map,
@@ -836,7 +932,7 @@ build_canonical_protein_group_tables <- function(df_raw, dataset, source_file,
         protein_group_gene_annotation_status = if (length(genes) == 1L) "legacy_uniprot_gene_name" else "legacy_ambiguous_gene_name",
         all_member_accessions_gene_annotated = length(genes) == 1L, stringsAsFactors = FALSE)
     } else assess_protein_group_gene_annotation(bridge)
-    ambiguity_class <- classify_protein_group(bridge, explicit_master_present)
+    ambiguity_class <- classify_protein_group(bridge, explicit_master_present, source_provenance)
     claims <- protein_group_claim_rules(ambiguity_class)
     if (!is.null(gene_annotation_maps)) {
       claims$gene_level_claim_allowed <- claims$gene_level_claim_allowed &&
@@ -887,6 +983,12 @@ build_canonical_protein_group_tables <- function(df_raw, dataset, source_file,
     bridge$source_feature_id <- source_feature_id
     bridge$source_row_id <- i
     bridge$original_identifier <- original_identifier
+    bridge$member_identifier_source <- member_identifier_source
+    bridge$source_provenance_columns <- source_provenance$source_provenance_columns
+    bridge$source_provenance_values <- source_provenance$source_provenance_values
+    bridge$contaminant_source_evidence <- source_provenance$contaminant_source_evidence
+    bridge$non_mouse_source_evidence <- source_provenance$non_mouse_source_evidence
+    bridge$source_provenance_exclusion_reason <- source_provenance$source_provenance_exclusion_reason
 
     mapped_accessions <- unique(stats::na.omit(bridge$member_accession))
     submitted_genes <- unique(stats::na.omit(bridge$member_gene_symbol_submitted))
@@ -903,6 +1005,7 @@ build_canonical_protein_group_tables <- function(df_raw, dataset, source_file,
         source_feature_id = source_feature_id,
         source_row_id = i,
         original_identifier = original_identifier,
+        member_identifier_source = member_identifier_source,
         member_identifiers_original = paste(members_original, collapse = ";"),
         member_identifiers_canonical = paste(members_canonical, collapse = ";"),
         member_accessions = paste(mapped_accessions, collapse = ";"),
@@ -925,6 +1028,11 @@ build_canonical_protein_group_tables <- function(df_raw, dataset, source_file,
         n_gene_symbols = length(mapped_genes),
         same_gene_group = length(mapped_genes) == 1 && length(mapped_accessions) > 1,
         protein_group_ambiguity_class = ambiguity_class,
+        source_provenance_columns = source_provenance$source_provenance_columns,
+        source_provenance_values = source_provenance$source_provenance_values,
+        contaminant_source_evidence = source_provenance$contaminant_source_evidence,
+        non_mouse_source_evidence = source_provenance$non_mouse_source_evidence,
+        source_provenance_exclusion_reason = source_provenance$source_provenance_exclusion_reason,
         protein_level_claim_allowed = claims$protein_level_claim_allowed,
         gene_level_claim_allowed = claims$gene_level_claim_allowed,
         mapping_status = dplyr::case_when(
@@ -945,7 +1053,10 @@ build_canonical_protein_group_tables <- function(df_raw, dataset, source_file,
   bridge <- dplyr::bind_rows(bridges) |>
     dplyr::select(dplyr::all_of(c(
       "ProteinGroupID", "source_file", "source_feature_id", "source_row_id",
-      "original_identifier",
+      "original_identifier", "member_identifier_source",
+      "source_provenance_columns", "source_provenance_values",
+      "contaminant_source_evidence", "non_mouse_source_evidence",
+      "source_provenance_exclusion_reason",
       "member_identifier_original", "member_identifier_normalized",
       "member_rank_original", "member_rank_canonical",
       "member_accession", "member_gene_symbol_submitted", "member_gene_symbol", "member_entrez_id", "member_species",
@@ -1042,6 +1153,9 @@ build_wgcna_canonical_features <- function(df_raw, dataset, source_file,
                                            reviewed_map = NULL,
                                            manual_mapping = NULL,
                                            manual_override = TRUE,
+                                           gene_annotation_maps = NULL,
+                                           manual_gene_annotation_overrides = NULL,
+                                           uniprot_mapping_file_hash = NA_character_,
                                            sample_columns = NULL,
                                            strict = TRUE) {
   identifier_col <- if ("original_identifier" %in% names(df_raw)) {
@@ -1074,6 +1188,9 @@ build_wgcna_canonical_features <- function(df_raw, dataset, source_file,
     reviewed_map = reviewed_map,
     manual_mapping = manual_mapping,
     manual_override = manual_override,
+    gene_annotation_maps = gene_annotation_maps,
+    manual_gene_annotation_overrides = manual_gene_annotation_overrides,
+    uniprot_mapping_file_hash = uniprot_mapping_file_hash,
     strict = strict,
     identifier_col = identifier_col,
     feature_col = feature_col
@@ -1082,10 +1199,10 @@ build_wgcna_canonical_features <- function(df_raw, dataset, source_file,
   feature_table$FeatureDisplayLabel <- wgcna_feature_display_label(feature_table)
   feature_table$quantitative_eligibility <- !feature_table$protein_group_ambiguity_class %in%
     "mixed_species_or_contaminant"
-  feature_table$wgcna_exclusion_reason <- ifelse(
-    feature_table$quantitative_eligibility,
-    NA_character_,
-    "mixed_species_or_contaminant"
+  feature_table$wgcna_exclusion_reason <- dplyr::case_when(
+    feature_table$quantitative_eligibility ~ NA_character_,
+    nzchar(feature_table$source_provenance_exclusion_reason) ~ feature_table$source_provenance_exclusion_reason,
+    TRUE ~ "mixed_species_or_contaminant_member_evidence"
   )
   feature_table$included_in_wgcna <- feature_table$quantitative_eligibility
 
