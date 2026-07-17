@@ -3,7 +3,7 @@
 # Script: 06_modules_WGCNA/06_annotate_module_microenvironment.r
 # Stage: modules_downstream
 # Scope: dataset_specific
-# Consumes: required results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/; optional config/marker_panels/wgcna_reference_marker_sets.csv; results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv; +1 more.
+# Consumes: required module outputs and authoritative supermodule annotation/summary; optional marker and neuropil-reference annotations.
 # Produces: results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_module_biological_annotation.csv; results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_supermodule_biological_annotation.csv; results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_module_targeted_signature_overlap_details.csv.
 # Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Consumes marker registry, empirical markers, WGCNA outputs, and neuropil annotations when present.
@@ -81,6 +81,7 @@ if (run$dry_run) {
   dry_run_line("Module definitions", FILES$definitions, if (file.exists(FILES$definitions)) "PASS" else "WARN")
   dry_run_line("GO enrichment", FILES$go, if (file.exists(FILES$go)) "PASS" else "WARN")
   dry_run_line("Supermodule annotation", FILES$supermodule_annotation, if (file.exists(FILES$supermodule_annotation)) "PASS" else "WARN")
+  dry_run_line("Supermodule summary", FILES$supermodule_summary, if (file.exists(FILES$supermodule_summary)) "PASS" else "WARN")
   dry_run_line("Group effects", path_results("tables", "06_modules_WGCNA", "group_effects", DATASET), "INFO")
   if (DATASET == "microglia" || force_microglia) dry_run_line("Neuropil reference annotation", FILES$neuropil_annotation, if (file.exists(FILES$neuropil_annotation)) "PASS" else "WARN")
   if (DATASET == "microglia" || force_microglia) dry_run_line("Targeted microglia signature enrichment", path_results("tables", "04_differential_expression_enrichment", "microglia_targeted_signature_enrichment", "microglia", "microglia_signature_enrichment_with_contrast_class.csv"), if (file.exists(path_results("tables", "04_differential_expression_enrichment", "microglia_targeted_signature_enrichment", "microglia", "microglia_signature_enrichment_with_contrast_class.csv"))) "PASS" else "WARN")
@@ -1137,24 +1138,37 @@ if (is.null(super_ann) || !nrow(super_ann)) {
   super_annot <- data.frame(dataset = DATASET, SupermoduleID = NA_character_, supermodule_id = NA_character_, Supermodule_FinalLabel = NA_character_, n_member_modules = 0L, dominant_microenvironment_class = "missing_supermodule_annotation", interpretation_note = WGCNA_ROI_NOTE)
 } else {
   super_ann2 <- super_ann
-  for (nm in c("Supermodule_DataDrivenID", "Supermodule_DisplayLabel", "Supermodule_LongLabel", "Macroprogram_Display", "Supermodule_DataDrivenLabel", "Supermodule_CuratedLabel", "Supermodule_FinalLabel", "Supermodule_LabelSource", "Supermodule_LabelConfidence", "Supermodule_LabelRationale", "GO_label_confidence_class", "annotation_scope", "manual_label_status", "ManualReviewRequired", "Supermodule_DataDriven", "Supermodule", "SupermoduleConfidence", "SupermoduleRationale")) {
+  for (nm in c("SupermoduleID", "Supermodule_DataDrivenID", "Supermodule_DisplayLabel", "Supermodule_LongLabel", "Macroprogram_Display", "Supermodule_DataDrivenLabel", "Supermodule_CuratedLabel", "Supermodule_FinalLabel", "Supermodule_LabelSource", "Supermodule_LabelConfidence", "Supermodule_LabelRationale", "GO_label_confidence_class", "annotation_scope", "manual_label_status", "ManualReviewRequired", "Supermodule_DataDriven", "Supermodule", "SupermoduleConfidence", "SupermoduleRationale")) {
     if (!nm %in% names(super_ann2)) super_ann2[[nm]] <- NA_character_
   }
   smap <- super_ann2 |>
     dplyr::mutate(
-      SupermoduleID = dplyr::coalesce(as.character(.data$Supermodule_DataDrivenID), as.character(.data$Supermodule_DataDriven), as.character(.data$Supermodule)),
+      dataset = DATASET,
+      SupermoduleID = dplyr::coalesce(as.character(.data$Supermodule_DataDrivenID), as.character(.data$Supermodule_DataDriven), as.character(.data$SupermoduleID)),
       Supermodule_FinalLabel = dplyr::coalesce(as.character(.data$Supermodule_FinalLabel), as.character(.data$Supermodule), .data$SupermoduleID),
       Supermodule_LongLabel = dplyr::coalesce(as.character(.data$Supermodule_LongLabel), .data$Supermodule_FinalLabel),
       Macroprogram_Display = dplyr::coalesce(as.character(.data$Macroprogram_Display), macroprogram_display(.data$Supermodule_LongLabel)),
       Supermodule_DisplayLabel = dplyr::coalesce(as.character(.data$Supermodule_DisplayLabel), compose_supermodule_display_label(.data$SupermoduleID, dplyr::coalesce(.data$Supermodule_FinalLabel, .data$Macroprogram_Display))),
       Supermodule_ShortLabel = .data$Supermodule_DisplayLabel
     ) |>
-    dplyr::select(dplyr::any_of(c("ModuleID", "ModuleLegacyID", "ModuleColor", "module_eigengene", "SupermoduleID", "Supermodule_DisplayLabel", "Supermodule_LongLabel", "Macroprogram_Display", "Supermodule_DataDrivenLabel", "Supermodule_CuratedLabel", "Supermodule_FinalLabel", "Supermodule_ShortLabel", "Supermodule_LabelSource", "Supermodule_LabelConfidence", "Supermodule_LabelRationale", "GO_label_confidence_class", "annotation_scope", "manual_label_status", "ManualReviewRequired", "SupermoduleConfidence", "SupermoduleRationale")))
+    dplyr::select(dplyr::any_of(c("dataset", "ModuleID", "ModuleLegacyID", "ModuleColor", "module_eigengene", "SupermoduleID", "Supermodule_DisplayLabel", "Supermodule_LongLabel", "Macroprogram_Display", "Supermodule_DataDrivenLabel", "Supermodule_CuratedLabel", "Supermodule_FinalLabel", "Supermodule_ShortLabel", "Supermodule_LabelSource", "Supermodule_LabelConfidence", "Supermodule_LabelRationale", "GO_label_confidence_class", "annotation_scope", "manual_label_status", "ManualReviewRequired", "SupermoduleConfidence", "SupermoduleRationale")))
+  validate_supermodule_member_map(
+    smap,
+    expected_modules = unique(as.character(module_annot$ModuleColor)),
+    artifact = "microenvironment supermodule member map",
+    module_col = "ModuleColor",
+    display_col = "Supermodule_DisplayLabel"
+  )
   super_annot <- module_annot |>
-    dplyr::left_join(smap, by = c("ModuleColor" = "ModuleColor")) |>
+    dplyr::left_join(smap, by = c("dataset", "ModuleColor" = "ModuleColor")) |>
     dplyr::filter(!is.na(.data$SupermoduleID)) |>
-    dplyr::group_by(.data$dataset, .data$SupermoduleID, .data$Supermodule_DisplayLabel, .data$Supermodule_LongLabel, .data$Macroprogram_Display, .data$Supermodule_FinalLabel, .data$Supermodule_ShortLabel) |>
+    dplyr::group_by(.data$dataset, .data$SupermoduleID) |>
     dplyr::summarise(
+      Supermodule_DisplayLabel = dplyr::first(.data$Supermodule_DisplayLabel),
+      Supermodule_LongLabel = dplyr::first(.data$Supermodule_LongLabel),
+      Macroprogram_Display = dplyr::first(.data$Macroprogram_Display),
+      Supermodule_FinalLabel = dplyr::first(.data$Supermodule_FinalLabel),
+      Supermodule_ShortLabel = dplyr::first(.data$Supermodule_ShortLabel),
       n_member_modules = dplyr::n_distinct(.data$ModuleID),
       member_modules = paste(unique(.data$ModuleID), collapse = ";"),
       fraction_modules_microglia_supported = mean(as.character(.data$microenvironment_class) == "microglia_supported", na.rm = TRUE),
@@ -1292,10 +1306,7 @@ if (is.null(super_ann) || !nrow(super_ann)) {
         TRUE ~ "direct_or_suggestive"
       ),
       GO_label_relevance_rationale = .data$Supermodule_CompositionRationale,
-      Supermodule_FinalLabel = dplyr::case_when(
-        generic_supermodule_label(.data$Supermodule_FinalLabel) & !is.na(.data$dominant_module_labels) & nzchar(.data$dominant_module_labels) & !grepl("mixed|low-specificity|unresolved", .data$dominant_module_labels, ignore.case = TRUE) ~ .data$dominant_module_labels,
-        TRUE ~ .data$Supermodule_FinalLabel
-      ),
+      Supermodule_FinalLabel = as.character(.data$Supermodule_FinalLabel),
       Supermodule_LabelRationale = paste0(
         dplyr::coalesce(.data$Supermodule_LabelRationale, ""),
         ifelse(generic_supermodule_label(.data$Supermodule_FinalLabel_Original), "; generic_supermodule_label_retained_or_microenvironment_fallback; composition_label_from_member_module_biology_available", "")
@@ -1308,20 +1319,6 @@ if (is.null(super_ann) || !nrow(super_ann)) {
         TRUE ~ suppressWarnings(as.logical(.data$ManualReviewRequired))
       )
     )
-  if (DATASET == "microglia" || force_microglia) {
-    super_annot <- super_annot |>
-      dplyr::mutate(
-        Supermodule_FinalLabel = dplyr::case_when(
-          .data$dominant_microenvironment_class == "vascular_basement_membrane_ecm" & !grepl("vascular|ECM|basement|BBB", .data$Supermodule_FinalLabel, ignore.case = TRUE) ~ paste0("perivascular ECM / ", .data$Supermodule_FinalLabel),
-          .data$dominant_microenvironment_class == "vascular_bbb_mural" & !grepl("vascular|BBB|mural|pericyte", .data$Supermodule_FinalLabel, ignore.case = TRUE) ~ paste0("BBB / vascular mural / ", .data$Supermodule_FinalLabel),
-          .data$dominant_microenvironment_class == "shared_microenvironment" & grepl("synap|vesicle|neur", .data$Supermodule_FinalLabel, ignore.case = TRUE) ~ paste0("shared local microenvironment / ", .data$Supermodule_FinalLabel),
-          .data$dominant_microenvironment_class == "neuropil_sensitive" & grepl("synap|vesicle|neur", .data$Supermodule_FinalLabel, ignore.case = TRUE) ~ paste0("neuropil-sensitive ", .data$Supermodule_FinalLabel),
-          .data$dominant_microenvironment_class == "microglia_supported" & grepl("phago|lyso|complement|immune", .data$Supermodule_FinalLabel, ignore.case = TRUE) ~ paste0("microglia-supported ", .data$Supermodule_FinalLabel),
-          .data$dominant_microenvironment_class == "ambiguous_or_mixed" ~ paste0(.data$Supermodule_FinalLabel, " / mixed local ROI program"),
-          TRUE ~ .data$Supermodule_FinalLabel
-        )
-      )
-  }
   if (!"supermodule_id" %in% names(super_annot)) super_annot$supermodule_id <- NA_character_
   super_annot <- super_annot |>
     dplyr::mutate(
@@ -1337,26 +1334,20 @@ if (is.null(super_ann) || !nrow(super_ann)) {
         !is.na(.data$Macroprogram_Display) & nzchar(.data$Macroprogram_Display) & .data$Macroprogram_Display != "Unresolved / mixed" ~ .data$Macroprogram_Display,
         TRUE ~ shorten_supermodule_label(.data$Supermodule_FinalLabel, max_chars = 30)
       ),
-      Supermodule_DisplayLabel = compose_supermodule_display_label(.data$SupermoduleID, .data$display_label_component),
-      Supermodule_ShortLabel = .data$Supermodule_DisplayLabel,
+      Supermodule_DisplayLabel = dplyr::coalesce(
+        informative_member_label(.data$Supermodule_DisplayLabel),
+        compose_supermodule_display_label(.data$SupermoduleID, .data$display_label_component)
+      ),
+      Supermodule_ShortLabel = dplyr::coalesce(.data$Supermodule_ShortLabel, .data$Supermodule_DisplayLabel),
       Supermodule_CleanPlotLabel = dplyr::coalesce(.data$Supermodule_CleanPlotLabel, compose_supermodule_display_label(.data$SupermoduleID, .data$display_label_component)),
       Supermodule_PlotLabel = .data$Supermodule_CleanPlotLabel,
-      Supermodule_LabelSource = dplyr::case_when(
-        .data$has_active_manual_label ~ .data$Supermodule_LabelSource,
-        !is.na(.data$microenvironment_label_component) & nzchar(.data$microenvironment_label_component) ~ paste0(dplyr::coalesce(.data$Supermodule_LabelSource, "data_driven"), "+microenvironment_annotation"),
-        TRUE ~ .data$Supermodule_LabelSource
-      ),
-      has_coherent_hubs = lengths(strsplit(dplyr::coalesce(.data$top_hub_proteins, ""), "[;,]")) >= 3L,
+      Supermodule_LabelSource = dplyr::coalesce(.data$Supermodule_LabelSource, "recurring_significant_GO"),
       Supermodule_LabelConfidence = vapply(seq_len(dplyr::n()), function(i) {
-        classify_supermodule_label_confidence(
-          n_modules = n_member_modules[[i]],
-          go_class = GO_label_confidence_class[[i]],
-          has_coherent_hubs = has_coherent_hubs[[i]],
-          microenvironment_class = dominant_microenvironment_class[[i]]
-        )
+        existing <- as.character(Supermodule_LabelConfidence[[i]])
+        if (!is.na(existing) && existing %in% c("high", "medium", "low")) existing else
+          classify_supermodule_label_confidence(n_modules = n_member_modules[[i]], go_support_class = GO_label_confidence_class[[i]])
       }, character(1)),
-      Supermodule_LabelConfidence = dplyr::if_else(.data$has_active_manual_label & !is.na(.data$label_confidence), as.character(.data$label_confidence), .data$Supermodule_LabelConfidence),
-      Supermodule_LabelConfidence = dplyr::if_else(.data$n_member_modules <= 1L & .data$Supermodule_LabelConfidence == "high", "low", .data$Supermodule_LabelConfidence),
+      Supermodule_LabelConfidence = dplyr::if_else(.data$n_member_modules <= 1L, "low", .data$Supermodule_LabelConfidence),
       ManualReviewRequired = dplyr::case_when(
         .data$dominant_microenvironment_class %in% c("ambiguous_or_mixed", "shared_microenvironment") ~ TRUE,
         .data$n_member_modules <= 1L ~ TRUE,
@@ -1369,17 +1360,26 @@ if (is.null(super_ann) || !nrow(super_ann)) {
                "")
       )
     ) |>
-    dplyr::select(-dplyr::any_of(c("has_active_manual_label", "display_label_component", "has_coherent_hubs", "member_theme_fraction_summary", "member_theme_label_sources", "any_member_semantic_manual_review", "Supermodule_CompositionLabel_FromAllMemberThemes")))
+    dplyr::select(-dplyr::any_of(c("has_active_manual_label", "display_label_component", "member_theme_fraction_summary", "member_theme_label_sources", "any_member_semantic_manual_review", "Supermodule_CompositionLabel_FromAllMemberThemes")))
 }
 
 if (nrow(super_annot) && exists("smap")) {
   super_threshold_base <- if ("ModuleID" %in% names(smap)) {
     module_threshold_classes |>
-      dplyr::left_join(smap |> dplyr::select("ModuleID", "SupermoduleID"), by = c("module_or_supermodule_id" = "ModuleID"))
+      dplyr::left_join(
+        smap |> dplyr::select("dataset", "ModuleID", "SupermoduleID"),
+        by = c("dataset", "module_or_supermodule_id" = "ModuleID")
+      )
   } else {
     module_threshold_classes |>
-      dplyr::left_join(module_annot |> dplyr::select(module_or_supermodule_id = "ModuleID", ModuleColor), by = "module_or_supermodule_id") |>
-      dplyr::left_join(smap |> dplyr::select("ModuleColor", "SupermoduleID"), by = "ModuleColor")
+      dplyr::left_join(
+        module_annot |> dplyr::select("dataset", module_or_supermodule_id = "ModuleID", ModuleColor),
+        by = c("dataset", "module_or_supermodule_id")
+      ) |>
+      dplyr::left_join(
+        smap |> dplyr::select("dataset", "ModuleColor", "SupermoduleID"),
+        by = c("dataset", "ModuleColor")
+      )
   }
   super_threshold_classes <- super_threshold_base |>
     dplyr::filter(!is.na(.data$SupermoduleID)) |>
@@ -1399,7 +1399,7 @@ if (nrow(super_annot) && exists("smap")) {
       annotation_basis = dplyr::case_when(
         !is.na(.data$marker_panels_supporting) & nzchar(as.character(.data$marker_panels_supporting)) ~ "marker_panel",
         !is.na(.data$TopMemberGOTerms) & nzchar(as.character(.data$TopMemberGOTerms)) ~ "GO",
-        .data$n_member_modules_with_informative_labels > 0L ~ "hub/member_composition",
+        .data$n_member_modules_with_informative_labels > 0L ~ "member_module_composition",
         TRUE ~ "insufficient"
       ),
       annotation_confidence = dplyr::case_when(
@@ -1418,6 +1418,17 @@ if (nrow(super_annot) && exists("smap")) {
       label_basis = .data$annotation_basis,
       label_downgrade_reason = .data$annotation_downgrade_reason
     )
+}
+
+if (nrow(super_annot) && exists("smap")) {
+  validate_supermodule_member_map(
+    super_annot,
+    expected_modules = NULL,
+    artifact = "final microenvironment supermodule annotation",
+    module_col = "SupermoduleID",
+    display_col = "Supermodule_DisplayLabel"
+  )
+  validate_supermodule_summary_ids(super_annot, smap, artifact = "final microenvironment supermodule annotation")
 }
 
 supermodule_composition_columns <- c(

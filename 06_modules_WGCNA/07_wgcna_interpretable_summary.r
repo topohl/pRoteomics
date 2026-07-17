@@ -3,7 +3,7 @@
 # Script: 06_modules_WGCNA/07_wgcna_interpretable_summary.r
 # Stage: modules_downstream
 # Scope: dataset_specific
-# Consumes: required results/tables/06_modules_WGCNA/group_effects/<dataset>/module_group_effects.csv; results/tables/06_modules_WGCNA/group_effects/<dataset>/supermodule_group_effects.csv; +2 more; optional results/tables/06_modules_WGCNA/04_wgcna_de_gsea_overlap/<dataset>/.
+# Consumes: required module/supermodule group effects, supermodule composition, and module/supermodule biological annotations; optional DE/GSEA overlap.
 # Produces: results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_interpretable_summary.xlsx.
 # Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Runs after module/supermodule group effects and microenvironment annotation.
@@ -340,36 +340,20 @@ add_short_supermodule_labels <- function(df) {
     rep("SM??", nrow(df))
   )
   full <- dplyr::coalesce(
-    clean_supermodule_label_value(col_or_na(df, "Supermodule_CompositionDisplayLabel")),
-    clean_supermodule_label_value(col_or_na(df, "Supermodule_CompositionLabel")),
-    clean_supermodule_label_value(col_or_na(df, "cleaned_biological_label")),
+    clean_supermodule_label_value(col_or_na(df, "Supermodule_DisplayLabel")),
     clean_supermodule_label_value(col_or_na(df, "Supermodule_FinalLabel")),
+    clean_supermodule_label_value(col_or_na(df, "cleaned_biological_label")),
     clean_supermodule_label_value(col_or_na(df, "Supermodule_LongLabel")),
     clean_supermodule_label_value(col_or_na(df, "Macroprogram_Display")),
-    clean_supermodule_label_value(col_or_na(df, "Supermodule_DisplayLabel")),
+    clean_supermodule_label_value(col_or_na(df, "Supermodule_CompositionDisplayLabel")),
+    clean_supermodule_label_value(col_or_na(df, "Supermodule_CompositionLabel")),
     clean_supermodule_label_value(col_or_na(df, "supermodule_label")),
     id
   )
   broad <- supermodule_broad_label(full)
-  rank_df <- data.frame(supermodule_id = id, broad = broad, stringsAsFactors = FALSE) |>
-    dplyr::distinct(.data$supermodule_id, .data$broad) |>
-    dplyr::arrange(.data$broad, .data$supermodule_id) |>
-    dplyr::group_by(.data$broad) |>
-    dplyr::mutate(
-      broad_n = dplyr::n(),
-      broad_rank = dplyr::row_number(),
-      suffix = dplyr::if_else(.data$broad_n > 1L, paste0(" ", roman_label(.data$broad_rank)), "")
-    ) |>
-    dplyr::ungroup()
-  suffix <- rank_df$suffix[match(id, rank_df$supermodule_id)]
-  clean_display <- dplyr::coalesce(
-    clean_supermodule_label_value(col_or_na(df, "Supermodule_CompositionDisplayLabel")),
-    clean_supermodule_label_value(col_or_na(df, "Supermodule_CompositionLabel")),
-    clean_supermodule_label_value(col_or_na(df, "Supermodule_CleanPlotLabel"))
-  )
-  display <- dplyr::coalesce(add_supermodule_id_prefix(id, clean_display), paste0(id, supermodule_label_sep(), broad, suffix))
+  display <- dplyr::coalesce(add_supermodule_id_prefix(id, full), paste0(id, supermodule_label_sep(), "mixed / unresolved"))
   df$Supermodule_FullAnnotationLabel <- full
-  df$Supermodule_DisplayShort <- paste0(broad, suffix)
+  df$Supermodule_DisplayShort <- broad
   df$Supermodule_CleanPlotLabel <- display
   df$Supermodule_PlotLabel <- display
   df
@@ -657,8 +641,9 @@ pretty_program_label <- function(x) {
 
 candidate_cols <- function(df, candidates) intersect(candidates, names(df))
 
-build_module_supermodule_map <- function(module_effects, module_to_supermodule_map = NULL, supermodule_composition = NULL, super_annot = NULL) {
+build_module_supermodule_map <- function(module_effects, module_to_supermodule_map = NULL, supermodule_composition = NULL, super_annot = NULL, dataset) {
   out <- data.frame(
+    dataset = character(),
     module_key = character(),
     supermodule_id = character(),
     supermodule_label = character(),
@@ -666,11 +651,12 @@ build_module_supermodule_map <- function(module_effects, module_to_supermodule_m
     stringsAsFactors = FALSE
   )
 
-  add_map_rows <- function(keys, sid, slabel, source) {
+  add_map_rows <- function(keys, sid, slabel, source, dataset_value = dataset) {
     keys <- unique(module_key(keys))
     keys <- keys[nzchar(keys) & !is.na(keys)]
     if (!length(keys)) return(NULL)
     data.frame(
+      dataset = as.character(dataset_value),
       module_key = keys,
       supermodule_id = as.character(sid %||% NA_character_),
       supermodule_label = as.character(slabel %||% sid %||% NA_character_),
@@ -708,7 +694,8 @@ build_module_supermodule_map <- function(module_effects, module_to_supermodule_m
         } else {
           slabel <- sid
         }
-        add_map_rows(keys, sid, slabel, "module_to_supermodule_map")
+        row_dataset <- if ("dataset" %in% names(map_df)) as.character(map_df$dataset[[i]]) else dataset
+        add_map_rows(keys, sid, slabel, "module_to_supermodule_map", row_dataset)
       })
       out <- dplyr::bind_rows(out, dplyr::bind_rows(rows))
     }
@@ -721,13 +708,14 @@ build_module_supermodule_map <- function(module_effects, module_to_supermodule_m
       members <- unlist(strsplit(as.character(comp$member_modules[[i]]), "[;|, ]+"), use.names = FALSE)
       sid <- dplyr::coalesce(as.character(comp$supermodule_id[[i]]), as.character(comp$SupermoduleID[[i]]))
       slabel <- dplyr::coalesce(as.character(comp$supermodule_label[[i]]), as.character(comp$SupermoduleLabel[[i]]), sid)
-      add_map_rows(members, sid, slabel, "supermodule_composition")
+      row_dataset <- if ("dataset" %in% names(comp)) as.character(comp$dataset[[i]]) else dataset
+      add_map_rows(members, sid, slabel, "supermodule_composition", row_dataset)
     })
     out <- dplyr::bind_rows(out, dplyr::bind_rows(rows))
   }
 
   if (!nrow(out)) {
-    return(data.frame(module_key = character(), module_supermodule_id = character(), module_supermodule_label = character(), module_supermodule_map_source = character()))
+    return(data.frame(dataset = character(), module_key = character(), module_supermodule_id = character(), module_supermodule_label = character(), module_supermodule_map_source = character()))
   }
 
   if (!is.null(super_annot) && nrow(super_annot)) {
@@ -741,24 +729,34 @@ build_module_supermodule_map <- function(module_effects, module_to_supermodule_m
         sid_vals <- as.character(sid_vals[!is.na(sid_vals) & nzchar(as.character(sid_vals))])
         lab_vals <- as.character(lab_vals[!is.na(lab_vals) & nzchar(as.character(lab_vals))])
         data.frame(
+          dataset = if ("dataset" %in% names(ann)) as.character(ann$dataset[[i]]) else dataset,
           supermodule_id = if (length(sid_vals)) sid_vals[[1]] else NA_character_,
           curated_supermodule_label = if (length(lab_vals)) lab_vals[[1]] else NA_character_,
           stringsAsFactors = FALSE
         )
       })) |>
         dplyr::filter(!is.na(.data$supermodule_id), nzchar(.data$supermodule_id)) |>
-        dplyr::distinct(.data$supermodule_id, .keep_all = TRUE)
+        dplyr::distinct(.data$dataset, .data$supermodule_id, .keep_all = TRUE)
       out <- out |>
-        dplyr::left_join(ann2, by = "supermodule_id") |>
+        dplyr::left_join(ann2, by = c("dataset", "supermodule_id")) |>
         dplyr::mutate(supermodule_label = dplyr::coalesce(.data$curated_supermodule_label, .data$supermodule_label)) |>
         dplyr::select(-dplyr::any_of("curated_supermodule_label"))
     }
   }
 
+  conflicts <- out |>
+    dplyr::filter(!is.na(.data$dataset), !is.na(.data$module_key), !is.na(.data$supermodule_id)) |>
+    dplyr::group_by(.data$dataset, .data$module_key) |>
+    dplyr::summarise(n_supermodule_ids = dplyr::n_distinct(.data$supermodule_id), .groups = "drop") |>
+    dplyr::filter(.data$n_supermodule_ids > 1L)
+  if (nrow(conflicts)) {
+    stop("Module-to-supermodule inputs conflict for dataset + module key; regenerate stale composition/map outputs.", call. = FALSE)
+  }
+
   out |>
     dplyr::filter(!is.na(.data$module_key), nzchar(.data$module_key)) |>
     dplyr::filter(!is.na(.data$supermodule_id), nzchar(.data$supermodule_id)) |>
-    dplyr::distinct(.data$module_key, .keep_all = TRUE) |>
+    dplyr::distinct(.data$dataset, .data$module_key, .keep_all = TRUE) |>
     dplyr::rename(
       module_supermodule_id = "supermodule_id",
       module_supermodule_label = "supermodule_label",
@@ -771,7 +769,7 @@ attach_module_supermodules <- function(module_join, module_super_map) {
   module_join$module_key <- module_join_key(module_join)
   if (!is.null(module_super_map) && nrow(module_super_map)) {
     module_join <- module_join |>
-      dplyr::left_join(module_super_map, by = "module_key")
+      dplyr::left_join(module_super_map, by = c("dataset", "module_key"))
     module_join$module_supermodule_id <- dplyr::coalesce(
       clean_label_value(col_or_na(module_join, "module_supermodule_id")),
       clean_label_value(col_or_na(module_join, "module_supermodule_id.y")),
@@ -1000,14 +998,15 @@ plot_supermodule_membership_overview <- function(module_join, super_join, paths,
   if (!nrow(module_join)) return(invisible(NULL))
 
   df <- module_join |>
-    dplyr::distinct(.data$module_id, .data$supermodule_id_for_module, .data$supermodule_label_for_module, .keep_all = TRUE)
+    dplyr::distinct(.data$dataset, .data$module_id, .data$supermodule_id_for_module, .keep_all = TRUE)
 
   df$supermodule_plot <- label_wrap(pretty_program_label(coalesce_chr(col_or_na(df, "Supermodule_PlotLabel"), col_or_na(df, "supermodule_label_for_module"))), 30)
   protein_col <- first_existing_col(df, c("n_proteins", "nGenes", "module_size", "ModuleSize"), fallback = NULL)
 
   overview <- df |>
-    dplyr::group_by(.data$supermodule_plot) |>
+    dplyr::group_by(.data$dataset, supermodule_id = .data$supermodule_id_for_module) |>
     dplyr::summarise(
+      supermodule_plot = dplyr::first(.data$supermodule_plot),
       n_modules = dplyr::n_distinct(.data$module_id),
       n_proteins = if (!is.null(protein_col)) sum(safe_num(.data[[protein_col]]), na.rm = TRUE) else NA_real_,
       .groups = "drop"
@@ -1192,10 +1191,10 @@ plot_module_effects_by_supermodule <- function(module_join, paths, ds) {
 
   # This is a supplementary diagnostic figure. Limit each facet to the strongest module rows.
   plot_df <- plot_df |>
-    dplyr::group_by(.data$supermodule_label_plot, .data$module_id) |>
+    dplyr::group_by(.data$dataset, .data$supermodule_id, .data$module_id) |>
     dplyr::mutate(module_rank = min(.data$p_value, na.rm = TRUE)) |>
     dplyr::ungroup() |>
-    dplyr::group_by(.data$supermodule_label_plot) |>
+    dplyr::group_by(.data$dataset, .data$supermodule_id) |>
     dplyr::arrange(.data$module_rank, .by_group = TRUE) |>
     dplyr::filter(dplyr::row_number() <= 30L) |>
     dplyr::ungroup()
@@ -1398,6 +1397,19 @@ make_dataset_summary <- function(ds) {
   module_effects <- wgcna_normalize_module_ids(module_effects, module_annot, id_col = "module_id", legacy_col = "module_legacy_id")
   if (is.null(super_annot)) super_annot <- data.frame(dataset = character(), SupermoduleID = character(), Supermodule_FinalLabel = character(), dominant_microenvironment_class = character())
 
+  require_supermodule_composition_columns(
+    super_annot,
+    artifact = paste0("WGCNA supermodule biological annotation for ", ds)
+  )
+  super_annot$dataset <- ds
+  validate_supermodule_member_map(
+    super_annot,
+    expected_modules = NULL,
+    artifact = paste0("WGCNA supermodule biological annotation for ", ds),
+    module_col = "SupermoduleID",
+    display_col = "Supermodule_DisplayLabel"
+  )
+
   needed_super_cols <- c(
     "Supermodule_DisplayLabel",
     "Supermodule_LongLabel",
@@ -1463,8 +1475,17 @@ make_dataset_summary <- function(ds) {
   }
 
   super_annot <- super_annot |>
-    dplyr::arrange(.data$SupermoduleID) |>
-    dplyr::distinct(.data$dataset, .data$SupermoduleID, .keep_all = TRUE)
+    dplyr::arrange(.data$dataset, .data$SupermoduleID)
+
+  super_effect_ids <- super_effects |>
+    dplyr::filter(!is.na(.data$supermodule_id), nzchar(as.character(.data$supermodule_id))) |>
+    dplyr::transmute(dataset = ds, SupermoduleID = as.character(.data$supermodule_id)) |>
+    dplyr::distinct()
+  validate_supermodule_summary_ids(
+    super_effect_ids,
+    super_annot,
+    artifact = paste0("supermodule group effects for ", ds)
+  )
 
   module_join <- module_effects |>
     dplyr::left_join(module_annot, by = c("dataset" = "dataset", "module_id" = "ModuleID")) |>
@@ -1538,7 +1559,8 @@ make_dataset_summary <- function(ds) {
     module_effects = module_join,
     module_to_supermodule_map = module_super_map_file,
     supermodule_composition = super_comp,
-    super_annot = super_annot
+    super_annot = super_annot,
+    dataset = ds
   )
   module_join <- attach_module_supermodules(module_join, module_super_map)
   module_join$ModulePlotLabel <- dplyr::coalesce(clean_label_value(module_join$module_label_display), clean_label_value(module_join$Module_CleanPlotLabel), make_module_plot_label(module_join))
@@ -1550,9 +1572,10 @@ make_dataset_summary <- function(ds) {
     dplyr::mutate(
       Supermodule_PlotLabel_from_super = clean_label_value(.data$Supermodule_PlotLabel)
     ) |>
-    dplyr::arrange(.data$supermodule_id) |>
-    dplyr::distinct(.data$supermodule_id, .keep_all = TRUE) |>
+    dplyr::arrange(.data$dataset, .data$supermodule_id) |>
+    dplyr::distinct(.data$dataset, .data$supermodule_id, .keep_all = TRUE) |>
     dplyr::select(
+      "dataset",
       supermodule_id_for_module = "supermodule_id",
       Supermodule_PlotLabel_from_super,
       Supermodule_DisplayLabel_from_super = "Supermodule_DisplayLabel",
@@ -1584,7 +1607,7 @@ make_dataset_summary <- function(ds) {
 
   module_join <- module_join |>
     dplyr::mutate(supermodule_id_for_module = clean_label_value(.data$supermodule_id_for_module)) |>
-    dplyr::left_join(supermodule_label_lookup, by = "supermodule_id_for_module")
+    dplyr::left_join(supermodule_label_lookup, by = c("dataset", "supermodule_id_for_module"))
 
   existing_supermodule_plot_label <- add_supermodule_id_prefix(
     module_join$supermodule_id_for_module,
@@ -1729,21 +1752,21 @@ make_dataset_summary <- function(ds) {
 
   module_final_labels <- final_label_lookup |>
     dplyr::filter(.data$level == "module") |>
-    dplyr::select(module_id = "entity_id", canonical_module_plot_label = "final_plot_label")
+    dplyr::select("dataset", module_id = "entity_id", canonical_module_plot_label = "final_plot_label")
   super_final_labels <- final_label_lookup |>
     dplyr::filter(.data$level == "supermodule") |>
-    dplyr::select(supermodule_id = "entity_id", canonical_supermodule_plot_label = "final_plot_label")
+    dplyr::select("dataset", supermodule_id = "entity_id", canonical_supermodule_plot_label = "final_plot_label")
 
   module_join <- module_join |>
-    dplyr::left_join(module_final_labels, by = "module_id") |>
-    dplyr::left_join(super_final_labels, by = "supermodule_id") |>
+    dplyr::left_join(module_final_labels, by = c("dataset", "module_id")) |>
+    dplyr::left_join(super_final_labels, by = c("dataset", "supermodule_id")) |>
     dplyr::mutate(
       ModulePlotLabel = dplyr::coalesce(.data$canonical_module_plot_label, .data$ModulePlotLabel),
       Supermodule_PlotLabel = dplyr::coalesce(.data$canonical_supermodule_plot_label, .data$Supermodule_PlotLabel)
     ) |>
     dplyr::select(-"canonical_module_plot_label", -"canonical_supermodule_plot_label")
   super_join <- super_join |>
-    dplyr::left_join(super_final_labels, by = "supermodule_id") |>
+    dplyr::left_join(super_final_labels, by = c("dataset", "supermodule_id")) |>
     dplyr::mutate(
       Supermodule_PlotLabel = dplyr::coalesce(.data$canonical_supermodule_plot_label, .data$Supermodule_PlotLabel),
       supermodule_label = .data$Supermodule_PlotLabel
@@ -1751,7 +1774,7 @@ make_dataset_summary <- function(ds) {
     dplyr::select(-"canonical_supermodule_plot_label")
 
   module_supermodule_join_qc <- module_join |>
-    dplyr::distinct(.data$module_id, .data$module_key, .data$module_label, .data$module_biological_label, .data$module_biological_label_short, .data$module_label_display, .data$module_display_label, .data$Module_CleanPlotLabel, .data$microenvironment_label, .data$microenvironment_caution_label, .data$supermodule_id, .data$supermodule_id_for_module, .data$supermodule_label, .data$supermodule_label_for_module, .data$Supermodule_CleanPlotLabel, .data$supermodule_map_source_for_module)
+    dplyr::distinct(.data$dataset, .data$module_id, .data$supermodule_id, .keep_all = TRUE)
 
   write_table_and_source(
     module_supermodule_join_qc,
@@ -1807,7 +1830,7 @@ make_dataset_summary <- function(ds) {
     dplyr::slice_head(n = 50)
 
   supermodule_plot_label_qc <- super_join |>
-    dplyr::distinct(dplyr::across(dplyr::any_of(c(
+    dplyr::select(dplyr::any_of(c(
       "dataset", "supermodule_id", "SupermoduleID", "Supermodule_DisplayLabel",
       "Macroprogram_Display", "Supermodule_ShortLabel", "Supermodule_FinalLabel",
       "Supermodule_FullAnnotationLabel", "Supermodule_DisplayShort",
@@ -1837,11 +1860,17 @@ make_dataset_summary <- function(ds) {
       "label_confidence", "label_basis", "label_downgrade_reason",
       "marker_fraction_primary", "marker_panels_supporting",
       "ManualReviewRequired"
-    ))), .keep_all = FALSE)
+    ))) |>
+    dplyr::group_by(.data$dataset, .data$supermodule_id) |>
+    dplyr::slice_head(n = 1L) |>
+    dplyr::ungroup()
   supermodule_label_audit <- super_join |>
-    dplyr::arrange(.data$supermodule_id) |>
-    dplyr::distinct(.data$supermodule_id, .keep_all = TRUE) |>
+    dplyr::arrange(.data$dataset, .data$supermodule_id) |>
+    dplyr::group_by(.data$dataset, .data$supermodule_id) |>
+    dplyr::slice_head(n = 1L) |>
+    dplyr::ungroup() |>
     dplyr::transmute(
+      dataset = .data$dataset,
       SupermoduleID = .data$supermodule_id,
       Supermodule_CleanPlotLabel,
       Supermodule_PlotLabel,
@@ -2099,6 +2128,11 @@ if (run$dry_run) {
       "Supermodule effects",
       path_results("tables", "06_modules_WGCNA", "group_effects", ds, "supermodule_group_effects.csv"),
       if (file.exists(path_results("tables", "06_modules_WGCNA", "group_effects", ds, "supermodule_group_effects.csv"))) "PASS" else "WARN"
+    )
+    dry_run_line(
+      "Supermodule composition",
+      path_results("tables", "06_modules_WGCNA", "group_effects", ds, "supermodule_composition.csv"),
+      if (file.exists(path_results("tables", "06_modules_WGCNA", "group_effects", ds, "supermodule_composition.csv"))) "PASS" else "WARN"
     )
     dry_run_line(
       "Module annotation",
