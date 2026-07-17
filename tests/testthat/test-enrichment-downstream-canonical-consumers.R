@@ -25,7 +25,8 @@ load_direction_status_helpers <- function() {
   targets <- c(
     "parse_comparison_sides",
     "make_status_summary_rows",
-    "assert_bind_rows_compatible"
+    "assert_bind_rows_compatible",
+    "write_csv_in_chunks"
   )
   definitions <- Filter(function(expr) {
     is.call(expr) && identical(expr[[1]], as.name("<-")) &&
@@ -499,4 +500,26 @@ testthat::test_that("mixed direction statuses preserve failures and deterministi
     nrow(result[result$analysis_status == "success_with_terms", , drop = FALSE]),
     1L
   )
+})
+
+testthat::test_that("direction audit chunked CSV writer preserves rows and typed empty schemas", {
+  helpers <- load_direction_status_helpers()
+  path <- tempfile(fileext = ".csv")
+  input <- data.frame(
+    ProteinGroupID = paste0("PG", 1:5),
+    n_terms = 1:5,
+    score = c(1.5, NA_real_, -2, 0, 3.25),
+    stringsAsFactors = FALSE
+  )
+  helpers$write_csv_in_chunks(input, path, chunk_size = 2L)
+  observed <- utils::read.csv(path, stringsAsFactors = FALSE, check.names = FALSE)
+  testthat::expect_equal(observed, input)
+  testthat::expect_equal(length(readLines(path, warn = FALSE)), nrow(input) + 1L)
+
+  empty_path <- tempfile(fileext = ".csv")
+  helpers$write_csv_in_chunks(input[0, , drop = FALSE], empty_path, chunk_size = 2L)
+  empty <- utils::read.csv(empty_path, stringsAsFactors = FALSE, check.names = FALSE)
+  testthat::expect_equal(nrow(empty), 0L)
+  testthat::expect_identical(names(empty), names(input))
+  testthat::expect_equal(length(readLines(empty_path, warn = FALSE)), 1L)
 })
