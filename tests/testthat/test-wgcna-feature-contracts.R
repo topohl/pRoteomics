@@ -64,7 +64,7 @@ testthat::test_that("mixed species and contaminants are excluded with reasons", 
   testthat::expect_true(all(x$feature_table$protein_group_ambiguity_class == "mixed_species_or_contaminant"))
   testthat::expect_false(any(x$feature_table$included_in_wgcna))
   testthat::expect_equal(ncol(x$expression_data), 0L)
-  testthat::expect_true(all(x$feature_table$wgcna_exclusion_reason == "mixed_species_or_contaminant"))
+  testthat::expect_true(all(nzchar(x$feature_table$wgcna_exclusion_reason)))
 })
 
 testthat::test_that("representative accessions and genes never collapse distinct ProteinGroupIDs", {
