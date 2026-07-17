@@ -637,34 +637,15 @@ compose_supermodule_display_label <- function(supermodule_id, short_label) {
   paste0(id, " \u00b7 ", label)
 }
 
-supermodule_short_label <- function(supermodule_id, microenvironment_class = NA_character_,
-                                    go_terms = character(), hub_symbols = NA_character_,
-                                    fallback = NA_character_, dataset = dataset_profile) {
-  micro_label <- supermodule_microenvironment_label(microenvironment_class, dataset = dataset)
-  go_label <- go_theme_from_terms(go_terms, min_modules = 2L)
-  hub_label <- hub_theme_from_symbols(hub_symbols)
-  out <- dplyr::coalesce(micro_label, go_label, hub_label, shorten_supermodule_label(fallback, max_chars = 30), "Mixed / unresolved")
-  out[out %in% c("Unresolved module cluster", "Unresolved / mixed")] <- "Mixed / unresolved"
-  out
-}
-
-classify_supermodule_label_confidence <- function(n_modules, go_class = "unresolved",
-                                                  has_coherent_hubs = FALSE,
-                                                  microenvironment_class = NA_character_,
+classify_supermodule_label_confidence <- function(n_modules, go_support_class = "not_recurring",
                                                   high_unmapped_fraction = FALSE) {
   n_modules <- suppressWarnings(as.integer(n_modules))
   singleton <- is.na(n_modules) | n_modules <= 1L
-  go_class <- as.character(go_class %||% "unresolved")
-  micro_label <- supermodule_microenvironment_label(microenvironment_class)
-  micro_supported <- !is.na(micro_label) & nzchar(micro_label) & !micro_label %in% "Mixed / unresolved"
-  mixed_micro <- !is.na(micro_label) & micro_label == "Mixed / unresolved"
-  go_supported <- go_class %in% c("GO_supported", "data_driven_GO")
-  suggestive_go <- go_class %in% c("suggestive_GO", "manual_only")
-  if (singleton || isTRUE(high_unmapped_fraction) || mixed_micro) return("low")
-  if ((go_supported || micro_supported) && isTRUE(has_coherent_hubs)) return("high")
-  if ((go_supported && micro_supported) || (suggestive_go && isTRUE(has_coherent_hubs)) || (micro_supported && isTRUE(has_coherent_hubs))) return("medium")
-  if (isTRUE(has_coherent_hubs) || suggestive_go || go_supported || micro_supported) return("low")
-  "unresolved"
+  go_support_class <- as.character(go_support_class %||% "not_recurring")
+  if (singleton || isTRUE(high_unmapped_fraction)) return("low")
+  if (identical(go_support_class, "high")) return("high")
+  if (identical(go_support_class, "medium")) return("medium")
+  "low"
 }
 
 supermodule_merge_cut_height <- function(dataset) {
@@ -772,6 +753,8 @@ summarise_top_go_terms <- function(go_df, module_colors, ontology) {
       .data$ModuleProteinSetType == "all",
       .data$ModuleColor %in% module_colors,
       .data$Ontology == ontology,
+      is.finite(.data$p.adjust),
+      .data$p.adjust <= 0.05,
       !is.na(.data$Description),
       nzchar(.data$Description)
     ) %>%
@@ -787,51 +770,75 @@ summarise_top_go_terms <- function(go_df, module_colors, ontology) {
   collapse_values(out$term_label, n = 5)
 }
 
-propose_supermodule_name <- function(go_terms, hubs = NA_character_, trait_summary = NA_character_, n_modules = 1L, n_modules_with_go_support = 0L) {
-  clean_go <- unique(stats::na.omit(unlist(go_terms, use.names = FALSE)))
-  clean_go <- clean_go[nzchar(clean_go)]
-  clean_hubs <- unique(stats::na.omit(unlist(strsplit(paste(hubs, collapse = ";"), "[;,]"))))
-  clean_hubs <- trimws(clean_hubs[nzchar(trimws(clean_hubs))])
+supermodule_go_theme <- function(description) {
+  vapply(tolower(trimws(as.character(description))), function(z) {
+    if (is.na(z) || !nzchar(z)) return("unresolved")
+    if (grepl("mitochond|respiratory|oxidative phosphorylation|electron transport|precursor metabolite|energy|atp|tca|acetyl-coa", z)) return("mitochondrial / energy metabolism")
+    if (grepl("translation|ribosom|protein fold|proteostasis|ubiquitin|protein catabolic|chaperon", z)) return("translation / proteostasis")
+    if (grepl("rna|splice|mrna|ncrna|ribonucleo", z)) return("RNA processing")
+    if (grepl("synap|vesicle|neurotransmitter", z)) return("synaptic / vesicle organization")
+    if (grepl("cytoskelet|actin|motility|structural", z)) return("cytoskeletal / structural remodeling")
+    if (grepl("immune|microglia|phag|lysosom|inflamm", z)) return("immune / phagolysosomal")
+    if (grepl("vascular|endothel|extracellular matrix|collagen|basement membrane|adhesion", z)) return("vascular / extracellular matrix")
+    shorten_supermodule_label(z, max_chars = 34)
+  }, character(1))
+}
 
-  if (length(clean_go) && n_modules_with_go_support >= 2L) {
-    label <- sub(" \\([0-9]+ modules\\)$", "", clean_go[[1]])
+supermodule_go_label <- function(supermodule_id, n_modules, go_support) {
+  n_modules <- as.integer(n_modules)
+  if (n_modules <= 1L) {
     return(list(
-      name = compact_term(label),
-      source = "data_driven_GO",
-      confidence = if (n_modules >= 2L) "high" else "low",
-      rationale = paste0("Recurring GO support across ", n_modules_with_go_support, " member modules.")
-    ))
-  }
-  if (length(clean_go) && n_modules == 1L) {
-    label <- sub(" \\([0-9]+ modules\\)$", "", clean_go[[1]])
-    return(list(
-      name = compact_term(label),
-      source = "data_driven_GO",
+      component = "singleton",
+      display = paste0(supermodule_id, " \u00b7 singleton"),
       confidence = "low",
-      rationale = "Single-module supermodule; GO term is retained for audit only and should not be over-interpreted as a coherent supermodule theme."
+      source = "singleton",
+      rationale = "Singleton eigengene meta-module; GO evidence is retained for its member module but cannot establish recurrence across modules."
     ))
   }
-  if (length(clean_hubs) >= 3L) {
+  recurring <- go_support[go_support$recurring_significant_term %in% TRUE, , drop = FALSE]
+  if (!nrow(recurring)) {
     return(list(
-      name = "Unresolved module cluster",
-      source = "hub_audit_only",
+      component = "mixed / unresolved",
+      display = paste0(supermodule_id, " \u00b7 mixed / unresolved"),
       confidence = "low",
-      rationale = paste0("GO support was weak; top hubs are retained for audit only (", paste(utils::head(clean_hubs, 5), collapse = ", "), ").")
+      source = "no_recurring_significant_GO",
+      rationale = "No GO term met recurring support: FDR <= 0.05 in at least two and at least half of member modules."
     ))
   }
-
+  recurring <- recurring %>%
+    dplyr::arrange(
+      factor(.data$go_support_confidence, levels = c("high", "medium")),
+      dplyr::desc(.data$fraction_member_modules_supporting_term),
+      .data$worst_member_module_fdr,
+      .data$Description
+    )
+  themes <- unique(supermodule_go_theme(recurring$Description))
+  themes <- themes[!is.na(themes) & nzchar(themes) & themes != "unresolved"]
+  if (!length(themes)) themes <- "mixed / unresolved"
+  if (length(themes) == 1L) {
+    component <- paste0("dominant: ", themes[[1]])
+    confidence <- if (any(recurring$go_support_confidence == "high")) "high" else "medium"
+  } else {
+    component <- paste0("mixed: ", paste(utils::head(themes, 3L), collapse = "; "))
+    confidence <- "medium"
+  }
   list(
-    name = NA_character_,
-    source = "unresolved",
-    confidence = "unresolved",
-    rationale = "No coherent recurring GO or conservative hub evidence was detected."
+    component = component,
+    display = paste0(supermodule_id, " \u00b7 ", component),
+    confidence = confidence,
+    source = "recurring_significant_GO",
+    rationale = paste0(
+      "Name derived from recurring significant GO support only (ModuleProteinSetType=all; member-module FDR <= 0.05). ",
+      "High confidence requires support in every member module; medium requires at least two and at least half."
+    )
   )
 }
 
 build_supermodule_annotation <- function(module_label_table = NULL, module_names = character(),
                                          mergedMEs, GO_enrichment_long = NULL, WGCNA_modules_long = NULL,
                                          WGCNA_module_summary = NULL, df_combo2 = NULL,
-                                         ME_contrast_stats = NULL, dataset = dataset_profile) {
+                                         ME_contrast_stats = NULL, sample_info = NULL,
+                                         dataset = dataset_profile) {
   dataset_requested <- as.character(dataset)
   dataset <- validate_dataset(dataset_requested, source = "build_supermodule_annotation(dataset)")
   module_names <- unique(as.character(module_names))
@@ -854,7 +861,7 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
   default_cut_height <- cut_height_info$default_cut_height
   cut_height <- cut_height_info$selected_cut_height
   primary_supermodule_cut_height <- cut_height
-  supermodule_merge_rule <- "hclust_average_on_1_minus_module_eigengene_correlation"
+  supermodule_merge_rule <- "average_linkage_on_1_minus_signed_module_eigengene_correlation"
   module_similarity <- stats::cor(mergedMEs[, module_names, drop = FALSE], use = "pairwise.complete.obs", method = "pearson")
   module_similarity[!is.finite(module_similarity)] <- 0
   diag(module_similarity) <- 1
@@ -886,14 +893,21 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
 
   clusters <- present %>%
     dplyr::mutate(
+      dataset = dataset_resolved_for_cut_height,
       Supermodule_DataDriven = cluster_id,
+      SupermoduleID = .data$Supermodule_DataDriven,
       DataDrivenClusterSize = as.integer(tabulate(match(.data$Supermodule_DataDriven, unique(.data$Supermodule_DataDriven)))[match(.data$Supermodule_DataDriven, unique(.data$Supermodule_DataDriven))]),
       SupermoduleCutHeight = cut_height,
       supermodule_merge_cut_height = cut_height,
       supermodule_merge_rule = supermodule_merge_rule
     )
+  validate_supermodule_member_map(
+    clusters,
+    expected_modules = module_names,
+    artifact = "authoritative eigengene supermodule cluster map"
+  )
 
-  sensitivity_cut_heights <- c(0.25, 0.35, 0.45, 0.50, 0.55, 0.65)
+  sensitivity_cut_heights <- wgcna_supermodule_sensitivity_grid()
   primary_groups <- split(clusters$module_eigengene, clusters$Supermodule_DataDriven)
   sensitivity_rows <- purrr::map_dfr(sensitivity_cut_heights, function(ch) {
     if (length(module_names) >= 2L && !is.null(hc)) {
@@ -948,6 +962,16 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
     }
   }
   write_csv_safe(sensitivity_rows, fp_supertab("supermodule_clustering_sensitivity.csv"))
+  coherence <- wgcna_supermodule_coherence(
+    mergedMEs = mergedMEs,
+    member_map = clusters,
+    module_members = WGCNA_modules_long,
+    sample_info = sample_info,
+    sensitivity = sensitivity_rows
+  )
+  validate_supermodule_summary_ids(coherence, clusters, "supermodule biological coherence summary")
+  write_csv_safe(coherence, fp_supertab("wgcna_supermodule_biological_coherence.csv"))
+  write_csv_safe(coherence, fp_source("wgcna_supermodule_biological_coherence.csv"))
   primary_group_sizes <- lengths(primary_groups)
   primary_singletons <- sum(primary_group_sizes == 1L)
   primary_fraction_singleton <- if (length(primary_group_sizes)) primary_singletons / length(primary_group_sizes) else NA_real_
@@ -976,64 +1000,88 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
     )
   }
 
+  go_term_support <- wgcna_supermodule_go_support(GO_enrichment_long, clusters)
+  write_csv_safe(go_term_support, fp_supertab("wgcna_supermodule_GO_term_support_audit.csv"))
+  write_csv_safe(go_term_support, fp_source("wgcna_supermodule_GO_term_support_audit.csv"))
+  recurring_go <- go_term_support %>%
+    dplyr::filter(.data$recurring_significant_term)
   go_evidence <- clusters %>%
-    dplyr::group_by(.data$Supermodule_DataDriven) %>%
+    dplyr::group_by(.data$dataset, .data$SupermoduleID) %>%
     dplyr::summarise(
+      Supermodule_DataDriven = dplyr::first(.data$Supermodule_DataDriven),
       member_modules = paste(.data$module_eigengene, collapse = ";"),
       member_module_colors = paste(.data$ModuleColor, collapse = ";"),
       n_modules = dplyr::n(),
-      top_GO_BP_terms = summarise_top_go_terms(GO_enrichment_long, .data$ModuleColor, "BP"),
-      top_GO_MF_terms = summarise_top_go_terms(GO_enrichment_long, .data$ModuleColor, "MF"),
-      top_GO_CC_terms = summarise_top_go_terms(GO_enrichment_long, .data$ModuleColor, "CC"),
       .groups = "drop"
-    )
-  go_stats <- if (!is.null(GO_enrichment_long) && nrow(GO_enrichment_long)) {
-    GO_enrichment_long %>%
-      dplyr::filter(.data$ModuleProteinSetType == "all", .data$ModuleColor %in% clusters$ModuleColor) %>%
-      dplyr::left_join(clusters[, c("ModuleColor", "Supermodule_DataDriven")], by = "ModuleColor") %>%
-      dplyr::group_by(.data$Supermodule_DataDriven) %>%
-      dplyr::summarise(
-        n_modules_with_GO_support = dplyr::n_distinct(.data$ModuleColor[is.finite(.data$p.adjust)]),
-        min_GO_padj = safe_max(-.data$p.adjust),
-        median_GO_padj = stats::median(.data$p.adjust, na.rm = TRUE),
-        .groups = "drop"
-      ) %>%
-      dplyr::mutate(min_GO_padj = ifelse(is.na(.data$min_GO_padj), NA_real_, -.data$min_GO_padj))
-  } else {
-    tibble::tibble(Supermodule_DataDriven = character(), n_modules_with_GO_support = integer(), min_GO_padj = numeric(), median_GO_padj = numeric())
-  }
-  go_evidence <- go_evidence %>%
-    dplyr::left_join(go_stats, by = "Supermodule_DataDriven") %>%
+    ) %>%
+    dplyr::left_join(
+      recurring_go %>%
+        dplyr::group_by(.data$dataset, .data$SupermoduleID) %>%
+        dplyr::summarise(
+          recurring_significant_GO_terms = collapse_values(paste0(.data$Ontology, ":", .data$Description), n = 20),
+          recurring_GO_support_counts = collapse_values(paste0(.data$Description, "=", .data$n_modules_supporting_term, "/", .data$n_member_modules), n = 20),
+          recurring_GO_support_fractions = collapse_values(paste0(.data$Description, "=", signif(.data$fraction_member_modules_supporting_term, 3)), n = 20),
+          recurring_GO_worst_member_module_FDR = collapse_values(paste0(.data$Description, "=", signif(.data$worst_member_module_fdr, 3)), n = 20),
+          n_recurring_significant_GO_terms = dplyr::n(),
+          n_high_confidence_GO_terms = sum(.data$go_support_confidence == "high"),
+          n_medium_confidence_GO_terms = sum(.data$go_support_confidence == "medium"),
+          .groups = "drop"
+        ),
+      by = c("dataset", "SupermoduleID")
+    ) %>%
     dplyr::mutate(
-      n_modules_with_GO_support = dplyr::coalesce(.data$n_modules_with_GO_support, 0L),
-      median_GO_padj = ifelse(is.nan(.data$median_GO_padj), NA_real_, .data$median_GO_padj)
+      n_recurring_significant_GO_terms = dplyr::coalesce(.data$n_recurring_significant_GO_terms, 0L),
+      n_high_confidence_GO_terms = dplyr::coalesce(.data$n_high_confidence_GO_terms, 0L),
+      n_medium_confidence_GO_terms = dplyr::coalesce(.data$n_medium_confidence_GO_terms, 0L),
+      top_GO_BP_terms = NA_character_,
+      top_GO_MF_terms = NA_character_,
+      top_GO_CC_terms = NA_character_,
+      n_modules_with_GO_support = dplyr::if_else(
+        .data$n_recurring_significant_GO_terms > 0L,
+        mapply(function(ds, sid) {
+          z <- recurring_go$n_modules_supporting_term[recurring_go$dataset == ds & recurring_go$SupermoduleID == sid]
+          if (length(z)) max(z) else 0L
+        }, .data$dataset, .data$SupermoduleID, USE.NAMES = FALSE),
+        0L
+      ),
+      min_GO_padj = mapply(function(ds, sid) {
+        z <- go_term_support$best_member_module_fdr[go_term_support$dataset == ds & go_term_support$SupermoduleID == sid]
+        z <- z[is.finite(z)]
+        if (length(z)) min(z) else NA_real_
+      }, .data$dataset, .data$SupermoduleID, USE.NAMES = FALSE),
+      median_GO_padj = mapply(function(ds, sid) {
+        z <- go_term_support$worst_member_module_fdr[go_term_support$dataset == ds & go_term_support$SupermoduleID == sid & go_term_support$recurring_significant_term]
+        z <- z[is.finite(z)]
+        if (length(z)) stats::median(z) else NA_real_
+      }, .data$dataset, .data$SupermoduleID, USE.NAMES = FALSE)
     )
 
   hub_evidence <- if (!is.null(WGCNA_modules_long) && nrow(WGCNA_modules_long)) {
     WGCNA_modules_long %>%
       dplyr::filter(.data$ModuleColor %in% clusters$ModuleColor) %>%
       dplyr::filter(.data$mapping_status != "unmapped") %>%
-      dplyr::left_join(clusters[, c("ModuleColor", "Supermodule_DataDriven")], by = "ModuleColor") %>%
+      dplyr::left_join(clusters[, c("dataset", "ModuleColor", "SupermoduleID")], by = "ModuleColor") %>%
       dplyr::mutate(.hub_keep = dplyr::coalesce(.data$is_top_hub_25, FALSE) | dplyr::coalesce(.data$is_core_kME_0.6, FALSE)) %>%
       dplyr::filter(.data$.hub_keep) %>%
-      dplyr::arrange(.data$Supermodule_DataDriven, dplyr::desc(.data$abs_kME)) %>%
-      dplyr::group_by(.data$Supermodule_DataDriven) %>%
+      dplyr::arrange(.data$dataset, .data$SupermoduleID, dplyr::desc(.data$abs_kME)) %>%
+      dplyr::group_by(.data$dataset, .data$SupermoduleID) %>%
       dplyr::summarise(
         top_hub_symbols = collapse_values(.data$GeneSymbol, n = 15),
         top_hub_uniprot = collapse_values(.data$UniProt, n = 15),
-        hub_theme_candidates = ifelse(!is.na(collapse_values(.data$GeneSymbol, n = 5)), paste0("Review top hubs: ", collapse_values(.data$GeneSymbol, n = 5)), NA_character_),
+        hub_theme_candidates = ifelse(!is.na(collapse_values(.data$GeneSymbol, n = 5)), paste0("Partition audit only; top hubs: ", collapse_values(.data$GeneSymbol, n = 5)), NA_character_),
+        hub_evidence_use = "audit_only_not_supermodule_support",
         .groups = "drop"
       )
   } else {
-    tibble::tibble(Supermodule_DataDriven = character(), top_hub_symbols = character(), top_hub_uniprot = character(), hub_theme_candidates = character())
+    tibble::tibble(dataset = character(), SupermoduleID = character(), top_hub_symbols = character(), top_hub_uniprot = character(), hub_theme_candidates = character(), hub_evidence_use = character())
   }
 
   trait_evidence <- if (!is.null(df_combo2) && nrow(df_combo2)) {
     df_combo2 %>%
       dplyr::mutate(ModuleColor = sub("^ME", "", as.character(.data$module))) %>%
-      dplyr::left_join(clusters[, c("ModuleColor", "Supermodule_DataDriven")], by = "ModuleColor") %>%
-      dplyr::filter(!is.na(.data$Supermodule_DataDriven)) %>%
-      dplyr::group_by(.data$Supermodule_DataDriven) %>%
+      dplyr::left_join(clusters[, c("dataset", "ModuleColor", "SupermoduleID")], by = "ModuleColor") %>%
+      dplyr::filter(!is.na(.data$SupermoduleID)) %>%
+      dplyr::group_by(.data$dataset, .data$SupermoduleID) %>%
       dplyr::summarise(
         strongest_trait_associations = {
           ord <- order(.data$fdr, -abs(.data$r), na.last = TRUE)
@@ -1045,16 +1093,16 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
         .groups = "drop"
       )
   } else {
-    tibble::tibble(Supermodule_DataDriven = character(), strongest_trait_associations = character(), n_fdr_lt_0.05 = integer(), n_fdr_lt_0.10 = integer())
+    tibble::tibble(dataset = character(), SupermoduleID = character(), strongest_trait_associations = character(), n_fdr_lt_0.05 = integer(), n_fdr_lt_0.10 = integer())
   }
 
   contrast_evidence <- if (!is.null(ME_contrast_stats) && nrow(ME_contrast_stats)) {
     ME_contrast_stats %>%
       dplyr::mutate(ModuleColor = sub("^ME", "", as.character(.data$module))) %>%
-      dplyr::left_join(clusters[, c("ModuleColor", "Supermodule_DataDriven")], by = "ModuleColor") %>%
-      dplyr::filter(!is.na(.data$Supermodule_DataDriven)) %>%
-      dplyr::arrange(.data$Supermodule_DataDriven, .data$fdr, dplyr::desc(abs(.data$adjusted_delta))) %>%
-      dplyr::group_by(.data$Supermodule_DataDriven) %>%
+      dplyr::left_join(clusters[, c("dataset", "ModuleColor", "SupermoduleID")], by = "ModuleColor") %>%
+      dplyr::filter(!is.na(.data$SupermoduleID)) %>%
+      dplyr::arrange(.data$dataset, .data$SupermoduleID, .data$fdr, dplyr::desc(abs(.data$adjusted_delta))) %>%
+      dplyr::group_by(.data$dataset, .data$SupermoduleID) %>%
       dplyr::summarise(
         strongest_condition_contrasts = collapse_values(paste0(.data$module, ":", .data$contrast, " delta=", signif(.data$adjusted_delta, 2), " fdr=", signif(.data$fdr, 2)), n = 6),
         n_condition_fdr_lt_0.05 = sum(.data$fdr < 0.05, na.rm = TRUE),
@@ -1062,122 +1110,73 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
         .groups = "drop"
       )
   } else {
-    tibble::tibble(Supermodule_DataDriven = character(), strongest_condition_contrasts = character(), n_condition_fdr_lt_0.05 = integer(), n_condition_fdr_lt_0.10 = integer())
+    tibble::tibble(dataset = character(), SupermoduleID = character(), strongest_condition_contrasts = character(), n_condition_fdr_lt_0.05 = integer(), n_condition_fdr_lt_0.10 = integer())
   }
 
   evidence <- go_evidence %>%
-    dplyr::left_join(hub_evidence, by = "Supermodule_DataDriven") %>%
-    dplyr::left_join(trait_evidence, by = "Supermodule_DataDriven") %>%
-    dplyr::left_join(contrast_evidence, by = "Supermodule_DataDriven") %>%
+    dplyr::left_join(coherence, by = c("dataset", "SupermoduleID")) %>%
+    dplyr::left_join(hub_evidence, by = c("dataset", "SupermoduleID")) %>%
+    dplyr::left_join(trait_evidence, by = c("dataset", "SupermoduleID")) %>%
+    dplyr::left_join(contrast_evidence, by = c("dataset", "SupermoduleID")) %>%
     dplyr::mutate(
       n_fdr_lt_0.05 = dplyr::coalesce(.data$n_fdr_lt_0.05, 0L) + dplyr::coalesce(.data$n_condition_fdr_lt_0.05, 0L),
       n_fdr_lt_0.10 = dplyr::coalesce(.data$n_fdr_lt_0.10, 0L) + dplyr::coalesce(.data$n_condition_fdr_lt_0.10, 0L),
       GO_label_confidence_class = dplyr::case_when(
-        is.finite(.data$min_GO_padj) & .data$min_GO_padj <= 0.05 ~ "GO_supported",
-        is.finite(.data$min_GO_padj) & .data$min_GO_padj <= 0.20 ~ "suggestive_GO",
-        !is.na(.data$top_hub_symbols) & nzchar(.data$top_hub_symbols) & (is.na(.data$min_GO_padj) | .data$min_GO_padj > 0.20) ~ "hub_only",
-        TRUE ~ "unresolved"
+        .data$n_modules <= 1L ~ "singleton",
+        .data$n_high_confidence_GO_terms > 0L ~ "high",
+        .data$n_medium_confidence_GO_terms > 0L ~ "medium",
+        TRUE ~ "mixed_or_unresolved"
       )
     )
 
-  proposals <- purrr::pmap_dfr(evidence, function(...) {
-    row <- tibble::as_tibble(list(...))
-    proposal <- propose_supermodule_name(
-      go_terms = c(row$top_GO_BP_terms, row$top_GO_MF_terms, row$top_GO_CC_terms),
-      hubs = row$top_hub_symbols,
-      trait_summary = row$strongest_trait_associations,
-      n_modules = row$n_modules,
-      n_modules_with_go_support = row$n_modules_with_GO_support
-    )
-    has_coherent_hubs <- !is.na(row$top_hub_symbols) && nzchar(row$top_hub_symbols) &&
-      length(trimws(unlist(strsplit(row$top_hub_symbols, "[;,]"), use.names = FALSE))) >= 3L
-    short_label <- supermodule_short_label(
-      supermodule_id = row$Supermodule_DataDriven,
-      go_terms = c(row$top_GO_BP_terms, row$top_GO_MF_terms, row$top_GO_CC_terms),
-      hub_symbols = row$top_hub_symbols,
-      fallback = proposal$name,
-      dataset = dataset
-    )
+  proposals <- purrr::map_dfr(seq_len(nrow(evidence)), function(i) {
+    row <- evidence[i, , drop = FALSE]
+    support <- go_term_support %>%
+      dplyr::filter(.data$dataset == row$dataset[[1]], .data$SupermoduleID == row$SupermoduleID[[1]])
+    proposal <- supermodule_go_label(row$SupermoduleID[[1]], row$n_modules[[1]], support)
     tibble::tibble(
-      Supermodule_DataDriven = row$Supermodule_DataDriven,
-      Supermodule_ProposedName = proposal$name %||% paste("Unresolved module cluster", row$Supermodule_DataDriven),
-      Supermodule_ShortLabel = short_label,
+      dataset = row$dataset[[1]],
+      SupermoduleID = row$SupermoduleID[[1]],
+      Supermodule_ProposedName = proposal$component,
+      Supermodule_ShortLabel = proposal$component,
+      Supermodule_DisplayLabel = proposal$display,
       Supermodule_NameSource = proposal$source,
-      Supermodule_NamingConfidence = classify_supermodule_label_confidence(
-        n_modules = row$n_modules,
-        go_class = row$GO_label_confidence_class,
-        has_coherent_hubs = has_coherent_hubs
-      ),
+      Supermodule_NamingConfidence = proposal$confidence,
       Supermodule_Rationale = proposal$rationale
     )
   })
 
-  evidence <- evidence %>% dplyr::left_join(proposals, by = "Supermodule_DataDriven")
+  evidence <- evidence %>% dplyr::left_join(proposals, by = c("dataset", "SupermoduleID"))
   annotation_present <- clusters %>%
-    dplyr::left_join(evidence, by = "Supermodule_DataDriven") %>%
+    dplyr::left_join(evidence %>% dplyr::select(-dplyr::any_of("Supermodule_DataDriven")), by = c("dataset", "SupermoduleID")) %>%
     dplyr::left_join(manual_present, by = c("module_eigengene", "ModuleColor")) %>%
     dplyr::mutate(
       manual_annotation = !is.na(.data$Supermodule_Manual) & nzchar(.data$Supermodule_Manual),
-      Supermodule_DataDrivenID = .data$Supermodule_DataDriven,
-      Supermodule_DataDrivenLabel = dplyr::coalesce(.data$Supermodule_ProposedName, paste("Unresolved module cluster", .data$Supermodule_DataDriven)),
+      Supermodule_DataDrivenID = .data$SupermoduleID,
+      Supermodule_DataDrivenLabel = .data$Supermodule_ProposedName,
       Supermodule_CuratedLabel = dplyr::if_else(.data$manual_annotation, as.character(.data$Supermodule_Manual), NA_character_),
-      Supermodule_FinalLabel = dplyr::coalesce(.data$Supermodule_CuratedLabel, .data$Supermodule_DataDrivenLabel),
-      Supermodule_ShortLabel = dplyr::if_else(
-        .data$manual_annotation,
-        shorten_supermodule_label(.data$Supermodule_CuratedLabel, max_chars = 30),
-        .data$Supermodule_ShortLabel
-      ),
-      Supermodule_LabelSource = dplyr::case_when(
-        .data$manual_annotation ~ dplyr::coalesce(.data$ManualSource, "dataset_manual_config"),
-        !is.na(.data$Supermodule_NameSource) ~ .data$Supermodule_NameSource,
-        TRUE ~ "unresolved"
-      ),
-      Supermodule_LabelConfidence = dplyr::coalesce(.data$ManualConfidence, .data$Supermodule_NamingConfidence, "unresolved"),
+      Supermodule_FinalLabel = .data$Supermodule_DataDrivenLabel,
+      Supermodule_LabelSource = dplyr::coalesce(.data$Supermodule_NameSource, "unresolved"),
+      Supermodule_LabelConfidence = dplyr::coalesce(.data$Supermodule_NamingConfidence, "low"),
       Supermodule_LabelRationale = dplyr::case_when(
-        .data$manual_annotation ~ paste0("Curated override: ", dplyr::coalesce(.data$ManualRationale, "No curated rationale recorded."), " Data-driven label was: ", .data$Supermodule_DataDrivenLabel),
-        TRUE ~ dplyr::coalesce(.data$Supermodule_Rationale, "No coherent annotation evidence was detected.")
+        .data$manual_annotation ~ paste0(
+          dplyr::coalesce(.data$Supermodule_Rationale, "No recurring GO support."),
+          " Historical per-module manual label retained for audit only and not used as a supermodule key or confidence source: ",
+          .data$Supermodule_Manual, "."
+        ),
+        TRUE ~ dplyr::coalesce(.data$Supermodule_Rationale, "No coherent recurring GO evidence was detected.")
       ),
-      Supermodule = .data$Supermodule_FinalLabel,
+      Supermodule = .data$Supermodule_DisplayLabel,
       SupermoduleConfidence = .data$Supermodule_LabelConfidence,
       SupermoduleRationale = .data$Supermodule_LabelRationale,
-      GO_label_confidence_class = dplyr::case_when(
-        .data$manual_annotation & !.data$GO_label_confidence_class %in% c("GO_supported", "suggestive_GO") ~ "manual_only",
-        TRUE ~ .data$GO_label_confidence_class
-      ),
       NamingConflict = .data$manual_annotation & !is.na(.data$Supermodule_ProposedName) & .data$Supermodule_Manual != .data$Supermodule_ProposedName,
-      ManualReviewRequired = .data$NamingConflict | .data$Supermodule_NamingConfidence %in% c("low", "unresolved") | .data$Supermodule_NameSource == "unresolved"
+      ManualReviewRequired = .data$NamingConflict | .data$Supermodule_NamingConfidence == "low"
     )
 
-  annotation <- dplyr::bind_rows(
-    annotation_present,
-    manual_absent %>%
-      dplyr::mutate(
-        Supermodule_DataDriven = NA_character_,
-        Supermodule_DataDrivenID = NA_character_,
-        DataDrivenClusterSize = NA_integer_,
-        SupermoduleCutHeight = cut_height,
-        supermodule_merge_cut_height = cut_height,
-        supermodule_merge_rule = supermodule_merge_rule,
-        Supermodule_ProposedName = NA_character_,
-        Supermodule_DataDrivenLabel = NA_character_,
-        Supermodule_CuratedLabel = .data$Supermodule_Manual,
-        Supermodule_FinalLabel = .data$Supermodule_Manual,
-        Supermodule_LabelSource = dplyr::coalesce(.data$ManualSource, "dataset_manual_config"),
-        Supermodule_LabelConfidence = .data$ManualConfidence,
-        Supermodule_LabelRationale = .data$ManualRationale,
-        Supermodule_NameSource = "manual_absent_from_dataset",
-        Supermodule_NamingConfidence = "not_applicable",
-        Supermodule_Rationale = NA_character_,
-        Supermodule = .data$Supermodule_FinalLabel,
-        SupermoduleConfidence = .data$Supermodule_LabelConfidence,
-        SupermoduleRationale = .data$Supermodule_LabelRationale,
-        GO_label_confidence_class = "manual_absent_from_dataset",
-        NamingConflict = FALSE,
-        ManualReviewRequired = FALSE
-      )
-  ) %>%
+  if (nrow(manual_absent)) write_csv_safe(manual_absent, fp_supertab("wgcna_supermodule_manual_config_absent_modules_audit.csv"))
+  annotation <- annotation_present %>%
     dplyr::mutate(
-      present_in_dataset = dplyr::coalesce(.data$present_in_dataset, FALSE),
+      present_in_dataset = TRUE,
       manual_annotation = dplyr::coalesce(.data$manual_annotation, FALSE),
       annotation_scope = dplyr::if_else(.data$present_in_dataset, "present_dataset_module", "manual_absent_from_dataset"),
       manual_label_status = dplyr::case_when(
@@ -1188,7 +1187,7 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
       Supermodule_DataDrivenID = dplyr::coalesce(.data$Supermodule_DataDrivenID, .data$Supermodule_DataDriven),
       Supermodule_DataDrivenLabel = dplyr::coalesce(.data$Supermodule_DataDrivenLabel, .data$Supermodule_ProposedName, "Unresolved module cluster"),
       Supermodule_FinalLabel = dplyr::coalesce(.data$Supermodule_FinalLabel, .data$Supermodule_DataDrivenLabel, "Unresolved module cluster"),
-      Supermodule_ShortLabel = dplyr::coalesce(.data$Supermodule_ShortLabel, supermodule_short_label(.data$Supermodule_DataDrivenID, go_terms = .data$top_GO_BP_terms, hub_symbols = .data$top_hub_symbols, fallback = .data$Supermodule_FinalLabel, dataset = dataset)),
+      Supermodule_ShortLabel = dplyr::coalesce(.data$Supermodule_ShortLabel, "mixed / unresolved"),
       Supermodule_LabelSource = dplyr::coalesce(.data$Supermodule_LabelSource, .data$Supermodule_NameSource, "unresolved"),
       Supermodule_LabelConfidence = dplyr::coalesce(.data$Supermodule_LabelConfidence, .data$Supermodule_NamingConfidence, "unresolved"),
       Supermodule_LabelRationale = dplyr::coalesce(.data$Supermodule_LabelRationale, .data$Supermodule_Rationale, "No coherent annotation evidence was detected."),
@@ -1205,14 +1204,14 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
       GO_label_confidence_class = dplyr::coalesce(.data$GO_label_confidence_class, "unresolved"),
       SupermoduleID = dplyr::coalesce(.data$Supermodule_DataDrivenID, .data$Supermodule_DataDriven),
       Supermodule_LongLabel = dplyr::coalesce(.data$Supermodule_FinalLabel, .data$Supermodule_DataDrivenLabel, "Unresolved module cluster"),
-      Macroprogram_Display = macroprogram_display(paste(.data$Supermodule_LongLabel, .data$top_GO_BP_terms, .data$top_GO_MF_terms, .data$top_GO_CC_terms, .data$top_hub_symbols)),
+      Macroprogram_Display = .data$Supermodule_LongLabel,
       Supermodule_DisplayLabel = compose_supermodule_display_label(.data$SupermoduleID, .data$Supermodule_ShortLabel),
       manual_config_used = dplyr::coalesce(.data$manual_config_used, FALSE),
       legacy_seed_used = dplyr::coalesce(.data$legacy_seed_used, FALSE),
       is_singleton_supermodule = dplyr::coalesce(.data$DataDrivenClusterSize == 1L, FALSE),
       Supermodule_LabelRationale = paste0(
         .data$Supermodule_LabelRationale,
-        " Supermodules are data-reduction/interpretation objects; macroprogram labels are display groupings, not independent discoveries."
+        " Supermodules are eigengene meta-modules/co-varying module blocks derived from signed eigengene correlation. Hub/protein overlap is not supporting evidence because WGCNA modules partition proteins."
       )
     )
 
@@ -1252,38 +1251,37 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
   if (any(annotation$present_in_dataset[!annotation$module_eigengene %in% module_names])) {
     stop("Supermodule validation failed: absent manual module marked present.", call. = FALSE)
   }
+  validate_supermodule_member_map(
+    present_annotation,
+    expected_modules = module_names,
+    artifact = "WGCNA module-supermodule annotation",
+    display_col = "Supermodule_DisplayLabel"
+  )
+  validate_supermodule_summary_ids(evidence, present_annotation, "WGCNA supermodule evidence table")
 
   cluster_export <- clusters %>%
-    dplyr::left_join(evidence, by = "Supermodule_DataDriven") %>%
-    dplyr::select("module_eigengene", "ModuleColor", "Supermodule_DataDriven", "DataDrivenClusterSize", "SupermoduleCutHeight", dplyr::everything())
-  evidence_summary_export <- evidence %>%
-    dplyr::left_join(
-      annotation %>%
-        dplyr::filter(.data$present_in_dataset) %>%
-        dplyr::distinct(
-          .data$Supermodule_DataDriven,
-          .data$SupermoduleID,
-          .data$Supermodule_DisplayLabel,
-          .data$Supermodule_LongLabel,
-          .data$Macroprogram_Display,
-          .data$Supermodule_DataDrivenLabel,
-          .data$Supermodule_CuratedLabel,
-          .data$Supermodule_FinalLabel,
-          .data$Supermodule_LabelSource,
-          .data$Supermodule_LabelConfidence,
-          .data$Supermodule_LabelRationale,
-          .data$ManualReviewRequired
-        ),
-      by = "Supermodule_DataDriven"
+    dplyr::left_join(evidence %>% dplyr::select(-dplyr::any_of("Supermodule_DataDriven")), by = c("dataset", "SupermoduleID")) %>%
+    dplyr::select("dataset", "module_eigengene", "ModuleColor", "SupermoduleID", "Supermodule_DataDriven", "DataDrivenClusterSize", "SupermoduleCutHeight", dplyr::everything())
+  annotation_by_supermodule <- annotation %>%
+    dplyr::filter(.data$present_in_dataset) %>%
+    dplyr::group_by(.data$dataset, .data$SupermoduleID) %>%
+    dplyr::summarise(
+      dplyr::across(
+        dplyr::all_of(c(
+          "Supermodule_DisplayLabel", "Supermodule_LongLabel", "Macroprogram_Display",
+          "Supermodule_DataDrivenLabel", "Supermodule_CuratedLabel", "Supermodule_FinalLabel",
+          "Supermodule_LabelSource", "Supermodule_LabelConfidence", "Supermodule_LabelRationale"
+        )),
+        dplyr::first
+      ),
+      ManualReviewRequired = any(.data$ManualReviewRequired, na.rm = TRUE),
+      .groups = "drop"
     )
+  validate_supermodule_summary_ids(annotation_by_supermodule, present_annotation, "WGCNA supermodule annotation summary")
+  evidence_summary_export <- evidence %>%
+    dplyr::left_join(annotation_by_supermodule, by = c("dataset", "SupermoduleID"))
   write_csv_safe(cluster_export, fp_supertab("wgcna_supermodule_eigengene_clusters.csv"))
   write_csv_safe(evidence, fp_supertab("wgcna_supermodule_evidence_table.csv"))
-  repeated_macroprogram_labels <- annotation %>%
-    dplyr::filter(.data$present_in_dataset) %>%
-    dplyr::distinct(.data$SupermoduleID, .data$Macroprogram_Display) %>%
-    dplyr::filter(!is.na(.data$Macroprogram_Display), nzchar(.data$Macroprogram_Display), .data$Macroprogram_Display != "Unresolved / mixed") %>%
-    dplyr::count(.data$Macroprogram_Display, name = "n_supermodules") %>%
-    dplyr::filter(.data$n_supermodules > 1L)
   supermodule_compression_qc <- tibble::tibble(
     dataset = dataset_resolved_for_cut_height,
     dataset_requested = dataset_requested,
@@ -1299,26 +1297,31 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
     n_singleton_supermodules = primary_singletons,
     median_modules_per_supermodule = if (length(primary_group_sizes)) stats::median(primary_group_sizes) else NA_real_,
     max_modules_per_supermodule = if (length(primary_group_sizes)) max(primary_group_sizes) else NA_integer_,
-    repeated_macroprogram_labels = if (nrow(repeated_macroprogram_labels)) {
-      paste0(repeated_macroprogram_labels$Macroprogram_Display, " (", repeated_macroprogram_labels$n_supermodules, ")", collapse = "; ")
-    } else {
-      ""
-    }
+    repeated_macroprogram_labels = "not_used_as_identity; biological labels may repeat across dataset + SupermoduleID keys"
   )
   write_csv_safe(supermodule_compression_qc, fp_supertab("supermodule_compression_qc.csv"))
   write_csv_safe(supermodule_compression_qc, fp_source("supermodule_compression_qc.csv"))
   write_csv_safe(
     evidence_summary_export %>%
       dplyr::select(dplyr::any_of(c(
-        "Supermodule_DataDriven", "member_modules", "member_module_colors", "n_modules",
+        "dataset", "SupermoduleID", "Supermodule_DataDriven", "member_modules", "member_module_colors", "n_modules",
         "SupermoduleID", "Supermodule_DisplayLabel", "Supermodule_LongLabel", "Macroprogram_Display",
         "Supermodule_DataDrivenLabel", "Supermodule_CuratedLabel", "Supermodule_FinalLabel", "Supermodule_ShortLabel",
         "Supermodule_LabelSource", "Supermodule_LabelConfidence", "Supermodule_LabelRationale",
         "GO_label_confidence_class", "ManualReviewRequired",
         "Supermodule_ProposedName", "Supermodule_NameSource", "Supermodule_NamingConfidence",
-        "Supermodule_Rationale", "top_GO_BP_terms", "top_GO_MF_terms", "top_GO_CC_terms",
+        "Supermodule_Rationale", "recurring_significant_GO_terms", "recurring_GO_support_counts",
+        "recurring_GO_support_fractions", "recurring_GO_worst_member_module_FDR",
+        "n_recurring_significant_GO_terms", "n_high_confidence_GO_terms", "n_medium_confidence_GO_terms",
+        "top_GO_BP_terms", "top_GO_MF_terms", "top_GO_CC_terms",
         "n_modules_with_GO_support", "min_GO_padj", "median_GO_padj",
-        "top_hub_symbols", "top_hub_uniprot", "hub_theme_candidates",
+        "n_member_proteins", "n_member_module_pairs",
+        "signed_min_pairwise_eigengene_correlation", "signed_mean_pairwise_eigengene_correlation", "signed_median_pairwise_eigengene_correlation",
+        "adjusted_signed_min_pairwise_eigengene_correlation", "adjusted_signed_mean_pairwise_eigengene_correlation", "adjusted_signed_median_pairwise_eigengene_correlation",
+        "correlation_adjustment_variables", "correlation_adjustment_status", "pc1_variance_explained", "pc1_interpretation_note",
+        "cut_height_grid_n", "cut_height_stability_min_jaccard", "cut_height_stability_mean_jaccard", "cut_height_stability_fraction_stable",
+        "correlation_metric", "construction_basis",
+        "top_hub_symbols", "top_hub_uniprot", "hub_theme_candidates", "hub_evidence_use",
         "strongest_trait_associations", "strongest_condition_contrasts", "n_fdr_lt_0.05", "n_fdr_lt_0.10"
       ))),
     fp_supertab("wgcna_supermodule_summary.csv")
@@ -1344,7 +1347,7 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
     supermodule_cut_height_override_env = cut_height_info$override_env_value,
     supermodule_cut_height_override_used = cut_height_info$override_used,
     singleton_warning = is.finite(primary_fraction_singleton) && primary_fraction_singleton > 0.50,
-    interpretation_note = "Supermodules are data-reduction/interpretation objects; macroprogram labels are display groupings, not independent discoveries."
+    interpretation_note = "Supermodules are eigengene meta-modules/co-varying module blocks constructed by average linkage on 1 - signed module-eigengene correlation. GO naming requires recurring member-module FDR <= 0.05 support. Protein/hub overlap is a partition-integrity audit and never supporting evidence."
   )
   write_csv_safe(label_source_manifest, fp_supertab("supermodule_label_source_manifest.csv"))
   supermodule_label_audit <- annotation %>%
@@ -1387,7 +1390,7 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
       .groups = "drop"
     ) %>%
     dplyr::select(dplyr::any_of(c(
-      "dataset", "Supermodule_DataDriven", "Supermodule_DisplayLabel", "Supermodule_FinalLabel",
+      "dataset", "SupermoduleID", "Supermodule_DataDriven", "Supermodule_DisplayLabel", "Supermodule_FinalLabel",
       "Supermodule_LabelSource", "Supermodule_LabelConfidence", "is_singleton_supermodule",
       "n_member_modules", "GO_label_confidence_class", "dominant_microenvironment_class",
       "top_GO_BP_terms", "top_hub_symbols", "label_rationale", "manual_review_required", "NamingConflict"
@@ -3432,6 +3435,7 @@ supermodule_annotation <- build_supermodule_annotation(
   WGCNA_module_summary = if (exists("WGCNA_module_summary")) WGCNA_module_summary else NULL,
   df_combo2 = if (exists("df_combo2")) df_combo2 else NULL,
   ME_contrast_stats = NULL,
+  sample_info = sample_info,
   dataset = dataset_profile_resolved
 )
 supermodule_levels <- unique(c(supermodule_levels, supermodule_annotation$Supermodule[supermodule_annotation$present_in_dataset]))
@@ -3529,6 +3533,7 @@ supermodule_annotation <- build_supermodule_annotation(
   WGCNA_module_summary = if (exists("WGCNA_module_summary")) WGCNA_module_summary else NULL,
   df_combo2 = if (exists("df_combo2")) df_combo2 else NULL,
   ME_contrast_stats = ME_contrast_stats,
+  sample_info = sample_info,
   dataset = dataset_profile_resolved
 )
 supermodule_levels <- unique(c(supermodule_levels, supermodule_annotation$Supermodule[supermodule_annotation$present_in_dataset]))
@@ -3867,7 +3872,7 @@ present_supermodule_annotation <- supermodule_annotation %>%
     Supermodule = factor(.data$Supermodule, levels = supermodule_levels)
   )
 module_order_supermodule <- present_supermodule_annotation %>%
-  dplyr::arrange(.data$Supermodule, .data$module_eigengene) %>%
+  dplyr::arrange(.data$dataset, .data$SupermoduleID, .data$module_eigengene) %>%
   dplyr::pull(.data$module_eigengene) %>%
   as.character()
 module_order_supermodule <- intersect(module_order_supermodule, colnames(mergedMEs))
@@ -3893,42 +3898,41 @@ ME_corr_pairs <- if (length(module_order_supermodule) >= 2) {
 }
 
 pair_ann <- present_supermodule_annotation %>%
-  dplyr::select("module_eigengene", "ModuleColor", "Supermodule", "top_GO_label")
+  dplyr::select("dataset", "module_eigengene", "ModuleColor", "SupermoduleID", "Supermodule_DisplayLabel", "top_GO_label")
 ME_corr_pairs <- ME_corr_pairs %>%
   dplyr::left_join(pair_ann, by = c("module_a" = "module_eigengene")) %>%
-  dplyr::rename(ModuleColor_a = "ModuleColor", Supermodule_a = "Supermodule", top_GO_label_a = "top_GO_label") %>%
+  dplyr::rename(dataset_a = "dataset", ModuleColor_a = "ModuleColor", SupermoduleID_a = "SupermoduleID", Supermodule_DisplayLabel_a = "Supermodule_DisplayLabel", top_GO_label_a = "top_GO_label") %>%
   dplyr::left_join(pair_ann, by = c("module_b" = "module_eigengene")) %>%
-  dplyr::rename(ModuleColor_b = "ModuleColor", Supermodule_b = "Supermodule", top_GO_label_b = "top_GO_label") %>%
-  dplyr::mutate(same_supermodule = .data$Supermodule_a == .data$Supermodule_b)
+  dplyr::rename(dataset_b = "dataset", ModuleColor_b = "ModuleColor", SupermoduleID_b = "SupermoduleID", Supermodule_DisplayLabel_b = "Supermodule_DisplayLabel", top_GO_label_b = "top_GO_label") %>%
+  dplyr::mutate(same_supermodule = .data$dataset_a == .data$dataset_b & .data$SupermoduleID_a == .data$SupermoduleID_b)
 write_csv_safe(ME_corr_pairs, fp_supertab("wgcna_module_eigengene_correlation_pairs.csv"))
 
 within_supermodule_corr_summary <- ME_corr_pairs %>%
-  dplyr::filter(.data$same_supermodule, .data$Supermodule_a != "Unassigned") %>%
-  dplyr::group_by(Supermodule = .data$Supermodule_a) %>%
+  dplyr::filter(.data$same_supermodule) %>%
+  dplyr::group_by(dataset = .data$dataset_a, SupermoduleID = .data$SupermoduleID_a) %>%
   dplyr::summarise(
     n_module_pairs = dplyr::n(),
-    median_abs_r = stats::median(.data$abs_r, na.rm = TRUE),
-    max_abs_r = safe_max(.data$abs_r),
-    mean_abs_r = mean(.data$abs_r, na.rm = TRUE),
-    eigengene_supported = .data$median_abs_r >= 0.5 | .data$max_abs_r >= 0.6,
+    signed_min_r = min(.data$r, na.rm = TRUE),
+    signed_mean_r = mean(.data$r, na.rm = TRUE),
+    signed_median_r = stats::median(.data$r, na.rm = TRUE),
+    correlation_metric = "signed_pearson",
     .groups = "drop"
   )
 
 between_supermodule_corr_summary <- ME_corr_pairs %>%
   dplyr::filter(!.data$same_supermodule) %>%
   dplyr::mutate(
-    supermodule_pair = paste(
-      pmin(as.character(.data$Supermodule_a), as.character(.data$Supermodule_b)),
-      pmax(as.character(.data$Supermodule_a), as.character(.data$Supermodule_b)),
-      sep = " vs "
-    )
+    dataset = .data$dataset_a,
+    SupermoduleID_1 = pmin(as.character(.data$SupermoduleID_a), as.character(.data$SupermoduleID_b)),
+    SupermoduleID_2 = pmax(as.character(.data$SupermoduleID_a), as.character(.data$SupermoduleID_b))
   ) %>%
-  dplyr::group_by(.data$supermodule_pair) %>%
+  dplyr::group_by(.data$dataset, .data$SupermoduleID_1, .data$SupermoduleID_2) %>%
   dplyr::summarise(
     n_module_pairs = dplyr::n(),
-    median_abs_r = stats::median(.data$abs_r, na.rm = TRUE),
-    max_abs_r = safe_max(.data$abs_r),
-    mean_abs_r = mean(.data$abs_r, na.rm = TRUE),
+    signed_min_r = min(.data$r, na.rm = TRUE),
+    signed_mean_r = mean(.data$r, na.rm = TRUE),
+    signed_median_r = stats::median(.data$r, na.rm = TRUE),
+    correlation_metric = "signed_pearson",
     .groups = "drop"
   )
 
@@ -3937,11 +3941,15 @@ write_csv_safe(between_supermodule_corr_summary, fp_supertab("wgcna_between_supe
 
 hub_module_sets <- WGCNA_modules_long %>%
   add_supermodule_cols(supermodule_annotation, color_col = "ModuleColor") %>%
-  dplyr::group_by(.data$module_eigengene, .data$ModuleColor, .data$Supermodule) %>%
+  dplyr::group_by(.data$dataset, .data$module_eigengene, .data$ModuleColor, .data$SupermoduleID) %>%
   dplyr::arrange(dplyr::desc(.data$abs_kME), .by_group = TRUE) %>%
   dplyr::mutate(.hub_keep = if ("is_top_hub_25" %in% names(.)) .data$is_top_hub_25 | dplyr::row_number() <= 25 else dplyr::row_number() <= 25) %>%
   dplyr::filter(.data$.hub_keep) %>%
-  dplyr::summarise(top_hub_proteins = list(unique(as.character(.data$ProteinGroupID))), .groups = "drop")
+  dplyr::summarise(
+    Supermodule_DisplayLabel = dplyr::first(.data$Supermodule_DisplayLabel),
+    top_hub_proteins = list(unique(as.character(.data$ProteinGroupID))),
+    .groups = "drop"
+  )
 
 hub_overlap_pairs <- if (nrow(hub_module_sets) >= 2) {
   pair_idx <- utils::combn(seq_len(nrow(hub_module_sets)), 2, simplify = FALSE)
@@ -3954,9 +3962,13 @@ hub_overlap_pairs <- if (nrow(hub_module_sets) >= 2) {
     tibble::tibble(
       module_a = a$module_eigengene,
       module_b = b$module_eigengene,
-      Supermodule_a = as.character(a$Supermodule),
-      Supermodule_b = as.character(b$Supermodule),
-      same_supermodule = as.character(a$Supermodule) == as.character(b$Supermodule),
+      dataset_a = as.character(a$dataset),
+      dataset_b = as.character(b$dataset),
+      SupermoduleID_a = as.character(a$SupermoduleID),
+      SupermoduleID_b = as.character(b$SupermoduleID),
+      Supermodule_DisplayLabel_a = as.character(a$Supermodule_DisplayLabel),
+      Supermodule_DisplayLabel_b = as.character(b$Supermodule_DisplayLabel),
+      same_supermodule = as.character(a$dataset) == as.character(b$dataset) & as.character(a$SupermoduleID) == as.character(b$SupermoduleID),
       hub_overlap_n = length(intersect(set_a, set_b)),
       hub_union_n = union_n,
       hub_jaccard = ifelse(union_n > 0, length(intersect(set_a, set_b)) / union_n, NA_real_)
@@ -3964,54 +3976,62 @@ hub_overlap_pairs <- if (nrow(hub_module_sets) >= 2) {
   })
 } else {
   tibble::tibble(
-    module_a = character(), module_b = character(), Supermodule_a = character(), Supermodule_b = character(),
+    module_a = character(), module_b = character(), dataset_a = character(), dataset_b = character(),
+    SupermoduleID_a = character(), SupermoduleID_b = character(),
+    Supermodule_DisplayLabel_a = character(), Supermodule_DisplayLabel_b = character(),
     same_supermodule = logical(), hub_overlap_n = integer(), hub_union_n = integer(), hub_jaccard = numeric()
   )
 }
 write_csv_safe(hub_overlap_pairs, fp_supertab("wgcna_top_hub_overlap_pairs.csv"))
 
 within_supermodule_hub_summary <- hub_overlap_pairs %>%
-  dplyr::filter(.data$same_supermodule, .data$Supermodule_a != "Unassigned") %>%
-  dplyr::group_by(Supermodule = .data$Supermodule_a) %>%
+  dplyr::filter(.data$same_supermodule) %>%
+  dplyr::group_by(dataset = .data$dataset_a, SupermoduleID = .data$SupermoduleID_a) %>%
   dplyr::summarise(
     n_module_pairs = dplyr::n(),
     median_hub_jaccard = stats::median(.data$hub_jaccard, na.rm = TRUE),
     max_hub_jaccard = safe_max(.data$hub_jaccard),
     max_hub_overlap_n = safe_max(.data$hub_overlap_n),
+    partition_integrity_pass = .data$max_hub_overlap_n == 0,
+    hub_overlap_interpretation = "partition_integrity_diagnostic_not_supermodule_support",
     .groups = "drop"
   )
 write_csv_safe(within_supermodule_hub_summary, fp_supertab("wgcna_within_supermodule_hub_overlap_summary.csv"))
 
 supermodule_validation_summary <- present_supermodule_annotation %>%
-  dplyr::filter(.data$Supermodule != "Unassigned") %>%
-  dplyr::count(.data$Supermodule, name = "n_modules_present") %>%
-  dplyr::left_join(within_supermodule_corr_summary, by = "Supermodule") %>%
-  dplyr::left_join(within_supermodule_hub_summary, by = "Supermodule", suffix = c("_eigengene", "_hub")) %>%
+  dplyr::count(.data$dataset, .data$SupermoduleID, name = "n_modules_present") %>%
+  dplyr::left_join(within_supermodule_corr_summary, by = c("dataset", "SupermoduleID")) %>%
+  dplyr::left_join(within_supermodule_hub_summary, by = c("dataset", "SupermoduleID"), suffix = c("_eigengene", "_hub")) %>%
   dplyr::mutate(
-    eigengene_supported = dplyr::coalesce(.data$eigengene_supported, FALSE),
-    hub_overlap_observed = dplyr::coalesce(.data$max_hub_overlap_n > 0, FALSE),
+    expected_module_pairs = choose(.data$n_modules_present, 2L),
+    pair_count_valid = dplyr::coalesce(.data$n_module_pairs_eigengene, 0L) == .data$expected_module_pairs,
+    partition_integrity_pass = dplyr::coalesce(.data$partition_integrity_pass, TRUE),
     support_call = dplyr::case_when(
-      .data$n_modules_present < 2 ~ "single_module_interpretation_group",
-      .data$eigengene_supported & .data$hub_overlap_observed ~ "supported_by_eigengenes_and_hub_overlap",
-      .data$eigengene_supported ~ "supported_by_eigengene_correlation",
-      .data$hub_overlap_observed ~ "supported_by_hub_overlap_only",
-      TRUE ~ "weak_or_context_dependent_support"
-    )
+      .data$n_modules_present < 2 ~ "singleton_eigengene_meta_module",
+      is.finite(.data$signed_median_r) & .data$signed_median_r > 0 ~ "co_varying_eigengene_meta_module",
+      TRUE ~ "weak_signed_eigengene_coherence"
+    ),
+    support_basis = "signed_module_eigengene_correlation_only",
+    hub_overlap_is_support = FALSE
   ) %>%
-  dplyr::arrange(factor(.data$Supermodule, levels = supermodule_levels))
+  dplyr::arrange(.data$dataset, .data$SupermoduleID)
+if (any(!supermodule_validation_summary$pair_count_valid)) {
+  stop("Supermodule pair validation failed: within-supermodule pair counts do not equal choose(n_member_modules, 2).", call. = FALSE)
+}
 write_csv_safe(supermodule_validation_summary, fp_supertab("wgcna_supermodule_validation_summary.csv"))
 write_csv_safe(supermodule_validation_summary, fp_source("wgcna_supermodule_validation_summary.csv"))
 
+pair_facet_ann <- pair_ann %>% dplyr::select(.data$module_eigengene, .data$SupermoduleID)
 ME_corr_long <- reshape2::melt(ME_corr_mat, varnames = c("module_x", "module_y"), value.name = "r") %>%
-  dplyr::left_join(pair_ann, by = c("module_x" = "module_eigengene")) %>%
-  dplyr::rename(Supermodule_x = "Supermodule") %>%
-  dplyr::left_join(pair_ann, by = c("module_y" = "module_eigengene")) %>%
-  dplyr::rename(Supermodule_y = "Supermodule") %>%
+  dplyr::left_join(pair_facet_ann, by = c("module_x" = "module_eigengene")) %>%
+  dplyr::rename(Supermodule_x = "SupermoduleID") %>%
+  dplyr::left_join(pair_facet_ann, by = c("module_y" = "module_eigengene")) %>%
+  dplyr::rename(Supermodule_y = "SupermoduleID") %>%
   dplyr::mutate(
     module_x = factor(.data$module_x, levels = module_order_supermodule),
     module_y = factor(.data$module_y, levels = rev(module_order_supermodule)),
-    Supermodule_x = factor(.data$Supermodule_x, levels = supermodule_levels),
-    Supermodule_y = factor(.data$Supermodule_y, levels = rev(supermodule_levels))
+    Supermodule_x = factor(.data$Supermodule_x, levels = sort(unique(.data$Supermodule_x))),
+    Supermodule_y = factor(.data$Supermodule_y, levels = rev(sort(unique(.data$Supermodule_y))))
   )
 
 corr_heatmap <- ggplot(ME_corr_long, aes(x = module_x, y = module_y, fill = r)) +
@@ -4103,12 +4123,13 @@ supermodule_summary_scores <- ME_scaled %>%
   tidyr::pivot_longer(cols = dplyr::all_of(module_order_supermodule), names_to = "module", values_to = "module_z") %>%
   dplyr::left_join(
     present_supermodule_annotation %>%
-      dplyr::select("module_eigengene", "Supermodule", "top_GO_label"),
+      dplyr::select("module_eigengene", "dataset", "SupermoduleID", "Supermodule_DisplayLabel", "top_GO_label"),
     by = c("module" = "module_eigengene")
   ) %>%
-  dplyr::filter(.data$Supermodule != "Unassigned") %>%
-  dplyr::group_by(.data$Sample, .data$Supermodule) %>%
+  dplyr::filter(!is.na(.data$SupermoduleID), nzchar(.data$SupermoduleID)) %>%
+  dplyr::group_by(.data$Sample, .data$dataset, .data$SupermoduleID) %>%
   dplyr::summarise(
+    Supermodule_DisplayLabel = dplyr::first(.data$Supermodule_DisplayLabel),
     aggregate_supermodule_score = mean(.data$module_z, na.rm = TRUE),
     n_member_modules = dplyr::n(),
     .groups = "drop"
@@ -4120,15 +4141,16 @@ supermodule_summary_scores <- ME_scaled %>%
     by = "Sample"
   ) %>%
   dplyr::mutate(
-    Supermodule = factor(.data$Supermodule, levels = supermodule_levels),
+    Supermodule_DisplayLabel = factor(.data$Supermodule_DisplayLabel, levels = supermodule_levels),
     condition = factor(.data$condition, levels = c("con", "res", "sus"))
   )
 write_csv_safe(supermodule_summary_scores, fp_supertab("wgcna_supermodule_summary_scores.csv"))
 write_csv_safe(supermodule_summary_scores, fp_source("wgcna_supermodule_summary_scores.csv"))
 
 supermodule_summary_plot_df <- supermodule_summary_scores %>%
-  dplyr::group_by(.data$Supermodule, .data$condition) %>%
+  dplyr::group_by(.data$dataset, .data$SupermoduleID, .data$condition) %>%
   dplyr::summarise(
+    Supermodule_DisplayLabel = dplyr::first(.data$Supermodule_DisplayLabel),
     median_score = stats::median(.data$aggregate_supermodule_score, na.rm = TRUE),
     mean_score = mean(.data$aggregate_supermodule_score, na.rm = TRUE),
     se = stats::sd(.data$aggregate_supermodule_score, na.rm = TRUE) / sqrt(dplyr::n()),
@@ -4138,7 +4160,7 @@ supermodule_summary_scores_plot <- ggplot(supermodule_summary_scores, aes(x = co
   geom_point(position = position_jitter(width = 0.08, height = 0, seed = 1), size = 0.8, alpha = 0.45, shape = 16, stroke = 0) +
   geom_point(data = supermodule_summary_plot_df, aes(y = mean_score), size = 1.9, color = "black", inherit.aes = TRUE) +
   geom_errorbar(data = supermodule_summary_plot_df, aes(y = mean_score, ymin = mean_score - se, ymax = mean_score + se), width = 0.12, linewidth = 0.25, color = "black", inherit.aes = TRUE) +
-  facet_wrap(~ Supermodule, scales = "free_y", ncol = 2) +
+  facet_wrap(~ Supermodule_DisplayLabel, scales = "free_y", ncol = 2) +
   scale_color_manual(values = figure_condition_cols, labels = figure_condition_labels, guide = "none") +
   scale_x_discrete(labels = figure_condition_labels) +
   labs(x = NULL, y = "Mean standardized module eigengene", title = "Aggregate supermodule score summary") +
