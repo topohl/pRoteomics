@@ -166,23 +166,15 @@ compose_supermodule_display_label <- function(supermodule_id, short_label) {
   paste0(id, " \u00b7 ", label)
 }
 
-classify_supermodule_label_confidence <- function(n_modules, go_class = "unresolved",
-                                                  has_coherent_hubs = FALSE,
-                                                  microenvironment_class = NA_character_,
+classify_supermodule_label_confidence <- function(n_modules, go_support_class = "not_recurring",
                                                   high_unmapped_fraction = FALSE) {
   n_modules <- suppressWarnings(as.integer(n_modules))
   singleton <- is.na(n_modules) | n_modules <= 1L
-  go_class <- as.character(go_class %||% "unresolved")
-  micro_label <- supermodule_microenvironment_label(microenvironment_class)
-  micro_supported <- !is.na(micro_label) & nzchar(micro_label) & !micro_label %in% "Mixed / unresolved"
-  mixed_micro <- !is.na(micro_label) & micro_label == "Mixed / unresolved"
-  go_supported <- go_class %in% c("GO_supported", "data_driven_GO")
-  suggestive_go <- go_class %in% c("suggestive_GO", "manual_only")
-  if (singleton || isTRUE(high_unmapped_fraction) || mixed_micro) return("low")
-  if ((go_supported || micro_supported) && isTRUE(has_coherent_hubs)) return("high")
-  if ((go_supported && micro_supported) || (suggestive_go && isTRUE(has_coherent_hubs)) || (micro_supported && isTRUE(has_coherent_hubs))) return("medium")
-  if (isTRUE(has_coherent_hubs) || suggestive_go || go_supported || micro_supported) return("low")
-  "unresolved"
+  go_support_class <- as.character(go_support_class %||% "not_recurring")
+  if (singleton || isTRUE(high_unmapped_fraction)) return("low")
+  if (identical(go_support_class, "high")) return("high")
+  if (identical(go_support_class, "medium")) return("medium")
+  "low"
 }
 
 wgcna_cli <- function(default_dataset = "neuron_neuropil", allow_all = FALSE) {
@@ -861,11 +853,24 @@ module_col_to_id <- function(x) {
 
 make_supermodule_eigengenes <- function(module_eigengenes, super_map) {
   me_cols <- setdiff(names(module_eigengenes), "Sample")
+  if (!"dataset" %in% names(super_map)) {
+    stop("Supermodule map must include dataset; stable keys are dataset + SupermoduleID.", call. = FALSE)
+  }
+  validate_supermodule_member_map(
+    super_map,
+    expected_modules = me_cols,
+    artifact = "supermodule eigengene composition map",
+    module_col = "module_eigengene",
+    display_col = if ("Supermodule_DisplayLabel" %in% names(super_map)) "Supermodule_DisplayLabel" else NULL
+  )
   super_map <- super_map[super_map$module_eigengene %in% me_cols & !is.na(super_map$SupermoduleID), , drop = FALSE]
   rows <- list(Sample = module_eigengenes$Sample)
   comp <- list()
-  for (sid in unique(super_map$SupermoduleID)) {
-    members <- unique(super_map$module_eigengene[super_map$SupermoduleID == sid])
+  super_keys <- unique(super_map[, c("dataset", "SupermoduleID"), drop = FALSE])
+  for (i in seq_len(nrow(super_keys))) {
+    ds <- super_keys$dataset[[i]]
+    sid <- super_keys$SupermoduleID[[i]]
+    members <- unique(super_map$module_eigengene[super_map$dataset == ds & super_map$SupermoduleID == sid])
     vals <- module_eigengenes[, members, drop = FALSE]
     vals <- vals[, vapply(vals, function(z) stats::var(as.numeric(z), na.rm = TRUE) > 0, logical(1)), drop = FALSE]
     if (!ncol(vals)) next
@@ -879,6 +884,7 @@ make_supermodule_eigengenes <- function(module_eigengenes, super_map) {
     col <- paste0("SM__", safe_filename(sid))
     rows[[col]] <- as.numeric(score)
     comp[[length(comp) + 1L]] <- data.frame(
+      dataset = ds,
       supermodule_id = sid,
       supermodule_eigengene = col,
       n_member_modules = length(members),

@@ -125,6 +125,316 @@ require_module_contract_columns <- function(df, cols, artifact = "artifact") {
   invisible(TRUE)
 }
 
+wgcna_supermodule_sensitivity_grid <- function() {
+  c(0.25, 0.35, 0.45, 0.50, 0.55, 0.65)
+}
+
+supermodule_contract_key <- function(dataset, supermodule_id) {
+  paste(as.character(dataset), as.character(supermodule_id), sep = "::")
+}
+
+validate_supermodule_member_map <- function(df, expected_modules = NULL,
+                                            artifact = "authoritative supermodule member map",
+                                            dataset_col = "dataset",
+                                            module_col = "module_eigengene",
+                                            id_col = "SupermoduleID",
+                                            display_col = NULL) {
+  require_module_contract_columns(df, c(dataset_col, module_col, id_col), artifact)
+  dataset <- trimws(as.character(df[[dataset_col]]))
+  modules <- trimws(as.character(df[[module_col]]))
+  ids <- trimws(as.character(df[[id_col]]))
+  if (any(is.na(dataset) | !nzchar(dataset))) stop(artifact, " contains missing dataset keys.", call. = FALSE)
+  if (any(is.na(modules) | !nzchar(modules))) stop(artifact, " contains missing member modules.", call. = FALSE)
+  if (any(is.na(ids) | !nzchar(ids))) stop(artifact, " contains missing SupermoduleID values.", call. = FALSE)
+  if (any(!grepl("^SM[0-9]{2,}$", ids))) {
+    stop(artifact, " contains unexpected SupermoduleID values; expected stable IDs such as SM01.", call. = FALSE)
+  }
+  member_key <- paste(dataset, modules, sep = "::")
+  if (anyDuplicated(member_key)) {
+    stop(artifact, " contains duplicate dataset + member-module keys.", call. = FALSE)
+  }
+  for (ds in unique(dataset)) {
+    observed_ids <- sort(unique(ids[dataset == ds]))
+    expected_ids <- sprintf("SM%02d", seq_along(observed_ids))
+    if (!identical(observed_ids, expected_ids)) {
+      stop(
+        artifact, " contains unexpected IDs for ", ds, ": ", paste(observed_ids, collapse = ", "),
+        "; expected exactly ", paste(expected_ids, collapse = ", "), ".",
+        call. = FALSE
+      )
+    }
+  }
+  if (!is.null(expected_modules)) {
+    expected_modules <- sort(unique(as.character(expected_modules)))
+    observed_modules <- sort(unique(modules))
+    missing <- setdiff(expected_modules, observed_modules)
+    unexpected <- setdiff(observed_modules, expected_modules)
+    if (length(missing) || length(unexpected)) {
+      stop(
+        artifact, " does not exactly match the authoritative module universe; missing: ",
+        paste(missing, collapse = ", "), "; unexpected: ", paste(unexpected, collapse = ", "), ".",
+        call. = FALSE
+      )
+    }
+  }
+  if (!is.null(display_col)) {
+    require_module_contract_columns(df, display_col, artifact)
+    labels <- trimws(as.character(df[[display_col]]))
+    keep <- !is.na(labels) & nzchar(labels)
+    label_map <- unique(data.frame(dataset = dataset[keep], SupermoduleID = ids[keep], label = labels[keep], stringsAsFactors = FALSE))
+    if (nrow(label_map)) {
+      id_key <- supermodule_contract_key(label_map$dataset, label_map$SupermoduleID)
+      labels_per_id <- tapply(label_map$label, id_key, function(x) length(unique(x)))
+      if (any(labels_per_id > 1L)) stop(artifact, " contains multiple display labels for one dataset + SupermoduleID.", call. = FALSE)
+      label_key <- paste(label_map$dataset, label_map$label, sep = "::")
+      ids_per_label <- tapply(label_map$SupermoduleID, label_key, function(x) length(unique(x)))
+      if (any(ids_per_label > 1L)) stop(artifact, " contains a display-label collision across distinct SupermoduleID values.", call. = FALSE)
+    }
+  }
+  invisible(TRUE)
+}
+
+validate_supermodule_summary_ids <- function(summary_df, authoritative_map,
+                                             artifact = "supermodule summary") {
+  require_module_contract_columns(summary_df, c("dataset", "SupermoduleID"), artifact)
+  require_module_contract_columns(authoritative_map, c("dataset", "SupermoduleID"), "authoritative supermodule map")
+  summary_keys <- supermodule_contract_key(summary_df$dataset, summary_df$SupermoduleID)
+  if (anyDuplicated(summary_keys)) stop(artifact, " contains duplicate dataset + SupermoduleID rows.", call. = FALSE)
+  expected <- sort(unique(supermodule_contract_key(authoritative_map$dataset, authoritative_map$SupermoduleID)))
+  observed <- sort(unique(summary_keys))
+  if (!identical(observed, expected)) {
+    stop(
+      artifact, " SupermoduleID set does not exactly match the authoritative cluster map; missing: ",
+      paste(setdiff(expected, observed), collapse = ", "), "; unexpected: ",
+      paste(setdiff(observed, expected), collapse = ", "), ".",
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
+}
+
+require_supermodule_composition_columns <- function(df,
+                                                    artifact = "supermodule biological annotation") {
+  required <- c(
+    "dataset", "SupermoduleID", "Supermodule_CompositionLabel",
+    "Supermodule_CompositionDisplayLabel", "Supermodule_CompositionConfidence",
+    "Supermodule_CompositionRationale"
+  )
+  require_module_contract_columns(df, required, artifact)
+  for (nm in c("Supermodule_CompositionLabel", "Supermodule_CompositionDisplayLabel")) {
+    values <- trimws(as.character(df[[nm]]))
+    if (nrow(df) && all(is.na(values) | !nzchar(values))) {
+      stop(artifact, " has a stale or empty ", nm, " column; regenerate module annotation before interpretation.", call. = FALSE)
+    }
+  }
+  invisible(TRUE)
+}
+
+wgcna_supermodule_go_support <- function(go_df, member_map, fdr_threshold = 0.05) {
+  required_map <- c("dataset", "module_eigengene", "ModuleColor", "SupermoduleID")
+  require_module_contract_columns(member_map, required_map, "supermodule GO member map")
+  validate_supermodule_member_map(
+    member_map, artifact = "supermodule GO member map",
+    display_col = if ("Supermodule_DisplayLabel" %in% names(member_map)) "Supermodule_DisplayLabel" else NULL
+  )
+  empty <- tibble::tibble(
+    dataset = character(), SupermoduleID = character(), Ontology = character(),
+    Description = character(), ModuleProteinSetType = character(),
+    n_member_modules = integer(), n_modules_supporting_term = integer(),
+    fraction_member_modules_supporting_term = numeric(),
+    best_member_module_fdr = numeric(), worst_member_module_fdr = numeric(),
+    supporting_member_modules = character(), go_support_confidence = character(),
+    recurring_significant_term = logical(), support_fdr_threshold = numeric()
+  )
+  if (is.null(go_df) || !nrow(go_df)) return(empty)
+  require_module_contract_columns(
+    go_df,
+    c("ModuleProteinSetType", "ModuleColor", "Ontology", "Description", "p.adjust"),
+    "module GO enrichment"
+  )
+  map <- member_map |>
+    dplyr::select(dplyr::all_of(required_map)) |>
+    dplyr::distinct()
+  module_counts <- map |>
+    dplyr::count(.data$dataset, .data$SupermoduleID, name = "n_member_modules")
+  go_join_cols <- if ("dataset" %in% names(go_df)) c("dataset", "ModuleColor") else "ModuleColor"
+  module_terms <- go_df |>
+    dplyr::filter(
+      .data$ModuleProteinSetType == "all",
+      !is.na(.data$Description), nzchar(as.character(.data$Description))
+    ) |>
+    dplyr::mutate(p.adjust = suppressWarnings(as.numeric(.data$p.adjust))) |>
+    dplyr::inner_join(map, by = go_join_cols) |>
+    dplyr::group_by(
+      .data$dataset, .data$SupermoduleID, .data$module_eigengene,
+      .data$Ontology, .data$Description
+    ) |>
+    dplyr::summarise(
+      member_module_fdr = {
+        z <- .data$p.adjust[is.finite(.data$p.adjust)]
+        if (length(z)) min(z) else NA_real_
+      },
+      .groups = "drop"
+    ) |>
+    dplyr::mutate(significant_module_support = is.finite(.data$member_module_fdr) & .data$member_module_fdr <= fdr_threshold)
+  if (!nrow(module_terms)) return(empty)
+  module_terms |>
+    dplyr::group_by(.data$dataset, .data$SupermoduleID, .data$Ontology, .data$Description) |>
+    dplyr::summarise(
+      n_modules_supporting_term = sum(.data$significant_module_support),
+      best_member_module_fdr = {
+        z <- .data$member_module_fdr[.data$significant_module_support]
+        if (length(z)) min(z) else NA_real_
+      },
+      worst_member_module_fdr = {
+        z <- .data$member_module_fdr[.data$significant_module_support]
+        if (length(z)) max(z) else NA_real_
+      },
+      supporting_member_modules = paste(sort(unique(.data$module_eigengene[.data$significant_module_support])), collapse = ";"),
+      .groups = "drop"
+    ) |>
+    dplyr::left_join(module_counts, by = c("dataset", "SupermoduleID")) |>
+    dplyr::mutate(
+      ModuleProteinSetType = "all",
+      fraction_member_modules_supporting_term = .data$n_modules_supporting_term / .data$n_member_modules,
+      go_support_confidence = dplyr::case_when(
+        .data$n_member_modules <= 1L ~ "singleton",
+        .data$n_modules_supporting_term == .data$n_member_modules ~ "high",
+        .data$n_modules_supporting_term >= 2L & .data$fraction_member_modules_supporting_term >= 0.5 ~ "medium",
+        TRUE ~ "not_recurring"
+      ),
+      recurring_significant_term = .data$go_support_confidence %in% c("high", "medium"),
+      support_fdr_threshold = fdr_threshold
+    ) |>
+    dplyr::select(dplyr::all_of(c(
+      "dataset", "SupermoduleID", "Ontology", "Description",
+      "ModuleProteinSetType", "n_member_modules",
+      "n_modules_supporting_term", "fraction_member_modules_supporting_term",
+      "best_member_module_fdr", "worst_member_module_fdr",
+      "supporting_member_modules", "go_support_confidence",
+      "recurring_significant_term", "support_fdr_threshold"
+    ))) |>
+    dplyr::arrange(
+      .data$dataset, .data$SupermoduleID,
+      factor(.data$go_support_confidence, levels = c("high", "medium", "not_recurring", "singleton")),
+      dplyr::desc(.data$fraction_member_modules_supporting_term),
+      .data$worst_member_module_fdr, .data$Ontology, .data$Description
+    )
+}
+
+wgcna_supermodule_coherence <- function(mergedMEs, member_map,
+                                        module_members = NULL,
+                                        sample_info = NULL,
+                                        sensitivity = NULL) {
+  require_module_contract_columns(member_map, c("dataset", "module_eigengene", "SupermoduleID"), "supermodule coherence member map")
+  module_names <- colnames(mergedMEs)
+  validate_supermodule_member_map(
+    member_map,
+    expected_modules = module_names,
+    artifact = "supermodule coherence member map",
+    display_col = if ("Supermodule_DisplayLabel" %in% names(member_map)) "Supermodule_DisplayLabel" else NULL
+  )
+  me <- as.data.frame(mergedMEs[, member_map$module_eigengene, drop = FALSE], check.names = FALSE)
+  signed_corr <- stats::cor(me, use = "pairwise.complete.obs", method = "pearson")
+
+  adjusted <- matrix(NA_real_, nrow = nrow(me), ncol = ncol(me), dimnames = dimnames(as.matrix(me)))
+  adjustment_variables <- character()
+  adjustment_status <- "not_available"
+  if (!is.null(sample_info) && nrow(sample_info) == nrow(me)) {
+    candidates <- names(sample_info)[tolower(names(sample_info)) %in% c("region", "layer")]
+    candidates <- candidates[vapply(sample_info[candidates], function(x) length(unique(stats::na.omit(as.character(x)))) > 1L, logical(1))]
+    if (length(candidates)) {
+      covars <- sample_info[, candidates, drop = FALSE]
+      keep <- stats::complete.cases(covars)
+      if (sum(keep) >= max(5L, length(candidates) + 2L)) {
+        design <- stats::model.matrix(~ ., data = covars[keep, , drop = FALSE])
+        for (nm in names(me)) {
+          y <- suppressWarnings(as.numeric(me[[nm]][keep]))
+          ok <- is.finite(y) & apply(design, 1L, function(z) all(is.finite(z)))
+          if (sum(ok) > ncol(design)) {
+            adjusted[which(keep)[ok], nm] <- stats::lm.fit(design[ok, , drop = FALSE], y[ok])$residuals
+          }
+        }
+        adjustment_variables <- candidates
+        adjustment_status <- "adjusted"
+      }
+    }
+  }
+  adjusted_corr <- if (identical(adjustment_status, "adjusted")) {
+    stats::cor(adjusted, use = "pairwise.complete.obs", method = "pearson")
+  } else {
+    matrix(NA_real_, ncol = ncol(me), nrow = ncol(me), dimnames = list(names(me), names(me)))
+  }
+
+  protein_counts <- NULL
+  if (!is.null(module_members) && nrow(module_members)) {
+    require_module_contract_columns(module_members, "ProteinGroupID", "WGCNA module membership")
+    join_col <- if ("module_eigengene" %in% names(module_members)) "module_eigengene" else if ("ModuleColor" %in% names(module_members) && "ModuleColor" %in% names(member_map)) "ModuleColor" else NA_character_
+    if (is.na(join_col)) stop("WGCNA module membership requires module_eigengene or ModuleColor for supermodule protein counts.", call. = FALSE)
+    map_for_join <- member_map |>
+      dplyr::select(dplyr::all_of(c("dataset", join_col, "SupermoduleID")))
+    join_cols <- if ("dataset" %in% names(module_members)) c("dataset", join_col) else join_col
+    protein_joined <- dplyr::inner_join(module_members, map_for_join, by = join_cols)
+    if (!"dataset" %in% names(protein_joined)) protein_joined$dataset <- unique(member_map$dataset)[[1]]
+    protein_counts <- protein_joined |>
+      dplyr::group_by(.data$dataset, .data$SupermoduleID) |>
+      dplyr::summarise(n_member_proteins = dplyr::n_distinct(.data$ProteinGroupID), .groups = "drop")
+  }
+
+  groups <- split(seq_len(nrow(member_map)), supermodule_contract_key(member_map$dataset, member_map$SupermoduleID))
+  rows <- lapply(groups, function(idx) {
+    ds <- as.character(member_map$dataset[idx[[1]]])
+    sid <- as.character(member_map$SupermoduleID[idx[[1]]])
+    members <- as.character(member_map$module_eigengene[idx])
+    pair_values <- if (length(members) >= 2L) signed_corr[members, members][upper.tri(signed_corr[members, members])] else numeric()
+    adjusted_values <- if (length(members) >= 2L) adjusted_corr[members, members][upper.tri(adjusted_corr[members, members])] else numeric()
+    pair_values <- pair_values[is.finite(pair_values)]
+    adjusted_values <- adjusted_values[is.finite(adjusted_values)]
+    pc1 <- if (length(members) == 1L) 1 else tryCatch({
+      fit <- stats::prcomp(me[, members, drop = FALSE], center = TRUE, scale. = TRUE)
+      fit$sdev[[1]]^2 / sum(fit$sdev^2)
+    }, error = function(e) NA_real_)
+    stability <- NULL
+    if (!is.null(sensitivity) && nrow(sensitivity) && all(c("dataset", "cut_height", "matched_primary_supermodule_id", "jaccard_to_primary_supermodule", "stable_primary_match") %in% names(sensitivity))) {
+      stability <- sensitivity |>
+        dplyr::filter(.data$dataset == ds, .data$matched_primary_supermodule_id == sid) |>
+        dplyr::group_by(.data$cut_height) |>
+        dplyr::summarise(
+          jaccard = max(.data$jaccard_to_primary_supermodule, na.rm = TRUE),
+          stable = any(.data$stable_primary_match %in% TRUE),
+          .groups = "drop"
+        )
+    }
+    tibble::tibble(
+      dataset = ds,
+      SupermoduleID = sid,
+      n_member_modules = length(members),
+      n_member_module_pairs = choose(length(members), 2L),
+      member_modules = paste(members, collapse = ";"),
+      signed_min_pairwise_eigengene_correlation = if (length(pair_values)) min(pair_values, na.rm = TRUE) else NA_real_,
+      signed_mean_pairwise_eigengene_correlation = if (length(pair_values)) mean(pair_values, na.rm = TRUE) else NA_real_,
+      signed_median_pairwise_eigengene_correlation = if (length(pair_values)) stats::median(pair_values, na.rm = TRUE) else NA_real_,
+      adjusted_signed_min_pairwise_eigengene_correlation = if (length(adjusted_values)) min(adjusted_values) else NA_real_,
+      adjusted_signed_mean_pairwise_eigengene_correlation = if (length(adjusted_values)) mean(adjusted_values) else NA_real_,
+      adjusted_signed_median_pairwise_eigengene_correlation = if (length(adjusted_values)) stats::median(adjusted_values) else NA_real_,
+      correlation_adjustment_variables = paste(adjustment_variables, collapse = ";"),
+      correlation_adjustment_status = adjustment_status,
+      pc1_variance_explained = pc1,
+      pc1_interpretation_note = "PC1 variance is a data-reduction coherence metric, not proof of a shared biological pathway.",
+      cut_height_grid_n = if (!is.null(stability)) nrow(stability) else 0L,
+      cut_height_stability_min_jaccard = if (!is.null(stability) && any(is.finite(stability$jaccard))) min(stability$jaccard[is.finite(stability$jaccard)]) else NA_real_,
+      cut_height_stability_mean_jaccard = if (!is.null(stability) && any(is.finite(stability$jaccard))) mean(stability$jaccard[is.finite(stability$jaccard)]) else NA_real_,
+      cut_height_stability_fraction_stable = if (!is.null(stability) && nrow(stability)) mean(stability$stable) else NA_real_,
+      correlation_metric = "signed_pearson",
+      construction_basis = "average_linkage_on_1_minus_signed_module_eigengene_correlation"
+    )
+  })
+  out <- dplyr::bind_rows(rows)
+  if (!is.null(protein_counts)) out <- dplyr::left_join(out, protein_counts, by = c("dataset", "SupermoduleID"))
+  if (!"n_member_proteins" %in% names(out)) out$n_member_proteins <- NA_integer_
+  out
+}
+
 validate_wgcna_module_definitions <- function(df, artifact = "WGCNA module definitions") {
   require_module_contract_columns(
     df,
