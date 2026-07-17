@@ -49,6 +49,33 @@ read_csv_base <- function(path) {
   utils::read.csv(path, stringsAsFactors = FALSE, check.names = FALSE)
 }
 
+write_csv_in_chunks <- function(x, path, chunk_size = 100000L) {
+  chunk_size <- as.integer(chunk_size)
+  if (length(chunk_size) != 1L || is.na(chunk_size) || chunk_size < 1L) {
+    stop("chunk_size must be one positive integer.", call. = FALSE)
+  }
+  write_chunk <- function(chunk, append, column_names) {
+    utils::write.table(
+      chunk, file = path, sep = ",", dec = ".", quote = TRUE,
+      qmethod = "double", row.names = FALSE, col.names = column_names,
+      append = append, na = ""
+    )
+  }
+
+  if (!nrow(x)) {
+    write_chunk(x, append = FALSE, column_names = TRUE)
+    return(invisible(path))
+  }
+
+  starts <- seq.int(1L, nrow(x), by = chunk_size)
+  for (i in seq_along(starts)) {
+    first <- starts[[i]]
+    last <- min(first + chunk_size - 1L, nrow(x))
+    write_chunk(x[first:last, , drop = FALSE], append = i > 1L, column_names = i == 1L)
+  }
+  invisible(path)
+}
+
 canonical_manifest_path <- function(dataset) {
   canonical_clusterprofiler_manifest_path(dataset)
 }
@@ -408,7 +435,7 @@ ora_warning <- dplyr::bind_cols(
 
 dir_create(tables_dir)
 dir_create(logs_dir)
-utils::write.csv(term_audit, output_paths$term_audit, row.names = FALSE, na = "")
+write_csv_in_chunks(term_audit, output_paths$term_audit)
 utils::write.csv(summary, output_paths$contrast_summary, row.names = FALSE, na = "")
 utils::write.csv(ora_warning, output_paths$ora_warning, row.names = FALSE, na = "")
 write_input_status(status_df, output_paths$input_status, dry_run = FALSE)
