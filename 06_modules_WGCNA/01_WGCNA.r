@@ -2,7 +2,7 @@
 # Script: 06_modules_WGCNA/01_WGCNA.r
 # Stage: modules_wgcna
 # Scope: dataset_specific
-# Consumes: required data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv; optional data/metadata/*.xlsx; config/marker_panels/wgcna_reference_marker_sets.csv.
+# Consumes: required Stage 01 post-70%-missingness/imputed matrix, sample metadata, and mouse UniProt idmapping; optional manual protein mapping.
 # Produces: results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/.
 # Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: The only stage entry that recomputes core WGCNA state.
