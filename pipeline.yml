@@ -41,9 +41,34 @@ stages:
         recomputes_core_state: true
         safe_downstream_rerun: false
         notes: "Maps GCT-derived protein IDs to UniProt/gene symbols; enrichment and WGCNA consume these mapped files."
-  qc_global:
-    description: "Global marker/reference setup: import reference marker panels and discover empirical ROI marker sets across dataset families."
+  joint_qc_preprocessing:
+    description: "Raw-derived global joint compartment preprocessing for QC and a single ProTIGY input; it does not alter dataset-specific analysis contracts."
     scripts:
+      - script: "01_preprocessing/01_prepare_joint_protigy_input.r"
+        required: false
+        datasets: ["global"]
+        stage: "joint_qc_preprocessing"
+        scope: "global"
+        produces: ["data/processed/01_preprocessing/joint_compartment_qc/global/joint_compartment_qc_matrices.rds", "data/processed/01_preprocessing/joint_compartment_qc/global/feature_filter_audit.csv", "data/processed/01_preprocessing/protigy_input/global/joint_shared_core_log2_median_normalized_imputed.gct", "results/logs/01_preprocessing/01_prepare_joint_protigy_input/global/run_manifest.yml"]
+        consumes_required: ["data/raw/pg_matrix/quicksearch.pg_matrix.tsv", "data/metadata/TPE9_sample_metadata_males.xlsx", "data/external/MOUSE_10090_idmapping.dat"]
+        consumes_optional: ["data/metadata/manual_mapping.xlsx", "data/metadata/manual_gene_annotation_overrides.csv"]
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Balanced dataset-by-technical-block shared core, joint log2/sample-median normalization, label-blind protein-wise median imputation, and strict GCT v1.3 export for global QC only."
+  qc_global:
+    description: "Global QC and marker/reference setup across dataset families."
+    scripts:
+      - script: "03_qc_exploration/00b_joint_compartment_qc.r"
+        required: false
+        datasets: ["global"]
+        stage: "qc_global"
+        scope: "global"
+        produces: ["results/tables/03_qc_exploration/00b_joint_compartment_qc/global/", "results/figures/03_qc_exploration/00b_joint_compartment_qc/global/", "results/reports/03_qc_exploration/00b_joint_compartment_qc/global/joint_compartment_qc_summary.md", "results/logs/03_qc_exploration/00b_joint_compartment_qc/global/run_manifest.yml"]
+        consumes_required: ["data/processed/01_preprocessing/joint_compartment_qc/global/joint_compartment_qc_matrices.rds"]
+        consumes_optional: []
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Uncorrected global PCA plus exploratory UMAP/t-SNE from the raw-derived primary shared core; does not perform combined DE/WGCNA or primary batch correction."
       - script: "03_qc_exploration/04b_import_reference_marker_sources.r"
         required: false
         datasets: ["global"]
@@ -443,6 +468,7 @@ stages:
         produces:
           - "results/figures/06_modules_WGCNA/microglia_neuropil_independence/microglia/"
           - "results/source_data/06_modules_WGCNA/microglia_neuropil_independence/microglia/"
+        consumes_optional: []
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Publication-style rendering of existing microglia matched-neuropil independence diagnostics; no model refitting and no WGCNA recomputation."
