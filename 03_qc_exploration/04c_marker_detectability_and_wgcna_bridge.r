@@ -18,6 +18,7 @@ source(paths_file)
 source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "dataset_inputs.R"))
 source(repo_path("R", "qc_exploration_utils.R"))
+source(repo_path("R", "joint_compartment_qc_utils.R"))
 
 run <- qc_args()
 DATASET <- run$dataset
@@ -313,6 +314,18 @@ protein_stats <- data.frame(ProteinGroupID = protein_ids, stringsAsFactors = FAL
   ) |>
   dplyr::ungroup()
 
+# `mat` may be an upstream imputed matrix. Its nonmissing fraction is therefore
+# availability after filtering/imputation, never raw detectability. When the
+# global raw-derived product exists, use it for genuine observed detection.
+raw_detection <- joint_qc_observed_detection_provenance(protein_stats$ProteinGroupID, DATASET)
+protein_stats <- protein_stats |>
+  dplyr::left_join(raw_detection, by = "ProteinGroupID") |>
+  dplyr::mutate(
+    availability_after_filtering = .data$fraction_nonmissing,
+    availability_source = "post_imputation_or_processed_matrix",
+    abundance_score_imputed = .data$mean_log2_abundance
+  )
+
 rank_stats <- rank_data |>
   dplyr::group_by(ProteinGroupID) |>
   dplyr::summarise(mean_rank = mean(Rank, na.rm = TRUE), median_rank = median(Rank, na.rm = TRUE), .groups = "drop")
@@ -437,6 +450,7 @@ marker_detectability_by_panel <- marker_detectability_by_protein |>
     n_markers_detected = sum(detected),
     fraction_markers_detected = n_markers_detected / n_markers_requested,
     median_fraction_nonmissing = median(fraction_nonmissing, na.rm = TRUE),
+    median_observed_detection_rate_raw = median(observed_detection_rate_raw, na.rm = TRUE),
     .groups = "drop"
   ) |>
   dplyr::left_join(panel_score_summary, by = c("dataset", "marker_panel"))
@@ -511,6 +525,7 @@ marker_detectability_by_compartment <- marker_detectability_by_protein |>
     n_markers_detected = dplyr::n_distinct(marker_key[detected]),
     fraction_markers_detected = n_markers_detected / n_markers_requested,
     median_fraction_nonmissing = median(fraction_nonmissing, na.rm = TRUE),
+    median_observed_detection_rate_raw = median(observed_detection_rate_raw, na.rm = TRUE),
     .groups = "drop"
   ) |>
   dplyr::left_join(compartment_score_summary, by = c("dataset", "marker_compartment")) |>
@@ -601,6 +616,7 @@ if (nrow(fidelity_lookup)) {
       n_markers_detected = dplyr::n_distinct(marker_key[detected]),
       fraction_markers_detected = n_markers_detected / n_markers_requested,
       median_fraction_nonmissing = median(fraction_nonmissing, na.rm = TRUE),
+      median_observed_detection_rate_raw = median(observed_detection_rate_raw, na.rm = TRUE),
       .groups = "drop"
     ) |>
     dplyr::left_join(fidelity_score_summary, by = c("dataset", "fidelity_marker_class")) |>
@@ -853,7 +869,7 @@ plot_missing <- marker_detectability_by_protein |>
 p_missing <- ggplot(plot_missing, aes(x = marker_panel, y = marker_label, size = fraction_nonmissing, fill = mean_log2_abundance)) +
   geom_point(shape = 21, color = "grey30", alpha = 0.85) +
   scale_size_continuous(range = c(0.4, 3.2), limits = c(0, 1)) +
-  labs(x = NULL, y = NULL, size = "Nonmissing fraction", fill = "Mean log2 abundance") +
+  labs(x = NULL, y = NULL, size = "Availability after filtering", fill = "Mean log2 abundance") +
   theme_classic(base_size = 8) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "bottom")
 ggsave(file.path(PATHS$figures, "marker_missingness_dotplot.svg"), p_missing, width = 180, height = max(90, min(260, 3.2 * nrow(plot_missing))), units = "mm", device = svglite::svglite)
