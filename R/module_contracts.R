@@ -240,6 +240,163 @@ require_module_contract_columns <- function(df, cols, artifact = "artifact") {
   invisible(TRUE)
 }
 
+wgcna_join_supermodule_hub_handoff <- function(wgcna_modules_long,
+                                               supermodule_annotation,
+                                               merged_me_names) {
+  module_artifact <- "WGCNA hub-overlap module rows"
+  lookup_artifact <- "WGCNA hub-overlap supermodule lookup"
+  require_module_contract_columns(
+    wgcna_modules_long,
+    c(
+      "ProteinGroupID", "ModuleID", "WGCNAInternalColor", "ModuleColor",
+      "abs_kME"
+    ),
+    module_artifact
+  )
+  require_module_contract_columns(
+    supermodule_annotation,
+    c(
+      "dataset", "ModuleID", "module_eigengene", "SupermoduleID",
+      "Supermodule_DisplayLabel", "present_in_dataset"
+    ),
+    lookup_artifact
+  )
+  if (anyDuplicated(as.character(wgcna_modules_long$ProteinGroupID))) {
+    stop(module_artifact, " contains duplicated ProteinGroupID rows.", call. = FALSE)
+  }
+  if (anyNA(wgcna_modules_long$ModuleID) || any(!nzchar(as.character(wgcna_modules_long$ModuleID)))) {
+    stop(module_artifact, " contains missing ModuleID values.", call. = FALSE)
+  }
+
+  lookup <- supermodule_annotation |>
+    dplyr::filter(.data$present_in_dataset %in% TRUE) |>
+    dplyr::select(
+      "dataset", "ModuleID", "module_eigengene",
+      "SupermoduleID", "Supermodule_DisplayLabel"
+    )
+  if (!nrow(lookup)) {
+    stop(lookup_artifact, " contains no present modules.", call. = FALSE)
+  }
+  for (nm in c("dataset", "ModuleID", "module_eigengene", "SupermoduleID")) {
+    values <- trimws(as.character(lookup[[nm]]))
+    if (any(is.na(values) | !nzchar(values))) {
+      stop(lookup_artifact, " contains missing ", nm, " values.", call. = FALSE)
+    }
+  }
+  lookup_key <- paste(as.character(lookup$dataset), as.character(lookup$ModuleID), sep = "::")
+  if (anyDuplicated(lookup_key)) {
+    stop(lookup_artifact, " contains duplicated dataset + ModuleID keys.", call. = FALSE)
+  }
+  eigengenes_per_module <- tapply(
+    as.character(lookup$module_eigengene),
+    as.character(lookup$ModuleID),
+    function(x) length(unique(x))
+  )
+  if (any(eigengenes_per_module != 1L)) {
+    stop(lookup_artifact, " must map every ModuleID to exactly one module_eigengene.", call. = FALSE)
+  }
+  supermodules_per_module <- tapply(
+    as.character(lookup$SupermoduleID),
+    as.character(lookup$ModuleID),
+    function(x) length(unique(x))
+  )
+  if (any(supermodules_per_module != 1L)) {
+    stop(lookup_artifact, " must map every ModuleID to exactly one SupermoduleID.", call. = FALSE)
+  }
+
+  merged_me_names <- unique(as.character(merged_me_names))
+  if (!length(merged_me_names) || anyNA(merged_me_names) || any(!nzchar(merged_me_names))) {
+    stop("WGCNA hub-overlap handoff requires valid merged eigengene column names.", call. = FALSE)
+  }
+  unexpected_eigengenes <- setdiff(unique(as.character(lookup$module_eigengene)), merged_me_names)
+  if (length(unexpected_eigengenes)) {
+    stop(
+      lookup_artifact, " contains module_eigengene values absent from mergedMEs: ",
+      paste(unexpected_eigengenes, collapse = ", "), ".",
+      call. = FALSE
+    )
+  }
+
+  join_cols <- if ("dataset" %in% names(wgcna_modules_long)) {
+    dataset_values <- trimws(as.character(wgcna_modules_long$dataset))
+    if (any(is.na(dataset_values) | !nzchar(dataset_values))) {
+      stop(module_artifact, " contains missing dataset values.", call. = FALSE)
+    }
+    c("dataset", "ModuleID")
+  } else {
+    lookup_datasets <- unique(as.character(lookup$dataset))
+    if (length(lookup_datasets) != 1L) {
+      stop(
+        "ModuleID-only hub-overlap joins require exactly one dataset in the authoritative lookup.",
+        call. = FALSE
+      )
+    }
+    "ModuleID"
+  }
+
+  before_n <- nrow(wgcna_modules_long)
+  joined <- wgcna_modules_long |>
+    dplyr::left_join(lookup, by = join_cols, relationship = "many-to-one")
+  if (nrow(joined) != before_n) {
+    stop("WGCNA hub-overlap lookup join changed the protein row count.", call. = FALSE)
+  }
+  missing_mapping <- is.na(joined$module_eigengene) |
+    !nzchar(as.character(joined$module_eigengene)) |
+    is.na(joined$SupermoduleID) |
+    !nzchar(as.character(joined$SupermoduleID))
+  if (any(missing_mapping)) {
+    missing_ids <- sort(unique(as.character(joined$ModuleID[missing_mapping])))
+    stop(
+      "WGCNA hub-overlap lookup is missing module mappings for ModuleID: ",
+      paste(missing_ids, collapse = ", "), ".",
+      call. = FALSE
+    )
+  }
+  if (any(!as.character(joined$module_eigengene) %in% merged_me_names)) {
+    stop("WGCNA hub-overlap join produced module_eigengene values absent from mergedMEs.", call. = FALSE)
+  }
+  joined
+}
+
+wgcna_build_hub_module_sets <- function(wgcna_modules_long,
+                                        supermodule_annotation,
+                                        merged_me_names,
+                                        top_n = 25L) {
+  top_n <- suppressWarnings(as.integer(top_n))
+  if (length(top_n) != 1L || is.na(top_n) || top_n < 1L) {
+    stop("top_n must be one positive integer.", call. = FALSE)
+  }
+  joined <- wgcna_join_supermodule_hub_handoff(
+    wgcna_modules_long,
+    supermodule_annotation,
+    merged_me_names
+  )
+  out <- joined |>
+    dplyr::group_by(
+      .data$dataset, .data$ModuleID, .data$module_eigengene,
+      .data$WGCNAInternalColor, .data$ModuleColor, .data$SupermoduleID
+    ) |>
+    dplyr::arrange(dplyr::desc(.data$abs_kME), .by_group = TRUE) |>
+    dplyr::mutate(
+      .hub_keep = if ("is_top_hub_25" %in% names(joined)) {
+        dplyr::coalesce(.data$is_top_hub_25, FALSE) | dplyr::row_number() <= top_n
+      } else {
+        dplyr::row_number() <= top_n
+      }
+    ) |>
+    dplyr::filter(.data$.hub_keep) |>
+    dplyr::summarise(
+      Supermodule_DisplayLabel = dplyr::first(.data$Supermodule_DisplayLabel),
+      top_hub_proteins = list(unique(as.character(.data$ProteinGroupID))),
+      .groups = "drop"
+    )
+  expected_groups <- length(unique(paste(joined$dataset, joined$ModuleID, sep = "::")))
+  if (nrow(out) != expected_groups) {
+    stop("WGCNA hub-overlap grouping did not produce exactly one hub set per module.", call. = FALSE)
+  }
+  out
+}
+
 wgcna_supermodule_sensitivity_grid <- function() {
   c(0.25, 0.35, 0.45, 0.50, 0.55, 0.65)
 }
