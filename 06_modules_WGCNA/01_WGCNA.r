@@ -3971,17 +3971,12 @@ between_supermodule_corr_summary <- ME_corr_pairs %>%
 write_csv_safe(within_supermodule_corr_summary, fp_supertab("wgcna_within_supermodule_eigengene_correlation_summary.csv"))
 write_csv_safe(between_supermodule_corr_summary, fp_supertab("wgcna_between_supermodule_eigengene_correlation_summary.csv"))
 
-hub_module_sets <- WGCNA_modules_long %>%
-  add_supermodule_cols(supermodule_annotation, color_col = "ModuleColor") %>%
-  dplyr::group_by(.data$dataset, .data$module_eigengene, .data$ModuleColor, .data$SupermoduleID) %>%
-  dplyr::arrange(dplyr::desc(.data$abs_kME), .by_group = TRUE) %>%
-  dplyr::mutate(.hub_keep = if ("is_top_hub_25" %in% names(.)) .data$is_top_hub_25 | dplyr::row_number() <= 25 else dplyr::row_number() <= 25) %>%
-  dplyr::filter(.data$.hub_keep) %>%
-  dplyr::summarise(
-    Supermodule_DisplayLabel = dplyr::first(.data$Supermodule_DisplayLabel),
-    top_hub_proteins = list(unique(as.character(.data$ProteinGroupID))),
-    .groups = "drop"
-  )
+hub_module_sets <- wgcna_build_hub_module_sets(
+  WGCNA_modules_long,
+  supermodule_annotation,
+  merged_me_names = colnames(mergedMEs),
+  top_n = 25L
+)
 
 hub_overlap_pairs <- if (nrow(hub_module_sets) >= 2) {
   pair_idx <- utils::combn(seq_len(nrow(hub_module_sets)), 2, simplify = FALSE)
@@ -3992,8 +3987,14 @@ hub_overlap_pairs <- if (nrow(hub_module_sets) >= 2) {
     set_b <- b$top_hub_proteins[[1]]
     union_n <- length(union(set_a, set_b))
     tibble::tibble(
+      ModuleID_a = as.character(a$ModuleID),
+      ModuleID_b = as.character(b$ModuleID),
       module_a = a$module_eigengene,
       module_b = b$module_eigengene,
+      WGCNAInternalColor_a = as.character(a$WGCNAInternalColor),
+      WGCNAInternalColor_b = as.character(b$WGCNAInternalColor),
+      ModuleColor_a = as.character(a$ModuleColor),
+      ModuleColor_b = as.character(b$ModuleColor),
       dataset_a = as.character(a$dataset),
       dataset_b = as.character(b$dataset),
       SupermoduleID_a = as.character(a$SupermoduleID),
@@ -4008,7 +4009,10 @@ hub_overlap_pairs <- if (nrow(hub_module_sets) >= 2) {
   })
 } else {
   tibble::tibble(
+    ModuleID_a = character(), ModuleID_b = character(),
     module_a = character(), module_b = character(), dataset_a = character(), dataset_b = character(),
+    WGCNAInternalColor_a = character(), WGCNAInternalColor_b = character(),
+    ModuleColor_a = character(), ModuleColor_b = character(),
     SupermoduleID_a = character(), SupermoduleID_b = character(),
     Supermodule_DisplayLabel_a = character(), Supermodule_DisplayLabel_b = character(),
     same_supermodule = logical(), hub_overlap_n = integer(), hub_union_n = integer(), hub_jaccard = numeric()
