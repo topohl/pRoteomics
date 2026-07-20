@@ -644,12 +644,13 @@ qc_write_canonical_feature_artifacts <- function(canonical, table_dir, marker_ma
         dplyr::filter(.data$conflicting_marker_panels) |>
         dplyr::left_join(
           canonical$feature_table |>
-            dplyr::select(
-              .data$ProteinGroupID,
-              .data$source_feature_id,
-              .data$member_accessions,
-              .data$official_gene_symbols
-            ),
+          dplyr::select(dplyr::all_of(c(
+            "ProteinGroupID",
+            "source_feature_id",
+            "member_accessions",
+            "member_gene_symbols",
+            "official_gene_symbol"
+          ))),
           by = "ProteinGroupID"
         ),
       file.path(table_dir, "conflicting_marker_panel_audit.csv")
