@@ -42,6 +42,12 @@ metadata associations, correlations/clustering, and exploratory fixed-seed
 UMAP/t-SNE. It does not run combined DE/WGCNA, batch-correct the primary PCA,
 or interpret microglia-enriched ROI observations as purified microglia.
 
+`00c_joint_compartment_qc_publication_figures.r` is a rendering-only consumer
+of the completed bundle and `00b` tables. It does not call PCA, UMAP or t-SNE,
+and it does not overwrite source-data tables. It creates title-free editable
+panels plus assembled 183-mm main and Extended Data figures under
+`results/figures/03_qc_exploration/00b_joint_compartment_qc/publication_style/global/`.
+
 ## Canonical Scripts
 
 Recommended run order:
@@ -52,6 +58,18 @@ Recommended run order:
    - Output: global PCA/UMAP/t-SNE, associations, correlations, sensitivity
      concordance, figures, and Markdown summary under
      `results/*/03_qc_exploration/00b_joint_compartment_qc/global/`.
+
+0a. `00c_joint_compartment_qc_publication_figures.r` (after a completed `00b` run)
+   - Inputs: the joint preprocessing RDS and existing `00b` PCA, UMAP, t-SNE,
+     correlation, clustering, concordance, normalization, and imputation outputs.
+   - Override: `PROTEOMICS_JOINT_QC_PUBLICATION_FIGURE_DIR`.
+   - Output: a 183-mm five-panel main figure, a 183-mm Extended Data QC figure,
+     and editable 89-/183-mm SVG source panels in the publication-style output
+     directory. Coordinates, statistics and sample inclusion are unchanged.
+   - The missingness panel uses the 200 broad-union proteins with greatest
+     max-minus-min detection-rate variation across datasets; samples are ordered
+     by dataset, plate, region and layer, and proteins are clustered by binary
+     detection pattern.
 
 1. `00_dataset_qc_report.r`
    - Input: processed expression matrix plus sample metadata.
