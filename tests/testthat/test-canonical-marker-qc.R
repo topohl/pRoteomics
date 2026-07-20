@@ -163,6 +163,46 @@ testthat::test_that("marker matching deduplicates panel by ProteinGroupID and fl
   testthat::expect_false(any(two$matches$primary_score_eligible))
 })
 
+testthat::test_that("canonical artifact writer exports conflicting-marker provenance", {
+  x <- load_qc_fixture(data.frame(
+    Protein.Group = "P00001;Q00001", `T: Protein.Names` = "GENEA_MOUSE;GENEB_MOUSE",
+    S1 = 1, S2 = 2, check.names = FALSE
+  ))
+  marker_registry <- data.frame(
+    marker_panel = c("panel_a", "panel_b"),
+    marker_gene = c("GeneA", "GeneB"),
+    marker_class = c("soma", "neuropil"),
+    stringsAsFactors = FALSE
+  )
+  marker_matches <- qc_match_markers_to_protein_groups(
+    marker_registry, x$member_bridge, x$feature_table,
+    panel_col = "marker_panel", gene_col = "marker_gene", class_col = "marker_class"
+  )
+  testthat::expect_true(any(marker_matches$conflicts$conflicting_marker_panels))
+
+  table_dir <- tempfile("canonical-marker-artifacts-")
+  on.exit(unlink(table_dir, recursive = TRUE, force = TRUE), add = TRUE)
+  testthat::expect_silent(qc_write_canonical_feature_artifacts(x, table_dir, marker_matches))
+
+  audit_path <- file.path(table_dir, "conflicting_marker_panel_audit.csv")
+  testthat::expect_true(file.exists(audit_path))
+  audit <- utils::read.csv(audit_path, stringsAsFactors = FALSE)
+  testthat::expect_equal(nrow(audit), 1L)
+  testthat::expect_true(all(c(
+    "ProteinGroupID",
+    "source_feature_id",
+    "member_accessions",
+    "member_gene_symbols",
+    "official_gene_symbol"
+  ) %in% names(audit)))
+  testthat::expect_false("official_gene_symbols" %in% names(audit))
+  testthat::expect_false(grepl(
+    "official_gene_symbols",
+    paste(deparse(body(qc_write_canonical_feature_artifacts)), collapse = "\n"),
+    fixed = TRUE
+  ))
+})
+
 testthat::test_that("alignment, collisions and ordered fingerprints fail deterministically", {
   x <- load_qc_fixture(data.frame(
     Protein.Group = c("P00001", "Q00001"), `T: Protein.Names` = c("GENEA_MOUSE", "GENEB_MOUSE"),
