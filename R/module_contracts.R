@@ -535,16 +535,50 @@ wgcna_supermodule_go_support <- function(go_df, member_map, fdr_threshold = 0.05
   map <- member_map |>
     dplyr::select(dplyr::all_of(required_map)) |>
     dplyr::distinct()
+  map_key <- c("dataset", module_key)
+  if (anyDuplicated(map[map_key])) {
+    stop(
+      "supermodule GO member map has duplicated ",
+      paste(map_key, collapse = " + "),
+      " keys; GO evidence requires a many-to-one module lookup.",
+      call. = FALSE
+    )
+  }
   module_counts <- map |>
     dplyr::count(.data$dataset, .data$SupermoduleID, name = "n_member_modules")
+  if (!"dataset" %in% names(go_df) && dplyr::n_distinct(map$dataset) != 1L) {
+    stop(
+      "module GO enrichment lacks dataset, but the supermodule member map contains multiple datasets; ",
+      "dataset + ModuleID is required.",
+      call. = FALSE
+    )
+  }
   go_join_cols <- if ("dataset" %in% names(go_df)) c("dataset", module_key) else module_key
-  module_terms <- go_df |>
+  lookup <- map
+  go_filtered <- go_df |>
     dplyr::filter(
       .data$ModuleProteinSetType == "all",
       !is.na(.data$Description), nzchar(as.character(.data$Description))
     ) |>
-    dplyr::mutate(p.adjust = suppressWarnings(as.numeric(.data$p.adjust))) |>
-    dplyr::inner_join(map, by = go_join_cols) |>
+    dplyr::mutate(p.adjust = suppressWarnings(as.numeric(.data$p.adjust)))
+  n_go_filtered <- nrow(go_filtered)
+  module_terms <- go_filtered |>
+    dplyr::left_join(lookup, by = go_join_cols, relationship = "many-to-one")
+  if (nrow(module_terms) != n_go_filtered) {
+    stop("supermodule GO lookup changed the number of module GO rows.", call. = FALSE)
+  }
+  if (anyNA(module_terms$SupermoduleID) || anyNA(module_terms$module_eigengene)) {
+    missing_keys <- unique(module_terms[[module_key]][
+      is.na(module_terms$SupermoduleID) | is.na(module_terms$module_eigengene)
+    ])
+    stop(
+      "module GO enrichment contains modules absent from the supermodule member map: ",
+      paste(missing_keys, collapse = ", "),
+      ".",
+      call. = FALSE
+    )
+  }
+  module_terms <- module_terms |>
     dplyr::group_by(
       .data$dataset, .data$SupermoduleID, .data$module_eigengene,
       .data$Ontology, .data$Description
@@ -573,7 +607,11 @@ wgcna_supermodule_go_support <- function(go_df, member_map, fdr_threshold = 0.05
       supporting_member_modules = paste(sort(unique(.data$module_eigengene[.data$significant_module_support])), collapse = ";"),
       .groups = "drop"
     ) |>
-    dplyr::left_join(module_counts, by = c("dataset", "SupermoduleID")) |>
+    dplyr::left_join(
+      module_counts,
+      by = c("dataset", "SupermoduleID"),
+      relationship = "many-to-one"
+    ) |>
     dplyr::mutate(
       ModuleProteinSetType = "all",
       fraction_member_modules_supporting_term = .data$n_modules_supporting_term / .data$n_member_modules,
@@ -600,6 +638,61 @@ wgcna_supermodule_go_support <- function(go_df, member_map, fdr_threshold = 0.05
       dplyr::desc(.data$fraction_member_modules_supporting_term),
       .data$worst_member_module_fdr, .data$Ontology, .data$Description
     )
+}
+
+wgcna_supermodule_go_evidence_summary <- function(go_df, member_map, fdr_threshold = 0.05) {
+  require_module_contract_columns(
+    member_map,
+    c("dataset", "ModuleID", "module_eigengene", "SupermoduleID"),
+    "supermodule GO evidence member map"
+  )
+  members <- member_map |>
+    dplyr::group_by(.data$dataset, .data$SupermoduleID) |>
+    dplyr::summarise(
+      member_ModuleIDs = paste(sort(unique(as.character(.data$ModuleID))), collapse = ";"),
+      n_member_modules = dplyr::n_distinct(.data$ModuleID),
+      .groups = "drop"
+    )
+  support <- wgcna_supermodule_go_support(
+    go_df = go_df,
+    member_map = member_map,
+    fdr_threshold = fdr_threshold
+  )
+  recurring <- support |>
+    dplyr::filter(.data$recurring_significant_term) |>
+    dplyr::group_by(.data$dataset, .data$SupermoduleID) |>
+    dplyr::summarise(
+      n_recurring_significant_GO_terms = dplyr::n(),
+      n_modules_with_GO_support = max(.data$n_modules_supporting_term),
+      n_high_confidence_GO_terms = sum(.data$go_support_confidence == "high"),
+      n_medium_confidence_GO_terms = sum(.data$go_support_confidence == "medium"),
+      .groups = "drop"
+    )
+  members |>
+    dplyr::left_join(
+      recurring,
+      by = c("dataset", "SupermoduleID"),
+      relationship = "one-to-one"
+    ) |>
+    dplyr::mutate(
+      n_recurring_significant_GO_terms = dplyr::coalesce(.data$n_recurring_significant_GO_terms, 0L),
+      n_modules_with_GO_support = dplyr::coalesce(.data$n_modules_with_GO_support, 0L),
+      n_high_confidence_GO_terms = dplyr::coalesce(.data$n_high_confidence_GO_terms, 0L),
+      n_medium_confidence_GO_terms = dplyr::coalesce(.data$n_medium_confidence_GO_terms, 0L),
+      GO_label_confidence_class = dplyr::case_when(
+        .data$n_member_modules <= 1L ~ "singleton",
+        .data$n_high_confidence_GO_terms > 0L ~ "high",
+        .data$n_medium_confidence_GO_terms > 0L ~ "medium",
+        TRUE ~ "mixed_or_unresolved"
+      ),
+      Supermodule_NameSource = dplyr::case_when(
+        .data$n_member_modules <= 1L ~ "singleton",
+        .data$n_recurring_significant_GO_terms > 0L ~ "recurring_significant_GO",
+        TRUE ~ "no_recurring_significant_GO"
+      ),
+      ManualReviewRequired = .data$Supermodule_NameSource != "recurring_significant_GO"
+    ) |>
+    dplyr::arrange(.data$dataset, .data$SupermoduleID)
 }
 
 wgcna_supermodule_coherence <- function(mergedMEs, member_map,
@@ -805,6 +898,201 @@ validate_wgcna_cached_state <- function(state, expected_feature_ids = NULL) {
     stop("Cached WGCNA feature keys differ from current canonical features. ", rerun, call. = FALSE)
   }
   invisible(TRUE)
+}
+
+validate_wgcna_hydrated_go_enrichment <- function(go_enrichment_long,
+                                                  module_label_table,
+                                                  saved_go_evidence = FALSE) {
+  if (is.null(go_enrichment_long)) {
+    if (isTRUE(saved_go_evidence)) {
+      stop(
+        "Cached WGCNA state contains GO enrichment evidence but hydrated GO_enrichment_long is NULL.",
+        call. = FALSE
+      )
+    }
+    return(invisible(TRUE))
+  }
+  require_module_contract_columns(
+    go_enrichment_long,
+    c(
+      "WGCNAInternalColor", "ModuleID", "ModuleColor", "ModuleProteinSetType",
+      "Ontology", "Description", "p.adjust"
+    ),
+    "hydrated WGCNA GO enrichment"
+  )
+  validate_wgcna_module_label_table(module_label_table, artifact = "hydrated WGCNA module label table")
+  if (nrow(go_enrichment_long)) {
+    go_ids <- as.character(go_enrichment_long$ModuleID)
+    if (anyNA(go_ids) || any(!grepl("^WGCNA_m[0-9]{2,}$", go_ids))) {
+      stop(
+        "hydrated WGCNA GO enrichment must use stable ModuleID values, not legacy colour labels.",
+        call. = FALSE
+      )
+    }
+    if (anyNA(go_enrichment_long$ModuleColor) || anyNA(go_enrichment_long$WGCNAInternalColor)) {
+      stop("hydrated WGCNA GO enrichment contains missing module colour metadata.", call. = FALSE)
+    }
+  }
+  label_lookup <- module_label_table |>
+    dplyr::select(dplyr::all_of(c("ModuleID", "WGCNAInternalColor", "ModuleColor"))) |>
+    dplyr::rename(
+      expected_WGCNAInternalColor = "WGCNAInternalColor",
+      expected_ModuleColor = "ModuleColor"
+    ) |>
+    dplyr::distinct()
+  if (anyDuplicated(label_lookup$ModuleID)) {
+    stop("hydrated WGCNA module label table has duplicated ModuleID values.", call. = FALSE)
+  }
+  n_before <- nrow(go_enrichment_long)
+  checked <- go_enrichment_long |>
+    dplyr::left_join(label_lookup, by = "ModuleID", relationship = "many-to-one")
+  if (nrow(checked) != n_before) {
+    stop("hydrated WGCNA GO validation changed the number of GO rows.", call. = FALSE)
+  }
+  if (nrow(checked) && anyNA(checked$expected_ModuleColor)) {
+    missing_ids <- unique(checked$ModuleID[is.na(checked$expected_ModuleColor)])
+    stop(
+      "hydrated WGCNA GO enrichment contains ModuleID values absent from module_label_table: ",
+      paste(missing_ids, collapse = ", "),
+      ".",
+      call. = FALSE
+    )
+  }
+  color_mismatch <- as.character(checked$ModuleColor) != as.character(checked$expected_ModuleColor)
+  internal_mismatch <- as.character(checked$WGCNAInternalColor) != as.character(checked$expected_WGCNAInternalColor)
+  if (any(color_mismatch, na.rm = TRUE)) {
+    stop("hydrated WGCNA GO publication ModuleColor disagrees with module_label_table by ModuleID.", call. = FALSE)
+  }
+  if (any(internal_mismatch, na.rm = TRUE)) {
+    stop("hydrated WGCNA GO WGCNAInternalColor disagrees with module_label_table by ModuleID.", call. = FALSE)
+  }
+  if (isTRUE(saved_go_evidence) && !nrow(go_enrichment_long)) {
+    stop(
+      "Cached WGCNA state reports GO enrichment evidence but hydrated GO_enrichment_long has no rows.",
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
+}
+
+validate_wgcna_hydrated_go_qc <- function(go_enrichment_qc, module_label_table) {
+  require_module_contract_columns(
+    go_enrichment_qc,
+    c(
+      "WGCNAInternalColor", "ModuleID", "ModuleColor", "ModuleProteinSetType",
+      "Ontology", "status"
+    ),
+    "hydrated WGCNA GO enrichment QC"
+  )
+  if (!nrow(go_enrichment_qc)) return(invisible(TRUE))
+  qc_ids <- as.character(go_enrichment_qc$ModuleID)
+  if (anyNA(qc_ids) || any(!grepl("^WGCNA_m[0-9]{2,}$", qc_ids))) {
+    stop("hydrated WGCNA GO enrichment QC must use stable ModuleID values.", call. = FALSE)
+  }
+  label_index <- match(qc_ids, as.character(module_label_table$ModuleID))
+  if (anyNA(label_index)) {
+    stop("hydrated WGCNA GO enrichment QC contains ModuleID values absent from module_label_table.", call. = FALSE)
+  }
+  expected_color <- as.character(module_label_table$ModuleColor[label_index])
+  expected_internal <- as.character(module_label_table$WGCNAInternalColor[label_index])
+  if (anyNA(go_enrichment_qc$ModuleColor) ||
+      any(as.character(go_enrichment_qc$ModuleColor) != expected_color)) {
+    stop("hydrated WGCNA GO enrichment QC ModuleColor disagrees with module_label_table by ModuleID.", call. = FALSE)
+  }
+  if (anyNA(go_enrichment_qc$WGCNAInternalColor) ||
+      any(as.character(go_enrichment_qc$WGCNAInternalColor) != expected_internal)) {
+    stop("hydrated WGCNA GO enrichment QC WGCNAInternalColor disagrees with module_label_table by ModuleID.", call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
+wgcna_hydrate_cached_state <- function(state, expected_feature_ids = NULL) {
+  validate_wgcna_cached_state(state, expected_feature_ids = expected_feature_ids)
+  saved_to_runtime <- list(
+    expression.data = "expression.data",
+    wgcna_feature_table = "wgcna_feature_table",
+    wgcna_member_bridge = "wgcna_member_bridge",
+    WGCNA_feature_universe = "WGCNA_feature_universe",
+    sample_info = "sample_info",
+    mergedColors = "mergedColors",
+    mergedMEs = "mergedMEs",
+    kME = "kME",
+    WGCNA_modules_long = "WGCNA_modules_long",
+    WGCNA_module_summary = c("WGCNA_module_summary", "module_summary"),
+    GO_enrichment_long = c("GO_enrichment_long", "GO_enrichment"),
+    GO_enrichment_QC = "GO_enrichment_QC",
+    module_name_map = "module_name_map",
+    module_label_table = "module_label_table",
+    color_to_MEcol = "color_to_MEcol",
+    ME_names_stable = "ME_names_stable",
+    module_preservation_long = c("module_preservation_long", "module_preservation"),
+    geneTree = "geneTree",
+    softPower = "softPower",
+    parameters = "parameters"
+  )
+  resolve_saved <- function(saved_names) {
+    for (saved_name in saved_names) {
+      if (saved_name %in% names(state) && !is.null(state[[saved_name]])) return(state[[saved_name]])
+    }
+    NULL
+  }
+  hydrated <- lapply(saved_to_runtime, resolve_saved)
+  missing_runtime <- names(hydrated)[vapply(hydrated, is.null, logical(1))]
+
+  qc <- hydrated$GO_enrichment_QC
+  qc_reports_evidence <- !is.null(qc) && nrow(qc) && "status" %in% names(qc) &&
+    any(tolower(as.character(qc$status)) == "ok", na.rm = TRUE)
+  saved_go <- resolve_saved(c("GO_enrichment_long", "GO_enrichment"))
+  saved_go_evidence <- (!is.null(saved_go) && nrow(saved_go) > 0L) || qc_reports_evidence
+  if ("GO_enrichment_long" %in% missing_runtime && saved_go_evidence) {
+    stop(
+      "Cached WGCNA state contains GO enrichment evidence but hydrated GO_enrichment_long is NULL.",
+      call. = FALSE
+    )
+  }
+
+  required_runtime <- setdiff(names(saved_to_runtime), "GO_enrichment_long")
+  missing_required <- intersect(missing_runtime, required_runtime)
+  if (length(missing_required)) {
+    stop(
+      "Cached WGCNA state cannot reconstruct required downstream runtime objects: ",
+      paste(missing_required, collapse = ", "),
+      ".",
+      call. = FALSE
+    )
+  }
+
+  module_color_metadata <- resolve_saved("module_color_metadata")
+  if (is.null(module_color_metadata)) {
+    metadata_columns <- c(
+      "WGCNAInternalColor", "ModuleID", "ModuleLegacyID", "ModuleColor",
+      "ModuleColorName", "ModuleColorLabel"
+    )
+    require_module_contract_columns(
+      hydrated$module_label_table,
+      metadata_columns,
+      "cached WGCNA module label table"
+    )
+    module_color_metadata <- hydrated$module_label_table |>
+      dplyr::select(dplyr::all_of(metadata_columns)) |>
+      dplyr::distinct()
+  }
+  validate_wgcna_module_color_metadata(
+    module_color_metadata,
+    observed_internal_colors = hydrated$mergedColors,
+    artifact = "hydrated WGCNA module colour metadata"
+  )
+  hydrated$module_color_metadata <- module_color_metadata
+  validate_wgcna_hydrated_go_enrichment(
+    hydrated$GO_enrichment_long,
+    hydrated$module_label_table,
+    saved_go_evidence = saved_go_evidence
+  )
+  validate_wgcna_hydrated_go_qc(
+    hydrated$GO_enrichment_QC,
+    hydrated$module_label_table
+  )
+  hydrated
 }
 
 wgcna_feature_universe_audit <- function(feature_table, dataset) {

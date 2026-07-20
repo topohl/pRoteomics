@@ -1512,10 +1512,8 @@ if (!isTRUE(wgcna_dry_run) && using_cached_final_state) {
   )
   message("Reusing completed WGCNA analysis from: ", wgcna_final_state_path)
   cached_state <- readRDS(wgcna_final_state_path)
-  validate_wgcna_cached_state(cached_state)
-  list2env(cached_state, envir = environment())
-  if (exists("module_summary")) WGCNA_module_summary <- module_summary
-  if (exists("module_preservation")) module_preservation_long <- module_preservation
+  hydrated_state <- wgcna_hydrate_cached_state(cached_state)
+  list2env(hydrated_state, envir = environment())
   if (exists("module_label_table")) {
     module_label_table <- ensure_module_label_schema(module_label_table) %>%
       dplyr::mutate(
@@ -1526,12 +1524,6 @@ if (!isTRUE(wgcna_dry_run) && using_cached_final_state) {
           TRUE ~ "module_color"
         )
       )
-  }
-  if (exists("module_label_table")) {
-    module_name_map <- stats::setNames(
-      module_label_table$ModuleLabel_Final %||% module_label_table$ModuleLabel_GO_BP,
-      module_label_table$WGCNAInternalColor %||% module_label_table$ModuleColor
-    )
   }
   dataset_profile_resolved <- cached_state$parameters$dataset_profile %||% dataset_profile
   if (!"condition" %in% names(sample_info)) sample_info$condition <- sample_info$ExpGroup
@@ -3071,6 +3063,7 @@ saveRDS(list(
   GO_enrichment_QC = GO_enrichment_QC,
   module_name_map = module_name_map,
   module_label_table = module_label_table,
+  module_color_metadata = module_color_metadata,
   color_to_MEcol = color_to_MEcol,
   ME_names_stable = ME_names_stable,
   module_preservation = module_preservation_long,
