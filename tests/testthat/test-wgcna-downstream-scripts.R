@@ -100,9 +100,7 @@ testthat::test_that("supermodule display labels keep immutable IDs and cap singl
   testthat::expect_equal(
     classify_supermodule_label_confidence(
       n_modules = 1L,
-      go_class = "GO_supported",
-      has_coherent_hubs = TRUE,
-      microenvironment_class = "vascular_basement_membrane_ecm"
+      go_support_class = "high"
     ),
     "low"
   )
@@ -151,7 +149,11 @@ testthat::test_that("downstream supermodule labels prefer display label consiste
   )
   txt <- paste(vapply(scripts, function(path) paste(readLines(path, warn = FALSE), collapse = "\n"), character(1)), collapse = "\n")
   testthat::expect_match(txt, "Supermodule_DisplayLabel")
-  testthat::expect_true(grepl("SupermoduleLabel = dplyr::coalesce\\(as.character\\(\\.data\\$Supermodule_DisplayLabel\\), as.character\\(\\.data\\$Supermodule_FinalLabel\\), as.character\\(\\.data\\$Macroprogram_Display\\)", txt))
+  testthat::expect_true(grepl(
+    'full <- dplyr::coalesce\\(\\s*clean_supermodule_label_value\\(col_or_na\\(df, "Supermodule_DisplayLabel"\\)\\)',
+    txt,
+    perl = TRUE
+  ))
   testthat::expect_true(grepl("biological_program = dplyr::coalesce\\(", txt))
   testthat::expect_true(grepl("blank_to_na\\(\\.data\\$Supermodule_DisplayLabel\\)", txt))
   testthat::expect_true(grepl("blank_to_na\\(\\.data\\$Supermodule_FinalLabel\\)", txt))
