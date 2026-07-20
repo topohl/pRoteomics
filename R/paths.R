@@ -61,9 +61,33 @@ file_hash <- function(path) {
 }
 
 file_hash_sha256 <- function(path) {
-  if (is.null(path) || !length(path) || is.na(path) || !file.exists(path) || dir.exists(path)) return(NA_character_)
-  if (!"sha256sum" %in% getNamespaceExports("tools")) return(NA_character_)
-  unname(tools::sha256sum(path))
+  if (
+    is.null(path) ||
+      !length(path) ||
+      is.na(path) ||
+      !file.exists(path) ||
+      dir.exists(path)
+  ) {
+    return(NA_character_)
+  }
+
+  if ("sha256sum" %in% getNamespaceExports("tools")) {
+    return(unname(tools::sha256sum(path)))
+  }
+
+  if (requireNamespace("digest", quietly = TRUE)) {
+    return(unname(digest::digest(
+      file = path,
+      algo = "sha256"
+    )))
+  }
+
+  warning(
+    "SHA-256 hashing is unavailable. Install the R package 'digest'.",
+    call. = FALSE
+  )
+
+  NA_character_
 }
 
 strict_inputs_enabled <- function(config = NULL) {
