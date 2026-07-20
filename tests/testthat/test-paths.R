@@ -7,6 +7,36 @@ testthat::test_that("path helpers resolve inside repository", {
   testthat::expect_match(safe_filename("a/b c"), "a_b_c")
 })
 
+testthat::test_that("SHA-256 file hashes are stable and use the digest fallback", {
+  source(testthat::test_path("..", "..", "R", "paths.R"))
+  path <- tempfile("sha256-")
+  writeLines("stable hash fixture", path, useBytes = TRUE)
+  on.exit(unlink(path, force = TRUE), add = TRUE)
+
+  first_hash <- file_hash_sha256(path)
+  second_hash <- file_hash_sha256(path)
+  testthat::expect_false(is.na(first_hash))
+  testthat::expect_equal(nchar(first_hash), 64L)
+  testthat::expect_match(first_hash, "^[[:xdigit:]]{64}$")
+  testthat::expect_identical(second_hash, first_hash)
+  testthat::expect_identical(file_hash_sha256(paste0(path, ".missing")), NA_character_)
+
+  fallback_env <- new.env(parent = environment(file_hash_sha256))
+  fallback_env$getNamespaceExports <- function(namespace) {
+    exports <- base::getNamespaceExports(namespace)
+    if (identical(namespace, "tools")) setdiff(exports, "sha256sum") else exports
+  }
+  fallback_file_hash_sha256 <- file_hash_sha256
+  environment(fallback_file_hash_sha256) <- fallback_env
+
+  fallback_hash <- fallback_file_hash_sha256(path)
+  testthat::expect_identical(fallback_hash, first_hash)
+  testthat::expect_identical(
+    fallback_hash,
+    unname(digest::digest(file = path, algo = "sha256"))
+  )
+})
+
 testthat::test_that("strict input resolver audits and refuses latest fallback", {
   source(testthat::test_path("..", "..", "R", "paths.R"))
   source(testthat::test_path("..", "..", "R", "schema_validation.R"))
