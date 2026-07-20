@@ -17,6 +17,7 @@ source(paths_file)
 source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "dataset_inputs.R"))
 source(repo_path("R", "qc_exploration_utils.R"))
+source(repo_path("R", "joint_compartment_qc_utils.R"))
 source(repo_path("R", "wgcna_downstream_utils.R"))
 
 dry_run <- is_dry_run()
@@ -65,10 +66,17 @@ read_dataset <- function(ds) {
   feature_stats <- data.frame(
     dataset = ds,
     ProteinGroupID = expr$feature_table$ProteinGroupID,
-    detection_rate = rowMeans(is.finite(mat) & !is.na(mat)),
-    mean_abundance = rowMeans(mat, na.rm = TRUE),
+    availability_after_filtering = rowMeans(is.finite(mat) & !is.na(mat)),
+    abundance_score_imputed = rowMeans(mat, na.rm = TRUE),
     stringsAsFactors = FALSE
-  )
+  ) |>
+    dplyr::left_join(joint_qc_observed_detection_provenance(expr$feature_table$ProteinGroupID, ds), by = "ProteinGroupID") |>
+    dplyr::mutate(
+      # Backward-compatible name now means raw observed detection only. It is
+      # intentionally NA when the raw unified product has not been prepared.
+      detection_rate = .data$observed_detection_rate_raw,
+      mean_abundance = .data$abundance_score_imputed
+    )
   eligible_members <- expr$member_bridge |>
     dplyr::filter(
       .data$ProteinGroupID %in% expr$feature_table$ProteinGroupID[expr$feature_table$marker_eligible],
@@ -93,6 +101,10 @@ read_dataset <- function(ds) {
       GeneSymbol = dplyr::first(.data$GeneSymbol),
       matched_member_accessions = paste(sort(unique(stats::na.omit(.data$matched_member_accession))), collapse = ";"),
       detection_rate = safe_max(.data$detection_rate),
+      observed_detection_rate_raw = safe_max(.data$observed_detection_rate_raw),
+      availability_after_filtering = safe_max(.data$availability_after_filtering),
+      abundance_score_imputed = safe_max(.data$abundance_score_imputed),
+      detectability_source = dplyr::first(.data$detectability_source),
       mean_abundance = safe_max(.data$mean_abundance),
       .groups = "drop"
     ) |>
@@ -101,11 +113,11 @@ read_dataset <- function(ds) {
 
 stats_long <- dplyr::bind_rows(lapply(DATASETS, read_dataset))
 wide <- stats_long |>
-  dplyr::select("gene_token", "ProteinGroupID", "ProteinID", "GeneSymbol", "matched_member_accessions", "dataset", "detection_rate", "mean_abundance") |>
+  dplyr::select("gene_token", "ProteinGroupID", "ProteinID", "GeneSymbol", "matched_member_accessions", "dataset", "detection_rate", "observed_detection_rate_raw", "availability_after_filtering", "abundance_score_imputed", "detectability_source", "mean_abundance") |>
   tidyr::pivot_wider(
     names_from = "dataset",
-    values_from = c("detection_rate", "mean_abundance", "ProteinGroupID", "ProteinID", "GeneSymbol", "matched_member_accessions"),
-    values_fn = list(detection_rate = max, mean_abundance = max, ProteinGroupID = dplyr::first, ProteinID = dplyr::first, GeneSymbol = dplyr::first, matched_member_accessions = dplyr::first)
+    values_from = c("detection_rate", "observed_detection_rate_raw", "availability_after_filtering", "abundance_score_imputed", "detectability_source", "mean_abundance", "ProteinGroupID", "ProteinID", "GeneSymbol", "matched_member_accessions"),
+    values_fn = list(detection_rate = max, observed_detection_rate_raw = max, availability_after_filtering = max, abundance_score_imputed = max, detectability_source = dplyr::first, mean_abundance = max, ProteinGroupID = dplyr::first, ProteinID = dplyr::first, GeneSymbol = dplyr::first, matched_member_accessions = dplyr::first)
   )
 
 first_nonmissing <- function(...) {
@@ -124,6 +136,15 @@ wide <- wide |>
     detection_rate_microglia = .data$detection_rate_microglia,
     detection_rate_neuropil = .data$detection_rate_neuron_neuropil,
     detection_rate_soma = .data$detection_rate_neuron_soma,
+    observed_detection_rate_raw_microglia = .data$observed_detection_rate_raw_microglia,
+    observed_detection_rate_raw_neuropil = .data$observed_detection_rate_raw_neuron_neuropil,
+    observed_detection_rate_raw_soma = .data$observed_detection_rate_raw_neuron_soma,
+    availability_after_filtering_microglia = .data$availability_after_filtering_microglia,
+    availability_after_filtering_neuropil = .data$availability_after_filtering_neuron_neuropil,
+    availability_after_filtering_soma = .data$availability_after_filtering_neuron_soma,
+    abundance_score_imputed_microglia = .data$abundance_score_imputed_microglia,
+    abundance_score_imputed_neuropil = .data$abundance_score_imputed_neuron_neuropil,
+    abundance_score_imputed_soma = .data$abundance_score_imputed_neuron_soma,
     logFC_microglia_vs_neuropil = safe_diff(.data$mean_abundance_microglia, .data$mean_abundance_neuron_neuropil),
     logFC_microglia_vs_soma = safe_diff(.data$mean_abundance_microglia, .data$mean_abundance_neuron_soma),
     logFC_neuropil_vs_microglia = -.data$logFC_microglia_vs_neuropil,
@@ -166,6 +187,9 @@ make_set <- function(marker_set, keep, comparison, confidence, notes) {
       logFC_neuropil_vs_microglia, logFC_soma_vs_microglia,
       p_value, FDR,
       detection_rate_microglia, detection_rate_neuropil, detection_rate_soma,
+      observed_detection_rate_raw_microglia, observed_detection_rate_raw_neuropil, observed_detection_rate_raw_soma,
+      availability_after_filtering_microglia, availability_after_filtering_neuropil, availability_after_filtering_soma,
+      abundance_score_imputed_microglia, abundance_score_imputed_neuropil, abundance_score_imputed_soma,
       marker_source = "empirical_roi_marker_sets",
       selection_rule = paste0("min_detection=", min_detection, "; min_abs_logFC=", min_abs_logfc, "; FDR<=", fdr_threshold, "; no CON/RES/SUS marker contrast"),
       confidence = confidence,
@@ -224,6 +248,9 @@ if (!nrow(out)) {
     logFC_neuropil_vs_microglia = numeric(), logFC_soma_vs_microglia = numeric(),
     p_value = numeric(), FDR = numeric(), detection_rate_microglia = numeric(),
     detection_rate_neuropil = numeric(), detection_rate_soma = numeric(),
+    observed_detection_rate_raw_microglia = numeric(), observed_detection_rate_raw_neuropil = numeric(), observed_detection_rate_raw_soma = numeric(),
+    availability_after_filtering_microglia = numeric(), availability_after_filtering_neuropil = numeric(), availability_after_filtering_soma = numeric(),
+    abundance_score_imputed_microglia = numeric(), abundance_score_imputed_neuropil = numeric(), abundance_score_imputed_soma = numeric(),
     marker_source = character(), selection_rule = character(), confidence = character(),
     notes = character(), model_type = character()
   )

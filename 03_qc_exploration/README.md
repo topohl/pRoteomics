@@ -20,11 +20,40 @@ environment variables are still honored, and the shared defaults come from
 `R/paths.R`, `R/dataset_config.R`, `R/dataset_inputs.R`, and
 `R/qc_exploration_utils.R`.
 
+## Global joint-compartment QC
+
+Run the raw-derived preprocessing product before the global QC consumer:
+
+```powershell
+Rscript 01_preprocessing/01_prepare_joint_protigy_input.r --dataset all --dry-run
+Rscript 03_qc_exploration/00b_joint_compartment_qc.r --dataset all --dry-run
+```
+
+`01_prepare_joint_protigy_input.r` uses the unified raw protein-group matrix,
+canonical metadata, and mouse mapping to build a balanced shared core (default:
+observed in at least 70% of every dataset-by-technical-block), a complete-case
+sensitivity matrix, and a broad detected/not-detected union. It applies log2
+and one joint sample-wise median normalization, then only the primary core gets
+label-blind protein-wise median imputation. Its strict GCT v1.3 export is one
+joint ProTIGY input; ProTIGY must not log-transform, normalize, or impute it.
+
+`00b_joint_compartment_qc.r` consumes that prepared bundle for uncorrected PCA,
+metadata associations, correlations/clustering, and exploratory fixed-seed
+UMAP/t-SNE. It does not run combined DE/WGCNA, batch-correct the primary PCA,
+or interpret microglia-enriched ROI observations as purified microglia.
+
 ## Canonical Scripts
 
 Recommended run order:
 
-0. `00_dataset_qc_report.r`
+0. `00b_joint_compartment_qc.r` (after `01_preprocessing/01_prepare_joint_protigy_input.r`)
+   - Input: raw-derived global joint QC bundle.
+   - Override: `PROTEOMICS_JOINT_QC_PROCESSED_DIR`.
+   - Output: global PCA/UMAP/t-SNE, associations, correlations, sensitivity
+     concordance, figures, and Markdown summary under
+     `results/*/03_qc_exploration/00b_joint_compartment_qc/global/`.
+
+1. `00_dataset_qc_report.r`
    - Input: processed expression matrix plus sample metadata.
    - Overrides: `PROTEOMICS_DATASET_QC_MATRIX_FILE`,
      `PROTEOMICS_DATASET_QC_METADATA_FILE`.
