@@ -69,6 +69,17 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Uncorrected global PCA plus exploratory UMAP/t-SNE from the raw-derived primary shared core; does not perform combined DE/WGCNA or primary batch correction."
+      - script: "03_qc_exploration/00c_joint_compartment_qc_publication_figures.r"
+        required: false
+        datasets: ["global"]
+        stage: "qc_global_publication_figures"
+        scope: "global"
+        produces: ["results/figures/03_qc_exploration/00b_joint_compartment_qc/publication_style/global/joint_compartment_qc_main_figure_183mm.svg", "results/figures/03_qc_exploration/00b_joint_compartment_qc/publication_style/global/joint_compartment_qc_extended_data_figure_183mm.svg", "results/figures/03_qc_exploration/00b_joint_compartment_qc/publication_style/global/panels/", "results/reports/03_qc_exploration/00c_joint_compartment_qc_publication_figures/global/joint_compartment_qc_publication_figure_manifest.md", "results/logs/03_qc_exploration/00c_joint_compartment_qc_publication_figures/global/run_manifest.yml"]
+        consumes_required: ["data/processed/01_preprocessing/joint_compartment_qc/global/joint_compartment_qc_matrices.rds", "results/tables/03_qc_exploration/00b_joint_compartment_qc/global/joint_primary_pca_scores.csv", "results/tables/03_qc_exploration/00b_joint_compartment_qc/global/joint_primary_pca_variance_explained.csv", "results/tables/03_qc_exploration/00b_joint_compartment_qc/global/joint_umap_exploratory_scores.csv", "results/tables/03_qc_exploration/00b_joint_compartment_qc/global/joint_tsne_exploratory_scores.csv", "results/tables/03_qc_exploration/00b_joint_compartment_qc/global/joint_sample_correlations.csv", "results/tables/03_qc_exploration/00b_joint_compartment_qc/global/primary_vs_complete_case_pca_concordance.csv"]
+        consumes_optional: []
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Plot-only Nature-style rendering of completed joint-QC coordinates and audits; writes new editable SVGs without replacing source tables or recomputing PCA/UMAP/t-SNE."
       - script: "03_qc_exploration/04b_import_reference_marker_sources.r"
         required: false
         datasets: ["global"]
