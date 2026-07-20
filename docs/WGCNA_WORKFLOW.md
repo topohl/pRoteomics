@@ -63,6 +63,20 @@ creates stable module definitions, clusters supermodules, and writes module and
 supermodule construction outputs. It is the only registered WGCNA stage that
 recomputes core WGCNA state.
 
+Supermodules are eigengene meta-modules/co-varying module blocks, constructed
+with average linkage on `1 - signed Pearson module-eigengene correlation`.
+They are not inferred from shared proteins: WGCNA modules partition proteins,
+so hub/protein overlap is audit-only. The authoritative key is
+`dataset + SupermoduleID`; display and biological labels are metadata and are
+never used to join, group, deduplicate, or identify a cluster.
+
+Supermodule GO support is restricted to `ModuleProteinSetType == "all"` and a
+member module supports a term only at `p.adjust <= 0.05`. High confidence
+requires support in every member module; medium requires at least two and at
+least half. Other multi-module clusters remain mixed/unresolved, while
+singletons are explicitly labelled `singleton` with low confidence. The full
+cut-height sensitivity grid is `0.25, 0.35, 0.45, 0.50, 0.55, 0.65`.
+
 Run:
 
 ```bash
@@ -73,6 +87,10 @@ Inspect:
 
 - `results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/`
 - `results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/`
+- `.../supermodules/wgcna_supermodule_GO_term_support_audit.csv`
+- `.../supermodules/wgcna_supermodule_biological_coherence.csv`
+- `.../supermodules/wgcna_supermodule_validation_summary.csv`
+- `.../supermodules/supermodule_clustering_sensitivity.csv`
 
 Safe to rerun: no for routine interpretation updates. Rerun intentionally when
 input matrices, WGCNA settings, or module construction choices change.

@@ -130,20 +130,53 @@ The table records `script`, `dataset`, `stage`, `input_name`, expected and resol
 | Empirical ROI marker discovery | empirical marker contract | `results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv`; `results/source_data/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv` |
 | WGCNA marker traits | annotation-trait contract | `results/tables/03_qc_exploration/06_wgcna_marker_trait_export/<dataset>/wgcna_marker_traits_by_sample.csv`; `results/source_data/03_qc_exploration/06_wgcna_marker_trait_export/<dataset>/wgcna_marker_traits_by_sample.csv` |
 | WGCNA module/supermodule group effects | `validate_wgcna_group_effects()` | `results/tables/06_modules_WGCNA/group_effects/<dataset>/module_group_effects.csv`; `results/tables/06_modules_WGCNA/group_effects/<dataset>/supermodule_group_effects.csv`; `results/tables/06_modules_WGCNA/group_effects/<dataset>/module_marker_trait_correlations.csv`; `results/tables/06_modules_WGCNA/group_effects/<dataset>/supermodule_marker_trait_correlations.csv` |
+| WGCNA eigengene meta-modules | stable `dataset + SupermoduleID` member/summary contract | `results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_module_supermodule_annotation.csv`; `wgcna_supermodule_summary.csv`; `wgcna_supermodule_validation_summary.csv` |
+| WGCNA recurring-GO support audit | `ModuleProteinSetType=all`; member-module `p.adjust <= 0.05` | `results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_supermodule_GO_term_support_audit.csv` |
+| WGCNA supermodule biological coherence | signed eigengene/coherence contract | `results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_supermodule_biological_coherence.csv`; `supermodule_clustering_sensitivity.csv` |
 | WGCNA biological annotation | `validate_wgcna_module_annotation()` | `results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_module_biological_annotation.csv`; `results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_supermodule_biological_annotation.csv` |
 | WGCNA interpretable summary | `validate_wgcna_interpretable_summary()`; `wgcna_label_candidates.yml`; `wgcna_final_label_lookup.yml` | `results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_supermodule_group_effects_interpretable.csv`; `results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_module_group_effects_interpretable.csv`; `results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_label_candidates.csv`; `results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_final_label_lookup.csv`; `results/tables/06_modules_WGCNA/interpretable_summary/all/WGCNA_cross_dataset_supermodule_program_summary.csv` |
 | WGCNA score-derived publication summary | score-publication validation table | `results/figures/06_modules_WGCNA/score_publication_summary/<dataset>/publication_supermodule_effect_heatmap_<dataset>_wgcna_{primary_all_replicates,sensitivity}.svg`; `results/figures/06_modules_WGCNA/score_publication_summary/<dataset>/publication_supermodule_correlation_<dataset>_wgcna_{primary_all_replicates,sensitivity}.svg`; `results/figures/06_modules_WGCNA/score_publication_summary/<dataset>/publication_supermodule_consistency_<dataset>_wgcna_{primary_all_replicates,sensitivity}.svg`; `results/tables/06_modules_WGCNA/score_publication_summary/<dataset>/WGCNA_score_publication_validation.csv` |
 | Microglia-neuropil independence claim gate | `microglia_neuropil_independence_claim_gate.yml`; `microglia_neuropil_covariate_selection_audit.yml` | `results/reviewer_audit/microglia_neuropil_independence_claim_gate.csv`; `results/reviewer_audit/microglia_neuropil_covariate_selection_audit.csv`; detailed effects under `results/tables/06_modules_WGCNA/microglia_neuropil_independence/microglia/` |
 
-WGCNA biological annotation and interpretable summaries use a semantic label contract. Raw evidence columns (`raw_GO_*`, `raw_module_label`, `raw_hub_proteins`, `raw_marker_or_signature_label`, `raw_annotation_label`) are retained for audit; cleaned biological columns (`cleaned_biological_label*`, `cleaned_annotation_label`, `GO_label_relevance_*`) provide display-safe biology; `safe_display_label`, `label_confidence`, `label_basis`, and `label_downgrade_reason` are the reviewer-facing label status fields; microenvironment caution columns (`microenvironment_caution_*`) carry ROI/shared/vascular warnings without overwriting biology; supermodule composition columns (`Supermodule_Composition*`, `DominantMemberTheme*`, `TopMember*`) summarize member modules conservatively; plot fields (`Module_CleanPlotLabel`, `Supermodule_CleanPlotLabel`, `Supermodule_PlotLabel`) prefer cleaned/composition labels over generic `SMxx · mixed` fallbacks. These fields are display and audit aids derived from member-module labels/GO terms; they do not redefine supermodules as independently discovered pathways.
+### Supermodule construction and naming
 
-`WGCNA_final_label_lookup.csv` is the canonical downstream label contract.
-Singleton supermodules use `SMxx · singleton: ...`; multi-member supermodules
-use dominant or mixed labels according to member-theme fractions. Biological
-labels never absorb ROI/purity context. Score-publication rendering fails when
-the lookup or any rendered entity ID is missing and validates that numeric
-score/statistics columns remain unchanged after label joins.
-Score-derived publication summaries use the same semantic label contract, but the numeric source remains `03_score_module_activity.R`. Final score-publication validation checks that primary and sensitivity plots are both rendered, cleaned/composition labels replace non-final fallbacks such as `Hub-supported cluster` where available, and score-derived statistics (`Cohen_d`, rho, p-values/FDR/BH values, and consistency metrics) are unchanged relative to the `03` CSV inputs.
+WGCNA supermodules are eigengene meta-modules/co-varying module blocks
+constructed by average linkage on `1 - signed module-eigengene correlation`.
+Their authoritative key is `dataset + SupermoduleID`; biological and display
+labels are never join, grouping, deduplication, or identity keys. Full display
+labels retain the stable `SMxx` prefix and collisions fail validation. Because
+WGCNA modules partition proteins, protein/hub overlap is only a
+partition-integrity diagnostic and never biological support.
+
+Supermodule GO naming uses only `ModuleProteinSetType == "all"`. A member
+module supports a term only at `p.adjust <= 0.05`; the audit retains the support
+count and fraction, supporting modules, and best/worst supporting member-module
+FDR. High confidence requires support in every member module. Medium confidence
+requires at least two and at least half. Other multi-module cases are
+mixed/unresolved, and singletons are explicitly `singleton` with low
+confidence. Biological-coherence exports report signed minimum/mean/median
+pairwise eigengene correlation, region/layer-adjusted correlations when
+estimable, PC1 variance explained, module/protein counts, and stability over
+cut heights `0.25, 0.35, 0.45, 0.50, 0.55, 0.65`; PC1 variance alone is not
+shared-pathway evidence.
+
+WGCNA biological annotation and interpretable summaries use a semantic label
+contract. Raw GO, module-label, hub, marker, member-composition, and
+microenvironment fields remain separate audit metadata. The authoritative
+supermodule label and confidence are the recurring-GO-derived,
+stable-ID-prefixed fields from `01_WGCNA.r`; downstream composition,
+microenvironment, member-label, and hub evidence must not overwrite them.
+Singleton labels are `SMxx · singleton`; multi-module labels are
+`SMxx · dominant: ...`, `SMxx · mixed: ...`, or
+`SMxx · mixed / unresolved`.
+
+`WGCNA_final_label_lookup.csv` is the downstream display-label contract and is
+keyed by `dataset + level + entity_id`. For supermodules it preserves the
+authoritative `Supermodule_DisplayLabel`; composition labels are audit-only
+fallback metadata. Score-publication rendering fails when a lookup/entity ID is
+missing and validates that numeric score/statistics columns are unchanged after
+label joins. Hub evidence cannot increase supermodule support, naming
+confidence, or label scores.
 | WGCNA module complex/organelle architecture | standard integration evidence contract | `results/tables/06_modules_WGCNA/module_complex_architecture/<dataset>/module_complex_architecture.csv`; mirrored under `results/source_data/06_modules_WGCNA/module_complex_architecture/<dataset>/` |
 | WGCNA module robustness/sensitivity | standard integration evidence contract | `results/tables/06_modules_WGCNA/module_robustness_sensitivity/<dataset>/module_robustness_sensitivity.csv`; mirrored under `results/source_data/06_modules_WGCNA/module_robustness_sensitivity/<dataset>/` |
 | module-behavior coupling | standard integration evidence contract | `results/tables/08_behavior_physio_coupling/module_behavior_coupling/<dataset>/module_behavior_coupling.csv`; mirrored under `results/source_data/08_behavior_physio_coupling/module_behavior_coupling/<dataset>/` |
