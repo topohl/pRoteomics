@@ -148,7 +148,7 @@ testthat::test_that("alignment and complete module provenance are enforced", {
   modules <- transform(
     x$feature_table,
     dataset = "microglia", ModuleSet = "WGCNA", ModuleID = "WGCNA_m01",
-    ModuleLegacyID = "WGCNA_#486A8A", ModuleColor = "#486A8A",
+    WGCNAInternalColor = "blue", ModuleLegacyID = "WGCNA_blue", ModuleColor = "#486A8A",
     ModuleColorName = "deep_steel_blue", ModuleColorLabel = "deep steel blue",
     ProteinID = ProteinGroupID, kME = 0.8
   )

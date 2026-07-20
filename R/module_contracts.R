@@ -76,6 +76,121 @@ wgcna_module_color_metadata <- function(module_colors, palette = wgcna_publicati
   )
 }
 
+validate_wgcna_module_color_metadata <- function(module_meta, observed_internal_colors = NULL,
+                                                 artifact = "WGCNA module colour metadata") {
+  required <- c(
+    "WGCNAInternalColor", "ModuleID", "ModuleLegacyID", "ModuleColor",
+    "ModuleColorName", "ModuleColorLabel"
+  )
+  require_module_contract_columns(module_meta, required, artifact)
+  for (nm in c("WGCNAInternalColor", "ModuleID", "ModuleColor")) {
+    values <- trimws(as.character(module_meta[[nm]]))
+    if (any(is.na(values) | !nzchar(values))) {
+      stop(artifact, " contains missing ", nm, " values.", call. = FALSE)
+    }
+  }
+  if (any(!grepl("^WGCNA_m[0-9]{2,}$", as.character(module_meta$ModuleID)))) {
+    stop(artifact, " must use stable ModuleID values such as WGCNA_m01.", call. = FALSE)
+  }
+  if (anyDuplicated(as.character(module_meta$WGCNAInternalColor))) {
+    stop(artifact, " must map WGCNAInternalColor one-to-one to ModuleID.", call. = FALSE)
+  }
+  if (anyDuplicated(as.character(module_meta$ModuleID))) {
+    stop(artifact, " contains duplicated ModuleID values.", call. = FALSE)
+  }
+  if (anyDuplicated(as.character(module_meta$ModuleColor))) {
+    stop(artifact, " must map ModuleID one-to-one to publication ModuleColor.", call. = FALSE)
+  }
+  if (!is.null(observed_internal_colors)) {
+    observed <- unique(as.character(observed_internal_colors))
+    observed <- observed[!is.na(observed) & nzchar(observed)]
+    missing <- setdiff(observed, as.character(module_meta$WGCNAInternalColor))
+    if (length(missing)) {
+      stop(
+        artifact, " is missing internal colour(s) observed in mergedColors: ",
+        paste(missing, collapse = ", "), ".",
+        call. = FALSE
+      )
+    }
+  }
+  invisible(TRUE)
+}
+
+wgcna_integrate_feature_module_metadata <- function(protein_group_ids, merged_colors,
+                                                    module_meta, feature_table = NULL) {
+  protein_group_ids <- as.character(protein_group_ids)
+  if (anyNA(protein_group_ids) || any(!nzchar(protein_group_ids)) || anyDuplicated(protein_group_ids)) {
+    stop("WGCNA feature integration requires unique, nonmissing ProteinGroupID values.", call. = FALSE)
+  }
+  internal_colors <- if (!is.null(names(merged_colors))) {
+    as.character(merged_colors[protein_group_ids])
+  } else {
+    if (length(merged_colors) != length(protein_group_ids)) {
+      stop("mergedColors and ProteinGroupID must have the same length when mergedColors is unnamed.", call. = FALSE)
+    }
+    as.character(merged_colors)
+  }
+  if (anyNA(internal_colors) || any(!nzchar(internal_colors))) {
+    stop("mergedColors contains missing WGCNA internal colours for one or more ProteinGroupID values.", call. = FALSE)
+  }
+  validate_wgcna_module_color_metadata(module_meta, internal_colors)
+  out <- tibble::tibble(
+    ProteinGroupID = protein_group_ids,
+    WGCNAInternalColor = internal_colors
+  ) |>
+    dplyr::left_join(
+      module_meta,
+      by = "WGCNAInternalColor",
+      relationship = "many-to-one"
+    )
+  if (nrow(out) != length(protein_group_ids)) {
+    stop("WGCNA module metadata integration changed the feature row count.", call. = FALSE)
+  }
+  if (anyNA(out$ModuleID) || any(!grepl("^WGCNA_m[0-9]{2,}$", out$ModuleID))) {
+    stop("WGCNA feature module metadata contains missing or unstable ModuleID values.", call. = FALSE)
+  }
+  if (!is.null(feature_table)) {
+    require_module_contract_columns(feature_table, "ProteinGroupID", "WGCNA network feature table")
+    if (anyDuplicated(as.character(feature_table$ProteinGroupID))) {
+      stop("WGCNA network feature table contains duplicated ProteinGroupID values.", call. = FALSE)
+    }
+    out <- out |>
+      dplyr::left_join(feature_table, by = "ProteinGroupID", relationship = "many-to-one")
+    if (nrow(out) != length(protein_group_ids)) {
+      stop("WGCNA feature annotation join changed the feature row count.", call. = FALSE)
+    }
+  }
+  out
+}
+
+validate_wgcna_module_label_table <- function(module_label_table,
+                                              artifact = "WGCNA module label table") {
+  validate_wgcna_module_color_metadata(module_label_table, artifact = artifact)
+  if (anyDuplicated(as.character(module_label_table$ModuleID))) {
+    stop(artifact, " must contain exactly one row per ModuleID.", call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
+wgcna_join_module_labels <- function(feature_module_tbl, module_label_table) {
+  require_module_contract_columns(feature_module_tbl, "ModuleID", "WGCNA feature module table")
+  validate_wgcna_module_label_table(module_label_table)
+  label_cols <- setdiff(
+    names(module_label_table),
+    c("WGCNAInternalColor", "ModuleLegacyID", "ModuleColor", "ModuleColorName", "ModuleColorLabel")
+  )
+  out <- feature_module_tbl |>
+    dplyr::left_join(
+      module_label_table[, label_cols, drop = FALSE],
+      by = "ModuleID",
+      relationship = "many-to-one"
+    )
+  if (nrow(out) != nrow(feature_module_tbl)) {
+    stop("Joining WGCNA module labels changed the feature row count.", call. = FALSE)
+  }
+  out
+}
+
 wgcna_apply_module_metadata <- function(df, module_meta,
                                         internal_color_col = "ModuleColor",
                                         dataset_col = NULL) {
@@ -231,7 +346,15 @@ require_supermodule_composition_columns <- function(df,
 }
 
 wgcna_supermodule_go_support <- function(go_df, member_map, fdr_threshold = 0.05) {
-  required_map <- c("dataset", "module_eigengene", "ModuleColor", "SupermoduleID")
+  go_names <- if (is.null(go_df)) character() else names(go_df)
+  module_key <- if ("ModuleID" %in% names(member_map) && "ModuleID" %in% go_names) {
+    "ModuleID"
+  } else if ("WGCNAInternalColor" %in% names(member_map) && "WGCNAInternalColor" %in% go_names) {
+    "WGCNAInternalColor"
+  } else {
+    "ModuleColor"
+  }
+  required_map <- c("dataset", "module_eigengene", module_key, "SupermoduleID")
   require_module_contract_columns(member_map, required_map, "supermodule GO member map")
   validate_supermodule_member_map(
     member_map, artifact = "supermodule GO member map",
@@ -249,7 +372,7 @@ wgcna_supermodule_go_support <- function(go_df, member_map, fdr_threshold = 0.05
   if (is.null(go_df) || !nrow(go_df)) return(empty)
   require_module_contract_columns(
     go_df,
-    c("ModuleProteinSetType", "ModuleColor", "Ontology", "Description", "p.adjust"),
+    c("ModuleProteinSetType", module_key, "Ontology", "Description", "p.adjust"),
     "module GO enrichment"
   )
   map <- member_map |>
@@ -257,7 +380,7 @@ wgcna_supermodule_go_support <- function(go_df, member_map, fdr_threshold = 0.05
     dplyr::distinct()
   module_counts <- map |>
     dplyr::count(.data$dataset, .data$SupermoduleID, name = "n_member_modules")
-  go_join_cols <- if ("dataset" %in% names(go_df)) c("dataset", "ModuleColor") else "ModuleColor"
+  go_join_cols <- if ("dataset" %in% names(go_df)) c("dataset", module_key) else module_key
   module_terms <- go_df |>
     dplyr::filter(
       .data$ModuleProteinSetType == "all",
@@ -369,8 +492,18 @@ wgcna_supermodule_coherence <- function(mergedMEs, member_map,
   protein_counts <- NULL
   if (!is.null(module_members) && nrow(module_members)) {
     require_module_contract_columns(module_members, "ProteinGroupID", "WGCNA module membership")
-    join_col <- if ("module_eigengene" %in% names(module_members)) "module_eigengene" else if ("ModuleColor" %in% names(module_members) && "ModuleColor" %in% names(member_map)) "ModuleColor" else NA_character_
-    if (is.na(join_col)) stop("WGCNA module membership requires module_eigengene or ModuleColor for supermodule protein counts.", call. = FALSE)
+    join_col <- if ("module_eigengene" %in% names(module_members)) {
+      "module_eigengene"
+    } else if ("ModuleID" %in% names(module_members) && "ModuleID" %in% names(member_map)) {
+      "ModuleID"
+    } else if ("WGCNAInternalColor" %in% names(module_members) && "WGCNAInternalColor" %in% names(member_map)) {
+      "WGCNAInternalColor"
+    } else if ("ModuleColor" %in% names(module_members) && "ModuleColor" %in% names(member_map)) {
+      "ModuleColor"
+    } else {
+      NA_character_
+    }
+    if (is.na(join_col)) stop("WGCNA module membership requires module_eigengene, ModuleID, or WGCNAInternalColor for supermodule protein counts.", call. = FALSE)
     map_for_join <- member_map |>
       dplyr::select(dplyr::all_of(c("dataset", join_col, "SupermoduleID")))
     join_cols <- if ("dataset" %in% names(module_members)) c("dataset", join_col) else join_col
@@ -439,7 +572,7 @@ validate_wgcna_module_definitions <- function(df, artifact = "WGCNA module defin
   require_module_contract_columns(
     df,
     c(
-      "ModuleSet", "ModuleID", "ModuleLegacyID", "ModuleColor", "ModuleColorName", "ModuleColorLabel",
+      "ModuleSet", "WGCNAInternalColor", "ModuleID", "ModuleLegacyID", "ModuleColor", "ModuleColorName", "ModuleColorLabel",
       "ProteinGroupID", "ProteinID", "member_accessions", "member_gene_symbols",
       "original_identifier", "representative_accession", "representative_gene_symbol",
       "protein_group_ambiguity_class", "n_mapped_accessions", "n_gene_symbols",
@@ -454,6 +587,15 @@ validate_wgcna_module_definitions <- function(df, artifact = "WGCNA module defin
   if (any(duplicated(unique(df[, c("ModuleID", "ModuleColor"), drop = FALSE])$ModuleID))) {
     stop(artifact, " has non-unique ModuleID to ModuleColor mappings.", call. = FALSE)
   }
+  module_map <- unique(df[, c(
+    "WGCNAInternalColor", "ModuleID", "ModuleLegacyID", "ModuleColor",
+    "ModuleColorName", "ModuleColorLabel"
+  ), drop = FALSE])
+  validate_wgcna_module_color_metadata(
+    module_map,
+    observed_internal_colors = df$WGCNAInternalColor,
+    artifact = paste0(artifact, " module metadata")
+  )
   if (!any(c("kME", "Weight") %in% colnames(df))) {
     stop(artifact, " must contain kME or Weight.", call. = FALSE)
   }

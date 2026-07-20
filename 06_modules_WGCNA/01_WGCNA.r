@@ -845,15 +845,28 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
   module_names <- module_names[nzchar(module_names)]
   present <- tibble::tibble(
     module_eigengene = module_names,
-    ModuleColor = sub("^ME", "", module_names),
+    WGCNAInternalColor = sub("^ME", "", module_names),
     present_in_dataset = TRUE
   )
+  module_metadata_for_supermodules <- if (!is.null(module_label_table) && nrow(module_label_table)) {
+    module_label_table
+  } else {
+    wgcna_module_color_metadata(present$WGCNAInternalColor)
+  }
+  validate_wgcna_module_label_table(module_metadata_for_supermodules)
+  present <- present %>%
+    dplyr::left_join(
+      module_metadata_for_supermodules,
+      by = "WGCNAInternalColor",
+      relationship = "many-to-one"
+    )
 
-  manual_all <- read_manual_supermodule_config(dataset)
+  manual_all <- read_manual_supermodule_config(dataset) %>%
+    dplyr::rename(WGCNAInternalColor = .data$ModuleColor)
   manual_present <- manual_all %>%
-    dplyr::semi_join(present, by = c("module_eigengene", "ModuleColor"))
+    dplyr::semi_join(present, by = c("module_eigengene", "WGCNAInternalColor"))
   manual_absent <- manual_all %>%
-    dplyr::anti_join(present, by = c("module_eigengene", "ModuleColor")) %>%
+    dplyr::anti_join(present, by = c("module_eigengene", "WGCNAInternalColor")) %>%
     dplyr::mutate(present_in_dataset = FALSE, manual_annotation = TRUE)
 
   cut_height_info <- selected_supermodule_cut_height_info(dataset)
@@ -1010,7 +1023,7 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
     dplyr::summarise(
       Supermodule_DataDriven = dplyr::first(.data$Supermodule_DataDriven),
       member_modules = paste(.data$module_eigengene, collapse = ";"),
-      member_module_colors = paste(.data$ModuleColor, collapse = ";"),
+      member_module_internal_colors = paste(.data$WGCNAInternalColor, collapse = ";"),
       n_modules = dplyr::n(),
       .groups = "drop"
     ) %>%
@@ -1058,9 +1071,13 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
 
   hub_evidence <- if (!is.null(WGCNA_modules_long) && nrow(WGCNA_modules_long)) {
     WGCNA_modules_long %>%
-      dplyr::filter(.data$ModuleColor %in% clusters$ModuleColor) %>%
+      dplyr::filter(.data$ModuleID %in% clusters$ModuleID) %>%
       dplyr::filter(.data$mapping_status != "unmapped") %>%
-      dplyr::left_join(clusters[, c("dataset", "ModuleColor", "SupermoduleID")], by = "ModuleColor") %>%
+      dplyr::left_join(
+        clusters[, c("dataset", "ModuleID", "SupermoduleID")],
+        by = c("dataset", "ModuleID"),
+        relationship = "many-to-one"
+      ) %>%
       dplyr::mutate(.hub_keep = dplyr::coalesce(.data$is_top_hub_25, FALSE) | dplyr::coalesce(.data$is_core_kME_0.6, FALSE)) %>%
       dplyr::filter(.data$.hub_keep) %>%
       dplyr::arrange(.data$dataset, .data$SupermoduleID, dplyr::desc(.data$abs_kME)) %>%
@@ -1078,8 +1095,12 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
 
   trait_evidence <- if (!is.null(df_combo2) && nrow(df_combo2)) {
     df_combo2 %>%
-      dplyr::mutate(ModuleColor = sub("^ME", "", as.character(.data$module))) %>%
-      dplyr::left_join(clusters[, c("dataset", "ModuleColor", "SupermoduleID")], by = "ModuleColor") %>%
+      dplyr::mutate(WGCNAInternalColor = sub("^ME", "", as.character(.data$module))) %>%
+      dplyr::left_join(
+        clusters[, c("dataset", "WGCNAInternalColor", "SupermoduleID")],
+        by = "WGCNAInternalColor",
+        relationship = "many-to-one"
+      ) %>%
       dplyr::filter(!is.na(.data$SupermoduleID)) %>%
       dplyr::group_by(.data$dataset, .data$SupermoduleID) %>%
       dplyr::summarise(
@@ -1098,8 +1119,12 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
 
   contrast_evidence <- if (!is.null(ME_contrast_stats) && nrow(ME_contrast_stats)) {
     ME_contrast_stats %>%
-      dplyr::mutate(ModuleColor = sub("^ME", "", as.character(.data$module))) %>%
-      dplyr::left_join(clusters[, c("dataset", "ModuleColor", "SupermoduleID")], by = "ModuleColor") %>%
+      dplyr::mutate(WGCNAInternalColor = sub("^ME", "", as.character(.data$module))) %>%
+      dplyr::left_join(
+        clusters[, c("dataset", "WGCNAInternalColor", "SupermoduleID")],
+        by = "WGCNAInternalColor",
+        relationship = "many-to-one"
+      ) %>%
       dplyr::filter(!is.na(.data$SupermoduleID)) %>%
       dplyr::arrange(.data$dataset, .data$SupermoduleID, .data$fdr, dplyr::desc(abs(.data$adjusted_delta))) %>%
       dplyr::group_by(.data$dataset, .data$SupermoduleID) %>%
@@ -1149,7 +1174,11 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
   evidence <- evidence %>% dplyr::left_join(proposals, by = c("dataset", "SupermoduleID"))
   annotation_present <- clusters %>%
     dplyr::left_join(evidence %>% dplyr::select(-dplyr::any_of("Supermodule_DataDriven")), by = c("dataset", "SupermoduleID")) %>%
-    dplyr::left_join(manual_present, by = c("module_eigengene", "ModuleColor")) %>%
+    dplyr::left_join(
+      manual_present,
+      by = c("module_eigengene", "WGCNAInternalColor"),
+      relationship = "one-to-one"
+    ) %>%
     dplyr::mutate(
       manual_annotation = !is.na(.data$Supermodule_Manual) & nzchar(.data$Supermodule_Manual),
       Supermodule_DataDrivenID = .data$SupermoduleID,
@@ -1215,14 +1244,6 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
       )
     )
 
-  if (!is.null(module_label_table) && nrow(module_label_table)) {
-    label_cols <- intersect(
-      c("ModuleColor", "ModuleID", "ModuleLegacyID", "ModuleColorName", "ModuleColorLabel", "ModuleLabel_Final", "ModuleLabel_GO_BP", "best_GO_BP", "best_GO_padj_BP"),
-      names(module_label_table)
-    )
-    annotation <- annotation %>%
-      dplyr::left_join(module_label_table[, label_cols, drop = FALSE], by = "ModuleColor")
-  }
   for (missing_col in c("ModuleLabel_Final", "ModuleLabel_GO_BP", "best_GO_BP", "best_GO_padj_BP")) {
     if (!missing_col %in% names(annotation)) annotation[[missing_col]] <- NA
   }
@@ -1233,10 +1254,10 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
         .data$ModuleLabel_Final,
         .data$ModuleLabel_GO_BP,
         .data$best_GO_BP,
-        paste("Module", .data$ModuleColor)
+        paste("Module", .data$WGCNAInternalColor)
       )
     ) %>%
-    dplyr::arrange(dplyr::desc(.data$present_in_dataset), .data$Supermodule_DataDriven, .data$ModuleColor)
+    dplyr::arrange(dplyr::desc(.data$present_in_dataset), .data$Supermodule_DataDriven, .data$WGCNAInternalColor)
 
   present_annotation <- annotation %>% dplyr::filter(.data$present_in_dataset)
   if (nrow(present_annotation) != length(module_names) || any(duplicated(present_annotation$module_eigengene))) {
@@ -1245,8 +1266,8 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
   if (any(is.na(present_annotation$Supermodule_DataDriven))) {
     stop("Supermodule validation failed: present module missing data-driven cluster ID.", call. = FALSE)
   }
-  if (any(is.na(present_annotation$ModuleColor) | !nzchar(present_annotation$ModuleColor))) {
-    stop("Supermodule validation failed: present module has missing ModuleColor.", call. = FALSE)
+  if (any(is.na(present_annotation$WGCNAInternalColor) | !nzchar(present_annotation$WGCNAInternalColor))) {
+    stop("Supermodule validation failed: present module has missing WGCNAInternalColor.", call. = FALSE)
   }
   if (any(annotation$present_in_dataset[!annotation$module_eigengene %in% module_names])) {
     stop("Supermodule validation failed: absent manual module marked present.", call. = FALSE)
@@ -1261,7 +1282,7 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
 
   cluster_export <- clusters %>%
     dplyr::left_join(evidence %>% dplyr::select(-dplyr::any_of("Supermodule_DataDriven")), by = c("dataset", "SupermoduleID")) %>%
-    dplyr::select("dataset", "module_eigengene", "ModuleColor", "SupermoduleID", "Supermodule_DataDriven", "DataDrivenClusterSize", "SupermoduleCutHeight", dplyr::everything())
+    dplyr::select("dataset", "module_eigengene", "WGCNAInternalColor", "ModuleID", "ModuleColor", "SupermoduleID", "Supermodule_DataDriven", "DataDrivenClusterSize", "SupermoduleCutHeight", dplyr::everything())
   annotation_by_supermodule <- annotation %>%
     dplyr::filter(.data$present_in_dataset) %>%
     dplyr::group_by(.data$dataset, .data$SupermoduleID) %>%
@@ -1304,7 +1325,7 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
   write_csv_safe(
     evidence_summary_export %>%
       dplyr::select(dplyr::any_of(c(
-        "dataset", "SupermoduleID", "Supermodule_DataDriven", "member_modules", "member_module_colors", "n_modules",
+        "dataset", "SupermoduleID", "Supermodule_DataDriven", "member_modules", "member_module_internal_colors", "n_modules",
         "SupermoduleID", "Supermodule_DisplayLabel", "Supermodule_LongLabel", "Macroprogram_Display",
         "Supermodule_DataDrivenLabel", "Supermodule_CuratedLabel", "Supermodule_FinalLabel", "Supermodule_ShortLabel",
         "Supermodule_LabelSource", "Supermodule_LabelConfidence", "Supermodule_LabelRationale",
@@ -1362,7 +1383,7 @@ build_supermodule_annotation <- function(module_label_table = NULL, module_names
       LabelRationale = .data$Supermodule_LabelRationale
     ) %>%
     dplyr::select(dplyr::any_of(c(
-      "dataset", "module_eigengene", "ModuleID", "ModuleLegacyID", "ModuleColor", "ModuleColorName", "ModuleColorLabel", "SupermoduleID",
+      "dataset", "module_eigengene", "WGCNAInternalColor", "ModuleID", "ModuleLegacyID", "ModuleColor", "ModuleColorName", "ModuleColorLabel", "SupermoduleID",
       "Supermodule_DisplayLabel", "Supermodule_LongLabel", "Macroprogram_Display",
       "LabelSource", "LabelConfidence", "LabelRationale", "n_member_modules",
       "whether_singleton", "whether_manual_config_was_used", "whether_legacy_seed_was_used"
@@ -1417,17 +1438,32 @@ add_supermodule_cols <- function(df, annotation, module_col = "module", color_co
   if (!nrow(df)) return(df)
   ann <- annotation %>%
     dplyr::select(
-      "module_eigengene", "ModuleColor", "Supermodule", "SupermoduleID",
+      "module_eigengene", "WGCNAInternalColor", "ModuleID", "Supermodule", "SupermoduleID",
       "Supermodule_DisplayLabel", "Supermodule_LongLabel", "Macroprogram_Display",
       "Supermodule_LabelSource", "Supermodule_LabelConfidence", "Supermodule_LabelRationale",
       "SupermoduleConfidence", "SupermoduleRationale", "top_GO_label",
       "present_in_dataset", "manual_annotation"
     )
+  if ("ModuleID" %in% names(df)) {
+    return(df %>% dplyr::left_join(
+      ann %>% dplyr::select(-dplyr::any_of(c("module_eigengene", "WGCNAInternalColor"))),
+      by = "ModuleID",
+      relationship = "many-to-one"
+    ))
+  }
   if (!is.null(color_col) && color_col %in% names(df)) {
-    return(df %>% dplyr::left_join(ann, by = stats::setNames("ModuleColor", color_col)))
+    return(df %>% dplyr::left_join(
+      ann %>% dplyr::select(-dplyr::any_of(c("module_eigengene", "ModuleID"))),
+      by = stats::setNames("WGCNAInternalColor", color_col),
+      relationship = "many-to-one"
+    ))
   }
   if (module_col %in% names(df)) {
-    return(df %>% dplyr::left_join(ann, by = stats::setNames("module_eigengene", module_col)))
+    return(df %>% dplyr::left_join(
+      ann %>% dplyr::select(-dplyr::any_of(c("WGCNAInternalColor", "ModuleID"))),
+      by = stats::setNames("module_eigengene", module_col),
+      relationship = "many-to-one"
+    ))
   }
   df
 }
@@ -1492,7 +1528,10 @@ if (!isTRUE(wgcna_dry_run) && using_cached_final_state) {
       )
   }
   if (exists("module_label_table")) {
-    module_name_map <- stats::setNames(module_label_table$ModuleLabel_Final %||% module_label_table$ModuleLabel_GO_BP, module_label_table$ModuleColor)
+    module_name_map <- stats::setNames(
+      module_label_table$ModuleLabel_Final %||% module_label_table$ModuleLabel_GO_BP,
+      module_label_table$WGCNAInternalColor %||% module_label_table$ModuleColor
+    )
   }
   dataset_profile_resolved <- cached_state$parameters$dataset_profile %||% dataset_profile
   if (!"condition" %in% names(sample_info)) sample_info$condition <- sample_info$ExpGroup
@@ -2566,20 +2605,19 @@ ME_colors <- sub("^ME", "", ME_names_stable)
 color_to_MEcol <- stats::setNames(ME_names_stable, ME_colors)
 module_colors <- sort(unique(as.character(mergedColors)))
 module_color_metadata <- wgcna_module_color_metadata(module_colors, module_color_palette)
-module_ids <- stats::setNames(module_color_metadata$ModuleID, module_color_metadata$ModuleColor)
-module_legacy_ids <- stats::setNames(module_color_metadata$ModuleLegacyID, module_color_metadata$ModuleColor)
-module_color_names <- stats::setNames(module_color_metadata$ModuleColorName, module_color_metadata$ModuleColor)
-module_color_labels <- stats::setNames(module_color_metadata$ModuleColorLabel, module_color_metadata$ModuleColor)
+validate_wgcna_module_color_metadata(module_color_metadata, module_colors)
+module_ids <- stats::setNames(module_color_metadata$ModuleID, module_color_metadata$WGCNAInternalColor)
+module_legacy_ids <- stats::setNames(module_color_metadata$ModuleLegacyID, module_color_metadata$WGCNAInternalColor)
+module_publication_colors <- stats::setNames(module_color_metadata$ModuleColor, module_color_metadata$WGCNAInternalColor)
+module_color_names <- stats::setNames(module_color_metadata$ModuleColorName, module_color_metadata$WGCNAInternalColor)
+module_color_labels <- stats::setNames(module_color_metadata$ModuleColorLabel, module_color_metadata$WGCNAInternalColor)
 
-feature_module_tbl <- tibble::tibble(
-  ProteinGroupID = all_feature_ids,
-  ModuleColor = as.character(mergedColors[all_feature_ids]),
-  ModuleID = unname(module_ids[as.character(mergedColors[all_feature_ids])]),
-  ModuleLegacyID = unname(module_legacy_ids[as.character(mergedColors[all_feature_ids])]),
-  ModuleColorName = unname(module_color_names[as.character(mergedColors[all_feature_ids])]),
-  ModuleColorLabel = unname(module_color_labels[as.character(mergedColors[all_feature_ids])])
+feature_module_tbl <- wgcna_integrate_feature_module_metadata(
+  protein_group_ids = all_feature_ids,
+  merged_colors = mergedColors,
+  module_meta = module_color_metadata,
+  feature_table = network_feature_table
 ) %>%
-  dplyr::left_join(network_feature_table, by = "ProteinGroupID") %>%
   dplyr::mutate(
     ProteinID = .data$ProteinGroupID,
     RepresentativeUniProt = .data$representative_accession,
@@ -2598,9 +2636,9 @@ feature_module_tbl <- tibble::tibble(
     manual_mapping_used = FALSE
   )
 
-kME_long <- purrr::map_dfr(module_colors, function(module_color) {
-  mm_col <- paste0("MM", module_color)
-  module_features <- feature_module_tbl$ProteinGroupID[feature_module_tbl$ModuleColor == module_color]
+kME_long <- purrr::map_dfr(module_colors, function(internal_color) {
+  mm_col <- paste0("MM", internal_color)
+  module_features <- feature_module_tbl$ProteinGroupID[feature_module_tbl$WGCNAInternalColor == internal_color]
   if (!mm_col %in% colnames(geneModuleMembership)) return(NULL)
   tibble::tibble(
     ProteinGroupID = module_features,
@@ -2608,10 +2646,10 @@ kME_long <- purrr::map_dfr(module_colors, function(module_color) {
   )
 })
 
-make_module_sets <- function(module_color) {
+make_module_sets <- function(internal_color) {
   mod_tbl <- feature_module_tbl %>%
     dplyr::filter(.data$gene_level_claim_allowed) %>%
-    dplyr::filter(.data$ModuleColor == module_color) %>%
+    dplyr::filter(.data$WGCNAInternalColor == internal_color) %>%
     dplyr::left_join(kME_long, by = "ProteinGroupID") %>%
     dplyr::mutate(abs_kME = abs(.data$kME))
   core_tbl <- mod_tbl %>% dplyr::filter(is.finite(.data$abs_kME), .data$abs_kME >= 0.6)
@@ -2619,23 +2657,24 @@ make_module_sets <- function(module_color) {
   list(all = mod_tbl, core_kME_0.6 = core_tbl, top_hub_25 = hub_tbl)
 }
 
-enrich_module_set <- function(module_color, set_name, set_tbl, ontology,
+enrich_module_set <- function(internal_color, set_name, set_tbl, ontology,
                               min_mapped_n = 5, min_universe_n = 100) {
   mapped_genes <- unique(stats::na.omit(as.character(set_tbl$EntrezID)))
   qc_base <- tibble::tibble(
-    ModuleColor = module_color,
-    ModuleID = unname(module_ids[module_color]),
-    ModuleLegacyID = unname(module_legacy_ids[module_color]),
-    ModuleColorName = unname(module_color_names[module_color]),
-    ModuleColorLabel = unname(module_color_labels[module_color]),
+    WGCNAInternalColor = internal_color,
+    ModuleID = unname(module_ids[internal_color]),
+    ModuleLegacyID = unname(module_legacy_ids[internal_color]),
+    ModuleColor = unname(module_publication_colors[internal_color]),
+    ModuleColorName = unname(module_color_names[internal_color]),
+    ModuleColorLabel = unname(module_color_labels[internal_color]),
     ModuleProteinSetType = set_name,
     Ontology = ontology,
     ModuleSize = nrow(set_tbl),
     MappedModuleSize = length(mapped_genes),
     UniverseSize = length(universe_entrez),
-    TotalQuantitativeModuleFeatures = sum(feature_module_tbl$ModuleColor == module_color),
+    TotalQuantitativeModuleFeatures = sum(feature_module_tbl$WGCNAInternalColor == internal_color),
     ExcludedFromGeneAnnotation = sum(
-      feature_module_tbl$ModuleColor == module_color & !feature_module_tbl$gene_level_claim_allowed
+      feature_module_tbl$WGCNAInternalColor == internal_color & !feature_module_tbl$gene_level_claim_allowed
     )
   )
   if (length(universe_entrez) < min_universe_n) {
@@ -2667,11 +2706,12 @@ enrich_module_set <- function(module_color, set_name, set_tbl, ontology,
   }
   df <- tibble::as_tibble(df) %>%
     dplyr::mutate(
-      ModuleColor = module_color,
-      ModuleID = unname(module_ids[module_color]),
-      ModuleLegacyID = unname(module_legacy_ids[module_color]),
-      ModuleColorName = unname(module_color_names[module_color]),
-      ModuleColorLabel = unname(module_color_labels[module_color]),
+      WGCNAInternalColor = internal_color,
+      ModuleID = unname(module_ids[internal_color]),
+      ModuleLegacyID = unname(module_legacy_ids[internal_color]),
+      ModuleColor = unname(module_publication_colors[internal_color]),
+      ModuleColorName = unname(module_color_names[internal_color]),
+      ModuleColorLabel = unname(module_color_labels[internal_color]),
       ModuleProteinSetType = set_name,
       Ontology = ontology,
       ModuleSize = nrow(set_tbl),
@@ -2680,7 +2720,7 @@ enrich_module_set <- function(module_color, set_name, set_tbl, ontology,
       .before = 1
     ) %>%
     dplyr::select(
-      ModuleColor, ModuleID, ModuleLegacyID, ModuleColorName, ModuleColorLabel, ModuleProteinSetType, Ontology,
+      WGCNAInternalColor, ModuleID, ModuleLegacyID, ModuleColor, ModuleColorName, ModuleColorLabel, ModuleProteinSetType, Ontology,
       ID, Description, GeneRatio, BgRatio, pvalue, p.adjust, qvalue,
       geneID, Count, ModuleSize, MappedModuleSize, UniverseSize
     )
@@ -2689,11 +2729,11 @@ enrich_module_set <- function(module_color, set_name, set_tbl, ontology,
 
 go_runs <- list()
 go_qc <- list()
-for (module_color in module_colors) {
-  sets <- make_module_sets(module_color)
+for (internal_color in module_colors) {
+  sets <- make_module_sets(internal_color)
   for (set_name in names(sets)) {
     for (ontology in c("BP", "MF", "CC")) {
-      run <- enrich_module_set(module_color, set_name, sets[[set_name]], ontology)
+      run <- enrich_module_set(internal_color, set_name, sets[[set_name]], ontology)
       go_runs[[length(go_runs) + 1]] <- run$result
       go_qc[[length(go_qc) + 1]] <- run$qc
     }
@@ -2703,7 +2743,7 @@ GO_enrichment_long <- dplyr::bind_rows(go_runs)
 GO_enrichment_QC <- dplyr::bind_rows(go_qc)
 if (!nrow(GO_enrichment_long)) {
   GO_enrichment_long <- tibble::tibble(
-    ModuleColor = character(), ModuleID = character(), ModuleLegacyID = character(),
+    WGCNAInternalColor = character(), ModuleID = character(), ModuleLegacyID = character(), ModuleColor = character(),
     ModuleColorName = character(), ModuleColorLabel = character(), ModuleProteinSetType = character(),
     Ontology = character(), ID = character(), Description = character(), GeneRatio = character(),
     BgRatio = character(), pvalue = numeric(), p.adjust = numeric(), qvalue = numeric(),
@@ -2716,12 +2756,12 @@ write_csv_safe(GO_enrichment_QC, fp_modtab("WGCNA_module_GO_enrichment_QC.csv"))
 
 best_go_labels <- GO_enrichment_long %>%
   dplyr::filter(.data$ModuleProteinSetType == "all") %>%
-  dplyr::group_by(.data$ModuleColor, .data$Ontology) %>%
+  dplyr::group_by(.data$ModuleID, .data$Ontology) %>%
   dplyr::arrange(.data$p.adjust, .data$qvalue, .by_group = TRUE) %>%
   dplyr::slice_head(n = 1) %>%
   dplyr::ungroup() %>%
   dplyr::transmute(
-    ModuleColor,
+    ModuleID,
     Ontology,
     Label = vapply(.data$Description, compact_term, character(1)),
     BestTerm = .data$Description,
@@ -2730,40 +2770,34 @@ best_go_labels <- GO_enrichment_long %>%
     BestTermGeneRatio = .data$GeneRatio
   )
 best_go_wide <- best_go_labels %>%
-  dplyr::select(.data$ModuleColor, .data$Ontology, .data$Label) %>%
+  dplyr::select(.data$ModuleID, .data$Ontology, .data$Label) %>%
   tidyr::pivot_wider(names_from = .data$Ontology, values_from = .data$Label, names_prefix = "ModuleLabel_GO_")
 best_term_wide <- best_go_labels %>%
-  dplyr::select(.data$ModuleColor, .data$Ontology, .data$BestTerm) %>%
+  dplyr::select(.data$ModuleID, .data$Ontology, .data$BestTerm) %>%
   tidyr::pivot_wider(names_from = .data$Ontology, values_from = .data$BestTerm, names_prefix = "best_GO_")
 best_term_padj_wide <- best_go_labels %>%
-  dplyr::select(.data$ModuleColor, .data$Ontology, .data$BestTermPAdjust) %>%
+  dplyr::select(.data$ModuleID, .data$Ontology, .data$BestTermPAdjust) %>%
   tidyr::pivot_wider(names_from = .data$Ontology, values_from = .data$BestTermPAdjust, names_prefix = "best_GO_padj_")
 best_term_qvalue_wide <- best_go_labels %>%
-  dplyr::select(.data$ModuleColor, .data$Ontology, .data$BestTermQvalue) %>%
+  dplyr::select(.data$ModuleID, .data$Ontology, .data$BestTermQvalue) %>%
   tidyr::pivot_wider(names_from = .data$Ontology, values_from = .data$BestTermQvalue, names_prefix = "best_GO_qvalue_")
 best_term_gene_ratio_wide <- best_go_labels %>%
-  dplyr::select(.data$ModuleColor, .data$Ontology, .data$BestTermGeneRatio) %>%
+  dplyr::select(.data$ModuleID, .data$Ontology, .data$BestTermGeneRatio) %>%
   tidyr::pivot_wider(names_from = .data$Ontology, values_from = .data$BestTermGeneRatio, names_prefix = "best_GO_gene_ratio_")
 
-module_label_table <- tibble::tibble(
-  ModuleColor = module_colors,
-  ModuleID = unname(module_ids[module_colors]),
-  ModuleLegacyID = unname(module_legacy_ids[module_colors]),
-  ModuleColorName = unname(module_color_names[module_colors]),
-  ModuleColorLabel = unname(module_color_labels[module_colors]),
-  ModuleLabel_Manual = NA_character_
-) %>%
-  dplyr::left_join(best_go_wide, by = "ModuleColor") %>%
-  dplyr::left_join(best_term_wide, by = "ModuleColor") %>%
-  dplyr::left_join(best_term_padj_wide, by = "ModuleColor") %>%
-  dplyr::left_join(best_term_qvalue_wide, by = "ModuleColor") %>%
-  dplyr::left_join(best_term_gene_ratio_wide, by = "ModuleColor") %>%
+module_label_table <- tibble::as_tibble(module_color_metadata) %>%
+  dplyr::mutate(ModuleLabel_Manual = NA_character_) %>%
+  dplyr::left_join(best_go_wide, by = "ModuleID", relationship = "one-to-one") %>%
+  dplyr::left_join(best_term_wide, by = "ModuleID", relationship = "one-to-one") %>%
+  dplyr::left_join(best_term_padj_wide, by = "ModuleID", relationship = "one-to-one") %>%
+  dplyr::left_join(best_term_qvalue_wide, by = "ModuleID", relationship = "one-to-one") %>%
+  dplyr::left_join(best_term_gene_ratio_wide, by = "ModuleID", relationship = "one-to-one") %>%
   ensure_module_label_schema() %>%
   dplyr::mutate(
-    ModuleLabel_GO_BP = dplyr::coalesce(.data$ModuleLabel_GO_BP, paste0("Module ", .data$ModuleColor)),
-    ModuleLabel_GO_MF = dplyr::coalesce(.data$ModuleLabel_GO_MF, paste0("Module ", .data$ModuleColor)),
-    ModuleLabel_GO_CC = dplyr::coalesce(.data$ModuleLabel_GO_CC, paste0("Module ", .data$ModuleColor)),
-    ModuleLabel_Final = dplyr::coalesce(.data$ModuleLabel_Manual, .data$ModuleLabel_GO_BP, paste0("Module ", .data$ModuleColor)),
+    ModuleLabel_GO_BP = dplyr::coalesce(.data$ModuleLabel_GO_BP, paste0("Module ", .data$WGCNAInternalColor)),
+    ModuleLabel_GO_MF = dplyr::coalesce(.data$ModuleLabel_GO_MF, paste0("Module ", .data$WGCNAInternalColor)),
+    ModuleLabel_GO_CC = dplyr::coalesce(.data$ModuleLabel_GO_CC, paste0("Module ", .data$WGCNAInternalColor)),
+    ModuleLabel_Final = dplyr::coalesce(.data$ModuleLabel_Manual, .data$ModuleLabel_GO_BP, paste0("Module ", .data$WGCNAInternalColor)),
     ModuleLabel_Source = dplyr::case_when(
       !is.na(.data$ModuleLabel_Manual) & nzchar(.data$ModuleLabel_Manual) ~ "manual",
       !is.na(.data$best_GO_BP) & nzchar(.data$best_GO_BP) ~ "GO_BP_ORA_all_module",
@@ -2782,22 +2816,19 @@ module_label_table <- tibble::tibble(
     manual_label = .data$ModuleLabel_Manual,
     final_label = .data$ModuleLabel_Final
   )
-module_name_map <- stats::setNames(module_label_table$ModuleLabel_Final, module_label_table$ModuleColor)
+validate_wgcna_module_label_table(module_label_table)
+module_name_map <- stats::setNames(module_label_table$ModuleLabel_Final, module_label_table$WGCNAInternalColor)
 
 top_hub_flags <- feature_module_tbl %>%
   dplyr::left_join(kME_long, by = "ProteinGroupID") %>%
   dplyr::mutate(abs_kME = abs(.data$kME)) %>%
-  dplyr::group_by(.data$ModuleColor) %>%
+  dplyr::group_by(.data$ModuleID) %>%
   dplyr::arrange(dplyr::desc(.data$abs_kME), .by_group = TRUE) %>%
   dplyr::mutate(is_top_hub_25 = dplyr::row_number() <= pmin(25L, dplyr::n())) %>%
   dplyr::ungroup() %>%
   dplyr::select(.data$ProteinGroupID, .data$is_top_hub_25)
 
-WGCNA_modules_long <- feature_module_tbl %>%
-  dplyr::left_join(
-    module_label_table %>% dplyr::select(-dplyr::any_of(c("ModuleColor", "ModuleLegacyID", "ModuleColorName", "ModuleColorLabel"))),
-    by = "ModuleID"
-  ) %>%
+WGCNA_modules_long <- wgcna_join_module_labels(feature_module_tbl, module_label_table) %>%
   dplyr::left_join(kME_long, by = "ProteinGroupID") %>%
   dplyr::left_join(top_hub_flags, by = "ProteinGroupID") %>%
   dplyr::mutate(
@@ -2810,7 +2841,7 @@ WGCNA_modules_long <- feature_module_tbl %>%
     Source = "01_WGCNA.r"
   ) %>%
   dplyr::select(
-    dataset, ModuleSet, ModuleID, ModuleLegacyID, ModuleColor, ModuleColorName, ModuleColorLabel,
+    dataset, ModuleSet, WGCNAInternalColor, ModuleID, ModuleLegacyID, ModuleColor, ModuleColorName, ModuleColorLabel,
     ModuleLabel_Final, ModuleLabel_Source, ModuleLabel_GO_BP, ModuleLabel_GO_MF, ModuleLabel_GO_CC, ModuleLabel_Manual,
     primary_label, alternative_label_MF, alternative_label_CC,
     label_padj_BP, label_padj_MF, label_padj_CC,
@@ -2834,7 +2865,7 @@ writexl::write_xlsx(list(WGCNA_modules_long = WGCNA_modules_long), fp_modtab("WG
 WGCNA_feature_universe <- wgcna_feature_table %>%
   dplyr::left_join(
     WGCNA_modules_long %>%
-      dplyr::select("ProteinGroupID", "ModuleID", "ModuleLegacyID", "ModuleColor", "ModuleColorName", "ModuleColorLabel", "EntrezID") %>%
+      dplyr::select("ProteinGroupID", "WGCNAInternalColor", "ModuleID", "ModuleLegacyID", "ModuleColor", "ModuleColorName", "ModuleColorLabel", "EntrezID") %>%
       dplyr::distinct(),
     by = "ProteinGroupID"
   ) %>%
@@ -2849,11 +2880,11 @@ write_csv_safe(module_label_table, fp_modtab("module_name_map.csv"))
 write_tsv_safe(module_label_table, fp_modtab("module_name_map.tsv"))
 
 make_wgcna_module_summary <- function(preservation_source = NULL) {
-  pres_wide <- tibble::tibble(ModuleColor = module_colors)
+  pres_wide <- tibble::tibble(WGCNAInternalColor = module_colors)
   if (!is.null(preservation_source) && nrow(preservation_source)) {
     pres_wide <- preservation_source %>%
       dplyr::select(.data$module, .data$test_set, dplyr::contains("Zsummary")) %>%
-      dplyr::rename(ModuleColor = .data$module) %>%
+      dplyr::rename(WGCNAInternalColor = .data$module) %>%
       tidyr::pivot_wider(
         names_from = .data$test_set,
         values_from = dplyr::contains("Zsummary"),
@@ -2861,7 +2892,7 @@ make_wgcna_module_summary <- function(preservation_source = NULL) {
       )
   }
   WGCNA_modules_long %>%
-    dplyr::group_by(.data$ModuleID, .data$ModuleLegacyID, .data$ModuleColor, .data$ModuleColorName, .data$ModuleColorLabel) %>%
+    dplyr::group_by(.data$WGCNAInternalColor, .data$ModuleID, .data$ModuleLegacyID, .data$ModuleColor, .data$ModuleColorName, .data$ModuleColorLabel) %>%
     dplyr::summarise(
       n_features = dplyr::n(),
       n_mapped_features = sum(.data$mapping_status != "unmapped", na.rm = TRUE),
@@ -2881,8 +2912,8 @@ make_wgcna_module_summary <- function(preservation_source = NULL) {
       mapping_rate = .data$n_mapped_entrez / .data$n_features,
       .after = .data$n_mapped_entrez
     ) %>%
-    dplyr::left_join(best_term_wide, by = "ModuleColor") %>%
-    dplyr::left_join(pres_wide, by = "ModuleColor")
+    dplyr::left_join(best_term_wide, by = "ModuleID", relationship = "many-to-one") %>%
+    dplyr::left_join(pres_wide, by = "WGCNAInternalColor", relationship = "many-to-one")
 }
 WGCNA_module_summary <- make_wgcna_module_summary()
 write_csv_safe(WGCNA_module_summary, fp_modtab("WGCNA_module_summary.csv"))
@@ -3033,7 +3064,7 @@ saveRDS(list(
   mergedColors = mergedColors,
   mergedMEs = mergedMEs,
   kME = WGCNA_modules_long %>%
-    dplyr::select(.data$ModuleID, .data$ModuleLegacyID, .data$ModuleColor, .data$ModuleColorName, .data$ModuleColorLabel, .data$ProteinGroupID, .data$ProteinID, .data$RepresentativeUniProt, .data$MemberUniProts, .data$GeneSymbols, .data$EntrezID, .data$GeneSymbol, .data$kME, .data$abs_kME),
+    dplyr::select(.data$WGCNAInternalColor, .data$ModuleID, .data$ModuleLegacyID, .data$ModuleColor, .data$ModuleColorName, .data$ModuleColorLabel, .data$ProteinGroupID, .data$ProteinID, .data$RepresentativeUniProt, .data$MemberUniProts, .data$GeneSymbols, .data$EntrezID, .data$GeneSymbol, .data$kME, .data$abs_kME),
   WGCNA_modules_long = WGCNA_modules_long,
   module_summary = WGCNA_module_summary,
   GO_enrichment = GO_enrichment_long,
@@ -3247,9 +3278,10 @@ if (exists("mergedMEs")) {
   row_colors_vec[is.na(row_colors_vec)] <- "grey80"
   highlighted_modules <- selected_wgcna_modules()
   if (length(highlighted_modules) && exists("module_color_metadata")) {
-    row_meta <- module_color_metadata[match(row_mod_colors, module_color_metadata$ModuleColor), , drop = FALSE]
+    row_meta <- module_color_metadata[match(row_mod_colors, module_color_metadata$WGCNAInternalColor), , drop = FALSE]
     selected_row <- row_meta$ModuleID %in% highlighted_modules |
       row_meta$ModuleLegacyID %in% highlighted_modules |
+      row_meta$WGCNAInternalColor %in% highlighted_modules |
       row_meta$ModuleColor %in% highlighted_modules |
       row_meta$ModuleColorName %in% highlighted_modules |
       row_meta$ModuleColorLabel %in% highlighted_modules
@@ -4181,36 +4213,37 @@ module_label_export <- module_label_table %>%
   dplyr::left_join(
     supermodule_annotation %>%
       dplyr::select(
-        "ModuleColor", "module_eigengene", "Supermodule", "SupermoduleID",
+        "ModuleID", "module_eigengene", "Supermodule", "SupermoduleID",
         "Supermodule_DisplayLabel", "Supermodule_FinalLabel", "Macroprogram_Display",
         "Supermodule_LabelSource", "Supermodule_LabelConfidence",
         "SupermoduleConfidence", "SupermoduleRationale",
         "present_in_dataset", "manual_annotation"
       ),
-    by = "ModuleColor"
+    by = "ModuleID",
+    relationship = "one-to-one"
   )
 
 module_condition_top <- ME_contrast_stats %>%
-  dplyr::mutate(ModuleColor = sub("^ME", "", as.character(.data$module))) %>%
+  dplyr::mutate(WGCNAInternalColor = sub("^ME", "", as.character(.data$module))) %>%
   dplyr::arrange(dplyr::desc(abs(.data$adjusted_delta))) %>%
-  dplyr::group_by(.data$ModuleColor) %>%
+  dplyr::group_by(.data$WGCNAInternalColor) %>%
   dplyr::slice_head(n = 1) %>%
   dplyr::ungroup() %>%
   dplyr::transmute(
-    ModuleColor,
+    WGCNAInternalColor,
     strongest_condition_contrast = as.character(.data$contrast),
     strongest_condition_adjusted_delta = .data$adjusted_delta,
     strongest_condition_fdr = .data$fdr
   )
 
 module_strata_top <- ME_strata_contrast_stats %>%
-  dplyr::mutate(ModuleColor = sub("^ME", "", as.character(.data$module))) %>%
+  dplyr::mutate(WGCNAInternalColor = sub("^ME", "", as.character(.data$module))) %>%
   dplyr::arrange(dplyr::desc(abs(.data$adjusted_delta))) %>%
-  dplyr::group_by(.data$ModuleColor) %>%
+  dplyr::group_by(.data$WGCNAInternalColor) %>%
   dplyr::slice_head(n = 1) %>%
   dplyr::ungroup() %>%
   dplyr::transmute(
-    ModuleColor,
+    WGCNAInternalColor,
     strongest_spatial_stratum = as.character(.data$spatial_trait),
     strongest_spatial_strata_contrast = as.character(.data$contrast),
     strongest_spatial_strata_adjusted_delta = .data$adjusted_delta,
@@ -4218,9 +4251,9 @@ module_strata_top <- ME_strata_contrast_stats %>%
   )
 
 module_condition_omnibus <- stat_list %>%
-  dplyr::mutate(ModuleColor = sub("^ME", "", as.character(.data$module))) %>%
+  dplyr::mutate(WGCNAInternalColor = sub("^ME", "", as.character(.data$module))) %>%
   dplyr::transmute(
-    ModuleColor,
+    WGCNAInternalColor,
     condition_model_p = .data$condition_model_p,
     condition_model_fdr = .data$condition_model_fdr,
     condition_model_formula = .data$model_formula
@@ -4230,17 +4263,17 @@ WGCNA_module_priority_summary <- WGCNA_module_summary %>%
   dplyr::left_join(
     module_label_export %>%
       dplyr::select(
-        "ModuleColor", "ModuleID", "module_eigengene", "ModuleLabel_Final", "ModuleLabel_Source",
-        "ModuleLegacyID", "ModuleColorName", "ModuleColorLabel",
+        "ModuleID", "module_eigengene", "ModuleLabel_Final", "ModuleLabel_Source",
         "Supermodule_DisplayLabel", "Supermodule_FinalLabel", "Macroprogram_Display",
         "Supermodule", "SupermoduleID", "Supermodule_LabelSource", "Supermodule_LabelConfidence",
         "SupermoduleConfidence", "SupermoduleRationale"
       ),
-    by = "ModuleID"
+    by = "ModuleID",
+    relationship = "one-to-one"
   ) %>%
-  dplyr::left_join(module_condition_omnibus, by = "ModuleColor") %>%
-  dplyr::left_join(module_condition_top, by = "ModuleColor") %>%
-  dplyr::left_join(module_strata_top, by = "ModuleColor") %>%
+  dplyr::left_join(module_condition_omnibus, by = "WGCNAInternalColor", relationship = "many-to-one") %>%
+  dplyr::left_join(module_condition_top, by = "WGCNAInternalColor", relationship = "many-to-one") %>%
+  dplyr::left_join(module_strata_top, by = "WGCNAInternalColor", relationship = "many-to-one") %>%
   dplyr::mutate(
     priority_score = -log10(pmax(dplyr::coalesce(.data$condition_model_fdr, 1), .Machine$double.xmin)) +
       abs(dplyr::coalesce(.data$strongest_condition_adjusted_delta, 0)) +
@@ -4250,7 +4283,7 @@ WGCNA_module_priority_summary <- WGCNA_module_summary %>%
   dplyr::arrange(.data$priority_rank, .data$condition_model_fdr) %>%
   dplyr::select(
     "priority_rank", "priority_score",
-    "ModuleID", "ModuleLegacyID", "ModuleColor", "ModuleColorName", "ModuleColorLabel", "module_eigengene", "ModuleLabel_Final", "ModuleLabel_Source",
+    "WGCNAInternalColor", "ModuleID", "ModuleLegacyID", "ModuleColor", "ModuleColorName", "ModuleColorLabel", "module_eigengene", "ModuleLabel_Final", "ModuleLabel_Source",
     "Supermodule_DisplayLabel", "Supermodule_FinalLabel", "Macroprogram_Display",
     "Supermodule", "SupermoduleID", "Supermodule_LabelSource", "Supermodule_LabelConfidence",
     "SupermoduleConfidence", "SupermoduleRationale",
@@ -4271,17 +4304,18 @@ WGCNA_module_definitions_for_downstream <- WGCNA_modules_long %>%
   dplyr::left_join(
     module_label_export %>%
       dplyr::select(
-        "ModuleColor", "ModuleID", "ModuleLegacyID", "ModuleColorName", "ModuleColorLabel", "module_eigengene", "ModuleLabel_Final", "ModuleLabel_Source",
+        "ModuleID", "module_eigengene", "ModuleLabel_Final", "ModuleLabel_Source",
         "Supermodule_DisplayLabel", "Supermodule_FinalLabel", "Macroprogram_Display",
         "Supermodule", "SupermoduleID", "Supermodule_LabelSource", "Supermodule_LabelConfidence",
         "SupermoduleConfidence", "SupermoduleRationale"
       ),
-    by = "ModuleID"
+    by = "ModuleID",
+    relationship = "many-to-one"
   ) %>%
   dplyr::left_join(
     WGCNA_module_priority_summary %>%
       dplyr::select(
-        "ModuleColor", "ModuleID", "ModuleLegacyID", "ModuleColorName", "ModuleColorLabel",
+        "ModuleID",
         dplyr::any_of(c(
           "condition_model_p", "condition_model_fdr",
           "strongest_condition_contrast", "strongest_condition_adjusted_delta", "strongest_condition_fdr",
@@ -4291,10 +4325,11 @@ WGCNA_module_definitions_for_downstream <- WGCNA_modules_long %>%
         dplyr::contains("preservation_")
       ) %>%
       dplyr::distinct(),
-    by = "ModuleID"
+    by = "ModuleID",
+    relationship = "many-to-one"
   ) %>%
   dplyr::select(
-    "ModuleSet", "ModuleID", "ModuleLegacyID", "ModuleColor", "ModuleColorName", "ModuleColorLabel", "module_eigengene", "ModuleLabel_Final", "ModuleLabel_Source",
+    "ModuleSet", "WGCNAInternalColor", "ModuleID", "ModuleLegacyID", "ModuleColor", "ModuleColorName", "ModuleColorLabel", "module_eigengene", "ModuleLabel_Final", "ModuleLabel_Source",
     "Supermodule_DisplayLabel", "Supermodule_FinalLabel", "Macroprogram_Display",
     "Supermodule", "SupermoduleID", "Supermodule_LabelSource", "Supermodule_LabelConfidence",
     "SupermoduleConfidence", "SupermoduleRationale",
