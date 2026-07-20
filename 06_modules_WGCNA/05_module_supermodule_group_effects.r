@@ -1265,6 +1265,149 @@ validate_unique_plotted_brackets <- function(sig, spatial = FALSE) {
   invisible(TRUE)
 }
 
+supermodule_endpoint_label_columns <- function() {
+  unique(c(
+    "Supermodule_DataDrivenID", "Supermodule_DataDriven",
+    supermodule_label_priority(),
+    "Supermodule_LabelConfidence", "Supermodule_NameSource",
+    "ManualReviewRequired", "SupermoduleCutHeight", "supermodule_merge_cut_height",
+    "supermodule_merge_rule"
+  ))
+}
+
+collapse_supermodule_endpoint_label_input <- function(super_map) {
+  key_cols <- c("dataset", "SupermoduleID")
+  require_module_contract_columns(super_map, key_cols, "supermodule endpoint label input")
+  dataset <- trimws(as.character(super_map$dataset))
+  supermodule_id <- trimws(as.character(super_map$SupermoduleID))
+  if (any(is.na(dataset) | !nzchar(dataset))) {
+    stop("supermodule endpoint label input contains missing dataset keys.", call. = FALSE)
+  }
+  if (any(is.na(supermodule_id) | !grepl("^SM[0-9]{2,}$", supermodule_id))) {
+    stop("supermodule endpoint label input requires stable SupermoduleID values such as SM01.", call. = FALSE)
+  }
+
+  candidate_cols <- intersect(supermodule_endpoint_label_columns(), names(super_map))
+  key <- paste(dataset, supermodule_id, sep = "::")
+  key_levels <- unique(key)
+  first_nonmissing <- function(x) {
+    keep <- !is.na(x)
+    if (is.character(x)) keep <- keep & nzchar(trimws(x))
+    if (any(keep)) x[which(keep)[[1]]] else x[NA_integer_][[1]]
+  }
+  rows <- lapply(key_levels, function(current_key) {
+    idx <- which(key == current_key)
+    row <- super_map[idx[[1]], key_cols, drop = FALSE]
+    for (nm in setdiff(candidate_cols, key_cols)) {
+      values <- super_map[[nm]][idx]
+      keep <- !is.na(values)
+      if (is.character(values)) keep <- keep & nzchar(trimws(values))
+      distinct_values <- unique(as.character(values[keep]))
+      if (length(distinct_values) > 1L) {
+        stop(
+          "supermodule endpoint label input has conflicting nonmissing ", nm,
+          " values for ", current_key, ".",
+          call. = FALSE
+        )
+      }
+      row[[nm]] <- first_nonmissing(values)
+    }
+    row
+  })
+  out <- dplyr::bind_rows(rows)
+  if (anyDuplicated(out[key_cols])) {
+    stop("supermodule endpoint label input did not collapse to unique dataset + SupermoduleID keys.", call. = FALSE)
+  }
+  out
+}
+
+join_supermodule_endpoint_labels <- function(super_map, resolved_lookup, expected_modules) {
+  require_module_contract_columns(
+    super_map,
+    c("dataset", "module_eigengene", "ModuleID", "SupermoduleID"),
+    "module-level supermodule endpoint map"
+  )
+  require_module_contract_columns(
+    resolved_lookup,
+    c(
+      "dataset", "supermodule_id", "resolved_supermodule_label",
+      "resolved_supermodule_plot_label", "resolved_label_source",
+      "is_generic_original_label"
+    ),
+    "resolved supermodule endpoint label lookup"
+  )
+  lookup_key <- paste(resolved_lookup$dataset, resolved_lookup$supermodule_id, sep = "::")
+  if (any(is.na(resolved_lookup$supermodule_id) |
+          !grepl("^SM[0-9]{2,}$", as.character(resolved_lookup$supermodule_id)))) {
+    stop("resolved supermodule endpoint label lookup requires stable SupermoduleID values.", call. = FALSE)
+  }
+  if (anyDuplicated(lookup_key)) {
+    stop("resolved supermodule endpoint label lookup has duplicated dataset + SupermoduleID keys.", call. = FALSE)
+  }
+
+  n_before <- nrow(super_map)
+  out <- super_map |>
+    dplyr::left_join(
+      resolved_lookup,
+      by = c("dataset", "SupermoduleID" = "supermodule_id"),
+      relationship = "many-to-one"
+    ) |>
+    dplyr::mutate(
+      SupermoduleLabel = .data$resolved_supermodule_label,
+      Supermodule_PlotLabel = .data$resolved_supermodule_plot_label,
+      Supermodule_LabelSource = .data$resolved_label_source,
+      Supermodule_LabelWasGenericOriginal = .data$is_generic_original_label
+    )
+  if (nrow(out) != n_before) {
+    stop("resolved supermodule label join changed the number of module-membership rows.", call. = FALSE)
+  }
+  if (anyDuplicated(names(out))) {
+    stop("resolved supermodule label join produced duplicated column names.", call. = FALSE)
+  }
+
+  dataset <- trimws(as.character(out$dataset))
+  modules <- trimws(as.character(out$module_eigengene))
+  module_ids <- trimws(as.character(out$ModuleID))
+  supermodule_ids <- trimws(as.character(out$SupermoduleID))
+  if (any(is.na(modules) | !nzchar(modules)) || anyDuplicated(modules)) {
+    stop("module_eigengene must remain unique after the resolved supermodule label join.", call. = FALSE)
+  }
+  if (any(is.na(module_ids) | !nzchar(module_ids))) {
+    stop("module-level supermodule endpoint map contains missing ModuleID values.", call. = FALSE)
+  }
+  if (any(is.na(supermodule_ids) | !grepl("^SM[0-9]{2,}$", supermodule_ids))) {
+    stop("every module requires a nonmissing stable SupermoduleID after label resolution.", call. = FALSE)
+  }
+  if (any(is.na(out$resolved_supermodule_label) | !nzchar(trimws(as.character(out$resolved_supermodule_label))))) {
+    stop("every module requires a nonmissing resolved supermodule label.", call. = FALSE)
+  }
+  if (any(is.na(out$resolved_label_source) | !nzchar(trimws(as.character(out$resolved_label_source))))) {
+    stop("every module requires a nonmissing resolved supermodule label source.", call. = FALSE)
+  }
+
+  assert_one_supermodule <- function(member_values, member_name) {
+    member_key <- paste(dataset, member_values, sep = "::")
+    n_supermodules <- tapply(supermodule_ids, member_key, function(x) length(unique(x)))
+    if (any(n_supermodules != 1L)) {
+      stop(member_name, " must map to exactly one SupermoduleID.", call. = FALSE)
+    }
+  }
+  assert_one_supermodule(module_ids, "ModuleID")
+  assert_one_supermodule(modules, "module_eigengene")
+
+  expected_modules <- sort(unique(as.character(expected_modules)))
+  observed_modules <- sort(unique(modules))
+  if (!identical(observed_modules, expected_modules)) {
+    stop(
+      "resolved supermodule endpoint map does not retain the expected module eigengene universe; missing: ",
+      paste(setdiff(expected_modules, observed_modules), collapse = ", "),
+      "; unexpected: ", paste(setdiff(observed_modules, expected_modules), collapse = ", "), ".",
+      call. = FALSE
+    )
+  }
+  out
+}
+
 make_endpoint_maps <- function(module_eig, definitions, super_ann) {
   module_map <- data.frame(endpoint_col = setdiff(names(module_eig), "Sample"), stringsAsFactors = FALSE) |>
     dplyr::mutate(module_eigengene = .data$endpoint_col, ModuleColor = module_col_to_id(.data$endpoint_col))
@@ -1283,8 +1426,9 @@ make_endpoint_maps <- function(module_eig, definitions, super_ann) {
       "Supermodule_CompositionDisplayLabel", "Supermodule_CompositionLabel", "cleaned_biological_label",
       "Supermodule_DisplayLabel", "Macroprogram_Display", "Supermodule_LongLabel",
       "Supermodule_FinalLabel", "Supermodule", "Supermodule_DataDrivenLabel",
-      "supermodule_merge_rule"
+      "Supermodule_LabelConfidence", "Supermodule_NameSource", "supermodule_merge_rule"
     )) if (!nm %in% names(super_map0)) super_map0[[nm]] <- NA_character_
+    if (!"ManualReviewRequired" %in% names(super_map0)) super_map0$ManualReviewRequired <- NA
     if (!"supermodule_merge_cut_height" %in% names(super_map0)) super_map0$supermodule_merge_cut_height <- NA_real_
     super_map <- super_map0 |>
       dplyr::mutate(
@@ -1301,28 +1445,31 @@ make_endpoint_maps <- function(module_eig, definitions, super_ann) {
       module_col = "module_eigengene",
       display_col = if ("Supermodule_DisplayLabel" %in% names(super_map)) "Supermodule_DisplayLabel" else NULL
     )
-    resolved <- resolve_supermodule_labels(super_map, id_col = "SupermoduleID") |>
-      dplyr::mutate(dataset = DATASET)
-    super_map <- super_map |>
-      dplyr::left_join(
-        resolved |>
-          dplyr::select(
-            "dataset", "supermodule_id", "resolved_supermodule_label",
-            "resolved_supermodule_plot_label", "label_source",
-            "is_generic_original_label"
-          ),
-        by = c("dataset", "SupermoduleID" = "supermodule_id")
-      ) |>
-      dplyr::mutate(
-        SupermoduleLabel = .data$resolved_supermodule_label,
-        Supermodule_PlotLabel = .data$resolved_supermodule_plot_label,
-        Supermodule_LabelSource = .data$label_source,
-        Supermodule_LabelWasGenericOriginal = .data$is_generic_original_label
-      )
+    super_label_input <- collapse_supermodule_endpoint_label_input(super_map)
+    resolved0 <- resolve_supermodule_labels(super_label_input, id_col = "SupermoduleID")
+    if (nrow(resolved0) != nrow(super_label_input) ||
+        !identical(as.character(resolved0$supermodule_id), as.character(super_label_input$SupermoduleID))) {
+      stop("supermodule label resolver did not return exactly one row per stable supermodule key.", call. = FALSE)
+    }
+    resolved <- dplyr::bind_cols(
+      super_label_input[, "dataset", drop = FALSE],
+      resolved0
+    ) |>
+      dplyr::rename(resolved_label_source = "label_source")
+    super_map <- join_supermodule_endpoint_labels(
+      super_map,
+      resolved,
+      expected_modules = setdiff(names(module_eig), "Sample")
+    )
   } else {
     super_map <- data.frame(dataset = character(), module_eigengene = character(), SupermoduleID = character(), SupermoduleLabel = character())
+    resolved <- tibble::tibble(
+      dataset = character(), supermodule_id = character(),
+      resolved_supermodule_label = character(), resolved_supermodule_plot_label = character(),
+      resolved_label_source = character(), is_generic_original_label = logical()
+    )
   }
-  list(module_map = module_map, super_map = super_map)
+  list(module_map = module_map, super_map = super_map, super_label_lookup = resolved)
 }
 
 empty_supermodule_composition <- function() {
@@ -2661,24 +2808,24 @@ selected_sus_res_supermodule_contents <- function(selected, pca_eigenvalues, com
 
   pc1 <- pca_eigenvalues |>
     dplyr::filter(.data$pc == 1L) |>
-    dplyr::mutate(dataset = dataset) |>
+    dplyr::mutate(dataset = .env$dataset) |>
     dplyr::select("dataset", "supermodule_id", pca_PC1_variance_explained = "variance_explained")
 
   summary_meta <- if (!is.null(super_summary) && nrow(super_summary) && "SupermoduleID" %in% names(super_summary)) {
     resolved_summary_labels <- resolve_supermodule_labels(super_summary, id_col = "SupermoduleID") |>
-      dplyr::mutate(dataset = dataset) |>
+      dplyr::mutate(dataset = .env$dataset) |>
       dplyr::select(dataset, supermodule_id, resolved_supermodule_label)
     super_summary |>
       dplyr::transmute(
-        dataset = ds,
+        dataset = .env$dataset,
         supermodule_id = as.character(.data$SupermoduleID),
-        summary_member_modules = col_if_present(super_summary, "member_modules"),
-        summary_n_member_modules = suppressWarnings(as.integer(col_if_present(super_summary, "n_modules", NA_integer_))),
-        top_GO_BP_terms = col_if_present(super_summary, "top_GO_BP_terms"),
-        top_GO_MF_terms = col_if_present(super_summary, "top_GO_MF_terms"),
-        top_GO_CC_terms = col_if_present(super_summary, "top_GO_CC_terms"),
-        top_hub_symbols = col_if_present(super_summary, "top_hub_symbols"),
-        top_hub_proteins_summary = dplyr::coalesce(col_if_present(super_summary, "top_hub_proteins"), col_if_present(super_summary, "top_hub_uniprot"))
+        summary_member_modules = col_if_present(.env$super_summary, "member_modules"),
+        summary_n_member_modules = suppressWarnings(as.integer(col_if_present(.env$super_summary, "n_modules", NA_integer_))),
+        top_GO_BP_terms = col_if_present(.env$super_summary, "top_GO_BP_terms"),
+        top_GO_MF_terms = col_if_present(.env$super_summary, "top_GO_MF_terms"),
+        top_GO_CC_terms = col_if_present(.env$super_summary, "top_GO_CC_terms"),
+        top_hub_symbols = col_if_present(.env$super_summary, "top_hub_symbols"),
+        top_hub_proteins_summary = dplyr::coalesce(col_if_present(.env$super_summary, "top_hub_proteins"), col_if_present(.env$super_summary, "top_hub_uniprot"))
       ) |>
       dplyr::left_join(resolved_summary_labels, by = c("dataset", "supermodule_id")) |>
       dplyr::mutate(summary_label = .data$resolved_supermodule_label) |>
@@ -2695,9 +2842,9 @@ selected_sus_res_supermodule_contents <- function(selected, pca_eigenvalues, com
   definition_lookup <- if (!is.null(definitions) && nrow(definitions)) {
     definitions |>
       dplyr::transmute(
-        module_eigengene = as.character(col_if_present(definitions, "module_eigengene")),
-        ModuleID = as.character(col_if_present(definitions, "ModuleID")),
-        ModuleLabel_Final = as.character(col_if_present(definitions, "ModuleLabel_Final"))
+        module_eigengene = as.character(col_if_present(.env$definitions, "module_eigengene")),
+        ModuleID = as.character(col_if_present(.env$definitions, "ModuleID")),
+        ModuleLabel_Final = as.character(col_if_present(.env$definitions, "ModuleLabel_Final"))
       ) |>
       dplyr::filter(nzchar(.data$module_eigengene) | nzchar(.data$ModuleID)) |>
       dplyr::distinct()
@@ -2708,7 +2855,7 @@ selected_sus_res_supermodule_contents <- function(selected, pca_eigenvalues, com
     module_name_map |>
       dplyr::transmute(
         ModuleID = as.character(.data$ModuleID),
-        ModuleLabel_Final = dplyr::coalesce(col_if_present(module_name_map, "ModuleLabel_Final"), col_if_present(module_name_map, "final_label"), col_if_present(module_name_map, "primary_label"))
+        ModuleLabel_Final = dplyr::coalesce(col_if_present(.env$module_name_map, "ModuleLabel_Final"), col_if_present(.env$module_name_map, "final_label"), col_if_present(.env$module_name_map, "primary_label"))
       ) |>
       dplyr::filter(nzchar(.data$ModuleID)) |>
       dplyr::distinct(.data$ModuleID, .keep_all = TRUE)
@@ -2719,11 +2866,11 @@ selected_sus_res_supermodule_contents <- function(selected, pca_eigenvalues, com
   ann_module_meta <- if (!is.null(super_ann) && nrow(super_ann) && "SupermoduleID" %in% names(super_ann)) {
     super_ann |>
       dplyr::transmute(
-        dataset = dataset,
+        dataset = .env$dataset,
         supermodule_id = as.character(.data$SupermoduleID),
-        module_eigengene = as.character(col_if_present(super_ann, "module_eigengene")),
-        ModuleID = as.character(col_if_present(super_ann, "ModuleID")),
-        ModuleLabel_Final = as.character(col_if_present(super_ann, "ModuleLabel_Final"))
+        module_eigengene = as.character(col_if_present(.env$super_ann, "module_eigengene")),
+        ModuleID = as.character(col_if_present(.env$super_ann, "ModuleID")),
+        ModuleLabel_Final = as.character(col_if_present(.env$super_ann, "ModuleLabel_Final"))
       ) |>
       dplyr::filter(nzchar(.data$supermodule_id)) |>
       dplyr::distinct()
@@ -2734,7 +2881,7 @@ selected_sus_res_supermodule_contents <- function(selected, pca_eigenvalues, com
   comp_long <- if (!is.null(comp) && nrow(comp) && all(c("supermodule_id", "member_modules") %in% names(comp))) {
     dplyr::bind_rows(lapply(seq_len(nrow(comp)), function(i) {
       tibble::tibble(
-        dataset = dataset,
+        dataset = .env$dataset,
         supermodule_id = as.character(comp$supermodule_id[[i]]),
         module_eigengene = split_member_modules(comp$member_modules[[i]])
       )
@@ -2760,11 +2907,11 @@ selected_sus_res_supermodule_contents <- function(selected, pca_eigenvalues, com
       return(NA_character_)
     }
     out <- go_enrichment |>
-      dplyr::mutate(p_adjust_num = if ("p.adjust" %in% names(go_enrichment)) suppressWarnings(as.numeric(.data[["p.adjust"]])) else NA_real_) |>
+      dplyr::mutate(p_adjust_num = if ("p.adjust" %in% names(.env$go_enrichment)) suppressWarnings(as.numeric(.data[["p.adjust"]])) else NA_real_) |>
       dplyr::filter(
-        .data$ModuleID %in% module_ids,
-        .data$Ontology == ontology,
-        if ("ModuleProteinSetType" %in% names(go_enrichment)) .data$ModuleProteinSetType == "all" else TRUE,
+        .data$ModuleID %in% .env$module_ids,
+        .data$Ontology == .env$ontology,
+        if ("ModuleProteinSetType" %in% names(.env$go_enrichment)) .data$ModuleProteinSetType == "all" else TRUE,
         is.finite(.data$p_adjust_num),
         .data$p_adjust_num <= 0.05
       ) |>
@@ -2777,7 +2924,7 @@ selected_sus_res_supermodule_contents <- function(selected, pca_eigenvalues, com
 
   module_summary_hubs <- if (!is.null(module_summary) && nrow(module_summary) && "ModuleID" %in% names(module_summary)) {
     module_summary |>
-      dplyr::transmute(ModuleID = as.character(.data$ModuleID), top_hub_proteins_module = col_if_present(module_summary, "top_hub_proteins"))
+      dplyr::transmute(ModuleID = as.character(.data$ModuleID), top_hub_proteins_module = col_if_present(.env$module_summary, "top_hub_proteins"))
   } else {
     tibble::tibble(ModuleID = character(), top_hub_proteins_module = character())
   }
@@ -2786,14 +2933,14 @@ selected_sus_res_supermodule_contents <- function(selected, pca_eigenvalues, com
     modules_long |>
       dplyr::mutate(
         ModuleID = as.character(.data$ModuleID),
-        abs_kME_num = suppressWarnings(as.numeric(col_if_present(modules_long, "abs_kME", NA_real_))),
-        is_core = as.character(col_if_present(modules_long, "is_core_kME_0.6", FALSE)) %in% c("TRUE", "true", "1"),
-        is_hub = as.character(col_if_present(modules_long, "is_top_hub_25", FALSE)) %in% c("TRUE", "true", "1"),
+        abs_kME_num = suppressWarnings(as.numeric(col_if_present(.env$modules_long, "abs_kME", NA_real_))),
+        is_core = as.character(col_if_present(.env$modules_long, "is_core_kME_0.6", FALSE)) %in% c("TRUE", "true", "1"),
+        is_hub = as.character(col_if_present(.env$modules_long, "is_top_hub_25", FALSE)) %in% c("TRUE", "true", "1"),
         protein_label = dplyr::coalesce(
-          col_if_present(modules_long, "GeneSymbol"),
-          col_if_present(modules_long, "ProteinID"),
-          col_if_present(modules_long, "UniProt"),
-          col_if_present(modules_long, "resolved_uniprot")
+          col_if_present(.env$modules_long, "GeneSymbol"),
+          col_if_present(.env$modules_long, "ProteinID"),
+          col_if_present(.env$modules_long, "UniProt"),
+          col_if_present(.env$modules_long, "resolved_uniprot")
         )
       )
   } else {
@@ -2819,13 +2966,13 @@ selected_sus_res_supermodule_contents <- function(selected, pca_eigenvalues, com
         dplyr::slice_head(n = 12) |>
         dplyr::pull(.data$protein_label)
     }
-    sm <- summary_meta |> dplyr::filter(.data$dataset == dataset, .data$supermodule_id == sid)
+    sm <- summary_meta |> dplyr::filter(.data$dataset == .env$dataset, .data$supermodule_id == .env$sid)
     pc1_value <- pc1 |>
-      dplyr::filter(.data$dataset == dataset, .data$supermodule_id == sid) |>
+      dplyr::filter(.data$dataset == .env$dataset, .data$supermodule_id == .env$sid) |>
       dplyr::pull(.data$pca_PC1_variance_explained) |>
       first_value(NA_real_)
     tibble::tibble(
-      dataset = dataset,
+      dataset = .env$dataset,
       supermodule_id = sid,
       supermodule_label = dplyr::coalesce(first_value(sel$supermodule_label, NA_character_), first_value(sm$summary_label, NA_character_), sid),
       contrast = sel$contrast[[1]],
