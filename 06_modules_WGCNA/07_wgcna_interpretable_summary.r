@@ -22,6 +22,7 @@ paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.
 source(paths_file)
 source(repo_path("R", "wgcna_downstream_utils.R"))
 source(repo_path("R", "wgcna_labeling_utils.R"))
+source(repo_path("R", "wgcna_reviewed_label_registry.R"))
 source(repo_path("R", "module_contracts.R"))
 source(repo_path("R", "schema_validation.R"))
 
@@ -1388,7 +1389,10 @@ make_dataset_summary <- function(ds) {
   super_annot <- safe_read_csv(path_results("tables", "06_modules_WGCNA", "module_annotation", ds, "WGCNA_supermodule_biological_annotation.csv"))
   overlap <- safe_read_csv(path_results("tables", "06_modules_WGCNA", "04_wgcna_de_gsea_overlap", ds, "WGCNA_vs_DE_GSEA_overlap.csv"))
   super_comp <- safe_read_csv(path_results("tables", "06_modules_WGCNA", "group_effects", ds, "supermodule_composition.csv"))
-  module_super_map_file <- safe_read_csv(path_results("tables", "06_modules_WGCNA", "group_effects", ds, "module_to_supermodule_map_with_annotations.csv"))
+  current_files <- resolve_wgcna_files(ds)
+  current_member_map_raw <- safe_read_csv(current_files$supermodule_annotation)
+  current_super_summary <- safe_read_csv(current_files$supermodule_summary)
+  current_member_map <- wgcna_normalize_current_member_map(current_member_map_raw, ds)
 
   if (is.null(module_effects)) module_effects <- empty_group_effects(ds, "module", "missing module_group_effects.csv")
   if (is.null(super_effects)) super_effects <- empty_group_effects(ds, "supermodule", "missing supermodule_group_effects.csv")
@@ -1557,7 +1561,7 @@ make_dataset_summary <- function(ds) {
 
   module_super_map <- build_module_supermodule_map(
     module_effects = module_join,
-    module_to_supermodule_map = module_super_map_file,
+    module_to_supermodule_map = current_member_map,
     supermodule_composition = super_comp,
     super_annot = super_annot,
     dataset = ds
@@ -1745,10 +1749,47 @@ make_dataset_summary <- function(ds) {
   label_candidates <- wgcna_make_label_candidates(module_join, super_join, dataset = ds) |>
     wgcna_score_label_candidates() |>
     wgcna_select_final_labels()
-  final_label_lookup <- wgcna_build_final_label_lookup(label_candidates, module_join, super_join, dataset = ds)
-  wgcna_validate_label_lookup(final_label_lookup)
+  if (identical(ds, "microglia")) {
+    reviewed_registry <- wgcna_read_reviewed_registry(ds, current_member_map)
+    super_evidence <- super_annot
+    if (!is.null(current_super_summary) && nrow(current_super_summary)) {
+      structural_cols <- intersect(c(
+        "SupermoduleID", "n_modules", "n_member_modules",
+        "signed_min_pairwise_eigengene_correlation",
+        "adjusted_signed_min_pairwise_eigengene_correlation",
+        "pc1_variance_explained", "cut_height_stability_fraction_stable"
+      ), names(current_super_summary))
+      structural <- current_super_summary |>
+        dplyr::select(dplyr::all_of(structural_cols)) |>
+        dplyr::distinct(.data$SupermoduleID, .keep_all = TRUE)
+      super_evidence <- super_evidence |>
+        dplyr::left_join(structural, by = "SupermoduleID", relationship = "one-to-one") |>
+        dplyr::mutate(
+          n_member_modules = dplyr::coalesce(
+            suppressWarnings(as.integer(.data$n_member_modules)),
+            suppressWarnings(as.integer(.data$n_modules))
+          )
+        )
+    }
+    final_label_lookup <- wgcna_build_reviewed_canonical_lookup(
+      registry = reviewed_registry,
+      member_map = current_member_map,
+      label_candidates = label_candidates,
+      module_rows = module_join,
+      supermodule_rows = super_evidence,
+      dataset = ds
+    )
+    wgcna_validate_canonical_lookup(final_label_lookup, ds, current_member_map)
+  } else {
+    final_label_lookup <- wgcna_build_final_label_lookup(label_candidates, module_join, super_join, dataset = ds)
+    wgcna_validate_label_lookup(final_label_lookup)
+  }
   validate_table_schema(label_candidates, "wgcna_label_candidates", strict = TRUE)
-  validate_table_schema(final_label_lookup, "wgcna_final_label_lookup", strict = TRUE)
+  if (identical(ds, "microglia")) {
+    validate_table_schema(final_label_lookup, "wgcna_reviewed_final_label_lookup", strict = TRUE)
+  } else {
+    validate_table_schema(final_label_lookup, "wgcna_final_label_lookup", strict = TRUE)
+  }
 
   module_final_labels <- final_label_lookup |>
     dplyr::filter(.data$level == "module") |>

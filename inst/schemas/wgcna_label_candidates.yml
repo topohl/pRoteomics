@@ -1,5 +1,5 @@
 name: wgcna_label_candidates
-required_columns: [dataset, level, entity_id, candidate_label, candidate_source, evidence_strength, hub_support, marker_context_support, genericity_penalty, ontology_mismatch_flag, conflict_penalty, final_label_score, selected_label, rejection_reason]
+required_columns: [dataset, level, entity_id, candidate_label, candidate_source, evidence_strength, hub_support, marker_context_support, genericity_penalty, ontology_mismatch_flag, conflict_penalty, hub_score_contribution, final_label_score, selected_label, rejection_reason]
 columns:
   dataset: {type: character}
   level: {type: character, allowed_values: [module, supermodule]}
@@ -12,6 +12,7 @@ columns:
   genericity_penalty: {type: numeric}
   ontology_mismatch_flag: {type: logical}
   conflict_penalty: {type: numeric}
+  hub_score_contribution: {type: numeric}
   final_label_score: {type: numeric}
   selected_label: {type: logical}
   rejection_reason: {type: character}
