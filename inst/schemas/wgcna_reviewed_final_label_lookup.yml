@@ -1,0 +1,26 @@
+name: wgcna_reviewed_final_label_lookup
+required_columns: [dataset, level, entity_id, parent_entity_id, canonical_biological_label, canonical_short_label, canonical_plot_label, biological_label_confidence, manual_review_required, structural_status, aggregation_evidence_class, structural_coherence_class, subcellular_context, roi_context, n_member_modules, member_ModuleIDs, member_modules_fingerprint, annotation_evidence_fingerprint, label_contract_version, label_source, label_rationale, unsafe_interpretation, final_plot_label]
+columns:
+  dataset: {type: character}
+  level: {type: character, allowed_values: [module, supermodule]}
+  entity_id: {type: character}
+  parent_entity_id: {type: character}
+  canonical_biological_label: {type: character}
+  canonical_short_label: {type: character}
+  canonical_plot_label: {type: character}
+  biological_label_confidence: {type: character}
+  manual_review_required: {type: logical}
+  structural_status: {type: character, allowed_values: [module, singleton, multi_module]}
+  aggregation_evidence_class: {type: character}
+  structural_coherence_class: {type: character}
+  subcellular_context: {type: character}
+  roi_context: {type: character}
+  n_member_modules: {type: integer}
+  member_ModuleIDs: {type: character}
+  member_modules_fingerprint: {type: character}
+  annotation_evidence_fingerprint: {type: character}
+  label_contract_version: {type: character}
+  label_source: {type: character}
+  label_rationale: {type: character}
+  unsafe_interpretation: {type: character}
+  final_plot_label: {type: character}

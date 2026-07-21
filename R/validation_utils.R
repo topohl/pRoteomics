@@ -177,7 +177,7 @@ known_pipeline_output_specs <- function() {
       required_columns = c(
         "dataset", "level", "entity_id", "candidate_label", "candidate_source",
         "evidence_strength", "hub_support", "marker_context_support", "genericity_penalty",
-        "ontology_mismatch_flag", "conflict_penalty", "final_label_score", "selected_label", "rejection_reason"
+        "ontology_mismatch_flag", "conflict_penalty", "hub_score_contribution", "final_label_score", "selected_label", "rejection_reason"
       )
     ),
     WGCNA_final_label_lookup.csv = list(

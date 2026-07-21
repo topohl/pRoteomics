@@ -288,6 +288,22 @@ wgcna_build_final_label_lookup <- function(selected_candidates, module_rows, sup
 }
 
 wgcna_validate_label_lookup <- function(lookup) {
+  reviewed_columns <- c(
+    "canonical_biological_label", "canonical_short_label", "canonical_plot_label",
+    "biological_label_confidence", "member_modules_fingerprint",
+    "annotation_evidence_fingerprint", "label_contract_version"
+  )
+  if (all(reviewed_columns %in% names(lookup))) {
+    if (exists("wgcna_validate_canonical_lookup", mode = "function")) {
+      return(wgcna_validate_canonical_lookup(lookup, unique(lookup$dataset)[[1]]))
+    }
+    required_reviewed <- c("dataset", "level", "entity_id", "canonical_plot_label", "final_plot_label")
+    missing_reviewed <- setdiff(required_reviewed, names(lookup))
+    if (length(missing_reviewed)) stop("Reviewed WGCNA final label lookup missing required columns: ", paste(missing_reviewed, collapse = ", "), call. = FALSE)
+    if (anyDuplicated(lookup[c("dataset", "level", "entity_id")])) stop("WGCNA final label lookup has duplicate dataset x level x entity_id rows.", call. = FALSE)
+    if (!identical(lookup$canonical_plot_label, lookup$final_plot_label)) stop("final_plot_label must be an exact compatibility alias for canonical_plot_label.", call. = FALSE)
+    return(invisible(TRUE))
+  }
   required <- c(
     "dataset", "level", "entity_id", "parent_entity_id", "n_member_modules",
     "raw_top_GO_label", "best_data_driven_label", "parent_program",
