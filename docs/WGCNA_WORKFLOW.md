@@ -199,11 +199,14 @@ readable tables, source data, and plots. It should preserve both broad plotting
 labels and full annotation labels so figures stay compact without hiding the
 underlying rationale.
 
-Final label choice is centralized here through pure helpers in
-`R/wgcna_labeling_utils.R`. Biological labels, parent programs, and
-microenvironment context remain separate. The resulting canonical lookup is
-the only label source used by `08_wgcna_score_publication_summary.R`; that
-script renders score-derived plots but does not choose labels.
+Automatic proposals remain centralized in `R/wgcna_labeling_utils.R`. For the
+current microglia network, Stage 07 additionally loads
+`config/wgcna_labels/microglia.csv`, validates exactly 13 modules and 9
+supermodules against current Stage 01 membership, and makes reviewed labels
+authoritative by `dataset + level + entity_id`. Biological process,
+subcellular context, and ROI context remain separate. Automatic proposals and
+GO evidence remain provenance and are fingerprinted. `final_plot_label` is an
+exact compatibility alias for `canonical_plot_label`.
 
 Run:
 
@@ -220,6 +223,25 @@ Inspect:
 - `results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_label_candidates.csv`
 - `results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_final_label_lookup.csv`
 - `results/source_data/06_modules_WGCNA/interpretable_summary/<dataset>/`
+
+Safe to rerun: yes.
+
+### 08_wgcna_publication_figures.R
+
+Role: final reviewed microglia all-supermodule publication layer.
+
+This script reads the Stage 07 canonical lookup and reuses Stage 05 raw
+eigengenes, estimates, confidence intervals, FDR values, model diagnostics,
+sample/animal counts, and PC1 loadings. It does not fit models or alter WGCNA.
+It produces architecture, 3 x 3 global eigengenes, SUS-RES forest, SUS-RES
+spatial heatmap, multi-supermodule loadings (SM01, SM03, SM09 only), and the
+supplementary all-contrast matrix as SVG/PDF plus one source CSV per figure.
+
+Run:
+
+```powershell
+Rscript .\06_modules_WGCNA\08_wgcna_publication_figures.R --dataset microglia
+```
 
 Safe to rerun: yes.
 

@@ -134,7 +134,8 @@ The table records `script`, `dataset`, `stage`, `input_name`, expected and resol
 | WGCNA recurring-GO support audit | `ModuleProteinSetType=all`; member-module `p.adjust <= 0.05` | `results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_supermodule_GO_term_support_audit.csv` |
 | WGCNA supermodule biological coherence | signed eigengene/coherence contract | `results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_supermodule_biological_coherence.csv`; `supermodule_clustering_sensitivity.csv` |
 | WGCNA biological annotation | `validate_wgcna_module_annotation()` | `results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_module_biological_annotation.csv`; `results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_supermodule_biological_annotation.csv` |
-| WGCNA interpretable summary | `validate_wgcna_interpretable_summary()`; `wgcna_label_candidates.yml`; `wgcna_final_label_lookup.yml` | `results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_supermodule_group_effects_interpretable.csv`; `results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_module_group_effects_interpretable.csv`; `results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_label_candidates.csv`; `results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_final_label_lookup.csv`; `results/tables/06_modules_WGCNA/interpretable_summary/all/WGCNA_cross_dataset_supermodule_program_summary.csv` |
+| WGCNA interpretable summary | `validate_wgcna_interpretable_summary()`; automatic proposals in `wgcna_label_candidates.yml`; reviewed microglia lookup in `wgcna_reviewed_final_label_lookup.yml` | `results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_supermodule_group_effects_interpretable.csv`; `results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_module_group_effects_interpretable.csv`; `results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_label_candidates.csv`; `results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_final_label_lookup.csv`; `results/tables/06_modules_WGCNA/interpretable_summary/all/WGCNA_cross_dataset_supermodule_program_summary.csv` |
+| Reviewed microglia WGCNA publication figures | reviewed-label and all-supermodule source-data validation | `results/figures/06_modules_WGCNA/wgcna_publication_figures/microglia/{all_supermodule_architecture,all_supermodule_global_eigengenes,all_supermodule_sus_res_forest,all_supermodule_sus_res_spatial_heatmap,multi_supermodule_member_loadings,supplementary_all_contrast_effect_matrix}.{svg,pdf}`; matching source CSVs under `results/source_data/06_modules_WGCNA/wgcna_publication_figures/microglia/` |
 | WGCNA score-derived publication summary | score-publication validation table | `results/figures/06_modules_WGCNA/score_publication_summary/<dataset>/publication_supermodule_effect_heatmap_<dataset>_wgcna_{primary_all_replicates,sensitivity}.svg`; `results/figures/06_modules_WGCNA/score_publication_summary/<dataset>/publication_supermodule_correlation_<dataset>_wgcna_{primary_all_replicates,sensitivity}.svg`; `results/figures/06_modules_WGCNA/score_publication_summary/<dataset>/publication_supermodule_consistency_<dataset>_wgcna_{primary_all_replicates,sensitivity}.svg`; `results/tables/06_modules_WGCNA/score_publication_summary/<dataset>/WGCNA_score_publication_validation.csv` |
 | Microglia-neuropil independence claim gate | `microglia_neuropil_independence_claim_gate.yml`; `microglia_neuropil_covariate_selection_audit.yml` | `results/reviewer_audit/microglia_neuropil_independence_claim_gate.csv`; `results/reviewer_audit/microglia_neuropil_covariate_selection_audit.csv`; detailed effects under `results/tables/06_modules_WGCNA/microglia_neuropil_independence/microglia/` |
 
@@ -153,30 +154,32 @@ module supports a term only at `p.adjust <= 0.05`; the audit retains the support
 count and fraction, supporting modules, and best/worst supporting member-module
 FDR. High confidence requires support in every member module. Medium confidence
 requires at least two and at least half. Other multi-module cases are
-mixed/unresolved, and singletons are explicitly `singleton` with low
-confidence. Biological-coherence exports report signed minimum/mean/median
+mixed/unresolved, and automatic Stage 01 singletons are explicitly structural
+singletons. Reviewed singleton biological confidence is inherited from the
+member module and is not lowered automatically. Biological-coherence exports report signed minimum/mean/median
 pairwise eigengene correlation, region/layer-adjusted correlations when
 estimable, PC1 variance explained, module/protein counts, and stability over
 cut heights `0.25, 0.35, 0.45, 0.50, 0.55, 0.65`; PC1 variance alone is not
 shared-pathway evidence.
 
-WGCNA biological annotation and interpretable summaries use a semantic label
-contract. Raw GO, module-label, hub, marker, member-composition, and
-microenvironment fields remain separate audit metadata. The authoritative
-supermodule label and confidence are the recurring-GO-derived,
-stable-ID-prefixed fields from `01_WGCNA.r`; downstream composition,
-microenvironment, member-label, and hub evidence must not overwrite them.
-Singleton labels are `SMxx · singleton`; multi-module labels are
-`SMxx · dominant: ...`, `SMxx · mixed: ...`, or
-`SMxx · mixed / unresolved`.
+WGCNA biological annotation and interpretable summaries keep raw GO,
+automatic proposals, hubs, marker evidence, member composition, subcellular
+context, and ROI context as separate provenance. For microglia, the reviewed
+source registry is `config/wgcna_labels/microglia.csv`; Stage 07 is the only
+authority that promotes those labels into the canonical lookup. Stage 05 never
+reads Stage 07 outputs and Stage 06 cannot overwrite reviewed labels. Singleton
+supermodules inherit the exact reviewed member-module biological label, short
+label, confidence, and manual-review state. Singleton structure remains
+metadata and does not lower biological confidence.
 
-`WGCNA_final_label_lookup.csv` is the downstream display-label contract and is
-keyed by `dataset + level + entity_id`. For supermodules it preserves the
-authoritative `Supermodule_DisplayLabel`; composition labels are audit-only
-fallback metadata. Score-publication rendering fails when a lookup/entity ID is
-missing and validates that numeric score/statistics columns are unchanged after
-label joins. Hub evidence cannot increase supermodule support, naming
-confidence, or label scores.
+`WGCNA_final_label_lookup.csv` is keyed by `dataset + level + entity_id`.
+Microglia rows expose `canonical_biological_label`, `canonical_short_label`,
+`canonical_plot_label`, separate subcellular/ROI contexts, current membership
+and annotation-evidence fingerprints, structural metadata, and label
+provenance. `final_plot_label` is retained only as an exact compatibility alias
+for `canonical_plot_label`. Publication rendering fails when a stable ID or
+membership fingerprint is missing or stale; plots do not choose labels through
+fallback chains across legacy aliases.
 | WGCNA module complex/organelle architecture | standard integration evidence contract | `results/tables/06_modules_WGCNA/module_complex_architecture/<dataset>/module_complex_architecture.csv`; mirrored under `results/source_data/06_modules_WGCNA/module_complex_architecture/<dataset>/` |
 | WGCNA module robustness/sensitivity | standard integration evidence contract | `results/tables/06_modules_WGCNA/module_robustness_sensitivity/<dataset>/module_robustness_sensitivity.csv`; mirrored under `results/source_data/06_modules_WGCNA/module_robustness_sensitivity/<dataset>/` |
 | module-behavior coupling | standard integration evidence contract | `results/tables/08_behavior_physio_coupling/module_behavior_coupling/<dataset>/module_behavior_coupling.csv`; mirrored under `results/source_data/08_behavior_physio_coupling/module_behavior_coupling/<dataset>/` |

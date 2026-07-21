@@ -12,6 +12,7 @@ paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.
 source(paths_file)
 source(repo_path("R", "wgcna_downstream_utils.R"))
 source(repo_path("R", "wgcna_labeling_utils.R"))
+source(repo_path("R", "wgcna_reviewed_label_registry.R"))
 
 required_pkgs <- c("dplyr", "tidyr", "tibble", "ggplot2", "svglite", "readr", "stringr", "scales")
 missing_pkgs <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
@@ -64,36 +65,10 @@ dataset_display_label <- function(dataset) {
   )
 }
 
-col_or_na <- function(df, nm) {
-  if (nm %in% names(df)) return(df[[nm]])
-  rep(NA_character_, nrow(df))
-}
-
-clean_label_value <- function(x) {
-  x <- stringr::str_squish(as.character(x))
-  x[is.na(x) | !nzchar(x) | toupper(x) %in% c("NA", "NAN", "NULL")] <- NA_character_
-  x
-}
-
 is_nonfinal_fallback_label <- function(x) {
   z <- stringr::str_squish(as.character(x))
   is.na(z) | !nzchar(z) |
     grepl("Hub-supported cluster|Hub-supported module cluster|Unresolved module cluster|Mixed / unresolved|mixed / low-specificity", z, ignore.case = TRUE)
-}
-
-supermodule_label_sep <- function() paste0(" ", intToUtf8(183), " ")
-
-strip_supermodule_prefix <- function(x) {
-  stringr::str_squish(sub(paste0("^SM[0-9]+\\s*(", intToUtf8(183), "|:|-)\\s*"), "", as.character(x), ignore.case = TRUE))
-}
-
-add_supermodule_id_prefix <- function(id, label) {
-  id <- clean_label_value(id)
-  label <- clean_label_value(label)
-  out <- label
-  needs_id <- !is.na(id) & !is.na(out) & !grepl(paste0("^SM[0-9]+\\s*(", intToUtf8(183), "|:|-)"), out)
-  out[needs_id] <- paste0(id[needs_id], supermodule_label_sep(), out[needs_id])
-  out
 }
 
 label_wrap <- function(x, width = 34) {
@@ -154,128 +129,6 @@ read_csv_required <- function(path, label) {
   readr::read_csv(path, show_col_types = FALSE, progress = FALSE)
 }
 
-first_existing_csv <- function(paths) {
-  hit <- paths[file.exists(paths)]
-  if (length(hit)) hit[[1]] else NA_character_
-}
-
-legacy_multifile_supermodule_labels_frozen <- function(dataset) {
-  stop("Legacy multi-file label fallback is disabled; use WGCNA_final_label_lookup.csv.", call. = FALSE)
-  candidates <- c(
-    path_results("tables", "06_modules_WGCNA", "interpretable_summary", dataset, "WGCNA_supermodule_label_audit.csv"),
-    path_results("tables", "06_modules_WGCNA", "interpretable_summary", dataset, "WGCNA_supermodule_plot_label_qc.csv"),
-    path_results("tables", "06_modules_WGCNA", "interpretable_summary", dataset, "WGCNA_supermodule_group_effects_interpretable.csv"),
-    path_results("tables", "06_modules_WGCNA", "module_annotation", dataset, "WGCNA_supermodule_biological_annotation.csv")
-  )
-  tabs <- lapply(candidates[file.exists(candidates)], function(path) {
-    x <- readr::read_csv(path, show_col_types = FALSE, progress = FALSE)
-    x$.__label_source_file <- basename(path)
-    x
-  })
-  if (!length(tabs)) stop("No cleaned supermodule label inputs found for dataset ", dataset, call. = FALSE)
-  df <- dplyr::bind_rows(tabs)
-  id <- dplyr::coalesce(
-    clean_label_value(col_or_na(df, "SupermoduleID")),
-    clean_label_value(col_or_na(df, "supermodule_id")),
-    clean_label_value(col_or_na(df, "Supermodule_DataDriven"))
-  )
-  raw <- dplyr::coalesce(
-    clean_label_value(col_or_na(df, "Supermodule_FinalLabel")),
-    clean_label_value(col_or_na(df, "Supermodule_DisplayLabel")),
-    clean_label_value(col_or_na(df, "Supermodule_PlotLabel")),
-    id
-  )
-  candidates <- list(
-    Supermodule_CleanPlotLabel = clean_label_value(col_or_na(df, "Supermodule_CleanPlotLabel")),
-    Supermodule_CompositionDisplayLabel = add_supermodule_id_prefix(id, clean_label_value(col_or_na(df, "Supermodule_CompositionDisplayLabel"))),
-    Supermodule_CompositionLabel = add_supermodule_id_prefix(id, clean_label_value(col_or_na(df, "Supermodule_CompositionLabel"))),
-    Supermodule_PlotLabel = clean_label_value(col_or_na(df, "Supermodule_PlotLabel")),
-    Supermodule_DisplayLabel = clean_label_value(col_or_na(df, "Supermodule_DisplayLabel")),
-    Supermodule_FinalLabel = add_supermodule_id_prefix(id, clean_label_value(col_or_na(df, "Supermodule_FinalLabel"))),
-    supermodule_id = id
-  )
-  best_label <- rep(NA_character_, length(id))
-  best_source <- rep(NA_character_, length(id))
-  for (nm in names(candidates)) {
-    cand <- candidates[[nm]]
-    good <- is.na(best_label) & !is.na(cand) & !is_nonfinal_fallback_label(cand)
-    best_label[good] <- cand[good]
-    best_source[good] <- nm
-  }
-  for (nm in names(candidates)) {
-    cand <- candidates[[nm]]
-    fill <- is.na(best_label) & !is.na(cand)
-    best_label[fill] <- cand[fill]
-    best_source[fill] <- nm
-  }
-  dplyr::tibble(
-    supermodule_id = id,
-    final_plot_label = best_label,
-    final_plot_label_short = label_wrap(best_label, width = 34),
-    final_label_source = best_source,
-    raw_label = raw,
-    raw_label_source = col_or_na(df, ".__label_source_file"),
-    raw_label_rationale = dplyr::coalesce(
-      clean_label_value(col_or_na(df, "Supermodule_CompositionRationale")),
-      clean_label_value(col_or_na(df, "Supermodule_LabelRationale")),
-      clean_label_value(col_or_na(df, "supermodule_theme_label_qc_warning"))
-    ),
-    cleaned_label_available = !is.na(dplyr::coalesce(
-      clean_label_value(col_or_na(df, "Supermodule_CleanPlotLabel")),
-      clean_label_value(col_or_na(df, "Supermodule_CompositionDisplayLabel")),
-      clean_label_value(col_or_na(df, "Supermodule_CompositionLabel"))
-    )),
-    source_file = col_or_na(df, ".__label_source_file")
-  ) |>
-    dplyr::filter(!is.na(.data$supermodule_id), nzchar(.data$supermodule_id)) |>
-    dplyr::arrange(.data$supermodule_id, dplyr::desc(.data$final_label_source == "Supermodule_CleanPlotLabel")) |>
-    dplyr::distinct(.data$supermodule_id, .keep_all = TRUE)
-}
-
-legacy_multifile_module_labels_frozen <- function(dataset) {
-  stop("Legacy multi-file label fallback is disabled; use WGCNA_final_label_lookup.csv.", call. = FALSE)
-  candidates <- c(
-    path_results("tables", "06_modules_WGCNA", "interpretable_summary", dataset, "WGCNA_module_plot_label_qc.csv"),
-    path_results("tables", "06_modules_WGCNA", "interpretable_summary", dataset, "WGCNA_module_group_effects_interpretable.csv"),
-    path_results("tables", "06_modules_WGCNA", "module_annotation", dataset, "WGCNA_module_biological_annotation.csv")
-  )
-  tabs <- lapply(candidates[file.exists(candidates)], function(path) {
-    x <- readr::read_csv(path, show_col_types = FALSE, progress = FALSE)
-    x$.__label_source_file <- basename(path)
-    x
-  })
-  if (!length(tabs)) return(tibble::tibble())
-  df <- dplyr::bind_rows(tabs)
-  id <- dplyr::coalesce(clean_label_value(col_or_na(df, "module_id")), clean_label_value(col_or_na(df, "ModuleID")))
-  candidates <- list(
-    Module_CleanPlotLabel = clean_label_value(col_or_na(df, "Module_CleanPlotLabel")),
-    module_label_display = clean_label_value(col_or_na(df, "module_label_display")),
-    cleaned_biological_label = clean_label_value(col_or_na(df, "cleaned_biological_label")),
-    module_biological_label = clean_label_value(col_or_na(df, "module_biological_label")),
-    ModuleLabel_Final = clean_label_value(col_or_na(df, "ModuleLabel_Final")),
-    module_label = clean_label_value(col_or_na(df, "module_label")),
-    module_id = id
-  )
-  best_label <- rep(NA_character_, length(id))
-  best_source <- rep(NA_character_, length(id))
-  for (nm in names(candidates)) {
-    cand <- candidates[[nm]]
-    good <- is.na(best_label) & !is.na(cand) & !is_nonfinal_fallback_label(cand)
-    best_label[good] <- cand[good]
-    best_source[good] <- nm
-  }
-  dplyr::tibble(
-    module_id = id,
-    final_plot_label = best_label,
-    final_label_source = best_source,
-    raw_label = dplyr::coalesce(clean_label_value(col_or_na(df, "ModuleLabel_Final")), clean_label_value(col_or_na(df, "module_label")), id),
-    raw_label_source = col_or_na(df, ".__label_source_file"),
-    raw_label_rationale = dplyr::coalesce(clean_label_value(col_or_na(df, "cleaned_biological_label_rationale")), clean_label_value(col_or_na(df, "GO_label_relevance_rationale")))
-  ) |>
-    dplyr::filter(!is.na(.data$module_id), nzchar(.data$module_id)) |>
-    dplyr::distinct(.data$module_id, .keep_all = TRUE)
-}
-
 canonical_final_label_lookup <- function(dataset) {
   path <- path_results("tables", "06_modules_WGCNA", "interpretable_summary", dataset, "WGCNA_final_label_lookup.csv")
   lookup <- read_csv_required(path, "canonical WGCNA final label lookup produced by 07_wgcna_interpretable_summary.r")
@@ -287,14 +140,29 @@ canonical_final_label_lookup <- function(dataset) {
 }
 
 canonical_supermodule_labels <- function(lookup) {
+  if (!"canonical_plot_label" %in% names(lookup)) {
+    return(lookup |>
+      dplyr::filter(.data$level == "supermodule") |>
+      dplyr::transmute(
+        supermodule_id = .data$entity_id,
+        final_plot_label = .data$final_plot_label,
+        final_plot_label_short = label_wrap(.data$final_plot_label, width = 34),
+        final_label_source = "WGCNA_final_label_lookup.csv",
+        raw_label = .data$entity_id,
+        raw_label_source = "WGCNA_final_label_lookup.csv",
+        raw_label_rationale = .data$label_rationale,
+        cleaned_label_available = TRUE,
+        source_file = "WGCNA_final_label_lookup.csv"
+      ))
+  }
   lookup |>
     dplyr::filter(.data$level == "supermodule") |>
     dplyr::transmute(
       supermodule_id = .data$entity_id,
-      final_plot_label = .data$final_plot_label,
-      final_plot_label_short = label_wrap(.data$final_plot_label, width = 34),
+      final_plot_label = .data$canonical_plot_label,
+      final_plot_label_short = .data$canonical_plot_label,
       final_label_source = "WGCNA_final_label_lookup.csv",
-      raw_label = dplyr::coalesce(.data$raw_top_GO_label, .data$entity_id),
+      raw_label = .data$canonical_biological_label,
       raw_label_source = "WGCNA_final_label_lookup.csv",
       raw_label_rationale = .data$label_rationale,
       cleaned_label_available = TRUE,
@@ -303,13 +171,25 @@ canonical_supermodule_labels <- function(lookup) {
 }
 
 canonical_module_labels <- function(lookup) {
+  if (!"canonical_plot_label" %in% names(lookup)) {
+    return(lookup |>
+      dplyr::filter(.data$level == "module") |>
+      dplyr::transmute(
+        module_id = .data$entity_id,
+        final_plot_label = .data$final_plot_label,
+        final_label_source = "WGCNA_final_label_lookup.csv",
+        raw_label = .data$entity_id,
+        raw_label_source = "WGCNA_final_label_lookup.csv",
+        raw_label_rationale = .data$label_rationale
+      ))
+  }
   lookup |>
     dplyr::filter(.data$level == "module") |>
     dplyr::transmute(
       module_id = .data$entity_id,
-      final_plot_label = .data$final_plot_label,
+      final_plot_label = .data$canonical_plot_label,
       final_label_source = "WGCNA_final_label_lookup.csv",
-      raw_label = dplyr::coalesce(.data$raw_top_GO_label, .data$entity_id),
+      raw_label = .data$canonical_biological_label,
       raw_label_source = "WGCNA_final_label_lookup.csv",
       raw_label_rationale = .data$label_rationale
     )

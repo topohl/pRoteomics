@@ -15,7 +15,6 @@
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
 source(repo_path("R", "wgcna_downstream_utils.R"))
-source(repo_path("R", "wgcna_labeling_utils.R"))
 
 required_pkgs <- c("dplyr", "tidyr", "tibble", "ggplot2", "svglite", "readr", "scales")
 missing_pkgs <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
@@ -118,50 +117,8 @@ coalesce_nonempty <- function(...) {
   Reduce(dplyr::coalesce, vals)
 }
 
-wrap_final_plot_label <- function(x, width = 34L) {
+wrap_diagnostic_plot_label <- function(x, width = 34L) {
   vapply(as.character(x), function(z) paste(strwrap(z, width = width), collapse = "\n"), character(1))
-}
-
-read_final_label_lookup <- function(dataset) {
-  path <- path_results(
-    "tables", "06_modules_WGCNA", "interpretable_summary",
-    dataset, "WGCNA_final_label_lookup.csv"
-  )
-  if (!file.exists(path)) return(NULL)
-  lookup <- readr::read_csv(path, show_col_types = FALSE, progress = FALSE)
-  wgcna_validate_label_lookup(lookup)
-  lookup |>
-    dplyr::filter(.data$dataset == dataset)
-}
-
-final_supermodule_label_lookup <- function(dataset) {
-  lookup <- read_final_label_lookup(dataset)
-  if (is.null(lookup) || !nrow(lookup)) {
-    out <- tibble::tibble(
-      dataset = character(),
-      supermodule_id = character(),
-      final_plot_label = character(),
-      final_plot_label_short = character(),
-      final_label_source = character(),
-      raw_label = character(),
-      label_rationale = character()
-    )
-    attr(out, "lookup_present") <- !is.null(lookup)
-    return(out)
-  }
-  out <- lookup |>
-    dplyr::filter(.data$level == "supermodule") |>
-    dplyr::transmute(
-      dataset = as.character(.data$dataset),
-      supermodule_id = as.character(.data$entity_id),
-      final_plot_label = as.character(.data$final_plot_label),
-      final_plot_label_short = wrap_final_plot_label(.data$final_plot_label, width = 34L),
-      final_label_source = "WGCNA_final_label_lookup.csv",
-      raw_label = dplyr::coalesce(.data$raw_top_GO_label, .data$entity_id),
-      label_rationale = .data$label_rationale
-    )
-  attr(out, "lookup_present") <- TRUE
-  out
 }
 
 supermodule_label_sep <- function() paste0(" ", intToUtf8(183), " ")
@@ -336,13 +293,11 @@ validate_canonical_supermodule_label_lookup <- function(lookup, allow_empty = TR
 }
 
 canonical_supermodule_label_lookup <- function(supermodule_contents, comp, super_ann, super_endpoint_map,
-                                               dataset,
-                                               final_labels = final_supermodule_label_lookup(dataset)) {
+                                               dataset) {
   dataset <- trimws(as.character(dataset))
   if (length(dataset) != 1L || is.na(dataset) || !nzchar(dataset)) {
     stop("canonical supermodule label lookup requires one explicit nonmissing dataset.", call. = FALSE)
   }
-  final_lookup_present <- isTRUE(attr(final_labels, "lookup_present"))
   ids_for_dataset <- function(df, id_col) {
     if (is.null(df) || !nrow(df) || !id_col %in% names(df)) return(character())
     values <- as.character(df[[id_col]])
@@ -353,7 +308,6 @@ canonical_supermodule_label_lookup <- function(supermodule_contents, comp, super
     values[!is.na(values) & nzchar(values)]
   }
   ids <- unique(c(
-    ids_for_dataset(final_labels, "supermodule_id"),
     ids_for_dataset(supermodule_contents, "supermodule_id"),
     ids_for_dataset(comp, "supermodule_id"),
     ids_for_dataset(super_ann, "SupermoduleID"),
@@ -390,27 +344,7 @@ canonical_supermodule_label_lookup <- function(supermodule_contents, comp, super
     out
   }
 
-  final_lookup <- if (!is.null(final_labels) && nrow(final_labels)) {
-    final0 <- final_labels
-    for (nm in c("supermodule_id", "final_plot_label", "final_plot_label_short", "final_label_source")) {
-      if (!nm %in% names(final0)) final0[[nm]] <- NA_character_
-    }
-    final0 |>
-      dplyr::transmute(
-        dataset = if ("dataset" %in% names(.env$final0)) as.character(.data$dataset) else .env$dataset,
-        supermodule_id = as.character(.data$supermodule_id),
-        final_plot_label_from_lookup = as.character(.data$final_plot_label),
-        final_plot_label_short_from_lookup = as.character(.data$final_plot_label_short),
-        final_label_source = as.character(.data$final_label_source)
-      ) |>
-      dplyr::filter(
-        .data$dataset == .env$dataset,
-        !is.na(.data$supermodule_id), nzchar(.data$supermodule_id)
-      ) |>
-      dplyr::distinct(.data$dataset, .data$supermodule_id, .keep_all = TRUE)
-  } else {
-    empty[, c("dataset", "supermodule_id", "final_plot_label_from_lookup", "final_plot_label_short_from_lookup", "final_label_source"), drop = FALSE]
-  }
+  final_lookup <- empty[, c("dataset", "supermodule_id", "final_plot_label_from_lookup", "final_plot_label_short_from_lookup", "final_label_source"), drop = FALSE]
 
   base <- tibble::tibble(dataset = .env$dataset, supermodule_id = ids) |>
     dplyr::left_join(final_lookup, by = c("dataset", "supermodule_id"), relationship = "many-to-one") |>
@@ -458,10 +392,8 @@ canonical_supermodule_label_lookup <- function(supermodule_contents, comp, super
     "Supermodule_LongLabel", "Macroprogram_Display", "Supermodule_DisplayLabel",
     "endpoint_label", "supermodule_id"
   )
-  resolved <- clean_supermodule_label_candidate(base$final_plot_label_from_lookup)
-  final_has_label <- !is.na(resolved) & nzchar(resolved)
-  resolved[!final_has_label] <- NA_character_
-  source <- ifelse(final_has_label, "WGCNA_final_label_lookup.csv", NA_character_)
+  resolved <- rep(NA_character_, nrow(base))
+  source <- rep(NA_character_, nrow(base))
   for (nm in candidate_order) {
     cand <- clean_supermodule_label_candidate(base[[nm]])
     if (nm != "supermodule_id") cand[is_generic_supermodule_label(cand)] <- NA_character_
@@ -473,18 +405,14 @@ canonical_supermodule_label_lookup <- function(supermodule_contents, comp, super
   resolved[fallback] <- "Mixed / unresolved"
   source[fallback] <- "fallback_mixed_unresolved"
   canonical <- add_supermodule_id_prefix(base$supermodule_id, resolved)
-  plot_label <- dplyr::coalesce(
-    clean_supermodule_label_candidate(base$final_plot_label_short_from_lookup),
-    wrap_final_plot_label(canonical, width = 34L)
-  )
-  plot_label[!final_has_label] <- wrap_final_plot_label(canonical[!final_has_label], width = 34L)
+  plot_label <- wrap_diagnostic_plot_label(canonical, width = 34L)
   out <- base |>
     dplyr::mutate(
       canonical_supermodule_label = canonical,
       canonical_supermodule_plot_label = plot_label,
       label_source = source,
       fallback_used = .data$label_source == "fallback_mixed_unresolved",
-      lookup_present = final_lookup_present
+      lookup_present = FALSE
     ) |>
     dplyr::select(dplyr::all_of(names(empty)))
   validate_canonical_supermodule_label_lookup(out)
@@ -627,8 +555,7 @@ all_supermodule_label_audit <- function(dataset, canonical_lookup, eigengene_val
       label_used_in_cohend_heatmap_source = dplyr::coalesce(.data$label_used_in_cohend_heatmap_source, .data$canonical_supermodule_plot_label, .data$canonical_supermodule_label),
       labels_match_eigengene_vs_cohend = .data$label_used_in_eigengene_group_plot == .data$label_used_in_cohend_heatmap_source,
       label_qc_warning = dplyr::case_when(
-        !(.data$lookup_present %in% TRUE) ~ "final_lookup_missing",
-        is.na(.data$final_plot_label_from_lookup) | !nzchar(.data$final_plot_label_from_lookup) ~ "id_absent_from_final_lookup",
+        !(.data$lookup_present %in% TRUE) ~ "stage01_diagnostic_label_only",
         .data$fallback_used %in% TRUE ~ "fallback_mixed_unresolved_used",
         TRUE ~ "ok"
       )
