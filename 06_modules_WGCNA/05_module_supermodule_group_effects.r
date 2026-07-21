@@ -262,19 +262,9 @@ resolve_supermodule_labels <- function(df, id_col = "SupermoduleID") {
   )
 }
 
-canonical_supermodule_label_lookup <- function(supermodule_contents, comp, super_ann, super_endpoint_map, final_labels = final_supermodule_label_lookup(DATASET)) {
-  final_lookup_present <- isTRUE(attr(final_labels, "lookup_present"))
-  ids <- unique(c(
-    as.character(col_if_present(final_labels, "supermodule_id")),
-    as.character(col_if_present(supermodule_contents, "supermodule_id")),
-    as.character(col_if_present(comp, "supermodule_id")),
-    as.character(col_if_present(super_ann, "SupermoduleID")),
-    as.character(col_if_present(super_ann, "Supermodule_DataDrivenID")),
-    as.character(col_if_present(super_ann, "Supermodule_DataDriven")),
-    as.character(col_if_present(super_endpoint_map, "endpoint_id"))
-  ))
-  ids <- ids[!is.na(ids) & nzchar(ids)]
-  empty <- tibble::tibble(
+empty_canonical_supermodule_label_lookup <- function() {
+  tibble::tibble(
+    dataset = character(),
     supermodule_id = character(),
     final_plot_label_from_lookup = character(),
     final_plot_label_short_from_lookup = character(),
@@ -295,7 +285,88 @@ canonical_supermodule_label_lookup <- function(supermodule_contents, comp, super
     fallback_used = logical(),
     lookup_present = logical()
   )
-  if (!length(ids)) return(empty)
+}
+
+validate_canonical_supermodule_label_lookup <- function(lookup, allow_empty = TRUE) {
+  expected_names <- names(empty_canonical_supermodule_label_lookup())
+  if (is.null(lookup) || !is.data.frame(lookup)) {
+    stop("canonical supermodule label lookup must be a data frame.", call. = FALSE)
+  }
+  if (anyDuplicated(names(lookup))) {
+    stop("canonical supermodule label lookup contains duplicated column names.", call. = FALSE)
+  }
+  if (!identical(names(lookup), expected_names)) {
+    stop(
+      "canonical supermodule label lookup does not match the typed schema; missing: ",
+      paste(setdiff(expected_names, names(lookup)), collapse = ", "),
+      "; unexpected: ", paste(setdiff(names(lookup), expected_names), collapse = ", "), ".",
+      call. = FALSE
+    )
+  }
+  if (!nrow(lookup)) {
+    if (!isTRUE(allow_empty)) stop("canonical supermodule label lookup is empty.", call. = FALSE)
+    return(invisible(TRUE))
+  }
+  dataset <- trimws(as.character(lookup$dataset))
+  supermodule_id <- trimws(as.character(lookup$supermodule_id))
+  if (any(is.na(dataset) | !nzchar(dataset))) {
+    stop("canonical supermodule label lookup contains missing dataset keys.", call. = FALSE)
+  }
+  if (any(is.na(supermodule_id) | !nzchar(supermodule_id))) {
+    stop("canonical supermodule label lookup contains missing supermodule_id keys.", call. = FALSE)
+  }
+  if (any(!grepl("^SM[0-9]{2,}$", supermodule_id))) {
+    stop("canonical supermodule label lookup requires stable supermodule_id values such as SM01.", call. = FALSE)
+  }
+  key <- paste(dataset, supermodule_id, sep = "::")
+  if (anyDuplicated(key)) {
+    stop("canonical supermodule label lookup has duplicated dataset + supermodule_id keys.", call. = FALSE)
+  }
+  for (nm in c("canonical_supermodule_label", "canonical_supermodule_plot_label")) {
+    values <- trimws(as.character(lookup[[nm]]))
+    if (any(is.na(values) | !nzchar(values))) {
+      stop("canonical supermodule label lookup contains missing ", nm, " values.", call. = FALSE)
+    }
+    n_values <- tapply(values, key, function(x) length(unique(x)))
+    if (any(n_values != 1L)) {
+      stop("canonical supermodule label lookup must contain one ", nm, " per dataset + supermodule_id.", call. = FALSE)
+    }
+  }
+  invisible(TRUE)
+}
+
+canonical_supermodule_label_lookup <- function(supermodule_contents, comp, super_ann, super_endpoint_map,
+                                               dataset,
+                                               final_labels = final_supermodule_label_lookup(dataset)) {
+  dataset <- trimws(as.character(dataset))
+  if (length(dataset) != 1L || is.na(dataset) || !nzchar(dataset)) {
+    stop("canonical supermodule label lookup requires one explicit nonmissing dataset.", call. = FALSE)
+  }
+  final_lookup_present <- isTRUE(attr(final_labels, "lookup_present"))
+  ids_for_dataset <- function(df, id_col) {
+    if (is.null(df) || !nrow(df) || !id_col %in% names(df)) return(character())
+    values <- as.character(df[[id_col]])
+    if ("dataset" %in% names(df)) {
+      row_dataset <- as.character(df$dataset)
+      values <- values[!is.na(row_dataset) & row_dataset == dataset]
+    }
+    values[!is.na(values) & nzchar(values)]
+  }
+  ids <- unique(c(
+    ids_for_dataset(final_labels, "supermodule_id"),
+    ids_for_dataset(supermodule_contents, "supermodule_id"),
+    ids_for_dataset(comp, "supermodule_id"),
+    ids_for_dataset(super_ann, "SupermoduleID"),
+    ids_for_dataset(super_ann, "Supermodule_DataDrivenID"),
+    ids_for_dataset(super_ann, "Supermodule_DataDriven"),
+    ids_for_dataset(super_endpoint_map, "endpoint_id")
+  ))
+  ids <- ids[!is.na(ids) & nzchar(ids)]
+  empty <- empty_canonical_supermodule_label_lookup()
+  if (!length(ids)) {
+    validate_canonical_supermodule_label_lookup(empty)
+    return(empty)
+  }
 
   first_by_id <- function(df, id_col, value_col, out_col) {
     if (is.null(df) || !nrow(df) || !id_col %in% names(df) || !value_col %in% names(df)) {
@@ -305,11 +376,14 @@ canonical_supermodule_label_lookup <- function(supermodule_contents, comp, super
     }
     out <- df |>
       dplyr::transmute(
-        dataset = if ("dataset" %in% names(df)) as.character(.data$dataset) else DATASET,
+        dataset = if ("dataset" %in% names(.env$df)) as.character(.data$dataset) else .env$dataset,
         supermodule_id = as.character(.data[[id_col]]),
         value = as.character(.data[[value_col]])
       ) |>
-      dplyr::filter(!is.na(.data$supermodule_id), nzchar(.data$supermodule_id)) |>
+      dplyr::filter(
+        .data$dataset == .env$dataset,
+        !is.na(.data$supermodule_id), nzchar(.data$supermodule_id)
+      ) |>
       dplyr::group_by(.data$dataset, .data$supermodule_id) |>
       dplyr::summarise(value = first_value(stats::na.omit(.data$value), NA_character_), .groups = "drop")
     names(out)[names(out) == "value"] <- out_col
@@ -317,25 +391,32 @@ canonical_supermodule_label_lookup <- function(supermodule_contents, comp, super
   }
 
   final_lookup <- if (!is.null(final_labels) && nrow(final_labels)) {
-    final_labels |>
+    final0 <- final_labels
+    for (nm in c("supermodule_id", "final_plot_label", "final_plot_label_short", "final_label_source")) {
+      if (!nm %in% names(final0)) final0[[nm]] <- NA_character_
+    }
+    final0 |>
       dplyr::transmute(
-        dataset = if ("dataset" %in% names(final_labels)) as.character(.data$dataset) else DATASET,
+        dataset = if ("dataset" %in% names(.env$final0)) as.character(.data$dataset) else .env$dataset,
         supermodule_id = as.character(.data$supermodule_id),
         final_plot_label_from_lookup = as.character(.data$final_plot_label),
         final_plot_label_short_from_lookup = as.character(.data$final_plot_label_short),
         final_label_source = as.character(.data$final_label_source)
       ) |>
-      dplyr::filter(!is.na(.data$supermodule_id), nzchar(.data$supermodule_id)) |>
+      dplyr::filter(
+        .data$dataset == .env$dataset,
+        !is.na(.data$supermodule_id), nzchar(.data$supermodule_id)
+      ) |>
       dplyr::distinct(.data$dataset, .data$supermodule_id, .keep_all = TRUE)
   } else {
     empty[, c("dataset", "supermodule_id", "final_plot_label_from_lookup", "final_plot_label_short_from_lookup", "final_label_source"), drop = FALSE]
   }
 
-  base <- tibble::tibble(dataset = DATASET, supermodule_id = ids) |>
-    dplyr::left_join(final_lookup, by = c("dataset", "supermodule_id")) |>
-    dplyr::left_join(first_by_id(supermodule_contents, "supermodule_id", "supermodule_label", "supermodule_contents_label"), by = c("dataset", "supermodule_id")) |>
-    dplyr::left_join(first_by_id(comp, "supermodule_id", "supermodule_label", "comp_label"), by = c("dataset", "supermodule_id")) |>
-    dplyr::left_join(first_by_id(super_endpoint_map, "endpoint_id", "endpoint_label", "endpoint_label"), by = c("dataset", "supermodule_id"))
+  base <- tibble::tibble(dataset = .env$dataset, supermodule_id = ids) |>
+    dplyr::left_join(final_lookup, by = c("dataset", "supermodule_id"), relationship = "many-to-one") |>
+    dplyr::left_join(first_by_id(supermodule_contents, "supermodule_id", "supermodule_label", "supermodule_contents_label"), by = c("dataset", "supermodule_id"), relationship = "many-to-one") |>
+    dplyr::left_join(first_by_id(comp, "supermodule_id", "supermodule_label", "comp_label"), by = c("dataset", "supermodule_id"), relationship = "many-to-one") |>
+    dplyr::left_join(first_by_id(super_endpoint_map, "endpoint_id", "endpoint_label", "endpoint_label"), by = c("dataset", "supermodule_id"), relationship = "many-to-one")
 
   ann <- if (!is.null(super_ann) && nrow(super_ann)) {
     ann0 <- super_ann
@@ -347,7 +428,7 @@ canonical_supermodule_label_lookup <- function(supermodule_contents, comp, super
     }
     ann0 |>
       dplyr::transmute(
-        dataset = if ("dataset" %in% names(ann0)) as.character(.data$dataset) else DATASET,
+        dataset = if ("dataset" %in% names(.env$ann0)) as.character(.data$dataset) else .env$dataset,
         supermodule_id = as.character(.data$SupermoduleID),
         Supermodule_CompositionDisplayLabel = as.character(.data$Supermodule_CompositionDisplayLabel),
         Supermodule_CompositionLabel = as.character(.data$Supermodule_CompositionLabel),
@@ -357,14 +438,20 @@ canonical_supermodule_label_lookup <- function(supermodule_contents, comp, super
         Macroprogram_Display = as.character(.data$Macroprogram_Display),
         Supermodule_DisplayLabel = as.character(.data$Supermodule_DisplayLabel)
       ) |>
-      dplyr::filter(!is.na(.data$supermodule_id), nzchar(.data$supermodule_id)) |>
+      dplyr::filter(
+        .data$dataset == .env$dataset,
+        !is.na(.data$supermodule_id), nzchar(.data$supermodule_id)
+      ) |>
       dplyr::distinct(.data$dataset, .data$supermodule_id, .keep_all = TRUE)
   } else {
     empty[, c("dataset", "supermodule_id", "Supermodule_CompositionDisplayLabel", "Supermodule_CompositionLabel", "cleaned_biological_label", "Supermodule_FinalLabel", "Supermodule_LongLabel", "Macroprogram_Display", "Supermodule_DisplayLabel"), drop = FALSE]
   }
 
-  base <- base |> dplyr::left_join(ann, by = c("dataset", "supermodule_id"))
-  for (nm in names(empty)) if (!nm %in% names(base)) base[[nm]] <- NA_character_
+  base <- base |>
+    dplyr::left_join(ann, by = c("dataset", "supermodule_id"), relationship = "many-to-one")
+  for (nm in names(empty)) {
+    if (!nm %in% names(base)) base[[nm]] <- empty[[nm]][NA_integer_][rep(1L, nrow(base))]
+  }
   candidate_order <- c(
     "supermodule_contents_label", "comp_label", "Supermodule_CompositionDisplayLabel",
     "Supermodule_CompositionLabel", "cleaned_biological_label", "Supermodule_FinalLabel",
@@ -391,7 +478,7 @@ canonical_supermodule_label_lookup <- function(supermodule_contents, comp, super
     wrap_final_plot_label(canonical, width = 34L)
   )
   plot_label[!final_has_label] <- wrap_final_plot_label(canonical[!final_has_label], width = 34L)
-  base |>
+  out <- base |>
     dplyr::mutate(
       canonical_supermodule_label = canonical,
       canonical_supermodule_plot_label = plot_label,
@@ -400,11 +487,27 @@ canonical_supermodule_label_lookup <- function(supermodule_contents, comp, super
       lookup_present = final_lookup_present
     ) |>
     dplyr::select(dplyr::all_of(names(empty)))
+  validate_canonical_supermodule_label_lookup(out)
+  out
 }
 
 apply_canonical_supermodule_labels <- function(df, canonical_lookup) {
-  if (is.null(df) || !nrow(df) || is.null(canonical_lookup) || !nrow(canonical_lookup) || !"supermodule_id" %in% names(df)) return(df)
-  if (!"dataset" %in% names(df)) stop("Supermodule label application requires dataset + supermodule_id keys.", call. = FALSE)
+  if (is.null(df)) return(df)
+  if (!is.data.frame(df)) stop("Supermodule label application requires a data-frame result table.", call. = FALSE)
+  if (anyDuplicated(names(df))) stop("Supermodule label application input contains duplicated column names.", call. = FALSE)
+  require_module_contract_columns(df, c("dataset", "supermodule_id"), "supermodule label application input")
+  validate_canonical_supermodule_label_lookup(canonical_lookup, allow_empty = TRUE)
+  if (!nrow(df)) return(df)
+  dataset <- trimws(as.character(df$dataset))
+  supermodule_id <- trimws(as.character(df$supermodule_id))
+  if (any(is.na(dataset) | !nzchar(dataset) | is.na(supermodule_id) | !nzchar(supermodule_id))) {
+    stop("Supermodule label application input contains missing dataset + supermodule_id keys.", call. = FALSE)
+  }
+  if (!nrow(canonical_lookup)) {
+    stop("Supermodule label application has result rows but the canonical lookup is empty.", call. = FALSE)
+  }
+  key_before <- paste(dataset, supermodule_id, sep = "::")
+  n_before <- nrow(df)
   out <- df |>
     dplyr::left_join(
       canonical_lookup |>
@@ -413,8 +516,25 @@ apply_canonical_supermodule_labels <- function(df, canonical_lookup) {
           canonical_supermodule_label_lookup = "canonical_supermodule_label",
           canonical_supermodule_plot_label_lookup = "canonical_supermodule_plot_label"
         ),
-      by = c("dataset", "supermodule_id")
+      by = c("dataset", "supermodule_id"),
+      relationship = "many-to-one"
     )
+  if (nrow(out) != n_before) {
+    stop("Canonical supermodule label join changed the number of result rows.", call. = FALSE)
+  }
+  key_after <- paste(as.character(out$dataset), as.character(out$supermodule_id), sep = "::")
+  if (!identical(key_after, key_before)) {
+    stop("Canonical supermodule label join changed result-row ordering.", call. = FALSE)
+  }
+  missing_mapping <- is.na(out$canonical_supermodule_label_lookup) |
+    !nzchar(trimws(as.character(out$canonical_supermodule_label_lookup)))
+  if (any(missing_mapping)) {
+    stop(
+      "Canonical supermodule label lookup is missing result-table key(s): ",
+      paste(unique(key_before[missing_mapping]), collapse = ", "), ".",
+      call. = FALSE
+    )
+  }
   if ("supermodule_label" %in% names(out)) {
     out$supermodule_label <- dplyr::coalesce(out$canonical_supermodule_label_lookup, out$supermodule_label)
   }
@@ -422,8 +542,12 @@ apply_canonical_supermodule_labels <- function(df, canonical_lookup) {
   if (!"canonical_supermodule_plot_label" %in% names(out)) out$canonical_supermodule_plot_label <- NA_character_
   out$canonical_supermodule_label <- dplyr::coalesce(out$canonical_supermodule_label_lookup, out$canonical_supermodule_label)
   out$canonical_supermodule_plot_label <- dplyr::coalesce(out$canonical_supermodule_plot_label_lookup, out$canonical_supermodule_plot_label)
-  out |>
+  out <- out |>
     dplyr::select(-dplyr::any_of(c("canonical_supermodule_label_lookup", "canonical_supermodule_plot_label_lookup")))
+  if (anyDuplicated(names(out))) {
+    stop("Canonical supermodule label join produced duplicated output columns.", call. = FALSE)
+  }
+  out
 }
 
 all_supermodule_label_audit <- function(dataset, canonical_lookup, eigengene_values, cohend_source) {
@@ -453,17 +577,23 @@ all_supermodule_label_audit <- function(dataset, canonical_lookup, eigengene_val
     lookup_present = logical(),
     label_qc_warning = character()
   )
-  if (is.null(canonical_lookup) || !nrow(canonical_lookup)) return(empty)
+  dataset <- trimws(as.character(dataset))
+  if (length(dataset) != 1L || is.na(dataset) || !nzchar(dataset)) {
+    stop("Supermodule label audit requires one explicit dataset.", call. = FALSE)
+  }
+  validate_canonical_supermodule_label_lookup(canonical_lookup, allow_empty = TRUE)
+  if (!nrow(canonical_lookup)) return(empty)
   eig_labels <- if (!is.null(eigengene_values) && nrow(eigengene_values) && "supermodule_id" %in% names(eigengene_values)) {
     eigengene_values |>
       dplyr::transmute(
-        dataset = if ("dataset" %in% names(eigengene_values)) as.character(.data$dataset) else dataset,
+        dataset = if ("dataset" %in% names(.env$eigengene_values)) as.character(.data$dataset) else .env$dataset,
         supermodule_id = as.character(.data$supermodule_id),
         label_used_in_eigengene_group_plot = dplyr::coalesce(
           as.character(.data$canonical_supermodule_plot_label),
           as.character(.data$supermodule_label)
         )
       ) |>
+      dplyr::filter(.data$dataset == .env$dataset) |>
       dplyr::distinct(.data$dataset, .data$supermodule_id, .keep_all = TRUE)
   } else {
     tibble::tibble(dataset = character(), supermodule_id = character(), label_used_in_eigengene_group_plot = character())
@@ -471,21 +601,27 @@ all_supermodule_label_audit <- function(dataset, canonical_lookup, eigengene_val
   cohend_labels <- if (!is.null(cohend_source) && nrow(cohend_source) && "supermodule_id" %in% names(cohend_source)) {
     cohend_source |>
       dplyr::transmute(
-        dataset = if ("dataset" %in% names(cohend_source)) as.character(.data$dataset) else dataset,
+        dataset = if ("dataset" %in% names(.env$cohend_source)) as.character(.data$dataset) else .env$dataset,
         supermodule_id = as.character(.data$supermodule_id),
         label_used_in_cohend_heatmap_source = dplyr::coalesce(
           as.character(.data$canonical_supermodule_plot_label),
           as.character(.data$supermodule_label)
         )
       ) |>
+      dplyr::filter(.data$dataset == .env$dataset) |>
       dplyr::distinct(.data$dataset, .data$supermodule_id, .keep_all = TRUE)
   } else {
     tibble::tibble(dataset = character(), supermodule_id = character(), label_used_in_cohend_heatmap_source = character())
   }
-  canonical_lookup |>
+  audit_base <- canonical_lookup |>
+    dplyr::filter(.data$dataset == .env$dataset) |>
     dplyr::mutate(dataset = as.character(.data$dataset)) |>
-    dplyr::left_join(eig_labels, by = c("dataset", "supermodule_id")) |>
-    dplyr::left_join(cohend_labels, by = c("dataset", "supermodule_id")) |>
+    dplyr::left_join(eig_labels, by = c("dataset", "supermodule_id"), relationship = "many-to-one") |>
+    dplyr::left_join(cohend_labels, by = c("dataset", "supermodule_id"), relationship = "many-to-one")
+  if (nrow(audit_base) != sum(canonical_lookup$dataset == dataset)) {
+    stop("Supermodule label audit joins changed canonical lookup row count.", call. = FALSE)
+  }
+  audit_base |>
     dplyr::mutate(
       label_used_in_eigengene_group_plot = dplyr::coalesce(.data$label_used_in_eigengene_group_plot, .data$canonical_supermodule_plot_label, .data$canonical_supermodule_label),
       label_used_in_cohend_heatmap_source = dplyr::coalesce(.data$label_used_in_cohend_heatmap_source, .data$canonical_supermodule_plot_label, .data$canonical_supermodule_label),
@@ -1113,7 +1249,7 @@ directional_score_significance_rows <- function(dataset, canonical_lookup) {
   )
   out <- score |>
     dplyr::mutate(
-      dataset = dataset,
+      dataset = .env$dataset,
       supermodule_id = as.character(.data$Module),
       contrast = contrast_display_label(.env$contrast_source),
       spatial_unit = as.character(.data$RegionLayer),
@@ -1154,10 +1290,8 @@ directional_score_significance_rows <- function(dataset, canonical_lookup) {
       "local_directional_rows_excluded_from_global", "source_path"
     )
   if (!nrow(out)) return(empty_supermodule_eigengene_significance())
-  out |>
-    dplyr::left_join(canonical_lookup |> dplyr::select("dataset", "supermodule_id", "canonical_supermodule_label"), by = c("dataset", "supermodule_id")) |>
+  apply_canonical_supermodule_labels(out, canonical_lookup) |>
     dplyr::mutate(
-      canonical_supermodule_label = dplyr::coalesce(.data$canonical_supermodule_label, add_supermodule_id_prefix(.data$supermodule_id, NA_character_)),
       supermodule_label = .data$canonical_supermodule_label
     ) |>
     add_bh_significance_labels()
@@ -1165,7 +1299,7 @@ directional_score_significance_rows <- function(dataset, canonical_lookup) {
 
 super_out_significance_rows <- function(super_effects, effect_scope, canonical_lookup) {
   if (is.null(super_effects) || !nrow(super_effects)) return(empty_supermodule_eigengene_significance())
-  super_effects |>
+  out <- super_effects |>
     dplyr::filter(
       .data$level == "supermodule",
       .data$effect_scope == effect_scope,
@@ -1198,10 +1332,9 @@ super_out_significance_rows <- function(super_effects, effect_scope, canonical_l
       metric_used = "eigengene_model_estimate",
       local_directional_rows_excluded_from_global = FALSE,
       source_path = NA_character_
-    ) |>
-    dplyr::left_join(canonical_lookup |> dplyr::select("dataset", "supermodule_id", "canonical_supermodule_label"), by = c("dataset", "supermodule_id")) |>
+    )
+  apply_canonical_supermodule_labels(out, canonical_lookup) |>
     dplyr::mutate(
-      canonical_supermodule_label = dplyr::coalesce(.data$canonical_supermodule_label, add_supermodule_id_prefix(.data$supermodule_id, NA_character_)),
       supermodule_label = .data$canonical_supermodule_label
     ) |>
     add_bh_significance_labels()
@@ -3365,7 +3498,13 @@ all_supermodule_contents <- all_supermodule_contents_summary(
   module_name_map,
   DATASET
 )
-canonical_supermodule_lookup <- canonical_supermodule_label_lookup(all_supermodule_contents, comp, super_ann, super_endpoint_map)
+canonical_supermodule_lookup <- canonical_supermodule_label_lookup(
+  all_supermodule_contents,
+  comp,
+  super_ann,
+  super_endpoint_map,
+  dataset = DATASET
+)
 all_supermodule_contents <- apply_canonical_supermodule_labels(all_supermodule_contents, canonical_supermodule_lookup)
 selected_sus_res_contents <- apply_canonical_supermodule_labels(selected_sus_res_contents, canonical_supermodule_lookup)
 all_supermodule_eigengene_group_values_tbl <- apply_canonical_supermodule_labels(all_supermodule_eigengene_group_values_tbl, canonical_supermodule_lookup)
