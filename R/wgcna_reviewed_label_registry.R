@@ -7,7 +7,7 @@ wgcna_reviewed_registry_columns <- function() {
     "reviewed_short_label", "subcellular_context", "roi_context",
     "label_confidence", "manual_review_required",
     "aggregation_evidence_class", "structural_status", "rationale",
-    "reviewer", "review_date", "adjudication_status"
+    "reviewer", "proposal_prepared_by", "review_date", "adjudication_status"
   )
 }
 
@@ -117,6 +117,14 @@ wgcna_validate_reviewed_registry <- function(registry, dataset, member_map,
   }
   if (any(registry$adjudication_status != "reviewed")) {
     stop("All reviewed registry rows must have adjudication_status = reviewed.", call. = FALSE)
+  }
+  allowed_confidence <- c("high", "moderate", "low")
+  if (any(!as.character(registry$label_confidence) %in% allowed_confidence)) {
+    stop("Reviewed registry label_confidence must use only: ", paste(allowed_confidence, collapse = ", "), ".", call. = FALSE)
+  }
+  if (any(is.na(wgcna_clean_registry_text(registry$reviewer))) ||
+      any(is.na(wgcna_clean_registry_text(registry$proposal_prepared_by)))) {
+    stop("Reviewed registry must retain separate reviewer and proposal_prepared_by provenance.", call. = FALSE)
   }
   required_text <- c("reviewed_biological_label", "reviewed_short_label", "subcellular_context", "roi_context", "label_confidence", "rationale")
   for (nm in required_text) {

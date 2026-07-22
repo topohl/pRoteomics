@@ -7,7 +7,7 @@
 options(stringsAsFactors = FALSE, warn = 1)
 
 required_packages <- c(
-  "DBI", "digest", "ggplot2", "jsonlite", "lme4", "RSQLite", "svglite",
+  "DBI", "digest", "dplyr", "ggplot2", "jsonlite", "lme4", "RSQLite", "svglite",
   "variancePartition", "WGCNA"
 )
 missing_packages <- required_packages[!vapply(required_packages, requireNamespace, logical(1), quietly = TRUE)]
@@ -27,6 +27,10 @@ output_dir <- file.path(
 )
 n_permutations <- as.integer(arg_value("--permutations", "100"))
 if (is.na(n_permutations) || n_permutations < 0L) stop("--permutations must be a non-negative integer")
+n_animal_bootstrap <- as.integer(arg_value("--animal-bootstrap", "500"))
+if (is.na(n_animal_bootstrap) || n_animal_bootstrap < 1L) stop("--animal-bootstrap must be a positive integer")
+animal_bootstrap_seed <- as.integer(arg_value("--animal-bootstrap-seed", "20260721"))
+if (is.na(animal_bootstrap_seed)) stop("--animal-bootstrap-seed must be an integer")
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
 atomic_write <- function(path, writer) {
@@ -74,6 +78,7 @@ rel <- function(path) {
   prefix <- paste0(repo_root, "/")
   if (startsWith(path, prefix)) substring(path, nchar(prefix) + 1L) else path
 }
+`%||%` <- function(x, y) if (is.null(x) || !length(x) || all(is.na(x))) y else x
 
 state_path <- file.path(repo_root, "data/processed/06_modules_WGCNA/01_WGCNA/microglia/wgcna_final_model_state.rds")
 definitions_path <- file.path(repo_root, "results/tables/06_modules_WGCNA/01_WGCNA/microglia/modules/WGCNA_module_definitions_for_downstream.csv")
@@ -94,9 +99,11 @@ missing_inputs <- required_inputs[!file.exists(required_inputs)]
 if (length(missing_inputs)) stop("Required inputs missing: ", paste(rel(missing_inputs), collapse = ", "))
 reference_state_md5 <- unname(tools::md5sum(state_path))
 preservation_cache_contract <- "fixed_membership_sensitivity_v1"
+readiness_contract_version <- "microglia_wgcna_nature_readiness_v2"
 
 protected_roots <- c(
   state_path,
+  file.path(repo_root, "results/tables/06_modules_WGCNA/01_WGCNA/microglia"),
   file.path(repo_root, "results/tables/06_modules_WGCNA/group_effects/microglia"),
   registry_path,
   file.path(repo_root, "results/figures/06_modules_WGCNA/wgcna_publication_figures")
@@ -147,6 +154,58 @@ for (sm in names(expected_blocks)) {
 }
 singleton_ids <- setdiff(sprintf("SM%02d", seq_len(9)), names(expected_blocks))
 if (any(lengths(observed_members[singleton_ids]) != 1L)) stop("The six standalone supermodule identities are not singletons")
+
+# -------------------------------------------------------------------------
+# Historical supermodule-cut provenance.  The active state and the run
+# manifest, rather than the current code default, control interpretation of
+# the immutable historical membership.
+# -------------------------------------------------------------------------
+manifest_paths <- c(
+  file.path(repo_root, "results/logs/06_modules_WGCNA/01_WGCNA/microglia/wgcna_run_manifest.yml"),
+  file.path(repo_root, "results/logs/06_modules_WGCNA/01_WGCNA/microglia/run_manifest.yml")
+)
+sensitivity_path <- file.path(repo_root, "results/tables/06_modules_WGCNA/01_WGCNA/microglia/supermodules/supermodule_clustering_sensitivity.csv")
+source_hash <- function(path) if (file.exists(path)) unname(tools::md5sum(path)) else NA_character_
+extract_manifest_numeric <- function(path, key) {
+  if (!file.exists(path)) return(NA_real_)
+  line <- grep(paste0("^\\s*", key, "\\s*:"), readLines(path, warn = FALSE), value = TRUE)
+  if (!length(line)) return(NA_real_)
+  suppressWarnings(as.numeric(sub(".*:\\s*", "", line[[1]])))
+}
+state_cut <- suppressWarnings(as.numeric(state$parameters$supermodule_merge_cut_height %||% state$supermodule_cut_height %||% NA_real_))
+manifest_cut <- vapply(manifest_paths, extract_manifest_numeric, numeric(1), key = "supermodule_merge_cut_height")
+manifest_override <- vapply(manifest_paths, extract_manifest_numeric, numeric(1), key = "supermodule_cut_height_override_env")
+sensitivity_cut <- if (file.exists(sensitivity_path)) {
+  sensitivity_record <- utils::read.csv(sensitivity_path, check.names = FALSE)
+  unique(suppressWarnings(as.numeric(sensitivity_record$primary_cut_height)))
+} else numeric()
+definition_cut <- if ("supermodule_merge_cut_height" %in% names(module_map)) unique(suppressWarnings(as.numeric(module_map$supermodule_merge_cut_height))) else numeric()
+current_code_default <- 0.45
+cut_height_provenance <- rbind(
+  data.frame(evidence_source = "saved_WGCNA_state_parameters", recorded_cut_height = state_cut, evidence_type = "active_historical_state", authoritative = TRUE, consistent_with_current_membership = is.finite(state_cut), interpretation = "Active saved state records the selected historical cut height.", source_hash = source_hash(state_path), stringsAsFactors = FALSE),
+  do.call(rbind, lapply(seq_along(manifest_paths), function(i) data.frame(evidence_source = rel(manifest_paths[[i]]), recorded_cut_height = manifest_cut[[i]], evidence_type = "Stage_01_run_manifest", authoritative = TRUE, consistent_with_current_membership = is.finite(manifest_cut[[i]]), interpretation = paste0("Run manifest records override ", manifest_override[[i]], " and selected historical cut height."), source_hash = source_hash(manifest_paths[[i]]), stringsAsFactors = FALSE))),
+  data.frame(evidence_source = rel(sensitivity_path), recorded_cut_height = if (length(sensitivity_cut) == 1L) sensitivity_cut else NA_real_, evidence_type = "Stage_01_sensitivity_primary_cut", authoritative = TRUE, consistent_with_current_membership = length(sensitivity_cut) == 1L, interpretation = "Sensitivity table records the primary cut used for historical-membership matching.", source_hash = source_hash(sensitivity_path), stringsAsFactors = FALSE),
+  data.frame(evidence_source = "06_modules_WGCNA/01_WGCNA.r", recorded_cut_height = current_code_default, evidence_type = "current_code_default", authoritative = FALSE, consistent_with_current_membership = is.finite(state_cut) && isTRUE(all.equal(current_code_default, state_cut)), interpretation = "Current default is not treated as historical membership provenance when an explicit recorded override exists.", source_hash = source_hash(file.path(repo_root, "06_modules_WGCNA/01_WGCNA.r")), stringsAsFactors = FALSE)
+)
+authoritative_cuts <- unique(c(state_cut, manifest_cut[is.finite(manifest_cut)], sensitivity_cut[is.finite(sensitivity_cut)]))
+authoritative_cuts <- authoritative_cuts[is.finite(authoritative_cuts)]
+if (length(authoritative_cuts) == 1L && isTRUE(all.equal(authoritative_cuts[[1]], 0.40))) {
+  cut_height_provenance_status <- "resolved_0.40"
+  selected_cut_height <- 0.40
+} else if (length(authoritative_cuts) == 1L && isTRUE(all.equal(authoritative_cuts[[1]], 0.45))) {
+  cut_height_provenance_status <- "resolved_0.45"
+  selected_cut_height <- 0.45
+} else if (length(authoritative_cuts) == 1L) {
+  cut_height_provenance_status <- "resolved_other"
+  selected_cut_height <- authoritative_cuts[[1]]
+} else {
+  cut_height_provenance_status <- "unresolved_historical_provenance"
+  selected_cut_height <- NA_real_
+}
+cut_height_provenance$provenance_status <- cut_height_provenance_status
+cut_height_provenance$selected_cut_height_contract <- selected_cut_height
+write_csv_atomic(cut_height_provenance, file.path(output_dir, "supermodule_cut_height_provenance.csv"))
+cut_height_grid <- c(0.25, 0.35, 0.40, 0.45, 0.50, 0.55, 0.65)
 
 sample_names <- rownames(expression_primary)
 sample_info <- state$sample_info[match(sample_names, rownames(state$sample_info)), , drop = FALSE]
@@ -280,6 +339,63 @@ fit_variance_partition <- function(me_matrix, level_name, entity_ids) {
 module_vp <- fit_variance_partition(current_me, "module", module_ids)
 super_vp <- fit_variance_partition(super_me, "supermodule", super_ids)
 
+# A second, design-aware decomposition keeps StressGroup as a fixed
+# between-animal effect.  Its reported contribution is the variance of the
+# fitted fixed-effect contrast contribution over the observed ROI design; it
+# is descriptive/non-orthogonal, not a power claim or a random-effect null.
+fixed_group_formula_text <- "y ~ StressGroup + Region + Hemisphere + (1 | AnimalID)"
+fixed_group_components <- c("StressGroup_fixed", "Region_fixed", "Hemisphere_fixed", "AnimalID_random", "Residuals")
+fit_fixed_group_partition <- function(me_matrix, level_name, entity_ids) {
+  do.call(rbind, lapply(seq_along(entity_ids), function(i) {
+    d <- metadata
+    d$y <- as.numeric(me_matrix[, i])
+    warnings <- character()
+    fit <- withCallingHandlers(
+      lme4::lmer(stats::as.formula(fixed_group_formula_text), data = d, REML = TRUE),
+      warning = function(w) { warnings <<- c(warnings, conditionMessage(w)); invokeRestart("muffleWarning") }
+    )
+    X <- stats::model.matrix(stats::delete.response(stats::terms(fit)), data = d)
+    beta <- lme4::fixef(fit)
+    contribution_variance <- function(pattern) {
+      cols <- grep(pattern, colnames(X), value = TRUE)
+      cols <- intersect(cols, names(beta))
+      if (!length(cols)) return(0)
+      stats::var(as.numeric(X[, cols, drop = FALSE] %*% beta[cols]))
+    }
+    vc <- as.data.frame(lme4::VarCorr(fit))
+    animal_var <- vc$vcov[match("AnimalID", vc$grp)]
+    if (!length(animal_var) || !is.finite(animal_var)) animal_var <- 0
+    values <- c(
+      StressGroup_fixed = contribution_variance("^StressGroup"),
+      Region_fixed = contribution_variance("^Region"),
+      Hemisphere_fixed = contribution_variance("^Hemisphere"),
+      AnimalID_random = animal_var,
+      Residuals = stats::sigma(fit)^2
+    )
+    negative <- values < -sqrt(.Machine$double.eps)
+    values[values < 0] <- 0
+    total <- sum(values)
+    if (!is.finite(total) || total <= 0) stop("Invalid fixed-group variance decomposition for ", entity_ids[[i]])
+    values <- values / total
+    data.frame(
+      dataset = "microglia", level = level_name, entity_id = entity_ids[[i]],
+      component = fixed_group_components, variance_fraction = as.numeric(values),
+      estimable = TRUE, boundary_estimate = values <= 1e-8,
+      negative_estimate_detected = negative,
+      model_formula = fixed_group_formula_text,
+      method = "lme4::lmer; fixed-effect fitted-contribution variance plus AnimalID random-intercept and residual variance; non-orthogonal descriptive allocation",
+      biological_unit = "AnimalID (n=9)",
+      stress_group_interpretation = "fixed between-animal effect with three animals per group; low-powered descriptive contribution, not evidence of absence when near zero",
+      acquisition_batch_handling = "not included: acquisition date is nested within AnimalID and cannot be independently attributed",
+      singular_fit = lme4::isSingular(fit, tol = 1e-5),
+      model_warning = if (length(warnings)) paste(unique(warnings), collapse = " | ") else "none",
+      stringsAsFactors = FALSE
+    )
+  }))
+}
+module_vp_fixed_group <- fit_fixed_group_partition(current_me, "module", module_ids)
+super_vp_fixed_group <- fit_fixed_group_partition(super_me, "supermodule", super_ids)
+
 fit_model_diagnostics <- function(me_matrix, level_name, entity_ids) {
   do.call(rbind, lapply(seq_along(entity_ids), function(i) {
     d <- metadata
@@ -321,8 +437,22 @@ rbind_fill <- function(...) {
 model_audit <- rbind_fill(
   transform(estimability_base, dataset = "microglia", level = "global", entity_id = "all"),
   fit_model_diagnostics(current_me, "module", module_ids),
-  fit_model_diagnostics(super_me, "supermodule", super_ids)
+  fit_model_diagnostics(super_me, "supermodule", super_ids),
+  transform(module_vp_fixed_group[, c("dataset", "level", "entity_id", "model_formula", "singular_fit", "model_warning", "acquisition_batch_handling", "stress_group_interpretation")],
+            model_family = "fixed_group_mixed_model", fixed_effect_stress_group = TRUE,
+            acquisition_batch_estimable = FALSE, acquisition_batch_reason = acquisition_batch_handling,
+            stress_group_caution = stress_group_interpretation),
+  transform(super_vp_fixed_group[, c("dataset", "level", "entity_id", "model_formula", "singular_fit", "model_warning", "acquisition_batch_handling", "stress_group_interpretation")],
+            model_family = "fixed_group_mixed_model", fixed_effect_stress_group = TRUE,
+            acquisition_batch_estimable = FALSE, acquisition_batch_reason = acquisition_batch_handling,
+            stress_group_caution = stress_group_interpretation)
 )
+# Legacy filenames remain exact compatibility aliases for the all-random
+# descriptive sensitivity.  New consumers should select the explicit suffix.
+write_csv_atomic(module_vp, file.path(output_dir, "module_eigengene_variance_partition_random_effects.csv"))
+write_csv_atomic(super_vp, file.path(output_dir, "supermodule_eigengene_variance_partition_random_effects.csv"))
+write_csv_atomic(module_vp_fixed_group, file.path(output_dir, "module_eigengene_variance_partition_fixed_group.csv"))
+write_csv_atomic(super_vp_fixed_group, file.path(output_dir, "supermodule_eigengene_variance_partition_fixed_group.csv"))
 write_csv_atomic(module_vp, file.path(output_dir, "module_eigengene_variance_partition.csv"))
 write_csv_atomic(super_vp, file.path(output_dir, "supermodule_eigengene_variance_partition.csv"))
 write_csv_atomic(model_audit, file.path(output_dir, "model_estimability_audit.csv"))
@@ -563,7 +693,8 @@ run_preservation <- function(test_expr, test_name) {
         "reference_state_md5" %in% names(cached) &&
         all(cached$reference_state_md5 == reference_state_md5) &&
         "preservation_cache_contract" %in% names(cached) &&
-        all(cached$preservation_cache_contract == preservation_cache_contract)) return(cached)
+        all(cached$preservation_cache_contract == preservation_cache_contract) &&
+        all(c("preservation_permutation_unit", "repeated_measure_blocking", "claim_gate_eligible", "preservation_interpretation") %in% names(cached))) return(cached)
   }
   common <- intersect(colnames(expression_primary), colnames(test_expr))
   colors <- as.character(module_long$ModuleID[match(common, module_long$ProteinGroupID)])
@@ -594,6 +725,10 @@ run_preservation <- function(test_expr, test_name) {
     preservation_median_rank = observed[keep_modules, "medianRank.pres"],
     preservation_metric_reason = if (n_permutations > 0) "available" else "permutations_disabled",
     preservation_n_permutations = n_permutations,
+    preservation_permutation_unit = "ROI_row_unblocked",
+    repeated_measure_blocking = FALSE,
+    claim_gate_eligible = FALSE,
+    preservation_interpretation = "descriptive_standard_WGCNA_preservation",
     reference_state_md5 = reference_state_md5,
     preservation_cache_contract = preservation_cache_contract,
     stringsAsFactors = FALSE
@@ -610,22 +745,25 @@ match_pre <- match(key_rob, key_pre)
 module_robustness$preservation_Zsummary <- preservation$preservation_Zsummary[match_pre]
 module_robustness$preservation_median_rank <- preservation$preservation_median_rank[match_pre]
 module_robustness$preservation_metric_reason <- preservation$preservation_metric_reason[match_pre]
+module_robustness$preservation_permutation_unit <- preservation$preservation_permutation_unit[match_pre]
+module_robustness$repeated_measure_blocking <- preservation$repeated_measure_blocking[match_pre]
+module_robustness$claim_gate_eligible <- preservation$claim_gate_eligible[match_pre]
+module_robustness$preservation_interpretation <- preservation$preservation_interpretation[match_pre]
 
-status_one <- function(me, conn, hubs, z) {
-  if (is.finite(me) && is.finite(conn) && is.finite(hubs) && is.finite(z) &&
-      me >= 0.80 && conn >= 0.60 && hubs >= 0.60 && z >= 10) return("pass")
-  if (is.finite(me) && is.finite(conn) && is.finite(hubs) && is.finite(z) &&
-      me >= 0.60 && conn >= 0.30 && hubs >= 0.40 && z >= 2) return("suggestive")
+status_one <- function(me, conn, hubs) {
+  if (is.finite(me) && is.finite(conn) && is.finite(hubs) &&
+      me >= 0.80 && conn >= 0.60 && hubs >= 0.60) return("pass")
+  if (is.finite(me) && is.finite(conn) && is.finite(hubs) &&
+      me >= 0.60 && conn >= 0.30 && hubs >= 0.40) return("suggestive")
   "fail"
 }
 module_robustness$status <- mapply(
   status_one,
   module_robustness$module_eigengene_correlation,
   module_robustness$intramodular_connectivity_spearman,
-  module_robustness$primary_top25_retained_fraction,
-  module_robustness$preservation_Zsummary
+  module_robustness$primary_top25_retained_fraction
 )
-module_robustness$status_rule <- "pass: ME>=0.80, connectivity>=0.60, top25>=0.60, Z>=10; suggestive: ME>=0.60, connectivity>=0.30, top25>=0.40, Z>=2; otherwise fail"
+module_robustness$status_rule <- "pass: ME>=0.80, connectivity>=0.60, top25>=0.60; suggestive: ME>=0.60, connectivity>=0.30, top25>=0.40; otherwise fail. Conventional unblocked ROI-row preservation is descriptive and not a claim gate."
 write_csv_atomic(module_robustness, file.path(output_dir, "module_sensitivity_robustness.csv"))
 
 loao_rows <- list()
@@ -673,22 +811,202 @@ loao_summary <- do.call(rbind, lapply(split(loao, loao$ModuleID), function(z) {
 write_csv_atomic(loao, file.path(output_dir, "module_leave_one_animal_out.csv"))
 write_csv_atomic(loao_summary, file.path(output_dir, "module_leave_one_animal_out_summary.csv"))
 
+# Leave-one-region-out is a biological spatial-dependence sensitivity.  It
+# never changes membership and region dependence is not classified as a
+# technical failure.
+loro_rows <- list()
+for (region in levels(metadata$Region)) {
+  keep <- metadata$Region != region
+  expr <- expression_primary[keep, , drop = FALSE]
+  mes <- fixed_module_mes(expr)
+  for (mid in module_ids) {
+    ix <- as.character(module_long$ModuleID) == mid
+    aligned <- align_score(mes[, mid], current_me[keep, mid])
+    ktest <- connectivity(expr[, ix, drop = FALSE]); names(ktest) <- colnames(expr)[ix]
+    kref <- primary_connectivity[[mid]][names(ktest)]
+    test_kme <- abs(apply(expr[, ix, drop = FALSE], 2, bicor_safe, y = aligned)); names(test_kme) <- colnames(expr)[ix]
+    ref_kme <- primary_abs_kme[[mid]][names(test_kme)]
+    top_ref <- names(sort(ref_kme, decreasing = TRUE))[seq_len(min(25L, length(ref_kme)))]
+    top_test <- names(sort(test_kme, decreasing = TRUE))[seq_len(min(25L, length(test_kme)))]
+    loro_rows[[length(loro_rows) + 1L]] <- data.frame(
+      dataset = "microglia", omitted_region = as.character(region), ModuleID = mid,
+      remaining_ROI_count = sum(keep), remaining_animal_count = length(unique(metadata$AnimalID[keep])),
+      eigengene_correlation = bicor_safe(aligned, current_me[keep, mid]),
+      intramodular_connectivity_spearman = suppressWarnings(stats::cor(kref, ktest, method = "spearman")),
+      hub_rank_spearman = suppressWarnings(stats::cor(ref_kme, test_kme, method = "spearman")),
+      top25_hub_retention = length(intersect(top_ref, top_test)) / length(top_ref),
+      membership_status = "immutable_reference_set_no_reassignment", stringsAsFactors = FALSE
+    )
+  }
+}
+loro <- do.call(rbind, loro_rows)
+loro$influential_region_flag <- with(loro,
+  eigengene_correlation < 0.60 | intramodular_connectivity_spearman < 0.30 | top25_hub_retention < 0.40)
+loro_summary <- do.call(rbind, lapply(split(loro, loro$ModuleID), function(z) {
+  min_me <- min(z$eigengene_correlation); min_conn <- min(z$intramodular_connectivity_spearman); min_hub <- min(z$top25_hub_retention)
+  dependence <- if (all(z$eigengene_correlation >= 0.80 & z$intramodular_connectivity_spearman >= 0.60 & z$top25_hub_retention >= 0.60)) {
+    "hippocampus_wide_stable"
+  } else if (all(z$eigengene_correlation >= 0.60 & z$intramodular_connectivity_spearman >= 0.30 & z$top25_hub_retention >= 0.40)) {
+    "partially_region_dependent"
+  } else if (all(is.finite(c(min_me, min_conn, min_hub)))) {
+    "strongly_region_dependent"
+  } else "insufficient_information"
+  data.frame(dataset = "microglia", ModuleID = z$ModuleID[[1]], n_leave_one_region_out = nrow(z),
+             min_eigengene_correlation = min_me, median_eigengene_correlation = median(z$eigengene_correlation),
+             min_connectivity_spearman = min_conn, min_hub_rank_spearman = min(z$hub_rank_spearman),
+             min_top25_hub_retention = min_hub, n_influential_region_flags = sum(z$influential_region_flag),
+             region_dependence_interpretation = dependence, stringsAsFactors = FALSE)
+}))
+write_csv_atomic(loro, file.path(output_dir, "module_leave_one_region_out.csv"))
+write_csv_atomic(loro_summary, file.path(output_dir, "module_leave_one_region_out_summary.csv"))
+
+# AnimalID-cluster bootstrap.  Each sampled cluster contributes its complete
+# eight ROI rows; duplicate draws receive a unique row identity.  No ROI-row
+# resampling and no module redetection occur.
+bootstrap_cache <- file.path(output_dir, "module_animal_cluster_bootstrap.csv.gz")
+bootstrap_rows <- NULL
+if (file.exists(bootstrap_cache) && file.info(bootstrap_cache)$size > 0) {
+  cached_bootstrap <- tryCatch(utils::read.csv(gzfile(bootstrap_cache), check.names = FALSE), error = function(e) NULL)
+  if (!is.null(cached_bootstrap) && nrow(cached_bootstrap) == length(module_ids) * n_animal_bootstrap &&
+      setequal(unique(cached_bootstrap$ModuleID), module_ids) &&
+      identical(unique(cached_bootstrap$resampling_unit), "AnimalID_cluster") &&
+      all(cached_bootstrap$reference_state_md5 == reference_state_md5)) bootstrap_rows <- cached_bootstrap
+}
+if (is.null(bootstrap_rows)) {
+  set.seed(animal_bootstrap_seed)
+  animals <- as.character(levels(metadata$AnimalID))
+  bootstrap_list <- vector("list", n_animal_bootstrap * length(module_ids))
+  kk <- 0L
+  for (b in seq_len(n_animal_bootstrap)) {
+    drawn_animals <- sample(animals, length(animals), replace = TRUE)
+    draw_index <- unlist(lapply(seq_along(drawn_animals), function(draw) which(as.character(metadata$AnimalID) == drawn_animals[[draw]])), use.names = FALSE)
+    unique_rows <- unlist(lapply(seq_along(drawn_animals), function(draw) paste0(sample_names[metadata$AnimalID == drawn_animals[[draw]]], "__boot", sprintf("%03d", b), "_draw", draw)), use.names = FALSE)
+    expr <- expression_primary[draw_index, , drop = FALSE]; rownames(expr) <- unique_rows
+    ref_me <- current_me[draw_index, , drop = FALSE]; rownames(ref_me) <- unique_rows
+    mes <- fixed_module_mes(expr)
+    for (mid in module_ids) {
+      ix <- as.character(module_long$ModuleID) == mid
+      aligned <- align_score(mes[, mid], ref_me[, mid])
+      ktest <- connectivity(expr[, ix, drop = FALSE]); names(ktest) <- colnames(expr)[ix]
+      kref <- primary_connectivity[[mid]][names(ktest)]
+      test_kme <- abs(apply(expr[, ix, drop = FALSE], 2, bicor_safe, y = aligned)); names(test_kme) <- colnames(expr)[ix]
+      ref_kme <- primary_abs_kme[[mid]][names(test_kme)]
+      top_ref <- names(sort(ref_kme, decreasing = TRUE))[seq_len(min(25L, length(ref_kme)))]
+      top_test <- names(sort(test_kme, decreasing = TRUE))[seq_len(min(25L, length(test_kme)))]
+      kk <- kk + 1L
+      bootstrap_list[[kk]] <- data.frame(dataset = "microglia", bootstrap_iteration = b, ModuleID = mid,
+        resampling_unit = "AnimalID_cluster", n_drawn_animal_clusters = length(drawn_animals), n_bootstrap_ROI = nrow(expr),
+        sampled_AnimalIDs = paste(drawn_animals, collapse = ";"),
+        fixed_membership_eigengene_concordance = bicor_safe(aligned, ref_me[, mid]),
+        intramodular_connectivity_concordance = suppressWarnings(stats::cor(kref, ktest, method = "spearman")),
+        hub_rank_concordance = suppressWarnings(stats::cor(ref_kme, test_kme, method = "spearman")),
+        top25_hub_retention = length(intersect(top_ref, top_test)) / length(top_ref),
+        reference_state_md5 = reference_state_md5, stringsAsFactors = FALSE)
+    }
+  }
+  bootstrap_rows <- do.call(rbind, bootstrap_list)
+  write_gz_csv_atomic(bootstrap_rows, bootstrap_cache)
+}
+bootstrap_summary <- do.call(rbind, lapply(split(bootstrap_rows, bootstrap_rows$ModuleID), function(z) {
+  metric_summary <- function(x, pass, suggestive, prefix) data.frame(
+    metric = prefix, median = median(x, na.rm = TRUE), percentile_2_5 = unname(stats::quantile(x, 0.025, na.rm = TRUE)),
+    percentile_97_5 = unname(stats::quantile(x, 0.975, na.rm = TRUE)),
+    fraction_below_pass_threshold = mean(x < pass, na.rm = TRUE), fraction_below_suggestive_threshold = mean(x < suggestive, na.rm = TRUE))
+  out <- rbind(metric_summary(z$fixed_membership_eigengene_concordance, .80, .60, "eigengene_concordance"),
+               metric_summary(z$intramodular_connectivity_concordance, .60, .30, "connectivity_concordance"),
+               metric_summary(z$hub_rank_concordance, .60, .30, "hub_rank_concordance"),
+               metric_summary(z$top25_hub_retention, .60, .40, "top25_hub_retention"))
+  severe <- any(out$percentile_2_5 < c(.60, .30, .30, .40) | out$fraction_below_suggestive_threshold >= .25)
+  catastrophic <- any(out$percentile_2_5 < c(.30, .10, .10, .20) | out$fraction_below_suggestive_threshold >= .50)
+  cbind(dataset = "microglia", ModuleID = z$ModuleID[[1]], resampling_unit = "AnimalID_cluster", n_iterations = nrow(z), out,
+        bootstrap_stability_status = if (catastrophic) "catastrophic_instability" else if (severe) "severe_instability" else "no_severe_instability")
+}))
+write_csv_atomic(bootstrap_summary, file.path(output_dir, "module_animal_cluster_bootstrap_summary.csv"))
+bootstrap_estimability <- data.frame(
+  dataset = "microglia", resampling_unit = "AnimalID_cluster", requested_iterations = n_animal_bootstrap,
+  completed_iterations = length(unique(bootstrap_rows$bootstrap_iteration)), n_animals = 9L, roi_rows_per_cluster = 8L,
+  duplicate_draw_identity = "Sample__boot###_draw#", ROI_row_bootstrap_used = FALSE,
+  membership_redefinition = FALSE, reference_state_md5 = reference_state_md5,
+  status = if (all(table(bootstrap_rows$ModuleID) == n_animal_bootstrap)) "complete" else "incomplete", stringsAsFactors = FALSE
+)
+write_csv_atomic(bootstrap_estimability, file.path(output_dir, "animal_cluster_bootstrap_estimability_audit.csv"))
+
+# Variance-partition uncertainty is based on leave-one-AnimalID-out refits.
+# Cluster-bootstrap confidence intervals for the mixed variance allocation are
+# reported only when all fixed design levels remain estimable; with nine
+# clusters and three groups, many resamples omit a group, so no misleading
+# percentile interval is manufactured for that allocation.
+fixed_group_values <- function(y, d) {
+  d <- d; d$y <- y
+  fit <- tryCatch(lme4::lmer(stats::as.formula(fixed_group_formula_text), data = d, REML = TRUE), error = function(e) NULL)
+  if (is.null(fit)) return(setNames(rep(NA_real_, length(fixed_group_components)), fixed_group_components))
+  X <- stats::model.matrix(stats::delete.response(stats::terms(fit)), data = d); beta <- lme4::fixef(fit)
+  cv <- function(pattern) { cols <- intersect(grep(pattern, colnames(X), value = TRUE), names(beta)); if (!length(cols)) 0 else stats::var(as.numeric(X[, cols, drop = FALSE] %*% beta[cols])) }
+  vc <- as.data.frame(lme4::VarCorr(fit)); av <- vc$vcov[match("AnimalID", vc$grp)]; if (!length(av) || !is.finite(av)) av <- 0
+  values <- c(StressGroup_fixed = cv("^StressGroup"), Region_fixed = cv("^Region"), Hemisphere_fixed = cv("^Hemisphere"), AnimalID_random = av, Residuals = stats::sigma(fit)^2)
+  values[values < 0] <- 0; values / sum(values)
+}
+variance_loao <- do.call(rbind, unlist(lapply(levels(metadata$AnimalID), function(animal) {
+  keep <- metadata$AnimalID != animal
+  c(lapply(seq_along(module_ids), function(i) data.frame(level = "module", entity_id = module_ids[[i]], omitted_AnimalID = animal, component = fixed_group_components, variance_fraction = fixed_group_values(current_me[keep, i], metadata[keep, , drop = FALSE]), stringsAsFactors = FALSE)),
+    lapply(seq_along(super_ids), function(i) data.frame(level = "supermodule", entity_id = super_ids[[i]], omitted_AnimalID = animal, component = fixed_group_components, variance_fraction = fixed_group_values(super_me[keep, i], metadata[keep, , drop = FALSE]), stringsAsFactors = FALSE)))
+}), recursive = FALSE))
+variance_uncertainty <- do.call(rbind, lapply(split(variance_loao, list(variance_loao$level, variance_loao$entity_id, variance_loao$component), drop = TRUE), function(z) data.frame(
+  dataset = "microglia", level = z$level[[1]], entity_id = z$entity_id[[1]], component = z$component[[1]],
+  n_leave_one_animal_out = sum(is.finite(z$variance_fraction)), loao_min_variance_fraction = min(z$variance_fraction, na.rm = TRUE),
+  loao_max_variance_fraction = max(z$variance_fraction, na.rm = TRUE), loao_median_variance_fraction = median(z$variance_fraction, na.rm = TRUE),
+  animal_cluster_bootstrap_interval = NA_character_, bootstrap_interval_status = "not_reported_design_level_nonidentifiability_possible_with_9_clusters_and_3_groups",
+  interpretation = "Use leave-one-animal-out range as uncertainty; do not infer stress absence from a near-zero allocation.", stringsAsFactors = FALSE)))
+write_csv_atomic(variance_uncertainty[variance_uncertainty$level == "module", ], file.path(output_dir, "module_variance_partition_uncertainty.csv"))
+write_csv_atomic(variance_uncertainty[variance_uncertainty$level == "supermodule", ], file.path(output_dir, "supermodule_variance_partition_uncertainty.csv"))
+
+status_rank <- c(pass = 3L, suggestive = 2L, fail = 1L)
 module_consensus <- do.call(rbind, lapply(split(module_robustness, module_robustness$ModuleID), function(z) {
-  rank_status <- c(pass = 3L, suggestive = 2L, fail = 1L)
-  worst <- names(which.min(rank_status[z$status]))
-  lz <- loao_summary[loao_summary$ModuleID == z$ModuleID[1], ]
+  mid <- z$ModuleID[[1]]
+  bilateral <- z$status[z$sensitivity_id == "hemisphere_collapsed"]
+  spatial <- z$status[z$sensitivity_id == "spatial_adjusted"]
+  strict <- z$status[z$sensitivity_id == "within_animal_spatial_adjusted"]
+  lz <- loao_summary[loao_summary$ModuleID == mid, , drop = FALSE]
+  rz <- loro_summary[loro_summary$ModuleID == mid, , drop = FALSE]
+  bz <- bootstrap_summary[bootstrap_summary$ModuleID == mid, , drop = FALSE]
+  severe_bootstrap <- any(bz$bootstrap_stability_status %in% c("severe_instability", "catastrophic_instability"))
+  animal_status <- if (lz$min_eigengene_correlation >= .80 && lz$min_hub_rank_spearman >= .60 &&
+                       lz$min_primary_top25_retained_fraction >= .60 && !severe_bootstrap) "pass" else if (
+    lz$min_eigengene_correlation >= .60 && lz$min_hub_rank_spearman >= .30 &&
+      lz$min_primary_top25_retained_fraction >= .40 && !any(bz$bootstrap_stability_status == "catastrophic_instability")
+  ) "suggestive" else "fail"
+  primary_status <- if (identical(bilateral, "fail")) {
+    "technically_unstable"
+  } else if (identical(animal_status, "fail")) {
+    "animal_sensitive"
+  } else if (identical(bilateral, "pass") && identical(animal_status, "pass") && identical(spatial, "pass")) {
+    "robust_spatially_independent"
+  } else if (bilateral %in% c("pass", "suggestive") && animal_status %in% c("pass", "suggestive") && identical(spatial, "fail")) {
+    "reproducible_spatially_organized"
+  } else {
+    "suggestive_architecture"
+  }
+  spatial_class <- if (identical(spatial, "pass")) "spatially_independent_supported" else if (
+    identical(spatial, "suggestive")) "spatially_adjusted_suggestive" else if (
+      primary_status == "reproducible_spatially_organized") "region_organized_covariance" else "spatial_dependence_or_instability_unresolved"
   data.frame(
-    dataset = "microglia", ModuleID = z$ModuleID[1], feature_count = z$feature_count[1],
-    worst_sensitivity_status = worst,
+    dataset = "microglia", ModuleID = mid, feature_count = z$feature_count[1],
+    bilateral_reproducibility_status = bilateral, spatial_adjusted_robustness_status = spatial,
+    animal_stability_status = animal_status, strict_nonspatial_sensitivity_status = strict,
+    primary_architecture_status = primary_status, spatial_dependence_class = spatial_class,
+    claim_scope = if (primary_status %in% c("robust_spatially_independent", "reproducible_spatially_organized")) "fixed-membership ROI co-variation; not cell-pure, causal, or stress-effect evidence" else "descriptive fixed-membership co-variation only",
+    leave_one_region_out_status = rz$region_dependence_interpretation,
     min_sensitivity_ME_correlation = min(z$module_eigengene_correlation, na.rm = TRUE),
     min_sensitivity_connectivity_spearman = min(z$intramodular_connectivity_spearman, na.rm = TRUE),
     min_sensitivity_top25_retained = min(z$primary_top25_retained_fraction, na.rm = TRUE),
     min_preservation_Zsummary = min(z$preservation_Zsummary, na.rm = TRUE),
     max_preservation_median_rank = max(z$preservation_median_rank, na.rm = TRUE),
-    loao_min_ME_correlation = lz$min_eigengene_correlation,
-    loao_min_hub_rank_spearman = lz$min_hub_rank_spearman,
+    preservation_permutation_unit = "ROI_row_unblocked", repeated_measure_blocking = FALSE,
+    conventional_preservation_claim_gate_eligible = FALSE,
+    preservation_interpretation = "descriptive_standard_WGCNA_preservation",
+    loao_min_ME_correlation = lz$min_eigengene_correlation, loao_min_hub_rank_spearman = lz$min_hub_rank_spearman,
     loao_min_top25_retained = lz$min_primary_top25_retained_fraction,
-    influential_animal = lz$n_influential_animal_flags > 0,
+    bootstrap_severe_instability = severe_bootstrap, influential_animal = lz$n_influential_animal_flags > 0,
     stringsAsFactors = FALSE
   )
 }))
@@ -716,7 +1034,7 @@ partial_residual <- function(y, d) {
   stats::residuals(stats::lm(stats::reformulate(usable, response = "y"), data = cbind(d, y = y)))
 }
 
-cluster_support <- function(me, members, cut_height = 0.40) {
+cluster_support <- function(me, members, cut_height) {
   cor_mat <- bicor_safe(me)
   hc <- stats::hclust(stats::as.dist(1 - cor_mat), method = "average")
   clusters <- stats::cutree(hc, h = cut_height)
@@ -730,7 +1048,23 @@ cluster_support <- function(me, members, cut_height = 0.40) {
     max_member_outsider = max_out, separation_margin = min_within - max_out)
 }
 
+block_grid_support <- function(me, members, sensitivity_id) {
+  do.call(rbind, lapply(cut_height_grid, function(ch) {
+    support <- cluster_support(me, members, ch)
+    data.frame(dataset = "microglia", sensitivity_id = sensitivity_id,
+               SupermoduleID = names(expected_blocks)[vapply(expected_blocks, function(x) setequal(x, members), logical(1))][[1]],
+               cut_height = ch, same_group = as.logical(support["same_group"]),
+               exclusive_group = as.logical(support["exclusive_group"]),
+               min_within_correlation = as.numeric(support["min_within"]),
+               max_member_to_outsider_correlation = as.numeric(support["max_member_outsider"]),
+               separation_margin = as.numeric(support["separation_margin"]),
+               selected_cut_height = selected_cut_height, selected_cut_provenance_status = cut_height_provenance_status,
+               stringsAsFactors = FALSE)
+  }))
+}
+
 block_rows <- list()
+block_grid_rows <- list()
 for (sid in names(all_mes)) {
   me <- all_mes[[sid]]
   d <- matrix_metadata[[sid]]
@@ -742,7 +1076,10 @@ for (sid in names(all_mes)) {
     adj_cor <- bicor_safe(adj_me)
     adj_values <- adj_cor[upper.tri(adj_cor)]
     pc <- stats::prcomp(me[, members, drop = FALSE], center = TRUE, scale. = TRUE)
-    support <- cluster_support(me, members)
+    support <- cluster_support(me, members, selected_cut_height)
+    grid <- block_grid_support(me, members, sid)
+    block_grid_rows[[length(block_grid_rows) + 1L]] <- grid
+    selected_grid <- grid[abs(grid$cut_height - selected_cut_height) < 1e-8, , drop = FALSE]
     block_rows[[length(block_rows) + 1L]] <- data.frame(
       dataset = "microglia", sensitivity_id = sid, SupermoduleID = sm,
       member_ModuleIDs = paste(members, collapse = ";"), n_member_modules = length(members),
@@ -751,18 +1088,23 @@ for (sid in names(all_mes)) {
       min_spatial_adjusted_member_correlation = min(adj_values),
       median_spatial_adjusted_member_correlation = median(adj_values),
       PC1_variance_explained = summary(pc)$importance[2, 1],
-      same_group_at_cut_0_40 = as.logical(support["same_group"]),
-      exclusive_group_at_cut_0_40 = as.logical(support["exclusive_group"]),
+      same_group_at_selected_cut = selected_grid$same_group,
+      exclusive_group_at_selected_cut = selected_grid$exclusive_group,
+      selected_cut_height = selected_cut_height,
+      selected_cut_provenance_status = cut_height_provenance_status,
+      grid_grouping_persistence_fraction = mean(grid$same_group),
+      grid_exclusive_persistence_fraction = mean(grid$exclusive_group),
       min_within_correlation = as.numeric(support["min_within"]),
       max_member_to_outsider_correlation = as.numeric(support["max_member_outsider"]),
       cut_height_independent_separation_margin = as.numeric(support["separation_margin"]),
       cut_height_independent_support = as.numeric(support["separation_margin"]) > 0 && as.numeric(support["min_within"]) > 0,
-      cut_height_use = "descriptive_only_no_optimization",
+      cut_height_use = "historical_membership_provenance; descriptive_sensitivity_grid_no_optimization",
       stringsAsFactors = FALSE
     )
   }
 }
 block_robustness <- do.call(rbind, block_rows)
+block_grid <- do.call(rbind, block_grid_rows)
 
 block_loao_rows <- list()
 for (animal in levels(metadata$AnimalID)) {
@@ -774,12 +1116,12 @@ for (animal in levels(metadata$AnimalID)) {
     cor_mat <- bicor_safe(me[, members, drop = FALSE])
     pair_values <- cor_mat[upper.tri(cor_mat)]
     pc <- stats::prcomp(me[, members, drop = FALSE], center = TRUE, scale. = TRUE)
-    support <- cluster_support(me, members)
+    support <- cluster_support(me, members, selected_cut_height)
     block_loao_rows[[length(block_loao_rows) + 1L]] <- data.frame(
       omitted_AnimalID = animal, SupermoduleID = sm,
       min_member_eigengene_correlation = min(pair_values),
       PC1_variance_explained = summary(pc)$importance[2, 1],
-      same_group_at_cut_0_40 = as.logical(support["same_group"]),
+      same_group_at_selected_cut = as.logical(support["same_group"]),
       separation_margin = as.numeric(support["separation_margin"]),
       stringsAsFactors = FALSE
     )
@@ -792,12 +1134,67 @@ block_loao_summary <- do.call(rbind, lapply(split(block_loao, block_loao$Supermo
     min_member_correlation = min(z$min_member_eigengene_correlation),
     median_member_correlation = median(z$min_member_eigengene_correlation),
     min_PC1_variance = min(z$PC1_variance_explained),
-    grouping_persistence_fraction = mean(z$same_group_at_cut_0_40),
+    grouping_persistence_fraction = mean(z$same_group_at_selected_cut),
     min_separation_margin = min(z$separation_margin),
     weakest_omitted_AnimalID = z$omitted_AnimalID[which.min(z$separation_margin)],
     stringsAsFactors = FALSE
   )
 }))
+# Region omission retains the complete remaining repeated-animal clusters and
+# asks whether the historical block remains together, without calling regional
+# organization a technical failure.
+block_loro_rows <- list()
+for (region in levels(metadata$Region)) {
+  keep <- metadata$Region != region
+  me <- fixed_module_mes(expression_primary[keep, , drop = FALSE])
+  for (mid in module_ids) me[, mid] <- align_score(me[, mid], current_me[keep, mid])
+  for (sm in names(expected_blocks)) {
+    members <- expected_blocks[[sm]]
+    support <- cluster_support(me, members, selected_cut_height)
+    pc <- stats::prcomp(me[, members, drop = FALSE], center = TRUE, scale. = TRUE)
+    block_loro_rows[[length(block_loro_rows) + 1L]] <- data.frame(omitted_region = as.character(region), SupermoduleID = sm,
+      min_member_eigengene_correlation = min(bicor_safe(me[, members, drop = FALSE])[upper.tri(bicor_safe(me[, members, drop = FALSE]))]),
+      PC1_variance_explained = summary(pc)$importance[2, 1], same_group_at_selected_cut = as.logical(support["same_group"]),
+      separation_margin = as.numeric(support["separation_margin"]), stringsAsFactors = FALSE)
+  }
+}
+block_loro <- do.call(rbind, block_loro_rows)
+block_loro_summary <- do.call(rbind, lapply(split(block_loro, block_loro$SupermoduleID), function(z) data.frame(
+  SupermoduleID = z$SupermoduleID[[1]], n_leave_one_region_out = nrow(z),
+  min_member_correlation = min(z$min_member_eigengene_correlation), min_PC1_variance = min(z$PC1_variance_explained),
+  grouping_persistence_fraction = mean(z$same_group_at_selected_cut), min_separation_margin = min(z$separation_margin),
+  region_dependence_interpretation = if (all(z$same_group_at_selected_cut)) "hippocampus_wide_block_support" else "region_sensitive_block_support",
+  stringsAsFactors = FALSE)))
+# Reconstruct only module eigengenes for each cluster draw; full module
+# membership stays fixed and no bootstrap network is redetected.
+bootstrap_design <- bootstrap_rows |>
+  dplyr::distinct(.data$bootstrap_iteration, .data$sampled_AnimalIDs) |>
+  dplyr::arrange(.data$bootstrap_iteration)
+block_boot_rows <- vector("list", nrow(bootstrap_design) * length(expected_blocks)); bb <- 0L
+for (ii in seq_len(nrow(bootstrap_design))) {
+  drawn <- strsplit(as.character(bootstrap_design$sampled_AnimalIDs[[ii]]), ";", fixed = TRUE)[[1]]
+  draw_index <- unlist(lapply(drawn, function(a) which(as.character(metadata$AnimalID) == a)), use.names = FALSE)
+  me <- fixed_module_mes(expression_primary[draw_index, , drop = FALSE])
+  ref <- current_me[draw_index, , drop = FALSE]
+  for (mid in module_ids) me[, mid] <- align_score(me[, mid], ref[, mid])
+  for (sm in names(expected_blocks)) {
+    members <- expected_blocks[[sm]]; support <- cluster_support(me, members, selected_cut_height)
+    pc <- stats::prcomp(me[, members, drop = FALSE], center = TRUE, scale. = TRUE)
+    bb <- bb + 1L
+    block_boot_rows[[bb]] <- data.frame(bootstrap_iteration = bootstrap_design$bootstrap_iteration[[ii]], SupermoduleID = sm,
+      resampling_unit = "AnimalID_cluster", min_member_eigengene_correlation = min(bicor_safe(me[, members, drop = FALSE])[upper.tri(bicor_safe(me[, members, drop = FALSE]))]),
+      PC1_variance_explained = summary(pc)$importance[2, 1], same_group_at_selected_cut = as.logical(support["same_group"]), separation_margin = as.numeric(support["separation_margin"]), stringsAsFactors = FALSE)
+  }
+}
+block_boot <- do.call(rbind, block_boot_rows)
+block_boot_summary <- do.call(rbind, lapply(split(block_boot, block_boot$SupermoduleID), function(z) data.frame(
+  SupermoduleID = z$SupermoduleID[[1]], resampling_unit = "AnimalID_cluster", n_iterations = nrow(z),
+  median_member_correlation = median(z$min_member_eigengene_correlation), percentile_2_5_member_correlation = unname(stats::quantile(z$min_member_eigengene_correlation, .025)),
+  grouping_persistence_fraction = mean(z$same_group_at_selected_cut), bootstrap_stability_status = if (mean(z$same_group_at_selected_cut) < .50) "severe_instability" else "no_severe_instability", stringsAsFactors = FALSE)))
+write_csv_atomic(block_loro, file.path(output_dir, "higher_order_block_leave_one_region_out.csv"))
+write_csv_atomic(block_loro_summary, file.path(output_dir, "higher_order_block_leave_one_region_out_summary.csv"))
+write_csv_atomic(block_boot, file.path(output_dir, "higher_order_block_animal_cluster_bootstrap.csv"))
+write_csv_atomic(block_boot_summary, file.path(output_dir, "higher_order_block_animal_cluster_bootstrap_summary.csv"))
 standalone_audit <- data.frame(
   SupermoduleID = singleton_ids,
   member_ModuleID = vapply(observed_members[singleton_ids], `[`, character(1), 1L),
@@ -807,9 +1204,34 @@ standalone_audit <- data.frame(
   stringsAsFactors = FALSE
 )
 write_csv_atomic(block_robustness, file.path(output_dir, "higher_order_block_robustness.csv"))
+write_csv_atomic(block_grid, file.path(output_dir, "higher_order_block_cut_height_grid.csv"))
 write_csv_atomic(block_loao, file.path(output_dir, "higher_order_block_leave_one_animal_out.csv"))
 write_csv_atomic(block_loao_summary, file.path(output_dir, "higher_order_block_leave_one_animal_out_summary.csv"))
 write_csv_atomic(standalone_audit, file.path(output_dir, "standalone_supermodule_identity_audit.csv"))
+
+block_readiness <- do.call(rbind, lapply(names(expected_blocks), function(sm) {
+  z <- block_robustness[block_robustness$SupermoduleID == sm, , drop = FALSE]
+  status_for <- function(sid) {
+    zz <- z[z$sensitivity_id == sid, , drop = FALSE]
+    if (!nrow(zz) || !isTRUE(zz$same_group_at_selected_cut) || !is.finite(zz$min_member_eigengene_correlation)) return("fail")
+    if (zz$min_member_eigengene_correlation >= .50 && zz$cut_height_independent_support) "pass" else "suggestive"
+  }
+  bilateral <- status_for("hemisphere_collapsed"); spatial <- status_for("spatial_adjusted"); strict <- status_for("within_animal_spatial_adjusted")
+  az <- block_loao_summary[block_loao_summary$SupermoduleID == sm, , drop = FALSE]
+  rz <- block_loro_summary[block_loro_summary$SupermoduleID == sm, , drop = FALSE]
+  bz <- block_boot_summary[block_boot_summary$SupermoduleID == sm, , drop = FALSE]
+  animal <- if (az$grouping_persistence_fraction >= .80 && bz$bootstrap_stability_status == "no_severe_instability") "pass" else if (az$grouping_persistence_fraction >= .60) "suggestive" else "fail"
+  grid_support <- mean(block_grid$same_group[block_grid$SupermoduleID == sm])
+  block_class <- if (bilateral == "fail") "unsupported_as_higher_order_block" else if (animal == "fail") "animal_sensitive_block" else if (bilateral == "pass" && animal == "pass" && spatial == "pass") "robust_spatially_independent_block" else if (bilateral %in% c("pass", "suggestive") && animal %in% c("pass", "suggestive") && spatial == "fail") "reproducible_spatially_organized_block" else "descriptive_threshold_dependent_block"
+  data.frame(dataset = "microglia", SupermoduleID = sm, member_ModuleIDs = paste(expected_blocks[[sm]], collapse = ";"),
+    bilateral_support = bilateral, spatial_adjusted_support = spatial, strict_nonspatial_support = strict,
+    leave_one_animal_out_support = animal, leave_one_region_out_support = rz$region_dependence_interpretation,
+    animal_cluster_bootstrap_support = bz$bootstrap_stability_status, cut_height_independent_support = grid_support >= .50,
+    cut_height_grid_grouping_fraction = grid_support, selected_cut_height = selected_cut_height,
+    selected_cut_provenance_status = cut_height_provenance_status, higher_order_block_classification = block_class,
+    claim_scope = if (block_class %in% c("robust_spatially_independent_block", "reproducible_spatially_organized_block")) "higher-order eigengene co-variation only" else "descriptive historical higher-order grouping only", stringsAsFactors = FALSE)
+}))
+write_csv_atomic(block_readiness, file.path(output_dir, "higher_order_block_readiness_summary.csv"))
 
 # -------------------------------------------------------------------------
 # Part 5: same-study compartment and marker-panel context.
@@ -918,6 +1340,7 @@ context_rows <- lapply(seq_along(module_ids), function(i) {
   ce <- compartment_summary[compartment_summary$ModuleID == mid, ]
   me <- marker_enrichment[marker_enrichment$ModuleID == mid, ]
   sig <- me$marker_panel[me$FDR <= 0.10 & me$overlap_count >= 2]
+  micro_vs_neuropil <- suppressWarnings(as.numeric(ce$median_microglia_vs_neuropil[[1]]))
   ann <- annotation[i, ]
   empirical_both <- all(c("empirical_microglia_ROI", "empirical_neuropil") %in% sig)
   dominant <- if ("oligodendrocyte_myelin" %in% sig) {
@@ -931,10 +1354,10 @@ context_rows <- lapply(seq_along(module_ids), function(i) {
   } else if ("astrocyte_endfoot" %in% sig) {
     "astrocyte_endfoot-associated_ROI"
   } else if ("canonical_microglia" %in% sig ||
-             ("empirical_microglia_ROI" %in% sig && ce$median_microglia_vs_neuropil > 0.25)) {
+             ("empirical_microglia_ROI" %in% sig && is.finite(micro_vs_neuropil) && micro_vs_neuropil > 0.25)) {
     "microglia-associated_ROI"
   } else if ("neuronal_neuropil" %in% sig || "empirical_neuropil" %in% sig ||
-             ce$median_microglia_vs_neuropil < -0.25) {
+             (is.finite(micro_vs_neuropil) && micro_vs_neuropil < -0.25)) {
     "neuropil-associated_ROI"
   } else {
     "shared_or_unresolved_ROI"
@@ -959,7 +1382,7 @@ context_rows <- lapply(seq_along(module_ids), function(i) {
     marker_panels_FDR_le_0_10 = paste(sig, collapse = ";"),
     empirical_microglia_vs_neuropil_support = ce$median_microglia_vs_neuropil,
     joint_exact_match_fraction = ce$joint_exact_match_fraction,
-    network_structure_status = module_consensus$worst_sensitivity_status[match(mid, module_consensus$ModuleID)],
+    network_structure_status = module_consensus$primary_architecture_status[match(mid, module_consensus$ModuleID)],
     claim_limitation = limitation,
     stringsAsFactors = FALSE
   )
@@ -1032,12 +1455,14 @@ write_csv_atomic(transcript_contract, file.path(output_dir, "transcriptomic_matc
 # Part 7: answer-first recommendations and validation.
 # -------------------------------------------------------------------------
 
-status_counts <- table(factor(module_consensus$worst_sensitivity_status, levels = c("pass", "suggestive", "fail")))
-robust_n <- unname(status_counts["pass"])
-suggestive_n <- unname(status_counts["suggestive"])
-fail_n <- unname(status_counts["fail"])
-block_primary <- block_robustness[block_robustness$sensitivity_id == "primary", ]
-block_all_support <- tapply(block_robustness$cut_height_independent_support, block_robustness$SupermoduleID, all)
+architecture_counts <- table(factor(module_consensus$primary_architecture_status,
+                                    levels = c("robust_spatially_independent", "reproducible_spatially_organized", "suggestive_architecture", "animal_sensitive", "technically_unstable")))
+robust_n <- unname(architecture_counts["robust_spatially_independent"])
+region_organized_n <- unname(architecture_counts["reproducible_spatially_organized"])
+suggestive_n <- unname(architecture_counts["suggestive_architecture"])
+animal_sensitive_n <- unname(architecture_counts["animal_sensitive"])
+technical_n <- unname(architecture_counts["technically_unstable"])
+block_all_support <- setNames(block_readiness$cut_height_independent_support, block_readiness$SupermoduleID)
 
 recommendations <- data.frame(
   output = c(
@@ -1051,16 +1476,16 @@ recommendations <- data.frame(
     "transcriptomic bridge readiness"
   ),
   placement = c(
-    if (fail_n == 0L) "main-text candidate" else "Extended Data",
+    if (robust_n + region_organized_n > 0L) "main-text candidate" else "Extended Data",
     "Extended Data", "Supplementary Data",
     if (all(block_all_support)) "main-text candidate" else "Extended Data",
     "Extended Data", "Extended Data", "diagnostic only", "Supplementary Data"
   ),
   rationale = c(
-    paste0(robust_n, " pass, ", suggestive_n, " suggestive, ", fail_n, " fail under the conservative all-sensitivity rule"),
+    paste0(robust_n, " spatially independent, ", region_organized_n, " reproducible spatially organized, ", suggestive_n, " suggestive, ", animal_sensitive_n, " animal-sensitive and ", technical_n, " technically unstable"),
     "descriptive mixed-model decomposition respects nine animal units and exposes spatial dominance",
     "full numerical robustness evidence is necessary for reproducibility but too detailed for the main narrative",
-    "only three identities are multi-module blocks; support must persist beyond the descriptive 0.40 cut",
+    "only three identities are multi-module blocks; support is evaluated on the resolved historical cut and a non-optimized grid",
     "distinguishes process from ROI/cellular context and limits intrinsic-cell claims",
     "group contrasts are not independent validation of network construction and retain the existing Stage 05 FDR policy",
     "AnimalID and region are removed by design; strict diagnostic sensitivity cannot replace the primary network",
@@ -1082,9 +1507,9 @@ answers <- data.frame(
     "Which single orthogonal validation would add the most value?"
   ),
   answer = c(
-    paste0("Conservative fixed-membership result: ", robust_n, " pass, ", suggestive_n, " suggestive, and ", fail_n, " fail. Interpret per-module results; 72 ROIs are not treated as independent animals."),
+    paste0("Fixed-membership architecture: ", robust_n, " robust spatially independent; ", region_organized_n, " reproducible spatially organized; ", suggestive_n, " suggestive; ", animal_sensitive_n, " animal-sensitive; and ", technical_n, " technically unstable. The strict nonspatial diagnostic is reported separately and never invalidates a primary architecture result."),
     paste0("Context classes: ", context_text, ". These are ROI associations, not intrinsic-cell assignments."),
-    if (fail_n == 0L) "Yes, for fixed co-variation programs with explicit spatial/context limitations; not as proof of cell-intrinsic mechanism or group causality." else "Only selectively: modules passing robustness and context gates may support a main-text co-variation claim; the network as a whole should not be generalized.",
+    if (robust_n + region_organized_n > 0L) "Yes, selectively for fixed co-variation programs after the corrected readiness classification. Region-organized covariance can be biologically meaningful, but no result establishes cell-intrinsic mechanism, causality or an FDR-supported supermodule stress effect." else "Only as descriptive/co-variation evidence: no broad main-text generalization is supported.",
     "Yes. Group-effect panels should remain Extended Data because they do not validate network construction and retain the existing Stage 05 multiplicity policy.",
     "Matched hippocampal single-nucleus or spatial transcriptomic gene-set validation with an explicit measured background, region crosswalk and identical contrasts would add the most orthogonal value."
   ),
@@ -1104,7 +1529,7 @@ validation <- data.frame(
   check_id = c(
     "current_module_ids", "current_supermodule_ids", "no_membership_duplicates",
     "repeated_measure_unit", "sensitivity_dimensions", "feature_alignment",
-    "variance_fractions", "preservation_availability", "loao_coverage",
+    "variance_fractions", "preservation_descriptive_only", "loao_coverage", "loro_coverage", "animal_cluster_bootstrap", "cut_height_provenance",
     "higher_order_membership", "context_claim_limits", "transcriptomic_contract",
     "protected_outputs_unchanged", "no_row_multiplication"
   ),
@@ -1116,8 +1541,11 @@ validation <- data.frame(
     identical(c(nrow(expression_collapsed), nrow(expression_spatial), nrow(expression_strict)), c(36L, 72L, 72L)),
     all(sensitivity_audit$feature_order_exact),
     all(abs(aggregate(variance_fraction ~ level + entity_id, rbind(module_vp, super_vp), sum, na.rm = TRUE)$variance_fraction - 1) < 1e-8),
-    nrow(module_robustness) == 39L && all(module_robustness$preservation_metric_reason == "available"),
+    nrow(module_robustness) == 39L && all(module_robustness$preservation_metric_reason == "available") && all(!module_robustness$claim_gate_eligible) && all(module_robustness$preservation_permutation_unit == "ROI_row_unblocked"),
     nrow(loao) == 9L * 13L && all(table(loao$ModuleID) == 9L),
+    nrow(loro) == 4L * 13L && all(table(loro$ModuleID) == 4L),
+    nrow(bootstrap_rows) == n_animal_bootstrap * 13L && all(bootstrap_rows$resampling_unit == "AnimalID_cluster") && !bootstrap_estimability$ROI_row_bootstrap_used,
+    cut_height_provenance_status %in% c("resolved_0.40", "resolved_0.45", "resolved_other", "unresolved_historical_provenance") && (cut_height_provenance_status != "resolved_0.40" || isTRUE(all.equal(selected_cut_height, .40))),
     all(vapply(names(expected_blocks), function(sm) setequal(observed_members[[sm]], expected_blocks[[sm]]), logical(1))),
     all(grepl("not|cannot|unresolved|require", context_validation$claim_limitation, ignore.case = TRUE)),
     all(transcript_contract$status[transcript_contract$contract_element == "concordance_execution"] == "not_run"),
@@ -1131,8 +1559,9 @@ validation <- data.frame(
     "36 hemisphere-collapsed; 72 spatial-adjusted; 72 strict residualized",
     "all matrices retain the exact ordered 5201-feature universe",
     "estimable components sum to one per eigengene; non-estimable batch is NA",
-    paste0("39 module-matrix rows; ", n_permutations, " preservation permutations"),
-    "nine omissions for every module", "SM01/SM03/SM09 match current membership",
+    paste0("39 module-matrix rows; ", n_permutations, " conventional unblocked ROI-row preservation permutations; descriptive only"),
+    "nine omissions for every module", "four omissions for every module",
+    paste0(n_animal_bootstrap, " AnimalID-cluster draws; no ROI-row bootstrap"), paste0(cut_height_provenance_status, "; selected=", selected_cut_height), "SM01/SM03/SM09 match current membership",
     "all module context rows contain explicit claim limitations",
     "concordance not run because matching contract is incomplete",
     "pre/post MD5 hashes for protected paths", "one row per current module"
@@ -1155,15 +1584,15 @@ report_lines <- c(
   "",
   "## Answer first",
   "",
-  paste0("The current fixed network contains 13 modules from 72 ROI observations nested within nine animals. Under a conservative rule spanning bilateral collapse, spatial adjustment and strict within-animal residualization, **", robust_n, " modules pass, ", suggestive_n, " are suggestive and ", fail_n, " fail**. The detailed module table, not the aggregate count, controls interpretation."),
+  paste0("The current fixed network contains 13 modules from 72 ROI observations nested within nine animals. The corrected classification identifies **", robust_n, " robust spatially independent**, **", region_organized_n, " reproducible spatially organized**, **", suggestive_n, " suggestive**, **", animal_sensitive_n, " animal-sensitive**, and **", technical_n, " technically unstable** modules. The strict within-animal nonspatial result is diagnostic only and does not automatically invalidate a primary architecture."),
   "",
-  paste0("Only SM01, SM03 and SM09 are evaluated as multi-module higher-order blocks. Cut height 0.40 is descriptive and was not optimized. Cut-height-independent support across all matrices was: ", paste(names(block_all_support), ifelse(block_all_support, "supported", "not consistently supported"), sep = "=", collapse = "; "), "."),
+  paste0("Only SM01, SM03 and SM09 are evaluated as multi-module higher-order blocks. Historical cut-height provenance is **", cut_height_provenance_status, "** (selected ", ifelse(is.finite(selected_cut_height), formatC(selected_cut_height, format = "f", digits = 2), "unresolved"), "). The non-optimized grid is 0.25, 0.35, 0.40, 0.45, 0.50, 0.55 and 0.65; grid support was: ", paste(names(block_all_support), ifelse(block_all_support, "supported", "not consistently supported"), sep = "=", collapse = "; "), "."),
   "",
   "The network can support a main-text **co-variation** claim only for modules and blocks passing the fixed-membership robustness gates. It does not establish microglia-intrinsic mechanism, causal stress effects or independent replication.",
   "",
   "## Repeated-measures and estimability",
   "",
-  paste0("Variance fractions were estimated with `", vp_formula_text, "` using `variancePartition::fitExtractVarPartModel`. AnimalID is the biological unit. StressGroup has only three levels and is constant within animals, so its component is descriptive. AcquisitionBatch has two levels and is fully nested in AnimalID; it is non-estimable separately, excluded from the formula and reported as NA rather than assigned variance. Boundary components are flagged. Negative variance estimates, if returned numerically, are truncated to zero and the estimable fractions renormalized."),
+  paste0("The all-random-effects sensitivity uses `", vp_formula_text, "`; the design-aware decomposition uses `", fixed_group_formula_text, "`. AnimalID is the biological unit. StressGroup is a low-powered fixed between-animal term (three animals per group); a near-zero allocation is not evidence of no stress effect. Acquisition date is nested within AnimalID, so it is never assigned an independent variance component. Boundary/negative estimates and leave-one-animal-out uncertainty are recorded."),
   "",
   "## Sensitivity design",
   "",
@@ -1191,7 +1620,7 @@ report_lines <- c(
   "",
   "## Reproducibility",
   "",
-  paste0("Audit script: `06_modules_WGCNA/12_microglia_wgcna_nature_readiness_audit.R`; preservation permutations: ", n_permutations, "; generated: ", format(Sys.time(), tz = "Europe/Berlin", usetz = TRUE), ". See `input_hashes.csv`, `protected_output_hash_audit.csv`, `validation_table.csv` and `session_info.txt`." )
+  paste0("Audit script: `06_modules_WGCNA/12_microglia_wgcna_nature_readiness_audit.R`; conventional preservation permutations: ", n_permutations, "; AnimalID-cluster bootstrap: ", n_animal_bootstrap, "; generated: ", format(Sys.time(), tz = "Europe/Berlin", usetz = TRUE), ". See `input_hashes.csv`, `protected_output_hash_audit.csv`, `validation_table.csv` and `session_info.txt`." )
 )
 write_lines_atomic(report_lines, file.path(output_dir, "WGCNA_nature_readiness_report.md"))
 
@@ -1214,10 +1643,10 @@ readme_lines <- c(
   "Rerun from the repository root:",
   "",
   "```powershell",
-  "& 'C:\\Users\\topohl\\AppData\\Local\\Programs\\R\\R-4.5.1\\bin\\Rscript.exe' '06_modules_WGCNA/12_microglia_wgcna_nature_readiness_audit.R' --permutations 100",
-  "& 'C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\MSBuild\\Microsoft\\VisualStudio\\NodeJs\\node.exe' 'C:\\Users\\topohl\\.codex\\plugins\\cache\\openai-curated-remote\\data-analytics\\0.2.8-13ceeea1f599\\skills\\build-report\\scripts\\deliver_portable_artifact.mjs' --input 'results/reviewer_audit/microglia_wgcna_nature_readiness/WGCNA_nature_readiness_report_artifact.json' --output 'results/reviewer_audit/microglia_wgcna_nature_readiness/WGCNA_nature_readiness_report.html'",
-  "& 'C:\\Users\\topohl\\AppData\\Local\\Programs\\R\\R-4.5.1\\bin\\Rscript.exe' '06_modules_WGCNA/12b_finalize_microglia_wgcna_nature_readiness_audit.R'",
-  "& 'C:\\Users\\topohl\\AppData\\Local\\Programs\\R\\R-4.5.1\\bin\\Rscript.exe' -e \"testthat::test_file('tests/testthat/test-microglia-wgcna-nature-readiness-audit.R', reporter='summary')\"",
+  "Rscript .\\06_modules_WGCNA\\12_microglia_wgcna_nature_readiness_audit.R --permutations 100 --animal-bootstrap 500",
+  "Rscript .\\06_modules_WGCNA\\12b_finalize_microglia_wgcna_nature_readiness_audit.R",
+  "Rscript -e \"testthat::test_file('tests/testthat/test-microglia-wgcna-nature-readiness-audit.R', reporter='summary')\"",
+  "# Optional portable HTML packaging uses the local report renderer when available; the Markdown report is the repository-contained core artifact.",
   "```"
 )
 write_lines_atomic(readme_lines, file.path(output_dir, "README.md"))

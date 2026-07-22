@@ -25,14 +25,28 @@ atomic_write_csv <- function(x, path) {
 }
 
 required <- c(
+  "supermodule_cut_height_provenance.csv",
   "module_eigengene_variance_partition.csv",
   "supermodule_eigengene_variance_partition.csv",
+  "module_eigengene_variance_partition_random_effects.csv",
+  "supermodule_eigengene_variance_partition_random_effects.csv",
+  "module_eigengene_variance_partition_fixed_group.csv",
+  "supermodule_eigengene_variance_partition_fixed_group.csv",
+  "module_variance_partition_uncertainty.csv",
+  "supermodule_variance_partition_uncertainty.csv",
   "variance_partition_heatmap.svg",
   "variance_partition_heatmap.pdf",
   "model_estimability_audit.csv",
   "module_sensitivity_robustness.csv",
   "module_leave_one_animal_out.csv",
+  "module_leave_one_region_out.csv",
+  "module_leave_one_region_out_summary.csv",
+  "module_animal_cluster_bootstrap.csv.gz",
+  "module_animal_cluster_bootstrap_summary.csv",
+  "animal_cluster_bootstrap_estimability_audit.csv",
+  "module_robustness_consensus.csv",
   "higher_order_block_robustness.csv",
+  "higher_order_block_readiness_summary.csv",
   "module_biological_context_validation.csv",
   "module_to_gene_bridge.csv",
   "transcriptomic_matching_contract_audit.csv",
@@ -49,6 +63,8 @@ required_paths <- file.path(output_dir, required)
 
 robustness <- utils::read.csv(file.path(output_dir, "module_sensitivity_robustness.csv"), check.names = FALSE)
 loao <- utils::read.csv(file.path(output_dir, "module_leave_one_animal_out.csv"), check.names = FALSE)
+loro <- utils::read.csv(file.path(output_dir, "module_leave_one_region_out.csv"), check.names = FALSE)
+bootstrap <- utils::read.csv(gzfile(file.path(output_dir, "module_animal_cluster_bootstrap.csv.gz")), check.names = FALSE)
 blocks <- utils::read.csv(file.path(output_dir, "higher_order_block_robustness.csv"), check.names = FALSE)
 context <- utils::read.csv(file.path(output_dir, "module_biological_context_validation.csv"), check.names = FALSE)
 protected <- utils::read.csv(file.path(output_dir, "protected_output_hash_audit.csv"), check.names = FALSE)
@@ -57,7 +73,7 @@ artifact <- jsonlite::read_json(file.path(output_dir, "WGCNA_nature_readiness_re
 checks <- data.frame(
   check_id = c(
     "required_files_exist", "required_files_nonzero", "no_interrupted_temp_files",
-    "module_sensitivity_unique", "loao_unique", "block_rows_unique",
+    "module_sensitivity_unique", "loao_unique", "loro_unique", "animal_cluster_bootstrap_coverage", "block_rows_unique",
     "context_rows_unique", "portable_artifact_contract", "portable_html_nonzero",
     "protected_hashes_unchanged"
   ),
@@ -67,6 +83,8 @@ checks <- data.frame(
     !any(grepl("\\.tmp-|\\.part$|\\.incomplete$", list.files(output_dir, all.files = TRUE))),
     nrow(robustness) == 39L && !anyDuplicated(robustness[c("sensitivity_id", "ModuleID")]),
     nrow(loao) == 117L && !anyDuplicated(loao[c("omitted_AnimalID", "ModuleID")]),
+    nrow(loro) == 52L && !anyDuplicated(loro[c("omitted_region", "ModuleID")]),
+    nrow(bootstrap) == 6500L && all(bootstrap$resampling_unit == "AnimalID_cluster") && length(unique(bootstrap$ModuleID)) == 13L && length(unique(bootstrap$bootstrap_iteration)) == 500L,
     nrow(blocks) == 12L && !anyDuplicated(blocks[c("sensitivity_id", "SupermoduleID")]),
     nrow(context) == 13L && !anyDuplicated(context$ModuleID),
     identical(artifact$surface, "report") && identical(artifact$manifest$version, 1L) && identical(artifact$snapshot$version, 1L),
@@ -79,6 +97,8 @@ checks <- data.frame(
     "no .tmp, .part or .incomplete files",
     "3 sensitivity matrices x 13 stable modules",
     "9 animals x 13 stable modules",
+    "4 regions x 13 stable modules",
+    "500 AnimalID-cluster iterations x 13 stable modules; no ROI-row bootstrap",
     "4 matrices x 3 multi-module blocks",
     "one context row per stable module",
     "surface=report; manifest.version=1; snapshot.version=1",

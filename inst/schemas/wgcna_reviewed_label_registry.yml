@@ -1,0 +1,24 @@
+name: wgcna_reviewed_label_registry
+required_columns: [dataset, level, entity_id, reviewed_biological_label, reviewed_short_label, subcellular_context, roi_context, label_confidence, manual_review_required, aggregation_evidence_class, structural_status, rationale, reviewer, proposal_prepared_by, review_date, adjudication_status]
+key_columns: [dataset, level, entity_id]
+allowed_values:
+  level: [module, supermodule]
+  label_confidence: [high, moderate, low]
+  adjudication_status: [reviewed]
+columns:
+  dataset: {type: character}
+  level: {type: character}
+  entity_id: {type: character}
+  reviewed_biological_label: {type: character}
+  reviewed_short_label: {type: character}
+  subcellular_context: {type: character}
+  roi_context: {type: character}
+  label_confidence: {type: character}
+  manual_review_required: {type: logical}
+  aggregation_evidence_class: {type: character}
+  structural_status: {type: character}
+  rationale: {type: character}
+  reviewer: {type: character}
+  proposal_prepared_by: {type: character}
+  review_date: {type: character}
+  adjudication_status: {type: character}

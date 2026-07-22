@@ -474,6 +474,17 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Final publication rendering only. Score/statistics computation stays in 03_score_module_activity.R; every rendered label must come from the canonical final lookup produced by 07_wgcna_interpretable_summary.r."
+      - script: "06_modules_WGCNA/08b_microglia_wgcna_readiness_publication_figures.R"
+        required: false
+        datasets: ["microglia"]
+        stage: "modules_downstream"
+        scope: "dataset_specific"
+        produces: ["results/figures/06_modules_WGCNA/wgcna_publication_figures_corrected/microglia/wgcna_readiness_summary.svg", "results/tables/06_modules_WGCNA/wgcna_publication_figures_corrected/microglia/supermodule_group_effects_standardized.csv"]
+        consumes_required: ["results/tables/06_modules_WGCNA/group_effects/microglia/supermodule_group_effects.csv", "results/tables/06_modules_WGCNA/interpretable_summary/microglia/WGCNA_final_label_lookup.csv", "results/reviewer_audit/microglia_wgcna_nature_readiness/module_robustness_consensus.csv"]
+        consumes_optional: []
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Additive corrected WGCNA figure layer. Standardizes existing Stage 05 effects by the exact response SD and presents AnimalID means without overwriting historic Stage 08 outputs."
       - script: "06_modules_WGCNA/09_microglia_neuropil_independence.R"
         required: false
         datasets: ["microglia"]
@@ -549,6 +560,39 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Robustness/sensitivity synthesis from existing module effects, preservation, and QC/confounding outputs; no core WGCNA recomputation."
+      - script: "06_modules_WGCNA/12_microglia_wgcna_nature_readiness_audit.R"
+        required: false
+        datasets: ["microglia"]
+        stage: "modules_downstream"
+        scope: "dataset_specific"
+        produces: ["results/reviewer_audit/microglia_wgcna_nature_readiness/WGCNA_nature_readiness_report.md", "results/reviewer_audit/microglia_wgcna_nature_readiness/module_robustness_consensus.csv", "results/reviewer_audit/microglia_wgcna_nature_readiness/higher_order_block_readiness_summary.csv"]
+        consumes_required: ["data/processed/06_modules_WGCNA/01_WGCNA/microglia/wgcna_final_model_state.rds", "results/tables/06_modules_WGCNA/group_effects/microglia/"]
+        consumes_optional: ["results/tables/06_modules_WGCNA/microglia_neuropil_independence/microglia/", "results/tables/06_modules_WGCNA/module_robustness_sensitivity/microglia/"]
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Optional additive manuscript-readiness audit. Fixed memberships only; unblocked conventional WGCNA preservation is descriptive, strict nonspatial sensitivity is diagnostic, and region-organized covariance is not a technical failure."
+      - script: "06_modules_WGCNA/12b_finalize_microglia_wgcna_nature_readiness_audit.R"
+        required: false
+        datasets: ["microglia"]
+        stage: "modules_downstream"
+        scope: "dataset_specific"
+        produces: ["results/reviewer_audit/microglia_wgcna_nature_readiness/finalization_validation.csv"]
+        consumes_required: ["results/reviewer_audit/microglia_wgcna_nature_readiness/"]
+        consumes_optional: []
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Packaging and integrity finalization only; it performs no scientific inference."
+      - script: "06_modules_WGCNA/13_wgcna_claim_readiness.R"
+        required: false
+        datasets: ["microglia"]
+        stage: "modules_downstream"
+        scope: "dataset_specific"
+        produces: ["results/tables/06_modules_WGCNA/claim_readiness/microglia/WGCNA_entity_claim_readiness.csv"]
+        consumes_required: ["results/tables/06_modules_WGCNA/interpretable_summary/microglia/WGCNA_final_label_lookup.csv", "results/reviewer_audit/microglia_wgcna_nature_readiness/module_robustness_consensus.csv"]
+        consumes_optional: ["results/tables/06_modules_WGCNA/microglia_neuropil_independence/microglia/", "results/tables/06_modules_WGCNA/module_robustness_sensitivity/microglia/"]
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Canonical non-circular manuscript handoff. Stages 05-07 and 12 must not consume Stage 13."
   networks:
     description: "Spatial network analyses: build spatial relation objects, differential networks, bootstrap stability summaries, figures, and chord diagrams."
     scripts:

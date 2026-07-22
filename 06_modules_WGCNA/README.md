@@ -25,8 +25,12 @@ Rscript 06_modules_WGCNA/04_wgcna_de_gsea_overlap.r --dataset <dataset>
 Rscript 06_modules_WGCNA/06_annotate_module_microenvironment.r --dataset <dataset>
 Rscript 06_modules_WGCNA/07_wgcna_interpretable_summary.r --dataset <dataset>
 Rscript 06_modules_WGCNA/08_wgcna_publication_figures.R --dataset microglia
+Rscript 06_modules_WGCNA/09_microglia_neuropil_independence.R --dataset microglia
 Rscript 06_modules_WGCNA/10_module_complex_architecture.r --dataset <dataset>
 Rscript 06_modules_WGCNA/11_module_robustness_sensitivity.r --dataset <dataset>
+Rscript 06_modules_WGCNA/12_microglia_wgcna_nature_readiness_audit.R --animal-bootstrap 500
+Rscript 06_modules_WGCNA/08b_microglia_wgcna_readiness_publication_figures.R --dataset microglia
+Rscript 06_modules_WGCNA/13_wgcna_claim_readiness.R --dataset microglia
 ```
 
 Run the final cross-dataset summary after all datasets are complete:
@@ -40,6 +44,15 @@ Rscript 06_modules_WGCNA/07_wgcna_interpretable_summary.r --dataset all
 `microglia` and `neuron_soma` use `region`.
 
 `neuron_neuropil` uses `region_layer`.
+
+For microglia, `config/wgcna_labels/microglia.csv` is the authoritative reviewed
+biological-label source. Automatic GO/marker labels remain candidate/provenance
+evidence. Singleton supermodule compatibility identities inherit their member
+module label and confidence; singleton status is structural metadata, not a
+biological-confidence penalty. Stage 12 is optional manuscript-readiness audit;
+its strict nonspatial sensitivity is diagnostic only. Stage 12b packages the
+audit and does not make scientific inferences. Stage 13 is the canonical,
+non-circular claim-readiness handoff for manuscript/global consumers.
 
 `05_module_supermodule_group_effects.r` records this in `SpatialUnitType` and
 uses `spatial_unit` for the tested region or region-layer.
