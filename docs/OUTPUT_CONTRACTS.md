@@ -190,6 +190,24 @@ decompositions. Standard WGCNA preservation permutations are tagged
 `claim_gate_eligible = FALSE`. Strict nonspatial sensitivity is a diagnostic,
 not an overall validity gate. `WGCNA_entity_claim_readiness.csv` is the
 non-circular Stage 13 handoff for manuscript integration.
+
+`WGCNA_entity_claim_readiness.csv` and its canonical source-data mirror retain
+13 module and 9 supermodule technical rows. `canonical_claim_entity_id` and
+`claim_entity_role` prevent the six singleton compatibility identities from
+duplicating their member modules as biological claims. Compatibility aliases
+map to exactly one current module, have `separate_manuscript_claim_allowed =
+FALSE`, and use `manuscript_placement = compatibility_only`. Stage 13
+group-effect provenance is the exact Stage 05 `SUS - RES` /
+`spatial_adjusted_global` / `global_spatial_adjusted` row;
+`group_effect_FDR` remains an exact compatibility alias for
+`group_effect_FDR_global`.
+
+Cut-height provenance separates the configured future default from the value
+selected to generate a saved network. Dataset defaults are neuron neuropil
+`0.55`, neuron soma `0.35`, and microglia `0.45`. The current frozen microglia
+network records a historical explicit `0.40` override and memberships generated
+at `0.40`; neither concept overwrites the other. The readiness sensitivity grid
+is `0.25, 0.35, 0.40, 0.45, 0.50, 0.55, 0.65`.
 | WGCNA module complex/organelle architecture | standard integration evidence contract | `results/tables/06_modules_WGCNA/module_complex_architecture/<dataset>/module_complex_architecture.csv`; mirrored under `results/source_data/06_modules_WGCNA/module_complex_architecture/<dataset>/` |
 | WGCNA module robustness/sensitivity | standard integration evidence contract | `results/tables/06_modules_WGCNA/module_robustness_sensitivity/<dataset>/module_robustness_sensitivity.csv`; mirrored under `results/source_data/06_modules_WGCNA/module_robustness_sensitivity/<dataset>/` |
 | module-behavior coupling | standard integration evidence contract | `results/tables/08_behavior_physio_coupling/module_behavior_coupling/<dataset>/module_behavior_coupling.csv`; mirrored under `results/source_data/08_behavior_physio_coupling/module_behavior_coupling/<dataset>/` |

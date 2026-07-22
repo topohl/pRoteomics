@@ -1,0 +1,99 @@
+name: wgcna_entity_claim_readiness
+required_columns:
+  - dataset
+  - level
+  - entity_id
+  - canonical_claim_entity_id
+  - claim_entity_role
+  - separate_manuscript_claim_allowed
+  - compatibility_target_level
+  - compatibility_target_entity_id
+  - canonical_biological_label
+  - canonical_short_label
+  - structural_status
+  - primary_architecture_status
+  - spatial_dependence_class
+  - animal_stability_status
+  - strict_nonspatial_sensitivity_status
+  - conventional_preservation_status
+  - conventional_preservation_claim_gate_eligible
+  - biological_process_confidence
+  - context_assignment_class
+  - context_assignment_confidence
+  - neuropil_independence_status
+  - selected_contrast
+  - selected_effect_scope
+  - selected_spatial_unit
+  - group_effect_estimate
+  - group_effect_SE
+  - group_effect_CI_low
+  - group_effect_CI_high
+  - group_effect_p_value
+  - group_effect_FDR_within_dataset_level
+  - group_effect_FDR_global
+  - group_effect_FDR
+  - group_effect_adjustment_scope
+  - group_effect_evidence_status
+  - group_effect_status
+  - group_effect_model_formula
+  - group_effect_model_type
+  - group_effect_n_animals
+  - group_effect_n_samples
+  - group_effect_biological_replicate_unit
+  - group_effect_source_file
+  - group_effect_source_key
+  - model_stability
+  - allowed_claim_scope
+  - prohibited_claim_scope
+  - manuscript_placement
+  - allowed_wording
+  - readiness_contract_version
+columns:
+  dataset: {type: character, allowed_values: [microglia]}
+  level: {type: character, allowed_values: [module, supermodule]}
+  entity_id: {type: character}
+  canonical_claim_entity_id: {type: character}
+  claim_entity_role: {type: character, allowed_values: [canonical_module, higher_order_block, compatibility_alias]}
+  separate_manuscript_claim_allowed: {type: logical}
+  compatibility_target_level: {type: character, allowed_values: ["", module]}
+  compatibility_target_entity_id: {type: character}
+  canonical_biological_label: {type: character}
+  canonical_short_label: {type: character}
+  structural_status: {type: character, allowed_values: [module, singleton, multi_module]}
+  primary_architecture_status: {type: character}
+  spatial_dependence_class: {type: character}
+  animal_stability_status: {type: character}
+  strict_nonspatial_sensitivity_status: {type: character}
+  conventional_preservation_status: {type: character}
+  conventional_preservation_claim_gate_eligible: {type: logical}
+  biological_process_confidence: {type: character, allowed_values: [high, moderate, low, medium, medium-high, medium-low]}
+  context_assignment_class: {type: character}
+  context_assignment_confidence: {type: character}
+  neuropil_independence_status: {type: character}
+  selected_contrast: {type: character, allowed_values: [SUS - RES]}
+  selected_effect_scope: {type: character, allowed_values: [spatial_adjusted_global]}
+  selected_spatial_unit: {type: character, allowed_values: [global_spatial_adjusted]}
+  group_effect_estimate: {type: numeric}
+  group_effect_SE: {type: numeric}
+  group_effect_CI_low: {type: numeric}
+  group_effect_CI_high: {type: numeric}
+  group_effect_p_value: {type: numeric, range: {min: 0, max: 1}}
+  group_effect_FDR_within_dataset_level: {type: numeric, range: {min: 0, max: 1}}
+  group_effect_FDR_global: {type: numeric, range: {min: 0, max: 1}}
+  group_effect_FDR: {type: numeric, range: {min: 0, max: 1}}
+  group_effect_adjustment_scope: {type: character}
+  group_effect_evidence_status: {type: character}
+  group_effect_status: {type: character, allowed_values: [FDR_supported, not_FDR_supported, diagnostic_only_model, not_available]}
+  group_effect_model_formula: {type: character}
+  group_effect_model_type: {type: character}
+  group_effect_n_animals: {type: integer}
+  group_effect_n_samples: {type: integer}
+  group_effect_biological_replicate_unit: {type: character}
+  group_effect_source_file: {type: character}
+  group_effect_source_key: {type: character}
+  model_stability: {type: character, allowed_values: [stable, singular_or_unstable_diagnostic_only]}
+  allowed_claim_scope: {type: character}
+  prohibited_claim_scope: {type: character}
+  manuscript_placement: {type: character, allowed_values: [main-text biological co-variation candidate, Supplementary or diagnostic only, compatibility_only]}
+  allowed_wording: {type: character}
+  readiness_contract_version: {type: character, allowed_values: [microglia_wgcna_claim_readiness_v2]}

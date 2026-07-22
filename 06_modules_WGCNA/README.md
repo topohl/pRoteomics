@@ -53,6 +53,12 @@ biological-confidence penalty. Stage 12 is optional manuscript-readiness audit;
 its strict nonspatial sensitivity is diagnostic only. Stage 12b packages the
 audit and does not make scientific inferences. Stage 13 is the canonical,
 non-circular claim-readiness handoff for manuscript/global consumers.
+Stage 13 retains all stable technical identities, but singleton supermodule
+IDs are compatibility aliases for their one member module and cannot form
+separate manuscript claims. Its group-effect endpoint is exactly `SUS - RES`
+at `spatial_adjusted_global` / `global_spatial_adjusted`; claim status uses the
+unchanged Stage 05 `FDR_global`, while both FDR scopes and model/source
+provenance remain available.
 
 `05_module_supermodule_group_effects.r` records this in `SpatialUnitType` and
 uses `spatial_unit` for the tested region or region-layer.
@@ -92,8 +98,15 @@ display labels are metadata. GO naming uses `ModuleProteinSetType == "all"`
 and counts a member module only when `p.adjust <= 0.05`. High confidence
 requires the same term in every member module. Medium confidence requires at
 least two and at least half. Other multi-module clusters are conservatively
-mixed/unresolved; singletons are explicitly `singleton` with low confidence.
-The sensitivity grid is `0.25, 0.35, 0.45, 0.50, 0.55, 0.65`.
+mixed/unresolved; singletons are explicitly `singleton`. That structural status
+does not lower the reviewed biological-label confidence inherited from the
+member module.
+Future-network dataset defaults are `0.55` for neuron neuropil, `0.35` for
+neuron soma, and `0.45` for microglia. These defaults are distinct from the
+selected value recorded for a saved network. The frozen current microglia
+network was generated using a historical explicit `0.40` override; its
+memberships remain tied to `0.40`. The sensitivity grid is
+`0.25, 0.35, 0.40, 0.45, 0.50, 0.55, 0.65`.
 
 Manual labels absent from the active dataset are retained for audit but marked
 with `present_in_dataset = FALSE`, `annotation_scope =
