@@ -74,8 +74,10 @@ Supermodule GO support is restricted to `ModuleProteinSetType == "all"` and a
 member module supports a term only at `p.adjust <= 0.05`. High confidence
 requires support in every member module; medium requires at least two and at
 least half. Other multi-module clusters remain mixed/unresolved, while
-singletons are explicitly labelled `singleton` with low confidence. The full
-cut-height sensitivity grid is `0.25, 0.35, 0.45, 0.50, 0.55, 0.65`.
+singletons are explicitly labelled `singleton`. Singleton structural status
+does not lower the reviewed biological-label confidence inherited from the
+member module. The full cut-height sensitivity grid is
+`0.25, 0.35, 0.40, 0.45, 0.50, 0.55, 0.65`.
 
 Run:
 
@@ -351,6 +353,23 @@ reviewed registry is authoritative for final microglia labels; automatic GO and
 marker names are candidate/provenance evidence only. Singleton compatibility
 identities inherit the one member’s biological label and confidence, while
 biological-process and ROI-context confidence remain distinct.
+
+Stage 13 retains 22 technical rows for stable downstream joins. The six
+singleton supermodule rows are `compatibility_alias` identities targeting
+their one current module and are never independently manuscript-claimable.
+SM01, SM03 and SM09 are the only higher-order-block claim identities. Stage 13
+selects exactly `SUS - RES` / `spatial_adjusted_global` /
+`global_spatial_adjusted` and carries the unchanged Stage 05 estimate, SE,
+95% CI, p-value, within-dataset-level FDR, global FDR, model, replicate-unit,
+source-file and source-key provenance. Claim status uses `FDR_global`.
+
+Configured future-network defaults and historical selected values are separate
+parameter concepts. The intended defaults remain neuron neuropil `0.55`,
+neuron soma `0.35`, and microglia `0.45`. The frozen current microglia network
+was generated with an explicit historical `0.40` override, so its saved
+memberships and provenance remain associated with `0.40`. Stage 12 resolves
+that selected value from the saved state, Stage 01 manifest, and clustering
+sensitivity record rather than substituting the future `0.45` default.
 
 ```powershell
 Rscript .\06_modules_WGCNA\12_microglia_wgcna_nature_readiness_audit.R --animal-bootstrap 500
