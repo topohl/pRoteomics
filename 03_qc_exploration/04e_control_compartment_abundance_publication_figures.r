@@ -9,10 +9,12 @@ source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "qc_exploration_utils.R"))
 source(repo_path("R", "compartment_abundance_utils.R"))
 source(repo_path("R", "joint_compartment_qc_plotting.R"))
+source(repo_path("R", "control_compartment_abundance_rendering.R"))
 
 global_arg <- tolower(script_arg_value("--dataset", "global"))
 if (!global_arg %in% c("all", "global")) stop("This is a global script; use --dataset all or global.", call. = FALSE)
 dry_run <- is_dry_run()
+render_only <- "--render-only" %in% commandArgs(trailingOnly = TRUE)
 
 as_integer_contract <- function(env, default, lower, upper) {
   value <- suppressWarnings(as.integer(Sys.getenv(env, unset = as.character(default))))
@@ -47,6 +49,11 @@ roots <- list(
   reports = path_results("reports", "03_qc_exploration", substep, "global"),
   logs = path_results("logs", "03_qc_exploration", substep, "global")
 )
+render_inputs <- c(
+  dot_source = file.path(roots$source_data, "07a_control_marker_dot_heatmap_source.csv"),
+  rank_source = file.path(roots$source_data, "04_rank_abundance_with_percentile.csv"),
+  marker_audit = file.path(roots$source_data, "05_marker_matches_and_exclusions.csv")
+)
 
 if (dry_run) {
   for (nm in names(inputs)) {
@@ -58,14 +65,140 @@ if (dry_run) {
       "/3 animals primary; ", strict_con_animals, "/3 strict\n", sep = "")
   cat("[DRY-RUN] source data: ", normalizePath(roots$source_data, winslash = "/", mustWork = FALSE), "\n", sep = "")
   cat("[DRY-RUN] figures: ", normalizePath(roots$figures, winslash = "/", mustWork = FALSE), "\n", sep = "")
-  quit(status = if (all(file.exists(inputs))) 0 else 1, save = "no")
+  if (render_only) {
+    for (nm in names(render_inputs)) {
+      cat("[DRY-RUN] render input ", nm, ": ", normalizePath(render_inputs[[nm]], winslash = "/", mustWork = FALSE),
+          " [", if (file.exists(render_inputs[[nm]])) "PASS" else "FAIL", "]\n", sep = "")
+    }
+  }
+  required_dry_inputs <- if (render_only) c(inputs[["publication_labels"]], render_inputs) else inputs
+  quit(status = if (all(file.exists(required_dry_inputs))) 0 else 1, save = "no")
 }
 
-missing_inputs <- inputs[!file.exists(inputs)]
+required_inputs <- if (render_only) inputs["publication_labels"] else inputs
+missing_inputs <- required_inputs[!file.exists(required_inputs)]
 if (length(missing_inputs)) stop("Missing required input(s): ", paste(names(missing_inputs), collapse = ", "), call. = FALSE)
 required_packages <- c("dplyr", "ggplot2", "ggrepel", "scales", "svglite")
 missing_packages <- required_packages[!vapply(required_packages, requireNamespace, logical(1), quietly = TRUE)]
 if (length(missing_packages)) stop("Missing required package(s): ", paste(missing_packages, collapse = ", "), call. = FALSE)
+
+rendering_source_files <- c(
+  "10_configured_marker_display.csv",
+  "10a_marker_display_selection_provenance.csv",
+  "10b_marker_display_eligible_alternatives.csv",
+  "10c_marker_tile_display_source.csv",
+  "10d_rank_representative_display_source.csv",
+  "10e_terminal_rank_drop_audit.csv",
+  "control_compartment_rendering_source_data.xlsx"
+)
+rendering_figure_files <- c(
+  "control_compartment_marker_dot_heatmap_89mm.svg", "control_compartment_marker_dot_heatmap_89mm.pdf",
+  "control_rank_abundance_extended_data_183mm.svg", "control_rank_abundance_extended_data_183mm.pdf",
+  "control_rank_abundance_extended_data_183mm.png"
+)
+
+write_control_rendering_outputs <- function(rendering, roots, inputs_used, allow_overwrite = FALSE) {
+  legends <- ca_control_rendering_legends()
+  paths <- c(
+    file.path(roots$source_data, rendering_source_files),
+    file.path(roots$figures, rendering_figure_files),
+    file.path(roots$reports, "rendering_figure_legends.md"),
+    file.path(roots$logs, "rendering", "rendering_manifest.yml")
+  )
+  existing <- paths[file.exists(paths)]
+  if (length(existing) && !allow_overwrite) {
+    stop(
+      "Refusing to overwrite existing rendering output(s): ",
+      paste(normalizePath(existing, winslash = "/", mustWork = FALSE), collapse = ", "),
+      ". Set PROTEOMICS_CONTROL_ABUNDANCE_RENDER_ALLOW_OVERWRITE=true only for an intentional rendering regeneration.",
+      call. = FALSE
+    )
+  }
+  invisible(lapply(roots, dir_create))
+  qc_write_csv(rendering$config, file.path(roots$source_data, rendering_source_files[[1]]))
+  qc_write_csv(rendering$provenance, file.path(roots$source_data, rendering_source_files[[2]]))
+  qc_write_csv(rendering$alternatives, file.path(roots$source_data, rendering_source_files[[3]]))
+  qc_write_csv(rendering$dot, file.path(roots$source_data, rendering_source_files[[4]]))
+  qc_write_csv(rendering$rank_representatives, file.path(roots$source_data, rendering_source_files[[5]]))
+  qc_write_csv(rendering$terminal_drop, file.path(roots$source_data, rendering_source_files[[6]]))
+  qc_write_xlsx(list(
+    configured_markers = rendering$config,
+    selection_provenance = rendering$provenance,
+    eligible_alternatives = rendering$alternatives,
+    tile_display = rendering$dot,
+    rank_display = rendering$rank_representatives,
+    terminal_drop = rendering$terminal_drop
+  ), file.path(roots$source_data, rendering_source_files[[7]]))
+
+  p_dot <- ca_build_control_marker_tile_heatmap(rendering)
+  p_rank <- ca_build_control_rank_abundance_plot(rendering)
+  ca_save_vector_figure(p_dot, roots$figures, "control_compartment_marker_dot_heatmap_89mm", 89, 92)
+  ca_save_vector_figure(p_rank, roots$figures, "control_rank_abundance_extended_data_183mm", 183, 72)
+  ggplot2::ggsave(
+    file.path(roots$figures, "control_rank_abundance_extended_data_183mm.png"),
+    p_rank, width = 183, height = 72, units = "mm", dpi = 300,
+    device = "png", limitsize = FALSE, bg = "white"
+  )
+
+  writeLines(c(
+    "# Main panel figure legend", "", legends$main, "",
+    "# Extended Data figure legend", "", legends$extended
+  ), file.path(roots$reports, "rendering_figure_legends.md"))
+  write_run_manifest(
+    file.path(roots$logs, "rendering", "rendering_manifest.yml"),
+    inputs = as.list(inputs_used),
+    outputs = list(
+      source_files = file.path(roots$source_data, rendering_source_files),
+      figure_files = file.path(roots$figures, rendering_figure_files),
+      figure_legends = file.path(roots$reports, "rendering_figure_legends.md")
+    ),
+    parameters = list(
+      execution_mode = "render_only_from_completed_04e_source_tables",
+      configured_markers = nrow(rendering$config),
+      deterministic_rank_labels = sum(rendering$rank_representatives$display_rank_label),
+      marker_point_layer = "configured_representatives_only",
+      tile_size_encoding = "none_all_configured_proteins_3_of_3_valid_animals",
+      robust_z_display_cap = 3,
+      robust_z_source_values = "uncapped",
+      terminal_drop_definition = unique(rendering$terminal_drop$terminal_drop_definition)
+    ),
+    notes = paste(
+      "Rendering-only regeneration from existing analytical source tables.",
+      "No sample inclusion, normalization, detection, aggregation, rank, robust-z, or analytical source values were recalculated."
+    )
+  )
+  invisible(list(dot = p_dot, rank = p_rank, outputs = paths))
+}
+
+if (render_only) {
+  missing_render_inputs <- render_inputs[!file.exists(render_inputs)]
+  if (length(missing_render_inputs)) {
+    stop("Missing completed 04e rendering input(s): ", paste(names(missing_render_inputs), collapse = ", "), call. = FALSE)
+  }
+  display_config <- utils::read.csv(inputs[["publication_labels"]], check.names = FALSE, stringsAsFactors = FALSE)
+  rendering <- ca_prepare_control_rendering_sources(
+    dot_source = qc_read_table(render_inputs[["dot_source"]]),
+    rank_table = qc_read_table(render_inputs[["rank_source"]]),
+    marker_audit = qc_read_table(render_inputs[["marker_audit"]]),
+    config = display_config
+  )
+  allow_render_overwrite <- ca_as_logical(Sys.getenv(
+    "PROTEOMICS_CONTROL_ABUNDANCE_RENDER_ALLOW_OVERWRITE", unset = "false"
+  ))
+  write_control_rendering_outputs(
+    rendering, roots,
+    inputs_used = c(publication_labels = inputs[["publication_labels"]], render_inputs),
+    allow_overwrite = allow_render_overwrite
+  )
+  terminal_summary <- rendering$terminal_drop |>
+    dplyr::distinct(.data$dataset, .data$terminal_segment_n, .data$terminal_segment_start_rank,
+                    .data$terminal_segment_initiating_drop_log2)
+  message(
+    "04e rendering-only regeneration complete; terminal segments: ",
+    paste0(terminal_summary$dataset, "=", terminal_summary$terminal_segment_n, collapse = ", "), "."
+  )
+  quit(status = 0, save = "no")
+}
 
 bundle <- readRDS(inputs[["joint_bundle"]])
 reconstructed <- ca_validate_bundle_reconstruction(bundle)
@@ -177,7 +310,8 @@ animal_abundance <- dplyr::bind_rows(
 robust <- ca_robust_standardize(animal_primary[animal_primary$ProteinGroupID %in% shared_ids, , drop = FALSE])
 marker_scores <- ca_score_markers(robust, marker_map_raw, min_score_proteins, min_score_fraction)
 
-labels <- utils::read.csv(inputs[["publication_labels"]], check.names = FALSE, stringsAsFactors = FALSE)
+display_config <- utils::read.csv(inputs[["publication_labels"]], check.names = FALSE, stringsAsFactors = FALSE)
+labels <- display_config
 names(labels)[names(labels) == "official_gene_symbol"] <- "publication_gene_symbol"
 labels$marker_gene_key <- toupper(trimws(labels$publication_gene_symbol))
 label_matches <- marker_matches |>
@@ -341,78 +475,18 @@ dot_source <- robust |>
   ) |>
   dplyr::left_join(
     label_matches |> dplyr::select("ProteinGroupID", marker_class = "fidelity_marker_class",
-                                   "publication_gene_symbol", "label_order", "rationale") |> dplyr::distinct(),
+                                   "publication_gene_symbol", "label_order",
+                                   rationale = "display_rationale") |> dplyr::distinct(),
     by = "ProteinGroupID", relationship = "many-to-many"
   ) |>
   dplyr::filter(is.finite(.data$median_robust_standardized_abundance))
 
-dataset_labels <- c(neuron_soma = "SOMA", neuron_neuropil = "NEUROPIL", microglia = "MG/PVM-enriched")
-class_order <- c("Soma markers", "Neuropil markers", "Microglia/PVM markers")
-class_palette <- c("Soma markers" = "#756B8E", "Neuropil markers" = "#487C75", "Microglia/PVM markers" = "#B36B55")
-dot_source$dataset_label <- factor(unname(dataset_labels[dot_source$dataset]), levels = unname(dataset_labels))
-dot_source$marker_class <- factor(dot_source$marker_class, levels = class_order)
-dot_source$marker_label <- factor(
-  dot_source$publication_gene_symbol,
-  levels = rev(unique(labels$publication_gene_symbol[order(match(labels$marker_class, class_order), labels$label_order)]))
+rendering <- ca_prepare_control_rendering_sources(
+  dot_source = dot_source,
+  rank_table = rank_data,
+  marker_audit = marker_matches,
+  config = display_config
 )
-
-p_dot <- ggplot2::ggplot(
-  dot_source,
-  ggplot2::aes(.data$dataset_label, .data$marker_label,
-               colour = .data$median_robust_standardized_abundance,
-               size = .data$raw_CON_valid_animal_detection_fraction)
-) +
-  ggplot2::geom_point() +
-  ggplot2::facet_grid(marker_class ~ ., scales = "free_y", space = "free_y") +
-  ggplot2::scale_colour_gradient2(
-    low = "#3B6FB6", mid = "#F2F2F2", high = "#B24A4A", midpoint = 0,
-    limits = c(-3, 3), breaks = c(-3, 0, 3), oob = scales::squish
-  ) +
-  ggplot2::scale_size_continuous(range = c(1.0, 3.0), limits = c(0, 1), labels = scales::label_percent(accuracy = 1)) +
-  ggplot2::labs(
-    x = NULL, y = NULL,
-    colour = "Protein-wise standardized abundance\n(median robust z; colour capped at +/-3)",
-    size = "Raw CON detection\n(valid-animal fraction)"
-  ) +
-  joint_pub_theme(base_size = 6.2) +
-  ggplot2::theme(
-    axis.text.x = ggplot2::element_text(size = 5.8), axis.text.y = ggplot2::element_text(size = 5.8),
-    strip.text = ggplot2::element_text(size = 5.8), panel.spacing.y = grid::unit(1.0, "mm")
-  )
-
-rank_plot <- primary_rank_annotated |>
-  dplyr::left_join(feature_annotation, by = "ProteinGroupID", relationship = "many-to-one")
-marker_plot <- rank_plot |>
-  dplyr::filter(!is.na(.data$marker_classes), nzchar(.data$marker_classes)) |>
-  dplyr::left_join(marker_map |> dplyr::select("ProteinGroupID", "marker_class") |> dplyr::distinct(),
-                   by = "ProteinGroupID", relationship = "many-to-many")
-label_plot <- marker_plot |>
-  dplyr::inner_join(
-    label_matches |> dplyr::select("ProteinGroupID", "publication_gene_symbol") |> dplyr::distinct(),
-    by = "ProteinGroupID", relationship = "many-to-many"
-  )
-rank_plot$dataset_label <- factor(unname(dataset_labels[rank_plot$dataset]), levels = unname(dataset_labels))
-marker_plot$dataset_label <- factor(unname(dataset_labels[marker_plot$dataset]), levels = unname(dataset_labels))
-label_plot$dataset_label <- factor(unname(dataset_labels[label_plot$dataset]), levels = unname(dataset_labels))
-
-p_rank <- ggplot2::ggplot(rank_plot, ggplot2::aes(.data$Rank, .data$primary_region_balanced_mean_log2)) +
-  ggplot2::geom_line(colour = "grey70", linewidth = 0.35) +
-  ggplot2::geom_point(
-    data = marker_plot, ggplot2::aes(colour = .data$marker_class), size = 0.55, alpha = 0.8
-  ) +
-  ggrepel::geom_text_repel(
-    data = label_plot, ggplot2::aes(label = .data$publication_gene_symbol, colour = .data$marker_class),
-    size = 1.7, min.segment.length = 0, segment.size = 0.18, max.overlaps = Inf,
-    box.padding = 0.18, point.padding = 0.08, show.legend = FALSE
-  ) +
-  ggplot2::facet_wrap(~dataset_label, nrow = 1, scales = "free") +
-  ggplot2::scale_x_log10(labels = scales::label_number()) +
-  ggplot2::scale_colour_manual(values = class_palette, breaks = class_order) +
-  ggplot2::labs(
-    x = "Protein abundance rank (log10 scale)",
-    y = "Region-balanced mean log2 normalized abundance", colour = "Fidelity marker class"
-  ) +
-  joint_pub_theme(base_size = 6.5)
 
 source_files <- c(
   "01_CON_sample_and_animal_inclusion_audit.csv",
@@ -487,8 +561,16 @@ qc_write_xlsx(list(
   region_influence = region_influence
 ), file.path(roots$source_data, source_files[[14]]))
 
-ca_save_vector_figure(p_dot, roots$figures, "control_compartment_marker_dot_heatmap_89mm", 89, 112)
-ca_save_vector_figure(p_rank, roots$figures, "control_rank_abundance_extended_data_183mm", 183, 78)
+write_control_rendering_outputs(
+  rendering, roots,
+  inputs_used = c(
+    publication_labels = inputs[["publication_labels"]],
+    dot_source = file.path(roots$source_data, dot_source_file),
+    rank_source = file.path(roots$source_data, source_files[[4]]),
+    marker_audit = file.path(roots$source_data, source_files[[5]])
+  ),
+  allow_overwrite = allow_overwrite
+)
 
 report_lines <- c(
   "# Control-only compartment abundance validation",

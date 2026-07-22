@@ -156,7 +156,7 @@ empty_evidence <- function() {
     wgcna_architecture_status = character(), wgcna_group_effect_status = character(),
     wgcna_allowed_claim_scope = character(), wgcna_prohibited_claim_scope = character(),
     readiness_contract_version = character(), counts_toward_convergence = logical(),
-    evidence_semantic_class = character(),
+    evidence_semantic_class = character(), evidence_role = character(), evidence_role_reason = character(),
     contrast = character(), spatial_unit = character(), effect_direction = character(),
     effect_size = numeric(), p_value = numeric(), fdr = numeric(),
     support_count = numeric(), source_file = character(), evidence_status = character(),
@@ -183,6 +183,51 @@ standardize_evidence <- function(df) {
   for (col in c("effect_size", "p_value", "fdr", "support_count")) df[[col]] <- num_or_na(df[[col]])
   for (col in c("separate_manuscript_claim_allowed", "counts_toward_convergence")) df[[col]] <- as.logical(df[[col]])
   for (col in setdiff(cols, c("effect_size", "p_value", "fdr", "support_count", "separate_manuscript_claim_allowed", "counts_toward_convergence"))) df[[col]] <- as.character(df[[col]])
+  df
+}
+
+# Apply after all atlas evidence has been combined.  This keeps source rows intact
+# while separating independent evidence from annotation, diagnostic, and unavailable
+# context.  Microglia Stage 13 countability is intentionally preserved as supplied.
+assign_downstream_evidence_roles <- function(df) {
+  df <- standardize_evidence(df)
+  domain <- tolower(trimws(as.character(df$evidence_domain)))
+  status <- tolower(trimws(as.character(df$evidence_status)))
+  source <- tolower(as.character(df$source_file))
+  program <- tolower(trimws(as.character(df$program_label)))
+  note <- tolower(as.character(df$interpretation_note))
+  status[is.na(status)] <- ""
+  source[is.na(source)] <- ""
+  program[is.na(program)] <- ""
+  note[is.na(note)] <- ""
+  neuronal <- as.character(df$dataset) %in% c("neuron_soma", "neuron_neuropil")
+  unavailable <- as.character(df$entity_type) == "status" |
+    grepl("unavailable|missing", status) |
+    grepl("unavailable optional evidence|missing optional input", program) |
+    grepl("input unavailable", note)
+  annotation <- domain %in% c("microenvironment_marker", "complex_organelle", "wgcna_compatibility_provenance")
+  diagnostic <- domain %in% c("module_robustness_sensitivity", "robustness_sensitivity", "qc_confounding") |
+    domain == "module_behavior_coupling" |
+    (domain == "behavior_coupling" & grepl("08_behavior_physio_coupling/(03_)?module_behavior_coupling", source))
+  neuronal_wgcna <- neuronal & domain %in% c("wgcna_supermodule", "wgcna_stress_group_effect")
+  microglia_architecture <- as.character(df$dataset) == "microglia" & domain == "wgcna_architecture"
+
+  df$evidence_role <- "direct_biological_evidence"
+  df$evidence_role_reason <- NA_character_
+  df$evidence_role[annotation] <- "descriptive_annotation"
+  df$evidence_role_reason[annotation] <- "annotation_or_compatibility_provenance_not_independent_convergence"
+  df$evidence_role[diagnostic] <- "diagnostic_gate"
+  df$evidence_role_reason[diagnostic] <- "diagnostic_or_context_input_not_independent_convergence"
+  df$evidence_role[microglia_architecture] <- "validated_wgcna_architecture"
+  df$evidence_role_reason[microglia_architecture] <- "microglia_stage13_claim_readiness_contract"
+  df$evidence_role[neuronal_wgcna] <- "unvalidated_neuronal_wgcna"
+  df$evidence_role_reason[neuronal_wgcna] <- "neuronal_wgcna_readiness_contract_not_available"
+  df$evidence_role[unavailable] <- "unavailable_evidence"
+  df$evidence_role_reason[unavailable] <- "missing_or_unavailable_optional_input"
+
+  force_noncounting <- annotation | diagnostic | neuronal_wgcna | unavailable
+  force_noncounting[is.na(force_noncounting)] <- FALSE
+  df$counts_toward_convergence[force_noncounting] <- FALSE
   df
 }
 
