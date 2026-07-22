@@ -150,10 +150,11 @@ testthat::test_that("rank plot emphasizes only configured representatives and la
   testthat::expect_true(all(
     plot$layers[[4]]$data$dataset == plot$layers[[4]]$data$rank_label_dataset
   ))
-  testthat::expect_equal(plot$layers[[1]]$aes_params$colour, "#B8B8B8")
+  testthat::expect_equal(plot$layers[[1]]$aes_params$colour, "#AFAFAF")
   testthat::expect_equal(plot$layers[[1]]$aes_params$linewidth, 0.19)
   testthat::expect_equal(plot$layers[[2]]$aes_params$size, 0.95)
   testthat::expect_equal(plot$layers[[4]]$aes_params$colour, "#303030")
+  testthat::expect_equal(plot$layers[[4]]$aes_params$size, 2.14)
   testthat::expect_true(is.expression(plot$labels$x))
   testthat::expect_true(is.expression(plot$labels$y))
   testthat::expect_identical(plot$scales$get_scales("colour")$name, "Representative markers")
