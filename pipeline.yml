@@ -229,6 +229,17 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Global cross-dataset compartment marker fidelity QC; runs once after the three dataset-specific 04c steps."
+      - script: "03_qc_exploration/04e_control_compartment_abundance_publication_figures.r"
+        required: false
+        datasets: ["global"]
+        stage: "qc_cross_dataset"
+        scope: "global"
+        produces: ["results/source_data/03_qc_exploration/04e_control_compartment_abundance_publication_figures/global/", "results/figures/03_qc_exploration/04e_control_compartment_abundance_publication_figures/global/", "results/reports/03_qc_exploration/04e_control_compartment_abundance_publication_figures/global/"]
+        consumes_required: ["data/processed/01_preprocessing/joint_compartment_qc/global/joint_compartment_qc_matrices.rds", "config/marker_panels/wgcna_reference_marker_sets.csv", "config/marker_panels/control_compartment_publication_labels.csv"]
+        consumes_optional: []
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Rendering-oriented CON-only region-balanced compartment-abundance validation with separately named all-group, median-hierarchy, strict-detection, exact-bootstrap, and leave-one-animal-out sensitivities."
   enrichment:
     description: "Differential abundance interpretation: enrichment manifests, GO/GSEA comparisons, neuropil/reference annotations, targeted signatures, program summaries, external overlaps, and EWCE."
     scripts:

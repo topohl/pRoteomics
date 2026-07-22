@@ -1,0 +1,13 @@
+marker_class,official_gene_symbol,label_order,rationale
+Soma markers,Npm1,1,Prespecified nucleolar soma-associated representative from the curated soma fidelity panel
+Soma markers,Anp32a,2,Prespecified nuclear chromatin-associated representative from the curated soma fidelity panel
+Soma markers,Ptbp2,3,Prespecified neuronal RNA-processing representative from the curated soma fidelity panel
+Soma markers,Hdac5,4,Prespecified nuclear regulatory representative from the curated soma fidelity panel
+Neuropil markers,Syp,1,Prespecified synaptic-vesicle representative from the curated neuropil fidelity panel
+Neuropil markers,Dlg4,2,Prespecified postsynaptic-density representative from the curated neuropil fidelity panel
+Neuropil markers,Snap25,3,Prespecified presynaptic release-machinery representative from the curated neuropil fidelity panel
+Neuropil markers,Camk2a,4,Prespecified excitatory synaptic-signalling representative from the curated neuropil fidelity panel
+Microglia/PVM markers,P2ry12,1,Prespecified homeostatic microglia-associated representative from the curated microglia/PVM fidelity panel
+Microglia/PVM markers,C1qa,2,Prespecified complement representative from the curated microglia/PVM fidelity panel
+Microglia/PVM markers,Ctss,3,Prespecified lysosomal protease representative from the curated microglia/PVM fidelity panel
+Microglia/PVM markers,Hexa,4,Prespecified lysosomal enzyme representative from the curated microglia/PVM fidelity panel
