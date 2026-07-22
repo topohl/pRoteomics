@@ -6,6 +6,7 @@
 # Consumes: existing WGCNA module/supermodule summaries, downstream group effects,
 #           cleaned labels, biological annotations, and optional claims table.
 # Produces: conservative cross-compartment WGCNA/supermodule overview.
+# Dataset behavior: global descriptive overview of all three canonical datasets.
 # Notes: Read-only reporting layer. Does not recompute WGCNA or alter module,
 #        supermodule, model, FDR, effect-size, or claim-gate state.
 # ================================================================
@@ -14,6 +15,7 @@ paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.
 source(paths_file)
 source(repo_path("R", "integration_utils.R"))
 source(repo_path("R", "wgcna_labeling_utils.R"))
+source(repo_path("R", "wgcna_claim_readiness_utils.R"))
 
 SCRIPT_ID <- "10_biological_integration/04_wgcna_cross_compartment_overview.R"
 Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
@@ -31,7 +33,7 @@ paths <- integration_paths("wgcna_cross_compartment_overview", "global")
 
 input_spec <- function(ds) {
   base01 <- path_results("tables", "06_modules_WGCNA", "01_WGCNA", ds)
-  list(
+  inputs <- list(
     module_summary = list(path = file.path(base01, "modules", "WGCNA_module_summary.csv"), required = TRUE),
     module_definitions = list(path = file.path(base01, "modules", "WGCNA_module_definitions_for_downstream.csv"), required = TRUE),
     supermodule_summary = list(path = file.path(base01, "supermodules", "wgcna_supermodule_summary.csv"), required = TRUE),
@@ -44,6 +46,10 @@ input_spec <- function(ds) {
     module_biological_annotation = list(path = path_results("tables", "06_modules_WGCNA", "module_annotation", ds, "WGCNA_module_biological_annotation.csv"), required = FALSE),
     supermodule_biological_annotation = list(path = path_results("tables", "06_modules_WGCNA", "module_annotation", ds, "WGCNA_supermodule_biological_annotation.csv"), required = FALSE)
   )
+  if (identical(ds, "microglia")) {
+    inputs$claim_readiness <- list(path = microglia_wgcna_claim_readiness_path(), required = TRUE)
+  }
+  inputs
 }
 
 global_inputs <- list(
@@ -190,7 +196,8 @@ source_label_vector <- function(summary, annotation, lookup) {
   out <- add_source(out, lookup, "entity_id", c("final_plot_label", "best_data_driven_label", "parent_program"), "WGCNA_final_label_lookup.csv")
   out <- add_source(out, annotation, "SupermoduleID", c("Supermodule_CompositionDisplayLabel", "Supermodule_CompositionLabel", "Macroprogram_Display", "DominantMemberTheme", "cleaned_biological_label", "module_program_primary", "microenvironment_caution_label"), "WGCNA_supermodule_biological_annotation.csv")
   out <- add_source(out, summary, "SupermoduleID", c("Macroprogram_Display", "Supermodule_DisplayLabel", "Supermodule_FinalLabel", "Supermodule_DataDrivenLabel"), "wgcna_supermodule_summary.csv")
-  out
+  out |>
+    dplyr::distinct(.data$supermodule_id, .keep_all = TRUE)
 }
 
 load_one_dataset <- function(ds) {
@@ -203,11 +210,21 @@ load_one_dataset <- function(ds) {
 
   require_cols(data$module_summary, c("ModuleID"), paste(ds, "module_summary"))
   require_cols(data$module_definitions, c("ModuleID"), paste(ds, "module_definitions"))
+  if (!"SupermoduleID" %in% names(data$supermodule_summary)) {
+    summary_id_col <- supermodule_id_col(data$supermodule_summary)
+    if (is.na(summary_id_col)) {
+      stop(ds, " supermodule_summary has no stable supermodule ID column.", call. = FALSE)
+    }
+    data$supermodule_summary$SupermoduleID <- as.character(data$supermodule_summary[[summary_id_col]])
+  }
   require_cols(data$supermodule_summary, c("SupermoduleID"), paste(ds, "supermodule_summary"))
   require_cols(data$module_group_effects, c("evidence_status"), paste(ds, "module_group_effects"))
   require_cols(data$supermodule_group_effects, c("supermodule_id", "contrast", "estimate", "p_value", "FDR_global", "FDR_within_dataset_level", "evidence_status"), paste(ds, "supermodule_group_effects"))
   require_cols(data$final_label_lookup, c("dataset", "level", "entity_id", "final_plot_label"), paste(ds, "WGCNA_final_label_lookup"))
   wgcna_validate_label_lookup(data$final_label_lookup)
+  if (identical(ds, "microglia")) {
+    data$claim_readiness <- load_microglia_wgcna_claim_readiness(specs$claim_readiness$path)$all
+  }
 
   list(status = status, missing_required = FALSE, data = data)
 }
@@ -245,6 +262,7 @@ metric_rows <- lapply(names(dataset_bundle), function(ds) {
   module_eff <- x$module_group_effects
   s_counts <- effect_class_counts(super_eff)
   m_counts <- effect_class_counts(module_eff)
+  readiness <- if (identical(ds, "microglia")) x$claim_readiness else NULL
   claims_ds <- if (!is.null(claims) && nrow(claims) && "dataset" %in% names(claims)) claims[claims$dataset == ds, , drop = FALSE] else NULL
   claims_text <- if (!is.null(claims_ds)) tolower(paste(claims_ds$evidence_type %||% "", claims_ds$source_file %||% "", claims_ds$claim_type %||% "", sep = " ")) else character()
   wgcna_claim <- if (!is.null(claims_ds)) grepl("wgcna|module|supermodule", claims_text) else logical()
@@ -276,6 +294,13 @@ metric_rows <- lapply(names(dataset_bundle), function(ds) {
     n_supermodule_effects_model_unstable = unname(s_counts["model_unstable"]),
     n_supermodule_effects_not_supported = unname(s_counts["not_supported"]),
     n_module_effects_robust_FDR = unname(m_counts["robust_FDR"]),
+    n_stage13_technical_identities = if (!is.null(readiness)) nrow(readiness) else NA_integer_,
+    n_canonical_modules = if (!is.null(readiness)) sum(readiness$claim_entity_role == "canonical_module") else NA_integer_,
+    n_higher_order_blocks = if (!is.null(readiness)) sum(readiness$claim_entity_role == "higher_order_block") else NA_integer_,
+    n_compatibility_aliases = if (!is.null(readiness)) sum(readiness$claim_entity_role == "compatibility_alias") else NA_integer_,
+    n_independently_eligible_modules = if (!is.null(readiness)) sum(readiness$claim_entity_role == "canonical_module" & readiness$separate_manuscript_claim_allowed %in% TRUE) else NA_integer_,
+    n_independently_eligible_blocks = if (!is.null(readiness)) sum(readiness$claim_entity_role == "higher_order_block" & readiness$separate_manuscript_claim_allowed %in% TRUE) else NA_integer_,
+    n_FDR_supported_stage13_group_effects = if (!is.null(readiness)) sum(readiness$group_effect_status == "FDR_supported") else NA_integer_,
     n_claim_allowed_wgcna_rows = if (!is.null(claims_ds)) sum(wgcna_claim & allowed, na.rm = TRUE) else NA_integer_,
     n_claim_blocked_or_diagnostic_wgcna_rows = if (!is.null(claims_ds)) sum(wgcna_claim & !allowed, na.rm = TRUE) else NA_integer_,
     main_limitation_note = if (ds == "microglia") "microglia-enriched ROI/local microenvironment; not purified or cell-intrinsic microglia evidence" else "supermodules are data-reduction/interpretation objects, not independent discoveries"
@@ -288,13 +313,52 @@ effect_overview <- dplyr::bind_rows(lapply(names(dataset_bundle), function(ds) {
   labels <- x$final_label_lookup |>
     dplyr::filter(.data$level == "supermodule") |>
     dplyr::transmute(supermodule_id = .data$entity_id, final_plot_label = .data$final_plot_label, label_source = "WGCNA_final_label_lookup.csv")
+  readiness <- if (identical(ds, "microglia")) {
+    x$claim_readiness |>
+      dplyr::filter(.data$level == "supermodule") |>
+      dplyr::transmute(
+        dataset = as.character(.data$dataset), supermodule_id = as.character(.data$entity_id),
+        canonical_claim_entity_id = as.character(.data$canonical_claim_entity_id),
+        claim_entity_role = as.character(.data$claim_entity_role),
+        separate_manuscript_claim_allowed = as.logical(.data$separate_manuscript_claim_allowed),
+        primary_architecture_status = as.character(.data$primary_architecture_status),
+        spatial_dependence_class = as.character(.data$spatial_dependence_class),
+        animal_stability_status = as.character(.data$animal_stability_status),
+        group_effect_status = as.character(.data$group_effect_status),
+        manuscript_placement = as.character(.data$manuscript_placement),
+        readiness_contract_version = as.character(.data$readiness_contract_version)
+      )
+  } else {
+    tibble::tibble(
+      dataset = character(), supermodule_id = character(), canonical_claim_entity_id = character(),
+      claim_entity_role = character(), separate_manuscript_claim_allowed = logical(),
+      primary_architecture_status = character(), spatial_dependence_class = character(),
+      animal_stability_status = character(), group_effect_status = character(),
+      manuscript_placement = character(), readiness_contract_version = character()
+    )
+  }
   x$supermodule_group_effects |>
     dplyr::filter(.data$effect_scope == "spatial_adjusted_global") |>
     dplyr::left_join(labels, by = "supermodule_id") |>
+    dplyr::left_join(readiness, by = c("dataset", "supermodule_id"), relationship = "many-to-one") |>
+    dplyr::mutate(
+      final_plot_label = dplyr::coalesce(
+        clean_chr(.data$final_plot_label),
+        clean_chr(.data$endpoint_label),
+        clean_chr(.data$supermodule_label),
+        as.character(.data$supermodule_id)
+      ),
+      label_source = dplyr::if_else(
+        is.na(clean_chr(.data$label_source)),
+        "Stage 05 endpoint_label (technical identity not present in final label lookup)",
+        .data$label_source
+      )
+    ) |>
     dplyr::transmute(
       dataset = ds,
       supermodule_id,
       final_plot_label,
+      label_source,
       contrast,
       effect_scope,
       estimate = as.numeric(.data$estimate),
@@ -308,12 +372,21 @@ effect_overview <- dplyr::bind_rows(lapply(names(dataset_bundle), function(ds) {
       model_family,
       primary_model_stable,
       claim_allowed_model,
+      canonical_claim_entity_id,
+      claim_entity_role,
+      separate_manuscript_claim_allowed,
+      primary_architecture_status,
+      spatial_dependence_class,
+      animal_stability_status,
+      group_effect_status,
+      manuscript_placement,
+      readiness_contract_version,
       microglia_roi_note = ifelse(ds == "microglia", "microglia-enriched ROI/local microenvironment; not purified or cell-intrinsic microglia evidence", NA_character_)
     )
 }))
 
 if (any(is.na(effect_overview$final_plot_label) | !nzchar(effect_overview$final_plot_label))) {
-  stop("Displayed supermodule labels must come from WGCNA_final_label_lookup.csv; missing label(s) detected.", call. = FALSE)
+  stop("Every technical Stage 05 supermodule effect row must retain a source label.", call. = FALSE)
 }
 if (any(effect_overview$dataset == "microglia" & !grepl("microglia-enriched ROI/local microenvironment", effect_overview$microglia_roi_note))) {
   stop("Microglia overview rows must use conservative ROI/local microenvironment wording.", call. = FALSE)
@@ -326,7 +399,8 @@ program_composition <- dplyr::bind_rows(lapply(names(dataset_bundle), function(d
   size <- if (!is.na(size_col)) suppressWarnings(as.integer(x$supermodule_summary[[size_col]])) else rep(NA_integer_, nrow(x$supermodule_summary))
   id_col <- supermodule_id_col(x$supermodule_summary)
   tibble::tibble(supermodule_id = clean_chr(x$supermodule_summary[[id_col]]), n_member_modules = size) |>
-    dplyr::left_join(src, by = "supermodule_id") |>
+    dplyr::distinct(.data$supermodule_id, .keep_all = TRUE) |>
+    dplyr::left_join(src, by = "supermodule_id", relationship = "one-to-one") |>
     dplyr::mutate(
       dataset = ds,
       broad_program_bin = broad_program_bin(.data$source_label, ds),

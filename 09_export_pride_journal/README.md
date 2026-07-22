@@ -83,6 +83,8 @@ pride_submission/validation/            validation_report.tsv, validation_summar
 
 Manuscript artifacts also land under `results/manuscript/` and `results/tables/biological_claims_table.*`.
 
+The biological claims table requires the finalized microglia Stage 13 WGCNA handoff. It separates WGCNA architecture, direct group effects, convergent overlaps, and compatibility provenance; compatibility aliases never create independent claim rows. Final bundle generation is owned by `10_biological_integration/03_evidence_priority_matrix.r` after the updated claims and integration tables are available.
+
 ## PRIDE vs journal
 
 - **PRIDE partial/processed deposition**: staged under `pride_submission/` from pg_matrix onward.

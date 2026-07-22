@@ -151,6 +151,12 @@ empty_evidence <- function() {
   data.frame(
     dataset = character(), evidence_domain = character(), evidence_id = character(),
     program_label = character(), entity_type = character(), entity_id = character(),
+    wgcna_level = character(), canonical_claim_entity_id = character(),
+    claim_entity_role = character(), separate_manuscript_claim_allowed = logical(),
+    wgcna_architecture_status = character(), wgcna_group_effect_status = character(),
+    wgcna_allowed_claim_scope = character(), wgcna_prohibited_claim_scope = character(),
+    readiness_contract_version = character(), counts_toward_convergence = logical(),
+    evidence_semantic_class = character(),
     contrast = character(), spatial_unit = character(), effect_direction = character(),
     effect_size = numeric(), p_value = numeric(), fdr = numeric(),
     support_count = numeric(), source_file = character(), evidence_status = character(),
@@ -163,8 +169,20 @@ standardize_evidence <- function(df) {
   if (is.null(df) || !nrow(df)) return(empty_evidence())
   for (col in cols) if (!col %in% names(df)) df[[col]] <- NA
   df <- df[, cols, drop = FALSE]
+  missing_semantic <- is.na(df$evidence_semantic_class) | !nzchar(trimws(as.character(df$evidence_semantic_class)))
+  df$evidence_semantic_class[missing_semantic] <- ifelse(
+    grepl("wgcna|module", as.character(df$evidence_domain[missing_semantic]), ignore.case = TRUE),
+    "wgcna_stress_group_effect",
+    "non_wgcna_evidence"
+  )
+  missing_count <- is.na(df$counts_toward_convergence)
+  df$counts_toward_convergence[missing_count] <- !(
+    as.character(df$evidence_status[missing_count]) %in% c("unavailable_optional_input", "missing_required") |
+      as.character(df$entity_type[missing_count]) == "status"
+  )
   for (col in c("effect_size", "p_value", "fdr", "support_count")) df[[col]] <- num_or_na(df[[col]])
-  for (col in setdiff(cols, c("effect_size", "p_value", "fdr", "support_count"))) df[[col]] <- as.character(df[[col]])
+  for (col in c("separate_manuscript_claim_allowed", "counts_toward_convergence")) df[[col]] <- as.logical(df[[col]])
+  for (col in setdiff(cols, c("effect_size", "p_value", "fdr", "support_count", "separate_manuscript_claim_allowed", "counts_toward_convergence"))) df[[col]] <- as.character(df[[col]])
   df
 }
 
