@@ -25,6 +25,9 @@ testthat::test_that("reviewed microglia registry is exact, current, and fully ad
   testthat::expect_equal(sum(registry$level == "supermodule"), 9L)
   testthat::expect_true(all(registry$adjudication_status == "reviewed"))
   testthat::expect_false(any(registry$manual_review_required))
+  testthat::expect_setequal(unique(registry$label_confidence), c("high", "moderate", "low"))
+  testthat::expect_true(all(registry$reviewer == "Tobias Pohl"))
+  testthat::expect_true(all(nzchar(registry$proposal_prepared_by)))
   testthat::expect_false(anyDuplicated(registry[c("dataset", "level", "entity_id")]) > 0L)
 })
 
