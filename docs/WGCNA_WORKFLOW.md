@@ -245,7 +245,7 @@ Rscript .\06_modules_WGCNA\08_wgcna_publication_figures.R --dataset microglia
 
 Safe to rerun: yes.
 
-### 08_microglia_neuropil_independence.R
+### 09_microglia_neuropil_independence.R
 
 Role: microglia-neuropil independence sensitivity.
 
@@ -333,3 +333,27 @@ Reviewer-facing WGCNA claim rows separate model fit from statistical strength. `
 `WGCNA_module_group_effect` and `WGCNA_supermodule_group_effect` claim rows are the direct outputs of the group-effect models. `WGCNA_module` claim rows derived from `WGCNA_module_evidence_rank.csv` are ranked evidence summaries for review and context; unless their model, robustness, animal-level, and evidence-independence support is complete, they should remain suggestive/contextual rather than primary manuscript evidence.
 
 Blocked WGCNA rows are retained for audit but must not be phrased as evidence-supported manuscript claims. `blocked_claim_wording_audit.csv` checks this wording contract, and `wgcna_claim_source_audit.csv` summarizes WGCNA claim source, model-fit status, statistical-evidence status, robustness gate, and claim-use class.
+
+## Optional Microglia Readiness And Claim Handoff
+
+`12_microglia_wgcna_nature_readiness_audit.R` is additive: it keeps the
+historical primary network and memberships unchanged, recognizes AnimalID as
+the repeated-measure unit, and treats standard WGCNA permutation preservation
+as an unblocked ROI-row descriptive diagnostic rather than a claim gate. The
+strict within-animal nonspatial sensitivity is diagnostic only; it cannot
+downgrade a module’s primary architecture classification. Region-organized
+covariance may be meaningful biology rather than technical failure.
+
+`12b_finalize_microglia_wgcna_nature_readiness_audit.R` performs integrity and
+report packaging only. `13_wgcna_claim_readiness.R` is the non-circular
+manuscript handoff. Stages 05, 06, 07 and 12 do not consume Stage 13. The
+reviewed registry is authoritative for final microglia labels; automatic GO and
+marker names are candidate/provenance evidence only. Singleton compatibility
+identities inherit the one member’s biological label and confidence, while
+biological-process and ROI-context confidence remain distinct.
+
+```powershell
+Rscript .\06_modules_WGCNA\12_microglia_wgcna_nature_readiness_audit.R --animal-bootstrap 500
+Rscript .\06_modules_WGCNA\08b_microglia_wgcna_readiness_publication_figures.R --dataset microglia
+Rscript .\06_modules_WGCNA\13_wgcna_claim_readiness.R --dataset microglia
+```

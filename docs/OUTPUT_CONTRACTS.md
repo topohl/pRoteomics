@@ -159,7 +159,7 @@ singletons. Reviewed singleton biological confidence is inherited from the
 member module and is not lowered automatically. Biological-coherence exports report signed minimum/mean/median
 pairwise eigengene correlation, region/layer-adjusted correlations when
 estimable, PC1 variance explained, module/protein counts, and stability over
-cut heights `0.25, 0.35, 0.45, 0.50, 0.55, 0.65`; PC1 variance alone is not
+cut heights `0.25, 0.35, 0.40, 0.45, 0.50, 0.55, 0.65`; PC1 variance alone is not
 shared-pathway evidence.
 
 WGCNA biological annotation and interpretable summaries keep raw GO,
@@ -180,6 +180,16 @@ provenance. `final_plot_label` is retained only as an exact compatibility alias
 for `canonical_plot_label`. Publication rendering fails when a stable ID or
 membership fingerprint is missing or stale; plots do not choose labels through
 fallback chains across legacy aliases.
+
+The optional microglia Nature-readiness audit under
+`results/reviewer_audit/microglia_wgcna_nature_readiness/` is additive. It
+records cut-height provenance, AnimalID-cluster bootstrap and leave-one-region
+sensitivities, and both all-random-effects and fixed-StressGroup variance
+decompositions. Standard WGCNA preservation permutations are tagged
+`ROI_row_unblocked`, `repeated_measure_blocking = FALSE`, and
+`claim_gate_eligible = FALSE`. Strict nonspatial sensitivity is a diagnostic,
+not an overall validity gate. `WGCNA_entity_claim_readiness.csv` is the
+non-circular Stage 13 handoff for manuscript integration.
 | WGCNA module complex/organelle architecture | standard integration evidence contract | `results/tables/06_modules_WGCNA/module_complex_architecture/<dataset>/module_complex_architecture.csv`; mirrored under `results/source_data/06_modules_WGCNA/module_complex_architecture/<dataset>/` |
 | WGCNA module robustness/sensitivity | standard integration evidence contract | `results/tables/06_modules_WGCNA/module_robustness_sensitivity/<dataset>/module_robustness_sensitivity.csv`; mirrored under `results/source_data/06_modules_WGCNA/module_robustness_sensitivity/<dataset>/` |
 | module-behavior coupling | standard integration evidence contract | `results/tables/08_behavior_physio_coupling/module_behavior_coupling/<dataset>/module_behavior_coupling.csv`; mirrored under `results/source_data/08_behavior_physio_coupling/module_behavior_coupling/<dataset>/` |
