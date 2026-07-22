@@ -448,7 +448,7 @@ ca_build_control_rank_abundance_plot <- function(rendering) {
     rendering$rank_curve,
     ggplot2::aes(.data$Rank, .data$primary_region_balanced_mean_log2)
   ) +
-    ggplot2::geom_line(colour = "#B8B8B8", linewidth = 0.19) +
+    ggplot2::geom_line(colour = "#AFAFAF", linewidth = 0.19) +
     ggplot2::geom_point(
       data = rendering$rank_representatives,
       ggplot2::aes(colour = .data$marker_class),
@@ -469,11 +469,14 @@ ca_build_control_rank_abundance_plot <- function(rendering) {
         x = .data$label_x, y = .data$label_y,
         label = .data$configured_official_gene_symbol, hjust = .data$label_hjust
       ),
-      inherit.aes = FALSE, colour = "#303030", size = 2.0,
+      inherit.aes = FALSE, colour = "#303030", size = 2.14,
       family = "sans", fontface = "plain", show.legend = FALSE
     ) +
     ggplot2::facet_wrap(~dataset_label, nrow = 1, scales = "free_x") +
-    ggplot2::scale_x_log10(labels = scales::label_number()) +
+    ggplot2::scale_x_log10(
+      labels = scales::label_number(),
+      expand = ggplot2::expansion(mult = c(0.02, 0.02))
+    ) +
     ggplot2::scale_colour_manual(
       values = ca_display_class_palette,
       breaks = ca_display_class_order,
@@ -492,17 +495,18 @@ ca_build_control_rank_abundance_plot <- function(rendering) {
     ) +
     joint_pub_theme(base_size = 6.0) +
     ggplot2::theme(
-      strip.text = ggplot2::element_text(size = 6.8, face = "bold", colour = "#303030"),
-      axis.text = ggplot2::element_text(size = 5.8),
-      axis.title = ggplot2::element_text(size = 6.2),
-      panel.spacing.x = grid::unit(2.0, "mm"),
+      strip.text = ggplot2::element_text(size = 7.5, face = "bold", colour = "#303030"),
+      axis.text = ggplot2::element_text(size = 6.15),
+      axis.title = ggplot2::element_text(size = 6.6),
+      panel.spacing.x = grid::unit(1.4, "mm"),
       legend.position = "bottom", legend.justification = "center",
       legend.box.just = "center",
-      legend.title = ggplot2::element_text(size = 5.8, margin = ggplot2::margin(r = 0.7)),
-      legend.text = ggplot2::element_text(size = 5.6),
-      legend.spacing.x = grid::unit(0.45, "mm"),
+      legend.title = ggplot2::element_text(size = 6.15, margin = ggplot2::margin(r = 0.55)),
+      legend.text = ggplot2::element_text(size = 5.95),
+      legend.spacing.x = grid::unit(0.35, "mm"),
+      legend.box.spacing = grid::unit(0.25, "mm"),
       legend.margin = ggplot2::margin(0, 0, 0, 0),
-      plot.margin = ggplot2::margin(2.2, 2.2, 0.6, 3.8)
+      plot.margin = ggplot2::margin(1.2, 1.7, 0.2, 3.8)
     )
 }
 
