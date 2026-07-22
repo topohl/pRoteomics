@@ -88,6 +88,7 @@ Rscript 03_qc_exploration/06_variance_partitioning.r --dataset <dataset> --dry-r
 Rscript 03_qc_exploration/07_wgcna_marker_trait_export.r --dataset <dataset> --dry-run
 Rscript 03_qc_exploration/08_qc_biology_confounding_report.r --dataset <dataset> --dry-run
 Rscript 03_qc_exploration/04d_compartment_marker_fidelity.r --dataset all --dry-run
+Rscript 03_qc_exploration/04e_control_compartment_abundance_publication_figures.r --dataset global --dry-run
 ```
 
 Key outputs:
