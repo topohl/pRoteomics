@@ -221,7 +221,12 @@ testthat::test_that("WGCNA downstream schemas expose required columns", {
     dataset = character(), evidence_domain = character(), evidence_id = character(),
     program_label = character(), entity_type = character(), entity_id = character(),
     source_file = character(), evidence_status = character(),
-    interpretation_note = character(), qc_flag = character()
+    interpretation_note = character(), qc_flag = character(),
+    canonical_claim_entity_id = character(), claim_entity_role = character(),
+    separate_manuscript_claim_allowed = logical(), wgcna_architecture_status = character(),
+    wgcna_group_effect_status = character(), wgcna_allowed_claim_scope = character(),
+    wgcna_prohibited_claim_scope = character(), readiness_contract_version = character(),
+    counts_toward_convergence = logical(), evidence_semantic_class = character()
   )
   testthat::expect_silent(validate_cross_compartment_program_atlas(atlas_df))
 
@@ -229,13 +234,17 @@ testthat::test_that("WGCNA downstream schemas expose required columns", {
     program_key = character(), manuscript_claim_scope = character(),
     datasets_supported = character(), evidence_domains = character(),
     strongest_evidence = character(), safe_manuscript_sentence = character(),
-    main_limitation = character(), qc_flag = character()
+    main_limitation = character(), qc_flag = character(),
+    n_evidence_rows_total = integer(), n_evidence_rows_counting_toward_convergence = integer(),
+    n_wgcna_architecture_rows = integer(), n_wgcna_stress_effect_rows = integer(),
+    n_wgcna_alias_rows_excluded = integer(), claim_semantic_scope = character()
   )
   testthat::expect_silent(validate_manuscript_program_summary(summary_df))
 
   priority_df <- data.frame(
     priority_id = character(), program_key = character(), dataset = character(),
     priority_tier = character(), evidence_domain_count = integer(),
+    evidence_rows_counting_toward_convergence = integer(),
     strongest_fdr = numeric(), robustness_flag = character(),
     behavior_flag = character(), qc_flag = character(), recommended_use = character()
   )

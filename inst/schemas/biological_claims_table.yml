@@ -36,6 +36,19 @@ required_columns:
   - neuropil_independence_gate
   - robustness_gate
   - evidence_independence_gate
+  - wgcna_level
+  - wgcna_entity_id
+  - wgcna_canonical_claim_entity_id
+  - wgcna_claim_entity_role
+  - wgcna_separate_manuscript_claim_allowed
+  - wgcna_primary_architecture_status
+  - wgcna_spatial_dependence_class
+  - wgcna_animal_stability_status
+  - wgcna_group_effect_status
+  - wgcna_allowed_claim_scope
+  - wgcna_prohibited_claim_scope
+  - wgcna_readiness_contract_version
+  - wgcna_stage13_source_file
 columns:
   claim_id: {type: character}
   dataset: {type: character, allowed_values: [neuron_neuropil, neuron_soma, microglia]}
@@ -46,7 +59,7 @@ columns:
   direction: {type: character}
   key_proteins_genes: {type: character}
   evidence_type: {type: character}
-  claim_type: {type: character, allowed_values: [wgcna_group_effect, enrichment_program, module_annotation, microglia_signature, microglia_roi_context, behavior_association, integration_summary, export_context]}
+  claim_type: {type: character, allowed_values: [wgcna_architecture, wgcna_group_effect, wgcna_convergent_overlap, wgcna_compatibility_provenance, enrichment_program, module_annotation, microglia_signature, microglia_roi_context, behavior_association, integration_summary, export_context]}
   claim_use_class: {type: character, allowed_values: [primary_claim, supporting_claim, suggestive_context, annotation_only, blocked]}
   raw_top_GO_term: {type: character}
   representative_GO_terms: {type: character}
@@ -93,3 +106,17 @@ columns:
   marker_contamination_risk: {type: character}
   qc_interpretation_flag: {type: character}
   animal_level_status: {type: character}
+  wgcna_level: {type: character}
+  wgcna_entity_id: {type: character}
+  wgcna_canonical_claim_entity_id: {type: character}
+  wgcna_claim_entity_role: {type: character}
+  wgcna_separate_manuscript_claim_allowed: {type: logical}
+  wgcna_primary_architecture_status: {type: character}
+  wgcna_spatial_dependence_class: {type: character}
+  wgcna_animal_stability_status: {type: character}
+  wgcna_group_effect_status: {type: character}
+  wgcna_allowed_claim_scope: {type: character}
+  wgcna_prohibited_claim_scope: {type: character}
+  wgcna_readiness_contract_version: {type: character}
+  wgcna_stage13_source_file: {type: character}
+  wgcna_statistical_endpoint_id: {type: character}

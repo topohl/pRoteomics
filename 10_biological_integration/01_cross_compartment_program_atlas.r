@@ -4,13 +4,16 @@
 # Stage: integration
 # Scope: global
 # Consumes: enrichment, WGCNA, microenvironment, complex/organelle, robustness,
-#           spatial architecture, behavior-coupling, and QC evidence tables.
-# Produces: cross-compartment program atlas.
+#           spatial architecture, behavior-coupling, QC, and required microglia Stage 13 tables.
+# Produces: cross-compartment program atlas and Stage 13 identity audit.
+# Dataset behavior: global synthesis across all three canonical datasets.
+# Notes: Stage 13 controls only microglia WGCNA convergence semantics.
 # ================================================================
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
 source(repo_path("R", "integration_utils.R"))
+source(repo_path("R", "wgcna_claim_readiness_utils.R"))
 
 SCRIPT_ID <- "10_biological_integration/01_cross_compartment_program_atlas.r"
 Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
@@ -18,7 +21,7 @@ run <- integration_cli(default_dataset = "all", allow_all = TRUE)
 paths <- integration_paths("cross_compartment_program_atlas", "global")
 
 dataset_inputs <- function(ds) {
-  list(
+  inputs <- list(
     enrichment_program = path_results("tables", "04_differential_expression_enrichment", "biological_program_summary", ds, "program_summary.csv"),
     external_signature = path_results("tables", "04_differential_expression_enrichment", "external_stress_disease_signature_overlap", "global", "external_stress_disease_signature_overlap.csv"),
     wgcna_interpretable = path_results("tables", "06_modules_WGCNA", "interpretable_summary", ds, "WGCNA_supermodule_group_effects_interpretable.csv"),
@@ -29,6 +32,8 @@ dataset_inputs <- function(ds) {
     qc_report = path_results("reports", "03_qc_exploration", "07_qc_biology_confounding_report", ds, "qc_biology_confounding_summary.md"),
     spatial_program = path_results("tables", "04_differential_expression_enrichment", "compareGO_spatial_atlas", "spatial_program_summary.csv")
   )
+  if (identical(ds, "microglia")) inputs$wgcna_claim_readiness <- microglia_wgcna_claim_readiness_path()
+  inputs
 }
 
 all_inputs <- unlist(lapply(integration_datasets(run$dataset), dataset_inputs), use.names = TRUE)
@@ -94,6 +99,79 @@ evidence_file <- function(ds, domain, file, input_type) {
     stringsAsFactors = FALSE
   ))
   list(evidence = ev, status = loaded$status)
+}
+
+microglia_wgcna_readiness_evidence <- function(file, legacy_interpretable_file) {
+  contract <- load_microglia_wgcna_claim_readiness(file)
+  df <- contract$all
+  counts <- as.logical(df$separate_manuscript_claim_allowed) &
+    as.character(df$claim_entity_role) != "compatibility_alias"
+  semantic <- ifelse(
+    as.character(df$claim_entity_role) == "compatibility_alias",
+    "wgcna_compatibility_provenance",
+    "wgcna_architecture"
+  )
+  evidence <- standardize_evidence(data.frame(
+    dataset = as.character(df$dataset),
+    evidence_domain = ifelse(semantic == "wgcna_architecture", "wgcna_architecture", "wgcna_compatibility_provenance"),
+    evidence_id = paste(df$dataset, "stage13", df$level, df$entity_id, sep = "::"),
+    program_label = as.character(df$canonical_biological_label),
+    entity_type = as.character(df$level),
+    entity_id = as.character(df$entity_id),
+    wgcna_level = as.character(df$level),
+    canonical_claim_entity_id = as.character(df$canonical_claim_entity_id),
+    claim_entity_role = as.character(df$claim_entity_role),
+    separate_manuscript_claim_allowed = as.logical(df$separate_manuscript_claim_allowed),
+    wgcna_architecture_status = as.character(df$primary_architecture_status),
+    wgcna_group_effect_status = as.character(df$group_effect_status),
+    wgcna_allowed_claim_scope = as.character(df$allowed_claim_scope),
+    wgcna_prohibited_claim_scope = as.character(df$prohibited_claim_scope),
+    readiness_contract_version = as.character(df$readiness_contract_version),
+    counts_toward_convergence = counts,
+    evidence_semantic_class = semantic,
+    contrast = as.character(df$selected_contrast),
+    spatial_unit = as.character(df$selected_spatial_unit),
+    effect_size = NA_real_,
+    p_value = NA_real_,
+    fdr = NA_real_,
+    support_count = 1,
+    source_file = contract$source_path,
+    evidence_status = ifelse(counts, "architecture_candidate", ifelse(semantic == "wgcna_compatibility_provenance", "compatibility_only", "descriptive_architecture_only")),
+    interpretation_note = as.character(df$allowed_wording),
+    qc_flag = "PASS",
+    stringsAsFactors = FALSE
+  ))
+
+  legacy <- read_csv_optional(legacy_interpretable_file, "microglia", "wgcna_stage07_provenance", "wgcna_interpretable", required = FALSE)
+  legacy_ids <- if (!is.null(legacy$data) && nrow(legacy$data)) {
+    id_col <- first_col(legacy$data, c("supermodule_id", "SupermoduleID"))
+    if (!is.na(id_col)) unique(as.character(legacy$data[[id_col]])) else character()
+  } else character()
+  audit <- data.frame(
+    dataset = as.character(df$dataset),
+    level = as.character(df$level),
+    entity_id = as.character(df$entity_id),
+    canonical_claim_entity_id = as.character(df$canonical_claim_entity_id),
+    claim_entity_role = as.character(df$claim_entity_role),
+    entered_integration_atlas = TRUE,
+    counted_toward_convergence = counts,
+    retained_only_as_provenance = semantic == "wgcna_compatibility_provenance",
+    excluded_as_compatibility_alias = as.character(df$claim_entity_role) == "compatibility_alias",
+    excluded_as_non_independent_higher_order_block = as.character(df$claim_entity_role) == "higher_order_block" & !as.logical(df$separate_manuscript_claim_allowed),
+    stage07_technical_provenance_available = as.character(df$level) == "supermodule" & as.character(df$entity_id) %in% legacy_ids,
+    stage07_technical_provenance_file = normalizePath(legacy_interpretable_file, winslash = "/", mustWork = FALSE),
+    stage13_source_file = contract$source_path,
+    readiness_contract_version = contract$readiness_contract_version,
+    stringsAsFactors = FALSE
+  )
+  list(evidence = evidence, status = rbind(
+    data.frame(
+      dataset = "microglia", evidence_domain = "wgcna_claim_readiness", input_type = "stage13_claim_readiness",
+      path = contract$source_path, required = TRUE, status = "present", message = "validated authoritative Stage 13 claim-readiness contract",
+      n_rows = nrow(df), stringsAsFactors = FALSE
+    ),
+    legacy$status
+  ), audit = audit)
 }
 
 spatial_program_evidence <- function(ds, file) {
@@ -168,12 +246,19 @@ qc_report_evidence <- function(ds, file) {
 
 all_ev <- list()
 all_status <- empty_status()
+stage13_audits <- list()
 for (ds in integration_datasets(run$dataset)) {
   inputs <- dataset_inputs(ds)
+  wgcna_piece <- if (identical(ds, "microglia")) {
+    microglia_wgcna_readiness_evidence(inputs$wgcna_claim_readiness, inputs$wgcna_interpretable)
+  } else {
+    evidence_file(ds, "wgcna_supermodule", inputs$wgcna_interpretable, "wgcna_interpretable")
+  }
+  if (identical(ds, "microglia")) stage13_audits[[ds]] <- wgcna_piece$audit
   pieces <- list(
     program_evidence(ds, inputs$enrichment_program),
     evidence_file(ds, "external_signature_overlap", inputs$external_signature, "external_signature_overlap"),
-    evidence_file(ds, "wgcna_supermodule", inputs$wgcna_interpretable, "wgcna_interpretable"),
+    wgcna_piece,
     evidence_file(ds, "microenvironment_marker", inputs$microenvironment, "microenvironment"),
     evidence_file(ds, "complex_organelle", inputs$complex_architecture, "complex_architecture"),
     evidence_file(ds, "robustness_sensitivity", inputs$robustness, "robustness"),
@@ -192,12 +277,12 @@ atlas_long$evidence_strength <- vapply(seq_len(nrow(atlas_long)), function(i) ev
 
 summary_rows <- aggregate(
   evidence_domain ~ dataset + program_key,
-  atlas_long,
+  atlas_long[atlas_long$counts_toward_convergence %in% TRUE, , drop = FALSE],
   function(x) paste(sort(unique(x)), collapse = ";")
 )
 names(summary_rows)[names(summary_rows) == "evidence_domain"] <- "evidence_domains"
 summary_rows$n_evidence_domains <- lengths(strsplit(summary_rows$evidence_domains, ";", fixed = TRUE))
-fdr_summary <- aggregate(fdr ~ dataset + program_key, atlas_long, function(x) suppressWarnings(min(num_or_na(x), na.rm = TRUE)))
+fdr_summary <- aggregate(fdr ~ dataset + program_key, atlas_long[atlas_long$counts_toward_convergence %in% TRUE, , drop = FALSE], function(x) suppressWarnings(min(num_or_na(x), na.rm = TRUE)))
 names(fdr_summary)[names(fdr_summary) == "fdr"] <- "strongest_fdr"
 summary_rows <- merge(summary_rows, fdr_summary, by = c("dataset", "program_key"), all.x = TRUE)
 summary_rows$strongest_fdr[is.infinite(summary_rows$strongest_fdr)] <- NA_real_
@@ -208,5 +293,10 @@ invisible(write_integration_table(atlas_long, paths, "cross_compartment_program_
 invisible(write_integration_table(summary_rows, paths, "cross_compartment_program_atlas.csv"))
 write_csv_safe(all_status, file.path(paths$reports, "input_status.csv"))
 write_csv_safe(all_status, file.path(paths$source_data, "cross_compartment_program_atlas_input_status.csv"))
+if (length(stage13_audits)) {
+  stage13_audit <- do.call(rbind, stage13_audits)
+  write_csv_safe(stage13_audit, file.path(paths$reports, "microglia_wgcna_stage13_integration_audit.csv"))
+  write_csv_safe(stage13_audit, file.path(paths$source_data, "microglia_wgcna_stage13_integration_audit.csv"))
+}
 write_integration_manifest(paths, as.list(all_inputs), list(tables = paths$tables, source_data = paths$source_data), list(dataset = run$dataset), "Manuscript-level atlas integrating enrichment, modules, microenvironment, complexes/organelles, robustness, behavior, and QC flags from existing outputs.")
 message("Cross-compartment program atlas complete: ", paths$tables)
