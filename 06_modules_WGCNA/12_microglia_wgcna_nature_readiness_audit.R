@@ -179,13 +179,17 @@ sensitivity_cut <- if (file.exists(sensitivity_path)) {
   sensitivity_record <- utils::read.csv(sensitivity_path, check.names = FALSE)
   unique(suppressWarnings(as.numeric(sensitivity_record$primary_cut_height)))
 } else numeric()
+sensitivity_default <- if (exists("sensitivity_record") && "default_supermodule_cut_height" %in% names(sensitivity_record)) unique(suppressWarnings(as.numeric(sensitivity_record$default_supermodule_cut_height))) else numeric()
+sensitivity_selected <- if (exists("sensitivity_record") && "selected_supermodule_cut_height" %in% names(sensitivity_record)) unique(suppressWarnings(as.numeric(sensitivity_record$selected_supermodule_cut_height))) else numeric()
+sensitivity_override <- if (exists("sensitivity_record") && "supermodule_cut_height_override_env" %in% names(sensitivity_record)) unique(suppressWarnings(as.numeric(sensitivity_record$supermodule_cut_height_override_env))) else numeric()
+sensitivity_override_used <- if (exists("sensitivity_record") && "supermodule_cut_height_override_used" %in% names(sensitivity_record)) any(sensitivity_record$supermodule_cut_height_override_used %in% TRUE) else FALSE
 definition_cut <- if ("supermodule_merge_cut_height" %in% names(module_map)) unique(suppressWarnings(as.numeric(module_map$supermodule_merge_cut_height))) else numeric()
-current_code_default <- 0.45
+configured_default_cut_height <- if (length(sensitivity_default) == 1L && is.finite(sensitivity_default)) sensitivity_default else 0.45
 cut_height_provenance <- rbind(
   data.frame(evidence_source = "saved_WGCNA_state_parameters", recorded_cut_height = state_cut, evidence_type = "active_historical_state", authoritative = TRUE, consistent_with_current_membership = is.finite(state_cut), interpretation = "Active saved state records the selected historical cut height.", source_hash = source_hash(state_path), stringsAsFactors = FALSE),
   do.call(rbind, lapply(seq_along(manifest_paths), function(i) data.frame(evidence_source = rel(manifest_paths[[i]]), recorded_cut_height = manifest_cut[[i]], evidence_type = "Stage_01_run_manifest", authoritative = TRUE, consistent_with_current_membership = is.finite(manifest_cut[[i]]), interpretation = paste0("Run manifest records override ", manifest_override[[i]], " and selected historical cut height."), source_hash = source_hash(manifest_paths[[i]]), stringsAsFactors = FALSE))),
   data.frame(evidence_source = rel(sensitivity_path), recorded_cut_height = if (length(sensitivity_cut) == 1L) sensitivity_cut else NA_real_, evidence_type = "Stage_01_sensitivity_primary_cut", authoritative = TRUE, consistent_with_current_membership = length(sensitivity_cut) == 1L, interpretation = "Sensitivity table records the primary cut used for historical-membership matching.", source_hash = source_hash(sensitivity_path), stringsAsFactors = FALSE),
-  data.frame(evidence_source = "06_modules_WGCNA/01_WGCNA.r", recorded_cut_height = current_code_default, evidence_type = "current_code_default", authoritative = FALSE, consistent_with_current_membership = is.finite(state_cut) && isTRUE(all.equal(current_code_default, state_cut)), interpretation = "Current default is not treated as historical membership provenance when an explicit recorded override exists.", source_hash = source_hash(file.path(repo_root, "06_modules_WGCNA/01_WGCNA.r")), stringsAsFactors = FALSE)
+  data.frame(evidence_source = "06_modules_WGCNA/01_WGCNA.r", recorded_cut_height = configured_default_cut_height, evidence_type = "configured_future_default", authoritative = FALSE, consistent_with_current_membership = is.finite(state_cut) && isTRUE(all.equal(configured_default_cut_height, state_cut)), interpretation = "The intended future default is distinct from the selected value that generated the frozen historical network.", source_hash = source_hash(file.path(repo_root, "06_modules_WGCNA/01_WGCNA.r")), stringsAsFactors = FALSE)
 )
 authoritative_cuts <- unique(c(state_cut, manifest_cut[is.finite(manifest_cut)], sensitivity_cut[is.finite(sensitivity_cut)]))
 authoritative_cuts <- authoritative_cuts[is.finite(authoritative_cuts)]
@@ -204,6 +208,21 @@ if (length(authoritative_cuts) == 1L && isTRUE(all.equal(authoritative_cuts[[1]]
 }
 cut_height_provenance$provenance_status <- cut_height_provenance_status
 cut_height_provenance$selected_cut_height_contract <- selected_cut_height
+historical_override <- if (isTRUE(sensitivity_override_used) && length(sensitivity_override) == 1L && is.finite(sensitivity_override)) sensitivity_override else NA_real_
+selected_value_source <- if (is.finite(historical_override) && is.finite(selected_cut_height) && isTRUE(all.equal(historical_override, selected_cut_height))) {
+  "historical_explicit_override"
+} else if (is.finite(state_cut) && isTRUE(all.equal(state_cut, selected_cut_height))) {
+  "saved_state"
+} else if (any(is.finite(manifest_cut)) && isTRUE(all.equal(unique(manifest_cut[is.finite(manifest_cut)]), selected_cut_height))) {
+  "Stage_01_run_manifest"
+} else {
+  "unresolved"
+}
+cut_height_provenance$configured_default_cut_height <- configured_default_cut_height
+cut_height_provenance$selected_network_cut_height <- selected_cut_height
+cut_height_provenance$selected_value_source <- selected_value_source
+cut_height_provenance$historical_override <- historical_override
+cut_height_provenance$membership_generation_cut_height <- selected_cut_height
 write_csv_atomic(cut_height_provenance, file.path(output_dir, "supermodule_cut_height_provenance.csv"))
 cut_height_grid <- c(0.25, 0.35, 0.40, 0.45, 0.50, 0.55, 0.65)
 
