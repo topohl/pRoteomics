@@ -270,7 +270,7 @@ for (ds in integration_datasets(run$dataset)) {
   all_status <- rbind(all_status, do.call(rbind, lapply(pieces, `[[`, "status")))
 }
 
-atlas_long <- standardize_evidence(do.call(rbind, all_ev))
+atlas_long <- assign_downstream_evidence_roles(standardize_evidence(do.call(rbind, all_ev)))
 atlas_long$program_key <- program_key(atlas_long$program_label)
 atlas_long$dataset_label <- vapply(atlas_long$dataset, function(x) if (x %in% valid_datasets()) dataset_contracts()[[x]]$label else x, character(1))
 atlas_long$evidence_strength <- vapply(seq_len(nrow(atlas_long)), function(i) evidence_strength(atlas_long$fdr[[i]], atlas_long$support_count[[i]]), character(1))

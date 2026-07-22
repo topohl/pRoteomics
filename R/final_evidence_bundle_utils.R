@@ -86,6 +86,35 @@ read_all_dataset_tables <- function(path_fun) {
   dplyr::bind_rows(pieces)
 }
 
+validated_neuronal_wgcna_key_row <- function(fdr_global, claim_allowed_model, primary_model_stable,
+                                              fallback_used, model_type, evidence_status, model_warning) {
+  fdr <- suppressWarnings(as.numeric(fdr_global))
+  claim_allowed <- as.logical(claim_allowed_model)
+  primary_stable <- as.logical(primary_model_stable)
+  fallback_used <- as.logical(fallback_used)
+  model_text <- tolower(paste(
+    as.character(model_type), as.character(evidence_status), as.character(model_warning)
+  ))
+  !is.na(fdr) & fdr <= 0.10 &
+    claim_allowed %in% TRUE & primary_stable %in% TRUE &
+    !(fallback_used %in% TRUE) &
+    !grepl("fallback|diagnostic|model_unstable", model_text)
+}
+
+append_no_validated_neuronal_key_status <- function(df) {
+  neuronal <- c("neuron_soma", "neuron_neuropil")
+  present <- unique(as.character(df$dataset[df$dataset %in% neuronal]))
+  missing <- setdiff(neuronal, present)
+  if (!length(missing)) return(df)
+  status <- data.frame(
+    dataset = missing,
+    status = "no_validated_neuronal_wgcna_key_rows",
+    reason = "neuronal readiness contract unavailable and all current Stage 05 models are claim-ineligible",
+    stringsAsFactors = FALSE
+  )
+  dplyr::bind_rows(df, add_dataset_terminology(status))
+}
+
 build_wgcna_key_modules <- function() {
   modules <- read_all_dataset_tables(function(ds) {
     path_results("tables", "06_modules_WGCNA", "interpretable_summary", ds, "WGCNA_module_group_effects_interpretable.csv")
@@ -120,6 +149,12 @@ build_wgcna_key_modules <- function() {
     if (!col %in% names(modules)) modules[[col]] <- NA_real_
     modules[[col]] <- suppressWarnings(as.numeric(modules[[col]]))
   }
+  for (col in c("claim_allowed_model", "primary_model_stable", "fallback_used")) {
+    if (!col %in% names(modules)) modules[[col]] <- FALSE
+  }
+  for (col in c("model_type", "evidence_status", "model_warning")) {
+    if (!col %in% names(modules)) modules[[col]] <- NA_character_
+  }
   contract <- load_microglia_wgcna_claim_readiness()
   stage13_modules <- contract$canonical_modules |>
     dplyr::transmute(
@@ -142,10 +177,9 @@ build_wgcna_key_modules <- function() {
     dplyr::left_join(stage13_modules, by = c("dataset", "stage13_module_id"), relationship = "many-to-one") |>
     dplyr::filter(
       (.data$dataset == "microglia" & .data$claim_entity_role == "canonical_module" & .data$separate_manuscript_claim_allowed %in% TRUE) |
-        (.data$dataset != "microglia" & (
-          is.na(.data$FDR_global) | .data$FDR_global <= 0.10 |
-            !is.na(.data$targeted_signature_primary_driver) |
-            !is.na(.data$best_wgcna_de_gsea_overlap)
+        (.data$dataset != "microglia" & validated_neuronal_wgcna_key_row(
+          .data$FDR_global, .data$claim_allowed_model, .data$primary_model_stable,
+          .data$fallback_used, .data$model_type, .data$evidence_status, .data$model_warning
         ))
     ) |>
     dplyr::mutate(
@@ -158,7 +192,7 @@ build_wgcna_key_modules <- function() {
     ) |>
     dplyr::arrange(.data$dataset, .data$FDR_global, .data$FDR_within_dataset_level)
   cols <- c(
-    "dataset", "dataset_terminology", "module_id", "ModuleID", "ModuleColor",
+    "dataset", "dataset_terminology", "status", "reason", "module_id", "ModuleID", "ModuleColor",
     "canonical_claim_entity_id", "claim_entity_role", "separate_manuscript_claim_allowed",
     "primary_architecture_status", "spatial_dependence_class", "animal_stability_status",
     "group_effect_status", "allowed_claim_scope", "prohibited_claim_scope",
@@ -196,7 +230,7 @@ build_wgcna_key_modules <- function() {
     "neuropil_independence_note",
     "best_wgcna_de_gsea_overlap", "interpretation_sentence"
   )
-  select_existing(add_dataset_terminology(modules), cols)
+  append_no_validated_neuronal_key_status(select_existing(add_dataset_terminology(modules), cols))
 }
 
 build_wgcna_key_supermodules <- function() {
@@ -209,6 +243,12 @@ build_wgcna_key_supermodules <- function() {
   for (col in c("FDR_global", "FDR_within_dataset_level", "estimate")) {
     if (!col %in% names(supers)) supers[[col]] <- NA_real_
     supers[[col]] <- suppressWarnings(as.numeric(supers[[col]]))
+  }
+  for (col in c("claim_allowed_model", "primary_model_stable", "fallback_used")) {
+    if (!col %in% names(supers)) supers[[col]] <- FALSE
+  }
+  for (col in c("model_type", "evidence_status", "model_warning")) {
+    if (!col %in% names(supers)) supers[[col]] <- NA_character_
   }
   contract <- load_microglia_wgcna_claim_readiness()
   stage13_supers <- contract$all |>
@@ -233,7 +273,10 @@ build_wgcna_key_supermodules <- function() {
     dplyr::left_join(stage13_supers, by = c("dataset", "stage13_supermodule_id"), relationship = "many-to-one") |>
     dplyr::filter(
       (.data$dataset == "microglia" & .data$claim_entity_role == "higher_order_block" & .data$separate_manuscript_claim_allowed %in% TRUE) |
-        (.data$dataset != "microglia" & (is.na(.data$FDR_global) | .data$FDR_global <= 0.10))
+        (.data$dataset != "microglia" & validated_neuronal_wgcna_key_row(
+          .data$FDR_global, .data$claim_allowed_model, .data$primary_model_stable,
+          .data$fallback_used, .data$model_type, .data$evidence_status, .data$model_warning
+        ))
     ) |>
     dplyr::mutate(
       wgcna_claim_semantic_status = dplyr::case_when(
@@ -244,7 +287,7 @@ build_wgcna_key_supermodules <- function() {
     ) |>
     dplyr::arrange(.data$dataset, .data$FDR_global, .data$FDR_within_dataset_level)
   cols <- c(
-    "dataset", "dataset_terminology", "supermodule_id", "Supermodule_PlotLabel",
+    "dataset", "dataset_terminology", "status", "reason", "supermodule_id", "Supermodule_PlotLabel",
     "canonical_claim_entity_id", "claim_entity_role", "separate_manuscript_claim_allowed",
     "primary_architecture_status", "spatial_dependence_class", "animal_stability_status",
     "group_effect_status", "allowed_claim_scope", "prohibited_claim_scope",
@@ -271,7 +314,7 @@ build_wgcna_key_supermodules <- function() {
     "FDR_within_dataset_level", "FDR_global", "direction", "evidence_status",
     "animal_level_status", "n_animals", "model_warning", "interpretation_sentence"
   )
-  select_existing(add_dataset_terminology(supers), cols)
+  append_no_validated_neuronal_key_status(select_existing(add_dataset_terminology(supers), cols))
 }
 
 build_microglia_roi_signature_drivers <- function() {

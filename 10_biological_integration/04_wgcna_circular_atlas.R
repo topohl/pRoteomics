@@ -506,6 +506,16 @@ lookup_claim_status <- function(ds, supermodule_id, cleaned_label, broad_program
   "claim_not_mapped"
 }
 
+claim_status_allows_manuscript <- function(status) {
+  vapply(as.character(status), function(x) {
+    tokens <- trimws(unlist(strsplit(ifelse(is.na(x), "", x), ";", fixed = TRUE), use.names = FALSE))
+    tokens <- tokens[nzchar(tokens)]
+    has_negative <- any(tokens == "disallowed")
+    has_positive <- any(tokens %in% c("allowed", "downgraded"))
+    has_positive && !has_negative
+  }, logical(1))
+}
+
 summarise_effect_scopes <- function(effects, dataset, source_ids) {
   empty <- tibble::tibble(
     dataset = dataset,
@@ -3329,7 +3339,7 @@ segments <- segments |>
     selected_for_manuscript_claim = dplyr::case_when(
       .data$dataset == "microglia" ~ .data$claim_entity_role == "higher_order_block" &
         .data$separate_manuscript_claim_allowed %in% TRUE,
-      TRUE ~ .data$selected_for_descriptive_atlas & grepl("allowed|downgraded", .data$claim_display_status)
+      TRUE ~ .data$selected_for_descriptive_atlas & claim_status_allows_manuscript(.data$claim_display_status)
     ),
     present_in_selected_table = .data$selected_for_descriptive_atlas
   )
