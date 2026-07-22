@@ -114,6 +114,24 @@ Recommended run order:
      oligodendrocyte/myelin, vascular, mitochondrial/OXPHOS, ribosomal, and
      RNP/RNA-processing panels.
    - Marker outputs are compartment sanity checks, not cell-type purity claims.
+   - The default remains all groups in the existing output namespace. Use
+     `--group CON` (or `PROTEOMICS_RANK_ABUNDANCE_GROUP_FILTER=CON`) to filter
+     the matrix and metadata before ranking/scoring and write beneath
+     `group_CON` without replacing the all-group QC outputs.
+
+4e. `04e_control_compartment_abundance_publication_figures.r`
+   - Global rendering-oriented consumer of the validated joint-QC bundle.
+   - Primary analysis uses CON animals only and equal-weight arithmetic means
+     on the log2 scale across Left/Right, layers, regions, and animals. A valid
+     animal requires at least three regions; the primary and strict universes
+     require 2/3 and 3/3 CON animals, respectively.
+   - Exports uncapped source values, median-hierarchy and all-group sensitivity
+     ranks, all 27 ordered paired-animal bootstrap draws, three leave-one-animal-
+     out cases, marker provenance, and compact editable SVG/PDF figures.
+   - Results describe neuronal soma, neuronal neuropil, and microglia/PVM-
+     enriched ROI marker fidelity and relative abundance—not cell fractions,
+     purity, absolute protein quantity, total hippocampal abundance, or
+     deconvolution.
 
 5. `05_pca_confounding_qc.r`
    - Input: processed expression matrix or strict GCT v1.3 plus metadata.
@@ -157,6 +175,7 @@ for ds in neuron_neuropil neuron_soma microglia; do
   Rscript 03_qc_exploration/06_variance_partitioning.r --dataset "$ds" --dry-run
   Rscript 03_qc_exploration/08_qc_biology_confounding_report.r --dataset "$ds" --dry-run
 done
+Rscript 03_qc_exploration/04e_control_compartment_abundance_publication_figures.r --dataset global --dry-run
 ```
 
 Remove `--dry-run` after resolving missing private inputs.

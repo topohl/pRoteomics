@@ -17,11 +17,18 @@ source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "dataset_inputs.R"))
 source(repo_path("R", "qc_exploration_utils.R"))
 source(repo_path("R", "wgcna_downstream_utils.R"))
+source(repo_path("R", "compartment_abundance_utils.R"))
 
 run <- qc_args()
 DATASET <- run$dataset
 SUBSTEP_ID <- "04_marker_rank_abundance_qc"
-PATHS <- qc_paths(SUBSTEP_ID, DATASET)
+requested_group <- cli_arg_value(
+  "--group",
+  default = Sys.getenv("PROTEOMICS_RANK_ABUNDANCE_GROUP_FILTER", unset = ""),
+  args = run$args
+)
+canonical_group <- if (nzchar(trimws(requested_group))) ca_normalize_group(requested_group)[[1]] else ""
+PATHS <- ca_namespace_paths(qc_paths(SUBSTEP_ID, DATASET), canonical_group)
 matrix_file <- qc_resolve_matrix(DATASET, env = "PROTEOMICS_RANK_ABUNDANCE_MATRIX_FILE")
 metadata_file <- qc_resolve_metadata(DATASET, env = "PROTEOMICS_RANK_ABUNDANCE_METADATA_FILE")
 
@@ -32,7 +39,11 @@ if (run$dry_run) {
     matrix_file = matrix_file,
     metadata_file = metadata_file,
     paths = PATHS,
-    extra = c("Writes rank tables, marker score tables, and SVG marker sanity-check plots.")
+    extra = c(
+      paste0("Experimental-group filter: ", if (nzchar(canonical_group)) canonical_group else "all groups (legacy default)"),
+      paste0("Output namespace: ", if (nzchar(canonical_group)) paste0("group_", canonical_group) else "existing all-group namespace"),
+      "Writes rank tables, marker score tables, and SVG marker sanity-check plots."
+    )
   )
   quit(status = status, save = "no")
 }
@@ -48,8 +59,12 @@ if (!file.exists(matrix_file)) {
 }
 
 expr <- qc_load_canonical_expression(matrix_file, metadata_file, DATASET)
-mat <- expr$mat
-meta <- expr$meta
+filtered <- ca_filter_expression_group(expr$mat, expr$meta, requested_group)
+mat <- filtered$mat
+meta <- filtered$meta
+if (nzchar(canonical_group)) {
+  invisible(lapply(PATHS, dir.create, recursive = TRUE, showWarnings = FALSE))
+}
 
 marker_sets <- load_wgcna_marker_sets(include_empirical = FALSE)
 marker_source_metadata <- attr(marker_sets, "marker_source_metadata")
@@ -215,6 +230,11 @@ write_run_manifest(
     marker_sets = names(marker_sets),
     marker_source_hierarchy = unique(marker_source_metadata$marker_source %||% "unknown"),
     marker_registry_version = attr(marker_sets, "marker_registry_version") %||% NA_character_,
+    requested_group = if (nzchar(filtered$requested_group)) filtered$requested_group else "all",
+    canonical_group = if (nzchar(filtered$canonical_group)) filtered$canonical_group else "all",
+    resolved_group_column = filtered$resolved_group_column,
+    included_samples = filtered$included_samples,
+    included_animals = filtered$included_animals,
     allen_microglia_alias = if ("reference_microglia_pvm" %in% names(marker_sets)) "microglia uses reference_microglia_pvm" else NA_character_
   ),
   notes = "Marker abundance/compartment sanity checks only; not cell-type purity estimates. Allen microglia markers are labelled microglia_pvm in the source and aliased to microglia for this QC view when present."

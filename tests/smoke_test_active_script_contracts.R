@@ -56,7 +56,8 @@ if (!is.null(registry)) {
   prefix_exemptions <- c(
     "03_qc_exploration/04_marker_rank_abundance_qc.r",
     "03_qc_exploration/04c_marker_detectability_and_wgcna_bridge.r",
-    "03_qc_exploration/04d_compartment_marker_fidelity.r"
+    "03_qc_exploration/04d_compartment_marker_fidelity.r",
+    "03_qc_exploration/04e_control_compartment_abundance_publication_figures.r"
   )
   required_registry_fields <- c(
     "script", "stage", "scope", "supported_datasets", "consumes_required",
