@@ -133,10 +133,10 @@ write_control_rendering_outputs <- function(rendering, roots, inputs_used, allow
   p_dot <- ca_build_control_marker_tile_heatmap(rendering)
   p_rank <- ca_build_control_rank_abundance_plot(rendering)
   ca_save_vector_figure(p_dot, roots$figures, "control_compartment_marker_dot_heatmap_89mm", 89, 92)
-  ca_save_vector_figure(p_rank, roots$figures, "control_rank_abundance_extended_data_183mm", 183, 72)
+  ca_save_vector_figure(p_rank, roots$figures, "control_rank_abundance_extended_data_183mm", 120, 35)
   ggplot2::ggsave(
     file.path(roots$figures, "control_rank_abundance_extended_data_183mm.png"),
-    p_rank, width = 183, height = 72, units = "mm", dpi = 300,
+    p_rank, width = 120, height = 35, units = "mm", dpi = 300,
     device = "png", limitsize = FALSE, bg = "white"
   )
 
