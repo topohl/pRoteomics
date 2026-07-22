@@ -1209,7 +1209,7 @@ validate_cross_compartment_program_atlas <- function(df, artifact = "cross-compa
       "wgcna_architecture_status", "wgcna_group_effect_status",
       "wgcna_allowed_claim_scope", "wgcna_prohibited_claim_scope",
       "readiness_contract_version", "counts_toward_convergence",
-      "evidence_semantic_class"
+      "evidence_semantic_class", "evidence_role", "evidence_role_reason"
     ),
     artifact
   )

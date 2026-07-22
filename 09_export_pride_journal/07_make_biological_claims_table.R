@@ -1159,6 +1159,32 @@ apply_stage13_claim_semantics <- function(claims) {
   claims
 }
 
+apply_neuronal_wgcna_architecture_semantics <- function(claims) {
+  if (is.null(claims) || !nrow(claims)) return(claims)
+  neuronal_architecture <- claims$dataset %in% c("neuron_soma", "neuron_neuropil") &
+    claims$claim_type == "wgcna_architecture"
+  if (!any(neuronal_architecture, na.rm = TRUE)) return(claims)
+  append_reason <- function(old, add) {
+    old <- as.character(old); old[is.na(old) | old == "none"] <- ""
+    ifelse(nzchar(old), paste(old, add, sep = "; "), add)
+  }
+  claims$claim_allowed[neuronal_architecture] <- FALSE
+  claims$claim_gate_status[neuronal_architecture] <- "disallowed"
+  claims$claim_use_class[neuronal_architecture] <- "annotation_only"
+  claims$claim_downgrade_reason[neuronal_architecture] <- append_reason(
+    claims$claim_downgrade_reason[neuronal_architecture],
+    "neuronal_wgcna_architecture_readiness_not_available"
+  )
+  claims$safe_interpretation[neuronal_architecture] <- paste0(
+    "Descriptive module annotation or covariance context only for ",
+    claims$biological_program[neuronal_architecture],
+    "; not a stress-effect, network-remodelling, mechanistic, or independently validated architecture claim."
+  )
+  claims$unsafe_overinterpretation[neuronal_architecture] <-
+    "Do not describe this neuronal WGCNA annotation as a stress effect, network remodelling, mechanism, or independently validated architecture."
+  claims
+}
+
 finalize_wgcna_claim_semantics <- function(claims) {
   if (is.null(claims) || !nrow(claims)) return(claims)
   overlap_keys <- unique(paste(
@@ -2100,6 +2126,7 @@ claims <- dplyr::bind_rows(
   finalize_wgcna_claim_semantics() %>%
   sync_go_safe_interpretation() %>%
   apply_blocked_claim_wording() %>%
+  apply_neuronal_wgcna_architecture_semantics() %>%
   standardize_claims()
 
 validate_table_schema(claims, "biological_claims_table", strict = TRUE)
