@@ -1204,7 +1204,12 @@ validate_cross_compartment_program_atlas <- function(df, artifact = "cross-compa
     c(
       "dataset", "evidence_domain", "evidence_id", "program_label",
       "entity_type", "entity_id", "source_file", "evidence_status",
-      "interpretation_note", "qc_flag"
+      "interpretation_note", "qc_flag", "canonical_claim_entity_id",
+      "claim_entity_role", "separate_manuscript_claim_allowed",
+      "wgcna_architecture_status", "wgcna_group_effect_status",
+      "wgcna_allowed_claim_scope", "wgcna_prohibited_claim_scope",
+      "readiness_contract_version", "counts_toward_convergence",
+      "evidence_semantic_class"
     ),
     artifact
   )
@@ -1217,7 +1222,10 @@ validate_manuscript_program_summary <- function(df, artifact = "manuscript progr
     c(
       "program_key", "manuscript_claim_scope", "datasets_supported",
       "evidence_domains", "strongest_evidence", "safe_manuscript_sentence",
-      "main_limitation", "qc_flag"
+      "main_limitation", "qc_flag", "n_evidence_rows_total",
+      "n_evidence_rows_counting_toward_convergence", "n_wgcna_architecture_rows",
+      "n_wgcna_stress_effect_rows", "n_wgcna_alias_rows_excluded",
+      "claim_semantic_scope"
     ),
     artifact
   )
@@ -1229,7 +1237,8 @@ validate_evidence_priority_matrix <- function(df, artifact = "evidence priority 
     df,
     c(
       "priority_id", "program_key", "dataset", "priority_tier",
-      "evidence_domain_count", "strongest_fdr", "robustness_flag",
+      "evidence_domain_count", "evidence_rows_counting_toward_convergence",
+      "strongest_fdr", "robustness_flag",
       "behavior_flag", "qc_flag", "recommended_use"
     ),
     artifact
@@ -1242,6 +1251,7 @@ validate_final_evidence_bundle <- function(bundle_dir, artifact = "final biologi
     "README", "input_status", "manuscript_program_summary",
     "evidence_priority_matrix", "cross_compartment_program_atlas",
     "wgcna_key_modules", "wgcna_key_supermodules",
+    "microglia_wgcna_claim_readiness",
     "microglia_roi_signature_drivers", "qc_flags", "biological_claims"
   )
   if (!dir.exists(bundle_dir)) {
@@ -1296,22 +1306,43 @@ validate_final_evidence_bundle <- function(bundle_dir, artifact = "final biologi
       "dataset", "ModuleID", "ModuleColor", "targeted_signature_primary_driver",
       "targeted_signature_driver_class", "targeted_signature_driver_signature",
       "targeted_signature_driver_padj", "targeted_signature_driver_NES",
-      "targeted_signature_driver_overlap_proteins"
+      "targeted_signature_driver_overlap_proteins", "canonical_claim_entity_id",
+      "claim_entity_role", "separate_manuscript_claim_allowed",
+      "primary_architecture_status", "group_effect_status",
+      "readiness_contract_version", "wgcna_claim_semantic_status"
     ),
     paste(artifact, "wgcna_key_modules sheet")
   )
 
-  drivers <- read_sheet("microglia_roi_signature_drivers")
+  readiness <- read_sheet("microglia_wgcna_claim_readiness")
   require_module_contract_columns(
-    drivers,
+    readiness,
     c(
-      "ModuleID", "ModuleColor", "microenvironment_label",
-      "targeted_signature_primary_driver", "targeted_signature_driver_class",
-      "targeted_signature_driver_signature", "targeted_signature_driver_padj",
-      "targeted_signature_driver_NES", "targeted_signature_driver_overlap_proteins"
+      "dataset", "level", "entity_id", "canonical_claim_entity_id",
+      "claim_entity_role", "separate_manuscript_claim_allowed",
+      "primary_architecture_status", "group_effect_status",
+      "allowed_claim_scope", "prohibited_claim_scope",
+      "readiness_contract_version", "stage13_source_file"
     ),
-    paste(artifact, "microglia_roi_signature_drivers sheet")
+    paste(artifact, "microglia_wgcna_claim_readiness sheet")
   )
+  if (nrow(readiness) != 22L) stop(artifact, " Stage 13 readiness sheet must contain exactly 22 rows.", call. = FALSE)
+
+  drivers <- read_sheet("microglia_roi_signature_drivers")
+  drivers_unavailable <- all(c("status", "message") %in% names(drivers)) &&
+    nrow(drivers) == 1L && identical(as.character(drivers$status[[1]]), "missing_optional")
+  if (!drivers_unavailable) {
+    require_module_contract_columns(
+      drivers,
+      c(
+        "ModuleID", "ModuleColor", "microenvironment_label",
+        "targeted_signature_primary_driver", "targeted_signature_driver_class",
+        "targeted_signature_driver_signature", "targeted_signature_driver_padj",
+        "targeted_signature_driver_NES", "targeted_signature_driver_overlap_proteins"
+      ),
+      paste(artifact, "microglia_roi_signature_drivers sheet")
+    )
+  }
 
   invisible(TRUE)
 }

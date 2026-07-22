@@ -3,10 +3,10 @@
 # Script: 09_export_pride_journal/07_make_biological_claims_table.R
 # Stage: export
 # Scope: global
-# Consumes: required results/tables/04_differential_expression_enrichment/; results/tables/06_modules_WGCNA/; optional results/tables/08_behavior_physio_coupling/network_behavior_coupling/.
-# Produces: results/tables/biological_claims_table.csv; results/tables/biological_claims_table.xlsx.
+# Consumes: required enrichment, WGCNA, Stage 13 claim-readiness, and manuscript-summary tables; optional behavior coupling.
+# Produces: biological claims CSV/XLSX plus Stage 13 cardinality and overlap-identity audits.
 # Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
-# Notes: Final biological claims table.
+# Notes: Uses stable WGCNA IDs; does not build the final evidence bundle.
 # ================================================================
 
 # Manuscript/journal biological claims index — not a PRIDE-required deposition artifact.
@@ -17,7 +17,7 @@ source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "validation_utils.R"))
 source(repo_path("R", "enrichment_io.R"))
 source(repo_path("R", "schema_validation.R"))
-source(repo_path("R", "final_evidence_bundle_utils.R"))
+source(repo_path("R", "wgcna_claim_readiness_utils.R"))
 
 SCRIPT_ID <- "09_export_pride_journal/07_make_biological_claims_table.R"
 Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
@@ -46,16 +46,24 @@ claim_columns <- c(
   "missingness_confounded", "plate_or_batch_confounded",
   "region_layer_imbalance_risk", "animal_pseudoreplication_risk",
   "early_pc_association", "marker_contamination_risk",
-  "qc_interpretation_flag", "animal_level_status"
+  "qc_interpretation_flag", "animal_level_status",
+  "wgcna_level", "wgcna_entity_id", "wgcna_canonical_claim_entity_id",
+  "wgcna_claim_entity_role", "wgcna_separate_manuscript_claim_allowed",
+  "wgcna_primary_architecture_status", "wgcna_spatial_dependence_class",
+  "wgcna_animal_stability_status", "wgcna_group_effect_status",
+  "wgcna_allowed_claim_scope", "wgcna_prohibited_claim_scope",
+  "wgcna_readiness_contract_version", "wgcna_stage13_source_file",
+  "wgcna_statistical_endpoint_id"
 )
 
 numeric_claim_columns <- c("effect_size_NES", "raw_p", "FDR")
-logical_claim_columns <- c("claim_allowed")
+logical_claim_columns <- c("claim_allowed", "wgcna_separate_manuscript_claim_allowed")
 character_claim_columns <- setdiff(claim_columns, c(numeric_claim_columns, logical_claim_columns))
 
 empty_claims <- function() {
   out <- as.data.frame(setNames(rep(list(character()), length(claim_columns)), claim_columns), stringsAsFactors = FALSE)
   for (col in numeric_claim_columns) out[[col]] <- numeric()
+  for (col in logical_claim_columns) out[[col]] <- logical()
   out
 }
 
@@ -67,6 +75,76 @@ standardize_claims <- function(df) {
   for (col in logical_claim_columns) df[[col]] <- as.logical(df[[col]])
   for (col in character_claim_columns) df[[col]] <- as.character(df[[col]])
   df
+}
+
+STAGE13_PATH <- microglia_wgcna_claim_readiness_path()
+STAGE13_CONTRACT <- if (is_dry_run()) NULL else load_microglia_wgcna_claim_readiness(STAGE13_PATH)
+
+stage13_claim_join <- function(df, dataset, level, id_col, collector_name) {
+  if (!identical(dataset, "microglia")) {
+    df$wgcna_level <- level
+    df$wgcna_entity_id <- as.character(df[[id_col]])
+    for (col in c(
+      "wgcna_canonical_claim_entity_id", "wgcna_claim_entity_role",
+      "wgcna_primary_architecture_status", "wgcna_spatial_dependence_class",
+      "wgcna_animal_stability_status", "wgcna_group_effect_status",
+      "wgcna_allowed_claim_scope", "wgcna_prohibited_claim_scope",
+      "wgcna_readiness_contract_version", "wgcna_stage13_source_file"
+    )) df[[col]] <- NA_character_
+    df$wgcna_separate_manuscript_claim_allowed <- NA
+    return(df)
+  }
+  if (is.null(STAGE13_CONTRACT)) stop("Stage 13 contract was not loaded for microglia claims.", call. = FALSE)
+  if (!id_col %in% names(df)) stop(collector_name, " missing WGCNA stable ID column: ", id_col, call. = FALSE)
+  readiness <- STAGE13_CONTRACT$all |>
+    dplyr::filter(.data$level == level) |>
+    dplyr::transmute(
+      dataset = as.character(.data$dataset),
+      wgcna_level = as.character(.data$level),
+      wgcna_entity_id = as.character(.data$entity_id),
+      wgcna_canonical_claim_entity_id = as.character(.data$canonical_claim_entity_id),
+      wgcna_claim_entity_role = as.character(.data$claim_entity_role),
+      wgcna_separate_manuscript_claim_allowed = as.logical(.data$separate_manuscript_claim_allowed),
+      wgcna_primary_architecture_status = as.character(.data$primary_architecture_status),
+      wgcna_spatial_dependence_class = as.character(.data$spatial_dependence_class),
+      wgcna_animal_stability_status = as.character(.data$animal_stability_status),
+      wgcna_group_effect_status = as.character(.data$group_effect_status),
+      wgcna_allowed_claim_scope = as.character(.data$allowed_claim_scope),
+      wgcna_prohibited_claim_scope = as.character(.data$prohibited_claim_scope),
+      wgcna_readiness_contract_version = as.character(.data$readiness_contract_version),
+      wgcna_stage13_source_file = STAGE13_CONTRACT$source_path
+    )
+  assert_unique_wgcna_keys(readiness, c("dataset", "wgcna_level", "wgcna_entity_id"), paste(collector_name, "Stage 13 subset"))
+  before <- nrow(df)
+  df$dataset <- dataset
+  df$wgcna_level <- level
+  df$wgcna_entity_id <- as.character(df[[id_col]])
+  out <- df |>
+    dplyr::left_join(readiness, by = c("dataset", "wgcna_level", "wgcna_entity_id"), relationship = "many-to-one")
+  if (nrow(out) != before) stop(collector_name, " Stage 13 stable-key join multiplied rows.", call. = FALSE)
+  if (any(is.na(out$wgcna_claim_entity_role))) {
+    missing_ids <- unique(out$wgcna_entity_id[is.na(out$wgcna_claim_entity_role)])
+    stop(collector_name, " has microglia WGCNA IDs absent from Stage 13: ", paste(missing_ids, collapse = ", "), call. = FALSE)
+  }
+  out
+}
+
+transmute_stage13_claim_fields <- function() {
+  rlang::exprs(
+    wgcna_level = .data$wgcna_level,
+    wgcna_entity_id = .data$wgcna_entity_id,
+    wgcna_canonical_claim_entity_id = .data$wgcna_canonical_claim_entity_id,
+    wgcna_claim_entity_role = .data$wgcna_claim_entity_role,
+    wgcna_separate_manuscript_claim_allowed = .data$wgcna_separate_manuscript_claim_allowed,
+    wgcna_primary_architecture_status = .data$wgcna_primary_architecture_status,
+    wgcna_spatial_dependence_class = .data$wgcna_spatial_dependence_class,
+    wgcna_animal_stability_status = .data$wgcna_animal_stability_status,
+    wgcna_group_effect_status = .data$wgcna_group_effect_status,
+    wgcna_allowed_claim_scope = .data$wgcna_allowed_claim_scope,
+    wgcna_prohibited_claim_scope = .data$wgcna_prohibited_claim_scope,
+    wgcna_readiness_contract_version = .data$wgcna_readiness_contract_version,
+    wgcna_stage13_source_file = .data$wgcna_stage13_source_file
+  )
 }
 
 grade_claim <- function(evidence_type, fdr, interpretation_note) {
@@ -844,10 +922,11 @@ infer_claim_type <- function(evidence_type, dataset, biological_program = NA_cha
     grepl("microglia_signature", et) ~ "microglia_signature",
     grepl("biological_integration", et) ~ "integration_summary",
     grepl("network_behavior|behavior", et) ~ "behavior_association",
-    grepl("WGCNA_DE_GSEA_overlap", evidence_type, ignore.case = TRUE) ~ "wgcna_group_effect",
-    grepl("WGCNA_module|module", evidence_type, ignore.case = TRUE) & ds == "microglia" &
-      grepl("microglia|neuropil|vascular|ecm|basement|perivascular|bbb", txt) ~ "microglia_roi_context",
-    grepl("WGCNA|module", evidence_type, ignore.case = TRUE) ~ "wgcna_group_effect",
+    grepl("WGCNA_DE_GSEA_overlap", evidence_type, ignore.case = TRUE) ~ "wgcna_convergent_overlap",
+    grepl("WGCNA_module$", evidence_type, ignore.case = TRUE) ~ "wgcna_architecture",
+    grepl("WGCNA_.*group_effect", evidence_type, ignore.case = TRUE) ~ "wgcna_group_effect",
+    grepl("WGCNA.*compatibility", evidence_type, ignore.case = TRUE) ~ "wgcna_compatibility_provenance",
+    grepl("WGCNA|module", evidence_type, ignore.case = TRUE) ~ "wgcna_architecture",
     grepl("GSEA|program|enrichment", evidence_type, ignore.case = TRUE) ~ "enrichment_program",
     TRUE ~ "export_context"
   )
@@ -873,15 +952,15 @@ gate_required <- function(claims) {
     purified_or_intrinsic = purified_or_intrinsic,
     microglia_specific = microglia_specific,
     contamination_sensitive = contamination_sensitive,
-    primary_model = !claims$claim_type %in% c("integration_summary", "export_context"),
-    animal_level = claims$claim_type %in% c("wgcna_group_effect", "behavior_association", "microglia_signature"),
+    primary_model = !claims$claim_type %in% c("integration_summary", "export_context", "wgcna_architecture", "wgcna_compatibility_provenance"),
+    animal_level = claims$claim_type %in% c("wgcna_group_effect", "wgcna_convergent_overlap", "behavior_association", "microglia_signature"),
     qc = !claims$claim_type %in% c("export_context"),
     missingness = !claims$claim_type %in% c("export_context"),
     batch = !claims$claim_type %in% c("export_context"),
     marker = microglia_specific | contamination_sensitive | purified_or_intrinsic,
     microglia_roi = claims$dataset == "microglia" & (microglia_specific | contamination_sensitive | purified_or_intrinsic),
     neuropil_independence = purified_or_intrinsic | contamination_sensitive | microglia_specific,
-    robustness = claims$claim_type %in% c("wgcna_group_effect", "behavior_association"),
+    robustness = claims$claim_type %in% c("wgcna_group_effect", "wgcna_convergent_overlap", "behavior_association"),
     evidence_independence = claims$claim_type %in% c("integration_summary")
   )
 }
@@ -1035,6 +1114,113 @@ add_claim_gates <- function(claims) {
   )
 
   standardize_claims(claims)
+}
+
+apply_stage13_claim_semantics <- function(claims) {
+  if (is.null(claims) || !nrow(claims)) return(claims)
+  micro_wgcna <- claims$dataset == "microglia" &
+    !is.na(claims$wgcna_entity_id) & nzchar(as.character(claims$wgcna_entity_id))
+  alias <- micro_wgcna & claims$wgcna_claim_entity_role == "compatibility_alias"
+  nonindependent_block <- micro_wgcna & claims$wgcna_claim_entity_role == "higher_order_block" &
+    !(claims$wgcna_separate_manuscript_claim_allowed %in% TRUE)
+  architecture_ineligible <- micro_wgcna & claims$claim_type == "wgcna_architecture" &
+    !(claims$wgcna_separate_manuscript_claim_allowed %in% TRUE)
+  architecture_candidate <- micro_wgcna & claims$claim_type == "wgcna_architecture" &
+    claims$wgcna_separate_manuscript_claim_allowed %in% TRUE
+  unsupported_group_effect <- micro_wgcna & claims$claim_type == "wgcna_group_effect" &
+    claims$wgcna_group_effect_status != "FDR_supported"
+  block <- alias | nonindependent_block | architecture_ineligible | unsupported_group_effect
+  # These legacy gates govern regulation/effect claims. Stage 13 already carries
+  # the authoritative spatial, stability, and independence semantics needed for
+  # an architecture-only candidate, so they are not applicable to that scope.
+  claims$neuropil_independence_gate[architecture_candidate] <- "not_applicable"
+  claims$robustness_gate[architecture_candidate] <- "not_applicable"
+  claims$evidence_independence_gate[architecture_candidate] <- "not_applicable"
+  claims$claim_allowed[architecture_candidate] <- TRUE
+  claims$claim_gate_status[architecture_candidate] <- "downgraded"
+  claims$claim_allowed[block] <- FALSE
+  claims$claim_gate_status[block] <- "disallowed"
+  semantic_reason <- dplyr::case_when(
+    alias ~ "stage13_compatibility_alias_not_independently_claimable",
+    nonindependent_block ~ "stage13_higher_order_block_not_independently_claimable",
+    architecture_ineligible ~ "stage13_architecture_not_independently_claimable",
+    unsupported_group_effect ~ "stage13_group_effect_not_FDR_supported",
+    TRUE ~ NA_character_
+  )
+  append_reason <- function(old, add) {
+    old <- as.character(old); add <- as.character(add)
+    old[is.na(old) | old == "none"] <- ""
+    add[is.na(add)] <- ""
+    ifelse(nzchar(old) & nzchar(add), paste(old, add, sep = "; "), ifelse(nzchar(add), add, old))
+  }
+  claims$claim_downgrade_reason <- append_reason(claims$claim_downgrade_reason, semantic_reason)
+  claims$claim_downgrade_reason[architecture_candidate] <-
+    "stage13_architecture_candidate_only_not_stress_effect_claim"
+  claims
+}
+
+finalize_wgcna_claim_semantics <- function(claims) {
+  if (is.null(claims) || !nrow(claims)) return(claims)
+  overlap_keys <- unique(paste(
+    claims$dataset[claims$claim_type == "wgcna_convergent_overlap" & claims$claim_allowed %in% TRUE],
+    claims$wgcna_canonical_claim_entity_id[claims$claim_type == "wgcna_convergent_overlap" & claims$claim_allowed %in% TRUE],
+    sep = "||"
+  ))
+  architecture <- claims$claim_type == "wgcna_architecture"
+  convergent_architecture <- architecture & claims$claim_allowed %in% TRUE &
+    paste(claims$dataset, claims$wgcna_canonical_claim_entity_id, sep = "||") %in% overlap_keys
+  claims$claim_use_class[convergent_architecture] <- "supporting_claim"
+  architecture_candidate <- architecture & claims$claim_allowed %in% TRUE & !convergent_architecture
+  claims$claim_use_class[architecture_candidate & claims$label_confidence %in% c("low", "unresolved")] <- "annotation_only"
+  claims$claim_use_class[architecture_candidate & !claims$label_confidence %in% c("low", "unresolved")] <- "suggestive_context"
+
+  arch_label <- dplyr::coalesce(claims$safe_program_label, claims$biological_program, claims$wgcna_entity_id)
+  claims$safe_interpretation[architecture & claims$claim_use_class == "supporting_claim"] <- paste0(
+    "Convergent evidence supports WGCNA covariance/spatial-organization context for '",
+    arch_label[architecture & claims$claim_use_class == "supporting_claim"],
+    "'; this is not evidence of stress-dependent regulation, broad network remodelling, cell-intrinsic mechanism, or causality."
+  )
+  claims$safe_interpretation[architecture & claims$claim_use_class == "suggestive_context"] <- paste0(
+    "Suggestive WGCNA architecture/covariance context for '",
+    arch_label[architecture & claims$claim_use_class == "suggestive_context"],
+    "'; use only for spatial organization, bilateral reproducibility, animal-level stability, or region-organized covariance, not stress-dependent regulation or network remodelling."
+  )
+  claims$safe_interpretation[architecture & claims$claim_use_class == "annotation_only"] <- paste0(
+    "Annotation-only WGCNA architecture context for '",
+    arch_label[architecture & claims$claim_use_class == "annotation_only"],
+    "'; this row does not establish stress-dependent regulation or an independent manuscript claim."
+  )
+  overlap <- claims$claim_type == "wgcna_convergent_overlap" & claims$claim_allowed %in% TRUE
+  claims$safe_interpretation[overlap] <- paste0(
+    "Convergent WGCNA-module and DA/GSEA overlap supports contextual association for '",
+    arch_label[overlap],
+    "'; overlap is not proof of mechanism, purified microglial regulation, cell-intrinsic action, or causality."
+  )
+  claims
+}
+
+write_wgcna_stage13_cardinality_audit <- function(claims) {
+  rows <- claims |>
+    dplyr::filter(.data$dataset == "microglia", !is.na(.data$wgcna_entity_id), nzchar(.data$wgcna_entity_id)) |>
+    dplyr::group_by(.data$dataset, .data$evidence_type, .data$contrast, .data$wgcna_canonical_claim_entity_id) |>
+    dplyr::mutate(
+      n_rows_for_claim_key = dplyr::n(),
+      n_explicit_statistical_endpoints = dplyr::n_distinct(.data$wgcna_statistical_endpoint_id, na.rm = TRUE),
+      duplicate_key_is_explicit_endpoints = .data$n_rows_for_claim_key == 1L |
+        (!is.na(.data$wgcna_statistical_endpoint_id) & nzchar(.data$wgcna_statistical_endpoint_id) &
+           .data$n_explicit_statistical_endpoints == .data$n_rows_for_claim_key)
+    ) |>
+    dplyr::ungroup() |>
+    dplyr::arrange(.data$dataset, .data$evidence_type, .data$contrast, .data$wgcna_canonical_claim_entity_id, .data$wgcna_statistical_endpoint_id)
+  if (any(!rows$duplicate_key_is_explicit_endpoints)) {
+    bad <- rows[!rows$duplicate_key_is_explicit_endpoints, c("dataset", "evidence_type", "contrast", "wgcna_canonical_claim_entity_id", "wgcna_statistical_endpoint_id"), drop = FALSE]
+    stop("Biological claims Stage 13 cardinality audit failed; unexpected duplicate stable claim key(s): ", paste(utils::capture.output(print(utils::head(bad, 12L))), collapse = " "), call. = FALSE)
+  }
+  if (any(rows$wgcna_claim_entity_role == "compatibility_alias")) {
+    stop("Compatibility aliases must not create biological claim rows.", call. = FALSE)
+  }
+  readr::write_csv(rows, path_results("reviewer_audit", "wgcna_stage13_claim_cardinality_audit.csv"), na = "")
+  invisible(rows)
 }
 
 write_claim_gate_audits <- function(claims) {
@@ -1391,6 +1577,11 @@ collect_wgcna_claims <- function(dataset) {
   for (col in c("claim_allowed_model", "animal_level_status", "robustness_gate", "robustness_status", "model_downgrade_reason", "annotation_confidence", "annotation_stable_across_thresholds", "label_basis", "label_downgrade_reason")) {
     if (!col %in% names(df)) df[[col]] <- NA
   }
+  df <- stage13_claim_join(df, dataset, "module", "ModuleID", "collect_wgcna_claims")
+  if (identical(dataset, "microglia")) {
+    df <- df |>
+      dplyr::filter(.data$wgcna_claim_entity_role == "canonical_module", .data$wgcna_separate_manuscript_claim_allowed %in% TRUE)
+  }
   df %>%
     dplyr::transmute(
       dataset = dataset,
@@ -1409,6 +1600,9 @@ collect_wgcna_claims <- function(dataset) {
         TRUE ~ NA_character_
       ),
       evidence_type = "WGCNA_module",
+      claim_type = "wgcna_architecture",
+      !!!transmute_stage13_claim_fields(),
+      wgcna_statistical_endpoint_id = paste("architecture", .data$ModuleID, sep = "|"),
       label_confidence = dplyr::coalesce(.data$annotation_confidence, "not_applicable"),
       label_basis = dplyr::coalesce(.data$label_basis, "not_applicable"),
       label_downgrade_reason = dplyr::coalesce(.data$label_downgrade_reason, "not_applicable"),
@@ -1435,6 +1629,54 @@ collect_wgcna_claims <- function(dataset) {
     standardize_claims()
 }
 
+collect_microglia_stage13_supermodule_architecture_claims <- function() {
+  df <- STAGE13_CONTRACT$higher_order_blocks |>
+    dplyr::filter(.data$separate_manuscript_claim_allowed %in% TRUE)
+  if (nrow(df) != 1L || !identical(as.character(df$entity_id), "SM09")) {
+    stop("Stage 13 must yield exactly one independently eligible higher-order architecture candidate: SM09.", call. = FALSE)
+  }
+  df |>
+    dplyr::transmute(
+      dataset = as.character(.data$dataset),
+      contrast = NA_character_,
+      biological_program = as.character(.data$canonical_biological_label),
+      direction = NA_character_,
+      key_proteins_genes = as.character(.data$entity_id),
+      evidence_type = "WGCNA_supermodule_architecture",
+      claim_type = "wgcna_architecture",
+      label_confidence = as.character(.data$biological_process_confidence),
+      label_basis = "Stage 13 reviewed higher-order architecture contract",
+      label_downgrade_reason = "not_applicable",
+      effect_size_NES = NA_real_,
+      raw_p = NA_real_,
+      FDR = NA_real_,
+      robustness_stability_metric = paste0(
+        "primary_architecture_status=", .data$primary_architecture_status,
+        "; spatial_dependence_class=", .data$spatial_dependence_class,
+        "; animal_stability_status=", .data$animal_stability_status
+      ),
+      source_file = STAGE13_CONTRACT$source_path,
+      figure_table_target = "microglia_wgcna_claim_readiness; final evidence bundle",
+      interpretation_note = as.character(.data$allowed_wording),
+      animal_level_status = "animal_level_or_reported",
+      wgcna_level = as.character(.data$level),
+      wgcna_entity_id = as.character(.data$entity_id),
+      wgcna_canonical_claim_entity_id = as.character(.data$canonical_claim_entity_id),
+      wgcna_claim_entity_role = as.character(.data$claim_entity_role),
+      wgcna_separate_manuscript_claim_allowed = as.logical(.data$separate_manuscript_claim_allowed),
+      wgcna_primary_architecture_status = as.character(.data$primary_architecture_status),
+      wgcna_spatial_dependence_class = as.character(.data$spatial_dependence_class),
+      wgcna_animal_stability_status = as.character(.data$animal_stability_status),
+      wgcna_group_effect_status = as.character(.data$group_effect_status),
+      wgcna_allowed_claim_scope = as.character(.data$allowed_claim_scope),
+      wgcna_prohibited_claim_scope = as.character(.data$prohibited_claim_scope),
+      wgcna_readiness_contract_version = as.character(.data$readiness_contract_version),
+      wgcna_stage13_source_file = STAGE13_CONTRACT$source_path,
+      wgcna_statistical_endpoint_id = paste("architecture", .data$entity_id, sep = "|")
+    ) |>
+    standardize_claims()
+}
+
 collect_overlap_claims <- function(dataset) {
   f <- resolve_input_path(
     input_name = "wgcna_de_gsea_overlap",
@@ -1448,6 +1690,39 @@ collect_overlap_claims <- function(dataset) {
   df <- read_csv_if_exists(f)
   if (is.null(df) || !nrow(df) || !"ModuleID" %in% names(df)) return(empty_claims())
   if ("status" %in% names(df)) return(empty_claims())
+  if (identical(dataset, "microglia")) {
+    current_ids <- STAGE13_CONTRACT$canonical_modules$entity_id
+    identity_audit <- df |>
+      dplyr::count(.data$ModuleID, name = "n_source_rows") |>
+      dplyr::mutate(
+        dataset = dataset,
+        wgcna_level = "module",
+        exact_stage13_entity_id_match = .data$ModuleID %in% current_ids,
+        claim_rows_created = .data$exact_stage13_entity_id_match,
+        exclusion_reason = dplyr::if_else(
+          .data$exact_stage13_entity_id_match,
+          NA_character_,
+          "source_uses_obsolete_module_identity_without_verified_stable_id_bridge"
+        ),
+        stage13_source_file = STAGE13_CONTRACT$source_path,
+        overlap_source_file = f
+      ) |>
+      dplyr::select(
+        "dataset", "wgcna_level", source_module_id = "ModuleID",
+        "n_source_rows", "exact_stage13_entity_id_match",
+        "claim_rows_created", "exclusion_reason",
+        "stage13_source_file", "overlap_source_file"
+      )
+    dir_create(path_results("reviewer_audit"))
+    readr::write_csv(
+      identity_audit,
+      path_results("reviewer_audit", "microglia_wgcna_overlap_stage13_identity_audit.csv"),
+      na = ""
+    )
+    df <- df |>
+      dplyr::filter(.data$ModuleID %in% current_ids)
+    if (!nrow(df)) return(empty_claims())
+  }
   for (col in c("Supermodule_DisplayLabel", "Supermodule_FinalLabel", "Macroprogram_Display", "SupermoduleID", "Supermodule", "jaccard_DE", "n_DE_overlap", "top_overlap_proteins")) {
     if (!col %in% names(df)) df[[col]] <- NA
   }
@@ -1474,6 +1749,11 @@ collect_overlap_claims <- function(dataset) {
   for (col in c("claim_allowed_model", "animal_level_status", "robustness_gate", "robustness_status", "model_downgrade_reason")) {
     if (!col %in% names(df)) df[[col]] <- NA
   }
+  df <- stage13_claim_join(df, dataset, "module", "ModuleID", "collect_overlap_claims")
+  if (identical(dataset, "microglia")) {
+    df <- df |>
+      dplyr::filter(.data$wgcna_claim_entity_role == "canonical_module", .data$wgcna_separate_manuscript_claim_allowed %in% TRUE)
+  }
   df %>%
     dplyr::arrange(.data$fisher_fdr) %>%
     dplyr::group_by(.data$ModuleID, .data$ModuleColor) %>%
@@ -1491,6 +1771,9 @@ collect_overlap_claims <- function(dataset) {
       ),
       direction = NA_character_,
       evidence_type = "WGCNA_DE_GSEA_overlap",
+      claim_type = "wgcna_convergent_overlap",
+      !!!transmute_stage13_claim_fields(),
+      wgcna_statistical_endpoint_id = paste("module_overlap", .data$ModuleID, .data$contrast, sep = "|"),
       effect_size_NES = if ("jaccard_DE" %in% names(df)) .data$jaccard_DE else NA,
       raw_p = .data$fisher_p,
       FDR = .data$fisher_fdr,
@@ -1625,6 +1908,11 @@ collect_wgcna_group_effect_claims <- function(dataset, level = c("module", "supe
   for (col in c("robustness_gate", "preservation_status", "sensitivity_status", "direction_stability", "confounding_status", "robustness_downgrade_reason")) {
     if (!col %in% names(df)) df[[col]] <- NA_character_
   }
+  df <- stage13_claim_join(df, dataset, level, "module_or_supermodule_id", "collect_wgcna_group_effect_claims")
+  if (identical(dataset, "microglia") && identical(level, "supermodule")) {
+    df <- df |>
+      dplyr::filter(.data$wgcna_claim_entity_role == "higher_order_block", .data$wgcna_separate_manuscript_claim_allowed %in% TRUE)
+  }
   df %>%
     dplyr::filter(!is.na(.data$contrast), nzchar(as.character(.data$contrast))) %>%
     dplyr::transmute(
@@ -1634,6 +1922,9 @@ collect_wgcna_group_effect_claims <- function(dataset, level = c("module", "supe
       direction = .data$direction,
       key_proteins_genes = .data$module_or_supermodule_id,
       evidence_type = paste0("WGCNA_", level, "_group_effect"),
+      claim_type = "wgcna_group_effect",
+      !!!transmute_stage13_claim_fields(),
+      wgcna_statistical_endpoint_id = paste(level, .data$module_or_supermodule_id, .data$contrast, .data$effect_scope, .data$spatial_unit, sep = "|"),
       effect_size_NES = .data$estimate,
       raw_p = .data$p_value,
       FDR = dplyr::coalesce(.data$FDR_global, .data$FDR_within_dataset_level),
@@ -1728,6 +2019,7 @@ if (is_dry_run()) {
   dry_run_line("Script", "09_export_pride_journal/07_make_biological_claims_table.R")
   dry_run_line("Datasets", paste(valid_datasets(), collapse = ", "))
   dry_run_line("Integration manuscript summary", path_results("tables", "10_biological_integration", "manuscript_program_summary", "global", "manuscript_program_summary.csv"), if (file.exists(path_results("tables", "10_biological_integration", "manuscript_program_summary", "global", "manuscript_program_summary.csv"))) "PASS" else "WARN")
+  dry_run_line("Required microglia WGCNA Stage 13 claim readiness", STAGE13_PATH, if (file.exists(STAGE13_PATH)) "PASS" else "FAIL")
   dry_run_line("Output CSV", path_results("tables", "biological_claims_table.csv"))
   dry_run_line("Output XLSX", path_results("tables", "biological_claims_table.xlsx"))
   dry_run_line("Claim gate evidence availability audit", path_results("reviewer_audit", "claim_gate_evidence_availability.csv"))
@@ -1738,11 +2030,12 @@ if (is_dry_run()) {
   dry_run_line("Blocked claim wording audit", path_results("reviewer_audit", "blocked_claim_wording_audit.csv"))
   dry_run_line("WGCNA claim source audit", path_results("reviewer_audit", "wgcna_claim_source_audit.csv"))
   dry_run_line("WGCNA label completeness audit", path_results("reviewer_audit", "wgcna_label_completeness_audit.csv"))
+  dry_run_line("WGCNA Stage 13 claim cardinality audit", path_results("reviewer_audit", "wgcna_stage13_claim_cardinality_audit.csv"))
+  dry_run_line("Microglia WGCNA overlap stable-ID audit", path_results("reviewer_audit", "microglia_wgcna_overlap_stage13_identity_audit.csv"))
   dry_run_line("Claim-use-class wording audit", path_results("reviewer_audit", "claim_use_class_wording_audit.csv"))
   dry_run_line("Final claim-gate summary", path_results("reviewer_audit", "final_claim_gate_summary.csv"))
   dry_run_line("Final reviewer audit manifest", path_results("reviewer_audit", "final_reviewer_audit_manifest.csv"))
   dry_run_line("Final evidence bundle validation", path_results("reviewer_audit", "final_evidence_bundle_validation.csv"))
-  dry_run_line("Final evidence bundle", path_results("tables", "10_biological_integration", "final_evidence_bundle", "global", "final_biological_evidence_bundle.xlsx"))
   quit(status = 0, save = "no")
 }
 
@@ -1751,6 +2044,7 @@ claims <- dplyr::bind_rows(
   lapply(valid_datasets(), collect_wgcna_group_effect_claims, level = "module"),
   lapply(valid_datasets(), collect_wgcna_group_effect_claims, level = "supermodule"),
   lapply(valid_datasets(), collect_wgcna_claims),
+  list(collect_microglia_stage13_supermodule_architecture_claims()),
   lapply(valid_datasets(), collect_overlap_claims),
   lapply(valid_datasets(), collect_microglia_signature_claims),
   list(collect_behavior_claims(), collect_integration_claims())
@@ -1798,15 +2092,18 @@ claims <- dplyr::bind_rows(
     )
   ) %>%
   add_claim_gates() %>%
+  apply_stage13_claim_semantics() %>%
   add_go_label_interpretation() %>%
   add_claim_use_class() %>%
   repair_incomplete_wgcna_labels() %>%
   harmonize_claim_use_class_wording() %>%
+  finalize_wgcna_claim_semantics() %>%
   sync_go_safe_interpretation() %>%
   apply_blocked_claim_wording() %>%
   standardize_claims()
 
 validate_table_schema(claims, "biological_claims_table", strict = TRUE)
+wgcna_stage13_cardinality_audit <- write_wgcna_stage13_cardinality_audit(claims)
 
 dir_create(path_results("tables"))
 csv_out <- path_results("tables", "biological_claims_table.csv")
@@ -1854,6 +2151,3 @@ write_run_manifest(
   parameters = list(datasets = valid_datasets(), schema = "biological_claims_table"),
   notes = "Reviewer-facing manuscript claim gate. claim_grade is descriptive; claim_allowed and claim_gate_status determine eligibility. Missing statistics remain NA."
 )
-
-bundle <- write_final_evidence_bundle(reason = "biological_claims_table")
-message("Final biological evidence bundle refreshed: ", bundle$bundle_dir)

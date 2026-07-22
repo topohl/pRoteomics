@@ -1,6 +1,11 @@
 #!/usr/bin/env Rscript
-#
-# Build and audit WGCNA circular-atlas source data.
+# Script: 10_biological_integration/04_wgcna_circular_atlas.R
+# Stage: integration
+# Scope: global
+# Consumes: WGCNA technical outputs, biological claims, and required microglia Stage 13 readiness.
+# Produces: full/selected circular-atlas tables, figures, and stable-ID selection audits.
+# Dataset behavior: includes only the three canonical datasets; every source supermodule appears once.
+# Notes: Build and audit WGCNA circular-atlas source data.
 #
 # Downstream-only contract:
 #   - do not recompute WGCNA or alter module/supermodule definitions
@@ -10,6 +15,7 @@
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
 source(repo_path("R", "wgcna_downstream_utils.R"))
+source(repo_path("R", "wgcna_claim_readiness_utils.R"))
 
 required_pkgs <- c("dplyr", "readr", "tibble", "tidyr", "stringr")
 plot_pkgs <- c("circlize", "svglite", "ggplot2", "scales")
@@ -40,6 +46,7 @@ out_logic_audit <- file.path(report_dir, "wgcna_circular_atlas_logic_audit.csv")
 out_count_audit <- file.path(report_dir, "wgcna_circular_atlas_supermodule_count_audit.csv")
 out_join_audit <- file.path(report_dir, "wgcna_circular_atlas_join_audit.csv")
 out_selected_audit <- file.path(report_dir, "wgcna_circular_atlas_selected_table_audit.csv")
+out_stage13_selection_audit <- file.path(report_dir, "wgcna_circular_atlas_stage13_selection_audit.csv")
 out_neuropil_availability <- file.path(report_dir, "neuron_neuropil_supermodule_availability_audit.csv")
 out_duplicate_audit <- file.path(report_dir, "wgcna_circular_atlas_duplicate_source_audit.csv")
 out_effect_scope_audit <- file.path(report_dir, "wgcna_circular_atlas_effect_scope_audit.csv")
@@ -434,40 +441,64 @@ claim_status_table <- function() {
     return(tibble::tibble(
       dataset = character(),
       claim_key = character(),
+      claim_key_type = character(),
       claim_display_status = character(),
       claim_source_file = character()
     ))
   }
-  gate_col <- first_existing_col(claims, c("claim_gate", "claim_status", "gate_status", "claim_display_status"))
-  program_col <- first_existing_col(claims, c("biological_program", "program_label", "Supermodule", "supermodule_id"))
-  if (is.na(gate_col) || is.na(program_col) || !"dataset" %in% names(claims)) {
+  gate_col <- first_existing_col(claims, c("claim_gate_status", "claim_gate", "claim_status", "gate_status", "claim_display_status"))
+  stable_id_col <- first_existing_col(claims, c("wgcna_entity_id", "supermodule_id"))
+  program_col <- first_existing_col(claims, c("biological_program", "program_label", "Supermodule"))
+  if (is.na(gate_col) || (is.na(stable_id_col) && is.na(program_col)) || !"dataset" %in% names(claims)) {
     return(tibble::tibble(
       dataset = unique(claims$dataset %||% character()),
       claim_key = NA_character_,
+      claim_key_type = "unavailable",
       claim_display_status = "claim_table_present_no_gate_columns",
       claim_source_file = path
     ))
   }
-  claims |>
+  stable <- if (!is.na(stable_id_col)) claims |>
     dplyr::mutate(
-      claim_key = clean_chr(.data[[program_col]]),
+      claim_key = clean_chr(.data[[stable_id_col]]),
+      claim_key_type = "stable_id",
       claim_display_status = clean_chr(.data[[gate_col]]),
       claim_source_file = path
     ) |>
     dplyr::filter(nzchar(.data$claim_key), nzchar(.data$claim_display_status)) |>
-    dplyr::group_by(.data$dataset, .data$claim_key) |>
+    dplyr::group_by(.data$dataset, .data$claim_key, .data$claim_key_type) |>
     dplyr::summarise(
       claim_display_status = paste(unique(.data$claim_display_status), collapse = ";"),
       claim_source_file = dplyr::first(.data$claim_source_file),
       .groups = "drop"
-    )
+    ) else tibble::tibble()
+  labels <- if (!is.na(program_col)) claims |>
+    dplyr::filter(.data$dataset != "microglia") |>
+    dplyr::mutate(
+      claim_key = clean_chr(.data[[program_col]]),
+      claim_key_type = "label_fallback_non_microglia",
+      claim_display_status = clean_chr(.data[[gate_col]]),
+      claim_source_file = path
+    ) |>
+    dplyr::filter(nzchar(.data$claim_key), nzchar(.data$claim_display_status)) |>
+    dplyr::group_by(.data$dataset, .data$claim_key, .data$claim_key_type) |>
+    dplyr::summarise(
+      claim_display_status = paste(unique(.data$claim_display_status), collapse = ";"),
+      claim_source_file = dplyr::first(.data$claim_source_file),
+      .groups = "drop"
+    ) else tibble::tibble()
+  dplyr::bind_rows(stable, labels)
 }
 
-lookup_claim_status <- function(ds, cleaned_label, broad_program, claims) {
+lookup_claim_status <- function(ds, supermodule_id, cleaned_label, broad_program, claims) {
   if (is.null(claims) || !nrow(claims)) return("claim_not_available")
+  stable_hit <- claims |>
+    dplyr::filter(.data$dataset == ds, .data$claim_key_type == "stable_id", .data$claim_key == supermodule_id)
+  if (nrow(stable_hit)) return(stable_hit$claim_display_status[[1]])
+  if (identical(ds, "microglia")) return("claim_not_mapped_by_stable_id")
   keys <- c(clean_chr(cleaned_label), clean_chr(broad_program))
   hit <- claims |>
-    dplyr::filter(.data$dataset == ds, .data$claim_key %in% keys)
+    dplyr::filter(.data$dataset == ds, .data$claim_key_type == "label_fallback_non_microglia", .data$claim_key %in% keys)
   if (nrow(hit)) return(hit$claim_display_status[[1]])
   if (any(claims$dataset == ds & claims$claim_display_status == "claim_table_present_no_gate_columns", na.rm = TRUE)) {
     return("claim_table_present_no_gate_columns")
@@ -647,7 +678,8 @@ build_neuropil_availability_audit <- function() {
 
 available_datasets <- function() {
   root <- path_results("tables", "06_modules_WGCNA", "01_WGCNA")
-  ds <- if (dir.exists(root)) list.dirs(root, full.names = FALSE, recursive = FALSE) else character()
+  present <- if (dir.exists(root)) list.dirs(root, full.names = FALSE, recursive = FALSE) else character()
+  ds <- intersect(valid_datasets(), present)
   if (!identical(DATASET_ARG, "all")) ds <- intersect(ds, DATASET_ARG)
   ds
 }
@@ -730,6 +762,25 @@ process_dataset <- function(ds) {
   label_lookup <- read_csv_quiet(p$final_label_lookup)
   interp <- read_csv_quiet(p$interpretable_summary)
   bio <- read_csv_quiet(p$biological_annotation)
+  readiness_contract <- if (identical(ds, "microglia")) load_microglia_wgcna_claim_readiness() else NULL
+  readiness <- if (!is.null(readiness_contract)) readiness_contract$all |>
+    dplyr::filter(.data$level == "supermodule") |>
+    dplyr::transmute(
+      dataset = as.character(.data$dataset),
+      supermodule_id = as.character(.data$entity_id),
+      canonical_claim_entity_id = as.character(.data$canonical_claim_entity_id),
+      claim_entity_role = as.character(.data$claim_entity_role),
+      separate_manuscript_claim_allowed = as.logical(.data$separate_manuscript_claim_allowed),
+      primary_architecture_status = as.character(.data$primary_architecture_status),
+      group_effect_status = as.character(.data$group_effect_status),
+      manuscript_placement = as.character(.data$manuscript_placement),
+      readiness_contract_version = as.character(.data$readiness_contract_version)
+    ) else tibble::tibble(
+      dataset = character(), supermodule_id = character(), canonical_claim_entity_id = character(),
+      claim_entity_role = character(), separate_manuscript_claim_allowed = logical(),
+      primary_architecture_status = character(), group_effect_status = character(),
+      manuscript_placement = character(), readiness_contract_version = character()
+    )
 
   input_status <- tibble::tibble(
     dataset = ds,
@@ -742,6 +793,15 @@ process_dataset <- function(ds) {
       integer(1)
     )
   )
+  if (identical(ds, "microglia")) {
+    input_status <- dplyr::bind_rows(input_status, tibble::tibble(
+      dataset = ds,
+      input_name = "claim_readiness",
+      path = readiness_contract$source_path,
+      exists = TRUE,
+      n_rows = nrow(readiness_contract$all)
+    ))
+  }
 
   if (is.null(summary) || !nrow(summary)) {
     return(list(
@@ -930,6 +990,7 @@ process_dataset <- function(ds) {
     dplyr::left_join(bio_core, by = c("dataset", "supermodule_id")) |>
     dplyr::left_join(effect_scope_audit, by = c("dataset", "supermodule_id")) |>
     dplyr::left_join(picked, by = c("dataset", "supermodule_id")) |>
+    dplyr::left_join(readiness, by = c("dataset", "supermodule_id"), relationship = "one-to-one") |>
     dplyr::mutate(
       segment_cleaned_label = dplyr::coalesce(.data$segment_cleaned_label, .data$source_cleaned_label),
       segment_broad_program_class = dplyr::coalesce(.data$segment_broad_program_class, .data$source_broad_program_if_available),
@@ -945,7 +1006,7 @@ process_dataset <- function(ds) {
       n_proteins_segments_if_available = .data$n_proteins_source_if_available,
       claim_display_status = vapply(
         seq_len(dplyr::n()),
-        function(i) lookup_claim_status(ds, .data$segment_cleaned_label[[i]], .data$segment_broad_program_class[[i]], claims),
+        function(i) lookup_claim_status(ds, .data$supermodule_id[[i]], .data$segment_cleaned_label[[i]], .data$segment_broad_program_class[[i]], claims),
         character(1)
       ),
       strongest_effect_scope_used = dplyr::coalesce(.data$strongest_effect_scope_used, "missing_effect_test"),
@@ -1019,6 +1080,13 @@ process_dataset <- function(ds) {
       "present_in_supermodule_group_effects",
       "present_in_interpretable_summary",
       "present_in_final_label_lookup",
+      "canonical_claim_entity_id",
+      "claim_entity_role",
+      "separate_manuscript_claim_allowed",
+      "primary_architecture_status",
+      "group_effect_status",
+      "manuscript_placement",
+      "readiness_contract_version",
       "present_in_circular_segments",
       "present_in_selected_table",
       "n_member_modules_source",
@@ -1055,7 +1123,8 @@ process_dataset <- function(ds) {
     audit_join("source_summary_to_group_effect_pick", summary, picked, c("dataset", "supermodule_id"), "wgcna_supermodule_summary.csv", "supermodule_group_effects.csv selected row"),
     audit_join("source_summary_to_interpretable_summary", summary, interp_ids, c("dataset", "supermodule_id"), "wgcna_supermodule_summary.csv", "WGCNA_supermodule_group_effects_interpretable.csv"),
     audit_join("source_summary_to_module_supermodule_annotation", summary, module_ids, c("dataset", "supermodule_id"), "wgcna_supermodule_summary.csv", "wgcna_module_supermodule_annotation.csv"),
-    audit_join("source_summary_to_final_label_lookup", summary, label_ids, c("dataset", "supermodule_id"), "wgcna_supermodule_summary.csv", "WGCNA_final_label_lookup.csv")
+    audit_join("source_summary_to_final_label_lookup", summary, label_ids, c("dataset", "supermodule_id"), "wgcna_supermodule_summary.csv", "WGCNA_final_label_lookup.csv"),
+    audit_join("source_summary_to_stage13_claim_readiness", summary, readiness, c("dataset", "supermodule_id"), "wgcna_supermodule_summary.csv", "WGCNA_entity_claim_readiness.csv")
   )
 
   list(
@@ -1197,6 +1266,8 @@ prepare_circular_plot_source <- function(segments) {
       dataset = factor(.data$dataset, levels = dataset_order),
       dataset_label = dataset_label(as.character(.data$dataset)),
       present_in_selected_table = .data$present_in_selected_table %in% TRUE,
+      selected_for_descriptive_atlas = .data$selected_for_descriptive_atlas %in% TRUE,
+      selected_for_manuscript_claim = .data$selected_for_manuscript_claim %in% TRUE,
       evidence_status_segments = dplyr::coalesce(na_if_blank_chr(.data$evidence_status_segments), "missing_effect_test"),
       evidence_priority = as.integer(dplyr::coalesce(status_priority[.data$evidence_status_segments], 99L)),
       abs_effect_for_order = abs(as_num(.data$strongest_estimate_segments)),
@@ -1305,7 +1376,7 @@ render_circular_atlas <- function(plot_source, svg_path, pdf_path, selected_only
   dataset_order <- c("neuron_neuropil", "neuron_soma", "microglia")
   plot_source <- plot_source |>
     dplyr::filter(.data$dataset %in% dataset_order) |>
-    dplyr::filter(!isTRUE(selected_only) | .data$present_in_selected_table %in% TRUE) |>
+    dplyr::filter(!isTRUE(selected_only) | .data$selected_for_manuscript_claim %in% TRUE) |>
     dplyr::mutate(dataset = factor(.data$dataset, levels = dataset_order)) |>
     dplyr::arrange(.data$dataset, .data$plot_order) |>
     dplyr::group_by(.data$dataset) |>
@@ -3200,6 +3271,8 @@ if (run$dry_run) {
   dry_run_line("Count audit output", out_count_audit)
   dry_run_line("Join audit output", out_join_audit)
   dry_run_line("Selected table audit output", out_selected_audit)
+  dry_run_line("Stage 13 selection audit output", out_stage13_selection_audit)
+  dry_run_line("Required microglia Stage 13 claim readiness", microglia_wgcna_claim_readiness_path(), if (file.exists(microglia_wgcna_claim_readiness_path())) "PASS" else "FAIL")
   dry_run_line("Duplicate source audit output", out_duplicate_audit)
   dry_run_line("Effect scope audit output", out_effect_scope_audit)
   dry_run_line("Local support summary output", out_local_support)
@@ -3248,12 +3321,58 @@ input_status <- dplyr::bind_rows(lapply(results, `[[`, "input_status"))
 
 selected_audit <- select_table_rows(segments)
 neuropil_availability_audit <- build_neuropil_availability_audit()
-selected_keys <- paste(selected_audit$dataset, selected_audit$supermodule_id)
+selected_keys <- paste(selected_audit$dataset, selected_audit$supermodule_id, sep = "||")
+segment_keys <- paste(segments$dataset, segments$supermodule_id, sep = "||")
+segments <- segments |>
+  dplyr::mutate(
+    selected_for_descriptive_atlas = segment_keys %in% selected_keys,
+    selected_for_manuscript_claim = dplyr::case_when(
+      .data$dataset == "microglia" ~ .data$claim_entity_role == "higher_order_block" &
+        .data$separate_manuscript_claim_allowed %in% TRUE,
+      TRUE ~ .data$selected_for_descriptive_atlas & grepl("allowed|downgraded", .data$claim_display_status)
+    ),
+    present_in_selected_table = .data$selected_for_descriptive_atlas
+  )
+if (any(segments$dataset == "microglia" & segments$selected_for_manuscript_claim %in% TRUE &
+        (segments$claim_entity_role == "compatibility_alias" | segments$supermodule_id %in% c("SM01", "SM03")))) {
+  stop("Microglia circular manuscript selection contains an alias or non-independent higher-order block.", call. = FALSE)
+}
+if (any(segments$dataset == "microglia" & segments$group_effect_status == "not_FDR_supported" &
+        grepl("FDR_supported", segments$claim_display_status))) {
+  stop("Microglia circular atlas cannot display an FDR-supported stress marker contrary to Stage 13.", call. = FALSE)
+}
+selected_audit <- selected_audit |>
+  dplyr::left_join(
+    segments |>
+      dplyr::select(
+        .data$dataset, .data$supermodule_id, .data$selected_for_descriptive_atlas,
+        .data$selected_for_manuscript_claim, .data$canonical_claim_entity_id,
+        .data$claim_entity_role, .data$separate_manuscript_claim_allowed,
+        .data$primary_architecture_status, .data$group_effect_status,
+        .data$manuscript_placement, .data$readiness_contract_version
+      ),
+    by = c("dataset", "supermodule_id"), relationship = "one-to-one"
+  )
+stage13_selection_audit <- segments |>
+  dplyr::filter(.data$dataset == "microglia") |>
+  dplyr::transmute(
+    dataset, level = "supermodule", entity_id = .data$supermodule_id,
+    full_atlas_inclusion = TRUE,
+    selected_for_descriptive_atlas,
+    selected_for_manuscript_claim,
+    alias_exclusion = .data$claim_entity_role == "compatibility_alias" & !.data$selected_for_manuscript_claim,
+    stable_id_join_status = ifelse(is.na(.data$claim_entity_role), "unmatched", "matched"),
+    canonical_claim_entity_id, claim_entity_role, separate_manuscript_claim_allowed,
+    primary_architecture_status, group_effect_status, manuscript_placement,
+    readiness_contract_version
+  )
+if (nrow(stage13_selection_audit) != 9L || any(stage13_selection_audit$stable_id_join_status != "matched")) {
+  stop("Circular atlas Stage 13 stable-ID audit must contain nine matched microglia supermodules.", call. = FALSE)
+}
 logic_audit <- logic_audit |>
-  dplyr::mutate(present_in_selected_table = paste(.data$dataset, .data$supermodule_id) %in% selected_keys)
+  dplyr::mutate(present_in_selected_table = paste(.data$dataset, .data$supermodule_id, sep = "||") %in% selected_keys)
 
 segments <- segments |>
-  dplyr::mutate(present_in_selected_table = paste(.data$dataset, .data$supermodule_id) %in% selected_keys) |>
   dplyr::select(
     "dataset",
     "dataset_label",
@@ -3272,6 +3391,15 @@ segments <- segments |>
     "local_spatial_evidence_status",
     "interaction_evidence_status",
     "claim_display_status",
+    "canonical_claim_entity_id",
+    "claim_entity_role",
+    "separate_manuscript_claim_allowed",
+    "primary_architecture_status",
+    "group_effect_status",
+    "manuscript_placement",
+    "readiness_contract_version",
+    "selected_for_descriptive_atlas",
+    "selected_for_manuscript_claim",
     "n_spatial_units_tested",
     "n_spatial_units_FDR05",
     "n_spatial_units_FDR10",
@@ -3336,6 +3464,7 @@ metrics <- tibble::tibble(
   metric = c(
     "n_segments",
     "n_selected_table_rows",
+    "n_manuscript_claim_selected_rows",
     "n_datasets",
     "n_plot_labels",
     "n_circular_heatmap_supermodule_cells",
@@ -3352,6 +3481,7 @@ metrics <- tibble::tibble(
   value = c(
     as.character(nrow(segments)),
     as.character(nrow(selected_audit)),
+    as.character(sum(segments$selected_for_manuscript_claim, na.rm = TRUE)),
     as.character(dplyr::n_distinct(segments$dataset)),
     as.character(sum(plot_source$label_shown, na.rm = TRUE)),
     as.character(nrow(heatmap_source_supermodule)),
@@ -3390,6 +3520,7 @@ readr::write_csv(logic_audit, out_logic_audit)
 readr::write_csv(count_audit, out_count_audit)
 readr::write_csv(join_audit, out_join_audit)
 readr::write_csv(selected_audit, out_selected_audit)
+readr::write_csv(stage13_selection_audit, out_stage13_selection_audit)
 readr::write_csv(neuropil_availability_audit, out_neuropil_availability)
 readr::write_csv(duplicate_audit, out_duplicate_audit)
 readr::write_csv(effect_scope_audit, out_effect_scope_audit)
@@ -3457,7 +3588,8 @@ write_run_manifest(
   out_run_manifest,
   inputs = list(
     wgcna_tables_root = path_results("tables", "06_modules_WGCNA"),
-    biological_claims_table = path_results("tables", "biological_claims_table.csv")
+    biological_claims_table = path_results("tables", "biological_claims_table.csv"),
+    microglia_wgcna_claim_readiness = microglia_wgcna_claim_readiness_path()
   ),
   outputs = list(
     segments = out_segments,
@@ -3467,6 +3599,7 @@ write_run_manifest(
     count_audit = out_count_audit,
     join_audit = out_join_audit,
     selected_table_audit = out_selected_audit,
+    stage13_selection_audit = out_stage13_selection_audit,
     duplicate_source_audit = out_duplicate_audit,
     effect_scope_audit = out_effect_scope_audit,
     local_support_summary = out_local_support,

@@ -3,8 +3,10 @@
 # Script: 10_biological_integration/03_evidence_priority_matrix.r
 # Stage: integration
 # Scope: global
-# Consumes: cross-compartment atlas, manuscript summary, and biological claims table when present.
-# Produces: evidence priority matrix.
+# Consumes: cross-compartment atlas, manuscript summary, biological claims, and Stage 13 readiness.
+# Produces: evidence priority matrix and final evidence bundle.
+# Dataset behavior: global ranking across the canonical integration atlas.
+# Notes: Priority uses only rows marked counts_toward_convergence.
 # ================================================================
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
@@ -18,8 +20,7 @@ run <- integration_cli(default_dataset = "all", allow_all = TRUE)
 paths <- integration_paths("evidence_priority_matrix", "global")
 inputs <- list(
   atlas = path_results("tables", "10_biological_integration", "cross_compartment_program_atlas", "global", "cross_compartment_program_atlas_long.csv"),
-  manuscript_summary = path_results("tables", "10_biological_integration", "manuscript_program_summary", "global", "manuscript_program_summary.csv"),
-  claims = path_results("tables", "biological_claims_table.csv")
+  manuscript_summary = path_results("tables", "10_biological_integration", "manuscript_program_summary", "global", "manuscript_program_summary.csv")
 )
 
 if (run$dry_run) {
@@ -40,6 +41,7 @@ if (is.null(atlas) || !nrow(atlas)) {
     dataset = NA_character_,
     priority_tier = "defer",
     evidence_domain_count = 0L,
+    evidence_rows_counting_toward_convergence = 0L,
     strongest_fdr = NA_real_,
     robustness_flag = "unavailable",
     behavior_flag = "unavailable",
@@ -49,7 +51,8 @@ if (is.null(atlas) || !nrow(atlas)) {
   )
 } else {
   if (!"program_key" %in% names(atlas)) atlas$program_key <- program_key(atlas$program_label)
-  groups <- split(atlas, paste(atlas$dataset, atlas$program_key, sep = "||"))
+  counting_atlas <- atlas[atlas$counts_toward_convergence %in% TRUE, , drop = FALSE]
+  groups <- split(counting_atlas, paste(counting_atlas$dataset, counting_atlas$program_key, sep = "||"))
   priority <- do.call(rbind, lapply(seq_along(groups), function(i) {
     d <- groups[[i]]
     domains <- unique(d$evidence_domain)
@@ -73,6 +76,7 @@ if (is.null(atlas) || !nrow(atlas)) {
       dataset = d$dataset[[1]],
       priority_tier = tier,
       evidence_domain_count = length(domains),
+      evidence_rows_counting_toward_convergence = nrow(d),
       evidence_domains = paste(sort(domains), collapse = ";"),
       strongest_fdr = fdr,
       robustness_flag = ifelse(has_robust, "available", "missing_or_not_applicable"),

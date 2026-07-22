@@ -764,7 +764,7 @@ stages:
         stage: "integration"
         scope: "global"
         produces: ["results/tables/10_biological_integration/cross_compartment_program_atlas/global/cross_compartment_program_atlas.csv", "results/tables/10_biological_integration/cross_compartment_program_atlas/global/cross_compartment_program_atlas_long.csv", "results/source_data/10_biological_integration/cross_compartment_program_atlas/global/cross_compartment_program_atlas.csv", "results/source_data/10_biological_integration/cross_compartment_program_atlas/global/cross_compartment_program_atlas_long.csv", "results/source_data/10_biological_integration/cross_compartment_program_atlas/global/cross_compartment_program_atlas_input_status.csv", "results/reports/10_biological_integration/cross_compartment_program_atlas/global/input_status.csv", "results/logs/10_biological_integration/cross_compartment_program_atlas/global/run_manifest.yml"]
-        consumes_required: []
+        consumes_required: ["results/tables/06_modules_WGCNA/claim_readiness/microglia/WGCNA_entity_claim_readiness.csv"]
         consumes_optional: ["results/tables/04_differential_expression_enrichment/biological_program_summary/", "results/tables/04_differential_expression_enrichment/external_stress_disease_signature_overlap/global/external_stress_disease_signature_overlap.csv", "results/tables/04_differential_expression_enrichment/compareGO_spatial_atlas/spatial_program_summary.csv", "results/tables/06_modules_WGCNA/interpretable_summary/", "results/tables/06_modules_WGCNA/module_annotation/", "results/tables/06_modules_WGCNA/module_complex_architecture/", "results/tables/06_modules_WGCNA/module_robustness_sensitivity/", "results/tables/08_behavior_physio_coupling/module_behavior_coupling/", "results/reports/03_qc_exploration/07_qc_biology_confounding_report/"]
         recomputes_core_state: false
         safe_downstream_rerun: true
@@ -775,19 +775,30 @@ stages:
         stage: "integration"
         scope: "global"
         produces: ["results/tables/10_biological_integration/manuscript_program_summary/global/manuscript_program_summary.csv", "results/source_data/10_biological_integration/manuscript_program_summary/global/manuscript_program_summary.csv", "results/logs/10_biological_integration/manuscript_program_summary/global/run_manifest.yml"]
-        consumes_required: []
-        consumes_optional: ["results/tables/10_biological_integration/cross_compartment_program_atlas/global/cross_compartment_program_atlas_long.csv", "results/tables/10_biological_integration/cross_compartment_program_atlas/global/cross_compartment_program_atlas.csv"]
+        consumes_required: ["results/tables/10_biological_integration/cross_compartment_program_atlas/global/cross_compartment_program_atlas_long.csv"]
+        consumes_optional: ["results/tables/10_biological_integration/cross_compartment_program_atlas/global/cross_compartment_program_atlas.csv"]
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Manuscript-facing summary built from the integration atlas."
+      - script: "09_export_pride_journal/07_make_biological_claims_table.R"
+        required: false
+        datasets: ["global"]
+        stage: "export"
+        scope: "global"
+        produces: ["results/tables/biological_claims_table.csv", "results/tables/biological_claims_table.xlsx", "results/reviewer_audit/wgcna_stage13_claim_cardinality_audit.csv", "results/reviewer_audit/microglia_wgcna_overlap_stage13_identity_audit.csv"]
+        consumes_required: ["results/tables/04_differential_expression_enrichment/", "results/tables/06_modules_WGCNA/", "results/tables/06_modules_WGCNA/claim_readiness/microglia/WGCNA_entity_claim_readiness.csv", "results/tables/10_biological_integration/manuscript_program_summary/global/manuscript_program_summary.csv"]
+        consumes_optional: ["results/tables/08_behavior_physio_coupling/network_behavior_coupling/"]
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Final biological claims table after Stage 13 and manuscript summary; does not generate the final bundle, which is refreshed only after the priority matrix is current."
       - script: "10_biological_integration/03_evidence_priority_matrix.r"
         required: false
         datasets: ["global"]
         stage: "integration"
         scope: "global"
         produces: ["results/tables/10_biological_integration/evidence_priority_matrix/global/evidence_priority_matrix.csv", "results/source_data/10_biological_integration/evidence_priority_matrix/global/evidence_priority_matrix.csv", "results/tables/10_biological_integration/final_evidence_bundle/global/final_biological_evidence_bundle.xlsx", "results/tables/10_biological_integration/final_evidence_bundle/global/", "results/source_data/10_biological_integration/final_evidence_bundle/global/", "results/logs/10_biological_integration/final_evidence_bundle/global/run_manifest.yml", "results/logs/10_biological_integration/evidence_priority_matrix/global/run_manifest.yml"]
-        consumes_required: []
-        consumes_optional: ["results/tables/10_biological_integration/cross_compartment_program_atlas/global/cross_compartment_program_atlas_long.csv", "results/tables/10_biological_integration/manuscript_program_summary/global/manuscript_program_summary.csv", "results/tables/biological_claims_table.csv"]
+        consumes_required: ["results/tables/10_biological_integration/cross_compartment_program_atlas/global/cross_compartment_program_atlas_long.csv", "results/tables/10_biological_integration/manuscript_program_summary/global/manuscript_program_summary.csv", "results/tables/biological_claims_table.csv", "results/tables/06_modules_WGCNA/claim_readiness/microglia/WGCNA_entity_claim_readiness.csv"]
+        consumes_optional: []
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Ranks candidate manuscript programs and refreshes the final biological evidence bundle from existing downstream outputs."
@@ -834,11 +845,13 @@ stages:
           - "results/reports/10_biological_integration/wgcna_circular_atlas/global/wgcna_circular_vs_publication_supermodule_id_comparison.csv"
           - "results/reports/10_biological_integration/wgcna_circular_atlas/global/wgcna_circular_metric_consistency_audit.csv"
           - "results/reports/10_biological_integration/wgcna_circular_atlas/global/wgcna_module_supermodule_mapping_audit.csv"
+          - "results/reports/10_biological_integration/wgcna_circular_atlas/global/wgcna_circular_atlas_stage13_selection_audit.csv"
           - "results/logs/10_biological_integration/wgcna_circular_atlas/global/run_manifest.yml"
         consumes_required:
           - "results/tables/06_modules_WGCNA/"
-        consumes_optional:
+          - "results/tables/06_modules_WGCNA/claim_readiness/microglia/WGCNA_entity_claim_readiness.csv"
           - "results/tables/biological_claims_table.csv"
+        consumes_optional:
           - "results/tables/10_biological_integration/evidence_priority_matrix/global/evidence_priority_matrix.csv"
         recomputes_core_state: false
         safe_downstream_rerun: true
@@ -849,7 +862,7 @@ stages:
         stage: "integration"
         scope: "global"
         produces: ["results/tables/10_biological_integration/wgcna_cross_compartment_overview/global/", "results/source_data/10_biological_integration/wgcna_cross_compartment_overview/global/", "results/figures/10_biological_integration/wgcna_cross_compartment_overview/global/", "results/logs/10_biological_integration/wgcna_cross_compartment_overview/global/", "results/reports/10_biological_integration/wgcna_cross_compartment_overview/global/"]
-        consumes_required: ["results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_module_summary.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_module_definitions_for_downstream.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_supermodule_summary.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_module_supermodule_annotation.csv", "results/tables/06_modules_WGCNA/group_effects/<dataset>/module_group_effects.csv", "results/tables/06_modules_WGCNA/group_effects/<dataset>/supermodule_group_effects.csv", "results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_final_label_lookup.csv", "results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_supermodule_group_effects_interpretable.csv"]
+        consumes_required: ["results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_module_summary.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_module_definitions_for_downstream.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_supermodule_summary.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_module_supermodule_annotation.csv", "results/tables/06_modules_WGCNA/group_effects/<dataset>/module_group_effects.csv", "results/tables/06_modules_WGCNA/group_effects/<dataset>/supermodule_group_effects.csv", "results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_final_label_lookup.csv", "results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_supermodule_group_effects_interpretable.csv", "results/tables/06_modules_WGCNA/claim_readiness/microglia/WGCNA_entity_claim_readiness.csv"]
         consumes_optional: ["results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/supermodule_clustering_sensitivity.csv", "results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_module_biological_annotation.csv", "results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_supermodule_biological_annotation.csv", "results/tables/biological_claims_table.csv", "results/tables/10_biological_integration/final_evidence_bundle/global/final_biological_evidence_bundle.xlsx"]
         recomputes_core_state: false
         safe_downstream_rerun: true
@@ -912,17 +925,6 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Methods summary from registry/manifests."
-      - script: "09_export_pride_journal/07_make_biological_claims_table.R"
-        required: false
-        datasets: ["global"]
-        stage: "export"
-        scope: "global"
-        produces: ["results/tables/biological_claims_table.csv", "results/tables/biological_claims_table.xlsx", "results/tables/10_biological_integration/final_evidence_bundle/global/final_biological_evidence_bundle.xlsx", "results/tables/10_biological_integration/final_evidence_bundle/global/"]
-        consumes_required: ["results/tables/04_differential_expression_enrichment/", "results/tables/06_modules_WGCNA/"]
-        consumes_optional: ["results/tables/08_behavior_physio_coupling/network_behavior_coupling/", "results/tables/10_biological_integration/manuscript_program_summary/global/manuscript_program_summary.csv", "results/tables/10_biological_integration/evidence_priority_matrix/global/evidence_priority_matrix.csv"]
-        recomputes_core_state: false
-        safe_downstream_rerun: true
-        notes: "Final biological claims table, including integration-stage manuscript summaries when available; refreshes the final evidence bundle after claims are rebuilt."
       - script: "09_export_pride_journal/08_export_manuscript_figures.R"
         required: false
         datasets: ["global"]

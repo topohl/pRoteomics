@@ -5,6 +5,7 @@ if (!exists("repo_path", mode = "function")) {
   source(paths_file)
 }
 source(repo_path("R", "dataset_config.R"))
+source(repo_path("R", "wgcna_claim_readiness_utils.R"))
 
 `%||%` <- function(x, y) {
   if (is.null(x) || length(x) == 0L) y else x
@@ -119,15 +120,49 @@ build_wgcna_key_modules <- function() {
     if (!col %in% names(modules)) modules[[col]] <- NA_real_
     modules[[col]] <- suppressWarnings(as.numeric(modules[[col]]))
   }
+  contract <- load_microglia_wgcna_claim_readiness()
+  stage13_modules <- contract$canonical_modules |>
+    dplyr::transmute(
+      dataset = as.character(.data$dataset),
+      stage13_module_id = as.character(.data$entity_id),
+      canonical_claim_entity_id = as.character(.data$canonical_claim_entity_id),
+      claim_entity_role = as.character(.data$claim_entity_role),
+      separate_manuscript_claim_allowed = as.logical(.data$separate_manuscript_claim_allowed),
+      primary_architecture_status = as.character(.data$primary_architecture_status),
+      spatial_dependence_class = as.character(.data$spatial_dependence_class),
+      animal_stability_status = as.character(.data$animal_stability_status),
+      group_effect_status = as.character(.data$group_effect_status),
+      allowed_claim_scope = as.character(.data$allowed_claim_scope),
+      prohibited_claim_scope = as.character(.data$prohibited_claim_scope),
+      readiness_contract_version = as.character(.data$readiness_contract_version),
+      stage13_source_file = contract$source_path
+    )
   modules <- modules |>
+    dplyr::mutate(stage13_module_id = dplyr::coalesce(as.character(.data$module_id), as.character(.data$ModuleID))) |>
+    dplyr::left_join(stage13_modules, by = c("dataset", "stage13_module_id"), relationship = "many-to-one") |>
     dplyr::filter(
-      is.na(.data$FDR_global) | .data$FDR_global <= 0.10 |
-        !is.na(.data$targeted_signature_primary_driver) |
-        !is.na(.data$best_wgcna_de_gsea_overlap)
+      (.data$dataset == "microglia" & .data$claim_entity_role == "canonical_module" & .data$separate_manuscript_claim_allowed %in% TRUE) |
+        (.data$dataset != "microglia" & (
+          is.na(.data$FDR_global) | .data$FDR_global <= 0.10 |
+            !is.na(.data$targeted_signature_primary_driver) |
+            !is.na(.data$best_wgcna_de_gsea_overlap)
+        ))
+    ) |>
+    dplyr::mutate(
+      wgcna_claim_semantic_status = dplyr::case_when(
+        .data$dataset == "microglia" & .data$group_effect_status == "FDR_supported" ~ "stress_effect_eligible",
+        .data$dataset == "microglia" & (!is.na(.data$targeted_signature_primary_driver) | !is.na(.data$best_wgcna_de_gsea_overlap)) ~ "convergent",
+        .data$dataset == "microglia" ~ "architecture_only",
+        TRUE ~ NA_character_
+      )
     ) |>
     dplyr::arrange(.data$dataset, .data$FDR_global, .data$FDR_within_dataset_level)
   cols <- c(
     "dataset", "dataset_terminology", "module_id", "ModuleID", "ModuleColor",
+    "canonical_claim_entity_id", "claim_entity_role", "separate_manuscript_claim_allowed",
+    "primary_architecture_status", "spatial_dependence_class", "animal_stability_status",
+    "group_effect_status", "allowed_claim_scope", "prohibited_claim_scope",
+    "readiness_contract_version", "stage13_source_file", "wgcna_claim_semantic_status",
     "ModulePlotLabel", "Module_CleanPlotLabel", "module_biological_label",
     "module_biological_label_short", "module_label_display", "module_label", "module_display_label",
     "raw_GO_BP_terms", "raw_GO_MF_terms", "raw_GO_CC_terms", "raw_top_GO_label",
@@ -175,11 +210,45 @@ build_wgcna_key_supermodules <- function() {
     if (!col %in% names(supers)) supers[[col]] <- NA_real_
     supers[[col]] <- suppressWarnings(as.numeric(supers[[col]]))
   }
+  contract <- load_microglia_wgcna_claim_readiness()
+  stage13_supers <- contract$all |>
+    dplyr::filter(.data$level == "supermodule") |>
+    dplyr::transmute(
+      dataset = as.character(.data$dataset),
+      stage13_supermodule_id = as.character(.data$entity_id),
+      canonical_claim_entity_id = as.character(.data$canonical_claim_entity_id),
+      claim_entity_role = as.character(.data$claim_entity_role),
+      separate_manuscript_claim_allowed = as.logical(.data$separate_manuscript_claim_allowed),
+      primary_architecture_status = as.character(.data$primary_architecture_status),
+      spatial_dependence_class = as.character(.data$spatial_dependence_class),
+      animal_stability_status = as.character(.data$animal_stability_status),
+      group_effect_status = as.character(.data$group_effect_status),
+      allowed_claim_scope = as.character(.data$allowed_claim_scope),
+      prohibited_claim_scope = as.character(.data$prohibited_claim_scope),
+      readiness_contract_version = as.character(.data$readiness_contract_version),
+      stage13_source_file = contract$source_path
+    )
   supers <- supers |>
-    dplyr::filter(is.na(.data$FDR_global) | .data$FDR_global <= 0.10) |>
+    dplyr::mutate(stage13_supermodule_id = as.character(.data$supermodule_id)) |>
+    dplyr::left_join(stage13_supers, by = c("dataset", "stage13_supermodule_id"), relationship = "many-to-one") |>
+    dplyr::filter(
+      (.data$dataset == "microglia" & .data$claim_entity_role == "higher_order_block" & .data$separate_manuscript_claim_allowed %in% TRUE) |
+        (.data$dataset != "microglia" & (is.na(.data$FDR_global) | .data$FDR_global <= 0.10))
+    ) |>
+    dplyr::mutate(
+      wgcna_claim_semantic_status = dplyr::case_when(
+        .data$dataset == "microglia" & .data$group_effect_status == "FDR_supported" ~ "stress_effect_eligible",
+        .data$dataset == "microglia" ~ "architecture_only",
+        TRUE ~ NA_character_
+      )
+    ) |>
     dplyr::arrange(.data$dataset, .data$FDR_global, .data$FDR_within_dataset_level)
   cols <- c(
     "dataset", "dataset_terminology", "supermodule_id", "Supermodule_PlotLabel",
+    "canonical_claim_entity_id", "claim_entity_role", "separate_manuscript_claim_allowed",
+    "primary_architecture_status", "spatial_dependence_class", "animal_stability_status",
+    "group_effect_status", "allowed_claim_scope", "prohibited_claim_scope",
+    "readiness_contract_version", "stage13_source_file", "wgcna_claim_semantic_status",
     "Supermodule_CleanPlotLabel", "Supermodule_CompositionDisplayLabel",
     "Supermodule_FullAnnotationLabel", "Supermodule_DisplayShort",
     "Supermodule_DisplayLabel", "Supermodule_FinalLabel", "Macroprogram_Display",
@@ -253,6 +322,13 @@ build_microglia_neuropil_independence <- function() {
   select_existing(add_dataset_terminology(tbl), cols)
 }
 
+build_microglia_wgcna_claim_readiness <- function() {
+  contract <- load_microglia_wgcna_claim_readiness()
+  out <- as.data.frame(contract$all, stringsAsFactors = FALSE)
+  out$stage13_source_file <- contract$source_path
+  out
+}
+
 build_qc_flags <- function(claims) {
   if (is.null(claims) || !nrow(claims) || !"dataset" %in% names(claims)) {
     return(empty_bundle_table("Biological claims QC flags were not available."))
@@ -291,6 +367,7 @@ build_bundle_readme <- function() {
     sheet = c(
       "README", "input_status", "reviewer_audit_manifest", "final_validation", "manuscript_program_summary", "evidence_priority_matrix",
       "cross_compartment_program_atlas", "wgcna_key_modules", "wgcna_key_supermodules",
+      "microglia_wgcna_claim_readiness",
       "microglia_roi_signature_drivers", "microglia_neuropil_independence",
       "qc_flags", "biological_claims"
     ),
@@ -304,6 +381,7 @@ build_bundle_readme <- function() {
       "10_biological_integration/01_cross_compartment_program_atlas.r",
       "06_modules_WGCNA/07_wgcna_interpretable_summary.r",
       "06_modules_WGCNA/07_wgcna_interpretable_summary.r",
+      "06_modules_WGCNA/13_wgcna_claim_readiness.R",
       "06_modules_WGCNA/06_annotate_module_microenvironment.r",
       "06_modules_WGCNA/09_microglia_neuropil_independence.R",
       "09_export_pride_journal/07_make_biological_claims_table.R",
@@ -319,6 +397,7 @@ build_bundle_readme <- function() {
       "Long evidence atlas across enrichment, WGCNA, microenvironment, robustness, behavior, and QC streams.",
       "Module-level WGCNA rows selected for manuscript inspection; includes targeted-signature driver columns when available.",
       "Supermodule-level WGCNA rows selected for manuscript inspection; includes original annotation and plotting labels.",
+      "Authoritative microglia WGCNA Stage 13 handoff preserving all 22 technical identities; aliases are compatibility-only and architecture eligibility is distinct from FDR-supported stress-effect eligibility.",
       "Microglia ROI/local microenvironment targeted-signature summary; curated single-protein or neuropil-shared evidence is cautionary, not purified microglia evidence.",
       "Sensitivity model comparing microglia group effects before and after matched region-level neuron_neuropil covariate adjustment.",
       "Dataset-level QC and confounding flags propagated from the claims table.",
@@ -334,6 +413,7 @@ build_bundle_readme <- function() {
       "program_label, evidence_domain, contrast, effect_size, fdr, support_count, evidence_strength, interpretation_note, qc_flag.",
       "ModulePlotLabel, Supermodule_PlotLabel, Supermodule_FullAnnotationLabel, microenvironment_label, targeted_signature_* driver columns, FDR columns, interpretation_sentence.",
       "Supermodule_PlotLabel, conservative/composition labels, dominant_microenvironment_class, dominant_module_labels, Supermodule_LabelRationale, FDR columns, interpretation_sentence.",
+      "dataset, level, entity_id, canonical_claim_entity_id, claim_entity_role, separate_manuscript_claim_allowed, primary_architecture_status, group_effect_status, allowed_claim_scope, prohibited_claim_scope, readiness_contract_version, stage13_source_file.",
       "targeted_signature_primary_driver, targeted_signature_driver_class, targeted_signature_driver_signature, targeted_signature_driver_padj, targeted_signature_driver_NES, targeted_signature_driver_overlap_proteins, targeted_signature_driver_evidence_tier, curated_program_overlap_warning.",
       "classification, estimate_before, estimate_after, percent_attenuation, FDR_before, FDR_after, neuropil_covariate_beta, neuropil_covariate_p.",
       "missingness_confounded, batch_or_plate_confounded, region_layer_imbalance_risk, animal_pseudoreplication_risk, marker_contamination_or_roi_mixture_flag, qc_interpretation_flag.",
@@ -349,6 +429,7 @@ build_bundle_readme <- function() {
       "This is an evidence index, not a causal model.",
       "Microglia/immune wording should be used only where explicit immune-state evidence supports it.",
       "Both broad plot labels and full annotation labels are retained.",
+      "All 22 Stage 13 identities are retained for audit. Six singleton supermodules are compatibility aliases, SM01/SM03 are descriptive blocks only, and SM09 is the only independently eligible higher-order block; none has an FDR-supported Stage 13 stress effect.",
       "Neuropil-shared and curated-program evidence should not be described as purified microglial activation.",
       "Adjustment is a sensitivity analysis, not causal subtraction of neuropil signal.",
       "QC flags are conservative and should be reviewed before strong wording.",
@@ -386,7 +467,8 @@ write_final_evidence_bundle <- function(reason = "integration") {
     microglia_targeted_signature_details = path_results("tables", "06_modules_WGCNA", "module_annotation", "microglia", "WGCNA_module_targeted_signature_overlap_details.csv"),
     microglia_neuropil_independence = path_results("tables", "06_modules_WGCNA", "microglia_neuropil_independence", "microglia", "microglia_neuropil_independence_effects.csv"),
     reviewer_audit_manifest = path_results("reviewer_audit", "final_reviewer_audit_manifest.csv"),
-    final_validation = path_results("reviewer_audit", "final_evidence_bundle_validation.csv")
+    final_validation = path_results("reviewer_audit", "final_evidence_bundle_validation.csv"),
+    microglia_wgcna_claim_readiness = microglia_wgcna_claim_readiness_path()
   )
 
   manuscript <- add_dataset_terminology(read_final_csv(inputs$manuscript_program_summary) %||% empty_bundle_table("Manuscript program summary was not available."))
@@ -412,6 +494,7 @@ write_final_evidence_bundle <- function(reason = "integration") {
     cross_compartment_program_atlas = atlas,
     wgcna_key_modules = build_wgcna_key_modules(),
     wgcna_key_supermodules = build_wgcna_key_supermodules(),
+    microglia_wgcna_claim_readiness = build_microglia_wgcna_claim_readiness(),
     microglia_roi_signature_drivers = build_microglia_roi_signature_drivers(),
     microglia_neuropil_independence = build_microglia_neuropil_independence(),
     qc_flags = build_qc_flags(claims),

@@ -222,7 +222,10 @@ Direct script commands:
 ```bash
 Rscript 10_biological_integration/01_cross_compartment_program_atlas.r --dry-run
 Rscript 10_biological_integration/02_manuscript_program_summary.r --dry-run
+Rscript 09_export_pride_journal/07_make_biological_claims_table.R --dry-run
 Rscript 10_biological_integration/03_evidence_priority_matrix.r --dry-run
+Rscript 10_biological_integration/04_wgcna_circular_atlas.R --dry-run
+Rscript 10_biological_integration/04_wgcna_cross_compartment_overview.R --dry-run
 ```
 
 Key outputs:
@@ -243,7 +246,6 @@ Rscript 09_export_pride_journal/03_export_processed_pg_matrix_package.R --dry-ru
 Rscript 09_export_pride_journal/04_make_supplementary_tables.R --dry-run
 Rscript 09_export_pride_journal/05_make_pride_manifest.R --dry-run
 Rscript 09_export_pride_journal/06_make_methods_summary.R --dry-run
-Rscript 09_export_pride_journal/07_make_biological_claims_table.R --dry-run
 Rscript 09_export_pride_journal/08_export_manuscript_figures.R --dry-run
 Rscript 09_export_pride_journal/09_export_source_data.R --dry-run
 Rscript 09_export_pride_journal/10_validate_pride_submission.R --dry-run

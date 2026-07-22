@@ -60,6 +60,19 @@ testthat::test_that("schema validation catches missing columns and accepts valid
     marker_contamination_risk = "not_available",
     qc_interpretation_flag = "not_available",
     animal_level_status = "sample_level_or_unclear",
+    wgcna_level = NA_character_,
+    wgcna_entity_id = NA_character_,
+    wgcna_canonical_claim_entity_id = NA_character_,
+    wgcna_claim_entity_role = NA_character_,
+    wgcna_separate_manuscript_claim_allowed = NA,
+    wgcna_primary_architecture_status = NA_character_,
+    wgcna_spatial_dependence_class = NA_character_,
+    wgcna_animal_stability_status = NA_character_,
+    wgcna_group_effect_status = NA_character_,
+    wgcna_allowed_claim_scope = NA_character_,
+    wgcna_prohibited_claim_scope = NA_character_,
+    wgcna_readiness_contract_version = NA_character_,
+    wgcna_stage13_source_file = NA_character_,
     stringsAsFactors = FALSE
   )
   testthat::expect_silent(validate_table_schema(good, "biological_claims_table", strict = TRUE))
