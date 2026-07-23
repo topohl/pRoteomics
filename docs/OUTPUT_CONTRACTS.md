@@ -130,7 +130,7 @@ The table records `script`, `dataset`, `stage`, `input_name`, expected and resol
 | Supplemental WGCNA microenvironment marker panels | externalized local annotation contract | `config/marker_panels/microenvironment_marker_panels.csv` |
 | Empirical ROI marker discovery | empirical marker contract | `results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv`; `results/source_data/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv` |
 | WGCNA marker traits | annotation-trait contract | `results/tables/03_qc_exploration/06_wgcna_marker_trait_export/<dataset>/wgcna_marker_traits_by_sample.csv`; `results/source_data/03_qc_exploration/06_wgcna_marker_trait_export/<dataset>/wgcna_marker_traits_by_sample.csv` |
-| WGCNA module/supermodule group effects | `validate_wgcna_group_effects()` | `results/tables/06_modules_WGCNA/group_effects/<dataset>/module_group_effects.csv`; `results/tables/06_modules_WGCNA/group_effects/<dataset>/supermodule_group_effects.csv`; `results/tables/06_modules_WGCNA/group_effects/<dataset>/module_marker_trait_correlations.csv`; `results/tables/06_modules_WGCNA/group_effects/<dataset>/supermodule_marker_trait_correlations.csv` |
+| WGCNA module/supermodule group effects | `wgcna_group_validate_output_bundle()`; publishable Phase 1 identity contract; atomic dataset bundle | `results/tables/06_modules_WGCNA/group_effects/<dataset>/module_group_effects.csv`; `supermodule_group_effects.csv`; `supermodule_composition.csv`; `WGCNA_group_effect_endpoint_provenance.csv`; `WGCNA_group_effect_model_validation.csv`; `WGCNA_group_effect_sample_inclusion_audit.csv`; PCA/value audits; `WGCNA_group_effect_legacy_output_staleness_audit.csv`; source-data mirrors and run logs |
 | WGCNA eigengene meta-modules | stable `dataset + SupermoduleID` member/summary contract | `results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_module_supermodule_annotation.csv`; `wgcna_supermodule_summary.csv`; `wgcna_supermodule_validation_summary.csv` |
 | WGCNA recurring-GO support audit | `ModuleProteinSetType=all`; member-module `p.adjust <= 0.05` | `results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_supermodule_GO_term_support_audit.csv` |
 | WGCNA supermodule biological coherence | signed eigengene/coherence contract | `results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_supermodule_biological_coherence.csv`; `supermodule_clustering_sensitivity.csv` |
@@ -258,9 +258,35 @@ pride_submission/validation/
 Export scripts collect final products only; they do not recompute scientific analyses. Active scripts should also write `run_manifest.yml`, `sessionInfo.txt`, config snapshots, and input file hashes where applicable.
 # WGCNA Group-Effect Claim Fields
 
-`results/tables/06_modules_WGCNA/group_effects/<dataset>/module_group_effects.csv` and `supermodule_group_effects.csv` preserve existing estimates and add claim-grade status fields: `model_family`, `model_formula`, `primary_model_stable`, `claim_allowed_model`, `model_downgrade_reason`, fallback flags, rank/singularity/emmeans diagnostics, animal random-effect use, replicate-unit fields, animal/sample counts by group, `animal_level_status`, and `pseudoreplication_guard`.
+`results/tables/06_modules_WGCNA/group_effects/<dataset>/module_group_effects.csv`
+and `supermodule_group_effects.csv` are Phase 2 canonical quantitative tables.
+They require the publishable Phase 1 identity contract and contain only
+successfully fitted, finite, estimable primary contrasts. The identity contract
+is the sole supermodule-membership authority. The tables retain downstream
+compatibility fields and add membership, identity-contract, frozen-state,
+endpoint-construction, convergence, AnimalID-provenance, and FDR-family
+provenance.
 
-`primary_model_stable = FALSE` means the row is not claim-grade even if a numeric estimate exists. Fallback rows are diagnostic-only and carry `diagnostic_only_model_fallback` in `model_downgrade_reason`.
+Repeated observations are fitted with `lmerTest::lmer(..., REML = FALSE)` and
+`(1 | AnimalID)`. A standard linear model is permitted only when every animal
+contributes exactly one observation in the fitted scope. Failed fits,
+rank-deficient estimands, singular or non-converged replicate models, failed
+emmeans operations, insufficient animal support, absent groups, and nonfinite
+contrasts are recorded in `WGCNA_group_effect_model_validation.csv`, not the
+primary tables. Stage 05 produces no automatic t-test fallback.
+
+`claim_allowed_model` reports model/contrast validity and is independent of
+significance. `FDR_within_dataset_level` is BH over all claim-allowed primary
+rows in `dataset + level`, including every canonical scope, spatial unit, and
+predeclared contrast. `FDR_dataset_all_levels` is BH over all claim-allowed
+module and supermodule primary rows within a dataset. `FDR_global` is an exact
+compatibility alias of `FDR_dataset_all_levels` and is not cross-dataset global
+FDR. Canonical publication requires `--level both`.
+
+Phase 2 publishes the complete bundle atomically. Existing Stage 05 auxiliary
+figures, brackets, selected interpretations, label artifacts, and marker-trait
+correlations are not regenerated or deleted; their hashes and staleness reason
+are recorded in `WGCNA_group_effect_legacy_output_staleness_audit.csv`.
 
 `results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_parameter_audit.csv` records WGCNA construction parameters and input hashes/provenance for reviewer audit.
 

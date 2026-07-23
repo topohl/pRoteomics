@@ -123,22 +123,47 @@ Safe to rerun: yes.
 
 Role: group-effect modelling.
 
-This script models module and supermodule effects between CON, RES, and SUS,
-including spatial-unit and spatial-adjusted/global summaries where estimable. It
-uses existing module/supermodule state and records model warnings/fallbacks.
+This Phase 2 script requires a publishable Phase 1 identity contract and uses
+it as the sole module/supermodule identity and membership authority. It builds
+an exact one-to-one bridge from canonical modules to frozen-state eigengene
+columns, reconstructs canonical supermodule endpoints with the tested
+`make_supermodule_eigengenes()` definition, and audits sample, AnimalID,
+endpoint, PCA-orientation, model, contrast, and FDR provenance.
+
+Neuron soma and microglia use Region as the spatial unit. Neuron neuropil uses
+the observed Region-Layer unit; no generic layer main effect is fitted.
+Repeated samples require an AnimalID random intercept. Failed or diagnostic
+attempts never appear in the primary statistical tables, and Stage 05 does not
+silently downgrade mixed models or emmeans contrasts to `lm` or t-tests.
 
 Run:
 
 ```bash
-Rscript 06_modules_WGCNA/05_module_supermodule_group_effects.r --dataset <dataset>
+Rscript 06_modules_WGCNA/05_module_supermodule_group_effects.r --dataset <dataset> --level both
 ```
 
 Inspect:
 
 - `results/tables/06_modules_WGCNA/group_effects/<dataset>/module_group_effects.csv`
 - `results/tables/06_modules_WGCNA/group_effects/<dataset>/supermodule_group_effects.csv`
+- `results/tables/06_modules_WGCNA/group_effects/<dataset>/supermodule_composition.csv`
+- `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_endpoint_provenance.csv`
+- `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_model_validation.csv`
+- `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_sample_inclusion_audit.csv`
+- `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_legacy_output_staleness_audit.csv`
 
-Safe to rerun: yes.
+Canonical publication is atomic and requires `--level both` so the
+dataset-wide FDR family cannot change with a partial run.
+`FDR_within_dataset_level` is BH within dataset and level;
+`FDR_dataset_all_levels` is BH across both levels within a dataset.
+`FDR_global` is the exact compatibility alias of the latter and is not a
+cross-dataset adjustment.
+
+Phase 2 intentionally leaves legacy Stage 05 figures, brackets, heatmaps,
+selected interpretations, biological labels, and Stage 06-13 products
+unchanged. Downstream migration is a separate phase.
+
+Safe to rerun: yes, after the identity contract is publishable.
 
 ### 06_annotate_module_microenvironment.r
 

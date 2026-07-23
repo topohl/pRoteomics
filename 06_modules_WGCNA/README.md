@@ -88,8 +88,19 @@ at `spatial_adjusted_global` / `global_spatial_adjusted`; claim status uses the
 unchanged Stage 05 `FDR_global`, while both FDR scopes and model/source
 provenance remain available.
 
-`05_module_supermodule_group_effects.r` records this in `SpatialUnitType` and
-uses `spatial_unit` for the tested region or region-layer.
+`05_module_supermodule_group_effects.r` is the Phase 2 quantitative boundary.
+It requires a publishable Phase 1 identity contract and treats that contract as
+the only supermodule-membership authority. The frozen-state module eigengenes
+are joined to canonical modules through an exact, audited identifier bridge.
+For neuronal modules, the only permitted normalization is `ME#RRGGBB` or
+`#RRGGBB` to `WGCNA_#RRGGBB`; microglia uses frozen-state `WGCNA_mNN`
+metadata.
+
+Stage 05 records `SpatialUnitType` and uses `spatial_unit` for the tested
+region or region-layer. Neuron soma and microglia use Region; neuron neuropil
+uses the observed Region-Layer unit and never fits a generic layer main effect.
+The canonical scopes are `within_spatial_unit`, `spatial_adjusted_global`, and
+`stress_by_spatial_interaction`.
 
 ## Interpretation Hierarchy
 
@@ -100,17 +111,35 @@ Use evidence in this order:
 3. DE/GSEA overlap support from `04_wgcna_de_gsea_overlap.r`
 4. Descriptive module-trait and condition heatmaps from `01_WGCNA.r`
 
-The group-effect tables include ranked module and supermodule rows with model
-metadata, FDRs, and `evidence_status`:
-`robust_FDR`, `suggestive_FDR10`, `nominal_only`, `model_unstable`, or
-`not_supported`.
+The canonical group-effect tables contain successful, finite, estimable
+primary contrasts only. Repeated samples require
+`lmerTest::lmer(..., REML = FALSE)` with `(1 | AnimalID)`; scopes with exactly
+one observation per animal may use `lm`. Failed, singular, rank-deficient,
+non-converged, or non-estimable attempts are recorded in
+`WGCNA_group_effect_model_validation.csv` and never enter the primary tables or
+FDR families. No t-test fallback is produced.
+
+Publication requires `--level both`. `FDR_within_dataset_level` is BH over all
+claim-allowed primary rows within `dataset + level`.
+`FDR_dataset_all_levels` is BH over all claim-allowed module and supermodule
+rows in the dataset. `FDR_global` is retained as an exact compatibility alias
+of `FDR_dataset_all_levels`; it is not cross-dataset global FDR.
 
 Main outputs:
 
 - `results/tables/06_modules_WGCNA/group_effects/<dataset>/module_group_effects.csv`
 - `results/tables/06_modules_WGCNA/group_effects/<dataset>/supermodule_group_effects.csv`
+- `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_endpoint_provenance.csv`
+- `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_model_validation.csv`
+- `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_sample_inclusion_audit.csv`
+- `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_legacy_output_staleness_audit.csv`
 - `results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_supermodule_group_effects_interpretable.csv`
 - `results/tables/06_modules_WGCNA/interpretable_summary/all/WGCNA_cross_dataset_supermodule_program_summary.csv`
+
+Phase 2 does not regenerate Stage 05 figures, label outputs, marker-trait
+correlations, selected interpretations, or Stage 06-13 products. Those
+existing files are preserved and enumerated by hash as stale auxiliary outputs
+until the Phase 3 consumer migration.
 
 ## Supermodule Annotation
 
