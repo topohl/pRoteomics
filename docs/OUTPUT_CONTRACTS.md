@@ -121,6 +121,7 @@ The table records `script`, `dataset`, `stage`, `input_name`, expected and resol
 | targeted microglia ROI signature claims | documented in `docs/file_contracts.tsv` | `results/tables/04_differential_expression_enrichment/microglia_targeted_signature_enrichment/microglia/microglia_signature_claims_ready.csv` |
 | module-score merged metadata | module-score metadata merge contract | `data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx`; QC/report/log sidecars under `results/{tables,reports,logs}/01_preprocessing/06_merged_metadata_module_score/<dataset>/` |
 | WGCNA module definitions | `wgcna_module_contract.yml` | `results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_module_definitions_for_downstream.csv` |
+| WGCNA canonical identity contract | `wgcna_identity_contract_v1`; exact frozen-state module identity plus provenance-selected Stage 01 membership | `results/tables/06_modules_WGCNA/identity_contract/<dataset>/WGCNA_entity_identity_contract.csv`; `WGCNA_module_supermodule_membership_contract.csv`; `WGCNA_identity_source_hashes.csv`; `WGCNA_identity_validation.csv`; `WGCNA_downstream_identity_compatibility_audit.csv`; mirrored under `results/source_data/06_modules_WGCNA/identity_contract/<dataset>/` |
 | curated overlap programs | curated overlap program contract | `results/tables/06_modules_WGCNA/curated_overlap_programs/global/curated_overlap_programs.xlsx`; `results/tables/06_modules_WGCNA/curated_overlap_programs/global/curated_overlap_programs_long.csv` |
 | module activity scores | module score contract | `results/tables/06_modules_WGCNA/module_score/<dataset>/<module_definition_source>/module_scores_per_sample.csv`; `results/tables/06_modules_WGCNA/module_score/<dataset>/<module_definition_source>/module_feature_mapping_trace.csv`; `results/tables/06_modules_WGCNA/module_score/<dataset>/<module_definition_source>/module_gene_coverage.csv`; `results/logs/06_modules_WGCNA/module_score/<dataset>/<module_definition_source>/run_manifest.yml` |
 | WGCNA/DE/GSEA overlap | overlap bridge contract | `results/tables/06_modules_WGCNA/04_wgcna_de_gsea_overlap/<dataset>/WGCNA_vs_DE_GSEA_overlap.csv` |
@@ -143,11 +144,26 @@ The table records `script`, `dataset`, `stage`, `input_name`, expected and resol
 
 WGCNA supermodules are eigengene meta-modules/co-varying module blocks
 constructed by average linkage on `1 - signed module-eigengene correlation`.
-Their authoritative key is `dataset + SupermoduleID`; biological and display
-labels are never join, grouping, deduplication, or identity keys. Full display
-labels retain the stable `SMxx` prefix and collisions fail validation. Because
-WGCNA modules partition proteins, protein/hub overlap is only a
-partition-integrity diagnostic and never biological support.
+Within one verified membership version, their technical key is
+`dataset + SupermoduleID`; across current or historical systems, exact sorted
+member-module composition is the identity criterion and an equal `SMxx`
+string alone is insufficient. Biological and display labels are never join,
+grouping, deduplication, or identity keys. Full display labels retain the
+stable `SMxx` prefix and collisions fail validation. Because WGCNA modules
+partition proteins, protein/hub overlap is only a partition-integrity
+diagnostic and never biological support.
+
+`00_wgcna_identity_contract.R` publishes the Phase 1 identity boundary without
+recomputing network state. It accepts only exact module IDs or the syntax-only
+normalization `ME#RRGGBB` / `#RRGGBB` / `WGCNA_#RRGGBB` to
+`WGCNA_#RRGGBB`. Neuronal membership authority is the active
+output-manifest-matched selected cluster assignment whose cut height agrees
+with both run manifests and the sensitivity primary metadata. Microglia uses
+the current verified Stage 01 module-supermodule mapping. Stage 05-13,
+publication-score, circular-atlas, historical, and label tables are
+compatibility-audit inputs only. Failed required checks publish diagnostic
+hash, validation, compatibility, and status outputs but no entity or
+membership contract.
 
 Supermodule GO naming uses only `ModuleProteinSetType == "all"`. A member
 module supports a term only at `p.adjust <= 0.05`; the audit retains the support
