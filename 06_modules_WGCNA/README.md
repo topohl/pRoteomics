@@ -20,6 +20,7 @@ they are not the final group-effect inference.
 
 ```powershell
 Rscript 06_modules_WGCNA/01_WGCNA.r --dataset <dataset>
+Rscript 06_modules_WGCNA/00_wgcna_identity_contract.R --dataset <dataset>
 Rscript 06_modules_WGCNA/05_module_supermodule_group_effects.r --dataset <dataset> --level both
 Rscript 06_modules_WGCNA/04_wgcna_de_gsea_overlap.r --dataset <dataset>
 Rscript 06_modules_WGCNA/06_annotate_module_microenvironment.r --dataset <dataset>
@@ -38,6 +39,33 @@ Run the final cross-dataset summary after all datasets are complete:
 ```powershell
 Rscript 06_modules_WGCNA/07_wgcna_interpretable_summary.r --dataset all
 ```
+
+## Canonical Identity Contract
+
+`00_wgcna_identity_contract.R` is a read-only Phase 1 publication step. It
+does not recompute WGCNA or modify Stage 01 outputs. It publishes current
+module and supermodule identity under:
+
+`results/tables/06_modules_WGCNA/identity_contract/<dataset>/`
+
+Module identity comes from the frozen state and the Stage 01 downstream module
+definitions. Only the exact identifier forms `ME#RRGGBB`, `#RRGGBB`, and
+`WGCNA_#RRGGBB` may be normalized to `WGCNA_#RRGGBB`; labels, row order,
+eigengene order, and approximate matching are prohibited.
+
+For neuronal datasets, supermodule identity comes from the active
+provenance-selected `wgcna_supermodule_eigengene_clusters.csv` only when its
+cut height, output-manifest hash, sensitivity metadata, module coverage, and
+one-to-one membership all agree. For microglia, the verified current
+`wgcna_module_supermodule_annotation.csv` remains authoritative under the same
+coverage checks. Exact member-module composition, not a repeated `SMxx`
+string, defines supermodule identity.
+
+Stage 05-13, publication-score, and circular-atlas files are compatibility
+audit inputs only. The identity-contract script never repairs them or uses
+their memberships or biological labels as authority. A required validation
+failure writes diagnostic hashes, validation, compatibility, and status
+outputs, then refuses to publish entity or membership contracts.
 
 ## Dataset Spatial Units
 
