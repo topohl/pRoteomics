@@ -226,6 +226,9 @@ read_marker_registry <- function(path) {
     source_reference = optional_col(c("source_reference", "reference", "url", "citation")),
     source_term_or_category = optional_col(c("source_term_or_category", "source_term", "category", "term")),
     evidence_level = optional_col(c("evidence_level", "evidence_code")),
+    source_rank = suppressWarnings(as.integer(optional_col(c("source_rank", "rank_within_source")))),
+    source_rank_scope = optional_col(c("source_rank_scope")),
+    source_ranking_method = optional_col(c("source_ranking_method")),
     confidence = optional_col(c("confidence", "evidence")),
     use_for = optional_col(c("use_for", "intended_use")),
     fidelity_subpanel = optional_col(c("fidelity_subpanel", "subpanel")),
@@ -363,6 +366,9 @@ marker_detectability_by_protein <- marker_match_rows |>
     source_reference,
     source_term_or_category,
     evidence_level,
+    source_rank,
+    source_rank_scope,
+    source_ranking_method,
     confidence,
     use_for,
     include_in_fidelity_score,
@@ -397,6 +403,17 @@ marker_detectability_by_protein <- marker_match_rows |>
     median_log2_abundance = ifelse(is.nan(median_log2_abundance), NA_real_, median_log2_abundance),
     sd_log2_abundance = ifelse(is.nan(sd_log2_abundance), NA_real_, sd_log2_abundance),
     cv_like = ifelse(is.nan(cv_like), NA_real_, cv_like)
+  ) |>
+  dplyr::mutate(
+    processed_matrix_available = .data$detected,
+    processed_availability_status = ifelse(
+      .data$detected,
+      "available_after_dataset_filtering_and_possible_imputation",
+      "not_available_in_processed_dataset_matrix"
+    ),
+    fraction_post_filter_post_imputation_available = .data$fraction_nonmissing,
+    processed_abundance_status =
+      "post_filter_post_imputation_availability_not_raw_quantitative_detection"
   )
 
 sample_scores <- lapply(names(marker_sets), function(panel) {
@@ -1252,6 +1269,8 @@ notes <- c(
   "This QC report evaluates whether canonical and reference marker proteins are detectable and consistently quantified in the active dataset.", "",
   "Interpretation constraints:",
   "- Marker-panel scoring is QC and interpretive support, not formal cell-type purity estimation or deconvolution.",
+  "- Nonmissing values and abundance scores from the processed dataset matrix are post-filter/post-imputation availability, not raw detectability and not the authoritative cross-compartment abundance validation.",
+  "- observed_detection_rate_raw is retained only as raw-detection annotation; 04e is the authoritative control-only animal-level non-imputed cross-compartment workflow.",
   "- marker_panel refers to an individual marker_set/signature from the registry, e.g. canonical_microglia_homeostatic or reference_microglia_pvm.",
   "- marker_compartment is a broad collapsed biological class used only for QC interpretation and robust downstream plotting.",
   "- fidelity_marker_class is a narrow soma/neuropil/microglia marker class for comparing neuron_soma, neuron_neuropil, and microglia samples.",
@@ -1287,7 +1306,7 @@ write_run_manifest(
     marker_compartments = sort(unique(marker_lookup$marker_compartment)),
     fidelity_marker_classes = sort(unique(marker_lookup$fidelity_marker_class[!is.na(marker_lookup$fidelity_marker_class)]))
   ),
-  notes = "Marker-panel, marker-compartment, and soma/neuropil/microglia fidelity detectability/missingness QC plus optional WGCNA enrichment bridge; not formal purity/deconvolution."
+  notes = "Dataset-specific post-filter/post-imputation marker availability plus raw-detection annotation and optional WGCNA bridge. Cross-compartment abundance claims belong to 04e; not formal purity/deconvolution."
 )
 
 message("Marker detectability QC complete for dataset: ", DATASET)

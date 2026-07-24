@@ -252,7 +252,9 @@ mouse_symbol_guess <- function(x) {
 make_registry_row <- function(marker_set, fidelity_marker_class, fidelity_subpanel, cell_class, cell_state,
                               genes, source_type, source_name, source_reference, source_term_or_category,
                               selection_rule, confidence, use_for, include_in_fidelity_score = TRUE,
-                              notes = "", evidence_level = NA_character_) {
+                              notes = "", evidence_level = NA_character_,
+                              source_rank = NA_integer_, source_rank_scope = NA_character_,
+                              source_ranking_method = NA_character_) {
   data.frame(
     marker_set = marker_set,
     fidelity_marker_class = fidelity_marker_class,
@@ -265,6 +267,9 @@ make_registry_row <- function(marker_set, fidelity_marker_class, fidelity_subpan
     source_reference = source_reference,
     source_term_or_category = source_term_or_category,
     evidence_level = evidence_level,
+    source_rank = as.integer(source_rank),
+    source_rank_scope = source_rank_scope,
+    source_ranking_method = source_ranking_method,
     selection_rule = selection_rule,
     confidence = confidence,
     use_for = use_for,
@@ -291,6 +296,9 @@ empty_fidelity_candidate_table <- function() {
     source_reference = character(),
     source_term_or_category = character(),
     evidence_level = character(),
+    source_rank = integer(),
+    source_rank_scope = character(),
+    source_ranking_method = character(),
     selection_rule = character(),
     confidence = character(),
     use_for = character(),
@@ -723,6 +731,9 @@ extract_syngo_candidates <- function(annotation_file, genes_file = NA_character_
                                        ifelse(!is.na(.data$uniprot_id) & nzchar(.data$uniprot_id), paste0(";UniProt=", .data$uniprot_id), ""),
                                        ifelse(!is.na(.data$hgnc_symbol) & nzchar(.data$hgnc_symbol), paste0(";HGNC=", .data$hgnc_symbol), "")),
       evidence_level = .data$evidence_level,
+      source_rank = .data$rank_within_subpanel,
+      source_rank_scope = paste0("fidelity_subpanel:syngo_", .data$fidelity_subpanel),
+      source_ranking_method = "rank_within_subpanel_by_SynGO_evidence_priority_then_gene_symbol",
       selection_rule = paste0("SynGO 1.3 annotation export; strict_cc=", .data$strict_cc,
                               "; supportive_bp=", .data$supportive_bp,
                               "; auto_include=", auto_include_syngo,
@@ -1010,6 +1021,11 @@ go_mgi_include_registry <- ensure_fidelity_candidate_cols(go_mgi_candidates) |>
   dplyr::arrange(.data$fidelity_marker_class, .data$fidelity_subpanel, .data$evidence_priority, .data$source_term_or_category, .data$gene_symbol) |>
   dplyr::distinct(.data$fidelity_marker_class, .data$fidelity_subpanel, .data$gene_token, .keep_all = TRUE) |>
   dplyr::group_by(.data$fidelity_marker_class, .data$fidelity_subpanel) |>
+  dplyr::mutate(
+    source_rank = dplyr::row_number(),
+    source_rank_scope = paste0("fidelity_subpanel:", .data$fidelity_subpanel),
+    source_ranking_method = "rank_after_documented_GO_MGI_evidence_priority_then_term_then_gene"
+  ) |>
   dplyr::slice_head(n = max_go_mgi_per_subpanel) |>
   dplyr::ungroup() |>
   dplyr::mutate(
@@ -1102,6 +1118,9 @@ fallback_registry <- dplyr::bind_rows(lapply(names(canonical_marker_panels), fun
     source_reference = "03_qc_exploration/04b_import_reference_marker_sources.r curated conservative fallback",
     source_term_or_category = NA_character_,
     evidence_level = NA_character_,
+    source_rank = NA_integer_,
+    source_rank_scope = NA_character_,
+    source_ranking_method = NA_character_,
     selection_rule = "conservative_curated_fallback; annotation_only",
     confidence = "curated_conservative",
     use_for = "annotation_reporting_sensitivity_interpretation",
@@ -1154,6 +1173,9 @@ registry_external <- if (nrow(dplyr::bind_rows(external_evidence))) {
       source_reference,
       source_term_or_category = NA_character_,
       evidence_level = NA_character_,
+      source_rank = as.integer(.data$rank_within_source),
+      source_rank_scope = paste0("source:", .data$source_name, ";cell_class:", .data$cell_class),
+      source_ranking_method = "preserved_external_rank_within_source",
       selection_rule,
       confidence,
       use_for,

@@ -5,7 +5,7 @@
 # Consumes: required results/tables/03_qc_exploration/04c_marker_detectability_and_wgcna_bridge/neuron_soma/marker_fidelity_by_sample.csv; results/tables/03_qc_exploration/04c_marker_detectability_and_wgcna_bridge/neuron_neuropil/marker_fidelity_by_sample.csv; results/tables/03_qc_exploration/04c_marker_detectability_and_wgcna_bridge/microglia/marker_fidelity_by_sample.csv.
 # Produces: results/tables/03_qc_exploration/04d_compartment_marker_fidelity/global/.
 # Dataset behavior: runs once globally after dataset-specific 04c outputs are available.
-# Notes: Compartment marker fidelity QC.
+# Notes: Deprecated sample-level exploratory QC; 04e v2 is authoritative.
 # ================================================================
 
 # Cross-dataset compartment marker fidelity QC.
@@ -37,6 +37,10 @@ source(repo_path("R", "dataset_inputs.R"))
 source(repo_path("R", "qc_exploration_utils.R"))
 
 dry_run <- is_dry_run()
+legacy_04d_enabled <- toupper(trimws(Sys.getenv(
+  "PROTEOMICS_ENABLE_LEGACY_04D_COMPARTMENT_FIDELITY",
+  unset = "false"
+))) %in% c("TRUE", "T", "1", "YES", "Y")
 DATASET <- "global"
 SUBSTEP_ID <- "04d_compartment_marker_fidelity"
 SOURCE_SUBSTEP_ID <- "04c_marker_detectability_and_wgcna_bridge"
@@ -68,21 +72,42 @@ legacy_score_files <- stats::setNames(vapply(compartment_datasets, legacy_score_
 fidelity_protein_files <- stats::setNames(vapply(compartment_datasets, fidelity_protein_file_for_dataset, character(1)), compartment_datasets)
 
 if (dry_run) {
-  status <- qc_dry_run_contract(
-    "03_qc_exploration/04d_compartment_marker_fidelity.r",
-    DATASET,
-    matrix_file = NA_character_,
-    metadata_file = NA_character_,
-    paths = PATHS,
-    extra = c(
-      paste0("Preferred fidelity table [", names(fidelity_files), "]: ", fidelity_files, ifelse(file.exists(fidelity_files), " [PASS]", " [MISSING]")),
-      paste0("Fallback legacy score table [", names(legacy_score_files), "]: ", legacy_score_files, ifelse(file.exists(legacy_score_files), " [PASS]", " [MISSING]")),
-      paste0("Protein provenance table [", names(fidelity_protein_files), "]: ", fidelity_protein_files, ifelse(file.exists(fidelity_protein_files), " [PASS]", " [MISSING]")),
-      "Writes cross-dataset soma/neuropil/microglia marker fidelity boxplots and heatmaps.",
-      "Preferred input is marker_fidelity_by_sample.csv from 04c; fallback uses marker_detectability_by_sample.csv with conservative panel-name matching."
-    )
+  cat("[DRY-RUN] Script: 03_qc_exploration/04d_compartment_marker_fidelity.r\n")
+  cat("[DRY-RUN] Status: DEPRECATED AND DISABLED BY DEFAULT\n")
+  cat(
+    "[DRY-RUN] 04e is authoritative for control-only animal-level non-imputed ",
+    "cross-compartment marker abundance and detection.\n",
+    sep = ""
   )
-  quit(status = status, save = "no")
+  for (dataset in compartment_datasets) {
+    cat(
+      "[DRY-RUN] Legacy 04c fidelity input [", dataset, "]: ",
+      fidelity_files[[dataset]], " [",
+      if (file.exists(fidelity_files[[dataset]])) "PASS" else "MISSING",
+      "]\n",
+      sep = ""
+    )
+  }
+  cat(
+    "[DRY-RUN] Legacy exploratory rendering enabled: ",
+    legacy_04d_enabled,
+    ". Set PROTEOMICS_ENABLE_LEGACY_04D_COMPARTMENT_FIDELITY=true only for ",
+    "an explicitly named legacy QC regeneration.\n",
+    sep = ""
+  )
+  quit(
+    status = if (all(file.exists(fidelity_files))) 0 else 1,
+    save = "no"
+  )
+}
+
+if (!legacy_04d_enabled) {
+  stop(
+    "04d cross-compartment sample-level scoring and Wilcoxon figures are deprecated and disabled. ",
+    "Use 04e for the authoritative CON animal-level non-imputed validation. ",
+    "Set PROTEOMICS_ENABLE_LEGACY_04D_COMPARTMENT_FIDELITY=true only to reproduce explicitly labelled legacy exploratory QC.",
+    call. = FALSE
+  )
 }
 
 required_pkgs <- c("dplyr", "tidyr", "tibble", "ggplot2", "svglite")

@@ -537,3 +537,274 @@ ca_control_rendering_legends <- function() {
     )
   )
 }
+
+ca_prepare_control_rendering_sources_v2 <- function(dot_source, rank_table, display_selection) {
+  ca_display_require_columns(display_selection, c(
+    "marker_class", "ProteinGroupID", "marker_gene",
+    "display_biological_subpanel", "selection_order_within_class",
+    "rank_label", "rank_label_dataset", "intended_dataset"
+  ), "V2 display selection")
+  ca_display_require_columns(dot_source, c(
+    "dataset", "ProteinGroupID", "median_centered_log2",
+    "valid_animal_count", "valid_animal_fraction",
+    "reliability_status", "intended_compartment"
+  ), "V2 dot-heatmap source")
+  primary <- rank_table
+  if ("RankGroup" %in% names(primary)) {
+    primary <- primary[primary$RankGroup == "CON_region_balanced_mean", , drop = FALSE]
+  }
+  mapping <- display_selection |>
+    dplyr::distinct(.data$marker_class, .data$ProteinGroupID, .keep_all = TRUE)
+  expected_rows <- nrow(mapping) * length(ca_display_dataset_labels)
+  dot_display <- dot_source |>
+    dplyr::inner_join(mapping, by = "ProteinGroupID", relationship = "many-to-one") |>
+    dplyr::mutate(
+      displayed_centered_log2 = ifelse(
+        is.finite(.data$median_centered_log2),
+        pmax(-3, pmin(3, .data$median_centered_log2)),
+        NA_real_
+      ),
+      centered_log2_display_cap = 3,
+      reliably_detected = .data$reliability_status == "reliably_detected",
+      missing_symbol = ifelse(.data$reliably_detected, "", "\u00d7"),
+      outline_colour = ifelse(.data$intended_compartment, "#202020", "#737373"),
+      dataset_label = unname(ca_display_dataset_labels[.data$dataset]),
+      marker_class_heading = unname(ca_display_class_headings[.data$marker_class]),
+      subpanel_order = ca_marker_subpanel_order(
+        .data$marker_class, .data$display_biological_subpanel
+      )
+    )
+  if (nrow(dot_display) != expected_rows ||
+      anyDuplicated(dot_display[c("dataset", "ProteinGroupID")])) {
+    stop("V2 dot source must contain one row per selected marker and dataset.", call. = FALSE)
+  }
+  if (any(dot_display$valid_animal_count < 0L | dot_display$valid_animal_count > 3L)) {
+    stop("V2 dot source has invalid CON animal counts.", call. = FALSE)
+  }
+
+  ordered <- mapping |>
+    dplyr::mutate(
+      class_order = match(.data$marker_class, ca_display_class_order),
+      subpanel_order = ca_marker_subpanel_order(
+        .data$marker_class, .data$display_biological_subpanel
+      )
+    ) |>
+    dplyr::arrange(
+      .data$class_order, .data$subpanel_order,
+      .data$selection_order_within_class, toupper(.data$marker_gene)
+    )
+  marker_levels <- rev(ordered$marker_gene)
+  dot_display$marker_label <- factor(dot_display$marker_gene, levels = marker_levels)
+  dot_display$marker_class_heading <- factor(
+    dot_display$marker_class_heading,
+    levels = unname(ca_display_class_headings[ca_display_class_order])
+  )
+  dot_display$dataset_label <- factor(
+    dot_display$dataset_label,
+    levels = unname(ca_display_dataset_labels)
+  )
+
+  rank_representatives <- primary |>
+    dplyr::inner_join(mapping, by = "ProteinGroupID", relationship = "many-to-one") |>
+    dplyr::mutate(
+      configured_official_gene_symbol = .data$marker_gene,
+      dataset_label = factor(
+        unname(ca_display_dataset_labels[.data$dataset]),
+        levels = unname(ca_display_dataset_labels)
+      ),
+      display_rank_label = .data$rank_label &
+        .data$dataset == .data$rank_label_dataset
+    )
+  if (anyDuplicated(rank_representatives[c("dataset", "ProteinGroupID")])) {
+    stop("V2 rank display is duplicated by dataset and selected ProteinGroupID.", call. = FALSE)
+  }
+  intended_keys <- paste(mapping$intended_dataset, mapping$ProteinGroupID, sep = "\r")
+  observed_rank_keys <- paste(
+    rank_representatives$dataset, rank_representatives$ProteinGroupID, sep = "\r"
+  )
+  if (!all(intended_keys %in% observed_rank_keys)) {
+    stop("Every selected marker must be present in its intended rank-abundance facet.", call. = FALSE)
+  }
+  label_counts <- table(rank_representatives$dataset[rank_representatives$display_rank_label])
+  if (length(label_counts) && any(label_counts > 4L)) {
+    stop("V2 rank display exceeds four deterministic labels in a facet.", call. = FALSE)
+  }
+  primary$dataset_label <- factor(
+    unname(ca_display_dataset_labels[primary$dataset]),
+    levels = unname(ca_display_dataset_labels)
+  )
+  list(
+    config = mapping,
+    mapping = mapping,
+    provenance = display_selection,
+    alternatives = display_selection[0, , drop = FALSE],
+    dot = dot_display,
+    rank_curve = primary,
+    rank_representatives = rank_representatives,
+    terminal_drop = ca_terminal_rank_drop_audit(primary)
+  )
+}
+
+ca_build_control_marker_dot_heatmap_v2 <- function(rendering) {
+  reliable <- rendering$dot[rendering$dot$reliably_detected %in% TRUE, , drop = FALSE]
+  missing <- rendering$dot[!(rendering$dot$reliably_detected %in% TRUE), , drop = FALSE]
+  ggplot2::ggplot(
+    rendering$dot,
+    ggplot2::aes(.data$dataset_label, .data$marker_label)
+  ) +
+    ggplot2::geom_point(
+      data = reliable,
+      ggplot2::aes(
+        fill = .data$displayed_centered_log2,
+        size = .data$valid_animal_fraction,
+        colour = .data$outline_colour
+      ),
+      shape = 21, stroke = 0.35
+    ) +
+    ggplot2::geom_text(
+      data = missing,
+      ggplot2::aes(label = .data$missing_symbol),
+      colour = "#777777", size = 2.4, family = "sans"
+    ) +
+    ggplot2::facet_grid(
+      rows = ggplot2::vars(marker_class_heading),
+      scales = "free_y", space = "free_y", switch = "y"
+    ) +
+    ggplot2::scale_fill_gradient2(
+      low = "#3B6FB6", mid = "#F2F2F2", high = "#B24A4A",
+      midpoint = 0, limits = c(-3, 3), breaks = c(-3, 0, 3),
+      name = expression("Median centered log"[2])
+    ) +
+    ggplot2::scale_size_continuous(
+      range = c(2.2, 4.8), limits = c(2 / 3, 1),
+      breaks = c(2 / 3, 1), labels = c("2/3", "3/3"),
+      name = "Valid CON animals"
+    ) +
+    ggplot2::scale_colour_identity() +
+    ggplot2::guides(
+      fill = ggplot2::guide_colourbar(
+        direction = "horizontal", title.position = "top",
+        barwidth = grid::unit(29, "mm"), barheight = grid::unit(2.2, "mm")
+      ),
+      size = ggplot2::guide_legend(
+        direction = "horizontal", title.position = "top", override.aes = list(fill = "#D9D9D9")
+      )
+    ) +
+    ggplot2::labs(x = NULL, y = NULL) +
+    joint_pub_theme(base_size = 6.2) +
+    ggplot2::theme(
+      axis.line = ggplot2::element_blank(),
+      axis.ticks = ggplot2::element_blank(),
+      axis.text.x = ggplot2::element_text(size = 6.0),
+      axis.text.y = ggplot2::element_text(size = 5.7, face = "italic"),
+      strip.placement = "outside",
+      strip.text.y.left = ggplot2::element_text(
+        angle = 0, hjust = 1, face = "bold", size = 5.8,
+        margin = ggplot2::margin(r = 1.2)
+      ),
+      panel.spacing.y = grid::unit(0.8, "mm"),
+      legend.position = "bottom",
+      legend.box = "horizontal",
+      legend.spacing.x = grid::unit(5, "mm"),
+      legend.title = ggplot2::element_text(
+        size = 5.8, margin = ggplot2::margin(b = 0.8, r = 1.2)
+      ),
+      plot.margin = ggplot2::margin(2.2, 2.2, 1.5, 2.2)
+    )
+}
+
+ca_build_control_rank_abundance_plot_v2 <- function(rendering) {
+  labels <- rendering$rank_representatives[
+    rendering$rank_representatives$display_rank_label %in% TRUE,
+    ,
+    drop = FALSE
+  ]
+  ggplot2::ggplot(
+    rendering$rank_curve,
+    ggplot2::aes(.data$Rank, .data$primary_region_balanced_mean_log2)
+  ) +
+    ggplot2::geom_line(colour = "#AFAFAF", linewidth = 0.22) +
+    ggplot2::geom_point(
+      data = rendering$rank_representatives,
+      ggplot2::aes(colour = .data$marker_class),
+      size = 1.05, alpha = 0.98
+    ) +
+    ggrepel::geom_text_repel(
+      data = labels,
+      ggplot2::aes(label = .data$configured_official_gene_symbol),
+      seed = 20260724L,
+      direction = "both",
+      box.padding = 0.28,
+      point.padding = 0.12,
+      min.segment.length = 0,
+      max.overlaps = Inf,
+      force = 1.6,
+      segment.colour = "#8C8C8C",
+      segment.size = 0.12,
+      colour = "#303030",
+      size = 2.35,
+      family = "sans",
+      show.legend = FALSE
+    ) +
+    ggplot2::facet_wrap(~dataset_label, nrow = 1, scales = "free_x") +
+    ggplot2::scale_x_log10(
+      labels = scales::label_number(),
+      expand = ggplot2::expansion(mult = c(0.03, 0.12))
+    ) +
+    ggplot2::scale_colour_manual(
+      values = ca_display_class_palette,
+      breaks = ca_display_class_order,
+      labels = c(
+        "Soma-associated", "Neuropil-associated", "Microglia/PVM-associated"
+      ),
+      name = "Representative markers"
+    ) +
+    ggplot2::guides(colour = ggplot2::guide_legend(
+      nrow = 1, byrow = TRUE, title.position = "left",
+      keywidth = grid::unit(2.2, "mm"), keyheight = grid::unit(2.2, "mm")
+    )) +
+    ggplot2::labs(
+      x = expression("Protein abundance rank (" * log[10] * " scale)"),
+      y = expression("Mean log"[2] * " abundance")
+    ) +
+    joint_pub_theme(base_size = 6.3) +
+    ggplot2::theme(
+      strip.text = ggplot2::element_text(
+        size = 7.5, face = "bold", colour = "#303030"
+      ),
+      axis.text = ggplot2::element_text(size = 6.15),
+      axis.title = ggplot2::element_text(size = 6.6),
+      panel.spacing.x = grid::unit(2.2, "mm"),
+      legend.position = "bottom",
+      legend.justification = "center",
+      legend.box.just = "center",
+      legend.title = ggplot2::element_text(
+        size = 6.15, margin = ggplot2::margin(r = 0.55)
+      ),
+      legend.text = ggplot2::element_text(size = 5.95),
+      plot.margin = ggplot2::margin(2.0, 2.2, 0.5, 3.8)
+    )
+}
+
+ca_control_rendering_legends_v2 <- function() {
+  list(
+    main = paste(
+      "Externally defined markers are shown across neuronal soma, neuronal neuropil and",
+      "microglia/PVM-enriched ROI; these are spatial preparations, not three purified cell types.",
+      "Fill is median within-protein centered log2 abundance across valid CON animals and is",
+      "display-capped at -3 and +3 without changing exported values. Point size is the valid-CON-animal",
+      "fraction; a cross denotes fewer than two valid animals, for which no quantitative abundance",
+      "contrast is made. Dark outlines mark the intended compartment. Animal estimates use observed,",
+      "non-imputed values with equal Left/Right hemisphere weight after layer and region aggregation.",
+      "No inferential p-values are shown."
+    ),
+    extended = paste(
+      "Control-only rank-abundance curves retain all canonical non-contaminant proteins with at least",
+      "two of three valid CON animals in each dataset. The grey curve is the complete eligible universe;",
+      "display markers are highlighted, with at most four deterministic labels per intended facet.",
+      "Ranks use non-imputed values normalized by the joint shared-core sample offsets and equal-weight",
+      "animal estimates. Marker selection used external provenance/rank, intended-compartment detection,",
+      "subpanel balance and gene-symbol tie-breaking, never observed compartment effect magnitude."
+    )
+  )
+}
