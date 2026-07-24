@@ -2,6 +2,7 @@ testthat::local_edition(3)
 
 source(testthat::test_path("..", "..", "R", "paths.R"))
 source(testthat::test_path("..", "..", "R", "joint_compartment_qc_plotting.R"))
+source(testthat::test_path("..", "..", "R", "compartment_abundance_utils.R"))
 source(testthat::test_path("..", "..", "R", "control_compartment_abundance_rendering.R"))
 
 ca_render_test_config <- function() {
@@ -195,11 +196,107 @@ testthat::test_that("terminal-drop audit is deterministic and preserves the comp
 
 testthat::test_that("04e exposes a rendering-only path based on completed source tables", {
   script <- readLines(testthat::test_path(
-    "..", "..", "03_qc_exploration", "04e_control_compartment_abundance_publication_figures.r"
+    "..", "..", "R", "control_compartment_abundance_workflow_v2.R"
   ), warn = FALSE)
   text <- paste(script, collapse = "\n")
   testthat::expect_match(text, "--render-only", fixed = TRUE)
-  testthat::expect_match(text, "07a_control_marker_dot_heatmap_source.csv", fixed = TRUE)
-  testthat::expect_match(text, "04_rank_abundance_with_percentile.csv", fixed = TRUE)
-  testthat::expect_match(text, "05_marker_matches_and_exclusions.csv", fixed = TRUE)
+  testthat::expect_match(text, "v2_17_marker_detection_dot_heatmap_source.csv", fixed = TRUE)
+  testthat::expect_match(text, "v2_12_rank_abundance_data.csv", fixed = TRUE)
+  testthat::expect_match(text, "v2_11_display_selection_provenance.csv", fixed = TRUE)
+  testthat::expect_match(
+    text,
+    "PROTEOMICS_CONTROL_ABUNDANCE_V2_RENDER_ALLOW_OVERWRITE",
+    fixed = TRUE
+  )
+})
+
+ca_render_v2_fixture <- function() {
+  classes <- ca_display_class_order
+  selection <- data.frame(
+    marker_class = classes,
+    ProteinGroupID = c("P1", "P2", "P3"),
+    marker_gene = c("Soma1", "Neur1", "Mg1"),
+    display_biological_subpanel = c("chromatin", "postsynapse", "Allen microglia/PVM"),
+    selection_order_within_class = 1L,
+    rank_label = TRUE,
+    rank_label_dataset = unname(ca_display_intended_dataset[classes]),
+    intended_dataset = unname(ca_display_intended_dataset[classes]),
+    stringsAsFactors = FALSE
+  )
+  datasets <- names(ca_display_dataset_labels)
+  dot <- merge(
+    data.frame(dataset = datasets, stringsAsFactors = FALSE),
+    selection[c("ProteinGroupID")],
+    by = NULL
+  )
+  dot$median_centered_log2 <- c(-5, 0, 5, -2, 0, 2, -1, 0, 1)
+  dot$valid_animal_count <- c(3L, 1L, 3L, 3L, 3L, 3L, 3L, 3L, 3L)
+  dot$valid_animal_fraction <- dot$valid_animal_count / 3
+  dot$reliability_status <- ifelse(
+    dot$valid_animal_count >= 2L,
+    "reliably_detected",
+    "not_reliably_detected"
+  )
+  intended_lookup <- selection$intended_dataset[match(dot$ProteinGroupID, selection$ProteinGroupID)]
+  dot$intended_compartment <- dot$dataset == intended_lookup
+  rank <- merge(
+    data.frame(dataset = datasets, stringsAsFactors = FALSE),
+    data.frame(ProteinGroupID = c("P1", "P2", "P3", "B"), stringsAsFactors = FALSE),
+    by = NULL
+  ) |>
+    dplyr::group_by(.data$dataset) |>
+    dplyr::arrange(.data$ProteinGroupID, .by_group = TRUE) |>
+    dplyr::mutate(
+      RankGroup = "CON_region_balanced_mean",
+      Rank = dplyr::row_number(), N = dplyr::n(),
+      primary_region_balanced_mean_log2 = 20 - .data$Rank,
+      valid_animal_count = 3L, observed_animal_count = 3L,
+      contributing_animal_count = 3L
+    ) |>
+    dplyr::ungroup()
+  list(selection = selection, dot = dot, rank = rank)
+}
+
+testthat::test_that("v2 dot source has one row per selected marker and dataset", {
+  x <- ca_render_v2_fixture()
+  rendering <- ca_prepare_control_rendering_sources_v2(
+    x$dot, x$rank, x$selection
+  )
+  testthat::expect_equal(nrow(rendering$dot), 9L)
+  testthat::expect_false(anyDuplicated(rendering$dot[c("dataset", "ProteinGroupID")]) > 0)
+  testthat::expect_equal(range(rendering$dot$displayed_centered_log2, na.rm = TRUE), c(-3, 3))
+  testthat::expect_equal(sum(!rendering$dot$reliably_detected), 1L)
+  bad <- rbind(x$dot, x$dot[1, ])
+  testthat::expect_error(
+    ca_prepare_control_rendering_sources_v2(bad, x$rank, x$selection),
+    "one row per selected marker and dataset"
+  )
+})
+
+testthat::test_that("v2 marker panel encodes centered abundance and detection separately", {
+  x <- ca_render_v2_fixture()
+  rendering <- ca_prepare_control_rendering_sources_v2(
+    x$dot, x$rank, x$selection
+  )
+  plot <- ca_build_control_marker_dot_heatmap_v2(rendering)
+  testthat::expect_s3_class(plot$layers[[1]]$geom, "GeomPoint")
+  testthat::expect_s3_class(plot$layers[[2]]$geom, "GeomText")
+  testthat::expect_identical(
+    plot$scales$get_scales("size")$name,
+    "Valid CON animals"
+  )
+  testthat::expect_equal(plot$scales$get_scales("fill")$limits, c(-3, 3))
+  testthat::expect_null(plot$scales$get_scales("x")$limits)
+})
+
+testthat::test_that("v2 rank plot uses deterministic repel labels", {
+  x <- ca_render_v2_fixture()
+  rendering <- ca_prepare_control_rendering_sources_v2(
+    x$dot, x$rank, x$selection
+  )
+  plot <- ca_build_control_rank_abundance_plot_v2(rendering)
+  testthat::expect_s3_class(plot$layers[[1]]$geom, "GeomLine")
+  testthat::expect_s3_class(plot$layers[[2]]$geom, "GeomPoint")
+  testthat::expect_s3_class(plot$layers[[3]]$geom, "GeomTextRepel")
+  testthat::expect_lte(nrow(plot$layers[[3]]$data), 3L)
 })
