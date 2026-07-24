@@ -240,3 +240,197 @@ testthat::test_that("paired bootstrap and leave-one-out cases are exact and dete
   testthat::expect_equal(nrow(unique(first[c("draw_1", "draw_2", "draw_3")])), 27)
   testthat::expect_equal(nrow(ca_leave_one_animal_out_cases(c("A1", "A2", "A3"))), 3)
 })
+
+testthat::test_that("v2 hemisphere hierarchy preserves animal grain and equal hemisphere weight", {
+  meta <- expand.grid(
+    AnimalID = "A1", region = c("CA1", "CA2", "CA3", "DG"),
+    layer = "sp", ReplicateGroup = c("Left", "Right"),
+    stringsAsFactors = FALSE
+  )
+  extra <- meta[meta$ReplicateGroup == "Left" & meta$region == "CA1", ]
+  meta <- rbind(meta, extra, extra)
+  meta$Sample <- paste0("S", seq_len(nrow(meta)))
+  meta$dataset <- "neuron_soma"
+  mat <- matrix(
+    ifelse(meta$ReplicateGroup == "Left", 1, 5),
+    nrow = 1,
+    dimnames = list("P1", meta$Sample)
+  )
+  out <- ca_aggregate_abundance_v2(mat, meta, "median", 3)
+  testthat::expect_identical(out$hemisphere_column, "ReplicateGroup")
+  testthat::expect_equal(unname(out$hemisphere$values["P1", ]), c(1, 5))
+  testthat::expect_equal(out$animal$values["P1", 1], 3)
+  testthat::expect_equal(out$animal$contributing_hemisphere_count["P1", 1], 2L)
+})
+
+testthat::test_that("v2 primary marker eligibility does not require shared-core membership", {
+  registry <- data.frame(
+    marker_set = "soma", fidelity_marker_class = "Soma markers",
+    fidelity_subpanel = "chromatin", gene_symbol = "GeneA",
+    include_in_fidelity_score = TRUE, stringsAsFactors = FALSE
+  )
+  feature <- data.frame(
+    ProteinGroupID = "P1", member_gene_symbols = "GeneA",
+    official_gene_symbol = "GeneA",
+    protein_group_ambiguity_class = "single_accession_single_gene",
+    gene_level_claim_allowed = TRUE, original_identifier = "GENEA_MOUSE",
+    joint_qc_eligible = TRUE, joint_qc_exclusion_reason = NA_character_,
+    stringsAsFactors = FALSE
+  )
+  matched <- ca_match_fidelity_markers(registry, feature, character())
+  testthat::expect_false(matched$in_shared_core)
+  testthat::expect_true(matched$primary_score_eligible)
+  detection <- data.frame(
+    dataset = "neuron_soma", ProteinGroupID = "P1",
+    valid_animal_count = 2L, valid_animal_fraction = 2 / 3,
+    primary_eligible = TRUE, strict_eligible = FALSE
+  )
+  eligible <- ca_apply_marker_eligibility_v2(
+    matched, detection, character(), "P1"
+  )
+  testthat::expect_true(eligible$intended_primary_eligible)
+  testthat::expect_false(eligible$shared_core_sensitivity_eligible)
+  testthat::expect_identical(
+    eligible$exclusion_reason_shared_core_sensitivity,
+    "not_in_joint_shared_core"
+  )
+})
+
+testthat::test_that("unreliable off-target detection is never converted to an abundance contrast", {
+  marker_map <- data.frame(
+    marker_class = "Soma markers", ProteinGroupID = "P1",
+    marker_gene = "GeneA", display_biological_subpanel = "chromatin",
+    intended_dataset = "neuron_soma",
+    intended_primary_eligible = TRUE, intended_strict_eligible = TRUE,
+    shared_core_sensitivity_eligible = FALSE,
+    stringsAsFactors = FALSE
+  )
+  detection <- data.frame(
+    dataset = c("neuron_soma", "neuron_neuropil", "microglia"),
+    ProteinGroupID = "P1",
+    valid_animal_count = c(3L, 1L, 0L),
+    valid_animal_fraction = c(1, 1 / 3, 0),
+    observed_animal_count = c(3L, 1L, 0L),
+    observed_sample_count = c(12L, 1L, 0L),
+    observed_region_count = c(24L, 3L, 0L),
+    observed_hemisphere_count = c(6L, 1L, 0L),
+    valid_hemisphere_count = c(6L, 1L, 0L),
+    median_animal_log2_abundance = c(10, 20, NA),
+    mean_animal_log2_abundance = c(10, 20, NA),
+    primary_eligible = c(TRUE, FALSE, FALSE),
+    strict_eligible = c(TRUE, FALSE, FALSE),
+    reliability_status = c(
+      "reliably_detected", "not_reliably_detected", "not_reliably_detected"
+    ),
+    animal_detection_threshold = ">=2_valid_animals",
+    region_threshold = ">=3_regions_per_valid_hemisphere",
+    hemisphere_handling = "equal_weight",
+    stringsAsFactors = FALSE
+  )
+  audit <- ca_marker_dataset_audit_v2(marker_map, detection)
+  direction <- ca_protein_direction_v2(audit)
+  testthat::expect_true(direction$all_offtargets_not_reliably_detected)
+  testthat::expect_true(is.na(direction$strongest_offtarget_median_log2))
+  testthat::expect_true(is.na(direction$intended_margin_log2))
+  testthat::expect_identical(
+    direction$expected_direction_classification,
+    "reliably_detected_only_in_intended_compartment"
+  )
+})
+
+testthat::test_that("centered class medians are not dominated by one extreme protein", {
+  centered <- expand.grid(
+    ProteinGroupID = c("P1", "P2", "P3"),
+    dataset = "neuron_soma", AnimalID = "A1",
+    stringsAsFactors = FALSE
+  )
+  centered$animal_log2_abundance <- c(100, 1, 1)
+  centered$protein_center_log2 <- 0
+  centered$centered_log2 <- centered$animal_log2_abundance
+  marker_map <- data.frame(
+    marker_class = "Soma markers",
+    ProteinGroupID = c("P1", "P2", "P3"),
+    display_biological_subpanel = c("chromatin", "rnp", "rnp"),
+    stringsAsFactors = FALSE
+  )
+  scored <- ca_score_markers_v2(centered, marker_map, 1, 0)
+  soma <- scored$scores[scored$scores$marker_class == "Soma markers", ]
+  testthat::expect_equal(soma$median_centered_log2, 1)
+  testthat::expect_lt(soma$median_centered_log2, mean(centered$centered_log2))
+})
+
+testthat::test_that("v2 marker-map and subpanel balancing count a protein once", {
+  matches <- data.frame(
+    matched = TRUE, canonical_marker_eligible = TRUE,
+    conflicting_marker_classes = FALSE,
+    fidelity_marker_class = "Soma markers",
+    ProteinGroupID = c("P1", "P1"),
+    marker_gene = "GeneA", marker_panel = c("a", "b"),
+    fidelity_subpanel = c("chromatin", "rnp"),
+    intended_dataset = "neuron_soma",
+    source_rank = c(1L, 2L), source_rank_scope = "subpanel",
+    source_ranking_method = "external", source_name = "GO_MGI",
+    source_reference = "ref", source_term_or_category = "term",
+    evidence_level = "EXP", selection_rule = "rule", confidence = "external",
+    gene_claim_eligible = TRUE, intended_primary_eligible = TRUE,
+    intended_strict_eligible = TRUE, shared_core_sensitivity_eligible = FALSE,
+    in_joint_shared_core = FALSE, in_broad_union = TRUE,
+    stringsAsFactors = FALSE
+  )
+  map <- ca_prepare_marker_map_v2(matches, "intended_primary_eligible")
+  testthat::expect_equal(nrow(map), 1L)
+  testthat::expect_identical(map$all_fidelity_subpanels, "chromatin;rnp")
+})
+
+testthat::test_that("deterministic display selection ignores observed effect magnitude", {
+  classes <- c("Soma markers", "Neuropil markers", "Microglia/PVM markers")
+  map <- do.call(rbind, lapply(classes, function(cls) {
+    data.frame(
+      marker_class = cls,
+      ProteinGroupID = paste0(substr(cls, 1, 1), seq_len(6)),
+      marker_gene = paste0("Gene", seq_len(6)),
+      display_biological_subpanel = if (cls == "Microglia/PVM markers") {
+        "Allen microglia/PVM"
+      } else {
+        paste0("subpanel", rep(1:3, each = 2))
+      },
+      intended_dataset = ca_intended_dataset(cls),
+      source_rank = seq_len(6),
+      source_rank_scope = "source", source_ranking_method = "external",
+      source_name = "external", source_reference = "ref",
+      source_term_or_category = "term", evidence_level = "EXP",
+      selection_rule = "rule", confidence = "external",
+      gene_claim_eligible = TRUE, intended_primary_eligible = TRUE,
+      intended_strict_eligible = TRUE,
+      shared_core_sensitivity_eligible = FALSE,
+      in_joint_shared_core = FALSE, in_broad_union = TRUE,
+      observed_effect = rev(seq_len(6)),
+      stringsAsFactors = FALSE
+    )
+  }))
+  first <- ca_select_display_markers_v2(map, 6)$selected
+  map$observed_effect <- -map$observed_effect
+  second <- ca_select_display_markers_v2(map, 6)$selected
+  testthat::expect_identical(
+    first[c("marker_class", "ProteinGroupID")],
+    second[c("marker_class", "ProteinGroupID")]
+  )
+  testthat::expect_false(any(first$observed_effect_magnitude_used))
+})
+
+testthat::test_that("v2 zero-marker cases retain typed class rows", {
+  centered <- data.frame(
+    ProteinGroupID = "P0", dataset = "neuron_soma", AnimalID = "A1",
+    animal_log2_abundance = 1, protein_center_log2 = 1, centered_log2 = 0,
+    stringsAsFactors = FALSE
+  )
+  empty_map <- data.frame(
+    marker_class = character(), ProteinGroupID = character(),
+    display_biological_subpanel = character(), stringsAsFactors = FALSE
+  )
+  scored <- ca_score_markers_v2(centered, empty_map, 1, 0)
+  testthat::expect_equal(nrow(scored$scores), 3L)
+  testthat::expect_true(is.integer(scored$scores$n_eligible_proteins))
+  testthat::expect_true(all(scored$scores$n_eligible_proteins == 0L))
+  testthat::expect_false(any(scored$scores$score_eligible))
+})

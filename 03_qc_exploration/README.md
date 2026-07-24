@@ -120,18 +120,36 @@ Recommended run order:
      `group_CON` without replacing the all-group QC outputs.
 
 4e. `04e_control_compartment_abundance_publication_figures.r`
-   - Global rendering-oriented consumer of the validated joint-QC bundle.
-   - Primary analysis uses CON animals only and equal-weight arithmetic means
-     on the log2 scale across Left/Right, layers, regions, and animals. A valid
-     animal requires at least three regions; the primary and strict universes
-     require 2/3 and 3/3 CON animals, respectively.
-   - Exports uncapped source values, median-hierarchy and all-group sensitivity
-     ranks, all 27 ordered paired-animal bootstrap draws, three leave-one-animal-
-     out cases, marker provenance, and compact editable SVG/PDF figures.
+   - Authoritative cross-compartment marker-abundance and detection workflow.
+     It reconstructs raw-positive log2 values from the validated joint-QC
+     bundle, applies the sample offsets estimated on the joint shared core, and
+     retains observed missingness. It never uses the imputed primary matrix as
+     quantitative marker abundance.
+   - Primary analysis uses CON animals only. Technical replicates and layers are
+     aggregated within hemisphere and region, regions within hemisphere, and
+     valid hemispheres with equal weight within animal. One valid hemisphere is
+     permitted in the primary estimate; a separately named sensitivity requires
+     both. A hemisphere requires at least three regions, and intended primary
+     and strict marker eligibility require 2/3 and 3/3 CON animals,
+     respectively.
+   - The primary external-marker universe does not require joint-shared-core
+     membership. Shared-core-only and robust-z results are explicitly named
+     legacy sensitivities. Primary class evidence uses within-protein centered
+     log2 abundance, class medians, and subpanel-balanced medians; no
+     conventional inferential p-values are reported.
+   - Exports v2 mapping/provenance, hemisphere- and animal-level values,
+     detection and direction audits, class/subpanel summaries, all 27 ordered
+     descriptive animal-bootstrap draws, three leave-one-animal-out cases,
+     deterministic display selection, rank-abundance source data, and compact
+     editable SVG/PDF figures. Existing v1 files are not overwritten.
    - Results describe neuronal soma, neuronal neuropil, and microglia/PVM-
      enriched ROI marker fidelity and relative abundance—not cell fractions,
      purity, absolute protein quantity, total hippocampal abundance, or
      deconvolution.
+   - `04c` remains a processed-matrix availability/WGCNA bridge. Its nonmissing
+     values are post-filter/post-imputation availability, not raw detection.
+     `04d` cross-compartment sample-level inference is deprecated and disabled
+     by default; it is not an active biological-claim workflow.
 
 5. `05_pca_confounding_qc.r`
    - Input: processed expression matrix or strict GCT v1.3 plus metadata.
@@ -164,17 +182,18 @@ Recommended run order:
 
 ## Running Per Dataset
 
-```bash
-for ds in neuron_neuropil neuron_soma microglia; do
-  Rscript 03_qc_exploration/00_dataset_qc_report.r --dataset "$ds" --dry-run
-  Rscript 03_qc_exploration/01_sample_qc_quicksearch.r --dataset "$ds" --dry-run
-  Rscript 03_qc_exploration/02_missingness_diagnostics.r --dataset "$ds" --dry-run
-  Rscript 03_qc_exploration/03_replicate_consistency.r --dataset "$ds" --dry-run
-  Rscript 03_qc_exploration/04_marker_rank_abundance_qc.r --dataset "$ds" --dry-run
-  Rscript 03_qc_exploration/05_pca_confounding_qc.r --dataset "$ds" --dry-run
-  Rscript 03_qc_exploration/06_variance_partitioning.r --dataset "$ds" --dry-run
-  Rscript 03_qc_exploration/08_qc_biology_confounding_report.r --dataset "$ds" --dry-run
-done
+```powershell
+foreach ($dataset in @("neuron_neuropil", "neuron_soma", "microglia")) {
+  Rscript 03_qc_exploration/00_dataset_qc_report.r --dataset $dataset --dry-run
+  Rscript 03_qc_exploration/01_sample_qc_quicksearch.r --dataset $dataset --dry-run
+  Rscript 03_qc_exploration/02_missingness_diagnostics.r --dataset $dataset --dry-run
+  Rscript 03_qc_exploration/03_replicate_consistency.r --dataset $dataset --dry-run
+  Rscript 03_qc_exploration/04_marker_rank_abundance_qc.r --dataset $dataset --dry-run
+  Rscript 03_qc_exploration/04c_marker_detectability_and_wgcna_bridge.r --dataset $dataset --dry-run
+  Rscript 03_qc_exploration/05_pca_confounding_qc.r --dataset $dataset --dry-run
+  Rscript 03_qc_exploration/06_variance_partitioning.r --dataset $dataset --dry-run
+  Rscript 03_qc_exploration/08_qc_biology_confounding_report.r --dataset $dataset --dry-run
+}
 Rscript 03_qc_exploration/04e_control_compartment_abundance_publication_figures.r --dataset global --dry-run
 ```
 

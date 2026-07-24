@@ -1,7 +1,7 @@
 # pRoteomics
 
 pRoteomics is the publication-facing spatial proteomics workflow for hippocampal
-neuron neuropil, neuron soma, and microglia-enriched ROI datasets.
+neuronal neuropil, neuronal soma, and microglia/PVM-enriched ROI datasets.
 
 `pipeline.yml` is the only active machine-readable source of truth for script
 order, dataset support, inputs, outputs, and safe-rerun status. Start with
@@ -28,8 +28,14 @@ Rscript run_dataset_pipeline.R --dataset all --stage integration
 ```
 
 Valid dataset families are `neuron_neuropil`, `neuron_soma`, and `microglia`.
-Microglia data are region-only microglia-enriched ROI/local microenvironment
-proteomics, not purified microglia.
+Microglia data are region-only microglia/PVM-enriched ROI/local
+microenvironment proteomics, not purified microglia.
+
+The authoritative control compartment-marker validation is
+`03_qc_exploration/04e_control_compartment_abundance_publication_figures.r`.
+It uses reconstructed observed, non-imputed abundance and animal-level
+descriptive summaries; it does not estimate purity, cell fractions,
+deconvolution, copy number, or total hippocampal abundance.
 
 ## Repository Map
 
