@@ -1,0 +1,29 @@
+name: wgcna_group_effect_downstream_consumer_migration_audit
+required_columns:
+  - consumer_script
+  - consumed_file
+  - consumed_column
+  - current_semantics
+  - required_new_column
+  - migration_required
+  - blocking_for_execution
+  - proposed_phase3_action
+  - should_block_execution
+  - enforcement_status
+  - scan_line_numbers
+  - scan_included_path_rules
+  - scan_excluded_path_rules
+columns:
+  consumer_script: {type: character}
+  consumed_file: {type: character}
+  consumed_column: {type: character}
+  current_semantics: {type: character}
+  required_new_column: {type: character}
+  migration_required: {type: logical}
+  blocking_for_execution: {type: logical}
+  proposed_phase3_action: {type: character}
+  should_block_execution: {type: logical}
+  enforcement_status: {type: character, allowed_values: [advisory_not_runtime_enforced]}
+  scan_line_numbers: {type: character}
+  scan_included_path_rules: {type: character}
+  scan_excluded_path_rules: {type: character}
