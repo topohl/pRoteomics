@@ -111,8 +111,10 @@ Use evidence in this order:
 3. DE/GSEA overlap support from `04_wgcna_de_gsea_overlap.r`
 4. Descriptive module-trait and condition heatmaps from `01_WGCNA.r`
 
-Stage 05 averages available left/right endpoint values within each
-animal-spatial-unit before inference. The prespecified primary endpoint is
+Stage 05 first averages technical source rows within each hemisphere, then
+gives the one or two observed hemispheres equal weight within each
+animal-spatial-unit without imputation. It exports both hemisphere provenance
+and a canonical `aggregated_row_sha256` content hash. The prespecified primary endpoint is
 `SUS - RES` at `spatial_adjusted_global` /
 `global_spatial_adjusted`, fitted with ML as
 `eigengene ~ StressGroup + SpatialUnit + (1 | AnimalID)`. Modules and
@@ -123,10 +125,14 @@ exploratory localization families. Spatial heterogeneity is represented by one
 nested-ML likelihood-ratio omnibus test per independent endpoint; conditional
 contrasts are separate exploratory follow-ups.
 
-A converged, full-rank, finite single-`AnimalID`-intercept fit whose random
-intercept variance is at the boundary remains valid with
+A converged, full-rank, finite single-`AnimalID`-intercept fit whose variance
+ratio (`random_intercept_variance / residual_variance`) is at or below `1e-4`
+remains valid with
 `model_stability_status = boundary_random_intercept_zero`,
-`primary_model_stable = FALSE`, and an explicit warning. Rank deficiency,
+`primary_model_stable = FALSE`, and an explicit warning. The independently
+recorded `lme4::isSingular(..., tol = 1e-4)` result is diagnostic only;
+disagreement sets `diagnostic_review_required = TRUE` without replacing the
+ratio classification or changing inference eligibility. Rank deficiency,
 optimizer or non-boundary convergence failure, non-estimability, nonfinite
 results, sample-contract failure, and singular complex random structures are
 invalid. No t-test fallback is produced.
@@ -153,6 +159,7 @@ Main outputs:
 - `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_model_validation.csv`
 - `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_sample_inclusion_audit.csv`
 - `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_animal_spatial_unit_values.csv`
+- `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_hemisphere_values.csv`
 - `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_interaction_conditional_followup.csv`
 - `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_sensitivity.csv`
 - `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_left_right_concordance.csv`

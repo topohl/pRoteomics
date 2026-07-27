@@ -1,0 +1,31 @@
+name: wgcna_group_effect_hemisphere_values
+required_columns:
+  - dataset
+  - level
+  - endpoint_id
+  - AnimalID
+  - StressGroup
+  - SpatialUnit
+  - Hemisphere
+  - contributing_sample_ids
+  - source_sample_count
+  - source_values
+  - hemisphere_value
+  - n_hemisphere_source_rows
+  - duplicate_source_row_status
+  - aggregation_method
+columns:
+  dataset: {type: character, allowed_values: [neuron_neuropil, neuron_soma, microglia]}
+  level: {type: character, allowed_values: [module, supermodule]}
+  endpoint_id: {type: character}
+  AnimalID: {type: character}
+  StressGroup: {type: character, allowed_values: [CON, RES, SUS]}
+  SpatialUnit: {type: character}
+  Hemisphere: {type: character, allowed_values: [L, R]}
+  contributing_sample_ids: {type: character}
+  source_sample_count: {type: integer}
+  source_values: {type: any}
+  hemisphere_value: {type: numeric}
+  n_hemisphere_source_rows: {type: integer}
+  duplicate_source_row_status: {type: character, allowed_values: [technical_duplicates_collapsed_by_mean, single_source_row]}
+  aggregation_method: {type: character, allowed_values: [arithmetic_mean_within_hemisphere]}

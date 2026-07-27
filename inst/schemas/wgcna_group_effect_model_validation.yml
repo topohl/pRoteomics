@@ -1,35 +1,11 @@
-name: module_group_effects
+name: wgcna_group_effect_model_validation
 required_columns:
   - dataset
   - level
-  - module_id
-  - contrast
-  - estimate
-  - p_value
-  - analysis_tier
-  - hypothesis_level
-  - primary_contrast
+  - endpoint_id
+  - effect_scope
   - model_valid_for_inference
   - model_stability_status
-  - independent_hypothesis
-  - enters_primary_fdr
-  - statistical_support_status
-  - manuscript_claim_ready
-  - FDR_primary_global
-  - FDR_secondary_global
-  - FDR_interaction_omnibus
-  - FDR_local_exploratory
-  - FDR_conservative_all_tests
-  - FDR_global
-  - model_family
-  - model_formula
-  - primary_model_stable
-  - claim_allowed_model
-  - model_downgrade_reason
-  - fallback_used
-  - fallback_type
-  - rank_deficient_model
-  - singular_model
   - variance_ratio
   - ICC
   - is_singular_lme4
@@ -74,47 +50,17 @@ required_columns:
   - full_singularity_class
   - full_model_stability_status
   - full_diagnostic_review_required
-  - emmeans_success
-  - animal_random_effect_used
-  - biological_replicate_unit
-  - n_animals_total
-  - n_animals_per_group
-  - min_animals_per_group
-  - n_samples_total
-  - n_samples_per_group
-  - animal_level_status
-  - pseudoreplication_guard
+  - identical_rows_verified
+  - likelihood_ratio_statistic
+  - likelihood_ratio_df
+  - likelihood_ratio_p_value
 columns:
   dataset: {type: character, allowed_values: [neuron_neuropil, neuron_soma, microglia]}
-  level: {type: character, allowed_values: [module]}
-  module_id: {type: character}
-  contrast: {type: character}
-  estimate: {type: numeric}
-  p_value: {type: numeric, range: {min: 0, max: 1}}
-  analysis_tier: {type: character, allowed_values: [primary_wgcna_global, secondary_contextual_global, secondary_spatial_heterogeneity, exploratory_spatial_localization]}
-  hypothesis_level: {type: character, allowed_values: [module]}
-  primary_contrast: {type: logical}
+  level: {type: character, allowed_values: [module, supermodule]}
+  endpoint_id: {type: character}
+  effect_scope: {type: character}
   model_valid_for_inference: {type: logical}
-  model_stability_status: {type: character, allowed_values: [stable_mixed_model, boundary_random_intercept_zero, stable_animal_level_lm]}
-  independent_hypothesis: {type: logical}
-  enters_primary_fdr: {type: logical}
-  statistical_support_status: {type: character, allowed_values: [FDR_supported, suggestive_FDR10, nominal_exploratory, not_supported]}
-  manuscript_claim_ready: {type: character, allowed_values: [not_assessed_stage05]}
-  FDR_primary_global: {type: numeric, range: {min: 0, max: 1}}
-  FDR_secondary_global: {type: numeric, range: {min: 0, max: 1}}
-  FDR_interaction_omnibus: {type: numeric, range: {min: 0, max: 1}}
-  FDR_local_exploratory: {type: numeric, range: {min: 0, max: 1}}
-  FDR_conservative_all_tests: {type: numeric, range: {min: 0, max: 1}}
-  FDR_global: {type: numeric, range: {min: 0, max: 1}}
-  model_family: {type: character}
-  model_formula: {type: character}
-  primary_model_stable: {type: logical}
-  claim_allowed_model: {type: logical}
-  model_downgrade_reason: {type: character}
-  fallback_used: {type: logical}
-  fallback_type: {type: character}
-  rank_deficient_model: {type: logical}
-  singular_model: {type: logical}
+  model_stability_status: {type: character, allowed_values: [stable_mixed_model, boundary_random_intercept_zero, stable_animal_level_lm, invalid]}
   variance_ratio: {type: numeric}
   ICC: {type: numeric, range: {min: 0, max: 1}}
   is_singular_lme4: {type: logical}
@@ -159,13 +105,7 @@ columns:
   full_singularity_class: {type: character}
   full_model_stability_status: {type: character}
   full_diagnostic_review_required: {type: logical}
-  emmeans_success: {type: logical}
-  animal_random_effect_used: {type: logical}
-  biological_replicate_unit: {type: character}
-  n_animals_total: {type: integer}
-  n_animals_per_group: {type: character}
-  min_animals_per_group: {type: integer}
-  n_samples_total: {type: integer}
-  n_samples_per_group: {type: character}
-  animal_level_status: {type: character, allowed_values: [animal_level, repeated_animal_spatial_unit_mixed_model]}
-  pseudoreplication_guard: {type: character}
+  identical_rows_verified: {type: logical}
+  likelihood_ratio_statistic: {type: numeric}
+  likelihood_ratio_df: {type: numeric}
+  likelihood_ratio_p_value: {type: numeric, range: {min: 0, max: 1}}
