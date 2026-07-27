@@ -133,8 +133,11 @@ endpoint, PCA-orientation, model, contrast, and FDR provenance.
 
 Neuron soma and microglia use Region as the spatial unit. Neuron neuropil uses
 the observed Region-Layer unit; no generic layer main effect is fitted. Stage
-05 first forms bilateral animal-spatial-unit means without imputing a missing
-hemisphere. The primary `SUS - RES` global model is fitted with
+05 first collapses technical source rows to one arithmetic mean per hemisphere,
+then gives the one or two observed hemispheres equal weight without imputing a
+missing hemisphere. Both levels retain ordered source provenance, and the
+animal-spatial-unit row has a canonical content SHA-256. The primary
+`SUS - RES` global model is fitted with
 `lmerTest::lmer(..., REML = FALSE)` and contrasted with `emmeans`.
 
 The `SUS - RES` primary rows use separate module and higher-order-multimodule
@@ -145,10 +148,15 @@ independent endpoint. Local contrasts are exploratory localization tests.
 `FDR_conservative_all_tests` is reviewer sensitivity only, and deprecated
 `FDR_global` is its exact alias where populated.
 
-A zero-variance boundary fit is valid when the sole random structure is
-`(1 | AnimalID)` and all fixed-rank, optimizer, convergence, finiteness, and
-estimability requirements pass. It remains cautioned and is not a stable mixed
-model. Other singular structures and failed diagnostics are invalid. Singleton
+A boundary fit is valid when the sole random structure is `(1 | AnimalID)`,
+the random-intercept/residual variance ratio is at or below `1e-4`, and all
+fixed-rank, optimizer, convergence, finiteness, and estimability requirements
+pass. `lme4::isSingular(..., tol = 1e-4)` is retained separately as a
+diagnostic; disagreement requires later review but does not replace the ratio
+rule. Boundary or discordant fits are not primarily stable. Complex singular
+structures and failed diagnostics are invalid. Reduced and full interaction
+models export distinct formulas, row hashes, ranks, convergence, optimizer,
+variance, singularity, and stability diagnostics. Singleton
 supermodules are copied compatibility aliases, not refitted hypotheses; their
 statistics and diagnostics are inherited and every FDR field is `NA`.
 
@@ -167,6 +175,7 @@ Inspect:
 - `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_model_validation.csv`
 - `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_sample_inclusion_audit.csv`
 - `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_animal_spatial_unit_values.csv`
+- `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_hemisphere_values.csv`
 - `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_interaction_conditional_followup.csv`
 - `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_sensitivity.csv`
 - `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_left_right_concordance.csv`
