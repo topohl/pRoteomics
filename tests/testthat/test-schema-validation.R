@@ -256,6 +256,50 @@ testthat::test_that("WGCNA group-effect output validation checks required column
     formula_used = "eigengene ~ StressGroup",
     rank_deficient_model = FALSE,
     singular_model = FALSE,
+    variance_ratio = NA_real_,
+    ICC = NA_real_,
+    is_singular_lme4 = FALSE,
+    boundary_by_variance_ratio = NA,
+    boundary_variance_ratio_tolerance = 1e-4,
+    lme4_singularity_tolerance = 1e-4,
+    singularity_diagnostic_status = "not_applicable_lm",
+    diagnostic_review_required = FALSE,
+    reduced_formula = NA_character_,
+    reduced_row_hash = NA_character_,
+    reduced_fixed_effect_rank = NA_integer_,
+    reduced_fixed_effect_columns = NA_integer_,
+    reduced_optimizer_code = NA_character_,
+    reduced_optimizer_messages = NA_character_,
+    reduced_convergence_status = NA_character_,
+    reduced_convergence_warnings = NA_character_,
+    reduced_random_effect_structure = NA_character_,
+    reduced_random_intercept_variance = NA_real_,
+    reduced_residual_variance = NA_real_,
+    reduced_variance_ratio = NA_real_,
+    reduced_ICC = NA_real_,
+    reduced_is_singular_lme4 = NA,
+    reduced_boundary_by_variance_ratio = NA,
+    reduced_singularity_class = NA_character_,
+    reduced_model_stability_status = NA_character_,
+    reduced_diagnostic_review_required = NA,
+    full_formula = NA_character_,
+    full_row_hash = NA_character_,
+    full_fixed_effect_rank = NA_integer_,
+    full_fixed_effect_columns = NA_integer_,
+    full_optimizer_code = NA_character_,
+    full_optimizer_messages = NA_character_,
+    full_convergence_status = NA_character_,
+    full_convergence_warnings = NA_character_,
+    full_random_effect_structure = NA_character_,
+    full_random_intercept_variance = NA_real_,
+    full_residual_variance = NA_real_,
+    full_variance_ratio = NA_real_,
+    full_ICC = NA_real_,
+    full_is_singular_lme4 = NA,
+    full_boundary_by_variance_ratio = NA,
+    full_singularity_class = NA_character_,
+    full_model_stability_status = NA_character_,
+    full_diagnostic_review_required = NA,
     emmeans_success = TRUE,
     animal_random_effect_used = FALSE,
     biological_replicate_unit = "animal",
@@ -282,6 +326,31 @@ testthat::test_that("WGCNA group-effect output validation checks required column
   warn2 <- validate_known_pipeline_output(path, dataset = "microglia")
   testthat::expect_equal(warn2$validation_status, "warning")
   testthat::expect_match(warn2$validation_message, "formula_used")
+})
+
+testthat::test_that("Phase 2B Stage 05 typed schemas cover corrected outputs", {
+  source(testthat::test_path("..", "..", "R", "paths.R"))
+  source(repo_path("R", "dataset_config.R"))
+  source(repo_path("R", "wgcna_downstream_utils.R"))
+  source(repo_path("R", "wgcna_identity_contract_utils.R"))
+  source(repo_path("R", "wgcna_group_effects_utils.R"))
+  source(repo_path("R", "schema_validation.R"))
+  testthat::expect_silent(validate_table_schema(
+    wgcna_group_model_validation_schema(),
+    "wgcna_group_effect_model_validation", strict = FALSE
+  ))
+  testthat::expect_silent(validate_table_schema(
+    wgcna_group_animal_spatial_value_schema(),
+    "wgcna_group_effect_animal_spatial_unit_values", strict = FALSE
+  ))
+  testthat::expect_silent(validate_table_schema(
+    wgcna_group_hemisphere_value_schema(),
+    "wgcna_group_effect_hemisphere_values", strict = FALSE
+  ))
+  testthat::expect_silent(validate_table_schema(
+    wgcna_group_scan_downstream_consumers(),
+    "wgcna_group_effect_downstream_consumer_migration_audit", strict = FALSE
+  ))
 })
 
 testthat::test_that("microglia neuropil independence audit schemas validate", {

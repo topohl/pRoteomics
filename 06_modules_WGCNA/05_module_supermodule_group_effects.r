@@ -105,13 +105,29 @@ if (run$dry_run) {
   consumer_audit <- wgcna_group_scan_downstream_consumers()
   cat("[DRY-RUN] Downstream compatibility: FALSE\n")
   cat("[DRY-RUN] Stage 06+ must not be run before Phase 3 migration.\n")
+  cat("[DRY-RUN] BLOCKED BY CONTRACT; NOT RUNTIME-ENFORCED\n")
   dry_run_line(
-    "Advisory downstream consumers",
+    "Legacy-token audit records",
+    nrow(consumer_audit)
+  )
+  dry_run_line(
+    "Scanned files with legacy tokens",
+    dplyr::n_distinct(consumer_audit$consumer_script)
+  )
+  dry_run_line(
+    "Runtime consumers requiring Phase 3 migration",
+    dplyr::n_distinct(consumer_audit$consumer_script[
+      consumer_audit$phase3_runtime_migration_required %in% TRUE
+    ])
+  )
+  dry_run_line(
+    "Schema/test/support files requiring contract updates",
     paste0(
-      dplyr::n_distinct(consumer_audit$consumer_script),
-      " active scripts/helpers require Phase 3 migration"
+      dplyr::n_distinct(consumer_audit$consumer_script[
+        !consumer_audit$runtime_execution_consumer
+      ])
     ),
-    "BLOCKED BY CONTRACT; NOT RUNTIME-ENFORCED"
+    "ADVISORY PHASE 3 MIGRATION"
   )
   dry_run_line(
     "Primary packages",
@@ -178,21 +194,12 @@ result <- tryCatch({
   bundle <- wgcna_group_build_bundle(DATASET, state, contract)
   legacy_audit <- wgcna_group_legacy_staleness_audit(DATASET, PATHS)
   consumer_audit <- wgcna_group_scan_downstream_consumers()
-  status_sources <- c(
-    repo_path("06_modules_WGCNA", "05_module_supermodule_group_effects.r"),
-    repo_path("R", "wgcna_group_effects_utils.R"),
-    repo_path("inst", "schemas", "module_group_effects.yml"),
-    repo_path("inst", "schemas", "supermodule_group_effects.yml"),
-    repo_path(
-      "inst", "schemas",
-      "wgcna_group_effect_downstream_consumer_migration_audit.yml"
-    ),
-    repo_path("inst", "schemas", "wgcna_group_effect_contract_status.yml"),
-    STATE_PATH,
-    unname(unlist(CONTRACT_PATHS))
+  status_sources <- wgcna_group_stage05_source_dependencies(
+    STATE_PATH, CONTRACT_PATHS
   )
   contract_status <- wgcna_group_contract_status(
-    DATASET, status_sources, canonical_primary_outputs_complete = TRUE
+    DATASET, status_sources, canonical_primary_outputs_complete = TRUE,
+    required_source_paths = status_sources
   )
   outputs <- list(
     module_group_effects.csv = bundle$module_group_effects,
@@ -206,6 +213,8 @@ result <- tryCatch({
       bundle$sample_inclusion_audit,
     WGCNA_group_effect_animal_spatial_unit_values.csv =
       bundle$animal_spatial_unit_values,
+    WGCNA_group_effect_hemisphere_values.csv =
+      bundle$hemisphere_values,
     WGCNA_group_effect_interaction_conditional_followup.csv =
       bundle$interaction_conditional_followup,
     WGCNA_group_effect_sensitivity.csv =

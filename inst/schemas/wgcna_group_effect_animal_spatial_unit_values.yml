@@ -1,0 +1,51 @@
+name: wgcna_group_effect_animal_spatial_unit_values
+required_columns:
+  - dataset
+  - level
+  - endpoint_id
+  - AnimalID
+  - StressGroup
+  - SpatialUnit
+  - eigengene
+  - n_source_samples
+  - n_hemispheres_observed
+  - hemispheres_observed
+  - contributing_samples
+  - ordered_hemispheres
+  - ordered_contributing_sample_ids
+  - ordered_hemisphere_source_values
+  - ordered_hemisphere_means
+  - ordered_hemisphere_source_row_counts
+  - ordered_hemisphere_duplicate_statuses
+  - hemisphere_values
+  - bilateral_pair_status
+  - hemisphere_completeness_status
+  - aggregation_method
+  - duplicate_source_row_status
+  - aggregated_row_id
+  - aggregated_row_sha256
+columns:
+  dataset: {type: character, allowed_values: [neuron_neuropil, neuron_soma, microglia]}
+  level: {type: character, allowed_values: [module, supermodule]}
+  endpoint_id: {type: character}
+  AnimalID: {type: character}
+  StressGroup: {type: character, allowed_values: [CON, RES, SUS]}
+  SpatialUnit: {type: character}
+  eigengene: {type: numeric}
+  n_source_samples: {type: integer}
+  n_hemispheres_observed: {type: integer, range: {min: 1, max: 2}}
+  hemispheres_observed: {type: character}
+  contributing_samples: {type: character}
+  ordered_hemispheres: {type: character}
+  ordered_contributing_sample_ids: {type: character}
+  ordered_hemisphere_source_values: {type: character}
+  ordered_hemisphere_means: {type: character}
+  ordered_hemisphere_source_row_counts: {type: character}
+  ordered_hemisphere_duplicate_statuses: {type: character}
+  hemisphere_values: {type: character}
+  bilateral_pair_status: {type: character, allowed_values: [bilateral_complete, single_hemisphere_observed]}
+  hemisphere_completeness_status: {type: character, allowed_values: [complete_bilateral_pair, one_sided_observed_no_imputation]}
+  aggregation_method: {type: character, allowed_values: [equal_weight_mean_available_LR_after_within_hemisphere_mean]}
+  duplicate_source_row_status: {type: character, allowed_values: [technical_duplicates_collapsed_within_hemisphere, no_technical_duplicates]}
+  aggregated_row_id: {type: character}
+  aggregated_row_sha256: {type: character}

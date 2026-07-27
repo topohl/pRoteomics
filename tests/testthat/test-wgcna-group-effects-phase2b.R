@@ -18,7 +18,7 @@ valid_fixture <- function(...) {
     random_effect_structure = "single_animal_intercept",
     random_intercept_variance = 0.2,
     residual_variance = 1,
-    singular_model = FALSE,
+    is_singular_lme4 = FALSE,
     sample_contract_valid = TRUE
   )
   modifications <- list(...)
@@ -31,7 +31,7 @@ valid_fixture <- function(...) {
 testthat::test_that("boundary single-intercept diagnostics remain valid", {
   observed <- valid_fixture(
     random_intercept_variance = 0,
-    singular_model = TRUE
+    is_singular_lme4 = TRUE
   )
   testthat::expect_true(observed$model_valid_for_inference)
   testthat::expect_identical(
@@ -43,23 +43,44 @@ testthat::test_that("boundary single-intercept diagnostics remain valid", {
   testthat::expect_match(observed$boundary_warning, "prespecified boundary")
 })
 
-testthat::test_that("boundary tolerance applies to the fitted variance", {
-  tolerance <- wgcna_group_singularity_tolerance()
-  observed <- valid_fixture(
-    random_intercept_variance = tolerance / 2,
-    residual_variance = tolerance / 100
+testthat::test_that("variance-ratio boundary classification is scale independent", {
+  tolerance <- wgcna_group_boundary_variance_ratio_tolerance()
+  fixtures <- list(
+    c(random = 1e-6, residual = 1e-2),
+    c(random = 1, residual = 1e4),
+    c(random = 2e-4, residual = 1e6),
+    c(random = 0.01, residual = 1e4)
+  )
+  for (fixture in fixtures) {
+    observed <- valid_fixture(
+      random_intercept_variance = fixture[["random"]],
+      residual_variance = fixture[["residual"]]
+    )
+    testthat::expect_lte(observed$variance_ratio, tolerance)
+    testthat::expect_identical(
+      observed$model_stability_status,
+      "boundary_random_intercept_zero"
+    )
+  }
+  stable <- list(
+    valid_fixture(random_intercept_variance = 0.2, residual_variance = 1),
+    valid_fixture(random_intercept_variance = 5e-5, residual_variance = 1e-5)
+  )
+  testthat::expect_true(all(vapply(
+    stable,
+    function(x) identical(x$model_stability_status, "stable_mixed_model"),
+    logical(1)
+  )))
+  base <- valid_fixture(
+    random_intercept_variance = 0.2, residual_variance = 1
+  )
+  scaled <- valid_fixture(
+    random_intercept_variance = 2000, residual_variance = 10000
   )
   testthat::expect_identical(
-    observed$model_stability_status,
-    "boundary_random_intercept_zero"
+    base$model_stability_status, scaled$model_stability_status
   )
-  outside <- valid_fixture(
-    random_intercept_variance = tolerance * 2,
-    residual_variance = 1e6
-  )
-  testthat::expect_identical(
-    outside$model_stability_status, "stable_mixed_model"
-  )
+  testthat::expect_equal(base$variance_ratio, scaled$variance_ratio)
 })
 
 testthat::test_that("invalid diagnostic fixtures fail closed", {
@@ -70,7 +91,7 @@ testthat::test_that("invalid diagnostic fixtures fail closed", {
   )
   complex_singular <- valid_fixture(
     random_effect_structure = "complex_random_effects",
-    singular_model = TRUE
+    is_singular_lme4 = TRUE
   )
   for (observed in list(
     rank_deficient, nonconverged, complex_singular
@@ -89,17 +110,65 @@ testthat::test_that("invalid diagnostic fixtures fail closed", {
   testthat::expect_match(
     complex_singular$failure_reason, "complex_singular_random_effects"
   )
+  invalid_variances <- list(
+    valid_fixture(random_intercept_variance = NA_real_),
+    valid_fixture(random_intercept_variance = -1),
+    valid_fixture(residual_variance = 0),
+    valid_fixture(residual_variance = Inf)
+  )
+  testthat::expect_true(all(vapply(
+    invalid_variances,
+    function(x) !isTRUE(x$model_valid_for_inference),
+    logical(1)
+  )))
 })
 
 testthat::test_that("model classification cannot depend on p or direction", {
   classifier_formals <- names(formals(wgcna_group_classify_model_diagnostics))
   testthat::expect_false(any(
-    c("p_value", "estimate", "effect_direction", "direction") %in%
+    c(
+      "p_value", "estimate", "effect_direction", "direction",
+      "FDR", "FDR_primary_global"
+    ) %in%
       classifier_formals
   ))
   first <- valid_fixture(random_intercept_variance = 0)
   second <- valid_fixture(random_intercept_variance = 0)
   testthat::expect_identical(first, second)
+})
+
+testthat::test_that("lme4 disagreement is audited without replacing ratio rule", {
+  ratio_boundary_only <- valid_fixture(
+    random_intercept_variance = 1e-6,
+    residual_variance = 1e-2,
+    is_singular_lme4 = FALSE
+  )
+  testthat::expect_identical(
+    ratio_boundary_only$singularity_diagnostic_status,
+    "variance_ratio_boundary_only"
+  )
+  testthat::expect_true(ratio_boundary_only$model_valid_for_inference)
+  testthat::expect_identical(
+    ratio_boundary_only$model_stability_status,
+    "boundary_random_intercept_zero"
+  )
+  testthat::expect_false(ratio_boundary_only$primary_model_stable)
+  testthat::expect_true(ratio_boundary_only$diagnostic_review_required)
+
+  lme4_only <- valid_fixture(
+    random_intercept_variance = 0.2,
+    residual_variance = 1,
+    is_singular_lme4 = TRUE
+  )
+  testthat::expect_identical(
+    lme4_only$singularity_diagnostic_status, "lme4_singular_only"
+  )
+  testthat::expect_identical(
+    lme4_only$model_stability_status, "stable_mixed_model"
+  )
+  testthat::expect_true(lme4_only$model_valid_for_inference)
+  testthat::expect_false(lme4_only$primary_model_stable)
+  testthat::expect_true(lme4_only$diagnostic_review_required)
 })
 
 testthat::test_that("installed lme4 boundary integration is retained when reproducible", {
@@ -237,8 +306,14 @@ testthat::test_that("singleton aliases inherit estimates but no FDR", {
   module_rows$primary_model_stable <- TRUE
   module_rows$random_intercept_variance <- 0.2
   module_rows$residual_variance <- 1
+  module_rows$variance_ratio <- 0.2
   module_rows$ICC <- 1 / 6
-  module_rows$singularity_tolerance <- 1e-4
+  module_rows$is_singular_lme4 <- FALSE
+  module_rows$boundary_by_variance_ratio <- FALSE
+  module_rows$boundary_variance_ratio_tolerance <- 1e-4
+  module_rows$lme4_singularity_tolerance <- 1e-4
+  module_rows$singularity_diagnostic_status <- "concordant_nonboundary"
+  module_rows$diagnostic_review_required <- FALSE
   module_rows$singularity_class <- "stable_single_animal_intercept"
   module_rows$boundary_warning <- NA_character_
   module_rows$endpoint_construction_method <- "canonical_module_eigengene"
@@ -264,8 +339,11 @@ testthat::test_that("singleton aliases inherit estimates but no FDR", {
   testthat::expect_equal(aliases$p_value, module_rows$p_value)
   inherited_fields <- c(
     "model_formula", "formula_used",
-    "random_intercept_variance", "residual_variance", "ICC",
-    "singularity_tolerance", "singularity_class", "boundary_warning",
+    "random_intercept_variance", "residual_variance", "variance_ratio", "ICC",
+    "is_singular_lme4", "boundary_by_variance_ratio",
+    "boundary_variance_ratio_tolerance", "lme4_singularity_tolerance",
+    "singularity_diagnostic_status", "diagnostic_review_required",
+    "singularity_class", "boundary_warning",
     "model_valid_for_inference", "model_stability_status",
     "primary_model_stable", "claim_allowed_model",
     "endpoint_construction_method", "endpoint_provenance_status",
@@ -290,11 +368,106 @@ testthat::test_that("singleton aliases inherit estimates but no FDR", {
     c(
       "FDR_primary_global", "FDR_secondary_global",
       "FDR_interaction_omnibus", "FDR_local_exploratory",
-      "FDR_conservative_all_tests", "FDR_global"
+      "FDR_conservative_all_tests", "FDR_global",
+      "FDR_within_dataset_level", "FDR_dataset_all_levels"
     ),
     function(nm) all(is.na(aliases[[nm]])),
     logical(1)
   )))
+})
+
+aggregation_fixture <- function() {
+  data.frame(
+    Sample = c("A1_L_1", "A1_L_2", "A1_R_1", "A2_L_1"),
+    AnimalID = c("A1", "A1", "A1", "A2"),
+    AnimalID_source = "synthetic_fixture",
+    StressGroup = c("CON", "CON", "CON", "RES"),
+    canonical_spatial_unit = "s1",
+    SpatialUnitType = "region",
+    Region = "s1",
+    Layer = NA_character_,
+    Hemisphere = c("L", "L", "R", "L"),
+    endpoint = c(0, 2, 10, 4),
+    stringsAsFactors = FALSE
+  )
+}
+
+testthat::test_that("hemisphere aggregation is equal-weight and content-addressed", {
+  dat <- aggregation_fixture()
+  observed <- wgcna_group_aggregate_endpoint(
+    dat, "microglia", "module", "m1", "endpoint"
+  )
+  animal <- observed$animal_spatial_values
+  a1 <- animal[animal$AnimalID == "A1", , drop = FALSE]
+  a2 <- animal[animal$AnimalID == "A2", , drop = FALSE]
+  testthat::expect_equal(a1$eigengene, 5.5)
+  testthat::expect_equal(a1$n_hemispheres_observed, 2L)
+  testthat::expect_identical(
+    a1$hemisphere_completeness_status, "complete_bilateral_pair"
+  )
+  testthat::expect_equal(a2$eigengene, 4)
+  testthat::expect_equal(a2$n_hemispheres_observed, 1L)
+  testthat::expect_identical(
+    a2$hemisphere_completeness_status,
+    "one_sided_observed_no_imputation"
+  )
+  testthat::expect_true(all(grepl(
+    "^[0-9a-f]{64}$", animal$aggregated_row_sha256
+  )))
+
+  reordered <- wgcna_group_aggregate_endpoint(
+    dat[c(4, 2, 1, 3), ], "microglia", "module", "m1", "endpoint"
+  )$animal_spatial_values
+  testthat::expect_identical(
+    animal$aggregated_row_sha256, reordered$aggregated_row_sha256
+  )
+  changed <- dat
+  changed$endpoint[changed$Sample == "A1_L_2"] <- 3
+  changed_hash <- wgcna_group_aggregate_endpoint(
+    changed, "microglia", "module", "m1", "endpoint"
+  )$animal_spatial_values$aggregated_row_sha256
+  testthat::expect_false(identical(
+    animal$aggregated_row_sha256, changed_hash
+  ))
+})
+
+testthat::test_that("unequal technical counts cannot weight a hemisphere", {
+  dat <- aggregation_fixture()
+  extra <- dat[dat$Sample == "A1_L_1", , drop = FALSE]
+  extra$Sample <- "A1_L_3"
+  extra$endpoint <- 1
+  dat <- dplyr::bind_rows(dat, extra)
+  observed <- wgcna_group_aggregate_endpoint(
+    dat, "microglia", "module", "m1", "endpoint"
+  )
+  a1 <- observed$animal_spatial_values[
+    observed$animal_spatial_values$AnimalID == "A1", , drop = FALSE
+  ]
+  testthat::expect_equal(a1$eigengene, 5.5)
+  testthat::expect_identical(
+    a1$duplicate_source_row_status,
+    "technical_duplicates_collapsed_within_hemisphere"
+  )
+})
+
+testthat::test_that("ambiguous aggregation inputs fail closed", {
+  dat <- aggregation_fixture()
+  ambiguous <- dplyr::bind_rows(dat, dat[1, , drop = FALSE])
+  ambiguous$endpoint[nrow(ambiguous)] <- 99
+  testthat::expect_error(
+    wgcna_group_aggregate_endpoint(
+      ambiguous, "microglia", "module", "m1", "endpoint"
+    ),
+    "Duplicate source-sample ambiguity"
+  )
+  unresolved <- dat
+  unresolved$Hemisphere[[1]] <- NA_character_
+  testthat::expect_error(
+    wgcna_group_aggregate_endpoint(
+      unresolved, "microglia", "module", "m1", "endpoint"
+    ),
+    "unresolved hemisphere"
+  )
 })
 
 testthat::test_that("interaction omnibus is a nested ML comparison on identical rows", {
@@ -343,6 +516,27 @@ testthat::test_that("interaction omnibus is a nested ML comparison on identical 
   testthat::expect_true(is.finite(
     observed$primary$likelihood_ratio_p_value
   ))
+  required_reduced_full <- c(
+    "formula", "row_hash", "fixed_effect_rank", "fixed_effect_columns",
+    "optimizer_code", "optimizer_messages", "convergence_status",
+    "convergence_warnings", "random_effect_structure",
+    "random_intercept_variance", "residual_variance", "variance_ratio",
+    "ICC", "is_singular_lme4", "boundary_by_variance_ratio",
+    "singularity_class", "model_stability_status",
+    "diagnostic_review_required"
+  )
+  testthat::expect_true(all(paste0(
+    "reduced_", required_reduced_full
+  ) %in% names(observed$primary)))
+  testthat::expect_true(all(paste0(
+    "full_", required_reduced_full
+  ) %in% names(observed$primary)))
+  testthat::expect_false(is.na(
+    observed$primary$reduced_model_stability_status
+  ))
+  testthat::expect_false(is.na(
+    observed$primary$full_model_stability_status
+  ))
 })
 
 testthat::test_that("consumer scan is deterministic and excludes nonactive roots", {
@@ -350,7 +544,18 @@ testthat::test_that("consumer scan is deterministic and excludes nonactive roots
   second <- wgcna_group_scan_downstream_consumers()
   testthat::expect_identical(first, second)
   testthat::expect_true(all(first$migration_required))
-  testthat::expect_true(all(first$blocking_for_execution))
+  testthat::expect_identical(
+    first$blocking_for_execution, first$runtime_execution_consumer
+  )
+  testthat::expect_identical(
+    first$phase3_runtime_migration_required,
+    first$runtime_execution_consumer
+  )
+  testthat::expect_true(all(first$consumer_kind %in% c(
+    "runtime_stage", "runtime_helper", "pipeline_registry",
+    "schema", "test", "other_source"
+  )))
+  testthat::expect_true(all(is.finite(first$line_number)))
   testthat::expect_true(all(
     first$enforcement_status == "advisory_not_runtime_enforced"
   ))
@@ -422,16 +627,20 @@ testthat::test_that("consumer audit exhaustively matches deterministic local sca
     source_lines <- readLines(files[[i]], warn = FALSE, encoding = "UTF-8")
     for (j in seq_len(nrow(tokens))) {
       if (any(grepl(tokens$scan_token[[j]], source_lines, perl = TRUE))) {
-        expected <- c(
-          expected,
-          paste(relative[[i]], tokens$consumed_column[[j]], sep = "||")
+        hit_lines <- grep(
+          tokens$scan_token[[j]], source_lines, perl = TRUE
         )
+        expected <- c(expected, paste(
+          relative[[i]], tokens$consumed_column[[j]], hit_lines,
+          sep = "||"
+        ))
       }
     }
   }
   observed <- wgcna_group_scan_downstream_consumers()
   observed_keys <- paste(
-    observed$consumer_script, observed$consumed_column, sep = "||"
+    observed$consumer_script, observed$consumed_column,
+    observed$line_number, sep = "||"
   )
   testthat::expect_setequal(observed_keys, expected)
 })
@@ -459,4 +668,61 @@ testthat::test_that("Stage 05 status separates completion from readiness", {
   testthat::expect_true(status$downstream_migration_required)
   testthat::expect_true(status$should_block_execution)
   testthat::expect_match(status$source_hashes, "wgcna_group_effects_utils")
+  entries <- strsplit(status$source_hashes, ";", fixed = TRUE)[[1]]
+  paths <- sub("=[0-9a-f]{64}$", "", entries)
+  testthat::expect_identical(paths, sort(paths))
+  testthat::expect_true(all(grepl(
+    "^[^=]+=[0-9a-f]{64}$", entries
+  )))
+})
+
+testthat::test_that("Stage 05 source hashes cannot omit a direct dependency", {
+  required <- wgcna_group_stage05_source_dependencies(
+    path_processed(
+      "06_modules_WGCNA", "01_WGCNA", "microglia",
+      "wgcna_final_model_state.rds"
+    ),
+    wgcna_group_contract_paths("microglia")
+  )
+  relative_required <- vapply(required, relative_to, character(1))
+  expected_code_and_schemas <- c(
+    "06_modules_WGCNA/05_module_supermodule_group_effects.r",
+    "R/paths.R", "R/dataset_config.R", "R/dataset_inputs.R",
+    "R/module_contracts.R", "R/wgcna_downstream_utils.R",
+    "R/wgcna_identity_contract_utils.R",
+    "R/wgcna_group_effects_utils.R",
+    "inst/schemas/module_group_effects.yml",
+    "inst/schemas/supermodule_group_effects.yml",
+    "inst/schemas/wgcna_group_effect_model_validation.yml",
+    "inst/schemas/wgcna_group_effect_animal_spatial_unit_values.yml",
+    "inst/schemas/wgcna_group_effect_hemisphere_values.yml",
+    paste0(
+      "inst/schemas/",
+      "wgcna_group_effect_downstream_consumer_migration_audit.yml"
+    ),
+    "inst/schemas/wgcna_group_effect_contract_status.yml"
+  )
+  testthat::expect_true(all(
+    expected_code_and_schemas %in% relative_required
+  ))
+  testthat::expect_true(all(c(
+    "WGCNA_entity_identity_contract.csv",
+    "WGCNA_module_supermodule_membership_contract.csv",
+    "WGCNA_identity_contract_status.csv",
+    "wgcna_final_model_state.rds"
+  ) %in% basename(required)))
+  testthat::expect_silent(
+    wgcna_group_assert_stage05_source_dependencies(required, required)
+  )
+  omitted <- required[
+    !grepl("R/wgcna_downstream_utils[.]R$", gsub("\\\\", "/", required))
+  ]
+  testthat::expect_error(
+    wgcna_group_contract_status(
+      "microglia", omitted,
+      canonical_primary_outputs_complete = TRUE,
+      required_source_paths = required
+    ),
+    "omits direct dependencies"
+  )
 })

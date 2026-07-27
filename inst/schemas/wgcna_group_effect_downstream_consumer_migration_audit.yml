@@ -2,12 +2,18 @@ name: wgcna_group_effect_downstream_consumer_migration_audit
 required_columns:
   - consumer_script
   - consumed_file
+  - legacy_token
+  - line_number
   - consumed_column
   - current_semantics
   - required_new_column
   - migration_required
   - blocking_for_execution
   - proposed_phase3_action
+  - consumer_kind
+  - runtime_execution_consumer
+  - phase3_runtime_migration_required
+  - audit_record_role
   - should_block_execution
   - enforcement_status
   - scan_line_numbers
@@ -16,14 +22,20 @@ required_columns:
 columns:
   consumer_script: {type: character}
   consumed_file: {type: character}
+  legacy_token: {type: character}
+  line_number: {type: integer}
   consumed_column: {type: character}
   current_semantics: {type: character}
   required_new_column: {type: character}
   migration_required: {type: logical}
   blocking_for_execution: {type: logical}
   proposed_phase3_action: {type: character}
+  consumer_kind: {type: character, allowed_values: [runtime_stage, runtime_helper, pipeline_registry, schema, test, other_source]}
+  runtime_execution_consumer: {type: logical}
+  phase3_runtime_migration_required: {type: logical}
+  audit_record_role: {type: character, allowed_values: [runtime_phase3_migration, pipeline_registry_contract_update, schema_test_contract_update, nonruntime_support_reference]}
   should_block_execution: {type: logical}
   enforcement_status: {type: character, allowed_values: [advisory_not_runtime_enforced]}
-  scan_line_numbers: {type: character}
+  scan_line_numbers: {type: any}
   scan_included_path_rules: {type: character}
   scan_excluded_path_rules: {type: character}

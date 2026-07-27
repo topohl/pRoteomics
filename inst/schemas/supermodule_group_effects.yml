@@ -32,6 +32,50 @@ required_columns:
   - fallback_type
   - rank_deficient_model
   - singular_model
+  - variance_ratio
+  - ICC
+  - is_singular_lme4
+  - boundary_by_variance_ratio
+  - boundary_variance_ratio_tolerance
+  - lme4_singularity_tolerance
+  - singularity_diagnostic_status
+  - diagnostic_review_required
+  - reduced_formula
+  - reduced_row_hash
+  - reduced_fixed_effect_rank
+  - reduced_fixed_effect_columns
+  - reduced_optimizer_code
+  - reduced_optimizer_messages
+  - reduced_convergence_status
+  - reduced_convergence_warnings
+  - reduced_random_effect_structure
+  - reduced_random_intercept_variance
+  - reduced_residual_variance
+  - reduced_variance_ratio
+  - reduced_ICC
+  - reduced_is_singular_lme4
+  - reduced_boundary_by_variance_ratio
+  - reduced_singularity_class
+  - reduced_model_stability_status
+  - reduced_diagnostic_review_required
+  - full_formula
+  - full_row_hash
+  - full_fixed_effect_rank
+  - full_fixed_effect_columns
+  - full_optimizer_code
+  - full_optimizer_messages
+  - full_convergence_status
+  - full_convergence_warnings
+  - full_random_effect_structure
+  - full_random_intercept_variance
+  - full_residual_variance
+  - full_variance_ratio
+  - full_ICC
+  - full_is_singular_lme4
+  - full_boundary_by_variance_ratio
+  - full_singularity_class
+  - full_model_stability_status
+  - full_diagnostic_review_required
   - emmeans_success
   - animal_random_effect_used
   - biological_replicate_unit
@@ -75,6 +119,50 @@ columns:
   fallback_type: {type: character}
   rank_deficient_model: {type: logical}
   singular_model: {type: logical}
+  variance_ratio: {type: numeric}
+  ICC: {type: numeric, range: {min: 0, max: 1}}
+  is_singular_lme4: {type: logical}
+  boundary_by_variance_ratio: {type: logical}
+  boundary_variance_ratio_tolerance: {type: numeric}
+  lme4_singularity_tolerance: {type: numeric}
+  singularity_diagnostic_status: {type: character, allowed_values: [concordant_boundary, concordant_nonboundary, variance_ratio_boundary_only, lme4_singular_only, not_applicable_lm]}
+  diagnostic_review_required: {type: logical}
+  reduced_formula: {type: character}
+  reduced_row_hash: {type: character}
+  reduced_fixed_effect_rank: {type: integer}
+  reduced_fixed_effect_columns: {type: integer}
+  reduced_optimizer_code: {type: any}
+  reduced_optimizer_messages: {type: character}
+  reduced_convergence_status: {type: character}
+  reduced_convergence_warnings: {type: character}
+  reduced_random_effect_structure: {type: character}
+  reduced_random_intercept_variance: {type: numeric}
+  reduced_residual_variance: {type: numeric}
+  reduced_variance_ratio: {type: numeric}
+  reduced_ICC: {type: numeric, range: {min: 0, max: 1}}
+  reduced_is_singular_lme4: {type: logical}
+  reduced_boundary_by_variance_ratio: {type: logical}
+  reduced_singularity_class: {type: character}
+  reduced_model_stability_status: {type: character}
+  reduced_diagnostic_review_required: {type: logical}
+  full_formula: {type: character}
+  full_row_hash: {type: character}
+  full_fixed_effect_rank: {type: integer}
+  full_fixed_effect_columns: {type: integer}
+  full_optimizer_code: {type: any}
+  full_optimizer_messages: {type: character}
+  full_convergence_status: {type: character}
+  full_convergence_warnings: {type: character}
+  full_random_effect_structure: {type: character}
+  full_random_intercept_variance: {type: numeric}
+  full_residual_variance: {type: numeric}
+  full_variance_ratio: {type: numeric}
+  full_ICC: {type: numeric, range: {min: 0, max: 1}}
+  full_is_singular_lme4: {type: logical}
+  full_boundary_by_variance_ratio: {type: logical}
+  full_singularity_class: {type: character}
+  full_model_stability_status: {type: character}
+  full_diagnostic_review_required: {type: logical}
   emmeans_success: {type: logical}
   animal_random_effect_used: {type: logical}
   biological_replicate_unit: {type: character}

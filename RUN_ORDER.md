@@ -53,6 +53,11 @@ Rscript run_dataset_pipeline.R --dataset all --stage export --dry-run
 
 Direct script commands:
 
+Stage 05 Phase 2B production is the current execution boundary. Its dry-run
+reports `Downstream compatibility: FALSE` and `BLOCKED BY CONTRACT; NOT
+RUNTIME-ENFORCED`. Do not execute the Stage 06+ commands below until the
+atomic Phase 3 consumer migration is complete.
+
 ```bash
 Rscript 01_preprocessing/03_gct_extractR.r --dataset <dataset> --dry-run
 Rscript 01_preprocessing/06_merged_metadata_module_score.r --dataset <dataset> --dry-run
