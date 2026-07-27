@@ -235,26 +235,44 @@ testthat::test_that("named contrasts are level-order invariant and absent groups
   testthat::expect_identical(names(absent), "SUS - CON")
 })
 
-testthat::test_that("generated primary tables contain only valid finite contrasts", {
+testthat::test_that("generated canonical tables contain only valid finite tests", {
   for (dataset in group_test_datasets) {
     module <- read_group_output(dataset, "module_group_effects.csv")
     supermodule <- read_group_output(dataset, "supermodule_group_effects.csv")
     primary <- dplyr::bind_rows(module, supermodule)
     testthat::expect_gt(nrow(primary), 0L)
     testthat::expect_true(all(primary$claim_allowed_model), info = dataset)
-    testthat::expect_true(all(primary$primary_model_stable), info = dataset)
+    testthat::expect_true(
+      all(primary$model_valid_for_inference), info = dataset
+    )
+    testthat::expect_true(all(
+      primary$model_stability_status %in% c(
+        "stable_mixed_model", "boundary_random_intercept_zero",
+        "stable_animal_level_lm"
+      )
+    ), info = dataset)
     testthat::expect_false(any(primary$fallback_used), info = dataset)
-    testthat::expect_true(all(is.finite(primary$estimate)), info = dataset)
-    testthat::expect_true(all(is.finite(primary$SE)), info = dataset)
+    named <- primary$test_type == "named_contrast"
+    omnibus <- primary$test_type == "interaction_omnibus"
+    testthat::expect_true(
+      all(is.finite(primary$estimate[named])), info = dataset
+    )
+    testthat::expect_true(all(is.finite(primary$SE[named])), info = dataset)
     testthat::expect_true(all(is.finite(primary$statistic)), info = dataset)
     testthat::expect_true(all(is.finite(primary$p_value)), info = dataset)
     testthat::expect_true(all(
+      primary$identical_rows_verified[omnibus] %in% TRUE
+    ), info = dataset)
+    testthat::expect_true(all(
       primary$min_unique_animals_compared_group >= 3L
+    ), info = dataset)
+    testthat::expect_true(all(
+      primary$manuscript_claim_ready == "not_assessed_stage05"
     ), info = dataset)
   }
 })
 
-testthat::test_that("primary endpoint keys and FDR families are exact", {
+testthat::test_that("Phase 2B endpoint keys and FDR families are exact", {
   for (dataset in group_test_datasets) {
     primary <- dplyr::bind_rows(
       read_group_output(dataset, "module_group_effects.csv"),
@@ -265,27 +283,46 @@ testthat::test_that("primary endpoint keys and FDR families are exact", {
       "spatial_unit", "contrast"
     )]
     testthat::expect_false(anyDuplicated(keys) > 0L, info = dataset)
-    for (level in unique(primary$level)) {
-      rows <- primary[primary$level == level, , drop = FALSE]
-      testthat::expect_true(all(
-        rows$n_tests_FDR_within_dataset_level == nrow(rows)
-      ), info = paste(dataset, level))
-    }
+    aliases <- primary$hypothesis_level == "compatibility_alias"
+    independent <- !aliases
+    primary_global <- independent &
+      primary$analysis_tier == "primary_wgcna_global"
+    contextual <- independent &
+      primary$analysis_tier == "secondary_contextual_global"
     testthat::expect_true(all(
-      primary$n_tests_FDR_dataset_all_levels == nrow(primary)
+      primary$contrast[primary_global] == "SUS - RES"
     ), info = dataset)
-    testthat::expect_identical(
-      primary$FDR_global, primary$FDR_dataset_all_levels
+    testthat::expect_true(all(is.finite(
+      primary$FDR_primary_global[primary_global]
+    )), info = dataset)
+    testthat::expect_true(all(is.na(
+      primary$FDR_secondary_global[primary_global]
+    )), info = dataset)
+    testthat::expect_true(all(
+      primary$contrast[contextual] %in% c("RES - CON", "SUS - CON")
+    ), info = dataset)
+    testthat::expect_true(all(is.na(
+      primary$FDR_primary_global[contextual]
+    )), info = dataset)
+    testthat::expect_true(all(is.finite(
+      primary$FDR_secondary_global[contextual]
+    )), info = dataset)
+    testthat::expect_true(all(vapply(
+      c(
+        "FDR_primary_global", "FDR_secondary_global",
+        "FDR_interaction_omnibus", "FDR_local_exploratory",
+        "FDR_conservative_all_tests", "FDR_global"
+      ),
+      function(nm) all(is.na(primary[[nm]][aliases])),
+      logical(1)
+    )), info = dataset)
+    conservative <- independent &
+      is.finite(primary$FDR_conservative_all_tests)
+    testthat::expect_equal(
+      primary$FDR_global[conservative],
+      primary$FDR_conservative_all_tests[conservative],
+      tolerance = 0, info = dataset
     )
-    probabilities <- unlist(primary[c(
-      "p_value", "FDR_within_dataset_level",
-      "FDR_dataset_all_levels", "FDR_global"
-    )], use.names = FALSE)
-    testthat::expect_true(all(is.finite(probabilities)), info = dataset)
-    testthat::expect_true(all(probabilities >= 0 & probabilities <= 1))
-    testthat::expect_true(any(
-      primary$p_value >= 0.05 & primary$claim_allowed_model
-    ), info = dataset)
   }
 })
 
@@ -305,7 +342,8 @@ testthat::test_that("invalid attempts remain outside primary inference", {
                          drop = FALSE]
     testthat::expect_true(all(failed$n_contrasts_emitted == 0L), info = dataset)
     testthat::expect_false(any(
-      primary$evidence_status %in% c("robust_FDR", "suggestive_FDR10") &
+      primary$statistical_support_status %in%
+        c("FDR_supported", "suggestive_FDR10") &
         !primary$claim_allowed_model
     ), info = dataset)
   }

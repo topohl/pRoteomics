@@ -83,10 +83,10 @@ audit and does not make scientific inferences. Stage 13 is the canonical,
 non-circular claim-readiness handoff for manuscript/global consumers.
 Stage 13 retains all stable technical identities, but singleton supermodule
 IDs are compatibility aliases for their one member module and cannot form
-separate manuscript claims. Its group-effect endpoint is exactly `SUS - RES`
-at `spatial_adjusted_global` / `global_spatial_adjusted`; claim status uses the
-unchanged Stage 05 `FDR_global`, while both FDR scopes and model/source
-provenance remain available.
+separate manuscript claims. Phase 2B changes the Stage 05 statistical contract,
+so Stage 13 and every other downstream consumer remain on their prior semantics
+until the atomic Phase 3 migration. Do not run those consumers against Phase 2B
+outputs.
 
 `05_module_supermodule_group_effects.r` is the Phase 2 quantitative boundary.
 It requires a publishable Phase 1 identity contract and treats that contract as
@@ -111,19 +111,39 @@ Use evidence in this order:
 3. DE/GSEA overlap support from `04_wgcna_de_gsea_overlap.r`
 4. Descriptive module-trait and condition heatmaps from `01_WGCNA.r`
 
-The canonical group-effect tables contain successful, finite, estimable
-primary contrasts only. Repeated samples require
-`lmerTest::lmer(..., REML = FALSE)` with `(1 | AnimalID)`; scopes with exactly
-one observation per animal may use `lm`. Failed, singular, rank-deficient,
-non-converged, or non-estimable attempts are recorded in
-`WGCNA_group_effect_model_validation.csv` and never enter the primary tables or
-FDR families. No t-test fallback is produced.
+Stage 05 averages available left/right endpoint values within each
+animal-spatial-unit before inference. The prespecified primary endpoint is
+`SUS - RES` at `spatial_adjusted_global` /
+`global_spatial_adjusted`, fitted with ML as
+`eigengene ~ StressGroup + SpatialUnit + (1 | AnimalID)`. Modules and
+higher-order multimodule supermodules have separate primary BH families.
+Contextual global `RES - CON` and `SUS - CON` rows have contrast-specific
+secondary BH families and never enter the primary family. Local contrasts use
+exploratory localization families. Spatial heterogeneity is represented by one
+nested-ML likelihood-ratio omnibus test per independent endpoint; conditional
+contrasts are separate exploratory follow-ups.
 
-Publication requires `--level both`. `FDR_within_dataset_level` is BH over all
-claim-allowed primary rows within `dataset + level`.
-`FDR_dataset_all_levels` is BH over all claim-allowed module and supermodule
-rows in the dataset. `FDR_global` is retained as an exact compatibility alias
-of `FDR_dataset_all_levels`; it is not cross-dataset global FDR.
+A converged, full-rank, finite single-`AnimalID`-intercept fit whose random
+intercept variance is at the boundary remains valid with
+`model_stability_status = boundary_random_intercept_zero`,
+`primary_model_stable = FALSE`, and an explicit warning. Rank deficiency,
+optimizer or non-boundary convergence failure, non-estimability, nonfinite
+results, sample-contract failure, and singular complex random structures are
+invalid. No t-test fallback is produced.
+
+`FDR_primary_global`, `FDR_secondary_global`,
+`FDR_interaction_omnibus`, and `FDR_local_exploratory` encode the prespecified
+biological families. `FDR_conservative_all_tests` is a reviewer sensitivity
+across independent primary and secondary tests. Deprecated `FDR_global`, where
+present, is an exact alias of that conservative sensitivity and is not the
+claim gate. Singleton supermodule compatibility rows inherit the member-module
+statistics and diagnostics but all FDR fields are `NA`.
+
+Stage 05 establishes model validity, statistical support, and hypothesis
+independence only. Every row has
+`manuscript_claim_ready = not_assessed_stage05`; the status output separately
+records `stage05_output_status = phase2b_statistical_outputs_complete` and
+`publication_status = not_assessed_stage05`.
 
 Main outputs:
 
@@ -132,14 +152,21 @@ Main outputs:
 - `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_endpoint_provenance.csv`
 - `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_model_validation.csv`
 - `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_sample_inclusion_audit.csv`
+- `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_animal_spatial_unit_values.csv`
+- `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_interaction_conditional_followup.csv`
+- `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_sensitivity.csv`
+- `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_left_right_concordance.csv`
+- `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_downstream_consumer_migration_audit.csv`
+- `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_contract_status.csv`
 - `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_legacy_output_staleness_audit.csv`
-- `results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_supermodule_group_effects_interpretable.csv`
-- `results/tables/06_modules_WGCNA/interpretable_summary/all/WGCNA_cross_dataset_supermodule_program_summary.csv`
 
-Phase 2 does not regenerate Stage 05 figures, label outputs, marker-trait
+Phase 2B does not regenerate Stage 05 figures, label outputs, marker-trait
 correlations, selected interpretations, or Stage 06-13 products. Those
 existing files are preserved and enumerated by hash as stale auxiliary outputs
-until the Phase 3 consumer migration.
+until the Phase 3 consumer migration. The contract status deliberately reports
+`downstream_compatible = FALSE`, `downstream_contract_status =
+phase3_migration_required`, and `should_block_execution = TRUE`. This is an
+advisory contract, not an enforced runtime block.
 
 ## Supermodule Annotation
 

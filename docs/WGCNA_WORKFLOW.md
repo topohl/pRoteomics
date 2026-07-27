@@ -123,7 +123,8 @@ Safe to rerun: yes.
 
 Role: group-effect modelling.
 
-This Phase 2 script requires a publishable Phase 1 identity contract and uses
+This Phase 2B statistical-production script requires a publishable Phase 1
+identity contract and uses
 it as the sole module/supermodule identity and membership authority. It builds
 an exact one-to-one bridge from canonical modules to frozen-state eigengene
 columns, reconstructs canonical supermodule endpoints with the tested
@@ -131,10 +132,25 @@ columns, reconstructs canonical supermodule endpoints with the tested
 endpoint, PCA-orientation, model, contrast, and FDR provenance.
 
 Neuron soma and microglia use Region as the spatial unit. Neuron neuropil uses
-the observed Region-Layer unit; no generic layer main effect is fitted.
-Repeated samples require an AnimalID random intercept. Failed or diagnostic
-attempts never appear in the primary statistical tables, and Stage 05 does not
-silently downgrade mixed models or emmeans contrasts to `lm` or t-tests.
+the observed Region-Layer unit; no generic layer main effect is fitted. Stage
+05 first forms bilateral animal-spatial-unit means without imputing a missing
+hemisphere. The primary `SUS - RES` global model is fitted with
+`lmerTest::lmer(..., REML = FALSE)` and contrasted with `emmeans`.
+
+The `SUS - RES` primary rows use separate module and higher-order-multimodule
+BH families. Contextual global families contain only `RES - CON` or
+`SUS - CON`; a row cannot have both primary and secondary global FDR. Spatial
+interaction is one reduced-versus-full nested ML likelihood-ratio test per
+independent endpoint. Local contrasts are exploratory localization tests.
+`FDR_conservative_all_tests` is reviewer sensitivity only, and deprecated
+`FDR_global` is its exact alias where populated.
+
+A zero-variance boundary fit is valid when the sole random structure is
+`(1 | AnimalID)` and all fixed-rank, optimizer, convergence, finiteness, and
+estimability requirements pass. It remains cautioned and is not a stable mixed
+model. Other singular structures and failed diagnostics are invalid. Singleton
+supermodules are copied compatibility aliases, not refitted hypotheses; their
+statistics and diagnostics are inherited and every FDR field is `NA`.
 
 Run:
 
@@ -150,20 +166,29 @@ Inspect:
 - `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_endpoint_provenance.csv`
 - `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_model_validation.csv`
 - `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_sample_inclusion_audit.csv`
+- `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_animal_spatial_unit_values.csv`
+- `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_interaction_conditional_followup.csv`
+- `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_sensitivity.csv`
+- `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_left_right_concordance.csv`
+- `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_downstream_consumer_migration_audit.csv`
+- `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_contract_status.csv`
 - `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_legacy_output_staleness_audit.csv`
 
-Canonical publication is atomic and requires `--level both` so the
-dataset-wide FDR family cannot change with a partial run.
-`FDR_within_dataset_level` is BH within dataset and level;
-`FDR_dataset_all_levels` is BH across both levels within a dataset.
-`FDR_global` is the exact compatibility alias of the latter and is not a
-cross-dataset adjustment.
+Canonical Stage 05 production is atomic and requires `--level both`.
+`stage05_output_status = phase2b_statistical_outputs_complete` is distinct from
+`publication_status = not_assessed_stage05` and
+`manuscript_claim_ready = not_assessed_stage05`.
 
-Phase 2 intentionally leaves legacy Stage 05 figures, brackets, heatmaps,
-selected interpretations, biological labels, and Stage 06-13 products
-unchanged. Downstream migration is a separate phase.
+Phase 2B leaves legacy Stage 05 figures, brackets, heatmaps, selected
+interpretations, biological labels, and Stage 06-13 products unchanged. The
+deterministic migration audit scans active local source/schema paths and
+records its include/exclude rules. The status reports
+`downstream_compatible = FALSE`,
+`downstream_contract_status = phase3_migration_required`, and
+`should_block_execution = TRUE`. This is advisory rather than pipeline-runner
+enforcement. Stage 06+ must not be run before the atomic Phase 3 migration.
 
-Safe to rerun: yes, after the identity contract is publishable.
+Safe to rerun: Stage 05 only, after the identity contract is publishable.
 
 ### 06_annotate_module_microenvironment.r
 

@@ -1,0 +1,25 @@
+name: wgcna_group_effect_contract_status
+required_columns:
+  - dataset
+  - stage05_contract_version
+  - stage05_output_status
+  - publication_status
+  - downstream_compatible
+  - downstream_contract_status
+  - downstream_migration_required
+  - should_block_execution
+  - canonical_primary_outputs_complete
+  - generated_at
+  - source_hashes
+columns:
+  dataset: {type: character, allowed_values: [neuron_neuropil, neuron_soma, microglia]}
+  stage05_contract_version: {type: character, allowed_values: [wgcna_group_effects_phase2b_v3]}
+  stage05_output_status: {type: character, allowed_values: [phase2b_statistical_outputs_complete]}
+  publication_status: {type: character, allowed_values: [not_assessed_stage05]}
+  downstream_compatible: {type: logical}
+  downstream_contract_status: {type: character, allowed_values: [phase3_migration_required]}
+  downstream_migration_required: {type: logical}
+  should_block_execution: {type: logical}
+  canonical_primary_outputs_complete: {type: logical}
+  generated_at: {type: character}
+  source_hashes: {type: character}
