@@ -114,7 +114,10 @@ Use evidence in this order:
 Stage 05 first averages technical source rows within each hemisphere, then
 gives the one or two observed hemispheres equal weight within each
 animal-spatial-unit without imputation. It exports both hemisphere provenance
-and a canonical `aggregated_row_sha256` content hash. The prespecified primary endpoint is
+and a canonical `aggregated_row_sha256` content hash. Under the
+`sha256_utf8_lf_v1` hash contract, fields are encoded as UTF-8, separated by
+literal LF bytes, terminated by one final LF byte, and hashed without BOM or
+native text-mode translation. The prespecified primary endpoint is
 `SUS - RES` at `spatial_adjusted_global` /
 `global_spatial_adjusted`, fitted with ML as
 `eigengene ~ StressGroup + SpatialUnit + (1 | AnimalID)`. Modules and
@@ -124,6 +127,14 @@ secondary BH families and never enter the primary family. Local contrasts use
 exploratory localization families. Spatial heterogeneity is represented by one
 nested-ML likelihood-ratio omnibus test per independent endpoint; conditional
 contrasts are separate exploratory follow-ups.
+
+`model_diagnostic_scope` makes the interpretation of top-level diagnostics
+explicit. Ordinary named contrasts use `single_fitted_model`. Interaction
+omnibus rows use `composite_reduced_full`: their validity and stability are
+deterministic composite properties, their top-level raw single-fit variance
+fields are typed `NA`, and all numerical diagnostics remain in `reduced_*` and
+`full_*`. Conditional interaction follow-ups use `full_interaction_model`, so
+their top-level diagnostics describe the full interaction model.
 
 A converged, full-rank, finite single-`AnimalID`-intercept fit whose variance
 ratio (`random_intercept_variance / residual_variance`) is at or below `1e-4`

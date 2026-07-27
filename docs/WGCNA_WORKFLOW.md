@@ -148,6 +148,17 @@ independent endpoint. Local contrasts are exploratory localization tests.
 `FDR_conservative_all_tests` is reviewer sensitivity only, and deprecated
 `FDR_global` is its exact alias where populated.
 
+Stage 05 v5 exports a controlled `model_diagnostic_scope`. Named global/local
+contrasts use `single_fitted_model`; conditional interaction follow-ups use
+`full_interaction_model`; omnibus rows use `composite_reduced_full`. Omnibus
+top-level validity and stability are deterministic reduced/full composites,
+while the top-level raw single-fit variance fields are typed `NA`; the complete
+model-specific diagnostics remain in `reduced_*` and `full_*`.
+
+Animal-spatial-unit content hashes use the controlled
+`sha256_utf8_lf_v1` serialization: UTF-8 fields separated by literal LF bytes,
+one final LF byte, no BOM, and no native text-mode newline conversion.
+
 A boundary fit is valid when the sole random structure is `(1 | AnimalID)`,
 the random-intercept/residual variance ratio is at or below `1e-4`, and all
 fixed-rank, optimizer, convergence, finiteness, and estimability requirements

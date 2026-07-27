@@ -5,6 +5,7 @@ required_columns:
   - endpoint_id
   - effect_scope
   - model_valid_for_inference
+  - model_diagnostic_scope
   - model_stability_status
   - variance_ratio
   - ICC
@@ -14,6 +15,7 @@ required_columns:
   - lme4_singularity_tolerance
   - singularity_diagnostic_status
   - diagnostic_review_required
+  - singularity_class
   - reduced_formula
   - reduced_row_hash
   - reduced_fixed_effect_rank
@@ -60,6 +62,7 @@ columns:
   endpoint_id: {type: character}
   effect_scope: {type: character}
   model_valid_for_inference: {type: logical}
+  model_diagnostic_scope: {type: character, allowed_values: [single_fitted_model, composite_reduced_full, full_interaction_model]}
   model_stability_status: {type: character, allowed_values: [stable_mixed_model, boundary_random_intercept_zero, stable_animal_level_lm, invalid]}
   variance_ratio: {type: numeric}
   ICC: {type: numeric, range: {min: 0, max: 1}}
@@ -69,6 +72,7 @@ columns:
   lme4_singularity_tolerance: {type: numeric}
   singularity_diagnostic_status: {type: character, allowed_values: [concordant_boundary, concordant_nonboundary, variance_ratio_boundary_only, lme4_singular_only, not_applicable_lm]}
   diagnostic_review_required: {type: logical}
+  singularity_class: {type: character, allowed_values: [stable_single_animal_intercept, boundary_single_animal_intercept, not_applicable_lm, invalid_complex_or_unresolved_singularity, not_boundary_classified, invalid_random_effect_structure_or_variance, not_classified_invalid, composite_reduced_full_stable, composite_reduced_full_boundary, composite_reduced_full_diagnostic_review, invalid_composite_reduced_full]}
   reduced_formula: {type: character}
   reduced_row_hash: {type: character}
   reduced_fixed_effect_rank: {type: integer}
