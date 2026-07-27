@@ -21,6 +21,8 @@
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
 source(repo_path("R", "wgcna_downstream_utils.R"))
+source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
+source(repo_path("R", "wgcna_stage07_semantic_utils.R"))
 source(repo_path("R", "wgcna_labeling_utils.R"))
 source(repo_path("R", "wgcna_reviewed_label_registry.R"))
 source(repo_path("R", "module_contracts.R"))
@@ -360,51 +362,8 @@ add_short_supermodule_labels <- function(df) {
   df
 }
 
-effect_sentence <- function(row, level = "supermodule") {
-  row_get <- function(name, default = NA) {
-    if (name %in% names(row)) row[[name]][[1]] else default
-  }
-
-  ds_label <- dataset_label(row$dataset)
-  id <- if (level == "supermodule") row_get("supermodule_id") else row_get("module_id")
-  label <- if (level == "supermodule") {
-    row_get("Supermodule_DisplayLabel", row_get("Supermodule_FinalLabel", row_get("Macroprogram_Display", row_get("supermodule_label", row_get("supermodule_id")))))
-  } else {
-    row_get("module_label", row_get("ModuleID", row_get("module_id")))
-  }
-  cls <- row_get("dominant_microenvironment_class", row_get("microenvironment_class"))
-  estimate <- safe_num(row_get("estimate"))
-  direction <- ifelse(is.na(estimate), "is altered", ifelse(estimate > 0, "is higher", "is lower"))
-  spatial_unit <- row_get("spatial_unit")
-  spatial <- ifelse(
-    is.na(spatial_unit) || spatial_unit == "global_spatial_adjusted",
-    "after spatial adjustment",
-    paste0("in ", spatial_unit)
-  )
-  effect_scope <- row_get("effect_scope")
-  scope <- ifelse(!is.na(effect_scope), paste0(" (", effect_scope, ")"), "")
-  base <- paste(ds_label, level, id, "annotated as", label, direction, "for", row_get("contrast"), spatial, scope)
-  base <- gsub("[[:space:]]+\\(", " (", base)
-
-  if (row$dataset != "microglia" || is.na(cls)) return(paste0(base, "."))
-  if (cls == "microglia_supported") return(paste0(base, "; this ROI signal has microglia-supported ROI evidence."))
-  if (cls == "microglia_state_or_activation_supported") return(paste0(base, "; this ROI signal has microglia state/phagolysosomal support."))
-  if (cls == "shared_microenvironment") return(paste0(base, "; this ROI signal is shared local microenvironment signal, not purified microglial regulation."))
-  if (cls == "neuropil_sensitive") return(paste0(base, "; this ROI signal is neuropil-sensitive; do not interpret as purified microglial regulation."))
-  if (cls == "other_cellular_or_vascular_sensitive") return(paste0(base, "; this ROI signal shows other cellular/vascular marker support; interpret cautiously."))
-  paste0(base, "; microenvironment support is ambiguous.")
-}
-
-add_interpretation_sentences <- function(df, level) {
-  if (!nrow(df)) {
-    df$interpretation_sentence <- character()
-    return(df)
-  }
-  df$interpretation_sentence <- vapply(seq_len(nrow(df)), function(i) {
-    effect_sentence(df[i, , drop = FALSE], level)
-  }, character(1))
-  df
-}
+effect_sentence <- wgcna_stage07_effect_sentence
+add_interpretation_sentences <- wgcna_stage07_add_interpretation_sentences
 
 theme_clean <- function(base_size = 8) {
   ggplot2::theme_classic(base_size = base_size) +
@@ -507,40 +466,47 @@ scale_effect_fill <- function(limits = NULL, name = "Estimate") {
 }
 
 q_value_col <- function(df) {
-  n <- nrow(df)
-  dplyr::coalesce(
-    safe_num(col_or_na(df, "FDR_global")),
-    safe_num(col_or_na(df, "FDR_within_dataset_level")),
-    safe_num(col_or_na(df, "q_value")),
-    rep(NA_real_, n)
-  )
+  if (!"tier_specific_fdr" %in% names(df)) {
+    stop(
+      "Stage 07 plotting requires adapter-provided tier_specific_fdr.",
+      call. = FALSE
+    )
+  }
+  safe_num(df$tier_specific_fdr)
 }
 
-add_plot_metrics <- function(df, fdr_col = "FDR_global", p_col = "p_value") {
-  if (!fdr_col %in% names(df)) df[[fdr_col]] <- NA_real_
+add_plot_metrics <- function(df, p_col = "p_value") {
   if (!p_col %in% names(df)) df[[p_col]] <- NA_real_
   if (!"estimate" %in% names(df)) df$estimate <- NA_real_
   df$q_value <- q_value_col(df)
 
   df |>
     dplyr::mutate(
-      estimate = safe_num(.data$estimate),
-      p_value = safe_num(.data[[p_col]]),
-      FDR_global = safe_num(.data[[fdr_col]]),
-      neg_log10_FDR = -log10(clip_p(.data$FDR_global)),
-      neg_log10_P = -log10(clip_p(.data$p_value)),
+      neg_log10_FDR = dplyr::if_else(
+        is.na(.data$q_value),
+        NA_real_,
+        -log10(clip_p(.data$q_value))
+      ),
+      neg_log10_P = dplyr::if_else(
+        is.na(.data[[p_col]]),
+        NA_real_,
+        -log10(clip_p(.data[[p_col]]))
+      ),
       neg_log10_q = dplyr::if_else(is.na(.data$q_value), NA_real_, -log10(clip_p(.data$q_value))),
       sig_label = dplyr::case_when(
-        !is.na(.data$q_value) & .data$q_value < 0.01 ~ "***",
-        !is.na(.data$q_value) & .data$q_value < 0.05 ~ "**",
-        !is.na(.data$q_value) & .data$q_value < 0.10 ~ "*",
+        .data$statistical_support_status == "FDR_supported" &
+          !is.na(.data$q_value) & .data$q_value < 0.01 ~ "***",
+        .data$statistical_support_status == "FDR_supported" ~ "**",
+        .data$statistical_support_status == "suggestive_FDR10" ~ "*",
         TRUE ~ ""
       ),
       evidence_rank = dplyr::case_when(
-        .data$evidence_status == "robust_FDR" ~ 1L,
-        .data$evidence_status == "suggestive_FDR10" ~ 2L,
-        .data$evidence_status == "nominal_only" ~ 3L,
-        .data$evidence_status == "model_unstable" ~ 4L,
+        .data$statistical_support_status == "FDR_supported" ~ 1L,
+        .data$statistical_support_status == "suggestive_FDR10" ~ 2L,
+        .data$statistical_support_status == "nominal_exploratory" ~ 3L,
+        .data$statistical_support_status == "not_supported" ~ 4L,
+        .data$statistical_support_status ==
+          "inherited_from_canonical_entity" ~ 5L,
         TRUE ~ 5L
       )
     )
@@ -548,17 +514,28 @@ add_plot_metrics <- function(df, fdr_col = "FDR_global", p_col = "p_value") {
 
 main_effect_rows <- function(df) {
   if (!nrow(df)) return(df)
-  out <- df |> dplyr::filter(!is.na(.data$p_value))
-  if ("spatial_unit" %in% names(out) && any(out$spatial_unit == "global_spatial_adjusted", na.rm = TRUE)) {
-    out <- out |> dplyr::filter(.data$spatial_unit == "global_spatial_adjusted")
-  }
-  out
+  df |>
+    dplyr::filter(
+      .data$independent_hypothesis %in% TRUE,
+      .data$analysis_tier %in% c(
+        "primary_wgcna_global", "secondary_contextual_global"
+      ),
+      .data$effect_scope == "spatial_adjusted_global",
+      .data$spatial_unit == "global_spatial_adjusted",
+      .data$test_type == "named_contrast",
+      !is.na(.data$estimate)
+    )
 }
 
 spatial_effect_rows <- function(df) {
-  if (!nrow(df) || !"spatial_unit" %in% names(df)) return(df[0, , drop = FALSE])
+  if (!nrow(df)) return(df[0, , drop = FALSE])
   df |>
-    dplyr::filter(!is.na(.data$p_value), !is.na(.data$spatial_unit), .data$spatial_unit != "global_spatial_adjusted")
+    dplyr::filter(
+      .data$independent_hypothesis %in% TRUE,
+      .data$analysis_tier == "exploratory_spatial_localization",
+      .data$test_type != "conditional_interaction_followup",
+      !is.na(.data$estimate)
+    )
 }
 
 program_label_col <- function(df, level = "supermodule") {
@@ -573,6 +550,7 @@ program_label_col <- function(df, level = "supermodule") {
       col_or_na(df, "Supermodule_FinalLabel.y"),
       col_or_na(df, "Supermodule_FinalLabel.x"),
       col_or_na(df, "Macroprogram_Display"),
+      col_or_na(df, "interpretable_supermodule_label"),
       col_or_na(df, "supermodule_label_for_module"),
       col_or_na(df, "module_supermodule_label"),
       col_or_na(df, "supermodule_label"),
@@ -591,6 +569,7 @@ program_label_col <- function(df, level = "supermodule") {
       col_or_na(df, "Module_CleanPlotLabel"),
       col_or_na(df, "cleaned_biological_label"),
       col_or_na(df, "module_display_label"),
+      col_or_na(df, "interpretable_module_label"),
       col_or_na(df, "ModuleLabel_Final"),
       col_or_na(df, "module_label.y"),
       col_or_na(df, "module_label"),
@@ -820,7 +799,10 @@ plot_supermodule_main_heatmap <- function(super_join, paths, ds) {
   plot_df <- plot_df |>
     dplyr::mutate(
       contrast = factor(.data$contrast, levels = contrast_plot_levels()),
-      program_label = stats::reorder(.data$program_label, .data$estimate, FUN = function(z) max(abs(z), na.rm = TRUE))
+      program_label = factor(
+        .data$program_label,
+        levels = rev(sort(unique(as.character(.data$program_label))))
+      )
     )
   fill_limits <- effect_limits(plot_df$estimate)
 
@@ -856,12 +838,11 @@ plot_supermodule_spatial_heatmap <- function(super_join, paths, ds) {
       panel = paste(.data$contrast, .data$spatial_unit, sep = " | ")
     )
 
-  # Keep the spatial plot readable by showing strongest rows when the matrix is too large.
+  # Keep the spatial plot readable with deterministic identity-based selection.
   max_rows <- 45L
   keep_labels <- plot_df |>
-    dplyr::group_by(.data$program_label) |>
-    dplyr::summarise(rank_metric = min(.data$FDR_global, na.rm = TRUE), .groups = "drop") |>
-    dplyr::arrange(.data$rank_metric) |>
+    dplyr::distinct(.data$program_label) |>
+    dplyr::arrange(.data$program_label) |>
     dplyr::slice_head(n = max_rows) |>
     dplyr::pull(.data$program_label)
 
@@ -906,9 +887,8 @@ plot_module_main_heatmap <- function(module_join, paths, ds) {
 
   max_modules <- 45L
   keep_modules <- plot_df |>
-    dplyr::group_by(.data$module_label_plot) |>
-    dplyr::summarise(best_p = min(.data$p_value, na.rm = TRUE), best_abs_estimate = max(abs(.data$estimate), na.rm = TRUE), .groups = "drop") |>
-    dplyr::arrange(.data$best_p, dplyr::desc(.data$best_abs_estimate)) |>
+    dplyr::distinct(.data$module_label_plot) |>
+    dplyr::arrange(.data$module_label_plot) |>
     dplyr::slice_head(n = max_modules) |>
     dplyr::pull(.data$module_label_plot)
 
@@ -916,7 +896,10 @@ plot_module_main_heatmap <- function(module_join, paths, ds) {
     dplyr::filter(.data$module_label_plot %in% keep_modules) |>
     dplyr::mutate(
       contrast = factor(.data$contrast, levels = contrast_plot_levels()),
-      module_label_plot = stats::reorder(.data$module_label_plot, .data$estimate, FUN = function(z) max(abs(z), na.rm = TRUE))
+      module_label_plot = factor(
+        .data$module_label_plot,
+        levels = rev(sort(unique(as.character(.data$module_label_plot))))
+      )
     )
   write_csv_safe2(plot_df, file.path(paths$source_data, "module_group_effects_main_heatmap_source.csv"))
   fig_h <- min(180, max(130, 34 + 4.4 * length(unique(plot_df$module_label_plot)) + 3.0 * length(unique(plot_df$supermodule_plot))))
@@ -958,9 +941,8 @@ plot_module_spatial_heatmap <- function(module_join, paths, ds) {
 
   max_modules <- 35L
   keep_modules <- plot_df |>
-    dplyr::group_by(.data$module_label_plot) |>
-    dplyr::summarise(best_p = min(.data$p_value, na.rm = TRUE), best_abs_estimate = max(abs(.data$estimate), na.rm = TRUE), .groups = "drop") |>
-    dplyr::arrange(.data$best_p, dplyr::desc(.data$best_abs_estimate)) |>
+    dplyr::distinct(.data$module_label_plot) |>
+    dplyr::arrange(.data$module_label_plot) |>
     dplyr::slice_head(n = max_modules) |>
     dplyr::pull(.data$module_label_plot)
 
@@ -1190,14 +1172,14 @@ plot_module_effects_by_supermodule <- function(module_join, paths, ds) {
   plot_df$module_label_plot <- label_wrap(paste0(raw_id, " | ", ann_lab), 23)
   plot_df$supermodule_label_plot <- label_wrap(coalesce_chr(col_or_na(plot_df, "Supermodule_PlotLabel"), col_or_na(plot_df, "supermodule_label")), 24)
 
-  # This is a supplementary diagnostic figure. Limit each facet to the strongest module rows.
+  # This is a supplementary diagnostic figure. Limit each facet by stable ID,
+  # never by a nominal p-value or deprecated FDR.
   plot_df <- plot_df |>
-    dplyr::group_by(.data$dataset, .data$supermodule_id, .data$module_id) |>
-    dplyr::mutate(module_rank = min(.data$p_value, na.rm = TRUE)) |>
-    dplyr::ungroup() |>
-    dplyr::group_by(.data$dataset, .data$supermodule_id) |>
-    dplyr::arrange(.data$module_rank, .by_group = TRUE) |>
-    dplyr::filter(dplyr::row_number() <= 30L) |>
+    dplyr::group_by(.data$dataset, .data$supermodule_id_for_module) |>
+    dplyr::arrange(.data$module_id, .data$contrast, .by_group = TRUE) |>
+    dplyr::filter(
+      dplyr::dense_rank(as.character(.data$module_id)) <= 30L
+    ) |>
     dplyr::ungroup()
 
   plot_df <- plot_df |>
@@ -1383,8 +1365,15 @@ make_dataset_summary <- function(ds) {
   #   - module_annotation/<dataset>/WGCNA_module_biological_annotation.csv
   #   - module_annotation/<dataset>/WGCNA_supermodule_biological_annotation.csv
   #   - 04_wgcna_de_gsea_overlap/<dataset>/WGCNA_vs_DE_GSEA_overlap.csv
-  module_effects <- safe_read_csv(path_results("tables", "06_modules_WGCNA", "group_effects", ds, "module_group_effects.csv"))
-  super_effects <- safe_read_csv(path_results("tables", "06_modules_WGCNA", "group_effects", ds, "supermodule_group_effects.csv"))
+  module_effects_file <- path_results("tables", "06_modules_WGCNA", "group_effects", ds, "module_group_effects.csv")
+  super_effects_file <- path_results("tables", "06_modules_WGCNA", "group_effects", ds, "supermodule_group_effects.csv")
+  conditional_effects_file <- path_results(
+    "tables", "06_modules_WGCNA", "group_effects", ds,
+    "WGCNA_group_effect_interaction_conditional_followup.csv"
+  )
+  module_effects <- safe_read_csv(module_effects_file)
+  super_effects <- safe_read_csv(super_effects_file)
+  conditional_effects <- safe_read_csv(conditional_effects_file)
   module_annot <- safe_read_csv(path_results("tables", "06_modules_WGCNA", "module_annotation", ds, "WGCNA_module_biological_annotation.csv"))
   super_annot <- safe_read_csv(path_results("tables", "06_modules_WGCNA", "module_annotation", ds, "WGCNA_supermodule_biological_annotation.csv"))
   overlap <- safe_read_csv(path_results("tables", "06_modules_WGCNA", "04_wgcna_de_gsea_overlap", ds, "WGCNA_vs_DE_GSEA_overlap.csv"))
@@ -1394,11 +1383,29 @@ make_dataset_summary <- function(ds) {
   current_super_summary <- safe_read_csv(current_files$supermodule_summary)
   current_member_map <- wgcna_normalize_current_member_map(current_member_map_raw, ds)
 
-  if (is.null(module_effects)) module_effects <- empty_group_effects(ds, "module", "missing module_group_effects.csv")
-  if (is.null(super_effects)) super_effects <- empty_group_effects(ds, "supermodule", "missing supermodule_group_effects.csv")
+  if (is.null(module_effects)) {
+    stop("Stage 07 requires ", module_effects_file, ".", call. = FALSE)
+  }
+  if (is.null(super_effects)) {
+    stop("Stage 07 requires ", super_effects_file, ".", call. = FALSE)
+  }
+  module_effects <- wgcna_group_effect_consumer_adapt(module_effects)
+  super_effects <- wgcna_group_effect_consumer_adapt(super_effects)
+  wgcna_group_effect_consumer_validate_adapted(module_effects)
+  wgcna_group_effect_consumer_validate_adapted(super_effects)
+  if (is.null(conditional_effects)) {
+    conditional_effects <- dplyr::bind_rows(
+      module_effects[0, , drop = FALSE],
+      super_effects[0, , drop = FALSE]
+    )
+  } else {
+    conditional_effects <- wgcna_group_effect_consumer_adapt(
+      conditional_effects
+    )
+  }
+  wgcna_group_effect_consumer_validate_adapted(conditional_effects)
   if (is.null(module_annot)) module_annot <- data.frame(dataset = character(), ModuleID = character(), microenvironment_class = character())
   module_annot <- wgcna_normalize_module_ids(module_annot)
-  module_effects <- wgcna_normalize_module_ids(module_effects, module_annot, id_col = "module_id", legacy_col = "module_legacy_id")
   if (is.null(super_annot)) super_annot <- data.frame(dataset = character(), SupermoduleID = character(), Supermodule_FinalLabel = character(), dominant_microenvironment_class = character())
 
   require_supermodule_composition_columns(
@@ -1491,11 +1498,16 @@ make_dataset_summary <- function(ds) {
     artifact = paste0("supermodule group effects for ", ds)
   )
 
-  module_join <- module_effects |>
-    dplyr::left_join(module_annot, by = c("dataset" = "dataset", "module_id" = "ModuleID")) |>
+  module_join <- wgcna_stage07_join_annotations(
+    module_effects,
+    module_annot,
+    by = c("dataset" = "dataset", "module_id" = "ModuleID"),
+    artifact = paste0("Stage 07 module annotation join for ", ds)
+  ) |>
     add_interpretation_sentences("module") |>
     ensure_columns(c(
       "module_label", "module_label.x", "module_label.y", "ModuleID", "ModuleColor", "module_id",
+      "module_label_annotation",
       "module_display_label", "ModuleLabel_Final", "endpoint_label", "Module_CleanPlotLabel",
       "module_biological_label", "module_biological_label_short", "module_label_display",
       "raw_GO_BP_terms", "raw_GO_MF_terms", "raw_GO_CC_terms", "raw_top_GO_label",
@@ -1507,12 +1519,13 @@ make_dataset_summary <- function(ds) {
       "microenvironment_caution_class", "microenvironment_caution_rationale",
       "microenvironment_label", "microenvironment_class", "microenvironment_confidence",
       "supermodule_label", "supermodule_id", "supermodule_id_for_module", "module_supermodule_id",
-      "p_value", "estimate", "FDR_global", "contrast"
+      "p_value", "estimate", "contrast"
     ))
   module_join$module_biological_label <- dplyr::coalesce(
     clean_label_value(module_join$module_biological_label),
     clean_label_value(module_join$cleaned_biological_label),
     clean_label_value(module_join$ModuleLabel_Final),
+    clean_label_value(module_join$module_label_annotation),
     clean_label_value(module_join$module_label.y),
     clean_label_value(module_join$module_label.x),
     clean_label_value(module_join$raw_top_GO_label),
@@ -1528,7 +1541,7 @@ make_dataset_summary <- function(ds) {
     clean_label_value(module_join$Module_CleanPlotLabel),
     paste(module_join$module_id, module_join$module_biological_label_short, sep = " | ")
   )
-  module_join$module_label <- dplyr::coalesce(
+  module_join$interpretable_module_label <- dplyr::coalesce(
     clean_label_value(module_join$module_label_display),
     clean_label_value(module_join$Module_CleanPlotLabel),
     clean_label_value(module_join$module_biological_label),
@@ -1536,10 +1549,14 @@ make_dataset_summary <- function(ds) {
     clean_label_value(module_join$module_id)
   )
 
-  super_join <- super_effects |>
-    dplyr::left_join(super_annot, by = c("dataset" = "dataset", "supermodule_id" = "SupermoduleID")) |>
+  super_join <- wgcna_stage07_join_annotations(
+    super_effects,
+    super_annot,
+    by = c("dataset" = "dataset", "supermodule_id" = "SupermoduleID"),
+    artifact = paste0("Stage 07 supermodule annotation join for ", ds)
+  ) |>
     add_interpretation_sentences("supermodule") |>
-    ensure_columns(c("Supermodule_DisplayLabel", "Supermodule_LongLabel", "Macroprogram_Display", "Supermodule_FinalLabel", "supermodule_label", "supermodule_id", "SupermoduleID", "Supermodule_CleanPlotLabel", "Supermodule_CompositionDisplayLabel", "Supermodule_CompositionLabel", "dominant_microenvironment_class", "p_value", "estimate", "FDR_global", "contrast", "spatial_unit", "effect_scope", "evidence_status", "direction", "MemberThemeCounts", "MemberThemeFractions", "n_distinct_member_themes", "is_multi_theme_supermodule", "themes_above_display_threshold", "themes_omitted_from_display_label"))
+    ensure_columns(c("Supermodule_DisplayLabel", "Supermodule_LongLabel", "Macroprogram_Display", "Supermodule_FinalLabel", "supermodule_label", "supermodule_label_annotation", "supermodule_id", "SupermoduleID", "Supermodule_CleanPlotLabel", "Supermodule_CompositionDisplayLabel", "Supermodule_CompositionLabel", "dominant_microenvironment_class", "p_value", "estimate", "contrast", "spatial_unit", "effect_scope", "direction", "MemberThemeCounts", "MemberThemeFractions", "n_distinct_member_themes", "is_multi_theme_supermodule", "themes_above_display_threshold", "themes_omitted_from_display_label"))
   super_join <- add_short_supermodule_labels(super_join)
   super_join$SupermoduleID <- dplyr::coalesce(
     clean_label_value(super_join$SupermoduleID),
@@ -1547,8 +1564,8 @@ make_dataset_summary <- function(ds) {
     clean_label_value(col_or_na(super_join, "Supermodule_DataDrivenID")),
     clean_label_value(col_or_na(super_join, "Supermodule_DataDriven"))
   )
-  super_join$supermodule_id <- dplyr::coalesce(clean_label_value(super_join$supermodule_id), clean_label_value(super_join$SupermoduleID))
-  super_join$supermodule_label <- dplyr::coalesce(
+  super_join$interpretable_supermodule_label <- dplyr::coalesce(
+    clean_label_value(super_join$supermodule_label_annotation),
     clean_label_value(super_join$supermodule_label),
     clean_label_value(super_join$Supermodule_CleanPlotLabel),
     clean_label_value(super_join$Supermodule_CompositionDisplayLabel),
@@ -1558,6 +1575,35 @@ make_dataset_summary <- function(ds) {
   )
   super_join <- add_semantic_columns(super_join)
   super_join$supermodule_theme_label_qc_warning <- supermodule_theme_qc_warnings(super_join)
+
+  conditional_source <- conditional_effects
+  conditional_effects$.stage07_source_order <- seq_len(nrow(
+    conditional_effects
+  ))
+  conditional_module <- conditional_effects |>
+    dplyr::filter(.data$level == "module")
+  conditional_module <- wgcna_stage07_join_annotations(
+    conditional_module,
+    module_annot,
+    by = c("dataset" = "dataset", "module_id" = "ModuleID"),
+    artifact = paste0("Stage 07 conditional module annotation join for ", ds)
+  ) |>
+    add_interpretation_sentences("module")
+  conditional_super <- conditional_effects |>
+    dplyr::filter(.data$level == "supermodule")
+  conditional_super <- wgcna_stage07_join_annotations(
+    conditional_super,
+    super_annot,
+    by = c("dataset" = "dataset", "supermodule_id" = "SupermoduleID"),
+    artifact = paste0("Stage 07 conditional supermodule annotation join for ", ds)
+  ) |>
+    add_interpretation_sentences("supermodule")
+  conditional_join <- dplyr::bind_rows(
+    conditional_module, conditional_super
+  ) |>
+    dplyr::arrange(.data$.stage07_source_order) |>
+    dplyr::select(-".stage07_source_order")
+  wgcna_group_effect_consumer_validate_adapted(conditional_join)
 
   module_super_map <- build_module_supermodule_map(
     module_effects = module_join,
@@ -1655,19 +1701,19 @@ make_dataset_summary <- function(ds) {
   module_join$supermodule_theme_label_qc_warning <- clean_label_value(module_join$supermodule_theme_label_qc_warning_from_super)
   module_join$microenvironment_caution_label_for_supermodule <- clean_label_value(module_join$microenvironment_caution_label_from_super)
   module_join$microenvironment_caution_class_for_supermodule <- clean_label_value(module_join$microenvironment_caution_class_from_super)
-  module_join$supermodule_id <- dplyr::coalesce(
-    clean_label_value(module_join$supermodule_id),
+  module_join$parent_supermodule_id <- dplyr::coalesce(
     clean_label_value(module_join$supermodule_id_for_module),
     clean_label_value(module_join$module_supermodule_id),
+    clean_label_value(module_join$supermodule_id),
     clean_label_value(col_or_na(module_join, "SupermoduleID"))
   )
-  module_join$supermodule_label <- dplyr::coalesce(
-    clean_label_value(module_join$supermodule_label),
+  module_join$parent_supermodule_label <- dplyr::coalesce(
     clean_label_value(module_join$Supermodule_CleanPlotLabel),
     clean_label_value(module_join$Supermodule_CompositionDisplayLabel),
     clean_label_value(module_join$Supermodule_CompositionLabel),
     clean_label_value(module_join$supermodule_label_for_module),
-    clean_label_value(module_join$Supermodule_PlotLabel)
+    clean_label_value(module_join$Supermodule_PlotLabel),
+    clean_label_value(module_join$supermodule_label)
   )
 
   module_supermodule_label_qc <- module_join |>
@@ -1800,7 +1846,13 @@ make_dataset_summary <- function(ds) {
 
   module_join <- module_join |>
     dplyr::left_join(module_final_labels, by = c("dataset", "module_id")) |>
-    dplyr::left_join(super_final_labels, by = c("dataset", "supermodule_id")) |>
+    dplyr::left_join(
+      super_final_labels,
+      by = c(
+        "dataset" = "dataset",
+        "supermodule_id_for_module" = "supermodule_id"
+      )
+    ) |>
     dplyr::mutate(
       ModulePlotLabel = dplyr::coalesce(.data$canonical_module_plot_label, .data$ModulePlotLabel),
       Supermodule_PlotLabel = dplyr::coalesce(.data$canonical_supermodule_plot_label, .data$Supermodule_PlotLabel)
@@ -1810,12 +1862,50 @@ make_dataset_summary <- function(ds) {
     dplyr::left_join(super_final_labels, by = c("dataset", "supermodule_id")) |>
     dplyr::mutate(
       Supermodule_PlotLabel = dplyr::coalesce(.data$canonical_supermodule_plot_label, .data$Supermodule_PlotLabel),
-      supermodule_label = .data$Supermodule_PlotLabel
+      interpretable_supermodule_label = .data$Supermodule_PlotLabel
     ) |>
     dplyr::select(-"canonical_supermodule_plot_label")
 
+  conditional_module <- conditional_module |>
+    dplyr::left_join(module_final_labels, by = c("dataset", "module_id")) |>
+    dplyr::mutate(
+      ModulePlotLabel = dplyr::coalesce(
+        .data$canonical_module_plot_label,
+        clean_label_value(col_or_na(conditional_module, "Module_CleanPlotLabel")),
+        clean_label_value(col_or_na(conditional_module, "module_label")),
+        .data$module_id
+      )
+    ) |>
+    dplyr::select(-"canonical_module_plot_label")
+  conditional_super <- conditional_super |>
+    dplyr::left_join(super_final_labels, by = c("dataset", "supermodule_id")) |>
+    dplyr::mutate(
+      Supermodule_PlotLabel = dplyr::coalesce(
+        .data$canonical_supermodule_plot_label,
+        clean_label_value(col_or_na(
+          conditional_super, "Supermodule_DisplayLabel"
+        )),
+        clean_label_value(col_or_na(conditional_super, "supermodule_label")),
+        .data$supermodule_id
+      )
+    ) |>
+    dplyr::select(-"canonical_supermodule_plot_label")
+  conditional_join <- dplyr::bind_rows(
+    conditional_module, conditional_super
+  ) |>
+    dplyr::arrange(.data$.stage07_source_order) |>
+    dplyr::select(-".stage07_source_order")
+  wgcna_stage07_validate_source_preserved(
+    conditional_source,
+    conditional_join,
+    paste0("Stage 07 conditional interpretable output for ", ds)
+  )
+
   module_supermodule_join_qc <- module_join |>
-    dplyr::distinct(.data$dataset, .data$module_id, .data$supermodule_id, .keep_all = TRUE)
+    dplyr::distinct(
+      .data$dataset, .data$module_id,
+      .data$supermodule_id_for_module, .keep_all = TRUE
+    )
 
   write_table_and_source(
     module_supermodule_join_qc,
@@ -1840,25 +1930,15 @@ make_dataset_summary <- function(ds) {
     module_join <- module_join |> dplyr::left_join(overlap_summary, by = c("module_id" = "ModuleID"))
   }
 
-  top_super <- super_join |>
-    main_effect_rows() |>
-    dplyr::filter(!is.na(.data$p_value)) |>
+  top_super <- wgcna_group_effect_consumer_select_primary(
+    super_join,
+    support_status = c("FDR_supported", "suggestive_FDR10")
+  ) |>
     add_plot_metrics() |>
-    dplyr::group_by(.data$dataset, .data$supermodule_id, .data$contrast) |>
     dplyr::arrange(
       .data$evidence_rank,
-      .data$FDR_global,
-      .data$p_value,
-      dplyr::desc(abs(.data$estimate)),
-      .by_group = TRUE
-    ) |>
-    dplyr::slice_head(n = 1) |>
-    dplyr::ungroup() |>
-    dplyr::arrange(
-      .data$evidence_rank,
-      .data$FDR_global,
-      .data$p_value,
-      dplyr::desc(abs(.data$estimate))
+      .data$tier_specific_fdr,
+      .data$canonical_claim_entity_id
     ) |>
     dplyr::select(-dplyr::any_of(c(
       "neg_log10_FDR",
@@ -1869,6 +1949,37 @@ make_dataset_summary <- function(ds) {
       "evidence_rank"
     ))) |>
     dplyr::slice_head(n = 50)
+
+  wgcna_stage07_validate_source_preserved(
+    module_effects,
+    module_join,
+    paste0("Stage 07 module interpretable output for ", ds)
+  )
+  wgcna_stage07_validate_source_preserved(
+    super_effects,
+    super_join,
+    paste0("Stage 07 supermodule interpretable output for ", ds)
+  )
+  wgcna_stage07_validate_interpretable(
+    module_join,
+    paste0("Stage 07 module interpretable output for ", ds)
+  )
+  wgcna_stage07_validate_interpretable(
+    super_join,
+    paste0("Stage 07 supermodule interpretable output for ", ds)
+  )
+  wgcna_stage07_validate_interpretable(
+    conditional_join,
+    paste0("Stage 07 conditional interpretable output for ", ds)
+  )
+  spatial_organization <- wgcna_stage07_build_spatial_organization(
+    dplyr::bind_rows(module_join, super_join),
+    conditional_join
+  )
+  wgcna_stage07_validate_spatial_organization(
+    spatial_organization,
+    paste0("Stage 07 spatial organization summary for ", ds)
+  )
 
   supermodule_plot_label_qc <- super_join |>
     dplyr::select(dplyr::any_of(c(
@@ -2005,11 +2116,31 @@ make_dataset_summary <- function(ds) {
 
   write_table_and_source(super_join, paths$tables, paths$source_data, "WGCNA_supermodule_group_effects_interpretable.csv")
   write_table_and_source(module_join, paths$tables, paths$source_data, "WGCNA_module_group_effects_interpretable.csv")
+  write_table_and_source(
+    conditional_join,
+    paths$tables,
+    paths$source_data,
+    "WGCNA_interaction_conditional_followup_interpretable.csv"
+  )
+  write_table_and_source(
+    spatial_organization,
+    paths$tables,
+    paths$source_data,
+    "WGCNA_spatial_organization_summary.csv"
+  )
   write_table_and_source(top_super, paths$tables, paths$source_data, "WGCNA_top_changed_supermodules.csv")
 
   if (requireNamespace("writexl", quietly = TRUE)) {
     writexl::write_xlsx(
-      list(supermodules = super_join, modules = module_join, top_supermodules = top_super, label_candidates = label_candidates, final_label_lookup = final_label_lookup),
+      list(
+        supermodules = super_join,
+        modules = module_join,
+        interaction_followups = conditional_join,
+        spatial_organization = spatial_organization,
+        top_supermodules = top_super,
+        label_candidates = label_candidates,
+        final_label_lookup = final_label_lookup
+      ),
       file.path(paths$tables, "WGCNA_interpretable_summary.xlsx")
     )
   }
@@ -2033,6 +2164,10 @@ make_dataset_summary <- function(ds) {
     inputs = list(
       module_effects = path_results("tables", "06_modules_WGCNA", "group_effects", ds, "module_group_effects.csv"),
       supermodule_effects = path_results("tables", "06_modules_WGCNA", "group_effects", ds, "supermodule_group_effects.csv"),
+      interaction_conditional_followups = path_results(
+        "tables", "06_modules_WGCNA", "group_effects", ds,
+        "WGCNA_group_effect_interaction_conditional_followup.csv"
+      ),
       module_annotation = path_results("tables", "06_modules_WGCNA", "module_annotation", ds, "WGCNA_module_biological_annotation.csv"),
       supermodule_annotation = path_results("tables", "06_modules_WGCNA", "module_annotation", ds, "WGCNA_supermodule_biological_annotation.csv"),
       de_gsea_overlap = path_results("tables", "06_modules_WGCNA", "04_wgcna_de_gsea_overlap", ds, "WGCNA_vs_DE_GSEA_overlap.csv"),
@@ -2044,13 +2179,32 @@ make_dataset_summary <- function(ds) {
       source_data = paths$source_data,
       figures = paths$figures,
       label_candidates = file.path(paths$tables, "WGCNA_label_candidates.csv"),
-      final_label_lookup = file.path(paths$tables, "WGCNA_final_label_lookup.csv")
+      final_label_lookup = file.path(paths$tables, "WGCNA_final_label_lookup.csv"),
+      interaction_followups = file.path(
+        paths$tables,
+        "WGCNA_interaction_conditional_followup_interpretable.csv"
+      ),
+      spatial_organization = file.path(
+        paths$tables, "WGCNA_spatial_organization_summary.csv"
+      )
     ),
     parameters = list(dataset = ds),
-    notes = "Interpretable layer. Supermodules are treated as compressed overview units; module-level dotplots/heatmaps are exported as the biological-resolution view after explicitly joining the module-to-supermodule map; WGCNA_module_supermodule_join_qc.csv records whether labels came from 06 annotations and whether modules mapped to supermodules. Main heatmaps use global spatial-adjusted rows where available; spatial rows are plotted separately."
+    notes = paste(
+      "Stage 05 v5 statistical fields are passed through unchanged via the",
+      "Wave 0 adapter. Primary, contextual, interaction-omnibus and local",
+      "families remain disjoint. Spatial organization uses only prespecified",
+      "primary and omnibus FDR support; aliases and conditional follow-ups do",
+      "not create independent findings. Biological labels remain sourced from",
+      "Stage 06 and reviewed registries."
+    )
   )
 
-  list(super = super_join, module = module_join, top = top_super)
+  list(
+    super = super_join,
+    module = module_join,
+    top = top_super,
+    spatial = spatial_organization
+  )
 }
 
 make_cross_dataset_summary <- function(summaries) {
@@ -2064,46 +2218,58 @@ make_cross_dataset_summary <- function(summaries) {
   }
 
   cross_base <- all_super |>
-    orient_contrasts_for_plot() |>
-    add_plot_metrics() |>
-    dplyr::mutate(
-      program_label = coalesce_chr(
-        col_or_na(all_super, "Supermodule_PlotLabel"),
-        col_or_na(all_super, "Supermodule_DisplayShort"),
-        col_or_na(all_super, "Macroprogram_Display"),
-        col_or_na(all_super, "Supermodule_DisplayLabel"),
-        col_or_na(all_super, "Supermodule_FinalLabel"),
-        col_or_na(all_super, "supermodule_label"),
-        col_or_na(all_super, "supermodule_id")
+    dplyr::filter(
+      .data$independent_hypothesis %in% TRUE,
+      .data$analysis_tier %in% c(
+        "primary_wgcna_global", "secondary_contextual_global"
       ),
-      is_global = !is.na(.data$spatial_unit) & .data$spatial_unit == "global_spatial_adjusted",
-      row_priority = dplyr::case_when(
-        .data$is_global ~ 1L,
-        TRUE ~ 2L
-      )
+      .data$effect_scope == "spatial_adjusted_global",
+      .data$spatial_unit == "global_spatial_adjusted",
+      .data$test_type == "named_contrast"
     ) |>
-    dplyr::filter(!is.na(.data$p_value))
+    add_plot_metrics()
+  cross_base$program_label <- coalesce_chr(
+    col_or_na(cross_base, "Supermodule_PlotLabel"),
+    col_or_na(cross_base, "Supermodule_DisplayShort"),
+    col_or_na(cross_base, "Macroprogram_Display"),
+    col_or_na(cross_base, "Supermodule_DisplayLabel"),
+    col_or_na(cross_base, "Supermodule_FinalLabel"),
+    col_or_na(cross_base, "interpretable_supermodule_label"),
+    col_or_na(cross_base, "supermodule_label"),
+    col_or_na(cross_base, "supermodule_id")
+  )
 
-  # One row per dataset x broad program x contrast.
-  # Prefer global spatial-adjusted rows; if absent, use the strongest available spatial row.
+  # Preserve one row per independent canonical supermodule and global contrast.
+  # Do not select representatives using nominal p-values or deprecated FDRs.
   cross <- cross_base |>
-    dplyr::group_by(.data$dataset, .data$program_label, .data$contrast) |>
-    dplyr::arrange(.data$row_priority, .data$FDR_global, .data$p_value, dplyr::desc(abs(.data$estimate)), .by_group = TRUE) |>
-    dplyr::slice_head(n = 1) |>
-    dplyr::ungroup() |>
+    dplyr::arrange(
+      .data$dataset, .data$canonical_claim_entity_id,
+      .data$analysis_tier, .data$contrast
+    ) |>
     dplyr::transmute(
       dataset,
+      level,
+      canonical_claim_entity_id,
+      claim_entity_role,
+      independent_hypothesis,
       program_label,
+      analysis_tier,
       contrast,
       selected_spatial_unit = .data$spatial_unit,
       selected_effect_scope = .data$effect_scope,
       estimate,
+      SE,
+      CI_low,
+      CI_high,
       p_value,
-      FDR_global,
+      tier_specific_fdr,
+      tier_specific_family_id,
+      tier_specific_family_size,
+      statistical_support_status,
+      result_scope,
       neg_log10_FDR,
       q_value,
       neg_log10_q,
-      evidence_status,
       dominant_microenvironment_class,
       interpretation_sentence
     )
@@ -2118,18 +2284,18 @@ make_cross_dataset_summary <- function(summaries) {
         contrast = factor(.data$contrast, levels = contrast_plot_levels()),
         program_label_plot = label_wrap(.data$program_label, 34),
         sig_label = dplyr::case_when(
-          !is.na(.data$q_value) & .data$q_value < 0.01 ~ "***",
-          !is.na(.data$q_value) & .data$q_value < 0.05 ~ "**",
-          !is.na(.data$q_value) & .data$q_value < 0.10 ~ "*",
+          .data$statistical_support_status == "FDR_supported" &
+            !is.na(.data$q_value) & .data$q_value < 0.01 ~ "***",
+          .data$statistical_support_status == "FDR_supported" ~ "**",
+          .data$statistical_support_status == "suggestive_FDR10" ~ "*",
           TRUE ~ ""
         )
       )
 
-    # Limit crowded cross-dataset plot to strongest adjusted-evidence programs.
+    # Limit crowded display deterministically by stable program label.
     keep_programs <- plot_df |>
-      dplyr::group_by(.data$program_label_plot) |>
-      dplyr::summarise(best_q = min(.data$q_value, na.rm = TRUE), .groups = "drop") |>
-      dplyr::arrange(.data$best_q) |>
+      dplyr::distinct(.data$program_label_plot) |>
+      dplyr::arrange(.data$program_label_plot) |>
       dplyr::slice_head(n = 40) |>
       dplyr::pull(.data$program_label_plot)
 
@@ -2169,6 +2335,17 @@ if (run$dry_run) {
       "Supermodule effects",
       path_results("tables", "06_modules_WGCNA", "group_effects", ds, "supermodule_group_effects.csv"),
       if (file.exists(path_results("tables", "06_modules_WGCNA", "group_effects", ds, "supermodule_group_effects.csv"))) "PASS" else "WARN"
+    )
+    dry_run_line(
+      "Conditional interaction follow-ups",
+      path_results(
+        "tables", "06_modules_WGCNA", "group_effects", ds,
+        "WGCNA_group_effect_interaction_conditional_followup.csv"
+      ),
+      if (file.exists(path_results(
+        "tables", "06_modules_WGCNA", "group_effects", ds,
+        "WGCNA_group_effect_interaction_conditional_followup.csv"
+      ))) "PASS" else "WARN"
     )
     dry_run_line(
       "Supermodule composition",

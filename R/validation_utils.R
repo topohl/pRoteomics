@@ -268,8 +268,17 @@ known_pipeline_output_specs <- function() {
     ),
     WGCNA_module_group_effects_interpretable.csv = list(
       required_columns = c(
-        "dataset", "level", "contrast", "estimate", "p_value", "FDR_global",
-        "interpretation_sentence", "ModulePlotLabel", "Supermodule_PlotLabel",
+        "dataset", "level", "endpoint_id", "canonical_claim_entity_id",
+        "claim_entity_role", "support_source_entity_id",
+        "independent_hypothesis", "analysis_tier",
+        "tier_specific_fdr", "tier_specific_family_id",
+        "tier_specific_family_size", "result_scope",
+        "statistical_support_status", "model_valid_for_inference",
+        "model_stability_status", "claim_allowed_model",
+        "primary_model_stable", "test_type", "effect_scope",
+        "spatial_unit", "contrast", "estimate", "SE", "CI_low",
+        "CI_high", "p_value", "interpretation_sentence",
+        "ModulePlotLabel", "Supermodule_PlotLabel",
         "Supermodule_FullAnnotationLabel"
       ),
       recommended_columns = c(
@@ -283,8 +292,17 @@ known_pipeline_output_specs <- function() {
     ),
     WGCNA_supermodule_group_effects_interpretable.csv = list(
       required_columns = c(
-        "dataset", "level", "contrast", "estimate", "p_value", "FDR_global",
-        "interpretation_sentence", "Supermodule_PlotLabel",
+        "dataset", "level", "endpoint_id", "canonical_claim_entity_id",
+        "claim_entity_role", "support_source_entity_id",
+        "independent_hypothesis", "analysis_tier",
+        "tier_specific_fdr", "tier_specific_family_id",
+        "tier_specific_family_size", "result_scope",
+        "statistical_support_status", "model_valid_for_inference",
+        "model_stability_status", "claim_allowed_model",
+        "primary_model_stable", "test_type", "effect_scope",
+        "spatial_unit", "contrast", "estimate", "SE", "CI_low",
+        "CI_high", "p_value", "interpretation_sentence",
+        "Supermodule_PlotLabel",
         "Supermodule_FullAnnotationLabel", "dominant_microenvironment_class",
         "Supermodule_LabelRationale"
       ),
@@ -296,6 +314,36 @@ known_pipeline_output_specs <- function() {
         "MemberThemeCounts", "MemberThemeFractions", "n_distinct_member_themes",
         "is_multi_theme_supermodule", "themes_above_display_threshold",
         "themes_omitted_from_display_label", "supermodule_theme_label_qc_warning"
+      )
+    ),
+    WGCNA_interaction_conditional_followup_interpretable.csv = list(
+      required_columns = c(
+        "dataset", "level", "endpoint_id", "canonical_claim_entity_id",
+        "claim_entity_role", "support_source_entity_id",
+        "independent_hypothesis", "analysis_tier",
+        "tier_specific_fdr", "tier_specific_family_id",
+        "tier_specific_family_size", "result_scope",
+        "statistical_support_status", "model_valid_for_inference",
+        "model_stability_status", "claim_allowed_model",
+        "primary_model_stable", "test_type", "effect_scope",
+        "spatial_unit", "contrast", "estimate", "SE", "CI_low",
+        "CI_high", "p_value", "interpretation_sentence"
+      )
+    ),
+    WGCNA_spatial_organization_summary.csv = list(
+      required_columns = c(
+        "dataset", "level", "canonical_claim_entity_id", "entity_id",
+        "biological_label", "primary_statistical_support_status",
+        "primary_estimate", "primary_confidence_interval",
+        "primary_tier_specific_fdr",
+        "interaction_statistical_support_status",
+        "interaction_tier_specific_fdr", "interaction_test_type",
+        "spatial_organization_class",
+        "spatial_heterogeneity_contrast_attribution",
+        "localization_evidence_available",
+        "localization_support_summary", "classification_reason",
+        "primary_source_statistical_key",
+        "interaction_source_statistical_key"
       )
     ),
     biological_claims.csv = list(
@@ -420,7 +468,11 @@ validate_known_pipeline_output <- function(path, dataset = NULL) {
     if (length(mismatch)) messages <- c(messages, paste0("Dataset values do not match selected dataset ", dataset, ": ", paste(mismatch, collapse = ", ")))
   }
 
-  for (col in intersect(c("p_value", "FDR_within_dataset_level", "FDR_global"), names(df))) {
+  for (col in intersect(c(
+    "p_value", "tier_specific_fdr", "primary_tier_specific_fdr",
+    "interaction_tier_specific_fdr", "FDR_within_dataset_level",
+    "FDR_global"
+  ), names(df))) {
     values <- suppressWarnings(as.numeric(df[[col]]))
     bad <- !is.na(values) & (values < 0 | values > 1)
     if (any(bad)) messages <- c(messages, paste0(col, " has value(s) outside [0, 1]."))
