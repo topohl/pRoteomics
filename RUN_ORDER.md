@@ -57,6 +57,9 @@ Stage 05 Phase 2B production is the current execution boundary. Its dry-run
 reports `Downstream compatibility: FALSE` and `BLOCKED BY CONTRACT; NOT
 RUNTIME-ENFORCED`. Do not execute the Stage 06+ commands below until the
 atomic Phase 3 consumer migration is complete.
+The v5 Stage 05 contract adds explicit diagnostic scope and the
+cross-platform `sha256_utf8_lf_v1` aggregate hash serialization; it does not
+change the statistical analysis.
 
 ```bash
 Rscript 01_preprocessing/03_gct_extractR.r --dataset <dataset> --dry-run

@@ -5,7 +5,7 @@
 # membership authority.
 
 wgcna_group_effects_contract_version <- function() {
-  "wgcna_group_effects_phase2b_v4"
+  "wgcna_group_effects_phase2b_v5"
 }
 
 wgcna_group_boundary_variance_ratio_tolerance <- function() 1e-4
@@ -843,6 +843,7 @@ wgcna_group_model_validation_schema <- function() {
     emmeans_status = character(), has_repeated_animals = logical(),
     animal_random_effect_used = logical(), AnimalID_source = character(),
     model_valid_for_inference = logical(),
+    model_diagnostic_scope = character(),
     model_stability_status = character(),
     primary_model_stable = logical(), claim_allowed_model = logical(),
     enters_primary_fdr = logical(),
@@ -949,6 +950,7 @@ wgcna_group_primary_schema <- function() {
     formula_used = character(), dropped_covariates = character(),
     model_family = character(), model_formula = character(),
     model_valid_for_inference = logical(),
+    model_diagnostic_scope = character(),
     model_stability_status = character(),
     primary_model_stable = logical(), claim_allowed_model = logical(),
     model_downgrade_reason = character(), fallback_used = logical(),
@@ -1051,6 +1053,7 @@ wgcna_group_animal_spatial_value_schema <- function() {
     aggregation_method = character(),
     duplicate_source_row_status = character(),
     aggregated_row_id = character(), aggregated_row_sha256 = character(),
+    aggregated_row_hash_contract = character(),
     stringsAsFactors = FALSE
   )
 }
@@ -1667,11 +1670,91 @@ wgcna_group_apply_fdr_phase2_legacy <- function(module_rows, supermodule_rows) {
 # Phase 2B statistical-production contract. The Phase 2 implementations above
 # remain named as legacy helpers solely to make the contract transition
 # reviewable; all canonical Stage 05 calls resolve to the definitions below.
-wgcna_group_text_sha256 <- function(x) {
+wgcna_group_canonical_text_raw <- function(x) {
+  x <- enc2utf8(as.character(x))
+  if (anyNA(x)) {
+    stop("Canonical hash content contains NA.", call. = FALSE)
+  }
+  charToRaw(paste0(paste(x, collapse = "\n"), "\n"))
+}
+
+wgcna_group_raw_sha256 <- function(x) {
+  if (!is.raw(x)) {
+    stop("SHA-256 payload must be a raw vector.", call. = FALSE)
+  }
   path <- tempfile("wgcna_group_text_", fileext = ".txt")
   on.exit(unlink(path, force = TRUE), add = TRUE)
-  writeLines(enc2utf8(as.character(x)), path, useBytes = TRUE)
+  connection <- file(path, open = "wb")
+  tryCatch(
+    writeBin(x, connection),
+    finally = close(connection)
+  )
   file_hash_sha256(path)
+}
+
+wgcna_group_text_sha256 <- function(x) {
+  wgcna_group_raw_sha256(wgcna_group_canonical_text_raw(x))
+}
+
+wgcna_group_model_row_sha256_v4 <- function(x) {
+  x <- enc2utf8(as.character(x))
+  if (anyNA(x)) {
+    stop("Model-row hash content contains NA.", call. = FALSE)
+  }
+  x <- gsub("\r\n|\r", "\n", x, perl = TRUE)
+  payload <- paste0(paste(x, collapse = "\n"), "\n")
+  payload <- gsub("\n", "\r\n", payload, fixed = TRUE)
+  wgcna_group_raw_sha256(charToRaw(payload))
+}
+
+wgcna_group_aggregate_hash_fields <- function(
+    dataset, level, endpoint_id, AnimalID, StressGroup, SpatialUnit,
+    ordered_hemispheres, ordered_contributing_sample_ids,
+    ordered_hemisphere_source_values, ordered_hemisphere_means,
+    bilateral_value, aggregation_method
+) {
+  c(
+    paste0("dataset=", dataset),
+    paste0("level=", level),
+    paste0("endpoint_id=", endpoint_id),
+    paste0("AnimalID=", AnimalID),
+    paste0("StressGroup=", StressGroup),
+    paste0("SpatialUnit=", SpatialUnit),
+    paste0("ordered_hemispheres=", ordered_hemispheres),
+    paste0(
+      "ordered_contributing_sample_ids=",
+      ordered_contributing_sample_ids
+    ),
+    paste0(
+      "ordered_hemisphere_source_values=",
+      ordered_hemisphere_source_values
+    ),
+    paste0("hemisphere_means=", ordered_hemisphere_means),
+    paste0("bilateral_value=", sprintf("%.17g", bilateral_value)),
+    paste0("aggregation_method=", aggregation_method)
+  )
+}
+
+wgcna_group_aggregate_row_sha256 <- function(row) {
+  if (nrow(row) != 1L) {
+    stop("Aggregate hash calculation requires exactly one row.", call. = FALSE)
+  }
+  wgcna_group_text_sha256(wgcna_group_aggregate_hash_fields(
+    dataset = row$dataset[[1]],
+    level = row$level[[1]],
+    endpoint_id = row$endpoint_id[[1]],
+    AnimalID = row$AnimalID[[1]],
+    StressGroup = row$StressGroup[[1]],
+    SpatialUnit = row$SpatialUnit[[1]],
+    ordered_hemispheres = row$ordered_hemispheres[[1]],
+    ordered_contributing_sample_ids =
+      row$ordered_contributing_sample_ids[[1]],
+    ordered_hemisphere_source_values =
+      row$ordered_hemisphere_source_values[[1]],
+    ordered_hemisphere_means = row$ordered_hemisphere_means[[1]],
+    bilateral_value = row$eigengene[[1]],
+    aggregation_method = row$aggregation_method[[1]]
+  ))
 }
 
 wgcna_group_aggregate_endpoint <- function(
@@ -1793,29 +1876,25 @@ wgcna_group_aggregate_endpoint <- function(
       final_value <- mean(cell$hemisphere_value)
       aggregation_method <-
         "equal_weight_mean_available_LR_after_within_hemisphere_mean"
-      canonical_content <- paste(
-        paste0("dataset=", dataset),
-        paste0("level=", level),
-        paste0("endpoint_id=", endpoint_id),
-        paste0("AnimalID=", cell$AnimalID[[1]]),
-        paste0("StressGroup=", cell$StressGroup[[1]]),
-        paste0("SpatialUnit=", cell$SpatialUnit[[1]]),
-        paste0("ordered_hemispheres=", paste(cell$Hemisphere, collapse = ";")),
-        paste0(
-          "ordered_contributing_sample_ids=",
-          paste(cell$contributing_sample_ids, collapse = "|")
+      canonical_content <- wgcna_group_aggregate_hash_fields(
+        dataset = dataset,
+        level = level,
+        endpoint_id = endpoint_id,
+        AnimalID = cell$AnimalID[[1]],
+        StressGroup = cell$StressGroup[[1]],
+        SpatialUnit = cell$SpatialUnit[[1]],
+        ordered_hemispheres = paste(cell$Hemisphere, collapse = ";"),
+        ordered_contributing_sample_ids = paste(
+          cell$contributing_sample_ids, collapse = "|"
         ),
-        paste0(
-          "ordered_hemisphere_source_values=",
-          paste(cell$source_values, collapse = "|")
+        ordered_hemisphere_source_values = paste(
+          cell$source_values, collapse = "|"
         ),
-        paste0(
-          "hemisphere_means=",
-          paste(sprintf("%.17g", cell$hemisphere_value), collapse = ";")
+        ordered_hemisphere_means = paste(
+          sprintf("%.17g", cell$hemisphere_value), collapse = ";"
         ),
-        paste0("bilateral_value=", sprintf("%.17g", final_value)),
-        paste0("aggregation_method=", aggregation_method),
-        sep = "\n"
+        bilateral_value = final_value,
+        aggregation_method = aggregation_method
       )
       data.frame(
         AnimalID = cell$AnimalID[[1]],
@@ -1881,6 +1960,7 @@ wgcna_group_aggregate_endpoint <- function(
         ),
         aggregated_row_sha256 =
           wgcna_group_text_sha256(canonical_content),
+        aggregated_row_hash_contract = "sha256_utf8_lf_v1",
         stringsAsFactors = FALSE
       )
     }
@@ -2223,6 +2303,107 @@ wgcna_group_hypothesis_level <- function(level) {
   if (identical(level, "module")) "module" else "higher_order_multimodule"
 }
 
+wgcna_group_composite_interaction_diagnostics <- function(
+    reduced_diagnostics, full_diagnostics,
+    identical_rows_verified = TRUE,
+    likelihood_ratio_valid = TRUE,
+    failure_reason = NULL
+) {
+  reduced_valid <- isTRUE(
+    reduced_diagnostics$model_valid_for_inference
+  )
+  full_valid <- isTRUE(full_diagnostics$model_valid_for_inference)
+  composite_valid <- reduced_valid && full_valid &&
+    isTRUE(identical_rows_verified) && isTRUE(likelihood_ratio_valid)
+  boundary <- composite_valid && any(c(
+    reduced_diagnostics$model_stability_status,
+    full_diagnostics$model_stability_status
+  ) == "boundary_random_intercept_zero")
+  review_required <- composite_valid && (
+    isTRUE(reduced_diagnostics$diagnostic_review_required) ||
+      isTRUE(full_diagnostics$diagnostic_review_required)
+  )
+  warnings <- unique(stats::na.omit(c(
+    reduced_diagnostics$boundary_warning,
+    full_diagnostics$boundary_warning
+  )))
+  warnings <- warnings[nzchar(warnings)]
+  out <- full_diagnostics
+  out$model_valid_for_inference <- composite_valid
+  out$model_stability_status <- if (!composite_valid) {
+    "invalid"
+  } else if (boundary) {
+    "boundary_random_intercept_zero"
+  } else {
+    "stable_mixed_model"
+  }
+  out$primary_model_stable <- composite_valid &&
+    !boundary && !review_required
+  out$claim_allowed_model <- composite_valid
+  out$diagnostic_review_required <- review_required
+  out$singularity_class <- if (!composite_valid) {
+    "invalid_composite_reduced_full"
+  } else if (boundary) {
+    "composite_reduced_full_boundary"
+  } else if (review_required) {
+    "composite_reduced_full_diagnostic_review"
+  } else {
+    "composite_reduced_full_stable"
+  }
+  out$boundary_warning <- if (length(warnings)) {
+    paste(warnings, collapse = ";")
+  } else {
+    NA_character_
+  }
+  out$failure_reason <- if (composite_valid) {
+    "none"
+  } else if (!is.null(failure_reason) && nzchar(failure_reason)) {
+    failure_reason
+  } else {
+    paste(c(
+      if (!reduced_valid) {
+        paste0("reduced:", reduced_diagnostics$failure_reason)
+      },
+      if (!full_valid) {
+        paste0("full:", full_diagnostics$failure_reason)
+      },
+      if (!isTRUE(identical_rows_verified)) {
+        "reduced_full_rows_not_identical"
+      },
+      if (!isTRUE(likelihood_ratio_valid)) {
+        "invalid_likelihood_ratio_result"
+      }
+    ), collapse = ";")
+  }
+  out$random_intercept_variance <- NA_real_
+  out$residual_variance <- NA_real_
+  out$variance_ratio <- NA_real_
+  out$ICC <- NA_real_
+  out$is_singular_lme4 <- NA
+  out$boundary_by_variance_ratio <- NA
+  out
+}
+
+wgcna_group_invalid_composite_diagnostics <- function(
+    diagnostics, failure_reason = diagnostics$failure_reason
+) {
+  invalid <- diagnostics
+  invalid$model_valid_for_inference <- FALSE
+  invalid$model_stability_status <- "invalid"
+  invalid$primary_model_stable <- FALSE
+  invalid$claim_allowed_model <- FALSE
+  invalid$diagnostic_review_required <- FALSE
+  invalid$singularity_class <- "invalid_composite_reduced_full"
+  invalid$failure_reason <- failure_reason
+  invalid$random_intercept_variance <- NA_real_
+  invalid$residual_variance <- NA_real_
+  invalid$variance_ratio <- NA_real_
+  invalid$ICC <- NA_real_
+  invalid$is_singular_lme4 <- NA
+  invalid$boundary_by_variance_ratio <- NA
+  invalid
+}
+
 wgcna_group_make_effect_row <- function(
     dat, dataset, level, endpoint, contract, effect_scope, spatial_unit,
     contrast, estimate, SE, statistic, p_value, model_type, fit,
@@ -2240,6 +2421,13 @@ wgcna_group_make_effect_row <- function(
 ) {
   counts <- wgcna_group_counts(dat)
   hypothesis_level <- wgcna_group_hypothesis_level(level)
+  model_diagnostic_scope <- dplyr::case_when(
+    identical(test_type, "interaction_omnibus") ~
+      "composite_reduced_full",
+    identical(test_type, "conditional_interaction_followup") ~
+      "full_interaction_model",
+    TRUE ~ "single_fitted_model"
+  )
   analysis_tier <- dplyr::case_when(
     identical(test_type, "interaction_omnibus") ~
       "secondary_spatial_heterogeneity",
@@ -2351,6 +2539,7 @@ wgcna_group_make_effect_row <- function(
     },
     model_formula = formula_used,
     model_valid_for_inference = diagnostics$model_valid_for_inference,
+    model_diagnostic_scope = model_diagnostic_scope,
     model_stability_status = diagnostics$model_stability_status,
     primary_model_stable = diagnostics$primary_model_stable,
     claim_allowed_model = diagnostics$claim_allowed_model,
@@ -2376,8 +2565,11 @@ wgcna_group_make_effect_row <- function(
     residual_variance = diagnostics$residual_variance,
     variance_ratio = diagnostics$variance_ratio,
     ICC = diagnostics$ICC,
-    is_singular_lme4 = diagnostics$is_singular_lme4 %||%
-      diagnostics$singular_model %||% FALSE,
+    is_singular_lme4 = if (!is.null(diagnostics$is_singular_lme4)) {
+      diagnostics$is_singular_lme4
+    } else {
+      diagnostics$singular_model %||% FALSE
+    },
     boundary_by_variance_ratio =
       diagnostics$boundary_by_variance_ratio %||% NA,
     boundary_variance_ratio_tolerance =
@@ -2484,6 +2676,23 @@ wgcna_group_validation_row <- function(
     full_fixed_rank = NA_integer_, full_fixed_columns = NA_integer_
 ) {
   counts <- wgcna_group_counts(dat)
+  model_diagnostic_scope <- if (identical(
+    effect_scope, "stress_by_spatial_interaction"
+  )) {
+    "composite_reduced_full"
+  } else {
+    "single_fitted_model"
+  }
+  if (identical(model_diagnostic_scope, "composite_reduced_full") &&
+      !isTRUE(diagnostics$model_valid_for_inference) &&
+      !identical(
+        diagnostics$singularity_class,
+        "invalid_composite_reduced_full"
+      )) {
+    diagnostics <- wgcna_group_invalid_composite_diagnostics(
+      diagnostics, failure_reason
+    )
+  }
   values <- data.frame(
     dataset = dataset, level = level, endpoint_id = endpoint$endpoint_id,
     effect_scope = effect_scope, spatial_unit = spatial_unit,
@@ -2515,6 +2724,7 @@ wgcna_group_validation_row <- function(
     AnimalID_source = paste(sort(unique(dat$AnimalID_source)), collapse = ";"),
     model_valid_for_inference =
       diagnostics$model_valid_for_inference %||% FALSE,
+    model_diagnostic_scope = model_diagnostic_scope,
     model_stability_status = diagnostics$model_stability_status %||% "invalid",
     primary_model_stable = diagnostics$primary_model_stable %||% FALSE,
     claim_allowed_model = diagnostics$claim_allowed_model %||% FALSE,
@@ -2527,8 +2737,11 @@ wgcna_group_validation_row <- function(
     residual_variance = diagnostics$residual_variance %||% NA_real_,
     variance_ratio = diagnostics$variance_ratio %||% NA_real_,
     ICC = diagnostics$ICC %||% NA_real_,
-    is_singular_lme4 = diagnostics$is_singular_lme4 %||%
-      diagnostics$singular_model %||% NA,
+    is_singular_lme4 = if (!is.null(diagnostics$is_singular_lme4)) {
+      diagnostics$is_singular_lme4
+    } else {
+      diagnostics$singular_model %||% NA
+    },
     boundary_by_variance_ratio =
       diagnostics$boundary_by_variance_ratio %||% NA,
     boundary_variance_ratio_tolerance =
@@ -2966,8 +3179,10 @@ wgcna_group_fit_interaction_omnibus <- function(
   }
   reduced_rows <- rownames(stats::model.frame(reduced))
   full_rows <- rownames(stats::model.frame(full))
-  reduced_hash <- wgcna_group_text_sha256(model_row_text(reduced))
-  full_hash <- wgcna_group_text_sha256(model_row_text(full))
+  # Reduced/full row hashes are frozen v4 provenance identifiers. Keep their
+  # explicit legacy byte contract separate from the v5 LF aggregate hash.
+  reduced_hash <- wgcna_group_model_row_sha256_v4(model_row_text(reduced))
+  full_hash <- wgcna_group_model_row_sha256_v4(model_row_text(full))
   identical_rows <- identical(reduced_rows, full_rows) &&
     identical(reduced_hash, full_hash)
   if (!isTRUE(reduced_diagnostics$model_valid_for_inference) ||
@@ -3093,34 +3308,12 @@ wgcna_group_fit_interaction_omnibus <- function(
       primary = empty, followup = empty_followup, validation = validation
     ))
   }
-  combined_diagnostics <- full_diagnostics
-  if (any(c(
-    reduced_diagnostics$model_stability_status,
-    full_diagnostics$model_stability_status
-  ) == "boundary_random_intercept_zero")) {
-    combined_diagnostics$model_stability_status <-
-      "boundary_random_intercept_zero"
-    combined_diagnostics$primary_model_stable <- FALSE
-    combined_diagnostics$boundary_warning <- paste(
-      unique(stats::na.omit(c(
-        reduced_diagnostics$boundary_warning,
-        full_diagnostics$boundary_warning
-      ))),
-      collapse = ";"
-    )
-  }
-  if (isTRUE(reduced_diagnostics$diagnostic_review_required) ||
-      isTRUE(full_diagnostics$diagnostic_review_required)) {
-    combined_diagnostics$primary_model_stable <- FALSE
-    combined_diagnostics$diagnostic_review_required <- TRUE
-    combined_diagnostics$boundary_warning <- paste(
-      unique(stats::na.omit(c(
-        reduced_diagnostics$boundary_warning,
-        full_diagnostics$boundary_warning
-      ))),
-      collapse = ";"
-    )
-  }
+  combined_diagnostics <- wgcna_group_composite_interaction_diagnostics(
+    reduced_diagnostics,
+    full_diagnostics,
+    identical_rows_verified = identical_rows,
+    likelihood_ratio_valid = finite_lrt
+  )
   counts <- wgcna_group_counts(dat)
   primary <- wgcna_group_make_effect_row(
     dat, dataset, level, endpoint, contract,
@@ -3195,7 +3388,7 @@ wgcna_group_fit_interaction_omnibus <- function(
           "stress_by_spatial_interaction", unit, label,
           contrast_df$estimate[[i]], contrast_df$SE[[i]],
           contrast_df[[stat_col]][[i]], contrast_df$p.value[[i]],
-          model_type, full, combined_diagnostics,
+          model_type, full, full_diagnostics,
           qr(full_fixed)$rank, ncol(full_fixed), min_animals,
           test_type = "conditional_interaction_followup",
           df_num = 1,
@@ -4267,6 +4460,284 @@ wgcna_group_atomic_publish <- function(
   invisible(TRUE)
 }
 
+wgcna_group_diagnostic_scope_violations <- function(
+    table, require_valid = TRUE
+) {
+  allowed_scopes <- c(
+    "single_fitted_model",
+    "composite_reduced_full",
+    "full_interaction_model"
+  )
+  rows <- list()
+  add_violation <- function(i, reason) {
+    rows[[length(rows) + 1L]] <<- data.frame(
+      row_index = as.integer(i),
+      dataset = as.character(table$dataset[[i]]),
+      level = as.character(table$level[[i]]),
+      endpoint_id = as.character(table$endpoint_id[[i]]),
+      test_type = as.character(table$test_type[[i]]),
+      model_diagnostic_scope =
+        as.character(table$model_diagnostic_scope[[i]]),
+      reason = reason,
+      stringsAsFactors = FALSE
+    )
+  }
+  scalar_equal <- function(x, y) {
+    isTRUE(all.equal(x, y, check.attributes = FALSE, tolerance = 0))
+  }
+  raw_fields <- c(
+    "random_intercept_variance", "residual_variance",
+    "variance_ratio", "ICC", "is_singular_lme4",
+    "boundary_by_variance_ratio"
+  )
+  for (i in seq_len(nrow(table))) {
+    scope <- table$model_diagnostic_scope[[i]]
+    if (!scope %in% allowed_scopes) {
+      add_violation(i, "invalid_model_diagnostic_scope")
+      next
+    }
+    expected_scope <- dplyr::case_when(
+      identical(table$test_type[[i]], "interaction_omnibus") ~
+        "composite_reduced_full",
+      identical(
+        table$test_type[[i]], "conditional_interaction_followup"
+      ) ~ "full_interaction_model",
+      TRUE ~ "single_fitted_model"
+    )
+    if (!identical(scope, expected_scope)) {
+      add_violation(i, "scope_does_not_match_test_type")
+    }
+    if (isTRUE(require_valid) &&
+        !isTRUE(table$model_valid_for_inference[[i]])) {
+      add_violation(i, "output_row_not_valid_for_inference")
+    }
+    if (identical(scope, "composite_reduced_full")) {
+      if (any(!is.na(unlist(table[i, raw_fields, drop = FALSE])))) {
+        add_violation(i, "composite_top_level_raw_diagnostics_not_na")
+      }
+      complete_character <- c(
+        "reduced_formula", "full_formula",
+        "reduced_row_hash", "full_row_hash",
+        "reduced_optimizer_code", "full_optimizer_code",
+        "reduced_convergence_status", "full_convergence_status",
+        "reduced_random_effect_structure",
+        "full_random_effect_structure",
+        "reduced_singularity_class", "full_singularity_class",
+        "reduced_model_stability_status",
+        "full_model_stability_status"
+      )
+      complete_numeric <- c(
+        "reduced_fixed_effect_rank", "full_fixed_effect_rank",
+        "reduced_fixed_effect_columns", "full_fixed_effect_columns",
+        "reduced_random_intercept_variance",
+        "full_random_intercept_variance",
+        "reduced_residual_variance", "full_residual_variance",
+        "reduced_variance_ratio", "full_variance_ratio",
+        "reduced_ICC", "full_ICC"
+      )
+      complete_logical <- c(
+        "reduced_is_singular_lme4", "full_is_singular_lme4",
+        "reduced_boundary_by_variance_ratio",
+        "full_boundary_by_variance_ratio",
+        "reduced_diagnostic_review_required",
+        "full_diagnostic_review_required"
+      )
+      if (any(is.na(unlist(
+        table[i, complete_character, drop = FALSE]
+      ))) || any(!nzchar(as.character(unlist(
+        table[i, complete_character, drop = FALSE]
+      ))))) {
+        add_violation(i, "composite_character_diagnostics_incomplete")
+      }
+      if (any(!is.finite(as.numeric(unlist(
+        table[i, complete_numeric, drop = FALSE]
+      ))))) {
+        add_violation(i, "composite_numeric_diagnostics_incomplete")
+      }
+      if (any(is.na(unlist(
+        table[i, complete_logical, drop = FALSE]
+      ))) || !isTRUE(table$identical_rows_verified[[i]])) {
+        add_violation(i, "composite_logical_or_row_contract_incomplete")
+      }
+      reduced_status <- table$reduced_model_stability_status[[i]]
+      full_status <- table$full_model_stability_status[[i]]
+      valid_models <- all(c(reduced_status, full_status) %in% c(
+        "stable_mixed_model", "boundary_random_intercept_zero"
+      ))
+      boundary <- valid_models && any(c(
+        reduced_status, full_status
+      ) == "boundary_random_intercept_zero")
+      review <- valid_models && (
+        isTRUE(table$reduced_diagnostic_review_required[[i]]) ||
+          isTRUE(table$full_diagnostic_review_required[[i]])
+      )
+      expected_status <- if (!valid_models) {
+        "invalid"
+      } else if (boundary) {
+        "boundary_random_intercept_zero"
+      } else {
+        "stable_mixed_model"
+      }
+      expected_class <- if (!valid_models) {
+        "invalid_composite_reduced_full"
+      } else if (boundary) {
+        "composite_reduced_full_boundary"
+      } else if (review) {
+        "composite_reduced_full_diagnostic_review"
+      } else {
+        "composite_reduced_full_stable"
+      }
+      if (!identical(
+        table$model_stability_status[[i]], expected_status
+      ) || !identical(
+        table$singularity_class[[i]], expected_class
+      ) || !identical(
+        table$primary_model_stable[[i]],
+        valid_models && !boundary && !review
+      ) || !identical(
+        table$diagnostic_review_required[[i]], review
+      )) {
+        add_violation(i, "composite_status_mismatch")
+      }
+    } else if (identical(scope, "full_interaction_model")) {
+      mapping <- c(
+        random_intercept_variance =
+          "full_random_intercept_variance",
+        residual_variance = "full_residual_variance",
+        variance_ratio = "full_variance_ratio",
+        ICC = "full_ICC",
+        is_singular_lme4 = "full_is_singular_lme4",
+        boundary_by_variance_ratio =
+          "full_boundary_by_variance_ratio",
+        singularity_class = "full_singularity_class",
+        model_stability_status = "full_model_stability_status",
+        diagnostic_review_required =
+          "full_diagnostic_review_required"
+      )
+      mismatched <- vapply(names(mapping), function(top) {
+        !scalar_equal(table[[top]][[i]], table[[mapping[[top]]]][[i]])
+      }, logical(1))
+      if (any(mismatched)) {
+        add_violation(i, "full_interaction_top_level_mismatch")
+      }
+    } else if (isTRUE(table$model_valid_for_inference[[i]]) &&
+               identical(table$model_family[[i]], "linear_mixed_model")) {
+      if (any(!is.finite(as.numeric(unlist(
+        table[i, raw_fields[1:4], drop = FALSE]
+      )))) ||
+          is.na(table$is_singular_lme4[[i]]) ||
+          is.na(table$boundary_by_variance_ratio[[i]])) {
+        add_violation(i, "single_fit_diagnostics_incomplete")
+      }
+      expected_status <- if (
+        isTRUE(table$boundary_by_variance_ratio[[i]])
+      ) {
+        "boundary_random_intercept_zero"
+      } else {
+        "stable_mixed_model"
+      }
+      if (!identical(
+        table$model_stability_status[[i]], expected_status
+      )) {
+        add_violation(i, "single_fit_status_mismatch")
+      }
+    }
+  }
+  dplyr::bind_rows(rows)
+}
+
+wgcna_group_model_validation_scope_violations <- function(table) {
+  rows <- list()
+  add_violation <- function(i, reason) {
+    rows[[length(rows) + 1L]] <<- data.frame(
+      row_index = as.integer(i),
+      dataset = as.character(table$dataset[[i]]),
+      level = as.character(table$level[[i]]),
+      endpoint_id = as.character(table$endpoint_id[[i]]),
+      model_diagnostic_scope =
+        as.character(table$model_diagnostic_scope[[i]]),
+      reason = reason,
+      stringsAsFactors = FALSE
+    )
+  }
+  raw_fields <- c(
+    "random_intercept_variance", "residual_variance",
+    "variance_ratio", "ICC", "is_singular_lme4",
+    "boundary_by_variance_ratio"
+  )
+  for (i in seq_len(nrow(table))) {
+    expected_scope <- if (identical(
+      table$effect_scope[[i]], "stress_by_spatial_interaction"
+    )) {
+      "composite_reduced_full"
+    } else {
+      "single_fitted_model"
+    }
+    if (!identical(table$model_diagnostic_scope[[i]], expected_scope)) {
+      add_violation(i, "validation_scope_mismatch")
+      next
+    }
+    if (identical(expected_scope, "composite_reduced_full")) {
+      if (any(!is.na(unlist(table[i, raw_fields, drop = FALSE])))) {
+        add_violation(i, "validation_composite_raw_diagnostics_not_na")
+      }
+      if (!isTRUE(table$model_valid_for_inference[[i]])) {
+        if (!identical(
+          table$singularity_class[[i]],
+          "invalid_composite_reduced_full"
+        )) {
+          add_violation(i, "validation_invalid_composite_class_mismatch")
+        }
+        next
+      }
+      reduced_status <- table$reduced_model_stability_status[[i]]
+      full_status <- table$full_model_stability_status[[i]]
+      valid_models <- all(c(reduced_status, full_status) %in% c(
+        "stable_mixed_model", "boundary_random_intercept_zero"
+      ))
+      boundary <- valid_models && any(c(
+        reduced_status, full_status
+      ) == "boundary_random_intercept_zero")
+      review <- valid_models && (
+        isTRUE(table$reduced_diagnostic_review_required[[i]]) ||
+          isTRUE(table$full_diagnostic_review_required[[i]])
+      )
+      expected_status <- if (boundary) {
+        "boundary_random_intercept_zero"
+      } else {
+        "stable_mixed_model"
+      }
+      expected_class <- if (boundary) {
+        "composite_reduced_full_boundary"
+      } else if (review) {
+        "composite_reduced_full_diagnostic_review"
+      } else {
+        "composite_reduced_full_stable"
+      }
+      if (!valid_models ||
+          !isTRUE(table$identical_rows_verified[[i]]) ||
+          !identical(table$model_stability_status[[i]], expected_status) ||
+          !identical(table$singularity_class[[i]], expected_class) ||
+          !identical(
+            table$primary_model_stable[[i]], !boundary && !review
+          ) ||
+          !identical(table$diagnostic_review_required[[i]], review)) {
+        add_violation(i, "validation_composite_status_mismatch")
+      }
+    } else if (isTRUE(table$model_valid_for_inference[[i]]) &&
+               identical(table$model_type[[i]], "lmerTest_lmer")) {
+      if (any(!is.finite(as.numeric(unlist(
+        table[i, raw_fields[1:4], drop = FALSE]
+      )))) ||
+          is.na(table$is_singular_lme4[[i]]) ||
+          is.na(table$boundary_by_variance_ratio[[i]])) {
+        add_violation(i, "validation_single_fit_diagnostics_incomplete")
+      }
+    }
+  }
+  dplyr::bind_rows(rows)
+}
+
 wgcna_group_validate_output_bundle <- function(outputs, contract) {
   required <- wgcna_group_allowed_output_names()
   missing <- setdiff(required, names(outputs))
@@ -4276,6 +4747,10 @@ wgcna_group_validate_output_bundle <- function(outputs, contract) {
   }
   module <- outputs[["module_group_effects.csv"]]
   super <- outputs[["supermodule_group_effects.csv"]]
+  followup <-
+    outputs[["WGCNA_group_effect_interaction_conditional_followup.csv"]]
+  model_validation <-
+    outputs[["WGCNA_group_effect_model_validation.csv"]]
   composition <- outputs[["supermodule_composition.csv"]]
   for (table in list(module, super)) {
     named <- table$test_type == "named_contrast"
@@ -4304,6 +4779,29 @@ wgcna_group_validate_output_bundle <- function(outputs, contract) {
       stop("Primary group-effect output contains invalid or diagnostic rows.",
            call. = FALSE)
     }
+  }
+  diagnostic_violations <- dplyr::bind_rows(
+    wgcna_group_diagnostic_scope_violations(module),
+    wgcna_group_diagnostic_scope_violations(super),
+    wgcna_group_diagnostic_scope_violations(followup)
+  )
+  if (nrow(diagnostic_violations)) {
+    stop(
+      "Model diagnostic-scope contract failed: ",
+      paste(unique(diagnostic_violations$reason), collapse = ";"),
+      call. = FALSE
+    )
+  }
+  model_validation_violations <-
+    wgcna_group_model_validation_scope_violations(model_validation)
+  if (nrow(model_validation_violations)) {
+    stop(
+      "Model-validation diagnostic-scope contract failed: ",
+      paste(
+        unique(model_validation_violations$reason), collapse = ";"
+      ),
+      call. = FALSE
+    )
   }
   primary_rows <- dplyr::bind_rows(module, super) |>
     dplyr::filter(.data$independent_hypothesis %in% TRUE)
@@ -4356,6 +4854,7 @@ wgcna_group_validate_output_bundle <- function(outputs, contract) {
     "boundary_variance_ratio_tolerance", "lme4_singularity_tolerance",
     "singularity_diagnostic_status", "diagnostic_review_required",
     "singularity_class", "model_valid_for_inference",
+    "model_diagnostic_scope",
     "model_stability_status", "claim_allowed_model",
     "identity_contract_sha256", "frozen_state_sha256"
   )
@@ -4421,7 +4920,17 @@ wgcna_group_validate_output_bundle <- function(outputs, contract) {
   hemispheres <- outputs[["WGCNA_group_effect_hemisphere_values.csv"]]
   if (!nrow(aggregates) || !nrow(hemispheres) ||
       anyDuplicated(aggregates$aggregated_row_id) ||
+      anyDuplicated(aggregates$aggregated_row_sha256) ||
       any(!grepl("^[0-9a-f]{64}$", aggregates$aggregated_row_sha256)) ||
+      any(aggregates$aggregated_row_hash_contract != "sha256_utf8_lf_v1") ||
+      any(vapply(seq_len(nrow(aggregates)), function(i) {
+        !identical(
+          aggregates$aggregated_row_sha256[[i]],
+          wgcna_group_aggregate_row_sha256(
+            aggregates[i, , drop = FALSE]
+          )
+        )
+      }, logical(1))) ||
       any(!aggregates$n_hemispheres_observed %in% 1:2) ||
       any(!is.finite(aggregates$eigengene)) ||
       any(!is.finite(hemispheres$hemisphere_value))) {

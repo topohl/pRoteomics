@@ -426,7 +426,7 @@ stages:
         consumes_optional: []
         recomputes_core_state: false
         safe_downstream_rerun: false
-        notes: "Phase 2B statistical production only. Bilateral values use equal hemisphere weighting after within-hemisphere technical-row means; mixed-model boundaries use the prespecified variance-ratio rule and retain lme4 singularity as a separate diagnostic. The identity contract is the sole membership authority; publication readiness is not assessed. The Stage 05 status reports downstream_compatible=false and should_block_execution=true. BLOCKED BY CONTRACT; NOT RUNTIME-ENFORCED: Stage 06+ must not run before the atomic Phase 3 migration."
+        notes: "Phase 2B v5 statistical production only. Bilateral values use equal hemisphere weighting after within-hemisphere technical-row means and sha256_utf8_lf_v1 content hashes. Named, full-interaction follow-up, and composite reduced/full omnibus diagnostics have explicit scopes; mixed-model boundaries use the prespecified variance-ratio rule and retain lme4 singularity as a separate diagnostic. The identity contract is the sole membership authority; publication readiness is not assessed. The Stage 05 status reports downstream_compatible=false and should_block_execution=true. BLOCKED BY CONTRACT; NOT RUNTIME-ENFORCED: Stage 06+ must not run before the atomic Phase 3 migration."
       - script: "06_modules_WGCNA/06_annotate_module_microenvironment.r"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]

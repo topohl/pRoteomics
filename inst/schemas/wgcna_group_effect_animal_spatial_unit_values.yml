@@ -24,6 +24,7 @@ required_columns:
   - duplicate_source_row_status
   - aggregated_row_id
   - aggregated_row_sha256
+  - aggregated_row_hash_contract
 columns:
   dataset: {type: character, allowed_values: [neuron_neuropil, neuron_soma, microglia]}
   level: {type: character, allowed_values: [module, supermodule]}
@@ -49,3 +50,4 @@ columns:
   duplicate_source_row_status: {type: character, allowed_values: [technical_duplicates_collapsed_within_hemisphere, no_technical_duplicates]}
   aggregated_row_id: {type: character}
   aggregated_row_sha256: {type: character}
+  aggregated_row_hash_contract: {type: character, allowed_values: [sha256_utf8_lf_v1]}

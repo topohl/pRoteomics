@@ -240,6 +240,10 @@ testthat::test_that("generated canonical tables contain only valid finite tests"
     module <- read_group_output(dataset, "module_group_effects.csv")
     supermodule <- read_group_output(dataset, "supermodule_group_effects.csv")
     primary <- dplyr::bind_rows(module, supermodule)
+    testthat::skip_if_not(
+      "model_diagnostic_scope" %in% names(primary),
+      "Stage 05 v5 outputs have not yet been republished."
+    )
     testthat::expect_gt(nrow(primary), 0L)
     testthat::expect_true(all(primary$claim_allowed_model), info = dataset)
     testthat::expect_true(
@@ -269,7 +273,92 @@ testthat::test_that("generated canonical tables contain only valid finite tests"
     testthat::expect_true(all(
       primary$manuscript_claim_ready == "not_assessed_stage05"
     ), info = dataset)
+    testthat::expect_equal(
+      nrow(wgcna_group_diagnostic_scope_violations(primary)),
+      0L,
+      info = dataset
+    )
+    validation <- read_group_output(
+      dataset, "WGCNA_group_effect_model_validation.csv"
+    )
+    testthat::expect_equal(
+      nrow(wgcna_group_model_validation_scope_violations(validation)),
+      0L,
+      info = dataset
+    )
   }
+})
+
+testthat::test_that("v5 aggregation hashes use the canonical LF contract", {
+  for (dataset in group_test_datasets) {
+    aggregated <- read_group_output(
+      dataset, "WGCNA_group_effect_animal_spatial_unit_values.csv"
+    )
+    testthat::skip_if_not(
+      "aggregated_row_hash_contract" %in% names(aggregated),
+      "Stage 05 v5 outputs have not yet been republished."
+    )
+    testthat::expect_true(all(
+      aggregated$aggregated_row_hash_contract == "sha256_utf8_lf_v1"
+    ), info = dataset)
+    testthat::expect_false(
+      anyDuplicated(aggregated$aggregated_row_id) > 0L,
+      info = dataset
+    )
+    testthat::expect_false(
+      anyDuplicated(aggregated$aggregated_row_sha256) > 0L,
+      info = dataset
+    )
+    testthat::expect_true(all(vapply(
+      seq_len(nrow(aggregated)),
+      function(i) identical(
+        aggregated$aggregated_row_sha256[[i]],
+        wgcna_group_aggregate_row_sha256(
+          aggregated[i, , drop = FALSE]
+        )
+      ),
+      logical(1)
+    )), info = dataset)
+  }
+})
+
+testthat::test_that("known mixed-status omnibus has explicit composite scope", {
+  row <- read_group_output(
+    "neuron_neuropil", "module_group_effects.csv"
+  )
+  testthat::skip_if_not(
+    "model_diagnostic_scope" %in% names(row),
+    "Stage 05 v5 outputs have not yet been republished."
+  )
+  row <- row[
+    row$endpoint_id == "WGCNA_#9E9AC8" &
+      row$test_type == "interaction_omnibus",
+    ,
+    drop = FALSE
+  ]
+  testthat::expect_equal(nrow(row), 1L)
+  testthat::expect_identical(
+    row$model_diagnostic_scope, "composite_reduced_full"
+  )
+  testthat::expect_identical(
+    row$model_stability_status, "boundary_random_intercept_zero"
+  )
+  testthat::expect_false(row$primary_model_stable)
+  testthat::expect_true(all(is.na(unlist(row[c(
+    "random_intercept_variance", "residual_variance",
+    "variance_ratio", "ICC", "is_singular_lme4",
+    "boundary_by_variance_ratio"
+  )]))))
+  testthat::expect_identical(
+    row$reduced_model_stability_status,
+    "boundary_random_intercept_zero"
+  )
+  testthat::expect_identical(
+    row$full_model_stability_status, "stable_mixed_model"
+  )
+  testthat::expect_identical(
+    row$singularity_class, "composite_reduced_full_boundary"
+  )
 })
 
 testthat::test_that("Phase 2B endpoint keys and FDR families are exact", {
