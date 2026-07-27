@@ -6,7 +6,7 @@ interpretation layers are summarized in [docs/WGCNA_WORKFLOW.md](docs/WGCNA_WORK
 
 ## Launcher
 
-```bash
+```powershell
 Rscript run_dataset_pipeline.R --list-stages
 Rscript run_dataset_pipeline.R --dataset <dataset> --stage <stage> --dry-run
 Rscript run_dataset_pipeline.R --dataset <dataset> --stage <stage>
@@ -87,9 +87,29 @@ Rscript 03_qc_exploration/05_pca_confounding_qc.r --dataset <dataset> --dry-run
 Rscript 03_qc_exploration/06_variance_partitioning.r --dataset <dataset> --dry-run
 Rscript 03_qc_exploration/07_wgcna_marker_trait_export.r --dataset <dataset> --dry-run
 Rscript 03_qc_exploration/08_qc_biology_confounding_report.r --dataset <dataset> --dry-run
-Rscript 03_qc_exploration/04d_compartment_marker_fidelity.r --dataset all --dry-run
 Rscript 03_qc_exploration/04e_control_compartment_abundance_publication_figures.r --dataset global --dry-run
+Rscript 03_qc_exploration/04e_control_compartment_abundance_publication_figures.r --dataset global --render-only --dry-run
 ```
+
+`04e` is the authoritative CON-only cross-compartment marker-abundance and
+detection workflow. Its v2 analysis reconstructs observed, non-imputed
+abundance from the raw quantitative columns in the joint bundle and reuses the
+joint shared-core normalization offsets. It preserves hemisphere before
+animal-level aggregation and treats joint-shared-core membership as a named
+sensitivity, not as the primary marker gate.
+
+`04c` remains active for dataset-specific canonical mapping, processed-matrix
+availability, WGCNA bridges, and broad annotation. Its nonmissing processed
+values are post-filter/post-imputation availability rather than raw
+detectability. `04d` is deprecated because its historical sample-level
+cross-compartment tests do not respect the animal hierarchy; it is disabled
+unless `PROTEOMICS_ENABLE_LEGACY_04D_COMPARTMENT_FIDELITY=true` is set
+explicitly.
+
+Completed v2 analytical files are overwrite-protected. Rendering can be
+regenerated without recalculating analysis only by explicitly setting
+`PROTEOMICS_CONTROL_ABUNDANCE_V2_RENDER_ALLOW_OVERWRITE=true` and using
+`--render-only`.
 
 Key outputs:
 
@@ -98,6 +118,9 @@ config/marker_panels/wgcna_reference_marker_sets.csv
 results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/
 results/reports/03_qc_exploration/00_dataset_qc_report/<dataset>/
 results/reports/03_qc_exploration/07_qc_biology_confounding_report/<dataset>/
+results/source_data/03_qc_exploration/04e_control_compartment_abundance_publication_figures/global/v2_*.csv
+results/figures/03_qc_exploration/04e_control_compartment_abundance_publication_figures/global/*_v2_*.{svg,pdf,png}
+results/reports/03_qc_exploration/04e_control_compartment_abundance_publication_figures/global/v2_*.md
 ```
 
 ## Enrichment

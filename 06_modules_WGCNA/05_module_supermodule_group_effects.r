@@ -97,10 +97,21 @@ if (run$dry_run) {
     paste(
       c(
         "within_spatial_unit", "spatial_adjusted_global",
-        "stress_by_spatial_interaction"
+        "stress_by_spatial_interaction_omnibus"
       ),
       collapse = ";"
     )
+  )
+  consumer_audit <- wgcna_group_scan_downstream_consumers()
+  cat("[DRY-RUN] Downstream compatibility: FALSE\n")
+  cat("[DRY-RUN] Stage 06+ must not be run before Phase 3 migration.\n")
+  dry_run_line(
+    "Advisory downstream consumers",
+    paste0(
+      dplyr::n_distinct(consumer_audit$consumer_script),
+      " active scripts/helpers require Phase 3 migration"
+    ),
+    "BLOCKED BY CONTRACT; NOT RUNTIME-ENFORCED"
   )
   dry_run_line(
     "Primary packages",
@@ -166,6 +177,23 @@ write_failure <- function(error, validation = NULL) {
 result <- tryCatch({
   bundle <- wgcna_group_build_bundle(DATASET, state, contract)
   legacy_audit <- wgcna_group_legacy_staleness_audit(DATASET, PATHS)
+  consumer_audit <- wgcna_group_scan_downstream_consumers()
+  status_sources <- c(
+    repo_path("06_modules_WGCNA", "05_module_supermodule_group_effects.r"),
+    repo_path("R", "wgcna_group_effects_utils.R"),
+    repo_path("inst", "schemas", "module_group_effects.yml"),
+    repo_path("inst", "schemas", "supermodule_group_effects.yml"),
+    repo_path(
+      "inst", "schemas",
+      "wgcna_group_effect_downstream_consumer_migration_audit.yml"
+    ),
+    repo_path("inst", "schemas", "wgcna_group_effect_contract_status.yml"),
+    STATE_PATH,
+    unname(unlist(CONTRACT_PATHS))
+  )
+  contract_status <- wgcna_group_contract_status(
+    DATASET, status_sources, canonical_primary_outputs_complete = TRUE
+  )
   outputs <- list(
     module_group_effects.csv = bundle$module_group_effects,
     supermodule_group_effects.csv = bundle$supermodule_group_effects,
@@ -176,6 +204,18 @@ result <- tryCatch({
       bundle$model_validation,
     WGCNA_group_effect_sample_inclusion_audit.csv =
       bundle$sample_inclusion_audit,
+    WGCNA_group_effect_animal_spatial_unit_values.csv =
+      bundle$animal_spatial_unit_values,
+    WGCNA_group_effect_interaction_conditional_followup.csv =
+      bundle$interaction_conditional_followup,
+    WGCNA_group_effect_sensitivity.csv =
+      bundle$sensitivity,
+    WGCNA_group_effect_left_right_concordance.csv =
+      bundle$left_right_concordance,
+    WGCNA_group_effect_downstream_consumer_migration_audit.csv =
+      consumer_audit,
+    WGCNA_group_effect_contract_status.csv =
+      contract_status,
     supermodule_pca_input_audit.csv =
       bundle$supermodule_pca_input_audit,
     supermodule_pca_eigenvalues.csv =
@@ -226,18 +266,28 @@ result <- tryCatch({
       frozen_state_sha256 = contract$frozen_state_sha256,
       effect_scopes = c(
         "within_spatial_unit", "spatial_adjusted_global",
-        "stress_by_spatial_interaction"
+        "stress_by_spatial_interaction_omnibus"
       ),
-      fdr_within_level = "BH over dataset + level primary rows",
-      fdr_dataset = "BH over dataset module + supermodule primary rows",
+      primary_fdr =
+        "separate dataset + hypothesis_level + SUS-RES + spatial_adjusted_global",
+      secondary_global_fdr =
+        "separate dataset + hypothesis_level + RES-CON/SUS-CON + spatial_adjusted_global",
+      interaction_fdr =
+        "dataset + hypothesis_level + interaction_omnibus",
+      local_fdr =
+        "dataset + hypothesis_level + contrast + within_spatial_unit",
+      conservative_fdr =
+        "dataset independent primary and secondary tests; sensitivity only",
+      downstream_compatible = FALSE,
+      downstream_contract_status = "phase3_migration_required",
       fallback_enabled = FALSE,
       atomic_publication = TRUE
     ),
     notes = paste(
-      "Phase 2 quantitative publication only.",
+      "Phase 2B statistical production only; publication readiness is not assessed.",
       "The Phase 1 identity contract is the sole membership authority.",
-      "Legacy figures, labels, selected interpretations, and auxiliary outputs",
-      "were preserved and recorded in the staleness audit."
+      "Stage 06+ consumers were not migrated or run and should not execute",
+      "before the atomic Phase 3 consumer migration."
     )
   )
   writeLines(
