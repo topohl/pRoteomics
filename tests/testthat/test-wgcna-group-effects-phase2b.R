@@ -171,6 +171,55 @@ testthat::test_that("lme4 disagreement is audited without replacing ratio rule",
   testthat::expect_true(lme4_only$diagnostic_review_required)
 })
 
+testthat::test_that("nested interaction diagnostics have deterministic composite status", {
+  reduced <- valid_fixture(
+    random_intercept_variance = 1e-6,
+    residual_variance = 1e-2,
+    is_singular_lme4 = TRUE
+  )
+  full <- valid_fixture(
+    random_intercept_variance = 0.2,
+    residual_variance = 1,
+    is_singular_lme4 = FALSE
+  )
+  observed <- wgcna_group_composite_interaction_diagnostics(
+    reduced, full
+  )
+  testthat::expect_true(observed$model_valid_for_inference)
+  testthat::expect_identical(
+    observed$model_stability_status,
+    "boundary_random_intercept_zero"
+  )
+  testthat::expect_false(observed$primary_model_stable)
+  testthat::expect_identical(
+    observed$singularity_class,
+    "composite_reduced_full_boundary"
+  )
+  testthat::expect_true(all(vapply(
+    c(
+      "random_intercept_variance", "residual_variance",
+      "variance_ratio", "ICC", "is_singular_lme4",
+      "boundary_by_variance_ratio"
+    ),
+    function(nm) is.na(observed[[nm]]),
+    logical(1)
+  )))
+
+  review_only <- wgcna_group_composite_interaction_diagnostics(
+    valid_fixture(),
+    valid_fixture(is_singular_lme4 = TRUE)
+  )
+  testthat::expect_identical(
+    review_only$model_stability_status, "stable_mixed_model"
+  )
+  testthat::expect_false(review_only$primary_model_stable)
+  testthat::expect_true(review_only$diagnostic_review_required)
+  testthat::expect_identical(
+    review_only$singularity_class,
+    "composite_reduced_full_diagnostic_review"
+  )
+})
+
 testthat::test_that("installed lme4 boundary integration is retained when reproducible", {
   testthat::skip_if_not_installed("lmerTest")
   dat <- expand.grid(
@@ -302,6 +351,7 @@ testthat::test_that("singleton aliases inherit estimates but no FDR", {
   module_rows$CI_high <- module_rows$estimate + 0.196
   module_rows$model_formula <- "eigengene ~ StressGroup + SpatialUnit + (1 | AnimalID)"
   module_rows$formula_used <- module_rows$model_formula
+  module_rows$model_diagnostic_scope <- "single_fitted_model"
   module_rows$model_stability_status <- "stable_mixed_model"
   module_rows$primary_model_stable <- TRUE
   module_rows$random_intercept_variance <- 0.2
@@ -344,6 +394,7 @@ testthat::test_that("singleton aliases inherit estimates but no FDR", {
     "boundary_variance_ratio_tolerance", "lme4_singularity_tolerance",
     "singularity_diagnostic_status", "diagnostic_review_required",
     "singularity_class", "boundary_warning",
+    "model_diagnostic_scope",
     "model_valid_for_inference", "model_stability_status",
     "primary_model_stable", "claim_allowed_model",
     "endpoint_construction_method", "endpoint_provenance_status",
@@ -392,6 +443,25 @@ aggregation_fixture <- function() {
   )
 }
 
+testthat::test_that("canonical text hashing uses exact UTF-8 LF bytes", {
+  expected <- "911169ddaaf146aff539f58c26c489af3b892dff0fe283c1c264c65ae5aa59a2"
+  raw_payload <- wgcna_group_canonical_text_raw(c("a", "b"))
+  testthat::expect_identical(
+    as.integer(raw_payload), c(0x61L, 0x0AL, 0x62L, 0x0AL)
+  )
+  testthat::expect_identical(
+    wgcna_group_text_sha256(c("a", "b")), expected
+  )
+  testthat::expect_false(any(as.integer(raw_payload) == 0x0DL))
+  testthat::expect_false(identical(
+    head(as.integer(raw_payload), 3L), c(0xEFL, 0xBBL, 0xBFL)
+  ))
+  testthat::expect_error(
+    wgcna_group_canonical_text_raw(c("a", NA_character_)),
+    "contains NA"
+  )
+})
+
 testthat::test_that("hemisphere aggregation is equal-weight and content-addressed", {
   dat <- aggregation_fixture()
   observed <- wgcna_group_aggregate_endpoint(
@@ -414,6 +484,15 @@ testthat::test_that("hemisphere aggregation is equal-weight and content-addresse
   testthat::expect_true(all(grepl(
     "^[0-9a-f]{64}$", animal$aggregated_row_sha256
   )))
+  testthat::expect_true(all(
+    animal$aggregated_row_hash_contract == "sha256_utf8_lf_v1"
+  ))
+  testthat::expect_true(all(vapply(seq_len(nrow(animal)), function(i) {
+    identical(
+      animal$aggregated_row_sha256[[i]],
+      wgcna_group_aggregate_row_sha256(animal[i, , drop = FALSE])
+    )
+  }, logical(1))))
 
   reordered <- wgcna_group_aggregate_endpoint(
     dat[c(4, 2, 1, 3), ], "microglia", "module", "m1", "endpoint"
@@ -508,6 +587,15 @@ testthat::test_that("interaction omnibus is a nested ML comparison on identical 
   testthat::expect_identical(
     observed$primary$test_type, "interaction_omnibus"
   )
+  testthat::expect_identical(
+    observed$primary$model_diagnostic_scope,
+    "composite_reduced_full"
+  )
+  testthat::expect_true(all(is.na(unlist(observed$primary[c(
+    "random_intercept_variance", "residual_variance",
+    "variance_ratio", "ICC", "is_singular_lme4",
+    "boundary_by_variance_ratio"
+  )]))))
   testthat::expect_true(observed$primary$identical_rows_verified)
   testthat::expect_true(is.finite(
     observed$primary$likelihood_ratio_statistic
@@ -537,6 +625,25 @@ testthat::test_that("interaction omnibus is a nested ML comparison on identical 
   testthat::expect_false(is.na(
     observed$primary$full_model_stability_status
   ))
+  if (nrow(observed$followup)) {
+    testthat::expect_true(all(
+      observed$followup$model_diagnostic_scope ==
+        "full_interaction_model"
+    ))
+    testthat::expect_equal(
+      observed$followup$variance_ratio,
+      observed$followup$full_variance_ratio,
+      tolerance = 0
+    )
+    testthat::expect_identical(
+      observed$followup$model_stability_status,
+      observed$followup$full_model_stability_status
+    )
+  }
+  testthat::expect_equal(
+    nrow(wgcna_group_diagnostic_scope_violations(observed$primary)),
+    0L
+  )
 })
 
 testthat::test_that("consumer scan is deterministic and excludes nonactive roots", {

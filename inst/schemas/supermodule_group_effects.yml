@@ -10,6 +10,7 @@ required_columns:
   - hypothesis_level
   - primary_contrast
   - model_valid_for_inference
+  - model_diagnostic_scope
   - model_stability_status
   - independent_hypothesis
   - enters_primary_fdr
@@ -40,6 +41,7 @@ required_columns:
   - lme4_singularity_tolerance
   - singularity_diagnostic_status
   - diagnostic_review_required
+  - singularity_class
   - reduced_formula
   - reduced_row_hash
   - reduced_fixed_effect_rank
@@ -97,6 +99,7 @@ columns:
   hypothesis_level: {type: character, allowed_values: [higher_order_multimodule, compatibility_alias]}
   primary_contrast: {type: logical}
   model_valid_for_inference: {type: logical}
+  model_diagnostic_scope: {type: character, allowed_values: [single_fitted_model, composite_reduced_full, full_interaction_model]}
   model_stability_status: {type: character, allowed_values: [stable_mixed_model, boundary_random_intercept_zero, stable_animal_level_lm]}
   independent_hypothesis: {type: logical}
   enters_primary_fdr: {type: logical}
@@ -127,6 +130,7 @@ columns:
   lme4_singularity_tolerance: {type: numeric}
   singularity_diagnostic_status: {type: character, allowed_values: [concordant_boundary, concordant_nonboundary, variance_ratio_boundary_only, lme4_singular_only, not_applicable_lm]}
   diagnostic_review_required: {type: logical}
+  singularity_class: {type: character, allowed_values: [stable_single_animal_intercept, boundary_single_animal_intercept, not_applicable_lm, composite_reduced_full_stable, composite_reduced_full_boundary, composite_reduced_full_diagnostic_review]}
   reduced_formula: {type: character}
   reduced_row_hash: {type: character}
   reduced_fixed_effect_rank: {type: integer}
