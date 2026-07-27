@@ -22,6 +22,45 @@ missing_pkgs <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1
 if (length(missing_pkgs) && !is_dry_run()) stop("Missing required R package(s): ", paste(missing_pkgs, collapse = ", "), call. = FALSE)
 if (!length(missing_pkgs)) suppressPackageStartupMessages(invisible(lapply(required_pkgs, library, character.only = TRUE)))
 
+wgcna_stage06_validate_contrast_blind_annotation <- function(
+    data, artifact = "Stage 06 biological annotation"
+) {
+  prohibited <- c(
+    "contrast", "estimate", "SE", "CI_low", "CI_high", "statistic",
+    "p_value",
+    "analysis_tier", "test_type", "effect_scope", "spatial_unit",
+    "result_scope",
+    "tier_specific_fdr", "tier_specific_family_id",
+    "tier_specific_family_size", "statistical_support_status",
+    "FDR_primary_global", "FDR_secondary_global",
+    "FDR_interaction_omnibus", "FDR_local_exploratory",
+    "FDR_conservative_all_tests", "FDR_global",
+    "FDR_within_dataset_level", "FDR_dataset_all_levels",
+    "FDR_primary_family_id", "FDR_secondary_family_id",
+    "FDR_interaction_family_id", "FDR_local_family_id",
+    "FDR_conservative_family_id", "FDR_family_within_level_id",
+    "FDR_family_dataset_id",
+    "n_tests_FDR_primary", "n_tests_FDR_secondary_global",
+    "n_tests_FDR_interaction_omnibus",
+    "n_tests_FDR_local_exploratory",
+    "n_tests_FDR_conservative_all_tests",
+    "n_tests_FDR_within_dataset_level",
+    "n_tests_FDR_dataset_all_levels",
+    "model_valid_for_inference", "model_stability_status",
+    "claim_allowed_model", "primary_model_stable",
+    "Changed_in_group_contrasts"
+  )
+  leaked <- intersect(prohibited, names(data))
+  if (length(leaked)) {
+    stop(
+      artifact, " contains group-effect-derived field(s): ",
+      paste(leaked, collapse = ", "),
+      ". Stage 06 must remain contrast-blind.", call. = FALSE
+    )
+  }
+  invisible(TRUE)
+}
+
 run <- wgcna_cli()
 DATASET <- run$dataset
 PATHS <- wgcna_downstream_paths("module_annotation", DATASET)
@@ -83,7 +122,6 @@ if (run$dry_run) {
   dry_run_line("GO enrichment", FILES$go, if (file.exists(FILES$go)) "PASS" else "WARN")
   dry_run_line("Supermodule annotation", FILES$supermodule_annotation, if (file.exists(FILES$supermodule_annotation)) "PASS" else "WARN")
   dry_run_line("Supermodule summary", FILES$supermodule_summary, if (file.exists(FILES$supermodule_summary)) "PASS" else "WARN")
-  dry_run_line("Group effects", path_results("tables", "06_modules_WGCNA", "group_effects", DATASET), "INFO")
   if (DATASET == "microglia" || force_microglia) dry_run_line("Neuropil reference annotation", FILES$neuropil_annotation, if (file.exists(FILES$neuropil_annotation)) "PASS" else "WARN")
   if (DATASET == "microglia" || force_microglia) dry_run_line("Targeted microglia signature enrichment", path_results("tables", "04_differential_expression_enrichment", "microglia_targeted_signature_enrichment", "microglia", "microglia_signature_enrichment_with_contrast_class.csv"), if (file.exists(path_results("tables", "04_differential_expression_enrichment", "microglia_targeted_signature_enrichment", "microglia", "microglia_signature_enrichment_with_contrast_class.csv"))) "PASS" else "WARN")
   dry_run_line("Marker registry", Sys.getenv("PROTEOMICS_WGCNA_MARKER_REGISTRY_FILE", unset = repo_path("config", "marker_panels", "wgcna_reference_marker_sets.csv")), "INFO")
@@ -107,6 +145,12 @@ if (is.null(definitions) || !nrow(definitions)) {
     interpretation_note = WGCNA_ROI_NOTE
   )
   super_annot <- data.frame(dataset = DATASET, SupermoduleID = NA_character_, supermodule_id = NA_character_, n_member_modules = 0L, dominant_microenvironment_class = "missing_module_definitions", interpretation_note = WGCNA_ROI_NOTE)
+  wgcna_stage06_validate_contrast_blind_annotation(
+    module_annot, "Stage 06 module biological annotation"
+  )
+  wgcna_stage06_validate_contrast_blind_annotation(
+    super_annot, "Stage 06 supermodule biological annotation"
+  )
   write_table_and_source(module_annot, PATHS$tables, PATHS$source_data, "WGCNA_module_biological_annotation.csv")
   write_table_and_source(super_annot, PATHS$tables, PATHS$source_data, "WGCNA_supermodule_biological_annotation.csv")
   write_run_manifest(file.path(PATHS$logs, "run_manifest.yml"), inputs = FILES, outputs = list(tables = PATHS$tables), parameters = list(dataset = DATASET), notes = paste(WGCNA_ROI_NOTE, "Improved annotation separates vascular basement membrane/BBB/mural, astrocyte/endfoot, oligodendrocyte/myelin, neuropil, and microglia-supported ROI evidence; labels are annotation only."))
@@ -124,8 +168,6 @@ module_summary <- safe_read_csv(FILES$module_summary)
 go <- safe_read_csv(FILES$go)
 super_ann <- safe_read_csv(FILES$supermodule_annotation)
 super_summary <- safe_read_csv(FILES$supermodule_summary)
-module_effects <- safe_read_csv(path_results("tables", "06_modules_WGCNA", "group_effects", DATASET, "module_group_effects.csv"))
-super_effects <- safe_read_csv(path_results("tables", "06_modules_WGCNA", "group_effects", DATASET, "supermodule_group_effects.csv"))
 neuropil_ref <- if (DATASET == "microglia" || force_microglia) safe_read_csv(FILES$neuropil_annotation) else NULL
 targeted_signature_file <- path_results("tables", "04_differential_expression_enrichment", "microglia_targeted_signature_enrichment", "microglia", "microglia_signature_enrichment_with_contrast_class.csv")
 targeted_signature_ref <- if (DATASET == "microglia" || force_microglia) safe_read_csv(targeted_signature_file) else NULL
@@ -1143,14 +1185,6 @@ module_annot$marker_registry_version <- marker_registry_version
 module_annot$empirical_marker_set_version <- empirical_marker_set_version
 module_annot$interpretation_note <- WGCNA_ROI_NOTE
 
-if (!is.null(module_effects) && nrow(module_effects)) {
-  changed <- module_effects |>
-    dplyr::filter(!is.na(.data$FDR_global), .data$FDR_global < 0.10) |>
-    dplyr::group_by(.data$module_id) |>
-    dplyr::summarise(Changed_in_group_contrasts = paste(unique(paste(.data$spatial_unit, .data$contrast, sep = ":")), collapse = ";"), .groups = "drop")
-  module_annot <- module_annot |> dplyr::left_join(changed, by = c("ModuleID" = "module_id"))
-}
-
 if (is.null(super_ann) || !nrow(super_ann)) {
   super_annot <- data.frame(dataset = DATASET, SupermoduleID = NA_character_, supermodule_id = NA_character_, Supermodule_FinalLabel = NA_character_, n_member_modules = 0L, dominant_microenvironment_class = "missing_supermodule_annotation", interpretation_note = WGCNA_ROI_NOTE)
 } else {
@@ -1655,6 +1689,12 @@ annotation_source_audit <- supplemental_marker_panels |>
   )
 replace_dataset_audit(file.path(audit_dir, "wgcna_annotation_source_audit.csv"), annotation_source_audit)
 
+wgcna_stage06_validate_contrast_blind_annotation(
+  module_annot, "Stage 06 module biological annotation"
+)
+wgcna_stage06_validate_contrast_blind_annotation(
+  super_annot, "Stage 06 supermodule biological annotation"
+)
 write_table_and_source(module_annot, PATHS$tables, PATHS$source_data, "WGCNA_module_biological_annotation.csv")
 write_table_and_source(super_annot, PATHS$tables, PATHS$source_data, "WGCNA_supermodule_biological_annotation.csv")
 write_table_and_source(targeted_signature_details, PATHS$tables, PATHS$source_data, "WGCNA_module_targeted_signature_overlap_details.csv")
