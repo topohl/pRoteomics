@@ -16,10 +16,33 @@ Rscript 06_modules_WGCNA/05_module_supermodule_group_effects.r --dataset <datase
 module-trait and condition/eigengene heatmaps are useful for exploration, but
 they are not the final group-effect inference.
 
+## Representative GO comparison heatmaps
+
+`01b_module_supermodule_GO_heatmaps.R` turns the Stage 01 module GO results
+into compact, representative comparison heatmaps. The default is Biological
+Process (`--ontology BP`); use `--ontology all` to also generate MF and CC.
+Module cells are capped `-log10(BH FDR)` from the `all` module-protein ORA
+results, and white means the term is not FDR-significant. Supermodule cells are
+the mean module score across their member modules, so a term shared by more
+members is stronger. Representative supermodule terms are selected from the
+full module GO result before aggregation, preventing the module panel's
+top-term cutoff from hiding a recurrent theme. This deliberately summarizes
+existing module evidence and does **not** perform or imply a new pooled
+supermodule ORA test.
+
+The figures use a Nature-style double-column width (7.2 inches/183 mm), vector
+SVG/PDF export, compact module IDs, and module columns grouped under their
+data-driven supermodule. The accompanying chart-contract CSV records the
+question, visual structure, palette, and displayed measure for each panel.
+
+Outputs are under
+`results/{tables,figures}/06_modules_WGCNA/01b_module_supermodule_GO_heatmaps/<dataset>/`.
+
 ## Recommended Run Order
 
 ```powershell
 Rscript 06_modules_WGCNA/01_WGCNA.r --dataset <dataset>
+Rscript 06_modules_WGCNA/01b_module_supermodule_GO_heatmaps.R --dataset <dataset>
 Rscript 06_modules_WGCNA/00_wgcna_identity_contract.R --dataset <dataset>
 Rscript 06_modules_WGCNA/05_module_supermodule_group_effects.r --dataset <dataset> --level both
 Rscript 06_modules_WGCNA/04_wgcna_de_gsea_overlap.r --dataset <dataset>

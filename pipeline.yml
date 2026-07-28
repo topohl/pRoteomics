@@ -357,8 +357,19 @@ stages:
         safe_downstream_rerun: false
         notes: "Network/module construction from the canonical post-filter quantitative matrix. Supermodules are signed eigengene meta-modules keyed by dataset + SupermoduleID; GO naming uses recurring all-protein module terms at FDR <= 0.05 and hub overlap is audit-only. This is the only stage entry that recomputes core WGCNA state; downstream annotation/reporting should use modules_downstream."
   modules_downstream:
-    description: "WGCNA downstream interpretation: curated overlap programs, module scoring, DE/GSEA overlap, group-effect modelling, biological annotation, interpretable summaries, and robustness/context layers."
+    description: "WGCNA downstream interpretation: GO comparison heatmaps, curated overlap programs, module scoring, DE/GSEA overlap, group-effect modelling, biological annotation, interpretable summaries, and robustness/context layers."
     scripts:
+      - script: "06_modules_WGCNA/01b_module_supermodule_GO_heatmaps.R"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        stage: "modules_downstream"
+        scope: "dataset_specific"
+        produces: ["results/tables/06_modules_WGCNA/01b_module_supermodule_GO_heatmaps/<dataset>/", "results/figures/06_modules_WGCNA/01b_module_supermodule_GO_heatmaps/<dataset>/"]
+        consumes_required: ["results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_module_GO_enrichment_long.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/module_name_map.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/"]
+        consumes_optional: []
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Creates representative all-module GO heatmaps. Module cells are BH-FDR enrichment strengths; supermodule cells are recurrence-weighted member-module summaries, not pooled ORA tests."
       - script: "06_modules_WGCNA/01a_compare_GO_recurrent_proteins.r"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]

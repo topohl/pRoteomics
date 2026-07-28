@@ -2,6 +2,7 @@ testthat::test_that("canonical module entrypoints exist", {
   source(testthat::test_path("..", "..", "R", "paths.R"))
   active <- c(
     "06_modules_WGCNA/01_WGCNA.r",
+    "06_modules_WGCNA/01b_module_supermodule_GO_heatmaps.R",
     "06_modules_WGCNA/02_curated_overlap_programs.r",
     "06_modules_WGCNA/03_score_module_activity.R",
     "06_modules_WGCNA/04_wgcna_de_gsea_overlap.r"
@@ -49,6 +50,7 @@ testthat::test_that("pipeline module stages use canonical scripts and contracts"
   scripts_downstream <- vapply(modules_downstream, function(x) x$script, character(1))
   testthat::expect_equal(scripts_wgcna, "06_modules_WGCNA/01_WGCNA.r")
   expected_downstream <- c(
+    "06_modules_WGCNA/01b_module_supermodule_GO_heatmaps.R",
     "06_modules_WGCNA/01a_compare_GO_recurrent_proteins.r",
     "06_modules_WGCNA/02_curated_overlap_programs.r",
     "06_modules_WGCNA/03_score_module_activity.R",
