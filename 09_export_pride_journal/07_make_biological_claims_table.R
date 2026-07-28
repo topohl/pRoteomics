@@ -1389,8 +1389,15 @@ final_reviewer_audit_specs <- function() {
 
 schema_validation_status <- function(path, schema_name) {
   if (is.na(schema_name) || !nzchar(schema_name) || !file.exists(path)) return(FALSE)
-  dat <- tryCatch(readr::read_csv(path, show_col_types = FALSE), error = function(e) NULL)
-  if (is.null(dat)) return(FALSE)
+  dat <- tryCatch(
+    suppressWarnings(readr::read_csv(
+      path,
+      show_col_types = FALSE,
+      col_types = readr::cols(.default = readr::col_character())
+    )),
+    error = function(e) NULL
+  )
+  if (is.null(dat) || nrow(readr::problems(dat))) return(FALSE)
   isTRUE(tryCatch({ validate_table_schema(dat, schema_name, strict = TRUE); TRUE }, error = function(e) FALSE))
 }
 
