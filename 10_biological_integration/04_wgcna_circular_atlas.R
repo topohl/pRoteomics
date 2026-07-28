@@ -16,6 +16,7 @@ paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.
 source(paths_file)
 source(repo_path("R", "wgcna_downstream_utils.R"))
 source(repo_path("R", "wgcna_claim_readiness_utils.R"))
+source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
 
 required_pkgs <- c("dplyr", "readr", "tibble", "tidyr", "stringr")
 plot_pkgs <- c("circlize", "svglite", "ggplot2", "scales")
@@ -58,6 +59,7 @@ out_selected_svg <- file.path(figure_dir, "wgcna_circular_atlas_selected_only.sv
 out_selected_pdf <- file.path(figure_dir, "wgcna_circular_atlas_selected_only.pdf")
 out_heatmap_source_supermodule <- file.path(source_dir, "wgcna_circular_heatmap_source_supermodule.csv")
 out_heatmap_source_module <- file.path(source_dir, "wgcna_circular_heatmap_source_module.csv")
+out_global_supermodule_support <- file.path(source_dir, "wgcna_circular_global_supermodule_support_source.csv")
 out_heatmap_layout_all_datasets <- file.path(source_dir, "wgcna_circular_heatmap_layout_all_datasets.csv")
 out_publication_heatmap_source <- file.path(source_dir, "wgcna_circular_publication_supermodule_effect_heatmap_source.csv")
 out_publication_heatmap_layout_all_datasets <- file.path(source_dir, "wgcna_circular_publication_supermodule_effect_heatmap_layout_all_datasets.csv")
@@ -113,7 +115,8 @@ status_priority <- c(
   nominal_only = 3L,
   model_unstable = 4L,
   not_supported = 5L,
-  missing_effect_test = 6L
+  missing_effect_test = 6L,
+  inherited_non_independent = 7L
 )
 
 effect_scope_priority <- c(
@@ -144,7 +147,36 @@ read_csv_quiet <- function(path) {
   readr::read_csv(path, show_col_types = FALSE, progress = FALSE, name_repair = "unique")
 }
 
+read_group_effects <- function(path) {
+  effects <- read_csv_quiet(path)
+  if (is.null(effects) || !nrow(effects)) return(effects)
+  wgcna_group_effect_consumer_adapt(effects)
+}
+
 as_num <- function(x) suppressWarnings(as.numeric(x))
+
+min_finite_or_na <- function(x) {
+  x <- as_num(x)
+  x <- x[is.finite(x)]
+  if (length(x)) min(x) else NA_real_
+}
+
+atlas_evidence_status <- function(
+    statistical_support_status, independent_hypothesis,
+    model_valid_for_inference
+) {
+  status <- clean_chr(statistical_support_status)
+  dplyr::case_when(
+    !(independent_hypothesis %in% TRUE) ~ "inherited_non_independent",
+    !(model_valid_for_inference %in% TRUE) ~ "model_unstable",
+    status == "FDR_supported" ~ "robust_FDR",
+    status == "suggestive_FDR10" ~ "suggestive_FDR10",
+    status == "nominal_exploratory" ~ "nominal_only",
+    status == "model_unstable" ~ "model_unstable",
+    !nzchar(status) ~ "missing_effect_test",
+    TRUE ~ "not_supported"
+  )
+}
 
 first_existing_col <- function(df, candidates) {
   hit <- candidates[candidates %in% names(df)]
@@ -314,13 +346,14 @@ same_values <- function(x, numeric = FALSE, tolerance = 1e-12) {
   length(unique(vals)) <= 1L
 }
 
-source_fdr <- function(df) {
-  fdr_within <- if ("FDR_within_dataset_level" %in% names(df)) as_num(df$FDR_within_dataset_level) else rep(NA_real_, nrow(df))
-  fdr_global <- if ("FDR_global" %in% names(df)) as_num(df$FDR_global) else rep(NA_real_, nrow(df))
-  dplyr::coalesce(fdr_within, fdr_global)
-}
-
-classify_scope_evidence <- function(p, fdr, prefix) {
+classify_scope_evidence <- function(df, prefix) {
+  if (is.null(df) || !nrow(df)) return(paste0(prefix, "_missing"))
+  independent <- df$independent_hypothesis %in% TRUE
+  if (!any(independent)) return(paste0(prefix, "_inherited_non_independent"))
+  valid <- independent & df$model_valid_for_inference %in% TRUE
+  if (!any(valid)) return(paste0(prefix, "_model_unstable"))
+  p <- as_num(df$p_value[valid])
+  fdr <- as_num(df$tier_specific_fdr[valid])
   p <- p[is.finite(p)]
   fdr <- fdr[is.finite(fdr)]
   if (!length(p) && !length(fdr)) return(paste0(prefix, "_missing"))
@@ -347,11 +380,16 @@ best_effect_row <- function(df) {
   if (is.null(df) || !nrow(df)) return(NULL)
   df |>
     dplyr::mutate(
-      source_FDR = source_fdr(df),
+      tier_specific_FDR_num = as_num(.data$tier_specific_fdr),
       p_value_num = as_num(.data$p_value),
       estimate_num = as_num(.data$estimate)
     ) |>
-    dplyr::arrange(.data$source_FDR, .data$p_value_num, dplyr::desc(abs(.data$estimate_num))) |>
+    dplyr::arrange(
+      dplyr::desc(.data$independent_hypothesis %in% TRUE),
+      .data$tier_specific_FDR_num,
+      .data$p_value_num,
+      dplyr::desc(abs(.data$estimate_num))
+    ) |>
     dplyr::slice(1)
 }
 
@@ -436,7 +474,16 @@ discover_candidate_paths <- function(filename, dataset = "neuron_neuropil") {
 
 claim_status_table <- function() {
   path <- path_results("tables", "biological_claims_table.csv")
-  claims <- read_csv_quiet(path)
+  claims <- if (file.exists(path)) {
+    readr::read_csv(
+      path,
+      show_col_types = FALSE,
+      progress = FALSE,
+      col_types = readr::cols(.default = readr::col_character())
+    )
+  } else {
+    NULL
+  }
   if (is.null(claims) || !nrow(claims)) {
     return(tibble::tibble(
       dataset = character(),
@@ -558,7 +605,7 @@ summarise_effect_scopes <- function(effects, dataset, source_ids) {
   effects <- effects |>
     dplyr::mutate(
       supermodule_id = normalize_supermodule_id(.data$supermodule_id),
-      source_FDR = source_fdr(effects),
+      tier_specific_FDR_num = as_num(.data$tier_specific_fdr),
       p_value_num = as_num(.data$p_value),
       estimate_num = as_num(.data$estimate),
       spatial_unit_clean = na_if_blank_chr(.data$spatial_unit)
@@ -577,13 +624,19 @@ summarise_effect_scopes <- function(effects, dataset, source_ids) {
       dplyr::filter(!is.na(.data$spatial_unit_clean)) |>
       dplyr::group_by(.data$spatial_unit_clean) |>
       dplyr::summarise(
-        min_fdr = min(.data$source_FDR, na.rm = TRUE),
-        min_p = min(.data$p_value_num, na.rm = TRUE),
+        min_fdr = min_finite_or_na(
+          .data$tier_specific_FDR_num[
+            .data$independent_hypothesis %in% TRUE &
+              .data$model_valid_for_inference %in% TRUE
+          ]
+        ),
+        min_p = min_finite_or_na(
+          .data$p_value_num[
+            .data$independent_hypothesis %in% TRUE &
+              .data$model_valid_for_inference %in% TRUE
+          ]
+        ),
         .groups = "drop"
-      ) |>
-      dplyr::mutate(
-        min_fdr = dplyr::if_else(is.infinite(.data$min_fdr), NA_real_, .data$min_fdr),
-        min_p = dplyr::if_else(is.infinite(.data$min_p), NA_real_, .data$min_p)
       )
     tibble::tibble(
       dataset = dataset,
@@ -598,23 +651,23 @@ summarise_effect_scopes <- function(effects, dataset, source_ids) {
       contrasts_available = paste(sort(unique(na_if_blank_chr(df$contrast))), collapse = ";"),
       spatial_units_available = paste(sort(unique(stats::na.omit(df$spatial_unit_clean))), collapse = ";"),
       best_global_p = if (is.null(bg)) NA_real_ else bg$p_value_num[[1]],
-      best_global_FDR = if (is.null(bg)) NA_real_ else bg$source_FDR[[1]],
+      best_global_FDR = if (is.null(bg)) NA_real_ else bg$tier_specific_FDR_num[[1]],
       best_global_spatial_unit = if (is.null(bg)) NA_character_ else bg$spatial_unit[[1]],
       best_global_contrast = if (is.null(bg)) NA_character_ else bg$contrast[[1]],
       best_global_estimate = if (is.null(bg)) NA_real_ else bg$estimate_num[[1]],
       best_local_p = if (is.null(bl)) NA_real_ else bl$p_value_num[[1]],
-      best_local_FDR = if (is.null(bl)) NA_real_ else bl$source_FDR[[1]],
+      best_local_FDR = if (is.null(bl)) NA_real_ else bl$tier_specific_FDR_num[[1]],
       best_local_spatial_unit = if (is.null(bl)) NA_character_ else bl$spatial_unit[[1]],
       best_local_contrast = if (is.null(bl)) NA_character_ else bl$contrast[[1]],
       best_local_estimate = if (is.null(bl)) NA_real_ else bl$estimate_num[[1]],
       best_interaction_p = if (is.null(bi)) NA_real_ else bi$p_value_num[[1]],
-      best_interaction_FDR = if (is.null(bi)) NA_real_ else bi$source_FDR[[1]],
+      best_interaction_FDR = if (is.null(bi)) NA_real_ else bi$tier_specific_FDR_num[[1]],
       best_interaction_spatial_unit = if (is.null(bi)) NA_character_ else bi$spatial_unit[[1]],
       best_interaction_contrast = if (is.null(bi)) NA_character_ else bi$contrast[[1]],
       best_interaction_estimate = if (is.null(bi)) NA_real_ else bi$estimate_num[[1]],
-      global_evidence_status = classify_scope_evidence(global$p_value_num, global$source_FDR, "global"),
-      local_spatial_evidence_status = classify_scope_evidence(local$p_value_num, local$source_FDR, "local"),
-      interaction_evidence_status = classify_scope_evidence(interaction$p_value_num, interaction$source_FDR, "interaction"),
+      global_evidence_status = classify_scope_evidence(global, "global"),
+      local_spatial_evidence_status = classify_scope_evidence(local, "local"),
+      interaction_evidence_status = classify_scope_evidence(interaction, "interaction"),
       n_spatial_units_tested = nrow(local_units),
       n_spatial_units_FDR05 = sum(local_units$min_fdr <= 0.05, na.rm = TRUE),
       n_spatial_units_FDR10 = sum(local_units$min_fdr <= 0.10, na.rm = TRUE),
@@ -722,9 +775,28 @@ pick_effect_rows <- function(effects, source_ids, effect_source_file) {
       strongest_contrast_used = character(),
       strongest_estimate_source = numeric(),
       p_value_source = numeric(),
+      tier_specific_fdr_source = numeric(),
+      tier_specific_family_id_source = character(),
+      tier_specific_family_size_source = integer(),
       FDR_global_source = numeric(),
       FDR_within_dataset_level_source = numeric(),
-      evidence_status_source = character()
+      evidence_status_source = character(),
+      analysis_tier = character(),
+      contrast = character(),
+      effect_scope = character(),
+      spatial_unit = character(),
+      independent_hypothesis = logical(),
+      estimate = numeric(),
+      SE = numeric(),
+      p_value = numeric(),
+      tier_specific_fdr = numeric(),
+      tier_specific_family_id = character(),
+      tier_specific_family_size = integer(),
+      statistical_support_status = character(),
+      model_valid_for_inference = logical(),
+      model_stability_status = character(),
+      source_claim_entity_role = character(),
+      result_scope = character()
     ))
   }
 
@@ -733,7 +805,14 @@ pick_effect_rows <- function(effects, source_ids, effect_source_file) {
     dplyr::mutate(
       scope_priority = dplyr::coalesce(effect_scope_priority[.data$effect_scope], 99L),
       contrast_priority_value = contrast_priority(.data$contrast),
-      status_priority_value = dplyr::coalesce(status_priority[.data$evidence_status], 99L),
+      atlas_evidence_status = atlas_evidence_status(
+        .data$statistical_support_status,
+        .data$independent_hypothesis,
+        .data$model_valid_for_inference
+      ),
+      status_priority_value = dplyr::coalesce(
+        status_priority[.data$atlas_evidence_status], 99L
+      ),
       abs_estimate = abs(as_num(.data$estimate)),
       p_value_num = as_num(.data$p_value)
     ) |>
@@ -758,9 +837,28 @@ pick_effect_rows <- function(effects, source_ids, effect_source_file) {
       strongest_contrast_used = .data$contrast,
       strongest_estimate_source = as_num(.data$estimate),
       p_value_source = as_num(.data$p_value),
+      tier_specific_fdr_source = as_num(.data$tier_specific_fdr),
+      tier_specific_family_id_source = as.character(.data$tier_specific_family_id),
+      tier_specific_family_size_source = as.integer(.data$tier_specific_family_size),
       FDR_global_source = as_num(.data$FDR_global),
       FDR_within_dataset_level_source = as_num(.data$FDR_within_dataset_level),
-      evidence_status_source = clean_chr(.data$evidence_status)
+      evidence_status_source = .data$atlas_evidence_status,
+      analysis_tier = as.character(.data$analysis_tier),
+      contrast = as.character(.data$contrast),
+      effect_scope = as.character(.data$effect_scope),
+      spatial_unit = as.character(.data$spatial_unit),
+      independent_hypothesis = as.logical(.data$independent_hypothesis),
+      estimate = as_num(.data$estimate),
+      SE = as_num(.data$SE),
+      p_value = as_num(.data$p_value),
+      tier_specific_fdr = as_num(.data$tier_specific_fdr),
+      tier_specific_family_id = as.character(.data$tier_specific_family_id),
+      tier_specific_family_size = as.integer(.data$tier_specific_family_size),
+      statistical_support_status = as.character(.data$statistical_support_status),
+      model_valid_for_inference = as.logical(.data$model_valid_for_inference),
+      model_stability_status = as.character(.data$model_stability_status),
+      source_claim_entity_role = as.character(.data$claim_entity_role),
+      result_scope = as.character(.data$result_scope)
     )
 }
 
@@ -768,7 +866,7 @@ process_dataset <- function(ds) {
   p <- dataset_source_paths(ds)
   summary <- read_csv_quiet(p$supermodule_summary)
   module_ann <- read_csv_quiet(p$module_supermodule_annotation)
-  effects <- read_csv_quiet(p$supermodule_group_effects)
+  effects <- read_group_effects(p$supermodule_group_effects)
   label_lookup <- read_csv_quiet(p$final_label_lookup)
   interp <- read_csv_quiet(p$interpretable_summary)
   bio <- read_csv_quiet(p$biological_annotation)
@@ -949,6 +1047,7 @@ process_dataset <- function(ds) {
       strongest_contrast_differs = !same_values(.data$strongest_contrast_used),
       effect_estimate_differs = !same_values(.data$strongest_estimate_source, numeric = TRUE),
       p_value_differs = !same_values(.data$p_value_source, numeric = TRUE),
+      tier_specific_fdr_differs = !same_values(.data$tier_specific_fdr_source, numeric = TRUE),
       FDR_global_differs = !same_values(.data$FDR_global_source, numeric = TRUE),
       FDR_within_dataset_level_differs = !same_values(.data$FDR_within_dataset_level_source, numeric = TRUE),
       collapse_safe = !(
@@ -960,6 +1059,7 @@ process_dataset <- function(ds) {
           .data$strongest_contrast_differs |
           .data$effect_estimate_differs |
           .data$p_value_differs |
+          .data$tier_specific_fdr_differs |
           .data$FDR_global_differs |
           .data$FDR_within_dataset_level_differs
       ),
@@ -980,6 +1080,9 @@ process_dataset <- function(ds) {
       "strongest_contrast_used",
       "strongest_estimate_source",
       "p_value_source",
+      "tier_specific_fdr_source",
+      "tier_specific_family_id_source",
+      "tier_specific_family_size_source",
       "FDR_global_source",
       "FDR_within_dataset_level_source",
       "cleaned_label_differs",
@@ -990,6 +1093,7 @@ process_dataset <- function(ds) {
       "strongest_contrast_differs",
       "effect_estimate_differs",
       "p_value_differs",
+      "tier_specific_fdr_differs",
       "FDR_global_differs",
       "FDR_within_dataset_level_differs",
       "collapse_safe",
@@ -1025,6 +1129,9 @@ process_dataset <- function(ds) {
       evidence_status_segments = .data$evidence_status_source,
       strongest_estimate_segments = .data$strongest_estimate_source,
       p_value_segments = .data$p_value_source,
+      tier_specific_fdr_segments = .data$tier_specific_fdr_source,
+      tier_specific_family_id_segments = .data$tier_specific_family_id_source,
+      tier_specific_family_size_segments = .data$tier_specific_family_size_source,
       FDR_global_segments = .data$FDR_global_source,
       FDR_within_dataset_level_segments = .data$FDR_within_dataset_level_source,
       dataset_label = dataset_label(.data$dataset),
@@ -1058,6 +1165,9 @@ process_dataset <- function(ds) {
       ) & (
         (is.na(.data$p_value_source) & is.na(.data$p_value_segments)) |
           abs(.data$p_value_source - .data$p_value_segments) < 1e-12
+      ) & (
+        (is.na(.data$tier_specific_fdr_source) & is.na(.data$tier_specific_fdr_segments)) |
+          abs(.data$tier_specific_fdr_source - .data$tier_specific_fdr_segments) < 1e-12
       ) & (
         (is.na(.data$FDR_global_source) & is.na(.data$FDR_global_segments)) |
           abs(.data$FDR_global_source - .data$FDR_global_segments) < 1e-12
@@ -1115,6 +1225,12 @@ process_dataset <- function(ds) {
       "strongest_estimate_segments",
       "p_value_source",
       "p_value_segments",
+      "tier_specific_fdr_source",
+      "tier_specific_fdr_segments",
+      "tier_specific_family_id_source",
+      "tier_specific_family_id_segments",
+      "tier_specific_family_size_source",
+      "tier_specific_family_size_segments",
       "FDR_global_source",
       "FDR_global_segments",
       "FDR_within_dataset_level_source",
@@ -1626,18 +1742,384 @@ spatial_order_value <- function(region, layer_or_unit, unit) {
   )
 }
 
-effect_support_class <- function(p_value, fdr_within, fdr_global) {
-  fdr <- dplyr::coalesce(as_num(fdr_within), as_num(fdr_global))
+effect_support_class <- function(
+    tier_specific_fdr, independent_hypothesis,
+    model_valid_for_inference, model_stability_status
+) {
+  fdr <- as_num(tier_specific_fdr)
+  independent <- independent_hypothesis %in% TRUE
+  stable <- model_valid_for_inference %in% TRUE &
+    clean_chr(model_stability_status) %in%
+      c("stable_animal_level_lm", "stable_mixed_model")
   dplyr::case_when(
+    !independent ~ "none",
+    !stable ~ "invalid_or_unstable",
     !is.na(fdr) & fdr <= 0.05 ~ "FDR05",
     !is.na(fdr) & fdr <= 0.10 ~ "FDR10",
     TRUE ~ "none"
   )
 }
 
+global_effect_support_class <- function(
+    global_support_fdr, independent_hypothesis,
+    model_valid_for_inference, model_stability_status
+) {
+  fdr <- as_num(global_support_fdr)
+  independent <- independent_hypothesis %in% TRUE
+  invalid <- !(model_valid_for_inference %in% TRUE) |
+    clean_chr(model_stability_status) == "invalid"
+  dplyr::case_when(
+    !independent ~ "none",
+    invalid ~ "invalid",
+    !is.na(fdr) & fdr <= 0.05 ~ "FDR05",
+    !is.na(fdr) & fdr <= 0.10 ~ "FDR10",
+    TRUE ~ "none"
+  )
+}
+
+LOCAL_EFFECT_DISPLAY_LIMIT <- 2.5
+LOCAL_EFFECT_METRIC_LABEL <- "standardized model effect (SD units)"
+LOCAL_EFFECT_INTERPRETATION_GUARD <- paste(
+  "Outer markers represent spatial-adjusted Stage 05 supermodule group-effect support.",
+  "Heatmap colours represent region/layer-specific standardized local Stage 05 effect estimates.",
+  "Local cell symbols represent contrast-specific local exploratory BH support.",
+  "Apparent region/layer differences remain descriptive unless supported by the separate interaction omnibus.",
+  "Absence of a symbol does not imply absence of an estimated effect."
+)
+
+stage05_local_response_sd_lookup <- function(datasets) {
+  rows <- lapply(datasets, function(ds) {
+    path <- path_results(
+      "tables", "06_modules_WGCNA", "group_effects", ds,
+      "WGCNA_group_effect_animal_spatial_unit_values.csv"
+    )
+    values <- read_csv_quiet(path)
+    if (is.null(values) || !nrow(values)) {
+      stop(
+        "Missing Stage 05 animal-spatial response values for ", ds, ": ",
+        path, ".",
+        call. = FALSE
+      )
+    }
+    required <- c(
+      "dataset", "level", "endpoint_id", "canonical_spatial_unit",
+      "AnimalID", "StressGroup", "eigengene", "aggregation_method"
+    )
+    missing <- setdiff(required, names(values))
+    if (length(missing)) {
+      stop(
+        "Stage 05 animal-spatial response values for ", ds,
+        " are missing: ", paste(missing, collapse = ", "), ".",
+        call. = FALSE
+      )
+    }
+    values |>
+      dplyr::transmute(
+        dataset = clean_chr(.data$dataset),
+        response_level = clean_chr(.data$level),
+        response_endpoint_id = clean_chr(.data$endpoint_id),
+        spatial_unit = clean_chr(.data$canonical_spatial_unit),
+        AnimalID = clean_chr(.data$AnimalID),
+        StressGroup = clean_chr(.data$StressGroup),
+        eigengene = as_num(.data$eigengene),
+        response_aggregation_method = clean_chr(.data$aggregation_method),
+        response_source_file = path
+      ) |>
+      dplyr::filter(
+        is.finite(.data$eigengene),
+        nzchar(.data$AnimalID),
+        nzchar(.data$StressGroup)
+      )
+  })
+  values <- dplyr::bind_rows(rows)
+  duplicate_animals <- values |>
+    dplyr::count(
+      .data$dataset, .data$response_level, .data$response_endpoint_id,
+      .data$spatial_unit, .data$AnimalID,
+      name = "n_response_rows"
+    ) |>
+    dplyr::filter(.data$n_response_rows != 1L)
+  if (nrow(duplicate_animals)) {
+    stop(
+      "Stage 05 response standardization would treat repeated spatial observations as independent animals.",
+      call. = FALSE
+    )
+  }
+  lookup <- values |>
+    dplyr::group_by(
+      .data$dataset, .data$response_level, .data$response_endpoint_id,
+      .data$spatial_unit
+    ) |>
+    dplyr::summarise(
+      response_SD = stats::sd(.data$eigengene),
+      response_n_rows = dplyr::n(),
+      response_n_animals = dplyr::n_distinct(.data$AnimalID),
+      response_animal_ids = paste(sort(unique(.data$AnimalID)), collapse = ";"),
+      response_aggregation_method = paste(
+        sort(unique(.data$response_aggregation_method)),
+        collapse = ";"
+      ),
+      response_source_file = dplyr::first(.data$response_source_file),
+      .groups = "drop"
+    ) |>
+    dplyr::mutate(
+      response_subset_unique_animal_rows =
+        .data$response_n_rows == .data$response_n_animals
+    )
+  invalid <- !lookup$response_subset_unique_animal_rows |
+    !is.finite(lookup$response_SD) |
+    lookup$response_SD <= 0
+  if (any(invalid, na.rm = TRUE)) {
+    stop(
+      "Stage 05 response standardization found a non-unique or non-positive response subset.",
+      call. = FALSE
+    )
+  }
+  lookup
+}
+
+validate_circular_effect_source <- function(df, source_name) {
+  required <- c(
+    "analysis_tier", "contrast", "effect_scope", "spatial_unit",
+    "independent_hypothesis", "estimate", "SE", "p_value",
+    "tier_specific_fdr", "tier_specific_family_id",
+    "tier_specific_family_size", "statistical_support_status",
+    "model_valid_for_inference", "model_stability_status"
+  )
+  if (grepl("circular_heatmap_source", source_name, fixed = TRUE)) {
+    required <- c(
+      required,
+      "CI_low", "CI_high", "response_SD",
+      "standardized_effect_unclipped", "standardized_effect_display",
+      "standardization_scope", "effect_clipped_for_display",
+      "q_local_le_0_05", "q_local_le_0_10", "q_local_le_0_25"
+    )
+  }
+  missing <- setdiff(required, names(df))
+  if (length(missing)) {
+    stop(
+      source_name, " is missing required Stage 05 handoff column(s): ",
+      paste(missing, collapse = ", "), ".",
+      call. = FALSE
+    )
+  }
+  if ("support_class" %in% names(df)) {
+    expected_support <- effect_support_class(
+      df$tier_specific_fdr,
+      df$independent_hypothesis,
+      df$model_valid_for_inference,
+      df$model_stability_status
+    )
+    if (!identical(as.character(df$support_class), expected_support)) {
+      stop(
+        source_name,
+        " has a support marker that does not match tier_specific_fdr.",
+        call. = FALSE
+      )
+    }
+  }
+  if ("source_claim_entity_role" %in% names(df)) {
+    alias <- clean_chr(df$source_claim_entity_role) == "compatibility_alias"
+    alias_support <- if ("support_class" %in% names(df)) {
+      clean_chr(df$support_class) != "none"
+    } else {
+      rep(FALSE, nrow(df))
+    }
+    bad_alias <- alias & (
+      df$independent_hypothesis %in% TRUE |
+        !is.na(df$tier_specific_fdr) |
+        (!is.na(df$tier_specific_family_id) &
+           nzchar(clean_chr(df$tier_specific_family_id))) |
+        !is.na(df$tier_specific_family_size) |
+        clean_chr(df$statistical_support_status) !=
+          "inherited_from_canonical_entity" |
+        alias_support
+    )
+    if (any(bad_alias, na.rm = TRUE)) {
+      stop(
+        source_name,
+        " gives a compatibility alias an independent q-value or support marker.",
+        call. = FALSE
+      )
+    }
+  }
+  local <- clean_chr(df$effect_scope) == "within_spatial_unit"
+  if (any(local & clean_chr(df$analysis_tier) !=
+          "exploratory_spatial_localization")) {
+    stop(
+      source_name,
+      " contains a local cell outside exploratory_spatial_localization.",
+      call. = FALSE
+    )
+  }
+  if ("FDR_local_exploratory" %in% names(df)) {
+    q_matches <- (is.na(df$tier_specific_fdr) &
+                    is.na(df$FDR_local_exploratory)) |
+      (!is.na(df$tier_specific_fdr) &
+         !is.na(df$FDR_local_exploratory) &
+         df$tier_specific_fdr == df$FDR_local_exploratory)
+    if (any(local & !q_matches, na.rm = TRUE)) {
+      stop(
+        source_name,
+        " contains a local marker q-value that is not FDR_local_exploratory.",
+        call. = FALSE
+      )
+    }
+    for (threshold in c(0.05, 0.10, 0.25)) {
+      flag_name <- paste0(
+        "q_local_le_0_",
+        sprintf("%02d", as.integer(threshold * 100))
+      )
+      if (!flag_name %in% names(df)) next
+      expected_flag <- dplyr::if_else(
+        is.na(df$FDR_local_exploratory),
+        NA,
+        df$FDR_local_exploratory <= threshold
+      )
+      if (!identical(as.logical(df[[flag_name]]), expected_flag)) {
+        stop(
+          source_name, " has an invalid source-only ", flag_name,
+          " flag.",
+          call. = FALSE
+        )
+      }
+    }
+  }
+  if (all(c(
+    "standardized_effect_unclipped",
+    "standardized_effect_display"
+  ) %in% names(df))) {
+    expected_display <- pmax(
+      -LOCAL_EFFECT_DISPLAY_LIMIT,
+      pmin(LOCAL_EFFECT_DISPLAY_LIMIT, df$standardized_effect_unclipped)
+    )
+    display_matches <- (is.na(expected_display) &
+                          is.na(df$standardized_effect_display)) |
+      (!is.na(expected_display) &
+         !is.na(df$standardized_effect_display) &
+         abs(expected_display - df$standardized_effect_display) <
+           .Machine$double.eps^0.5)
+    if (any(!display_matches, na.rm = TRUE)) {
+      stop(
+        source_name,
+        " has a standardized display value outside the fixed clipping contract.",
+        call. = FALSE
+      )
+    }
+  }
+  invisible(TRUE)
+}
+
+validate_global_supermodule_support_source <- function(df) {
+  required <- c(
+    "dataset", "supermodule_id", "analysis_tier", "contrast",
+    "effect_scope", "spatial_unit", "independent_hypothesis",
+    "estimate", "SE", "CI_low", "CI_high", "p_value",
+    "FDR_primary_global", "FDR_secondary_global",
+    "global_support_fdr", "global_fdr_source",
+    "tier_specific_fdr", "tier_specific_family_id",
+    "tier_specific_family_size", "statistical_support_status",
+    "model_valid_for_inference", "model_stability_status",
+    "source_claim_entity_role", "global_support_class",
+    "global_marker_visible"
+  )
+  missing <- setdiff(required, names(df))
+  if (length(missing)) {
+    stop(
+      "Global supermodule support source is missing column(s): ",
+      paste(missing, collapse = ", "), ".",
+      call. = FALSE
+    )
+  }
+  key <- paste(df$dataset, df$supermodule_id, df$contrast, sep = "||")
+  if (anyDuplicated(key)) {
+    stop(
+      "Global supermodule support source has duplicate dataset-supermodule-contrast rows.",
+      call. = FALSE
+    )
+  }
+  expected_contrasts <- c("RES - CON", "SUS - CON", "SUS - RES")
+  contrast_sets <- split(df$contrast, paste(df$dataset, df$supermodule_id))
+  if (any(vapply(
+    contrast_sets,
+    function(x) !setequal(clean_chr(x), expected_contrasts),
+    logical(1)
+  ))) {
+    stop(
+      "Every global supermodule support sector must retain exactly the three canonical contrasts.",
+      call. = FALSE
+    )
+  }
+  expected_tier <- dplyr::if_else(
+    clean_chr(df$contrast) == "SUS - RES",
+    "primary_wgcna_global",
+    "secondary_contextual_global"
+  )
+  expected_fdr_source <- dplyr::if_else(
+    clean_chr(df$contrast) == "SUS - RES",
+    "FDR_primary_global",
+    "FDR_secondary_global"
+  )
+  expected_fdr <- dplyr::if_else(
+    clean_chr(df$contrast) == "SUS - RES",
+    as_num(df$FDR_primary_global),
+    as_num(df$FDR_secondary_global)
+  )
+  equal_or_both_na <- function(x, y) {
+    (is.na(x) & is.na(y)) | (!is.na(x) & !is.na(y) & x == y)
+  }
+  if (
+    any(clean_chr(df$analysis_tier) != expected_tier) ||
+      any(clean_chr(df$global_fdr_source) != expected_fdr_source) ||
+      any(!equal_or_both_na(df$global_support_fdr, expected_fdr)) ||
+      any(!equal_or_both_na(df$tier_specific_fdr, expected_fdr))
+  ) {
+    stop(
+      "Global supermodule support does not use the required contrast-specific Stage 05 FDR.",
+      call. = FALSE
+    )
+  }
+  expected_support <- global_effect_support_class(
+    df$global_support_fdr,
+    df$independent_hypothesis,
+    df$model_valid_for_inference,
+    df$model_stability_status
+  )
+  if (!identical(clean_chr(df$global_support_class), expected_support)) {
+    stop(
+      "Global supermodule support markers do not match their Stage 05 FDR and model validity.",
+      call. = FALSE
+    )
+  }
+  expected_visible <- expected_support != "none" &
+    df$independent_hypothesis %in% TRUE
+  if (!identical(as.logical(df$global_marker_visible), expected_visible)) {
+    stop(
+      "Global supermodule marker visibility is inconsistent with its support class.",
+      call. = FALSE
+    )
+  }
+  alias <- clean_chr(df$source_claim_entity_role) == "compatibility_alias"
+  if (any(
+    alias & (
+      df$independent_hypothesis %in% TRUE |
+        !is.na(df$global_support_fdr) |
+        df$global_support_class != "none" |
+        df$global_marker_visible %in% TRUE
+    ),
+    na.rm = TRUE
+  )) {
+    stop(
+      "A compatibility alias received an independent global q-value or support marker.",
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
+}
+
 polar_layout_parameters <- function() {
   list(
-    inner_radius = 0.42,
+    inner_radius = 0.52,
     outer_radius = 0.91,
     layer_ring_thickness = 0.032,
     region_ring_thickness = 0.038,
@@ -1802,15 +2284,19 @@ local_effect_rows <- function(df, level) {
         TRUE ~ 9L
       ),
       p_value_num = as_num(.data$p_value),
-      FDR_within_num = as_num(.data$FDR_within_dataset_level),
-      FDR_global_num = as_num(.data$FDR_global),
+      tier_specific_FDR_num = as_num(.data$tier_specific_fdr),
       effect_abs = abs(as_num(.data$estimate)),
-      support_class = effect_support_class(.data$p_value, .data$FDR_within_dataset_level, .data$FDR_global)
+      support_class = effect_support_class(
+        .data$tier_specific_fdr,
+        .data$independent_hypothesis,
+        .data$model_valid_for_inference,
+        .data$model_stability_status
+      )
     ) |>
     dplyr::arrange(
       .data$dataset, .data$endpoint_key, .data$spatial_unit, .data$contrast_block,
       .data$effect_scope_order,
-      dplyr::coalesce(.data$FDR_within_num, .data$FDR_global_num, Inf),
+      dplyr::coalesce(.data$tier_specific_FDR_num, Inf),
       .data$p_value_num,
       dplyr::desc(.data$effect_abs)
     ) |>
@@ -1852,6 +2338,7 @@ module_supermodule_map <- function(dataset) {
 }
 
 build_heatmap_sources <- function(datasets, segments, selected_audit) {
+  response_sd_lookup <- stage05_local_response_sd_lookup(datasets)
   segment_meta <- segments |>
     dplyr::mutate(
       supermodule_id = clean_chr(.data$supermodule_id),
@@ -1867,9 +2354,113 @@ build_heatmap_sources <- function(datasets, segments, selected_audit) {
       evidence_status_segments = "evidence_status_segments"
     )
 
+  global_support_rows <- lapply(datasets, function(ds) {
+    path <- dataset_source_paths(ds)$supermodule_group_effects
+    df <- read_group_effects(path)
+    if (is.null(df) || !nrow(df)) return(tibble::tibble())
+    global <- df |>
+      dplyr::filter(
+        .data$effect_scope == "spatial_adjusted_global",
+        .data$contrast %in% c(
+          "RES - CON", "SUS - CON", "SUS - RES"
+        )
+      ) |>
+      dplyr::left_join(
+        segment_meta,
+        by = c("dataset", "supermodule_id")
+      ) |>
+      dplyr::mutate(
+        supermodule_label = dplyr::coalesce(
+          na_if_blank_chr(.data$supermodule_label.y),
+          na_if_blank_chr(.data$supermodule_label.x),
+          na_if_blank_chr(.data$endpoint_label),
+          clean_chr(.data$supermodule_id)
+        ),
+        contrast_block = contrast_block(.data$contrast),
+        contrast_order = contrast_block_order(.data$contrast),
+        global_support_fdr = dplyr::case_when(
+          clean_chr(.data$contrast) == "SUS - RES" ~
+            as_num(.data$FDR_primary_global),
+          clean_chr(.data$contrast) %in%
+            c("RES - CON", "SUS - CON") ~
+            as_num(.data$FDR_secondary_global),
+          TRUE ~ NA_real_
+        ),
+        global_fdr_source = dplyr::case_when(
+          clean_chr(.data$contrast) == "SUS - RES" ~
+            "FDR_primary_global",
+          clean_chr(.data$contrast) %in%
+            c("RES - CON", "SUS - CON") ~
+            "FDR_secondary_global",
+          TRUE ~ NA_character_
+        ),
+        global_support_class = global_effect_support_class(
+          .data$global_support_fdr,
+          .data$independent_hypothesis,
+          .data$model_valid_for_inference,
+          .data$model_stability_status
+        ),
+        global_marker_visible =
+          .data$global_support_class != "none" &
+          .data$independent_hypothesis %in% TRUE
+      ) |>
+      dplyr::transmute(
+        dataset,
+        dataset_label = dataset_label(.data$dataset),
+        endpoint_id = clean_chr(.data$endpoint_id),
+        canonical_claim_entity_id =
+          clean_chr(.data$canonical_claim_entity_id),
+        supermodule_id = clean_chr(.data$supermodule_id),
+        supermodule_label = clean_chr(.data$supermodule_label),
+        biological_program_label =
+          clean_chr(.data$segment_broad_program_class),
+        analysis_tier = clean_chr(.data$analysis_tier),
+        contrast = clean_chr(.data$contrast),
+        contrast_block = clean_chr(.data$contrast_block),
+        contrast_order = as.integer(.data$contrast_order),
+        effect_scope = clean_chr(.data$effect_scope),
+        spatial_unit = clean_chr(.data$spatial_unit),
+        independent_hypothesis =
+          as.logical(.data$independent_hypothesis),
+        estimate = as_num(.data$estimate),
+        SE = as_num(.data$SE),
+        CI_low = as_num(.data$CI_low),
+        CI_high = as_num(.data$CI_high),
+        p_value = as_num(.data$p_value),
+        FDR_primary_global = as_num(.data$FDR_primary_global),
+        FDR_secondary_global = as_num(.data$FDR_secondary_global),
+        global_support_fdr = as_num(.data$global_support_fdr),
+        global_fdr_source = clean_chr(.data$global_fdr_source),
+        tier_specific_fdr = as_num(.data$tier_specific_fdr),
+        tier_specific_family_id =
+          as.character(.data$tier_specific_family_id),
+        tier_specific_family_size =
+          as.integer(.data$tier_specific_family_size),
+        statistical_support_status =
+          as.character(.data$statistical_support_status),
+        model_valid_for_inference =
+          as.logical(.data$model_valid_for_inference),
+        model_stability_status =
+          as.character(.data$model_stability_status),
+        source_claim_entity_role =
+          as.character(.data$claim_entity_role),
+        result_scope = as.character(.data$result_scope),
+        global_support_class =
+          as.character(.data$global_support_class),
+        global_marker_visible =
+          as.logical(.data$global_marker_visible),
+        global_support_interpretation = paste(
+          "Spatial-adjusted Stage 05 supermodule group effect;",
+          "RES - CON and SUS - CON use FDR_secondary_global;",
+          "SUS - RES uses FDR_primary_global"
+        )
+      )
+    global
+  })
+
   supermodule_rows <- lapply(datasets, function(ds) {
     path <- dataset_source_paths(ds)$supermodule_group_effects
-    df <- read_csv_quiet(path)
+    df <- read_group_effects(path)
     local <- local_effect_rows(df, "supermodule")
     if (!nrow(local)) return(tibble::tibble())
     local |>
@@ -1889,7 +2480,7 @@ build_heatmap_sources <- function(datasets, segments, selected_audit) {
 
   module_rows <- lapply(datasets, function(ds) {
     path <- path_results("tables", "06_modules_WGCNA", "group_effects", ds, "module_group_effects.csv")
-    df <- read_csv_quiet(path)
+    df <- read_group_effects(path)
     local <- local_effect_rows(df, "module")
     if (!nrow(local)) return(tibble::tibble())
     map <- module_supermodule_map(ds)
@@ -1951,33 +2542,74 @@ build_heatmap_sources <- function(datasets, segments, selected_audit) {
         supermodule_id = dplyr::coalesce(na_if_blank_chr(.data$supermodule_id), "unmapped"),
         supermodule_label = dplyr::coalesce(na_if_blank_chr(.data$supermodule_label), na_if_blank_chr(.data$supermodule_label_from_map), "Unmapped module"),
         selected_or_priority_flag = .data$selected_or_priority_flag %in% TRUE |
-          .data$evidence_status %in% c("robust_FDR", "suggestive_FDR10")
+          (
+            .data$independent_hypothesis %in% TRUE &
+              .data$statistical_support_status %in%
+                c("FDR_supported", "suggestive_FDR10")
+          )
       )
     local
   })
 
   format_source <- function(df, level_name) {
     if (is.null(df) || !nrow(df)) return(tibble::tibble())
-    df |>
+    formatted <- df |>
       dplyr::transmute(
         dataset,
         dataset_label = dataset_label(.data$dataset),
         level = level_name,
+        endpoint_id = clean_chr(.data$endpoint_id),
+        canonical_claim_entity_id =
+          clean_chr(.data$canonical_claim_entity_id),
         module_id = if ("module_id" %in% names(df)) na_if_blank_chr(.data$module_id) else NA_character_,
         supermodule_id = na_if_blank_chr(.data$supermodule_id),
         module_label = if ("module_label" %in% names(df)) na_if_blank_chr(.data$module_label) else NA_character_,
         supermodule_label = na_if_blank_chr(.data$supermodule_label),
+        analysis_tier = clean_chr(.data$analysis_tier),
         spatial_unit = clean_chr(.data$spatial_unit),
         parsed_region = .data$parsed_spatial_region,
         parsed_layer_or_unit = .data$parsed_spatial_layer_or_unit,
         contrast = clean_chr(.data$contrast),
         contrast_block = .data$contrast_block,
         effect_scope = clean_chr(.data$effect_scope),
+        independent_hypothesis = as.logical(.data$independent_hypothesis),
         estimate = as_num(.data$estimate),
+        raw_stage05_estimate = as_num(.data$estimate),
+        SE = as_num(.data$SE),
+        CI_low = as_num(.data$CI_low),
+        CI_high = as_num(.data$CI_high),
         p_value = as_num(.data$p_value),
+        tier_specific_fdr = as_num(.data$tier_specific_fdr),
+        FDR_local_exploratory = as_num(.data$FDR_local_exploratory),
+        tier_specific_family_id = as.character(.data$tier_specific_family_id),
+        tier_specific_family_size = as.integer(.data$tier_specific_family_size),
+        statistical_support_status = as.character(.data$statistical_support_status),
+        model_valid_for_inference = as.logical(.data$model_valid_for_inference),
+        model_stability_status = as.character(.data$model_stability_status),
+        source_claim_entity_role = as.character(.data$claim_entity_role),
+        result_scope = as.character(.data$result_scope),
         FDR_global = as_num(.data$FDR_global),
         FDR_within_dataset_level = as_num(.data$FDR_within_dataset_level),
-        evidence_status = clean_chr(.data$evidence_status),
+        standardization_level = dplyr::if_else(
+          clean_chr(.data$claim_entity_role) == "compatibility_alias",
+          "module",
+          level_name
+        ),
+        standardization_endpoint_id = dplyr::if_else(
+          clean_chr(.data$claim_entity_role) == "compatibility_alias",
+          clean_chr(.data$canonical_claim_entity_id),
+          clean_chr(.data$endpoint_id)
+        ),
+        alias_standardization_status = dplyr::if_else(
+          clean_chr(.data$claim_entity_role) == "compatibility_alias",
+          "inherited_from_canonical_module_response",
+          "independent_stage05_response_subset"
+        ),
+        evidence_status = atlas_evidence_status(
+          .data$statistical_support_status,
+          .data$independent_hypothesis,
+          .data$model_valid_for_inference
+        ),
         support_class = .data$support_class,
         selected_or_priority_flag = .data$selected_or_priority_flag %in% TRUE,
         module_supermodule_mapping_method = if ("module_supermodule_mapping_method" %in% names(df)) clean_chr(.data$module_supermodule_mapping_method) else NA_character_,
@@ -1991,10 +2623,139 @@ build_heatmap_sources <- function(datasets, segments, selected_audit) {
         spatial_order = .data$spatial_order,
         contrast_block_order = .data$contrast_block_order
       )
+    formatted |>
+      dplyr::left_join(
+        response_sd_lookup,
+        by = c(
+          "dataset",
+          "standardization_level" = "response_level",
+          "standardization_endpoint_id" = "response_endpoint_id",
+          "spatial_unit"
+        ),
+        relationship = "many-to-one"
+      ) |>
+      dplyr::mutate(
+        standardized_effect_unclipped =
+          .data$estimate / .data$response_SD,
+        q_local_le_0_05 = dplyr::case_when(
+          is.na(.data$FDR_local_exploratory) ~ NA,
+          TRUE ~ .data$FDR_local_exploratory <= 0.05
+        ),
+        q_local_le_0_10 = dplyr::case_when(
+          is.na(.data$FDR_local_exploratory) ~ NA,
+          TRUE ~ .data$FDR_local_exploratory <= 0.10
+        ),
+        q_local_le_0_25 = dplyr::case_when(
+          is.na(.data$FDR_local_exploratory) ~ NA,
+          TRUE ~ .data$FDR_local_exploratory <= 0.25
+        ),
+        standardized_effect_display = pmax(
+          -LOCAL_EFFECT_DISPLAY_LIMIT,
+          pmin(
+            LOCAL_EFFECT_DISPLAY_LIMIT,
+            .data$standardized_effect_unclipped
+          )
+        ),
+        effect_clipped_for_display =
+          abs(.data$standardized_effect_unclipped) >
+            LOCAL_EFFECT_DISPLAY_LIMIT,
+        standardization_scope = dplyr::if_else(
+          .data$source_claim_entity_role == "compatibility_alias",
+          paste(
+            "Inherited canonical module response subset:",
+            "dataset + module + canonical_claim_entity_id + spatial_unit;",
+            "SD across one Stage 05 animal-spatial eigengene row per AnimalID;",
+            "no independent alias denominator"
+          ),
+          paste(
+            "Exact Stage 05 response subset:",
+            "dataset + level + endpoint_id + spatial_unit;",
+            "SD across one animal-spatial eigengene row per AnimalID"
+          )
+        ),
+        effect_metric = LOCAL_EFFECT_METRIC_LABEL,
+        display_scale_min = -LOCAL_EFFECT_DISPLAY_LIMIT,
+        display_scale_max = LOCAL_EFFECT_DISPLAY_LIMIT,
+        figure_interpretation_guard =
+          LOCAL_EFFECT_INTERPRETATION_GUARD,
+        alias_boundary_style = dplyr::if_else(
+          .data$source_claim_entity_role == "compatibility_alias",
+          "dashed_outer_boundary_inherited_non_independent",
+          "solid_outer_boundary_independent_multi_module"
+        )
+      )
   }
 
   supermodule <- format_source(dplyr::bind_rows(supermodule_rows), "supermodule")
   module <- format_source(dplyr::bind_rows(module_rows), "module")
+  global_supermodule_support <- dplyr::bind_rows(global_support_rows) |>
+    dplyr::arrange(
+      .data$dataset, .data$supermodule_id, .data$contrast_order
+    )
+  standardized <- dplyr::bind_rows(supermodule, module)
+  missing_denominator <- !is.finite(standardized$response_SD) |
+    standardized$response_SD <= 0 |
+    !standardized$response_subset_unique_animal_rows
+  if (any(missing_denominator, na.rm = TRUE)) {
+    stop(
+      "A circular local-effect row is missing its exact Stage 05 response SD.",
+      call. = FALSE
+    )
+  }
+  alias_rows <- supermodule |>
+    dplyr::filter(
+      .data$source_claim_entity_role == "compatibility_alias"
+    ) |>
+    dplyr::select(
+      "dataset", "canonical_claim_entity_id", "spatial_unit", "contrast",
+      alias_estimate = "estimate", alias_SE = "SE",
+      alias_CI_low = "CI_low", alias_CI_high = "CI_high",
+      alias_p_value = "p_value", alias_response_SD = "response_SD"
+    )
+  if (nrow(alias_rows)) {
+    alias_audit <- alias_rows |>
+      dplyr::left_join(
+        module |>
+          dplyr::select(
+            "dataset", canonical_claim_entity_id = "module_id",
+            "spatial_unit", "contrast",
+            module_estimate = "estimate", module_SE = "SE",
+            module_CI_low = "CI_low", module_CI_high = "CI_high",
+            module_p_value = "p_value", module_response_SD = "response_SD"
+          ),
+        by = c(
+          "dataset", "canonical_claim_entity_id",
+          "spatial_unit", "contrast"
+        ),
+        relationship = "many-to-one"
+      )
+    equal_or_both_na <- function(x, y) {
+      (is.na(x) & is.na(y)) | (!is.na(x) & !is.na(y) & x == y)
+    }
+    inherited_matches <- equal_or_both_na(
+      alias_audit$alias_estimate, alias_audit$module_estimate
+    ) &
+      equal_or_both_na(alias_audit$alias_SE, alias_audit$module_SE) &
+      equal_or_both_na(
+        alias_audit$alias_CI_low, alias_audit$module_CI_low
+      ) &
+      equal_or_both_na(
+        alias_audit$alias_CI_high, alias_audit$module_CI_high
+      ) &
+      equal_or_both_na(
+        alias_audit$alias_p_value, alias_audit$module_p_value
+      ) &
+      equal_or_both_na(
+        alias_audit$alias_response_SD,
+        alias_audit$module_response_SD
+      )
+    if (any(!inherited_matches, na.rm = TRUE)) {
+      stop(
+        "A compatibility alias does not exactly inherit its canonical module effect and response SD.",
+        call. = FALSE
+      )
+    }
+  }
 
   order_sources <- function(df) {
     if (!nrow(df)) return(df)
@@ -2012,9 +2773,6 @@ build_heatmap_sources <- function(datasets, segments, selected_audit) {
       ) |>
       dplyr::arrange(
         .data$dataset,
-        dplyr::desc(.data$selected),
-        .data$best_support,
-        dplyr::desc(.data$max_abs_effect),
         .data$supermodule_id
       ) |>
       dplyr::group_by(.data$dataset) |>
@@ -2057,7 +2815,8 @@ build_heatmap_sources <- function(datasets, segments, selected_audit) {
 
   list(
     supermodule = order_sources(supermodule),
-    module = order_sources(module)
+    module = order_sources(module),
+    global_supermodule_support = global_supermodule_support
   )
 }
 
@@ -2659,14 +3418,20 @@ build_source_lineage_audit <- function(datasets, heatmap_source_supermodule, hea
       source_summary_row(
         ds, "circular_supermodule_source", out_heatmap_source_supermodule,
         heatmap_source_supermodule |> dplyr::filter(.data$dataset == ds),
-        "estimate", "effect_scope", "FDR_within_dataset_level/FDR_global", "FDR <= 0.05 or <= 0.10 in group-effect source",
-        "Generated by this script from group_effects/<dataset>/supermodule_group_effects.csv; retained as group-effect estimate circular atlas."
+        "standardized_effect_unclipped", "analysis_tier", "tier_specific_fdr", "FDR_local_exploratory <= 0.05 or <= 0.10 for independent stable local rows",
+        paste(
+          "Stage 05 estimate divided by the SD of the exact animal-spatial",
+          "eigengene response subset; display colour squished only at +/-2.5 SD."
+        )
       ),
       source_summary_row(
         ds, "circular_module_source", out_heatmap_source_module,
         heatmap_source_module |> dplyr::filter(.data$dataset == ds),
-        "estimate", "effect_scope", "FDR_within_dataset_level/FDR_global", "FDR <= 0.05 or <= 0.10 in group-effect source",
-        "Generated by this script from group_effects/<dataset>/module_group_effects.csv; module-to-supermodule mapping audited separately."
+        "estimate plus standardized_effect_unclipped", "analysis_tier", "tier_specific_fdr", "FDR_local_exploratory <= 0.05 or <= 0.10 for independent stable local rows",
+        paste(
+          "Module source retains raw Stage 05 statistics and exact-subset",
+          "standardized effects; module-to-supermodule mapping audited separately."
+        )
       ),
       source_summary_row(
         ds, "circular_publication_matched_source", out_publication_heatmap_source,
@@ -2689,14 +3454,14 @@ build_source_lineage_audit <- function(datasets, heatmap_source_supermodule, hea
       source_summary_row(
         ds, "group_effects_supermodule_source", paths$supermodule_group_effects,
         read_csv_quiet(paths$supermodule_group_effects),
-        "estimate", "effect_scope", "FDR_within_dataset_level/FDR_global", "group-effect FDR columns",
-        "Old circular heatmap source; not directly comparable to publication score heatmap."
+        "estimate", "analysis_tier", "tier-specific Stage 05 FDR fields", "Stage 05 statistical_support_status and tier-specific FDR family",
+        "Stage 05 source for the group-effect circular heatmap; legacy broad FDR columns are provenance only."
       ),
       source_summary_row(
         ds, "group_effects_module_source", path_results("tables", "06_modules_WGCNA", "group_effects", ds, "module_group_effects.csv"),
         read_csv_quiet(path_results("tables", "06_modules_WGCNA", "group_effects", ds, "module_group_effects.csv")),
-        "estimate", "effect_scope", "FDR_within_dataset_level/FDR_global", "group-effect FDR columns",
-        "Old rectangular module heatmap source; not directly comparable to publication score heatmap."
+        "estimate", "analysis_tier", "tier-specific Stage 05 FDR fields", "Stage 05 statistical_support_status and tier-specific FDR family",
+        "Stage 05 source for the rectangular module heatmap; legacy broad FDR columns are provenance only."
       )
     )
   })
@@ -2772,16 +3537,16 @@ build_metric_consistency_audit <- function(heatmap_source_supermodule, publicati
       "currently_comparable_to_publication_heatmap"
     ),
     result = c(
-      if ("estimate" %in% names(heatmap_source_supermodule)) "estimate" else "missing",
-      paste(intersect(c("p_value", "FDR_within_dataset_level", "FDR_global"), names(heatmap_source_supermodule)), collapse = ";"),
+      if ("standardized_effect_unclipped" %in% names(heatmap_source_supermodule)) "standardized model effect (SD units)" else "missing",
+      paste(intersect(c("tier_specific_fdr", "statistical_support_status", "support_class"), names(heatmap_source_supermodule)), collapse = ";"),
       if ("Cohen_d" %in% names(publication_source) && identical(unique(publication_source$metric_used), "Cohen_d")) "Cohen_d" else "missing_or_mixed",
       paste(intersect(c("p_adj_within_model_BH", "p_adj_global_BH", "support_class"), names(publication_source)), collapse = ";"),
-      "old wgcna_circular_heatmap_* outputs are not comparable; new wgcna_circular_publication_supermodule_effect_heatmap_* outputs are publication-matched"
+      "standardized model effect is not ordinary pooled-SD Cohen's d; publication-matched outputs retain their separate score-derived Cohen's d source"
     ),
     comparable_to_publication_heatmap = c(FALSE, FALSE, TRUE, TRUE, TRUE),
     notes = c(
-      "Old circular heatmap source is group_effects/<dataset>/supermodule_group_effects.csv.",
-      "Old circular support markers use group-effect FDR columns.",
+      "Local circular heatmap uses Stage 05 estimates divided by exact animal-spatial response-subset SD; it is not labelled Cohen's d.",
+      "Local circular support markers use only FDR_local_exploratory; broad legacy and interaction/global FDR columns are provenance only.",
       "Publication-matched circular source uses module_score/<dataset>/wgcna/supermodule_directional_effects.csv.",
       "Publication-matched markers use within_BH_significant/p_adj_within_model_BH <= 0.05.",
       "Use the publication-matched filenames for manuscript comparison against 08_wgcna_score_publication_summary.R."
@@ -2876,20 +3641,37 @@ supermodule_band_colors <- function(ids) {
   stats::setNames(rep(base_cols, length.out = length(ids)), ids)
 }
 
-render_dataset_circular_heatmap <- function(source_supermodule, dataset_name, svg_path, pdf_path, combined = FALSE, atlas_label = "Group-effect estimate circular atlas", fill_label = "Estimate", support_labels = c("adj. p <= 0.05", "adj. p <= 0.10"), supermodule_label_mode = c("priority_full", "all_ids")) {
+render_dataset_circular_heatmap <- function(source_supermodule, dataset_name, svg_path, pdf_path, combined = FALSE, atlas_label = "Group-effect estimate circular atlas", fill_label = "Estimate", support_labels = c("adj. p <= 0.05", "adj. p <= 0.10"), supermodule_label_mode = c("priority_full", "all_ids"), effect_column = "estimate", fixed_effect_limit = NA_real_, compact_local = FALSE, global_support_source = NULL) {
   supermodule_label_mode <- match.arg(supermodule_label_mode)
   df <- if (isTRUE(combined)) source_supermodule else source_supermodule |> dplyr::filter(.data$dataset == .env$dataset_name)
   if (!nrow(df)) return(invisible(FALSE))
+  if (!effect_column %in% names(df)) {
+    stop(
+      "Circular heatmap effect column is missing: ", effect_column, ".",
+      call. = FALSE
+    )
+  }
+  if (!"source_claim_entity_role" %in% names(df)) {
+    df$source_claim_entity_role <- NA_character_
+  }
   df <- df |>
     dplyr::mutate(
       dataset_label_for_plot = dplyr::case_when(
+        .env$compact_local & .data$dataset == "neuron_neuropil" ~
+          "Neuropil",
+        .env$compact_local & .data$dataset == "neuron_soma" ~
+          "Soma",
+        .env$compact_local & .data$dataset == "microglia" ~
+          "Microglia-enriched ROI",
         .data$dataset == "neuron_neuropil" ~ "Neuron neuropil",
         .data$dataset == "neuron_soma" ~ "Neuron soma",
-        .data$dataset == "microglia" ~ "Microglia-enriched ROI /\nlocal microenvironment",
+        .data$dataset == "microglia" ~
+          "Microglia-enriched ROI /\nlocal microenvironment",
         TRUE ~ dataset_label(.data$dataset)
       ),
       spatial_label = toupper(gsub("_", " ", .data$spatial_unit)),
-      sector_label = paste0(.data$supermodule_id, ": ", strip_supermodule_prefix(.data$supermodule_label, .data$supermodule_id))
+      sector_label = paste0(.data$supermodule_id, ": ", strip_supermodule_prefix(.data$supermodule_label, .data$supermodule_id)),
+      plot_effect = as_num(.data[[effect_column]])
     )
 
   sector_meta <- df |>
@@ -2898,6 +3680,7 @@ render_dataset_circular_heatmap <- function(source_supermodule, dataset_name, sv
       .data$dataset_label_for_plot,
       .data$supermodule_id,
       .data$sector_label,
+      .data$source_claim_entity_role,
       .data$plot_sector_order,
       .data$selected_or_priority_flag,
       .data$theta_start,
@@ -2907,6 +3690,13 @@ render_dataset_circular_heatmap <- function(source_supermodule, dataset_name, sv
     dplyr::summarise(
       dataset_label_for_plot = dplyr::first(.data$dataset_label_for_plot),
       sector_label = dplyr::first(.data$sector_label),
+      source_claim_entity_role =
+        dplyr::first(.data$source_claim_entity_role),
+      alias_boundary =
+        any(
+          .data$source_claim_entity_role == "compatibility_alias",
+          na.rm = TRUE
+        ),
       plot_sector_order = dplyr::first(.data$plot_sector_order),
       selected_or_priority_flag = any(.data$selected_or_priority_flag, na.rm = TRUE),
       theta_start = min(.data$theta_start, na.rm = TRUE),
@@ -2967,6 +3757,44 @@ render_dataset_circular_heatmap <- function(source_supermodule, dataset_name, sv
       supermodule_band_inner = max(.env$ring_meta$radius_outer, na.rm = TRUE) + .env$params$supermodule_band_gap,
       supermodule_band_outer = .data$supermodule_band_inner + .env$params$supermodule_band_thickness
     )
+  global_track <- tibble::tibble()
+  if (
+    isTRUE(compact_local) &&
+      !is.null(global_support_source) &&
+      nrow(global_support_source)
+  ) {
+    global_track <- global_support_source |>
+      dplyr::filter(.data$dataset %in% unique(df$dataset))
+    missing_sector <- global_track |>
+      dplyr::anti_join(
+        sector_meta |>
+          dplyr::select("dataset", "supermodule_id"),
+        by = c("dataset", "supermodule_id")
+      )
+    if (nrow(missing_sector)) {
+      stop(
+        "A global support row does not map to a circular supermodule sector.",
+        call. = FALSE
+      )
+    }
+    global_track <- global_track |>
+      dplyr::inner_join(
+        sector_meta |>
+          dplyr::select(
+            "dataset", "supermodule_id", "theta_mid",
+            "supermodule_band_outer", "alias_boundary"
+          ),
+        by = c("dataset", "supermodule_id"),
+        relationship = "many-to-one"
+      ) |>
+      dplyr::mutate(
+        marker_radius = .data$supermodule_band_outer +
+          0.014 + (3L - .data$contrast_order) * 0.020
+      ) |>
+      dplyr::arrange(
+        .data$dataset, .data$supermodule_id, .data$contrast_order
+      )
+  }
 
   region_tiles <- df |>
     dplyr::distinct(
@@ -2992,8 +3820,19 @@ render_dataset_circular_heatmap <- function(source_supermodule, dataset_name, sv
   layer_cols <- spatial_layer_colors(region_tiles$parsed_layer_or_unit)
   region_tiles$layer_color <- unname(layer_cols[region_tiles$parsed_layer_or_unit])
 
-  effects <- as_num(df$estimate)
-  lim <- if (any(is.finite(effects))) stats::quantile(abs(effects[is.finite(effects)]), 0.95, na.rm = TRUE, names = FALSE) else 1
+  effects <- as_num(df$plot_effect)
+  lim <- if (is.finite(fixed_effect_limit)) {
+    abs(as_num(fixed_effect_limit))
+  } else if (any(is.finite(effects))) {
+    stats::quantile(
+      abs(effects[is.finite(effects)]),
+      0.95,
+      na.rm = TRUE,
+      names = FALSE
+    )
+  } else {
+    1
+  }
   lim <- max(lim, 1e-6)
   color_fun <- grDevices::colorRampPalette(c("#2166AC", "#F7F7F7", "#B2182B"))
   palette <- color_fun(257)
@@ -3029,7 +3868,19 @@ render_dataset_circular_heatmap <- function(source_supermodule, dataset_name, sv
     }, add = TRUE)
     graphics::par(mar = c(0.6, 0.6, 0.6, 0.6), xpd = NA, family = "sans")
     graphics::plot.new()
-    graphics::plot.window(xlim = c(-1.36, 1.76), ylim = c(-1.32, 1.34), asp = 1)
+    if (isTRUE(compact_local)) {
+      graphics::plot.window(
+        xlim = c(-1.39, 1.39),
+        ylim = c(-1.48, 1.36),
+        asp = 1
+      )
+    } else {
+      graphics::plot.window(
+        xlim = c(-1.36, 1.76),
+        ylim = c(-1.32, 1.34),
+        asp = 1
+      )
+    }
     graphics::rect(-2, -2, 2, 2, col = "white", border = NA)
 
     for (i in seq_len(nrow(region_tiles))) {
@@ -3043,20 +3894,38 @@ render_dataset_circular_heatmap <- function(source_supermodule, dataset_name, sv
     for (i in seq_len(nrow(df))) {
       tile <- df[i, , drop = FALSE]
       poly <- annular_polygon(tile$theta_start[[1]], tile$theta_end[[1]], tile$radius_inner[[1]], tile$radius_outer[[1]])
-      border_col <- if (tile$support_class[[1]] == "FDR05") "#111111" else if (tile$support_class[[1]] == "FDR10") "#4D4D4D" else "white"
+      sus_res_ring <- tile$contrast_block[[1]] == "SUS-RES"
       graphics::polygon(
         poly$x,
         poly$y,
-        col = effect_col(tile$estimate[[1]]),
-        border = border_col,
-        lwd = if (tile$support_class[[1]] %in% c("FDR05", "FDR10")) 0.45 else 0.16
+        col = effect_col(tile$plot_effect[[1]]),
+        border = "white",
+        lwd = if (sus_res_ring) 0.3 else 0.18
       )
-      if (tile$support_class[[1]] %in% c("FDR05", "FDR10")) {
+      if (tile$support_class[[1]] %in%
+          c("FDR05", "FDR10", "invalid_or_unstable")) {
         theta <- tile$theta_mid[[1]] * pi / 180
         x <- cos(theta) * tile$radius_mid[[1]]
         y <- sin(theta) * tile$radius_mid[[1]]
-        pch <- if (tile$support_class[[1]] == "FDR05") 16 else 1
-        graphics::points(x, y, pch = pch, cex = 0.42, col = "#111111", lwd = 0.55)
+        pch <- dplyr::case_when(
+          tile$support_class[[1]] == "FDR05" ~ 16,
+          tile$support_class[[1]] == "FDR10" ~ 1,
+          TRUE ~ 4
+        )
+        marker_col <- if (
+          tile$support_class[[1]] == "invalid_or_unstable"
+        ) {
+          "#777777"
+        } else {
+          "white"
+        }
+        graphics::points(
+          x, y,
+          pch = pch,
+          cex = 0.44,
+          col = marker_col,
+          lwd = 0.75
+        )
       }
     }
 
@@ -3072,9 +3941,17 @@ render_dataset_circular_heatmap <- function(source_supermodule, dataset_name, sv
       graphics::polygon(
         band_poly$x,
         band_poly$y,
-        col = grDevices::adjustcolor(sector$supermodule_band_color[[1]], alpha.f = 0.88),
-        border = "#333333",
-        lwd = 0.28
+        col = grDevices::adjustcolor(
+          sector$supermodule_band_color[[1]],
+          alpha.f = if (isTRUE(sector$alias_boundary[[1]])) 0.58 else 0.82
+        ),
+        border = if (isTRUE(sector$alias_boundary[[1]])) {
+          "#9A9A9A"
+        } else {
+          "#777777"
+        },
+        lwd = if (isTRUE(sector$alias_boundary[[1]])) 0.4 else 0.28,
+        lty = if (isTRUE(sector$alias_boundary[[1]])) 2 else 1
       )
       for (theta in c(sector$theta_start[[1]], sector$theta_end[[1]])) {
         rad <- theta * pi / 180
@@ -3083,8 +3960,13 @@ render_dataset_circular_heatmap <- function(source_supermodule, dataset_name, sv
           sin(rad) * min(region_tiles$region_radius_inner),
           cos(rad) * sector$supermodule_band_outer[[1]],
           sin(rad) * sector$supermodule_band_outer[[1]],
-          col = "#333333",
-          lwd = 0.35
+          col = if (isTRUE(sector$alias_boundary[[1]])) {
+            "#A6A6A6"
+          } else {
+            "#B8B8B8"
+          },
+          lwd = if (isTRUE(sector$alias_boundary[[1]])) 0.38 else 0.32,
+          lty = if (isTRUE(sector$alias_boundary[[1]])) 2 else 1
         )
       }
       if (isTRUE(sector$label_drawn[[1]])) {
@@ -3103,14 +3985,69 @@ render_dataset_circular_heatmap <- function(source_supermodule, dataset_name, sv
         } else {
           vapply(strwrap(sector$label_text_for_draw[[1]], width = 20, simplify = FALSE), paste, character(1), collapse = "\n")
         }
-        graphics::segments(x0, y0, x1, y1, col = "#666666", lwd = if (identical(supermodule_label_mode, "all_ids")) 0.25 else 0.35)
+        graphics::segments(
+          x0, y0, x1, y1,
+          col = if (isTRUE(sector$alias_boundary[[1]])) {
+            "#AAAAAA"
+          } else {
+            "#777777"
+          },
+          lwd = if (identical(supermodule_label_mode, "all_ids")) {
+            0.24
+          } else {
+            0.34
+          },
+          lty = if (isTRUE(sector$alias_boundary[[1]])) 2 else 1
+        )
         graphics::text(
           x, y,
           labels = lab,
           srt = orient$angle,
-          cex = if (identical(supermodule_label_mode, "all_ids")) 0.62 else 0.56,
-          font = 2,
-          col = "#222222"
+          cex = if (identical(supermodule_label_mode, "all_ids")) {
+            if (isTRUE(sector$alias_boundary[[1]])) 0.57 else 0.64
+          } else {
+            if (isTRUE(sector$alias_boundary[[1]])) 0.52 else 0.58
+          },
+          font = if (isTRUE(compact_local)) {
+            1
+          } else if (isTRUE(sector$alias_boundary[[1]])) {
+            1
+          } else {
+            2
+          },
+          col = if (isTRUE(sector$alias_boundary[[1]])) {
+            "#777777"
+          } else {
+            "#222222"
+          }
+        )
+      }
+    }
+
+    if (nrow(global_track)) {
+      visible_global <- global_track |>
+        dplyr::filter(.data$global_marker_visible %in% TRUE)
+      for (i in seq_len(nrow(visible_global))) {
+        marker <- visible_global[i, , drop = FALSE]
+        theta <- marker$theta_mid[[1]] * pi / 180
+        marker_col <- if (
+          marker$global_support_class[[1]] == "invalid"
+        ) {
+          "#777777"
+        } else {
+          unname(contrast_cols[[marker$contrast_block[[1]]]])
+        }
+        graphics::points(
+          cos(theta) * marker$marker_radius[[1]],
+          sin(theta) * marker$marker_radius[[1]],
+          pch = dplyr::case_when(
+            marker$global_support_class[[1]] == "FDR05" ~ 16,
+            marker$global_support_class[[1]] == "FDR10" ~ 1,
+            TRUE ~ 4
+          ),
+          cex = 0.57,
+          col = marker_col,
+          lwd = 0.9
         )
       }
     }
@@ -3140,68 +4077,227 @@ render_dataset_circular_heatmap <- function(source_supermodule, dataset_name, sv
         y = ring_meta$label_y[[i]],
         labels = ring_meta$contrast_block[[i]],
         col = ring_meta$contrast_color[[i]],
-        cex = 0.86,
-        font = 2,
+        cex = if (ring_meta$contrast_block[[i]] == "SUS-RES") {
+          1.02
+        } else {
+          0.92
+        },
+        font = if (ring_meta$contrast_block[[i]] == "SUS-RES") 2 else 1,
         adj = c(0.5, 0.5)
       )
     }
 
-    center_title <- if (isTRUE(combined)) paste("WGCNA", "spatial atlas", sep = "\n") else dataset_label(dataset_name)
-    graphics::text(0, if (isTRUE(combined)) 0.018 else 0.045, center_title, cex = if (isTRUE(combined)) 0.82 else 1.05, font = 2, col = "#222222")
-    graphics::text(0, if (isTRUE(combined)) -0.105 else -0.105, atlas_label, cex = if (isTRUE(combined)) 0.48 else 0.56, col = "#555555")
-    if (identical(dataset_name, "microglia") && !isTRUE(combined)) {
-      graphics::text(0, -0.175, "Microglia-enriched ROI /\nlocal microenvironment", cex = 0.56, col = "#555555")
-    } else if (!isTRUE(combined)) {
-      graphics::text(0, -0.175, "supermodule x spatial unit", cex = 0.56, col = "#555555")
-    }
+    if (isTRUE(compact_local)) {
+      center_title <- if (isTRUE(combined)) {
+        "Local WGCNA atlas"
+      } else {
+        dataset_label(dataset_name)
+      }
+      graphics::text(
+        0, 0.345, center_title,
+        cex = 0.78, font = 2, col = "#222222"
+      )
+      graphics::text(
+        0, 0.292, fill_label,
+        cex = 0.48, col = "#555555"
+      )
+      gradient_x <- seq(-0.27, 0.27, length.out = 60)
+      for (i in seq_len(length(gradient_x) - 1)) {
+        graphics::rect(
+          gradient_x[[i]], 0.218,
+          gradient_x[[i + 1]], 0.252,
+          col = palette[round(seq(
+            1, length(palette),
+            length.out = length(gradient_x) - 1
+          ))[[i]]],
+          border = NA
+        )
+      }
+      graphics::text(
+        c(-0.27, 0, 0.27), 0.184,
+        labels = c("-2.5", "0", "+2.5"),
+        cex = 0.45, col = "#333333"
+      )
 
-    gradient_x <- seq(1.28, 1.58, length.out = 60)
-    for (i in seq_len(length(gradient_x) - 1)) {
-      graphics::rect(gradient_x[[i]], -0.75, gradient_x[[i + 1]], -0.70, col = palette[round(seq(1, length(palette), length.out = length(gradient_x) - 1))[[i]]], border = NA)
+      region_names <- names(region_cols)
+      region_x <- rep(c(-0.31, -0.16), length.out = length(region_names))
+      region_y <- rep(c(0.105, 0.052), each = 2, length.out = length(region_names))
+      graphics::text(-0.31, 0.15, "Region", adj = c(0, 0.5), cex = 0.52, font = 2)
+      for (i in seq_along(region_names)) {
+        graphics::points(
+          region_x[[i]], region_y[[i]],
+          pch = 22, bg = unname(region_cols[[i]]),
+          col = NA, cex = 0.66
+        )
+        graphics::text(
+          region_x[[i]] + 0.025, region_y[[i]],
+          region_names[[i]], adj = c(0, 0.5), cex = 0.4
+        )
+      }
+
+      layer_names <- names(layer_cols)
+      layer_labels <- unname(c(
+        "Layer not available" = "N/A",
+        "ML" = "ML", "PO" = "PO", "SLM" = "SLM",
+        "SO" = "SO", "SR" = "SR"
+      )[layer_names])
+      layer_labels[is.na(layer_labels)] <- layer_names[is.na(layer_labels)]
+      layer_x <- rep(c(0.055, 0.16, 0.265), length.out = length(layer_names))
+      layer_y <- rep(c(0.105, 0.052), each = 3, length.out = length(layer_names))
+      graphics::text(0.055, 0.15, "Layer", adj = c(0, 0.5), cex = 0.52, font = 2)
+      for (i in seq_along(layer_names)) {
+        graphics::points(
+          layer_x[[i]], layer_y[[i]],
+          pch = 22, bg = unname(layer_cols[[i]]),
+          col = NA, cex = 0.66
+        )
+        graphics::text(
+          layer_x[[i]] + 0.023, layer_y[[i]],
+          layer_labels[[i]], adj = c(0, 0.5), cex = 0.38
+        )
+      }
+
+      global_x <- c(-0.245, 0, 0.245)
+      graphics::text(
+        -0.31, -0.008, "Global SM effect support",
+        adj = c(0, 0.5), cex = 0.52, font = 2
+      )
+      graphics::points(
+        global_x, rep(-0.050, 3),
+        pch = 16,
+        col = unname(contrast_cols[
+          c("RES-CON", "SUS-CON", "SUS-RES")
+        ]),
+        cex = 0.52
+      )
+      graphics::text(
+        global_x, -0.082,
+        labels = c("RES - CON", "SUS - CON", "SUS - RES"),
+        cex = 0.37
+      )
+      graphics::points(
+        global_x, rep(-0.119, 3),
+        pch = c(16, 1, 4),
+        col = c("#555555", "#555555", "#777777"),
+        cex = c(0.49, 0.54, 0.49), lwd = 0.8
+      )
+      graphics::text(
+        global_x, -0.151,
+        labels = c("q <= .05", ".05 < q <= .10", "invalid model"),
+        cex = 0.38
+      )
+
+      support_x <- c(-0.245, 0, 0.245)
+      graphics::text(
+        -0.31, -0.197, "Local spatial BH support",
+        adj = c(0, 0.5), cex = 0.52, font = 2
+      )
+      graphics::points(
+        support_x, rep(-0.239, 3),
+        pch = 21, bg = "#555555", col = "#555555", cex = 0.95
+      )
+      graphics::points(
+        support_x, rep(-0.239, 3),
+        pch = c(16, 1, 4),
+        col = c("white", "white", "#BDBDBD"),
+        cex = c(0.48, 0.53, 0.48), lwd = 0.8
+      )
+      graphics::text(
+        support_x, -0.277,
+        labels = c(
+          "q <= .05", ".05 < q <= .10", "invalid / unstable"
+        ),
+        cex = 0.38
+      )
+      graphics::segments(
+        -0.11, -0.335, 0.01, -0.335,
+        col = "#555555", lwd = 0.8, lty = 2
+      )
+      graphics::text(
+        0.03, -0.335,
+        "alias: inherited / non-independent",
+        adj = c(0, 0.5), cex = 0.38, col = "#666666"
+      )
+      caption_lines <- strwrap(
+        LOCAL_EFFECT_INTERPRETATION_GUARD,
+        width = 116
+      )
+      graphics::text(
+        0, -1.36,
+        labels = paste(caption_lines, collapse = "\n"),
+        cex = 0.48, col = "#4A4A4A"
+      )
+    } else {
+      center_title <- if (isTRUE(combined)) paste("WGCNA", "spatial atlas", sep = "\n") else dataset_label(dataset_name)
+      graphics::text(0, if (isTRUE(combined)) 0.018 else 0.045, center_title, cex = if (isTRUE(combined)) 0.82 else 1.05, font = 2, col = "#222222")
+      graphics::text(0, if (isTRUE(combined)) -0.105 else -0.105, atlas_label, cex = if (isTRUE(combined)) 0.48 else 0.56, col = "#555555")
+      if (identical(dataset_name, "microglia") && !isTRUE(combined)) {
+        graphics::text(0, -0.175, "Microglia-enriched ROI /\nlocal microenvironment", cex = 0.56, col = "#555555")
+      } else if (!isTRUE(combined)) {
+        graphics::text(0, -0.175, "supermodule x spatial unit", cex = 0.56, col = "#555555")
+      }
+
+      gradient_x <- seq(1.28, 1.58, length.out = 60)
+      for (i in seq_len(length(gradient_x) - 1)) {
+        graphics::rect(gradient_x[[i]], -0.75, gradient_x[[i + 1]], -0.70, col = palette[round(seq(1, length(palette), length.out = length(gradient_x) - 1))[[i]]], border = NA)
+      }
+      graphics::text(1.43, -0.66, fill_label, cex = 0.72, font = 2)
+      graphics::text(c(1.28, 1.43, 1.58), -0.80, labels = c("-", "0", "+"), cex = 0.65)
+      graphics::legend(
+        1.25, 0.76,
+        legend = support_labels,
+        pch = c(16, 1, 4)[seq_along(support_labels)],
+        col = "#111111",
+        bty = "n",
+        cex = 0.68,
+        pt.cex = 0.85,
+        title = "Support"
+      )
+      graphics::legend(
+        1.25, 0.43,
+        legend = names(region_cols),
+        fill = unname(region_cols),
+        border = NA,
+        bty = "n",
+        cex = 0.66,
+        title = "Region ring"
+      )
+      graphics::legend(
+        1.25, 0.08,
+        legend = names(layer_cols),
+        fill = unname(layer_cols),
+        border = NA,
+        bty = "n",
+        cex = 0.56,
+        title = "Layer ring"
+      )
+      spatial_summary <- spatial_meta |>
+        dplyr::arrange(.data$first_angular_order) |>
+        dplyr::summarise(units = paste(.data$spatial_label, collapse = ", "), .groups = "drop")
+      spatial_lines <- paste(strwrap(spatial_summary$units, width = 34), collapse = "\n")
+      graphics::text(1.43, -0.42, "Spatial order", cex = 0.72, font = 2)
+      graphics::text(1.43, -0.52, spatial_lines, cex = 0.58, col = "#444444")
     }
-    graphics::text(1.43, -0.66, fill_label, cex = 0.72, font = 2)
-    graphics::text(c(1.28, 1.43, 1.58), -0.80, labels = c("-", "0", "+"), cex = 0.65)
-    graphics::legend(
-      1.25, 0.76,
-      legend = support_labels,
-      pch = c(16, 1),
-      col = "#111111",
-      bty = "n",
-      cex = 0.68,
-      pt.cex = 0.85,
-      title = "Support"
-    )
-    graphics::legend(
-      1.25, 0.43,
-      legend = names(region_cols),
-      fill = unname(region_cols),
-      border = NA,
-      bty = "n",
-      cex = 0.66,
-      title = "Region ring"
-    )
-    graphics::legend(
-      1.25, 0.08,
-      legend = names(layer_cols),
-      fill = unname(layer_cols),
-      border = NA,
-      bty = "n",
-      cex = 0.56,
-      title = "Layer ring"
-    )
-    spatial_summary <- spatial_meta |>
-      dplyr::arrange(.data$first_angular_order) |>
-      dplyr::summarise(units = paste(.data$spatial_label, collapse = ", "), .groups = "drop")
-    spatial_lines <- paste(strwrap(spatial_summary$units, width = 34), collapse = "\n")
-    graphics::text(1.43, -0.42, "Spatial order", cex = 0.72, font = 2)
-    graphics::text(1.43, -0.52, spatial_lines, cex = 0.58, col = "#444444")
   }
 
   dir_create(dirname(svg_path))
-  svglite::svglite(svg_path, width = 7.5, height = 7.5, bg = "white")
+  device_width <- if (isTRUE(compact_local)) 8 else 7.5
+  device_height <- if (isTRUE(compact_local)) 8.2 else 7.5
+  svglite::svglite(
+    svg_path,
+    width = device_width,
+    height = device_height,
+    bg = "white"
+  )
   draw_one()
   grDevices::dev.off()
-  grDevices::pdf(pdf_path, width = 7.5, height = 7.5, onefile = FALSE, useDingbats = FALSE)
+  grDevices::pdf(
+    pdf_path,
+    width = device_width,
+    height = device_height,
+    onefile = FALSE,
+    useDingbats = FALSE
+  )
   draw_one()
   grDevices::dev.off()
   invisible(TRUE)
@@ -3293,6 +4389,7 @@ if (run$dry_run) {
   dry_run_line("Selected-only circular atlas PDF output", out_selected_pdf)
   dry_run_line("Circular heatmap supermodule source output", out_heatmap_source_supermodule)
   dry_run_line("Circular heatmap module source output", out_heatmap_source_module)
+  dry_run_line("Circular global supermodule support source output", out_global_supermodule_support)
   dry_run_line("Circular heatmap all-datasets layout source output", out_heatmap_layout_all_datasets)
   dry_run_line("Publication-matched circular source output", out_publication_heatmap_source)
   dry_run_line("Publication-matched circular all-datasets layout source output", out_publication_heatmap_layout_all_datasets)
@@ -3307,7 +4404,7 @@ if (run$dry_run) {
   dry_run_line("Supermodule callout source output", out_supermodule_callout_source)
   dry_run_line("Supermodule callout SVG output", out_supermodule_callout_svg)
   dry_run_line("Supermodule callout PDF output", out_supermodule_callout_pdf)
-  dry_run_line("Circular heatmap geometry", "Custom polar tile renderer; top contrast labels anchored at theta=90 degrees; separate inner layer and region rings; support markers use adjusted p/FDR only")
+  dry_run_line("Circular heatmap geometry", "Custom polar tile renderer; top contrast labels anchored at theta=90 degrees; separate inner layer and region rings; group-effect support markers use Stage 05 tier-specific FDR only")
   for (ds_name in names(heatmap_svg_paths)) {
     dry_run_line(paste0("Circular heatmap SVG output (", ds_name, ")"), heatmap_svg_paths[[ds_name]])
     dry_run_line(paste0("Circular heatmap PDF output (", ds_name, ")"), heatmap_pdf_paths[[ds_name]])
@@ -3355,11 +4452,11 @@ selected_audit <- selected_audit |>
   dplyr::left_join(
     segments |>
       dplyr::select(
-        .data$dataset, .data$supermodule_id, .data$selected_for_descriptive_atlas,
-        .data$selected_for_manuscript_claim, .data$canonical_claim_entity_id,
-        .data$claim_entity_role, .data$separate_manuscript_claim_allowed,
-        .data$primary_architecture_status, .data$group_effect_status,
-        .data$manuscript_placement, .data$readiness_contract_version
+        "dataset", "supermodule_id", "selected_for_descriptive_atlas",
+        "selected_for_manuscript_claim", "canonical_claim_entity_id",
+        "claim_entity_role", "separate_manuscript_claim_allowed",
+        "primary_architecture_status", "group_effect_status",
+        "manuscript_placement", "readiness_contract_version"
       ),
     by = c("dataset", "supermodule_id"), relationship = "one-to-one"
   )
@@ -3395,6 +4492,22 @@ segments <- segments |>
     "effect_source_file",
     "effect_source_row_id",
     "annotation_source_file",
+    "analysis_tier",
+    "contrast",
+    "effect_scope",
+    "spatial_unit",
+    "independent_hypothesis",
+    "estimate",
+    "SE",
+    "p_value",
+    "tier_specific_fdr",
+    "tier_specific_family_id",
+    "tier_specific_family_size",
+    "statistical_support_status",
+    "model_valid_for_inference",
+    "model_stability_status",
+    "source_claim_entity_role",
+    "result_scope",
     "segment_cleaned_label",
     "segment_broad_program_class",
     "global_evidence_status",
@@ -3430,6 +4543,9 @@ segments <- segments |>
     "strongest_contrast_used",
     "strongest_estimate_segments",
     "p_value_segments",
+    "tier_specific_fdr_segments",
+    "tier_specific_family_id_segments",
+    "tier_specific_family_size_segments",
     "FDR_global_segments",
     "FDR_within_dataset_level_segments",
     "evidence_status_segments",
@@ -3460,7 +4576,19 @@ plot_source <- prepare_circular_plot_source(segments)
 heatmap_sources <- build_heatmap_sources(available_datasets(), segments, selected_audit)
 heatmap_source_supermodule <- add_polar_layout_columns(heatmap_sources$supermodule)
 heatmap_source_module <- add_polar_layout_columns(heatmap_sources$module)
+global_supermodule_support <- heatmap_sources$global_supermodule_support
 heatmap_layout_all_datasets <- add_polar_layout_columns(heatmap_sources$supermodule, combined = TRUE)
+validate_circular_effect_source(segments, "wgcna_circular_atlas_segments")
+validate_circular_effect_source(plot_source, "wgcna_circular_atlas_plot_source")
+validate_circular_effect_source(
+  heatmap_source_supermodule,
+  "wgcna_circular_heatmap_source_supermodule"
+)
+validate_circular_effect_source(
+  heatmap_source_module,
+  "wgcna_circular_heatmap_source_module"
+)
+validate_global_supermodule_support_source(global_supermodule_support)
 publication_heatmap_source <- build_publication_heatmap_source(available_datasets(), analysis = "primary_all_replicates")
 publication_heatmap_source_layout <- add_polar_layout_columns(publication_heatmap_source)
 publication_heatmap_layout_all_datasets <- add_polar_layout_columns(publication_heatmap_source, combined = TRUE)
@@ -3502,7 +4630,7 @@ metrics <- tibble::tibble(
     "SUS-RES pair; SUS-CON pair; RES-CON pair, preserving source contrast orientation",
     "Prefer robust_FDR, suggestive_FDR10, nominal_only; add major broad-program representatives; label unsupported-only selections as representatives",
     "No high-confidence cross-compartment links passed filters.",
-    "Global/local/interaction evidence summaries use copied source FDR_within_dataset_level when available, otherwise copied source FDR_global; no p-values or FDRs are recomputed."
+    "Global/local/interaction evidence summaries use the copied Stage 05 tier_specific_fdr selected by analysis_tier; legacy broad FDR columns are provenance only and no p-values or FDRs are recomputed."
   )
 )
 
@@ -3538,6 +4666,7 @@ readr::write_csv(local_support_summary, out_local_support)
 readr::write_csv(plot_source, out_plot_source)
 readr::write_csv(heatmap_source_supermodule, out_heatmap_source_supermodule)
 readr::write_csv(heatmap_source_module, out_heatmap_source_module)
+readr::write_csv(global_supermodule_support, out_global_supermodule_support)
 readr::write_csv(heatmap_layout_all_datasets, out_heatmap_layout_all_datasets)
 readr::write_csv(publication_heatmap_source_layout, out_publication_heatmap_source)
 readr::write_csv(publication_heatmap_layout_all_datasets, out_publication_heatmap_layout_all_datasets)
@@ -3555,8 +4684,17 @@ render_dataset_circular_heatmap(
   out_heatmap_all_svg,
   out_heatmap_all_pdf,
   combined = TRUE,
-  atlas_label = "Group-effect estimate circular atlas",
-  fill_label = "Estimate"
+  atlas_label = "Standardized local Stage 05 circular atlas",
+  fill_label = LOCAL_EFFECT_METRIC_LABEL,
+  support_labels = c(
+    "local q <= 0.05", "0.05 < local q <= 0.10",
+    "invalid or unstable"
+  ),
+  supermodule_label_mode = "all_ids",
+  effect_column = "standardized_effect_display",
+  fixed_effect_limit = LOCAL_EFFECT_DISPLAY_LIMIT,
+  compact_local = TRUE,
+  global_support_source = global_supermodule_support
 )
 for (ds_name in intersect(names(heatmap_svg_paths), unique(heatmap_source_supermodule$dataset))) {
   render_dataset_circular_heatmap(
@@ -3564,8 +4702,17 @@ for (ds_name in intersect(names(heatmap_svg_paths), unique(heatmap_source_superm
     ds_name,
     heatmap_svg_paths[[ds_name]],
     heatmap_pdf_paths[[ds_name]],
-    atlas_label = "Group-effect estimate circular atlas",
-    fill_label = "Estimate"
+    atlas_label = "Standardized local Stage 05 circular atlas",
+    fill_label = LOCAL_EFFECT_METRIC_LABEL,
+    support_labels = c(
+      "local q <= 0.05", "0.05 < local q <= 0.10",
+      "invalid or unstable"
+    ),
+    supermodule_label_mode = "all_ids",
+    effect_column = "standardized_effect_display",
+    fixed_effect_limit = LOCAL_EFFECT_DISPLAY_LIMIT,
+    compact_local = TRUE,
+    global_support_source = global_supermodule_support
   )
 }
 render_dataset_circular_heatmap(
@@ -3576,7 +4723,7 @@ render_dataset_circular_heatmap(
   combined = TRUE,
   atlas_label = "Score-derived supermodule effect heatmap",
   fill_label = "Cohen's d",
-  support_labels = c("within BH <= 0.05", "not used"),
+  support_labels = "within BH <= 0.05",
   supermodule_label_mode = "all_ids"
 )
 for (ds_name in intersect(names(publication_heatmap_svg_paths), unique(publication_heatmap_source_layout$dataset))) {
@@ -3587,7 +4734,7 @@ for (ds_name in intersect(names(publication_heatmap_svg_paths), unique(publicati
     publication_heatmap_pdf_paths[[ds_name]],
     atlas_label = "Score-derived supermodule effect heatmap",
     fill_label = "Cohen's d",
-    support_labels = c("within BH <= 0.05", "not used"),
+    support_labels = "within BH <= 0.05",
     supermodule_label_mode = "all_ids"
   )
 }
@@ -3616,6 +4763,7 @@ write_run_manifest(
     plot_source = out_plot_source,
     circular_heatmap_source_supermodule = out_heatmap_source_supermodule,
     circular_heatmap_source_module = out_heatmap_source_module,
+    circular_global_supermodule_support_source = out_global_supermodule_support,
     circular_heatmap_layout_all_datasets = out_heatmap_layout_all_datasets,
     publication_circular_heatmap_source = out_publication_heatmap_source,
     publication_circular_heatmap_layout_all_datasets = out_publication_heatmap_layout_all_datasets,
@@ -3660,7 +4808,10 @@ write_run_manifest(
       "thin inner layer annotation ring",
       "thin inner region annotation ring",
       "three contrast rings: RES-CON, SUS-CON, SUS-RES",
-      "support markers use adjusted p/FDR only"
+      "local-cell markers use FDR_local_exploratory only",
+      "outer global supermodule marker positions: RES-CON, SUS-CON, SUS-RES",
+      "global RES-CON and SUS-CON markers use FDR_secondary_global",
+      "global SUS-RES markers use FDR_primary_global"
     ),
     circular_heatmap_inputs = c(
       "results/tables/06_modules_WGCNA/group_effects/<dataset>/supermodule_group_effects.csv",
@@ -3743,6 +4894,7 @@ cat(" - ", out_local_support, "\n", sep = "")
 cat(" - ", out_plot_source, "\n", sep = "")
 cat(" - ", out_heatmap_source_supermodule, "\n", sep = "")
 cat(" - ", out_heatmap_source_module, "\n", sep = "")
+cat(" - ", out_global_supermodule_support, "\n", sep = "")
 cat(" - ", out_heatmap_layout_all_datasets, "\n", sep = "")
 cat(" - ", out_publication_heatmap_source, "\n", sep = "")
 cat(" - ", out_publication_heatmap_layout_all_datasets, "\n", sep = "")
