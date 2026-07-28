@@ -48,6 +48,34 @@ load_group_fixture <- function(dataset) {
   )
 }
 
+group_bridge_contract <- function(module_ids) {
+  list(
+    membership = data.frame(
+      module_id = module_ids,
+      stringsAsFactors = FALSE
+    )
+  )
+}
+
+group_bridge_state <- function(raw_eigengene_cols, module_label_table = NULL) {
+  values <- matrix(
+    seq_len(3L * length(raw_eigengene_cols)),
+    nrow = 3L,
+    ncol = length(raw_eigengene_cols)
+  )
+  colnames(values) <- raw_eigengene_cols
+  values <- data.frame(
+    Sample = paste0("sample_", seq_len(nrow(values))),
+    values,
+    check.names = FALSE,
+    stringsAsFactors = FALSE
+  )
+  list(
+    mergedMEs = values,
+    module_label_table = module_label_table
+  )
+}
+
 testthat::test_that("all three publishable identity contracts load and validate", {
   for (dataset in group_test_datasets) {
     contract <- wgcna_group_load_identity_contract(
@@ -83,6 +111,227 @@ testthat::test_that("missing or stale membership versions fail closed", {
   )
 })
 
+testthat::test_that("canonical metadata bridge ignores only explicit grey", {
+  module_ids <- sprintf("WGCNA_m%02d", seq_len(15L))
+  internal_colors <- sprintf("#%06X", seq_len(15L))
+  labels <- data.frame(
+    ModuleID = c(module_ids, NA_character_),
+    WGCNAInternalColor = c(internal_colors, "grey"),
+    stringsAsFactors = FALSE
+  )
+  state <- group_bridge_state(
+    c(paste0("ME", internal_colors), "MEgrey"),
+    labels
+  )
+  bridge <- wgcna_group_build_module_bridge(
+    "neuron_neuropil", state, group_bridge_contract(module_ids)
+  )
+  ignored <- attr(bridge, "ignored_non_contract_eigengenes")
+
+  testthat::expect_equal(nrow(bridge), 15L)
+  testthat::expect_identical(sort(bridge$module_id), sort(module_ids))
+  testthat::expect_false(anyDuplicated(bridge$module_id) > 0L)
+  testthat::expect_false(
+    anyDuplicated(bridge$state_eigengene_col_raw) > 0L
+  )
+  testthat::expect_identical(
+    unique(bridge$bridge_method),
+    "stable_state_metadata_internal_color"
+  )
+  testthat::expect_equal(nrow(ignored), 1L)
+  testthat::expect_identical(
+    ignored$state_eigengene_col_raw, "MEgrey"
+  )
+  testthat::expect_identical(
+    ignored$reason_excluded,
+    "explicit_state_metadata_unassigned_module"
+  )
+})
+
+testthat::test_that("unknown extra eigengenes fail closed", {
+  module_ids <- c("WGCNA_m01", "WGCNA_m02")
+  colors <- c("#000001", "#000002")
+  state <- group_bridge_state(
+    c(paste0("ME", colors), "MEturquoise"),
+    data.frame(
+      ModuleID = module_ids,
+      WGCNAInternalColor = colors,
+      stringsAsFactors = FALSE
+    )
+  )
+  testthat::expect_error(
+    wgcna_group_build_module_bridge(
+      "neuron_neuropil", state, group_bridge_contract(module_ids)
+    ),
+    "unknown non-contract eigengene MEturquoise",
+    fixed = TRUE
+  )
+
+  state$module_label_table <- rbind(
+    state$module_label_table,
+    data.frame(
+      ModuleID = "WGCNA_m99",
+      WGCNAInternalColor = "turquoise",
+      stringsAsFactors = FALSE
+    )
+  )
+  testthat::expect_error(
+    wgcna_group_build_module_bridge(
+      "neuron_neuropil", state, group_bridge_contract(module_ids)
+    ),
+    "populated ModuleID(s) outside the contract",
+    fixed = TRUE
+  )
+})
+
+testthat::test_that("missing contract-module eigengenes fail closed", {
+  module_ids <- c("WGCNA_m01", "WGCNA_m02")
+  state <- group_bridge_state(
+    "ME#000001",
+    data.frame(
+      ModuleID = module_ids,
+      WGCNAInternalColor = c("#000001", "#000002"),
+      stringsAsFactors = FALSE
+    )
+  )
+  testthat::expect_error(
+    wgcna_group_build_module_bridge(
+      "neuron_neuropil", state, group_bridge_contract(module_ids)
+    ),
+    "exactly one existing raw eigengene column",
+    fixed = TRUE
+  )
+})
+
+testthat::test_that("two raw eigengenes cannot map to one ModuleID", {
+  module_id <- "WGCNA_m01"
+  state <- group_bridge_state(
+    c("MEfirst", "MEsecond"),
+    data.frame(
+      ModuleID = c(module_id, module_id),
+      module_eigengene = c("MEfirst", "MEsecond"),
+      stringsAsFactors = FALSE
+    )
+  )
+  testthat::expect_error(
+    wgcna_group_build_module_bridge(
+      "neuron_neuropil", state, group_bridge_contract(module_id)
+    ),
+    "exactly one row per contract ModuleID",
+    fixed = TRUE
+  )
+})
+
+testthat::test_that("one raw eigengene cannot map to multiple ModuleIDs", {
+  module_ids <- c("WGCNA_m01", "WGCNA_m02")
+  state <- group_bridge_state(
+    "MEshared",
+    data.frame(
+      ModuleID = module_ids,
+      module_eigengene = rep("MEshared", 2L),
+      stringsAsFactors = FALSE
+    )
+  )
+  testthat::expect_error(
+    wgcna_group_build_module_bridge(
+      "neuron_neuropil", state, group_bridge_contract(module_ids)
+    ),
+    "not one-to-one and complete",
+    fixed = TRUE
+  )
+})
+
+testthat::test_that("explicit module_eigengene metadata is authoritative", {
+  module_ids <- c("WGCNA_m01", "WGCNA_m02")
+  raw_cols <- c("MErecorded_one", "MErecorded_two")
+  state <- group_bridge_state(
+    raw_cols,
+    data.frame(
+      ModuleID = module_ids,
+      WGCNAInternalColor = c("wrong_one", "wrong_two"),
+      module_eigengene = raw_cols,
+      stringsAsFactors = FALSE
+    )
+  )
+  bridge <- wgcna_group_build_module_bridge(
+    "neuron_neuropil", state, group_bridge_contract(module_ids)
+  )
+  testthat::expect_identical(bridge$state_eigengene_col_raw, raw_cols)
+  testthat::expect_true(all(
+    bridge$bridge_method ==
+      "stable_state_metadata_module_eigengene"
+  ))
+})
+
+testthat::test_that("internal-color metadata resolves a complete bridge", {
+  module_ids <- c("WGCNA_m01", "WGCNA_m02")
+  colors <- c("#000001", "#000002")
+  state <- group_bridge_state(
+    paste0("ME", colors),
+    data.frame(
+      ModuleID = module_ids,
+      WGCNAInternalColor = colors,
+      stringsAsFactors = FALSE
+    )
+  )
+  bridge <- wgcna_group_build_module_bridge(
+    "neuron_neuropil", state, group_bridge_contract(module_ids)
+  )
+  testthat::expect_identical(
+    bridge$state_eigengene_col_raw, paste0("ME", colors)
+  )
+  testthat::expect_true(all(
+    bridge$bridge_method ==
+      "stable_state_metadata_internal_color"
+  ))
+})
+
+testthat::test_that("older syntactic hex bridge remains compatible", {
+  state <- group_bridge_state(
+    "ME#A1B2C3",
+    data.frame(
+      WGCNAInternalColor = "#A1B2C3",
+      stringsAsFactors = FALSE
+    )
+  )
+  bridge <- wgcna_group_build_module_bridge(
+    "neuron_neuropil",
+    state,
+    group_bridge_contract("WGCNA_#A1B2C3")
+  )
+  testthat::expect_identical(bridge$module_id, "WGCNA_#A1B2C3")
+  testthat::expect_identical(
+    bridge$bridge_method, "syntactic_module_id_bridge_only"
+  )
+})
+
+testthat::test_that("current microglia bridge identities remain unchanged", {
+  dataset <- "microglia"
+  state_path <- group_state_path(dataset)
+  state <- readRDS(state_path)
+  contract <- wgcna_group_load_identity_contract(dataset, state_path)
+  bridge <- wgcna_group_build_module_bridge(dataset, state, contract)
+  labels <- as.data.frame(state$module_label_table, stringsAsFactors = FALSE)
+  expected <- labels[
+    labels$ModuleID %in% contract$membership$module_id,
+    c("ModuleID", "WGCNAInternalColor"),
+    drop = FALSE
+  ]
+  expected <- expected[order(expected$ModuleID), , drop = FALSE]
+
+  testthat::expect_identical(
+    bridge$module_id, as.character(expected$ModuleID)
+  )
+  testthat::expect_identical(
+    bridge$state_eigengene_col_raw,
+    paste0("ME", as.character(expected$WGCNAInternalColor))
+  )
+  testthat::expect_true(all(
+    bridge$bridge_method ==
+      "stable_state_metadata_internal_color"
+  ))
+})
+
 testthat::test_that("frozen-state module bridges are complete and one-to-one", {
   for (dataset in group_test_datasets) {
     fixture <- load_group_fixture(dataset)
@@ -94,6 +343,11 @@ testthat::test_that("frozen-state module bridges are complete and one-to-one", {
     testthat::expect_false(
       anyDuplicated(fixture$bridge$state_eigengene_col_raw) > 0L
     )
+    testthat::expect_equal(nrow(fixture$bridge), length(expected))
+    testthat::expect_true(all(
+      fixture$bridge$state_eigengene_col_raw %in%
+        names(extract_module_eigengenes(fixture$state))
+    ))
   }
 })
 
