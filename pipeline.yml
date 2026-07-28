@@ -320,6 +320,17 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Offline-only overlap against cached stress/disease signatures; missing optional signatures become status rows."
+      - script: "04_differential_expression_enrichment/09_control_spatial_identity_validation.r"
+        required: false
+        datasets: ["global"]
+        stage: "enrichment"
+        scope: "global"
+        produces: ["results/tables/04_differential_expression_enrichment/control_spatial_identity_validation/global/", "results/source_data/04_differential_expression_enrichment/control_spatial_identity_validation/global/", "results/figures/04_differential_expression_enrichment/control_spatial_identity_validation/global/", "results/logs/04_differential_expression_enrichment/control_spatial_identity_validation/global/run_manifest.yml"]
+        consumes_required: ["data/external/kaulich_2025/kaulich_supplementary_data_2.xlsx", "data/metadata/TPE9_sample_metadata_males.xlsx"]
+        consumes_optional: []
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Narrow CON-only Figure 2 anatomical validation using canonical ProteinGroupID input/mapping, Kaulich 2025 reference signatures, and GO-BP preranked GSEA. It neither consumes nor modifies WGCNA state, stress contrasts, clusterProfiler manifests, or compareGO."
       - script: "05_celltype_enrichment_EWCE/01_EWCE_E9.r"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
