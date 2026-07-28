@@ -205,10 +205,17 @@ effect_base <- group_effects |>
     contrast = as.character(.data$contrast),
     estimate = suppressWarnings(as.numeric(.data$estimate)),
     SE = suppressWarnings(as.numeric(.data$SE)),
-    q_value = suppressWarnings(as.numeric(.data$FDR_global)),
+    q_value = dplyr::case_when(
+      .data$analysis_tier == "primary_wgcna_global" ~ suppressWarnings(as.numeric(.data$FDR_primary_global)),
+      .data$analysis_tier == "secondary_contextual_global" ~ suppressWarnings(as.numeric(.data$FDR_secondary_global)),
+      .data$analysis_tier == "secondary_spatial_heterogeneity" ~ suppressWarnings(as.numeric(.data$FDR_interaction_omnibus)),
+      .data$analysis_tier == "exploratory_spatial_localization" ~ suppressWarnings(as.numeric(.data$FDR_local_exploratory)),
+      TRUE ~ NA_real_
+    ),
+    model_valid_for_inference = as.logical(.data$model_valid_for_inference),
     primary_model_stable = as.logical(.data$primary_model_stable),
     singular_model = as.logical(.data$singular_model),
-    model_stable = .data$primary_model_stable %in% TRUE & !(.data$singular_model %in% TRUE),
+    model_stable = .data$model_valid_for_inference %in% TRUE & .data$primary_model_stable %in% TRUE & !(.data$singular_model %in% TRUE),
     diagnostic_only = !.data$model_stable
   )
 
@@ -226,14 +233,14 @@ if (!is.finite(effect_limit) || effect_limit <= 0) effect_limit <- 1
 
 # 2. Global eigengenes ------------------------------------------------------
 global_sig <- global_effects |>
-  dplyr::filter(.data$model_stable, is.finite(.data$q_value), .data$q_value <= 0.05) |>
+  dplyr::filter(.data$independent_hypothesis %in% TRUE, .data$model_stable, is.finite(.data$q_value), .data$q_value <= 0.05) |>
   dplyr::group_by(.data$supermodule_id) |>
   dplyr::summarise(
     fdr_supported_contrasts = paste(paste0(.data$contrast, " q=", formatC(.data$q_value, digits = 2, format = "f")), collapse = "; "),
     .groups = "drop"
   )
 global_eigengene_source <- raw_values |>
-  dplyr::select("dataset", "Sample", "supermodule_id", "supermodule_eigengene", "eigengene", "eigengene_z", "StressGroup", "AnimalID", "Sex", "Batch", "SpatialLabel", "SpatialUnitType") |>
+  dplyr::select("dataset", "Sample", "supermodule_id", "supermodule_eigengene", "eigengene", "eigengene_z", "StressGroup", "AnimalID", "Sex", "Batch", "SpatialUnitType") |>
   dplyr::mutate(supermodule_id = as.character(.data$supermodule_id), StressGroup = as.character(.data$StressGroup)) |>
   join_super_labels(context = "global eigengenes") |>
   dplyr::left_join(global_sig, by = "supermodule_id", relationship = "many-to-one") |>
@@ -274,6 +281,7 @@ forest_source <- global_effects |>
     ci_high = .data$estimate + 1.96 * .data$SE,
     model_stability = dplyr::if_else(.data$model_stable, "stable", "singular_or_unstable_diagnostic_only"),
     claim_support_symbol = dplyr::case_when(
+      !(.data$independent_hypothesis %in% TRUE) ~ "none",
       .data$model_stable & is.finite(.data$q_value) & .data$q_value <= 0.05 ~ "FDR05",
       .data$model_stable & is.finite(.data$q_value) & .data$q_value <= 0.10 ~ "FDR10",
       TRUE ~ "none"
@@ -298,6 +306,7 @@ spatial_heatmap_source <- spatial_effects |>
   dplyr::mutate(
     support_symbol = dplyr::case_when(
       !.data$model_stable ~ "cross_diagnostic_only",
+      !(.data$independent_hypothesis %in% TRUE) ~ "none",
       is.finite(.data$q_value) & .data$q_value <= 0.05 ~ "filled_FDR05",
       is.finite(.data$q_value) & .data$q_value <= 0.10 ~ "open_FDR10",
       TRUE ~ "none"
@@ -366,6 +375,7 @@ effect_matrix_source <- global_effects |>
     plot_label = factor(.data$canonical_plot_label, levels = rev(super_labels$canonical_plot_label)),
     support_symbol = dplyr::case_when(
       !.data$model_stable ~ "cross_diagnostic_only",
+      !(.data$independent_hypothesis %in% TRUE) ~ "none",
       is.finite(.data$q_value) & .data$q_value <= 0.05 ~ "filled_FDR05",
       is.finite(.data$q_value) & .data$q_value <= 0.10 ~ "open_FDR10",
       TRUE ~ "none"
