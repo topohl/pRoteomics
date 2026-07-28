@@ -201,63 +201,288 @@ wgcna_group_load_identity_contract <- function(dataset, state_path) {
   )
 }
 
-wgcna_group_build_module_bridge <- function(dataset, state, contract) {
-  module_eigengenes <- extract_module_eigengenes(state)
-  eigengene_cols <- setdiff(names(module_eigengenes), "Sample")
-  contract_modules <- sort(unique(as.character(contract$membership$module_id)))
+wgcna_group_module_bridge_error <- function(dataset, detail) {
+  stop(
+    "Frozen-state module eigengene bridge is incomplete, duplicated, or ",
+    "ambiguous for ", dataset, ": ", detail, ".",
+    call. = FALSE
+  )
+}
 
-  if (dataset %in% c("neuron_soma", "neuron_neuropil")) {
-    bridge <- wgcna_identity_bridge_module_ids(eigengene_cols, contract_modules)
-    out <- data.frame(
-      dataset = dataset,
-      module_id = bridge$normalized_id,
-      state_eigengene_col_raw = bridge$original_id,
-      state_eigengene_col_normalized = bridge$normalized_id,
-      bridge_method = bridge$bridge_type,
+wgcna_group_metadata_eigengene_columns <- function(labels) {
+  out <- rep(NA_character_, nrow(labels))
+  if ("module_eigengene" %in% names(labels)) {
+    explicit <- wgcna_identity_clean_id(labels$module_eigengene)
+    out[!is.na(explicit)] <- explicit[!is.na(explicit)]
+  }
+  if ("WGCNAInternalColor" %in% names(labels)) {
+    internal_color <- wgcna_identity_clean_id(labels$WGCNAInternalColor)
+    use_color <- is.na(out) & !is.na(internal_color)
+    out[use_color] <- paste0("ME", internal_color[use_color])
+  }
+  out
+}
+
+wgcna_group_classify_ignored_eigengenes <- function(
+    dataset, extra_eigengene_cols, labels) {
+  empty <- data.frame(
+    state_eigengene_col_raw = character(),
+    reason_excluded = character(),
+    state_metadata_classification = character(),
+    stringsAsFactors = FALSE
+  )
+  if (!length(extra_eigengene_cols)) return(empty)
+
+  metadata_raw <- if (is.data.frame(labels) && nrow(labels)) {
+    wgcna_group_metadata_eigengene_columns(labels)
+  } else {
+    character()
+  }
+  rows <- lapply(extra_eigengene_cols, function(raw_col) {
+    metadata_rows <- which(!is.na(metadata_raw) & metadata_raw == raw_col)
+    if (length(metadata_rows) > 1L) {
+      wgcna_group_module_bridge_error(
+        dataset,
+        paste0("extra eigengene ", raw_col, " has ambiguous state metadata")
+      )
+    }
+
+    metadata_module_id <- NA_character_
+    metadata_color <- NA_character_
+    metadata_eigengene <- NA_character_
+    if (length(metadata_rows) == 1L) {
+      row <- metadata_rows[[1]]
+      if ("ModuleID" %in% names(labels)) {
+        metadata_module_id <- wgcna_identity_clean_id(labels$ModuleID[[row]])
+      }
+      if (!is.na(metadata_module_id)) {
+        wgcna_group_module_bridge_error(
+          dataset,
+          paste0(
+            "extra eigengene ", raw_col,
+            " has populated state metadata ModuleID ", metadata_module_id
+          )
+        )
+      }
+      if ("WGCNAInternalColor" %in% names(labels)) {
+        metadata_color <- wgcna_identity_clean_id(
+          labels$WGCNAInternalColor[[row]]
+        )
+      }
+      if ("module_eigengene" %in% names(labels)) {
+        metadata_eigengene <- wgcna_identity_clean_id(
+          labels$module_eigengene[[row]]
+        )
+      }
+    }
+
+    unassigned_tokens <- c("grey", "gray", "unassigned")
+    raw_token <- tolower(sub("^ME", "", raw_col))
+    metadata_tokens <- tolower(c(
+      metadata_color,
+      sub("^ME", "", metadata_eigengene)
+    ))
+    metadata_tokens <- metadata_tokens[!is.na(metadata_tokens)]
+    exact_known_unassigned <- raw_token %in% unassigned_tokens
+    metadata_unassigned <- length(metadata_tokens) &&
+      any(metadata_tokens %in% unassigned_tokens)
+    if (!exact_known_unassigned && !metadata_unassigned) {
+      wgcna_group_module_bridge_error(
+        dataset,
+        paste0("unknown non-contract eigengene ", raw_col)
+      )
+    }
+
+    classification <- if (length(metadata_rows) == 1L) {
+      paste0(
+        "ModuleID=<empty>;WGCNAInternalColor=",
+        ifelse(is.na(metadata_color), "<empty>", metadata_color),
+        ";module_eigengene=",
+        ifelse(is.na(metadata_eigengene), "<empty>", metadata_eigengene)
+      )
+    } else {
+      paste0("exact_known_wgcna_unassigned_identity=", raw_col)
+    }
+    data.frame(
+      state_eigengene_col_raw = raw_col,
+      reason_excluded = if (metadata_unassigned) {
+        "explicit_state_metadata_unassigned_module"
+      } else {
+        "exact_known_wgcna_unassigned_identity"
+      },
+      state_metadata_classification = classification,
       stringsAsFactors = FALSE
     )
-  } else {
-    labels <- as.data.frame(
+  })
+  do.call(rbind, rows)
+}
+
+wgcna_group_build_module_bridge <- function(dataset, state, contract) {
+  module_eigengenes <- extract_module_eigengenes(state)
+  eigengene_cols <- names(module_eigengenes)
+  eigengene_cols <- eigengene_cols[eigengene_cols != "Sample"]
+  if (any(is.na(eigengene_cols) | !nzchar(eigengene_cols)) ||
+      anyDuplicated(eigengene_cols)) {
+    wgcna_group_module_bridge_error(
+      dataset, "raw eigengene columns are missing or duplicated"
+    )
+  }
+
+  contract_modules <- sort(unique(wgcna_identity_clean_id(
+    contract$membership$module_id
+  )))
+  contract_modules <- contract_modules[!is.na(contract_modules)]
+  if (!length(contract_modules)) {
+    wgcna_group_module_bridge_error(dataset, "contract ModuleIDs are missing")
+  }
+
+  labels <- if (is.data.frame(state$module_label_table)) {
+    as.data.frame(
       state$module_label_table,
       check.names = FALSE,
       stringsAsFactors = FALSE
     )
-    required <- c("ModuleID", "WGCNAInternalColor")
-    if (!all(required %in% names(labels))) {
-      stop(
-        "Microglia frozen state lacks ModuleID/WGCNAInternalColor metadata.",
-        call. = FALSE
+  } else {
+    data.frame()
+  }
+  metadata_module_ids <- if ("ModuleID" %in% names(labels)) {
+    wgcna_identity_clean_id(labels$ModuleID)
+  } else {
+    rep(NA_character_, nrow(labels))
+  }
+  has_authoritative_metadata <- any(!is.na(metadata_module_ids))
+
+  if (has_authoritative_metadata) {
+    non_contract_metadata_ids <- sort(unique(metadata_module_ids[
+      !is.na(metadata_module_ids) &
+        !metadata_module_ids %in% contract_modules
+    ]))
+    if (length(non_contract_metadata_ids)) {
+      wgcna_group_module_bridge_error(
+        dataset,
+        paste0(
+          "state module_label_table has populated ModuleID(s) outside the ",
+          "contract (", paste(non_contract_metadata_ids, collapse = ", "), ")"
+        )
       )
     }
-    labels <- labels[labels$ModuleID %in% contract_modules, required, drop = FALSE]
-    labels$state_eigengene_col_raw <- paste0("ME", labels$WGCNAInternalColor)
+    row_counts <- vapply(
+      contract_modules,
+      function(module_id) sum(metadata_module_ids == module_id, na.rm = TRUE),
+      integer(1)
+    )
+    if (any(row_counts != 1L)) {
+      invalid <- paste0(
+        contract_modules[row_counts != 1L], "=", row_counts[row_counts != 1L]
+      )
+      wgcna_group_module_bridge_error(
+        dataset,
+        paste0(
+          "state module_label_table must contain exactly one row per contract ",
+          "ModuleID (", paste(invalid, collapse = ", "), ")"
+        )
+      )
+    }
+
+    label_rows <- labels[
+      match(contract_modules, metadata_module_ids),
+      ,
+      drop = FALSE
+    ]
+    explicit_eigengene <- if ("module_eigengene" %in% names(label_rows)) {
+      wgcna_identity_clean_id(label_rows$module_eigengene)
+    } else {
+      rep(NA_character_, nrow(label_rows))
+    }
+    internal_color <- if ("WGCNAInternalColor" %in% names(label_rows)) {
+      wgcna_identity_clean_id(label_rows$WGCNAInternalColor)
+    } else {
+      rep(NA_character_, nrow(label_rows))
+    }
+    raw_cols <- explicit_eigengene
+    bridge_method <- rep(
+      "stable_state_metadata_module_eigengene",
+      length(contract_modules)
+    )
+    use_internal_color <- is.na(raw_cols) & !is.na(internal_color)
+    raw_cols[use_internal_color] <- paste0(
+      "ME", internal_color[use_internal_color]
+    )
+    bridge_method[use_internal_color] <-
+      "stable_state_metadata_internal_color"
+    if (any(is.na(raw_cols))) {
+      wgcna_group_module_bridge_error(
+        dataset,
+        "state metadata cannot resolve every contract ModuleID to an eigengene"
+      )
+    }
+
+    raw_counts <- vapply(
+      raw_cols,
+      function(raw_col) sum(eigengene_cols == raw_col),
+      integer(1)
+    )
+    if (any(raw_counts != 1L)) {
+      invalid <- paste0(
+        contract_modules[raw_counts != 1L], "->",
+        raw_cols[raw_counts != 1L], "=", raw_counts[raw_counts != 1L]
+      )
+      wgcna_group_module_bridge_error(
+        dataset,
+        paste0(
+          "state metadata must resolve each contract ModuleID to exactly one ",
+          "existing raw eigengene column (", paste(invalid, collapse = ", "), ")"
+        )
+      )
+    }
     out <- data.frame(
       dataset = dataset,
-      module_id = as.character(labels$ModuleID),
-      state_eigengene_col_raw = as.character(labels$state_eigengene_col_raw),
-      state_eigengene_col_normalized = as.character(labels$ModuleID),
-      bridge_method = "stable_state_metadata_bridge",
+      module_id = contract_modules,
+      state_eigengene_col_raw = raw_cols,
+      state_eigengene_col_normalized = contract_modules,
+      bridge_method = bridge_method,
+      stringsAsFactors = FALSE
+    )
+  } else {
+    bridge <- wgcna_identity_bridge_module_ids(
+      eigengene_cols, contract_modules
+    )
+    resolved <- !is.na(bridge$normalized_id) &
+      bridge$normalized_id %in% contract_modules
+    out <- data.frame(
+      dataset = dataset,
+      module_id = bridge$normalized_id[resolved],
+      state_eigengene_col_raw = bridge$original_id[resolved],
+      state_eigengene_col_normalized = bridge$normalized_id[resolved],
+      bridge_method = bridge$bridge_type[resolved],
       stringsAsFactors = FALSE
     )
   }
+
   out <- out[order(out$module_id), , drop = FALSE]
   if (nrow(out) != length(contract_modules) ||
       anyDuplicated(out$module_id) ||
       anyDuplicated(out$state_eigengene_col_raw) ||
       !identical(sort(out$module_id), contract_modules) ||
-      !identical(sort(out$state_eigengene_col_raw), sort(eigengene_cols)) ||
-      any(!out$state_eigengene_col_raw %in% eigengene_cols)) {
-    stop(
-      "Frozen-state module eigengene bridge is incomplete, duplicated, or ambiguous for ",
-      dataset, ".",
-      call. = FALSE
+      any(!out$state_eigengene_col_raw %in% eigengene_cols) ||
+      any(!out$bridge_method %in% c(
+        "stable_state_metadata_module_eigengene",
+        "stable_state_metadata_internal_color",
+        "exact_current_identity_match",
+        "syntactic_module_id_bridge_only"
+      ))) {
+    wgcna_group_module_bridge_error(
+      dataset, "final biological module mapping is not one-to-one and complete"
     )
   }
-  if (dataset != "microglia" &&
-      any(!out$bridge_method %in%
-          c("exact_current_identity_match", "syntactic_module_id_bridge_only"))) {
-    stop("Neuronal module bridge uses a prohibited mapping.", call. = FALSE)
-  }
+
+  extra_eigengene_cols <- setdiff(
+    eigengene_cols, out$state_eigengene_col_raw
+  )
+  ignored <- wgcna_group_classify_ignored_eigengenes(
+    dataset, extra_eigengene_cols, labels
+  )
+  attr(out, "ignored_non_contract_eigengenes") <- ignored
   out
 }
 
