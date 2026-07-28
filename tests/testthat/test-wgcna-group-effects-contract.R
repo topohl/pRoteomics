@@ -576,43 +576,215 @@ testthat::test_that("v5 aggregation hashes use the canonical LF contract", {
   }
 })
 
-testthat::test_that("known mixed-status omnibus has explicit composite scope", {
-  row <- read_group_output(
-    "neuron_neuropil", "module_group_effects.csv"
-  )
-  testthat::skip_if_not(
-    "model_diagnostic_scope" %in% names(row),
-    "Stage 05 v5 outputs have not yet been republished."
-  )
-  row <- row[
-    row$endpoint_id == "WGCNA_#9E9AC8" &
-      row$test_type == "interaction_omnibus",
-    ,
-    drop = FALSE
-  ]
-  testthat::expect_equal(nrow(row), 1L)
-  testthat::expect_identical(
-    row$model_diagnostic_scope, "composite_reduced_full"
-  )
-  testthat::expect_identical(
-    row$model_stability_status, "boundary_random_intercept_zero"
-  )
-  testthat::expect_false(row$primary_model_stable)
-  testthat::expect_true(all(is.na(unlist(row[c(
+testthat::test_that("composite interaction diagnostics are deterministic", {
+  diagnostic_fixture <- function(
+      model_stability_status,
+      boundary_warning = NA_character_) {
+    boundary <- identical(
+      model_stability_status, "boundary_random_intercept_zero"
+    )
+    list(
+      model_valid_for_inference = TRUE,
+      model_stability_status = model_stability_status,
+      primary_model_stable = !boundary,
+      claim_allowed_model = TRUE,
+      diagnostic_review_required = FALSE,
+      singularity_class = if (boundary) {
+        "boundary_random_intercept_zero"
+      } else {
+        "stable_mixed_model"
+      },
+      boundary_warning = boundary_warning,
+      failure_reason = "none",
+      random_intercept_variance = if (boundary) 0 else 0.2,
+      residual_variance = 1,
+      variance_ratio = if (boundary) 0 else 0.2,
+      ICC = if (boundary) 0 else 1 / 6,
+      is_singular_lme4 = boundary,
+      boundary_by_variance_ratio = boundary
+    )
+  }
+  undefined_composite_fields <- c(
     "random_intercept_variance", "residual_variance",
     "variance_ratio", "ICC", "is_singular_lme4",
     "boundary_by_variance_ratio"
-  )]))))
+  )
+  reduced_warning <- "prespecified reduced-model boundary warning"
+  reduced_boundary <- diagnostic_fixture(
+    "boundary_random_intercept_zero", reduced_warning
+  )
+  full_stable <- diagnostic_fixture("stable_mixed_model")
+  reduced_boundary_composite <-
+    wgcna_group_composite_interaction_diagnostics(
+      reduced_diagnostics = reduced_boundary,
+      full_diagnostics = full_stable,
+      identical_rows_verified = TRUE,
+      likelihood_ratio_valid = TRUE
+    )
+
+  testthat::expect_true(
+    reduced_boundary_composite$model_valid_for_inference
+  )
   testthat::expect_identical(
-    row$reduced_model_stability_status,
+    reduced_boundary_composite$model_stability_status,
     "boundary_random_intercept_zero"
   )
-  testthat::expect_identical(
-    row$full_model_stability_status, "stable_mixed_model"
+  testthat::expect_false(
+    reduced_boundary_composite$primary_model_stable
+  )
+  testthat::expect_true(
+    reduced_boundary_composite$claim_allowed_model
+  )
+  testthat::expect_false(
+    reduced_boundary_composite$diagnostic_review_required
   )
   testthat::expect_identical(
-    row$singularity_class, "composite_reduced_full_boundary"
+    reduced_boundary_composite$singularity_class,
+    "composite_reduced_full_boundary"
   )
+  testthat::expect_identical(
+    reduced_boundary_composite$failure_reason, "none"
+  )
+  testthat::expect_identical(
+    reduced_boundary_composite$boundary_warning, reduced_warning
+  )
+  testthat::expect_true(all(vapply(
+    undefined_composite_fields,
+    function(nm) is.na(reduced_boundary_composite[[nm]]),
+    logical(1)
+  )))
+
+  full_warning <- "prespecified full-model boundary warning"
+  full_boundary_composite <-
+    wgcna_group_composite_interaction_diagnostics(
+      reduced_diagnostics = diagnostic_fixture("stable_mixed_model"),
+      full_diagnostics = diagnostic_fixture(
+        "boundary_random_intercept_zero", full_warning
+      ),
+      identical_rows_verified = TRUE,
+      likelihood_ratio_valid = TRUE
+    )
+  testthat::expect_true(
+    full_boundary_composite$model_valid_for_inference
+  )
+  testthat::expect_identical(
+    full_boundary_composite$model_stability_status,
+    "boundary_random_intercept_zero"
+  )
+  testthat::expect_false(full_boundary_composite$primary_model_stable)
+  testthat::expect_true(full_boundary_composite$claim_allowed_model)
+  testthat::expect_false(
+    full_boundary_composite$diagnostic_review_required
+  )
+  testthat::expect_identical(
+    full_boundary_composite$singularity_class,
+    "composite_reduced_full_boundary"
+  )
+  testthat::expect_identical(
+    full_boundary_composite$failure_reason, "none"
+  )
+  testthat::expect_identical(
+    full_boundary_composite$boundary_warning, full_warning
+  )
+
+  stable_composite <- wgcna_group_composite_interaction_diagnostics(
+    reduced_diagnostics = diagnostic_fixture("stable_mixed_model"),
+    full_diagnostics = diagnostic_fixture("stable_mixed_model"),
+    identical_rows_verified = TRUE,
+    likelihood_ratio_valid = TRUE
+  )
+  testthat::expect_true(stable_composite$model_valid_for_inference)
+  testthat::expect_identical(
+    stable_composite$model_stability_status, "stable_mixed_model"
+  )
+  testthat::expect_true(stable_composite$primary_model_stable)
+  testthat::expect_identical(
+    stable_composite$singularity_class,
+    "composite_reduced_full_stable"
+  )
+
+  invalid_composites <- list(
+    rows_not_identical =
+      wgcna_group_composite_interaction_diagnostics(
+        reduced_diagnostics = reduced_boundary,
+        full_diagnostics = full_stable,
+        identical_rows_verified = FALSE,
+        likelihood_ratio_valid = TRUE
+      ),
+    invalid_likelihood_ratio =
+      wgcna_group_composite_interaction_diagnostics(
+        reduced_diagnostics = reduced_boundary,
+        full_diagnostics = full_stable,
+        identical_rows_verified = TRUE,
+        likelihood_ratio_valid = FALSE
+      )
+  )
+  for (invalid in invalid_composites) {
+    testthat::expect_false(invalid$model_valid_for_inference)
+    testthat::expect_false(invalid$claim_allowed_model)
+    testthat::expect_identical(
+      invalid$model_stability_status, "invalid"
+    )
+    testthat::expect_identical(
+      invalid$singularity_class,
+      "invalid_composite_reduced_full"
+    )
+  }
+})
+
+testthat::test_that("production omnibus rows retain composite invariants", {
+  undefined_composite_fields <- c(
+    "random_intercept_variance", "residual_variance",
+    "variance_ratio", "ICC", "is_singular_lme4",
+    "boundary_by_variance_ratio"
+  )
+  for (dataset in group_test_datasets) {
+    omnibus <- dplyr::bind_rows(
+      read_group_output(dataset, "module_group_effects.csv"),
+      read_group_output(dataset, "supermodule_group_effects.csv")
+    )
+    omnibus <- omnibus[
+      omnibus$test_type == "interaction_omnibus",
+      ,
+      drop = FALSE
+    ]
+    testthat::expect_true(nrow(omnibus) > 0L, info = dataset)
+    testthat::expect_true(all(
+      omnibus$model_diagnostic_scope == "composite_reduced_full"
+    ), info = dataset)
+    testthat::expect_true(all(
+      !is.na(omnibus$reduced_model_stability_status) &
+        nzchar(trimws(omnibus$reduced_model_stability_status))
+    ), info = dataset)
+    testthat::expect_true(all(
+      !is.na(omnibus$full_model_stability_status) &
+        nzchar(trimws(omnibus$full_model_stability_status))
+    ), info = dataset)
+    testthat::expect_true(all(vapply(
+      undefined_composite_fields,
+      function(nm) all(is.na(omnibus[[nm]])),
+      logical(1)
+    )), info = dataset)
+
+    boundary <- omnibus$reduced_model_stability_status ==
+      "boundary_random_intercept_zero" |
+      omnibus$full_model_stability_status ==
+        "boundary_random_intercept_zero"
+    boundary[is.na(boundary)] <- FALSE
+    if (any(boundary)) {
+      testthat::expect_true(all(
+        omnibus$model_stability_status[boundary] ==
+          "boundary_random_intercept_zero"
+      ), info = dataset)
+      testthat::expect_true(all(
+        !omnibus$primary_model_stable[boundary]
+      ), info = dataset)
+      testthat::expect_true(all(
+        omnibus$singularity_class[boundary] ==
+          "composite_reduced_full_boundary"
+      ), info = dataset)
+    }
+  }
 })
 
 testthat::test_that("Phase 2B endpoint keys and FDR families are exact", {
