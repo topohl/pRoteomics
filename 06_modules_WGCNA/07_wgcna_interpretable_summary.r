@@ -1972,6 +1972,16 @@ make_dataset_summary <- function(ds) {
     conditional_join,
     paste0("Stage 07 conditional interpretable output for ", ds)
   )
+  inferential_handoff <- wgcna_stage07_build_inferential_handoff(
+    module_effects = module_effects,
+    supermodule_effects = super_effects,
+    module_interpretable = module_join,
+    supermodule_interpretable = super_join,
+    membership = current_member_map
+  )
+  validate_table_schema(
+    inferential_handoff, "wgcna_inferential_handoff", strict = FALSE
+  )
   spatial_organization <- wgcna_stage07_build_spatial_organization(
     dplyr::bind_rows(module_join, super_join),
     conditional_join
@@ -2117,6 +2127,12 @@ make_dataset_summary <- function(ds) {
   write_table_and_source(super_join, paths$tables, paths$source_data, "WGCNA_supermodule_group_effects_interpretable.csv")
   write_table_and_source(module_join, paths$tables, paths$source_data, "WGCNA_module_group_effects_interpretable.csv")
   write_table_and_source(
+    inferential_handoff,
+    paths$tables,
+    paths$source_data,
+    "WGCNA_inferential_handoff.csv"
+  )
+  write_table_and_source(
     conditional_join,
     paths$tables,
     paths$source_data,
@@ -2135,6 +2151,7 @@ make_dataset_summary <- function(ds) {
       list(
         supermodules = super_join,
         modules = module_join,
+        inferential_handoff = inferential_handoff,
         interaction_followups = conditional_join,
         spatial_organization = spatial_organization,
         top_supermodules = top_super,
@@ -2322,20 +2339,24 @@ make_cross_dataset_summary <- function(summaries) {
 
 if (run$dry_run) {
   datasets <- if (DATASET_ARG == "all") valid_datasets() else DATASET_ARG
+  missing_required <- character()
   for (ds in datasets) {
     paths <- wgcna_downstream_paths("interpretable_summary", ds)
     invisible(lapply(unlist(paths), dir_create))
     dry_run_line("Dataset", ds)
-    dry_run_line(
-      "Module effects",
-      path_results("tables", "06_modules_WGCNA", "group_effects", ds, "module_group_effects.csv"),
-      if (file.exists(path_results("tables", "06_modules_WGCNA", "group_effects", ds, "module_group_effects.csv"))) "PASS" else "WARN"
+    required_inputs <- c(
+      "Module effects" = path_results("tables", "06_modules_WGCNA", "group_effects", ds, "module_group_effects.csv"),
+      "Supermodule effects" = path_results("tables", "06_modules_WGCNA", "group_effects", ds, "supermodule_group_effects.csv"),
+      "Supermodule composition" = path_results("tables", "06_modules_WGCNA", "group_effects", ds, "supermodule_composition.csv"),
+      "Module annotation" = path_results("tables", "06_modules_WGCNA", "module_annotation", ds, "WGCNA_module_biological_annotation.csv"),
+      "Supermodule annotation" = path_results("tables", "06_modules_WGCNA", "module_annotation", ds, "WGCNA_supermodule_biological_annotation.csv")
     )
-    dry_run_line(
-      "Supermodule effects",
-      path_results("tables", "06_modules_WGCNA", "group_effects", ds, "supermodule_group_effects.csv"),
-      if (file.exists(path_results("tables", "06_modules_WGCNA", "group_effects", ds, "supermodule_group_effects.csv"))) "PASS" else "WARN"
-    )
+    for (input_name in names(required_inputs)) {
+      input_path <- required_inputs[[input_name]]
+      present <- file.exists(input_path)
+      dry_run_line(input_name, input_path, if (present) "PASS" else "FAIL")
+      if (!present) missing_required <- c(missing_required, input_path)
+    }
     dry_run_line(
       "Conditional interaction follow-ups",
       path_results(
@@ -2347,26 +2368,16 @@ if (run$dry_run) {
         "WGCNA_group_effect_interaction_conditional_followup.csv"
       ))) "PASS" else "WARN"
     )
-    dry_run_line(
-      "Supermodule composition",
-      path_results("tables", "06_modules_WGCNA", "group_effects", ds, "supermodule_composition.csv"),
-      if (file.exists(path_results("tables", "06_modules_WGCNA", "group_effects", ds, "supermodule_composition.csv"))) "PASS" else "WARN"
-    )
-    dry_run_line(
-      "Module annotation",
-      path_results("tables", "06_modules_WGCNA", "module_annotation", ds, "WGCNA_module_biological_annotation.csv"),
-      if (file.exists(path_results("tables", "06_modules_WGCNA", "module_annotation", ds, "WGCNA_module_biological_annotation.csv"))) "PASS" else "WARN"
-    )
-    dry_run_line(
-      "Supermodule annotation",
-      path_results("tables", "06_modules_WGCNA", "module_annotation", ds, "WGCNA_supermodule_biological_annotation.csv"),
-      if (file.exists(path_results("tables", "06_modules_WGCNA", "module_annotation", ds, "WGCNA_supermodule_biological_annotation.csv"))) "PASS" else "WARN"
-    )
   }
   if (DATASET_ARG == "all") {
     dry_run_line("Cross-dataset output", path_results("tables", "06_modules_WGCNA", "interpretable_summary", "all"))
   }
-  quit(status = 0, save = "no")
+  dry_run_line(
+    "Status",
+    if (length(missing_required)) "missing_required_input" else "ready",
+    if (length(missing_required)) "FAIL" else "PASS"
+  )
+  quit(status = if (length(missing_required)) 1 else 0, save = "no")
 }
 
 datasets <- if (DATASET_ARG == "all") valid_datasets() else DATASET_ARG
@@ -2378,4 +2389,3 @@ if (DATASET_ARG == "all") {
 }
 
 message("WGCNA interpretable summary complete for dataset argument: ", DATASET_ARG)
-

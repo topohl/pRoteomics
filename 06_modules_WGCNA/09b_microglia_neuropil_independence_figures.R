@@ -46,11 +46,11 @@ log_dir <- paths$logs
 inputs <- list(
   classification = file.path(in_dir, "microglia_module_neuropil_independence_classification.csv"),
   effects = file.path(in_dir, "microglia_neuropil_independence_effects.csv"),
-  interpretable_with_independence = file.path(in_dir, "WGCNA_module_group_effects_interpretable_with_neuropil_independence.csv"),
+  handoff_with_independence = file.path(in_dir, "WGCNA_module_inferential_handoff_with_neuropil_independence.csv"),
   module_annotation_optional = path_results("tables", "06_modules_WGCNA", "module_annotation", dataset, "WGCNA_module_biological_annotation.csv"),
   final_label_lookup_optional = path_results("tables", "06_modules_WGCNA", "interpretable_summary", dataset, "WGCNA_final_label_lookup.csv")
 )
-required_inputs <- inputs[c("classification", "effects", "interpretable_with_independence")]
+required_inputs <- inputs[c("classification", "effects", "handoff_with_independence")]
 
 figure_outputs <- c(
   diagnostic_svg = file.path(fig_dir, "microglia_neuropil_diagnostic_screen.svg"),
@@ -94,7 +94,7 @@ if (length(missing_required)) {
 read_csv_safe <- function(path) readr::read_csv(path, show_col_types = FALSE, progress = FALSE)
 classification <- read_csv_safe(inputs$classification)
 effects <- read_csv_safe(inputs$effects)
-invisible(read_csv_safe(inputs$interpretable_with_independence))
+invisible(read_csv_safe(inputs$handoff_with_independence))
 
 require_columns <- function(dat, cols, label) {
   missing <- setdiff(cols, names(dat))

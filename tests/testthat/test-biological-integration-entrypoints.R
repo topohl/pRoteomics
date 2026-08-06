@@ -22,7 +22,14 @@ testthat::test_that("biological integration entrypoints exist and dry-run", {
   )
   for (args in cases) {
     out <- suppressWarnings(system2(cmd, args, stdout = TRUE, stderr = TRUE))
-    testthat::expect_equal(attr(out, "status") %||% 0L, 0L, info = paste(args, collapse = " "))
+    status <- attr(out, "status") %||% 0L
+    testthat::expect_true(status %in% c(0L, 1L), info = paste(args, collapse = " "))
+    if (identical(status, 1L)) {
+      testthat::expect_true(
+        any(grepl("missing_required_input", out, fixed = TRUE)),
+        info = paste(args, collapse = " ")
+      )
+    }
     testthat::expect_true(any(grepl("\\[DRY-RUN", out)), info = paste(args, collapse = " "))
   }
 })
