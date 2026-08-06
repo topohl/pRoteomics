@@ -3,6 +3,9 @@ testthat::local_edition(3)
 source(testthat::test_path(
   "..", "..", "R", "wgcna_group_effect_consumer_utils.R"
 ))
+source(testthat::test_path(
+  "..", "..", "R", "wgcna_stage07_semantic_utils.R"
+))
 
 wgcna_consumer_fixture <- function() {
   data.frame(
@@ -327,6 +330,219 @@ testthat::test_that("all-NA CSV-inferred conditional fields are preserved", {
   )
   testthat::expect_true(is.na(observed$statistical_support_status))
 })
+
+wgcna_inferential_handoff_fixture <- function() {
+  input <- wgcna_consumer_fixture()
+  primary <- input[1, , drop = FALSE]
+  module_rows <- do.call(rbind, lapply(seq_len(3L), function(i) {
+    row <- primary
+    row$source_row_id <- paste0("module_", i)
+    row$endpoint_id <- paste0("m", i)
+    row$canonical_claim_entity_id <- paste0("m", i)
+    row$support_source_entity_id <- paste0("m", i)
+    row
+  }))
+  alias <- input[6, , drop = FALSE]
+  alias$source_row_id <- "singleton_alias"
+  alias$endpoint_id <- "SM01"
+  alias$canonical_claim_entity_id <- "m1"
+  alias$support_source_entity_id <- "m1"
+  block <- primary
+  block$source_row_id <- "multi_supermodule"
+  block$level <- "supermodule"
+  block$endpoint_id <- "SM02"
+  block$canonical_claim_entity_id <- "SM02"
+  block$claim_entity_role <- "higher_order_block"
+  block$support_source_entity_id <- "SM02"
+
+  module_rows$module_id <- module_rows$endpoint_id
+  module_rows$supermodule_id <- NA_character_
+  super_rows <- rbind(alias, block)
+  super_rows$module_id <- NA_character_
+  super_rows$supermodule_id <- super_rows$endpoint_id
+  module_effects <- wgcna_group_effect_consumer_adapt(module_rows)
+  supermodule_effects <- wgcna_group_effect_consumer_adapt(super_rows)
+  for (data_name in c("module_effects", "supermodule_effects")) {
+    data <- get(data_name)
+    data$CI_low <- data$estimate - 1.96 * data$SE
+    data$CI_high <- data$estimate + 1.96 * data$SE
+    data$n_animals_total <- 9L
+    data$interpretation_sentence <- paste("Safe interpretation", data$endpoint_id)
+    assign(data_name, data)
+  }
+  module_interpretable <- module_effects
+  module_interpretable$ModulePlotLabel <- paste(
+    "Module", module_interpretable$module_id
+  )
+  module_interpretable$microenvironment_class <- "contrast_blind_module_class"
+  supermodule_interpretable <- supermodule_effects
+  supermodule_interpretable$Supermodule_PlotLabel <- paste(
+    "Supermodule", supermodule_interpretable$supermodule_id
+  )
+  supermodule_interpretable$dominant_microenvironment_class <-
+    "contrast_blind_supermodule_class"
+  membership <- data.frame(
+    ModuleID = c("m1", "m2", "m3"),
+    SupermoduleID = c("SM01", "SM02", "SM02"),
+    stringsAsFactors = FALSE
+  )
+  list(
+    module_effects = module_effects,
+    supermodule_effects = supermodule_effects,
+    module_interpretable = module_interpretable,
+    supermodule_interpretable = supermodule_interpretable,
+    membership = membership
+  )
+}
+
+testthat::test_that(
+  "inferential handoff keeps every module and only genuine supermodules",
+  {
+    fixture <- wgcna_inferential_handoff_fixture()
+    observed <- do.call(
+      wgcna_stage07_build_inferential_handoff, fixture
+    )
+
+    testthat::expect_setequal(
+      observed$entity_id[observed$entity_level == "module"],
+      c("m1", "m2", "m3")
+    )
+    testthat::expect_true(
+      "m1" %in% observed$entity_id[observed$entity_level == "module"]
+    )
+    testthat::expect_false("SM01" %in% observed$entity_id)
+    testthat::expect_true("SM02" %in% observed$entity_id)
+    testthat::expect_equal(
+      observed$n_member_modules[observed$entity_id == "SM02"], 2L
+    )
+    testthat::expect_false(any(
+      observed$claim_entity_role == "compatibility_alias"
+    ))
+    testthat::expect_true(all(observed$independent_hypothesis))
+    testthat::expect_false(any(
+      observed$test_type == "conditional_interaction_followup"
+    ))
+    testthat::expect_true(all(
+      observed$tier_specific_family_size == 45L
+    ))
+    testthat::expect_equal(
+      observed$tier_specific_fdr,
+      observed$FDR_primary_global,
+      tolerance = 0
+    )
+    testthat::expect_identical(
+      observed$source_key,
+      wgcna_inferential_handoff_source_key(observed)
+    )
+    testthat::expect_identical(
+      observed$source_artifact,
+      wgcna_inferential_handoff_source_artifact(
+        observed$dataset, observed$entity_level
+      )
+    )
+    testthat::expect_silent(
+      wgcna_stage07_validate_inferential_handoff(observed)
+    )
+  }
+)
+
+testthat::test_that(
+  "annotation changes cannot alter inferential row selection",
+  {
+    fixture <- wgcna_inferential_handoff_fixture()
+    first <- do.call(wgcna_stage07_build_inferential_handoff, fixture)
+    fixture$module_interpretable$microenvironment_class <- rev(
+      fixture$module_interpretable$microenvironment_class
+    )
+    fixture$module_interpretable$ModulePlotLabel <- paste0(
+      "Changed ", seq_len(nrow(fixture$module_interpretable))
+    )
+    second <- do.call(wgcna_stage07_build_inferential_handoff, fixture)
+    key <- c(
+      "dataset", "entity_level", "entity_id", "analysis_tier", "contrast",
+      "effect_scope", "spatial_unit", "test_type"
+    )
+    testthat::expect_identical(first[key], second[key])
+    testthat::expect_identical(
+      first$tier_specific_fdr, second$tier_specific_fdr
+    )
+  }
+)
+
+testthat::test_that(
+  "singleton supermodule display reuses one canonical module endpoint",
+  {
+    fixture <- wgcna_inferential_handoff_fixture()
+    handoff <- do.call(
+      wgcna_stage07_build_inferential_handoff, fixture
+    )
+    lookup <- data.frame(
+      dataset = "microglia",
+      module_id = c("m1", "m2", "m3"),
+      supermodule_id = c("SM01", "SM02", "SM02"),
+      n_member_modules = c(1L, 2L, 2L),
+      supermodule_label = c("Singleton", "Block", "Block"),
+      stringsAsFactors = FALSE
+    )
+    display <- wgcna_inferential_handoff_supermodule_display(
+      handoff, lookup
+    )
+    singleton <- display[display$supermodule_id == "SM01", , drop = FALSE]
+    testthat::expect_equal(nrow(singleton), 1L)
+    testthat::expect_identical(singleton$source_entity_level, "module")
+    testthat::expect_identical(singleton$source_entity_id, "m1")
+    testthat::expect_true(singleton$display_is_compatibility_alias)
+    testthat::expect_identical(
+      singleton$source_key,
+      handoff$source_key[handoff$entity_id == "m1"]
+    )
+    testthat::expect_false(any(
+      handoff$claim_entity_role == "compatibility_alias"
+    ))
+  }
+)
+
+testthat::test_that(
+  "migrated manuscript consumers contain no legacy broad-FDR decisions",
+  {
+    root <- testthat::test_path("..", "..")
+    consumers <- c(
+      "06_modules_WGCNA/08_wgcna_publication_figures.R",
+      "06_modules_WGCNA/08b_microglia_wgcna_readiness_publication_figures.R",
+      "06_modules_WGCNA/09_microglia_neuropil_independence.R",
+      "06_modules_WGCNA/11_module_robustness_sensitivity.r",
+      "06_modules_WGCNA/13_wgcna_claim_readiness.R",
+      "08_behavior_physio_coupling/03_module_behavior_coupling.r",
+      "09_export_pride_journal/07_make_biological_claims_table.R",
+      "10_biological_integration/01_cross_compartment_program_atlas.r",
+      "10_biological_integration/04_wgcna_cross_compartment_overview.R",
+      "10_biological_integration/04_wgcna_circular_atlas.R",
+      "R/final_evidence_bundle_utils.R"
+    )
+    for (consumer in consumers) {
+      text <- readLines(file.path(root, consumer), warn = FALSE)
+      testthat::expect_true(
+        any(grepl("WGCNA_inferential_handoff", text, fixed = TRUE)),
+        info = consumer
+      )
+      testthat::expect_false(any(grepl(
+        paste(
+          "module_group_effects\\.csv|supermodule_group_effects\\.csv|",
+          "FDR_primary_global|FDR_secondary_global|",
+          "FDR_interaction_omnibus|FDR_local_exploratory|",
+          "FDR_global|FDR_within_dataset_level",
+          sep = ""
+        ),
+        text
+      )), info = consumer)
+    }
+    semantic <- readLines(
+      file.path(root, "R", "wgcna_stage07_semantic_utils.R"),
+      warn = FALSE
+    )
+    testthat::expect_false(any(grepl("p\\.adjust\\s*\\(", semantic)))
+  }
+)
 
 testthat::test_that("source and semantic keys are explicit and validated", {
   testthat::expect_identical(

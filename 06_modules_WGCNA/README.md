@@ -106,10 +106,10 @@ audit and does not make scientific inferences. Stage 13 is the canonical,
 non-circular claim-readiness handoff for manuscript/global consumers.
 Stage 13 retains all stable technical identities, but singleton supermodule
 IDs are compatibility aliases for their one member module and cannot form
-separate manuscript claims. Phase 2B changes the Stage 05 statistical contract,
-so Stage 13 and every other downstream consumer remain on their prior semantics
-until the atomic Phase 3 migration. Do not run those consumers against Phase 2B
-outputs.
+separate manuscript claims. The atomic Phase 3 source migration is complete:
+Stage 07 now provides the sole claim-facing inferential handoff, and downstream
+consumers use its tier-specific FDR family, claim gate, and exact Stage 05
+source key.
 
 `05_module_supermodule_group_effects.r` is the Phase 2 quantitative boundary.
 It requires a publishable Phase 1 identity contract and treats that contract as
@@ -204,10 +204,12 @@ Main outputs:
 Phase 2B does not regenerate Stage 05 figures, label outputs, marker-trait
 correlations, selected interpretations, or Stage 06-13 products. Those
 existing files are preserved and enumerated by hash as stale auxiliary outputs
-until the Phase 3 consumer migration. The contract status deliberately reports
+until an authorized output refresh. The generated contract status predates the
+completed Phase 3 source migration and deliberately reports
 `downstream_compatible = FALSE`, `downstream_contract_status =
 phase3_migration_required`, and `should_block_execution = TRUE`. This is an
-advisory contract, not an enforced runtime block.
+advisory generated artifact, not an indication that claim-facing source
+consumers still select legacy FDRs.
 
 ## Supermodule Annotation
 

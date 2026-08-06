@@ -16,6 +16,8 @@ source(paths_file)
 source(repo_path("R", "integration_utils.R"))
 source(repo_path("R", "wgcna_labeling_utils.R"))
 source(repo_path("R", "wgcna_claim_readiness_utils.R"))
+source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
+source(repo_path("R", "wgcna_stage07_semantic_utils.R"))
 
 SCRIPT_ID <- "10_biological_integration/04_wgcna_cross_compartment_overview.R"
 Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
@@ -39,10 +41,8 @@ input_spec <- function(ds) {
     supermodule_summary = list(path = file.path(base01, "supermodules", "wgcna_supermodule_summary.csv"), required = TRUE),
     supermodule_clustering_sensitivity = list(path = file.path(base01, "supermodules", "supermodule_clustering_sensitivity.csv"), required = FALSE),
     module_supermodule_annotation = list(path = file.path(base01, "supermodules", "wgcna_module_supermodule_annotation.csv"), required = TRUE),
-    module_group_effects = list(path = path_results("tables", "06_modules_WGCNA", "group_effects", ds, "module_group_effects.csv"), required = TRUE),
-    supermodule_group_effects = list(path = path_results("tables", "06_modules_WGCNA", "group_effects", ds, "supermodule_group_effects.csv"), required = TRUE),
+    inferential_handoff = list(path = path_results("tables", "06_modules_WGCNA", "interpretable_summary", ds, "WGCNA_inferential_handoff.csv"), required = TRUE),
     final_label_lookup = list(path = path_results("tables", "06_modules_WGCNA", "interpretable_summary", ds, "WGCNA_final_label_lookup.csv"), required = TRUE),
-    supermodule_group_effects_interpretable = list(path = path_results("tables", "06_modules_WGCNA", "interpretable_summary", ds, "WGCNA_supermodule_group_effects_interpretable.csv"), required = TRUE),
     module_biological_annotation = list(path = path_results("tables", "06_modules_WGCNA", "module_annotation", ds, "WGCNA_module_biological_annotation.csv"), required = FALSE),
     supermodule_biological_annotation = list(path = path_results("tables", "06_modules_WGCNA", "module_annotation", ds, "WGCNA_supermodule_biological_annotation.csv"), required = FALSE)
   )
@@ -64,7 +64,28 @@ all_input_paths <- c(
 if (run$dry_run) {
   invisible(lapply(unlist(paths), dir_create))
   dry_run_inputs(SCRIPT_ID, as.list(all_input_paths))
-  quit(status = 0, save = "no")
+  required_paths <- c(
+    unlist(lapply(DATASETS, function(ds) {
+      specs <- input_spec(ds)
+      vapply(specs[vapply(specs, `[[`, logical(1), "required")], `[[`,
+             character(1), "path")
+    }), use.names = FALSE),
+    vapply(
+      global_inputs[vapply(global_inputs, `[[`, logical(1), "required")],
+      `[[`, character(1), "path"
+    )
+  )
+  missing_required <- required_paths[!file.exists(required_paths)]
+  for (path in missing_required) {
+    dry_run_line("Required input", path, "FAIL")
+  }
+  required_ready <- !length(missing_required)
+  dry_run_line(
+    "Status",
+    if (required_ready) "ready" else "missing_required_input",
+    if (required_ready) "PASS" else "FAIL"
+  )
+  quit(status = if (required_ready) 0 else 1, save = "no")
 }
 
 read_input <- function(ds, input_name, spec) {
@@ -130,8 +151,17 @@ dataset_label <- function(ds) vapply(ds, function(x) dataset_contracts()[[x]]$la
 effect_class_counts <- function(df) {
   statuses <- c("robust_FDR", "suggestive_FDR10", "nominal_only", "model_unstable", "not_supported")
   out <- stats::setNames(rep(0L, length(statuses)), statuses)
-  if (!is.null(df) && nrow(df) && "evidence_status" %in% names(df)) {
-    tab <- table(as.character(df$evidence_status))
+  if (!is.null(df) && nrow(df) && "support_class" %in% names(df)) {
+    status <- dplyr::case_when(
+      as.character(df$claim_gate) !=
+        "eligible_for_readiness_assessment" ~ "model_unstable",
+      as.character(df$support_class) == "FDR_supported" ~ "robust_FDR",
+      as.character(df$support_class) == "suggestive_FDR10" ~ "suggestive_FDR10",
+      as.character(df$support_class) %in% c("nominal_only", "nominal_exploratory") ~ "nominal_only",
+      as.character(df$support_class) %in% c("model_unstable", "diagnostic_only_model", "model_invalid") ~ "model_unstable",
+      TRUE ~ "not_supported"
+    )
+    tab <- table(status)
     out[names(tab)] <- as.integer(tab[names(tab)])
   }
   out
@@ -218,8 +248,21 @@ load_one_dataset <- function(ds) {
     data$supermodule_summary$SupermoduleID <- as.character(data$supermodule_summary[[summary_id_col]])
   }
   require_cols(data$supermodule_summary, c("SupermoduleID"), paste(ds, "supermodule_summary"))
-  require_cols(data$module_group_effects, c("evidence_status"), paste(ds, "module_group_effects"))
-  require_cols(data$supermodule_group_effects, c("supermodule_id", "contrast", "estimate", "p_value", "FDR_global", "FDR_within_dataset_level", "evidence_status"), paste(ds, "supermodule_group_effects"))
+  require_cols(
+    data$inferential_handoff,
+    c(
+      "entity_level", "entity_id", "contrast", "estimate", "p_value",
+      "tier_specific_fdr", "support_class", "independent_hypothesis",
+      "claim_entity_role", "tier_specific_family_id",
+      "tier_specific_family_size", "claim_gate", "model_valid",
+      "test_type", "effect_scope", "spatial_unit"
+    ),
+    paste(ds, "WGCNA_inferential_handoff")
+  )
+  wgcna_stage07_validate_inferential_handoff(
+    data$inferential_handoff,
+    paste(ds, "WGCNA_inferential_handoff.csv")
+  )
   require_cols(data$final_label_lookup, c("dataset", "level", "entity_id", "final_plot_label"), paste(ds, "WGCNA_final_label_lookup"))
   wgcna_validate_label_lookup(data$final_label_lookup)
   if (identical(ds, "microglia")) {
@@ -258,8 +301,10 @@ metric_rows <- lapply(names(dataset_bundle), function(ds) {
   x <- dataset_bundle[[ds]]
   mod_size <- suppressWarnings(as.numeric(x$module_summary[[label_col(x$module_summary, c("n_features", "n_proteins", "n_mapped_features"))]]))
   sm_size <- suppressWarnings(as.numeric(x$supermodule_summary[[label_col(x$supermodule_summary, c("n_modules", "DataDrivenClusterSize", "n_member_modules"))]]))
-  super_eff <- x$supermodule_group_effects
-  module_eff <- x$module_group_effects
+  super_eff <- x$inferential_handoff |>
+    dplyr::filter(.data$entity_level == "supermodule")
+  module_eff <- x$inferential_handoff |>
+    dplyr::filter(.data$entity_level == "module")
   s_counts <- effect_class_counts(super_eff)
   m_counts <- effect_class_counts(module_eff)
   readiness <- if (identical(ds, "microglia")) x$claim_readiness else NULL
@@ -318,30 +363,53 @@ effect_overview <- dplyr::bind_rows(lapply(names(dataset_bundle), function(ds) {
       dplyr::filter(.data$level == "supermodule") |>
       dplyr::transmute(
         dataset = as.character(.data$dataset), supermodule_id = as.character(.data$entity_id),
-        canonical_claim_entity_id = as.character(.data$canonical_claim_entity_id),
-        claim_entity_role = as.character(.data$claim_entity_role),
-        separate_manuscript_claim_allowed = as.logical(.data$separate_manuscript_claim_allowed),
-        primary_architecture_status = as.character(.data$primary_architecture_status),
-        spatial_dependence_class = as.character(.data$spatial_dependence_class),
-        animal_stability_status = as.character(.data$animal_stability_status),
-        group_effect_status = as.character(.data$group_effect_status),
-        manuscript_placement = as.character(.data$manuscript_placement),
-        readiness_contract_version = as.character(.data$readiness_contract_version)
+        readiness_canonical_claim_entity_id = as.character(.data$canonical_claim_entity_id),
+        readiness_claim_entity_role = as.character(.data$claim_entity_role),
+        readiness_separate_manuscript_claim_allowed = as.logical(.data$separate_manuscript_claim_allowed),
+        readiness_primary_architecture_status = as.character(.data$primary_architecture_status),
+        readiness_spatial_dependence_class = as.character(.data$spatial_dependence_class),
+        readiness_animal_stability_status = as.character(.data$animal_stability_status),
+        readiness_group_effect_status = as.character(.data$group_effect_status),
+        readiness_manuscript_placement = as.character(.data$manuscript_placement),
+        stage13_readiness_contract_version = as.character(.data$readiness_contract_version)
       )
   } else {
     tibble::tibble(
-      dataset = character(), supermodule_id = character(), canonical_claim_entity_id = character(),
-      claim_entity_role = character(), separate_manuscript_claim_allowed = logical(),
-      primary_architecture_status = character(), spatial_dependence_class = character(),
-      animal_stability_status = character(), group_effect_status = character(),
-      manuscript_placement = character(), readiness_contract_version = character()
+      dataset = character(), supermodule_id = character(), readiness_canonical_claim_entity_id = character(),
+      readiness_claim_entity_role = character(), readiness_separate_manuscript_claim_allowed = logical(),
+      readiness_primary_architecture_status = character(), readiness_spatial_dependence_class = character(),
+      readiness_animal_stability_status = character(), readiness_group_effect_status = character(),
+      readiness_manuscript_placement = character(), stage13_readiness_contract_version = character()
     )
   }
-  x$supermodule_group_effects |>
+  effect_source <- x$inferential_handoff |>
+    dplyr::filter(.data$entity_level == "supermodule") |>
     dplyr::filter(.data$effect_scope == "spatial_adjusted_global") |>
+    dplyr::mutate(supermodule_id = as.character(.data$entity_id))
+  for (column in c(
+    "canonical_claim_entity_id", "claim_entity_role",
+    "primary_architecture_status", "spatial_dependence_class",
+    "animal_stability_status", "group_effect_status",
+    "manuscript_placement", "readiness_contract_version"
+  )) {
+    if (!column %in% names(effect_source)) effect_source[[column]] <- NA_character_
+  }
+  if (!"separate_manuscript_claim_allowed" %in% names(effect_source)) {
+    effect_source$separate_manuscript_claim_allowed <- NA
+  }
+  effect_source |>
     dplyr::left_join(labels, by = "supermodule_id") |>
     dplyr::left_join(readiness, by = c("dataset", "supermodule_id"), relationship = "many-to-one") |>
     dplyr::mutate(
+      canonical_claim_entity_id = dplyr::coalesce(.data$readiness_canonical_claim_entity_id, as.character(.data$canonical_claim_entity_id)),
+      claim_entity_role = dplyr::coalesce(.data$readiness_claim_entity_role, as.character(.data$claim_entity_role)),
+      separate_manuscript_claim_allowed = dplyr::coalesce(.data$readiness_separate_manuscript_claim_allowed, as.logical(.data$separate_manuscript_claim_allowed)),
+      primary_architecture_status = dplyr::coalesce(.data$readiness_primary_architecture_status, as.character(.data$primary_architecture_status)),
+      spatial_dependence_class = dplyr::coalesce(.data$readiness_spatial_dependence_class, as.character(.data$spatial_dependence_class)),
+      animal_stability_status = dplyr::coalesce(.data$readiness_animal_stability_status, as.character(.data$animal_stability_status)),
+      group_effect_status = dplyr::coalesce(.data$readiness_group_effect_status, as.character(.data$group_effect_status)),
+      manuscript_placement = dplyr::coalesce(.data$readiness_manuscript_placement, as.character(.data$manuscript_placement)),
+      readiness_contract_version = dplyr::coalesce(.data$stage13_readiness_contract_version, as.character(.data$readiness_contract_version)),
       final_plot_label = dplyr::coalesce(
         clean_chr(.data$final_plot_label),
         clean_chr(.data$endpoint_label),
@@ -363,9 +431,13 @@ effect_overview <- dplyr::bind_rows(lapply(names(dataset_bundle), function(ds) {
       effect_scope,
       estimate = as.numeric(.data$estimate),
       p_value = as.numeric(.data$p_value),
-      FDR_global = as.numeric(.data$FDR_global),
-      FDR_within_dataset_level = as.numeric(.data$FDR_within_dataset_level),
-      evidence_status,
+      tier_specific_fdr = as.numeric(.data$tier_specific_fdr),
+      tier_specific_family_id,
+      tier_specific_family_size,
+      support_class,
+      claim_gate,
+      model_valid,
+      model_stability_status,
       direction,
       n_animals_total,
       n_samples_total,
@@ -417,13 +489,14 @@ program_composition <- dplyr::bind_rows(lapply(names(dataset_bundle), function(d
 }))
 
 numeric_qc <- dplyr::bind_rows(lapply(names(dataset_bundle), function(ds) {
-  raw <- dataset_bundle[[ds]]$supermodule_group_effects |>
+  raw <- dataset_bundle[[ds]]$inferential_handoff |>
+    dplyr::filter(.data$entity_level == "supermodule") |>
     dplyr::filter(.data$effect_scope == "spatial_adjusted_global") |>
-    dplyr::arrange(.data$dataset, .data$supermodule_id, .data$contrast, .data$effect_scope)
+    dplyr::arrange(.data$dataset, .data$entity_id, .data$contrast, .data$effect_scope)
   out <- effect_overview |>
     dplyr::filter(.data$dataset == ds) |>
     dplyr::arrange(.data$dataset, .data$supermodule_id, .data$contrast, .data$effect_scope)
-  checks <- c("estimate", "p_value", "FDR_global", "FDR_within_dataset_level")
+  checks <- c("estimate", "p_value", "tier_specific_fdr")
   dplyr::bind_rows(lapply(checks, function(nm) {
     a <- suppressWarnings(as.numeric(raw[[nm]]))
     b <- suppressWarnings(as.numeric(out[[nm]]))
@@ -486,10 +559,15 @@ heat_source <- effect_overview |>
     contrast = factor(.data$contrast, levels = c("RES - CON", "SUS - CON", "SUS - RES")),
     final_plot_label_wrapped = wrap_lab(.data$final_plot_label, 34),
     evidence_marker = dplyr::case_when(
-      .data$evidence_status == "robust_FDR" ~ "FDR <= 0.05",
-      .data$evidence_status == "suggestive_FDR10" ~ "FDR <= 0.10",
-      .data$evidence_status == "nominal_only" ~ "nominal",
-      .data$evidence_status == "model_unstable" ~ "model unstable",
+      .data$claim_gate !=
+        "eligible_for_readiness_assessment" ~ "model unstable",
+      .data$support_class == "FDR_supported" ~ "FDR <= 0.05",
+      .data$support_class == "suggestive_FDR10" ~ "FDR <= 0.10",
+      .data$support_class %in%
+        c("nominal_only", "nominal_exploratory") ~ "nominal",
+      .data$support_class %in%
+        c("model_unstable", "diagnostic_only_model", "model_invalid") ~
+        "model unstable",
       TRUE ~ "not supported"
     )
   )

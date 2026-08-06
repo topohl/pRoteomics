@@ -657,3 +657,242 @@ wgcna_group_effect_consumer_select_primary <- function(
   wgcna_group_effect_consumer_validate_primary_selection(out)
   out
 }
+
+wgcna_inferential_handoff_source_key_contract <- function() {
+  "dataset+level+endpoint_id+effect_scope+spatial_unit+contrast+test_type"
+}
+
+wgcna_inferential_handoff_source_artifact <- function(dataset, entity_level) {
+  dataset <- as.character(dataset)
+  entity_level <- as.character(entity_level)
+  filename <- ifelse(
+    entity_level == "module",
+    "module_group_effects.csv",
+    ifelse(
+      entity_level == "supermodule",
+      "supermodule_group_effects.csv",
+      NA_character_
+    )
+  )
+  file.path(
+    "results", "tables", "06_modules_WGCNA", "group_effects",
+    dataset, filename
+  )
+}
+
+wgcna_inferential_handoff_source_key <- function(data) {
+  key <- wgcna_group_effect_consumer_source_key()
+  .wgcna_group_effect_consumer_require_columns(data, key)
+  values <- lapply(key, function(column) {
+    paste0(column, "=", as.character(data[[column]]))
+  })
+  do.call(paste, c(values, sep = "|"))
+}
+
+wgcna_inferential_handoff_required_columns <- function() {
+  c(
+    "dataset", "entity_level", "entity_id", "display_label",
+    "n_member_modules", "contrast", "analysis_tier", "spatial_scope",
+    "estimate", "SE", "CI_low", "CI_high", "p_value",
+    "tier_specific_fdr", "tier_specific_family_id",
+    "tier_specific_family_size", "model_valid", "model_stability_status",
+    "biological_n", "annotation_class", "support_class", "claim_gate",
+    "safe_interpretation", "independent_hypothesis", "claim_entity_role",
+    "test_type", "effect_scope", "spatial_unit", "result_scope",
+    "source_artifact", "source_key", "source_key_contract"
+  )
+}
+
+wgcna_inferential_handoff_validate <- function(
+    data, artifact = "WGCNA_inferential_handoff.csv"
+) {
+  if (!is.data.frame(data)) {
+    stop(artifact, " must be a data frame.", call. = FALSE)
+  }
+  missing <- setdiff(wgcna_inferential_handoff_required_columns(), names(data))
+  if (length(missing)) {
+    stop(
+      artifact, " is missing required column(s): ",
+      paste(missing, collapse = ", "), ".", call. = FALSE
+    )
+  }
+  wgcna_group_effect_consumer_validate_adapted(data)
+  if (!nrow(data)) return(invisible(TRUE))
+
+  invalid_independent <- !data$independent_hypothesis %in% TRUE |
+    data$claim_entity_role == "compatibility_alias" |
+    data$test_type == "conditional_interaction_followup"
+  if (any(invalid_independent)) {
+    .wgcna_group_effect_consumer_stop_rows(
+      paste0(artifact, " contains a non-independent inferential endpoint."),
+      which(invalid_independent)
+    )
+  }
+  invalid_level <- !data$entity_level %in% c("module", "supermodule") |
+    data$entity_level != data$level
+  if (any(invalid_level)) {
+    .wgcna_group_effect_consumer_stop_rows(
+      paste0(artifact, " has inconsistent entity_level and Stage 05 level."),
+      which(invalid_level)
+    )
+  }
+  invalid_entity <- is.na(data$entity_id) | !nzchar(data$entity_id) |
+    data$entity_id != data$endpoint_id
+  if (any(invalid_entity)) {
+    .wgcna_group_effect_consumer_stop_rows(
+      paste0(artifact, " has an entity_id inconsistent with endpoint_id."),
+      which(invalid_entity)
+    )
+  }
+  invalid_count <- is.na(data$n_member_modules) |
+    data$n_member_modules < 1L |
+    (data$entity_level == "module" & data$n_member_modules != 1L) |
+    (data$entity_level == "supermodule" & data$n_member_modules < 2L)
+  if (any(invalid_count)) {
+    .wgcna_group_effect_consumer_stop_rows(
+      paste0(artifact, " has invalid module membership cardinality."),
+      which(invalid_count)
+    )
+  }
+
+  expected_artifact <- wgcna_inferential_handoff_source_artifact(
+    data$dataset, data$entity_level
+  )
+  bad_artifact <- is.na(data$source_artifact) |
+    data$source_artifact != expected_artifact
+  if (any(bad_artifact)) {
+    .wgcna_group_effect_consumer_stop_rows(
+      paste0(artifact, " has incorrect Stage 05 source_artifact trace."),
+      which(bad_artifact)
+    )
+  }
+  expected_key <- wgcna_inferential_handoff_source_key(data)
+  bad_key <- is.na(data$source_key) | data$source_key != expected_key
+  if (any(bad_key)) {
+    .wgcna_group_effect_consumer_stop_rows(
+      paste0(artifact, " has incorrect Stage 05 source_key trace."),
+      which(bad_key)
+    )
+  }
+  expected_contract <- wgcna_inferential_handoff_source_key_contract()
+  bad_contract <- is.na(data$source_key_contract) |
+    data$source_key_contract != expected_contract
+  if (any(bad_contract)) {
+    .wgcna_group_effect_consumer_stop_rows(
+      paste0(artifact, " has an unsupported source_key_contract."),
+      which(bad_contract)
+    )
+  }
+
+  source_model_valid <- as.logical(data$model_valid_for_inference)
+  handoff_model_valid <- as.logical(data$model_valid)
+  bad_model <- is.na(source_model_valid) | is.na(handoff_model_valid) |
+    source_model_valid != handoff_model_valid
+  if (any(bad_model)) {
+    .wgcna_group_effect_consumer_stop_rows(
+      paste0(artifact, " changed model validity."),
+      which(bad_model)
+    )
+  }
+  claim_allowed <- as.logical(data$claim_allowed_model)
+  primary_stable <- as.logical(data$primary_model_stable)
+  expected_gate <- ifelse(
+    source_model_valid %in% TRUE & claim_allowed %in% TRUE &
+      primary_stable %in% TRUE,
+    "eligible_for_readiness_assessment",
+    ifelse(
+      !source_model_valid %in% TRUE | !primary_stable %in% TRUE,
+      "diagnostic_only_model",
+      "not_claim_allowed_model"
+    )
+  )
+  bad_gate <- is.na(data$claim_gate) | data$claim_gate != expected_gate
+  if (any(bad_gate)) {
+    .wgcna_group_effect_consumer_stop_rows(
+      paste0(artifact, " changed the deterministic claim gate."),
+      which(bad_gate)
+    )
+  }
+
+  semantic_key <- c(
+    "dataset", "entity_level", "entity_id", "analysis_tier", "contrast",
+    "effect_scope", "spatial_unit", "test_type"
+  )
+  if (anyDuplicated(data[semantic_key])) {
+    stop(artifact, " contains duplicated inferential endpoints.", call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
+wgcna_inferential_handoff_supermodule_display <- function(
+    handoff, module_supermodule_lookup
+) {
+  wgcna_inferential_handoff_validate(handoff)
+  required_lookup <- c(
+    "dataset", "module_id", "supermodule_id", "n_member_modules",
+    "supermodule_label"
+  )
+  missing <- setdiff(required_lookup, names(module_supermodule_lookup))
+  if (length(missing)) {
+    stop(
+      "Supermodule display lookup is missing column(s): ",
+      paste(missing, collapse = ", "), ".", call. = FALSE
+    )
+  }
+  lookup <- unique(module_supermodule_lookup[required_lookup])
+  singleton_lookup <- lookup[
+    !is.na(lookup$n_member_modules) & lookup$n_member_modules == 1L,
+    ,
+    drop = FALSE
+  ]
+  if (anyDuplicated(singleton_lookup[c("dataset", "supermodule_id")])) {
+    stop(
+      "Singleton supermodule display lookup is not one-to-one.",
+      call. = FALSE
+    )
+  }
+
+  genuine <- handoff[
+    handoff$entity_level == "supermodule",
+    ,
+    drop = FALSE
+  ]
+  genuine$supermodule_id <- genuine$entity_id
+  genuine$supermodule_label <- genuine$display_label
+  genuine$display_n_member_modules <- genuine$n_member_modules
+  genuine$source_entity_level <- genuine$entity_level
+  genuine$source_entity_id <- genuine$entity_id
+  genuine$display_is_compatibility_alias <- FALSE
+
+  module <- handoff[handoff$entity_level == "module", , drop = FALSE]
+  singleton <- merge(
+    module, singleton_lookup,
+    by.x = c("dataset", "entity_id"),
+    by.y = c("dataset", "module_id"),
+    all = FALSE, sort = FALSE, suffixes = c("", "_lookup")
+  )
+  if (nrow(singleton)) {
+    if ("supermodule_id_lookup" %in% names(singleton)) {
+      singleton$supermodule_id <- singleton$supermodule_id_lookup
+    }
+    if ("supermodule_label_lookup" %in% names(singleton)) {
+      singleton$supermodule_label <- singleton$supermodule_label_lookup
+    }
+    singleton$display_n_member_modules <- 1L
+    singleton$source_entity_level <- singleton$entity_level
+    singleton$source_entity_id <- singleton$entity_id
+    singleton$display_is_compatibility_alias <- TRUE
+  }
+
+  out <- dplyr::bind_rows(genuine, singleton)
+  if (anyDuplicated(out[c(
+    "dataset", "supermodule_id", "analysis_tier", "contrast",
+    "effect_scope", "spatial_unit", "test_type"
+  )])) {
+    stop(
+      "Supermodule display contains duplicated displayed endpoints.",
+      call. = FALSE
+    )
+  }
+  out
+}

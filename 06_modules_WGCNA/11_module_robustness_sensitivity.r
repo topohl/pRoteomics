@@ -3,13 +3,14 @@
 # Script: 06_modules_WGCNA/11_module_robustness_sensitivity.r
 # Stage: modules_downstream
 # Scope: dataset_specific
-# Consumes: WGCNA group effects, preservation summaries, and QC/confounding outputs.
+# Consumes: Stage 07 inferential handoff, preservation summaries, and QC/confounding outputs.
 # Produces: module robustness/sensitivity evidence.
 # ================================================================
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
 source(repo_path("R", "integration_utils.R"))
+source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
 
 SCRIPT_ID <- "06_modules_WGCNA/11_module_robustness_sensitivity.r"
 run <- integration_cli(allow_all = TRUE)
@@ -18,13 +19,11 @@ claim_gate_rows <- list()
 
 status_from_effects <- function(effects) {
   if (is.null(effects) || !nrow(effects)) return(rep("missing_group_effects", 0))
-  evidence <- as.character(effects$evidence_status %||% NA_character_)
-  warning <- tolower(as.character(effects$model_warning %||% ""))
-  model_ok <- suppressWarnings(as.logical(effects$claim_allowed_model %||% NA))
   dplyr::case_when(
-    !is.na(model_ok) & !model_ok ~ "model_not_claim_allowed",
-    grepl("model_unstable|not_supported", evidence) ~ "model_or_evidence_unstable",
-    grepl("fallback|t-test|failed|unavailable", warning) ~ "model_or_evidence_unstable",
+    effects$claim_gate == "diagnostic_only_model" ~
+      "diagnostic_only_model",
+    effects$claim_gate == "not_claim_allowed_model" ~
+      "model_not_claim_allowed",
     TRUE ~ "effect_available"
   )
 }
@@ -46,10 +45,13 @@ make_claim_gate_audit <- function(ds, effects, level, source_file, preservation 
       claim_gate_eligible = FALSE,
       robustness_downgrade_reason = paste0("missing_", level, "_group_effects"),
       source_file = source_file,
+      source_key = NA_character_,
+      tier_specific_family_id = NA_character_,
+      tier_specific_family_size = NA_integer_,
       stringsAsFactors = FALSE
     ))
   }
-  id_col <- if (identical(level, "module")) first_col(effects, c("module_id", "ModuleID", "endpoint_id")) else first_col(effects, c("supermodule_id", "SupermoduleID", "endpoint_id"))
+  id_col <- "entity_id"
   contrast_col <- first_col(effects, c("contrast"))
   spatial_col <- first_col(effects, c("spatial_unit", "SpatialLabel"))
   scope_col <- first_col(effects, c("effect_scope"))
@@ -78,7 +80,8 @@ make_claim_gate_audit <- function(ds, effects, level, source_file, preservation 
     rep("not_available", nrow(effects))
   }
   confounding_status <- if (!is.null(status) && any(status$status %in% c("missing_optional", "read_error"))) "qc_incomplete" else "qc_inputs_available"
-  gate <- sensitivity_status == "effect_available" &
+  gate <- effects$claim_gate == "eligible_for_readiness_assessment" &
+    sensitivity_status == "effect_available" &
     preservation_status %in% c("not_available", "moderate_preservation", "strong_preservation") &
     direction_stability %in% c("stable", "not_available") &
     confounding_status == "qc_inputs_available"
@@ -105,7 +108,14 @@ make_claim_gate_audit <- function(ds, effects, level, source_file, preservation 
     confounding_status = confounding_status,
     claim_gate_eligible = gate,
     robustness_downgrade_reason = reason,
-    source_file = source_file,
+    source_file = as.character(effects$source_artifact),
+    source_key = as.character(effects$source_key),
+    tier_specific_family_id = as.character(
+      effects$tier_specific_family_id
+    ),
+    tier_specific_family_size = as.integer(
+      effects$tier_specific_family_size
+    ),
     stringsAsFactors = FALSE
   )
 }
@@ -113,26 +123,39 @@ make_claim_gate_audit <- function(ds, effects, level, source_file, preservation 
 make_dataset <- function(ds) {
   paths <- create_module_dirs("06_modules_WGCNA", file.path("module_robustness_sensitivity", ds))
   inputs <- list(
-    module_effects = path_results("tables", "06_modules_WGCNA", "group_effects", ds, "module_group_effects.csv"),
-    supermodule_effects = path_results("tables", "06_modules_WGCNA", "group_effects", ds, "supermodule_group_effects.csv"),
+    inferential_handoff = path_results("tables", "06_modules_WGCNA", "interpretable_summary", ds, "WGCNA_inferential_handoff.csv"),
     preservation = path_results("tables", "06_modules_WGCNA", "01_WGCNA", ds, "modules", "WGCNA_module_preservation_summary.csv"),
     pca_qc = path_results("tables", "03_qc_exploration", "05_pca_confounding_qc", ds, "PCA_confounding_summary.csv"),
     variance_qc = path_results("tables", "03_qc_exploration", "06_variance_partitioning", ds, "group_technical_confounding_screen.csv")
   )
   if (run$dry_run) {
     dry_run_inputs(paste(SCRIPT_ID, ds), inputs)
+    handoff_ready <- file.exists(inputs$inferential_handoff)
+    dry_run_line(
+      "Required inferential handoff",
+      inputs$inferential_handoff,
+      if (handoff_ready) "PASS" else "FAIL"
+    )
     dry_run_line("WGCNA robustness claim gate audit", path_results("reviewer_audit", "wgcna_robustness_claim_gate.csv"))
-    return(NULL)
+    return(handoff_ready)
   }
   loaded <- lapply(names(inputs), function(nm) read_csv_optional(inputs[[nm]], ds, "robustness_sensitivity", nm, required = FALSE))
   names(loaded) <- names(inputs)
   status <- do.call(rbind, lapply(loaded, `[[`, "status"))
-  effects <- loaded$module_effects$data
+  effect_data <- loaded$inferential_handoff$data
+  if (!is.null(effect_data) && nrow(effect_data)) {
+    wgcna_inferential_handoff_validate(effect_data)
+  }
+  module_effects <- if (is.null(effect_data)) NULL else
+    effect_data[effect_data$entity_level == "module", , drop = FALSE]
+  supermodule_effects <- if (is.null(effect_data)) NULL else
+    effect_data[effect_data$entity_level == "supermodule", , drop = FALSE]
+  effects <- module_effects
   if (is.null(effects) || !nrow(effects)) {
-    out <- availability_evidence(ds, "module_robustness_sensitivity", inputs$module_effects, "Module group effects unavailable.")
+    out <- availability_evidence(ds, "module_robustness_sensitivity", inputs$inferential_handoff, "Module inferential handoff unavailable.")
   } else {
-    mod_col <- first_col(effects, c("module_id", "ModuleID"))
-    fdr_col <- first_col(effects, c("FDR_global", "FDR_within_dataset_level", "q_value"))
+    mod_col <- "entity_id"
+    fdr_col <- "tier_specific_fdr"
     p_col <- first_col(effects, c("p_value", "p.value"))
     est_col <- first_col(effects, c("estimate", "effect_size"))
     contrast_col <- first_col(effects, c("contrast"))
@@ -144,7 +167,7 @@ make_dataset <- function(ds) {
     out <- data.frame(
       dataset = ds,
       evidence_domain = "module_robustness_sensitivity",
-      evidence_id = paste(ds, effects[[mod_col]], seq_len(nrow(effects)), sep = "::"),
+      evidence_id = as.character(effects$source_key),
       program_label = effects[[mod_col]],
       entity_type = "module",
       entity_id = effects[[mod_col]],
@@ -155,9 +178,16 @@ make_dataset <- function(ds) {
       p_value = if (!is.na(p_col)) num_or_na(effects[[p_col]]) else NA_real_,
       fdr = if (!is.na(fdr_col)) num_or_na(effects[[fdr_col]]) else NA_real_,
       support_count = NA_real_,
-      source_file = inputs$module_effects,
+      source_file = as.character(effects$source_artifact),
       evidence_status = NA_character_,
-      interpretation_note = "Group-effect robustness row; preservation/QC evidence appended when available.",
+      interpretation_note = paste0(
+        "Stage 07 inferential handoff row; family=",
+        effects$tier_specific_family_id,
+        "; family_size=", effects$tier_specific_family_size,
+        "; claim_gate=", effects$claim_gate,
+        "; source_key=", effects$source_key,
+        "; preservation/QC evidence appended when available."
+      ),
       qc_flag = qc_flag,
       stringsAsFactors = FALSE
     )
@@ -170,17 +200,26 @@ make_dataset <- function(ds) {
   }
   write_integration_table(out, paths, "module_robustness_sensitivity.csv")
   claim_gate_rows[[ds]] <<- dplyr::bind_rows(
-    make_claim_gate_audit(ds, loaded$module_effects$data, "module", inputs$module_effects, loaded$preservation$data, status),
-    make_claim_gate_audit(ds, loaded$supermodule_effects$data, "supermodule", inputs$supermodule_effects, loaded$preservation$data, status)
+    make_claim_gate_audit(ds, module_effects, "module", inputs$inferential_handoff, loaded$preservation$data, status),
+    make_claim_gate_audit(ds, supermodule_effects, "supermodule", inputs$inferential_handoff, loaded$preservation$data, status)
   )
   write_csv_safe(status, file.path(paths$reports, "input_status.csv"))
   write_csv_safe(status, file.path(paths$source_data, "module_robustness_sensitivity_input_status.csv"))
-  write_integration_manifest(paths, inputs, list(tables = paths$tables, source_data = paths$source_data), list(dataset = ds), "Robustness/sensitivity synthesis from existing module effects, preservation summaries, and QC/confounding screens.")
+  write_integration_manifest(paths, inputs, list(tables = paths$tables, source_data = paths$source_data), list(dataset = ds), "Robustness/sensitivity synthesis from the validated Stage 07 inferential handoff, preservation summaries, and QC/confounding screens. Tier-specific FDR family identity, claim gate, and exact Stage 05 source key are retained.")
   out
 }
 
-invisible(lapply(integration_datasets(run$dataset), make_dataset))
-if (run$dry_run) quit(status = 0, save = "no")
+dataset_results <- lapply(integration_datasets(run$dataset), make_dataset)
+if (run$dry_run) {
+  required_ready <- all(unlist(dataset_results, use.names = FALSE))
+  dry_run_line(
+    "Status",
+    if (required_ready) "ready" else "missing_required_input",
+    if (required_ready) "PASS" else "FAIL"
+  )
+  quit(status = if (required_ready) 0 else 1, save = "no")
+}
+invisible(dataset_results)
 audit <- dplyr::bind_rows(claim_gate_rows)
 dir_create(path_results("reviewer_audit"))
 write_csv_safe(audit, path_results("reviewer_audit", "wgcna_robustness_claim_gate.csv"))

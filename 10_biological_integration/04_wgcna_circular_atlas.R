@@ -147,10 +147,11 @@ read_csv_quiet <- function(path) {
   readr::read_csv(path, show_col_types = FALSE, progress = FALSE, name_repair = "unique")
 }
 
-read_group_effects <- function(path) {
+read_inferential_handoff <- function(path) {
   effects <- read_csv_quiet(path)
   if (is.null(effects) || !nrow(effects)) return(effects)
-  wgcna_group_effect_consumer_adapt(effects)
+  wgcna_inferential_handoff_validate(effects, path)
+  effects
 }
 
 as_num <- function(x) suppressWarnings(as.numeric(x))
@@ -163,11 +164,12 @@ min_finite_or_na <- function(x) {
 
 atlas_evidence_status <- function(
     statistical_support_status, independent_hypothesis,
-    model_valid_for_inference
+    model_valid_for_inference, claim_gate
 ) {
   status <- clean_chr(statistical_support_status)
   dplyr::case_when(
     !(independent_hypothesis %in% TRUE) ~ "inherited_non_independent",
+    claim_gate != "eligible_for_readiness_assessment" ~ "model_unstable",
     !(model_valid_for_inference %in% TRUE) ~ "model_unstable",
     status == "FDR_supported" ~ "robust_FDR",
     status == "suggestive_FDR10" ~ "suggestive_FDR10",
@@ -350,7 +352,8 @@ classify_scope_evidence <- function(df, prefix) {
   if (is.null(df) || !nrow(df)) return(paste0(prefix, "_missing"))
   independent <- df$independent_hypothesis %in% TRUE
   if (!any(independent)) return(paste0(prefix, "_inherited_non_independent"))
-  valid <- independent & df$model_valid_for_inference %in% TRUE
+  valid <- independent & df$model_valid_for_inference %in% TRUE &
+    df$claim_gate == "eligible_for_readiness_assessment"
   if (!any(valid)) return(paste0(prefix, "_model_unstable"))
   p <- as_num(df$p_value[valid])
   fdr <- as_num(df$tier_specific_fdr[valid])
@@ -440,12 +443,31 @@ dataset_source_paths <- function(ds) {
   list(
     supermodule_summary = path_results("tables", "06_modules_WGCNA", "01_WGCNA", ds, "supermodules", "wgcna_supermodule_summary.csv"),
     module_supermodule_annotation = path_results("tables", "06_modules_WGCNA", "01_WGCNA", ds, "supermodules", "wgcna_module_supermodule_annotation.csv"),
-    supermodule_group_effects = path_results("tables", "06_modules_WGCNA", "group_effects", ds, "supermodule_group_effects.csv"),
+    inferential_handoff = path_results("tables", "06_modules_WGCNA", "interpretable_summary", ds, "WGCNA_inferential_handoff.csv"),
     final_label_lookup = path_results("tables", "06_modules_WGCNA", "interpretable_summary", ds, "WGCNA_final_label_lookup.csv"),
-    interpretable_summary = path_results("tables", "06_modules_WGCNA", "interpretable_summary", ds, "WGCNA_supermodule_group_effects_interpretable.csv"),
     biological_annotation = path_results("tables", "06_modules_WGCNA", "module_annotation", ds, "WGCNA_supermodule_biological_annotation.csv"),
     modules_dir = path_results("tables", "06_modules_WGCNA", "01_WGCNA", ds, "modules")
   )
+}
+
+circular_display_lookup <- function(label_lookup) {
+  super <- label_lookup |>
+    dplyr::filter(.data$level == "supermodule") |>
+    dplyr::transmute(
+      dataset, supermodule_id = as.character(.data$entity_id),
+      n_member_modules = as.integer(.data$n_member_modules),
+      supermodule_label = as.character(.data$final_plot_label)
+    )
+  label_lookup |>
+    dplyr::filter(.data$level == "module") |>
+    dplyr::transmute(
+      dataset, module_id = as.character(.data$entity_id),
+      supermodule_id = as.character(.data$parent_entity_id)
+    ) |>
+    dplyr::left_join(
+      super, by = c("dataset", "supermodule_id"),
+      relationship = "many-to-one"
+    )
 }
 
 pipeline_registers_dataset_script <- function(script, dataset) {
@@ -627,13 +649,17 @@ summarise_effect_scopes <- function(effects, dataset, source_ids) {
         min_fdr = min_finite_or_na(
           .data$tier_specific_FDR_num[
             .data$independent_hypothesis %in% TRUE &
-              .data$model_valid_for_inference %in% TRUE
+              .data$model_valid_for_inference %in% TRUE &
+              .data$claim_gate ==
+                "eligible_for_readiness_assessment"
           ]
         ),
         min_p = min_finite_or_na(
           .data$p_value_num[
             .data$independent_hypothesis %in% TRUE &
-              .data$model_valid_for_inference %in% TRUE
+              .data$model_valid_for_inference %in% TRUE &
+              .data$claim_gate ==
+                "eligible_for_readiness_assessment"
           ]
         ),
         .groups = "drop"
@@ -688,14 +714,12 @@ build_neuropil_availability_audit <- function() {
     expected_file = c(
       path_results("tables", "06_modules_WGCNA", "01_WGCNA", "neuron_neuropil", "supermodules", "wgcna_supermodule_summary.csv"),
       path_results("tables", "06_modules_WGCNA", "01_WGCNA", "neuron_neuropil", "supermodules", "wgcna_module_supermodule_annotation.csv"),
-      path_results("tables", "06_modules_WGCNA", "group_effects", "neuron_neuropil", "supermodule_group_effects.csv"),
-      path_results("tables", "06_modules_WGCNA", "interpretable_summary", "neuron_neuropil", "WGCNA_supermodule_group_effects_interpretable.csv"),
+      path_results("tables", "06_modules_WGCNA", "interpretable_summary", "neuron_neuropil", "WGCNA_inferential_handoff.csv"),
       path_results("tables", "06_modules_WGCNA", "module_annotation", "neuron_neuropil", "WGCNA_supermodule_biological_annotation.csv")
     ),
     producing_script = c(
       "06_modules_WGCNA/01_WGCNA.r",
       "06_modules_WGCNA/01_WGCNA.r",
-      "06_modules_WGCNA/05_module_supermodule_group_effects.r",
       "06_modules_WGCNA/07_wgcna_interpretable_summary.r",
       "06_modules_WGCNA/06_annotate_module_microenvironment.r"
     )
@@ -722,9 +746,8 @@ build_neuropil_availability_audit <- function() {
       recommended_action = dplyr::case_when(
         .data$exists ~ "use_current_expected_file",
         grepl("01_WGCNA", .data$producing_script) ~ "run Rscript 06_modules_WGCNA/01_WGCNA.r --dataset neuron_neuropil with cached state reuse enabled",
-        grepl("05_module", .data$producing_script) ~ "run Rscript 06_modules_WGCNA/05_module_supermodule_group_effects.r --dataset neuron_neuropil after 01_WGCNA outputs exist",
         grepl("06_annotate", .data$producing_script) ~ "run Rscript 06_modules_WGCNA/06_annotate_module_microenvironment.r --dataset neuron_neuropil after 01_WGCNA/group effects exist",
-        grepl("07_wgcna", .data$producing_script) ~ "run Rscript 06_modules_WGCNA/07_wgcna_interpretable_summary.r --dataset neuron_neuropil after group effects and annotation exist",
+        grepl("07_wgcna", .data$producing_script) ~ "run Rscript 06_modules_WGCNA/07_wgcna_interpretable_summary.r --dataset neuron_neuropil after existing Stage 05 group effects and annotation exist",
         TRUE ~ "inspect pipeline registration and dataset inputs"
       )
     ) |>
@@ -770,7 +793,7 @@ pick_effect_rows <- function(effects, source_ids, effect_source_file) {
       dataset = character(),
       supermodule_id = character(),
       effect_source_file = character(),
-      effect_source_row_id = integer(),
+      effect_source_row_id = character(),
       strongest_effect_scope_used = character(),
       strongest_contrast_used = character(),
       strongest_estimate_source = numeric(),
@@ -778,8 +801,6 @@ pick_effect_rows <- function(effects, source_ids, effect_source_file) {
       tier_specific_fdr_source = numeric(),
       tier_specific_family_id_source = character(),
       tier_specific_family_size_source = integer(),
-      FDR_global_source = numeric(),
-      FDR_within_dataset_level_source = numeric(),
       evidence_status_source = character(),
       analysis_tier = character(),
       contrast = character(),
@@ -796,7 +817,10 @@ pick_effect_rows <- function(effects, source_ids, effect_source_file) {
       model_valid_for_inference = logical(),
       model_stability_status = character(),
       source_claim_entity_role = character(),
-      result_scope = character()
+      result_scope = character(),
+      claim_gate = character(),
+      source_artifact = character(),
+      source_key = character()
     ))
   }
 
@@ -808,7 +832,8 @@ pick_effect_rows <- function(effects, source_ids, effect_source_file) {
       atlas_evidence_status = atlas_evidence_status(
         .data$statistical_support_status,
         .data$independent_hypothesis,
-        .data$model_valid_for_inference
+        .data$model_valid,
+        .data$claim_gate
       ),
       status_priority_value = dplyr::coalesce(
         status_priority[.data$atlas_evidence_status], 99L
@@ -832,7 +857,7 @@ pick_effect_rows <- function(effects, source_ids, effect_source_file) {
       dataset = .data$dataset,
       supermodule_id = .data$supermodule_id,
       effect_source_file = effect_source_file,
-      effect_source_row_id = .data$effect_source_row_id,
+      effect_source_row_id = as.character(.data$source_key),
       strongest_effect_scope_used = .data$effect_scope,
       strongest_contrast_used = .data$contrast,
       strongest_estimate_source = as_num(.data$estimate),
@@ -840,8 +865,6 @@ pick_effect_rows <- function(effects, source_ids, effect_source_file) {
       tier_specific_fdr_source = as_num(.data$tier_specific_fdr),
       tier_specific_family_id_source = as.character(.data$tier_specific_family_id),
       tier_specific_family_size_source = as.integer(.data$tier_specific_family_size),
-      FDR_global_source = as_num(.data$FDR_global),
-      FDR_within_dataset_level_source = as_num(.data$FDR_within_dataset_level),
       evidence_status_source = .data$atlas_evidence_status,
       analysis_tier = as.character(.data$analysis_tier),
       contrast = as.character(.data$contrast),
@@ -855,10 +878,13 @@ pick_effect_rows <- function(effects, source_ids, effect_source_file) {
       tier_specific_family_id = as.character(.data$tier_specific_family_id),
       tier_specific_family_size = as.integer(.data$tier_specific_family_size),
       statistical_support_status = as.character(.data$statistical_support_status),
-      model_valid_for_inference = as.logical(.data$model_valid_for_inference),
+      model_valid_for_inference = as.logical(.data$model_valid),
       model_stability_status = as.character(.data$model_stability_status),
       source_claim_entity_role = as.character(.data$claim_entity_role),
-      result_scope = as.character(.data$result_scope)
+      result_scope = as.character(.data$result_scope),
+      claim_gate = as.character(.data$claim_gate),
+      source_artifact = as.character(.data$source_artifact),
+      source_key = as.character(.data$source_key)
     )
 }
 
@@ -866,9 +892,12 @@ process_dataset <- function(ds) {
   p <- dataset_source_paths(ds)
   summary <- read_csv_quiet(p$supermodule_summary)
   module_ann <- read_csv_quiet(p$module_supermodule_annotation)
-  effects <- read_group_effects(p$supermodule_group_effects)
   label_lookup <- read_csv_quiet(p$final_label_lookup)
-  interp <- read_csv_quiet(p$interpretable_summary)
+  handoff <- read_inferential_handoff(p$inferential_handoff)
+  effects <- if (is.null(handoff) || !nrow(handoff)) handoff else
+    wgcna_inferential_handoff_supermodule_display(
+      handoff, circular_display_lookup(label_lookup)
+    )
   bio <- read_csv_quiet(p$biological_annotation)
   readiness_contract <- if (identical(ds, "microglia")) load_microglia_wgcna_claim_readiness() else NULL
   readiness <- if (!is.null(readiness_contract)) readiness_contract$all |>
@@ -896,7 +925,7 @@ process_dataset <- function(ds) {
     path = unlist(p[names(p) != "modules_dir"], use.names = FALSE),
     exists = file.exists(unlist(p[names(p) != "modules_dir"], use.names = FALSE)),
     n_rows = vapply(
-      list(summary, module_ann, effects, label_lookup, interp, bio),
+      list(summary, module_ann, effects, label_lookup, bio),
       function(x) if (is.null(x)) NA_integer_ else nrow(x),
       integer(1)
     )
@@ -953,14 +982,6 @@ process_dataset <- function(ds) {
     tibble::tibble(dataset = character(), supermodule_id = character())
   }
 
-  interp_ids <- if (!is.null(interp) && "supermodule_id" %in% names(interp)) {
-    interp |>
-      dplyr::mutate(supermodule_id = normalize_supermodule_id(.data$supermodule_id)) |>
-      dplyr::distinct(.data$dataset, .data$supermodule_id)
-  } else {
-    tibble::tibble(dataset = character(), supermodule_id = character())
-  }
-
   label_ids <- if (!is.null(label_lookup)) {
     id_col <- first_existing_col(label_lookup, c("supermodule_id", "SupermoduleID"))
     ds_col <- first_existing_col(label_lookup, c("dataset"))
@@ -1012,7 +1033,7 @@ process_dataset <- function(ds) {
   effects <- if (!is.null(effects) && nrow(effects)) {
     effects |>
       dplyr::mutate(
-        effect_source_row_id = dplyr::row_number(),
+        effect_source_row_id = as.character(.data$source_key),
         supermodule_id = normalize_supermodule_id(.data$supermodule_id)
       )
   } else {
@@ -1025,7 +1046,9 @@ process_dataset <- function(ds) {
   }
 
   effect_scope_audit <- summarise_effect_scopes(effects, ds, summary$supermodule_id)
-  picked <- pick_effect_rows(effects, summary$supermodule_id, p$supermodule_group_effects)
+  picked <- pick_effect_rows(
+    effects, summary$supermodule_id, p$inferential_handoff
+  )
   claims <- claim_status_table()
 
   duplicate_audit <- summary_precollapse |>
@@ -1048,8 +1071,6 @@ process_dataset <- function(ds) {
       effect_estimate_differs = !same_values(.data$strongest_estimate_source, numeric = TRUE),
       p_value_differs = !same_values(.data$p_value_source, numeric = TRUE),
       tier_specific_fdr_differs = !same_values(.data$tier_specific_fdr_source, numeric = TRUE),
-      FDR_global_differs = !same_values(.data$FDR_global_source, numeric = TRUE),
-      FDR_within_dataset_level_differs = !same_values(.data$FDR_within_dataset_level_source, numeric = TRUE),
       collapse_safe = !(
         .data$cleaned_label_differs |
           .data$broad_program_class_differs |
@@ -1059,9 +1080,7 @@ process_dataset <- function(ds) {
           .data$strongest_contrast_differs |
           .data$effect_estimate_differs |
           .data$p_value_differs |
-          .data$tier_specific_fdr_differs |
-          .data$FDR_global_differs |
-          .data$FDR_within_dataset_level_differs
+          .data$tier_specific_fdr_differs
       ),
       collapse_rule = "Circular atlas emits one row per dataset x supermodule_id; duplicate source summary rows are collapsed only after auditing biologically/statistically relevant fields."
     ) |>
@@ -1083,8 +1102,6 @@ process_dataset <- function(ds) {
       "tier_specific_fdr_source",
       "tier_specific_family_id_source",
       "tier_specific_family_size_source",
-      "FDR_global_source",
-      "FDR_within_dataset_level_source",
       "cleaned_label_differs",
       "broad_program_class_differs",
       "n_member_modules_differs",
@@ -1094,8 +1111,6 @@ process_dataset <- function(ds) {
       "effect_estimate_differs",
       "p_value_differs",
       "tier_specific_fdr_differs",
-      "FDR_global_differs",
-      "FDR_within_dataset_level_differs",
       "collapse_safe",
       "collapse_rule"
     )
@@ -1112,7 +1127,9 @@ process_dataset <- function(ds) {
       supermodule_label_source_column = dplyr::coalesce(.data$annotation_label_source_column, summary_label_col, "supermodule_id"),
       broad_program_source_column = dplyr::coalesce(.data$annotation_program_source_column, summary_program_col),
       source_schema_variant = source_schema,
-      effect_source_file = dplyr::coalesce(.data$effect_source_file, p$supermodule_group_effects),
+      effect_source_file = dplyr::coalesce(
+        .data$effect_source_file, p$inferential_handoff
+      ),
       annotation_source_file = dplyr::coalesce(.data$annotation_source_file, p$biological_annotation),
       n_member_modules_segments = .data$n_member_modules_source,
       member_modules_segments = .data$member_modules_source,
@@ -1132,8 +1149,6 @@ process_dataset <- function(ds) {
       tier_specific_fdr_segments = .data$tier_specific_fdr_source,
       tier_specific_family_id_segments = .data$tier_specific_family_id_source,
       tier_specific_family_size_segments = .data$tier_specific_family_size_source,
-      FDR_global_segments = .data$FDR_global_source,
-      FDR_within_dataset_level_segments = .data$FDR_within_dataset_level_source,
       dataset_label = dataset_label(.data$dataset),
       segment_id = paste(.data$dataset, .data$supermodule_id, sep = "::")
     )
@@ -1153,8 +1168,7 @@ process_dataset <- function(ds) {
         NA_character_
       ),
       present_in_module_supermodule_annotation = paste(.data$dataset, .data$supermodule_id) %in% paste(module_ids$dataset, module_ids$supermodule_id),
-      present_in_supermodule_group_effects = paste(.data$dataset, .data$supermodule_id) %in% paste(effect_ids$dataset, effect_ids$supermodule_id),
-      present_in_interpretable_summary = paste(.data$dataset, .data$supermodule_id) %in% paste(interp_ids$dataset, interp_ids$supermodule_id),
+      present_in_inferential_handoff = paste(.data$dataset, .data$supermodule_id) %in% paste(effect_ids$dataset, effect_ids$supermodule_id),
       present_in_final_label_lookup = paste(.data$dataset, .data$supermodule_id) %in% paste(label_ids$dataset, label_ids$supermodule_id),
       present_in_circular_segments = TRUE,
       present_in_selected_table = FALSE,
@@ -1168,20 +1182,13 @@ process_dataset <- function(ds) {
       ) & (
         (is.na(.data$tier_specific_fdr_source) & is.na(.data$tier_specific_fdr_segments)) |
           abs(.data$tier_specific_fdr_source - .data$tier_specific_fdr_segments) < 1e-12
-      ) & (
-        (is.na(.data$FDR_global_source) & is.na(.data$FDR_global_segments)) |
-          abs(.data$FDR_global_source - .data$FDR_global_segments) < 1e-12
-      ) & (
-        (is.na(.data$FDR_within_dataset_level_source) & is.na(.data$FDR_within_dataset_level_segments)) |
-          abs(.data$FDR_within_dataset_level_source - .data$FDR_within_dataset_level_segments) < 1e-12
       ),
       label_match = .data$source_cleaned_label == .data$segment_cleaned_label,
       module_count_match = .data$n_member_modules_source == .data$n_member_modules_segments,
       audit_issue = dplyr::case_when(
         !.data$present_in_module_supermodule_annotation ~ "missing_module_supermodule_annotation",
         .data$duplicated_in_source_supermodule_summary ~ "duplicate_source_supermodule_summary_rows_collapsed_to_one_segment",
-        !.data$present_in_supermodule_group_effects ~ "missing_effect_test",
-        !.data$present_in_interpretable_summary ~ "missing_interpretable_summary",
+        !.data$present_in_inferential_handoff ~ "missing_effect_test",
         !.data$status_match ~ "evidence_status_mismatch",
         !.data$numeric_match ~ "numeric_mismatch",
         !.data$module_count_match ~ "module_count_mismatch",
@@ -1197,8 +1204,7 @@ process_dataset <- function(ds) {
       "duplicate_source_file",
       "duplicate_collapse_rule",
       "present_in_module_supermodule_annotation",
-      "present_in_supermodule_group_effects",
-      "present_in_interpretable_summary",
+      "present_in_inferential_handoff",
       "present_in_final_label_lookup",
       "canonical_claim_entity_id",
       "claim_entity_role",
@@ -1231,10 +1237,6 @@ process_dataset <- function(ds) {
       "tier_specific_family_id_segments",
       "tier_specific_family_size_source",
       "tier_specific_family_size_segments",
-      "FDR_global_source",
-      "FDR_global_segments",
-      "FDR_within_dataset_level_source",
-      "FDR_within_dataset_level_segments",
       "evidence_status_source",
       "evidence_status_segments",
       "status_match",
@@ -1246,8 +1248,7 @@ process_dataset <- function(ds) {
 
   join_audit <- dplyr::bind_rows(
     audit_join("source_summary_to_biological_annotation", summary, bio_core, c("dataset", "supermodule_id"), "wgcna_supermodule_summary.csv", "WGCNA_supermodule_biological_annotation.csv"),
-    audit_join("source_summary_to_group_effect_pick", summary, picked, c("dataset", "supermodule_id"), "wgcna_supermodule_summary.csv", "supermodule_group_effects.csv selected row"),
-    audit_join("source_summary_to_interpretable_summary", summary, interp_ids, c("dataset", "supermodule_id"), "wgcna_supermodule_summary.csv", "WGCNA_supermodule_group_effects_interpretable.csv"),
+    audit_join("source_summary_to_inferential_handoff_pick", summary, picked, c("dataset", "supermodule_id"), "wgcna_supermodule_summary.csv", "WGCNA_inferential_handoff.csv selected row"),
     audit_join("source_summary_to_module_supermodule_annotation", summary, module_ids, c("dataset", "supermodule_id"), "wgcna_supermodule_summary.csv", "wgcna_module_supermodule_annotation.csv"),
     audit_join("source_summary_to_final_label_lookup", summary, label_ids, c("dataset", "supermodule_id"), "wgcna_supermodule_summary.csv", "WGCNA_final_label_lookup.csv"),
     audit_join("source_summary_to_stage13_claim_readiness", summary, readiness, c("dataset", "supermodule_id"), "wgcna_supermodule_summary.csv", "WGCNA_entity_claim_readiness.csv")
@@ -1744,7 +1745,7 @@ spatial_order_value <- function(region, layer_or_unit, unit) {
 
 effect_support_class <- function(
     tier_specific_fdr, independent_hypothesis,
-    model_valid_for_inference, model_stability_status
+    model_valid_for_inference, model_stability_status, claim_gate
 ) {
   fdr <- as_num(tier_specific_fdr)
   independent <- independent_hypothesis %in% TRUE
@@ -1753,6 +1754,8 @@ effect_support_class <- function(
       c("stable_animal_level_lm", "stable_mixed_model")
   dplyr::case_when(
     !independent ~ "none",
+    claim_gate != "eligible_for_readiness_assessment" ~
+      "invalid_or_unstable",
     !stable ~ "invalid_or_unstable",
     !is.na(fdr) & fdr <= 0.05 ~ "FDR05",
     !is.na(fdr) & fdr <= 0.10 ~ "FDR10",
@@ -1762,7 +1765,7 @@ effect_support_class <- function(
 
 global_effect_support_class <- function(
     global_support_fdr, independent_hypothesis,
-    model_valid_for_inference, model_stability_status
+    model_valid_for_inference, model_stability_status, claim_gate
 ) {
   fdr <- as_num(global_support_fdr)
   independent <- independent_hypothesis %in% TRUE
@@ -1770,6 +1773,7 @@ global_effect_support_class <- function(
     clean_chr(model_stability_status) == "invalid"
   dplyr::case_when(
     !independent ~ "none",
+    claim_gate != "eligible_for_readiness_assessment" ~ "invalid",
     invalid ~ "invalid",
     !is.na(fdr) & fdr <= 0.05 ~ "FDR05",
     !is.na(fdr) & fdr <= 0.10 ~ "FDR10",
@@ -1780,9 +1784,9 @@ global_effect_support_class <- function(
 LOCAL_EFFECT_DISPLAY_LIMIT <- 2.5
 LOCAL_EFFECT_METRIC_LABEL <- "standardized model effect (SD units)"
 LOCAL_EFFECT_INTERPRETATION_GUARD <- paste(
-  "Outer markers represent spatial-adjusted Stage 05 supermodule group-effect support.",
-  "Heatmap colours represent region/layer-specific standardized local Stage 05 effect estimates.",
-  "Local cell symbols represent contrast-specific local exploratory BH support.",
+  "Outer markers represent spatial-adjusted Stage 07 handoff support.",
+  "Heatmap colours represent standardized local Stage 07 handoff estimates.",
+  "Local cell symbols use the handoff tier-specific FDR and family.",
   "Apparent region/layer differences remain descriptive unless supported by the separate interaction omnibus.",
   "Absence of a symbol does not imply absence of an estimated effect."
 )
@@ -1884,7 +1888,8 @@ validate_circular_effect_source <- function(df, source_name) {
     "independent_hypothesis", "estimate", "SE", "p_value",
     "tier_specific_fdr", "tier_specific_family_id",
     "tier_specific_family_size", "statistical_support_status",
-    "model_valid_for_inference", "model_stability_status"
+    "model_valid_for_inference", "model_stability_status",
+    "claim_gate", "source_artifact", "source_key"
   )
   if (grepl("circular_heatmap_source", source_name, fixed = TRUE)) {
     required <- c(
@@ -1908,7 +1913,8 @@ validate_circular_effect_source <- function(df, source_name) {
       df$tier_specific_fdr,
       df$independent_hypothesis,
       df$model_valid_for_inference,
-      df$model_stability_status
+      df$model_stability_status,
+      df$claim_gate
     )
     if (!identical(as.character(df$support_class), expected_support)) {
       stop(
@@ -1918,27 +1924,16 @@ validate_circular_effect_source <- function(df, source_name) {
       )
     }
   }
-  if ("source_claim_entity_role" %in% names(df)) {
-    alias <- clean_chr(df$source_claim_entity_role) == "compatibility_alias"
-    alias_support <- if ("support_class" %in% names(df)) {
-      clean_chr(df$support_class) != "none"
-    } else {
-      rep(FALSE, nrow(df))
-    }
+  if ("display_is_compatibility_alias" %in% names(df)) {
+    alias <- df$display_is_compatibility_alias %in% TRUE
     bad_alias <- alias & (
-      df$independent_hypothesis %in% TRUE |
-        !is.na(df$tier_specific_fdr) |
-        (!is.na(df$tier_specific_family_id) &
-           nzchar(clean_chr(df$tier_specific_family_id))) |
-        !is.na(df$tier_specific_family_size) |
-        clean_chr(df$statistical_support_status) !=
-          "inherited_from_canonical_entity" |
-        alias_support
+      clean_chr(df$source_claim_entity_role) != "canonical_module" |
+        clean_chr(df$source_entity_level) != "module"
     )
     if (any(bad_alias, na.rm = TRUE)) {
       stop(
         source_name,
-        " gives a compatibility alias an independent q-value or support marker.",
+        " does not trace a singleton display alias to its canonical module.",
         call. = FALSE
       )
     }
@@ -1952,37 +1947,23 @@ validate_circular_effect_source <- function(df, source_name) {
       call. = FALSE
     )
   }
-  if ("FDR_local_exploratory" %in% names(df)) {
-    q_matches <- (is.na(df$tier_specific_fdr) &
-                    is.na(df$FDR_local_exploratory)) |
-      (!is.na(df$tier_specific_fdr) &
-         !is.na(df$FDR_local_exploratory) &
-         df$tier_specific_fdr == df$FDR_local_exploratory)
-    if (any(local & !q_matches, na.rm = TRUE)) {
+  for (threshold in c(0.05, 0.10, 0.25)) {
+    flag_name <- paste0(
+      "q_local_le_0_",
+      sprintf("%02d", as.integer(threshold * 100))
+    )
+    if (!flag_name %in% names(df)) next
+    expected_flag <- dplyr::if_else(
+      is.na(df$tier_specific_fdr),
+      NA,
+      df$tier_specific_fdr <= threshold
+    )
+    if (!identical(as.logical(df[[flag_name]]), expected_flag)) {
       stop(
-        source_name,
-        " contains a local marker q-value that is not FDR_local_exploratory.",
+        source_name, " has an invalid source-only ", flag_name,
+        " flag.",
         call. = FALSE
       )
-    }
-    for (threshold in c(0.05, 0.10, 0.25)) {
-      flag_name <- paste0(
-        "q_local_le_0_",
-        sprintf("%02d", as.integer(threshold * 100))
-      )
-      if (!flag_name %in% names(df)) next
-      expected_flag <- dplyr::if_else(
-        is.na(df$FDR_local_exploratory),
-        NA,
-        df$FDR_local_exploratory <= threshold
-      )
-      if (!identical(as.logical(df[[flag_name]]), expected_flag)) {
-        stop(
-          source_name, " has an invalid source-only ", flag_name,
-          " flag.",
-          call. = FALSE
-        )
-      }
     }
   }
   if (all(c(
@@ -2015,13 +1996,13 @@ validate_global_supermodule_support_source <- function(df) {
     "dataset", "supermodule_id", "analysis_tier", "contrast",
     "effect_scope", "spatial_unit", "independent_hypothesis",
     "estimate", "SE", "CI_low", "CI_high", "p_value",
-    "FDR_primary_global", "FDR_secondary_global",
     "global_support_fdr", "global_fdr_source",
     "tier_specific_fdr", "tier_specific_family_id",
     "tier_specific_family_size", "statistical_support_status",
     "model_valid_for_inference", "model_stability_status",
     "source_claim_entity_role", "global_support_class",
-    "global_marker_visible"
+    "global_marker_visible", "claim_gate", "source_artifact",
+    "source_key"
   )
   missing <- setdiff(required, names(df))
   if (length(missing)) {
@@ -2055,16 +2036,8 @@ validate_global_supermodule_support_source <- function(df) {
     "primary_wgcna_global",
     "secondary_contextual_global"
   )
-  expected_fdr_source <- dplyr::if_else(
-    clean_chr(df$contrast) == "SUS - RES",
-    "FDR_primary_global",
-    "FDR_secondary_global"
-  )
-  expected_fdr <- dplyr::if_else(
-    clean_chr(df$contrast) == "SUS - RES",
-    as_num(df$FDR_primary_global),
-    as_num(df$FDR_secondary_global)
-  )
+  expected_fdr_source <- rep("tier_specific_fdr", nrow(df))
+  expected_fdr <- as_num(df$tier_specific_fdr)
   equal_or_both_na <- function(x, y) {
     (is.na(x) & is.na(y)) | (!is.na(x) & !is.na(y) & x == y)
   }
@@ -2075,7 +2048,7 @@ validate_global_supermodule_support_source <- function(df) {
       any(!equal_or_both_na(df$tier_specific_fdr, expected_fdr))
   ) {
     stop(
-      "Global supermodule support does not use the required contrast-specific Stage 05 FDR.",
+      "Global supermodule support does not use the recorded tier-specific FDR.",
       call. = FALSE
     )
   }
@@ -2083,11 +2056,12 @@ validate_global_supermodule_support_source <- function(df) {
     df$global_support_fdr,
     df$independent_hypothesis,
     df$model_valid_for_inference,
-    df$model_stability_status
+    df$model_stability_status,
+    df$claim_gate
   )
   if (!identical(clean_chr(df$global_support_class), expected_support)) {
     stop(
-      "Global supermodule support markers do not match their Stage 05 FDR and model validity.",
+      "Global supermodule support markers do not match the handoff FDR and claim gate.",
       call. = FALSE
     )
   }
@@ -2099,18 +2073,20 @@ validate_global_supermodule_support_source <- function(df) {
       call. = FALSE
     )
   }
-  alias <- clean_chr(df$source_claim_entity_role) == "compatibility_alias"
+  alias <- if ("display_is_compatibility_alias" %in% names(df)) {
+    df$display_is_compatibility_alias %in% TRUE
+  } else {
+    rep(FALSE, nrow(df))
+  }
   if (any(
     alias & (
-      df$independent_hypothesis %in% TRUE |
-        !is.na(df$global_support_fdr) |
-        df$global_support_class != "none" |
-        df$global_marker_visible %in% TRUE
+      clean_chr(df$source_claim_entity_role) != "canonical_module" |
+        clean_chr(df$source_entity_level) != "module"
     ),
     na.rm = TRUE
   )) {
     stop(
-      "A compatibility alias received an independent global q-value or support marker.",
+      "A singleton display alias is not traced to a canonical module endpoint.",
       call. = FALSE
     )
   }
@@ -2289,8 +2265,9 @@ local_effect_rows <- function(df, level) {
       support_class = effect_support_class(
         .data$tier_specific_fdr,
         .data$independent_hypothesis,
-        .data$model_valid_for_inference,
-        .data$model_stability_status
+        .data$model_valid,
+        .data$model_stability_status,
+        .data$claim_gate
       )
     ) |>
     dplyr::arrange(
@@ -2355,8 +2332,13 @@ build_heatmap_sources <- function(datasets, segments, selected_audit) {
     )
 
   global_support_rows <- lapply(datasets, function(ds) {
-    path <- dataset_source_paths(ds)$supermodule_group_effects
-    df <- read_group_effects(path)
+    paths <- dataset_source_paths(ds)
+    handoff <- read_inferential_handoff(paths$inferential_handoff)
+    lookup <- read_csv_quiet(paths$final_label_lookup)
+    df <- if (is.null(handoff) || !nrow(handoff)) handoff else
+      wgcna_inferential_handoff_supermodule_display(
+        handoff, circular_display_lookup(lookup)
+      )
     if (is.null(df) || !nrow(df)) return(tibble::tibble())
     global <- df |>
       dplyr::filter(
@@ -2373,32 +2355,20 @@ build_heatmap_sources <- function(datasets, segments, selected_audit) {
         supermodule_label = dplyr::coalesce(
           na_if_blank_chr(.data$supermodule_label.y),
           na_if_blank_chr(.data$supermodule_label.x),
+          na_if_blank_chr(.data$display_label),
           na_if_blank_chr(.data$endpoint_label),
           clean_chr(.data$supermodule_id)
         ),
         contrast_block = contrast_block(.data$contrast),
         contrast_order = contrast_block_order(.data$contrast),
-        global_support_fdr = dplyr::case_when(
-          clean_chr(.data$contrast) == "SUS - RES" ~
-            as_num(.data$FDR_primary_global),
-          clean_chr(.data$contrast) %in%
-            c("RES - CON", "SUS - CON") ~
-            as_num(.data$FDR_secondary_global),
-          TRUE ~ NA_real_
-        ),
-        global_fdr_source = dplyr::case_when(
-          clean_chr(.data$contrast) == "SUS - RES" ~
-            "FDR_primary_global",
-          clean_chr(.data$contrast) %in%
-            c("RES - CON", "SUS - CON") ~
-            "FDR_secondary_global",
-          TRUE ~ NA_character_
-        ),
+        global_support_fdr = as_num(.data$tier_specific_fdr),
+        global_fdr_source = "tier_specific_fdr",
         global_support_class = global_effect_support_class(
           .data$global_support_fdr,
           .data$independent_hypothesis,
-          .data$model_valid_for_inference,
-          .data$model_stability_status
+          .data$model_valid,
+          .data$model_stability_status,
+          .data$claim_gate
         ),
         global_marker_visible =
           .data$global_support_class != "none" &
@@ -2427,8 +2397,6 @@ build_heatmap_sources <- function(datasets, segments, selected_audit) {
         CI_low = as_num(.data$CI_low),
         CI_high = as_num(.data$CI_high),
         p_value = as_num(.data$p_value),
-        FDR_primary_global = as_num(.data$FDR_primary_global),
-        FDR_secondary_global = as_num(.data$FDR_secondary_global),
         global_support_fdr = as_num(.data$global_support_fdr),
         global_fdr_source = clean_chr(.data$global_fdr_source),
         tier_specific_fdr = as_num(.data$tier_specific_fdr),
@@ -2438,29 +2406,40 @@ build_heatmap_sources <- function(datasets, segments, selected_audit) {
           as.integer(.data$tier_specific_family_size),
         statistical_support_status =
           as.character(.data$statistical_support_status),
-        model_valid_for_inference =
-          as.logical(.data$model_valid_for_inference),
+        model_valid_for_inference = as.logical(.data$model_valid),
         model_stability_status =
           as.character(.data$model_stability_status),
         source_claim_entity_role =
           as.character(.data$claim_entity_role),
+        source_entity_level = as.character(.data$source_entity_level),
+        source_entity_id = as.character(.data$source_entity_id),
+        display_is_compatibility_alias =
+          as.logical(.data$display_is_compatibility_alias),
+        display_entity_role = as.character(.data$display_entity_role),
+        claim_gate = as.character(.data$claim_gate),
+        source_artifact = as.character(.data$source_artifact),
+        source_key = as.character(.data$source_key),
         result_scope = as.character(.data$result_scope),
         global_support_class =
           as.character(.data$global_support_class),
         global_marker_visible =
           as.logical(.data$global_marker_visible),
         global_support_interpretation = paste(
-          "Spatial-adjusted Stage 05 supermodule group effect;",
-          "RES - CON and SUS - CON use FDR_secondary_global;",
-          "SUS - RES uses FDR_primary_global"
+          "Spatial-adjusted Stage 07 inferential handoff;",
+          "support uses tier_specific_fdr and its recorded family"
         )
       )
     global
   })
 
   supermodule_rows <- lapply(datasets, function(ds) {
-    path <- dataset_source_paths(ds)$supermodule_group_effects
-    df <- read_group_effects(path)
+    paths <- dataset_source_paths(ds)
+    handoff <- read_inferential_handoff(paths$inferential_handoff)
+    lookup <- read_csv_quiet(paths$final_label_lookup)
+    df <- if (is.null(handoff) || !nrow(handoff)) handoff else
+      wgcna_inferential_handoff_supermodule_display(
+        handoff, circular_display_lookup(lookup)
+      )
     local <- local_effect_rows(df, "supermodule")
     if (!nrow(local)) return(tibble::tibble())
     local |>
@@ -2479,8 +2458,11 @@ build_heatmap_sources <- function(datasets, segments, selected_audit) {
   })
 
   module_rows <- lapply(datasets, function(ds) {
-    path <- path_results("tables", "06_modules_WGCNA", "group_effects", ds, "module_group_effects.csv")
-    df <- read_group_effects(path)
+    path <- dataset_source_paths(ds)$inferential_handoff
+    df <- read_inferential_handoff(path)
+    if (!is.null(df) && nrow(df)) {
+      df <- df[df$entity_level == "module", , drop = FALSE]
+    }
     local <- local_effect_rows(df, "module")
     if (!nrow(local)) return(tibble::tibble())
     map <- module_supermodule_map(ds)
@@ -2580,35 +2562,40 @@ build_heatmap_sources <- function(datasets, segments, selected_audit) {
         CI_high = as_num(.data$CI_high),
         p_value = as_num(.data$p_value),
         tier_specific_fdr = as_num(.data$tier_specific_fdr),
-        FDR_local_exploratory = as_num(.data$FDR_local_exploratory),
         tier_specific_family_id = as.character(.data$tier_specific_family_id),
         tier_specific_family_size = as.integer(.data$tier_specific_family_size),
         statistical_support_status = as.character(.data$statistical_support_status),
-        model_valid_for_inference = as.logical(.data$model_valid_for_inference),
+        model_valid_for_inference = as.logical(.data$model_valid),
         model_stability_status = as.character(.data$model_stability_status),
         source_claim_entity_role = as.character(.data$claim_entity_role),
+        source_entity_level = if ("source_entity_level" %in% names(df)) as.character(.data$source_entity_level) else as.character(.data$entity_level),
+        source_entity_id = if ("source_entity_id" %in% names(df)) as.character(.data$source_entity_id) else as.character(.data$entity_id),
+        display_is_compatibility_alias = if ("display_is_compatibility_alias" %in% names(df)) as.logical(.data$display_is_compatibility_alias) else FALSE,
+        display_entity_role = if ("display_entity_role" %in% names(df)) as.character(.data$display_entity_role) else "canonical_inferential_entity",
         result_scope = as.character(.data$result_scope),
-        FDR_global = as_num(.data$FDR_global),
-        FDR_within_dataset_level = as_num(.data$FDR_within_dataset_level),
+        claim_gate = as.character(.data$claim_gate),
+        source_artifact = as.character(.data$source_artifact),
+        source_key = as.character(.data$source_key),
         standardization_level = dplyr::if_else(
-          clean_chr(.data$claim_entity_role) == "compatibility_alias",
+          .data$display_is_compatibility_alias %in% TRUE,
           "module",
           level_name
         ),
         standardization_endpoint_id = dplyr::if_else(
-          clean_chr(.data$claim_entity_role) == "compatibility_alias",
-          clean_chr(.data$canonical_claim_entity_id),
+          .data$display_is_compatibility_alias %in% TRUE,
+          clean_chr(.data$source_entity_id),
           clean_chr(.data$endpoint_id)
         ),
         alias_standardization_status = dplyr::if_else(
-          clean_chr(.data$claim_entity_role) == "compatibility_alias",
+          .data$display_is_compatibility_alias %in% TRUE,
           "inherited_from_canonical_module_response",
-          "independent_stage05_response_subset"
+          "independent_response_subset"
         ),
         evidence_status = atlas_evidence_status(
           .data$statistical_support_status,
           .data$independent_hypothesis,
-          .data$model_valid_for_inference
+          .data$model_valid,
+          .data$claim_gate
         ),
         support_class = .data$support_class,
         selected_or_priority_flag = .data$selected_or_priority_flag %in% TRUE,
@@ -2638,16 +2625,16 @@ build_heatmap_sources <- function(datasets, segments, selected_audit) {
         standardized_effect_unclipped =
           .data$estimate / .data$response_SD,
         q_local_le_0_05 = dplyr::case_when(
-          is.na(.data$FDR_local_exploratory) ~ NA,
-          TRUE ~ .data$FDR_local_exploratory <= 0.05
+          is.na(.data$tier_specific_fdr) ~ NA,
+          TRUE ~ .data$tier_specific_fdr <= 0.05
         ),
         q_local_le_0_10 = dplyr::case_when(
-          is.na(.data$FDR_local_exploratory) ~ NA,
-          TRUE ~ .data$FDR_local_exploratory <= 0.10
+          is.na(.data$tier_specific_fdr) ~ NA,
+          TRUE ~ .data$tier_specific_fdr <= 0.10
         ),
         q_local_le_0_25 = dplyr::case_when(
-          is.na(.data$FDR_local_exploratory) ~ NA,
-          TRUE ~ .data$FDR_local_exploratory <= 0.25
+          is.na(.data$tier_specific_fdr) ~ NA,
+          TRUE ~ .data$tier_specific_fdr <= 0.25
         ),
         standardized_effect_display = pmax(
           -LOCAL_EFFECT_DISPLAY_LIMIT,
@@ -2660,7 +2647,7 @@ build_heatmap_sources <- function(datasets, segments, selected_audit) {
           abs(.data$standardized_effect_unclipped) >
             LOCAL_EFFECT_DISPLAY_LIMIT,
         standardization_scope = dplyr::if_else(
-          .data$source_claim_entity_role == "compatibility_alias",
+          .data$display_is_compatibility_alias %in% TRUE,
           paste(
             "Inherited canonical module response subset:",
             "dataset + module + canonical_claim_entity_id + spatial_unit;",
@@ -2679,7 +2666,7 @@ build_heatmap_sources <- function(datasets, segments, selected_audit) {
         figure_interpretation_guard =
           LOCAL_EFFECT_INTERPRETATION_GUARD,
         alias_boundary_style = dplyr::if_else(
-          .data$source_claim_entity_role == "compatibility_alias",
+          .data$display_is_compatibility_alias %in% TRUE,
           "dashed_outer_boundary_inherited_non_independent",
           "solid_outer_boundary_independent_multi_module"
         )
@@ -2704,10 +2691,11 @@ build_heatmap_sources <- function(datasets, segments, selected_audit) {
   }
   alias_rows <- supermodule |>
     dplyr::filter(
-      .data$source_claim_entity_role == "compatibility_alias"
+      .data$display_is_compatibility_alias %in% TRUE
     ) |>
     dplyr::select(
-      "dataset", "canonical_claim_entity_id", "spatial_unit", "contrast",
+      "dataset", canonical_claim_entity_id = "source_entity_id",
+      "spatial_unit", "contrast",
       alias_estimate = "estimate", alias_SE = "SE",
       alias_CI_low = "CI_low", alias_CI_high = "CI_high",
       alias_p_value = "p_value", alias_response_SD = "response_SD"
@@ -2932,8 +2920,6 @@ build_publication_heatmap_source <- function(datasets, analysis = "primary_all_r
         p_value = as_num(dplyr::coalesce(.data$p.value, .data$p_nominal)),
         p_adj_within_model_BH = as_num(.data$p_adj_within_model_BH),
         p_adj_global_BH = as_num(.data$p_adj_global_BH),
-        FDR_global = as_num(.data$p_adj_global_BH),
-        FDR_within_dataset_level = as_num(.data$p_adj_within_model_BH),
         evidence_status = .data$evidence_status,
         support_class = .data$support_class,
         selected_or_priority_flag = TRUE,
@@ -3418,7 +3404,7 @@ build_source_lineage_audit <- function(datasets, heatmap_source_supermodule, hea
       source_summary_row(
         ds, "circular_supermodule_source", out_heatmap_source_supermodule,
         heatmap_source_supermodule |> dplyr::filter(.data$dataset == ds),
-        "standardized_effect_unclipped", "analysis_tier", "tier_specific_fdr", "FDR_local_exploratory <= 0.05 or <= 0.10 for independent stable local rows",
+        "standardized_effect_unclipped", "analysis_tier", "tier_specific_fdr", "tier_specific_fdr <= 0.05 or <= 0.10 for claim-eligible local rows",
         paste(
           "Stage 05 estimate divided by the SD of the exact animal-spatial",
           "eigengene response subset; display colour squished only at +/-2.5 SD."
@@ -3427,9 +3413,9 @@ build_source_lineage_audit <- function(datasets, heatmap_source_supermodule, hea
       source_summary_row(
         ds, "circular_module_source", out_heatmap_source_module,
         heatmap_source_module |> dplyr::filter(.data$dataset == ds),
-        "estimate plus standardized_effect_unclipped", "analysis_tier", "tier_specific_fdr", "FDR_local_exploratory <= 0.05 or <= 0.10 for independent stable local rows",
+        "estimate plus standardized_effect_unclipped", "analysis_tier", "tier_specific_fdr", "tier_specific_fdr <= 0.05 or <= 0.10 for claim-eligible local rows",
         paste(
-          "Module source retains raw Stage 05 statistics and exact-subset",
+          "Module source retains handoff statistics and exact-subset",
           "standardized effects; module-to-supermodule mapping audited separately."
         )
       ),
@@ -3452,16 +3438,10 @@ build_source_lineage_audit <- function(datasets, heatmap_source_supermodule, hea
         "Source data written by 06_modules_WGCNA/08_wgcna_score_publication_summary.R."
       ),
       source_summary_row(
-        ds, "group_effects_supermodule_source", paths$supermodule_group_effects,
-        read_csv_quiet(paths$supermodule_group_effects),
-        "estimate", "analysis_tier", "tier-specific Stage 05 FDR fields", "Stage 05 statistical_support_status and tier-specific FDR family",
-        "Stage 05 source for the group-effect circular heatmap; legacy broad FDR columns are provenance only."
-      ),
-      source_summary_row(
-        ds, "group_effects_module_source", path_results("tables", "06_modules_WGCNA", "group_effects", ds, "module_group_effects.csv"),
-        read_csv_quiet(path_results("tables", "06_modules_WGCNA", "group_effects", ds, "module_group_effects.csv")),
-        "estimate", "analysis_tier", "tier-specific Stage 05 FDR fields", "Stage 05 statistical_support_status and tier-specific FDR family",
-        "Stage 05 source for the rectangular module heatmap; legacy broad FDR columns are provenance only."
+        ds, "inferential_handoff_source", paths$inferential_handoff,
+        read_inferential_handoff(paths$inferential_handoff),
+        "estimate", "analysis_tier", "tier_specific_fdr", "claim_gate plus tier-specific FDR family",
+        "Sole claim-facing source for module and supermodule inferential heatmap rows; source_artifact and source_key trace each row to Stage 05."
       )
     )
   })
@@ -3481,7 +3461,12 @@ build_supermodule_id_comparison <- function(datasets, heatmap_source_supermodule
     paths <- dataset_source_paths(ds)
     pub_source <- read_csv_quiet(score_paths$publication_heatmap_source)
     score_source <- read_csv_quiet(score_paths$supermodule_directional_effects)
-    group_source <- read_csv_quiet(paths$supermodule_group_effects)
+    handoff <- read_inferential_handoff(paths$inferential_handoff)
+    group_source <- if (is.null(handoff) || !nrow(handoff)) handoff else
+      wgcna_inferential_handoff_supermodule_display(
+        handoff,
+        circular_display_lookup(read_csv_quiet(paths$final_label_lookup))
+      )
     lookup <- canonical_supermodule_labels_local(ds)
     circular <- heatmap_source_supermodule |> dplyr::filter(.data$dataset == ds)
     pub_ids <- union(ids_from(pub_source, c("Module")), ids_from(score_source, c("Module")))
@@ -3507,13 +3492,13 @@ build_supermodule_id_comparison <- function(datasets, heatmap_source_supermodule
       dplyr::mutate(
         in_publication_score_heatmap = .data$supermodule_id %in% pub_ids,
         in_circular_supermodule_source = .data$supermodule_id %in% circular_ids,
-        in_group_effects_supermodule_source = .data$supermodule_id %in% group_ids,
+        in_inferential_handoff_source = .data$supermodule_id %in% group_ids,
         in_final_label_lookup = .data$supermodule_id %in% lookup_ids,
         mismatch_reason = dplyr::case_when(
           !.data$in_publication_score_heatmap & .data$in_circular_supermodule_source ~ "present_only_in_group_effect_circular_source",
           .data$in_publication_score_heatmap & !.data$in_circular_supermodule_source ~ "present_only_in_publication_score_source",
           .data$in_publication_score_heatmap & !.data$in_final_label_lookup ~ "publication_id_missing_from_final_label_lookup",
-          .data$in_circular_supermodule_source & !.data$in_group_effects_supermodule_source ~ "circular_id_missing_from_group_effects",
+          .data$in_circular_supermodule_source & !.data$in_inferential_handoff_source ~ "circular_id_missing_from_inferential_handoff",
           TRUE ~ "matched_or_not_applicable"
         )
       )
@@ -3522,7 +3507,7 @@ build_supermodule_id_comparison <- function(datasets, heatmap_source_supermodule
     dplyr::select(
       "dataset", "supermodule_id",
       "in_publication_score_heatmap", "in_circular_supermodule_source",
-      "in_group_effects_supermodule_source", "in_final_label_lookup",
+      "in_inferential_handoff_source", "in_final_label_lookup",
       "publication_label", "circular_label", "mismatch_reason"
     )
 }
@@ -3546,7 +3531,7 @@ build_metric_consistency_audit <- function(heatmap_source_supermodule, publicati
     comparable_to_publication_heatmap = c(FALSE, FALSE, TRUE, TRUE, TRUE),
     notes = c(
       "Local circular heatmap uses Stage 05 estimates divided by exact animal-spatial response-subset SD; it is not labelled Cohen's d.",
-      "Local circular support markers use only FDR_local_exploratory; broad legacy and interaction/global FDR columns are provenance only.",
+      "Local circular support markers use only the Stage 07 tier-specific FDR and recorded family.",
       "Publication-matched circular source uses module_score/<dataset>/wgcna/supermodule_directional_effects.csv.",
       "Publication-matched markers use within_BH_significant/p_adj_within_model_BH <= 0.05.",
       "Use the publication-matched filenames for manuscript comparison against 08_wgcna_score_publication_summary.R."
@@ -4404,7 +4389,7 @@ if (run$dry_run) {
   dry_run_line("Supermodule callout source output", out_supermodule_callout_source)
   dry_run_line("Supermodule callout SVG output", out_supermodule_callout_svg)
   dry_run_line("Supermodule callout PDF output", out_supermodule_callout_pdf)
-  dry_run_line("Circular heatmap geometry", "Custom polar tile renderer; top contrast labels anchored at theta=90 degrees; separate inner layer and region rings; group-effect support markers use Stage 05 tier-specific FDR only")
+  dry_run_line("Circular heatmap geometry", "Custom polar tile renderer; top contrast labels anchored at theta=90 degrees; separate inner layer and region rings; group-effect support markers use the Stage 07 handoff tier-specific FDR only")
   for (ds_name in names(heatmap_svg_paths)) {
     dry_run_line(paste0("Circular heatmap SVG output (", ds_name, ")"), heatmap_svg_paths[[ds_name]])
     dry_run_line(paste0("Circular heatmap PDF output (", ds_name, ")"), heatmap_pdf_paths[[ds_name]])
@@ -4508,6 +4493,9 @@ segments <- segments |>
     "model_stability_status",
     "source_claim_entity_role",
     "result_scope",
+    "claim_gate",
+    "source_artifact",
+    "source_key",
     "segment_cleaned_label",
     "segment_broad_program_class",
     "global_evidence_status",
@@ -4546,8 +4534,6 @@ segments <- segments |>
     "tier_specific_fdr_segments",
     "tier_specific_family_id_segments",
     "tier_specific_family_size_segments",
-    "FDR_global_segments",
-    "FDR_within_dataset_level_segments",
     "evidence_status_segments",
     "present_in_selected_table"
   )
@@ -4630,7 +4616,7 @@ metrics <- tibble::tibble(
     "SUS-RES pair; SUS-CON pair; RES-CON pair, preserving source contrast orientation",
     "Prefer robust_FDR, suggestive_FDR10, nominal_only; add major broad-program representatives; label unsupported-only selections as representatives",
     "No high-confidence cross-compartment links passed filters.",
-    "Global/local/interaction evidence summaries use the copied Stage 05 tier_specific_fdr selected by analysis_tier; legacy broad FDR columns are provenance only and no p-values or FDRs are recomputed."
+    "Global/local/interaction evidence summaries use only the Stage 07 handoff tier_specific_fdr, recorded family, and claim gate; no p-values or FDRs are recomputed."
   )
 )
 
@@ -4808,14 +4794,12 @@ write_run_manifest(
       "thin inner layer annotation ring",
       "thin inner region annotation ring",
       "three contrast rings: RES-CON, SUS-CON, SUS-RES",
-      "local-cell markers use FDR_local_exploratory only",
+      "local-cell markers use tier_specific_fdr and its recorded family",
       "outer global supermodule marker positions: RES-CON, SUS-CON, SUS-RES",
-      "global RES-CON and SUS-CON markers use FDR_secondary_global",
-      "global SUS-RES markers use FDR_primary_global"
+      "global markers use tier_specific_fdr and claim_gate"
     ),
     circular_heatmap_inputs = c(
-      "results/tables/06_modules_WGCNA/group_effects/<dataset>/supermodule_group_effects.csv",
-      "results/tables/06_modules_WGCNA/group_effects/<dataset>/module_group_effects.csv",
+      "results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_inferential_handoff.csv",
       "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_module_supermodule_annotation.csv",
       "results/tables/06_modules_WGCNA/module_score/<dataset>/wgcna/supermodule_directional_effects.csv",
       "results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_final_label_lookup.csv"

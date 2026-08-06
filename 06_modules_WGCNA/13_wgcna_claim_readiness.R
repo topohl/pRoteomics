@@ -14,6 +14,8 @@ source(repo_path("R", "wgcna_downstream_utils.R"))
 source(repo_path("R", "wgcna_labeling_utils.R"))
 source(repo_path("R", "wgcna_reviewed_label_registry.R"))
 source(repo_path("R", "schema_validation.R"))
+source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
+source(repo_path("R", "wgcna_stage07_semantic_utils.R"))
 
 required_pkgs <- c("dplyr", "readr", "tibble", "yaml")
 missing_pkgs <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
@@ -28,8 +30,7 @@ FILES <- resolve_wgcna_files(DATASET)
 TABLE_DIR <- path_results("tables", "06_modules_WGCNA")
 AUDIT_DIR <- path_results("reviewer_audit", "microglia_wgcna_nature_readiness")
 inputs <- list(
-  stage05_module = file.path(TABLE_DIR, "group_effects", DATASET, "module_group_effects.csv"),
-  stage05_supermodule = file.path(TABLE_DIR, "group_effects", DATASET, "supermodule_group_effects.csv"),
+  stage07_handoff = file.path(TABLE_DIR, "interpretable_summary", DATASET, "WGCNA_inferential_handoff.csv"),
   stage06_module = file.path(TABLE_DIR, "module_annotation", DATASET, "WGCNA_module_biological_annotation.csv"),
   stage06_supermodule = file.path(TABLE_DIR, "module_annotation", DATASET, "WGCNA_supermodule_biological_annotation.csv"),
   stage07_lookup = file.path(TABLE_DIR, "interpretable_summary", DATASET, "WGCNA_final_label_lookup.csv"),
@@ -40,14 +41,20 @@ inputs <- list(
   stage01_supermodule_annotation = FILES$supermodule_annotation
 )
 if (run$dry_run) {
-  required_names <- c("stage05_module", "stage05_supermodule", "stage06_module", "stage06_supermodule", "stage07_lookup", "stage12_modules", "stage12_blocks", "stage01_supermodule_annotation")
+  required_names <- c("stage07_handoff", "stage06_module", "stage06_supermodule", "stage07_lookup", "stage12_modules", "stage12_blocks", "stage01_supermodule_annotation")
   for (nm in required_names) dry_run_line(nm, inputs[[nm]], if (file.exists(inputs[[nm]])) "PASS" else "FAIL")
   for (nm in c("stage09_neuropil", "stage11_robustness")) dry_run_line(paste0(nm, " (optional)"), inputs[[nm]], if (file.exists(inputs[[nm]])) "PASS" else "INFO")
   dry_run_line("Table output", file.path(OUT$tables, "WGCNA_entity_claim_readiness.csv"))
   dry_run_line("Source-data output", file.path(OUT$source_data, "WGCNA_entity_claim_readiness_source.csv"))
-  quit(status = 0)
+  required_ready <- all(file.exists(unlist(inputs[required_names], use.names = FALSE)))
+  dry_run_line(
+    "Status",
+    if (required_ready) "ready" else "missing_required_input",
+    if (required_ready) "PASS" else "FAIL"
+  )
+  quit(status = if (required_ready) 0 else 1)
 }
-required <- unlist(inputs[c("stage05_module", "stage05_supermodule", "stage06_module", "stage06_supermodule", "stage07_lookup", "stage12_modules", "stage12_blocks", "stage01_supermodule_annotation")], use.names = FALSE)
+required <- unlist(inputs[c("stage07_handoff", "stage06_module", "stage06_supermodule", "stage07_lookup", "stage12_modules", "stage12_blocks", "stage01_supermodule_annotation")], use.names = FALSE)
 if (any(!file.exists(required))) stop("Required claim-readiness inputs missing: ", paste(required[!file.exists(required)], collapse = ", "), call. = FALSE)
 read_csv <- function(path) readr::read_csv(path, show_col_types = FALSE, progress = FALSE)
 repo_relative_path <- function(path) {
@@ -119,15 +126,47 @@ context_from <- function(path, level, ids) {
 }
 context <- dplyr::bind_rows(context_from(inputs$stage06_module, "module", module_ready$entity_id), context_from(inputs$stage06_supermodule, "supermodule", super_ready$entity_id))
 
-effect_from <- function(path, level, id_col, expected_ids) {
-  selected <- read_csv(path) |>
+handoff <- read_csv(inputs$stage07_handoff)
+validate_table_schema(
+  handoff, "wgcna_inferential_handoff", strict = FALSE
+)
+required_handoff_columns <- c(
+  "dataset", "entity_level", "entity_id", "contrast", "analysis_tier",
+  "effect_scope", "spatial_unit", "estimate", "SE", "CI_low", "CI_high",
+  "p_value", "tier_specific_fdr", "tier_specific_family_id",
+  "tier_specific_family_size", "model_valid", "model_stability_status",
+  "biological_n", "support_class", "claim_gate", "result_scope",
+  "independent_hypothesis", "claim_entity_role", "test_type",
+  "formula_used", "model_type", "n_samples_total",
+  "biological_replicate_unit"
+)
+if (length(setdiff(required_handoff_columns, names(handoff)))) {
+  stop(
+    "Stage 07 inferential handoff is missing required field(s): ",
+    paste(setdiff(required_handoff_columns, names(handoff)), collapse = ", "),
+    call. = FALSE
+  )
+}
+if (any(!handoff$independent_hypothesis %in% TRUE) ||
+    any(handoff$claim_entity_role == "compatibility_alias") ||
+    any(handoff$test_type == "conditional_interaction_followup")) {
+  stop("Stage 07 inferential handoff contains a non-independent row.", call. = FALSE)
+}
+wgcna_stage07_validate_inferential_handoff(
+  handoff, "WGCNA_inferential_handoff.csv"
+)
+
+effect_from <- function(level, expected_ids) {
+  selected <- handoff |>
     dplyr::filter(
       .data$dataset == DATASET,
+      .data$entity_level == level,
+      .data$analysis_tier == "primary_wgcna_global",
       .data$contrast == "SUS - RES",
       .data$effect_scope == "spatial_adjusted_global",
       .data$spatial_unit == "global_spatial_adjusted"
     )
-  selected_ids <- as.character(selected[[id_col]])
+  selected_ids <- as.character(selected$entity_id)
   id_counts <- table(selected_ids)
   if (nrow(selected) != length(expected_ids) || !setequal(selected_ids, expected_ids) ||
       any(id_counts != 1L)) {
@@ -137,37 +176,54 @@ effect_from <- function(path, level, id_col, expected_ids) {
       call. = FALSE
     )
   }
-  source_file <- repo_relative_path(path)
+  source_file <- repo_relative_path(inputs$stage07_handoff)
   selected |>
     dplyr::transmute(
       level = level,
-      entity_id = as.character(.data[[id_col]]),
+      entity_id = as.character(.data$entity_id),
       selected_contrast = as.character(.data$contrast),
       selected_effect_scope = as.character(.data$effect_scope),
       selected_spatial_unit = as.character(.data$spatial_unit),
+      group_effect_analysis_tier = as.character(.data$analysis_tier),
+      group_effect_result_scope = as.character(.data$result_scope),
       group_effect_estimate = suppressWarnings(as.numeric(.data$estimate)),
       group_effect_SE = suppressWarnings(as.numeric(.data$SE)),
-      group_effect_CI_low = .data$group_effect_estimate - 1.96 * .data$group_effect_SE,
-      group_effect_CI_high = .data$group_effect_estimate + 1.96 * .data$group_effect_SE,
+      group_effect_CI_low = suppressWarnings(as.numeric(.data$CI_low)),
+      group_effect_CI_high = suppressWarnings(as.numeric(.data$CI_high)),
       group_effect_p_value = suppressWarnings(as.numeric(.data$p_value)),
-      group_effect_FDR_within_dataset_level = suppressWarnings(as.numeric(.data$FDR_within_dataset_level)),
-      group_effect_FDR_global = suppressWarnings(as.numeric(.data$FDR_global)),
-      group_effect_FDR = .data$group_effect_FDR_global,
-      group_effect_adjustment_scope = "BH across combined current module and supermodule Stage 05 effect rows",
-      group_effect_evidence_status = as.character(.data$evidence_status),
+      group_effect_tier_specific_fdr = suppressWarnings(as.numeric(.data$tier_specific_fdr)),
+      group_effect_tier_specific_family_id = as.character(.data$tier_specific_family_id),
+      group_effect_tier_specific_family_size = suppressWarnings(as.integer(.data$tier_specific_family_size)),
+      group_effect_adjustment_scope = as.character(.data$tier_specific_family_id),
+      group_effect_evidence_status = as.character(.data$support_class),
       group_effect_model_formula = as.character(.data$formula_used),
       group_effect_model_type = as.character(.data$model_type),
-      group_effect_n_animals = suppressWarnings(as.integer(.data$n_animals_total)),
+      group_effect_n_animals = suppressWarnings(as.integer(.data$biological_n)),
       group_effect_n_samples = suppressWarnings(as.integer(.data$n_samples_total)),
       group_effect_biological_replicate_unit = as.character(.data$biological_replicate_unit),
       group_effect_source_file = source_file,
-      group_effect_source_key = paste(.data$dataset, level, .data[[id_col]], .data$contrast, .data$effect_scope, .data$spatial_unit, sep = "|"),
-      model_stability = dplyr::if_else(.data$primary_model_stable %in% TRUE & !(.data$singular_model %in% TRUE), "stable", "singular_or_unstable_diagnostic_only")
+      group_effect_source_key = paste0(
+        "dataset=", .data$dataset,
+        "|level=", .data$level,
+        "|endpoint_id=", .data$endpoint_id,
+        "|effect_scope=", .data$effect_scope,
+        "|spatial_unit=", .data$spatial_unit,
+        "|contrast=", .data$contrast,
+        "|test_type=", .data$test_type
+      ),
+      model_stability = dplyr::if_else(
+        .data$model_valid %in% TRUE &
+          .data$claim_gate == "eligible_for_readiness_assessment",
+        "stable", "singular_or_unstable_diagnostic_only"
+      )
     )
 }
 effects <- dplyr::bind_rows(
-  effect_from(inputs$stage05_module, "module", "module_id", module_ready$entity_id),
-  effect_from(inputs$stage05_supermodule, "supermodule", "supermodule_id", super_ready$entity_id)
+  effect_from("module", module_ready$entity_id),
+  effect_from(
+    "supermodule",
+    super_members$SupermoduleID[super_members$n_member_modules >= 2L]
+  )
 )
 neuropil <- if (file.exists(inputs$stage09_neuropil)) {
   x <- read_csv(inputs$stage09_neuropil)
@@ -190,7 +246,14 @@ out <- lookup |>
   dplyr::left_join(effects, by = c("level", "entity_id"), relationship = "many-to-one") |>
   dplyr::mutate(
     neuropil_independence_status = dplyr::if_else(.data$level == "supermodule", "not_available_supermodule_compatibility_identity", dplyr::coalesce(.data$neuropil_independence_status, "not_available")),
-    group_effect_status = dplyr::case_when(.data$model_stability != "stable" ~ "diagnostic_only_model", is.finite(.data$group_effect_FDR_global) & .data$group_effect_FDR_global <= .05 ~ "FDR_supported", is.finite(.data$group_effect_FDR_global) ~ "not_FDR_supported", TRUE ~ "not_available"),
+    group_effect_status = dplyr::case_when(
+      .data$claim_entity_role == "compatibility_alias" ~ "not_available",
+      .data$model_stability != "stable" ~ "diagnostic_only_model",
+      is.finite(.data$group_effect_tier_specific_fdr) &
+        .data$group_effect_tier_specific_fdr <= .05 ~ "FDR_supported",
+      is.finite(.data$group_effect_tier_specific_fdr) ~ "not_FDR_supported",
+      TRUE ~ "not_available"
+    ),
     separate_manuscript_claim_allowed = dplyr::case_when(
       .data$claim_entity_role == "compatibility_alias" ~ FALSE,
       .data$claim_entity_role == "higher_order_block" ~ .data$primary_architecture_status %in% c("robust_spatially_independent_block", "reproducible_spatially_organized_block"),
@@ -211,7 +274,7 @@ out <- lookup |>
     ),
     readiness_contract_version = "microglia_wgcna_claim_readiness_v2"
   ) |>
-  dplyr::select(dataset, level, entity_id, canonical_claim_entity_id, claim_entity_role, separate_manuscript_claim_allowed, compatibility_target_level, compatibility_target_entity_id, canonical_biological_label, canonical_short_label, structural_status, primary_architecture_status, spatial_dependence_class, animal_stability_status, strict_nonspatial_sensitivity_status, conventional_preservation_status, conventional_preservation_claim_gate_eligible, biological_process_confidence, context_assignment_class, context_assignment_confidence, neuropil_independence_status, selected_contrast, selected_effect_scope, selected_spatial_unit, group_effect_estimate, group_effect_SE, group_effect_CI_low, group_effect_CI_high, group_effect_p_value, group_effect_FDR_within_dataset_level, group_effect_FDR_global, group_effect_FDR, group_effect_adjustment_scope, group_effect_evidence_status, group_effect_status, group_effect_model_formula, group_effect_model_type, group_effect_n_animals, group_effect_n_samples, group_effect_biological_replicate_unit, group_effect_source_file, group_effect_source_key, model_stability, allowed_claim_scope, prohibited_claim_scope, manuscript_placement, allowed_wording, readiness_contract_version) |>
+    dplyr::select(dataset, level, entity_id, canonical_claim_entity_id, claim_entity_role, separate_manuscript_claim_allowed, compatibility_target_level, compatibility_target_entity_id, canonical_biological_label, canonical_short_label, structural_status, primary_architecture_status, spatial_dependence_class, animal_stability_status, strict_nonspatial_sensitivity_status, conventional_preservation_status, conventional_preservation_claim_gate_eligible, biological_process_confidence, context_assignment_class, context_assignment_confidence, neuropil_independence_status, selected_contrast, selected_effect_scope, selected_spatial_unit, group_effect_analysis_tier, group_effect_result_scope, group_effect_estimate, group_effect_SE, group_effect_CI_low, group_effect_CI_high, group_effect_p_value, group_effect_tier_specific_fdr, group_effect_tier_specific_family_id, group_effect_tier_specific_family_size, group_effect_adjustment_scope, group_effect_evidence_status, group_effect_status, group_effect_model_formula, group_effect_model_type, group_effect_n_animals, group_effect_n_samples, group_effect_biological_replicate_unit, group_effect_source_file, group_effect_source_key, model_stability, allowed_claim_scope, prohibited_claim_scope, manuscript_placement, allowed_wording, readiness_contract_version) |>
   dplyr::arrange(factor(.data$level, levels = c("module", "supermodule")), .data$entity_id)
 if (nrow(out) != 22L || anyDuplicated(out[c("dataset", "level", "entity_id")])) stop("Claim-readiness join did not yield exactly one row per 22 stable identities.", call. = FALSE)
 if (any(!out$entity_id %in% c(sprintf("WGCNA_m%02d", 1:13), sprintf("SM%02d", 1:9)))) stop("Claim-readiness table contains stale IDs.", call. = FALSE)
@@ -226,9 +289,15 @@ if (nrow(aliases) != 6L || any(aliases$separate_manuscript_claim_allowed) ||
 claimable_blocks <- out$entity_id[out$claim_entity_role == "higher_order_block" & out$separate_manuscript_claim_allowed]
 if (!identical(claimable_blocks, "SM09")) stop("SM09 must be the only separately claimable higher-order block.", call. = FALSE)
 if (anyDuplicated(out$canonical_claim_entity_id[out$separate_manuscript_claim_allowed])) stop("Canonical claim entities are duplicated among independently claimable rows.", call. = FALSE)
-if (!isTRUE(all.equal(out$group_effect_FDR, out$group_effect_FDR_global, check.attributes = FALSE))) stop("group_effect_FDR must remain an exact compatibility alias for FDR_global.", call. = FALSE)
+if (any(
+  !is.na(aliases$group_effect_tier_specific_fdr) |
+    !is.na(aliases$group_effect_tier_specific_family_id) |
+    !is.na(aliases$group_effect_tier_specific_family_size)
+)) {
+  stop("Compatibility aliases must not carry independent FDR metadata.", call. = FALSE)
+}
 validate_table_schema(out, "wgcna_entity_claim_readiness", strict = TRUE)
 readr::write_csv(out, file.path(OUT$tables, "WGCNA_entity_claim_readiness.csv"), na = "")
 readr::write_csv(out, file.path(OUT$source_data, "WGCNA_entity_claim_readiness_source.csv"), na = "")
-write_run_manifest(file.path(OUT$logs, "run_manifest.yml"), inputs = inputs, outputs = list(claim_readiness = file.path(OUT$tables, "WGCNA_entity_claim_readiness.csv"), claim_readiness_source = file.path(OUT$source_data, "WGCNA_entity_claim_readiness_source.csv")), parameters = list(dataset = DATASET, readiness_contract_version = "microglia_wgcna_claim_readiness_v2", selected_endpoint = "SUS - RES | spatial_adjusted_global | global_spatial_adjusted", FDR_claim_status_source = "FDR_global"), notes = "Non-circular manuscript handoff. Singleton supermodule IDs are compatibility aliases, not separate claims. Stages 05-07 and 12 do not read this output.")
+write_run_manifest(file.path(OUT$logs, "run_manifest.yml"), inputs = inputs, outputs = list(claim_readiness = file.path(OUT$tables, "WGCNA_entity_claim_readiness.csv"), claim_readiness_source = file.path(OUT$source_data, "WGCNA_entity_claim_readiness_source.csv")), parameters = list(dataset = DATASET, readiness_contract_version = "microglia_wgcna_claim_readiness_v2", selected_endpoint = "SUS - RES | spatial_adjusted_global | global_spatial_adjusted", FDR_claim_status_source = "tier_specific_fdr via WGCNA_inferential_handoff.csv"), notes = "Non-circular manuscript handoff. Singleton supermodule IDs are compatibility aliases, not separate claims. Stages 05-07 and 12 do not read this output.")
 message("Microglia WGCNA claim-readiness handoff complete.")

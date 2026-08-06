@@ -6,6 +6,8 @@ if (!exists("repo_path", mode = "function")) {
 }
 source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "wgcna_claim_readiness_utils.R"))
+source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
+source(repo_path("R", "wgcna_stage07_semantic_utils.R"))
 
 `%||%` <- function(x, y) {
   if (is.null(x) || length(x) == 0L) y else x
@@ -86,18 +88,20 @@ read_all_dataset_tables <- function(path_fun) {
   dplyr::bind_rows(pieces)
 }
 
-validated_neuronal_wgcna_key_row <- function(fdr_global, claim_allowed_model, primary_model_stable,
-                                              fallback_used, model_type, evidence_status, model_warning) {
-  fdr <- suppressWarnings(as.numeric(fdr_global))
-  claim_allowed <- as.logical(claim_allowed_model)
-  primary_stable <- as.logical(primary_model_stable)
-  fallback_used <- as.logical(fallback_used)
+validated_neuronal_wgcna_key_row <- function(
+    tier_specific_fdr, claim_gate, model_stability_status,
+    model_type, support_class, model_warning
+) {
+  fdr <- suppressWarnings(as.numeric(tier_specific_fdr))
+  claim_gate <- as.character(claim_gate)
+  model_stability <- as.character(model_stability_status)
   model_text <- tolower(paste(
-    as.character(model_type), as.character(evidence_status), as.character(model_warning)
+    as.character(model_type), as.character(support_class),
+    as.character(model_warning)
   ))
   !is.na(fdr) & fdr <= 0.10 &
-    claim_allowed %in% TRUE & primary_stable %in% TRUE &
-    !(fallback_used %in% TRUE) &
+    claim_gate == "eligible_for_readiness_assessment" &
+    !grepl("diagnostic|unstable|failed", model_stability) &
     !grepl("fallback|diagnostic|model_unstable", model_text)
 }
 
@@ -109,7 +113,7 @@ append_no_validated_neuronal_key_status <- function(df) {
   status <- data.frame(
     dataset = missing,
     status = "no_validated_neuronal_wgcna_key_rows",
-    reason = "neuronal readiness contract unavailable and all current Stage 05 models are claim-ineligible",
+    reason = "neuronal readiness contract unavailable and all current Stage 07 inferential rows are claim-ineligible",
     stringsAsFactors = FALSE
   )
   dplyr::bind_rows(df, add_dataset_terminology(status))
@@ -117,11 +121,26 @@ append_no_validated_neuronal_key_status <- function(df) {
 
 build_wgcna_key_modules <- function() {
   modules <- read_all_dataset_tables(function(ds) {
-    path_results("tables", "06_modules_WGCNA", "interpretable_summary", ds, "WGCNA_module_group_effects_interpretable.csv")
+    path_results(
+      "tables", "06_modules_WGCNA", "interpretable_summary", ds,
+      "WGCNA_inferential_handoff.csv"
+    )
   })
   if (is.null(modules) || !nrow(modules)) {
-    return(empty_bundle_table("WGCNA module interpretable summaries were not available."))
+    return(empty_bundle_table("WGCNA inferential handoffs were not available."))
   }
+  wgcna_stage07_validate_inferential_handoff(
+    modules, "combined module inferential handoffs"
+  )
+  modules <- modules |>
+    dplyr::filter(
+      .data$entity_level == "module",
+      .data$analysis_tier == "primary_wgcna_global",
+      .data$contrast == "SUS - RES",
+      .data$result_scope == "primary_global_vulnerability"
+    )
+  if (!"module_id" %in% names(modules)) modules$module_id <- NA_character_
+  if (!"ModuleID" %in% names(modules)) modules$ModuleID <- NA_character_
   micro_independence <- read_final_csv(path_results("tables", "06_modules_WGCNA", "microglia_neuropil_independence", "microglia", "microglia_module_neuropil_independence_classification.csv"))
   if (!is.null(micro_independence) && nrow(micro_independence)) {
     if (!"module_id" %in% names(micro_independence)) micro_independence$module_id <- NA_character_
@@ -145,41 +164,66 @@ build_wgcna_key_modules <- function() {
       ) |>
       dplyr::select(-"module_join_id")
   }
-  for (col in c("FDR_global", "FDR_within_dataset_level", "targeted_signature_driver_padj", "estimate")) {
+  for (col in c("tier_specific_fdr", "targeted_signature_driver_padj", "estimate")) {
     if (!col %in% names(modules)) modules[[col]] <- NA_real_
     modules[[col]] <- suppressWarnings(as.numeric(modules[[col]]))
   }
-  for (col in c("claim_allowed_model", "primary_model_stable", "fallback_used")) {
-    if (!col %in% names(modules)) modules[[col]] <- FALSE
+  if (!"claim_gate" %in% names(modules)) {
+    modules$claim_gate <- "not_claim_allowed_model"
   }
-  for (col in c("model_type", "evidence_status", "model_warning")) {
+  for (col in c("model_type", "support_class", "model_warning", "model_stability_status")) {
     if (!col %in% names(modules)) modules[[col]] <- NA_character_
+  }
+  for (col in c(
+    "canonical_claim_entity_id", "claim_entity_role",
+    "primary_architecture_status", "spatial_dependence_class",
+    "animal_stability_status", "group_effect_status",
+    "allowed_claim_scope", "prohibited_claim_scope",
+    "readiness_contract_version"
+  )) {
+    if (!col %in% names(modules)) modules[[col]] <- NA_character_
+  }
+  if (!"separate_manuscript_claim_allowed" %in% names(modules)) {
+    modules$separate_manuscript_claim_allowed <- NA
   }
   contract <- load_microglia_wgcna_claim_readiness()
   stage13_modules <- contract$canonical_modules |>
     dplyr::transmute(
       dataset = as.character(.data$dataset),
       stage13_module_id = as.character(.data$entity_id),
-      canonical_claim_entity_id = as.character(.data$canonical_claim_entity_id),
-      claim_entity_role = as.character(.data$claim_entity_role),
-      separate_manuscript_claim_allowed = as.logical(.data$separate_manuscript_claim_allowed),
-      primary_architecture_status = as.character(.data$primary_architecture_status),
-      spatial_dependence_class = as.character(.data$spatial_dependence_class),
-      animal_stability_status = as.character(.data$animal_stability_status),
-      group_effect_status = as.character(.data$group_effect_status),
-      allowed_claim_scope = as.character(.data$allowed_claim_scope),
-      prohibited_claim_scope = as.character(.data$prohibited_claim_scope),
-      readiness_contract_version = as.character(.data$readiness_contract_version),
+      stage13_canonical_claim_entity_id = as.character(.data$canonical_claim_entity_id),
+      stage13_claim_entity_role = as.character(.data$claim_entity_role),
+      stage13_separate_manuscript_claim_allowed = as.logical(.data$separate_manuscript_claim_allowed),
+      stage13_primary_architecture_status = as.character(.data$primary_architecture_status),
+      stage13_spatial_dependence_class = as.character(.data$spatial_dependence_class),
+      stage13_animal_stability_status = as.character(.data$animal_stability_status),
+      stage13_group_effect_status = as.character(.data$group_effect_status),
+      stage13_allowed_claim_scope = as.character(.data$allowed_claim_scope),
+      stage13_prohibited_claim_scope = as.character(.data$prohibited_claim_scope),
+      stage13_readiness_contract_version = as.character(.data$readiness_contract_version),
       stage13_source_file = contract$source_path
     )
   modules <- modules |>
     dplyr::mutate(stage13_module_id = dplyr::coalesce(as.character(.data$module_id), as.character(.data$ModuleID))) |>
     dplyr::left_join(stage13_modules, by = c("dataset", "stage13_module_id"), relationship = "many-to-one") |>
+    dplyr::mutate(
+      canonical_claim_entity_id = dplyr::coalesce(.data$stage13_canonical_claim_entity_id, as.character(.data$canonical_claim_entity_id)),
+      claim_entity_role = dplyr::coalesce(.data$stage13_claim_entity_role, as.character(.data$claim_entity_role)),
+      separate_manuscript_claim_allowed = dplyr::coalesce(.data$stage13_separate_manuscript_claim_allowed, as.logical(.data$separate_manuscript_claim_allowed)),
+      primary_architecture_status = dplyr::coalesce(.data$stage13_primary_architecture_status, as.character(.data$primary_architecture_status)),
+      spatial_dependence_class = dplyr::coalesce(.data$stage13_spatial_dependence_class, as.character(.data$spatial_dependence_class)),
+      animal_stability_status = dplyr::coalesce(.data$stage13_animal_stability_status, as.character(.data$animal_stability_status)),
+      group_effect_status = dplyr::coalesce(.data$stage13_group_effect_status, as.character(.data$group_effect_status)),
+      allowed_claim_scope = dplyr::coalesce(.data$stage13_allowed_claim_scope, as.character(.data$allowed_claim_scope)),
+      prohibited_claim_scope = dplyr::coalesce(.data$stage13_prohibited_claim_scope, as.character(.data$prohibited_claim_scope)),
+      readiness_contract_version = dplyr::coalesce(.data$stage13_readiness_contract_version, as.character(.data$readiness_contract_version))
+    ) |>
     dplyr::filter(
-      (.data$dataset == "microglia" & .data$claim_entity_role == "canonical_module" & .data$separate_manuscript_claim_allowed %in% TRUE) |
+        (.data$dataset == "microglia" & .data$claim_entity_role == "canonical_module" & .data$separate_manuscript_claim_allowed %in% TRUE) |
         (.data$dataset != "microglia" & validated_neuronal_wgcna_key_row(
-          .data$FDR_global, .data$claim_allowed_model, .data$primary_model_stable,
-          .data$fallback_used, .data$model_type, .data$evidence_status, .data$model_warning
+          .data$tier_specific_fdr, .data$claim_gate,
+          .data$model_stability_status, .data$model_type,
+          .data$support_class, .data$model_warning
         ))
     ) |>
     dplyr::mutate(
@@ -190,7 +234,7 @@ build_wgcna_key_modules <- function() {
         TRUE ~ NA_character_
       )
     ) |>
-    dplyr::arrange(.data$dataset, .data$FDR_global, .data$FDR_within_dataset_level)
+    dplyr::arrange(.data$dataset, .data$tier_specific_fdr)
   cols <- c(
     "dataset", "dataset_terminology", "status", "reason", "module_id", "ModuleID", "ModuleColor",
     "canonical_claim_entity_id", "claim_entity_role", "separate_manuscript_claim_allowed",
@@ -209,8 +253,10 @@ build_wgcna_key_modules <- function() {
     "Supermodule_CompositionDisplayLabel", "Supermodule_CompositionLabel",
     "Supermodule_PlotLabel",
     "Supermodule_FullAnnotationLabel", "Supermodule_DisplayShort",
-    "supermodule_id", "contrast", "estimate", "p_value", "FDR_within_dataset_level",
-    "FDR_global", "direction", "evidence_status", "animal_level_status",
+    "supermodule_id", "contrast", "estimate", "p_value",
+    "tier_specific_fdr", "tier_specific_family_id",
+    "tier_specific_family_size", "direction", "support_class",
+    "claim_gate", "animal_level_status",
     "n_animals", "model_warning", "microenvironment_class", "microenvironment_label",
     "microenvironment_confidence", "dominant_microenvironment_class",
     "targeted_signature_primary_driver", "targeted_signature_driver_class",
@@ -235,20 +281,45 @@ build_wgcna_key_modules <- function() {
 
 build_wgcna_key_supermodules <- function() {
   supers <- read_all_dataset_tables(function(ds) {
-    path_results("tables", "06_modules_WGCNA", "interpretable_summary", ds, "WGCNA_supermodule_group_effects_interpretable.csv")
+    path_results(
+      "tables", "06_modules_WGCNA", "interpretable_summary", ds,
+      "WGCNA_inferential_handoff.csv"
+    )
   })
   if (is.null(supers) || !nrow(supers)) {
-    return(empty_bundle_table("WGCNA supermodule interpretable summaries were not available."))
+    return(empty_bundle_table("WGCNA inferential handoffs were not available."))
   }
-  for (col in c("FDR_global", "FDR_within_dataset_level", "estimate")) {
+  wgcna_stage07_validate_inferential_handoff(
+    supers, "combined supermodule inferential handoffs"
+  )
+  supers <- supers |>
+    dplyr::filter(
+      .data$entity_level == "supermodule",
+      .data$analysis_tier == "primary_wgcna_global",
+      .data$contrast == "SUS - RES",
+      .data$result_scope == "primary_global_vulnerability"
+    )
+  for (col in c("tier_specific_fdr", "estimate")) {
     if (!col %in% names(supers)) supers[[col]] <- NA_real_
     supers[[col]] <- suppressWarnings(as.numeric(supers[[col]]))
   }
-  for (col in c("claim_allowed_model", "primary_model_stable", "fallback_used")) {
-    if (!col %in% names(supers)) supers[[col]] <- FALSE
+  if (!"claim_gate" %in% names(supers)) {
+    supers$claim_gate <- "not_claim_allowed_model"
   }
-  for (col in c("model_type", "evidence_status", "model_warning")) {
+  for (col in c("model_type", "support_class", "model_warning", "model_stability_status")) {
     if (!col %in% names(supers)) supers[[col]] <- NA_character_
+  }
+  for (col in c(
+    "canonical_claim_entity_id", "claim_entity_role",
+    "primary_architecture_status", "spatial_dependence_class",
+    "animal_stability_status", "group_effect_status",
+    "allowed_claim_scope", "prohibited_claim_scope",
+    "readiness_contract_version"
+  )) {
+    if (!col %in% names(supers)) supers[[col]] <- NA_character_
+  }
+  if (!"separate_manuscript_claim_allowed" %in% names(supers)) {
+    supers$separate_manuscript_claim_allowed <- NA
   }
   contract <- load_microglia_wgcna_claim_readiness()
   stage13_supers <- contract$all |>
@@ -256,26 +327,39 @@ build_wgcna_key_supermodules <- function() {
     dplyr::transmute(
       dataset = as.character(.data$dataset),
       stage13_supermodule_id = as.character(.data$entity_id),
-      canonical_claim_entity_id = as.character(.data$canonical_claim_entity_id),
-      claim_entity_role = as.character(.data$claim_entity_role),
-      separate_manuscript_claim_allowed = as.logical(.data$separate_manuscript_claim_allowed),
-      primary_architecture_status = as.character(.data$primary_architecture_status),
-      spatial_dependence_class = as.character(.data$spatial_dependence_class),
-      animal_stability_status = as.character(.data$animal_stability_status),
-      group_effect_status = as.character(.data$group_effect_status),
-      allowed_claim_scope = as.character(.data$allowed_claim_scope),
-      prohibited_claim_scope = as.character(.data$prohibited_claim_scope),
-      readiness_contract_version = as.character(.data$readiness_contract_version),
+      stage13_canonical_claim_entity_id = as.character(.data$canonical_claim_entity_id),
+      stage13_claim_entity_role = as.character(.data$claim_entity_role),
+      stage13_separate_manuscript_claim_allowed = as.logical(.data$separate_manuscript_claim_allowed),
+      stage13_primary_architecture_status = as.character(.data$primary_architecture_status),
+      stage13_spatial_dependence_class = as.character(.data$spatial_dependence_class),
+      stage13_animal_stability_status = as.character(.data$animal_stability_status),
+      stage13_group_effect_status = as.character(.data$group_effect_status),
+      stage13_allowed_claim_scope = as.character(.data$allowed_claim_scope),
+      stage13_prohibited_claim_scope = as.character(.data$prohibited_claim_scope),
+      stage13_readiness_contract_version = as.character(.data$readiness_contract_version),
       stage13_source_file = contract$source_path
     )
   supers <- supers |>
     dplyr::mutate(stage13_supermodule_id = as.character(.data$supermodule_id)) |>
     dplyr::left_join(stage13_supers, by = c("dataset", "stage13_supermodule_id"), relationship = "many-to-one") |>
+    dplyr::mutate(
+      canonical_claim_entity_id = dplyr::coalesce(.data$stage13_canonical_claim_entity_id, as.character(.data$canonical_claim_entity_id)),
+      claim_entity_role = dplyr::coalesce(.data$stage13_claim_entity_role, as.character(.data$claim_entity_role)),
+      separate_manuscript_claim_allowed = dplyr::coalesce(.data$stage13_separate_manuscript_claim_allowed, as.logical(.data$separate_manuscript_claim_allowed)),
+      primary_architecture_status = dplyr::coalesce(.data$stage13_primary_architecture_status, as.character(.data$primary_architecture_status)),
+      spatial_dependence_class = dplyr::coalesce(.data$stage13_spatial_dependence_class, as.character(.data$spatial_dependence_class)),
+      animal_stability_status = dplyr::coalesce(.data$stage13_animal_stability_status, as.character(.data$animal_stability_status)),
+      group_effect_status = dplyr::coalesce(.data$stage13_group_effect_status, as.character(.data$group_effect_status)),
+      allowed_claim_scope = dplyr::coalesce(.data$stage13_allowed_claim_scope, as.character(.data$allowed_claim_scope)),
+      prohibited_claim_scope = dplyr::coalesce(.data$stage13_prohibited_claim_scope, as.character(.data$prohibited_claim_scope)),
+      readiness_contract_version = dplyr::coalesce(.data$stage13_readiness_contract_version, as.character(.data$readiness_contract_version))
+    ) |>
     dplyr::filter(
-      (.data$dataset == "microglia" & .data$claim_entity_role == "higher_order_block" & .data$separate_manuscript_claim_allowed %in% TRUE) |
+        (.data$dataset == "microglia" & .data$claim_entity_role == "higher_order_block" & .data$separate_manuscript_claim_allowed %in% TRUE) |
         (.data$dataset != "microglia" & validated_neuronal_wgcna_key_row(
-          .data$FDR_global, .data$claim_allowed_model, .data$primary_model_stable,
-          .data$fallback_used, .data$model_type, .data$evidence_status, .data$model_warning
+          .data$tier_specific_fdr, .data$claim_gate,
+          .data$model_stability_status, .data$model_type,
+          .data$support_class, .data$model_warning
         ))
     ) |>
     dplyr::mutate(
@@ -285,7 +369,7 @@ build_wgcna_key_supermodules <- function() {
         TRUE ~ NA_character_
       )
     ) |>
-    dplyr::arrange(.data$dataset, .data$FDR_global, .data$FDR_within_dataset_level)
+    dplyr::arrange(.data$dataset, .data$tier_specific_fdr)
   cols <- c(
     "dataset", "dataset_terminology", "status", "reason", "supermodule_id", "Supermodule_PlotLabel",
     "canonical_claim_entity_id", "claim_entity_role", "separate_manuscript_claim_allowed",
@@ -311,7 +395,8 @@ build_wgcna_key_supermodules <- function() {
     "fraction_member_modules_with_informative_labels",
     "dominant_microenvironment_class", "dominant_module_labels",
     "Supermodule_LabelRationale", "contrast", "estimate", "p_value",
-    "FDR_within_dataset_level", "FDR_global", "direction", "evidence_status",
+    "tier_specific_fdr", "tier_specific_family_id",
+    "tier_specific_family_size", "direction", "support_class", "claim_gate",
     "animal_level_status", "n_animals", "model_warning", "interpretation_sentence"
   )
   append_no_validated_neuronal_key_status(select_existing(add_dataset_terminology(supers), cols))

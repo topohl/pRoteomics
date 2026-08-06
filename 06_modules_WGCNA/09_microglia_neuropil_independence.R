@@ -12,6 +12,7 @@ paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.
 source(paths_file)
 source(repo_path("R", "wgcna_downstream_utils.R"))
 source(repo_path("R", "schema_validation.R"))
+source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
 
 SCRIPT_ID <- "06_modules_WGCNA/09_microglia_neuropil_independence.R"
 required_pkgs <- c("dplyr", "tidyr", "tibble", "readr", "yaml")
@@ -42,7 +43,7 @@ inputs <- list(
   neuron_neuropil_definitions = FILES_NEURO$definitions,
   microglia_marker_traits = FILES_MICRO$marker_traits,
   neuron_neuropil_marker_traits = FILES_NEURO$marker_traits,
-  microglia_interpretable = path_results("tables", "06_modules_WGCNA", "interpretable_summary", "microglia", "WGCNA_module_group_effects_interpretable.csv")
+  microglia_inferential_handoff = path_results("tables", "06_modules_WGCNA", "interpretable_summary", "microglia", "WGCNA_inferential_handoff.csv")
 )
 
 if (is_dry_run()) {
@@ -418,6 +419,26 @@ primary_effect_claim_relevant_for <- function(status) {
   status == "FDR_pass" | (status == "nominal_only" & isTRUE(nominal_primary_effect_claim_relevant))
 }
 
+wgcna_neuropil_claim_gate_eligible <- function(
+    adjustment_mode, diagnostic_only_fallback,
+    primary_effect_claim_relevant, independence_classification,
+    n_matched_animals, n_matched_samples, min_animals_per_group,
+    percent_attenuation_reliable,
+    min_matched_animals_required, min_matched_samples_required,
+    min_animals_per_group_required
+) {
+  adjustment_mode %in% c("predeclared_primary", "predeclared_secondary") &
+    !(diagnostic_only_fallback %in% TRUE) &
+    primary_effect_claim_relevant %in% TRUE &
+    independence_classification %in%
+      c("neuropil_independent", "partially_neuropil_adjusted") &
+    n_matched_animals >= min_matched_animals_required &
+    n_matched_samples >= min_matched_samples_required &
+    min_animals_per_group >= min_animals_per_group_required &
+    (percent_attenuation_reliable %in% TRUE |
+       independence_classification == "neuropil_independent")
+}
+
 classify_adjustment <- function(effect_before, effect_after, fdr_after, n_animals, n_samples, min_group, mode,
                                 primary_effect_claim_relevant, primary_effect_status,
                                 percent_attenuation_reliable) {
@@ -493,8 +514,12 @@ fit_endpoint_adjustment <- function(endpoint_row, dat0, cov_choice) {
       n_matched_animals = dplyr::n_distinct(dat$AnimalID),
       n_animals = dplyr::n_distinct(dat$AnimalID),
       min_animals_per_group = min_animals_per_group,
+      repeated_animal_data = has_repeats(dat),
       model_type_before = before$model_type,
       model_type_after = after$model_type,
+      diagnostic_only_fallback = .data$repeated_animal_data &
+        (.data$model_type_before != "lmerTest_lmer" |
+           .data$model_type_after != "lmerTest_lmer"),
       model_before_adjustment = before$formula_used %||% before$formula_requested,
       model_after_adjustment = after$formula_used %||% after$formula_requested,
       formula_before = .data$model_before_adjustment,
@@ -550,8 +575,10 @@ empty_adjustment_rows <- function(endpoint_row, reason, class = "inconclusive_mi
     neuropil_selection_spearman = NA_real_,
     n_samples = NA_integer_,
     n_animals = NA_integer_,
+    repeated_animal_data = NA,
     model_type_before = NA_character_,
     model_type_after = NA_character_,
+    diagnostic_only_fallback = FALSE,
     formula_before = NA_character_,
     formula_after = NA_character_,
     model_before_adjustment = NA_character_,
@@ -659,15 +686,19 @@ results <- results |>
       .data$primary_effect_status, .data$percent_attenuation_reliable,
       SIMPLIFY = TRUE, USE.NAMES = FALSE
     ),
-    claim_gate_eligible = .data$adjustment_mode %in% c("predeclared_primary", "predeclared_secondary") &
-      .data$primary_effect_claim_relevant &
-      .data$independence_classification %in% c("neuropil_independent", "partially_neuropil_adjusted") &
-      .data$n_matched_animals >= min_matched_animals_required &
-      .data$n_matched_samples >= min_matched_samples_required &
-      .data$min_animals_per_group >= min_animals_per_group_required &
-      (.data$percent_attenuation_reliable | .data$independence_classification == "neuropil_independent"),
+    claim_gate_eligible = wgcna_neuropil_claim_gate_eligible(
+      .data$adjustment_mode, .data$diagnostic_only_fallback,
+      .data$primary_effect_claim_relevant,
+      .data$independence_classification,
+      .data$n_matched_animals, .data$n_matched_samples,
+      .data$min_animals_per_group, .data$percent_attenuation_reliable,
+      min_matched_animals_required, min_matched_samples_required,
+      min_animals_per_group_required
+    ),
     downgrade_reason = dplyr::case_when(
       .data$claim_gate_eligible ~ "none",
+      .data$diagnostic_only_fallback %in% TRUE ~
+        "repeated_animal_lm_fallback_diagnostic_only",
       .data$adjustment_mode == "exploratory_best_spearman" ~ "exploratory_best_spearman_diagnostic_only",
       !.data$primary_effect_claim_relevant ~ paste0(.data$independence_classification, "; primary_effect_status=", .data$primary_effect_status),
       .data$effect_before_near_zero ~ paste0(.data$independence_classification, "; unstable_attenuation_near_zero_effect"),
@@ -690,6 +721,15 @@ results <- results |>
     "FDR_before", "FDR_after", "neuropil_covariate_beta", "neuropil_covariate_p",
     "independence_classification", "claim_gate_eligible", "downgrade_reason", "classification"
   )
+if (any(
+  results$diagnostic_only_fallback %in% TRUE &
+    results$claim_gate_eligible %in% TRUE
+)) {
+  stop(
+    "Repeated-animal lm fallback rows cannot be claim-gate eligible.",
+    call. = FALSE
+  )
+}
 
 module_independence_classification <- function(primary_relevant, primary_status, classification) {
   primary_relevant <- suppressWarnings(as.logical(primary_relevant))
@@ -771,6 +811,7 @@ claim_gate_audit <- results |>
     primary_effect_claim_relevant = .data$primary_effect_claim_relevant,
     primary_effect_threshold = .data$primary_effect_threshold,
     independence_classification = .data$independence_classification,
+    diagnostic_only_fallback = .data$diagnostic_only_fallback,
     claim_gate_eligible = .data$claim_gate_eligible,
     downgrade_reason = .data$downgrade_reason,
     n_matched_animals = .data$n_matched_animals,
@@ -837,13 +878,22 @@ readr::write_csv(claim_gate_audit, file.path(audit_dir, "microglia_neuropil_inde
 readr::write_csv(selection_audit, file.path(audit_dir, "microglia_neuropil_covariate_selection_audit.csv"), na = "")
 readr::write_csv(endpoint_scope_audit, file.path(audit_dir, "microglia_neuropil_independence_endpoint_scope_audit.csv"), na = "")
 
-interp <- read_csv_optional2(inputs$microglia_interpretable)
-if (nrow(interp) && nrow(module_classification)) {
-  join_key <- intersect(c("module_id", "ModuleID"), names(interp))[1]
-  class_key <- if (!is.na(join_key) && join_key == "ModuleID") "endpoint_id" else "module_id"
-  joined <- interp |>
-    dplyr::left_join(module_classification, by = stats::setNames(class_key, join_key))
-  write_table_and_source(joined, PATHS$tables, PATHS$source_data, "WGCNA_module_group_effects_interpretable_with_neuropil_independence.csv")
+handoff <- read_csv_optional2(inputs$microglia_inferential_handoff)
+if (nrow(handoff) && nrow(module_classification)) {
+  wgcna_inferential_handoff_validate(
+    handoff,
+    artifact = "microglia WGCNA_inferential_handoff.csv"
+  )
+  joined <- handoff |>
+    dplyr::filter(.data$entity_level == "module") |>
+    dplyr::left_join(
+      module_classification,
+      by = c("dataset", "entity_id" = "module_id")
+    )
+  write_table_and_source(
+    joined, PATHS$tables, PATHS$source_data,
+    "WGCNA_module_inferential_handoff_with_neuropil_independence.csv"
+  )
 }
 
 if (requireNamespace("writexl", quietly = TRUE)) {

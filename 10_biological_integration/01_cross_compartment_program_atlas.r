@@ -14,6 +14,8 @@ paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.
 source(paths_file)
 source(repo_path("R", "integration_utils.R"))
 source(repo_path("R", "wgcna_claim_readiness_utils.R"))
+source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
+source(repo_path("R", "wgcna_stage07_semantic_utils.R"))
 
 SCRIPT_ID <- "10_biological_integration/01_cross_compartment_program_atlas.r"
 Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
@@ -24,7 +26,8 @@ dataset_inputs <- function(ds) {
   inputs <- list(
     enrichment_program = path_results("tables", "04_differential_expression_enrichment", "biological_program_summary", ds, "program_summary.csv"),
     external_signature = path_results("tables", "04_differential_expression_enrichment", "external_stress_disease_signature_overlap", "global", "external_stress_disease_signature_overlap.csv"),
-    wgcna_interpretable = path_results("tables", "06_modules_WGCNA", "interpretable_summary", ds, "WGCNA_supermodule_group_effects_interpretable.csv"),
+    wgcna_inferential = path_results("tables", "06_modules_WGCNA", "interpretable_summary", ds, "WGCNA_inferential_handoff.csv"),
+    wgcna_label_lookup = path_results("tables", "06_modules_WGCNA", "interpretable_summary", ds, "WGCNA_final_label_lookup.csv"),
     microenvironment = path_results("tables", "06_modules_WGCNA", "module_annotation", ds, "WGCNA_supermodule_biological_annotation.csv"),
     complex_architecture = path_results("tables", "06_modules_WGCNA", "module_complex_architecture", ds, "module_complex_architecture.csv"),
     robustness = path_results("tables", "06_modules_WGCNA", "module_robustness_sensitivity", ds, "module_robustness_sensitivity.csv"),
@@ -39,7 +42,19 @@ dataset_inputs <- function(ds) {
 all_inputs <- unlist(lapply(integration_datasets(run$dataset), dataset_inputs), use.names = TRUE)
 if (run$dry_run) {
   dry_run_inputs(SCRIPT_ID, all_inputs)
-  quit(status = 0, save = "no")
+  required_stage13 <- microglia_wgcna_claim_readiness_path()
+  required_ready <- file.exists(required_stage13)
+  dry_run_line(
+    "Required microglia Stage 13 readiness",
+    required_stage13,
+    if (required_ready) "PASS" else "FAIL"
+  )
+  dry_run_line(
+    "Status",
+    if (required_ready) "ready" else "missing_required_input",
+    if (required_ready) "PASS" else "FAIL"
+  )
+  quit(status = if (required_ready) 0 else 1, save = "no")
 }
 
 program_evidence <- function(ds, file) {
@@ -77,16 +92,37 @@ evidence_file <- function(ds, domain, file, input_type) {
   loaded <- read_csv_optional(file, ds, domain, input_type, required = FALSE)
   df <- loaded$data
   if (is.null(df) || !nrow(df)) return(list(evidence = availability_evidence(ds, domain, file, paste(input_type, "unavailable.")), status = loaded$status))
+  if (identical(domain, "wgcna_supermodule") &&
+      "entity_level" %in% names(df)) {
+    wgcna_stage07_validate_inferential_handoff(df)
+    df <- df[
+      df$entity_level == "supermodule" &
+        df$independent_hypothesis %in% TRUE &
+        df$claim_entity_role != "compatibility_alias",
+      ,
+      drop = FALSE
+    ]
+  }
   if (all(names(empty_evidence()) %in% names(df))) {
     return(list(evidence = standardize_evidence(df), status = loaded$status))
   }
-  prog <- first_col(df, c("program_label", "Supermodule_PlotLabel", "Supermodule_DisplayLabel", "Macroprogram_Display", "biological_program"))
-  id <- first_col(df, c("supermodule_id", "SupermoduleID", "module_id", "ModuleID"))
-  fdr <- first_col(df, c("FDR_global", "fdr", "FDR"))
+  prog <- first_col(df, c("display_label", "program_label", "Supermodule_PlotLabel", "Supermodule_DisplayLabel", "Macroprogram_Display", "biological_program"))
+  id <- first_col(df, c("entity_id", "supermodule_id", "SupermoduleID", "module_id", "ModuleID"))
+  fdr <- first_col(df, c("tier_specific_fdr", "fdr", "FDR"))
   est <- first_col(df, c("estimate", "effect_size"))
+  is_inferential_handoff <- identical(domain, "wgcna_supermodule") &&
+    all(wgcna_group_effect_consumer_source_key() %in% names(df))
+  evidence_id <- if (is_inferential_handoff) {
+    paste(
+      ds, domain, wgcna_stage07_source_statistical_keys(df),
+      sep = "::"
+    )
+  } else {
+    paste(ds, domain, seq_len(nrow(df)), sep = "::")
+  }
   ev <- standardize_evidence(data.frame(
     dataset = ds, evidence_domain = domain,
-    evidence_id = paste(ds, domain, seq_len(nrow(df)), sep = "::"),
+    evidence_id = evidence_id,
     program_label = if (!is.na(prog)) df[[prog]] else domain,
     entity_type = ifelse(grepl("module", domain), "module_or_supermodule", "program"),
     entity_id = if (!is.na(id)) df[[id]] else NA_character_,
@@ -94,14 +130,36 @@ evidence_file <- function(ds, domain, file, input_type) {
     fdr = if (!is.na(fdr)) num_or_na(df[[fdr]]) else NA_real_,
     source_file = file,
     evidence_status = domain,
-    interpretation_note = paste(domain, "evidence imported for atlas."),
+    interpretation_note = if (is_inferential_handoff) {
+      paste0(
+        domain, " evidence imported from Stage 07; family=",
+        df$tier_specific_family_id,
+        "; family_size=", df$tier_specific_family_size,
+        "; claim_gate=", df$claim_gate,
+        "; source_file=", file
+      )
+    } else {
+      paste(domain, "evidence imported for atlas.")
+    },
     qc_flag = "PASS",
     stringsAsFactors = FALSE
   ))
+  if (identical(domain, "wgcna_supermodule")) {
+    ev$tier_specific_family_id <-
+      as.character(df$tier_specific_family_id)
+    ev$tier_specific_family_size <-
+      suppressWarnings(as.integer(df$tier_specific_family_size))
+    ev$inferential_claim_gate <- as.character(df$claim_gate)
+    ev$inferential_source_file <- normalizePath(
+      file, winslash = "/", mustWork = FALSE
+    )
+    ev$inferential_source_key <-
+      wgcna_stage07_source_statistical_keys(df)
+  }
   list(evidence = ev, status = loaded$status)
 }
 
-microglia_wgcna_readiness_evidence <- function(file, legacy_interpretable_file) {
+microglia_wgcna_readiness_evidence <- function(file, label_lookup_file) {
   contract <- load_microglia_wgcna_claim_readiness(file)
   df <- contract$all
   counts <- as.logical(df$separate_manuscript_claim_allowed) &
@@ -142,9 +200,9 @@ microglia_wgcna_readiness_evidence <- function(file, legacy_interpretable_file) 
     stringsAsFactors = FALSE
   ))
 
-  legacy <- read_csv_optional(legacy_interpretable_file, "microglia", "wgcna_stage07_provenance", "wgcna_interpretable", required = FALSE)
+  legacy <- read_csv_optional(label_lookup_file, "microglia", "wgcna_stage07_provenance", "wgcna_label_lookup", required = FALSE)
   legacy_ids <- if (!is.null(legacy$data) && nrow(legacy$data)) {
-    id_col <- first_col(legacy$data, c("supermodule_id", "SupermoduleID"))
+    id_col <- first_col(legacy$data, c("entity_id", "supermodule_id", "SupermoduleID"))
     if (!is.na(id_col)) unique(as.character(legacy$data[[id_col]])) else character()
   } else character()
   audit <- data.frame(
@@ -159,7 +217,7 @@ microglia_wgcna_readiness_evidence <- function(file, legacy_interpretable_file) 
     excluded_as_compatibility_alias = as.character(df$claim_entity_role) == "compatibility_alias",
     excluded_as_non_independent_higher_order_block = as.character(df$claim_entity_role) == "higher_order_block" & !as.logical(df$separate_manuscript_claim_allowed),
     stage07_technical_provenance_available = as.character(df$level) == "supermodule" & as.character(df$entity_id) %in% legacy_ids,
-    stage07_technical_provenance_file = normalizePath(legacy_interpretable_file, winslash = "/", mustWork = FALSE),
+    stage07_technical_provenance_file = normalizePath(label_lookup_file, winslash = "/", mustWork = FALSE),
     stage13_source_file = contract$source_path,
     readiness_contract_version = contract$readiness_contract_version,
     stringsAsFactors = FALSE
@@ -250,9 +308,9 @@ stage13_audits <- list()
 for (ds in integration_datasets(run$dataset)) {
   inputs <- dataset_inputs(ds)
   wgcna_piece <- if (identical(ds, "microglia")) {
-    microglia_wgcna_readiness_evidence(inputs$wgcna_claim_readiness, inputs$wgcna_interpretable)
+    microglia_wgcna_readiness_evidence(inputs$wgcna_claim_readiness, inputs$wgcna_label_lookup)
   } else {
-    evidence_file(ds, "wgcna_supermodule", inputs$wgcna_interpretable, "wgcna_interpretable")
+    evidence_file(ds, "wgcna_supermodule", inputs$wgcna_inferential, "wgcna_inferential_handoff")
   }
   if (identical(ds, "microglia")) stage13_audits[[ds]] <- wgcna_piece$audit
   pieces <- list(

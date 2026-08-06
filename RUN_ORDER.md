@@ -53,10 +53,13 @@ Rscript run_dataset_pipeline.R --dataset all --stage export --dry-run
 
 Direct script commands:
 
-Stage 05 Phase 2B production is the current execution boundary. Its dry-run
-reports `Downstream compatibility: FALSE` and `BLOCKED BY CONTRACT; NOT
-RUNTIME-ENFORCED`. Do not execute the Stage 06+ commands below until the
-atomic Phase 3 consumer migration is complete.
+Stage 05 Phase 2B remains the quantitative production boundary. The atomic
+Phase 3 source migration is complete: Stage 07 publishes
+`WGCNA_inferential_handoff.csv`, and claim-facing Stage 08-13, behavior,
+integration, claims, evidence-bundle, and publication consumers use that
+handoff. Existing generated Stage 05 migration-status CSVs still report the
+pre-migration advisory state until an authorized Stage 05 output refresh; they
+do not require a WGCNA rebuild or a Stage 05 rerun for this source migration.
 The v5 Stage 05 contract adds explicit diagnostic scope and the
 cross-platform `sha256_utf8_lf_v1` aggregate hash serialization; it does not
 change the statistical analysis.

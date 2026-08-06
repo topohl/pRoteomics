@@ -6,6 +6,7 @@
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
 source(repo_path("R", "wgcna_downstream_utils.R"))
+source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
 source(repo_path("R", "wgcna_labeling_utils.R"))
 source(repo_path("R", "wgcna_reviewed_label_registry.R"))
 pkgs <- c("dplyr", "readr", "tidyr", "ggplot2", "svglite", "scales", "stringr")
@@ -19,7 +20,7 @@ FILES <- resolve_wgcna_files(DATASET); TBL <- path_results("tables", "06_modules
 AUDIT <- path_results("reviewer_audit", "microglia_wgcna_nature_readiness")
 paths <- list(lookup = file.path(TBL, "interpretable_summary", DATASET, "WGCNA_final_label_lookup.csv"),
   values = file.path(TBL, "group_effects", DATASET, "all_supermodule_eigengene_group_values.csv"),
-  effects = file.path(TBL, "group_effects", DATASET, "supermodule_group_effects.csv"),
+  effects = file.path(TBL, "interpretable_summary", DATASET, "WGCNA_inferential_handoff.csv"),
   member = FILES$supermodule_annotation, summary = FILES$supermodule_summary,
   definitions = FILES$definitions,
   loadings = file.path(TBL, "group_effects", DATASET, "supermodule_pca_member_loadings.csv"),
@@ -38,7 +39,36 @@ loadings <- read_csv(paths$loadings)
 labels <- lookup |> dplyr::filter(.data$level == "supermodule") |> dplyr::transmute(supermodule_id = .data$entity_id, canonical_short_label, canonical_plot_label, structural_status, biological_label_confidence, roi_context)
 join_labels <- function(x) { n <- nrow(x); z <- x |> dplyr::left_join(labels, by = "supermodule_id", relationship = "many-to-one"); if (nrow(z) != n) stop("Label join multiplied rows"); z }
 values <- read_csv(paths$values) |> dplyr::mutate(supermodule_id = as.character(.data$supermodule_id), roi = factor(toupper(.data$canonical_spatial_unit), levels = roi_order), StressGroup = factor(.data$StressGroup, levels = c("CON", "RES", "SUS"))) |> join_labels()
-effects <- read_csv(paths$effects) |> dplyr::mutate(supermodule_id = as.character(.data$supermodule_id), estimate = as.numeric(.data$estimate), raw_SE = as.numeric(.data$SE), q_value = dplyr::case_when(.data$analysis_tier == "primary_wgcna_global" ~ as.numeric(.data$FDR_primary_global), .data$analysis_tier == "secondary_contextual_global" ~ as.numeric(.data$FDR_secondary_global), .data$analysis_tier == "secondary_spatial_heterogeneity" ~ as.numeric(.data$FDR_interaction_omnibus), .data$analysis_tier == "exploratory_spatial_localization" ~ as.numeric(.data$FDR_local_exploratory), TRUE ~ NA_real_), stable = .data$model_valid_for_inference %in% TRUE & .data$primary_model_stable %in% TRUE & !(.data$singular_model %in% TRUE)) |> join_labels()
+inferential_handoff <- read_csv(paths$effects)
+wgcna_inferential_handoff_validate(inferential_handoff)
+display_lookup <- lookup |>
+  dplyr::filter(.data$level == "module") |>
+  dplyr::transmute(
+    dataset, module_id = .data$entity_id,
+    supermodule_id = .data$parent_entity_id
+  ) |>
+  dplyr::left_join(
+    lookup |>
+      dplyr::filter(.data$level == "supermodule") |>
+      dplyr::transmute(
+        dataset, supermodule_id = .data$entity_id,
+        n_member_modules,
+        supermodule_label = canonical_plot_label
+      ),
+    by = c("dataset", "supermodule_id"),
+    relationship = "many-to-one"
+  )
+effects <- wgcna_inferential_handoff_supermodule_display(
+  inferential_handoff, display_lookup
+) |>
+  dplyr::mutate(
+    supermodule_id = as.character(.data$supermodule_id),
+    estimate = as.numeric(.data$estimate),
+    raw_SE = as.numeric(.data$SE),
+    q_value = as.numeric(.data$tier_specific_fdr),
+    stable = .data$claim_gate == "eligible_for_readiness_assessment"
+  ) |>
+  join_labels()
 response_sd_global <- values |> dplyr::group_by(.data$supermodule_id) |> dplyr::summarise(response_SD_global = stats::sd(.data$eigengene), model_analysis_N_global = dplyr::n(), animal_N_global = dplyr::n_distinct(.data$AnimalID), .groups = "drop")
 response_sd_spatial <- values |> dplyr::mutate(spatial_unit = tolower(as.character(.data$roi))) |> dplyr::group_by(.data$supermodule_id, .data$spatial_unit) |> dplyr::summarise(response_SD_spatial = stats::sd(.data$eigengene), model_analysis_N_spatial = dplyr::n(), animal_N_spatial = dplyr::n_distinct(.data$AnimalID), .groups = "drop")
 effects_std <- effects |> dplyr::mutate(spatial_unit = tolower(as.character(.data$spatial_unit))) |> dplyr::left_join(response_sd_global, by = "supermodule_id", relationship = "many-to-one") |> dplyr::left_join(response_sd_spatial, by = c("supermodule_id", "spatial_unit"), relationship = "many-to-one") |> dplyr::mutate(response_SD = dplyr::if_else(.data$effect_scope == "within_spatial_unit", .data$response_SD_spatial, .data$response_SD_global), model_analysis_N = dplyr::if_else(.data$effect_scope == "within_spatial_unit", .data$model_analysis_N_spatial, .data$model_analysis_N_global), animal_N = dplyr::if_else(.data$effect_scope == "within_spatial_unit", .data$animal_N_spatial, .data$animal_N_global), raw_CI_low = .data$estimate - 1.96 * .data$raw_SE, raw_CI_high = .data$estimate + 1.96 * .data$raw_SE, standardized_estimate = .data$estimate / .data$response_SD, standardized_SE = .data$raw_SE / .data$response_SD, standardized_CI_low = .data$raw_CI_low / .data$response_SD, standardized_CI_high = .data$raw_CI_high / .data$response_SD, standardization_scope = "SD of exact Stage 05 eigengene response analysis subset")
@@ -97,5 +127,5 @@ validation <- tibble::tribble(~check, ~status, ~detail,
  "no_singular_claim_symbols", if (!any(global$claim_symbol != "none" & !global$stable)) "pass" else "fail", "diagnostic rows unpromoted",
  "strict_nonspatial_separate", if ("strict_nonspatial" %in% unique(readiness_long$check)) "pass" else "fail", "shown separately")
 readr::write_csv(validation, file.path(OUT$tables, "WGCNA_corrected_publication_figure_validation.csv")); if (any(validation$status != "pass")) stop("Corrected figure validation failed")
-write_run_manifest(file.path(OUT$logs, "run_manifest.yml"), inputs = paths, outputs = list(figures = OUT$figures, source_data = OUT$source_data), parameters = list(dataset = DATASET, effect_standardization = "estimate / SD(exact Stage 05 eigengene response analysis subset)"), notes = "Additive corrected publication layer; existing primary publication figures were not modified.")
+write_run_manifest(file.path(OUT$logs, "run_manifest.yml"), inputs = paths, outputs = list(figures = OUT$figures, source_data = OUT$source_data), parameters = list(dataset = DATASET, effect_standardization = "estimate / SD(exact Stage 05 eigengene response analysis subset)"), notes = "Additive corrected publication layer; inference comes only from the Stage 07 handoff. Singleton panels display their canonical module endpoint without a duplicate independent claim. Existing primary publication figures were not modified.")
 message("Corrected additive microglia WGCNA figures complete.")

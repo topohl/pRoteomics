@@ -202,11 +202,14 @@ Canonical Stage 05 production is atomic and requires `--level both`.
 Phase 2B leaves legacy Stage 05 figures, brackets, heatmaps, selected
 interpretations, biological labels, and Stage 06-13 products unchanged. The
 deterministic migration audit scans active local source/schema paths and
-records its include/exclude rules. The status reports
+records its include/exclude rules. The atomic Phase 3 source migration is now
+complete: Stage 07 is the sole claim-facing inferential boundary, and active
+consumers do not select legacy FDR columns. Existing generated Stage 05 status
+files still report
 `downstream_compatible = FALSE`,
 `downstream_contract_status = phase3_migration_required`, and
-`should_block_execution = TRUE`. This is advisory rather than pipeline-runner
-enforcement. Stage 06+ must not be run before the atomic Phase 3 migration.
+`should_block_execution = TRUE` until a separately authorized Stage 05 output
+refresh. Those stale diagnostics do not require a WGCNA rebuild.
 
 Safe to rerun: Stage 05 only, after the identity contract is publishable.
 
@@ -290,7 +293,8 @@ Rscript 06_modules_WGCNA/07_wgcna_interpretable_summary.r --dataset all
 Inspect:
 
 - `results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_interpretable_summary.xlsx`
-- `results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_supermodule_group_effects_interpretable.csv`
+- `results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_inferential_handoff.csv` (sole claim-facing inferential handoff)
+- `results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_{module,supermodule}_group_effects_interpretable.csv` (compatibility/interpretation outputs, not downstream inferential inputs)
 - `results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_supermodule_label_audit.csv`
 - `results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_label_candidates.csv`
 - `results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_final_label_lookup.csv`
@@ -430,8 +434,10 @@ their one current module and are never independently manuscript-claimable.
 SM01, SM03 and SM09 are the only higher-order-block claim identities. Stage 13
 selects exactly `SUS - RES` / `spatial_adjusted_global` /
 `global_spatial_adjusted` and carries the unchanged Stage 05 estimate, SE,
-95% CI, p-value, within-dataset-level FDR, global FDR, model, replicate-unit,
-source-file and source-key provenance. Claim status uses `FDR_global`.
+95% CI, p-value, tier-specific FDR and multiplicity-family metadata, model,
+replicate-unit, and exact Stage 05 source-artifact/source-key provenance.
+Claim status uses the handoff `claim_gate`; reviewer-sensitivity FDR fields are
+not claim gates.
 
 Configured future-network defaults and historical selected values are separate
 parameter concepts. The intended defaults remain neuron neuropil `0.55`,

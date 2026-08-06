@@ -376,6 +376,7 @@ testthat::test_that("microglia neuropil independence audit schemas validate", {
     primary_effect_claim_relevant = TRUE,
     primary_effect_threshold = "FDR<=0.05; nominal_p<=0.05 diagnostic_only",
     independence_classification = "neuropil_independent",
+    diagnostic_only_fallback = FALSE,
     claim_gate_eligible = TRUE,
     downgrade_reason = "none",
     n_matched_animals = 6L,
@@ -413,6 +414,62 @@ testthat::test_that("microglia neuropil independence audit schemas validate", {
     stringsAsFactors = FALSE
   )
   testthat::expect_silent(validate_table_schema(selection, "microglia_neuropil_covariate_selection_audit", strict = FALSE))
+})
+
+testthat::test_that("WGCNA inferential handoff schema requires source provenance", {
+  source(testthat::test_path("..", "..", "R", "paths.R"))
+  source(repo_path("R", "schema_validation.R"))
+  testthat::skip_if_not_installed("yaml")
+
+  handoff <- data.frame(
+    dataset = c("microglia", "microglia"),
+    entity_level = c("module", "supermodule"),
+    entity_id = c("WGCNA_m01", "SM01"),
+    display_label = c("Module 1", "Supermodule 1"),
+    n_member_modules = c(1L, 2L),
+    contrast = "SUS - RES",
+    analysis_tier = "primary_wgcna_global",
+    spatial_scope = "spatial_adjusted_global",
+    estimate = c(0.2, 0.3),
+    SE = c(0.1, 0.1),
+    CI_low = c(0.004, 0.104),
+    CI_high = c(0.396, 0.496),
+    p_value = c(0.04, 0.02),
+    tier_specific_fdr = c(0.08, 0.05),
+    tier_specific_family_id = "primary_family",
+    tier_specific_family_size = 45L,
+    model_valid = TRUE,
+    model_stability_status = "stable_mixed_model",
+    biological_n = 9L,
+    annotation_class = "contrast_blind",
+    support_class = c("suggestive_FDR10", "FDR_supported"),
+    claim_gate = "eligible_for_readiness_assessment",
+    safe_interpretation = "Descriptive animal-level effect.",
+    independent_hypothesis = TRUE,
+    claim_entity_role = c("canonical_module", "higher_order_block"),
+    test_type = "named_contrast",
+    effect_scope = "spatial_adjusted_global",
+    spatial_unit = "global_spatial_adjusted",
+    result_scope = "primary_global_vulnerability",
+    source_artifact = c(
+      "results/tables/06_modules_WGCNA/group_effects/microglia/module_group_effects.csv",
+      "results/tables/06_modules_WGCNA/group_effects/microglia/supermodule_group_effects.csv"
+    ),
+    source_key = c("module_source", "supermodule_source"),
+    source_key_contract = "dataset+level+endpoint_id+effect_scope+spatial_unit+contrast+test_type",
+    stringsAsFactors = FALSE
+  )
+  testthat::expect_silent(validate_table_schema(
+    handoff, "wgcna_inferential_handoff", strict = FALSE
+  ))
+  missing_source_key <- handoff
+  missing_source_key$source_key <- NULL
+  testthat::expect_error(
+    validate_table_schema(
+      missing_source_key, "wgcna_inferential_handoff", strict = FALSE
+    ),
+    "Missing required column"
+  )
 })
 
 testthat::test_that("final reviewer audit schemas validate", {

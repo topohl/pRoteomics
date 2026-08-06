@@ -15,6 +15,7 @@ required_columns:
   - primary_effect_claim_relevant
   - primary_effect_threshold
   - independence_classification
+  - diagnostic_only_fallback
   - claim_gate_eligible
   - downgrade_reason
   - n_matched_animals
@@ -44,6 +45,7 @@ columns:
   primary_effect_claim_relevant: {type: logical}
   primary_effect_threshold: {type: character}
   independence_classification: {type: character, allowed_values: [neuropil_independent, partially_neuropil_adjusted, neuropil_sensitive, inconclusive_low_power, inconclusive_missing_match, diagnostic_no_primary_effect, inconclusive_no_primary_effect, exploratory_only, mixed_or_covariate_sensitive]}
+  diagnostic_only_fallback: {type: logical}
   claim_gate_eligible: {type: logical}
   downgrade_reason: {type: character}
   n_matched_animals: {type: integer}
