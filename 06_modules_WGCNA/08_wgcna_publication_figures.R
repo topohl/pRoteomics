@@ -12,6 +12,7 @@
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
 source(repo_path("R", "wgcna_downstream_utils.R"))
+source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
 source(repo_path("R", "wgcna_labeling_utils.R"))
 source(repo_path("R", "wgcna_reviewed_label_registry.R"))
 
@@ -27,6 +28,7 @@ if (!identical(DATASET, "microglia")) stop("08_wgcna_publication_figures.R is re
 OUT <- create_module_dirs("06_modules_WGCNA", file.path("wgcna_publication_figures", DATASET))
 GROUP_DIR <- path_results("tables", "06_modules_WGCNA", "group_effects", DATASET)
 LABEL_FILE <- path_results("tables", "06_modules_WGCNA", "interpretable_summary", DATASET, "WGCNA_final_label_lookup.csv")
+HANDOFF_FILE <- path_results("tables", "06_modules_WGCNA", "interpretable_summary", DATASET, "WGCNA_inferential_handoff.csv")
 FILES <- resolve_wgcna_files(DATASET)
 
 figure_stems <- c(
@@ -42,12 +44,20 @@ if (run$dry_run) {
   dry_run_line("Script", "06_modules_WGCNA/08_wgcna_publication_figures.R")
   dry_run_line("Dataset", DATASET)
   dry_run_line("Reviewed canonical lookup", LABEL_FILE, if (file.exists(LABEL_FILE)) "PASS" else "FAIL")
-  dry_run_line("Stage 05 statistics", GROUP_DIR, if (dir.exists(GROUP_DIR)) "PASS" else "FAIL")
+  dry_run_line("Stage 07 inferential handoff", HANDOFF_FILE, if (file.exists(HANDOFF_FILE)) "PASS" else "FAIL")
+  dry_run_line("Stage 05 non-inferential values/loadings", GROUP_DIR, if (dir.exists(GROUP_DIR)) "PASS" else "FAIL")
   for (stem in figure_stems) {
     dry_run_line("Figure", file.path(OUT$figures, paste0(stem, ".svg")))
     dry_run_line("Source data", file.path(OUT$source_data, paste0(stem, "_source.csv")))
   }
-  quit(status = 0, save = "no")
+  required_ready <- file.exists(LABEL_FILE) &&
+    file.exists(HANDOFF_FILE) && dir.exists(GROUP_DIR)
+  dry_run_line(
+    "Status",
+    if (required_ready) "ready" else "missing_required_input",
+    if (required_ready) "PASS" else "FAIL"
+  )
+  quit(status = if (required_ready) 0 else 1, save = "no")
 }
 
 read_required <- function(path, label) {
@@ -138,7 +148,26 @@ join_super_labels <- function(df, id_col = "supermodule_id", context = "publicat
 
 definitions <- read_required(FILES$definitions, "current module definitions")
 super_summary <- read_required(FILES$supermodule_summary, "current supermodule summary")
-group_effects <- read_required(file.path(GROUP_DIR, "supermodule_group_effects.csv"), "Stage 05 supermodule group effects")
+inferential_handoff <- read_required(HANDOFF_FILE, "Stage 07 inferential handoff")
+wgcna_inferential_handoff_validate(inferential_handoff)
+display_lookup <- lookup |>
+  dplyr::filter(.data$level == "module") |>
+  dplyr::transmute(
+    dataset, module_id = .data$entity_id,
+    supermodule_id = .data$parent_entity_id
+  ) |>
+  dplyr::left_join(
+    super_labels |>
+      dplyr::select(
+        dataset, supermodule_id, n_member_modules,
+        supermodule_label = canonical_plot_label
+      ),
+    by = c("dataset", "supermodule_id"),
+    relationship = "many-to-one"
+  )
+group_effects <- wgcna_inferential_handoff_supermodule_display(
+  inferential_handoff, display_lookup
+)
 raw_values <- read_required(file.path(GROUP_DIR, "all_supermodule_eigengene_group_values.csv"), "Stage 05 raw supermodule eigengenes")
 loadings <- read_required(file.path(GROUP_DIR, "supermodule_pca_member_loadings.csv"), "Stage 05 supermodule member loadings")
 
@@ -199,23 +228,15 @@ save_publication_figure(p_arch, "all_supermodule_architecture", 205, 100)
 
 # Shared effect sources and symmetric scale ---------------------------------
 effect_base <- group_effects |>
-  dplyr::filter(.data$level == "supermodule") |>
   dplyr::mutate(
     supermodule_id = as.character(.data$supermodule_id),
     contrast = as.character(.data$contrast),
     estimate = suppressWarnings(as.numeric(.data$estimate)),
     SE = suppressWarnings(as.numeric(.data$SE)),
-    q_value = dplyr::case_when(
-      .data$analysis_tier == "primary_wgcna_global" ~ suppressWarnings(as.numeric(.data$FDR_primary_global)),
-      .data$analysis_tier == "secondary_contextual_global" ~ suppressWarnings(as.numeric(.data$FDR_secondary_global)),
-      .data$analysis_tier == "secondary_spatial_heterogeneity" ~ suppressWarnings(as.numeric(.data$FDR_interaction_omnibus)),
-      .data$analysis_tier == "exploratory_spatial_localization" ~ suppressWarnings(as.numeric(.data$FDR_local_exploratory)),
-      TRUE ~ NA_real_
-    ),
-    model_valid_for_inference = as.logical(.data$model_valid_for_inference),
-    primary_model_stable = as.logical(.data$primary_model_stable),
-    singular_model = as.logical(.data$singular_model),
-    model_stable = .data$model_valid_for_inference %in% TRUE & .data$primary_model_stable %in% TRUE & !(.data$singular_model %in% TRUE),
+    q_value = suppressWarnings(as.numeric(.data$tier_specific_fdr)),
+    model_valid_for_inference = as.logical(.data$model_valid),
+    model_stable = .data$claim_gate ==
+      "eligible_for_readiness_assessment",
     diagnostic_only = !.data$model_stable
   )
 
@@ -419,13 +440,13 @@ write_run_manifest(
     reviewed_label_lookup = LABEL_FILE,
     current_member_map = FILES$supermodule_annotation,
     current_supermodule_summary = FILES$supermodule_summary,
-    group_effects = file.path(GROUP_DIR, "supermodule_group_effects.csv"),
+    inferential_handoff = HANDOFF_FILE,
     raw_eigengenes = file.path(GROUP_DIR, "all_supermodule_eigengene_group_values.csv"),
     member_loadings = file.path(GROUP_DIR, "supermodule_pca_member_loadings.csv")
   ),
   outputs = list(figures = OUT$figures, source_data = OUT$source_data, validation = file.path(OUT$tables, "WGCNA_publication_figure_validation.csv")),
   parameters = list(dataset = DATASET, supermodule_order = paste(sm_order, collapse = ";"), roi_order = paste(roi_order, collapse = ";"), effect_scale_limit = effect_limit),
-  notes = "All-supermodule publication layer. Reviewed Stage 07 labels are authoritative. No WGCNA, membership, model, or FDR recomputation occurs."
+  notes = "All-supermodule publication layer. Inferential rows come only from the validated Stage 07 handoff; singleton panels display their canonical module endpoint and never create a second independent claim. Reviewed Stage 07 labels are authoritative. No WGCNA, membership, model, or FDR recomputation occurs."
 )
 
 message("Reviewed microglia WGCNA publication figures complete.")

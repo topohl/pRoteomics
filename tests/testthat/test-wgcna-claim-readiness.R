@@ -2,6 +2,47 @@ testthat::local_edition(3)
 
 root <- normalizePath(testthat::test_path("..", ".."), winslash = "/", mustWork = TRUE)
 
+testthat::test_that(
+  "repeated-animal lm fallback cannot enable neuropil claims",
+  {
+    script <- file.path(
+      root, "06_modules_WGCNA",
+      "09_microglia_neuropil_independence.R"
+    )
+    expressions <- parse(file = script)
+    is_gate <- vapply(expressions, function(expression) {
+      is.call(expression) &&
+        identical(expression[[1]], as.name("<-")) &&
+        identical(
+          as.character(expression[[2]]),
+          "wgcna_neuropil_claim_gate_eligible"
+        )
+    }, logical(1))
+    testthat::expect_equal(sum(is_gate), 1L)
+    environment <- new.env(parent = baseenv())
+    eval(expressions[[which(is_gate)]], envir = environment)
+    gate <- environment$wgcna_neuropil_claim_gate_eligible
+    common <- list(
+      adjustment_mode = "predeclared_primary",
+      primary_effect_claim_relevant = TRUE,
+      independence_classification = "neuropil_independent",
+      n_matched_animals = 9L,
+      n_matched_samples = 36L,
+      min_animals_per_group = 3L,
+      percent_attenuation_reliable = TRUE,
+      min_matched_animals_required = 6L,
+      min_matched_samples_required = 12L,
+      min_animals_per_group_required = 2L
+    )
+    testthat::expect_false(do.call(
+      gate, c(common, list(diagnostic_only_fallback = TRUE))
+    ))
+    testthat::expect_true(do.call(
+      gate, c(common, list(diagnostic_only_fallback = FALSE))
+    ))
+  }
+)
+
 testthat::test_that("Stage 13 is a parseable non-circular microglia handoff", {
   stage13 <- file.path(root, "06_modules_WGCNA", "13_wgcna_claim_readiness.R")
   testthat::expect_silent(parse(file = stage13))
@@ -52,46 +93,73 @@ testthat::test_that("completed Stage 13 output has exact current identities with
   testthat::expect_equal(anyDuplicated(x$canonical_claim_entity_id[x$separate_manuscript_claim_allowed]), 0L)
 })
 
-testthat::test_that("Stage 13 carries the exact selected Stage 05 endpoint and provenance", {
+testthat::test_that("Stage 13 carries the exact Stage 07 primary endpoint and provenance", {
   output_path <- file.path(root, "results", "tables", "06_modules_WGCNA", "claim_readiness", "microglia", "WGCNA_entity_claim_readiness.csv")
   testthat::skip_if_not(file.exists(output_path), "Stage 13 has not been run")
   out <- read.csv(output_path, check.names = FALSE)
-  testthat::expect_true(all(out$selected_contrast == "SUS - RES"))
-  testthat::expect_true(all(out$selected_effect_scope == "spatial_adjusted_global"))
-  testthat::expect_true(all(out$selected_spatial_unit == "global_spatial_adjusted"))
-  testthat::expect_equal(out$group_effect_FDR, out$group_effect_FDR_global, tolerance = 0)
+  independent <- out$claim_entity_role != "compatibility_alias"
+  aliases <- !independent
+  testthat::expect_true(all(out$selected_contrast[independent] == "SUS - RES"))
+  testthat::expect_true(all(out$selected_effect_scope[independent] == "spatial_adjusted_global"))
+  testthat::expect_true(all(out$selected_spatial_unit[independent] == "global_spatial_adjusted"))
+  testthat::expect_true(all(is.na(out$selected_contrast[aliases])))
+  testthat::expect_true(all(is.na(out$group_effect_tier_specific_fdr[aliases])))
+  testthat::expect_true(all(is.na(out$group_effect_tier_specific_family_id[aliases])))
+  testthat::expect_true(all(is.na(out$group_effect_tier_specific_family_size[aliases])))
 
   required_provenance <- c(
     "group_effect_estimate", "group_effect_SE", "group_effect_CI_low", "group_effect_CI_high",
-    "group_effect_p_value", "group_effect_FDR_within_dataset_level", "group_effect_FDR_global",
+    "group_effect_p_value", "group_effect_analysis_tier", "group_effect_result_scope",
+    "group_effect_tier_specific_fdr", "group_effect_tier_specific_family_id",
+    "group_effect_tier_specific_family_size",
     "group_effect_adjustment_scope", "group_effect_evidence_status", "group_effect_model_formula",
     "group_effect_model_type", "group_effect_n_animals", "group_effect_n_samples",
     "group_effect_biological_replicate_unit", "group_effect_source_file", "group_effect_source_key"
   )
   testthat::expect_true(all(required_provenance %in% names(out)))
 
-  compare_level <- function(level, file_name, id_col) {
-    source <- read.csv(file.path(root, "results", "tables", "06_modules_WGCNA", "group_effects", "microglia", file_name), check.names = FALSE)
+  source <- read.csv(
+    file.path(
+      root, "results", "tables", "06_modules_WGCNA",
+      "interpretable_summary", "microglia",
+      "WGCNA_inferential_handoff.csv"
+    ),
+    check.names = FALSE
+  )
+  compare_level <- function(level) {
     selected <- source[
-      source$dataset == "microglia" & source$contrast == "SUS - RES" &
+      source$dataset == "microglia" & source$entity_level == level &
+        source$analysis_tier == "primary_wgcna_global" &
+        source$contrast == "SUS - RES" &
         source$effect_scope == "spatial_adjusted_global" & source$spatial_unit == "global_spatial_adjusted",
       , drop = FALSE
     ]
-    ids <- as.character(selected[[id_col]])
-    expected_ids <- out$entity_id[out$level == level]
+    ids <- as.character(selected$entity_id)
+    expected_ids <- out$entity_id[
+      out$level == level & out$claim_entity_role != "compatibility_alias"
+    ]
     testthat::expect_equal(nrow(selected), length(expected_ids))
     testthat::expect_setequal(ids, expected_ids)
     testthat::expect_true(all(table(ids) == 1L))
-    observed <- out[out$level == level, ]
+    observed <- out[
+      out$level == level & out$claim_entity_role != "compatibility_alias",
+    ]
     source_match <- selected[match(observed$entity_id, ids), , drop = FALSE]
-    testthat::expect_equal(observed$group_effect_FDR_global, source_match$FDR_global, tolerance = 0)
-    testthat::expect_equal(observed$group_effect_FDR_within_dataset_level, source_match$FDR_within_dataset_level, tolerance = 0)
+    testthat::expect_equal(observed$group_effect_tier_specific_fdr, source_match$tier_specific_fdr, tolerance = 0)
+    testthat::expect_identical(
+      observed$group_effect_tier_specific_family_id,
+      source_match$tier_specific_family_id
+    )
+    testthat::expect_equal(
+      observed$group_effect_tier_specific_family_size,
+      source_match$tier_specific_family_size
+    )
     testthat::expect_equal(observed$group_effect_estimate, source_match$estimate, tolerance = 1e-14)
     testthat::expect_equal(observed$group_effect_SE, source_match$SE, tolerance = 1e-14)
     testthat::expect_equal(observed$group_effect_p_value, source_match$p_value, tolerance = 1e-14)
   }
-  compare_level("module", "module_group_effects.csv", "module_id")
-  compare_level("supermodule", "supermodule_group_effects.csv", "supermodule_id")
+  compare_level("module")
+  compare_level("supermodule")
 })
 
 testthat::test_that("future cut-height defaults remain distinct from frozen microglia provenance", {
@@ -109,8 +177,14 @@ testthat::test_that("future cut-height defaults remain distinct from frozen micr
   testthat::expect_equal(env$supermodule_merge_cut_height("microglia"), 0.45)
 
   state_path <- file.path(root, "data", "processed", "06_modules_WGCNA", "01_WGCNA", "microglia", "wgcna_final_model_state.rds")
-  state <- readRDS(state_path)
-  testthat::expect_equal(as.numeric(state$parameters$supermodule_merge_cut_height), 0.40)
+  if (file.exists(state_path)) {
+    state <- readRDS(state_path)
+    testthat::expect_equal(
+      as.numeric(state$parameters$supermodule_merge_cut_height), 0.40
+    )
+  } else {
+    testthat::succeed("Frozen microglia state is unavailable.")
+  }
   stage12_text <- paste(readLines(file.path(root, "06_modules_WGCNA", "12_microglia_wgcna_nature_readiness_audit.R"), warn = FALSE), collapse = "\n")
   testthat::expect_match(stage12_text, "configured_default_cut_height", fixed = TRUE)
   testthat::expect_match(stage12_text, "selected_network_cut_height", fixed = TRUE)
@@ -122,7 +196,7 @@ testthat::test_that("future cut-height defaults remain distinct from frozen micr
 testthat::test_that("pipeline declares Stage 13 and corrected-renderer contracts", {
   pipeline_text <- paste(readLines(file.path(root, "pipeline.yml"), warn = FALSE), collapse = "\n")
   stage13_required <- c(
-    "group_effects/microglia/module_group_effects.csv", "group_effects/microglia/supermodule_group_effects.csv",
+    "interpretable_summary/microglia/WGCNA_inferential_handoff.csv",
     "module_annotation/microglia/WGCNA_module_biological_annotation.csv", "module_annotation/microglia/WGCNA_supermodule_biological_annotation.csv",
     "interpretable_summary/microglia/WGCNA_final_label_lookup.csv", "module_robustness_consensus.csv",
     "higher_order_block_readiness_summary.csv", "wgcna_module_supermodule_annotation.csv",

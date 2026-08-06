@@ -1,0 +1,67 @@
+name: wgcna_inferential_handoff
+required_columns:
+  - dataset
+  - entity_level
+  - entity_id
+  - display_label
+  - n_member_modules
+  - contrast
+  - analysis_tier
+  - spatial_scope
+  - estimate
+  - SE
+  - CI_low
+  - CI_high
+  - p_value
+  - tier_specific_fdr
+  - tier_specific_family_id
+  - tier_specific_family_size
+  - model_valid
+  - model_stability_status
+  - biological_n
+  - annotation_class
+  - support_class
+  - claim_gate
+  - safe_interpretation
+  - independent_hypothesis
+  - claim_entity_role
+  - test_type
+  - effect_scope
+  - spatial_unit
+  - result_scope
+  - source_artifact
+  - source_key
+  - source_key_contract
+columns:
+  dataset: {type: character, allowed_values: [neuron_neuropil, neuron_soma, microglia]}
+  entity_level: {type: character, allowed_values: [module, supermodule]}
+  entity_id: {type: character}
+  display_label: {type: character}
+  n_member_modules: {type: integer, range: {min: 1}}
+  contrast: {type: character}
+  analysis_tier: {type: character, allowed_values: [primary_wgcna_global, secondary_contextual_global, secondary_spatial_heterogeneity, exploratory_spatial_localization]}
+  spatial_scope: {type: character}
+  estimate: {type: numeric}
+  SE: {type: numeric}
+  CI_low: {type: numeric}
+  CI_high: {type: numeric}
+  p_value: {type: numeric, range: {min: 0, max: 1}}
+  tier_specific_fdr: {type: numeric, range: {min: 0, max: 1}}
+  tier_specific_family_id: {type: character}
+  tier_specific_family_size: {type: integer, range: {min: 1}}
+  model_valid: {type: logical}
+  model_stability_status: {type: character}
+  biological_n: {type: integer, range: {min: 1}}
+  annotation_class: {type: character}
+  support_class: {type: character}
+  claim_gate: {type: character, allowed_values: [eligible_for_readiness_assessment, diagnostic_only_model, not_claim_allowed_model]}
+  safe_interpretation: {type: character}
+  independent_hypothesis: {type: logical}
+  claim_entity_role: {type: character, allowed_values: [canonical_module, higher_order_block]}
+  test_type: {type: character}
+  effect_scope: {type: character}
+  spatial_unit: {type: character}
+  result_scope: {type: character}
+  source_artifact: {type: character}
+  source_key: {type: character}
+  source_key_contract: {type: character}

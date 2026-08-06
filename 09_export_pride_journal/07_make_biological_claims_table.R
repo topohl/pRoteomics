@@ -18,6 +18,8 @@ source(repo_path("R", "validation_utils.R"))
 source(repo_path("R", "enrichment_io.R"))
 source(repo_path("R", "schema_validation.R"))
 source(repo_path("R", "wgcna_claim_readiness_utils.R"))
+source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
+source(repo_path("R", "wgcna_stage07_semantic_utils.R"))
 
 SCRIPT_ID <- "09_export_pride_journal/07_make_biological_claims_table.R"
 Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
@@ -365,30 +367,27 @@ first_non_incomplete <- function(...) {
 
 wgcna_label_lookup <- function() {
   rows <- lapply(valid_datasets(), function(ds) {
-    module_path <- path_results("tables", "06_modules_WGCNA", "interpretable_summary", ds, "WGCNA_module_group_effects_interpretable.csv")
-    super_path <- path_results("tables", "06_modules_WGCNA", "interpretable_summary", ds, "WGCNA_supermodule_group_effects_interpretable.csv")
-    module <- read_csv_if_exists(module_path)
-    super <- read_csv_if_exists(super_path)
-    out <- list()
-    if (!is.null(module) && nrow(module)) {
-      for (col in c("module_id", "ModuleID", "safe_display_label", "Module_CleanPlotLabel", "module_biological_label", "module_label_display", "module_label")) if (!col %in% names(module)) module[[col]] <- NA_character_
-      out$module <- module %>%
-        dplyr::transmute(
-          dataset = ds,
-          lookup_id = dplyr::coalesce(as.character(.data$module_id), as.character(.data$ModuleID)),
-          repaired_label = first_non_incomplete(.data$safe_display_label, .data$Module_CleanPlotLabel, .data$module_biological_label, .data$module_label_display, .data$module_label)
-        )
+    lookup_path <- path_results(
+      "tables", "06_modules_WGCNA", "interpretable_summary", ds,
+      "WGCNA_final_label_lookup.csv"
+    )
+    lookup <- read_csv_if_exists(lookup_path)
+    if (is.null(lookup) || !nrow(lookup)) return(tibble::tibble())
+    for (col in c(
+      "dataset", "entity_id", "final_plot_label", "canonical_plot_label",
+      "canonical_biological_label", "best_data_driven_label"
+    )) {
+      if (!col %in% names(lookup)) lookup[[col]] <- NA_character_
     }
-    if (!is.null(super) && nrow(super)) {
-      for (col in c("supermodule_id", "SupermoduleID", "safe_display_label", "Supermodule_FullAnnotationLabel", "Supermodule_CompositionDisplayLabel", "Supermodule_CompositionLabel", "Supermodule_CleanPlotLabel", "Supermodule_PlotLabel", "supermodule_label")) if (!col %in% names(super)) super[[col]] <- NA_character_
-      out$supermodule <- super %>%
-        dplyr::transmute(
-          dataset = ds,
-          lookup_id = dplyr::coalesce(as.character(.data$supermodule_id), as.character(.data$SupermoduleID)),
-          repaired_label = first_non_incomplete(.data$safe_display_label, .data$Supermodule_FullAnnotationLabel, .data$Supermodule_CompositionDisplayLabel, .data$Supermodule_CompositionLabel, .data$Supermodule_CleanPlotLabel, .data$Supermodule_PlotLabel, .data$supermodule_label)
+    lookup %>%
+      dplyr::transmute(
+        dataset = dplyr::coalesce(as.character(.data$dataset), ds),
+        lookup_id = as.character(.data$entity_id),
+        repaired_label = first_non_incomplete(
+          .data$final_plot_label, .data$canonical_plot_label,
+          .data$canonical_biological_label, .data$best_data_driven_label
         )
-    }
-    dplyr::bind_rows(out)
+      )
   })
   dplyr::bind_rows(rows) %>%
     dplyr::filter(!is.na(.data$lookup_id), nzchar(.data$lookup_id), !is.na(.data$repaired_label), nzchar(.data$repaired_label)) %>%
@@ -446,10 +445,20 @@ repair_incomplete_wgcna_labels <- function(claims) {
 }
 
 wgcna_module_claim_status <- function(dataset) {
-  effects <- read_csv_if_exists(path_results("tables", "06_modules_WGCNA", "group_effects", dataset, "module_group_effects.csv"))
-  if (is.null(effects) || !nrow(effects) || !"module_id" %in% names(effects)) return(NULL)
+  effects <- read_csv_if_exists(path_results(
+    "tables", "06_modules_WGCNA", "interpretable_summary", dataset,
+    "WGCNA_inferential_handoff.csv"
+  ))
+  if (is.null(effects) || !nrow(effects)) return(NULL)
+  wgcna_stage07_validate_inferential_handoff(effects)
+  effects <- effects |>
+    dplyr::filter(.data$entity_level == "module") |>
+    dplyr::mutate(
+      module_id = as.character(.data$entity_id),
+      module_or_supermodule_id = as.character(.data$entity_id)
+    )
+  if (!nrow(effects)) return(NULL)
   audit <- read_csv_if_exists(path_results("reviewer_audit", "wgcna_robustness_claim_gate.csv"))
-  effects$module_or_supermodule_id <- as.character(effects$module_id)
   if (!is.null(audit) && nrow(audit)) {
     audit <- audit %>%
       dplyr::filter(.data$dataset == dataset, .data$level == "module") %>%
@@ -457,12 +466,13 @@ wgcna_module_claim_status <- function(dataset) {
     join_cols <- intersect(c("dataset", "module_or_supermodule_id", "contrast", "spatial_unit", "effect_scope"), names(audit))
     effects <- effects %>% dplyr::left_join(audit, by = join_cols)
   }
-  for (col in c("claim_allowed_model", "model_downgrade_reason", "animal_level_status", "robustness_gate", "preservation_status", "sensitivity_status", "direction_stability", "confounding_status")) {
+  for (col in c("model_downgrade_reason", "animal_level_status", "robustness_gate", "preservation_status", "sensitivity_status", "direction_stability", "confounding_status")) {
     if (!col %in% names(effects)) effects[[col]] <- NA
   }
   effects %>%
     dplyr::mutate(
-      model_ok = .data$claim_allowed_model %in% TRUE,
+      model_ok = .data$claim_gate ==
+        "eligible_for_readiness_assessment",
       robust_ok = .data$robustness_gate == "pass"
     ) %>%
     dplyr::group_by(.data$dataset, .data$module_id, .data$contrast) %>%
@@ -1905,21 +1915,45 @@ collect_microglia_signature_claims <- function(dataset) {
 
 collect_wgcna_group_effect_claims <- function(dataset, level = c("module", "supermodule")) {
   level <- match.arg(level)
-  filename <- paste0(level, "_group_effects.csv")
+  filename <- "WGCNA_inferential_handoff.csv"
   f <- resolve_input_path(
-    input_name = paste0("wgcna_", level, "_group_effects"),
-    expected_path = path_results("tables", "06_modules_WGCNA", "group_effects", dataset, filename),
+    input_name = paste0("wgcna_", level, "_inferential_handoff"),
+    expected_path = path_results(
+      "tables", "06_modules_WGCNA", "interpretable_summary", dataset,
+      filename
+    ),
     required = FALSE,
     script = SCRIPT_ID,
     dataset = dataset,
     stage = "export",
-    producer_script_or_artifact_id = "06_modules_WGCNA/05_module_supermodule_group_effects.r"
+    producer_script_or_artifact_id = "06_modules_WGCNA/07_wgcna_interpretable_summary.r"
   )
   df <- read_csv_if_exists(f)
   if (is.null(df) || !nrow(df) || !"contrast" %in% names(df)) return(empty_claims())
+  wgcna_stage07_validate_inferential_handoff(df)
+  required_handoff <- c(
+    "entity_level", "entity_id", "independent_hypothesis",
+    "claim_entity_role", "tier_specific_fdr", "support_class",
+    "claim_gate", "display_label", "tier_specific_family_id",
+    "tier_specific_family_size"
+  )
+  if (length(setdiff(required_handoff, names(df)))) {
+    stop(
+      "WGCNA inferential handoff is missing: ",
+      paste(setdiff(required_handoff, names(df)), collapse = ", "),
+      call. = FALSE
+    )
+  }
+  df <- df |>
+    dplyr::filter(
+      .data$entity_level == level,
+      .data$independent_hypothesis %in% TRUE,
+      .data$claim_entity_role != "compatibility_alias",
+      .data$test_type != "conditional_interaction_followup"
+    )
   for (col in c(
     "endpoint_id", "endpoint_label", "module_id", "supermodule_id", "module_label", "supermodule_label",
-    "spatial_unit", "effect_scope", "estimate", "p_value", "FDR_global", "FDR_within_dataset_level",
+    "spatial_unit", "effect_scope", "estimate", "p_value", "tier_specific_fdr",
     "direction", "evidence_status", "model_family", "model_formula", "primary_model_stable",
     "claim_allowed_model", "model_downgrade_reason", "fallback_used", "fallback_type",
     "animal_level_status", "pseudoreplication_guard", "biological_replicate_unit",
@@ -1928,8 +1962,13 @@ collect_wgcna_group_effect_claims <- function(dataset, level = c("module", "supe
   )) {
     if (!col %in% names(df)) df[[col]] <- NA
   }
-  id_col <- if (identical(level, "module")) "module_id" else "supermodule_id"
-  df$module_or_supermodule_id <- dplyr::coalesce(as.character(df[[id_col]]), as.character(df$endpoint_id))
+  df$module_or_supermodule_id <- as.character(df$entity_id)
+  df$endpoint_label <- dplyr::coalesce(
+    blank_to_na(df$display_label), blank_to_na(df$endpoint_label)
+  )
+  df$evidence_status <- dplyr::coalesce(
+    blank_to_na(df$support_class), blank_to_na(df$evidence_status)
+  )
   audit <- read_csv_if_exists(path_results("reviewer_audit", "wgcna_robustness_claim_gate.csv"))
   if (!is.null(audit) && nrow(audit)) {
     audit <- audit %>%
@@ -1957,10 +1996,18 @@ collect_wgcna_group_effect_claims <- function(dataset, level = c("module", "supe
       evidence_type = paste0("WGCNA_", level, "_group_effect"),
       claim_type = "wgcna_group_effect",
       !!!transmute_stage13_claim_fields(),
-      wgcna_statistical_endpoint_id = paste(level, .data$module_or_supermodule_id, .data$contrast, .data$effect_scope, .data$spatial_unit, sep = "|"),
+      wgcna_statistical_endpoint_id = paste0(
+        "dataset=", .data$dataset,
+        "|level=", .data$level,
+        "|endpoint_id=", .data$endpoint_id,
+        "|effect_scope=", .data$effect_scope,
+        "|spatial_unit=", .data$spatial_unit,
+        "|contrast=", .data$contrast,
+        "|test_type=", .data$test_type
+      ),
       effect_size_NES = .data$estimate,
       raw_p = .data$p_value,
-      FDR = dplyr::coalesce(.data$FDR_global, .data$FDR_within_dataset_level),
+      FDR = .data$tier_specific_fdr,
       robustness_stability_metric = paste0(
         "robustness_gate=", dplyr::coalesce(.data$robustness_gate, "missing_required"),
         "; preservation_status=", dplyr::coalesce(.data$preservation_status, "not_available"),
@@ -1969,11 +2016,17 @@ collect_wgcna_group_effect_claims <- function(dataset, level = c("module", "supe
         "; confounding_status=", dplyr::coalesce(.data$confounding_status, "not_available")
       ),
       source_file = f,
-      figure_table_target = paste0("WGCNA_", level, "_group_effects_interpretable; ", filename),
+      figure_table_target = paste0(
+        "WGCNA_inferential_handoff; entity_level=", level
+      ),
       interpretation_note = paste0(
         "Primary WGCNA group-effect inference; level=", level,
         "; spatial_unit=", .data$spatial_unit,
         "; effect_scope=", .data$effect_scope,
+        "; tier_specific_family_id=", .data$tier_specific_family_id,
+        "; tier_specific_family_size=", .data$tier_specific_family_size,
+        "; inferential_handoff_file=", f,
+        "; claim_gate=", .data$claim_gate,
         "; evidence_status=", .data$evidence_status,
         "; model_family=", .data$model_family,
         "; model_formula=", .data$model_formula,
@@ -2049,9 +2102,10 @@ collect_integration_claims <- function() {
 }
 
 if (is_dry_run()) {
+  manuscript_summary_path <- path_results("tables", "10_biological_integration", "manuscript_program_summary", "global", "manuscript_program_summary.csv")
   dry_run_line("Script", "09_export_pride_journal/07_make_biological_claims_table.R")
   dry_run_line("Datasets", paste(valid_datasets(), collapse = ", "))
-  dry_run_line("Integration manuscript summary", path_results("tables", "10_biological_integration", "manuscript_program_summary", "global", "manuscript_program_summary.csv"), if (file.exists(path_results("tables", "10_biological_integration", "manuscript_program_summary", "global", "manuscript_program_summary.csv"))) "PASS" else "WARN")
+  dry_run_line("Integration manuscript summary", manuscript_summary_path, if (file.exists(manuscript_summary_path)) "PASS" else "FAIL")
   dry_run_line("Required microglia WGCNA Stage 13 claim readiness", STAGE13_PATH, if (file.exists(STAGE13_PATH)) "PASS" else "FAIL")
   dry_run_line("Output CSV", path_results("tables", "biological_claims_table.csv"))
   dry_run_line("Output XLSX", path_results("tables", "biological_claims_table.xlsx"))
@@ -2069,7 +2123,14 @@ if (is_dry_run()) {
   dry_run_line("Final claim-gate summary", path_results("reviewer_audit", "final_claim_gate_summary.csv"))
   dry_run_line("Final reviewer audit manifest", path_results("reviewer_audit", "final_reviewer_audit_manifest.csv"))
   dry_run_line("Final evidence bundle validation", path_results("reviewer_audit", "final_evidence_bundle_validation.csv"))
-  quit(status = 0, save = "no")
+  required_ready <- file.exists(manuscript_summary_path) &&
+    file.exists(STAGE13_PATH)
+  dry_run_line(
+    "Status",
+    if (required_ready) "ready" else "missing_required_input",
+    if (required_ready) "PASS" else "FAIL"
+  )
+  quit(status = if (required_ready) 0 else 1, save = "no")
 }
 
 claims <- dplyr::bind_rows(

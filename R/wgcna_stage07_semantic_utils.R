@@ -121,6 +121,349 @@ wgcna_stage07_validate_source_preserved <- function(
   invisible(TRUE)
 }
 
+.wgcna_stage07_source_key_value <- function(data) {
+  key <- wgcna_group_effect_consumer_source_key()
+  missing <- setdiff(key, names(data))
+  if (length(missing)) {
+    stop(
+      "Stage 07 inferential source key is missing column(s): ",
+      paste(missing, collapse = ", "), ".", call. = FALSE
+    )
+  }
+  do.call(paste, c(lapply(data[key], as.character), sep = "\r"))
+}
+
+wgcna_stage07_source_statistical_keys <- function(data) {
+  key <- wgcna_group_effect_consumer_source_key()
+  missing <- setdiff(key, names(data))
+  if (length(missing)) {
+    stop(
+      "Stage 07 statistical source key is missing column(s): ",
+      paste(missing, collapse = ", "), ".", call. = FALSE
+    )
+  }
+  values <- lapply(key, function(column) {
+    paste0(column, "=", as.character(data[[column]]))
+  })
+  do.call(paste, c(values, sep = "|"))
+}
+
+.wgcna_stage07_first_character <- function(data, candidates) {
+  out <- rep(NA_character_, nrow(data))
+  for (column in intersect(candidates, names(data))) {
+    value <- trimws(as.character(data[[column]]))
+    value[is.na(value) | !nzchar(value)] <- NA_character_
+    replace <- is.na(out) & !is.na(value)
+    out[replace] <- value[replace]
+  }
+  out
+}
+
+.wgcna_stage07_first_integer <- function(data, candidates) {
+  out <- rep(NA_integer_, nrow(data))
+  for (column in intersect(candidates, names(data))) {
+    value <- suppressWarnings(as.integer(data[[column]]))
+    replace <- is.na(out) & !is.na(value)
+    out[replace] <- value[replace]
+  }
+  out
+}
+
+.wgcna_stage07_member_counts <- function(membership) {
+  if (!is.data.frame(membership)) {
+    stop("Stage 07 inferential membership must be a data frame.", call. = FALSE)
+  }
+  module_column <- intersect(c("ModuleID", "module_id"), names(membership))
+  supermodule_column <- intersect(
+    c("SupermoduleID", "supermodule_id"), names(membership)
+  )
+  if (!length(module_column) || !length(supermodule_column)) {
+    stop(
+      "Stage 07 inferential membership requires module and supermodule IDs.",
+      call. = FALSE
+    )
+  }
+  map <- data.frame(
+    module_id = as.character(membership[[module_column[[1]]]]),
+    supermodule_id = as.character(membership[[supermodule_column[[1]]]]),
+    stringsAsFactors = FALSE
+  )
+  map <- unique(map[
+    !is.na(map$module_id) & nzchar(map$module_id) &
+      !is.na(map$supermodule_id) & nzchar(map$supermodule_id),
+    ,
+    drop = FALSE
+  ])
+  if (!nrow(map) || anyDuplicated(map$module_id)) {
+    stop(
+      "Stage 07 inferential membership must map every module once.",
+      call. = FALSE
+    )
+  }
+  counts <- aggregate(
+    map$module_id,
+    by = list(supermodule_id = map$supermodule_id),
+    FUN = function(x) length(unique(x))
+  )
+  names(counts)[[2]] <- "n_member_modules"
+  counts$n_member_modules <- as.integer(counts$n_member_modules)
+  counts
+}
+
+wgcna_stage07_select_inferential_source <- function(
+    module_effects, supermodule_effects, membership
+) {
+  wgcna_group_effect_consumer_validate_adapted(module_effects)
+  wgcna_group_effect_consumer_validate_adapted(supermodule_effects)
+  counts <- .wgcna_stage07_member_counts(membership)
+
+  module_keep <- module_effects$level == "module" &
+    module_effects$independent_hypothesis %in% TRUE &
+    module_effects$claim_entity_role == "canonical_module" &
+    module_effects$test_type != "conditional_interaction_followup"
+  selected_modules <- module_effects[module_keep, , drop = FALSE]
+  selected_modules$.inferential_n_member_modules <- 1L
+
+  super_ids <- .wgcna_stage07_first_character(
+    supermodule_effects, c("supermodule_id", "endpoint_id")
+  )
+  super_count <- counts$n_member_modules[
+    match(super_ids, counts$supermodule_id)
+  ]
+  super_keep <- supermodule_effects$level == "supermodule" &
+    supermodule_effects$independent_hypothesis %in% TRUE &
+    supermodule_effects$claim_entity_role == "higher_order_block" &
+    supermodule_effects$test_type != "conditional_interaction_followup" &
+    !is.na(super_count) & super_count >= 2L
+  selected_supermodules <- supermodule_effects[super_keep, , drop = FALSE]
+  selected_supermodules$.inferential_n_member_modules <-
+    as.integer(super_count[super_keep])
+
+  out <- dplyr::bind_rows(selected_modules, selected_supermodules)
+  if (any(out$claim_entity_role == "compatibility_alias") ||
+      any(!out$independent_hypothesis %in% TRUE) ||
+      any(out$test_type == "conditional_interaction_followup")) {
+    stop(
+      "Stage 07 inferential selection retained a non-independent row.",
+      call. = FALSE
+    )
+  }
+  expected_module_keys <- .wgcna_stage07_source_key_value(
+    module_effects[module_keep, , drop = FALSE]
+  )
+  observed_module_keys <- .wgcna_stage07_source_key_value(
+    out[out$level == "module", , drop = FALSE]
+  )
+  if (!identical(expected_module_keys, observed_module_keys)) {
+    stop(
+      "Stage 07 inferential selection removed or reordered a valid module row.",
+      call. = FALSE
+    )
+  }
+  out
+}
+
+wgcna_stage07_validate_inferential_handoff <- function(
+    data, artifact = "Stage 07 inferential handoff"
+) {
+  required <- c(
+    "dataset", "entity_level", "entity_id", "display_label",
+    "n_member_modules", "contrast", "analysis_tier", "spatial_scope",
+    "estimate", "SE", "CI_low", "CI_high", "p_value",
+    "tier_specific_fdr", "tier_specific_family_id",
+    "tier_specific_family_size", "model_valid", "model_stability_status",
+    "biological_n", "annotation_class", "support_class", "claim_gate",
+    "safe_interpretation", "independent_hypothesis", "claim_entity_role",
+    "test_type", "effect_scope", "spatial_unit", "result_scope",
+    "source_artifact", "source_key", "source_key_contract"
+  )
+  missing <- setdiff(required, names(data))
+  if (length(missing)) {
+    stop(
+      artifact, " is missing required column(s): ",
+      paste(missing, collapse = ", "), ".", call. = FALSE
+    )
+  }
+  if (nrow(data)) {
+    if (any(!data$independent_hypothesis %in% TRUE) ||
+        any(data$claim_entity_role == "compatibility_alias") ||
+        any(data$test_type == "conditional_interaction_followup")) {
+      stop(artifact, " contains a non-independent endpoint.", call. = FALSE)
+    }
+    bad_supermodule <- data$entity_level == "supermodule" &
+      (is.na(data$n_member_modules) | data$n_member_modules < 2L)
+    if (any(bad_supermodule)) {
+      stop(
+        artifact,
+        " contains a singleton-supermodule compatibility alias.",
+        call. = FALSE
+      )
+    }
+    key <- c(
+      "dataset", "entity_level", "entity_id", "analysis_tier", "contrast",
+      "effect_scope", "spatial_unit", "test_type"
+    )
+    if (anyDuplicated(data[key])) {
+      stop(artifact, " contains duplicated inferential endpoints.", call. = FALSE)
+    }
+  }
+  wgcna_group_effect_consumer_validate_adapted(data)
+  wgcna_inferential_handoff_validate(data, artifact = artifact)
+  invisible(TRUE)
+}
+
+wgcna_stage07_build_inferential_handoff <- function(
+    module_effects, supermodule_effects,
+    module_interpretable, supermodule_interpretable, membership
+) {
+  selected <- wgcna_stage07_select_inferential_source(
+    module_effects, supermodule_effects, membership
+  )
+  wgcna_stage07_validate_interpretable(module_interpretable)
+  wgcna_stage07_validate_interpretable(supermodule_interpretable)
+
+  interpreted <- dplyr::bind_rows(
+    module_interpretable, supermodule_interpretable
+  )
+  interpreted_keys <- .wgcna_stage07_source_key_value(interpreted)
+  selected_keys <- .wgcna_stage07_source_key_value(selected)
+  if (anyDuplicated(interpreted_keys)) {
+    stop(
+      "Stage 07 interpretable rows have duplicated source keys.",
+      call. = FALSE
+    )
+  }
+  positions <- match(selected_keys, interpreted_keys)
+  if (anyNA(positions)) {
+    stop(
+      "Stage 07 inferential selection could not be matched to annotation rows.",
+      call. = FALSE
+    )
+  }
+  annotated <- interpreted[positions, , drop = FALSE]
+  n_member_modules <- selected$.inferential_n_member_modules
+  selected$.inferential_n_member_modules <- NULL
+  for (column in names(selected)) {
+    if (!identical(annotated[[column]], selected[[column]])) {
+      stop(
+        "Stage 07 annotation changed selected statistical column ",
+        column, ".", call. = FALSE
+      )
+    }
+  }
+
+  entity_id <- ifelse(
+    annotated$level == "module",
+    .wgcna_stage07_first_character(
+      annotated, c("module_id", "endpoint_id")
+    ),
+    .wgcna_stage07_first_character(
+      annotated, c("supermodule_id", "endpoint_id")
+    )
+  )
+  display_label <- ifelse(
+    annotated$level == "module",
+    .wgcna_stage07_first_character(
+      annotated,
+      c(
+        "ModulePlotLabel", "interpretable_module_label",
+        "module_label_display", "module_biological_label", "endpoint_label",
+        "module_id"
+      )
+    ),
+    .wgcna_stage07_first_character(
+      annotated,
+      c(
+        "Supermodule_PlotLabel", "interpretable_supermodule_label",
+        "Supermodule_DisplayLabel", "supermodule_label", "endpoint_label",
+        "supermodule_id"
+      )
+    )
+  )
+  annotation_class <- ifelse(
+    annotated$level == "module",
+    .wgcna_stage07_first_character(
+      annotated,
+      c("microenvironment_class", "annotation_class", "annotation_confidence")
+    ),
+    .wgcna_stage07_first_character(
+      annotated,
+      c(
+        "dominant_microenvironment_class", "annotation_class",
+        "annotation_confidence"
+      )
+    )
+  )
+  model_valid <- as.logical(annotated$model_valid_for_inference)
+  claim_allowed <- as.logical(annotated$claim_allowed_model)
+  primary_stable <- as.logical(annotated$primary_model_stable)
+  claim_gate <- ifelse(
+    model_valid %in% TRUE & claim_allowed %in% TRUE &
+      primary_stable %in% TRUE,
+    "eligible_for_readiness_assessment",
+    ifelse(
+      !model_valid %in% TRUE | !primary_stable %in% TRUE,
+      "diagnostic_only_model",
+      "not_claim_allowed_model"
+    )
+  )
+  canonical <- data.frame(
+    dataset = as.character(annotated$dataset),
+    entity_level = as.character(annotated$level),
+    entity_id = as.character(entity_id),
+    display_label = as.character(display_label),
+    n_member_modules = as.integer(n_member_modules),
+    contrast = as.character(annotated$contrast),
+    analysis_tier = as.character(annotated$analysis_tier),
+    spatial_scope = as.character(annotated$effect_scope),
+    estimate = suppressWarnings(as.numeric(annotated$estimate)),
+    SE = suppressWarnings(as.numeric(annotated$SE)),
+    CI_low = suppressWarnings(as.numeric(
+      if ("CI_low" %in% names(annotated)) annotated$CI_low else NA_real_
+    )),
+    CI_high = suppressWarnings(as.numeric(
+      if ("CI_high" %in% names(annotated)) annotated$CI_high else NA_real_
+    )),
+    p_value = suppressWarnings(as.numeric(annotated$p_value)),
+    tier_specific_fdr = suppressWarnings(as.numeric(
+      annotated$tier_specific_fdr
+    )),
+    tier_specific_family_id = as.character(
+      annotated$tier_specific_family_id
+    ),
+    tier_specific_family_size = as.integer(
+      annotated$tier_specific_family_size
+    ),
+    model_valid = model_valid,
+    model_stability_status = as.character(
+      annotated$model_stability_status
+    ),
+    biological_n = .wgcna_stage07_first_integer(
+      annotated, c("n_animals_total", "n_animals", "biological_n")
+    ),
+    annotation_class = as.character(annotation_class),
+    support_class = as.character(annotated$statistical_support_status),
+    claim_gate = as.character(claim_gate),
+    safe_interpretation = as.character(annotated$interpretation_sentence),
+    source_artifact = wgcna_inferential_handoff_source_artifact(
+      annotated$dataset, annotated$level
+    ),
+    source_key = wgcna_inferential_handoff_source_key(annotated),
+    source_key_contract = rep(
+      wgcna_inferential_handoff_source_key_contract(), nrow(annotated)
+    ),
+    stringsAsFactors = FALSE
+  )
+  provenance <- annotated[
+    , setdiff(names(annotated), names(canonical)),
+    drop = FALSE
+  ]
+  out <- cbind(canonical, provenance, stringsAsFactors = FALSE)
+  rownames(out) <- NULL
+  wgcna_stage07_validate_inferential_handoff(out)
+  out
+}
+
 .wgcna_stage07_row_value <- function(row, name, default = NA) {
   if (name %in% names(row) && length(row[[name]])) row[[name]][[1]] else default
 }

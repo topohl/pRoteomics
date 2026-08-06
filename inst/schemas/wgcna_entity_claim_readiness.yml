@@ -29,9 +29,11 @@ required_columns:
   - group_effect_CI_low
   - group_effect_CI_high
   - group_effect_p_value
-  - group_effect_FDR_within_dataset_level
-  - group_effect_FDR_global
-  - group_effect_FDR
+  - group_effect_analysis_tier
+  - group_effect_result_scope
+  - group_effect_tier_specific_fdr
+  - group_effect_tier_specific_family_id
+  - group_effect_tier_specific_family_size
   - group_effect_adjustment_scope
   - group_effect_evidence_status
   - group_effect_status
@@ -78,9 +80,11 @@ columns:
   group_effect_CI_low: {type: numeric}
   group_effect_CI_high: {type: numeric}
   group_effect_p_value: {type: numeric, range: {min: 0, max: 1}}
-  group_effect_FDR_within_dataset_level: {type: numeric, range: {min: 0, max: 1}}
-  group_effect_FDR_global: {type: numeric, range: {min: 0, max: 1}}
-  group_effect_FDR: {type: numeric, range: {min: 0, max: 1}}
+  group_effect_analysis_tier: {type: character, allowed_values: ["", primary_wgcna_global]}
+  group_effect_result_scope: {type: character, allowed_values: ["", primary_global_vulnerability]}
+  group_effect_tier_specific_fdr: {type: numeric, range: {min: 0, max: 1}}
+  group_effect_tier_specific_family_id: {type: character}
+  group_effect_tier_specific_family_size: {type: integer, range: {min: 1}}
   group_effect_adjustment_scope: {type: character}
   group_effect_evidence_status: {type: character}
   group_effect_status: {type: character, allowed_values: [FDR_supported, not_FDR_supported, diagnostic_only_model, not_available]}
