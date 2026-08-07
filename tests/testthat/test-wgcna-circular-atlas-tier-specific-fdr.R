@@ -616,9 +616,10 @@ testthat::test_that("standardized circular SVG and PDF outputs exist", {
     ),
     collapse = "\n"
   )
+  canonical_svg_text <- gsub("&lt;", "<", canonical_svg, fixed = TRUE)
   testthat::expect_match(
     canonical_svg,
-    "standardized model effect (SD units)",
+    "Local effect (SD units)",
     fixed = TRUE
   )
   testthat::expect_false(grepl(
@@ -630,19 +631,40 @@ testthat::test_that("standardized circular SVG and PDF outputs exist", {
   testthat::expect_false(grepl(
     "q <= .25", canonical_svg, fixed = TRUE
   ))
+  testthat::expect_false(grepl(
+    ">[^<]*0\\.25[^<]*</text>", canonical_svg_text, perl = TRUE
+  ))
+  testthat::expect_match(canonical_svg, "Support", fixed = TRUE)
+  testthat::expect_match(canonical_svg, "outer: global", fixed = TRUE)
+  testthat::expect_match(canonical_svg, "cell: local", fixed = TRUE)
+  testthat::expect_match(canonical_svg, "exploratory", fixed = TRUE)
   testthat::expect_match(
-    canonical_svg,
-    "Global SM effect support",
-    fixed = TRUE
+    canonical_svg_text, "q \u2264 0.05", fixed = TRUE
+  )
+  testthat::expect_match(
+    canonical_svg_text, "0.05 < q \u2264 0.10", fixed = TRUE
   )
   testthat::expect_match(
     canonical_svg,
-    "Local spatial BH support",
+    "Singleton SM; not independently tested.",
     fixed = TRUE
   )
+  testthat::expect_match(canonical_svg, "SM01", fixed = TRUE)
+  testthat::expect_match(canonical_svg, "\u2020", fixed = TRUE)
+  testthat::expect_false(grepl(
+    "Outer markers represent spatial-adjusted Stage 07 handoff support.",
+    canonical_svg,
+    fixed = TRUE
+  ))
+  testthat::expect_false(grepl(
+    "Global SM effect support", canonical_svg, fixed = TRUE
+  ))
+  testthat::expect_false(grepl(
+    "Local spatial BH support", canonical_svg, fixed = TRUE
+  ))
   testthat::expect_match(canonical_svg, "RES-CON", fixed = TRUE)
   testthat::expect_match(canonical_svg, "SUS-CON", fixed = TRUE)
-  testthat::expect_match(canonical_svg, "SUS-RES", fixed = TRUE)
+  testthat::expect_match(canonical_svg, "SUS-RES (primary)", fixed = TRUE)
 })
 
 testthat::test_that("circular script does not use broad legacy FDR for support", {
@@ -697,7 +719,7 @@ testthat::test_that("circular script does not use broad legacy FDR for support",
   )
   testthat::expect_match(
     script,
-    "inner_radius = 0.52",
+    "inner_radius = 0.50",
     fixed = TRUE
   )
   testthat::expect_match(
@@ -707,9 +729,16 @@ testthat::test_that("circular script does not use broad legacy FDR for support",
   )
   testthat::expect_match(
     script,
-    '"alias: inherited / non-independent"',
+    '"\\u2020 Singleton SM; not independently tested."',
     fixed = TRUE
   )
+  testthat::expect_match(script, 'contrast_text_col <- "#222222"', fixed = TRUE)
+  testthat::expect_match(script, '"SM01" = "#6B86A5"', fixed = TRUE)
+  testthat::expect_false(grepl(
+    'labels = paste(caption_lines, collapse = "\\n")',
+    script,
+    fixed = TRUE
+  ))
   testthat::expect_false(grepl(
     '"not used"', script, fixed = TRUE
   ))
