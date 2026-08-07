@@ -470,6 +470,55 @@ testthat::test_that(
 )
 
 testthat::test_that(
+  "canonical handoff reader restores guarded integer CSV semantics",
+  {
+    testthat::skip_if_not_installed("readr")
+    fixture <- wgcna_inferential_handoff_fixture()
+    handoff <- do.call(
+      wgcna_stage07_build_inferential_handoff, fixture
+    )
+    path <- tempfile(fileext = ".csv")
+    on.exit(unlink(path), add = TRUE)
+    readr::write_csv(handoff, path, na = "")
+
+    raw <- readr::read_csv(
+      path, show_col_types = FALSE, progress = FALSE
+    )
+    testthat::expect_type(raw$tier_specific_family_size, "double")
+    normalized <- wgcna_inferential_handoff_read(path)
+    testthat::expect_type(
+      normalized$tier_specific_family_size, "integer"
+    )
+    testthat::expect_identical(
+      normalized$tier_specific_family_size,
+      handoff$tier_specific_family_size
+    )
+    testthat::expect_silent(
+      wgcna_stage07_validate_inferential_handoff(normalized)
+    )
+
+    na_normalized <- wgcna_inferential_handoff_normalize_csv_types(
+      data.frame(tier_specific_family_size = c(NA_real_, 3)),
+      "NA fixture"
+    )
+    testthat::expect_identical(
+      na_normalized$tier_specific_family_size, c(NA_integer_, 3L)
+    )
+
+    for (bad in c(3.5, -1, Inf, .Machine$integer.max + 1)) {
+      invalid <- handoff
+      invalid$tier_specific_family_size[1] <- bad
+      readr::write_csv(invalid, path, na = "")
+      testthat::expect_error(
+        wgcna_inferential_handoff_read(path),
+        "finite, non-negative, whole values within the R integer range",
+        info = paste("invalid family size", bad)
+      )
+    }
+  }
+)
+
+testthat::test_that(
   "singleton supermodule display reuses one canonical module endpoint",
   {
     fixture <- wgcna_inferential_handoff_fixture()
@@ -492,6 +541,20 @@ testthat::test_that(
     testthat::expect_identical(singleton$source_entity_level, "module")
     testthat::expect_identical(singleton$source_entity_id, "m1")
     testthat::expect_true(singleton$display_is_compatibility_alias)
+    testthat::expect_false(singleton$display_is_independent_endpoint)
+    testthat::expect_identical(
+      singleton$display_support_origin, "inherited_canonical_module"
+    )
+    testthat::expect_true(singleton$independent_hypothesis)
+    testthat::expect_identical(
+      singleton$claim_entity_role, "canonical_module"
+    )
+    genuine <- display[display$supermodule_id == "SM02", , drop = FALSE]
+    testthat::expect_true(all(genuine$display_is_independent_endpoint))
+    testthat::expect_false(any(genuine$display_is_compatibility_alias))
+    testthat::expect_true(all(
+      genuine$display_support_origin == "independent_supermodule_endpoint"
+    ))
     testthat::expect_identical(
       singleton$source_key,
       handoff$source_key[handoff$entity_id == "m1"]
@@ -535,6 +598,20 @@ testthat::test_that(
         ),
         text
       )), info = consumer)
+    }
+    for (consumer in c(
+      "06_modules_WGCNA/08_wgcna_publication_figures.R",
+      "06_modules_WGCNA/08b_microglia_wgcna_readiness_publication_figures.R",
+      "10_biological_integration/04_wgcna_circular_atlas.R"
+    )) {
+      text <- paste(
+        readLines(file.path(root, consumer), warn = FALSE),
+        collapse = "\n"
+      )
+      testthat::expect_match(
+        text, "display_is_independent_endpoint", fixed = TRUE,
+        info = consumer
+      )
     }
     semantic <- readLines(
       file.path(root, "R", "wgcna_stage07_semantic_utils.R"),

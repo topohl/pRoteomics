@@ -248,6 +248,11 @@ load_one_dataset <- function(ds) {
     data$supermodule_summary$SupermoduleID <- as.character(data$supermodule_summary[[summary_id_col]])
   }
   require_cols(data$supermodule_summary, c("SupermoduleID"), paste(ds, "supermodule_summary"))
+  data$inferential_handoff <-
+    wgcna_inferential_handoff_normalize_csv_types(
+      data$inferential_handoff,
+      paste(ds, "WGCNA_inferential_handoff.csv")
+    )
   require_cols(
     data$inferential_handoff,
     c(

@@ -39,8 +39,7 @@ loadings <- read_csv(paths$loadings)
 labels <- lookup |> dplyr::filter(.data$level == "supermodule") |> dplyr::transmute(supermodule_id = .data$entity_id, canonical_short_label, canonical_plot_label, structural_status, biological_label_confidence, roi_context)
 join_labels <- function(x) { n <- nrow(x); z <- x |> dplyr::left_join(labels, by = "supermodule_id", relationship = "many-to-one"); if (nrow(z) != n) stop("Label join multiplied rows"); z }
 values <- read_csv(paths$values) |> dplyr::mutate(supermodule_id = as.character(.data$supermodule_id), roi = factor(toupper(.data$canonical_spatial_unit), levels = roi_order), StressGroup = factor(.data$StressGroup, levels = c("CON", "RES", "SUS"))) |> join_labels()
-inferential_handoff <- read_csv(paths$effects)
-wgcna_inferential_handoff_validate(inferential_handoff)
+inferential_handoff <- wgcna_inferential_handoff_read(paths$effects)
 display_lookup <- lookup |>
   dplyr::filter(.data$level == "module") |>
   dplyr::transmute(
@@ -88,12 +87,12 @@ write_source(global_source, "corrected_all_supermodule_global_eigengenes")
 p_global <- ggplot2::ggplot(global_source, ggplot2::aes(.data$StressGroup, .data$roi_eigengene, colour = .data$StressGroup)) + ggplot2::geom_point(position = ggplot2::position_jitter(width = .12, height = 0, seed = 1), alpha = .22, size = .55) + ggplot2::geom_point(data = animal_means, ggplot2::aes(y = .data$animal_mean_eigengene), inherit.aes = TRUE, shape = 21, fill = "white", size = 1.75, stroke = .35) + ggplot2::facet_wrap(~canonical_plot_label, ncol = 3, scales = "free_y") + ggplot2::scale_colour_manual(values = c(CON = "#3E3C6F", RES = "#9E9A92", SUS = "#D7303F")) + ggplot2::labs(x = NULL, y = "Eigengene; faint ROI observations, n=3 animal means/group") + theme_pub(7.2) + ggplot2::theme(legend.position = "none")
 save(p_global, "corrected_all_supermodule_global_eigengenes", 7.2, 6.1)
 
-global <- effects_std |> dplyr::filter(.data$effect_scope == "spatial_adjusted_global", .data$contrast == "SUS - RES") |> dplyr::mutate(plot_label = factor(.data$canonical_plot_label, levels = rev(labels$canonical_plot_label)), claim_symbol = dplyr::case_when(!.data$stable ~ "none", !(.data$independent_hypothesis %in% TRUE) ~ "none", .data$q_value <= .05 ~ "FDR05", .data$q_value <= .10 ~ "FDR10", TRUE ~ "none"))
+global <- effects_std |> dplyr::filter(.data$effect_scope == "spatial_adjusted_global", .data$contrast == "SUS - RES") |> dplyr::mutate(plot_label = factor(.data$canonical_plot_label, levels = rev(labels$canonical_plot_label)), claim_symbol = dplyr::case_when(!.data$stable ~ "none", !(.data$display_is_independent_endpoint %in% TRUE) ~ "none", !(.data$independent_hypothesis %in% TRUE) ~ "none", .data$q_value <= .05 ~ "FDR05", .data$q_value <= .10 ~ "FDR10", TRUE ~ "none"))
 write_source(global, "corrected_all_supermodule_sus_res_forest")
 p_forest <- ggplot2::ggplot(global, ggplot2::aes(.data$standardized_estimate, .data$plot_label)) + ggplot2::geom_vline(xintercept = 0, linewidth = .4) + ggplot2::geom_errorbar(ggplot2::aes(xmin = .data$standardized_CI_low, xmax = .data$standardized_CI_high), orientation = "y", linewidth = .35, width = .16) + ggplot2::geom_point(ggplot2::aes(shape = .data$stable), size = 1.8) + ggplot2::scale_shape_manual(values = c(`TRUE` = 16, `FALSE` = 4), labels = c(`TRUE` = "stable", `FALSE` = "singular/unstable diagnostic")) + ggplot2::labs(x = "SUS minus RES (response-SD units, 95% CI)", y = NULL, shape = NULL) + theme_pub()
 save(p_forest, "corrected_all_supermodule_sus_res_forest", 6.6, 4.2)
 
-spatial <- effects_std |> dplyr::filter(.data$effect_scope == "within_spatial_unit", .data$contrast == "SUS - RES") |> dplyr::mutate(roi = factor(toupper(.data$spatial_unit), levels = roi_order), plot_label = factor(.data$canonical_plot_label, levels = rev(labels$canonical_plot_label)), support = dplyr::case_when(!.data$stable ~ "cross", !(.data$independent_hypothesis %in% TRUE) ~ "none", .data$q_value <= .05 ~ "filled", .data$q_value <= .10 ~ "open", TRUE ~ "none"))
+spatial <- effects_std |> dplyr::filter(.data$effect_scope == "within_spatial_unit", .data$contrast == "SUS - RES") |> dplyr::mutate(roi = factor(toupper(.data$spatial_unit), levels = roi_order), plot_label = factor(.data$canonical_plot_label, levels = rev(labels$canonical_plot_label)), support = dplyr::case_when(!.data$stable ~ "cross", !(.data$display_is_independent_endpoint %in% TRUE) ~ "none", !(.data$independent_hypothesis %in% TRUE) ~ "none", .data$q_value <= .05 ~ "filled", .data$q_value <= .10 ~ "open", TRUE ~ "none"))
 scale_limit <- max(abs(c(spatial$standardized_estimate, global$standardized_estimate)), na.rm = TRUE); if (!is.finite(scale_limit)) scale_limit <- 1
 write_source(spatial, "corrected_all_supermodule_sus_res_spatial_heatmap")
 roi_side <- spatial |> dplyr::distinct(.data$plot_label, .data$roi_context)

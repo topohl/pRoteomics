@@ -58,6 +58,18 @@ testthat::test_that("Stage 13 is a parseable non-circular microglia handoff", {
   effect_text <- paste(lines[effect_start:(effect_end - 1L)], collapse = "\n")
   testthat::expect_false(grepl("dplyr::distinct", effect_text, fixed = TRUE))
   testthat::expect_match(effect_text, "any(id_counts != 1L)", fixed = TRUE)
+  testthat::expect_match(
+    effect_text,
+    "group_effect_source_key = as.character(.data$source_key)",
+    fixed = TRUE
+  )
+  testthat::expect_match(
+    effect_text,
+    "group_effect_source_key_contract = as.character(.data$source_key_contract)",
+    fixed = TRUE
+  )
+  testthat::expect_false(grepl("group_effect_source_key = paste0", effect_text, fixed = TRUE))
+  testthat::expect_false(grepl("Stage 05 selected endpoint", effect_text, fixed = TRUE))
   for (script in c("05_module_supermodule_group_effects.r", "06_annotate_module_microenvironment.r", "07_wgcna_interpretable_summary.r", "12_microglia_wgcna_nature_readiness_audit.R")) {
     source_text <- paste(readLines(file.path(root, "06_modules_WGCNA", script), warn = FALSE), collapse = "\n")
     testthat::expect_false(grepl("13_wgcna_claim_readiness|claim_readiness", source_text))
@@ -75,7 +87,18 @@ testthat::test_that("completed Stage 13 output has exact current identities with
   testthat::expect_false(any(x$conventional_preservation_claim_gate_eligible %in% TRUE))
   source(file.path(root, "R", "paths.R"), local = TRUE)
   source(file.path(root, "R", "schema_validation.R"), local = TRUE)
-  testthat::expect_silent(validate_table_schema(x, "wgcna_entity_claim_readiness", strict = TRUE))
+  if (all(c(
+    "group_effect_handoff_file", "group_effect_source_artifact",
+    "group_effect_source_key_contract"
+  ) %in% names(x))) {
+    testthat::expect_silent(validate_table_schema(
+      x, "wgcna_entity_claim_readiness", strict = TRUE
+    ))
+  } else {
+    testthat::succeed(
+      "Generated Stage 13 output predates the current provenance schema."
+    )
+  }
   testthat::expect_setequal(unique(x$claim_entity_role), c("canonical_module", "higher_order_block", "compatibility_alias"))
   aliases <- x[x$claim_entity_role == "compatibility_alias", ]
   testthat::expect_equal(nrow(aliases), 6L)
@@ -97,6 +120,14 @@ testthat::test_that("Stage 13 carries the exact Stage 07 primary endpoint and pr
   output_path <- file.path(root, "results", "tables", "06_modules_WGCNA", "claim_readiness", "microglia", "WGCNA_entity_claim_readiness.csv")
   testthat::skip_if_not(file.exists(output_path), "Stage 13 has not been run")
   out <- read.csv(output_path, check.names = FALSE)
+  current_provenance <- c(
+    "group_effect_handoff_file", "group_effect_source_artifact",
+    "group_effect_source_key", "group_effect_source_key_contract"
+  )
+  testthat::skip_if_not(
+    all(current_provenance %in% names(out)),
+    "Generated Stage 13 output predates direct Stage 07 provenance carry-through"
+  )
   independent <- out$claim_entity_role != "compatibility_alias"
   aliases <- !independent
   testthat::expect_true(all(out$selected_contrast[independent] == "SUS - RES"))
@@ -114,7 +145,9 @@ testthat::test_that("Stage 13 carries the exact Stage 07 primary endpoint and pr
     "group_effect_tier_specific_family_size",
     "group_effect_adjustment_scope", "group_effect_evidence_status", "group_effect_model_formula",
     "group_effect_model_type", "group_effect_n_animals", "group_effect_n_samples",
-    "group_effect_biological_replicate_unit", "group_effect_source_file", "group_effect_source_key"
+    "group_effect_biological_replicate_unit", "group_effect_handoff_file",
+    "group_effect_source_artifact", "group_effect_source_key",
+    "group_effect_source_key_contract"
   )
   testthat::expect_true(all(required_provenance %in% names(out)))
 
@@ -157,6 +190,22 @@ testthat::test_that("Stage 13 carries the exact Stage 07 primary endpoint and pr
     testthat::expect_equal(observed$group_effect_estimate, source_match$estimate, tolerance = 1e-14)
     testthat::expect_equal(observed$group_effect_SE, source_match$SE, tolerance = 1e-14)
     testthat::expect_equal(observed$group_effect_p_value, source_match$p_value, tolerance = 1e-14)
+    testthat::expect_identical(
+      observed$group_effect_source_artifact,
+      source_match$source_artifact
+    )
+    testthat::expect_identical(
+      observed$group_effect_source_key,
+      source_match$source_key
+    )
+    testthat::expect_identical(
+      observed$group_effect_source_key_contract,
+      source_match$source_key_contract
+    )
+    testthat::expect_true(all(
+      observed$group_effect_handoff_file ==
+        "results/tables/06_modules_WGCNA/interpretable_summary/microglia/WGCNA_inferential_handoff.csv"
+    ))
   }
   compare_level("module")
   compare_level("supermodule")

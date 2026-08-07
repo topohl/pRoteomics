@@ -94,6 +94,7 @@ evidence_file <- function(ds, domain, file, input_type) {
   if (is.null(df) || !nrow(df)) return(list(evidence = availability_evidence(ds, domain, file, paste(input_type, "unavailable.")), status = loaded$status))
   if (identical(domain, "wgcna_supermodule") &&
       "entity_level" %in% names(df)) {
+    df <- wgcna_inferential_handoff_normalize_csv_types(df, file)
     wgcna_stage07_validate_inferential_handoff(df)
     df <- df[
       df$entity_level == "supermodule" &
