@@ -19,8 +19,18 @@ they are not the final group-effect inference.
 ## Representative GO comparison heatmaps
 
 `01b_module_supermodule_GO_heatmaps.R` turns the Stage 01 module GO results
-into compact, representative comparison heatmaps. The default is Biological
-Process (`--ontology BP`); use `--ontology all` to also generate MF and CC.
+into three complementary views: a broad representative module heatmap, a
+broad representative supermodule heatmap, and a focused manuscript-style
+supermodule dot matrix. The default is Biological Process (`--ontology BP`);
+use `--ontology all` to generate each view separately for BP, MF, and CC. The
+focused view selects up to three FDR-supported terms per supermodule by default
+(`--focused-terms-per-supermodule 3`) and compares their deduplicated union
+across every supermodule. Selection walks the existing evidence rank in order
+and conservatively skips an exact GO ancestor/descendant only when its
+significant-row contributing-gene Jaccard overlap is at least 0.50, or any term
+pair with near-identical contributing genes (Jaccard at least 0.80). The
+candidate-level focused selection audit records selected, redundancy-skipped,
+and display-limit terms; no nonsignificant terms are added.
 Module cells are capped `-log10(BH FDR)` from the `all` module-protein ORA
 results, and white means the term is not FDR-significant. Supermodule cells are
 the mean module score across their member modules, so a term shared by more
@@ -28,7 +38,22 @@ members is stronger. Representative supermodule terms are selected from the
 full module GO result before aggregation, preventing the module panel's
 top-term cutoff from hiding a recurrent theme. This deliberately summarizes
 existing module evidence and does **not** perform or imply a new pooled
-supermodule ORA test.
+supermodule ORA test. In the focused panel, dot colour is the mean member-module
+capped `-log10(BH FDR)` and dot size is the fraction of member modules with BH
+FDR <= 0.05; absent dots mean no member module supports that term at the cutoff.
+The contributing genes are the slash-delimited Entrez IDs already retained in
+Stage 01 `geneID`, unioned only across FDR-significant member-module rows. If
+that field or installed GO hierarchy is unavailable, the focused audit records
+the deterministic hierarchy-only or evidence-rank-only fallback mode.
+
+After the three dataset-focused sources have been generated consistently, run
+`01b_module_supermodule_GO_heatmaps.R --dataset all --ontology BP` to create the
+manuscript-facing coordinated figure under the same output family in `all/`.
+It vertically aligns Neuropil, Soma, and Microglia-enriched ROI panels while
+retaining each dataset's own GO rows and SM columns. Colour and size use common,
+unnormalized scales and one shared legend. Exact GO `TermID` recurrence across
+datasets is recorded descriptively; it is not a cross-dataset enrichment test,
+meta-analysis, combined p-value, FDR, or convergence claim.
 
 The figures use a Nature-style double-column width (7.2 inches/183 mm), vector
 SVG/PDF export, compact module IDs, and module columns grouped under their
