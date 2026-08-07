@@ -2113,16 +2113,16 @@ validate_global_supermodule_support_source <- function(df) {
 
 polar_layout_parameters <- function() {
   list(
-    inner_radius = 0.52,
-    outer_radius = 0.91,
+    inner_radius = 0.50,
+    outer_radius = 0.94,
     layer_ring_thickness = 0.032,
     region_ring_thickness = 0.038,
     annotation_ring_gap = 0.006,
     radial_gap = 0.012,
-    supermodule_band_gap = 0.008,
-    supermodule_band_thickness = 0.026,
-    label_wedge_degrees = 24,
-    data_start_degrees = 102,
+    supermodule_band_gap = 0.009,
+    supermodule_band_thickness = 0.030,
+    label_wedge_degrees = 28,
+    data_start_degrees = 104,
     unit_gap_degrees = 0.08,
     supermodule_gap_degrees = 1.15,
     dataset_gap_degrees = 3.2,
@@ -3658,8 +3658,26 @@ readable_radial_label <- function(theta_mid) {
 
 supermodule_band_colors <- function(ids) {
   ids <- unique(clean_chr(ids))
-  base_cols <- c("#3B6EA8", "#D95F59", "#4B9B6A", "#8C6BB1", "#D9902F", "#4A9CB0", "#B85C8A", "#7A8A33", "#75635A", "#5E6D8C", "#C06C3E", "#5B8E7D")
-  stats::setNames(rep(base_cols, length.out = length(ids)), ids)
+  curated <- c(
+    "SM01" = "#6B86A5",
+    "SM02" = "#B97B73",
+    "SM03" = "#779A83",
+    "SM04" = "#8B7FA3",
+    "SM05" = "#B8935C",
+    "SM06" = "#65939B",
+    "SM07" = "#A9788D",
+    "SM08" = "#8B9568",
+    "SM09" = "#8C8177"
+  )
+  missing <- setdiff(ids, names(curated))
+  if (length(missing)) {
+    stop(
+      "No curated circular-atlas display colour is defined for: ",
+      paste(missing, collapse = ", "), ".",
+      call. = FALSE
+    )
+  }
+  curated[ids]
 }
 
 render_dataset_circular_heatmap <- function(source_supermodule, dataset_name, svg_path, pdf_path, combined = FALSE, atlas_label = "Group-effect estimate circular atlas", fill_label = "Estimate", support_labels = c("adj. p <= 0.05", "adj. p <= 0.10"), supermodule_label_mode = c("priority_full", "all_ids"), effect_column = "estimate", fixed_effect_limit = NA_real_, compact_local = FALSE, global_support_source = NULL) {
@@ -3674,6 +3692,10 @@ render_dataset_circular_heatmap <- function(source_supermodule, dataset_name, sv
   }
   if (!"source_claim_entity_role" %in% names(df)) {
     df$source_claim_entity_role <- NA_character_
+  }
+  if (!"display_is_compatibility_alias" %in% names(df)) {
+    df$display_is_compatibility_alias <-
+      df$source_claim_entity_role == "compatibility_alias"
   }
   df <- df |>
     dplyr::mutate(
@@ -3702,6 +3724,7 @@ render_dataset_circular_heatmap <- function(source_supermodule, dataset_name, sv
       .data$supermodule_id,
       .data$sector_label,
       .data$source_claim_entity_role,
+      .data$display_is_compatibility_alias,
       .data$plot_sector_order,
       .data$selected_or_priority_flag,
       .data$theta_start,
@@ -3715,7 +3738,7 @@ render_dataset_circular_heatmap <- function(source_supermodule, dataset_name, sv
         dplyr::first(.data$source_claim_entity_role),
       alias_boundary =
         any(
-          .data$source_claim_entity_role == "compatibility_alias",
+          .data$display_is_compatibility_alias %in% TRUE,
           na.rm = TRUE
         ),
       plot_sector_order = dplyr::first(.data$plot_sector_order),
@@ -3727,7 +3750,17 @@ render_dataset_circular_heatmap <- function(source_supermodule, dataset_name, sv
     ) |>
     dplyr::mutate(
       label_drawn = if (identical(.env$supermodule_label_mode, "all_ids")) TRUE else .data$selected_or_priority_flag %in% TRUE,
-      label_text_for_draw = if (identical(.env$supermodule_label_mode, "all_ids")) .data$supermodule_id else .data$sector_label
+      label_text_for_draw = if (identical(.env$supermodule_label_mode, "all_ids")) {
+        paste0(
+          .data$supermodule_id,
+          dplyr::if_else(.data$alias_boundary, "\u2020", "")
+        )
+      } else {
+        paste0(
+          .data$sector_label,
+          dplyr::if_else(.data$alias_boundary, "\u2020", "")
+        )
+      }
     ) |>
     dplyr::group_by(.data$dataset) |>
     dplyr::mutate(label_rank = dplyr::min_rank(.data$plot_sector_order)) |>
@@ -3864,7 +3897,12 @@ render_dataset_circular_heatmap <- function(source_supermodule, dataset_name, sv
       "#ECEFF1"
     )
   }
-  contrast_cols <- c("RES-CON" = "#4E79A7", "SUS-CON" = "#F28E2B", "SUS-RES" = "#59A14F")
+  contrast_cols <- c(
+    "RES-CON" = "#557DA5",
+    "SUS-CON" = "#C18A45",
+    "SUS-RES" = "#6D927B"
+  )
+  contrast_text_col <- "#222222"
   ring_meta$contrast_color <- unname(contrast_cols[ring_meta$contrast_block])
   ring_meta$contrast_color[is.na(ring_meta$contrast_color)] <- "#757575"
 
@@ -3887,12 +3925,12 @@ render_dataset_circular_heatmap <- function(source_supermodule, dataset_name, sv
     on.exit({
       graphics::par(old_par)
     }, add = TRUE)
-    graphics::par(mar = c(0.6, 0.6, 0.6, 0.6), xpd = NA, family = "sans")
+    graphics::par(mar = c(0.35, 0.35, 0.35, 0.35), xpd = NA, family = "sans")
     graphics::plot.new()
     if (isTRUE(compact_local)) {
       graphics::plot.window(
-        xlim = c(-1.39, 1.39),
-        ylim = c(-1.48, 1.36),
+        xlim = c(-1.34, 1.34),
+        ylim = c(-1.34, 1.34),
         asp = 1
       )
     } else {
@@ -3907,9 +3945,9 @@ render_dataset_circular_heatmap <- function(source_supermodule, dataset_name, sv
     for (i in seq_len(nrow(region_tiles))) {
       tile <- region_tiles[i, , drop = FALSE]
       layer_poly <- annular_polygon(tile$theta_start[[1]], tile$theta_end[[1]], tile$layer_radius_inner[[1]], tile$layer_radius_outer[[1]])
-      graphics::polygon(layer_poly$x, layer_poly$y, col = tile$layer_color[[1]], border = "white", lwd = 0.12)
+      graphics::polygon(layer_poly$x, layer_poly$y, col = tile$layer_color[[1]], border = "white", lwd = 0.20)
       poly <- annular_polygon(tile$theta_start[[1]], tile$theta_end[[1]], tile$region_radius_inner[[1]], tile$region_radius_outer[[1]])
-      graphics::polygon(poly$x, poly$y, col = tile$region_color[[1]], border = "white", lwd = 0.14)
+      graphics::polygon(poly$x, poly$y, col = tile$region_color[[1]], border = "white", lwd = 0.22)
     }
 
     for (i in seq_len(nrow(df))) {
@@ -3921,7 +3959,7 @@ render_dataset_circular_heatmap <- function(source_supermodule, dataset_name, sv
         poly$y,
         col = effect_col(tile$plot_effect[[1]]),
         border = "white",
-        lwd = if (sus_res_ring) 0.3 else 0.18
+        lwd = if (sus_res_ring) 0.38 else 0.24
       )
       if (tile$support_class[[1]] %in%
           c("FDR05", "FDR10", "invalid_or_unstable")) {
@@ -3971,7 +4009,7 @@ render_dataset_circular_heatmap <- function(source_supermodule, dataset_name, sv
         } else {
           "#777777"
         },
-        lwd = if (isTRUE(sector$alias_boundary[[1]])) 0.4 else 0.28,
+        lwd = if (isTRUE(sector$alias_boundary[[1]])) 0.48 else 0.38,
         lty = if (isTRUE(sector$alias_boundary[[1]])) 2 else 1
       )
       for (theta in c(sector$theta_start[[1]], sector$theta_end[[1]])) {
@@ -3986,7 +4024,7 @@ render_dataset_circular_heatmap <- function(source_supermodule, dataset_name, sv
           } else {
             "#B8B8B8"
           },
-          lwd = if (isTRUE(sector$alias_boundary[[1]])) 0.38 else 0.32,
+          lwd = if (isTRUE(sector$alias_boundary[[1]])) 0.46 else 0.38,
           lty = if (isTRUE(sector$alias_boundary[[1]])) 2 else 1
         )
       }
@@ -3994,14 +4032,19 @@ render_dataset_circular_heatmap <- function(source_supermodule, dataset_name, sv
         theta <- sector$theta_mid[[1]] * pi / 180
         x0 <- cos(theta) * sector$supermodule_band_outer[[1]]
         y0 <- sin(theta) * sector$supermodule_band_outer[[1]]
-        label_radius <- if (identical(supermodule_label_mode, "all_ids")) 1.075 else 1.15
-        leader_radius <- if (identical(supermodule_label_mode, "all_ids")) 1.035 else 1.06
+        label_radius <- if (identical(supermodule_label_mode, "all_ids")) 1.105 else 1.17
+        leader_radius <- if (identical(supermodule_label_mode, "all_ids")) 1.055 else 1.08
         x1 <- cos(theta) * leader_radius
         y1 <- sin(theta) * leader_radius
         x <- cos(theta) * label_radius
         y <- sin(theta) * label_radius
         orient <- readable_radial_label(sector$theta_mid[[1]])
-        lab <- if (identical(supermodule_label_mode, "all_ids")) {
+        lab <- if (
+          identical(supermodule_label_mode, "all_ids") &&
+            isTRUE(sector$alias_boundary[[1]])
+        ) {
+          bquote(.(sector$supermodule_id[[1]])^"\u2020")
+        } else if (identical(supermodule_label_mode, "all_ids")) {
           sector$label_text_for_draw[[1]]
         } else {
           vapply(strwrap(sector$label_text_for_draw[[1]], width = 20, simplify = FALSE), paste, character(1), collapse = "\n")
@@ -4014,7 +4057,7 @@ render_dataset_circular_heatmap <- function(source_supermodule, dataset_name, sv
             "#777777"
           },
           lwd = if (identical(supermodule_label_mode, "all_ids")) {
-            0.24
+            0.32
           } else {
             0.34
           },
@@ -4025,9 +4068,9 @@ render_dataset_circular_heatmap <- function(source_supermodule, dataset_name, sv
           labels = lab,
           srt = orient$angle,
           cex = if (identical(supermodule_label_mode, "all_ids")) {
-            if (isTRUE(sector$alias_boundary[[1]])) 0.57 else 0.64
+            0.68
           } else {
-            if (isTRUE(sector$alias_boundary[[1]])) 0.52 else 0.58
+            if (isTRUE(sector$alias_boundary[[1]])) 0.56 else 0.60
           },
           font = if (isTRUE(compact_local)) {
             1
@@ -4037,7 +4080,7 @@ render_dataset_circular_heatmap <- function(source_supermodule, dataset_name, sv
             2
           },
           col = if (isTRUE(sector$alias_boundary[[1]])) {
-            "#777777"
+            "#4B5563"
           } else {
             "#222222"
           }
@@ -4093,40 +4136,54 @@ render_dataset_circular_heatmap <- function(source_supermodule, dataset_name, sv
     }
 
     for (i in seq_len(nrow(ring_meta))) {
-      graphics::text(
-        x = ring_meta$label_x[[i]],
-        y = ring_meta$label_y[[i]],
-        labels = ring_meta$contrast_block[[i]],
+      contrast_label <- if (
+        ring_meta$contrast_block[[i]] == "SUS-RES"
+      ) {
+        "SUS-RES (primary)"
+      } else {
+        ring_meta$contrast_block[[i]]
+      }
+      graphics::segments(
+        x0 = -0.20,
+        y0 = ring_meta$label_y[[i]],
+        x1 = -0.135,
+        y1 = ring_meta$label_y[[i]],
         col = ring_meta$contrast_color[[i]],
+        lwd = 1.8,
+        lend = 1
+      )
+      graphics::text(
+        x = -0.105,
+        y = ring_meta$label_y[[i]],
+        labels = contrast_label,
+        col = contrast_text_col,
         cex = if (ring_meta$contrast_block[[i]] == "SUS-RES") {
-          1.02
+          0.86
         } else {
-          0.92
+          0.82
         },
         font = if (ring_meta$contrast_block[[i]] == "SUS-RES") 2 else 1,
-        adj = c(0.5, 0.5)
+        adj = c(0, 0.5)
       )
     }
 
     if (isTRUE(compact_local)) {
-      center_title <- if (isTRUE(combined)) {
-        "Local WGCNA atlas"
+      compact_effect_label <- if (
+        identical(fill_label, LOCAL_EFFECT_METRIC_LABEL)
+      ) {
+        "Local effect (SD units)"
       } else {
-        dataset_label(dataset_name)
+        fill_label
       }
       graphics::text(
-        0, 0.345, center_title,
-        cex = 0.78, font = 2, col = "#222222"
-      )
-      graphics::text(
-        0, 0.292, fill_label,
-        cex = 0.48, col = "#555555"
+        0, 0.342, compact_effect_label,
+        cex = 0.66, font = 2, col = "#222222"
       )
       gradient_x <- seq(-0.27, 0.27, length.out = 60)
       for (i in seq_len(length(gradient_x) - 1)) {
         graphics::rect(
-          gradient_x[[i]], 0.218,
-          gradient_x[[i + 1]], 0.252,
+          gradient_x[[i]], 0.284,
+          gradient_x[[i + 1]], 0.318,
           col = palette[round(seq(
             1, length(palette),
             length.out = length(gradient_x) - 1
@@ -4135,24 +4192,24 @@ render_dataset_circular_heatmap <- function(source_supermodule, dataset_name, sv
         )
       }
       graphics::text(
-        c(-0.27, 0, 0.27), 0.184,
+        c(-0.27, 0, 0.27), 0.247,
         labels = c("-2.5", "0", "+2.5"),
-        cex = 0.45, col = "#333333"
+        cex = 0.48, col = "#333333"
       )
 
       region_names <- names(region_cols)
       region_x <- rep(c(-0.31, -0.16), length.out = length(region_names))
-      region_y <- rep(c(0.105, 0.052), each = 2, length.out = length(region_names))
-      graphics::text(-0.31, 0.15, "Region", adj = c(0, 0.5), cex = 0.52, font = 2)
+      region_y <- rep(c(0.145, 0.096), each = 2, length.out = length(region_names))
+      graphics::text(-0.31, 0.191, "Region", adj = c(0, 0.5), cex = 0.56, font = 2)
       for (i in seq_along(region_names)) {
         graphics::points(
           region_x[[i]], region_y[[i]],
           pch = 22, bg = unname(region_cols[[i]]),
-          col = NA, cex = 0.66
+          col = NA, cex = 0.70
         )
         graphics::text(
           region_x[[i]] + 0.025, region_y[[i]],
-          region_names[[i]], adj = c(0, 0.5), cex = 0.4
+          region_names[[i]], adj = c(0, 0.5), cex = 0.53
         )
       }
 
@@ -4164,89 +4221,48 @@ render_dataset_circular_heatmap <- function(source_supermodule, dataset_name, sv
       )[layer_names])
       layer_labels[is.na(layer_labels)] <- layer_names[is.na(layer_labels)]
       layer_x <- rep(c(0.055, 0.16, 0.265), length.out = length(layer_names))
-      layer_y <- rep(c(0.105, 0.052), each = 3, length.out = length(layer_names))
-      graphics::text(0.055, 0.15, "Layer", adj = c(0, 0.5), cex = 0.52, font = 2)
+      layer_y <- rep(c(0.145, 0.096), each = 3, length.out = length(layer_names))
+      graphics::text(0.055, 0.191, "Layer", adj = c(0, 0.5), cex = 0.56, font = 2)
       for (i in seq_along(layer_names)) {
         graphics::points(
           layer_x[[i]], layer_y[[i]],
           pch = 22, bg = unname(layer_cols[[i]]),
-          col = NA, cex = 0.66
+          col = NA, cex = 0.70
         )
         graphics::text(
           layer_x[[i]] + 0.023, layer_y[[i]],
-          layer_labels[[i]], adj = c(0, 0.5), cex = 0.38
+          layer_labels[[i]], adj = c(0, 0.5), cex = 0.51
         )
       }
 
-      global_x <- c(-0.245, 0, 0.245)
-      graphics::text(
-        -0.31, -0.008, "Global SM effect support",
-        adj = c(0, 0.5), cex = 0.52, font = 2
-      )
-      graphics::points(
-        global_x, rep(-0.050, 3),
-        pch = 16,
-        col = unname(contrast_cols[
-          c("RES-CON", "SUS-CON", "SUS-RES")
-        ]),
-        cex = 0.52
-      )
-      graphics::text(
-        global_x, -0.082,
-        labels = c("RES - CON", "SUS - CON", "SUS - RES"),
-        cex = 0.37
-      )
-      graphics::points(
-        global_x, rep(-0.119, 3),
-        pch = c(16, 1, 4),
-        col = c("#555555", "#555555", "#777777"),
-        cex = c(0.49, 0.54, 0.49), lwd = 0.8
-      )
-      graphics::text(
-        global_x, -0.151,
-        labels = c("q <= .05", ".05 < q <= .10", "invalid model"),
-        cex = 0.38
-      )
-
       support_x <- c(-0.245, 0, 0.245)
       graphics::text(
-        -0.31, -0.197, "Local spatial BH support",
-        adj = c(0, 0.5), cex = 0.52, font = 2
+        0, 0.018, "Support",
+        cex = 0.60, font = 2, col = "#222222"
+      )
+      graphics::text(
+        0, -0.022, "outer: global  |  cell: local",
+        cex = 0.45, col = "#555555"
       )
       graphics::points(
-        support_x, rep(-0.239, 3),
-        pch = 21, bg = "#555555", col = "#555555", cex = 0.95
-      )
-      graphics::points(
-        support_x, rep(-0.239, 3),
+        support_x, rep(-0.094, 3),
         pch = c(16, 1, 4),
-        col = c("white", "white", "#BDBDBD"),
-        cex = c(0.48, 0.53, 0.48), lwd = 0.8
+        col = c("#333333", "#333333", "#666666"),
+        cex = c(0.69, 0.76, 0.69), lwd = 1.05
       )
       graphics::text(
-        support_x, -0.277,
+        support_x, -0.143,
         labels = c(
-          "q <= .05", ".05 < q <= .10", "invalid / unstable"
+          "q \u2264 0.05",
+          "0.05 < q \u2264 0.10\nexploratory",
+          "invalid /\nunstable"
         ),
-        cex = 0.38
-      )
-      graphics::segments(
-        -0.11, -0.335, 0.01, -0.335,
-        col = "#555555", lwd = 0.8, lty = 2
+        cex = 0.52, col = "#333333"
       )
       graphics::text(
-        0.03, -0.335,
-        "alias: inherited / non-independent",
-        adj = c(0, 0.5), cex = 0.38, col = "#666666"
-      )
-      caption_lines <- strwrap(
-        LOCAL_EFFECT_INTERPRETATION_GUARD,
-        width = 116
-      )
-      graphics::text(
-        0, -1.36,
-        labels = paste(caption_lines, collapse = "\n"),
-        cex = 0.48, col = "#4A4A4A"
+        0, -0.235,
+        "\u2020 Singleton SM; not independently tested.",
+        cex = 0.54, col = "#555555"
       )
     } else {
       center_title <- if (isTRUE(combined)) paste("WGCNA", "spatial atlas", sep = "\n") else dataset_label(dataset_name)
@@ -4302,8 +4318,8 @@ render_dataset_circular_heatmap <- function(source_supermodule, dataset_name, sv
   }
 
   dir_create(dirname(svg_path))
-  device_width <- if (isTRUE(compact_local)) 8 else 7.5
-  device_height <- if (isTRUE(compact_local)) 8.2 else 7.5
+  device_width <- if (isTRUE(compact_local)) 7.6 else 7.5
+  device_height <- if (isTRUE(compact_local)) 7.6 else 7.5
   svglite::svglite(
     svg_path,
     width = device_width,
