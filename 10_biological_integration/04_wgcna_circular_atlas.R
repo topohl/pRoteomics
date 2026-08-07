@@ -148,10 +148,8 @@ read_csv_quiet <- function(path) {
 }
 
 read_inferential_handoff <- function(path) {
-  effects <- read_csv_quiet(path)
-  if (is.null(effects) || !nrow(effects)) return(effects)
-  wgcna_inferential_handoff_validate(effects, path)
-  effects
+  if (!file.exists(path)) return(NULL)
+  wgcna_inferential_handoff_read(path)
 }
 
 as_num <- function(x) suppressWarnings(as.numeric(x))
@@ -1889,7 +1887,8 @@ validate_circular_effect_source <- function(df, source_name) {
     "tier_specific_fdr", "tier_specific_family_id",
     "tier_specific_family_size", "statistical_support_status",
     "model_valid_for_inference", "model_stability_status",
-    "claim_gate", "source_artifact", "source_key"
+    "claim_gate", "source_artifact", "source_key",
+    "display_is_independent_endpoint", "display_support_origin"
   )
   if (grepl("circular_heatmap_source", source_name, fixed = TRUE)) {
     required <- c(
@@ -1911,7 +1910,7 @@ validate_circular_effect_source <- function(df, source_name) {
   if ("support_class" %in% names(df)) {
     expected_support <- effect_support_class(
       df$tier_specific_fdr,
-      df$independent_hypothesis,
+      df$display_is_independent_endpoint,
       df$model_valid_for_inference,
       df$model_stability_status,
       df$claim_gate
@@ -1928,7 +1927,9 @@ validate_circular_effect_source <- function(df, source_name) {
     alias <- df$display_is_compatibility_alias %in% TRUE
     bad_alias <- alias & (
       clean_chr(df$source_claim_entity_role) != "canonical_module" |
-        clean_chr(df$source_entity_level) != "module"
+        clean_chr(df$source_entity_level) != "module" |
+        df$display_is_independent_endpoint %in% TRUE |
+        clean_chr(df$display_support_origin) != "inherited_canonical_module"
     )
     if (any(bad_alias, na.rm = TRUE)) {
       stop(
@@ -2002,7 +2003,8 @@ validate_global_supermodule_support_source <- function(df) {
     "model_valid_for_inference", "model_stability_status",
     "source_claim_entity_role", "global_support_class",
     "global_marker_visible", "claim_gate", "source_artifact",
-    "source_key"
+    "source_key", "display_is_independent_endpoint",
+    "display_support_origin"
   )
   missing <- setdiff(required, names(df))
   if (length(missing)) {
@@ -2054,7 +2056,7 @@ validate_global_supermodule_support_source <- function(df) {
   }
   expected_support <- global_effect_support_class(
     df$global_support_fdr,
-    df$independent_hypothesis,
+    df$display_is_independent_endpoint,
     df$model_valid_for_inference,
     df$model_stability_status,
     df$claim_gate
@@ -2066,7 +2068,7 @@ validate_global_supermodule_support_source <- function(df) {
     )
   }
   expected_visible <- expected_support != "none" &
-    df$independent_hypothesis %in% TRUE
+    df$display_is_independent_endpoint %in% TRUE
   if (!identical(as.logical(df$global_marker_visible), expected_visible)) {
     stop(
       "Global supermodule marker visibility is inconsistent with its support class.",
@@ -2081,7 +2083,9 @@ validate_global_supermodule_support_source <- function(df) {
   if (any(
     alias & (
       clean_chr(df$source_claim_entity_role) != "canonical_module" |
-        clean_chr(df$source_entity_level) != "module"
+        clean_chr(df$source_entity_level) != "module" |
+        df$display_is_independent_endpoint %in% TRUE |
+        clean_chr(df$display_support_origin) != "inherited_canonical_module"
     ),
     na.rm = TRUE
   )) {
@@ -2241,6 +2245,13 @@ add_polar_layout_columns <- function(df, combined = FALSE) {
 
 local_effect_rows <- function(df, level) {
   if (is.null(df) || !nrow(df)) return(tibble::tibble())
+  if (!"display_is_independent_endpoint" %in% names(df)) {
+    df$display_is_independent_endpoint <-
+      df$independent_hypothesis %in% TRUE
+  }
+  if (!"display_support_origin" %in% names(df)) {
+    df$display_support_origin <- paste0("independent_", level, "_endpoint")
+  }
   key_col <- if (identical(level, "supermodule")) "supermodule_id" else "module_id"
   local_df <- df |>
     dplyr::filter(is_real_spatial_unit(.data$spatial_unit))
@@ -2264,7 +2275,7 @@ local_effect_rows <- function(df, level) {
       effect_abs = abs(as_num(.data$estimate)),
       support_class = effect_support_class(
         .data$tier_specific_fdr,
-        .data$independent_hypothesis,
+        .data$display_is_independent_endpoint,
         .data$model_valid,
         .data$model_stability_status,
         .data$claim_gate
@@ -2365,14 +2376,14 @@ build_heatmap_sources <- function(datasets, segments, selected_audit) {
         global_fdr_source = "tier_specific_fdr",
         global_support_class = global_effect_support_class(
           .data$global_support_fdr,
-          .data$independent_hypothesis,
+          .data$display_is_independent_endpoint,
           .data$model_valid,
           .data$model_stability_status,
           .data$claim_gate
         ),
         global_marker_visible =
           .data$global_support_class != "none" &
-          .data$independent_hypothesis %in% TRUE
+          .data$display_is_independent_endpoint %in% TRUE
       ) |>
       dplyr::transmute(
         dataset,
@@ -2415,6 +2426,10 @@ build_heatmap_sources <- function(datasets, segments, selected_audit) {
         source_entity_id = as.character(.data$source_entity_id),
         display_is_compatibility_alias =
           as.logical(.data$display_is_compatibility_alias),
+        display_is_independent_endpoint =
+          as.logical(.data$display_is_independent_endpoint),
+        display_support_origin =
+          as.character(.data$display_support_origin),
         display_entity_role = as.character(.data$display_entity_role),
         claim_gate = as.character(.data$claim_gate),
         source_artifact = as.character(.data$source_artifact),
@@ -2571,6 +2586,8 @@ build_heatmap_sources <- function(datasets, segments, selected_audit) {
         source_entity_level = if ("source_entity_level" %in% names(df)) as.character(.data$source_entity_level) else as.character(.data$entity_level),
         source_entity_id = if ("source_entity_id" %in% names(df)) as.character(.data$source_entity_id) else as.character(.data$entity_id),
         display_is_compatibility_alias = if ("display_is_compatibility_alias" %in% names(df)) as.logical(.data$display_is_compatibility_alias) else FALSE,
+        display_is_independent_endpoint = if ("display_is_independent_endpoint" %in% names(df)) as.logical(.data$display_is_independent_endpoint) else as.logical(.data$independent_hypothesis),
+        display_support_origin = if ("display_support_origin" %in% names(df)) as.character(.data$display_support_origin) else paste0("independent_", level_name, "_endpoint"),
         display_entity_role = if ("display_entity_role" %in% names(df)) as.character(.data$display_entity_role) else "canonical_inferential_entity",
         result_scope = as.character(.data$result_scope),
         claim_gate = as.character(.data$claim_gate),
@@ -2593,7 +2610,7 @@ build_heatmap_sources <- function(datasets, segments, selected_audit) {
         ),
         evidence_status = atlas_evidence_status(
           .data$statistical_support_status,
-          .data$independent_hypothesis,
+          .data$display_is_independent_endpoint,
           .data$model_valid,
           .data$claim_gate
         ),
