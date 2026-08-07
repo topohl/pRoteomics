@@ -506,6 +506,20 @@ prepare_publication_summary <- function(summary_df, min_recurrent_units = atlas_
     dplyr::ungroup()
 }
 
+prepare_sus_res_publication_summary <- function(summary_df, min_recurrent_units = atlas_min_recurrent_units) {
+  prepare_publication_summary(summary_df, min_recurrent_units) %>%
+    dplyr::filter(.data$comparison == "SUS_vs_RES") %>%
+    dplyr::mutate(
+      dataset_compartment_label = dplyr::if_else(
+        .data$dataset_compartment == "microglia",
+        "Microglia-enriched ROI",
+        .data$dataset_compartment_label
+      ),
+      panel_data_basis = "ranked_proteome_wide_GO_GSEA",
+      NES_interpretation = "positive = higher in SUS; negative = higher in RES"
+    )
+}
+
 plot_spatial_program_atlas_publication <- function(summary_df, figure_file, source_file, min_recurrent_units = atlas_min_recurrent_units) {
   source_df <- prepare_publication_summary(summary_df, min_recurrent_units)
   readr::write_csv(source_df, source_file, na = "")
@@ -527,6 +541,38 @@ plot_spatial_program_atlas_publication <- function(summary_df, figure_file, sour
     ggplot2::labs(x = NULL, y = NULL) +
     theme_nature_dotplot(7)
   save_nature_svg(p, figure_file, width_mm = 180, height_mm = 105)
+}
+
+plot_sus_res_spatial_program_atlas_publication <- function(summary_df, figure_file, source_file, min_recurrent_units = atlas_min_recurrent_units) {
+  source_df <- prepare_sus_res_publication_summary(summary_df, min_recurrent_units)
+  readr::write_csv(source_df, source_file, na = "")
+  plot_df <- source_df %>%
+    dplyr::filter(.data$publication_include) %>%
+    dplyr::mutate(
+      spatial_unit_label = factor(
+        .data$spatial_unit_label,
+        levels = clean_spatial_unit_label(anatomical_spatial_unit_levels(unique(.data$spatial_unit)))
+      ),
+      program = factor(.data$program, levels = rev(publication_program_labels)),
+      dataset_compartment_label = factor(
+        .data$dataset_compartment_label,
+        levels = c("Neuron neuropil", "Neuron soma", "Microglia-enriched ROI")
+      )
+    )
+  if (!nrow(plot_df)) return(invisible(FALSE))
+  lims <- publication_color_limits(plot_df$mean_NES)
+  p <- ggplot2::ggplot(plot_df, ggplot2::aes(.data$spatial_unit_label, .data$program, color = .data$mean_NES, size = .data$significant_term_count)) +
+    ggplot2::geom_point(alpha = 0.92) +
+    ggplot2::facet_grid(.data$dataset_compartment_label ~ ., scales = "free_x", space = "free_x") +
+    ggplot2::scale_color_gradient2(low = "#3B4CC0", mid = "white", high = "#B40426", midpoint = 0, limits = lims, oob = scales::squish, name = "Mean NES") +
+    ggplot2::scale_size_continuous(range = c(1.0, 4.2), breaks = sig_size_breaks(plot_df$significant_term_count), name = "Sig. terms") +
+    ggplot2::labs(
+      x = NULL, y = NULL,
+      subtitle = "Positive NES = higher in SUS; negative NES = higher in RES",
+      caption = "Proteome-wide ranked GO/GSEA program evidence; not DAP-set ORA."
+    ) +
+    theme_nature_dotplot(7)
+  save_nature_svg(p, figure_file, width_mm = 183, height_mm = 110)
 }
 
 plot_neuropil_focus_publication <- function(summary_df, figure_file, source_file, min_recurrent_units = 1L) {
@@ -762,6 +808,7 @@ main <- function() {
 
   publication_figures <- c(
     spatial_atlas = file.path(CANONICAL_PATHS$figures, "Fig_SpatialProgramAtlas_dotheatmap_publication.svg"),
+    sus_res_spatial_atlas = file.path(CANONICAL_PATHS$figures, "Fig_SpatialProgramAtlas_SUS_vs_RES_publication.svg"),
     neuropil_focus = file.path(CANONICAL_PATHS$figures, "Fig_SpatialProgramAtlas_neuropil_focus_publication.svg"),
     compartment = file.path(CANONICAL_PATHS$figures, "Fig_Compartment_Comparison_publication.svg"),
     divergence = file.path(CANONICAL_PATHS$figures, "Fig_RES_SUS_divergence_publication.svg"),
@@ -769,6 +816,7 @@ main <- function() {
   )
   publication_source <- c(
     spatial_atlas = file.path(CANONICAL_PATHS$source_data, "source_data_SpatialProgramAtlas_publication.csv"),
+    sus_res_spatial_atlas = file.path(CANONICAL_PATHS$source_data, "source_data_SpatialProgramAtlas_SUS_vs_RES_publication.csv"),
     neuropil_focus = file.path(CANONICAL_PATHS$source_data, "source_data_SpatialProgramAtlas_neuropil_focus_publication.csv"),
     compartment = file.path(CANONICAL_PATHS$source_data, "source_data_Compartment_Comparison_publication.csv"),
     divergence = file.path(CANONICAL_PATHS$source_data, "source_data_RES_SUS_divergence_publication.csv"),
@@ -777,6 +825,7 @@ main <- function() {
 
   publication_source_df <- prepare_publication_summary(program_summary, atlas_min_recurrent_units)
   plot_spatial_program_atlas_publication(program_summary, publication_figures[["spatial_atlas"]], publication_source[["spatial_atlas"]], atlas_min_recurrent_units)
+  plot_sus_res_spatial_program_atlas_publication(program_summary, publication_figures[["sus_res_spatial_atlas"]], publication_source[["sus_res_spatial_atlas"]], atlas_min_recurrent_units)
   plot_neuropil_focus_publication(program_summary, publication_figures[["neuropil_focus"]], publication_source[["neuropil_focus"]])
   plot_compartment_comparison_publication(program_summary, publication_figures[["compartment"]], publication_source[["compartment"]])
   plot_res_sus_divergence_publication(behavior_df, publication_figures[["divergence"]], publication_source[["divergence"]], divergence_delta_threshold)
