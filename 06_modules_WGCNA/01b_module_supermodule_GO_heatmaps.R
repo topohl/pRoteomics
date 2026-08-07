@@ -99,6 +99,7 @@ read_required <- function(path, label) {
 }
 
 NATURE_DOUBLE_COLUMN_IN <- 7.2
+COMBINED_FOCUSED_WIDTH_IN <- 3.8
 
 build_combined_focused_panel <- function(x, colour_limits, size_limits) {
   term_rows <- x[!duplicated(x$TermID), c(
@@ -137,7 +138,7 @@ build_combined_focused_panel <- function(x, colour_limits, size_limits) {
       )
     ) +
     ggplot2::scale_size_continuous(
-      limits = size_limits, range = c(1.3, 4.5),
+      limits = size_limits, range = c(0.9, 3.1),
       breaks = c(0.25, 0.5, 0.75, 1), labels = scales::label_number(accuracy = 0.01),
       name = "Fraction of member modules with BH FDR <= 0.05",
       guide = ggplot2::guide_legend(title.position = "top", title.hjust = 0.5, nrow = 1, order = 2)
@@ -145,15 +146,15 @@ build_combined_focused_panel <- function(x, colour_limits, size_limits) {
     ggplot2::scale_x_discrete(drop = FALSE) +
     ggplot2::scale_y_discrete(labels = term_labels, drop = FALSE) +
     ggplot2::labs(title = unique(x$dataset_display_label), x = NULL, y = NULL) +
-    ggplot2::theme_minimal(base_size = 7) +
+    ggplot2::theme_minimal(base_size = 6) +
     ggplot2::theme(
       panel.grid.major = ggplot2::element_line(colour = "#E8E8E8", linewidth = 0.22),
       panel.grid.minor = ggplot2::element_blank(),
-      axis.text.x = ggplot2::element_text(size = 6.2, colour = "#333333"),
-      axis.text.y = ggplot2::element_text(size = 6.2, colour = "#222222", lineheight = 0.94),
-      plot.title = ggplot2::element_text(face = "bold", size = 7.5, margin = ggplot2::margin(b = 2, unit = "pt")),
-      legend.title = ggplot2::element_text(size = 6.3),
-      legend.text = ggplot2::element_text(size = 6.0),
+      axis.text.x = ggplot2::element_text(size = 6, colour = "#333333"),
+      axis.text.y = ggplot2::element_text(size = 6, colour = "#222222", lineheight = 0.94),
+      plot.title = ggplot2::element_text(face = "bold", size = 6, margin = ggplot2::margin(b = 2, unit = "pt")),
+      legend.title = ggplot2::element_text(size = 6),
+      legend.text = ggplot2::element_text(size = 6),
       plot.margin = ggplot2::margin(3, 5, 3, 3, unit = "pt")
     )
 }
@@ -211,8 +212,8 @@ if (IS_COMBINED) {
     n_terms <- vapply(FOCUSED_DATASETS, function(dataset) {
       length(unique(combined$matrix$TermID[combined$matrix$dataset == dataset]))
     }, integer(1))
-    panel_heights <- 0.75 + 0.14 * n_terms
-    combined_height <- round(1.55 + sum(panel_heights), 2)
+    panel_heights <- 0.68 + 0.12 * n_terms
+    combined_height <- round(1.35 + sum(panel_heights), 2)
     combined_plot <- patchwork::wrap_plots(
       panels, ncol = 1, heights = panel_heights, guides = "collect"
     ) +
@@ -225,10 +226,10 @@ if (IS_COMBINED) {
         ),
         tag_levels = "a",
         theme = ggplot2::theme(
-          plot.title = ggplot2::element_text(face = "bold", size = 8.5),
-          plot.subtitle = ggplot2::element_text(size = 6.5, colour = "#444444"),
-          plot.caption = ggplot2::element_text(size = 6.0, colour = "#555555", hjust = 0),
-          plot.tag = ggplot2::element_text(face = "bold", size = 8.5)
+          plot.title = ggplot2::element_text(face = "bold", size = 6),
+          plot.subtitle = ggplot2::element_text(size = 6, colour = "#444444"),
+          plot.caption = ggplot2::element_text(size = 6, colour = "#555555", hjust = 0),
+          plot.tag = ggplot2::element_text(face = "bold", size = 6)
         )
       ) &
       ggplot2::theme(
@@ -242,7 +243,7 @@ if (IS_COMBINED) {
     for (figure_file in figure_files) {
       ggplot2::ggsave(
         figure_file, combined_plot,
-        width = NATURE_DOUBLE_COLUMN_IN, height = combined_height,
+        width = COMBINED_FOCUSED_WIDTH_IN, height = combined_height,
         units = "in", limitsize = FALSE, dpi = 300
       )
     }
@@ -268,7 +269,7 @@ if (IS_COMBINED) {
       hierarchy_gene_jaccard_threshold = FOCUSED_HIERARCHY_GENE_JACCARD,
       near_identical_gene_jaccard_threshold = FOCUSED_NEAR_IDENTICAL_GENE_JACCARD,
       cross_dataset_recurrence = "descriptive exact TermID selection only; no cross-dataset inference",
-      combined_figure_width_in = NATURE_DOUBLE_COLUMN_IN,
+      combined_figure_width_in = COMBINED_FOCUSED_WIDTH_IN,
       combined_figure_height_in = combined_height,
       stringsAsFactors = FALSE
     )
@@ -286,7 +287,7 @@ if (IS_COMBINED) {
         FOCUSED_HIERARCHY_GENE_JACCARD, " or Jaccard >= ", FOCUSED_NEAR_IDENTICAL_GENE_JACCARD
       ),
       inference_scope = "descriptive member-module summaries and exact TermID recurrence; no pooled or cross-dataset inference",
-      output_width_in = NATURE_DOUBLE_COLUMN_IN,
+      output_width_in = COMBINED_FOCUSED_WIDTH_IN,
       output_height_in = combined_height,
       stringsAsFactors = FALSE
     )
