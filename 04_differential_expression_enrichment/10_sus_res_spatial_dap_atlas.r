@@ -380,20 +380,29 @@ include_ranked <- if (is.logical(panel_c_source$publication_include)) {
 } else {
   tolower(as.character(panel_c_source$publication_include)) %in% c("true", "1", "yes")
 }
+interpretable_ranked <- if (is.logical(panel_c_source$interpretable_program)) {
+  panel_c_source$interpretable_program
+} else {
+  tolower(as.character(panel_c_source$interpretable_program)) %in% c("true", "1", "yes")
+}
+panel_c_axis_source <- panel_c_source[interpretable_ranked, , drop = FALSE]
 panel_c_plot_source <- panel_c_source[include_ranked, , drop = FALSE]
 if (!nrow(panel_c_plot_source)) {
   stop("Ranked GO/GSEA Panel C source has no rows passing the existing publication inclusion rule.", call. = FALSE)
 }
-program_levels <- unique(as.character(panel_c_plot_source$program))
-panel_c_plot_source$program <- factor(panel_c_plot_source$program, levels = rev(program_levels))
-panel_c_plot_source$spatial_unit_label <- factor(
-  panel_c_plot_source$spatial_unit_label,
-  levels = clean_spatial_unit_label(anatomical_spatial_unit_levels(unique(panel_c_plot_source$spatial_unit)))
+program_levels <- unique(as.character(panel_c_axis_source$program))
+panel_c_axis_source$program <- factor(panel_c_axis_source$program, levels = rev(program_levels))
+panel_c_axis_source$spatial_unit_label <- factor(
+  panel_c_axis_source$spatial_unit_label,
+  levels = clean_spatial_unit_label(anatomical_spatial_unit_levels(unique(panel_c_axis_source$spatial_unit)))
 )
-panel_c_plot_source$dataset_compartment_label <- factor(
-  panel_c_plot_source$dataset_compartment_label,
+panel_c_axis_source$dataset_compartment_label <- factor(
+  panel_c_axis_source$dataset_compartment_label,
   levels = dataset_levels
 )
+panel_c_plot_source$program <- factor(panel_c_plot_source$program, levels = levels(panel_c_axis_source$program))
+panel_c_plot_source$spatial_unit_label <- factor(panel_c_plot_source$spatial_unit_label, levels = levels(panel_c_axis_source$spatial_unit_label))
+panel_c_plot_source$dataset_compartment_label <- factor(panel_c_plot_source$dataset_compartment_label, levels = dataset_levels)
 nes_limit <- suppressWarnings(stats::quantile(abs(panel_c_plot_source$mean_NES), probs = 0.98, na.rm = TRUE, names = FALSE))
 if (!is.finite(nes_limit) || nes_limit <= 0) nes_limit <- suppressWarnings(max(abs(panel_c_plot_source$mean_NES), na.rm = TRUE))
 if (!is.finite(nes_limit) || nes_limit <= 0) nes_limit <- 1
@@ -402,11 +411,16 @@ support_values <- sort(unique(panel_c_plot_source$significant_term_count[panel_c
 support_breaks <- if (length(support_values)) unique(round(stats::quantile(support_values, probs = c(0, 0.5, 1), names = FALSE))) else c(1, 2, 3)
 
 panel_c <- ggplot2::ggplot(
-  panel_c_plot_source,
-  ggplot2::aes(x = spatial_unit_label, y = program, colour = mean_NES, size = significant_term_count)
+  panel_c_axis_source,
+  ggplot2::aes(x = spatial_unit_label, y = program)
 ) +
-  ggplot2::geom_point(alpha = 0.92) +
-  ggplot2::facet_grid(dataset_compartment_label ~ ., scales = "free_x", space = "free_x") +
+  ggplot2::geom_blank() +
+  ggplot2::geom_point(
+    data = panel_c_plot_source,
+    ggplot2::aes(colour = mean_NES, size = significant_term_count),
+    alpha = 0.92
+  ) +
+  ggplot2::facet_wrap(~dataset_compartment_label, ncol = 1, scales = "free_x", strip.position = "right") +
   ggplot2::scale_colour_gradient2(
     low = "#3B4CC0", mid = "white", high = "#B40426", midpoint = 0,
     limits = c(-nes_limit, nes_limit), oob = scales::squish, name = "Mean NES"
