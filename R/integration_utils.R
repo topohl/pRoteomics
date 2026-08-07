@@ -77,7 +77,10 @@ read_csv_optional <- function(path, dataset = "global", evidence_domain = "input
   data <- tryCatch(
     {
       if (requireNamespace("readr", quietly = TRUE)) {
-        readr::read_csv(path, show_col_types = FALSE, progress = FALSE)
+        readr::read_csv(
+          path, show_col_types = FALSE, progress = FALSE,
+          guess_max = Inf
+        )
       } else {
         utils::read.csv(path, check.names = FALSE, stringsAsFactors = FALSE)
       }
@@ -156,6 +159,9 @@ empty_evidence <- function() {
     wgcna_architecture_status = character(), wgcna_group_effect_status = character(),
     wgcna_allowed_claim_scope = character(), wgcna_prohibited_claim_scope = character(),
     readiness_contract_version = character(), counts_toward_convergence = logical(),
+    tier_specific_family_id = character(), tier_specific_family_size = integer(),
+    inferential_claim_gate = character(), inferential_source_file = character(),
+    inferential_source_key = character(),
     evidence_semantic_class = character(), evidence_role = character(), evidence_role_reason = character(),
     contrast = character(), spatial_unit = character(), effect_direction = character(),
     effect_size = numeric(), p_value = numeric(), fdr = numeric(),
@@ -181,8 +187,9 @@ standardize_evidence <- function(df) {
       as.character(df$entity_type[missing_count]) == "status"
   )
   for (col in c("effect_size", "p_value", "fdr", "support_count")) df[[col]] <- num_or_na(df[[col]])
+  df$tier_specific_family_size <- suppressWarnings(as.integer(df$tier_specific_family_size))
   for (col in c("separate_manuscript_claim_allowed", "counts_toward_convergence")) df[[col]] <- as.logical(df[[col]])
-  for (col in setdiff(cols, c("effect_size", "p_value", "fdr", "support_count", "separate_manuscript_claim_allowed", "counts_toward_convergence"))) df[[col]] <- as.character(df[[col]])
+  for (col in setdiff(cols, c("effect_size", "p_value", "fdr", "support_count", "tier_specific_family_size", "separate_manuscript_claim_allowed", "counts_toward_convergence"))) df[[col]] <- as.character(df[[col]])
   df
 }
 

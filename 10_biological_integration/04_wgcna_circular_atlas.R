@@ -815,6 +815,12 @@ pick_effect_rows <- function(effects, source_ids, effect_source_file) {
       model_valid_for_inference = logical(),
       model_stability_status = character(),
       source_claim_entity_role = character(),
+      source_entity_level = character(),
+      source_entity_id = character(),
+      display_is_compatibility_alias = logical(),
+      display_is_independent_endpoint = logical(),
+      display_support_origin = character(),
+      display_entity_role = character(),
       result_scope = character(),
       claim_gate = character(),
       source_artifact = character(),
@@ -879,6 +885,14 @@ pick_effect_rows <- function(effects, source_ids, effect_source_file) {
       model_valid_for_inference = as.logical(.data$model_valid),
       model_stability_status = as.character(.data$model_stability_status),
       source_claim_entity_role = as.character(.data$claim_entity_role),
+      source_entity_level = as.character(.data$source_entity_level),
+      source_entity_id = as.character(.data$source_entity_id),
+      display_is_compatibility_alias =
+        as.logical(.data$display_is_compatibility_alias),
+      display_is_independent_endpoint =
+        as.logical(.data$display_is_independent_endpoint),
+      display_support_origin = as.character(.data$display_support_origin),
+      display_entity_role = as.character(.data$display_entity_role),
       result_scope = as.character(.data$result_scope),
       claim_gate = as.character(.data$claim_gate),
       source_artifact = as.character(.data$source_artifact),
@@ -2486,6 +2500,11 @@ build_heatmap_sources <- function(datasets, segments, selected_audit) {
         module_label_key = clean_chr(.data$module_label),
         module_id_key = clean_chr(.data$module_id)
       ) |>
+      dplyr::select(-dplyr::any_of(c(
+        "supermodule_id_lookup", "supermodule_id_annotation",
+        "supermodule_id_label_fallback", "supermodule_label_annotation",
+        "supermodule_label_label_fallback", "module_label_lookup"
+      ))) |>
       dplyr::left_join(map$lookup, by = c("dataset", "module_id_key" = "module_id_lookup")) |>
       dplyr::left_join(
         map$annotation |>
@@ -4509,6 +4528,12 @@ segments <- segments |>
     "model_valid_for_inference",
     "model_stability_status",
     "source_claim_entity_role",
+    "source_entity_level",
+    "source_entity_id",
+    "display_is_compatibility_alias",
+    "display_is_independent_endpoint",
+    "display_support_origin",
+    "display_entity_role",
     "result_scope",
     "claim_gate",
     "source_artifact",

@@ -139,7 +139,9 @@ join_super_labels <- function(df, id_col = "supermodule_id", context = "publicat
   if (!"dataset" %in% names(df)) stop("Stable dataset key missing in ", context, ".", call. = FALSE)
   join_keys <- c(dataset = "dataset")
   join_keys[[id_col]] <- "supermodule_id"
+  label_columns <- setdiff(names(super_labels), c("dataset", "supermodule_id"))
   out <- df |>
+    dplyr::select(-dplyr::any_of(label_columns)) |>
     dplyr::left_join(super_labels, by = join_keys, relationship = "many-to-one")
   if (nrow(out) != before) stop("Label join multiplied rows in ", context, ".", call. = FALSE)
   if (any(is.na(out$canonical_short_label))) stop("Canonical label missing in ", context, ".", call. = FALSE)

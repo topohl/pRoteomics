@@ -434,7 +434,7 @@ testthat::test_that("outer support track uses exact handoff FDR families", {
     !(circular$model_valid_for_inference %in% TRUE) |
     circular$model_stability_status == "invalid"
   expected_support <- dplyr::case_when(
-    !(circular$independent_hypothesis %in% TRUE) ~ "none",
+    !(circular$display_is_independent_endpoint %in% TRUE) ~ "none",
     invalid ~ "invalid",
     !is.na(circular$global_support_fdr) &
       circular$global_support_fdr <= 0.05 ~ "FDR05",
@@ -449,7 +449,7 @@ testthat::test_that("outer support track uses exact handoff FDR families", {
   testthat::expect_identical(
     circular$global_marker_visible,
     expected_support != "none" &
-      circular$independent_hypothesis %in% TRUE
+      circular$display_is_independent_endpoint %in% TRUE
   )
   aliases <- circular$display_is_compatibility_alias %in% TRUE
   testthat::expect_true(all(

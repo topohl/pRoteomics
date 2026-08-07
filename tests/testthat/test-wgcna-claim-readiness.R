@@ -57,6 +57,7 @@ testthat::test_that("Stage 13 is a parseable non-circular microglia handoff", {
   effect_end <- grep("^effects <-", lines)
   effect_text <- paste(lines[effect_start:(effect_end - 1L)], collapse = "\n")
   testthat::expect_false(grepl("dplyr::distinct", effect_text, fixed = TRUE))
+  testthat::expect_match(effect_text, ".data$entity_level == .env$level", fixed = TRUE)
   testthat::expect_match(effect_text, "any(id_counts != 1L)", fixed = TRUE)
   testthat::expect_match(
     effect_text,
@@ -70,6 +71,7 @@ testthat::test_that("Stage 13 is a parseable non-circular microglia handoff", {
   )
   testthat::expect_false(grepl("group_effect_source_key = paste0", effect_text, fixed = TRUE))
   testthat::expect_false(grepl("Stage 05 selected endpoint", effect_text, fixed = TRUE))
+  testthat::expect_match(text, 'write_csv(out, file.path(OUT$tables, "WGCNA_entity_claim_readiness.csv"), na = "NA")', fixed = TRUE)
   for (script in c("05_module_supermodule_group_effects.r", "06_annotate_module_microenvironment.r", "07_wgcna_interpretable_summary.r", "12_microglia_wgcna_nature_readiness_audit.R")) {
     source_text <- paste(readLines(file.path(root, "06_modules_WGCNA", script), warn = FALSE), collapse = "\n")
     testthat::expect_false(grepl("13_wgcna_claim_readiness|claim_readiness", source_text))
