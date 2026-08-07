@@ -40,7 +40,10 @@ read_final_csv <- function(path) {
   )
   if (!file.exists(path)) return(NULL)
   if (requireNamespace("readr", quietly = TRUE)) {
-    readr::read_csv(path, show_col_types = FALSE, progress = FALSE)
+    readr::read_csv(
+      path, show_col_types = FALSE, progress = FALSE,
+      guess_max = Inf
+    )
   } else {
     utils::read.csv(path, check.names = FALSE, stringsAsFactors = FALSE)
   }

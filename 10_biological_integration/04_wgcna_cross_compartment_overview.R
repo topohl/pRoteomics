@@ -119,7 +119,13 @@ read_input <- function(ds, input_name, spec) {
     status$message <- "present; not parsed by this read-only CSV overview"
     return(list(data = NULL, status = status))
   }
-  data <- tryCatch(readr::read_csv(path, show_col_types = FALSE, progress = FALSE), error = function(e) e)
+  data <- tryCatch(
+    readr::read_csv(
+      path, show_col_types = FALSE, progress = FALSE,
+      guess_max = Inf
+    ),
+    error = function(e) e
+  )
   if (inherits(data, "error")) {
     status$status <- if (isTRUE(spec$required)) "missing_required" else "missing_optional"
     status$message <- paste("read error:", conditionMessage(data))

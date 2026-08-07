@@ -160,7 +160,7 @@ effect_from <- function(level, expected_ids) {
   selected <- handoff |>
     dplyr::filter(
       .data$dataset == DATASET,
-      .data$entity_level == level,
+      .data$entity_level == .env$level,
       .data$analysis_tier == "primary_wgcna_global",
       .data$contrast == "SUS - RES",
       .data$effect_scope == "spatial_adjusted_global",
@@ -291,7 +291,7 @@ if (any(
   stop("Compatibility aliases must not carry independent FDR metadata.", call. = FALSE)
 }
 validate_table_schema(out, "wgcna_entity_claim_readiness", strict = TRUE)
-readr::write_csv(out, file.path(OUT$tables, "WGCNA_entity_claim_readiness.csv"), na = "")
-readr::write_csv(out, file.path(OUT$source_data, "WGCNA_entity_claim_readiness_source.csv"), na = "")
+readr::write_csv(out, file.path(OUT$tables, "WGCNA_entity_claim_readiness.csv"), na = "NA")
+readr::write_csv(out, file.path(OUT$source_data, "WGCNA_entity_claim_readiness_source.csv"), na = "NA")
 write_run_manifest(file.path(OUT$logs, "run_manifest.yml"), inputs = inputs, outputs = list(claim_readiness = file.path(OUT$tables, "WGCNA_entity_claim_readiness.csv"), claim_readiness_source = file.path(OUT$source_data, "WGCNA_entity_claim_readiness_source.csv")), parameters = list(dataset = DATASET, readiness_contract_version = "microglia_wgcna_claim_readiness_v2", selected_endpoint = "SUS - RES | spatial_adjusted_global | global_spatial_adjusted", FDR_claim_status_source = "tier_specific_fdr via WGCNA_inferential_handoff.csv"), notes = "Non-circular manuscript handoff. Singleton supermodule IDs are compatibility aliases, not separate claims. Stages 05-07 and 12 do not read this output.")
 message("Microglia WGCNA claim-readiness handoff complete.")

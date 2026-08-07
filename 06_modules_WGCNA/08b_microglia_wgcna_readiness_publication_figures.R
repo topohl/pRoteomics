@@ -37,7 +37,7 @@ definitions <- read_csv(paths$definitions) |> dplyr::transmute(ModuleID = as.cha
 super_summary <- read_csv(paths$summary) |> dplyr::transmute(supermodule_id = as.character(.data$SupermoduleID), pc1_variance = as.numeric(.data$pc1_variance_explained)) |> dplyr::distinct(.data$supermodule_id, .keep_all = TRUE)
 loadings <- read_csv(paths$loadings)
 labels <- lookup |> dplyr::filter(.data$level == "supermodule") |> dplyr::transmute(supermodule_id = .data$entity_id, canonical_short_label, canonical_plot_label, structural_status, biological_label_confidence, roi_context)
-join_labels <- function(x) { n <- nrow(x); z <- x |> dplyr::left_join(labels, by = "supermodule_id", relationship = "many-to-one"); if (nrow(z) != n) stop("Label join multiplied rows"); z }
+join_labels <- function(x) { n <- nrow(x); label_columns <- setdiff(names(labels), "supermodule_id"); z <- x |> dplyr::select(-dplyr::any_of(label_columns)) |> dplyr::left_join(labels, by = "supermodule_id", relationship = "many-to-one"); if (nrow(z) != n) stop("Label join multiplied rows"); z }
 values <- read_csv(paths$values) |> dplyr::mutate(supermodule_id = as.character(.data$supermodule_id), roi = factor(toupper(.data$canonical_spatial_unit), levels = roi_order), StressGroup = factor(.data$StressGroup, levels = c("CON", "RES", "SUS"))) |> join_labels()
 inferential_handoff <- wgcna_inferential_handoff_read(paths$effects)
 display_lookup <- lookup |>

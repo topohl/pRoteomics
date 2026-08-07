@@ -613,6 +613,26 @@ testthat::test_that(
         info = consumer
       )
     }
+    claims_text <- paste(
+      readLines(file.path(
+        root, "09_export_pride_journal",
+        "07_make_biological_claims_table.R"
+      ), warn = FALSE),
+      collapse = "\n"
+    )
+    testthat::expect_gte(
+      lengths(regmatches(
+        claims_text,
+        gregexpr("wgcna_inferential_handoff_read", claims_text, fixed = TRUE)
+      )),
+      2L
+    )
+    testthat::expect_match(
+      claims_text, ".data$entity_level == .env$level", fixed = TRUE
+    )
+    testthat::expect_match(
+      claims_text, ".data$level == .env$level", fixed = TRUE
+    )
     semantic <- readLines(
       file.path(root, "R", "wgcna_stage07_semantic_utils.R"),
       warn = FALSE

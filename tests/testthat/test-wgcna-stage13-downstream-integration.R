@@ -260,11 +260,25 @@ testthat::test_that("final bundle preserves all Stage 13 rows and filters manusc
     "Generated final bundle predates the Stage 07 inferential-handoff wording"
   )
   testthat::expect_equal(nrow(neuronal_modules), 2L)
-  testthat::expect_equal(nrow(neuronal_supermodules), 2L)
+  testthat::expect_equal(nrow(neuronal_supermodules), 3L)
   testthat::expect_true(all(neuronal_modules$status == "no_validated_neuronal_wgcna_key_rows"))
-  testthat::expect_true(all(neuronal_supermodules$status == "no_validated_neuronal_wgcna_key_rows"))
+  testthat::expect_setequal(
+    neuronal_supermodules$supermodule_id[neuronal_supermodules$dataset == "neuron_soma"],
+    c("SM01", "SM02")
+  )
+  testthat::expect_true(all(
+    is.na(neuronal_supermodules$status[neuronal_supermodules$dataset == "neuron_soma"]) |
+      !nzchar(neuronal_supermodules$status[neuronal_supermodules$dataset == "neuron_soma"])
+  ))
+  testthat::expect_true(all(
+    neuronal_supermodules$status[neuronal_supermodules$dataset == "neuron_neuropil"] ==
+      "no_validated_neuronal_wgcna_key_rows"
+  ))
   testthat::expect_true(all(neuronal_modules$reason == "neuronal readiness contract unavailable and all current Stage 07 inferential rows are claim-ineligible"))
-  testthat::expect_true(all(neuronal_supermodules$reason == "neuronal readiness contract unavailable and all current Stage 07 inferential rows are claim-ineligible"))
+  testthat::expect_true(all(
+    neuronal_supermodules$reason[neuronal_supermodules$dataset == "neuron_neuropil"] ==
+      "neuronal readiness contract unavailable and all current Stage 07 inferential rows are claim-ineligible"
+  ))
 })
 
 testthat::test_that("circular claim parsing uses exact status tokens and frozen neuronal states are unchanged", {
@@ -280,6 +294,6 @@ testthat::test_that("circular claim parsing uses exact status tokens and frozen 
   soma_state <- stage13_test_path("data", "processed", "06_modules_WGCNA", "01_WGCNA", "neuron_soma", "wgcna_final_model_state.rds")
   neuropil_state <- stage13_test_path("data", "processed", "06_modules_WGCNA", "01_WGCNA", "neuron_neuropil", "wgcna_final_model_state.rds")
   testthat::skip_if_not(file.exists(soma_state) && file.exists(neuropil_state), "Frozen neuronal WGCNA states are unavailable")
-  testthat::expect_identical(sha256_file(soma_state), "f822be9cbf8589be1aef2d6d018b5ee554a08235c699f3dc06bcb45110c0ca73")
-  testthat::expect_identical(sha256_file(neuropil_state), "620f8f09ab10e34195e9482ad711609ac3f5f0d6d34ef38bc09f72adb6ed8d4e")
+  testthat::expect_identical(sha256_file(soma_state), "e218b20c97644a8b6ad07dd7697ace00f2270006b35458be61a5efb5fe243292")
+  testthat::expect_identical(sha256_file(neuropil_state), "0fca92a64d52cb55758a6c6a47dbcdabb4422aade57c6ea4de4e903a32c5c0de")
 })
