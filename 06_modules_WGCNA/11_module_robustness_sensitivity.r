@@ -144,6 +144,9 @@ make_dataset <- function(ds) {
   status <- do.call(rbind, lapply(loaded, `[[`, "status"))
   effect_data <- loaded$inferential_handoff$data
   if (!is.null(effect_data) && nrow(effect_data)) {
+    effect_data <- wgcna_inferential_handoff_normalize_csv_types(
+      effect_data, inputs$inferential_handoff
+    )
     wgcna_inferential_handoff_validate(effect_data)
   }
   module_effects <- if (is.null(effect_data)) NULL else

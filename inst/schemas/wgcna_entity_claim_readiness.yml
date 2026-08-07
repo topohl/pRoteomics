@@ -42,8 +42,10 @@ required_columns:
   - group_effect_n_animals
   - group_effect_n_samples
   - group_effect_biological_replicate_unit
-  - group_effect_source_file
+  - group_effect_handoff_file
+  - group_effect_source_artifact
   - group_effect_source_key
+  - group_effect_source_key_contract
   - model_stability
   - allowed_claim_scope
   - prohibited_claim_scope
@@ -93,8 +95,10 @@ columns:
   group_effect_n_animals: {type: integer}
   group_effect_n_samples: {type: integer}
   group_effect_biological_replicate_unit: {type: character}
-  group_effect_source_file: {type: character}
+  group_effect_handoff_file: {type: character}
+  group_effect_source_artifact: {type: character}
   group_effect_source_key: {type: character}
+  group_effect_source_key_contract: {type: character}
   model_stability: {type: character, allowed_values: [stable, singular_or_unstable_diagnostic_only]}
   allowed_claim_scope: {type: character}
   prohibited_claim_scope: {type: character}

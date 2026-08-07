@@ -126,7 +126,7 @@ context_from <- function(path, level, ids) {
 }
 context <- dplyr::bind_rows(context_from(inputs$stage06_module, "module", module_ready$entity_id), context_from(inputs$stage06_supermodule, "supermodule", super_ready$entity_id))
 
-handoff <- read_csv(inputs$stage07_handoff)
+handoff <- wgcna_inferential_handoff_read(inputs$stage07_handoff)
 validate_table_schema(
   handoff, "wgcna_inferential_handoff", strict = FALSE
 )
@@ -171,12 +171,12 @@ effect_from <- function(level, expected_ids) {
   if (nrow(selected) != length(expected_ids) || !setequal(selected_ids, expected_ids) ||
       any(id_counts != 1L)) {
     stop(
-      "Stage 05 selected endpoint must contain exactly one SUS - RES / spatial_adjusted_global / global_spatial_adjusted row per current ",
+      "Validated Stage 07 inferential handoff selection must contain exactly one SUS - RES / spatial_adjusted_global / global_spatial_adjusted row per current ",
       level, " identity; selected rows=", nrow(selected), ".",
       call. = FALSE
     )
   }
-  source_file <- repo_relative_path(inputs$stage07_handoff)
+  handoff_file <- repo_relative_path(inputs$stage07_handoff)
   selected |>
     dplyr::transmute(
       level = level,
@@ -201,16 +201,10 @@ effect_from <- function(level, expected_ids) {
       group_effect_n_animals = suppressWarnings(as.integer(.data$biological_n)),
       group_effect_n_samples = suppressWarnings(as.integer(.data$n_samples_total)),
       group_effect_biological_replicate_unit = as.character(.data$biological_replicate_unit),
-      group_effect_source_file = source_file,
-      group_effect_source_key = paste0(
-        "dataset=", .data$dataset,
-        "|level=", .data$level,
-        "|endpoint_id=", .data$endpoint_id,
-        "|effect_scope=", .data$effect_scope,
-        "|spatial_unit=", .data$spatial_unit,
-        "|contrast=", .data$contrast,
-        "|test_type=", .data$test_type
-      ),
+      group_effect_handoff_file = handoff_file,
+      group_effect_source_artifact = as.character(.data$source_artifact),
+      group_effect_source_key = as.character(.data$source_key),
+      group_effect_source_key_contract = as.character(.data$source_key_contract),
       model_stability = dplyr::if_else(
         .data$model_valid %in% TRUE &
           .data$claim_gate == "eligible_for_readiness_assessment",
@@ -274,7 +268,7 @@ out <- lookup |>
     ),
     readiness_contract_version = "microglia_wgcna_claim_readiness_v2"
   ) |>
-    dplyr::select(dataset, level, entity_id, canonical_claim_entity_id, claim_entity_role, separate_manuscript_claim_allowed, compatibility_target_level, compatibility_target_entity_id, canonical_biological_label, canonical_short_label, structural_status, primary_architecture_status, spatial_dependence_class, animal_stability_status, strict_nonspatial_sensitivity_status, conventional_preservation_status, conventional_preservation_claim_gate_eligible, biological_process_confidence, context_assignment_class, context_assignment_confidence, neuropil_independence_status, selected_contrast, selected_effect_scope, selected_spatial_unit, group_effect_analysis_tier, group_effect_result_scope, group_effect_estimate, group_effect_SE, group_effect_CI_low, group_effect_CI_high, group_effect_p_value, group_effect_tier_specific_fdr, group_effect_tier_specific_family_id, group_effect_tier_specific_family_size, group_effect_adjustment_scope, group_effect_evidence_status, group_effect_status, group_effect_model_formula, group_effect_model_type, group_effect_n_animals, group_effect_n_samples, group_effect_biological_replicate_unit, group_effect_source_file, group_effect_source_key, model_stability, allowed_claim_scope, prohibited_claim_scope, manuscript_placement, allowed_wording, readiness_contract_version) |>
+    dplyr::select(dataset, level, entity_id, canonical_claim_entity_id, claim_entity_role, separate_manuscript_claim_allowed, compatibility_target_level, compatibility_target_entity_id, canonical_biological_label, canonical_short_label, structural_status, primary_architecture_status, spatial_dependence_class, animal_stability_status, strict_nonspatial_sensitivity_status, conventional_preservation_status, conventional_preservation_claim_gate_eligible, biological_process_confidence, context_assignment_class, context_assignment_confidence, neuropil_independence_status, selected_contrast, selected_effect_scope, selected_spatial_unit, group_effect_analysis_tier, group_effect_result_scope, group_effect_estimate, group_effect_SE, group_effect_CI_low, group_effect_CI_high, group_effect_p_value, group_effect_tier_specific_fdr, group_effect_tier_specific_family_id, group_effect_tier_specific_family_size, group_effect_adjustment_scope, group_effect_evidence_status, group_effect_status, group_effect_model_formula, group_effect_model_type, group_effect_n_animals, group_effect_n_samples, group_effect_biological_replicate_unit, group_effect_handoff_file, group_effect_source_artifact, group_effect_source_key, group_effect_source_key_contract, model_stability, allowed_claim_scope, prohibited_claim_scope, manuscript_placement, allowed_wording, readiness_contract_version) |>
   dplyr::arrange(factor(.data$level, levels = c("module", "supermodule")), .data$entity_id)
 if (nrow(out) != 22L || anyDuplicated(out[c("dataset", "level", "entity_id")])) stop("Claim-readiness join did not yield exactly one row per 22 stable identities.", call. = FALSE)
 if (any(!out$entity_id %in% c(sprintf("WGCNA_m%02d", 1:13), sprintf("SM%02d", 1:9)))) stop("Claim-readiness table contains stale IDs.", call. = FALSE)

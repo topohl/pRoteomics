@@ -880,6 +880,9 @@ readr::write_csv(endpoint_scope_audit, file.path(audit_dir, "microglia_neuropil_
 
 handoff <- read_csv_optional2(inputs$microglia_inferential_handoff)
 if (nrow(handoff) && nrow(module_classification)) {
+  handoff <- wgcna_inferential_handoff_normalize_csv_types(
+    handoff, "microglia WGCNA_inferential_handoff.csv"
+  )
   wgcna_inferential_handoff_validate(
     handoff,
     artifact = "microglia WGCNA_inferential_handoff.csv"

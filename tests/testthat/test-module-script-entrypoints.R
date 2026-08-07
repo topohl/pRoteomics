@@ -49,25 +49,41 @@ testthat::test_that("pipeline module stages use canonical scripts and contracts"
   scripts_wgcna <- vapply(modules_wgcna, function(x) x$script, character(1))
   scripts_downstream <- vapply(modules_downstream, function(x) x$script, character(1))
   testthat::expect_equal(scripts_wgcna, "06_modules_WGCNA/01_WGCNA.r")
-  expected_downstream <- c(
+  required_downstream <- c(
     "06_modules_WGCNA/01b_module_supermodule_GO_heatmaps.R",
     "06_modules_WGCNA/01a_compare_GO_recurrent_proteins.r",
     "06_modules_WGCNA/02_curated_overlap_programs.r",
     "06_modules_WGCNA/03_score_module_activity.R",
-    "06_modules_WGCNA/03_score_module_activity.R",
     "06_modules_WGCNA/04_wgcna_de_gsea_overlap.r",
+    "06_modules_WGCNA/00_wgcna_identity_contract.R",
     "06_modules_WGCNA/05_module_supermodule_group_effects.r",
     "06_modules_WGCNA/06_annotate_module_microenvironment.r",
     "06_modules_WGCNA/07_wgcna_interpretable_summary.r",
     "06_modules_WGCNA/08_wgcna_publication_figures.R",
     "06_modules_WGCNA/08_wgcna_score_publication_summary.R",
+    "06_modules_WGCNA/08b_microglia_wgcna_readiness_publication_figures.R",
     "06_modules_WGCNA/09_microglia_neuropil_independence.R",
     "06_modules_WGCNA/09b_microglia_neuropil_independence_figures.R",
     "06_modules_WGCNA/09c_microglia_roi_specificity_diagnostics.R",
     "06_modules_WGCNA/10_module_complex_architecture.r",
-    "06_modules_WGCNA/11_module_robustness_sensitivity.r"
+    "06_modules_WGCNA/11_module_robustness_sensitivity.r",
+    "06_modules_WGCNA/12_microglia_wgcna_nature_readiness_audit.R",
+    "06_modules_WGCNA/12b_finalize_microglia_wgcna_nature_readiness_audit.R",
+    "06_modules_WGCNA/13_wgcna_claim_readiness.R"
   )
-  testthat::expect_equal(scripts_downstream, expected_downstream)
+  testthat::expect_true(all(required_downstream %in% scripts_downstream))
+  testthat::expect_equal(
+    sum(scripts_downstream == "06_modules_WGCNA/03_score_module_activity.R"),
+    2L
+  )
+  ordered_contract <- c(
+    "06_modules_WGCNA/00_wgcna_identity_contract.R",
+    "06_modules_WGCNA/05_module_supermodule_group_effects.r",
+    "06_modules_WGCNA/06_annotate_module_microenvironment.r",
+    "06_modules_WGCNA/07_wgcna_interpretable_summary.r",
+    "06_modules_WGCNA/13_wgcna_claim_readiness.R"
+  )
+  testthat::expect_true(all(diff(match(ordered_contract, scripts_downstream)) > 0L))
   testthat::expect_false(any(c(
     "06_modules_WGCNA/03_overlap_modules.r",
     "06_modules_WGCNA/04_overlap_modules.r",

@@ -129,6 +129,9 @@ build_wgcna_key_modules <- function() {
   if (is.null(modules) || !nrow(modules)) {
     return(empty_bundle_table("WGCNA inferential handoffs were not available."))
   }
+  modules <- wgcna_inferential_handoff_normalize_csv_types(
+    modules, "combined module inferential handoffs"
+  )
   wgcna_stage07_validate_inferential_handoff(
     modules, "combined module inferential handoffs"
   )
@@ -289,6 +292,9 @@ build_wgcna_key_supermodules <- function() {
   if (is.null(supers) || !nrow(supers)) {
     return(empty_bundle_table("WGCNA inferential handoffs were not available."))
   }
+  supers <- wgcna_inferential_handoff_normalize_csv_types(
+    supers, "combined supermodule inferential handoffs"
+  )
   wgcna_stage07_validate_inferential_handoff(
     supers, "combined supermodule inferential handoffs"
   )

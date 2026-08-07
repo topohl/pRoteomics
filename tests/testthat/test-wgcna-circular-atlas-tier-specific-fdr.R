@@ -27,6 +27,10 @@ testthat::test_that("circular atlas uses the Stage 07 inferential handoff", {
   testthat::expect_match(script, "claim_gate", fixed = TRUE)
   testthat::expect_match(script, "source_artifact", fixed = TRUE)
   testthat::expect_match(script, "source_key", fixed = TRUE)
+  testthat::expect_match(
+    script, "display_is_independent_endpoint", fixed = TRUE
+  )
+  testthat::expect_match(script, "display_support_origin", fixed = TRUE)
   prohibited <- c(
     "module_group_effects.csv", "supermodule_group_effects.csv",
     "FDR_primary_global", "FDR_secondary_global",
@@ -35,6 +39,55 @@ testthat::test_that("circular atlas uses the Stage 07 inferential handoff", {
   )
   for (token in prohibited) {
     testthat::expect_false(grepl(token, script, fixed = TRUE), info = token)
+  }
+})
+
+testthat::test_that("live handoffs reconstruct explicit supermodule display semantics", {
+  source(test_root("R", "paths.R"))
+  source(test_root("R", "wgcna_group_effect_consumer_utils.R"))
+  for (dataset in c("neuron_neuropil", "neuron_soma", "microglia")) {
+    handoff <- wgcna_inferential_handoff_read(path_results(
+      "tables", "06_modules_WGCNA", "interpretable_summary", dataset,
+      "WGCNA_inferential_handoff.csv"
+    ))
+    lookup <- readr::read_csv(
+      path_results(
+        "tables", "06_modules_WGCNA", "interpretable_summary", dataset,
+        "WGCNA_final_label_lookup.csv"
+      ),
+      show_col_types = FALSE, progress = FALSE
+    )
+    super <- lookup |>
+      dplyr::filter(.data$level == "supermodule") |>
+      dplyr::transmute(
+        dataset, supermodule_id = .data$entity_id,
+        n_member_modules, supermodule_label = .data$final_plot_label
+      )
+    display_lookup <- lookup |>
+      dplyr::filter(.data$level == "module") |>
+      dplyr::transmute(
+        dataset, module_id = .data$entity_id,
+        supermodule_id = .data$parent_entity_id
+      ) |>
+      dplyr::left_join(
+        super, by = c("dataset", "supermodule_id"),
+        relationship = "many-to-one"
+      )
+    display <- wgcna_inferential_handoff_supermodule_display(
+      handoff, display_lookup
+    )
+    aliases <- display$display_is_compatibility_alias %in% TRUE
+    testthat::expect_true(all(!display$display_is_independent_endpoint[aliases]))
+    testthat::expect_true(all(
+      display$display_support_origin[aliases] == "inherited_canonical_module"
+    ))
+    testthat::expect_true(all(
+      display$display_is_independent_endpoint[!aliases]
+    ))
+    testthat::expect_true(all(
+      display$display_support_origin[!aliases] ==
+        "independent_supermodule_endpoint"
+    ))
   }
 })
 
@@ -63,6 +116,17 @@ testthat::test_that("circular group-effect plotting sources retain complete effe
     module = read_circular_csv(
       source_dir, "wgcna_circular_heatmap_source_module.csv"
     )
+  )
+  testthat::skip_if_not(
+    all(vapply(
+      sources[c("supermodule", "module")],
+      function(x) all(c(
+        "claim_gate", "source_artifact", "source_key",
+        "display_is_independent_endpoint", "display_support_origin"
+      ) %in% names(x)),
+      logical(1)
+    )),
+    "Generated circular sources predate the current handoff/display provenance schema"
   )
   for (name in names(sources)) {
     testthat::expect_setequal(
@@ -172,15 +236,20 @@ testthat::test_that("circular heatmap estimates retain exact handoff source rows
     circular <- read_circular_csv(
       source_dir, paste0("wgcna_circular_heatmap_source_", level, ".csv")
     )
+    testthat::skip_if_not(
+      all(c(
+        "source_key", "display_is_independent_endpoint",
+        "display_support_origin"
+      ) %in% names(circular)),
+      "Generated circular heatmap source predates current display provenance"
+    )
     source_rows <- dplyr::bind_rows(lapply(datasets, function(dataset) {
-      handoff <- readr::read_csv(
+      handoff <- wgcna_inferential_handoff_read(
         path_results(
           "tables", "06_modules_WGCNA", "interpretable_summary", dataset,
           "WGCNA_inferential_handoff.csv"
-        ),
-        show_col_types = FALSE, progress = FALSE
+        )
       )
-      wgcna_inferential_handoff_validate(handoff)
       if (level == "module") {
         handoff[handoff$entity_level == "module", , drop = FALSE]
       } else {
@@ -264,6 +333,13 @@ testthat::test_that("outer support track uses exact handoff FDR families", {
   circular <- read_circular_csv(
     source_dir, "wgcna_circular_global_supermodule_support_source.csv"
   )
+  testthat::skip_if_not(
+    all(c(
+      "claim_gate", "source_artifact", "source_key",
+      "display_is_independent_endpoint", "display_support_origin"
+    ) %in% names(circular)),
+    "Generated circular global support source predates current display provenance"
+  )
   required <- c(
     "dataset", "supermodule_id", "analysis_tier", "contrast",
     "effect_scope", "independent_hypothesis", "estimate", "SE",
@@ -292,14 +368,12 @@ testthat::test_that("outer support track uses exact handoff FDR families", {
   testthat::expect_true(all(rows_per_sector$n == 3L))
 
   source_rows <- dplyr::bind_rows(lapply(datasets, function(dataset) {
-    handoff <- readr::read_csv(
+    handoff <- wgcna_inferential_handoff_read(
       path_results(
         "tables", "06_modules_WGCNA", "interpretable_summary", dataset,
         "WGCNA_inferential_handoff.csv"
-      ),
-      show_col_types = FALSE, progress = FALSE
+      )
     )
-    wgcna_inferential_handoff_validate(handoff)
     lookup <- readr::read_csv(
       path_results(
         "tables", "06_modules_WGCNA", "interpretable_summary", dataset,
@@ -399,6 +473,13 @@ testthat::test_that("local standardized effects use exact Stage 05 animal-spatia
       )
     }
   ))
+  testthat::skip_if_not(
+    all(c(
+      "display_is_compatibility_alias", "source_entity_level",
+      "display_is_independent_endpoint", "display_support_origin"
+    ) %in% names(circular)),
+    "Generated circular standardized sources predate current display provenance"
+  )
   response_values <- dplyr::bind_rows(lapply(datasets, function(dataset) {
     readr::read_csv(
       path_results(

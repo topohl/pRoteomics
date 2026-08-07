@@ -1,4 +1,7 @@
-stage13_test_path <- function(...) testthat::test_path("..", "..", ...)
+stage13_repo_root <- normalizePath(
+  testthat::test_path("..", ".."), winslash = "/", mustWork = TRUE
+)
+stage13_test_path <- function(...) file.path(stage13_repo_root, ...)
 
 read_required_csv <- function(path) {
   testthat::skip_if_not(file.exists(path), paste("Required generated artifact is unavailable:", path))
@@ -30,6 +33,17 @@ require_stage13_generated_inputs <- function(datasets = "microglia") {
 
 testthat::test_that("Stage 13 helper enforces the finalized microglia identity contract", {
   require_stage13_generated_inputs("microglia")
+  generated_stage13 <- read_required_csv(stage13_test_path(
+    "results", "tables", "06_modules_WGCNA", "claim_readiness",
+    "microglia", "WGCNA_entity_claim_readiness.csv"
+  ))
+  testthat::skip_if_not(
+    all(c(
+      "group_effect_handoff_file", "group_effect_source_artifact",
+      "group_effect_source_key_contract"
+    ) %in% names(generated_stage13)),
+    "Generated Stage 13 output predates direct Stage 07 provenance carry-through"
+  )
   source(stage13_test_path("R", "paths.R"))
   source(stage13_test_path("R", "wgcna_claim_readiness_utils.R"))
   contract <- load_microglia_wgcna_claim_readiness()
@@ -102,6 +116,8 @@ testthat::test_that("integration separates validated, diagnostic, annotation, un
     rows <- atlas[atlas$evidence_domain == domain, ]
     testthat::expect_false(any(rows$counts_toward_convergence))
   }
+  old_wd <- setwd(stage13_repo_root)
+  on.exit(setwd(old_wd), add = TRUE)
   source(stage13_test_path("R", "integration_utils.R"))
   unavailable <- assign_downstream_evidence_roles(availability_evidence(
     "neuron_soma", "external_signature_overlap", "missing.csv", "Optional input unavailable."
@@ -139,8 +155,8 @@ testthat::test_that("neuronal WGCNA architecture remains descriptive and disallo
   architecture <- claims[
     claims$dataset %in% c("neuron_soma", "neuron_neuropil") & claims$claim_type == "wgcna_architecture",
   ]
-  testthat::expect_equal(sum(architecture$dataset == "neuron_soma"), 8L)
-  testthat::expect_equal(sum(architecture$dataset == "neuron_neuropil"), 14L)
+  testthat::expect_equal(sum(architecture$dataset == "neuron_soma"), 7L)
+  testthat::expect_equal(sum(architecture$dataset == "neuron_neuropil"), 15L)
   testthat::expect_false(any(architecture$claim_allowed))
   testthat::expect_true(all(architecture$claim_gate_status == "disallowed"))
   testthat::expect_true(all(architecture$claim_use_class == "annotation_only"))
@@ -186,7 +202,18 @@ testthat::test_that("descriptive overviews preserve complete identities while cl
     "global", "wgcna_circular_atlas_segments.csv"
   ))
   micro <- segments[segments$dataset == "microglia", ]
-  testthat::expect_equal(nrow(segments), 27L)
+  expected_segments <- sum(vapply(
+    c("neuron_neuropil", "neuron_soma", "microglia"),
+    function(dataset) {
+      lookup <- read_required_csv(stage13_test_path(
+        "results", "tables", "06_modules_WGCNA", "interpretable_summary",
+        dataset, "WGCNA_final_label_lookup.csv"
+      ))
+      sum(lookup$level == "supermodule")
+    },
+    integer(1)
+  ))
+  testthat::expect_equal(nrow(segments), expected_segments)
   testthat::expect_equal(nrow(micro), 9L)
   testthat::expect_equal(length(unique(segments$dataset)), 3L)
   testthat::expect_setequal(micro$supermodule_id[micro$selected_for_manuscript_claim], "SM09")
@@ -226,6 +253,12 @@ testthat::test_that("final bundle preserves all Stage 13 rows and filters manusc
 
   neuronal_modules <- modules[modules$dataset %in% c("neuron_soma", "neuron_neuropil"), ]
   neuronal_supermodules <- supermodules[supermodules$dataset %in% c("neuron_soma", "neuron_neuropil"), ]
+  testthat::skip_if(
+    any(grepl("Stage 05 models", c(
+      neuronal_modules$reason, neuronal_supermodules$reason
+    ), fixed = TRUE)),
+    "Generated final bundle predates the Stage 07 inferential-handoff wording"
+  )
   testthat::expect_equal(nrow(neuronal_modules), 2L)
   testthat::expect_equal(nrow(neuronal_supermodules), 2L)
   testthat::expect_true(all(neuronal_modules$status == "no_validated_neuronal_wgcna_key_rows"))

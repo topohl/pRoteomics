@@ -703,6 +703,62 @@ wgcna_inferential_handoff_required_columns <- function() {
   )
 }
 
+wgcna_inferential_handoff_normalize_csv_types <- function(
+    data, artifact = "WGCNA_inferential_handoff.csv"
+) {
+  if (!is.data.frame(data)) {
+    stop(artifact, " must be a data frame.", call. = FALSE)
+  }
+  column <- "tier_specific_family_size"
+  if (!column %in% names(data)) return(data)
+
+  values <- data[[column]]
+  if (!is.numeric(values)) {
+    stop(
+      artifact, " column ", column,
+      " must be numeric before CSV type normalization.",
+      call. = FALSE
+    )
+  }
+  populated <- !is.na(values)
+  invalid <- populated & (
+    !is.finite(values) |
+      values < 0 |
+      values != trunc(values) |
+      values > .Machine$integer.max
+  )
+  if (any(invalid)) {
+    .wgcna_group_effect_consumer_stop_rows(
+      paste0(
+        artifact, " column ", column,
+        " must contain only finite, non-negative, whole values within ",
+        "the R integer range"
+      ),
+      which(invalid)
+    )
+  }
+  data[[column]] <- as.integer(values)
+  data
+}
+
+wgcna_inferential_handoff_read <- function(
+    path, artifact = as.character(path)
+) {
+  if (!requireNamespace("readr", quietly = TRUE)) {
+    stop("Package 'readr' is required to read the inferential handoff.",
+         call. = FALSE)
+  }
+  data <- readr::read_csv(
+    path,
+    show_col_types = FALSE,
+    progress = FALSE,
+    name_repair = "unique"
+  )
+  data <- wgcna_inferential_handoff_normalize_csv_types(data, artifact)
+  wgcna_inferential_handoff_validate(data, artifact)
+  data
+}
+
 wgcna_inferential_handoff_validate <- function(
     data, artifact = "WGCNA_inferential_handoff.csv"
 ) {
@@ -863,6 +919,9 @@ wgcna_inferential_handoff_supermodule_display <- function(
   genuine$source_entity_level <- genuine$entity_level
   genuine$source_entity_id <- genuine$entity_id
   genuine$display_is_compatibility_alias <- FALSE
+  genuine$display_is_independent_endpoint <- TRUE
+  genuine$display_support_origin <- "independent_supermodule_endpoint"
+  genuine$display_entity_role <- "independent_supermodule_endpoint"
 
   module <- handoff[handoff$entity_level == "module", , drop = FALSE]
   singleton <- merge(
@@ -882,6 +941,9 @@ wgcna_inferential_handoff_supermodule_display <- function(
     singleton$source_entity_level <- singleton$entity_level
     singleton$source_entity_id <- singleton$entity_id
     singleton$display_is_compatibility_alias <- TRUE
+    singleton$display_is_independent_endpoint <- FALSE
+    singleton$display_support_origin <- "inherited_canonical_module"
+    singleton$display_entity_role <- "singleton_compatibility_alias"
   }
 
   out <- dplyr::bind_rows(genuine, singleton)

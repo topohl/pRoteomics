@@ -148,8 +148,7 @@ join_super_labels <- function(df, id_col = "supermodule_id", context = "publicat
 
 definitions <- read_required(FILES$definitions, "current module definitions")
 super_summary <- read_required(FILES$supermodule_summary, "current supermodule summary")
-inferential_handoff <- read_required(HANDOFF_FILE, "Stage 07 inferential handoff")
-wgcna_inferential_handoff_validate(inferential_handoff)
+inferential_handoff <- wgcna_inferential_handoff_read(HANDOFF_FILE)
 display_lookup <- lookup |>
   dplyr::filter(.data$level == "module") |>
   dplyr::transmute(
@@ -254,7 +253,7 @@ if (!is.finite(effect_limit) || effect_limit <= 0) effect_limit <- 1
 
 # 2. Global eigengenes ------------------------------------------------------
 global_sig <- global_effects |>
-  dplyr::filter(.data$independent_hypothesis %in% TRUE, .data$model_stable, is.finite(.data$q_value), .data$q_value <= 0.05) |>
+  dplyr::filter(.data$display_is_independent_endpoint %in% TRUE, .data$independent_hypothesis %in% TRUE, .data$model_stable, is.finite(.data$q_value), .data$q_value <= 0.05) |>
   dplyr::group_by(.data$supermodule_id) |>
   dplyr::summarise(
     fdr_supported_contrasts = paste(paste0(.data$contrast, " q=", formatC(.data$q_value, digits = 2, format = "f")), collapse = "; "),
@@ -302,6 +301,7 @@ forest_source <- global_effects |>
     ci_high = .data$estimate + 1.96 * .data$SE,
     model_stability = dplyr::if_else(.data$model_stable, "stable", "singular_or_unstable_diagnostic_only"),
     claim_support_symbol = dplyr::case_when(
+      !(.data$display_is_independent_endpoint %in% TRUE) ~ "none",
       !(.data$independent_hypothesis %in% TRUE) ~ "none",
       .data$model_stable & is.finite(.data$q_value) & .data$q_value <= 0.05 ~ "FDR05",
       .data$model_stable & is.finite(.data$q_value) & .data$q_value <= 0.10 ~ "FDR10",
@@ -327,6 +327,7 @@ spatial_heatmap_source <- spatial_effects |>
   dplyr::mutate(
     support_symbol = dplyr::case_when(
       !.data$model_stable ~ "cross_diagnostic_only",
+      !(.data$display_is_independent_endpoint %in% TRUE) ~ "none",
       !(.data$independent_hypothesis %in% TRUE) ~ "none",
       is.finite(.data$q_value) & .data$q_value <= 0.05 ~ "filled_FDR05",
       is.finite(.data$q_value) & .data$q_value <= 0.10 ~ "open_FDR10",
@@ -396,6 +397,7 @@ effect_matrix_source <- global_effects |>
     plot_label = factor(.data$canonical_plot_label, levels = rev(super_labels$canonical_plot_label)),
     support_symbol = dplyr::case_when(
       !.data$model_stable ~ "cross_diagnostic_only",
+      !(.data$display_is_independent_endpoint %in% TRUE) ~ "none",
       !(.data$independent_hypothesis %in% TRUE) ~ "none",
       is.finite(.data$q_value) & .data$q_value <= 0.05 ~ "filled_FDR05",
       is.finite(.data$q_value) & .data$q_value <= 0.10 ~ "open_FDR10",
