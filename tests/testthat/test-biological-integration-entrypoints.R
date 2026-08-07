@@ -36,7 +36,53 @@ testthat::test_that("biological integration entrypoints exist and dry-run", {
 
 testthat::test_that("integration helpers standardize evidence contracts", {
   source(testthat::test_path("..", "..", "R", "integration_utils.R"))
-  ev <- standardize_evidence(data.frame(dataset = "microglia", evidence_domain = "test", evidence_id = "x", program_label = "immune", stringsAsFactors = FALSE))
+  ev <- standardize_evidence(data.frame(
+    dataset = "microglia", evidence_domain = "test", evidence_id = "x",
+    program_label = "immune", tier_specific_family_id = "primary_family",
+    tier_specific_family_size = 13L, inferential_claim_gate = "eligible",
+    inferential_source_file = "handoff.csv", inferential_source_key = "key",
+    stringsAsFactors = FALSE
+  ))
   testthat::expect_true(all(names(empty_evidence()) %in% names(ev)))
+  testthat::expect_identical(ev$tier_specific_family_size, 13L)
+  testthat::expect_identical(ev$inferential_source_key, "key")
   testthat::expect_silent(validate_cross_compartment_program_atlas(ev))
+})
+
+testthat::test_that("integration CSV reads inspect sparse provenance columns fully", {
+  helper_text <- paste(
+    readLines(testthat::test_path("..", "..", "R", "integration_utils.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  testthat::expect_match(helper_text, "guess_max = Inf", fixed = TRUE)
+
+  path <- tempfile(fileext = ".csv")
+  readr::write_csv(
+    data.frame(
+      row_id = seq_len(1002L),
+      sparse_provenance = c(rep(NA_character_, 1001L), "module")
+    ),
+    path, na = ""
+  )
+  parsed <- readr::read_csv(
+    path, show_col_types = FALSE, progress = FALSE,
+    guess_max = Inf
+  )
+  testthat::expect_identical(parsed$sparse_provenance[[1002L]], "module")
+  testthat::expect_equal(nrow(readr::problems(parsed)), 0L)
+
+  bundle_text <- paste(
+    readLines(testthat::test_path("..", "..", "R", "final_evidence_bundle_utils.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  testthat::expect_match(bundle_text, "guess_max = Inf", fixed = TRUE)
+
+  overview_text <- paste(
+    readLines(testthat::test_path(
+      "..", "..", "10_biological_integration",
+      "04_wgcna_cross_compartment_overview.R"
+    ), warn = FALSE),
+    collapse = "\n"
+  )
+  testthat::expect_match(overview_text, "guess_max = Inf", fixed = TRUE)
 })

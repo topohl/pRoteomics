@@ -1,0 +1,118 @@
+﻿**********************
+Windows PowerShell transcript start
+Start time: 20260807104650
+Username: MDC-BERLIN\topohl
+RunAs User: MDC-BERLIN\topohl
+Configuration Name: 
+Machine: CMP06231 (Microsoft Windows NT 10.0.22631.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -noexit -command try { . "c:\Users\topohl\AppData\Local\Programs\Microsoft VS Code\df53daabb1\resources\app\out\vs\workbench\contrib\terminal\common\scripts\shellIntegration.ps1" } catch {}
+Process ID: 26732
+PSVersion: 5.1.22621.7376
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.22621.7376
+BuildVersion: 10.0.22621.7376
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+Transcript started, output file is S:\Lab_Member\Tobi\Experiments\Exp9_Social-Stress\Analysis\proteomics\phase3_postpull_audit_20260807_104650.txt
+
+============================================================
+1. REPOSITORY STATE
+============================================================
+
+HEAD       : 0b75c3b4cda3b3cbbd7fdd0c30582711298ca124
+origin/main: 0b75c3b4cda3b3cbbd7fdd0c30582711298ca124
+Expected   : 0b75c3b4cda3b3cbbd7fdd0c30582711298ca124
+EXPECTED PHASE 3 HEAD: PASS
+LOCAL == origin/main: PASS
+
+
+Recent commits:
+
+
+============================================================
+2. COMMIT LINEARITY / BOTH TASKS RETAINED
+============================================================
+
+5c53f706 -> 0b75c3b4 ancestry exit code: 0
+
+
+GO/planning files:
+06_modules_WGCNA\01b_module_supermodule_GO_heatmaps.R : True
+R\wgcna_go_comparison_utils.R : True
+tests\testthat\test-wgcna-go-comparison-utils.R : True
+
+GO registration:
+
+
+============================================================
+3. R SOURCE PARSE CHECK
+============================================================
+
+
+============================================================
+4. PHASE 3 SOURCE-MIGRATION AUDIT
+============================================================
+
+
+============================================================
+5. STAGE 07 HANDOFF CARDINALITY / SINGLETON AUDIT
+============================================================
+
+
+============================================================
+6. SINGLETON DISPLAY IMPLEMENTATION
+============================================================
+
+
+============================================================
+7. STAGE 13 PROVENANCE IMPLEMENTATION
+============================================================
+
+
+============================================================
+8. SOURCE-LEVEL PHASE 3 TESTS
+============================================================
+
+
+============================================================
+9. PIPELINE REGISTRATION TEST
+============================================================
+
+
+============================================================
+10. GENERATED-OUTPUT-DEPENDENT INTEGRATION TEST
+============================================================
+IMPORTANT:
+Failures in this section can mean the existing generated products were made
+before the pulled Phase 3 source migration. Do not interpret them automatically
+as failures of the new source code.
+
+
+============================================================
+11. DRY-RUN READINESS
+============================================================
+
+Stage 07:
+
+Stage 07 dry-run exit: 0
+
+Stage 13:
+
+Stage 13 dry-run exit: 1
+
+============================================================
+12. FINAL REPOSITORY STATE
+============================================================
+
+
+
+
+Audit log:
+S:\Lab_Member\Tobi\Experiments\Exp9_Social-Stress\Analysis\proteomics\phase3_postpull_audit_20260807_104650.txt
+**********************
+Windows PowerShell transcript end
+End time: 20260807104815
+**********************

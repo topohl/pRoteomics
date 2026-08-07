@@ -99,7 +99,7 @@ stage13_claim_join <- function(df, dataset, level, id_col, collector_name) {
   if (is.null(STAGE13_CONTRACT)) stop("Stage 13 contract was not loaded for microglia claims.", call. = FALSE)
   if (!id_col %in% names(df)) stop(collector_name, " missing WGCNA stable ID column: ", id_col, call. = FALSE)
   readiness <- STAGE13_CONTRACT$all |>
-    dplyr::filter(.data$level == level) |>
+    dplyr::filter(.data$level == .env$level) |>
     dplyr::transmute(
       dataset = as.character(.data$dataset),
       wgcna_level = as.character(.data$level),
@@ -445,10 +445,13 @@ repair_incomplete_wgcna_labels <- function(claims) {
 }
 
 wgcna_module_claim_status <- function(dataset) {
-  effects <- read_csv_if_exists(path_results(
+  handoff_path <- path_results(
     "tables", "06_modules_WGCNA", "interpretable_summary", dataset,
     "WGCNA_inferential_handoff.csv"
-  ))
+  )
+  effects <- if (file.exists(handoff_path)) {
+    wgcna_inferential_handoff_read(handoff_path)
+  } else NULL
   if (is.null(effects) || !nrow(effects)) return(NULL)
   wgcna_stage07_validate_inferential_handoff(effects)
   effects <- effects |>
@@ -1928,7 +1931,9 @@ collect_wgcna_group_effect_claims <- function(dataset, level = c("module", "supe
     stage = "export",
     producer_script_or_artifact_id = "06_modules_WGCNA/07_wgcna_interpretable_summary.r"
   )
-  df <- read_csv_if_exists(f)
+  df <- if (!is.na(f) && file.exists(f)) {
+    wgcna_inferential_handoff_read(f)
+  } else NULL
   if (is.null(df) || !nrow(df) || !"contrast" %in% names(df)) return(empty_claims())
   wgcna_stage07_validate_inferential_handoff(df)
   required_handoff <- c(
@@ -1946,7 +1951,7 @@ collect_wgcna_group_effect_claims <- function(dataset, level = c("module", "supe
   }
   df <- df |>
     dplyr::filter(
-      .data$entity_level == level,
+      .data$entity_level == .env$level,
       .data$independent_hypothesis %in% TRUE,
       .data$claim_entity_role != "compatibility_alias",
       .data$test_type != "conditional_interaction_followup"
@@ -1972,7 +1977,7 @@ collect_wgcna_group_effect_claims <- function(dataset, level = c("module", "supe
   audit <- read_csv_if_exists(path_results("reviewer_audit", "wgcna_robustness_claim_gate.csv"))
   if (!is.null(audit) && nrow(audit)) {
     audit <- audit %>%
-      dplyr::filter(.data$dataset == dataset, .data$level == level) %>%
+      dplyr::filter(.data$dataset == .env$dataset, .data$level == .env$level) %>%
       dplyr::select("dataset", "level", "module_or_supermodule_id", "contrast", dplyr::any_of(c("spatial_unit", "effect_scope")), "robustness_gate", "preservation_status", "sensitivity_status", "direction_stability", "confounding_status", "robustness_downgrade_reason")
     join_cols <- intersect(c("dataset", "level", "module_or_supermodule_id", "contrast", "spatial_unit", "effect_scope"), names(audit))
     df <- df %>% dplyr::left_join(audit, by = join_cols)

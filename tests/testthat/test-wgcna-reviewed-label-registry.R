@@ -119,6 +119,7 @@ testthat::test_that("current publication sources preserve exact all-supermodule 
   names(sources) <- c("architecture", "global", "forest", "spatial", "loadings", "matrix")
   testthat::expect_true(all(vapply(sources, function(x) identical(unique(x$dataset), "microglia"), logical(1))))
   testthat::expect_true(all(vapply(sources, function(x) !any(c("dataset.x", "dataset.y") %in% names(x)), logical(1))))
+  testthat::expect_true(all(vapply(sources, function(x) !any(grepl("^(roi_context|canonical_short_label)\\.[xy]$", names(x))), logical(1))))
   testthat::expect_equal(dplyr::n_distinct(sources$architecture$supermodule_id), 9L)
   testthat::expect_equal(dplyr::n_distinct(sources$global$supermodule_id), 9L)
   testthat::expect_equal(nrow(sources$forest), 9L)
@@ -131,4 +132,21 @@ testthat::test_that("current publication sources preserve exact all-supermodule 
   testthat::expect_true(all(sources$loadings$n_member_modules > 1L))
   diagnostic <- !sources$spatial$model_stable
   testthat::expect_true(all(sources$spatial$support_symbol[diagnostic] == "cross_diagnostic_only"))
+})
+
+testthat::test_that("corrected publication effect sources use unsuffixed canonical labels", {
+  source_dir <- testthat::test_path(
+    "..", "..", "results", "source_data", "06_modules_WGCNA",
+    "wgcna_publication_figures_corrected", "microglia"
+  )
+  required <- file.path(source_dir, c(
+    "corrected_all_supermodule_sus_res_forest_source.csv",
+    "corrected_all_supermodule_sus_res_spatial_heatmap_source.csv"
+  ))
+  testthat::skip_if_not(all(file.exists(required)), "Generated corrected publication sources are not present.")
+
+  sources <- lapply(required, readr::read_csv, show_col_types = FALSE)
+  testthat::expect_true(all(vapply(sources, function(x) "canonical_short_label" %in% names(x), logical(1))))
+  testthat::expect_true("roi_context" %in% names(sources[[2]]))
+  testthat::expect_true(all(vapply(sources, function(x) !any(grepl("^(roi_context|canonical_short_label)\\.[xy]$", names(x))), logical(1))))
 })
