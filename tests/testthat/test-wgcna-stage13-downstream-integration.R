@@ -82,9 +82,9 @@ testthat::test_that("integration separates validated, diagnostic, annotation, un
   testthat::expect_equal(nrow(aliases), 6L)
   testthat::expect_false(any(aliases$counts_toward_convergence))
   testthat::expect_false(any(blocks$counts_toward_convergence[blocks$entity_id %in% c("SM01", "SM03")]))
-  testthat::expect_true(blocks$counts_toward_convergence[blocks$entity_id == "SM09"])
+  testthat::expect_false(blocks$counts_toward_convergence[blocks$entity_id == "SM09"])
   testthat::expect_false(any(micro$evidence_semantic_class == "wgcna_stress_group_effect"))
-  testthat::expect_equal(sum(micro$counts_toward_convergence), 11L)
+  testthat::expect_equal(sum(micro$counts_toward_convergence), 0L)
   testthat::expect_equal(sum(micro$evidence_role == "validated_wgcna_architecture"), 16L)
   micro_context <- atlas[
     atlas$dataset == "microglia" & atlas$evidence_domain %in% c(
@@ -112,6 +112,8 @@ testthat::test_that("integration separates validated, diagnostic, annotation, un
   ]
   testthat::expect_true(any(neuronal_enrichment$counts_toward_convergence))
   testthat::expect_true(any(neuronal_spatial$counts_toward_convergence))
+  testthat::expect_true(all(neuronal_enrichment$evidence_source_family == "ranked_GSEA"))
+  testthat::expect_true(all(neuronal_spatial$evidence_source_family == "ranked_GSEA"))
   for (domain in c("microenvironment_marker", "complex_organelle", "robustness_sensitivity", "behavior_coupling", "qc_confounding")) {
     rows <- atlas[atlas$evidence_domain == domain, ]
     testthat::expect_false(any(rows$counts_toward_convergence))

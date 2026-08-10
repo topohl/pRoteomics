@@ -1,6 +1,7 @@
 #!/usr/bin/env Rscript
 
-# Manuscript-facing spatial atlas of SUS-RES differential protein changes.
+# Manuscript-facing spatial atlas of SUS-RES differential protein changes and
+# GO-ID ontology-mapped ranked-GSEA themes.
 #
 # Direction-aware Jaccard for units A and B is
 #   |{ProteinGroupID|direction}_A intersect {ProteinGroupID|direction}_B| /
@@ -43,7 +44,13 @@ files <- list(
   panel_a_source = file.path(SOURCE_DIR, "panel_a_sus_res_dap_counts.csv"),
   panel_b_source = file.path(SOURCE_DIR, "panel_b_sus_res_dap_jaccard.csv"),
   panel_c_ora_source = file.path(SOURCE_DIR, "panel_c_sus_res_dap_GO_BP.csv"),
-  panel_c_source = file.path(SOURCE_DIR, "panel_c_sus_res_ranked_GSEA_programs.csv"),
+  panel_c_source = file.path(SOURCE_DIR, "panel_c_sus_res_ranked_GSEA_themes.csv"),
+  panel_c_source_compatibility_alias = file.path(SOURCE_DIR, "panel_c_sus_res_ranked_GSEA_programs.csv"),
+  ranked_theme_inventory = file.path(SOURCE_DIR, "sus_res_ranked_GSEA_theme_inventory.csv"),
+  biological_summary = file.path(TABLE_DIR, "sus_res_manuscript_theme_summary.csv"),
+  biological_summary_source = file.path(SOURCE_DIR, "sus_res_manuscript_theme_summary.csv"),
+  biological_summary_compatibility_alias = file.path(TABLE_DIR, "sus_res_biological_program_summary.csv"),
+  biological_summary_source_compatibility_alias = file.path(SOURCE_DIR, "sus_res_biological_program_summary.csv"),
   manifest = file.path(LOG_DIR, "run_manifest.yml")
 )
 
@@ -372,24 +379,25 @@ if (!file.exists(RANKED_PROGRAM_SOURCE)) {
   )
 }
 ranked_program_raw <- utils::read.csv(RANKED_PROGRAM_SOURCE, stringsAsFactors = FALSE, check.names = FALSE)
-panel_c_source <- sus_res_prepare_ranked_program_panel(ranked_program_raw, expected_datasets = DATASETS)
+ranked_theme_inventory <- sus_res_prepare_ranked_program_panel(ranked_program_raw, expected_datasets = DATASETS)
+ranked_theme_inventory <- sus_res_attach_dap_counts_to_ranked_programs(ranked_theme_inventory, counts)
+biological_summary <- sus_res_biological_inspection_summary(ranked_theme_inventory)
+panel_c_source <- ranked_theme_inventory[as.character(ranked_theme_inventory$theme_role) == "primary", , drop = FALSE]
+utils::write.csv(ranked_theme_inventory, files$ranked_theme_inventory, row.names = FALSE)
 utils::write.csv(panel_c_source, files$panel_c_source, row.names = FALSE)
+utils::write.csv(panel_c_source, files$panel_c_source_compatibility_alias, row.names = FALSE)
+utils::write.csv(biological_summary, files$biological_summary, row.names = FALSE)
+utils::write.csv(biological_summary, files$biological_summary_source, row.names = FALSE)
+utils::write.csv(biological_summary, files$biological_summary_compatibility_alias, row.names = FALSE)
+utils::write.csv(biological_summary, files$biological_summary_source_compatibility_alias, row.names = FALSE)
 
-include_ranked <- if (is.logical(panel_c_source$publication_include)) {
-  panel_c_source$publication_include
-} else {
-  tolower(as.character(panel_c_source$publication_include)) %in% c("true", "1", "yes")
-}
-interpretable_ranked <- if (is.logical(panel_c_source$interpretable_program)) {
-  panel_c_source$interpretable_program
-} else {
-  tolower(as.character(panel_c_source$interpretable_program)) %in% c("true", "1", "yes")
-}
-panel_c_axis_source <- panel_c_source[interpretable_ranked, , drop = FALSE]
-panel_c_plot_source <- panel_c_source[include_ranked, , drop = FALSE]
+primary_theme <- as.character(panel_c_source$theme_role) == "primary"
+panel_c_axis_source <- panel_c_source[primary_theme, , drop = FALSE]
+panel_c_plot_source <- panel_c_source[primary_theme, , drop = FALSE]
 if (!nrow(panel_c_plot_source)) {
-  stop("Ranked GO/GSEA Panel C source has no rows passing the existing publication inclusion rule.", call. = FALSE)
+  stop("Ranked GO/GSEA Panel C source has no ontology-mapped primary manuscript theme rows.", call. = FALSE)
 }
+panel_c_axis_source <- panel_c_axis_source[order(panel_c_axis_source$display_order, panel_c_axis_source$program, method = "radix"), , drop = FALSE]
 program_levels <- unique(as.character(panel_c_axis_source$program))
 panel_c_axis_source$program <- factor(panel_c_axis_source$program, levels = rev(program_levels))
 panel_c_axis_source$spatial_unit_label <- factor(
@@ -403,12 +411,22 @@ panel_c_axis_source$dataset_compartment_label <- factor(
 panel_c_plot_source$program <- factor(panel_c_plot_source$program, levels = levels(panel_c_axis_source$program))
 panel_c_plot_source$spatial_unit_label <- factor(panel_c_plot_source$spatial_unit_label, levels = levels(panel_c_axis_source$spatial_unit_label))
 panel_c_plot_source$dataset_compartment_label <- factor(panel_c_plot_source$dataset_compartment_label, levels = dataset_levels)
-nes_limit <- suppressWarnings(stats::quantile(abs(panel_c_plot_source$mean_NES), probs = 0.98, na.rm = TRUE, names = FALSE))
-if (!is.finite(nes_limit) || nes_limit <= 0) nes_limit <- suppressWarnings(max(abs(panel_c_plot_source$mean_NES), na.rm = TRUE))
+panel_c_plot_source$unit_direction_status <- ifelse(
+  as.character(panel_c_plot_source$direction_consistency) == "mixed_direction",
+  "mixed within theme/unit", "directionally consistent"
+)
+nes_limit <- suppressWarnings(stats::quantile(abs(panel_c_plot_source$representative_NES), probs = 0.98, na.rm = TRUE, names = FALSE))
+if (!is.finite(nes_limit) || nes_limit <= 0) nes_limit <- suppressWarnings(max(abs(panel_c_plot_source$representative_NES), na.rm = TRUE))
 if (!is.finite(nes_limit) || nes_limit <= 0) nes_limit <- 1
 nes_limit <- min(nes_limit, 2.5)
-support_values <- sort(unique(panel_c_plot_source$significant_term_count[panel_c_plot_source$significant_term_count > 0]))
-support_breaks <- if (length(support_values)) unique(round(stats::quantile(support_values, probs = c(0, 0.5, 1), names = FALSE))) else c(1, 2, 3)
+fdr_size_values <- panel_c_plot_source$representative_minus_log10_FDR[
+  is.finite(panel_c_plot_source$representative_minus_log10_FDR)
+]
+fdr_size_breaks <- if (length(fdr_size_values)) {
+  unique(signif(stats::quantile(fdr_size_values, probs = c(0, 0.5, 1), names = FALSE), 2))
+} else {
+  c(-log10(0.05), 2, 3)
+}
 
 panel_c <- ggplot2::ggplot(
   panel_c_axis_source,
@@ -417,19 +435,28 @@ panel_c <- ggplot2::ggplot(
   ggplot2::geom_blank() +
   ggplot2::geom_point(
     data = panel_c_plot_source,
-    ggplot2::aes(colour = mean_NES, size = significant_term_count),
+    ggplot2::aes(
+      colour = representative_NES,
+      size = representative_minus_log10_FDR,
+      shape = unit_direction_status
+    ),
     alpha = 0.92
   ) +
   ggplot2::facet_wrap(~dataset_compartment_label, ncol = 1, scales = "free_x", strip.position = "right") +
   ggplot2::scale_colour_gradient2(
     low = "#3B4CC0", mid = "white", high = "#B40426", midpoint = 0,
-    limits = c(-nes_limit, nes_limit), oob = scales::squish, name = "Mean NES"
+    limits = c(-nes_limit, nes_limit), oob = scales::squish, name = "Representative\nterm NES"
   ) +
-  ggplot2::scale_size_continuous(range = c(1.0, 4.2), breaks = support_breaks, name = "Sig. terms") +
+  ggplot2::scale_size_continuous(range = c(1.0, 4.2), breaks = fdr_size_breaks, name = expression(-log[10]("representative term BH FDR"))) +
+  ggplot2::scale_shape_manual(values = c("directionally consistent" = 16, "mixed within theme/unit" = 18), name = "Within-theme\ndirection") +
   ggplot2::labs(
-    x = NULL, y = NULL, title = "Ranked GO/GSEA program shifts",
+    x = NULL, y = NULL, title = "Ontology-mapped ranked GO/GSEA themes",
     subtitle = "Positive NES = higher in SUS; negative NES = higher in RES",
-    caption = "Proteome-wide ranked GO/GSEA evidence; Panel c is not calculated from Panels a/b FDR-supported DAP sets."
+    caption = paste(
+      "Primary themes use GO-ID is_a/part_of ancestry; point = lowest-FDR supported GO term per theme/unit.",
+      "Diamond = mixed supported NES directions within theme/unit; recurrence is descriptive. Ranked GSEA; not DAP-set ORA.",
+      sep = "\n"
+    )
   ) +
   theme_nature_dotplot(base_size = 6.5, base_family = "sans") +
   ggplot2::theme(
@@ -465,8 +492,9 @@ save_plot_triplet(combined, combined_stem, 183, 225)
 combined_files <- paste0(combined_stem, c(".svg", ".pdf", ".png"))
 
 analysis_status$combined_183mm_figure_readable <- combined_readable
-analysis_status$n_panel_c_union_terms <- length(unique(panel_c_plot_source$program))
+analysis_status$n_panel_c_union_terms <- length(unique(panel_c_plot_source$theme_id))
 analysis_status$panel_c_evidence_basis <- "ranked_proteome_wide_GO_GSEA"
+analysis_status$panel_c_effect_display <- "ontology_mapped_theme_representative_FDR_supported_GO_term_NES_and_FDR"
 if (!RENDER_ONLY) utils::write.csv(analysis_status, files$status, row.names = FALSE)
 
 figure_outputs <- list.files(FIGURE_DIR, full.names = TRUE)
@@ -491,14 +519,16 @@ write_run_manifest(
     GO_query = "eligible unique official genes from directional ProteinGroupIDs with protein BH FDR <= 0.05",
       GO_universe = "eligible unique official genes among all tested ProteinGroupIDs in the same contrast",
       panel_ab_basis = "individual proteins passing BH FDR <= 0.05 and their direction-aware set overlap",
-      panel_c_basis = "existing canonical ranked proteome-wide GO/GSEA program summary filtered to SUS_vs_RES",
+      panel_c_basis = "existing canonical ranked proteome-wide GO/GSEA terms filtered to SUS_vs_RES; GO-ID ontology themes use only is_a/part_of ancestry; one FDR-supported representative term per theme and spatial unit",
+      panel_c_representative_selection = "p.adjust < 0.05; lowest p.adjust; largest abs(NES); GO ID; Description",
+      panel_c_recurrence_role = "descriptive_only_not_a_significance_or_display_gate",
       panel_c_NES_interpretation = "positive = higher in SUS; negative = higher in RES",
       combined_183mm_figure_readable = combined_readable
     ),
     notes = paste(
       "Downstream synthesis only. Differential abundance and ranked GO/GSEA statistics were not recomputed.",
       if (RENDER_ONLY) "Existing DAP-set ORA outputs were reused unchanged; clusterProfiler was not run." else "DAP-set GO-BP ORA was generated by this script.",
-      "Panel C is ranked proteome-wide GO/GSEA evidence and is not calculated from the Panels A/B DAP sets."
+      "Panel C is ranked proteome-wide GO/GSEA evidence and is not calculated from the Panels A/B DAP sets. Manuscript themes are ontology-mapped summaries in the same ranked_GSEA evidence family. Representative term statistics remain the original individual GSEA term statistics; no theme-level p-value or FDR is constructed."
     )
   )
 

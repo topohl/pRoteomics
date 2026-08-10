@@ -226,13 +226,15 @@ testthat::test_that("WGCNA downstream schemas expose required columns", {
     separate_manuscript_claim_allowed = logical(), wgcna_architecture_status = character(),
     wgcna_group_effect_status = character(), wgcna_allowed_claim_scope = character(),
     wgcna_prohibited_claim_scope = character(), readiness_contract_version = character(),
-    counts_toward_convergence = logical(), evidence_semantic_class = character()
+    counts_toward_convergence = logical(), evidence_source_family = character(),
+    evidence_semantic_class = character(), evidence_role = character(), evidence_role_reason = character()
   )
   testthat::expect_silent(validate_cross_compartment_program_atlas(atlas_df))
 
   summary_df <- data.frame(
     program_key = character(), manuscript_claim_scope = character(),
     datasets_supported = character(), evidence_domains = character(),
+    evidence_source_families = character(), n_independent_evidence_families = integer(),
     strongest_evidence = character(), safe_manuscript_sentence = character(),
     main_limitation = character(), qc_flag = character(),
     n_evidence_rows_total = integer(), n_evidence_rows_counting_toward_convergence = integer(),
@@ -244,6 +246,7 @@ testthat::test_that("WGCNA downstream schemas expose required columns", {
   priority_df <- data.frame(
     priority_id = character(), program_key = character(), dataset = character(),
     priority_tier = character(), evidence_domain_count = integer(),
+    independent_evidence_family_count = integer(),
     evidence_rows_counting_toward_convergence = integer(),
     strongest_fdr = numeric(), robustness_flag = character(),
     behavior_flag = character(), qc_flag = character(), recommended_use = character()

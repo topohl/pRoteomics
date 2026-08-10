@@ -46,7 +46,33 @@ testthat::test_that("integration helpers standardize evidence contracts", {
   testthat::expect_true(all(names(empty_evidence()) %in% names(ev)))
   testthat::expect_identical(ev$tier_specific_family_size, 13L)
   testthat::expect_identical(ev$inferential_source_key, "key")
+  testthat::expect_identical(ev$evidence_source_family, "test")
   testthat::expect_silent(validate_cross_compartment_program_atlas(ev))
+})
+
+testthat::test_that("integration counts shared ranked-GSEA summaries as one evidence lineage", {
+  source(testthat::test_path("..", "..", "R", "integration_utils.R"))
+  evidence <- standardize_evidence(data.frame(
+    dataset = c("neuron_soma", "neuron_soma"),
+    evidence_domain = c("enrichment_program", "spatial_architecture"),
+    evidence_id = c("program", "spatial"), program_label = "RNA/translation",
+    entity_type = "program", evidence_status = "available",
+    stringsAsFactors = FALSE
+  ))
+  testthat::expect_identical(evidence$evidence_source_family, c("ranked_GSEA", "ranked_GSEA"))
+  testthat::expect_identical(independent_evidence_families(evidence), "ranked_GSEA")
+
+  architecture <- assign_downstream_evidence_roles(data.frame(
+    dataset = "microglia", evidence_domain = "wgcna_architecture",
+    evidence_id = "WGCNA_m01", program_label = "OXPHOS", entity_type = "module",
+    evidence_status = "descriptive_architecture_only",
+    evidence_semantic_class = "wgcna_architecture",
+    wgcna_group_effect_status = "not_FDR_supported",
+    counts_toward_convergence = TRUE,
+    stringsAsFactors = FALSE
+  ))
+  testthat::expect_identical(architecture$evidence_role, "validated_wgcna_architecture")
+  testthat::expect_false(architecture$counts_toward_convergence)
 })
 
 testthat::test_that("integration CSV reads inspect sparse provenance columns fully", {

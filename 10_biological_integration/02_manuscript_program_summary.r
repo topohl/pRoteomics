@@ -6,7 +6,7 @@
 # Consumes: cross-compartment program atlas.
 # Produces: manuscript program summary.
 # Dataset behavior: global summary across the canonical integration atlas.
-# Notes: Counts only evidence rows explicitly marked counts_toward_convergence.
+# Notes: Counts distinct evidence_source_family lineages among eligible evidence rows.
 # ================================================================
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
@@ -41,6 +41,7 @@ if (is.null(atlas) || !nrow(atlas)) {
     d <- split_prog[[pk]]
     counting <- d[d$counts_toward_convergence %in% TRUE, , drop = FALSE]
     domains <- sort(unique(counting$evidence_domain[!is.na(counting$evidence_domain)]))
+    families <- independent_evidence_families(counting)
     datasets <- sort(unique(counting$dataset[counting$dataset %in% valid_datasets()]))
     fdr <- suppressWarnings(min(num_or_na(counting$fdr), na.rm = TRUE))
     if (!is.finite(fdr)) fdr <- NA_real_
@@ -51,9 +52,9 @@ if (is.null(atlas) || !nrow(atlas)) {
     has_non_wgcna <- any(semantic == "non_wgcna_evidence", na.rm = TRUE)
     semantic_scope <- dplyr::case_when(
       !nrow(counting) ~ "no_claim",
-      length(domains) >= 2L && !is.na(fdr) && fdr <= 0.05 ~ "convergent_stress_associated_evidence",
+      length(families) >= 2L && !is.na(fdr) && fdr <= 0.05 ~ "convergent_stress_associated_evidence",
       has_architecture && !has_stress_effect && !has_non_wgcna ~ "wgcna_architecture_covariance_context",
-      length(domains) >= 2L ~ "supporting_biological_context",
+      length(families) >= 2L ~ "supporting_biological_context",
       qc == "WARN" ~ "exploratory_context",
       TRUE ~ "supporting_biological_context"
     )
@@ -76,6 +77,8 @@ if (is.null(atlas) || !nrow(atlas)) {
       manuscript_claim_scope = scope,
       datasets_supported = paste(datasets, collapse = ";"),
       evidence_domains = paste(domains, collapse = ";"),
+      evidence_source_families = paste(families, collapse = ";"),
+      n_independent_evidence_families = length(families),
       n_evidence_rows_total = nrow(d),
       n_evidence_rows_counting_toward_convergence = nrow(counting),
       n_wgcna_architecture_rows = sum(d$evidence_semantic_class == "wgcna_architecture", na.rm = TRUE),
@@ -83,7 +86,7 @@ if (is.null(atlas) || !nrow(atlas)) {
       n_wgcna_alias_rows_excluded = sum(d$claim_entity_role == "compatibility_alias" & !(d$counts_toward_convergence %in% TRUE), na.rm = TRUE),
       claim_semantic_scope = semantic_scope,
       strongest_fdr = fdr,
-      strongest_evidence = evidence_strength(fdr, length(domains)),
+      strongest_evidence = evidence_strength(fdr, length(families)),
       safe_manuscript_sentence = sentence,
       main_limitation = ifelse(qc == "WARN", "At least one supporting input is missing or carries a QC warning; review source rows before strong wording.", "Observational proteomics; causal direction is not established."),
       qc_flag = qc,

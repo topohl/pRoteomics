@@ -646,6 +646,9 @@ collect_canonical_comparego_outputs <- function(manifest, strict = TRUE, require
   list(input_manifest = selected, terms = terms, provenance = provenance, status = status)
 }
 
+# Broad heuristic text classes retained for backward-compatible technical
+# outputs. These regexes are not authoritative manuscript GO-theme mapping;
+# use map_go_terms_to_manuscript_themes() for valid GO biological-process IDs.
 biological_program_patterns <- function() {
   data.frame(
     biological_program = c(
@@ -682,6 +685,7 @@ biological_program_patterns <- function() {
   )
 }
 
+# Legacy first-hit text classifier for generic/non-manuscript consumers.
 map_terms_to_programs <- function(df, description_col = "Description") {
   if (!description_col %in% names(df)) {
     df$biological_program <- NA_character_

@@ -6,7 +6,7 @@
 # Consumes: cross-compartment atlas, manuscript summary, biological claims, and Stage 13 readiness.
 # Produces: evidence priority matrix and final evidence bundle.
 # Dataset behavior: global ranking across the canonical integration atlas.
-# Notes: Priority uses only rows marked counts_toward_convergence.
+# Notes: Priority uses distinct evidence_source_family lineages among eligible rows.
 # ================================================================
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
@@ -41,6 +41,7 @@ if (is.null(atlas) || !nrow(atlas)) {
     dataset = NA_character_,
     priority_tier = "defer",
     evidence_domain_count = 0L,
+    independent_evidence_family_count = 0L,
     evidence_rows_counting_toward_convergence = 0L,
     strongest_fdr = NA_real_,
     robustness_flag = "unavailable",
@@ -56,16 +57,17 @@ if (is.null(atlas) || !nrow(atlas)) {
   priority <- do.call(rbind, lapply(seq_along(groups), function(i) {
     d <- groups[[i]]
     domains <- unique(d$evidence_domain)
+    families <- independent_evidence_families(d)
     fdr <- suppressWarnings(min(num_or_na(d$fdr), na.rm = TRUE))
     if (!is.finite(fdr)) fdr <- NA_real_
     has_robust <- any(grepl("robustness", domains))
     has_behavior <- any(grepl("behavior", domains))
     qc <- if (any(d$qc_flag %in% c("FAIL", "WARN"), na.rm = TRUE)) "WARN" else "PASS"
-    tier <- if (length(domains) >= 5 && (is.na(fdr) || fdr <= 0.10) && qc == "PASS") {
+    tier <- if (length(families) >= 5 && (is.na(fdr) || fdr <= 0.10) && qc == "PASS") {
       "tier_1_manuscript_anchor"
-    } else if (length(domains) >= 3) {
+    } else if (length(families) >= 3) {
       "tier_2_supporting"
-    } else if (length(domains) >= 2) {
+    } else if (length(families) >= 2) {
       "tier_3_context"
     } else {
       "defer"
@@ -76,13 +78,15 @@ if (is.null(atlas) || !nrow(atlas)) {
       dataset = d$dataset[[1]],
       priority_tier = tier,
       evidence_domain_count = length(domains),
+      independent_evidence_family_count = length(families),
       evidence_rows_counting_toward_convergence = nrow(d),
       evidence_domains = paste(sort(domains), collapse = ";"),
+      evidence_source_families = paste(sort(families), collapse = ";"),
       strongest_fdr = fdr,
       robustness_flag = ifelse(has_robust, "available", "missing_or_not_applicable"),
       behavior_flag = ifelse(has_behavior, "available", "missing_or_not_applicable"),
       qc_flag = qc,
-      recommended_use = ifelse(tier == "defer", "Exploratory context only.", "Candidate manuscript synthesis row; verify source evidence and limitations."),
+      recommended_use = ifelse(tier == "defer", "Evidence inventory/context only.", "Candidate synthesis row based on independent evidence lineages; verify source endpoints and limitations."),
       stringsAsFactors = FALSE
     )
   }))
