@@ -14,7 +14,9 @@ source("R/dataset_config.R")
 source("R/plotting_nature.R")
 source("R/protein_group_enrichment_utils.R")
 source("R/enrichment_io.R")
+source("R/manuscript_go_theme_utils.R")
 source("R/sus_res_spatial_dap_atlas_utils.R")
+source("R/sus_res_biological_audit_workbook.R")
 
 MODULE_ID <- "04_differential_expression_enrichment"
 SUBSTEP_ID <- file.path("sus_res_spatial_dap_atlas", "global")
@@ -32,6 +34,7 @@ TABLE_DIR <- do.call(path_results, as.list(c("tables", root_parts)))
 SOURCE_DIR <- do.call(path_results, as.list(c("source_data", root_parts)))
 FIGURE_DIR <- do.call(path_results, as.list(c("figures", root_parts)))
 LOG_DIR <- do.call(path_results, as.list(c("logs", root_parts)))
+REPORT_DIR <- do.call(path_results, as.list(c("reports", root_parts)))
 
 files <- list(
   counts = file.path(TABLE_DIR, "sus_res_dap_counts.csv"),
@@ -47,10 +50,14 @@ files <- list(
   panel_c_source = file.path(SOURCE_DIR, "panel_c_sus_res_ranked_GSEA_themes.csv"),
   panel_c_source_compatibility_alias = file.path(SOURCE_DIR, "panel_c_sus_res_ranked_GSEA_programs.csv"),
   ranked_theme_inventory = file.path(SOURCE_DIR, "sus_res_ranked_GSEA_theme_inventory.csv"),
+  theme_overview_source = file.path(SOURCE_DIR, "sus_res_manuscript_theme_overview.csv"),
+  theme_overview = file.path(TABLE_DIR, "sus_res_manuscript_theme_overview.csv"),
   biological_summary = file.path(TABLE_DIR, "sus_res_manuscript_theme_summary.csv"),
   biological_summary_source = file.path(SOURCE_DIR, "sus_res_manuscript_theme_summary.csv"),
   biological_summary_compatibility_alias = file.path(TABLE_DIR, "sus_res_biological_program_summary.csv"),
   biological_summary_source_compatibility_alias = file.path(SOURCE_DIR, "sus_res_biological_program_summary.csv"),
+  biological_audit_workbook = file.path(REPORT_DIR, "sus_res_biological_audit.xlsx"),
+  biological_audit_workbook_validation = file.path(REPORT_DIR, "sus_res_biological_audit_validation.csv"),
   manifest = file.path(LOG_DIR, "run_manifest.yml")
 )
 
@@ -58,6 +65,11 @@ RANKED_PROGRAM_SOURCE <- path_results(
   "source_data", MODULE_ID, "compareGO_spatial_atlas",
   "source_data_SpatialProgramAtlas_SUS_vs_RES_publication.csv"
 )
+SUPPORTED_GO_AUDIT_SOURCE <- path_results(
+  "source_data", MODULE_ID, "compareGO_spatial_atlas",
+  "sus_res_supported_go_term_theme_audit.csv"
+)
+MANUSCRIPT_GO_THEME_REGISTRY <- repo_path("config", "manuscript_go_theme_registry.tsv")
 
 manifest_paths <- setNames(vapply(DATASETS, canonical_clusterprofiler_manifest_path, character(1)), DATASETS)
 specs <- do.call(rbind, lapply(DATASETS, function(dataset) {
@@ -133,6 +145,7 @@ analysis_status$analysis_mode <- if (AUDIT_ONLY) "audit_only" else "full"
 dir.create(TABLE_DIR, recursive = TRUE, showWarnings = FALSE)
 dir.create(SOURCE_DIR, recursive = TRUE, showWarnings = FALSE)
 dir.create(LOG_DIR, recursive = TRUE, showWarnings = FALSE)
+dir.create(REPORT_DIR, recursive = TRUE, showWarnings = FALSE)
 if (!RENDER_ONLY) {
   utils::write.csv(counts, files$counts, row.names = FALSE)
   utils::write.csv(counts, files$panel_a_source, row.names = FALSE)
@@ -382,14 +395,36 @@ ranked_program_raw <- utils::read.csv(RANKED_PROGRAM_SOURCE, stringsAsFactors = 
 ranked_theme_inventory <- sus_res_prepare_ranked_program_panel(ranked_program_raw, expected_datasets = DATASETS)
 ranked_theme_inventory <- sus_res_attach_dap_counts_to_ranked_programs(ranked_theme_inventory, counts)
 biological_summary <- sus_res_biological_inspection_summary(ranked_theme_inventory)
-panel_c_source <- ranked_theme_inventory[as.character(ranked_theme_inventory$theme_role) == "primary", , drop = FALSE]
+theme_overview <- sus_res_theme_overview(ranked_theme_inventory)
+panel_c_source <- ranked_theme_inventory[
+  as.character(ranked_theme_inventory$theme_role) == "primary" &
+    suppressWarnings(as.integer(ranked_theme_inventory$n_theme_terms_tested)) > 0L,
+  , drop = FALSE
+]
 utils::write.csv(ranked_theme_inventory, files$ranked_theme_inventory, row.names = FALSE)
+utils::write.csv(theme_overview, files$theme_overview_source, row.names = FALSE)
+utils::write.csv(theme_overview, files$theme_overview, row.names = FALSE)
 utils::write.csv(panel_c_source, files$panel_c_source, row.names = FALSE)
 utils::write.csv(panel_c_source, files$panel_c_source_compatibility_alias, row.names = FALSE)
 utils::write.csv(biological_summary, files$biological_summary, row.names = FALSE)
 utils::write.csv(biological_summary, files$biological_summary_source, row.names = FALSE)
 utils::write.csv(biological_summary, files$biological_summary_compatibility_alias, row.names = FALSE)
 utils::write.csv(biological_summary, files$biological_summary_source_compatibility_alias, row.names = FALSE)
+if (!file.exists(SUPPORTED_GO_AUDIT_SOURCE)) {
+  stop("Missing supported GO-term audit for the human-facing workbook: ", SUPPORTED_GO_AUDIT_SOURCE, call. = FALSE)
+}
+supported_go_audit <- utils::read.csv(SUPPORTED_GO_AUDIT_SOURCE, stringsAsFactors = FALSE, check.names = FALSE)
+manuscript_registry <- read_manuscript_go_theme_registry(MANUSCRIPT_GO_THEME_REGISTRY)
+write_sus_res_biological_audit_workbook(
+  overview = theme_overview,
+  detail = biological_summary,
+  supported_go_audit = supported_go_audit,
+  dap_counts = counts,
+  registry = manuscript_registry,
+  output_file = files$biological_audit_workbook
+)
+workbook_validation <- validate_sus_res_biological_audit_workbook(files$biological_audit_workbook, biological_summary)
+utils::write.csv(workbook_validation, files$biological_audit_workbook_validation, row.names = FALSE)
 
 primary_theme <- as.character(panel_c_source$theme_role) == "primary"
 panel_c_axis_source <- panel_c_source[primary_theme, , drop = FALSE]
@@ -413,12 +448,14 @@ panel_c_plot_source$spatial_unit_label <- factor(panel_c_plot_source$spatial_uni
 panel_c_plot_source$dataset_compartment_label <- factor(panel_c_plot_source$dataset_compartment_label, levels = dataset_levels)
 panel_c_plot_source$unit_direction_status <- ifelse(
   as.character(panel_c_plot_source$direction_consistency) == "mixed_direction",
-  "mixed within theme/unit", "directionally consistent"
+  "mixed supported directions", "supported direction not mixed"
 )
-nes_limit <- suppressWarnings(stats::quantile(abs(panel_c_plot_source$representative_NES), probs = 0.98, na.rm = TRUE, names = FALSE))
-if (!is.finite(nes_limit) || nes_limit <= 0) nes_limit <- suppressWarnings(max(abs(panel_c_plot_source$representative_NES), na.rm = TRUE))
+nes_limit <- suppressWarnings(stats::quantile(abs(panel_c_plot_source$median_NES_all_theme_terms), probs = 0.98, na.rm = TRUE, names = FALSE))
+if (!is.finite(nes_limit) || nes_limit <= 0) nes_limit <- suppressWarnings(max(abs(panel_c_plot_source$median_NES_all_theme_terms), na.rm = TRUE))
 if (!is.finite(nes_limit) || nes_limit <= 0) nes_limit <- 1
 nes_limit <- min(nes_limit, 2.5)
+panel_c_descriptive_only <- panel_c_plot_source[!as.logical(panel_c_plot_source$FDR_support_present), , drop = FALSE]
+panel_c_supported <- panel_c_plot_source[as.logical(panel_c_plot_source$FDR_support_present), , drop = FALSE]
 fdr_size_values <- panel_c_plot_source$representative_minus_log10_FDR[
   is.finite(panel_c_plot_source$representative_minus_log10_FDR)
 ]
@@ -434,27 +471,29 @@ panel_c <- ggplot2::ggplot(
 ) +
   ggplot2::geom_blank() +
   ggplot2::geom_point(
-    data = panel_c_plot_source,
-    ggplot2::aes(
-      colour = representative_NES,
-      size = representative_minus_log10_FDR,
-      shape = unit_direction_status
-    ),
-    alpha = 0.92
+    data = panel_c_descriptive_only,
+    ggplot2::aes(fill = median_NES_all_theme_terms),
+    shape = 21, size = 1.4, colour = "transparent", alpha = 0.45
+  ) +
+  ggplot2::geom_point(
+    data = panel_c_supported,
+    ggplot2::aes(fill = median_NES_all_theme_terms, size = representative_minus_log10_FDR, shape = unit_direction_status),
+    colour = "black", stroke = 0.35, alpha = 0.96
   ) +
   ggplot2::facet_wrap(~dataset_compartment_label, ncol = 1, scales = "free_x", strip.position = "right") +
-  ggplot2::scale_colour_gradient2(
+  ggplot2::scale_fill_gradient2(
     low = "#3B4CC0", mid = "white", high = "#B40426", midpoint = 0,
-    limits = c(-nes_limit, nes_limit), oob = scales::squish, name = "Representative\nterm NES"
+    limits = c(-nes_limit, nes_limit), oob = scales::squish, name = "Median NES\n(all mapped terms)"
   ) +
-  ggplot2::scale_size_continuous(range = c(1.0, 4.2), breaks = fdr_size_breaks, name = expression(-log[10]("representative term BH FDR"))) +
-  ggplot2::scale_shape_manual(values = c("directionally consistent" = 16, "mixed within theme/unit" = 18), name = "Within-theme\ndirection") +
+  ggplot2::scale_size_continuous(range = c(2.2, 4.5), breaks = fdr_size_breaks, name = expression(-log[10]("representative GO BH FDR"))) +
+  ggplot2::scale_shape_manual(values = c("supported direction not mixed" = 21, "mixed supported directions" = 23), name = "FDR-supported\nterm directions") +
   ggplot2::labs(
-    x = NULL, y = NULL, title = "Ontology-mapped ranked GO/GSEA themes",
+    x = NULL, y = NULL, title = "Major ontology-mapped ranked GO/GSEA themes",
     subtitle = "Positive NES = higher in SUS; negative NES = higher in RES",
     caption = paste(
-      "Primary themes use GO-ID is_a/part_of ancestry; point = lowest-FDR supported GO term per theme/unit.",
-      "Diamond = mixed supported NES directions within theme/unit; recurrence is descriptive. Ranked GSEA; not DAP-set ORA.",
+      "Color represents the median NES across all tested GO-BP terms assigned to each ontology theme and spatial unit.",
+      "Outlined/emphasized points indicate at least one constituent GO term with original BH FDR < 0.05.",
+      "Non-emphasized values are descriptive directional summaries and are not statistically significant theme-level effects.",
       sep = "\n"
     )
   ) +
@@ -479,6 +518,8 @@ panel_c_height <- max(80, min(210, 50 + 5 * panel_c_terms))
 save_plot_triplet(panel_a, file.path(FIGURE_DIR, "panel_a_sus_res_dap_counts"), 105, 135)
 save_plot_triplet(panel_b, file.path(FIGURE_DIR, "panel_b_sus_res_dap_jaccard"), 183, 120)
 if (!RENDER_ONLY) save_plot_triplet(panel_c_ora, file.path(FIGURE_DIR, "panel_c_sus_res_dap_GO_BP"), 183, panel_c_height)
+save_plot_triplet(panel_c, file.path(FIGURE_DIR, "panel_c_sus_res_ranked_GSEA_themes"), 183, 110)
+# Preserve the established figure stem as a presentation-only compatibility alias.
 save_plot_triplet(panel_c, file.path(FIGURE_DIR, "panel_c_sus_res_ranked_GSEA_programs"), 183, 110)
 
 combined_readable <- TRUE
@@ -494,7 +535,7 @@ combined_files <- paste0(combined_stem, c(".svg", ".pdf", ".png"))
 analysis_status$combined_183mm_figure_readable <- combined_readable
 analysis_status$n_panel_c_union_terms <- length(unique(panel_c_plot_source$theme_id))
 analysis_status$panel_c_evidence_basis <- "ranked_proteome_wide_GO_GSEA"
-analysis_status$panel_c_effect_display <- "ontology_mapped_theme_representative_FDR_supported_GO_term_NES_and_FDR"
+analysis_status$panel_c_effect_display <- "descriptive_median_NES_all_mapped_tested_GO_terms_with_original_GO_FDR_support_emphasis"
 if (!RENDER_ONLY) utils::write.csv(analysis_status, files$status, row.names = FALSE)
 
 figure_outputs <- list.files(FIGURE_DIR, full.names = TRUE)
@@ -519,7 +560,7 @@ write_run_manifest(
     GO_query = "eligible unique official genes from directional ProteinGroupIDs with protein BH FDR <= 0.05",
       GO_universe = "eligible unique official genes among all tested ProteinGroupIDs in the same contrast",
       panel_ab_basis = "individual proteins passing BH FDR <= 0.05 and their direction-aware set overlap",
-      panel_c_basis = "existing canonical ranked proteome-wide GO/GSEA terms filtered to SUS_vs_RES; GO-ID ontology themes use only is_a/part_of ancestry; one FDR-supported representative term per theme and spatial unit",
+      panel_c_basis = "existing canonical ranked proteome-wide GO/GSEA terms filtered to SUS_vs_RES; GO-ID ontology themes use only is_a/part_of ancestry; color is the descriptive median NES across all mapped tested terms; original GO-term FDR support is emphasized separately",
       panel_c_representative_selection = "p.adjust < 0.05; lowest p.adjust; largest abs(NES); GO ID; Description",
       panel_c_recurrence_role = "descriptive_only_not_a_significance_or_display_gate",
       panel_c_NES_interpretation = "positive = higher in SUS; negative = higher in RES",
@@ -528,7 +569,7 @@ write_run_manifest(
     notes = paste(
       "Downstream synthesis only. Differential abundance and ranked GO/GSEA statistics were not recomputed.",
       if (RENDER_ONLY) "Existing DAP-set ORA outputs were reused unchanged; clusterProfiler was not run." else "DAP-set GO-BP ORA was generated by this script.",
-      "Panel C is ranked proteome-wide GO/GSEA evidence and is not calculated from the Panels A/B DAP sets. Manuscript themes are ontology-mapped summaries in the same ranked_GSEA evidence family. Representative term statistics remain the original individual GSEA term statistics; no theme-level p-value or FDR is constructed."
+      "Panel C is ranked proteome-wide GO/GSEA evidence and is not calculated from the Panels A/B DAP sets. Manuscript themes are ontology-mapped summaries in the same ranked_GSEA evidence family. Median NES across mapped tested terms is descriptive only; representative term statistics remain the original individual GSEA term statistics; no theme-level p-value or FDR is constructed."
     )
   )
 
