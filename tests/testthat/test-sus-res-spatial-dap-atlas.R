@@ -161,24 +161,86 @@ testthat::test_that("Panel C filters canonical SUS-RES ranked-GSEA rows without 
     dataset_compartment = c("neuron_neuropil", "microglia", "neuron_neuropil"),
     dataset_compartment_label = c("Neuron neuropil", "Microglia", "Neuron neuropil"),
     comparison = c("SUS_vs_RES", "SUS_vs_RES", "RES_vs_CON"),
-    program = c("RNA/RNP processing", "Synapse/vesicle organization", "RNA/RNP processing"),
+    compartment = c("neuropil", "microglia", "neuropil"),
+    region = c("CA1", "CA1", "CA1"), layer = c("slm", NA, "slm"),
+    theme_id = c("rna_processing_splicing_rnp", "synaptic_signaling_vesicle", "rna_processing_splicing_rnp"),
+    manuscript_theme = c("RNA processing / splicing / RNP biology", "Synaptic signaling / vesicle trafficking", "RNA processing / splicing / RNP biology"),
+    theme_role = c("primary", "primary", "primary"), display_order = c(1L, 4L, 1L),
     spatial_unit = c("CA1_slm", "CA1", "CA1_slm"),
     spatial_unit_label = c("CA1 SLM", "CA1", "CA1 SLM"),
-    mean_NES = c(-0.375, 0.625, 9),
+    representative_term_id = c("GO:1", "GO:2", "GO:3"),
+    representative_term = c("RNA term", "synapse term", "other contrast term"),
+    representative_NES = c(-2.375, 1.625, 9),
+    representative_FDR = c(0.01, 0.02, 0.01),
+    representative_leading_edge_proteins = c("P1/P2", "P3", "P4"),
+    representative_leading_edge_genes = c("G1/G2", "G3", "G4"),
     significant_term_count = c(2L, 3L, 99L),
-    min_fdr = c(0.01, 0.02, 0.9),
+    n_positive_sig_terms = c(0L, 3L, 99L),
+    n_negative_sig_terms = c(2L, 0L, 0L),
+    direction_consistency = c("negative_only", "positive_only", "positive_only"),
+    n_semantic_clusters = c(1L, 2L, 50L),
+    n_supported_units = c(1L, 2L, 99L), n_supported_datasets = c(1L, 2L, 3L),
+    n_higher_SUS_units = c(0L, 2L, 99L), n_higher_RES_units = c(1L, 0L, 0L),
+    n_higher_SUS_datasets = c(0L, 2L, 3L), n_higher_RES_datasets = c(1L, 0L, 0L),
+    directional_recurrence = c("spatially_specific", "recurrent_consistent_higher_SUS", "recurrent_consistent_higher_SUS"),
+    sus_res_recurrent_units = c(1L, 2L, 99L),
+    sus_res_recurrent_datasets = c(1L, 2L, 3L),
+    recurrence_annotation = c("spatially_specific", "recurrent_across_datasets", "recurrent_across_datasets"),
     publication_include = c(TRUE, TRUE, TRUE),
+    direction = c("higher in RES", "higher in SUS", "higher in SUS"),
+    source_supplementary_file = c("neuropil.xlsx", "microglia.xlsx", "neuropil.xlsx"),
+    source_manifest_file = c("neuropil_manifest.csv", "microglia_manifest.csv", "neuropil_manifest.csv"),
+    representative_source_comparison = c("CA1slmsus_CA1slmres", "CA1sus_CA1res", "CA1slmres_CA1slmcon"),
+    representative_source_key = c("n|c1|GO:1", "m|c2|GO:2", "n|c3|GO:3"),
+    representative_anchor_GO_IDs = c("GO:0006396", "GO:0099003", "GO:0006396"),
+    representative_anchor_labels = c("RNA processing", "vesicle-mediated transport in synapse", "RNA processing"),
+    representative_selection_rule = "p.adjust < 0.05; lowest p.adjust; largest abs(NES); GO ID; Description",
+    evidence_source_family = "ranked_GSEA",
+    panel_data_basis = "ranked_proteome_wide_GO_GSEA",
+    recurrence_inference_role = "descriptive_only_not_a_significance_gate",
+    mapping_method = "go_id_ontology", registry_version = "manuscript_go_themes_v1",
+    GO_db_package_version = "3.22.0", GO_source_name = "Gene Ontology",
+    GO_source_url = "http://current.geneontology.org/ontology/go-basic.obo", GO_source_date = "2025-07-22",
+    relationship_types_approved = "is_a;part_of",
     stringsAsFactors = FALSE
   )
   out <- sus_res_prepare_ranked_program_panel(source)
 
   testthat::expect_true(all(out$comparison == "SUS_vs_RES"))
-  testthat::expect_identical(out$mean_NES, c(-0.375, 0.625))
+  testthat::expect_identical(out$representative_NES, c(-2.375, 1.625))
+  testthat::expect_identical(out$representative_FDR, c(0.01, 0.02))
   testthat::expect_identical(out$significant_term_count, c(2L, 3L))
-  testthat::expect_identical(out$min_fdr, c(0.01, 0.02))
   testthat::expect_identical(out$dataset_compartment_label[out$dataset_compartment == "microglia"], "Microglia-enriched ROI")
   testthat::expect_true(all(out$panel_data_basis == "ranked_proteome_wide_GO_GSEA"))
   testthat::expect_true(all(!out$panel_c_derived_from_DAP_sets))
+  testthat::expect_equal(out$representative_minus_log10_FDR, -log10(c(0.01, 0.02)))
+
+  counts <- data.frame(
+    dataset = c("neuron_neuropil", "microglia"), spatial_unit = c("CA1_slm", "CA1"),
+    n_DAP_FDR05 = c(4L, 7L), n_higher_in_SUS = c(1L, 5L), n_higher_in_RES = c(3L, 2L),
+    stringsAsFactors = FALSE
+  )
+  joined <- sus_res_attach_dap_counts_to_ranked_programs(out, counts)
+  compact <- sus_res_biological_inspection_summary(joined)
+  testthat::expect_identical(compact$n_FDR_supported_SUS_RES_DAPs, c(4L, 7L))
+  testthat::expect_true(all(c(
+    "representative_GO_ID", "representative_GO_term", "representative_NES",
+    "representative_FDR", "direction_consistency", "leading_edge_genes",
+    "sus_res_recurrent_units", "sus_res_recurrent_datasets", "source_term_key"
+  ) %in% names(compact)))
+
+  soma <- out[1, , drop = FALSE]
+  soma$dataset_compartment <- "neuron_soma"
+  soma$region <- "CA1"
+  soma$spatial_unit <- "CA1_sp"
+  soma_counts <- data.frame(
+    dataset = "neuron_soma", spatial_unit = "CA1", n_DAP_FDR05 = 3L,
+    n_higher_in_SUS = 1L, n_higher_in_RES = 2L, stringsAsFactors = FALSE
+  )
+  testthat::expect_identical(
+    sus_res_attach_dap_counts_to_ranked_programs(soma, soma_counts)$n_DAP_FDR05,
+    3L
+  )
 })
 
 testthat::test_that("script 10 consumes script 07 source rather than executing or copying its analysis", {
@@ -187,6 +249,8 @@ testthat::test_that("script 10 consumes script 07 source rather than executing o
   testthat::expect_match(script, "source_data_SpatialProgramAtlas_SUS_vs_RES_publication.csv", fixed = TRUE)
   testthat::expect_false(any(grepl("^\\s*source\\(.*07_compareGO_spatial_program_atlas", script_lines)))
   testthat::expect_match(script, "Panel C is ranked proteome-wide GO/GSEA evidence", fixed = TRUE)
+  testthat::expect_match(script, "theme_role", fixed = TRUE)
+  testthat::expect_match(script, "GO-ID is_a/part_of ancestry", fixed = TRUE)
 })
 
 testthat::test_that("pipeline registers one global downstream producer with canonical inputs", {

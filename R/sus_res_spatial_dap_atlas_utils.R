@@ -290,17 +290,32 @@ sus_res_pairwise_by_dataset <- function(membership) {
 sus_res_prepare_ranked_program_panel <- function(source_df, expected_datasets = NULL) {
   required <- c(
     "dataset_compartment", "dataset_compartment_label", "comparison",
-    "program", "spatial_unit", "spatial_unit_label", "mean_NES",
-    "significant_term_count", "min_fdr", "publication_include"
+    "compartment", "region", "layer", "theme_id", "manuscript_theme", "theme_role",
+    "display_order", "spatial_unit", "spatial_unit_label",
+    "representative_term_id", "representative_term", "representative_NES",
+    "representative_FDR", "representative_leading_edge_proteins",
+    "representative_leading_edge_genes", "significant_term_count",
+    "n_positive_sig_terms", "n_negative_sig_terms", "direction_consistency", "n_semantic_clusters",
+    "n_supported_units", "n_supported_datasets", "n_higher_SUS_units", "n_higher_RES_units",
+    "n_higher_SUS_datasets", "n_higher_RES_datasets", "directional_recurrence",
+    "sus_res_recurrent_units", "sus_res_recurrent_datasets", "recurrence_annotation",
+    "publication_include", "source_supplementary_file", "source_manifest_file",
+    "representative_source_key", "evidence_source_family", "mapping_method",
+    "registry_version", "GO_db_package_version", "GO_source_date", "relationship_types_approved"
   )
   missing <- setdiff(required, names(source_df))
   if (length(missing)) {
     stop("Ranked GO/GSEA Panel C source is missing columns: ", paste(missing, collapse = ", "), call. = FALSE)
   }
-
   out <- source_df[as.character(source_df$comparison) == "SUS_vs_RES", , drop = FALSE]
   if (!nrow(out)) {
     stop("Ranked GO/GSEA Panel C source contains no phenotype_contrast/comparison == SUS_vs_RES rows.", call. = FALSE)
+  }
+  if (any(as.character(out$evidence_source_family) != "ranked_GSEA")) {
+    stop("Ranked GO/GSEA Panel C source must retain evidence_source_family = ranked_GSEA.", call. = FALSE)
+  }
+  if (any(as.character(out$mapping_method) != "go_id_ontology")) {
+    stop("Ranked GO/GSEA Panel C manuscript themes must use GO-ID ontology mapping.", call. = FALSE)
   }
   out$dataset_compartment <- as.character(out$dataset_compartment)
   if (!is.null(expected_datasets)) {
@@ -318,15 +333,25 @@ sus_res_prepare_ranked_program_panel <- function(source_df, expected_datasets = 
     }
   }
 
-  key <- paste(out$dataset_compartment, out$spatial_unit, out$program, sep = "|")
+  key <- paste(out$dataset_compartment, out$spatial_unit, out$theme_id, sep = "|")
   if (anyDuplicated(key)) {
-    stop("Ranked GO/GSEA Panel C source has duplicate dataset + spatial_unit + program rows.", call. = FALSE)
-  }
-  if (any(!is.finite(suppressWarnings(as.numeric(out$mean_NES))))) {
-    stop("Ranked GO/GSEA Panel C source contains non-finite mean_NES values.", call. = FALSE)
+    stop("Ranked GO/GSEA Panel C source has duplicate dataset + spatial_unit + manuscript theme rows.", call. = FALSE)
   }
   if (any(!is.finite(suppressWarnings(as.numeric(out$significant_term_count))))) {
     stop("Ranked GO/GSEA Panel C source contains non-finite significant_term_count values.", call. = FALSE)
+  }
+  n_supported <- suppressWarnings(as.integer(out$significant_term_count))
+  representative_nes <- suppressWarnings(as.numeric(out$representative_NES))
+  representative_fdr <- suppressWarnings(as.numeric(out$representative_FDR))
+  has_supported <- n_supported > 0L
+  if (any(has_supported & (!is.finite(representative_nes) | !is.finite(representative_fdr)))) {
+    stop("Ranked GO/GSEA Panel C source has an FDR-supported theme row without finite representative NES/FDR.", call. = FALSE)
+  }
+  if (any(has_supported & representative_fdr >= 0.05)) {
+    stop("Ranked GO/GSEA representative terms must satisfy p.adjust < 0.05.", call. = FALSE)
+  }
+  if (any(!has_supported & (is.finite(representative_nes) | is.finite(representative_fdr)))) {
+    stop("Ranked GO/GSEA theme rows without FDR-supported terms must not carry representative NES/FDR values.", call. = FALSE)
   }
 
   label_map <- setNames(
@@ -334,12 +359,117 @@ sus_res_prepare_ranked_program_panel <- function(source_df, expected_datasets = 
     unique(out$dataset_compartment)
   )
   out$dataset_compartment_label <- unname(label_map[out$dataset_compartment])
+  out$program <- as.character(out$manuscript_theme)
+  out$interpretable_program <- as.character(out$theme_role) == "primary"
   out$panel <- "c"
-  out$statistical_view <- "ranked proteome-wide GO/GSEA program shifts"
+  out$statistical_view <- "ranked proteome-wide GO/GSEA manuscript-theme summary"
   out$panel_data_basis <- "ranked_proteome_wide_GO_GSEA"
   out$panel_c_derived_from_DAP_sets <- FALSE
   out$NES_interpretation <- "positive = higher in SUS; negative = higher in RES"
+  out$representative_minus_log10_FDR <- -log10(pmax(representative_fdr, .Machine$double.xmin))
   rownames(out) <- NULL
+  out
+}
+
+sus_res_attach_dap_counts_to_ranked_programs <- function(program_df, counts_df) {
+  required_counts <- c(
+    "dataset", "spatial_unit", "n_DAP_FDR05", "n_higher_in_SUS", "n_higher_in_RES"
+  )
+  missing <- setdiff(required_counts, names(counts_df))
+  if (length(missing)) {
+    stop("SUS-RES DAP counts are missing columns: ", paste(missing, collapse = ", "), call. = FALSE)
+  }
+  count_key <- paste(counts_df$dataset, counts_df$spatial_unit, sep = "|")
+  if (anyDuplicated(count_key)) stop("SUS-RES DAP counts contain duplicate dataset + spatial_unit rows.", call. = FALSE)
+  program_dap_unit <- ifelse(
+    as.character(program_df$dataset_compartment) == "neuron_neuropil",
+    as.character(program_df$spatial_unit),
+    as.character(program_df$region)
+  )
+  program_key <- paste(program_df$dataset_compartment, program_dap_unit, sep = "|")
+  idx <- match(program_key, count_key)
+  if (anyNA(idx)) {
+    stop("Ranked GO/GSEA rows lack matching SUS-RES DAP counts for: ", paste(unique(program_key[is.na(idx)]), collapse = ", "), call. = FALSE)
+  }
+  program_df$n_DAP_FDR05 <- suppressWarnings(as.integer(counts_df$n_DAP_FDR05[idx]))
+  program_df$n_higher_in_SUS <- suppressWarnings(as.integer(counts_df$n_higher_in_SUS[idx]))
+  program_df$n_higher_in_RES <- suppressWarnings(as.integer(counts_df$n_higher_in_RES[idx]))
+  program_df
+}
+
+sus_res_biological_inspection_summary <- function(program_df) {
+  required <- c(
+    "dataset_compartment", "compartment", "region", "layer", "spatial_unit",
+    "theme_id", "manuscript_theme", "theme_role",
+    "representative_term_id", "representative_term", "representative_NES",
+    "representative_FDR", "direction", "significant_term_count",
+    "n_positive_sig_terms", "n_negative_sig_terms", "direction_consistency", "n_semantic_clusters",
+    "representative_leading_edge_genes", "representative_leading_edge_proteins",
+    "n_DAP_FDR05", "n_supported_units", "n_supported_datasets",
+    "n_higher_SUS_units", "n_higher_RES_units", "n_higher_SUS_datasets", "n_higher_RES_datasets",
+    "directional_recurrence", "sus_res_recurrent_units", "sus_res_recurrent_datasets",
+    "recurrence_annotation", "source_supplementary_file", "source_manifest_file",
+    "representative_source_comparison", "representative_source_key",
+    "representative_selection_rule", "evidence_source_family", "panel_data_basis",
+    "recurrence_inference_role", "mapping_method", "registry_version",
+    "GO_db_package_version", "GO_source_name", "GO_source_url", "GO_source_date",
+    "relationship_types_approved", "representative_anchor_GO_IDs", "representative_anchor_labels"
+  )
+  missing <- setdiff(required, names(program_df))
+  if (length(missing)) {
+    stop("SUS-RES biological inspection source is missing columns: ", paste(missing, collapse = ", "), call. = FALSE)
+  }
+  out <- data.frame(
+    dataset = as.character(program_df$dataset_compartment),
+    compartment = as.character(program_df$compartment),
+    region = as.character(program_df$region),
+    layer = as.character(program_df$layer),
+    spatial_unit = as.character(program_df$spatial_unit),
+    manuscript_theme_id = as.character(program_df$theme_id),
+    manuscript_theme = as.character(program_df$manuscript_theme),
+    theme_role = as.character(program_df$theme_role),
+    representative_GO_ID = as.character(program_df$representative_term_id),
+    representative_GO_term = as.character(program_df$representative_term),
+    representative_NES = suppressWarnings(as.numeric(program_df$representative_NES)),
+    representative_FDR = suppressWarnings(as.numeric(program_df$representative_FDR)),
+    direction = as.character(program_df$direction),
+    n_FDR_supported_GO_terms = suppressWarnings(as.integer(program_df$significant_term_count)),
+    n_positive_supported_terms = suppressWarnings(as.integer(program_df$n_positive_sig_terms)),
+    n_negative_supported_terms = suppressWarnings(as.integer(program_df$n_negative_sig_terms)),
+    direction_consistency = as.character(program_df$direction_consistency),
+    n_semantic_clusters = suppressWarnings(as.integer(program_df$n_semantic_clusters)),
+    leading_edge_genes = as.character(program_df$representative_leading_edge_genes),
+    leading_edge_proteins = as.character(program_df$representative_leading_edge_proteins),
+    n_FDR_supported_SUS_RES_DAPs = suppressWarnings(as.integer(program_df$n_DAP_FDR05)),
+    sus_res_recurrent_units = suppressWarnings(as.integer(program_df$sus_res_recurrent_units)),
+    sus_res_recurrent_datasets = suppressWarnings(as.integer(program_df$sus_res_recurrent_datasets)),
+    n_higher_SUS_units = suppressWarnings(as.integer(program_df$n_higher_SUS_units)),
+    n_higher_RES_units = suppressWarnings(as.integer(program_df$n_higher_RES_units)),
+    n_higher_SUS_datasets = suppressWarnings(as.integer(program_df$n_higher_SUS_datasets)),
+    n_higher_RES_datasets = suppressWarnings(as.integer(program_df$n_higher_RES_datasets)),
+    directional_recurrence = as.character(program_df$directional_recurrence),
+    recurrence_annotation = as.character(program_df$recurrence_annotation),
+    representative_anchor_GO_IDs = as.character(program_df$representative_anchor_GO_IDs),
+    representative_anchor_labels = as.character(program_df$representative_anchor_labels),
+    ranked_GSEA_source_file = as.character(program_df$source_supplementary_file),
+    compareGO_manifest_file = as.character(program_df$source_manifest_file),
+    source_comparison = as.character(program_df$representative_source_comparison),
+    source_term_key = as.character(program_df$representative_source_key),
+    representative_selection_rule = as.character(program_df$representative_selection_rule),
+    evidence_source_family = as.character(program_df$evidence_source_family),
+    panel_data_basis = as.character(program_df$panel_data_basis),
+    recurrence_inference_role = as.character(program_df$recurrence_inference_role),
+    mapping_method = as.character(program_df$mapping_method),
+    manuscript_theme_registry_version = as.character(program_df$registry_version),
+    GO_db_package_version = as.character(program_df$GO_db_package_version),
+    GO_source_name = as.character(program_df$GO_source_name),
+    GO_source_url = as.character(program_df$GO_source_url),
+    GO_source_date = as.character(program_df$GO_source_date),
+    relationship_types_approved = as.character(program_df$relationship_types_approved),
+    stringsAsFactors = FALSE
+  )
+  key <- paste(out$dataset, out$spatial_unit, out$manuscript_theme_id, sep = "|")
+  if (anyDuplicated(key)) stop("SUS-RES biological inspection summary has duplicate dataset + spatial_unit + manuscript theme rows.", call. = FALSE)
   out
 }
 

@@ -303,12 +303,12 @@ stages:
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "enrichment"
         scope: "dataset_specific"
-        produces: ["results/tables/04_differential_expression_enrichment/compareGO_spatial_atlas/spatial_program_summary.csv", "results/tables/04_differential_expression_enrichment/compareGO_spatial_atlas/compareGO_spatial_program_atlas_tables.xlsx", "results/source_data/04_differential_expression_enrichment/compareGO_spatial_atlas/spatial_atlas_enrichment_long.csv"]
-        consumes_required: ["data/processed/04_differential_expression_enrichment/compareGO/<dataset>/compareGO_input_manifest.csv"]
+        produces: ["results/tables/04_differential_expression_enrichment/compareGO_spatial_atlas/spatial_program_summary.csv", "results/tables/04_differential_expression_enrichment/compareGO_spatial_atlas/compareGO_spatial_program_atlas_tables.xlsx", "results/tables/04_differential_expression_enrichment/compareGO_spatial_atlas/sus_res_manuscript_theme_summary.csv", "results/source_data/04_differential_expression_enrichment/compareGO_spatial_atlas/spatial_atlas_enrichment_long.csv", "results/source_data/04_differential_expression_enrichment/compareGO_spatial_atlas/sus_res_supported_go_term_theme_audit.csv", "results/source_data/04_differential_expression_enrichment/compareGO_spatial_atlas/source_data_SpatialProgramAtlas_SUS_vs_RES_publication.csv"]
+        consumes_required: ["data/processed/04_differential_expression_enrichment/compareGO/<dataset>/compareGO_input_manifest.csv", "config/manuscript_go_theme_registry.tsv"]
         consumes_optional: ["results/tables/04_differential_expression_enrichment/biological_program_summary/<dataset>/program_summary.csv"]
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "Builds a spatial program atlas from compareGO outputs without changing enrichment statistics."
+        notes: "Builds the backward-compatible broad heuristic spatial program atlas plus a SUS-RES manuscript layer mapped by GO ID through GO.db is_a/part_of relationships. GOSemSim Wang similarity is descriptive redundancy QA only; enrichment statistics are unchanged."
       - script: "04_differential_expression_enrichment/08_external_stress_disease_signature_overlap.r"
         required: false
         datasets: ["global"]
@@ -336,12 +336,12 @@ stages:
         datasets: ["global"]
         stage: "enrichment"
         scope: "global"
-        produces: ["results/tables/04_differential_expression_enrichment/sus_res_spatial_dap_atlas/global/", "results/source_data/04_differential_expression_enrichment/sus_res_spatial_dap_atlas/global/", "results/figures/04_differential_expression_enrichment/sus_res_spatial_dap_atlas/global/", "results/logs/04_differential_expression_enrichment/sus_res_spatial_dap_atlas/global/run_manifest.yml"]
+        produces: ["results/tables/04_differential_expression_enrichment/sus_res_spatial_dap_atlas/global/sus_res_manuscript_theme_summary.csv", "results/tables/04_differential_expression_enrichment/sus_res_spatial_dap_atlas/global/", "results/source_data/04_differential_expression_enrichment/sus_res_spatial_dap_atlas/global/", "results/figures/04_differential_expression_enrichment/sus_res_spatial_dap_atlas/global/", "results/logs/04_differential_expression_enrichment/sus_res_spatial_dap_atlas/global/run_manifest.yml"]
         consumes_required: ["data/processed/04_differential_expression_enrichment/clusterProfiler/neuron_neuropil/clusterProfiler_manifest.csv", "data/processed/04_differential_expression_enrichment/clusterProfiler/neuron_soma/clusterProfiler_manifest.csv", "data/processed/04_differential_expression_enrichment/clusterProfiler/microglia/clusterProfiler_manifest.csv", "results/source_data/04_differential_expression_enrichment/compareGO_spatial_atlas/source_data_SpatialProgramAtlas_SUS_vs_RES_publication.csv"]
         consumes_optional: []
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "Downstream ProteinGroupID-level SUS-RES spatial DAP counts and within-dataset direction-aware overlap, plus a manuscript Panel C view of the existing ranked proteome-wide GO/GSEA spatial-program summary from script 07. DAP-set GO-BP ORA remains a separate supplementary output; the stage does not rerun differential abundance or ranked GO/GSEA."
+        notes: "Downstream ProteinGroupID-level SUS-RES spatial DAP counts and within-dataset direction-aware overlap, plus a manuscript Panel C and compact inspection table using GO-ID ontology themes and one original FDR-supported representative ranked-GSEA term per theme and spatial unit. Directional recurrence and semantic redundancy are descriptive only. DAP-set GO-BP ORA remains separate; the stage does not rerun differential abundance or ranked GO/GSEA."
       - script: "05_celltype_enrichment_EWCE/01_EWCE_E9.r"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]

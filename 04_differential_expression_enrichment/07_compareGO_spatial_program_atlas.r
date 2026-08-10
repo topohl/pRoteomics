@@ -2,8 +2,8 @@
 # Script: 04_differential_expression_enrichment/07_compareGO_spatial_program_atlas.r
 # Stage: enrichment
 # Scope: dataset_specific
-# Consumes: required data/processed/04_differential_expression_enrichment/compareGO/<dataset>/compareGO_input_manifest.csv; optional results/tables/04_differential_expression_enrichment/biological_program_summary/<dataset>/program_summary.csv.
-# Produces: results/tables/04_differential_expression_enrichment/compareGO_spatial_program_atlas/<dataset>/.
+# Consumes: required data/processed/04_differential_expression_enrichment/compareGO/<dataset>/compareGO_input_manifest.csv and config/manuscript_go_theme_registry.tsv; optional results/tables/04_differential_expression_enrichment/biological_program_summary/<dataset>/program_summary.csv.
+# Produces: legacy broad heuristic spatial-program outputs plus ontology-aware SUS-RES manuscript-theme tables/audits under compareGO_spatial_atlas.
 # Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Spatial program atlas from compareGO outputs.
 # ================================================================
@@ -11,12 +11,14 @@
 #' Spatial Program Atlas from compareGO outputs
 #'
 #' Consumes existing compareGO outputs across dataset families and synthesizes
-#' manuscript-ready spatial program summaries and SVG figures. This script does
-#' not rerun clusterProfiler or compareGO.
+#' generic spatial program summaries and ontology-aware SUS-RES manuscript
+#' theme outputs. This script does not rerun clusterProfiler or compareGO.
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
 source(repo_path("R", "plotting_nature.R"))
+source(repo_path("R", "enrichment_io.R"))
+source(repo_path("R", "manuscript_go_theme_utils.R"))
 dataset_config_file <- repo_path("R", "dataset_config.R")
 if (!file.exists(dataset_config_file)) {
   stop("Missing required config: ", dataset_config_file, call. = FALSE)
@@ -46,6 +48,8 @@ SUBSTEP_ID <- "compareGO_spatial_atlas"
 CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
 
 required_pkgs <- c("dplyr", "tidyr", "purrr", "readr", "readxl", "writexl", "ggplot2", "stringr", "tibble", "scales")
+MANUSCRIPT_GO_THEME_REGISTRY <- repo_path("config", "manuscript_go_theme_registry.tsv")
+MANUSCRIPT_GO_SEMANTIC_CUTOFF <- 0.70
 
 `%||%` <- function(x, y) {
   if (is.null(x)) y else x
@@ -60,30 +64,11 @@ load_required_packages <- function(pkgs) {
   suppressPackageStartupMessages(invisible(lapply(pkgs, library, character.only = TRUE)))
 }
 
-# Clearly editable GO program dictionary. Patterns are case-insensitive.
-program_dictionary <- list(
-  RNA_RNP_processing = c("rna", "ribonucleoprotein", "splice", "splicing", "mrna", "rrna", "trna", "transcription", "ribonucl"),
-  Translation_Ribosome = c("translation", "ribosom", "peptide biosynthetic", "cytoplasmic translation"),
-  Mitochondria_OXPHOS = c("mitochond", "oxidative phosphorylation", "electron transport", "respiratory chain", "atp synthesis", "nadh", "proton transmembrane"),
-  Proteostasis_Lysosome = c("proteas", "proteolysis", "ubiquitin", "lysosom", "autophag", "vacuolar", "folding", "chaperone"),
-  Synapse_Plasticity = c("synap", "dendrit", "axon", "neurotransmitter", "vesicle", "plasticity", "glutamate", "postsynaptic", "presynaptic"),
-  Development_Patterning = c("develop", "pattern", "morphogen", "differentiation", "neurogenesis", "gliogenesis", "axon guidance", "cell fate", "regionalization"),
-  Immune_Microglia = c("immune", "inflamm", "complement", "microgl", "cytokine", "interferon", "antigen", "phagocyt", "leukocyte", "myeloid"),
-  Cytoskeleton_Transport = c("cytoskeleton", "actin", "tubulin", "microtub", "transport", "traffick", "vesicle-mediated", "motor protein")
-)
-
-program_levels <- c(names(program_dictionary), "Other")
+canonical_program_levels <- biological_program_patterns()$biological_program
+program_levels <- c(canonical_program_levels, "Other")
 contrast_levels <- c("RES_vs_CON", "SUS_vs_CON", "SUS_vs_RES")
 region_levels <- c("CA1", "CA2", "CA3", "DG")
-publication_program_labels <- c(
-  "RNA/RNP processing",
-  "Ribosome/translation",
-  "Mitochondria/OXPHOS/metabolism",
-  "Proteostasis/ubiquitin/protein folding",
-  "Synapse/vesicle organization",
-  "Cytoskeleton/motility",
-  "Development/patterning"
-)
+publication_program_labels <- clean_program_label(canonical_program_levels)
 atlas_min_recurrent_units <- as.integer(Sys.getenv("PROTEOMICS_PUBLICATION_ATLAS_MIN_RECURRENT_UNITS", unset = "2"))
 divergence_delta_threshold <- as.numeric(Sys.getenv("PROTEOMICS_PUBLICATION_DIVERGENCE_DELTA_NES", unset = "0.25"))
 
@@ -201,13 +186,12 @@ parse_comparison_name <- function(comparison, dataset, route_unit = NA_character
 }
 
 classify_program <- function(description) {
-  desc <- tolower(as.character(description))
-  out <- rep("Other", length(desc))
-  for (class_name in names(program_dictionary)) {
-    pattern <- paste(program_dictionary[[class_name]], collapse = "|")
-    hit <- grepl(pattern, desc, ignore.case = TRUE)
-    out[hit & out == "Other"] <- class_name
-  }
+  mapped <- map_terms_to_programs(
+    data.frame(Description = as.character(description), stringsAsFactors = FALSE),
+    description_col = "Description"
+  )
+  out <- as.character(mapped$biological_program)
+  out[is.na(out) | !nzchar(out)] <- "Other"
   factor(out, levels = program_levels)
 }
 
@@ -246,7 +230,7 @@ top_driver_genes_for_group <- function(driver_df, descriptions, comparisons, n =
 
 load_dataset_atlas <- function(files) {
   enrichment <- read_supplementary_enrichment(files$supplementary)
-  needed <- c("Description", "NES", "p.adjust", "core_enrichment", "Comparison")
+  needed <- c("ID", "Description", "NES", "p.adjust", "core_enrichment", "Comparison")
   missing <- setdiff(needed, names(enrichment))
   if (length(missing) > 0) {
     stop("Supplementary enrichment table for ", files$dataset, " is missing columns: ", paste(missing, collapse = ", "), call. = FALSE)
@@ -255,15 +239,23 @@ load_dataset_atlas <- function(files) {
   manifest <- read_manifest(files$manifest)
   drivers <- read_driver_table(files$drivers)
 
+  if (!"core_enrichment_gene" %in% names(enrichment)) enrichment$core_enrichment_gene <- NA_character_
+
   parsed <- enrichment %>%
     dplyr::mutate(
       dataset = files$dataset,
       dataset_label = dataset_label(files$dataset),
+      ID = as.character(.data$ID),
       NES = suppressWarnings(as.numeric(.data$NES)),
       p.adjust = suppressWarnings(as.numeric(.data$p.adjust)),
       Comparison = as.character(.data$Comparison),
       Description = as.character(.data$Description),
-      core_enrichment = as.character(.data$core_enrichment)
+      core_enrichment = as.character(.data$core_enrichment),
+      core_enrichment_gene = as.character(.data$core_enrichment_gene),
+      source_supplementary_file = normalizePath(files$supplementary, winslash = "/", mustWork = TRUE),
+      source_driver_file = normalizePath(files$drivers, winslash = "/", mustWork = FALSE),
+      source_manifest_file = normalizePath(files$manifest, winslash = "/", mustWork = TRUE),
+      evidence_source_family = "ranked_GSEA"
     ) %>%
     dplyr::left_join(manifest, by = c("Comparison" = "comparison")) %>%
     dplyr::mutate(route_unit = dplyr::coalesce(as.character(.data$route_unit), NA_character_))
@@ -291,22 +283,61 @@ order_spatial_units <- function(units) {
 }
 
 calculate_program_summary <- function(enrichment_df, driver_by_dataset) {
+  group_columns <- c(
+    "dataset", "dataset_label", "region", "layer", "spatial_unit",
+    "compartment", "phenotype_contrast", "program_class"
+  )
+  collapse_core <- function(x) {
+    values <- unique(trimws(unlist(lapply(x, split_genes), use.names = FALSE)))
+    values <- values[!is.na(values) & nzchar(values)]
+    if (length(values)) paste(values, collapse = "; ") else NA_character_
+  }
+
   base_summary <- enrichment_df %>%
-    dplyr::group_by(.data$dataset, .data$dataset_label, .data$region, .data$layer, .data$spatial_unit,
-                    .data$compartment, .data$phenotype_contrast, .data$program_class) %>%
+    dplyr::group_by(dplyr::across(dplyr::all_of(group_columns))) %>%
     dplyr::summarise(
-      n_terms = dplyr::n_distinct(.data$Description),
-      n_sig_terms = dplyr::n_distinct(.data$Description[!is.na(.data$p.adjust) & .data$p.adjust < 0.05]),
+      n_terms = dplyr::n_distinct(.data$ID),
+      n_sig_terms = dplyr::n_distinct(.data$ID[!is.na(.data$p.adjust) & .data$p.adjust < 0.05]),
+      n_positive_sig_terms = dplyr::n_distinct(.data$ID[!is.na(.data$p.adjust) & .data$p.adjust < 0.05 & .data$NES > 0]),
+      n_negative_sig_terms = dplyr::n_distinct(.data$ID[!is.na(.data$p.adjust) & .data$p.adjust < 0.05 & .data$NES < 0]),
       min_fdr = suppressWarnings(min(.data$p.adjust, na.rm = TRUE)),
       mean_NES = mean(.data$NES, na.rm = TRUE),
       median_NES = median(.data$NES, na.rm = TRUE),
       mean_signed_log10FDR = mean(sign(.data$NES) * -log10(pmax(.data$p.adjust, .Machine$double.xmin)), na.rm = TRUE),
       leading_edge_union_size = length(unique(unlist(purrr::map(.data$core_enrichment, split_genes)))),
+      significant_leading_edge_proteins = collapse_core(.data$core_enrichment[!is.na(.data$p.adjust) & .data$p.adjust < 0.05]),
+      significant_leading_edge_genes = collapse_core(.data$core_enrichment_gene[!is.na(.data$p.adjust) & .data$p.adjust < 0.05]),
       top_GO_terms = collapse_top_terms(dplyr::pick(dplyr::everything())),
       comparisons = paste(unique(.data$Comparison), collapse = ";"),
+      source_supplementary_file = dplyr::first(.data$source_supplementary_file),
+      source_driver_file = dplyr::first(.data$source_driver_file),
+      source_manifest_file = dplyr::first(.data$source_manifest_file),
+      evidence_source_family = dplyr::first(.data$evidence_source_family),
       term_set = list(unique(.data$Description)),
       comparison_set = list(unique(.data$Comparison)),
       .groups = "drop"
+    )
+
+  representative <- enrichment_df %>%
+    dplyr::filter(!is.na(.data$p.adjust), .data$p.adjust < 0.05) %>%
+    dplyr::mutate(representative_abs_NES = abs(.data$NES)) %>%
+    dplyr::arrange(
+      dplyr::across(dplyr::all_of(group_columns)),
+      .data$p.adjust, dplyr::desc(.data$representative_abs_NES), .data$ID, .data$Description
+    ) %>%
+    dplyr::group_by(dplyr::across(dplyr::all_of(group_columns))) %>%
+    dplyr::slice_head(n = 1L) %>%
+    dplyr::ungroup() %>%
+    dplyr::transmute(
+      dplyr::across(dplyr::all_of(group_columns)),
+      representative_term_id = as.character(.data$ID),
+      representative_term = as.character(.data$Description),
+      representative_NES = as.numeric(.data$NES),
+      representative_FDR = as.numeric(.data$p.adjust),
+      representative_leading_edge_proteins = as.character(.data$core_enrichment),
+      representative_leading_edge_genes = as.character(.data$core_enrichment_gene),
+      representative_source_comparison = as.character(.data$Comparison),
+      representative_source_key = paste(.data$dataset, .data$Comparison, .data$ID, sep = "|")
     )
 
   base_summary$top_driver_genes <- purrr::pmap_chr(
@@ -321,7 +352,24 @@ calculate_program_summary <- function(enrichment_df, driver_by_dataset) {
   )
 
   base_summary %>%
-    dplyr::mutate(min_fdr = ifelse(is.infinite(.data$min_fdr), NA_real_, .data$min_fdr)) %>%
+    dplyr::left_join(representative, by = group_columns) %>%
+    dplyr::mutate(
+      min_fdr = ifelse(is.infinite(.data$min_fdr), NA_real_, .data$min_fdr),
+      direction_consistency = dplyr::case_when(
+        .data$n_sig_terms == 0 ~ "no_FDR_supported_term",
+        .data$n_positive_sig_terms > 0 & .data$n_negative_sig_terms > 0 ~ "mixed_direction",
+        .data$n_positive_sig_terms > 0 ~ "positive_only",
+        .data$n_negative_sig_terms > 0 ~ "negative_only",
+        TRUE ~ "neutral_or_undirected"
+      ),
+      representative_direction = dplyr::case_when(
+        is.na(.data$representative_NES) ~ "no_FDR_supported_term",
+        .data$representative_NES > 0 ~ "positive_NES",
+        .data$representative_NES < 0 ~ "negative_NES",
+        TRUE ~ "neutral"
+      ),
+      representative_selection_rule = "p.adjust < 0.05; lowest p.adjust; largest abs(NES); GO ID; Description"
+    ) %>%
     dplyr::select(-dplyr::all_of(c("term_set", "comparison_set")))
 }
 
@@ -507,17 +555,60 @@ prepare_publication_summary <- function(summary_df, min_recurrent_units = atlas_
 }
 
 prepare_sus_res_publication_summary <- function(summary_df, min_recurrent_units = atlas_min_recurrent_units) {
-  prepare_publication_summary(summary_df, min_recurrent_units) %>%
-    dplyr::filter(.data$comparison == "SUS_vs_RES") %>%
+  summary_df %>%
+    dplyr::filter(as.character(.data$phenotype_contrast) == "SUS_vs_RES") %>%
     dplyr::mutate(
+      program = clean_program_label(.data$program_class),
+      dataset_compartment = as.character(.data$dataset),
+      dataset_compartment_label = clean_spatial_unit_label(.data$dataset_label),
+      comparison = as.character(.data$phenotype_contrast),
+      comparison_label = clean_comparison_label(.data$comparison),
+      spatial_unit_label = clean_spatial_unit_label(.data$spatial_unit),
+      region = as.character(.data$region),
+      layer = as.character(.data$layer),
+      significant_term_count = as.integer(.data$n_sig_terms),
+      min_recurrent_units = min_recurrent_units,
+      interpretable_program = .data$program %in% publication_program_labels,
+      nonzero_signal = .data$significant_term_count > 0,
       dataset_compartment_label = dplyr::if_else(
         .data$dataset_compartment == "microglia",
         "Microglia-enriched ROI",
         .data$dataset_compartment_label
+      )
+    ) %>%
+    dplyr::group_by(.data$program) %>%
+    dplyr::mutate(
+      sus_res_recurrent_units = dplyr::n_distinct(paste(.data$dataset_compartment, .data$spatial_unit)[.data$nonzero_signal]),
+      sus_res_recurrent_datasets = dplyr::n_distinct(.data$dataset_compartment[.data$nonzero_signal]),
+      sus_res_recurrent_compartments = .data$sus_res_recurrent_datasets,
+      sus_res_is_recurrent = .data$sus_res_recurrent_units >= .data$min_recurrent_units,
+      recurrence_annotation = dplyr::case_when(
+        !.data$nonzero_signal ~ "no_FDR_supported_term",
+        .data$sus_res_recurrent_datasets >= 2L ~ "recurrent_across_datasets",
+        .data$sus_res_is_recurrent ~ "recurrent_across_spatial_units",
+        TRUE ~ "spatially_specific"
+      ),
+      recurrent_units = .data$sus_res_recurrent_units,
+      recurrent_comparisons = dplyr::n_distinct(.data$comparison[.data$nonzero_signal]),
+      passes_recurrence_filter = .data$sus_res_is_recurrent,
+      publication_include = .data$interpretable_program & .data$nonzero_signal,
+      filter_reason = dplyr::case_when(
+        !.data$interpretable_program ~ "excluded_noncanonical_program",
+        !.data$nonzero_signal ~ "excluded_no_FDR_supported_term",
+        .data$sus_res_is_recurrent ~ "included_recurrent",
+        TRUE ~ "included_spatially_specific"
+      ),
+      direction = dplyr::case_when(
+        is.na(.data$representative_NES) ~ "no FDR-supported term",
+        .data$representative_NES > 0 ~ "higher in SUS",
+        .data$representative_NES < 0 ~ "higher in RES",
+        TRUE ~ "neutral"
       ),
       panel_data_basis = "ranked_proteome_wide_GO_GSEA",
-      NES_interpretation = "positive = higher in SUS; negative = higher in RES"
-    )
+      NES_interpretation = "positive = higher in SUS; negative = higher in RES",
+      recurrence_inference_role = "descriptive_only_not_a_significance_gate"
+    ) %>%
+    dplyr::ungroup()
 }
 
 plot_spatial_program_atlas_publication <- function(summary_df, figure_file, source_file, min_recurrent_units = atlas_min_recurrent_units) {
@@ -561,21 +652,76 @@ plot_sus_res_spatial_program_atlas_publication <- function(summary_df, figure_fi
     )
   plot_df <- axis_df %>% dplyr::filter(.data$publication_include)
   if (!nrow(plot_df)) return(invisible(FALSE))
-  lims <- publication_color_limits(plot_df$mean_NES)
+  lims <- publication_color_limits(plot_df$representative_NES)
   p <- ggplot2::ggplot(axis_df, ggplot2::aes(.data$spatial_unit_label, .data$program)) +
     ggplot2::geom_blank() +
     ggplot2::geom_point(
       data = plot_df,
-      ggplot2::aes(color = .data$mean_NES, size = .data$significant_term_count),
+      ggplot2::aes(color = .data$representative_NES, size = .data$significant_term_count),
       alpha = 0.92
     ) +
     ggplot2::facet_wrap(~dataset_compartment_label, ncol = 1, scales = "free_x", strip.position = "right") +
-    ggplot2::scale_color_gradient2(low = "#3B4CC0", mid = "white", high = "#B40426", midpoint = 0, limits = lims, oob = scales::squish, name = "Mean NES") +
+    ggplot2::scale_color_gradient2(low = "#3B4CC0", mid = "white", high = "#B40426", midpoint = 0, limits = lims, oob = scales::squish, name = "Representative\nterm NES") +
     ggplot2::scale_size_continuous(range = c(1.0, 4.2), breaks = sig_size_breaks(plot_df$significant_term_count), name = "Sig. terms") +
     ggplot2::labs(
       x = NULL, y = NULL,
       subtitle = "Positive NES = higher in SUS; negative NES = higher in RES",
-      caption = "Proteome-wide ranked GO/GSEA program evidence; not DAP-set ORA."
+      caption = paste(
+        "Point = lowest-FDR supported GO term per program/unit (ties: largest |NES|); recurrence is descriptive.",
+        "Proteome-wide ranked GSEA; not DAP-set ORA.",
+        sep = "\n"
+      )
+    ) +
+    theme_nature_dotplot(7)
+  save_nature_svg(p, figure_file, width_mm = 183, height_mm = 110)
+}
+
+plot_sus_res_manuscript_theme_atlas <- function(theme_summary, figure_file, source_file) {
+  readr::write_csv(theme_summary, source_file, na = "")
+  plot_df <- theme_summary %>%
+    dplyr::filter(.data$theme_role == "primary") %>%
+    dplyr::mutate(
+      manuscript_theme = factor(
+        .data$manuscript_theme,
+        levels = rev(unique(.data$manuscript_theme[order(.data$display_order)]))
+      ),
+      spatial_unit_label = factor(
+        .data$spatial_unit_label,
+        levels = clean_spatial_unit_label(anatomical_spatial_unit_levels(unique(.data$spatial_unit)))
+      ),
+      dataset_compartment_label = factor(
+        .data$dataset_compartment_label,
+        levels = c("Neuron neuropil", "Neuron soma", "Microglia-enriched ROI")
+      ),
+      unit_direction_status = ifelse(.data$direction_consistency == "mixed_direction", "mixed within unit", "directionally consistent"),
+      representative_minus_log10_FDR = -log10(pmax(.data$representative_FDR, .Machine$double.xmin))
+    )
+  if (!nrow(plot_df)) return(invisible(FALSE))
+  lims <- publication_color_limits(plot_df$representative_NES)
+  p <- ggplot2::ggplot(plot_df, ggplot2::aes(.data$spatial_unit_label, .data$manuscript_theme)) +
+    ggplot2::geom_point(
+      ggplot2::aes(
+        color = .data$representative_NES,
+        size = .data$representative_minus_log10_FDR,
+        shape = .data$unit_direction_status
+      ),
+      alpha = 0.92
+    ) +
+    ggplot2::facet_wrap(~dataset_compartment_label, ncol = 1, scales = "free_x", strip.position = "right") +
+    ggplot2::scale_color_gradient2(
+      low = "#3B4CC0", mid = "white", high = "#B40426", midpoint = 0,
+      limits = lims, oob = scales::squish, name = "Representative\nterm NES"
+    ) +
+    ggplot2::scale_size_continuous(range = c(1.0, 4.2), name = expression(-log[10]("representative term BH FDR"))) +
+    ggplot2::scale_shape_manual(values = c("directionally consistent" = 16, "mixed within unit" = 18), name = "Within-theme\ndirection") +
+    ggplot2::labs(
+      x = NULL, y = NULL,
+      subtitle = "Positive NES = higher in SUS; negative NES = higher in RES",
+      caption = paste(
+        "Primary themes are assigned by GO ID using is_a/part_of ancestry; point = lowest-FDR supported GO term per theme/unit.",
+        "Diamond flags supported terms in both NES directions; recurrence is descriptive. Ranked GSEA; not DAP-set ORA.",
+        sep = "\n"
+      )
     ) +
     theme_nature_dotplot(7)
   save_nature_svg(p, figure_file, width_mm = 183, height_mm = 110)
@@ -728,15 +874,22 @@ plot_driver_recurrence_topdrivers_publication <- function(driver_df, figure_file
 }
 
 write_publication_provenance <- function(paths, analyzed_datasets, row_counts) {
+  ontology <- go_ontology_provenance()
+  registry <- read_manuscript_go_theme_registry(MANUSCRIPT_GO_THEME_REGISTRY)
   writeLines(
     c(
       "compareGO spatial program atlas publication outputs",
       paste0("Datasets analyzed: ", paste(analyzed_datasets, collapse = ", ")),
-      paste0("Manuscript programs: ", paste(publication_program_labels, collapse = "; ")),
-      paste0("Atlas minimum recurrent units/comparisons: ", atlas_min_recurrent_units),
+      paste0("Legacy broad heuristic classes (technical generic outputs only): ", paste(publication_program_labels, collapse = "; ")),
+      paste0("SUS-RES manuscript themes: ", paste(unique(registry$display_label[order(registry$display_order)]), collapse = "; ")),
+      paste0("Manuscript theme registry: ", MANUSCRIPT_GO_THEME_REGISTRY, " (", unique(registry$registry_version), ")"),
+      paste0("GO.db version/source date: ", ontology$go_db_package_version, " / ", ontology$go_source_date),
+      paste0("Approved ontology relationships: ", ontology$approved_relationships),
+      paste0("Semantic redundancy QA: GOSemSim Wang BP; descriptive cutoff = ", MANUSCRIPT_GO_SEMANTIC_CUTOFF),
+      paste0("Descriptive SUS-RES recurrence threshold (not an inferential/display gate): ", atlas_min_recurrent_units),
       paste0("Divergence delta NES threshold: ", divergence_delta_threshold),
-      paste0("Rows before publication filtering: ", row_counts$before),
-      paste0("Rows after publication filtering: ", row_counts$after),
+      paste0("Supported SUS-RES GO term occurrences: ", row_counts$before),
+      paste0("Primary manuscript theme/unit rows: ", row_counts$after),
       "Figures:",
       paste0("  ", paste(paths$figures, collapse = "\n  ")),
       "Source data:",
@@ -767,8 +920,50 @@ write_outputs <- function(enrichment_df, summary_df, behavior_df, driver_df, dia
   )
 }
 
+build_sus_res_manuscript_theme_outputs <- function(
+    enrichment_df,
+    registry_path = MANUSCRIPT_GO_THEME_REGISTRY,
+    semantic_cutoff = MANUSCRIPT_GO_SEMANTIC_CUTOFF) {
+  registry <- read_manuscript_go_theme_registry(registry_path)
+  supported_terms <- enrichment_df %>%
+    dplyr::filter(
+      as.character(.data$phenotype_contrast) == "SUS_vs_RES",
+      !is.na(.data$p.adjust), .data$p.adjust < 0.05
+    ) %>%
+    dplyr::distinct(.data$ID, .data$Description)
+  mapping <- map_go_terms_to_manuscript_themes(supported_terms, registry)
+  supported_audit <- build_sus_res_supported_go_theme_audit(enrichment_df, mapping)
+  semantic <- go_semantic_redundancy_qa(supported_audit, cutoff = semantic_cutoff)
+  theme_summary <- build_sus_res_manuscript_theme_summary(
+    supported_audit, mapping, semantic$term_audit
+  ) %>%
+    dplyr::mutate(
+      program = .data$manuscript_theme,
+      dataset_compartment_label = dplyr::case_when(
+        .data$dataset_compartment == "neuron_neuropil" ~ "Neuron neuropil",
+        .data$dataset_compartment == "neuron_soma" ~ "Neuron soma",
+        .data$dataset_compartment == "microglia" ~ "Microglia-enriched ROI",
+        TRUE ~ .data$dataset_compartment
+      ),
+      spatial_unit_label = clean_spatial_unit_label(.data$spatial_unit),
+      interpretable_program = .data$theme_role == "primary"
+    )
+  list(
+    registry = registry,
+    mapping = mapping,
+    assignment_long = collapse_go_theme_assignment_audit(mapping),
+    supported_audit = supported_audit,
+    semantic_term_audit = semantic$term_audit,
+    semantic_pair_audit = semantic$pair_audit,
+    theme_summary = theme_summary,
+    assignment_status_summary = summarize_go_theme_assignment_status(supported_audit)
+  )
+}
+
 main <- function() {
   load_required_packages(required_pkgs)
+  require_go_ontology_dependencies(include_semantic = TRUE)
+  registry_dry_check <- read_manuscript_go_theme_registry(MANUSCRIPT_GO_THEME_REGISTRY)
 
   datasets <- get_requested_datasets()
   files <- purrr::map(datasets, discover_dataset_files)
@@ -776,6 +971,9 @@ main <- function() {
 
   if (is_script_dry_run()) {
     message("[DRY-RUN] compareGO spatial atlas")
+    message("[DRY-RUN] manuscript GO-theme registry: ", MANUSCRIPT_GO_THEME_REGISTRY)
+    message("[DRY-RUN] registry version/themes: ", unique(registry_dry_check$registry_version), " / ", length(unique(registry_dry_check$theme_id)))
+    message("[DRY-RUN] ontology relationships: ", paste(manuscript_go_allowed_relationships(), collapse = ", "))
     print(diagnostics)
     missing <- diagnostics %>% dplyr::filter(!.data$exists)
     if (nrow(missing) > 0) {
@@ -804,8 +1002,47 @@ main <- function() {
   program_summary <- calculate_program_summary(enrichment_df, driver_by_dataset)
   behavior_df <- classify_program_behavior(program_summary)
   driver_recurrence <- make_driver_recurrence(enrichment_df)
+  manuscript <- build_sus_res_manuscript_theme_outputs(enrichment_df)
 
   write_outputs(enrichment_df, program_summary, behavior_df, driver_recurrence, diagnostics)
+  readr::write_csv(
+    manuscript$assignment_long,
+    file.path(CANONICAL_PATHS$source_data, "sus_res_go_term_theme_assignment_long.csv"), na = ""
+  )
+  readr::write_csv(
+    manuscript$mapping$assignments,
+    file.path(CANONICAL_PATHS$source_data, "sus_res_go_term_theme_path_audit.csv"), na = ""
+  )
+  readr::write_csv(
+    manuscript$supported_audit,
+    file.path(CANONICAL_PATHS$source_data, "sus_res_supported_go_term_theme_audit.csv"), na = ""
+  )
+  readr::write_csv(
+    manuscript$semantic_term_audit,
+    file.path(CANONICAL_PATHS$source_data, "sus_res_go_semantic_redundancy_audit.csv"), na = ""
+  )
+  readr::write_csv(
+    manuscript$semantic_pair_audit,
+    file.path(CANONICAL_PATHS$source_data, "sus_res_go_semantic_similarity_pairs.csv"), na = ""
+  )
+  readr::write_csv(
+    manuscript$assignment_status_summary,
+    file.path(CANONICAL_PATHS$tables, "sus_res_go_theme_assignment_summary.csv"), na = ""
+  )
+  readr::write_csv(
+    manuscript$supported_audit %>% dplyr::select(dplyr::all_of(c(
+      "supported_occurrence_id", "dataset", "compartment", "region", "layer",
+      "spatial_unit", "GO_ID", "GO_description", "NES", "p.adjust",
+      "legacy_program_class", "manuscript_themes", "theme_roles", "assignment_status",
+      "mapping_method", "registry_version", "GO_db_package_version", "GO_source_date",
+      "relationship_types_approved"
+    ))),
+    file.path(CANONICAL_PATHS$source_data, "sus_res_legacy_vs_manuscript_classification_audit.csv"), na = ""
+  )
+  readr::write_csv(
+    manuscript$theme_summary,
+    file.path(CANONICAL_PATHS$tables, "sus_res_manuscript_theme_summary.csv"), na = ""
+  )
 
   plot_spatial_program_atlas(program_summary, file.path(CANONICAL_PATHS$figures, "Fig_SpatialProgramAtlas_dotheatmap.svg"))
   plot_res_sus_divergence(behavior_df, file.path(CANONICAL_PATHS$figures, "Fig_RES_SUS_divergence.svg"))
@@ -829,9 +1066,22 @@ main <- function() {
     topdrivers = file.path(CANONICAL_PATHS$source_data, "source_data_LeadingEdgeDriverRecurrence_topdrivers_publication.csv")
   )
 
+  legacy_sus_res_source <- file.path(
+    CANONICAL_PATHS$source_data,
+    "source_data_SpatialProgramAtlas_SUS_vs_RES_legacy_programs.csv"
+  )
+  readr::write_csv(
+    prepare_sus_res_publication_summary(program_summary, atlas_min_recurrent_units),
+    legacy_sus_res_source, na = ""
+  )
+
   publication_source_df <- prepare_publication_summary(program_summary, atlas_min_recurrent_units)
   plot_spatial_program_atlas_publication(program_summary, publication_figures[["spatial_atlas"]], publication_source[["spatial_atlas"]], atlas_min_recurrent_units)
-  plot_sus_res_spatial_program_atlas_publication(program_summary, publication_figures[["sus_res_spatial_atlas"]], publication_source[["sus_res_spatial_atlas"]], atlas_min_recurrent_units)
+  plot_sus_res_manuscript_theme_atlas(
+    manuscript$theme_summary,
+    publication_figures[["sus_res_spatial_atlas"]],
+    publication_source[["sus_res_spatial_atlas"]]
+  )
   plot_neuropil_focus_publication(program_summary, publication_figures[["neuropil_focus"]], publication_source[["neuropil_focus"]])
   plot_compartment_comparison_publication(program_summary, publication_figures[["compartment"]], publication_source[["compartment"]])
   plot_res_sus_divergence_publication(behavior_df, publication_figures[["divergence"]], publication_source[["divergence"]], divergence_delta_threshold)
@@ -840,7 +1090,10 @@ main <- function() {
   write_publication_provenance(
     paths = list(figures = unname(publication_figures), source_data = unname(publication_source)),
     analyzed_datasets = vapply(files, `[[`, character(1), "dataset"),
-    row_counts = list(before = nrow(program_summary), after = sum(publication_source_df$publication_include, na.rm = TRUE))
+    row_counts = list(
+      before = nrow(manuscript$supported_audit),
+      after = sum(manuscript$theme_summary$theme_role == "primary", na.rm = TRUE)
+    )
   )
 
   writeLines(
@@ -849,6 +1102,8 @@ main <- function() {
       paste0("Datasets requested: ", paste(datasets, collapse = ", ")),
       paste0("Datasets analyzed: ", paste(vapply(files, `[[`, character(1), "dataset"), collapse = ", ")),
       paste0("Program summary rows: ", nrow(program_summary)),
+      paste0("Supported SUS-RES GO term occurrences: ", nrow(manuscript$supported_audit)),
+      paste0("Manuscript theme summary rows: ", nrow(manuscript$theme_summary)),
       paste0("Publication atlas rows: ", sum(publication_source_df$publication_include, na.rm = TRUE)),
       paste0("Figures directory: ", CANONICAL_PATHS$figures)
     ),

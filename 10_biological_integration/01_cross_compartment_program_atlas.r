@@ -79,9 +79,10 @@ program_evidence <- function(ds, file) {
     p_value = if (!is.na(p)) num_or_na(df[[p]]) else NA_real_,
     fdr = if (!is.na(fdr)) num_or_na(df[[fdr]]) else NA_real_,
     support_count = if (!is.na(genes)) lengths(lapply(df[[genes]], split_gene_tokens)) else NA_real_,
+    evidence_source_family = "ranked_GSEA",
     source_file = file,
     evidence_status = "program_evidence",
-    interpretation_note = "Differential enrichment/program evidence.",
+    interpretation_note = "Ranked-GSEA program evidence; shares one inferential lineage with downstream spatial compareGO summaries.",
     qc_flag = "PASS",
     stringsAsFactors = FALSE
   ))
@@ -163,16 +164,20 @@ evidence_file <- function(ds, domain, file, input_type) {
 microglia_wgcna_readiness_evidence <- function(file, label_lookup_file) {
   contract <- load_microglia_wgcna_claim_readiness(file)
   df <- contract$all
+  supported_group_effect <- as.character(df$group_effect_status) == "FDR_supported"
   counts <- as.logical(df$separate_manuscript_claim_allowed) &
-    as.character(df$claim_entity_role) != "compatibility_alias"
+    as.character(df$claim_entity_role) != "compatibility_alias" & supported_group_effect
   semantic <- ifelse(
     as.character(df$claim_entity_role) == "compatibility_alias",
     "wgcna_compatibility_provenance",
-    "wgcna_architecture"
+    ifelse(supported_group_effect, "wgcna_stress_group_effect", "wgcna_architecture")
   )
   evidence <- standardize_evidence(data.frame(
     dataset = as.character(df$dataset),
-    evidence_domain = ifelse(semantic == "wgcna_architecture", "wgcna_architecture", "wgcna_compatibility_provenance"),
+    evidence_domain = ifelse(
+      semantic == "wgcna_compatibility_provenance", "wgcna_compatibility_provenance",
+      ifelse(semantic == "wgcna_stress_group_effect", "wgcna_stress_group_effect", "wgcna_architecture")
+    ),
     evidence_id = paste(df$dataset, "stage13", df$level, df$entity_id, sep = "::"),
     program_label = as.character(df$canonical_biological_label),
     entity_type = as.character(df$level),
@@ -187,15 +192,18 @@ microglia_wgcna_readiness_evidence <- function(file, label_lookup_file) {
     wgcna_prohibited_claim_scope = as.character(df$prohibited_claim_scope),
     readiness_contract_version = as.character(df$readiness_contract_version),
     counts_toward_convergence = counts,
+    evidence_source_family = ifelse(
+      semantic == "wgcna_stress_group_effect", "WGCNA_stress_group_effect", "WGCNA_covariance_architecture"
+    ),
     evidence_semantic_class = semantic,
     contrast = as.character(df$selected_contrast),
     spatial_unit = as.character(df$selected_spatial_unit),
-    effect_size = NA_real_,
-    p_value = NA_real_,
-    fdr = NA_real_,
+    effect_size = ifelse(supported_group_effect, suppressWarnings(as.numeric(df$group_effect_estimate)), NA_real_),
+    p_value = ifelse(supported_group_effect, suppressWarnings(as.numeric(df$group_effect_p_value)), NA_real_),
+    fdr = ifelse(supported_group_effect, suppressWarnings(as.numeric(df$group_effect_tier_specific_fdr)), NA_real_),
     support_count = 1,
     source_file = contract$source_path,
-    evidence_status = ifelse(counts, "architecture_candidate", ifelse(semantic == "wgcna_compatibility_provenance", "compatibility_only", "descriptive_architecture_only")),
+    evidence_status = ifelse(counts, "FDR_supported_stress_group_effect", ifelse(semantic == "wgcna_compatibility_provenance", "compatibility_only", "descriptive_architecture_only")),
     interpretation_note = as.character(df$allowed_wording),
     qc_flag = "PASS",
     stringsAsFactors = FALSE
@@ -264,9 +272,10 @@ spatial_program_evidence <- function(ds, file) {
     effect_size = if (!is.na(est)) num_or_na(df[[est]]) else NA_real_,
     fdr = if (!is.na(fdr)) num_or_na(df[[fdr]]) else NA_real_,
     support_count = 1,
+    evidence_source_family = "ranked_GSEA",
     source_file = file,
     evidence_status = "spatial_program_evidence",
-    interpretation_note = "Spatial architecture evidence from compareGO spatial program atlas.",
+    interpretation_note = "Spatial summary of ranked-GSEA evidence; inventory representation of the same inferential lineage as enrichment_program.",
     qc_flag = "PASS",
     stringsAsFactors = FALSE
   ))
@@ -334,18 +343,30 @@ atlas_long$program_key <- program_key(atlas_long$program_label)
 atlas_long$dataset_label <- vapply(atlas_long$dataset, function(x) if (x %in% valid_datasets()) dataset_contracts()[[x]]$label else x, character(1))
 atlas_long$evidence_strength <- vapply(seq_len(nrow(atlas_long)), function(i) evidence_strength(atlas_long$fdr[[i]], atlas_long$support_count[[i]]), character(1))
 
+counting_atlas <- atlas_long[atlas_long$counts_toward_convergence %in% TRUE, , drop = FALSE]
 summary_rows <- aggregate(
   evidence_domain ~ dataset + program_key,
-  atlas_long[atlas_long$counts_toward_convergence %in% TRUE, , drop = FALSE],
+  counting_atlas,
   function(x) paste(sort(unique(x)), collapse = ";")
 )
 names(summary_rows)[names(summary_rows) == "evidence_domain"] <- "evidence_domains"
 summary_rows$n_evidence_domains <- lengths(strsplit(summary_rows$evidence_domains, ";", fixed = TRUE))
-fdr_summary <- aggregate(fdr ~ dataset + program_key, atlas_long[atlas_long$counts_toward_convergence %in% TRUE, , drop = FALSE], function(x) suppressWarnings(min(num_or_na(x), na.rm = TRUE)))
+family_summary <- aggregate(
+  evidence_source_family ~ dataset + program_key,
+  counting_atlas,
+  function(x) paste(sort(unique(x)), collapse = ";")
+)
+names(family_summary)[names(family_summary) == "evidence_source_family"] <- "evidence_source_families"
+family_summary$n_independent_evidence_families <- lengths(strsplit(family_summary$evidence_source_families, ";", fixed = TRUE))
+summary_rows <- merge(summary_rows, family_summary, by = c("dataset", "program_key"), all.x = TRUE)
+fdr_summary <- aggregate(fdr ~ dataset + program_key, counting_atlas, function(x) suppressWarnings(min(num_or_na(x), na.rm = TRUE)))
 names(fdr_summary)[names(fdr_summary) == "fdr"] <- "strongest_fdr"
 summary_rows <- merge(summary_rows, fdr_summary, by = c("dataset", "program_key"), all.x = TRUE)
 summary_rows$strongest_fdr[is.infinite(summary_rows$strongest_fdr)] <- NA_real_
-summary_rows$atlas_status <- ifelse(summary_rows$n_evidence_domains >= 4, "multi_stream_supported", ifelse(summary_rows$n_evidence_domains >= 2, "convergent_support", "single_stream_or_missing"))
+summary_rows$atlas_status <- ifelse(
+  summary_rows$n_independent_evidence_families >= 4, "multi_lineage_supported",
+  ifelse(summary_rows$n_independent_evidence_families >= 2, "independent_lineage_support", "single_lineage_or_missing")
+)
 
 validate_cross_compartment_program_atlas(atlas_long)
 invisible(write_integration_table(atlas_long, paths, "cross_compartment_program_atlas_long.csv"))
