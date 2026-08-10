@@ -24,15 +24,21 @@ testthat::test_that("live SUS-RES inspection rows preserve exact ontology-mapped
   audit <- utils::read.csv(sus_res_supported_audit_path, check.names = FALSE, stringsAsFactors = FALSE)
 
   testthat::expect_gt(nrow(summary), 0L)
-  testthat::expect_true(all(summary$theme_role %in% c("primary", "supporting", "qc_review")))
+  testthat::expect_equal(nrow(summary), 144L)
+  testthat::expect_true(all(summary$theme_role %in% c("primary", "qc_review")))
   testthat::expect_true(all(summary$mapping_method == "go_id_ontology"))
   testthat::expect_true(all(summary$evidence_source_family == "ranked_GSEA"))
   testthat::expect_false(anyDuplicated(paste(summary$dataset, summary$spatial_unit, summary$manuscript_theme_id, sep = "|")) > 0L)
-  testthat::expect_true(all(is.finite(summary$representative_NES)))
-  testthat::expect_true(all(is.finite(summary$representative_FDR)))
-  testthat::expect_true(all(summary$representative_FDR < 0.05))
+  testthat::expect_true(all(summary$n_theme_terms_tested > 0L))
+  testthat::expect_true(all(is.finite(summary$median_NES_all_theme_terms)))
+  supported_rows <- as.logical(summary$FDR_support_present)
+  testthat::expect_true(all(is.finite(summary$representative_NES[supported_rows])))
+  testthat::expect_true(all(is.finite(summary$representative_FDR[supported_rows])))
+  testthat::expect_true(all(summary$representative_FDR[supported_rows] < 0.05))
+  testthat::expect_true(all(is.na(summary$representative_NES[!supported_rows])))
+  testthat::expect_true(all(is.na(summary$representative_FDR[!supported_rows])))
 
-  for (i in seq_len(nrow(summary))) {
+  for (i in which(supported_rows)) {
     theme_pattern <- paste0("(^|;)", summary$manuscript_theme_id[[i]], "($|;)")
     candidate <- audit[
       audit$dataset == summary$dataset[[i]] &
@@ -77,11 +83,12 @@ testthat::test_that("live DAP joins and directional recurrence remain descriptiv
 
   for (theme in unique(summary$manuscript_theme_id)) {
     rows <- summary$manuscript_theme_id == theme
-    expected_units <- length(unique(paste(summary$dataset[rows], summary$spatial_unit[rows], sep = "|")))
-    expected_datasets <- length(unique(summary$dataset[rows]))
+    supported <- rows & as.logical(summary$FDR_support_present)
+    expected_units <- sum(supported)
+    expected_datasets <- length(unique(summary$dataset[supported]))
     testthat::expect_true(all(summary$sus_res_recurrent_units[rows] == expected_units))
     testthat::expect_true(all(summary$sus_res_recurrent_datasets[rows] == expected_datasets))
-    if (expected_units > 1L && any(summary$direction_consistency[rows] == "mixed_direction")) {
+    if (expected_units > 1L && any(summary$direction_consistency[supported] == "mixed_direction")) {
       testthat::expect_true(all(summary$directional_recurrence[rows] == "recurrent_mixed_direction"))
     }
   }
@@ -90,7 +97,11 @@ testthat::test_that("live DAP joins and directional recurrence remain descriptiv
 testthat::test_that("Panel C contains primary themes only and retains source family", {
   testthat::skip_if_not(file.exists(sus_res_panel_path), "Generated ontology-aware Panel C source is unavailable")
   panel <- utils::read.csv(sus_res_panel_path, check.names = FALSE, stringsAsFactors = FALSE)
+  testthat::expect_equal(nrow(panel), 108L)
   testthat::expect_true(all(panel$theme_role == "primary"))
   testthat::expect_true(all(panel$evidence_source_family == "ranked_GSEA"))
   testthat::expect_false(any(panel$theme_role == "qc_review"))
+  testthat::expect_true(any(panel$FDR_support_present))
+  testthat::expect_true(any(!panel$FDR_support_present))
+  testthat::expect_true(all(is.finite(panel$median_NES_all_theme_terms)))
 })

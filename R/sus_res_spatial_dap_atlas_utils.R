@@ -292,6 +292,11 @@ sus_res_prepare_ranked_program_panel <- function(source_df, expected_datasets = 
     "dataset_compartment", "dataset_compartment_label", "comparison",
     "compartment", "region", "layer", "theme_id", "manuscript_theme", "theme_role",
     "display_order", "spatial_unit", "spatial_unit_label",
+    "n_theme_terms_tested", "median_NES_all_theme_terms", "q25_NES_all_theme_terms",
+    "q75_NES_all_theme_terms", "n_positive_NES_all_theme_terms",
+    "n_negative_NES_all_theme_terms", "fraction_positive_NES", "fraction_negative_NES",
+    "descriptive_direction", "low_theme_term_coverage", "theme_term_coverage_rule",
+    "min_original_GO_FDR", "FDR_support_present",
     "representative_term_id", "representative_term", "representative_NES",
     "representative_FDR", "representative_leading_edge_proteins",
     "representative_leading_edge_genes", "significant_term_count",
@@ -341,9 +346,17 @@ sus_res_prepare_ranked_program_panel <- function(source_df, expected_datasets = 
     stop("Ranked GO/GSEA Panel C source contains non-finite significant_term_count values.", call. = FALSE)
   }
   n_supported <- suppressWarnings(as.integer(out$significant_term_count))
+  n_tested <- suppressWarnings(as.integer(out$n_theme_terms_tested))
+  descriptive_nes <- suppressWarnings(as.numeric(out$median_NES_all_theme_terms))
   representative_nes <- suppressWarnings(as.numeric(out$representative_NES))
   representative_fdr <- suppressWarnings(as.numeric(out$representative_FDR))
   has_supported <- n_supported > 0L
+  if (any(n_tested < 0L | (!is.finite(descriptive_nes) & n_tested > 0L))) {
+    stop("Ranked GO/GSEA theme rows must carry a finite descriptive median whenever mapped tested terms exist.", call. = FALSE)
+  }
+  if (any(as.logical(out$FDR_support_present) != has_supported)) {
+    stop("Ranked GO/GSEA FDR_support_present must equal n_FDR_supported_GO_terms > 0.", call. = FALSE)
+  }
   if (any(has_supported & (!is.finite(representative_nes) | !is.finite(representative_fdr)))) {
     stop("Ranked GO/GSEA Panel C source has an FDR-supported theme row without finite representative NES/FDR.", call. = FALSE)
   }
@@ -362,11 +375,11 @@ sus_res_prepare_ranked_program_panel <- function(source_df, expected_datasets = 
   out$program <- as.character(out$manuscript_theme)
   out$interpretable_program <- as.character(out$theme_role) == "primary"
   out$panel <- "c"
-  out$statistical_view <- "ranked proteome-wide GO/GSEA manuscript-theme summary"
+  out$statistical_view <- "original GO-term FDR support plus descriptive median across all mapped tested GO terms"
   out$panel_data_basis <- "ranked_proteome_wide_GO_GSEA"
   out$panel_c_derived_from_DAP_sets <- FALSE
   out$NES_interpretation <- "positive = higher in SUS; negative = higher in RES"
-  out$representative_minus_log10_FDR <- -log10(pmax(representative_fdr, .Machine$double.xmin))
+  out$representative_minus_log10_FDR <- ifelse(has_supported, -log10(pmax(representative_fdr, .Machine$double.xmin)), NA_real_)
   rownames(out) <- NULL
   out
 }
@@ -401,11 +414,19 @@ sus_res_biological_inspection_summary <- function(program_df) {
   required <- c(
     "dataset_compartment", "compartment", "region", "layer", "spatial_unit",
     "theme_id", "manuscript_theme", "theme_role",
+    "n_theme_terms_tested", "median_NES_all_theme_terms", "q25_NES_all_theme_terms",
+    "q75_NES_all_theme_terms", "n_positive_NES_all_theme_terms",
+    "n_negative_NES_all_theme_terms", "fraction_positive_NES", "fraction_negative_NES",
+    "descriptive_direction", "low_theme_term_coverage", "theme_term_coverage_rule",
+    "min_original_GO_FDR", "FDR_support_present",
     "representative_term_id", "representative_term", "representative_NES",
     "representative_FDR", "direction", "significant_term_count",
     "n_positive_sig_terms", "n_negative_sig_terms", "direction_consistency", "n_semantic_clusters",
     "representative_leading_edge_genes", "representative_leading_edge_proteins",
-    "n_DAP_FDR05", "n_supported_units", "n_supported_datasets",
+    "n_DAP_FDR05", "n_supported_units", "n_supported_datasets", "n_units_evaluable",
+    "n_units_with_FDR_support", "n_units_descriptive_higher_SUS",
+    "n_units_descriptive_higher_RES", "n_FDR_units_higher_SUS", "n_FDR_units_higher_RES",
+    "spatial_concordance_classification", "FDR_spatial_scope",
     "n_higher_SUS_units", "n_higher_RES_units", "n_higher_SUS_datasets", "n_higher_RES_datasets",
     "directional_recurrence", "sus_res_recurrent_units", "sus_res_recurrent_datasets",
     "recurrence_annotation", "source_supplementary_file", "source_manifest_file",
@@ -428,6 +449,19 @@ sus_res_biological_inspection_summary <- function(program_df) {
     manuscript_theme_id = as.character(program_df$theme_id),
     manuscript_theme = as.character(program_df$manuscript_theme),
     theme_role = as.character(program_df$theme_role),
+    n_theme_terms_tested = suppressWarnings(as.integer(program_df$n_theme_terms_tested)),
+    median_NES_all_theme_terms = suppressWarnings(as.numeric(program_df$median_NES_all_theme_terms)),
+    q25_NES_all_theme_terms = suppressWarnings(as.numeric(program_df$q25_NES_all_theme_terms)),
+    q75_NES_all_theme_terms = suppressWarnings(as.numeric(program_df$q75_NES_all_theme_terms)),
+    n_positive_NES_all_theme_terms = suppressWarnings(as.integer(program_df$n_positive_NES_all_theme_terms)),
+    n_negative_NES_all_theme_terms = suppressWarnings(as.integer(program_df$n_negative_NES_all_theme_terms)),
+    fraction_positive_NES = suppressWarnings(as.numeric(program_df$fraction_positive_NES)),
+    fraction_negative_NES = suppressWarnings(as.numeric(program_df$fraction_negative_NES)),
+    descriptive_direction = as.character(program_df$descriptive_direction),
+    low_theme_term_coverage = as.logical(program_df$low_theme_term_coverage),
+    theme_term_coverage_rule = as.character(program_df$theme_term_coverage_rule),
+    min_original_GO_FDR = suppressWarnings(as.numeric(program_df$min_original_GO_FDR)),
+    FDR_support_present = as.logical(program_df$FDR_support_present),
     representative_GO_ID = as.character(program_df$representative_term_id),
     representative_GO_term = as.character(program_df$representative_term),
     representative_NES = suppressWarnings(as.numeric(program_df$representative_NES)),
@@ -441,6 +475,14 @@ sus_res_biological_inspection_summary <- function(program_df) {
     leading_edge_genes = as.character(program_df$representative_leading_edge_genes),
     leading_edge_proteins = as.character(program_df$representative_leading_edge_proteins),
     n_FDR_supported_SUS_RES_DAPs = suppressWarnings(as.integer(program_df$n_DAP_FDR05)),
+    n_units_evaluable = suppressWarnings(as.integer(program_df$n_units_evaluable)),
+    n_units_with_FDR_support = suppressWarnings(as.integer(program_df$n_units_with_FDR_support)),
+    n_units_descriptive_higher_SUS = suppressWarnings(as.integer(program_df$n_units_descriptive_higher_SUS)),
+    n_units_descriptive_higher_RES = suppressWarnings(as.integer(program_df$n_units_descriptive_higher_RES)),
+    n_FDR_units_higher_SUS = suppressWarnings(as.integer(program_df$n_FDR_units_higher_SUS)),
+    n_FDR_units_higher_RES = suppressWarnings(as.integer(program_df$n_FDR_units_higher_RES)),
+    spatial_concordance_classification = as.character(program_df$spatial_concordance_classification),
+    FDR_spatial_scope = as.character(program_df$FDR_spatial_scope),
     sus_res_recurrent_units = suppressWarnings(as.integer(program_df$sus_res_recurrent_units)),
     sus_res_recurrent_datasets = suppressWarnings(as.integer(program_df$sus_res_recurrent_datasets)),
     n_higher_SUS_units = suppressWarnings(as.integer(program_df$n_higher_SUS_units)),
@@ -470,6 +512,68 @@ sus_res_biological_inspection_summary <- function(program_df) {
   )
   key <- paste(out$dataset, out$spatial_unit, out$manuscript_theme_id, sep = "|")
   if (anyDuplicated(key)) stop("SUS-RES biological inspection summary has duplicate dataset + spatial_unit + manuscript theme rows.", call. = FALSE)
+  out
+}
+
+sus_res_theme_domain <- function(theme_id) {
+  domains <- c(
+    rna_processing_splicing_rnp = "Gene expression & RNA regulation",
+    ribosome_translation = "Gene expression & RNA regulation",
+    chromatin_organization = "Gene expression & RNA regulation",
+    mitochondrial_respiration_oxphos = "Bioenergetics",
+    synaptic_signaling_vesicle = "Synaptic function",
+    autophagy_lysosome_endosome = "Endolysosomal homeostasis",
+    cytoskeleton_structure = "QC-associated",
+    epithelial_epidermal_qc = "QC-associated"
+  )
+  out <- unname(domains[as.character(theme_id)])
+  out[is.na(out)] <- "Other"
+  out
+}
+
+sus_res_theme_overview <- function(program_df) {
+  required <- c(
+    "theme_id", "manuscript_theme", "theme_role", "display_order",
+    "n_theme_terms_tested", "FDR_support_present", "n_FDR_supported_GO_terms",
+    "representative_term_id", "representative_term", "representative_NES", "representative_FDR", "n_units_evaluable",
+    "n_units_with_FDR_support", "n_units_descriptive_higher_SUS",
+    "n_units_descriptive_higher_RES", "n_FDR_units_higher_SUS", "n_FDR_units_higher_RES",
+    "spatial_concordance_classification", "FDR_spatial_scope"
+  )
+  missing <- setdiff(required, names(program_df))
+  if (length(missing)) stop("Theme overview input is missing columns: ", paste(missing, collapse = ", "), call. = FALSE)
+  groups <- split(program_df, program_df$theme_id)
+  rows <- lapply(groups, function(x) {
+    supported <- x[as.logical(x$FDR_support_present), , drop = FALSE]
+    strongest <- if (nrow(supported)) supported[order(supported$representative_FDR, -abs(supported$representative_NES), supported$representative_term_id, method = "radix"), , drop = FALSE][1, , drop = FALSE] else NULL
+    data.frame(
+      biological_domain = sus_res_theme_domain(x$theme_id[[1]]),
+      manuscript_theme_id = x$theme_id[[1]],
+      manuscript_theme = x$manuscript_theme[[1]],
+      role = if (x$theme_role[[1]] == "qc_review") "QC" else x$theme_role[[1]],
+      supported_GO_occurrences = sum(x$n_FDR_supported_GO_terms, na.rm = TRUE),
+      unique_supported_GO_IDs = if ("n_unique_FDR_supported_GO_IDs" %in% names(x)) x$n_unique_FDR_supported_GO_IDs[[1]] else NA_integer_,
+      n_units_evaluable = x$n_units_evaluable[[1]],
+      n_units_with_FDR_support = x$n_units_with_FDR_support[[1]],
+      descriptive_higher_SUS_units = x$n_units_descriptive_higher_SUS[[1]],
+      descriptive_higher_RES_units = x$n_units_descriptive_higher_RES[[1]],
+      FDR_supported_SUS_units = x$n_FDR_units_higher_SUS[[1]],
+      FDR_supported_RES_units = x$n_FDR_units_higher_RES[[1]],
+      spatial_concordance_classification = x$spatial_concordance_classification[[1]],
+      strongest_supported_representative_GO_term = if (is.null(strongest)) NA_character_ else strongest$representative_term[[1]],
+      strongest_original_FDR = if (is.null(strongest)) NA_real_ else strongest$representative_FDR[[1]],
+      short_audit_note = paste0(
+        if (x$theme_role[[1]] == "qc_review") "QC-associated; excluded from primary Panel C. " else "Primary ontology theme. ",
+        if (x$FDR_spatial_scope[[1]] == "spatially_limited") "Original GO-term FDR support is spatially limited." else if (x$FDR_spatial_scope[[1]] == "no_FDR_supported_units") "No constituent GO term is FDR-supported." else "Original GO-term FDR support occurs in multiple units."
+      ),
+      display_order = x$display_order[[1]],
+      stringsAsFactors = FALSE
+    )
+  })
+  out <- do.call(rbind, rows)
+  out <- out[order(out$display_order, method = "radix"), , drop = FALSE]
+  out$display_order <- NULL
+  rownames(out) <- NULL
   out
 }
 
