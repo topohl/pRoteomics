@@ -164,10 +164,19 @@ testthat::test_that("Panel C filters canonical SUS-RES ranked-GSEA rows without 
     compartment = c("neuropil", "microglia", "neuropil"),
     region = c("CA1", "CA1", "CA1"), layer = c("slm", NA, "slm"),
     theme_id = c("rna_processing_splicing_rnp", "synaptic_signaling_vesicle", "rna_processing_splicing_rnp"),
-    manuscript_theme = c("RNA processing / splicing / RNP biology", "Synaptic signaling / vesicle trafficking", "RNA processing / splicing / RNP biology"),
-    theme_role = c("primary", "primary", "primary"), display_order = c(1L, 4L, 1L),
+    manuscript_theme = c("RNA processing / splicing / RNP organization", "Synaptic signaling / vesicle-mediated transport", "RNA processing / splicing / RNP organization"),
+    theme_role = c("primary", "primary", "primary"), display_order = c(1L, 5L, 1L),
     spatial_unit = c("CA1_slm", "CA1", "CA1_slm"),
     spatial_unit_label = c("CA1 SLM", "CA1", "CA1 SLM"),
+    n_theme_terms_tested = c(12L, 20L, 12L),
+    median_NES_all_theme_terms = c(-0.55, 0.35, 0.8),
+    q25_NES_all_theme_terms = c(-0.8, 0.1, 0.5), q75_NES_all_theme_terms = c(-0.2, 0.7, 1.1),
+    n_positive_NES_all_theme_terms = c(2L, 13L, 10L), n_negative_NES_all_theme_terms = c(10L, 7L, 2L),
+    fraction_positive_NES = c(2/12, 13/20, 10/12), fraction_negative_NES = c(10/12, 7/20, 2/12),
+    descriptive_direction = c("higher_RES_tendency", "higher_SUS_tendency", "higher_SUS_tendency"),
+    low_theme_term_coverage = FALSE,
+    theme_term_coverage_rule = "flag when fewer than 3 mapped tested GO terms; no cells excluded",
+    min_original_GO_FDR = c(0.01, 0.02, 0.01), FDR_support_present = TRUE,
     representative_term_id = c("GO:1", "GO:2", "GO:3"),
     representative_term = c("RNA term", "synapse term", "other contrast term"),
     representative_NES = c(-2.375, 1.625, 9),
@@ -180,6 +189,11 @@ testthat::test_that("Panel C filters canonical SUS-RES ranked-GSEA rows without 
     direction_consistency = c("negative_only", "positive_only", "positive_only"),
     n_semantic_clusters = c(1L, 2L, 50L),
     n_supported_units = c(1L, 2L, 99L), n_supported_datasets = c(1L, 2L, 3L),
+    n_units_evaluable = c(18L, 18L, 18L), n_units_with_FDR_support = c(1L, 2L, 99L),
+    n_units_descriptive_higher_SUS = c(8L, 12L, 18L), n_units_descriptive_higher_RES = c(10L, 6L, 0L),
+    n_FDR_units_higher_SUS = c(0L, 2L, 99L), n_FDR_units_higher_RES = c(1L, 0L, 0L),
+    spatial_concordance_classification = c("predominantly_higher_RES", "predominantly_higher_SUS", "predominantly_higher_SUS"),
+    FDR_spatial_scope = c("spatially_limited", "multiple_spatial_units", "multiple_spatial_units"),
     n_higher_SUS_units = c(0L, 2L, 99L), n_higher_RES_units = c(1L, 0L, 0L),
     n_higher_SUS_datasets = c(0L, 2L, 3L), n_higher_RES_datasets = c(1L, 0L, 0L),
     directional_recurrence = c("spatially_specific", "recurrent_consistent_higher_SUS", "recurrent_consistent_higher_SUS"),
@@ -198,7 +212,7 @@ testthat::test_that("Panel C filters canonical SUS-RES ranked-GSEA rows without 
     evidence_source_family = "ranked_GSEA",
     panel_data_basis = "ranked_proteome_wide_GO_GSEA",
     recurrence_inference_role = "descriptive_only_not_a_significance_gate",
-    mapping_method = "go_id_ontology", registry_version = "manuscript_go_themes_v1",
+    mapping_method = "go_id_ontology", registry_version = "manuscript_go_themes_v2",
     GO_db_package_version = "3.22.0", GO_source_name = "Gene Ontology",
     GO_source_url = "http://current.geneontology.org/ontology/go-basic.obo", GO_source_date = "2025-07-22",
     relationship_types_approved = "is_a;part_of",
@@ -214,6 +228,7 @@ testthat::test_that("Panel C filters canonical SUS-RES ranked-GSEA rows without 
   testthat::expect_true(all(out$panel_data_basis == "ranked_proteome_wide_GO_GSEA"))
   testthat::expect_true(all(!out$panel_c_derived_from_DAP_sets))
   testthat::expect_equal(out$representative_minus_log10_FDR, -log10(c(0.01, 0.02)))
+  testthat::expect_identical(out$median_NES_all_theme_terms, c(-0.55, 0.35))
 
   counts <- data.frame(
     dataset = c("neuron_neuropil", "microglia"), spatial_unit = c("CA1_slm", "CA1"),
@@ -250,7 +265,7 @@ testthat::test_that("script 10 consumes script 07 source rather than executing o
   testthat::expect_false(any(grepl("^\\s*source\\(.*07_compareGO_spatial_program_atlas", script_lines)))
   testthat::expect_match(script, "Panel C is ranked proteome-wide GO/GSEA evidence", fixed = TRUE)
   testthat::expect_match(script, "theme_role", fixed = TRUE)
-  testthat::expect_match(script, "GO-ID is_a/part_of ancestry", fixed = TRUE)
+  testthat::expect_match(script, "is_a/part_of ancestry", fixed = TRUE)
 })
 
 testthat::test_that("pipeline registers one global downstream producer with canonical inputs", {
@@ -265,6 +280,8 @@ testthat::test_that("pipeline registers one global downstream producer with cano
   testthat::expect_identical(unlist(producer$datasets), "global")
   testthat::expect_false(producer$recomputes_core_state)
   testthat::expect_true(producer$safe_downstream_rerun)
-  testthat::expect_length(producer$consumes_required, 4L)
+  testthat::expect_length(producer$consumes_required, 6L)
   testthat::expect_true(any(grepl("source_data_SpatialProgramAtlas_SUS_vs_RES_publication.csv", producer$consumes_required, fixed = TRUE)))
+  testthat::expect_true(any(grepl("sus_res_supported_go_term_theme_audit.csv", producer$consumes_required, fixed = TRUE)))
+  testthat::expect_true(any(grepl("sus_res_biological_audit.xlsx", producer$produces, fixed = TRUE)))
 })

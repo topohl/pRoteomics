@@ -169,6 +169,64 @@ go_bp_shortest_allowed_path <- function(go_id, anchor_go_id,
   )
 }
 
+go_bp_allowed_descendants <- function(anchor_go_id,
+                                      allowed_relationships = manuscript_go_allowed_relationships()) {
+  require_go_ontology_dependencies(FALSE)
+  allowed_relationships <- unique(normalize_go_relationship(allowed_relationships))
+  if (is.null(GO.db::GOTERM[[anchor_go_id]])) {
+    return(data.frame(
+      descendant_GO_ID = character(), path_length = integer(),
+      relationship_path = character(), GO_path = character(), stringsAsFactors = FALSE
+    ))
+  }
+  queue <- list(list(node = anchor_go_id, relationships = character(), nodes = anchor_go_id))
+  seen_depth <- stats::setNames(0L, anchor_go_id)
+  result <- list(data.frame(
+    descendant_GO_ID = anchor_go_id, path_length = 0L, relationship_path = "anchor",
+    GO_path = anchor_go_id, stringsAsFactors = FALSE
+  ))
+  while (length(queue)) {
+    current <- queue[[1L]]
+    queue <- queue[-1L]
+    children <- GO.db::GOBPCHILDREN[[current$node]]
+    if (is.null(children) || !length(children)) next
+    relations <- normalize_go_relationship(names(children))
+    keep <- relations %in% allowed_relationships
+    if (!any(keep)) next
+    edge_df <- data.frame(
+      child = unname(children[keep]),
+      relationship = relations[keep],
+      stringsAsFactors = FALSE
+    )
+    edge_df <- edge_df[order(edge_df$child, edge_df$relationship, method = "radix"), , drop = FALSE]
+    for (i in seq_len(nrow(edge_df))) {
+      child <- edge_df$child[[i]]
+      next_relationships <- c(current$relationships, edge_df$relationship[[i]])
+      next_nodes <- c(current$nodes, child)
+      next_depth <- length(next_relationships)
+      prior_depth <- unname(seen_depth[child])
+      if (!length(prior_depth) || is.na(prior_depth) || next_depth < prior_depth) {
+        seen_depth[[child]] <- next_depth
+        result[[length(result) + 1L]] <- data.frame(
+          descendant_GO_ID = child,
+          path_length = as.integer(next_depth),
+          relationship_path = paste(rev(next_relationships), collapse = ">"),
+          GO_path = paste(rev(next_nodes), collapse = ">"),
+          stringsAsFactors = FALSE
+        )
+        queue[[length(queue) + 1L]] <- list(
+          node = child, relationships = next_relationships, nodes = next_nodes
+        )
+      }
+    }
+  }
+  out <- do.call(rbind, result)
+  out <- out[order(out$path_length, out$descendant_GO_ID, out$relationship_path, method = "radix"), , drop = FALSE]
+  out <- out[!duplicated(out$descendant_GO_ID), , drop = FALSE]
+  rownames(out) <- NULL
+  out
+}
+
 map_go_terms_to_manuscript_themes <- function(go_terms, registry,
                                               id_col = "ID", description_col = "Description") {
   require_go_ontology_dependencies(FALSE)
@@ -194,38 +252,37 @@ map_go_terms_to_manuscript_themes <- function(go_terms, registry,
     term_obj <- if (grepl("^GO:[0-9]{7}$", go_id)) GO.db::GOTERM[[go_id]] else NULL
     !is.null(term_obj) && identical(AnnotationDbi::Ontology(term_obj), "BP")
   }, logical(1))
-  ancestry_cache <- stats::setNames(
-    lapply(terms$GO_ID[valid_bp], go_bp_allowed_ancestry),
-    terms$GO_ID[valid_bp]
+  valid_terms <- terms[valid_bp, , drop = FALSE]
+  descendant_anchor_ids <- unique(registry$anchor_go_id[registry$match_scope == "anchor_and_descendants"])
+  descendant_cache <- stats::setNames(
+    lapply(descendant_anchor_ids, go_bp_allowed_descendants),
+    descendant_anchor_ids
   )
   assignments <- vector("list", 0L)
   k <- 0L
-  for (i in seq_len(nrow(terms))) {
-    go_id <- terms$GO_ID[[i]]
-    if (!valid_bp[[i]]) next
-    ancestry <- ancestry_cache[[go_id]]
-    for (j in seq_len(nrow(registry))) {
-      if (identical(registry$match_scope[[j]], "exact_go_id")) {
-        path <- list(
-          matched = identical(go_id, registry$anchor_go_id[[j]]), path_length = 0L,
-          relationship_path = "anchor", go_path = go_id
-        )
-      } else {
-        hit <- ancestry[ancestry$ancestor_GO_ID == registry$anchor_go_id[[j]], , drop = FALSE]
-        path <- if (nrow(hit)) {
-          list(
-            matched = TRUE, path_length = hit$path_length[[1]],
-            relationship_path = hit$relationship_path[[1]], go_path = hit$GO_path[[1]]
-          )
-        } else {
-          list(matched = FALSE, path_length = NA_integer_, relationship_path = NA_character_, go_path = NA_character_)
-        }
-      }
-      if (!isTRUE(path$matched)) next
+  for (j in seq_len(nrow(registry))) {
+    if (identical(registry$match_scope[[j]], "exact_go_id")) {
+      hit_terms <- valid_terms[valid_terms$GO_ID == registry$anchor_go_id[[j]], , drop = FALSE]
+      if (!nrow(hit_terms)) next
+      paths <- data.frame(
+        descendant_GO_ID = hit_terms$GO_ID,
+        path_length = 0L,
+        relationship_path = "anchor",
+        GO_path = hit_terms$GO_ID,
+        stringsAsFactors = FALSE
+      )
+    } else {
+      descendants <- descendant_cache[[registry$anchor_go_id[[j]]]]
+      paths <- descendants[descendants$descendant_GO_ID %in% valid_terms$GO_ID, , drop = FALSE]
+      if (!nrow(paths)) next
+      paths <- paths[match(valid_terms$GO_ID[valid_terms$GO_ID %in% paths$descendant_GO_ID], paths$descendant_GO_ID), , drop = FALSE]
+      hit_terms <- valid_terms[match(paths$descendant_GO_ID, valid_terms$GO_ID), , drop = FALSE]
+    }
+    for (i in seq_len(nrow(hit_terms))) {
       k <- k + 1L
       assignments[[k]] <- data.frame(
-        GO_ID = go_id,
-        GO_description = terms$GO_description[[i]],
+        GO_ID = hit_terms$GO_ID[[i]],
+        GO_description = hit_terms$GO_description[[i]],
         theme_id = registry$theme_id[[j]],
         manuscript_theme = registry$display_label[[j]],
         theme_role = registry$theme_role[[j]],
@@ -233,10 +290,10 @@ map_go_terms_to_manuscript_themes <- function(go_terms, registry,
         anchor_GO_ID = registry$anchor_go_id[[j]],
         anchor_label = registry$anchor_label[[j]],
         match_scope = registry$match_scope[[j]],
-        match_type = if (path$path_length == 0L) "exact_anchor" else "approved_descendant",
-        path_length = path$path_length,
-        relationship_path = path$relationship_path,
-        GO_path = path$go_path,
+        match_type = if (paths$path_length[[i]] == 0L) "exact_anchor" else "approved_descendant",
+        path_length = paths$path_length[[i]],
+        relationship_path = paths$relationship_path[[i]],
+        GO_path = paths$GO_path[[i]],
         relationship_types_approved = provenance$approved_relationships,
         mapping_method = "go_id_ontology",
         registry_version = registry$registry_version[[j]],
@@ -592,6 +649,257 @@ build_sus_res_manuscript_theme_summary <- function(supported_audit, mapping, sem
   rownames(out) <- NULL
   key <- paste(out$dataset_compartment, out$spatial_unit, out$theme_id, sep = "|")
   if (anyDuplicated(key)) stop("Manuscript theme summary has duplicate dataset + spatial unit + theme rows.", call. = FALSE)
+  out
+}
+
+build_sus_res_theme_spatial_detail <- function(enrichment_df, mapping,
+                                               semantic_term_audit = NULL,
+                                               fdr_threshold = 0.05) {
+  required <- c(
+    "dataset", "compartment", "region", "layer", "spatial_unit", "phenotype_contrast",
+    "Comparison", "ID", "Description", "NES", "p.adjust", "core_enrichment",
+    "core_enrichment_gene", "source_supplementary_file", "source_manifest_file",
+    "evidence_source_family"
+  )
+  missing <- setdiff(required, names(enrichment_df))
+  if (length(missing)) stop("All-term manuscript theme input is missing columns: ", paste(missing, collapse = ", "), call. = FALSE)
+  if (!is.list(mapping) || !all(c("assignments", "registry", "provenance") %in% names(mapping))) {
+    stop("mapping must be the output of map_go_terms_to_manuscript_themes().", call. = FALSE)
+  }
+
+  sus <- enrichment_df[as.character(enrichment_df$phenotype_contrast) == "SUS_vs_RES", , drop = FALSE]
+  if (!nrow(sus)) stop("All-term manuscript theme summary requires SUS_vs_RES ranked-GSEA rows.", call. = FALSE)
+  sus$NES <- suppressWarnings(as.numeric(sus$NES))
+  sus$p.adjust <- suppressWarnings(as.numeric(sus$p.adjust))
+  occurrence_key <- paste(sus$dataset, sus$spatial_unit, sus$ID, sep = "|")
+  sus <- sus[!duplicated(occurrence_key), , drop = FALSE]
+
+  assignments <- mapping$assignments
+  assignment_groups <- split(assignments, paste(assignments$GO_ID, assignments$theme_id, sep = "|"))
+  term_theme <- if (length(assignment_groups)) do.call(rbind, lapply(assignment_groups, function(x) {
+    data.frame(
+      GO_ID = x$GO_ID[[1]],
+      theme_id = x$theme_id[[1]],
+      manuscript_theme = x$manuscript_theme[[1]],
+      theme_role = x$theme_role[[1]],
+      display_order = x$display_order[[1]],
+      theme_anchor_GO_IDs = collapse_distinct_values(x$anchor_GO_ID),
+      theme_anchor_labels = collapse_distinct_values(x$anchor_label),
+      stringsAsFactors = FALSE
+    )
+  })) else data.frame()
+  expanded <- if (nrow(term_theme)) {
+    merge(sus, term_theme, by.x = "ID", by.y = "GO_ID", all = FALSE, sort = FALSE)
+  } else {
+    sus[0, , drop = FALSE]
+  }
+  if (nrow(expanded)) {
+    expanded <- expanded[order(expanded$dataset, expanded$spatial_unit, expanded$theme_id, expanded$ID, method = "radix"), , drop = FALSE]
+  }
+  supported_expanded <- expanded[!is.na(expanded$p.adjust) & expanded$p.adjust < fdr_threshold, , drop = FALSE]
+  unique_supported_by_theme <- if (nrow(supported_expanded)) {
+    vapply(split(supported_expanded$ID, supported_expanded$theme_id), function(ids) length(unique(ids)), integer(1))
+  } else integer()
+
+  unit_columns <- c(
+    "dataset", "compartment", "region", "layer", "spatial_unit", "phenotype_contrast",
+    "Comparison", "source_supplementary_file", "source_manifest_file", "evidence_source_family"
+  )
+  unit_meta <- sus[!duplicated(paste(sus$dataset, sus$spatial_unit, sep = "|")), unit_columns, drop = FALSE]
+  names(unit_meta)[names(unit_meta) == "dataset"] <- "dataset_compartment"
+  names(unit_meta)[names(unit_meta) == "phenotype_contrast"] <- "comparison"
+  names(unit_meta)[names(unit_meta) == "Comparison"] <- "source_comparison"
+  theme_meta <- unique(mapping$registry[c("theme_id", "display_label", "theme_role", "display_order")])
+  names(theme_meta)[names(theme_meta) == "display_label"] <- "manuscript_theme"
+  grid <- merge(unit_meta, theme_meta, by = NULL, sort = FALSE)
+  grid_key <- paste(grid$dataset_compartment, grid$spatial_unit, grid$theme_id, sep = "|")
+  expanded_groups <- if (nrow(expanded)) split(expanded, paste(expanded$dataset, expanded$spatial_unit, expanded$theme_id, sep = "|")) else list()
+  semantic_index <- if (!is.null(semantic_term_audit) && nrow(semantic_term_audit)) {
+    stats::setNames(as.character(semantic_term_audit$semantic_cluster_id), as.character(semantic_term_audit$GO_ID))
+  } else character()
+  provenance <- mapping$provenance
+  registry_version <- unique(mapping$registry$registry_version)[[1]]
+  representative_rule <- "p.adjust < 0.05; lowest p.adjust; largest abs(NES); GO ID; Description"
+
+  rows <- lapply(seq_len(nrow(grid)), function(i) {
+    x <- expanded_groups[[grid_key[[i]]]]
+    if (is.null(x)) x <- expanded[0, , drop = FALSE]
+    if (nrow(x)) x <- x[!duplicated(x$ID), , drop = FALSE]
+    finite_nes <- is.finite(x$NES)
+    tested_nes <- x$NES[finite_nes]
+    n_tested <- nrow(x)
+    median_nes <- if (length(tested_nes)) stats::median(tested_nes) else NA_real_
+    q25 <- if (length(tested_nes)) unname(stats::quantile(tested_nes, 0.25, type = 7, names = FALSE)) else NA_real_
+    q75 <- if (length(tested_nes)) unname(stats::quantile(tested_nes, 0.75, type = 7, names = FALSE)) else NA_real_
+    n_positive_all <- sum(tested_nes > 0)
+    n_negative_all <- sum(tested_nes < 0)
+    supported <- x[!is.na(x$p.adjust) & x$p.adjust < fdr_threshold, , drop = FALSE]
+    if (nrow(supported)) supported <- supported[order(supported$p.adjust, -abs(supported$NES), supported$ID, supported$Description, method = "radix"), , drop = FALSE]
+    representative <- if (nrow(supported)) supported[1, , drop = FALSE] else NULL
+    n_positive_supported <- sum(supported$NES > 0, na.rm = TRUE)
+    n_negative_supported <- sum(supported$NES < 0, na.rm = TRUE)
+    direction_consistency <- if (!nrow(supported)) {
+      "no_FDR_supported_term"
+    } else if (n_positive_supported > 0L && n_negative_supported > 0L) {
+      "mixed_direction"
+    } else if (n_positive_supported > 0L) {
+      "positive_only"
+    } else if (n_negative_supported > 0L) {
+      "negative_only"
+    } else {
+      "neutral_or_undirected"
+    }
+    representative_value <- function(column, default = NA_character_) {
+      if (is.null(representative)) default else representative[[column]][[1]]
+    }
+    rep_nes <- if (is.null(representative)) NA_real_ else representative$NES[[1]]
+    rep_fdr <- if (is.null(representative)) NA_real_ else representative$p.adjust[[1]]
+    rep_id <- representative_value("ID")
+    rep_clusters <- if (nrow(supported) && length(semantic_index)) unname(semantic_index[as.character(supported$ID)]) else character()
+    rep_clusters <- unique(rep_clusters[!is.na(rep_clusters) & nzchar(rep_clusters)])
+    rep_anchor_ids <- if (is.null(representative)) NA_character_ else representative$theme_anchor_GO_IDs[[1]]
+    rep_anchor_labels <- if (is.null(representative)) NA_character_ else representative$theme_anchor_labels[[1]]
+    data.frame(
+      dataset_compartment = grid$dataset_compartment[[i]],
+      compartment = grid$compartment[[i]],
+      region = grid$region[[i]],
+      layer = grid$layer[[i]],
+      spatial_unit = grid$spatial_unit[[i]],
+      comparison = grid$comparison[[i]],
+      theme_id = grid$theme_id[[i]],
+      manuscript_theme = grid$manuscript_theme[[i]],
+      theme_role = grid$theme_role[[i]],
+      display_order = grid$display_order[[i]],
+      n_theme_terms_tested = n_tested,
+      n_theme_terms_with_finite_NES = length(tested_nes),
+      median_NES_all_theme_terms = median_nes,
+      q25_NES_all_theme_terms = q25,
+      q75_NES_all_theme_terms = q75,
+      n_positive_NES_all_theme_terms = n_positive_all,
+      n_negative_NES_all_theme_terms = n_negative_all,
+      fraction_positive_NES = if (length(tested_nes)) n_positive_all / length(tested_nes) else NA_real_,
+      fraction_negative_NES = if (length(tested_nes)) n_negative_all / length(tested_nes) else NA_real_,
+      descriptive_direction = if (!length(tested_nes)) "not_evaluable" else if (median_nes > 0) "higher_SUS_tendency" else if (median_nes < 0) "higher_RES_tendency" else "neutral",
+      low_theme_term_coverage = if (n_tested) n_tested < 3L else NA,
+      theme_term_coverage_rule = "flag when fewer than 3 mapped tested GO terms; no cells excluded",
+      min_original_GO_FDR = if (any(is.finite(x$p.adjust))) min(x$p.adjust[is.finite(x$p.adjust)]) else NA_real_,
+      FDR_support_present = nrow(supported) > 0L,
+      n_FDR_supported_GO_terms = nrow(supported),
+      n_positive_FDR_supported_terms = n_positive_supported,
+      n_negative_FDR_supported_terms = n_negative_supported,
+      direction_consistency = direction_consistency,
+      representative_supported_GO_ID = rep_id,
+      representative_supported_GO_term = representative_value("Description"),
+      representative_supported_NES = rep_nes,
+      representative_supported_FDR = rep_fdr,
+      representative_leading_edge_genes = representative_value("core_enrichment_gene"),
+      representative_leading_edge_proteins = representative_value("core_enrichment"),
+      n_semantic_clusters = length(rep_clusters),
+      representative_semantic_cluster_id = if (!is.na(rep_id) && length(semantic_index)) unname(semantic_index[rep_id]) else NA_character_,
+      representative_anchor_GO_IDs = rep_anchor_ids,
+      representative_anchor_labels = rep_anchor_labels,
+      representative_source_comparison = if (is.null(representative)) NA_character_ else representative$Comparison[[1]],
+      representative_source_key = if (is.null(representative)) NA_character_ else paste(representative$dataset[[1]], representative$Comparison[[1]], representative$ID[[1]], sep = "|"),
+      source_supplementary_file = grid$source_supplementary_file[[i]],
+      source_manifest_file = grid$source_manifest_file[[i]],
+      evidence_source_family = "ranked_GSEA",
+      registry_version = registry_version,
+      GO_db_package_version = provenance$go_db_package_version,
+      GO_source_name = provenance$go_source_name,
+      GO_source_url = provenance$go_source_url,
+      GO_source_date = provenance$go_source_date,
+      relationship_types_approved = provenance$approved_relationships,
+      mapping_method = "go_id_ontology",
+      representative_selection_rule = representative_rule,
+      descriptive_score_inference_role = "descriptive_only_no_theme_level_test",
+      stringsAsFactors = FALSE
+    )
+  })
+  out <- do.call(rbind, rows)
+
+  theme_groups <- split(out, out$theme_id)
+  concordance <- do.call(rbind, lapply(theme_groups, function(x) {
+    evaluable <- is.finite(x$median_NES_all_theme_terms) & x$n_theme_terms_tested > 0L
+    supported <- x$FDR_support_present
+    descriptive_sus <- evaluable & x$median_NES_all_theme_terms > 0
+    descriptive_res <- evaluable & x$median_NES_all_theme_terms < 0
+    fdr_sus <- supported & is.finite(x$representative_supported_NES) & x$representative_supported_NES > 0
+    fdr_res <- supported & is.finite(x$representative_supported_NES) & x$representative_supported_NES < 0
+    fdr_mixed <- supported & x$direction_consistency == "mixed_direction"
+    n_eval <- sum(evaluable)
+    n_supported <- sum(supported)
+    n_unique_supported <- unname(unique_supported_by_theme[x$theme_id[[1]]])
+    if (!length(n_unique_supported) || is.na(n_unique_supported)) n_unique_supported <- 0L
+    concordance_fraction <- 2 / 3
+    spatial_class <- if (!n_eval) {
+      "not_evaluable"
+    } else if (sum(descriptive_sus) / n_eval >= concordance_fraction) {
+      "predominantly_higher_SUS"
+    } else if (sum(descriptive_res) / n_eval >= concordance_fraction) {
+      "predominantly_higher_RES"
+    } else {
+      "mixed_spatial_direction"
+    }
+    recurrence <- if (!n_supported) {
+      "no_FDR_supported_units"
+    } else if (n_supported == 1L) {
+      "spatially_specific"
+    } else if (any(fdr_mixed) || (any(fdr_sus) && any(fdr_res))) {
+      "recurrent_mixed_direction"
+    } else if (any(fdr_sus)) {
+      "recurrent_consistent_higher_SUS"
+    } else if (any(fdr_res)) {
+      "recurrent_consistent_higher_RES"
+    } else {
+      "recurrent_mixed_direction"
+    }
+    data.frame(
+      theme_id = x$theme_id[[1]],
+      n_units_evaluable = n_eval,
+      n_units_with_FDR_support = n_supported,
+      n_FDR_supported_GO_occurrences = sum(x$n_FDR_supported_GO_terms),
+      n_unique_FDR_supported_GO_IDs = as.integer(n_unique_supported),
+      n_units_descriptive_higher_SUS = sum(descriptive_sus),
+      n_units_descriptive_higher_RES = sum(descriptive_res),
+      n_units_descriptive_neutral = sum(evaluable & x$median_NES_all_theme_terms == 0),
+      n_FDR_units_higher_SUS = sum(fdr_sus),
+      n_FDR_units_higher_RES = sum(fdr_res),
+      n_FDR_units_mixed_direction = sum(fdr_mixed),
+      n_supported_datasets = length(unique(x$dataset_compartment[supported])),
+      n_higher_SUS_datasets = length(unique(x$dataset_compartment[fdr_sus])),
+      n_higher_RES_datasets = length(unique(x$dataset_compartment[fdr_res])),
+      spatial_concordance_classification = spatial_class,
+      spatial_concordance_rule = "descriptive direction in at least two-thirds of evaluable spatial units; otherwise mixed",
+      FDR_spatial_scope = if (!n_supported) "no_FDR_supported_units" else if (n_supported == 1L) "spatially_limited" else "multiple_spatial_units",
+      directional_recurrence = recurrence,
+      stringsAsFactors = FALSE
+    )
+  }))
+  out <- merge(out, concordance, by = "theme_id", all.x = TRUE, sort = FALSE)
+  out$n_supported_units <- out$n_units_with_FDR_support
+  out$n_higher_SUS_units <- out$n_FDR_units_higher_SUS
+  out$n_higher_RES_units <- out$n_FDR_units_higher_RES
+  out$n_mixed_direction_units <- out$n_FDR_units_mixed_direction
+  out$sus_res_recurrent_units <- out$n_units_with_FDR_support
+  out$sus_res_recurrent_datasets <- out$n_supported_datasets
+  out$sus_res_is_recurrent <- out$n_units_with_FDR_support >= 2L
+  out$recurrence_annotation <- out$directional_recurrence
+  out$representative_term_id <- out$representative_supported_GO_ID
+  out$representative_term <- out$representative_supported_GO_term
+  out$representative_NES <- out$representative_supported_NES
+  out$representative_FDR <- out$representative_supported_FDR
+  out$significant_term_count <- out$n_FDR_supported_GO_terms
+  out$n_positive_sig_terms <- out$n_positive_FDR_supported_terms
+  out$n_negative_sig_terms <- out$n_negative_FDR_supported_terms
+  out$direction <- ifelse(!out$FDR_support_present, "no FDR-supported term", ifelse(out$representative_supported_NES > 0, "higher in SUS", ifelse(out$representative_supported_NES < 0, "higher in RES", "neutral")))
+  out$publication_include <- out$theme_role == "primary" & out$n_theme_terms_tested > 0L
+  out$panel_data_basis <- "ranked_proteome_wide_GO_GSEA"
+  out$recurrence_inference_role <- "descriptive_only_not_a_significance_gate"
+  out$NES_interpretation <- "positive = higher in SUS; negative = higher in RES"
+  out <- out[order(out$display_order, out$dataset_compartment, out$spatial_unit, method = "radix"), , drop = FALSE]
+  rownames(out) <- NULL
+  key <- paste(out$dataset_compartment, out$spatial_unit, out$theme_id, sep = "|")
+  if (anyDuplicated(key)) stop("All-term manuscript theme summary has duplicate dataset + spatial unit + theme rows.", call. = FALSE)
   out
 }
 

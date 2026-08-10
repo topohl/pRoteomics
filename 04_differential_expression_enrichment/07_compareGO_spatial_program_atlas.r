@@ -679,7 +679,7 @@ plot_sus_res_spatial_program_atlas_publication <- function(summary_df, figure_fi
 plot_sus_res_manuscript_theme_atlas <- function(theme_summary, figure_file, source_file) {
   readr::write_csv(theme_summary, source_file, na = "")
   plot_df <- theme_summary %>%
-    dplyr::filter(.data$theme_role == "primary") %>%
+    dplyr::filter(.data$theme_role == "primary", .data$n_theme_terms_tested > 0) %>%
     dplyr::mutate(
       manuscript_theme = factor(
         .data$manuscript_theme,
@@ -693,33 +693,34 @@ plot_sus_res_manuscript_theme_atlas <- function(theme_summary, figure_file, sour
         .data$dataset_compartment_label,
         levels = c("Neuron neuropil", "Neuron soma", "Microglia-enriched ROI")
       ),
-      unit_direction_status = ifelse(.data$direction_consistency == "mixed_direction", "mixed within unit", "directionally consistent"),
-      representative_minus_log10_FDR = -log10(pmax(.data$representative_FDR, .Machine$double.xmin))
+      unit_direction_status = ifelse(.data$direction_consistency == "mixed_direction", "mixed supported directions", "supported direction not mixed"),
+      representative_minus_log10_FDR = ifelse(
+        .data$FDR_support_present,
+        -log10(pmax(.data$representative_supported_FDR, .Machine$double.xmin)),
+        NA_real_
+      )
     )
   if (!nrow(plot_df)) return(invisible(FALSE))
-  lims <- publication_color_limits(plot_df$representative_NES)
+  lims <- publication_color_limits(plot_df$median_NES_all_theme_terms)
+  descriptive_only <- plot_df %>% dplyr::filter(!.data$FDR_support_present)
+  supported <- plot_df %>% dplyr::filter(.data$FDR_support_present)
   p <- ggplot2::ggplot(plot_df, ggplot2::aes(.data$spatial_unit_label, .data$manuscript_theme)) +
-    ggplot2::geom_point(
-      ggplot2::aes(
-        color = .data$representative_NES,
-        size = .data$representative_minus_log10_FDR,
-        shape = .data$unit_direction_status
-      ),
-      alpha = 0.92
-    ) +
+    ggplot2::geom_point(data = descriptive_only, ggplot2::aes(fill = .data$median_NES_all_theme_terms), shape = 21, size = 1.4, colour = "transparent", alpha = 0.45) +
+    ggplot2::geom_point(data = supported, ggplot2::aes(fill = .data$median_NES_all_theme_terms, size = .data$representative_minus_log10_FDR, shape = .data$unit_direction_status), colour = "black", stroke = 0.35, alpha = 0.96) +
     ggplot2::facet_wrap(~dataset_compartment_label, ncol = 1, scales = "free_x", strip.position = "right") +
-    ggplot2::scale_color_gradient2(
+    ggplot2::scale_fill_gradient2(
       low = "#3B4CC0", mid = "white", high = "#B40426", midpoint = 0,
-      limits = lims, oob = scales::squish, name = "Representative\nterm NES"
+      limits = lims, oob = scales::squish, name = "Median NES\n(all mapped terms)"
     ) +
-    ggplot2::scale_size_continuous(range = c(1.0, 4.2), name = expression(-log[10]("representative term BH FDR"))) +
-    ggplot2::scale_shape_manual(values = c("directionally consistent" = 16, "mixed within unit" = 18), name = "Within-theme\ndirection") +
+    ggplot2::scale_size_continuous(range = c(2.2, 4.5), name = expression(-log[10]("representative GO BH FDR"))) +
+    ggplot2::scale_shape_manual(values = c("supported direction not mixed" = 21, "mixed supported directions" = 23), name = "FDR-supported\nterm directions") +
     ggplot2::labs(
       x = NULL, y = NULL,
       subtitle = "Positive NES = higher in SUS; negative NES = higher in RES",
       caption = paste(
-        "Primary themes are assigned by GO ID using is_a/part_of ancestry; point = lowest-FDR supported GO term per theme/unit.",
-        "Diamond flags supported terms in both NES directions; recurrence is descriptive. Ranked GSEA; not DAP-set ORA.",
+        "Color represents the median NES across all tested GO-BP terms assigned to each ontology theme and spatial unit.",
+        "Outlined/emphasized points indicate at least one constituent GO term with original BH FDR < 0.05.",
+        "Non-emphasized values are descriptive directional summaries and are not statistically significant theme-level effects.",
         sep = "\n"
       )
     ) +
@@ -925,17 +926,26 @@ build_sus_res_manuscript_theme_outputs <- function(
     registry_path = MANUSCRIPT_GO_THEME_REGISTRY,
     semantic_cutoff = MANUSCRIPT_GO_SEMANTIC_CUTOFF) {
   registry <- read_manuscript_go_theme_registry(registry_path)
-  supported_terms <- enrichment_df %>%
+  tested_terms <- enrichment_df %>%
     dplyr::filter(
       as.character(.data$phenotype_contrast) == "SUS_vs_RES",
-      !is.na(.data$p.adjust), .data$p.adjust < 0.05
+      !is.na(.data$ID), nzchar(as.character(.data$ID))
     ) %>%
     dplyr::distinct(.data$ID, .data$Description)
-  mapping <- map_go_terms_to_manuscript_themes(supported_terms, registry)
+  mapping <- map_go_terms_to_manuscript_themes(tested_terms, registry)
   supported_audit <- build_sus_res_supported_go_theme_audit(enrichment_df, mapping)
   semantic <- go_semantic_redundancy_qa(supported_audit, cutoff = semantic_cutoff)
-  theme_summary <- build_sus_res_manuscript_theme_summary(
-    supported_audit, mapping, semantic$term_audit
+  supported_audit <- supported_audit %>%
+    dplyr::left_join(
+      semantic$term_audit %>% dplyr::select(
+        .data$GO_ID, .data$semantic_cluster_id, .data$semantic_cluster_size,
+        .data$semantic_cluster_representative_GO_ID,
+        .data$semantic_cluster_representative_term
+      ),
+      by = "GO_ID"
+    )
+  theme_summary <- build_sus_res_theme_spatial_detail(
+    enrichment_df, mapping, semantic$term_audit
   ) %>%
     dplyr::mutate(
       program = .data$manuscript_theme,
@@ -1042,6 +1052,10 @@ main <- function() {
   readr::write_csv(
     manuscript$theme_summary,
     file.path(CANONICAL_PATHS$tables, "sus_res_manuscript_theme_summary.csv"), na = ""
+  )
+  readr::write_csv(
+    manuscript$theme_summary,
+    file.path(CANONICAL_PATHS$source_data, "sus_res_theme_spatial_detail_all_terms.csv"), na = ""
   )
 
   plot_spatial_program_atlas(program_summary, file.path(CANONICAL_PATHS$figures, "Fig_SpatialProgramAtlas_dotheatmap.svg"))
