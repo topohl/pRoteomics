@@ -162,7 +162,8 @@ empty_evidence <- function() {
     tier_specific_family_id = character(), tier_specific_family_size = integer(),
     inferential_claim_gate = character(), inferential_source_file = character(),
     inferential_source_key = character(),
-    evidence_semantic_class = character(), evidence_role = character(), evidence_role_reason = character(),
+    evidence_source_family = character(), evidence_semantic_class = character(),
+    evidence_role = character(), evidence_role_reason = character(),
     contrast = character(), spatial_unit = character(), effect_direction = character(),
     effect_size = numeric(), p_value = numeric(), fdr = numeric(),
     support_count = numeric(), source_file = character(), evidence_status = character(),
@@ -175,6 +176,13 @@ standardize_evidence <- function(df) {
   if (is.null(df) || !nrow(df)) return(empty_evidence())
   for (col in cols) if (!col %in% names(df)) df[[col]] <- NA
   df <- df[, cols, drop = FALSE]
+  missing_family <- is.na(df$evidence_source_family) | !nzchar(trimws(as.character(df$evidence_source_family)))
+  domain_for_family <- tolower(trimws(as.character(df$evidence_domain[missing_family])))
+  df$evidence_source_family[missing_family] <- ifelse(
+    domain_for_family %in% c("enrichment_program", "spatial_architecture"),
+    "ranked_GSEA",
+    as.character(df$evidence_domain[missing_family])
+  )
   missing_semantic <- is.na(df$evidence_semantic_class) | !nzchar(trimws(as.character(df$evidence_semantic_class)))
   df$evidence_semantic_class[missing_semantic] <- ifelse(
     grepl("wgcna|module", as.character(df$evidence_domain[missing_semantic]), ignore.case = TRUE),
@@ -203,6 +211,8 @@ assign_downstream_evidence_roles <- function(df) {
   source <- tolower(as.character(df$source_file))
   program <- tolower(trimws(as.character(df$program_label)))
   note <- tolower(as.character(df$interpretation_note))
+  semantic <- tolower(trimws(as.character(df$evidence_semantic_class)))
+  wgcna_group_status <- tolower(trimws(as.character(df$wgcna_group_effect_status)))
   status[is.na(status)] <- ""
   source[is.na(source)] <- ""
   program[is.na(program)] <- ""
@@ -218,6 +228,8 @@ assign_downstream_evidence_roles <- function(df) {
     (domain == "behavior_coupling" & grepl("08_behavior_physio_coupling/(03_)?module_behavior_coupling", source))
   neuronal_wgcna <- neuronal & domain %in% c("wgcna_supermodule", "wgcna_stress_group_effect")
   microglia_architecture <- as.character(df$dataset) == "microglia" & domain == "wgcna_architecture"
+  architecture_without_supported_group_effect <- semantic == "wgcna_architecture" &
+    !(wgcna_group_status %in% "fdr_supported")
 
   df$evidence_role <- "direct_biological_evidence"
   df$evidence_role_reason <- NA_character_
@@ -226,16 +238,24 @@ assign_downstream_evidence_roles <- function(df) {
   df$evidence_role[diagnostic] <- "diagnostic_gate"
   df$evidence_role_reason[diagnostic] <- "diagnostic_or_context_input_not_independent_convergence"
   df$evidence_role[microglia_architecture] <- "validated_wgcna_architecture"
-  df$evidence_role_reason[microglia_architecture] <- "microglia_stage13_claim_readiness_contract"
+  df$evidence_role_reason[microglia_architecture] <- "validated_covariance_architecture_context_not_independent_stress_effect"
   df$evidence_role[neuronal_wgcna] <- "unvalidated_neuronal_wgcna"
   df$evidence_role_reason[neuronal_wgcna] <- "neuronal_wgcna_readiness_contract_not_available"
   df$evidence_role[unavailable] <- "unavailable_evidence"
   df$evidence_role_reason[unavailable] <- "missing_or_unavailable_optional_input"
 
-  force_noncounting <- annotation | diagnostic | neuronal_wgcna | unavailable
+  force_noncounting <- annotation | diagnostic | neuronal_wgcna | unavailable |
+    architecture_without_supported_group_effect
   force_noncounting[is.na(force_noncounting)] <- FALSE
   df$counts_toward_convergence[force_noncounting] <- FALSE
   df
+}
+
+independent_evidence_families <- function(df) {
+  if (is.null(df) || !nrow(df)) return(character())
+  standardized <- standardize_evidence(df)
+  families <- as.character(standardized$evidence_source_family)
+  sort(unique(families[!is.na(families) & nzchar(trimws(families))]))
 }
 
 availability_evidence <- function(dataset, evidence_domain, source_file, message) {

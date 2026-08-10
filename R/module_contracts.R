@@ -1209,7 +1209,7 @@ validate_cross_compartment_program_atlas <- function(df, artifact = "cross-compa
       "wgcna_architecture_status", "wgcna_group_effect_status",
       "wgcna_allowed_claim_scope", "wgcna_prohibited_claim_scope",
       "readiness_contract_version", "counts_toward_convergence",
-      "evidence_semantic_class", "evidence_role", "evidence_role_reason"
+      "evidence_source_family", "evidence_semantic_class", "evidence_role", "evidence_role_reason"
     ),
     artifact
   )
@@ -1221,7 +1221,8 @@ validate_manuscript_program_summary <- function(df, artifact = "manuscript progr
     df,
     c(
       "program_key", "manuscript_claim_scope", "datasets_supported",
-      "evidence_domains", "strongest_evidence", "safe_manuscript_sentence",
+      "evidence_domains", "evidence_source_families", "n_independent_evidence_families",
+      "strongest_evidence", "safe_manuscript_sentence",
       "main_limitation", "qc_flag", "n_evidence_rows_total",
       "n_evidence_rows_counting_toward_convergence", "n_wgcna_architecture_rows",
       "n_wgcna_stress_effect_rows", "n_wgcna_alias_rows_excluded",
@@ -1237,7 +1238,8 @@ validate_evidence_priority_matrix <- function(df, artifact = "evidence priority 
     df,
     c(
       "priority_id", "program_key", "dataset", "priority_tier",
-      "evidence_domain_count", "evidence_rows_counting_toward_convergence",
+      "evidence_domain_count", "independent_evidence_family_count",
+      "evidence_rows_counting_toward_convergence",
       "strongest_fdr", "robustness_flag",
       "behavior_flag", "qc_flag", "recommended_use"
     ),
