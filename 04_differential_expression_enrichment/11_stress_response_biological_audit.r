@@ -23,7 +23,7 @@ REPORT_DIR <- path_results("reports", MODULE_ID, SUBSTEP_ID, "global")
 LOG_DIR <- path_results("logs", MODULE_ID, SUBSTEP_ID, "global")
 REGISTRY_PATH <- repo_path("config", "manuscript_go_theme_registry.tsv")
 GO_SOURCE <- path_results("source_data", MODULE_ID, "compareGO_spatial_atlas", "spatial_atlas_enrichment_long.csv")
-SUS_RES_WORKBOOK <- path_results("reports", MODULE_ID, "sus_res_spatial_dap_atlas", "global", "sus_res_biological_audit.xlsx")
+SUS_RES_REFERENCE_WORKBOOK <- path_results("reports", MODULE_ID, "sus_res_spatial_dap_atlas", "global", "sus_res_biological_audit.xlsx")
 
 required_packages <- c("readr", "tidyselect", "ggplot2", "svglite", "GO.db", "AnnotationDbi")
 missing_packages <- required_packages[!vapply(required_packages, requireNamespace, logical(1), quietly = TRUE)]
@@ -81,6 +81,7 @@ if (!all(protein_bh_validation$validation_pass)) {
   )
 }
 protein <- stress_response_build_protein_outputs(protein_long)
+direct_dap <- stress_response_direct_dap_control_geometry(protein$geometry)
 readr::write_csv(protein$common_universe_audit, file.path(LOG_DIR, "protein_common_universe_preflight.csv"), na = "")
 readr::write_csv(protein$algebra_audit, file.path(LOG_DIR, "protein_contrast_algebra_preflight.csv"), na = "")
 if (!all(protein$common_universe_audit$validation_pass)) stop("Protein common-universe validation failed.", call. = FALSE)
@@ -136,21 +137,9 @@ go_key <- paste(go_long$dataset, go_long$spatial_unit, go_long$phenotype_contras
 go_long$control_pair_joint_GO_FDR <- joint_go$joint$control_pair_joint_GO_FDR[match(go_key, joint_go_key)]
 go_long$control_pair_joint_GO_FDR05 <- joint_go$joint$control_pair_joint_GO_FDR05[match(go_key, joint_go_key)]
 
-supported <- go_long[is.finite(go_long$p.adjust) & go_long$p.adjust < STRESS_RESPONSE_FDR_THRESHOLD, , drop = FALSE]
-assignment <- collapse_go_theme_assignment_audit(mapping)
-status <- mapping$term_status
-supported <- merge(supported, status[c("GO_ID", "assignment_status", "manuscript_themes", "theme_roles", "registry_version", "mapping_method")], by.x = "ID", by.y = "GO_ID", all.x = TRUE, sort = FALSE)
-supported <- merge(
-  supported,
-  assignment[c("GO_ID", "theme_id", "manuscript_theme", "theme_role", "anchor_GO_IDs", "anchor_labels")],
-  by.x = "ID", by.y = "GO_ID", all.x = TRUE, sort = FALSE
-)
-names(supported)[names(supported) == "p.adjust"] <- "canonical_contrast_GO_FDR"
-names(supported)[names(supported) == "pvalue"] <- "nominal_GSEA_p_value"
-supported$canonical_GO_FDR_support <- TRUE
-supported$canonical_GO_FDR_family <- "original ranked-GSEA contrast-specific GO-BP BH family"
-supported$joint_control_GO_FDR_role <- ifelse(supported$phenotype_contrast %in% STRESS_RESPONSE_CONTROL_CONTRASTS, "secondary_control_burden_comparison_only", "not_applicable_to_SUS_vs_RES")
-supported <- supported[order(supported$phenotype_contrast, supported$dataset, supported$spatial_unit, supported$canonical_contrast_GO_FDR, supported$ID, supported$theme_id, method = "radix"), , drop = FALSE]
+supported_audits <- stress_response_build_supported_go_audits(go_long, mapping)
+supported_occurrence <- supported_audits$occurrence
+supported <- supported_audits$exploded
 
 contrast_map_source <- theme$detail[theme$detail$theme_role == "primary", c(
   "dataset", "dataset_label", "compartment", "region", "layer", "spatial_unit", "contrast", "theme_id", "manuscript_theme",
@@ -163,6 +152,11 @@ input_provenance <- specs[c(
   "formal_effect_multiplier", "sign_was_flipped", "manifest_file", "input_file_manifest", "input_file", "manifest_input_hash",
   "current_input_hash", "input_hash_matches_manifest"
 )]
+protected_reference <- stress_response_protected_reference_artifacts(
+  SUS_RES_REFERENCE_WORKBOOK,
+  producer = "04_differential_expression_enrichment/10_sus_res_spatial_dap_atlas.r",
+  note = "Stage 11 does not read or modify this protected SUS-RES biological audit workbook."
+)
 
 write_csv <- function(x, name, directory = SOURCE_DIR) {
   path <- file.path(directory, name)
@@ -172,6 +166,9 @@ write_csv <- function(x, name, directory = SOURCE_DIR) {
 
 outputs <- c(
   protein_geometry = write_csv(protein$geometry, "protein_three_contrast_geometry.csv"),
+  direct_dap_geometry = write_csv(direct_dap$detail, "direct_SUS_RES_DAP_control_geometry.csv"),
+  direct_dap_context_summary = write_csv(direct_dap$context_summary, "direct_SUS_RES_DAP_control_geometry_summary_by_context.csv"),
+  direct_dap_global_summary = write_csv(direct_dap$global_summary, "direct_SUS_RES_DAP_control_geometry_summary_global.csv"),
   protein_summary = write_csv(protein$summary, "protein_remodeling_summary.csv", TABLE_DIR),
   protein_common_universe = write_csv(protein$common_universe_audit, "protein_common_universe_audit.csv"),
   protein_algebra = write_csv(protein$algebra_audit, "protein_contrast_algebra_audit.csv"),
@@ -185,8 +182,10 @@ outputs <- c(
   theme_overview = write_csv(overview, "theme_overview.csv", TABLE_DIR),
   contrast_map = write_csv(contrast_map_source, "contrast_map_source.csv"),
   supported_go = write_csv(supported, "FDR_supported_GO_term_audit_all_three_contrasts.csv"),
+  supported_go_occurrence = write_csv(supported_occurrence, "FDR_supported_GO_occurrence_audit_all_three_contrasts.csv"),
   theme_assignment = write_csv(collapse_go_theme_assignment_audit(mapping), "GO_term_theme_assignment_all_three_contrasts.csv"),
-  input_provenance = write_csv(input_provenance, "input_contrast_provenance.csv")
+  input_provenance = write_csv(input_provenance, "input_contrast_provenance.csv"),
+  protected_reference = write_csv(protected_reference, "protected_reference_artifacts.csv")
 )
 
 dataset_labels <- c(neuron_neuropil = "Neuron neuropil", neuron_soma = "Neuron soma", microglia = "Microglia-enriched ROI")
@@ -230,6 +229,95 @@ burden_plot <- ggplot2::ggplot(protein$summary, ggplot2::aes(y = unit_label)) +
   theme_nature_base(7) +
   ggplot2::theme(legend.position = "bottom", panel.grid.major.y = ggplot2::element_line(colour = "grey92", linewidth = 0.2), plot.caption = ggplot2::element_text(size = 6, hjust = 0))
 
+direct_context <- direct_dap$context_summary[direct_dap$context_summary$n_direct_DAP > 0L, , drop = FALSE]
+direct_context$dataset_display <- unname(dataset_labels[direct_context$dataset])
+direct_context <- direct_context[order(match(direct_context$dataset, DATASETS), direct_context$spatial_unit, method = "radix"), , drop = FALSE]
+direct_context$context_label <- paste(direct_context$dataset_display, direct_context$spatial_unit, sep = " | ")
+direct_context$context_label <- factor(direct_context$context_label, levels = rev(direct_context$context_label))
+direct_context$panel <- factor("Sign geometry", levels = c("Sign geometry", "RES-farther fraction"))
+sign_labels <- c(
+  RES_up_SUS_down = "RES up / SUS down",
+  RES_down_SUS_up = "RES down / SUS up",
+  both_up_vs_CON = "Both above CON",
+  both_down_vs_CON = "Both below CON",
+  one_or_both_exact_zero = "One/both exact zero"
+)
+direct_composition <- do.call(rbind, lapply(STRESS_RESPONSE_DIRECT_SIGN_GEOMETRY, function(z) {
+  data.frame(
+    direct_context[c("context_label", "n_direct_DAP")],
+    sign_geometry = factor(z, levels = STRESS_RESPONSE_DIRECT_SIGN_GEOMETRY),
+    fraction = direct_context[[paste0("fraction_", z)]],
+    panel = "Sign geometry",
+    stringsAsFactors = FALSE
+  )
+}))
+direct_displacement <- data.frame(
+  direct_context[c("context_label", "n_direct_DAP", "fraction_RES_farther")],
+  panel = "RES-farther fraction", stringsAsFactors = FALSE
+)
+direct_composition$panel <- factor(direct_composition$panel, levels = c("Sign geometry", "RES-farther fraction"))
+direct_displacement$panel <- factor(direct_displacement$panel, levels = c("Sign geometry", "RES-farther fraction"))
+direct_geometry_plot <- ggplot2::ggplot() +
+  ggplot2::geom_col(
+    data = direct_composition,
+    ggplot2::aes(x = fraction, y = context_label, fill = sign_geometry),
+    width = 0.72, colour = "white", linewidth = 0.2
+  ) +
+  ggplot2::geom_text(
+    data = direct_context,
+    ggplot2::aes(x = 1.025, y = context_label, label = paste0("n = ", n_direct_DAP)),
+    inherit.aes = FALSE, hjust = 0, size = 2.1, colour = "grey25"
+  ) +
+  ggplot2::geom_segment(
+    data = direct_displacement,
+    ggplot2::aes(x = 0, xend = 1, y = context_label, yend = context_label),
+    inherit.aes = FALSE, linewidth = 0.35, colour = "grey75"
+  ) +
+  ggplot2::geom_point(
+    data = direct_displacement,
+    ggplot2::aes(x = fraction_RES_farther, y = context_label),
+    inherit.aes = FALSE, shape = 21, size = 2.6, stroke = 0.5, fill = "#3B6FB6", colour = "#24476F"
+  ) +
+  ggplot2::geom_text(
+    data = direct_displacement,
+    ggplot2::aes(
+      x = fraction_RES_farther, y = context_label,
+      label = sprintf("%.0f%%", 100 * fraction_RES_farther),
+      hjust = ifelse(fraction_RES_farther >= 0.82, 1.2, -0.2)
+    ),
+    inherit.aes = FALSE, size = 2.0, colour = "grey20"
+  ) +
+  ggplot2::facet_grid(. ~ panel) +
+  ggplot2::scale_fill_manual(
+    values = c(
+      RES_up_SUS_down = "#3B6FB6", RES_down_SUS_up = "#D17A22",
+      both_up_vs_CON = "#8A9A5B", both_down_vs_CON = "#C76B8A",
+      one_or_both_exact_zero = "#B8B8B8"
+    ),
+    labels = sign_labels, name = NULL, drop = FALSE
+  ) +
+  ggplot2::scale_x_continuous(
+    limits = c(0, 1.15), breaks = c(0, 0.25, 0.5, 0.75, 1),
+    labels = function(x) paste0(round(100 * x), "%"), expand = c(0, 0)
+  ) +
+  ggplot2::coord_cartesian(clip = "off") +
+  ggplot2::labs(
+    x = "Fraction of canonical direct SUS–RES DAPs", y = NULL,
+    title = "Direct SUS–RES DAP control-reference geometry",
+    subtitle = "Proteins selected by canonical direct SUS–RES FDR < 0.05; composition and displacement are descriptive",
+    caption = paste0(
+      "Control-reference geometry is a descriptive decomposition of proteins selected by the direct SUS–RES FDR criterion.\n",
+      "RES–CON and SUS–CON estimates are not treated as independent validation of those selected proteins."
+    )
+  ) +
+  theme_nature_base(7) +
+  ggplot2::theme(
+    legend.position = "bottom", panel.grid.major.y = ggplot2::element_line(colour = "grey93", linewidth = 0.2),
+    panel.grid.major.x = ggplot2::element_line(colour = "grey92", linewidth = 0.2), panel.spacing.x = grid::unit(4, "mm"),
+    strip.text = ggplot2::element_text(size = 7), plot.subtitle = ggplot2::element_text(size = 6.5),
+    plot.caption = ggplot2::element_text(size = 5.7, hjust = 0), axis.text.y = ggplot2::element_text(size = 6.5)
+  )
+
 save_triplet <- function(plot, stem, width_mm, height_mm) {
   ggplot2::ggsave(paste0(stem, ".svg"), plot, width = mm_to_in(width_mm), height = mm_to_in(height_mm), units = "in", device = svglite::svglite, bg = "white", limitsize = FALSE)
   ggplot2::ggsave(paste0(stem, ".pdf"), plot, width = mm_to_in(width_mm), height = mm_to_in(height_mm), units = "in", device = grDevices::cairo_pdf, bg = "white", limitsize = FALSE)
@@ -239,11 +327,14 @@ save_triplet <- function(plot, stem, width_mm, height_mm) {
 
 trajectory_stem <- file.path(FIGURE_DIR, "candidate_primary_theme_control_trajectory")
 burden_stem <- file.path(FIGURE_DIR, "candidate_joint_FDR_protein_burden")
+direct_geometry_stem <- file.path(FIGURE_DIR, "candidate_direct_SUS_RES_DAP_control_geometry")
 save_triplet(trajectory_plot, trajectory_stem, 183, 142)
 save_triplet(burden_plot, burden_stem, 183, 75)
+save_triplet(direct_geometry_plot, direct_geometry_stem, 183, 118)
 outputs <- c(outputs,
   trajectory_svg = paste0(trajectory_stem, ".svg"), trajectory_pdf = paste0(trajectory_stem, ".pdf"), trajectory_png = paste0(trajectory_stem, ".png"),
-  burden_svg = paste0(burden_stem, ".svg"), burden_pdf = paste0(burden_stem, ".pdf"), burden_png = paste0(burden_stem, ".png")
+  burden_svg = paste0(burden_stem, ".svg"), burden_pdf = paste0(burden_stem, ".pdf"), burden_png = paste0(burden_stem, ".png"),
+  direct_geometry_svg = paste0(direct_geometry_stem, ".svg"), direct_geometry_pdf = paste0(direct_geometry_stem, ".pdf"), direct_geometry_png = paste0(direct_geometry_stem, ".png")
 )
 
 joint_res_more <- sum(protein$summary$n_joint_FDR05_RES_vs_CON > protein$summary$n_joint_FDR05_SUS_vs_CON)
@@ -256,6 +347,9 @@ protein$summary$region_group <- ifelse(grepl("^(CA3|DG)", protein$summary$spatia
 largest_count_delta <- max(abs(protein$summary$delta_n_joint_DAP))
 top_delta <- protein$summary[abs(protein$summary$delta_n_joint_DAP) == largest_count_delta & largest_count_delta > 0, c("dataset", "spatial_unit", "delta_n_joint_DAP", "median_delta_abs_log2FC", "region_group")]
 top_delta_locations <- if (nrow(top_delta)) paste(paste(top_delta$dataset, top_delta$spatial_unit, sep = "/"), collapse = ", ") else "none"
+n_supported_go_occurrences <- length(unique(supported_occurrence$supported_occurrence_id))
+n_supported_go_assignment_rows <- nrow(supported)
+direct_global <- direct_dap$global_summary[1, , drop = FALSE]
 
 sanity_lines <- c(
   "# Three-contrast stress-response biological audit",
@@ -276,9 +370,22 @@ sanity_lines <- c(
   paste0("- The largest absolute joint-DAP count difference is ", largest_count_delta, " and occurs at ", top_delta_locations, "; these sparse differences are not confined to CA3/DG."),
   paste0("- Protein contrast algebra: all ", nrow(protein$algebra_audit), " contexts pass tolerance ", format(STRESS_RESPONSE_ALGEBRA_TOLERANCE, scientific = TRUE), "; maximum residual = ", format(max(protein$algebra_audit$max_absolute_residual), scientific = TRUE), "."),
   "",
+  "## Direct SUS-RES DAP control-reference geometry",
+  "",
+  paste0("- Direct SUS-RES DAPs selected by canonical FDR < 0.05: ", direct_global$n_direct_SUS_RES_DAP, "."),
+  paste0("- Opposite-side geometry: ", direct_global$n_opposite_side_of_CON, "/", direct_global$n_direct_SUS_RES_DAP, "; same-side geometry: ", direct_global$n_same_side_of_CON, "/", direct_global$n_direct_SUS_RES_DAP, "."),
+  paste0("- Relative displacement from CON: RES farther ", direct_global$n_RES_farther, "/", direct_global$n_direct_SUS_RES_DAP, "; SUS farther ", direct_global$n_SUS_farther, "/", direct_global$n_direct_SUS_RES_DAP, "; equal distance ", direct_global$n_equal_distance, "."),
+  "- Direct RES–SUS differences frequently reflect opposing displacement around the unstressed control state.",
+  if (direct_global$n_RES_farther > direct_global$n_SUS_farther) "- Within direct SUS-RES DAPs, the resilient state more often showed the larger absolute displacement from control." else "- The direct-DAP control-reference decomposition does not show a global predominance of larger RES displacement.",
+  "- Control-reference geometry is a descriptive decomposition of proteins selected by the direct SUS–RES FDR criterion. RES–CON and SUS–CON estimates are not treated as independent validation of those selected proteins.",
+  "",
   "## Theme sanity checks",
   "",
-  paste0("- ", overview$theme, ": RES-farther ", overview$n_units_abs_RES_theme_NES_gt_abs_SUS, "/18; SUS-farther ", overview$n_units_abs_SUS_theme_NES_gt_abs_RES, "/18; same direction ", overview$n_units_same_response_direction, "/18; opposite direction ", overview$n_units_opposite_response_direction, "/18; direct SUS-RES supported units ", overview$n_canonical_supported_SUS_vs_RES_units, "/18."),
+  paste0("- ", overview$theme, ": RES-farther ", overview$n_units_abs_RES_theme_NES_gt_abs_SUS, "/18; SUS-farther ", overview$n_units_abs_SUS_theme_NES_gt_abs_RES, "/18; median delta absolute NES = ", sprintf("%.3f", overview$median_delta_abs_theme_NES), " (Q25 ", sprintf("%.3f", overview$q25_delta_abs_theme_NES), ", Q75 ", sprintf("%.3f", overview$q75_delta_abs_theme_NES), "); same direction ", overview$n_units_same_response_direction, "/18; opposite direction ", overview$n_units_opposite_response_direction, "/18; direct SUS-RES supported units ", overview$n_canonical_supported_SUS_vs_RES_units, "/18."),
+  "",
+  "## Supported GO occurrence audit",
+  "",
+  paste0("- Unique FDR-supported GO occurrences: ", n_supported_go_occurrences, "; occurrence x theme-assignment rows: ", n_supported_go_assignment_rows, ". Occurrence counts use distinct supported_occurrence_id values, not raw exploded row counts."),
   "",
   "## Interpretation boundary",
   "",
@@ -292,10 +399,37 @@ workbook_status <- data.frame(
   requested_output = file.path(REPORT_DIR, "stress_response_biological_audit.xlsx"),
   status = "blocked_not_created",
   reason = "Required @oai/artifact-tool runtime was unavailable; spreadsheet skill forbids substituting another authoring library.",
-  workbook_ready_source_tables = paste(basename(c(outputs[["theme_overview"]], outputs[["protein_summary"]], outputs[["theme_trajectory"]], outputs[["contrast_map"]], outputs[["theme_detail"]], outputs[["supported_go"]])), collapse = ";"),
+  workbook_ready_source_tables = paste(basename(c(outputs[["theme_overview"]], outputs[["protein_summary"]], outputs[["theme_trajectory"]], outputs[["contrast_map"]], outputs[["theme_detail"]], outputs[["direct_dap_geometry"]], outputs[["direct_dap_context_summary"]], outputs[["direct_dap_global_summary"]], outputs[["supported_go_occurrence"]], outputs[["supported_go"]])), collapse = ";"),
   stringsAsFactors = FALSE
 )
 outputs <- c(outputs, workbook_status = write_csv(workbook_status, "workbook_generation_status.csv", REPORT_DIR))
+
+dimension_output_names <- c(
+  "theme_overview", "protein_summary", "direct_dap_geometry", "direct_dap_context_summary", "direct_dap_global_summary",
+  "theme_trajectory", "contrast_map", "theme_detail", "supported_go_occurrence", "supported_go",
+  "protein_geometry", "go_joint_rows", "protected_reference"
+)
+dimension_paths <- unname(outputs[dimension_output_names])
+output_dimensions <- data.frame(
+  artifact = c(
+    "overview", "protein_remodeling", "direct_dap_geometry", "direct_dap_context_summary", "direct_dap_global_summary",
+    "theme_trajectories", "contrast_map", "theme_detail", "go_occurrence_audit", "go_theme_assignment_audit",
+    "protein_geometry", "joint_go", "protected_reference"
+  ),
+  path = dimension_paths,
+  rows = c(
+    nrow(overview), nrow(protein$summary), nrow(direct_dap$detail), nrow(direct_dap$context_summary), nrow(direct_dap$global_summary),
+    nrow(trajectory), nrow(contrast_map_source), nrow(theme$detail), nrow(supported_occurrence), nrow(supported),
+    nrow(protein$geometry), nrow(joint_go$joint), nrow(protected_reference)
+  ),
+  columns = vapply(
+    dimension_paths,
+    function(path) ncol(utils::read.csv(path, nrows = 0L, check.names = FALSE)),
+    integer(1)
+  ),
+  stringsAsFactors = FALSE
+)
+outputs <- c(outputs, output_dimensions = write_csv(output_dimensions, "output_dimensions.csv", REPORT_DIR))
 
 family_definitions <- data.frame(
   family_name = c("canonical_protein_contrast_FDR", "control_pair_joint_FDR", "canonical_GO_contrast_FDR", "control_pair_joint_GO_FDR"),
@@ -316,7 +450,7 @@ outputs <- c(outputs, family_definitions = write_csv(family_definitions, "FDR_fa
 
 write_run_manifest(
   file.path(LOG_DIR, "run_manifest.yml"),
-  inputs = c(as.list(manifest_paths), list(ranked_GO_source = GO_SOURCE, theme_registry = REGISTRY_PATH, sus_res_workbook_protected = SUS_RES_WORKBOOK)),
+  inputs = c(as.list(manifest_paths), list(ranked_GO_source = GO_SOURCE, theme_registry = REGISTRY_PATH)),
   outputs = as.list(outputs),
   parameters = list(
     primary_contrast = "SUS_vs_RES",
@@ -334,6 +468,8 @@ write_run_manifest(
     "Downstream audit only: no DA model, preprocessing, imputation, ranked GSEA, DAP-set ORA, WGCNA, or behavior model was run or changed.",
     "Canonical protein and GO adjusted p-values are copied unchanged; secondary joint-control FDRs use raw p-values and never include SUS_vs_RES.",
     "All effect/NES geometry and spatial concordance summaries are descriptive and carry no p-value.",
+    "Direct-DAP control-reference geometry is selected only by canonical SUS_vs_RES FDR and is not independent validation.",
+    "The protected SUS-RES workbook is recorded as a protected reference artifact and is not consumed or modified by Stage 11.",
     "Legacy script-07 heuristic classes are not consumed as manuscript evidence."
   )
 )

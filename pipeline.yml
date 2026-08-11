@@ -349,10 +349,10 @@ stages:
         scope: "global"
         produces: ["results/tables/04_differential_expression_enrichment/stress_response_biological_audit/global/", "results/source_data/04_differential_expression_enrichment/stress_response_biological_audit/global/", "results/figures/04_differential_expression_enrichment/stress_response_biological_audit/global/", "results/reports/04_differential_expression_enrichment/stress_response_biological_audit/global/", "results/logs/04_differential_expression_enrichment/stress_response_biological_audit/global/run_manifest.yml"]
         consumes_required: ["data/processed/04_differential_expression_enrichment/clusterProfiler/neuron_neuropil/clusterProfiler_manifest.csv", "data/processed/04_differential_expression_enrichment/clusterProfiler/neuron_soma/clusterProfiler_manifest.csv", "data/processed/04_differential_expression_enrichment/clusterProfiler/microglia/clusterProfiler_manifest.csv", "config/manuscript_go_theme_registry.tsv", "results/source_data/04_differential_expression_enrichment/compareGO_spatial_atlas/spatial_atlas_enrichment_long.csv"]
-        consumes_optional: ["results/reports/04_differential_expression_enrichment/sus_res_spatial_dap_atlas/global/sus_res_biological_audit.xlsx"]
+        consumes_optional: []
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "Bounded downstream three-contrast audit. Preserves individual-contrast protein/GO BH FDR; adds secondary dataset-by-spatial-unit joint control-pair BH families on matched ProteinGroupID/GO-ID universes using raw nominal p-values. SUS-RES remains outside those families. Effect/NES trajectories are descriptive; no DA model, GSEA, DAP-set ORA, WGCNA, or behavior model is rerun."
+        notes: "Bounded downstream three-contrast audit. Preserves individual-contrast protein/GO BH FDR; adds secondary dataset-by-spatial-unit joint control-pair BH families on matched ProteinGroupID/GO-ID universes using raw nominal p-values. SUS-RES remains outside those families. Direct-DAP control-reference geometry is selected only by canonical SUS-RES FDR and is descriptive, not independent validation. Effect/NES trajectories are descriptive; no DA model, GSEA, DAP-set ORA, WGCNA, or behavior model is rerun. The SUS-RES audit workbook is a protected reference artifact, not a Stage-11 input."
       - script: "05_celltype_enrichment_EWCE/01_EWCE_E9.r"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]

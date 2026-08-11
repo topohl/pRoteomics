@@ -15,6 +15,10 @@ STRESS_RESPONSE_FDR_THRESHOLD <- 0.05
 # when three serialized contrasts are combined; 2e-9 is an export-precision QC
 # tolerance, not a biological effect threshold.
 STRESS_RESPONSE_ALGEBRA_TOLERANCE <- 2e-9
+STRESS_RESPONSE_DIRECT_SIGN_GEOMETRY <- c(
+  "RES_up_SUS_down", "RES_down_SUS_up", "both_up_vs_CON", "both_down_vs_CON",
+  "one_or_both_exact_zero"
+)
 
 stress_response_extract_phenotype <- function(side) {
   side <- tolower(trimws(as.character(side)))
@@ -335,6 +339,107 @@ stress_response_build_protein_outputs <- function(protein_long, algebra_toleranc
   list(geometry = geometry, summary = summary, common_universe_audit = common_audit, algebra_audit = algebra, joint_family_audit = families)
 }
 
+stress_response_direct_dap_control_geometry <- function(protein_geometry) {
+  required <- c(
+    "dataset", "spatial_unit", "ProteinGroupID", "log2FC_RES_vs_CON", "log2FC_SUS_vs_CON",
+    "abs_log2FC_RES_vs_CON", "abs_log2FC_SUS_vs_CON", "delta_abs_log2FC",
+    "canonical_FDR_support_SUS_vs_RES"
+  )
+  missing <- setdiff(required, names(protein_geometry))
+  if (length(missing)) stop("Protein geometry is missing columns: ", paste(missing, collapse = ", "), call. = FALSE)
+  context_columns <- unique(protein_geometry[c("dataset", "spatial_unit")])
+  context_columns <- context_columns[order(context_columns$dataset, context_columns$spatial_unit, method = "radix"), , drop = FALSE]
+  selected <- protein_geometry[protein_geometry$canonical_FDR_support_SUS_vs_RES %in% TRUE, , drop = FALSE]
+  if (nrow(selected) && any(!is.finite(selected$log2FC_RES_vs_CON) | !is.finite(selected$log2FC_SUS_vs_CON))) {
+    stop("Direct SUS-RES DAP geometry requires finite RES-vs-CON and SUS-vs-CON log2FC values.", call. = FALSE)
+  }
+  selected$direct_DAP_selection_basis <- "canonical SUS_vs_RES FDR < 0.05"
+  selected$control_geometry_inference_role <- "descriptive decomposition of primary direct DAP; not independent control-contrast validation"
+  selected$sign_geometry <- ifelse(
+    selected$log2FC_RES_vs_CON == 0 | selected$log2FC_SUS_vs_CON == 0,
+    "one_or_both_exact_zero",
+    ifelse(
+      selected$log2FC_RES_vs_CON > 0 & selected$log2FC_SUS_vs_CON < 0,
+      "RES_up_SUS_down",
+      ifelse(
+        selected$log2FC_RES_vs_CON < 0 & selected$log2FC_SUS_vs_CON > 0,
+        "RES_down_SUS_up",
+        ifelse(
+          selected$log2FC_RES_vs_CON > 0 & selected$log2FC_SUS_vs_CON > 0,
+          "both_up_vs_CON",
+          "both_down_vs_CON"
+        )
+      )
+    )
+  )
+  selected$opposite_side_of_CON <- selected$sign_geometry %in% c("RES_up_SUS_down", "RES_down_SUS_up")
+  selected$same_side_of_CON <- selected$sign_geometry %in% c("both_up_vs_CON", "both_down_vs_CON")
+  selected$control_side_relationship <- ifelse(
+    selected$opposite_side_of_CON,
+    "opposite_side_of_CON",
+    ifelse(selected$same_side_of_CON, "same_side_of_CON", "one_or_both_exact_zero")
+  )
+  selected$relative_displacement <- ifelse(
+    selected$abs_log2FC_RES_vs_CON > selected$abs_log2FC_SUS_vs_CON,
+    "RES_farther",
+    ifelse(selected$abs_log2FC_SUS_vs_CON > selected$abs_log2FC_RES_vs_CON, "SUS_farther", "equal_distance")
+  )
+  selected <- selected[order(selected$dataset, selected$spatial_unit, selected$ProteinGroupID, method = "radix"), , drop = FALSE]
+  rownames(selected) <- NULL
+  detail_columns <- c(
+    "dataset", "spatial_unit", "ProteinGroupID",
+    "log2FC_RES_vs_CON", "canonical_FDR_RES_vs_CON", "canonical_FDR_support_RES_vs_CON",
+    "log2FC_SUS_vs_CON", "canonical_FDR_SUS_vs_CON", "canonical_FDR_support_SUS_vs_CON",
+    "log2FC_SUS_vs_RES", "canonical_FDR_SUS_vs_RES", "canonical_FDR_support_SUS_vs_RES",
+    "abs_log2FC_RES_vs_CON", "abs_log2FC_SUS_vs_CON", "delta_abs_log2FC",
+    "direct_DAP_selection_basis", "control_geometry_inference_role", "sign_geometry",
+    "opposite_side_of_CON", "same_side_of_CON", "control_side_relationship", "relative_displacement"
+  )
+  detail <- selected[intersect(detail_columns, names(selected))]
+
+  safe_fraction <- function(n, denominator) if (denominator > 0L) n / denominator else NA_real_
+  safe_median <- function(x) if (length(x)) stats::median(x) else NA_real_
+  summarize <- function(x, global = FALSE, dataset = NA_character_, spatial_unit = NA_character_) {
+    n <- nrow(x)
+    counts <- setNames(vapply(STRESS_RESPONSE_DIRECT_SIGN_GEOMETRY, function(z) sum(x$sign_geometry == z), integer(1)), STRESS_RESPONSE_DIRECT_SIGN_GEOMETRY)
+    if (!global) {
+      out <- data.frame(dataset = dataset, spatial_unit = spatial_unit, n_direct_DAP = n, stringsAsFactors = FALSE)
+    } else {
+      out <- data.frame(n_direct_SUS_RES_DAP = n, stringsAsFactors = FALSE)
+    }
+    for (z in STRESS_RESPONSE_DIRECT_SIGN_GEOMETRY) {
+      out[[paste0("n_", z)]] <- unname(counts[[z]])
+      out[[paste0("fraction_", z)]] <- safe_fraction(unname(counts[[z]]), n)
+    }
+    out$n_opposite_side_of_CON <- sum(x$opposite_side_of_CON)
+    out$fraction_opposite_side_of_CON <- safe_fraction(out$n_opposite_side_of_CON, n)
+    out$n_same_side_of_CON <- sum(x$same_side_of_CON)
+    out$fraction_same_side_of_CON <- safe_fraction(out$n_same_side_of_CON, n)
+    out$n_RES_farther <- sum(x$relative_displacement == "RES_farther")
+    out$fraction_RES_farther <- safe_fraction(out$n_RES_farther, n)
+    out$n_SUS_farther <- sum(x$relative_displacement == "SUS_farther")
+    out$fraction_SUS_farther <- safe_fraction(out$n_SUS_farther, n)
+    out$n_equal_distance <- sum(x$relative_displacement == "equal_distance")
+    out$fraction_equal_distance <- safe_fraction(out$n_equal_distance, n)
+    out$median_delta_abs_log2FC <- safe_median(x$delta_abs_log2FC)
+    out$median_log2FC_RES_vs_CON <- safe_median(x$log2FC_RES_vs_CON)
+    out$median_log2FC_SUS_vs_CON <- safe_median(x$log2FC_SUS_vs_CON)
+    out$direct_DAP_selection_basis <- "canonical SUS_vs_RES FDR < 0.05"
+    out$control_geometry_inference_role <- "descriptive decomposition of primary direct DAP; not independent control-contrast validation"
+    out
+  }
+  context_summary <- do.call(rbind, lapply(seq_len(nrow(context_columns)), function(i) {
+    hit <- selected$dataset == context_columns$dataset[[i]] & selected$spatial_unit == context_columns$spatial_unit[[i]]
+    summarize(
+      selected[hit, , drop = FALSE],
+      dataset = context_columns$dataset[[i]], spatial_unit = context_columns$spatial_unit[[i]]
+    )
+  }))
+  rownames(context_summary) <- NULL
+  global_summary <- summarize(selected, global = TRUE)
+  list(detail = detail, context_summary = context_summary, global_summary = global_summary)
+}
+
 stress_response_add_joint_go_fdr <- function(go_long) {
   required <- c("dataset", "spatial_unit", "phenotype_contrast", "ID", "pvalue", "p.adjust")
   missing <- setdiff(required, names(go_long))
@@ -386,6 +491,75 @@ stress_response_add_joint_go_fdr <- function(go_long) {
   audit <- do.call(rbind, audit)
   rownames(joint) <- rownames(audit) <- NULL
   list(joint = joint, audit = audit)
+}
+
+stress_response_build_supported_go_audits <- function(go_long, mapping) {
+  required <- c("dataset", "spatial_unit", "phenotype_contrast", "ID", "Description", "pvalue", "p.adjust", "NES")
+  missing <- setdiff(required, names(go_long))
+  if (length(missing)) stop("Supported GO audit input is missing columns: ", paste(missing, collapse = ", "), call. = FALSE)
+  supported <- go_long[is.finite(go_long$p.adjust) & go_long$p.adjust < STRESS_RESPONSE_FDR_THRESHOLD, , drop = FALSE]
+  supported$supported_occurrence_id <- paste(
+    supported$dataset, supported$spatial_unit, supported$phenotype_contrast, supported$ID, sep = "|"
+  )
+  if (anyDuplicated(supported$supported_occurrence_id)) {
+    stop("FDR-supported GO occurrence key is not unique before theme assignment expansion.", call. = FALSE)
+  }
+  status <- mapping$term_status
+  status_columns <- c(
+    "GO_ID", "assignment_status", "manuscript_themes", "theme_roles", "registry_version", "mapping_method"
+  )
+  occurrence <- merge(
+    supported, status[status_columns], by.x = "ID", by.y = "GO_ID", all.x = TRUE, sort = FALSE
+  )
+  if (anyNA(occurrence$assignment_status)) stop("Every supported GO occurrence must have an assignment status.", call. = FALSE)
+  names(occurrence)[names(occurrence) == "p.adjust"] <- "canonical_contrast_GO_FDR"
+  names(occurrence)[names(occurrence) == "pvalue"] <- "nominal_GSEA_p_value"
+  occurrence$canonical_GO_FDR_support <- TRUE
+  occurrence$canonical_GO_FDR_family <- "original ranked-GSEA contrast-specific GO-BP BH family"
+  occurrence$joint_control_GO_FDR_role <- ifelse(
+    occurrence$phenotype_contrast %in% STRESS_RESPONSE_CONTROL_CONTRASTS,
+    "secondary_control_burden_comparison_only", "not_applicable_to_SUS_vs_RES"
+  )
+  occurrence$row_grain <- "FDR_supported_GO_occurrence"
+  occurrence <- occurrence[order(
+    occurrence$phenotype_contrast, occurrence$dataset, occurrence$spatial_unit,
+    occurrence$canonical_contrast_GO_FDR, occurrence$ID, method = "radix"
+  ), , drop = FALSE]
+  if (anyDuplicated(occurrence$supported_occurrence_id)) stop("Unique supported GO occurrence table contains duplicate occurrence IDs.", call. = FALSE)
+
+  assignment <- collapse_go_theme_assignment_audit(mapping)
+  exploded <- merge(
+    occurrence,
+    assignment[c("GO_ID", "theme_id", "manuscript_theme", "theme_role", "anchor_GO_IDs", "anchor_labels")],
+    by.x = "ID", by.y = "GO_ID", all.x = TRUE, sort = FALSE
+  )
+  assignment_key <- ifelse(is.na(exploded$theme_id) | !nzchar(exploded$theme_id), "unclassified", exploded$theme_id)
+  exploded$theme_assignment_row_id <- paste(exploded$supported_occurrence_id, assignment_key, sep = "|")
+  exploded$row_grain <- "FDR_supported_GO_occurrence_x_theme_assignment"
+  if (anyDuplicated(exploded$theme_assignment_row_id)) stop("Supported GO theme-assignment row ID is not unique.", call. = FALSE)
+  exploded <- exploded[order(
+    exploded$phenotype_contrast, exploded$dataset, exploded$spatial_unit,
+    exploded$canonical_contrast_GO_FDR, exploded$ID, assignment_key, method = "radix"
+  ), , drop = FALSE]
+  rownames(occurrence) <- rownames(exploded) <- NULL
+  list(occurrence = occurrence, exploded = exploded)
+}
+
+stress_response_protected_reference_artifacts <- function(paths, producer, note, repository_root = repo_root()) {
+  paths <- as.character(paths)
+  if (!length(paths) || anyNA(paths) || any(!nzchar(paths))) stop("Protected reference paths must be non-empty.", call. = FALSE)
+  if (length(producer) != 1L || is.na(producer) || !nzchar(producer)) stop("Protected reference producer must be one non-empty value.", call. = FALSE)
+  if (length(note) != 1L || is.na(note) || !nzchar(note)) stop("Protected reference note must be one non-empty value.", call. = FALSE)
+  out <- data.frame(
+    artifact_path = vapply(paths, relative_to, character(1), root = repository_root),
+    exists = file.exists(paths),
+    sha256_at_stage11_run = vapply(paths, file_hash_sha256, character(1)),
+    role = "protected_reference_not_consumed",
+    producer = producer,
+    note = note,
+    stringsAsFactors = FALSE
+  )
+  out[order(out$artifact_path, method = "radix"), , drop = FALSE]
 }
 
 stress_response_build_theme_detail <- function(go_long, mapping, joint_go) {
@@ -525,6 +699,7 @@ stress_response_theme_overview <- function(theme_detail, trajectory) {
         res <- x$median_NES_all_theme_terms[x$contrast == "RES_vs_CON"][[1]]
         sus <- x$median_NES_all_theme_terms[x$contrast == "SUS_vs_CON"][[1]]
         data.frame(abs_median_NES_RES_vs_CON = abs(res), abs_median_NES_SUS_vs_CON = abs(sus),
+          delta_abs_theme_NES = abs(res) - abs(sus),
           same_direction_RES_and_SUS_vs_CON = if (res != 0 && sus != 0) sign(res) == sign(sus) else NA,
           canonical_GO_FDR_support_SUS_vs_RES = x$canonical_GO_FDR_support[x$contrast == "SUS_vs_RES"][[1]], stringsAsFactors = FALSE)
       }))
@@ -535,7 +710,13 @@ stress_response_theme_overview <- function(theme_detail, trajectory) {
     sus_more <- sum(t$abs_median_NES_SUS_vs_CON > t$abs_median_NES_RES_vs_CON, na.rm = TRUE)
     same <- sum(t$same_direction_RES_and_SUS_vs_CON %in% TRUE, na.rm = TRUE)
     opposite <- sum(t$same_direction_RES_and_SUS_vs_CON %in% FALSE, na.rm = TRUE)
-    interpretation <- if (res_more > sus_more) "More units are RES-farther from control by median theme NES; descriptive and spatially resolved." else if (sus_more > res_more) "More units are SUS-farther from control by median theme NES; descriptive and spatially resolved." else "RES- and SUS-farther units are balanced by median theme NES; descriptive and spatially resolved."
+    deltas <- t$delta_abs_theme_NES[is.finite(t$delta_abs_theme_NES)]
+    median_delta <- if (length(deltas)) stats::median(deltas) else NA_real_
+    interpretation <- paste0(
+      res_more, "/", length(deltas), " units were RES-farther descriptively; median delta absolute NES = ",
+      if (is.finite(median_delta)) formatC(median_delta, digits = 3L, format = "f") else "NA",
+      ". Count imbalance and median magnitude are descriptive and spatially resolved."
+    )
     data.frame(
       domain = if (exists("sus_res_theme_domain", mode = "function")) sus_res_theme_domain(meta$theme_id[[i]]) else "Manuscript GO theme",
       theme_id = meta$theme_id[[i]], theme = meta$manuscript_theme[[i]], role = if (meta$theme_role[[i]] == "qc_review") "QC" else meta$theme_role[[i]],
@@ -549,6 +730,12 @@ stress_response_theme_overview <- function(theme_detail, trajectory) {
       n_units_abs_SUS_theme_NES_gt_abs_RES = sus_more,
       n_units_same_response_direction = same,
       n_units_opposite_response_direction = opposite,
+      median_delta_abs_theme_NES = if (length(deltas)) stats::median(deltas) else NA_real_,
+      q25_delta_abs_theme_NES = if (length(deltas)) stats::quantile(deltas, 0.25, names = FALSE) else NA_real_,
+      q75_delta_abs_theme_NES = if (length(deltas)) stats::quantile(deltas, 0.75, names = FALSE) else NA_real_,
+      median_abs_delta_theme_NES = if (length(deltas)) stats::median(abs(deltas)) else NA_real_,
+      min_delta_abs_theme_NES = if (meta$theme_role[[i]] == "primary" && length(deltas)) min(deltas) else NA_real_,
+      max_delta_abs_theme_NES = if (meta$theme_role[[i]] == "primary" && length(deltas)) max(deltas) else NA_real_,
       n_RES_farther_units_with_direct_SUS_RES_FDR_support = sum(t$abs_median_NES_RES_vs_CON > t$abs_median_NES_SUS_vs_CON & t$canonical_GO_FDR_support_SUS_vs_RES, na.rm = TRUE),
       n_SUS_farther_units_with_direct_SUS_RES_FDR_support = sum(t$abs_median_NES_SUS_vs_CON > t$abs_median_NES_RES_vs_CON & t$canonical_GO_FDR_support_SUS_vs_RES, na.rm = TRUE),
       neutral_interpretation = interpretation,
