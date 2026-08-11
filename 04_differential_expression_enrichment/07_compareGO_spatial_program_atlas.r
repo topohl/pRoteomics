@@ -373,6 +373,9 @@ calculate_program_summary <- function(enrichment_df, driver_by_dataset) {
     dplyr::select(-dplyr::all_of(c("term_set", "comparison_set")))
 }
 
+# Backward-compatible legacy heuristic only. These classes mix significance
+# status and arbitrary mean-NES cutoffs and must not be used as manuscript
+# evidence for a difference between RES-vs-CON and SUS-vs-CON.
 classify_program_behavior <- function(summary_df, min_abs_nes = 0.15) {
   wide <- summary_df %>%
     dplyr::group_by(.data$dataset, .data$dataset_label, .data$region, .data$layer, .data$spatial_unit,
@@ -407,7 +410,10 @@ classify_program_behavior <- function(summary_df, min_abs_nes = 0.15) {
         res_sig > 0 & (sus_sig == 0 | is.na(sus) | abs(sus) < min_abs_nes) ~ "resilience_specific",
         sus_sig > 0 & (res_sig == 0 | is.na(res) | abs(res) < min_abs_nes) ~ "susceptibility_specific",
         TRUE ~ "phenotype_separating"
-      )
+      ),
+      legacy_heuristic_classification = TRUE,
+      manuscript_evidence_eligible = FALSE,
+      legacy_classification_warning = "Descriptive backward-compatibility field; significance in one contrast and nonsignificance in another does not establish a between-contrast difference."
     )
 }
 
