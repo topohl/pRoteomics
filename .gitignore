@@ -79,6 +79,7 @@ PRIDE_package/
 *.csv
 !config/marker_panels/*.csv
 !config/wgcna_labels/*.csv
+!config/gsea_wgcna_program_module_mapping.csv
 /results/manuscript
 /results/module_scores/microglia
 /results/module_scores/neuron_neuropil

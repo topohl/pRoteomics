@@ -260,6 +260,8 @@ Rscript 09_export_pride_journal/07_make_biological_claims_table.R --dry-run
 Rscript 10_biological_integration/03_evidence_priority_matrix.r --dry-run
 Rscript 10_biological_integration/04_wgcna_circular_atlas.R --dry-run
 Rscript 10_biological_integration/04_wgcna_cross_compartment_overview.R --dry-run
+Rscript 10_biological_integration/05_gsea_wgcna_concordance.R --dry-run
+Rscript 10_biological_integration/06_gsea_wgcna_concordance_diagnostics.R --dry-run
 ```
 
 Key outputs:
@@ -268,6 +270,8 @@ Key outputs:
 results/tables/10_biological_integration/cross_compartment_program_atlas/global/
 results/tables/10_biological_integration/manuscript_program_summary/global/
 results/tables/10_biological_integration/evidence_priority_matrix/global/
+results/tables/10_biological_integration/gsea_wgcna_concordance/global/
+results/tables/10_biological_integration/gsea_wgcna_concordance_diagnostics/global/
 ```
 
 ## Export
