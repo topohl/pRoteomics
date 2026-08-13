@@ -15,6 +15,7 @@ paths_file <- if (file.exists(file.path("R", "paths.R"))) {
 source(paths_file)
 source(repo_path("R", "integration_utils.R"))
 source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
+source(repo_path("R", "manuscript_go_theme_utils.R"))
 source(repo_path("R", "gsea_wgcna_concordance_utils.R"))
 
 SCRIPT_ID <- "10_biological_integration/05_gsea_wgcna_concordance.R"
@@ -24,7 +25,8 @@ datasets <- integration_datasets(run$dataset)
 paths <- integration_paths("gsea_wgcna_concordance", "global")
 
 required_packages <- c(
-  "dplyr", "tidyr", "tidyselect", "readr", "stringr", "tibble"
+  "dplyr", "tidyr", "tidyselect", "readr", "stringr", "tibble",
+  "GO.db", "AnnotationDbi"
 )
 missing_packages <- required_packages[
   !vapply(required_packages, requireNamespace, logical(1), quietly = TRUE)
@@ -38,8 +40,12 @@ gsea_terms_file <- path_results(
   "source_data", "04_differential_expression_enrichment",
   "compareGO_spatial_atlas", "spatial_atlas_enrichment_long.csv"
 )
-program_mapping_file <- repo_path(
+legacy_program_mapping_file <- repo_path(
   "config", "gsea_wgcna_program_module_mapping.csv"
+)
+theme_registry_file <- repo_path("config", "manuscript_go_theme_registry.tsv")
+theme_mapping_file <- repo_path(
+  "config", "gsea_wgcna_theme_module_mapping.csv"
 )
 
 dataset_inputs <- lapply(datasets, function(dataset) {
@@ -81,7 +87,8 @@ microglia_inputs <- list(
 
 required_inputs <- c(
   gsea_terms = gsea_terms_file,
-  program_mapping = program_mapping_file,
+  manuscript_theme_registry = theme_registry_file,
+  theme_entity_mapping = theme_mapping_file,
   unlist(lapply(names(dataset_inputs), function(dataset) {
     c(
       setNames(dataset_inputs[[dataset]]$wgcna_handoff,
@@ -98,7 +105,8 @@ optional_inputs <- c(
       paste0(dataset, "_module_preservation")
     )
   })),
-  setNames(unlist(microglia_inputs), paste0("microglia_", names(microglia_inputs)))
+  setNames(unlist(microglia_inputs), paste0("microglia_", names(microglia_inputs))),
+  legacy_program_mapping = legacy_program_mapping_file
 )
 
 output_files <- c(
@@ -107,7 +115,8 @@ output_files <- c(
   "adaptive_resilience_pattern_summary.csv",
   "program_specific_leading_edge_module_overlap.csv",
   "gsea_wgcna_concordance_audit.csv",
-  "program_module_matching_audit.csv"
+  "program_module_matching_audit.csv",
+  "ontology_aware_gsea_theme_assignments_all_contrasts.csv"
 )
 
 if (run$dry_run) {
@@ -168,6 +177,11 @@ gsea_terms <- readr::read_csv(
   guess_max = Inf
 )
 gww_validate_gsea_terms(gsea_terms)
+theme_registry <- read_manuscript_go_theme_registry(theme_registry_file)
+gsea_theme_terms <- gww_build_ontology_theme_term_table(
+  gsea_terms, theme_registry
+)
+gww_validate_theme_terms(gsea_theme_terms)
 
 wgcna_by_dataset <- lapply(datasets, function(dataset) {
   wgcna_inferential_handoff_read(
@@ -203,14 +217,19 @@ universe_bundles <- lapply(datasets, function(dataset) {
 names(universe_bundles) <- datasets
 token_map <- dplyr::bind_rows(lapply(universe_bundles, `[[`, "token_map"))
 
-registry <- gww_read_program_mapping(program_mapping_file)
-program_matches <- gww_build_entity_program_matches(wgcna, registry)
-
-local_gsea <- gww_build_local_gsea_evidence(gsea_terms)
-global_gsea <- gww_build_global_gsea_evidence(
-  gsea_terms, local_gsea, min_recurrent_units = 2L
+theme_mapping <- gww_read_theme_entity_mapping(theme_mapping_file)
+validated_theme_mapping <- gww_validate_theme_entity_mapping(
+  wgcna, theme_mapping, theme_registry
 )
-gsea_evidence <- dplyr::bind_rows(local_gsea, global_gsea)
+program_matches <- gww_build_entity_theme_matches(
+  wgcna, theme_mapping, theme_registry
+)
+
+local_gsea <- gww_build_local_gsea_evidence(gsea_theme_terms)
+recurrent_cross_spatial_gsea <- gww_build_recurrent_cross_spatial_gsea_evidence(
+  gsea_theme_terms, local_gsea, min_recurrent_units = 2L
+)
+gsea_evidence <- dplyr::bind_rows(local_gsea, recurrent_cross_spatial_gsea)
 gww_assert_unique(gsea_evidence, "gsea_evidence_id", "Combined GSEA evidence")
 gsea_evidence <- gww_map_leading_edges(gsea_evidence, token_map)
 
@@ -463,7 +482,15 @@ matches_for_join <- program_matches |>
     matching_annotation_field = as.character(.data$annotation_field),
     matching_annotation_token = as.character(.data$annotation_token),
     matching_rationale = as.character(.data$mapping_rationale),
+    matching_annotation_source = as.character(.data$annotation_source),
+    mapping_confidence = as.character(.data$confidence),
+    mapping_status = as.character(.data$mapping_status),
+    mapping_role = as.character(.data$mapping_role),
+    approved_for_manuscript_interpretation = as.logical(
+      .data$approved_for_manuscript_interpretation
+    ),
     program_module_match_rule = as.character(.data$program_module_match_rule),
+    mapping_independence_note = as.character(.data$mapping_independence_note),
     module_annotation_evidence_role = as.character(
       .data$module_annotation_evidence_role
     )
@@ -475,6 +502,11 @@ matched_evidence <- gsea_evidence |>
     by = c("dataset", "biological_program"),
     relationship = "many-to-many"
   )
+if (any(matched_evidence$theme_role == "qc_review", na.rm = TRUE) ||
+    any(!matched_evidence$approved_for_manuscript_interpretation %in% TRUE)) {
+  stop("QC or unapproved ontology themes entered concordance matching.",
+       call. = FALSE)
+}
 unmatched_program_evidence <- gsea_evidence |>
   dplyr::anti_join(
     matches_for_join |>
@@ -498,8 +530,8 @@ local_long <- matched_evidence |>
   ) |>
   dplyr::mutate(wgcna_spatial_unit = .data$gsea_spatial_unit)
 
-global_long <- matched_evidence |>
-  dplyr::filter(.data$comparison_scope == "global_cross_spatial") |>
+recurrent_cross_spatial_long <- matched_evidence |>
+  dplyr::filter(.data$comparison_scope == "recurrent_cross_spatial") |>
   dplyr::inner_join(
     effects |>
       dplyr::filter(
@@ -517,7 +549,7 @@ global_long <- matched_evidence |>
   ) |>
   dplyr::mutate(wgcna_spatial_unit = "global_spatial_adjusted")
 
-long <- dplyr::bind_rows(local_long, global_long)
+long <- dplyr::bind_rows(local_long, recurrent_cross_spatial_long)
 gww_assert_unique(
   long,
   c("gsea_evidence_id", "wgcna_entity_level", "wgcna_entity_id"),
@@ -626,7 +658,7 @@ if (!identical(long_first$concordance_class, long_second$concordance_class) ||
   stop("Concordance classification is not deterministic.", call. = FALSE)
 }
 long <- long_first
-gww_validate_local_global_semantics(long)
+gww_validate_local_recurrent_cross_spatial_semantics(long)
 gww_assert_unique(
   long,
   c("gsea_evidence_id", "wgcna_entity_level", "wgcna_entity_id"),
@@ -759,7 +791,7 @@ concordance_classes <- c(
   "unresolved"
 )
 adaptive_pattern_classes <- c(
-  "RES_specific_adaptive_candidate", "SUS_specific_candidate",
+  "RES_supported_shift_candidate", "SUS_supported_shift_candidate",
   "opposing_RES_vs_SUS", "graded_stress_response",
   "shared_stress_response", "unresolved"
 )
@@ -790,9 +822,18 @@ audit <- dplyr::bind_rows(
   list(
     audit_row(
       "matching_rule", "program_module_matching", detail = paste(
-        "Exact normalized Stage 07 module_program_primary/secondary token",
-        "to config/gsea_wgcna_program_module_mapping.csv; labels are identity",
-        "annotations, not evidence for a group effect."
+        "Explicit dataset + ontology theme_id + entity level + entity ID",
+        "mapping from config/gsea_wgcna_theme_module_mapping.csv; only",
+        "approved primary/supporting rows enter concordance. WGCNA labels and",
+        "module GO are biological identity evidence, not group-effect evidence."
+      )
+    ),
+    audit_row(
+      "exclusion", "qc_review_themes", n = sum(
+        gsea_theme_terms$theme_role == "qc_review", na.rm = TRUE
+      ), detail = paste(
+        "QC-review ontology assignments remain in the all-contrast audit but",
+        "cannot create GSEA-WGCNA biological concordance."
       )
     ),
     audit_row(
@@ -800,8 +841,8 @@ audit <- dplyr::bind_rows(
         "Local GSEA is paired only to within_spatial_unit WGCNA endpoints with the same normalized spatial unit."
     ),
     audit_row(
-      "matching_rule", "global_cross_spatial", detail =
-        "Global WGCNA is paired only to GSEA programs recurring in one direction across at least two spatial units."
+      "matching_rule", "recurrent_cross_spatial", detail =
+        "Global WGCNA is paired only to recurrent-cross-spatial GSEA direction across at least two spatial units."
     ),
     audit_row(
       "lineage", "ranked_GSEA", detail = paste(
@@ -832,9 +873,9 @@ audit <- dplyr::bind_rows(
     audit_row(
       "exclusion", "gsea_evidence_without_curated_module_match",
       n = nrow(unmatched_program_evidence), detail = paste(
-        "GSEA evidence rows without an exact checked-in program-to-module",
-        "annotation match are retained in the source lineage but excluded",
-        "from concordance comparisons rather than matched by label similarity."
+        "GSEA theme evidence without an approved same-dataset checked-in",
+        "theme-to-entity mapping is retained in the source lineage but",
+        "excluded rather than matched by textual similarity."
       )
     ),
     audit_row(
@@ -916,17 +957,94 @@ audit <- dplyr::bind_rows(
     )
 )
 
-matching_audit <- program_matches |>
+matching_audit <- validated_theme_mapping |>
+  dplyr::mutate(
+    biological_program = .data$theme_id,
+    program_module_match_rule = paste(
+      "explicit dataset + theme_id + entity_level + entity_id registry;",
+      "only approved rows enter concordance"
+    ),
+    mapping_independence_note = paste(
+      "Multiple theme mappings to the same WGCNA module are biological",
+      "annotations of one network entity and must not be counted as",
+      "independent WGCNA evidence."
+    ),
+    module_annotation_evidence_role =
+      "biological_identity_only_not_group_effect_evidence"
+  ) |>
   dplyr::select(dplyr::all_of(c(
     "dataset", "entity_level", "entity_id", "display_label",
-    "cleaned_biological_label", "biological_program", "annotation_field",
-    "annotation_token", "mapping_rationale", "program_module_match_rule",
+    "cleaned_biological_label", "theme_id", "manuscript_theme",
+    "theme_role", "mapping_status", "mapping_rationale",
+    "annotation_source", "confidence", "mapping_role",
+    "approved_for_manuscript_interpretation", "biological_program",
+    "program_module_match_rule", "mapping_independence_note",
     "module_annotation_evidence_role"
   ))) |>
   dplyr::arrange(
     .data$dataset, .data$entity_level, .data$entity_id,
     .data$biological_program
   )
+
+theme_assignment_output <- gsea_theme_terms |>
+  dplyr::transmute(
+    dataset = as.character(.data$dataset),
+    phenotype_contrast = as.character(.data$phenotype_contrast),
+    contrast = gww_formal_contrast(.data$phenotype_contrast),
+    spatial_unit = as.character(.data$spatial_unit),
+    source_comparison = as.character(.data$Comparison),
+    GO_ID = as.character(.data$GO_ID),
+    GO_description = as.character(.data$GO_description),
+    NES = as.numeric(.data$NES),
+    raw_p = as.numeric(.data$pvalue),
+    GSEA_FDR = as.numeric(.data$p.adjust),
+    leading_edge_proteins = as.character(.data$core_enrichment),
+    leading_edge_genes = as.character(.data$core_enrichment_gene),
+    legacy_program_class = as.character(.data$legacy_program_class),
+    theme_id = as.character(.data$theme_id),
+    manuscript_theme = as.character(.data$manuscript_theme),
+    theme_role = as.character(.data$theme_role),
+    theme_claim_eligible = as.logical(.data$theme_claim_eligible),
+    assignment_status = as.character(.data$assignment_status),
+    anchor_GO_ID = as.character(.data$anchor_GO_IDs),
+    anchor_label = as.character(.data$anchor_labels),
+    mapping_type = dplyr::coalesce(
+      as.character(.data$mapping_method),
+      as.character(.data$mapping_method_status)
+    ),
+    match_scope = as.character(.data$match_scopes),
+    match_type = as.character(.data$match_types),
+    shortest_path_length = as.integer(.data$shortest_path_length),
+    ancestry_relationship_path = as.character(.data$relationship_paths),
+    GO_ancestry_path = as.character(.data$GO_paths),
+    relationship_types_approved = dplyr::coalesce(
+      as.character(.data$relationship_types_approved),
+      as.character(.data$relationship_types_approved_status)
+    ),
+    registry_version = dplyr::coalesce(
+      as.character(.data$registry_version),
+      as.character(.data$registry_version_status)
+    ),
+    GO_db_package_version = dplyr::coalesce(
+      as.character(.data$GO_db_package_version),
+      as.character(.data$GO_db_package_version_status)
+    ),
+    GO_source_date = dplyr::coalesce(
+      as.character(.data$GO_source_date),
+      as.character(.data$GO_source_date_status)
+    ),
+    theme_identity_source = as.character(.data$theme_identity_source),
+    theme_assignment_id = as.character(.data$theme_assignment_id),
+    evidence_source_family = as.character(.data$evidence_source_family)
+  ) |>
+  dplyr::arrange(
+    .data$dataset, .data$contrast, .data$spatial_unit, .data$GO_ID,
+    .data$theme_id
+  )
+gww_assert_unique(
+  theme_assignment_output, "theme_assignment_id",
+  "Ontology-aware all-contrast GSEA theme output"
+)
 
 for (filename in output_files) {
   # All expected files are written explicitly below. This loop documents the
@@ -942,6 +1060,10 @@ invisible(write_integration_table(
 invisible(write_integration_table(audit, paths, "gsea_wgcna_concordance_audit.csv"))
 invisible(write_integration_table(
   matching_audit, paths, "program_module_matching_audit.csv"
+))
+invisible(write_integration_table(
+  theme_assignment_output, paths,
+  "ontology_aware_gsea_theme_assignments_all_contrasts.csv"
 ))
 write_csv_safe(input_status, file.path(paths$reports, "input_status.csv"))
 write_csv_safe(hash_audit, file.path(paths$reports, "protected_source_hash_audit.csv"))
@@ -976,7 +1098,7 @@ readme_lines <- c(
   "",
   "## Matching and multiple testing",
   "",
-  "Local GSEA is compared only with the same local WGCNA spatial unit. Spatial-adjusted global WGCNA is compared only with a program recurring in one direction in at least two spatial units. Program-module identity uses the checked-in exact annotation registry. Fisher tests use the canonical dataset-specific WGCNA ProteinGroupID universe and are BH-adjusted within dataset x formal contrast x GSEA spatial unit over all prespecified matched program x module hypotheses.",
+  "Local GSEA is compared only with the same local WGCNA spatial unit. Spatial-adjusted global WGCNA is compared only with an ontology-aware theme recurring in one direction in at least two spatial units. Theme identity uses valid GO BP IDs, the checked-in manuscript registry, and approved is_a/part_of ancestry only; unmapped and qc_review terms cannot create a biological concordance claim. Theme-module identity uses only explicitly approved same-dataset mappings. Fisher tests use the canonical dataset-specific WGCNA ProteinGroupID universe and are BH-adjusted within dataset x formal contrast x GSEA spatial unit over all prespecified matched theme x module hypotheses.",
   "",
   "Genuine multimodule supermodules remain independent WGCNA endpoints in the concordance table, but no Fisher test is run on unions of their member modules because that would duplicate correlated module hypotheses. The legacy 04_wgcna_de_gsea_overlap output is retained as context only.",
   "",
@@ -1011,7 +1133,7 @@ write_integration_manifest(
     datasets = datasets,
     gsea_fdr_threshold = 0.05,
     wgcna_fdr_threshold = 0.05,
-    global_gsea_min_recurrent_units = 2L,
+    recurrent_cross_spatial_gsea_min_units = 2L,
     overlap_family = "dataset x formal contrast x GSEA spatial unit",
     overlap_entities = "canonical modules only",
     near_zero_rule = "within-tier q25(abs estimate)",

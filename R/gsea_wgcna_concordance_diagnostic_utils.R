@@ -293,19 +293,35 @@ gwwd_power_diagnostic <- function(long) {
 }
 
 gwwd_prepare_all_gsea <- function(term_table) {
-  gww_validate_gsea_terms(term_table)
+  gww_assert_columns(
+    term_table,
+    c(
+      "dataset", "phenotype_contrast", "spatial_unit", "GO_ID",
+      "GO_description", "NES", "raw_p", "GSEA_FDR", "theme_id",
+      "manuscript_theme", "theme_role", "theme_claim_eligible",
+      "theme_assignment_id"
+    ),
+    "Ontology-aware all-contrast GSEA theme assignment table"
+  )
+  if (!"registry_version" %in% names(term_table)) {
+    term_table$registry_version <- NA_character_
+  }
   term_table |>
     dplyr::mutate(
       contrast = gww_formal_contrast(.data$phenotype_contrast),
       gsea_spatial_unit = gww_normalize_spatial_unit(.data$spatial_unit),
-      biological_program = as.character(.data$program_class),
+      biological_program = as.character(.data$theme_id),
+      ID = as.character(.data$GO_ID),
+      Description = as.character(.data$GO_description),
       NES = as.numeric(.data$NES),
-      GSEA_FDR = as.numeric(.data$p.adjust),
-      raw_p = as.numeric(.data$pvalue)
+      GSEA_FDR = as.numeric(.data$GSEA_FDR),
+      raw_p = as.numeric(.data$raw_p)
     ) |>
     dplyr::filter(
       .data$contrast %in% unname(gww_formal_contrast_map()),
-      .data$biological_program != "Other",
+      .data$theme_claim_eligible %in% TRUE,
+      .data$theme_role %in% c("primary", "supporting"),
+      !is.na(.data$biological_program), nzchar(.data$biological_program),
       is.finite(.data$NES), is.finite(.data$GSEA_FDR)
     )
 }
@@ -362,6 +378,9 @@ gwwd_local_program_effects <- function(term_table) {
       .data$biological_program, .data$contrast
     ) |>
     dplyr::summarise(
+      manuscript_theme = dplyr::first(.data$manuscript_theme),
+      theme_role = dplyr::first(.data$theme_role),
+      registry_version = dplyr::first(.data$registry_version),
       n_common_GO_terms = dplyr::n_distinct(.data$ID),
       gsea_program_NES = stats::median(.data$NES),
       gsea_min_FDR = min(.data$GSEA_FDR),
@@ -420,12 +439,18 @@ gwwd_local_program_effects <- function(term_table) {
   out
 }
 
-gwwd_global_program_effects <- function(local_effects) {
+gwwd_recurrent_cross_spatial_program_effects <- function(local_effects) {
+  for (column in c("manuscript_theme", "theme_role", "registry_version")) {
+    if (!column %in% names(local_effects)) local_effects[[column]] <- NA_character_
+  }
   out <- local_effects |>
     dplyr::group_by(
       .data$dataset, .data$biological_program, .data$contrast
     ) |>
     dplyr::summarise(
+      manuscript_theme = dplyr::first(.data$manuscript_theme),
+      theme_role = dplyr::first(.data$theme_role),
+      registry_version = dplyr::first(.data$registry_version),
       n_spatial_units = dplyr::n_distinct(.data$gsea_spatial_unit),
       n_units_positive = sum(.data$gsea_program_NES > 0),
       n_units_negative = sum(.data$gsea_program_NES < 0),
@@ -447,7 +472,9 @@ gwwd_global_program_effects <- function(local_effects) {
           .data$n_units_negative > .data$n_units_positive ~ -1,
         TRUE ~ NA_real_
       ),
-      recurrent_direction_available = !is.na(.data$gsea_direction_sign),
+      recurrent_cross_spatial_direction_available = !is.na(
+        .data$gsea_direction_sign
+      ),
       gsea_representation_method = paste(
         "DESCRIPTIVE recurrent direction from the majority sign of local",
         "contrast-independent common-term program median NES values; at least",
@@ -458,7 +485,7 @@ gwwd_global_program_effects <- function(local_effects) {
   gww_assert_unique(
     out,
     c("dataset", "biological_program", "contrast"),
-    "Complete global GSEA program effects"
+    "Complete recurrent-cross-spatial GSEA program effects"
   )
   out
 }
@@ -562,6 +589,11 @@ gwwd_directional_patterns <- function(gsea_effects, wgcna_effects,
     )
     key_columns <- c("dataset", "gsea_spatial_unit", "biological_program")
   }
+  theme_metadata <- intersect(
+    c("manuscript_theme", "theme_role", "registry_version"),
+    names(gsea_effects)
+  )
+  key_columns <- c(key_columns, theme_metadata)
   joined <- gsea_effects |>
     dplyr::left_join(
       wgcna_effects,
@@ -615,7 +647,7 @@ gwwd_directional_patterns <- function(gsea_effects, wgcna_effects,
   )
   wide$pattern_method <- paste(
     "Directional labels require GSEA/WGCNA sign compatibility for all three",
-    "contrasts. RES/SUS-specific labels are reserved and are not assigned",
+    "contrasts. RES/SUS supported-shift labels are reserved and are not assigned",
     "from significance asymmetry or an invented near-zero GSEA threshold.",
     "FDRs and CIs remain descriptive columns and are not pattern gates."
   )
@@ -624,9 +656,9 @@ gwwd_directional_patterns <- function(gsea_effects, wgcna_effects,
 }
 
 gwwd_strict_gate_audit <- function(strict_long, strict_patterns) {
-  global <- strict_long |>
+  recurrent_cross_spatial <- strict_long |>
     dplyr::filter(
-      .data$comparison_scope == "global_cross_spatial",
+      .data$comparison_scope == "recurrent_cross_spatial",
       .data$wgcna_entity_level == "module"
     ) |>
     dplyr::group_by(
@@ -671,7 +703,7 @@ gwwd_strict_gate_audit <- function(strict_long, strict_patterns) {
       "dataset", "biological_program", "adaptive_resilience_pattern"
     ))) |>
     dplyr::left_join(
-      global,
+      recurrent_cross_spatial,
       by = c("dataset", "biological_program"),
       relationship = "one-to-one"
     )
@@ -697,7 +729,7 @@ gwwd_strict_gate_audit <- function(strict_long, strict_patterns) {
   res_ok <- out$stable_concordant_endpoint_available__RES_CON
   sus_ok <- out$stable_concordant_endpoint_available__SUS_CON
   direct_ok <- out$stable_concordant_endpoint_available__SUS_RES
-  out$recurrent_global_GSEA_all_three_available <-
+  out$recurrent_cross_spatial_GSEA_all_three_available <-
     out$GSEA_available__RES_CON & out$GSEA_available__SUS_CON &
     out$GSEA_available__SUS_RES
   out$program_module_mapping_available <- apply(
@@ -710,9 +742,9 @@ gwwd_strict_gate_audit <- function(strict_long, strict_patterns) {
   out$direct_SUS_RES_direction_compatible <- !is.na(direct) & direct_ok
   out$RES_departure_from_CON_compatible <- !is.na(res) & res_ok
   out$SUS_departure_from_CON_compatible <- !is.na(sus) & sus_ok
-  out$strict_RES_specific_rule_pass <-
+  out$strict_RES_supported_shift_rule_pass <-
     res == 1 & direct == -1 & res_ok & direct_ok
-  out$strict_SUS_specific_rule_pass <-
+  out$strict_SUS_supported_shift_rule_pass <-
     !is.na(sus) & sus != 0 & direct == sus & sus_ok & direct_ok
   out$strict_opposing_rule_pass <-
     !is.na(res) & !is.na(sus) & res == -sus & res_ok & sus_ok &
@@ -742,8 +774,8 @@ gwwd_strict_gate_audit <- function(strict_long, strict_patterns) {
       }
     }
     rules <- c(
-      out$strict_RES_specific_rule_pass[[i]],
-      out$strict_SUS_specific_rule_pass[[i]],
+      out$strict_RES_supported_shift_rule_pass[[i]],
+      out$strict_SUS_supported_shift_rule_pass[[i]],
       out$strict_opposing_rule_pass[[i]],
       out$strict_graded_rule_pass[[i]],
       out$strict_shared_rule_pass[[i]]

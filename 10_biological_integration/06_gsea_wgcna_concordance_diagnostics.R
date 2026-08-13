@@ -14,6 +14,7 @@ paths_file <- if (file.exists(file.path("R", "paths.R"))) {
 source(paths_file)
 source(repo_path("R", "integration_utils.R"))
 source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
+source(repo_path("R", "manuscript_go_theme_utils.R"))
 source(repo_path("R", "gsea_wgcna_concordance_utils.R"))
 source(repo_path("R", "gsea_wgcna_concordance_diagnostic_utils.R"))
 
@@ -49,13 +50,13 @@ strict_overlap_file <- file.path(
   strict_dir, "program_specific_leading_edge_module_overlap.csv"
 )
 strict_matching_file <- file.path(strict_dir, "program_module_matching_audit.csv")
-gsea_terms_file <- path_results(
-  "source_data", "04_differential_expression_enrichment",
-  "compareGO_spatial_atlas", "spatial_atlas_enrichment_long.csv"
+gsea_terms_file <- file.path(
+  strict_dir, "ontology_aware_gsea_theme_assignments_all_contrasts.csv"
 )
-program_mapping_file <- repo_path(
-  "config", "gsea_wgcna_program_module_mapping.csv"
+theme_mapping_file <- repo_path(
+  "config", "gsea_wgcna_theme_module_mapping.csv"
 )
+theme_registry_file <- repo_path("config", "manuscript_go_theme_registry.tsv")
 
 dataset_inputs <- lapply(datasets, function(dataset) {
   list(
@@ -96,8 +97,9 @@ required_inputs <- c(
   strict_patterns = strict_pattern_file,
   strict_overlap = strict_overlap_file,
   strict_matching = strict_matching_file,
-  gsea_terms = gsea_terms_file,
-  program_mapping = program_mapping_file,
+  ontology_gsea_terms = gsea_terms_file,
+  theme_entity_mapping = theme_mapping_file,
+  manuscript_theme_registry = theme_registry_file,
   unlist(lapply(names(dataset_inputs), function(dataset) {
     setNames(
       unlist(dataset_inputs[[dataset]]),
@@ -110,6 +112,7 @@ output_files <- c(
   "concordant_imprecise_diagnostic.csv",
   "concordance_wgcna_power_diagnostic.csv",
   "unmatched_gsea_program_mapping_audit.csv",
+  "unmatched_gsea_theme_mapping_audit.csv",
   "adaptive_resilience_gate_audit.csv",
   "adaptive_resilience_directional_patterns.csv",
   "adaptive_resilience_local_spatial_patterns.csv",
@@ -161,7 +164,16 @@ strict_matching <- readr::read_csv(
 gsea_terms <- readr::read_csv(
   gsea_terms_file, show_col_types = FALSE, progress = FALSE, guess_max = Inf
 )
-gww_validate_gsea_terms(gsea_terms)
+gww_assert_columns(
+  gsea_terms,
+  c(
+    "dataset", "phenotype_contrast", "spatial_unit", "GO_ID",
+    "GO_description", "NES", "raw_p", "GSEA_FDR", "theme_id",
+    "manuscript_theme", "theme_role", "theme_claim_eligible",
+    "theme_assignment_id"
+  ),
+  "Ontology-aware all-contrast GSEA theme assignments"
+)
 
 handoff_by_dataset <- lapply(datasets, function(dataset) {
   wgcna_inferential_handoff_read(
@@ -178,26 +190,87 @@ if (any(!handoff$independent_hypothesis %in% TRUE) ||
        call. = FALSE)
 }
 
-registry <- gww_read_program_mapping(program_mapping_file)
-program_matches <- gww_build_entity_program_matches(handoff, registry)
+theme_registry <- read_manuscript_go_theme_registry(theme_registry_file)
+theme_mapping <- gww_read_theme_entity_mapping(theme_mapping_file)
+validated_theme_mapping <- gww_validate_theme_entity_mapping(
+  handoff, theme_mapping, theme_registry
+)
+program_matches <- gww_build_entity_theme_matches(
+  handoff, theme_mapping, theme_registry
+)
 effect_lookup <- gwwd_effect_distribution_lookup(handoff)
 imprecise <- gwwd_concordant_imprecise(strict_long, effect_lookup)
 power <- gwwd_power_diagnostic(strict_long)
 
-# Reconstruct the exact 19 strict exclusions before making mapping suggestions.
-strict_local_gsea <- gww_build_local_gsea_evidence(gsea_terms)
-strict_global_gsea <- gww_build_global_gsea_evidence(
-  gsea_terms, strict_local_gsea, min_recurrent_units = 2L
+# Reconstruct ontology-theme exclusions before making manual-review suggestions.
+strict_theme_terms <- gsea_terms |>
+  dplyr::transmute(
+    dataset, phenotype_contrast, spatial_unit,
+    Comparison = .data$source_comparison,
+    ID = .data$GO_ID, Description = .data$GO_description,
+    GO_ID, GO_description, NES,
+    pvalue = .data$raw_p, p.adjust = .data$GSEA_FDR,
+    core_enrichment = .data$leading_edge_proteins,
+    core_enrichment_gene = .data$leading_edge_genes,
+    evidence_source_family,
+    theme_id, manuscript_theme, theme_role, theme_claim_eligible,
+    anchor_GO_IDs = .data$anchor_GO_ID,
+    mapping_method = .data$mapping_type,
+    registry_version, theme_assignment_id,
+    source_supplementary_file = NA_character_
+  )
+gww_validate_theme_terms(strict_theme_terms)
+strict_local_gsea <- gww_build_local_gsea_evidence(strict_theme_terms)
+strict_recurrent_cross_spatial_gsea <- gww_build_recurrent_cross_spatial_gsea_evidence(
+  strict_theme_terms, strict_local_gsea, min_recurrent_units = 2L
 )
 strict_gsea_evidence <- dplyr::bind_rows(
-  strict_local_gsea, strict_global_gsea
+  strict_local_gsea, strict_recurrent_cross_spatial_gsea
 )
+# QC-review themes remain visible for audit and manual mapping review, but are
+# deliberately excluded from the claim-eligible concordance evidence above.
+qc_context_evidence <- strict_theme_terms |>
+  dplyr::filter(
+    .data$theme_role == "qc_review",
+    is.finite(.data$p.adjust), .data$p.adjust <= 0.05,
+    is.finite(.data$NES), .data$NES != 0
+  ) |>
+  dplyr::mutate(
+    direction = ifelse(.data$NES > 0, "positive", "negative")
+  ) |>
+  dplyr::group_by(
+    .data$dataset, .data$phenotype_contrast, .data$spatial_unit,
+    .data$theme_id, .data$direction
+  ) |>
+  dplyr::arrange(
+    .data$p.adjust, .data$pvalue, dplyr::desc(abs(.data$NES)), .data$GO_ID,
+    .by_group = TRUE
+  ) |>
+  dplyr::slice_head(n = 1L) |>
+  dplyr::ungroup() |>
+  dplyr::transmute(
+    gsea_evidence_id = paste(
+      .data$dataset, .data$phenotype_contrast, .data$spatial_unit,
+      .data$theme_id, .data$direction, "qc_context", sep = "|"
+    ),
+    dataset, phenotype_contrast, contrast = .data$phenotype_contrast,
+    comparison_scope = "local_spatial",
+    gsea_spatial_unit = .data$spatial_unit,
+    biological_program = .data$theme_id,
+    theme_id, manuscript_theme, theme_role, theme_claim_eligible,
+    registry_version,
+    GO_ID, GO_description, NES,
+    raw_p = .data$pvalue, GSEA_FDR = .data$p.adjust,
+    leading_edge_accessions = .data$core_enrichment,
+    direction
+  )
 unmatched <- strict_gsea_evidence |>
   dplyr::anti_join(
     program_matches |>
       dplyr::distinct(.data$dataset, .data$biological_program),
     by = c("dataset", "biological_program")
-  )
+  ) |>
+  dplyr::bind_rows(qc_context_evidence)
 gww_assert_unique(unmatched, "gsea_evidence_id", "Unmatched strict GSEA evidence")
 
 universe_by_dataset <- lapply(datasets, function(dataset) {
@@ -341,11 +414,11 @@ mapping_candidate_rows <- lapply(seq_len(nrow(unmatched)), function(i) {
   bundle <- universe_bundles[[dataset]]
   leading <- gww_split_proteins(row$leading_edge_proteins[[1]])
   candidates <- module_annotation |>
-    dplyr::filter(.data$dataset == dataset) |>
+    dplyr::filter(.data$dataset == .env$dataset) |>
     dplyr::left_join(
       module_go |>
         dplyr::filter(
-          .data$dataset == dataset,
+          .data$dataset == .env$dataset,
           .data$ID == row$GO_ID[[1]]
         ) |>
         dplyr::transmute(
@@ -365,23 +438,29 @@ mapping_candidate_rows <- lapply(seq_len(nrow(unmatched)), function(i) {
     module_set <- bundle$module_sets[[module_id]]
     if (is.null(module_set)) {
       return(data.frame(
-        ModuleID = module_id, candidate_overlap_n = 0L,
+        dataset = dataset, ModuleID = module_id,
+        candidate_overlap_n = 0L,
+        candidate_overlap_proteins = "",
         candidate_overlap_Jaccard = NA_real_, stringsAsFactors = FALSE
       ))
     }
     overlap <- intersect(module_set, leading)
     data.frame(
-      ModuleID = module_id,
+      dataset = dataset, ModuleID = module_id,
       candidate_overlap_n = length(overlap),
+      candidate_overlap_proteins = paste(sort(overlap), collapse = ";"),
       candidate_overlap_Jaccard = if (length(union(module_set, leading)))
         length(overlap) / length(union(module_set, leading)) else NA_real_,
       stringsAsFactors = FALSE
     )
   }) |>
     dplyr::bind_rows() |>
-    dplyr::distinct(.data$ModuleID, .keep_all = TRUE)
+    dplyr::distinct(.data$dataset, .data$ModuleID, .keep_all = TRUE)
   candidates <- candidates |>
-    dplyr::left_join(composition, by = "ModuleID", relationship = "many-to-one") |>
+    dplyr::left_join(
+      composition, by = c("dataset", "ModuleID"),
+      relationship = "many-to-one"
+    ) |>
     dplyr::left_join(
       supermodule_annotation,
       by = c("dataset", "SupermoduleID"),
@@ -413,6 +492,8 @@ mapping_candidate_rows <- lapply(seq_len(nrow(unmatched)), function(i) {
     TRUE ~ "none"
   )
   action <- dplyr::case_when(
+    row$theme_role[[1]] == "qc_review" ~
+      "keep_unmatched_for_biological_claims",
     confidence == "high" ~ "add_mapping",
     confidence == "moderate" ~ "review_manually",
     TRUE ~ "keep_unmatched"
@@ -423,15 +504,18 @@ mapping_candidate_rows <- lapply(seq_len(nrow(unmatched)), function(i) {
     comparison_scope = row$comparison_scope[[1]],
     spatial_unit = row$gsea_spatial_unit[[1]],
     biological_program = row$biological_program[[1]],
+    theme_id = row$theme_id[[1]],
+    manuscript_theme = row$manuscript_theme[[1]],
+    theme_role = row$theme_role[[1]],
     GO_ID = row$GO_ID[[1]],
     GO_term = row$GO_description[[1]],
     NES = row$NES[[1]],
     GSEA_FDR = row$GSEA_FDR[[1]],
     leading_edge_proteins = row$leading_edge_proteins[[1]],
     reason_no_mapping_available = paste(
-      "No exact checked-in mapping exists from any current Stage 07",
-      "module_program_primary/secondary token in this dataset to this GSEA",
-      "biological program."
+      "No approved checked-in mapping exists for this dataset and ontology-aware",
+      "theme. QC-review themes are retained as context and are ineligible for",
+      "primary biological concordance claims."
     ),
     candidate_WGCNA_entity = if (confidence == "none") NA_character_ else
       best$ModuleID[[1]],
@@ -453,6 +537,7 @@ mapping_candidate_rows <- lapply(seq_len(nrow(unmatched)), function(i) {
     exact_GO_ID_match = best$exact_GO_ID_match[[1]],
     module_GO_FDR = best$module_GO_FDR[[1]],
     candidate_overlap_n = best$candidate_overlap_n[[1]],
+    candidate_overlap_proteins = best$candidate_overlap_proteins[[1]],
     candidate_overlap_Jaccard = best$candidate_overlap_Jaccard[[1]],
     evidence_for_mapping = if (confidence == "none")
       "No exact module GO-ID support or prespecified substantial leading-edge composition overlap."
@@ -491,22 +576,45 @@ unmatched_audit <- dplyr::bind_rows(mapping_candidate_rows) |>
 gww_assert_unique(
   unmatched_audit, "gsea_evidence_id", "Unmatched GSEA mapping audit"
 )
+candidate_keys <- unmatched_audit |>
+  dplyr::filter(!is.na(.data$candidate_WGCNA_entity)) |>
+  dplyr::distinct(
+    .data$dataset, ModuleID = .data$candidate_WGCNA_entity
+  )
+invalid_candidate_keys <- candidate_keys |>
+  dplyr::anti_join(
+    module_annotation |>
+      dplyr::distinct(.data$dataset, .data$ModuleID),
+    by = c("dataset", "ModuleID")
+  )
+if (nrow(invalid_candidate_keys)) {
+  stop(
+    "Unmatched-theme audit proposed a WGCNA module outside the same dataset: ",
+    paste(
+      paste(invalid_candidate_keys$dataset, invalid_candidate_keys$ModuleID,
+            sep = "|"),
+      collapse = "; "
+    ), ".",
+    call. = FALSE
+  )
+}
 
-# Preserve the strict seven-row result and make every gate visible.
+# Preserve the current strict result at its generated grain and expose each gate.
 gate_audit <- gwwd_strict_gate_audit(strict_long, strict_patterns)
 
 # Second layer: complete effects, explicitly descriptive and independent of FDR
 # for direction assignment.
 local_gsea_all <- gwwd_local_program_effects(gsea_terms)
-global_gsea_all <- gwwd_global_program_effects(local_gsea_all)
+recurrent_cross_spatial_gsea_all <-
+  gwwd_recurrent_cross_spatial_program_effects(local_gsea_all)
 global_wgcna_program <- gwwd_wgcna_program_effects(
   handoff, program_matches, scope = "global"
 )
 local_wgcna_program <- gwwd_wgcna_program_effects(
   handoff, program_matches, scope = "local"
 )
-global_patterns <- gwwd_directional_patterns(
-  global_gsea_all |>
+recurrent_cross_spatial_patterns <- gwwd_directional_patterns(
+  recurrent_cross_spatial_gsea_all |>
     dplyr::semi_join(
       program_matches |>
         dplyr::distinct(.data$dataset, .data$biological_program),
@@ -515,7 +623,9 @@ global_patterns <- gwwd_directional_patterns(
   global_wgcna_program,
   scope = "global"
 ) |>
-  dplyr::mutate(pattern_scope = "global_recurrent") |>
+  dplyr::mutate(
+    pattern_scope = "recurrent_cross_spatial_with_global_wgcna"
+  ) |>
   dplyr::arrange(.data$dataset, .data$biological_program)
 local_patterns <- gwwd_directional_patterns(
   local_gsea_all |>
@@ -542,6 +652,7 @@ neuropil_global <- handoff |>
     .data$contrast %in% unname(gww_formal_contrast_map())
   ) |>
   dplyr::transmute(
+    dataset = as.character(.data$dataset),
     ModuleID = .data$entity_id,
     WGCNA_label = .data$display_label,
     contrast_suffix = gwwd_contrast_suffix(.data$contrast),
@@ -574,7 +685,8 @@ neuropil_sensitivity <- readr::read_csv(
   dplyr::filter(
     .data$level == "module", .data$contrast == "SUS - RES"
   ) |>
-  dplyr::group_by(.data$endpoint_id) |>
+  dplyr::mutate(dataset = "neuron_neuropil") |>
+  dplyr::group_by(.data$dataset, .data$endpoint_id) |>
   dplyr::summarise(
     n_available_SUS_RES_sensitivity_models = dplyr::n(),
     sensitivity_tiers = paste(sort(.data$analysis_tier), collapse = ";"),
@@ -596,18 +708,24 @@ neuropil_programs <- program_matches |>
     .data$entity_level == "module"
   ) |>
   dplyr::transmute(
+    dataset = as.character(.data$dataset),
     ModuleID = .data$entity_id,
     biological_program,
     program_mapping_token = .data$annotation_token,
     program_mapping_field = .data$annotation_field
   )
 all_neuropil_modules <- neuropil_global |>
-  dplyr::select("ModuleID") |>
-  dplyr::left_join(neuropil_programs, by = "ModuleID", relationship = "one-to-many")
+  dplyr::select("dataset", "ModuleID") |>
+  dplyr::left_join(
+    neuropil_programs, by = c("dataset", "ModuleID"),
+    relationship = "one-to-many"
+  )
 
 neuropil_overlap <- strict_overlap |>
   dplyr::filter(.data$dataset == "neuron_neuropil") |>
-  dplyr::group_by(.data$entity_id, .data$biological_program) |>
+  dplyr::group_by(
+    .data$dataset, .data$entity_id, .data$biological_program
+  ) |>
   dplyr::summarise(
     best_program_specific_overlap_FDR = min(.data$overlap_FDR),
     best_program_specific_overlap_Jaccard =
@@ -619,21 +737,21 @@ neuropil_overlap <- strict_overlap |>
   ) |>
   dplyr::rename(ModuleID = "entity_id")
 
-neuropil_global_gsea <- global_patterns |>
+neuropil_recurrent_cross_spatial_gsea <- recurrent_cross_spatial_patterns |>
   dplyr::filter(.data$dataset == "neuron_neuropil") |>
   dplyr::select(dplyr::all_of(c(
-    "biological_program", "gsea_direction_sign__RES_CON",
+    "dataset", "biological_program", "gsea_direction_sign__RES_CON",
     "gsea_direction_sign__SUS_CON", "gsea_direction_sign__SUS_RES",
     "gsea_program_NES__RES_CON", "gsea_program_NES__SUS_CON",
     "gsea_program_NES__SUS_RES", "gsea_min_FDR__RES_CON",
     "gsea_min_FDR__SUS_CON", "gsea_min_FDR__SUS_RES",
-    "recurrent_direction_available__RES_CON",
-    "recurrent_direction_available__SUS_CON",
-    "recurrent_direction_available__SUS_RES", "directional_pattern"
+    "recurrent_cross_spatial_direction_available__RES_CON",
+    "recurrent_cross_spatial_direction_available__SUS_CON",
+    "recurrent_cross_spatial_direction_available__SUS_RES", "directional_pattern"
   )))
 neuropil_local_support <- local_patterns |>
   dplyr::filter(.data$dataset == "neuron_neuropil") |>
-  dplyr::group_by(.data$biological_program) |>
+  dplyr::group_by(.data$dataset, .data$biological_program) |>
   dplyr::summarise(
     n_local_RES_gt_CON_gt_SUS_units = sum(
       .data$directional_pattern == "RES_gt_CON_gt_SUS"
@@ -647,25 +765,32 @@ neuropil_local_support <- local_patterns |>
   )
 
 neuropil_audit <- all_neuropil_modules |>
-  dplyr::left_join(neuropil_global, by = "ModuleID", relationship = "many-to-one") |>
   dplyr::left_join(
-    neuropil_sensitivity, by = "ModuleID", relationship = "many-to-one"
+    neuropil_global, by = c("dataset", "ModuleID"),
+    relationship = "many-to-one"
   ) |>
   dplyr::left_join(
-    neuropil_global_gsea, by = "biological_program", relationship = "many-to-one"
+    neuropil_sensitivity, by = c("dataset", "ModuleID"),
+    relationship = "many-to-one"
   ) |>
   dplyr::left_join(
-    neuropil_local_support, by = "biological_program", relationship = "many-to-one"
+    neuropil_recurrent_cross_spatial_gsea,
+    by = c("dataset", "biological_program"),
+    relationship = "many-to-one"
+  ) |>
+  dplyr::left_join(
+    neuropil_local_support, by = c("dataset", "biological_program"),
+    relationship = "many-to-one"
   ) |>
   dplyr::left_join(
     neuropil_overlap,
-    by = c("ModuleID", "biological_program"),
+    by = c("dataset", "ModuleID", "biological_program"),
     relationship = "many-to-one"
   ) |>
   dplyr::mutate(
     full_three_contrast_LOAO_status =
       "not_available; only four existing SUS-RES sensitivity models assessed",
-    global_GSEA_contradictory = dplyr::coalesce(
+    recurrent_cross_spatial_GSEA_contradictory = dplyr::coalesce(
       (!is.na(.data$gsea_direction_sign__RES_CON) &
          .data$gsea_direction_sign__RES_CON != sign(.data$estimate__RES_CON)) |
         (!is.na(.data$gsea_direction_sign__SUS_CON) &
@@ -674,10 +799,10 @@ neuropil_audit <- all_neuropil_modules |>
            .data$gsea_direction_sign__SUS_RES != sign(.data$estimate__SUS_RES)),
       FALSE
     ),
-    all_three_global_GSEA_recurrent_and_compatible = dplyr::coalesce(
-      .data$recurrent_direction_available__RES_CON %in% TRUE &
-        .data$recurrent_direction_available__SUS_CON %in% TRUE &
-        .data$recurrent_direction_available__SUS_RES %in% TRUE &
+    all_three_recurrent_cross_spatial_GSEA_compatible = dplyr::coalesce(
+      .data$recurrent_cross_spatial_direction_available__RES_CON %in% TRUE &
+        .data$recurrent_cross_spatial_direction_available__SUS_CON %in% TRUE &
+        .data$recurrent_cross_spatial_direction_available__SUS_RES %in% TRUE &
         .data$gsea_direction_sign__RES_CON == sign(.data$estimate__RES_CON) &
         .data$gsea_direction_sign__SUS_CON == sign(.data$estimate__SUS_CON) &
         .data$gsea_direction_sign__SUS_RES == sign(.data$estimate__SUS_RES),
@@ -685,8 +810,9 @@ neuropil_audit <- all_neuropil_modules |>
     ),
     GSEA_support_scope = dplyr::case_when(
       is.na(.data$biological_program) ~ "unsupported_by_GSEA",
-      .data$global_GSEA_contradictory ~ "contradictory",
-      .data$all_three_global_GSEA_recurrent_and_compatible ~ "globally_recurrent",
+      .data$recurrent_cross_spatial_GSEA_contradictory ~ "contradictory",
+      .data$all_three_recurrent_cross_spatial_GSEA_compatible ~
+        "recurrent_cross_spatial",
       .data$n_local_RES_gt_CON_gt_SUS_units > 0 ~ "spatially_localized_only",
       TRUE ~ "unsupported_by_GSEA"
     ),
@@ -699,7 +825,7 @@ neuropil_audit <- all_neuropil_modules |>
   dplyr::arrange(.data$ModuleID, .data$biological_program)
 gww_assert_unique(
   neuropil_audit,
-  c("ModuleID", "biological_program"),
+  c("dataset", "ModuleID", "biological_program"),
   "Neuropil RES-CON-SUS pattern audit"
 )
 
@@ -731,14 +857,14 @@ imprecise_by_scope <- imprecise |>
   dplyr::count(.data$local_global_scope, .data$diagnostic_subgroup)
 fdr_bins <- power |>
   dplyr::count(.data$WGCNA_FDR_bin)
-global_pattern_counts <- global_patterns |>
+recurrent_cross_spatial_pattern_counts <- recurrent_cross_spatial_patterns |>
   dplyr::count(.data$directional_pattern)
 local_pattern_counts <- local_patterns |>
   dplyr::count(.data$directional_pattern)
 diagnostic_summary <- dplyr::bind_rows(
   lapply(seq_len(nrow(strict_counts)), function(i) summary_row(
     "strict_class_count", strict_counts$concordance_class[[i]],
-    strict_counts$n[[i]], "Copied unchanged from strict concordance output."
+    strict_counts$n[[i]], "Read unchanged from the corrected strict concordance output."
   )),
   lapply(seq_len(nrow(imprecise_counts)), function(i) summary_row(
     "concordant_imprecise_subgroup", imprecise_counts$diagnostic_subgroup[[i]],
@@ -827,14 +953,22 @@ diagnostic_summary <- dplyr::bind_rows(
       sum(unmatched_audit$recommended_action == "keep_unmatched")
     ),
     summary_row(
+      "mapping", "qc_keep_unmatched_for_biological_claims",
+      sum(
+        unmatched_audit$recommended_action ==
+          "keep_unmatched_for_biological_claims"
+      )
+    ),
+    summary_row(
       "strict_adaptive", "significance_gated", TRUE,
       "Strict GSEA evidence is filtered at canonical FDR<0.05 before adaptive classification."
     ),
     summary_row("strict_adaptive", "unresolved_rows", nrow(gate_audit))
   ),
-  lapply(seq_len(nrow(global_pattern_counts)), function(i) summary_row(
-    "global_descriptive_pattern", global_pattern_counts$directional_pattern[[i]],
-    global_pattern_counts$n[[i]],
+  lapply(seq_len(nrow(recurrent_cross_spatial_pattern_counts)), function(i) summary_row(
+    "recurrent_cross_spatial_descriptive_pattern",
+    recurrent_cross_spatial_pattern_counts$directional_pattern[[i]],
+    recurrent_cross_spatial_pattern_counts$n[[i]],
     "DESCRIPTIVE / HYPOTHESIS-GENERATING; NOT AN INFERENTIAL CLAIM."
   )),
   lapply(seq_len(nrow(local_pattern_counts)), function(i) summary_row(
@@ -868,7 +1002,7 @@ if (nrow(imprecise) != sum(
   stop("Concordant-imprecise diagnostic lost or multiplied rows.", call. = FALSE)
 }
 if (nrow(gate_audit) != nrow(strict_patterns)) {
-  stop("Strict adaptive gate audit does not preserve the seven-row grain.",
+  stop("Strict adaptive gate audit does not preserve its input row grain.",
        call. = FALSE)
 }
 if (nrow(unmatched_audit) != nrow(unmatched)) {
@@ -900,8 +1034,9 @@ tables <- list(
   concordant_imprecise_diagnostic.csv = imprecise,
   concordance_wgcna_power_diagnostic.csv = power,
   unmatched_gsea_program_mapping_audit.csv = unmatched_audit,
+  unmatched_gsea_theme_mapping_audit.csv = unmatched_audit,
   adaptive_resilience_gate_audit.csv = gate_audit,
-  adaptive_resilience_directional_patterns.csv = global_patterns,
+  adaptive_resilience_directional_patterns.csv = recurrent_cross_spatial_patterns,
   adaptive_resilience_local_spatial_patterns.csv = local_patterns,
   neuropil_RES_CON_SUS_pattern_audit.csv = neuropil_audit,
   diagnostic_summary.csv = diagnostic_summary
@@ -913,7 +1048,7 @@ write_csv_safe(hash_audit, file.path(paths$reports, "protected_source_hash_audit
 
 imprecise_subgroups <- imprecise |>
   dplyr::count(.data$diagnostic_subgroup)
-global_counts <- global_patterns |>
+recurrent_cross_spatial_counts <- recurrent_cross_spatial_patterns |>
   dplyr::count(.data$directional_pattern)
 local_counts <- local_patterns |>
   dplyr::count(.data$directional_pattern)
@@ -924,7 +1059,7 @@ readme_lines <- c(
   "",
   "## Boundary",
   "",
-  "The strict concordance classes and seven-row adaptive-resilience result are copied unchanged. This diagnostic does not refit enrichment or WGCNA, alter p-values/FDRs, relax a threshold, change a claim gate, combine p-values, or create a composite concordance statistic.",
+  "The strict concordance classes and adaptive-resilience result are read unchanged from the corrected ontology-aware concordance output. This diagnostic does not refit enrichment or WGCNA, alter p-values/FDRs, relax a threshold, change a claim gate, combine p-values, or create a composite concordance statistic.",
   "",
   "GSEA and WGCNA use the same proteomics data and are not independent replications. Leading-edge/module overlap is structural convergence, not animal-level group-effect significance. WGCNA GO annotation supplies biological identity only.",
   "",
@@ -948,17 +1083,17 @@ readme_lines <- c(
   "",
   "## Strict versus descriptive adaptive patterns",
   "",
-  "The strict classifier is significance-gated because its input builder requires canonical GSEA FDR<0.05 before recurrent evidence is constructed. That rule remains unchanged.",
+  "The strict classifier is significance-gated because its input builder requires canonical GSEA FDR<0.05 before recurrent-cross-spatial evidence is constructed. That rule remains unchanged.",
   "",
-  "The second layer is labelled DESCRIPTIVE / HYPOTHESIS-GENERATING; NOT AN INFERENTIAL CLAIM CLASSIFIER. It uses the median NES across a fixed set of GO IDs present in all three contrasts within each dataset/spatial-unit/program. The same GO set is used across contrasts. A single anchor GO term is selected once across contrasts for auditability, but it does not determine direction. Global recurrence uses at least two spatial units and a non-tied majority sign. FDR is reported but is not a direction gate.",
+  "The second layer is labelled DESCRIPTIVE / HYPOTHESIS-GENERATING; NOT AN INFERENTIAL CLAIM CLASSIFIER. It uses the median NES across a fixed set of GO IDs present in all three contrasts within each dataset/spatial-unit/program. The same GO set is used across contrasts. A single anchor GO term is selected once across contrasts for auditability, but it does not determine direction. Recurrent-cross-spatial direction uses at least two spatial units and a non-tied majority sign; it is not a formal across-all-spatial-units GSEA inferential test. FDR is reported but is not a direction gate.",
   "",
-  "Global descriptive counts:",
-  paste0("- ", global_counts$directional_pattern, ": ", global_counts$n),
+  "Recurrent-cross-spatial descriptive counts paired with global WGCNA:",
+  paste0("- ", recurrent_cross_spatial_counts$directional_pattern, ": ", recurrent_cross_spatial_counts$n),
   "",
   "Local same-spatial-unit descriptive counts:",
   paste0("- ", local_counts$directional_pattern, ": ", local_counts$n),
   "",
-  "RES-specific and SUS-specific labels are deliberately not assigned from significant/non-significant asymmetry or an invented GSEA near-zero threshold. Rows lacking three compatible directions remain insufficient_data; sign conflicts are inconsistent.",
+  "RES-supported-shift and SUS-supported-shift labels are deliberately not assigned from significant/non-significant asymmetry or an invented GSEA near-zero threshold. Rows lacking three compatible directions remain insufficient_data; sign conflicts are inconsistent.",
   "",
   "## Neuropil sensitivity limitation",
   "",
