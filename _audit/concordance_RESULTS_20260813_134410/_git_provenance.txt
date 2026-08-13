@@ -1,0 +1,15 @@
+﻿created=2026-08-13T13:44:11.9388933+02:00
+repo=S:\Lab_Member\Tobi\Experiments\Exp9_Social-Stress\Analysis\proteomics
+branch=main
+HEAD=2c38722c7a3f8a3ff663184a896b3c435603371c
+
+GIT STATUS
+==========
+ M .gitignore
+ M 10_biological_integration/05_gsea_wgcna_concordance.R
+ M 10_biological_integration/06_gsea_wgcna_concordance_diagnostics.R
+ M R/gsea_wgcna_concordance_diagnostic_utils.R
+ M R/gsea_wgcna_concordance_utils.R
+ M R/wgcna_group_effects_utils.R
+ M tests/testthat/test-gsea-wgcna-concordance-diagnostics.R
+ M tests/testthat/test-gsea-wgcna-concordance.R
