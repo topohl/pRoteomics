@@ -6,7 +6,9 @@ testthat::test_that("biological integration entrypoints exist and dry-run", {
     "08_behavior_physio_coupling/03_module_behavior_coupling.r",
     "10_biological_integration/01_cross_compartment_program_atlas.r",
     "10_biological_integration/02_manuscript_program_summary.r",
-    "10_biological_integration/03_evidence_priority_matrix.r"
+    "10_biological_integration/03_evidence_priority_matrix.r",
+    "10_biological_integration/05_gsea_wgcna_concordance.R",
+    "10_biological_integration/06_gsea_wgcna_concordance_diagnostics.R"
   )
   testthat::expect_true(all(file.exists(repo_path(scripts))))
 
@@ -18,7 +20,9 @@ testthat::test_that("biological integration entrypoints exist and dry-run", {
     c("08_behavior_physio_coupling/03_module_behavior_coupling.r", "--dataset", "microglia", "--dry-run"),
     c("10_biological_integration/01_cross_compartment_program_atlas.r", "--dry-run"),
     c("10_biological_integration/02_manuscript_program_summary.r", "--dry-run"),
-    c("10_biological_integration/03_evidence_priority_matrix.r", "--dry-run")
+    c("10_biological_integration/03_evidence_priority_matrix.r", "--dry-run"),
+    c("10_biological_integration/05_gsea_wgcna_concordance.R", "--dataset", "all", "--dry-run"),
+    c("10_biological_integration/06_gsea_wgcna_concordance_diagnostics.R", "--dataset", "all", "--dry-run")
   )
   for (args in cases) {
     out <- suppressWarnings(system2(cmd, args, stdout = TRUE, stderr = TRUE))
