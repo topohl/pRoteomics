@@ -1,0 +1,13 @@
+annotation_token,biological_program,mapping_rationale
+mitochondrial / energy metabolism,Mitochondria_OXPHOS_Metabolism,Exact Stage 07 curated program token
+RNA/RNP regulatory module,RNA_RNP_processing,Exact Stage 07 curated program token
+translation / proteostasis,Ribosome_Translation,Exact Stage 07 curated program token with translation component
+translation / proteostasis,Proteostasis_Ubiquitin_Folding,Exact Stage 07 curated program token with proteostasis component
+synaptic/cytoskeletal trafficking,Synapse_Vesicle_Organization,Exact Stage 07 curated program token with synaptic trafficking component
+synaptic/cytoskeletal trafficking,Cytoskeleton_Motility,Exact Stage 07 curated program token with cytoskeletal component
+synaptic / vesicle-neurosecretory module,Synapse_Vesicle_Organization,Exact Stage 07 curated program token
+ECM/adhesion,ECM_Vascular_Barrier,Exact Stage 07 curated program token
+barrier / cell-junction structural,ECM_Vascular_Barrier,Exact Stage 07 curated program token
+barrier / cell-junction structural module,ECM_Vascular_Barrier,Exact Stage 07 curated program token
+myelin / oligodendrocyte-associated,Lipid_Myelin_Membrane,Exact Stage 07 curated program token
+neuronal signalling / regulatory,Synapse_Vesicle_Organization,Exact Stage 07 curated secondary program token
