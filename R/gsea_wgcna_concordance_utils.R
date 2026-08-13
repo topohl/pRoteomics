@@ -67,31 +67,145 @@ gww_validate_gsea_terms <- function(x) {
   invisible(TRUE)
 }
 
-gww_prepare_supported_terms <- function(x) {
+gww_build_ontology_theme_term_table <- function(x, registry) {
   gww_validate_gsea_terms(x)
+  descriptions <- x |>
+    dplyr::transmute(
+      GO_ID = trimws(as.character(.data$ID)),
+      GO_description = as.character(.data$Description)
+    ) |>
+    dplyr::distinct()
+  inconsistent <- descriptions |>
+    dplyr::count(.data$GO_ID) |>
+    dplyr::filter(.data$n != 1L)
+  if (nrow(inconsistent)) {
+    stop(
+      "Canonical GSEA input has multiple descriptions for GO ID ",
+      inconsistent$GO_ID[[1L]], ".", call. = FALSE
+    )
+  }
+  mapping <- map_go_terms_to_manuscript_themes(
+    descriptions, registry, id_col = "GO_ID",
+    description_col = "GO_description"
+  )
+  assignment <- collapse_go_theme_assignment_audit(mapping)
+  status <- mapping$term_status |>
+    dplyr::select(-"GO_description")
+  out <- x |>
+    dplyr::mutate(
+      source_gsea_row_id = sprintf("GSEA_OCC_%07d", dplyr::row_number()),
+      GO_ID = trimws(as.character(.data$ID)),
+      GO_description = as.character(.data$Description),
+      legacy_program_class = as.character(.data$program_class)
+    ) |>
+    dplyr::left_join(status, by = "GO_ID", relationship = "many-to-one") |>
+    dplyr::left_join(
+      assignment,
+      by = c("GO_ID", "GO_description"),
+      relationship = "many-to-many",
+      suffix = c("_status", "")
+    ) |>
+    dplyr::mutate(
+      valid_GO_BP_ID = grepl("^GO:[0-9]{7}$", .data$GO_ID) &
+        .data$mapping_method_status %in% c(
+          "go_id_ontology", "go_id_unclassified"
+        ),
+      theme_claim_eligible = .data$theme_role %in% c("primary", "supporting"),
+      theme_assignment_status = dplyr::case_when(
+        !is.na(.data$theme_id) ~ as.character(.data$assignment_status),
+        TRUE ~ "unclassified"
+      ),
+      theme_assignment_id = paste(
+        .data$source_gsea_row_id,
+        dplyr::coalesce(as.character(.data$theme_id), "UNMAPPED"),
+        sep = "|"
+      ),
+      theme_identity_source = dplyr::case_when(
+        !is.na(.data$theme_id) ~
+          "GO_ID_registry_anchor_with_is_a_part_of_ancestry",
+        TRUE ~ "valid_GO_ID_not_represented_by_curated_registry"
+      )
+    )
+  if (anyDuplicated(out$theme_assignment_id)) {
+    stop("Ontology-aware GSEA theme assignment keys are duplicated.",
+         call. = FALSE)
+  }
+  if (any(
+    out$valid_GO_BP_ID & !is.na(out$theme_id) &
+      out$mapping_method != "go_id_ontology"
+  )) {
+    stop("A valid GO ID received a non-ontology manuscript theme mapping.",
+         call. = FALSE)
+  }
+  if (any(
+    out$theme_role == "qc_review" & out$theme_claim_eligible %in% TRUE,
+    na.rm = TRUE
+  )) {
+    stop("QC-review ontology themes cannot be claim-eligible.", call. = FALSE)
+  }
+  attr(out, "ontology_mapping") <- mapping
+  out
+}
+
+gww_validate_theme_terms <- function(x) {
+  gww_assert_columns(
+    x,
+    c(
+      "dataset", "phenotype_contrast", "spatial_unit", "Comparison",
+      "GO_ID", "GO_description", "NES", "pvalue", "p.adjust",
+      "core_enrichment", "evidence_source_family", "theme_id",
+      "manuscript_theme", "theme_role", "theme_claim_eligible",
+      "anchor_GO_IDs", "mapping_method", "registry_version",
+      "theme_assignment_id"
+    ),
+    "Ontology-aware all-contrast GSEA theme table"
+  )
+  if (any(
+    !is.na(x$theme_id) & x$mapping_method != "go_id_ontology",
+    na.rm = TRUE
+  )) {
+    stop("Mapped manuscript themes must use GO-ID ontology provenance.",
+         call. = FALSE)
+  }
+  if (any(
+    x$theme_role == "qc_review" & x$theme_claim_eligible %in% TRUE,
+    na.rm = TRUE
+  )) {
+    stop("QC-review themes cannot enter biological concordance.",
+         call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
+gww_prepare_supported_terms <- function(x) {
+  gww_validate_theme_terms(x)
   x |>
     dplyr::mutate(
       phenotype_contrast = as.character(.data$phenotype_contrast),
       contrast = gww_formal_contrast(.data$phenotype_contrast),
       gsea_spatial_unit_source = as.character(.data$spatial_unit),
       gsea_spatial_unit = gww_normalize_spatial_unit(.data$spatial_unit),
-      biological_program = as.character(.data$program_class),
+      biological_program = as.character(.data$theme_id),
       term_direction_sign = dplyr::case_when(
         is.finite(.data$NES) & .data$NES > 0 ~ 1L,
         is.finite(.data$NES) & .data$NES < 0 ~ -1L,
         TRUE ~ 0L
       ),
       term_occurrence_key = paste(
-        .data$dataset, .data$Comparison, .data$ID, sep = "|"
+        .data$dataset, .data$Comparison, .data$GO_ID,
+        .data$theme_id, sep = "|"
+      ),
+      source_term_key = paste(
+        .data$dataset, .data$Comparison, .data$GO_ID, sep = "|"
       )
     ) |>
     dplyr::filter(
       .data$phenotype_contrast %in% names(gww_formal_contrast_map()),
       !is.na(.data$p.adjust), is.finite(.data$p.adjust), .data$p.adjust < 0.05,
       .data$term_direction_sign != 0L,
+      .data$theme_claim_eligible %in% TRUE,
       !is.na(.data$biological_program),
-      nzchar(.data$biological_program),
-      .data$biological_program != "Other"
+      nzchar(.data$biological_program)
     )
 }
 
@@ -111,14 +225,14 @@ gww_representative_rows <- function(x, group_columns, direction_sign = NULL,
     dplyr::ungroup() |>
     dplyr::transmute(
       dplyr::across(dplyr::all_of(group_columns)),
-      GO_ID = as.character(.data$ID),
-      GO_description = as.character(.data$Description),
+      GO_ID = as.character(.data$GO_ID),
+      GO_description = as.character(.data$GO_description),
       NES = as.numeric(.data$NES),
       raw_p = as.numeric(.data$pvalue),
       GSEA_FDR = as.numeric(.data$p.adjust),
       leading_edge_accessions = as.character(.data$core_enrichment),
       source_comparison = as.character(.data$Comparison),
-      gsea_source_key = as.character(.data$term_occurrence_key),
+      gsea_source_key = as.character(.data$source_term_key),
       source_supplementary_file = as.character(.data$source_supplementary_file)
     )
   if (nzchar(prefix)) {
@@ -140,9 +254,12 @@ gww_build_local_gsea_evidence <- function(term_table) {
     dplyr::mutate(
       contrast = gww_formal_contrast(.data$phenotype_contrast),
       gsea_spatial_unit = gww_normalize_spatial_unit(.data$spatial_unit),
-      biological_program = as.character(.data$program_class)
+      biological_program = as.character(.data$theme_id)
     ) |>
-    dplyr::filter(.data$biological_program != "Other") |>
+    dplyr::filter(
+      .data$theme_claim_eligible %in% TRUE,
+      !is.na(.data$biological_program), nzchar(.data$biological_program)
+    ) |>
     dplyr::distinct(
       .data$dataset, .data$contrast, .data$biological_program,
       .data$gsea_spatial_unit
@@ -198,6 +315,23 @@ gww_build_local_gsea_evidence <- function(term_table) {
       relationship = "many-to-one"
     )
 
+  theme_meta <- term_table |>
+    dplyr::filter(.data$theme_claim_eligible %in% TRUE) |>
+    dplyr::distinct(
+      biological_program = .data$theme_id,
+      manuscript_theme = .data$manuscript_theme,
+      theme_role = .data$theme_role,
+      registry_version = .data$registry_version
+    )
+  gww_assert_unique(
+    theme_meta, "biological_program", "Manuscript theme metadata"
+  )
+  out <- out |>
+    dplyr::left_join(
+      theme_meta, by = "biological_program", relationship = "many-to-one"
+    ) |>
+    dplyr::mutate(theme_id = .data$biological_program)
+
   recurrence <- out |>
     dplyr::group_by(.data$dataset, .data$contrast, .data$biological_program) |>
     dplyr::summarise(
@@ -244,8 +378,9 @@ gww_build_local_gsea_evidence <- function(term_table) {
   out
 }
 
-gww_build_global_gsea_evidence <- function(term_table, local_evidence,
-                                           min_recurrent_units = 2L) {
+gww_build_recurrent_cross_spatial_gsea_evidence <- function(
+    term_table, local_evidence, min_recurrent_units = 2L
+) {
   supported <- gww_prepare_supported_terms(term_table)
   recurrence <- local_evidence |>
     dplyr::group_by(.data$dataset, .data$phenotype_contrast, .data$contrast,
@@ -268,19 +403,19 @@ gww_build_global_gsea_evidence <- function(term_table, local_evidence,
       gsea_direction_status = dplyr::case_when(
         .data$n_positive_direction_units >= min_recurrent_units &
           .data$n_positive_direction_units > .data$n_negative_direction_units ~
-          "positive_recurrent",
+          "positive_recurrent_cross_spatial",
         .data$n_negative_direction_units >= min_recurrent_units &
           .data$n_negative_direction_units > .data$n_positive_direction_units ~
-          "negative_recurrent",
+          "negative_recurrent_cross_spatial",
         .data$n_positive_direction_units >= min_recurrent_units &
           .data$n_negative_direction_units >= min_recurrent_units &
           .data$n_positive_direction_units == .data$n_negative_direction_units ~
-          "mixed_recurrent",
-        TRUE ~ "insufficient_recurrence"
+          "mixed_recurrent_cross_spatial",
+        TRUE ~ "insufficient_recurrent_cross_spatial"
       ),
       gsea_direction_sign = dplyr::case_when(
-        .data$gsea_direction_status == "positive_recurrent" ~ 1L,
-        .data$gsea_direction_status == "negative_recurrent" ~ -1L,
+        .data$gsea_direction_status == "positive_recurrent_cross_spatial" ~ 1L,
+        .data$gsea_direction_status == "negative_recurrent_cross_spatial" ~ -1L,
         TRUE ~ NA_integer_
       ),
       n_units_supporting_same_direction = pmax(
@@ -289,8 +424,10 @@ gww_build_global_gsea_evidence <- function(term_table, local_evidence,
       ),
       fraction_spatial_units_same_direction =
         .data$n_units_supporting_same_direction / .data$n_total_spatial_units
-    ) |>
-    dplyr::filter(.data$gsea_direction_status != "insufficient_recurrence")
+  ) |>
+    dplyr::filter(
+      .data$gsea_direction_status != "insufficient_recurrent_cross_spatial"
+    )
 
   group_columns <- c(
     "dataset", "phenotype_contrast", "contrast", "biological_program"
@@ -333,12 +470,12 @@ gww_build_global_gsea_evidence <- function(term_table, local_evidence,
     dplyr::left_join(positive, by = group_columns, relationship = "one-to-one") |>
     dplyr::left_join(negative, by = group_columns, relationship = "one-to-one") |>
     dplyr::mutate(
-      gsea_spatial_unit_source = "recurrent_across_spatial_units",
-      gsea_spatial_unit = "global_spatial_adjusted",
-      comparison_scope = "global_cross_spatial",
+      gsea_spatial_unit_source = "recurrent_cross_spatial",
+      gsea_spatial_unit = "recurrent_cross_spatial",
+      comparison_scope = "recurrent_cross_spatial",
       gsea_evidence_id = paste(
         .data$dataset, .data$contrast, .data$gsea_spatial_unit,
-        .data$biological_program, "global", sep = "|"
+        .data$biological_program, "recurrent_cross_spatial", sep = "|"
       ),
       representative_selection_rule = paste(
         "recurrent direction in >=", min_recurrent_units,
@@ -348,7 +485,21 @@ gww_build_global_gsea_evidence <- function(term_table, local_evidence,
       evidence_source_family = "ranked_GSEA",
       gsea_representation_role = "recurrent_cross_spatial_summary"
     )
-  gww_assert_unique(out, "gsea_evidence_id", "Global GSEA program evidence")
+  theme_meta <- local_evidence |>
+    dplyr::distinct(
+      .data$biological_program, .data$theme_id, .data$manuscript_theme,
+      .data$theme_role, .data$registry_version
+    )
+  gww_assert_unique(
+    theme_meta, "biological_program", "Global manuscript theme metadata"
+  )
+  out <- out |>
+    dplyr::left_join(
+      theme_meta, by = "biological_program", relationship = "many-to-one"
+    )
+  gww_assert_unique(
+    out, "gsea_evidence_id", "Recurrent cross-spatial GSEA program evidence"
+  )
   out
 }
 
@@ -462,6 +613,158 @@ gww_build_entity_program_matches <- function(handoff, registry) {
     out,
     c("dataset", "entity_level", "entity_id", "biological_program"),
     "Program-module matches"
+  )
+  out
+}
+
+gww_read_theme_entity_mapping <- function(path) {
+  x <- readr::read_csv(path, show_col_types = FALSE, progress = FALSE)
+  required <- c(
+      "dataset", "theme_id", "entity_level", "entity_id",
+      "mapping_status", "mapping_rationale", "annotation_source",
+      "confidence", "mapping_role", "approved_for_manuscript_interpretation"
+  )
+  gww_assert_columns(x, required, "Theme-to-WGCNA mapping registry")
+  x <- x |>
+    dplyr::mutate(
+      dataset = as.character(.data$dataset),
+      theme_id = as.character(.data$theme_id),
+      entity_level = as.character(.data$entity_level),
+      entity_id = as.character(.data$entity_id),
+      mapping_status = as.character(.data$mapping_status),
+      mapping_rationale = as.character(.data$mapping_rationale),
+      annotation_source = as.character(.data$annotation_source),
+      confidence = as.character(.data$confidence),
+      mapping_role = dplyr::coalesce(
+        as.character(.data$mapping_role), "primary"
+      ),
+      approved_for_manuscript_interpretation = as.logical(
+        .data$approved_for_manuscript_interpretation
+      )
+    )
+  gww_assert_unique(
+    x, c("dataset", "theme_id", "entity_level", "entity_id"),
+    "Theme-to-WGCNA mapping registry"
+  )
+  if (any(!x$entity_level %in% c("module", "supermodule"))) {
+    stop("Theme mapping entity_level must be module or supermodule.",
+         call. = FALSE)
+  }
+  allowed_status <- c(
+    "approved", "manual_review_candidate", "qc_context_only"
+  )
+  if (any(!x$mapping_role %in% c("primary", "secondary_multifunctional"))) {
+    stop(
+      "Theme mapping mapping_role must be primary or secondary_multifunctional.",
+      call. = FALSE
+    )
+  }
+  if (any(!x$mapping_status %in% allowed_status)) {
+    stop("Theme mapping contains an unsupported mapping_status.",
+         call. = FALSE)
+  }
+  if (any(
+    x$approved_for_manuscript_interpretation %in% TRUE &
+      x$mapping_status != "approved"
+  )) {
+    stop("Only approved theme mappings may be manuscript-eligible.",
+         call. = FALSE)
+  }
+  x
+}
+
+gww_validate_theme_entity_mapping <- function(handoff, mapping, theme_registry) {
+  entity_columns <- c(
+    "dataset", "entity_level", "entity_id", "display_label",
+    "cleaned_biological_label", "module_program_primary",
+    "module_program_secondary", "independent_hypothesis",
+    "claim_entity_role"
+  )
+  gww_assert_columns(handoff, entity_columns, "WGCNA inferential handoff")
+  entities <- handoff |>
+    dplyr::distinct(dplyr::across(dplyr::all_of(entity_columns)))
+  counts <- entities |>
+    dplyr::count(.data$dataset, .data$entity_level, .data$entity_id) |>
+    dplyr::filter(.data$n != 1L)
+  if (nrow(counts)) {
+    stop("WGCNA entity metadata are not unique by dataset + level + ID.",
+         call. = FALSE)
+  }
+  out <- mapping |>
+    dplyr::left_join(
+      entities,
+      by = c("dataset", "entity_level", "entity_id"),
+      relationship = "many-to-one"
+    )
+  if (any(is.na(out$display_label))) {
+    bad <- out[is.na(out$display_label), , drop = FALSE]
+    stop(
+      "Theme mapping entity does not exist in the same dataset: ",
+      bad$dataset[[1L]], " / ", bad$entity_level[[1L]], " / ",
+      bad$entity_id[[1L]], ".", call. = FALSE
+    )
+  }
+  if (any(!out$independent_hypothesis %in% TRUE) ||
+      any(out$claim_entity_role == "compatibility_alias")) {
+    stop("Theme mapping contains a non-independent singleton alias.",
+         call. = FALSE)
+  }
+  theme_meta <- theme_registry |>
+    dplyr::distinct(
+      .data$theme_id, manuscript_theme = .data$display_label,
+      .data$theme_role, .data$registry_version
+    )
+  gww_assert_unique(theme_meta, "theme_id", "Manuscript theme registry")
+  out <- out |>
+    dplyr::left_join(theme_meta, by = "theme_id", relationship = "many-to-one")
+  if (any(is.na(out$manuscript_theme))) {
+    stop("Theme mapping refers to a theme absent from the ontology registry.",
+         call. = FALSE)
+  }
+  if (any(
+    out$theme_role == "qc_review" &
+      out$approved_for_manuscript_interpretation %in% TRUE
+  )) {
+    stop("QC-review themes cannot create biological concordance mappings.",
+         call. = FALSE)
+  }
+  gww_assert_unique(
+    out, c("dataset", "theme_id", "entity_level", "entity_id"),
+    "Validated theme-to-WGCNA mappings"
+  )
+  out
+}
+
+gww_build_entity_theme_matches <- function(handoff, mapping, theme_registry) {
+  validated <- gww_validate_theme_entity_mapping(
+    handoff, mapping, theme_registry
+  )
+  out <- validated |>
+    dplyr::filter(
+      .data$mapping_status == "approved",
+      .data$approved_for_manuscript_interpretation %in% TRUE,
+      .data$theme_role %in% c("primary", "supporting")
+    ) |>
+    dplyr::mutate(
+      biological_program = .data$theme_id,
+      annotation_field = "explicit_dataset_entity_theme_registry",
+      annotation_token = .data$theme_id,
+      mapping_independence_note = paste(
+        "Multiple theme mappings to the same WGCNA module are biological",
+        "annotations of one network entity and must not be counted as",
+        "independent WGCNA evidence."
+      ),
+      program_module_match_rule = paste(
+        "explicit dataset + theme_id + entity_level + entity_id registry;",
+        "reviewed WGCNA annotation and/or exact same-dataset module GO evidence"
+      ),
+      module_annotation_evidence_role =
+        "biological_identity_only_not_group_effect_evidence"
+    )
+  gww_assert_unique(
+    out,
+    c("dataset", "entity_level", "entity_id", "biological_program"),
+    "Approved theme-to-WGCNA matches"
   )
   out
 }
@@ -801,7 +1104,7 @@ gww_classify_concordance <- function(x) {
   x
 }
 
-gww_validate_local_global_semantics <- function(x) {
+gww_validate_local_recurrent_cross_spatial_semantics <- function(x) {
   gww_assert_columns(
     x,
     c(
@@ -816,17 +1119,18 @@ gww_validate_local_global_semantics <- function(x) {
       x$wgcna_analysis_tier != "exploratory_spatial_localization" |
       x$wgcna_effect_scope != "within_spatial_unit"
   )
-  global <- x$comparison_scope == "global_cross_spatial"
-  bad_global <- global & (
-    x$gsea_spatial_unit != "global_spatial_adjusted" |
-      x$wgcna_spatial_unit != "global_spatial_adjusted" |
+  recurrent_cross_spatial <- x$comparison_scope == "recurrent_cross_spatial"
+  bad_recurrent_cross_spatial <- recurrent_cross_spatial & (
+    x$gsea_spatial_unit != "recurrent_cross_spatial" |
+    x$wgcna_spatial_unit != "global_spatial_adjusted" |
       x$wgcna_effect_scope != "spatial_adjusted_global" |
       !x$wgcna_analysis_tier %in% c(
         "primary_wgcna_global", "secondary_contextual_global"
       )
   )
-  if (any(bad_local | bad_global)) {
-    stop("Local/global concordance semantics are inconsistent.", call. = FALSE)
+  if (any(bad_local | bad_recurrent_cross_spatial)) {
+    stop("Local/recurrent-cross-spatial concordance semantics are inconsistent.",
+         call. = FALSE)
   }
   invisible(TRUE)
 }
@@ -893,7 +1197,7 @@ gww_program_summary <- function(long) {
 gww_adaptive_pattern_summary <- function(long) {
   global_modules <- long |>
     dplyr::filter(
-      .data$comparison_scope == "global_cross_spatial",
+      .data$comparison_scope == "recurrent_cross_spatial",
       .data$wgcna_entity_level == "module"
     ) |>
     dplyr::group_by(
@@ -956,9 +1260,9 @@ gww_adaptive_pattern_summary <- function(long) {
     dplyr::coalesce(res_gt_con_gt_sus, FALSE)
   global_modules$adaptive_resilience_pattern <- dplyr::case_when(
     res == 1L & direct == -1L & res_ok & direct_ok ~
-      "RES_specific_adaptive_candidate",
+      "RES_supported_shift_candidate",
     !is.na(sus) & sus != 0L & direct == sus & sus_ok & direct_ok ~
-      "SUS_specific_candidate",
+      "SUS_supported_shift_candidate",
     !is.na(res) & !is.na(sus) & res == -sus & res_ok & sus_ok &
       direct == sus & direct_ok ~ "opposing_RES_vs_SUS",
     !is.na(res) & !is.na(sus) & res == sus & !is.na(direct) &
@@ -968,8 +1272,8 @@ gww_adaptive_pattern_summary <- function(long) {
     TRUE ~ "unresolved"
   )
   global_modules$pattern_rule <- paste(
-    "Requires recurrent ranked-GSEA direction plus at least one stable",
-    "direction-concordant global module endpoint for each contrast used;",
+    "Requires recurrent-cross-spatial ranked-GSEA direction plus at least one",
+    "stable direction-concordant global WGCNA module endpoint for each contrast used;",
     "SUS-RES is the direct group-difference endpoint; significance/non-",
     "significance asymmetry is never used. CI envelope is descriptive, not pooled."
   )

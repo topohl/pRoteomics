@@ -10,9 +10,19 @@ gww_term_fixture <- function() {
     phenotype_contrast = "SUS_vs_RES",
     spatial_unit = c("CA1", "CA1", "CA2", "CA2", "CA3"),
     program_class = "Synapse_Vesicle_Organization",
+    theme_id = "synaptic_signaling_vesicle",
+    manuscript_theme = "Synaptic signaling and vesicle-mediated transport",
+    theme_role = "primary",
+    theme_claim_eligible = TRUE,
+    anchor_GO_IDs = "GO:0007268",
+    mapping_method = "go_id_ontology",
+    registry_version = "fixture_v1",
+    theme_assignment_id = paste0("fixture_", 1:5),
     Comparison = c("ca1_a", "ca1_b", "ca2_a", "ca2_b", "ca3_a"),
     ID = c("GO:2", "GO:1", "GO:3", "GO:4", "GO:5"),
     Description = c("second", "first", "third", "negative", "nonsig"),
+    GO_ID = c("GO:2", "GO:1", "GO:3", "GO:4", "GO:5"),
+    GO_description = c("second", "first", "third", "negative", "nonsig"),
     NES = c(1.5, 1.8, 1.4, -1.2, 2),
     pvalue = c(0.01, 0.01, 0.02, 0.03, 0.1),
     p.adjust = c(0.02, 0.01, 0.03, 0.04, 0.2),
@@ -35,7 +45,7 @@ testthat::test_that("formal contrast signs and labels are fixed", {
   testthat::expect_true(is.na(gww_formal_contrast("RES_vs_SUS")))
 })
 
-testthat::test_that("GSEA representatives and recurrence are deterministic", {
+testthat::test_that("GSEA representatives and recurrent-cross-spatial direction are deterministic", {
   terms <- gww_term_fixture()
   local_a <- gww_build_local_gsea_evidence(terms)
   local_b <- gww_build_local_gsea_evidence(terms[sample(nrow(terms)), ])
@@ -51,16 +61,20 @@ testthat::test_that("GSEA representatives and recurrence are deterministic", {
   testthat::expect_identical(ca2$gsea_direction_status, "mixed_direction")
   testthat::expect_true(is.na(ca2$gsea_direction_sign))
 
-  global <- gww_build_global_gsea_evidence(terms, local_a, 2L)
-  testthat::expect_equal(nrow(global), 0L)
+  recurrent <- gww_build_recurrent_cross_spatial_gsea_evidence(terms, local_a, 2L)
+  testthat::expect_equal(nrow(recurrent), 0L)
 
   terms$NES[terms$Comparison == "ca2_b"] <- 1.2
   local <- gww_build_local_gsea_evidence(terms)
-  global <- gww_build_global_gsea_evidence(terms, local, 2L)
-  testthat::expect_equal(nrow(global), 1L)
-  testthat::expect_identical(global$gsea_direction_status, "positive_recurrent")
-  testthat::expect_identical(global$gsea_direction_sign, 1L)
-  testthat::expect_equal(global$n_units_supporting_same_direction, 2L)
+  recurrent <- gww_build_recurrent_cross_spatial_gsea_evidence(terms, local, 2L)
+  testthat::expect_equal(nrow(recurrent), 1L)
+  testthat::expect_identical(
+    recurrent$gsea_direction_status, "positive_recurrent_cross_spatial"
+  )
+  testthat::expect_identical(recurrent$gsea_direction_sign, 1L)
+  testthat::expect_identical(recurrent$comparison_scope, "recurrent_cross_spatial")
+  testthat::expect_identical(recurrent$gsea_spatial_unit, "recurrent_cross_spatial")
+  testthat::expect_equal(recurrent$n_units_supporting_same_direction, 2L)
 })
 
 testthat::test_that("program matching is exact and excludes aliases", {
@@ -175,10 +189,10 @@ testthat::test_that("low-n concordance classes use effect CI and stability", {
   )
 })
 
-testthat::test_that("local and global scopes fail closed when mismatched", {
+testthat::test_that("local and recurrent-cross-spatial scopes fail closed when mismatched", {
   good <- data.frame(
-    comparison_scope = c("local_local", "global_cross_spatial"),
-    gsea_spatial_unit = c("ca1", "global_spatial_adjusted"),
+    comparison_scope = c("local_local", "recurrent_cross_spatial"),
+    gsea_spatial_unit = c("ca1", "recurrent_cross_spatial"),
     wgcna_spatial_unit = c("ca1", "global_spatial_adjusted"),
     wgcna_effect_scope = c("within_spatial_unit", "spatial_adjusted_global"),
     wgcna_analysis_tier = c(
@@ -186,18 +200,18 @@ testthat::test_that("local and global scopes fail closed when mismatched", {
     ),
     stringsAsFactors = FALSE
   )
-  testthat::expect_silent(gww_validate_local_global_semantics(good))
+  testthat::expect_silent(gww_validate_local_recurrent_cross_spatial_semantics(good))
   bad <- good
   bad$wgcna_spatial_unit[[1]] <- "ca2"
   testthat::expect_error(
-    gww_validate_local_global_semantics(bad),
-    "Local/global concordance semantics"
+    gww_validate_local_recurrent_cross_spatial_semantics(bad),
+    "Local/recurrent-cross-spatial concordance semantics"
   )
   bad <- good
   bad$comparison_scope[[2]] <- "local_local"
   testthat::expect_error(
-    gww_validate_local_global_semantics(bad),
-    "Local/global concordance semantics"
+    gww_validate_local_recurrent_cross_spatial_semantics(bad),
+    "Local/recurrent-cross-spatial concordance semantics"
   )
 })
 
@@ -206,12 +220,13 @@ testthat::test_that("adaptive pattern requires effects and direct contrast", {
     dataset = "neuron_neuropil",
     biological_program = "Synapse_Vesicle_Organization",
     contrast = c("RES - CON", "SUS - CON", "SUS - RES"),
-    comparison_scope = "global_cross_spatial",
+    comparison_scope = "recurrent_cross_spatial",
     wgcna_entity_level = "module",
     wgcna_entity_id = "WGCNA_m01",
     gsea_direction_sign = c(1L, -1L, -1L),
     gsea_direction_status = c(
-      "positive_recurrent", "negative_recurrent", "negative_recurrent"
+      "positive_recurrent_cross_spatial", "negative_recurrent_cross_spatial",
+      "negative_recurrent_cross_spatial"
     ),
     wgcna_estimate = c(0.5, -0.4, -0.9),
     wgcna_CI_low = c(-0.1, -1.0, -1.5),
@@ -225,7 +240,7 @@ testthat::test_that("adaptive pattern requires effects and direct contrast", {
   observed <- gww_adaptive_pattern_summary(long)
   testthat::expect_identical(
     observed$adaptive_resilience_pattern,
-    "RES_specific_adaptive_candidate"
+    "RES_supported_shift_candidate"
   )
   testthat::expect_true(observed$RES_gt_CON_gt_SUS_supported)
 
@@ -245,4 +260,3 @@ testthat::test_that("utility adjusts only the new overlap family", {
   testthat::expect_match(text, "overlap_FDR = stats::p.adjust", fixed = TRUE)
   testthat::expect_false(grepl("combined_p|combined_fdr", text, ignore.case = TRUE))
 })
-

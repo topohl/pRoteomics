@@ -35,11 +35,17 @@ testthat::test_that("complete GSEA effects use a common three-contrast term set"
       dataset = "d",
       spatial_unit = "CA1",
       program_class = "Program",
+      theme_id = "fixture_theme",
+      manuscript_theme = "Fixture theme",
+      theme_role = "primary",
+      theme_claim_eligible = TRUE,
+      theme_assignment_id = paste0("fixture_", dplyr::row_number()),
       Comparison = paste(.data$phenotype_contrast, "CA1", sep = "_"),
-      Description = dplyr::if_else(.data$ID == "GO:1", "term one", "term two"),
+      GO_ID = .data$ID,
+      GO_description = dplyr::if_else(.data$ID == "GO:1", "term one", "term two"),
       NES = c(1, 2, -1, -2, -2, -3),
-      pvalue = c(0.01, 0.8, 0.02, 0.7, 0.03, 0.6),
-      p.adjust = c(0.04, 0.9, 0.05, 0.8, 0.06, 0.7),
+      raw_p = c(0.01, 0.8, 0.02, 0.7, 0.03, 0.6),
+      GSEA_FDR = c(0.04, 0.9, 0.05, 0.8, 0.06, 0.7),
       core_enrichment = "P1/P2",
       evidence_source_family = "ranked_GSEA",
       source_supplementary_file = "source.csv"
@@ -72,7 +78,7 @@ testthat::test_that("directional labels are descriptive and fail closed", {
   )
 })
 
-testthat::test_that("global recurrence counts local spatial units before aggregation", {
+testthat::test_that("recurrent-cross-spatial direction counts local spatial units before aggregation", {
   local <- data.frame(
     dataset = "d",
     biological_program = "P",
@@ -84,11 +90,30 @@ testthat::test_that("global recurrence counts local spatial units before aggrega
     n_GSEA_FDR_supported_terms = 0L,
     n_common_GO_terms = 10L
   )
-  out <- gwwd_global_program_effects(local)
+  out <- gwwd_recurrent_cross_spatial_program_effects(local)
   testthat::expect_equal(out$n_spatial_units, 4L)
   testthat::expect_equal(out$n_units_positive, 3L)
   testthat::expect_equal(out$n_units_negative, 1L)
   testthat::expect_equal(out$gsea_direction_sign, 1)
+})
+
+testthat::test_that("candidate mapping filters use explicit environment dataset", {
+  script <- paste(
+    readLines(testthat::test_path(
+      "..", "..", "10_biological_integration",
+      "06_gsea_wgcna_concordance_diagnostics.R"
+    ), warn = FALSE),
+    collapse = "\n"
+  )
+  testthat::expect_match(
+    script, ".data$dataset == .env$dataset", fixed = TRUE
+  )
+  testthat::expect_false(grepl(
+    ".data$dataset == dataset", script, fixed = TRUE
+  ))
+  testthat::expect_match(
+    script, 'by = c("dataset", "ModuleID")', fixed = TRUE
+  )
 })
 
 testthat::test_that("power diagnostic ranks unique endpoints without new tests", {
@@ -96,7 +121,7 @@ testthat::test_that("power diagnostic ranks unique endpoints without new tests",
     wgcna_source_key = c("a", "a", "b"),
     dataset = "d",
     contrast = c("RES - CON", "RES - CON", "SUS - RES"),
-    comparison_scope = "global_cross_spatial",
+    comparison_scope = "recurrent_cross_spatial",
     wgcna_spatial_unit = "global_spatial_adjusted",
     wgcna_entity_level = "module",
     wgcna_entity_id = c("m1", "m1", "m2"),

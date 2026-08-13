@@ -1040,6 +1040,44 @@ wgcna_group_predeclared_contrasts <- function(observed_levels) {
   methods
 }
 
+wgcna_group_emmeans_contrast_summary <- function(
+    emm_grid, methods, ci_level = 0.95
+) {
+  if (!is.numeric(ci_level) || length(ci_level) != 1L ||
+      !is.finite(ci_level) || ci_level <= 0 || ci_level >= 1) {
+    stop("ci_level must be one finite number strictly between zero and one.",
+         call. = FALSE)
+  }
+  contrast_grid <- emmeans::contrast(
+    emm_grid, method = methods, adjust = "none"
+  )
+  out <- as.data.frame(summary(
+    contrast_grid, infer = c(TRUE, TRUE), level = ci_level,
+    adjust = "none"
+  ))
+  lower_name <- intersect(c("lower.CL", "asymp.LCL"), names(out))
+  upper_name <- intersect(c("upper.CL", "asymp.UCL"), names(out))
+  if (length(lower_name) != 1L || length(upper_name) != 1L) {
+    stop(
+      "emmeans contrast summary did not return one confidence-interval pair.",
+      call. = FALSE
+    )
+  }
+  out$CI_low <- suppressWarnings(as.numeric(out[[lower_name[[1L]]]]))
+  out$CI_high <- suppressWarnings(as.numeric(out[[upper_name[[1L]]]]))
+  out$CI_method <- "emmeans_contrast_summary"
+  out$CI_level <- as.numeric(ci_level)
+  out$CI_df_method <- if ("df" %in% names(out)) {
+    ifelse(
+      is.finite(suppressWarnings(as.numeric(out$df))),
+      "finite_df_from_emmeans", "asymptotic_from_emmeans"
+    )
+  } else {
+    "asymptotic_from_emmeans"
+  }
+  out
+}
+
 wgcna_group_model_type_for_scope <- function(animal_ids) {
   animal_ids <- wgcna_group_clean_character(animal_ids)
   if (anyNA(animal_ids)) {
@@ -1149,6 +1187,8 @@ wgcna_group_primary_schema <- function() {
     animal_level_status = character(), pseudoreplication_guard = character(),
     contrast = character(), estimate = numeric(), SE = numeric(),
     CI_low = numeric(), CI_high = numeric(),
+    CI_method = character(), CI_level = numeric(),
+    CI_df_method = character(),
     statistic = numeric(), df_num = numeric(), df_den = numeric(),
     p_value = numeric(),
     FDR_primary_global = numeric(), FDR_primary_family_id = character(),
@@ -1584,10 +1624,8 @@ wgcna_group_fit_attempt_phase2_legacy <- function(
   }
   contrast_capture <- wgcna_group_capture(
     as.data.frame(
-      summary(
-        emmeans::contrast(
-          emm_capture$value, method = methods, adjust = "none"
-        )
+      wgcna_group_emmeans_contrast_summary(
+        emm_capture$value, methods, ci_level = 0.95
       )
     )
   )
@@ -1702,6 +1740,11 @@ wgcna_group_fit_attempt_phase2_legacy <- function(
       },
       contrast = label, estimate = as.numeric(contrast_df$estimate[[i]]),
       SE = as.numeric(contrast_df$SE[[i]]),
+      CI_low = as.numeric(contrast_df$CI_low[[i]]),
+      CI_high = as.numeric(contrast_df$CI_high[[i]]),
+      CI_method = as.character(contrast_df$CI_method[[i]]),
+      CI_level = as.numeric(contrast_df$CI_level[[i]]),
+      CI_df_method = as.character(contrast_df$CI_df_method[[i]]),
       statistic = as.numeric(contrast_df[[stat_col]][[i]]),
       p_value = as.numeric(contrast_df$p.value[[i]]),
       evidence_status = NA_character_,
@@ -2633,6 +2676,9 @@ wgcna_group_make_effect_row <- function(
     dat, dataset, level, endpoint, contract, effect_scope, spatial_unit,
     contrast, estimate, SE, statistic, p_value, model_type, fit,
     diagnostics, fixed_rank, fixed_columns, min_animals,
+    CI_low = NA_real_, CI_high = NA_real_,
+    CI_method = "not_applicable", CI_level = NA_real_,
+    CI_df_method = "not_applicable",
     test_type = "named_contrast", df_num = NA_real_, df_den = NA_real_,
     reduced_formula = NA_character_, full_formula = NA_character_,
     identical_rows_verified = NA, reduced_row_hash = NA_character_,
@@ -2669,16 +2715,6 @@ wgcna_group_make_effect_row <- function(
     paste(deparse(stats::formula(fit)), collapse = "")
   } else {
     full_formula
-  }
-  ci_low <- if (is.finite(estimate) && is.finite(SE)) {
-    estimate - 1.96 * SE
-  } else {
-    NA_real_
-  }
-  ci_high <- if (is.finite(estimate) && is.finite(SE)) {
-    estimate + 1.96 * SE
-  } else {
-    NA_real_
   }
   row <- data.frame(
     dataset = dataset, level = level, endpoint_id = endpoint$endpoint_id,
@@ -2740,7 +2776,10 @@ wgcna_group_make_effect_row <- function(
       "one_bilateral_mean_observation_per_animal"
     },
     contrast = contrast, estimate = as.numeric(estimate),
-    SE = as.numeric(SE), CI_low = ci_low, CI_high = ci_high,
+    SE = as.numeric(SE), CI_low = as.numeric(CI_low),
+    CI_high = as.numeric(CI_high),
+    CI_method = as.character(CI_method), CI_level = as.numeric(CI_level),
+    CI_df_method = as.character(CI_df_method),
     statistic = as.numeric(statistic), df_num = as.numeric(df_num),
     df_den = as.numeric(df_den), p_value = as.numeric(p_value),
     evidence_status = NA_character_,
@@ -3211,9 +3250,9 @@ wgcna_group_fit_attempt <- function(
     return(list(primary = empty, validation = validation))
   }
   contrast_capture <- wgcna_group_capture(
-    as.data.frame(summary(
-      emmeans::contrast(emm_capture$value, method = methods, adjust = "none")
-    ))
+    wgcna_group_emmeans_contrast_summary(
+      emm_capture$value, methods, ci_level = 0.95
+    )
   )
   if (inherits(contrast_capture$value, "error")) {
     invalid <- wgcna_group_fit_diagnostics(
@@ -3290,6 +3329,11 @@ wgcna_group_fit_attempt <- function(
       contrast_df[[stat_col]][[i]], contrast_df$p.value[[i]],
       model_type, fit, row_diagnostics, fixed_rank, fixed_columns,
       min_animals,
+      CI_low = contrast_df$CI_low[[i]],
+      CI_high = contrast_df$CI_high[[i]],
+      CI_method = contrast_df$CI_method[[i]],
+      CI_level = contrast_df$CI_level[[i]],
+      CI_df_method = contrast_df$CI_df_method[[i]],
       df_num = 1,
       df_den = if ("df" %in% names(contrast_df)) {
         suppressWarnings(as.numeric(contrast_df$df[[i]]))
@@ -3572,9 +3616,9 @@ wgcna_group_fit_interaction_omnibus <- function(
   methods <- wgcna_group_predeclared_contrasts(levels(dat$StressGroup))
   if (!inherits(emm_capture$value, "error") && length(methods)) {
     contrast_capture <- wgcna_group_capture(
-      as.data.frame(summary(
-        emmeans::contrast(emm_capture$value, method = methods, adjust = "none")
-      ))
+      wgcna_group_emmeans_contrast_summary(
+        emm_capture$value, methods, ci_level = 0.95
+      )
     )
     if (!inherits(contrast_capture$value, "error")) {
       contrast_df <- contrast_capture$value
@@ -3615,6 +3659,11 @@ wgcna_group_fit_interaction_omnibus <- function(
           contrast_df[[stat_col]][[i]], contrast_df$p.value[[i]],
           model_type, full, full_diagnostics,
           qr(full_fixed)$rank, ncol(full_fixed), min_animals,
+          CI_low = contrast_df$CI_low[[i]],
+          CI_high = contrast_df$CI_high[[i]],
+          CI_method = contrast_df$CI_method[[i]],
+          CI_level = contrast_df$CI_level[[i]],
+          CI_df_method = contrast_df$CI_df_method[[i]],
           test_type = "conditional_interaction_followup",
           df_num = 1,
           df_den = if ("df" %in% names(contrast_df)) {
@@ -4963,6 +5012,55 @@ wgcna_group_model_validation_scope_violations <- function(table) {
   dplyr::bind_rows(rows)
 }
 
+wgcna_group_ci_p_compatibility_violations <- function(
+    table, alpha = 0.05, tolerance = 1e-10
+) {
+  if (!nrow(table)) return(data.frame())
+  required <- c(
+    "dataset", "level", "endpoint_id", "effect_scope", "spatial_unit",
+    "contrast", "test_type", "estimate", "SE", "CI_low", "CI_high",
+    "CI_method", "CI_level", "CI_df_method", "p_value", "df_den"
+  )
+  missing <- setdiff(required, names(table))
+  if (length(missing)) {
+    stop(
+      "CI compatibility check is missing columns: ",
+      paste(missing, collapse = ", "), call. = FALSE
+    )
+  }
+  named <- table[
+    table$test_type %in% c(
+      "named_contrast", "conditional_interaction_followup"
+    ) &
+      is.finite(table$estimate) & is.finite(table$SE) &
+      is.finite(table$CI_low) & is.finite(table$CI_high) &
+      is.finite(table$p_value),
+    , drop = FALSE
+  ]
+  if (!nrow(named)) return(data.frame())
+  ci_excludes <- named$CI_low > tolerance | named$CI_high < -tolerance
+  p_supported <- named$p_value < alpha - tolerance
+  boundary <- abs(named$p_value - alpha) <= tolerance |
+    abs(named$CI_low) <= tolerance | abs(named$CI_high) <= tolerance
+  method_ok <- named$CI_method == "emmeans_contrast_summary" &
+    abs(named$CI_level - (1 - alpha)) <= tolerance &
+    named$CI_df_method %in% c(
+      "finite_df_from_emmeans", "asymptotic_from_emmeans"
+    )
+  interval_ok <- named$CI_low <= named$estimate + tolerance &
+    named$CI_high >= named$estimate - tolerance
+  incompatible <- (!boundary & ci_excludes != p_supported) |
+    !method_ok | !interval_ok
+  out <- named[incompatible, required, drop = FALSE]
+  if (nrow(out)) {
+    out$CI_excludes_zero <- ci_excludes[incompatible]
+    out$p_below_alpha <- p_supported[incompatible]
+    out$boundary_edge_case <- boundary[incompatible]
+  }
+  rownames(out) <- NULL
+  out
+}
+
 wgcna_group_validate_output_bundle <- function(outputs, contract) {
   required <- wgcna_group_allowed_output_names()
   missing <- setdiff(required, names(outputs))
@@ -5014,6 +5112,17 @@ wgcna_group_validate_output_bundle <- function(outputs, contract) {
     stop(
       "Model diagnostic-scope contract failed: ",
       paste(unique(diagnostic_violations$reason), collapse = ";"),
+      call. = FALSE
+    )
+  }
+  ci_violations <- dplyr::bind_rows(
+    wgcna_group_ci_p_compatibility_violations(module),
+    wgcna_group_ci_p_compatibility_violations(super),
+    wgcna_group_ci_p_compatibility_violations(followup)
+  )
+  if (nrow(ci_violations)) {
+    stop(
+      "Confidence-interval and p-value inference contract failed.",
       call. = FALSE
     )
   }
@@ -5072,7 +5181,8 @@ wgcna_group_validate_output_bundle <- function(outputs, contract) {
          call. = FALSE)
   }
   inherited_cols <- c(
-    "estimate", "SE", "CI_low", "CI_high", "p_value",
+    "estimate", "SE", "CI_low", "CI_high",
+    "CI_method", "CI_level", "CI_df_method", "p_value",
     "model_formula", "formula_used", "random_intercept_variance",
     "residual_variance", "variance_ratio", "ICC",
     "is_singular_lme4", "boundary_by_variance_ratio",
