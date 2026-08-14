@@ -10,12 +10,25 @@ control_spatial_render_figures <- function(ks, go, source_data, figures) {
     labels[x == "DG_neuropil_vs_mean_non_DG_regions"] <- "DG neuropil vs non-DG"
     labels
   }
+  ks <- ks[ks$internal_contrast %in% control_spatial_figure2e_external_contrasts(), , drop = FALSE]
+  ks <- control_spatial_apply_signature_fdr(ks)
+  ks$panel_contract <- "Figure 2e: External anatomical validation against matched or explicitly approximate Kaulich regional / CA1-stratum reference signatures."
+  ks$matched_exactly <- ks$match_type == "exact"
+  ks$external_reference_context <- ks$external_signature == "SP" & !ks$matched_exactly
   utils::write.csv(ks, source_data[["e"]], row.names = FALSE)
-  go_display <- control_spatial_select_go_display(go, max_terms = 2L)
+  go_display <- control_spatial_select_go_display(
+    go, max_terms = 2L, contrasts = control_spatial_figure2f_display_contrasts()
+  )
   if (nrow(go_display)) {
     go_display$internal_contrast_label <- publication_contrast_label(go_display$contrast)
     go_display$semantic_simplification_applied <- FALSE
     go_display$display_selection_rule <- "adjusted p-value, descending NES, GO ID; maximum two per contrast"
+    go_display$panel_contract <- "Figure 2f: Internal CON-only anatomical GO-BP differentiation."
+    go_display$interpretation_note <- ifelse(
+      go_display$contrast %in% c("DG_MO_vs_mean_other_DG_layers", "DG_PO_vs_mean_other_DG_layers"),
+      "Internal DG layer contrast; no matched DG-layer Kaulich reference signature available.",
+      "Internal CON-only anatomical GO-BP differentiation."
+    )
   }
   utils::write.csv(go_display, source_data[["f"]], row.names = FALSE)
 
@@ -23,6 +36,11 @@ control_spatial_render_figures <- function(ks, go, source_data, figures) {
   if (nrow(kaulich_plot_data)) {
     kaulich_plot_data$internal_contrast_label <- publication_contrast_label(
       kaulich_plot_data$internal_contrast
+    )
+    kaulich_plot_data$external_signature_plot_label <- ifelse(
+      kaulich_plot_data$external_reference_context,
+      paste0(kaulich_plot_data$external_signature, " (reference only)"),
+      as.character(kaulich_plot_data$external_signature)
     )
     kaulich_plot_data$internal_contrast_label <- vapply(
       kaulich_plot_data$internal_contrast_label,
@@ -40,7 +58,7 @@ control_spatial_render_figures <- function(ks, go, source_data, figures) {
     )
     colour_limit <- max(abs(kaulich_plot_data$NES), na.rm = TRUE)
     significant <- kaulich_plot_data$outline_status == "FDR < 0.05"
-    figure2e <- ggplot(kaulich_plot_data, aes(internal_contrast_label, external_signature, fill = NES)) +
+    figure2e <- ggplot(kaulich_plot_data, aes(internal_contrast_label, external_signature_plot_label, fill = NES)) +
       geom_point(
         data = kaulich_plot_data[!significant, , drop = FALSE],
         shape = 21, size = 3.2, colour = "#D9D9D9", stroke = 0.35
@@ -73,7 +91,7 @@ control_spatial_render_figures <- function(ks, go, source_data, figures) {
       ) +
       labs(
         x = NULL, y = NULL, tag = "a",
-        subtitle = "External CA2/3 correspondence for internal CA2 and CA3 is approximate."
+        subtitle = "External Kaulich validation; CA2/3 correspondence is approximate; CA1 SP is reference-only."
       ) +
       theme_minimal(base_size = 8.5) +
       theme(
@@ -106,13 +124,7 @@ control_spatial_render_figures <- function(ks, go, source_data, figures) {
   }
 
   if (nrow(go_display)) {
-    contrast_order <- c(
-      "CA1_vs_mean_other_soma_regions", "CA2_vs_mean_other_soma_regions",
-      "CA3_vs_mean_other_soma_regions", "DG_vs_mean_other_soma_regions",
-      "DG_neuropil_vs_mean_non_DG_regions", "CA1_SO_vs_CA3_SO",
-      "CA1_SLM_vs_mean_other_CA1_strata", "CA1_SO_vs_mean_other_CA1_strata",
-      "CA1_SR_vs_mean_other_CA1_strata"
-    )
+    contrast_order <- control_spatial_figure2f_display_contrasts()
     go_display$internal_contrast_plot_label <- vapply(
       go_display$internal_contrast_label,
       function(z) paste(strwrap(z, width = 21), collapse = "\n"),
@@ -160,7 +172,10 @@ control_spatial_render_figures <- function(ks, go, source_data, figures) {
         ),
         size = guide_legend(order = 2, title.position = "top", nrow = 1)
       ) +
-      labs(x = "Normalized enrichment score (NES)", y = NULL, tag = "b") +
+      labs(
+        x = "Normalized enrichment score (NES)", y = NULL, tag = "b",
+        subtitle = "Internal CON-only anatomical GO-BP differentiation."
+      ) +
       theme_minimal(base_size = 8) +
       theme(
         plot.background = element_rect(fill = "white", colour = NA),
@@ -176,6 +191,7 @@ control_spatial_render_figures <- function(ks, go, source_data, figures) {
         axis.text.y = element_text(size = 6.4, lineheight = 0.9),
         axis.text.x = element_text(size = 6.8),
         axis.title.x = element_text(size = 7.5, margin = margin(t = 5)),
+        plot.subtitle = element_text(size = 7.4, colour = "#444444", margin = margin(b = 5)),
         plot.tag = element_text(size = 11, face = "bold"),
         plot.tag.position = c(0, 1),
         legend.position = "bottom",
@@ -209,7 +225,7 @@ if (is_dry_run()) {
   return(invisible(list(status = "dry_run", project_root = root, workbook = wb)))
 }
 out <- function(kind, name) file.path(root, "results", kind, "04_differential_expression_enrichment", "control_spatial_identity_validation", "global", name)
-tables <- c(protein=out("tables","anatomical_protein_contrasts.csv"), mapping=out("tables","kaulich_signature_mapping.csv"), kaulich=out("tables","kaulich_signature_gsea.csv"), go=out("tables","control_anatomical_go_bp_gsea.csv"), status=out("tables","analysis_status.csv"))
+tables <- c(protein=out("tables","anatomical_protein_contrasts.csv"), mapping=out("tables","kaulich_signature_mapping.csv"), kaulich=out("tables","kaulich_signature_gsea.csv"), go=out("tables","control_anatomical_go_bp_gsea.csv"), matching_audit=out("tables","figure2e_matching_audit.csv"), status=out("tables","analysis_status.csv"))
 source_data <- c(e=out("source_data","figure2e_source_data.csv"), f=out("source_data","figure2f_source_data.csv")); figures <- c(e=out("figures","figure2e_kaulich_validation.svg"), f=out("figures","figure2f_control_anatomical_GO.svg")); manifest <- out("logs","run_manifest.yml")
 dir.create(dirname(tables[[1]]), recursive=TRUE, showWarnings=FALSE); dir.create(dirname(source_data[[1]]), recursive=TRUE, showWarnings=FALSE); dir.create(dirname(figures[[1]]), recursive=TRUE, showWarnings=FALSE); dir.create(dirname(manifest), recursive=TRUE, showWarnings=FALSE)
 
@@ -219,6 +235,10 @@ if (render_only) {
   control_spatial_validate_output_bundle(c(tables, manifest))
   ks <- utils::read.csv(tables[["kaulich"]], check.names = FALSE)
   go <- utils::read.csv(tables[["go"]], check.names = FALSE)
+  ks <- ks[ks$internal_contrast %in% control_spatial_figure2e_external_contrasts(), , drop = FALSE]
+  ks <- control_spatial_apply_signature_fdr(ks)
+  utils::write.csv(ks, tables[["kaulich"]], row.names = FALSE)
+  utils::write.csv(control_spatial_figure2e_matching_audit(ks), tables[["matching_audit"]], row.names = FALSE)
   control_spatial_render_figures(ks, go, source_data, figures)
   control_spatial_validate_output_bundle(c(tables, source_data, figures, manifest))
   message("Control spatial identity presentation rendering complete")
@@ -258,14 +278,17 @@ for (dataset in c("neuron_soma", "neuron_neuropil")) {
     regions <- sub("_.*$", "", unit_levels); contrasts[[1]] <- make_contrast("DG_neuropil_vs_mean_non_DG_regions", control_spatial_region_mean_weights(unit_levels,regions,"DG"))
     if (all(c("CA1_SO","CA3_SO") %in% unit_levels)) contrasts[[length(contrasts)+1L]] <- make_contrast("CA1_SO_vs_CA3_SO", stats::setNames(c(1,-1),c("CA1_SO","CA3_SO"))) else statuses[[length(statuses)+1L]] <- control_spatial_empty_status(dataset,"CA1_SO_vs_CA3_SO","skipped","required spatial units absent")
     ca1 <- unit_levels[grepl("^CA1_",unit_levels)]; if(length(ca1)>=3L) for (target in ca1) contrasts[[length(contrasts)+1L]] <- make_contrast(paste0(target,"_vs_mean_other_CA1_strata"),control_spatial_target_rest_weights(ca1,target))
+    dg <- unit_levels[grepl("^DG_", unit_levels)]
+    if (length(dg) >= 2L) for (target in dg) contrasts[[length(contrasts) + 1L]] <- make_contrast(paste0(target, "_vs_mean_other_DG_layers"), control_spatial_target_rest_weights(dg, target))
   }
   for (ct in contrasts) {
     cf <- limma::contrasts.fit(fit, matrix(ct$weights,ncol=1,dimnames=list(names(ct$weights),ct$name))) |> limma::eBayes(robust=TRUE,trend=TRUE)
     tt <- limma::topTable(cf, number=Inf, sort.by="none"); tt$ProteinGroupID <- rownames(tt); tt <- cbind(tt, canonical$feature_table[match(tt$ProteinGroupID,canonical$feature_table$ProteinGroupID), setdiff(names(canonical$feature_table),"ProteinGroupID"),drop=FALSE]); tt$dataset <- dataset; tt$contrast <- ct$name
     all_protein[[length(all_protein)+1L]] <- tt
     gi <- build_enrichment_gene_inputs(tt, strict=TRUE); ranked <- gi$ranked
-    signatures <- if(dataset=="neuron_soma") regional_signatures$tissue else if(grepl("CA1_.*strata",ct$name)) stratum_signatures else regional_signatures$synaptosome
-    for (sg in split(signatures, signatures$external_signature)) {
+    if (ct$name %in% control_spatial_figure2e_external_contrasts()) {
+      signatures <- if(dataset=="neuron_soma") regional_signatures$tissue else if(grepl("CA1_.*strata",ct$name)) stratum_signatures else regional_signatures$synaptosome
+      for (sg in split(signatures, signatures$external_signature)) {
       mapped_signature <- control_spatial_map_signature(sg, names(ranked), mapped_gene_threshold = 5L)
       interpretation <- control_spatial_signature_interpretation(dataset, ct$name, sg$external_signature[1])
       fdr_family <- control_spatial_signature_family(interpretation$validation_domain)
@@ -310,6 +333,7 @@ for (dataset in c("neuron_soma", "neuron_neuropil")) {
         mapped = mapped_signature$mapped_official_symbols,
         external_signature = sg$external_signature[1]
       )
+      }
     }
     if (!go_announced) { message("Running GO-BP GSEA"); go_announced <- TRUE }
     go <- as.data.frame(clusterProfiler::gseGO(ranked,OrgDb=org.Mm.eg.db,keyType="SYMBOL",ont="BP",pvalueCutoff=1,verbose=FALSE))
@@ -377,7 +401,7 @@ ks<-control_spatial_apply_signature_fdr(control_spatial_bind_rows_fill(all_ks))
 go<-control_spatial_bind_rows_fill(all_go)
 status<-control_spatial_bind_rows_fill(statuses)
 message("Writing output bundle")
-utils::write.csv(protein,tables[["protein"]],row.names=FALSE); utils::write.csv(mapping,tables[["mapping"]],row.names=FALSE); utils::write.csv(ks,tables[["kaulich"]],row.names=FALSE); utils::write.csv(go,tables[["go"]],row.names=FALSE); utils::write.csv(status,tables[["status"]],row.names=FALSE)
+utils::write.csv(protein,tables[["protein"]],row.names=FALSE); utils::write.csv(mapping,tables[["mapping"]],row.names=FALSE); utils::write.csv(ks,tables[["kaulich"]],row.names=FALSE); utils::write.csv(go,tables[["go"]],row.names=FALSE); utils::write.csv(control_spatial_figure2e_matching_audit(ks),tables[["matching_audit"]],row.names=FALSE); utils::write.csv(status,tables[["status"]],row.names=FALSE)
 control_spatial_render_figures(ks, go, source_data, figures)
 write_run_manifest(
   manifest,

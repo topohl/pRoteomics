@@ -340,6 +340,8 @@ control_spatial_contrast_label <- function(x) {
     CA3_vs_mean_other_soma_regions = "CA3 soma vs other regions",
     DG_vs_mean_other_soma_regions = "DG soma vs other regions",
     DG_neuropil_vs_mean_non_DG_regions = "DG neuropil vs non-DG neuropil",
+    DG_MO_vs_mean_other_DG_layers = "DG molecular layer vs other DG layer",
+    DG_PO_vs_mean_other_DG_layers = "DG polymorphic layer vs other DG layer",
     CA1_SO_vs_CA3_SO = "CA1 SO vs CA3 SO",
     CA1_SLM_vs_mean_other_CA1_strata = "CA1 SLM vs other CA1 strata",
     CA1_SO_vs_mean_other_CA1_strata = "CA1 SO vs other CA1 strata",
@@ -348,6 +350,46 @@ control_spatial_contrast_label <- function(x) {
   out <- unname(labels[as.character(x)])
   out[is.na(out)] <- as.character(x)[is.na(out)]
   out
+}
+
+control_spatial_figure2e_external_contrasts <- function() {
+  c(
+    "CA1_vs_mean_other_soma_regions", "CA2_vs_mean_other_soma_regions",
+    "CA3_vs_mean_other_soma_regions", "DG_vs_mean_other_soma_regions",
+    "DG_neuropil_vs_mean_non_DG_regions", "CA1_SO_vs_CA3_SO",
+    "CA1_SLM_vs_mean_other_CA1_strata", "CA1_SO_vs_mean_other_CA1_strata",
+    "CA1_SR_vs_mean_other_CA1_strata"
+  )
+}
+
+control_spatial_figure2f_display_contrasts <- function() {
+  c(
+    "CA1_vs_mean_other_soma_regions", "CA2_vs_mean_other_soma_regions",
+    "CA3_vs_mean_other_soma_regions", "DG_vs_mean_other_soma_regions",
+    "DG_MO_vs_mean_other_DG_layers", "DG_PO_vs_mean_other_DG_layers"
+  )
+}
+
+# This is deliberately separate from the GSEA result: it records the semantic
+# match contract used by Figure 2e.  In particular, the Kaulich SP signature is
+# useful reference/specificity context but cannot validate an internal CA1-SP
+# contrast because that spatial unit is not present in this experiment.
+control_spatial_figure2e_matching_audit <- function(x) {
+  required <- c("dataset", "internal_contrast", "external_signature", "match_type", "interpretation_note")
+  missing <- setdiff(required, names(x))
+  if (length(missing)) stop("Figure 2e mapping audit is missing: ", paste(missing, collapse = ", "), call. = FALSE)
+  out <- unique(x[, required, drop = FALSE])
+  out$matched_exactly <- out$match_type == "exact"
+  out$match_reason <- ifelse(
+    out$matched_exactly,
+    "Internal target and external reference stratum are identical.",
+    ifelse(out$external_signature == "SP" & grepl("_vs_mean_other_CA1_strata$", out$internal_contrast),
+      "External-reference-only CA1 SP signature: no internal CA1-SP-versus-rest contrast exists.",
+      out$interpretation_note
+    )
+  )
+  out$external_reference_context <- out$external_signature == "SP" & !out$matched_exactly
+  out[order(out$internal_contrast, out$external_signature), , drop = FALSE]
 }
 
 control_spatial_figure2e_plot_data <- function(x) {
@@ -373,7 +415,7 @@ control_spatial_figure2e_plot_data <- function(x) {
   x
 }
 
-control_spatial_select_go_display <- function(x, max_terms = 2L) {
+control_spatial_select_go_display <- function(x, max_terms = 2L, contrasts = NULL) {
   required <- c("dataset", "contrast", "status", "ID", "Description", "NES", "p_adjust")
   missing <- setdiff(required, names(x))
   if (length(missing)) stop("GO-BP display input is missing: ", paste(missing, collapse = ", "), call. = FALSE)
@@ -382,6 +424,7 @@ control_spatial_select_go_display <- function(x, max_terms = 2L) {
   keep <- x$status == "completed" &
     is.finite(suppressWarnings(as.numeric(x$NES))) & x$NES > 0 &
     is.finite(suppressWarnings(as.numeric(x$p_adjust))) & x$p_adjust < 0.05
+  if (!is.null(contrasts)) keep <- keep & x$contrast %in% contrasts
   eligible <- x[keep, , drop = FALSE]
   if (!nrow(eligible)) return(eligible)
   keys <- paste(eligible$dataset, eligible$contrast, sep = "\r")
