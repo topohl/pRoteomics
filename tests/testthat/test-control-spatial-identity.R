@@ -85,7 +85,7 @@ testthat::test_that("case-insensitive key collisions are excluded rather than se
   mapped <- control_spatial_map_signature(parsed, c("Ank3", "ANK3"))
   audit <- mapped$canonical_audit[mapped$canonical_audit$gene_match_key == "ANK3", , drop = FALSE]
   testthat::expect_identical(audit$n_distinct_official_symbols, 2L)
-  testthat::expect_match(audit$official_symbols, "ANK3;Ank3")
+  testthat::expect_setequal(strsplit(audit$official_symbols, ";", fixed = TRUE)[[1]], c("ANK3", "Ank3"))
   testthat::expect_length(mapped$mapped_official_symbols, 0L)
   testthat::expect_identical(mapped$candidates$gene_mapping_status, "ambiguous_canonical_key")
   testthat::expect_identical(mapped$summary$ambiguous_key_count, 1L)
@@ -200,6 +200,46 @@ testthat::test_that("signature BH correction uses each complete declared family"
   testthat::expect_identical(adjusted$single_set_p_adjust, x$p_adjust)
 })
 
+testthat::test_that("Figure 2e keeps external CA1 SP as reference-only context", {
+  x <- data.frame(
+    dataset = "neuron_neuropil",
+    internal_contrast = c("CA1_SLM_vs_mean_other_CA1_strata", "CA1_SLM_vs_mean_other_CA1_strata"),
+    external_signature = c("SLM", "SP"),
+    match_type = c("exact", "specificity_comparison"),
+    interpretation_note = c("Expected exact target-stratum correspondence.", "Alternative anatomical signature used as a specificity comparison."),
+    stringsAsFactors = FALSE
+  )
+  audit <- control_spatial_figure2e_matching_audit(x)
+  testthat::expect_true(audit$matched_exactly[audit$external_signature == "SLM"])
+  testthat::expect_false(audit$matched_exactly[audit$external_signature == "SP"])
+  testthat::expect_true(audit$external_reference_context[audit$external_signature == "SP"])
+  testthat::expect_match(audit$match_reason[audit$external_signature == "SP"], "no internal CA1-SP", fixed = TRUE)
+})
+
+testthat::test_that("DG layer target-versus-rest contrasts use observed DG units only", {
+  units <- c("DG_MO", "DG_PO")
+  for (target in units) {
+    w <- control_spatial_target_rest_weights(units, target)
+    testthat::expect_equal(sum(w), 0)
+    testthat::expect_identical(names(w), units)
+  }
+})
+
+testthat::test_that("Figure 2e excludes DG layer contrasts while Figure 2f displays them", {
+  figure2e <- control_spatial_figure2e_external_contrasts()
+  figure2f <- control_spatial_figure2f_display_contrasts()
+  testthat::expect_false(any(grepl("^DG_(MO|PO)_", figure2e)))
+  testthat::expect_setequal(
+    figure2f,
+    c(
+      "CA1_vs_mean_other_soma_regions", "CA2_vs_mean_other_soma_regions",
+      "CA3_vs_mean_other_soma_regions", "DG_vs_mean_other_soma_regions",
+      "DG_MO_vs_mean_other_DG_layers", "DG_PO_vs_mean_other_DG_layers"
+    )
+  )
+  testthat::expect_length(figure2f, 6L)
+})
+
 testthat::test_that("GO display filtering is deterministic, bounded, and leaves complete results unchanged", {
   complete <- data.frame(
     dataset = "neuron_soma",
@@ -220,6 +260,21 @@ testthat::test_that("GO display filtering is deterministic, bounded, and leaves 
   keys_b <- with(display_b, paste(contrast, ID, sep = "|"))
   testthat::expect_identical(sort(keys_a), sort(keys_b))
   testthat::expect_identical(display_a$ID[display_a$contrast == "c1"], c("GO:1", "GO:2"))
+})
+
+testthat::test_that("GO display contrast filtering leaves complete results unchanged", {
+  complete <- data.frame(
+    dataset = "neuron_neuropil",
+    contrast = c("DG_MO_vs_mean_other_DG_layers", "CA1_SO_vs_CA3_SO"),
+    status = "completed", ID = c("GO:1", "GO:2"), Description = c("a", "b"),
+    NES = c(1.5, 1.5), p_adjust = c(.01, .01), stringsAsFactors = FALSE
+  )
+  before <- complete
+  display <- control_spatial_select_go_display(
+    complete, contrasts = control_spatial_figure2f_display_contrasts()
+  )
+  testthat::expect_identical(complete, before)
+  testthat::expect_identical(display$contrast, "DG_MO_vs_mean_other_DG_layers")
 })
 
 testthat::test_that("Figure 2e significance is derived from family FDR, not single-set adjustment", {
