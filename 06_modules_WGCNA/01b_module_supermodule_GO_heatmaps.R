@@ -13,6 +13,7 @@
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
+source(repo_path("R", "plotting_nature.R"))
 source(repo_path("R", "wgcna_downstream_utils.R"))
 source(repo_path("R", "wgcna_go_comparison_utils.R"))
 source(repo_path("R", "validation_utils.R"))
@@ -87,7 +88,7 @@ if (run$dry_run) {
   quit(status = if (all(file.exists(c(GO_FILE, MODULE_MAP_FILE, MEMBERSHIP_FILE)))) 0L else 1L, save = "no")
 }
 
-packages <- c("dplyr", "readr", "ggplot2", "scales", if (IS_COMBINED) "patchwork")
+packages <- c("dplyr", "readr", "ggplot2", "scales", "svglite", if (IS_COMBINED) "patchwork")
 missing_packages <- packages[!vapply(packages, requireNamespace, logical(1), quietly = TRUE)]
 if (length(missing_packages)) stop("Missing required R package(s): ", paste(missing_packages, collapse = ", "), call. = FALSE)
 suppressPackageStartupMessages(invisible(lapply(packages, library, character.only = TRUE)))
@@ -98,8 +99,24 @@ read_required <- function(path, label) {
   as.data.frame(x, stringsAsFactors = FALSE)
 }
 
-NATURE_DOUBLE_COLUMN_IN <- 7.2
-COMBINED_FOCUSED_WIDTH_IN <- 3.8
+NATURE_DOUBLE_COLUMN_IN <- mm_to_in(nature_dimensions_mm()[["double_column"]])
+COMBINED_FOCUSED_WIDTH_MM <- nature_dimensions_mm()[["double_column"]]
+MANUSCRIPT_TEXT <- nature_manuscript_text_sizes_pt()
+
+save_go_figure <- function(plot, filename, width, height, units) {
+  extension <- tolower(tools::file_ext(filename))
+  device <- switch(
+    extension,
+    svg = svglite::svglite,
+    pdf = grDevices::cairo_pdf,
+    png = if (requireNamespace("ragg", quietly = TRUE)) ragg::agg_png else "png",
+    stop("Unsupported GO figure extension: ", extension, call. = FALSE)
+  )
+  ggplot2::ggsave(
+    filename, plot, width = width, height = height, units = units,
+    device = device, limitsize = FALSE, dpi = 300, bg = "white"
+  )
+}
 
 build_combined_focused_panel <- function(x, colour_limits, size_limits) {
   term_rows <- x[!duplicated(x$TermID), c(
@@ -108,7 +125,7 @@ build_combined_focused_panel <- function(x, colour_limits, size_limits) {
   term_rows <- term_rows[order(term_rows$row_order, term_rows$TermID), , drop = FALSE]
   term_rows$GOPlotLabel <- term_rows$Description
   term_labels <- stats::setNames(
-    vapply(term_rows$GOPlotLabel, function(one) paste(strwrap(one, width = 48L), collapse = "\n"), character(1)),
+    vapply(term_rows$GOPlotLabel, function(one) paste(strwrap(one, width = 64L), collapse = "\n"), character(1)),
     term_rows$TermID
   )
   x$FocusedTermKey <- factor(x$TermID, levels = rev(term_rows$TermID))
@@ -128,7 +145,7 @@ build_combined_focused_panel <- function(x, colour_limits, size_limits) {
       shape = 16
     ) +
     ggplot2::scale_colour_gradientn(
-      colours = c("#EFEDF5", "#BDBDD9", "#807DBA", "#54278F"),
+      colours = nature_palette("support"),
       limits = colour_limits, oob = scales::squish,
       name = "Mean member-module -log10(BH FDR)",
       guide = ggplot2::guide_colourbar(
@@ -138,7 +155,7 @@ build_combined_focused_panel <- function(x, colour_limits, size_limits) {
       )
     ) +
     ggplot2::scale_size_continuous(
-      limits = size_limits, range = c(0.9, 3.1),
+      limits = size_limits, range = c(1.5, 4.2),
       breaks = c(0.25, 0.5, 0.75, 1), labels = scales::label_number(accuracy = 0.01),
       name = "Fraction of member modules with BH FDR <= 0.05",
       guide = ggplot2::guide_legend(title.position = "top", title.hjust = 0.5, nrow = 1, order = 2)
@@ -146,16 +163,15 @@ build_combined_focused_panel <- function(x, colour_limits, size_limits) {
     ggplot2::scale_x_discrete(drop = FALSE) +
     ggplot2::scale_y_discrete(labels = term_labels, drop = FALSE) +
     ggplot2::labs(title = unique(x$dataset_display_label), x = NULL, y = NULL) +
-    ggplot2::theme_minimal(base_size = 6) +
+    theme_nature_base(base_size = MANUSCRIPT_TEXT[["normal"]], base_family = "Arial") +
     ggplot2::theme(
-      panel.grid.major = ggplot2::element_line(colour = "#E8E8E8", linewidth = 0.22),
-      panel.grid.minor = ggplot2::element_blank(),
-      axis.text.x = ggplot2::element_text(size = 6, colour = "#333333"),
-      axis.text.y = ggplot2::element_text(size = 6, colour = "#222222", lineheight = 0.94),
-      plot.title = ggplot2::element_text(face = "bold", size = 6, margin = ggplot2::margin(b = 2, unit = "pt")),
-      legend.title = ggplot2::element_text(size = 6),
-      legend.text = ggplot2::element_text(size = 6),
-      plot.margin = ggplot2::margin(3, 5, 3, 3, unit = "pt")
+      panel.grid = ggplot2::element_blank(),
+      axis.text.x = ggplot2::element_text(size = MANUSCRIPT_TEXT[["dense"]], colour = "#333333"),
+      axis.text.y = ggplot2::element_text(size = MANUSCRIPT_TEXT[["dense"]], colour = "#222222", lineheight = 0.94),
+      plot.title = ggplot2::element_text(face = "bold", size = MANUSCRIPT_TEXT[["title"]], margin = ggplot2::margin(b = 2, unit = "pt")),
+      legend.title = ggplot2::element_text(size = MANUSCRIPT_TEXT[["normal"]]),
+      legend.text = ggplot2::element_text(size = MANUSCRIPT_TEXT[["normal"]]),
+      plot.margin = ggplot2::margin(2, 3, 2, 2, unit = "pt")
     )
 }
 
@@ -213,7 +229,10 @@ if (IS_COMBINED) {
       length(unique(combined$matrix$TermID[combined$matrix$dataset == dataset]))
     }, integer(1))
     panel_heights <- 0.68 + 0.12 * n_terms
-    combined_height <- round(1.35 + sum(panel_heights), 2)
+    combined_height_mm <- min(
+      nature_dimensions_mm()[["maximum_height"]],
+      max(105, 48 + 2.34 * sum(n_terms))
+    )
     combined_plot <- patchwork::wrap_plots(
       panels, ncol = 1, heights = panel_heights, guides = "collect"
     ) +
@@ -224,12 +243,10 @@ if (IS_COMBINED) {
           "No dot = no member module with BH FDR <= ", FDR_CUTOFF,
           ". Member-module summaries; not pooled supermodule enrichment tests.  \u2020 Singleton SM; GO summary reflects its constituent module."
         ),
-        tag_levels = "a",
         theme = ggplot2::theme(
-          plot.title = ggplot2::element_text(face = "bold", size = 6),
-          plot.subtitle = ggplot2::element_text(size = 6, colour = "#444444"),
-          plot.caption = ggplot2::element_text(size = 6, colour = "#555555", hjust = 0),
-          plot.tag = ggplot2::element_text(face = "bold", size = 6)
+          plot.title = ggplot2::element_text(face = "bold", size = MANUSCRIPT_TEXT[["title"]]),
+          plot.subtitle = ggplot2::element_text(size = MANUSCRIPT_TEXT[["normal"]], colour = "#444444"),
+          plot.caption = ggplot2::element_text(size = MANUSCRIPT_TEXT[["dense"]], colour = "#555555", hjust = 0)
         )
       ) &
       ggplot2::theme(
@@ -241,10 +258,10 @@ if (IS_COMBINED) {
     output_stub <- paste0("WGCNA_supermodule_GO_focused_comparison_all_datasets_", ontology)
     figure_files <- file.path(PATHS$figures, paste0(output_stub, ".", c("svg", "pdf", "png")))
     for (figure_file in figure_files) {
-      ggplot2::ggsave(
-        figure_file, combined_plot,
-        width = COMBINED_FOCUSED_WIDTH_IN, height = combined_height,
-        units = "in", limitsize = FALSE, dpi = 300
+      save_go_figure(
+        combined_plot, figure_file,
+        width = COMBINED_FOCUSED_WIDTH_MM, height = combined_height_mm,
+        units = "mm"
       )
     }
 
@@ -269,8 +286,8 @@ if (IS_COMBINED) {
       hierarchy_gene_jaccard_threshold = FOCUSED_HIERARCHY_GENE_JACCARD,
       near_identical_gene_jaccard_threshold = FOCUSED_NEAR_IDENTICAL_GENE_JACCARD,
       cross_dataset_recurrence = "descriptive exact TermID selection only; no cross-dataset inference",
-      combined_figure_width_in = COMBINED_FOCUSED_WIDTH_IN,
-      combined_figure_height_in = combined_height,
+      combined_figure_width_in = mm_to_in(COMBINED_FOCUSED_WIDTH_MM),
+      combined_figure_height_in = mm_to_in(combined_height_mm),
       stringsAsFactors = FALSE
     )
     combined_contract_rows[[length(combined_contract_rows) + 1L]] <- data.frame(
@@ -287,8 +304,8 @@ if (IS_COMBINED) {
         FOCUSED_HIERARCHY_GENE_JACCARD, " or Jaccard >= ", FOCUSED_NEAR_IDENTICAL_GENE_JACCARD
       ),
       inference_scope = "descriptive member-module summaries and exact TermID recurrence; no pooled or cross-dataset inference",
-      output_width_in = COMBINED_FOCUSED_WIDTH_IN,
-      output_height_in = combined_height,
+      output_width_in = mm_to_in(COMBINED_FOCUSED_WIDTH_MM),
+      output_height_in = mm_to_in(combined_height_mm),
       stringsAsFactors = FALSE
     )
   }
@@ -426,7 +443,10 @@ plot_heatmap <- function(x, entity_col, entity_label_col, title, subtitle, outpu
     p <- p + ggplot2::facet_grid(stats::as.formula(paste("~", facet_col)), scales = "free_x", space = "free_x")
   }
   for (extension in c("svg", "pdf", "png")) {
-    ggplot2::ggsave(file.path(PATHS$figures, paste0(output_stub, ".", extension)), p, width = width, height = height, units = "in", limitsize = FALSE, dpi = 300)
+    save_go_figure(
+      p, file.path(PATHS$figures, paste0(output_stub, ".", extension)),
+      width = width, height = height, units = "in"
+    )
   }
   invisible(p)
 }
@@ -447,7 +467,9 @@ plot_focused_supermodule_comparison <- function(x, ontology, output_stub) {
   term_labels <- stats::setNames(wrap_go_description(term_rows$Description), term_rows$TermID)
   supported <- x[x$display_supported_dot, , drop = FALSE]
   singleton_note <- if (any(x$is_singleton_supermodule)) "  \u2020 Singleton SM; GO summary reflects its constituent module." else ""
-  height <- max(4.2, 1.9 + 0.31 * nrow(term_rows))
+  is_figure3_main <- identical(DATASET, "neuron_neuropil") && identical(ontology, "BP")
+  wrapped_term_lines <- sum(vapply(term_labels, function(one) length(strsplit(one, "\n", fixed = TRUE)[[1]]), integer(1)))
+  height <- if (is_figure3_main) max(94, 28 + 4.8 * wrapped_term_lines) else max(4.2, 1.9 + 0.31 * nrow(term_rows))
   p <- ggplot2::ggplot(x, ggplot2::aes(x = .data$SupermodulePlotLabel, y = .data$FocusedTermKey)) +
     ggplot2::geom_point(
       data = supported,
@@ -458,43 +480,60 @@ plot_focused_supermodule_comparison <- function(x, ontology, output_stub) {
       shape = 16
     ) +
     ggplot2::scale_colour_gradientn(
-      colours = c("#EFEDF5", "#BDBDD9", "#807DBA", "#54278F"),
+      colours = nature_palette("support"),
       limits = c(0, SCORE_CAP), oob = scales::squish,
-      name = "Mean member-module\n-log10(BH FDR)"
+      name = if (is_figure3_main) "Mean module\n-log10(BH FDR)" else "Mean member-module\n-log10(BH FDR)"
     ) +
     ggplot2::scale_size_continuous(
-      limits = c(0, 1), range = c(1.4, 5.0),
+      limits = c(0, 1), range = if (is_figure3_main) c(2.0, 4.8) else c(1.4, 5.0),
       breaks = c(0.25, 0.5, 0.75, 1), labels = scales::label_number(accuracy = 0.01),
-      name = "Fraction of member modules\nwith BH FDR <= 0.05"
+      name = if (is_figure3_main) "Supported module fraction" else "Fraction of member modules\nwith BH FDR <= 0.05"
     ) +
     ggplot2::scale_x_discrete(drop = FALSE) +
     ggplot2::scale_y_discrete(labels = term_labels) +
     ggplot2::labs(
-      title = paste0(DATASET, " WGCNA supermodules: focused GO-", ontology, " comparison"),
-      subtitle = "Up to three FDR-supported member-module processes after conservative redundancy pruning.",
-      caption = paste0(
+      title = if (is_figure3_main) NULL else paste0(DATASET, " WGCNA supermodules: focused GO-", ontology, " comparison"),
+      subtitle = if (is_figure3_main) NULL else "Up to three FDR-supported member-module processes after conservative redundancy pruning.",
+      caption = if (is_figure3_main) NULL else paste0(
         "No dot = no member module with BH FDR <= ", FDR_CUTOFF,
         ". Member-module summary; not a pooled supermodule enrichment test.", singleton_note
       ),
       x = NULL, y = NULL
     ) +
-    ggplot2::theme_minimal(base_size = 7) +
+    ggplot2::guides(
+      colour = ggplot2::guide_colourbar(
+        order = 1, title.position = "top",
+        barwidth = grid::unit(if (is_figure3_main) 20 else 25, "mm"),
+        barheight = grid::unit(2.1, "mm")
+      ),
+      size = ggplot2::guide_legend(order = 2, title.position = "top", nrow = 1)
+    ) +
+    (if (is_figure3_main) {
+      theme_nature_manuscript_panel(base_size = MANUSCRIPT_TEXT[["normal"]], base_family = "Arial", axes = FALSE, publication_legible = TRUE)
+    } else {
+      theme_nature_base(base_size = 7, base_family = "Arial")
+    }) +
     ggplot2::theme(
-      panel.grid.major = ggplot2::element_line(colour = "#E6E6E6", linewidth = 0.25),
-      panel.grid.minor = ggplot2::element_blank(),
-      axis.text.x = ggplot2::element_text(size = 6.5),
-      axis.text.y = ggplot2::element_text(size = 6.5, colour = "#222222", lineheight = 0.95),
+      panel.grid = ggplot2::element_blank(),
+      axis.text.x = ggplot2::element_text(size = if (is_figure3_main) MANUSCRIPT_TEXT[["normal"]] else 6.5),
+      axis.text.y = ggplot2::element_text(size = if (is_figure3_main) MANUSCRIPT_TEXT[["dense"]] else 6.5, colour = "#222222", lineheight = 1.02),
       plot.title = ggplot2::element_text(face = "bold"),
       plot.subtitle = ggplot2::element_text(size = 7, colour = "#444444"),
-      plot.caption = ggplot2::element_text(size = 6.2, colour = "#555555", hjust = 0),
-      legend.position = "right",
-      legend.title = ggplot2::element_text(size = 6.5),
-      legend.text = ggplot2::element_text(size = 6.2),
-      plot.margin = ggplot2::margin(5, 5, 5, 5, unit = "pt")
+      plot.caption = ggplot2::element_text(size = if (is_figure3_main) MANUSCRIPT_TEXT[["dense"]] else 6.5, colour = "#555555", hjust = 0),
+      legend.position = if (is_figure3_main) "bottom" else "right",
+      legend.box = if (is_figure3_main) "vertical" else NULL,
+      legend.title = ggplot2::element_text(size = if (is_figure3_main) MANUSCRIPT_TEXT[["normal"]] else 6.5),
+      legend.text = ggplot2::element_text(size = if (is_figure3_main) MANUSCRIPT_TEXT[["normal"]] else 6.5),
+      plot.margin = ggplot2::margin(2, 2, 2, 2, unit = "pt")
     )
   figure_files <- file.path(PATHS$figures, paste0(output_stub, ".", c("svg", "pdf", "png")))
   for (figure_file in figure_files) {
-    ggplot2::ggsave(figure_file, p, width = NATURE_DOUBLE_COLUMN_IN, height = height, units = "in", limitsize = FALSE, dpi = 300)
+    save_go_figure(
+      p, figure_file,
+      width = if (is_figure3_main) 110 else NATURE_DOUBLE_COLUMN_IN,
+      height = height,
+      units = if (is_figure3_main) "mm" else "in"
+    )
   }
   invisible(figure_files)
 }

@@ -2,10 +2,11 @@
 # These functions do not transform expression values or recompute embeddings.
 
 joint_pub_dataset_palette <- function() {
+  palette <- nature_palette("dataset")
   c(
-    "Microglia-enriched ROI" = "#a8d8d5",
-    "Neuropil" = "#176a5a",
-    "Soma" = "#767577"
+    "Microglia-enriched ROI" = unname(palette[["microglia"]]),
+    "Neuropil" = unname(palette[["neuropil"]]),
+    "Soma" = unname(palette[["soma"]])
   )
 }
 
