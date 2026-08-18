@@ -6,6 +6,7 @@
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
 source(repo_path("R", "script_runtime.R"))
+source(repo_path("R", "plotting_nature.R"))
 source(repo_path("R", "joint_compartment_qc_plotting.R"))
 
 global_arg <- tolower(script_arg_value("--dataset", "global"))
@@ -102,9 +103,16 @@ dataset_palette <- joint_pub_dataset_palette()
 dataset_shapes <- c("Microglia-enriched ROI" = 16, "Neuropil" = 17, "Soma" = 15)
 region_palette <- c(CA1 = "#4477AA", CA2 = "#EE6677", CA3 = "#228833", DG = "#CCBB44")
 plate_palette <- c(B = "#4C78A8", C = "#D89C4A")
-group_palette <- c(CON = "#4C78A8", RES = "#D6A74A", SUS = "#B35C66")
+group_palette <- nature_palette("group")
+manuscript_text <- nature_manuscript_text_sizes_pt()
 layer_shapes <- c(ROI = 16, SLM = 17, SO = 15, SP = 18, SR = 3, MO = 7, PO = 8, SG = 4)
-base_theme <- joint_pub_theme()
+base_theme <- theme_nature_manuscript_panel(base_size = manuscript_text[["normal"]], base_family = "Arial", publication_legible = TRUE) +
+  ggplot2::theme(
+    legend.position = "bottom",
+    legend.direction = "horizontal",
+    legend.box.just = "left",
+    plot.margin = ggplot2::margin(1.2, 1.2, 1.2, 1.2)
+  )
 
 dataset_factor <- joint_pub_dataset_factor(scores$dataset)
 pc1_variance <- variance$variance_explained[variance$pc_number == 1L]
@@ -113,6 +121,9 @@ if (length(pc1_variance) != 1L || length(pc2_variance) != 1L) stop("PC1/PC2 vari
 pc_x_label <- paste0("PC1 (", sprintf("%.1f", 100 * pc1_variance), "%)")
 pc_y_label <- paste0("PC2 (", sprintf("%.1f", 100 * pc2_variance), "%)")
 pc_limits <- joint_pub_equal_limits(scores$PC1, scores$PC2)
+# The island-ellipse candidate needs a little extra room so its left-most
+# covariance ellipse remains wholly inside the coordinate panel.
+pca_island_ellipse_limits <- joint_pub_equal_limits(scores$PC1, scores$PC2, padding = 0.10)
 
 equal_coordinate_scales <- function(limits) {
   list(
@@ -144,12 +155,134 @@ pca_plot_data <- data.frame(
 pca_plot_data$Layer[pca_plot_data$Layer == "MICROGLIA"] <- "ROI"
 pca_plot_data$Layer <- factor(pca_plot_data$Layer, levels = names(layer_shapes))
 
+# Figure 2C is a hierarchical visual annotation of fixed PCA coordinates:
+# dataset identifies the three broad compartments, while Region + Layer identify
+# the smaller anatomical islands.  No coordinates or source values are changed.
+pca_plot_data$Island <- ifelse(
+  as.character(pca_plot_data$Dataset) == "Microglia-enriched ROI",
+  as.character(pca_plot_data$Region),
+  ifelse(
+    as.character(pca_plot_data$Dataset) == "Neuropil",
+    paste(as.character(pca_plot_data$Region), as.character(pca_plot_data$Layer), sep = "-"),
+    paste(as.character(pca_plot_data$Region), "SP", sep = "-")
+  )
+)
+pca_plot_data$IslandKey <- paste(as.character(pca_plot_data$Dataset), pca_plot_data$Island, sep = "::")
+pca_island_palette <- c(
+  "Microglia-enriched ROI::CA1" = "#B9E1DC",
+  "Microglia-enriched ROI::CA2" = "#8FCBC4",
+  "Microglia-enriched ROI::CA3" = "#69B3AA",
+  "Microglia-enriched ROI::DG" = "#4E958B",
+  "Neuropil::CA1-SLM" = "#5B9085",
+  "Neuropil::CA1-SO" = "#477F74",
+  "Neuropil::CA1-SR" = "#356F64",
+  "Neuropil::CA2-SLM" = "#6C9B92",
+  "Neuropil::CA2-SO" = "#4B8378",
+  "Neuropil::CA2-SR" = "#31685E",
+  "Neuropil::CA3-SO" = "#296058",
+  "Neuropil::CA3-SR" = "#23534D",
+  "Neuropil::DG-MO" = "#7EAAA2",
+  "Neuropil::DG-PO" = "#588A80",
+  "Soma::CA1-SP" = "#626262",
+  "Soma::CA2-SP" = "#7F7F7F",
+  "Soma::CA3-SP" = "#9A9A9A",
+  "Soma::DG-SP" = "#B3B3B3"
+)
+if (!setequal(names(pca_island_palette), unique(pca_plot_data$IslandKey))) {
+  stop("Figure 2C island palette does not match the completed PCA island keys.", call. = FALSE)
+}
+pca_all_island_labels <- stats::aggregate(
+  cbind(PC1, PC2) ~ Dataset + Island,
+  data = pca_plot_data,
+  FUN = mean
+)
+pca_island_label_keys <- list(
+  "Microglia-enriched ROI" = c("CA1", "DG"),
+  "Neuropil" = c("CA1-SLM", "CA2-SLM", "CA1-SR", "CA3-SR", "DG-MO", "DG-PO"),
+  "Soma" = c("CA1-SP", "CA2-SP", "CA3-SP", "DG-SP")
+)
+pca_island_labels <- pca_all_island_labels[vapply(
+  seq_len(nrow(pca_all_island_labels)),
+  function(i) {
+    dataset <- as.character(pca_all_island_labels$Dataset[[i]])
+    pca_all_island_labels$Island[[i]] %in% pca_island_label_keys[[dataset]]
+  },
+  logical(1)
+), , drop = FALSE]
+pca_class_labels <- data.frame(
+  Dataset = factor(
+    c("Microglia-enriched ROI", "Neuropil", "Soma"),
+    levels = levels(pca_plot_data$Dataset)
+  ),
+  class_label = c("Microglia", "Neuropil", "Neuron soma"),
+  PC1 = c(-22, 4, 73),
+  PC2 = c(-40, 30, 20)
+)
 p_pca_dataset <- ggplot2::ggplot(pca_plot_data, ggplot2::aes(PC1, PC2, colour = Dataset)) +
-  ggplot2::geom_point(size = 0.72, alpha = 0.72) +
+  ggplot2::stat_ellipse(
+    ggplot2::aes(fill = Dataset, group = Dataset),
+    geom = "polygon", type = "norm", level = 0.90,
+    colour = NA, alpha = 0.10, show.legend = FALSE
+  ) +
+  ggplot2::geom_point(
+    ggplot2::aes(fill = Dataset),
+    size = 0.80, alpha = 0.78, stroke = 0.12, shape = 21, colour = "white"
+  ) +
+  ggrepel::geom_text_repel(
+    data = pca_island_labels,
+    ggplot2::aes(PC1, PC2, label = Island),
+    inherit.aes = FALSE,
+    family = "Arial", size = 2.29, colour = "#303030",
+    box.padding = 0.35, point.padding = 0.10, force = 2.5, max.time = 2,
+    min.segment.length = 0, segment.colour = "#B5B5B5", segment.size = 0.18,
+    max.overlaps = Inf, seed = 20260817L, show.legend = FALSE
+  ) +
+  ggplot2::geom_text(
+    data = pca_class_labels,
+    ggplot2::aes(PC1, PC2, label = class_label),
+    inherit.aes = FALSE,
+    family = "Arial", size = 2.82, fontface = "bold", colour = "#202020",
+    show.legend = FALSE
+  ) +
   ggplot2::scale_colour_manual(values = dataset_palette, drop = FALSE) +
+  ggplot2::scale_fill_manual(values = dataset_palette, guide = "none", drop = FALSE) +
   equal_coordinate_scales(pc_limits) +
   ggplot2::labs(x = pc_x_label, y = pc_y_label, colour = "Dataset") +
   ggplot2::guides(colour = dataset_guide) +
+  base_theme
+
+# Alternative Figure 2C candidate: one compact, borderless local ellipse per
+# anatomy/layer island. Island shades remain within their parent compartment's
+# palette family; no PCA coordinates or source values are changed.
+p_pca_anatomical_ellipses <- ggplot2::ggplot(pca_plot_data, ggplot2::aes(PC1, PC2)) +
+  ggplot2::stat_ellipse(
+    ggplot2::aes(fill = IslandKey, group = IslandKey),
+    geom = "polygon", type = "norm", level = 0.80,
+    colour = NA, alpha = 0.18, show.legend = FALSE
+  ) +
+  ggplot2::geom_point(
+    ggplot2::aes(fill = IslandKey),
+    size = 0.80, alpha = 0.78, stroke = 0.12, shape = 21, colour = "white"
+  ) +
+  ggrepel::geom_text_repel(
+    data = pca_island_labels,
+    ggplot2::aes(PC1, PC2, label = Island),
+    inherit.aes = FALSE,
+    family = "Arial", size = 2.29, colour = "#303030",
+    box.padding = 0.42, point.padding = 0.10, force = 4.0, max.time = 5,
+    min.segment.length = 0, segment.colour = "#B5B5B5", segment.size = 0.18,
+    max.overlaps = Inf, seed = 20260817L, show.legend = FALSE
+  ) +
+  ggplot2::geom_text(
+    data = pca_class_labels,
+    ggplot2::aes(PC1, PC2, label = class_label),
+    inherit.aes = FALSE,
+    family = "Arial", size = 2.82, fontface = "bold", colour = "#202020",
+    show.legend = FALSE
+  ) +
+  ggplot2::scale_fill_manual(values = pca_island_palette, guide = "none", drop = FALSE) +
+  equal_coordinate_scales(pca_island_ellipse_limits) +
+  ggplot2::labs(x = pc_x_label, y = pc_y_label) +
   base_theme
 
 p_pca_technical <- ggplot2::ggplot(pca_plot_data, ggplot2::aes(PC1, PC2, colour = Dataset, shape = Plate)) +
@@ -194,7 +327,7 @@ p_scree <- ggplot2::ggplot(scree_data, ggplot2::aes(PC, variance_explained)) +
   ggplot2::scale_y_continuous(labels = scales::label_percent(accuracy = 1), expand = ggplot2::expansion(mult = c(0, 0.04))) +
   ggplot2::labs(x = NULL, y = "Variance explained") +
   base_theme +
-  ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1, vjust = 1, size = 6.2), legend.position = "none")
+  ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1, vjust = 1, size = manuscript_text[["dense"]]), legend.position = "none")
 
 primary_dist <- as.vector(stats::dist(t(mat)))
 complete_dist <- as.vector(stats::dist(t(complete)))
@@ -396,6 +529,7 @@ p_tsne <- ggplot2::ggplot(tsne_data, ggplot2::aes(tSNE1, tSNE2, colour = Dataset
 # assembled figures below.
 panel_files <- c(
   main_pca = file.path(panel_root, "main_pca_by_dataset_89mm.svg"),
+  anatomical_island_pca = file.path(panel_root, "main_pca_by_anatomical_island_89mm.svg"),
   technical_pca = file.path(panel_root, "technical_block_pca_89mm.svg"),
   anatomy_pca = file.path(panel_root, "anatomical_pca_183mm.svg"),
   scree = file.path(panel_root, "scree_numeric_pc_order_89mm.svg"),
@@ -408,7 +542,8 @@ panel_files <- c(
   umap = file.path(panel_root, "umap_exploratory_89mm.svg"),
   tsne = file.path(panel_root, "tsne_exploratory_89mm.svg")
 )
-joint_pub_save_svg(p_pca_dataset, panel_files[["main_pca"]], 89, 83)
+joint_pub_save_svg(p_pca_dataset, panel_files[["main_pca"]], 89, 62)
+joint_pub_save_svg(p_pca_anatomical_ellipses, panel_files[["anatomical_island_pca"]], 89, 62)
 joint_pub_save_svg(p_pca_technical, panel_files[["technical_pca"]], 89, 91)
 joint_pub_save_svg(p_pca_anatomy, panel_files[["anatomy_pca"]], 183, 76)
 joint_pub_save_svg(p_scree, panel_files[["scree"]], 89, 62)
@@ -435,7 +570,7 @@ main_figure <- patchwork::wrap_plots(
   ncol = 1,
   heights = c(1.04, 0.92, 0.82)
 ) +
-  patchwork::plot_annotation(tag_levels = "a", theme = joint_pub_panel_tag_theme())
+  patchwork::plot_annotation(tag_levels = "a", theme = joint_pub_panel_tag_theme(base_size = manuscript_text[["panel_letter"]], base_family = "Arial"))
 
 extended_row_1 <- patchwork::wrap_plots(p_normalization, p_pca_group, nrow = 1, widths = c(1.12, 0.88))
 extended_row_3 <- patchwork::wrap_plots(p_correlation, p_missingness, nrow = 1)
@@ -448,7 +583,7 @@ extended_figure <- patchwork::wrap_plots(
   ncol = 1,
   heights = c(0.78, 0.62, 1.18, 0.92)
 ) +
-  patchwork::plot_annotation(tag_levels = "a", theme = joint_pub_panel_tag_theme())
+  patchwork::plot_annotation(tag_levels = "a", theme = joint_pub_panel_tag_theme(base_size = manuscript_text[["panel_letter"]], base_family = "Arial"))
 
 main_file <- file.path(figure_root, "joint_compartment_qc_main_figure_183mm.svg")
 extended_file <- file.path(figure_root, "joint_compartment_qc_extended_data_figure_183mm.svg")
@@ -469,7 +604,7 @@ writeLines(c(
   paste0("- Correlation heatmap scale: ", sprintf("%.2f", corr_floor), " to 1.00; average-linkage clustering on 1 - Pearson correlation."),
   paste0("- Missingness heatmap: ", nrow(selection), " broad-union ProteinGroupIDs with the greatest max-minus-min detection-rate range across biological datasets; samples ordered by dataset, plate, region and layer; proteins average-linkage clustered by binary detection pattern."),
   "- Experimental groups are discrete CON/RES/SUS values mapped from 1/2/3.",
-  "- Dataset colours: Microglia-enriched ROI #a8d8d5; Neuropil #176a5a; Soma #767577.",
+  "- Dataset colours: Microglia-enriched ROI #A8D5CF; Neuropil #2F6F62; Soma #7F7F7F.",
   "- Standalone panels have no titles, subtitles or panel letters. Lowercase bold panel letters occur only in assembled figures.",
   "- No existing source-data table was overwritten."
 ), report_file)

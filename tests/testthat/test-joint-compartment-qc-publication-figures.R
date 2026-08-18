@@ -1,12 +1,13 @@
+source(testthat::test_path("..", "..", "R", "plotting_nature.R"))
 source(testthat::test_path("..", "..", "R", "joint_compartment_qc_plotting.R"))
 
 testthat::test_that("publication dataset palette and labels are exact", {
   testthat::expect_identical(
     joint_pub_dataset_palette(),
     c(
-      "Microglia-enriched ROI" = "#a8d8d5",
-      "Neuropil" = "#176a5a",
-      "Soma" = "#767577"
+      "Microglia-enriched ROI" = "#A8D5CF",
+      "Neuropil" = "#2F6F62",
+      "Soma" = "#7F7F7F"
     )
   )
   observed <- joint_pub_dataset_factor(c("microglia", "neuron_neuropil", "neuron_soma"))
