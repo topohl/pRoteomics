@@ -20,6 +20,7 @@
 
 early_paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(early_paths_file)
+source(repo_path("R", "plotting_nature.R"))
 source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "dataset_inputs.R"))
 source(repo_path("R", "qc_exploration_utils.R"))
@@ -405,11 +406,8 @@ plot_sample_bars <- function(df, yvar, ylab) {
     )
 }
 
-global_compartment_cols <- c(
-  "microglia" = "#a7d8d5",
-  "neuropil" = "#156959",
-  "soma" = "#757476"
-)
+global_compartment_cols <- nature_palette("dataset")
+manuscript_text <- nature_manuscript_text_sizes_pt()
 
 plot_global_sample_bars <- function(df, yvar, ylab) {
   df %>%
@@ -426,12 +424,14 @@ plot_global_sample_bars <- function(df, yvar, ylab) {
     scale_x_discrete(expand = expansion(add = 0)) +
     scale_y_continuous(expand = expansion(mult = c(0, 0.06))) +
     labs(x = NULL, y = ylab) +
-    theme_publication_qc() +
+    theme_nature_manuscript_panel(base_size = manuscript_text[["normal"]], base_family = "Arial", publication_legible = TRUE) +
     theme(
       axis.text.x = element_blank(),
       axis.ticks.x = element_blank(),
       legend.position = "none",
-      panel.spacing.x = unit(1.5, "mm")
+      strip.text = element_text(size = manuscript_text[["normal"]]),
+      panel.spacing.x = unit(0.8, "mm"),
+      plot.margin = margin(1.2, 1.2, 1.2, 1.2)
     )
 }
 
@@ -777,18 +777,18 @@ save_svg(qc_main, "Fig_QC_main_publication_style_no_rings.svg", width = 18, heig
 global_qc_files <- character()
 
 if (!is.null(p_global_protein)) {
-  save_global_svg(p_global_protein, "Fig_QC_global_proteins_identified.svg", width = 12, height = 12)
+  save_global_svg(p_global_protein, "Fig_QC_global_proteins_identified.svg", width = 8.9, height = 3.1)
   global_qc_files <- c(global_qc_files, "Fig_QC_global_proteins_identified.svg")
 }
 
 if (!is.null(p_global_precursor)) {
-  save_global_svg(p_global_precursor, "Fig_QC_global_precursors_identified.svg", width = 12, height = 12)
+  save_global_svg(p_global_precursor, "Fig_QC_global_precursors_identified.svg", width = 8.9, height = 3.1)
   global_qc_files <- c(global_qc_files, "Fig_QC_global_precursors_identified.svg")
 }
 
 if (!is.null(p_global_protein) && !is.null(p_global_precursor)) {
   qc_global_depth_bars <- p_global_protein / p_global_precursor
-  save_global_svg(qc_global_depth_bars, "Fig_QC_global_depth_bars.svg", width = 12, height = 12)
+  save_global_svg(qc_global_depth_bars, "Fig_QC_global_depth_bars.svg", width = 8.0, height = 5.6)
   global_qc_files <- c(global_qc_files, "Fig_QC_global_depth_bars.svg")
 }
 

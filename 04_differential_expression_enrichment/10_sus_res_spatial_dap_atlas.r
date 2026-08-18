@@ -193,7 +193,7 @@ if (isTRUE(AUDIT_ONLY)) {
   quit(status = 0, save = "no")
 }
 
-required_packages <- c("ggplot2", "scales", "svglite", "cowplot")
+required_packages <- c("ggplot2", "scales", "svglite", "cowplot", "patchwork")
 if (!RENDER_ONLY) required_packages <- c("AnnotationDbi", "clusterProfiler", "org.Mm.eg.db", required_packages)
 missing_packages <- required_packages[!vapply(required_packages, requireNamespace, logical(1), quietly = TRUE)]
 if (length(missing_packages)) {
@@ -276,6 +276,12 @@ plot_unit_labels <- setNames(
   clean_spatial_unit_label(sub("^[^|]+\\|", "", plot_unit_levels)),
   plot_unit_levels
 )
+dataset_panel_labels <- c(
+  Neuropil = "Neuropil",
+  Soma = "Soma",
+  `Microglia-enriched ROI` = "Microglia-\nenriched ROI"
+)
+dataset_panel_labeller <- ggplot2::as_labeller(dataset_panel_labels)
 
 panel_a_source <- rbind(
   transform(counts, direction = "Higher in SUS", signed_count = n_higher_in_SUS),
@@ -288,20 +294,38 @@ panel_a_source$panel <- "a"
 panel_a_source$statistical_view <- "individual proteins passing BH FDR <= 0.05"
 panel_a_source$panel_data_basis <- "FDR_supported_DAPs"
 utils::write.csv(panel_a_source, files$panel_a_source, row.names = FALSE)
+manuscript_text <- nature_manuscript_text_sizes_pt()
 
 panel_a <- ggplot2::ggplot(panel_a_source, ggplot2::aes(x = signed_count, y = plot_unit, fill = direction)) +
   ggplot2::geom_col(width = 0.72, colour = "black", linewidth = 0.18) +
   ggplot2::geom_vline(xintercept = 0, linewidth = 0.25, colour = "black") +
-  ggplot2::facet_grid(dataset_label ~ ., scales = "free_y", space = "free_y") +
+  ggplot2::facet_grid(
+    dataset_label ~ ., scales = "free_y", space = "free_y",
+    labeller = dataset_panel_labeller
+  ) +
   ggplot2::scale_y_discrete(labels = plot_unit_labels) +
   ggplot2::scale_x_continuous(labels = function(x) abs(x), expand = ggplot2::expansion(mult = c(0.08, 0.08))) +
-  ggplot2::scale_fill_manual(values = c("Higher in RES" = "#4E79A7", "Higher in SUS" = "#B04A7A"), drop = FALSE) +
-  ggplot2::labs(
-    x = "Differential ProteinGroupIDs (BH FDR <= 0.05)", y = NULL,
-    title = "SUS-RES differential proteins by spatial unit", fill = NULL
+  ggplot2::scale_fill_manual(
+    values = c(
+      "Higher in RES" = nature_palette("group")[["RES"]],
+      "Higher in SUS" = nature_palette("group")[["SUS"]]
+    ),
+    drop = FALSE
   ) +
-  theme_nature_base(base_size = 7, base_family = "sans") +
-  ggplot2::theme(legend.position = "top", panel.grid.major.x = ggplot2::element_line(colour = "grey90", linewidth = 0.2))
+  ggplot2::labs(
+    x = "Differential ProteinGroupIDs\n(BH FDR <= 0.05)", y = NULL, fill = NULL
+  ) +
+  theme_nature_manuscript_panel(base_size = manuscript_text[["normal"]], base_family = "Arial", publication_legible = TRUE) +
+  ggplot2::theme(
+    axis.text = ggplot2::element_text(size = manuscript_text[["dense"]]),
+    axis.title.x = ggplot2::element_text(size = manuscript_text[["axis_title"]]),
+    strip.text = ggplot2::element_text(size = manuscript_text[["normal"]]),
+    strip.text.y.right = ggplot2::element_text(angle = 0, size = manuscript_text[["normal"]], lineheight = 0.9),
+    legend.position = "bottom",
+    legend.title = ggplot2::element_blank(),
+    legend.text = ggplot2::element_text(size = manuscript_text[["normal"]]),
+    plot.margin = ggplot2::margin(0.5, 0.5, 0.5, 0.5)
+  )
 
 panel_b_source <- rbind(
   transform(similarity, plot_unit_x = paste(dataset, spatial_unit_a, sep = "|"), plot_unit_y = paste(dataset, spatial_unit_b, sep = "|")),
@@ -335,18 +359,49 @@ panel_b_source$statistical_view <- "overlap of FDR-supported directional protein
 panel_b_source$panel_data_basis <- "FDR_supported_DAPs"
 utils::write.csv(panel_b_source, files$panel_b_source, row.names = FALSE)
 
-panel_b <- ggplot2::ggplot(panel_b_source, ggplot2::aes(x = plot_unit_x, y = plot_unit_y, fill = direction_aware_jaccard)) +
-  ggplot2::geom_tile(colour = "white", linewidth = 0.25) +
-  ggplot2::facet_wrap(~dataset_label, scales = "free") +
-  ggplot2::scale_x_discrete(labels = plot_unit_labels) +
-  ggplot2::scale_y_discrete(labels = plot_unit_labels) +
-  ggplot2::scale_fill_gradient(low = "#D9E2E8", high = "#1F5A83", limits = c(0, 1), na.value = "white") +
-  ggplot2::labs(
-    x = NULL, y = NULL, title = "Direction-aware DAP similarity", fill = "Jaccard",
-    caption = "White = non-estimable: both DAP sets are empty in the pairwise-common tested universe."
-  ) +
-  theme_nature_heatmap(base_size = 6.5, base_family = "sans") +
-  ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1, size = 5.5), axis.text.y = ggplot2::element_text(size = 5.5))
+build_jaccard_block <- function(dataset) {
+  unit_keys <- paste(
+    dataset,
+    anatomical_spatial_unit_levels(unique(counts$spatial_unit[counts$dataset == dataset])),
+    sep = "|"
+  )
+  block <- panel_b_source[panel_b_source$dataset == dataset, , drop = FALSE]
+  block$plot_unit_x <- factor(as.character(block$plot_unit_x), levels = unit_keys)
+  block$plot_unit_y <- factor(as.character(block$plot_unit_y), levels = rev(unit_keys))
+  block$dataset_label <- factor(block$dataset_label, levels = dataset_levels)
+  block_labels <- setNames(clean_spatial_unit_label(sub("^[^|]+\\|", "", unit_keys)), unit_keys)
+  ggplot2::ggplot(block, ggplot2::aes(x = plot_unit_x, y = plot_unit_y, fill = direction_aware_jaccard)) +
+    ggplot2::geom_tile(width = 0.98, height = 0.98, colour = NA) +
+    ggplot2::facet_wrap(~dataset_label, nrow = 1, labeller = dataset_panel_labeller) +
+    ggplot2::scale_x_discrete(labels = block_labels, drop = FALSE) +
+    ggplot2::scale_y_discrete(labels = block_labels, drop = FALSE) +
+    ggplot2::scale_fill_gradientn(
+      colours = nature_palette("jaccard"), limits = c(0, 1), na.value = "#FFFFFF",
+      name = "Jaccard",
+      guide = ggplot2::guide_colourbar(
+        title.position = "top", barwidth = grid::unit(27, "mm"), barheight = grid::unit(2.1, "mm")
+      )
+    ) +
+    ggplot2::coord_equal(clip = "off") +
+    ggplot2::labs(x = NULL, y = NULL) +
+    theme_nature_manuscript_panel(base_size = manuscript_text[["normal"]], base_family = "Arial", axes = FALSE, publication_legible = TRUE) +
+    ggplot2::theme(
+      axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, vjust = 0.5, size = manuscript_text[["dense"]]),
+      axis.text.y = ggplot2::element_text(size = manuscript_text[["dense"]]),
+      strip.text = ggplot2::element_text(size = manuscript_text[["normal"]]),
+      legend.position = "bottom",
+      legend.title = ggplot2::element_text(size = manuscript_text[["normal"]]),
+      legend.text = ggplot2::element_text(size = manuscript_text[["normal"]]),
+      plot.margin = ggplot2::margin(0.5, 0.8, 0.5, 0.5)
+    )
+}
+jaccard_units_per_dataset <- vapply(DATASETS, function(dataset) {
+  length(unique(counts$spatial_unit[counts$dataset == dataset]))
+}, integer(1))
+panel_b <- patchwork::wrap_plots(
+  lapply(DATASETS, build_jaccard_block), nrow = 1,
+  widths = jaccard_units_per_dataset, guides = "collect"
+) & ggplot2::theme(legend.position = "bottom", legend.box = "horizontal")
 
 if (nrow(go_display)) {
   go_display$dataset_label <- factor(go_display$dataset_label, levels = dataset_levels)
@@ -480,34 +535,50 @@ panel_c <- ggplot2::ggplot(
     ggplot2::aes(fill = median_NES_all_theme_terms, size = representative_minus_log10_FDR, shape = unit_direction_status),
     colour = "black", stroke = 0.35, alpha = 0.96
   ) +
-  ggplot2::facet_wrap(~dataset_compartment_label, ncol = 1, scales = "free_x", strip.position = "right") +
+  ggplot2::facet_wrap(
+    ~dataset_compartment_label, ncol = 1, scales = "free_x",
+    strip.position = "right", labeller = dataset_panel_labeller
+  ) +
   ggplot2::scale_fill_gradient2(
-    low = "#3B4CC0", mid = "white", high = "#B40426", midpoint = 0,
-    limits = c(-nes_limit, nes_limit), oob = scales::squish, name = "Median NES\n(all mapped terms)"
+    low = nature_palette("signed")[["low"]],
+    mid = nature_palette("signed")[["mid"]],
+    high = nature_palette("signed")[["high"]], midpoint = 0,
+    limits = c(-nes_limit, nes_limit), oob = scales::squish, name = "Median NES"
   ) +
-  ggplot2::scale_size_continuous(range = c(2.2, 4.5), breaks = fdr_size_breaks, name = expression(-log[10]("representative GO BH FDR"))) +
+  ggplot2::scale_size_continuous(range = c(2.2, 4.5), breaks = fdr_size_breaks, name = expression(-log[10]("GO FDR"))) +
   ggplot2::scale_shape_manual(values = c("supported direction not mixed" = 21, "mixed supported directions" = 23), name = "FDR-supported\nterm directions") +
-  ggplot2::labs(
-    x = NULL, y = NULL, title = "Major ontology-mapped ranked GO/GSEA themes",
-    subtitle = "Positive NES = higher in SUS; negative NES = higher in RES",
-    caption = paste(
-      "Color represents the median NES across all tested GO-BP terms assigned to each ontology theme and spatial unit.",
-      "Outlined/emphasized points indicate at least one constituent GO term with original BH FDR < 0.05.",
-      "Non-emphasized values are descriptive directional summaries and are not statistically significant theme-level effects.",
-      sep = "\n"
-    )
+  ggplot2::guides(
+    fill = ggplot2::guide_colourbar(
+      order = 1, title.position = "top",
+      barwidth = grid::unit(18, "mm"), barheight = grid::unit(2.1, "mm")
+    ),
+    size = ggplot2::guide_legend(order = 2, title.position = "top", nrow = 1),
+    shape = if (length(unique(panel_c_supported$unit_direction_status)) > 1L) {
+      ggplot2::guide_legend(order = 3, title.position = "top", nrow = 1)
+    } else {
+      "none"
+    }
   ) +
-  theme_nature_dotplot(base_size = 6.5, base_family = "sans") +
+  ggplot2::labs(x = NULL, y = NULL) +
+  theme_nature_manuscript_panel(base_size = manuscript_text[["normal"]], base_family = "Arial", axes = FALSE, publication_legible = TRUE) +
   ggplot2::theme(
-    axis.text.x = ggplot2::element_text(angle = 45, hjust = 1, size = 5.5),
-    axis.text.y = ggplot2::element_text(size = 5.5),
-    plot.caption = ggplot2::element_text(size = 5.2, hjust = 0)
+    axis.text.x = ggplot2::element_text(angle = 60, hjust = 1, size = manuscript_text[["dense"]]),
+    axis.text.y = ggplot2::element_text(size = manuscript_text[["dense"]]),
+    strip.text = ggplot2::element_text(size = manuscript_text[["normal"]]),
+    strip.text.y.right = ggplot2::element_text(angle = 0, size = manuscript_text[["normal"]], lineheight = 0.9),
+    panel.spacing.y = grid::unit(0.45, "mm"),
+    legend.position = "bottom",
+    legend.box = "horizontal",
+    legend.title = ggplot2::element_text(size = manuscript_text[["normal"]]),
+    legend.text = ggplot2::element_text(size = manuscript_text[["normal"]]),
+    legend.spacing.x = grid::unit(0.6, "mm"),
+    plot.margin = ggplot2::margin(0.5, 1.2, 0.5, 0.8)
   )
 
 save_plot_triplet <- function(plot, stem, width_mm, height_mm) {
   dir.create(dirname(stem), recursive = TRUE, showWarnings = FALSE)
   ggplot2::ggsave(paste0(stem, ".svg"), plot, width = mm_to_in(width_mm), height = mm_to_in(height_mm), units = "in", device = svglite::svglite, bg = "white", limitsize = FALSE)
-  ggplot2::ggsave(paste0(stem, ".pdf"), plot, width = mm_to_in(width_mm), height = mm_to_in(height_mm), units = "in", device = grDevices::pdf, useDingbats = FALSE, bg = "white", limitsize = FALSE)
+  ggplot2::ggsave(paste0(stem, ".pdf"), plot, width = mm_to_in(width_mm), height = mm_to_in(height_mm), units = "in", device = grDevices::cairo_pdf, bg = "white", limitsize = FALSE)
   png_device <- if (requireNamespace("ragg", quietly = TRUE)) ragg::agg_png else "png"
   ggplot2::ggsave(paste0(stem, ".png"), plot, width = mm_to_in(width_mm), height = mm_to_in(height_mm), units = "in", device = png_device, dpi = 300, bg = "white", limitsize = FALSE)
 }
@@ -515,21 +586,33 @@ save_plot_triplet <- function(plot, stem, width_mm, height_mm) {
 dir.create(FIGURE_DIR, recursive = TRUE, showWarnings = FALSE)
 panel_c_terms <- if (nrow(go_display)) length(unique(paste(go_display$dataset, go_display$direction, go_display$ID, sep = "|"))) else 0L
 panel_c_height <- max(80, min(210, 50 + 5 * panel_c_terms))
-save_plot_triplet(panel_a, file.path(FIGURE_DIR, "panel_a_sus_res_dap_counts"), 105, 135)
-save_plot_triplet(panel_b, file.path(FIGURE_DIR, "panel_b_sus_res_dap_jaccard"), 183, 120)
+jaccard_width_mm <- 5 + sum(14 + 3.8 * jaccard_units_per_dataset)
+jaccard_height_mm <- max(60, 22 + 3.8 * max(jaccard_units_per_dataset))
+save_plot_triplet(panel_a, file.path(FIGURE_DIR, "panel_a_sus_res_dap_counts"), 50, 48)
+save_plot_triplet(panel_b, file.path(FIGURE_DIR, "panel_b_sus_res_dap_jaccard"), jaccard_width_mm, jaccard_height_mm)
 if (!RENDER_ONLY) save_plot_triplet(panel_c_ora, file.path(FIGURE_DIR, "panel_c_sus_res_dap_GO_BP"), 183, panel_c_height)
-save_plot_triplet(panel_c, file.path(FIGURE_DIR, "panel_c_sus_res_ranked_GSEA_themes"), 183, 110)
+save_plot_triplet(panel_c, file.path(FIGURE_DIR, "panel_c_sus_res_ranked_GSEA_themes"), 71, 80)
 # Preserve the established figure stem as a presentation-only compatibility alias.
-save_plot_triplet(panel_c, file.path(FIGURE_DIR, "panel_c_sus_res_ranked_GSEA_programs"), 183, 110)
+save_plot_triplet(panel_c, file.path(FIGURE_DIR, "panel_c_sus_res_ranked_GSEA_programs"), 71, 80)
 
 combined_readable <- TRUE
-panel_a_combined <- panel_a + ggplot2::labs(title = "DAP counts") + ggplot2::theme(plot.title = ggplot2::element_text(size = 7, face = "bold"))
-panel_b_combined <- panel_b + ggplot2::labs(title = "Direction-aware similarity") + ggplot2::theme(plot.title = ggplot2::element_text(size = 7, face = "bold"))
-panel_c_combined <- panel_c + ggplot2::theme(plot.title = ggplot2::element_text(size = 7, face = "bold"))
-top <- cowplot::plot_grid(panel_a_combined, panel_b_combined, nrow = 1, rel_widths = c(0.78, 1.42), labels = c("a", "b"), label_size = 10)
-combined <- cowplot::plot_grid(top, panel_c_combined, ncol = 1, rel_heights = c(1.0, 1.15), labels = c("", "c"), label_size = 10)
+panel_a_combined <- panel_a + ggplot2::labs(title = "DAP counts") + ggplot2::theme(plot.title = ggplot2::element_text(size = manuscript_text[["title"]], face = "bold"))
+panel_b_combined <- panel_b + ggplot2::labs(title = "Direction-aware similarity") + ggplot2::theme(plot.title = ggplot2::element_text(size = manuscript_text[["title"]], face = "bold"))
+panel_c_combined <- panel_c + ggplot2::theme(plot.title = ggplot2::element_text(size = manuscript_text[["title"]], face = "bold"))
+top <- patchwork::wrap_plots(
+  panel_a_combined, panel_b_combined,
+  nrow = 1, widths = c(0.78, 1.42)
+)
+combined <- patchwork::wrap_plots(
+  top, panel_c_combined,
+  ncol = 1, heights = c(1.0, 1.55)
+) +
+  patchwork::plot_annotation(
+    tag_levels = "a",
+    theme = ggplot2::theme(plot.tag = ggplot2::element_text(family = "Arial", size = manuscript_text[["panel_letter"]], face = "bold"))
+  )
 combined_stem <- file.path(FIGURE_DIR, "figure_sus_res_spatial_dap_atlas_183mm")
-save_plot_triplet(combined, combined_stem, 183, 225)
+save_plot_triplet(combined, combined_stem, 183, 150)
 combined_files <- paste0(combined_stem, c(".svg", ".pdf", ".png"))
 
 analysis_status$combined_183mm_figure_readable <- combined_readable

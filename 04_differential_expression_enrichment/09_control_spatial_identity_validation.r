@@ -2,9 +2,11 @@
 source("R/paths.R"); source("R/dataset_config.R"); source("R/dataset_inputs.R")
 source("R/validation_utils.R"); source("R/qc_exploration_utils.R")
 source("R/protein_group_enrichment_utils.R"); source("R/control_spatial_identity_utils.R")
+source("R/plotting_nature.R")
 suppressPackageStartupMessages({ library(limma); library(clusterProfiler); library(org.Mm.eg.db); library(ggplot2) })
 
 control_spatial_render_figures <- function(ks, go, source_data, figures) {
+  manuscript_text <- nature_manuscript_text_sizes_pt()
   publication_contrast_label <- function(x) {
     labels <- control_spatial_contrast_label(x)
     labels[x == "DG_neuropil_vs_mean_non_DG_regions"] <- "DG neuropil vs non-DG"
@@ -70,7 +72,9 @@ control_spatial_render_figures <- function(ks, go, source_data, figures) {
       ) +
       facet_wrap(~validation_domain_plot_label, ncol = 1, scales = "free") +
       scale_fill_gradient2(
-        low = "#3568A8", mid = "white", high = "#C43C39",
+        low = nature_palette("signed")[["low"]],
+        mid = nature_palette("signed")[["mid"]],
+        high = nature_palette("signed")[["high"]],
         midpoint = 0, limits = c(-colour_limit, colour_limit), name = "NES"
       ) +
       scale_colour_manual(
@@ -82,41 +86,36 @@ control_spatial_render_figures <- function(ks, go, source_data, figures) {
       guides(
         fill = guide_colourbar(
           order = 1, title.position = "top",
-          barwidth = grid::unit(28, "mm"), barheight = grid::unit(2.5, "mm")
+          barwidth = grid::unit(28, "mm"), barheight = grid::unit(2.5, "mm"),
+          theme = theme(legend.text = element_text(size = manuscript_text[["normal"]] / 0.7))
         ),
         colour = guide_legend(
           order = 2, title.position = "top",
           override.aes = list(shape = 21, fill = "white", size = 3, stroke = 1)
         )
       ) +
-      labs(
-        x = NULL, y = NULL, tag = "a",
-        subtitle = "External Kaulich validation; CA2/3 correspondence is approximate; CA1 SP is reference-only."
-      ) +
-      theme_minimal(base_size = 8.5) +
+      labs(x = NULL, y = NULL) +
+      theme_nature_manuscript_panel(base_size = manuscript_text[["normal"]], base_family = "Arial", axes = FALSE, publication_legible = TRUE) +
       theme(
         plot.background = element_rect(fill = "white", colour = NA),
         panel.background = element_rect(fill = "white", colour = NA),
-        panel.grid.major = element_line(colour = "#EEEEEE", linewidth = 0.3),
-        panel.grid.minor = element_blank(),
-        panel.border = element_rect(fill = NA, colour = "#BDBDBD", linewidth = 0.35),
-        panel.spacing.y = grid::unit(4.5, "mm"),
-        strip.background = element_rect(fill = "#F3F3F3", colour = NA),
-        strip.text = element_text(face = "bold", hjust = 0, size = 8.3, margin = margin(3, 4, 3, 4)),
+        panel.spacing.y = grid::unit(0.8, "mm"),
+        strip.background = element_rect(fill = "#F7F7F7", colour = NA),
+        strip.text = element_text(face = "plain", hjust = 0, size = manuscript_text[["normal"]], margin = margin(1, 2, 1, 2)),
         axis.text = element_text(colour = "black"),
-        axis.text.x = element_text(size = 7.2, margin = margin(t = 3)),
-        axis.text.y = element_text(size = 7.5),
-        plot.subtitle = element_text(size = 7.7, colour = "#444444", margin = margin(b = 6)),
-        plot.tag = element_text(size = 11, face = "bold"),
-        plot.tag.position = c(0, 1),
+        axis.text.x = element_text(size = manuscript_text[["dense"]], margin = margin(t = 1)),
+        axis.text.y = element_text(size = manuscript_text[["normal"]]),
         legend.position = "bottom",
         legend.box = "horizontal",
-        legend.title = element_text(size = 7.5),
-        legend.text = element_text(size = 7),
-        legend.spacing.x = grid::unit(3, "mm"),
-        plot.margin = margin(8, 8, 6, 8)
+        legend.title = element_text(size = manuscript_text[["normal"]]),
+        legend.text = element_text(size = manuscript_text[["normal"]]),
+        legend.spacing.x = grid::unit(1, "mm"),
+        plot.margin = margin(1.2, 1.2, 1.0, 1.2)
       )
-    ggsave(figures[["e"]], figure2e, width = 7.2, height = 7.4)
+    ggsave(
+      figures[["e"]], figure2e, width = 110, height = 92, units = "mm",
+      device = svglite::svglite, bg = "white", limitsize = FALSE
+    )
   } else {
     control_spatial_write_empty_state_svg(
       figures[["e"]], "No Kaulich signatures met the prespecified mapping threshold"
@@ -127,81 +126,75 @@ control_spatial_render_figures <- function(ks, go, source_data, figures) {
     contrast_order <- control_spatial_figure2f_display_contrasts()
     go_display$internal_contrast_plot_label <- vapply(
       go_display$internal_contrast_label,
-      function(z) paste(strwrap(z, width = 21), collapse = "\n"),
+      function(z) paste(strwrap(z, width = 18), collapse = "\n"),
       character(1)
     )
     go_display$internal_contrast_plot_label <- factor(
       go_display$internal_contrast_plot_label,
       levels = vapply(
         publication_contrast_label(contrast_order),
-        function(z) paste(strwrap(z, width = 21), collapse = "\n"),
+        function(z) paste(strwrap(z, width = 18), collapse = "\n"),
         character(1)
       )
     )
-    go_display$term_plot_key <- paste(go_display$contrast, go_display$ID, sep = "\r")
+    term_rows <- go_display[order(go_display$p_adjust, -go_display$NES, go_display$ID), c("ID", "Description"), drop = FALSE]
+    term_rows <- term_rows[!duplicated(term_rows$ID), , drop = FALSE]
+    go_display$term_plot_key <- as.character(go_display$ID)
     go_display$term_plot_key <- factor(
-      go_display$term_plot_key, levels = rev(unique(go_display$term_plot_key))
+      go_display$term_plot_key, levels = rev(term_rows$ID)
     )
     term_labels <- stats::setNames(
       vapply(
-        go_display$Description,
-        function(z) paste(strwrap(z, width = 32), collapse = "\n"),
+        term_rows$Description,
+        function(z) paste(strwrap(z, width = 38), collapse = "\n"),
         character(1)
       ),
-      as.character(go_display$term_plot_key)
+      term_rows$ID
     )
     go_display$minus_log10_adjusted_p <- -log10(
       pmax(go_display$p_adjust, .Machine$double.xmin)
     )
     figure2f <- ggplot(
       go_display,
-      aes(NES, term_plot_key, colour = NES, size = minus_log10_adjusted_p)
+      aes(internal_contrast_plot_label, term_plot_key, fill = NES, size = minus_log10_adjusted_p)
     ) +
-      geom_point(alpha = 0.92) +
-      facet_wrap(~internal_contrast_plot_label, ncol = 3, scales = "free_y") +
-      scale_y_discrete(labels = term_labels) +
-      scale_x_continuous(expand = expansion(mult = c(0.06, 0.1))) +
-      scale_colour_gradient(low = "#4C78A8", high = "#C43C39", name = "NES") +
+      geom_point(shape = 21, colour = "#FFFFFF", stroke = 0.24, alpha = 0.96) +
+      scale_y_discrete(labels = term_labels, drop = FALSE) +
+      scale_x_discrete(drop = FALSE) +
+      scale_fill_gradientn(colours = nature_palette("support"), name = "NES") +
       scale_size_continuous(
-        name = expression(-log[10]("adjusted p-value")), range = c(2.3, 5.2)
+        name = expression(-log[10]("adjusted p-value")), range = c(2.6, 5.4)
       ) +
       guides(
-        colour = guide_colourbar(
+        fill = guide_colourbar(
           order = 1, title.position = "top",
           barwidth = grid::unit(28, "mm"), barheight = grid::unit(2.5, "mm")
         ),
         size = guide_legend(order = 2, title.position = "top", nrow = 1)
       ) +
-      labs(
-        x = "Normalized enrichment score (NES)", y = NULL, tag = "b",
-        subtitle = "Internal CON-only anatomical GO-BP differentiation."
-      ) +
-      theme_minimal(base_size = 8) +
+      labs(x = NULL, y = NULL) +
+      theme_nature_manuscript_panel(base_size = manuscript_text[["normal"]], base_family = "Arial", axes = FALSE, publication_legible = TRUE) +
       theme(
         plot.background = element_rect(fill = "white", colour = NA),
         panel.background = element_rect(fill = "white", colour = NA),
-        panel.grid.major.x = element_line(colour = "#E7E7E7", linewidth = 0.3),
-        panel.grid.major.y = element_blank(),
-        panel.grid.minor = element_blank(),
         panel.border = element_blank(),
-        panel.spacing = grid::unit(4, "mm"),
-        strip.background = element_rect(fill = "#F3F3F3", colour = NA),
-        strip.text = element_text(face = "bold", size = 7.3, margin = margin(3, 3, 3, 3)),
+        panel.spacing = grid::unit(0.6, "mm"),
         axis.text = element_text(colour = "black"),
-        axis.text.y = element_text(size = 6.4, lineheight = 0.9),
-        axis.text.x = element_text(size = 6.8),
-        axis.title.x = element_text(size = 7.5, margin = margin(t = 5)),
-        plot.subtitle = element_text(size = 7.4, colour = "#444444", margin = margin(b = 5)),
-        plot.tag = element_text(size = 11, face = "bold"),
-        plot.tag.position = c(0, 1),
+        axis.text.y = element_text(size = manuscript_text[["dense"]], lineheight = 0.94),
+        axis.text.x = element_text(size = manuscript_text[["dense"]], lineheight = 0.88, margin = margin(t = 1)),
         legend.position = "bottom",
         legend.box = "horizontal",
-        legend.title = element_text(size = 7.2),
-        legend.text = element_text(size = 6.8),
-        legend.spacing.x = grid::unit(3, "mm"),
-        plot.margin = margin(8, 8, 6, 8)
+        legend.title = element_text(size = manuscript_text[["normal"]]),
+        legend.text = element_text(size = manuscript_text[["normal"]]),
+        legend.spacing.x = grid::unit(1, "mm"),
+        plot.margin = margin(1.2, 1.5, 1.0, 1.2)
       )
-    ggsave(figures[["f"]], figure2f, width = 9.2, height = 8.2)
+    figure2f_width_mm <- max(154, 54 + 18 * length(contrast_order))
+    figure2f_height_mm <- max(78, 34 + 4 * nrow(term_rows))
+    ggsave(
+      figures[["f"]], figure2f, width = figure2f_width_mm, height = figure2f_height_mm, units = "mm",
+      device = svglite::svglite, bg = "white", limitsize = FALSE
+    )
   } else {
     control_spatial_write_empty_state_svg(
       figures[["f"]], "No GO-BP terms met the prespecified display criteria"

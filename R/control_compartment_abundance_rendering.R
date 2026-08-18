@@ -14,10 +14,11 @@ ca_display_class_headings <- c(
   "Neuropil markers" = "Neuropil",
   "Microglia/PVM markers" = "MG/PVM"
 )
+ca_dataset_palette <- nature_palette("dataset")
 ca_display_class_palette <- c(
-  "Soma markers" = "#756B8E",
-  "Neuropil markers" = "#487C75",
-  "Microglia/PVM markers" = "#B36B55"
+  "Soma markers" = unname(ca_dataset_palette[["soma"]]),
+  "Neuropil markers" = unname(ca_dataset_palette[["neuropil"]]),
+  "Microglia/PVM markers" = unname(ca_dataset_palette[["microglia"]])
 )
 ca_display_intended_dataset <- c(
   "Soma markers" = "neuron_soma",
@@ -567,7 +568,13 @@ ca_prepare_control_rendering_sources_v2 <- function(dot_source, rank_table, disp
       centered_log2_display_cap = 3,
       reliably_detected = .data$reliability_status == "reliably_detected",
       missing_symbol = ifelse(.data$reliably_detected, "", "\u00d7"),
-      outline_colour = ifelse(.data$intended_compartment, "#202020", "#737373"),
+      outline_colour = ifelse(
+        .data$intended_compartment,
+        unname(ca_dataset_palette[c(
+          neuron_soma = "soma", neuron_neuropil = "neuropil", microglia = "microglia"
+        )[.data$dataset]]),
+        "#737373"
+      ),
       dataset_label = unname(ca_display_dataset_labels[.data$dataset]),
       marker_class_heading = unname(ca_display_class_headings[.data$marker_class]),
       subpanel_order = ca_marker_subpanel_order(
@@ -646,20 +653,14 @@ ca_prepare_control_rendering_sources_v2 <- function(dot_source, rank_table, disp
 }
 
 ca_build_control_marker_dot_heatmap_v2 <- function(rendering) {
-  reliable <- rendering$dot[rendering$dot$reliably_detected %in% TRUE, , drop = FALSE]
   missing <- rendering$dot[!(rendering$dot$reliably_detected %in% TRUE), , drop = FALSE]
   ggplot2::ggplot(
     rendering$dot,
-    ggplot2::aes(.data$dataset_label, .data$marker_label)
+    ggplot2::aes(.data$dataset_label, .data$marker_label, fill = .data$displayed_centered_log2)
   ) +
-    ggplot2::geom_point(
-      data = reliable,
-      ggplot2::aes(
-        fill = .data$displayed_centered_log2,
-        size = .data$valid_animal_fraction,
-        colour = .data$outline_colour
-      ),
-      shape = 21, stroke = 0.35
+    ggplot2::geom_tile(
+      ggplot2::aes(colour = .data$outline_colour),
+      width = 0.94, height = 0.90, linewidth = 0.30
     ) +
     ggplot2::geom_text(
       data = missing,
@@ -671,45 +672,41 @@ ca_build_control_marker_dot_heatmap_v2 <- function(rendering) {
       scales = "free_y", space = "free_y", switch = "y"
     ) +
     ggplot2::scale_fill_gradient2(
-      low = "#3B6FB6", mid = "#F2F2F2", high = "#B24A4A",
+      low = nature_palette("signed")[["low"]],
+      mid = nature_palette("signed")[["mid"]],
+      high = nature_palette("signed")[["high"]],
       midpoint = 0, limits = c(-3, 3), breaks = c(-3, 0, 3),
-      name = expression("Median centered log"[2])
+      name = expression("Median centered log"[2]), na.value = "#F0F0F0"
     ) +
-    ggplot2::scale_size_continuous(
-      range = c(2.2, 4.8), limits = c(2 / 3, 1),
-      breaks = c(2 / 3, 1), labels = c("2/3", "3/3"),
-      name = "Valid CON animals"
-    ) +
-    ggplot2::scale_colour_identity() +
+    ggplot2::scale_colour_identity(guide = "none") +
     ggplot2::guides(
       fill = ggplot2::guide_colourbar(
         direction = "horizontal", title.position = "top",
-        barwidth = grid::unit(29, "mm"), barheight = grid::unit(2.2, "mm")
-      ),
-      size = ggplot2::guide_legend(
-        direction = "horizontal", title.position = "top", override.aes = list(fill = "#D9D9D9")
+        barwidth = grid::unit(29, "mm"), barheight = grid::unit(2.2, "mm"),
+        theme = ggplot2::theme(legend.text = ggplot2::element_text(size = nature_manuscript_text_sizes_pt()[["normal"]] / 0.7))
       )
     ) +
     ggplot2::labs(x = NULL, y = NULL) +
-    joint_pub_theme(base_size = 6.2) +
+    theme_nature_manuscript_panel(base_size = nature_manuscript_text_sizes_pt()[["normal"]], base_family = "Arial", axes = FALSE, publication_legible = TRUE) +
     ggplot2::theme(
       axis.line = ggplot2::element_blank(),
       axis.ticks = ggplot2::element_blank(),
-      axis.text.x = ggplot2::element_text(size = 6.0),
-      axis.text.y = ggplot2::element_text(size = 5.7, face = "italic"),
+      axis.text.x = ggplot2::element_text(size = nature_manuscript_text_sizes_pt()[["normal"]]),
+      axis.text.y = ggplot2::element_text(size = nature_manuscript_text_sizes_pt()[["dense"]], face = "italic"),
       strip.placement = "outside",
       strip.text.y.left = ggplot2::element_text(
-        angle = 0, hjust = 1, face = "bold", size = 5.8,
+        angle = 0, hjust = 1, face = "bold", size = nature_manuscript_text_sizes_pt()[["normal"]],
         margin = ggplot2::margin(r = 1.2)
       ),
-      panel.spacing.y = grid::unit(0.8, "mm"),
+      panel.spacing.y = grid::unit(0.45, "mm"),
       legend.position = "bottom",
       legend.box = "horizontal",
-      legend.spacing.x = grid::unit(5, "mm"),
+      legend.spacing.x = grid::unit(2, "mm"),
       legend.title = ggplot2::element_text(
-        size = 5.8, margin = ggplot2::margin(b = 0.8, r = 1.2)
+        size = nature_manuscript_text_sizes_pt()[["normal"]], margin = ggplot2::margin(b = 0.8, r = 1.2)
       ),
-      plot.margin = ggplot2::margin(2.2, 2.2, 1.5, 2.2)
+      legend.text = ggplot2::element_text(size = nature_manuscript_text_sizes_pt()[["normal"]]),
+      plot.margin = ggplot2::margin(1.2, 1.2, 0.8, 1.2)
     )
 }
 
@@ -767,22 +764,23 @@ ca_build_control_rank_abundance_plot_v2 <- function(rendering) {
       x = expression("Protein abundance rank (" * log[10] * " scale)"),
       y = expression("Mean log"[2] * " abundance")
     ) +
-    joint_pub_theme(base_size = 6.3) +
+    theme_nature_manuscript_panel(base_size = nature_manuscript_text_sizes_pt()[["normal"]], base_family = "Arial", publication_legible = TRUE) +
+    ggplot2::theme(legend.position = "bottom") +
     ggplot2::theme(
       strip.text = ggplot2::element_text(
-        size = 7.5, face = "bold", colour = "#303030"
+        size = nature_manuscript_text_sizes_pt()[["axis_title"]], face = "bold", colour = "#303030"
       ),
-      axis.text = ggplot2::element_text(size = 6.15),
-      axis.title = ggplot2::element_text(size = 6.6),
-      panel.spacing.x = grid::unit(2.2, "mm"),
+      axis.text = ggplot2::element_text(size = nature_manuscript_text_sizes_pt()[["normal"]]),
+      axis.title = ggplot2::element_text(size = nature_manuscript_text_sizes_pt()[["axis_title"]]),
+      panel.spacing.x = grid::unit(1.2, "mm"),
       legend.position = "bottom",
       legend.justification = "center",
       legend.box.just = "center",
       legend.title = ggplot2::element_text(
-        size = 6.15, margin = ggplot2::margin(r = 0.55)
+        size = nature_manuscript_text_sizes_pt()[["normal"]], margin = ggplot2::margin(r = 0.55)
       ),
-      legend.text = ggplot2::element_text(size = 5.95),
-      plot.margin = ggplot2::margin(2.0, 2.2, 0.5, 3.8)
+      legend.text = ggplot2::element_text(size = nature_manuscript_text_sizes_pt()[["normal"]]),
+      plot.margin = ggplot2::margin(1.2, 1.5, 0.3, 2.2)
     )
 }
 

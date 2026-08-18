@@ -5,6 +5,7 @@ source(repo_path("R", "script_runtime.R"))
 source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "qc_exploration_utils.R"))
 source(repo_path("R", "compartment_abundance_utils.R"))
+source(repo_path("R", "plotting_nature.R"))
 source(repo_path("R", "joint_compartment_qc_plotting.R"))
 source(repo_path("R", "control_compartment_abundance_rendering.R"))
 
@@ -241,10 +242,12 @@ write_control_rendering_outputs_v2 <- function(rendering, roots, inputs_used,
 
   dot_plot <- ca_build_control_marker_dot_heatmap_v2(rendering)
   rank_plot <- ca_build_control_rank_abundance_plot_v2(rendering)
+  marker_tile_height_mm <- max(82, 22 + 3.7 * length(unique(rendering$dot$marker_label)))
+  marker_tile_width_mm <- max(108, 54 + 18 * length(unique(rendering$dot$dataset_label)))
   ca_save_vector_figure(
     dot_plot, roots$figures,
     "control_compartment_marker_detection_dot_heatmap_v2_120mm",
-    120, 118
+    marker_tile_width_mm, marker_tile_height_mm
   )
   ca_save_vector_figure(
     rank_plot, roots$figures,
@@ -280,7 +283,7 @@ write_control_rendering_outputs_v2 <- function(rendering, roots, inputs_used,
       execution_mode = "render_only_from_completed_v2_source_tables",
       analytical_recalculation = FALSE,
       fill = "median_within_protein_centered_log2",
-      size = "valid_CON_animal_fraction",
+      mark_geometry = "uniform_tile; outline_colour retained as a non-area cue",
       unreliable_detection_symbol = "multiplication_sign",
       display_cap_log2 = 3
     ),

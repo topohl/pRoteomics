@@ -1,5 +1,53 @@
 # Compact plotting helpers for manuscript-scale enrichment figures.
 
+NATURE_DIMENSIONS_MM <- c(
+  single_column = 89,
+  double_column = 183,
+  maximum_height = 170
+)
+
+NATURE_TEXT_SIZES_PT <- c(
+  manuscript_body = 6.25,
+  secondary = 5.25,
+  panel_letter = 8
+)
+
+# Opt-in typography for the final Figure 2/3 manuscript panels.  Kept
+# separate from the established compact defaults above so existing figures
+# retain their current appearance unless they explicitly request this preset.
+NATURE_MANUSCRIPT_TEXT_SIZES_PT <- c(
+  normal = 7,
+  dense = 6.5,
+  axis_title = 7.5,
+  panel_letter = 9,
+  title = 8
+)
+
+NATURE_SEMANTIC_PALETTES <- list(
+  group = c(CON = "#3E3C6F", RES = "#C6C3BB", SUS = "#E63A48"),
+  dataset = c(microglia = "#A8D5CF", neuropil = "#2F6F62", soma = "#7F7F7F"),
+  signed = c(low = "#3B6FA5", mid = "#F7F7F7", high = "#C45A52"),
+  support = c("#F2F0F7", "#CBC9E2", "#9E9AC8", "#756BB1", "#54278F"),
+  jaccard = c("#F7FBFF", "#C6DBEF", "#9ECAE1", "#6BAED6", "#2171B5")
+)
+
+nature_dimensions_mm <- function() {
+  NATURE_DIMENSIONS_MM
+}
+
+nature_text_sizes_pt <- function() {
+  NATURE_TEXT_SIZES_PT
+}
+
+nature_manuscript_text_sizes_pt <- function() {
+  NATURE_MANUSCRIPT_TEXT_SIZES_PT
+}
+
+nature_palette <- function(role = c("group", "dataset", "signed", "support", "jaccard")) {
+  role <- match.arg(role)
+  NATURE_SEMANTIC_PALETTES[[role]]
+}
+
 mm_to_in <- function(mm) {
   as.numeric(mm) / 25.4
 }
@@ -45,6 +93,62 @@ theme_nature_dotplot <- function(base_size = 7, base_family = "Arial") {
       panel.grid.minor = ggplot2::element_blank(),
       axis.text.x = ggplot2::element_text(angle = 45, hjust = 1, vjust = 1),
       legend.position = "right"
+    )
+}
+
+theme_nature_manuscript_panel <- function(base_size = NATURE_TEXT_SIZES_PT[["manuscript_body"]],
+                                          base_family = "Arial",
+                                          axes = TRUE,
+                                          publication_legible = FALSE) {
+  axis_line <- if (isTRUE(axes)) {
+    ggplot2::element_line(linewidth = 0.25, colour = "black")
+  } else {
+    ggplot2::element_blank()
+  }
+  axis_ticks <- if (isTRUE(axes)) {
+    ggplot2::element_line(linewidth = 0.25, colour = "black")
+  } else {
+    ggplot2::element_blank()
+  }
+  manuscript_axis_text <- if (isTRUE(publication_legible)) {
+    ggplot2::element_text(size = base_size, colour = "#202020")
+  } else {
+    ggplot2::element_text(colour = "#202020")
+  }
+  manuscript_axis_title <- if (isTRUE(publication_legible)) {
+    ggplot2::element_text(size = base_size, colour = "#202020")
+  } else {
+    ggplot2::element_text(colour = "#202020")
+  }
+  ggplot2::theme_classic(base_size = base_size, base_family = base_family) +
+    ggplot2::theme(
+      text = ggplot2::element_text(family = base_family, colour = "#202020"),
+      line = ggplot2::element_line(linewidth = 0.25, colour = "black"),
+      axis.line = axis_line,
+      axis.ticks = axis_ticks,
+      axis.ticks.length = grid::unit(1.0, "mm"),
+      axis.text = manuscript_axis_text,
+      axis.title = manuscript_axis_title,
+      panel.grid = ggplot2::element_blank(),
+      strip.background = ggplot2::element_blank(),
+      strip.text = ggplot2::element_text(
+        face = "plain", colour = "#202020",
+        margin = ggplot2::margin(0.8, 1.2, 0.8, 1.2)
+      ),
+      panel.spacing = grid::unit(0.8, "mm"),
+      legend.title = ggplot2::element_text(size = if (isTRUE(publication_legible)) base_size else ggplot2::rel(0.92)),
+      legend.text = ggplot2::element_text(size = if (isTRUE(publication_legible)) base_size else ggplot2::rel(0.86)),
+      legend.key.height = grid::unit(2.4, "mm"),
+      legend.key.width = grid::unit(2.8, "mm"),
+      legend.spacing.x = grid::unit(0.6, "mm"),
+      legend.spacing.y = grid::unit(0.2, "mm"),
+      legend.box.spacing = grid::unit(0.5, "mm"),
+      legend.margin = ggplot2::margin(0, 0, 0, 0),
+      plot.title = ggplot2::element_blank(),
+      plot.subtitle = ggplot2::element_blank(),
+      plot.caption = ggplot2::element_blank(),
+      plot.tag = ggplot2::element_blank(),
+      plot.margin = ggplot2::margin(1.5, 1.5, 1.5, 1.5)
     )
 }
 

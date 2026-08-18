@@ -1,6 +1,7 @@
 testthat::local_edition(3)
 
 source(testthat::test_path("..", "..", "R", "paths.R"))
+source(testthat::test_path("..", "..", "R", "plotting_nature.R"))
 source(testthat::test_path("..", "..", "R", "joint_compartment_qc_plotting.R"))
 source(testthat::test_path("..", "..", "R", "compartment_abundance_utils.R"))
 source(testthat::test_path("..", "..", "R", "control_compartment_abundance_rendering.R"))
@@ -273,18 +274,15 @@ testthat::test_that("v2 dot source has one row per selected marker and dataset",
   )
 })
 
-testthat::test_that("v2 marker panel encodes centered abundance and detection separately", {
+testthat::test_that("v2 marker panel uses uniform tiles with non-area detection cues", {
   x <- ca_render_v2_fixture()
   rendering <- ca_prepare_control_rendering_sources_v2(
     x$dot, x$rank, x$selection
   )
   plot <- ca_build_control_marker_dot_heatmap_v2(rendering)
-  testthat::expect_s3_class(plot$layers[[1]]$geom, "GeomPoint")
+  testthat::expect_s3_class(plot$layers[[1]]$geom, "GeomTile")
   testthat::expect_s3_class(plot$layers[[2]]$geom, "GeomText")
-  testthat::expect_identical(
-    plot$scales$get_scales("size")$name,
-    "Valid CON animals"
-  )
+  testthat::expect_null(plot$scales$get_scales("size"))
   testthat::expect_equal(plot$scales$get_scales("fill")$limits, c(-3, 3))
   testthat::expect_null(plot$scales$get_scales("x")$limits)
 })
