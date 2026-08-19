@@ -5,38 +5,185 @@ source("R/protein_group_enrichment_utils.R"); source("R/control_spatial_identity
 source("R/plotting_nature.R")
 suppressPackageStartupMessages({ library(limma); library(clusterProfiler); library(org.Mm.eg.db); library(ggplot2) })
 
+control_spatial_publication_contrast_label <- function(x) {
+  labels <- control_spatial_contrast_label(x)
+  labels[x == "DG_neuropil_vs_mean_non_DG_regions"] <- "DG neuropil vs non-DG"
+  labels
+}
+
+control_spatial_prepare_figure2f <- function(
+    go, contrasts, panel_contract, interpretation_note,
+    analytical_source_path = NULL, require_dg_layers = FALSE) {
+  universe <- sort(unique(as.character(go$contrast)))
+  missing <- setdiff(contrasts, universe)
+  if (length(missing)) {
+    stop("Completed GO-BP table is missing display contrast(s): ",
+         paste(missing, collapse = ", "), call. = FALSE)
+  }
+  dg_layers <- c("DG_MO_vs_mean_other_DG_layers", "DG_PO_vs_mean_other_DG_layers")
+  if (require_dg_layers && !all(dg_layers %in% universe)) {
+    stop("Completed GO-BP table no longer retains both DG-layer contrasts.", call. = FALSE)
+  }
+  out <- control_spatial_select_go_display(go, max_terms = 2L, contrasts = contrasts)
+  if (!setequal(unique(as.character(out$contrast)), contrasts)) {
+    stop("GO-BP display does not contain every requested contrast.", call. = FALSE)
+  }
+  out$internal_contrast_label <- control_spatial_publication_contrast_label(out$contrast)
+  out$semantic_simplification_applied <- FALSE
+  out$display_selection_rule <-
+    "adjusted p-value, descending NES, GO ID; maximum two per contrast"
+  out$panel_contract <- panel_contract
+  out$interpretation_note <- interpretation_note(out$contrast)
+  if (!is.null(analytical_source_path)) {
+    out$analytical_source_file <- normalizePath(
+      analytical_source_path, winslash = "/", mustWork = TRUE
+    )
+    out$analytical_contrast_universe <- paste(universe, collapse = ";")
+    out$DG_layer_results_retained_in_analytical_source <-
+      all(dg_layers %in% universe)
+  }
+  out$.contrast_order <- match(out$contrast, contrasts)
+  out <- out[order(out$.contrast_order, out$p_adjust, -out$NES, out$ID), , drop = FALSE]
+  out$.contrast_order <- NULL
+  out
+}
+
+control_spatial_build_figure2f <- function(
+    go_display, contrasts, grouped_layout = FALSE, label_wrap = 18L) {
+  manuscript_text <- nature_manuscript_text_sizes_pt()
+  if (grouped_layout) {
+    layout <- control_spatial_figure2f_grouped_layout()
+    idx <- match(go_display$contrast, layout$contrast)
+    if (anyNA(idx) || !identical(layout$contrast, contrasts)) {
+      stop("Grouped Figure 2f layout does not match the seven-contrast contract.", call. = FALSE)
+    }
+    go_display$contrast_plot_label <- factor(
+      layout$short_label[idx], levels = layout$short_label
+    )
+    go_display$contrast_group <- factor(
+      layout$group[idx], levels = unique(layout$group)
+    )
+  } else {
+    wrapped <- function(z) paste(strwrap(z, width = label_wrap), collapse = "\n")
+    go_display$contrast_plot_label <- factor(
+      vapply(go_display$internal_contrast_label, wrapped, character(1)),
+      levels = vapply(
+        control_spatial_publication_contrast_label(contrasts), wrapped, character(1)
+      )
+    )
+  }
+  term_rows <- go_display[
+    order(go_display$p_adjust, -go_display$NES, go_display$ID),
+    c("ID", "Description"), drop = FALSE
+  ]
+  term_rows <- term_rows[!duplicated(term_rows$ID), , drop = FALSE]
+  go_display$term_plot_key <- factor(as.character(go_display$ID), levels = rev(term_rows$ID))
+  term_labels <- stats::setNames(
+    vapply(term_rows$Description,
+           function(z) paste(strwrap(z, width = 38), collapse = "\n"), character(1)),
+    term_rows$ID
+  )
+  go_display$minus_log10_adjusted_p <- -log10(
+    pmax(go_display$p_adjust, .Machine$double.xmin)
+  )
+  plot <- ggplot(
+    go_display,
+    aes(contrast_plot_label, term_plot_key, fill = NES, size = minus_log10_adjusted_p)
+  ) +
+    geom_point(shape = 21, colour = "#FFFFFF", stroke = 0.24, alpha = 0.96) +
+    scale_y_discrete(labels = term_labels, drop = FALSE) +
+    scale_x_discrete(drop = grouped_layout) +
+    scale_fill_gradientn(colours = nature_palette("support"), name = "NES") +
+    scale_size_continuous(
+      name = expression(-log[10]("adjusted p-value")), range = c(2.6, 5.4)
+    ) +
+    guides(
+      fill = guide_colourbar(
+        order = 1, title.position = "top",
+        barwidth = grid::unit(28, "mm"), barheight = grid::unit(2.5, "mm")
+      ),
+      size = guide_legend(order = 2, title.position = "top", nrow = 1)
+    ) +
+    labs(x = NULL, y = NULL) +
+    theme_nature_manuscript_panel(
+      base_size = manuscript_text[["normal"]], base_family = "Arial",
+      axes = FALSE, publication_legible = TRUE
+    ) +
+    theme(
+      plot.background = element_rect(fill = "white", colour = NA),
+      panel.background = element_rect(fill = "white", colour = NA),
+      panel.border = element_blank(),
+      panel.spacing = grid::unit(0.6, "mm"),
+      axis.text = element_text(colour = "black"),
+      axis.text.y = element_text(size = manuscript_text[["dense"]], lineheight = 0.94),
+      axis.text.x = element_text(
+        size = manuscript_text[["dense"]], lineheight = 0.88, margin = margin(t = 1)
+      ),
+      legend.position = "bottom", legend.box = "horizontal",
+      legend.title = element_text(size = manuscript_text[["normal"]]),
+      legend.text = element_text(size = manuscript_text[["normal"]]),
+      legend.spacing.x = grid::unit(1, "mm"),
+      plot.margin = margin(1.2, 1.5, 1.0, 1.2)
+    )
+  if (grouped_layout) {
+    plot <- plot +
+      facet_grid(
+        cols = vars(contrast_group), scales = "free_x", space = "free_x"
+      ) +
+      theme(
+        panel.spacing.x = grid::unit(1.6, "mm"),
+        strip.background = element_rect(fill = "#F7F7F7", colour = NA),
+        strip.text.x = element_text(
+          face = "plain", size = manuscript_text[["normal"]],
+          margin = margin(1, 2, 1, 2)
+        )
+      )
+  }
+  list(plot = plot, source = go_display, term_rows = term_rows)
+}
+
+control_spatial_save_figure2f <- function(rendered, path, n_contrasts) {
+  ggsave(
+    path, rendered$plot,
+    width = max(154, 54 + 18 * n_contrasts),
+    height = max(78, 34 + 4 * nrow(rendered$term_rows)),
+    units = "mm", device = svglite::svglite, bg = "white", limitsize = FALSE
+  )
+}
+
+control_spatial_require_candidate_writable <- function(paths, allow_env, label) {
+  existing <- paths[file.exists(paths)]
+  allowed <- tolower(trimws(Sys.getenv(allow_env, ""))) %in% c("1", "true", "yes")
+  if (length(existing) && !allowed) {
+    stop("Refusing to overwrite existing ", label, " output(s): ",
+         paste(existing, collapse = ", "), call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
 control_spatial_render_figures <- function(ks, go, source_data, figures) {
   manuscript_text <- nature_manuscript_text_sizes_pt()
-  publication_contrast_label <- function(x) {
-    labels <- control_spatial_contrast_label(x)
-    labels[x == "DG_neuropil_vs_mean_non_DG_regions"] <- "DG neuropil vs non-DG"
-    labels
-  }
   ks <- ks[ks$internal_contrast %in% control_spatial_figure2e_external_contrasts(), , drop = FALSE]
   ks <- control_spatial_apply_signature_fdr(ks)
   ks$panel_contract <- "Figure 2e: External anatomical validation against matched or explicitly approximate Kaulich regional / CA1-stratum reference signatures."
   ks$matched_exactly <- ks$match_type == "exact"
   ks$external_reference_context <- ks$external_signature == "SP" & !ks$matched_exactly
   utils::write.csv(ks, source_data[["e"]], row.names = FALSE)
-  go_display <- control_spatial_select_go_display(
-    go, max_terms = 2L, contrasts = control_spatial_figure2f_display_contrasts()
-  )
-  if (nrow(go_display)) {
-    go_display$internal_contrast_label <- publication_contrast_label(go_display$contrast)
-    go_display$semantic_simplification_applied <- FALSE
-    go_display$display_selection_rule <- "adjusted p-value, descending NES, GO ID; maximum two per contrast"
-    go_display$panel_contract <- "Figure 2f: Internal CON-only anatomical GO-BP differentiation."
-    go_display$interpretation_note <- ifelse(
-      go_display$contrast %in% c("DG_MO_vs_mean_other_DG_layers", "DG_PO_vs_mean_other_DG_layers"),
+  figure2f_contrasts <- control_spatial_figure2f_display_contrasts()
+  go_display <- control_spatial_prepare_figure2f(
+    go, figure2f_contrasts,
+    "Figure 2f: Internal CON-only anatomical GO-BP differentiation.",
+    function(x) ifelse(
+      x %in% c("DG_MO_vs_mean_other_DG_layers", "DG_PO_vs_mean_other_DG_layers"),
       "Internal DG layer contrast; no matched DG-layer Kaulich reference signature available.",
       "Internal CON-only anatomical GO-BP differentiation."
     )
-  }
+  )
   utils::write.csv(go_display, source_data[["f"]], row.names = FALSE)
 
   kaulich_plot_data <- control_spatial_figure2e_plot_data(ks)
   if (nrow(kaulich_plot_data)) {
-    kaulich_plot_data$internal_contrast_label <- publication_contrast_label(
+    kaulich_plot_data$internal_contrast_label <- control_spatial_publication_contrast_label(
       kaulich_plot_data$internal_contrast
     )
     kaulich_plot_data$external_signature_plot_label <- ifelse(
@@ -123,77 +270,9 @@ control_spatial_render_figures <- function(ks, go, source_data, figures) {
   }
 
   if (nrow(go_display)) {
-    contrast_order <- control_spatial_figure2f_display_contrasts()
-    go_display$internal_contrast_plot_label <- vapply(
-      go_display$internal_contrast_label,
-      function(z) paste(strwrap(z, width = 18), collapse = "\n"),
-      character(1)
-    )
-    go_display$internal_contrast_plot_label <- factor(
-      go_display$internal_contrast_plot_label,
-      levels = vapply(
-        publication_contrast_label(contrast_order),
-        function(z) paste(strwrap(z, width = 18), collapse = "\n"),
-        character(1)
-      )
-    )
-    term_rows <- go_display[order(go_display$p_adjust, -go_display$NES, go_display$ID), c("ID", "Description"), drop = FALSE]
-    term_rows <- term_rows[!duplicated(term_rows$ID), , drop = FALSE]
-    go_display$term_plot_key <- as.character(go_display$ID)
-    go_display$term_plot_key <- factor(
-      go_display$term_plot_key, levels = rev(term_rows$ID)
-    )
-    term_labels <- stats::setNames(
-      vapply(
-        term_rows$Description,
-        function(z) paste(strwrap(z, width = 38), collapse = "\n"),
-        character(1)
-      ),
-      term_rows$ID
-    )
-    go_display$minus_log10_adjusted_p <- -log10(
-      pmax(go_display$p_adjust, .Machine$double.xmin)
-    )
-    figure2f <- ggplot(
-      go_display,
-      aes(internal_contrast_plot_label, term_plot_key, fill = NES, size = minus_log10_adjusted_p)
-    ) +
-      geom_point(shape = 21, colour = "#FFFFFF", stroke = 0.24, alpha = 0.96) +
-      scale_y_discrete(labels = term_labels, drop = FALSE) +
-      scale_x_discrete(drop = FALSE) +
-      scale_fill_gradientn(colours = nature_palette("support"), name = "NES") +
-      scale_size_continuous(
-        name = expression(-log[10]("adjusted p-value")), range = c(2.6, 5.4)
-      ) +
-      guides(
-        fill = guide_colourbar(
-          order = 1, title.position = "top",
-          barwidth = grid::unit(28, "mm"), barheight = grid::unit(2.5, "mm")
-        ),
-        size = guide_legend(order = 2, title.position = "top", nrow = 1)
-      ) +
-      labs(x = NULL, y = NULL) +
-      theme_nature_manuscript_panel(base_size = manuscript_text[["normal"]], base_family = "Arial", axes = FALSE, publication_legible = TRUE) +
-      theme(
-        plot.background = element_rect(fill = "white", colour = NA),
-        panel.background = element_rect(fill = "white", colour = NA),
-        panel.border = element_blank(),
-        panel.spacing = grid::unit(0.6, "mm"),
-        axis.text = element_text(colour = "black"),
-        axis.text.y = element_text(size = manuscript_text[["dense"]], lineheight = 0.94),
-        axis.text.x = element_text(size = manuscript_text[["dense"]], lineheight = 0.88, margin = margin(t = 1)),
-        legend.position = "bottom",
-        legend.box = "horizontal",
-        legend.title = element_text(size = manuscript_text[["normal"]]),
-        legend.text = element_text(size = manuscript_text[["normal"]]),
-        legend.spacing.x = grid::unit(1, "mm"),
-        plot.margin = margin(1.2, 1.5, 1.0, 1.2)
-      )
-    figure2f_width_mm <- max(154, 54 + 18 * length(contrast_order))
-    figure2f_height_mm <- max(78, 34 + 4 * nrow(term_rows))
-    ggsave(
-      figures[["f"]], figure2f, width = figure2f_width_mm, height = figure2f_height_mm, units = "mm",
-      device = svglite::svglite, bg = "white", limitsize = FALSE
+    control_spatial_save_figure2f(
+      control_spatial_build_figure2f(go_display, figure2f_contrasts),
+      figures[["f"]], length(figure2f_contrasts)
     )
   } else {
     control_spatial_write_empty_state_svg(
@@ -203,6 +282,45 @@ control_spatial_render_figures <- function(ks, go, source_data, figures) {
   invisible(list(figure2e_source = ks, figure2f_source = go_display))
 }
 
+control_spatial_render_figure2f_regions_ca1layers_candidate <- function(
+    go, source_path, figure_path, analytical_source_path) {
+  contrasts <- control_spatial_figure2f_regions_ca1layers_display_contrasts()
+  go_display <- control_spatial_prepare_figure2f(
+    go, contrasts,
+    paste(
+      "Figure 2f candidate: Internal CON-only soma-region and CA1-laminar",
+      "GO-BP differentiation; presentation-only selection from completed results."
+    ),
+    function(x) rep("Internal CON-only anatomical GO-BP differentiation.", length(x)),
+    analytical_source_path = analytical_source_path,
+    require_dg_layers = TRUE
+  )
+  utils::write.csv(go_display, source_path, row.names = FALSE)
+  control_spatial_save_figure2f(
+    control_spatial_build_figure2f(go_display, contrasts, label_wrap = 13L),
+    figure_path, length(contrasts)
+  )
+  invisible(go_display)
+}
+
+control_spatial_render_figure2f_grouped_layout_candidate <- function(
+    source_path, figure_path) {
+  go_display <- utils::read.csv(source_path, check.names = FALSE)
+  contrasts <- control_spatial_figure2f_regions_ca1layers_display_contrasts()
+  if (nrow(go_display) != 2L * length(contrasts) ||
+      !identical(unique(as.character(go_display$contrast)), contrasts) ||
+      any(table(factor(go_display$contrast, levels = contrasts)) != 2L)) {
+    stop("Grouped Figure 2f input must retain exactly two terms for each of seven contrasts.",
+         call. = FALSE)
+  }
+  control_spatial_save_figure2f(
+    control_spatial_build_figure2f(
+      go_display, contrasts, grouped_layout = TRUE
+    ),
+    figure_path, length(contrasts)
+  )
+  invisible(go_display)
+}
 control_spatial_identity_main <- function() {
 message("Starting control spatial identity validation")
 root <- repo_path(); wb <- repo_path("data", "external", "kaulich_2025", "kaulich_supplementary_data_2.xlsx")
@@ -220,9 +338,58 @@ if (is_dry_run()) {
 out <- function(kind, name) file.path(root, "results", kind, "04_differential_expression_enrichment", "control_spatial_identity_validation", "global", name)
 tables <- c(protein=out("tables","anatomical_protein_contrasts.csv"), mapping=out("tables","kaulich_signature_mapping.csv"), kaulich=out("tables","kaulich_signature_gsea.csv"), go=out("tables","control_anatomical_go_bp_gsea.csv"), matching_audit=out("tables","figure2e_matching_audit.csv"), status=out("tables","analysis_status.csv"))
 source_data <- c(e=out("source_data","figure2e_source_data.csv"), f=out("source_data","figure2f_source_data.csv")); figures <- c(e=out("figures","figure2e_kaulich_validation.svg"), f=out("figures","figure2f_control_anatomical_GO.svg")); manifest <- out("logs","run_manifest.yml")
+candidate_source <- out("source_data", "figure2f_regions_CA1layers_source_data.csv")
+candidate_figure <- out("figures", "figure2f_control_anatomical_GO_regions_CA1layers.svg")
+grouped_candidate_figure <- out(
+  "figures", "figure2f_control_anatomical_GO_regions_CA1layers_grouped.svg"
+)
 dir.create(dirname(tables[[1]]), recursive=TRUE, showWarnings=FALSE); dir.create(dirname(source_data[[1]]), recursive=TRUE, showWarnings=FALSE); dir.create(dirname(figures[[1]]), recursive=TRUE, showWarnings=FALSE); dir.create(dirname(manifest), recursive=TRUE, showWarnings=FALSE)
 
 render_only <- tolower(trimws(Sys.getenv("PROTEOMICS_CONTROL_SPATIAL_RENDER_ONLY", ""))) %in% c("1", "true", "yes")
+candidate_render_only <- tolower(trimws(Sys.getenv(
+  "PROTEOMICS_CONTROL_SPATIAL_FIGURE2F_CA1LAYERS_RENDER_ONLY", ""
+))) %in% c("1", "true", "yes")
+grouped_candidate_render_only <- tolower(trimws(Sys.getenv(
+  "PROTEOMICS_CONTROL_SPATIAL_FIGURE2F_GROUPED_LAYOUT_RENDER_ONLY", ""
+))) %in% c("1", "true", "yes")
+if (grouped_candidate_render_only) {
+  message("Starting presentation-only grouped Figure 2f candidate rendering")
+  control_spatial_validate_output_bundle(candidate_source)
+  control_spatial_require_candidate_writable(
+    grouped_candidate_figure,
+    "PROTEOMICS_CONTROL_SPATIAL_FIGURE2F_GROUPED_LAYOUT_ALLOW_OVERWRITE",
+    "grouped Figure 2f candidate"
+  )
+  control_spatial_render_figure2f_grouped_layout_candidate(
+    candidate_source, grouped_candidate_figure
+  )
+  control_spatial_validate_output_bundle(grouped_candidate_figure)
+  message("Grouped Figure 2f candidate rendering complete")
+  return(invisible(list(
+    source_data = candidate_source, figure = grouped_candidate_figure,
+    status = "presentation_only_grouped_layout"
+  )))
+}
+if (candidate_render_only) {
+  message("Starting presentation-only Figure 2f regions/CA1-layers candidate rendering")
+  control_spatial_validate_output_bundle(tables[["go"]])
+  candidate_paths <- c(candidate_source, candidate_figure)
+  control_spatial_require_candidate_writable(
+    candidate_paths,
+    "PROTEOMICS_CONTROL_SPATIAL_FIGURE2F_CA1LAYERS_ALLOW_OVERWRITE",
+    "Figure 2f candidate"
+  )
+  go <- utils::read.csv(tables[["go"]], check.names = FALSE)
+  control_spatial_render_figure2f_regions_ca1layers_candidate(
+    go, candidate_source, candidate_figure, tables[["go"]]
+  )
+  control_spatial_validate_output_bundle(candidate_paths)
+  message("Figure 2f regions/CA1-layers candidate rendering complete")
+  return(invisible(list(
+    analytical_source = tables[["go"]], source_data = candidate_source,
+    figure = candidate_figure, status = "presentation_only_candidate"
+  )))
+}
 if (render_only) {
   message("Starting presentation-only control spatial identity rendering")
   control_spatial_validate_output_bundle(c(tables, manifest))

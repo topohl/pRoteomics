@@ -15,6 +15,10 @@ if (!global_arg %in% c("all", "global")) {
 }
 dry_run <- is_dry_run()
 render_only <- "--render-only" %in% commandArgs(trailingOnly = TRUE)
+compact_candidate_only <- "--compact-recognizable-candidate" %in%
+  commandArgs(trailingOnly = TRUE)
+compact_difference_only <- "--compact-enrichment-differences" %in%
+  commandArgs(trailingOnly = TRUE)
 
 as_integer_contract <- function(env, default, lower, upper) {
   value <- suppressWarnings(as.integer(Sys.getenv(env, unset = as.character(default))))
@@ -82,9 +86,42 @@ render_inputs <- c(
     roots$source_data, "v2_11_display_selection_provenance.csv"
   )
 )
+compact_candidate_inputs <- c(
+  animal_abundance = file.path(
+    roots$source_data, "v2_03_animal_level_abundance.csv"
+  ),
+  marker_mapping = file.path(
+    roots$source_data, "v2_04_all_marker_canonical_mapping_provenance.csv"
+  ),
+  marker_detection = file.path(
+    roots$source_data, "v2_05_marker_by_dataset_detection_abundance.csv"
+  ),
+  marker_direction = file.path(
+    roots$source_data, "v2_06_protein_intended_direction.csv"
+  ),
+  eligible_alternatives = file.path(
+    roots$source_data, "v2_11a_display_selection_eligible_alternatives.csv"
+  ),
+  rank_source = file.path(
+    roots$source_data, "v2_12_rank_abundance_data.csv"
+  )
+)
+compact_difference_inputs <- c(
+  compact_source = file.path(
+    roots$source_data, "figure2d_compact_recognizable_markers_v2_source_data.csv"
+  )
+)
 
 if (dry_run) {
-  required <- if (render_only) render_inputs else inputs
+  required <- if (compact_difference_only) {
+    compact_difference_inputs
+  } else if (compact_candidate_only) {
+    compact_candidate_inputs
+  } else if (render_only) {
+    render_inputs
+  } else {
+    inputs
+  }
   for (nm in names(required)) {
     cat(
       "[DRY-RUN] ", nm, ": ",
@@ -120,7 +157,8 @@ if (dry_run) {
 }
 
 missing_inputs <- inputs[!file.exists(inputs)]
-if (!render_only && length(missing_inputs)) {
+if (!render_only && !compact_candidate_only && !compact_difference_only &&
+    length(missing_inputs)) {
   stop(
     "Missing required input(s): ",
     paste(names(missing_inputs), collapse = ", "),
@@ -135,11 +173,32 @@ if (render_only && length(missing_render_inputs)) {
     call. = FALSE
   )
 }
+missing_compact_candidate_inputs <- compact_candidate_inputs[
+  !file.exists(compact_candidate_inputs)
+]
+if (compact_candidate_only && length(missing_compact_candidate_inputs)) {
+  stop(
+    "Missing completed v2 compact-candidate input(s): ",
+    paste(names(missing_compact_candidate_inputs), collapse = ", "),
+    call. = FALSE
+  )
+}
+missing_compact_difference_inputs <- compact_difference_inputs[
+  !file.exists(compact_difference_inputs)
+]
+if (compact_difference_only && length(missing_compact_difference_inputs)) {
+  stop(
+    "Missing completed compact Figure 2d source: ",
+    paste(names(missing_compact_difference_inputs), collapse = ", "),
+    call. = FALSE
+  )
+}
 allow_overwrite <- ca_as_logical(Sys.getenv(
   "PROTEOMICS_CONTROL_ABUNDANCE_V2_ALLOW_OVERWRITE",
   unset = "false"
 ))
-if (!render_only && !allow_overwrite) {
+if (!render_only && !compact_candidate_only && !compact_difference_only &&
+    !allow_overwrite) {
   existing_v2_outputs <- c(
     list.files(
       roots$source_data, pattern = "^v2_", full.names = TRUE,
@@ -200,6 +259,21 @@ rendering_figure_files <- c(
   "control_rank_abundance_v2_extended_data_183mm.pdf",
   "control_rank_abundance_v2_extended_data_183mm.png"
 )
+
+ca_require_candidate_outputs_writable <- function(
+    paths, allow_overwrite, candidate_label, overwrite_env) {
+  existing <- paths[file.exists(paths)]
+  if (length(existing) && !allow_overwrite) {
+    stop(
+      "Refusing to overwrite existing ", candidate_label, " output(s): ",
+      paste(normalizePath(existing, winslash = "/", mustWork = FALSE), collapse = ", "),
+      ". Set ", overwrite_env,
+      "=true only for intentional candidate rerendering.",
+      call. = FALSE
+    )
+  }
+  invisible(paths)
+}
 
 write_control_rendering_outputs_v2 <- function(rendering, roots, inputs_used,
                                                allow_overwrite = FALSE) {
@@ -294,6 +368,186 @@ write_control_rendering_outputs_v2 <- function(rendering, roots, inputs_used,
     )
   )
   invisible(list(dot = dot_plot, rank = rank_plot, outputs = paths))
+}
+
+write_compact_recognizable_candidate_v2 <- function(
+    rendering, roots, inputs_used, allow_overwrite = FALSE) {
+  source_paths <- c(
+    audit = file.path(
+      roots$source_data, "figure2d_requested_marker_eligibility_audit_v2.csv"
+    ),
+    source_data = file.path(
+      roots$source_data, "figure2d_compact_recognizable_markers_v2_source_data.csv"
+    ),
+    provenance = file.path(
+      roots$source_data, "figure2d_compact_recognizable_markers_v2_provenance.csv"
+    )
+  )
+  figure_path <- file.path(
+    roots$figures, "figure2d_compact_recognizable_markers_v2.svg"
+  )
+  manifest_path <- file.path(
+    roots$logs, "figure2d_compact_recognizable_markers_v2_manifest.yml"
+  )
+  paths <- c(source_paths, figure = figure_path, manifest = manifest_path)
+  ca_require_candidate_outputs_writable(
+    paths, allow_overwrite, "compact Figure 2d candidate",
+    "PROTEOMICS_CONTROL_ABUNDANCE_COMPACT_CANDIDATE_ALLOW_OVERWRITE"
+  )
+  invisible(lapply(roots, dir_create))
+  qc_write_csv(rendering$audit, source_paths[["audit"]])
+  qc_write_csv(rendering$dot, source_paths[["source_data"]])
+  qc_write_csv(rendering$provenance, source_paths[["provenance"]])
+  plot <- ca_build_compact_recognizable_markers_v2(rendering)
+  ggplot2::ggsave(
+    figure_path, plot, width = 132, height = 76, units = "mm",
+    device = function(...) svglite::svglite(
+      ..., pointsize = 7, fix_text_size = FALSE
+    ),
+    limitsize = FALSE, bg = "white"
+  )
+  write_run_manifest(
+    manifest_path,
+    inputs = as.list(inputs_used),
+    outputs = list(
+      marker_audit = source_paths[["audit"]],
+      source_data = source_paths[["source_data"]],
+      provenance = source_paths[["provenance"]],
+      figure = figure_path
+    ),
+    parameters = list(
+      execution_mode = "presentation_only_from_completed_authoritative_v2_tables",
+      analytical_recalculation = FALSE,
+      marker_eligibility_recalculation = FALSE,
+      marker_set = rendering$config$marker_gene,
+      metric = "median_within_protein_centered_log2_across_valid_CON_animals",
+      display_cap_log2 = 3,
+      columns = c(
+        "Neuron soma", "Neuron neuropil", "Microglia/PVM-enriched ROI"
+      )
+    ),
+    notes = paste(
+      "Compact manuscript candidate derived from completed authoritative v2 tables.",
+      "Animal aggregation, normalization, detection, eligibility and direction values",
+      "were not recomputed; the existing ca_center_animal_abundance presentation",
+      "transform was applied to completed animal-level abundance rows."
+    )
+  )
+  invisible(list(plot = plot, outputs = paths))
+}
+
+write_marker_enrichment_difference_candidate_v2 <- function(
+    rendering, roots, inputs_used, allow_overwrite = FALSE) {
+  source_path <- file.path(
+    roots$source_data,
+    "figure2d_compact_marker_enrichment_differences_v2_source_data.csv"
+  )
+  provenance_path <- file.path(
+    roots$source_data,
+    "figure2d_compact_marker_enrichment_differences_v2_provenance.csv"
+  )
+  figure_path <- file.path(
+    roots$figures, "figure2d_compact_marker_enrichment_differences_v2.svg"
+  )
+  manifest_path <- file.path(
+    roots$logs, "figure2d_compact_marker_enrichment_differences_v2_manifest.yml"
+  )
+  paths <- c(
+    source_data = source_path, provenance = provenance_path,
+    figure = figure_path, manifest = manifest_path
+  )
+  ca_require_candidate_outputs_writable(
+    paths, allow_overwrite, "Figure 2d enrichment-difference candidate",
+    "PROTEOMICS_CONTROL_ABUNDANCE_DIFFERENCE_CANDIDATE_ALLOW_OVERWRITE"
+  )
+  invisible(lapply(roots, dir_create))
+  source_for_csv <- rendering$source
+  exact_numeric_columns <- c(
+    "intended_median_centered_log2", "comparator_median_centered_log2",
+    "intended_minus_comparator_log2"
+  )
+  source_for_csv[exact_numeric_columns] <- lapply(
+    source_for_csv[exact_numeric_columns], sprintf, fmt = "%.17g"
+  )
+  qc_write_csv(source_for_csv, source_path)
+  qc_write_csv(rendering$provenance, provenance_path)
+  plot <- ca_build_marker_enrichment_differences_v2(rendering)
+  ggplot2::ggsave(
+    figure_path, plot, width = 132, height = 92, units = "mm",
+    device = function(...) svglite::svglite(
+      ..., pointsize = 7, fix_text_size = FALSE
+    ),
+    limitsize = FALSE, bg = "white"
+  )
+  write_run_manifest(
+    manifest_path,
+    inputs = as.list(inputs_used),
+    outputs = list(
+      source_data = source_path, provenance = provenance_path,
+      figure = figure_path
+    ),
+    parameters = list(
+      execution_mode = "presentation_only_from_completed_compact_candidate_source",
+      analytical_recalculation = FALSE,
+      marker_eligibility_recalculation = FALSE,
+      marker_selection_recalculation = FALSE,
+      metric = paste(
+        "intended preparation median centered log2 minus comparator preparation",
+        "median centered log2"
+      ),
+      comparisons_per_marker = 2,
+      rescaling = "none",
+      inferential_statistics = "none"
+    ),
+    notes = paste(
+      "Each plotted value is an exact arithmetic subtraction of two completed",
+      "figure2d_compact_recognizable_markers_v2_source_data.csv values.",
+      "No model, p-value, aggregation, normalization, marker selection or",
+      "eligibility calculation was run."
+    )
+  )
+  invisible(list(plot = plot, outputs = paths))
+}
+
+if (compact_difference_only) {
+  input_path <- compact_difference_inputs[["compact_source"]]
+  rendering <- ca_prepare_marker_enrichment_differences_v2(
+    compact_source = qc_read_table(input_path),
+    source_path = normalizePath(input_path, winslash = "/", mustWork = TRUE),
+    source_sha256 = file_hash_sha256(input_path)
+  )
+  allow_difference_overwrite <- ca_as_logical(Sys.getenv(
+    "PROTEOMICS_CONTROL_ABUNDANCE_DIFFERENCE_CANDIDATE_ALLOW_OVERWRITE",
+    unset = "false"
+  ))
+  write_marker_enrichment_difference_candidate_v2(
+    rendering, roots, compact_difference_inputs, allow_difference_overwrite
+  )
+  message("04e compact marker-enrichment difference rendering complete.")
+  quit(status = 0, save = "no")
+}
+
+if (compact_candidate_only) {
+  rendering <- ca_prepare_compact_recognizable_markers_v2(
+    animal_abundance = qc_read_table(compact_candidate_inputs[["animal_abundance"]]),
+    marker_mapping = qc_read_table(compact_candidate_inputs[["marker_mapping"]]),
+    marker_detection = qc_read_table(compact_candidate_inputs[["marker_detection"]]),
+    marker_direction = qc_read_table(compact_candidate_inputs[["marker_direction"]]),
+    eligible_alternatives = qc_read_table(
+      compact_candidate_inputs[["eligible_alternatives"]]
+    ),
+    rank_table = qc_read_table(compact_candidate_inputs[["rank_source"]])
+  )
+  allow_compact_candidate_overwrite <- ca_as_logical(Sys.getenv(
+    "PROTEOMICS_CONTROL_ABUNDANCE_COMPACT_CANDIDATE_ALLOW_OVERWRITE",
+    unset = "false"
+  ))
+  write_compact_recognizable_candidate_v2(
+    rendering, roots, compact_candidate_inputs,
+    allow_compact_candidate_overwrite
+  )
+  message("04e compact recognizable-marker candidate rendering complete.")
+  quit(status = 0, save = "no")
 }
 
 if (render_only) {

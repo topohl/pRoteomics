@@ -14,6 +14,21 @@ ca_display_class_headings <- c(
   "Neuropil markers" = "Neuropil",
   "Microglia/PVM markers" = "MG/PVM"
 )
+ca_manuscript_dataset_labels <- c(
+  neuron_soma = "Neuron soma",
+  neuron_neuropil = "Neuron neuropil",
+  microglia = "Microglia/PVM-enriched ROI"
+)
+ca_manuscript_marker_class_headings <- c(
+  "Soma markers" = "Neuron soma markers",
+  "Neuropil markers" = "Neuron neuropil markers",
+  "Microglia/PVM markers" = "Microglia/PVM-enriched ROI markers"
+)
+ca_manuscript_marker_strip_labels <- c(
+  "Neuron soma markers" = "Neuron soma markers",
+  "Neuron neuropil markers" = "Neuron neuropil markers",
+  "Microglia/PVM-enriched ROI markers" = "Microglia/PVM-\nenriched ROI markers"
+)
 ca_dataset_palette <- nature_palette("dataset")
 ca_display_class_palette <- c(
   "Soma markers" = unname(ca_dataset_palette[["soma"]]),
@@ -805,4 +820,495 @@ ca_control_rendering_legends_v2 <- function() {
       "subpanel balance and gene-symbol tie-breaking, never observed compartment effect magnitude."
     )
   )
+}
+
+ca_requested_intuitive_markers_v2 <- function() {
+  data.frame(
+    marker_gene = c(
+      "Npm1", "Ptbp2", "Anp32a", "Hdac5", "Rbfox3",
+      "Camk2a", "Dlg4", "Snap25", "Syp",
+      "P2ry12", "C1qa", "Ctss", "Hexa"
+    ),
+    marker_class = c(
+      rep("Soma markers", 5L), rep("Neuropil markers", 4L),
+      rep("Microglia/PVM markers", 4L)
+    ),
+    intended_dataset = c(
+      rep("neuron_soma", 5L), rep("neuron_neuropil", 4L),
+      rep("microglia", 4L)
+    ),
+    intended_compartment = c(
+      rep("Neuron soma", 5L), rep("Neuron neuropil", 4L),
+      rep("Microglia/PVM-enriched ROI", 4L)
+    ),
+    stringsAsFactors = FALSE
+  )
+}
+
+ca_compact_recognizable_marker_config_v2 <- function() {
+  requested <- ca_requested_intuitive_markers_v2()
+  keep <- requested$marker_gene %in% c(
+    "Npm1", "Ptbp2", "Anp32a", "Hdac5",
+    "Camk2a", "Snap25", "Syp",
+    "P2ry12", "C1qa", "Ctss"
+  )
+  out <- requested[keep, , drop = FALSE]
+  out$selection_order_within_class <- ave(
+    seq_len(nrow(out)), out$marker_class, FUN = seq_along
+  )
+  out$candidate_selection_reason <- paste(
+    "user_requested_recognizable_marker; authoritative_v2_primary_and_strict_eligible;",
+    "completed_v2_direction_classification_intended_highest"
+  )
+  out
+}
+
+ca_requested_marker_eligibility_audit_v2 <- function(
+    marker_mapping, marker_detection, marker_direction, rank_table) {
+  ca_display_require_columns(marker_mapping, c(
+    "marker_gene", "ProteinGroupID", "matched", "canonical_marker_eligible",
+    "conflicting_marker_classes", "gene_claim_eligible", "joint_qc_eligible",
+    "joint_qc_exclusion_reason", "feature_official_gene_symbol",
+    "intended_primary_eligible",
+    "intended_strict_eligible", "exclusion_reason_primary"
+  ), "V2 marker mapping")
+  ca_display_require_columns(marker_detection, c(
+    "marker_class", "ProteinGroupID", "marker_gene", "dataset",
+    "valid_animal_count", "valid_animal_fraction", "primary_eligible",
+    "strict_eligible", "reliability_status"
+  ), "V2 marker detection")
+  ca_display_require_columns(marker_direction, c(
+    "marker_class", "ProteinGroupID", "expected_direction_classification"
+  ), "V2 marker direction")
+  ca_display_require_columns(rank_table, c(
+    "dataset", "ProteinGroupID", "official_gene_symbol", "RankGroup",
+    "valid_animal_count", "valid_animal_fraction", "primary_eligible",
+    "strict_eligible", "reliability_status", "joint_qc_eligible",
+    "joint_qc_exclusion_reason", "gene_level_claim_allowed"
+  ), "V2 rank-abundance table")
+
+  requested <- ca_requested_intuitive_markers_v2()
+  rows <- lapply(seq_len(nrow(requested)), function(i) {
+    target <- requested[i, , drop = FALSE]
+    mapping_rows <- marker_mapping[
+      toupper(as.character(marker_mapping$marker_gene)) == toupper(target$marker_gene),
+      , drop = FALSE
+    ]
+    registry_present <- nrow(mapping_rows) > 0L
+    if (registry_present) {
+      protein_ids <- unique(as.character(mapping_rows$ProteinGroupID[
+        !is.na(mapping_rows$ProteinGroupID) & nzchar(mapping_rows$ProteinGroupID)
+      ]))
+      if (length(protein_ids) != 1L) {
+        stop("Requested marker does not resolve to one ProteinGroupID: ", target$marker_gene, call. = FALSE)
+      }
+      pid <- protein_ids[[1]]
+      map <- mapping_rows[mapping_rows$ProteinGroupID == pid, , drop = FALSE]
+      detection <- marker_detection[
+        marker_detection$ProteinGroupID == pid &
+          marker_detection$dataset == target$intended_dataset,
+        , drop = FALSE
+      ]
+      direction <- marker_direction[
+        marker_direction$ProteinGroupID == pid &
+          marker_direction$marker_class == target$marker_class,
+        , drop = FALSE
+      ]
+      if (nrow(detection) != 1L || nrow(direction) != 1L) {
+        stop("Requested marker audit is not one-to-one for: ", target$marker_gene, call. = FALSE)
+      }
+      logical_value <- function(name) {
+        value <- unique(map[[name]])
+        if (length(value) != 1L) stop("Inconsistent marker mapping field: ", name, call. = FALSE)
+        value %in% TRUE
+      }
+      joint_reason <- unique(as.character(map$joint_qc_exclusion_reason))
+      joint_reason <- joint_reason[!is.na(joint_reason) & nzchar(joint_reason)]
+      data.frame(
+        marker_gene = target$marker_gene,
+        found_in_canonical_proteome = TRUE,
+        found_in_authoritative_marker_registry = TRUE,
+        ProteinGroupID = pid,
+        canonical_gene_symbol = unique(as.character(map$feature_official_gene_symbol))[[1]],
+        intended_compartment = target$intended_compartment,
+        valid_CON_animal_count = detection$valid_animal_count,
+        valid_CON_animal_fraction = detection$valid_animal_fraction,
+        passes_primary_detection_threshold = detection$primary_eligible %in% TRUE,
+        passes_strict_detection_threshold = detection$strict_eligible %in% TRUE,
+        passes_primary_marker_eligibility = logical_value("intended_primary_eligible"),
+        passes_strict_marker_eligibility = logical_value("intended_strict_eligible"),
+        excluded_for_joint_qc_or_contamination = !logical_value("joint_qc_eligible"),
+        excluded_for_mapping = !logical_value("matched") || !logical_value("gene_claim_eligible"),
+        excluded_for_conflicting_marker_classes = logical_value("conflicting_marker_classes"),
+        excluded_for_reliability = !(detection$primary_eligible %in% TRUE),
+        reliability_status = as.character(detection$reliability_status),
+        expected_direction_classification = as.character(direction$expected_direction_classification),
+        exclusion_reason = unique(as.character(map$exclusion_reason_primary))[[1]],
+        joint_qc_exclusion_reason = if (length(joint_reason)) paste(joint_reason, collapse = ";") else NA_character_,
+        exact_source_tables = paste(
+          "v2_04_all_marker_canonical_mapping_provenance.csv;",
+          "v2_05_marker_by_dataset_detection_abundance.csv;",
+          "v2_06_protein_intended_direction.csv"
+        ),
+        stringsAsFactors = FALSE
+      )
+    } else {
+      rank_rows <- rank_table[
+        rank_table$RankGroup %in% "CON_region_balanced_mean" &
+          rank_table$dataset %in% target$intended_dataset &
+          toupper(as.character(rank_table$official_gene_symbol)) %in%
+            toupper(target$marker_gene),
+        , drop = FALSE
+      ]
+      if (nrow(rank_rows) != 1L) {
+        stop("Unregistered requested marker is not uniquely resolved in the intended rank universe: ", target$marker_gene, call. = FALSE)
+      }
+      data.frame(
+        marker_gene = target$marker_gene,
+        found_in_canonical_proteome = TRUE,
+        found_in_authoritative_marker_registry = FALSE,
+        ProteinGroupID = as.character(rank_rows$ProteinGroupID),
+        canonical_gene_symbol = as.character(rank_rows$official_gene_symbol),
+        intended_compartment = target$intended_compartment,
+        valid_CON_animal_count = rank_rows$valid_animal_count,
+        valid_CON_animal_fraction = rank_rows$valid_animal_fraction,
+        passes_primary_detection_threshold = rank_rows$primary_eligible %in% TRUE,
+        passes_strict_detection_threshold = rank_rows$strict_eligible %in% TRUE,
+        passes_primary_marker_eligibility = FALSE,
+        passes_strict_marker_eligibility = FALSE,
+        excluded_for_joint_qc_or_contamination = !(rank_rows$joint_qc_eligible %in% TRUE),
+        excluded_for_mapping = !(rank_rows$gene_level_claim_allowed %in% TRUE),
+        excluded_for_conflicting_marker_classes = FALSE,
+        excluded_for_reliability = !(rank_rows$primary_eligible %in% TRUE),
+        reliability_status = as.character(rank_rows$reliability_status),
+        expected_direction_classification = NA_character_,
+        exclusion_reason = "not_in_authoritative_external_marker_registry",
+        joint_qc_exclusion_reason = as.character(rank_rows$joint_qc_exclusion_reason),
+        exact_source_tables = "v2_12_rank_abundance_data.csv; absent from v2_04 marker mapping",
+        stringsAsFactors = FALSE
+      )
+    }
+  })
+  out <- do.call(rbind, rows)
+  rownames(out) <- NULL
+  out
+}
+
+ca_prepare_compact_recognizable_markers_v2 <- function(
+    animal_abundance, marker_mapping, marker_detection, marker_direction,
+    eligible_alternatives, rank_table) {
+  audit <- ca_requested_marker_eligibility_audit_v2(
+    marker_mapping, marker_detection, marker_direction, rank_table
+  )
+  config <- ca_compact_recognizable_marker_config_v2()
+  selected_audit <- dplyr::inner_join(
+    config, audit, by = c("marker_gene", "intended_compartment"),
+    relationship = "one-to-one"
+  )
+  if (nrow(selected_audit) != nrow(config) ||
+      !all(selected_audit$passes_primary_marker_eligibility) ||
+      !all(selected_audit$passes_strict_marker_eligibility) ||
+      !all(selected_audit$expected_direction_classification == "intended_highest")) {
+    stop("Compact candidate markers must be primary/strict eligible and direction-concordant.", call. = FALSE)
+  }
+
+  selected_keys <- paste(selected_audit$marker_class, selected_audit$ProteinGroupID, sep = "\r")
+  alternative_keys <- paste(
+    eligible_alternatives$marker_class, eligible_alternatives$ProteinGroupID, sep = "\r"
+  )
+  provenance <- eligible_alternatives[alternative_keys %in% selected_keys, , drop = FALSE]
+  if (nrow(provenance) != nrow(config) ||
+      anyDuplicated(provenance[c("marker_class", "ProteinGroupID")])) {
+    stop("Compact candidate markers are not unique authoritative eligible alternatives.", call. = FALSE)
+  }
+  provenance <- dplyr::left_join(
+    provenance,
+    selected_audit[, c(
+      "marker_class", "ProteinGroupID", "intended_compartment",
+      "selection_order_within_class", "candidate_selection_reason",
+      "expected_direction_classification"
+    )],
+    by = c("marker_class", "ProteinGroupID"), relationship = "one-to-one"
+  )
+  provenance$candidate_metric <- "median_within_protein_centered_log2_across_valid_CON_animals"
+  provenance$candidate_is_presentation_only <- TRUE
+  provenance$candidate_source_tables <- paste(
+    "v2_03_animal_level_abundance.csv;",
+    "v2_04_all_marker_canonical_mapping_provenance.csv;",
+    "v2_05_marker_by_dataset_detection_abundance.csv;",
+    "v2_06_protein_intended_direction.csv;",
+    "v2_11a_display_selection_eligible_alternatives.csv;",
+    "v2_12_rank_abundance_data.csv"
+  )
+
+  primary_animal <- animal_abundance[
+    animal_abundance$aggregation == "primary_median_hierarchy" &
+      animal_abundance$ProteinGroupID %in% selected_audit$ProteinGroupID,
+    , drop = FALSE
+  ]
+  centered <- ca_center_animal_abundance(primary_animal) |>
+    dplyr::group_by(.data$dataset, .data$ProteinGroupID) |>
+    dplyr::summarise(
+      median_centered_log2 = stats::median(.data$centered_log2, na.rm = TRUE),
+      centered_valid_animal_count = sum(is.finite(.data$centered_log2)),
+      .groups = "drop"
+    )
+  detection <- marker_detection[
+    marker_detection$ProteinGroupID %in% selected_audit$ProteinGroupID,
+    , drop = FALSE
+  ]
+  detection <- detection[, c(
+    "marker_class", "ProteinGroupID", "dataset", "valid_animal_count",
+    "valid_animal_fraction", "reliability_status", "primary_eligible",
+    "strict_eligible", "intended_compartment", "normalization_source",
+    "feature_universe", "animal_detection_threshold", "region_threshold",
+    "hemisphere_handling", "marker_source_policy", "quantitative_value_status",
+    "selection_policy"
+  ), drop = FALSE]
+  dot <- dplyr::inner_join(
+    detection,
+    selected_audit[, c(
+      "marker_class", "ProteinGroupID", "marker_gene", "intended_dataset",
+      "selection_order_within_class", "candidate_selection_reason",
+      "expected_direction_classification"
+    )],
+    by = c("marker_class", "ProteinGroupID"), relationship = "many-to-one"
+  ) |>
+    dplyr::left_join(
+      centered, by = c("dataset", "ProteinGroupID"), relationship = "one-to-one"
+    ) |>
+    dplyr::mutate(
+      intended_compartment = .data$dataset == .data$intended_dataset,
+      displayed_centered_log2 = ifelse(
+        is.finite(.data$median_centered_log2),
+        pmax(-3, pmin(3, .data$median_centered_log2)), NA_real_
+      ),
+      centered_log2_display_cap = 3,
+      reliably_detected = .data$reliability_status == "reliably_detected",
+      missing_symbol = ifelse(.data$reliably_detected, "", "\u00d7"),
+      outline_colour = ifelse(
+        .data$intended_compartment,
+        unname(ca_dataset_palette[c(
+          neuron_soma = "soma", neuron_neuropil = "neuropil", microglia = "microglia"
+        )[.data$dataset]]),
+        "#737373"
+      ),
+      dataset_label = factor(
+        unname(ca_manuscript_dataset_labels[.data$dataset]),
+        levels = unname(ca_manuscript_dataset_labels)
+      ),
+      marker_class_heading = factor(
+        unname(ca_manuscript_marker_class_headings[.data$marker_class]),
+        levels = unname(ca_manuscript_marker_class_headings)
+      ),
+      analytical_recomputation = FALSE,
+      presentation_transform =
+        "existing ca_center_animal_abundance; median across valid CON animals; display cap only"
+    )
+  ordered <- selected_audit |>
+    dplyr::mutate(class_order = match(.data$marker_class, ca_display_class_order)) |>
+    dplyr::arrange(.data$class_order, .data$selection_order_within_class)
+  dot$marker_label <- factor(dot$marker_gene, levels = rev(ordered$marker_gene))
+  expected_rows <- nrow(config) * 3L
+  if (nrow(dot) != expected_rows || anyDuplicated(dot[c("dataset", "ProteinGroupID")])) {
+    stop("Compact candidate source must contain one row per marker and compartment.", call. = FALSE)
+  }
+  if (!all(dot$primary_eligible %in% TRUE) || !all(dot$strict_eligible %in% TRUE)) {
+    stop("Compact candidate contains an unreliable compartment value.", call. = FALSE)
+  }
+  list(audit = audit, provenance = provenance, dot = dot, config = config)
+}
+
+ca_build_compact_recognizable_markers_v2 <- function(rendering) {
+  ca_build_control_marker_dot_heatmap_v2(rendering) +
+    ggplot2::facet_grid(
+      rows = ggplot2::vars(marker_class_heading),
+      scales = "free_y", space = "free_y", switch = "y",
+      labeller = ggplot2::labeller(
+        marker_class_heading = ca_manuscript_marker_strip_labels
+      )
+    ) +
+    ggplot2::scale_x_discrete(labels = c(
+      "Neuron soma" = "Neuron soma",
+      "Neuron neuropil" = "Neuron neuropil",
+      "Microglia/PVM-enriched ROI" = "Microglia/PVM-\nenriched ROI"
+    )) +
+    ggplot2::theme(
+      axis.text.x = ggplot2::element_text(
+        size = nature_manuscript_text_sizes_pt()[["normal"]], lineheight = 0.92
+      ),
+      strip.text.y.left = ggplot2::element_text(
+        angle = 0, hjust = 1, face = "plain",
+        size = nature_manuscript_text_sizes_pt()[["normal"]],
+        margin = ggplot2::margin(r = 1.2)
+      )
+    )
+}
+
+ca_prepare_marker_enrichment_differences_v2 <- function(
+    compact_source, source_path = NA_character_, source_sha256 = NA_character_) {
+  required <- c(
+    "marker_class", "ProteinGroupID", "marker_gene", "dataset",
+    "intended_dataset", "median_centered_log2",
+    "selection_order_within_class", "candidate_selection_reason",
+    "expected_direction_classification", "normalization_source",
+    "feature_universe", "quantitative_value_status",
+    "analytical_recomputation"
+  )
+  ca_display_require_columns(compact_source, required, "Compact Figure 2d source")
+  if (nrow(compact_source) != 30L ||
+      length(unique(compact_source$ProteinGroupID)) != 10L ||
+      anyDuplicated(compact_source[c("dataset", "ProteinGroupID")]) ||
+      any(!is.finite(compact_source$median_centered_log2)) ||
+      any(compact_source$analytical_recomputation %in% TRUE)) {
+    stop(
+      "Compact Figure 2d source must contain the completed 10-marker x 3-preparation values.",
+      call. = FALSE
+    )
+  }
+
+  marker_keys <- c(
+    "marker_class", "ProteinGroupID", "marker_gene", "intended_dataset",
+    "selection_order_within_class", "candidate_selection_reason",
+    "expected_direction_classification", "normalization_source",
+    "feature_universe", "quantitative_value_status"
+  )
+  intended <- compact_source |>
+    dplyr::filter(.data$dataset == .data$intended_dataset) |>
+    dplyr::select(dplyr::all_of(c(marker_keys, "dataset", "median_centered_log2"))) |>
+    dplyr::rename(
+      intended_preparation = "dataset",
+      intended_median_centered_log2 = "median_centered_log2"
+    )
+  if (nrow(intended) != 10L || anyDuplicated(intended$ProteinGroupID)) {
+    stop("Each compact marker must have exactly one intended preparation.", call. = FALSE)
+  }
+  comparators <- compact_source |>
+    dplyr::filter(.data$dataset != .data$intended_dataset) |>
+    dplyr::select(dplyr::all_of(c(marker_keys, "dataset", "median_centered_log2"))) |>
+    dplyr::rename(
+      comparator_preparation = "dataset",
+      comparator_median_centered_log2 = "median_centered_log2"
+    )
+  differences <- dplyr::inner_join(
+    intended, comparators, by = marker_keys, relationship = "one-to-many"
+  ) |>
+    dplyr::mutate(
+      intended_minus_comparator_log2 =
+        .data$intended_median_centered_log2 -
+        .data$comparator_median_centered_log2
+    )
+  expected <- differences$intended_median_centered_log2 -
+    differences$comparator_median_centered_log2
+  if (nrow(differences) != 20L ||
+      any(table(differences$ProteinGroupID) != 2L) ||
+      !identical(differences$intended_minus_comparator_log2, expected)) {
+    stop(
+      "Figure 2d differences must be exact intended-minus-comparator subtractions.",
+      call. = FALSE
+    )
+  }
+
+  order_table <- intended |>
+    dplyr::mutate(class_order = match(.data$marker_class, ca_display_class_order)) |>
+    dplyr::arrange(.data$class_order, .data$selection_order_within_class)
+  differences <- differences |>
+    dplyr::mutate(
+      intended_preparation_label =
+        unname(ca_manuscript_dataset_labels[.data$intended_preparation]),
+      comparator_preparation_label =
+        unname(ca_manuscript_dataset_labels[.data$comparator_preparation]),
+      comparator_legend_label = paste("vs", .data$comparator_preparation_label),
+      marker_class_heading = factor(
+        unname(ca_manuscript_marker_class_headings[.data$marker_class]),
+        levels = unname(ca_manuscript_marker_class_headings)
+      ),
+      marker_label = factor(.data$marker_gene, levels = rev(order_table$marker_gene)),
+      difference_definition =
+        "intended preparation median centered log2 minus comparator preparation median centered log2",
+      analytical_recomputation = FALSE,
+      inferential_statistics = FALSE,
+      marker_selection_used_difference = FALSE,
+      source_path = as.character(source_path),
+      source_sha256 = as.character(source_sha256)
+    ) |>
+    dplyr::arrange(
+      match(.data$marker_class, ca_display_class_order),
+      .data$selection_order_within_class,
+      match(.data$comparator_preparation, names(ca_manuscript_dataset_labels))
+    )
+
+  provenance <- intended |>
+    dplyr::transmute(
+      .data$marker_class, .data$ProteinGroupID, .data$marker_gene,
+      .data$intended_dataset, .data$selection_order_within_class,
+      .data$candidate_selection_reason,
+      .data$expected_direction_classification,
+      .data$normalization_source, .data$feature_universe,
+      .data$quantitative_value_status,
+      source_path = as.character(source_path),
+      source_sha256 = as.character(source_sha256),
+      source_row_count = nrow(compact_source),
+      difference_definition =
+        "intended preparation median centered log2 minus comparator preparation median centered log2",
+      analytical_recomputation = FALSE,
+      inferential_statistics = FALSE,
+      marker_selection_used_difference = FALSE,
+      presentation_only = TRUE
+    )
+  list(source = differences, provenance = provenance)
+}
+
+ca_build_marker_enrichment_differences_v2 <- function(rendering) {
+  palette <- c(
+    "vs Neuron soma" = ca_dataset_palette[["soma"]],
+    "vs Neuron neuropil" = ca_dataset_palette[["neuropil"]],
+    "vs Microglia/PVM-enriched ROI" = ca_dataset_palette[["microglia"]]
+  )
+  ggplot2::ggplot(
+    rendering$source,
+    ggplot2::aes(
+      x = .data$intended_minus_comparator_log2,
+      y = .data$marker_label,
+      colour = .data$comparator_legend_label
+    )
+  ) +
+    ggplot2::geom_vline(xintercept = 0, colour = "#BDBDBD", linewidth = 0.35) +
+    ggplot2::geom_point(
+      position = ggplot2::position_dodge(width = 0.48), size = 2.15,
+      alpha = 0.95
+    ) +
+    ggplot2::facet_grid(
+      rows = ggplot2::vars(marker_class_heading),
+      scales = "free_y", space = "free_y", switch = "y",
+      labeller = ggplot2::labeller(
+        marker_class_heading = ca_manuscript_marker_strip_labels
+      )
+    ) +
+    ggplot2::scale_colour_manual(values = palette, breaks = names(palette)) +
+    ggplot2::guides(colour = ggplot2::guide_legend(
+      nrow = 1, byrow = TRUE, title.position = "top"
+    )) +
+    ggplot2::labs(
+      x = "Δ median centered log₂ abundance\n(intended − comparator)",
+      y = NULL, colour = "Comparator preparation"
+    ) +
+    theme_nature_manuscript_panel(
+      base_size = nature_manuscript_text_sizes_pt()[["normal"]],
+      base_family = "Arial", publication_legible = TRUE
+    ) +
+    ggplot2::theme(
+      legend.position = "bottom",
+      legend.justification = "left",
+      strip.placement = "outside",
+      axis.text.y = ggplot2::element_text(face = "italic"),
+      strip.text.y.left = ggplot2::element_text(
+        angle = 0, hjust = 1, face = "plain",
+        size = nature_manuscript_text_sizes_pt()[["normal"]],
+        margin = ggplot2::margin(r = 1.2)
+      ),
+      panel.spacing.y = grid::unit(1.4, "mm"),
+      legend.key.height = grid::unit(3.5, "mm"),
+      plot.margin = ggplot2::margin(1.5, 1.5, 4, 1.5)
+    )
 }

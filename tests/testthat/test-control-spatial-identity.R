@@ -240,6 +240,54 @@ testthat::test_that("Figure 2e excludes DG layer contrasts while Figure 2f displ
   testthat::expect_length(figure2f, 6L)
 })
 
+testthat::test_that("Figure 2f regions and CA1-layers candidate has exactly seven contrasts", {
+  candidate <- control_spatial_figure2f_regions_ca1layers_display_contrasts()
+  testthat::expect_identical(
+    candidate,
+    c(
+      "CA1_vs_mean_other_soma_regions", "CA2_vs_mean_other_soma_regions",
+      "CA3_vs_mean_other_soma_regions", "DG_vs_mean_other_soma_regions",
+      "CA1_SLM_vs_mean_other_CA1_strata",
+      "CA1_SO_vs_mean_other_CA1_strata",
+      "CA1_SR_vs_mean_other_CA1_strata"
+    )
+  )
+  testthat::expect_length(candidate, 7L)
+  testthat::expect_false(any(grepl("^DG_(MO|PO)_", candidate)))
+})
+
+testthat::test_that("Figure 2f grouped layout abbreviates only the seven display labels", {
+  contrasts <- control_spatial_figure2f_regions_ca1layers_display_contrasts()
+  layout <- control_spatial_figure2f_grouped_layout()
+  testthat::expect_identical(layout$contrast, contrasts)
+  testthat::expect_identical(
+    layout$group,
+    c(rep("Soma region", 4L), rep("CA1 neuropil layer", 3L))
+  )
+  testthat::expect_identical(
+    layout$short_label, c("CA1", "CA2", "CA3", "DG", "SLM", "SO", "SR")
+  )
+  testthat::expect_false(anyDuplicated(layout$contrast) > 0L)
+})
+
+testthat::test_that("Figure 2f grouped candidate is render-only from validated source data", {
+  script <- paste(readLines(testthat::test_path(
+    "..", "..", "04_differential_expression_enrichment",
+    "09_control_spatial_identity_validation.r"
+  ), warn = FALSE), collapse = "\n")
+  testthat::expect_match(
+    script, "PROTEOMICS_CONTROL_SPATIAL_FIGURE2F_GROUPED_LAYOUT_RENDER_ONLY",
+    fixed = TRUE
+  )
+  testthat::expect_match(
+    script, "figure2f_regions_CA1layers_source_data.csv", fixed = TRUE
+  )
+  testthat::expect_match(
+    script, "figure2f_control_anatomical_GO_regions_CA1layers_grouped.svg",
+    fixed = TRUE
+  )
+})
+
 testthat::test_that("GO display filtering is deterministic, bounded, and leaves complete results unchanged", {
   complete <- data.frame(
     dataset = "neuron_soma",
@@ -275,6 +323,33 @@ testthat::test_that("GO display contrast filtering leaves complete results uncha
   )
   testthat::expect_identical(complete, before)
   testthat::expect_identical(display$contrast, "DG_MO_vs_mean_other_DG_layers")
+})
+
+testthat::test_that("candidate GO selection preserves the analytical universe and DG layers", {
+  candidate <- control_spatial_figure2f_regions_ca1layers_display_contrasts()
+  analytical_universe <- c(
+    candidate,
+    "DG_MO_vs_mean_other_DG_layers", "DG_PO_vs_mean_other_DG_layers",
+    "DG_neuropil_vs_mean_non_DG_regions", "CA1_SO_vs_CA3_SO"
+  )
+  complete <- data.frame(
+    dataset = ifelse(grepl("soma_regions$", analytical_universe), "neuron_soma", "neuron_neuropil"),
+    contrast = analytical_universe,
+    status = "completed",
+    ID = paste0("GO:", seq_along(analytical_universe)),
+    Description = paste("term", seq_along(analytical_universe)),
+    NES = 1.5,
+    p_adjust = 0.01,
+    stringsAsFactors = FALSE
+  )
+  before <- complete
+  display <- control_spatial_select_go_display(complete, contrasts = candidate)
+  testthat::expect_identical(complete, before)
+  testthat::expect_setequal(unique(display$contrast), candidate)
+  testthat::expect_true(all(c(
+    "DG_MO_vs_mean_other_DG_layers", "DG_PO_vs_mean_other_DG_layers"
+  ) %in% complete$contrast))
+  testthat::expect_false(any(grepl("^DG_(MO|PO)_", display$contrast)))
 })
 
 testthat::test_that("Figure 2e significance is derived from family FDR, not single-set adjustment", {

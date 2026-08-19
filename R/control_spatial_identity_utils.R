@@ -370,6 +370,26 @@ control_spatial_figure2f_display_contrasts <- function() {
   )
 }
 
+control_spatial_figure2f_regions_ca1layers_display_contrasts <- function() {
+  c(
+    "CA1_vs_mean_other_soma_regions", "CA2_vs_mean_other_soma_regions",
+    "CA3_vs_mean_other_soma_regions", "DG_vs_mean_other_soma_regions",
+    "CA1_SLM_vs_mean_other_CA1_strata",
+    "CA1_SO_vs_mean_other_CA1_strata",
+    "CA1_SR_vs_mean_other_CA1_strata"
+  )
+}
+
+control_spatial_figure2f_grouped_layout <- function() {
+  contrasts <- control_spatial_figure2f_regions_ca1layers_display_contrasts()
+  data.frame(
+    contrast = contrasts,
+    group = c(rep("Soma region", 4L), rep("CA1 neuropil layer", 3L)),
+    short_label = c("CA1", "CA2", "CA3", "DG", "SLM", "SO", "SR"),
+    stringsAsFactors = FALSE
+  )
+}
+
 # This is deliberately separate from the GSEA result: it records the semantic
 # match contract used by Figure 2e.  In particular, the Kaulich SP signature is
 # useful reference/specificity context but cannot validate an internal CA1-SP
