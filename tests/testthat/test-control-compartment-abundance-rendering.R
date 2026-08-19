@@ -209,6 +209,45 @@ testthat::test_that("04e exposes a rendering-only path based on completed source
     "PROTEOMICS_CONTROL_ABUNDANCE_V2_RENDER_ALLOW_OVERWRITE",
     fixed = TRUE
   )
+  testthat::expect_match(text, "--compact-recognizable-candidate", fixed = TRUE)
+  testthat::expect_match(text, "v2_03_animal_level_abundance.csv", fixed = TRUE)
+  testthat::expect_match(
+    text,
+    "PROTEOMICS_CONTROL_ABUNDANCE_COMPACT_CANDIDATE_ALLOW_OVERWRITE",
+    fixed = TRUE
+  )
+  testthat::expect_match(text, "--compact-enrichment-differences", fixed = TRUE)
+  testthat::expect_match(
+    text,
+    "figure2d_compact_recognizable_markers_v2_source_data.csv",
+    fixed = TRUE
+  )
+  testthat::expect_match(
+    text,
+    "PROTEOMICS_CONTROL_ABUNDANCE_DIFFERENCE_CANDIDATE_ALLOW_OVERWRITE",
+    fixed = TRUE
+  )
+})
+
+testthat::test_that("compact recognizable marker candidate is explicit and bounded", {
+  config <- ca_compact_recognizable_marker_config_v2()
+  testthat::expect_identical(
+    config$marker_gene,
+    c(
+      "Npm1", "Ptbp2", "Anp32a", "Hdac5",
+      "Camk2a", "Snap25", "Syp",
+      "P2ry12", "C1qa", "Ctss"
+    )
+  )
+  testthat::expect_identical(
+    as.integer(table(factor(config$marker_class, levels = ca_display_class_order))),
+    c(4L, 3L, 3L)
+  )
+  testthat::expect_false(any(c("Rbfox3", "Dlg4", "Hexa") %in% config$marker_gene))
+  testthat::expect_identical(
+    unique(config$intended_compartment),
+    c("Neuron soma", "Neuron neuropil", "Microglia/PVM-enriched ROI")
+  )
 })
 
 ca_render_v2_fixture <- function() {
@@ -297,4 +336,68 @@ testthat::test_that("v2 rank plot uses deterministic repel labels", {
   testthat::expect_s3_class(plot$layers[[2]]$geom, "GeomPoint")
   testthat::expect_s3_class(plot$layers[[3]]$geom, "GeomTextRepel")
   testthat::expect_lte(nrow(plot$layers[[3]]$data), 3L)
+})
+
+ca_compact_difference_fixture <- function() {
+  config <- ca_compact_recognizable_marker_config_v2()
+  config$ProteinGroupID <- paste0("P", seq_len(nrow(config)))
+  source <- merge(
+    config,
+    data.frame(
+      dataset = c("neuron_soma", "neuron_neuropil", "microglia"),
+      stringsAsFactors = FALSE
+    ),
+    by = NULL
+  )
+  source$median_centered_log2 <-
+    unname(c(neuron_soma = 1.25, neuron_neuropil = -0.75, microglia = 0.125)[source$dataset]) +
+    source$selection_order_within_class / 100
+  source$expected_direction_classification <- "intended_highest"
+  source$normalization_source <- "completed centered source"
+  source$feature_universe <- "completed authoritative v2"
+  source$quantitative_value_status <- "observed"
+  source$analytical_recomputation <- FALSE
+  source
+}
+
+testthat::test_that("Figure 2d enrichment differences are exact completed-value subtractions", {
+  compact <- ca_compact_difference_fixture()
+  before <- compact
+  rendering <- ca_prepare_marker_enrichment_differences_v2(
+    compact, source_path = "completed.csv", source_sha256 = "abc123"
+  )
+  source <- rendering$source
+  testthat::expect_identical(compact, before)
+  testthat::expect_equal(nrow(source), 20L)
+  testthat::expect_identical(
+    as.numeric(source$intended_minus_comparator_log2),
+    as.numeric(
+      source$intended_median_centered_log2 -
+        source$comparator_median_centered_log2
+    )
+  )
+  testthat::expect_identical(
+    as.integer(table(source$ProteinGroupID)), rep(2L, 10L)
+  )
+  testthat::expect_false(any(source$analytical_recomputation))
+  testthat::expect_false(any(source$inferential_statistics))
+  testthat::expect_false(any(source$marker_selection_used_difference))
+  testthat::expect_identical(unique(source$source_sha256), "abc123")
+})
+
+testthat::test_that("Figure 2d difference candidate uses unscaled horizontal points without inference", {
+  rendering <- ca_prepare_marker_enrichment_differences_v2(
+    ca_compact_difference_fixture()
+  )
+  plot <- ca_build_marker_enrichment_differences_v2(rendering)
+  testthat::expect_s3_class(plot$layers[[1]]$geom, "GeomVline")
+  testthat::expect_s3_class(plot$layers[[2]]$geom, "GeomPoint")
+  testthat::expect_equal(plot$layers[[1]]$data$xintercept, 0)
+  testthat::expect_null(plot$scales$get_scales("x"))
+  testthat::expect_null(plot$scales$get_scales("size"))
+  testthat::expect_null(plot$scales$get_scales("fill"))
+  testthat::expect_identical(
+    plot$scales$get_scales("colour")$name, ggplot2::waiver()
+  )
+  testthat::expect_identical(plot$labels$colour, "Comparator preparation")
 })
