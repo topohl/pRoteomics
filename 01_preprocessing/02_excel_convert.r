@@ -4,7 +4,7 @@
 # Produces:
 #   - metadata-augmented Excel workbooks and strict GCT v1.3 files
 # File contract:
-#   - GCT v1.3 writer emits #1.3, four-field dimensions, one row metadata column, column metadata rows, and numeric sample columns
+#   - ProTigy-targeted GCT v1.3 writer emits reserved id plus one explicit Description row descriptor, column metadata rows, and numeric sample columns
 
 library(readxl)
 library(dplyr)
@@ -13,6 +13,7 @@ library(tools)
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
+source(repo_path("R", "protigy_input_utils.R"))
 MODULE_ID <- "01_preprocessing"
 SUBSTEP_ID <- "excel_convert"
 CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
@@ -66,24 +67,8 @@ if (mode == "excel") {
 
 # ---- PROCESS EACH DATA FRAME ----
 new_dfs <- lapply(sheet_dfs, function(df) {
-    # Rename "T: Protein.Names" to "id"
-    # Rename "T: Protein.Names" or "Protein.Names" to "id"
-    name_col <- intersect(c("T: Protein.Names", "Protein.Names"), colnames(df))
-    if (length(name_col) == 1) {
-        colnames(df)[colnames(df) == name_col] <- "id"
-        df <- df[, c("id", setdiff(colnames(df), "id"))]
-    }
-    # Remove columns starting from "T: Protein.Group" or "Protein.Group" and after
-    group_col <- intersect(c("T: Protein.Group", "Protein.Group"), colnames(df))
-    if (length(group_col) == 1) {
-        idx <- which(colnames(df) == group_col)
-        if (idx > 1) {
-            df <- df[, seq_len(idx - 1)]
-        } else {
-            # If group_col is the first column, remove all columns (or handle as needed)
-            df <- df[, FALSE]
-        }
-    }
+    # Preserve the historical ProTigy id/truncation semantics in the shared helper.
+    df <- protigy_prepare_legacy_expression(df)
     sample_cols <- intersect(colnames(df), metadata$sample_id)
     if (length(sample_cols) == 0) return(df)
     # Build metadata rows
@@ -179,93 +164,6 @@ for (sheet in names(new_dfs)) {
 }
 
 # ---- SAVE EACH DATA FRAME AS GCT v1.3 ----
-validate_gct_v1.3 <- function(file, expected_rows, expected_sample_cols, expected_row_metadata_cols, expected_col_metadata_rows) {
-    first_lines <- readLines(file, n = 2, warn = FALSE)
-    if (length(first_lines) < 2 || !identical(first_lines[[1]], "#1.3")) {
-        stop("Invalid GCT marker in written file: ", file, call. = FALSE)
-    }
-    dims <- strsplit(first_lines[[2]], "\t", fixed = TRUE)[[1]]
-    if (length(dims) != 4 || any(is.na(suppressWarnings(as.integer(dims))))) {
-        stop("Invalid GCT v1.3 dimension line in written file: ", file, call. = FALSE)
-    }
-    dims <- as.integer(dims)
-    expected <- c(expected_rows, expected_sample_cols, expected_row_metadata_cols, expected_col_metadata_rows)
-    if (!identical(dims, expected)) {
-        stop(
-            "GCT v1.3 dimension mismatch in written file: ", file,
-            ". Expected ", paste(expected, collapse = "\t"),
-            " but found ", paste(dims, collapse = "\t"),
-            call. = FALSE
-        )
-    }
-    invisible(TRUE)
-}
-
-write_gct_v1.3 <- function(df, file, metadata) {
-    meta_row_idx <- which(df$id %in% c(names(metadata), "region_layer_ExpGroup", "phenotypeWithinUnit"))
-    data_rows <- df[-meta_row_idx, , drop = FALSE]
-    data_rows <- data_rows[!is.na(data_rows$id) & data_rows$id != "", , drop = FALSE]
-    sample_cols <- intersect(setdiff(colnames(df), "id"), metadata$sample_id)
-    sample_cols <- intersect(sample_cols, colnames(data_rows))
-    if (length(sample_cols) == 0 || nrow(data_rows) == 0) {
-        warning(sprintf("No data to write for file: %s", file))
-        return()
-    }
-    is_numeric_row <- function(row) {
-        all(suppressWarnings(!is.na(as.numeric(row[sample_cols]))))
-    }
-    numeric_rows_idx <- apply(data_rows, 1, is_numeric_row)
-    data_rows <- data_rows[numeric_rows_idx, , drop = FALSE]
-    for (col in sample_cols) {
-        data_rows[[col]] <- as.numeric(data_rows[[col]])
-    }
-    if (nrow(data_rows) == 0) {
-        warning(sprintf("No numeric data to write for file: %s", file))
-        return()
-    }
-    meta_rows <- df[meta_row_idx, c("id", sample_cols), drop = FALSE]
-    meta_rows <- meta_rows[!is.na(meta_rows$id) & meta_rows$id != "", , drop = FALSE]
-    row_metadata_cols <- "id"
-    con <- file(file, "wt")
-    on.exit(close(con))
-    writeLines("#1.3", con)
-    writeLines(sprintf("%d\t%d\t%d\t%d", nrow(data_rows), length(sample_cols), length(row_metadata_cols), nrow(meta_rows)), con)
-    writeLines(paste(c(row_metadata_cols, sample_cols), collapse = "\t"), con)
-    if (nrow(meta_rows) > 0) {
-        for (i in seq_len(nrow(meta_rows))) {
-            writeLines(paste(unlist(meta_rows[i, c(row_metadata_cols, sample_cols)]), collapse = "\t"), con)
-        }
-    }
-    for (i in seq_len(nrow(data_rows))) {
-        writeLines(paste(unlist(data_rows[i, c(row_metadata_cols, sample_cols)]), collapse = "\t"), con)
-    }
-    close(con)
-    on.exit()
-    validate_gct_v1.3(file, nrow(data_rows), length(sample_cols), length(row_metadata_cols), nrow(meta_rows))
-}
-
-self_test_write_gct_v1.3 <- function() {
-    tmp <- tempfile(fileext = ".gct")
-    test_metadata <- data.frame(
-        sample_id = c("sample1", "sample2", "sample3"),
-        group = c("A", "B", "A"),
-        stringsAsFactors = FALSE
-    )
-    test_df <- data.frame(
-        id = c("group", "protein_a", "protein_b"),
-        sample1 = c("A", 1, 4),
-        sample2 = c("B", 2, 5),
-        sample3 = c("A", 3, 6),
-        stringsAsFactors = FALSE,
-        check.names = FALSE
-    )
-    write_gct_v1.3(test_df, tmp, test_metadata)
-    lines <- readLines(tmp, warn = FALSE)
-    stopifnot(identical(lines[[1]], "#1.3"))
-    stopifnot(identical(lines[[2]], "2\t3\t1\t1"))
-    invisible(TRUE)
-}
-
 self_test_write_gct_v1.3()
 
 for (sheet in names(new_dfs)) {
@@ -278,5 +176,9 @@ write_run_manifest(
     inputs = list(file_path = file_path, folder_path = folder_path, metadata = metadata_path),
     outputs = list(output_dir = output_dir, sheets = names(new_dfs)),
     parameters = list(mode = mode, gct_format = "strict GCT v1.3"),
-    notes = "Excel export behavior is preserved; GCT writer self-test runs before writing outputs."
+    notes = paste(
+      "Excel export behavior is preserved; GCT writer self-test runs before writing outputs.",
+      "ProTigy handoffs use one explicit Description row descriptor; source descriptions are retained",
+      "when present and id is the compatibility fallback when absent."
+    )
 )
