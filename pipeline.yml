@@ -1046,6 +1046,12 @@ stages:
         safe_downstream_rerun: true
         notes: "Validation runs after export products exist."
 legacy:
+  - script: "01_preprocessing/02a_prepare_animal_level_protigy_input.r"
+    replacement: "external/manual ProTigy input boundary"
+    status: "external manual utility documented in RUN_ORDER.md; excluded from canonical runnable stages"
+  - script: "01_preprocessing/03c_legacy_vs_animal_level_da_audit.r"
+    replacement: "standalone pre-promotion DA audit"
+    status: "external diagnostic documented in RUN_ORDER.md; excluded from canonical runnable stages"
   - script: "01_preprocessing/01_impute.r"
     replacement: "01_preprocessing/03_gct_extractR.r"
     status: "older preprocessing branch not used by canonical registry"

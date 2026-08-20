@@ -112,6 +112,31 @@ ProTigy with the new GCTs, a separately authorized migration is required before
 `03_gct_extractR.r` or the normal `--stage all` path may consume corrected
 ProTigy outputs.
 
+After the manual animal-level ProTigy run, validate the six statistical-result
+GCTs and compare DA results directly without mapping or enrichment:
+
+```powershell
+Rscript 01_preprocessing/03c_legacy_vs_animal_level_da_audit.r --dataset all
+```
+
+To create the isolated corrected extraction handoff, set both roots explicitly.
+This does not change the historical defaults or the canonical pipeline registry:
+
+```powershell
+$env:PROTEOMICS_GCT_INPUT_ROOT = "data/processed/01_preprocessing/protigy_output_animal_level"
+$env:PROTEOMICS_GCT_OUTPUT_ROOT = "data/processed/01_preprocessing/gct_extractR_animal_level"
+foreach ($dataset in @("neuron_neuropil", "neuron_soma", "microglia")) {
+  Rscript 01_preprocessing/03_gct_extractR.r --dataset $dataset
+}
+Remove-Item Env:PROTEOMICS_GCT_INPUT_ROOT
+Remove-Item Env:PROTEOMICS_GCT_OUTPUT_ROOT
+```
+
+The extractor accepts historical `.over.` and corrected `_over_` comparison
+syntax. Corrected animal-level roots are strict: only within-unit 2/1, 3/2, and
+3/1 comparisons are accepted. Outputs remain isolated under
+`data/processed/01_preprocessing/gct_extractR_animal_level/<dataset>/`.
+
 Direct script commands:
 
 Stage 05 Phase 2B remains the quantitative production boundary. The atomic
