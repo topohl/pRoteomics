@@ -95,6 +95,16 @@ fails closed on duplicate same-side hemispheres, hemisphere-label conflicts,
 dataset mismatches, sample reuse, or invalid E9 animal/group balance. Failure
 audits are retained, but an invalid dataset does not receive a new GCT/XLSX
 handoff.
+
+Each ProTigy-targeted GCT deliberately writes `id`, one explicit row descriptor
+named `Description`, and then the sample columns. `Description` is populated from
+the dataset-specific `First.Protein.Description` field when available and falls
+back to `id` only when an independent description is absent or blank. Although
+GCT v1.3 can structurally permit zero row descriptors, the current Broad
+ProTigy/cmapR downstream workflow expects row descriptor names to align with the
+matrix row names; the explicit descriptor is therefore a ProTigy compatibility
+contract. Column-metadata rows use `na` in the descriptor filler cell.
+
 The stage is intentionally not registered in `pipeline.yml`: ProTigy remains an
 external/manual analysis boundary, and the active `core` stage still consumes
 the historical files under `protigy_output/<dataset>/`. After manually running
