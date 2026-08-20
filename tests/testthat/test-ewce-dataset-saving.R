@@ -12,7 +12,8 @@ testthat::test_that("EWCE script parses --dataset before output paths are create
   pos_create_dirs <- regexpr("CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)", txt, fixed = TRUE)[1]
   testthat::expect_gt(pos_current_dataset, pos_dataset_cli)
   testthat::expect_gt(pos_create_dirs, pos_current_dataset)
-  testthat::expect_true(grepl('SUBSTEP_ID <- file.path\\("EWCE_E9", EWCE_DATASET\\)', txt))
+  testthat::expect_true(grepl('file.path\\("EWCE_E9", EWCE_DATASET\\)', txt))
+  testthat::expect_true(grepl('file.path\\("EWCE_E9_comparison", EWCE_BRANCH, EWCE_DATASET\\)', txt))
 })
 
 testthat::test_that("EWCE dry-run honors dataset-specific output folders", {
@@ -39,4 +40,65 @@ testthat::test_that("EWCE dry-run honors dataset-specific output folders", {
   testthat::expect_true(grepl("Dataset: neuron_soma", soma, fixed = TRUE))
   testthat::expect_true(grepl("pgmatrix_imputed_neuron_soma_", soma, fixed = TRUE))
   testthat::expect_true(grepl("EWCE_E9/neuron_soma", soma, fixed = TRUE))
+})
+
+testthat::test_that("EWCE animal mode is isolated and reports the shared aggregation contract", {
+  source(testthat::test_path("..", "..", "R", "paths.R"))
+  old_unit <- Sys.getenv("PROTEOMICS_EWCE_ANALYSIS_UNIT", unset = NA_character_)
+  old_branch <- Sys.getenv("PROTEOMICS_EWCE_BRANCH", unset = NA_character_)
+  on.exit({
+    if (is.na(old_unit)) Sys.unsetenv("PROTEOMICS_EWCE_ANALYSIS_UNIT") else Sys.setenv(PROTEOMICS_EWCE_ANALYSIS_UNIT = old_unit)
+    if (is.na(old_branch)) Sys.unsetenv("PROTEOMICS_EWCE_BRANCH") else Sys.setenv(PROTEOMICS_EWCE_BRANCH = old_branch)
+  }, add = TRUE)
+  Sys.setenv(PROTEOMICS_EWCE_ANALYSIS_UNIT = "animal", PROTEOMICS_EWCE_BRANCH = "animal_level")
+  old_wd <- setwd(repo_path())
+  on.exit(setwd(old_wd), add = TRUE)
+  out <- suppressWarnings(system2(
+    file.path(R.home("bin"), "Rscript"),
+    c("05_celltype_enrichment_EWCE/01_EWCE_E9.r", "--dataset", "neuron_soma", "--dry-run"),
+    stdout = TRUE,
+    stderr = TRUE
+  ))
+  out <- paste(out, collapse = "\n")
+  testthat::expect_true(grepl("Analysis unit: animal", out, fixed = TRUE))
+  testthat::expect_true(grepl("Animal-level column count: 36", out, fixed = TRUE))
+  testthat::expect_true(grepl("Legacy cache reuse allowed: FALSE", out, fixed = TRUE))
+  testthat::expect_true(grepl("EWCE_E9_comparison/animal_level/neuron_soma", out, fixed = TRUE))
+  testthat::expect_false(grepl("EWCE_E9/neuron_soma", out, fixed = TRUE))
+})
+
+testthat::test_that("EWCE animal-level safeguards and cache identity are present", {
+  source(testthat::test_path("..", "..", "R", "paths.R"))
+  script <- repo_path("05_celltype_enrichment_EWCE/01_EWCE_E9.r")
+  txt <- paste(readLines(script, warn = FALSE), collapse = "\n")
+  testthat::expect_true(grepl("protigy_prepare_animal_level", txt, fixed = TRUE))
+  testthat::expect_true(grepl("animal_bundle$output_metadata", txt, fixed = TRUE))
+  testthat::expect_true(grepl("group_by(Gene, Stratum, Cond)", txt, fixed = TRUE))
+  testthat::expect_true(grepl("input_matrix_sha256", txt, fixed = TRUE))
+  testthat::expect_true(grepl("hit_gene_set_sha256", txt, fixed = TRUE))
+  testthat::expect_true(grepl("background_gene_set_sha256", txt, fixed = TRUE))
+  testthat::expect_true(grepl("ctd_annotation_gene_set_sha256", txt, fixed = TRUE))
+  testthat::expect_true(grepl('identical\\(EWCE_ANALYSIS_UNIT, "sample"\\)', txt))
+  testthat::expect_true(grepl("PROTEOMICS_EWCE_BRANCH is required", txt, fixed = TRUE))
+})
+
+testthat::test_that("EWCE rejects an invalid comparison branch before analysis", {
+  source(testthat::test_path("..", "..", "R", "paths.R"))
+  old_branch <- Sys.getenv("PROTEOMICS_EWCE_BRANCH", unset = NA_character_)
+  on.exit({
+    if (is.na(old_branch)) Sys.unsetenv("PROTEOMICS_EWCE_BRANCH") else Sys.setenv(PROTEOMICS_EWCE_BRANCH = old_branch)
+  }, add = TRUE)
+  Sys.setenv(PROTEOMICS_EWCE_BRANCH = "bad branch")
+  old_wd <- setwd(repo_path())
+  on.exit(setwd(old_wd), add = TRUE)
+  out <- suppressWarnings(system2(
+    file.path(R.home("bin"), "Rscript"),
+    c("05_celltype_enrichment_EWCE/01_EWCE_E9.r", "--dataset", "neuron_soma", "--dry-run"),
+    stdout = TRUE,
+    stderr = TRUE
+  ))
+  status <- attr(out, "status")
+  if (is.null(status)) status <- 0L
+  testthat::expect_true(status != 0L)
+  testthat::expect_true(grepl("must match", paste(out, collapse = "\n"), fixed = TRUE))
 })
