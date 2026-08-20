@@ -2,8 +2,8 @@
 # Script: 02_id_mapping/01_MapThatProt_batch.r
 # Stage: core
 # Scope: dataset_specific
-# Consumes: required data/processed/01_preprocessing/gct_extractR/<dataset>/forward/*.csv; data/external/MOUSE_10090_idmapping.dat; optional manual protein and gene-annotation mapping tables.
-# Produces: data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv; results/tables/02_id_mapping/<dataset>/mapped/forward/summaries/*.csv.
+# Consumes: required PROTEOMICS_GCT_EXTRACT_ROOT/<dataset>/<direction>/*.csv (historical default data/processed/01_preprocessing/gct_extractR); data/external/MOUSE_10090_idmapping.dat; optional manual protein and gene-annotation mapping tables.
+# Produces: PROTEOMICS_MAPPING_OUTPUT_ROOT/{mapped,unmapped,member_bridge}/<dataset>/<direction>/per_file/ (historical default data/processed/02_id_mapping) plus namespaced QC outputs.
 # Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Maps GCT-derived protein IDs to UniProt/gene symbols; enrichment consumes these mapped files.
 # ================================================================
@@ -49,9 +49,9 @@ paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.
 source(paths_file)
 source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "protein_mapping_utils.R"))
+source(repo_path("R", "mapping_branch_utils.R"))
 MODULE_ID <- "02_id_mapping"
 SUBSTEP_ID <- "MapThatProt_batch"
-CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
 
 load_required_packages <- function(pkgs) {
     missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
@@ -88,38 +88,36 @@ cat("Target Comparison:", mapped_comparisons, "\n")
 cat("Mapping Direction:", map_direction, "\n")
 cat("Recompute existing tables:", force_rerun, "\n")
 
-raw_dir <- path_processed("01_preprocessing", "gct_extractR", mapped_comparisons, map_direction)
+mapping_roots <- resolve_mapthatprot_roots()
+mapping_paths <- resolve_mapthatprot_paths(mapped_comparisons, map_direction, mapping_roots)
+CANONICAL_PATHS <- list(
+    tables = mapping_paths$tables_root,
+    logs = mapping_paths$logs_root,
+    reports = mapping_paths$reports_root
+)
+raw_dir <- mapping_paths$raw_dir
 
 # Define output directories for mapped datasets, unmapped trackers, and QC info
 info_dir <- file.path(CANONICAL_PATHS$logs, mapped_comparisons, "mapped", map_direction, "info")
-mapped_dir <- path_processed(MODULE_ID, "mapped", mapped_comparisons, map_direction, "per_file")
+mapped_dir <- mapping_paths$mapped_dir
 mapped_summary_dir <- file.path(CANONICAL_PATHS$tables, mapped_comparisons, "mapped", map_direction, "summaries")
-unmapped_dir <- path_processed(MODULE_ID, "unmapped", mapped_comparisons, map_direction, "per_file")
+unmapped_dir <- mapping_paths$unmapped_dir
 unmapped_summary_dir <- file.path(CANONICAL_PATHS$tables, mapped_comparisons, "unmapped", map_direction, "summaries")
-member_bridge_dir <- path_processed(MODULE_ID, "member_bridge", mapped_comparisons, map_direction, "per_file")
+member_bridge_dir <- mapping_paths$member_bridge_dir
 protein_group_audit_dir <- file.path(CANONICAL_PATHS$tables, mapped_comparisons, "protein_groups", map_direction, "audits")
 accession_annotation_audit_dir <- file.path(CANONICAL_PATHS$tables, mapped_comparisons, "gene_annotation", map_direction, "accessions")
 protein_group_annotation_audit_dir <- file.path(CANONICAL_PATHS$tables, mapped_comparisons, "gene_annotation", map_direction, "protein_groups")
 report_dir <- file.path(CANONICAL_PATHS$reports, mapped_comparisons, "mapping_reports", map_direction)
 
-# Initialize output folder structure
-cat("Initializing output directories...\n")
-dir.create(info_dir, recursive = TRUE, showWarnings = FALSE)
-dir.create(mapped_dir, recursive = TRUE, showWarnings = FALSE)
-dir.create(mapped_summary_dir, recursive = TRUE, showWarnings = FALSE)
-dir.create(unmapped_dir, recursive = TRUE, showWarnings = FALSE)
-dir.create(unmapped_summary_dir, recursive = TRUE, showWarnings = FALSE)
-dir.create(member_bridge_dir, recursive = TRUE, showWarnings = FALSE)
-dir.create(protein_group_audit_dir, recursive = TRUE, showWarnings = FALSE)
-dir.create(accession_annotation_audit_dir, recursive = TRUE, showWarnings = FALSE)
-dir.create(protein_group_annotation_audit_dir, recursive = TRUE, showWarnings = FALSE)
-dir.create(report_dir, recursive = TRUE, showWarnings = FALSE)
-
 # --- Reference Databases ---
 # Define path for central UniProt species-specific knowledgebase flatfile
 uniprot_mapping_file_path <- path_external("MOUSE_10090_idmapping.dat")
 
-csv_files <- list.files(raw_dir, pattern = ".*_.*\\.csv$", full.names = TRUE)
+csv_files <- list_mapthatprot_input_files(raw_dir)
+input_count_validation <- tryCatch(
+    validate_mapthatprot_input_count(mapped_comparisons, map_direction, mapping_roots$gct_extract_root, csv_files),
+    error = function(e) e
+)
 if (is_dry_run()) {
     expected_mapped <- file.path(mapped_dir, basename(csv_files))
     expected_unmapped <- file.path(unmapped_dir, basename(csv_files))
@@ -140,11 +138,25 @@ if (is_dry_run()) {
         file.exists(expected_info) &
         file.exists(expected_mapped_summary) &
         file.exists(expected_unmapped_summary)
+    resolution_report <- if (!inherits(input_count_validation, "error")) {
+        mapthatprot_resolution_report(mapping_paths, input_count_validation)
+    } else {
+        c(
+            "Resolved dataset" = mapped_comparisons,
+            "Mapping direction" = map_direction,
+            "GCT extract input root" = mapping_roots$gct_extract_root,
+            "Mapping output root" = mapping_roots$mapping_output_root,
+            "Results namespace" = mapping_paths$analysis_namespace
+        )
+    }
     dry_run_line("Script", "02_id_mapping/01_MapThatProt_batch.r")
-    dry_run_line("Resolved dataset", mapped_comparisons)
-    dry_run_line("Mapping direction", map_direction)
+    for (label in names(resolution_report)[seq_len(min(5L, length(resolution_report)))]) {
+        dry_run_line(label, resolution_report[[label]])
+    }
     dry_run_line("Raw contrast directory", raw_dir, if (dir.exists(raw_dir)) "PASS" else "FAIL")
-    dry_run_line("Raw contrast CSV count", length(csv_files), if (length(csv_files) > 0) "PASS" else "FAIL")
+    expected_count_label <- if (inherits(input_count_validation, "error") || is.na(input_count_validation$expected)) "at least 1" else input_count_validation$expected
+    dry_run_line("Expected raw contrast CSV count", expected_count_label)
+    dry_run_line("Raw contrast CSV count", length(csv_files), if (!inherits(input_count_validation, "error")) "PASS" else "FAIL")
     dry_run_line("Already mapped table sets", sum(existing_complete))
     dry_run_line("Remaining table sets", sum(!existing_complete))
     dry_run_line("Recompute existing tables", force_rerun)
@@ -158,10 +170,21 @@ if (is_dry_run()) {
     dry_run_line("Member bridge output directory", member_bridge_dir)
     dry_run_line("Protein-group audit directory", protein_group_audit_dir)
     dry_run_line("Reports directory", report_dir)
-    quit(status = if (dir.exists(raw_dir) && length(csv_files) > 0 && file.exists(uniprot_mapping_file_path)) 0 else 1, save = "no")
+    if (inherits(input_count_validation, "error")) dry_run_line("Input-count validation", conditionMessage(input_count_validation), "FAIL")
+    quit(status = if (dir.exists(raw_dir) && !inherits(input_count_validation, "error") && file.exists(uniprot_mapping_file_path)) 0 else 1, save = "no")
 }
 if (!dir.exists(raw_dir)) stop("Raw contrast directory not found: ", raw_dir, call. = FALSE)
-if (length(csv_files) == 0) stop("No .csv files found in: ", raw_dir, call. = FALSE)
+if (inherits(input_count_validation, "error")) stop(conditionMessage(input_count_validation), call. = FALSE)
+
+# Initialize output folder structure only after all dry-run and input checks pass.
+cat("Initializing output directories...\n")
+for (directory in c(
+    info_dir, mapped_dir, mapped_summary_dir, unmapped_dir, unmapped_summary_dir,
+    member_bridge_dir, protein_group_audit_dir, accession_annotation_audit_dir,
+    protein_group_annotation_audit_dir, report_dir
+)) {
+    dir.create(directory, recursive = TRUE, showWarnings = FALSE)
+}
 
 # Auto-download the UniProt mapping file if missing (useful for reproducibility)
 if (!file.exists(uniprot_mapping_file_path)) {
@@ -188,11 +211,11 @@ utils::write.csv(
     data.frame(
         comparison_family = mapped_comparisons,
         map_direction = map_direction,
-        input_type = c("raw_contrast_directory", "uniprot_mapping", "manual_protein_mapping", "manual_gene_annotation"),
-        path = c(raw_dir, uniprot_mapping_file_path,
+        input_type = c("gct_extract_root", "mapping_output_root", "raw_contrast_directory", "uniprot_mapping", "manual_protein_mapping", "manual_gene_annotation"),
+        path = c(mapping_roots$gct_extract_root, mapping_roots$mapping_output_root, raw_dir, uniprot_mapping_file_path,
             Sys.getenv("PROTEOMICS_MANUAL_MAPPING_FILE", unset = path_metadata("manual_mapping.xlsx")),
             Sys.getenv("PROTEOMICS_MANUAL_GENE_ANNOTATION_FILE", unset = path_metadata("manual_gene_annotation_overrides.csv"))),
-        md5 = c(NA_character_, file_hash(uniprot_mapping_file_path),
+        md5 = c(NA_character_, NA_character_, NA_character_, file_hash(uniprot_mapping_file_path),
             file_hash(Sys.getenv("PROTEOMICS_MANUAL_MAPPING_FILE", unset = path_metadata("manual_mapping.xlsx"))),
             file_hash(Sys.getenv("PROTEOMICS_MANUAL_GENE_ANNOTATION_FILE", unset = path_metadata("manual_gene_annotation_overrides.csv")))),
         stringsAsFactors = FALSE
