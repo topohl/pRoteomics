@@ -48,6 +48,29 @@ nature_palette <- function(role = c("group", "dataset", "signed", "support", "ja
   NATURE_SEMANTIC_PALETTES[[role]]
 }
 
+nature_anatomical_island_palette <- function() {
+  c(
+    "Microglia-enriched ROI::CA1" = "#B9E1DC",
+    "Microglia-enriched ROI::CA2" = "#8FCBC4",
+    "Microglia-enriched ROI::CA3" = "#69B3AA",
+    "Microglia-enriched ROI::DG" = "#4E958B",
+    "Neuropil::CA1-SLM" = "#5B9085",
+    "Neuropil::CA1-SO" = "#477F74",
+    "Neuropil::CA1-SR" = "#356F64",
+    "Neuropil::CA2-SLM" = "#6C9B92",
+    "Neuropil::CA2-SO" = "#4B8378",
+    "Neuropil::CA2-SR" = "#31685E",
+    "Neuropil::CA3-SO" = "#296058",
+    "Neuropil::CA3-SR" = "#23534D",
+    "Neuropil::DG-MO" = "#7EAAA2",
+    "Neuropil::DG-PO" = "#588A80",
+    "Soma::CA1-SP" = "#626262",
+    "Soma::CA2-SP" = "#7F7F7F",
+    "Soma::CA3-SP" = "#9A9A9A",
+    "Soma::DG-SP" = "#B3B3B3"
+  )
+}
+
 mm_to_in <- function(mm) {
   as.numeric(mm) / 25.4
 }

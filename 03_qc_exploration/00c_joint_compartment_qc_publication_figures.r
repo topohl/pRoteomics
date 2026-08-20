@@ -172,26 +172,7 @@ pca_plot_data$Island <- ifelse(
   )
 )
 pca_plot_data$IslandKey <- paste(as.character(pca_plot_data$Dataset), pca_plot_data$Island, sep = "::")
-pca_island_palette <- c(
-  "Microglia-enriched ROI::CA1" = "#B9E1DC",
-  "Microglia-enriched ROI::CA2" = "#8FCBC4",
-  "Microglia-enriched ROI::CA3" = "#69B3AA",
-  "Microglia-enriched ROI::DG" = "#4E958B",
-  "Neuropil::CA1-SLM" = "#5B9085",
-  "Neuropil::CA1-SO" = "#477F74",
-  "Neuropil::CA1-SR" = "#356F64",
-  "Neuropil::CA2-SLM" = "#6C9B92",
-  "Neuropil::CA2-SO" = "#4B8378",
-  "Neuropil::CA2-SR" = "#31685E",
-  "Neuropil::CA3-SO" = "#296058",
-  "Neuropil::CA3-SR" = "#23534D",
-  "Neuropil::DG-MO" = "#7EAAA2",
-  "Neuropil::DG-PO" = "#588A80",
-  "Soma::CA1-SP" = "#626262",
-  "Soma::CA2-SP" = "#7F7F7F",
-  "Soma::CA3-SP" = "#9A9A9A",
-  "Soma::DG-SP" = "#B3B3B3"
-)
+pca_island_palette <- nature_anatomical_island_palette()
 if (!setequal(names(pca_island_palette), unique(pca_plot_data$IslandKey))) {
   stop("Figure 2C island palette does not match the completed PCA island keys.", call. = FALSE)
 }
@@ -213,15 +194,12 @@ pca_island_labels <- pca_all_island_labels[vapply(
   },
   logical(1)
 ), , drop = FALSE]
-pca_class_labels <- data.frame(
-  Dataset = factor(
-    c("Microglia-enriched ROI", "Neuropil", "Soma"),
-    levels = levels(pca_plot_data$Dataset)
-  ),
-  class_label = c("Microglia", "Neuropil", "Neuron soma"),
-  PC1 = c(-22, 4, 73),
-  PC2 = c(-40, 30, 20)
-)
+pca_class_labels <- joint_pub_pca_class_label_positions(pca_plot_data)
+# These are descriptive covariance/grouping ellipses around observed PCA-score
+# groupings. They are not confidence intervals and samples are not treated as
+# independent replicates for an inferential ellipse calculation.
+pca_ellipse_interpretation <-
+  "descriptive covariance/grouping ellipses; not confidence intervals"
 p_pca_dataset <- ggplot2::ggplot(pca_plot_data, ggplot2::aes(PC1, PC2, colour = Dataset)) +
   ggplot2::stat_ellipse(
     ggplot2::aes(fill = Dataset, group = Dataset),
@@ -255,9 +233,10 @@ p_pca_dataset <- ggplot2::ggplot(pca_plot_data, ggplot2::aes(PC1, PC2, colour = 
   ggplot2::guides(colour = dataset_guide) +
   base_theme
 
-# Alternative Figure 2C candidate: one compact, borderless local ellipse per
-# anatomy/layer island. Island shades remain within their parent compartment's
-# palette family; no PCA coordinates or source values are changed.
+# Alternative Figure 2C candidate: one compact, borderless descriptive
+# covariance/grouping ellipse per anatomy/layer island. Island shades remain
+# within their parent compartment's palette family; no PCA coordinates or
+# source values are changed and no confidence interval is implied.
 p_pca_anatomical_ellipses <- ggplot2::ggplot(pca_plot_data, ggplot2::aes(PC1, PC2)) +
   ggplot2::stat_ellipse(
     ggplot2::aes(fill = IslandKey, group = IslandKey),
@@ -554,6 +533,7 @@ if (render_anatomical_island_only) {
     p_pca_anatomical_ellipses, panel_files[["anatomical_island_pca"]], 89, 62
   )
   message("Anatomical-island PCA candidate-only rendering complete.")
+  message("Ellipse interpretation: ", pca_ellipse_interpretation)
   quit(status = 0, save = "no")
 }
 joint_pub_save_svg(p_pca_dataset, panel_files[["main_pca"]], 89, 62)
@@ -614,6 +594,8 @@ writeLines(c(
   paste0("- Extended Data figure: `", normalizePath(extended_file, winslash = "/", mustWork = FALSE), "` (183 x 235 mm)"),
   paste0("- Editable source panels: `", normalizePath(panel_root, winslash = "/", mustWork = FALSE), "`"),
   paste0("- PCA axes: ", pc_x_label, "; ", pc_y_label, "."),
+  paste0("- PCA ellipses: ", pca_ellipse_interpretation, "."),
+  "- Broad-compartment labels use deterministic PCA-score quantiles plus small span-relative offsets.",
   paste0("- Primary/complete-case distance concordance: Pearson r = ", sprintf("%.6f", distance_r), "."),
   paste0("- Correlation heatmap scale: ", sprintf("%.2f", corr_floor), " to 1.00; average-linkage clustering on 1 - Pearson correlation."),
   paste0("- Missingness heatmap: ", nrow(selection), " broad-union ProteinGroupIDs with the greatest max-minus-min detection-rate range across biological datasets; samples ordered by dataset, plate, region and layer; proteins average-linkage clustered by binary detection pattern."),
@@ -639,6 +621,9 @@ write_run_manifest(
     main_dimensions_mm = "183x188",
     extended_dimensions_mm = "183x235",
     missingness_feature_rule = "top 200 max-minus-min detection-rate range across datasets",
+    pca_ellipse_interpretation = pca_ellipse_interpretation,
+    pca_class_label_positioning =
+      "deterministic within-dataset PCA-score quantiles plus span-relative offsets",
     correlation_scale = paste0(sprintf("%.2f", corr_floor), " to 1.00")
   ),
   notes = "Publication rendering only; completed PCA/UMAP/t-SNE coordinates and source tables are consumed unchanged."

@@ -250,6 +250,164 @@ testthat::test_that("compact recognizable marker candidate is explicit and bound
   )
 })
 
+ca_compact_candidate_fixture <- function() {
+  requested <- ca_requested_intuitive_markers_v2()
+  requested$ProteinGroupID <- paste0("PG", seq_len(nrow(requested)))
+  marker_mapping <- transform(
+    requested,
+    matched = TRUE,
+    canonical_marker_eligible = TRUE,
+    conflicting_marker_classes = FALSE,
+    gene_claim_eligible = TRUE,
+    joint_qc_eligible = TRUE,
+    joint_qc_exclusion_reason = NA_character_,
+    feature_official_gene_symbol = marker_gene,
+    intended_primary_eligible = TRUE,
+    intended_strict_eligible = TRUE,
+    exclusion_reason_primary = NA_character_
+  )
+  datasets <- names(ca_manuscript_dataset_labels)
+  marker_detection <- merge(
+    requested[c(
+      "marker_class", "ProteinGroupID", "marker_gene", "intended_dataset"
+    )],
+    data.frame(dataset = datasets, stringsAsFactors = FALSE),
+    by = NULL
+  )
+  marker_detection$valid_animal_count <- 3L
+  marker_detection$valid_animal_fraction <- 1
+  marker_detection$primary_eligible <- TRUE
+  marker_detection$strict_eligible <- TRUE
+  marker_detection$reliability_status <- "reliably_detected"
+  marker_detection$intended_compartment <-
+    marker_detection$dataset == marker_detection$intended_dataset
+  marker_detection$normalization_source <- "completed centered source"
+  marker_detection$feature_universe <- "completed authoritative v2"
+  marker_detection$animal_detection_threshold <- ">=2_of_3_CON_animals"
+  marker_detection$region_threshold <- ">=3_of_4_regions_per_valid_hemisphere"
+  marker_detection$hemisphere_handling <- "equal_weight_valid_hemispheres"
+  marker_detection$marker_source_policy <- "authoritative_external_registry"
+  marker_detection$quantitative_value_status <- "observed_nonimputed"
+  marker_detection$selection_policy <-
+    "external_configuration_plus_intended_detection_no_observed_effect"
+
+  compact <- ca_compact_recognizable_marker_config_v2()
+  compact_ids <- marker_mapping$ProteinGroupID[
+    match(compact$marker_gene, marker_mapping$marker_gene)
+  ]
+  unreliable_pid <- compact_ids[[2]]
+  unreliable_dataset <- setdiff(
+    datasets, compact$intended_dataset[[2]]
+  )[[1]]
+  unreliable <- marker_detection$ProteinGroupID == unreliable_pid &
+    marker_detection$dataset == unreliable_dataset
+  marker_detection$valid_animal_count[unreliable] <- 1L
+  marker_detection$valid_animal_fraction[unreliable] <- 1 / 3
+  marker_detection$primary_eligible[unreliable] <- FALSE
+  marker_detection$strict_eligible[unreliable] <- FALSE
+  marker_detection$reliability_status[unreliable] <- "not_reliably_detected"
+
+  marker_direction <- requested[c("marker_class", "ProteinGroupID")]
+  marker_direction$expected_direction_classification <- "intended_highest"
+  discordant_pid <- compact_ids[[1]]
+  marker_direction$expected_direction_classification[
+    marker_direction$ProteinGroupID == discordant_pid
+  ] <- "discordant_intended_not_highest"
+
+  selected <- merge(
+    data.frame(
+      marker_gene = compact$marker_gene,
+      ProteinGroupID = compact_ids,
+      stringsAsFactors = FALSE
+    ),
+    compact, by = "marker_gene", sort = FALSE
+  )
+  eligible_alternatives <- selected[c(
+    "marker_class", "ProteinGroupID", "marker_gene", "intended_dataset"
+  )]
+
+  animal_abundance <- merge(
+    selected[c("ProteinGroupID")],
+    merge(
+      data.frame(dataset = datasets, stringsAsFactors = FALSE),
+      data.frame(AnimalID = paste0("A", 1:3), stringsAsFactors = FALSE),
+      by = NULL
+    ),
+    by = NULL
+  )
+  animal_abundance$animal_log2_abundance <-
+    match(animal_abundance$dataset, datasets) +
+    as.integer(sub("^PG", "", animal_abundance$ProteinGroupID)) / 100
+  animal_abundance$aggregation <- "primary_median_hierarchy"
+  animal_abundance <- animal_abundance[!(
+    animal_abundance$ProteinGroupID == unreliable_pid &
+      animal_abundance$dataset == unreliable_dataset &
+      animal_abundance$AnimalID != "A1"
+  ), , drop = FALSE]
+
+  rank_table <- data.frame(
+    dataset = "neuron_soma", ProteinGroupID = "unused",
+    official_gene_symbol = "unused", RankGroup = "CON_region_balanced_mean",
+    valid_animal_count = 3L, valid_animal_fraction = 1,
+    primary_eligible = TRUE, strict_eligible = TRUE,
+    reliability_status = "reliably_detected", joint_qc_eligible = TRUE,
+    joint_qc_exclusion_reason = NA_character_, gene_level_claim_allowed = TRUE,
+    stringsAsFactors = FALSE
+  )
+  list(
+    animal_abundance = animal_abundance,
+    marker_mapping = marker_mapping,
+    marker_detection = marker_detection,
+    marker_direction = marker_direction,
+    eligible_alternatives = eligible_alternatives,
+    rank_table = rank_table,
+    discordant_pid = discordant_pid,
+    unreliable_pid = unreliable_pid,
+    unreliable_dataset = unreliable_dataset
+  )
+}
+
+testthat::test_that("compact marker selection ignores observed direction and retains unreliable off-target cells", {
+  x <- ca_compact_candidate_fixture()
+  rendering <- ca_prepare_compact_recognizable_markers_v2(
+    x$animal_abundance, x$marker_mapping, x$marker_detection,
+    x$marker_direction, x$eligible_alternatives, x$rank_table
+  )
+  testthat::expect_true(x$discordant_pid %in% rendering$provenance$ProteinGroupID)
+  discordant <- rendering$provenance$ProteinGroupID == x$discordant_pid
+  testthat::expect_identical(
+    rendering$provenance$expected_direction_classification[discordant],
+    "discordant_intended_not_highest"
+  )
+  testthat::expect_false(any(
+    rendering$provenance$marker_selection_used_observed_cross_compartment_direction
+  ))
+  unreliable <- rendering$dot$ProteinGroupID == x$unreliable_pid &
+    rendering$dot$dataset == x$unreliable_dataset
+  testthat::expect_equal(sum(unreliable), 1L)
+  testthat::expect_identical(
+    rendering$dot$quantitative_value_status[unreliable],
+    "not_quantitatively_estimable"
+  )
+  testthat::expect_true(is.na(rendering$dot$displayed_centered_log2[unreliable]))
+  testthat::expect_identical(rendering$dot$missing_symbol[unreliable], "\u00d7")
+
+  difference_rendering <- ca_prepare_marker_enrichment_differences_v2(rendering$dot)
+  differences <- difference_rendering$source
+  affected <- differences$ProteinGroupID == x$unreliable_pid &
+    differences$comparator_preparation == x$unreliable_dataset
+  testthat::expect_equal(sum(affected), 1L)
+  testthat::expect_identical(
+    differences$comparison_status[affected], "not_quantitatively_estimable"
+  )
+  testthat::expect_true(is.na(differences$intended_minus_comparator_log2[affected]))
+  testthat::expect_silent(
+    ggplot2::ggplot_build(ca_build_marker_enrichment_differences_v2(
+      difference_rendering
+    ))
+  )
+})
+
 ca_render_v2_fixture <- function() {
   classes <- ca_display_class_order
   selection <- data.frame(
@@ -355,7 +513,10 @@ ca_compact_difference_fixture <- function() {
   source$expected_direction_classification <- "intended_highest"
   source$normalization_source <- "completed centered source"
   source$feature_universe <- "completed authoritative v2"
-  source$quantitative_value_status <- "observed"
+  source$quantitative_value_status <- "quantitatively_estimable"
+  source$primary_eligible <- TRUE
+  source$strict_eligible <- TRUE
+  source$reliability_status <- "reliably_detected"
   source$analytical_recomputation <- FALSE
   source
 }
@@ -392,6 +553,7 @@ testthat::test_that("Figure 2d difference candidate uses unscaled horizontal poi
   plot <- ca_build_marker_enrichment_differences_v2(rendering)
   testthat::expect_s3_class(plot$layers[[1]]$geom, "GeomVline")
   testthat::expect_s3_class(plot$layers[[2]]$geom, "GeomPoint")
+  testthat::expect_s3_class(plot$layers[[3]]$geom, "GeomPoint")
   testthat::expect_equal(plot$layers[[1]]$data$xintercept, 0)
   testthat::expect_null(plot$scales$get_scales("x"))
   testthat::expect_null(plot$scales$get_scales("size"))

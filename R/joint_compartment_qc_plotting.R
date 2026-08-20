@@ -78,6 +78,52 @@ joint_pub_equal_limits <- function(x, y, padding = 0.04) {
   )
 }
 
+joint_pub_pca_class_label_positions <- function(pca_data) {
+  required <- c("Dataset", "PC1", "PC2")
+  missing <- setdiff(required, names(pca_data))
+  if (length(missing)) {
+    stop("PCA class-label data are missing: ", paste(missing, collapse = ", "), call. = FALSE)
+  }
+  if (any(!is.finite(pca_data$PC1)) || any(!is.finite(pca_data$PC2))) {
+    stop("PCA class-label positions require finite coordinates.", call. = FALSE)
+  }
+  datasets <- c("Microglia-enriched ROI", "Neuropil", "Soma")
+  if (!setequal(unique(as.character(pca_data$Dataset)), datasets)) {
+    stop("PCA class-label positions require all three canonical datasets.", call. = FALSE)
+  }
+  span <- max(diff(range(pca_data$PC1)), diff(range(pca_data$PC2)))
+  rules <- data.frame(
+    Dataset = datasets,
+    x_quantile = c(0.50, 0.90, 0.50),
+    y_quantile = c(0.10, 0.90, 0.75),
+    x_offset_fraction = c(0, 0.02, -0.02),
+    y_offset_fraction = c(-0.02, 0.015, 0.015),
+    class_label = c("Microglia", "Neuropil", "Neuron soma"),
+    stringsAsFactors = FALSE
+  )
+  rows <- lapply(seq_len(nrow(rules)), function(i) {
+    z <- pca_data[as.character(pca_data$Dataset) == rules$Dataset[[i]], , drop = FALSE]
+    data.frame(
+      Dataset = rules$Dataset[[i]],
+      class_label = rules$class_label[[i]],
+      PC1 = unname(stats::quantile(z$PC1, rules$x_quantile[[i]], names = FALSE)) +
+        rules$x_offset_fraction[[i]] * span,
+      PC2 = unname(stats::quantile(z$PC2, rules$y_quantile[[i]], names = FALSE)) +
+        rules$y_offset_fraction[[i]] * span,
+      label_position_rule = paste0(
+        "data_quantiles_q", rules$x_quantile[[i]], "_q", rules$y_quantile[[i]],
+        "_plus_span_offsets_", rules$x_offset_fraction[[i]], "_",
+        rules$y_offset_fraction[[i]]
+      ),
+      stringsAsFactors = FALSE
+    )
+  })
+  out <- do.call(rbind, rows)
+  out$Dataset <- factor(out$Dataset, levels = datasets)
+  rownames(out) <- NULL
+  out
+}
+
 joint_pub_select_detection_features <- function(detected_binary, dataset, n = 200L) {
   detected_binary <- as.matrix(detected_binary)
   storage.mode(detected_binary) <- "numeric"

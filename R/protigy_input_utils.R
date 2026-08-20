@@ -57,7 +57,7 @@ protigy_prepare_legacy_expression <- function(df) {
     df$Description <- descriptions
     df <- df[, c("id", "Description", setdiff(colnames(df), c("id", "Description"))), drop = FALSE]
     attr(df, "protigy_description_source") <- description_source
-    attr(df, "protigy_description_fallback_count") <- sum(fallback)
+    attr(df, "protigy_description_fallback_rows") <- fallback
   }
   df
 }
@@ -316,7 +316,7 @@ self_test_write_gct_v1.3 <- function() {
   write_gct_v1.3(test_df, tmp, test_metadata)
   lines <- readLines(tmp, warn = FALSE)
   stopifnot(identical(lines[[1]], "#1.3"))
-  stopifnot(identical(lines[[2]], "2\t3\t0\t1"))
+  stopifnot(identical(lines[[2]], "2\t3\t1\t1"))
   invisible(TRUE)
 }
 
@@ -447,9 +447,9 @@ protigy_prepare_animal_level <- function(expression,
     )
   }
   description_source <- attr(expression, "protigy_description_source", exact = TRUE)
-  description_fallback_count <- attr(
+  description_fallback_rows <- attr(
     expression,
-    "protigy_description_fallback_count",
+    "protigy_description_fallback_rows",
     exact = TRUE
   )
   sample_cols <- setdiff(names(expression), c("id", "Description"))
@@ -755,6 +755,11 @@ protigy_prepare_animal_level <- function(expression,
   expression_numeric <- feature_numeric[feature_keep, , drop = FALSE]
   feature_ids <- as.character(expression$id[feature_keep])
   feature_descriptions <- as.character(expression$Description[feature_keep])
+  description_fallback_count <- if (length(description_fallback_rows)) {
+    sum(description_fallback_rows[feature_keep])
+  } else {
+    length(feature_ids)
+  }
 
   animal_expression <- data.frame(
     id = feature_ids,
@@ -838,11 +843,7 @@ protigy_prepare_animal_level <- function(expression,
     } else {
       "id_compatibility_fallback"
     },
-    description_fallback_count = if (length(description_fallback_count)) {
-      as.integer(description_fallback_count)
-    } else {
-      length(feature_ids)
-    },
+    description_fallback_count = as.integer(description_fallback_count),
     animal_expression = animal_expression,
     output_metadata = output_metadata,
     annotated_table = annotated_table,
