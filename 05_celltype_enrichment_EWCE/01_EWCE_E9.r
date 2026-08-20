@@ -36,7 +36,9 @@ source(paths_file)
 source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "dataset_inputs.R"))
 source(repo_path("R", "validation_utils.R"))
+source(repo_path("R", "protigy_input_utils.R"))
 MODULE_ID <- "05_celltype_enrichment_EWCE"
+EWCE_ANIMAL_CONTRACT_VERSION <- "EWCE_animal_level_v1"
 
 args <- commandArgs(trailingOnly = TRUE)
 arg_value <- function(flag, default = "") {
@@ -75,7 +77,31 @@ if (!has_dataset_override) {
 }
 
 EWCE_DATASET <- current_dataset()
-SUBSTEP_ID <- file.path("EWCE_E9", EWCE_DATASET)
+EWCE_ANALYSIS_UNIT <- tolower(trimws(Sys.getenv("PROTEOMICS_EWCE_ANALYSIS_UNIT", unset = "sample")))
+if (!EWCE_ANALYSIS_UNIT %in% c("sample", "animal")) {
+  stop(
+    "PROTEOMICS_EWCE_ANALYSIS_UNIT must be one of: sample, animal.",
+    call. = FALSE
+  )
+}
+EWCE_BRANCH <- trimws(Sys.getenv("PROTEOMICS_EWCE_BRANCH", unset = ""))
+if (nzchar(EWCE_BRANCH) && !grepl("^[A-Za-z0-9_-]+$", EWCE_BRANCH)) {
+  stop(
+    "PROTEOMICS_EWCE_BRANCH must match ^[A-Za-z0-9_-]+$.",
+    call. = FALSE
+  )
+}
+if (identical(EWCE_ANALYSIS_UNIT, "animal") && !nzchar(EWCE_BRANCH)) {
+  stop(
+    "PROTEOMICS_EWCE_BRANCH is required when PROTEOMICS_EWCE_ANALYSIS_UNIT=animal to protect canonical EWCE outputs.",
+    call. = FALSE
+  )
+}
+SUBSTEP_ID <- if (nzchar(EWCE_BRANCH)) {
+  file.path("EWCE_E9_comparison", EWCE_BRANCH, EWCE_DATASET)
+} else {
+  file.path("EWCE_E9", EWCE_DATASET)
+}
 CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
 
 resolve_ewce_pg_matrix <- function() {
@@ -148,6 +174,48 @@ dirs <- list(
   cache   = file.path(CANONICAL_PATHS$processed, "cache")
 )
 
+animal_bundle_summary <- function(bundle) {
+  audit <- bundle$aggregation_audit
+  data.frame(
+    source_sample_count = bundle$n_input_samples,
+    animal_level_column_count = nrow(bundle$output_metadata),
+    unique_animals = length(unique(bundle$output_metadata$AnimalID)),
+    n_bilateral_complete = sum(audit$hemisphere_status == "bilateral_complete"),
+    n_left_only = sum(audit$hemisphere_status == "left_only_observed"),
+    n_right_only = sum(audit$hemisphere_status == "right_only_observed"),
+    stringsAsFactors = FALSE
+  )
+}
+
+animal_sample_metadata <- function(output_metadata, dataset) {
+  required <- c("sample_id", "AnimalID", "ExpGroup", "region", "layer")
+  missing <- setdiff(required, names(output_metadata))
+  if (length(missing)) {
+    stop("Animal-level output metadata is missing: ", paste(missing, collapse = ", "), call. = FALSE)
+  }
+  if (any(is.na(output_metadata$AnimalID) | !nzchar(trimws(as.character(output_metadata$AnimalID))))) {
+    stop("AnimalID is required for EWCE animal-level analysis.", call. = FALSE)
+  }
+  is_microglia <- identical(dataset, "microglia")
+  layer <- if (is_microglia) NA_character_ else as.character(output_metadata$layer)
+  tibble::tibble(
+    Sample = as.character(output_metadata$sample_id),
+    AnimalID = as.character(output_metadata$AnimalID),
+    Region = as.character(output_metadata$region),
+    Layer = layer,
+    Stratum = if (is_microglia) {
+      as.character(output_metadata$region)
+    } else {
+      paste(output_metadata$region, output_metadata$layer, sep = "_")
+    },
+    Cond = factor(
+      unname(c("1" = "con", "2" = "res", "3" = "sus")[as.character(output_metadata$ExpGroup)]),
+      levels = c("con", "res", "sus")
+    ),
+    Batch = NA_character_
+  )
+}
+
 if (is_dry_run()) {
   sample_match <- "not checked"
   sample_match_status <- "WARN"
@@ -179,6 +247,47 @@ if (is_dry_run()) {
   dry_run_line("Proteomics matrix", data_path, if (file.exists(data_path)) "PASS" else "FAIL")
   dry_run_line("Sample metadata", sample_metadata_path, if (file.exists(sample_metadata_path)) "PASS" else "FAIL")
   dry_run_line("Cheap sample matching", sample_match, sample_match_status)
+  dry_run_line("Analysis unit", EWCE_ANALYSIS_UNIT)
+  dry_run_line("Branch", if (nzchar(EWCE_BRANCH)) EWCE_BRANCH else "canonical")
+  dry_run_line("Source matrix SHA-256", file_hash_sha256(data_path))
+  if (identical(EWCE_ANALYSIS_UNIT, "animal") &&
+      file.exists(data_path) && file.exists(sample_metadata_path) &&
+      requireNamespace("readxl", quietly = TRUE)) {
+    animal_diagnostics <- tryCatch({
+      raw_dry <- as.data.frame(readxl::read_excel(data_path), stringsAsFactors = FALSE, check.names = FALSE)
+      metadata_dry <- as.data.frame(readxl::read_excel(sample_metadata_path), stringsAsFactors = FALSE, check.names = FALSE)
+      bundle_dry <- protigy_prepare_animal_level(
+        raw_dry, metadata_dry, EWCE_DATASET,
+        validate_e9_design = TRUE, fail_on_invalid = TRUE
+      )
+      animal_meta_dry <- animal_sample_metadata(bundle_dry$output_metadata, EWCE_DATASET)
+      list(summary = animal_bundle_summary(bundle_dry), group_counts = animal_meta_dry)
+    }, error = function(e) e)
+    if (inherits(animal_diagnostics, "error")) {
+      dry_run_line("Animal-level aggregation", conditionMessage(animal_diagnostics), "FAIL")
+      quit(status = 1, save = "no")
+    }
+    summary_dry <- animal_diagnostics$summary[1, , drop = FALSE]
+    dry_run_line("Source sample count", summary_dry$source_sample_count)
+    dry_run_line("Animal-level column count", summary_dry$animal_level_column_count)
+    dry_run_line("Unique AnimalIDs", summary_dry$unique_animals)
+    dry_run_line("Bilateral / left-only / right-only", paste(
+      summary_dry$n_bilateral_complete, summary_dry$n_left_only, summary_dry$n_right_only,
+      sep = " / "
+    ))
+    group_counts_dry <- stats::aggregate(
+      AnimalID ~ Stratum + Cond,
+      data = as.data.frame(animal_diagnostics$group_counts),
+      FUN = length
+    )
+    names(group_counts_dry)[names(group_counts_dry) == "AnimalID"] <- "N_Animals"
+    group_counts_dry <- group_counts_dry[order(group_counts_dry$Stratum, group_counts_dry$Cond), , drop = FALSE]
+    dry_run_line("Stratum x Cond animal counts", paste(
+      paste(group_counts_dry$Stratum, group_counts_dry$Cond, group_counts_dry$N_Animals, sep = "="),
+      collapse = "; "
+    ))
+  }
+  dry_run_line("Legacy cache reuse allowed", if (identical(EWCE_ANALYSIS_UNIT, "animal")) "FALSE" else "TRUE")
   dry_run_line("Output folders", paste(unlist(dirs), collapse = "; "))
   quit(status = if (file.exists(data_path) && file.exists(sample_metadata_path)) 0 else 1, save = "no")
 }
@@ -423,9 +532,18 @@ run_limma_stratum <- function(expr_mat, sample_meta, stratum) {
 
   meta$Cond <- droplevels(factor(meta$Cond, levels = analysis_params$conditions))
   present_conditions <- levels(meta$Cond)[levels(meta$Cond) %in% meta$Cond]
+  group_sizes <- table(factor(meta$Cond, levels = analysis_params$conditions))
 
   if (!"con" %in% present_conditions || length(present_conditions) < 2) {
     return(tibble::tibble())
+  }
+
+  if (identical(EWCE_ANALYSIS_UNIT, "animal") && any(group_sizes != 3L)) {
+    stop(
+      "Animal-level EWCE requires 3 animals in each condition for ", stratum,
+      "; observed con/res/sus = ", paste(as.integer(group_sizes), collapse = "/"),
+      call. = FALSE
+    )
   }
 
   design <- stats::model.matrix(~ 0 + Cond, data = meta)
@@ -453,6 +571,9 @@ run_limma_stratum <- function(expr_mat, sample_meta, stratum) {
         Stratum = stratum,
         Region = dplyr::first(meta$Region),
         Layer = dplyr::first(meta$Layer),
+        N_Con = as.integer(group_sizes[["con"]]),
+        N_Res = as.integer(group_sizes[["res"]]),
+        N_Sus = as.integer(group_sizes[["sus"]]),
         Contrast = coef_name,
         Direction_for_EWCE = dplyr::case_when(
           logFC > 0 ~ "up",
@@ -713,12 +834,56 @@ write.table(
 mapped_clean_df <- clean_df %>%
   dplyr::filter(!is.na(Gene), Gene %in% ref_genes)
 
-expr_mat <- make_expr_mat(mapped_clean_df, sample_cols)
+animal_bundle <- NULL
+if (identical(EWCE_ANALYSIS_UNIT, "animal")) {
+  canonical_metadata <- as.data.frame(
+    readxl::read_excel(sample_metadata_path),
+    stringsAsFactors = FALSE,
+    check.names = FALSE
+  )
+  animal_bundle <- protigy_prepare_animal_level(
+    raw_df,
+    canonical_metadata,
+    EWCE_DATASET,
+    validate_e9_design = TRUE,
+    fail_on_invalid = TRUE
+  )
+  source_expression <- protigy_prepare_legacy_expression(raw_df)
+  included_samples <- animal_bundle$source_sample_assignment %>%
+    dplyr::filter(inclusion_status == "included") %>%
+    dplyr::pull(sample_id)
+  source_numeric <- lapply(source_expression[included_samples], function(x) {
+    suppressWarnings(as.numeric(as.character(x)))
+  })
+  source_numeric <- as.data.frame(source_numeric, check.names = FALSE)
+  feature_rows <- which(
+    !is.na(source_expression$id) & nzchar(as.character(source_expression$id)) &
+      apply(source_numeric, 1, function(x) all(!is.na(x)))
+  )
+  if (length(feature_rows) != nrow(animal_bundle$animal_expression) ||
+      !identical(
+        as.character(source_expression$id[feature_rows]),
+        as.character(animal_bundle$animal_expression$id)
+      )) {
+    stop("Animal-level ProTigy aggregation rows no longer align to the EWCE source matrix.", call. = FALSE)
+  }
+  animal_mapped_df <- animal_bundle$animal_expression %>%
+    dplyr::mutate(Gene = clean_df$Gene[feature_rows]) %>%
+    dplyr::filter(!is.na(Gene), Gene %in% ref_genes)
+  sample_cols <- as.character(animal_bundle$output_metadata$sample_id)
+  expr_mat <- make_expr_mat(animal_mapped_df, sample_cols)
+} else {
+  expr_mat <- make_expr_mat(mapped_clean_df, sample_cols)
+}
 expr_mat <- expr_mat[rownames(expr_mat) %in% ref_genes, , drop = FALSE]
 background_universe <- intersect(rownames(expr_mat), ref_genes)
 
 condition_lookup <- load_sample_condition_lookup(sample_metadata_path)
-sample_meta <- parse_sample_metadata(colnames(expr_mat), condition_lookup)
+sample_meta <- if (identical(EWCE_ANALYSIS_UNIT, "animal")) {
+  animal_sample_metadata(animal_bundle$output_metadata, EWCE_DATASET)
+} else {
+  parse_sample_metadata(colnames(expr_mat), condition_lookup)
+}
 if (all(is.na(sample_meta$Cond))) {
   stop(
     "No sample conditions could be resolved. Provide condition tokens in sample names ",
@@ -737,6 +902,36 @@ openxlsx::write.xlsx(
   file.path(dirs$qc, "sample_metadata_qc.xlsx"),
   overwrite = TRUE
 )
+
+if (identical(EWCE_ANALYSIS_UNIT, "animal")) {
+  aggregation_audit <- animal_bundle$aggregation_audit
+  group_counts <- sample_meta %>%
+    dplyr::group_by(Stratum, Cond) %>%
+    dplyr::summarise(
+      dataset = EWCE_DATASET,
+      N_Animals = dplyr::n_distinct(AnimalID),
+      AnimalIDs = paste(sort(unique(AnimalID)), collapse = ";"),
+      .groups = "drop"
+    ) %>%
+    dplyr::select(dataset, Stratum, Cond, N_Animals, AnimalIDs)
+  bundle_summary <- animal_bundle_summary(animal_bundle)
+  contract <- data.frame(
+    dataset = EWCE_DATASET,
+    analysis_unit = EWCE_ANALYSIS_UNIT,
+    source_sample_count = bundle_summary$source_sample_count,
+    animal_level_column_count = bundle_summary$animal_level_column_count,
+    unique_animals = bundle_summary$unique_animals,
+    n_bilateral_complete = bundle_summary$n_bilateral_complete,
+    n_left_only = bundle_summary$n_left_only,
+    n_right_only = bundle_summary$n_right_only,
+    input_matrix_sha256 = input_hash,
+    analysis_contract_version = EWCE_ANIMAL_CONTRACT_VERSION,
+    stringsAsFactors = FALSE
+  )
+  utils::write.csv(aggregation_audit, file.path(dirs$qc, "animal_level_aggregation_audit.csv"), row.names = FALSE, na = "")
+  utils::write.csv(group_counts, file.path(dirs$qc, "animal_level_group_counts.csv"), row.names = FALSE, na = "")
+  utils::write.csv(contract, file.path(dirs$qc, "animal_level_matrix_contract.csv"), row.names = FALSE, na = "")
+}
 
 # ==========================================
 # 4. TARGET SIGNATURES
@@ -808,42 +1003,62 @@ target_grid <- target_manifest %>%
   tidyr::crossing(AnnotLevel = analysis_params$annot_levels) %>%
   dplyr::mutate(TargetRun = paste(Target, paste0("top", TopN), paste0("annot", AnnotLevel), sep = "__"))
 
-ewce_cache_key <- function(row) {
+ewce_gene_set_hash <- function(genes) {
+  digest::digest(sort(unique(stats::na.omit(as.character(genes)))), algo = "sha256")
+}
+
+ewce_cache_key <- function(row, hits = NULL, bg = NULL) {
+  if (identical(EWCE_ANALYSIS_UNIT, "sample")) {
+    return(digest::digest(list(
+      dataset = EWCE_DATASET,
+      target = row$Target,
+      top_n = row$TopN,
+      annot_level = row$AnnotLevel,
+      reps = analysis_params$reps,
+      seed = analysis_params$seed,
+      primary_annot_level = analysis_params$primary_annot_level,
+      background_size = length(background_universe),
+      ctd_genes = length(ref_genes_by_level[[row$AnnotLevel]])
+    ), algo = "xxhash64"))
+  }
   digest::digest(list(
+    analysis_contract_version = EWCE_ANIMAL_CONTRACT_VERSION,
+    input_matrix_sha256 = input_hash,
     dataset = EWCE_DATASET,
     target = row$Target,
     top_n = row$TopN,
     annot_level = row$AnnotLevel,
     reps = analysis_params$reps,
     seed = analysis_params$seed,
-    primary_annot_level = analysis_params$primary_annot_level,
-    background_size = length(background_universe),
-    ctd_genes = length(ref_genes_by_level[[row$AnnotLevel]])
+    hit_gene_set_sha256 = ewce_gene_set_hash(hits),
+    background_gene_set_sha256 = ewce_gene_set_hash(bg),
+    ctd_annotation_gene_set_sha256 = ewce_gene_set_hash(ref_genes_by_level[[row$AnnotLevel]])
   ), algo = "xxhash64")
 }
 
 run_ewce_target <- function(target_run) {
   row <- target_grid %>% dplyr::filter(TargetRun == target_run) %>% dplyr::slice(1)
-  cache_file <- file.path(dirs$cache, paste0(safe_file_stem(paste(target_run, ewce_cache_key(row), sep = "__")), ".rds"))
-  if (file.exists(cache_file)) {
-    return(readRDS(cache_file))
-  }
-
-  legacy_cache_file <- file.path(dirs$cache, paste0(safe_file_stem(paste(row$Target, paste0("annot", row$AnnotLevel), sep = "__")), ".rds"))
-  if (file.exists(legacy_cache_file)) {
-    legacy_out <- readRDS(legacy_cache_file)
-    if (all(legacy_out$TopN == row$TopN, na.rm = TRUE) &&
-        all(legacy_out$AnnotLevel == row$AnnotLevel, na.rm = TRUE) &&
-        all(legacy_out$N_Background == length(intersect(background_universe, ref_genes_by_level[[row$AnnotLevel]])), na.rm = TRUE)) {
-      saveRDS(legacy_out, cache_file)
-      return(legacy_out)
-    }
-  }
-
   genes <- target_gene_tbl %>%
     dplyr::filter(Target == row$Target, TopN == row$TopN) %>%
     dplyr::pull(Gene)
   bg <- intersect(background_universe, ref_genes_by_level[[row$AnnotLevel]])
+  cache_file <- file.path(dirs$cache, paste0(safe_file_stem(paste(target_run, ewce_cache_key(row, genes, bg), sep = "__")), ".rds"))
+  if (file.exists(cache_file)) {
+    return(readRDS(cache_file))
+  }
+
+  if (identical(EWCE_ANALYSIS_UNIT, "sample")) {
+    legacy_cache_file <- file.path(dirs$cache, paste0(safe_file_stem(paste(row$Target, paste0("annot", row$AnnotLevel), sep = "__")), ".rds"))
+    if (file.exists(legacy_cache_file)) {
+      legacy_out <- readRDS(legacy_cache_file)
+      if (all(legacy_out$TopN == row$TopN, na.rm = TRUE) &&
+          all(legacy_out$AnnotLevel == row$AnnotLevel, na.rm = TRUE) &&
+          all(legacy_out$N_Background == length(intersect(background_universe, ref_genes_by_level[[row$AnnotLevel]])), na.rm = TRUE)) {
+        saveRDS(legacy_out, cache_file)
+        return(legacy_out)
+      }
+    }
+  }
 
   res <- run_ewce_once(genes, bg, row$AnnotLevel)
 
