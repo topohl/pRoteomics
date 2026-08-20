@@ -46,6 +46,25 @@ testthat::test_that("embedding limits use equal numeric spans without moving coo
   testthat::expect_identical(y, c(2, 12))
 })
 
+testthat::test_that("PCA broad labels are deterministic functions of plotted coordinates", {
+  x <- data.frame(
+    Dataset = rep(c("Microglia-enriched ROI", "Neuropil", "Soma"), each = 4L),
+    PC1 = c(-4, -3, -2, -1, 0, 1, 2, 3, 8, 9, 10, 11),
+    PC2 = c(-3, -2, -1, 0, 1, 2, 3, 4, -1, 0, 1, 2),
+    stringsAsFactors = FALSE
+  )
+  a <- joint_pub_pca_class_label_positions(x)
+  b <- joint_pub_pca_class_label_positions(x[sample(seq_len(nrow(x))), ])
+  testthat::expect_equal(a, b)
+  shifted <- x
+  shifted$PC1 <- shifted$PC1 + 100
+  shifted$PC2 <- shifted$PC2 - 50
+  shifted_labels <- joint_pub_pca_class_label_positions(shifted)
+  testthat::expect_equal(shifted_labels$PC1, a$PC1 + 100)
+  testthat::expect_equal(shifted_labels$PC2, a$PC2 - 50)
+  testthat::expect_true(all(grepl("data_quantiles", a$label_position_rule)))
+})
+
 testthat::test_that("missingness features use deterministic between-dataset variation", {
   detected <- rbind(
     PG_constant = c(1, 1, 1, 1, 1, 1),

@@ -419,6 +419,8 @@ write_compact_recognizable_candidate_v2 <- function(
       execution_mode = "presentation_only_from_completed_authoritative_v2_tables",
       analytical_recalculation = FALSE,
       marker_eligibility_recalculation = FALSE,
+      observed_cross_compartment_direction_used_for_selection = FALSE,
+      observed_cross_compartment_effect_magnitude_used_for_selection = FALSE,
       marker_set = rendering$config$marker_gene,
       metric = "median_within_protein_centered_log2_across_valid_CON_animals",
       display_cap_log2 = 3,
@@ -430,7 +432,10 @@ write_compact_recognizable_candidate_v2 <- function(
       "Compact manuscript candidate derived from completed authoritative v2 tables.",
       "Animal aggregation, normalization, detection, eligibility and direction values",
       "were not recomputed; the existing ca_center_animal_abundance presentation",
-      "transform was applied to completed animal-level abundance rows."
+      "transform was applied to completed animal-level abundance rows.",
+      "The recognizable marker set was frozen from external/configuration and",
+      "intended-compartment eligibility only. Observed cross-compartment direction",
+      "and effect magnitude were retained for post-selection audit, not selection."
     )
   )
   invisible(list(plot = plot, outputs = paths))
@@ -467,7 +472,8 @@ write_marker_enrichment_difference_candidate_v2 <- function(
     "intended_minus_comparator_log2"
   )
   source_for_csv[exact_numeric_columns] <- lapply(
-    source_for_csv[exact_numeric_columns], sprintf, fmt = "%.17g"
+    source_for_csv[exact_numeric_columns],
+    function(x) ifelse(is.finite(x), sprintf("%.17g", x), NA_character_)
   )
   qc_write_csv(source_for_csv, source_path)
   qc_write_csv(rendering$provenance, provenance_path)
@@ -491,6 +497,8 @@ write_marker_enrichment_difference_candidate_v2 <- function(
       analytical_recalculation = FALSE,
       marker_eligibility_recalculation = FALSE,
       marker_selection_recalculation = FALSE,
+      observed_cross_compartment_direction_used_for_selection = FALSE,
+      observed_cross_compartment_effect_magnitude_used_for_selection = FALSE,
       metric = paste(
         "intended preparation median centered log2 minus comparator preparation",
         "median centered log2"
@@ -500,8 +508,10 @@ write_marker_enrichment_difference_candidate_v2 <- function(
       inferential_statistics = "none"
     ),
     notes = paste(
-      "Each plotted value is an exact arithmetic subtraction of two completed",
-      "figure2d_compact_recognizable_markers_v2_source_data.csv values.",
+      "Numerical values are exact arithmetic subtractions of two quantitatively",
+      "reliable completed figure2d compact-source values. Comparisons lacking a",
+      "reliable intended or comparator value remain explicitly not quantitatively",
+      "estimable; their missing differences are not replaced.",
       "No model, p-value, aggregation, normalization, marker selection or",
       "eligibility calculation was run."
     )

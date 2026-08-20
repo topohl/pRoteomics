@@ -25,13 +25,14 @@ control_spatial_prepare_figure2f <- function(
     stop("Completed GO-BP table no longer retains both DG-layer contrasts.", call. = FALSE)
   }
   out <- control_spatial_select_go_display(go, max_terms = 2L, contrasts = contrasts)
-  if (!setequal(unique(as.character(out$contrast)), contrasts)) {
-    stop("GO-BP display does not contain every requested contrast.", call. = FALSE)
-  }
+  out <- control_spatial_complete_go_display_grid(go, out, contrasts)
   out$internal_contrast_label <- control_spatial_publication_contrast_label(out$contrast)
   out$semantic_simplification_applied <- FALSE
   out$display_selection_rule <-
-    "adjusted p-value, descending NES, GO ID; maximum two per contrast"
+    paste(
+      "completed + positive NES + adjusted p < 0.05;",
+      "adjusted p-value, descending NES, GO ID; maximum two per contrast"
+    )
   out$panel_contract <- panel_contract
   out$interpretation_note <- interpretation_note(out$contrast)
   if (!is.null(analytical_source_path)) {
@@ -43,7 +44,10 @@ control_spatial_prepare_figure2f <- function(
       all(dg_layers %in% universe)
   }
   out$.contrast_order <- match(out$contrast, contrasts)
-  out <- out[order(out$.contrast_order, out$p_adjust, -out$NES, out$ID), , drop = FALSE]
+  out <- out[order(
+    out$.contrast_order, !out$display_term_available,
+    out$p_adjust, -out$NES, out$ID, na.last = TRUE
+  ), , drop = FALSE]
   out$.contrast_order <- NULL
   out
 }
@@ -51,6 +55,14 @@ control_spatial_prepare_figure2f <- function(
 control_spatial_build_figure2f <- function(
     go_display, contrasts, grouped_layout = FALSE, label_wrap = 18L) {
   manuscript_text <- nature_manuscript_text_sizes_pt()
+  required <- c(
+    "contrast", "internal_contrast_label", "ID", "Description", "NES",
+    "p_adjust", "display_evidence_status", "display_term_available"
+  )
+  missing_columns <- setdiff(required, names(go_display))
+  if (length(missing_columns)) {
+    stop("Figure 2f display source is missing: ", paste(missing_columns, collapse = ", "), call. = FALSE)
+  }
   if (grouped_layout) {
     layout <- control_spatial_figure2f_grouped_layout()
     idx <- match(go_display$contrast, layout$contrast)
@@ -73,7 +85,10 @@ control_spatial_build_figure2f <- function(
     )
   }
   term_rows <- go_display[
-    order(go_display$p_adjust, -go_display$NES, go_display$ID),
+    order(
+      !go_display$display_term_available, go_display$p_adjust,
+      -go_display$NES, go_display$ID, na.last = TRUE
+    ),
     c("ID", "Description"), drop = FALSE
   ]
   term_rows <- term_rows[!duplicated(term_rows$ID), , drop = FALSE]
@@ -86,13 +101,22 @@ control_spatial_build_figure2f <- function(
   go_display$minus_log10_adjusted_p <- -log10(
     pmax(go_display$p_adjust, .Machine$double.xmin)
   )
+  evidence <- go_display[go_display$display_term_available %in% TRUE, , drop = FALSE]
+  missing_evidence <- go_display[!(go_display$display_term_available %in% TRUE), , drop = FALSE]
   plot <- ggplot(
     go_display,
-    aes(contrast_plot_label, term_plot_key, fill = NES, size = minus_log10_adjusted_p)
+    aes(contrast_plot_label, term_plot_key)
   ) +
-    geom_point(shape = 21, colour = "#FFFFFF", stroke = 0.24, alpha = 0.96) +
+    geom_point(
+      data = evidence, aes(fill = NES, size = minus_log10_adjusted_p),
+      shape = 21, colour = "#FFFFFF", stroke = 0.24, alpha = 0.96
+    ) +
+    geom_text(
+      data = missing_evidence, label = "x", colour = "#777777",
+      size = 2.5, family = "Arial"
+    ) +
     scale_y_discrete(labels = term_labels, drop = FALSE) +
-    scale_x_discrete(drop = grouped_layout) +
+    scale_x_discrete(drop = FALSE) +
     scale_fill_gradientn(colours = nature_palette("support"), name = "NES") +
     scale_size_continuous(
       name = expression(-log[10]("adjusted p-value")), range = c(2.6, 5.4)
@@ -172,11 +196,11 @@ control_spatial_render_figures <- function(ks, go, source_data, figures) {
   figure2f_contrasts <- control_spatial_figure2f_display_contrasts()
   go_display <- control_spatial_prepare_figure2f(
     go, figure2f_contrasts,
-    "Figure 2f: Internal CON-only anatomical GO-BP differentiation.",
+    "Figure 2f: Internal CON-only positive target-enriched GO-BP terms.",
     function(x) ifelse(
       x %in% c("DG_MO_vs_mean_other_DG_layers", "DG_PO_vs_mean_other_DG_layers"),
       "Internal DG layer contrast; no matched DG-layer Kaulich reference signature available.",
-      "Internal CON-only anatomical GO-BP differentiation."
+      "Internal CON-only positive target-enriched GO-BP terms."
     )
   )
   utils::write.csv(go_display, source_data[["f"]], row.names = FALSE)
@@ -289,9 +313,11 @@ control_spatial_render_figure2f_regions_ca1layers_candidate <- function(
     go, contrasts,
     paste(
       "Figure 2f candidate: Internal CON-only soma-region and CA1-laminar",
-      "GO-BP differentiation; presentation-only selection from completed results."
+      "positive target-enriched GO-BP terms; presentation-only selection from completed results."
     ),
-    function(x) rep("Internal CON-only anatomical GO-BP differentiation.", length(x)),
+    function(x) rep(
+      "Internal CON-only positive target-enriched GO-BP terms.", length(x)
+    ),
     analytical_source_path = analytical_source_path,
     require_dg_layers = TRUE
   )
@@ -307,11 +333,14 @@ control_spatial_render_figure2f_grouped_layout_candidate <- function(
     source_path, figure_path) {
   go_display <- utils::read.csv(source_path, check.names = FALSE)
   contrasts <- control_spatial_figure2f_regions_ca1layers_display_contrasts()
-  if (nrow(go_display) != 2L * length(contrasts) ||
-      !identical(unique(as.character(go_display$contrast)), contrasts) ||
-      any(table(factor(go_display$contrast, levels = contrasts)) != 2L)) {
-    stop("Grouped Figure 2f input must retain exactly two terms for each of seven contrasts.",
-         call. = FALSE)
+  counts <- table(factor(go_display$contrast, levels = contrasts))
+  if (!setequal(unique(as.character(go_display$contrast)), contrasts) ||
+      any(counts < 1L | counts > 2L) ||
+      !all(c("display_evidence_status", "display_term_available") %in% names(go_display))) {
+    stop(
+      "Grouped Figure 2f input must retain every contrast with zero to two supported terms.",
+      call. = FALSE
+    )
   }
   control_spatial_save_figure2f(
     control_spatial_build_figure2f(

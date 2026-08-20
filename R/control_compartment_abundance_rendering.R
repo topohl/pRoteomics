@@ -857,8 +857,10 @@ ca_compact_recognizable_marker_config_v2 <- function() {
     seq_len(nrow(out)), out$marker_class, FUN = seq_along
   )
   out$candidate_selection_reason <- paste(
-    "user_requested_recognizable_marker; authoritative_v2_primary_and_strict_eligible;",
-    "completed_v2_direction_classification_intended_highest"
+    "explicit_biologically_motivated_recognizable_marker_configuration;",
+    "authoritative_external_registry_and_unique_canonical_mapping;",
+    "joint_qc_gene_claim_and_intended_compartment_primary_and_strict_eligibility;",
+    "selection_frozen_without_observed_cross_compartment_direction_or_effect_magnitude"
   )
   out
 }
@@ -1007,9 +1009,11 @@ ca_prepare_compact_recognizable_markers_v2 <- function(
   )
   if (nrow(selected_audit) != nrow(config) ||
       !all(selected_audit$passes_primary_marker_eligibility) ||
-      !all(selected_audit$passes_strict_marker_eligibility) ||
-      !all(selected_audit$expected_direction_classification == "intended_highest")) {
-    stop("Compact candidate markers must be primary/strict eligible and direction-concordant.", call. = FALSE)
+      !all(selected_audit$passes_strict_marker_eligibility)) {
+    stop(
+      "Compact candidate markers must meet primary/strict eligibility in the intended compartment.",
+      call. = FALSE
+    )
   }
 
   selected_keys <- paste(selected_audit$marker_class, selected_audit$ProteinGroupID, sep = "\r")
@@ -1032,6 +1036,10 @@ ca_prepare_compact_recognizable_markers_v2 <- function(
   )
   provenance$candidate_metric <- "median_within_protein_centered_log2_across_valid_CON_animals"
   provenance$candidate_is_presentation_only <- TRUE
+  provenance$marker_selection_used_observed_cross_compartment_direction <- FALSE
+  provenance$marker_selection_used_observed_cross_compartment_effect_magnitude <- FALSE
+  provenance$expected_direction_classification_role <-
+    "post_selection_validation_only"
   provenance$candidate_source_tables <- paste(
     "v2_03_animal_level_abundance.csv;",
     "v2_04_all_marker_canonical_mapping_provenance.csv;",
@@ -1079,12 +1087,22 @@ ca_prepare_compact_recognizable_markers_v2 <- function(
     ) |>
     dplyr::mutate(
       intended_compartment = .data$dataset == .data$intended_dataset,
-      displayed_centered_log2 = ifelse(
+      quantitative_source_contract = .data$quantitative_value_status,
+      quantitatively_reliable =
+        .data$primary_eligible %in% TRUE &
+        .data$reliability_status == "reliably_detected" &
         is.finite(.data$median_centered_log2),
+      quantitative_value_status = ifelse(
+        .data$quantitatively_reliable,
+        "quantitatively_estimable",
+        "not_quantitatively_estimable"
+      ),
+      displayed_centered_log2 = ifelse(
+        .data$quantitatively_reliable,
         pmax(-3, pmin(3, .data$median_centered_log2)), NA_real_
       ),
       centered_log2_display_cap = 3,
-      reliably_detected = .data$reliability_status == "reliably_detected",
+      reliably_detected = .data$quantitatively_reliable,
       missing_symbol = ifelse(.data$reliably_detected, "", "\u00d7"),
       outline_colour = ifelse(
         .data$intended_compartment,
@@ -1102,6 +1120,10 @@ ca_prepare_compact_recognizable_markers_v2 <- function(
         levels = unname(ca_manuscript_marker_class_headings)
       ),
       analytical_recomputation = FALSE,
+      marker_selection_used_observed_cross_compartment_direction = FALSE,
+      marker_selection_used_observed_cross_compartment_effect_magnitude = FALSE,
+      expected_direction_classification_role =
+        "post_selection_validation_only",
       presentation_transform =
         "existing ca_center_animal_abundance; median across valid CON animals; display cap only"
     )
@@ -1113,8 +1135,11 @@ ca_prepare_compact_recognizable_markers_v2 <- function(
   if (nrow(dot) != expected_rows || anyDuplicated(dot[c("dataset", "ProteinGroupID")])) {
     stop("Compact candidate source must contain one row per marker and compartment.", call. = FALSE)
   }
-  if (!all(dot$primary_eligible %in% TRUE) || !all(dot$strict_eligible %in% TRUE)) {
-    stop("Compact candidate contains an unreliable compartment value.", call. = FALSE)
+  intended_rows <- dot$intended_compartment %in% TRUE
+  if (!all(dot$primary_eligible[intended_rows] %in% TRUE) ||
+      !all(dot$strict_eligible[intended_rows] %in% TRUE) ||
+      !all(dot$quantitatively_reliable[intended_rows] %in% TRUE)) {
+    stop("Compact candidate contains an unreliable intended-compartment value.", call. = FALSE)
   }
   list(audit = audit, provenance = provenance, dot = dot, config = config)
 }
@@ -1152,17 +1177,17 @@ ca_prepare_marker_enrichment_differences_v2 <- function(
     "intended_dataset", "median_centered_log2",
     "selection_order_within_class", "candidate_selection_reason",
     "expected_direction_classification", "normalization_source",
-    "feature_universe", "quantitative_value_status",
+    "feature_universe", "quantitative_value_status", "primary_eligible",
+    "strict_eligible", "reliability_status",
     "analytical_recomputation"
   )
   ca_display_require_columns(compact_source, required, "Compact Figure 2d source")
   if (nrow(compact_source) != 30L ||
       length(unique(compact_source$ProteinGroupID)) != 10L ||
       anyDuplicated(compact_source[c("dataset", "ProteinGroupID")]) ||
-      any(!is.finite(compact_source$median_centered_log2)) ||
       any(compact_source$analytical_recomputation %in% TRUE)) {
     stop(
-      "Compact Figure 2d source must contain the completed 10-marker x 3-preparation values.",
+      "Compact Figure 2d source must retain the completed 10-marker x 3-preparation grid.",
       call. = FALSE
     )
   }
@@ -1171,40 +1196,86 @@ ca_prepare_marker_enrichment_differences_v2 <- function(
     "marker_class", "ProteinGroupID", "marker_gene", "intended_dataset",
     "selection_order_within_class", "candidate_selection_reason",
     "expected_direction_classification", "normalization_source",
-    "feature_universe", "quantitative_value_status"
+    "feature_universe"
   )
   intended <- compact_source |>
     dplyr::filter(.data$dataset == .data$intended_dataset) |>
-    dplyr::select(dplyr::all_of(c(marker_keys, "dataset", "median_centered_log2"))) |>
+    dplyr::select(dplyr::all_of(c(
+      marker_keys, "dataset", "median_centered_log2", "primary_eligible",
+      "strict_eligible", "reliability_status", "quantitative_value_status"
+    ))) |>
     dplyr::rename(
       intended_preparation = "dataset",
-      intended_median_centered_log2 = "median_centered_log2"
+      intended_median_centered_log2 = "median_centered_log2",
+      intended_primary_eligible = "primary_eligible",
+      intended_strict_eligible = "strict_eligible",
+      intended_reliability_status = "reliability_status",
+      intended_quantitative_value_status = "quantitative_value_status"
     )
-  if (nrow(intended) != 10L || anyDuplicated(intended$ProteinGroupID)) {
-    stop("Each compact marker must have exactly one intended preparation.", call. = FALSE)
+  if (nrow(intended) != 10L || anyDuplicated(intended$ProteinGroupID) ||
+      !all(intended$intended_primary_eligible %in% TRUE) ||
+      !all(intended$intended_strict_eligible %in% TRUE) ||
+      !all(intended$intended_reliability_status == "reliably_detected") ||
+      any(!is.finite(intended$intended_median_centered_log2))) {
+    stop(
+      "Each compact marker must have one primary/strict-eligible intended preparation.",
+      call. = FALSE
+    )
   }
   comparators <- compact_source |>
     dplyr::filter(.data$dataset != .data$intended_dataset) |>
-    dplyr::select(dplyr::all_of(c(marker_keys, "dataset", "median_centered_log2"))) |>
+    dplyr::select(dplyr::all_of(c(
+      marker_keys, "dataset", "median_centered_log2", "primary_eligible",
+      "strict_eligible", "reliability_status", "quantitative_value_status"
+    ))) |>
     dplyr::rename(
       comparator_preparation = "dataset",
-      comparator_median_centered_log2 = "median_centered_log2"
+      comparator_median_centered_log2 = "median_centered_log2",
+      comparator_primary_eligible = "primary_eligible",
+      comparator_strict_eligible = "strict_eligible",
+      comparator_reliability_status = "reliability_status",
+      comparator_quantitative_value_status = "quantitative_value_status"
     )
   differences <- dplyr::inner_join(
     intended, comparators, by = marker_keys, relationship = "one-to-many"
   ) |>
     dplyr::mutate(
-      intended_minus_comparator_log2 =
+      intended_quantitatively_reliable =
+        .data$intended_primary_eligible %in% TRUE &
+        .data$intended_reliability_status == "reliably_detected" &
+        is.finite(.data$intended_median_centered_log2),
+      comparator_quantitatively_reliable =
+        .data$comparator_primary_eligible %in% TRUE &
+        .data$comparator_reliability_status == "reliably_detected" &
+        is.finite(.data$comparator_median_centered_log2),
+      comparison_status = ifelse(
+        .data$intended_quantitatively_reliable &
+          .data$comparator_quantitatively_reliable,
+        "quantitatively_estimable",
+        "not_quantitatively_estimable"
+      ),
+      intended_minus_comparator_log2 = ifelse(
+        .data$comparison_status == "quantitatively_estimable",
         .data$intended_median_centered_log2 -
-        .data$comparator_median_centered_log2
+          .data$comparator_median_centered_log2,
+        NA_real_
+      )
     )
   expected <- differences$intended_median_centered_log2 -
     differences$comparator_median_centered_log2
+  estimable <- differences$comparison_status == "quantitatively_estimable"
   if (nrow(differences) != 20L ||
       any(table(differences$ProteinGroupID) != 2L) ||
-      !identical(differences$intended_minus_comparator_log2, expected)) {
+      !isTRUE(all.equal(
+        differences$intended_minus_comparator_log2[estimable],
+        expected[estimable], tolerance = 0
+      )) ||
+      any(!is.na(differences$intended_minus_comparator_log2[!estimable]))) {
     stop(
-      "Figure 2d differences must be exact intended-minus-comparator subtractions.",
+      paste(
+        "Figure 2d estimable differences must be exact intended-minus-comparator",
+        "subtractions and non-estimable comparisons must remain missing."
+      ),
       call. = FALSE
     )
   }
@@ -1224,11 +1295,20 @@ ca_prepare_marker_enrichment_differences_v2 <- function(
         levels = unname(ca_manuscript_marker_class_headings)
       ),
       marker_label = factor(.data$marker_gene, levels = rev(order_table$marker_gene)),
+      difference_plot_value = ifelse(
+        .data$comparison_status == "quantitatively_estimable",
+        .data$intended_minus_comparator_log2,
+        0
+      ),
+      difference_plot_value_is_quantitative =
+        .data$comparison_status == "quantitatively_estimable",
       difference_definition =
         "intended preparation median centered log2 minus comparator preparation median centered log2",
       analytical_recomputation = FALSE,
       inferential_statistics = FALSE,
       marker_selection_used_difference = FALSE,
+      marker_selection_used_observed_cross_compartment_direction = FALSE,
+      marker_selection_used_observed_cross_compartment_effect_magnitude = FALSE,
       source_path = as.character(source_path),
       source_sha256 = as.character(source_sha256)
     ) |>
@@ -1245,7 +1325,7 @@ ca_prepare_marker_enrichment_differences_v2 <- function(
       .data$candidate_selection_reason,
       .data$expected_direction_classification,
       .data$normalization_source, .data$feature_universe,
-      .data$quantitative_value_status,
+      .data$intended_quantitative_value_status,
       source_path = as.character(source_path),
       source_sha256 = as.character(source_sha256),
       source_row_count = nrow(compact_source),
@@ -1254,6 +1334,10 @@ ca_prepare_marker_enrichment_differences_v2 <- function(
       analytical_recomputation = FALSE,
       inferential_statistics = FALSE,
       marker_selection_used_difference = FALSE,
+      marker_selection_used_observed_cross_compartment_direction = FALSE,
+      marker_selection_used_observed_cross_compartment_effect_magnitude = FALSE,
+      expected_direction_classification_role =
+        "post_selection_validation_only",
       presentation_only = TRUE
     )
   list(source = differences, provenance = provenance)
@@ -1265,18 +1349,31 @@ ca_build_marker_enrichment_differences_v2 <- function(rendering) {
     "vs Neuron neuropil" = ca_dataset_palette[["neuropil"]],
     "vs Microglia/PVM-enriched ROI" = ca_dataset_palette[["microglia"]]
   )
+  estimable <- rendering$source[
+    rendering$source$comparison_status == "quantitatively_estimable", , drop = FALSE
+  ]
+  not_estimable <- rendering$source[
+    rendering$source$comparison_status == "not_quantitatively_estimable", , drop = FALSE
+  ]
   ggplot2::ggplot(
     rendering$source,
     ggplot2::aes(
-      x = .data$intended_minus_comparator_log2,
+      x = .data$difference_plot_value,
       y = .data$marker_label,
       colour = .data$comparator_legend_label
     )
   ) +
     ggplot2::geom_vline(xintercept = 0, colour = "#BDBDBD", linewidth = 0.35) +
     ggplot2::geom_point(
+      data = estimable,
       position = ggplot2::position_dodge(width = 0.48), size = 2.15,
       alpha = 0.95
+    ) +
+    ggplot2::geom_point(
+      data = not_estimable,
+      position = ggplot2::position_dodge(width = 0.48),
+      shape = 4, size = 2.1, stroke = 0.65, alpha = 0.9,
+      show.legend = FALSE
     ) +
     ggplot2::facet_grid(
       rows = ggplot2::vars(marker_class_heading),
@@ -1291,7 +1388,8 @@ ca_build_marker_enrichment_differences_v2 <- function(rendering) {
     )) +
     ggplot2::labs(
       x = "Δ median centered log₂ abundance\n(intended − comparator)",
-      y = NULL, colour = "Comparator preparation"
+      y = NULL, colour = "Comparator preparation",
+      caption = "Cross at zero = not estimable (status cue; not a value)."
     ) +
     theme_nature_manuscript_panel(
       base_size = nature_manuscript_text_sizes_pt()[["normal"]],
@@ -1309,6 +1407,10 @@ ca_build_marker_enrichment_differences_v2 <- function(rendering) {
       ),
       panel.spacing.y = grid::unit(1.4, "mm"),
       legend.key.height = grid::unit(3.5, "mm"),
+      plot.caption = ggplot2::element_text(
+        size = nature_manuscript_text_sizes_pt()[["dense"]],
+        hjust = 0, colour = "#555555"
+      ),
       plot.margin = ggplot2::margin(1.5, 1.5, 4, 1.5)
     )
 }

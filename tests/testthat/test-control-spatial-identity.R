@@ -325,6 +325,35 @@ testthat::test_that("GO display contrast filtering leaves complete results uncha
   testthat::expect_identical(display$contrast, "DG_MO_vs_mean_other_DG_layers")
 })
 
+testthat::test_that("Figure 2f display grid retains contrasts with zero one or two positive terms", {
+  contrasts <- c("zero", "one", "two")
+  complete <- data.frame(
+    dataset = "neuron_soma",
+    contrast = rep(contrasts, each = 3L),
+    status = "completed",
+    ID = paste0("GO:", seq_len(9L)),
+    Description = paste("term", seq_len(9L)),
+    NES = c(-1, 1, 2, 1.5, -1, 1, 2, 1.5, 0.5),
+    p_adjust = c(.001, .2, .3, .01, .001, .2, .01, .02, .2),
+    stringsAsFactors = FALSE
+  )
+  selected <- control_spatial_select_go_display(
+    complete, max_terms = 2L, contrasts = contrasts
+  )
+  display <- control_spatial_complete_go_display_grid(
+    complete, selected, contrasts
+  )
+  counts <- table(factor(display$contrast, levels = contrasts))
+  testthat::expect_identical(as.integer(counts), c(1L, 1L, 2L))
+  testthat::expect_identical(
+    display$display_evidence_status[display$contrast == "zero"],
+    "no_fdr_supported_positive_go_bp_term"
+  )
+  testthat::expect_false(display$display_term_available[display$contrast == "zero"])
+  testthat::expect_true(all(display$display_term_available[display$contrast != "zero"]))
+  testthat::expect_true(all(is.na(display$NES[display$contrast == "zero"])))
+})
+
 testthat::test_that("candidate GO selection preserves the analytical universe and DG layers", {
   candidate <- control_spatial_figure2f_regions_ca1layers_display_contrasts()
   analytical_universe <- c(

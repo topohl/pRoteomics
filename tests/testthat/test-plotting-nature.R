@@ -29,3 +29,12 @@ testthat::test_that("opt-in manuscript typography stays publication-legible", {
     c(normal = 7, dense = 6.5, axis_title = 7.5, panel_letter = 9, title = 8)
   )
 })
+
+testthat::test_that("anatomical-island palette is centralized and complete", {
+  palette <- nature_anatomical_island_palette()
+  testthat::expect_length(palette, 18L)
+  testthat::expect_identical(anyDuplicated(names(palette)), 0L)
+  testthat::expect_true(all(c(
+    "Microglia-enriched ROI::CA1", "Neuropil::DG-PO", "Soma::DG-SP"
+  ) %in% names(palette)))
+})

@@ -459,6 +459,42 @@ control_spatial_select_go_display <- function(x, max_terms = 2L, contrasts = NUL
   out
 }
 
+control_spatial_complete_go_display_grid <- function(complete, selected, contrasts) {
+  contrasts <- as.character(contrasts)
+  universe <- unique(as.character(complete$contrast))
+  missing_analytical <- setdiff(contrasts, universe)
+  if (length(missing_analytical)) {
+    stop(
+      "Completed GO-BP table is missing display contrast(s): ",
+      paste(missing_analytical, collapse = ", "), call. = FALSE
+    )
+  }
+  selected$display_evidence_status <- "fdr_supported_positive_go_bp_term"
+  selected$display_term_available <- TRUE
+  missing_evidence <- setdiff(contrasts, unique(as.character(selected$contrast)))
+  if (length(missing_evidence)) {
+    template_index <- match(missing_evidence, as.character(complete$contrast))
+    placeholders <- complete[template_index, , drop = FALSE]
+    placeholders$contrast <- missing_evidence
+    placeholders$ID <- "__no_fdr_supported_positive_go_bp_term__"
+    placeholders$Description <- "No FDR-supported positive GO-BP term"
+    placeholders$NES <- NA_real_
+    placeholders$p_adjust <- NA_real_
+    placeholders$display_evidence_status <- "no_fdr_supported_positive_go_bp_term"
+    placeholders$display_term_available <- FALSE
+    selected <- dplyr::bind_rows(selected, placeholders)
+  }
+  counts <- table(factor(selected$contrast, levels = contrasts))
+  if (!setequal(unique(as.character(selected$contrast)), contrasts) ||
+      any(counts < 1L | counts > 2L)) {
+    stop(
+      "GO-BP display must retain every requested contrast with zero to two supported terms.",
+      call. = FALSE
+    )
+  }
+  selected
+}
+
 control_spatial_map_signature <- function(signature, canonical_official_symbols, mapped_gene_threshold = 5L) {
   required <- c("source_row_id", "source_gene_symbol_raw", "parsed_source_gene_symbol", "gene_match_key")
   missing <- setdiff(required, names(signature))
