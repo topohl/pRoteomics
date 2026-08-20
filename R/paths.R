@@ -208,7 +208,8 @@ resolve_input_path <- function(
   stage = NA_character_,
   producer_script_or_artifact_id = NA_character_,
   allow_fallback_in_strict = FALSE,
-  allow_latest_in_strict = FALSE
+  allow_latest_in_strict = FALSE,
+  record_resolution = TRUE
 ) {
   strict <- strict_inputs_enabled()
   norm <- function(x) {
@@ -224,19 +225,21 @@ resolve_input_path <- function(
 
   finish <- function(resolved, mode, allowed, warn = NA_character_) {
     if (!is.na(warn) && nzchar(warn)) warning(warn, call. = FALSE)
-    record_input_resolution(
-      script = script,
-      dataset = dataset,
-      stage = stage,
-      input_name = input_name,
-      expected_path = expected_path,
-      resolved_path = resolved,
-      resolution_mode = mode,
-      strict_mode = strict,
-      allowed_in_strict_mode = allowed,
-      producer_script_or_artifact_id = producer_script_or_artifact_id,
-      warning = warn
-    )
+    if (isTRUE(record_resolution)) {
+      record_input_resolution(
+        script = script,
+        dataset = dataset,
+        stage = stage,
+        input_name = input_name,
+        expected_path = expected_path,
+        resolved_path = resolved,
+        resolution_mode = mode,
+        strict_mode = strict,
+        allowed_in_strict_mode = allowed,
+        producer_script_or_artifact_id = producer_script_or_artifact_id,
+        warning = warn
+      )
+    }
     resolved
   }
 

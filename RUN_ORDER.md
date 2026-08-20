@@ -51,6 +51,57 @@ Rscript run_dataset_pipeline.R --dataset all --stage export --dry-run
 
 ## Core
 
+### Animal-level ProTigy input preparation (external/manual boundary)
+
+Prepare new dataset-specific ProTigy inputs with `AnimalID` as the biological
+replicate. The script consumes the newest matching workbook produced by
+`01_preprocessing/01_impute.r` for each dataset plus
+`data/metadata/TPE9_sample_metadata_males.xlsx`. It applies the existing
+exclusions and aggregates available valid hemispheres within each
+`AnimalID x canonical spatial unit`. Complete pairs use an equal-weight L/R mean
+on the existing imputed log2 scale. If only one valid hemisphere remains because
+the other is absent or excluded, the observed value is retained without
+hemisphere imputation. It does not filter, transform, normalize, impute, or remap
+proteins.
+
+```powershell
+Rscript 01_preprocessing/02a_prepare_animal_level_protigy_input.r --dataset neuron_neuropil --dry-run
+Rscript 01_preprocessing/02a_prepare_animal_level_protigy_input.r --dataset neuron_soma --dry-run
+Rscript 01_preprocessing/02a_prepare_animal_level_protigy_input.r --dataset microglia --dry-run
+Rscript 01_preprocessing/02a_prepare_animal_level_protigy_input.r --dataset all
+```
+
+Canonical quantitative inputs resolve as the newest file matching
+`^\d{8}_pgmatrix_imputed_<dataset>_[0-9]+samples_missing70pct\.xlsx$` under
+`data/processed/01_preprocessing/impute/`. Optional dedicated overrides are
+`PROTEOMICS_PROTIGY_INPUT_EXPRESSION_XLSX`,
+`PROTEOMICS_PROTIGY_INPUT_METADATA_XLSX`, and the dataset-specific expression
+variants ending in `_NEURON_NEUROPIL`, `_NEURON_SOMA`, or `_MICROGLIA`.
+
+Primary outputs:
+
+```text
+data/processed/01_preprocessing/protigy_input_animal_level/<dataset>/<dataset>_animal_level.gct
+data/processed/01_preprocessing/protigy_input_animal_level/<dataset>/<dataset>_animal_level.xlsx
+data/processed/01_preprocessing/protigy_input_animal_level/<dataset>/<dataset>_animal_level_complete_bilateral_sensitivity.gct
+results/tables/01_preprocessing/02a_prepare_animal_level_protigy_input/<dataset>/
+results/logs/01_preprocessing/02a_prepare_animal_level_protigy_input/<dataset>/
+```
+
+The primary GCT contains all animal/spatial units with one or two valid observed
+hemispheres. The complete-bilateral sensitivity GCT is optional and contains only
+units with one valid Left and one valid Right source sample. The script still
+fails closed on duplicate same-side hemispheres, hemisphere-label conflicts,
+dataset mismatches, sample reuse, or invalid E9 animal/group balance. Failure
+audits are retained, but an invalid dataset does not receive a new GCT/XLSX
+handoff.
+The stage is intentionally not registered in `pipeline.yml`: ProTigy remains an
+external/manual analysis boundary, and the active `core` stage still consumes
+the historical files under `protigy_output/<dataset>/`. After manually running
+ProTigy with the new GCTs, a separately authorized migration is required before
+`03_gct_extractR.r` or the normal `--stage all` path may consume corrected
+ProTigy outputs.
+
 Direct script commands:
 
 Stage 05 Phase 2B remains the quantitative production boundary. The atomic

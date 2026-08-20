@@ -98,3 +98,20 @@ testthat::test_that("publication entrypoint is rendering-only and output-isolate
   testthat::expect_false(grepl("write\\.csv\\s*\\(", script))
   testthat::expect_match(registry, "03_qc_exploration/00c_joint_compartment_qc_publication_figures.r", fixed = TRUE)
 })
+
+testthat::test_that("anatomical-island PCA has a panel-local tightened PC2 display range", {
+  root <- testthat::test_path("..", "..")
+  script <- paste(readLines(file.path(
+    root, "03_qc_exploration", "00c_joint_compartment_qc_publication_figures.r"
+  ), warn = FALSE), collapse = "\n")
+  testthat::expect_match(
+    script, "pca_island_ellipse_display_limits$y <- c(-45, 50)", fixed = TRUE
+  )
+  testthat::expect_match(
+    script, "equal_coordinate_scales(pca_island_ellipse_display_limits)", fixed = TRUE
+  )
+  testthat::expect_match(
+    script, "PROTEOMICS_JOINT_QC_ANATOMICAL_ISLAND_PCA_ONLY", fixed = TRUE
+  )
+  testthat::expect_match(script, "ggplot2::coord_fixed(ratio = 1, clip = \"off\")", fixed = TRUE)
+})

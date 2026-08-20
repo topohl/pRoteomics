@@ -1,4 +1,4 @@
-# Shared dataset-specific input contracts for WGCNA and module scoring.
+# Shared dataset-specific input contracts for ProTigy input, WGCNA, and module scoring.
 
 if (!exists("repo_path", mode = "function")) {
   paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
@@ -63,9 +63,10 @@ dataset_filter_contract <- function(dataset = current_dataset()) {
 
 resolve_dataset_inputs <- function(
   dataset = current_dataset(),
-  purpose = c("wgcna", "module_score"),
+  purpose = c("wgcna", "module_score", "protigy_input"),
   script = Sys.getenv("PROTEOMICS_SCRIPT_ID", unset = NA_character_),
-  stage = NA_character_
+  stage = NA_character_,
+  record_resolution = TRUE
 ) {
   purpose <- match.arg(purpose)
   dataset <- validate_dataset(dataset)
@@ -86,7 +87,8 @@ resolve_dataset_inputs <- function(
       script = script,
       dataset = dataset,
       stage = stage,
-      producer_script_or_artifact_id = "01_preprocessing/impute"
+      producer_script_or_artifact_id = "01_preprocessing/impute",
+      record_resolution = record_resolution
     )
     metadata_file <- resolve_input_path(
       input_name = "wgcna_sample_metadata",
@@ -96,10 +98,11 @@ resolve_dataset_inputs <- function(
       script = script,
       dataset = dataset,
       stage = stage,
-      producer_script_or_artifact_id = "data/metadata/TPE9_sample_metadata_males.xlsx"
+      producer_script_or_artifact_id = "data/metadata/TPE9_sample_metadata_males.xlsx",
+      record_resolution = record_resolution
     )
     matrix_format <- "imputed_expression_wide"
-  } else {
+  } else if (identical(purpose, "module_score")) {
     explicit_expression <- Sys.getenv("PROTEOMICS_MODULE_SCORE_PROTEIN_FILE", unset = "")
     explicit_metadata <- Sys.getenv("PROTEOMICS_MODULE_SCORE_METADATA_FILE", unset = "")
     expression_file <- resolve_input_path(
@@ -116,7 +119,8 @@ resolve_dataset_inputs <- function(
       script = script,
       dataset = dataset,
       stage = stage,
-      producer_script_or_artifact_id = "01_preprocessing/02_excel_convert.r"
+      producer_script_or_artifact_id = "01_preprocessing/02_excel_convert.r",
+      record_resolution = record_resolution
     )
     canonical_metadata <- path_processed(
       "01_preprocessing",
@@ -143,9 +147,56 @@ resolve_dataset_inputs <- function(
       script = script,
       dataset = dataset,
       stage = stage,
-      producer_script_or_artifact_id = "01_preprocessing/06_merged_metadata_module_score.r"
+      producer_script_or_artifact_id = "01_preprocessing/06_merged_metadata_module_score.r",
+      record_resolution = record_resolution
     )
     matrix_format <- "morpheus_with_metadata_rows"
+  } else {
+    dataset_env <- toupper(dataset)
+    dataset_specific_expression <- Sys.getenv(
+      paste0("PROTEOMICS_PROTIGY_INPUT_EXPRESSION_XLSX_", dataset_env),
+      unset = ""
+    )
+    explicit_expression <- if (nzchar(dataset_specific_expression)) {
+      dataset_specific_expression
+    } else {
+      Sys.getenv("PROTEOMICS_PROTIGY_INPUT_EXPRESSION_XLSX", unset = "")
+    }
+    explicit_metadata <- Sys.getenv("PROTEOMICS_PROTIGY_INPUT_METADATA_XLSX", unset = "")
+    impute_root <- path_processed("01_preprocessing", "impute")
+    expression_pattern <- paste0(
+      "^\\d{8}_pgmatrix_imputed_", dataset,
+      "_[0-9]+samples_missing70pct\\.xlsx$"
+    )
+    newest_expression <- latest_matching_file(
+      impute_root,
+      expression_pattern,
+      recursive = FALSE
+    )
+    expression_file <- resolve_input_path(
+      input_name = "protigy_input_imputed_expression_matrix",
+      expected_path = newest_expression,
+      explicit_path = explicit_expression,
+      required = TRUE,
+      script = script,
+      dataset = dataset,
+      stage = stage,
+      producer_script_or_artifact_id = "01_preprocessing/01_impute.r",
+      record_resolution = record_resolution
+    )
+    metadata_file <- resolve_input_path(
+      input_name = "protigy_input_sample_metadata",
+      expected_path = path_metadata("TPE9_sample_metadata_males.xlsx"),
+      explicit_path = explicit_metadata,
+      required = TRUE,
+      script = script,
+      dataset = dataset,
+      stage = stage,
+      producer_script_or_artifact_id = "data/metadata/TPE9_sample_metadata_males.xlsx",
+      record_resolution = record_resolution
+    )
+    idmap_file <- NA_character_
+    matrix_format <- "imputed_expression_wide"
   }
 
   diagnostics <- c(
@@ -154,23 +205,25 @@ resolve_dataset_inputs <- function(
     paste0("matrix_format=", matrix_format),
     paste0("expression_file_exists=", file.exists(expression_file)),
     paste0("metadata_file_exists=", file.exists(metadata_file)),
-    paste0("idmap_file_exists=", file.exists(idmap_file)),
+    paste0("idmap_file_exists=", !is.na(idmap_file) && file.exists(idmap_file)),
     filter_contract$description
   )
 
-  record_input_resolution(
-    script = script,
-    dataset = dataset,
-    stage = stage,
-    input_name = paste0(purpose, "_uniprot_id_mapping"),
-    expected_path = idmap_file,
-    resolved_path = idmap_file,
-    resolution_mode = if (file.exists(idmap_file)) "canonical" else "missing",
-    strict_mode = strict_inputs_enabled(),
-    allowed_in_strict_mode = TRUE,
-    producer_script_or_artifact_id = "data/external/MOUSE_10090_idmapping.dat",
-    warning = NA_character_
-  )
+  if (!identical(purpose, "protigy_input") && isTRUE(record_resolution)) {
+    record_input_resolution(
+      script = script,
+      dataset = dataset,
+      stage = stage,
+      input_name = paste0(purpose, "_uniprot_id_mapping"),
+      expected_path = idmap_file,
+      resolved_path = idmap_file,
+      resolution_mode = if (file.exists(idmap_file)) "canonical" else "missing",
+      strict_mode = strict_inputs_enabled(),
+      allowed_in_strict_mode = TRUE,
+      producer_script_or_artifact_id = "data/external/MOUSE_10090_idmapping.dat",
+      warning = NA_character_
+    )
+  }
 
   list(
     dataset = dataset,
