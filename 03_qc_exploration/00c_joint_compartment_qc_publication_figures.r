@@ -124,6 +124,10 @@ pc_limits <- joint_pub_equal_limits(scores$PC1, scores$PC2)
 # The island-ellipse candidate needs a little extra room so its left-most
 # covariance ellipse remains wholly inside the coordinate panel.
 pca_island_ellipse_limits <- joint_pub_equal_limits(scores$PC1, scores$PC2, padding = 0.10)
+# Figure 2C only: retain the established PC1 display range but tighten the
+# displayed PC2 range for the 89-mm anatomical-island candidate.
+pca_island_ellipse_display_limits <- pca_island_ellipse_limits
+pca_island_ellipse_display_limits$y <- c(-45, 50)
 
 equal_coordinate_scales <- function(limits) {
   list(
@@ -281,7 +285,7 @@ p_pca_anatomical_ellipses <- ggplot2::ggplot(pca_plot_data, ggplot2::aes(PC1, PC
     show.legend = FALSE
   ) +
   ggplot2::scale_fill_manual(values = pca_island_palette, guide = "none", drop = FALSE) +
-  equal_coordinate_scales(pca_island_ellipse_limits) +
+  equal_coordinate_scales(pca_island_ellipse_display_limits) +
   ggplot2::labs(x = pc_x_label, y = pc_y_label) +
   base_theme
 
@@ -542,6 +546,16 @@ panel_files <- c(
   umap = file.path(panel_root, "umap_exploratory_89mm.svg"),
   tsne = file.path(panel_root, "tsne_exploratory_89mm.svg")
 )
+render_anatomical_island_only <- tolower(trimws(Sys.getenv(
+  "PROTEOMICS_JOINT_QC_ANATOMICAL_ISLAND_PCA_ONLY", unset = "false"
+))) %in% c("1", "true", "yes")
+if (render_anatomical_island_only) {
+  joint_pub_save_svg(
+    p_pca_anatomical_ellipses, panel_files[["anatomical_island_pca"]], 89, 62
+  )
+  message("Anatomical-island PCA candidate-only rendering complete.")
+  quit(status = 0, save = "no")
+}
 joint_pub_save_svg(p_pca_dataset, panel_files[["main_pca"]], 89, 62)
 joint_pub_save_svg(p_pca_anatomical_ellipses, panel_files[["anatomical_island_pca"]], 89, 62)
 joint_pub_save_svg(p_pca_technical, panel_files[["technical_pca"]], 89, 91)
