@@ -39,7 +39,15 @@ source(repo_path("R", "protein_mapping_utils.R"))
 source(repo_path("R", "protein_group_enrichment_utils.R"))
 source(repo_path("R", "enrichment_io.R"))
 source(repo_path("R", "schema_validation.R"))
-MODULE_ID <- "04_differential_expression_enrichment"
+ENRICHMENT_BRANCH <- trimws(Sys.getenv("PROTEOMICS_ENRICHMENT_BRANCH", unset = ""))
+if (nzchar(ENRICHMENT_BRANCH) && !grepl("^[A-Za-z0-9_-]+$", ENRICHMENT_BRANCH)) {
+  stop("PROTEOMICS_ENRICHMENT_BRANCH must match ^[A-Za-z0-9_-]+$.", call. = FALSE)
+}
+MODULE_ID <- if (nzchar(ENRICHMENT_BRANCH)) {
+  file.path("04_differential_expression_enrichment_comparison", ENRICHMENT_BRANCH)
+} else {
+  "04_differential_expression_enrichment"
+}
 SUBSTEP_ID <- "clusterProfiler"
 CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
 
@@ -828,6 +836,12 @@ as_repo_path <- function(path) {
 }
 DATASET <- current_dataset_from_cli(default = cfg$analysis$dataset %||% "neuron_neuropil")
 cfg$analysis$dataset <- DATASET
+mapped_dir_override <- trimws(Sys.getenv("PROTEOMICS_CLUSTERPROFILER_MAPPED_DIR", unset = ""))
+if (nzchar(mapped_dir_override)) {
+  mapped_dir_override <- as_repo_path(mapped_dir_override)
+  cfg$paths$mapped_dir <- mapped_dir_override
+  cfg$paths$mapped_data_base <- mapped_dir_override
+}
 CANONICAL_PATHS <- lapply(CANONICAL_PATHS, function(path) file.path(path, DATASET))
 invisible(lapply(CANONICAL_PATHS, dir.create, recursive = TRUE, showWarnings = FALSE))
 
@@ -967,6 +981,16 @@ if (isTRUE(DRY_RUN)) {
   dry_run_line("Script", "01_clusterProfiler.r")
   dry_run_line("Config", config_path, diagnostics$status[1])
   dry_run_line("Dataset", DATASET)
+  dry_run_line("Enrichment branch", if (nzchar(ENRICHMENT_BRANCH)) ENRICHMENT_BRANCH else "canonical")
+  dry_run_line("Resolved mapped_dir", cfg$paths$mapped_dir)
+  dry_run_line("Resolved mapped_data_base", cfg$paths$mapped_data_base)
+  dry_run_line("Processed output root", CANONICAL_PATHS$processed)
+  dry_run_line("Tables output root", CANONICAL_PATHS$tables)
+  dry_run_line("Figures output root", CANONICAL_PATHS$figures)
+  dry_run_line("Source-data output root", CANONICAL_PATHS$source_data)
+  dry_run_line("Reports output root", CANONICAL_PATHS$reports)
+  dry_run_line("Logs output root", CANONICAL_PATHS$logs)
+  dry_run_line("Number of comparison CSVs", length(comparison_files))
   dry_run_line("Mapped directory", mapped_dir, diagnostics$status[3])
   dry_run_line("Comparison CSV count", length(comparison_files), diagnostics$status[4])
   if (length(comparison_files) > 0) {
