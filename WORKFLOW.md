@@ -38,6 +38,14 @@ handoff state and should be rerun intentionally.
 Before moving on: confirm the expected comparison CSVs exist for the dataset and
 metadata rows match the samples used downstream.
 
+The manual animal-level ProTigy branch is audited separately with
+`01_preprocessing/03c_legacy_vs_animal_level_da_audit.r --dataset all`. Its
+pre-promotion extraction namespace is
+`data/processed/01_preprocessing/gct_extractR_animal_level/<dataset>/`, selected
+with `PROTEOMICS_GCT_INPUT_ROOT` and `PROTEOMICS_GCT_OUTPUT_ROOT`. The canonical
+registry remains on the historical roots until a later, explicitly authorized
+promotion; the DA audit does not run ID mapping or enrichment.
+
 ## 2. ID Mapping
 
 Purpose: map protein identifiers to UniProt/gene identifiers and create

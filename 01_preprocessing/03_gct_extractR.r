@@ -2,50 +2,20 @@
 # Script: 01_preprocessing/03_gct_extractR.r
 # Stage: core
 # Scope: dataset_specific
-# Consumes: required data/processed/01_preprocessing/protigy_output/<dataset>/*.gct; optional data/processed/01_preprocessing/protigy_output/<dataset>/protigy_manifest.csv; data/processed/01_preprocessing/protigy_output/protigy_manifest.csv.
-# Produces: data/processed/01_preprocessing/gct_extractR/<dataset>/forward/*.csv; data/processed/01_preprocessing/gct_extractR/<dataset>/reverse/*.csv; data/processed/01_preprocessing/gct_extractR/<dataset>/indexComparisons.csv.
-# Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
-# Notes: Creates dataset GCT comparison CSVs consumed by MapThatProt.
+# Consumes: PROTEOMICS_GCT_INPUT_ROOT/<dataset>/*.gct (default data/processed/01_preprocessing/protigy_output).
+# Produces: PROTEOMICS_GCT_OUTPUT_ROOT/<dataset>/{forward,reverse}/*.csv and indexComparisons.csv
+# Notes: Splits physical ProTigy statistical-result GCT fields; statistical fields may be row descriptors.
 # ================================================================
-
-# ===========================================================
-# Consumes:
-#   - ProTigy/limma GCT comparison output from data/processed/01_preprocessing/protigy_output/<comparison>/
-# Produces:
-#   - forward/reverse raw contrast CSVs for ID mapping under data/processed/01_preprocessing/gct_extractR/<comparison>/
-# File contract:
-#   - feeds docs/file_contracts.tsv object mapped_contrast_csv through 02_id_mapping/01_MapThatProt_batch.r
-# ===========================================================
-# GCT Comparison Splitter: Per-Comparison Forward and Reverse Output
-# Robust version for Metric.Comparison formatted GCT files
-# Handles duplicate column names by keeping first occurrence only
-# Author: Tobias Pohl
-# ===========================================================
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
 source(repo_path("R", "dataset_config.R"))
+source(repo_path("R", "protigy_stat_gct_utils.R"))
+
 MODULE_ID <- "01_preprocessing"
-SUBSTEP_ID <- "gct_extractR"
-CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
-
-required_pkgs <- c("dplyr", "readr", "stringr", "purrr", "fs", "tibble")
-
-load_required_packages <- function(pkgs) {
-  missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
-  if (length(missing) > 0) {
-    stop("Missing required R package(s): ", paste(missing, collapse = ", "),
-         ". Install them explicitly before running this script.", call. = FALSE)
-  }
-  invisible(lapply(pkgs, library, character.only = TRUE))
-}
-
-# -------------------------------
-# Parameters
-# -------------------------------
-
-use_label_map <- FALSE   # TRUE = con/res/sus mapping
+DEFAULT_SUBSTEP_ID <- "gct_extractR"
 comparison_name <- current_dataset_from_cli()
+use_label_map <- FALSE
 
 truthy_env <- function(name, default = FALSE) {
   value <- Sys.getenv(name, unset = if (isTRUE(default)) "true" else "false")
@@ -63,76 +33,33 @@ force_rerun <- truthy_env("PROTEOMICS_FORCE_RERUN") ||
   truthy_env("PROTEOMICS_GCT_RECOMPUTE") ||
   has_cli_flag(c("--force-rerun", "--recompute"))
 
-# -------------------------------
-# Input
-# -------------------------------
-
+roots <- resolve_gct_io_roots()
 input_stem <- Sys.getenv("PROTEOMICS_GCT_INPUT_STEM", unset = "")
-protigy_dataset_dir <- path_processed("01_preprocessing", "protigy_output", comparison_name)
-if (!nzchar(input_stem)) {
-  manifest_candidates <- c(
-    file.path(protigy_dataset_dir, "protigy_manifest.csv"),
-    path_processed("01_preprocessing", "protigy_output", "protigy_manifest.csv")
-  )
-  manifest_file <- manifest_candidates[file.exists(manifest_candidates)][1]
-  if (!is.na(manifest_file)) {
-    manifest <- read.csv(manifest_file, stringsAsFactors = FALSE)
-    path_col <- intersect(c("gct_path", "file", "path"), names(manifest))[1]
-    if (!is.na(path_col)) {
-      candidate <- manifest[[path_col]][1]
-      if (!is.na(candidate) && nzchar(as.character(candidate))) {
-        candidate <- as.character(candidate)
-        candidate_path <- if (grepl("^([A-Za-z]:|/|~)", candidate)) {
-          path.expand(candidate)
-        } else {
-          file.path(protigy_dataset_dir, basename(candidate))
-        }
-        if (file.exists(candidate_path)) {
-          input_stem <- tools::file_path_sans_ext(basename(candidate_path))
-        } else {
-          message("Ignoring ProTigy manifest entry because the referenced GCT file was not found: ", candidate_path)
-        }
-      }
-    }
-  }
-}
-if (!nzchar(input_stem)) {
-  gct_candidates <- if (dir.exists(protigy_dataset_dir)) {
-    list.files(protigy_dataset_dir, pattern = "\\.gct$", full.names = TRUE, ignore.case = TRUE)
-  } else {
-    character()
-  }
-  if (length(gct_candidates) == 1L) {
-    input_stem <- tools::file_path_sans_ext(basename(gct_candidates[[1]]))
-    message("Auto-detected single ProTigy GCT file for dataset '", comparison_name, "': ", basename(gct_candidates[[1]]))
-  } else if (length(gct_candidates) == 0L) {
-    stop(
-      "Could not infer ProTigy GCT input stem for dataset '", comparison_name, "'. ",
-      "No .gct files were found in: ", protigy_dataset_dir,
-      ". Set PROTEOMICS_GCT_INPUT_STEM or add a valid protigy_manifest.csv.",
-      call. = FALSE
-    )
-  } else {
-    stop(
-      "Could not infer ProTigy GCT input stem for dataset '", comparison_name, "'. ",
-      "Multiple .gct files were found in: ", protigy_dataset_dir,
-      "\nCandidates:\n- ", paste(basename(gct_candidates), collapse = "\n- "),
-      "\nSet PROTEOMICS_GCT_INPUT_STEM to the desired file stem.",
-      call. = FALSE
-    )
-  }
-}
-if (!nzchar(input_stem)) {
-  stop(
-    "Could not infer ProTigy GCT input stem. Set PROTEOMICS_GCT_INPUT_STEM ",
-    "or provide a protigy_manifest.csv with a gct_path/file/path column under ",
-    protigy_dataset_dir,
-    call. = FALSE
-  )
-}
+resolved <- resolve_single_protigy_gct(
+  roots$input_root,
+  comparison_name,
+  input_stem = input_stem,
+  use_manifest = TRUE
+)
+gct_path <- resolved$path
+outdir <- file.path(roots$output_root, comparison_name)
 
-gct_path <- file.path(protigy_dataset_dir, paste0(input_stem, ".gct"))
-outdir <- file.path(CANONICAL_PATHS$processed, comparison_name)
+default_output_root <- normalizePath(
+  path_processed("01_preprocessing", "gct_extractR"),
+  winslash = "/", mustWork = FALSE
+)
+analysis_namespace <- if (identical(roots$output_root, default_output_root)) {
+  DEFAULT_SUBSTEP_ID
+} else {
+  safe_filename(basename(roots$output_root))
+}
+CANONICAL_PATHS <- module_paths(MODULE_ID, analysis_namespace)
+
+animal_level_mode <- truthy_env("PROTEOMICS_GCT_STRICT_ANIMAL_LEVEL") ||
+  identical(tolower(basename(roots$input_root)), "protigy_output_animal_level")
+gct <- read_protigy_stat_gct(gct_path, comparison_name, strict_primary = animal_level_mode)
+corrected_contract <- if (animal_level_mode) validate_corrected_protigy_gct_contract(gct) else NULL
+diagnostic <- protigy_gct_diagnostic_row(gct)
 
 if (is_dry_run()) {
   outdir_fwd <- file.path(outdir, "forward")
@@ -143,25 +70,43 @@ if (is_dry_run()) {
   )
   dry_run_line("Script", "01_preprocessing/03_gct_extractR.r")
   dry_run_line("Dry-run mode", "no output folders or CSV files will be created")
-  dry_run_line("Resolved dataset", comparison_name)
-  dry_run_line("ProTigy dataset directory", protigy_dataset_dir, if (dir.exists(protigy_dataset_dir)) "PASS" else "FAIL")
-  dry_run_line("Resolved GCT input stem", input_stem)
-  dry_run_line("GCT input", gct_path, if (file.exists(gct_path)) "PASS" else "FAIL")
+  dry_run_line("Dataset", comparison_name)
+  dry_run_line("Analysis/input root", roots$input_root, if (dir.exists(roots$input_root)) "PASS" else "FAIL")
+  dry_run_line("Resolved dataset directory", resolved$dataset_dir, if (dir.exists(resolved$dataset_dir)) "PASS" else "FAIL")
+  dry_run_line("Resolved GCT", gct_path, if (file.exists(gct_path)) "PASS" else "FAIL")
+  dry_run_line(
+    "GCT dimensions",
+    paste0(
+      "nrmat=", diagnostic$nrmat, ", ncmat=", diagnostic$ncmat,
+      ", nrhd=", diagnostic$nrhd, ", nchd=", diagnostic$nchd,
+      ", physical_fields=", diagnostic$observed_physical_fields
+    )
+  )
+  dry_run_line("Detected comparison naming style", diagnostic$comparison_naming_style)
+  dry_run_line("Detected comparisons", diagnostic$n_detected_comparisons)
+  dry_run_line("Valid within-unit stress comparisons", diagnostic$n_valid_stress_comparisons)
+  dry_run_line("Rejected comparisons", diagnostic$n_detected_comparisons - diagnostic$n_valid_stress_comparisons)
+  dry_run_line("Available statistical metrics", diagnostic$metrics_found)
+  dry_run_line("Strict animal-level mode", animal_level_mode)
+  if (animal_level_mode) dry_run_line("Expected corrected comparisons", corrected_contract$expected_comparison_count, "PASS")
+  dry_run_line("Analysis/output root", roots$output_root)
   dry_run_line("Forward output directory", outdir_fwd)
   dry_run_line("Reverse output directory", outdir_rev)
   dry_run_line("Index output", file.path(outdir, "indexComparisons.csv"))
   dry_run_line("Existing split contrast tables", length(existing_tables))
   dry_run_line("Recompute existing tables", force_rerun)
-  dry_run_line("Creates mapping inputs when run without --dry-run", outdir_fwd)
-  quit(status = if (file.exists(gct_path)) 0 else 1, save = "no")
+  quit(status = 0, save = "no")
 }
-if (!file.exists(gct_path)) stop("GCT input not found: ", gct_path, call. = FALSE)
-load_required_packages(required_pkgs)
-write_session_info(file.path(CANONICAL_PATHS$logs, "sessionInfo.txt"))
 
-# -------------------------------
-# Helper Functions
-# -------------------------------
+required_pkgs <- c("dplyr", "readr", "stringr", "purrr", "fs", "tibble")
+missing_pkgs <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
+if (length(missing_pkgs)) {
+  stop("Missing required R package(s): ", paste(missing_pkgs, collapse = ", "), call. = FALSE)
+}
+invisible(lapply(required_pkgs, library, character.only = TRUE))
+
+dir_create(CANONICAL_PATHS$logs)
+write_session_info(file.path(CANONICAL_PATHS$logs, "sessionInfo.txt"))
 
 safe_name <- function(x) {
   x |>
@@ -170,306 +115,104 @@ safe_name <- function(x) {
 }
 
 swap_comparison <- function(comp_key, use_label_map = FALSE) {
-  parts <- stringr::str_split(comp_key, "\\.over\\.", simplify = TRUE)
-
-  if (ncol(parts) != 2) return(NA_character_)
-
+  parts <- stringr::str_split(canonicalize_protigy_comparison(comp_key), "\\.over\\.", simplify = TRUE)
+  if (ncol(parts) != 2L) return(NA_character_)
   rev <- paste0(parts[2], ".over.", parts[1])
-
   if (use_label_map) {
     rev <- stringr::str_replace_all(rev, "_1", "con")
     rev <- stringr::str_replace_all(rev, "_2", "res")
     rev <- stringr::str_replace_all(rev, "_3", "sus")
   }
-
   rev
 }
 
-split_col <- function(col) {
-  m <- stringr::str_match(
-    col,
-    "^([A-Za-z0-9\\.]+)\\.([A-Za-z0-9_]+\\.over\\.[A-Za-z0-9_]+)$"
-  )
-
-  if (is.na(m[1, 1])) {
-    return(list(metric = NA_character_, comparison = NA_character_))
-  }
-
-  list(
-    metric = m[1, 2],
-    comparison = m[1, 3]
-  )
-}
-
 parse_compkey <- function(key) {
-  m <- stringr::str_match(
-    key,
-    "^([A-Za-z0-9]+)_([a-z]+)_([123])\\.over\\.([A-Za-z0-9]+)_([a-z]+)_([123])$"
-  )
-
+  parsed <- parse_protigy_comparison(key, comparison_name)
   label_map <- c("1" = "con", "2" = "res", "3" = "sus")
-
-  if (!is.na(m[1, 1])) {
-    r1 <- m[1, 2]
-    g1 <- m[1, 3]
-    l1 <- m[1, 4]
-
-    r2 <- m[1, 5]
-    g2 <- m[1, 6]
-    l2 <- m[1, 7]
-
-    left  <- paste0(r1, g1, label_map[[l1]])
-    right <- paste0(r2, g2, label_map[[l2]])
-
+  if (isTRUE(parsed$parsed[[1]])) {
+    left <- paste0(gsub("_", "", parsed$left_unit[[1]], fixed = TRUE), label_map[[parsed$left_group[[1]]]])
+    right <- paste0(gsub("_", "", parsed$right_unit[[1]], fixed = TRUE), label_map[[parsed$right_group[[1]]]])
     return(paste0(left, "_", right))
   }
-
-  key2 <- stringr::str_replace_all(key, "\\.over\\.", "_")
+  key2 <- stringr::str_replace_all(canonicalize_protigy_comparison(key), "\\.over\\.", "_")
   key2 <- stringr::str_replace_all(key2, "_1", "con")
   key2 <- stringr::str_replace_all(key2, "_2", "res")
   key2 <- stringr::str_replace_all(key2, "_3", "sus")
-  key2 <- stringr::str_replace_all(key2, "[^A-Za-z0-9_]", "")
-
-  key2
+  stringr::str_replace_all(key2, "[^A-Za-z0-9_]", "")
 }
 
-# -------------------------------
-# Read GCT File
-# -------------------------------
-
-raw <- utils::read.delim(
-  gct_path,
-  header = FALSE,
-  stringsAsFactors = FALSE,
-  check.names = FALSE,
-  comment.char = ""
-)
-
-raw_clean <- raw[-c(1:2), ]
-
-header_row <- which(tolower(trimws(raw_clean[[1]])) == "id")[1]
-
-if (is.na(header_row)) {
-  stop("Could not find GCT header row. Expected first column to contain 'id'.")
+parsed_fields <- gct$parsed_fields
+parsed_fields <- parsed_fields[!duplicated(parsed_fields$metric_comparison_key), , drop = FALSE]
+if (animal_level_mode) {
+  accepted <- gct$comparison_validation$comparison[gct$comparison_validation$valid_stress_comparison]
+  parsed_fields <- parsed_fields[parsed_fields$comparison %in% accepted, , drop = FALSE]
 }
-
-col_names <- as.character(unlist(raw_clean[header_row, ]))
-
-data <- raw_clean[(header_row + 1):nrow(raw_clean), , drop = FALSE]
-colnames(data) <- col_names
-
-# -------------------------------
-# Remove Duplicate Columns
-# Keep first occurrence only
-# -------------------------------
-
-dup_cols <- duplicated(names(data))
-
-if (any(dup_cols)) {
-  message(
-    "Removing duplicate columns, keeping first occurrence: ",
-    paste(unique(names(data)[dup_cols]), collapse = ", ")
-  )
-
-  data <- data[, !dup_cols, drop = FALSE]
-}
-
-if (!"id" %in% names(data)) {
-  stop("No 'id' column found after assigning GCT header.")
-}
-
-if (anyDuplicated(names(data))) {
-  stop(
-    "Duplicate columns remain after cleanup: ",
-    paste(unique(names(data)[duplicated(names(data))]), collapse = ", ")
-  )
-}
-
-# -------------------------------
-# Remove Annotation Rows
-# -------------------------------
-
-annotation_rows <- c(
-  "AnimalID", "ReplicateGroup", "celltype", "celltype_layer", "layer", "region",
-  "group", "group2", "ExpGroup", "celltype_ExpGroup", "region_ExpGroup",
-  "celltype_layer_ExpGroup", "celltype_sublayer_ExpGroup", "plate",
-  "sampleNumber", "shortname"
-)
-
-data <- data |>
-  dplyr::filter(!id %in% annotation_rows, id != "na")
-
-# -------------------------------
-# Parse Feature Columns
-# -------------------------------
-
-feature_cols <- setdiff(names(data), "id")
-split_info <- lapply(feature_cols, split_col)
-
-comparison_keys <- setNames(
-  vapply(split_info, `[[`, character(1), "comparison"),
-  feature_cols
-)
-
-metric_keys <- setNames(
-  vapply(split_info, `[[`, character(1), "metric"),
-  feature_cols
-)
-
-valid_cols <- names(comparison_keys)[!is.na(comparison_keys)]
-
-if (length(valid_cols) == 0) {
-  stop("No valid Metric.Comparison columns detected.")
-}
-
-by_comparison <- split(valid_cols, comparison_keys[valid_cols])
-
-# -------------------------------
-# Convert Numeric Columns
-# -------------------------------
-
-data[valid_cols] <- lapply(data[valid_cols], readr::parse_number)
+if (!nrow(parsed_fields)) stop("No valid Metric.Comparison fields detected.", call. = FALSE)
+by_comparison <- split(parsed_fields, parsed_fields$comparison)
 
 outdir_fwd <- file.path(outdir, "forward")
 outdir_rev <- file.path(outdir, "reverse")
-
 fs::dir_create(outdir_fwd)
 fs::dir_create(outdir_rev)
 
-# -------------------------------
-# Metric Rename Map
-# -------------------------------
-
 recode_map <- c(
-  "adj.P.Val"   = "padj",
-  "P.Value"     = "pval",
-  "logFC"       = "log2fc",
-  "RawlogFC"    = "rawlog2fc",
+  "adj.P.Val" = "padj",
+  "P.Value" = "pval",
+  "logFC" = "log2fc",
+  "RawlogFC" = "rawlog2fc",
   "Log.P.Value" = "logpval",
-  "AveExpr"     = "aveExpr",
-  "t"           = "t"
+  "AveExpr" = "aveExpr",
+  "RawAveExpr" = "rawAveExpr",
+  "t" = "t"
 )
 
-# -------------------------------
-# Main Loop: Write Forward & Reverse CSVs
-# -------------------------------
-
-written_index <- purrr::imap_dfr(by_comparison, function(cols, comp_key) {
-
-  df_out <- data |>
-    dplyr::select(id, dplyr::all_of(cols)) |>
-    dplyr::mutate(id = as.character(id))
-
-  names(df_out)[1] <- "gene_symbol"
-
-  metrics <- metric_keys[cols]
-
-  new_names <- vapply(metrics, function(m) {
-    if (m %in% names(recode_map)) {
-      recode_map[[m]]
-    } else {
-      m
-    }
+written_index <- purrr::imap_dfr(by_comparison, function(field_rows, comp_key) {
+  df_out <- data.frame(gene_symbol = as.character(gct$ids), stringsAsFactors = FALSE)
+  metrics <- field_rows$metric
+  output_names <- vapply(metrics, function(metric) {
+    if (metric %in% names(recode_map)) recode_map[[metric]] else metric
   }, character(1))
+  output_names <- make.unique(output_names)
 
-  new_names <- make.unique(new_names)
-  names(df_out)[-1] <- new_names
+  for (i in seq_len(nrow(field_rows))) {
+    raw_values <- as.character(gct$data[[field_rows$column_internal[[i]]]])
+    df_out[[output_names[[i]]]] <- if (identical(metrics[[i]], "significant") && animal_level_mode) {
+      toupper(trimws(raw_values)) == "TRUE"
+    } else {
+      readr::parse_number(raw_values, na = c("", "NA", "NaN"))
+    }
+  }
 
   comp2 <- parse_compkey(comp_key)
-
-  fwd_file <- file.path(
-    outdir_fwd,
-    paste0(safe_name(comp2), ".csv")
-  )
-
+  fwd_file <- file.path(outdir_fwd, paste0(safe_name(comp2), ".csv"))
   fwd_status <- "computed"
   if (file.exists(fwd_file) && !isTRUE(force_rerun)) {
     fwd_status <- "skipped_existing"
     message("Skipping existing table: ", fwd_file)
   } else {
-    utils::write.csv(
-      df_out,
-      fwd_file,
-      row.names = FALSE,
-      quote = TRUE
-    )
+    utils::write.csv(df_out, fwd_file, row.names = FALSE, quote = TRUE)
     message("Wrote: ", fwd_file)
   }
 
-  rev_file <- NA_character_
-  rev_comp <- NA_character_
-  rev_status <- NA_character_
-
-  if (stringr::str_detect(comp_key, "\\.over\\.")) {
-
-    df_rev <- df_out
-
-    log_cols <- names(df_rev)[
-      stringr::str_detect(
-        names(df_rev),
-        stringr::regex("log.*fc", ignore_case = TRUE)
-      )
-    ]
-
-    for (col in log_cols) {
-      df_rev[[col]] <- suppressWarnings(as.numeric(df_rev[[col]]) * -1)
-    }
-
-    m <- stringr::str_match(
-      comp_key,
-      "^([A-Za-z0-9]+)_([a-z]+)_([123])\\.over\\.([A-Za-z0-9]+)_([a-z]+)_([123])$"
-    )
-
-    label_map <- c("1" = "con", "2" = "res", "3" = "sus")
-
-    if (!is.na(m[1, 1])) {
-      r1 <- m[1, 2]
-      g1 <- m[1, 3]
-      l1 <- m[1, 4]
-
-      r2 <- m[1, 5]
-      g2 <- m[1, 6]
-      l2 <- m[1, 7]
-
-      left  <- paste0(r2, g2, label_map[[l2]])
-      right <- paste0(r1, g1, label_map[[l1]])
-
-      rev_comp <- paste0(left, "_", right)
-
-    } else {
-      rev_comp <- swap_comparison(comp_key, TRUE)
-      rev_comp <- stringr::str_replace_all(rev_comp, "_1", "con")
-      rev_comp <- stringr::str_replace_all(rev_comp, "_2", "res")
-      rev_comp <- stringr::str_replace_all(rev_comp, "_3", "sus")
-      rev_comp <- stringr::str_replace_all(rev_comp, "[^A-Za-z0-9_]", "")
-    }
-
-    rev_file <- file.path(
-      outdir_rev,
-      paste0(safe_name(rev_comp), ".csv")
-    )
-
-    if (file.exists(rev_file) && !isTRUE(force_rerun)) {
-      rev_status <- "skipped_existing"
-      message("Skipping existing reversed table: ", rev_file)
-    } else {
-      utils::write.csv(
-        df_rev,
-        rev_file,
-        row.names = FALSE,
-        quote = TRUE
-      )
-      rev_status <- "computed"
-      message("Wrote reversed: ", rev_file)
-    }
+  df_rev <- reverse_protigy_metric_frame(df_out, stats::setNames(metrics, output_names))
+  reversed_key <- swap_comparison(comp_key)
+  rev_comp <- parse_compkey(reversed_key)
+  rev_file <- file.path(outdir_rev, paste0(safe_name(rev_comp), ".csv"))
+  rev_status <- "computed"
+  if (file.exists(rev_file) && !isTRUE(force_rerun)) {
+    rev_status <- "skipped_existing"
+    message("Skipping existing reversed table: ", rev_file)
+  } else {
+    utils::write.csv(df_rev, rev_file, row.names = FALSE, quote = TRUE)
+    message("Wrote reversed: ", rev_file)
   }
 
   tibble::tibble(
     comparison = comp_key,
     parsed_forward_comparison = comp2,
     parsed_reverse_comparison = rev_comp,
-    n_columns = length(cols),
-    columns_used = paste(cols, collapse = ";"),
+    n_columns = nrow(field_rows),
+    columns_used = paste(field_rows$field, collapse = ";"),
     forward_file = fwd_file,
     reverse_file = rev_file,
     forward_status = fwd_status,
@@ -477,19 +220,18 @@ written_index <- purrr::imap_dfr(by_comparison, function(cols, comp_key) {
   )
 })
 
-# -------------------------------
-# Index File
-# -------------------------------
-
-readr::write_csv(
-  written_index,
-  file.path(outdir, "indexComparisons.csv")
-)
+readr::write_csv(written_index, file.path(outdir, "indexComparisons.csv"))
 
 write_run_manifest(
   file.path(CANONICAL_PATHS$logs, comparison_name, "run_manifest.yml"),
-  inputs = list(gct_path = gct_path),
+  inputs = list(
+    analysis_input_root = roots$input_root,
+    resolved_dataset_directory = resolved$dataset_dir,
+    gct_path = gct_path,
+    gct_sha256 = gct$sha256
+  ),
   outputs = list(
+    analysis_output_root = roots$output_root,
     output_dir = outdir,
     forward_dir = outdir_fwd,
     reverse_dir = outdir_rev,
@@ -497,9 +239,15 @@ write_run_manifest(
   ),
   parameters = list(
     comparison_name = comparison_name,
-    input_stem = input_stem,
+    input_stem = resolved$input_stem,
+    input_resolution = resolved$resolution,
+    comparison_naming_style = gct$naming_style,
+    strict_animal_level_mode = animal_level_mode,
     use_label_map = use_label_map,
     force_rerun = force_rerun,
+    n_detected_comparisons = nrow(gct$comparison_validation),
+    n_valid_stress_comparisons = sum(gct$comparison_validation$valid_stress_comparison),
+    n_rejected_comparisons = sum(!gct$comparison_validation$valid_stress_comparison),
     n_comparisons_exported = nrow(written_index)
   )
 )
