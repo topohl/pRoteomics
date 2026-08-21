@@ -4,7 +4,7 @@
 # Script: 04_differential_expression_enrichment/05_microglia_targeted_signature_enrichment.r
 # Stage: enrichment
 # Scope: dataset_specific
-# Consumes: required data/processed/04_differential_expression_enrichment/clusterProfiler/microglia/clusterProfiler_manifest.csv; optional config/marker_panels/wgcna_reference_marker_sets.csv; results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv.
+# Consumes: required data/processed/04_differential_expression_enrichment/clusterProfiler/microglia/clusterProfiler_manifest.csv; optional config/marker_panels/wgcna_reference_marker_sets.csv; results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv; data/processed/05_celltype_enrichment_EWCE/EWCE_E9/microglia/EWCE_results_full.rds (diagnostic only).
 # Produces: results/tables/04_differential_expression_enrichment/microglia_targeted_signature_enrichment/microglia/.
 # Dataset behavior: runs for microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Microglia-only targeted signature enrichment.
@@ -618,8 +618,9 @@ reference_support_from_ewce_results <- function(dataset = DATASET) {
       diagnostics = tibble::tibble(check = "ewce_results_full_rds", status = "WARN", detail = paste("Unreadable or missing target_gene_tbl:", path))
     ))
   }
-  # This is not cell-type specificity, but records whether EWCE target lists already
-  # contain each protein/gene in this project-specific reference workflow.
+  # Diagnostic only: this records whether project EWCE target lists already
+  # contain each protein/gene. It does not determine signature membership,
+  # enrichment statistics, claim classification, or figure content.
   support <- obj$target_gene_tbl %>%
     dplyr::mutate(gene_symbol = normalize_id_all(.data$Gene)) %>%
     dplyr::group_by(.data$gene_symbol) %>%
