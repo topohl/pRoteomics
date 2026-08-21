@@ -104,7 +104,7 @@ testthat::test_that("signed t ranking is deterministic with protein-ID tie break
   testthat::expect_identical(first[sort(names(first))], second[sort(names(second))])
 })
 
-testthat::test_that("GCT root overrides and historical defaults resolve independently", {
+testthat::test_that("GCT root overrides resolve independently and canonical default is animal-level", {
   withr::local_envvar(c(
     PROTEOMICS_GCT_INPUT_ROOT = "custom/input",
     PROTEOMICS_GCT_OUTPUT_ROOT = "custom/output"
@@ -116,8 +116,12 @@ testthat::test_that("GCT root overrides and historical defaults resolve independ
   defaults <- resolve_gct_io_roots(input_root = "", output_root = "")
   testthat::expect_identical(
     defaults$input_root,
-    normalizePath(path_processed("01_preprocessing", "protigy_output"), winslash = "/", mustWork = FALSE)
+    normalizePath(path_processed("01_preprocessing", "protigy_output_animal_level"), winslash = "/", mustWork = FALSE)
   )
+  legacy <- resolve_gct_io_roots(input_root = "", output_root = "", legacy_mode = TRUE)
+  testthat::expect_identical(legacy$input_root, normalizePath(path_processed("01_preprocessing", "protigy_output"), winslash = "/", mustWork = FALSE))
+  testthat::expect_identical(legacy$output_root, normalizePath(path_processed("01_preprocessing", "gct_extractR_legacy"), winslash = "/", mustWork = FALSE))
+  testthat::expect_false(identical(legacy$output_root, defaults$output_root))
   testthat::expect_identical(
     defaults$output_root,
     normalizePath(path_processed("01_preprocessing", "gct_extractR"), winslash = "/", mustWork = FALSE)

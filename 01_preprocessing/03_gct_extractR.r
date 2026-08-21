@@ -2,7 +2,7 @@
 # Script: 01_preprocessing/03_gct_extractR.r
 # Stage: core
 # Scope: dataset_specific
-# Consumes: PROTEOMICS_GCT_INPUT_ROOT/<dataset>/*.gct (default data/processed/01_preprocessing/protigy_output).
+# Consumes: corrected animal-level ProTigy GCT by default; legacy input requires PROTEOMICS_GCT_BRANCH=legacy|comparison.
 # Produces: PROTEOMICS_GCT_OUTPUT_ROOT/<dataset>/{forward,reverse}/*.csv and indexComparisons.csv
 # Notes: Splits physical ProTigy statistical-result GCT fields; statistical fields may be row descriptors.
 # ================================================================
@@ -55,11 +55,14 @@ analysis_namespace <- if (identical(roots$output_root, default_output_root)) {
 }
 CANONICAL_PATHS <- module_paths(MODULE_ID, analysis_namespace)
 
-animal_level_mode <- truthy_env("PROTEOMICS_GCT_STRICT_ANIMAL_LEVEL") ||
-  identical(tolower(basename(roots$input_root)), "protigy_output_animal_level")
+legacy_mode <- tolower(Sys.getenv("PROTEOMICS_GCT_BRANCH", unset = "canonical")) %in% c("legacy", "comparison")
+animal_level_mode <- !legacy_mode
+if (animal_level_mode && !is_corrected_protigy_root(roots$input_root)) stop("Canonical GCT extraction requires corrected animal-level ProTigy root.", call. = FALSE)
 gct <- read_protigy_stat_gct(gct_path, comparison_name, strict_primary = animal_level_mode)
 corrected_contract <- if (animal_level_mode) validate_corrected_protigy_gct_contract(gct) else NULL
 diagnostic <- protigy_gct_diagnostic_row(gct)
+contract_current <- !animal_level_mode || gct_extract_contract_is_current(roots$output_root, comparison_name, gct_path, gct$sha256)
+if (animal_level_mode && !contract_current) force_rerun <- TRUE
 
 if (is_dry_run()) {
   outdir_fwd <- file.path(outdir, "forward")
@@ -221,6 +224,7 @@ written_index <- purrr::imap_dfr(by_comparison, function(field_rows, comp_key) {
 })
 
 readr::write_csv(written_index, file.path(outdir, "indexComparisons.csv"))
+if (animal_level_mode) write_gct_extract_contract_manifest(roots$output_root, comparison_name, gct_path, gct$sha256, nrow(written_index))
 
 write_run_manifest(
   file.path(CANONICAL_PATHS$logs, comparison_name, "run_manifest.yml"),
