@@ -100,6 +100,29 @@ glob_paths <- function(patterns, root = repo_root()) {
   hits[!file.info(hits)$isdir]
 }
 
+normalize_export_path <- function(path) {
+  gsub("\\\\", "/", normalizePath(path, winslash = "/", mustWork = FALSE))
+}
+
+is_noncanonical_ewce_export_path <- function(path) {
+  normalized <- normalize_export_path(path)
+  grepl(
+    "/05_celltype_enrichment_EWCE/EWCE_E9_comparison/",
+    normalized,
+    fixed = TRUE
+  )
+}
+
+is_exportable_result_path <- function(path) {
+  normalized <- normalize_export_path(path)
+  !grepl("/results/manuscript(/|$)", normalized, fixed = TRUE) &
+    !is_noncanonical_ewce_export_path(normalized)
+}
+
+canonical_ewce_figure_root <- function() {
+  path_results("figures", "05_celltype_enrichment_EWCE", "EWCE_E9")
+}
+
 pg_matrix_input_paths <- function(config) {
   glob_paths(config$canonical_inputs$pg_matrix$paths)
 }
@@ -261,6 +284,7 @@ copy_export_file <- function(src, dest, dry_run = FALSE) {
 supplementary_candidate_files <- function(config, datasets, include_derived = TRUE) {
   globs <- config$supplementary_table_globs
   hits <- glob_paths(globs)
+  hits <- hits[is_exportable_result_path(hits)]
   if (!isTRUE(include_derived)) return(hits)
   hits
 }

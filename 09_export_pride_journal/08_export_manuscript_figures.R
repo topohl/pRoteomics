@@ -16,6 +16,7 @@ paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.
 source(paths_file)
 source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "validation_utils.R"))
+source(repo_path("R", "export_helpers.R"))
 
 args <- commandArgs(trailingOnly = TRUE)
 dry_run <- is_dry_run()
@@ -26,6 +27,7 @@ invisible(lapply(manuscript_dirs, dir_create))
 candidate_roots <- c(
   path_results("figures", "03_qc_exploration"),
   path_results("figures", "04_differential_expression_enrichment"),
+  canonical_ewce_figure_root(),
   path_results("figures", "06_modules_WGCNA"),
   path_results("figures", "07_spatial_networks"),
   path_results("figures", "08_behavior_physio_coupling")

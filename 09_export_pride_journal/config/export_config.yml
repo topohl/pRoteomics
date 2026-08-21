@@ -89,6 +89,8 @@ missing_external:
 supplementary_table_globs:
   - "results/tables/04_differential_expression_enrichment/biological_program_summary/*/*.csv"
   - "results/tables/04_differential_expression_enrichment/microglia_targeted_signature_enrichment/*/*.csv"
+  - "results/tables/05_celltype_enrichment_EWCE/EWCE_E9/*/Supplementary_Table_EWCE.xlsx"
+  - "results/tables/05_celltype_enrichment_EWCE/EWCE_E9/*/High_Confidence_EWCE_Findings.xlsx"
   - "results/tables/06_modules_WGCNA/01_WGCNA/*/modules/WGCNA_module_evidence_rank.csv"
   - "results/source_data/04_differential_expression_enrichment/**/*.csv"
 

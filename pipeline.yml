@@ -283,10 +283,10 @@ stages:
         scope: "dataset_specific"
         produces: ["results/tables/04_differential_expression_enrichment/microglia_targeted_signature_enrichment/microglia/"]
         consumes_required: ["data/processed/04_differential_expression_enrichment/clusterProfiler/microglia/clusterProfiler_manifest.csv"]
-        consumes_optional: ["config/marker_panels/wgcna_reference_marker_sets.csv", "results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv"]
+        consumes_optional: ["config/marker_panels/wgcna_reference_marker_sets.csv", "results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv", "data/processed/05_celltype_enrichment_EWCE/EWCE_E9/microglia/EWCE_results_full.rds"]
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "Microglia-only targeted signature enrichment; supports conservative ROI annotation rather than purified-cell claims."
+        notes: "Microglia-only targeted signature enrichment; supports conservative ROI annotation rather than purified-cell claims. Canonical EWCE RDS is optional diagnostic target-list support only and does not determine signatures, enrichment statistics, claims, or figures."
       - script: "04_differential_expression_enrichment/06_biological_program_summary.r"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
