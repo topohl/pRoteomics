@@ -15,6 +15,7 @@
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
 source(repo_path("R", "validation_utils.R"))
+source(repo_path("R", "export_helpers.R"))
 
 dry_run <- is_dry_run()
 target_source <- path_results("manuscript", "source_data")
@@ -33,7 +34,7 @@ if (isTRUE(dry_run)) {
 }
 
 candidates <- unlist(lapply(table_roots[dir.exists(table_roots)], list.files, pattern = "\\.(csv|tsv|xlsx)$", recursive = TRUE, full.names = TRUE), use.names = FALSE)
-candidates <- candidates[!grepl("results/manuscript", normalizePath(candidates, winslash = "/", mustWork = FALSE), fixed = TRUE)]
+candidates <- candidates[is_exportable_result_path(candidates)]
 
 table_target_name <- function(path) {
   root <- if (grepl("/source_data/", normalizePath(path, winslash = "/", mustWork = FALSE), fixed = TRUE)) path_results("source_data") else path_results("tables")
