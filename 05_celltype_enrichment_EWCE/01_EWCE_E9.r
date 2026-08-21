@@ -6,6 +6,8 @@
 # Produces: results/tables/05_celltype_enrichment_EWCE/EWCE_E9/.
 # Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: EWCE after differential/enrichment inputs are available.
+# Canonical analysis unit: animal; hemispheres are aggregated within AnimalID x spatial unit.
+# Sample-level EWCE is explicit legacy/sensitivity-only comparison work.
 # ================================================================
 
 # ==========================================
@@ -37,6 +39,7 @@ source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "dataset_inputs.R"))
 source(repo_path("R", "validation_utils.R"))
 source(repo_path("R", "protigy_input_utils.R"))
+source(repo_path("R", "ewce_contract_utils.R"))
 MODULE_ID <- "05_celltype_enrichment_EWCE"
 EWCE_ANIMAL_CONTRACT_VERSION <- "EWCE_animal_level_v1"
 
@@ -77,33 +80,14 @@ if (!has_dataset_override) {
 }
 
 EWCE_DATASET <- current_dataset()
-EWCE_ANALYSIS_UNIT <- tolower(trimws(Sys.getenv("PROTEOMICS_EWCE_ANALYSIS_UNIT", unset = "sample")))
-if (!EWCE_ANALYSIS_UNIT %in% c("sample", "animal")) {
-  stop(
-    "PROTEOMICS_EWCE_ANALYSIS_UNIT must be one of: sample, animal.",
-    call. = FALSE
-  )
-}
+EWCE_ANALYSIS_UNIT <- tolower(trimws(Sys.getenv("PROTEOMICS_EWCE_ANALYSIS_UNIT", unset = "animal")))
 EWCE_SIGNATURE_ONLY <- tolower(trimws(Sys.getenv("PROTEOMICS_EWCE_SIGNATURE_ONLY", unset = "false"))) %in%
   c("1", "true", "yes", "y")
 EWCE_BRANCH <- trimws(Sys.getenv("PROTEOMICS_EWCE_BRANCH", unset = ""))
-if (nzchar(EWCE_BRANCH) && !grepl("^[A-Za-z0-9_-]+$", EWCE_BRANCH)) {
-  stop(
-    "PROTEOMICS_EWCE_BRANCH must match ^[A-Za-z0-9_-]+$.",
-    call. = FALSE
-  )
-}
-if (identical(EWCE_ANALYSIS_UNIT, "animal") && !nzchar(EWCE_BRANCH)) {
-  stop(
-    "PROTEOMICS_EWCE_BRANCH is required when PROTEOMICS_EWCE_ANALYSIS_UNIT=animal to protect canonical EWCE outputs.",
-    call. = FALSE
-  )
-}
-SUBSTEP_ID <- if (nzchar(EWCE_BRANCH)) {
-  file.path("EWCE_E9_comparison", EWCE_BRANCH, EWCE_DATASET)
-} else {
-  file.path("EWCE_E9", EWCE_DATASET)
-}
+EWCE_RUN_CONTRACT <- ewce_resolve_run_contract(EWCE_DATASET, EWCE_ANALYSIS_UNIT, EWCE_BRANCH)
+EWCE_ANALYSIS_UNIT <- EWCE_RUN_CONTRACT$analysis_unit
+EWCE_BRANCH <- if (EWCE_RUN_CONTRACT$canonical) "" else EWCE_RUN_CONTRACT$branch
+SUBSTEP_ID <- EWCE_RUN_CONTRACT$substep_id
 CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
 
 resolve_ewce_pg_matrix <- function() {
@@ -1189,11 +1173,11 @@ target_grid <- target_manifest %>%
   dplyr::mutate(TargetRun = paste(Target, paste0("top", TopN), paste0("annot", AnnotLevel), sep = "__"))
 
 ewce_gene_set_hash <- function(genes) {
-  digest::digest(sort(unique(stats::na.omit(as.character(genes)))), algo = "sha256")
+  ewce_gene_set_sha256(genes)
 }
 
 ewce_cache_key <- function(row, hits = NULL, bg = NULL) {
-  if (identical(EWCE_ANALYSIS_UNIT, "sample")) {
+  if (ewce_is_sample_level(EWCE_ANALYSIS_UNIT)) {
     return(digest::digest(list(
       dataset = EWCE_DATASET,
       target = row$Target,
@@ -1206,8 +1190,8 @@ ewce_cache_key <- function(row, hits = NULL, bg = NULL) {
       ctd_genes = length(ref_genes_by_level[[row$AnnotLevel]])
     ), algo = "xxhash64"))
   }
-  digest::digest(list(
-    analysis_contract_version = EWCE_ANIMAL_CONTRACT_VERSION,
+  ewce_animal_cache_key(
+    contract_version = EWCE_ANIMAL_CONTRACT_VERSION,
     input_matrix_sha256 = input_hash,
     dataset = EWCE_DATASET,
     target = row$Target,
@@ -1215,10 +1199,10 @@ ewce_cache_key <- function(row, hits = NULL, bg = NULL) {
     annot_level = row$AnnotLevel,
     reps = analysis_params$reps,
     seed = analysis_params$seed,
-    hit_gene_set_sha256 = ewce_gene_set_hash(hits),
-    background_gene_set_sha256 = ewce_gene_set_hash(bg),
-    ctd_annotation_gene_set_sha256 = ewce_gene_set_hash(ref_genes_by_level[[row$AnnotLevel]])
-  ), algo = "xxhash64")
+    hits = hits,
+    background = bg,
+    ctd_annotation_genes = ref_genes_by_level[[row$AnnotLevel]]
+  )
 }
 
 run_ewce_target <- function(target_run) {
@@ -1229,18 +1213,26 @@ run_ewce_target <- function(target_run) {
   bg <- intersect(background_universe, ref_genes_by_level[[row$AnnotLevel]])
   cache_file <- file.path(dirs$cache, paste0(safe_file_stem(paste(target_run, ewce_cache_key(row, genes, bg), sep = "__")), ".rds"))
   if (file.exists(cache_file)) {
-    return(readRDS(cache_file))
+    return(list(
+      TargetRun = target_run,
+      CacheEvent = "cache_hit",
+      Result = readRDS(cache_file)
+    ))
   }
 
-  if (identical(EWCE_ANALYSIS_UNIT, "sample")) {
+  if (ewce_legacy_cache_fallback_allowed(EWCE_ANALYSIS_UNIT)) {
     legacy_cache_file <- file.path(dirs$cache, paste0(safe_file_stem(paste(row$Target, paste0("annot", row$AnnotLevel), sep = "__")), ".rds"))
     if (file.exists(legacy_cache_file)) {
       legacy_out <- readRDS(legacy_cache_file)
       if (all(legacy_out$TopN == row$TopN, na.rm = TRUE) &&
-          all(legacy_out$AnnotLevel == row$AnnotLevel, na.rm = TRUE) &&
-          all(legacy_out$N_Background == length(intersect(background_universe, ref_genes_by_level[[row$AnnotLevel]])), na.rm = TRUE)) {
+           all(legacy_out$AnnotLevel == row$AnnotLevel, na.rm = TRUE) &&
+           all(legacy_out$N_Background == length(intersect(background_universe, ref_genes_by_level[[row$AnnotLevel]])), na.rm = TRUE)) {
         saveRDS(legacy_out, cache_file)
-        return(legacy_out)
+        return(list(
+          TargetRun = target_run,
+          CacheEvent = "legacy_cache_fallback",
+          Result = legacy_out
+        ))
       }
     }
   }
@@ -1265,15 +1257,52 @@ run_ewce_target <- function(target_run) {
     )
 
   saveRDS(out, cache_file)
-  out
+  list(
+    TargetRun = target_run,
+    CacheEvent = "computed",
+    Result = out
+  )
 }
 
-results_all <- future.apply::future_lapply(
+target_results <- future.apply::future_lapply(
   target_grid$TargetRun,
   run_ewce_target,
   future.seed = analysis_params$seed
+)
+
+cache_accounting <- ewce_cache_accounting_table(
+  target_grid$TargetRun,
+  dplyr::bind_rows(lapply(target_results, function(x) {
+    tibble::tibble(TargetRun = x$TargetRun, CacheEvent = x$CacheEvent)
+  }))
 ) %>%
-  dplyr::bind_rows()
+  dplyr::mutate(
+    dataset = EWCE_DATASET,
+    analysis_unit = EWCE_ANALYSIS_UNIT,
+    branch = EWCE_RUN_CONTRACT$branch,
+    output_namespace = SUBSTEP_ID,
+    animal_contract_version = if (identical(EWCE_ANALYSIS_UNIT, "animal")) EWCE_ANIMAL_CONTRACT_VERSION else NA_character_
+  ) %>%
+  dplyr::select(
+    dataset, analysis_unit, branch, output_namespace, animal_contract_version,
+    expected_target_runs, cache_hits, cache_misses, new_bootstrap_computations,
+    legacy_cache_fallback_count
+  )
+utils::write.csv(
+  cache_accounting,
+  file.path(dirs$qc, "EWCE_cache_accounting.csv"),
+  row.names = FALSE,
+  na = ""
+)
+message(
+  "EWCE cache accounting: expected=", cache_accounting$expected_target_runs,
+  ", hits=", cache_accounting$cache_hits,
+  ", misses=", cache_accounting$cache_misses,
+  ", new_bootstraps=", cache_accounting$new_bootstrap_computations,
+  ", legacy_fallbacks=", cache_accounting$legacy_cache_fallback_count
+)
+
+results_all <- dplyr::bind_rows(lapply(target_results, `[[`, "Result"))
 
 future::plan(future::sequential)
 

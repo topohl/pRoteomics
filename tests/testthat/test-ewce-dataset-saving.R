@@ -9,11 +9,15 @@ testthat::test_that("EWCE script parses --dataset before output paths are create
 
   pos_dataset_cli <- regexpr("dataset_cli <-", txt, fixed = TRUE)[1]
   pos_current_dataset <- regexpr("EWCE_DATASET <- current_dataset()", txt, fixed = TRUE)[1]
+  pos_contract <- regexpr("EWCE_RUN_CONTRACT <- ewce_resolve_run_contract", txt, fixed = TRUE)[1]
+  pos_substep <- regexpr("SUBSTEP_ID <- EWCE_RUN_CONTRACT$substep_id", txt, fixed = TRUE)[1]
   pos_create_dirs <- regexpr("CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)", txt, fixed = TRUE)[1]
   testthat::expect_gt(pos_current_dataset, pos_dataset_cli)
+  testthat::expect_gt(pos_contract, pos_current_dataset)
+  testthat::expect_gt(pos_substep, pos_contract)
   testthat::expect_gt(pos_create_dirs, pos_current_dataset)
-  testthat::expect_true(grepl('file.path\\("EWCE_E9", EWCE_DATASET\\)', txt))
-  testthat::expect_true(grepl('file.path\\("EWCE_E9_comparison", EWCE_BRANCH, EWCE_DATASET\\)', txt))
+  testthat::expect_gt(pos_create_dirs, pos_substep)
+  testthat::expect_true(grepl('source\\(repo_path\\("R", "ewce_contract_utils.R"\\)\\)', txt))
 })
 
 testthat::test_that("EWCE dry-run honors dataset-specific output folders", {
@@ -32,6 +36,9 @@ testthat::test_that("EWCE dry-run honors dataset-specific output folders", {
 
   microglia <- run("microglia")
   testthat::expect_true(grepl("Dataset: microglia", microglia, fixed = TRUE))
+  testthat::expect_true(grepl("Analysis unit: animal", microglia, fixed = TRUE))
+  testthat::expect_true(grepl("Branch: canonical", microglia, fixed = TRUE))
+  testthat::expect_true(grepl("Legacy cache reuse allowed: FALSE", microglia, fixed = TRUE))
   testthat::expect_true(grepl("pgmatrix_imputed_microglia_", microglia, fixed = TRUE))
   testthat::expect_true(grepl("EWCE_E9/microglia", microglia, fixed = TRUE))
   testthat::expect_false(grepl("EWCE_E9/neuron_neuropil", microglia, fixed = TRUE))
@@ -83,11 +90,9 @@ testthat::test_that("EWCE animal-level safeguards and cache identity are present
   testthat::expect_true(grepl("soma_A111_CA1_single_observed_hemisphere", txt, fixed = TRUE))
   testthat::expect_true(grepl("group_by(Gene, Stratum, Cond)", txt, fixed = TRUE))
   testthat::expect_true(grepl("input_matrix_sha256", txt, fixed = TRUE))
-  testthat::expect_true(grepl("hit_gene_set_sha256", txt, fixed = TRUE))
-  testthat::expect_true(grepl("background_gene_set_sha256", txt, fixed = TRUE))
-  testthat::expect_true(grepl("ctd_annotation_gene_set_sha256", txt, fixed = TRUE))
-  testthat::expect_true(grepl('identical\\(EWCE_ANALYSIS_UNIT, "sample"\\)', txt))
-  testthat::expect_true(grepl("PROTEOMICS_EWCE_BRANCH is required", txt, fixed = TRUE))
+  testthat::expect_true(grepl("ewce_animal_cache_key", txt, fixed = TRUE))
+  testthat::expect_true(grepl("ewce_legacy_cache_fallback_allowed", txt, fixed = TRUE))
+  testthat::expect_true(grepl("EWCE_cache_accounting.csv", txt, fixed = TRUE))
 })
 
 testthat::test_that("EWCE signature-only mode exits before parallel or bootstrap execution", {
