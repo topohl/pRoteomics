@@ -407,6 +407,87 @@ protigy_primary_hemisphere_statuses <- function() {
   c("bilateral_complete", "left_only_observed", "right_only_observed")
 }
 
+protigy_aggregate_expression_columns <- function(expression_matrix, aggregation_audit) {
+  expression_matrix <- as.matrix(expression_matrix)
+  if (is.null(rownames(expression_matrix)) || anyNA(rownames(expression_matrix)) ||
+      any(!nzchar(rownames(expression_matrix)))) {
+    stop("Expression matrix requires complete, non-empty row names before animal aggregation.", call. = FALSE)
+  }
+  if (anyDuplicated(rownames(expression_matrix))) {
+    stop("Expression matrix row names must be unique before animal aggregation.", call. = FALSE)
+  }
+  if (is.null(colnames(expression_matrix)) || anyDuplicated(colnames(expression_matrix))) {
+    stop("Expression matrix column names must be present and unique before animal aggregation.", call. = FALSE)
+  }
+
+  required <- c(
+    "left_sample", "right_sample", "n_left_source_samples", "n_right_source_samples",
+    "output_column_name", "hemisphere_status"
+  )
+  missing <- setdiff(required, names(aggregation_audit))
+  if (length(missing)) {
+    stop("Aggregation audit is missing: ", paste(missing, collapse = ", "), call. = FALSE)
+  }
+  audit <- aggregation_audit
+  if ("inclusion_status" %in% names(audit)) {
+    audit <- audit[audit$inclusion_status == "included_primary", , drop = FALSE]
+  }
+  if (!nrow(audit)) stop("Aggregation audit contains no primary animal-level units.", call. = FALSE)
+  if (anyDuplicated(audit$output_column_name)) {
+    stop("Aggregation audit output column names must be unique.", call. = FALSE)
+  }
+
+  audit_samples <- function(x) {
+    if (!length(x) || is.na(x) || !nzchar(trimws(as.character(x)))) return(character())
+    samples <- trimws(strsplit(as.character(x), ";", fixed = TRUE)[[1]])
+    samples[nzchar(samples)]
+  }
+
+  aggregated <- matrix(
+    NA_real_,
+    nrow = nrow(expression_matrix),
+    ncol = nrow(audit),
+    dimnames = list(rownames(expression_matrix), as.character(audit$output_column_name))
+  )
+  for (i in seq_len(nrow(audit))) {
+    left <- audit_samples(audit$left_sample[[i]])
+    right <- audit_samples(audit$right_sample[[i]])
+    if (length(left) != as.integer(audit$n_left_source_samples[[i]]) ||
+        length(right) != as.integer(audit$n_right_source_samples[[i]])) {
+      stop(
+        "Aggregation audit source-sample counts disagree for ", audit$output_column_name[[i]], ".",
+        call. = FALSE
+      )
+    }
+    source_samples <- c(left, right)
+    missing_samples <- setdiff(source_samples, colnames(expression_matrix))
+    if (length(missing_samples)) {
+      stop(
+        "Aggregation audit references sample column(s) absent from the gene matrix: ",
+        paste(missing_samples, collapse = "; "),
+        call. = FALSE
+      )
+    }
+    status <- as.character(audit$hemisphere_status[[i]])
+    if (identical(status, "bilateral_complete") && length(left) == 1L && length(right) == 1L) {
+      aggregated[, i] <- rowMeans(expression_matrix[, source_samples, drop = FALSE])
+    } else if (status %in% c("left_only_observed", "right_only_observed") && length(source_samples) == 1L) {
+      aggregated[, i] <- expression_matrix[, source_samples[[1]]]
+    } else {
+      stop(
+        "Unsupported hemisphere status/cardinality for ", audit$output_column_name[[i]],
+        ": ", status, " (Left=", length(left), ", Right=", length(right), ").",
+        call. = FALSE
+      )
+    }
+  }
+
+  if (!identical(rownames(aggregated), rownames(expression_matrix))) {
+    stop("Animal aggregation changed expression-matrix row identity.", call. = FALSE)
+  }
+  aggregated
+}
+
 protigy_build_annotated_table <- function(expression, sample_metadata) {
   sample_cols <- as.character(sample_metadata$sample_id)
   if (!"Description" %in% names(expression)) {
