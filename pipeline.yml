@@ -363,7 +363,7 @@ stages:
         consumes_optional: ["data/processed/04_differential_expression_enrichment/compareGO/<dataset>/compareGO_input_manifest.csv"]
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "EWCE after differential/enrichment inputs are available; retained in enrichment because it is a cell-type interpretation layer."
+        notes: "Canonical EWCE uses AnimalID x spatial-unit biological replicates: observed left/right hemispheres are aggregated within animal, with biological n=3 animals per condition. Ordinary execution therefore writes EWCE_E9/<dataset>. Sample-level EWCE is retained only as explicit legacy/sensitivity work with PROTEOMICS_EWCE_ANALYSIS_UNIT=sample and a required PROTEOMICS_EWCE_BRANCH, which writes EWCE_E9_comparison/<branch>/<dataset>. Animal cache identity is branch-independent and records cache accounting after completed runs."
   modules_wgcna:
     description: "WGCNA network/module construction only: build modules, eigengenes, module definitions, and supermodule clustering state."
     scripts:

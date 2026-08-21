@@ -235,6 +235,13 @@ Rscript 04_differential_expression_enrichment/08_external_stress_disease_signatu
 Rscript 05_celltype_enrichment_EWCE/01_EWCE_E9.r --dataset <dataset> --dry-run
 ```
 
+Canonical EWCE uses animal-level biological units by default: the two hemispheres are
+aggregated within each `AnimalID` x spatial unit, yielding biological `n = 3` animals
+per condition. The default command writes `EWCE_E9/<dataset>`. Sample-level EWCE is
+retained only as an explicit legacy/sensitivity analysis and requires both
+`PROTEOMICS_EWCE_ANALYSIS_UNIT=sample` and `PROTEOMICS_EWCE_BRANCH=<branch>`, which
+writes `EWCE_E9_comparison/<branch>/<dataset>`.
+
 Key outputs:
 
 ```text
