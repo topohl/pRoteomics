@@ -73,6 +73,14 @@ testthat::test_that("EWCE animal-level safeguards and cache identity are present
   txt <- paste(readLines(script, warn = FALSE), collapse = "\n")
   testthat::expect_true(grepl("protigy_prepare_animal_level", txt, fixed = TRUE))
   testthat::expect_true(grepl("animal_bundle$output_metadata", txt, fixed = TRUE))
+  testthat::expect_false(grepl("animal_bundle$animal_expression", txt, fixed = TRUE))
+  testthat::expect_true(grepl("sample_expr_mat <- make_expr_mat(mapped_clean_df, hemisphere_sample_cols)", txt, fixed = TRUE))
+  testthat::expect_true(grepl("protigy_aggregate_expression_columns", txt, fixed = TRUE))
+  testthat::expect_true(grepl("identical(rownames(expr_mat), rownames(sample_expr_mat))", txt, fixed = TRUE))
+  testthat::expect_true(grepl("metadata_rows_in_gene_matrix", txt, fixed = TRUE))
+  testthat::expect_true(grepl("microglia_same_gene_logFC", txt, fixed = TRUE))
+  testthat::expect_true(grepl("microglia_baseline_top", txt, fixed = TRUE))
+  testthat::expect_true(grepl("soma_A111_CA1_single_observed_hemisphere", txt, fixed = TRUE))
   testthat::expect_true(grepl("group_by(Gene, Stratum, Cond)", txt, fixed = TRUE))
   testthat::expect_true(grepl("input_matrix_sha256", txt, fixed = TRUE))
   testthat::expect_true(grepl("hit_gene_set_sha256", txt, fixed = TRUE))
@@ -80,6 +88,21 @@ testthat::test_that("EWCE animal-level safeguards and cache identity are present
   testthat::expect_true(grepl("ctd_annotation_gene_set_sha256", txt, fixed = TRUE))
   testthat::expect_true(grepl('identical\\(EWCE_ANALYSIS_UNIT, "sample"\\)', txt))
   testthat::expect_true(grepl("PROTEOMICS_EWCE_BRANCH is required", txt, fixed = TRUE))
+})
+
+testthat::test_that("EWCE signature-only mode exits before parallel or bootstrap execution", {
+  source(testthat::test_path("..", "..", "R", "paths.R"))
+  txt <- paste(
+    readLines(repo_path("05_celltype_enrichment_EWCE/01_EWCE_E9.r"), warn = FALSE),
+    collapse = "\n"
+  )
+  testthat::expect_true(grepl("PROTEOMICS_EWCE_SIGNATURE_ONLY", txt, fixed = TRUE))
+  signature_exit <- regexpr("if (EWCE_SIGNATURE_ONLY)", txt, fixed = TRUE)[1]
+  future_plan <- regexpr("future::plan(future::multisession", txt, fixed = TRUE)[1]
+  bootstrap_grid <- regexpr("target_grid <- target_manifest", txt, fixed = TRUE)[1]
+  testthat::expect_gt(signature_exit, 0)
+  testthat::expect_gt(future_plan, signature_exit)
+  testthat::expect_gt(bootstrap_grid, signature_exit)
 })
 
 testthat::test_that("EWCE rejects an invalid comparison branch before analysis", {

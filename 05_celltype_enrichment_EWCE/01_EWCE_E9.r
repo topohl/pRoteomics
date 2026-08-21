@@ -84,6 +84,8 @@ if (!EWCE_ANALYSIS_UNIT %in% c("sample", "animal")) {
     call. = FALSE
   )
 }
+EWCE_SIGNATURE_ONLY <- tolower(trimws(Sys.getenv("PROTEOMICS_EWCE_SIGNATURE_ONLY", unset = "false"))) %in%
+  c("1", "true", "yes", "y")
 EWCE_BRANCH <- trimws(Sys.getenv("PROTEOMICS_EWCE_BRANCH", unset = ""))
 if (nzchar(EWCE_BRANCH) && !grepl("^[A-Za-z0-9_-]+$", EWCE_BRANCH)) {
   stop(
@@ -248,6 +250,7 @@ if (is_dry_run()) {
   dry_run_line("Sample metadata", sample_metadata_path, if (file.exists(sample_metadata_path)) "PASS" else "FAIL")
   dry_run_line("Cheap sample matching", sample_match, sample_match_status)
   dry_run_line("Analysis unit", EWCE_ANALYSIS_UNIT)
+  dry_run_line("Signature-only mode", if (EWCE_SIGNATURE_ONLY) "TRUE" else "FALSE")
   dry_run_line("Branch", if (nzchar(EWCE_BRANCH)) EWCE_BRANCH else "canonical")
   dry_run_line("Source matrix SHA-256", file_hash_sha256(data_path))
   if (identical(EWCE_ANALYSIS_UNIT, "animal") &&
@@ -503,6 +506,47 @@ make_expr_mat <- function(df, sample_cols) {
     ) %>%
     tibble::column_to_rownames("Gene") %>%
     as.matrix()
+}
+
+make_baseline_mat <- function(expr_mat, sample_meta) {
+  expr_mat %>%
+    as.data.frame(check.names = FALSE) %>%
+    tibble::rownames_to_column("Gene") %>%
+    tidyr::pivot_longer(-Gene, names_to = "Sample", values_to = "Exp") %>%
+    dplyr::left_join(sample_meta, by = "Sample") %>%
+    dplyr::filter(!is.na(Stratum), !is.na(Cond)) %>%
+    dplyr::group_by(Gene, Stratum, Cond) %>%
+    dplyr::summarise(MeanExp = mean(Exp, na.rm = TRUE), .groups = "drop") %>%
+    dplyr::mutate(ID = paste(Stratum, Cond, sep = "__")) %>%
+    dplyr::select(Gene, ID, MeanExp) %>%
+    tidyr::pivot_wider(names_from = ID, values_from = MeanExp) %>%
+    tibble::column_to_rownames("Gene") %>%
+    as.matrix()
+}
+
+manual_group_mean_logfc <- function(expr_mat, sample_meta) {
+  strata <- unique(stats::na.omit(as.character(sample_meta$Stratum)))
+  dplyr::bind_rows(lapply(strata, function(stratum) {
+    meta <- sample_meta %>% dplyr::filter(Stratum == stratum, !is.na(Cond))
+    condition_means <- lapply(analysis_params$conditions, function(condition) {
+      samples <- meta$Sample[as.character(meta$Cond) == condition]
+      if (!length(samples)) return(NULL)
+      rowMeans(expr_mat[, samples, drop = FALSE])
+    })
+    names(condition_means) <- analysis_params$conditions
+    if (is.null(condition_means$con)) return(tibble::tibble())
+    contrasts <- c(Sus_vs_Con = "sus", Res_vs_Con = "res")
+    dplyr::bind_rows(lapply(names(contrasts), function(contrast) {
+      condition <- contrasts[[contrast]]
+      if (is.null(condition_means[[condition]])) return(tibble::tibble())
+      tibble::tibble(
+        Gene = rownames(expr_mat),
+        Stratum = stratum,
+        Contrast = contrast,
+        manual_logFC = condition_means[[condition]] - condition_means$con
+      )
+    }))
+  }))
 }
 
 run_limma_stratum <- function(expr_mat, sample_meta, stratum) {
@@ -834,7 +878,13 @@ write.table(
 mapped_clean_df <- clean_df %>%
   dplyr::filter(!is.na(Gene), Gene %in% ref_genes)
 
+hemisphere_sample_cols <- sample_cols
+sample_expr_mat <- make_expr_mat(mapped_clean_df, hemisphere_sample_cols)
+condition_lookup <- load_sample_condition_lookup(sample_metadata_path)
+sample_mode_meta <- parse_sample_metadata(colnames(sample_expr_mat), condition_lookup)
+
 animal_bundle <- NULL
+invariance_checks <- tibble::tibble()
 if (identical(EWCE_ANALYSIS_UNIT, "animal")) {
   canonical_metadata <- as.data.frame(
     readxl::read_excel(sample_metadata_path),
@@ -848,41 +898,82 @@ if (identical(EWCE_ANALYSIS_UNIT, "animal")) {
     validate_e9_design = TRUE,
     fail_on_invalid = TRUE
   )
-  source_expression <- protigy_prepare_legacy_expression(raw_df)
-  included_samples <- animal_bundle$source_sample_assignment %>%
-    dplyr::filter(inclusion_status == "included") %>%
-    dplyr::pull(sample_id)
-  source_numeric <- lapply(source_expression[included_samples], function(x) {
-    suppressWarnings(as.numeric(as.character(x)))
-  })
-  source_numeric <- as.data.frame(source_numeric, check.names = FALSE)
-  feature_rows <- which(
-    !is.na(source_expression$id) & nzchar(as.character(source_expression$id)) &
-      apply(source_numeric, 1, function(x) all(!is.na(x)))
+  expr_mat <- protigy_aggregate_expression_columns(
+    sample_expr_mat,
+    animal_bundle$aggregation_audit
   )
-  if (length(feature_rows) != nrow(animal_bundle$animal_expression) ||
-      !identical(
-        as.character(source_expression$id[feature_rows]),
-        as.character(animal_bundle$animal_expression$id)
-      )) {
-    stop("Animal-level ProTigy aggregation rows no longer align to the EWCE source matrix.", call. = FALSE)
+  sample_cols <- colnames(expr_mat)
+
+  expected_background <- c(
+    neuron_neuropil = 4558L,
+    neuron_soma = 5022L,
+    microglia = 4719L
+  )
+  metadata_rows <- intersect(rownames(expr_mat), names(animal_bundle$output_metadata))
+  invariance_checks <- tibble::tribble(
+    ~Check, ~Observed, ~Expected, ~Tolerance, ~Passed,
+    "gene_row_names_preserved", as.character(identical(rownames(expr_mat), rownames(sample_expr_mat))), "TRUE", NA_real_, identical(rownames(expr_mat), rownames(sample_expr_mat)),
+    "background_gene_set_preserved", as.character(setequal(rownames(expr_mat), rownames(sample_expr_mat))), "TRUE", NA_real_, setequal(rownames(expr_mat), rownames(sample_expr_mat)),
+    "expected_background_gene_count", as.character(nrow(expr_mat)), as.character(expected_background[[EWCE_DATASET]]), 0, nrow(expr_mat) == expected_background[[EWCE_DATASET]],
+    "duplicated_gene_row_names", as.character(anyDuplicated(rownames(expr_mat))), "0", 0, anyDuplicated(rownames(expr_mat)) == 0L,
+    "metadata_rows_in_gene_matrix", paste(metadata_rows, collapse = ";"), "none", 0, length(metadata_rows) == 0L
+  )
+
+  primary_audit <- animal_bundle$aggregation_audit %>%
+    dplyr::filter(inclusion_status == "included_primary")
+  if (identical(EWCE_DATASET, "microglia")) {
+    bilateral_ok <- nrow(primary_audit) == 36L && all(primary_audit$hemisphere_status == "bilateral_complete")
+    invariance_checks <- dplyr::bind_rows(
+      invariance_checks,
+      tibble::tibble(
+        Check = "microglia_bilateral_units",
+        Observed = paste0(sum(primary_audit$hemisphere_status == "bilateral_complete"), "/", nrow(primary_audit)),
+        Expected = "36/36",
+        Tolerance = 0,
+        Passed = bilateral_ok
+      )
+    )
   }
-  animal_mapped_df <- animal_bundle$animal_expression %>%
-    dplyr::mutate(Gene = clean_df$Gene[feature_rows]) %>%
-    dplyr::filter(!is.na(Gene), Gene %in% ref_genes)
-  sample_cols <- as.character(animal_bundle$output_metadata$sample_id)
-  expr_mat <- make_expr_mat(animal_mapped_df, sample_cols)
+  if (identical(EWCE_DATASET, "neuron_soma")) {
+    a111_ca1 <- primary_audit %>% dplyr::filter(AnimalID == "A111", region == "CA1")
+    source_sample <- if (nrow(a111_ca1) == 1L) {
+      c(as.character(a111_ca1$left_sample), as.character(a111_ca1$right_sample)) %>%
+        trimws() %>%
+        .[nzchar(.)]
+    } else {
+      character()
+    }
+    a111_ok <- nrow(a111_ca1) == 1L && length(source_sample) == 1L &&
+      a111_ca1$hemisphere_status %in% c("left_only_observed", "right_only_observed") &&
+      identical(
+        as.numeric(expr_mat[, a111_ca1$output_column_name]),
+        as.numeric(sample_expr_mat[, source_sample])
+      )
+    invariance_checks <- dplyr::bind_rows(
+      invariance_checks,
+      tibble::tibble(
+        Check = "soma_A111_CA1_single_observed_hemisphere",
+        Observed = if (nrow(a111_ca1) == 1L) paste(a111_ca1$hemisphere_status, length(source_sample), sep = "/") else paste0("rows=", nrow(a111_ca1)),
+        Expected = "one one-sided unit copied exactly",
+        Tolerance = 0,
+        Passed = a111_ok
+      )
+    )
+  }
+  if (any(!invariance_checks$Passed)) {
+    failed <- invariance_checks$Check[!invariance_checks$Passed]
+    stop("Animal-level EWCE invariance check(s) failed: ", paste(failed, collapse = ", "), call. = FALSE)
+  }
 } else {
-  expr_mat <- make_expr_mat(mapped_clean_df, sample_cols)
+  expr_mat <- sample_expr_mat
 }
 expr_mat <- expr_mat[rownames(expr_mat) %in% ref_genes, , drop = FALSE]
 background_universe <- intersect(rownames(expr_mat), ref_genes)
 
-condition_lookup <- load_sample_condition_lookup(sample_metadata_path)
 sample_meta <- if (identical(EWCE_ANALYSIS_UNIT, "animal")) {
   animal_sample_metadata(animal_bundle$output_metadata, EWCE_DATASET)
 } else {
-  parse_sample_metadata(colnames(expr_mat), condition_lookup)
+  sample_mode_meta
 }
 if (all(is.na(sample_meta$Cond))) {
   stop(
@@ -939,21 +1030,7 @@ if (identical(EWCE_ANALYSIS_UNIT, "animal")) {
 
 message("Step 3: Creating baseline and modeled differential target signatures...")
 
-long_df <- expr_mat %>%
-  as.data.frame(check.names = FALSE) %>%
-  tibble::rownames_to_column("Gene") %>%
-  tidyr::pivot_longer(-Gene, names_to = "Sample", values_to = "Exp") %>%
-  dplyr::left_join(sample_meta, by = "Sample") %>%
-  dplyr::filter(!is.na(Stratum), !is.na(Cond))
-
-baseline_mat <- long_df %>%
-  dplyr::group_by(Gene, Stratum, Cond) %>%
-  dplyr::summarise(MeanExp = mean(Exp, na.rm = TRUE), .groups = "drop") %>%
-  dplyr::mutate(ID = paste(Stratum, Cond, sep = "__")) %>%
-  dplyr::select(Gene, ID, MeanExp) %>%
-  tidyr::pivot_wider(names_from = ID, values_from = MeanExp) %>%
-  tibble::column_to_rownames("Gene") %>%
-  as.matrix()
+baseline_mat <- make_baseline_mat(expr_mat, sample_meta)
 
 analysis_strata <- sample_meta %>%
   dplyr::filter(!is.na(Stratum)) %>%
@@ -967,6 +1044,106 @@ de_tbl <- dplyr::bind_rows(lapply(analysis_strata, function(stratum) {
 
 if (nrow(de_tbl) == 0) {
   stop("No differential contrasts were created. Check sample names for region, optional layer, and condition labels.")
+}
+
+microglia_logfc_diagnostics <- tibble::tibble()
+microglia_baseline_overlap <- tibble::tibble()
+if (identical(EWCE_ANALYSIS_UNIT, "animal") && identical(EWCE_DATASET, "microglia")) {
+  sample_baseline_mat <- make_baseline_mat(sample_expr_mat, sample_mode_meta)
+  baseline_identity <- setequal(rownames(sample_baseline_mat), rownames(baseline_mat)) &&
+    setequal(colnames(sample_baseline_mat), colnames(baseline_mat))
+  if (!baseline_identity) {
+    stop("Microglia sample/animal baseline matrices have different Gene x Stratum x Cond identities.", call. = FALSE)
+  }
+  sample_baseline_mat <- sample_baseline_mat[rownames(baseline_mat), colnames(baseline_mat), drop = FALSE]
+  baseline_max_abs_diff <- max(abs(baseline_mat - sample_baseline_mat), na.rm = TRUE)
+
+  microglia_baseline_overlap <- dplyr::bind_rows(lapply(colnames(baseline_mat), function(target) {
+    dplyr::bind_rows(lapply(analysis_params$top_n_values, function(top_n) {
+      sample_top <- head(names(sort(sample_baseline_mat[, target], decreasing = TRUE, na.last = NA)), top_n)
+      animal_top <- head(names(sort(baseline_mat[, target], decreasing = TRUE, na.last = NA)), top_n)
+      overlap <- length(intersect(sample_top, animal_top))
+      tibble::tibble(
+        Target = target,
+        TopN = top_n,
+        N_Sample = length(sample_top),
+        N_Animal = length(animal_top),
+        N_Overlap = overlap,
+        Overlap_Fraction = overlap / top_n,
+        Identical_Gene_Set = setequal(sample_top, animal_top)
+      )
+    }))
+  }))
+
+  manual_logfc <- manual_group_mean_logfc(sample_expr_mat, sample_mode_meta)
+  microglia_logfc_comparison <- de_tbl %>%
+    dplyr::select(Gene, Stratum, Contrast, animal_logFC = logFC) %>%
+    dplyr::left_join(manual_logfc, by = c("Gene", "Stratum", "Contrast")) %>%
+    dplyr::mutate(abs_difference = abs(animal_logFC - manual_logFC))
+  logfc_identity <- nrow(microglia_logfc_comparison) == nrow(de_tbl) &&
+    !anyNA(microglia_logfc_comparison$manual_logFC)
+  logfc_max_abs_diff <- if (logfc_identity) {
+    max(microglia_logfc_comparison$abs_difference, na.rm = TRUE)
+  } else {
+    Inf
+  }
+  microglia_logfc_diagnostics <- microglia_logfc_comparison %>%
+    dplyr::group_by(Stratum, Contrast) %>%
+    dplyr::summarise(
+      N_Genes = dplyr::n(),
+      Max_Abs_LogFC_Difference = max(abs_difference, na.rm = TRUE),
+      .groups = "drop"
+    )
+
+  top_overlap_checks <- microglia_baseline_overlap %>%
+    dplyr::group_by(TopN) %>%
+    dplyr::summarise(
+      Check = paste0("microglia_baseline_top", dplyr::first(TopN), "_gene_sets"),
+      Observed = sprintf("%.12f", min(Overlap_Fraction)),
+      Expected = "1.000000000000",
+      Tolerance = 0,
+      Passed = all(Identical_Gene_Set) && all(Overlap_Fraction == 1),
+      .groups = "drop"
+    ) %>%
+    dplyr::select(Check, Observed, Expected, Tolerance, Passed)
+  invariance_checks <- dplyr::bind_rows(
+    invariance_checks,
+    tibble::tibble(
+      Check = c("microglia_baseline_mean_abundance", "microglia_same_gene_logFC"),
+      Observed = c(sprintf("%.17g", baseline_max_abs_diff), sprintf("%.17g", logfc_max_abs_diff)),
+      Expected = c("<= 1e-10", "<= 1e-10"),
+      Tolerance = c(1e-10, 1e-10),
+      Passed = c(baseline_max_abs_diff <= 1e-10, logfc_identity && logfc_max_abs_diff <= 1e-10)
+    ),
+    top_overlap_checks
+  )
+}
+
+if (identical(EWCE_ANALYSIS_UNIT, "animal")) {
+  if (any(!invariance_checks$Passed)) {
+    failed <- invariance_checks$Check[!invariance_checks$Passed]
+    stop("Animal-level EWCE invariance check(s) failed: ", paste(failed, collapse = ", "), call. = FALSE)
+  }
+  utils::write.csv(
+    invariance_checks,
+    file.path(dirs$qc, "animal_level_invariance_checks.csv"),
+    row.names = FALSE,
+    na = ""
+  )
+  if (identical(EWCE_DATASET, "microglia")) {
+    utils::write.csv(
+      microglia_logfc_diagnostics,
+      file.path(dirs$qc, "animal_level_microglia_logfc_invariance.csv"),
+      row.names = FALSE,
+      na = ""
+    )
+    utils::write.csv(
+      microglia_baseline_overlap,
+      file.path(dirs$qc, "animal_level_microglia_baseline_overlap.csv"),
+      row.names = FALSE,
+      na = ""
+    )
+  }
 }
 
 target_gene_tbl <- dplyr::bind_rows(
@@ -990,6 +1167,14 @@ openxlsx::write.xlsx(
   file.path(dirs$tables, "EWCE_input_signatures.xlsx"),
   overwrite = TRUE
 )
+
+if (EWCE_SIGNATURE_ONLY) {
+  message(
+    "PROTEOMICS_EWCE_SIGNATURE_ONLY=true: signatures and aggregation audits were written; ",
+    "stopping before future::plan and EWCE bootstrapping."
+  )
+  quit(status = 0, save = "no")
+}
 
 # ==========================================
 # 5. EWCE BOOTSTRAPPING

@@ -77,6 +77,80 @@ testthat::test_that("bilateral values use an equal-weight mean on existing log2 
   )
 })
 
+testthat::test_that("audit-driven column aggregation preserves gene identity and bilateral means", {
+  fixture <- make_protigy_fixture()
+  bundle <- protigy_prepare_animal_level(
+    fixture$expression,
+    fixture$metadata,
+    "neuron_neuropil",
+    validate_e9_design = FALSE
+  )
+  sample_ids <- fixture$metadata$sample_id
+  gene_matrix <- cbind(c(1, 11), c(3, 13))
+  colnames(gene_matrix) <- sample_ids
+  rownames(gene_matrix) <- c("Gene_B", "Gene_A")
+
+  aggregated <- protigy_aggregate_expression_columns(gene_matrix, bundle$aggregation_audit)
+
+  testthat::expect_identical(rownames(aggregated), c("Gene_B", "Gene_A"))
+  testthat::expect_identical(colnames(aggregated), "A0001_CA1_slm")
+  testthat::expect_equal(aggregated[, 1], c(Gene_B = 2, Gene_A = 12))
+})
+
+testthat::test_that("audit-driven one-sided aggregation copies the observed column exactly", {
+  specs <- data.frame(
+    AnimalID = c("A0001", "A0002"),
+    ExpGroup = c("1", "2"),
+    hemisphere = c("Left", "Right"),
+    region = c("CA1", "CA2"),
+    layer = c("sp", "sp"),
+    value = c(7, 17),
+    stringsAsFactors = FALSE
+  )
+  fixture <- make_protigy_fixture("neuron_soma", specs)
+  bundle <- protigy_prepare_animal_level(
+    fixture$expression,
+    fixture$metadata,
+    "neuron_soma",
+    validate_e9_design = FALSE
+  )
+  gene_matrix <- cbind(c(7, 107), c(17, 117))
+  colnames(gene_matrix) <- fixture$metadata$sample_id
+  rownames(gene_matrix) <- c("Gene_1", "Gene_2")
+
+  aggregated <- protigy_aggregate_expression_columns(gene_matrix, bundle$aggregation_audit)
+
+  testthat::expect_identical(aggregated[, "A0001_CA1_sp"], gene_matrix[, 1])
+  testthat::expect_identical(aggregated[, "A0002_CA2_sp"], gene_matrix[, 2])
+})
+
+testthat::test_that("audit-driven aggregation fails closed on row or sample identity defects", {
+  fixture <- make_protigy_fixture()
+  bundle <- protigy_prepare_animal_level(
+    fixture$expression,
+    fixture$metadata,
+    "neuron_neuropil",
+    validate_e9_design = FALSE
+  )
+  gene_matrix <- matrix(
+    c(1, 2, 3, 4),
+    nrow = 2,
+    dimnames = list(c("Gene_A", "Gene_B"), fixture$metadata$sample_id)
+  )
+  missing_sample <- gene_matrix[, 1, drop = FALSE]
+  testthat::expect_error(
+    protigy_aggregate_expression_columns(missing_sample, bundle$aggregation_audit),
+    "absent from the gene matrix",
+    fixed = TRUE
+  )
+  rownames(gene_matrix) <- c("Gene_A", "Gene_A")
+  testthat::expect_error(
+    protigy_aggregate_expression_columns(gene_matrix, bundle$aggregation_audit),
+    "row names must be unique",
+    fixed = TRUE
+  )
+})
+
 testthat::test_that("animals are never averaged together", {
   specs <- data.frame(
     AnimalID = rep(c("A0001", "A0002"), each = 2),
