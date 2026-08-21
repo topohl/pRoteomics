@@ -22,6 +22,12 @@ testthat::test_that("historical MapThatProt roots and paths remain unchanged", {
   testthat::expect_identical(paths$analysis_namespace, "02_id_mapping")
 })
 
+testthat::test_that("explicit legacy mapping receives an isolated output root", {
+  roots <- resolve_mapthatprot_roots(gct_extract_root = "", mapping_output_root = "", legacy_mode = TRUE)
+  testthat::expect_identical(roots$mapping_output_root, normalizePath(path_processed("02_id_mapping_legacy"), winslash = "/", mustWork = FALSE))
+  testthat::expect_false(mapping_paths_equal(roots$mapping_output_root, path_processed("02_id_mapping")))
+})
+
 testthat::test_that("corrected input and output root overrides resolve independently", {
   roots <- resolve_mapthatprot_roots(
     gct_extract_root = "data/processed/01_preprocessing/gct_extractR_animal_level",
