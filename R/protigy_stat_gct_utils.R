@@ -201,17 +201,48 @@ resolve_protigy_root <- function(value, default_root) {
 
 resolve_gct_io_roots <- function(
     input_root = Sys.getenv("PROTEOMICS_GCT_INPUT_ROOT", unset = ""),
-    output_root = Sys.getenv("PROTEOMICS_GCT_OUTPUT_ROOT", unset = "")) {
+    output_root = Sys.getenv("PROTEOMICS_GCT_OUTPUT_ROOT", unset = ""),
+    legacy_mode = tolower(Sys.getenv("PROTEOMICS_GCT_BRANCH", unset = "canonical")) %in% c("legacy", "comparison")) {
+  if (!legacy_mode && nzchar(trimws(input_root))) {
+    # An override is allowed for a deliberate comparison replay, but it must be
+    # declared; this prevents an accidental return to sample-level ProTigy.
+    legacy_root <- path_processed("01_preprocessing", "protigy_output")
+    if (identical(tolower(normalizePath(input_root, winslash = "/", mustWork = FALSE)), tolower(normalizePath(legacy_root, winslash = "/", mustWork = FALSE)))) stop("Legacy ProTigy input requires PROTEOMICS_GCT_BRANCH=legacy or comparison.", call. = FALSE)
+  }
   list(
     input_root = resolve_protigy_root(
       input_root,
-      path_processed("01_preprocessing", "protigy_output")
+      if (legacy_mode) path_processed("01_preprocessing", "protigy_output") else path_processed("01_preprocessing", "protigy_output_animal_level")
     ),
     output_root = resolve_protigy_root(
       output_root,
-      path_processed("01_preprocessing", "gct_extractR")
+      if (legacy_mode) path_processed("01_preprocessing", "gct_extractR_legacy") else path_processed("01_preprocessing", "gct_extractR")
     )
   )
+}
+
+corrected_gct_contract_version <- function() "animal_level_protigy_da_v1"
+
+is_corrected_protigy_root <- function(path) {
+  identical(tolower(basename(normalizePath(path, winslash = "/", mustWork = FALSE))), "protigy_output_animal_level")
+}
+
+gct_extract_contract_manifest_path <- function(output_root, dataset) file.path(output_root, dataset, "canonical_gct_extract_manifest.csv")
+
+gct_extract_contract_is_current <- function(output_root, dataset, source_path, source_sha256) {
+  p <- gct_extract_contract_manifest_path(output_root, dataset)
+  if (!file.exists(p)) return(FALSE)
+  x <- tryCatch(utils::read.csv(p, stringsAsFactors = FALSE), error = function(e) NULL)
+  is.data.frame(x) && nrow(x) == 1L && identical(x$contract_version[[1]], corrected_gct_contract_version()) &&
+    identical(normalizePath(x$source_gct_path[[1]], winslash = "/", mustWork = FALSE), normalizePath(source_path, winslash = "/", mustWork = FALSE)) &&
+    identical(x$source_gct_sha256[[1]], source_sha256) && isTRUE(x$strict_contract_validated[[1]])
+}
+
+write_gct_extract_contract_manifest <- function(output_root, dataset, source_path, source_sha256, comparison_count) {
+  utils::write.csv(data.frame(contract_version = corrected_gct_contract_version(), dataset = dataset,
+    source_gct_path = normalizePath(source_path, winslash = "/", mustWork = FALSE), source_gct_sha256 = source_sha256,
+    comparison_count = as.integer(comparison_count), strict_contract_validated = TRUE, stringsAsFactors = FALSE),
+    gct_extract_contract_manifest_path(output_root, dataset), row.names = FALSE)
 }
 
 resolve_single_protigy_gct <- function(root, dataset, input_stem = "", use_manifest = TRUE) {

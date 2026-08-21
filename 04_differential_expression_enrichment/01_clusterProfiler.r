@@ -1101,6 +1101,16 @@ if (isTRUE(runtime_params$resume_if_complete) && !isTRUE(runtime_params$force_re
 } else if (isTRUE(runtime_params$force_rerun)) {
   cat("Resume check disabled: force_rerun=TRUE, all comparisons will be recomputed.\n")
 }
+if (!nzchar(ENRICHMENT_BRANCH) && !nzchar(mapped_dir_override) && !isTRUE(DRY_RUN)) {
+  provenance_file <- file.path(dirname(mapped_dir), "canonical_mapping_provenance.csv")
+  if (!file.exists(provenance_file)) stop("Canonical clusterProfiler requires corrected mapping provenance: ", provenance_file,
+    ". Use PROTEOMICS_ENRICHMENT_BRANCH and PROTEOMICS_CLUSTERPROFILER_MAPPED_DIR only for an explicit comparison replay.", call. = FALSE)
+  provenance <- utils::read.csv(provenance_file, stringsAsFactors = FALSE)
+  if (nrow(provenance) != 1L || !all(c("contract_version", "strict_contract_validated", "mapping_contract_version") %in% names(provenance)) ||
+      !identical(provenance$contract_version[[1]], "animal_level_protigy_da_v1") || !isTRUE(provenance$strict_contract_validated[[1]])) {
+    stop("Canonical clusterProfiler rejected unprovenanced or legacy mapped input: ", provenance_file, call. = FALSE)
+  }
+}
 
 completed_comparison_names <- if (length(completed_results)) {
   vapply(completed_results, function(x) as.character(x$comparison)[1], character(1))

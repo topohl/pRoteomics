@@ -175,6 +175,16 @@ if (is_dry_run()) {
 }
 if (!dir.exists(raw_dir)) stop("Raw contrast directory not found: ", raw_dir, call. = FALSE)
 if (inherits(input_count_validation, "error")) stop(conditionMessage(input_count_validation), call. = FALSE)
+mapping_legacy_mode <- tolower(Sys.getenv("PROTEOMICS_MAPPING_BRANCH", unset = "canonical")) %in% c("legacy", "comparison")
+gct_provenance <- if (mapping_legacy_mode) NULL else validate_canonical_gct_extract_provenance(mapping_roots$gct_extract_root, mapped_comparisons)
+if (!mapping_legacy_mode) {
+    prior_mapping_provenance <- canonical_mapping_provenance_path(mapping_paths)
+    prior <- if (file.exists(prior_mapping_provenance)) tryCatch(utils::read.csv(prior_mapping_provenance, stringsAsFactors = FALSE), error = function(e) NULL) else NULL
+    current_mapping_contract <- is.data.frame(prior) && nrow(prior) == 1L &&
+        identical(prior$source_gct_sha256[[1]], gct_provenance$source_gct_sha256[[1]]) &&
+        identical(prior$mapping_contract_version[[1]], "canonical_mapping_from_animal_level_gct_v1")
+    if (!current_mapping_contract) force_rerun <- TRUE
+}
 
 # Initialize output folder structure only after all dry-run and input checks pass.
 cat("Initializing output directories...\n")
@@ -641,6 +651,10 @@ openxlsx::writeData(wb, "Coverage_Stats", coverage_stats)
 openxlsx::saveWorkbook(wb, report_file, overwrite = TRUE)
 
 cat("Saved master QC workbook to:", report_file, "\n")
+if (!mapping_legacy_mode) {
+    utils::write.csv(cbind(gct_provenance, map_direction = map_direction, mapping_contract_version = "canonical_mapping_from_animal_level_gct_v1"),
+        canonical_mapping_provenance_path(mapping_paths), row.names = FALSE)
+}
 cat("====================================================\n")
 cat("MapThatProt_batch execution completed successfully!\n")
 cat("====================================================\n")

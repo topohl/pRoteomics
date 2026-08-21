@@ -18,7 +18,8 @@ resolve_mapping_root <- function(value, default_root) {
 
 resolve_mapthatprot_roots <- function(
     gct_extract_root = Sys.getenv("PROTEOMICS_GCT_EXTRACT_ROOT", unset = ""),
-    mapping_output_root = Sys.getenv("PROTEOMICS_MAPPING_OUTPUT_ROOT", unset = "")) {
+    mapping_output_root = Sys.getenv("PROTEOMICS_MAPPING_OUTPUT_ROOT", unset = ""),
+    legacy_mode = tolower(Sys.getenv("PROTEOMICS_MAPPING_BRANCH", unset = "canonical")) %in% c("legacy", "comparison")) {
   list(
     gct_extract_root = resolve_mapping_root(
       gct_extract_root,
@@ -26,7 +27,7 @@ resolve_mapthatprot_roots <- function(
     ),
     mapping_output_root = resolve_mapping_root(
       mapping_output_root,
-      path_processed("02_id_mapping")
+      if (legacy_mode) path_processed("02_id_mapping_legacy") else path_processed("02_id_mapping")
     )
   )
 }
@@ -70,6 +71,7 @@ resolve_mapthatprot_paths <- function(dataset, direction = "forward", roots = re
     analysis_namespace = namespace,
     gct_extract_root = roots$gct_extract_root,
     mapping_output_root = roots$mapping_output_root,
+    mapped_dataset_dir = file.path(roots$mapping_output_root, "mapped", dataset, direction),
     raw_dir = file.path(roots$gct_extract_root, dataset, direction),
     mapped_dir = file.path(roots$mapping_output_root, "mapped", dataset, direction, "per_file"),
     unmapped_dir = file.path(roots$mapping_output_root, "unmapped", dataset, direction, "per_file"),
@@ -79,6 +81,8 @@ resolve_mapthatprot_paths <- function(dataset, direction = "forward", roots = re
     reports_root = result_root("reports")
   )
 }
+
+canonical_mapping_provenance_path <- function(paths) file.path(paths$mapped_dataset_dir, "canonical_mapping_provenance.csv")
 
 animal_level_mapping_expected_counts <- function() {
   c(neuron_neuropil = 30L, neuron_soma = 12L, microglia = 12L)
@@ -91,13 +95,27 @@ is_animal_level_gct_extract_root <- function(path) {
   )
 }
 
+canonical_gct_extract_manifest <- function(root, dataset) file.path(root, validate_dataset(dataset), "canonical_gct_extract_manifest.csv")
+
+validate_canonical_gct_extract_provenance <- function(root, dataset) {
+  p <- canonical_gct_extract_manifest(root, dataset)
+  if (!file.exists(p)) stop("Canonical mapping requires corrected GCT extraction manifest: ", p, call. = FALSE)
+  x <- utils::read.csv(p, stringsAsFactors = FALSE)
+  needed <- c("contract_version", "dataset", "source_gct_path", "source_gct_sha256", "comparison_count", "strict_contract_validated")
+  if (nrow(x) != 1L || !all(needed %in% names(x)) || !identical(x$contract_version[[1]], "animal_level_protigy_da_v1") ||
+      !identical(x$dataset[[1]], validate_dataset(dataset)) || !isTRUE(x$strict_contract_validated[[1]])) {
+    stop("Invalid corrected GCT extraction provenance manifest: ", p, call. = FALSE)
+  }
+  x
+}
+
 list_mapthatprot_input_files <- function(raw_dir) {
   sort(list.files(raw_dir, pattern = ".*_.*\\.csv$", full.names = TRUE))
 }
 
 validate_mapthatprot_input_count <- function(dataset, direction, input_root, csv_files) {
   dataset <- validate_dataset(dataset)
-  corrected <- is_animal_level_gct_extract_root(input_root)
+  corrected <- file.exists(canonical_gct_extract_manifest(input_root, dataset)) || is_animal_level_gct_extract_root(input_root)
   expected <- if (corrected && identical(direction, "forward")) {
     unname(animal_level_mapping_expected_counts()[[dataset]])
   } else {
