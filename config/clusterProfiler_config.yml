@@ -23,6 +23,13 @@ analysis:
   p_adjust_method: BH
   min_gs_size: 10
   max_gs_size: 800
+  # Deterministic per-comparison GSEA seeds are derived from this base value,
+  # the exact comparison identity, and the GSEA analysis type.
+  gsea_seed_base: 20260824
+  # Passed to fgseaMultilevel through each clusterProfiler GSEA entry point;
+  # 100000 reduced the targeted warning from 7 pathways to 2; 1000000 did not
+  # reduce it further in the targeted comparison.
+  n_perm_simple: 100000
 
 runtime:
   dry_run: false
