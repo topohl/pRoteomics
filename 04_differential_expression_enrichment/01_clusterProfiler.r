@@ -39,6 +39,7 @@ source(repo_path("R", "protein_mapping_utils.R"))
 source(repo_path("R", "protein_group_enrichment_utils.R"))
 source(repo_path("R", "enrichment_io.R"))
 source(repo_path("R", "schema_validation.R"))
+source(repo_path("R", "clusterprofiler_reproducibility.R"))
 ENRICHMENT_BRANCH <- trimws(Sys.getenv("PROTEOMICS_ENRICHMENT_BRANCH", unset = ""))
 if (nzchar(ENRICHMENT_BRANCH) && !grepl("^[A-Za-z0-9_-]+$", ENRICHMENT_BRANCH)) {
   stop("PROTEOMICS_ENRICHMENT_BRANCH must match ^[A-Za-z0-9_-]+$.", call. = FALSE)
@@ -212,6 +213,7 @@ expected_analysis_output_paths <- function(base_dir, comparison_name, ontology,
     file.path(dirs$results, "QC_summary.csv"),
     file.path(audit_root, "collapsed_gene_input.csv"),
     file.path(audit_root, "collapsed_gene_input_provenance.csv"),
+    file.path(audit_root, "gsea_reproducibility.csv"),
     file.path(audit_root, "gsea_go_term_gene_provenance.csv"),
     file.path(dirs$go_ont, paste0("GSEA_", ontology, "_results_full.csv")),
     file.path(dirs$go_ont, "enrichGO_ALL_results_full.csv"),
@@ -268,7 +270,9 @@ read_config <- function(config_path) {
       ora_pvalue_threshold = 0.05,
       ora_fdr_threshold = 0.05,
       min_gs_size = 10,
-      max_gs_size = 800
+      max_gs_size = 800,
+      gsea_seed_base = 20260824L,
+      n_perm_simple = 100000L
     ),
     runtime = list(
       workers = -1,
@@ -310,7 +314,7 @@ read_config <- function(config_path) {
   } else {
     message("Config file not found; using script defaults: ", config_path)
   }
-  cfg
+  validate_clusterprofiler_gsea_config(cfg)
 }
 
 manifest_columns <- clusterprofiler_manifest_columns()
@@ -572,20 +576,44 @@ expected_checkpoint_outputs <- function(dirs, comparison_name, ont, plot_suffix 
     enrichgo_table = file.path(dirs$go_ont, "enrichGO_ALL_results_full.csv"),
     collapsed_gene_input = file.path(dirs$results, "protein_group_audits", "collapsed_gene_input.csv"),
     collapsed_gene_provenance = file.path(dirs$results, "protein_group_audits", "collapsed_gene_input_provenance.csv"),
+    gsea_reproducibility = file.path(dirs$results, "protein_group_audits", "gsea_reproducibility.csv"),
     term_gene_provenance = file.path(dirs$results, "protein_group_audits", "gsea_go_term_gene_provenance.csv")
   )
 }
 
-qc_reports_complete <- function(qc_path) {
+qc_reports_complete <- function(qc_path, comparison_name, ont, analysis_params) {
   if (!file.exists(qc_path)) return(FALSE)
   qc <- tryCatch(read.csv(qc_path, stringsAsFactors = FALSE), error = function(e) NULL)
   if (is.null(qc) || nrow(qc) == 0 || !"status" %in% colnames(qc)) return(FALSE)
-  as.character(qc$status[[1]]) %in% c("SUCCESS", "SKIPPED")
+  analysis_types <- clusterprofiler_gsea_analysis_types(ont)
+  expected <- c(
+    gsea_seed_base = analysis_params$gsea_seed_base,
+    n_perm_simple = analysis_params$n_perm_simple,
+    gsea_go_seed = derive_clusterprofiler_gsea_seed(
+      analysis_params$gsea_seed_base, comparison_name, analysis_types[["go"]]
+    ),
+    gsea_kegg_seed = derive_clusterprofiler_gsea_seed(
+      analysis_params$gsea_seed_base, comparison_name, analysis_types[["kegg"]]
+    )
+  )
+  if (!all(names(expected) %in% names(qc))) return(FALSE)
+  observed <- unlist(qc[1, names(expected), drop = FALSE], use.names = TRUE)
+  as.character(qc$status[[1]]) %in% c("SUCCESS", "SKIPPED") &&
+    identical(as.numeric(observed), as.numeric(expected))
 }
 
-is_completed_checkpoint <- function(dirs, comparison_name, ont, plot_suffix = checkpoint_plot_suffix()) {
+is_completed_checkpoint <- function(dirs, comparison_name, ont, analysis_params,
+                                    plot_suffix = checkpoint_plot_suffix()) {
   expected <- expected_checkpoint_outputs(dirs, comparison_name, ont, plot_suffix)
-  all(file.exists(expected)) && qc_reports_complete(expected[["qc"]])
+  all(file.exists(expected)) &&
+    qc_reports_complete(expected[["qc"]], comparison_name, ont, analysis_params) &&
+    clusterprofiler_reproducibility_audit_matches(
+      expected[["gsea_reproducibility"]],
+      comparison = comparison_name,
+      ontology = ont,
+      gsea_seed_base = analysis_params$gsea_seed_base,
+      n_perm_simple = analysis_params$n_perm_simple
+    )
 }
 
 write_completed_checkpoint <- function(dirs) {
@@ -886,7 +914,19 @@ comparison_list <- lapply(comparison_names, function(comparison_name) {
   tokens <- split_comparison_tokens(comparison_name)
   if (nzchar(tokens$right)) c(tokens$left, tokens$right) else NULL
 })
-comparison_list <- Filter(Negate(is.null), comparison_list)
+valid_comparison <- !vapply(comparison_list, is.null, logical(1))
+comparison_files <- comparison_files[valid_comparison]
+comparison_names <- comparison_names[valid_comparison]
+comparison_list <- comparison_list[valid_comparison]
+
+comparison_filter <- resolve_clusterprofiler_comparison_filter()
+comparison_filter_index <- filter_clusterprofiler_comparisons(comparison_names, comparison_filter)
+comparison_files <- comparison_files[comparison_filter_index]
+comparison_names <- comparison_names[comparison_filter_index]
+comparison_list <- comparison_list[comparison_filter_index]
+if (nzchar(comparison_filter)) {
+  message("Targeted clusterProfiler comparison filter active: ", comparison_filter)
+}
 
 if (length(comparison_list) == 0 && !isTRUE(DRY_RUN)) {
   stop("No valid comparison files found in: ", mapped_dir)
@@ -906,7 +946,9 @@ analysis_params <- list(
   p_adjust_method = as.character(cfg$analysis$p_adjust_method),
   min_gs_size = as.integer(cfg$analysis$min_gs_size),
   max_gs_size = as.integer(cfg$analysis$max_gs_size),
-  top_gene_abs_log2fc = as.numeric(cfg$analysis$top_gene_abs_log2fc)
+  top_gene_abs_log2fc = as.numeric(cfg$analysis$top_gene_abs_log2fc),
+  gsea_seed_base = as.integer(cfg$analysis$gsea_seed_base),
+  n_perm_simple = as.integer(cfg$analysis$n_perm_simple)
 )
 options(clusterProfiler.strict_protein_group_contract = isTRUE(cfg$analysis$strict_protein_group_contract))
 compatibility_fallback_requested <- tolower(Sys.getenv(
@@ -991,6 +1033,9 @@ if (isTRUE(DRY_RUN)) {
   dry_run_line("Reports output root", CANONICAL_PATHS$reports)
   dry_run_line("Logs output root", CANONICAL_PATHS$logs)
   dry_run_line("Number of comparison CSVs", length(comparison_files))
+  dry_run_line("Comparison filter", if (nzchar(comparison_filter)) comparison_filter else "none")
+  dry_run_line("GSEA seed base", analysis_params$gsea_seed_base)
+  dry_run_line("fgsea nPermSimple", analysis_params$n_perm_simple)
   dry_run_line("Mapped directory", mapped_dir, diagnostics$status[3])
   dry_run_line("Comparison CSV count", length(comparison_files), diagnostics$status[4])
   if (length(comparison_files) > 0) {
@@ -1024,6 +1069,11 @@ dir.create(run_log_dir, recursive = TRUE, showWarnings = FALSE)
 master_log <- file.path(run_log_dir, paste0("clusterProfiler_run_", run_id, ".log"))
 write_log_line(master_log, "INFO", "GLOBAL", "CONFIG", paste0("Using config file: ", config_path))
 write_log_line(master_log, "INFO", "GLOBAL", "DATASET", paste0("Dataset family: ", DATASET))
+write_log_line(master_log, "INFO", "GLOBAL", "GSEA_RNG", paste0(
+  "gsea_seed_base=", analysis_params$gsea_seed_base,
+  ", nPermSimple=", analysis_params$n_perm_simple,
+  ", comparison_filter=", if (nzchar(comparison_filter)) comparison_filter else "none"
+))
 write_session_info(file.path(CANONICAL_PATHS$logs, "sessionInfo.txt"))
 write_config_snapshot(cfg, file.path(CANONICAL_PATHS$logs, paste0("clusterProfiler_config_snapshot_", run_id, ".yml")))
 
@@ -1080,7 +1130,10 @@ if (isTRUE(runtime_params$resume_if_complete) && !isTRUE(runtime_params$force_re
   complete_flags <- vapply(comparison_list, function(cell_types) {
     comparison_name <- paste(cell_types, collapse = "_")
     dirs <- create_analysis_dirs(working_base, comparison_name, ont)
-    is_completed_checkpoint(dirs, comparison_name, ont, checkpoint_plot_suffix())
+    is_completed_checkpoint(
+      dirs, comparison_name, ont, analysis_params,
+      plot_suffix = checkpoint_plot_suffix()
+    )
   }, logical(1))
 
   if (any(complete_flags)) {
@@ -1201,6 +1254,38 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
   # If it was inherited from the master process, the SQLite connection is dead.
   comparison_name <- paste(cell_types, collapse = "_")
   comparison_log <- file.path(run_log_dir, paste0(comparison_name, ".log"))
+  gsea_analysis_types <- clusterprofiler_gsea_analysis_types(ont)
+  gsea_seeds <- vapply(
+    gsea_analysis_types,
+    function(analysis_type) derive_clusterprofiler_gsea_seed(
+      analysis_params$gsea_seed_base, comparison_name, analysis_type
+    ),
+    integer(1)
+  )
+  run_gsea <- function(analysis_type, gsea_fun, ...) {
+    seed <- derive_clusterprofiler_gsea_seed(
+      analysis_params$gsea_seed_base, comparison_name, analysis_type
+    )
+    write_log_line(
+      comparison_log, "INFO", comparison_name, "GSEA_RNG",
+      paste0("analysis_type=", analysis_type, ", seed=", seed,
+             ", nPermSimple=", analysis_params$n_perm_simple)
+    )
+    withCallingHandlers(
+      run_seeded_clusterprofiler_gsea(
+        gsea_fun = gsea_fun,
+        gsea_seed = seed,
+        n_perm_simple = analysis_params$n_perm_simple,
+        ...
+      ),
+      warning = function(w) write_log_line(
+        comparison_log, "WARNING", comparison_name, "GSEA_FGSEA", conditionMessage(w)
+      ),
+      message = function(m) write_log_line(
+        comparison_log, "INFO", comparison_name, "GSEA_FGSEA", conditionMessage(m)
+      )
+    )
+  }
   run_start <- Sys.time()
   qc <- data.frame(
     comparison = comparison_name,
@@ -1215,6 +1300,12 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
     n_gsea_terms = NA_integer_,
     n_ora_terms = NA_integer_,
     n_kegg_terms = NA_integer_,
+    gsea_seed_base = analysis_params$gsea_seed_base,
+    n_perm_simple = analysis_params$n_perm_simple,
+    gsea_go_seed = unname(gsea_seeds[["go"]]),
+    gsea_kegg_seed = unname(gsea_seeds[["kegg"]]),
+    gsea_kegg_predefined_seed = unname(gsea_seeds[["kegg_predefined"]]),
+    gsea_nk3r_seed = unname(gsea_seeds[["nk3r"]]),
     stringsAsFactors = FALSE
   )
   manifest_rows <- list()
@@ -1251,7 +1342,10 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
 
     if (isTRUE(runtime_params$resume_if_complete) &&
         !isTRUE(runtime_params$force_rerun) &&
-        is_completed_checkpoint(dirs, comparison_name, ont, checkpoint_plot_suffix())) {
+        is_completed_checkpoint(
+          dirs, comparison_name, ont, analysis_params,
+          plot_suffix = checkpoint_plot_suffix()
+        )) {
       write_log_line(comparison_log, "INFO", comparison_name, "CHECKPOINT", "Checkpoint found; skipping comparison")
       manifest_rows <- list(reconstruct_checkpoint_manifest(dirs, comparison_name, data_path, config_path, ont, plot_suffix = checkpoint_plot_suffix()))
       qc$status <- "SKIPPED"
@@ -1342,6 +1436,23 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
     top_genes <- names(gene_list)[abs(gene_list) > analysis_params$top_gene_abs_log2fc]
     audit_root <- file.path(dirs$results, "protein_group_audits")
     dir.create(audit_root, recursive = TRUE, showWarnings = FALSE)
+    gsea_reproducibility <- clusterprofiler_gsea_reproducibility_table(
+      comparison = comparison_name,
+      ontology = ont,
+      gsea_seed_base = analysis_params$gsea_seed_base,
+      n_perm_simple = analysis_params$n_perm_simple,
+      requested = c(
+        go = TRUE,
+        kegg = TRUE,
+        kegg_predefined = length(selected_uniprot) > 0L,
+        nk3r = length(nk3r_genes) > 0L
+      )
+    )
+    write.csv(
+      gsea_reproducibility,
+      file.path(audit_root, "gsea_reproducibility.csv"),
+      row.names = FALSE
+    )
     write.csv(gene_inputs$transformation, file.path(audit_root, "protein_group_to_gene_transformation_audit.csv"), row.names = FALSE)
     write.csv(gene_inputs$transformation[gene_inputs$transformation$eligibility_status == "excluded", , drop = FALSE], file.path(audit_root, "eligibility_audit.csv"), row.names = FALSE)
     write.csv(gene_inputs$collapse, file.path(audit_root, "duplicate_gene_collapse_audit.csv"), row.names = FALSE)
@@ -1388,16 +1499,16 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
     gsea_diagnostics <- gsea_input_diagnostics(gene_list, symbol_keys)
     write.csv(gsea_diagnostics, file.path(audit_root, "gsea_input_diagnostics.csv"), row.names = FALSE)
     validate_gsea_input(gene_list, gsea_diagnostics)
-    gse <- withCallingHandlers(
-      gseGO(geneList = gene_list, ont = ont, keyType = "SYMBOL",
-            minGSSize = analysis_params$min_gs_size,
-            maxGSSize = analysis_params$max_gs_size,
-            pvalueCutoff = analysis_params$pvalue_cutoff,
-            verbose = FALSE,
-            OrgDb = org_db_obj,
-            pAdjustMethod = analysis_params$p_adjust_method),
-      warning = function(w) write_log_line(comparison_log, "WARNING", comparison_name, "GSEA_MAPPING", conditionMessage(w)),
-      message = function(m) write_log_line(comparison_log, "INFO", comparison_name, "GSEA_MAPPING", conditionMessage(m))
+    gse <- run_gsea(
+      gsea_analysis_types[["go"]],
+      clusterProfiler::gseGO,
+      geneList = gene_list, ont = ont, keyType = "SYMBOL",
+      minGSSize = analysis_params$min_gs_size,
+      maxGSSize = analysis_params$max_gs_size,
+      pvalueCutoff = analysis_params$pvalue_cutoff,
+      verbose = FALSE,
+      OrgDb = org_db_obj,
+      pAdjustMethod = analysis_params$p_adjust_method
     )
     gse_results <- gsea_result_table(gse, gsea_diagnostics)
 
@@ -1642,12 +1753,16 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
 
     if(length(kegg_gene_list) > 0) {
 
-      kk2 <- gseKEGG(geneList = kegg_gene_list, organism = "mmu", 
-                     minGSSize = analysis_params$min_gs_size,
-                     maxGSSize = analysis_params$max_gs_size,
-                     pvalueCutoff = analysis_params$pvalue_cutoff,
-                     pAdjustMethod = analysis_params$p_adjust_method,
-                     keyType = "ncbi-geneid", verbose = FALSE)
+      kk2 <- run_gsea(
+        gsea_analysis_types[["kegg"]],
+        clusterProfiler::gseKEGG,
+        geneList = kegg_gene_list, organism = "mmu",
+        minGSSize = analysis_params$min_gs_size,
+        maxGSSize = analysis_params$max_gs_size,
+        pvalueCutoff = analysis_params$pvalue_cutoff,
+        pAdjustMethod = analysis_params$p_adjust_method,
+        keyType = "ncbi-geneid", verbose = FALSE
+      )
       kk2_results <- enrichment_result_table(kk2, "KEGG GSEA", required = FALSE)
 
       kegg_failure <- attr(kk2_results, "skipped_reason")
@@ -1876,12 +1991,16 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
       selected_kegg_list <- kegg_gene_list[names(kegg_gene_list) %in% selected_ids]
       if(length(selected_kegg_list) > 0) {
         
-        gsea_kegg_selected <- gseKEGG(geneList = selected_kegg_list, organism = "mmu", 
-                                      minGSSize = analysis_params$min_gs_size,
-                                      maxGSSize = analysis_params$max_gs_size,
-                                      pvalueCutoff = analysis_params$pvalue_cutoff,
-                                      pAdjustMethod = analysis_params$p_adjust_method,
-                                      keyType = "ncbi-geneid", verbose = FALSE)
+        gsea_kegg_selected <- run_gsea(
+          gsea_analysis_types[["kegg_predefined"]],
+          clusterProfiler::gseKEGG,
+          geneList = selected_kegg_list, organism = "mmu",
+          minGSSize = analysis_params$min_gs_size,
+          maxGSSize = analysis_params$max_gs_size,
+          pvalueCutoff = analysis_params$pvalue_cutoff,
+          pAdjustMethod = analysis_params$p_adjust_method,
+          keyType = "ncbi-geneid", verbose = FALSE
+        )
         gsea_kegg_selected_results <- enrichment_result_table(gsea_kegg_selected, "predefined UniProt KEGG GSEA", required = FALSE)
 
         if (nrow(gsea_kegg_selected_results) > 0) {
@@ -1916,11 +2035,15 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
       term2gene_nk3r <- data.frame(term = rep("NK3R-signalling", length(nk3r_genes)), gene = nk3r_genes)
       custom_gene_list <- gene_list
       
-      gsea_nk3r <- clusterProfiler::GSEA(geneList = custom_gene_list, TERM2GENE = term2gene_nk3r, 
-                                         pvalueCutoff = analysis_params$pvalue_cutoff,
-                                         minGSSize = 1,
-                                         maxGSSize = 500,
-                                         verbose = FALSE)
+      gsea_nk3r <- run_gsea(
+        gsea_analysis_types[["nk3r"]],
+        clusterProfiler::GSEA,
+        geneList = custom_gene_list, TERM2GENE = term2gene_nk3r,
+        pvalueCutoff = analysis_params$pvalue_cutoff,
+        minGSSize = 1,
+        maxGSSize = 500,
+        verbose = FALSE
+      )
       
       if (!is.null(gsea_nk3r) && nrow(gsea_nk3r@result) > 0) {
         nk3r_dot <- clusterProfiler::dotplot(gsea_nk3r, showCategory = 10, split = ".sign") + 
