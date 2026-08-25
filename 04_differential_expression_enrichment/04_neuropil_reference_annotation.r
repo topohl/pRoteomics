@@ -47,6 +47,9 @@ message("Dry run: ", DRY_RUN)
 
 `%||%` <- function(x, y) if (is.null(x) || length(x) == 0) y else x
 
+REFERENCE_MATCHING_CONTRACT_VERSION <- "microglia_neuropil_reference_v2_region_contrast_fdr_aggregate"
+CLASSIFICATION_CONTRACT_VERSION <- "microglia_neuropil_interpretation_v2_microglia_and_reference_fdr"
+
 required_pkgs <- c("dplyr", "readr", "tidyr", "stringr", "purrr", "tibble", "ggplot2")
 missing_pkgs <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
 if (length(missing_pkgs) > 0 && !isTRUE(DRY_RUN)) {
@@ -86,6 +89,81 @@ normalize_id <- function(x) {
   x <- as.character(x)
   x <- trimws(x)
   x[nzchar(x)]
+}
+
+parse_reference_identity <- function(comparison, route_category, route_unit) {
+  n <- max(length(comparison), length(route_category), length(route_unit))
+  lengths_ok <- vapply(
+    list(comparison, route_category, route_unit),
+    function(x) length(x) %in% c(1L, n),
+    logical(1)
+  )
+  if (!all(lengths_ok)) {
+    stop("comparison, route_category, and route_unit must have compatible lengths.", call. = FALSE)
+  }
+
+  comparison <- rep(as.character(comparison), length.out = n)
+  route_category <- rep(as.character(route_category), length.out = n)
+  route_unit <- rep(as.character(route_unit), length.out = n)
+
+  region_match <- regexec("^(CA1|CA2|CA3|DG)(?:_|$)", route_unit, perl = TRUE)
+  region_parts <- regmatches(route_unit, region_match)
+  anatomical_region <- vapply(
+    region_parts,
+    function(x) if (length(x) >= 2L) x[[2L]] else NA_character_,
+    character(1)
+  )
+
+  parse_contrast <- function(x) {
+    if (is.na(x) || !nzchar(x)) return(NA_character_)
+    matched <- regmatches(tolower(x), regexec("^(.*)(con|res|sus)_(.*)(con|res|sus)$", tolower(x), perl = TRUE))[[1]]
+    if (length(matched) != 5L) return(NA_character_)
+    paste0(toupper(matched[[3L]]), "-vs-", toupper(matched[[5L]]))
+  }
+  formal_group_contrast <- unname(vapply(comparison, parse_contrast, character(1)))
+  identity_valid <- route_category == "phenotype_within_unit" &
+    !is.na(anatomical_region) & !is.na(formal_group_contrast)
+
+  tibble::tibble(
+    anatomical_region = anatomical_region,
+    formal_group_contrast = formal_group_contrast,
+    reference_identity_status = ifelse(identity_valid, "valid", "invalid"),
+    reference_identity_key = ifelse(
+      identity_valid,
+      paste(anatomical_region, formal_group_contrast, sep = "::"),
+      NA_character_
+    )
+  )
+}
+
+add_reference_identity <- function(terms, source_label = "canonical enrichment") {
+  if (!nrow(terms)) {
+    terms$anatomical_region <- character()
+    terms$formal_group_contrast <- character()
+    terms$reference_identity_status <- character()
+    terms$reference_identity_key <- character()
+    terms$neuropil_match_key <- character()
+    return(terms)
+  }
+
+  identity <- parse_reference_identity(terms$comparison, terms$route_category, terms$route_unit)
+  invalid <- which(identity$reference_identity_status != "valid")
+  if (length(invalid)) {
+    examples <- unique(paste(
+      terms$comparison[invalid], terms$route_category[invalid], terms$route_unit[invalid],
+      sep = " | "
+    ))
+    stop(
+      "Unable to derive a valid region/formal-contrast identity for ", source_label,
+      ": ", paste(utils::head(examples, 5L), collapse = "; "),
+      call. = FALSE
+    )
+  }
+
+  dplyr::bind_cols(terms, identity) %>%
+    dplyr::mutate(
+      neuropil_match_key = paste(.data$term_key, .data$reference_identity_key, sep = "::")
+    )
 }
 
 manifest_path <- function(dataset) {
@@ -147,7 +225,7 @@ prepare_terms <- function(bundle) {
   if (nrow(terms) && any(vapply(terms$genes, is.null, logical(1)))) {
     stop("Canonical enrichment term is missing required term-gene provenance.", call. = FALSE)
   }
-  terms %>%
+  terms <- terms %>%
     mutate(
       source_dataset = .data$dataset,
       source_table = .data$output_table,
@@ -156,7 +234,8 @@ prepare_terms <- function(bundle) {
       term_key = paste(.data$result_type, .data$ontology, .data$term_id, sep = "::"),
       gene_string = .data$official_gene_symbol,
       n_genes = lengths(.data$genes)
-    ) %>%
+    )
+  add_reference_identity(terms, paste0("dataset ", unique(terms$dataset))) %>%
     arrange(.data$dataset, .data$comparison, .data$result_type, .data$ontology, .data$term_id)
 }
 
@@ -190,30 +269,34 @@ jaccard <- function(a, b) {
 
 classify_term <- function(microglia_marker_fraction,
                           neuropil_marker_fraction,
-                          neuropil_term_present,
-                          gene_overlap_fraction,
-                          same_direction,
                           microglia_padj,
-                          neuropil_padj) {
+                          any_significant_neuropil_match,
+                          max_matched_gene_overlap_fraction,
+                          max_significant_gene_overlap_fraction,
+                          max_significant_same_direction_gene_overlap_fraction) {
   microglia_sig <- !is.na(microglia_padj) && microglia_padj < 0.05
-  neuropil_sig <- !is.na(neuropil_padj) && neuropil_padj < 0.05
 
-  if (isTRUE(microglia_sig) &&
-      !isTRUE(neuropil_sig) &&
+  if (!isTRUE(microglia_sig)) {
+    return("not_evaluated_non_significant")
+  }
+
+  if (!isTRUE(any_significant_neuropil_match) &&
       !is.na(microglia_marker_fraction) && microglia_marker_fraction >= 0.15 &&
       (is.na(neuropil_marker_fraction) || neuropil_marker_fraction < 0.15) &&
-      gene_overlap_fraction < 0.20) {
+      !is.na(max_matched_gene_overlap_fraction) && max_matched_gene_overlap_fraction < 0.20) {
     return("microglia_robust")
   }
 
-  if ((isTRUE(neuropil_sig) || isTRUE(neuropil_term_present)) &&
+  if (isTRUE(any_significant_neuropil_match) &&
       !is.na(neuropil_marker_fraction) && neuropil_marker_fraction >= 0.15 &&
-      gene_overlap_fraction >= 0.30 &&
-      isTRUE(same_direction)) {
+      !is.na(max_significant_same_direction_gene_overlap_fraction) &&
+      max_significant_same_direction_gene_overlap_fraction >= 0.30) {
     return("neuropil_sensitive")
   }
 
-  if ((isTRUE(neuropil_sig) || isTRUE(neuropil_term_present)) && gene_overlap_fraction >= 0.20) {
+  if (isTRUE(any_significant_neuropil_match) &&
+      !is.na(max_significant_gene_overlap_fraction) &&
+      max_significant_gene_overlap_fraction >= 0.20) {
     return("mixed_microenvironment")
   }
 
@@ -224,67 +307,126 @@ classify_term <- function(microglia_marker_fraction,
   "ambiguous"
 }
 
-find_best_neuropil_match <- function(m_row, neuropil_terms) {
-  if (nrow(neuropil_terms) == 0) {
-    return(tibble(
-      neuropil_term_present = FALSE,
-      neuropil_comparison = NA_character_,
-      neuropil_p_adjust = NA_real_,
-      neuropil_score = NA_real_,
-      neuropil_source_table = NA_character_,
-      gene_overlap_fraction = 0,
-      gene_jaccard = 0,
-      overlapping_genes = ""
-    ))
+empty_neuropil_evidence <- function() {
+  tibble::tibble(
+    neuropil_term_present = FALSE,
+    neuropil_comparison = NA_character_,
+    neuropil_p_adjust = NA_real_,
+    neuropil_score = NA_real_,
+    neuropil_source_table = NA_character_,
+    gene_overlap_fraction = 0,
+    gene_jaccard = 0,
+    overlapping_genes = "",
+    same_direction_as_neuropil = FALSE,
+    matched_neuropil_comparisons = "",
+    matched_neuropil_layers = "",
+    significant_neuropil_comparisons = "",
+    n_matched_neuropil_comparisons = 0L,
+    n_matched_neuropil_layers = 0L,
+    n_significant_neuropil_matches = 0L,
+    any_significant_neuropil_match = FALSE,
+    min_matched_neuropil_p_adjust = NA_real_,
+    any_significant_neuropil_same_direction = FALSE,
+    max_matched_gene_overlap_fraction = 0,
+    max_matched_gene_jaccard = 0,
+    max_significant_gene_overlap_fraction = NA_real_,
+    max_significant_gene_jaccard = NA_real_,
+    max_significant_same_direction_gene_overlap_fraction = NA_real_,
+    max_significant_same_direction_gene_jaccard = NA_real_
+  )
+}
+
+safe_min <- function(x) {
+  x <- suppressWarnings(as.numeric(x))
+  x <- x[is.finite(x)]
+  if (!length(x)) NA_real_ else min(x)
+}
+
+safe_max <- function(x, empty = NA_real_) {
+  x <- suppressWarnings(as.numeric(x))
+  x <- x[is.finite(x)]
+  if (!length(x)) empty else max(x)
+}
+
+find_best_neuropil_match <- function(m_row, neuropil_terms, candidate_rows = NULL) {
+  if (nrow(neuropil_terms) == 0) return(empty_neuropil_evidence())
+
+  if (!is.null(candidate_rows)) {
+    candidate_rows <- as.integer(candidate_rows)
+    candidate_rows <- candidate_rows[
+      !is.na(candidate_rows) & candidate_rows >= 1L & candidate_rows <= nrow(neuropil_terms)
+    ]
+    neuropil_terms <- neuropil_terms[candidate_rows, , drop = FALSE]
   }
+  if (nrow(neuropil_terms) == 0) return(empty_neuropil_evidence())
 
   same_term <- neuropil_terms %>%
-    filter(.data$term_key == m_row$term_key)
-
-  if (nrow(same_term) == 0) {
-    return(tibble(
-      neuropil_term_present = FALSE,
-      neuropil_comparison = NA_character_,
-      neuropil_p_adjust = NA_real_,
-      neuropil_score = NA_real_,
-      neuropil_source_table = NA_character_,
-      gene_overlap_fraction = 0,
-      gene_jaccard = 0,
-      overlapping_genes = ""
-    ))
-  }
+    dplyr::filter(
+      .data$term_key == m_row$term_key[[1]],
+      .data$anatomical_region == m_row$anatomical_region[[1]],
+      .data$formal_group_contrast == m_row$formal_group_contrast[[1]]
+    )
+  if (nrow(same_term) == 0) return(empty_neuropil_evidence())
 
   genes_m <- m_row$genes[[1]]
+  microglia_score <- suppressWarnings(as.numeric(m_row$score[[1]]))
   scored <- same_term %>%
-    rowwise() %>%
-    mutate(
+    dplyr::rowwise() %>%
+    dplyr::mutate(
       gene_overlap_fraction = term_overlap_fraction(genes_m, genes),
       gene_jaccard = jaccard(genes_m, genes),
-      overlapping_genes = paste(sort(intersect(normalize_id(genes_m), normalize_id(genes))), collapse = ";")
+      overlapping_genes = paste(sort(intersect(normalize_id(genes_m), normalize_id(genes))), collapse = ";"),
+      neuropil_significant = !is.na(.data$p_adjust) & .data$p_adjust < 0.05,
+      same_direction = is.finite(microglia_score) & is.finite(.data$score) &
+        sign(microglia_score) == sign(.data$score)
     ) %>%
-    ungroup() %>%
-    arrange(
-      desc(!is.na(.data$p_adjust) & .data$p_adjust < 0.05),
-      desc(.data$gene_jaccard),
-      .data$p_adjust
-    )
+    dplyr::ungroup()
 
-  best <- scored[1, , drop = FALSE]
-  tibble(
+  representative <- scored %>%
+    dplyr::arrange(
+      dplyr::desc(.data$neuropil_significant),
+      dplyr::desc(.data$gene_overlap_fraction),
+      dplyr::desc(.data$gene_jaccard),
+      .data$p_adjust,
+      .data$comparison,
+      .data$route_unit,
+      .data$source_table
+    ) %>%
+    dplyr::slice(1L)
+  significant <- scored %>% dplyr::filter(.data$neuropil_significant)
+  significant_same_direction <- significant %>% dplyr::filter(.data$same_direction)
+
+  tibble::tibble(
     neuropil_term_present = TRUE,
-    neuropil_comparison = best$comparison[[1]],
-    neuropil_p_adjust = best$p_adjust[[1]],
-    neuropil_score = best$score[[1]],
-    neuropil_source_table = best$source_table[[1]],
-    gene_overlap_fraction = best$gene_overlap_fraction[[1]],
-    gene_jaccard = best$gene_jaccard[[1]],
-    overlapping_genes = best$overlapping_genes[[1]]
+    neuropil_comparison = representative$comparison[[1]],
+    neuropil_p_adjust = representative$p_adjust[[1]],
+    neuropil_score = representative$score[[1]],
+    neuropil_source_table = representative$source_table[[1]],
+    gene_overlap_fraction = representative$gene_overlap_fraction[[1]],
+    gene_jaccard = representative$gene_jaccard[[1]],
+    overlapping_genes = representative$overlapping_genes[[1]],
+    same_direction_as_neuropil = representative$same_direction[[1]],
+    matched_neuropil_comparisons = paste(sort(unique(scored$comparison), method = "radix"), collapse = ";"),
+    matched_neuropil_layers = paste(sort(unique(scored$route_unit), method = "radix"), collapse = ";"),
+    significant_neuropil_comparisons = paste(sort(unique(significant$comparison), method = "radix"), collapse = ";"),
+    n_matched_neuropil_comparisons = dplyr::n_distinct(scored$comparison),
+    n_matched_neuropil_layers = dplyr::n_distinct(scored$route_unit),
+    n_significant_neuropil_matches = nrow(significant),
+    any_significant_neuropil_match = nrow(significant) > 0L,
+    min_matched_neuropil_p_adjust = safe_min(scored$p_adjust),
+    any_significant_neuropil_same_direction = any(significant$same_direction),
+    max_matched_gene_overlap_fraction = safe_max(scored$gene_overlap_fraction, empty = 0),
+    max_matched_gene_jaccard = safe_max(scored$gene_jaccard, empty = 0),
+    max_significant_gene_overlap_fraction = safe_max(significant$gene_overlap_fraction),
+    max_significant_gene_jaccard = safe_max(significant$gene_jaccard),
+    max_significant_same_direction_gene_overlap_fraction = safe_max(significant_same_direction$gene_overlap_fraction),
+    max_significant_same_direction_gene_jaccard = safe_max(significant_same_direction$gene_jaccard)
   )
 }
 
 annotate_microglia_terms <- function(microglia_terms, neuropil_terms) {
   if (nrow(microglia_terms) == 0) {
-    return(tibble(
+    return(tibble::tibble(
       dataset = character(), comparison = character(), result_type = character(), ontology = character(),
       term_id = character(), term_description = character(), p_adjust = numeric(), score = numeric(),
       official_gene_symbol = character(), ProteinGroupID = character(), member_accessions = character(),
@@ -293,7 +435,12 @@ annotate_microglia_terms <- function(microglia_terms, neuropil_terms) {
       term_gene_provenance_file = character(), analysis_status = character(),
       source_dataset = character(), source_table = character(), source_manifest = character(),
       source_term_provenance = character(), term_key = character(), gene_string = character(),
-      n_genes = integer(), reference_dataset = character(), microglia_marker_fraction = numeric(),
+      n_genes = integer(), anatomical_region = character(), formal_group_contrast = character(),
+      reference_identity_status = character(), reference_identity_key = character(),
+      neuropil_match_key = character(), reference_dataset = character(), reference_region = character(),
+      reference_contrast = character(), reference_matching_contract_version = character(),
+      classification_contract_version = character(), microglia_significant = logical(),
+      microglia_marker_fraction = numeric(),
       neuropil_marker_fraction = numeric(), astrocyte_marker_fraction = numeric(),
       oligodendrocyte_marker_fraction = numeric(), vascular_marker_fraction = numeric(),
       microglia_marker_hits = character(), neuropil_marker_hits = character(),
@@ -302,14 +449,30 @@ annotate_microglia_terms <- function(microglia_terms, neuropil_terms) {
       interpretation_class = character(), neuropil_term_present = logical(),
       neuropil_comparison = character(), neuropil_p_adjust = numeric(), neuropil_score = numeric(),
       neuropil_source_table = character(), gene_overlap_fraction = numeric(),
-      gene_jaccard = numeric(), overlapping_genes = character()
+      gene_jaccard = numeric(), overlapping_genes = character(),
+      matched_neuropil_comparisons = character(), matched_neuropil_layers = character(),
+      significant_neuropil_comparisons = character(), n_matched_neuropil_comparisons = integer(),
+      n_matched_neuropil_layers = integer(), n_significant_neuropil_matches = integer(),
+      any_significant_neuropil_match = logical(), min_matched_neuropil_p_adjust = numeric(),
+      any_significant_neuropil_same_direction = logical(),
+      max_matched_gene_overlap_fraction = numeric(), max_matched_gene_jaccard = numeric(),
+      max_significant_gene_overlap_fraction = numeric(), max_significant_gene_jaccard = numeric(),
+      max_significant_same_direction_gene_overlap_fraction = numeric(),
+      max_significant_same_direction_gene_jaccard = numeric()
     ))
   }
 
+  neuropil_index <- if (nrow(neuropil_terms)) {
+    split(seq_len(nrow(neuropil_terms)), neuropil_terms$neuropil_match_key, drop = TRUE)
+  } else {
+    list()
+  }
   annotations <- vector("list", nrow(microglia_terms))
   for (i in seq_len(nrow(microglia_terms))) {
     m <- microglia_terms[i, , drop = FALSE]
-    best <- find_best_neuropil_match(m, neuropil_terms)
+    candidate_rows <- neuropil_index[[m$neuropil_match_key[[1]]]]
+    if (is.null(candidate_rows)) candidate_rows <- integer()
+    reference_evidence <- find_best_neuropil_match(m, neuropil_terms, candidate_rows)
     genes <- m$genes[[1]]
 
     microglia_fraction <- marker_fraction(genes, marker_sets$microglia)
@@ -318,23 +481,25 @@ annotate_microglia_terms <- function(microglia_terms, neuropil_terms) {
     oligodendrocyte_fraction <- marker_fraction(genes, marker_sets$oligodendrocyte_myelin)
     vascular_fraction <- marker_fraction(genes, marker_sets$endothelial_pericyte)
 
-    same_direction <- !is.na(m$score[[1]]) && !is.na(best$neuropil_score[[1]]) &&
-      sign(m$score[[1]]) == sign(best$neuropil_score[[1]])
-
     cls <- classify_term(
       microglia_marker_fraction = microglia_fraction,
       neuropil_marker_fraction = neuropil_fraction,
-      neuropil_term_present = best$neuropil_term_present[[1]],
-      gene_overlap_fraction = best$gene_overlap_fraction[[1]],
-      same_direction = same_direction,
       microglia_padj = m$p_adjust[[1]],
-      neuropil_padj = best$neuropil_p_adjust[[1]]
+      any_significant_neuropil_match = reference_evidence$any_significant_neuropil_match[[1]],
+      max_matched_gene_overlap_fraction = reference_evidence$max_matched_gene_overlap_fraction[[1]],
+      max_significant_gene_overlap_fraction = reference_evidence$max_significant_gene_overlap_fraction[[1]],
+      max_significant_same_direction_gene_overlap_fraction = reference_evidence$max_significant_same_direction_gene_overlap_fraction[[1]]
     )
 
-    annotations[[i]] <- bind_cols(
-      m %>% select(-genes),
-      tibble(
+    annotations[[i]] <- dplyr::bind_cols(
+      m %>% dplyr::select(-genes),
+      tibble::tibble(
         reference_dataset = REFERENCE_DATASET,
+        reference_region = m$anatomical_region[[1]],
+        reference_contrast = m$formal_group_contrast[[1]],
+        reference_matching_contract_version = REFERENCE_MATCHING_CONTRACT_VERSION,
+        classification_contract_version = CLASSIFICATION_CONTRACT_VERSION,
+        microglia_significant = !is.na(m$p_adjust[[1]]) && m$p_adjust[[1]] < 0.05,
         microglia_marker_fraction = microglia_fraction,
         neuropil_marker_fraction = neuropil_fraction,
         astrocyte_marker_fraction = astrocyte_fraction,
@@ -345,14 +510,13 @@ annotate_microglia_terms <- function(microglia_terms, neuropil_terms) {
         astrocyte_marker_hits = marker_hits(genes, marker_sets$astrocyte),
         oligodendrocyte_marker_hits = marker_hits(genes, marker_sets$oligodendrocyte_myelin),
         vascular_marker_hits = marker_hits(genes, marker_sets$endothelial_pericyte),
-        same_direction_as_neuropil = same_direction,
         interpretation_class = cls
       ),
-      best
+      reference_evidence
     )
   }
 
-  bind_rows(annotations)
+  dplyr::bind_rows(annotations)
 }
 
 write_outputs <- function(annotated, diagnostics, analysis_status = tibble()) {
@@ -406,11 +570,15 @@ write_outputs <- function(annotated, diagnostics, analysis_status = tibble()) {
     paste0("Dataset: ", DATASET),
     paste0("Reference dataset: ", REFERENCE_DATASET),
     paste0("Run ID: ", RUN_ID),
+    paste0("Reference matching contract: ", REFERENCE_MATCHING_CONTRACT_VERSION),
+    paste0("Classification contract: ", CLASSIFICATION_CONTRACT_VERSION),
     "",
     "Interpretation:",
     "This workflow uses the neuropil dataset as an annotation/reference layer.",
     "It does not subtract logFC or protein intensities because separately normalized and imputed datasets are not on a guaranteed common quantitative scale.",
-    "Terms are classified using neuropil term presence, core-gene overlap, direction concordance, adjusted P values, and marker composition.",
+    "Neuropil evidence is restricted to identical GO terms from the same anatomical region and formal condition contrast; all corresponding neuropil layers are retained as aggregate evidence.",
+    "Term presence is descriptive only. Biological interpretation classes require microglia FDR < 0.05, and neuropil-supported classes require matched neuropil FDR < 0.05.",
+    "The retained representative neuropil comparison is selected deterministically by significance, overlap, Jaccard, adjusted P value, and lexical tie-breaks; classification uses aggregate matched-reference evidence.",
     "",
     "Main output:",
     annotation_csv
@@ -459,7 +627,6 @@ if (isTRUE(DRY_RUN)) {
   dry_run_line("Microglia/current manifest", microglia_manifest$path, diagnostics$status[3])
   dry_run_line("Neuropil reference manifest", neuropil_manifest$path, diagnostics$status[4])
   dry_run_line("Output tables", CANONICAL_PATHS$tables)
-  write_outputs(annotate_microglia_terms(tibble(), tibble()), diagnostics, tibble())
   quit(status = 0, save = "no")
 }
 
