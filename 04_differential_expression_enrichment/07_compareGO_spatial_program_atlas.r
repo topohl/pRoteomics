@@ -2,7 +2,7 @@
 # Script: 04_differential_expression_enrichment/07_compareGO_spatial_program_atlas.r
 # Stage: enrichment
 # Scope: dataset_specific
-# Consumes: required data/processed/04_differential_expression_enrichment/compareGO/<dataset>/compareGO_input_manifest.csv and config/manuscript_go_theme_registry.tsv; optional results/tables/04_differential_expression_enrichment/biological_program_summary/<dataset>/program_summary.csv.
+# Consumes: canonical compareGO manifest-declared term comparison, term-gene provenance, and analysis-status tables for each dataset; config/manuscript_go_theme_registry.tsv; optional finalized biological_program_summary/<dataset>/program_summary.csv for validation cross-checks.
 # Produces: legacy broad heuristic spatial-program outputs plus ontology-aware SUS-RES manuscript-theme tables/audits under compareGO_spatial_atlas.
 # Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Spatial program atlas from compareGO outputs.
@@ -44,12 +44,18 @@ if (!exists("dataset_compartment", inherits = TRUE)) {
 }
 
 MODULE_ID <- "04_differential_expression_enrichment"
-SUBSTEP_ID <- "compareGO_spatial_atlas"
+args <- commandArgs(trailingOnly = TRUE)
+VALIDATION_ONLY <- "--validation-only" %in% args || tolower(Sys.getenv("PROTEOMICS_SPATIAL_ATLAS_VALIDATION_ONLY", unset = "")) %in% c("1", "true", "yes", "y")
+SUBSTEP_ID <- if (VALIDATION_ONLY) "compareGO_spatial_atlas_validation_proposed" else "compareGO_spatial_atlas"
 CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
 
-required_pkgs <- c("dplyr", "tidyr", "purrr", "readr", "readxl", "writexl", "ggplot2", "stringr", "tibble", "scales")
+required_pkgs <- c("dplyr", "tidyr", "purrr", "readr", "writexl", "ggplot2", "stringr", "tibble", "scales")
 MANUSCRIPT_GO_THEME_REGISTRY <- repo_path("config", "manuscript_go_theme_registry.tsv")
 MANUSCRIPT_GO_SEMANTIC_CUTOFF <- 0.70
+ATLAS_RESULT_TYPE <- "GSEA_GO"
+ATLAS_ONTOLOGY <- "BP"
+ATLAS_ROUTE_CATEGORY <- "phenotype_within_unit"
+ATLAS_INPUT_CONTRACT_VERSION <- "compareGO_spatial_atlas_v3_canonical_bundle_claim_safe_core"
 
 `%||%` <- function(x, y) {
   if (is.null(x)) y else x
@@ -99,54 +105,85 @@ get_requested_datasets <- function() {
 }
 
 discover_dataset_files <- function(dataset) {
-  table_dir <- path_results("tables", MODULE_ID, "compareGO", dataset, "BP", "phenotype_within_unit")
-  processed_dir <- path_processed(MODULE_ID, "compareGO", dataset)
+  manifest_path <- canonical_comparego_manifest_path(dataset)
+  manifest <- if (file.exists(manifest_path)) {
+    read_canonical_comparego_manifest(
+      manifest_path, dataset, require_files = FALSE, repository_root = repo_path()
+    )
+  } else {
+    NULL
+  }
+  declared_path <- function(column) {
+    if (is.null(manifest) || !column %in% names(manifest)) return(NA_character_)
+    values <- sort(unique(as.character(manifest[[column]][!is.na(manifest[[column]]) & nzchar(manifest[[column]])])), method = "radix")
+    if (length(values) != 1L) return(NA_character_)
+    values[[1]]
+  }
   list(
     dataset = dataset,
-    supplementary = file.path(table_dir, "Supplementary_Data.xlsx"),
-    drivers = file.path(table_dir, "07_Top_Genes_Driving_TopTerms.xlsx"),
-    manifest = file.path(processed_dir, "compareGO_input_manifest.csv")
+    manifest = manifest_path,
+    term_comparison = declared_path("term_comparison_file"),
+    term_gene_provenance = declared_path("term_gene_provenance_output_file"),
+    analysis_status = declared_path("analysis_status_summary_file")
   )
 }
 
 diagnose_inputs <- function(files) {
+  paths <- c(files$manifest, files$term_comparison, files$term_gene_provenance, files$analysis_status)
   tibble::tibble(
     dataset = files$dataset,
-    input_type = c("supplementary", "drivers", "manifest"),
-    path = c(files$supplementary, files$drivers, files$manifest),
-    exists = file.exists(c(files$supplementary, files$drivers, files$manifest))
+    input_type = c("canonical_comparego_manifest", "term_comparison", "term_gene_provenance", "analysis_status"),
+    path = paths,
+    exists = !is.na(paths) & nzchar(paths) & file.exists(paths),
+    input_contract_version = ATLAS_INPUT_CONTRACT_VERSION
   )
 }
 
-read_supplementary_enrichment <- function(path) {
-  sheets <- readxl::excel_sheets(path)
-  sheet <- dplyr::case_when(
-    "GO_Enrichment_Results" %in% sheets ~ "GO_Enrichment_Results",
-    "Sheet1" %in% sheets ~ "Sheet1",
-    TRUE ~ sheets[[1]]
-  )
-  readxl::read_excel(path, sheet = sheet) %>% tibble::as_tibble()
+collapse_sorted_unique <- function(x) {
+  values <- sort(unique(trimws(as.character(x))), method = "radix")
+  values <- values[!is.na(values) & nzchar(values)]
+  if (length(values)) paste(values, collapse = ";") else NA_character_
 }
 
-read_driver_table <- function(path) {
-  if (!file.exists(path)) {
-    return(tibble::tibble(Description = character(), Gene = character(), Freq = integer(), Mean_NES = numeric(), Comparisons = character()))
+canonical_term_key <- function(x) {
+  paste(x$dataset, x$comparison, x$result_type, x$ontology, x$term_id, sep = "\r")
+}
+
+summarise_claim_safe_core <- function(provenance) {
+  required <- c(
+    "dataset", "comparison", "result_type", "ontology", "term_id",
+    "official_gene_symbol", "ProteinGroupID", "gene_level_claim_allowed",
+    "core_enrichment_member"
+  )
+  missing <- setdiff(required, names(provenance))
+  if (length(missing)) {
+    stop("Canonical term-gene provenance is missing stage-07 columns: ", paste(missing, collapse = ", "), call. = FALSE)
   }
-  readxl::read_excel(path, sheet = 1) %>%
-    tibble::as_tibble() %>%
-    dplyr::mutate(
-      Description = as.character(.data$Description),
-      Gene = as.character(.data$Gene),
-      Comparisons = as.character(.data$Comparisons)
+  safe <- provenance %>%
+    dplyr::filter(
+      .data$result_type == ATLAS_RESULT_TYPE,
+      toupper(.data$ontology) == ATLAS_ONTOLOGY,
+      .data$gene_level_claim_allowed %in% TRUE,
+      .data$core_enrichment_member %in% TRUE,
+      !is.na(.data$official_gene_symbol), nzchar(trimws(.data$official_gene_symbol))
     )
-}
-
-read_manifest <- function(path) {
-  if (!file.exists(path)) {
-    return(tibble::tibble(comparison = character(), route_unit = character()))
-  }
-  readr::read_csv(path, show_col_types = FALSE) %>%
-    dplyr::distinct(comparison, route_unit)
+  summary <- safe %>%
+    dplyr::group_by(.data$dataset, .data$comparison, .data$result_type, .data$ontology, .data$term_id) %>%
+    dplyr::summarise(
+      core_enrichment_gene = collapse_sorted_unique(.data$official_gene_symbol),
+      core_enrichment = collapse_sorted_unique(.data$ProteinGroupID),
+      n_claim_safe_core_rows = dplyr::n(),
+      n_claim_safe_core_genes = dplyr::n_distinct(.data$official_gene_symbol),
+      n_claim_safe_core_protein_groups = dplyr::n_distinct(.data$ProteinGroupID[!is.na(.data$ProteinGroupID) & nzchar(.data$ProteinGroupID)]),
+      .groups = "drop"
+    ) %>%
+    dplyr::arrange(.data$dataset, .data$comparison, .data$result_type, .data$ontology, .data$term_id)
+  list(
+    summary = summary,
+    n_rows = nrow(safe),
+    n_unique_genes = dplyr::n_distinct(safe$official_gene_symbol),
+    n_unique_protein_groups = dplyr::n_distinct(safe$ProteinGroupID[!is.na(safe$ProteinGroupID) & nzchar(safe$ProteinGroupID)])
+  )
 }
 
 parse_unit <- function(unit, dataset) {
@@ -210,55 +247,82 @@ collapse_top_terms <- function(df, n = 5) {
     paste(collapse = "; ")
 }
 
-top_driver_genes_for_group <- function(driver_df, descriptions, comparisons, n = 10) {
-  if (nrow(driver_df) == 0) return(NA_character_)
-  comp_pattern <- paste(unique(comparisons), collapse = "|")
-  out <- driver_df %>%
-    dplyr::filter(.data$Description %in% descriptions) %>%
-    dplyr::filter(is.na(.data$Comparisons) | grepl(comp_pattern, .data$Comparisons)) %>%
-    dplyr::group_by(.data$Gene) %>%
-    dplyr::summarise(
-      total_freq = sum(suppressWarnings(as.numeric(.data$Freq)), na.rm = TRUE),
-      mean_nes = mean(suppressWarnings(as.numeric(.data$Mean_NES)), na.rm = TRUE),
-      .groups = "drop"
-    ) %>%
-    dplyr::arrange(dplyr::desc(.data$total_freq), dplyr::desc(.data$mean_nes)) %>%
-    dplyr::slice_head(n = n) %>%
-    dplyr::pull(.data$Gene)
-  if (length(out) == 0) NA_character_ else paste(out, collapse = "; ")
+top_driver_genes_for_group <- function(core_gene_sets, n = 10L) {
+  genes <- unlist(lapply(core_gene_sets, split_genes), use.names = FALSE)
+  genes <- genes[!is.na(genes) & nzchar(genes)]
+  if (!length(genes)) return(NA_character_)
+  counts <- as.data.frame(table(genes), stringsAsFactors = FALSE)
+  counts <- counts[order(-counts$Freq, counts$genes, method = "radix"), , drop = FALSE]
+  paste(utils::head(as.character(counts$genes), n), collapse = "; ")
 }
 
 load_dataset_atlas <- function(files) {
-  enrichment <- read_supplementary_enrichment(files$supplementary)
-  needed <- c("ID", "Description", "NES", "p.adjust", "core_enrichment", "Comparison")
-  missing <- setdiff(needed, names(enrichment))
-  if (length(missing) > 0) {
-    stop("Supplementary enrichment table for ", files$dataset, " is missing columns: ", paste(missing, collapse = ", "), call. = FALSE)
+  bundle <- read_canonical_comparego_bundle(files$manifest, files$dataset)
+  admitted_manifest <- bundle$manifest %>%
+    dplyr::filter(
+      .data$route_category == ATLAS_ROUTE_CATEGORY,
+      .data$result_type == ATLAS_RESULT_TYPE,
+      toupper(.data$ontology) == ATLAS_ONTOLOGY,
+      .data$comparego_analysis_status == "included"
+    )
+  if (!nrow(admitted_manifest)) {
+    stop("Canonical compareGO manifest has no admitted GSEA_GO/BP phenotype-within-unit rows for ", files$dataset, ".", call. = FALSE)
+  }
+  route_identity <- admitted_manifest %>%
+    dplyr::select(.data$dataset, .data$comparison, .data$result_type, .data$ontology,
+      .data$route_category, .data$route_unit) %>%
+    dplyr::distinct()
+  route_keys <- paste(route_identity$dataset, route_identity$comparison, route_identity$result_type, route_identity$ontology, sep = "\r")
+  if (anyDuplicated(route_keys)) {
+    stop("Canonical compareGO manifest has non-unique structured route identity for ", files$dataset, ".", call. = FALSE)
   }
 
-  manifest <- read_manifest(files$manifest)
-  drivers <- read_driver_table(files$drivers)
+  terms <- bundle$terms %>%
+    dplyr::filter(.data$result_type == ATLAS_RESULT_TYPE, toupper(.data$ontology) == ATLAS_ONTOLOGY)
+  term_comparisons <- sort(unique(as.character(terms$comparison)), method = "radix")
+  manifest_comparisons <- sort(unique(as.character(admitted_manifest$comparison)), method = "radix")
+  if (!identical(term_comparisons, manifest_comparisons)) {
+    stop("Canonical compareGO term comparisons do not exactly match the admitted manifest comparisons for ", files$dataset, ".", call. = FALSE)
+  }
+  term_keys <- canonical_term_key(terms)
+  if (anyDuplicated(term_keys)) {
+    stop("Canonical compareGO term comparison contains duplicate exact term keys for ", files$dataset, ".", call. = FALSE)
+  }
 
-  if (!"core_enrichment_gene" %in% names(enrichment)) enrichment$core_enrichment_gene <- NA_character_
-
-  parsed <- enrichment %>%
+  core <- summarise_claim_safe_core(bundle$provenance)
+  parsed <- terms %>%
+    dplyr::rename(canonical_term_core_enrichment_raw = .data$core_enrichment) %>%
+    dplyr::left_join(
+      route_identity,
+      by = c("dataset", "comparison", "result_type", "ontology")
+    ) %>%
+    dplyr::left_join(
+      core$summary,
+      by = c("dataset", "comparison", "result_type", "ontology", "term_id")
+    ) %>%
     dplyr::mutate(
       dataset = files$dataset,
       dataset_label = dataset_label(files$dataset),
-      ID = as.character(.data$ID),
+      ID = as.character(.data$term_id),
       NES = suppressWarnings(as.numeric(.data$NES)),
       p.adjust = suppressWarnings(as.numeric(.data$p.adjust)),
-      Comparison = as.character(.data$Comparison),
-      Description = as.character(.data$Description),
+      Comparison = as.character(.data$comparison),
+      Description = as.character(.data$term_description),
       core_enrichment = as.character(.data$core_enrichment),
       core_enrichment_gene = as.character(.data$core_enrichment_gene),
-      source_supplementary_file = normalizePath(files$supplementary, winslash = "/", mustWork = TRUE),
-      source_driver_file = normalizePath(files$drivers, winslash = "/", mustWork = FALSE),
-      source_manifest_file = normalizePath(files$manifest, winslash = "/", mustWork = TRUE),
-      evidence_source_family = "ranked_GSEA"
-    ) %>%
-    dplyr::left_join(manifest, by = c("Comparison" = "comparison")) %>%
-    dplyr::mutate(route_unit = dplyr::coalesce(as.character(.data$route_unit), NA_character_))
+      source_term_comparison_file = bundle$term_source,
+      source_term_gene_provenance_file = bundle$provenance_source,
+      source_analysis_status_file = bundle$status_source,
+      source_manifest_file = bundle$manifest_source,
+      source_supplementary_file = .data$source_term_comparison_file,
+      source_driver_file = .data$source_term_gene_provenance_file,
+      evidence_source_family = "canonical_compareGO_ranked_GSEA_GO_BP",
+      core_enrichment_contract = "gene_level_claim_allowed == TRUE && core_enrichment_member == TRUE",
+      input_contract_version = ATLAS_INPUT_CONTRACT_VERSION
+    )
+  if (any(is.na(parsed$route_unit) | !nzchar(as.character(parsed$route_unit)))) {
+    stop("Canonical compareGO terms are missing structured route_unit after manifest join for ", files$dataset, ".", call. = FALSE)
+  }
 
   comparison_meta <- purrr::pmap_dfr(
     list(parsed$Comparison, parsed$dataset, parsed$route_unit),
@@ -272,20 +336,34 @@ load_dataset_atlas <- function(files) {
     dplyr::mutate(
       program_class = classify_program(.data$Description),
       spatial_unit_order = factor(.data$spatial_unit, levels = order_spatial_units(unique(.data$spatial_unit))),
-      phenotype_contrast = factor(.data$phenotype_contrast, levels = contrast_levels)
+      phenotype_contrast = factor(.data$phenotype_contrast, levels = contrast_levels),
+      phenotype_contrast_source = "standardized_comparison_name_no_structured_condition_pair_available",
+      route_identity_source = "canonical_compareGO_manifest"
     )
 
-  list(enrichment = parsed, drivers = drivers)
+  list(
+    enrichment = parsed,
+    manifest = admitted_manifest,
+    status = bundle$status,
+    claim_safe_core = core,
+    sources = tibble::tibble(
+      dataset = files$dataset,
+      manifest = bundle$manifest_source,
+      term_comparison = bundle$term_source,
+      term_gene_provenance = bundle$provenance_source,
+      analysis_status = bundle$status_source
+    )
+  )
 }
 
 order_spatial_units <- function(units) {
   anatomical_spatial_unit_levels(units)
 }
 
-calculate_program_summary <- function(enrichment_df, driver_by_dataset) {
+calculate_program_summary <- function(enrichment_df) {
   group_columns <- c(
-    "dataset", "dataset_label", "region", "layer", "spatial_unit",
-    "compartment", "phenotype_contrast", "program_class"
+    "dataset", "dataset_label", "comparison", "route_category", "route_unit",
+    "region", "layer", "spatial_unit", "compartment", "phenotype_contrast", "program_class"
   )
   collapse_core <- function(x) {
     values <- unique(trimws(unlist(lapply(x, split_genes), use.names = FALSE)))
@@ -307,14 +385,18 @@ calculate_program_summary <- function(enrichment_df, driver_by_dataset) {
       leading_edge_union_size = length(unique(unlist(purrr::map(.data$core_enrichment, split_genes)))),
       significant_leading_edge_proteins = collapse_core(.data$core_enrichment[!is.na(.data$p.adjust) & .data$p.adjust < 0.05]),
       significant_leading_edge_genes = collapse_core(.data$core_enrichment_gene[!is.na(.data$p.adjust) & .data$p.adjust < 0.05]),
+      top_driver_genes = top_driver_genes_for_group(.data$core_enrichment_gene[!is.na(.data$p.adjust) & .data$p.adjust < 0.05]),
       top_GO_terms = collapse_top_terms(dplyr::pick(dplyr::everything())),
       comparisons = paste(unique(.data$Comparison), collapse = ";"),
+      source_term_comparison_file = dplyr::first(.data$source_term_comparison_file),
+      source_term_gene_provenance_file = dplyr::first(.data$source_term_gene_provenance_file),
+      source_analysis_status_file = dplyr::first(.data$source_analysis_status_file),
       source_supplementary_file = dplyr::first(.data$source_supplementary_file),
       source_driver_file = dplyr::first(.data$source_driver_file),
       source_manifest_file = dplyr::first(.data$source_manifest_file),
       evidence_source_family = dplyr::first(.data$evidence_source_family),
-      term_set = list(unique(.data$Description)),
-      comparison_set = list(unique(.data$Comparison)),
+      core_enrichment_contract = dplyr::first(.data$core_enrichment_contract),
+      input_contract_version = dplyr::first(.data$input_contract_version),
       .groups = "drop"
     )
 
@@ -340,17 +422,6 @@ calculate_program_summary <- function(enrichment_df, driver_by_dataset) {
       representative_source_key = paste(.data$dataset, .data$Comparison, .data$ID, sep = "|")
     )
 
-  base_summary$top_driver_genes <- purrr::pmap_chr(
-    list(base_summary$dataset, base_summary$term_set, base_summary$comparison_set),
-    function(dataset, term_set, comparison_set) {
-      top_driver_genes_for_group(
-        driver_by_dataset[[dataset]] %||% tibble::tibble(),
-        unlist(term_set),
-        unlist(comparison_set)
-      ) %||% NA_character_
-    }
-  )
-
   base_summary %>%
     dplyr::left_join(representative, by = group_columns) %>%
     dplyr::mutate(
@@ -369,8 +440,7 @@ calculate_program_summary <- function(enrichment_df, driver_by_dataset) {
         TRUE ~ "neutral"
       ),
       representative_selection_rule = "p.adjust < 0.05; lowest p.adjust; largest abs(NES); GO ID; Description"
-    ) %>%
-    dplyr::select(-dplyr::all_of(c("term_set", "comparison_set")))
+    )
 }
 
 # Backward-compatible legacy heuristic only. These classes mix significance
@@ -420,7 +490,7 @@ classify_program_behavior <- function(summary_df, min_abs_nes = 0.15) {
 make_driver_recurrence <- function(enrichment_df, max_genes_per_class = 20) {
   long_genes <- enrichment_df %>%
     dplyr::filter(!is.na(.data$p.adjust), .data$p.adjust < 0.05) %>%
-    dplyr::mutate(Gene = purrr::map(.data$core_enrichment, split_genes)) %>%
+    dplyr::mutate(Gene = purrr::map(.data$core_enrichment_gene, split_genes)) %>%
     tidyr::unnest("Gene") %>%
     dplyr::filter(!is.na(.data$Gene), nzchar(.data$Gene)) %>%
     dplyr::distinct(.data$dataset, .data$dataset_label, .data$spatial_unit, .data$program_class, .data$Gene, .data$Description)
@@ -887,6 +957,10 @@ write_publication_provenance <- function(paths, analyzed_datasets, row_counts) {
     c(
       "compareGO spatial program atlas publication outputs",
       paste0("Datasets analyzed: ", paste(analyzed_datasets, collapse = ", ")),
+      paste0("Input contract: ", ATLAS_INPUT_CONTRACT_VERSION),
+      paste0("Admitted canonical result family: ", ATLAS_RESULT_TYPE, " / ", ATLAS_ONTOLOGY, " / ", ATLAS_ROUTE_CATEGORY),
+      "Term statistics are read from the manifest-declared canonical compareGO term comparison table.",
+      "Leading-edge genes and ProteinGroupIDs are derived only from canonical term-gene provenance rows with gene_level_claim_allowed == TRUE and core_enrichment_member == TRUE.",
       paste0("Legacy broad heuristic classes (technical generic outputs only): ", paste(publication_program_labels, collapse = "; ")),
       paste0("SUS-RES manuscript themes: ", paste(unique(registry$display_label[order(registry$display_order)]), collapse = "; ")),
       paste0("Manuscript theme registry: ", MANUSCRIPT_GO_THEME_REGISTRY, " (", unique(registry$registry_version), ")"),
@@ -906,6 +980,19 @@ write_publication_provenance <- function(paths, analyzed_datasets, row_counts) {
   )
 }
 
+xlsx_safe_table <- function(x, limit = 32000L) {
+  truncate_cell <- function(value) {
+    value <- as.character(value)
+    too_long <- !is.na(value) & nchar(value, type = "chars") > limit
+    value[too_long] <- paste0(
+      substr(value[too_long], 1L, limit - 70L),
+      "...[truncated for XLSX cell limit; complete value retained in canonical CSV]"
+    )
+    value
+  }
+  x %>% dplyr::mutate(dplyr::across(where(is.character), truncate_cell))
+}
+
 write_outputs <- function(enrichment_df, summary_df, behavior_df, driver_df, diagnostics) {
   source_dir <- CANONICAL_PATHS$source_data
   table_dir <- CANONICAL_PATHS$tables
@@ -918,10 +1005,18 @@ write_outputs <- function(enrichment_df, summary_df, behavior_df, driver_df, dia
   readr::write_csv(driver_df, file.path(source_dir, "leading_edge_driver_recurrence.csv"))
   writexl::write_xlsx(
     list(
-      input_diagnostics = diagnostics,
-      spatial_program_summary = summary_df,
-      spatial_program_behavior = behavior_df,
-      leading_edge_driver_recurrence = driver_df
+      workbook_contract = tibble::tibble(
+        field = c("input_contract_version", "xlsx_character_cell_policy", "complete_provenance_location"),
+        value = c(
+          ATLAS_INPUT_CONTRACT_VERSION,
+          "Character cells longer than 32,000 characters are display-truncated only in this workbook.",
+          "Complete untruncated values are retained in the sibling CSV/source-data exports."
+        )
+      ),
+      input_diagnostics = xlsx_safe_table(diagnostics),
+      spatial_program_summary = xlsx_safe_table(summary_df),
+      spatial_program_behavior = xlsx_safe_table(behavior_df),
+      leading_edge_driver_recurrence = xlsx_safe_table(driver_df)
     ),
     file.path(table_dir, "compareGO_spatial_program_atlas_tables.xlsx")
   )
@@ -976,6 +1071,157 @@ build_sus_res_manuscript_theme_outputs <- function(
   )
 }
 
+build_contract_validation <- function(loaded, enrichment_df, program_summary) {
+  bundle_diagnostics <- purrr::map_dfr(loaded, function(x) {
+    tibble::tibble(
+      dataset = unique(as.character(x$enrichment$dataset))[[1]],
+      input_contract_version = ATLAS_INPUT_CONTRACT_VERSION,
+      manifest_rows_admitted = nrow(x$manifest),
+      manifest_comparisons = dplyr::n_distinct(x$manifest$comparison),
+      term_rows_admitted = nrow(x$enrichment),
+      term_comparisons = dplyr::n_distinct(x$enrichment$comparison),
+      admitted_result_types = collapse_sorted_unique(x$enrichment$result_type),
+      admitted_ontologies = collapse_sorted_unique(x$enrichment$ontology),
+      admitted_route_categories = collapse_sorted_unique(x$enrichment$route_category),
+      claim_safe_core_rows = x$claim_safe_core$n_rows,
+      claim_safe_unique_genes = x$claim_safe_core$n_unique_genes,
+      claim_safe_unique_protein_groups = x$claim_safe_core$n_unique_protein_groups,
+      analysis_status_rows = nrow(x$status)
+    )
+  })
+
+  admitted_term_counts <- enrichment_df %>%
+    dplyr::count(.data$dataset, .data$comparison, .data$result_type, .data$ontology, name = "n_term_rows") %>%
+    dplyr::arrange(.data$dataset, .data$comparison, .data$result_type, .data$ontology)
+
+  comparison_identity <- purrr::map_dfr(loaded, function(x) {
+    dataset <- unique(as.character(x$enrichment$dataset))[[1]]
+    manifest_ids <- sort(unique(as.character(x$manifest$comparison)), method = "radix")
+    term_ids <- sort(unique(as.character(x$enrichment$comparison)), method = "radix")
+    tibble::tibble(
+      dataset = dataset,
+      manifest_comparisons = length(manifest_ids),
+      admitted_term_comparisons = length(term_ids),
+      identities_exact = identical(manifest_ids, term_ids),
+      missing_from_terms = paste(setdiff(manifest_ids, term_ids), collapse = ";"),
+      extra_in_terms = paste(setdiff(term_ids, manifest_ids), collapse = ";")
+    )
+  })
+
+  status <- purrr::map_dfr(loaded, "status") %>%
+    dplyr::mutate(
+      admitted_to_stage07 = .data$result_type == ATLAS_RESULT_TYPE &
+        toupper(.data$ontology) == ATLAS_ONTOLOGY &
+        .data$comparego_action == "included"
+    ) %>%
+    dplyr::count(
+      .data$dataset, .data$result_type, .data$ontology, .data$analysis_status,
+      .data$comparego_action, .data$admitted_to_stage07,
+      name = "n_status_rows"
+    ) %>%
+    dplyr::arrange(.data$dataset, dplyr::desc(.data$admitted_to_stage07), .data$result_type, .data$ontology)
+
+  stage06_detail <- purrr::map_dfr(unique(as.character(program_summary$dataset)), function(dataset) {
+    path <- path_results("tables", MODULE_ID, "biological_program_summary", dataset, "program_summary.csv")
+    stage07 <- program_summary %>%
+      dplyr::filter(.data$dataset == .env$dataset, as.character(.data$program_class) %in% canonical_program_levels) %>%
+      dplyr::transmute(
+        dataset, comparison, biological_program = as.character(.data$program_class),
+        stage07_min_fdr = .data$min_fdr,
+        stage07_representative_direction = .data$representative_direction,
+        stage07_n_terms = .data$n_terms
+      )
+    if (!file.exists(path)) {
+      return(stage07 %>%
+        dplyr::mutate(
+          stage06_program_summary_path = path,
+          stage06_available = FALSE,
+          stage06_min_fdr = NA_real_,
+          stage06_representative_direction = NA_character_,
+          stage06_n_terms = NA_integer_,
+          stage06_key_present = FALSE,
+          min_fdr_abs_diff = NA_real_,
+          min_fdr_match = NA,
+          representative_direction_comparable = FALSE,
+          representative_direction_match = NA
+        ))
+    }
+    stage06 <- readr::read_csv(path, show_col_types = FALSE) %>%
+      dplyr::transmute(
+        dataset = as.character(.data$dataset),
+        comparison = as.character(.data$comparison),
+        biological_program = as.character(.data$biological_program),
+        stage06_min_fdr = suppressWarnings(as.numeric(.data$min_fdr)),
+        stage06_representative_direction = as.character(.data$direction),
+        stage06_n_terms = suppressWarnings(as.integer(.data$n_terms))
+      )
+    dplyr::full_join(
+      stage07 %>% dplyr::mutate(stage07_key_present = TRUE),
+      stage06 %>% dplyr::mutate(stage06_key_present = TRUE),
+      by = c("dataset", "comparison", "biological_program")
+    ) %>%
+      dplyr::mutate(
+        stage07_key_present = dplyr::coalesce(.data$stage07_key_present, FALSE),
+        stage06_key_present = dplyr::coalesce(.data$stage06_key_present, FALSE),
+        stage06_program_summary_path = path,
+        stage06_available = TRUE,
+        min_fdr_abs_diff = abs(.data$stage07_min_fdr - .data$stage06_min_fdr),
+        min_fdr_match = dplyr::if_else(
+          .data$stage07_key_present & .data$stage06_key_present,
+          dplyr::near(.data$stage07_min_fdr, .data$stage06_min_fdr, tol = 1e-12),
+          NA
+        ),
+        representative_direction_comparable = .data$stage07_key_present & .data$stage06_key_present &
+          .data$stage07_representative_direction != "no_FDR_supported_term",
+        representative_direction_match = dplyr::if_else(
+          .data$representative_direction_comparable,
+          .data$stage07_representative_direction == .data$stage06_representative_direction,
+          NA
+        )
+      )
+  })
+
+  stage06_summary <- stage06_detail %>%
+    dplyr::group_by(.data$dataset) %>%
+    dplyr::summarise(
+      stage06_available = all(.data$stage06_available),
+      stage07_comparisons = dplyr::n_distinct(.data$comparison[.data$stage07_key_present]),
+      stage06_comparisons = dplyr::n_distinct(.data$comparison[.data$stage06_key_present]),
+      stage07_programs = dplyr::n_distinct(.data$biological_program[.data$stage07_key_present]),
+      stage06_programs = dplyr::n_distinct(.data$biological_program[.data$stage06_key_present]),
+      overlapping_keys = sum(.data$stage07_key_present & .data$stage06_key_present),
+      stage07_only_keys = sum(.data$stage07_key_present & !.data$stage06_key_present),
+      stage06_only_keys = sum(!.data$stage07_key_present & .data$stage06_key_present),
+      min_fdr_matches = sum(.data$min_fdr_match %in% TRUE),
+      min_fdr_mismatches = sum(.data$min_fdr_match %in% FALSE),
+      max_min_fdr_abs_diff = suppressWarnings(max(.data$min_fdr_abs_diff, na.rm = TRUE)),
+      comparable_representative_directions = sum(.data$representative_direction_comparable),
+      representative_direction_matches = sum(.data$representative_direction_match %in% TRUE),
+      representative_direction_mismatches = sum(.data$representative_direction_match %in% FALSE),
+      direction_scope_note = "Stage 07 exposes no_FDR_supported_term when no term passes FDR<0.05; stage 06 reports the minimum-FDR term direction regardless of significance. Direction is compared only for stage-07 FDR-supported representatives.",
+      .groups = "drop"
+    ) %>%
+    dplyr::mutate(max_min_fdr_abs_diff = ifelse(is.infinite(.data$max_min_fdr_abs_diff), NA_real_, .data$max_min_fdr_abs_diff))
+
+  list(
+    bundle_diagnostics = bundle_diagnostics,
+    admitted_term_counts = admitted_term_counts,
+    comparison_identity = comparison_identity,
+    analysis_status = status,
+    stage06_detail = stage06_detail,
+    stage06_summary = stage06_summary
+  )
+}
+
+write_contract_validation <- function(validation) {
+  readr::write_csv(validation$bundle_diagnostics, file.path(CANONICAL_PATHS$reports, "canonical_bundle_diagnostics.csv"), na = "")
+  readr::write_csv(validation$admitted_term_counts, file.path(CANONICAL_PATHS$reports, "admitted_canonical_term_counts.csv"), na = "")
+  readr::write_csv(validation$comparison_identity, file.path(CANONICAL_PATHS$reports, "canonical_comparison_identity_audit.csv"), na = "")
+  readr::write_csv(validation$analysis_status, file.path(CANONICAL_PATHS$reports, "canonical_analysis_status_admission.csv"), na = "")
+  readr::write_csv(validation$stage06_detail, file.path(CANONICAL_PATHS$reports, "stage06_program_summary_crosscheck.csv"), na = "")
+  readr::write_csv(validation$stage06_summary, file.path(CANONICAL_PATHS$reports, "stage06_program_summary_crosscheck_summary.csv"), na = "")
+}
+
 main <- function() {
   load_required_packages(required_pkgs)
   require_go_ontology_dependencies(include_semantic = TRUE)
@@ -987,13 +1233,17 @@ main <- function() {
 
   if (is_script_dry_run()) {
     message("[DRY-RUN] compareGO spatial atlas")
+    message("[DRY-RUN] input contract: ", ATLAS_INPUT_CONTRACT_VERSION)
+    message("[DRY-RUN] admitted result family: ", ATLAS_RESULT_TYPE, " / ", ATLAS_ONTOLOGY, " / ", ATLAS_ROUTE_CATEGORY)
     message("[DRY-RUN] manuscript GO-theme registry: ", MANUSCRIPT_GO_THEME_REGISTRY)
     message("[DRY-RUN] registry version/themes: ", unique(registry_dry_check$registry_version), " / ", length(unique(registry_dry_check$theme_id)))
     message("[DRY-RUN] ontology relationships: ", paste(manuscript_go_allowed_relationships(), collapse = ", "))
     print(diagnostics)
     missing <- diagnostics %>% dplyr::filter(!.data$exists)
     if (nrow(missing) > 0) {
-      message("[DRY-RUN] Missing dataset outputs detected. Existing datasets will be used in non-dry-run mode only if all required files exist.")
+      message("[DRY-RUN] FAIL: missing canonical compareGO contract inputs.")
+    } else {
+      message("[DRY-RUN] PASS: canonical compareGO manifest, term comparison, term-gene provenance, and analysis status exist for all requested datasets.")
     }
     return(invisible(diagnostics))
   }
@@ -1003,24 +1253,20 @@ main <- function() {
     dplyr::summarise(complete = all(.data$exists), .groups = "drop")
   missing_datasets <- complete_datasets$dataset[!complete_datasets$complete]
   if (length(missing_datasets) > 0) {
-    warning("Skipping dataset(s) with missing compareGO atlas inputs: ", paste(missing_datasets, collapse = ", "))
-  }
-
-  files <- files[vapply(files, function(x) !(x$dataset %in% missing_datasets), logical(1))]
-  if (length(files) == 0) {
-    stop("No complete dataset compareGO outputs available for atlas synthesis.", call. = FALSE)
+    stop("Missing canonical compareGO atlas inputs for dataset(s): ", paste(missing_datasets, collapse = ", "), call. = FALSE)
   }
 
   loaded <- purrr::map(files, load_dataset_atlas)
   enrichment_df <- purrr::map_dfr(loaded, "enrichment")
-  driver_by_dataset <- stats::setNames(purrr::map(loaded, "drivers"), vapply(files, `[[`, character(1), "dataset"))
 
-  program_summary <- calculate_program_summary(enrichment_df, driver_by_dataset)
+  program_summary <- calculate_program_summary(enrichment_df)
   behavior_df <- classify_program_behavior(program_summary)
   driver_recurrence <- make_driver_recurrence(enrichment_df)
   manuscript <- build_sus_res_manuscript_theme_outputs(enrichment_df)
+  contract_validation <- build_contract_validation(loaded, enrichment_df, program_summary)
 
   write_outputs(enrichment_df, program_summary, behavior_df, driver_recurrence, diagnostics)
+  write_contract_validation(contract_validation)
   readr::write_csv(
     manuscript$assignment_long,
     file.path(CANONICAL_PATHS$source_data, "sus_res_go_term_theme_assignment_long.csv"), na = ""
@@ -1119,6 +1365,9 @@ main <- function() {
   writeLines(
     c(
       "compareGO spatial program atlas complete",
+      paste0("Validation-only isolated output: ", VALIDATION_ONLY),
+      paste0("Input contract: ", ATLAS_INPUT_CONTRACT_VERSION),
+      paste0("Admitted result family: ", ATLAS_RESULT_TYPE, " / ", ATLAS_ONTOLOGY, " / ", ATLAS_ROUTE_CATEGORY),
       paste0("Datasets requested: ", paste(datasets, collapse = ", ")),
       paste0("Datasets analyzed: ", paste(vapply(files, `[[`, character(1), "dataset"), collapse = ", ")),
       paste0("Program summary rows: ", nrow(program_summary)),
@@ -1131,7 +1380,13 @@ main <- function() {
   )
 
   message("Spatial program atlas complete: ", CANONICAL_PATHS$figures)
-  invisible(list(summary = program_summary, behavior = behavior_df, driver_recurrence = driver_recurrence))
+  invisible(list(
+    summary = program_summary,
+    behavior = behavior_df,
+    driver_recurrence = driver_recurrence,
+    manuscript = manuscript,
+    contract_validation = contract_validation
+  ))
 }
 
 if (sys.nframe() == 0) {
