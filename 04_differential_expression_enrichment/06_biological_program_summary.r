@@ -260,7 +260,174 @@ mode_value <- function(x) {
   x <- stats::na.omit(as.character(x))
   x <- x[nzchar(x)]
   if (!length(x)) return(NA_character_)
-  names(sort(table(x), decreasing = TRUE))[[1]]
+  counts <- table(x)
+  sort(names(counts)[counts == max(counts)], method = "radix")[[1]]
+}
+
+NEUROPIL_PROGRAM_ANNOTATION_CONTRACT_VERSION <- "microglia_neuropil_program_v2_significant_terms_by_program"
+
+empty_neuropil_program_annotation <- function() {
+  tibble::tibble(
+    dataset = character(),
+    comparison = character(),
+    route_category = character(),
+    route_unit = character(),
+    biological_program = character(),
+    interpretation_class = character(),
+    dominant_interpretation_class = character(),
+    neuropil_program_annotation_status = character(),
+    neuropil_program_annotation_contract_version = character(),
+    source_classification_contract_version = character(),
+    n_significant_microglia_terms = integer(),
+    n_mixed_microenvironment = integer(),
+    n_neuropil_sensitive = integer(),
+    n_microglia_robust = integer(),
+    n_neuropil_marker_enriched = integer(),
+    n_ambiguous = integer(),
+    fraction_mixed_microenvironment = numeric(),
+    fraction_neuropil_sensitive = numeric(),
+    fraction_microglia_robust = numeric(),
+    fraction_neuropil_marker_enriched = numeric(),
+    fraction_ambiguous = numeric(),
+    gene_overlap_fraction = numeric(),
+    gene_jaccard = numeric(),
+    neuropil_marker_fraction = numeric(),
+    microglia_marker_fraction = numeric()
+  )
+}
+
+safe_mean <- function(x) {
+  value <- suppressWarnings(mean(as.numeric(x), na.rm = TRUE))
+  if (is.nan(value)) NA_real_ else value
+}
+
+summarise_neuropil_annotation_by_program <- function(neuropil_annotation) {
+  required <- c(
+    "dataset", "comparison", "route_category", "route_unit", "term_description",
+    "p_adjust", "interpretation_class"
+  )
+  missing <- setdiff(required, names(neuropil_annotation))
+  if (length(missing)) {
+    stop(
+      "Neuropil annotation is missing required program-integration columns: ",
+      paste(missing, collapse = ", "),
+      call. = FALSE
+    )
+  }
+  if (!nrow(neuropil_annotation)) return(empty_neuropil_program_annotation())
+
+  optional_numeric <- c(
+    "gene_overlap_fraction", "gene_jaccard", "neuropil_marker_fraction",
+    "microglia_marker_fraction"
+  )
+  for (column in setdiff(optional_numeric, names(neuropil_annotation))) {
+    neuropil_annotation[[column]] <- NA_real_
+  }
+  if (!"classification_contract_version" %in% names(neuropil_annotation)) {
+    neuropil_annotation$classification_contract_version <- NA_character_
+  }
+
+  significant <- map_terms_to_programs(neuropil_annotation, "term_description") %>%
+    dplyr::filter(
+      is.finite(suppressWarnings(as.numeric(.data$p_adjust))),
+      suppressWarnings(as.numeric(.data$p_adjust)) < 0.05,
+      !is.na(.data$biological_program)
+    )
+  if (!nrow(significant)) return(empty_neuropil_program_annotation())
+
+  significant %>%
+    dplyr::group_by(
+      .data$dataset, .data$comparison, .data$route_category, .data$route_unit,
+      .data$biological_program
+    ) %>%
+    dplyr::summarise(
+      source_classification_contract_version = mode_value(.data$classification_contract_version),
+      n_significant_microglia_terms = dplyr::n(),
+      n_mixed_microenvironment = sum(.data$interpretation_class == "mixed_microenvironment", na.rm = TRUE),
+      n_neuropil_sensitive = sum(.data$interpretation_class == "neuropil_sensitive", na.rm = TRUE),
+      n_microglia_robust = sum(.data$interpretation_class == "microglia_robust", na.rm = TRUE),
+      n_neuropil_marker_enriched = sum(.data$interpretation_class == "neuropil_marker_enriched", na.rm = TRUE),
+      n_ambiguous = sum(.data$interpretation_class == "ambiguous", na.rm = TRUE),
+      fraction_mixed_microenvironment = .data$n_mixed_microenvironment / .data$n_significant_microglia_terms,
+      fraction_neuropil_sensitive = .data$n_neuropil_sensitive / .data$n_significant_microglia_terms,
+      fraction_microglia_robust = .data$n_microglia_robust / .data$n_significant_microglia_terms,
+      fraction_neuropil_marker_enriched = .data$n_neuropil_marker_enriched / .data$n_significant_microglia_terms,
+      fraction_ambiguous = .data$n_ambiguous / .data$n_significant_microglia_terms,
+      gene_overlap_fraction = safe_mean(.data$gene_overlap_fraction),
+      gene_jaccard = safe_mean(.data$gene_jaccard),
+      neuropil_marker_fraction = safe_mean(.data$neuropil_marker_fraction),
+      microglia_marker_fraction = safe_mean(.data$microglia_marker_fraction),
+      interpretation_class = mode_value(.data$interpretation_class),
+      dominant_interpretation_class = .data$interpretation_class,
+      neuropil_program_annotation_status = "significant_microglia_terms",
+      neuropil_program_annotation_contract_version = NEUROPIL_PROGRAM_ANNOTATION_CONTRACT_VERSION,
+      .groups = "drop"
+    ) %>%
+    dplyr::arrange(
+      .data$dataset, .data$comparison, .data$route_category, .data$route_unit,
+      .data$biological_program
+    )
+}
+
+attach_neuropil_program_annotation <- function(program_summary, neuropil_annotation) {
+  join_keys <- c("dataset", "comparison", "route_category", "route_unit", "biological_program")
+  missing <- setdiff(join_keys, names(program_summary))
+  if (length(missing)) {
+    stop("Program summary is missing join columns: ", paste(missing, collapse = ", "), call. = FALSE)
+  }
+
+  annotation_summary <- summarise_neuropil_annotation_by_program(neuropil_annotation)
+  count_columns <- c(
+    "n_significant_microglia_terms", "n_mixed_microenvironment", "n_neuropil_sensitive",
+    "n_microglia_robust", "n_neuropil_marker_enriched", "n_ambiguous"
+  )
+  program_summary %>%
+    dplyr::left_join(annotation_summary, by = join_keys) %>%
+    dplyr::mutate(
+      dplyr::across(dplyr::all_of(count_columns), ~dplyr::coalesce(as.integer(.x), 0L)),
+      interpretation_class = dplyr::if_else(
+        .data$n_significant_microglia_terms == 0L,
+        "no_significant_microglia_terms",
+        .data$interpretation_class
+      ),
+      dominant_interpretation_class = dplyr::if_else(
+        .data$n_significant_microglia_terms == 0L,
+        "no_significant_microglia_terms",
+        .data$dominant_interpretation_class
+      ),
+      neuropil_program_annotation_status = dplyr::if_else(
+        .data$n_significant_microglia_terms == 0L,
+        "no_significant_microglia_terms",
+        .data$neuropil_program_annotation_status
+      ),
+      neuropil_program_annotation_contract_version = NEUROPIL_PROGRAM_ANNOTATION_CONTRACT_VERSION
+    )
+}
+
+add_unavailable_neuropil_program_annotation <- function(program_summary) {
+  program_summary %>%
+    dplyr::mutate(
+      interpretation_class = NA_character_,
+      dominant_interpretation_class = NA_character_,
+      neuropil_program_annotation_status = "neuropil_annotation_unavailable",
+      neuropil_program_annotation_contract_version = NEUROPIL_PROGRAM_ANNOTATION_CONTRACT_VERSION,
+      source_classification_contract_version = NA_character_,
+      n_significant_microglia_terms = NA_integer_,
+      n_mixed_microenvironment = NA_integer_,
+      n_neuropil_sensitive = NA_integer_,
+      n_microglia_robust = NA_integer_,
+      n_neuropil_marker_enriched = NA_integer_,
+      n_ambiguous = NA_integer_,
+      fraction_mixed_microenvironment = NA_real_,
+      fraction_neuropil_sensitive = NA_real_,
+      fraction_microglia_robust = NA_real_,
+      fraction_neuropil_marker_enriched = NA_real_,
+      fraction_ambiguous = NA_real_,
+      gene_overlap_fraction = NA_real_,
+      gene_jaccard = NA_real_,
+      neuropil_marker_fraction = NA_real_,
+      microglia_marker_fraction = NA_real_
+    )
 }
 
 neuropil_annotation_path <- file.path(
@@ -302,28 +469,9 @@ signature_annotation <- optional_read_csv(microglia_signature_path)
 
 program_summary_neuropil <- program_summary
 if (!is.null(neuropil_annotation) && nrow(neuropil_annotation) && "comparison" %in% names(neuropil_annotation)) {
-  neuropil_by_comparison <- neuropil_annotation %>%
-    dplyr::group_by(.data$comparison) %>%
-    dplyr::summarise(
-      interpretation_class = mode_value(.data$interpretation_class),
-      gene_overlap_fraction = suppressWarnings(mean(.data$gene_overlap_fraction, na.rm = TRUE)),
-      gene_jaccard = suppressWarnings(mean(.data$gene_jaccard, na.rm = TRUE)),
-      neuropil_marker_fraction = suppressWarnings(mean(.data$neuropil_marker_fraction, na.rm = TRUE)),
-      microglia_marker_fraction = suppressWarnings(mean(.data$microglia_marker_fraction, na.rm = TRUE)),
-      .groups = "drop"
-    ) %>%
-    dplyr::mutate(dplyr::across(where(is.numeric), ~ifelse(is.nan(.x), NA_real_, .x)))
-  program_summary_neuropil <- program_summary %>%
-    dplyr::left_join(neuropil_by_comparison, by = "comparison")
+  program_summary_neuropil <- attach_neuropil_program_annotation(program_summary, neuropil_annotation)
 } else {
-  program_summary_neuropil <- program_summary_neuropil %>%
-    dplyr::mutate(
-      interpretation_class = NA_character_,
-      gene_overlap_fraction = NA_real_,
-      gene_jaccard = NA_real_,
-      neuropil_marker_fraction = NA_real_,
-      microglia_marker_fraction = NA_real_
-    )
+  program_summary_neuropil <- add_unavailable_neuropil_program_annotation(program_summary_neuropil)
 }
 
 program_summary_signature <- program_summary
@@ -368,6 +516,7 @@ program_summary_integrated <- program_summary_neuropil %>%
       .data$microglia_signature_class == "curated_microglia_program" & !.data$interpretation_class %in% c("neuropil_sensitive", "neuropil_marker_enriched") ~ "curated_microglia_relevant_program",
       .data$microglia_signature_class == "neuropil_shared" | .data$interpretation_class %in% c("neuropil_sensitive", "neuropil_marker_enriched") ~ "neuropil_shared_or_sensitive_program",
       .data$microglia_signature_class == "mixed_microenvironment" | .data$interpretation_class == "mixed_microenvironment" ~ "mixed_microenvironment_program",
+      is.na(.data$microglia_signature_class) & .data$neuropil_program_annotation_status == "no_significant_microglia_terms" ~ "no_significant_microglia_terms",
       is.na(.data$microglia_signature_class) & is.na(.data$interpretation_class) ~ "unannotated_program",
       TRUE ~ "ambiguous_program"
     ),
@@ -376,6 +525,7 @@ program_summary_integrated <- program_summary_neuropil %>%
       .data$integrated_interpretation == "curated_microglia_relevant_program" ~ "Curated microglia-relevant gene set; not microglia-specific or claim-ready without empirical/reference support.",
       .data$integrated_interpretation == "neuropil_shared_or_sensitive_program" ~ "Shared with or sensitive to neuropil reference; do not interpret as microglia-intrinsic without orthogonal support.",
       .data$integrated_interpretation == "mixed_microenvironment_program" ~ "Present in microglia ROI and neuropil reference in a pattern consistent with local microenvironment biology.",
+      .data$integrated_interpretation == "no_significant_microglia_terms" ~ "No FDR-significant microglia GO terms mapped to this biological program.",
       .data$integrated_interpretation == "unannotated_program" ~ "No optional neuropil or microglia signature annotation was available.",
       TRUE ~ "Weak, discordant, broad, or partially missing annotation support."
     )
