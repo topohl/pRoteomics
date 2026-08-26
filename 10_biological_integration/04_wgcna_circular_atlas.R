@@ -171,7 +171,6 @@ atlas_evidence_status <- function(
     !(model_valid_for_inference %in% TRUE) ~ "model_unstable",
     status == "FDR_supported" ~ "robust_FDR",
     status == "suggestive_FDR10" ~ "suggestive_FDR10",
-    status == "nominal_exploratory" ~ "nominal_only",
     status == "model_unstable" ~ "model_unstable",
     !nzchar(status) ~ "missing_effect_test",
     TRUE ~ "not_supported"

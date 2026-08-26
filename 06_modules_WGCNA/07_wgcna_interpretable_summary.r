@@ -503,11 +503,10 @@ add_plot_metrics <- function(df, p_col = "p_value") {
       evidence_rank = dplyr::case_when(
         .data$statistical_support_status == "FDR_supported" ~ 1L,
         .data$statistical_support_status == "suggestive_FDR10" ~ 2L,
-        .data$statistical_support_status == "nominal_exploratory" ~ 3L,
-        .data$statistical_support_status == "not_supported" ~ 4L,
+        .data$statistical_support_status == "not_supported" ~ 3L,
         .data$statistical_support_status ==
-          "inherited_from_canonical_entity" ~ 5L,
-        TRUE ~ 5L
+          "inherited_from_canonical_entity" ~ 4L,
+        TRUE ~ 4L
       )
     )
 }

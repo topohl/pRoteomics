@@ -163,7 +163,7 @@ effect_class_counts <- function(df) {
         "eligible_for_readiness_assessment" ~ "model_unstable",
       as.character(df$support_class) == "FDR_supported" ~ "robust_FDR",
       as.character(df$support_class) == "suggestive_FDR10" ~ "suggestive_FDR10",
-      as.character(df$support_class) %in% c("nominal_only", "nominal_exploratory") ~ "nominal_only",
+      as.character(df$support_class) == "nominal_only" ~ "nominal_only",
       as.character(df$support_class) %in% c("model_unstable", "diagnostic_only_model", "model_invalid") ~ "model_unstable",
       TRUE ~ "not_supported"
     )
@@ -574,8 +574,7 @@ heat_source <- effect_overview |>
         "eligible_for_readiness_assessment" ~ "model unstable",
       .data$support_class == "FDR_supported" ~ "FDR <= 0.05",
       .data$support_class == "suggestive_FDR10" ~ "FDR <= 0.10",
-      .data$support_class %in%
-        c("nominal_only", "nominal_exploratory") ~ "nominal",
+      .data$support_class == "nominal_only" ~ "nominal",
       .data$support_class %in%
         c("model_unstable", "diagnostic_only_model", "model_invalid") ~
         "model unstable",
