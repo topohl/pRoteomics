@@ -52,6 +52,52 @@ testthat::test_that("deprecated 04d stays excluded and documented as legacy", {
   testthat::expect_match(row_04d$remaining_TODOs, "04e", fixed = TRUE)
 })
 
+testthat::test_that("analysis discovery is repository-wide and fail closed", {
+  source(testthat::test_path("..", "..", "R", "paths.R"))
+  source(repo_path("R", "pipeline_registry.R"))
+
+  candidates <- c(
+    "11_new_analysis/01_new_result.R",
+    "tests/testthat/test-new-result.R",
+    "99_deprecated/01_old_result.r",
+    "R/new_helper.R",
+    "tools/new_audit.R",
+    "12_future/legacy/01_archived.R",
+    "run_dataset_pipeline.R"
+  )
+  observed <- active_analysis_scripts(candidate_files = candidates)
+  testthat::expect_identical(
+    observed, "11_new_analysis/01_new_result.R"
+  )
+})
+
+testthat::test_that("current optional and superseded blind-spot scripts are classified", {
+  source(testthat::test_path("..", "..", "R", "paths.R"))
+  source(repo_path("R", "dataset_config.R"))
+  source(repo_path("R", "pipeline_registry.R"))
+
+  testthat::skip_if_not_installed("yaml")
+  registry <- read_pipeline_registry(repo_path("pipeline.yml"))
+  active <- pipeline_registry_entries(registry)$script
+  legacy <- vapply(
+    registry$legacy, function(x) as.character(x$script), character(1)
+  )
+  testthat::expect_true(
+    "10_biological_integration/05_manuscript_figure3_wgcna_protein_zoom.R" %in%
+      active
+  )
+  testthat::expect_false(
+    "08_biological_interpretation/01_compartment_fidelity_summary.R" %in%
+      active
+  )
+  testthat::expect_true(
+    "08_biological_interpretation/01_compartment_fidelity_summary.R" %in%
+      legacy
+  )
+  audit <- write_pipeline_validation_tables(registry)
+  testthat::expect_equal(nrow(audit$unregistered), 0L)
+})
+
 testthat::test_that("documented dry-run stages are real registry stages", {
   source(testthat::test_path("..", "..", "R", "paths.R"))
   source(repo_path("R", "dataset_config.R"))

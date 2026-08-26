@@ -157,24 +157,54 @@ pipeline_audit_dir <- function() {
   dir_create(path_results("logs", "pipeline"))
 }
 
-active_analysis_scripts <- function() {
-  roots <- c(
-    "01_preprocessing", "02_id_mapping", "03_qc_exploration",
-    "04_differential_expression_enrichment", "05_celltype_enrichment_EWCE",
-    "06_modules_WGCNA", "07_spatial_networks", "08_behavior_physio_coupling",
-    "09_export_pride_journal", "10_biological_integration"
+pipeline_analysis_script_exclusions <- function() {
+  list(
+    roots = c(
+      ".github", "00_setup", "R", "config", "data", "docs", "renv",
+      "results", "tests", "tools", "90_testing", "99_deprecated"
+    ),
+    path_components = "legacy",
+    files = c("run_dataset_pipeline.R", "proteomics_wgcna_downstream_audit.R")
   )
-  files <- unlist(lapply(roots, function(root) {
-    if (!dir.exists(repo_path(root))) return(character())
-    list.files(repo_path(root), pattern = "\\.[Rr]$", recursive = TRUE, full.names = FALSE)
-  }), use.names = FALSE)
-  files <- file.path(sub("/.*", "", files), files)
-  # list.files(full.names = FALSE) above returns paths relative to each root; rebuild safely.
-  files <- unlist(lapply(roots, function(root) {
-    if (!dir.exists(repo_path(root))) return(character())
-    file.path(root, list.files(repo_path(root), pattern = "\\.[Rr]$", recursive = TRUE, full.names = FALSE))
-  }), use.names = FALSE)
-  gsub("\\\\", "/", files)
+}
+
+repository_r_script_candidates <- function(
+    root = repo_root(), candidate_files = NULL
+) {
+  if (is.null(candidate_files)) {
+    candidate_files <- system2(
+      "git",
+      c(
+        "-C", shQuote(root), "ls-files", "--cached", "--others",
+        "--exclude-standard", "--", "*.R", "*.r"
+      ),
+      stdout = TRUE, stderr = TRUE
+    )
+    status <- attr(candidate_files, "status")
+    if (!is.null(status) && status != 0L) {
+      stop(
+        "Could not discover repository R scripts with git ls-files:\n",
+        paste(candidate_files, collapse = "\n"), call. = FALSE
+      )
+    }
+  }
+  files <- gsub("\\\\", "/", trimws(as.character(candidate_files)))
+  sort(unique(files[grepl("\\.[Rr]$", files) & nzchar(files)]))
+}
+
+active_analysis_scripts <- function(
+    root = repo_root(), candidate_files = NULL
+) {
+  files <- repository_r_script_candidates(root, candidate_files)
+  exclusions <- pipeline_analysis_script_exclusions()
+  first_component <- sub("/.*$", "", files)
+  path_components <- strsplit(files, "/", fixed = TRUE)
+  excluded_component <- vapply(path_components, function(parts) {
+    any(parts %in% exclusions$path_components)
+  }, logical(1))
+  excluded <- first_component %in% exclusions$roots |
+    files %in% exclusions$files | excluded_component
+  files[!excluded]
 }
 
 guess_stage_for_script <- function(script) {
@@ -186,6 +216,7 @@ guess_stage_for_script <- function(script) {
   if (grepl("^06_modules_WGCNA", script)) return("modules_downstream")
   if (grepl("^07_spatial", script)) return("networks")
   if (grepl("^08_behavior", script)) return("coupling")
+  if (grepl("^08_biological_interpretation", script)) return("integration")
   if (grepl("^10_biological", script)) return("integration")
   if (grepl("^09_export", script)) return("export")
   "unknown"
@@ -226,6 +257,12 @@ validate_pipeline_scripts_exist <- function(registry, fail = TRUE) {
   audit <- write_pipeline_validation_tables(registry)
   if (isTRUE(fail) && nrow(audit$missing)) {
     stop("Active script(s) listed in pipeline.yml do not exist:\n", paste(audit$missing$script, collapse = "\n"), call. = FALSE)
+  }
+  if (isTRUE(fail) && nrow(audit$unregistered)) {
+    stop(
+      "Unregistered analysis script(s) are neither active nor explicitly classified:\n",
+      paste(audit$unregistered$script, collapse = "\n"), call. = FALSE
+    )
   }
   invisible(TRUE)
 }
