@@ -1,6 +1,51 @@
 # Narrow Figure 2 control-anatomy helpers.  This file intentionally has no
 # general pipeline abstraction: it protects the fixed analysis requested here.
 
+control_spatial_gsea_reproducibility <- function(
+    dataset, contrast, enrichment_type, gsea_seed_base, n_perm_simple,
+    external_signature = NA_character_
+) {
+  fields <- c(dataset, contrast, enrichment_type)
+  if (any(lengths(list(dataset, contrast, enrichment_type)) != 1L) ||
+      any(is.na(fields)) || any(!nzchar(trimws(as.character(fields))))) {
+    stop(
+      "dataset, contrast, and enrichment_type must be non-empty scalars.",
+      call. = FALSE
+    )
+  }
+  if (length(external_signature) != 1L) {
+    stop("external_signature must be one value.", call. = FALSE)
+  }
+  signature <- trimws(as.character(external_signature))
+  if (is.na(signature)) signature <- ""
+  comparison <- paste0(
+    "script=control_spatial_identity_validation|dataset=", dataset,
+    "|contrast=", contrast
+  )
+  analysis_type <- paste0(
+    enrichment_type,
+    if (nzchar(signature)) paste0("|external_signature=", signature) else ""
+  )
+  seed <- derive_clusterprofiler_gsea_seed(
+    gsea_seed_base, comparison, analysis_type
+  )
+  data.frame(
+    gsea_semantic_comparison = comparison,
+    gsea_analysis_type = analysis_type,
+    gsea_seed_base = clusterprofiler_integer_scalar(
+      gsea_seed_base, "gsea_seed_base"
+    ),
+    gsea_seed = seed,
+    n_perm_simple = clusterprofiler_integer_scalar(
+      n_perm_simple, "n_perm_simple"
+    ),
+    rng_kind = "L'Ecuyer-CMRG/Inversion/Rejection",
+    clusterprofiler_by = "fgsea",
+    clusterprofiler_seed_argument = FALSE,
+    stringsAsFactors = FALSE
+  )
+}
+
 control_spatial_hemisphere <- function(sample_id) {
   x <- as.character(sample_id)
   out <- sub(".*_([LR])_[^_]+_[^_]+_Neuron_.*", "\\1", x)
