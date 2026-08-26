@@ -35,6 +35,7 @@ jobs:
             any::forcats
             any::broom
             any::openxlsx
+            any::limma
 
       - name: Validate tests
         run: Rscript tests/testthat.R
