@@ -979,6 +979,9 @@ module_rows <- definitions |>
     n_core_kME_0_6 = sum(abs(as.numeric(.data$kME %||% .data$Weight)) >= 0.6, na.rm = TRUE),
     module_eigengene = dplyr::first(as.character(.data$module_eigengene %||% paste0("ME", .data$ModuleColor))),
     module_label = dplyr::first(as.character(.data$ModuleLabel_Final %||% .data$ModuleID)),
+    ModuleLegacyID = dplyr::first(as.character(.data$ModuleLegacyID %||% NA_character_)),
+    ModuleColorName = dplyr::first(as.character(.data$ModuleColorName %||% NA_character_)),
+    ModuleColorLabel = dplyr::first(as.character(.data$ModuleColorLabel %||% NA_character_)),
     .groups = "drop"
   )
 
