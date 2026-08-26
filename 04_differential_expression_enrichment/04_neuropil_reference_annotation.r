@@ -45,8 +45,6 @@ message("Dataset: ", DATASET)
 message("Neuropil reference dataset: ", REFERENCE_DATASET)
 message("Dry run: ", DRY_RUN)
 
-`%||%` <- function(x, y) if (is.null(x) || length(x) == 0) y else x
-
 REFERENCE_MATCHING_CONTRACT_VERSION <- "microglia_neuropil_reference_v2_region_contrast_fdr_aggregate"
 CLASSIFICATION_CONTRACT_VERSION <- "microglia_neuropil_interpretation_v2_microglia_and_reference_fdr"
 

@@ -9,10 +9,6 @@ source(repo_path("R", "wgcna_claim_readiness_utils.R"))
 source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
 source(repo_path("R", "wgcna_stage07_semantic_utils.R"))
 
-`%||%` <- function(x, y) {
-  if (is.null(x) || length(x) == 0L) y else x
-}
-
 final_dataset_terminology <- function(dataset) {
   x <- as.character(dataset)
   out <- dplyr::case_when(

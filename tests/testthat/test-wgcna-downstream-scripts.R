@@ -17,7 +17,6 @@ testthat::test_that("WGCNA downstream entrypoints exist", {
 
 testthat::test_that("WGCNA downstream dry-runs report contracts", {
   source(testthat::test_path("..", "..", "R", "paths.R"))
-  `%||%` <- function(x, y) if (is.null(x) || length(x) == 0L || is.na(x)) y else x
   cmd <- file.path(R.home("bin"), "Rscript")
   old_wd <- setwd(repo_path())
   on.exit(setwd(old_wd), add = TRUE)

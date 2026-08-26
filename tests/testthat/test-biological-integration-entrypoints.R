@@ -1,6 +1,5 @@
 testthat::test_that("biological integration entrypoints exist and dry-run", {
   source(testthat::test_path("..", "..", "R", "paths.R"))
-  `%||%` <- function(x, y) if (is.null(x) || length(x) == 0L || is.na(x)) y else x
   scripts <- c(
     "04_differential_expression_enrichment/08_external_stress_disease_signature_overlap.r",
     "08_behavior_physio_coupling/03_module_behavior_coupling.r",

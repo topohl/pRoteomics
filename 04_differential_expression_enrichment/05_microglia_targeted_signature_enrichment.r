@@ -65,8 +65,6 @@ if (!length(missing_required)) {
   suppressPackageStartupMessages(invisible(lapply(required_pkgs, library, character.only = TRUE)))
 }
 
-`%||%` <- function(x, y) if (is.null(x) || length(x) == 0) y else x
-
 FIG_WIDTH_SINGLE <- 3.5
 FIG_WIDTH_DOUBLE <- 7.2
 FIG_HEIGHT_SHORT <- 2.6

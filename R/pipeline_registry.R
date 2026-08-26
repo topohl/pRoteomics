@@ -287,7 +287,3 @@ validate_run_order_against_registry <- function(registry, run_order_path = repo_
   }
   invisible(TRUE)
 }
-
-`%||%` <- function(x, y) {
-  if (is.null(x) || length(x) == 0) y else x
-}

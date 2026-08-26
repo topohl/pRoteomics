@@ -400,9 +400,6 @@ write_tsv_safe <- function(x, path) {
   readr::write_tsv(x, path, na = "")
   invisible(path)
 }
-`%||%` <- function(x, y) {
-  if (is.null(x) || length(x) == 0 || (length(x) == 1 && is.na(x))) y else x
-}
 ensure_module_label_schema <- function(df) {
   char_cols <- c(
     "ModuleLabel_Manual", "ModuleLabel_GO_BP", "ModuleLabel_GO_MF", "ModuleLabel_GO_CC",

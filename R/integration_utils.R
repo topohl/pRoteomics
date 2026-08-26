@@ -7,10 +7,6 @@ if (!exists("repo_path", mode = "function")) {
 source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "module_contracts.R"))
 
-`%||%` <- function(x, y) {
-  if (is.null(x) || length(x) == 0L || (length(x) == 1L && is.na(x))) y else x
-}
-
 integration_cli <- function(default_dataset = "all", allow_all = TRUE) {
   args <- commandArgs(trailingOnly = TRUE)
   value_after <- function(flag, default = "") {
