@@ -25,6 +25,32 @@ require_go_ontology_dependencies <- function(include_semantic = FALSE) {
   invisible(TRUE)
 }
 
+#' Normalize the stage-07 comparison identity column on disk-read tables.
+#'
+#' Canonical stage-07 CSV exports (e.g. spatial_atlas_enrichment_long.csv)
+#' carry the structured `comparison` field plus a legacy `legacy_Comparison`
+#' field (renamed at the export boundary to avoid a case-insensitive
+#' collision with `comparison`). Historical files written before that rename
+#' may still carry the original `Comparison` name instead. This normalizes
+#' any of the three into a single canonical `comparison` column, preferring
+#' comparison > legacy_Comparison > Comparison, and drops the raw legacy
+#' column name(s) so downstream code has exactly one field to reference.
+normalize_stage07_comparison_column <- function(x, label = "stage-07 GSEA term table") {
+  if ("comparison" %in% names(x)) {
+    source_field <- "comparison"
+  } else if ("legacy_Comparison" %in% names(x)) {
+    source_field <- "legacy_Comparison"
+  } else if ("Comparison" %in% names(x)) {
+    source_field <- "Comparison"
+  } else {
+    stop(label, " is missing a comparison identity column (comparison / legacy_Comparison / Comparison).", call. = FALSE)
+  }
+  x$comparison <- as.character(x[[source_field]])
+  x$legacy_Comparison <- NULL
+  x$Comparison <- NULL
+  x
+}
+
 go_ontology_provenance <- function() {
   require_go_ontology_dependencies(FALSE)
   info <- GO.db::GO_dbInfo()

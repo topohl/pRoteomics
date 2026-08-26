@@ -18,7 +18,7 @@ gww_term_fixture <- function() {
     mapping_method = "go_id_ontology",
     registry_version = "fixture_v1",
     theme_assignment_id = paste0("fixture_", 1:5),
-    Comparison = c("ca1_a", "ca1_b", "ca2_a", "ca2_b", "ca3_a"),
+    comparison = c("ca1_a", "ca1_b", "ca2_a", "ca2_b", "ca3_a"),
     ID = c("GO:2", "GO:1", "GO:3", "GO:4", "GO:5"),
     Description = c("second", "first", "third", "negative", "nonsig"),
     GO_ID = c("GO:2", "GO:1", "GO:3", "GO:4", "GO:5"),
@@ -64,7 +64,7 @@ testthat::test_that("GSEA representatives and recurrent-cross-spatial direction 
   recurrent <- gww_build_recurrent_cross_spatial_gsea_evidence(terms, local_a, 2L)
   testthat::expect_equal(nrow(recurrent), 0L)
 
-  terms$NES[terms$Comparison == "ca2_b"] <- 1.2
+  terms$NES[terms$comparison == "ca2_b"] <- 1.2
   local <- gww_build_local_gsea_evidence(terms)
   recurrent <- gww_build_recurrent_cross_spatial_gsea_evidence(terms, local, 2L)
   testthat::expect_equal(nrow(recurrent), 1L)

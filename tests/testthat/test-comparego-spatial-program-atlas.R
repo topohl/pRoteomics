@@ -166,6 +166,30 @@ testthat::test_that("canonical execution has no legacy workbook dependency", {
   testthat::expect_false(grepl("readxl::", text, fixed = TRUE))
 })
 
+testthat::test_that("enrichment export renames legacy Comparison at the CSV boundary with no case-insensitive duplicate names", {
+  helpers <- load_spatial_atlas_helpers()
+  fixture <- data.frame(
+    dataset = "neuron_soma", comparison = "CA1sus_CA1res",
+    Comparison = "CA1sus_CA1res", ID = "GO:1", Description = "term one",
+    NES = 1.1, p.adjust = 0.03, stringsAsFactors = FALSE
+  )
+  export_df <- helpers$prepare_enrichment_export(fixture)
+
+  testthat::expect_false("Comparison" %in% names(export_df))
+  testthat::expect_true("legacy_Comparison" %in% names(export_df))
+  testthat::expect_true("comparison" %in% names(export_df))
+  testthat::expect_identical(export_df$comparison, fixture$comparison)
+  testthat::expect_identical(export_df$legacy_Comparison, fixture$Comparison)
+  testthat::expect_false(anyDuplicated(tolower(names(export_df))) > 0)
+
+  testthat::expect_error(
+    helpers$assert_no_case_duplicate_columns(
+      data.frame(comparison = 1, Comparison = 2), "fixture"
+    ),
+    "case-insensitive duplicate"
+  )
+})
+
 testthat::test_that("XLSX display truncation leaves analytical CSV values untouched", {
   helpers <- load_spatial_atlas_helpers()
   original <- tibble::tibble(id = c("short", "long"), value = c("abc", paste(rep("x", 40000), collapse = "")))

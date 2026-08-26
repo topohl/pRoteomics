@@ -980,6 +980,30 @@ write_publication_provenance <- function(paths, analyzed_datasets, row_counts) {
   )
 }
 
+assert_no_case_duplicate_columns <- function(df, label) {
+  lowered <- tolower(names(df))
+  if (anyDuplicated(lowered)) {
+    dupes <- unique(lowered[duplicated(lowered)])
+    stop(label, " has case-insensitive duplicate column name(s): ", paste(dupes, collapse = ", "), call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
+# CSV export boundary only: internal stage-07 logic keeps using the legacy
+# `Comparison` field (e.g. build_sus_res_supported_go_theme_audit(),
+# build_sus_res_theme_spatial_detail()); case-insensitive consumers such as
+# PowerShell Import-Csv collide on comparison/Comparison, so the exported
+# header renames the legacy field to legacy_Comparison and keeps `comparison`
+# canonical.
+prepare_enrichment_export <- function(enrichment_df) {
+  export_df <- enrichment_df
+  if ("Comparison" %in% names(export_df)) {
+    names(export_df)[names(export_df) == "Comparison"] <- "legacy_Comparison"
+  }
+  assert_no_case_duplicate_columns(export_df, "spatial_atlas_enrichment_long.csv")
+  export_df
+}
+
 xlsx_safe_table <- function(x, limit = 32000L) {
   truncate_cell <- function(value) {
     value <- as.character(value)
@@ -999,7 +1023,7 @@ write_outputs <- function(enrichment_df, summary_df, behavior_df, driver_df, dia
   report_dir <- CANONICAL_PATHS$reports
 
   readr::write_csv(diagnostics, file.path(report_dir, "input_diagnostics.csv"))
-  readr::write_csv(enrichment_df, file.path(source_dir, "spatial_atlas_enrichment_long.csv"))
+  readr::write_csv(prepare_enrichment_export(enrichment_df), file.path(source_dir, "spatial_atlas_enrichment_long.csv"))
   readr::write_csv(summary_df, file.path(table_dir, "spatial_program_summary.csv"))
   readr::write_csv(behavior_df, file.path(table_dir, "spatial_program_behavior.csv"))
   readr::write_csv(driver_df, file.path(source_dir, "leading_edge_driver_recurrence.csv"))
