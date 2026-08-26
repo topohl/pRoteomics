@@ -4,6 +4,20 @@
 # supermodule maps. The Phase 1 identity contract is the sole supermodule
 # membership authority.
 
+if (!exists("wgcna_group_classify_statistical_support", mode = "function")) {
+  support_utils <- c(
+    if (exists("repo_path", mode = "function")) {
+      repo_path("R", "wgcna_support_status_utils.R")
+    } else character(),
+    file.path("R", "wgcna_support_status_utils.R"),
+    file.path("..", "R", "wgcna_support_status_utils.R"),
+    file.path("..", "..", "R", "wgcna_support_status_utils.R")
+  )
+  support_utils <- support_utils[file.exists(support_utils)][[1]]
+  source(support_utils)
+  rm(support_utils)
+}
+
 wgcna_group_effects_contract_version <- function() {
   "wgcna_group_effects_phase2b_v5"
 }
@@ -4118,12 +4132,10 @@ wgcna_group_apply_fdr <- function(module_rows, supermodule_rows) {
       all$FDR_local_exploratory,
     TRUE ~ NA_real_
   )
-  all$statistical_support_status <- dplyr::case_when(
-    is.finite(applicable_fdr) & applicable_fdr <= 0.05 ~ "FDR_supported",
-    is.finite(applicable_fdr) & applicable_fdr <= 0.10 ~ "suggestive_FDR10",
-    all$p_value < 0.05 ~ "nominal_exploratory",
-    TRUE ~ "not_supported"
-  )
+  all$statistical_support_status <-
+    wgcna_group_classify_statistical_support(
+      all$p_value, applicable_fdr
+    )
   all$evidence_status <- all$statistical_support_status
   all$FDR_method <- "BH"
   key <- paste(

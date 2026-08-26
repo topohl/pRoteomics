@@ -490,10 +490,6 @@ wgcna_stage07_support_text <- function(
       "It was suggestive at 10% FDR, but not an FDR-supported result at 5%, ",
       "in ", family_label, "."
     )
-  out[status == "nominal_exploratory"] <-
-    paste0(
-      "It provided nominal exploratory evidence only in ", family_label, "."
-    )
   out[status == "not_supported"] <-
     paste0("It was not supported after correction in ", family_label, ".")
   out[status == "inherited_from_canonical_entity"] <-
@@ -722,8 +718,8 @@ wgcna_stage07_empty_spatial_organization <- function() {
   paste0(
     "local_FDR_supported=", count_status(local, "FDR_supported"),
     "; local_suggestive_FDR10=", count_status(local, "suggestive_FDR10"),
-    "; local_nominal_exploratory=",
-    count_status(local, "nominal_exploratory"),
+    "; local_not_supported=",
+    count_status(local, "not_supported"),
     "; conditional_followups=", nrow(conditional),
     " (exploratory_no_independent_q)"
   )

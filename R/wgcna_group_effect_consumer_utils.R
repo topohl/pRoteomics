@@ -3,6 +3,20 @@
 # This helper is a semantic handoff only. It must not calculate FDR values,
 # rebuild statistical support, decide manuscript readiness, or label biology.
 
+if (!exists("wgcna_group_classify_statistical_support", mode = "function")) {
+  support_utils <- c(
+    if (exists("repo_path", mode = "function")) {
+      repo_path("R", "wgcna_support_status_utils.R")
+    } else character(),
+    file.path("R", "wgcna_support_status_utils.R"),
+    file.path("..", "R", "wgcna_support_status_utils.R"),
+    file.path("..", "..", "R", "wgcna_support_status_utils.R")
+  )
+  support_utils <- support_utils[file.exists(support_utils)][[1]]
+  source(support_utils)
+  rm(support_utils)
+}
+
 wgcna_group_effect_consumer_added_columns <- function() {
   c(
     "tier_specific_fdr",
@@ -67,7 +81,7 @@ wgcna_group_effect_consumer_semantic_key <- function() {
   unique(c(
     wgcna_group_effect_consumer_source_key(),
     wgcna_group_effect_consumer_semantic_key(),
-    "claim_entity_role", "support_source_entity_id",
+    "claim_entity_role", "support_source_entity_id", "p_value",
     "independent_hypothesis", "statistical_support_status",
     "model_valid_for_inference", "model_stability_status",
     "claim_allowed_model", "primary_model_stable",
@@ -398,6 +412,33 @@ wgcna_group_effect_consumer_semantic_key <- function() {
   invisible(TRUE)
 }
 
+.wgcna_group_effect_consumer_validate_support_status <- function(data) {
+  rows <- which(
+    data$independent_hypothesis %in% TRUE &
+      data$claim_entity_role != "compatibility_alias" &
+      data$test_type != "conditional_interaction_followup"
+  )
+  if (!length(rows)) return(invisible(TRUE))
+
+  applicable_fdr <- wgcna_group_applicable_fdr(data[rows, , drop = FALSE])
+  expected <- wgcna_group_classify_statistical_support(
+    data$p_value[rows], applicable_fdr
+  )
+  observed <- as.character(data$statistical_support_status[rows])
+  mismatch <- which(is.na(observed) | observed != expected)
+  if (length(mismatch)) {
+    .wgcna_group_effect_consumer_stop_rows(
+      paste0(
+        "statistical_support_status does not match the applicable ",
+        "multiplicity-adjusted result; nominal p-values cannot restore ",
+        "support after correction failure."
+      ),
+      rows[mismatch]
+    )
+  }
+  invisible(TRUE)
+}
+
 wgcna_group_effect_consumer_validate <- function(data) {
   if (!is.data.frame(data)) {
     stop("Stage 05 v5 group-effect input must be a data frame.", call. = FALSE)
@@ -492,6 +533,7 @@ wgcna_group_effect_consumer_validate <- function(data) {
 
   .wgcna_group_effect_consumer_validate_special_rows(data)
   .wgcna_group_effect_consumer_validate_family_rows(data)
+  .wgcna_group_effect_consumer_validate_support_status(data)
   invisible(TRUE)
 }
 

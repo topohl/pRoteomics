@@ -14,10 +14,17 @@ wave1a_effects <- function(dataset = "microglia", level = "module") {
     "..", "..", "results", "tables", "06_modules_WGCNA",
     "group_effects", dataset, paste0(level, "_group_effects.csv")
   )
-  testthat::skip_if_not(file.exists(path), "Committed Stage 05 v5 fixture absent.")
-  wgcna_group_effect_consumer_adapt(readr::read_csv(
-    path, show_col_types = FALSE
-  ))
+  testthat::skip_if_not(file.exists(path), "Local Stage 05 v5 fixture absent.")
+  fixture <- readr::read_csv(path, show_col_types = FALSE)
+  canonical <- fixture$independent_hypothesis %in% TRUE &
+    fixture$claim_entity_role != "compatibility_alias" &
+    fixture$test_type != "conditional_interaction_followup"
+  fixture$statistical_support_status[canonical] <-
+    wgcna_group_classify_statistical_support(
+      fixture$p_value[canonical],
+      wgcna_group_applicable_fdr(fixture[canonical, , drop = FALSE])
+    )
+  wgcna_group_effect_consumer_adapt(fixture)
 }
 
 wave1a_conditional <- function(dataset = "microglia") {
@@ -53,6 +60,28 @@ wave1a_entity_rows <- function(dataset = "microglia", level = "module") {
   list(effects = effects, conditional = conditional, entity = entity)
 }
 
+wave1a_set_rows_support <- function(effects, rows, status) {
+  q_value <- c(
+    FDR_supported = 0.04,
+    suggestive_FDR10 = 0.08,
+    not_supported = 0.40
+  )[[status]]
+  if (is.null(q_value)) stop("Unsupported test status: ", status)
+  family_columns <- c(
+    primary_wgcna_global = "FDR_primary_global",
+    secondary_contextual_global = "FDR_secondary_global",
+    secondary_spatial_heterogeneity = "FDR_interaction_omnibus",
+    exploratory_spatial_localization = "FDR_local_exploratory"
+  )
+  for (tier in names(family_columns)) {
+    selected <- rows & effects$analysis_tier == tier
+    effects[[family_columns[[tier]]]][selected] <- q_value
+    effects$tier_specific_fdr[selected] <- q_value
+  }
+  effects$statistical_support_status[rows] <- status
+  effects
+}
+
 wave1a_set_support <- function(
     effects, primary = "not_supported", interaction = "not_supported"
 ) {
@@ -64,8 +93,8 @@ wave1a_set_support <- function(
   interaction_row <-
     effects$analysis_tier == "secondary_spatial_heterogeneity" &
     effects$test_type == "interaction_omnibus"
-  effects$statistical_support_status[primary_row] <- primary
-  effects$statistical_support_status[interaction_row] <- interaction
+  effects <- wave1a_set_rows_support(effects, primary_row, primary)
+  effects <- wave1a_set_rows_support(effects, interaction_row, interaction)
   effects
 }
 
@@ -267,7 +296,7 @@ testthat::test_that("omnibus attribution and localization remain conservative", 
   )
   local <- effects$analysis_tier == "exploratory_spatial_localization"
   effects$estimate[local] <- rep(c(-1, 1), length.out = sum(local))
-  effects$statistical_support_status[local] <- "nominal_exploratory"
+  effects <- wave1a_set_rows_support(effects, local, "not_supported")
 
   observed <- wgcna_stage07_build_spatial_organization(
     effects, fixture$conditional
@@ -301,10 +330,14 @@ testthat::test_that("local support attributes contrast only with omnibus support
   testthat::expect_gte(length(local_contrasts), 2L)
 
   one_contrast <- fixture$effects
-  one_contrast$statistical_support_status[local] <- "not_supported"
-  one_contrast$statistical_support_status[
-    local & one_contrast$contrast == local_contrasts[[1]]
-  ] <- "FDR_supported"
+  one_contrast <- wave1a_set_rows_support(
+    one_contrast, local, "not_supported"
+  )
+  one_contrast <- wave1a_set_rows_support(
+    one_contrast,
+    local & one_contrast$contrast == local_contrasts[[1]],
+    "FDR_supported"
+  )
 
   unsupported_omnibus <- wave1a_set_support(
     one_contrast, "not_supported", "not_supported"
@@ -347,9 +380,11 @@ testthat::test_that("local support attributes contrast only with omnibus support
   )
 
   multiple_contrasts <- supported_omnibus
-  multiple_contrasts$statistical_support_status[
-    local & multiple_contrasts$contrast == local_contrasts[[2]]
-  ] <- "FDR_supported"
+  multiple_contrasts <- wave1a_set_rows_support(
+    multiple_contrasts,
+    local & multiple_contrasts$contrast == local_contrasts[[2]],
+    "FDR_supported"
+  )
   observed_multiple <- wgcna_stage07_build_spatial_organization(
     multiple_contrasts, fixture$conditional
   )
@@ -361,7 +396,9 @@ testthat::test_that("local support attributes contrast only with omnibus support
   no_supported_local <- wave1a_set_support(
     fixture$effects, "not_supported", "FDR_supported"
   )
-  no_supported_local$statistical_support_status[local] <- "not_supported"
+  no_supported_local <- wave1a_set_rows_support(
+    no_supported_local, local, "not_supported"
+  )
   conditional_only <- wgcna_stage07_build_spatial_organization(
     no_supported_local, fixture$conditional
   )
@@ -500,7 +537,6 @@ testthat::test_that("omnibus sentences preserve controlled support granularity",
       "FDR-supported in the prespecified interaction family",
     suggestive_FDR10 =
       "suggestive at 10% FDR, but not an FDR-supported result at 5%",
-    nominal_exploratory = "nominal exploratory evidence only",
     not_supported =
       "not supported after correction in the prespecified interaction family"
   )

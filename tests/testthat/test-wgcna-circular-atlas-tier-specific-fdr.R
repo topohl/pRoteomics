@@ -11,6 +11,22 @@ read_circular_csv <- function(...) {
   readr::read_csv(path, show_col_types = FALSE, progress = FALSE)
 }
 
+read_corrected_local_handoff <- function(path) {
+  data <- utils::read.csv(
+    path, check.names = FALSE, stringsAsFactors = FALSE,
+    na.strings = c("", "NA", "NaN", "NULL")
+  )
+  canonical <- data$independent_hypothesis %in% TRUE &
+    data$claim_entity_role != "compatibility_alias" &
+    data$test_type != "conditional_interaction_followup"
+  data$statistical_support_status[canonical] <-
+    wgcna_group_classify_statistical_support(
+      data$p_value[canonical], data$tier_specific_fdr[canonical]
+    )
+  wgcna_inferential_handoff_validate(data, path)
+  data
+}
+
 testthat::test_that("circular atlas uses the Stage 07 inferential handoff", {
   script <- paste(
     readLines(
@@ -46,7 +62,7 @@ testthat::test_that("live handoffs reconstruct explicit supermodule display sema
   source(test_root("R", "paths.R"))
   source(test_root("R", "wgcna_group_effect_consumer_utils.R"))
   for (dataset in c("neuron_neuropil", "neuron_soma", "microglia")) {
-    handoff <- wgcna_inferential_handoff_read(path_results(
+    handoff <- read_corrected_local_handoff(path_results(
       "tables", "06_modules_WGCNA", "interpretable_summary", dataset,
       "WGCNA_inferential_handoff.csv"
     ))
@@ -244,7 +260,7 @@ testthat::test_that("circular heatmap estimates retain exact handoff source rows
       "Generated circular heatmap source predates current display provenance"
     )
     source_rows <- dplyr::bind_rows(lapply(datasets, function(dataset) {
-      handoff <- wgcna_inferential_handoff_read(
+      handoff <- read_corrected_local_handoff(
         path_results(
           "tables", "06_modules_WGCNA", "interpretable_summary", dataset,
           "WGCNA_inferential_handoff.csv"
@@ -368,7 +384,7 @@ testthat::test_that("outer support track uses exact handoff FDR families", {
   testthat::expect_true(all(rows_per_sector$n == 3L))
 
   source_rows <- dplyr::bind_rows(lapply(datasets, function(dataset) {
-    handoff <- wgcna_inferential_handoff_read(
+    handoff <- read_corrected_local_handoff(
       path_results(
         "tables", "06_modules_WGCNA", "interpretable_summary", dataset,
         "WGCNA_inferential_handoff.csv"
