@@ -24,6 +24,22 @@ pipeline_stage_names <- function(registry) {
   names(registry$stages)
 }
 
+pipeline_registry_entries <- function(registry) {
+  entries <- do.call(rbind, lapply(names(registry$stages), function(stage) {
+    do.call(rbind, lapply(registry$stages[[stage]]$scripts, function(step) {
+      data.frame(
+        stage = stage,
+        script = as.character(step$script),
+        scope = as.character(step$scope),
+        stringsAsFactors = FALSE
+      )
+    }))
+  }))
+  entries <- entries[!duplicated(entries$script), , drop = FALSE]
+  rownames(entries) <- NULL
+  entries
+}
+
 pipeline_steps <- function(registry, selected_stages, dataset = current_dataset(), include_unsupported = FALSE) {
   datasets <- if (identical(dataset, "all")) valid_datasets() else validate_dataset(dataset)
   out <- do.call(rbind, lapply(selected_stages, function(stage) {
@@ -223,8 +239,27 @@ run_order_script_references <- function(path = repo_path("RUN_ORDER.md")) {
   unique(refs[file.exists(repo_path(refs))])
 }
 
+run_order_registry_index_references <- function(path = repo_path("RUN_ORDER.md")) {
+  if (!file.exists(path)) return(character())
+  txt <- readLines(path, warn = FALSE)
+  begin <- which(txt == "<!-- BEGIN GENERATED PIPELINE REGISTRY INDEX -->")
+  end <- which(txt == "<!-- END GENERATED PIPELINE REGISTRY INDEX -->")
+  if (length(begin) != 1L || length(end) != 1L || begin >= end) {
+    stop(
+      "RUN_ORDER.md must contain exactly one valid generated pipeline registry index.",
+      call. = FALSE
+    )
+  }
+  block <- txt[seq.int(begin + 1L, end - 1L)]
+  matches <- regexec("^[0-9]+[.] `([^`]+[.][Rr])`", block)
+  refs <- vapply(regmatches(block, matches), function(x) {
+    if (length(x) >= 2L) x[[2]] else NA_character_
+  }, character(1))
+  refs[!is.na(refs)]
+}
+
 validate_run_order_against_registry <- function(registry, run_order_path = repo_path("RUN_ORDER.md")) {
-  active <- unique(pipeline_steps(registry, pipeline_stage_names(registry), dataset = "all", include_unsupported = TRUE)$script)
+  active <- pipeline_registry_entries(registry)$script
   legacy <- vapply(registry$legacy %||% list(), function(x) as.character(x$script), character(1))
   refs <- run_order_script_references(run_order_path)
   undocumented <- setdiff(refs, c(active, legacy))
@@ -232,6 +267,21 @@ validate_run_order_against_registry <- function(registry, run_order_path = repo_
     stop(
       "RUN_ORDER.md references scripts that are neither active in pipeline.yml nor marked legacy:\n",
       paste(undocumented, collapse = "\n"),
+      call. = FALSE
+    )
+  }
+  missing_active <- setdiff(active, refs)
+  if (length(missing_active)) {
+    stop(
+      "Active pipeline scripts missing from RUN_ORDER.md:\n",
+      paste(missing_active, collapse = "\n"),
+      call. = FALSE
+    )
+  }
+  indexed <- run_order_registry_index_references(run_order_path)
+  if (!identical(indexed, active)) {
+    stop(
+      "The generated RUN_ORDER.md registry index does not match pipeline.yml order.",
       call. = FALSE
     )
   }

@@ -7,6 +7,10 @@ testthat::test_that("pipeline.yml is valid and references existing active script
   registry <- read_pipeline_registry(repo_path("pipeline.yml"))
   testthat::expect_silent(validate_pipeline_scripts_exist(registry))
   testthat::expect_silent(validate_run_order_against_registry(registry))
+  testthat::expect_identical(
+    run_order_registry_index_references(repo_path("RUN_ORDER.md")),
+    pipeline_registry_entries(registry)$script
+  )
   steps <- pipeline_steps(registry, "enrichment", dataset = "microglia")
   testthat::expect_true("04_differential_expression_enrichment/01_clusterProfiler.r" %in% steps$script)
 
@@ -23,6 +27,29 @@ testthat::test_that("pipeline.yml is valid and references existing active script
   stage_names <- pipeline_stage_names(registry)
   testthat::expect_lt(match("coupling", stage_names), match("integration", stage_names))
   testthat::expect_lt(match("integration", stage_names), match("export", stage_names))
+})
+
+testthat::test_that("deprecated 04d stays excluded and documented as legacy", {
+  source(testthat::test_path("..", "..", "R", "paths.R"))
+  source(repo_path("R", "dataset_config.R"))
+  source(repo_path("R", "pipeline_registry.R"))
+
+  testthat::skip_if_not_installed("yaml")
+  registry <- read_pipeline_registry(repo_path("pipeline.yml"))
+  active <- pipeline_registry_entries(registry)$script
+  legacy <- vapply(registry$legacy, function(x) as.character(x$script), character(1))
+  script_04d <- "03_qc_exploration/04d_compartment_marker_fidelity.r"
+  testthat::expect_false(script_04d %in% active)
+  testthat::expect_true(script_04d %in% legacy)
+
+  audit <- utils::read.delim(
+    repo_path("docs", "active_script_io_audit.tsv"),
+    check.names = FALSE, stringsAsFactors = FALSE
+  )
+  row_04d <- audit[audit$script_path == script_04d, , drop = FALSE]
+  testthat::expect_equal(nrow(row_04d), 1L)
+  testthat::expect_identical(row_04d$status, "legacy_deprecated")
+  testthat::expect_match(row_04d$remaining_TODOs, "04e", fixed = TRUE)
 })
 
 testthat::test_that("documented dry-run stages are real registry stages", {
