@@ -53,12 +53,6 @@ if (!is.null(registry)) {
   }))
   registry_scripts_in_order <- unique(registry_entries$script)
   duplicate_script_exemptions <- "06_modules_WGCNA/03_score_module_activity.R"
-  prefix_exemptions <- c(
-    "03_qc_exploration/04_marker_rank_abundance_qc.r",
-    "03_qc_exploration/04c_marker_detectability_and_wgcna_bridge.r",
-    "03_qc_exploration/04d_compartment_marker_fidelity.r",
-    "03_qc_exploration/04e_control_compartment_abundance_publication_figures.r"
-  )
   required_registry_fields <- c(
     "script", "stage", "scope", "supported_datasets", "consumes_required",
     "consumes_optional", "produces", "recomputes_core_state", "safe_downstream_rerun"
@@ -77,31 +71,9 @@ if (!is.null(registry)) {
     fail <- c(fail, paste("Duplicate active filenames without exemption:", paste(unexpected_duplicate_scripts, collapse = ", ")))
   }
 
-  prefix_entries <- unique(registry_entries)
-  prefix_entries$folder <- dirname(prefix_entries$script)
-  prefix_entries$prefix <- suppressWarnings(as.integer(sub("^([0-9]+).*$", "\\1", basename(prefix_entries$script))))
-  prefix_entries <- prefix_entries[!prefix_entries$script %in% prefix_exemptions, , drop = FALSE]
-  prefix_keys <- paste(prefix_entries$stage, prefix_entries$folder, sep = "::")
-  for (key in unique(prefix_keys)) {
-    idx <- which(prefix_keys == key)
-    prefixes <- prefix_entries$prefix[idx]
-    if (anyDuplicated(prefixes)) {
-      fail <- c(fail, paste("Duplicate active numeric prefixes in", key, ":", paste(prefix_entries$script[idx], collapse = ", ")))
-    }
-    if (length(prefixes) > 1L && any(diff(prefixes) < 0L)) {
-      fail <- c(fail, paste("Active numeric prefixes contradict pipeline.yml order in", key, ":", paste(prefix_entries$script[idx], collapse = ", ")))
-    }
-  }
-
-  run_order_lines <- readLines(repo_path("RUN_ORDER.md"), warn = FALSE)
-  direct_matches <- regexec("^Rscript[[:space:]]+([0-9]{2}_[^[:space:]]+\\.[Rr])(?:[[:space:]]|$)", run_order_lines)
-  direct_scripts <- unique(vapply(regmatches(run_order_lines, direct_matches), function(x) if (length(x) >= 2L) x[[2]] else NA_character_, character(1)))
-  direct_scripts <- direct_scripts[!is.na(direct_scripts)]
-  if (!identical(direct_scripts, registry_scripts_in_order)) {
-    fail <- c(fail, paste0(
-      "RUN_ORDER.md direct commands do not match pipeline.yml order. Expected: ",
-      paste(registry_scripts_in_order, collapse = ", "), " | Found: ", paste(direct_scripts, collapse = ", ")
-    ))
+  indexed_scripts <- run_order_registry_index_references(repo_path("RUN_ORDER.md"))
+  if (!identical(indexed_scripts, registry_scripts_in_order)) {
+    fail <- c(fail, "RUN_ORDER.md generated registry index does not match pipeline.yml order")
   }
 
   audit_path <- repo_path("docs", "active_script_io_audit.tsv")

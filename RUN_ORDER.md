@@ -4,6 +4,11 @@ This file is a command reference for the active registry in `pipeline.yml`.
 Conceptual workflow explanations live in [WORKFLOW.md](WORKFLOW.md), and WGCNA
 interpretation layers are summarized in [docs/WGCNA_WORKFLOW.md](docs/WGCNA_WORKFLOW.md).
 
+`pipeline.yml` is the sole execution-order authority. Numeric filename prefixes
+are stable historical identifiers, not a sortable execution plan; suffixes and
+parallel analysis branches therefore do not imply registry order. The generated
+index below is the complete ordered inventory used by contract validation.
+
 ## Launcher
 
 ```powershell
@@ -38,6 +43,92 @@ Rscript run_dataset_pipeline.R --dataset <dataset> --stage coupling
 Rscript run_dataset_pipeline.R --dataset all --stage integration
 Rscript run_dataset_pipeline.R --dataset all --stage export
 ```
+
+<!-- BEGIN GENERATED PIPELINE REGISTRY INDEX -->
+
+## Authoritative script index (generated)
+
+Do not hand-edit this block; run `Rscript tools/generate_pipeline_docs.R`.
+
+1. `01_preprocessing/03_gct_extractR.r` - stage `core`; scope `dataset_specific`
+2. `01_preprocessing/06_merged_metadata_module_score.r` - stage `core`; scope `dataset_specific`
+3. `02_id_mapping/01_MapThatProt_batch.r` - stage `core`; scope `dataset_specific`
+4. `01_preprocessing/01_prepare_joint_protigy_input.r` - stage `joint_qc_preprocessing`; scope `global`
+5. `03_qc_exploration/00b_joint_compartment_qc.r` - stage `qc_global`; scope `global`
+6. `03_qc_exploration/00c_joint_compartment_qc_publication_figures.r` - stage `qc_global`; scope `global`
+7. `03_qc_exploration/04b_import_reference_marker_sources.r` - stage `qc_global`; scope `global`
+8. `03_qc_exploration/05_empirical_roi_marker_discovery.r` - stage `qc_global`; scope `global`
+9. `03_qc_exploration/00_dataset_qc_report.r` - stage `qc`; scope `dataset_specific`
+10. `03_qc_exploration/01_sample_qc_quicksearch.r` - stage `qc`; scope `dataset_specific`
+11. `03_qc_exploration/02_missingness_diagnostics.r` - stage `qc`; scope `dataset_specific`
+12. `03_qc_exploration/03_replicate_consistency.r` - stage `qc`; scope `dataset_specific`
+13. `03_qc_exploration/04_marker_rank_abundance_qc.r` - stage `qc`; scope `dataset_specific`
+14. `03_qc_exploration/04c_marker_detectability_and_wgcna_bridge.r` - stage `qc`; scope `dataset_specific`
+15. `03_qc_exploration/05_pca_confounding_qc.r` - stage `qc`; scope `dataset_specific`
+16. `03_qc_exploration/06_variance_partitioning.r` - stage `qc`; scope `dataset_specific`
+17. `03_qc_exploration/07_wgcna_marker_trait_export.r` - stage `qc`; scope `dataset_specific`
+18. `03_qc_exploration/08_qc_biology_confounding_report.r` - stage `qc`; scope `dataset_specific`
+19. `03_qc_exploration/04e_control_compartment_abundance_publication_figures.r` - stage `qc_cross_dataset`; scope `global`
+20. `04_differential_expression_enrichment/01_clusterProfiler.r` - stage `enrichment`; scope `dataset_specific`
+21. `04_differential_expression_enrichment/01b_gsea_protein_direction_audit.r` - stage `enrichment`; scope `dataset_specific`
+22. `04_differential_expression_enrichment/02_compareGO.r` - stage `enrichment`; scope `dataset_specific`
+23. `04_differential_expression_enrichment/04_neuropil_reference_annotation.r` - stage `enrichment`; scope `dataset_specific`
+24. `04_differential_expression_enrichment/05_microglia_targeted_signature_enrichment.r` - stage `enrichment`; scope `dataset_specific`
+25. `04_differential_expression_enrichment/06_biological_program_summary.r` - stage `enrichment`; scope `dataset_specific`
+26. `04_differential_expression_enrichment/07_compareGO_spatial_program_atlas.r` - stage `enrichment`; scope `dataset_specific`
+27. `04_differential_expression_enrichment/08_external_stress_disease_signature_overlap.r` - stage `enrichment`; scope `global`
+28. `04_differential_expression_enrichment/09_control_spatial_identity_validation.r` - stage `enrichment`; scope `global`
+29. `04_differential_expression_enrichment/10_sus_res_spatial_dap_atlas.r` - stage `enrichment`; scope `global`
+30. `04_differential_expression_enrichment/11_stress_response_biological_audit.r` - stage `enrichment`; scope `global`
+31. `05_celltype_enrichment_EWCE/01_EWCE_E9.r` - stage `enrichment`; scope `dataset_specific`
+32. `06_modules_WGCNA/01_WGCNA.r` - stage `modules_wgcna`; scope `dataset_specific`
+33. `06_modules_WGCNA/01b_module_supermodule_GO_heatmaps.R` - stage `modules_downstream`; scope `dataset_specific`
+34. `06_modules_WGCNA/01a_compare_GO_recurrent_proteins.r` - stage `modules_downstream`; scope `dataset_specific`
+35. `06_modules_WGCNA/02_curated_overlap_programs.r` - stage `modules_downstream`; scope `global`
+36. `06_modules_WGCNA/03_score_module_activity.R` - stage `modules_downstream`; scope `dataset_specific`
+37. `06_modules_WGCNA/04_wgcna_de_gsea_overlap.r` - stage `modules_downstream`; scope `dataset_specific`
+38. `06_modules_WGCNA/00_wgcna_identity_contract.R` - stage `modules_downstream`; scope `dataset_specific`
+39. `06_modules_WGCNA/05_module_supermodule_group_effects.r` - stage `modules_downstream`; scope `dataset_specific`
+40. `06_modules_WGCNA/06_annotate_module_microenvironment.r` - stage `modules_downstream`; scope `dataset_specific`
+41. `06_modules_WGCNA/07_wgcna_interpretable_summary.r` - stage `modules_downstream`; scope `dataset_specific`
+42. `06_modules_WGCNA/08_wgcna_publication_figures.R` - stage `modules_downstream`; scope `dataset_specific`
+43. `06_modules_WGCNA/08_wgcna_score_publication_summary.R` - stage `modules_downstream`; scope `dataset_specific`
+44. `06_modules_WGCNA/08b_microglia_wgcna_readiness_publication_figures.R` - stage `modules_downstream`; scope `dataset_specific`
+45. `06_modules_WGCNA/09_microglia_neuropil_independence.R` - stage `modules_downstream`; scope `dataset_specific`
+46. `06_modules_WGCNA/09b_microglia_neuropil_independence_figures.R` - stage `modules_downstream`; scope `dataset_specific`
+47. `06_modules_WGCNA/09c_microglia_roi_specificity_diagnostics.R` - stage `modules_downstream`; scope `dataset_specific`
+48. `06_modules_WGCNA/10_module_complex_architecture.r` - stage `modules_downstream`; scope `dataset_specific`
+49. `06_modules_WGCNA/11_module_robustness_sensitivity.r` - stage `modules_downstream`; scope `dataset_specific`
+50. `06_modules_WGCNA/12_microglia_wgcna_nature_readiness_audit.R` - stage `modules_downstream`; scope `dataset_specific`
+51. `06_modules_WGCNA/12b_finalize_microglia_wgcna_nature_readiness_audit.R` - stage `modules_downstream`; scope `dataset_specific`
+52. `06_modules_WGCNA/13_wgcna_claim_readiness.R` - stage `modules_downstream`; scope `dataset_specific`
+53. `07_spatial_networks/01_network_spatial_relations.r` - stage `networks`; scope `dataset_specific`
+54. `07_spatial_networks/02_differential_networks.r` - stage `networks`; scope `dataset_specific`
+55. `07_spatial_networks/03_bootstrap_network_stability.r` - stage `networks`; scope `dataset_specific`
+56. `07_spatial_networks/04_bootstrap_differential_network_stability.r` - stage `networks`; scope `dataset_specific`
+57. `07_spatial_networks/05_bootstrap_differential_network_figures.r` - stage `networks`; scope `dataset_specific`
+58. `07_spatial_networks/06_chord_diagram.r` - stage `networks`; scope `dataset_specific`
+59. `08_behavior_physio_coupling/01_correlate_proteomics_with_behavior.r` - stage `coupling`; scope `dataset_specific`
+60. `08_behavior_physio_coupling/02_network_behavior_coupling.r` - stage `coupling`; scope `dataset_specific`
+61. `08_behavior_physio_coupling/03_module_behavior_coupling.r` - stage `coupling`; scope `dataset_specific`
+62. `10_biological_integration/01_cross_compartment_program_atlas.r` - stage `integration`; scope `global`
+63. `10_biological_integration/02_manuscript_program_summary.r` - stage `integration`; scope `global`
+64. `09_export_pride_journal/07_make_biological_claims_table.R` - stage `integration`; scope `global`
+65. `10_biological_integration/03_evidence_priority_matrix.r` - stage `integration`; scope `global`
+66. `10_biological_integration/05_gsea_wgcna_concordance.R` - stage `integration`; scope `global`
+67. `10_biological_integration/06_gsea_wgcna_concordance_diagnostics.R` - stage `integration`; scope `global`
+68. `10_biological_integration/04_wgcna_circular_atlas.R` - stage `integration`; scope `global`
+69. `10_biological_integration/04_wgcna_cross_compartment_overview.R` - stage `integration`; scope `global`
+70. `09_export_pride_journal/02_make_sample_metadata.R` - stage `export`; scope `global`
+71. `09_export_pride_journal/03_export_processed_pg_matrix_package.R` - stage `export`; scope `global`
+72. `09_export_pride_journal/04_make_supplementary_tables.R` - stage `export`; scope `global`
+73. `09_export_pride_journal/05_make_pride_manifest.R` - stage `export`; scope `global`
+74. `09_export_pride_journal/06_make_methods_summary.R` - stage `export`; scope `global`
+75. `09_export_pride_journal/08_export_manuscript_figures.R` - stage `export`; scope `global`
+76. `09_export_pride_journal/09_export_source_data.R` - stage `export`; scope `global`
+77. `09_export_pride_journal/10_validate_pride_submission.R` - stage `export`; scope `global`
+
+<!-- END GENERATED PIPELINE REGISTRY INDEX -->
 
 Dry-run the full manuscript path first:
 
