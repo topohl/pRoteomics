@@ -54,7 +54,7 @@ wgcna_consumer_fixture <- function() {
     independent_hypothesis = c(rep(TRUE, 5L), FALSE),
     statistical_support_status = c(
       "FDR_supported", "suggestive_FDR10", "not_supported",
-      "nominal_exploratory", "nominal_exploratory",
+      "not_supported", NA_character_,
       "inherited_from_canonical_entity"
     ),
     model_valid_for_inference = rep(TRUE, 6L),
@@ -248,7 +248,6 @@ testthat::test_that("base adapter does not apply model or support filters", {
   input$model_valid_for_inference[1] <- FALSE
   input$claim_allowed_model[1] <- FALSE
   input$primary_model_stable[1] <- FALSE
-  input$statistical_support_status[1] <- "not_supported"
 
   observed <- wgcna_group_effect_consumer_adapt(input)
 
@@ -257,7 +256,18 @@ testthat::test_that("base adapter does not apply model or support filters", {
   testthat::expect_false(observed$claim_allowed_model[1])
   testthat::expect_false(observed$primary_model_stable[1])
   testthat::expect_identical(
-    observed$statistical_support_status[1], "not_supported"
+    observed$statistical_support_status[1], "FDR_supported"
+  )
+})
+
+testthat::test_that("adapter rejects support restored from nominal p-values", {
+  input <- wgcna_consumer_fixture()
+  input$FDR_primary_global[1] <- 0.40
+  input$statistical_support_status[1] <- "nominal_exploratory"
+  testthat::expect_error(
+    wgcna_group_effect_consumer_adapt(input),
+    "nominal p-values cannot restore support after correction failure",
+    fixed = TRUE
   )
 })
 
@@ -849,10 +859,10 @@ testthat::test_that("typed zero-row adapter and selections are valid", {
 
 testthat::test_that("zero supported primary results are valid", {
   input <- wgcna_consumer_fixture()
-  input$statistical_support_status[
-    input$analysis_tier == "primary_wgcna_global" &
-      input$independent_hypothesis
-  ] <- "not_supported"
+  primary <- input$analysis_tier == "primary_wgcna_global" &
+    input$independent_hypothesis
+  input$FDR_primary_global[primary] <- 0.40
+  input$statistical_support_status[primary] <- "not_supported"
   testthat::expect_true(all(is.na(input$FDR_within_dataset_level)))
 
   observed <- wgcna_group_effect_consumer_adapt(input)
