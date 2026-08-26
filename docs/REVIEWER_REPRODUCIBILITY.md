@@ -10,12 +10,11 @@ Install R and the lightweight packages used by registry parsing and tests:
 install.packages(c("yaml", "testthat"), repos = "https://cloud.r-project.org")
 ```
 
-For the full private-data analysis environment, use:
-
-```r
-install.packages("renv", repos = "https://cloud.r-project.org")
-renv::restore()
-```
+The current `renv.lock` is an intentionally incomplete lightweight bootstrap,
+not a full scientific environment. Do not use `renv::restore()` from this
+lockfile as evidence that the private-data analysis is reproducible. See
+[`RENV_LOCK_STATUS.md`](RENV_LOCK_STATUS.md) for the audited status and the
+safe refresh procedure that must be run on the intended analysis machine.
 
 ## Dry-Run Commands
 
