@@ -12,6 +12,35 @@ dataset <- "neuron_neuropil"
 selected_modules <- c("WGCNA_m01", "WGCNA_m02", "WGCNA_m12")
 contrast_levels <- c("RES - CON", "SUS - CON", "SUS - RES")
 manuscript_text <- nature_manuscript_text_sizes_pt()
+if ("--dry-run" %in% commandArgs(trailingOnly = TRUE)) {
+  dry_inputs <- c(
+    stage07_handoff = path_results(
+      "source_data", "06_modules_WGCNA", "interpretable_summary", dataset,
+      "module_group_effects_main_heatmap_source.csv"
+    ),
+    module_membership = path_results(
+      "tables", "06_modules_WGCNA", "01_WGCNA", dataset, "modules",
+      "WGCNA_modules_long.csv"
+    ),
+    clusterprofiler_manifest = canonical_clusterprofiler_manifest_path(dataset),
+    concordance_overlap = path_results(
+      "tables", "10_biological_integration", "gsea_wgcna_concordance",
+      "global", "program_specific_leading_edge_module_overlap.csv"
+    ),
+    module_go = path_results(
+      "tables", "06_modules_WGCNA", "01b_module_supermodule_GO_heatmaps",
+      dataset, "WGCNA_module_GO_heatmap_source_BP.csv"
+    )
+  )
+  cat("[DRY-RUN] Figure 3 WGCNA/protein renderer; no outputs written.\n")
+  for (name in names(dry_inputs)) {
+    cat(
+      "[DRY-RUN ", if (file.exists(dry_inputs[[name]])) "PASS" else "WARN",
+      "] ", name, ": ", dry_inputs[[name]], "\n", sep = ""
+    )
+  }
+  quit(save = "no", status = 0L)
+}
 out <- function(kind, ...) path_results(kind, "manuscript_panels", "figure_3", ...)
 fig_dir <- out("figures"); source_dir <- out("source_data"); table_dir <- out("tables"); report_dir <- out("reports")
 invisible(lapply(c(fig_dir, source_dir, table_dir, report_dir), dir.create, recursive = TRUE, showWarnings = FALSE))

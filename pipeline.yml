@@ -954,6 +954,17 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Read-only compact WGCNA/supermodule overview across datasets; uses the Stage 07 inferential handoff, existing labels, and claim gates without recomputing WGCNA."
+      - script: "10_biological_integration/05_manuscript_figure3_wgcna_protein_zoom.R"
+        required: false
+        datasets: ["global"]
+        stage: "integration"
+        scope: "global"
+        produces: ["results/figures/manuscript_panels/figure_3/", "results/source_data/manuscript_panels/figure_3/", "results/tables/manuscript_panels/figure_3/", "results/reports/manuscript_panels/figure_3/", "results/tables/manuscript_panels/manuscript_panel_inventory.csv"]
+        consumes_required: ["results/source_data/06_modules_WGCNA/interpretable_summary/neuron_neuropil/module_group_effects_main_heatmap_source.csv", "results/tables/06_modules_WGCNA/01_WGCNA/neuron_neuropil/modules/WGCNA_modules_long.csv", "data/processed/04_differential_expression_enrichment/clusterProfiler/neuron_neuropil/clusterProfiler_manifest.csv", "results/tables/10_biological_integration/gsea_wgcna_concordance/global/program_specific_leading_edge_module_overlap.csv", "results/tables/06_modules_WGCNA/01b_module_supermodule_GO_heatmaps/neuron_neuropil/WGCNA_module_GO_heatmap_source_BP.csv"]
+        consumes_optional: []
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Render-only manuscript Figure 3 integration from existing Stage 07 WGCNA, canonical module membership, manifest-selected protein DA, concordance, and GO sources; fits no new model."
   export:
     description: "Export layer for PRIDE, manuscript tables, reviewer materials, source data, methods summaries, and validation reports."
     scripts:
@@ -1088,3 +1099,18 @@ legacy:
   - script: "03_qc_exploration/04d_compartment_marker_fidelity.r"
     replacement: "03_qc_exploration/04e_control_compartment_abundance_publication_figures.r"
     status: "deprecated sample-level cross-compartment inference; disabled by default and excluded from the canonical pipeline"
+  - script: "08_biological_interpretation/01_compartment_fidelity_summary.R"
+    replacement: "03_qc_exploration/04e_control_compartment_abundance_publication_figures.r"
+    status: "superseded poster-summary of imputed 04c marker scores; not authoritative cross-compartment abundance and has no current consumer"
+  - script: "01_preprocessing/03b_directionality_audit_raw_vs_protigy.r"
+    replacement: "standalone raw-versus-ProTigy directionality audit"
+    status: "diagnostic-only audit with no canonical downstream consumer; excluded from automatic pipeline execution"
+  - script: "02_id_mapping/01b_animal_level_mapping_audit.r"
+    replacement: "standalone animal-level mapping-branch audit"
+    status: "validation-only audit of isolated animal-level mapping outputs; excluded from automatic pipeline execution"
+  - script: "10_biological_integration/07_gsea_wgcna_concordance_correction_audit.R"
+    replacement: "completed reviewer correction audit"
+    status: "historical before/after audit requiring a preserved correction baseline; excluded from canonical integration execution"
+  - script: "proteomics_wgcna_downstream_audit.R"
+    replacement: "repository audit utility"
+    status: "root-level read-only audit utility; explicitly excluded from analysis-script discovery and canonical pipeline execution"
