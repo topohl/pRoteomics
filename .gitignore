@@ -21,11 +21,11 @@ PRIDE_package/
 *.tar.gz
 *.7z
 *.tmp
-.DS_Store
+/.DS_Store
+/*.log
 .Rhistory
 .RData
 .Rproj.user/
-.DS_Store
 
 # Local config overrides and secrets
 config/*.local.yml
@@ -67,20 +67,15 @@ results/
 
 # PRIDE/journal staging
 pride_submission/
-PRIDE_package/
 
 # R/runtime caches
-.Rhistory
-.RData
-.Rproj.user/
 *.rds
 *.Rds
 *.RDS
-*.csv
-!config/marker_panels/*.csv
-!config/wgcna_labels/*.csv
-!config/gsea_wgcna_program_module_mapping.csv
-!config/gsea_wgcna_theme_module_mapping.csv
+# CSV files are not ignored globally: configuration/source CSVs must remain
+# visible to Git. Generated CSVs belong under the ignored output roots above.
+!config/*.csv
+!config/**/*.csv
 /results/manuscript
 /results/module_scores/microglia
 /results/module_scores/neuron_neuropil
