@@ -10,10 +10,6 @@ source(repo_path("R", "module_contracts.R"))
 
 WGCNA_ROI_NOTE <- "microglia-enriched ROI/local microenvironment; annotation only, not purity correction."
 
-`%||%` <- function(x, y) {
-  if (is.null(x) || length(x) == 0L || (length(x) == 1L && is.na(x))) y else x
-}
-
 shorten_supermodule_label <- function(x, max_chars = 45) {
   vapply(as.character(x), function(z) {
     z <- trimws(z)

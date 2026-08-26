@@ -843,7 +843,6 @@ assert_comparison_route_examples <- function() {
 # ----------------------------------------------------
 # 3. DATA INPUT/COMPARISONS
 # ----------------------------------------------------
-`%||%` <- function(x, y) if (is.null(x)) y else x
 config_candidates <- c(
   file.path(getwd(), "clusterProfiler_config.yml"),
   file.path(getwd(), "clusterProfiler_config.local.yml"),

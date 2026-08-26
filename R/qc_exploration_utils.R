@@ -92,8 +92,6 @@ qc_read_table <- function(path, sheet = NULL) {
   stop("Unsupported tabular file extension for: ", path, call. = FALSE)
 }
 
-`%||%` <- function(x, y) if (is.null(x) || length(x) == 0L || is.na(x)) y else x
-
 qc_first_col <- function(df, candidates) {
   norm <- function(x) tolower(gsub("[^a-z0-9]", "", x))
   hit <- match(norm(candidates), norm(names(df)))

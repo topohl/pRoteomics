@@ -57,10 +57,6 @@ ATLAS_ONTOLOGY <- "BP"
 ATLAS_ROUTE_CATEGORY <- "phenotype_within_unit"
 ATLAS_INPUT_CONTRACT_VERSION <- "compareGO_spatial_atlas_v3_canonical_bundle_claim_safe_core"
 
-`%||%` <- function(x, y) {
-  if (is.null(x)) y else x
-}
-
 load_required_packages <- function(pkgs) {
   missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
   if (length(missing) > 0) {

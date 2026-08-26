@@ -11,10 +11,6 @@ if (!exists("write_run_manifest", mode = "function")) {
   source(repo_path("R", "validation_utils.R"))
 }
 
-`%||%` <- function(x, y) {
-  if (is.null(x) || length(x) == 0L || (length(x) == 1L && is.na(x))) y else x
-}
-
 script_has_flag <- function(flag, args = commandArgs(trailingOnly = TRUE)) {
   flag %in% args
 }

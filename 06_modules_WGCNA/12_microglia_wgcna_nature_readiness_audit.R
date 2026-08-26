@@ -78,7 +78,7 @@ rel <- function(path) {
   prefix <- paste0(repo_root, "/")
   if (startsWith(path, prefix)) substring(path, nchar(prefix) + 1L) else path
 }
-`%||%` <- function(x, y) if (is.null(x) || !length(x) || all(is.na(x))) y else x
+source(file.path(repo_root, "R", "null_coalescing.R"))
 
 state_path <- file.path(repo_root, "data/processed/06_modules_WGCNA/01_WGCNA/microglia/wgcna_final_model_state.rds")
 definitions_path <- file.path(repo_root, "results/tables/06_modules_WGCNA/01_WGCNA/microglia/modules/WGCNA_module_definitions_for_downstream.csv")

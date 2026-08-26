@@ -41,6 +41,14 @@ suppressPackageStartupMessages({
   library(tibble)
 })
 
+null_coalescing_file <- if (file.exists(file.path("R", "null_coalescing.R"))) {
+  file.path("R", "null_coalescing.R")
+} else {
+  file.path("..", "R", "null_coalescing.R")
+}
+source(null_coalescing_file)
+rm(null_coalescing_file)
+
 # -------------------------------------------------------------------------
 # Helpers
 # -------------------------------------------------------------------------
@@ -260,10 +268,6 @@ flatten_unknown_taxonomy_object <- function(x, object_name = "dend_object") {
   }
 
   tibble()
-}
-
-`%||%` <- function(x, y) {
-  if (is.null(x) || length(x) == 0 || all(is.na(x))) y else x
 }
 
 load_dend_taxonomy <- function(dend_file) {

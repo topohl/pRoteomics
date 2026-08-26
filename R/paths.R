@@ -3,6 +3,50 @@
 # All committed scripts should default to repository-relative paths. For local
 # machines, set PROTEOMICS_PROJECT_ROOT or provide a config override outside Git.
 
+.null_coalescing_source_files <- unlist(lapply(
+  sys.frames(),
+  function(frame) if (!is.null(frame$ofile)) frame$ofile else character()
+), use.names = FALSE)
+.null_coalescing_search_dirs <- c(
+  dirname(.null_coalescing_source_files[file.exists(
+    .null_coalescing_source_files
+  )]),
+  Sys.getenv("PROTEOMICS_PROJECT_ROOT", unset = ""),
+  getwd()
+)
+.null_coalescing_search_dirs <- unique(
+  .null_coalescing_search_dirs[nzchar(.null_coalescing_search_dirs)]
+)
+.null_coalescing_file <- ""
+for (.null_coalescing_start in .null_coalescing_search_dirs) {
+  .null_coalescing_search_dir <- normalizePath(
+    .null_coalescing_start, winslash = "/", mustWork = FALSE
+  )
+  repeat {
+    .null_coalescing_candidate <- file.path(
+      .null_coalescing_search_dir, "R", "null_coalescing.R"
+    )
+    if (file.exists(.null_coalescing_candidate)) {
+      .null_coalescing_file <- .null_coalescing_candidate
+      break
+    }
+    .null_coalescing_parent <- dirname(.null_coalescing_search_dir)
+    if (identical(.null_coalescing_parent, .null_coalescing_search_dir)) break
+    .null_coalescing_search_dir <- .null_coalescing_parent
+  }
+  if (nzchar(.null_coalescing_file)) break
+}
+if (!nzchar(.null_coalescing_file)) {
+  stop("Could not locate R/null_coalescing.R.", call. = FALSE)
+}
+source(.null_coalescing_file)
+rm(
+  .null_coalescing_source_files, .null_coalescing_search_dirs,
+  .null_coalescing_start, .null_coalescing_search_dir,
+  .null_coalescing_candidate, .null_coalescing_parent,
+  .null_coalescing_file
+)
+
 repo_root <- function() {
   env_root <- Sys.getenv("PROTEOMICS_PROJECT_ROOT", unset = "")
   if (nzchar(env_root)) {

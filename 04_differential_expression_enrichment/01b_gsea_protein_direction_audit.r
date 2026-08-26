@@ -41,10 +41,6 @@ output_paths <- list(
   run_manifest = file.path(logs_dir, "run_manifest.yml")
 )
 
-`%||%` <- function(x, y) {
-  if (is.null(x) || length(x) == 0L || (length(x) == 1L && is.na(x))) y else x
-}
-
 read_csv_base <- function(path) {
   utils::read.csv(path, stringsAsFactors = FALSE, check.names = FALSE)
 }
