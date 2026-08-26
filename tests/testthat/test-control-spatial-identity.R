@@ -1,4 +1,80 @@
+source(testthat::test_path(
+  "..", "..", "R", "clusterprofiler_reproducibility.R"
+))
 source(testthat::test_path("..", "..", "R", "control_spatial_identity_utils.R"))
+
+testthat::test_that("control-spatial GSEA seeds use stable semantic identity", {
+  args <- list(
+    dataset = "neuron_neuropil",
+    contrast = "CA1_SLM_vs_mean_other_CA1_strata",
+    enrichment_type = "gseGO_BP",
+    gsea_seed_base = 20260824L,
+    n_perm_simple = 100000L
+  )
+  first <- do.call(control_spatial_gsea_reproducibility, args)
+  second <- do.call(control_spatial_gsea_reproducibility, args)
+  different_contrast <- do.call(
+    control_spatial_gsea_reproducibility,
+    utils::modifyList(args, list(
+      contrast = "CA1_SO_vs_mean_other_CA1_strata"
+    ))
+  )
+  different_signature <- control_spatial_gsea_reproducibility(
+    dataset = args$dataset, contrast = args$contrast,
+    enrichment_type = "GSEA_Kaulich_signature",
+    external_signature = "SLM", gsea_seed_base = args$gsea_seed_base,
+    n_perm_simple = args$n_perm_simple
+  )
+  testthat::expect_identical(first, second)
+  testthat::expect_false(identical(
+    first$gsea_seed, different_contrast$gsea_seed
+  ))
+  testthat::expect_false(identical(
+    first$gsea_seed, different_signature$gsea_seed
+  ))
+  testthat::expect_identical(first$n_perm_simple, 100000L)
+})
+
+testthat::test_that("control-spatial seeded execution restores caller RNG", {
+  identity <- control_spatial_gsea_reproducibility(
+    "neuron_neuropil", "DG_neuropil_vs_mean_non_DG_regions", "gseGO_BP",
+    20260824L, 100000L
+  )
+  fake_gsea <- function(...) stats::runif(4)
+  set.seed(9876)
+  kind_before <- RNGkind()
+  state_before <- .Random.seed
+  first <- run_seeded_clusterprofiler_gsea(
+    fake_gsea, identity$gsea_seed, identity$n_perm_simple,
+    geneList = c(A = 2, B = -1)
+  )
+  testthat::expect_identical(RNGkind(), kind_before)
+  testthat::expect_identical(.Random.seed, state_before)
+  second <- run_seeded_clusterprofiler_gsea(
+    fake_gsea, identity$gsea_seed, identity$n_perm_simple,
+    geneList = c(A = 2, B = -1)
+  )
+  testthat::expect_identical(first, second)
+})
+
+testthat::test_that("script 09 cannot bypass deterministic GSEA governance", {
+  script <- paste(readLines(testthat::test_path(
+    "..", "..", "04_differential_expression_enrichment",
+    "09_control_spatial_identity_validation.r"
+  ), warn = FALSE), collapse = "\n")
+  testthat::expect_false(grepl(
+    "clusterProfiler::(gseGO|GSEA)[[:space:]]*\\(", script, perl = TRUE
+  ))
+  testthat::expect_equal(
+    lengths(regmatches(
+      script,
+      gregexpr("run_seeded_clusterprofiler_gsea\\(", script, perl = TRUE)
+    )),
+    2L
+  )
+  testthat::expect_match(script, "gsea_seed = go_repro\\$gsea_seed")
+  testthat::expect_match(script, "gsea_seed = job_repro\\$gsea_seed")
+})
 
 testthat::test_that("Kaulich signatures retain only positive significant source membership exactly", {
   td <- tempfile(fileext = ".xlsx")

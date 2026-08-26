@@ -2,6 +2,7 @@
 source("R/paths.R"); source("R/dataset_config.R"); source("R/dataset_inputs.R")
 source("R/validation_utils.R"); source("R/qc_exploration_utils.R")
 source("R/protein_group_enrichment_utils.R"); source("R/control_spatial_identity_utils.R")
+source("R/clusterprofiler_reproducibility.R")
 source("R/plotting_nature.R")
 suppressPackageStartupMessages({ library(limma); library(clusterProfiler); library(org.Mm.eg.db); library(ggplot2) })
 
@@ -364,7 +365,22 @@ if (is_dry_run()) {
   message("[dry-run] Inputs validated; no scientific outputs will be written.")
   return(invisible(list(status = "dry_run", project_root = root, workbook = wb)))
 }
-out <- function(kind, name) file.path(root, "results", kind, "04_differential_expression_enrichment", "control_spatial_identity_validation", "global", name)
+if (!requireNamespace("yaml", quietly = TRUE)) {
+  stop("Package 'yaml' is required for GSEA reproducibility settings.", call. = FALSE)
+}
+gsea_cfg <- validate_clusterprofiler_gsea_config(yaml::read_yaml(
+  repo_path("config", "clusterProfiler_config.yml")
+))
+gsea_seed_base <- gsea_cfg$analysis$gsea_seed_base
+n_perm_simple <- gsea_cfg$analysis$n_perm_simple
+validation_output_root <- Sys.getenv(
+  "PROTEOMICS_CONTROL_SPATIAL_OUTPUT_ROOT", unset = ""
+)
+if (!nzchar(validation_output_root)) validation_output_root <- root
+validation_output_root <- normalizePath(
+  validation_output_root, winslash = "/", mustWork = FALSE
+)
+out <- function(kind, name) file.path(validation_output_root, "results", kind, "04_differential_expression_enrichment", "control_spatial_identity_validation", "global", name)
 tables <- c(protein=out("tables","anatomical_protein_contrasts.csv"), mapping=out("tables","kaulich_signature_mapping.csv"), kaulich=out("tables","kaulich_signature_gsea.csv"), go=out("tables","control_anatomical_go_bp_gsea.csv"), matching_audit=out("tables","figure2e_matching_audit.csv"), status=out("tables","analysis_status.csv"))
 source_data <- c(e=out("source_data","figure2e_source_data.csv"), f=out("source_data","figure2f_source_data.csv")); figures <- c(e=out("figures","figure2e_kaulich_validation.svg"), f=out("figures","figure2f_control_anatomical_GO.svg")); manifest <- out("logs","run_manifest.yml")
 candidate_source <- out("source_data", "figure2f_regions_CA1layers_source_data.csv")
@@ -525,14 +541,24 @@ for (dataset in c("neuron_soma", "neuron_neuropil")) {
       }
     }
     if (!go_announced) { message("Running GO-BP GSEA"); go_announced <- TRUE }
-    go <- as.data.frame(clusterProfiler::gseGO(ranked,OrgDb=org.Mm.eg.db,keyType="SYMBOL",ont="BP",pvalueCutoff=1,verbose=FALSE))
+    go_repro <- control_spatial_gsea_reproducibility(
+      dataset, ct$name, "gseGO_BP", gsea_seed_base, n_perm_simple
+    )
+    go <- as.data.frame(run_seeded_clusterprofiler_gsea(
+      clusterProfiler::gseGO,
+      gsea_seed = go_repro$gsea_seed,
+      n_perm_simple = go_repro$n_perm_simple,
+      geneList = ranked, OrgDb = org.Mm.eg.db, keyType = "SYMBOL",
+      ont = "BP", pvalueCutoff = 1, verbose = FALSE
+    ))
     if(nrow(go)) {
       go$dataset<-dataset;go$contrast<-ct$name;go$status<-"completed"
       go$p_value <- go$pvalue; go$p_adjust <- go$p.adjust
       if (!"setSize" %in% names(go)) stop("Successful GO-BP GSEA rows are missing setSize.", call. = FALSE)
       go$mapped_unique_genes <- go$setSize
+      go <- cbind(go, go_repro[rep(1L, nrow(go)), , drop = FALSE])
       all_go[[length(all_go)+1L]] <- go
-    } else all_go[[length(all_go)+1L]]<-data.frame(dataset=dataset,contrast=ct$name,status="completed_zero_terms")
+    } else all_go[[length(all_go)+1L]]<-cbind(data.frame(dataset=dataset,contrast=ct$name,status="completed_zero_terms"), go_repro)
     statuses[[length(statuses)+1L]] <- control_spatial_empty_status(dataset,ct$name,"completed",paste0("duplicateCorrelation=",round(corfit$consensus,4),"; hemisphere=",if(d$hemisphere_included)"included" else d$hemisphere_omission_reason)); details[[length(details)+1L]]<-list(dataset=dataset,formula=if(d$hemisphere_included)"abundance ~ 0 + anatomical_unit + hemisphere" else "abundance ~ 0 + anatomical_unit",n_samples=ncol(mat),n_animals=length(unique(meta$AnimalID)),contrast=ct$name,weights=ct$weights,duplicate_correlation=corfit$consensus)
   }
 }
@@ -541,9 +567,15 @@ min_gs_size <- 5L
 max_gs_size <- control_spatial_signature_max_gs_size(largest_mapped_signature_size)
 message("Running Kaulich signature GSEA")
 for (job in kaulich_jobs) {
+  job_repro <- control_spatial_gsea_reproducibility(
+    job$prefix$dataset[[1]], job$prefix$internal_contrast[[1]],
+    "GSEA_Kaulich_signature", gsea_seed_base, n_perm_simple,
+    external_signature = job$external_signature
+  )
+  job_prefix <- cbind(job$prefix, job_repro)
   if (length(job$mapped) < min_gs_size) {
     all_ks[[length(all_ks) + 1L]] <- cbind(
-      job$prefix,
+      job_prefix,
       data.frame(
         status = "skipped_lt5_mapped_genes",
         NES = NA_real_, p_value = NA_real_, p_adjust = NA_real_,
@@ -552,8 +584,11 @@ for (job in kaulich_jobs) {
     )
     next
   }
-  z <- clusterProfiler::GSEA(
-    job$ranked,
+  z <- run_seeded_clusterprofiler_gsea(
+    clusterProfiler::GSEA,
+    gsea_seed = job_repro$gsea_seed,
+    n_perm_simple = job_repro$n_perm_simple,
+    geneList = job$ranked,
     TERM2GENE = data.frame(term = job$external_signature, gene = job$mapped),
     minGSSize = min_gs_size,
     maxGSSize = max_gs_size,
@@ -563,7 +598,7 @@ for (job in kaulich_jobs) {
   q <- as.data.frame(z)
   all_ks[[length(all_ks) + 1L]] <- if (nrow(q)) {
     cbind(
-      job$prefix,
+      job_prefix,
       data.frame(
         status = "completed",
         NES = q$NES,
@@ -575,7 +610,7 @@ for (job in kaulich_jobs) {
     )
   } else {
     cbind(
-      job$prefix,
+      job_prefix,
       data.frame(
         status = "completed_zero_terms",
         NES = NA_real_, p_value = NA_real_, p_adjust = NA_real_,
@@ -602,6 +637,10 @@ write_run_manifest(
     minGSSize = min_gs_size,
     maxGSSize = max_gs_size,
     largest_mapped_prespecified_signature_size = largest_mapped_signature_size,
+    gsea_seed_base = gsea_seed_base,
+    n_perm_simple = n_perm_simple,
+    gsea_rng_kind = "L'Ecuyer-CMRG/Inversion/Rejection",
+    gsea_seed_identity = "script + dataset + contrast + enrichment type + optional external signature",
     signature_fdr_family_sizes = as.list(control_spatial_signature_family_sizes()),
     figure2f_semantic_simplification = "No standalone repository simplification helper was readily reusable; deterministic top two by adjusted p-value, descending NES, and GO ID.",
     models = details,
