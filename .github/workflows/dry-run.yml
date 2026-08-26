@@ -35,7 +35,21 @@ jobs:
             any::forcats
             any::broom
             any::openxlsx
-            any::limma
+            bioc::limma
+
+      - name: Verify limma availability
+        shell: Rscript {0}
+        run: |
+          cat("R version:\n")
+          print(R.version.string)
+      
+          cat("\nLibrary paths:\n")
+          print(.libPaths())
+      
+          stopifnot(requireNamespace("limma", quietly = TRUE))
+      
+          cat("\nlimma version: ")
+          print(as.character(packageVersion("limma")))
 
       - name: Validate tests
         run: Rscript tests/testthat.R
