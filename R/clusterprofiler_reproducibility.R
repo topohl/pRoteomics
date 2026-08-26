@@ -80,6 +80,28 @@ clusterprofiler_fgsea_control_args <- function(n_perm_simple) {
   )
 }
 
+run_with_stable_gsea_rng <- function(gsea_fun, gsea_seed, ...) {
+  if (!is.function(gsea_fun)) stop("gsea_fun must be a function.", call. = FALSE)
+  gsea_seed <- clusterprofiler_integer_scalar(gsea_seed, "gsea_seed")
+  if (!requireNamespace("withr", quietly = TRUE)) {
+    stop("Package 'withr' is required for deterministic GSEA RNG scoping.", call. = FALSE)
+  }
+  dots <- list(...)
+  withr::with_preserve_seed({
+    previous_kind <- RNGkind()
+    tryCatch({
+      RNGkind(
+        kind = "L'Ecuyer-CMRG", normal.kind = "Inversion",
+        sample.kind = "Rejection"
+      )
+      set.seed(gsea_seed)
+      do.call(gsea_fun, dots)
+    }, finally = {
+      do.call(RNGkind, as.list(previous_kind))
+    })
+  })
+}
+
 run_seeded_clusterprofiler_gsea <- function(gsea_fun, gsea_seed, n_perm_simple, ...) {
   if (!is.function(gsea_fun)) stop("gsea_fun must be a function.", call. = FALSE)
   gsea_seed <- clusterprofiler_integer_scalar(gsea_seed, "gsea_seed")
@@ -92,23 +114,10 @@ run_seeded_clusterprofiler_gsea <- function(gsea_fun, gsea_seed, n_perm_simple, 
       call. = FALSE
     )
   }
-  if (!requireNamespace("withr", quietly = TRUE)) {
-    stop("Package 'withr' is required for deterministic GSEA RNG scoping.", call. = FALSE)
-  }
   call_args <- c(dots, clusterprofiler_fgsea_control_args(n_perm_simple))
-
-  # Preserve the caller's RNG state and kind. Fixing the kind here makes the
-  # same comparison reproducible in sequential and future worker processes.
-  withr::with_preserve_seed({
-    previous_kind <- RNGkind()
-    tryCatch({
-      RNGkind(kind = "L'Ecuyer-CMRG", normal.kind = "Inversion", sample.kind = "Rejection")
-      set.seed(gsea_seed)
-      do.call(gsea_fun, call_args)
-    }, finally = {
-      do.call(RNGkind, as.list(previous_kind))
-    })
-  })
+  run_with_stable_gsea_rng(
+    function() do.call(gsea_fun, call_args), gsea_seed = gsea_seed
+  )
 }
 
 clusterprofiler_gsea_reproducibility_table <- function(comparison, ontology,

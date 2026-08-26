@@ -21,6 +21,7 @@ paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.
 source(paths_file)
 source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "validation_utils.R"))
+source(repo_path("R", "clusterprofiler_reproducibility.R"))
 source(repo_path("R", "microglia_targeted_signature_utils.R"))
 
 args <- commandArgs(trailingOnly = TRUE)
@@ -42,6 +43,17 @@ DRY_RUN <- is_dry_run()
 RUN_ID <- format(Sys.time(), "%Y%m%d_%H%M%S")
 SIGNATURE_METHOD_PRIORITY <- strsplit(Sys.getenv("PROTEOMICS_MICROGLIA_SIGNATURE_METHOD", unset = "limma_ranked_geneSetTest,fgsea,clusterProfiler_GSEA"), "[,;[:space:]]+")[[1]]
 SIGNATURE_METHOD_PRIORITY <- SIGNATURE_METHOD_PRIORITY[nzchar(SIGNATURE_METHOD_PRIORITY)]
+TARGETED_ALLOWED_METHODS <- c(
+  "limma_ranked_geneSetTest", "fgsea", "clusterProfiler_GSEA"
+)
+if (!length(SIGNATURE_METHOD_PRIORITY) ||
+    anyDuplicated(SIGNATURE_METHOD_PRIORITY) ||
+    any(!SIGNATURE_METHOD_PRIORITY %in% TARGETED_ALLOWED_METHODS)) {
+  stop(
+    "PROTEOMICS_MICROGLIA_SIGNATURE_METHOD must be a unique ordered subset of: ",
+    paste(TARGETED_ALLOWED_METHODS, collapse = ", "), ".", call. = FALSE
+  )
+}
 EMPIRICAL_ROI_MARKER_PATH <- Sys.getenv(
   "PROTEOMICS_EMPIRICAL_ROI_MARKER_FILE",
   unset = path_results("tables", "03_qc_exploration", "05_empirical_roi_marker_discovery", "empirical_roi_marker_sets.csv")
@@ -811,16 +823,16 @@ method_status <- function() {
       requireNamespace("clusterProfiler", quietly = TRUE)
     ),
     note = c(
-      "fgsea::fgsea with custom TERM2GENE pathways",
+      "seeded fgsea::fgsea with custom TERM2GENE pathways; reached only by declared priority/fallback",
       "limma::geneSetTest on ranked contrast statistics; camera/roast require expression matrix/design and are not used from mapped tables",
-      "clusterProfiler::GSEA with custom TERM2GENE fallback"
+      "seeded clusterProfiler::GSEA with custom TERM2GENE fallback"
     )
   ) %>%
     dplyr::mutate(priority = match(.data$method, SIGNATURE_METHOD_PRIORITY)) %>%
     dplyr::arrange(is.na(.data$priority), .data$priority)
 }
 
-run_one_gsea <- function(stats, term2gene, methods) {
+run_one_gsea <- function(stats, term2gene, methods, dataset, comparison) {
   stats <- stats[!is.na(stats)]
   stats <- sort(stats, decreasing = TRUE)
   stats <- stats[!duplicated(names(stats))]
@@ -829,52 +841,122 @@ run_one_gsea <- function(stats, term2gene, methods) {
   pathways <- pathways[vapply(pathways, function(g) sum(g %in% names(stats)) >= 3, logical(1))]
   if (!length(pathways) || length(stats) < 10) return(tibble())
 
-  for (method_i in methods$method[methods$available]) {
-    if (identical(method_i, "fgsea")) {
-    res <- tryCatch({
-      if ("fgseaSimple" %in% getNamespaceExports("fgsea")) {
-        fgsea::fgseaSimple(pathways = pathways, stats = stats, minSize = 3, maxSize = 500, nperm = 1000, nproc = 1)
-      } else if (requireNamespace("BiocParallel", quietly = TRUE)) {
-        fgsea::fgsea(pathways = pathways, stats = stats, minSize = 3, maxSize = 500, BPPARAM = BiocParallel::SerialParam())
-      } else {
-        fgsea::fgsea(pathways = pathways, stats = stats, minSize = 3, maxSize = 500, nproc = 1)
-      }
-    }, error = function(e) NULL)
-    if (!is.null(res) && nrow(res)) {
-      return(as.data.frame(res) %>%
-        tibble::as_tibble() %>%
-        dplyr::transmute(signature = .data$pathway, method = "fgsea", NES = .data$NES, pvalue = .data$pval, padj = .data$padj, set_size = .data$size, leading_edge = vapply(.data$leadingEdge, paste, character(1), collapse = "/")))
+  attempt_log <- character()
+  for (method_index in seq_len(nrow(methods))) {
+    method_i <- methods$method[[method_index]]
+    if (!methods$available[[method_index]]) {
+      attempt_log <- c(attempt_log, paste0(method_i, ":unavailable"))
+      next
     }
+    reproducibility <- targeted_enrichment_reproducibility(
+      dataset, comparison, method_i,
+      TARGETED_GSEA_SEED_BASE, TARGETED_N_PERM_SIMPLE
+    )
+    failure <- NULL
+    res <- NULL
+    if (identical(method_i, "fgsea")) {
+      res <- tryCatch(
+        run_with_stable_gsea_rng(function() {
+          if ("fgseaSimple" %in% getNamespaceExports("fgsea")) {
+            fgsea::fgseaSimple(
+              pathways = pathways, stats = stats, minSize = 3,
+              maxSize = 500, nperm = 1000, nproc = 1
+            )
+          } else if (requireNamespace("BiocParallel", quietly = TRUE)) {
+            fgsea::fgsea(
+              pathways = pathways, stats = stats, minSize = 3,
+              maxSize = 500, BPPARAM = BiocParallel::SerialParam()
+            )
+          } else {
+            fgsea::fgsea(
+              pathways = pathways, stats = stats, minSize = 3,
+              maxSize = 500, nproc = 1
+            )
+          }
+        }, gsea_seed = reproducibility$gsea_seed),
+        error = function(e) {
+          failure <<- conditionMessage(e)
+          NULL
+        }
+      )
+      if (!is.null(res) && nrow(res)) {
+        res <- as.data.frame(res) %>%
+          tibble::as_tibble() %>%
+          dplyr::transmute(
+            signature = .data$pathway, method = "fgsea", NES = .data$NES,
+            pvalue = .data$pval, padj = .data$padj, set_size = .data$size,
+            leading_edge = vapply(
+              .data$leadingEdge, paste, character(1), collapse = "/"
+            )
+          )
+      }
     }
 
     if (identical(method_i, "limma_ranked_geneSetTest")) {
-    out <- lapply(names(pathways), function(term) {
-      idx <- which(names(stats) %in% pathways[[term]])
-      if (length(idx) < 3) return(NULL)
-      p <- tryCatch(limma::geneSetTest(idx, stats, alternative = "either"), error = function(e) NA_real_)
-      leading <- idx[order(abs(stats[idx]), decreasing = TRUE)]
-      leading <- leading[seq_len(min(25, length(leading)))]
-      tibble::tibble(
-        signature = term,
-        method = "limma_ranked_geneSetTest",
-        NES = mean(stats[idx], na.rm = TRUE) / stats::sd(stats, na.rm = TRUE),
-        pvalue = p,
-        set_size = length(idx),
-        leading_edge = paste(names(stats)[leading], collapse = "/")
-      )
-    })
-    res <- dplyr::bind_rows(out)
-    if (nrow(res)) return(res %>% dplyr::mutate(padj = p.adjust(.data$pvalue, method = "BH")))
+      res <- tryCatch({
+        out <- lapply(names(pathways), function(term) {
+          idx <- which(names(stats) %in% pathways[[term]])
+          if (length(idx) < 3) return(NULL)
+          p <- tryCatch(
+            limma::geneSetTest(idx, stats, alternative = "either"),
+            error = function(e) NA_real_
+          )
+          leading <- idx[order(abs(stats[idx]), decreasing = TRUE)]
+          leading <- leading[seq_len(min(25, length(leading)))]
+          tibble::tibble(
+            signature = term, method = "limma_ranked_geneSetTest",
+            NES = mean(stats[idx], na.rm = TRUE) / stats::sd(stats, na.rm = TRUE),
+            pvalue = p, set_size = length(idx),
+            leading_edge = paste(names(stats)[leading], collapse = "/")
+          )
+        })
+        dplyr::bind_rows(out) %>%
+          dplyr::mutate(padj = p.adjust(.data$pvalue, method = "BH"))
+      }, error = function(e) {
+        failure <<- conditionMessage(e)
+        NULL
+      })
     }
 
     if (identical(method_i, "clusterProfiler_GSEA")) {
-    res <- tryCatch(clusterProfiler::GSEA(stats, TERM2GENE = term2gene, minGSSize = 3, maxGSSize = 500, pvalueCutoff = 1, verbose = FALSE), error = function(e) NULL)
-    if (!is.null(res) && nrow(as.data.frame(res))) {
-      return(as.data.frame(res) %>%
-        tibble::as_tibble() %>%
-        dplyr::transmute(signature = .data$ID, method = "clusterProfiler_GSEA", NES = .data$NES, pvalue = .data$pvalue, padj = .data$p.adjust, set_size = .data$setSize, leading_edge = .data$core_enrichment))
+      res <- tryCatch(
+        run_seeded_clusterprofiler_gsea(
+          clusterProfiler::GSEA,
+          gsea_seed = reproducibility$gsea_seed,
+          n_perm_simple = reproducibility$n_perm_simple,
+          geneList = stats, TERM2GENE = term2gene, minGSSize = 3,
+          maxGSSize = 500, pvalueCutoff = 1, verbose = FALSE
+        ),
+        error = function(e) {
+          failure <<- conditionMessage(e)
+          NULL
+        }
+      )
+      if (!is.null(res) && nrow(as.data.frame(res))) {
+        res <- as.data.frame(res) %>%
+          tibble::as_tibble() %>%
+          dplyr::transmute(
+            signature = .data$ID, method = "clusterProfiler_GSEA",
+            NES = .data$NES, pvalue = .data$pvalue,
+            padj = .data$p.adjust, set_size = .data$setSize,
+            leading_edge = .data$core_enrichment
+          )
+      }
     }
+
+    if (!is.null(res) && nrow(res)) {
+      attempt_log <- c(attempt_log, paste0(method_i, ":selected"))
+      provenance <- targeted_method_selection_provenance(
+        methods, method_i, attempt_log, reproducibility
+      )
+      return(dplyr::bind_cols(
+        res, provenance[rep(1L, nrow(res)), , drop = FALSE]
+      ))
     }
+    failure <- if (is.null(failure)) "completed_zero_rows" else gsub(
+      "[;\r\n]+", " ", failure
+    )
+    attempt_log <- c(attempt_log, paste0(method_i, ":failed:", failure))
   }
 
   tibble()
@@ -927,7 +1009,10 @@ run_signature_enrichment <- function(ranked, term2gene, reference_specificity = 
     purrr::map_dfr(function(df) {
       stats <- df$rank_stat
       names(stats) <- df$gene
-      res <- run_one_gsea(stats, term2gene, methods)
+      res <- run_one_gsea(
+        stats, term2gene, methods,
+        dataset = df$dataset[[1]], comparison = df$comparison[[1]]
+      )
       if (!nrow(res)) return(tibble())
       res <- res %>%
         dplyr::mutate(
@@ -1271,6 +1356,15 @@ if (DATASET != "microglia") {
   write_empty_outputs("skipped_non_microglia_dataset", diagnostics)
   quit(status = 0, save = "no")
 }
+
+if (!requireNamespace("yaml", quietly = TRUE)) {
+  stop("Package 'yaml' is required for fallback RNG settings.", call. = FALSE)
+}
+TARGETED_GSEA_CFG <- validate_clusterprofiler_gsea_config(yaml::read_yaml(
+  repo_path("config", "clusterProfiler_config.yml")
+))
+TARGETED_GSEA_SEED_BASE <- TARGETED_GSEA_CFG$analysis$gsea_seed_base
+TARGETED_N_PERM_SIMPLE <- TARGETED_GSEA_CFG$analysis$n_perm_simple
 
 id_map <- read_mouse_id_map()
 curated_term2gene <- expand_term2gene_for_uniprot(make_term2gene(signature_sets), id_map)
@@ -1926,6 +2020,7 @@ writeLines(c(
   "Method note:",
   "All detected proteins in each mapped contrast table are used as the ranked universe.",
   "The selected enrichment method is recorded in enrichment_method for every row.",
+  "Method priority, available methods, attempted methods, selected priority, stochastic fallback status, semantic seed, RNG kind, and permutation controls are recorded on every enrichment row.",
   "For limma_ranked_geneSetTest, effect_statistic is the mean targeted-set rank statistic divided by the standard deviation of the full ranked vector; effect_statistic_type is standardized_mean_rank_stat. This is not a GSEA normalized enrichment score.",
   "For fgsea and clusterProfiler_GSEA, effect_statistic_type is NES and effect_statistic is the method's normalized enrichment score.",
   "The legacy NES column is retained only for schema compatibility and is numerically identical to effect_statistic; legacy_NES_column_semantics identifies whether it is a true NES or a compatibility alias.",
@@ -1963,6 +2058,10 @@ write_run_manifest(
     validation_only = VALIDATION_ONLY,
     empirical_marker_contract = TARGETED_EMPIRICAL_MARKER_CONTRACT,
     claim_ready_contract = TARGETED_CLAIM_READY_CONTRACT,
+    enrichment_method_priority = as.list(SIGNATURE_METHOD_PRIORITY),
+    stochastic_fallback_seed_base = TARGETED_GSEA_SEED_BASE,
+    stochastic_clusterprofiler_n_perm_simple = TARGETED_N_PERM_SIMPLE,
+    stochastic_rng_kind = "L'Ecuyer-CMRG/Inversion/Rejection",
     primary_fdr_scope = "within_comparison_signature_panel",
     global_fdr_sensitivity_scope = "across_all_signature_comparison_rows_within_dataset"
   ),

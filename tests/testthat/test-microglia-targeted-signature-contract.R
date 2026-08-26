@@ -6,7 +6,78 @@ targeted_repo_root <- function() {
   normalizePath(file.path(testthat::test_path(), "..", ".."), winslash = "/", mustWork = TRUE)
 }
 
+source(file.path(
+  targeted_repo_root(), "R", "clusterprofiler_reproducibility.R"
+))
 source(file.path(targeted_repo_root(), "R", "microglia_targeted_signature_utils.R"))
+
+testthat::test_that("stochastic fallback seeds are stable and semantic", {
+  first <- targeted_enrichment_reproducibility(
+    "microglia", "CA1sus_CA1con", "fgsea", 20260824L, 100000L
+  )
+  second <- targeted_enrichment_reproducibility(
+    "microglia", "CA1sus_CA1con", "fgsea", 20260824L, 100000L
+  )
+  distinct <- targeted_enrichment_reproducibility(
+    "microglia", "CA3sus_CA3con", "fgsea", 20260824L, 100000L
+  )
+  deterministic <- targeted_enrichment_reproducibility(
+    "microglia", "CA1sus_CA1con", "limma_ranked_geneSetTest",
+    20260824L, 100000L
+  )
+  testthat::expect_identical(first, second)
+  testthat::expect_false(identical(first$gsea_seed, distinct$gsea_seed))
+  testthat::expect_identical(first$fgsea_simple_nperm, 1000L)
+  testthat::expect_true(is.na(deterministic$gsea_seed))
+  testthat::expect_identical(
+    deterministic$rng_kind, "not_applicable_deterministic_method"
+  )
+})
+
+testthat::test_that("fallback method selection is explicit in provenance", {
+  methods <- data.frame(
+    method = c(
+      "limma_ranked_geneSetTest", "fgsea", "clusterProfiler_GSEA"
+    ),
+    available = TRUE, priority = 1:3, stringsAsFactors = FALSE
+  )
+  reproducibility <- targeted_enrichment_reproducibility(
+    "microglia", "CA1sus_CA1con", "fgsea", 20260824L, 100000L
+  )
+  observed <- targeted_method_selection_provenance(
+    methods, "fgsea",
+    c("limma_ranked_geneSetTest:failed:test", "fgsea:selected"),
+    reproducibility
+  )
+  testthat::expect_true(observed$stochastic_fallback_used)
+  testthat::expect_identical(observed$selected_method_priority, 2L)
+  testthat::expect_match(
+    observed$method_attempt_log,
+    "limma_ranked_geneSetTest:failed:test;fgsea:selected", fixed = TRUE
+  )
+  testthat::expect_match(
+    observed$method_priority_order,
+    "limma_ranked_geneSetTest;fgsea;clusterProfiler_GSEA", fixed = TRUE
+  )
+})
+
+testthat::test_that("seeded fallback scope restores caller RNG", {
+  identity <- targeted_enrichment_reproducibility(
+    "microglia", "CA1sus_CA1con", "fgsea", 20260824L, 100000L
+  )
+  set.seed(12345)
+  kind_before <- RNGkind()
+  state_before <- .Random.seed
+  first <- run_with_stable_gsea_rng(
+    function() stats::runif(5), identity$gsea_seed
+  )
+  testthat::expect_identical(RNGkind(), kind_before)
+  testthat::expect_identical(.Random.seed, state_before)
+  second <- run_with_stable_gsea_rng(
+    function() stats::runif(5), identity$gsea_seed
+  )
+  testthat::expect_identical(first, second)
+})
 
 testthat::test_that("effect-statistic provenance is method specific", {
   methods <- c("limma_ranked_geneSetTest", "fgsea", "clusterProfiler_GSEA")
@@ -238,4 +309,15 @@ testthat::test_that("active script cannot bind descriptive stress-rank membershi
   testthat::expect_match(script, "targeted_add_claim_ready\\(\\)")
   testthat::expect_match(script, "filter\\(\\.data\\$claim_ready\\)")
   testthat::expect_false(grepl("claim_ready = \\.data\\$significant", script))
+  testthat::expect_match(
+    script,
+    'unset = "limma_ranked_geneSetTest,fgsea,clusterProfiler_GSEA"',
+    fixed = TRUE
+  )
+  testthat::expect_match(script, "run_with_stable_gsea_rng\\(")
+  testthat::expect_match(script, "run_seeded_clusterprofiler_gsea\\(")
+  testthat::expect_match(script, "targeted_method_selection_provenance\\(")
+  testthat::expect_false(grepl(
+    "tryCatch\\(clusterProfiler::GSEA\\(", script, perl = TRUE
+  ))
 })

@@ -1,6 +1,79 @@
 TARGETED_EMPIRICAL_MARKER_CONTRACT <- "empirical_roi_marker_v2_animal_paired_limma"
 TARGETED_CLAIM_READY_CONTRACT <- "microglia_targeted_claim_ready_v2"
 
+targeted_enrichment_reproducibility <- function(
+    dataset, comparison, method, gsea_seed_base, n_perm_simple
+) {
+  comparison_identity <- paste0(
+    "script=microglia_targeted_signature_enrichment|dataset=", dataset,
+    "|comparison=", comparison
+  )
+  analysis_type <- paste0("targeted_signature|method=", method)
+  stochastic <- method %in% c("fgsea", "clusterProfiler_GSEA")
+  data.frame(
+    gsea_semantic_comparison = comparison_identity,
+    gsea_analysis_type = analysis_type,
+    gsea_seed_base = if (stochastic) {
+      clusterprofiler_integer_scalar(gsea_seed_base, "gsea_seed_base")
+    } else {
+      NA_integer_
+    },
+    gsea_seed = if (stochastic) {
+      derive_clusterprofiler_gsea_seed(
+        gsea_seed_base, comparison_identity, analysis_type
+      )
+    } else {
+      NA_integer_
+    },
+    n_perm_simple = if (identical(method, "clusterProfiler_GSEA")) {
+      clusterprofiler_integer_scalar(n_perm_simple, "n_perm_simple")
+    } else {
+      NA_integer_
+    },
+    fgsea_simple_nperm = if (identical(method, "fgsea")) 1000L else NA_integer_,
+    rng_kind = if (stochastic) {
+      "L'Ecuyer-CMRG/Inversion/Rejection"
+    } else {
+      "not_applicable_deterministic_method"
+    },
+    stringsAsFactors = FALSE
+  )
+}
+
+targeted_method_selection_provenance <- function(
+    method_table, selected_method, attempt_log, reproducibility
+) {
+  if (!is.data.frame(method_table) ||
+      !all(c("method", "available", "priority") %in% names(method_table))) {
+    stop("method_table is missing method-selection fields.", call. = FALSE)
+  }
+  if (nrow(reproducibility) != 1L) {
+    stop("reproducibility must contain one row.", call. = FALSE)
+  }
+  selected_priority <- method_table$priority[
+    match(selected_method, method_table$method)
+  ]
+  if (length(selected_priority) != 1L || is.na(selected_priority)) {
+    stop("Selected enrichment method has no declared priority.", call. = FALSE)
+  }
+  cbind(
+    data.frame(
+      method_priority_order = paste(
+        method_table$method[order(method_table$priority)], collapse = ";"
+      ),
+      available_methods = paste(
+        method_table$method[method_table$available], collapse = ";"
+      ),
+      selected_method_priority = as.integer(selected_priority),
+      stochastic_fallback_used = selected_method %in%
+        c("fgsea", "clusterProfiler_GSEA"),
+      method_attempt_log = paste(attempt_log, collapse = ";"),
+      stringsAsFactors = FALSE
+    ),
+    reproducibility
+  )
+}
+
 targeted_effect_statistic_type <- function(enrichment_method) {
   dplyr::case_when(
     enrichment_method == "limma_ranked_geneSetTest" ~ "standardized_mean_rank_stat",
