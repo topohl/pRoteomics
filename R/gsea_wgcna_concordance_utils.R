@@ -48,7 +48,7 @@ gww_validate_gsea_terms <- function(x) {
     x,
     c(
       "dataset", "phenotype_contrast", "spatial_unit", "program_class",
-      "Comparison", "ID", "Description", "NES", "pvalue", "p.adjust",
+      "comparison", "ID", "Description", "NES", "pvalue", "p.adjust",
       "core_enrichment", "evidence_source_family"
     ),
     "Canonical spatial ranked-GSEA term table"
@@ -151,7 +151,7 @@ gww_validate_theme_terms <- function(x) {
   gww_assert_columns(
     x,
     c(
-      "dataset", "phenotype_contrast", "spatial_unit", "Comparison",
+      "dataset", "phenotype_contrast", "spatial_unit", "comparison",
       "GO_ID", "GO_description", "NES", "pvalue", "p.adjust",
       "core_enrichment", "evidence_source_family", "theme_id",
       "manuscript_theme", "theme_role", "theme_claim_eligible",
@@ -192,11 +192,11 @@ gww_prepare_supported_terms <- function(x) {
         TRUE ~ 0L
       ),
       term_occurrence_key = paste(
-        .data$dataset, .data$Comparison, .data$GO_ID,
+        .data$dataset, .data$comparison, .data$GO_ID,
         .data$theme_id, sep = "|"
       ),
       source_term_key = paste(
-        .data$dataset, .data$Comparison, .data$GO_ID, sep = "|"
+        .data$dataset, .data$comparison, .data$GO_ID, sep = "|"
       )
     ) |>
     dplyr::filter(
@@ -218,7 +218,7 @@ gww_representative_rows <- function(x, group_columns, direction_sign = NULL,
     dplyr::arrange(
       dplyr::across(dplyr::all_of(group_columns)),
       .data$p.adjust, dplyr::desc(abs(.data$NES)),
-      .data$ID, .data$Description, .data$Comparison
+      .data$ID, .data$Description, .data$comparison
     ) |>
     dplyr::group_by(dplyr::across(dplyr::all_of(group_columns))) |>
     dplyr::slice_head(n = 1L) |>
@@ -231,7 +231,7 @@ gww_representative_rows <- function(x, group_columns, direction_sign = NULL,
       raw_p = as.numeric(.data$pvalue),
       GSEA_FDR = as.numeric(.data$p.adjust),
       leading_edge_accessions = as.character(.data$core_enrichment),
-      source_comparison = as.character(.data$Comparison),
+      source_comparison = as.character(.data$comparison),
       gsea_source_key = as.character(.data$source_term_key),
       source_supplementary_file = as.character(.data$source_supplementary_file)
     )

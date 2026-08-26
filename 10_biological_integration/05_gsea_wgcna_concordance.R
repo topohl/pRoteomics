@@ -176,6 +176,9 @@ gsea_terms <- readr::read_csv(
   progress = FALSE,
   guess_max = Inf
 )
+gsea_terms <- normalize_stage07_comparison_column(
+  gsea_terms, "Canonical spatial ranked-GSEA term table"
+)
 gww_validate_gsea_terms(gsea_terms)
 theme_registry <- read_manuscript_go_theme_registry(theme_registry_file)
 gsea_theme_terms <- gww_build_ontology_theme_term_table(
@@ -668,7 +671,7 @@ gww_assert_unique(
 # Exact source-value traces: no inferential value may be silently rewritten.
 gsea_source <- gsea_terms |>
   dplyr::transmute(
-    gsea_source_key = paste(.data$dataset, .data$Comparison, .data$ID, sep = "|"),
+    gsea_source_key = paste(.data$dataset, .data$comparison, .data$ID, sep = "|"),
     source_NES = as.numeric(.data$NES),
     source_raw_p = as.numeric(.data$pvalue),
     source_GSEA_FDR = as.numeric(.data$p.adjust)
@@ -992,7 +995,7 @@ theme_assignment_output <- gsea_theme_terms |>
     phenotype_contrast = as.character(.data$phenotype_contrast),
     contrast = gww_formal_contrast(.data$phenotype_contrast),
     spatial_unit = as.character(.data$spatial_unit),
-    source_comparison = as.character(.data$Comparison),
+    source_comparison = as.character(.data$comparison),
     GO_ID = as.character(.data$GO_ID),
     GO_description = as.character(.data$GO_description),
     NES = as.numeric(.data$NES),

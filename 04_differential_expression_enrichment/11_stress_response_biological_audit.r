@@ -93,19 +93,25 @@ if (!all(protein$algebra_audit$tolerance_pass)) {
 if (!all(protein$joint_family_audit$validation_pass)) stop("Protein joint-control BH family validation failed.", call. = FALSE)
 
 message("Reading the existing full ranked-GSEA source (selected columns only)...")
-go_columns <- c(
-  "Comparison", "ID", "Description", "pvalue", "p.adjust", "NES", "core_enrichment", "core_enrichment_gene",
+go_required_columns <- c(
+  "ID", "Description", "pvalue", "p.adjust", "NES", "core_enrichment", "core_enrichment_gene",
   "dataset", "dataset_label", "source_supplementary_file", "source_manifest_file", "evidence_source_family",
   "route_unit", "phenotype_contrast", "region", "layer", "compartment", "spatial_unit"
 )
+go_comparison_columns <- c("comparison", "legacy_Comparison", "Comparison")
 go_long <- readr::read_csv(
   GO_SOURCE,
-  col_select = tidyselect::all_of(go_columns),
+  col_select = tidyselect::any_of(c(go_required_columns, go_comparison_columns)),
   show_col_types = FALSE,
   progress = interactive(),
   name_repair = "minimal"
 )
 go_long <- as.data.frame(go_long, stringsAsFactors = FALSE, check.names = FALSE)
+missing_go_columns <- setdiff(go_required_columns, names(go_long))
+if (length(missing_go_columns)) {
+  stop("Ranked-GSEA source is missing required column(s): ", paste(missing_go_columns, collapse = ", "), call. = FALSE)
+}
+go_long <- normalize_stage07_comparison_column(go_long, "Ranked-GSEA source")
 go_long <- go_long[as.character(go_long$phenotype_contrast) %in% STRESS_RESPONSE_CONTRASTS, , drop = FALSE]
 go_long$pvalue <- suppressWarnings(as.numeric(go_long$pvalue))
 go_long$p.adjust <- suppressWarnings(as.numeric(go_long$p.adjust))

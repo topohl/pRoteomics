@@ -12,7 +12,7 @@ ontology_fixture <- function(ids, descriptions) {
     phenotype_contrast = "SUS_vs_RES",
     spatial_unit = "CA3-SR",
     program_class = "Mitochondria_OXPHOS_Metabolism",
-    Comparison = "fixture",
+    comparison = "fixture",
     ID = ids,
     Description = descriptions,
     NES = -1.5,
