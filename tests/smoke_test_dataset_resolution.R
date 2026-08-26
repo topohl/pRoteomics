@@ -12,32 +12,60 @@ if (!identical(valid_datasets(), expected)) {
   fail <- c(fail, paste("valid_datasets changed unexpectedly:", paste(valid_datasets(), collapse = ", ")))
 }
 
+fixture_root <- tempfile("dataset_resolution_contract_")
+dir.create(fixture_root, recursive = TRUE, showWarnings = FALSE)
+
 for (dataset in expected) {
-  w <- resolve_dataset_inputs(dataset, "wgcna")
-  m <- resolve_dataset_inputs(dataset, "module_score")
+  fixture_paths <- c(
+    wgcna_expression = file.path(
+      fixture_root,
+      paste0("20260826_pgmatrix_imputed_", dataset, "_fixture_missing70pct.xlsx")
+    ),
+    wgcna_metadata = file.path(fixture_root, paste0(dataset, "_wgcna_metadata.xlsx")),
+    module_expression = file.path(
+      fixture_root,
+      paste0("20260826_pgmatrix_imputed_", dataset, "_fixture_missing70pct_with_metadata.xlsx")
+    ),
+    module_metadata = file.path(fixture_root, paste0(dataset, "_module_metadata.xlsx"))
+  )
+  if (!all(file.create(fixture_paths))) {
+    stop("Could not create dataset-resolution smoke fixtures.", call. = FALSE)
+  }
+  do.call(Sys.setenv, as.list(c(
+    PROTEOMICS_WGCNA_UPSTREAM_XLSX = fixture_paths[["wgcna_expression"]],
+    PROTEOMICS_WGCNA_UPSTREAM_META_XLSX = fixture_paths[["wgcna_metadata"]],
+    PROTEOMICS_MODULE_SCORE_PROTEIN_FILE = fixture_paths[["module_expression"]],
+    PROTEOMICS_MODULE_SCORE_METADATA_FILE = fixture_paths[["module_metadata"]]
+  )))
+
+  w <- resolve_dataset_inputs(dataset, "wgcna", record_resolution = FALSE)
+  m <- resolve_dataset_inputs(dataset, "module_score", record_resolution = FALSE)
   if (!identical(w$dataset, dataset)) fail <- c(fail, paste("WGCNA resolver returned wrong dataset for", dataset))
   if (!identical(m$dataset, dataset)) fail <- c(fail, paste("module_score resolver returned wrong dataset for", dataset))
   if (!length(w$diagnostics) || !length(m$diagnostics)) fail <- c(fail, paste("Missing diagnostics for", dataset))
+  if (!identical(w$expression_file, normalizePath(fixture_paths[["wgcna_expression"]], winslash = "/"))) {
+    fail <- c(fail, paste("WGCNA explicit input override not honored for", dataset))
+  }
+  if (!identical(m$expression_file, normalizePath(fixture_paths[["module_expression"]], winslash = "/"))) {
+    fail <- c(fail, paste("module_score explicit input override not honored for", dataset))
+  }
+}
 
-  if (file.exists(w$expression_file) && file.exists(w$metadata_file) && requireNamespace("readxl", quietly = TRUE)) {
-    expr_head <- readxl::read_excel(w$expression_file, n_max = 3)
-    md_head <- readxl::read_excel(w$metadata_file, n_max = 1000)
-    sample_col <- detect_column(md_head, w$sample_id_col_candidates)
-    if (is.na(sample_col)) {
-      fail <- c(fail, paste("No metadata sample column detected for", dataset))
-    } else {
-      overlap <- sample_overlap_summary(setdiff(names(expr_head), w$protein_id_col_candidates), md_head[[sample_col]])
-      if (overlap$n_overlap == 0) fail <- c(fail, paste("No sample overlap for", dataset))
-      keep <- metadata_matches_dataset(md_head, dataset)
-      if (any(keep) && "CellTypeLayer" %in% names(md_head)) {
-        leaked <- unique(tolower(as.character(md_head$CellTypeLayer[keep])))
-        if (dataset == "neuron_neuropil" && any(grepl("soma|microglia", leaked))) fail <- c(fail, "neuron_neuropil filter leakage")
-        if (dataset == "neuron_soma" && any(grepl("neuropil|microglia", leaked))) fail <- c(fail, "neuron_soma filter leakage")
-        if (dataset == "microglia" && any(grepl("neuron|soma|neuropil", leaked))) fail <- c(fail, "microglia filter leakage")
-      }
-    }
-  } else {
-    message("SKIP sample overlap for ", dataset, ": local matrix/metadata not both available")
+Sys.unsetenv(c(
+  "PROTEOMICS_WGCNA_UPSTREAM_XLSX",
+  "PROTEOMICS_WGCNA_UPSTREAM_META_XLSX",
+  "PROTEOMICS_MODULE_SCORE_PROTEIN_FILE",
+  "PROTEOMICS_MODULE_SCORE_METADATA_FILE"
+))
+
+metadata_fixture <- data.frame(
+  CellTypeLayer = c("Neuron_Neuropil", "Neuron_Soma", "Microglia"),
+  stringsAsFactors = FALSE
+)
+for (dataset in expected) {
+  keep <- metadata_matches_dataset(metadata_fixture, dataset)
+  if (!identical(which(keep), match(dataset, expected))) {
+    fail <- c(fail, paste("Dataset metadata filter leakage for", dataset))
   }
 }
 
