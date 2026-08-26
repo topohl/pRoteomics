@@ -74,6 +74,10 @@ testthat::test_that("marker registry helpers load registry, empirical sets, and 
     marker_set = "empirical_microglia_roi_enriched",
     ProteinID = "Aif1",
     GeneSymbol = "Aif1",
+    mapped_gene_symbol = "Aif1",
+    marker_evidence_type = "inferential",
+    claim_allowed = TRUE,
+    marker_contract_version = "empirical_roi_marker_v2_animal_paired_limma",
     marker_source = "test_empirical",
     stringsAsFactors = FALSE
   ), empirical_file, row.names = FALSE)

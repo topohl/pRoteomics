@@ -715,25 +715,85 @@ marker_registry_to_sets <- function(registry) {
     lapply(function(x) unique(x[nzchar(normalize_gene_token(x))]))
 }
 
-read_empirical_roi_marker_sets <- function(path = Sys.getenv("PROTEOMICS_WGCNA_EMPIRICAL_MARKER_FILE", unset = "")) {
+# Canonical empirical ROI marker contract consumed by WGCNA downstream annotation.
+# Stage 06 uses these panels descriptively (marker-fraction annotation), so the
+# canonical identity field is `mapped_gene_symbol`: it carries the mapped gene for
+# every row whose canonical mapping is allowed, regardless of claim eligibility.
+# `GeneSymbol` is deliberately claim-gated by the producer
+# (GeneSymbol = if_else(claim_allowed, official_gene_symbol, NA)), so keying panels
+# on it silently deletes every descriptive-only panel. Claim/inferential consumers
+# must keep using `GeneSymbol` plus the claim flags (see
+# build_canonical_empirical_roi_term2gene()); this reader is descriptive-only and
+# records the evidence role of each panel so callers cannot conflate the two.
+WGCNA_EMPIRICAL_MARKER_CONTRACT <- "empirical_roi_marker_v2_animal_paired_limma"
+WGCNA_EMPIRICAL_MARKER_IDENTITY_FIELD <- "mapped_gene_symbol"
+
+read_empirical_roi_marker_sets <- function(path = Sys.getenv("PROTEOMICS_WGCNA_EMPIRICAL_MARKER_FILE", unset = ""),
+                                           expected_contract = WGCNA_EMPIRICAL_MARKER_CONTRACT) {
   if (!nzchar(path)) path <- path_results("tables", "03_qc_exploration", "05_empirical_roi_marker_discovery", "empirical_roi_marker_sets.csv")
   path <- normalizePath(path, winslash = "/", mustWork = FALSE)
   empirical <- safe_read_csv(path)
   if (is.null(empirical) || !nrow(empirical)) return(NULL)
-  required <- c("marker_set", "GeneSymbol")
+  required <- c(
+    "marker_set", WGCNA_EMPIRICAL_MARKER_IDENTITY_FIELD, "marker_evidence_type",
+    "claim_allowed", "marker_contract_version"
+  )
   missing <- setdiff(required, names(empirical))
-  if (length(missing)) stop("Empirical marker file is missing required column(s): ", paste(missing, collapse = ", "), call. = FALSE)
-  empirical$gene_symbol <- as.character(empirical$GeneSymbol)
+  if (length(missing)) {
+    stop(
+      "Empirical marker file does not satisfy the ", expected_contract,
+      " contract; missing required column(s): ", paste(missing, collapse = ", "),
+      call. = FALSE
+    )
+  }
+  contracts <- unique(as.character(empirical$marker_contract_version))
+  contracts <- contracts[!is.na(contracts) & nzchar(trimws(contracts))]
+  if (!length(contracts) || !all(contracts == expected_contract)) {
+    stop(
+      "Empirical marker contract mismatch; expected only '", expected_contract,
+      "', observed: ", paste(contracts, collapse = ", "), call. = FALSE
+    )
+  }
+  empirical$gene_symbol <- as.character(empirical[[WGCNA_EMPIRICAL_MARKER_IDENTITY_FIELD]])
   empirical$gene_token <- normalize_gene_token(empirical$gene_symbol)
-  empirical <- empirical[nzchar(empirical$gene_token) & !is.na(empirical$gene_token), , drop = FALSE]
+  mapped <- !is.na(empirical$gene_token) & nzchar(empirical$gene_token)
+  attr(empirical, "empirical_marker_rows_mapping_blocked") <- sum(!mapped)
+  empirical <- empirical[mapped, , drop = FALSE]
   attr(empirical, "empirical_marker_file") <- path
+  attr(empirical, "empirical_marker_identity_field") <- WGCNA_EMPIRICAL_MARKER_IDENTITY_FIELD
+  attr(empirical, "empirical_marker_contract_version") <- expected_contract
   attr(empirical, "empirical_marker_set_version") <- paste(unique(empirical$marker_source %||% "empirical_roi_marker_sets"), collapse = ";")
   empirical
+}
+
+# Evidence role per empirical panel, so descriptive-only panels are never treated
+# as inferential/claim evidence by descriptive consumers.
+empirical_roi_marker_panel_roles <- function(empirical) {
+  if (is.null(empirical) || !nrow(empirical)) {
+    return(data.frame(
+      marker_set = character(), marker_evidence_type = character(),
+      claim_eligible_members = integer(), stringsAsFactors = FALSE
+    ))
+  }
+  split_sets <- split(seq_len(nrow(empirical)), as.character(empirical$marker_set))
+  out <- lapply(names(split_sets), function(nm) {
+    idx <- split_sets[[nm]]
+    types <- unique(as.character(empirical$marker_evidence_type[idx]))
+    data.frame(
+      marker_set = nm,
+      marker_evidence_type = paste(sort(types), collapse = ";"),
+      claim_eligible_members = sum(empirical$claim_allowed[idx] %in% c(TRUE, "TRUE", "True", "true")),
+      stringsAsFactors = FALSE
+    )
+  })
+  do.call(rbind, out)
 }
 
 load_wgcna_marker_sets <- function(include_empirical = TRUE, include_legacy_aliases = TRUE, quiet = FALSE) {
   registry <- read_wgcna_marker_registry()
   empirical <- if (isTRUE(include_empirical)) read_empirical_roi_marker_sets() else NULL
+  empirical_identity_field <- NA_character_
+  empirical_panel_roles <- empirical_roi_marker_panel_roles(NULL)
   sets <- list()
   metadata <- data.frame(marker_set = character(), marker_source = character(), source_file = character(), stringsAsFactors = FALSE)
 
@@ -749,7 +809,8 @@ load_wgcna_marker_sets <- function(include_empirical = TRUE, include_legacy_alia
   }
 
   if (!is.null(empirical)) {
-    emp_sets <- split(as.character(empirical$GeneSymbol), as.character(empirical$marker_set)) |>
+    identity_field <- attr(empirical, "empirical_marker_identity_field") %||% "gene_symbol"
+    emp_sets <- split(as.character(empirical$gene_symbol), as.character(empirical$marker_set)) |>
       lapply(function(x) unique(x[nzchar(normalize_gene_token(x))]))
     sets <- c(sets, emp_sets)
     metadata <- rbind(metadata, data.frame(
@@ -758,6 +819,8 @@ load_wgcna_marker_sets <- function(include_empirical = TRUE, include_legacy_alia
       source_file = attr(empirical, "empirical_marker_file") %||% NA_character_,
       stringsAsFactors = FALSE
     ))
+    empirical_identity_field <- identity_field
+    empirical_panel_roles <- empirical_roi_marker_panel_roles(empirical)
   }
 
   if (!length(sets)) {
@@ -788,6 +851,8 @@ load_wgcna_marker_sets <- function(include_empirical = TRUE, include_legacy_alia
   attr(sets, "marker_source_metadata") <- metadata
   attr(sets, "marker_registry_version") <- if (!is.null(registry)) attr(registry, "marker_registry_version") else NA_character_
   attr(sets, "empirical_marker_set_version") <- if (!is.null(empirical)) attr(empirical, "empirical_marker_set_version") else NA_character_
+  attr(sets, "empirical_marker_identity_field") <- empirical_identity_field
+  attr(sets, "empirical_marker_panel_roles") <- empirical_panel_roles
   sets
 }
 
