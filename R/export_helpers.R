@@ -1,7 +1,5 @@
 # Shared helpers for 09_export_pride_journal (manifest-driven, pg_matrix-onward).
 
-`%||%` <- function(x, y) if (is.null(x) || length(x) == 0 || (length(x) == 1 && is.na(x))) y else x
-
 if (!exists("repo_path", mode = "function")) {
   paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
   source(paths_file)

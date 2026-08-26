@@ -31,10 +31,6 @@ log_dir <- path_results("logs", module_id, dataset)
 dir_create(out_dir)
 dir_create(log_dir)
 
-`%||%` <- function(x, y) {
-  if (is.null(x) || length(x) == 0L || (length(x) == 1L && is.na(x))) y else x
-}
-
 norm_token <- function(x) {
   x <- tolower(trimws(as.character(x)))
   x <- gsub("[[:space:].-]+", "_", x)

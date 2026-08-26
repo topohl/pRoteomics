@@ -109,7 +109,3 @@ validate_table_schema <- function(df, schema_name, strict = TRUE) {
 
   invisible(TRUE)
 }
-
-`%||%` <- function(x, y) {
-  if (is.null(x) || length(x) == 0) y else x
-}

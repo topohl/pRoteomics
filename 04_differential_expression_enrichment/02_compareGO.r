@@ -368,7 +368,6 @@ if (isTRUE(LEGACY_COMPAREGO_TAIL_ENABLED) && !isTRUE(DRY_RUN)) {
 # Set Analysis Parameters and Directory Structure (must be defined before first use)
 # -----------------------------------------------------
 
-`%||%` <- function(x, y) if (is.null(x)) y else x
 safe_filename <- function(x) {
   x <- gsub("[^A-Za-z0-9._-]+", "_", as.character(x))
   x <- gsub("^_+|_+$", "", x)

@@ -5,10 +5,6 @@ if (!exists("repo_path", mode = "function")) {
   source(paths_file)
 }
 
-`%||%` <- function(x, y) {
-  if (is.null(x) || length(x) == 0L || (length(x) == 1L && is.na(x))) y else x
-}
-
 safe_name <- function(x, max_chars = 180) {
   x <- as.character(x)
   x <- gsub("[/\\\\:*?\"<>|]+", "_", x)

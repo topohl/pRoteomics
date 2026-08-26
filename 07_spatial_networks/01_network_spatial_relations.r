@@ -86,10 +86,6 @@ load_required_packages <- function(pkgs) {
   invisible(lapply(pkgs, library, character.only = TRUE))
 }
 
-`%||%` <- function(x, y) {
-  if (is.null(x) || length(x) == 0) y else x
-}
-
 read_local_overrides <- function() {
   cfg_file <- repo_path("config", "spatial_networks.local.yml")
   if (!file.exists(cfg_file)) return(list())
