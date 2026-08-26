@@ -1002,7 +1002,9 @@ if (DATASET == "microglia" || force_microglia) {
   ref_counts <- dplyr::bind_rows(lapply(module_annot$ModuleColor, module_neuropil_reference_counts))
   targeted_signature_details <- build_module_targeted_signature_details(module_rows)
   targeted_counts <- summarise_module_targeted_signature_details(targeted_signature_details, module_rows) |>
-    dplyr::select(-"ModuleID", -"ModuleColor")
+    dplyr::select(-dplyr::any_of(c(
+      "ModuleID", "ModuleColor", "ModuleLegacyID", "ModuleColorName", "ModuleColorLabel"
+    )))
   module_annot <- module_annot |>
     dplyr::bind_cols(ref_counts, targeted_counts)
 } else {
