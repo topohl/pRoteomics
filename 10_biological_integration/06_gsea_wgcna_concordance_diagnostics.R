@@ -206,7 +206,7 @@ power <- gwwd_power_diagnostic(strict_long)
 strict_theme_terms <- gsea_terms |>
   dplyr::transmute(
     dataset, phenotype_contrast, spatial_unit,
-    Comparison = .data$source_comparison,
+    source_comparison = .data$source_comparison,
     ID = .data$GO_ID, Description = .data$GO_description,
     GO_ID, GO_description, NES,
     pvalue = .data$raw_p, p.adjust = .data$GSEA_FDR,
@@ -219,6 +219,16 @@ strict_theme_terms <- gsea_terms |>
     registry_version, theme_assignment_id,
     source_supplementary_file = NA_character_
   )
+# Keep the producer's source_comparison provenance verbatim and derive the
+# normalized comparison identity the downstream builders key on. Resolve the
+# leading-edge identity family here too, so every path built from this table
+# routes through the same typed mapping.
+strict_theme_terms <- gww_resolve_comparison_field(
+  strict_theme_terms, "Ontology-aware all-contrast GSEA theme table"
+)
+strict_theme_terms$leading_edge_token_type <- gww_leading_edge_token_type(
+  strict_theme_terms$evidence_source_family
+)
 gww_validate_theme_terms(strict_theme_terms)
 strict_local_gsea <- gww_build_local_gsea_evidence(strict_theme_terms)
 strict_recurrent_cross_spatial_gsea <- gww_build_recurrent_cross_spatial_gsea_evidence(
@@ -262,6 +272,9 @@ qc_context_evidence <- strict_theme_terms |>
     GO_ID, GO_description, NES,
     raw_p = .data$pvalue, GSEA_FDR = .data$p.adjust,
     leading_edge_accessions = .data$core_enrichment,
+    # Carry the leading-edge identity family so these QC-context rows route
+    # through the same typed mapping as the strict evidence they are bound to.
+    leading_edge_token_type = .data$leading_edge_token_type,
     direction
   )
 unmatched <- strict_gsea_evidence |>

@@ -114,7 +114,7 @@ testthat::test_that("program matching is exact and excludes aliases", {
 
 testthat::test_that("overlap uses canonical ProteinGroupID universe and exact families", {
   universe <- data.frame(
-    ProteinGroupID = paste0("PG", 1:4),
+    ProteinGroupID = paste0("PG:microglia:PG", 1:4),
     included_in_wgcna = TRUE,
     ModuleID = c("M1", "M1", "M2", "M2"),
     member_accessions = paste0("P", 1:4),
@@ -137,7 +137,7 @@ testthat::test_that("overlap uses canonical ProteinGroupID universe and exact fa
     NES = c(1, -1),
     GSEA_FDR = c(0.01, 0.02),
     gsea_source_key = c("K1", "K2"),
-    leading_edge_proteins = c("PG1;PG3", "PG3;PG4"),
+    leading_edge_proteins = c("PG:microglia:PG1;PG:microglia:PG3", "PG:microglia:PG3;PG:microglia:PG4"),
     stringsAsFactors = FALSE
   )
   matches <- data.frame(

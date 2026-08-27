@@ -79,6 +79,40 @@ gww_normalize_evidence_source_class <- function(
   ifelse(is.na(value), NA_character_, gww_ranked_gsea_source_class())
 }
 
+# Which identifier family a source contract expresses its core_enrichment
+# leading edge in. The current canonical compareGO contract emits
+# dataset-scoped ProteinGroupIDs; the historical contract emitted UniProt
+# accessions. Routing is typed so the two identity spaces never mix: there is
+# no pooled, untyped token pool and no fuzzy matching. Fails closed on any
+# other family.
+gww_leading_edge_token_type <- function(evidence_source_family) {
+  value <- as.character(evidence_source_family)
+  out <- ifelse(
+    value == "canonical_compareGO_ranked_GSEA_GO_BP", "protein_group_id",
+    ifelse(value == "ranked_GSEA", "accession", NA_character_)
+  )
+  bad <- !is.na(value) & is.na(out)
+  if (any(bad)) {
+    stop(
+      "Cannot route leading-edge identity for evidence_source_family ",
+      "value(s): ", paste(sort(unique(value[bad])), collapse = ", "), ".",
+      call. = FALSE
+    )
+  }
+  out
+}
+
+# Dataset-scoped ProteinGroupID namespace. Tokens are compared verbatim and
+# the namespace is never stripped, so a token can only ever match its own
+# dataset's universe.
+gww_protein_group_id_namespace <- function(dataset) {
+  paste0("PG:", dataset, ":")
+}
+
+gww_is_protein_group_id <- function(token, dataset) {
+  startsWith(as.character(token), gww_protein_group_id_namespace(dataset))
+}
+
 gww_validate_gsea_terms <- function(x) {
   gww_assert_columns(
     x,
@@ -138,6 +172,11 @@ gww_build_ontology_theme_term_table <- function(x, registry) {
       evidence_source_class = gww_normalize_evidence_source_class(
         .data$evidence_source_family,
         "Canonical spatial ranked-GSEA term table"
+      ),
+      # Identity family the core_enrichment leading edge is expressed in,
+      # resolved from the source contract rather than guessed from the text.
+      leading_edge_token_type = gww_leading_edge_token_type(
+        .data$evidence_source_family
       )
     ) |>
     dplyr::left_join(status, by = "GO_ID", relationship = "many-to-one") |>
@@ -187,6 +226,49 @@ gww_build_ontology_theme_term_table <- function(x, registry) {
   }
   attr(out, "ontology_mapping") <- mapping
   out
+}
+
+# Comparison-identity provenance for GSEA term tables.
+#
+# The current concordance producer emits source_comparison; historical tables
+# carried comparison. Both are accepted by exact name -- there is no loose or
+# case-insensitive matching. Whichever raw field was present is preserved
+# verbatim; a single normalized `comparison` value is derived for internal use.
+gww_comparison_source_fields <- function() {
+  c("source_comparison", "comparison")
+}
+
+gww_resolve_comparison_field <- function(x, label = "GSEA term table") {
+  fields <- gww_comparison_source_fields()
+  present <- fields[fields %in% names(x)]
+  if (!length(present)) {
+    stop(
+      label, " is missing a comparison identity column; expected exactly one ",
+      "of: ", paste(fields, collapse = ", "), ".", call. = FALSE
+    )
+  }
+  if (length(present) == 2L) {
+    a <- as.character(x[["source_comparison"]])
+    b <- as.character(x[["comparison"]])
+    disagree <- !is.na(a) & !is.na(b) & a != b
+    if (any(disagree)) {
+      first <- which(disagree)[[1L]]
+      stop(
+        label, " has conflicting comparison identity values in ",
+        sum(disagree), " row(s); first conflict at row ", first,
+        ": source_comparison=", a[[first]], " vs comparison=", b[[first]],
+        ".", call. = FALSE
+      )
+    }
+  }
+  # source_comparison is canonical when present; comparison is compatibility.
+  canonical <- if ("source_comparison" %in% present) {
+    "source_comparison"
+  } else {
+    "comparison"
+  }
+  x$comparison <- as.character(x[[canonical]])
+  x
 }
 
 gww_validate_theme_terms <- function(x) {
@@ -253,6 +335,14 @@ gww_prepare_supported_terms <- function(x) {
 
 gww_representative_rows <- function(x, group_columns, direction_sign = NULL,
                                     prefix = "") {
+  if (!"leading_edge_token_type" %in% names(x)) {
+    # Term tables built outside gww_build_ontology_theme_term_table() have not
+    # cached the identity family yet. Resolve it from the source contract --
+    # never guess it from the token text.
+    x$leading_edge_token_type <- gww_leading_edge_token_type(
+      x$evidence_source_family
+    )
+  }
   if (!is.null(direction_sign)) {
     x <- dplyr::filter(x, .data$term_direction_sign == direction_sign)
   }
@@ -273,6 +363,7 @@ gww_representative_rows <- function(x, group_columns, direction_sign = NULL,
       raw_p = as.numeric(.data$pvalue),
       GSEA_FDR = as.numeric(.data$p.adjust),
       leading_edge_accessions = as.character(.data$core_enrichment),
+      leading_edge_token_type = as.character(.data$leading_edge_token_type),
       source_comparison = as.character(.data$comparison),
       gsea_source_key = as.character(.data$source_term_key),
       source_supplementary_file = as.character(.data$source_supplementary_file)
@@ -843,7 +934,16 @@ gww_build_universe_bundle <- function(universe, dataset) {
   }
   gww_assert_unique(x, "ProteinGroupID", paste(dataset, "WGCNA universe"))
 
-  token_rows <- lapply(seq_len(nrow(x)), function(i) {
+  # The canonical identity space must be dataset-scoped, otherwise a token
+  # could in principle address another dataset's universe.
+  namespace <- gww_protein_group_id_namespace(dataset)
+  if (!all(startsWith(x$ProteinGroupID, namespace))) {
+    stop(dataset, " canonical WGCNA universe contains ProteinGroupID(s) ",
+         "outside the ", namespace, " namespace.", call. = FALSE)
+  }
+
+  # Historical identity space: UniProt accessions, normalized as before.
+  accession_rows <- lapply(seq_len(nrow(x)), function(i) {
     values <- paste(
       x$member_accessions[[i]], x$RepresentativeUniProt[[i]],
       x$MemberUniProts[[i]], x$representative_accession[[i]], sep = ";"
@@ -852,22 +952,47 @@ gww_build_universe_bundle <- function(universe, dataset) {
       unlist(strsplit(values, "[/;,|[:space:]]+"), use.names = FALSE)
     ))
     tokens <- tokens[!is.na(tokens) & nzchar(tokens) & tokens != "NA"]
+    if (!length(tokens)) return(NULL)
     data.frame(
       dataset = dataset,
       ProteinGroupID = x$ProteinGroupID[[i]],
       token = tokens,
+      token_type = "accession",
+      token_source_column = paste(
+        "member_accessions", "RepresentativeUniProt", "MemberUniProts",
+        "representative_accession", sep = ";"
+      ),
       stringsAsFactors = FALSE
     )
   })
-  token_map <- dplyr::bind_rows(token_rows) |>
-    dplyr::distinct(.data$dataset, .data$ProteinGroupID, .data$token)
+
+  # Current canonical identity space: the ProteinGroupID itself, verbatim.
+  protein_group_rows <- data.frame(
+    dataset = dataset,
+    ProteinGroupID = x$ProteinGroupID,
+    token = x$ProteinGroupID,
+    token_type = "protein_group_id",
+    token_source_column = "ProteinGroupID",
+    stringsAsFactors = FALSE
+  )
+
+  token_map <- dplyr::bind_rows(
+    dplyr::bind_rows(accession_rows), protein_group_rows
+  ) |>
+    dplyr::distinct(
+      .data$dataset, .data$ProteinGroupID, .data$token,
+      .data$token_type, .data$token_source_column
+    )
+
+  # Ambiguity is judged within an identity space; the two spaces are never
+  # pooled, so an accession can never collide with a ProteinGroupID.
   ambiguous <- token_map |>
-    dplyr::count(.data$dataset, .data$token) |>
+    dplyr::count(.data$dataset, .data$token_type, .data$token) |>
     dplyr::filter(.data$n > 1L)
   if (nrow(ambiguous)) {
-    stop(dataset, " WGCNA universe maps accession token(s) to multiple ",
-         "ProteinGroupIDs; first token: ", ambiguous$token[[1]], ".",
-         call. = FALSE)
+    stop(dataset, " WGCNA universe maps ", ambiguous$token_type[[1]],
+         " token(s) to multiple ProteinGroupIDs; first token: ",
+         ambiguous$token[[1]], ".", call. = FALSE)
   }
   list(
     universe = x,
@@ -876,28 +1001,67 @@ gww_build_universe_bundle <- function(universe, dataset) {
   )
 }
 
-gww_map_leading_edges <- function(evidence, token_map) {
+gww_map_leading_edges <- function(evidence, token_map,
+                                  token_type_column = "leading_edge_token_type") {
   gww_assert_unique(evidence, "gsea_evidence_id", "GSEA evidence")
+  if (!token_type_column %in% names(evidence)) {
+    stop("GSEA evidence is missing the leading-edge identity column ",
+         token_type_column, ".", call. = FALSE)
+  }
+  required_type <- as.character(evidence[[token_type_column]])
+  # Rows that carry no leading edge at all (e.g. a directional representative
+  # that does not exist for this group) have nothing to route; the downstream
+  # mapped-count guard still covers them. Every row that does carry tokens
+  # must have a resolved identity family.
+  edge <- trimws(as.character(evidence$leading_edge_accessions))
+  has_edge <- !is.na(edge) & nzchar(edge) & edge != "NA"
+  unresolved <- has_edge & (is.na(required_type) | !nzchar(required_type))
+  if (any(unresolved)) {
+    stop("GSEA evidence has ", sum(unresolved), " row(s) with a leading edge ",
+         "but no resolved leading-edge identity family.", call. = FALSE)
+  }
   expanded <- lapply(seq_len(nrow(evidence)), function(i) {
-    tokens <- unique(gww_normalize_accession(
-      unlist(strsplit(
-        as.character(evidence$leading_edge_accessions[[i]]),
-        "[/;,|[:space:]]+"
-      ), use.names = FALSE)
-    ))
+    ds <- evidence$dataset[[i]]
+    type <- required_type[[i]]
+    raw <- unlist(strsplit(
+      as.character(evidence$leading_edge_accessions[[i]]),
+      "[/;,|[:space:]]+"
+    ), use.names = FALSE)
+    raw <- raw[!is.na(raw) & nzchar(raw) & raw != "NA"]
+    tokens <- if (identical(type, "protein_group_id")) {
+      # Exact identity: never normalized, never namespace-stripped. A mixed
+      # vocabulary inside one canonical leading edge fails closed here.
+      foreign <- unique(raw[!gww_is_protein_group_id(raw, ds)])
+      if (length(foreign)) {
+        stop("Canonical ProteinGroupID leading edge for ", ds,
+             " contains token(s) outside the ",
+             gww_protein_group_id_namespace(ds), " namespace: ",
+             paste(utils::head(sort(foreign), 3L), collapse = ", "), ".",
+             call. = FALSE)
+      }
+      unique(raw)
+    } else {
+      unique(gww_normalize_accession(raw))
+    }
     tokens <- tokens[!is.na(tokens) & nzchar(tokens) & tokens != "NA"]
+    # Keep the column schema even with zero tokens so bind_rows() cannot
+    # collapse to a column-less frame when no row carries a leading edge.
     data.frame(
-      dataset = evidence$dataset[[i]],
-      gsea_evidence_id = evidence$gsea_evidence_id[[i]],
+      dataset = rep(ds, length(tokens)),
+      gsea_evidence_id = rep(evidence$gsea_evidence_id[[i]], length(tokens)),
       leading_edge_token = tokens,
+      leading_edge_token_type = rep(type, length(tokens)),
       stringsAsFactors = FALSE
     )
   })
   expanded <- dplyr::bind_rows(expanded)
+  # Joining on dataset AND token_type makes a cross-dataset or cross-identity
+  # match structurally impossible rather than merely unlikely.
   mapped <- expanded |>
     dplyr::left_join(
       token_map,
-      by = c("dataset", "leading_edge_token" = "token"),
+      by = c("dataset", "leading_edge_token_type" = "token_type",
+             "leading_edge_token" = "token"),
       relationship = "many-to-one"
     )
   summary <- mapped |>
