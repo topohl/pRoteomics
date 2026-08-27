@@ -1015,3 +1015,73 @@ wgcna_stage07_validate_spatial_organization <- function(
   }
   invisible(TRUE)
 }
+
+# ---------------------------------------------------------------
+# Presentation-only helpers.
+#
+# These shape what a figure renders and which stale files a zero-row
+# result may leave behind. They never touch the source tables, the
+# statistics, or any support classification.
+# ---------------------------------------------------------------
+
+# Keep only rows a contrast dot plot can actually draw: an estimable
+# named contrast whose label is one of the plotted levels. Interaction
+# omnibus rows are non-estimable by construction (estimate = NA, and a
+# contrast label outside the plotted levels), so exclude them here
+# rather than letting ggplot2 drop them silently and warn. This filters
+# the plotting input only; the written source table is unaffected.
+wgcna_stage07_filter_named_contrast_estimable <- function(data, contrast_levels) {
+  if (!is.data.frame(data)) {
+    stop(
+      "Named-contrast plot filtering requires a data frame.", call. = FALSE
+    )
+  }
+  if (!length(contrast_levels)) {
+    stop(
+      "Named-contrast plot filtering requires at least one contrast level.",
+      call. = FALSE
+    )
+  }
+  if (!nrow(data)) return(data)
+
+  missing <- setdiff(c("test_type", "estimate", "contrast"), names(data))
+  if (length(missing)) {
+    stop(
+      "Named-contrast plot filtering is missing required column(s): ",
+      paste(missing, collapse = ", "), ".", call. = FALSE
+    )
+  }
+
+  keep <- as.character(data$test_type) == "named_contrast" &
+    is.finite(suppressWarnings(as.numeric(data$estimate))) &
+    as.character(data$contrast) %in% as.character(contrast_levels)
+
+  data[which(keep), , drop = FALSE]
+}
+
+# A zero-row current result must not leave a historical figure on disk
+# that a reader would mistake for the current canonical output. Remove
+# the SVG and its PDF sibling deterministically.
+wgcna_stage07_remove_stale_figure <- function(svg_path) {
+  targets <- c(svg_path, sub("\\.svg$", ".pdf", svg_path))
+  removed <- character(0)
+  for (target in targets) {
+    if (!file.exists(target)) next
+    unlink(target)
+    if (file.exists(target)) {
+      stop(
+        "Could not remove stale figure: ", target,
+        ". A zero-row result must not leave a historical figure in place.",
+        call. = FALSE
+      )
+    }
+    removed <- c(removed, target)
+  }
+  if (length(removed)) {
+    message(
+      "Removed stale figure(s) for a zero-row current result: ",
+      paste(basename(removed), collapse = ", ")
+    )
+  }
+  invisible(removed)
+}
