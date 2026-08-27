@@ -1027,7 +1027,14 @@ plot_top_supermodules <- function(top_super, paths, ds, n_modules = 10) {
       !is.na(.data$estimate)
     )
 
-  if (!nrow(plot_df)) return(invisible(NULL))
+  # A zero-row current result must not leave the previous run's figure on
+  # disk, where it would read as the current canonical output.
+  if (!nrow(plot_df)) {
+    wgcna_stage07_remove_stale_figure(
+      file.path(paths$figures, "top_supermodule_effects_dotplot.svg")
+    )
+    return(invisible(NULL))
+  }
 
   plot_df <- plot_df |>
     dplyr::mutate(
@@ -1163,6 +1170,16 @@ plot_module_effects_by_supermodule <- function(module_join, paths, ds) {
     dplyr::filter(!is.na(.data$p_value), !is.na(.data$Supermodule_PlotLabel)) |>
     orient_contrasts_for_plot() |>
     add_plot_metrics()
+
+  # This figure plots contrast effect estimates, so it can only draw
+  # estimable named contrasts. Interaction omnibus rows carry a p-value but
+  # no estimate by construction, and their contrast label sits outside
+  # contrast_plot_levels(); state that exclusion here instead of relying on
+  # geom_point() to drop them. Applied after orient_contrasts_for_plot() so
+  # re-oriented contrasts are kept. The source table is written unchanged.
+  plot_df <- wgcna_stage07_filter_named_contrast_estimable(
+    plot_df, contrast_plot_levels()
+  )
 
   if (!nrow(plot_df)) return(invisible(NULL))
 
