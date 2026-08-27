@@ -43,6 +43,42 @@ gww_assert_unique <- function(x, key, label) {
   invisible(TRUE)
 }
 
+# Accepted ranked-GSEA source provenance vocabularies.
+#
+# The canonical compareGO Stage 07 producer emits
+# "canonical_compareGO_ranked_GSEA_GO_BP"; earlier canonical runs emitted
+# "ranked_GSEA". Both denote the same ranked-GSEA evidence class, so both are
+# accepted here. Any other family (ORA, KEGG, over-representation, ...) is a
+# different inferential lineage and must not enter this consumer.
+gww_ranked_gsea_source_families <- function() {
+  c("canonical_compareGO_ranked_GSEA_GO_BP", "ranked_GSEA")
+}
+
+# The single normalized class both vocabularies map onto.
+gww_ranked_gsea_source_class <- function() "ranked_GSEA"
+
+# Map a provenance vocabulary onto the normalized evidence class. Fails closed:
+# an unrecognized family is an error, never a silent pass-through. This never
+# rewrites the provenance value itself -- callers keep evidence_source_family
+# as emitted upstream and store this result in a separate
+# evidence_source_class field.
+gww_normalize_evidence_source_class <- function(
+    x, artifact = "Canonical spatial ranked-GSEA term table"
+) {
+  value <- as.character(x)
+  bad <- !is.na(value) & !value %in% gww_ranked_gsea_source_families()
+  if (any(bad)) {
+    stop(
+      artifact, " contains unsupported evidence_source_family value(s): ",
+      paste(sort(unique(value[bad])), collapse = ", "),
+      ". Accepted ranked-GSEA vocabularies are: ",
+      paste(gww_ranked_gsea_source_families(), collapse = ", "), ".",
+      call. = FALSE
+    )
+  }
+  ifelse(is.na(value), NA_character_, gww_ranked_gsea_source_class())
+}
+
 gww_validate_gsea_terms <- function(x) {
   gww_assert_columns(
     x,
@@ -60,10 +96,9 @@ gww_validate_gsea_terms <- function(x) {
          paste(unique(x$phenotype_contrast[bad]), collapse = ", "), ".",
          call. = FALSE)
   }
-  if (any(as.character(x$evidence_source_family) != "ranked_GSEA", na.rm = TRUE)) {
-    stop("All GSEA rows must retain evidence_source_family = ranked_GSEA.",
-         call. = FALSE)
-  }
+  gww_normalize_evidence_source_class(
+    x$evidence_source_family, "Canonical spatial ranked-GSEA term table"
+  )
   invisible(TRUE)
 }
 
@@ -96,7 +131,14 @@ gww_build_ontology_theme_term_table <- function(x, registry) {
       source_gsea_row_id = sprintf("GSEA_OCC_%07d", dplyr::row_number()),
       GO_ID = trimws(as.character(.data$ID)),
       GO_description = as.character(.data$Description),
-      legacy_program_class = as.character(.data$program_class)
+      legacy_program_class = as.character(.data$program_class),
+      # evidence_source_family keeps the upstream provenance vocabulary
+      # verbatim; evidence_source_class is the normalized ranked-GSEA class
+      # that downstream logic should compare against.
+      evidence_source_class = gww_normalize_evidence_source_class(
+        .data$evidence_source_family,
+        "Canonical spatial ranked-GSEA term table"
+      )
     ) |>
     dplyr::left_join(status, by = "GO_ID", relationship = "many-to-one") |>
     dplyr::left_join(
