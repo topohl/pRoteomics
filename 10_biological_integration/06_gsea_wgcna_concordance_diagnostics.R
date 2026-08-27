@@ -164,15 +164,28 @@ strict_matching <- readr::read_csv(
 gsea_terms <- readr::read_csv(
   gsea_terms_file, show_col_types = FALSE, progress = FALSE, guess_max = Inf
 )
+# Every column the strict_theme_terms transmute below dereferences by name.
+# The comparison identity is deliberately absent here: it is accepted under
+# either vocabulary and is resolved separately by
+# gww_resolve_comparison_field().
 gww_assert_columns(
   gsea_terms,
   c(
     "dataset", "phenotype_contrast", "spatial_unit", "GO_ID",
     "GO_description", "NES", "raw_p", "GSEA_FDR", "theme_id",
     "manuscript_theme", "theme_role", "theme_claim_eligible",
-    "theme_assignment_id"
+    "theme_assignment_id", "leading_edge_proteins", "leading_edge_genes",
+    "evidence_source_family", "anchor_GO_ID", "mapping_type",
+    "registry_version"
   ),
   "Ontology-aware all-contrast GSEA theme assignments"
+)
+
+# Resolve the comparison identity on the raw export, before any column is
+# dereferenced by name, so a historical comparison-only table reaches the
+# resolver instead of erroring on an absent source_comparison.
+gsea_terms <- gww_resolve_comparison_field(
+  gsea_terms, "Ontology-aware all-contrast GSEA theme assignments"
 )
 
 handoff_by_dataset <- lapply(datasets, function(dataset) {
@@ -206,7 +219,10 @@ power <- gwwd_power_diagnostic(strict_long)
 strict_theme_terms <- gsea_terms |>
   dplyr::transmute(
     dataset, phenotype_contrast, spatial_unit,
-    source_comparison = .data$source_comparison,
+    # Carry whichever raw provenance vocabulary the export supplied, verbatim,
+    # and the normalized identity the downstream builders key on.
+    dplyr::across(dplyr::any_of("source_comparison")),
+    comparison = .data$comparison,
     ID = .data$GO_ID, Description = .data$GO_description,
     GO_ID, GO_description, NES,
     pvalue = .data$raw_p, p.adjust = .data$GSEA_FDR,
@@ -219,13 +235,9 @@ strict_theme_terms <- gsea_terms |>
     registry_version, theme_assignment_id,
     source_supplementary_file = NA_character_
   )
-# Keep the producer's source_comparison provenance verbatim and derive the
-# normalized comparison identity the downstream builders key on. Resolve the
-# leading-edge identity family here too, so every path built from this table
-# routes through the same typed mapping.
-strict_theme_terms <- gww_resolve_comparison_field(
-  strict_theme_terms, "Ontology-aware all-contrast GSEA theme table"
-)
+# The comparison identity was already resolved on the raw export above.
+# Resolve the leading-edge identity family here so every path built from this
+# table routes through the same typed mapping.
 strict_theme_terms$leading_edge_token_type <- gww_leading_edge_token_type(
   strict_theme_terms$evidence_source_family
 )
