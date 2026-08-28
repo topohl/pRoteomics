@@ -116,7 +116,19 @@ go_long <- go_long[as.character(go_long$phenotype_contrast) %in% STRESS_RESPONSE
 go_long$pvalue <- suppressWarnings(as.numeric(go_long$pvalue))
 go_long$p.adjust <- suppressWarnings(as.numeric(go_long$p.adjust))
 go_long$NES <- suppressWarnings(as.numeric(go_long$NES))
-if (any(as.character(go_long$evidence_source_family) != "ranked_GSEA")) stop("GO source mixes evidence families.", call. = FALSE)
+# Ranked-GSEA provenance contract. The raw evidence_source_family is preserved
+# verbatim; evidence_source_class carries the normalized semantic class that
+# downstream logic compares against. Fails closed on any non-ranked-GSEA
+# family, naming the offending values rather than reporting a "mixed" source
+# when the input is uniformly current-canonical under a newer vocabulary.
+go_long$evidence_source_class <- sus_res_normalize_ranked_gsea_source_class(
+  go_long$evidence_source_family,
+  "Stress-response ranked-GSEA GO source"
+)
+if (any(go_long$evidence_source_class != SUS_RES_RANKED_GSEA_SOURCE_CLASS, na.rm = TRUE)) {
+  stop("Stress-response ranked-GSEA GO source did not normalize to a single ",
+       "ranked-GSEA evidence class.", call. = FALSE)
+}
 go_context_counts <- table(paste(go_long$dataset, go_long$spatial_unit, go_long$phenotype_contrast, sep = "|"))
 if (length(go_context_counts) != 54L || any(go_context_counts == 0L)) stop("Ranked-GSEA source lacks one or more required context/contrast families.", call. = FALSE)
 go_bh_validation <- stress_response_bh_validation(
