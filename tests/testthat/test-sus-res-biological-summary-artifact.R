@@ -63,8 +63,15 @@ testthat::test_that("live SUS-RES inspection rows preserve exact ontology-mapped
 testthat::test_that("every supported occurrence is retained with explicit assignment status", {
   testthat::skip_if_not(file.exists(sus_res_supported_audit_path), "Generated supported-term audit is unavailable")
   audit <- utils::read.csv(sus_res_supported_audit_path, check.names = FALSE, stringsAsFactors = FALSE)
-  testthat::expect_equal(nrow(audit), 336L)
-  testthat::expect_equal(length(unique(audit$GO_ID)), 167L)
+  # Frozen snapshot of the canonical supported-term audit produced by
+  # 04_differential_expression_enrichment/07_compareGO_spatial_program_atlas.r.
+  # Refreshed 336 -> 1202 rows and 167 -> 549 distinct GO IDs after the
+  # accepted 2026-08-26 canonical compareGO spatial-atlas regeneration, which
+  # also moved leading-edge identities to dataset-scoped ProteinGroupIDs. The
+  # earlier values describe the pre-2026-08-26 audit and are no longer
+  # authoritative. Exact-value checking is retained deliberately.
+  testthat::expect_equal(nrow(audit), 1202L)
+  testthat::expect_equal(length(unique(audit$GO_ID)), 549L)
   testthat::expect_true(all(audit$assignment_status %in% c("single_theme", "multi_theme", "unclassified", "qc_review")))
   testthat::expect_true(all(c("GO:0010605", "GO:0019219", "GO:0009892", "GO:0140694", "GO:1902600") %in% audit$GO_ID))
   false_rows <- audit[audit$GO_ID %in% c("GO:0010605", "GO:0019219", "GO:0009892", "GO:0140694", "GO:1902600"), , drop = FALSE]
