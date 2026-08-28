@@ -11,6 +11,47 @@ if (!exists("validate_clusterprofiler_manifest_contract", mode = "function")) so
 SUS_RES_DAP_FDR_THRESHOLD <- 0.05
 MIN_ORA_DAP_GENES <- 10L
 
+# Accepted ranked-GSEA source provenance vocabularies.
+#
+# The canonical compareGO spatial-atlas producer labels its long output
+# "canonical_compareGO_ranked_GSEA_GO_BP"; earlier canonical runs (and the
+# publication-facing Panel C source) label the same evidence
+# "ranked_GSEA". Both denote one semantic ranked-GSEA evidence class. Any
+# other family (ORA, KEGG, over-representation, ...) is a different
+# inferential lineage and must not enter these consumers.
+#
+# This list mirrors gww_ranked_gsea_source_families() in
+# R/gsea_wgcna_concordance_utils.R. It is duplicated here rather than sourced
+# so that Stage 10/11 do not pull 1400+ lines of unrelated GSEA-WGCNA
+# concordance helpers into their namespaces; a regression test pins the two
+# lists together so they cannot drift.
+SUS_RES_RANKED_GSEA_SOURCE_FAMILIES <- c(
+  "canonical_compareGO_ranked_GSEA_GO_BP",
+  "ranked_GSEA"
+)
+SUS_RES_RANKED_GSEA_SOURCE_CLASS <- "ranked_GSEA"
+
+# Map raw provenance vocabularies onto the normalized evidence class. Fails
+# closed: an unrecognized family is an error naming the offending values, never
+# a silent pass-through. The raw evidence_source_family value is never
+# rewritten by this helper -- callers keep it verbatim and store the result in
+# a separate evidence_source_class field.
+sus_res_normalize_ranked_gsea_source_class <- function(
+    x, artifact = "Ranked-GSEA source") {
+  value <- as.character(x)
+  bad <- !is.na(value) & !value %in% SUS_RES_RANKED_GSEA_SOURCE_FAMILIES
+  if (any(bad)) {
+    stop(
+      artifact, " contains unsupported evidence_source_family value(s): ",
+      paste(sort(unique(value[bad])), collapse = ", "),
+      ". Accepted ranked-GSEA vocabularies are: ",
+      paste(SUS_RES_RANKED_GSEA_SOURCE_FAMILIES, collapse = ", "), ".",
+      call. = FALSE
+    )
+  }
+  ifelse(is.na(value), NA_character_, SUS_RES_RANKED_GSEA_SOURCE_CLASS)
+}
+
 sus_res_extract_phenotype <- function(side) {
   side <- tolower(trimws(as.character(side)))
   hit <- regmatches(side, regexpr("(sus|res|con)$", side, perl = TRUE))
