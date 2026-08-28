@@ -28,7 +28,11 @@ testthat::test_that("human-facing SUS-RES workbook has the six-sheet audit contr
   testthat::expect_equal(nrow(overview), 8L)
   testthat::expect_equal(nrow(spatial), 8L)
   testthat::expect_equal(nrow(detail), 144L)
-  testthat::expect_equal(nrow(go_audit), 336L)
+  # Mirrors the canonical supported-term audit from
+  # 04_differential_expression_enrichment/07_compareGO_spatial_program_atlas.r.
+  # Refreshed 336 -> 1202 after the accepted 2026-08-26 canonical compareGO
+  # spatial-atlas regeneration. Exact-value checking is retained deliberately.
+  testthat::expect_equal(nrow(go_audit), 1202L)
   testthat::expect_equal(nrow(dap), 18L)
   testthat::expect_true(all(c(
     "Median NES (all theme terms)", "FDR support present", "Representative supported GO ID",
@@ -44,5 +48,7 @@ testthat::test_that("workbook descriptive values match the canonical CSV and con
   validation <- validate_sus_res_biological_audit_workbook(workbook_path, detail_source)
   testthat::expect_true(all(validation$validation_status == "passed"))
   testthat::expect_identical(validation$data_rows[validation$sheet == "Theme Detail"], 144L)
-  testthat::expect_identical(validation$data_rows[validation$sheet == "GO Term Audit"], 336L)
+  # Same frozen audit size as above; refreshed 336 -> 1202 with the accepted
+  # 2026-08-26 canonical compareGO spatial-atlas regeneration.
+  testthat::expect_identical(validation$data_rows[validation$sheet == "GO Term Audit"], 1202L)
 })
