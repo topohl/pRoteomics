@@ -1295,7 +1295,61 @@ split_genes <- function(x) unique(toupper(trimws(unlist(strsplit(paste(x, collap
 universe_genes <- split_genes(module_long$GeneSymbol)
 reference_markers <- utils::read.csv(reference_markers_path, check.names = FALSE)
 microenv_markers <- utils::read.csv(microenvironment_markers_path, check.names = FALSE)
-empirical_markers <- utils::read.csv(empirical_markers_path, check.names = FALSE)
+
+# Empirical ROI marker v2 descriptive identity contract.
+#
+# This audit consumes the empirical panels descriptively (see
+# interpretation_scope = "ROI/cellular context only; not evidence of
+# cell-intrinsic process" below), so the canonical identity is
+# `mapped_gene_symbol`: the producer sets
+# GeneSymbol = if_else(claim_allowed, official_gene_symbol, NA), making
+# GeneSymbol a claim-gated field. Keying descriptive panels on GeneSymbol
+# silently deletes descriptive-only rows.
+#
+# This mirrors read_empirical_roi_marker_sets() in R/wgcna_downstream_utils.R
+# rather than sourcing it: that utility pulls dataset_config.R,
+# dataset_inputs.R and module_contracts.R transitively, and this audit
+# deliberately sources only R/null_coalescing.R (see 702c95f, which removed
+# source-order shadowing here). The contract enforced below is identical.
+EMPIRICAL_MARKER_CONTRACT <- "empirical_roi_marker_v2_animal_paired_limma"
+EMPIRICAL_MARKER_IDENTITY_FIELD <- "mapped_gene_symbol"
+
+read_empirical_roi_markers_v2 <- function(path,
+                                          expected_contract = EMPIRICAL_MARKER_CONTRACT) {
+  empirical <- utils::read.csv(path, check.names = FALSE)
+  required <- c(
+    "marker_set", EMPIRICAL_MARKER_IDENTITY_FIELD, "marker_evidence_type",
+    "claim_allowed", "marker_contract_version"
+  )
+  missing <- setdiff(required, names(empirical))
+  if (length(missing)) {
+    stop(
+      "Empirical marker file does not satisfy the ", expected_contract,
+      " contract; missing required column(s): ", paste(missing, collapse = ", "),
+      call. = FALSE
+    )
+  }
+  contracts <- unique(as.character(empirical$marker_contract_version))
+  contracts <- contracts[!is.na(contracts) & nzchar(trimws(contracts))]
+  if (!length(contracts) || !all(contracts == expected_contract)) {
+    stop(
+      "Empirical marker contract mismatch; expected only '", expected_contract,
+      "', observed: ", paste(contracts, collapse = ", "), call. = FALSE
+    )
+  }
+  # Descriptive identity only. Mapping-blocked rows are dropped, never promoted
+  # and never coalesced with the claim-gated GeneSymbol.
+  identity <- as.character(empirical[[EMPIRICAL_MARKER_IDENTITY_FIELD]])
+  mapped <- !is.na(identity) & nzchar(trimws(identity))
+  attr(empirical, "rows_mapping_blocked") <- sum(!mapped)
+  empirical <- empirical[mapped, , drop = FALSE]
+  empirical$descriptive_gene_symbol <- as.character(
+    empirical[[EMPIRICAL_MARKER_IDENTITY_FIELD]]
+  )
+  empirical
+}
+
+empirical_markers <- read_empirical_roi_markers_v2(empirical_markers_path)
 
 panel_sets <- list(
   canonical_microglia = unique(toupper(reference_markers$gene_symbol[grepl("microglia|pvm|myeloid", paste(reference_markers$marker_set, reference_markers$cell_class), ignore.case = TRUE)])),
@@ -1312,9 +1366,10 @@ panel_sets <- list(
     toupper(reference_markers$gene_symbol[grepl("oligo|myelin", paste(reference_markers$marker_set, reference_markers$cell_class), ignore.case = TRUE)]),
     toupper(microenv_markers$marker_symbol[grepl("oligo|myelin", microenv_markers$panel_id, ignore.case = TRUE)])
   )),
-  empirical_microglia_ROI = unique(toupper(empirical_markers$GeneSymbol[grepl("microglia", empirical_markers$marker_set, ignore.case = TRUE)])),
-  empirical_neuropil = unique(toupper(empirical_markers$GeneSymbol[grepl("neuropil", empirical_markers$marker_set, ignore.case = TRUE)])),
-  empirical_soma = unique(toupper(empirical_markers$GeneSymbol[grepl("soma", empirical_markers$marker_set, ignore.case = TRUE)]))
+  # Descriptive identity (mapped_gene_symbol); marker_set matching unchanged.
+  empirical_microglia_ROI = unique(toupper(empirical_markers$descriptive_gene_symbol[grepl("microglia", empirical_markers$marker_set, ignore.case = TRUE)])),
+  empirical_neuropil = unique(toupper(empirical_markers$descriptive_gene_symbol[grepl("neuropil", empirical_markers$marker_set, ignore.case = TRUE)])),
+  empirical_soma = unique(toupper(empirical_markers$descriptive_gene_symbol[grepl("soma", empirical_markers$marker_set, ignore.case = TRUE)]))
 )
 panel_sets <- lapply(panel_sets, function(x) intersect(x[!is.na(x) & nzchar(x)], universe_genes))
 
@@ -1389,7 +1444,7 @@ context_rows <- lapply(seq_along(module_ids), function(i) {
     "astrocyte_endfoot-associated_ROI" = "Astrocyte/endfoot context must not be interpreted as microglia-intrinsic.",
     "mixed_astrocyte_microglia_ROI" = "Mixed astrocyte/endfoot and microglia-associated ROI evidence must not be assigned exclusively to microglia.",
     "oligodendrocyte_myelin-associated_ROI" = "Myelin/oligodendrocyte context must not be interpreted as microglia-intrinsic.",
-    "neuropil-associated_ROI" = "Neuropil association may reflect adjacent neuronal material rather than microglia-intrinsic biology.",
+    "neuropil-associated_ROI" = "Neuropil association may reflect adjacent neuronal material rather than microglia-intrinsic biology; therefore this signal cannot be assigned specifically to microglia.",
     "Context remains unresolved; biological-process claims require orthogonal cell-resolved evidence."
   )
   data.frame(
