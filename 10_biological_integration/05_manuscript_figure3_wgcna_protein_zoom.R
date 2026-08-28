@@ -308,11 +308,18 @@ coverage <- display_ids %>% group_by(.data$ModuleID) %>% summarise(displayed_top
 m12_coverage <- coverage$authoritative_theme_members[match("WGCNA_m12", coverage$ModuleID)]
 validation_records <- c(validation_records, list(figure3_validation_record(
   "m12_authoritative_rna_rnp_overlap_coverage",
-  "frozen_manuscript_result_regression", m12_coverage, 9L,
-  identical(as.integer(m12_coverage), 9L), "report_only",
+  "frozen_manuscript_result_regression", m12_coverage, 10L,
+  identical(as.integer(m12_coverage), 10L), "report_only",
   paste(membership_path, overlap_path, sep = ";"),
   paste(membership_hash, overlap_hash, sep = ";"),
-  "Snapshot-linked top-15 overlap coverage; not an analytical validity condition."
+  paste(
+    "Snapshot-linked top-15 overlap coverage; not an analytical validity",
+    "condition. Frozen expectation refreshed 9 -> 10 after the canonical",
+    "ProteinGroupID leading-edge identity contract replaced accession-only",
+    "leading-edge mapping, against the accepted Aug-26 compareGO input. The",
+    "canonical module-membership hash is unchanged across that refresh, so",
+    "the shift is concordance-driven and not module-membership drift."
+  )
 )))
 readr::write_csv(coverage, file.path(table_dir, "figure3c_top15_authoritative_theme_coverage.csv"), na = "")
 display_source <- inner_join(all_source, display_ids, by = c("ModuleID", "ProteinGroupID")) %>%

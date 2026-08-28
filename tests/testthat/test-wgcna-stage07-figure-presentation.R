@@ -131,3 +131,91 @@ testthat::test_that("non-empty top-supermodule input still produces current outp
   testthat::expect_true(file.exists(svg))
   testthat::expect_true(file.exists(pdf))
 })
+
+# ---------------------------------------------------------------
+# Legacy dataset-suffixed figure aliases.
+#
+# Historical runs wrote e.g. top_supermodule_effects_dotplot_neuropil.svg.
+# Current code owns only the unsuffixed canonical name, and the downstream
+# manuscript-figure exporter globs figure directories recursively, so any
+# suffixed variant must not survive a current run.
+# ---------------------------------------------------------------
+
+testthat::test_that("all three legacy dataset-suffixed aliases are removed", {
+  fig_dir <- withr::local_tempdir()
+  canonical <- file.path(fig_dir, "top_supermodule_effects_dotplot.svg")
+  aliases <- file.path(fig_dir, c(
+    "top_supermodule_effects_dotplot_neuropil.svg",
+    "top_supermodule_effects_dotplot_soma.svg",
+    "top_supermodule_effects_dotplot_microglia.svg"
+  ))
+  for (a in aliases) writeLines("stale historical alias", a)
+
+  testthat::expect_message(
+    removed <- wgcna_stage07_remove_legacy_figure_aliases(canonical),
+    "Removed legacy dataset-suffixed figure alias"
+  )
+  testthat::expect_setequal(basename(removed), basename(aliases))
+  testthat::expect_false(any(file.exists(aliases)))
+})
+
+testthat::test_that("a suffixed legacy PDF alias is removed too", {
+  fig_dir <- withr::local_tempdir()
+  canonical <- file.path(fig_dir, "top_supermodule_effects_dotplot.svg")
+  alias_pdf <- file.path(fig_dir, "top_supermodule_effects_dotplot_soma.pdf")
+  writeLines("stale historical alias", alias_pdf)
+  invisible(wgcna_stage07_remove_legacy_figure_aliases(canonical))
+  testthat::expect_false(file.exists(alias_pdf))
+})
+
+testthat::test_that("canonical current files survive alias cleanup", {
+  fig_dir <- withr::local_tempdir()
+  canonical <- file.path(fig_dir, "top_supermodule_effects_dotplot.svg")
+  canonical_pdf <- file.path(fig_dir, "top_supermodule_effects_dotplot.pdf")
+  alias <- file.path(fig_dir, "top_supermodule_effects_dotplot_soma.svg")
+  writeLines("current svg", canonical)
+  writeLines("current pdf", canonical_pdf)
+  writeLines("stale alias", alias)
+
+  invisible(wgcna_stage07_remove_legacy_figure_aliases(canonical))
+
+  # The non-empty-result canonical pair is untouched ...
+  testthat::expect_true(file.exists(canonical))
+  testthat::expect_true(file.exists(canonical_pdf))
+  testthat::expect_identical(readLines(canonical), "current svg")
+  testthat::expect_identical(readLines(canonical_pdf), "current pdf")
+  # ... while the alias is gone.
+  testthat::expect_false(file.exists(alias))
+})
+
+testthat::test_that("an unrelated figure sharing no stem is untouched", {
+  fig_dir <- withr::local_tempdir()
+  canonical <- file.path(fig_dir, "top_supermodule_effects_dotplot.svg")
+  other <- file.path(fig_dir, "module_effects_by_supermodule_dotplot.svg")
+  other_suffixed <- file.path(fig_dir, "some_other_figure_soma.svg")
+  writeLines("keep", other)
+  writeLines("keep", other_suffixed)
+  invisible(wgcna_stage07_remove_legacy_figure_aliases(canonical))
+  testthat::expect_true(file.exists(other))
+  testthat::expect_true(file.exists(other_suffixed))
+})
+
+testthat::test_that("alias cleanup is silent and a no-op when none are present", {
+  fig_dir <- withr::local_tempdir()
+  canonical <- file.path(fig_dir, "top_supermodule_effects_dotplot.svg")
+  writeLines("current svg", canonical)
+  testthat::expect_silent(
+    removed <- wgcna_stage07_remove_legacy_figure_aliases(canonical)
+  )
+  testthat::expect_length(removed, 0L)
+  testthat::expect_true(file.exists(canonical))
+})
+
+testthat::test_that("alias cleanup tolerates a missing figure directory", {
+  missing_dir <- file.path(withr::local_tempdir(), "not_created")
+  canonical <- file.path(missing_dir, "top_supermodule_effects_dotplot.svg")
+  testthat::expect_silent(
+    removed <- wgcna_stage07_remove_legacy_figure_aliases(canonical)
+  )
+  testthat::expect_length(removed, 0L)
+})
