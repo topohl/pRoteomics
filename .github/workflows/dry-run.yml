@@ -18,6 +18,7 @@ jobs:
       - name: Install lightweight test dependencies
         uses: r-lib/actions/setup-r-dependencies@v2
         with:
+          dependencies: '"hard"'
           packages: |
             any::yaml
             any::testthat
