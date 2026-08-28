@@ -1085,3 +1085,41 @@ wgcna_stage07_remove_stale_figure <- function(svg_path) {
   }
   invisible(removed)
 }
+
+# Historical Stage-07 runs wrote dataset-suffixed aliases of a figure, e.g.
+# top_supermodule_effects_dotplot_neuropil.svg. Current code only ever writes
+# the unsuffixed canonical name, so any suffixed variant on disk is a stale
+# alias no current run owns. The downstream manuscript-figure exporter globs
+# figure directories recursively, so these are invalidated on every run,
+# independently of whether the current result is empty. The canonical
+# unsuffixed SVG/PDF pair is never matched and never touched here.
+wgcna_stage07_remove_legacy_figure_aliases <- function(svg_path) {
+  directory <- dirname(svg_path)
+  if (!dir.exists(directory)) return(invisible(character(0)))
+  stem <- tools::file_path_sans_ext(basename(svg_path))
+  # Exact prefix/suffix matching, not a regular expression: an alias is the
+  # canonical stem followed by "_" and a suffix. The canonical unsuffixed
+  # names cannot match, because they have no "_" after the stem.
+  present <- list.files(directory)
+  is_alias <- startsWith(present, paste0(stem, "_")) &
+    (endsWith(present, ".svg") | endsWith(present, ".pdf"))
+  aliases <- file.path(directory, present[is_alias])
+  removed <- character(0)
+  for (alias in aliases) {
+    unlink(alias)
+    if (file.exists(alias)) {
+      stop(
+        "Could not remove legacy figure alias: ", alias,
+        ". A stale alias must not survive a current run.", call. = FALSE
+      )
+    }
+    removed <- c(removed, alias)
+  }
+  if (length(removed)) {
+    message(
+      "Removed legacy dataset-suffixed figure alias(es): ",
+      paste(basename(removed), collapse = ", ")
+    )
+  }
+  invisible(removed)
+}
