@@ -1018,6 +1018,13 @@ plot_supermodule_membership_overview <- function(module_join, super_join, paths,
 }
 
 plot_top_supermodules <- function(top_super, paths, ds, n_modules = 10) {
+  canonical_svg <- file.path(
+    paths$figures, "top_supermodule_effects_dotplot.svg"
+  )
+  # Legacy dataset-suffixed aliases are not produced by current code, so they
+  # are invalidated on every run regardless of the current result. This never
+  # touches the canonical unsuffixed SVG/PDF pair.
+  wgcna_stage07_remove_legacy_figure_aliases(canonical_svg)
 
   plot_df <- top_super |>
     orient_contrasts_for_plot() |>
@@ -1030,9 +1037,7 @@ plot_top_supermodules <- function(top_super, paths, ds, n_modules = 10) {
   # A zero-row current result must not leave the previous run's figure on
   # disk, where it would read as the current canonical output.
   if (!nrow(plot_df)) {
-    wgcna_stage07_remove_stale_figure(
-      file.path(paths$figures, "top_supermodule_effects_dotplot.svg")
-    )
+    wgcna_stage07_remove_stale_figure(canonical_svg)
     return(invisible(NULL))
   }
 
@@ -1157,7 +1162,7 @@ plot_top_supermodules <- function(top_super, paths, ds, n_modules = 10) {
 
   save_svg(
     p,
-    file.path(paths$figures, "top_supermodule_effects_dotplot.svg"),
+    canonical_svg,
     width = 90,
     height = 62
   )
