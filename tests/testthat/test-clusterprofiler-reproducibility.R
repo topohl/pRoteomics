@@ -148,3 +148,37 @@ testthat::test_that("active GSEA entry points all use the deterministic wrapper"
   testthat::expect_false(grepl("<-\\s*clusterProfiler::GSEA\\(", script, perl = TRUE))
   testthat::expect_match(script, "n_perm_simple = analysis_params\\$n_perm_simple")
 })
+
+testthat::test_that("the GSEA parallel-backend contract is deliberate and documented", {
+  src <- readLines(
+    testthat::test_path("..", "..", "R", "clusterprofiler_reproducibility.R"),
+    warn = FALSE
+  )
+  # The wrapper intentionally does NOT pin BPPARAM: backend, worker count and
+  # bpRNGseed were measured not to affect results (SnowParam 30 unseeded vs
+  # SnowParam 8/4 with a pinned RNGseed were field-identical). If someone adds
+  # backend pinning later they must also revisit this contract and the
+  # documented tolerance.
+  control_args <- grep("clusterprofiler_fgsea_control_args", src)
+  testthat::expect_gt(length(control_args), 0L)
+  testthat::expect_false(any(grepl("BPPARAM", src, fixed = TRUE) &
+                               !grepl("^#", trimws(src))))
+
+  # The measured contract must stay stated, so the language cannot silently
+  # drift back to promising bit identity.
+  joined <- paste(src, collapse = "\n")
+  testthat::expect_match(joined, "Reproducibility contract", fixed = TRUE)
+  testthat::expect_match(joined, "does NOT guarantee", fixed = TRUE)
+  testthat::expect_match(joined, "not as floating-point bit identity", fixed = TRUE)
+})
+
+testthat::test_that("reserved fgsea controls still cannot be overridden via dots", {
+  for (arg in c("by", "seed", "nPermSimple")) {
+    args <- list(function(...) NULL, gsea_seed = 1L, n_perm_simple = 10L)
+    args[[arg]] <- "x"
+    testthat::expect_error(
+      do.call(run_seeded_clusterprofiler_gsea, args),
+      "must be supplied by run_seeded_clusterprofiler_gsea", info = arg
+    )
+  }
+})
