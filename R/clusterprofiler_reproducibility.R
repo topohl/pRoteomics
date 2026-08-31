@@ -1,4 +1,35 @@
 # Deterministic RNG, fgsea controls, and targeted-run helpers for clusterProfiler.
+#
+# Reproducibility contract (measured, not assumed)
+# ------------------------------------------------
+# What is pinned: the ranked input, the per-comparison derived seed, RNGkind
+# ("L'Ecuyer-CMRG"/"Inversion"/"Rejection"), nPermSimple, by = "fgsea", and
+# clusterProfiler's own logical `seed` flag (kept FALSE so the local RNG scope
+# below governs). Software versions are pinned by renv.
+#
+# What that guarantees: within one execution context, the same seed and input
+# reproduce results field-identically. Verified for
+# neuron_soma/CA1_vs_mean_other_soma_regions (gseGO BP, seed 1751020239,
+# nPermSimple 100000) across separate clean R --vanilla sessions.
+#
+# What it does NOT guarantee: bit-identical p-values across *different*
+# execution contexts. clusterProfiler routes GSEA through
+# DOSE:::GSEA_fgsea(), which hardcodes nproc = 0, so fgsea:::setUpBPPARAM()
+# falls back to the ambient bpparam(). Backend choice was measured NOT to be
+# the source of cross-context drift: runs under the default SnowParam (30
+# workers, unseeded), an explicit SnowParam with a pinned RNGseed at 8 and at
+# 4 workers, and a run preceded by another GSEA call in the same session were
+# all field-identical to one another. Pinning BPPARAM therefore buys no
+# additional determinism here and is deliberately not done.
+#
+# Observed cross-context tolerance: enrichmentScore agrees to ~1.6e-15 (last
+# bit), setSize/rank/leading_edge/core_enrichment agree exactly, and that
+# last-bit difference propagates through fgseaMultilevel's adaptive estimator
+# to <= ~2.4e-05 in NES and <= ~2.3e-05 in p-value/FDR. In the audited
+# comparison this produced zero FDR-0.05 crossings and an identical Figure-2f
+# display selection, i.e. no inferential or presentational consequence.
+# Reproducibility is therefore asserted numerically within that tolerance,
+# not as floating-point bit identity.
 
 clusterprofiler_integer_scalar <- function(value, name, min_value = 1L,
                                            max_value = .Machine$integer.max) {
