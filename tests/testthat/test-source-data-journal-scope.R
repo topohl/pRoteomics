@@ -330,3 +330,84 @@ testthat::test_that("the journal scope is not applied to PRIDE selectors", {
     )
   }
 })
+
+# ---------------------------------------------------------------------------
+# (8) INTERMEDIATE LEGACY REPLAY: one exact prefix, siblings retained.
+# ---------------------------------------------------------------------------
+testthat::test_that("the exact legacy_replay prefix is excluded", {
+  fx <- make_scope_fixture()
+  base <- "results/source_data/04_differential_expression_enrichment_comparison/"
+  excluded <- c(
+    fx$touch(paste0(base, "legacy_replay/clusterProfiler/microglia/KEGG/a.csv")),
+    fx$touch(paste0(base, "legacy_replay/summary.csv"))
+  )
+  testthat::expect_identical(
+    reason_of(excluded, fx$results),
+    rep("intermediate_legacy_replay", length(excluded))
+  )
+})
+
+testthat::test_that("sibling comparison trees are retained, not swept up", {
+  fx <- make_scope_fixture()
+  base <- "results/source_data/04_differential_expression_enrichment_comparison/"
+  kept <- c(
+    fx$touch(paste0(base, "animal_level/clusterProfiler/microglia/KEGG/a.csv")),
+    fx$touch(paste0(base, "repro1/clusterProfiler/neuron_soma/BP/b.csv")),
+    fx$touch(paste0(base, "repro2/clusterProfiler/neuron_soma/BP/c.csv")),
+    fx$touch(paste0(base, "rnga/clusterProfiler/neuron_soma/BP/d.csv")),
+    fx$touch(paste0(base, "rngb/clusterProfiler/neuron_soma/BP/e.csv")),
+    fx$touch(paste0(base, "results/overview.csv"))
+  )
+  testthat::expect_true(all(is.na(reason_of(kept, fx$results))))
+
+  # No "legacy in the name" rule: a legacy-named file outside the exact prefix
+  # stays selected.
+  legacy_named <- fx$touch(paste0(
+    "results/tables/01_preprocessing/03c_legacy_vs_animal_level_da_audit/",
+    "neuron_soma/protein_level_comparison.csv"
+  ))
+  testthat::expect_true(is.na(reason_of(legacy_named, fx$results)))
+
+  # The tables-root counterpart of the prefix is not excluded either: the rule
+  # names the source_data prefix exactly.
+  tables_side <- fx$touch(paste0(
+    "results/tables/04_differential_expression_enrichment_comparison/",
+    "legacy_replay/clusterProfiler/microglia/KEGG/a.csv"
+  ))
+  testthat::expect_true(is.na(reason_of(tables_side, fx$results)))
+})
+
+testthat::test_that("the nine 260-character legacy_replay sources are unselected", {
+  fx <- make_scope_fixture()
+  base <- paste0(
+    "results/source_data/04_differential_expression_enrichment_comparison/",
+    "legacy_replay/clusterProfiler/microglia/KEGG/phenotype_within_unit/"
+  )
+  paths <- character(0)
+  for (region in c("CA1", "CA2", "CA3")) {
+    for (contrast in c("res_%scon", "sus_%scon", "sus_%sres")) {
+      nm <- sprintf(
+        "%smicroglia%s_KEGG.csv", region,
+        sub("%s", paste0(region, "microglia"), sprintf(contrast, ""), fixed = TRUE)
+      )
+      paths <- c(paths, fx$touch(paste0(base, region, "_microglia/", nm)))
+    }
+  }
+  testthat::expect_length(paths, 9L)
+  testthat::expect_identical(
+    reason_of(paths, fx$results),
+    rep("intermediate_legacy_replay", 9L)
+  )
+  testthat::expect_length(apply_manuscript_source_data_scope(paths, fx$results), 0L)
+})
+
+testthat::test_that("the legacy_replay rule is a single literal prefix", {
+  src <- readLines(file.path(repo, "R", "export_helpers.R"), warn = FALSE)
+  fn <- grep("^source_data_excluded_legacy_replay <- function", src)
+  testthat::expect_length(fn, 1L)
+  body <- src[fn[[1]]:(fn[[1]] + 2L)]
+  testthat::expect_true(any(grepl("startsWith(rel, source_data_legacy_replay_prefix())",
+                                  body, fixed = TRUE)))
+  # No regex, no grepl, no "legacy" pattern matching in the predicate.
+  testthat::expect_false(any(grepl("grepl", body, fixed = TRUE)))
+})
