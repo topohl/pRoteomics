@@ -197,3 +197,81 @@ testthat::test_that("current Figure-2 source data carries the accepted CA1 slot-
   # The superseded slot-2 selection must not reappear for CA1.
   testthat::expect_false("mRNA processing" %in% trimws(ca1$Description))
 })
+
+# ---------------------------------------------------------------------------
+# 5. Orphan figure families: exact-stem exclusion.
+#
+# all_supermodule_eigengene_spatial_group_plot has no producer anywhere in the
+# repository. Four files survive on disk from a superseded naming scheme. The
+# whole family must be excluded from the figure payload, including the
+# unsuffixed member, which the dataset-suffix alias filter alone would keep.
+#
+# These assertions are deliberately tied to the exact stem. There is no
+# "absent from source tree implies orphan" rule to test, and none should be
+# introduced: a figure name can legitimately be assembled at runtime.
+# ---------------------------------------------------------------------------
+testthat::test_that("the orphan family is enumerated explicitly, not inferred", {
+  testthat::expect_true(
+    "all_supermodule_eigengene_spatial_group_plot" %in% orphan_figure_family_stems()
+  )
+  helpers <- readLines(
+    file.path(repo, "R", "export_helpers.R"), warn = FALSE
+  )
+  # Fail closed: the exclusion must stay a literal stem list.
+  testthat::expect_true(any(grepl(
+    'c("all_supermodule_eigengene_spatial_group_plot")', helpers, fixed = TRUE
+  )))
+})
+
+testthat::test_that("every member of the orphan family is dropped, including the unsuffixed one", {
+  root <- withr::local_tempdir("orphan_family_")
+  mk <- function(dataset, name) {
+    d <- file.path(root, "results", "figures", "06_modules_WGCNA", "group_effects", dataset)
+    dir.create(d, recursive = TRUE, showWarnings = FALSE)
+    f <- file.path(d, name)
+    writeLines("x", f)
+    f
+  }
+  family <- c(
+    mk("microglia", "all_supermodule_eigengene_spatial_group_plot.svg"),
+    mk("microglia", "all_supermodule_eigengene_spatial_group_plot_microglia.svg"),
+    mk("neuron_neuropil", "all_supermodule_eigengene_spatial_group_plot_neuropil.svg"),
+    mk("neuron_soma", "all_supermodule_eigengene_spatial_group_plot_soma.svg"),
+    mk("microglia", "all_supermodule_eigengene_spatial_group_plot.pdf")
+  )
+  keep <- c(
+    mk("microglia", "top_supermodule_effects_dotplot.svg"),
+    mk("microglia", "all_supermodule_eigengene_group_plot.svg"),        # different stem
+    mk("microglia", "supermodule_eigengene_spatial_group_plot.svg")     # not the family
+  )
+
+  testthat::expect_true(all(is_orphan_figure_family_path(family)))
+  testthat::expect_false(any(is_orphan_figure_family_path(keep)))
+
+  kept <- drop_orphan_figure_families(c(family, keep))
+  testthat::expect_identical(sort(kept), sort(keep))
+
+  # The dataset-suffix alias filter alone is not sufficient: it would retain
+  # the unsuffixed member, so the orphan filter must run as well.
+  alias_only <- drop_legacy_dataset_suffixed_aliases(family)
+  unsuffixed_svg <- family[[1]]
+  testthat::expect_true(unsuffixed_svg %in% alias_only)
+
+  testthat::expect_identical(drop_orphan_figure_families(character(0)), character(0))
+})
+
+testthat::test_that("the figure export applies the orphan-family filter", {
+  joined <- paste(readLines(
+    file.path(repo, "09_export_pride_journal/08_export_manuscript_figures.R"), warn = FALSE
+  ), collapse = "\n")
+  testthat::expect_match(joined, "drop_orphan_figure_families(candidates)", fixed = TRUE)
+})
+
+testthat::test_that("no orphan-family file reaches the current figure payload", {
+  payload <- file.path(repo, "results", "manuscript", "extended_data")
+  testthat::skip_if_not(dir.exists(payload), "manuscript figure payload not present")
+  hits <- list.files(
+    payload, pattern = "all_supermodule_eigengene_spatial_group_plot", recursive = FALSE
+  )
+  testthat::expect_identical(hits, character(0))
+})
