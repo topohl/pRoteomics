@@ -90,7 +90,11 @@ list_pride_files <- function(package_dir = pride_package_dir()) {
   files[file.info(files)$isdir == FALSE]
 }
 
-relative_to <- function(path, root) {
+# PRIDE-local relativiser. Deliberately NOT named relative_to(): this file is
+# sourced by R/export_helpers.R, so a second global relative_to() shadowed the
+# generic R/paths.R::relative_to(path, root = repo_root()) and broke
+# write_run_manifest(), which relies on that default. Root is required here.
+pride_relative_to <- function(path, root) {
   path <- normalizePath(path, winslash = "/", mustWork = FALSE)
   root <- normalizePath(root, winslash = "/", mustWork = FALSE)
   sub(paste0("^", gsub("([\\^$.|?*+(){}])", "\\\\\\1", root), "/?"), "", path)
@@ -103,7 +107,7 @@ make_md5_table <- function(files, root = pride_package_dir()) {
   sums <- tools::md5sum(files)
   data.frame(
     md5 = unname(sums),
-    relative_path = relative_to(names(sums), root),
+    relative_path = pride_relative_to(names(sums), root),
     stringsAsFactors = FALSE
   )
 }
