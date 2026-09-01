@@ -23,13 +23,20 @@ dry_run <- is_dry_run()
 
 manuscript_dirs <- path_results("manuscript", c("figure_1", "figure_2", "extended_data"))
 
+# Explicit root list, never an unrestricted recursive results/figures scan: the
+# EWCE root is deliberately the canonical branch only, and an open scan would
+# also pull comparison/repro trees. manuscript_panels holds the Figure-3 panels
+# and was previously omitted, so no Figure-3 panel could ever be exported.
 candidate_roots <- c(
   path_results("figures", "03_qc_exploration"),
   path_results("figures", "04_differential_expression_enrichment"),
   canonical_ewce_figure_root(),
   path_results("figures", "06_modules_WGCNA"),
   path_results("figures", "07_spatial_networks"),
-  path_results("figures", "08_behavior_physio_coupling")
+  path_results("figures", "08_behavior_physio_coupling"),
+  path_results("figures", "08_biological_interpretation"),
+  path_results("figures", "10_biological_integration"),
+  path_results("figures", "manuscript_panels")
 )
 
 # Selection is read-only, so it is computed before the dry-run guard and
@@ -50,47 +57,59 @@ if (isTRUE(dry_run)) {
 
 invisible(lapply(manuscript_dirs, dir_create))
 
-figure_target_name <- function(path) {
-  rel <- relative_to(path, path_results("figures"))
-  stem <- tools::file_path_sans_ext(rel)
-  paste0(safe_filename(stem), ".", tolower(tools::file_ext(path)))
-}
+figures_root <- path_results("figures")
+candidate_rel <- relative_to(candidates, figures_root)
 
-figure_audit_row <- function(path, target) {
-  ext <- tolower(tools::file_ext(path))
-  info <- file.info(path)
-  sibling_source <- file.path(path_results("source_data"), sub("\\.(svg|pdf|png)$", ".csv", relative_to(path, path_results("figures")), ignore.case = TRUE))
+# Built column-wise. relative_to(), file.info() and file.exists() are all
+# vectorised, so this issues a handful of filesystem round trips instead of
+# several per file, which matters on a network share.
+figure_audit_table <- function(paths, targets, rel_paths) {
+  ext <- tolower(tools::file_ext(paths))
+  sibling_source <- file.path(
+    path_results("source_data"),
+    sub("\\.(svg|pdf|png)$", ".csv", rel_paths, ignore.case = TRUE)
+  )
   data.frame(
-    source_file = path,
-    target_file = target,
+    source_file = paths,
+    target_file = targets,
     file_ext = ext,
-    file_size_bytes = if (nrow(info)) as.numeric(info$size) else NA_real_,
+    file_size_bytes = as.numeric(file.info(paths)$size),
     editable_vector = ext %in% c("svg", "pdf"),
-    has_png_companion = file.exists(sub("\\.[^.]+$", ".png", path)),
+    has_png_companion = file.exists(sub("\\.[^.]+$", ".png", paths)),
     source_data_candidate = sibling_source,
     source_data_candidate_exists = file.exists(sibling_source),
-    publication_readiness_note = if (ext == "svg") {
-      "editable_vector_check_fonts_labels_and_panel_size"
-    } else if (ext == "pdf") {
-      "vector_or_pdf_check_fonts_labels_and_panel_size"
-    } else {
-      "raster_check_resolution_and_source_data"
-    },
+    publication_readiness_note = ifelse(
+      ext == "svg", "editable_vector_check_fonts_labels_and_panel_size",
+      ifelse(ext == "pdf", "vector_or_pdf_check_fonts_labels_and_panel_size",
+             "raster_check_resolution_and_source_data")
+    ),
     stringsAsFactors = FALSE
   )
 }
 
 manifest <- data.frame(
   source_file = candidates,
-  target_file = file.path(path_results("manuscript", "extended_data"), vapply(candidates, figure_target_name, character(1))),
+  target_file = manuscript_figure_target_paths(
+    candidate_rel, path_results("manuscript", "extended_data")
+  ),
   stringsAsFactors = FALSE
 )
-if (nrow(manifest)) {
-  file.copy(manifest$source_file, manifest$target_file, overwrite = TRUE)
+# Fail closed before touching the payload, then copy and verify. Nothing below
+# runs unless every single file landed, so the manifests and the run manifest
+# can never describe a partial export.
+assert_unique_export_targets(manifest$target_file, manifest$source_file)
+over_budget <- manifest$target_file[nchar(manifest$target_file) > manuscript_figure_path_budget()]
+if (length(over_budget)) {
+  stop(
+    length(over_budget), " target path(s) exceed the ",
+    manuscript_figure_path_budget(), "-character budget; first: ",
+    basename(over_budget[[1]]), call. = FALSE
+  )
 }
+copy_export_targets(manifest$source_file, manifest$target_file)
 
 figure_audit <- if (nrow(manifest)) {
-  do.call(rbind, Map(figure_audit_row, manifest$source_file, manifest$target_file))
+  figure_audit_table(manifest$source_file, manifest$target_file, candidate_rel)
 } else {
   data.frame(
     source_file = character(), target_file = character(), file_ext = character(),
