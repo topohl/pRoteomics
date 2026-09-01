@@ -178,6 +178,109 @@ orphan_figure_family_stems <- function() {
   c("all_supermodule_eigengene_spatial_group_plot")
 }
 
+# Manuscript figure target naming, budgeted against MAX_PATH.
+#
+# Windows MAX_PATH is 260 characters and file.copy() merely returns FALSE beyond
+# it, so flattening a deep source-relative path into a single filename could
+# silently fail to copy (measured: every target at 260+ chars failed, every
+# target at 259 or fewer succeeded). Targets are therefore built against a
+# conservative full-path budget well under the limit.
+#
+# When a name does not fit, the readable source-relative prefix is truncated and
+# a short deterministic hash of the COMPLETE source-relative path is appended.
+# Hashing the complete path (never the truncated form) is what keeps two sources
+# that share a truncated prefix distinct.
+#
+# This is deliberately export-local: it does not use \\?\ long-path prefixes and
+# does not alter the global safe_filename(), which is called here with an
+# effectively unlimited max_chars so that its own truncation cannot collapse two
+# names before the hash is computed.
+manuscript_figure_path_budget <- function() 240L
+
+manuscript_figure_target_hash <- function(rel_path) {
+  substr(
+    digest::digest(enc2utf8(as.character(rel_path)), algo = "sha1", serialize = FALSE),
+    1L, 10L
+  )
+}
+
+manuscript_figure_target_paths <- function(rel_paths, target_dir,
+                                           budget = manuscript_figure_path_budget()) {
+  if (!length(rel_paths)) return(character(0))
+  target_dir <- normalize_export_path(target_dir)
+  prefix_chars <- nchar(target_dir) + 1L
+
+  vapply(as.character(rel_paths), function(rel) {
+    ext <- tolower(tools::file_ext(rel))
+    stem <- safe_filename(tools::file_path_sans_ext(rel), max_chars = .Machine$integer.max)
+    room <- budget - prefix_chars - (nchar(ext) + 1L)
+    hash <- manuscript_figure_target_hash(rel)
+    min_room <- nchar(hash) + 9L
+    if (room < min_room) {
+      stop(
+        "Manuscript figure target directory is too deep for the ", budget,
+        "-character path budget: ", target_dir,
+        " leaves only ", room, " characters for a filename (need at least ",
+        min_room, ").", call. = FALSE
+      )
+    }
+    name <- if (nchar(stem) <= room) {
+      paste0(stem, ".", ext)
+    } else {
+      paste0(substr(stem, 1L, room - nchar(hash) - 1L), "_", hash, ".", ext)
+    }
+    file.path(target_dir, name)
+  }, character(1), USE.NAMES = FALSE)
+}
+
+# Fail closed on duplicate targets: two sources copied to one target would
+# silently overwrite, leaving a payload that looks complete but is not.
+assert_unique_export_targets <- function(targets, sources = NULL) {
+  dup_targets <- unique(targets[duplicated(targets)])
+  if (length(dup_targets)) {
+    detail <- vapply(head(dup_targets, 5L), function(t) {
+      src <- if (is.null(sources)) character(0) else sources[targets == t]
+      paste0(basename(t), " <- ", paste(basename(src), collapse = ", "))
+    }, character(1))
+    stop(
+      "Export target collision: ", length(dup_targets),
+      " target path(s) claimed by more than one source. ",
+      paste(detail, collapse = " | "), call. = FALSE
+    )
+  }
+  invisible(TRUE)
+}
+
+# Copy and verify. Any FALSE return or any absent target aborts before the
+# caller can write a manifest, so a partial payload is never reported as good.
+copy_export_targets <- function(sources, targets) {
+  if (!length(sources)) return(invisible(TRUE))
+  if (length(sources) != length(targets)) {
+    stop("copy_export_targets: sources and targets differ in length.", call. = FALSE)
+  }
+  copied <- file.copy(sources, targets, overwrite = TRUE)
+  failed <- which(!copied)
+  if (length(failed)) {
+    stop(
+      "Export copy failed for ", length(failed), " of ", length(sources),
+      " file(s); refusing to write a manifest for a partial payload. First: ",
+      paste(sprintf("%s (target %d chars)", basename(targets[failed]),
+                    nchar(targets[failed]))[seq_len(min(3L, length(failed)))],
+            collapse = " | "), call. = FALSE
+    )
+  }
+  absent <- which(!file.exists(targets))
+  if (length(absent)) {
+    stop(
+      "Export copy reported success but ", length(absent),
+      " target(s) are absent: ",
+      paste(basename(targets[absent])[seq_len(min(3L, length(absent)))],
+            collapse = " | "), call. = FALSE
+    )
+  }
+  invisible(TRUE)
+}
+
 is_orphan_figure_family_path <- function(paths) {
   families <- orphan_figure_family_stems()
   vapply(paths, function(path) {
