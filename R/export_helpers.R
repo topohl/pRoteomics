@@ -424,6 +424,28 @@ source_data_excluded_concordance_intermediate <- function(rel) {
     grepl("/gsea_wgcna_concordance/", rel, fixed = TRUE)
 }
 
+# (8) INTERMEDIATE LEGACY REPLAY: one exact prefix. This tree is a legacy
+#     replay / validation output set, not a manuscript source-data family, and
+#     no required manuscript-facing keep artifact lives in it. It also holds the
+#     nine sources whose paths are exactly 260 characters and are therefore
+#     unreadable through normal R file operations on Windows.
+#
+#     Scoped to this single prefix on purpose. It is NOT a rule about "legacy"
+#     appearing in a name, nor about comparison trees, nor about sensitivity
+#     analyses: the sibling animal_level/, repro1/, repro2/, rnga/ and rngb/
+#     trees under the same comparison root remain selected, and a test pins
+#     that.
+source_data_legacy_replay_prefix <- function() {
+  paste0(
+    "results/source_data/04_differential_expression_enrichment_comparison/",
+    "legacy_replay/"
+  )
+}
+
+source_data_excluded_legacy_replay <- function(rel) {
+  startsWith(rel, source_data_legacy_replay_prefix())
+}
+
 source_data_scope_exclusion_reasons <- function(paths, results_root = path_results()) {
   rel <- source_data_scope_relpath(paths)
   reason <- rep(NA_character_, length(rel))
@@ -433,6 +455,7 @@ source_data_scope_exclusion_reasons <- function(paths, results_root = path_resul
     reason
   }
   reason <- assign_reason(reason, source_data_excluded_diagnostic(rel), "diagnostic")
+  reason <- assign_reason(reason, source_data_excluded_legacy_replay(rel), "intermediate_legacy_replay")
   reason <- assign_reason(reason, source_data_excluded_removed_pipeline(rel), "superseded_removed_pipeline")
   reason <- assign_reason(reason, source_data_excluded_timestamped_variant(rel, results_root), "superseded_timestamped_variant")
   reason <- assign_reason(reason, source_data_excluded_proposed_tree(rel, results_root), "proposed_non_canonical")
