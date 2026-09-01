@@ -22,7 +22,6 @@ args <- commandArgs(trailingOnly = TRUE)
 dry_run <- is_dry_run()
 
 manuscript_dirs <- path_results("manuscript", c("figure_1", "figure_2", "extended_data"))
-invisible(lapply(manuscript_dirs, dir_create))
 
 candidate_roots <- c(
   path_results("figures", "03_qc_exploration"),
@@ -33,14 +32,22 @@ candidate_roots <- c(
   path_results("figures", "08_behavior_physio_coupling")
 )
 
+# Selection is read-only, so it is computed before the dry-run guard and
+# reported by it. Nothing above this point may mutate the filesystem:
+# --dry-run must be side-effect free.
+candidates <- unlist(lapply(candidate_roots[dir.exists(candidate_roots)], list.files, pattern = "\\.(svg|pdf|png)$", recursive = TRUE, full.names = TRUE), use.names = FALSE)
+candidates <- candidates[is_exportable_result_path(candidates)]
+candidates <- drop_legacy_dataset_suffixed_aliases(candidates)
+
 if (isTRUE(dry_run)) {
   dry_run_line("Script", "09_export_pride_journal/08_export_manuscript_figures.R")
   dry_run_line("Candidate figure roots", paste(candidate_roots, collapse = "; "))
   dry_run_line("Output root", path_results("manuscript"))
+  dry_run_line("Selected files", length(candidates))
   quit(status = 0, save = "no")
 }
 
-candidates <- unlist(lapply(candidate_roots[dir.exists(candidate_roots)], list.files, pattern = "\\.(svg|pdf|png)$", recursive = TRUE, full.names = TRUE), use.names = FALSE)
+invisible(lapply(manuscript_dirs, dir_create))
 
 figure_target_name <- function(path) {
   rel <- relative_to(path, path_results("figures"))
