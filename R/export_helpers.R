@@ -113,8 +113,50 @@ is_noncanonical_ewce_export_path <- function(path) {
 
 is_exportable_result_path <- function(path) {
   normalized <- normalize_export_path(path)
-  !grepl("/results/manuscript(/|$)", normalized, fixed = TRUE) &
+  # Regex, not fixed: the trailing (/|$) alternation must be interpreted.
+  # With fixed = TRUE this pattern never matched, so the manuscript payload
+  # was silently exportable and a rebuild could re-ingest its stale contents.
+  !grepl("/results/manuscript(/|$)", normalized) &
     !is_noncanonical_ewce_export_path(normalized)
+}
+
+# Legacy dataset-suffixed figure aliases.
+#
+# Current WGCNA figure code writes an unsuffixed canonical name. Older runs
+# also wrote "<stem>_<dataset>.<ext>" aliases. Where both survive in the same
+# directory the suffixed file is a stale leftover of a superseded run and must
+# not reach the manuscript payload. Removing it from the *export selection*
+# leaves the scientific figure tree untouched.
+#
+# The canonical sibling must exist for a file to count as an alias, so
+# descriptive names that merely end in a dataset word (for example
+# "..._fingerprint_with_soma.svg", which has no "..._fingerprint_with.svg"
+# sibling) are deliberately kept.
+legacy_dataset_figure_suffixes <- function() {
+  c("neuron_neuropil", "neuron_soma", "neuropil", "soma", "microglia")
+}
+
+is_legacy_dataset_suffixed_alias <- function(paths) {
+  vapply(paths, function(path) {
+    ext <- tools::file_ext(path)
+    if (!nzchar(ext)) return(FALSE)
+    stem <- tools::file_path_sans_ext(basename(path))
+    directory <- dirname(path)
+    for (suffix in legacy_dataset_figure_suffixes()) {
+      tail <- paste0("_", suffix)
+      if (!endsWith(stem, tail)) next
+      canonical_stem <- substr(stem, 1L, nchar(stem) - nchar(tail))
+      if (!nzchar(canonical_stem)) next
+      canonical <- file.path(directory, paste0(canonical_stem, ".", ext))
+      if (file.exists(canonical)) return(TRUE)
+    }
+    FALSE
+  }, logical(1), USE.NAMES = FALSE)
+}
+
+drop_legacy_dataset_suffixed_aliases <- function(paths) {
+  if (!length(paths)) return(paths)
+  paths[!is_legacy_dataset_suffixed_alias(paths)]
 }
 
 canonical_ewce_figure_root <- function() {
