@@ -281,6 +281,176 @@ copy_export_targets <- function(sources, targets) {
   invisible(TRUE)
 }
 
+# ---------------------------------------------------------------------------
+# Manuscript / journal source-data scope.
+#
+# SCOPE OF THESE RULES: they filter the *manuscript source-data export* only
+# (09_export_source_data.R). They never delete or alter an analysis output, and
+# they are deliberately NOT applied to PRIDE/deposition packaging, whose
+# selectors live in R/pride_helpers.R and remain untouched.
+#
+# Every rule names an explicit path or family and records why it is diagnostic,
+# superseded, proposed or intermediate. There is intentionally NO size-based,
+# timestamp-pattern, "proposed appears in the name" or "unreferenced in code"
+# heuristic: each of those would fail open on legitimate manuscript source data.
+# Where an exclusion is justified by the existence of a canonical sibling, that
+# sibling is checked and its absence is a hard error rather than a silent drop.
+# ---------------------------------------------------------------------------
+
+# Repo-relative, forward-slashed path used for matching ("results/...").
+source_data_scope_relpath <- function(paths) {
+  normalized <- gsub("\\\\", "/", as.character(paths))
+  sub("^.*/(results/)", "\\1", normalized)
+}
+
+# (1) DIAGNOSTIC: internal per-term GSEA direction audits. Manuscript tables
+#     cite enrichment results, never this per-term direction bookkeeping.
+source_data_excluded_diagnostic <- function(rel) {
+  grepl(paste0(
+    "^results/tables/04_differential_expression_enrichment/",
+    "01b_gsea_protein_direction_audit/.*/BP/gsea_term_direction_audit\\.csv$"
+  ), rel)
+}
+
+# (2) SUPERSEDED REMOVED PIPELINE: outputs of
+#     04_neuropil_contamination_annotation.r, which docs/NAMING_MIGRATION.md
+#     records as removed and replaced by 04_neuropil_reference_annotation.r.
+#     Scoped to this one tree; not generalised.
+source_data_excluded_removed_pipeline <- function(rel) {
+  startsWith(rel, paste0(
+    "results/tables/04_differential_expression_enrichment/",
+    "neuropil_contamination_annotation/"
+  ))
+}
+
+# (3) SUPERSEDED TIMESTAMPED VARIANTS: only the two named
+#     neuropil_reference_annotation stems, and only when the explicit canonical
+#     "<stem>_latest.csv" pointer exists in the same directory. No generic
+#     "timestamped filename is superseded" rule.
+source_data_timestamped_variant_stems <- function() {
+  c("microglia_neuropil_annotation", "microglia_neuropil_annotation_summary")
+}
+
+source_data_excluded_timestamped_variant <- function(rel, results_root = path_results()) {
+  family_dir <- paste0(
+    "results/tables/04_differential_expression_enrichment/",
+    "neuropil_reference_annotation/"
+  )
+  vapply(rel, function(one) {
+    if (!startsWith(one, family_dir)) return(FALSE)
+    base <- basename(one)
+    for (stem in source_data_timestamped_variant_stems()) {
+      pattern <- paste0("^", stem, "_[0-9]{8}_[0-9]{6}\\.csv$")
+      if (!grepl(pattern, base)) next
+      canonical_rel <- file.path(dirname(one), paste0(stem, "_latest.csv"))
+      canonical <- file.path(dirname(results_root), canonical_rel)
+      # Fail closed by KEEPING. The exclusion is conditional on an explicit
+      # "<stem>_latest.csv" pointer, so without one these timestamped files may
+      # be the only copy of that output and are retained. This is a normal,
+      # permanent state for some stems (microglia_neuropil_annotation has a
+      # _latest pointer; microglia_neuropil_annotation_summary does not), so it
+      # must not abort the export.
+      if (!file.exists(canonical)) return(FALSE)
+      return(TRUE)
+    }
+    FALSE
+  }, logical(1), USE.NAMES = FALSE)
+}
+
+# (4) PROPOSED / NON-CANONICAL VARIANTS: two explicitly named trees, excluded
+#     only because a canonical sibling tree exists. Listed as
+#     (proposed prefix, canonical prefix) pairs relative to the repository.
+source_data_proposed_tree_pairs <- function() {
+  list(
+    c("results/tables/04_differential_expression_enrichment/compareGO_spatial_atlas_validation_proposed/",
+      "results/tables/04_differential_expression_enrichment/compareGO_spatial_atlas"),
+    c("results/source_data/04_differential_expression_enrichment/compareGO_spatial_atlas_validation_proposed/",
+      "results/source_data/04_differential_expression_enrichment/compareGO_spatial_atlas"),
+    c("results/tables/04_differential_expression_enrichment/microglia_targeted_signature_enrichment/microglia_validation_proposed/",
+      "results/tables/04_differential_expression_enrichment/microglia_targeted_signature_enrichment/microglia"),
+    c("results/source_data/04_differential_expression_enrichment/microglia_targeted_signature_enrichment/microglia_validation_proposed/",
+      "results/source_data/04_differential_expression_enrichment/microglia_targeted_signature_enrichment/microglia")
+  )
+}
+
+source_data_excluded_proposed_tree <- function(rel, results_root = path_results()) {
+  repo <- dirname(results_root)
+  out <- logical(length(rel))
+  for (pair in source_data_proposed_tree_pairs()) {
+    hit <- startsWith(rel, pair[[1]])
+    if (!any(hit)) next
+    canonical <- file.path(repo, pair[[2]])
+    # Fail closed: the exclusion is only justified by the canonical tree.
+    if (!dir.exists(canonical)) {
+      stop(
+        "Refusing to exclude proposed source-data tree without its canonical ",
+        "sibling: ", pair[[1]], " (expected ", pair[[2]], ")", call. = FALSE
+      )
+    }
+    out <- out | hit
+  }
+  out
+}
+
+# (5) INTERMEDIATE TERM-GENE EXPANSIONS: per-term gene provenance/evidence
+#     expansions. They stay in analysis results for reproducibility but are not
+#     per-figure journal source data.
+source_data_excluded_term_gene_expansion <- function(rel) {
+  provenance <- grepl(paste0(
+    "^results/tables/04_differential_expression_enrichment/compareGO/[^/]+/BP/",
+    "phenotype_within_unit/all_route_units/compareGO_term_gene_provenance\\.csv$"
+  ), rel)
+  evidence <- grepl(paste0(
+    "^results/source_data/04_differential_expression_enrichment/",
+    "biological_program_summary/(neuron_neuropil|neuron_soma|microglia)/",
+    "program_term_gene_evidence\\.csv$"
+  ), rel)
+  provenance | evidence
+}
+
+# (6) STAGE-11 INTERMEDIATE: the joint control-pair GO FDR expansion. The
+#     derived Stage-11 manuscript summaries, geometry tables, trajectories and
+#     provenance are kept.
+source_data_excluded_stage11_intermediate <- function(rel) {
+  basename(rel) == "control_pair_joint_GO_FDR.csv" &
+    grepl("/stress_response_biological_audit/", rel, fixed = TRUE)
+}
+
+# (7) CONCORDANCE INTERMEDIATE: the all-contrasts theme-assignment expansion,
+#     in both the tables and source_data copies. Compact Figure-3/concordance
+#     manuscript tables are kept.
+source_data_excluded_concordance_intermediate <- function(rel) {
+  basename(rel) == "ontology_aware_gsea_theme_assignments_all_contrasts.csv" &
+    grepl("/gsea_wgcna_concordance/", rel, fixed = TRUE)
+}
+
+source_data_scope_exclusion_reasons <- function(paths, results_root = path_results()) {
+  rel <- source_data_scope_relpath(paths)
+  reason <- rep(NA_character_, length(rel))
+  assign_reason <- function(reason, hit, label) {
+    take <- hit & is.na(reason)
+    reason[take] <- label
+    reason
+  }
+  reason <- assign_reason(reason, source_data_excluded_diagnostic(rel), "diagnostic")
+  reason <- assign_reason(reason, source_data_excluded_removed_pipeline(rel), "superseded_removed_pipeline")
+  reason <- assign_reason(reason, source_data_excluded_timestamped_variant(rel, results_root), "superseded_timestamped_variant")
+  reason <- assign_reason(reason, source_data_excluded_proposed_tree(rel, results_root), "proposed_non_canonical")
+  reason <- assign_reason(reason, source_data_excluded_term_gene_expansion(rel), "intermediate_term_gene_expansion")
+  reason <- assign_reason(reason, source_data_excluded_stage11_intermediate(rel), "intermediate_stage11")
+  reason <- assign_reason(reason, source_data_excluded_concordance_intermediate(rel), "intermediate_concordance")
+  reason
+}
+
+is_manuscript_source_data_path <- function(paths, results_root = path_results()) {
+  is.na(source_data_scope_exclusion_reasons(paths, results_root))
+}
+
+apply_manuscript_source_data_scope <- function(paths, results_root = path_results()) {
+  if (!length(paths)) return(paths)
+  paths[is_manuscript_source_data_path(paths, results_root)]
+}
+
 is_orphan_figure_family_path <- function(paths) {
   families <- orphan_figure_family_stems()
   vapply(paths, function(path) {

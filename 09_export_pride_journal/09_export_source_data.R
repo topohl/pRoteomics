@@ -29,11 +29,25 @@ table_roots <- c(path_results("tables"), path_results("source_data"))
 candidates <- unlist(lapply(table_roots[dir.exists(table_roots)], list.files, pattern = "\\.(csv|tsv|xlsx)$", recursive = TRUE, full.names = TRUE), use.names = FALSE)
 candidates <- candidates[is_exportable_result_path(candidates)]
 
+# Journal source-data scope: drop diagnostic, superseded, proposed and
+# intermediate families that are not manuscript source data. Applies to this
+# export only -- analysis outputs are untouched and PRIDE packaging is
+# unaffected. See the scope block in R/export_helpers.R for per-family
+# justification.
+scope_before <- length(candidates)
+scope_reasons <- source_data_scope_exclusion_reasons(candidates)
+candidates <- candidates[is.na(scope_reasons)]
+scope_dropped <- table(scope_reasons[!is.na(scope_reasons)])
+
 if (isTRUE(dry_run)) {
   dry_run_line("Script", "09_export_pride_journal/09_export_source_data.R")
   dry_run_line("Candidate table/source-data roots", paste(table_roots, collapse = "; "))
   dry_run_line("Source data output", target_source)
   dry_run_line("Supplementary table output", target_supp)
+  dry_run_line("Candidates before journal scope", scope_before)
+  for (reason in names(scope_dropped)) {
+    dry_run_line(paste0("Excluded (", reason, ")"), scope_dropped[[reason]])
+  }
   dry_run_line("Selected files", length(candidates))
   quit(status = 0, save = "no")
 }
