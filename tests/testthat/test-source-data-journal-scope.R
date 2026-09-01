@@ -264,8 +264,14 @@ testthat::test_that("the scope uses no size, timestamp-pattern or name heuristic
   src <- readLines(file.path(repo, "R", "export_helpers.R"), warn = FALSE)
   block_start <- grep("Manuscript / journal source-data scope", src, fixed = TRUE)
   testthat::expect_length(block_start, 1L)
-  block_end <- grep("^is_orphan_figure_family_path <- function", src)
-  block <- src[block_start[[1]]:block_end[[1]]]
+  # Bound the region to the exclusion predicates and their resolver only. The
+  # copy/target helpers that follow legitimately stat files, so including them
+  # would make the "no size heuristic" assertion meaningless.
+  block_end <- grep("^# Manuscript source-data / supplementary-table target naming", src)
+  testthat::expect_length(block_end, 1L)
+  testthat::expect_gt(block_end[[1]], block_start[[1]])
+  block <- src[block_start[[1]]:(block_end[[1]] - 1L)]
+  testthat::expect_true(any(grepl("^source_data_scope_exclusion_reasons <- function", block)))
   code <- block[!grepl("^\\s*#", block)]
 
   # No size-based rule.
