@@ -20,21 +20,26 @@ source(repo_path("R", "export_helpers.R"))
 dry_run <- is_dry_run()
 target_source <- path_results("manuscript", "source_data")
 target_supp <- path_results("manuscript", "supplementary_tables")
-dir_create(target_source)
-dir_create(target_supp)
 
 table_roots <- c(path_results("tables"), path_results("source_data"))
+
+# Selection is read-only, so it is computed before the dry-run guard and
+# reported by it. Nothing below this point may mutate the filesystem until
+# after the guard: --dry-run must be side-effect free.
+candidates <- unlist(lapply(table_roots[dir.exists(table_roots)], list.files, pattern = "\\.(csv|tsv|xlsx)$", recursive = TRUE, full.names = TRUE), use.names = FALSE)
+candidates <- candidates[is_exportable_result_path(candidates)]
 
 if (isTRUE(dry_run)) {
   dry_run_line("Script", "09_export_pride_journal/09_export_source_data.R")
   dry_run_line("Candidate table/source-data roots", paste(table_roots, collapse = "; "))
   dry_run_line("Source data output", target_source)
   dry_run_line("Supplementary table output", target_supp)
+  dry_run_line("Selected files", length(candidates))
   quit(status = 0, save = "no")
 }
 
-candidates <- unlist(lapply(table_roots[dir.exists(table_roots)], list.files, pattern = "\\.(csv|tsv|xlsx)$", recursive = TRUE, full.names = TRUE), use.names = FALSE)
-candidates <- candidates[is_exportable_result_path(candidates)]
+dir_create(target_source)
+dir_create(target_supp)
 
 table_target_name <- function(path) {
   root <- if (grepl("/source_data/", normalizePath(path, winslash = "/", mustWork = FALSE), fixed = TRUE)) path_results("source_data") else path_results("tables")

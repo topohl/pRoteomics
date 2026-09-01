@@ -58,6 +58,23 @@ if (!cli$skip_claims) steps <- c(steps, "09_export_pride_journal/07_make_biologi
 steps <- c(steps, "09_export_pride_journal/06_make_methods_summary.R", "09_export_pride_journal/05_make_pride_manifest.R")
 if (!cli$skip_validation) steps <- c(steps, "09_export_pride_journal/10_validate_pride_submission.R")
 
-statuses <- vapply(steps, run_script, integer(1))
+# Only these steps implement a dry-run guard that returns before any
+# filesystem mutation. --dry-run must not write, so the remaining steps are
+# skipped rather than executed for real. Extend this vector when a step
+# gains a verified side-effect-free dry-run path.
+dry_run_capable <- c(
+  "09_export_pride_journal/09_export_source_data.R",
+  "09_export_pride_journal/08_export_manuscript_figures.R"
+)
+if (isTRUE(cli$dry_run)) {
+  skipped <- setdiff(steps, dry_run_capable)
+  if (length(skipped)) {
+    cat("Dry run: skipping steps without a side-effect-free dry-run path:\n")
+    for (s in skipped) cat("  - ", s, "\n", sep = "")
+  }
+  steps <- intersect(steps, dry_run_capable)
+}
+
+statuses <- if (length(steps)) vapply(steps, run_script, integer(1)) else integer(0)
 cat("\nExport runner finished. Steps:", length(steps), " Failures:", sum(statuses != 0L), "\n")
 quit(status = if (any(statuses != 0L)) 1 else 0, save = "no")
