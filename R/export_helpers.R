@@ -159,6 +159,38 @@ drop_legacy_dataset_suffixed_aliases <- function(paths) {
   paths[!is_legacy_dataset_suffixed_alias(paths)]
 }
 
+# Figure families with no current producer.
+#
+# Entries are exact stems that were each individually confirmed to be written
+# by no script, config or contract in this repository -- i.e. leftovers of
+# removed code. They are enumerated deliberately rather than inferred:
+# "basename does not appear in the source tree" is NOT a safe rule, because a
+# figure name can legitimately be assembled at runtime. Add a stem here only
+# after confirming for that exact family that no producer exists.
+#
+# all_supermodule_eigengene_spatial_group_plot: the stem appears nowhere in
+# R/, the numbered stage directories, tools/, pipeline.yml, config/ or docs/.
+# Four files survive on disk (an unsuffixed microglia file plus _microglia,
+# _neuropil and _soma variants) from a superseded naming scheme. The whole
+# family is excluded, including the unsuffixed member: none of it is a
+# current canonical output, so keeping any member would ship an orphan.
+orphan_figure_family_stems <- function() {
+  c("all_supermodule_eigengene_spatial_group_plot")
+}
+
+is_orphan_figure_family_path <- function(paths) {
+  families <- orphan_figure_family_stems()
+  vapply(paths, function(path) {
+    stem <- tools::file_path_sans_ext(basename(path))
+    any(stem == families | startsWith(stem, paste0(families, "_")))
+  }, logical(1), USE.NAMES = FALSE)
+}
+
+drop_orphan_figure_families <- function(paths) {
+  if (!length(paths)) return(paths)
+  paths[!is_orphan_figure_family_path(paths)]
+}
+
 canonical_ewce_figure_root <- function() {
   path_results("figures", "05_celltype_enrichment_EWCE", "EWCE_E9")
 }

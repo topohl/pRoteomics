@@ -38,6 +38,7 @@ candidate_roots <- c(
 candidates <- unlist(lapply(candidate_roots[dir.exists(candidate_roots)], list.files, pattern = "\\.(svg|pdf|png)$", recursive = TRUE, full.names = TRUE), use.names = FALSE)
 candidates <- candidates[is_exportable_result_path(candidates)]
 candidates <- drop_legacy_dataset_suffixed_aliases(candidates)
+candidates <- drop_orphan_figure_families(candidates)
 
 if (isTRUE(dry_run)) {
   dry_run_line("Script", "09_export_pride_journal/08_export_manuscript_figures.R")
