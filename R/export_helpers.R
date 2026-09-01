@@ -204,17 +204,30 @@ manuscript_figure_target_hash <- function(rel_path) {
   )
 }
 
+# `identity` is the string the disambiguating hash is taken over. It defaults to
+# rel_paths, which is what the figure export needs and preserves its behaviour
+# exactly. The table export passes the full root-qualified relative path so that
+# two files sharing a within-root relative path (one under results/source_data,
+# one under results/tables) can never derive the same hash.
 manuscript_figure_target_paths <- function(rel_paths, target_dir,
-                                           budget = manuscript_figure_path_budget()) {
+                                           budget = manuscript_figure_path_budget(),
+                                           identity = rel_paths) {
   if (!length(rel_paths)) return(character(0))
+  if (length(identity) != length(rel_paths)) {
+    stop("manuscript_figure_target_paths: identity and rel_paths differ in length.",
+         call. = FALSE)
+  }
   target_dir <- normalize_export_path(target_dir)
   prefix_chars <- nchar(target_dir) + 1L
+  rel_paths <- as.character(rel_paths)
+  identity <- as.character(identity)
 
-  vapply(as.character(rel_paths), function(rel) {
+  vapply(seq_along(rel_paths), function(i) {
+    rel <- rel_paths[[i]]
     ext <- tolower(tools::file_ext(rel))
     stem <- safe_filename(tools::file_path_sans_ext(rel), max_chars = .Machine$integer.max)
     room <- budget - prefix_chars - (nchar(ext) + 1L)
-    hash <- manuscript_figure_target_hash(rel)
+    hash <- manuscript_figure_target_hash(identity[[i]])
     min_room <- nchar(hash) + 9L
     if (room < min_room) {
       stop(
@@ -463,6 +476,93 @@ source_data_scope_exclusion_reasons <- function(paths, results_root = path_resul
   reason <- assign_reason(reason, source_data_excluded_stage11_intermediate(rel), "intermediate_stage11")
   reason <- assign_reason(reason, source_data_excluded_concordance_intermediate(rel), "intermediate_concordance")
   reason
+}
+
+# Manuscript source-data / supplementary-table target naming.
+#
+# Same contract as the figure targets: a <= 240 character complete target path,
+# no \\?\ prefixes, the global safe_filename() untouched and called with an
+# unlimited max_chars so its own truncation cannot collapse two names before the
+# hash decision, a readable source-relative prefix, and a deterministic
+# 10-character hash of the COMPLETE root-qualified source identity when
+# shortening is required. The real extension is preserved.
+#
+# Candidates arrive from two roots (results/source_data and results/tables) and
+# are routed to two different output directories. Routing and naming are derived
+# from the SAME repo-relative prefix so they cannot disagree, and the hash
+# identity includes the root, so two files sharing a within-root relative path
+# stay distinct.
+manuscript_table_export_root <- function(rel_full) {
+  ifelse(
+    startsWith(rel_full, "results/source_data/"), "source_data",
+    ifelse(startsWith(rel_full, "results/tables/"), "tables", NA_character_)
+  )
+}
+
+manuscript_table_target_paths <- function(paths, source_data_dir, supplementary_dir,
+                                          budget = manuscript_figure_path_budget()) {
+  if (!length(paths)) return(character(0))
+  rel_full <- source_data_scope_relpath(paths)
+  root <- manuscript_table_export_root(rel_full)
+  unknown <- which(is.na(root))
+  if (length(unknown)) {
+    stop(
+      "Cannot route ", length(unknown), " source-data candidate(s): expected a ",
+      "results/source_data/ or results/tables/ prefix. First: ",
+      rel_full[[unknown[[1]]]], call. = FALSE
+    )
+  }
+  within <- ifelse(root == "source_data",
+                   sub("^results/source_data/", "", rel_full),
+                   sub("^results/tables/", "", rel_full))
+  out <- character(length(paths))
+  for (r in c("source_data", "tables")) {
+    idx <- which(root == r)
+    if (!length(idx)) next
+    out[idx] <- manuscript_figure_target_paths(
+      within[idx],
+      if (r == "source_data") source_data_dir else supplementary_dir,
+      budget = budget,
+      identity = rel_full[idx]
+    )
+  }
+  out
+}
+
+# Fail closed on a target claimed by more than one source, and name the roots
+# involved so a cross-root clash is obvious rather than silently resolved by a
+# new naming policy.
+assert_unique_table_export_targets <- function(targets, sources) {
+  dup <- unique(targets[duplicated(targets)])
+  if (!length(dup)) return(invisible(TRUE))
+  detail <- vapply(head(dup, 5L), function(t) {
+    src <- source_data_scope_relpath(sources[targets == t])
+    paste0(basename(t), " <- ", paste(src, collapse = " + "))
+  }, character(1))
+  stop(
+    "Source-data export target collision: ", length(dup),
+    " target path(s) claimed by more than one source. ",
+    paste(detail, collapse = " | "), call. = FALSE
+  )
+}
+
+# Every selected source must be readable through ordinary R file operations.
+# Runs after journal-scope filtering so excluded trees cannot block the export.
+assert_export_sources_accessible <- function(paths) {
+  if (!length(paths)) return(invisible(TRUE))
+  info <- file.info(paths)
+  bad <- which(!file.exists(paths) | is.na(info$size))
+  if (length(bad)) {
+    stop(
+      length(bad), " selected source(s) are inaccessible (missing, or ",
+      "unreadable file.info -- typically a path at or beyond the ",
+      "260-character Windows limit). First: ",
+      paste(sprintf("%s (%d chars)", source_data_scope_relpath(paths[bad]),
+                    nchar(paths[bad]))[seq_len(min(3L, length(bad)))],
+            collapse = " | "), call. = FALSE
+    )
+  }
+  invisible(TRUE)
 }
 
 is_manuscript_source_data_path <- function(paths, results_root = path_results()) {
