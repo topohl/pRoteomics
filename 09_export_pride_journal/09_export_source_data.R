@@ -39,39 +39,57 @@ scope_reasons <- source_data_scope_exclusion_reasons(candidates)
 candidates <- candidates[is.na(scope_reasons)]
 scope_dropped <- table(scope_reasons[!is.na(scope_reasons)])
 
+# Targets are budgeted and routed read-only, so the dry-run can report the same
+# numbers the real run will enforce. Nothing here mutates the filesystem.
+target_paths <- manuscript_table_target_paths(candidates, target_source, target_supp)
+selected_info <- file.info(candidates)
+n_inaccessible <- sum(!file.exists(candidates) | is.na(selected_info$size))
+n_over_budget <- sum(nchar(target_paths) > manuscript_figure_path_budget())
+n_duplicate_targets <- sum(duplicated(target_paths))
+
 if (isTRUE(dry_run)) {
   dry_run_line("Script", "09_export_pride_journal/09_export_source_data.R")
   dry_run_line("Candidate table/source-data roots", paste(table_roots, collapse = "; "))
   dry_run_line("Source data output", target_source)
   dry_run_line("Supplementary table output", target_supp)
-  dry_run_line("Candidates before journal scope", scope_before)
+  dry_run_line("Raw candidates before journal scope", scope_before)
   for (reason in names(scope_dropped)) {
     dry_run_line(paste0("Excluded (", reason, ")"), scope_dropped[[reason]])
   }
-  dry_run_line("Selected files", length(candidates))
+  dry_run_line("Scoped selected files", length(candidates))
+  dry_run_line("Selected bytes", format(sum(selected_info$size, na.rm = TRUE), big.mark = ","))
+  dry_run_line("Selected GB", round(sum(selected_info$size, na.rm = TRUE) / 1e9, 3))
+  dry_run_line("Inaccessible selected sources", n_inaccessible)
+  dry_run_line(paste0("Target paths over ", manuscript_figure_path_budget(), " chars"), n_over_budget)
+  dry_run_line("Duplicate target paths", n_duplicate_targets)
+  dry_run_line("Longest target path", if (length(target_paths)) max(nchar(target_paths)) else 0L)
   quit(status = 0, save = "no")
-}
-
-dir_create(target_source)
-dir_create(target_supp)
-
-table_target_name <- function(path) {
-  root <- if (grepl("/source_data/", normalizePath(path, winslash = "/", mustWork = FALSE), fixed = TRUE)) path_results("source_data") else path_results("tables")
-  rel <- relative_to(path, root)
-  paste0(safe_filename(tools::file_path_sans_ext(rel)), ".", tolower(tools::file_ext(path)))
 }
 
 manifest <- data.frame(
   source_file = candidates,
-  target_file = file.path(
-    ifelse(grepl("source_data", candidates, fixed = TRUE), target_source, target_supp),
-    vapply(candidates, table_target_name, character(1))
-  ),
+  target_file = target_paths,
   stringsAsFactors = FALSE
 )
-if (nrow(manifest)) {
-  file.copy(manifest$source_file, manifest$target_file, overwrite = TRUE)
+
+# Fail closed before touching the payload: every source must be readable, every
+# target must fit the budget, and no target may be claimed twice. Only then are
+# the directories created and the copy verified file by file, so neither the
+# manifest nor the run manifest can describe a partial export.
+assert_export_sources_accessible(manifest$source_file)
+assert_unique_table_export_targets(manifest$target_file, manifest$source_file)
+over_budget <- manifest$target_file[nchar(manifest$target_file) > manuscript_figure_path_budget()]
+if (length(over_budget)) {
+  stop(
+    length(over_budget), " target path(s) exceed the ",
+    manuscript_figure_path_budget(), "-character budget; first: ",
+    basename(over_budget[[1]]), call. = FALSE
+  )
 }
+
+dir_create(target_source)
+dir_create(target_supp)
+copy_export_targets(manifest$source_file, manifest$target_file)
 
 manifest_path <- path_results("manuscript", "source_data_export_manifest.csv")
 utils::write.csv(manifest, manifest_path, row.names = FALSE)
