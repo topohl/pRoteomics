@@ -5,7 +5,14 @@
 # What is pinned: the ranked input, the per-comparison derived seed, RNGkind
 # ("L'Ecuyer-CMRG"/"Inversion"/"Rejection"), nPermSimple, by = "fgsea", and
 # clusterProfiler's own logical `seed` flag (kept FALSE so the local RNG scope
-# below governs). Software versions are pinned by renv.
+# below governs).
+#
+# Software versions used for the accepted analysis are recorded from the
+# execution environment (see the sessionInfo.txt written beside each run
+# manifest). The repository's current renv.lock is intentionally incomplete
+# and does not fully reconstruct the scientific analysis stack -- notably
+# clusterProfiler, fgsea, DOSE, WGCNA and limma are not recorded there; see
+# docs/RENV_LOCK_STATUS.md.
 #
 # What that guarantees: within one execution context, the same seed and input
 # reproduce results field-identically. Verified for
