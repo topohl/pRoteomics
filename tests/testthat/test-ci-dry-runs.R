@@ -35,3 +35,13 @@ testthat::test_that("contract smoke workflow does not mask failures", {
     testthat::expect_match(text, stage, fixed = TRUE)
   }
 })
+
+testthat::test_that("dry-run workflow stays lightweight and limma-agnostic", {
+  source(testthat::test_path("..", "..", "R", "paths.R"))
+  workflow <- readLines(
+    repo_path(".github", "workflows", "dry-run.yml"), warn = FALSE
+  )
+  text <- paste(workflow, collapse = "\n")
+  testthat::expect_false(grepl("bioc::limma", text, fixed = TRUE))
+  testthat::expect_false(grepl("Verify limma availability", text, fixed = TRUE))
+})
