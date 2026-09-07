@@ -1,0 +1,474 @@
+manifest_version: '1'
+metadata:
+  generated_at: 2026-09-07T13:57:47+0200
+  generator: tools/generate_publication_freeze_manifest.R
+  note: generated_at is metadata only and is excluded from every section that identifies
+    scientific content.
+freeze_identity:
+  freeze_git_commit: f3d96cbff452f5a43e37a8597d054680f5c836c0
+  freeze_git_tag: publication-freeze-2026-09-02
+  freeze_identity_anchored_to: tag
+  head_commit_at_generation: 8c15027fbeecc1bdf594675842a9294f9dbc5561
+  head_is_freeze_commit: no
+  head_is_freeze_commit_or_descendant: yes
+  branch: main
+  upstream_commit: f3d96cbff452f5a43e37a8597d054680f5c836c0
+  head_matches_upstream: no
+  working_tree_clean: no
+software_environment:
+  r_freeze_version: 4.5.1
+  r_observed_version: 4.5.1
+  r_matches: yes
+  bioconductor_freeze_version: '3.22'
+  bioconductor_observed_version: '3.22'
+  bioconductor_matches: yes
+  platform: x86_64-w64-mingw32
+  packages:
+  - package: BiocParallel
+    freeze_version: 1.44.0
+    observed_version: 1.44.0
+    matches: yes
+  - package: DOSE
+    freeze_version: 4.4.0
+    observed_version: 4.4.0
+    matches: yes
+  - package: WGCNA
+    freeze_version: '1.74'
+    observed_version: '1.74'
+    matches: yes
+  - package: clusterProfiler
+    freeze_version: 4.18.4
+    observed_version: 4.18.4
+    matches: yes
+  - package: fgsea
+    freeze_version: 1.36.2
+    observed_version: 1.36.2
+    matches: yes
+  - package: limma
+    freeze_version: 3.66.0
+    observed_version: 3.66.0
+    matches: yes
+  all_packages_match: yes
+gsea_reproducibility_contract:
+  seed_base: 20260824
+  n_perm_simple: 100000
+  rng_kind: L'Ecuyer-CMRG/Inversion/Rejection
+  clusterprofiler_by: fgsea
+  clusterprofiler_seed_argument: no
+  config_source:
+    path: config/clusterProfiler_config.yml
+    sha256: 0c815964fd226909c6333b375ed534c25fc4dc076773718efd41bec799fdea2b
+  implementation_source:
+    path: R/clusterprofiler_reproducibility.R
+    sha256: 2c1cac6303c2b461154bd67c3a58f94faefd1552cb0521a96ef8691c24db692e
+  contract: Deterministic inputs and configuration are frozen (ranked input, per-comparison
+    derived seed, RNGkind, nPermSimple, by = 'fgsea', and clusterProfiler's logical
+    seed flag kept FALSE). Numerical reproducibility is expected within one execution
+    context. Bit-exact equality across different execution contexts is NOT guaranteed;
+    the implementation records a measured tolerance instead (enrichmentScore to ~1.6e-15,
+    propagating to <= ~2.4e-05 in NES and <= ~2.3e-05 in p-value/FDR), with no FDR-0.05
+    crossings and an unchanged Figure-2f display selection in the audited comparison.
+export_provenance_equivalence:
+  historical_export_commit: 0825e4237406f1297e379fc35216c55adf3d5e48
+  freeze_commit: f3d96cbff452f5a43e37a8597d054680f5c836c0
+  historical_commit_resolvable: yes
+  historical_commit_reachable_from_freeze: yes
+  scope: export-relevant implementation files only; NOT a whole-repository equivalence
+    claim
+  files:
+  - path: 09_export_pride_journal/08_export_manuscript_figures.R
+    historical_blob_oid: 378a9e577086bf742c379f70d319d3370006f19e
+    historical_sha256: b2fee7e35e4b902981f3a51932153abf354cc2dbc346e355f9d826e3515538e9
+    freeze_blob_oid: 378a9e577086bf742c379f70d319d3370006f19e
+    freeze_sha256: b2fee7e35e4b902981f3a51932153abf354cc2dbc346e355f9d826e3515538e9
+    identical: yes
+  - path: 09_export_pride_journal/09_export_source_data.R
+    historical_blob_oid: 4c455a433624aa8aa9b000d574a72cb30a8e0ca7
+    historical_sha256: 3f24840fa4c0e47718cefaba9362bbc95360819f2b5e0d899a2e13a99d6ff659
+    freeze_blob_oid: 4c455a433624aa8aa9b000d574a72cb30a8e0ca7
+    freeze_sha256: 3f24840fa4c0e47718cefaba9362bbc95360819f2b5e0d899a2e13a99d6ff659
+    identical: yes
+  - path: R/clusterprofiler_reproducibility.R
+    historical_blob_oid: ff8052e7083cd205c3d0a7b4824be26409e9017d
+    historical_sha256: ff77bde2ec1b83bb0b19ae9bf00a7cf1d7f57f1014f6bcc2b30515ce0f2edf1e
+    freeze_blob_oid: ff8052e7083cd205c3d0a7b4824be26409e9017d
+    freeze_sha256: ff77bde2ec1b83bb0b19ae9bf00a7cf1d7f57f1014f6bcc2b30515ce0f2edf1e
+    identical: yes
+  - path: R/export_helpers.R
+    historical_blob_oid: f53d7e276af1decb740390de3db8f8fac6189d0f
+    historical_sha256: b567d3dc73c1399eb0ab9e453c186b064cf89179ee05827fc8adce978d095b48
+    freeze_blob_oid: f53d7e276af1decb740390de3db8f8fac6189d0f
+    freeze_sha256: b567d3dc73c1399eb0ab9e453c186b064cf89179ee05827fc8adce978d095b48
+    identical: yes
+  - path: R/paths.R
+    historical_blob_oid: 79e0d3b8120b940462f3717fd05534cdd8387207
+    historical_sha256: a07a5db658684a22a46136d82ad9dcd837043a71fb9f3bb3ba71570b3b36ea09
+    freeze_blob_oid: 79e0d3b8120b940462f3717fd05534cdd8387207
+    freeze_sha256: a07a5db658684a22a46136d82ad9dcd837043a71fb9f3bb3ba71570b3b36ea09
+    identical: yes
+  - path: R/pride_helpers.R
+    historical_blob_oid: be4a9f345d92d5f65ad3474bf7378e919b9676ce
+    historical_sha256: b67d20dbd2c45392ff19db94aeee235ecb78289c35a601d8b5a0cc3270840256
+    freeze_blob_oid: be4a9f345d92d5f65ad3474bf7378e919b9676ce
+    freeze_sha256: b67d20dbd2c45392ff19db94aeee235ecb78289c35a601d8b5a0cc3270840256
+    identical: yes
+  all_protected_files_identical: yes
+  conclusion: The existing export payloads are accepted for the publication freeze
+    because the export-relevant implementation is byte-identical across the historical
+    export commit and the freeze commit; therefore the stale git_commit field in the
+    export run manifests is a provenance-label drift, not evidence of payload drift.
+  limitation: 'None: the historical commit was resolvable locally and both blob sets
+    were recomputed.'
+wgcna_protected_identities:
+  dataset: microglia
+  protected_output_hash_audit:
+    path: results/reviewer_audit/microglia_wgcna_nature_readiness/protected_output_hash_audit.csv
+    sha256: d813e04710afa433c2abfaf208e45b6e79aaea234ab4fe54c3f515c858048f3e
+    rows: 122
+    all_unchanged: yes
+  identity_contract:
+    identity_contract_sha256: 1eb34bb943a5dc7422a43595d9b9f1cb989ad6c3ea15983b6ce1a89788856f7d
+    identity_contract_version: wgcna_identity_contract_v1
+    membership_version: 06e96d05b4063a1e3e02bec69d3ae1c4ed2cabe7f66b6c24cf640dec28e97fdf
+    frozen_state_sha256: 62fba847986307bdb60c34e72039debc6175c65bfe3294e814fbdfeacd731926
+  identity_contract_status:
+    path: results/source_data/06_modules_WGCNA/identity_contract/microglia/WGCNA_identity_contract_status.csv
+    sha256: 15a7ba6e0e6ecfd7d99a16be86b13e78fc44d4ca29a2da86190a270c449e2a6c
+    status: identity_contract_publishable
+    membership_version: 06e96d05b4063a1e3e02bec69d3ae1c4ed2cabe7f66b6c24cf640dec28e97fdf
+    contract_version: wgcna_identity_contract_v1
+    n_modules: 13
+    n_supermodules: 9
+    selected_cut_height: 0.4
+  protected_states:
+  - artifact: module_group_effects.csv
+    dataset: microglia
+    path: results/tables/06_modules_WGCNA/group_effects/microglia/module_group_effects.csv
+    recorded_md5: 0e5c10f0989cbcb7a017d3fa2df171f0
+    observed_md5: 0e5c10f0989cbcb7a017d3fa2df171f0
+    md5_matches: yes
+    sha256: 78bf6c3229557ada9a423c8762161711f033cae35d1f2f991de1fc90afd076e3
+    unchanged_in_protected_audit: yes
+  - artifact: supermodule_group_effects.csv
+    dataset: microglia
+    path: results/tables/06_modules_WGCNA/group_effects/microglia/supermodule_group_effects.csv
+    recorded_md5: aee32e30e16084bcaa23bba35df49d9f
+    observed_md5: aee32e30e16084bcaa23bba35df49d9f
+    md5_matches: yes
+    sha256: ff23fc74dc8dcc81ddfb49d8d18b89ab7e432f7ddd5532571505edbd7594d6e7
+    unchanged_in_protected_audit: yes
+  - artifact: wgcna_final_model_state.rds
+    dataset: microglia
+    path: data/processed/06_modules_WGCNA/01_WGCNA/microglia/wgcna_final_model_state.rds
+    recorded_md5: 043ad2a9650b80aa1c148a0dbb922106
+    observed_md5: 043ad2a9650b80aa1c148a0dbb922106
+    md5_matches: yes
+    sha256: 62fba847986307bdb60c34e72039debc6175c65bfe3294e814fbdfeacd731926
+    unchanged_in_protected_audit: yes
+  - artifact: wgcna_module_supermodule_annotation.csv
+    dataset: microglia
+    path: results/tables/06_modules_WGCNA/01_WGCNA/microglia/supermodules/wgcna_module_supermodule_annotation.csv
+    recorded_md5: 7bc7c0e33c9870ec1e78a452449fa92d
+    observed_md5: 7bc7c0e33c9870ec1e78a452449fa92d
+    md5_matches: yes
+    sha256: e4e6f10df538624f768fd500d40fe309007d441bdef09717bfb8f800b12546d5
+    unchanged_in_protected_audit: yes
+  all_protected_states_match: yes
+publication_source_data:
+  figure_2_control_spatial:
+    roots:
+    - results/source_data/04_differential_expression_enrichment/control_spatial_identity_validation/global
+    - results/tables/04_differential_expression_enrichment/control_spatial_identity_validation/global
+    file_count: 9
+    set_digest_sha256: 0a53b6d8f1572799868b7fa18faf0db3111ee89f90450593291334febcd2ce38
+    files:
+    - path: results/source_data/04_differential_expression_enrichment/control_spatial_identity_validation/global/figure2e_source_data.csv
+      sha256: e15fd21a6e6136796f0a34d003dedbe053eed1a4efaca42499325a932ced8436
+      size_bytes: 49616.0
+    - path: results/source_data/04_differential_expression_enrichment/control_spatial_identity_validation/global/figure2f_regions_CA1layers_source_data.csv
+      sha256: d8265ead6534df2d36981811be84ed93793bebe489cc295a7544d3d6046eeecf
+      size_bytes: 30825.0
+    - path: results/source_data/04_differential_expression_enrichment/control_spatial_identity_validation/global/figure2f_source_data.csv
+      sha256: 108bd878469f4e97ae428b9d59c178760f1479cec7bdef9361a43e06b3f8b18c
+      size_bytes: 17921.0
+    - path: results/tables/04_differential_expression_enrichment/control_spatial_identity_validation/global/analysis_status.csv
+      sha256: 2d20d55375d2809a41b4061f2af952d11f4bb21103ab357e45da29883f71abf6
+      size_bytes: 1281.0
+    - path: results/tables/04_differential_expression_enrichment/control_spatial_identity_validation/global/anatomical_protein_contrasts.csv
+      sha256: c37e9dc242cf3cf0f3b8ece9b6e0b675e6361ab5e3a55a3156e0fb71c1001d2a
+      size_bytes: 4.8434444e+07
+    - path: results/tables/04_differential_expression_enrichment/control_spatial_identity_validation/global/control_anatomical_go_bp_gsea.csv
+      sha256: 1b20a033eb8714853cde5a5869a70f60c0da0096ddd647990e863e53d8683a89
+      size_bytes: 2.3962414e+07
+    - path: results/tables/04_differential_expression_enrichment/control_spatial_identity_validation/global/figure2e_matching_audit.csv
+      sha256: f83bd585c1bba084a0036f43ddf47fad222a72db6390a228925e5224025fae42
+      size_bytes: 6861.0
+    - path: results/tables/04_differential_expression_enrichment/control_spatial_identity_validation/global/kaulich_signature_gsea.csv
+      sha256: add9f1e32ce2253feaec3bcfce4fb9af84b833f4eca774e24e93e70910d0ee59
+      size_bytes: 45030.0
+    - path: results/tables/04_differential_expression_enrichment/control_spatial_identity_validation/global/kaulich_signature_mapping.csv
+      sha256: 083bc9b39d9b5cda343c32eeaa2e856959cbc9fb82bfefa9056fd7311fc93bd7
+      size_bytes: 5793102.0
+  figure_3_manuscript_panels:
+    roots:
+    - results/reports/manuscript_panels
+    - results/source_data/manuscript_panels
+    - results/tables/manuscript_panels
+    file_count: 12
+    set_digest_sha256: cc299300f177474ca11dae35571b81b1ad2408bd6581a16ceca1579713db5809
+    files:
+    - path: results/reports/manuscript_panels/figure_3/figure3_provenance.md
+      sha256: 142c520d497c020c232ffb21858bcecdb48de08e88b5dd923f5e7d4fc32d3308
+      size_bytes: 608.0
+    - path: results/source_data/manuscript_panels/figure_3/figure3b_stage07_effect_source.csv
+      sha256: 6cc0d2a680b024aab53bae6274aaa3524c4f00cd82034bcaa8bcf6cc5dbad0d0
+      size_bytes: 711572.0
+    - path: results/source_data/manuscript_panels/figure_3/figure3c_protein_level_all_source.csv
+      sha256: 21f9db2fa7634b79b4f09ba99aa96d0ec19931b8ce305e37a49b47d36079a9fa
+      size_bytes: 1.0704819e+08
+    - path: results/source_data/manuscript_panels/figure_3/figure3c_protein_level_display_source.csv
+      sha256: 0532f395eab4a71162680369f640022049834caf4b8413e1a6c54c7b5ec866ed
+      size_bytes: 2277794.0
+    - path: results/source_data/manuscript_panels/figure_3/figure3c_selected_module_go_source.csv
+      sha256: 7aed655d1addb958e2179adfdae593911c1ffb9ab11ed8262538b1243420271c
+      size_bytes: 1550.0
+    - path: results/source_data/manuscript_panels/figure_3/figure3d_protein_level_display_source.csv
+      sha256: 0532f395eab4a71162680369f640022049834caf4b8413e1a6c54c7b5ec866ed
+      size_bytes: 2277794.0
+    - path: results/source_data/manuscript_panels/figure_3/figure3d_selected_module_go_source.csv
+      sha256: 7aed655d1addb958e2179adfdae593911c1ffb9ab11ed8262538b1243420271c
+      size_bytes: 1550.0
+    - path: results/tables/manuscript_panels/figure_3/figure3_validation.csv
+      sha256: b5a7c8584f08ffc91fcd5d673b8cfa00971271189f959e09d0af6fcf5b5f6a51
+      size_bytes: 7475.0
+    - path: results/tables/manuscript_panels/figure_3/figure3c_display_selection_audit.csv
+      sha256: c2d4a7b9407249808df7c739964b4a8e1f4245ae2aa93d2f6ab968394c5e94b0
+      size_bytes: 6569.0
+    - path: results/tables/manuscript_panels/figure_3/figure3c_top15_authoritative_theme_coverage.csv
+      sha256: 42f2689452cddce763c31ea707bd2cefcdda43b6220ba0c2ac53b8d55a74f53b
+      size_bytes: 138.0
+    - path: results/tables/manuscript_panels/figure_3/figure3d_display_selection_audit.csv
+      sha256: c2d4a7b9407249808df7c739964b4a8e1f4245ae2aa93d2f6ab968394c5e94b0
+      size_bytes: 6569.0
+    - path: results/tables/manuscript_panels/manuscript_panel_inventory.csv
+      sha256: 57e40745a26d25f508e257b6aeafb54cb73fa8c04bbd32ecc20cef512f443bbb
+      size_bytes: 2090.0
+  sus_res_stage11:
+    roots:
+    - results/reports/04_differential_expression_enrichment/stress_response_biological_audit/global
+    - results/source_data/04_differential_expression_enrichment/stress_response_biological_audit/global
+    - results/source_data/04_differential_expression_enrichment/sus_res_spatial_dap_atlas/global
+    file_count: 34
+    set_digest_sha256: cd906f4338180b8e842f3beb12b57ac8cdfe162a5570ece0d79f24f697e45594
+    files:
+    - path: results/reports/04_differential_expression_enrichment/stress_response_biological_audit/global/FDR_family_definitions.csv
+      sha256: 15c3866031657d2e03d4c50fc52a21dad97b1cb4359c67a1c0984e3066c7edc1
+      size_bytes: 879.0
+    - path: results/reports/04_differential_expression_enrichment/stress_response_biological_audit/global/independent_reconstruction_validation.csv
+      sha256: b9d9d61e00bcde57bbb6fc789fcc60a28c4c2bb56b53604e540b2c86af715385
+      size_bytes: 1115.0
+    - path: results/reports/04_differential_expression_enrichment/stress_response_biological_audit/global/output_dimensions.csv
+      sha256: 40129b83dd47d252debe916b899204ad9289419b38b123841a3854b1b720f310
+      size_bytes: 3015.0
+    - path: results/reports/04_differential_expression_enrichment/stress_response_biological_audit/global/stress_response_biological_audit_summary.md
+      sha256: 03cbf7ef3c5bdd52d50ef8103eba1b745c00f33e944e7288d01bbee4a660f555
+      size_bytes: 4492.0
+    - path: results/reports/04_differential_expression_enrichment/stress_response_biological_audit/global/workbook_generation_status.csv
+      sha256: ef49dd74321cb41a1d5031b559faf2712d116ba461c0eb80b732d0a9953859e7
+      size_bytes: 799.0
+    - path: results/source_data/04_differential_expression_enrichment/stress_response_biological_audit/global/FDR_supported_GO_occurrence_audit_all_three_contrasts.csv
+      sha256: 9a3b9f61e4befa0eb63208847214a56851382c6f4acf3a0f041a423913983916
+      size_bytes: 1.3950803e+07
+    - path: results/source_data/04_differential_expression_enrichment/stress_response_biological_audit/global/FDR_supported_GO_term_audit_all_three_contrasts.csv
+      sha256: 54e6dc073d771a30e42b82b139b455b08146ef8fb77f56c2312ae4b9cc28c340
+      size_bytes: 1.4352775e+07
+    - path: results/source_data/04_differential_expression_enrichment/stress_response_biological_audit/global/GO_canonical_BH_reconstruction_validation.csv
+      sha256: c0e8812db85e16787378476798ef323286d6f790b558f1419f47b88c25e10e50
+      size_bytes: 5061.0
+    - path: results/source_data/04_differential_expression_enrichment/stress_response_biological_audit/global/GO_control_pair_joint_FDR_family_audit.csv
+      sha256: df051b332d20005e12927326b72ba173e164bdabd46635ae7499cc53a1c588e6
+      size_bytes: 4187.0
+    - path: results/source_data/04_differential_expression_enrichment/stress_response_biological_audit/global/GO_term_theme_assignment_all_three_contrasts.csv
+      sha256: 18f822c6840aa7ac5e7d29679f2f2c5930743f31e0323e657b63df2273c55392
+      size_bytes: 93343.0
+    - path: results/source_data/04_differential_expression_enrichment/stress_response_biological_audit/global/contrast_map_source.csv
+      sha256: 337b73d8ee738f8caf669d313a471332eac08db5e38bded817fff860f5636d8b
+      size_bytes: 62330.0
+    - path: results/source_data/04_differential_expression_enrichment/stress_response_biological_audit/global/control_pair_joint_GO_FDR.csv
+      sha256: 5e26eb1c1d302adcfc48911e18785cd06b43a0d0b56ac9bb66a86f386770c718
+      size_bytes: 1.9587789e+08
+    - path: results/source_data/04_differential_expression_enrichment/stress_response_biological_audit/global/direct_SUS_RES_DAP_control_geometry.csv
+      sha256: 79f9e2a0b06876282b5005dc94f450c86c02c951b2bbafd9ea47154cf3847b03
+      size_bytes: 16171.0
+    - path: results/source_data/04_differential_expression_enrichment/stress_response_biological_audit/global/direct_SUS_RES_DAP_control_geometry_summary_by_context.csv
+      sha256: 4675475bdd3a86084b89cfa8accc33072a53be732487226a024f8e67da51c145
+      size_bytes: 4472.0
+    - path: results/source_data/04_differential_expression_enrichment/stress_response_biological_audit/global/direct_SUS_RES_DAP_control_geometry_summary_global.csv
+      sha256: 5fd974da98af6b6cdba059dc8262fa4227adb2d41f5f69d7ed2f5fa586e482fe
+      size_bytes: 962.0
+    - path: results/source_data/04_differential_expression_enrichment/stress_response_biological_audit/global/input_contrast_provenance.csv
+      sha256: 7047ed2eaac722301031c6c805f53642804a8434b13131c6d0fd4ee7eea1f65e
+      size_bytes: 28958.0
+    - path: results/source_data/04_differential_expression_enrichment/stress_response_biological_audit/global/protected_reference_artifacts.csv
+      sha256: 2b372c631be9f80b393aed291bf3e8db306a7fb8b08df6f02d173cf239cff778
+      size_bytes: 434.0
+    - path: results/source_data/04_differential_expression_enrichment/stress_response_biological_audit/global/protein_canonical_BH_reconstruction_diagnostic.csv
+      sha256: 2848fef6b14cdb3f11af7ff179ae5499e7c9cc354071bc546cd699f3be72c5bd
+      size_bytes: 8506.0
+    - path: results/source_data/04_differential_expression_enrichment/stress_response_biological_audit/global/protein_common_universe_audit.csv
+      sha256: 4be8b6a9a7c975366a36a2a391033fdd6cab693e7b01fc78859e8835bbcaf2c7
+      size_bytes: 2539.0
+    - path: results/source_data/04_differential_expression_enrichment/stress_response_biological_audit/global/protein_contrast_algebra_audit.csv
+      sha256: 5f49d5ca7463fddd96bb3e2c9de47ab1d92f0f86c10be234efe83cf1cc1e704a
+      size_bytes: 2216.0
+    - path: results/source_data/04_differential_expression_enrichment/stress_response_biological_audit/global/protein_control_pair_joint_FDR_family_audit.csv
+      sha256: d7172efdfeba39b1309e5ac0fd7064201b944089e9c6c481f6aee0d39a72ce8a
+      size_bytes: 3760.0
+    - path: results/source_data/04_differential_expression_enrichment/stress_response_biological_audit/global/protein_three_contrast_geometry.csv
+      sha256: 6b0ec09ca66e7adb8b9aacdb1f988bbc34a7c1aaeef019cf7fa993d048afe537
+      size_bytes: 4.6454619e+07
+    - path: results/source_data/04_differential_expression_enrichment/sus_res_spatial_dap_atlas/global/panel_a_sus_res_dap_counts.csv
+      sha256: b08512dad439611d484a166dec4d54346661b01276b1c39fb38d5b0fa93daebb
+      size_bytes: 9357.0
+    - path: results/source_data/04_differential_expression_enrichment/sus_res_spatial_dap_atlas/global/panel_b_sus_res_dap_jaccard.csv
+      sha256: 120f4984ca23d7889dcfd2525d6e53cec130d184e78b34752e3f49ecdee66745
+      size_bytes: 31226.0
+    - path: results/source_data/04_differential_expression_enrichment/sus_res_spatial_dap_atlas/global/panel_c_sus_res_dap_GO_BP.csv
+      sha256: 4f61eb187a1273031c03b660906aa1bf78c1618fc65d7ab5bafddc398df6e60a
+      size_bytes: 201.0
+    - path: results/source_data/04_differential_expression_enrichment/sus_res_spatial_dap_atlas/global/panel_c_sus_res_ranked_GSEA_programs.csv
+      sha256: 941cabb0747a5153db10ef8fab88a8b12767deba92700d0985f2fb5fcaef45e6
+      size_bytes: 323324.0
+    - path: results/source_data/04_differential_expression_enrichment/sus_res_spatial_dap_atlas/global/panel_c_sus_res_ranked_GSEA_themes.csv
+      sha256: 941cabb0747a5153db10ef8fab88a8b12767deba92700d0985f2fb5fcaef45e6
+      size_bytes: 323324.0
+    - path: results/source_data/04_differential_expression_enrichment/sus_res_spatial_dap_atlas/global/sus_res_biological_program_summary.csv
+      sha256: 10ca45a2b8d10ebfd2df5a531e5452f9ca2d043c1771849a28ef39c1fd171f4d
+      size_bytes: 314795.0
+    - path: results/source_data/04_differential_expression_enrichment/sus_res_spatial_dap_atlas/global/sus_res_dap_membership.csv
+      sha256: 6bd11b1c1bac8058f72a1f93478d3bfd71cc64b869a59ded96d0605d47398733
+      size_bytes: 21051.0
+    - path: results/source_data/04_differential_expression_enrichment/sus_res_spatial_dap_atlas/global/sus_res_go_display_terms.csv
+      sha256: 4f61eb187a1273031c03b660906aa1bf78c1618fc65d7ab5bafddc398df6e60a
+      size_bytes: 201.0
+    - path: results/source_data/04_differential_expression_enrichment/sus_res_spatial_dap_atlas/global/sus_res_input_audit.csv
+      sha256: 30d0401e49572ffd5f0b819891dc7ef6f0c46ae071ecb72aa897a4187c973a00
+      size_bytes: 11195.0
+    - path: results/source_data/04_differential_expression_enrichment/sus_res_spatial_dap_atlas/global/sus_res_manuscript_theme_overview.csv
+      sha256: 879c07e52eacf7ed45d4fcc1ed4352ce1f173b5e234ac57f78b9746bd7bcf5c7
+      size_bytes: 2570.0
+    - path: results/source_data/04_differential_expression_enrichment/sus_res_spatial_dap_atlas/global/sus_res_manuscript_theme_summary.csv
+      sha256: 10ca45a2b8d10ebfd2df5a531e5452f9ca2d043c1771849a28ef39c1fd171f4d
+      size_bytes: 314795.0
+    - path: results/source_data/04_differential_expression_enrichment/sus_res_spatial_dap_atlas/global/sus_res_ranked_GSEA_theme_inventory.csv
+      sha256: bfe48daf117d654fa78f8a82efe8a87f84f471aa4ca68e88f001365180063d19
+      size_bytes: 380461.0
+export_payloads:
+- export: manuscript_figures
+  producer: 09_export_pride_journal/08_export_manuscript_figures.R
+  payload_roots: results/manuscript/extended_data
+  manifest_path: results/manuscript/figure_export_manifest.csv
+  manifest_sha256: c361f641bd42a9bb4ae617ef2edb90f5372b003952ba4612c253a015c16e0ef5
+  manifest_row_count: 5164
+  audit_path: results/manuscript/figure_publication_audit.csv
+  audit_sha256: 4b481ad56671afaabdb6776ea3a17888d794a32506760d7d85792689ba6d3e8b
+  run_manifest_path: results/logs/09_export_pride_journal/manuscript_figures/run_manifest.yml
+  run_manifest_sha256: a2cafd72831e74487d1fd957b907723f474337450bb7b165d40613850bd58855
+  run_manifest_recorded_commit: f3d96cbff452f5a43e37a8597d054680f5c836c0
+  run_manifest_input_count: 5164
+  counts_agree: yes
+  freeze_acceptance: accepted
+  freeze_acceptance_basis: Manifest row count and run-manifest input count agree,
+    and the export-relevant implementation is byte-identical between the recorded
+    historical commit and the freeze commit. Payload files are validated through the
+    manifest contract rather than re-hashed in bulk.
+- export: manuscript_source_data
+  producer: 09_export_pride_journal/09_export_source_data.R
+  payload_roots:
+  - results/manuscript/source_data
+  - results/manuscript/supplementary_tables
+  manifest_path: results/manuscript/source_data_export_manifest.csv
+  manifest_sha256: c0d51c49db0363e105a5171f5a4015b287ec4f206da50ce4474668a01b35af84
+  manifest_row_count: 3261
+  audit_path: .na.character
+  audit_sha256: .na.character
+  run_manifest_path: results/logs/09_export_pride_journal/source_data/run_manifest.yml
+  run_manifest_sha256: b413552ab742f56ab37e3f4090e6502d360428c4646eec9e38a9626cceabe8af
+  run_manifest_recorded_commit: f3d96cbff452f5a43e37a8597d054680f5c836c0
+  run_manifest_input_count: 3261
+  counts_agree: yes
+  freeze_acceptance: accepted
+  freeze_acceptance_basis: Manifest row count and run-manifest input count agree,
+    and the export-relevant implementation is byte-identical between the recorded
+    historical commit and the freeze commit. Payload files are validated through the
+    manifest contract rather than re-hashed in bulk.
+renv_lockfile:
+  path: renv.lock
+  present: yes
+  sha256: b801aeb120cebe4dc546b1dca2df4722d69c77d3698f3f6994275ade0d5a64d4
+  package_records: 327
+  direct_dependencies: 77
+  r_version: 4.5.1
+  bioconductor_version: '3.22'
+  repositories_declared: 7
+  missing_direct: 0
+  unresolved_requirements: 0
+  duplicate_records: 0
+  scientific_sentinels_present: yes
+  complete: yes
+  hash_field_recorded: no
+  hash_field_note: 'renv''s per-package Hash is intentionally absent: renv is not
+    installed in this environment and its hash algorithm cannot be reproduced faithfully,
+    so inventing a value would misrepresent provenance.'
+  restore_validation_level: A+B (structural and availability); C not attempted
+  restore_validation_note: An isolated restore would require installing renv and building
+    a project library, which would materially alter the live analysis environment.
+validation_state:
+  command: Rscript tests/testthat.R
+  log_path: .na.character
+  log_sha256: 6f3bef8a2b078d5982b9e0868b42fcaf4c7d49691dce3d52aba4e35a1bc1fdfa
+  log_retained_in_repository: no
+  test_files: 87
+  failures: 0
+  failure_or_error_markers: 0
+  failing_files: ~
+  clean: yes
+  skipped: 1
+  warnings: 2
+  known_skip: test-wgcna-group-effects-phase2b.R:248 optional lme4 zero-variance fixture
+  known_warnings: two vroom parsing warnings in test-gsea-wgcna-ontology-theme-integration.R
+  r_version: 4.5.1
+  platform: x86_64-w64-mingw32
+  note: counts parsed from a testthat summary log produced at the freeze commit; the
+    log itself was transient and is identified by sha256
+known_gaps:
+- id: pride_dry_run_semantics
+  severity: warn
+  classification: documented tooling limitation
+  summary: Of the nine export steps, only 08_export_manuscript_figures.R and 09_export_source_data.R
+    implement a side-effect-free dry-run guard. RUN_EXPORT.R restricts the step list
+    under --dry-run so the orchestrator is safe, but the remaining seven steps remain
+    individually unguarded and would write if invoked directly with --dry-run.
+  reference: 09_export_pride_journal/RUN_EXPORT.R
+  action_in_this_task: documented only; not fixed
+- id: processed_package_wildcard_glob_filter
+  severity: warn
+  classification: latent defect, currently masked
+  summary: 'R/export_helpers.R:658, inside processed_files_for_dataset() (defined
+    at line 610), filters config$supplementary_table_globs with grepl("\\*", g, fixed
+    = TRUE). Under fixed = TRUE that searches for a literal backslash-star, which
+    none of the six configured globs contains, so the wildcard arm never fires and
+    the filter degenerates to grepl(dataset, g, fixed = TRUE): it keeps 1 of 6 globs
+    for microglia and 0 of 6 for neuron_soma and neuron_neuropil, where the intended
+    test would keep 6 of 6.'
+  correction_to_prior_description: 'Verified against the code, three details of the
+    previously circulated description are wrong. (a) The defect is in R/export_helpers.R,
+    not 09_export_pride_journal/04_make_supplementary_tables.R. (b) It affects the
+    PRIDE processed-data package selection consumed by 03_export_processed_pg_matrix_package.R:69
+    and 05_make_pride_manifest.R:28; the supplementary-table export itself calls supplementary_candidate_files(),
+    which applies no wildcard filter and is unaffected. (c) It is masked by the include_derived
+    argument, which both callers pass as cli$include_derived_results == has("--include-derived-results")
+    and is therefore FALSE unless that flag is given; the manifest.default_include_derived_results:
+    false config key documents the same intent but does not gate this code path.'
+  reference: R/export_helpers.R:658 (processed_files_for_dataset)
+  action_in_this_task: documented only; not fixed

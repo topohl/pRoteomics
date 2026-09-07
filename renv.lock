@@ -5,27 +5,2207 @@
       {
         "Name": "CRAN",
         "URL": "https://cloud.r-project.org"
+      },
+      {
+        "Name": "BioCsoft",
+        "URL": "https://bioconductor.org/packages/3.22/bioc"
+      },
+      {
+        "Name": "BioCann",
+        "URL": "https://bioconductor.org/packages/3.22/data/annotation"
+      },
+      {
+        "Name": "BioCexp",
+        "URL": "https://bioconductor.org/packages/3.22/data/experiment"
+      },
+      {
+        "Name": "BioCworkflows",
+        "URL": "https://bioconductor.org/packages/3.22/workflows"
+      },
+      {
+        "Name": "BioCbooks",
+        "URL": "https://bioconductor.org/packages/3.22/books"
+      },
+      {
+        "Name": "bioc-release-r-universe",
+        "URL": "https://bioc-release.r-universe.dev"
       }
     ]
   },
+  "Bioconductor": {
+    "Version": "3.22"
+  },
   "Packages": {
-    "renv": {
-      "Package": "renv",
+    "AnnotationDbi": {
+      "Package": "AnnotationDbi",
+      "Version": "1.72.0",
+      "Source": "Bioconductor",
+      "Repository": "https://bioc-release.r-universe.dev",
+      "Requirements": ["Biobase", "BiocGenerics", "DBI", "IRanges", "KEGGREST", "RSQLite", "S4Vectors"]
+    },
+    "AnnotationHub": {
+      "Package": "AnnotationHub",
+      "Version": "4.0.0",
+      "Source": "Bioconductor",
+      "Repository": "Bioconductor 3.22",
+      "Requirements": ["AnnotationDbi", "BiocBaseUtils", "BiocFileCache", "BiocGenerics", "BiocManager", "BiocVersion", "RSQLite", "S4Vectors", "curl", "dplyr", "httr2", "rappdirs", "yaml"]
+    },
+    "BH": {
+      "Package": "BH",
+      "Version": "1.90.0.1",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "Biobase": {
+      "Package": "Biobase",
+      "Version": "2.70.0",
+      "Source": "Bioconductor",
+      "Repository": "https://bioc-release.r-universe.dev",
+      "Requirements": "BiocGenerics"
+    },
+    "BiocBaseUtils": {
+      "Package": "BiocBaseUtils",
+      "Version": "1.12.0",
+      "Source": "Bioconductor",
+      "Repository": "https://bioc-release.r-universe.dev"
+    },
+    "BiocFileCache": {
+      "Package": "BiocFileCache",
+      "Version": "3.0.0",
+      "Source": "Bioconductor",
+      "Repository": "https://bioc-release.r-universe.dev",
+      "Requirements": ["DBI", "RSQLite", "curl", "dbplyr", "dplyr", "filelock", "httr2"]
+    },
+    "BiocGenerics": {
+      "Package": "BiocGenerics",
+      "Version": "0.56.0",
+      "Source": "Bioconductor",
+      "Repository": "https://bioc-release.r-universe.dev",
+      "Requirements": "generics"
+    },
+    "BiocManager": {
+      "Package": "BiocManager",
+      "Version": "1.30.27",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "BiocParallel": {
+      "Package": "BiocParallel",
+      "Version": "1.44.0",
+      "Source": "Bioconductor",
+      "Repository": "https://bioc-release.r-universe.dev",
+      "Requirements": ["BH", "codetools", "cpp11", "futile.logger", "snow"]
+    },
+    "BiocVersion": {
+      "Package": "BiocVersion",
+      "Version": "3.22.0",
+      "Source": "Bioconductor",
+      "Repository": "Bioconductor 3.22"
+    },
+    "Biostrings": {
+      "Package": "Biostrings",
+      "Version": "2.78.0",
+      "Source": "Bioconductor",
+      "Repository": "https://bioc-release.r-universe.dev",
+      "Requirements": ["BiocGenerics", "IRanges", "S4Vectors", "Seqinfo", "XVector", "crayon"]
+    },
+    "ComplexHeatmap": {
+      "Package": "ComplexHeatmap",
+      "Version": "2.26.1",
+      "Source": "Bioconductor",
+      "Repository": "https://bioc-release.r-universe.dev",
+      "Requirements": ["GetoptLong", "GlobalOptions", "IRanges", "RColorBrewer", "circlize", "clue", "codetools", "colorspace", "digest", "doParallel", "foreach", "matrixStats", "png"]
+    },
+    "DBI": {
+      "Package": "DBI",
+      "Version": "1.3.0",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "DOSE": {
+      "Package": "DOSE",
+      "Version": "4.4.0",
+      "Source": "Bioconductor",
+      "Repository": "https://bioc-release.r-universe.dev",
+      "Requirements": ["AnnotationDbi", "BiocParallel", "GOSemSim", "fgsea", "ggplot2", "qvalue", "reshape2", "yulab.utils"]
+    },
+    "DelayedArray": {
+      "Package": "DelayedArray",
+      "Version": "0.36.1",
+      "Source": "Bioconductor",
+      "Repository": "https://bioc-release.r-universe.dev",
+      "Requirements": ["BiocGenerics", "IRanges", "Matrix", "MatrixGenerics", "S4Arrays", "S4Vectors", "SparseArray"]
+    },
+    "Deriv": {
+      "Package": "Deriv",
+      "Version": "4.2.0",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "EWCE": {
+      "Package": "EWCE",
+      "Version": "1.18.1",
+      "Source": "Bioconductor",
+      "Repository": "https://bioc-release.r-universe.dev",
+      "Requirements": ["BiocParallel", "DelayedArray", "HGNChelper", "Matrix", "RNOmni", "SingleCellExperiment", "SummarizedExperiment", "data.table", "dplyr", "ewceData", "ggplot2", "limma", "orthogene", "reshape2", "stringr"]
+    },
+    "EnvStats": {
+      "Package": "EnvStats",
+      "Version": "3.1.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["MASS", "ggplot2", "nortest"]
+    },
+    "ExperimentHub": {
+      "Package": "ExperimentHub",
+      "Version": "3.0.0",
+      "Source": "Bioconductor",
+      "Repository": "https://bioc-release.r-universe.dev",
+      "Requirements": ["AnnotationHub", "BiocFileCache", "BiocGenerics", "BiocManager", "S4Vectors", "rappdirs"]
+    },
+    "FNN": {
+      "Package": "FNN",
+      "Version": "1.1.4.1",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "Formula": {
+      "Package": "Formula",
+      "Version": "1.2.5",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "GO.db": {
+      "Package": "GO.db",
+      "Version": "3.22.0",
+      "Source": "Bioconductor",
+      "Requirements": "AnnotationDbi"
+    },
+    "GOSemSim": {
+      "Package": "GOSemSim",
+      "Version": "2.36.0",
+      "Source": "Bioconductor",
+      "Repository": "https://bioc-release.r-universe.dev",
+      "Requirements": ["AnnotationDbi", "DBI", "GO.db", "R.utils", "Rcpp", "digest", "rlang", "yulab.utils"]
+    },
+    "GenomicRanges": {
+      "Package": "GenomicRanges",
+      "Version": "1.62.1",
+      "Source": "Bioconductor",
+      "Repository": "https://bioc-release.r-universe.dev",
+      "Requirements": ["BiocGenerics", "IRanges", "S4Vectors", "Seqinfo"]
+    },
+    "GetoptLong": {
+      "Package": "GetoptLong",
+      "Version": "1.1.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["GlobalOptions", "crayon", "rjson"]
+    },
+    "GlobalOptions": {
+      "Package": "GlobalOptions",
+      "Version": "0.1.4",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "HGNChelper": {
+      "Package": "HGNChelper",
+      "Version": "0.8.15",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": "splitstackshape"
+    },
+    "Hmisc": {
+      "Package": "Hmisc",
+      "Version": "5.2.5",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["Formula", "base64enc", "cluster", "colorspace", "data.table", "foreign", "ggplot2", "gridExtra", "gtable", "htmlTable", "htmltools", "knitr", "nnet", "rmarkdown", "rpart", "viridisLite"]
+    },
+    "IRanges": {
+      "Package": "IRanges",
+      "Version": "2.44.0",
+      "Source": "Bioconductor",
+      "Repository": "https://bioc-release.r-universe.dev",
+      "Requirements": ["BiocGenerics", "S4Vectors"]
+    },
+    "KEGGREST": {
+      "Package": "KEGGREST",
+      "Version": "1.50.0",
+      "Source": "Bioconductor",
+      "Repository": "https://bioc-release.r-universe.dev",
+      "Requirements": ["Biostrings", "httr", "png"]
+    },
+    "KEGGgraph": {
+      "Package": "KEGGgraph",
+      "Version": "1.70.0",
+      "Source": "Bioconductor",
+      "Repository": "https://bioc-release.r-universe.dev",
+      "Requirements": ["RCurl", "Rgraphviz", "XML", "graph"]
+    },
+    "KernSmooth": {
+      "Package": "KernSmooth",
+      "Version": "2.23.26",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "MASS": {
+      "Package": "MASS",
+      "Version": "7.3.65",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "Matrix": {
+      "Package": "Matrix",
+      "Version": "1.7.5",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": "lattice"
+    },
+    "MatrixGenerics": {
+      "Package": "MatrixGenerics",
+      "Version": "1.22.0",
+      "Source": "Bioconductor",
+      "Repository": "https://bioc-release.r-universe.dev",
+      "Requirements": "matrixStats"
+    },
+    "MatrixModels": {
+      "Package": "MatrixModels",
+      "Version": "0.5.4",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": "Matrix"
+    },
+    "NLP": {
+      "Package": "NLP",
+      "Version": "0.3.2",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "Polychrome": {
+      "Package": "Polychrome",
+      "Version": "1.5.4",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["colorspace", "scatterplot3d"]
+    },
+    "R.cache": {
+      "Package": "R.cache",
+      "Version": "0.17.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["R.methodsS3", "R.oo", "R.utils", "digest"]
+    },
+    "R.methodsS3": {
+      "Package": "R.methodsS3",
+      "Version": "1.8.2",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "R.oo": {
+      "Package": "R.oo",
+      "Version": "1.27.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": "R.methodsS3"
+    },
+    "R.utils": {
+      "Package": "R.utils",
+      "Version": "2.13.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["R.methodsS3", "R.oo"]
+    },
+    "R6": {
+      "Package": "R6",
+      "Version": "2.6.1",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "RColorBrewer": {
+      "Package": "RColorBrewer",
+      "Version": "1.1.3",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "RCurl": {
+      "Package": "RCurl",
+      "Version": "1.98.1.18",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": "bitops"
+    },
+    "RNOmni": {
+      "Package": "RNOmni",
+      "Version": "1.0.1.2",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["Rcpp", "RcppArmadillo", "plyr"]
+    },
+    "RSQLite": {
+      "Package": "RSQLite",
+      "Version": "3.52.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["DBI", "bit64", "blob", "cpp11", "memoise", "pkgconfig", "rlang"]
+    },
+    "RSpectra": {
+      "Package": "RSpectra",
+      "Version": "0.16.2",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["Matrix", "Rcpp", "RcppEigen"]
+    },
+    "Rcpp": {
+      "Package": "Rcpp",
+      "Version": "1.1.1",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "RcppAnnoy": {
+      "Package": "RcppAnnoy",
+      "Version": "0.0.23",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": "Rcpp"
+    },
+    "RcppArmadillo": {
+      "Package": "RcppArmadillo",
+      "Version": "15.2.6.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": "Rcpp"
+    },
+    "RcppEigen": {
+      "Package": "RcppEigen",
+      "Version": "0.3.4.0.2",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": "Rcpp"
+    },
+    "RcppProgress": {
+      "Package": "RcppProgress",
+      "Version": "0.4.2",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "Rdpack": {
+      "Package": "Rdpack",
+      "Version": "2.6.6",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": "rbibutils"
+    },
+    "Rgraphviz": {
+      "Package": "Rgraphviz",
+      "Version": "2.54.0",
+      "Source": "Bioconductor",
+      "Repository": "https://bioc-release.r-universe.dev",
+      "Requirements": "graph"
+    },
+    "RhpcBLASctl": {
+      "Package": "RhpcBLASctl",
+      "Version": "0.23.42",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "Rtsne": {
+      "Package": "Rtsne",
+      "Version": "0.17",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": "Rcpp"
+    },
+    "S4Arrays": {
+      "Package": "S4Arrays",
+      "Version": "1.10.1",
+      "Source": "Bioconductor",
+      "Repository": "https://bioc-release.r-universe.dev",
+      "Requirements": ["BiocGenerics", "IRanges", "Matrix", "S4Vectors", "abind"]
+    },
+    "S4Vectors": {
+      "Package": "S4Vectors",
+      "Version": "0.48.1",
+      "Source": "Bioconductor",
+      "Repository": "Bioconductor 3.22",
+      "Requirements": "BiocGenerics"
+    },
+    "S7": {
+      "Package": "S7",
+      "Version": "0.2.1",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "Seqinfo": {
+      "Package": "Seqinfo",
+      "Version": "1.0.0",
+      "Source": "Bioconductor",
+      "Repository": "https://bioc-release.r-universe.dev",
+      "Requirements": ["BiocGenerics", "IRanges", "S4Vectors"]
+    },
+    "SingleCellExperiment": {
+      "Package": "SingleCellExperiment",
+      "Version": "1.32.0",
+      "Source": "Bioconductor",
+      "Repository": "https://bioc-release.r-universe.dev",
+      "Requirements": ["BiocGenerics", "DelayedArray", "GenomicRanges", "S4Vectors", "SummarizedExperiment"]
+    },
+    "SparseArray": {
+      "Package": "SparseArray",
+      "Version": "1.10.10",
+      "Source": "Bioconductor",
+      "Repository": "https://bioc-release.r-universe.dev",
+      "Requirements": ["BiocGenerics", "IRanges", "Matrix", "MatrixGenerics", "S4Arrays", "S4Vectors", "XVector", "matrixStats"]
+    },
+    "SparseM": {
+      "Package": "SparseM",
+      "Version": "1.84.2",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "SummarizedExperiment": {
+      "Package": "SummarizedExperiment",
+      "Version": "1.40.0",
+      "Source": "Bioconductor",
+      "Repository": "https://bioc-release.r-universe.dev",
+      "Requirements": ["Biobase", "BiocGenerics", "DelayedArray", "GenomicRanges", "IRanges", "Matrix", "MatrixGenerics", "S4Arrays", "S4Vectors", "Seqinfo"]
+    },
+    "UniProt.ws": {
+      "Package": "UniProt.ws",
+      "Version": "2.50.1",
+      "Source": "Bioconductor",
+      "Repository": "Bioconductor 3.22",
+      "Requirements": ["AnnotationDbi", "BiocBaseUtils", "BiocFileCache", "BiocGenerics", "httr2", "jsonlite", "progress", "rjsoncons", "rlang"]
+    },
+    "UpSetR": {
+      "Package": "UpSetR",
+      "Version": "1.4.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["ggplot2", "gridExtra", "plyr", "scales"]
+    },
+    "WGCNA": {
+      "Package": "WGCNA",
+      "Version": "1.74",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["Hmisc", "Rcpp", "doParallel", "dynamicTreeCut", "fastcluster", "foreach", "impute", "matrixStats", "preprocessCore", "survival"]
+    },
+    "XML": {
+      "Package": "XML",
+      "Version": "3.99.0.23",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "XVector": {
+      "Package": "XVector",
+      "Version": "0.50.0",
+      "Source": "Bioconductor",
+      "Repository": "https://bioc-release.r-universe.dev",
+      "Requirements": ["BiocGenerics", "IRanges", "S4Vectors"]
+    },
+    "abind": {
+      "Package": "abind",
+      "Version": "1.4.8",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "alluvial": {
+      "Package": "alluvial",
+      "Version": "0.1.2",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "aod": {
+      "Package": "aod",
+      "Version": "1.3.3",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "ape": {
+      "Package": "ape",
+      "Version": "5.8.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["Rcpp", "digest", "lattice", "nlme"]
+    },
+    "aplot": {
+      "Package": "aplot",
+      "Version": "0.2.9",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["ggfun", "ggplot2", "ggplotify", "magrittr", "patchwork", "pillar", "yulab.utils"]
+    },
+    "askpass": {
+      "Package": "askpass",
+      "Version": "1.2.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": "sys"
+    },
+    "babelgene": {
+      "Package": "babelgene",
+      "Version": "22.9",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["dplyr", "rlang"]
+    },
+    "backports": {
+      "Package": "backports",
+      "Version": "1.5.1",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "base64enc": {
+      "Package": "base64enc",
+      "Version": "0.1.6",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "bit": {
+      "Package": "bit",
+      "Version": "4.6.0",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "bit64": {
+      "Package": "bit64",
+      "Version": "4.6.0.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": "bit"
+    },
+    "bitops": {
+      "Package": "bitops",
+      "Version": "1.0.9",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "blob": {
+      "Package": "blob",
+      "Version": "1.3.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["rlang", "vctrs"]
+    },
+    "boot": {
+      "Package": "boot",
+      "Version": "1.3.32",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "brio": {
+      "Package": "brio",
       "Version": "1.1.5",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "broom": {
+      "Package": "broom",
+      "Version": "1.0.13",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["backports", "cli", "dplyr", "generics", "glue", "lifecycle", "purrr", "rlang", "stringr", "tibble", "tidyr"]
+    },
+    "bslib": {
+      "Package": "bslib",
+      "Version": "0.11.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["base64enc", "cachem", "fastmap", "htmltools", "jquerylib", "jsonlite", "lifecycle", "memoise", "mime", "rlang", "sass"]
+    },
+    "caTools": {
+      "Package": "caTools",
+      "Version": "1.18.3",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": "bitops"
+    },
+    "cachem": {
+      "Package": "cachem",
+      "Version": "1.1.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["fastmap", "rlang"]
+    },
+    "callr": {
+      "Package": "callr",
+      "Version": "3.7.6",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["R6", "processx"]
+    },
+    "car": {
+      "Package": "car",
+      "Version": "3.1.5",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["Formula", "MASS", "abind", "carData", "lme4", "mgcv", "nlme", "nnet", "pbkrtest", "quantreg", "scales"]
+    },
+    "carData": {
+      "Package": "carData",
+      "Version": "3.0.6",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "cellranger": {
+      "Package": "cellranger",
+      "Version": "1.1.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["rematch", "tibble"]
+    },
+    "checkmate": {
+      "Package": "checkmate",
+      "Version": "2.3.4",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": "backports"
+    },
+    "circlize": {
+      "Package": "circlize",
+      "Version": "0.4.18",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["GlobalOptions", "colorspace", "shape"]
+    },
+    "cli": {
+      "Package": "cli",
+      "Version": "3.6.6",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "clipr": {
+      "Package": "clipr",
+      "Version": "0.8.0",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "clue": {
+      "Package": "clue",
+      "Version": "0.3.68",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": "cluster"
+    },
+    "cluster": {
+      "Package": "cluster",
+      "Version": "2.1.8.2",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "clusterProfiler": {
+      "Package": "clusterProfiler",
+      "Version": "4.18.4",
+      "Source": "Bioconductor",
+      "Repository": "https://bioc-release.r-universe.dev",
+      "Requirements": ["AnnotationDbi", "DOSE", "GO.db", "GOSemSim", "dplyr", "enrichplot", "gson", "httr", "igraph", "magrittr", "plyr", "qvalue", "rlang", "tidyr", "yulab.utils"]
+    },
+    "codetools": {
+      "Package": "codetools",
+      "Version": "0.2.20",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "colorspace": {
+      "Package": "colorspace",
+      "Version": "2.1.2",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "commonmark": {
+      "Package": "commonmark",
+      "Version": "2.0.0",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "corpcor": {
+      "Package": "corpcor",
+      "Version": "1.6.10",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "corrplot": {
+      "Package": "corrplot",
+      "Version": "0.95",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "cowplot": {
+      "Package": "cowplot",
+      "Version": "1.2.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["ggplot2", "gtable", "rlang", "scales"]
+    },
+    "cpp11": {
+      "Package": "cpp11",
+      "Version": "0.5.5",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "crayon": {
+      "Package": "crayon",
+      "Version": "1.5.3",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "crosstalk": {
+      "Package": "crosstalk",
+      "Version": "1.2.2",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["R6", "htmltools", "jsonlite", "lazyeval"]
+    },
+    "curl": {
+      "Package": "curl",
+      "Version": "7.1.0",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "data.table": {
+      "Package": "data.table",
+      "Version": "1.18.2.1",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "data.tree": {
+      "Package": "data.tree",
+      "Version": "1.2.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["R6", "stringi"]
+    },
+    "dbplyr": {
+      "Package": "dbplyr",
+      "Version": "2.5.2",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["DBI", "R6", "blob", "cli", "dplyr", "glue", "lifecycle", "magrittr", "pillar", "purrr", "rlang", "tibble", "tidyr", "tidyselect", "vctrs", "withr"]
+    },
+    "desc": {
+      "Package": "desc",
+      "Version": "1.4.3",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["R6", "cli"]
+    },
+    "diffobj": {
+      "Package": "diffobj",
+      "Version": "0.3.6",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": "crayon"
+    },
+    "digest": {
+      "Package": "digest",
+      "Version": "0.6.39",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "doBy": {
+      "Package": "doBy",
+      "Version": "4.7.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["Deriv", "MASS", "Matrix", "boot", "broom", "cowplot", "dplyr", "forecast", "ggplot2", "microbenchmark", "modelr", "purrr", "rlang", "tibble", "tidyr"]
+    },
+    "doParallel": {
+      "Package": "doParallel",
+      "Version": "1.0.17",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["foreach", "iterators"]
+    },
+    "dplyr": {
+      "Package": "dplyr",
+      "Version": "1.2.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["R6", "cli", "generics", "glue", "lifecycle", "magrittr", "pillar", "rlang", "tibble", "tidyselect", "vctrs"]
+    },
+    "dqrng": {
+      "Package": "dqrng",
+      "Version": "0.4.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["BH", "Rcpp", "sitmo"]
+    },
+    "dynamicTreeCut": {
+      "Package": "dynamicTreeCut",
+      "Version": "1.63.1",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "emmeans": {
+      "Package": "emmeans",
+      "Version": "2.0.2",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["estimability", "mvtnorm", "numDeriv", "rlang"]
+    },
+    "enrichplot": {
+      "Package": "enrichplot",
+      "Version": "1.30.5",
+      "Source": "Bioconductor",
+      "Repository": "https://bioc-release.r-universe.dev",
+      "Requirements": ["DOSE", "GOSemSim", "RColorBrewer", "aplot", "ggfun", "ggnewscale", "ggplot2", "ggrepel", "ggtangle", "ggtree", "igraph", "plyr", "purrr", "reshape2", "rlang", "scatterpie", "tidydr", "yulab.utils"]
+    },
+    "estimability": {
+      "Package": "estimability",
+      "Version": "1.5.1",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "evaluate": {
+      "Package": "evaluate",
+      "Version": "1.0.5",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "ewceData": {
+      "Package": "ewceData",
+      "Version": "1.18.0",
+      "Source": "Bioconductor",
+      "Repository": "Bioconductor 3.22",
+      "Requirements": "ExperimentHub"
+    },
+    "fANCOVA": {
+      "Package": "fANCOVA",
+      "Version": "0.6.1",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "farver": {
+      "Package": "farver",
+      "Version": "2.1.2",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "fastcluster": {
+      "Package": "fastcluster",
+      "Version": "1.3.0",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "fastmap": {
+      "Package": "fastmap",
+      "Version": "1.2.0",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "fastmatch": {
+      "Package": "fastmatch",
+      "Version": "1.1.8",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "fgsea": {
+      "Package": "fgsea",
+      "Version": "1.36.2",
+      "Source": "Bioconductor",
+      "Repository": "https://bioc-release.r-universe.dev",
+      "Requirements": ["BH", "BiocParallel", "Matrix", "Rcpp", "cowplot", "data.table", "fastmatch", "ggplot2", "scales"]
+    },
+    "filelock": {
+      "Package": "filelock",
+      "Version": "1.0.3",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "fontBitstreamVera": {
+      "Package": "fontBitstreamVera",
+      "Version": "0.1.1",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "fontLiberation": {
+      "Package": "fontLiberation",
+      "Version": "0.1.0",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "fontawesome": {
+      "Package": "fontawesome",
+      "Version": "0.5.3",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["htmltools", "rlang"]
+    },
+    "fontquiver": {
+      "Package": "fontquiver",
+      "Version": "0.2.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["fontBitstreamVera", "fontLiberation"]
+    },
+    "forcats": {
+      "Package": "forcats",
+      "Version": "1.0.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["cli", "glue", "lifecycle", "magrittr", "rlang", "tibble"]
+    },
+    "foreach": {
+      "Package": "foreach",
+      "Version": "1.5.2",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["codetools", "iterators"]
+    },
+    "forecast": {
+      "Package": "forecast",
+      "Version": "9.0.2",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["Rcpp", "RcppArmadillo", "colorspace", "fracdiff", "generics", "ggplot2", "lmtest", "magrittr", "nnet", "timeDate", "urca", "withr", "zoo"]
+    },
+    "foreign": {
+      "Package": "foreign",
+      "Version": "0.8.91",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "formatR": {
+      "Package": "formatR",
+      "Version": "1.14",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "fracdiff": {
+      "Package": "fracdiff",
+      "Version": "1.5.4",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "fs": {
+      "Package": "fs",
+      "Version": "2.1.0",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "futile.logger": {
+      "Package": "futile.logger",
+      "Version": "1.4.9",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["futile.options", "lambda.r"]
+    },
+    "futile.options": {
+      "Package": "futile.options",
+      "Version": "1.0.1",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "future": {
+      "Package": "future",
+      "Version": "1.70.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["digest", "globals", "listenv", "parallelly"]
+    },
+    "future.apply": {
+      "Package": "future.apply",
+      "Version": "1.20.2",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["future", "globals"]
+    },
+    "gdtools": {
+      "Package": "gdtools",
+      "Version": "0.5.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["Rcpp", "fontquiver", "htmltools", "systemfonts"]
+    },
+    "generics": {
+      "Package": "generics",
+      "Version": "0.1.4",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "ggalluvial": {
+      "Package": "ggalluvial",
+      "Version": "0.12.6",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["dplyr", "ggplot2", "lazyeval", "rlang", "tidyr", "tidyselect"]
+    },
+    "ggforce": {
+      "Package": "ggforce",
+      "Version": "0.5.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["MASS", "cli", "cpp11", "ggplot2", "gtable", "lifecycle", "polyclip", "rlang", "scales", "systemfonts", "tidyselect", "tweenr", "vctrs", "withr"]
+    },
+    "ggfun": {
+      "Package": "ggfun",
+      "Version": "0.2.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["cli", "dplyr", "ggplot2", "rlang", "scales", "yulab.utils"]
+    },
+    "ggiraph": {
+      "Package": "ggiraph",
+      "Version": "0.9.6",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["MASS", "Rcpp", "S7", "cli", "dplyr", "gdtools", "ggplot2", "htmltools", "htmlwidgets", "purrr", "rlang", "systemfonts", "vctrs"]
+    },
+    "ggnewscale": {
+      "Package": "ggnewscale",
+      "Version": "0.5.2",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": "ggplot2"
+    },
+    "ggplot2": {
+      "Package": "ggplot2",
+      "Version": "4.0.2",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["S7", "cli", "gtable", "isoband", "lifecycle", "rlang", "scales", "vctrs", "withr"]
+    },
+    "ggplotify": {
+      "Package": "ggplotify",
+      "Version": "0.1.3",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["ggplot2", "gridGraphics", "rlang", "yulab.utils"]
+    },
+    "ggpubr": {
+      "Package": "ggpubr",
+      "Version": "0.6.3",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["cowplot", "dplyr", "ggplot2", "ggrepel", "ggsci", "ggsignif", "glue", "gridExtra", "magrittr", "polynom", "purrr", "rlang", "rstatix", "scales", "tibble", "tidyr"]
+    },
+    "ggraph": {
+      "Package": "ggraph",
+      "Version": "2.2.2",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["MASS", "cli", "cpp11", "dplyr", "ggforce", "ggplot2", "ggrepel", "graphlayouts", "igraph", "lifecycle", "memoise", "rlang", "scales", "tidygraph", "vctrs", "viridis", "withr"]
+    },
+    "ggrepel": {
+      "Package": "ggrepel",
+      "Version": "0.9.8",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["Rcpp", "S7", "ggplot2", "rlang", "scales", "withr"]
+    },
+    "ggridges": {
+      "Package": "ggridges",
+      "Version": "0.5.7",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["ggplot2", "scales", "withr"]
+    },
+    "ggsci": {
+      "Package": "ggsci",
+      "Version": "5.0.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["ggplot2", "rlang", "scales"]
+    },
+    "ggsignif": {
+      "Package": "ggsignif",
+      "Version": "0.6.4",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": "ggplot2"
+    },
+    "ggtangle": {
+      "Package": "ggtangle",
+      "Version": "0.1.2",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["ggfun", "ggplot2", "ggrepel", "igraph", "rlang", "yulab.utils"]
+    },
+    "ggtree": {
+      "Package": "ggtree",
+      "Version": "4.0.5",
+      "Source": "Bioconductor",
+      "Repository": "https://bioc-release.r-universe.dev",
+      "Requirements": ["ape", "aplot", "cli", "dplyr", "ggfun", "ggiraph", "ggplot2", "magrittr", "purrr", "rlang", "scales", "tidyr", "tidytree", "treeio", "yulab.utils"]
+    },
+    "globals": {
+      "Package": "globals",
+      "Version": "0.19.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": "codetools"
+    },
+    "glue": {
+      "Package": "glue",
+      "Version": "1.8.0",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "gplots": {
+      "Package": "gplots",
+      "Version": "3.3.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["KernSmooth", "caTools", "gtools"]
+    },
+    "gprofiler2": {
+      "Package": "gprofiler2",
+      "Version": "0.2.4",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["RCurl", "crosstalk", "curl", "dplyr", "ggplot2", "gridExtra", "jsonlite", "plotly", "tidyr", "viridisLite"]
+    },
+    "graph": {
+      "Package": "graph",
+      "Version": "1.88.1",
+      "Source": "Bioconductor",
+      "Repository": "https://bioc-release.r-universe.dev",
+      "Requirements": "BiocGenerics"
+    },
+    "graphlayouts": {
+      "Package": "graphlayouts",
+      "Version": "1.2.3",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["Rcpp", "RcppArmadillo", "igraph"]
+    },
+    "gridExtra": {
+      "Package": "gridExtra",
+      "Version": "2.3",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": "gtable"
+    },
+    "gridGraphics": {
+      "Package": "gridGraphics",
+      "Version": "0.5.1",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "gson": {
+      "Package": "gson",
+      "Version": "0.1.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["jsonlite", "rlang", "tidyr"]
+    },
+    "gtable": {
+      "Package": "gtable",
+      "Version": "0.3.6",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["cli", "glue", "lifecycle", "rlang"]
+    },
+    "gtools": {
+      "Package": "gtools",
+      "Version": "3.9.5",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "highr": {
+      "Package": "highr",
+      "Version": "0.12",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": "xfun"
+    },
+    "hms": {
+      "Package": "hms",
+      "Version": "1.1.4",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["cli", "lifecycle", "pkgconfig", "rlang", "vctrs"]
+    },
+    "homologene": {
+      "Package": "homologene",
+      "Version": "1.4.68.19.3.27",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["R.utils", "dplyr", "magrittr", "purrr", "readr"]
+    },
+    "htmlTable": {
+      "Package": "htmlTable",
+      "Version": "2.5.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["checkmate", "htmltools", "htmlwidgets", "knitr", "magrittr", "rstudioapi", "stringr"]
+    },
+    "htmltools": {
+      "Package": "htmltools",
+      "Version": "0.5.9",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["base64enc", "digest", "fastmap", "rlang"]
+    },
+    "htmlwidgets": {
+      "Package": "htmlwidgets",
+      "Version": "1.6.4",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["htmltools", "jsonlite", "knitr", "rmarkdown", "yaml"]
+    },
+    "httpuv": {
+      "Package": "httpuv",
+      "Version": "1.6.17",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["R6", "Rcpp", "later", "promises"]
+    },
+    "httr": {
+      "Package": "httr",
+      "Version": "1.4.8",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["R6", "curl", "jsonlite", "mime", "openssl"]
+    },
+    "httr2": {
+      "Package": "httr2",
+      "Version": "1.2.2",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["R6", "cli", "curl", "glue", "lifecycle", "magrittr", "openssl", "rappdirs", "rlang", "vctrs", "withr"]
+    },
+    "igraph": {
+      "Package": "igraph",
+      "Version": "2.2.3",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["Matrix", "cli", "cpp11", "lifecycle", "magrittr", "pkgconfig", "rlang", "vctrs"]
+    },
+    "impute": {
+      "Package": "impute",
+      "Version": "1.84.0",
+      "Source": "Bioconductor",
+      "Repository": "https://bioc-release.r-universe.dev"
+    },
+    "irlba": {
+      "Package": "irlba",
+      "Version": "2.3.7",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": "Matrix"
+    },
+    "isoband": {
+      "Package": "isoband",
+      "Version": "0.3.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["cli", "cpp11", "rlang"]
+    },
+    "iterators": {
+      "Package": "iterators",
+      "Version": "1.0.14",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "janitor": {
+      "Package": "janitor",
+      "Version": "2.2.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["dplyr", "hms", "lifecycle", "lubridate", "magrittr", "purrr", "rlang", "snakecase", "stringi", "stringr", "tidyr", "tidyselect"]
+    },
+    "jquerylib": {
+      "Package": "jquerylib",
+      "Version": "0.1.4",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": "htmltools"
+    },
+    "jsonlite": {
+      "Package": "jsonlite",
+      "Version": "2.0.0",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "knitr": {
+      "Package": "knitr",
+      "Version": "1.51",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["evaluate", "highr", "xfun", "yaml"]
+    },
+    "labeling": {
+      "Package": "labeling",
+      "Version": "0.4.3",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "lambda.r": {
+      "Package": "lambda.r",
+      "Version": "1.2.4",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": "formatR"
+    },
+    "later": {
+      "Package": "later",
+      "Version": "1.4.8",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["Rcpp", "rlang"]
+    },
+    "lattice": {
+      "Package": "lattice",
+      "Version": "0.22.9",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "lazyeval": {
+      "Package": "lazyeval",
+      "Version": "0.2.3",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": "rlang"
+    },
+    "lifecycle": {
+      "Package": "lifecycle",
+      "Version": "1.0.5",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["cli", "rlang"]
+    },
+    "limma": {
+      "Package": "limma",
+      "Version": "3.66.0",
+      "Source": "Bioconductor",
+      "Repository": "https://bioc-release.r-universe.dev",
+      "Requirements": "statmod"
+    },
+    "listenv": {
+      "Package": "listenv",
+      "Version": "0.10.1",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "lme4": {
+      "Package": "lme4",
+      "Version": "2.0.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["MASS", "Matrix", "Rcpp", "RcppEigen", "Rdpack", "boot", "lattice", "minqa", "nlme", "nloptr", "reformulas", "rlang"]
+    },
+    "lmerTest": {
+      "Package": "lmerTest",
+      "Version": "3.2.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["MASS", "ggplot2", "lme4", "numDeriv", "reformulas"]
+    },
+    "lmtest": {
+      "Package": "lmtest",
+      "Version": "0.9.40",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": "zoo"
+    },
+    "lubridate": {
+      "Package": "lubridate",
+      "Version": "1.9.5",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["generics", "timechange"]
+    },
+    "magick": {
+      "Package": "magick",
+      "Version": "2.9.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["Rcpp", "curl", "magrittr"]
+    },
+    "magrittr": {
+      "Package": "magrittr",
+      "Version": "2.0.5",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "matrixStats": {
+      "Package": "matrixStats",
+      "Version": "1.5.0",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "memoise": {
+      "Package": "memoise",
+      "Version": "2.0.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["cachem", "rlang"]
+    },
+    "mgcv": {
+      "Package": "mgcv",
+      "Version": "1.9.4",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["Matrix", "nlme"]
+    },
+    "microbenchmark": {
+      "Package": "microbenchmark",
+      "Version": "1.5.0",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "mime": {
+      "Package": "mime",
+      "Version": "0.13",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "minqa": {
+      "Package": "minqa",
+      "Version": "1.2.8",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": "Rcpp"
+    },
+    "modelr": {
+      "Package": "modelr",
+      "Version": "0.1.11",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["broom", "magrittr", "purrr", "rlang", "tibble", "tidyr", "tidyselect", "vctrs"]
+    },
+    "mvtnorm": {
+      "Package": "mvtnorm",
+      "Version": "1.3.6",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "networkD3": {
+      "Package": "networkD3",
+      "Version": "0.4.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["data.tree", "htmlwidgets", "igraph", "jsonlite", "magrittr"]
+    },
+    "nlme": {
+      "Package": "nlme",
+      "Version": "3.1.169",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": "lattice"
+    },
+    "nloptr": {
+      "Package": "nloptr",
+      "Version": "2.2.1",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "nnet": {
+      "Package": "nnet",
+      "Version": "7.3.20",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "nortest": {
+      "Package": "nortest",
+      "Version": "1.0.4",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "numDeriv": {
+      "Package": "numDeriv",
+      "Version": "2016.8.1.1",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "openssl": {
+      "Package": "openssl",
+      "Version": "2.4.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": "askpass"
+    },
+    "openxlsx": {
+      "Package": "openxlsx",
+      "Version": "4.2.8.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["Rcpp", "stringi", "zip"]
+    },
+    "org.Hs.eg.db": {
+      "Package": "org.Hs.eg.db",
+      "Version": "3.22.0",
+      "Source": "Bioconductor",
+      "Requirements": "AnnotationDbi"
+    },
+    "org.Mm.eg.db": {
+      "Package": "org.Mm.eg.db",
+      "Version": "3.22.0",
+      "Source": "Bioconductor",
+      "Requirements": "AnnotationDbi"
+    },
+    "orthogene": {
+      "Package": "orthogene",
+      "Version": "1.16.1",
+      "Source": "Bioconductor",
+      "Repository": "https://bioc-release.r-universe.dev",
+      "Requirements": ["DelayedArray", "Matrix", "babelgene", "data.table", "dplyr", "ggplot2", "ggpubr", "ggtree", "gprofiler2", "homologene", "jsonlite", "magrittr", "patchwork", "repmis"]
+    },
+    "otel": {
+      "Package": "otel",
+      "Version": "0.2.0",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "pacman": {
+      "Package": "pacman",
+      "Version": "0.5.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": "remotes"
+    },
+    "parallelly": {
+      "Package": "parallelly",
+      "Version": "1.46.1",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "patchwork": {
+      "Package": "patchwork",
+      "Version": "1.3.2",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["cli", "farver", "ggplot2", "gtable", "rlang"]
+    },
+    "pathview": {
+      "Package": "pathview",
+      "Version": "1.50.0",
+      "Source": "Bioconductor",
+      "Repository": "https://bioc-release.r-universe.dev",
+      "Requirements": ["AnnotationDbi", "KEGGREST", "KEGGgraph", "Rgraphviz", "XML", "graph", "org.Hs.eg.db", "png"]
+    },
+    "pbkrtest": {
+      "Package": "pbkrtest",
+      "Version": "0.5.5",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["MASS", "Matrix", "broom", "doBy", "dplyr", "lme4", "numDeriv"]
+    },
+    "pheatmap": {
+      "Package": "pheatmap",
+      "Version": "1.0.13",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["RColorBrewer", "gtable", "scales"]
+    },
+    "pillar": {
+      "Package": "pillar",
+      "Version": "1.11.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["cli", "glue", "lifecycle", "rlang", "utf8", "vctrs"]
+    },
+    "pkgbuild": {
+      "Package": "pkgbuild",
+      "Version": "1.4.8",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["R6", "callr", "cli", "desc", "processx"]
+    },
+    "pkgconfig": {
+      "Package": "pkgconfig",
+      "Version": "2.0.3",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "pkgload": {
+      "Package": "pkgload",
+      "Version": "1.5.2",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["cli", "desc", "fs", "glue", "lifecycle", "pkgbuild", "processx", "rlang", "rprojroot"]
+    },
+    "plotly": {
+      "Package": "plotly",
+      "Version": "4.12.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["RColorBrewer", "base64enc", "crosstalk", "data.table", "digest", "dplyr", "ggplot2", "htmltools", "htmlwidgets", "httr", "jsonlite", "lazyeval", "magrittr", "promises", "purrr", "rlang", "scales", "tibble", "tidyr", "vctrs", "viridisLite"]
+    },
+    "plyr": {
+      "Package": "plyr",
+      "Version": "1.8.9",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": "Rcpp"
+    },
+    "png": {
+      "Package": "png",
+      "Version": "0.1.9",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "polyclip": {
+      "Package": "polyclip",
+      "Version": "1.10.7",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "polynom": {
+      "Package": "polynom",
+      "Version": "1.4.1",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "praise": {
+      "Package": "praise",
+      "Version": "1.0.0",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "preprocessCore": {
+      "Package": "preprocessCore",
+      "Version": "1.72.0",
+      "Source": "Bioconductor",
+      "Repository": "https://bioc-release.r-universe.dev"
+    },
+    "prettyunits": {
+      "Package": "prettyunits",
+      "Version": "1.2.0",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "processx": {
+      "Package": "processx",
+      "Version": "3.9.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["R6", "ps"]
+    },
+    "progress": {
+      "Package": "progress",
+      "Version": "1.2.3",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["R6", "crayon", "hms", "prettyunits"]
+    },
+    "progressr": {
+      "Package": "progressr",
+      "Version": "0.19.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": "digest"
+    },
+    "promises": {
+      "Package": "promises",
+      "Version": "1.5.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["R6", "fastmap", "later", "lifecycle", "magrittr", "otel", "rlang"]
+    },
+    "ps": {
+      "Package": "ps",
+      "Version": "1.9.3",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "purrr": {
+      "Package": "purrr",
+      "Version": "1.2.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["cli", "lifecycle", "magrittr", "rlang", "vctrs"]
+    },
+    "quantreg": {
+      "Package": "quantreg",
+      "Version": "6.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["MASS", "Matrix", "MatrixModels", "SparseM", "survival"]
+    },
+    "qvalue": {
+      "Package": "qvalue",
+      "Version": "2.42.0",
+      "Source": "Bioconductor",
+      "Repository": "https://bioc-release.r-universe.dev",
+      "Requirements": ["ggplot2", "reshape2"]
+    },
+    "ragg": {
+      "Package": "ragg",
+      "Version": "1.5.2",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["systemfonts", "textshaping"]
+    },
+    "rappdirs": {
+      "Package": "rappdirs",
+      "Version": "0.3.4",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "rbibutils": {
+      "Package": "rbibutils",
+      "Version": "2.4.1",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "readr": {
+      "Package": "readr",
+      "Version": "2.2.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["R6", "cli", "clipr", "cpp11", "crayon", "glue", "hms", "lifecycle", "rlang", "tibble", "tzdb", "vroom", "withr"]
+    },
+    "readxl": {
+      "Package": "readxl",
+      "Version": "1.4.5",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["cellranger", "cpp11", "progress", "tibble"]
+    },
+    "reformulas": {
+      "Package": "reformulas",
+      "Version": "0.4.4",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["Matrix", "Rdpack"]
+    },
+    "remaCor": {
+      "Package": "remaCor",
+      "Version": "0.0.20",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["EnvStats", "Rcpp", "RcppArmadillo", "Rdpack", "ggplot2", "mvtnorm", "reshape2"]
+    },
+    "rematch": {
+      "Package": "rematch",
+      "Version": "2.0.0",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "remotes": {
+      "Package": "remotes",
+      "Version": "2.5.0",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "repmis": {
+      "Package": "repmis",
+      "Version": "0.5.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["R.cache", "data.table", "digest", "httr", "plyr"]
+    },
+    "reshape2": {
+      "Package": "reshape2",
+      "Version": "1.4.5",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["Rcpp", "plyr", "stringr"]
+    },
+    "rjson": {
+      "Package": "rjson",
+      "Version": "0.2.23",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "rjsoncons": {
+      "Package": "rjsoncons",
+      "Version": "1.3.2",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["cli", "cpp11", "tibble"]
+    },
+    "rlang": {
+      "Package": "rlang",
+      "Version": "1.3.0",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "rmarkdown": {
+      "Package": "rmarkdown",
+      "Version": "2.31",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["bslib", "evaluate", "fontawesome", "htmltools", "jquerylib", "jsonlite", "knitr", "tinytex", "xfun", "yaml"]
+    },
+    "rpart": {
+      "Package": "rpart",
+      "Version": "4.1.27",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "rprojroot": {
+      "Package": "rprojroot",
+      "Version": "2.1.1",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "rstatix": {
+      "Package": "rstatix",
+      "Version": "0.7.3",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["broom", "car", "corrplot", "dplyr", "generics", "magrittr", "purrr", "rlang", "tibble", "tidyr", "tidyselect"]
+    },
+    "rstudioapi": {
+      "Package": "rstudioapi",
+      "Version": "0.18.0",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "sass": {
+      "Package": "sass",
+      "Version": "0.4.10",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["R6", "fs", "htmltools", "rappdirs", "rlang"]
+    },
+    "scales": {
+      "Package": "scales",
+      "Version": "1.4.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["R6", "RColorBrewer", "cli", "farver", "glue", "labeling", "lifecycle", "rlang", "viridisLite"]
+    },
+    "scatterpie": {
+      "Package": "scatterpie",
+      "Version": "0.2.6",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["dplyr", "ggforce", "ggfun", "ggplot2", "rlang", "tidyr", "yulab.utils"]
+    },
+    "scatterplot3d": {
+      "Package": "scatterplot3d",
+      "Version": "0.3.45",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "shape": {
+      "Package": "shape",
+      "Version": "1.4.6.1",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "shiny": {
+      "Package": "shiny",
+      "Version": "1.13.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["R6", "bslib", "cachem", "cli", "commonmark", "fastmap", "fontawesome", "glue", "htmltools", "httpuv", "jsonlite", "later", "lifecycle", "mime", "otel", "promises", "rlang", "sourcetools", "withr", "xtable"]
+    },
+    "simona": {
+      "Package": "simona",
+      "Version": "1.8.1",
+      "Source": "Bioconductor",
+      "Repository": "https://bioc-release.r-universe.dev",
+      "Requirements": ["ComplexHeatmap", "GetoptLong", "GlobalOptions", "Polychrome", "Rcpp", "S4Vectors", "circlize", "fastmatch", "igraph", "matrixStats", "shiny", "xml2"]
+    },
+    "simplifyEnrichment": {
+      "Package": "simplifyEnrichment",
+      "Version": "2.4.1",
+      "Source": "Bioconductor",
+      "Repository": "https://bioc-release.r-universe.dev",
+      "Requirements": ["AnnotationDbi", "ComplexHeatmap", "GO.db", "GetoptLong", "GlobalOptions", "circlize", "clue", "cluster", "colorspace", "digest", "simona", "slam", "tm"]
+    },
+    "sitmo": {
+      "Package": "sitmo",
+      "Version": "2.0.2",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": "Rcpp"
+    },
+    "slam": {
+      "Package": "slam",
+      "Version": "0.1.55",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "snakecase": {
+      "Package": "snakecase",
+      "Version": "0.11.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["stringi", "stringr"]
+    },
+    "snow": {
+      "Package": "snow",
+      "Version": "0.4.4",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "sourcetools": {
+      "Package": "sourcetools",
+      "Version": "0.1.7.2",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "splitstackshape": {
+      "Package": "splitstackshape",
+      "Version": "1.4.8.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": "data.table"
+    },
+    "statmod": {
+      "Package": "statmod",
+      "Version": "1.5.1",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "stringi": {
+      "Package": "stringi",
+      "Version": "1.8.7",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "stringr": {
+      "Package": "stringr",
+      "Version": "1.6.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["cli", "glue", "lifecycle", "magrittr", "rlang", "stringi", "vctrs"]
+    },
+    "survival": {
+      "Package": "survival",
+      "Version": "3.8.6",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": "Matrix"
+    },
+    "svglite": {
+      "Package": "svglite",
+      "Version": "2.2.2",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["base64enc", "cli", "cpp11", "lifecycle", "rlang", "systemfonts", "textshaping"]
+    },
+    "sys": {
+      "Package": "sys",
+      "Version": "3.4.3",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "systemfonts": {
+      "Package": "systemfonts",
+      "Version": "1.3.2",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["base64enc", "cpp11", "jsonlite", "lifecycle"]
+    },
+    "testthat": {
+      "Package": "testthat",
+      "Version": "3.3.2",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["R6", "brio", "callr", "cli", "desc", "evaluate", "jsonlite", "lifecycle", "magrittr", "pkgload", "praise", "processx", "ps", "rlang", "waldo", "withr"]
+    },
+    "textshaping": {
+      "Package": "textshaping",
+      "Version": "1.0.5",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["cpp11", "lifecycle", "stringi", "systemfonts"]
+    },
+    "tibble": {
+      "Package": "tibble",
+      "Version": "3.3.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["cli", "lifecycle", "magrittr", "pillar", "pkgconfig", "rlang", "vctrs"]
+    },
+    "tidydr": {
+      "Package": "tidydr",
+      "Version": "0.0.6",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["cluster", "ggfun", "ggplot2", "rlang"]
+    },
+    "tidygraph": {
+      "Package": "tidygraph",
+      "Version": "1.3.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["R6", "cli", "cpp11", "dplyr", "igraph", "lifecycle", "magrittr", "pillar", "rlang", "tibble", "tidyr"]
+    },
+    "tidyr": {
+      "Package": "tidyr",
+      "Version": "1.3.2",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["cli", "cpp11", "dplyr", "glue", "lifecycle", "magrittr", "purrr", "rlang", "stringr", "tibble", "tidyselect", "vctrs"]
+    },
+    "tidyselect": {
+      "Package": "tidyselect",
+      "Version": "1.2.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["cli", "glue", "lifecycle", "rlang", "vctrs", "withr"]
+    },
+    "tidytree": {
+      "Package": "tidytree",
+      "Version": "0.4.7",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["ape", "cli", "dplyr", "lazyeval", "magrittr", "pillar", "rlang", "tibble", "tidyr", "tidyselect", "yulab.utils"]
+    },
+    "timeDate": {
+      "Package": "timeDate",
+      "Version": "4052.112",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "timechange": {
+      "Package": "timechange",
+      "Version": "0.4.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": "cpp11"
+    },
+    "tinytex": {
+      "Package": "tinytex",
+      "Version": "0.59",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": "xfun"
+    },
+    "tm": {
+      "Package": "tm",
+      "Version": "0.7.18",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["BH", "NLP", "Rcpp", "slam", "xml2"]
+    },
+    "treeio": {
+      "Package": "treeio",
+      "Version": "1.34.0",
+      "Source": "Bioconductor",
+      "Repository": "https://bioc-release.r-universe.dev",
+      "Requirements": ["ape", "dplyr", "jsonlite", "magrittr", "rlang", "tibble", "tidytree", "yulab.utils"]
+    },
+    "tweenr": {
+      "Package": "tweenr",
+      "Version": "2.0.3",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["cpp11", "farver", "magrittr", "rlang", "vctrs"]
+    },
+    "tzdb": {
+      "Package": "tzdb",
+      "Version": "0.5.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": "cpp11"
+    },
+    "urca": {
+      "Package": "urca",
+      "Version": "1.3.4",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": "nlme"
+    },
+    "utf8": {
+      "Package": "utf8",
+      "Version": "1.2.6",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "uwot": {
+      "Package": "uwot",
+      "Version": "0.2.4",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["FNN", "Matrix", "RSpectra", "Rcpp", "RcppAnnoy", "RcppProgress", "dqrng", "irlba"]
+    },
+    "variancePartition": {
+      "Package": "variancePartition",
+      "Version": "1.40.2",
+      "Source": "Bioconductor",
+      "Repository": "https://bioc-release.r-universe.dev",
+      "Requirements": ["Biobase", "BiocParallel", "MASS", "Matrix", "Rdpack", "RhpcBLASctl", "aod", "corpcor", "fANCOVA", "ggplot2", "gplots", "gtools", "iterators", "limma", "lme4", "lmerTest", "matrixStats", "pbkrtest", "reformulas", "remaCor", "reshape2", "rlang", "scales"]
+    },
+    "vctrs": {
+      "Package": "vctrs",
+      "Version": "0.7.2",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["cli", "glue", "lifecycle", "rlang"]
+    },
+    "viridis": {
+      "Package": "viridis",
+      "Version": "0.6.5",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["ggplot2", "gridExtra", "viridisLite"]
+    },
+    "viridisLite": {
+      "Package": "viridisLite",
+      "Version": "0.4.3",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "vroom": {
+      "Package": "vroom",
+      "Version": "1.7.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["bit64", "cli", "cpp11", "crayon", "glue", "hms", "lifecycle", "progress", "rlang", "tibble", "tidyselect", "tzdb", "vctrs", "withr"]
+    },
+    "waldo": {
+      "Package": "waldo",
+      "Version": "0.6.2",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["cli", "diffobj", "glue", "rlang"]
+    },
+    "withr": {
+      "Package": "withr",
+      "Version": "3.0.2",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "writexl": {
+      "Package": "writexl",
+      "Version": "1.5.4",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "xfun": {
+      "Package": "xfun",
+      "Version": "0.57",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "xml2": {
+      "Package": "xml2",
+      "Version": "1.5.2",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["cli", "rlang"]
+    },
+    "xtable": {
+      "Package": "xtable",
+      "Version": "1.8.8",
       "Source": "Repository",
       "Repository": "CRAN"
     },
     "yaml": {
       "Package": "yaml",
-      "Version": "2.3.10",
+      "Version": "2.3.12",
       "Source": "Repository",
       "Repository": "CRAN"
     },
-    "testthat": {
-      "Package": "testthat",
-      "Version": "3.2.3",
+    "yulab.utils": {
+      "Package": "yulab.utils",
+      "Version": "0.2.4",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": ["cli", "digest", "fs", "rappdirs", "rlang"]
+    },
+    "zip": {
+      "Package": "zip",
+      "Version": "2.3.3",
       "Source": "Repository",
       "Repository": "CRAN"
+    },
+    "zoo": {
+      "Package": "zoo",
+      "Version": "1.8.15",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": "lattice"
     }
   }
 }
