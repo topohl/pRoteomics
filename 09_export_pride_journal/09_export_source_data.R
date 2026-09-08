@@ -4,7 +4,7 @@
 # Script: 09_export_pride_journal/09_export_source_data.R
 # Stage: export
 # Scope: global
-# Consumes: required results/tables/; optional results/source_data/.
+# Consumes: required config/output_namespaces.yml and results/tables/; optional results/source_data/.
 # Produces: results/manuscript/source_data/; results/manuscript/supplementary_tables/; results/manuscript/source_data_export_manifest.csv.
 # Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Manuscript source-data export.
@@ -18,8 +18,9 @@ source(repo_path("R", "validation_utils.R"))
 source(repo_path("R", "export_helpers.R"))
 
 dry_run <- is_dry_run()
-target_source <- path_results("manuscript", "source_data")
-target_supp <- path_results("manuscript", "supplementary_tables")
+manuscript_root <- output_namespace_manuscript_export_root()
+target_source <- file.path(manuscript_root, "source_data")
+target_supp <- file.path(manuscript_root, "supplementary_tables")
 
 table_roots <- c(path_results("tables"), path_results("source_data"))
 
@@ -91,7 +92,7 @@ dir_create(target_source)
 dir_create(target_supp)
 copy_export_targets(manifest$source_file, manifest$target_file)
 
-manifest_path <- path_results("manuscript", "source_data_export_manifest.csv")
+manifest_path <- file.path(manuscript_root, "source_data_export_manifest.csv")
 utils::write.csv(manifest, manifest_path, row.names = FALSE)
 write_run_manifest(
   path_results("logs", "09_export_pride_journal", "source_data", "run_manifest.yml"),

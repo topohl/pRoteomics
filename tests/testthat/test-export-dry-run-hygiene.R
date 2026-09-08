@@ -63,7 +63,12 @@ testthat::test_that("--dry-run creates no directories or files in an isolated ro
 
   root <- withr::local_tempdir("export_dry_run_")
   dir.create(file.path(root, "09_export_pride_journal"), recursive = TRUE)
+  dir.create(file.path(root, "config"), recursive = TRUE)
   file.copy(file.path(repo, "R"), root, recursive = TRUE)
+  file.copy(
+    file.path(repo, "config", "output_namespaces.yml"),
+    file.path(root, "config", "output_namespaces.yml")
+  )
   for (rel in dry_run_scripts) {
     file.copy(file.path(repo, rel), file.path(root, "09_export_pride_journal"))
   }
