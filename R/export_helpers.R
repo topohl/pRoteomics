@@ -13,6 +13,9 @@ if (!exists("read_sample_metadata", mode = "function")) {
 if (!exists("resolve_dataset_inputs", mode = "function")) {
   source(repo_path("R", "dataset_inputs.R"))
 }
+if (!exists("output_namespace_manuscript_export_root", mode = "function")) {
+  source(repo_path("R", "output_namespace_utils.R"))
+}
 
 export_config_path <- function() {
   repo_path("09_export_pride_journal", "config", "export_config.yml")
@@ -244,6 +247,28 @@ manuscript_figure_target_paths <- function(rel_paths, target_dir,
     }
     file.path(target_dir, name)
   }, character(1), USE.NAMES = FALSE)
+}
+
+# Route only the explicit manuscript-layer outputs into dedicated Figure 2/3
+# directories. Historical stage-level plots retain the established flattened
+# extended-data destination.
+manuscript_curated_figure_target_paths <- function(
+    rel_paths, manuscript_root = output_namespace_manuscript_export_root()) {
+  rel_paths <- as.character(rel_paths)
+  targets <- manuscript_figure_target_paths(
+    rel_paths, file.path(manuscript_root, "extended_data")
+  )
+  for (figure_id in c("02", "03")) {
+    prefix <- paste0("manuscript/figure_", figure_id, "/")
+    selected <- startsWith(rel_paths, prefix)
+    if (any(selected)) {
+      targets[selected] <- file.path(
+        manuscript_root, paste0("figure_", as.integer(figure_id)),
+        substring(rel_paths[selected], nchar(prefix) + 1L)
+      )
+    }
+  }
+  targets
 }
 
 # Fail closed on duplicate targets: two sources copied to one target would

@@ -1,0 +1,197 @@
+contract_version: manuscript_figures_v2
+
+figures:
+  "02":
+    title: Figure 2
+    width_mm: 183
+    height_mm: 250
+    panels:
+      - id: 2a
+        description: Experimental workflow schematic
+        producer_script: external_illustrator
+        render_mode: deferred_illustrator
+        automation_status: deferred_to_illustrator
+        include_in_automated_assembly: false
+        figure_source: null
+        primary_source: null
+        input_dependencies: []
+        required_columns: []
+        scientific_contract: static_workflow_artwork
+        biological_unit: not_applicable
+        hemisphere_handling: not_applicable
+        row: 1
+        col: 1
+      - id: 2b
+        description: Precursors and proteins identified by sample and compartment
+        producer_script: 03_qc_exploration/01_sample_qc_quicksearch.r
+        render_mode: copy_svg
+        source_data_mode: derive_figure2b
+        figure_source: results/figures/03_qc_exploration/01_sample_qc_quicksearch/global/Fig_QC_global_depth_bars.svg
+        primary_source: data/raw/pg_matrix/quicksearch.stats.annotated.xlsx
+        input_dependencies: [data/raw/pg_matrix/quicksearch.stats.annotated.xlsx]
+        required_columns: []
+        scientific_contract: technical_sample_level_qc
+        biological_unit: measured_sample
+        hemisphere_handling: not_applicable_technical_qc
+        row: 1
+        col: 2
+      - id: 2c
+        description: Joint sample-level PCA by anatomical island
+        producer_script: 03_qc_exploration/00c_joint_compartment_qc_publication_figures.r
+        render_mode: copy_svg
+        source_data_mode: copy_csv
+        figure_source: results/figures/03_qc_exploration/00b_joint_compartment_qc/publication_style/global/panels/main_pca_by_anatomical_island_89mm.svg
+        primary_source: results/tables/03_qc_exploration/00b_joint_compartment_qc/global/joint_primary_pca_scores.csv
+        input_dependencies:
+          - results/tables/03_qc_exploration/00b_joint_compartment_qc/global/joint_primary_pca_variance_explained.csv
+          - data/processed/01_preprocessing/joint_compartment_qc/global/joint_compartment_qc_matrices.rds
+        required_columns: [Sample, PC1, PC2, dataset, region, layer]
+        scientific_contract: sample_level_exploratory_qc
+        biological_unit: measured_sample
+        hemisphere_handling: retained_as_sample_identity_not_a_stress_inference
+        row: 2
+        col: 1
+      - id: 2d
+        description: Intended-minus-comparator control marker abundance differences
+        producer_script: 03_qc_exploration/04e_control_compartment_abundance_publication_figures.r
+        render_mode: copy_svg
+        source_data_mode: copy_csv
+        figure_source: results/figures/03_qc_exploration/04e_control_compartment_abundance_publication_figures/global/figure2d_compact_marker_enrichment_differences_v2.svg
+        primary_source: results/source_data/03_qc_exploration/04e_control_compartment_abundance_publication_figures/global/figure2d_compact_marker_enrichment_differences_v2_source_data.csv
+        input_dependencies:
+          - results/source_data/03_qc_exploration/04e_control_compartment_abundance_publication_figures/global/v2_03_animal_level_abundance.csv
+          - results/source_data/03_qc_exploration/04e_control_compartment_abundance_publication_figures/global/figure2d_compact_marker_enrichment_differences_v2_provenance.csv
+          - results/logs/03_qc_exploration/04e_control_compartment_abundance_publication_figures/global/figure2d_compact_marker_enrichment_differences_v2_manifest.yml
+        required_columns: [marker_class, ProteinGroupID, intended_dataset, intended_minus_comparator_log2, difference_plot_value]
+        scientific_contract: control_abundance_v2_animal_level
+        biological_unit: animal
+        hemisphere_handling: equal_valid_hemispheres_after_within_hemisphere_aggregation
+        row: 2
+        col: 2
+      - id: 2e
+        description: Kaulich external spatial validation
+        producer_script: 04_differential_expression_enrichment/09_control_spatial_identity_validation.r
+        render_mode: copy_svg
+        source_data_mode: copy_csv
+        figure_source: results/figures/04_differential_expression_enrichment/control_spatial_identity_validation/global/figure2e_kaulich_validation.svg
+        primary_source: results/source_data/04_differential_expression_enrichment/control_spatial_identity_validation/global/figure2e_source_data.csv
+        input_dependencies:
+          - results/tables/04_differential_expression_enrichment/control_spatial_identity_validation/global/analysis_status.csv
+          - results/tables/04_differential_expression_enrichment/control_spatial_identity_validation/global/kaulich_signature_gsea.csv
+          - data/external/kaulich_2025/kaulich_supplementary_data_2.xlsx
+          - data/processed/01_preprocessing/06_merged_metadata_module_score/neuron_soma/sample_metadata_merged_clean_for_module_scores.xlsx
+          - data/processed/01_preprocessing/06_merged_metadata_module_score/neuron_neuropil/sample_metadata_merged_clean_for_module_scores.xlsx
+        required_columns: [dataset, internal_contrast, external_signature, NES, p_adjust, panel_contract]
+        scientific_contract: control_spatial_repeated_measures_validation
+        biological_unit: animal_with_repeated_spatial_samples
+        hemisphere_handling: sample_level_model_blocked_by_AnimalID_and_adjusted_for_hemisphere
+        row: 3
+        col: 1
+      - id: 2f
+        description: Grouped internal anatomical GO-BP validation
+        producer_script: 04_differential_expression_enrichment/09_control_spatial_identity_validation.r
+        render_mode: copy_svg
+        source_data_mode: copy_csv
+        figure_source: results/figures/04_differential_expression_enrichment/control_spatial_identity_validation/global/figure2f_control_anatomical_GO_regions_CA1layers_grouped.svg
+        primary_source: results/source_data/04_differential_expression_enrichment/control_spatial_identity_validation/global/figure2f_regions_CA1layers_source_data.csv
+        input_dependencies:
+          - results/tables/04_differential_expression_enrichment/control_spatial_identity_validation/global/analysis_status.csv
+          - results/tables/04_differential_expression_enrichment/control_spatial_identity_validation/global/control_anatomical_go_bp_gsea.csv
+        required_columns: [ID, Description, dataset, contrast, NES, p_adjust, panel_contract]
+        scientific_contract: control_spatial_repeated_measures_GO_GSEA
+        biological_unit: animal_with_repeated_spatial_samples
+        hemisphere_handling: sample_level_model_blocked_by_AnimalID_and_adjusted_for_hemisphere
+        row: 3
+        col: 2
+
+  "03":
+    title: Figure 3
+    width_mm: 183
+    height_mm: 250
+    panels:
+      - id: 3a
+        description: SUS-RES spatial differential-protein counts
+        producer_script: 04_differential_expression_enrichment/10_sus_res_spatial_dap_atlas.r
+        render_mode: copy_svg
+        source_data_mode: copy_csv
+        figure_source: results/figures/04_differential_expression_enrichment/sus_res_spatial_dap_atlas/global/panel_a_sus_res_dap_counts.svg
+        primary_source: results/source_data/04_differential_expression_enrichment/sus_res_spatial_dap_atlas/global/panel_a_sus_res_dap_counts.csv
+        input_dependencies:
+          - data/processed/04_differential_expression_enrichment/clusterProfiler/neuron_neuropil/clusterProfiler_manifest.csv
+          - data/processed/04_differential_expression_enrichment/clusterProfiler/neuron_soma/clusterProfiler_manifest.csv
+          - data/processed/04_differential_expression_enrichment/clusterProfiler/microglia/clusterProfiler_manifest.csv
+          - results/source_data/04_differential_expression_enrichment/sus_res_spatial_dap_atlas/global/sus_res_input_audit.csv
+        required_columns: [dataset, comparison, spatial_unit, n_DAP_FDR05, direction, signed_count]
+        scientific_contract: animal_level_protigy_DA_BH_FDR05
+        biological_unit: animal
+        hemisphere_handling: canonical_animal_level_hemisphere_averaged_ProTigy_GCT
+        row: 1
+        col: 1
+      - id: 3b
+        description: Neuropil circular supermodule local-effect atlas
+        producer_script: 10_biological_integration/04_wgcna_circular_atlas.R
+        render_mode: copy_svg
+        source_data_mode: copy_csv
+        figure_source: results/figures/10_biological_integration/wgcna_circular_atlas/global/wgcna_circular_heatmap_neuron_neuropil.svg
+        primary_source: results/source_data/10_biological_integration/wgcna_circular_atlas/global/wgcna_circular_heatmap_source_supermodule.csv
+        input_dependencies:
+          - results/tables/06_modules_WGCNA/interpretable_summary/neuron_neuropil/WGCNA_inferential_handoff.csv
+          - results/tables/06_modules_WGCNA/01_WGCNA/neuron_neuropil/supermodules/wgcna_module_supermodule_annotation.csv
+          - results/tables/06_modules_WGCNA/module_score/neuron_neuropil/wgcna/supermodule_directional_effects.csv
+          - results/tables/06_modules_WGCNA/interpretable_summary/neuron_neuropil/WGCNA_final_label_lookup.csv
+          - results/source_data/10_biological_integration/wgcna_circular_atlas/global/wgcna_circular_heatmap_layout_all_datasets.csv
+        required_columns: [dataset, level, endpoint_id, spatial_unit, contrast, estimate, tier_specific_fdr, standardized_effect_display]
+        scientific_contract: wgcna_stage07_local_effect_handoff
+        biological_unit: animal_spatial_unit
+        hemisphere_handling: equal_weight_available_LR_after_within_hemisphere_mean
+        row: 1
+        col: 2
+      - id: 3c
+        description: Focused Neuropil supermodule GO-BP member-module evidence
+        producer_script: 06_modules_WGCNA/01b_module_supermodule_GO_heatmaps.R
+        render_mode: copy_svg
+        source_data_mode: copy_csv
+        figure_source: results/figures/06_modules_WGCNA/01b_module_supermodule_GO_heatmaps/neuron_neuropil/WGCNA_supermodule_GO_focused_comparison_BP.svg
+        primary_source: results/tables/06_modules_WGCNA/01b_module_supermodule_GO_heatmaps/neuron_neuropil/WGCNA_supermodule_GO_focused_source_BP.csv
+        input_dependencies:
+          - results/tables/06_modules_WGCNA/01b_module_supermodule_GO_heatmaps/neuron_neuropil/WGCNA_supermodule_GO_focused_selected_terms_BP.csv
+          - results/tables/06_modules_WGCNA/01b_module_supermodule_GO_heatmaps/neuron_neuropil/WGCNA_supermodule_GO_focused_selection_audit_BP.csv
+          - results/tables/06_modules_WGCNA/01_WGCNA/neuron_neuropil/modules/WGCNA_module_GO_enrichment_long.csv
+        required_columns: [dataset, TermID, SupermoduleID, Description, EnrichmentScore, Significant]
+        scientific_contract: frozen_WGCNA_module_membership_GO_annotation
+        biological_unit: module_annotation
+        hemisphere_handling: not_applicable_no_group_effect_estimate
+        row: 2
+        col: 1
+      - id: 3d
+        description: Fifteen-module global WGCNA contrast heatmap
+        producer_script: 10_biological_integration/05_manuscript_figure3_wgcna_protein_zoom.R
+        render_mode: copy_svg
+        source_data_mode: copy_csv
+        figure_source: results/figures/manuscript_panels/figure_3/figure3b_stage07_wgcna_effects.svg
+        primary_source: results/source_data/manuscript_panels/figure_3/figure3b_stage07_effect_source.csv
+        input_dependencies: [results/source_data/06_modules_WGCNA/interpretable_summary/neuron_neuropil/module_group_effects_main_heatmap_source.csv]
+        required_columns: [dataset, module_id, contrast, estimate, tier_specific_fdr, model_valid_for_inference]
+        expected_rows: 45
+        scientific_contract: wgcna_stage07_global_module_effects
+        biological_unit: animal
+        hemisphere_handling: equal_weight_available_LR_after_within_hemisphere_mean
+        row: 2
+        col: 2
+      - id: 3e
+        description: WGCNA_m12 protein-level spatial log2FC heatmap
+        producer_script: figures/figure_03.R
+        render_mode: render_m12_heatmap
+        source_data_mode: filter_m12
+        primary_source: results/source_data/manuscript_panels/figure_3/figure3d_protein_level_display_source.csv
+        input_dependencies:
+          - data/processed/04_differential_expression_enrichment/clusterProfiler/neuron_neuropil/clusterProfiler_manifest.csv
+          - results/tables/06_modules_WGCNA/01_WGCNA/neuron_neuropil/modules/WGCNA_modules_long.csv
+          - results/tables/10_biological_integration/gsea_wgcna_concordance/global/program_specific_leading_edge_module_overlap.csv
+        required_columns: [ModuleID, ProteinGroupID, spatial_unit, contrast, log2FC, BH_FDR, display_rank, protein_label, fdr_supported]
+        scientific_contract: canonical_animal_level_DA_values_with_frozen_WGCNA_membership
+        biological_unit: animal_for_DA_and_frozen_module_identity_for_membership
+        hemisphere_handling: canonical_animal_level_hemisphere_averaged_ProTigy_GCT
+        row: 3
+        col: 1
+        colspan: 2
