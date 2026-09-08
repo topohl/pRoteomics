@@ -46,6 +46,7 @@ RUN_ORDER.md                         detailed command reference
 run_dataset_pipeline.R               registry-driven launcher
 docs/                                reviewer and maintenance documentation
 R/                                   shared path, registry, validation, and dataset helpers
+figures/                             explicit Figure 2/3 entry points and panel contract
 01_preprocessing/                    preprocessing handoff
 02_id_mapping/                       protein/gene identifier mapping
 03_qc_exploration/                   QC, marker, and confounding checks

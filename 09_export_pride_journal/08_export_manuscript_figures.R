@@ -4,8 +4,8 @@
 # Script: 09_export_pride_journal/08_export_manuscript_figures.R
 # Stage: export
 # Scope: global
-# Consumes: required results/figures/; optional none.
-# Produces: results/manuscript/figure_1/; results/manuscript/figure_2/; results/manuscript/extended_data/; +1 more.
+# Consumes: required config/output_namespaces.yml and results/figures/; optional none.
+# Produces: results/manuscript/figure_1/; results/manuscript/figure_2/; results/manuscript/figure_3/; results/manuscript/extended_data/; +2 more.
 # Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Manuscript figure export.
 # ================================================================
@@ -21,7 +21,10 @@ source(repo_path("R", "export_helpers.R"))
 args <- commandArgs(trailingOnly = TRUE)
 dry_run <- is_dry_run()
 
-manuscript_dirs <- path_results("manuscript", c("figure_1", "figure_2", "extended_data"))
+manuscript_root <- output_namespace_manuscript_export_root()
+manuscript_dirs <- file.path(
+  manuscript_root, c("figure_1", "figure_2", "figure_3", "extended_data")
+)
 
 # Explicit root list, never an unrestricted recursive results/figures scan: the
 # EWCE root is deliberately the canonical branch only, and an open scan would
@@ -36,6 +39,7 @@ candidate_roots <- c(
   path_results("figures", "08_behavior_physio_coupling"),
   path_results("figures", "08_biological_interpretation"),
   path_results("figures", "10_biological_integration"),
+  path_results("figures", "manuscript"),
   path_results("figures", "manuscript_panels")
 )
 
@@ -50,7 +54,7 @@ candidates <- drop_orphan_figure_families(candidates)
 if (isTRUE(dry_run)) {
   dry_run_line("Script", "09_export_pride_journal/08_export_manuscript_figures.R")
   dry_run_line("Candidate figure roots", paste(candidate_roots, collapse = "; "))
-  dry_run_line("Output root", path_results("manuscript"))
+  dry_run_line("Output root", manuscript_root)
   dry_run_line("Selected files", length(candidates))
   quit(status = 0, save = "no")
 }
@@ -69,6 +73,20 @@ figure_audit_table <- function(paths, targets, rel_paths) {
     path_results("source_data"),
     sub("\\.(svg|pdf|png)$", ".csv", rel_paths, ignore.case = TRUE)
   )
+  curated_panel <- grepl(
+    "^manuscript/figure_0[23]/panels/[^/]+\\.(svg|pdf|png)$",
+    rel_paths, ignore.case = TRUE
+  )
+  if (any(curated_panel)) {
+    curated_source_rel <- sub(
+      "^manuscript/(figure_0[23])/panels/([^/]+)\\.(svg|pdf|png)$",
+      "manuscript/\\1/\\2_source_data.csv",
+      rel_paths[curated_panel], ignore.case = TRUE
+    )
+    sibling_source[curated_panel] <- file.path(
+      path_results("source_data"), curated_source_rel
+    )
+  }
   data.frame(
     source_file = paths,
     target_file = targets,
@@ -89,9 +107,7 @@ figure_audit_table <- function(paths, targets, rel_paths) {
 
 manifest <- data.frame(
   source_file = candidates,
-  target_file = manuscript_figure_target_paths(
-    candidate_rel, path_results("manuscript", "extended_data")
-  ),
+  target_file = manuscript_curated_figure_target_paths(candidate_rel),
   stringsAsFactors = FALSE
 )
 # Fail closed before touching the payload, then copy and verify. Nothing below
@@ -119,14 +135,14 @@ figure_audit <- if (nrow(manifest)) {
   )
 }
 
-manifest_path <- path_results("manuscript", "figure_export_manifest.csv")
-audit_path <- path_results("manuscript", "figure_publication_audit.csv")
+manifest_path <- file.path(manuscript_root, "figure_export_manifest.csv")
+audit_path <- file.path(manuscript_root, "figure_publication_audit.csv")
 utils::write.csv(manifest, manifest_path, row.names = FALSE)
 utils::write.csv(figure_audit, audit_path, row.names = FALSE)
 write_run_manifest(
   path_results("logs", "09_export_pride_journal", "manuscript_figures", "run_manifest.yml"),
   inputs = list(figures = candidates),
-  outputs = list(manifest = manifest_path, figure_audit = audit_path, manuscript_root = path_results("manuscript")),
+  outputs = list(manifest = manifest_path, figure_audit = audit_path, manuscript_root = manuscript_root),
   notes = "Collect-only manuscript figure export; no analyses are recomputed. Target filenames preserve source-relative context to avoid basename collisions."
 )
 message("Manuscript figure export manifest written: ", manifest_path)
