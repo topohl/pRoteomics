@@ -270,7 +270,13 @@ validate_pipeline_scripts_exist <- function(registry, fail = TRUE) {
 run_order_script_references <- function(path = repo_path("RUN_ORDER.md")) {
   if (!file.exists(path)) return(character())
   txt <- readLines(path, warn = FALSE)
-  refs <- unlist(regmatches(txt, gregexpr("[0-9]{2}_[A-Za-z0-9_./ -]+\\.[Rr]", txt)), use.names = FALSE)
+  refs <- unlist(regmatches(
+    txt,
+    gregexpr(
+      "(?:(?:[0-9]{2}_[A-Za-z0-9_./ -]+)|(?:figures/[A-Za-z0-9_./ -]+))\\.[Rr]",
+      txt, perl = TRUE
+    )
+  ), use.names = FALSE)
   refs <- gsub("\\\\", "/", trimws(refs))
   refs <- refs[!grepl("^(90_testing|99_deprecated)/", refs)]
   unique(refs[file.exists(repo_path(refs))])
