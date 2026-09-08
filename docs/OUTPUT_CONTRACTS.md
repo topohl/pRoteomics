@@ -13,6 +13,41 @@ results/logs/<module>/<substep>/<dataset>/
 
 Major downstream tables should be validated with `validate_table_schema(df, schema_name, strict = TRUE)` before writing.
 
+## Namespace roles and migration boundary
+
+`config/output_namespaces.yml` is the machine-readable authority for output
+roles. It classifies the current paths without moving historical artifacts.
+
+Analysis stages write to the typed roots above. Explicit manuscript entry
+points author panels under `results/{figures,source_data,reports,logs}/` in
+their manuscript subdirectories. The journal export scripts then collect those
+authoring outputs into `results/manuscript/`. Manuscript authoring code must not
+write directly into that export package.
+
+Legacy `results/*/manuscript_panels/` trees remain readable for compatibility,
+but new manuscript entry points must use the explicit authoring roots. Existing
+`results/manuscript/_superseded_*` and `_failed_*` trees are historical evidence,
+not canonical inputs or destinations; routine pipeline, figure, export, and
+maintenance commands must not move or delete them.
+
+Run the read-only namespace audit from the repository root:
+
+```powershell
+Rscript "tools/audit_output_namespaces.R"
+```
+
+The audit classifies all `pipeline.yml` outputs and the immediate children of
+`results/manuscript/`. It fails when a root-level manuscript entry point
+declares output outside the manuscript-authoring namespace. It does not
+recursively enumerate, hash, move, rename, delete, or write generated files.
+
+A later migration may introduce explicit `canonical`, `manuscript`,
+`candidates`, `diagnostics`, and `legacy` namespaces. That requires a separate
+compatibility manifest for every producer and consumer, a frozen historical
+inventory, Windows/network-share path-length checks, rollback instructions,
+and focused replay validation. Until then, the existing analytical paths remain
+canonical.
+
 ## Recommended Biological Results Entry Point
 
 Start manuscript-facing biological review with:

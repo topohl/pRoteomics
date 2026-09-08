@@ -60,7 +60,15 @@ tmp_*_stderr.log
 results/
 /data/processed/
 /results/
-/figures/
+# Root-level manuscript figure entry points and contracts are source code.
+# Generated figure payloads remain under results/figures/ and stay ignored.
+/figures/*
+!/figures/README.md
+!/figures/*.R
+!/figures/*.yml
+!/figures/assets/
+/figures/assets/*
+!/figures/assets/*.svg
 /supplementary_tables/
 /cache/
 /logs/

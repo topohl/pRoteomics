@@ -1,0 +1,53 @@
+contract_version: output_namespaces_v1
+
+# This contract describes output roles; it does not move historical files.
+analytical_roots:
+  figures: results/figures
+  tables: results/tables
+  source_data: results/source_data
+  reports: results/reports
+  logs: results/logs
+
+manuscript_authoring_roots:
+  figures: results/figures/manuscript
+  source_data: results/source_data/manuscript
+  reports: results/reports/manuscript_figures
+  logs: results/logs/manuscript_figures
+
+manuscript_export_root: results/manuscript
+
+legacy_manuscript_authoring_roots:
+  - results/figures/manuscript_panels
+  - results/source_data/manuscript_panels
+  - results/tables/manuscript_panels
+
+historical_or_failed_export_prefixes:
+  - results/manuscript/_superseded_
+  - results/manuscript/_failed_
+
+diagnostic_roots:
+  - results/reviewer_audit
+  - results/audit
+
+comparison_markers:
+  - _comparison
+  - comparison/
+  - legacy_replay/
+  - candidate/
+  - candidates/
+  - proposed/
+  - _repaired/
+
+rules:
+  manuscript_entrypoints_write_only_to_authoring_roots: true
+  exporters_write_only_to_manuscript_export_root: true
+  historical_trees_are_read_only: true
+  generated_outputs_remain_gitignored: true
+  no_automatic_migration_or_deletion: true
+
+future_migration_namespaces:
+  canonical: results/canonical
+  manuscript: results/manuscript
+  candidates: results/candidates
+  diagnostics: results/diagnostics
+  legacy: results/legacy

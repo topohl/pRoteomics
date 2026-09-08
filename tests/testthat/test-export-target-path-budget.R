@@ -51,6 +51,26 @@ testthat::test_that("every target stays within budget across many deep inputs", 
   testthat::expect_identical(anyDuplicated(out), 0L)
 })
 
+testthat::test_that("explicit Figure 2/3 outputs route to dedicated directories", {
+  root <- file.path(tempdir(), "manuscript")
+  rels <- c(
+    "manuscript/figure_02/panels/figure_02b.svg",
+    "manuscript/figure_03/assembled/figure_03.pdf",
+    "10_biological_integration/diagnostic.svg"
+  )
+  out <- manuscript_curated_figure_target_paths(rels, root)
+  testthat::expect_identical(
+    out[[1]], file.path(root, "figure_2", "panels", "figure_02b.svg")
+  )
+  testthat::expect_identical(
+    out[[2]], file.path(root, "figure_3", "assembled", "figure_03.pdf")
+  )
+  testthat::expect_true(startsWith(
+    normalize_export_path(out[[3]]),
+    normalize_export_path(file.path(root, "extended_data"))
+  ))
+})
+
 testthat::test_that("long paths sharing a truncated prefix stay distinct", {
   shared <- paste0("06_modules_WGCNA/", strrep("same_long_prefix_segment/", 7))
   a <- paste0(shared, "variant_alpha.svg")

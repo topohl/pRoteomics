@@ -965,6 +965,77 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Render-only manuscript Figure 3 integration from existing Stage 07 WGCNA, canonical module membership, manifest-selected protein DA, concordance, and GO sources; fits no new model."
+      - script: "figures/figure_02.R"
+        required: false
+        datasets: ["global"]
+        stage: "integration"
+        scope: "global"
+        produces: ["results/figures/manuscript/figure_02/", "results/source_data/manuscript/figure_02/", "results/reports/manuscript_figures/figure_02/", "results/logs/manuscript_figures/figure_02/"]
+        consumes_required:
+          - "config/output_namespaces.yml"
+          - "figures/figure_contract.yml"
+          - "results/figures/03_qc_exploration/01_sample_qc_quicksearch/global/Fig_QC_global_depth_bars.svg"
+          - "data/raw/pg_matrix/quicksearch.stats.annotated.xlsx"
+          - "results/figures/03_qc_exploration/00b_joint_compartment_qc/publication_style/global/panels/main_pca_by_anatomical_island_89mm.svg"
+          - "results/tables/03_qc_exploration/00b_joint_compartment_qc/global/joint_primary_pca_scores.csv"
+          - "results/tables/03_qc_exploration/00b_joint_compartment_qc/global/joint_primary_pca_variance_explained.csv"
+          - "data/processed/01_preprocessing/joint_compartment_qc/global/joint_compartment_qc_matrices.rds"
+          - "results/figures/03_qc_exploration/04e_control_compartment_abundance_publication_figures/global/figure2d_compact_marker_enrichment_differences_v2.svg"
+          - "results/source_data/03_qc_exploration/04e_control_compartment_abundance_publication_figures/global/figure2d_compact_marker_enrichment_differences_v2_source_data.csv"
+          - "results/source_data/03_qc_exploration/04e_control_compartment_abundance_publication_figures/global/v2_03_animal_level_abundance.csv"
+          - "results/source_data/03_qc_exploration/04e_control_compartment_abundance_publication_figures/global/figure2d_compact_marker_enrichment_differences_v2_provenance.csv"
+          - "results/logs/03_qc_exploration/04e_control_compartment_abundance_publication_figures/global/figure2d_compact_marker_enrichment_differences_v2_manifest.yml"
+          - "results/figures/04_differential_expression_enrichment/control_spatial_identity_validation/global/figure2e_kaulich_validation.svg"
+          - "results/source_data/04_differential_expression_enrichment/control_spatial_identity_validation/global/figure2e_source_data.csv"
+          - "results/figures/04_differential_expression_enrichment/control_spatial_identity_validation/global/figure2f_control_anatomical_GO_regions_CA1layers_grouped.svg"
+          - "results/source_data/04_differential_expression_enrichment/control_spatial_identity_validation/global/figure2f_regions_CA1layers_source_data.csv"
+          - "results/tables/04_differential_expression_enrichment/control_spatial_identity_validation/global/analysis_status.csv"
+          - "results/tables/04_differential_expression_enrichment/control_spatial_identity_validation/global/kaulich_signature_gsea.csv"
+          - "results/tables/04_differential_expression_enrichment/control_spatial_identity_validation/global/control_anatomical_go_bp_gsea.csv"
+          - "data/external/kaulich_2025/kaulich_supplementary_data_2.xlsx"
+          - "data/processed/01_preprocessing/06_merged_metadata_module_score/neuron_soma/sample_metadata_merged_clean_for_module_scores.xlsx"
+          - "data/processed/01_preprocessing/06_merged_metadata_module_score/neuron_neuropil/sample_metadata_merged_clean_for_module_scores.xlsx"
+        consumes_optional: []
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Explicit Figure 2b-2f materialization and assembly from contract-pinned downstream artifacts. Figure 2a is intentionally deferred to Illustrator and is not a required repository input. Fits no model."
+      - script: "figures/figure_03.R"
+        required: false
+        datasets: ["global"]
+        stage: "integration"
+        scope: "global"
+        produces: ["results/figures/manuscript/figure_03/", "results/source_data/manuscript/figure_03/", "results/reports/manuscript_figures/figure_03/", "results/logs/manuscript_figures/figure_03/"]
+        consumes_required:
+          - "config/output_namespaces.yml"
+          - "figures/figure_contract.yml"
+          - "results/figures/04_differential_expression_enrichment/sus_res_spatial_dap_atlas/global/panel_a_sus_res_dap_counts.svg"
+          - "results/source_data/04_differential_expression_enrichment/sus_res_spatial_dap_atlas/global/panel_a_sus_res_dap_counts.csv"
+          - "data/processed/04_differential_expression_enrichment/clusterProfiler/neuron_neuropil/clusterProfiler_manifest.csv"
+          - "data/processed/04_differential_expression_enrichment/clusterProfiler/neuron_soma/clusterProfiler_manifest.csv"
+          - "data/processed/04_differential_expression_enrichment/clusterProfiler/microglia/clusterProfiler_manifest.csv"
+          - "results/source_data/04_differential_expression_enrichment/sus_res_spatial_dap_atlas/global/sus_res_input_audit.csv"
+          - "results/figures/10_biological_integration/wgcna_circular_atlas/global/wgcna_circular_heatmap_neuron_neuropil.svg"
+          - "results/source_data/10_biological_integration/wgcna_circular_atlas/global/wgcna_circular_heatmap_source_supermodule.csv"
+          - "results/tables/06_modules_WGCNA/interpretable_summary/neuron_neuropil/WGCNA_inferential_handoff.csv"
+          - "results/tables/06_modules_WGCNA/01_WGCNA/neuron_neuropil/supermodules/wgcna_module_supermodule_annotation.csv"
+          - "results/tables/06_modules_WGCNA/module_score/neuron_neuropil/wgcna/supermodule_directional_effects.csv"
+          - "results/tables/06_modules_WGCNA/interpretable_summary/neuron_neuropil/WGCNA_final_label_lookup.csv"
+          - "results/source_data/10_biological_integration/wgcna_circular_atlas/global/wgcna_circular_heatmap_layout_all_datasets.csv"
+          - "results/figures/06_modules_WGCNA/01b_module_supermodule_GO_heatmaps/neuron_neuropil/WGCNA_supermodule_GO_focused_comparison_BP.svg"
+          - "results/tables/06_modules_WGCNA/01b_module_supermodule_GO_heatmaps/neuron_neuropil/WGCNA_supermodule_GO_focused_source_BP.csv"
+          - "results/tables/06_modules_WGCNA/01b_module_supermodule_GO_heatmaps/neuron_neuropil/WGCNA_supermodule_GO_focused_selected_terms_BP.csv"
+          - "results/tables/06_modules_WGCNA/01b_module_supermodule_GO_heatmaps/neuron_neuropil/WGCNA_supermodule_GO_focused_selection_audit_BP.csv"
+          - "results/tables/06_modules_WGCNA/01_WGCNA/neuron_neuropil/modules/WGCNA_module_GO_enrichment_long.csv"
+          - "results/figures/manuscript_panels/figure_3/figure3b_stage07_wgcna_effects.svg"
+          - "results/source_data/manuscript_panels/figure_3/figure3b_stage07_effect_source.csv"
+          - "results/source_data/06_modules_WGCNA/interpretable_summary/neuron_neuropil/module_group_effects_main_heatmap_source.csv"
+          - "results/source_data/manuscript_panels/figure_3/figure3d_protein_level_display_source.csv"
+          - "results/tables/06_modules_WGCNA/01_WGCNA/neuron_neuropil/modules/WGCNA_modules_long.csv"
+          - "results/tables/10_biological_integration/gsea_wgcna_concordance/global/program_specific_leading_edge_module_overlap.csv"
+        consumes_optional: []
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Explicit Figure 3 materialization and assembly from contract-pinned downstream artifacts, including an m12-only protein display derived without refitting DA or WGCNA."
   export:
     description: "Export layer for PRIDE, manuscript tables, reviewer materials, source data, methods summaries, and validation reports."
     scripts:
@@ -1028,8 +1099,8 @@ stages:
         datasets: ["global"]
         stage: "export"
         scope: "global"
-        produces: ["results/manuscript/figure_1/", "results/manuscript/figure_2/", "results/manuscript/extended_data/", "results/manuscript/figure_export_manifest.csv", "results/manuscript/figure_publication_audit.csv"]
-        consumes_required: ["results/figures/"]
+        produces: ["results/manuscript/figure_1/", "results/manuscript/figure_2/", "results/manuscript/figure_3/", "results/manuscript/extended_data/", "results/manuscript/figure_export_manifest.csv", "results/manuscript/figure_publication_audit.csv"]
+        consumes_required: ["config/output_namespaces.yml", "results/figures/"]
         consumes_optional: []
         recomputes_core_state: false
         safe_downstream_rerun: true
@@ -1040,7 +1111,7 @@ stages:
         stage: "export"
         scope: "global"
         produces: ["results/manuscript/source_data/", "results/manuscript/supplementary_tables/", "results/manuscript/source_data_export_manifest.csv"]
-        consumes_required: ["results/tables/"]
+        consumes_required: ["config/output_namespaces.yml", "results/tables/"]
         consumes_optional: ["results/source_data/"]
         recomputes_core_state: false
         safe_downstream_rerun: true

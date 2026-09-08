@@ -27,6 +27,11 @@ testthat::test_that("pipeline.yml is valid and references existing active script
   stage_names <- pipeline_stage_names(registry)
   testthat::expect_lt(match("coupling", stage_names), match("integration", stage_names))
   testthat::expect_lt(match("integration", stage_names), match("export", stage_names))
+  integration_steps <- pipeline_steps(
+    registry, "integration", dataset = "all", include_unsupported = TRUE
+  )$script
+  testthat::expect_true("figures/figure_02.R" %in% integration_steps)
+  testthat::expect_true("figures/figure_03.R" %in% integration_steps)
 })
 
 testthat::test_that("deprecated 04d stays excluded and documented as legacy", {
