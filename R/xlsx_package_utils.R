@@ -23,9 +23,9 @@
 #   written.  It is deliberately generic: it removes any dangling relationship,
 #   not just drawing ones, and it never adds or edits cell content.
 
-if (!exists("%||%")) {
-  `%||%` <- function(x, y) if (is.null(x)) y else x
-}
+# `%||%` comes from the canonical R/null_coalescing.R, loaded via R/paths.R.
+# It is deliberately not redefined here: the repository permits exactly one
+# definition so that source order cannot change coalescing semantics.
 
 # Collapse "a/b/../c" and "./c" into a package-root-relative part name.
 .xlsx_normalize_part <- function(base, target) {
