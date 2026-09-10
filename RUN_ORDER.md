@@ -117,19 +117,20 @@ Do not hand-edit this block; run `Rscript tools/generate_pipeline_docs.R`.
 65. `10_biological_integration/03_evidence_priority_matrix.r` - stage `integration`; scope `global`
 66. `10_biological_integration/05_gsea_wgcna_concordance.R` - stage `integration`; scope `global`
 67. `10_biological_integration/06_gsea_wgcna_concordance_diagnostics.R` - stage `integration`; scope `global`
-68. `10_biological_integration/04_wgcna_circular_atlas.R` - stage `integration`; scope `global`
-69. `10_biological_integration/04_wgcna_cross_compartment_overview.R` - stage `integration`; scope `global`
-70. `10_biological_integration/05_manuscript_figure3_wgcna_protein_zoom.R` - stage `integration`; scope `global`
-71. `figures/figure_02.R` - stage `integration`; scope `global`
-72. `figures/figure_03.R` - stage `integration`; scope `global`
-73. `09_export_pride_journal/02_make_sample_metadata.R` - stage `export`; scope `global`
-74. `09_export_pride_journal/03_export_processed_pg_matrix_package.R` - stage `export`; scope `global`
-75. `09_export_pride_journal/04_make_supplementary_tables.R` - stage `export`; scope `global`
-76. `09_export_pride_journal/05_make_pride_manifest.R` - stage `export`; scope `global`
-77. `09_export_pride_journal/06_make_methods_summary.R` - stage `export`; scope `global`
-78. `09_export_pride_journal/08_export_manuscript_figures.R` - stage `export`; scope `global`
-79. `09_export_pride_journal/09_export_source_data.R` - stage `export`; scope `global`
-80. `09_export_pride_journal/10_validate_pride_submission.R` - stage `export`; scope `global`
+68. `10_biological_integration/08_wgcna_candidate_protein_shortlist.R` - stage `integration`; scope `per_dataset_and_global`
+69. `10_biological_integration/04_wgcna_circular_atlas.R` - stage `integration`; scope `global`
+70. `10_biological_integration/04_wgcna_cross_compartment_overview.R` - stage `integration`; scope `global`
+71. `10_biological_integration/05_manuscript_figure3_wgcna_protein_zoom.R` - stage `integration`; scope `global`
+72. `figures/figure_02.R` - stage `integration`; scope `global`
+73. `figures/figure_03.R` - stage `integration`; scope `global`
+74. `09_export_pride_journal/02_make_sample_metadata.R` - stage `export`; scope `global`
+75. `09_export_pride_journal/03_export_processed_pg_matrix_package.R` - stage `export`; scope `global`
+76. `09_export_pride_journal/04_make_supplementary_tables.R` - stage `export`; scope `global`
+77. `09_export_pride_journal/05_make_pride_manifest.R` - stage `export`; scope `global`
+78. `09_export_pride_journal/06_make_methods_summary.R` - stage `export`; scope `global`
+79. `09_export_pride_journal/08_export_manuscript_figures.R` - stage `export`; scope `global`
+80. `09_export_pride_journal/09_export_source_data.R` - stage `export`; scope `global`
+81. `09_export_pride_journal/10_validate_pride_submission.R` - stage `export`; scope `global`
 
 <!-- END GENERATED PIPELINE REGISTRY INDEX -->
 
