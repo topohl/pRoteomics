@@ -16,9 +16,9 @@
 # The terms "driver", "causal", "validated" and "replicated" are intentionally
 # never emitted by this layer.
 
-if (!exists("%||%")) {
-  `%||%` <- function(x, y) if (is.null(x)) y else x
-}
+# `%||%` comes from the canonical R/null_coalescing.R, loaded via R/paths.R.
+# It is deliberately not redefined here: the repository permits exactly one
+# definition so that source order cannot change coalescing semantics.
 
 # ---------------------------------------------------------------- vocabulary
 
@@ -52,7 +52,26 @@ wcp_min_spatial_contexts <- function() 3L
 wcp_module_representative_n <- function() 5L
 wcp_module_hub_n <- function() 10L
 
-wcp_candidate_tier_levels <- function() c("A", "B", "C", "D")
+# Precedence for the convenience `candidate_tier` label and for display order:
+# protein-level inferential support (A1, A2, D) is shown before purely
+# descriptive candidate status (B, C).
+#
+# THIS IS NOT A RANKING OF EVIDENCE STRENGTH.  A1 / A2 / D differ only in WGCNA
+# topology - top-10 hub, module member, peripheral member - not in how strong
+# the differential-abundance evidence is.  A Tier D protein routinely carries a
+# smaller FDR and a larger effect than a Tier A1 protein.
+wcp_candidate_tier_levels <- function() c("A1", "A2", "D", "B", "C")
+
+# Human-readable names for the phenotype-linked classes.
+wcp_tier_display_names <- function() {
+  c(
+    A1 = "FDR-supported phenotype-linked module hub",
+    A2 = "FDR-supported phenotype-linked module member",
+    D  = "FDR-supported phenotype-linked peripheral module member",
+    B  = "Network-central candidate with a large typical SUS - RES effect",
+    C  = "Canonical module representative"
+  )
+}
 
 # --------------------------------------------------------------- small utils
 
@@ -94,6 +113,18 @@ wcp_candidate_tier_levels <- function() c("A", "B", "C", "D")
 
 # TRUE only where the value is explicitly TRUE; NA never leaks through as TRUE.
 .wcp_is_true <- function(x) .wcp_lgl(x) %in% TRUE
+
+# Length-safe optional-column accessor.
+#
+# `%||%` must NOT be used for this. The canonical proteomics_null_coalesce also
+# falls back for length-0 and scalar-NA input, so `df$missing %||% NA_real_`
+# yields a length-1 value for a zero-row frame and `order()` then fails with
+# "argument lengths differ". This always returns exactly nrow(data) elements.
+.wcp_col <- function(data, column, default) {
+  n <- nrow(data)
+  if (!is.null(data[[column]])) return(data[[column]])
+  rep(default, n)
+}
 
 # ------------------------------------------------------ contrast orientation
 
@@ -481,12 +512,32 @@ wcp_assign_candidate_flags <- function(candidates) {
   # prioritisation information.
   large <- .wcp_is_true(candidates$sus_res_large_effect_typical)
 
-  # Tier A - phenotype-linked hub.  Module-direction concordance is recorded as
-  # an ADDITIONAL flag rather than a requirement: no module-level SUS - RES
-  # effect is FDR-supported in any dataset, so gating on the sign of a
-  # non-significant eigengene estimate would not be defensible.
-  candidates$is_tier_A <- clean & candidates$high_kME &
+  # Phenotype-linked classes.  A1, A2 and D all require the SAME protein-level
+  # inferential evidence (SUS - RES BH FDR <= 0.05 in >= 1 spatial context) and
+  # differ ONLY in WGCNA topology.  The split exists so that "has protein-level
+  # statistical support", "is a real module member" and "is extremely central"
+  # stay separable; it is not a gradation of evidence strength.
+  #
+  # Module-direction concordance is recorded as an additional flag rather than
+  # a requirement for any of them: no module-level SUS - RES effect is
+  # FDR-supported in any dataset, so gating on the sign of a non-significant
+  # eigengene estimate would not be defensible.
+
+  # A1 - FDR-supported phenotype-linked module hub.
+  candidates$is_tier_A1 <- clean & candidates$high_kME &
     candidates$top10_hub & fdr05
+
+  # A2 - FDR-supported phenotype-linked module member: a core member by the
+  # frozen |kME| >= 0.60 definition, but outside its module's top 10 hubs.
+  # No top-25 requirement is imposed; `is_top_hub_25` remains available as a
+  # separate frozen descriptive flag.
+  candidates$is_tier_A2 <- clean & candidates$high_kME &
+    !candidates$top10_hub & fdr05
+
+  # Compatibility aggregate only.  `is_tier_A` now means "phenotype-linked
+  # module member of either centrality class" - the A1/A2 booleans carry the
+  # actual distinction and are what human-facing output uses.
+  candidates$is_tier_A <- candidates$is_tier_A1 | candidates$is_tier_A2
 
   # Tier B - network-central protein carrying a large typical SUS - RES effect.
   # Protein-level FDR support is not required.  Spatial directional agreement
@@ -496,41 +547,83 @@ wcp_assign_candidate_flags <- function(candidates) {
   # Tier C - canonical module representative, independent of any DA evidence.
   candidates$is_tier_C <- candidates$top5_hub
 
-  # Tier D - FDR-supported SUS - RES protein that is peripheral to its module.
-  # Keeps stress-responsive proteins visible instead of discarding them for
-  # low module centrality.
+  # Tier D - FDR-supported phenotype-linked PERIPHERAL module member.
+  # Definition deliberately unchanged from the previous revision, including the
+  # fact that it does NOT require clean_mapping while A1/A2 do. That asymmetry
+  # predates this refinement and is left alone rather than silently altered; on
+  # the current frozen inputs it has no effect, because every FDR-supported
+  # protein in every dataset is cleanly mapped.
   candidates$is_tier_D <- fdr05 & !candidates$high_kME
 
-  candidates$is_candidate <- candidates$is_tier_A | candidates$is_tier_B |
-    candidates$is_tier_C | candidates$is_tier_D
+  candidates$is_candidate <- candidates$is_tier_A1 | candidates$is_tier_A2 |
+    candidates$is_tier_B | candidates$is_tier_C | candidates$is_tier_D
   candidates
+}
+
+# Compact readability label for the phenotype-linked classes, derived from the
+# A1/A2/D booleans. Describes WGCNA topology only, never evidence strength.
+wcp_phenotype_network_class <- function(candidates) {
+  .wcp_require_columns(
+    candidates, c("is_tier_A1", "is_tier_A2", "is_tier_D"), "Candidate table"
+  )
+  out <- rep(NA_character_, nrow(candidates))
+  out[.wcp_is_true(candidates$is_tier_D)] <- "peripheral_member"
+  out[.wcp_is_true(candidates$is_tier_A2)] <- "module_member"
+  out[.wcp_is_true(candidates$is_tier_A1)] <- "top10_hub"
+  out
+}
+
+# Every FDR-supported protein must land in exactly one phenotype-linked class,
+# unless the frozen mapping contract forbids a protein-level claim. Returns the
+# offending rows so a caller can fail loudly rather than silently drop them.
+wcp_unclassified_fdr_support <- function(candidates) {
+  required <- c("sus_res_fdr05_any_context", "is_tier_A1", "is_tier_A2",
+                "is_tier_D", "clean_mapping")
+  .wcp_require_columns(candidates, required, "Candidate table")
+  fdr05 <- .wcp_is_true(candidates$sus_res_fdr05_any_context)
+  n_classes <- .wcp_is_true(candidates$is_tier_A1) +
+    .wcp_is_true(candidates$is_tier_A2) + .wcp_is_true(candidates$is_tier_D)
+  claimable <- .wcp_is_true(candidates$clean_mapping)
+  # Flags both under- and over-classification: A1/A2 are disjoint by
+  # construction and D is disjoint from both, so anything other than exactly
+  # one class is a contract violation.
+  candidates[fdr05 & claimable & n_classes != 1L, , drop = FALSE]
 }
 
 # Broad, convenience label only.  Derived AFTER the booleans, never instead of
 # them: a protein may legitimately satisfy several tiers at once.
 wcp_candidate_tier <- function(candidates) {
   .wcp_require_columns(
-    candidates, c("is_tier_A", "is_tier_B", "is_tier_C", "is_tier_D"),
+    candidates,
+    c("is_tier_A1", "is_tier_A2", "is_tier_B", "is_tier_C", "is_tier_D"),
     "Candidate table"
   )
+  # Applied in reverse precedence so the highest-precedence class wins.
   out <- rep(NA_character_, nrow(candidates))
-  out[.wcp_is_true(candidates$is_tier_D)] <- "D"
   out[.wcp_is_true(candidates$is_tier_C)] <- "C"
   out[.wcp_is_true(candidates$is_tier_B)] <- "B"
-  out[.wcp_is_true(candidates$is_tier_A)] <- "A"
+  out[.wcp_is_true(candidates$is_tier_D)] <- "D"
+  out[.wcp_is_true(candidates$is_tier_A2)] <- "A2"
+  out[.wcp_is_true(candidates$is_tier_A1)] <- "A1"
   out
 }
 
-# All satisfied tiers, semicolon separated, so overlap is never hidden.
+# All satisfied tiers, semicolon separated in precedence order, so overlap is
+# never hidden (e.g. "A1;B", "A2;B", "A2", "D", "B;C").
 wcp_candidate_tier_all <- function(candidates) {
   .wcp_require_columns(
-    candidates, c("is_tier_A", "is_tier_B", "is_tier_C", "is_tier_D"),
+    candidates,
+    c("is_tier_A1", "is_tier_A2", "is_tier_B", "is_tier_C", "is_tier_D"),
     "Candidate table"
   )
   flags <- cbind(
-    A = .wcp_is_true(candidates$is_tier_A), B = .wcp_is_true(candidates$is_tier_B),
-    C = .wcp_is_true(candidates$is_tier_C), D = .wcp_is_true(candidates$is_tier_D)
+    A1 = .wcp_is_true(candidates$is_tier_A1),
+    A2 = .wcp_is_true(candidates$is_tier_A2),
+    D = .wcp_is_true(candidates$is_tier_D),
+    B = .wcp_is_true(candidates$is_tier_B),
+    C = .wcp_is_true(candidates$is_tier_C)
   )
+  flags <- flags[, wcp_candidate_tier_levels(), drop = FALSE]
   apply(flags, 1L, function(row) {
     hit <- wcp_candidate_tier_levels()[row]
     if (!length(hit)) NA_character_ else paste(hit, collapse = ";")
@@ -578,7 +671,7 @@ wcp_candidate_reason <- function(candidates) {
 
 # Deterministic presentation order.  This is a SORT, not a score: no numeric
 # combination of the criteria is ever formed or exported.
-#   1. candidate tier (A < B < C < D, unassigned last)
+#   1. candidate tier in precedence order (A1, A2, D, B, C; unassigned last)
 #   2. SUS - RES FDR support
 #   3. |kME|
 #   4. |SUS - RES log2FC|
@@ -610,7 +703,7 @@ wcp_order_candidates <- function(candidates) {
 
   ord <- order(
     tier, fdr_support, -abs_kme, -max_effect, -consistency,
-    as.character(candidates$dataset %||% ""),
+    as.character(.wcp_col(candidates, "dataset", "")),
     as.character(candidates$ProteinGroupID),
     method = "radix"
   )
@@ -629,7 +722,8 @@ wcp_protein_review_columns <- function() {
     # identity
     "dataset", "ModuleID", "module_label", "module_supermodule_label",
     "GeneSymbol", "RepresentativeUniProt",
-    "candidate_tier", "candidate_tier_all", "clean_mapping",
+    "candidate_tier", "candidate_tier_all", "phenotype_network_class",
+    "clean_mapping",
     # network position
     "abs_kME", "abs_kME_rank_in_module", "n_module_members",
     "is_top5_module_representative", "is_top10_module_hub",
@@ -659,7 +753,9 @@ wcp_protein_review_labels <- function() {
     dataset = "Dataset", ModuleID = "Module", module_label = "Module label",
     module_supermodule_label = "Supermodule", GeneSymbol = "Gene",
     RepresentativeUniProt = "UniProt", candidate_tier = "Tier",
-    candidate_tier_all = "All tiers", clean_mapping = "Clean mapping",
+    candidate_tier_all = "All tiers",
+    phenotype_network_class = "Network class",
+    clean_mapping = "Clean mapping",
     abs_kME = "|kME|", abs_kME_rank_in_module = "kME rank in module",
     n_module_members = "Module size",
     is_top5_module_representative = "Top-5 hub",
@@ -692,23 +788,25 @@ wcp_order_protein_review <- function(candidates) {
   .wcp_require_columns(candidates, c("candidate_tier", "abs_kME", "ProteinGroupID"),
                        "Candidate table")
   tier <- as.character(candidates$candidate_tier)
-  fdr_hit <- .wcp_is_true(candidates$sus_res_fdr05_any_context)
 
-  block <- rep(5L, nrow(candidates))
-  block[tier %in% "C"] <- 4L
-  block[tier %in% "B"] <- 3L
-  block[tier %in% "D" & fdr_hit] <- 2L
-  block[tier %in% "A"] <- 1L
+  # Phenotype-linked classes first (A1, A2, D), then descriptive ones (B, C).
+  # A reading order, not a statement about evidence strength.
+  block <- rep(6L, nrow(candidates))
+  block[tier %in% "C"] <- 5L
+  block[tier %in% "B"] <- 4L
+  block[tier %in% "D"] <- 3L
+  block[tier %in% "A2"] <- 2L
+  block[tier %in% "A1"] <- 1L
 
-  fdr <- .wcp_num(candidates$sus_res_min_BH_FDR %||% NA_real_)
+  fdr <- .wcp_num(.wcp_col(candidates, "sus_res_min_BH_FDR", NA_real_))
   fdr[!is.finite(fdr)] <- Inf
-  large <- !.wcp_is_true(candidates$sus_res_large_effect_typical)
+  large <- !.wcp_is_true(.wcp_col(candidates, "sus_res_large_effect_typical", FALSE))
   abs_kme <- .wcp_num(candidates$abs_kME); abs_kme[!is.finite(abs_kme)] <- -Inf
-  med <- .wcp_num(candidates$sus_res_median_abs_log2FC %||% NA_real_)
+  med <- .wcp_num(.wcp_col(candidates, "sus_res_median_abs_log2FC", NA_real_))
   med[!is.finite(med)] <- -Inf
 
   candidates[order(block, fdr, large, -abs_kme, -med,
-                   as.character(candidates$dataset %||% ""),
+                   as.character(.wcp_col(candidates, "dataset", "")),
                    as.character(candidates$ProteinGroupID),
                    method = "radix"), , drop = FALSE]
 }
@@ -737,9 +835,9 @@ wcp_fdr_hits_table <- function(candidates, rename = TRUE) {
 # biological strength: Tier C contributes exactly 5 proteins to every module by
 # construction, so small modules always show a higher fraction.
 wcp_module_review_table <- function(candidates) {
-  required <- c("dataset", "ModuleID", "is_tier_A", "is_tier_B", "is_tier_C",
-                "is_tier_D", "is_candidate", "abs_kME", "GeneSymbol",
-                "ProteinGroupID")
+  required <- c("dataset", "ModuleID", "is_tier_A1", "is_tier_A2", "is_tier_B",
+                "is_tier_C", "is_tier_D", "is_candidate", "abs_kME",
+                "GeneSymbol", "ProteinGroupID")
   .wcp_require_columns(candidates, required, "Candidate table")
   if (!nrow(candidates)) {
     return(data.frame(Dataset = character(), Module = character(),
@@ -765,26 +863,27 @@ wcp_module_review_table <- function(candidates) {
       Dataset = as.character(candidates$dataset[rows[[1]]]),
       Module = as.character(candidates$ModuleID[rows[[1]]]),
       `Module label` = as.character(
-        (candidates$module_label %||% rep(NA_character_, nrow(candidates)))[rows[[1]]]
+        .wcp_col(candidates, "module_label", NA_character_)[rows[[1]]]
       ),
       `Module size` = length(rows),
       Candidates = length(cand),
-      `Tier A` = sum(.wcp_is_true(candidates$is_tier_A[rows])),
+      `Tier A1` = sum(.wcp_is_true(candidates$is_tier_A1[rows])),
+      `Tier A2` = sum(.wcp_is_true(candidates$is_tier_A2[rows])),
+      `Tier D` = sum(.wcp_is_true(candidates$is_tier_D[rows])),
       `Tier B` = sum(.wcp_is_true(candidates$is_tier_B[rows])),
       `Tier C` = sum(.wcp_is_true(candidates$is_tier_C[rows])),
-      `Tier D` = sum(.wcp_is_true(candidates$is_tier_D[rows])),
       `Candidate fraction` = length(cand) / length(rows),
       `SUS-RES FDR<=0.05` = sum(.wcp_is_true(
-        (candidates$sus_res_fdr05_any_context %||% FALSE)[rows]
+        .wcp_col(candidates, "sus_res_fdr05_any_context", FALSE)[rows]
       )),
       `Large typical effect` = sum(.wcp_is_true(
-        (candidates$sus_res_large_effect_typical %||% FALSE)[rows]
+        .wcp_col(candidates, "sus_res_large_effect_typical", FALSE)[rows]
       )),
       `Unanimous direction` = sum(.wcp_is_true(
-        (candidates$sus_res_spatially_consistent %||% FALSE)[rows]
+        .wcp_col(candidates, "sus_res_spatially_consistent", FALSE)[rows]
       )),
       `GSEA leading edge` = sum(.wcp_is_true(
-        (candidates$sus_res_gsea_leading_edge %||% FALSE)[rows]
+        .wcp_col(candidates, "sus_res_gsea_leading_edge", FALSE)[rows]
       )),
       `Top candidates` = top_names(cand, 5L),
       `Top hubs by |kME|` = top_names(by_kme, 5L),
@@ -802,10 +901,31 @@ wcp_module_review_table <- function(candidates) {
 wcp_flag_dictionary <- function() {
   rows <- list(
     c("candidate_tier", "Derived label",
-      "Broad convenience label (A/B/C/D) derived from the tier booleans; A wins ties. Overlap is preserved in candidate_tier_all.",
+      "Convenience label from the tier booleans, precedence A1 > A2 > D > B > C. This precedence is a READING ORDER, not a ranking of evidence strength: A1/A2/D differ only in WGCNA topology. Overlap is preserved in candidate_tier_all.",
       "Derived here"),
     c("candidate_tier_all", "Derived label",
-      "Every tier a protein satisfies, semicolon separated. Tiers are not mutually exclusive.",
+      "Every tier a protein satisfies, semicolon separated in precedence order (e.g. A1;B, A2;B, A2, D, B;C). Tiers are not mutually exclusive.",
+      "Derived here"),
+    c("is_tier_A1", "Phenotype-linked class",
+      "FDR-supported phenotype-linked module HUB: clean mapping, SUS-RES BH FDR <= 0.05 in >=1 spatial context, |kME| >= 0.60, and in its module's top 10 by |kME|.",
+      "Derived here"),
+    c("is_tier_A2", "Phenotype-linked class",
+      "FDR-supported phenotype-linked module MEMBER: same evidence as A1 and |kME| >= 0.60, but NOT in the module's top 10. No top-25 requirement is imposed; the frozen is_top_hub_25 flag remains separately available.",
+      "Derived here"),
+    c("is_tier_D", "Phenotype-linked class",
+      "FDR-supported phenotype-linked PERIPHERAL module member: SUS-RES BH FDR <= 0.05 with |kME| < 0.60. Note this class does not additionally require clean_mapping, unlike A1/A2.",
+      "Derived here"),
+    c("is_tier_A", "Phenotype-linked class",
+      "COMPATIBILITY AGGREGATE ONLY: is_tier_A1 OR is_tier_A2. It no longer denotes a single class; A1 and A2 carry the centrality distinction and are what human-facing sheets use.",
+      "Derived here"),
+    c("is_tier_B", "Descriptive candidate class",
+      "Network-central candidate: |kME| >= 0.60 AND sus_res_large_effect_typical. Carries NO protein-level inferential support.",
+      "Derived here"),
+    c("is_tier_C", "Descriptive candidate class",
+      "Canonical module representative: top 5 in the module by |kME|, regardless of differential abundance. A network-structural statement only.",
+      "Derived here"),
+    c("phenotype_network_class", "Phenotype-linked class",
+      "Readability label derived from A1/A2/D: top10_hub, module_member, peripheral_member. Describes WGCNA topology only. It does NOT indicate which protein has the stronger differential-abundance evidence.",
       "Derived here"),
     c("candidate_reason", "Derived label",
       "Human-readable list of the satisfied flags behind the tier assignment.",
