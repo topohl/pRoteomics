@@ -278,33 +278,95 @@ wcp_fixture_candidates <- function() {
   )
 }
 
-testthat::test_that("Tier A requires clean mapping, high kME, top-10 and FDR support", {
+testthat::test_that("Tier A1 requires clean mapping, high kME, top-10 and FDR support", {
   flagged <- wcp_assign_candidate_flags(wcp_fixture_candidates())
 
   # row 1 satisfies every criterion
-  testthat::expect_true(flagged$is_tier_A[[1]])
-  # row 2 fails only top-10
-  testthat::expect_false(flagged$is_tier_A[[2]])
-  # row 3 fails only clean mapping -> ambiguity cannot buy a Tier A label
-  testthat::expect_false(flagged$is_tier_A[[3]])
+  testthat::expect_true(flagged$is_tier_A1[[1]])
+  # row 2 fails only top-10 -> becomes A2, never A1
+  testthat::expect_false(flagged$is_tier_A1[[2]])
+  # row 3 fails only clean mapping -> ambiguity cannot buy a phenotype-linked label
+  testthat::expect_false(flagged$is_tier_A1[[3]])
   # row 4 fails only high kME
-  testthat::expect_false(flagged$is_tier_A[[4]])
+  testthat::expect_false(flagged$is_tier_A1[[4]])
   # row 5 fails only FDR support
-  testthat::expect_false(flagged$is_tier_A[[5]])
+  testthat::expect_false(flagged$is_tier_A1[[5]])
 
-  # dropping any single criterion must remove the Tier A call for row 1
+  # dropping any single criterion must remove the A1 call for row 1
   for (col in c("clean_mapping", "is_top10_module_hub",
                 "sus_res_fdr05_any_context")) {
     broken <- wcp_fixture_candidates()
     broken[[col]][[1]] <- FALSE
     testthat::expect_false(
-      wcp_assign_candidate_flags(broken)$is_tier_A[[1]],
+      wcp_assign_candidate_flags(broken)$is_tier_A1[[1]],
       info = col
     )
   }
   broken_kme <- wcp_fixture_candidates()
   broken_kme$abs_kME[[1]] <- 0.59
-  testthat::expect_false(wcp_assign_candidate_flags(broken_kme)$is_tier_A[[1]])
+  testthat::expect_false(wcp_assign_candidate_flags(broken_kme)$is_tier_A1[[1]])
+})
+
+testthat::test_that("Tier A2 is FDR support + high kME + NOT top-10", {
+  flagged <- wcp_assign_candidate_flags(wcp_fixture_candidates())
+
+  # row 2: clean, FDR-supported, kME 0.90, not top-10 -> A2
+  testthat::expect_true(flagged$is_tier_A2[[2]])
+  # row 1 is top-10, so it is A1 and must NOT also be A2
+  testthat::expect_false(flagged$is_tier_A2[[1]])
+  # row 3 fails clean mapping
+  testthat::expect_false(flagged$is_tier_A2[[3]])
+  # row 4 fails high kME (belongs to D)
+  testthat::expect_false(flagged$is_tier_A2[[4]])
+  # row 5 has no FDR support
+  testthat::expect_false(flagged$is_tier_A2[[5]])
+
+  # A2 does not require top-25 membership either way
+  testthat::expect_false("is_top_hub_25" %in%
+    names(formals(wcp_assign_candidate_flags)))
+})
+
+testthat::test_that("A1 and A2 are mutually exclusive and aggregate to is_tier_A", {
+  flagged <- wcp_assign_candidate_flags(wcp_fixture_candidates())
+  testthat::expect_false(any(flagged$is_tier_A1 & flagged$is_tier_A2))
+  testthat::expect_identical(
+    flagged$is_tier_A, flagged$is_tier_A1 | flagged$is_tier_A2
+  )
+})
+
+testthat::test_that("every claimable FDR-supported protein is A1, A2 or D", {
+  flagged <- wcp_assign_candidate_flags(wcp_fixture_candidates())
+  testthat::expect_identical(nrow(wcp_unclassified_fdr_support(flagged)), 0L)
+
+  # each FDR-supported, cleanly mapped row lands in exactly one class
+  fdr <- flagged$sus_res_fdr05_any_context & flagged$clean_mapping
+  classes <- flagged$is_tier_A1 + flagged$is_tier_A2 + flagged$is_tier_D
+  testthat::expect_true(all(classes[fdr] == 1L))
+  # and every such row is a candidate
+  testthat::expect_true(all(flagged$is_candidate[fdr]))
+
+  # only the mapping contract may leave one unclassified, and it is reported
+  unclean <- wcp_fixture_candidates()[3, ]   # FDR-supported, high kME, not clean
+  unclean_flagged <- wcp_assign_candidate_flags(unclean)
+  testthat::expect_false(unclean_flagged$is_tier_A1)
+  testthat::expect_false(unclean_flagged$is_tier_A2)
+  testthat::expect_identical(
+    nrow(wcp_unclassified_fdr_support(unclean_flagged)), 0L
+  )
+})
+
+testthat::test_that("phenotype_network_class reflects topology only", {
+  flagged <- wcp_assign_candidate_flags(wcp_fixture_candidates())
+  cls <- wcp_phenotype_network_class(flagged)
+  testthat::expect_identical(cls[[1]], "top10_hub")
+  testthat::expect_identical(cls[[2]], "module_member")
+  testthat::expect_identical(cls[[4]], "peripheral_member")
+  # proteins with no phenotype link get no class
+  testthat::expect_true(is.na(cls[[5]]))
+  testthat::expect_setequal(
+    stats::na.omit(unique(cls)),
+    c("top10_hub", "module_member", "peripheral_member")
+  )
 })
 
 testthat::test_that("Tier D admits FDR-supported proteins with low kME", {
@@ -323,9 +385,11 @@ testthat::test_that("tiers may overlap and the broad label never hides that", {
   flagged$candidate_tier_all <- wcp_candidate_tier_all(flagged)
 
   # row 1 is both a phenotype-linked hub and a module representative
-  testthat::expect_true(flagged$is_tier_A[[1]] && flagged$is_tier_C[[1]])
-  testthat::expect_identical(flagged$candidate_tier[[1]], "A")
-  testthat::expect_identical(flagged$candidate_tier_all[[1]], "A;C")
+  testthat::expect_true(flagged$is_tier_A1[[1]] && flagged$is_tier_C[[1]])
+  testthat::expect_identical(flagged$candidate_tier[[1]], "A1")
+  testthat::expect_identical(flagged$candidate_tier_all[[1]], "A1;C")
+  # row 2 is a phenotype-linked module member
+  testthat::expect_identical(flagged$candidate_tier[[2]], "A2")
 
   # Tier C is purely structural: top-5 regardless of any DA evidence
   structural <- data.frame(
@@ -374,10 +438,10 @@ testthat::test_that("flagging and ordering are deterministic", {
   shuffled <- build(fx[rev(seq_len(nrow(fx))), ])
   testthat::expect_identical(first$ProteinGroupID, shuffled$ProteinGroupID)
 
-  # tier drives the sort, and A precedes D
-  testthat::expect_identical(first$candidate_tier[[1]], "A")
+  # tier drives the sort, and A1 precedes D
+  testthat::expect_identical(first$candidate_tier[[1]], "A1")
   testthat::expect_true(
-    which(first$candidate_tier == "A") < which(first$candidate_tier == "D")
+    which(first$candidate_tier == "A1") < which(first$candidate_tier == "D")
   )
 })
 
@@ -501,18 +565,60 @@ testthat::test_that("Tier A rows in the real export satisfy every stated criteri
   path <- wcp_summary_path("global")
   testthat::skip_if_not(file.exists(path), "shortlist has not been generated")
   x <- utils::read.csv(path, stringsAsFactors = FALSE, check.names = FALSE)
-  a <- x[as.logical(x$is_tier_A), , drop = FALSE]
-  testthat::skip_if(nrow(a) == 0L, "no Tier A candidates in current data")
+  a1 <- x[as.logical(x$is_tier_A1), , drop = FALSE]
+  a2 <- x[as.logical(x$is_tier_A2), , drop = FALSE]
+  testthat::skip_if(nrow(a1) + nrow(a2) == 0L,
+                    "no phenotype-linked module members in current data")
 
-  testthat::expect_true(all(as.logical(a$clean_mapping)))
-  testthat::expect_true(all(a$abs_kME >= 0.60))
-  testthat::expect_true(all(as.logical(a$is_top10_module_hub)))
-  testthat::expect_true(all(as.logical(a$sus_res_fdr05_any_context)))
-  testthat::expect_true(all(a$sus_res_min_BH_FDR <= 0.05))
-  # Tier A never contains a gene-ambiguous protein group
-  testthat::expect_false(any(
-    a$protein_group_ambiguity_class == "multi_gene_indistinguishable"
-  ))
+  for (a in list(a1, a2)) {
+    if (!nrow(a)) next
+    testthat::expect_true(all(as.logical(a$clean_mapping)))
+    testthat::expect_true(all(a$abs_kME >= 0.60))
+    testthat::expect_true(all(as.logical(a$sus_res_fdr05_any_context)))
+    testthat::expect_true(all(a$sus_res_min_BH_FDR <= 0.05))
+    # neither class ever contains a gene-ambiguous protein group
+    testthat::expect_false(any(
+      a$protein_group_ambiguity_class == "multi_gene_indistinguishable"
+    ))
+  }
+  # the split is exactly on top-10 membership
+  if (nrow(a1)) testthat::expect_true(all(as.logical(a1$is_top10_module_hub)))
+  if (nrow(a2)) testthat::expect_false(any(as.logical(a2$is_top10_module_hub)))
+  # A1 and A2 are disjoint, and is_tier_A is their union
+  testthat::expect_false(any(as.logical(x$is_tier_A1) & as.logical(x$is_tier_A2)))
+  testthat::expect_identical(
+    as.logical(x$is_tier_A),
+    as.logical(x$is_tier_A1) | as.logical(x$is_tier_A2)
+  )
+})
+
+testthat::test_that("every claimable FDR-supported protein in the export is classified", {
+  path <- wcp_summary_path("global")
+  testthat::skip_if_not(file.exists(path), "shortlist has not been generated")
+  x <- utils::read.csv(path, stringsAsFactors = FALSE, check.names = FALSE)
+
+  fdr <- as.logical(x$sus_res_fdr05_any_context)
+  claimable <- fdr & as.logical(x$clean_mapping)
+  classified <- as.logical(x$is_tier_A1) | as.logical(x$is_tier_A2) |
+    as.logical(x$is_tier_D)
+  testthat::expect_true(all(classified[claimable]))
+  # exactly one phenotype-linked class each
+  n_class <- as.integer(x$is_tier_A1 == "TRUE") +
+    as.integer(x$is_tier_A2 == "TRUE") + as.integer(x$is_tier_D == "TRUE")
+  testthat::expect_true(all(n_class[claimable] == 1L))
+  # and All_candidates no longer omits them
+  testthat::expect_true(all(as.logical(x$is_candidate)[claimable]))
+
+  # A1 + A2 + D accounts for every FDR-supported protein per dataset
+  for (ds in unique(x$dataset)) {
+    sub <- x[x$dataset == ds, , drop = FALSE]
+    testthat::expect_identical(
+      sum(as.logical(sub$sus_res_fdr05_any_context)),
+      sum(as.logical(sub$is_tier_A1)) + sum(as.logical(sub$is_tier_A2)) +
+        sum(as.logical(sub$is_tier_D)),
+      info = ds
+    )
+  }
 })
 
 testthat::test_that("Tier D rows are FDR-supported and peripheral", {
@@ -684,7 +790,7 @@ testthat::test_that("Protein_review ordering puts Tier A first and is determinis
   fx <- data.frame(
     dataset = "d", ModuleID = "M",
     ProteinGroupID = sprintf("PG:d:%02d", 1:4),
-    candidate_tier = c("C", "B", "D", "A"),
+    candidate_tier = c("C", "B", "D", "A1"),
     sus_res_fdr05_any_context = c(FALSE, FALSE, TRUE, TRUE),
     sus_res_min_BH_FDR = c(NA, NA, 0.01, 0.02),
     sus_res_large_effect_typical = c(FALSE, TRUE, FALSE, TRUE),
@@ -693,7 +799,7 @@ testthat::test_that("Protein_review ordering puts Tier A first and is determinis
     stringsAsFactors = FALSE
   )
   ordered <- wcp_order_protein_review(fx)
-  testthat::expect_identical(ordered$candidate_tier, c("A", "D", "B", "C"))
+  testthat::expect_identical(ordered$candidate_tier, c("A1", "D", "B", "C"))
   # stable under input permutation
   testthat::expect_identical(
     wcp_order_protein_review(fx[c(3L, 1L, 4L, 2L), ])$ProteinGroupID,
@@ -727,7 +833,7 @@ testthat::test_that("Module_review is one descriptive row per module", {
     ProteinGroupID = sprintf("PG:d:%02d", 1:3),
     module_label = c("L1", "L1", "L2"),
     abs_kME = c(0.9, 0.5, 0.8), GeneSymbol = c("A", "B", "C"),
-    is_tier_A = c(TRUE, FALSE, FALSE), is_tier_B = FALSE,
+    is_tier_A1 = c(TRUE, FALSE, FALSE), is_tier_A2 = FALSE, is_tier_B = FALSE,
     is_tier_C = c(TRUE, FALSE, TRUE), is_tier_D = FALSE,
     is_candidate = c(TRUE, FALSE, TRUE),
     sus_res_fdr05_any_context = c(TRUE, FALSE, FALSE),
@@ -822,8 +928,8 @@ testthat::test_that("workbook sheet sets are deterministic and non-redundant", {
                         "workbooks have not been generated")
 
   expected_core <- c("README", "Protein_review", "SUS_RES_FDR_hits",
-                     "Module_review", "All_candidates", "Tier_A", "Tier_B",
-                     "Tier_C", "Tier_D", "Top10_per_module")
+                     "Module_review", "All_candidates", "Tier_A1", "Tier_A2",
+                     "Tier_B", "Tier_C", "Tier_D", "Top10_per_module")
 
   single_sheets <- readxl::excel_sheets(single)
   testthat::expect_identical(single_sheets, expected_core)
@@ -866,4 +972,70 @@ testthat::test_that("review sheets carry the intended compact content", {
     )
     testthat::expect_identical(anyDuplicated(hits[["Gene"]]), 0L)
   }
+})
+
+# ------------------------------------------- zero-row / optional-column safety
+
+testthat::test_that("ordering and review views survive zero rows and missing optional columns", {
+  # Regression guard. The canonical %||% also falls back for length-0 input, so
+  # `df$col %||% NA` returns a length-1 value for a zero-row frame and order()
+  # then aborts with "argument lengths differ". These views must stay total.
+  minimal <- data.frame(
+    candidate_tier = c("A1", "D", "B"), abs_kME = c(0.9, 0.3, 0.7),
+    ProteinGroupID = c("P1", "P2", "P3"), stringsAsFactors = FALSE
+  )
+  testthat::expect_silent(wcp_order_candidates(minimal))
+  testthat::expect_identical(
+    wcp_order_protein_review(minimal)$candidate_tier, c("A1", "D", "B")
+  )
+
+  empty <- minimal[0, , drop = FALSE]
+  testthat::expect_identical(nrow(wcp_order_candidates(empty)), 0L)
+  testthat::expect_identical(nrow(wcp_order_protein_review(empty)), 0L)
+
+  full_empty <- data.frame(
+    dataset = character(), ModuleID = character(), ProteinGroupID = character(),
+    candidate_tier = character(), sus_res_fdr05_any_context = logical(),
+    sus_res_min_BH_FDR = numeric(), sus_res_large_effect_typical = logical(),
+    sus_res_median_abs_log2FC = numeric(), abs_kME = numeric(),
+    GeneSymbol = character(), stringsAsFactors = FALSE
+  )
+  testthat::expect_identical(nrow(wcp_protein_review_table(full_empty)), 0L)
+  testthat::expect_identical(nrow(wcp_fdr_hits_table(full_empty)), 0L)
+})
+
+testthat::test_that("the phenotype-linked row highlight targets A1/A2, not the retired A", {
+  script <- paste(readLines(testthat::test_path(
+    "..", "..", "10_biological_integration",
+    "08_wgcna_candidate_protein_shortlist.R"
+  ), warn = FALSE), collapse = "\n")
+  # `tier %in% "A"` would be dead code: wcp_candidate_tier never emits "A".
+  testthat::expect_false(grepl('tier %in% "A"', script, fixed = TRUE))
+  testthat::expect_true(grepl('tier %in% c("A1", "A2")', script, fixed = TRUE))
+  testthat::expect_false("A" %in% wcp_candidate_tier_levels())
+})
+
+testthat::test_that("empty tier sheets contain no phantom record", {
+  # openxlsx::writeDataTable on a zero-row frame spans one data row, which reads
+  # back as a single all-NA record and makes an empty class look populated.
+  path <- wcp_workbook_path("neuron_soma")
+  testthat::skip_if_not(file.exists(path), "workbook has not been generated")
+  csv <- path_results("tables", "10_biological_integration",
+                      "wgcna_candidate_protein_shortlist", "neuron_soma",
+                      "wgcna_candidate_proteins_all.csv")
+  testthat::skip_if_not(file.exists(csv))
+  x <- utils::read.csv(csv, stringsAsFactors = FALSE, check.names = FALSE)
+
+  for (nm in c("Tier_A1", "Tier_A2", "Tier_B", "Tier_C", "Tier_D")) {
+    flag <- sub("Tier_", "is_tier_", nm)
+    sheet <- readxl::read_excel(path, sheet = nm, skip = 3,
+                                .name_repair = "minimal")
+    testthat::expect_identical(nrow(sheet), sum(as.logical(x[[flag]])),
+                               info = nm)
+  }
+  # an empty sheet says so, above the header, rather than showing a blank row
+  note <- readxl::read_excel(path, sheet = "Tier_A1", range = "A2",
+                             col_names = FALSE, .name_repair = "minimal")
+  testthat::expect_match(as.character(note[[1]][1]), "NONE IN THIS SCOPE",
+                         fixed = TRUE)
 })
