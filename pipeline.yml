@@ -867,6 +867,17 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Read-only diagnostic of strict concordance/adaptive gates plus a separately labelled descriptive complete-effect direction layer. It does not modify classifications, thresholds, source inference, mappings, or claim gates."
+      - script: "10_biological_integration/08_wgcna_candidate_protein_shortlist.R"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia", "global"]
+        stage: "integration"
+        scope: "per_dataset_and_global"
+        produces: ["results/tables/10_biological_integration/wgcna_candidate_protein_shortlist/<dataset>/wgcna_candidate_proteins_all.csv", "results/tables/10_biological_integration/wgcna_candidate_protein_shortlist/<dataset>/wgcna_candidate_proteins_long.csv", "results/tables/10_biological_integration/wgcna_candidate_protein_shortlist/<dataset>/wgcna_candidate_proteins_shortlist.csv", "results/tables/10_biological_integration/wgcna_candidate_protein_shortlist/<dataset>/wgcna_top10_per_module.csv", "results/tables/10_biological_integration/wgcna_candidate_protein_shortlist/<dataset>/wgcna_candidate_proteins_shortlist.xlsx", "results/source_data/10_biological_integration/wgcna_candidate_protein_shortlist/<dataset>/", "results/reports/10_biological_integration/wgcna_candidate_protein_shortlist/<dataset>/README.md", "results/logs/10_biological_integration/wgcna_candidate_protein_shortlist/<dataset>/run_manifest.yml"]
+        consumes_required: ["results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_modules_long.csv", "results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_inferential_handoff.csv", "data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv"]
+        consumes_optional: ["results/tables/10_biological_integration/gsea_wgcna_concordance/global/program_specific_leading_edge_module_overlap.csv"]
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Additive descriptive candidate-protein layer. Joins frozen Stage 01 membership, manifest-selected protein DA and the Stage 07 module handoff on canonical ProteinGroupID; every statistic is copied unchanged. Derives only ranks, counts and boolean flags. No weighted composite score. GSEA leading-edge membership is not independent of the DA columns and spatial contexts are repeated measures, both stated in the outputs."
       - script: "10_biological_integration/04_wgcna_circular_atlas.R"
         required: false
         datasets: ["global"]
