@@ -390,10 +390,24 @@ build_dataset <- function(dataset, leading_edge) {
   summary_tbl$gsea_leading_edge <- summary_tbl$sus_res_gsea_leading_edge
   summary_tbl$sus_res_direction_matches_module_flag <-
     summary_tbl$sus_res_direction_matches_module %in% TRUE
+  summary_tbl$phenotype_network_class <- wcp_phenotype_network_class(summary_tbl)
   summary_tbl$candidate_tier <- wcp_candidate_tier(summary_tbl)
   summary_tbl$candidate_tier_all <- wcp_candidate_tier_all(summary_tbl)
   summary_tbl$candidate_reason <- wcp_candidate_reason(summary_tbl)
   summary_tbl <- wcp_order_candidates(summary_tbl)
+
+  # Invariant: a claimable protein with SUS - RES FDR support must land in A1,
+  # A2 or D. Only the frozen mapping contract may exclude one, and that case is
+  # reported rather than silently dropped.
+  unclassified <- wcp_unclassified_fdr_support(summary_tbl)
+  if (nrow(unclassified)) {
+    stop(
+      "FDR-supported SUS - RES proteins left unclassified in ", dataset, ": ",
+      nrow(unclassified), " (first: ", unclassified$ProteinGroupID[[1]],
+      "). Every claimable FDR-supported protein must be Tier A1, A2 or D.",
+      call. = FALSE
+    )
+  }
 
   list(long = long, summary = summary_tbl, consistency = consistency)
 }
@@ -411,8 +425,9 @@ summary_column_order <- function(df) {
     "protein_group_ambiguity_class", "same_gene_group", "n_gene_symbols",
     "n_members_canonical", "n_unmapped_members", "clean_mapping",
     # candidate classification
-    "candidate_tier", "candidate_tier_all", "candidate_reason", "is_candidate",
-    "is_tier_A", "is_tier_B", "is_tier_C", "is_tier_D",
+    "candidate_tier", "candidate_tier_all", "phenotype_network_class",
+    "candidate_reason", "is_candidate",
+    "is_tier_A1", "is_tier_A2", "is_tier_B", "is_tier_C", "is_tier_D", "is_tier_A",
     # WGCNA network information
     "kME", "abs_kME", "abs_kME_rank_in_module",
     "abs_kME_rank_fraction_in_module", "n_module_members",
@@ -510,11 +525,20 @@ write_readme <- function(paths, scope, summary_tbl) {
     "Tiers are **not mutually exclusive**; `candidate_tier_all` lists every tier a",
     "protein satisfies and `candidate_tier` is only a convenience label.",
     "",
-    "- **Tier A - phenotype-linked hub**: unambiguous mapping, |kME| >= 0.60, top 10",
-    "  within its module, and SUS - RES protein-level BH FDR <= 0.05 in at least one",
-    "  spatial context. Module-direction concordance is reported as an additional",
-    "  flag rather than required, because no module-level SUS - RES effect is",
-    "  FDR-supported in any dataset.",
+    "The three phenotype-linked classes (A1, A2, D) share the SAME protein-level",
+    "evidence requirement and differ only in WGCNA topology. The precedence",
+    "A1 > A2 > D > B > C is a reading order, **not** a ranking of evidence: a Tier D",
+    "protein routinely carries a smaller FDR and a larger effect than a Tier A1 one.",
+    "",
+    "- **Tier A1 - FDR-supported phenotype-linked module hub**: unambiguous mapping,",
+    "  SUS - RES BH FDR <= 0.05 in at least one spatial context, |kME| >= 0.60, and in",
+    "  the module's top 10 by |kME|. Module-direction concordance is reported as an",
+    "  additional flag rather than required, because no module-level SUS - RES effect",
+    "  is FDR-supported in any dataset.",
+    "- **Tier A2 - FDR-supported phenotype-linked module member**: the same evidence",
+    "  and |kME| >= 0.60, but outside the module's top 10 hubs. A bona fide core",
+    "  member by the frozen |kME| >= 0.60 definition. No top-25 requirement is",
+    "  imposed; the frozen `is_top_hub_25` flag is reported separately.",
     "- **Tier B - network + phenotype candidate**: |kME| >= 0.60 AND a large",
     "  typical SUS - RES effect (`sus_res_large_effect_typical`: median |log2FC|",
     "  across spatial contexts in the top decile for this dataset x contrast).",
@@ -524,9 +548,17 @@ write_readme <- function(paths, scope, summary_tbl) {
     "  protein one chance per context and flags 35-65% of all proteins.",
     "- **Tier C - canonical module representative**: top 5 within its module by",
     "  |kME|, regardless of differential abundance.",
-    "- **Tier D - DA-dominant / peripheral-module candidate**: SUS - RES BH FDR <= 0.05",
-    "  but |kME| < 0.60, so strongly stress-responsive proteins are not discarded for",
-    "  being peripheral to a module.",
+    "- **Tier D - FDR-supported phenotype-linked peripheral module member**:",
+    "  SUS - RES BH FDR <= 0.05 but |kME| < 0.60, so strongly stress-responsive",
+    "  proteins are not discarded for being peripheral to a module. Unlike A1/A2 this",
+    "  class does not additionally require clean mapping - a pre-existing asymmetry",
+    "  left unchanged; on the current frozen inputs every FDR-supported protein is",
+    "  cleanly mapped, so it currently has no effect.",
+    "",
+    "Every claimable protein with SUS - RES BH FDR <= 0.05 is therefore Tier A1, A2 or",
+    "D. The run fails loudly if any such protein is left unclassified.",
+    "`is_tier_A` is retained only as a compatibility aggregate (A1 OR A2); A1/A2 carry",
+    "the actual distinction and are what the workbook sheets use.",
     "",
     "## Evidence classes",
     "",
@@ -568,7 +600,11 @@ write_readme <- function(paths, scope, summary_tbl) {
     "",
     paste0("- WGCNA proteins examined: ", nrow(summary_tbl)),
     paste0("- Cleanly mapped: ", sum(summary_tbl$clean_mapping %in% TRUE)),
-    paste0("- Tier A: ", sum(summary_tbl$is_tier_A %in% TRUE)),
+    paste0("- SUS - RES FDR-supported proteins: ",
+           sum(summary_tbl$sus_res_fdr05_any_context %in% TRUE),
+           " (unclassified: ", nrow(wcp_unclassified_fdr_support(summary_tbl)), ")"),
+    paste0("- Tier A1: ", sum(summary_tbl$is_tier_A1 %in% TRUE)),
+    paste0("- Tier A2: ", sum(summary_tbl$is_tier_A2 %in% TRUE)),
     paste0("- Tier B: ", sum(summary_tbl$is_tier_B %in% TRUE)),
     paste0("- Tier C: ", sum(summary_tbl$is_tier_C %in% TRUE)),
     paste0("- Tier D: ", sum(summary_tbl$is_tier_D %in% TRUE)),
@@ -643,14 +679,29 @@ write_workbook <- function(path, scope, summary_tbl, top10, by_dataset) {
     openxlsx::addStyle(wb, sheet, title_style, rows = 1, cols = seq_len(ncol_data), gridExpand = TRUE, stack = TRUE)
     openxlsx::setRowHeights(wb, sheet, rows = 1, heights = 23)
     openxlsx::mergeCells(wb, sheet, cols = seq_len(ncol_data), rows = 2)
-    openxlsx::writeData(wb, sheet, note, startRow = 2, startCol = 1)
+    openxlsx::writeData(
+      wb, sheet,
+      if (nrow(data)) note else paste0(note, "  [NONE IN THIS SCOPE - 0 proteins.]"),
+      startRow = 2, startCol = 1
+    )
     openxlsx::addStyle(wb, sheet, note_style, rows = 2, cols = seq_len(ncol_data), gridExpand = TRUE, stack = TRUE)
     openxlsx::setRowHeights(wb, sheet, rows = 2, heights = 42)
-    openxlsx::writeDataTable(
-      wb, sheet, data, startRow = 4, startCol = 1,
-      tableName = gsub("[^A-Za-z0-9]", "", sheet), tableStyle = "TableStyleLight9",
-      withFilter = TRUE
-    )
+    # openxlsx::writeDataTable on a zero-row frame emits a table whose range
+    # spans one data row, so an empty sheet reads back as a single all-NA
+    # record. Write just the header instead, plus an explicit "none" marker, so
+    # an empty class cannot be mistaken for one candidate.
+    if (nrow(data)) {
+      openxlsx::writeDataTable(
+        wb, sheet, data, startRow = 4, startCol = 1,
+        tableName = gsub("[^A-Za-z0-9]", "", sheet),
+        tableStyle = "TableStyleLight9", withFilter = TRUE
+      )
+    } else {
+      # Header only: no data row at all, so the sheet reads back as 0 records.
+      # The "none" marker lives in the row-2 note, above the header.
+      openxlsx::writeData(wb, sheet, data[0, , drop = FALSE], startRow = 4,
+                          startCol = 1, colNames = TRUE)
+    }
     openxlsx::addStyle(wb, sheet, header_style, rows = 4, cols = seq_len(ncol(data)), gridExpand = TRUE, stack = TRUE)
     openxlsx::setRowHeights(wb, sheet, rows = 4, heights = 46)
     if (nrow(data)) {
@@ -668,9 +719,12 @@ write_workbook <- function(path, scope, summary_tbl, top10, by_dataset) {
                            cols = match("candidate_reason", names(data)),
                            gridExpand = TRUE, stack = TRUE)
       }
-      if ("candidate_tier" %in% names(data)) {
-        tier <- as.character(data$candidate_tier)
-        a_rows <- rows[tier %in% "A"]
+      # Shade the phenotype-linked rows. The label column is `Tier` on the
+      # renamed review sheets and `candidate_tier` on the full audit sheets.
+      tier_col <- intersect(c("candidate_tier", "Tier"), names(data))
+      if (length(tier_col)) {
+        tier <- as.character(data[[tier_col[[1]]]])
+        a_rows <- rows[tier %in% c("A1", "A2")]
         d_rows <- rows[tier %in% "D"]
         if (length(a_rows)) openxlsx::addStyle(wb, sheet, tier_a_fill, rows = a_rows, cols = seq_len(ncol(data)), gridExpand = TRUE, stack = TRUE)
         if (length(d_rows)) openxlsx::addStyle(wb, sheet, tier_d_fill, rows = d_rows, cols = seq_len(ncol(data)), gridExpand = TRUE, stack = TRUE)
@@ -696,20 +750,21 @@ write_workbook <- function(path, scope, summary_tbl, top10, by_dataset) {
   openxlsx::addStyle(wb, "README", body_wrap, rows = 3:(3 + length(intro)), cols = 1, gridExpand = TRUE, stack = TRUE)
 
   tier_defs <- data.frame(
-    Tier = c("A", "B", "C", "D"),
-    Name = c("phenotype-linked hub", "network + phenotype candidate",
-             "canonical module representative", "DA-dominant / peripheral-module candidate"),
+    Tier = c("A1", "A2", "D", "B", "C"),
+    Name = unname(wcp_tier_display_names()[c("A1", "A2", "D", "B", "C")]),
     Definition = c(
-      "clean_mapping AND |kME| >= 0.60 AND top-10 within module AND SUS-RES BH FDR <= 0.05 in >=1 spatial context.",
+      "clean_mapping AND SUS-RES BH FDR <= 0.05 in >=1 spatial context AND |kME| >= 0.60 AND in the module's top 10 by |kME|.",
+      "clean_mapping AND SUS-RES BH FDR <= 0.05 in >=1 spatial context AND |kME| >= 0.60 AND NOT in the module's top 10.",
+      "SUS-RES BH FDR <= 0.05 in >=1 spatial context AND |kME| < 0.60.",
       "|kME| >= 0.60 AND top-decile MEDIAN |SUS-RES log2FC| within dataset x contrast (sus_res_large_effect_typical). Protein-level FDR support NOT required. Spatial directional agreement is NOT part of this definition.",
-      "Top 5 within module by |kME|, regardless of differential abundance. Answers: which proteins best represent this module?",
-      "SUS-RES BH FDR <= 0.05 AND |kME| < 0.60. Keeps stress-responsive proteins that are peripheral to a module."
+      "Top 5 within module by |kME|, regardless of differential abundance. Answers: which proteins best represent this module?"
     ),
     Note = c(
-      "Module-direction concordance is an additional flag, not a requirement: no module-level SUS-RES effect is FDR-supported in any dataset.",
-      "Descriptive only; no inferential support is claimed.",
-      "Network-structural claim only; carries no phenotype evidence.",
-      "Protein-level inferential evidence without module centrality."
+      "Extreme network centrality PLUS protein-level support. Module-direction concordance is an additional flag, not a requirement: no module-level SUS-RES effect is FDR-supported in any dataset.",
+      "Bona fide core module member by the frozen |kME| >= 0.60 definition, outside the top 10. No top-25 requirement is imposed; is_top_hub_25 is reported separately.",
+      "Protein-level inferential evidence with weak module centrality. Unlike A1/A2 this class does not additionally require clean_mapping - a pre-existing asymmetry left unchanged; on current frozen inputs every FDR-supported protein is cleanly mapped, so it has no effect.",
+      "Descriptive prioritisation only; no inferential support is claimed.",
+      "Network-structural claim only; carries no phenotype evidence."
     ),
     stringsAsFactors = FALSE
   )
@@ -731,6 +786,8 @@ write_workbook <- function(path, scope, summary_tbl, top10, by_dataset) {
   openxlsx::writeDataTable(wb, "README", dict, startRow = dict_start + 1L, startCol = 1, tableName = "FieldDictionary", tableStyle = "TableStyleLight9")
 
   caveats <- data.frame(Caveat = c(
+    "Tier A1 / A2 / D all require the SAME protein-level evidence (SUS-RES BH FDR <= 0.05 in >=1 spatial context). They differ ONLY in WGCNA topology - top-10 hub, module member, peripheral member. A1 is NOT more statistically significant than A2 or D; a Tier D protein routinely has a smaller FDR and a larger effect.",
+    "The precedence A1 > A2 > D > B > C used by candidate_tier and by the review sort is a reading order, not a numerical or statistical score.",
     "GeneSignificanceP/FDR is an OMNIBUS CON/RES/SUS ANOVA: unsigned, and not a SUS-vs-RES phenotype correlation.",
     "GSEA leading-edge membership is NOT independent of the DA columns; that GSEA ranks on the moderated t statistic of the same limma fit.",
     "Hippocampal spatial contexts are repeated measurements from the SAME animals: agreement across them is spatial consistency, not independent replication.",
@@ -755,7 +812,7 @@ write_workbook <- function(path, scope, summary_tbl, top10, by_dataset) {
     "Protein_review", "Protein review (compact)",
     paste(
       "Compact view of every candidate for manual biological review.",
-      "Reading order: Tier A, then FDR-supported Tier D, then Tier B, then Tier C only;",
+      "Reading order: Tier A1, then Tier A2, then Tier D, then Tier B, then Tier C only;",
       "within each block by SUS-RES FDR, large-effect flag, |kME|, median |log2FC|, ProteinGroupID.",
       "This is a deterministic sort for reading, NOT a statistical ranking.",
       "Source paths and internal contract fields are in All_candidates and the run manifest."
@@ -784,17 +841,20 @@ write_workbook <- function(path, scope, summary_tbl, top10, by_dataset) {
   add_table_sheet("All_candidates", "All candidates (any tier flag)",
                   "Every WGCNA protein satisfying at least one candidate flag. Sorted by tier, then SUS-RES FDR support, |kME|, |SUS-RES log2FC|, spatial consistency, ProteinGroupID. The order is a sort, not a score.",
                   shortlist)
-  add_table_sheet("Tier_A", "Tier A - phenotype-linked hubs",
-                  "Clean mapping, |kME| >= 0.60, top-10 within module, and SUS-RES BH FDR <= 0.05 in at least one spatial context. Module-direction concordance is reported as an additional flag, not required.",
-                  summary_tbl[summary_tbl$is_tier_A %in% TRUE, , drop = FALSE])
+  add_table_sheet("Tier_A1", "Tier A1 - FDR-supported phenotype-linked module hubs",
+                  "Clean mapping, SUS-RES BH FDR <= 0.05 in at least one spatial context, |kME| >= 0.60, AND in the module's top 10 by |kME|. A1, A2 and D share the same protein-level evidence requirement and differ only in WGCNA topology; A1 is not 'more significant' than A2 or D.",
+                  summary_tbl[summary_tbl$is_tier_A1 %in% TRUE, , drop = FALSE])
+  add_table_sheet("Tier_A2", "Tier A2 - FDR-supported phenotype-linked module members",
+                  "Same protein-level evidence and |kME| >= 0.60 as Tier A1, but NOT in the module's top 10 hubs. These are bona fide core module members with inferential SUS-RES support. No top-25 requirement is imposed; the frozen is_top_hub_25 flag is reported separately.",
+                  summary_tbl[summary_tbl$is_tier_A2 %in% TRUE, , drop = FALSE])
   add_table_sheet("Tier_B", "Tier B - network + phenotype candidates",
                   "|kME| >= 0.60 AND a large typical SUS-RES effect (median |log2FC| across spatial contexts in the top decile for this dataset x contrast). No protein-level FDR support is claimed. Spatial directional agreement is reported alongside but is not part of the definition.",
                   summary_tbl[summary_tbl$is_tier_B %in% TRUE, , drop = FALSE])
   add_table_sheet("Tier_C", "Tier C - canonical module representatives",
                   "Top 5 members of each module by |kME|, regardless of differential abundance. A network-structural statement only; it carries no phenotype evidence.",
                   summary_tbl[summary_tbl$is_tier_C %in% TRUE, , drop = FALSE])
-  add_table_sheet("Tier_D", "Tier D - DA-dominant / peripheral-module candidates",
-                  "SUS-RES BH FDR <= 0.05 with |kME| < 0.60. Present so that stress-responsive proteins are not discarded merely for being peripheral to a WGCNA module.",
+  add_table_sheet("Tier_D", "Tier D - FDR-supported phenotype-linked peripheral module members",
+                  "SUS-RES BH FDR <= 0.05 with |kME| < 0.60. Present so that stress-responsive proteins are not discarded merely for being peripheral to a WGCNA module. A Tier D protein routinely has a SMALLER FDR and a LARGER effect than a Tier A1 protein: the A1/A2/D split describes network position, not evidence strength.",
                   summary_tbl[summary_tbl$is_tier_D %in% TRUE, , drop = FALSE])
   add_table_sheet("Top10_per_module", "Top 10 module representatives by |kME|",
                   "Exactly the top 10 members of each module by |kME|, ties broken by ProteinGroupID ascending. Selected by module centrality only, never by differential-abundance significance.",
@@ -956,11 +1016,16 @@ for (dataset in datasets) {
   cat("  WGCNA proteins examined : ", fmt_int(nrow(s)),
       " in ", fmt_int(dplyr::n_distinct(s$ModuleID)), " modules\n", sep = "")
   cat("  Cleanly mapped          : ", fmt_int(sum(s$clean_mapping %in% TRUE)),
-      " (", fmt_int(sum(!(s$clean_mapping %in% TRUE))), " gene-ambiguous, excluded from Tier A)\n", sep = "")
+      " (", fmt_int(sum(!(s$clean_mapping %in% TRUE))), " gene-ambiguous, excluded from Tier A1/A2)\n", sep = "")
   cat("  SUS-RES FDR<=0.05       : ", fmt_int(sum(s$sus_res_fdr05_any_context %in% TRUE)),
-      " protein(s) in >=1 spatial context\n", sep = "")
-  cat("  Tier A / B / C / D      : ",
-      fmt_int(sum(s$is_tier_A %in% TRUE)), " / ",
+      " protein(s) in >=1 spatial context",
+      "  [A1 ", fmt_int(sum(s$is_tier_A1 %in% TRUE)),
+      " + A2 ", fmt_int(sum(s$is_tier_A2 %in% TRUE)),
+      " + D ", fmt_int(sum(s$is_tier_D %in% TRUE)),
+      "; unclassified ", fmt_int(nrow(wcp_unclassified_fdr_support(s))), "]\n", sep = "")
+  cat("  Tier A1/A2/B/C/D        : ",
+      fmt_int(sum(s$is_tier_A1 %in% TRUE)), " / ",
+      fmt_int(sum(s$is_tier_A2 %in% TRUE)), " / ",
       fmt_int(sum(s$is_tier_B %in% TRUE)), " / ",
       fmt_int(sum(s$is_tier_C %in% TRUE)), " / ",
       fmt_int(sum(s$is_tier_D %in% TRUE)), "\n", sep = "")
