@@ -238,7 +238,22 @@ aggregate_empirical_roi_dataset <- function(mat, metadata, dataset) {
   } else {
     c("AnimalID", "region")
   }
-  hemisphere <- aggregate_empirical_matrix_equal_weight(mat, metadata, spatial_cols)
+  # NOTE ON NAMING. `spatial_cols` deliberately excludes ReplicateGroup, so the
+  # object below is keyed AnimalID x spatial unit and has ALREADY averaged Left
+  # and Right. It was historically returned as `hemisphere_mat`, which reads as
+  # if the sides were still separate; any bilateral comparison built on it is
+  # degenerate by construction and returns an exactly-zero L-R difference.
+  # It is now returned as `animal_spatial_*`, with the old names kept as
+  # deprecated aliases, and a genuinely side-resolved object added beside it.
+  animal_spatial <- aggregate_empirical_matrix_equal_weight(mat, metadata, spatial_cols)
+  hemisphere <- animal_spatial
+
+  # Genuine hemisphere-level object: the same equal-weight aggregation, but with
+  # the side retained as a key. Technical replicates within a side are collapsed;
+  # Left and Right are NOT. This is the only object in this file that supports a
+  # within-animal bilateral reproducibility analysis.
+  side <- aggregate_empirical_matrix_equal_weight(
+    mat, metadata, c(spatial_cols, "ReplicateGroup"))
   region <- if (dataset == "neuron_neuropil") {
     aggregate_empirical_matrix_equal_weight(hemisphere$mat, hemisphere$meta, c("AnimalID", "region"))
   } else {
@@ -283,8 +298,16 @@ aggregate_empirical_roi_dataset <- function(mat, metadata, dataset) {
     meta = final_meta,
     spatial_unit_qc = spatial_qc,
     aggregation_qc = aggregation_qc,
+    # AnimalID x spatial unit, with Left/Right already averaged.
+    animal_spatial_mat = animal_spatial$mat,
+    animal_spatial_meta = animal_spatial$meta,
+    # Deprecated aliases for the two fields above. They are NOT side-resolved;
+    # retained only so existing consumers keep working.
     hemisphere_mat = hemisphere$mat,
     hemisphere_meta = hemisphere$meta,
+    # AnimalID x spatial unit x side. This is the side-resolved object.
+    side_mat = side$mat,
+    side_meta = side$meta,
     region_mat = region$mat,
     region_meta = region$meta
   )

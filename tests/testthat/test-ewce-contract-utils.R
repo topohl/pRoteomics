@@ -72,3 +72,27 @@ testthat::test_that("cache accounting distinguishes reuse, fallback, and computa
   testthat::expect_equal(accounting$new_bootstrap_computations, 1L)
   testthat::expect_equal(accounting$legacy_cache_fallback_count, 1L)
 })
+
+testthat::test_that("EWCE never silently falls back to a background-free test", {
+  source(testthat::test_path("..", "..", "R", "paths.R"))
+  src <- readLines(repo_path("05_celltype_enrichment_EWCE", "01_EWCE_E9.r"),
+                   warn = FALSE)
+  txt <- paste(src, collapse = "\n")
+  # Scan CODE only: the comment explaining this rule necessarily names the
+  # very call signature the rule forbids.
+  code <- paste(sub("^\\s*#.*$", "", src), collapse = "\n")
+
+  # The retry that dropped `bg` substituted the full reference transcriptome for
+  # the measured-proteome background while the caller still stamped
+  # N_Background = length(bg), making a wrong result indistinguishable from a
+  # correct one - including in the on-disk cache.
+  calls <- unlist(regmatches(
+    code, gregexpr("EWCE::bootstrap_enrichment_test[(](?:[^()]|[(][^()]*[)])*[)]", code)))
+  testthat::expect_gt(length(calls), 0L)
+  for (call in calls) {
+    testthat::expect_true(grepl("bg[[:space:]]*=", call),
+                          info = "an EWCE call omits the background argument")
+  }
+  # and the failure path must be a hard stop that explains itself
+  testthat::expect_true(grepl("Refusing to retry without a background", txt, fixed = TRUE))
+})
