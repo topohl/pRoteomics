@@ -271,8 +271,12 @@ parse_sample_metadata_from_names <- function(sample_names) {
   tibble::tibble(
     SampleColumn = sample_names,
     SampleKey = sample_key,
-    Region = stringr::str_extract(SampleKey, regex("CA1|CA2|CA3|DG", ignore_case = TRUE)) %>% toupper(),
-    Layer = stringr::str_extract(SampleKey, regex("slm|sr|so|mo|po|sp|sg", ignore_case = TRUE)) %>% tolower(),
+    # Anchor to a whole underscore-delimited token. An unanchored search matches
+    # the FIRST occurrence anywhere in the acquisition string, and every sample
+    # name contains "80SPDzoom", whose "SP" matched before the real layer token -
+    # collapsing every neuropil sample to Layer = "sp".
+    Region = stringr::str_match(SampleKey, regex("(?:^|_)(CA1|CA2|CA3|DG)(?:_|$)", ignore_case = TRUE))[, 2] %>% toupper(),
+    Layer = stringr::str_match(SampleKey, regex("(?:^|_)(slm|sr|so|mo|po|sp|sg)(?:_|$)", ignore_case = TRUE))[, 2] %>% tolower(),
     ExpGroup = stringr::str_extract(SampleKey, regex("CON|RES|SUS|control|resilient|susceptible", ignore_case = TRUE)) %>% normalize_expgroup()
   ) %>%
     dplyr::mutate(
@@ -332,8 +336,12 @@ standardize_metadata <- function(metadata_df, sample_names, numeric_map = params
       Exclude = if (!is.na(exclude_col) && exclude_col %in% names(out)) as.character(.data[[exclude_col]]) else NA_character_
     ) %>%
     dplyr::mutate(
-      Region = ifelse(!is.na(parsed$Region), parsed$Region, Region),
-      Layer = ifelse(!is.na(parsed$Layer), parsed$Layer, Layer),
+      # Canonical metadata wins; filename parsing is only a FALLBACK for missing
+      # values. The previous order let the parsed value override a correct
+      # metadata column, which is how the layer collapse survived the join.
+      # This now matches how ExpGroup is resolved on the line below.
+      Region = ifelse(is.na(Region) | Region == "", parsed$Region, Region),
+      Layer = ifelse(is.na(Layer) | Layer == "", parsed$Layer, Layer),
       ExpGroup = ifelse(is.na(ExpGroup) | ExpGroup == "" | toupper(ExpGroup) == "NA", parsed$ExpGroup, ExpGroup),
       Region = toupper(Region),
       Layer = tolower(Layer),
