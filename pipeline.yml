@@ -1014,6 +1014,91 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Reviewer workbook, candidate figures and atlas validation. Figures are NEW candidates and replace no manuscript contract; each writes its own source-data CSV. A critical validation FAIL exits non-zero, which is how a stored zero empirical EWCE p-value would block the atlas."
+      - script: "11_spatial_systems/12_neuropil_spatial_precision_context.R"
+        required: false
+        datasets: ["neuron_neuropil"]
+        stage: "networks"
+        scope: "global"
+        produces:
+          - "results/tables/11_spatial_systems/atlas/neuropil_spatial_precision_context.csv"
+          - "results/tables/11_spatial_systems/atlas/ca2_slm_imputation_artifact_test.csv"
+        consumes_required:
+          - "data/processed/02_id_mapping_animal_level/mapped/neuron_neuropil/forward/per_file/"
+        consumes_optional:
+          - "data/raw/pg_matrix/quicksearch.pg_matrix.tsv"
+          - "results/tables/03_qc_exploration/"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Final power audit of the CA2-SLM hit concentration. Model SE is RECOVERED as |log2FC|/|t| from the published statistics, never refitted. Result: precision is ruled out by construction because the canonical DA shares one residual variance per protein across units (SE identical to 3.3e-14), and detectability is contradicted because CA2_slm has the HIGHEST pre-imputation missingness and the LOWEST baseline abundance. Differential missingness IS supported (SUS 0.229 vs RES 0.181; r(dmiss, log2FC) = -0.455) and 3 of the 5 QC-flagged neuropil samples are CA2_slm, so the concentration is substantially an imputation artifact; only 8 of 28 DAPs are fully observed."
+      - script: "11_spatial_systems/13_animal_spatial_networks.R"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        stage: "networks"
+        scope: "global"
+        produces:
+          - "results/tables/11_spatial_systems/networks/network_representation_selection.csv"
+          - "results/tables/11_spatial_systems/networks/animal_network_edges.csv"
+          - "results/tables/11_spatial_systems/networks/animal_network_nodes.csv"
+          - "results/tables/11_spatial_systems/networks/animal_network_bilateral_reproducibility.csv"
+          - "results/tables/11_spatial_systems/networks/edge_bilateral_reproducibility.csv"
+          - "results/tables/11_spatial_systems/networks/animal_network_objects.rds"
+          - "results/tables/11_spatial_systems/networks/matrices/"
+        consumes_required:
+          - "data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx"
+        consumes_optional:
+          - "results/tables/11_spatial_systems/data_contract/spatial_systems_hemisphere_inventory.csv"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "ONE AnimalID = ONE independent network replicate. Builds a side-resolved and a bilateral spatial molecular-profile similarity matrix per animal. The representation is chosen PHENOTYPE-BLIND on CON animals: anatomical discrimination is a validity FLOOR (0.05), not a tiebreaker, which is why raw abundance is rejected despite posting the highest inter-animal stability - it scores highest precisely because similarity is dominated by the global abundance rank every unit shares (0.009 discrimination versus 0.12-0.13). Full weighted matrices only; no thresholding."
+      - script: "11_spatial_systems/14_network_group_organization.R"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        stage: "networks"
+        scope: "global"
+        produces:
+          - "results/tables/11_spatial_systems/networks/CON_spatial_molecular_similarity_matrix.csv"
+          - "results/tables/11_spatial_systems/networks/animal_network_global_metrics.csv"
+          - "results/tables/11_spatial_systems/networks/network_metric_redundancy.csv"
+          - "results/tables/11_spatial_systems/networks/animal_network_distance_from_CON.csv"
+          - "results/tables/11_spatial_systems/networks/network_group_metric_comparison.csv"
+          - "results/tables/11_spatial_systems/networks/network_global_multivariate_test.csv"
+          - "results/tables/11_spatial_systems/networks/network_edge_group_differences.csv"
+          - "results/tables/11_spatial_systems/networks/spatial_edge_module_context.csv"
+          - "results/tables/11_spatial_systems/networks/spatial_node_cell_context.csv"
+          - "results/tables/11_spatial_systems/networks/spatial_node_network_integration.csv"
+          - "results/tables/11_spatial_systems/atlas/WGCNA_module_network_context.csv"
+          - "results/tables/11_spatial_systems/atlas/protein_network_context.csv"
+        consumes_required:
+          - "results/tables/11_spatial_systems/networks/animal_network_objects.rds"
+          - "results/tables/11_spatial_systems/networks/animal_network_edges.csv"
+        consumes_optional:
+          - "results/tables/11_spatial_systems/atlas/WGCNA_module_spatial_cell_affinity.csv"
+          - "results/tables/11_spatial_systems/atlas/WGCNA_module_spatial_fingerprints_raw.csv"
+          - "results/tables/11_spatial_systems/atlas/protein_spatial_cell_affinity.csv"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Group organisation with the ANIMAL as the inferential unit throughout: every permutation relabels whole animals and every bootstrap resamples animals. SUS vs RES enumerates all 20 assignments exactly, so the smallest ATTAINABLE two-sided p is 0.10 and no such comparison can reach 0.05 - failing to cross it is not evidence of no difference. The three-group omnibus enumerates 1680. No bootstrap sign frequency is ever reported as a p-value and no BH FDR is derived from one. CON animals are scored against a LEAVE-ONE-CON-OUT centroid. Part 23 adds node-level integration context back to the module and protein atlas; the edge structure stays in the network tables."
+      - script: "11_spatial_systems/15_network_legacy_workbook_validation.R"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        stage: "networks"
+        scope: "global"
+        produces:
+          - "results/tables/11_spatial_systems/spatial_systems_networks.xlsx"
+          - "results/tables/11_spatial_systems/networks/spatial_network_validation_status.csv"
+          - "results/tables/11_spatial_systems/networks/legacy_spatial_network_comparison.csv"
+          - "results/tables/11_spatial_systems/networks/network_behavior_coupling_audit.csv"
+          - "results/figures/11_spatial_systems/networks/"
+        consumes_required:
+          - "results/tables/11_spatial_systems/networks/animal_network_edges.csv"
+          - "results/tables/11_spatial_systems/networks/network_edge_group_differences.csv"
+        consumes_optional:
+          - "results/tables/07_spatial_networks/"
+          - "results/tables/11_spatial_systems/atlas/WGCNA_module_network_context.csv"
+          - "results/tables/11_spatial_systems/networks/spatial_node_network_integration.csv"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Legacy comparison, reviewer workbook, candidate figures and the network validation contract; a critical FAIL exits non-zero. The legacy 07_spatial_networks outputs are READ and labelled legacy_noncanonical_inference, never modified: its permutation_p was a bootstrap sign frequency (no group label was ever shuffled) and its fdr was a BH adjustment of that pseudo-p, with a minimum of 0.890 across all 18 edges. Zero legacy edges are comparable to the corrected 10-unit neuropil axis because the legacy network was built on the corrupted 4-node axis."
   coupling:
     description: "Behavior/physiology coupling for networks, modules, and selected proteomic summaries."
     scripts:
