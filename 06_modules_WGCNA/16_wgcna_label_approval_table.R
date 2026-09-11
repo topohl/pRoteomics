@@ -280,6 +280,7 @@ sups_for_check$hierarchy_redundancy_warning <-
 mods_for_check$hierarchy_redundancy_warning <- NA_character_
 all_rows <- bind_rows(mods_for_check, sups_for_check)
 
+all_rows <- wal_enforce_conservative_unapproved(all_rows)
 approval <- wal_build_approval_table(all_rows)
 wla_assert_phenotype_blind(approval, "Final approval table")
 

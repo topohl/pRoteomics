@@ -57,7 +57,23 @@ tokenize_proteins <- function(x) {
   unique(x[nzchar(x) & !is.na(x)])
 }
 
+# Enrichment manifests record ABSOLUTE paths from the machine that produced them
+# (e.g. "P://data/processed/..."). On any other machine that drive does not
+# exist, every referenced set silently reads as empty and the overlap table is
+# written as "skipped" - which is how it came to be frozen at a superseded run.
+# Fall back to resolving the recorded path against the current repository root.
+resolve_manifest_path <- function(path) {
+  if (length(path) != 1L || is.na(path) || !nzchar(path)) return(NA_character_)
+  if (file.exists(path)) return(path)
+  rel <- sub("^[A-Za-z]:[/\\\\]+", "", gsub("\\\\", "/", path))
+  rel <- sub("^/+", "", rel)
+  candidate <- repo_path(rel)
+  if (file.exists(candidate)) return(candidate)
+  NA_character_
+}
+
 read_protein_set <- function(path) {
+  path <- resolve_manifest_path(path)
   if (is.na(path) || !file.exists(path)) return(character())
   df <- tryCatch(readr::read_csv(path, show_col_types = FALSE), error = function(e) NULL)
   if (is.null(df) || !nrow(df)) return(character())
@@ -67,6 +83,7 @@ read_protein_set <- function(path) {
 }
 
 read_leading_edge_set <- function(path) {
+  path <- resolve_manifest_path(path)
   if (is.na(path) || !file.exists(path)) return(character())
   df <- tryCatch(readr::read_csv(path, show_col_types = FALSE), error = function(e) NULL)
   if (is.null(df) || !"core_enrichment" %in% names(df)) return(character())
@@ -156,7 +173,10 @@ run_wgcna_de_gsea_overlap <- function(dataset = current_dataset(), dry_run = is_
 
   modules_raw <- readr::read_csv(definitions_file, show_col_types = FALSE)
   validate_wgcna_module_definitions(modules_raw, "WGCNA downstream definitions")
+  # Accept both the pre- and post-protein-group-migration identifier schemas.
+  modules_raw <- wgcna_normalize_protein_identifier_columns(modules_raw)
   universe_raw <- readr::read_csv(universe_file, show_col_types = FALSE)
+  universe_raw <- wgcna_normalize_protein_identifier_columns(universe_raw)
   require_module_contract_columns(universe_raw, c("ProteinID", "UniProt", "GeneSymbol", "included_in_wgcna"), "WGCNA feature universe")
   universe <- unique(c(
     tokenize_proteins(universe_raw$ProteinID),

@@ -197,7 +197,7 @@ wal_approval_columns <- function() {
     "central_support_summary", "GO_support_summary", "contradiction_summary",
     "hierarchy_redundancy_warning", "bp_blind_spot_warning",
     "context_caveat", "rationale",
-    "automatic_proposal_label", "algorithmic_evidence_class",
+    "candidate_theme", "automatic_proposal_label", "algorithmic_evidence_class",
     "evidence_class_source",
     "recommended_for_activation", "human_decision")
 }
@@ -675,4 +675,64 @@ wal_bp_blind_spot <- function(rows, go_core, p_threshold = 1e-04) {
       nrow(z), z$Description[[1]], z$Ontology[[1]], z$p.adjust[[1]])
   }
   out
+}
+
+# ------------------------------------------- conservative unapproved proposals
+#
+# Safety rule for rows this pipeline is PROPOSING (not rows that already carry an
+# active reviewed label). If a proposal is low confidence and therefore not
+# recommended for activation, its PRIMARY wording must itself be conservative:
+# a reviewer skimming the primary column must not read a specific mechanism that
+# the evidence was too weak to activate.
+#
+# The specific theme is never lost. It moves to candidate_theme and to the
+# alternative wording, so the evidence and the reading remain on the row.
+#
+# Rows with adjudication_action == "KEEP_ACTIVE_REVIEWED" are EXEMPT: those are
+# human-reviewed labels already in force, and rewriting them here would be
+# exactly the automatic registry edit the framework forbids.
+wal_conservative_label <- function() "mixed / unresolved"
+
+wal_is_conservative_label <- function(x) {
+  tolower(trimws(as.character(x))) %in%
+    c("mixed / unresolved", "mixed/unresolved", "unresolved", "")
+}
+
+wal_enforce_conservative_unapproved <- function(rows) {
+  need <- c("proposed_final_label", "confidence", "adjudication_action")
+  for (nm in need) if (!nm %in% names(rows))
+    stop("rows is missing ", nm, ".", call. = FALSE)
+  if (!"candidate_theme" %in% names(rows)) rows$candidate_theme <- NA_character_
+  if (!"alternative_label_1" %in% names(rows)) rows$alternative_label_1 <- NA_character_
+  if (!"alternative_label_2" %in% names(rows)) rows$alternative_label_2 <- NA_character_
+
+  conf <- tolower(trimws(as.character(rows$confidence)))
+  act <- toupper(trimws(as.character(rows$adjudication_action)))
+  hit <- conf %in% "low" & !act %in% "KEEP_ACTIVE_REVIEWED" &
+    !wal_is_conservative_label(rows$proposed_final_label)
+  hit[is.na(hit)] <- FALSE
+  if (!any(hit)) return(rows)
+
+  demoted <- as.character(rows$proposed_final_label)[hit]
+  rows$candidate_theme[hit] <- demoted
+  # keep the demoted wording as the leading alternative, without losing an
+  # existing alternative: shift it down if slot 2 is free.
+  a1 <- as.character(rows$alternative_label_1)[hit]
+  a2 <- as.character(rows$alternative_label_2)[hit]
+  move <- (is.na(a2) | !nzchar(a2)) & !is.na(a1) & nzchar(a1) & a1 != demoted
+  a2[move] <- a1[move]
+  a1 <- demoted
+  # an alternative that merely repeats the new conservative primary carries no
+  # information for the reviewer, so drop it rather than display a duplicate.
+  a2[wal_is_conservative_label(a2)] <- NA_character_
+  rows$alternative_label_1[hit] <- a1
+  rows$alternative_label_2[hit] <- a2
+  rows$proposed_final_label[hit] <- wal_conservative_label()
+  rows$adjudication_action[hit] <- "MIXED"
+  rows$rationale[hit] <- paste0(
+    "PRIMARY PROPOSAL HELD CONSERVATIVE. The evidence-based reading is retained in ",
+    "candidate_theme and alternative_label_1, but the primary wording is '",
+    wal_conservative_label(), "' because the adjudicated confidence is low and the ",
+    "row is not recommended for activation. ", as.character(rows$rationale)[hit])
+  rows
 }

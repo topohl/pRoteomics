@@ -716,21 +716,29 @@ run_ewce_once <- function(hits, bg, annot_level) {
     )
   }
 
+  # DELIBERATELY NO THIRD FALLBACK WITHOUT `bg`.
+  #
+  # There used to be one: on failure it retried EWCE::bootstrap_enrichment_test()
+  # with no bg argument, which silently substitutes the FULL CTD transcriptome
+  # for the measured-proteome background. The caller then stamped
+  # N_Background = length(bg) and cached the result under a key built from the
+  # intended background, so a transcriptome-background result was
+  # indistinguishable from a correct one - including in the cache.
+  #
+  # A background-free enrichment answers a different question and is not
+  # interchangeable here, so this now fails loudly rather than degrading in
+  # silence. This can only turn a silently wrong run into a visible one.
   if (inherits(res, "try-error")) {
-    res <- try(
-      EWCE::bootstrap_enrichment_test(
-        sct_data = ctd,
-        hits = hits,
-        reps = analysis_params$reps,
-        annotLevel = annot_level,
-        genelistSpecies = "mouse",
-        sctSpecies = "mouse"
-      ),
-      silent = TRUE
+    stop(
+      "EWCE bootstrap failed for annotLevel ", annot_level,
+      " with the supplied measured-proteome background (", length(bg),
+      " genes). Refusing to retry without a background: that would substitute ",
+      "the full reference transcriptome and report it as if the intended ",
+      "background had been used. Underlying error: ",
+      conditionMessage(attr(res, "condition")),
+      call. = FALSE
     )
   }
-
-  if (inherits(res, "try-error")) stop(res)
   res$results
 }
 

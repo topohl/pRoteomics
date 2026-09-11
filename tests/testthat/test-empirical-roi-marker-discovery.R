@@ -273,3 +273,45 @@ testthat::test_that("aggregation is invariant to sample and hemisphere row order
   testthat::expect_equal(reverse$region_mat, forward$region_mat)
   testthat::expect_equal(reverse$hemisphere_mat, forward$hemisphere_mat)
 })
+
+testthat::test_that("the side-resolved matrix keeps Left and Right apart", {
+  meta <- make_empirical_metadata(
+    "neuron_soma", animals = c("A111", "A0002"),
+    one_sided = list(AnimalID = "A111", region = "CA1", drop_side = "Right")
+  )
+  values <- matrix(0, nrow = 1, ncol = nrow(meta), dimnames = list("PG1", meta$sample_id))
+  values[1, meta$AnimalID == "A0002" & meta$region == "CA1" & meta$ReplicateGroup == "Left"] <- 2
+  values[1, meta$AnimalID == "A0002" & meta$region == "CA1" & meta$ReplicateGroup == "Right"] <- 6
+  values[1, meta$AnimalID == "A111" & meta$region == "CA1"] <- 7
+  aggregated <- aggregate_empirical_roi_dataset(values, meta, "neuron_soma")
+
+  sep <- "\037"
+  left_key <- paste("A0002", "CA1", "Left", sep = sep)
+  right_key <- paste("A0002", "CA1", "Right", sep = sep)
+  testthat::expect_true(all(c(left_key, right_key) %in% colnames(aggregated$side_mat)))
+  # the two sides survive as themselves, rather than as their mean
+  testthat::expect_equal(unname(aggregated$side_mat["PG1", left_key]), 2)
+  testthat::expect_equal(unname(aggregated$side_mat["PG1", right_key]), 6)
+  # and the collapsed object still reports the average, unchanged
+  testthat::expect_equal(unname(aggregated$animal_spatial_mat["PG1", paste("A0002", "CA1", sep = sep)]), 4)
+
+  # ReplicateGroup is a key of the side object and of nothing else
+  testthat::expect_true("ReplicateGroup" %in% names(aggregated$side_meta))
+  testthat::expect_false("ReplicateGroup" %in% names(aggregated$animal_spatial_meta))
+  # a one-sided unit contributes exactly one side, never an invented partner
+  one_sided <- grep(paste0("^A111", sep, "CA1", sep), colnames(aggregated$side_mat), value = TRUE)
+  testthat::expect_length(one_sided, 1L)
+  testthat::expect_equal(unname(aggregated$side_mat["PG1", one_sided]), 7)
+})
+
+testthat::test_that("the deprecated hemisphere_* aliases are not side-resolved", {
+  meta <- make_empirical_metadata("neuron_soma", animals = c("A111", "A0002"))
+  values <- matrix(0, nrow = 1, ncol = nrow(meta), dimnames = list("PG1", meta$sample_id))
+  aggregated <- aggregate_empirical_roi_dataset(values, meta, "neuron_soma")
+
+  # They remain exact aliases of the collapsed object, so old consumers are safe,
+  # and they must NOT be mistaken for a bilateral substrate.
+  testthat::expect_identical(aggregated$hemisphere_mat, aggregated$animal_spatial_mat)
+  testthat::expect_false("ReplicateGroup" %in% names(aggregated$hemisphere_meta))
+  testthat::expect_gt(ncol(aggregated$side_mat), ncol(aggregated$hemisphere_mat))
+})

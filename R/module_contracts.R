@@ -240,6 +240,40 @@ require_module_contract_columns <- function(df, cols, artifact = "artifact") {
   invisible(TRUE)
 }
 
+# Protein-group migration compatibility.
+#
+# The WGCNA artifacts were migrated to protein-group identity, which renamed the
+# single-value identifier columns: UniProt -> RepresentativeUniProt/MemberUniProts
+# and GeneSymbol -> GeneSymbols. Consumers written against the pre-migration
+# schema hard-fail on the renamed tables, which silently freezes their outputs at
+# the last pre-migration run. This fills the legacy names from their current
+# equivalents so those consumers keep resolving the same protein tokens.
+#
+# It never overwrites a column that is already present and populated.
+wgcna_normalize_protein_identifier_columns <- function(df) {
+  if (!is.data.frame(df) || !nrow(df)) return(df)
+  fill_from <- function(target, sources) {
+    have <- target %in% names(df) &&
+      any(!is.na(df[[target]]) & nzchar(trimws(as.character(df[[target]]))))
+    if (have) return(invisible(NULL))
+    for (s in sources) {
+      if (!s %in% names(df)) next
+      v <- as.character(df[[s]])
+      if (!any(!is.na(v) & nzchar(trimws(v)))) next
+      df[[target]] <<- v
+      return(invisible(NULL))
+    }
+    if (!target %in% names(df)) df[[target]] <<- NA_character_
+    invisible(NULL)
+  }
+  fill_from("UniProt", c("RepresentativeUniProt", "MemberUniProts",
+                         "representative_accession", "member_accessions"))
+  fill_from("GeneSymbol", c("GeneSymbols", "representative_gene_symbol",
+                            "member_gene_symbols"))
+  fill_from("ProteinID", c("ProteinGroupID"))
+  df
+}
+
 wgcna_join_supermodule_hub_handoff <- function(wgcna_modules_long,
                                                supermodule_annotation,
                                                merged_me_names) {
