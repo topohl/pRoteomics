@@ -215,6 +215,7 @@ testthat::test_that("structured anatomy overrides misleading filename labels", {
 })
 
 testthat::test_that("complete paired 9 by 3 limma design has residual df 16", {
+  testthat::skip_if_not_installed("limma")
   model_input <- build_empirical_roi_model_input(make_aggregated_model_fixture())
   fit <- build_empirical_roi_limma_inference(model_input)
   testthat::expect_equal(qr(model_input$design)$rank, 11L)
