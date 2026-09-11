@@ -667,3 +667,126 @@ control_spatial_validate_output_bundle <- function(paths) {
   }
   invisible(TRUE)
 }
+
+# ---------------------------------------------------------------------------
+# Reusable anatomical contrast registry.
+#
+# These definitions were previously built inline inside
+# control_spatial_identity_main(), which meant a bilateral, a left-only and a
+# right-only analysis would each need their own copy - and three copies of a
+# manuscript-locked contrast list is three chances to drift apart. The registry
+# below is the single definition; every consumer expands the SAME specs.
+#
+# A spec carries weights over ANATOMICAL UNIT levels, not over design columns,
+# so the identical spec can be expanded against a bilateral design and against a
+# side-specific design (which may legitimately have a different column set).
+#
+# The 11 manuscript-locked neuronal contrasts are 4 soma + 7 neuropil.
+# Microglia contrasts are region-level only and are explicitly NOT part of that
+# contract; see control_spatial_contrast_is_manuscript_locked().
+
+control_spatial_contrast_spec <- function(name, weights, family, manuscript_locked) {
+  w <- weights[abs(weights) > 0]
+  if (!isTRUE(all.equal(sum(weights), 0, tolerance = 1e-12))) {
+    stop("Contrast '", name, "' weights do not sum to zero.", call. = FALSE)
+  }
+  list(name = as.character(name), weights = weights, family = family,
+       manuscript_locked = isTRUE(manuscript_locked),
+       units_used = names(w))
+}
+
+# The single source of truth. `unit_levels` are the anatomical unit labels
+# actually present in the data being analysed.
+control_spatial_contrast_registry <- function(dataset, unit_levels) {
+  unit_levels <- sort(unique(as.character(unit_levels)))
+  specs <- list()
+  add <- function(s) specs[[length(specs) + 1L]] <<- s
+
+  if (identical(dataset, "neuron_soma")) {
+    for (target in unit_levels) {
+      add(control_spatial_contrast_spec(
+        paste0(target, "_vs_mean_other_soma_regions"),
+        control_spatial_target_rest_weights(unit_levels, target),
+        "soma_region_vs_rest", TRUE))
+    }
+  }
+
+  if (identical(dataset, "neuron_neuropil")) {
+    regions <- sub("_.*$", "", unit_levels)
+    add(control_spatial_contrast_spec(
+      "DG_neuropil_vs_mean_non_DG_regions",
+      control_spatial_region_mean_weights(unit_levels, regions, "DG"),
+      "neuropil_region_vs_rest", TRUE))
+
+    if (all(c("CA1_SO", "CA3_SO") %in% unit_levels)) {
+      w <- stats::setNames(rep(0, length(unit_levels)), unit_levels)
+      w[["CA1_SO"]] <- 1; w[["CA3_SO"]] <- -1
+      add(control_spatial_contrast_spec("CA1_SO_vs_CA3_SO", w,
+                                        "neuropil_matched_stratum", TRUE))
+    }
+    ca1 <- unit_levels[grepl("^CA1_", unit_levels)]
+    if (length(ca1) >= 3L) {
+      for (target in ca1) {
+        add(control_spatial_contrast_spec(
+          paste0(target, "_vs_mean_other_CA1_strata"),
+          control_spatial_target_rest_weights(ca1, target),
+          "neuropil_CA1_stratum_vs_rest", TRUE))
+      }
+    }
+    dg <- unit_levels[grepl("^DG_", unit_levels)]
+    if (length(dg) >= 2L) {
+      for (target in dg) {
+        add(control_spatial_contrast_spec(
+          paste0(target, "_vs_mean_other_DG_layers"),
+          control_spatial_target_rest_weights(dg, target),
+          "neuropil_DG_layer_vs_rest", TRUE))
+      }
+    }
+  }
+
+  if (identical(dataset, "microglia")) {
+    # ADDITIONAL REGIONAL CONTEXT, NOT PART OF THE 11-CONTRAST CONTRACT.
+    # Microglia are sampled at region level only, so no layer contrast is
+    # defensible here and none is defined. These are region-vs-rest comparisons
+    # of the microglia-enriched ROI and must be reported as regional context.
+    if (length(unit_levels) >= 2L) {
+      for (target in unit_levels) {
+        add(control_spatial_contrast_spec(
+          paste0(target, "_vs_mean_other_microglia_regions"),
+          control_spatial_target_rest_weights(unit_levels, target),
+          "microglia_region_vs_rest", FALSE))
+      }
+    }
+  }
+
+  names(specs) <- vapply(specs, function(s) s$name, character(1))
+  if (anyDuplicated(names(specs))) {
+    stop("Duplicate contrast name in registry for ", dataset, ".", call. = FALSE)
+  }
+  specs
+}
+
+# Expand one spec against a specific design matrix. Any unit the spec needs but
+# the design lacks is a hard error: silently dropping it would change the
+# scientific question while keeping the contrast's name.
+control_spatial_contrast_vector <- function(spec, design_colnames) {
+  v <- stats::setNames(rep(0, length(design_colnames)), design_colnames)
+  want <- paste0("anatomical_unit_", names(spec$weights))
+  missing <- setdiff(want[abs(spec$weights) > 0], design_colnames)
+  if (length(missing)) {
+    stop("Contrast '", spec$name, "' needs anatomical unit(s) absent from this ",
+         "design: ", paste(sub("^anatomical_unit_", "", missing), collapse = ", "),
+         ". Refusing to silently redefine the contrast.", call. = FALSE)
+  }
+  present <- want %in% design_colnames
+  v[want[present]] <- spec$weights[present]
+  v
+}
+
+control_spatial_contrast_is_manuscript_locked <- function(specs) {
+  vapply(specs, function(s) isTRUE(s$manuscript_locked), logical(1))
+}
+
+# Count of manuscript-locked contrasts across the neuronal datasets, used as a
+# guard so the 11-contrast contract cannot silently change size.
+control_spatial_manuscript_contrast_count <- function() 11L
