@@ -937,6 +937,83 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Gates the spatial systems layer. A critical FAIL exits non-zero so later atlas and network stages cannot be built on a foundation that did not hold."
+      - script: "11_spatial_systems/08_module_spatial_cell_atlas.R"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        stage: "networks"
+        scope: "per_dataset"
+        produces:
+          - "results/tables/11_spatial_systems/atlas/WGCNA_module_spatial_cell_affinity.csv"
+          - "results/tables/11_spatial_systems/atlas/WGCNA_module_baseline_spatial_profile_long.csv"
+          - "results/tables/11_spatial_systems/atlas/WGCNA_module_spatial_fingerprints_raw.csv"
+          - "results/tables/11_spatial_systems/atlas/WGCNA_module_spatial_fingerprints_z.csv"
+          - "results/tables/11_spatial_systems/atlas/WGCNA_module_spatial_similarity.csv"
+          - "results/tables/11_spatial_systems/atlas/WGCNA_module_empirical_compartment_affinity_long.csv"
+          - "results/tables/11_spatial_systems/atlas/WGCNA_module_reference_marker_affinity_long.csv"
+          - "results/tables/11_spatial_systems/atlas/WGCNA_label_spatial_cell_context_audit.csv"
+          - "results/tables/11_spatial_systems/atlas/WGCNA_supermodule_spatial_cell_context.csv"
+          - "results/tables/11_spatial_systems/atlas/WGCNA_supermodule_spatial_coherence.csv"
+        consumes_required:
+          - "results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_hemisphere_values.csv"
+          - "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_modules_long.csv"
+          - "results/tables/11_spatial_systems/celltype_annotation/WGCNA_module_external_celltype_affinity_long.csv"
+        consumes_optional:
+          - "results/tables/11_spatial_systems/bilateral/WGCNA_module_bilateral_reproducibility.csv"
+          - "results/tables/11_spatial_systems/precision/bilateral_precision_gain.csv"
+          - "config/marker_panels/wgcna_reference_marker_sets.csv"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Integrated module spatial/cell-affinity atlas. Baseline identity is CON-only from the validated Stage-05 hemisphere values; empirical compartment, reference marker and external EWCE affinity are kept as separate dimensions and never summed into a composite score. Marker sets outside 0.5%-50% of the measured universe are flagged non-informative and excluded from the strongest-compartment call, because empirical_microglia_neuropil_shared spans ~73% of the proteome and cannot discriminate. Labels are audited, never changed."
+      - script: "11_spatial_systems/09_protein_spatial_cell_atlas.R"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        stage: "networks"
+        scope: "global"
+        produces:
+          - "results/tables/11_spatial_systems/atlas/protein_spatial_cell_affinity.csv"
+          - "results/tables/11_spatial_systems/atlas/protein_baseline_spatial_profile.csv"
+          - "results/tables/11_spatial_systems/atlas/protein_sus_res_fdr_supported_atlas.csv"
+        consumes_required:
+          - "results/tables/10_biological_integration/wgcna_candidate_protein_shortlist/global/wgcna_candidate_proteins_all.csv"
+        consumes_optional:
+          - "results/tables/11_spatial_systems/bilateral/bilateral_spatial_identity_protein_level.csv"
+          - "results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv"
+          - "config/marker_panels/wgcna_reference_marker_sets.csv"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Protein-level atlas over the UNION of the WGCNA candidate shortlist and every SUS-RES FDR-supported protein, deduplicated by dataset x ProteinGroupID. Baseline spatial identity is established from CON animals only; SUS-RES statistics are JOINED from canonical outputs and never recomputed. The effect-at-identity classification uses a prespecified within-protein high-affinity rule (upper third of that protein's own spatial ranking)."
+      - script: "11_spatial_systems/10_neuropil_spatial_detection_context.R"
+        required: false
+        datasets: ["neuron_neuropil"]
+        stage: "networks"
+        scope: "global"
+        produces:
+          - "results/tables/11_spatial_systems/atlas/neuropil_spatial_detection_context.csv"
+        consumes_required:
+          - "results/tables/04_differential_expression_enrichment/sus_res_spatial_dap_atlas/global/sus_res_dap_counts.csv"
+        consumes_optional:
+          - "results/tables/10_biological_integration/wgcna_candidate_protein_shortlist/neuron_neuropil/wgcna_candidate_proteins_long.csv"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Detectability audit for the CA2-SLM hit burden. Separates genuine spatial concentration from baseline abundance and from per-unit statistical power, using ALL tested proteins per unit as the denominator rather than the phenotype-selected candidate subset. Joins the DAP-count table on route_unit: the sibling spatial_unit column is collapsed to bare Region for soma and microglia and would silently drop 8 of 18 units. No DA statistic is refitted."
+      - script: "11_spatial_systems/11_spatial_systems_atlas_workbook.R"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        stage: "networks"
+        scope: "global"
+        produces:
+          - "results/tables/11_spatial_systems/spatial_systems_atlas.xlsx"
+          - "results/tables/11_spatial_systems/spatial_systems_atlas_validation.csv"
+          - "results/figures/11_spatial_systems/atlas/"
+        consumes_required:
+          - "results/tables/11_spatial_systems/atlas/WGCNA_module_spatial_cell_affinity.csv"
+          - "results/tables/11_spatial_systems/atlas/protein_spatial_cell_affinity.csv"
+        consumes_optional:
+          - "results/tables/11_spatial_systems/atlas/neuropil_spatial_detection_context.csv"
+          - "results/tables/11_spatial_systems/precision/bilateral_precision_gain.csv"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Reviewer workbook, candidate figures and atlas validation. Figures are NEW candidates and replace no manuscript contract; each writes its own source-data CSV. A critical validation FAIL exits non-zero, which is how a stored zero empirical EWCE p-value would block the atlas."
   coupling:
     description: "Behavior/physiology coupling for networks, modules, and selected proteomic summaries."
     scripts:
