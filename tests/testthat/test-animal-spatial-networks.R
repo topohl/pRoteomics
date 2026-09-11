@@ -229,9 +229,23 @@ testthat::test_that("the representation was selected without any phenotype input
   testthat::expect_true(any(s$is_primary %in% TRUE))
   # raw abundance must not win: it fails the anatomical validity floor
   np <- s[s$dataset == "neuron_neuropil", , drop = FALSE]
-  if (nrow(np)) {
-    testthat::expect_false(np$representation[np$is_primary %in% TRUE][1] == "A_abundance")
-  }
+  testthat::skip_if_not(nrow(np) > 0L)
+  testthat::expect_false(np$representation[np$is_primary %in% TRUE][1] == "A_abundance")
+  testthat::expect_false(np$meets_anatomical_floor[np$representation == "A_abundance"])
+
+  # The RECORDED rule must be the rule the code actually ran. Ranking on
+  # inter-animal stability first would select A_abundance, so a stale rule
+  # string would document a selection that never happened.
+  testthat::expect_true(all(grepl("FLOOR, not a tiebreaker", s$selection_rule)))
+  ok <- np[np$meets_bilateral_floor & np$meets_retention_floor &
+             np$meets_anatomical_floor, , drop = FALSE]
+  testthat::expect_identical(
+    ok$representation[which.max(ok$median_bilateral_edge_r)],
+    np$representation[np$is_primary %in% TRUE][1])
+  # and the rule is NOT max-stability: that would have picked a different one
+  testthat::expect_false(identical(
+    np$representation[which.max(np$median_inter_animal_stability)],
+    np$representation[np$is_primary %in% TRUE][1]))
 })
 
 testthat::test_that("edge-level output reports exact coarse resolution, never an FDR", {
