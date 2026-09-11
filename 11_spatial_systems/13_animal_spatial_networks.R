@@ -208,8 +208,16 @@ chosen <- vapply(DATASETS, pick_for, character(1))
 PRIMARY <- unname(chosen[["neuron_neuropil"]])
 selection$is_primary <- selection$representation == PRIMARY
 selection$selection_rule <- paste0(
-  "prespecified: bilateral edge r >= 0.5 AND protein retention >= 0.5, then ",
-  "maximum inter-animal stability among CON, ties by anatomical plausibility")
+  "CON only. VALIDITY FLOORS (all three required): bilateral edge r >= 0.5, ",
+  "protein retention >= 0.5, and anatomical discrimination ",
+  "(within-region minus across-region edge similarity) >= ",
+  format(ANATOMICAL_FLOOR), ". Among representations that clear all three, ",
+  "maximise the median bilateral edge correlation; ties by median ",
+  "inter-animal stability. Anatomical discrimination is a FLOOR, not a ",
+  "tiebreaker: raw abundance posts the highest inter-animal stability ",
+  "precisely because similarity is dominated by the global abundance rank ",
+  "every unit shares, so ranking on stability first would reward that ",
+  "degeneracy. No phenotype contrast enters this rule.")
 selection$edge_metric <- EDGE_METHOD
 
 message("Primary representation: ", PRIMARY)
