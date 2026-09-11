@@ -119,3 +119,64 @@ testthat::test_that("EWCE never silently falls back to a background-free test", 
   testthat::expect_true(grepl("ewce_bootstrap_once", script_code, fixed = TRUE))
   testthat::expect_true(grepl("ewce_gene_set_engine.R", script_code, fixed = TRUE))
 })
+
+# =====================================================================
+# Empirical p-values from a finite bootstrap null can never be zero
+# =====================================================================
+
+testthat::test_that("the finite-sample correction bounds an empirical p below", {
+  source(testthat::test_path("..", "..", "R", "ewce_gene_set_engine.R"))
+  B <- 10000L
+  # EWCE computes p <- sum(ct_boot_dist >= hit_sum) / reps, so a raw 0 means
+  # "0 of B draws were as extreme" - it does NOT mean the null probability is 0.
+  testthat::expect_equal(ewce_finite_sample_p(0, B), 1 / (B + 1))
+  testthat::expect_equal(ewce_min_attainable_p(B), 1 / (B + 1))
+  testthat::expect_gt(ewce_finite_sample_p(0, B), 0)
+  # p = 1 stays 1, and the correction never exceeds 1
+  testthat::expect_equal(ewce_finite_sample_p(1, B), 1)
+  # every corrected value is within 1/(B+1) of the raw value
+  raw <- (0:B) / B
+  corrected <- ewce_finite_sample_p(raw, B)
+  testthat::expect_true(all(corrected > 0))
+  testthat::expect_true(all(corrected <= 1))
+  testthat::expect_lte(max(abs(corrected - raw)), 1 / (B + 1) + 1e-12)
+  # monotone: correcting cannot reorder results
+  testthat::expect_false(is.unsorted(corrected))
+})
+
+testthat::test_that("a value that is not a bootstrap count is refused", {
+  source(testthat::test_path("..", "..", "R", "ewce_gene_set_engine.R"))
+  # guards against silently "correcting" an analytical p-value, which would be
+  # scientifically wrong: the correction is only valid for count/B proportions.
+  testthat::expect_error(ewce_finite_sample_p(0.123456789, 10000L),
+                         "did not come from a bootstrap null")
+  testthat::expect_error(ewce_finite_sample_p(-0.1, 10000L),
+                         "did not come from a bootstrap null")
+  testthat::expect_error(ewce_finite_sample_p(1.5, 10000L),
+                         "did not come from a bootstrap null")
+  testthat::expect_error(ewce_finite_sample_p(0.5, 0L), "positive bootstrap count")
+})
+
+testthat::test_that("the generated module annotation stores no exact-zero p or FDR", {
+  source(testthat::test_path("..", "..", "R", "paths.R"))
+  p <- path_results("tables", "11_spatial_systems", "celltype_annotation",
+                    "WGCNA_module_external_celltype_affinity_long.csv")
+  testthat::skip_if_not(file.exists(p), "module EWCE annotation not generated")
+  x <- utils::read.csv(p, stringsAsFactors = FALSE)
+  tested <- x[x$annotation_status == "tested", , drop = FALSE]
+  testthat::skip_if(nrow(tested) == 0L)
+
+  testthat::expect_true(all(c("p_value_raw_ewce", "p_value", "p_correction",
+                              "min_attainable_p") %in% names(x)))
+  # THE BUG: a stored exact numeric zero, not display rounding.
+  testthat::expect_equal(sum(tested$p_value == 0, na.rm = TRUE), 0L)
+  testthat::expect_equal(sum(tested$FDR == 0, na.rm = TRUE), 0L)
+  testthat::expect_true(all(tested$p_value >= tested$min_attainable_p - 1e-12,
+                            na.rm = TRUE))
+  # the uncorrected EWCE value is retained, so nothing is hidden
+  testthat::expect_true(any(tested$p_value_raw_ewce == 0, na.rm = TRUE) ||
+                          all(tested$p_value_raw_ewce > 0, na.rm = TRUE))
+  # and the corrected value is never smaller than the raw one
+  ok <- is.finite(tested$p_value) & is.finite(tested$p_value_raw_ewce)
+  testthat::expect_true(all(tested$p_value[ok] >= tested$p_value_raw_ewce[ok] - 1e-12))
+})
