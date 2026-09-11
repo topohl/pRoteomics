@@ -11,7 +11,8 @@ testthat::test_that("biological integration entrypoints exist and dry-run", {
     "10_biological_integration/08_wgcna_candidate_protein_shortlist.R",
     "10_biological_integration/09_wgcna_sus_res_network_position.R",
     "06_modules_WGCNA/14_wgcna_label_coherence_audit.R",
-    "06_modules_WGCNA/15_wgcna_label_adjudication.R"
+    "06_modules_WGCNA/15_wgcna_label_adjudication.R",
+    "06_modules_WGCNA/16_wgcna_label_approval_table.R"
   )
   testthat::expect_true(all(file.exists(repo_path(scripts))))
 
@@ -29,7 +30,8 @@ testthat::test_that("biological integration entrypoints exist and dry-run", {
     c("10_biological_integration/08_wgcna_candidate_protein_shortlist.R", "--dataset", "all", "--dry-run"),
     c("10_biological_integration/09_wgcna_sus_res_network_position.R", "--dataset", "all", "--dry-run"),
     c("06_modules_WGCNA/14_wgcna_label_coherence_audit.R", "--dataset", "all", "--dry-run"),
-    c("06_modules_WGCNA/15_wgcna_label_adjudication.R", "--dataset", "all", "--dry-run")
+    c("06_modules_WGCNA/15_wgcna_label_adjudication.R", "--dataset", "all", "--dry-run"),
+    c("06_modules_WGCNA/16_wgcna_label_approval_table.R", "--dataset", "all", "--dry-run")
   )
   for (args in cases) {
     out <- suppressWarnings(system2(cmd, args, stdout = TRUE, stderr = TRUE))
