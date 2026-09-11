@@ -742,6 +742,27 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "PHENOTYPE-BLIND conservative naming adjudication. Consolidates the frozen Stage-01 ORA (all / core kME>=0.60 / top-25 hub protein sets) into biological themes, measures whether the network centre supports each theme, and emits PROPOSED reviewed labels with adjudication_status=proposed and reviewer=NA. No WGCNA, ORA or canonical label is recomputed or overwritten; proposals are never treated as active registries."
+      - script: "06_modules_WGCNA/16_wgcna_label_approval_table.R"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        stage: "modules_downstream"
+        scope: "per_dataset"
+        produces:
+          - "results/reviewer_audit/wgcna_label_approval/WGCNA_final_label_approval_table.csv"
+          - "results/reviewer_audit/wgcna_label_approval/WGCNA_canonical_display_label_resolution.csv"
+          - "results/reviewer_audit/wgcna_label_approval/WGCNA_label_activation_rules.csv"
+          - "results/reviewer_audit/wgcna_label_approval/WGCNA_ambiguous_module_comparison.csv"
+          - "results/reviewer_audit/wgcna_label_approval/WGCNA_final_label_approval.xlsx"
+        consumes_required:
+          - "results/reviewer_audit/wgcna_label_adjudication/WGCNA_module_adjudication.csv"
+          - "results/tables/06_modules_WGCNA/identity_contract/<dataset>/WGCNA_module_supermodule_membership_contract.csv"
+        consumes_optional:
+          - "results/reviewer_audit/wgcna_label_adjudication/WGCNA_supermodule_adjudication.csv"
+          - "results/reviewer_audit/wgcna_label_adjudication/WGCNA_module_top25_hubs.csv"
+          - "results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_final_label_lookup.csv"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "MANUAL-ADJUDICATION SUPPORT. Reads the frozen Stage-15 evidence packet (no scoring is rerun) and emits one approval row per module and supermodule with proposed_final_label, two alternatives, confidence, rationale, a label-hierarchy redundancy warning and recommended_for_activation. proposal_prepared_by=automated_evidence_audit, reviewer=NA, human_decision=NA - approval is a human act performed outside this pipeline. Activates nothing."
       - script: "07_spatial_networks/01_network_spatial_relations.r"
         required: true
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
