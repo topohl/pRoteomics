@@ -11,7 +11,9 @@
 #   smallest attainable two-sided p is 0.10. No SUS-vs-RES comparison here can
 #   reach 0.05, and failing to do so is NOT evidence of no difference. Effect
 #   sizes and animal-level patterns are the primary readout.
-#   The three-group omnibus has 1680 assignments and can reach p = 0.0006.
+#   The three-group omnibus has 1680 assignments. Its floor is not 1/1680:
+#   with equal group sizes the 3! = 6 relabellings of the same partition all
+#   give the same statistic, so the smallest attainable p is 6/1680 = 0.0036.
 #
 # USAGE
 #   Rscript 11_spatial_systems/14_network_group_organization.R
@@ -216,8 +218,11 @@ for (ds in DATASETS) {
     statistic = "between-group sum of squares in Fisher-z edge space",
     n_animals = n, n_edges = ncol(em), observed = obs,
     n_assignments = length(null),
-    exact_p = (1 + sum(null >= obs - 1e-12)) / (1 + length(null)),
-    min_attainable_p = 1 / (1 + length(null)),
+    # Complete enumeration: the observed labelling is one of the enumerated
+    # assignments, so it is already in the numerator and the add-one
+    # correction for sampled permutations must not be applied here.
+    exact_p = sum(null >= obs - 1e-12) / length(null),
+    min_attainable_p = sum(null >= max(null) - 1e-12) / length(null),
     permutation_unit = "AnimalID",
     note = "one whole-network test per dataset; edges are not tested individually here",
     stringsAsFactors = FALSE)
@@ -424,7 +429,8 @@ if (!is.null(protein_net_ctx)) {
 cat("\n===== Network group organisation =====\n")
 cat("\n--- exact test resolution ---\n")
 cat("  SUS vs RES : 20 assignments, minimum attainable two-sided p = 0.10\n")
-cat("  3-group    : 1680 assignments, minimum attainable p = 0.0006\n")
+cat(sprintf("  3-group    : 1680 assignments, minimum attainable p = %.4f\n",
+            if (nrow(multivariate)) max(multivariate$min_attainable_p) else NA_real_))
 
 cat("\n--- whole-network multivariate test (one per dataset) ---\n")
 for (i in seq_len(nrow(multivariate))) {
