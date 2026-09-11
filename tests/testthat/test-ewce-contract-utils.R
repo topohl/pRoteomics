@@ -75,24 +75,47 @@ testthat::test_that("cache accounting distinguishes reuse, fallback, and computa
 
 testthat::test_that("EWCE never silently falls back to a background-free test", {
   source(testthat::test_path("..", "..", "R", "paths.R"))
-  src <- readLines(repo_path("05_celltype_enrichment_EWCE", "01_EWCE_E9.r"),
-                   warn = FALSE)
-  txt <- paste(src, collapse = "\n")
-  # Scan CODE only: the comment explaining this rule necessarily names the
-  # very call signature the rule forbids.
-  code <- paste(sub("^\\s*#.*$", "", src), collapse = "\n")
+  # Scan CODE only: the comments explaining this rule necessarily name the very
+  # call signature the rule forbids.
+  code_of <- function(p) {
+    paste(sub("^\\s*#.*$", "", readLines(p, warn = FALSE)), collapse = "\n")
+  }
+  calls_in <- function(code) {
+    unlist(regmatches(code, gregexpr(
+      "EWCE::bootstrap_enrichment_test[(](?:[^()]|[(][^()]*[)])*[)]", code)))
+  }
 
-  # The retry that dropped `bg` substituted the full reference transcriptome for
-  # the measured-proteome background while the caller still stamped
-  # N_Background = length(bg), making a wrong result indistinguishable from a
-  # correct one - including in the on-disk cache.
-  calls <- unlist(regmatches(
-    code, gregexpr("EWCE::bootstrap_enrichment_test[(](?:[^()]|[(][^()]*[)])*[)]", code)))
-  testthat::expect_gt(length(calls), 0L)
-  for (call in calls) {
+  # The enrichment test now lives in ONE place. The retry that dropped `bg`
+  # substituted the full reference transcriptome for the measured-proteome
+  # background while the caller still stamped N_Background = length(bg), making
+  # a wrong result indistinguishable from a correct one - including in the
+  # on-disk cache.
+  engine_path <- repo_path("R", "ewce_gene_set_engine.R")
+  engine_code <- code_of(engine_path)
+  testthat::expect_true(grepl("EWCE::bootstrap_enrichment_test", engine_code,
+                              fixed = TRUE))
+  # Any literal call must carry bg; the engine builds its arguments as a list,
+  # so assert the background is bound there and never conditionally omitted.
+  for (call in calls_in(engine_code)) {
     testthat::expect_true(grepl("bg[[:space:]]*=", call),
                           info = "an EWCE call omits the background argument")
   }
-  # and the failure path must be a hard stop that explains itself
-  testthat::expect_true(grepl("Refusing to retry without a background", txt, fixed = TRUE))
+  testthat::expect_true(grepl("bg[[:space:]]*=[[:space:]]*background", engine_code))
+  testthat::expect_true(grepl("Refusing to retry without a background",
+                              engine_code, fixed = TRUE))
+
+  # Behavioural guarantee, not just textual: an empty background is refused.
+  source(testthat::test_path("..", "..", "R", "ewce_gene_set_engine.R"))
+  testthat::expect_error(
+    ewce_bootstrap_once(hits = letters, background = character(),
+                        reference = list(), annot_level = 1L),
+    "background is empty")
+
+  # The analysis script must DELEGATE rather than carry its own copy, so the
+  # guarantee above cannot be bypassed by a second implementation.
+  script_path <- repo_path("05_celltype_enrichment_EWCE", "01_EWCE_E9.r")
+  script_code <- code_of(script_path)
+  testthat::expect_length(calls_in(script_code), 0L)
+  testthat::expect_true(grepl("ewce_bootstrap_once", script_code, fixed = TRUE))
+  testthat::expect_true(grepl("ewce_gene_set_engine.R", script_code, fixed = TRUE))
 })

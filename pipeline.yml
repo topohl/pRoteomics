@@ -829,6 +829,114 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Chord diagrams from mapped phenotype-within-unit edge/protein tables; current stage placement is retained although the input path is legacy-shaped."
+      - script: "11_spatial_systems/01_spatial_systems_data_contract.R"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        stage: "networks"
+        scope: "per_dataset"
+        produces:
+          - "results/tables/11_spatial_systems/data_contract/spatial_systems_hemisphere_inventory.csv"
+          - "results/tables/11_spatial_systems/data_contract/spatial_systems_aggregation_validation.csv"
+          - "results/tables/11_spatial_systems/data_contract/spatial_systems_evidence_dependence.csv"
+        consumes_required:
+          - "data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx"
+        consumes_optional:
+          - "results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_hemisphere_values.csv"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Hemisphere-resolved data contract. Builds ProteinGroupID x AnimalID x Hemisphere x SpatialUnit (level 1), the equal-weight bilateral level 2 and explicit L/R/bilateral matrices, then proves level 2 against the canonical protigy_aggregate_expression_columns() aggregation. AnimalID is the biological replicate; a hemisphere is a repeated tissue sample within an animal. A critical validation failure stops the layer."
+      - script: "11_spatial_systems/02_bilateral_spatial_identity.R"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        stage: "networks"
+        scope: "per_dataset"
+        produces:
+          - "results/tables/11_spatial_systems/bilateral/bilateral_spatial_identity_protein_level.csv"
+          - "results/tables/11_spatial_systems/bilateral/bilateral_spatial_identity_summary.csv"
+        consumes_required:
+          - "data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx"
+        consumes_optional:
+          - "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_modules_long.csv"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "CON-only bilateral validation of anatomical identity. Runs the SAME contrast definitions, from the single registry in R/control_spatial_identity_utils.R, on left-only, right-only and bilateral data. Reports effect reproducibility; the both-sides-significant fraction is a sensitivity descriptor only. Does not replace the canonical Stage-09 analysis."
+      - script: "11_spatial_systems/03_bilateral_empirical_compartment.R"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        stage: "networks"
+        scope: "global"
+        produces:
+          - "results/tables/11_spatial_systems/bilateral/bilateral_empirical_compartment_protein_level.csv"
+          - "results/tables/11_spatial_systems/bilateral/bilateral_empirical_compartment_summary.csv"
+          - "results/tables/11_spatial_systems/bilateral/bilateral_empirical_marker_transfer.csv"
+        consumes_required:
+          - "results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_protein_identity_crosswalk_proposed.csv"
+        consumes_optional:
+          - "results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Cross-hemisphere validation of empirical compartment identity, rebuilt from the side-resolved matrices. Reuses the canonical ~ AnimalID + dataset design; AnimalID is nested within StressGroup so group membership is fully absorbed and the compartment effect is phenotype-independent. Marker transfer sizes 25/50/100 are pre-specified, not tuned."
+      - script: "11_spatial_systems/04_wgcna_module_bilateral.R"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        stage: "networks"
+        scope: "per_dataset"
+        produces:
+          - "results/tables/11_spatial_systems/bilateral/WGCNA_module_bilateral_reproducibility.csv"
+          - "results/tables/11_spatial_systems/bilateral/WGCNA_module_bilateral_spatial_profile_reproducibility.csv"
+          - "results/tables/11_spatial_systems/bilateral/WGCNA_module_bilateral_spatial_profile_summary.csv"
+        consumes_required:
+          - "results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_hemisphere_values.csv"
+        consumes_optional: []
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Module bilateral reproducibility from the ACCEPTED Stage-05 hemisphere values; no WGCNA state is recomputed. Reports absolute-value reproducibility and spatial-pattern reproducibility separately, because a module can carry a constant side offset while preserving its spatial pattern. Poor agreement is not labelled a technical failure."
+      - script: "11_spatial_systems/05_wgcna_module_celltype_annotation.R"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        stage: "networks"
+        scope: "per_dataset"
+        produces:
+          - "results/tables/11_spatial_systems/celltype_annotation/WGCNA_module_external_celltype_affinity_long.csv"
+          - "results/tables/11_spatial_systems/celltype_annotation/WGCNA_module_external_celltype_affinity_summary.csv"
+        consumes_required:
+          - "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_modules_long.csv"
+        consumes_optional: []
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Phenotype-blind external cell-type annotation of every module at three scopes (all / core_kME06 / top25) via the shared engine in R/ewce_gene_set_engine.R. Measured-proteome background; BH applied strictly within ewce_module_annotation_<dataset>_<scope>_<level> so the phenotype arm can never move these FDRs. External expression enrichment is NOT empirical compartment affinity and NOT a cell-proportion claim. WGCNA labels are unchanged."
+      - script: "11_spatial_systems/06_bilateral_variance_decomposition.R"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        stage: "networks"
+        scope: "per_dataset"
+        produces:
+          - "results/tables/11_spatial_systems/precision/bilateral_variance_decomposition.csv"
+          - "results/tables/11_spatial_systems/precision/bilateral_precision_gain.csv"
+        consumes_required:
+          - "results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_hemisphere_values.csv"
+        consumes_optional:
+          - "config/marker_panels/wgcna_reference_marker_sets.csv"
+          - "results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Repeated-measures variance decomposition over WGCNA modules, reference marker scores and empirical compartment scores. Hemisphere is a FIXED effect so a systematic side offset is estimated rather than absorbed into noise; SpatialUnit is random so the anatomical gradient does not inflate the residual. Reliability is reported only for converged, non-singular fits, and L/R variation is called within-animal hemispheric variance, not measurement error."
+      - script: "11_spatial_systems/07_spatial_systems_foundation_validation.R"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        stage: "networks"
+        scope: "global"
+        produces:
+          - "results/tables/11_spatial_systems/spatial_systems_foundation_validation.csv"
+        consumes_required:
+          - "results/tables/11_spatial_systems/data_contract/spatial_systems_aggregation_validation.csv"
+        consumes_optional:
+          - "results/tables/11_spatial_systems/bilateral/"
+          - "results/tables/11_spatial_systems/precision/"
+          - "results/tables/11_spatial_systems/celltype_annotation/"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Gates the spatial systems layer. A critical FAIL exits non-zero so later atlas and network stages cannot be built on a foundation that did not hold."
   coupling:
     description: "Behavior/physiology coupling for networks, modules, and selected proteomic summaries."
     scripts:

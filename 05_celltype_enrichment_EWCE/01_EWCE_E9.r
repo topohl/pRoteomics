@@ -40,6 +40,7 @@ source(repo_path("R", "dataset_inputs.R"))
 source(repo_path("R", "validation_utils.R"))
 source(repo_path("R", "protigy_input_utils.R"))
 source(repo_path("R", "ewce_contract_utils.R"))
+source(repo_path("R", "ewce_gene_set_engine.R"))
 MODULE_ID <- "05_celltype_enrichment_EWCE"
 EWCE_ANIMAL_CONTRACT_VERSION <- "EWCE_animal_level_v1"
 
@@ -681,66 +682,28 @@ make_differential_targets <- function(de_tbl, top_n_values) {
   }))
 }
 
+# Delegates to the shared engine in R/ewce_gene_set_engine.R so that exactly one
+# code path performs the enrichment test. The engine keeps the same method and
+# the same reference; what it removes is the ability to lose the background.
 run_ewce_once <- function(hits, bg, annot_level) {
-  hits <- unique(stats::na.omit(hits))
-  bg <- unique(stats::na.omit(bg))
-  hits <- intersect(hits, bg)
-
-  if (length(hits) < 10) {
-    stop("EWCE hit list has fewer than 10 genes after background intersection.")
-  }
-
-  res <- try(
-    EWCE::bootstrap_enrichment_test(
-      sct_data = ctd,
-      hits = hits,
-      bg = bg,
-      reps = analysis_params$reps,
-      annotLevel = annot_level,
-      genelistSpecies = "mouse",
-      sctSpecies = "mouse"
-    ),
-    silent = TRUE
+  ewce_bootstrap_once(
+    hits = hits,
+    background = bg,
+    reference = ctd,
+    annot_level = annot_level,
+    reps = analysis_params$reps,
+    min_hits = 10L
   )
-
-  if (inherits(res, "try-error") && exists("bootstrap.enrichment.test", envir = asNamespace("EWCE"))) {
-    bootstrap_enrichment_test_legacy <- get("bootstrap.enrichment.test", envir = asNamespace("EWCE"))
-    res <- try(
-      bootstrap_enrichment_test_legacy(
-        sct_data = ctd[[annot_level]],
-        mouse.hits = hits,
-        mouse.bg = bg,
-        reps = analysis_params$reps
-      ),
-      silent = TRUE
-    )
-  }
-
-  # DELIBERATELY NO THIRD FALLBACK WITHOUT `bg`.
-  #
-  # There used to be one: on failure it retried EWCE::bootstrap_enrichment_test()
-  # with no bg argument, which silently substitutes the FULL CTD transcriptome
-  # for the measured-proteome background. The caller then stamped
-  # N_Background = length(bg) and cached the result under a key built from the
-  # intended background, so a transcriptome-background result was
-  # indistinguishable from a correct one - including in the cache.
-  #
-  # A background-free enrichment answers a different question and is not
-  # interchangeable here, so this now fails loudly rather than degrading in
-  # silence. This can only turn a silently wrong run into a visible one.
-  if (inherits(res, "try-error")) {
-    stop(
-      "EWCE bootstrap failed for annotLevel ", annot_level,
-      " with the supplied measured-proteome background (", length(bg),
-      " genes). Refusing to retry without a background: that would substitute ",
-      "the full reference transcriptome and report it as if the intended ",
-      "background had been used. Underlying error: ",
-      conditionMessage(attr(res, "condition")),
-      call. = FALSE
-    )
-  }
-  res$results
 }
+
+# HISTORICAL NOTE - a retired code path, recorded because it was dangerous.
+#   There used to be a third fallback that retried the bootstrap with no `bg`
+#   argument, which silently substitutes the FULL reference transcriptome for the
+#   measured-proteome background. The caller then stamped
+#   N_Background = length(bg) and cached the result under a key built from the
+#   INTENDED background, so a transcriptome-background result was
+#   indistinguishable from a correct one - including on disk. The shared engine
+#   now makes the background mandatory and fails loudly instead.
 
 add_worksheet_safe <- function(wb, sheet, data) {
   sheet <- safe_sheet(sheet)

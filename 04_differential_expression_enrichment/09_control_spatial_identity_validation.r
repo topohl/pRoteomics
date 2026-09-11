@@ -476,16 +476,20 @@ for (dataset in c("neuron_soma", "neuron_neuropil")) {
   corfit <- limma::duplicateCorrelation(mat, design, block=meta$AnimalID)
   fit <- limma::lmFit(mat, design, block=meta$AnimalID, correlation=corfit$consensus)
   unit_levels <- sub("^anatomical_unit_", "", colnames(design)[grepl("^anatomical_unit_", colnames(design))])
-  make_contrast <- function(name, weights) { v <- stats::setNames(rep(0,ncol(design)),colnames(design)); v[paste0("anatomical_unit_", names(weights))] <- weights; list(name=name, weights=v) }
-  contrasts <- list()
-  if (dataset == "neuron_soma") for (target in sort(unique(toupper(meta$Region)))) contrasts[[length(contrasts)+1L]] <- make_contrast(paste0(target,"_vs_mean_other_soma_regions"), control_spatial_target_rest_weights(unit_levels,target))
-  if (dataset == "neuron_neuropil") {
-    regions <- sub("_.*$", "", unit_levels); contrasts[[1]] <- make_contrast("DG_neuropil_vs_mean_non_DG_regions", control_spatial_region_mean_weights(unit_levels,regions,"DG"))
-    if (all(c("CA1_SO","CA3_SO") %in% unit_levels)) contrasts[[length(contrasts)+1L]] <- make_contrast("CA1_SO_vs_CA3_SO", stats::setNames(c(1,-1),c("CA1_SO","CA3_SO"))) else statuses[[length(statuses)+1L]] <- control_spatial_empty_status(dataset,"CA1_SO_vs_CA3_SO","skipped","required spatial units absent")
-    ca1 <- unit_levels[grepl("^CA1_",unit_levels)]; if(length(ca1)>=3L) for (target in ca1) contrasts[[length(contrasts)+1L]] <- make_contrast(paste0(target,"_vs_mean_other_CA1_strata"),control_spatial_target_rest_weights(ca1,target))
-    dg <- unit_levels[grepl("^DG_", unit_levels)]
-    if (length(dg) >= 2L) for (target in dg) contrasts[[length(contrasts) + 1L]] <- make_contrast(paste0(target, "_vs_mean_other_DG_layers"), control_spatial_target_rest_weights(dg, target))
+  # The anatomical contrast definitions live in ONE place:
+  # control_spatial_contrast_registry() in R/control_spatial_identity_utils.R.
+  # They were previously built inline here, which meant the bilateral, left-only
+  # and right-only analyses would each need their own copy of a
+  # manuscript-locked list. The registry reproduces these definitions exactly;
+  # only the construction site moved.
+  specs <- control_spatial_contrast_registry(dataset, unit_levels)
+  if (dataset == "neuron_neuropil" && !("CA1_SO_vs_CA3_SO" %in% names(specs))) {
+    statuses[[length(statuses)+1L]] <- control_spatial_empty_status(dataset,"CA1_SO_vs_CA3_SO","skipped","required spatial units absent")
   }
+  contrasts <- lapply(specs, function(s) {
+    list(name = s$name,
+         weights = control_spatial_contrast_vector(s, colnames(design)))
+  })
   for (ct in contrasts) {
     cf <- limma::contrasts.fit(fit, matrix(ct$weights,ncol=1,dimnames=list(names(ct$weights),ct$name))) |> limma::eBayes(robust=TRUE,trend=TRUE)
     tt <- limma::topTable(cf, number=Inf, sort.by="none"); tt$ProteinGroupID <- rownames(tt); tt <- cbind(tt, canonical$feature_table[match(tt$ProteinGroupID,canonical$feature_table$ProteinGroupID), setdiff(names(canonical$feature_table),"ProteinGroupID"),drop=FALSE]); tt$dataset <- dataset; tt$contrast <- ct$name
