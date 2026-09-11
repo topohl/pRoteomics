@@ -205,12 +205,22 @@ asn_exact_two_group_p <- function(values, group, a = "SUS", b = "RES") {
   obs <- mean(v[g == a]) - mean(v[g == b])
   null <- apply(combos, 2, function(i) mean(v[i]) - mean(v[-i]))
   n_assign <- ncol(combos)
+  # COMPLETE enumeration, so p = #{as extreme} / n_assignments. The observed
+  # labelling is itself one of the enumerated assignments and is therefore
+  # already in the numerator, which is why this can never return 0 and why the
+  # add-one correction does NOT belong here: (1+k)/(1+n) is for RANDOMLY
+  # SAMPLED permutations, where the observed may be absent from the sample.
+  # Applying it to a full enumeration double-counts the observed and inflates
+  # every p - it is what pushed the attainable floor from 0.10 to 0.14.
+  amax <- max(abs(null))
   list(
     observed = obs,
     n_assignments = n_assign,
-    # (1 + #{as extreme}) / (1 + B): an exact enumeration still cannot return 0
-    p_two_sided = (1 + sum(abs(null) >= abs(obs) - 1e-12)) / (1 + n_assign),
-    min_attainable_two_sided_p = 2 / n_assign)
+    p_two_sided = sum(abs(null) >= abs(obs) - 1e-12) / n_assign,
+    # The smallest p this enumeration can return: the number of assignments
+    # that tie the most extreme statistic. For a symmetric 3-vs-3 split the
+    # maximum is attained by the observed and its mirror, giving 2/20 = 0.10.
+    min_attainable_two_sided_p = sum(abs(null) >= amax - 1e-12) / n_assign)
 }
 
 # Exact three-group omnibus by full label enumeration (1680 assignments for
@@ -241,8 +251,12 @@ asn_exact_three_group_p <- function(values, group, max_assignments = 5000L) {
       null <- c(null, stat(lab))
     }
   }
+  # Complete enumeration: see asn_exact_two_group_p for why there is no
+  # add-one correction. The floor here is larger than 1/1680 because with
+  # equal group sizes the 3! relabelings of the same partition all tie.
   list(observed = obs, n_assignments = length(null),
-       p = (1 + sum(null >= obs - 1e-12)) / (1 + length(null)))
+       p = sum(null >= obs - 1e-12) / length(null),
+       min_attainable_p = sum(null >= max(null) - 1e-12) / length(null))
 }
 
 # ----------------------------------------------------------- animal bootstrap

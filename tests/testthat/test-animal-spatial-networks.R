@@ -142,9 +142,14 @@ testthat::test_that("SUS vs RES enumerates 20 whole-animal assignments", {
   testthat::expect_identical(r$n_assignments, 20L)
   # THE documented ceiling: 3 vs 3 cannot produce a two-sided p below 0.10
   testthat::expect_equal(r$min_attainable_two_sided_p, 0.10)
-  testthat::expect_gte(r$p_two_sided, 2 / 21)
-  # a maximally separated split still cannot reach 0.05
+  # A complete enumeration already contains the observed labelling, so no
+  # add-one correction applies: a maximally separated split must land exactly
+  # on the documented 0.10 floor, not on (1+2)/(1+20) = 0.143.
+  testthat::expect_equal(r$p_two_sided, 0.10)
+  # and still cannot reach 0.05
   testthat::expect_gt(r$p_two_sided, 0.05)
+  # an exact enumeration can never return zero, because the observed is in it
+  testthat::expect_gt(r$p_two_sided, 0)
   testthat::expect_equal(r$observed, mean(c(5, 6, 7)) - mean(c(1, 2, 3)))
 })
 
@@ -152,8 +157,12 @@ testthat::test_that("the three-group omnibus enumerates 1680 assignments", {
   v <- as.numeric(1:9); g <- rep(c("CON", "RES", "SUS"), each = 3)
   r <- asn_exact_three_group_p(v, g)
   testthat::expect_identical(r$n_assignments, 1680L)
-  testthat::expect_gte(r$p, 1 / 1681)
+  testthat::expect_gte(r$p, 1 / 1680)
   testthat::expect_lte(r$p, 1)
+  # With equal group sizes the 3! relabellings of one partition tie, so the
+  # attainable floor is 6/1680, not 1/1680 - reporting 1/1680 would overstate
+  # the resolution of the omnibus by a factor of six.
+  testthat::expect_equal(r$min_attainable_p, 6 / 1680)
 })
 
 testthat::test_that("permutation operates on whole animals, not on edges", {
@@ -258,7 +267,11 @@ testthat::test_that("edge-level output reports exact coarse resolution, never an
   testthat::expect_true(all(abs(e$min_attainable_two_sided_p - 0.10) < 1e-9, na.rm = TRUE))
   testthat::expect_true(all(grepl("EXACT but COARSE", e$inference_note)))
   # nothing may be below the mathematically attainable floor
-  testthat::expect_true(all(e$exact_p_two_sided >= 2 / 21 - 1e-9, na.rm = TRUE))
+  testthat::expect_true("exact_p_two_sided_coarse" %in% names(e))
+  p <- e$exact_p_two_sided_coarse
+  testthat::expect_true(all(p >= 0.10 - 1e-9, na.rm = TRUE))
+  # the floor must be reachable in practice, not only in principle
+  testthat::expect_true(any(abs(p - 0.10) < 1e-9, na.rm = TRUE))
 })
 
 testthat::test_that("legacy outputs are labelled, not rewritten", {
