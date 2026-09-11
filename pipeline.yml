@@ -718,6 +718,30 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "PHENOTYPE-BLIND label coherence audit. Asks whether the GO term that named each module describes its network centre, using frozen ORA geneID contributors mapped to ProteinGroupIDs. No WGCNA, ORA or label is recomputed and no canonical label is overwritten; proposed reviewed registries are written to the review namespace for manual adjudication only."
+      - script: "06_modules_WGCNA/15_wgcna_label_adjudication.R"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        stage: "modules_downstream"
+        scope: "per_dataset"
+        produces:
+          - "results/reviewer_audit/wgcna_label_adjudication/WGCNA_module_adjudication.csv"
+          - "results/reviewer_audit/wgcna_label_adjudication/WGCNA_supermodule_adjudication.csv"
+          - "results/reviewer_audit/wgcna_label_adjudication/WGCNA_module_theme_evidence.csv"
+          - "results/reviewer_audit/wgcna_label_adjudication/WGCNA_module_top25_hubs.csv"
+          - "results/reviewer_audit/wgcna_label_adjudication/WGCNA_label_consumer_migration_plan.csv"
+          - "results/reviewer_audit/wgcna_label_adjudication/WGCNA_label_adjudication.xlsx"
+          - "results/reviewer_audit/wgcna_label_adjudication/proposed_<dataset>_reviewed_labels.csv"
+        consumes_required:
+          - "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_modules_long.csv"
+          - "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_module_GO_enrichment_long.csv"
+          - "results/tables/06_modules_WGCNA/identity_contract/<dataset>/WGCNA_module_supermodule_membership_contract.csv"
+        consumes_optional:
+          - "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_supermodule_biological_coherence.csv"
+          - "results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_final_label_lookup.csv"
+          - "results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_module_biological_annotation.csv"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "PHENOTYPE-BLIND conservative naming adjudication. Consolidates the frozen Stage-01 ORA (all / core kME>=0.60 / top-25 hub protein sets) into biological themes, measures whether the network centre supports each theme, and emits PROPOSED reviewed labels with adjudication_status=proposed and reviewer=NA. No WGCNA, ORA or canonical label is recomputed or overwritten; proposals are never treated as active registries."
       - script: "07_spatial_networks/01_network_spatial_relations.r"
         required: true
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
