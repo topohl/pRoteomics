@@ -145,7 +145,8 @@ long <- long %>%
   dplyr::select("dataset", "ModuleID", "module_scope", "level", "cell_type",
                 "n_input_genes", "n_mapped_genes", "n_background",
                 "observed_statistic", "null_mean", "null_sd", "z_score",
-                "fold_change", "p_value", "FDR", "fdr_family",
+                "fold_change", "p_value_raw_ewce", "p_value", "p_correction",
+                "min_attainable_p", "FDR", "fdr_family",
                 "annotation_status", "provenance")
 
 # --------------------------------------------------------------- summary

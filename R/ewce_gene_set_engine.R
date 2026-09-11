@@ -187,7 +187,11 @@ run_ewce_gene_set_annotation <- function(gene_sets,
       rows[[length(rows) + 1L]] <- cbind(base, data.frame(
         cell_type = NA_character_, observed_statistic = NA_real_,
         null_mean = NA_real_, null_sd = NA_real_, z_score = NA_real_,
-        p_value = NA_real_, fdr_family = fam,
+        fold_change = NA_real_,
+        p_value_raw_ewce = NA_real_, p_value = NA_real_,
+        p_correction = sprintf("(1 + count) / (B + 1), B = %d", as.integer(n_boot)),
+        min_attainable_p = ewce_min_attainable_p(n_boot),
+        fdr_family = fam,
         annotation_status = "insufficient_mapped_genes",
         stringsAsFactors = FALSE))
       next
@@ -214,7 +218,13 @@ run_ewce_gene_set_annotation <- function(gene_sets,
         null_sd = pick(c("bootstrap_sd", "sd_bootstrap", "boot_sd")),
         z_score = pick(c("sd_from_mean", "z", "zscore")),
         fold_change = pick(c("fold_change", "fc")),
-        p_value = pick(c("p", "p_value", "pvalue")),
+        # EWCE's raw empirical proportion, retained verbatim as provenance...
+        p_value_raw_ewce = pick(c("p", "p_value", "pvalue")),
+        # ...and the same statistic with the standard finite-sample correction,
+        # so an empirical p can never be exactly zero. This is what FDR uses.
+        p_value = ewce_finite_sample_p(pick(c("p", "p_value", "pvalue")), n_boot),
+        p_correction = sprintf("(1 + count) / (B + 1), B = %d", as.integer(n_boot)),
+        min_attainable_p = ewce_min_attainable_p(n_boot),
         fdr_family = fam,
         annotation_status = "tested",
         stringsAsFactors = FALSE))
@@ -263,3 +273,48 @@ ewce_to_mouse_symbols <- function(x, keep_unmapped = FALSE) {
   if (keep_unmapped) out[is.na(out)] <- x[is.na(out)]
   out
 }
+
+# -------------------------------------------------- finite-sample p correction
+#
+# EWCE computes its enrichment p as an EMPIRICAL proportion of a finite
+# bootstrap null. From EWCE:::bootstrap_enrichment_test:
+#
+#     p <- sum(ct_boot_dist >= hit_sum) / reps
+#
+# With reps = B, that quotient is exactly 0 whenever no null draw reaches the
+# observed statistic. A stored p of 0 asserts that the null probability IS zero,
+# which a finite resampling experiment cannot establish - the only honest
+# statement is p < 1/B.
+#
+# The standard correction (Davison & Hinkley 1997; Phipson & Smyth 2010) adds
+# the observed statistic to its own null:
+#
+#     p = (1 + #{null >= observed}) / (B + 1)
+#
+# which bounds p below at 1/(B + 1) and leaves every other value essentially
+# unchanged (the largest possible shift is 1/(B + 1)).
+#
+# This is NOT overriding a package-defined analytical p-value because it looks
+# small. It is the same bootstrap statistic with the standard finite-sample
+# correction applied, and the uncorrected value is retained alongside as
+# `p_value_raw_ewce` so nothing is hidden.
+ewce_finite_sample_p <- function(p_raw, reps) {
+  reps <- as.integer(reps)[[1]]
+  if (!is.finite(reps) || reps <= 0L) {
+    stop("A positive bootstrap count is required to correct an empirical p.",
+         call. = FALSE)
+  }
+  p_raw <- as.numeric(p_raw)
+  # p_raw * reps is an exact integer count up to floating-point representation
+  count <- round(p_raw * reps)
+  bad <- !is.na(p_raw) & (count < 0 | count > reps |
+                            abs(p_raw * reps - count) > 1e-6)
+  if (any(bad)) {
+    stop("p-value(s) are not a count/reps proportion for reps = ", reps,
+         "; refusing to apply a finite-sample correction to a value that did ",
+         "not come from a bootstrap null.", call. = FALSE)
+  }
+  (count + 1) / (reps + 1)
+}
+
+ewce_min_attainable_p <- function(reps) 1 / (as.integer(reps)[[1]] + 1)
