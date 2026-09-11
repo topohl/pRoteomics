@@ -20,6 +20,7 @@ source(repo_path("R", "schema_validation.R"))
 source(repo_path("R", "wgcna_claim_readiness_utils.R"))
 source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
 source(repo_path("R", "wgcna_stage07_semantic_utils.R"))
+source(repo_path("R", "wgcna_label_activation_utils.R"))
 
 SCRIPT_ID <- "09_export_pride_journal/07_make_biological_claims_table.R"
 Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
@@ -2204,6 +2205,22 @@ claims <- dplyr::bind_rows(
 
 validate_table_schema(claims, "biological_claims_table", strict = TRUE)
 wgcna_stage13_cardinality_audit <- write_wgcna_stage13_cardinality_audit(claims)
+
+# ---- one canonical display label per WGCNA entity ------------------------
+#
+# This table previously drew module and supermodule names from four different
+# fields (ModuleLabel_Final, canonical_biological_label, safe_display_label and
+# the Stage-07 endpoint/module/supermodule labels), so one ModuleID could appear
+# under two names inside a single submission artifact.
+#
+# Resolution now goes through the single shared helper, with one precedence:
+#   active validated reviewed registry > Stage-07 canonical > Stage-01 fallback.
+# Historical labels are NOT discarded; they are retained as provenance columns.
+# Nothing is activated here: no reviewed registry exists for the neuronal
+# datasets, so those rows resolve to the Stage-07 automatic label exactly as
+# before - the change is that they now do so consistently.
+claims <- attach_canonical_wgcna_display_label(claims)
+assert_one_canonical_label_per_wgcna_entity(claims)
 
 dir_create(path_results("tables"))
 csv_out <- path_results("tables", "biological_claims_table.csv")
