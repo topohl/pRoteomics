@@ -78,8 +78,8 @@ wgcna_normalize_current_member_map <- function(member_map, dataset) {
 }
 
 wgcna_validate_reviewed_registry <- function(registry, dataset, member_map,
-                                             expected_n_modules = 13L,
-                                             expected_n_supermodules = 9L) {
+                                             expected_n_modules = NULL,
+                                             expected_n_supermodules = NULL) {
   if (!is.data.frame(registry)) stop("Reviewed WGCNA label registry must be a data frame.", call. = FALSE)
   expected_columns <- wgcna_reviewed_registry_columns()
   if (!identical(names(registry), expected_columns)) {
@@ -106,6 +106,12 @@ wgcna_validate_reviewed_registry <- function(registry, dataset, member_map,
   supers <- registry |> dplyr::filter(.data$level == "supermodule")
   current_modules <- sort(unique(current_map$ModuleID))
   current_supers <- sort(unique(current_map$SupermoduleID))
+  # Expected cardinality DERIVES from the authoritative current member map
+  # rather than being hard-coded per dataset. A caller may still pin explicit
+  # counts, and if it does they must also agree with the current map, so this
+  # is strictly stronger than the previous microglia-only literals.
+  if (is.null(expected_n_modules)) expected_n_modules <- length(current_modules)
+  if (is.null(expected_n_supermodules)) expected_n_supermodules <- length(current_supers)
   if (nrow(modules) != expected_n_modules || length(current_modules) != expected_n_modules) {
     stop("Reviewed registry/current map must contain exactly ", expected_n_modules, " modules.", call. = FALSE)
   }
@@ -142,7 +148,12 @@ wgcna_validate_reviewed_registry <- function(registry, dataset, member_map,
     dplyr::group_by(.data$SupermoduleID) |>
     dplyr::summarise(n = dplyr::n(), member = dplyr::first(.data$ModuleID), .groups = "drop") |>
     dplyr::filter(.data$n == 1L)
-  if (nrow(singleton_map) != 6L) stop("Current microglia map must contain exactly six singleton supermodules.", call. = FALSE)
+  # Singleton IDENTITY is checked below, which is strictly stronger than the
+  # previous hard-coded count of six microglia singletons.
+  if (!nrow(singleton_map) && nrow(current_map)) {
+    stop("Current member map for ", dataset, " contains no singleton supermodule; ",
+         "the singleton-inheritance contract cannot be evaluated.", call. = FALSE)
+  }
   singleton_check <- singleton_map |>
     dplyr::left_join(
       modules |>
@@ -312,12 +323,12 @@ wgcna_build_reviewed_canonical_lookup <- function(registry, member_map, label_ca
       canonical_plot_label = paste0(.data$entity_id, "\n", .data$canonical_short_label),
       biological_label_confidence = as.character(.data$label_confidence),
       structural_coherence_class = as.character(.data$structural_coherence_class),
-      label_contract_version = "microglia_wgcna_reviewed_labels_v1",
+      label_contract_version = paste0(dataset, "_wgcna_reviewed_labels_v1"),
       label_source = label_source,
       label_rationale = as.character(.data$rationale),
       unsafe_interpretation = dplyr::case_when(
-        .data$level == "module" ~ "Do not interpret an ROI-derived WGCNA module label as causal, cell-pure, or microglia-intrinsic evidence.",
-        TRUE ~ "Do not interpret an ROI-derived WGCNA supermodule label as causal, cell-pure, or microglia-intrinsic evidence."
+        .data$level == "module" ~ paste0("Do not interpret an ROI-derived WGCNA module label as causal, cell-pure, or ", dataset, "-intrinsic evidence."),
+        TRUE ~ paste0("Do not interpret an ROI-derived WGCNA supermodule label as causal, cell-pure, or ", dataset, "-intrinsic evidence.")
       ),
       final_plot_label = .data$canonical_plot_label
     ) |>
@@ -333,8 +344,26 @@ wgcna_validate_canonical_lookup <- function(lookup, dataset = NULL, member_map =
     stop("Canonical WGCNA label lookup does not match the reviewed-label contract.", call. = FALSE)
   }
   if (anyDuplicated(lookup[c("dataset", "level", "entity_id")])) stop("Canonical lookup has duplicate entity keys.", call. = FALSE)
-  if (nrow(lookup) != 22L || sum(lookup$level == "module") != 13L || sum(lookup$level == "supermodule") != 9L) {
-    stop("Canonical microglia lookup must contain exactly 13 module and 9 supermodule rows.", call. = FALSE)
+  # Cardinality derives from the authoritative member map when one is supplied,
+  # so this check works for any dataset instead of only the 13/9 microglia
+  # topology. Identity is checked too, which the count alone never did.
+  if (!is.null(member_map)) {
+    current <- wgcna_normalize_current_member_map(member_map, dataset)
+    n_mod <- length(unique(current$ModuleID))
+    n_sup <- length(unique(current$SupermoduleID))
+    if (nrow(lookup) != n_mod + n_sup ||
+        sum(lookup$level == "module") != n_mod ||
+        sum(lookup$level == "supermodule") != n_sup) {
+      stop("Canonical lookup must contain exactly ", n_mod, " module and ", n_sup,
+           " supermodule rows for this dataset.", call. = FALSE)
+    }
+    if (!setequal(lookup$entity_id[lookup$level == "module"], unique(current$ModuleID)) ||
+        !setequal(lookup$entity_id[lookup$level == "supermodule"], unique(current$SupermoduleID))) {
+      stop("Canonical lookup entity IDs do not match the current authoritative member map; ",
+           "stale or missing ModuleID/SupermoduleID.", call. = FALSE)
+    }
+  } else if (!nrow(lookup)) {
+    stop("Canonical lookup is empty.", call. = FALSE)
   }
   if (!is.null(dataset) && any(lookup$dataset != dataset)) stop("Canonical lookup contains the wrong dataset.", call. = FALSE)
   if (!identical(lookup$canonical_plot_label, lookup$final_plot_label)) stop("final_plot_label must be an exact compatibility alias.", call. = FALSE)
