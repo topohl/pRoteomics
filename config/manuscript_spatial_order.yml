@@ -1,0 +1,296 @@
+# Shared spatial ordering and display contract for the manuscript figures.
+#
+# WHY THIS FILE EXISTS
+# --------------------
+# The repository carries TWO spatial-unit vocabularies, and they disagree:
+#
+#   atlas vocabulary   (results/tables/11_spatial_systems/atlas/*, networks/*)
+#     lowercase; soma AND microglia both use ca1 / ca2 / ca3 / dg, so the unit
+#     string ALONE is ambiguous - only the dataset column separates them.
+#
+#   analysis vocabulary (GSEA theme assignments, *_detection_context, DA output)
+#     mixed case; soma is CA1_sp / CA2_sp / CA3_sp / DG_sg and microglia is
+#     CA1 / CA2 / CA3 / DG.
+#
+# Therefore the canonical key is the PAIR (dataset, unit), never the unit alone.
+# Every alias below is resolved within its dataset. Nothing here parses anatomy
+# out of a string at plot time: region and layer are declared per unit.
+#
+# ORDERING
+# --------
+# R/plotting_nature.R::anatomical_spatial_unit_levels() orders LAYER-major
+# (all SO, then all SR, then all SLM). This contract orders REGION-major
+# (CA1 and its layers, then CA2 and its layers, ...) because the figures group
+# by region and hang layers underneath it. That divergence is deliberate; the
+# older helper is left untouched for the layers that already use it.
+#
+# Laminar order within a region follows hippocampal anatomy from the deep
+# (alveus/oriens) surface outward: SO -> SP -> SR -> SLM. For DG the order is
+# molecular -> granule -> polymorphic (hilus).
+#
+# RESOLUTION IS ASYMMETRIC BY DESIGN
+# ----------------------------------
+# Neuropil carries region x layer resolution. Soma and the microglia-enriched
+# ROI are region-level only. That asymmetry is experimental, not a defect, and
+# nothing downstream may fabricate laminar resolution for soma or microglia.
+
+contract_version: manuscript_spatial_order_v1
+
+compartments:
+  - id: neuron_neuropil
+    order: 1
+    display: Neuropil
+    short: Neuropil
+    resolution: region_x_layer
+    n_units: 10
+  - id: neuron_soma
+    order: 2
+    display: Neuronal soma
+    short: Soma
+    resolution: region
+    n_units: 4
+  - id: microglia
+    order: 3
+    display: Microglia-enriched ROI
+    short: Microglia ROI
+    resolution: region
+    n_units: 4
+    terminology_note: >-
+      a local microenvironment measurement, not a purified or cell-intrinsic
+      microglial proteome; never label this "microglial proteome",
+      "microglia-specific" or "purified microglia".
+
+regions:
+  - id: CA1
+    order: 1
+    display: CA1
+  - id: CA2
+    order: 2
+    display: CA2
+  - id: CA3
+    order: 3
+    display: CA3
+  - id: DG
+    order: 4
+    display: DG
+
+layers:
+  - id: so
+    order: 1
+    display: SO
+    long: stratum oriens
+  - id: sp
+    order: 2
+    display: SP
+    long: stratum pyramidale
+  - id: sr
+    order: 3
+    display: SR
+    long: stratum radiatum
+  - id: slm
+    order: 4
+    display: SLM
+    long: stratum lacunosum-moleculare
+  - id: mo
+    order: 5
+    display: MO
+    long: molecular layer
+  - id: sg
+    order: 6
+    display: SG
+    long: granule cell layer
+  - id: po
+    order: 7
+    display: PO
+    long: polymorphic layer (hilus)
+
+# ---------------------------------------------------------------------------
+# The 18 canonical spatial units, in display order.
+#
+# atlas_key    = spelling in results/tables/11_spatial_systems/atlas and networks
+# analysis_key = spelling in the GSEA theme table and the *_detection_context
+#                tables (this is also the manuscript-facing spelling)
+# aliases      = every other spelling observed, resolved WITHIN the dataset
+# ---------------------------------------------------------------------------
+units:
+
+  # ---- neuropil: region x layer -------------------------------------------
+  - dataset: neuron_neuropil
+    order: 1
+    region: CA1
+    layer: so
+    analysis_key: CA1_so
+    atlas_key: ca1_so
+    display: CA1 SO
+    aliases: [CA1_SO, ca1_so, CA1_so]
+  - dataset: neuron_neuropil
+    order: 2
+    region: CA1
+    layer: sr
+    analysis_key: CA1_sr
+    atlas_key: ca1_sr
+    display: CA1 SR
+    aliases: [CA1_SR, ca1_sr, CA1_sr]
+  - dataset: neuron_neuropil
+    order: 3
+    region: CA1
+    layer: slm
+    analysis_key: CA1_slm
+    atlas_key: ca1_slm
+    display: CA1 SLM
+    aliases: [CA1_SLM, ca1_slm, CA1_slm]
+  - dataset: neuron_neuropil
+    order: 4
+    region: CA2
+    layer: so
+    analysis_key: CA2_so
+    atlas_key: ca2_so
+    display: CA2 SO
+    aliases: [CA2_SO, ca2_so, CA2_so]
+  - dataset: neuron_neuropil
+    order: 5
+    region: CA2
+    layer: sr
+    analysis_key: CA2_sr
+    atlas_key: ca2_sr
+    display: CA2 SR
+    aliases: [CA2_SR, ca2_sr, CA2_sr]
+  - dataset: neuron_neuropil
+    order: 6
+    region: CA2
+    layer: slm
+    analysis_key: CA2_slm
+    atlas_key: ca2_slm
+    display: CA2 SLM
+    aliases: [CA2_SLM, ca2_slm, CA2_slm]
+  - dataset: neuron_neuropil
+    order: 7
+    region: CA3
+    layer: so
+    analysis_key: CA3_so
+    atlas_key: ca3_so
+    display: CA3 SO
+    aliases: [CA3_SO, ca3_so, CA3_so]
+  - dataset: neuron_neuropil
+    order: 8
+    region: CA3
+    layer: sr
+    analysis_key: CA3_sr
+    atlas_key: ca3_sr
+    display: CA3 SR
+    aliases: [CA3_SR, ca3_sr, CA3_sr]
+  - dataset: neuron_neuropil
+    order: 9
+    region: DG
+    layer: mo
+    analysis_key: DG_mo
+    atlas_key: dg_mo
+    display: DG MO
+    aliases: [DG_MO, dg_mo, DG_mo]
+  - dataset: neuron_neuropil
+    order: 10
+    region: DG
+    layer: po
+    analysis_key: DG_po
+    atlas_key: dg_po
+    display: DG PO
+    aliases: [DG_PO, dg_po, DG_po]
+
+  # ---- neuronal soma: region level ----------------------------------------
+  # The sp/sg token names the somatic layer that WAS dissected; it does not
+  # give this compartment laminar resolution, because only one layer per
+  # region was sampled. The atlas drops the token entirely.
+  - dataset: neuron_soma
+    order: 11
+    region: CA1
+    layer: sp
+    layer_is_resolution: false
+    analysis_key: CA1_sp
+    atlas_key: ca1
+    display: CA1
+    aliases: [CA1_SP, ca1_sp, CA1_sp, ca1, CA1]
+  - dataset: neuron_soma
+    order: 12
+    region: CA2
+    layer: sp
+    layer_is_resolution: false
+    analysis_key: CA2_sp
+    atlas_key: ca2
+    display: CA2
+    aliases: [CA2_SP, ca2_sp, CA2_sp, ca2, CA2]
+  - dataset: neuron_soma
+    order: 13
+    region: CA3
+    layer: sp
+    layer_is_resolution: false
+    analysis_key: CA3_sp
+    atlas_key: ca3
+    display: CA3
+    aliases: [CA3_SP, ca3_sp, CA3_sp, ca3, CA3]
+  - dataset: neuron_soma
+    order: 14
+    region: DG
+    layer: sg
+    layer_is_resolution: false
+    analysis_key: DG_sg
+    atlas_key: dg
+    display: DG
+    aliases: [DG_SG, dg_sg, DG_sg, dg, DG]
+
+  # ---- microglia-enriched ROI: region level -------------------------------
+  - dataset: microglia
+    order: 15
+    region: CA1
+    layer: null
+    analysis_key: CA1
+    atlas_key: ca1
+    display: CA1
+    aliases: [ca1, CA1, CA1_microglia, ca1_microglia]
+  - dataset: microglia
+    order: 16
+    region: CA2
+    layer: null
+    analysis_key: CA2
+    atlas_key: ca2
+    display: CA2
+    aliases: [ca2, CA2, CA2_microglia, ca2_microglia]
+  - dataset: microglia
+    order: 17
+    region: CA3
+    layer: null
+    analysis_key: CA3
+    atlas_key: ca3
+    display: CA3
+    aliases: [ca3, CA3, CA3_microglia, ca3_microglia]
+  - dataset: microglia
+    order: 18
+    region: DG
+    layer: null
+    analysis_key: DG
+    atlas_key: dg
+    display: DG
+    aliases: [dg, DG, DG_microglia, dg_microglia]
+
+# ---------------------------------------------------------------------------
+# Where the visual separators fall. Heavy rules bound compartments; light rules
+# bound regions inside a compartment. Layers are never separated - they are the
+# leaves and are distinguished by their subheader only.
+# ---------------------------------------------------------------------------
+separators:
+  compartment: heavy
+  region: light
+  layer: none
+
+# Stress-phenotype vocabulary, so contrast labels are also consistent.
+phenotype:
+  groups: [CON, RES, SUS]
+  contrasts:
+    - id: RES - CON
+      display: RES vs CON
+      order: 1
+    - id: SUS - CON
+      display: SUS vs CON
+      order: 2
+    - id: SUS - RES
+      display: SUS vs RES
+      order: 3

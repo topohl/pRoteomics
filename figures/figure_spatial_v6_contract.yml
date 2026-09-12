@@ -1,0 +1,536 @@
+# Spatial-v6: restore the spatial biology and audit the complete story.
+#
+# Canonical and Parts 16-20 are all frozen. Outputs live under
+# results/**/manuscript_candidates/spatial_v6/**.
+#
+# Every spatial panel uses the shared grammar in config/manuscript_spatial_order.yml
+# and R/spatial_grammar_utils.R: one compartment -> region -> layer ordering, one
+# header style, one set of abbreviations. Neuropil carries region x layer
+# resolution; soma and the microglia-enriched ROI are region-level only and are
+# never given a fabricated layer.
+
+contract_version: manuscript_spatial_v6_figures_v1
+status: candidate_only_not_promoted
+palette: config/manuscript_palette.yml
+spatial_order: config/manuscript_spatial_order.yml
+
+panels:
+
+  # ================= FIGURE 2: phenotype-blind spatial architecture =========
+  - id: v6_schematic
+    renderer: s6_schematic
+    role: experimental_anatomy_anchor
+    spatial_axes: compartment+region+layer
+    phenotype_axes: none_intentional
+    narrative: orients the reader in hippocampal anatomy and the sampling design.
+    primary_source: null
+
+  - id: v6_fingerprint
+    renderer: s6_fingerprint_proteins
+    role: direct_baseline_spatial_molecular_view
+    spatial_axes: compartment+region+layer
+    phenotype_axes: none_intentional
+    narrative: >-
+      the direct answer to "what does the baseline spatial proteome actually
+      look like": named proteins selected only by prespecified CON-only
+      anatomical contrasts, shown as within-protein standardised CON abundance
+      across every spatial unit. Phenotype-blind by construction.
+    primary_source: results/tables/manuscript_candidates/spatial_v6/figure2_spatial_fingerprint_proteins.csv
+
+  - id: v6_pca
+    renderer: s5_pca
+    role: global_structure
+    spatial_axes: compartment+region
+    phenotype_axes: none_intentional
+    narrative: the proteomes occupy structured molecular spaces before any stress model.
+    primary_source: results/source_data/manuscript/figure_02/figure_02c_source_data.csv
+    input_dependencies:
+      - results/tables/03_qc_exploration/00b_joint_compartment_qc/global/joint_primary_pca_variance_explained.csv
+
+  - id: v6_bilateral
+    renderer: s4_bilateral
+    role: reproducibility
+    spatial_axes: compartment+region+layer
+    phenotype_axes: none_intentional
+    narrative: >-
+      paired-hemisphere reproducibility over all prespecified contrasts: coarse
+      regional identities reproduce strongly, fine CA1 laminar identities less so.
+    primary_source: results/tables/11_spatial_systems/bilateral/bilateral_spatial_identity_protein_level.csv
+    input_dependencies:
+      - results/tables/11_spatial_systems/bilateral/bilateral_spatial_identity_summary.csv
+
+  - id: v6_compartment
+    renderer: s4_compartment
+    role: compartment_identity
+    spatial_axes: compartment
+    phenotype_axes: none_intentional
+    narrative: ten named canonical markers carry the expected compartment pattern.
+    primary_source: results/source_data/03_qc_exploration/04e_control_compartment_abundance_publication_figures/global/figure2d_compact_recognizable_markers_v2_source_data.csv
+
+  - id: v6_kaulich
+    renderer: s5_kaulich_forest
+    role: external_validation
+    spatial_axes: region+layer
+    phenotype_axes: none_intentional
+    narrative: >-
+      prespecified internal anatomical contrasts recover the corresponding
+      external hippocampal signatures; blocked by anatomical level because the
+      contrast-by-signature matrix is block-diagonal.
+    primary_source: results/source_data/04_differential_expression_enrichment/control_spatial_identity_validation/global/figure2e_source_data.csv
+
+  - id: v6_internal
+    renderer: s5_internal_multiples
+    role: internal_validation
+    spatial_axes: region+layer
+    phenotype_axes: none_intentional
+    narrative: >-
+      each anatomical contrast recovers its own canonical programs, as
+      contrast-centric small multiples.
+    primary_source: results/source_data/04_differential_expression_enrichment/control_spatial_identity_validation/global/figure2f_regions_CA1layers_source_data.csv
+
+  - id: v6_depth
+    renderer: nvp_depth_compact
+    role: technical_context
+    spatial_axes: compartment
+    phenotype_axes: none_intentional
+    narrative: the measurement is deep enough in every compartment.
+    primary_source: results/source_data/manuscript/figure_02/figure_02b_source_data.csv
+
+  - id: v6_precision
+    renderer: svp_precision_dumbbell
+    role: measurement_quality
+    spatial_axes: compartment+region
+    phenotype_axes: none_intentional
+    narrative: the reliability gained by averaging hemispheres.
+    primary_source: results/tables/11_spatial_systems/precision/bilateral_precision_gain.csv
+
+  - id: v6_fingerprint_full
+    renderer: s6_fingerprint_scores
+    role: full_baseline_spatial_fingerprint
+    compact: false
+    spatial_axes: compartment+region+layer
+    phenotype_axes: none_intentional
+    narrative: >-
+      the complete baseline spatial fingerprint over external prespecified
+      signatures: seven external hippocampal spatial signatures and seven
+      external cell-class reference panels. This is the only form that gives the
+      microglia-enriched compartment prespecified spatial rows, because no
+      CON-only anatomical contrast exists for it.
+    primary_source: results/tables/manuscript_candidates/spatial_v6/figure2_spatial_fingerprint_scores.csv
+
+  # ================= FIGURE 3: stress phenotype x spatial location ==========
+  - id: v6_f3_atlas
+    renderer: s6_f3_gsea_atlas
+    role: program_atlas
+    contrast: SUS - RES
+    spatial_axes: compartment+region+layer
+    phenotype_axes: SUS-RES
+    narrative: >-
+      the quantitative centrepiece, now with nested compartment / region / layer
+      headers instead of compound strings. qc_review themes that are not
+      claim-eligible are excluded.
+    primary_source: results/tables/10_biological_integration/gsea_wgcna_concordance/global/ontology_aware_gsea_theme_assignments_all_contrasts.csv
+
+  - id: v6_f3_bridge
+    renderer: s6_f3_anatomy_bridge
+    role: anatomical_program_bridge
+    spatial_axes: compartment+region+layer
+    phenotype_axes: RES-CON+SUS-CON+SUS-RES
+    narrative: >-
+      translates CA3-SR, CA2-SP and CA1 microglia-enriched ROI from text labels
+      into a spatial hippocampal concept, using the same drawing language as
+      Figure 2, and carries all three contrasts so the trajectory is visible.
+      The shape label is derived from the stored FDR and refuses to call a
+      pattern divergent when the RES arm is not FDR-supported.
+    primary_source: results/tables/10_biological_integration/gsea_wgcna_concordance/global/ontology_aware_gsea_theme_assignments_all_contrasts.csv
+
+  - id: v6_f3_curve_syn
+    renderer: s6_gsea_curve
+    role: direct_evidence
+    program_key: synaptic
+    spatial_axes: compartment+region+layer
+    phenotype_axes: RES-CON+SUS-CON+SUS-RES
+    narrative: the neuropil CA3-SR synaptic program as an exact reconstructed enrichment curve.
+    primary_source: null
+    input_dependencies:
+      - results/tables/10_biological_integration/gsea_wgcna_concordance/global/ontology_aware_gsea_theme_assignments_all_contrasts.csv
+
+  - id: v6_f3_curve_rna
+    renderer: s6_gsea_curve
+    role: direct_evidence
+    program_key: rna
+    spatial_axes: compartment+region
+    phenotype_axes: RES-CON+SUS-CON+SUS-RES
+    narrative: the soma CA2-SP mRNA-processing program in the same grammar.
+    primary_source: null
+    input_dependencies:
+      - results/tables/10_biological_integration/gsea_wgcna_concordance/global/ontology_aware_gsea_theme_assignments_all_contrasts.csv
+
+  - id: v6_f3_curve_ox
+    renderer: s6_gsea_curve
+    role: direct_evidence
+    program_key: oxphos
+    spatial_axes: compartment+region
+    phenotype_axes: RES-CON+SUS-CON+SUS-RES
+    narrative: >-
+      the microglia-enriched CA1 oxidative-phosphorylation program, the one
+      exemplar whose three-group ordering is fully FDR-supported.
+    primary_source: null
+    input_dependencies:
+      - results/tables/10_biological_integration/gsea_wgcna_concordance/global/ontology_aware_gsea_theme_assignments_all_contrasts.csv
+
+  - id: v6_f3_proteins
+    renderer: s4_proteins
+    role: leading_edge_proteins
+    spatial_axes: region+layer
+    phenotype_axes: SUS-RES
+    narrative: the actual proteins carrying the program signal.
+    primary_source: results/tables/11_spatial_systems/atlas/protein_sus_res_fdr_supported_atlas.csv
+
+  # ================= EXTENDED DATA =========================================
+  - id: v6_ed_wgcna_circle
+    renderer: svp_wgcna_circle
+    role: wgcna_structure
+    spatial_axes: region+layer
+    phenotype_axes: none_intentional
+    narrative: module structure at a readable size, encoding no phenotype significance.
+    primary_source: results/tables/11_spatial_systems/atlas/WGCNA_module_spatial_cell_affinity.csv
+
+  - id: v6_ed_celltype
+    renderer: nvp_ed_celltype
+    role: wgcna_celltype
+    spatial_axes: compartment
+    phenotype_axes: none_intentional
+    narrative: external cell-type affinity per compartment.
+    primary_source: results/tables/11_spatial_systems/atlas/WGCNA_module_spatial_cell_affinity.csv
+
+  - id: v6_ed_module_fingerprint
+    renderer: s6_ed_module_fingerprint
+    role: wgcna_spatial_fingerprint
+    spatial_axes: compartment+region+layer
+    phenotype_axes: none_intentional
+    narrative: >-
+      the module x spatial-unit fingerprint: what each WGCNA module's baseline
+      spatial profile actually looks like, rather than only its peak label.
+      Phenotype-blind, derived from CON baseline values, no WGCNA recomputation.
+    primary_source: results/tables/manuscript_candidates/spatial_v6/spatial_v6_module_spatial_fingerprint.csv
+
+  - id: v6_ed_wgcna_phenotype
+    renderer: s6_ed_wgcna_phenotype
+    role: wgcna_phenotype_context
+    spatial_axes: region+layer
+    phenotype_axes: RES-CON+SUS-CON+SUS-RES
+    narrative: >-
+      the full module x contrast effect field with spatial row annotation
+      tracks, and the null stated on the panel: no module x contrast cell
+      reaches tier-specific FDR.
+    primary_source: results/source_data/manuscript_panels/figure_3/figure3b_stage07_effect_source.csv
+
+  - id: v6_ed_missing
+    renderer: s5_ed_ca2_missingness
+    role: ca2_qc
+    spatial_axes: region+layer
+    phenotype_axes: CON+RES+SUS
+    narrative: pre-imputation missingness per CA2-SLM sample with QC flags, by stress group.
+    primary_source: results/tables/11_spatial_systems/ca2_slm_robustness/CA2_SLM_sample_context.csv
+
+  - id: v6_ed_displacement
+    renderer: s5_ed_ca2_displacement
+    role: ca2_qc
+    spatial_axes: region+layer
+    phenotype_axes: CON+RES+SUS
+    narrative: >-
+      the mechanism: missingness inflates a sample's observed median, and
+      centring then displaces every protein in it downwards.
+    primary_source: results/tables/11_spatial_systems/ca2_slm_robustness/CA2_SLM_normalization_bias_context.csv
+
+  - id: v6_ed_classes
+    renderer: s5_ed_ca2_classes
+    role: ca2_qc
+    spatial_axes: region+layer
+    phenotype_axes: SUS-RES
+    narrative: the canonical hits split into robust, not claimable and unevaluable.
+    primary_source: results/tables/11_spatial_systems/ca2_slm_robustness/CA2_SLM_DAP_robustness.csv
+
+  - id: v6_ed_sensitivity
+    renderer: s5_ed_ca2_sensitivity
+    role: ca2_qc
+    spatial_axes: region+layer
+    phenotype_axes: SUS-RES
+    narrative: canonical effect versus the effect with QC-failed hemispheres dropped.
+    primary_source: results/tables/11_spatial_systems/ca2_slm_robustness/CA2_SLM_DAP_robustness.csv
+
+  - id: v6_ed_ca2_locator
+    renderer: s6_ed_ca2_locator
+    role: ca2_spatial_locator
+    spatial_axes: compartment+region+layer
+    phenotype_axes: none_intentional
+    narrative: >-
+      a tiny locator so the reader immediately knows the QC problem sits in
+      neuropil, region CA2, layer SLM.
+    primary_source: null
+
+  - id: v6_ed_identity
+    renderer: s5_ed_identity_subsets
+    role: stress_identity_robustness
+    spatial_axes: region+layer
+    phenotype_axes: SUS-RES
+    narrative: the outside-baseline-affinity result across every robustness subset.
+    primary_source: results/tables/11_spatial_systems/ca2_slm_robustness/stress_identity_robustness_comparison.csv
+
+  - id: v6_ed_locations
+    renderer: s6_ed7_origin_destination
+    role: baseline_vs_stress_location
+    spatial_axes: compartment+region+layer
+    phenotype_axes: SUS-RES
+    narrative: >-
+      the actual spatial transition: where each QC-qualified protein is most
+      abundant at baseline, and where its strongest SUS-RES difference is.
+    primary_source: results/tables/11_spatial_systems/atlas/protein_spatial_cell_affinity.csv
+
+  - id: v6_ed_locations_matrix
+    renderer: s6_ed7_location_matrix
+    role: baseline_vs_stress_location_alt
+    spatial_axes: compartment+region+layer
+    phenotype_axes: SUS-RES
+    narrative: >-
+      the same two locations as a marked matrix, built so the two encodings can
+      be compared directly.
+    primary_source: results/tables/11_spatial_systems/atlas/protein_spatial_cell_affinity.csv
+
+  - id: v6_ed_similarity
+    renderer: s6_ed8_similarity
+    role: what_a_spatial_network_is
+    spatial_axes: compartment+region+layer
+    phenotype_axes: none_intentional
+    narrative: >-
+      baseline CON molecular-similarity matrices, anatomically ordered, stating
+      explicitly that this is similarity between spatial proteomic profiles and
+      NOT anatomical connectivity.
+    primary_source: results/tables/11_spatial_systems/networks/CON_spatial_molecular_similarity_matrix.csv
+
+  - id: v6_ed_network_distance
+    renderer: s5_ed_network_distance
+    role: network_replicates
+    spatial_axes: compartment
+    phenotype_axes: CON+RES+SUS
+    narrative: animal-level network distance from the CON consensus.
+    primary_source: results/tables/11_spatial_systems/networks/animal_network_distance_from_CON.csv
+
+  - id: v6_ed_nulls
+    renderer: s5_ed_nulls
+    role: network_null
+    spatial_axes: compartment
+    phenotype_axes: CON+RES+SUS
+    narrative: the exact whole-network permutation result against its attainable floor.
+    primary_source: results/tables/11_spatial_systems/networks/network_global_multivariate_test.csv
+
+  - id: v6_ed_coupling
+    renderer: s5_ed_coupling
+    role: coupling_null
+    spatial_axes: region+layer
+    phenotype_axes: none_applicable
+    narrative: every distinct edge-behaviour correlation with its interval; an underpowered null.
+    primary_source: results/tables/08_behavior_physio_coupling/network_behavior_coupling/edge_behavior_correlations_fdr_all_tests.csv
+
+  - id: v6_ed_gsea_curve_syn
+    renderer: s6_gsea_curve
+    role: gsea_support
+    program_key: synaptic
+    spatial_axes: compartment+region+layer
+    phenotype_axes: RES-CON+SUS-CON+SUS-RES
+    narrative: exact reconstruction of the neuropil synaptic program.
+    primary_source: null
+    input_dependencies:
+      - results/tables/10_biological_integration/gsea_wgcna_concordance/global/ontology_aware_gsea_theme_assignments_all_contrasts.csv
+
+  - id: v6_ed_gsea_curve_rna
+    renderer: s6_gsea_curve
+    role: gsea_support
+    program_key: rna
+    spatial_axes: compartment+region
+    phenotype_axes: RES-CON+SUS-CON+SUS-RES
+    narrative: exact reconstruction of the soma mRNA-processing program.
+    primary_source: null
+    input_dependencies:
+      - results/tables/10_biological_integration/gsea_wgcna_concordance/global/ontology_aware_gsea_theme_assignments_all_contrasts.csv
+
+  - id: v6_ed_gsea_curve_ox
+    renderer: s6_gsea_curve
+    role: gsea_support
+    program_key: oxphos
+    spatial_axes: compartment+region
+    phenotype_axes: RES-CON+SUS-CON+SUS-RES
+    narrative: exact reconstruction of the microglial oxidative-phosphorylation program.
+    primary_source: null
+    input_dependencies:
+      - results/tables/10_biological_integration/gsea_wgcna_concordance/global/ontology_aware_gsea_theme_assignments_all_contrasts.csv
+
+  - id: v6_ed_atlas_rescon
+    renderer: s6_f3_gsea_atlas
+    role: gsea_support_trajectory
+    contrast: RES - CON
+    spatial_axes: compartment+region+layer
+    phenotype_axes: RES-CON
+    narrative: the same atlas for RES vs CON, so the three-group trajectory is complete.
+    primary_source: results/tables/10_biological_integration/gsea_wgcna_concordance/global/ontology_aware_gsea_theme_assignments_all_contrasts.csv
+
+  - id: v6_ed_atlas_suscon
+    renderer: s6_f3_gsea_atlas
+    role: gsea_support_trajectory
+    contrast: SUS - CON
+    spatial_axes: compartment+region+layer
+    phenotype_axes: SUS-CON
+    narrative: the same atlas for SUS vs CON.
+    primary_source: results/tables/10_biological_integration/gsea_wgcna_concordance/global/ontology_aware_gsea_theme_assignments_all_contrasts.csv
+
+figures:
+
+  - name: F2_SPATIAL_V6
+    figure_key: figure_02
+    width_mm: 183
+    height_mm: 168
+    question: >-
+      Does the spatial proteomics platform faithfully resolve the hippocampus,
+      and what does the baseline spatial proteome actually look like?
+    layout:
+      - {panel: v6_schematic,    label: a, x: 4,   "y": 4,   w: 86,  h: 44}
+      - {panel: v6_pca,          label: b, x: 94,  "y": 4,   w: 42,  h: 44}
+      - {panel: v6_compartment,  label: c, x: 140, "y": 4,   w: 39,  h: 44}
+      - {panel: v6_fingerprint,  label: d, x: 4,   "y": 52,  w: 175, h: 58}
+      - {panel: v6_bilateral,    label: e, x: 4,   "y": 114, w: 88,  h: 50}
+      - {panel: v6_kaulich,      label: f, x: 96,  "y": 114, w: 83,  h: 50}
+
+  - name: F2_SPATIAL_V6_WIDE
+    figure_key: figure_02
+    width_mm: 183
+    height_mm: 168
+    question: >-
+      Same argument with the internal anatomical program validation retained in
+      the main figure.
+    layout:
+      - {panel: v6_schematic,    label: a, x: 4,   "y": 4,   w: 86,  h: 42}
+      - {panel: v6_pca,          label: b, x: 94,  "y": 4,   w: 42,  h: 42}
+      - {panel: v6_compartment,  label: c, x: 140, "y": 4,   w: 39,  h: 42}
+      - {panel: v6_fingerprint,  label: d, x: 4,   "y": 50,  w: 175, h: 54}
+      - {panel: v6_bilateral,    label: e, x: 4,   "y": 108, w: 58,  h: 56}
+      - {panel: v6_kaulich,      label: f, x: 66,  "y": 108, w: 56,  h: 56}
+      - {panel: v6_internal,     label: g, x: 126, "y": 108, w: 53,  h: 56}
+
+  - name: F3_SPATIAL_V6
+    figure_key: figure_03
+    width_mm: 183
+    height_mm: 168
+    question: >-
+      Where in the hippocampus do stress-outcome molecular programs occur, and
+      how do RES and SUS relate to CON?
+    layout:
+      - {panel: v6_f3_atlas,     label: a, x: 4,  "y": 4,   w: 175, h: 60}
+      - {panel: v6_f3_bridge,    label: b, x: 4,  "y": 68,  w: 175, h: 52}
+      - {panel: v6_f3_curve_syn, label: c, x: 4,  "y": 124, w: 57,  h: 40}
+      - {panel: v6_f3_curve_rna, label: d, x: 65, "y": 124, w: 57,  h: 40}
+      - {panel: v6_f3_curve_ox,  label: e, x: 126, "y": 124, w: 53, h: 40}
+
+  - name: F3_SPATIAL_V6_PROTEINS
+    figure_key: figure_03
+    width_mm: 183
+    height_mm: 168
+    question: >-
+      Same argument, closing on the actual proteins that carry the program
+      signal.
+    layout:
+      - {panel: v6_f3_atlas,     label: a, x: 4,  "y": 4,   w: 175, h: 54}
+      - {panel: v6_f3_bridge,    label: b, x: 4,  "y": 62,  w: 175, h: 50}
+      - {panel: v6_f3_curve_syn, label: c, x: 4,  "y": 116, w: 44,  h: 48}
+      - {panel: v6_f3_curve_rna, label: d, x: 52, "y": 116, w: 44,  h: 48}
+      - {panel: v6_f3_curve_ox,  label: e, x: 100, "y": 116, w: 40, h: 48}
+      - {panel: v6_f3_proteins,  label: f, x: 144, "y": 116, w: 35, h: 48}
+
+  - name: ED1_TECHNICAL_BILATERAL
+    figure_key: extended_data
+    width_mm: 183
+    height_mm: 150
+    question: Bilateral sampling produces reproducible spatial identities and improves animal-level precision.
+    layout:
+      - {panel: v6_bilateral, label: a, x: 4, "y": 4,  w: 175, h: 76}
+      - {panel: v6_precision, label: b, x: 4, "y": 86, w: 88,  h: 58}
+      - {panel: v6_depth,     label: c, x: 96, "y": 86, w: 83, h: 58}
+
+  - name: ED2_SPATIAL_IDENTITY
+    figure_key: extended_data
+    width_mm: 183
+    height_mm: 168
+    question: What spatial and compartment identities are actually present in the dataset?
+    layout:
+      - {panel: v6_compartment,      label: a, x: 4,  "y": 4,   w: 56,  h: 46}
+      - {panel: v6_pca,              label: b, x: 64, "y": 4,   w: 115, h: 46}
+      - {panel: v6_fingerprint_full, label: c, x: 4,  "y": 54,  w: 175, h: 60}
+      - {panel: v6_kaulich,          label: d, x: 4,  "y": 118, w: 88,  h: 46}
+      - {panel: v6_internal,         label: e, x: 96, "y": 118, w: 83,  h: 46}
+
+  - name: ED3_CA2SLM_ROBUSTNESS
+    figure_key: extended_data
+    width_mm: 183
+    height_mm: 168
+    question: Why the canonical DA table is unchanged while biological interpretation of CA2-SLM is restricted.
+    layout:
+      - {panel: v6_ed_ca2_locator,  label: a, x: 4,   "y": 4,   w: 40,  h: 46}
+      - {panel: v6_ed_missing,      label: b, x: 48,  "y": 4,   w: 131, h: 46}
+      - {panel: v6_ed_displacement, label: c, x: 4,   "y": 56,  w: 88,  h: 50}
+      - {panel: v6_ed_classes,      label: d, x: 96,  "y": 56,  w: 83,  h: 50}
+      - {panel: v6_ed_sensitivity,  label: e, x: 4,   "y": 112, w: 175, h: 52}
+
+  - name: ED4_WGCNA_SPATIAL
+    figure_key: extended_data
+    width_mm: 183
+    height_mm: 168
+    question: How are WGCNA modules actually organised in space?
+    layout:
+      - {panel: v6_ed_module_fingerprint, label: a, x: 4,  "y": 4,   w: 175, h: 96}
+      - {panel: v6_ed_wgcna_circle,       label: b, x: 4,  "y": 106, w: 88,  h: 58}
+      - {panel: v6_ed_celltype,           label: c, x: 96, "y": 106, w: 83,  h: 58}
+
+  - name: ED5_WGCNA_PHENOTYPE
+    figure_key: extended_data
+    width_mm: 183
+    height_mm: 100
+    question: Broad directional coherence is descriptive; individual module phenotype effects are not FDR-supported.
+    layout:
+      - {panel: v6_ed_wgcna_phenotype, label: a, x: 4, "y": 4, w: 175, h: 92}
+
+  - name: ED6_GSEA_SUPPORT
+    figure_key: extended_data
+    width_mm: 183
+    height_mm: 168
+    question: The complete three-contrast enrichment context behind the three highlighted programs.
+    layout:
+      - {panel: v6_ed_atlas_rescon,    label: a, x: 4, "y": 4,   w: 175, h: 52}
+      - {panel: v6_ed_atlas_suscon,    label: b, x: 4, "y": 60,  w: 175, h: 52}
+      - {panel: v6_ed_gsea_curve_syn,  label: c, x: 4, "y": 116, w: 57,  h: 48}
+      - {panel: v6_ed_gsea_curve_rna,  label: d, x: 65, "y": 116, w: 57, h: 48}
+      - {panel: v6_ed_gsea_curve_ox,   label: e, x: 126, "y": 116, w: 53, h: 48}
+
+  - name: ED7_STRESS_IDENTITY
+    figure_key: extended_data
+    width_mm: 183
+    height_mm: 168
+    question: >-
+      Does the strongest stress-associated effect occur where the protein is
+      most abundant at baseline?
+    layout:
+      - {panel: v6_ed_identity,         label: a, x: 4, "y": 4,   w: 175, h: 42}
+      - {panel: v6_ed_locations,        label: b, x: 4, "y": 52,  w: 175, h: 62}
+      - {panel: v6_ed_locations_matrix, label: c, x: 4, "y": 120, w: 175, h: 44}
+
+  - name: ED8_NETWORKS_COUPLING
+    figure_key: extended_data
+    width_mm: 183
+    height_mm: 168
+    question: >-
+      What a spatial molecular network is, and what does not differ between
+      groups.
+    layout:
+      - {panel: v6_ed_similarity,       label: a, x: 4,  "y": 4,   w: 175, h: 62}
+      - {panel: v6_ed_network_distance, label: b, x: 4,  "y": 72,  w: 110, h: 44}
+      - {panel: v6_ed_nulls,            label: c, x: 118, "y": 72, w: 61,  h: 44}
+      - {panel: v6_ed_coupling,         label: d, x: 4,  "y": 122, w: 175, h: 42}
