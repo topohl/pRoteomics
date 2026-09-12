@@ -1,0 +1,37 @@
+source_system,raw_id,canonical_AnimalID,evidence,status
+proteomics_metadata_raw,A0003,3,"AnimalID_raw in sample_metadata_merged_clean_for_module_scores.xlsx; same row carries canonical AnimalID 3; acquisition path token _A0003_",active
+proteomics_metadata_raw,A111,111,"AnimalID_raw in sample_metadata_merged_clean_for_module_scores.xlsx; same row carries canonical AnimalID 111; acquisition path token _A111_",active
+proteomics_metadata_raw,A127,127,"AnimalID_raw in sample_metadata_merged_clean_for_module_scores.xlsx; same row carries canonical AnimalID 127; acquisition path token _A127_",active
+proteomics_metadata_raw,A129,129,"AnimalID_raw in sample_metadata_merged_clean_for_module_scores.xlsx; same row carries canonical AnimalID 129; acquisition path token _A129_",active
+proteomics_metadata_raw,A135,135,"AnimalID_raw in sample_metadata_merged_clean_for_module_scores.xlsx; same row carries canonical AnimalID 135; acquisition path token _A135_",active
+proteomics_metadata_raw,A139,139,"AnimalID_raw in sample_metadata_merged_clean_for_module_scores.xlsx; same row carries canonical AnimalID 139; acquisition path token _A139_",active
+proteomics_metadata_raw,A755,755,"AnimalID_raw in sample_metadata_merged_clean_for_module_scores.xlsx; same row carries canonical AnimalID 755; acquisition path token _A755_",active
+proteomics_metadata_raw,A764,764,"AnimalID_raw in sample_metadata_merged_clean_for_module_scores.xlsx; same row carries canonical AnimalID 764; acquisition path token _A764_",active
+proteomics_metadata_raw,A765,765,"AnimalID_raw in sample_metadata_merged_clean_for_module_scores.xlsx; same row carries canonical AnimalID 765; acquisition path token _A765_",active
+spatial_network_rds,A0003,3,"sample_metadata$AnimalID in 07_spatial_networks network_spatial_relations_objects.rds; identical vocabulary to proteomics AnimalID_raw",active
+spatial_network_rds,A111,111,"sample_metadata$AnimalID in 07_spatial_networks network_spatial_relations_objects.rds; identical vocabulary to proteomics AnimalID_raw",active
+spatial_network_rds,A127,127,"sample_metadata$AnimalID in 07_spatial_networks network_spatial_relations_objects.rds; identical vocabulary to proteomics AnimalID_raw",active
+spatial_network_rds,A129,129,"sample_metadata$AnimalID in 07_spatial_networks network_spatial_relations_objects.rds; identical vocabulary to proteomics AnimalID_raw",active
+spatial_network_rds,A135,135,"sample_metadata$AnimalID in 07_spatial_networks network_spatial_relations_objects.rds; identical vocabulary to proteomics AnimalID_raw",active
+spatial_network_rds,A139,139,"sample_metadata$AnimalID in 07_spatial_networks network_spatial_relations_objects.rds; identical vocabulary to proteomics AnimalID_raw",active
+spatial_network_rds,A755,755,"sample_metadata$AnimalID in 07_spatial_networks network_spatial_relations_objects.rds; identical vocabulary to proteomics AnimalID_raw",active
+spatial_network_rds,A764,764,"sample_metadata$AnimalID in 07_spatial_networks network_spatial_relations_objects.rds; identical vocabulary to proteomics AnimalID_raw",active
+spatial_network_rds,A765,765,"sample_metadata$AnimalID in 07_spatial_networks network_spatial_relations_objects.rds; identical vocabulary to proteomics AnimalID_raw",active
+behavior_zscore,0003,3,"ID column of E9_Behavior_Data.xlsx sheet zScore; zero-padded animal number; unique numeric suffix across all 117 behaviour ids",active
+behavior_zscore,OR111,111,"ID column of E9_Behavior_Data.xlsx sheet zScore; OR = cohort prefix, 111 = animal number; unique numeric suffix across all 117 behaviour ids",active
+behavior_zscore,OR127,127,"ID column of E9_Behavior_Data.xlsx sheet zScore; OR = cohort prefix, 127 = animal number; unique numeric suffix across all 117 behaviour ids",active
+behavior_zscore,OR129,129,"ID column of E9_Behavior_Data.xlsx sheet zScore; OR = cohort prefix, 129 = animal number; unique numeric suffix across all 117 behaviour ids",active
+behavior_zscore,OR135,135,"ID column of E9_Behavior_Data.xlsx sheet zScore; OR = cohort prefix, 135 = animal number; unique numeric suffix across all 117 behaviour ids",active
+behavior_zscore,OR139,139,"ID column of E9_Behavior_Data.xlsx sheet zScore; OR = cohort prefix, 139 = animal number; unique numeric suffix across all 117 behaviour ids",active
+behavior_zscore,OQ755,755,"ID column of E9_Behavior_Data.xlsx sheet zScore; OQ = cohort prefix, 755 = animal number; unique numeric suffix across all 117 behaviour ids",active
+behavior_zscore,OQ764,764,"ID column of E9_Behavior_Data.xlsx sheet zScore; OQ = cohort prefix, 764 = animal number; unique numeric suffix across all 117 behaviour ids",active
+behavior_zscore,OQ765,765,"ID column of E9_Behavior_Data.xlsx sheet zScore; OQ = cohort prefix, 765 = animal number; unique numeric suffix across all 117 behaviour ids",active
+movement_auc,3,3,"AnimalNum column of auc_individual_animals_*.csv; bare animal number; the historical normaliser mapped this to NA because it required at least three digits",active
+movement_auc,OR111,111,"AnimalNum column of auc_individual_animals_*.csv; OR = cohort prefix, 111 = animal number; unique numeric suffix across all 111 movement ids",active
+movement_auc,OR127,127,"AnimalNum column of auc_individual_animals_*.csv; OR = cohort prefix, 127 = animal number; unique numeric suffix across all 111 movement ids",active
+movement_auc,OR129,129,"AnimalNum column of auc_individual_animals_*.csv; OR = cohort prefix, 129 = animal number; unique numeric suffix across all 111 movement ids",active
+movement_auc,OR135,135,"AnimalNum column of auc_individual_animals_*.csv; OR = cohort prefix, 135 = animal number; unique numeric suffix across all 111 movement ids",active
+movement_auc,OR139,139,"AnimalNum column of auc_individual_animals_*.csv; OR = cohort prefix, 139 = animal number; unique numeric suffix across all 111 movement ids",active
+movement_auc,OQ755,755,"AnimalNum column of auc_individual_animals_*.csv; OQ = cohort prefix, 755 = animal number; unique numeric suffix across all 111 movement ids",active
+movement_auc,OQ764,764,"AnimalNum column of auc_individual_animals_*.csv; OQ = cohort prefix, 764 = animal number; unique numeric suffix across all 111 movement ids",active
+movement_auc,OQ765,765,"AnimalNum column of auc_individual_animals_*.csv; OQ = cohort prefix, 765 = animal number; unique numeric suffix across all 111 movement ids",active

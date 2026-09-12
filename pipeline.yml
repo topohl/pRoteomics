@@ -1135,6 +1135,26 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Module-level behavior/physiology coupling context. WGCNA inference comes only from the Stage 07 handoff; missing behavior inputs become status rows."
+      - script: "08_behavior_physio_coupling/04_animal_id_integrity_audit.R"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        stage: "coupling"
+        scope: "global"
+        produces:
+          - "results/tables/08_behavior_physio_coupling/animal_id_integrity/animal_id_normalization_consumer_audit.csv"
+          - "results/tables/08_behavior_physio_coupling/animal_id_integrity/animal_id_normalization_blast_radius.csv"
+          - "results/tables/08_behavior_physio_coupling/animal_id_integrity/animal_id_resolution_report.csv"
+        consumes_required:
+          - "config/animal_id_aliases.csv"
+          - "data/external/behavior/E9_Behavior_Data.xlsx"
+        consumes_optional:
+          - "data/external/behavior/auc_individual_animals_firstChangeActive.csv"
+          - "data/external/behavior/auc_individual_animals_all.csv"
+          - "data/processed/07_spatial_networks/network_spatial_relations/neuron_neuropil/region_layer/network_spatial_relations_objects.rds"
+          - "results/tables/08_behavior_physio_coupling/network_behavior_coupling/"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Read-only repository-level AnimalID integrity audit and blast radius. The withdrawn normalize_animal_id() in 02_network_behavior_coupling.r did three independent kinds of damage: it truncated digit runs longer than four (merging 23 behaviour animals into 7 keys, after which distinct() silently dropped 16 rows), it zero-padded bare numerals to four while leaving already-A ids at their original width (so the proteomics A111 never matched the behaviour OR111 -> A0111, reducing the join to a single animal), and it required at least three digits (so canonical animal 3 became NA and lost all movement rows). Canonical WGCNA state, differential abundance and the spatial-systems layer are provably unaffected: no normaliser sits on their path."
   integration:
     description: "Manuscript-level synthesis: integrate existing enrichment, WGCNA, microenvironment, complex/organelle, robustness, spatial, behavior, and QC evidence."
     scripts:

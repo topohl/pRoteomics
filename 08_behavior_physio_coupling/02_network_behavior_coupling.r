@@ -43,6 +43,7 @@ paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.
 source(paths_file)
 source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "validation_utils.R"))
+source(repo_path("R", "animal_id_contract.R"))
 MODULE_ID <- "08_behavior_physio_coupling"
 SUBSTEP_ID <- "network_behavior_coupling"
 CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
@@ -177,13 +178,29 @@ group_colors <- c(
 
 group_fills <- scales::alpha(group_colors, 0.35)
 
+# Animal identity is resolved by the canonical contract in R/animal_id_contract.R,
+# never by an ad-hoc regex here. The historical local normalize_animal_id() did
+# three separate kinds of damage: it truncated digit runs longer than four
+# (merging 23 behaviour animals into 7 keys), it zero-padded bare numerals to
+# four while leaving already-"A" ids at their original width (so "A111" and
+# "OR111" -> "A0111" never compared equal), and it required at least three
+# digits (so canonical animal "3" became NA). Keeping the name bound to a hard
+# error means a future reintroduction fails loudly instead of silently.
 normalize_animal_id <- function(x) {
-  x <- as.character(x)
-  x <- stringr::str_trim(x)
-  x <- stringr::str_extract(x, "A[0-9]{3,4}|[0-9]{3,4}")
-  x <- ifelse(is.na(x), NA_character_, x)
-  x <- ifelse(stringr::str_detect(x, "^A"), x, paste0("A", stringr::str_pad(x, 4, pad = "0")))
-  x
+  stop("normalize_animal_id() is withdrawn. Use ",
+       "aid_resolve(x, source_system, canonical = CANON_ANIMALS) from ",
+       "R/animal_id_contract.R, which fails closed on unresolved ids and ",
+       "hard-errors on collisions.", call. = FALSE)
+}
+
+CANON_ANIMALS <- aid_expected_exp9_animals()
+
+# Resolve and immediately prove that no two source ids collapsed together.
+resolve_animal_ids <- function(x, source_system, strict = FALSE) {
+  res <- aid_resolve(x, source_system, strict = strict, canonical = CANON_ANIMALS)
+  keep <- !is.na(res)
+  aid_assert_no_collision(as.character(x)[keep], res[keep], context = source_system)
+  as.character(res)
 }
 
 first_existing_col <- function(df, candidates) {
@@ -306,10 +323,11 @@ load_spatial_object <- function(params) {
       AnimalID = .env$animal_id_raw,
       AnimalID = dplyr::if_else(
         is.na(.data$AnimalID) | .data$AnimalID == "",
-        stringr::str_extract(.env$sample_column_raw, "A[0-9]{3,4}"),
+        stringr::str_extract(.env$sample_column_raw, "A[0-9]+"),
         .data$AnimalID
       ),
-      AnimalID = normalize_animal_id(.data$AnimalID),
+      AnimalID = resolve_animal_ids(.data$AnimalID, "spatial_network_rds",
+                                    strict = TRUE),
       ExpGroup = toupper(as.character(.data$ExpGroup)),
       ExpGroup = factor(.data$ExpGroup, levels = params$group_levels),
       RegionLayer = as.character(.data$RegionLayer),
@@ -431,14 +449,22 @@ load_physiology <- function(params) {
       PhysioGroup = dplyr::any_of(c("Group", "ExpGroup"))
     ) %>%
     dplyr::mutate(
-      AnimalID = normalize_animal_id(.data$AnimalRaw),
+      AnimalID = resolve_animal_ids(.data$AnimalRaw, "behavior_zscore"),
       Sex = as.character(.data$Sex),
       Sex = factor(.data$Sex, levels = params$sex_levels),
+      # The behaviour workbook codes the stressed cohort as SIS, not RES/SUS,
+      # so PhysioGroup can never populate params$group_levels. It is kept
+      # verbatim for provenance; the RES/SUS split comes from the proteomics
+      # ExpGroup downstream via coalesce().
       PhysioGroup = toupper(as.character(.data$PhysioGroup)),
       CombZ = suppressWarnings(as.numeric(.data$CombZ)),
       delta_cort = suppressWarnings(as.numeric(.data$delta_cort)),
       sucrose_pref = suppressWarnings(as.numeric(.data$sucrose_pref))
     ) %>%
+    # Non-Exp9 cohort animals resolve to NA and are dropped here EXPLICITLY.
+    # Previously they survived truncation as bogus keys and the distinct()
+    # below silently discarded 16 real rows while misattributing phenotypes.
+    dplyr::filter(!is.na(.data$AnimalID)) %>%
     dplyr::select(.data$AnimalID, .data$Sex, .data$PhysioGroup, .data$CombZ, .data$delta_cort, .data$sucrose_pref) %>%
     dplyr::distinct(.data$AnimalID, .keep_all = TRUE)
 }
@@ -461,7 +487,7 @@ load_movement_auc <- function(auc_file, params, analysis_label) {
   auc_movement <- auc_data %>%
     dplyr::mutate(
       Analysis = analysis_label,
-      AnimalID = normalize_animal_id(.data$AnimalNum),
+      AnimalID = resolve_animal_ids(.data$AnimalNum, "movement_auc"),
       Batch = if ("Batch" %in% names(.)) as.character(.data$Batch) else NA_character_,
       Group = toupper(as.character(.data$Group)),
       Group = factor(.data$Group, levels = params$group_levels),
@@ -798,8 +824,14 @@ join_diag <- dplyr::bind_rows(
   data.frame(metric = "animals_lost_from_behavior", value = length(setdiff(behavior_animals, proteomics_animals)))
 )
 readr::write_csv(join_diag, file.path(dirs$tables, "join_diagnostics_summary.csv"))
-readr::write_csv(data.frame(source = "proteomics_only", AnimalID = setdiff(proteomics_animals, behavior_animals)), file.path(dirs$tables, "join_diagnostics_proteomics_only.csv"))
-readr::write_csv(data.frame(source = "behavior_only", AnimalID = setdiff(behavior_animals, proteomics_animals)), file.path(dirs$tables, "join_diagnostics_behavior_only.csv"))
+# recycling "source" against a zero-length AnimalID is an error, and an empty
+# setdiff is now the EXPECTED state rather than an impossible one
+only_frame <- function(label, ids) {
+  data.frame(source = rep(label, length(ids)), AnimalID = as.character(ids),
+             stringsAsFactors = FALSE)
+}
+readr::write_csv(only_frame("proteomics_only", setdiff(proteomics_animals, behavior_animals)), file.path(dirs$tables, "join_diagnostics_proteomics_only.csv"))
+readr::write_csv(only_frame("behavior_only", setdiff(behavior_animals, proteomics_animals)), file.path(dirs$tables, "join_diagnostics_behavior_only.csv"))
 coverage_cols <- intersect(c("Sex", "Group", "Phase", "window"), names(edge_joined))
 if (length(coverage_cols) > 0) {
   coverage <- edge_joined %>% dplyr::count(dplyr::across(dplyr::all_of(coverage_cols)), name = "n")
