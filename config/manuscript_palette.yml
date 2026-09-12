@@ -1,0 +1,84 @@
+# Manuscript-wide semantic palette contract.
+#
+# One palette family per VARIABLE TYPE, used consistently across figures.
+# Adjacent panels must not use unrelated palette families for the same kind of
+# variable. Non-significant and descriptive information must be visually
+# quieter than inferentially supported information.
+#
+# No red-vs-green contrast is used anywhere. The diverging scale is
+# colour-blind safe (blue / warm vermillion, not red / green).
+
+palette_version: manuscript_palette_v1
+
+# ---------------------------------------------------------------- groups
+# Experimental group identity. CON is deliberately neutral so that the two
+# stress groups carry the only chromatic weight.
+group:
+  CON: "#8A8A8A"      # neutral grey
+  RES: "#2E7D91"      # cool teal
+  SUS: "#D1543A"      # muted vermillion
+
+# ------------------------------------------------------------- datasets
+# Compartment identity. Used for annotation strips and dataset grouping,
+# never for encoding a measured value.
+dataset:
+  neuron_neuropil: "#3D5A73"
+  neuron_soma: "#7A9BB0"
+  microglia: "#C2A878"
+
+dataset_label:
+  neuron_neuropil: "Neuropil"
+  neuron_soma: "Soma"
+  microglia: "Microglia-enriched ROI"
+
+# ------------------------------------------------- signed molecular effect
+# ONE diverging scale for every signed molecular quantity in the manuscript
+# (NES, log2FC, model effect). Blue = lower in the stressed group of the
+# contrast, vermillion = higher. Midpoint is always zero.
+diverging:
+  low: "#2C6E9B"
+  mid: "#F7F7F5"
+  high: "#C0442C"
+
+# ------------------------------------------------------------ evidence
+# Interpretation status. Supported evidence is saturated; descriptive,
+# unevaluable and unaudited information is grey and recedes.
+evidence:
+  supported: "#1F3D52"
+  descriptive: "#B9B9B4"
+  not_evaluable: "#D8D6D0"
+  not_audited: "#E6E4DF"
+  qc_context: "#B08968"
+
+claimability:
+  claimable: "#1F3D52"
+  claimable_with_caveat: "#5B7C93"
+  not_claimable: "#D1543A"
+  not_evaluable: "#D8D6D0"
+  not_audited: "#E6E4DF"
+
+# ------------------------------------------------------------ typography
+# Point sizes are FINAL-SIZE points on a 183 mm wide canvas.
+typography:
+  family: "Arial"
+  panel_label_pt: 8
+  panel_label_case: lowercase
+  axis_text_pt: 5.2
+  axis_title_pt: 6
+  legend_text_pt: 5.2
+  legend_title_pt: 5.6
+  annotation_pt: 5
+  minimum_pt: 5
+
+# ----------------------------------------------------------- line widths
+# Final-size line widths in points.
+line:
+  axis_pt: 0.3
+  tile_border_pt: 0.15
+  reference_pt: 0.25
+  data_pt: 0.5
+
+# -------------------------------------------------------------- canvas
+canvas:
+  width_mm: 183
+  max_height_mm: 170
