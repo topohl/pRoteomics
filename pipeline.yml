@@ -1716,6 +1716,65 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Contact sheet plus figure_story_map.md. The story map is GENERATED from the per-panel narrative lines in the contract, so the argument recorded in the contract and the argument shown to a reviewer cannot drift apart; a panel with no narrative line is reported as not yet earning its place rather than given an invented transition."
+      - script: "figures/story_v4_evidence_inventory.R"
+        required: false
+        datasets: ["global"]
+        stage: "manuscript_candidates"
+        scope: "global"
+        produces:
+          - "results/tables/manuscript_candidates/story_v4/proteomics_manuscript_evidence_inventory.csv"
+        consumes_required:
+          - "results/tables/10_biological_integration/gsea_wgcna_concordance/global/ontology_aware_gsea_theme_assignments_all_contrasts.csv"
+        consumes_optional:
+          - "results/tables/11_spatial_systems/"
+          - "results/source_data/04_differential_expression_enrichment/sus_res_spatial_dap_atlas/global/"
+          - "results/tables/08_behavior_physio_coupling/network_behavior_coupling/"
+          - "results/source_data/manuscript_panels/figure_3/figure3b_stage07_effect_source.csv"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Story-v4 step 1: a complete evidence inventory of the currently defensible proteomics results, reconstructed from canonical outputs and the latest audits, so the figures are designed from the evidence rather than from the panels that happen to exist. Records per claim the dataset, spatial unit, contrast, analysis type, the quantitative result READ from a canonical artifact, inferential status, FDR status, QC status, bilateral status, the candidate panel it currently sits in, and whether it belongs in main text or Extended Data. Includes the results that are NOT main-figure candidates, notably the WGCNA phenotype null and the two nulls (network organisation and network-behaviour coupling)."
+      - script: "figures/story_v4_figure_02.R"
+        required: false
+        datasets: ["global"]
+        stage: "manuscript_candidates"
+        scope: "global"
+        produces:
+          - "results/figures/manuscript_candidates/story_v4/figure_02/"
+          - "results/source_data/manuscript_candidates/story_v4/figure_02/"
+          - "results/reports/manuscript_candidates/story_v4/figure_02/"
+        consumes_required:
+          - "figures/figure_story_v4_contract.yml"
+          - "config/manuscript_palette.yml"
+          - "results/tables/11_spatial_systems/bilateral/bilateral_spatial_identity_protein_level.csv"
+        consumes_optional:
+          - "results/source_data/manuscript/figure_02/"
+          - "results/source_data/03_qc_exploration/04e_control_compartment_abundance_publication_figures/global/"
+          - "results/source_data/04_differential_expression_enrichment/control_spatial_identity_validation/global/"
+          - "results/tables/11_spatial_systems/precision/bilateral_precision_gain.csv"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "STORY-V4 CANDIDATE LAYER. Figure 2 rebuilt from the evidence inventory. The anatomy anchor is now a real hippocampal VECTOR SCHEMATIC rather than a metadata matrix: a repository-wide search found no hippocampal artwork, histology or tissue imagery of any kind, so this is an explicitly disclosed Illustrator-ready placeholder and no histological data is fabricated. Bilateral reproducibility now shows ONE representative scatter plus a forest over ALL 15 prespecified anatomical contrasts, so the weak fine CA1 laminar result (r = 0.38) is visible next to the strong coarse regional ones (r = 0.92) instead of being hidden behind three median contrasts. Compartment identity uses the stored 10-marker x 3-compartment matrix, because with 3-4 proteins per marker family a boxplot or a forest with error bars would imply dispersion the data do not carry and no CI or SE exists for those differences anywhere in the source."
+      - script: "figures/story_v4_figure_03.R"
+        required: false
+        datasets: ["global"]
+        stage: "manuscript_candidates"
+        scope: "global"
+        produces:
+          - "results/figures/manuscript_candidates/story_v4/figure_03/"
+          - "results/source_data/manuscript_candidates/story_v4/figure_03/"
+          - "results/reports/manuscript_candidates/story_v4/figure_03/"
+        consumes_required:
+          - "figures/figure_story_v4_contract.yml"
+          - "config/manuscript_palette.yml"
+          - "results/tables/10_biological_integration/gsea_wgcna_concordance/global/ontology_aware_gsea_theme_assignments_all_contrasts.csv"
+        consumes_optional:
+          - "data/processed/04_differential_expression_enrichment/clusterProfiler/"
+          - "data/processed/02_id_mapping/mapped/"
+          - "results/source_data/04_differential_expression_enrichment/sus_res_spatial_dap_atlas/global/"
+          - "results/tables/11_spatial_systems/atlas/protein_spatial_cell_affinity.csv"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "STORY-V4 CANDIDATE LAYER. Figure 3 replaces the grey ranked wedges with CONVENTIONAL GSEA running-enrichment panels. This was verified to be an EXACT reconstruction, not a re-run: re-querying term membership from the pinned org.Mm.eg.db 3.22.0 reproduces the stored canonical setSize (507 for GO:0099536), the stored enrichmentScore to 3.3e-16 and the stored 255-gene leading edge exactly. Membership retrieval is an annotation lookup, not an enrichment test - no permutation is run and no p-value or FDR is recomputed; NES and FDR are read from the canonical result. The renderer hard-stops if either the reconstructed setSize or the reconstructed ES fails to match the stored canonical values. Each exemplar also carries a three-contrast RES-CON / SUS-CON / SUS-RES strip, which restores trajectory information missing from every earlier figure and shows that the neuropil synaptic and soma mRNA programs DIVERGE between RES and SUS while the microglial OXPHOS program is graded."
   export:
     description: "Export layer for PRIDE, manuscript tables, reviewer materials, source data, methods summaries, and validation reports."
     scripts:
