@@ -1625,6 +1625,97 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Contact sheet at TRUE RELATIVE PANEL SIZE: every variant shares the 183 mm width and one scale factor, so the comparison is about composition rather than thumbnail size. promotion_status is not_promoted on every inventory row."
+      - script: "figures/story_v3_panel_audit.R"
+        required: false
+        datasets: ["global"]
+        stage: "manuscript_candidates"
+        scope: "global"
+        produces:
+          - "results/tables/manuscript_candidates/story_v3/panel_visual_scientific_audit.csv"
+        consumes_required: []
+        consumes_optional:
+          - "figures/figure_candidate_contract.yml"
+          - "figures/figure_nature_v2_contract.yml"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Panel-by-panel visual and scientific audit of the WHOLE candidate library - canonical, Part-16 and Part-17 - treated as one pool of ideas rather than as generations where the newest wins. Records per panel: the question it answers, the two-second takeaway, whether the encoding delivers it, the problem, a better encoding, narrative role, dataset scope and recommended destination. The judgements are versioned in the script so they can be argued with; the CSV is the emitted artifact. Written BEFORE any story_v3 panel was implemented."
+      - script: "figures/story_v3_figure_02.R"
+        required: false
+        datasets: ["global"]
+        stage: "manuscript_candidates"
+        scope: "global"
+        produces:
+          - "results/figures/manuscript_candidates/story_v3/figure_02/"
+          - "results/source_data/manuscript_candidates/story_v3/figure_02/"
+          - "results/reports/manuscript_candidates/story_v3/figure_02/"
+        consumes_required:
+          - "figures/figure_story_v3_contract.yml"
+          - "config/manuscript_palette.yml"
+          - "results/tables/11_spatial_systems/bilateral/bilateral_spatial_identity_protein_level.csv"
+          - "data/metadata/TPE9_sample_metadata_males.xlsx"
+        consumes_optional:
+          - "results/source_data/manuscript/figure_02/"
+          - "results/tables/03_qc_exploration/00b_joint_compartment_qc/global/joint_primary_pca_variance_explained.csv"
+          - "results/tables/11_spatial_systems/precision/bilateral_precision_gain.csv"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "STORY-V3 CANDIDATE LAYER. Figure 2 built as a CHAIN OF VALIDATION rather than an assortment: sampling map, depth, global PCA, paired-hemisphere reproducibility, precision, compartment identity, external and internal validation. The canonical PCA is deliberately RESTORED as a small panel because it answers a question no other panel answers - do the measured proteomes occupy structured molecular spaces at all - and precision is re-encoded as a dumbbell because the Part-17 3x3 line grid made the reader infer the improvement."
+      - script: "figures/story_v3_figure_03.R"
+        required: false
+        datasets: ["global"]
+        stage: "manuscript_candidates"
+        scope: "global"
+        produces:
+          - "results/figures/manuscript_candidates/story_v3/figure_03/"
+          - "results/source_data/manuscript_candidates/story_v3/figure_03/"
+          - "results/reports/manuscript_candidates/story_v3/figure_03/"
+        consumes_required:
+          - "figures/figure_story_v3_contract.yml"
+          - "config/manuscript_palette.yml"
+          - "results/tables/10_biological_integration/gsea_wgcna_concordance/global/ontology_aware_gsea_theme_assignments_all_contrasts.csv"
+          - "results/tables/11_spatial_systems/atlas/WGCNA_module_spatial_cell_affinity.csv"
+          - "data/metadata/TPE9_sample_metadata_males.xlsx"
+        consumes_optional:
+          - "data/processed/04_differential_expression_enrichment/clusterProfiler/"
+          - "data/processed/02_id_mapping/mapped/"
+          - "results/source_data/04_differential_expression_enrichment/sus_res_spatial_dap_atlas/global/"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "STORY-V3 CANDIDATE LAYER. Figure 3 built as ONE argument: sparse protein-level effects motivate asking the question at program level; the ranked-GSEA atlas answers it; a BRIDGE panel puts three prespecified supported programs back onto the Figure-2 sampling map so the reader sees WHERE; a matched triptych shows each program directly in its own ranked proteome; and a protein-level zoom names the leading-edge proteins behind each program. The old Figure-3 protein-heatmap DESIGN is restored with QC-clean biology instead of the m12/CA2-SLM story. The old circular WGCNA idea is restored for module STRUCTURE only - spatial specificity, spatial peak, bilateral reproducibility - and never encodes phenotype significance, since 0 of 45 module x contrast cells survive FDR. Selection of the three programs follows one rule applied to all compartments and is recorded in the source data."
+      - script: "figures/story_v3_extended_data.R"
+        required: false
+        datasets: ["global"]
+        stage: "manuscript_candidates"
+        scope: "global"
+        produces:
+          - "results/figures/manuscript_candidates/story_v3/extended_data/"
+          - "results/source_data/manuscript_candidates/story_v3/extended_data/"
+          - "results/reports/manuscript_candidates/story_v3/extended_data/"
+        consumes_required:
+          - "figures/figure_story_v3_contract.yml"
+          - "results/tables/11_spatial_systems/atlas/WGCNA_module_spatial_cell_affinity.csv"
+        consumes_optional:
+          - "data/processed/04_differential_expression_enrichment/clusterProfiler/"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Story-v3 Extended Data: the two WGCNA structure encodings side by side for a like-for-like legibility comparison, plus the full protein-level zoom."
+      - script: "figures/story_v3_contact_sheet.R"
+        required: false
+        datasets: ["global"]
+        stage: "manuscript_candidates"
+        scope: "global"
+        produces:
+          - "results/figures/manuscript_candidates/story_v3/story_v3_contact_sheet.svg"
+          - "results/tables/manuscript_candidates/story_v3/story_v3_panel_inventory.csv"
+          - "results/tables/manuscript_candidates/story_v3/story_v3_variant_inventory.csv"
+          - "results/reports/manuscript_candidates/story_v3/figure_story_map.md"
+        consumes_required:
+          - "figures/figure_story_v3_contract.yml"
+        consumes_optional:
+          - "results/figures/manuscript_candidates/story_v3/"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Contact sheet plus figure_story_map.md. The story map is GENERATED from the per-panel narrative lines in the contract, so the argument recorded in the contract and the argument shown to a reviewer cannot drift apart; a panel with no narrative line is reported as not yet earning its place rather than given an invented transition."
   export:
     description: "Export layer for PRIDE, manuscript tables, reviewer materials, source data, methods summaries, and validation reports."
     scripts:
