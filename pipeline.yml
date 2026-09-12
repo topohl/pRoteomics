@@ -1483,6 +1483,72 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Explicit Figure 3 materialization and assembly from contract-pinned downstream artifacts, including an m12-only protein display derived without refitting DA or WGCNA."
+  manuscript_candidates:
+    description: "Parallel candidate-figure layer for editorial comparison. Writes only under results/**/manuscript_candidates/**. The canonical manuscript contract, entry points and outputs are untouched, and this whole stage can be removed without affecting the canonical pipeline."
+    scripts:
+      - script: "figures/candidate_figure_02.R"
+        required: false
+        datasets: ["global"]
+        stage: "manuscript_candidates"
+        scope: "global"
+        produces:
+          - "results/figures/manuscript_candidates/figure_02/"
+          - "results/source_data/manuscript_candidates/figure_02/"
+          - "results/reports/manuscript_candidates/figure_02/"
+        consumes_required:
+          - "figures/figure_candidate_contract.yml"
+          - "figures/figure_contract.yml"
+          - "results/tables/11_spatial_systems/bilateral/bilateral_spatial_identity_protein_level.csv"
+          - "results/tables/11_spatial_systems/precision/bilateral_precision_gain.csv"
+        consumes_optional:
+          - "results/tables/11_spatial_systems/bilateral/"
+          - "results/figures/manuscript/figure_02/panels/"
+          - "results/source_data/03_qc_exploration/04e_control_compartment_abundance_publication_figures/global/figure2d_compact_marker_enrichment_differences_v2_source_data.csv"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "CANDIDATE LAYER, NOT THE MANUSCRIPT. Parallel Figure-2 candidate panels and whole-figure variants for editorial comparison. figures/figure_contract.yml and every canonical Figure 2 output are untouched; this script writes only under results/**/manuscript_candidates/**. It reads the canonical contract and the canonical rendered panels READ-ONLY so a current-reference variant shows the genuine current figure. Candidate panel ids carry an x or ref prefix and can never collide with 2a-2f. The renderers are downstream only: cf_assert_no_model_fitting() hard-stops if a forbidden model, enrichment or FDR call appears in them. Nothing is promoted by running this."
+      - script: "figures/candidate_figure_03.R"
+        required: false
+        datasets: ["global"]
+        stage: "manuscript_candidates"
+        scope: "global"
+        produces:
+          - "results/figures/manuscript_candidates/figure_03/"
+          - "results/source_data/manuscript_candidates/figure_03/"
+          - "results/reports/manuscript_candidates/figure_03/"
+        consumes_required:
+          - "figures/figure_candidate_contract.yml"
+          - "figures/figure_contract.yml"
+          - "results/tables/10_biological_integration/gsea_wgcna_concordance/global/ontology_aware_gsea_theme_assignments_all_contrasts.csv"
+          - "results/source_data/manuscript_panels/figure_3/figure3b_stage07_effect_source.csv"
+        consumes_optional:
+          - "config/manuscript_go_theme_registry.tsv"
+          - "config/gsea_wgcna_theme_module_mapping.csv"
+          - "results/tables/11_spatial_systems/ca2_slm_robustness/stress_identity_robustness_comparison.csv"
+          - "results/tables/11_spatial_systems/atlas/protein_spatial_cell_affinity.csv"
+          - "results/source_data/04_differential_expression_enrichment/sus_res_spatial_dap_atlas/global/"
+          - "results/figures/manuscript/figure_03/panels/"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "CANDIDATE LAYER, NOT THE MANUSCRIPT. Parallel Figure-3 candidate panels and whole-figure variants. The ranked-GSEA program atlas summarises CANONICAL GO-BP GSEA terms per registry theme: a theme cell is the median NES of its constituent terms and the FDR count is taken from those same terms, so a descriptive theme summary is never turned into a significance call and qc_review themes are labelled QC context. The WGCNA panel reuses the canonical Stage-07 effect values verbatim and adds only side annotations. The DAP-status panel preserves the canonical FDR counts exactly and overlays robustness status, with every unaudited unit shown as not_audited. Canonical Figure 3 outputs are untouched."
+      - script: "figures/candidate_figure_contact_sheet.R"
+        required: false
+        datasets: ["global"]
+        stage: "manuscript_candidates"
+        scope: "global"
+        produces:
+          - "results/figures/manuscript_candidates/candidate_contact_sheet.svg"
+          - "results/tables/manuscript_candidates/candidate_panel_inventory.csv"
+          - "results/tables/manuscript_candidates/candidate_variant_inventory.csv"
+          - "results/reports/manuscript_candidates/candidate_contact_sheet_status.csv"
+        consumes_required:
+          - "figures/figure_candidate_contract.yml"
+        consumes_optional:
+          - "results/figures/manuscript_candidates/figure_02/assembled/"
+          - "results/figures/manuscript_candidates/figure_03/assembled/"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Comparison contact sheet plus candidate_panel_inventory.csv. The inventory records a SUGGESTED role per candidate panel taken verbatim from the candidate contract; promotion_status is not_promoted on every row and no editorial decision is hard-coded as canonical."
   export:
     description: "Export layer for PRIDE, manuscript tables, reviewer materials, source data, methods summaries, and validation reports."
     scripts:
