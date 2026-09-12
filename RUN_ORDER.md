@@ -149,14 +149,18 @@ Do not hand-edit this block; run `Rscript tools/generate_pipeline_docs.R`.
 97. `figures/candidate_figure_02.R` - stage `manuscript_candidates`; scope `global`
 98. `figures/candidate_figure_03.R` - stage `manuscript_candidates`; scope `global`
 99. `figures/candidate_figure_contact_sheet.R` - stage `manuscript_candidates`; scope `global`
-100. `09_export_pride_journal/02_make_sample_metadata.R` - stage `export`; scope `global`
-101. `09_export_pride_journal/03_export_processed_pg_matrix_package.R` - stage `export`; scope `global`
-102. `09_export_pride_journal/04_make_supplementary_tables.R` - stage `export`; scope `global`
-103. `09_export_pride_journal/05_make_pride_manifest.R` - stage `export`; scope `global`
-104. `09_export_pride_journal/06_make_methods_summary.R` - stage `export`; scope `global`
-105. `09_export_pride_journal/08_export_manuscript_figures.R` - stage `export`; scope `global`
-106. `09_export_pride_journal/09_export_source_data.R` - stage `export`; scope `global`
-107. `09_export_pride_journal/10_validate_pride_submission.R` - stage `export`; scope `global`
+100. `figures/nature_v2_figure_02.R` - stage `manuscript_candidates`; scope `global`
+101. `figures/nature_v2_figure_03.R` - stage `manuscript_candidates`; scope `global`
+102. `figures/nature_v2_extended_data.R` - stage `manuscript_candidates`; scope `global`
+103. `figures/nature_v2_contact_sheet.R` - stage `manuscript_candidates`; scope `global`
+104. `09_export_pride_journal/02_make_sample_metadata.R` - stage `export`; scope `global`
+105. `09_export_pride_journal/03_export_processed_pg_matrix_package.R` - stage `export`; scope `global`
+106. `09_export_pride_journal/04_make_supplementary_tables.R` - stage `export`; scope `global`
+107. `09_export_pride_journal/05_make_pride_manifest.R` - stage `export`; scope `global`
+108. `09_export_pride_journal/06_make_methods_summary.R` - stage `export`; scope `global`
+109. `09_export_pride_journal/08_export_manuscript_figures.R` - stage `export`; scope `global`
+110. `09_export_pride_journal/09_export_source_data.R` - stage `export`; scope `global`
+111. `09_export_pride_journal/10_validate_pride_submission.R` - stage `export`; scope `global`
 
 <!-- END GENERATED PIPELINE REGISTRY INDEX -->
 

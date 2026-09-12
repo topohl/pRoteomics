@@ -1549,6 +1549,82 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Comparison contact sheet plus candidate_panel_inventory.csv. The inventory records a SUGGESTED role per candidate panel taken verbatim from the candidate contract; promotion_status is not_promoted on every row and no editorial decision is hard-coded as canonical."
+      - script: "figures/nature_v2_figure_02.R"
+        required: false
+        datasets: ["global"]
+        stage: "manuscript_candidates"
+        scope: "global"
+        produces:
+          - "results/figures/manuscript_candidates/nature_v2/figure_02/"
+          - "results/source_data/manuscript_candidates/nature_v2/figure_02/"
+          - "results/reports/manuscript_candidates/nature_v2/figure_02/"
+        consumes_required:
+          - "figures/figure_nature_v2_contract.yml"
+          - "config/manuscript_palette.yml"
+          - "results/tables/11_spatial_systems/bilateral/bilateral_spatial_identity_protein_level.csv"
+          - "data/metadata/TPE9_sample_metadata_males.xlsx"
+        consumes_optional:
+          - "results/source_data/manuscript/figure_02/"
+          - "results/tables/11_spatial_systems/precision/bilateral_precision_gain.csv"
+          - "results/source_data/04_differential_expression_enrichment/control_spatial_identity_validation/global/"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "NATURE-STYLE v2 CANDIDATE LAYER, NOT THE MANUSCRIPT. A third independent layer beside the canonical contract and the Part-16 candidate layer. Figures are exactly 183 x 170 mm and every panel is RENDERED AT ITS EXACT FINAL BOX, so nothing is rescaled at assembly and 5-7 pt text really is 5-7 pt on the page; nv_verify_scale() fails the build otherwise. That is the defect that made the Part-16 assemblies illegible. Panel labels are lowercase bold, panels carry no titles or subtitles, and the candidate banner is gone from the artwork. The spatial anchor is a DATA-BACKED sampling map from canonical metadata - no histology is fabricated and the final anatomical artwork is explicitly deferred to Illustrator."
+      - script: "figures/nature_v2_figure_03.R"
+        required: false
+        datasets: ["global"]
+        stage: "manuscript_candidates"
+        scope: "global"
+        produces:
+          - "results/figures/manuscript_candidates/nature_v2/figure_03/"
+          - "results/source_data/manuscript_candidates/nature_v2/figure_03/"
+          - "results/reports/manuscript_candidates/nature_v2/figure_03/"
+        consumes_required:
+          - "figures/figure_nature_v2_contract.yml"
+          - "config/manuscript_palette.yml"
+          - "results/tables/10_biological_integration/gsea_wgcna_concordance/global/ontology_aware_gsea_theme_assignments_all_contrasts.csv"
+          - "results/source_data/04_differential_expression_enrichment/sus_res_spatial_dap_atlas/global/sus_res_dap_membership.csv"
+          - "results/tables/11_spatial_systems/atlas/protein_spatial_cell_affinity.csv"
+        consumes_optional:
+          - "data/processed/04_differential_expression_enrichment/clusterProfiler/"
+          - "results/source_data/manuscript_panels/figure_3/figure3b_stage07_effect_source.csv"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "NATURE-STYLE v2 CANDIDATE LAYER. Uses the actual inferential hierarchy: the cross-compartment ranked-GSEA atlas is the visual centrepiece (39-49% of page area) and the WGCNA phenotype heatmap is demoted, because zero of its 45 module x contrast cells reach tier-specific FDR (minimum 0.245). The three representative panels are REAL ranked evidence - every measured gene at its stored rank statistic with the term's stored leading-edge genes marked - read from the canonical clusterProfiler audit files with no enrichment recomputed. Some of those audit paths exceed the Windows 260-character limit and are opened through the extended-length prefix. All point sizes are at or above the 5 pt floor and the identity panel uses a deterministic offset rather than geom_jitter, so the rendered SVG is reproducible."
+      - script: "figures/nature_v2_extended_data.R"
+        required: false
+        datasets: ["global"]
+        stage: "manuscript_candidates"
+        scope: "global"
+        produces:
+          - "results/figures/manuscript_candidates/nature_v2/extended_data/"
+          - "results/source_data/manuscript_candidates/nature_v2/extended_data/"
+          - "results/reports/manuscript_candidates/nature_v2/extended_data/"
+        consumes_required:
+          - "figures/figure_nature_v2_contract.yml"
+          - "results/tables/11_spatial_systems/atlas/WGCNA_module_spatial_cell_affinity.csv"
+        consumes_optional:
+          - "results/source_data/manuscript_panels/figure_3/figure3b_stage07_effect_source.csv"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "WGCNA Extended-Data candidate. Makes the distinction explicit: module STRUCTURE (spatial specificity, bilateral reproducibility, external cell-type affinity) is robust descriptive molecular architecture, while module PHENOTYPE effects are descriptive only with no module x contrast cell surviving FDR. This is where the phenotype heatmap and the module identity panels belong."
+      - script: "figures/nature_v2_contact_sheet.R"
+        required: false
+        datasets: ["global"]
+        stage: "manuscript_candidates"
+        scope: "global"
+        produces:
+          - "results/figures/manuscript_candidates/nature_v2/nature_v2_contact_sheet.svg"
+          - "results/tables/manuscript_candidates/nature_v2/nature_v2_panel_inventory.csv"
+          - "results/tables/manuscript_candidates/nature_v2/nature_v2_variant_inventory.csv"
+          - "results/reports/manuscript_candidates/nature_v2/nature_v2_contact_sheet_status.csv"
+        consumes_required:
+          - "figures/figure_nature_v2_contract.yml"
+        consumes_optional:
+          - "results/figures/manuscript_candidates/nature_v2/"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Contact sheet at TRUE RELATIVE PANEL SIZE: every variant shares the 183 mm width and one scale factor, so the comparison is about composition rather than thumbnail size. promotion_status is not_promoted on every inventory row."
   export:
     description: "Export layer for PRIDE, manuscript tables, reviewer materials, source data, methods summaries, and validation reports."
     scripts:
