@@ -164,14 +164,20 @@ Do not hand-edit this block; run `Rscript tools/generate_pipeline_docs.R`.
 112. `figures/story_v5_validation_audit.R` - stage `manuscript_candidates`; scope `global`
 113. `figures/story_v5_figure_02.R` - stage `manuscript_candidates`; scope `global`
 114. `figures/story_v5_extended_data.R` - stage `manuscript_candidates`; scope `global`
-115. `09_export_pride_journal/02_make_sample_metadata.R` - stage `export`; scope `global`
-116. `09_export_pride_journal/03_export_processed_pg_matrix_package.R` - stage `export`; scope `global`
-117. `09_export_pride_journal/04_make_supplementary_tables.R` - stage `export`; scope `global`
-118. `09_export_pride_journal/05_make_pride_manifest.R` - stage `export`; scope `global`
-119. `09_export_pride_journal/06_make_methods_summary.R` - stage `export`; scope `global`
-120. `09_export_pride_journal/08_export_manuscript_figures.R` - stage `export`; scope `global`
-121. `09_export_pride_journal/09_export_source_data.R` - stage `export`; scope `global`
-122. `09_export_pride_journal/10_validate_pride_submission.R` - stage `export`; scope `global`
+115. `figures/spatial_v6_baseline_profile.R` - stage `manuscript_candidates`; scope `global`
+116. `figures/spatial_v6_fingerprint_selection.R` - stage `manuscript_candidates`; scope `global`
+117. `figures/spatial_v6_story_coverage_audit.R` - stage `manuscript_candidates`; scope `global`
+118. `figures/spatial_v6_figure_02.R` - stage `manuscript_candidates`; scope `global`
+119. `figures/spatial_v6_figure_03.R` - stage `manuscript_candidates`; scope `global`
+120. `figures/spatial_v6_extended_data.R` - stage `manuscript_candidates`; scope `global`
+121. `09_export_pride_journal/02_make_sample_metadata.R` - stage `export`; scope `global`
+122. `09_export_pride_journal/03_export_processed_pg_matrix_package.R` - stage `export`; scope `global`
+123. `09_export_pride_journal/04_make_supplementary_tables.R` - stage `export`; scope `global`
+124. `09_export_pride_journal/05_make_pride_manifest.R` - stage `export`; scope `global`
+125. `09_export_pride_journal/06_make_methods_summary.R` - stage `export`; scope `global`
+126. `09_export_pride_journal/08_export_manuscript_figures.R` - stage `export`; scope `global`
+127. `09_export_pride_journal/09_export_source_data.R` - stage `export`; scope `global`
+128. `09_export_pride_journal/10_validate_pride_submission.R` - stage `export`; scope `global`
 
 <!-- END GENERATED PIPELINE REGISTRY INDEX -->
 
