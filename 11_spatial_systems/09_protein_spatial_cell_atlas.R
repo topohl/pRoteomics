@@ -247,6 +247,45 @@ atlas$interpretation_caveat <- paste0(
   "supports it.")
 atlas$contract_version <- sat_contract_version()
 
+# ============ QC robustness / claimability overlay (governs interpretation)
+#
+# Canonical differential abundance stays the primary statistical result and no
+# FDR-supported protein is ever removed here. What is added is whether that
+# published effect survives differential missingness, imputation and the two
+# QC-failed SUS acquisitions in CA2-SLM. The fields are ALWAYS present, so a
+# consumer can never mistake "not yet audited" for "claimable".
+#
+# Produced by 11_spatial_systems/17_stress_identity_robustness.R, which runs
+# AFTER this script. On a clean pipeline this script therefore emits the
+# not_yet_audited state on its first pass and the populated state on a rerun;
+# that ordering is recorded in pipeline.yml.
+claim_p <- file.path(OUT(), "protein_claimability_annotation.csv")
+claim_cols <- c("CA2_SLM_robustness_class", "QC_claimability",
+                "imputation_dependence", "LOO_sign_stability", "fully_observed",
+                "spatial_specificity_class",
+                "claimable_for_biological_interpretation",
+                "robustness_audit_status", "robustness_reason")
+if (file.exists(claim_p)) {
+  cl <- as.data.frame(readr::read_csv(claim_p, show_col_types = FALSE,
+                                      progress = FALSE, guess_max = Inf))
+  atlas <- dplyr::left_join(atlas, cl[, c("dataset", "ProteinGroupID",
+    intersect(claim_cols, names(cl))), drop = FALSE],
+    by = c("dataset", "ProteinGroupID"))
+} else {
+  for (nm in claim_cols) atlas[[nm]] <- NA
+}
+atlas$robustness_audit_status <- ifelse(
+  is.na(atlas$robustness_audit_status),
+  ifelse(atlas$is_sus_res_fdr_supported %in% TRUE,
+         "not_audited_outside_CA2_SLM", "not_applicable_not_fdr_supported"),
+  atlas$robustness_audit_status)
+atlas$QC_claimability <- ifelse(is.na(atlas$QC_claimability),
+                                "not_audited", atlas$QC_claimability)
+atlas$claimability_caveat <- paste0(
+  "Canonical DA remains the primary statistical result and is unchanged. ",
+  "QC robustness governs INTERPRETATION, not membership: no FDR-supported ",
+  "protein is removed. Only CA2-SLM hits carry an audited robustness class.")
+
 root <- OUT()
 write_csv_safe(atlas, file.path(root, "protein_spatial_cell_affinity.csv"))
 write_csv_safe(baseline, file.path(root, "protein_baseline_spatial_profile.csv"))

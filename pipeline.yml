@@ -1099,6 +1099,74 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Legacy comparison, reviewer workbook, candidate figures and the network validation contract; a critical FAIL exits non-zero. The legacy 07_spatial_networks outputs are READ and labelled legacy_noncanonical_inference, never modified: its permutation_p was a bootstrap sign frequency (no group label was ever shuffled) and its fdr was a BH adjustment of that pseudo-p, with a minimum of 0.890 across all 18 edges. Zero legacy edges are comparable to the corrected 10-unit neuropil axis because the legacy network was built on the corrupted 4-node axis."
+      - script: "11_spatial_systems/16_ca2_slm_robustness_audit.R"
+        required: false
+        datasets: ["neuron_neuropil"]
+        stage: "networks"
+        scope: "global"
+        produces:
+          - "results/tables/11_spatial_systems/ca2_slm_robustness/CA2_SLM_DAP_robustness.csv"
+          - "results/tables/11_spatial_systems/ca2_slm_robustness/CA2_SLM_leave_one_animal_out_long.csv"
+          - "results/tables/11_spatial_systems/ca2_slm_robustness/CA2_SLM_fully_observed_DAP_audit.csv"
+          - "results/tables/11_spatial_systems/ca2_slm_robustness/CA2_SLM_sample_context.csv"
+          - "results/tables/11_spatial_systems/ca2_slm_robustness/CA2_SLM_normalization_bias_context.csv"
+          - "results/tables/11_spatial_systems/ca2_slm_robustness/CA2_SLM_prespecified_thresholds.csv"
+        consumes_required:
+          - "data/processed/02_id_mapping/mapped/neuron_neuropil/forward/per_file/CA2slmsus_CA2slmres.csv"
+          - "data/raw/pg_matrix/quicksearch.pg_matrix.tsv"
+          - "data/metadata/TPE9_sample_metadata_males.xlsx"
+          - "data/processed/01_preprocessing/protigy_input_animal_level/neuron_neuropil/neuron_neuropil_animal_level.gct"
+          - "data/processed/01_preprocessing/impute/20260601_pgmatrix_imputed_neuron_neuropil_180samples_missing70pct.xlsx"
+        consumes_optional:
+          - "results/tables/03_qc_exploration/00_dataset_qc_report/neuron_neuropil/dataset_qc_outlier_flags.csv"
+          - "results/tables/11_spatial_systems/atlas/protein_spatial_cell_affinity.csv"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Per-protein robustness audit of the 28 FDR-supported CA2-SLM DAPs. Canonical differential abundance is READ, never refitted, and no new FDR is computed anywhere; every quantity is a descriptive sensitivity diagnostic on the same animal-level values the model consumed. Imputation status is derived from the PRE-imputation raw matrix, because the post-imputation matrix has no NA left. The sample-level reconstruction is proven to reproduce the animal-level matrix to 1e-14 before any sensitivity number is formed. Also measures the missingness-driven normalisation displacement: per-sample median centring on observed values inflates the median of a heavily missing sample, displacing EVERY protein in it downwards, including proteins with no imputed value. All thresholds are prespecified named constants and the classifier has no argument through which a module, gene or tier could reach it."
+      - script: "11_spatial_systems/17_stress_identity_robustness.R"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        stage: "networks"
+        scope: "global"
+        produces:
+          - "results/tables/11_spatial_systems/ca2_slm_robustness/CA2_SLM_DAP_robustness_annotated.csv"
+          - "results/tables/11_spatial_systems/ca2_slm_robustness/CA2_SLM_spatial_specificity.csv"
+          - "results/tables/11_spatial_systems/ca2_slm_robustness/CA2_SLM_effect_across_neuropil_units.csv"
+          - "results/tables/11_spatial_systems/ca2_slm_robustness/stress_identity_robustness_comparison.csv"
+          - "results/tables/11_spatial_systems/ca2_slm_robustness/CA2_SLM_module_distribution_comparison.csv"
+          - "results/tables/11_spatial_systems/ca2_slm_robustness/fdr_supported_hit_observation_status.csv"
+          - "results/tables/11_spatial_systems/atlas/protein_claimability_annotation.csv"
+        consumes_required:
+          - "results/tables/11_spatial_systems/atlas/protein_spatial_cell_affinity.csv"
+          - "results/tables/11_spatial_systems/ca2_slm_robustness/CA2_SLM_DAP_robustness.csv"
+          - "results/source_data/04_differential_expression_enrichment/sus_res_spatial_dap_atlas/global/sus_res_dap_membership.csv"
+          - "data/raw/pg_matrix/quicksearch.pg_matrix.tsv"
+          - "data/metadata/TPE9_sample_metadata_males.xlsx"
+        consumes_optional:
+          - "data/processed/02_id_mapping/mapped/neuron_neuropil/forward/per_file/"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Spatial specificity, module distribution, and the stress-vs-baseline-identity result recomputed over explicit robustness subsets. The effect-vs-identity rule is NOT reimplemented: the canonical per-protein labels from script 09 are TABULATED over different row subsets, so the headline number and the robustness-qualified number cannot drift apart. No FDR is recomputed and no protein is removed from the atlas. TWO-PASS DEPENDENCY: this script writes protein_claimability_annotation.csv, which script 09 joins as an optional overlay. On a clean pipeline script 09 emits the not_yet_audited state on its first pass and the populated state after this script has run, so 09 must be re-run once after 17 to carry the claimability fields."
+      - script: "11_spatial_systems/18_ca2_slm_robustness_workbook.R"
+        required: false
+        datasets: ["neuron_neuropil"]
+        stage: "networks"
+        scope: "global"
+        produces:
+          - "results/tables/11_spatial_systems/CA2_SLM_robustness_audit.xlsx"
+          - "results/tables/11_spatial_systems/ca2_slm_robustness/CA2_SLM_robustness_validation.csv"
+          - "results/figures/11_spatial_systems/ca2_slm_robustness/"
+        consumes_required:
+          - "results/tables/11_spatial_systems/ca2_slm_robustness/CA2_SLM_DAP_robustness.csv"
+          - "data/processed/02_id_mapping/mapped/neuron_neuropil/forward/per_file/CA2slmsus_CA2slmres.csv"
+        consumes_optional:
+          - "results/tables/11_spatial_systems/ca2_slm_robustness/"
+          - "results/tables/08_behavior_physio_coupling/animal_id_integrity/"
+          - "results/tables/08_behavior_physio_coupling/network_behavior_coupling/"
+          - "data/processed/01_preprocessing/impute/20260601_pgmatrix_imputed_neuron_neuropil_180samples_missing70pct.xlsx"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Candidate QC/robustness figures, the reviewer workbook and the CA2-SLM validation contract; a critical FAIL exits non-zero. Figures are NEW candidates that replace no manuscript figure contract, and each writes its own source-data CSV. The contract asserts that canonical differential abundance is unchanged and carried verbatim, that no p.adjust or model fit appears anywhere in the robustness layer, that leave-one-out removes exactly one AnimalID, that the A755-out and A764-out analyses exclude exactly those animals, that removing both QC-failed SUS animals is labelled descriptive-only, and that frozen WGCNA state and the network layer are untouched."
   coupling:
     description: "Behavior/physiology coupling for networks, modules, and selected proteomic summaries."
     scripts:
