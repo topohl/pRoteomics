@@ -2036,6 +2036,95 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "NATURE-FINAL V7 PREVIEWS. Emits a 300 dpi and a 900 dpi raster of every assembled figure plus one contact sheet. The 900 dpi pass exists deliberately: a 300 dpi raster softens 5 pt type enough to look illegible when it is not, and the Part-22 audit nearly mis-reported that rasterisation artefact as a print defect."
+      - script: "figures/editorial_v8_figure_02.R"
+        required: false
+        datasets: ["global"]
+        stage: "manuscript_candidates"
+        scope: "global"
+        produces:
+          - "results/figures/manuscript_candidates/editorial_v8/figure_02/"
+          - "results/source_data/manuscript_candidates/editorial_v8/figure_02/"
+          - "results/reports/manuscript_candidates/editorial_v8/"
+        consumes_required:
+          - "figures/figure_editorial_v8_contract.yml"
+          - "config/manuscript_spatial_order.yml"
+          - "config/manuscript_palette.yml"
+        consumes_optional:
+          - "results/tables/manuscript_candidates/spatial_v6/"
+          - "results/source_data/manuscript/figure_02/"
+          - "results/tables/11_spatial_systems/bilateral/"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "EDITORIAL V8 FIGURE 2, CANDIDATE ONLY. Editorial polish over the FIXED Part-23 scientific architecture: no analysis, panel membership or interpretation is reopened and no new inference is introduced. The schematic loses its explanatory prose to the legend and gains anatomy area and laminar leader ticks; the two validation panels drop the set-size encoding that carried no argument and state their method in the legend instead. The page is composed directly on cairo_pdf, so the delivered PDF is genuine vector rather than the full-page 300 dpi raster every earlier part shipped."
+      - script: "figures/editorial_v8_figure_03.R"
+        required: false
+        datasets: ["global"]
+        stage: "manuscript_candidates"
+        scope: "global"
+        produces:
+          - "results/figures/manuscript_candidates/editorial_v8/figure_03/"
+          - "results/source_data/manuscript_candidates/editorial_v8/figure_03/"
+          - "results/reports/manuscript_candidates/editorial_v8/"
+        consumes_required:
+          - "figures/figure_editorial_v8_contract.yml"
+          - "config/manuscript_spatial_order.yml"
+          - "config/manuscript_palette.yml"
+        consumes_optional:
+          - "results/tables/10_biological_integration/gsea_wgcna_concordance/global/"
+          - "results/tables/manuscript_candidates/spatial_v6/"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "EDITORIAL V8 FIGURE 3, CANDIDATE ONLY. Improves quantitative comparability without touching the underlying values: g, h and i previously rescaled the SAME quantity independently (limits 0.513 / 0.566 / 0.513) and now share one symmetric log2 fold-change scale with a single colour bar, and the three contrast atlases share one symmetric NES scale. The anatomical bridge moves its numbered anchors onto leader lines outside the arc so they stop colliding with the region labels, and those numerals identify the same three programs again as the column headers of d-i."
+      - script: "figures/editorial_v8_extended_data.R"
+        required: false
+        datasets: ["global"]
+        stage: "manuscript_candidates"
+        scope: "global"
+        produces:
+          - "results/figures/manuscript_candidates/editorial_v8/extended_data/"
+          - "results/source_data/manuscript_candidates/editorial_v8/extended_data/"
+          - "results/reports/manuscript_candidates/editorial_v8/"
+        consumes_required:
+          - "figures/figure_editorial_v8_contract.yml"
+          - "config/manuscript_spatial_order.yml"
+          - "config/manuscript_palette.yml"
+        consumes_optional:
+          - "results/tables/11_spatial_systems/"
+          - "results/source_data/manuscript_panels/figure_3/"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "EDITORIAL V8 EXTENDED DATA, CANDIDATE ONLY. ED6 adopts the shared NES colour scale so the three-group trajectory can be read across contrasts. ED7 states its result as a headline count with arrowheads and explicit side labels, and says in the panel that an arrow joins two independent measurements of one protein - never relocation, redistribution or migration. ED8 replaces a facet_grid that shared one 18-row y scale, and therefore drew the soma and microglia matrices as 4-column strips with 14 blank rows, with three square-celled blocks in one fixed-aspect space whose unit counts are annotated. The WGCNA descriptive count and the 0-of-45 FDR null are now two adjacent chips rather than two clauses of one wrapped sentence. The m11 worked example keeps its active historical label unchanged and does not activate the proposed oligodendrocyte label."
+      - script: "figures/editorial_v8_vector_audit.R"
+        required: false
+        datasets: ["global"]
+        stage: "manuscript_candidates"
+        scope: "global"
+        produces:
+          - "results/tables/manuscript_candidates/editorial_v8/vector_export_audit.csv"
+          - "results/reports/manuscript_candidates/editorial_v8/final_figure_story_v8.md"
+        consumes_required:
+          - "figures/figure_editorial_v8_contract.yml"
+        consumes_optional:
+          - "results/figures/manuscript_candidates/editorial_v8/"
+          - "results/figures/manuscript_candidates/nature_final_v7/"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "EDITORIAL V8 VECTOR EXPORT AUDIT. nv_pdf() prefers rsvg, which is not installed here, and silently falls back to ImageMagick at 300 dpi, so every final PDF in Parts 16-23 was one full-page RGB raster of 2161 x 2008 px with zero font objects. This audit decompresses each PDF with qpdf --qdf, counts embedded font programs and text-showing operators, measures the largest raster object against the page size, and hard-stops if any page-sized raster remains. It also probes the Part-23 PDFs so the difference is demonstrable rather than asserted."
+      - script: "figures/editorial_v8_previews.R"
+        required: false
+        datasets: ["global"]
+        stage: "manuscript_candidates"
+        scope: "global"
+        produces:
+          - "results/figures/manuscript_candidates/editorial_v8/previews/"
+          - "results/tables/manuscript_candidates/editorial_v8/preview_render_index.csv"
+        consumes_required:
+          - "figures/figure_editorial_v8_contract.yml"
+        consumes_optional:
+          - "results/figures/manuscript_candidates/editorial_v8/"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "EDITORIAL V8 PREVIEWS. Emits a 300 dpi and a 900 dpi raster of every assembled figure plus one contact sheet. Both densities are deliberate: a 300 dpi raster softens 5 pt type enough to look illegible when it is not, and the Part-22 audit nearly mis-reported that rasterisation artefact as a print defect. The delivered artwork remains the SVG and the cairo PDF; these rasters are review aids only."
   export:
     description: "Export layer for PRIDE, manuscript tables, reviewer materials, source data, methods summaries, and validation reports."
     scripts:
