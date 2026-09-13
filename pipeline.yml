@@ -2153,6 +2153,118 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "EDITORIAL V8 FOLDER READMEs. Writes a README.md into every editorial_v8 output folder, generated from the contract so it cannot drift from what the scripts actually write. Each one states that the layer is a candidate and is not promoted, lists the panels with their renderer, millimetre box and narrative, and gives the exact command that regenerates the folder. The source-data READMEs point readers at the Supplementary Tables instead, because the sidecars are not reader-facing. Nothing in these files is hand-maintained."
+      - script: "figures/final_truth_v9_figure_02.R"
+        required: false
+        datasets: ["global"]
+        stage: "manuscript_candidates"
+        scope: "global"
+        produces:
+          - "results/figures/manuscript_candidates/final_truth_v9/figure_02/"
+        consumes_required:
+          - "figures/figure_final_truth_v9_contract.yml"
+        consumes_optional:
+          - "results/source_data/manuscript_candidates/final_truth_v9/"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "FINAL-TRUTH V9 FIGURE 2, CANDIDATE ONLY. Statistical-truthfulness pass over the frozen editorial-v8 architecture: no panel is added, removed or redesigned. The phenotype-blind baseline fingerprint no longer calls its rows hits, because the selection is a rank within a CON-only contrast and not a significance filter. The acquisition-depth panel states 180/71/72 spatial acquisitions and 9 animals at 3 per group as two separate numbers, so the acquisition count cannot be read as biological n, and its violin is labelled descriptive because the multimodality reflects pooled region and layer contexts rather than biological subpopulations. The compartment panel states that colour mapping saturates at 3.0 for display, labels the three cells that exceed it with their uncapped values, and retains those values in the source data. Panel h is relabelled functional characterisation: it annotates the same proteomic data and is not independent validation, which only panel g is."
+      - script: "figures/final_truth_v9_figure_03.R"
+        required: false
+        datasets: ["global"]
+        stage: "manuscript_candidates"
+        scope: "global"
+        produces:
+          - "results/figures/manuscript_candidates/final_truth_v9/figure_03/"
+        consumes_required:
+          - "figures/figure_final_truth_v9_contract.yml"
+        consumes_optional:
+          - "results/source_data/manuscript_candidates/final_truth_v9/"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "FINAL-TRUTH V9 FIGURE 3, CANDIDATE ONLY. The DAP track now says what robustness-qualified actually means: the 28 CA2-SLM proteins underwent the detailed missingness and QC qualification of ED3 and 6 qualified, while the 9 FDR-supported proteins outside CA2-SLM enter unchanged because they were never at risk, so it is not a uniform second-stage test. The theme atlas is declared a descriptive aggregation whose colour is a median NES over mapped canonical GO terms, with support markers meaning at least one constituent term passed its own FDR threshold and no theme-level FDR family existing. The leading-edge protein panels are declared selected and descriptive, and none of the displayed proteins is individually FDR-supported, the smallest BH FDR among them being 0.53."
+      - script: "figures/final_truth_v9_extended_data.R"
+        required: false
+        datasets: ["global"]
+        stage: "manuscript_candidates"
+        scope: "global"
+        produces:
+          - "results/figures/manuscript_candidates/final_truth_v9/extended_data/"
+        consumes_required:
+          - "figures/figure_final_truth_v9_contract.yml"
+        consumes_optional:
+          - "results/source_data/manuscript_candidates/final_truth_v9/"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "FINAL-TRUTH V9 EXTENDED DATA, CANDIDATE ONLY. ED1b gains the key it never had, so the open and filled endpoints no longer have to be reverse-engineered, and states median ICC as descriptive precision context. ED3 replaces the pipeline phrase not claimable due to QC with QC-sensitive throughout the artwork, and ED3c stays descriptive because acquisitions are clustered within animal and an unclustered correlation test would be pseudoreplicated. The WGCNA spatial panel is relabelled mean module-member abundance, because it plots the mean CON z of a module's member proteins and not the module eigengene, which is the neighbouring panel. ED8d states the edge-behaviour result as no association surviving multiple-testing correction and says explicitly that with 9 animals this is a limited-power negative result rather than evidence of absence."
+      - script: "figures/final_truth_v9_legends.R"
+        required: false
+        datasets: ["global"]
+        stage: "manuscript_candidates"
+        scope: "global"
+        produces:
+          - "results/reports/manuscript_candidates/final_truth_v9/final_figure_legends_v9.md"
+        consumes_required:
+          - "figures/figure_final_truth_v9_contract.yml"
+        consumes_optional:
+          - "results/source_data/manuscript_candidates/final_truth_v9/"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "FINAL-TRUTH V9 LEGENDS AND STATISTICAL-ROLE AUDIT. Until this pass the layer had no figure-legend artefact, so everything a reader needs in order not to over-read a panel lived only in renderer comments. This emits the reader-facing legends and the audit table that proves every panel was asked the same eight questions: what is plotted, what the biological replicate is, what is descriptive, what is inferential, which multiple-testing family applies, whether the displayed quantity was selected by the analysis it appears to support, whether the panel could be mistaken for independent validation, and whether repeated-measure counts are distinguished from biological n. Exactly one panel claims independent validation."
+      - script: "figures/final_truth_v9_supplementary_tables.R"
+        required: false
+        datasets: ["global"]
+        stage: "manuscript_candidates"
+        scope: "global"
+        produces:
+          - "results/tables/manuscript_candidates/final_truth_v9/supplementary/"
+        consumes_required:
+          - "figures/figure_final_truth_v9_contract.yml"
+        consumes_optional:
+          - "results/source_data/manuscript_candidates/final_truth_v9/"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "FINAL-TRUTH V9 SUPPLEMENTARY TABLES. Derived from the panel source data; nothing is recomputed and no test is run. Each table carries the test, sidedness, degrees of freedom where defined, the multiple-testing family and method, and the biological replicate count, which is 9 animals and never the acquisition count. The CA2-SLM robustness classes are published as robustness-qualified, QC-sensitive and insufficient observed data while the stored classification key is left unchanged, so no downstream join breaks."
+      - script: "figures/final_truth_v9_readmes.R"
+        required: false
+        datasets: ["global"]
+        stage: "manuscript_candidates"
+        scope: "global"
+        produces:
+          - "results/reports/manuscript_candidates/final_truth_v9/known_issues_v9.md"
+        consumes_required:
+          - "figures/figure_final_truth_v9_contract.yml"
+        consumes_optional:
+          - "results/source_data/manuscript_candidates/final_truth_v9/"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "FINAL-TRUTH V9 READMEs AND KNOWN ISSUES. Generated from the contract so they cannot drift. The known-issues page records the upstream defect in which ExpGroup is typed numeric with values 2, 3, 1 in the variance-partitioning stage while every other categorical term is a factor, which would make that stage's group variance a one-degree-of-freedom linear contrast rather than a categorical estimate. That stage is excluded from every figure, its value is cited nowhere, and a dependency guard fails the suite if any panel is ever wired to it; it is not repaired here because repairing it would mean rerunning an analysis stage."
+      - script: "figures/final_truth_v9_vector_audit.R"
+        required: false
+        datasets: ["global"]
+        stage: "manuscript_candidates"
+        scope: "global"
+        produces:
+          - "results/tables/manuscript_candidates/final_truth_v9/vector_export_audit.csv"
+        consumes_required:
+          - "figures/figure_final_truth_v9_contract.yml"
+        consumes_optional:
+          - "results/source_data/manuscript_candidates/final_truth_v9/"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "FINAL-TRUTH V9 VECTOR EXPORT AUDIT. Decompresses each delivered PDF with qpdf, counts embedded font programs and text-showing operators, measures the largest raster object against the page, and hard-stops if any page-sized raster remains."
+      - script: "figures/final_truth_v9_previews.R"
+        required: false
+        datasets: ["global"]
+        stage: "manuscript_candidates"
+        scope: "global"
+        produces:
+          - "results/figures/manuscript_candidates/final_truth_v9/previews/"
+        consumes_required:
+          - "figures/figure_final_truth_v9_contract.yml"
+        consumes_optional:
+          - "results/source_data/manuscript_candidates/final_truth_v9/"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "FINAL-TRUTH V9 PREVIEWS. A 300 dpi and a 900 dpi raster of every assembled figure plus one contact sheet. The delivered artwork remains the SVG and the cairo PDF; these rasters are review aids only."
   export:
     description: "Export layer for PRIDE, manuscript tables, reviewer materials, source data, methods summaries, and validation reports."
     scripts:
