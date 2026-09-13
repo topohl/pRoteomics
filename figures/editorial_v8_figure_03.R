@@ -1,0 +1,29 @@
+#!/usr/bin/env Rscript
+# Editorial-v8. Ninth parallel layer; canonical and Parts 16-23 untouched.
+# Final polish plus a VECTOR-PRESERVING PDF export.
+source(file.path("R", "paths.R"))
+source(repo_path("R", "integration_utils.R"))
+source(repo_path("R", "nature_v2_figure_utils.R"))
+source(repo_path("R", "nature_v2_figure_panels.R"))
+source(repo_path("R", "story_v3_figure_panels.R"))
+source(repo_path("R", "story_v4_figure_panels.R"))
+source(repo_path("R", "story_v5_figure_panels.R"))
+source(repo_path("R", "spatial_grammar_utils.R"))
+source(repo_path("R", "spatial_v6_figure_panels.R"))
+source(repo_path("R", "spatial_v6_figure3_panels.R"))
+source(repo_path("R", "spatial_v6_ed_panels.R"))
+source(repo_path("R", "spatial_v6_wgcna_panels.R"))
+source(repo_path("R", "nature_final_v7_panels.R"))
+source(repo_path("R", "nature_final_v7_figure3_panels.R"))
+source(repo_path("R", "editorial_v8_panels.R"))
+source(repo_path("R", "editorial_v8_ed_panels.R"))
+source(repo_path("R", "editorial_v8_export.R"))
+source(repo_path("R", "editorial_v8_figure_utils.R"))
+suppressPackageStartupMessages({ library(readr); library(dplyr); library(ggplot2); library(patchwork); library(scales); library(grid) })
+Sys.setenv(PROTEOMICS_SCRIPT_ID = "figures/editorial_v8_figure_03.R")
+args <- commandArgs(trailingOnly = TRUE)
+res <- s8e_build("figure_03", dry_run = "--dry-run" %in% args || is_dry_run())
+if (!is.null(res)) {
+  cat("\n===== Editorial-v8 figure_03 =====\n")
+  print(res$panels[, c("panel_id", "box_w_mm", "box_h_mm", "status")], row.names = FALSE)
+}
