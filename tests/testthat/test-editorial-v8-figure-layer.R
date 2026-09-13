@@ -10,6 +10,7 @@ source(testthat::test_path("..", "..", "R", "nature_v2_figure_utils.R"))
 source(testthat::test_path("..", "..", "R", "spatial_grammar_utils.R"))
 source(testthat::test_path("..", "..", "R", "editorial_v8_figure_utils.R"))
 source(testthat::test_path("..", "..", "R", "editorial_v8_export.R"))
+source(testthat::test_path("..", "..", "R", "editorial_v8_fidelity_panels.R"))
 
 rd <- function(p) utils::read.csv(p, stringsAsFactors = FALSE, check.names = FALSE)
 V8 <- s8e_contract()
@@ -205,5 +206,141 @@ testthat::test_that("the layer writes only under manuscript_candidates/editorial
     testthat::expect_true(grepl("editorial_v8", src, fixed = TRUE), label = f)
     testthat::expect_false(grepl("path_results\\(\\s*\"figures\",\\s*\"0",
                                  src, perl = TRUE), label = f)
+  }
+})
+
+# --------------------------------------------------------------------------
+# Part-25 fidelity pass. Each test below pins a defect that was found by
+# measurement and must not come back.
+# --------------------------------------------------------------------------
+
+testthat::test_that("ED7 keeps both spatial statements and names the exception", {
+  d <- path_results("source_data", "manuscript_candidates", "editorial_v8",
+                    "extended_data")
+  pb <- file.path(d, "v8_ed_locations_source_data.csv")
+  pa <- file.path(d, "v8_ed_identity_source_data.csv")
+  testthat::skip_if_not(all(file.exists(pa, pb)), "extended_data not built")
+  b <- rd(pb); a <- rd(pa)
+  # the two quantities are genuinely different and BOTH must be carried
+  testthat::expect_true(all(c("elsewhere", "outside_affinity") %in% names(b)))
+  testthat::expect_true(all(b$elsewhere))
+  # the canonical classification is authoritative for affinity, and ED7a and
+  # ED7b must agree on it - they disagreed before this pass (15 vs 14)
+  aq <- a[a$subset == "CA2_SLM_robustness_qualified", ]
+  testthat::expect_equal(sum(b$outside_affinity),
+                         as.integer(aq$effect_outside_baseline_affinity))
+  testthat::expect_identical(
+    b$outside_affinity,
+    b$effect_identity_relationship == "effect_outside_baseline_affinity")
+  # whenever the two counts differ, the exception must be identifiable
+  if (sum(b$elsewhere) != sum(b$outside_affinity))
+    testthat::expect_gt(length(b$GeneSymbol[!b$outside_affinity]), 0L)
+})
+
+testthat::test_that("ED7a encodes counts, not a percentage past 100", {
+  p <- path_results("source_data", "manuscript_candidates", "editorial_v8",
+                    "extended_data", "v8_ed_identity_source_data.csv")
+  testthat::skip_if_not(file.exists(p), "extended_data not built")
+  z <- rd(p)
+  testthat::expect_true(all(z$effect_outside_baseline_affinity <= z$n_hits))
+  src <- paste(readLines(repo_path("R", "editorial_v8_fidelity_panels.R"),
+                         warn = FALSE), collapse = "\n")
+  # the old encoding put a proportion on a 0-122 axis
+  testthat::expect_false(grepl("limits = c(0, 122)", src, fixed = TRUE))
+})
+
+testthat::test_that("every NES strip in the family shares one colour limit", {
+  root <- path_results("source_data", "manuscript_candidates", "editorial_v8")
+  fs <- c(file.path(root, "figure_03",
+                    paste0("v8_curve_", c("syn", "rna", "ox"),
+                           "_source_data.csv")),
+          file.path(root, "extended_data",
+                    paste0("v8_ed_gsea_curve_", c("syn", "rna", "ox"),
+                           "_source_data.csv")))
+  testthat::skip_if_not(all(file.exists(fs)), "curves not built")
+  lims <- unlist(lapply(fs, function(p) {
+    z <- rd(p)
+    if ("shared_NES_strip_limit" %in% names(z)) z$shared_NES_strip_limit else NA
+  }))
+  lims <- lims[!is.na(lims)]
+  testthat::expect_gt(length(lims), 0L)
+  testthat::expect_length(unique(round(lims, 9)), 1L)
+  # and it must cover every value any strip draws
+  obs <- max(unlist(lapply(fs, function(p) {
+    z <- rd(p)
+    abs(c(z$RES_CON_NES, z$SUS_CON_NES, z$SUS_RES_NES))
+  })), na.rm = TRUE)
+  testthat::expect_gte(unique(lims)[1] + 1e-9, obs)
+})
+
+testthat::test_that("a censored colour scale never hides the true value", {
+  p <- path_results("source_data", "manuscript_candidates", "editorial_v8",
+                    "figure_02", "v8_compartment_source_data.csv")
+  testthat::skip_if_not(file.exists(p), "figure_02 not built")
+  z <- rd(p)
+  testthat::expect_true(all(c("displayed_value", "true_value",
+                              "colour_scale_censored") %in% names(z)))
+  # the released source data must carry the uncapped value
+  cen <- z[z$colour_scale_censored %in% TRUE, , drop = FALSE]
+  if (nrow(cen)) testthat::expect_true(all(abs(cen$true_value) >
+                                             abs(cen$displayed_value)))
+})
+
+testthat::test_that("the depth panel offset carries density, not rank", {
+  # comments are stripped: the file documents the old defect in prose, and the
+  # test is about the CODE
+  src <- code_of(repo_path("R", "editorial_v8_fidelity_panels.R"))
+  # the frozen renderer used (rank %% 5 - 2) * 0.07, a deterministic function
+  # of rank that drew diagonal staircases with no data behind them
+  testthat::expect_false(grepl("%% 5 - 2", src, fixed = TRUE))
+  testthat::expect_true(grepl("e8_sina_offset", src, fixed = TRUE))
+  # the offset must be deterministic: no random jitter anywhere in the layer
+  for (f in c("editorial_v8_fidelity_panels.R", "editorial_v8_panels.R",
+              "editorial_v8_ed_panels.R")) {
+    s <- code_of(repo_path("R", f))
+    testthat::expect_false(grepl("geom_jitter|position_jitter|runif\\(|rnorm\\(",
+                                 s, perl = TRUE), label = f)
+  }
+  off <- e8_sina_offset(c(1, 1, 1, 2, 5))
+  testthat::expect_identical(off, e8_sina_offset(c(1, 1, 1, 2, 5)))
+  testthat::expect_equal(sum(off), 0, tolerance = 1e-9)
+})
+
+testthat::test_that("the whole-network null uses a log axis", {
+  src <- paste(readLines(repo_path("R", "editorial_v8_fidelity_panels.R"),
+                         warn = FALSE), collapse = "\n")
+  # on a linear 0-1.05 axis at 31.6 mm the "0" and "0.05" tick labels overprint
+  # and the attainable floor is indistinguishable from the axis line
+  testthat::expect_true(grepl("scale_x_log10", src, fixed = TRUE))
+  p <- path_results("source_data", "manuscript_candidates", "editorial_v8",
+                    "extended_data", "v8_ed_nulls_source_data.csv")
+  testthat::skip_if_not(file.exists(p), "extended_data not built")
+  z <- rd(p)
+  testthat::expect_true(all(z$floor > 0))
+  testthat::expect_true(all(z$p > z$floor))
+})
+
+testthat::test_that("the WGCNA null reports the spatial interaction omnibus", {
+  p <- path_results("source_data", "manuscript_candidates", "editorial_v8",
+                    "extended_data", "v8_ed_wgcna_phenotype_source_data.csv")
+  testthat::skip_if_not(file.exists(p), "extended_data not built")
+  st <- unique(rd(p)$inferential_status)
+  testthat::expect_length(st, 1L)
+  testthat::expect_true(grepl("interaction omnibus", st, fixed = TRUE))
+  # the 690 within-unit contrasts are deliberately NOT reported: their smallest
+  # FDR is 0.49 and calling that evidence of absence would need an attainable-
+  # floor treatment, which would be new inference
+  testthat::expect_false(grepl("690", st, fixed = TRUE))
+  testthat::expect_false(grepl("within_spatial_unit", st, fixed = TRUE))
+})
+
+testthat::test_that("fidelity renderers introduce no new inference", {
+  src <- paste(readLines(repo_path("R", "editorial_v8_fidelity_panels.R"),
+                         warn = FALSE), collapse = "\n")
+  src <- paste(sub("#.*$", "", strsplit(src, "\n")[[1]]), collapse = "\n")
+  for (pat in c("\\blimma\\b", "\\blmer\\b", "\\bfgsea\\b", "p\\.adjust\\s*\\(",
+                "\\bt\\.test\\s*\\(", "\\bwilcox\\.test\\s*\\(",
+                "\\bcor\\.test\\s*\\(", "\\bglm\\s*\\(", "\\baov\\s*\\(")) {
+    testthat::expect_false(grepl(pat, src, perl = TRUE), label = pat)
   }
 })

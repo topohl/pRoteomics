@@ -44,7 +44,7 @@ panels:
     primary_source: null
 
   - id: v8_depth
-    renderer: nf_depth_compact
+    renderer: e8_depth_compact
     role: technical_context
     spatial_axes: compartment
     phenotype_axes: none_intentional
@@ -80,7 +80,7 @@ panels:
     primary_source: results/tables/manuscript_candidates/spatial_v6/figure2_spatial_fingerprint_proteins.csv
 
   - id: v8_compartment
-    renderer: nf_compartment
+    renderer: e8_compartment
     role: compartment_identity
     spatial_axes: compartment
     phenotype_axes: none_intentional
@@ -292,7 +292,7 @@ panels:
     narrative: every canonical term per contrast; main 2h shows one term per contrast.
     primary_source: results/source_data/04_differential_expression_enrichment/control_spatial_identity_validation/global/figure2f_regions_CA1layers_source_data.csv
   - id: v8_ed_ca2_missing
-    renderer: s5_ed_ca2_missingness
+    renderer: e8_ed_ca2_missingness
     role: ca2_qc
     spatial_axes: region+layer
     phenotype_axes: CON+RES+SUS
@@ -316,7 +316,7 @@ panels:
     narrative: robust / not claimable / unevaluable split.
     primary_source: results/tables/11_spatial_systems/ca2_slm_robustness/CA2_SLM_DAP_robustness.csv
   - id: v8_ed_ca2_sensitivity
-    renderer: s5_ed_ca2_sensitivity
+    renderer: e8_ed_ca2_sensitivity
     role: ca2_qc
     spatial_axes: region+layer
     phenotype_axes: SUS-RES
@@ -357,6 +357,8 @@ panels:
       module by contrast field with spatial peaks and external cell type, and
       the descriptive geometry stated numerically against the 0-of-45 FDR null.
     primary_source: results/source_data/manuscript_panels/figure_3/figure3b_stage07_effect_source.csv
+    input_dependencies:
+      - results/tables/06_modules_WGCNA/group_effects/
   - id: v8_ed_m11
     renderer: e8_ed_m11
     role: wgcna_worked_example
@@ -366,7 +368,7 @@ panels:
     narrative: m11 worked example; historical label unchanged, proposed label unactivated.
     primary_source: results/tables/manuscript_candidates/spatial_v6/spatial_v6_module_spatial_fingerprint.csv
   - id: v8_ed_gsea_curve_syn
-    renderer: s4_gsea_curve
+    renderer: e8_ed_gsea_curve
     role: gsea_support_detailed
     program_key: synaptic
     spatial_axes: region+layer
@@ -377,7 +379,7 @@ panels:
     input_dependencies:
       - results/tables/10_biological_integration/gsea_wgcna_concordance/global/ontology_aware_gsea_theme_assignments_all_contrasts.csv
   - id: v8_ed_gsea_curve_rna
-    renderer: s4_gsea_curve
+    renderer: e8_ed_gsea_curve
     role: gsea_support_detailed
     program_key: rna
     spatial_axes: region
@@ -388,7 +390,7 @@ panels:
     input_dependencies:
       - results/tables/10_biological_integration/gsea_wgcna_concordance/global/ontology_aware_gsea_theme_assignments_all_contrasts.csv
   - id: v8_ed_gsea_curve_ox
-    renderer: s4_gsea_curve
+    renderer: e8_ed_gsea_curve
     role: gsea_support_detailed
     program_key: oxphos
     spatial_axes: region
@@ -419,7 +421,7 @@ panels:
     narrative: the SUS vs CON atlas, completing the three-group trajectory.
     primary_source: results/tables/10_biological_integration/gsea_wgcna_concordance/global/ontology_aware_gsea_theme_assignments_all_contrasts.csv
   - id: v8_ed_identity
-    renderer: s5_ed_identity_subsets
+    renderer: e8_ed_identity_subsets
     role: stress_identity_robustness
     spatial_axes: region+layer
     phenotype_axes: SUS-RES
@@ -453,7 +455,7 @@ panels:
     narrative: animal-level network distance from the CON consensus.
     primary_source: results/tables/11_spatial_systems/networks/animal_network_distance_from_CON.csv
   - id: v8_ed_nulls
-    renderer: s5_ed_nulls
+    renderer: e8_ed_nulls
     role: network_null
     spatial_axes: compartment
     phenotype_axes: CON+RES+SUS

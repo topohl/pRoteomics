@@ -395,8 +395,8 @@ e8_protein_zoom <- function(panel, svg_path, csv_path, w_mm, h_mm) {
 
   p <- ggplot2::ggplot(z, ggplot2::aes(contrast, gene, fill = log2FC)) +
     ggplot2::geom_tile(colour = "white", linewidth = nv_lw("tile_border_pt")) +
-    ggplot2::geom_point(data = z[z$sig, , drop = FALSE], size = 0.45,
-                        colour = "black") +
+    ggplot2::geom_text(ggplot2::aes(label = sprintf("%.2f", log2FC)),
+                       family = fam, size = nf_sz(5.0), colour = "grey12") +
     nv_diverging(limits = c(-lim, lim), name = "log2FC") +
     ggplot2::labs(x = NULL, y = NULL) +
     nf_theme_tile() +
@@ -462,7 +462,9 @@ e8_gsea_curve <- function(panel, svg_path, csv_path, w_mm, h_mm) {
   tr$short <- c("R−C", "S−C", "S−R")[seq_len(nrow(tr))]
   tr$short <- factor(tr$short, levels = tr$short)
   tr$sig <- is.finite(tr$GSEA_FDR) & tr$GSEA_FDR < 0.05
-  lim <- max(abs(tr$NES), na.rm = TRUE)
+  # ONE limit for every three-contrast NES strip in the family (F3 d/e/f and
+  # ED6 c/d/e), so the same colour means the same NES everywhere
+  lim <- e8_nes_strip_limit(th)
   bot <- ggplot2::ggplot(tr, ggplot2::aes(short, 1, fill = NES)) +
     ggplot2::geom_tile(colour = "white", linewidth = nv_lw("tile_border_pt")) +
     ggplot2::geom_text(ggplot2::aes(label = sprintf("%.1f", NES)), family = fam,
@@ -508,6 +510,7 @@ e8_gsea_curve <- function(panel, svg_path, csv_path, w_mm, h_mm) {
     compartment_label = comp, spatial_unit_label = unit,
     NES = ev$NES, FDR = ev$FDR,
     RES_CON_NES = tr$NES[1], SUS_CON_NES = tr$NES[2], SUS_RES_NES = tr$NES[3],
+    shared_NES_strip_limit = lim,
     column_role = paste0(
       "carries the shared column header for this program; the protein panel ",
       "directly below shows the leading-edge proteins of the same program and ",
