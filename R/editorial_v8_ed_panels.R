@@ -97,7 +97,7 @@ e8_ed_external_full <- function(panel, svg_path, csv_path, w_mm, h_mm) {
     ggplot2::scale_fill_gradient2(low = nv_palette()$diverging$low,
                                   mid = nv_palette()$diverging$mid,
                                   high = nv_palette()$diverging$high,
-                                  midpoint = 0, limits = lim, name = "NES",
+                                  midpoint = 0, limits = lim, name = "Normalised\nenrichment score",
                                   guide = ggplot2::guide_colourbar(order = 2)) +
     ggplot2::scale_shape_manual(values = c("expected pairing" = 21,
                                            "specificity comparison" = 22),
@@ -182,7 +182,7 @@ e8_ed_internal_full <- function(panel, svg_path, csv_path, w_mm, h_mm) {
       values = c("Regional identity" = "#1F3D52",
                  "CA1 laminar identity" = "#C2A878"), name = NULL,
       guide = ggplot2::guide_legend(order = 1)) +
-    ggplot2::scale_size_continuous(range = c(0.6, 2.2), name = "set size",
+    ggplot2::scale_size_continuous(range = c(0.6, 2.2), name = "Gene set size",
                                    guide = ggplot2::guide_legend(order = 2)) +
     ggplot2::scale_x_continuous(limits = c(-2.05, 4.5),
                                 breaks = c(0, 1, 2, 3)) +
@@ -308,28 +308,35 @@ e8_ed_wgcna_phenotype <- function(panel, svg_path, csv_path, w_mm, h_mm) {
                           call. = FALSE)
   om_n <- sum(omni$n_tests); om_sig <- sum(omni$n_fdr)
   om_min <- min(omni$min_fdr)
-  chip <- data.frame(
-    x0 = c(0.55, length(cl) + 0.55),
-    x1 = c(length(cl) + 0.40, length(cl) + 3.38),
-    fill = c("grey92", "#F7E4E0"),
-    ink = c("grey20", "#B03A24"),
-    big = c(sprintf("%d/%d", geom_n, nrow(w)), sprintf("%d/%d", n_sig, n_cells)),
-    lab = c("modules with the
-descriptive pattern",
-            "module × contrast cells
-FDR-supported"),
+  # Part-26. The three counts stay adjacent, as asked in Part 24 section 24,
+  # but the badge chrome goes: no filled rectangles and no 6.4 pt bold ratios.
+  # Three restrained lines carry the descriptive count and both nulls, divided
+  # from the field by a hairline. The two inferential lines are set in the
+  # accent colour so they cannot be skipped, which was the point of the chips.
+  stat_line <- data.frame(
+    y = c(ny + 3.35, ny + 2.55, ny + 1.75),
+    l = c(sprintf("%d of %d modules show the descriptive pattern",
+                  geom_n, nrow(w)),
+          sprintf("%d of %d module × contrast cells are FDR-supported",
+                  n_sig, n_cells),
+          sprintf(paste0("%d of %d stress × spatial-unit interaction tests ",
+                         "are FDR-supported (smallest FDR %.2f)"),
+                  om_sig, om_n, om_min)),
+    ink = c("grey35", "#B03A24", "#B03A24"),
     stringsAsFactors = FALSE)
   p <- ggplot2::ggplot(z, ggplot2::aes(xpos, ypos)) +
     ggplot2::geom_tile(ggplot2::aes(fill = val), colour = "white",
                        linewidth = 0.16) +
-    nv_diverging(limits = lim, name = "effect") +
+    nv_diverging(limits = lim,
+                 name = "Module eigengene
+difference") +
     ggplot2::scale_x_continuous(breaks = seq_along(cl), labels = cl,
                                 expand = c(0, 0),
                                 limits = c(0.5, length(cl) + 3.4)) +
     ggplot2::scale_y_continuous(breaks = seq_len(ny),
                                 labels = rev(mods$row_label),
                                 expand = c(0, 0),
-                                limits = c(0.5, ny + 5.35)) +
+                                limits = c(0.5, ny + 3.95)) +
     ggplot2::labs(x = NULL, y = NULL,
                   caption = paste0(
                     "DESCRIPTIVE ONLY. The colour scale must not be read",
@@ -341,28 +348,13 @@ FDR-supported"),
                    legend.key.width = ggplot2::unit(1.6, "mm"),
                    legend.key.height = ggplot2::unit(3.4, "mm"))
   p <- p +
-    ggplot2::annotate("rect", xmin = chip$x0[1], xmax = chip$x1[2],
-                      ymin = ny + 1.20, ymax = ny + 3.05, fill = "grey95",
-                      colour = NA) +
-    ggplot2::annotate("text", x = chip$x0[1] + 0.10, y = ny + 2.13, hjust = 0,
-                      label = sprintf("%d/%d", om_sig, om_n), family = fam,
-                      size = nf_sz(6.4), fontface = "bold", colour = "grey20") +
-    ggplot2::annotate("text", x = chip$x0[1] + 0.68, y = ny + 2.13, hjust = 0,
-                      label = sprintf(paste0(
-                        "stress × spatial-unit interaction tests\n",
-                        "FDR-supported (smallest FDR %.2f)"), om_min),
-                      family = fam, size = nf_sz(5.0), lineheight = 1.08,
-                      colour = "grey20") +
-    ggplot2::annotate("rect", xmin = chip$x0, xmax = chip$x1,
-                      ymin = ny + 3.35, ymax = ny + 5.20, fill = chip$fill,
-                      colour = NA) +
-    ggplot2::annotate("text", x = chip$x0 + 0.10, y = ny + 4.28, hjust = 0,
-                      label = chip$big, family = fam, size = nf_sz(6.4),
-                      fontface = "bold", colour = chip$ink) +
-    ggplot2::annotate("text", x = chip$x0 + 0.68, y = ny + 4.28, hjust = 0,
-                      label = chip$lab, family = fam, size = nf_sz(5.0),
-                      lineheight = 1.08,
-                      colour = chip$ink)
+    ggplot2::annotate("segment", x = 0.5, xend = length(cl) + 3.38,
+                      y = ny + 1.25, yend = ny + 1.25, linewidth = 0.18,
+                      colour = "grey80") +
+    ggplot2::geom_text(data = stat_line,
+                       ggplot2::aes(x = 0.55, y = y, label = l),
+                       inherit.aes = FALSE, hjust = 0, family = fam,
+                       size = nf_sz(5.0), colour = stat_line$ink)
   tr <- unique(z[, c("mid", "ypos", "cell")])
   p <- p +
     ggplot2::geom_text(data = tr,
@@ -370,7 +362,7 @@ FDR-supported"),
                                     label = ifelse(is.na(cell), "", cell)),
                        inherit.aes = FALSE, hjust = 0, family = fam,
                        size = nf_sz(5.0), colour = "grey35") +
-    ggplot2::annotate("text", x = length(cl) + 0.8, y = ny + 0.88, hjust = 0,
+    ggplot2::annotate("text", x = length(cl) + 0.8, y = ny + 0.72, hjust = 0,
                       family = fam, size = nf_sz(5.0), fontface = "bold",
                       colour = "grey20", label = "external cell type")
   z$inferential_status <- sprintf(
@@ -503,6 +495,13 @@ e8_ed_similarity <- function(panel, svg_path, csv_path, w_mm, h_mm) {
   ybot <- -(nmax + 0.65 + 1.85)
   # the notes column: line pitch is set in cell units, so it stays tight
   # whatever the block size
+  # The metric and the zero reference are common to all three blocks, so ONE
+  # global zero-centred diverging scale is retained deliberately. Per-block
+  # rescaling would make an identical colour mean a different correlation in
+  # each block and would destroy exactly the cross-compartment comparison the
+  # panel exists to support. The consequence - that the two region-level blocks
+  # occupy a narrower part of the range than neuropil - is a property of the
+  # data and is stated here rather than engineered away.
   notes <- data.frame(
     l = c("A value is the correlation between",
           "two units' protein profiles, not a",
@@ -510,14 +509,19 @@ e8_ed_similarity <- function(panel, svg_path, csv_path, w_mm, h_mm) {
           "CON animals only (n = 3); median",
           "across animals. Diagonal omitted.",
           "Rows and columns of a block carry",
-          "the same units in the same order."),
-    y = c(0, 0.62, 1.24, 2.20, 2.82, 3.78, 4.40),
+          "the same units in the same order.",
+          "One scale centred on zero for all",
+          "three blocks: soma and microglia",
+          "span a narrower range than",
+          "neuropil, which is a property of",
+          "the data, not of the scale."),
+    y = c(0, 0.62, 1.24, 2.20, 2.82, 3.78, 4.40, 5.36, 5.98, 6.60, 7.22, 7.84),
     stringsAsFactors = FALSE)
 
   p <- ggplot2::ggplot() +
     ggplot2::geom_tile(data = tile, ggplot2::aes(x, y, fill = v),
                        colour = "white", linewidth = 0.12) +
-    nv_diverging(limits = lim, name = "median\nsimilarity") +
+    nv_diverging(limits = lim, name = "Median profile\ncorrelation (CON)") +
     ggplot2::geom_text(data = rlab, ggplot2::aes(x, y, label = l), hjust = 1,
                        family = fam, size = nf_sz(5.0), colour = "grey30") +
     ggplot2::geom_text(data = clab, ggplot2::aes(x, y, label = l), hjust = 1,
@@ -589,7 +593,7 @@ e8_ed_fingerprint_full <- function(panel, svg_path, csv_path, w_mm, h_mm) {
   p <- ggplot2::ggplot(z, ggplot2::aes(xpos, ypos)) +
     ggplot2::geom_tile(ggplot2::aes(fill = score), colour = "white",
                        linewidth = 0.1) +
-    nv_diverging(limits = lim, name = "mean z") +
+    nv_diverging(limits = lim, name = "Signature score\n(CON z-score)") +
     ggplot2::scale_x_continuous(breaks = seq_len(n), labels = sg_axis_labels(b),
                                 limits = c(0.5, n + 0.5), expand = c(0, 0)) +
     ggplot2::scale_y_continuous(breaks = seq_len(ny), labels = rev(lev),
@@ -689,7 +693,7 @@ e8_ed_module_fingerprint <- function(panel, svg_path, csv_path, w_mm, h_mm) {
   p <- ggplot2::ggplot() +
     ggplot2::geom_tile(data = tile, ggplot2::aes(x, y, fill = v),
                        colour = "white", linewidth = 0.1) +
-    nv_diverging(limits = lim, name = "mean\nCON z") +
+    nv_diverging(limits = lim, name = "Mean module abundance\n(CON z-score)") +
     ggplot2::geom_text(data = rlab, ggplot2::aes(x, y, label = l), hjust = 1,
                        family = fam, size = nf_sz(5.0), colour = "grey30") +
     ggplot2::geom_text(data = clab, ggplot2::aes(x, y, label = l), hjust = 1,

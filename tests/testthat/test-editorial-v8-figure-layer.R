@@ -5,6 +5,7 @@
 # vector export - and hard-stop if the layer starts reopening analysis.
 
 source(testthat::test_path("..", "..", "R", "paths.R"))
+source(testthat::test_path("..", "..", "R", "null_coalescing.R"))
 source(testthat::test_path("..", "..", "R", "integration_utils.R"))
 source(testthat::test_path("..", "..", "R", "nature_v2_figure_utils.R"))
 source(testthat::test_path("..", "..", "R", "spatial_grammar_utils.R"))
@@ -342,5 +343,182 @@ testthat::test_that("fidelity renderers introduce no new inference", {
                 "\\bt\\.test\\s*\\(", "\\bwilcox\\.test\\s*\\(",
                 "\\bcor\\.test\\s*\\(", "\\bglm\\s*\\(", "\\baov\\s*\\(")) {
     testthat::expect_false(grepl(pat, src, perl = TRUE), label = pat)
+  }
+})
+
+# --------------------------------------------------------------------------
+# Part-26. Encoding-principle and deliverable invariants.
+# --------------------------------------------------------------------------
+
+testthat::test_that("no panel prints its values inside a heatmap tile", {
+  # a tile grid with the number written in it is a table with a colour wash
+  # behind it; where the value must be readable the panel uses position
+  src <- code_of(repo_path("R", "editorial_v8_panels.R"))
+  f0 <- regexpr("e8_protein_zoom <- function", src, fixed = TRUE)
+  f1 <- regexpr("e8_gsea_curve <- function", src, fixed = TRUE)
+  body <- substr(src, f0, f1)
+  testthat::expect_false(grepl("geom_tile", body, fixed = TRUE))
+  testthat::expect_true(grepl("geom_point", body, fixed = TRUE))
+  # contrast is carried redundantly, so the panel survives greyscale and the
+  # common colourblindness forms
+  testthat::expect_true(grepl("scale_colour_manual", body, fixed = TRUE))
+  testthat::expect_true(grepl("scale_shape_manual", body, fixed = TRUE))
+})
+
+testthat::test_that("every colour and size legend carries a real name", {
+  bad <- character(0)
+  for (f in Sys.glob(repo_path("R", "editorial_v8*.R"))) {
+    s <- code_of(f)
+    nm <- regmatches(s, gregexpr('name = "[^"]+"', s))[[1]]
+    nm <- sub('name = ', '', nm)
+    # a publication scale name is a phrase, not a token like "NES" or "effect"
+    short <- nm[nchar(gsub('"', '', nm)) < 12 &
+                  !grepl("Contrast|Gene set", nm)]
+    if (length(short)) bad <- c(bad, paste0(basename(f), ": ", short))
+  }
+  testthat::expect_identical(bad, character(0))
+})
+
+testthat::test_that("Figure 2d is ordered by baseline peak, phenotype-blind", {
+  p <- path_results("source_data", "manuscript_candidates", "editorial_v8",
+                    "figure_02", "v8_fingerprint_source_data.csv")
+  testthat::skip_if_not(file.exists(p), "figure_02 not built")
+  z <- rd(p)
+  testthat::expect_true(all(c("peak_unit", "row_order_rule") %in% names(z)))
+  # the ordering may not use any stress or phenotype column
+  testthat::expect_false(any(grepl("SUS|RES|stress|phenotype|contrast_group",
+                                   names(z), ignore.case = FALSE)))
+  # and it must actually be ordered: genes are no longer alphabetical
+  g <- unique(z$gene)
+  testthat::expect_false(identical(g, sort(g)))
+})
+
+testthat::test_that("F2b states acquisition n and biological n separately", {
+  p <- path_results("source_data", "manuscript_candidates", "editorial_v8",
+                    "figure_02", "v8_depth_source_data.csv")
+  testthat::skip_if_not(file.exists(p), "figure_02 not built")
+  z <- rd(p)
+  testthat::expect_true(all(c("n_acquisitions_in_compartment",
+                              "n_biological_replicates") %in% names(z)))
+  # 323 acquisitions from 9 animals: the two must never be conflated
+  testthat::expect_identical(unique(z$n_biological_replicates), 9L)
+  testthat::expect_gt(sum(unique(z$n_acquisitions_in_compartment)),
+                      unique(z$n_biological_replicates))
+  # a violin is only defensible above the small-sample threshold
+  testthat::expect_true(all(unique(z$n_acquisitions_in_compartment) >= 50L))
+})
+
+testthat::test_that("ED8a keeps one global zero-centred scale", {
+  p <- path_results("source_data", "manuscript_candidates", "editorial_v8",
+                    "extended_data", "v8_ed_similarity_source_data.csv")
+  testthat::skip_if_not(file.exists(p), "extended_data not built")
+  z <- rd(p)
+  # the metric and the zero reference are common to all three blocks, so the
+  # scale stays global even though two blocks are entirely negative
+  src <- code_of(repo_path("R", "editorial_v8_ed_panels.R"))
+  f0 <- regexpr("e8_ed_similarity <- function", src, fixed = TRUE)
+  body <- substr(src, f0, f0 + 6000)
+  testthat::expect_true(grepl("nv_diverging", body, fixed = TRUE))
+  testthat::expect_false(grepl("scale_fill_viridis|scale_fill_gradient\\(",
+                               body, perl = TRUE))
+  # one limit for the whole panel, not one per block
+  testthat::expect_equal(length(unique(round(
+    max(abs(z$median_similarity), na.rm = TRUE), 9))), 1L)
+})
+
+testthat::test_that("supplementary tables are reader-facing and complete", {
+  d <- path_results("tables", "manuscript_candidates", "editorial_v8",
+                    "supplementary")
+  testthat::skip_if_not(dir.exists(d), "supplementary tables not built")
+  dd <- file.path(d, "ST0_data_dictionary.csv")
+  testthat::expect_true(file.exists(dd))
+  dict <- rd(dd)
+  fs <- setdiff(list.files(d, "[.]csv$"), "ST0_data_dictionary.csv")
+  testthat::expect_gt(length(fs), 0L)
+  for (f in fs) {
+    z <- rd(file.path(d, f))
+    # every column of every table must be defined
+    defined <- dict$column[dict$table_file == f]
+    testthat::expect_identical(setdiff(names(z), defined), character(0),
+                               label = f)
+    testthat::expect_false(any(is.na(dict$definition[dict$table_file == f])),
+                           label = f)
+    # the replicate count must be stated, and must be animals not acquisitions
+    if ("Biological replicates (n animals)" %in% names(z))
+      testthat::expect_identical(unique(z$`Biological replicates (n animals)`),
+                                 9L, label = f)
+    # machine-oriented provenance columns must not leak into a reader table
+    testthat::expect_false(any(names(z) %in%
+                                 c("reading", "note", "encoding_note",
+                                   "shared_scale_note", "row_order_rule")),
+                           label = f)
+  }
+})
+
+testthat::test_that("every output folder carries a generated README", {
+  roots <- c(
+    path_results("tables", "manuscript_candidates", "editorial_v8"),
+    path_results("tables", "manuscript_candidates", "editorial_v8",
+                 "supplementary"),
+    path_results("reports", "manuscript_candidates", "editorial_v8"))
+  for (k in c("figure_02", "figure_03", "extended_data")) {
+    roots <- c(roots,
+      path_results("figures", "manuscript_candidates", "editorial_v8", k,
+                   "assembled"),
+      path_results("figures", "manuscript_candidates", "editorial_v8", k,
+                   "panels"),
+      file.path(path_results("source_data", "manuscript_candidates",
+                             "editorial_v8"), k))
+  }
+  for (r in roots) {
+    testthat::skip_if_not(dir.exists(r), r)
+    f <- file.path(r, "README.md")
+    testthat::expect_true(file.exists(f), label = r)
+    txt <- paste(readLines(f, warn = FALSE), collapse = " ")
+    # each README must say the layer is a candidate and say how to rebuild it
+    testthat::expect_true(grepl("candidate", txt, ignore.case = TRUE),
+                          label = r)
+    testthat::expect_true(grepl("Rscript", txt, fixed = TRUE), label = r)
+    testthat::expect_true(grepl("Do not edit", txt, fixed = TRUE), label = r)
+  }
+})
+
+testthat::test_that("the numeric ExpGroup typing is recorded and not depended on", {
+  # Found in the Part-26 pre-freeze audit. In the variance-partitioning stage
+  # ExpGroup is stored as a NUMERIC with example values "2; 3; 1", while every
+  # other categorical term - Region, Layer, ReplicateGroup, AnimalID - is
+  # coerced to a factor. A numeric stress group enters that model as a
+  # continuous covariate with 1 degree of freedom and imposes an arbitrary
+  # linear order on CON/RES/SUS, which would understate the variance
+  # attributable to group.
+  #
+  # This is an UPSTREAM analysis defect, outside the figure layer. It is not
+  # fixed here, because fixing it would reopen an analysis stage. This test
+  # pins two things: that the defect is still exactly as characterised, so the
+  # note stays truthful, and that no editorial_v8 panel reads that stage. If
+  # someone wires a panel to it, this test fails and forces the typing to be
+  # dealt with first.
+  d <- path_results("tables", "03_qc_exploration", "06_variance_partitioning")
+  testthat::skip_if_not(dir.exists(d), "variance partitioning not present")
+  fs <- list.files(d, "^metadata_terms_used_final[.]csv$", recursive = TRUE,
+                   full.names = TRUE)
+  testthat::skip_if_not(length(fs) > 0, "no metadata term tables")
+  for (f in fs) {
+    z <- rd(f)
+    eg <- z[z$term == "ExpGroup", , drop = FALSE]
+    if (!nrow(eg)) next
+    testthat::expect_identical(as.character(eg$class[1]), "numeric",
+                               label = basename(dirname(f)))
+    others <- z[z$term %in% c("Region", "Layer", "AnimalID"), , drop = FALSE]
+    if (nrow(others))
+      testthat::expect_true(all(others$class == "factor"),
+                            label = basename(dirname(f)))
+  }
+  # and no v8 panel may depend on that stage while the typing stands
+  for (p in V8$panels) {
+    src <- c(as.character(p$primary_source %||% ""),
+             as.character(unlist(p$input_dependencies %||% list())))
+    testthat::expect_false(any(grepl("variance_partitioning", src)),
+                           label = as.character(p$id))
   }
 })
