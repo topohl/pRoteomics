@@ -1935,6 +1935,107 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "SPATIAL-V6 EXTENDED DATA ED1-ED8, CANDIDATE ONLY. ED4 gains a module x spatial-unit fingerprint so a reader can SEE where each WGCNA module sits rather than only reading its peak label; it is built by averaging already-canonical CON baseline values over the stored membership of each module, with no WGCNA recomputation and no phenotype effect. ED5 keeps the module x contrast field, adds spatial peak, bilateral class and external cell-type annotation tracks, and states on the panel that 0 of 45 cells reach tier-specific FDR so the colour scale cannot be read as support. ED7 adds the actual spatial transition the percentage bars could not show: baseline dominant unit versus the location of the strongest SUS-RES effect, for the 15 QC-qualified proteins only, with the 22 the audit could not clear excluded and the exclusion stated on the panel. ED8 now first SHOWS what a spatial molecular network is - anatomically ordered CON similarity matrices labelled explicitly as similarity between spatial proteomic profiles and NOT anatomical connectivity - before reporting the group and coupling nulls."
+      - script: "figures/nature_final_v7_wireframe.R"
+        required: false
+        datasets: ["global"]
+        stage: "manuscript_candidates"
+        scope: "global"
+        produces:
+          - "results/figures/manuscript_candidates/nature_final_v7/wireframe/"
+          - "results/tables/manuscript_candidates/nature_final_v7/nature_final_v7_wireframe_geometry.csv"
+        consumes_required:
+          - "figures/figure_nature_final_v7_contract.yml"
+        consumes_optional: []
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "NATURE-FINAL V7 STEP 1, WIREFRAME ONLY. True-size labelled boxes built BEFORE any scientific panel is rendered, so the composition can be proved to fit 183 x 170 mm with a defensible area hierarchy first. Each box states its letter, mm geometry, intended content, expected minimum font size and whether the content is unique to the main figure or also represented in Extended Data. The script also compares the measured area rank of every Figure-2 panel against the declared scientific priority and names any panel whose area trails its priority by more than one place, which is how the Part-22 finding that PCA outranked compartment identity in area was closed out."
+      - script: "figures/nature_final_v7_figure_02.R"
+        required: false
+        datasets: ["global"]
+        stage: "manuscript_candidates"
+        scope: "global"
+        produces:
+          - "results/figures/manuscript_candidates/nature_final_v7/figure_02/"
+          - "results/source_data/manuscript_candidates/nature_final_v7/figure_02/"
+          - "results/reports/manuscript_candidates/nature_final_v7/figure_02/"
+        consumes_required:
+          - "figures/figure_nature_final_v7_contract.yml"
+          - "config/manuscript_spatial_order.yml"
+          - "config/manuscript_palette.yml"
+        consumes_optional:
+          - "results/tables/manuscript_candidates/spatial_v6/"
+          - "results/source_data/manuscript/figure_02/"
+          - "results/tables/11_spatial_systems/bilateral/"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "NATURE-FINAL V7 FIGURE 2, CANDIDATE ONLY, panels a-h. The schematic is rewritten so it TEACHES the spatial grammar rather than only encoding compartment: compartment by glyph style, region by the same bracket and header system used in the fingerprint, layer by anatomical position plus a written key giving the exact abbreviations, so a reader can read a location off panel a and find the matching block in panel d. Compartment identity grows from 39 to 78 mm and its labels are horizontal, fixing a Part-22 defect where the rotated labels escaped the panel box entirely. PCA is retained in the main figure by explicit editorial decision but simplified - no sample labels, bottom legend, region not encoded and the panel says so - and it no longer outranks compartment identity in area. A build-time QA gate re-measures the emitted SVG and fails the build if any text is below 5 pt, if panels overlap or overflow, or if a minor technical panel is larger than a central scientific one."
+      - script: "figures/nature_final_v7_figure_03.R"
+        required: false
+        datasets: ["global"]
+        stage: "manuscript_candidates"
+        scope: "global"
+        produces:
+          - "results/figures/manuscript_candidates/nature_final_v7/figure_03/"
+          - "results/source_data/manuscript_candidates/nature_final_v7/figure_03/"
+          - "results/reports/manuscript_candidates/nature_final_v7/figure_03/"
+        consumes_required:
+          - "figures/figure_nature_final_v7_contract.yml"
+          - "config/manuscript_spatial_order.yml"
+          - "results/tables/10_biological_integration/gsea_wgcna_concordance/global/ontology_aware_gsea_theme_assignments_all_contrasts.csv"
+        consumes_optional:
+          - "results/tables/11_spatial_systems/atlas/"
+          - "data/processed/02_id_mapping/mapped/"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "NATURE-FINAL V7 FIGURE 3, CANDIDATE ONLY, panels a-i. Panel a is new and supplies the premise the figure rests on, which was previously absent: individual-protein differential abundance is sparse. It is a two-row numeric track - canonical and robustness-qualified FDR-supported SUS-RES counts - aligned column-for-column with the atlas below it, sharing an identical x geometry so the two read as one block. Numeric rather than bars, because a linear scale would let the CA2-SLM canonical count of 28 dominate and re-emphasise exactly the compromised burden. The three repeated miniature hippocampi are replaced by ONE shared schematic with three numbered anchored callouts, each carrying its own three-contrast strip. The protein zoom is split into three per-program panels: the previous single 35 mm panel was structurally broken, with heatmap tiles collapsed to hairlines, contrast labels overprinted on one position and program titles clipped to single characters. Trajectory wording is derived from the stored FDR and refuses to call a pattern divergent when the RES-CON arm is unsupported."
+      - script: "figures/nature_final_v7_extended_data.R"
+        required: false
+        datasets: ["global"]
+        stage: "manuscript_candidates"
+        scope: "global"
+        produces:
+          - "results/figures/manuscript_candidates/nature_final_v7/extended_data/"
+          - "results/source_data/manuscript_candidates/nature_final_v7/extended_data/"
+          - "results/reports/manuscript_candidates/nature_final_v7/extended_data/"
+        consumes_required:
+          - "figures/figure_nature_final_v7_contract.yml"
+          - "config/manuscript_spatial_order.yml"
+        consumes_optional:
+          - "results/tables/11_spatial_systems/"
+          - "results/tables/manuscript_candidates/spatial_v6/"
+          - "results/tables/08_behavior_physio_coupling/network_behavior_coupling/"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "NATURE-FINAL V7 EXTENDED DATA, CANDIDATE ONLY. Extended Data now DEEPENS the main figures rather than repeating them larger, which Part 22 measured as a systematic defect: four main panels were byte-identical to Extended Data panels and three of those were LARGER in Extended Data. ED1 carries the complete stored bilateral metric inventory where main 2f carries one correlation per contrast; ED2 carries every tested external pair including specificity comparisons and every canonical term per contrast, where main 2g and 2h carry expected pairings and one term each; ED6 carries the detailed curves with set size and reconstruction provenance where the main curves carry only curve, ticks, NES, FDR and a compact trajectory strip. The PCA is deliberately REMOVED from Extended Data rather than duplicated. ED4 and ED5 are merged into one WGCNA figure, the WGCNA circle is dropped as superseded by the module spatial fingerprint, and m11 is annotated as a worked example with its historical label unchanged and the proposed oligodendrocyte label unactivated. ED8 sizes its similarity facets proportionally to unit count so a 4x4 cell is no longer three times the linear size of a 10x10 cell, and promotes the not-anatomical-connectivity statement into the panel title."
+      - script: "figures/nature_final_v7_hierarchy_audit.R"
+        required: false
+        datasets: ["global"]
+        stage: "manuscript_candidates"
+        scope: "global"
+        produces:
+          - "results/tables/manuscript_candidates/nature_final_v7/main_ed_panel_hierarchy_audit.csv"
+          - "results/tables/manuscript_candidates/nature_final_v7/final_spatial_phenotype_coverage_matrix.csv"
+          - "results/reports/manuscript_candidates/nature_final_v7/final_main_figure_story_map.md"
+        consumes_required:
+          - "figures/figure_nature_final_v7_contract.yml"
+        consumes_optional: []
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "NATURE-FINAL V7 AUDIT. Pairs every analysis that appears in both a main figure and Extended Data, hashes the two emitted SVGs and hard-stops if any pair is byte-identical. Analyses that legitimately appear on one side only must carry a written exception, which is why the removal of the Extended Data PCA is recorded rather than silently done. Also emits the spatial x phenotype coverage matrix and the main-figure story map, which states in one line per panel what that panel contributes to the argument."
+      - script: "figures/nature_final_v7_contact_sheet.R"
+        required: false
+        datasets: ["global"]
+        stage: "manuscript_candidates"
+        scope: "global"
+        produces:
+          - "results/figures/manuscript_candidates/nature_final_v7/previews/"
+          - "results/reports/manuscript_candidates/nature_final_v7/nature_final_v7_preview_inventory.csv"
+        consumes_required:
+          - "figures/figure_nature_final_v7_contract.yml"
+        consumes_optional: []
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "NATURE-FINAL V7 PREVIEWS. Emits a 300 dpi and a 900 dpi raster of every assembled figure plus one contact sheet. The 900 dpi pass exists deliberately: a 300 dpi raster softens 5 pt type enough to look illegible when it is not, and the Part-22 audit nearly mis-reported that rasterisation artefact as a print defect."
   export:
     description: "Export layer for PRIDE, manuscript tables, reviewer materials, source data, methods summaries, and validation reports."
     scripts:
