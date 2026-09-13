@@ -68,7 +68,7 @@ panels:
       - results/tables/03_qc_exploration/00b_joint_compartment_qc/global/joint_primary_pca_variance_explained.csv
 
   - id: v8_fingerprint
-    renderer: nf_fingerprint
+    renderer: e8_fingerprint
     role: direct_baseline_spatial_molecular_view
     spatial_axes: compartment+region+layer
     phenotype_axes: none_intentional

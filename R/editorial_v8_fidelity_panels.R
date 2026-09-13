@@ -319,30 +319,57 @@ e8_depth_compact <- function(panel, svg_path, csv_path, w_mm, h_mm) {
   d <- d[order(d$lab, d$val), , drop = FALSE]
   d$off <- unlist(lapply(split(d$val, d$lab), e8_sina_offset), use.names = FALSE)
 
+  # Part-26. DESCRIPTIVE violin, no test. The frozen renderer drew 323 raw
+  # points whose horizontal position was a function of rank; the points are
+  # kept but the distribution shape is now stated by a density outline, which
+  # is what the panel is actually claiming. A violin is appropriate here only
+  # because every group clears the small-sample threshold at which smoothed
+  # densities become meaningless (n = 180 / 71 / 72 acquisitions), and the
+  # neuropil distribution is multimodal, which a box plot would have hidden.
+  #
+  # The two n are NOT the same number and are labelled separately: the violin
+  # summarises ACQUISITIONS, while the biological replicate is the animal
+  # (9 animals, 3 per group). Nothing here is a between-group comparison.
+  acq <- table(d$lab)
+  n_animals <- if ("AnimalID" %in% names(d))
+    length(unique(d$AnimalID[!is.na(d$AnimalID)])) else NA_integer_
+
   q <- function(p) function(v) stats::quantile(v, p, names = FALSE)
   p <- ggplot2::ggplot(d, ggplot2::aes(as.integer(lab) + off, val)) +
+    ggplot2::geom_violin(ggplot2::aes(x = as.integer(lab), group = lab),
+                         width = 0.86, colour = "grey45", fill = NA,
+                         linewidth = 0.22, bw = "nrd0", trim = TRUE) +
+    ggplot2::geom_point(ggplot2::aes(colour = lab), size = 0.38, alpha = 0.55) +
     ggplot2::stat_summary(ggplot2::aes(x = as.integer(lab)), fun.min = q(0.25),
                           fun.max = q(0.75), fun = stats::median,
-                          geom = "crossbar", width = 0.86, linewidth = 0.16,
-                          colour = "grey58", fill = NA) +
-    ggplot2::geom_point(ggplot2::aes(colour = lab), size = 0.5, alpha = 0.8) +
-    ggplot2::stat_summary(ggplot2::aes(x = as.integer(lab)),
-                          fun = stats::median, geom = "crossbar", width = 0.86,
-                          linewidth = 0.22, colour = "grey25", fill = NA) +
+                          geom = "crossbar", width = 0.34, linewidth = 0.16,
+                          colour = "grey20", fill = NA) +
     ggplot2::scale_colour_manual(
       values = stats::setNames(
         unname(nv_dataset_colours()[sg_compartment_levels()]),
         sg_compartments()$short), guide = "none") +
     ggplot2::scale_x_continuous(breaks = 1:3, labels = sg_compartments()$short,
                                 limits = c(0.5, 3.5)) +
-    ggplot2::labs(x = NULL, y = "proteins identified") +
+    ggplot2::labs(x = NULL, y = "proteins identified",
+                  caption = sprintf(paste0(
+                    "%s acquisitions\nfrom %d animals (3 per group), which ",
+                    "are the biological replicates"),
+                    paste(as.integer(acq[sg_compartments()$short]),
+                          collapse = " / "), n_animals)) +
     nf_theme(grid = "y") +
-    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 30, hjust = 1))
+    ggplot2::theme(
+      axis.text.x = ggplot2::element_text(size = NF_MIN_PT, angle = 30,
+                                          hjust = 1),
+      plot.caption = ggplot2::element_text(size = NF_MIN_PT, colour = "grey35",
+                                           hjust = 0, lineheight = 1.15))
   out <- d[, c("dataset", "val")]
-  out$offset_rule <- paste0(
-    "horizontal position is proportional to local density (symmetric spread ",
-    "within value bins), not to rank; no random jitter is used. Bars are the ",
-    "median and the interquartile range")
+  out$n_acquisitions_in_compartment <- as.integer(acq[as.character(d$lab)])
+  out$n_biological_replicates <- n_animals
+  out$encoding_note <- paste0(
+    "descriptive violin of the acquisition-level distribution with median and ",
+    "interquartile crossbar and all acquisitions overplotted; the biological ",
+    "replicate is the animal, not the acquisition, and no group comparison is ",
+    "made in this panel")
   write_csv_safe(out, csv_path)
   nv_save_panel(p, svg_path, w_mm, h_mm)
   invisible(list(status = "ok"))
@@ -588,6 +615,105 @@ e8_ed_ca2_sensitivity <- function(panel, svg_path, csv_path, w_mm, h_mm) {
     "towards zero when the QC-failed hemispheres were dropped; both endpoints ",
     "are log2FC on one shared axis, so no aspect-ratio distortion is possible")
   write_csv_safe(z, csv_path)
+  nv_save_panel(p, svg_path, w_mm, h_mm)
+  invisible(list(status = "ok"))
+}
+
+# ==========================================================================
+# F2 d. The baseline spatial fingerprint, ordered by what it is about
+# ==========================================================================
+#
+# Part-26. The centrepiece of Figure 2 - its largest panel at 175 x 50 mm -
+# presented its 19 genes in ALPHABETICAL order (ADCY9, ANKRD63, ATP1A1,
+# ATP8A1, CAMK1D, ...), which is a random permutation with respect to the
+# spatial structure the panel exists to show. Rows are now seriated by each
+# gene's baseline peak spatial unit, so the fingerprint reads as a block
+# structure instead of having to be reconstructed cell by cell.
+#
+# The ordering is PHENOTYPE-BLIND by construction: the peak is taken from
+# con_z, which is CON-only baseline abundance, and no stress contrast, group
+# label or phenotype statistic enters the sort. Ties break on the gene symbol,
+# so the order is deterministic.
+e8_fingerprint <- function(panel, svg_path, csv_path, w_mm, h_mm) {
+  fam <- nf_fam()
+  z <- nv_read_csv(repo_path(panel$primary_source))
+  z$sg_unit <- sg_resolve_unit(z$spatial_unit, z$dataset)
+  b <- sg_blocks(z$sg_unit, z$dataset)
+  o <- b$order
+  z$xpos <- match(paste(z$dataset, z$sg_unit), paste(o$dataset, o$unit))
+
+  # each gene's own compartment, and its baseline peak unit within it
+  gk <- unique(z[, c("gene", "contrast")])
+  gk <- gk[order(gk$contrast, gk$gene), , drop = FALSE]
+  gk <- gk[!duplicated(gk$gene), , drop = FALSE]
+  pk <- do.call(rbind, lapply(split(z, z$gene), function(g) {
+    g <- g[is.finite(g$con_z), , drop = FALSE]
+    if (!nrow(g)) return(NULL)
+    i <- which.max(g$con_z)
+    data.frame(gene = g$gene[1], peak_xpos = g$xpos[i],
+               peak_unit = g$sg_unit[i], peak_dataset = g$dataset[i],
+               peak_con_z = g$con_z[i], stringsAsFactors = FALSE)
+  }))
+  ord <- merge(gk, pk, by = "gene", all.x = TRUE, sort = FALSE)
+  ord <- ord[order(ord$peak_xpos, ord$gene), , drop = FALSE]
+  lev <- ord$gene
+  z$ypos <- match(z$gene, rev(lev))
+  n <- nrow(o); ny <- length(lev)
+  y_comp <- ny + 2.3; y_reg <- ny + 1.05
+  lim <- max(abs(z$con_z), na.rm = TRUE) * c(-1, 1)
+
+  p <- ggplot2::ggplot(z, ggplot2::aes(xpos, ypos)) +
+    ggplot2::geom_tile(ggplot2::aes(fill = con_z), colour = "white",
+                       linewidth = 0.1) +
+    nv_diverging(limits = lim, name = "Baseline abundance\n(CON z-score)") +
+    ggplot2::scale_x_continuous(breaks = seq_len(n),
+                                labels = sg_axis_labels(b),
+                                limits = c(0.5, n + 0.5), expand = c(0, 0)) +
+    ggplot2::scale_y_continuous(breaks = seq_len(ny), labels = rev(lev),
+                                limits = c(0.5, y_comp + 0.9),
+                                expand = c(0, 0)) +
+    ggplot2::annotate("segment", x = b$compartment$start - 0.5,
+                      xend = b$compartment$end + 0.5,
+                      y = y_comp - 0.32, yend = y_comp - 0.32,
+                      linewidth = 0.45, colour = "grey25") +
+    ggplot2::annotate("text", x = b$compartment$mid, y = y_comp,
+                      label = b$compartment$label, family = fam,
+                      size = nf_sz(5.4), fontface = "bold", colour = "grey12") +
+    ggplot2::annotate("text", x = b$region$mid, y = y_reg,
+                      label = b$region$label, family = fam, size = nf_sz(5.0),
+                      colour = "grey30") +
+    ggplot2::labs(x = NULL, y = NULL,
+                  caption = paste0(
+                    "CON animals only (n = 3). Genes are the top hits of each ",
+                    "prespecified CON-only anatomical contrast; no stress ",
+                    "information enters selection or row order.
+Each gene ",
+                    "is standardised across its own compartment; rows are ",
+                    "ordered by baseline peak unit.")) +
+    nf_theme_tile() +
+    ggplot2::theme(
+      axis.text.x = ggplot2::element_text(size = NF_MIN_PT, colour = "grey25"),
+      axis.text.y = ggplot2::element_text(size = NF_MIN_PT, face = "italic"),
+      legend.title = ggplot2::element_text(size = nf_pt(5.4)),
+      legend.position = "right",
+      legend.key.width = ggplot2::unit(1.6, "mm"),
+      legend.key.height = ggplot2::unit(3.6, "mm"))
+  cend <- utils::head(b$compartment$end, -1)
+  rend <- setdiff(utils::head(b$region$end, -1), cend)
+  if (length(cend)) p <- p + ggplot2::annotate(
+    "segment", x = cend + 0.5, xend = cend + 0.5, y = 0.5, yend = y_comp - 0.32,
+    linewidth = 0.42, colour = "grey25")
+  if (length(rend)) p <- p + ggplot2::annotate(
+    "segment", x = rend + 0.5, xend = rend + 0.5, y = 0.5, yend = y_reg + 0.4,
+    linewidth = 0.18, colour = "grey72")
+  out <- merge(z, pk[, c("gene", "peak_unit", "peak_dataset")], by = "gene",
+               all.x = TRUE, sort = FALSE)
+  out <- out[order(-out$ypos, out$xpos), , drop = FALSE]
+  out$row_order_rule <- paste0(
+    "rows are seriated by baseline peak spatial unit, taken from CON-only ",
+    "con_z; no phenotype information enters the ordering. Ties break on gene ",
+    "symbol, so the order is deterministic")
+  write_csv_safe(out, csv_path)
   nv_save_panel(p, svg_path, w_mm, h_mm)
   invisible(list(status = "ok"))
 }

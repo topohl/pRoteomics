@@ -2125,6 +2125,34 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "EDITORIAL V8 PREVIEWS. Emits a 300 dpi and a 900 dpi raster of every assembled figure plus one contact sheet. Both densities are deliberate: a 300 dpi raster softens 5 pt type enough to look illegible when it is not, and the Part-22 audit nearly mis-reported that rasterisation artefact as a print defect. The delivered artwork remains the SVG and the cairo PDF; these rasters are review aids only. EDITORIAL V8 FIDELITY PASS (Part 25). Fixes defects found by a measured encoding audit, and reopens no analysis. The three-contrast NES strips in F3 d/e/f and ED6 c/d/e each computed their colour limit inside one panel, so -1.716 rendered at 99.8% of the ramp while the larger -1.775 rendered at 64.3%: they now share one limit. ED7a and ED7b disagreed on the same page (15/15 versus 14/15) because one used a crude unit-inequality test and the other the canonical affinity classification; both statements are now carried and SNU13, the single protein that separates them, is named. ED8c moved to a log axis, where its 0 and 0.05 tick labels no longer overprint at 31.6 mm. ED7a encodes counts rather than a proportion on a 0-122 axis. F2e marks the three cells its colour ramp censors at 3.0 and releases their true values (5.10, 4.17, 3.11). F2b replaces a jitter offset that was a deterministic function of rank - and drew period-5 diagonal staircases with no data behind them - with a density-proportional one. ED3b pairs hemispheres within animal, ED3e replaces a scatter whose identity line was drawn at 18.8 degrees by a one-axis dumbbell, ED2c collapses 7 facets onto one shared NES axis, and the WGCNA module fingerprint gets constant tile size and peak-unit seriation. The WGCNA panel additionally reports the existing 0-of-35 stress-by-spatial interaction omnibus, which answers the objection that the 0-of-45 chip comes from a spatially adjusted model."
+      - script: "figures/editorial_v8_supplementary_tables.R"
+        required: false
+        datasets: ["global"]
+        stage: "manuscript_candidates"
+        scope: "global"
+        produces:
+          - "results/tables/manuscript_candidates/editorial_v8/supplementary/"
+        consumes_required:
+          - "figures/figure_editorial_v8_contract.yml"
+        consumes_optional:
+          - "results/source_data/manuscript_candidates/editorial_v8/"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "EDITORIAL V8 SUPPLEMENTARY TABLES. Derives a reader-facing statistics table set from the per-panel source data. Nothing is recomputed and no test is run: every value is a read of a stored result. The panel sidecars are machine-oriented - abbreviated headers and a provenance sentence repeated on every row - which is right for reproducing a panel and wrong for a reader. These tables carry full column names, the test that produced each statistic, the multiple-testing family it was corrected within, and the number of biological replicates it rests on, which is 9 animals and not the acquisition count. Where a quantity is descriptive and carries no test the table says so rather than leaving the column blank. ST0_data_dictionary.csv defines every column of every table and carries the per-table interpretation note."
+      - script: "figures/editorial_v8_readmes.R"
+        required: false
+        datasets: ["global"]
+        stage: "manuscript_candidates"
+        scope: "global"
+        produces:
+          - "results/figures/manuscript_candidates/editorial_v8/"
+        consumes_required:
+          - "figures/figure_editorial_v8_contract.yml"
+        consumes_optional:
+          - "results/tables/manuscript_candidates/editorial_v8/supplementary/"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "EDITORIAL V8 FOLDER READMEs. Writes a README.md into every editorial_v8 output folder, generated from the contract so it cannot drift from what the scripts actually write. Each one states that the layer is a candidate and is not promoted, lists the panels with their renderer, millimetre box and narrative, and gives the exact command that regenerates the folder. The source-data READMEs point readers at the Supplementary Tables instead, because the sidecars are not reader-facing. Nothing in these files is hand-maintained."
   export:
     description: "Export layer for PRIDE, manuscript tables, reviewer materials, source data, methods summaries, and validation reports."
     scripts:

@@ -393,24 +393,57 @@ e8_protein_zoom <- function(panel, svg_path, csv_path, w_mm, h_mm) {
   z$sig <- is.finite(z$BH_FDR) & z$BH_FDR < 0.05
   lim <- e8_prot_limit()
 
-  p <- ggplot2::ggplot(z, ggplot2::aes(contrast, gene, fill = log2FC)) +
-    ggplot2::geom_tile(colour = "white", linewidth = nv_lw("tile_border_pt")) +
-    ggplot2::geom_text(ggplot2::aes(label = sprintf("%.2f", log2FC)),
-                       family = fam, size = nf_sz(5.0), colour = "grey12") +
-    nv_diverging(limits = c(-lim, lim), name = "log2FC") +
-    ggplot2::labs(x = NULL, y = NULL) +
-    nf_theme_tile() +
+  # Part-26. The tile grid encoded a signed magnitude in colour for only 21
+  # cells: the modal |log2FC| is 0.12-0.44 against a +/-0.95 ramp, so a 0.10
+  # difference was 5% of the ramp and unreadable, and printing the value inside
+  # each tile turned the panel into a table with a colour wash behind it.
+  # Position is the accurate channel for a signed magnitude, so the same three
+  # numbers per gene are now points on one shared log2FC axis. Contrast is
+  # carried redundantly by colour AND shape, so the panel survives greyscale
+  # printing and the common colourblindness forms.
+  #
+  # The FDR overlay is removed rather than restyled: every BH_FDR in all three
+  # programs is >= 0.52, so geom_point(data = z[z$sig, ]) drew zero marks and
+  # the sentence explaining it described something that was never on the page.
+  # The absence of FDR support is stated once in the figure legend instead.
+  COL <- c("RES−CON" = "#C0442C", "SUS−CON" = "#7C8A93",
+           "SUS−RES" = "#2C6E9B")
+  SHP <- c("RES−CON" = 16, "SUS−CON" = 17, "SUS−RES" = 15)
+
+  p <- ggplot2::ggplot(z, ggplot2::aes(log2FC, gene)) +
+    ggplot2::geom_vline(xintercept = 0, linewidth = nv_lw("reference_pt"),
+                        colour = "grey70") +
+    ggplot2::geom_line(ggplot2::aes(group = gene), colour = "grey86",
+                       linewidth = 0.26) +
+    ggplot2::geom_point(ggplot2::aes(colour = contrast, shape = contrast),
+                        size = 1.05) +
+    ggplot2::scale_colour_manual(values = COL, name = "Contrast",
+                                 guide = ggplot2::guide_legend(order = 1)) +
+    ggplot2::scale_shape_manual(values = SHP, name = "Contrast",
+                                guide = ggplot2::guide_legend(order = 1)) +
+    ggplot2::scale_x_continuous(limits = c(-lim, lim), breaks = c(-0.8, 0, 0.8)) +
+    ggplot2::labs(x = "log2 fold change", y = NULL) +
+    nf_theme(grid = "y") +
     ggplot2::theme(
       axis.text.x = ggplot2::element_text(size = NF_MIN_PT),
+      axis.title.x = ggplot2::element_text(size = nf_pt(5.4)),
       axis.text.y = ggplot2::element_text(size = NF_MIN_PT, face = "italic"),
-      legend.position = if (show_legend) "right" else "none",
-      legend.key.width = ggplot2::unit(1.4, "mm"),
-      legend.key.height = ggplot2::unit(3.2, "mm"),
+      legend.position = if (show_legend) "inside" else "none",
+      legend.position.inside = c(0.80, 0.74),
+      legend.background = ggplot2::element_rect(fill = "white", colour = NA),
+      legend.margin = ggplot2::margin(0.5, 0.5, 0.5, 0.5, "mm"),
+      legend.title = ggplot2::element_text(size = nf_pt(5.4)),
+      legend.text = ggplot2::element_text(size = NF_MIN_PT),
+      legend.key.size = ggplot2::unit(2.6, "mm"),
       plot.margin = ggplot2::margin(1, 1, 1, 1, "mm"))
   z$shared_scale_note <- sprintf(paste0(
-    "one symmetric log2FC scale shared by all three protein panels, limit ",
-    "+/-%.2f derived from the combined selected-protein values; one colour ",
-    "bar is drawn, on the last column only"), lim)
+    "one symmetric log2 fold-change axis shared by all three protein panels, ",
+    "limit +/-%.2f derived from the combined selected-protein values; contrast ",
+    "is encoded by colour and shape together"), lim)
+  z$fdr_note <- sprintf(paste0(
+    "no protein in any of the three programs is FDR-supported (smallest BH ",
+    "FDR = %.2f), so no significance marking is drawn"),
+    min(z$BH_FDR, na.rm = TRUE))
   write_csv_safe(z, csv_path)
   nv_save_panel(p, svg_path, w_mm, h_mm)
   invisible(list(status = "ok"))
@@ -486,8 +519,8 @@ e8_gsea_curve <- function(panel, svg_path, csv_path, w_mm, h_mm) {
   unit <- sg_unit_label(prog$unit[1], prog$dataset[1])
   idx <- as.character(panel$column_index %||% "")
   hdr <- ggplot2::ggplot() +
-    ggplot2::annotate("rect", xmin = 0, xmax = 1, ymin = 0.72, ymax = 1.02,
-                      fill = acc, alpha = 0.13, colour = NA) +
+    ggplot2::annotate("segment", x = 0, xend = 1, y = 1.05, yend = 1.05,
+                      colour = acc, linewidth = 0.5) +
     ggplot2::annotate("text", x = 0.012, y = 0.955, hjust = 0, vjust = 1,
                       family = fam, size = nf_sz(5.4), fontface = "bold",
                       colour = "grey10",
@@ -767,7 +800,7 @@ e8_gsea_atlas <- function(panel, svg_path, csv_path, w_mm, h_mm) {
     ggplot2::geom_point(data = cells[cells$n_fdr > 0, , drop = FALSE],
                         ggplot2::aes(xpos, ypos), size = 0.45,
                         colour = "grey10") +
-    nv_diverging(limits = lim, name = "median\nNES",
+    nv_diverging(limits = lim, name = "Median normalised\nenrichment score",
                  breaks = c(-2, 0, 2)) +
     ggplot2::geom_text(
       data = data.frame(y = seq_len(ny), l = unname(SHORT[rev(ord)])),
