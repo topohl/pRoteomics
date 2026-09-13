@@ -141,37 +141,73 @@ e8_ed_internal_full <- function(panel, svg_path, csv_path, w_mm, h_mm) {
   g <- nv_read_csv(repo_path(panel$primary_source))
   g$level <- ifelse(grepl("CA1_strata", g$contrast),
                     "CA1 laminar identity", "Regional identity")
-  g <- g[order(g$level, g$contrast, -abs(g$NES)), , drop = FALSE]
-  g$cl <- gsub("_", " ", g$contrast)
+  g$cl <- sub(" vs mean other", " vs rest", gsub("_", " ", g$contrast))
   g$sig <- is.finite(g$p_adjust) & g$p_adjust < 0.05
+
+  # Part-25 fidelity pass. The panel faceted 14 points into 7 boxes of 57 mm
+  # each, so every NES sat on its own axis at its own offset and only the bottom
+  # facet of a column carried tick labels: comparing CA1-SLM against DG meant
+  # eye-jumping across two columns. One shared axis puts all 14 on the same
+  # scale and raises quantitative resolution 2.2x (17.3 -> 38.1 mm per NES
+  # unit). It also matches ED1a, which draws the identical data shape - one
+  # scalar per labelled row, grouped by a categorical level - as a single-axis
+  # multi-row lollipop, so this Extended Data set now teaches one idiom.
+  #
+  # The shape aesthetic is dropped: max p_adjust over all 14 rows is 8.37e-6, so
+  # it never varied and the FDR ceiling is stated once in the caption instead.
+  g <- g[order(g$level, g$cl, -g$NES), , drop = FALSE]
   g$ypos <- rev(seq_len(nrow(g)))
-  g$lab <- g$Description
+  # contrast blocks stay contiguous, so a hairline can divide them at zero
+  # row cost
+  r <- rle(g$cl)
+  ends <- cumsum(r$lengths)
+  divs <- g$ypos[utils::head(ends, -1)] - 0.5
+  ctag <- data.frame(y = vapply(split(g$ypos, factor(g$cl, levels = r$values)),
+                                mean, numeric(1)),
+                     l = r$values, stringsAsFactors = FALSE)
 
   p <- ggplot2::ggplot(g, ggplot2::aes(NES, ypos)) +
     ggplot2::geom_vline(xintercept = 0, linewidth = nv_lw("reference_pt"),
                         colour = "grey65") +
-    ggplot2::geom_segment(ggplot2::aes(x = 0, xend = NES, yend = ypos),
-                          colour = "grey55", linewidth = nv_lw("reference_pt")) +
-    ggplot2::geom_point(ggplot2::aes(size = setSize, shape = sig),
-                        fill = "white", colour = "#1F3D52", stroke = 0.4) +
-    ggplot2::scale_shape_manual(values = c("TRUE" = 16, "FALSE" = 21),
-                                guide = "none") +
-    ggplot2::scale_size_continuous(range = c(0.6, 2.2), name = "set size") +
-    ggplot2::scale_y_continuous(breaks = g$ypos, labels = g$lab,
-                                expand = ggplot2::expansion(add = 0.8)) +
-    ggplot2::facet_wrap(~cl, scales = "free_y", ncol = 2) +
+    ggplot2::geom_segment(ggplot2::aes(x = 0, xend = NES, yend = ypos,
+                                       colour = level),
+                          linewidth = nv_lw("reference_pt")) +
+    ggplot2::geom_point(ggplot2::aes(size = setSize, colour = level)) +
+    ggplot2::geom_text(ggplot2::aes(label = Description), x = -0.12, hjust = 1,
+                       family = fam, size = nf_sz(5.0), colour = "grey25") +
+    ggplot2::geom_text(data = ctag, ggplot2::aes(x = 3.62, y = y, label = l),
+                       inherit.aes = FALSE, hjust = 0, family = fam,
+                       size = nf_sz(5.0), colour = "grey45") +
+    ggplot2::scale_colour_manual(
+      values = c("Regional identity" = "#1F3D52",
+                 "CA1 laminar identity" = "#C2A878"), name = NULL,
+      guide = ggplot2::guide_legend(order = 1)) +
+    ggplot2::scale_size_continuous(range = c(0.6, 2.2), name = "set size",
+                                   guide = ggplot2::guide_legend(order = 2)) +
+    ggplot2::scale_x_continuous(limits = c(-2.05, 4.5),
+                                breaks = c(0, 1, 2, 3)) +
+    ggplot2::scale_y_continuous(expand = ggplot2::expansion(add = 0.8)) +
     ggplot2::labs(x = "NES", y = NULL,
                   caption = paste0(
                     "Every canonical GO term retained for every anatomical ",
-                    "contrast. Main Figure 2h shows one term per contrast.")) +
+                    "contrast, on one shared axis; the right-hand label names ",
+                    "the contrast. All 14 terms are FDR < 1e-5. Main Figure 2h ",
+                    "shows one term per contrast.")) +
     nf_theme(grid = "x") +
-    ggplot2::theme(axis.text.y = ggplot2::element_text(size = NF_MIN_PT),
-                   strip.text = ggplot2::element_text(size = NF_MIN_PT,
-                                                      face = "bold"),
+    ggplot2::theme(axis.text.y = ggplot2::element_blank(),
+                   axis.ticks.y = ggplot2::element_blank(),
+                   axis.line.y = ggplot2::element_blank(),
+                   axis.text.x = ggplot2::element_text(size = NF_MIN_PT),
                    legend.position = "bottom",
                    legend.key.size = ggplot2::unit(2.4, "mm"))
-  write_csv_safe(g[, c("contrast", "Description", "NES", "p_adjust", "setSize")],
-                 csv_path)
+  if (length(divs)) p <- p + ggplot2::annotate(
+    "segment", x = -2.05, xend = 4.5, y = divs, yend = divs,
+    linewidth = 0.12, colour = "grey86")
+  out <- g[, c("contrast", "Description", "level", "NES", "p_adjust", "setSize")]
+  out$axis_note <- paste0(
+    "all terms share one NES axis so any two can be compared directly; the ",
+    "previous facet grid gave each contrast its own axis")
+  write_csv_safe(out, csv_path)
   nv_save_panel(p, svg_path, w_mm, h_mm)
   invisible(list(status = "ok"))
 }
@@ -245,6 +281,33 @@ e8_ed_wgcna_phenotype <- function(panel, svg_path, csv_path, w_mm, h_mm) {
   n_sig <- if (length(fcol)) sum(suppressWarnings(as.numeric(z[[fcol[1]]])) <
                                    0.05, na.rm = TRUE) else NA_integer_
   if (is.na(n_sig)) stop("e8_ed_wgcna_phenotype: no FDR column", call. = FALSE)
+  # Part-25. The 0/45 chip above is derived from a SPATIALLY ADJUSTED model, and
+  # the obvious objection is that a layer-confined module effect would be
+  # averaged away by that adjustment. The pipeline already answers this: stage
+  # 05 fits a stress-by-spatial-unit interaction omnibus per module. Those rows
+  # carry display_allowed = TRUE and model_valid_for_inference = TRUE, so
+  # reporting them is a read, not a new test. Nothing is recomputed here.
+  #
+  # The 690 within-spatial-unit contrasts in the same file are deliberately NOT
+  # reported: they are three-animals-per-group-per-unit slices whose smallest
+  # FDR is 0.49, and calling that evidence of absence would need an attainable-
+  # floor treatment of the kind ED8c carries - which would be new inference.
+  omni <- do.call(rbind, lapply(sg_compartments()$id, function(d) {
+    f <- repo_path("results", "tables", "06_modules_WGCNA", "group_effects", d,
+                   "module_group_effects.csv")
+    if (!file.exists(f)) return(NULL)
+    e <- nv_read_csv(f)
+    e <- e[e$effect_scope == "stress_by_spatial_interaction", , drop = FALSE]
+    if (!nrow(e)) return(NULL)
+    q <- suppressWarnings(as.numeric(e$FDR_interaction_omnibus))
+    data.frame(dataset = d, n_tests = nrow(e),
+               n_fdr = sum(q < 0.05, na.rm = TRUE),
+               min_fdr = min(q, na.rm = TRUE), stringsAsFactors = FALSE)
+  }))
+  if (is.null(omni)) stop("e8_ed_wgcna_phenotype: no interaction omnibus rows",
+                          call. = FALSE)
+  om_n <- sum(omni$n_tests); om_sig <- sum(omni$n_fdr)
+  om_min <- min(omni$min_fdr)
   chip <- data.frame(
     x0 = c(0.55, length(cl) + 0.55),
     x1 = c(length(cl) + 0.40, length(cl) + 3.38),
@@ -266,7 +329,7 @@ FDR-supported"),
     ggplot2::scale_y_continuous(breaks = seq_len(ny),
                                 labels = rev(mods$row_label),
                                 expand = c(0, 0),
-                                limits = c(0.5, ny + 3.35)) +
+                                limits = c(0.5, ny + 5.35)) +
     ggplot2::labs(x = NULL, y = NULL,
                   caption = paste0(
                     "DESCRIPTIVE ONLY. The colour scale must not be read",
@@ -278,13 +341,25 @@ FDR-supported"),
                    legend.key.width = ggplot2::unit(1.6, "mm"),
                    legend.key.height = ggplot2::unit(3.4, "mm"))
   p <- p +
-    ggplot2::annotate("rect", xmin = chip$x0, xmax = chip$x1,
-                      ymin = ny + 1.35, ymax = ny + 3.20, fill = chip$fill,
+    ggplot2::annotate("rect", xmin = chip$x0[1], xmax = chip$x1[2],
+                      ymin = ny + 1.20, ymax = ny + 3.05, fill = "grey95",
                       colour = NA) +
-    ggplot2::annotate("text", x = chip$x0 + 0.10, y = ny + 2.28, hjust = 0,
+    ggplot2::annotate("text", x = chip$x0[1] + 0.10, y = ny + 2.13, hjust = 0,
+                      label = sprintf("%d/%d", om_sig, om_n), family = fam,
+                      size = nf_sz(6.4), fontface = "bold", colour = "grey20") +
+    ggplot2::annotate("text", x = chip$x0[1] + 0.68, y = ny + 2.13, hjust = 0,
+                      label = sprintf(paste0(
+                        "stress × spatial-unit interaction tests\n",
+                        "FDR-supported (smallest FDR %.2f)"), om_min),
+                      family = fam, size = nf_sz(5.0), lineheight = 1.08,
+                      colour = "grey20") +
+    ggplot2::annotate("rect", xmin = chip$x0, xmax = chip$x1,
+                      ymin = ny + 3.35, ymax = ny + 5.20, fill = chip$fill,
+                      colour = NA) +
+    ggplot2::annotate("text", x = chip$x0 + 0.10, y = ny + 4.28, hjust = 0,
                       label = chip$big, family = fam, size = nf_sz(6.4),
                       fontface = "bold", colour = chip$ink) +
-    ggplot2::annotate("text", x = chip$x0 + 0.68, y = ny + 2.28, hjust = 0,
+    ggplot2::annotate("text", x = chip$x0 + 0.68, y = ny + 4.28, hjust = 0,
                       label = chip$lab, family = fam, size = nf_sz(5.0),
                       lineheight = 1.08,
                       colour = chip$ink)
@@ -299,8 +374,11 @@ FDR-supported"),
                       family = fam, size = nf_sz(5.0), fontface = "bold",
                       colour = "grey20", label = "external cell type")
   z$inferential_status <- sprintf(
-    "%d of %d modules show the descriptive geometry; %d of %d cells FDR-supported",
-    geom_n, nrow(w), n_sig, n_cells)
+    paste0("%d of %d modules show the descriptive geometry; %d of %d ",
+           "spatially adjusted cells FDR-supported; %d of %d stress x ",
+           "spatial-unit interaction omnibus tests FDR-supported, smallest ",
+           "FDR %.2f"),
+    geom_n, nrow(w), n_sig, n_cells, om_sig, om_n, om_min)
   write_csv_safe(z, csv_path)
   nv_save_panel(p, svg_path, w_mm, h_mm)
   invisible(list(status = "ok"))
@@ -551,45 +629,102 @@ e8_ed_module_fingerprint <- function(panel, svg_path, csv_path, w_mm, h_mm) {
   z <- s6_module_fingerprint_table()
   z <- z[!is.na(z$mean_con_z), , drop = FALSE]
   z$sg_unit <- sg_resolve_unit(z$spatial_unit, z$dataset)
-  z$comp <- factor(sg_compartment_label(z$dataset),
-                   levels = sg_compartments()$short)
-  z$unit_f <- factor(z$sg_unit, levels = sg_units()$analysis_key)
-  # drop the redundant WGCNA_ prefix: the facet strip already says which
-  # compartment, and the prefix only eats width
   z$mod <- sub("^WGCNA_", "", z$ModuleID)
-  z$mod_f <- factor(z$mod, levels = rev(sort(unique(z$mod))))
-  disp <- stats::setNames(sg_units()$display, sg_units()$analysis_key)
-  lim <- max(abs(z$mean_con_z), na.rm = TRUE) * c(-1, 1)
+  u <- sg_units()
+  cs <- sg_compartments()
+  disp <- stats::setNames(u$display, u$analysis_key)
 
-  p <- ggplot2::ggplot(z, ggplot2::aes(unit_f, mod_f)) +
-    ggplot2::geom_tile(ggplot2::aes(fill = mean_con_z), colour = "white",
-                       linewidth = 0.1) +
+  # Part-25 fidelity pass. facet_wrap(ncol = 1, scales = "free") gave all three
+  # compartment blocks the SAME panel height and the SAME width whatever their
+  # row and column counts, so tile aspect was 11.8:1 (neuropil), 13.8:1 (soma)
+  # and 25.5:1 (microglia) - a soma module row was 2.14x taller than a neuropil
+  # one for no reason, and 160 mm of width was spent on 4 columns in two of the
+  # three blocks. Drawing all three blocks in ONE coordinate space with local
+  # row and column indices makes a tile a constant 1 x 1 data unit, so it is the
+  # same physical rectangle everywhere.
+  #
+  # Rows were also ordered alphabetically by module id, which is a random
+  # permutation of the spatial structure the panel exists to show. They are now
+  # seriated by peak_unit, which is already a column of the same table, so each
+  # module's spatial preference reads as a block instead of needing a lookup.
+  GUT <- 0.85   # row-label gutter, in tile widths
+  GAP <- 0.90   # gap between blocks, in tile widths
+  blocks <- list(); xoff <- 0
+  for (k in seq_len(nrow(cs))) {
+    d <- cs$id[k]
+    uk <- u[u$dataset == d, , drop = FALSE]
+    zk <- z[z$dataset == d, , drop = FALSE]
+    if (!nrow(zk)) next
+    pk <- stats::setNames(zk$peak_unit[!duplicated(zk$mod)],
+                          zk$mod[!duplicated(zk$mod)])
+    ord <- names(pk)[order(match(sg_resolve_unit(unname(pk), d),
+                                 uk$analysis_key), names(pk))]
+    blocks[[d]] <- list(dataset = d, units = uk$analysis_key,
+                        display = uk$display, mods = ord, x0 = xoff + GUT,
+                        title = cs$display[k])
+    xoff <- xoff + GUT + nrow(uk) + GAP
+  }
+  nrow_max <- max(vapply(blocks, function(b) length(b$mods), numeric(1)))
+
+  tile <- do.call(rbind, lapply(blocks, function(b) {
+    zk <- z[z$dataset == b$dataset, , drop = FALSE]
+    data.frame(x = b$x0 + match(zk$sg_unit, b$units),
+               y = -match(zk$mod, b$mods), v = zk$mean_con_z,
+               dataset = b$dataset, module = zk$mod, unit = zk$sg_unit,
+               peak_unit = zk$peak_unit, stringsAsFactors = FALSE)
+  }))
+  tile <- tile[!is.na(tile$x) & !is.na(tile$y), , drop = FALSE]
+  rlab <- do.call(rbind, lapply(blocks, function(b) data.frame(
+    x = b$x0 + 0.35, y = -seq_along(b$mods), l = b$mods,
+    stringsAsFactors = FALSE)))
+  clab <- do.call(rbind, lapply(blocks, function(b) data.frame(
+    x = b$x0 + seq_along(b$units), y = -length(b$mods) - 0.7,
+    l = b$display, stringsAsFactors = FALSE)))
+  hdr <- do.call(rbind, lapply(blocks, function(b) data.frame(
+    x = b$x0 - GUT + 0.15, l = b$title, stringsAsFactors = FALSE)))
+
+  lim <- max(abs(tile$v), na.rm = TRUE) * c(-1, 1)
+  ybot <- -(nrow_max + 0.7 + 1.9)
+
+  p <- ggplot2::ggplot() +
+    ggplot2::geom_tile(data = tile, ggplot2::aes(x, y, fill = v),
+                       colour = "white", linewidth = 0.1) +
     nv_diverging(limits = lim, name = "mean\nCON z") +
-    ggplot2::scale_x_discrete(labels = function(x) unname(disp[as.character(x)]),
-                              drop = TRUE) +
-    ggplot2::scale_y_discrete(drop = TRUE) +
-    ggplot2::facet_wrap(~comp, ncol = 1, scales = "free",
-                        strip.position = "left") +
+    ggplot2::geom_text(data = rlab, ggplot2::aes(x, y, label = l), hjust = 1,
+                       family = fam, size = nf_sz(5.0), colour = "grey30") +
+    ggplot2::geom_text(data = clab, ggplot2::aes(x, y, label = l), hjust = 1,
+                       angle = 90, family = fam, size = nf_sz(5.0),
+                       colour = "grey30") +
+    ggplot2::geom_text(data = hdr, ggplot2::aes(x, 0.75, label = l), hjust = 0,
+                       family = fam, size = nf_sz(5.4), fontface = "bold",
+                       colour = "grey12") +
+    ggplot2::coord_cartesian(xlim = c(0, xoff - GAP + 0.5),
+                             ylim = c(ybot, 1.35), expand = FALSE) +
     ggplot2::labs(x = NULL, y = NULL,
                   caption = paste0(
                     "CON only. Each cell is the mean within-protein CON z of ",
                     "that module's member proteins. A module exists only in ",
                     "its own compartment, so each block carries only that ",
-                    "compartment's units.")) +
-    nf_theme_tile() +
+                    "compartment's units.
+A tile is the same size in all ",
+                    "three. Modules are ordered by their peak unit.")) +
+    ggplot2::theme_void(base_family = fam) +
     ggplot2::theme(
-      axis.text.x = ggplot2::element_text(size = NF_MIN_PT, colour = "grey25"),
-      axis.text.y = ggplot2::element_text(size = NF_MIN_PT),
-      strip.text.y.left = ggplot2::element_text(size = nf_pt(5.4),
-                                                face = "bold", angle = 90,
-                                                colour = "grey15"),
-      strip.background = ggplot2::element_blank(),
-      strip.placement = "outside",
-      panel.spacing.y = ggplot2::unit(1.6, "mm"),
+      text = ggplot2::element_text(family = fam, size = NF_MIN_PT),
+      legend.text = ggplot2::element_text(size = NF_MIN_PT),
+      legend.title = ggplot2::element_text(size = nf_pt(5.4)),
+      plot.caption = ggplot2::element_text(size = NF_MIN_PT, colour = "grey30",
+                                           hjust = 0, lineheight = 1.2),
       legend.position = "right",
       legend.key.width = ggplot2::unit(1.6, "mm"),
-      legend.key.height = ggplot2::unit(3.4, "mm"))
-  write_csv_safe(z, csv_path)
+      legend.key.height = ggplot2::unit(3.4, "mm"),
+      plot.margin = ggplot2::margin(0.5, 1, 0.5, 1, "mm"))
+  out <- tile[, c("dataset", "module", "unit", "peak_unit", "v")]
+  names(out)[5] <- "mean_con_z"
+  out$layout_note <- paste0(
+    "one coordinate space for all three compartments, so a tile is a constant ",
+    "1 x 1 data unit everywhere; modules are seriated by peak_unit")
+  write_csv_safe(out, csv_path)
   nv_save_panel(p, svg_path, w_mm, h_mm)
   invisible(list(status = "ok"))
 }
@@ -624,20 +759,34 @@ e8_ed_locations <- function(panel, svg_path, csv_path, w_mm, h_mm) {
                ypos = seq_len(nrow(u)), lab = u$display, stringsAsFactors = FALSE)
   }))
 
-  # Brief section 22. The manuscript-facing headline, stated as a COUNT of two
-  # independent spatial measurements - never as movement. The arrow points from
-  # where the protein is most abundant at baseline to where its strongest
-  # phenotype-associated difference is, which are two separate facts about the
-  # same protein, not a trajectory the protein takes.
-  n_out <- sum(z$elsewhere)
+  # Brief section 22, corrected in the Part-25 fidelity pass. TWO different
+  # spatial statements were being conflated, and ED7a and ED7b disagreed on the
+  # same page as a result:
+  #   "different dominant unit"          effect_unit != baseline_unit        15/15
+  #   "outside baseline affinity"        the canonical top-2 affinity set    14/15
+  # SNU13 (microglia, baseline CA1, effect CA2) is the single protein that
+  # separates them: its effect unit is not its baseline peak, but it lies inside
+  # that peak's top-2 affinity set, so ED7a counts it as inside. The canonical
+  # effect_identity_relationship column is authoritative for affinity; the
+  # cruder unit-inequality test is reported alongside it, never instead of it.
+  # Neither statement is movement: both are two independent measurements of one
+  # protein.
+  z$outside_affinity <- z$effect_identity_relationship ==
+    "effect_outside_baseline_affinity"
+  n_unit <- sum(z$elsewhere)
+  n_aff <- sum(z$outside_affinity)
+  exc <- z$GeneSymbol[!z$outside_affinity]
   headline <- sprintf(paste0(
     "%d of %d robustness-qualified proteins show their strongest ",
-    "phenotype-associated effect outside their dominant baseline spatial unit"),
-    n_out, nrow(z))
+    "phenotype-associated effect outside their dominant baseline spatial unit",
+    "\n%d of %d are also outside the canonical baseline affinity set (a); ",
+    "%s is the exception — its effect unit lies inside its baseline top-2 set"),
+    n_unit, nrow(z), n_aff, nrow(z),
+    if (length(exc)) paste(exc, collapse = ", ") else "none")
 
   p <- ggplot2::ggplot(z) +
     ggplot2::geom_segment(ggplot2::aes(x = 1, xend = 2, y = y0, yend = y1,
-                                       colour = elsewhere),
+                                       colour = outside_affinity),
                           linewidth = nv_lw("reference_pt"), alpha = 0.85,
                           arrow = grid::arrow(length = grid::unit(0.9, "mm"),
                                               type = "closed", angle = 22)) +
@@ -645,14 +794,14 @@ e8_ed_locations <- function(panel, svg_path, csv_path, w_mm, h_mm) {
                         colour = "grey45") +
     ggplot2::geom_segment(ggplot2::aes(x = 2, xend = 2.06, y = y1, yend = lab_y),
                           colour = "grey72", linewidth = 0.12) +
-    ggplot2::geom_text(ggplot2::aes(x = 2.09, y = lab_y, label = GeneSymbol),
-                       hjust = 0, family = fam, size = nf_sz(5.0),
-                       colour = "grey20") +
+    ggplot2::geom_text(ggplot2::aes(x = 2.09, y = lab_y, label = GeneSymbol,
+                                    colour = outside_affinity),
+                       hjust = 0, family = fam, size = nf_sz(5.0)) +
     ggplot2::geom_text(data = lab, ggplot2::aes(x = 0.92, y = ypos, label = lab),
                        hjust = 1, family = fam, size = nf_sz(5.0),
                        colour = "grey35") +
     ggplot2::scale_colour_manual(values = c("TRUE" = "#C0442C",
-                                            "FALSE" = "#9E9A92"), guide = "none") +
+                                            "FALSE" = "#6E87A0"), guide = "none") +
     ggplot2::scale_x_continuous(
       breaks = c(1, 2),
       labels = c("most abundant\nHERE at baseline",
@@ -665,9 +814,9 @@ e8_ed_locations <- function(panel, svg_path, csv_path, w_mm, h_mm) {
                     "%d of %d FDR-supported SUS-RES proteins: the %d that ",
                     "survived the CA2-SLM robustness audit plus the %d never ",
                     "in CA2-SLM. The %d the audit could not clear are ",
-                    "excluded.
-Each arrow joins two independent measurements ",
-                    "of one protein; nothing travels between the two units."),
+                    "excluded.\nEach arrow joins two independent ",
+                    "measurements of one protein; nothing travels between the ",
+                    "two units."),
                     nrow(z), n_all,
                     sum(z$qc_class == "robust_to_missingness_and_QC"),
                     sum(z$qc_class == "not_in_CA2_SLM_never_at_risk"), n_drop)) +
@@ -685,11 +834,14 @@ Each arrow joins two independent measurements ",
       strip.text = ggplot2::element_text(size = nf_pt(5.4), face = "bold"),
       panel.spacing.x = ggplot2::unit(3.4, "mm"))
   out <- z[, c("GeneSymbol", "dataset", "baseline_unit", "effect_unit",
-               "effect_identity_relationship", "qc_class", "elsewhere")]
+               "effect_identity_relationship", "qc_class", "elsewhere",
+               "outside_affinity")]
   out$reading <- paste0(
-    "the strongest phenotype-associated difference is usually NOT in the unit ",
-    "where the protein is most abundant at baseline; nothing moves, these are ",
-    "two separate spatial statements about the same protein")
+    "two independent spatial statements about one protein. elsewhere = the ",
+    "strongest effect is in a DIFFERENT unit from the baseline peak; ",
+    "outside_affinity = it is also outside that peak's canonical top-2 ",
+    "affinity set, which is the classification panel a counts. Nothing ",
+    "moves: these are two separate measurements of the same protein.")
   write_csv_safe(out, csv_path)
   nv_save_panel(p, svg_path, w_mm, h_mm)
   invisible(list(status = "ok"))
