@@ -405,7 +405,7 @@ panels:
   - id: v9_ed_atlas_rescon
     renderer: f9_gsea_atlas
     label_units: 3.4
-    role: gsea_support_trajectory
+    role: gsea_support_three_contrast_pattern
     contrast: RES - CON
     spatial_axes: compartment+region+layer
     phenotype_axes: RES-CON
@@ -415,12 +415,12 @@ panels:
   - id: v9_ed_atlas_suscon
     renderer: f9_gsea_atlas
     label_units: 3.4
-    role: gsea_support_trajectory
+    role: gsea_support_three_contrast_pattern
     contrast: SUS - CON
     spatial_axes: compartment+region+layer
     phenotype_axes: SUS-CON
     main_or_ed: ed_unique
-    narrative: the SUS vs CON atlas, completing the three-group trajectory.
+    narrative: the SUS vs CON atlas, completing the set of three pairwise contrasts.
     primary_source: results/tables/10_biological_integration/gsea_wgcna_concordance/global/ontology_aware_gsea_theme_assignments_all_contrasts.csv
   - id: v9_ed_identity
     renderer: f9_ed_identity_subsets

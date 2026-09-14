@@ -1110,6 +1110,13 @@ other_spec <- rbind(
   S("rewiring", "rewir|reprogramm|redistribut|relocat|remodell",
     "none", "", "P0 factual",
     "nothing was observed to move; say program-level or spatially restricted differences"),
+  # Part-27 declared this rule but never enforced it, so one legend kept the
+  # word "trajectory" for what are three algebraically related contrasts.
+  S("trajectory", "trajector",
+    "named as a pattern across the three pairwise contrasts",
+    "pairwise|three-contrast|directional pattern|algebraic",
+    "P1 overclaim",
+    "pairwise contrast statistics are not a progression of group means; say directional pattern across the three pairwise contrasts"),
   S("reorganization", "reorgani",
     "the tested network metric, in its null form",
     "did not detect|no detectable|survived|null",
