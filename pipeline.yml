@@ -2293,6 +2293,56 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "FINAL-TRUTH V9 REVIEWER AUDIT. Records the claim-evidence crosswalk, the selection dependency of every displayed result, the GSEA statistical provenance, the multiple-testing families, and thirteen likely reviewer objections with an honest statement of what the figures do and do not answer. It documents that the three Figure-3 exemplar programs are an EDITORIAL choice of one per compartment made after the contrast results were known, and that the synaptic exemplar ranks 51st of 60 FDR-supported terms within CA3-SR itself, so the manuscript must call them illustrative rather than strongest. It also ranks the highest-value missing validation: an independent cohort is the only objection that no wording can address."
+      - script: "figures/final_truth_v9_annotation_audit.R"
+        required: false
+        datasets: ["global"]
+        stage: "manuscript_candidates"
+        scope: "global"
+        produces:
+          - "results/tables/manuscript_candidates/final_truth_v9/audit/atlas_semantic_similarity_audit.csv"
+          - "results/tables/manuscript_candidates/final_truth_v9/audit/atlas_theme_coherence_summary.csv"
+          - "results/tables/manuscript_candidates/final_truth_v9/audit/atlas_redundancy_reduced_comparison.csv"
+          - "results/tables/manuscript_candidates/final_truth_v9/audit/atlas_support_breadth_audit.csv"
+          - "results/tables/manuscript_candidates/final_truth_v9/audit/atlas_theme_evidence_book.csv"
+          - "results/tables/manuscript_candidates/final_truth_v9/audit/atlas_glycolysis_sensitivity.csv"
+          - "results/tables/manuscript_candidates/final_truth_v9/audit/atlas_annotation_decisions.csv"
+        consumes_required:
+          - "results/tables/10_biological_integration/gsea_wgcna_concordance/global/ontology_aware_gsea_theme_assignments_all_contrasts.csv"
+        consumes_optional:
+          - "results/tables/manuscript_candidates/final_truth_v9/audit/"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "PART-28 ATLAS ANNOTATION COHERENCE. Annotation audit only; no GSEA, no differential abundance and no WGCNA is rerun and no GO term is added to or removed from the canonical registry. Computes a phenotype-blind GO-BP semantic similarity over the 204 claim-eligible atlas terms with GOSemSim Wang on org.Mm.eg.db - the same pinned method the canonical workflow already uses - and asks two questions of it. First, is each umbrella theme one biological block? simplifyEnrichment binary_cut, which needs no threshold, returns a single block for autophagy, translation, RNA processing and synaptic signalling, and three for the mitochondrial theme, isolating a distinct cytosolic glycolysis cluster. Second, does the median-NES cell survive GO redundancy? Comparing the current median against a median over one phenotype-blind semantic medoid per near-duplicate cluster moves the typical cell by 0.05 NES against a colour range of 2.479. Representatives are medoids and never the best-FDR term, so the comparison cannot be circular."
+      - script: "figures/final_truth_v9_wgcna_annotation_audit.R"
+        required: false
+        datasets: ["global"]
+        stage: "manuscript_candidates"
+        scope: "global"
+        produces:
+          - "results/tables/manuscript_candidates/final_truth_v9/audit/wgcna_annotation_evidence_matrix.csv"
+        consumes_required:
+          - "results/tables/10_biological_integration/gsea_wgcna_concordance/global/ontology_aware_gsea_theme_assignments_all_contrasts.csv"
+        consumes_optional:
+          - "results/tables/manuscript_candidates/final_truth_v9/audit/"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "PART-28 WGCNA ANNOTATION EVIDENCE. Annotation audit only; no module is recomputed, no label registry is written and no proposed label is activated. Compiles the four evidence layers the canonical workflow already stored - GO enrichment, hub composition, spatial profile and external cell-type affinity - for all 35 modules, classifies annotation confidence from ENRICHMENT rather than from external affinity, and enforces the naming principle that a module is defined by co-abundance topology: the permitted form keeps the module ID visible. External EWCE evidence alone yields CELL_CONTEXT_ONLY and never a functional label. Modules whose active label shares no stem with their strongest enriched term AND whose enrichment is high-confidence are flagged for human review rather than relabelled, because a lexical test cannot adjudicate agreement."
+      - script: "figures/final_truth_v9_heatmap_scale_audit.R"
+        required: false
+        datasets: ["global"]
+        stage: "manuscript_candidates"
+        scope: "global"
+        produces:
+          - "results/tables/manuscript_candidates/final_truth_v9/audit/heatmap_scale_integrity_audit.csv"
+          - "results/tables/manuscript_candidates/final_truth_v9/audit/heatmap_scale_code_search.csv"
+          - "results/reports/manuscript_candidates/final_truth_v9/heatmap_scale_decisions.md"
+        consumes_required:
+          - "figures/figure_final_truth_v9_contract.yml"
+        consumes_optional:
+          - "results/source_data/manuscript_candidates/final_truth_v9/"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "PART-28 HEATMAP SCALE INTEGRITY. Visual-encoding audit only; no statistic is recomputed and no scale is changed here. Enumerates every colour-encoded matrix in the layer, recomputes each panel's plotted range from its own released sidecar, and compares it against the colour limits the renderer actually uses. The hard rule is that no heatmap may map two different numbers to the same endpoint colour without disclosure; a violation stops the build. Because nv_diverging wraps scale_fill_gradient2 with the ggplot2 default oob = censor, an out-of-range value would not be squished to the endpoint but painted grey50, so the audit checks the rendered SVGs for that colour as well as the numbers. It also runs the full clipping-token code search over the renderer files and records which hits could alter a displayed value."
       - script: "figures/final_truth_v9_semantics.R"
         required: false
         datasets: ["global"]

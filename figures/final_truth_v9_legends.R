@@ -54,6 +54,11 @@ MICROGLIA <- paste0(
   "The CA1 microglia-enriched ROI is an enriched measurement context, ",
   "not a sorted or single-cell microglial population, so this panel ",
   "cannot establish a cell-intrinsic microglial property.")
+STRIPKEY <- paste0(
+  "The three-cell strip is keyed by its printed numbers, not by the atlas ",
+  "colourbar: strip colour uses the NES range shared by all six ",
+  "ranked-enrichment panels, which is wider than the theme-summary range ",
+  "of the atlas.")
 
 # ------------------------------------------------------- per-panel declaration
 #
@@ -155,13 +160,15 @@ ROLES <- list(
            "enrichment evidence for the same three programs. ", ALGEBRA)),
   R("v9_curve_syn", "running enrichment score", "animal", "inferential",
     "representative program", "gene set enrichment", "BH within the GSEA family",
-    "no", paste0("Ranked enrichment evidence. ", GSEA_N, " ", ALGEBRA)),
+    "no", paste0("Ranked enrichment evidence. ", GSEA_N, " ",
+           STRIPKEY, " ", ALGEBRA)),
   R("v9_curve_rna", "running enrichment score", "animal", "inferential",
     "representative program", "gene set enrichment", "BH within the GSEA family",
-    "no", paste0("Ranked enrichment evidence. ", GSEA_N, " ", ALGEBRA)),
+    "no", paste0("Ranked enrichment evidence. ", GSEA_N, " ",
+           STRIPKEY, " ", ALGEBRA)),
   R("v9_curve_ox", "running enrichment score", "animal", "inferential",
     "representative program", "gene set enrichment", "BH within the GSEA family",
-    "no", paste0("Ranked enrichment evidence. ", GSEA_N, " ", MICROGLIA, " ", ALGEBRA)),
+    "no", paste0("Ranked enrichment evidence. ", GSEA_N, " ", STRIPKEY, " ", MICROGLIA, " ", ALGEBRA)),
   R("v9_prot_syn", "log2 fold change", "animal", "descriptive",
     "leading-edge constituents of the enrichment result above",
     "differential abundance", "BH within the differential-abundance family",
@@ -297,8 +304,14 @@ ED_DEFAULT_LEGEND <- list(
   v9_ed_similarity = paste0(
     "Molecular similarity between spatial proteomic profiles, NOT anatomical ",
     "connectivity. One diverging scale centred on zero is used for all three ",
-    "blocks because the metric and the zero reference are common; the ",
-    "narrower range of the two region-level blocks is a property of the data. ",
+    "blocks because the metric is the same in each, so one colour means one ",
+    "correlation everywhere. Zero is NOT the no-structure expectation: ",
+    "profiles are centred within protein, so the mean similarity of a block ",
+    "of u units is fixed at about -1/(u-1), which is -0.11 for the ten ",
+    "neuropil units and -0.33 for the four soma and four microglia units. ",
+    "Neither region-level block contains a positive value, so the neutral ",
+    "mid-colour never appears in them; the soma block nevertheless holds ",
+    "the largest absolute value in the panel and sets the shared limit. ",
     DESCRIPTIVE),
   v9_ed_network_distance = paste0(
     "Animal-level network distance from the CON consensus. For each CON ",
