@@ -782,7 +782,7 @@ f9_gsea_atlas <- function(panel, svg_path, csv_path, w_mm, h_mm) {
   SHORT <- c(synaptic_signaling_vesicle = "Synaptic signalling",
              rna_processing_splicing_rnp = "RNA processing",
              ribosome_translation = "Translation",
-             mitochondrial_respiration_oxphos = "OXPHOS",
+             mitochondrial_respiration_oxphos = "Mitochondrial respiration",
              autophagy_lysosome_endosome = "Autophagy",
              chromatin_organization = "Chromatin")
   ord <- names(SHORT)[names(SHORT) %in% cells$theme_id]
