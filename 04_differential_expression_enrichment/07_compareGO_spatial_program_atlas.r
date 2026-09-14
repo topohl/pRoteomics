@@ -580,10 +580,18 @@ plot_compartment_comparison <- function(summary_df, output_file) {
 }
 
 publication_color_limits <- function(x, cap = 2.5) {
-  lim <- suppressWarnings(stats::quantile(abs(x), probs = 0.98, na.rm = TRUE, names = FALSE))
+  # Part-29 section 32: the TRUE maximum, never a percentile. A percentile
+  # limit silently maps every value above it to the endpoint colour, and it
+  # disagreed with the frozen Figure-3b atlas limit for the same quantity.
+  lim <- suppressWarnings(max(abs(x), na.rm = TRUE))
   if (!is.finite(lim) || lim <= 0) lim <- suppressWarnings(max(abs(x), na.rm = TRUE))
   if (!is.finite(lim) || lim <= 0) lim <- 1
-  lim <- min(lim, cap)
+  # `cap` is retained in the signature for call compatibility but must not
+  # silently truncate: capping is only applied if it would not hide a value.
+  if (is.finite(cap) && cap > 0 && lim > cap)
+    warning("publication_color_limits: data exceed cap ", cap,
+            "; using the true maximum ", signif(lim, 6),
+            " so no value is mapped beyond the scale", call. = FALSE)
   c(-lim, lim)
 }
 
