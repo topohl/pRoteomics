@@ -363,14 +363,14 @@ FIG_LABEL <- c(synaptic_signaling_vesicle = "Synaptic signalling / vesicle",
                ribosome_translation = "Translation / ribosome",
                mitochondrial_respiration_oxphos = "Energy metabolism",
                autophagy_lysosome_endosome = "Autophagy / endolysosomal",
-               chromatin_organization = "Chromatin",
+               chromatin_organization = "Chromatin / epigenetic regulation",
                neuron_projection_development = "Neuron projection development")
 RECOMMENDED <- c(synaptic_signaling_vesicle = "Synaptic signalling / vesicle",
                  rna_processing_splicing_rnp = "RNA processing",
                  ribosome_translation = "Translation / ribosome",
                  mitochondrial_respiration_oxphos = "Mitochondrial respiration",
                  autophagy_lysosome_endosome = "Autophagy / endolysosomal",
-                 chromatin_organization = "Chromatin",
+                 chromatin_organization = "Chromatin / epigenetic regulation",
                  neuron_projection_development = "Neuron projection development")
 REASON <- c(
   synaptic_signaling_vesicle = paste0(
