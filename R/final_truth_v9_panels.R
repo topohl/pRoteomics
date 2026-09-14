@@ -779,12 +779,18 @@ f9_gsea_atlas <- function(panel, svg_path, csv_path, w_mm, h_mm) {
   o <- b$order
   cells$xpos <- match(paste(cells$dataset, cells$sg_unit),
                       paste(o$dataset, o$unit))
-  SHORT <- c(synaptic_signaling_vesicle = "Synaptic signalling / vesicle",
-             rna_processing_splicing_rnp = "RNA processing",
+  # Seven rows under registry manuscript_go_themes_v3, in the registry display
+  # order: a molecular-to-cellular progression, fixed and phenotype-independent.
+  # It is never sorted by NES, FDR, direction or number of supported cells.
+  # Mitochondrial respiration is correct again under v3, which excludes the
+  # cytosolic glycolysis sub-DAG that had forced the broader "Energy metabolism".
+  SHORT <- c(rna_processing_splicing_rnp = "RNA processing",
              ribosome_translation = "Translation / ribosome",
-             mitochondrial_respiration_oxphos = "Energy metabolism",
-             autophagy_lysosome_endosome = "Autophagy / endolysosomal",
-             chromatin_organization = "Chromatin")
+             chromatin_organization = "Chromatin",
+             mitochondrial_respiration_oxphos = "Mitochondrial respiration",
+             synaptic_signaling_vesicle = "Synaptic signalling / vesicle",
+             neuron_projection_development = "Neuron projection development",
+             autophagy_lysosome_endosome = "Autophagy / endolysosomal")
   ord <- names(SHORT)[names(SHORT) %in% cells$theme_id]
   cells <- cells[cells$theme_id %in% ord, , drop = FALSE]
   cells$ypos <- match(cells$theme_id, rev(ord))
@@ -828,7 +834,9 @@ f9_gsea_atlas <- function(panel, svg_path, csv_path, w_mm, h_mm) {
                     contrast, ". Dot = at least one constituent GO term is ",
                     "FDR-supported; it is not a measure of how BROAD that ",
                     "support is, which is tabulated per cell in ",
-                    "atlas_support_breadth_audit.csv. Colour scale is shared by all three ",
+                    "atlas_support_breadth_audit.csv.
+",
+                    "Colour scale is shared by all three ",
                     "contrast atlases (", sprintf("\u00b1%.2f", shared),
                     "), so they can be compared directly.")) +
     nf_theme_tile() +
