@@ -69,7 +69,7 @@ panels:
 
   - id: v9_fingerprint
     renderer: f9_fingerprint
-    role: direct_baseline_spatial_molecular_view
+    role: direct_control_spatial_molecular_view
     spatial_axes: compartment+region+layer
     phenotype_axes: none_intentional
     main_or_ed: main_concise
@@ -234,7 +234,7 @@ panels:
     spatial_axes: region
     phenotype_axes: RES-CON+SUS-CON+SUS-RES
     main_or_ed: main_unique
-    narrative: the proteins carrying the CA2-SP mRNA-processing program.
+    narrative: the proteins carrying the CA2 neuronal-soma mRNA-processing program.
     primary_source: results/tables/11_spatial_systems/atlas/protein_sus_res_fdr_supported_atlas.csv
 
   - id: v9_prot_ox
@@ -268,13 +268,13 @@ panels:
     primary_source: results/tables/11_spatial_systems/precision/bilateral_precision_gain.csv
   - id: v9_ed_fingerprint_full
     renderer: f9_ed_fingerprint_full
-    role: full_baseline_spatial_fingerprint
+    role: full_control_spatial_fingerprint
     compact: false
     spatial_axes: compartment+region+layer
     phenotype_axes: none_intentional
     main_or_ed: ed_deepens
     narrative: >-
-      the complete baseline fingerprint over external prespecified signatures;
+      the complete control-animal fingerprint over external prespecified signatures;
       main 2d shows named proteins from CON-only contrasts instead.
     primary_source: results/tables/manuscript_candidates/spatial_v6/figure2_spatial_fingerprint_scores.csv
   - id: v9_ed_external_full
@@ -428,15 +428,15 @@ panels:
     spatial_axes: region+layer
     phenotype_axes: SUS-RES
     main_or_ed: ed_unique
-    narrative: the outside-baseline-affinity result across every robustness subset.
+    narrative: the outside-control-affinity result across every robustness subset.
     primary_source: results/tables/11_spatial_systems/ca2_slm_robustness/stress_identity_robustness_comparison.csv
   - id: v9_ed_locations
     renderer: f9_ed_locations
-    role: baseline_vs_stress_location
+    role: control_affinity_vs_phenotype_effect_location
     spatial_axes: compartment+region+layer
     phenotype_axes: SUS-RES
     main_or_ed: ed_unique
-    narrative: baseline dominant unit versus the location of the strongest SUS-RES effect.
+    narrative: dominant unit in control animals versus the location of the strongest SUS-RES effect.
     primary_source: results/tables/11_spatial_systems/atlas/protein_spatial_cell_affinity.csv
   - id: v9_ed_similarity
     renderer: f9_ed_similarity
@@ -567,7 +567,7 @@ figures:
     figure_key: extended_data
     width_mm: 183
     height_mm: 120
-    question: Does the strongest stress effect occur where the protein is most abundant at baseline?
+    question: Does a protein's strongest SUS-RES difference occur where it is most abundant in control animals?
     layout:
       - {panel: v9_ed_identity,  label: a, x: 4, "y": 4,  w: 175, h: 40}
       - {panel: v9_ed_locations, label: b, x: 4, "y": 48, w: 175, h: 68}

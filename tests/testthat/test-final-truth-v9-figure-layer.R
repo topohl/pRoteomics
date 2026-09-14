@@ -269,3 +269,119 @@ testthat::test_that("every panel carries a statistical role and a legend", {
   testthat::expect_true(all(nzchar(a$replicate_unit)))
   testthat::expect_true(all(nzchar(a$FDR_family)))
 })
+
+# ---- S5/S6/S9/S29: the semantic term scan is a gate, not a report --------
+#
+# The scan reads every reader-facing artefact this layer emits and the text
+# nodes of every panel SVG. A P0 is a statement the design cannot support -
+# a pre-stress reference, a stress effect attributed to a within-stress
+# contrast, a specificity or functional claim - and must never survive.
+testthat::test_that("no P0 semantic hit survives in any reader-facing artefact", {
+  p <- file.path(TAB, "audit", "semantic_search_hits.csv")
+  testthat::skip_if_not(file.exists(p), "semantic scan not built")
+  h <- rd(p)
+  testthat::expect_true(all(c("file", "line_or_field", "term", "context",
+                              "severity", "recommended_fix") %in% names(h)))
+  testthat::expect_identical(sum(grepl("^P0", h$severity)), 0L)
+})
+
+testthat::test_that("the three language audits classify every hit they find", {
+  for (nm in c("stress_language_audit.csv", "baseline_language_audit.csv",
+               "phenotype_specificity_language_audit.csv")) {
+    p <- file.path(TAB, "audit", nm)
+    testthat::skip_if_not(file.exists(p), paste(nm, "not built"))
+    a <- rd(p)
+    testthat::expect_true(all(nzchar(a$severity)))
+    testthat::expect_true(all(a$severity %in%
+      c("OK", "P0 factual", "P1 overclaim", "P2 consistency")))
+    # an unlicensed hit must carry an actionable fix; a licensed one must not
+    # be presented as a defect
+    testthat::expect_true(all(nzchar(a$recommended_fix)))
+    testthat::expect_true(all(a$severity[a$licensed_by != "NONE"] == "OK"))
+  }
+})
+
+testthat::test_that("baseline never appears unqualified in reader-facing prose", {
+  p <- file.path(TAB, "audit", "baseline_language_audit.csv")
+  testthat::skip_if_not(file.exists(p), "baseline audit not built")
+  b <- rd(p)
+  # every retained use of baseline names the control group in the same
+  # sentence; nothing was measured before the paradigm
+  testthat::expect_identical(sum(b$severity != "OK"), 0L)
+  testthat::expect_true(all(grepl("terminal", unique(b$design_fact))))
+})
+
+testthat::test_that("no panel prints text that contradicts its own legend", {
+  p <- file.path(TAB, "audit", "printed_panel_language_audit.csv")
+  testthat::skip_if_not(file.exists(p), "printed panel audit not built")
+  testthat::expect_identical(nrow(rd(p)), 0L)
+})
+
+# ---- S29b: a short write must not pass as a complete figure --------------
+testthat::test_that("every emitted SVG is structurally complete", {
+  svgs <- list.files(
+    path_results("figures", "manuscript_candidates", "final_truth_v9"),
+    "[.]svg$", recursive = TRUE, full.names = TRUE)
+  testthat::skip_if_not(length(svgs) > 0, "no SVGs built")
+  ok <- vapply(svgs, function(f) {
+    n <- file.info(f)$size
+    con <- file(f, "rb"); on.exit(close(con))
+    seek(con, max(0, n - 64))
+    isTRUE(n > 2000) &&
+      grepl("</svg>", rawToChar(readBin(con, "raw", 64L)), fixed = TRUE)
+  }, logical(1))
+  testthat::expect_identical(sum(!ok), 0L)
+})
+
+# ---- S13: only externally anchored panels may be called validation -------
+testthat::test_that("the story text calls exactly one F2 panel validation", {
+  p <- file.path(REP, "final_figure_story_v9.md")
+  testthat::skip_if_not(file.exists(p), "story not built")
+  s <- readLines(p, warn = FALSE)
+  testthat::expect_identical(sum(grepl("g and h validate", s)), 0L)
+  testthat::expect_true(any(grepl("is not independent validation", s)))
+})
+
+# ---- S10/S14-S19: the declared rules are enforced, not only declared --------
+testthat::test_that("no claim-strength rule is broken in any artefact", {
+  p <- file.path(TAB, "audit", "claim_strength_language_audit.csv")
+  testthat::skip_if_not(file.exists(p), "claim-strength audit not built")
+  a <- rd(p)
+  testthat::expect_identical(sum(a$severity != "OK"), 0L)
+})
+
+testthat::test_that("pathway is never claimed for GO evidence", {
+  p <- file.path(TAB, "audit", "program_vs_pathway_audit.csv")
+  testthat::skip_if_not(file.exists(p), "pathway audit not built")
+  a <- rd(p)
+  present <- a[a$present_in_this_project, , drop = FALSE]
+  testthat::expect_gt(nrow(present), 0L)
+  # every collection actually used is GO, so none licenses the word pathway
+  testthat::expect_identical(sum(present$pathway_label_justified), 0L)
+  testthat::expect_true(all(grepl("GO biological process", present$definition)))
+})
+
+# ---- S27: unsupportable story clauses are removed, not softened -------------
+testthat::test_that("the core story drops every clause it cannot support", {
+  p <- file.path(TAB, "audit", "core_story_audit.csv")
+  testthat::skip_if_not(file.exists(p), "core story audit not built")
+  a <- rd(p)
+  testthat::expect_identical(sort(unique(a$sentence)), 1:4)
+  testthat::expect_true(all(nzchar(a$supporting_artefact)))
+  # richer, without and global are the three that no artefact supports
+  testthat::expect_identical(sort(a$clause[!a$supported]),
+                             c("global", "richer", "without"))
+  # the removed clauses are still named in the rationale, so check the
+  # preferred version itself rather than the whole document
+  s <- readLines(file.path(REP, "core_story_corrected.md"), warn = FALSE)
+  h <- grep("^## ", s)
+  start <- grep("^## Preferred version", s)
+  testthat::expect_identical(length(start), 1L)
+  stop_at <- h[h > start]
+  pref <- paste(s[seq(start + 1L,
+                      if (length(stop_at)) stop_at[1] - 1L else length(s))],
+                collapse = " ")
+  testthat::expect_false(grepl("\\bricher\\b", pref))
+  testthat::expect_false(grepl("\\bwithout\\b", pref))
+  testthat::expect_true(grepl("did not detect", pref))
+})
