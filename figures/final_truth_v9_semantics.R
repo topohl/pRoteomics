@@ -334,6 +334,26 @@ mn <- data.frame(
 mn$allowed_manuscript_label <- ifelse(
   mn$proposal_status %in% c("MIXED", "UNRESOLVED"),
   "mixed / unresolved - do not label", mn$active_reviewed_label)
+# Part-28: withhold any label the module's own enrichment contradicts. The
+# evidence matrix is built upstream of this script and is authoritative for
+# what a module may be CALLED; the registry remains authoritative for what is
+# activated, and neither is edited here.
+ev_path <- file.path(OUT, "wgcna_annotation_evidence_matrix.csv")
+if (file.exists(ev_path)) {
+  ev <- nv_read_csv(ev_path)
+  k <- match(paste(mn$dataset, mn$module_id), paste(ev$dataset, ev$module_id))
+  needs <- !is.na(k) & ev$label_review_required[k] %in% TRUE
+  mn$allowed_manuscript_label[needs] <- sprintf(
+    "refer to by module ID - the active label disagrees with the module's own strongest enrichment (%s, FDR %.2g)",
+    ev$best_term[k][needs], ev$best_term_FDR[k][needs])
+  mn$evidence_review_required <- !is.na(k) & ev$label_review_required[k] %in% TRUE
+  mn$strongest_enrichment <- ifelse(is.na(k), "", ev$best_term[k])
+  mn$annotation_confidence <- ifelse(is.na(k), "", ev$annotation_confidence[k])
+} else {
+  mn$evidence_review_required <- NA
+  mn$strongest_enrichment <- ""
+  mn$annotation_confidence <- ""
+}
 mn$prohibited_label <- ifelse(
   mn$dataset == "neuron_neuropil" & mn$module_id == "m11",
   "oligodendrocyte / myelin - PROPOSED ONLY, not activated",
@@ -650,6 +670,14 @@ scan_corpus <- function(spec) {
                        txt[max(1L, ln - 2L):min(length(txt), ln + 1L)]),
                      collapse = " ")
         if (disclaimed(ctx)) next
+        # a filesystem path or a machine-valued contract field is not prose:
+        # spatial_v6_con_baseline_profile_long.csv is a filename, not a claim
+        if (grepl(paste0("^[[:space:]]*-?[[:space:]]*",
+                         "(primary_source|renderer|id|figure_key|",
+                         "input_dependencies)[[:space:]]*:"),
+                  line, perl = TRUE) ||
+            grepl("[A-Za-z0-9_]+[.](csv|tsv|yml|svg|pdf|md)([^A-Za-z]|$)",
+                  line, perl = TRUE)) next
         # a term directly preceded by a negation is being disclaimed, not used
         pos <- regexpr(spec$pattern[k], line, ignore.case = TRUE, perl = TRUE)
         pre <- substr(line, max(1L, pos - 40L), max(1L, pos - 1L))

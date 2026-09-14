@@ -511,10 +511,10 @@ f9_ed_similarity <- function(panel, svg_path, csv_path, w_mm, h_mm) {
           "Rows and columns of a block carry",
           "the same units in the same order.",
           "One scale centred on zero for all",
-          "three blocks: soma and microglia",
-          "span a narrower range than",
-          "neuropil, which is a property of",
-          "the data, not of the scale."),
+          "three blocks. Soma and microglia",
+          "hold no positive value; per-protein",
+          "centring puts the no-structure",
+          "reference near -0.11 / -0.33 / -0.33."),
     y = c(0, 0.62, 1.24, 2.20, 2.82, 3.78, 4.40, 5.36, 5.98, 6.60, 7.22, 7.84),
     stringsAsFactors = FALSE)
 
@@ -710,7 +710,9 @@ f9_ed_module_fingerprint <- function(panel, svg_path, csv_path, w_mm, h_mm) {
                     "CON only. Each cell is the mean within-protein CON z of ",
                     "that module's member proteins. A module exists only in ",
                     "its own compartment, so each block carries only that ",
-                    "compartment's units.
+                    "compartment's units. A mean within-protein z over u units
+cannot exceed (u-1)/sqrt(u), so it stops at 1.50 in the four-unit soma and
+microglia blocks while neuropil can reach the scale limit.
 A tile is the same size in all ",
                     "three. Modules are ordered by their peak unit.")) +
     ggplot2::theme_void(base_family = fam) +

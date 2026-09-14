@@ -779,11 +779,11 @@ f9_gsea_atlas <- function(panel, svg_path, csv_path, w_mm, h_mm) {
   o <- b$order
   cells$xpos <- match(paste(cells$dataset, cells$sg_unit),
                       paste(o$dataset, o$unit))
-  SHORT <- c(synaptic_signaling_vesicle = "Synaptic signalling",
+  SHORT <- c(synaptic_signaling_vesicle = "Synaptic signalling / vesicle",
              rna_processing_splicing_rnp = "RNA processing",
-             ribosome_translation = "Translation",
-             mitochondrial_respiration_oxphos = "Mitochondrial respiration",
-             autophagy_lysosome_endosome = "Autophagy",
+             ribosome_translation = "Translation / ribosome",
+             mitochondrial_respiration_oxphos = "Energy metabolism",
+             autophagy_lysosome_endosome = "Autophagy / endolysosomal",
              chromatin_organization = "Chromatin")
   ord <- names(SHORT)[names(SHORT) %in% cells$theme_id]
   cells <- cells[cells$theme_id %in% ord, , drop = FALSE]
@@ -826,7 +826,9 @@ f9_gsea_atlas <- function(panel, svg_path, csv_path, w_mm, h_mm) {
     ggplot2::labs(x = NULL, y = NULL,
                   caption = paste0(
                     contrast, ". Dot = at least one constituent GO term is ",
-                    "FDR-supported. Colour scale is shared by all three ",
+                    "FDR-supported; it is not a measure of how BROAD that ",
+                    "support is, which is tabulated per cell in ",
+                    "atlas_support_breadth_audit.csv. Colour scale is shared by all three ",
                     "contrast atlases (", sprintf("\u00b1%.2f", shared),
                     "), so they can be compared directly.")) +
     nf_theme_tile() +

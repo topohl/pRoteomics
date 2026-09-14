@@ -412,14 +412,31 @@ f9_compartment <- function(panel, svg_path, csv_path, w_mm, h_mm) {
   mk <- unique(d$marker)
   d$ypos <- match(d$marker, rev(mk))
   d$xpos <- as.integer(d$comp)
-  lim <- max(abs(d$val), na.rm = TRUE) * c(-1, 1)
+  capcol <- intersect("centered_log2_display_cap", names(d))[1]
+  cap <- if (!is.na(capcol)) max(abs(as.numeric(d[[capcol]])), na.rm = TRUE)
+         else max(abs(d$val), na.rm = TRUE)
+  lim <- cap * c(-1, 1)
   d$censored <- is.finite(d$true_val) & abs(d$true_val) > abs(lim[2]) + 1e-9
   cen <- d[d$censored, , drop = FALSE]
 
   p <- ggplot2::ggplot(d, ggplot2::aes(xpos, ypos)) +
     ggplot2::geom_tile(ggplot2::aes(fill = val), colour = "white",
                        linewidth = 0.15) +
-    nv_diverging(limits = lim, name = NULL) +
+    # only the tail that actually saturates is marked, so the colourbar
+    # never implies an overflow bin that does not exist
+    nv_diverging(limits = lim, name = NULL, labels = function(b) {
+      s <- format(b, trim = TRUE)
+      hi <- any(is.finite(d$true_val) & d$true_val > lim[2] + 1e-9)
+      lo <- any(is.finite(d$true_val) & d$true_val < lim[1] - 1e-9)
+      ok <- which(is.finite(b))
+      if (length(ok)) {
+        if (hi) s[ok[which.max(b[ok])]] <-
+          paste0("\u2265", s[ok[which.max(b[ok])]])
+        if (lo) s[ok[which.min(b[ok])]] <-
+          paste0("\u2264", s[ok[which.min(b[ok])]])
+      }
+      s
+    }) +
     ggplot2::scale_x_continuous(breaks = 1:3, labels = sg_compartments()$short,
                                 limits = c(0.5, 3.5), expand = c(0, 0),
                                 position = "top") +
@@ -760,8 +777,16 @@ f9_qc_class_label <- function(x) {
 f9_ed_precision <- function(panel, svg_path, csv_path, w_mm, h_mm) {
   fam <- nf_fam()
   d <- nv_read_csv(repo_path(panel$primary_source))
+  n_all <- nrow(d)
   d <- d[is.finite(d$ICC_single_side) & is.finite(d$ICC_bilateral_mean), ,
          drop = FALSE]
+  # an endpoint is missing only when its variance components were singular or
+  # the fit did not converge, which is decided upstream. The exclusion is
+  # principled, but a reader counting lines could not know it happened.
+  n_drop <- n_all - nrow(d)
+  n_drop_note <- if (n_drop > 0L) sprintf(paste0(
+    "%d of %d endpoints are not drawn: their variance components were ",
+    "singular or the fit did not converge.\n"), n_drop, n_all) else ""
   lab <- c(wgcna_module_eigengene = "WGCNA modules",
            reference_marker_score = "reference markers",
            empirical_compartment_score = "compartment scores")
@@ -819,7 +844,8 @@ f9_ed_precision <- function(panel, svg_path, csv_path, w_mm, h_mm) {
         paste(sprintf("%.2f", sm$single), collapse = " / "), " to ",
         paste(sprintf("%.2f", sm$bilateral), collapse = " / "),
         " for ", paste(as.character(sm$cls), collapse = " / "),
-        ".\nDescriptive precision context; no significance test is applied.")) +
+        ".\n", n_drop_note,
+        "Descriptive precision context; no significance test is applied.")) +
     nf_theme(grid = "x") +
     ggplot2::theme(axis.text.y = ggplot2::element_text(size = NF_MIN_PT),
                    axis.text.x = ggplot2::element_text(size = NF_MIN_PT))
