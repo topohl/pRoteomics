@@ -91,15 +91,24 @@ read_manuscript_go_theme_registry <- function(path) {
   if (any(!registry$theme_role %in% allowed_roles)) {
     stop("Manuscript GO-theme registry theme_role must be primary, supporting, or qc_review.", call. = FALSE)
   }
-  allowed_scopes <- c("anchor_and_descendants", "exact_go_id")
+  allowed_scopes <- c("anchor_and_descendants", "exact_go_id",
+                      "exclude_anchor_and_descendants")
   if (any(!registry$match_scope %in% allowed_scopes)) {
-    stop("Manuscript GO-theme registry match_scope must be anchor_and_descendants or exact_go_id.", call. = FALSE)
+    stop("Manuscript GO-theme registry match_scope must be ",
+         "anchor_and_descendants, exact_go_id or ",
+         "exclude_anchor_and_descendants.", call. = FALSE)
   }
   if (anyNA(registry$display_order) || any(registry$display_order < 1L)) {
     stop("Manuscript GO-theme registry display_order values must be positive integers.", call. = FALSE)
   }
   versions <- unique(registry$registry_version[nzchar(registry$registry_version)])
   if (length(versions) != 1L) stop("Manuscript GO-theme registry must declare exactly one registry_version.", call. = FALSE)
+  incl <- registry[registry$match_scope != "exclude_anchor_and_descendants", ,
+                   drop = FALSE]
+  if (!nrow(incl)) stop("Manuscript GO-theme registry has no inclusion rows.", call. = FALSE)
+  if (any(!registry$theme_id %in% incl$theme_id)) {
+    stop("An exclusion rule must belong to a theme that also has an inclusion anchor.", call. = FALSE)
+  }
   theme_meta <- unique(registry[c("theme_id", "display_label", "theme_role", "display_order")])
   if (anyDuplicated(theme_meta$theme_id)) {
     stop("Each manuscript theme must have one display label, role, and display order.", call. = FALSE)
@@ -279,7 +288,9 @@ map_go_terms_to_manuscript_themes <- function(go_terms, registry,
     !is.null(term_obj) && identical(AnnotationDbi::Ontology(term_obj), "BP")
   }, logical(1))
   valid_terms <- terms[valid_bp, , drop = FALSE]
-  descendant_anchor_ids <- unique(registry$anchor_go_id[registry$match_scope == "anchor_and_descendants"])
+  descendant_anchor_ids <- unique(registry$anchor_go_id[
+    registry$match_scope %in% c("anchor_and_descendants",
+                                "exclude_anchor_and_descendants")])
   descendant_cache <- stats::setNames(
     lapply(descendant_anchor_ids, go_bp_allowed_descendants),
     descendant_anchor_ids
@@ -287,6 +298,8 @@ map_go_terms_to_manuscript_themes <- function(go_terms, registry,
   assignments <- vector("list", 0L)
   k <- 0L
   for (j in seq_len(nrow(registry))) {
+    if (identical(registry$match_scope[[j]],
+                  "exclude_anchor_and_descendants")) next
     if (identical(registry$match_scope[[j]], "exact_go_id")) {
       hit_terms <- valid_terms[valid_terms$GO_ID == registry$anchor_go_id[[j]], , drop = FALSE]
       if (!nrow(hit_terms)) next
@@ -330,6 +343,25 @@ map_go_terms_to_manuscript_themes <- function(go_terms, registry,
         stringsAsFactors = FALSE
       )
     }
+  }
+  # Apply every exclusion rule: a term leaves a theme if it lies in an
+  # excluded sub-DAG of that same theme. Subtracting after the inclusion pass
+  # keeps the rule declarative - the registry says which ontology branch does
+  # not belong, and never which individual terms to drop.
+  excl <- registry[registry$match_scope == "exclude_anchor_and_descendants", ,
+                   drop = FALSE]
+  if (length(assignments) && nrow(excl)) {
+    assigned <- do.call(rbind, assignments)
+    drop <- rep(FALSE, nrow(assigned))
+    for (j in seq_len(nrow(excl))) {
+      d <- descendant_cache[[excl$anchor_go_id[[j]]]]
+      ids <- unique(c(excl$anchor_go_id[[j]],
+                      if (!is.null(d) && nrow(d)) d$descendant_GO_ID else character(0)))
+      drop <- drop | (assigned$theme_id == excl$theme_id[[j]] &
+                        assigned$GO_ID %in% ids)
+    }
+    assignments <- split(assigned[!drop, , drop = FALSE],
+                         seq_len(sum(!drop)))
   }
   assignment_columns <- c(
     "GO_ID", "GO_description", "theme_id", "manuscript_theme", "theme_role", "display_order",

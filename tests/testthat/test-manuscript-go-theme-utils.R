@@ -8,14 +8,26 @@ testthat::test_that("manuscript GO-theme registry is versioned and validates liv
   testthat::skip_if_not_installed("GO.db")
   testthat::skip_if_not_installed("AnnotationDbi")
   registry <- read_manuscript_go_theme_registry(registry_path)
-  testthat::expect_identical(unique(registry$registry_version), "manuscript_go_themes_v2")
+  testthat::expect_identical(unique(registry$registry_version), "manuscript_go_themes_v3")
   testthat::expect_true(all(registry$theme_role %in% c("primary", "supporting", "qc_review")))
-  testthat::expect_true(all(registry$match_scope %in% c("anchor_and_descendants", "exact_go_id")))
+    # v3 adds a third scope: a theme may subtract an ontology sub-DAG from
+  # its own membership, which is how cytosolic glycolysis leaves the
+  # mitochondrial theme without a hand list of terms.
+  testthat::expect_true(all(registry$match_scope %in%
+    c("anchor_and_descendants", "exact_go_id",
+      "exclude_anchor_and_descendants")))
+  excl <- registry[registry$match_scope == "exclude_anchor_and_descendants", ]
+  testthat::expect_identical(nrow(excl), 1L)
+  testthat::expect_identical(excl$anchor_go_id, "GO:0006096")
+  testthat::expect_identical(excl$theme_id, "mitochondrial_respiration_oxphos")
+  # every exclusion belongs to a theme that also has an inclusion anchor
+  testthat::expect_true(all(excl$theme_id %in%
+    registry$theme_id[registry$match_scope != "exclude_anchor_and_descendants"]))
   testthat::expect_true(all(vapply(registry$anchor_go_id, function(id) {
     identical(AnnotationDbi::Ontology(GO.db::GOTERM[[id]]), "BP")
   }, logical(1))))
   theme_meta <- unique(registry[c("theme_id", "display_label", "theme_role")])
-  testthat::expect_equal(sum(theme_meta$theme_role == "primary"), 6L)
+  testthat::expect_equal(sum(theme_meta$theme_role == "primary"), 7L)
   testthat::expect_equal(sum(theme_meta$theme_role == "qc_review"), 2L)
   testthat::expect_identical(theme_meta$theme_role[theme_meta$theme_id == "chromatin_organization"], "primary")
   testthat::expect_identical(theme_meta$theme_role[theme_meta$theme_id == "cytoskeleton_structure"], "qc_review")

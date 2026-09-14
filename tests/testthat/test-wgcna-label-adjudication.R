@@ -469,9 +469,26 @@ testthat::test_that("proposals on disk are not active and config is untouched", 
   }
   # the only registry under config/ is still microglia's
   testthat::expect_true(file.exists(repo_path("config", "wgcna_labels", "microglia.csv")))
-  for (ds in c("neuron_neuropil", "neuron_soma")) {
-    testthat::expect_false(
-      file.exists(repo_path("config", "wgcna_labels", paste0(ds, ".csv"))), info = ds)
+  # Part-29 finalization: neuron_neuropil now has a registry, but it must
+  # contain ONLY the single adjudicated module and must never assert a
+  # cell-type identity. neuron_soma still has none. This keeps the original
+  # guard - no bulk auto-activation - while allowing the reviewed entry.
+  testthat::expect_false(
+    file.exists(repo_path("config", "wgcna_labels", "neuron_soma.csv")))
+  np <- repo_path("config", "wgcna_labels", "neuron_neuropil.csv")
+  if (file.exists(np)) {
+    r <- utils::read.csv(np, stringsAsFactors = FALSE)
+    testthat::expect_identical(nrow(r), 1L)
+    testthat::expect_identical(r$entity_id, "WGCNA_m11")
+    testthat::expect_identical(r$adjudication_status, "reviewed")
+    testthat::expect_true(grepl("myelin-associated",
+                                r$reviewed_biological_label, fixed = TRUE))
+    # a co-abundance module may be named for its protein composition, never
+    # for a cell type it cannot establish
+    testthat::expect_false(grepl("oligodendrocyte",
+                                 r$reviewed_biological_label, ignore.case = TRUE))
+    testthat::expect_false(grepl("oligodendrocyte",
+                                 r$reviewed_short_label, ignore.case = TRUE))
   }
 })
 

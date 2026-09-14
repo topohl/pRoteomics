@@ -358,18 +358,20 @@ write_csv_safe(sb, file.path(OUT, "atlas_support_breadth_audit.csv"))
 # A row label must cover every MAJOR semantic block in its theme. Where the
 # canonical registry's own manuscript_theme already names the missing block,
 # the recommendation is simply to stop abbreviating it away on the figure.
-FIG_LABEL <- c(synaptic_signaling_vesicle = "Synaptic signalling",
+FIG_LABEL <- c(synaptic_signaling_vesicle = "Synaptic signalling / vesicle",
                rna_processing_splicing_rnp = "RNA processing",
-               ribosome_translation = "Translation",
-               mitochondrial_respiration_oxphos = "Mitochondrial respiration",
-               autophagy_lysosome_endosome = "Autophagy",
-               chromatin_organization = "Chromatin")
+               ribosome_translation = "Translation / ribosome",
+               mitochondrial_respiration_oxphos = "Energy metabolism",
+               autophagy_lysosome_endosome = "Autophagy / endolysosomal",
+               chromatin_organization = "Chromatin",
+               neuron_projection_development = "Neuron projection development")
 RECOMMENDED <- c(synaptic_signaling_vesicle = "Synaptic signalling / vesicle",
                  rna_processing_splicing_rnp = "RNA processing",
                  ribosome_translation = "Translation / ribosome",
-                 mitochondrial_respiration_oxphos = "Energy metabolism",
+                 mitochondrial_respiration_oxphos = "Mitochondrial respiration",
                  autophagy_lysosome_endosome = "Autophagy / endolysosomal",
-                 chromatin_organization = "Chromatin")
+                 chromatin_organization = "Chromatin",
+                 neuron_projection_development = "Neuron projection development")
 REASON <- c(
   synaptic_signaling_vesicle = paste0(
     "one coherent semantic block, but roughly a quarter of the terms are the ",
@@ -383,16 +385,18 @@ REASON <- c(
     "Translation does not cover; the registry theme already says ribosome ",
     "biogenesis"),
   mitochondrial_respiration_oxphos = paste0(
-    "binary_cut isolates a distinct cytosolic glycolysis block; neither ",
-    "OXPHOS nor mitochondrial respiration covers it, so the row is named for ",
-    "what the whole theme measures"),
+    "registry v3 excludes the cytosolic glycolysis sub-DAG by one ontology ",
+    "rule, so the theme is mitochondrial bioenergetics again and the row ",
+    "name matches its membership"),
   autophagy_lysosome_endosome = paste0(
     "endosomal and lysosomal trafficking is a major block that the word ",
     "Autophagy does not cover; the registry theme already says endolysosomal ",
     "trafficking"),
   chromatin_organization = paste0(
     "every member is a chromatin-mediated process; the low Wang similarity ",
-    "reflects a sparse ontology branch rather than mixed biology; no change"))
+    "reflects a sparse ontology branch rather than mixed biology; no change"),
+  neuron_projection_development = paste0(
+    "added under registry v3 as the only omitted semantic cluster meeting every fixed criterion; zero overlap with any other primary theme"))
 
 lev <- do.call(rbind, lapply(themes, function(th) {
   cc <- coh[coh$theme == th, , drop = FALSE]
