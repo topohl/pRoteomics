@@ -87,8 +87,23 @@ testthat::test_that("the baseline fingerprint never says hits", {
   z <- sidecar("figure_02", "v9_fingerprint")
   testthat::skip_if_not(!is.null(z), "figure_02 not built")
   # and the ordering must stay phenotype-blind
-  testthat::expect_true("peak_unit" %in% names(z))
+  testthat::expect_true(all(c("gene_peak_unit", "gene_peak_dataset") %in%
+                              names(z)))
   testthat::expect_false(any(grepl("SUS|RES", names(z))))
+  # the peak is a GENE-level attribute over the whole fingerprint, so it pairs
+  # with gene_peak_dataset. Naming it peak_unit invited joining it to the row
+  # dataset, which produced 18 unresolvable soma/microglia laminar keys during
+  # the Part-26 audit. The data were always right; the column name was not.
+  bad <- z$gene_peak_dataset %in% c("neuron_soma", "microglia") &
+    grepl("_(so|sr|slm|mo|po)$", z$gene_peak_unit)
+  testthat::expect_false(any(bad))
+  # one peak per gene, and every peak resolves against its own compartment
+  g <- unique(z[, c("gene", "gene_peak_dataset", "gene_peak_unit")])
+  testthat::expect_identical(nrow(g), length(unique(z$gene)))
+  u <- sg_units()
+  testthat::expect_identical(
+    setdiff(paste(g$gene_peak_dataset, g$gene_peak_unit),
+            paste(u$dataset, u$analysis_key)), character(0))
 })
 
 # ---- S32: panel h is characterisation, not independent validation --------

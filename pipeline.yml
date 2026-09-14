@@ -2265,6 +2265,34 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "FINAL-TRUTH V9 PREVIEWS. A 300 dpi and a 900 dpi raster of every assembled figure plus one contact sheet. The delivered artwork remains the SVG and the cairo PDF; these rasters are review aids only."
+      - script: "figures/final_truth_v9_claim_audit.R"
+        required: false
+        datasets: ["global"]
+        stage: "manuscript_candidates"
+        scope: "global"
+        produces:
+          - "results/tables/manuscript_candidates/final_truth_v9/audit/"
+        consumes_required:
+          - "figures/figure_final_truth_v9_contract.yml"
+        consumes_optional:
+          - "results/source_data/manuscript_candidates/final_truth_v9/"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "FINAL-TRUTH V9 CLAIM AND UNCERTAINTY AUDIT. Audit only; computes nothing new. Proves that every numeric statement in a figure or legend matches the source data, that every spatial label resolves against canonical metadata, that each quantity drawn more than once shares one scale, and that the 27 rows of the network table are read as 27 animal-by-dataset instances from 9 unique animals rather than 27 animals. It also records where valid uncertainty exists and where it does not: no canonical table stores a standard error or confidence interval for a protein log2 fold change, and recovering one by inverting the stored p-value is explicitly not done. Hard-fails on a legend/source-data disagreement or a spatial-label mismatch."
+      - script: "figures/final_truth_v9_reviewer_audit.R"
+        required: false
+        datasets: ["global"]
+        stage: "manuscript_candidates"
+        scope: "global"
+        produces:
+          - "results/reports/manuscript_candidates/final_truth_v9/nature_reviewer_vulnerabilities.md"
+        consumes_required:
+          - "figures/figure_final_truth_v9_contract.yml"
+        consumes_optional:
+          - "results/source_data/manuscript_candidates/final_truth_v9/"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "FINAL-TRUTH V9 REVIEWER AUDIT. Records the claim-evidence crosswalk, the selection dependency of every displayed result, the GSEA statistical provenance, the multiple-testing families, and thirteen likely reviewer objections with an honest statement of what the figures do and do not answer. It documents that the three Figure-3 exemplar programs are an EDITORIAL choice of one per compartment made after the contrast results were known, and that the synaptic exemplar ranks 51st of 60 FDR-supported terms within CA3-SR itself, so the manuscript must call them illustrative rather than strongest. It also ranks the highest-value missing validation: an independent cohort is the only objection that no wording can address."
   export:
     description: "Export layer for PRIDE, manuscript tables, reviewer materials, source data, methods summaries, and validation reports."
     scripts:

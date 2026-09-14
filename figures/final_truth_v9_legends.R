@@ -246,14 +246,14 @@ ED_DEFAULT_LEGEND <- list(
     "This is not the module eigengene, which is shown in panel b. ",
     DESCRIPTIVE),
   v9_ed_wgcna_phenotype = paste0(
-    "Module eigengene differences by contrast. The 13-of-15 statement is a ",
-    "DESCRIPTIVE summary of a three-group directional trajectory, and the ",
-    "three pairwise contrast directions are algebraically related. No ",
-    "module x contrast cell reaches FDR support, and no stress x spatial-unit ",
-    "interaction omnibus test does either (smallest FDR 0.27). A negative ",
-    "interaction result means no spatially heterogeneous module effect ",
-    "survived multiple-testing correction; it does NOT establish that such ",
-    "effects are absent. ", ALGEBRA),
+    "Module eigengene differences by contrast. 13 of 15 modules show the ",
+    "descriptive three-group directional trajectory; 0 of 45 module x ",
+    "contrast cells and 0 of 35 stress x spatial-unit interaction omnibus ",
+    "tests are FDR-supported (smallest FDR 0.27). The 13-of-15 statement is ",
+    "DESCRIPTIVE and the three pairwise contrast directions are ",
+    "algebraically related. A negative interaction result means no spatially ",
+    "heterogeneous module effect survived multiple-testing correction; it ",
+    "does NOT establish that such effects are absent. ", ALGEBRA),
   v9_ed_celltype = paste0(
     "External cell-type affinity counts per compartment. ", DESCRIPTIVE),
   v9_ed_m11 = paste0(
