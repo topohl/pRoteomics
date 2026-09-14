@@ -57,7 +57,16 @@ SRC <- list.files(repo_path("R"), pattern = "[.]R$", full.names = TRUE)
 SRC <- c(SRC[grepl("final_truth_v9|nature_v2_figure_utils|nature_final_v7",
                    basename(SRC))],
          list.files(repo_path("figures"), pattern = "^final_truth_v9.*[.]R$",
-                    full.names = TRUE))
+                    full.names = TRUE),
+         # Part-29 section 31: the analysis directories can also draw a
+         # publication NES matrix, and two of them did so on a 98th-percentile
+         # colour limit that disagreed with the frozen atlas. The search must
+         # reach them or the certification is scoped too narrowly to mean what
+         # it says.
+         list.files(repo_path("04_differential_expression_enrichment"),
+                    pattern = "[.][Rr]$", full.names = TRUE),
+         list.files(repo_path("10_biological_integration"),
+                    pattern = "[.][Rr]$", full.names = TRUE))
 code <- do.call(rbind, lapply(sort(unique(SRC)), function(f) {
   ln <- readLines(f, warn = FALSE)
   do.call(rbind, lapply(TOKENS, function(tk) {

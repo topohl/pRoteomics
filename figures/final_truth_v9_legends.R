@@ -48,7 +48,13 @@ GSEA_N <- paste0(
   "statistic for that spatial unit, collapsed from protein groups by the ",
   "prespecified median rule. The FDR is the gene-set enrichment FDR ",
   "conditional on that ranking; it is not a count of independent biological ",
-  "observations.")
+  "observations. Enrichment p-values are floored at the fgsea tolerance ",
+  "eps = 1e-10: a term reported at that value has a true p somewhere below ",
+  "it that the method does not resolve, so its FDR bounds the evidence ",
+  "rather than measuring it. This applies to 90 of the 851 displayed ",
+  "FDR-supported occurrences, including each of the three exemplar terms in ",
+  "at least one displayed cell. A very small gene-set FDR is a statement ",
+  "about gene ranks, never about the three animals per group.")
 DESCRIPTIVE <- "Descriptive; no hypothesis test is performed in this panel."
 MICROGLIA <- paste0(
   "The CA1 microglia-enriched ROI is an enriched measurement context, ",
