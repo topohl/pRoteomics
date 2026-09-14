@@ -56,6 +56,14 @@ GSEA_N <- paste0(
   "at least one displayed cell. A very small gene-set FDR is a statement ",
   "about gene ranks, never about the three animals per group.")
 DESCRIPTIVE <- "Descriptive; no hypothesis test is performed in this panel."
+CURATED <- paste0(
+  "Rows are curated recurrent GO-BP program families, not an exhaustive ",
+  "enumeration of enriched GO terms: they carry 26.7% of FDR-supported GO ",
+  "occurrences and 14.0% of unique supported GO identifiers. The remainder ",
+  "is overwhelmingly parent/child variants of the displayed branches; ",
+  "semantic review of it identified no additional recurrent coherent ",
+  "program. Complete constituent, overlapping and unclassified GO results ",
+  "are provided in source data.")
 MICROGLIA <- paste0(
   "The CA1 microglia-enriched ROI is an enriched measurement context, ",
   "not a sorted or single-cell microglial population, so this panel ",
@@ -156,7 +164,7 @@ ROLES <- list(
            "markers indicate that at least one constituent canonical GO term ",
            "passed its prespecified FDR threshold. Theme aggregation does ",
            "not constitute an additional multiple-testing family and no ",
-           "theme-level p-value or FDR is computed or implied. ", GSEA_N)),
+           "theme-level p-value or FDR is computed or implied. ", GSEA_N, " ", CURATED)),
   R("v9_bridge", "anatomical location of the three representative programs",
     "animal", "descriptive placement of inferential results",
     "three representative programs", "gene set enrichment",
@@ -210,18 +218,20 @@ ROLES <- list(
            "mapped canonical GO terms and are DESCRIPTIVE. Support markers ",
            "indicate that at least one constituent canonical GO term passed ",
            "its prespecified FDR threshold. Theme aggregation does not ",
-           "constitute an additional multiple-testing family. ", ALGEBRA)),
+           "constitute an additional multiple-testing family. ", CURATED,
+           " ", ALGEBRA)),
   R("v9_ed_atlas_suscon", "median NES across mapped canonical GO terms",
     "animal", "descriptive aggregation of inferential inputs",
     "claim-eligible themes only",
     "gene set enrichment on the constituent GO terms",
     "BH within each constituent GO family; the THEME has no family of its own",
     "no",
-    paste0("SUS vs CON theme atlas, completing the three-group trajectory. ",
+    paste0("SUS vs CON theme atlas, completing the set of three pairwise ",
+           "contrasts. ",
            "Theme colours are a DESCRIPTIVE median of mapped canonical GO ",
            "terms; support markers indicate at least one FDR-supported ",
            "constituent term. Theme aggregation does not constitute an ",
-           "additional multiple-testing family. ", ALGEBRA))
+           "additional multiple-testing family. ", CURATED, " ", ALGEBRA))
 )
 
 ED_DEFAULT_LEGEND <- list(
