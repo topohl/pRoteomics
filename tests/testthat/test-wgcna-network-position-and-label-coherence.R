@@ -430,9 +430,17 @@ testthat::test_that("canonical labels and module identities are untouched", {
     if (!file.exists(proposed)) next
     x <- utils::read.csv(proposed, stringsAsFactors = FALSE)
     testthat::expect_true(all(x$review_status == "PROPOSED_NOT_PROMOTED"))
-    # a proposed registry must NOT have been promoted into config/
-    testthat::expect_false(file.exists(repo_path("config", "wgcna_labels",
-                                                 paste0(ds, ".csv"))), info = ds)
+    # A PROPOSED registry must never be promoted wholesale. Part-29 activated
+    # exactly one adjudicated module (neuropil m11), so if a config registry
+    # exists it must be far smaller than the proposal it sits beside.
+    cfg <- repo_path("config", "wgcna_labels", paste0(ds, ".csv"))
+    if (file.exists(cfg)) {
+      r <- utils::read.csv(cfg, stringsAsFactors = FALSE)
+      testthat::expect_lt(nrow(r), nrow(x))
+      testthat::expect_true(all(r$adjudication_status == "reviewed"), info = ds)
+    } else {
+      testthat::succeed()
+    }
   }
   # the one reviewed registry that does exist is still microglia's
   testthat::expect_true(file.exists(repo_path("config", "wgcna_labels",

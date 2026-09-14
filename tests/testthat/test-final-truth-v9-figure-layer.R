@@ -422,30 +422,37 @@ testthat::test_that("atlas row labels match the semantic decision table", {
   p <- file.path(TAB, "audit", "atlas_annotation_decisions.csv")
   testthat::skip_if_not(file.exists(p), "annotation decisions not built")
   d <- rd(p)
-  testthat::expect_identical(nrow(d), 6L)
+  testthat::expect_identical(nrow(d), 7L)
   testthat::expect_true(all(nzchar(d$recommended_label)))
   # the recommendation is what the renderer actually prints
   src <- readLines(repo_path("R", "final_truth_v9_panels.R"), warn = FALSE)
   i <- grep("^  SHORT <- c\\(", src)
   testthat::expect_identical(length(i), 1L)
-  blk <- paste(src[i:(i + 6)], collapse = " ")
+  blk <- paste(src[i:(i + 7)], collapse = " ")
   for (lab in d$recommended_label)
     testthat::expect_true(grepl(lab, blk, fixed = TRUE))
 })
 
-testthat::test_that("the mitochondrial theme is not named for only part of itself", {
-  p <- file.path(TAB, "audit", "atlas_glycolysis_sensitivity.csv")
-  testthat::skip_if_not(file.exists(p), "glycolysis sensitivity not built")
-  g <- rd(p)
-  testthat::expect_gt(nrow(g), 0L)
-  testthat::expect_true(all(g$n_glycolytic > 0L))
-  # the cytosolic terms are a real minority block, and the supported signal in
-  # the theme is overwhelmingly mitochondrial rather than glycolytic
-  testthat::expect_lt(sum(g$n_supported_glycolytic),
-                      sum(g$n_supported_mitochondrial) / 10)
-  # the row label must not claim the theme is only mitochondrial
+testthat::test_that("the mitochondrial theme contains no cytosolic glycolysis", {
+  # Under registry v3 the glycolysis sub-DAG is excluded by one ontology rule,
+  # so the theme is mitochondrial bioenergetics and the row name matches its
+  # membership. Part 28 had to call the row "Energy metabolism" precisely
+  # because v2 still reached cytosolic glycolysis; that is no longer true.
+  TH <- rd(repo_path("results", "tables", "10_biological_integration",
+                     "gsea_wgcna_concordance", "global",
+                     "ontology_aware_gsea_theme_assignments_all_contrasts.csv"))
+  testthat::expect_identical(unique(TH$registry_version),
+                             "manuscript_go_themes_v3")
+  mito <- unique(TH$GO_ID[TH$theme_claim_eligible %in% TRUE &
+                            TH$theme_id == "mitochondrial_respiration_oxphos"])
+  GLY <- c("GO:0006096", "GO:0061621", "GO:0061615", "GO:0061620")
+  testthat::expect_identical(sum(mito %in% GLY), 0L)
+  # the rule is ontological, so the mitochondrial entry steps survive it
+  testthat::expect_true("GO:0006086" %in% mito)   # pyruvate -> acetyl-CoA
+  testthat::expect_true("GO:0006099" %in% mito)   # TCA cycle
+  # and the row is named for what it now contains
   src <- readLines(repo_path("R", "final_truth_v9_panels.R"), warn = FALSE)
-  testthat::expect_identical(
+  testthat::expect_gt(
     sum(grepl('mitochondrial_respiration_oxphos = "Mitochondrial respiration"',
               src, fixed = TRUE)), 0L)
 })
