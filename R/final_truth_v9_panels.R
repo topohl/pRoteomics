@@ -786,7 +786,7 @@ f9_gsea_atlas <- function(panel, svg_path, csv_path, w_mm, h_mm) {
   # cytosolic glycolysis sub-DAG that had forced the broader "Energy metabolism".
   SHORT <- c(rna_processing_splicing_rnp = "RNA processing",
              ribosome_translation = "Translation / ribosome",
-             chromatin_organization = "Chromatin",
+             chromatin_organization = "Chromatin / epigenetic regulation",
              mitochondrial_respiration_oxphos = "Mitochondrial respiration",
              synaptic_signaling_vesicle = "Synaptic signalling / vesicle",
              neuron_projection_development = "Neuron projection development",
