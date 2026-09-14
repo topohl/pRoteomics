@@ -573,6 +573,9 @@ rules <- c(rules,
  RULE("susceptibility-specific", "susceptibility-associated; resilience-associated",
       "susceptibility-specific, resilience-specific",
       "a specificity analysis was actually performed."),
+ RULE("selective", "spatially restricted; detectable in some spatial units and not others; the count of units in which the contrast was FDR-supported",
+      "selective, spatially selective, selectively",
+      "a stress-by-spatial-unit heterogeneity test supports it. The only such test in the package is the WGCNA omnibus, in which 0 of 35 cells are FDR-supported (smallest FDR 0.27); no equivalent test exists at GO-program level."),
  RULE("pathway", "molecular program; biological program; GO-defined process",
       "pathway, for GO biological-process enrichment",
       "the gene set really is a curated pathway, for example KEGG or Reactome."),
@@ -790,7 +793,11 @@ spec_spec <- rbind(
     "count framing", "FDR-supported|of 18|of 15|survived",
     "P1 overclaim",
     "state the count of units in which the contrast was FDR-supported rather than exclusivity"),
-  S("selectively / exclusively", "selectively|exclusively",
+  # The adjective carries the same claim as the adverb: "spatially selective
+  # programs" asserts that the differences are restricted to particular spatial
+  # units, which is the spatial form of the susceptibility-specific claim
+  # banned above. Matching only "selectively" let the adjective through.
+  S("selective / selectively / exclusively", "selectiv|exclusiv",
     "none", "", "P1 overclaim",
     "absence of support is not evidence of absence at n = 3 per group"),
   S("divergent", "divergen",
