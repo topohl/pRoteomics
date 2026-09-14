@@ -45,7 +45,7 @@ stopifnot(unique(REG$registry_version) == "manuscript_go_themes_v3")
 # the seven displayed rows, in registry display order
 LABEL <- c(rna_processing_splicing_rnp = "RNA processing",
            ribosome_translation = "Translation / ribosome",
-           chromatin_organization = "Chromatin",
+           chromatin_organization = "Chromatin / epigenetic regulation",
            mitochondrial_respiration_oxphos = "Mitochondrial respiration",
            synaptic_signaling_vesicle = "Synaptic signalling / vesicle",
            neuron_projection_development = "Neuron projection development",

@@ -404,7 +404,7 @@ panels:
       - results/tables/10_biological_integration/gsea_wgcna_concordance/global/ontology_aware_gsea_theme_assignments_all_contrasts.csv
   - id: v9_ed_atlas_rescon
     renderer: f9_gsea_atlas
-    label_units: 3.4
+    label_units: 3.5
     role: gsea_support_three_contrast_pattern
     contrast: RES - CON
     spatial_axes: compartment+region+layer
@@ -414,7 +414,7 @@ panels:
     primary_source: results/tables/10_biological_integration/gsea_wgcna_concordance/global/ontology_aware_gsea_theme_assignments_all_contrasts.csv
   - id: v9_ed_atlas_suscon
     renderer: f9_gsea_atlas
-    label_units: 3.4
+    label_units: 3.5
     role: gsea_support_three_contrast_pattern
     contrast: SUS - CON
     spatial_axes: compartment+region+layer
