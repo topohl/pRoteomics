@@ -39,9 +39,10 @@ sidecar <- function(fig, id) {
 
 # ---------------------------------------------------------------- shared text
 ALGEBRA <- paste0(
-  "Pairwise contrasts are shown jointly to visualise the three-group ",
-  "trajectory; they are algebraically related (SUS-RES = SUS-CON minus ",
-  "RES-CON) and should not be interpreted as independent replications.")
+  "Pairwise contrasts are shown jointly to make the directional pattern ",
+  "across the three pairwise contrasts legible; they are algebraically ",
+  "related (SUS-RES = SUS-CON minus RES-CON) and are not independent ",
+  "replications.")
 GSEA_N <- paste0(
   "Biological n = 3 animals per group. Ranks are the stored per-gene contrast ",
   "statistic for that spatial unit, collapsed from protein groups by the ",
@@ -49,6 +50,10 @@ GSEA_N <- paste0(
   "conditional on that ranking; it is not a count of independent biological ",
   "observations.")
 DESCRIPTIVE <- "Descriptive; no hypothesis test is performed in this panel."
+MICROGLIA <- paste0(
+  "The CA1 microglia-enriched ROI is an enriched measurement context, ",
+  "not a sorted or single-cell microglial population, so this panel ",
+  "cannot establish a cell-intrinsic microglial property.")
 
 # ------------------------------------------------------- per-panel declaration
 #
@@ -156,7 +161,7 @@ ROLES <- list(
     "no", paste0("Ranked enrichment evidence. ", GSEA_N, " ", ALGEBRA)),
   R("v9_curve_ox", "running enrichment score", "animal", "inferential",
     "representative program", "gene set enrichment", "BH within the GSEA family",
-    "no", paste0("Ranked enrichment evidence. ", GSEA_N, " ", ALGEBRA)),
+    "no", paste0("Ranked enrichment evidence. ", GSEA_N, " ", MICROGLIA, " ", ALGEBRA)),
   R("v9_prot_syn", "log2 fold change", "animal", "descriptive",
     "leading-edge constituents of the enrichment result above",
     "differential abundance", "BH within the differential-abundance family",
@@ -178,6 +183,7 @@ ROLES <- list(
     "differential abundance", "BH within the differential-abundance family",
     "no - selected from the same analysis",
     paste0("Selected leading-edge proteins, descriptive; see panel g. ",
+           MICROGLIA, " ",
            ALGEBRA)),
   # the ED6 atlases are the same descriptive theme aggregation as Figure 3b and
   # must carry the same declaration, not fall through to a default
@@ -262,7 +268,8 @@ ED_DEFAULT_LEGEND <- list(
     "external evidence is context only. ", DESCRIPTIVE),
   v9_ed_gsea_curve_syn = paste0("Detailed ranked enrichment. ", GSEA_N, " ", ALGEBRA),
   v9_ed_gsea_curve_rna = paste0("Detailed ranked enrichment. ", GSEA_N, " ", ALGEBRA),
-  v9_ed_gsea_curve_ox = paste0("Detailed ranked enrichment. ", GSEA_N, " ", ALGEBRA),
+  v9_ed_gsea_curve_ox = paste0("Detailed ranked enrichment. ", GSEA_N, " ",
+                               MICROGLIA, " ", ALGEBRA),
   v9_ed_atlas_rescon = paste0(
     "RES vs CON theme atlas. Theme colours are a descriptive median of ",
     "mapped canonical GO terms; support markers indicate at least one ",
@@ -272,21 +279,21 @@ ED_DEFAULT_LEGEND <- list(
     "SUS vs CON theme atlas; see the RES vs CON panel. ", ALGEBRA),
   v9_ed_identity = paste0(
     "Among robustness-qualified proteins, the proportion whose strongest ",
-    "phenotype-associated effect lies outside the canonical baseline ",
+    "phenotype-associated effect lies outside the canonical control-animal ",
     "affinity set, across nested robustness subsets. These proteins were ",
     "already selected as FDR-supported and robustness-qualified, so this is ",
     "a DESCRIPTIVE pattern within a selected set and not an unbiased test ",
     "of a spatial null."),
   v9_ed_locations = paste0(
-    "Among robustness-qualified proteins, the baseline dominant unit and the ",
-    "unit of strongest phenotype-associated effect. Two distinct statements ",
-    "are reported: 15 of 15 have their strongest effect in a DIFFERENT unit ",
-    "from their single dominant baseline unit, and 14 of 15 are also outside ",
-    "the broader canonical baseline affinity set, SNU13 being the sole ",
-    "exception. effect_identity_relationship is the authoritative affinity ",
-    "classification. Each arrow joins two independent measurements of one ",
-    "protein; nothing travels between units. This is a descriptive pattern ",
-    "within a selected set."),
+    "Among robustness-qualified proteins, the dominant unit in control animals ",
+    "and the unit of strongest phenotype-associated effect. Two distinct ",
+    "statements are reported: 15 of 15 have their strongest effect in a ",
+    "DIFFERENT unit from their single dominant control unit, and 14 of 15 are ",
+    "also outside the broader canonical control-animal affinity set, SNU13 ",
+    "being the sole exception. effect_identity_relationship is the ",
+    "authoritative affinity classification. Each arrow joins two independent ",
+    "measurements of one protein; nothing travels between units. This is a ",
+    "descriptive pattern within a selected set."),
   v9_ed_similarity = paste0(
     "Molecular similarity between spatial proteomic profiles, NOT anatomical ",
     "connectivity. One diverging scale centred on zero is used for all three ",

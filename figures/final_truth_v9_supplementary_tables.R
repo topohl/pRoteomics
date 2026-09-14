@@ -262,7 +262,7 @@ emit(st7a, "ST7_network_whole_graph_nulls.csv",
        "Sidedness" = "one- or two-sided, or not applicable",
        "Degrees of freedom" = "degrees of freedom of the test, where defined"))
 emit(st7b, "ST8_edge_behaviour_coupling.csv",
-     "Every distinct spatial-unit-pair by behavioural-outcome correlation",
+     "Every tested neuropil spatial-unit-pair by behavioural-outcome correlation",
      paste0("With 9 animals a single correlation has very little resolution; ",
             "the complete inventory is reported so no subset can be mined."),
      c("Spatial unit pair" = "the two spatial units forming the network edge",

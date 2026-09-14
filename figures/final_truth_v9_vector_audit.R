@@ -68,6 +68,31 @@ if (length(old)) {
                                  "vector_export_pass")], row.names = FALSE)
 }
 
+
+# ------------------------------------------------------- SVG write integrity
+#
+# svglite writes incrementally, so an interrupted write on a network share
+# leaves a syntactically truncated file that every downstream step accepts
+# until something tries to rasterise it. Assert the closing tag, and that the
+# file is not implausibly small, for every assembled figure and every panel.
+svgs <- sort(list.files(
+  path_results("figures", "manuscript_candidates", "final_truth_v9"),
+  pattern = "[.]svg$", recursive = TRUE, full.names = TRUE))
+svg_ok <- vapply(svgs, function(p) {
+  n <- file.info(p)$size
+  con <- file(p, "rb"); on.exit(close(con))
+  seek(con, max(0, n - 64))
+  last <- rawToChar(readBin(con, "raw", 64L))
+  isTRUE(n > 2000) && grepl("</svg>", last, fixed = TRUE)
+}, logical(1))
+if (!all(svg_ok)) {
+  bad <- basename(svgs[!svg_ok])
+  stop("truncated or empty SVG (incomplete write): ",
+       paste(bad, collapse = ", "), call. = FALSE)
+}
+cat("SVG write integrity:", sum(svg_ok), "of", length(svg_ok),
+    "complete (closing tag present)\n")
+
 cat("\nfigures passing:", sum(aud$vector_export_pass), "of", nrow(aud), "\n")
 
 # ---------------------------------------------------------------- story map
@@ -83,13 +108,15 @@ story <- c(
 "uses: compartment by glyph, region by bracket, layer by position and a short",
 "key. b shows coverage is sufficient in all three compartments. c shows the",
 "global proteome is already organised before any spatial signature is inspected.",
-"d is the centrepiece: the actual baseline spatial molecular fingerprint, with",
+"d is the centrepiece: the actual control-animal spatial molecular",
+"fingerprint, with",
 "genes chosen only by prespecified CON-only anatomical contrasts. e confirms each",
 "compartment carries its expected molecular identity. f shows paired hemispheres",
 "reproduce the architecture, with coarse regional identity stronger than fine",
 "laminar identity - the weaker CA1 laminar result is deliberately left visible.",
-"g and h validate the same spatial identities against an external hippocampal",
-"reference and against internal anatomical programs.",
+"g validates the same spatial identities against an external hippocampal",
+"reference; h characterises them functionally against canonical GO",
+"programs and is not independent validation.",
 "",
 "## Figure 3",
 "",
@@ -114,14 +141,16 @@ story <- c(
 "protein-level concentration weakens after robustness qualification (ED3).",
 "WGCNA modules remain spatially organised, and while most neuropil modules share",
 "a descriptive directional pattern, no module x contrast test is FDR-supported.",
-"Spatial molecular networks retain their baseline organisation with no",
-"detectable whole-network phenotype difference and no FDR-supported coupling to",
-"behaviour (ED8).",
+"Spatial molecular networks show no detectable whole-network group",
+"difference, and no edge-behaviour association survived multiple-testing",
+"correction (ED8).",
 "",
 "## The defensible conclusion",
 "",
 "Stress outcome is associated with selective local molecular-program differences",
-"superimposed on an otherwise stable hippocampal spatial molecular architecture.",
+"superimposed on a hippocampal spatial molecular architecture that remained",
+"evident across groups: bilaterally reproducible, and with no whole-network",
+"group difference detectable at three animals per group.",
 "",
 "This is deliberately NOT a claim of global reprogramming, redistribution,",
 "relocation, network rewiring, or any cell-intrinsic microglial property: the",

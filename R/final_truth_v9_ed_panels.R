@@ -783,9 +783,11 @@ f9_ed_locations <- function(panel, svg_path, csv_path, w_mm, h_mm) {
   exc <- z$GeneSymbol[!z$outside_affinity]
   headline <- sprintf(paste0(
     "%d of %d robustness-qualified proteins show their strongest ",
-    "phenotype-associated effect outside their dominant baseline spatial unit",
-    "\n%d of %d are also outside the canonical baseline affinity set (a); ",
-    "%s is the exception — its effect unit lies inside its baseline top-2 set"),
+    "phenotype-associated effect outside their dominant spatial unit in",
+    " control animals",
+    "\n%d of %d are also outside the canonical control-animal affinity ",
+    "set (a); ",
+    "%s is the exception — its effect unit lies inside its control top-2 set"),
     n_unit, nrow(z), n_aff, nrow(z),
     if (length(exc)) paste(exc, collapse = ", ") else "none")
 
@@ -809,7 +811,9 @@ f9_ed_locations <- function(panel, svg_path, csv_path, w_mm, h_mm) {
                                             "FALSE" = "#6E87A0"), guide = "none") +
     ggplot2::scale_x_continuous(
       breaks = c(1, 2),
-      labels = c("most abundant\nHERE at baseline",
+      # "at baseline" reads as a pre-stress timepoint; nothing was measured
+      # before the paradigm, so the axis names the control group instead.
+      labels = c("most abundant HERE\nin control animals",
                  "strongest SUS\u2212RES\ndifference HERE"),
       limits = c(0.16, 2.95), expand = c(0, 0)) +
     ggplot2::scale_y_reverse(expand = ggplot2::expansion(add = 0.9)) +

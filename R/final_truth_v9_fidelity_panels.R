@@ -256,11 +256,12 @@ f9_ed_identity_subsets <- function(panel, svg_path, csv_path, w_mm, h_mm) {
     ggplot2::scale_x_continuous(limits = c(0, 42), expand = c(0, 0),
                                 breaks = c(0, 10, 20, 30, 37)) +
     ggplot2::labs(
-      x = "proteins whose strongest effect is outside the canonical baseline affinity set (of n)",
+      x = "proteins whose strongest effect is outside the canonical control-animal affinity set (of n)",
       y = NULL,
       caption = paste0(
         "Bar length is n, the size of the subset; the filled portion is the ",
-        "count outside the baseline affinity set. † marks two rows that ",
+        "count outside the control-animal affinity set. † marks two rows ",
+        "that ",
         "are the SAME 15 proteins under two subset definitions.")) +
     nf_theme(grid = "x") +
     ggplot2::theme(axis.text.y = ggplot2::element_text(size = NF_MIN_PT),
