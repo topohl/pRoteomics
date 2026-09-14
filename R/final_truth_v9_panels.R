@@ -274,8 +274,8 @@ f9_dap_track <- function(panel, svg_path, csv_path, w_mm, h_mm) {
   long <- rbind(
     data.frame(xpos = z$xpos, row = 2L, n = z$canonical, stringsAsFactors = FALSE),
     data.frame(xpos = z$xpos, row = 1L, n = z$claimable, stringsAsFactors = FALSE))
-  long$txt <- ifelse(long$n == 0L, "·", as.character(long$n))
-  long$col <- ifelse(long$n == 0L, "grey72",
+  long$txt <- as.character(long$n)
+  long$col <- ifelse(long$n == 0L, "grey76",
                      ifelse(long$row == 2L, "grey12", "#B23A28"))
   lab <- data.frame(
     y = c(2, 1),

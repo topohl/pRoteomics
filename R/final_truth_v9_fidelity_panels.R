@@ -711,6 +711,11 @@ Each gene ",
   out <- merge(z, pk[, c("gene", "peak_unit", "peak_dataset")], by = "gene",
                all.x = TRUE, sort = FALSE)
   out <- out[order(-out$ypos, out$xpos), , drop = FALSE]
+  # the peak is a GENE-level attribute over the whole fingerprint, so its
+  # compartment is gene_peak_dataset and not the row dataset; naming them
+  # explicitly stops a reader joining row dataset to peak unit
+  names(out)[names(out) == "peak_unit"] <- "gene_peak_unit"
+  names(out)[names(out) == "peak_dataset"] <- "gene_peak_dataset"
   out$row_order_rule <- paste0(
     "rows are seriated by baseline peak spatial unit, taken from CON-only ",
     "con_z; no phenotype information enters the ordering. Ties break on gene ",

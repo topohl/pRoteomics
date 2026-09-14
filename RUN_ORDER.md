@@ -191,14 +191,16 @@ Do not hand-edit this block; run `Rscript tools/generate_pipeline_docs.R`.
 139. `figures/final_truth_v9_readmes.R` - stage `manuscript_candidates`; scope `global`
 140. `figures/final_truth_v9_vector_audit.R` - stage `manuscript_candidates`; scope `global`
 141. `figures/final_truth_v9_previews.R` - stage `manuscript_candidates`; scope `global`
-142. `09_export_pride_journal/02_make_sample_metadata.R` - stage `export`; scope `global`
-143. `09_export_pride_journal/03_export_processed_pg_matrix_package.R` - stage `export`; scope `global`
-144. `09_export_pride_journal/04_make_supplementary_tables.R` - stage `export`; scope `global`
-145. `09_export_pride_journal/05_make_pride_manifest.R` - stage `export`; scope `global`
-146. `09_export_pride_journal/06_make_methods_summary.R` - stage `export`; scope `global`
-147. `09_export_pride_journal/08_export_manuscript_figures.R` - stage `export`; scope `global`
-148. `09_export_pride_journal/09_export_source_data.R` - stage `export`; scope `global`
-149. `09_export_pride_journal/10_validate_pride_submission.R` - stage `export`; scope `global`
+142. `figures/final_truth_v9_claim_audit.R` - stage `manuscript_candidates`; scope `global`
+143. `figures/final_truth_v9_reviewer_audit.R` - stage `manuscript_candidates`; scope `global`
+144. `09_export_pride_journal/02_make_sample_metadata.R` - stage `export`; scope `global`
+145. `09_export_pride_journal/03_export_processed_pg_matrix_package.R` - stage `export`; scope `global`
+146. `09_export_pride_journal/04_make_supplementary_tables.R` - stage `export`; scope `global`
+147. `09_export_pride_journal/05_make_pride_manifest.R` - stage `export`; scope `global`
+148. `09_export_pride_journal/06_make_methods_summary.R` - stage `export`; scope `global`
+149. `09_export_pride_journal/08_export_manuscript_figures.R` - stage `export`; scope `global`
+150. `09_export_pride_journal/09_export_source_data.R` - stage `export`; scope `global`
+151. `09_export_pride_journal/10_validate_pride_submission.R` - stage `export`; scope `global`
 
 <!-- END GENERATED PIPELINE REGISTRY INDEX -->
 
