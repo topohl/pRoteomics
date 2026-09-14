@@ -505,10 +505,15 @@ panel_c_plot_source$unit_direction_status <- ifelse(
   as.character(panel_c_plot_source$direction_consistency) == "mixed_direction",
   "mixed supported directions", "supported direction not mixed"
 )
-nes_limit <- suppressWarnings(stats::quantile(abs(panel_c_plot_source$median_NES_all_theme_terms), probs = 0.98, na.rm = TRUE, names = FALSE))
+# Part-29 section 32: the TRUE maximum, never a percentile - this panel draws
+# the same median-NES quantity as the frozen Figure-3b atlas.
+nes_limit <- suppressWarnings(max(abs(panel_c_plot_source$median_NES_all_theme_terms), na.rm = TRUE))
 if (!is.finite(nes_limit) || nes_limit <= 0) nes_limit <- suppressWarnings(max(abs(panel_c_plot_source$median_NES_all_theme_terms), na.rm = TRUE))
 if (!is.finite(nes_limit) || nes_limit <= 0) nes_limit <- 1
-nes_limit <- min(nes_limit, 2.5)
+if (is.finite(nes_limit) && nes_limit > 2.5)
+  message("panel C NES limit ", signif(nes_limit, 6),
+          " exceeds the former 2.5 cap; the true maximum is used so no ",
+          "cell is mapped beyond the scale")
 panel_c_descriptive_only <- panel_c_plot_source[!as.logical(panel_c_plot_source$FDR_support_present), , drop = FALSE]
 panel_c_supported <- panel_c_plot_source[as.logical(panel_c_plot_source$FDR_support_present), , drop = FALSE]
 fdr_size_values <- panel_c_plot_source$representative_minus_log10_FDR[

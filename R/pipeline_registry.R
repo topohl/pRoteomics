@@ -161,7 +161,11 @@ pipeline_analysis_script_exclusions <- function() {
   list(
     roots = c(
       ".github", "00_setup", "R", "config", "data", "docs", "renv",
-      "results", "tests", "tools", "90_testing", "99_deprecated"
+      "results", "tests", "tools", "90_testing", "99_deprecated",
+      # Part-29 governance: 99_audits is an isolated, non-promoted audit layer.
+      # Its scripts read canonical outputs and write only to
+      # results/**/publication_audits/, so they are not pipeline stages.
+      "99_audits"
     ),
     path_components = "legacy",
     files = c("run_dataset_pipeline.R", "proteomics_wgcna_downstream_audit.R")
@@ -278,7 +282,7 @@ run_order_script_references <- function(path = repo_path("RUN_ORDER.md")) {
     )
   ), use.names = FALSE)
   refs <- gsub("\\\\", "/", trimws(refs))
-  refs <- refs[!grepl("^(90_testing|99_deprecated)/", refs)]
+  refs <- refs[!grepl("^(90_testing|99_deprecated|99_audits)/", refs)]
   unique(refs[file.exists(repo_path(refs))])
 }
 
