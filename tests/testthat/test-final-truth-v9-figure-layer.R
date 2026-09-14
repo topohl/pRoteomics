@@ -17,6 +17,7 @@ V9 <- s9f_contract()
 SD <- path_results("source_data", "manuscript_candidates", "final_truth_v9")
 TAB <- path_results("tables", "manuscript_candidates", "final_truth_v9")
 REP <- path_results("reports", "manuscript_candidates", "final_truth_v9")
+FIGD <- path_results("figures", "manuscript_candidates", "final_truth_v9")
 code_of <- function(path) {
   ln <- readLines(path, warn = FALSE)
   paste(sub("#.*$", "", ln), collapse = "\n")
@@ -384,4 +385,131 @@ testthat::test_that("the core story drops every clause it cannot support", {
   testthat::expect_false(grepl("\\bricher\\b", pref))
   testthat::expect_false(grepl("\\bwithout\\b", pref))
   testthat::expect_true(grepl("did not detect", pref))
+})
+
+# ---- Part-28 S21: no heatmap may clip a value without disclosure -----------
+testthat::test_that("no heatmap clips silently", {
+  p <- file.path(TAB, "audit", "heatmap_scale_integrity_audit.csv")
+  testthat::skip_if_not(file.exists(p), "heatmap audit not built")
+  h <- rd(p)
+  testthat::expect_gt(nrow(h), 0L)
+  testthat::expect_identical(sum(h$status == "SILENT_CLIP"), 0L)
+  # a panel that saturates must disclose it on the colourbar AND keep the
+  # uncapped values in its source data
+  sat <- h[h$n_above_colour_max + h$n_below_colour_min > 0L, , drop = FALSE]
+  if (nrow(sat)) {
+    testthat::expect_true(all(sat$intentional_saturation))
+    testthat::expect_true(all(sat$disclosed_on_colourbar))
+    testthat::expect_true(all(sat$uncapped_source_values_present))
+  }
+  # out-of-range values would be painted grey50 by the ggplot2 default oob
+  testthat::expect_identical(sum(h$grey50_pixels_in_svg), 0L)
+})
+
+testthat::test_that("only the saturating tail of F2e is marked", {
+  p <- file.path(FIGD, "figure_02", "panels", "v9_compartment.svg")
+  testthat::skip_if_not(file.exists(p), "F2e not rendered")
+  txt <- paste(readLines(p, warn = FALSE, encoding = "UTF-8"), collapse = " ")
+  labs <- sub(".*>([^<]*)</text>", "\\1",
+              unlist(regmatches(txt, gregexpr("<text[^>]*>[^<]*</text>", txt))))
+  # the upper tail saturates, the lower one does not
+  testthat::expect_true(any(grepl("≥3", labs)))
+  testthat::expect_false(any(grepl("≤", labs)))
+})
+
+# ---- Part-28 S5/S30: every atlas row label covers its own major blocks -----
+testthat::test_that("atlas row labels match the semantic decision table", {
+  p <- file.path(TAB, "audit", "atlas_annotation_decisions.csv")
+  testthat::skip_if_not(file.exists(p), "annotation decisions not built")
+  d <- rd(p)
+  testthat::expect_identical(nrow(d), 6L)
+  testthat::expect_true(all(nzchar(d$recommended_label)))
+  # the recommendation is what the renderer actually prints
+  src <- readLines(repo_path("R", "final_truth_v9_panels.R"), warn = FALSE)
+  i <- grep("^  SHORT <- c\\(", src)
+  testthat::expect_identical(length(i), 1L)
+  blk <- paste(src[i:(i + 6)], collapse = " ")
+  for (lab in d$recommended_label)
+    testthat::expect_true(grepl(lab, blk, fixed = TRUE))
+})
+
+testthat::test_that("the mitochondrial theme is not named for only part of itself", {
+  p <- file.path(TAB, "audit", "atlas_glycolysis_sensitivity.csv")
+  testthat::skip_if_not(file.exists(p), "glycolysis sensitivity not built")
+  g <- rd(p)
+  testthat::expect_gt(nrow(g), 0L)
+  testthat::expect_true(all(g$n_glycolytic > 0L))
+  # the cytosolic terms are a real minority block, and the supported signal in
+  # the theme is overwhelmingly mitochondrial rather than glycolytic
+  testthat::expect_lt(sum(g$n_supported_glycolytic),
+                      sum(g$n_supported_mitochondrial) / 10)
+  # the row label must not claim the theme is only mitochondrial
+  src <- readLines(repo_path("R", "final_truth_v9_panels.R"), warn = FALSE)
+  testthat::expect_identical(
+    sum(grepl('mitochondrial_respiration_oxphos = "Mitochondrial respiration"',
+              src, fixed = TRUE)), 0L)
+})
+
+# ---- Part-28 S12: the atlas summary is robust to GO redundancy -------------
+testthat::test_that("redundancy reduction does not overturn the atlas", {
+  p <- file.path(TAB, "audit", "atlas_redundancy_reduced_comparison.csv")
+  testthat::skip_if_not(file.exists(p), "redundancy comparison not built")
+  k <- rd(p)
+  testthat::expect_gt(nrow(k), 0L)
+  # representatives are medoids, so every cell must have at least one
+  testthat::expect_identical(sum(k$n_semantic_representatives < 1L), 0L)
+  # the typical cell moves far less than one colour step
+  testthat::expect_lt(stats::median(k$absolute_difference),
+                      k$large_shift_threshold[1])
+  # and the great majority keep their direction
+  testthat::expect_gt(mean(!k$sign_changed), 0.95)
+})
+
+# ---- Part-28 S17/S18: a module is never named by external evidence alone ---
+testthat::test_that("WGCNA annotation confidence rests on enrichment", {
+  p <- file.path(TAB, "audit", "wgcna_annotation_evidence_matrix.csv")
+  testthat::skip_if_not(file.exists(p), "WGCNA evidence matrix not built")
+  w <- rd(p)
+  testthat::expect_identical(nrow(w), 35L)
+  # a module with no enrichment may never be called functional
+  noe <- w[!w$has_enrichment, , drop = FALSE]
+  if (nrow(noe))
+    testthat::expect_true(all(noe$annotation_confidence %in%
+                                c("CELL_CONTEXT_ONLY", "UNRESOLVED")))
+  # the permitted wording always keeps the module ID visible
+  testthat::expect_true(all(mapply(grepl, w$module_id,
+                                   w$allowed_manuscript_form, fixed = TRUE)))
+  # and never permits the bare "the X module" form
+  testthat::expect_false(any(grepl("^the .* module$", w$allowed_manuscript_form)))
+})
+
+testthat::test_that("a label contradicted by its own enrichment is withheld", {
+  p <- file.path(TAB, "audit", "wgcna_module_naming_audit.csv")
+  e <- file.path(TAB, "audit", "wgcna_annotation_evidence_matrix.csv")
+  testthat::skip_if_not(file.exists(p) && file.exists(e), "naming audit not built")
+  n <- rd(p); w <- rd(e)
+  flagged <- w[w$label_review_required %in% TRUE, , drop = FALSE]
+  testthat::expect_gt(nrow(flagged), 0L)
+  k <- n[match(paste(flagged$dataset, flagged$module_id),
+               paste(n$dataset, n$module_id)), , drop = FALSE]
+  testthat::expect_true(all(grepl("refer to by module ID",
+                                  k$allowed_manuscript_label)))
+  # neuropil m11 specifically: neither the contradicted active label nor the
+  # unactivated oligodendrocyte proposal may be used
+  m11 <- n[n$dataset == "neuron_neuropil" & n$module_id == "m11", ]
+  testthat::expect_identical(nrow(m11), 1L)
+  testthat::expect_false(grepl("^synaptic", m11$allowed_manuscript_label))
+  testthat::expect_true(grepl("not activated", m11$prohibited_label))
+})
+
+testthat::test_that("no WGCNA module label is printed on any panel", {
+  svgs <- list.files(FIGD, pattern = "[.]svg$", recursive = TRUE,
+                     full.names = TRUE)
+  svgs <- grep("[/\\]panels[/\\]", svgs, value = TRUE)
+  testthat::skip_if_not(length(svgs) > 0, "no panels rendered")
+  txt <- paste(unlist(lapply(svgs, function(f)
+    readLines(f, warn = FALSE, encoding = "UTF-8"))), collapse = " ")
+  for (lab in c("proteostasis", "cytoskeletal trafficking",
+                "RNA/RNP regulatory"))
+    testthat::expect_false(grepl(lab, txt, fixed = TRUE))
 })

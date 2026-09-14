@@ -340,7 +340,7 @@ panels:
     phenotype_axes: none_intentional
     main_or_ed: ed_unique
     narrative: module by spatial-unit fingerprint; no structurally inapplicable cell is drawn.
-    primary_source: results/tables/manuscript_candidates/spatial_v6/spatial_v6_module_spatial_fingerprint.csv
+    primary_source: results/tables/manuscript_candidates/spatial_v6/spatial_v6_con_baseline_profile_long.csv
   - id: v9_ed_celltype
     renderer: nvp_ed_celltype
     role: wgcna_celltype
@@ -368,7 +368,7 @@ panels:
     phenotype_axes: none_intentional
     main_or_ed: ed_unique
     narrative: m11 worked example; historical label unchanged, proposed label unactivated.
-    primary_source: results/tables/manuscript_candidates/spatial_v6/spatial_v6_module_spatial_fingerprint.csv
+    primary_source: results/tables/manuscript_candidates/spatial_v6/spatial_v6_con_baseline_profile_long.csv
   - id: v9_ed_gsea_curve_syn
     renderer: f9_ed_gsea_curve
     role: gsea_support_detailed
