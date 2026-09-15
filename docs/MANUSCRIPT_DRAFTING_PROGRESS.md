@@ -209,6 +209,14 @@ _(populated during drafting)_
 
 ### Figure 1 is BLOCKED — the analysis is not in this repository
 
+> **SUPERSEDED BY PHASE 2C.** This section is the phase-2 record and is retained
+> as written. Figure 1 is no longer blocked: the behavioural analysis was
+> reconstructed in the upstream repository and imported here as a frozen,
+> hash-verified evidence bundle. Read the Phase 2C section below for the current
+> state. One conclusion recorded here was not merely unresolved but **wrong** —
+> the predictor is not the GAMM-derived AUC (see `figure1_bridge_conflicts.csv`
+> row FC-01).
+
 This is the headline result of phase 2 and it is a finding, not a delay.
 Item-by-item evidence: `manuscript/figure1_authoritative_source_inventory.csv`
 (12 rows: 1 PRESENT, 2 PRESENT-as-external-input, 4 NOT IN REPOSITORY, 3 ABSENT,
@@ -305,3 +313,84 @@ recorded in the provenance tables).
 **CARRY FORWARD INTO METHODS:** the six documentation findings PH-012…PH-016 and
 PH-009 are recorded but unrepaired. Methods must be written from the verified
 source data, not from the stale artefacts, in every one of those places.
+
+## Phase 2C (HEAD e2fa49b → this commit)
+
+### Figure 1 is unblocked — by import, not by analysis here
+
+The behavioural analysis was reconstructed in `topohl/MMMSociability` and frozen
+for manuscript use. Phase 2C consumes that freeze. **No behavioural statistic is
+computed in this repository and no behavioural analysis code was copied into
+it.** The evidence interface is five CSV contracts, mirrored byte-identically at
+`manuscript/figure1_bridge_mmmsociability/`.
+
+- **analysis commit:** `4b0f90f` · **bundle commit:** `53bc7e9` ·
+  **verified source HEAD:** `a53d73f` · source tests 30/30, tested state HEAD
+- **Integrity:** all 5 contract files byte-identical to the frozen export and
+  provably unchanged from `53bc7e9` through `a53d73f`; all 8 upstream source
+  tables re-hashed at import, 8/8 MD5 and 8/8 byte sizes matching.
+- `.gitattributes` pins the bridge to `-text`. Without it the repo-wide
+  `* text=auto` would LF-normalise these CRLF files and the recorded SHA-256
+  would not reproduce on checkout.
+
+### Drafted
+
+**Results §1** — 819 words. Heading: *Early spontaneous home-cage activity
+predicts later composite stress outcome*. Six paragraphs: experimental logic and
+temporal ordering; outcome definition with the by-construction circularity stated;
+the movement association led by ρ = −0.39; prospective prediction; sex; limitations
+and the bridge into §2.
+
+**Behavioural Methods** — 988 words, ten subsections, led by a provenance
+subsection. `M-19` … `M-28`.
+
+**Results §4** — moved from pending placeholder to **CLOSED**. No
+behaviour–proteomics claim is supported in either repository (upstream BH-006;
+the edge–behaviour null already reported in §3).
+
+### Provenance
+
+- `results_claim_provenance.csv` — 13 new rows `C1-1` … `C1-13`
+- `results_statement_provenance.csv` — 13 new rows `S1-01` … `S1-13`
+- `methods_statement_provenance.csv` — 10 new rows; `M-16`/`M-17` marked
+  `SUPERSEDED_BY_FROZEN_BRIDGE`, `M-18` `SUPERSEDED_AND_CORRECTED`
+- `figure1_bridge_provenance.csv`, `figure1_bridge_import_manifest.csv`,
+  `figure1_bridge_conflicts.csv` — new
+- `figure1_red_team_review.csv` — 8 UNANSWERABLE verdicts → 8 answered, phase-2B
+  verdicts retained in a `phase2b_verdict` column; 2 questions added
+
+Claim IDs deliberately do **not** reuse the bundle's `F1-xx` namespace, which
+already means something else (`FC-03`). Every `C1-x` row names the `F1-xx` or
+`FM-xx` row it resolves to.
+
+### Twelve disagreements found and recorded
+
+`manuscript/figure1_bridge_conflicts.csv`. The four that changed the prose:
+
+| id | finding | resolved to |
+|---|---|---|
+| FC-01 | phase-2B called the predictor a GAMM-derived AUC | raw `Movement_mean` per bundle `FM-02` |
+| FC-02 | bundle says repeated-CV `seed 123`; upstream code passes `seed = 521` | **521** — the bundle field is a transcription defect |
+| FC-06 | "movement-only" is an upstream model name meaning `Sex + Group + Movement_mean` | never used; "movement-mean model" instead |
+| FC-09 | `[0.116, 0.179]` is a percentile range, not a confidence interval | labelled as such in both Results and Methods |
+
+`FC-02` and `FC-04` are defects in the frozen bundle and are flagged for upstream
+repair. Neither changes a reported value.
+
+### Guard added
+
+`tests/testthat/test-figure1-behaviour-bridge.R`, 119 assertions. Before this,
+**no test in the repository read anything under `manuscript/`** — the drafted
+prose was mechanically unguarded. It pins bundle byte-integrity against recorded
+SHA-256, the provenance chain, the absence of copied upstream code, the
+`.gitattributes` rule, that §1 is written and §4 stays closed, that every
+behavioural number in the draft is present in the frozen contract, the CombZ sign
+contract, prohibited wording with the repository's standing denial exemption, and
+that superseded phase-2B assertions are marked rather than left true.
+
+### Not done, deliberately
+
+Introduction, Discussion, Abstract. No Figure 1 graphic: none exists in this
+repository by design, and Results §1 references panels `1a`–`1e` using the panel
+assignments carried in the imported claim contract. No behavioural analysis was
+re-run. No proteomics numerical output was touched.
