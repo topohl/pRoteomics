@@ -205,17 +205,98 @@ validation paragraph and claim only what the ten expected pairings support.
 
 _(populated during drafting)_
 
+## Phase 2 (HEAD cbe8463 → this commit)
+
+### Figure 1 is BLOCKED — the analysis is not in this repository
+
+This is the headline result of phase 2 and it is a finding, not a delay.
+Item-by-item evidence: `manuscript/figure1_authoritative_source_inventory.csv`
+(12 rows: 1 PRESENT, 2 PRESENT-as-external-input, 4 NOT IN REPOSITORY, 3 ABSENT,
+1 EMPTY, 1 NOT RECOVERABLE).
+
+**Present as finished external inputs:** `E9_Behavior_Data.xlsx` (34 sheets; the
+`zScore` sheet has 117 animals and a **precomputed `CombZ` column**) and
+`auc_individual_animals_*.csv` (322 animals, already carrying the RES/SUS label,
+`prediction_type = subject_specific_gamm_observed_grid`).
+
+**Absent:** the CombZ construction (read and renamed at
+`01_preprocessing/06_merged_metadata_module_score.r:399-427`; no z-scoring,
+orientation, aggregation, sex or batch handling anywhere); the RES/SUS
+cut-point; the GAMM specification; **any prediction or cross-validation analysis
+at all** — no `glmnet`, `caret`, `pROC`, `randomForest`, `cv.glmnet`,
+`trainControl`, `createFolds`, with every "leave-one-animal-out" match being a
+*proteomic* stability analysis; any HMM or state model; any sex-stratified or
+interaction model; and any record of ages or windows.
+
+**Consequence:** "predicts" cannot be licensed, no AUC or permutation null can be
+quoted, no sex claim of any strength is available, and temporal ordering cannot
+be asserted. The §1 placeholder states this rather than substituting invented
+content. The full checklist was still applied —
+`manuscript/figure1_red_team_review.csv`, 8 questions, all unanswerable, which is
+itself the auditable record.
+
+### Methods drafted for Figures 2–3
+
+Sixteen sections, every parameter traced to
+`manuscript/methods_statement_provenance.csv` (18 rows: 15 VERIFIED, 1 PARTIAL,
+2 NOT_VERIFIABLE). Three `[METHOD DETAIL UNRESOLVED]` markers rather than
+conventional filler. Methods red-team:
+`manuscript/methods_red_team_review.csv` — 12 checks, 7 clean, 2 defects found
+and fixed, 1 avoided, 1 marked unresolved, 1 outstanding.
+
+### WGCNA "0 of 45" resolved — it was neuropil-only
+
+Recomputed from `results/tables/06_modules_WGCNA/group_effects/*/module_group_effects.csv`
+(`manuscript/wgcna_45_contract.csv`). Each compartment carries its own BH
+families.
+
+| Family | Scope | n | supported | smallest FDR |
+|---|---|---|---|---|
+| primary + secondary | **neuropil only**, 15 modules × 3 group contrasts | **45** | 0 | **0.245** |
+| primary + secondary | all three compartments, 35 modules × 3 contrasts | **105** | 0 | **0.156** |
+| interaction omnibus | all three compartments, 1 test per module | **35** | 0 | **0.274** |
+
+The reviewer who argued the full set is "0 of 105, smallest 0.16" was right. The
+Phase-1 Results sentence has been given the minimum correction to state both
+scopes; Methods states all three families.
+
+### PH-009 and MT-04 resolved
+
+See `docs/PUBLICATION_HARDENING_PROGRESS.md`. In short: "specificity comparisons"
+is literally accurate but misleading (18 of 20 off-target pairings also clear the
+threshold; no discrimination test exists), and `p_adjust` equals the raw *P*
+**because each pairing is a single-signature GSEA and BH over a family of one is
+a no-op** — a scope artefact, not a coding error. My earlier note was right about
+the effect and wrong about the cause.
+
+### PH-012 bypassed
+
+Methods states the verified frozen membership — 16 mitochondrial GO terms,
+glycolysis excluded, PDH and TCA retained — not the stale 20-term/glycolytic text
+still carried by two reader-facing artefacts.
+
 ## Resume point
 
 **LAST COMPLETED:** Phase 1 complete. Skeleton, Results §2 and §3 drafted,
 red-teamed and revised; all four provenance/review tables generated.
 
-**NEXT PHASE (2):** Methods, plus Figure 1 / behavioural Results. Work the 13
-rows of `manuscript/methods_todo.csv` in priority order; MT-04 (the `p_adjust`
-column is not adjusted) and MT-13 (bilateral contrast registry and the DG mirror)
-are the two that could otherwise produce a wrong Methods sentence.
+**PHASE 2 COMPLETE** apart from Figure 1, which is blocked on an upstream
+repository. Methods for Figures 2–3 drafted; WGCNA 0/45, PH-009, MT-04 and
+PH-012 all resolved.
 
-**PHASE 3:** Introduction, Discussion, Abstract, title selection.
+**BLOCKING QUESTION FOR THE AUTHOR:** where is the behavioural analysis
+repository? Figure 1 Results and the behavioural half of Methods cannot be
+written without it. Everything needed is listed in
+`manuscript/figure1_authoritative_source_inventory.csv`,
+`outcome_score_contract.csv` and `behavior_prediction_contract.csv` — the
+critical items are the CombZ construction, the RES/SUS cut-point, the GAMM
+specification, the experimental timeline, and whether any out-of-sample
+prediction analysis exists at all. If no prediction analysis exists anywhere, the
+manuscript must not use "predicts".
+
+**PHASE 3:** Introduction, Discussion, Abstract, title selection. Also
+outstanding: MT-01 (software versions, seeds, ontology release) is the last
+mechanical gap in the Figures 2–3 Methods.
 
 **DO NOT REPEAT:** the publication-hardening audit; atlas selection; any
 statistical recomputation; the evidence extraction (108 checks, 0 wrong, all
