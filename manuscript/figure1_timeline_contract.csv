@@ -1,0 +1,4 @@
+"stage","age_or_window","measure","analysis_role","used_in_outcome_score","used_as_predictor","notes"
+"early home-cage monitoring","[UNRESOLVED - not recorded in this repository]","RFID movement, GAMM-derived AUC per animal","predictor in the upstream analysis","no","yes, upstream only","prediction_type = subject_specific_gamm_observed_grid; the model is not in this repository"
+"later outcome assessment","[UNRESOLVED - not recorded in this repository]","NOR, sucrose preference, weight deviation, delta corticosterone, adrenal and spleen weight","outcome components","yes","no","CombZ is precomputed in the source workbook"
+"tissue collection","[UNRESOLVED - not recorded in this repository]","laser-capture microdissection across 18 spatial units","proteomic measurement","no","no","9 animals, 3 per group"
