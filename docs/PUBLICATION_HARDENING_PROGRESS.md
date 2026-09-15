@@ -251,12 +251,37 @@ phrase names a matched-versus-mismatched discrimination that no statistic in the
 repository computes, and one asserted that the plotted `p_adjust` is an
 uncorrected single-set p rather than a BH value within the signature families.
 
-Not changed, and deliberately **not verified**, for three reasons: it concerns
-external-anatomical-validation specificity rather than the spatial selectivity
-PH-002 addresses; confirming it would be a new statistical audit, which this pass
-is scoped out of; and two of the three locations are in the frozen figure
-contract. If the p-value claim is correct it is a genuine defect and would need
-its own pass.
+**RESOLVED during manuscript phase 2** (drafting the external-validation
+Methods), on evidence rather than argument.
+
+**The phrase.** "Specificity comparisons" denotes the **20 off-target
+contrast–signature pairings** of the 30-pairing inventory — internal contrasts
+tested against signatures they are not expected to match. The term is literally
+accurate. It is nonetheless **misleading in effect**: **18 of the 20 off-target
+pairings also clear the threshold**, so the comparisons do not discriminate, and
+**no formal expected-versus-off-target test exists** (searched; `NOT_FOUND`). A
+reader is invited to conclude that anatomical specificity was demonstrated when
+the numbers show the opposite.
+
+**Disposition:** `PH-009_REWORD_RECOMMENDED`, unchanged in the frozen artefacts.
+The manuscript sidesteps it entirely — the drafted Results 2 external-validation
+paragraph never uses the word, and the drafted Methods state plainly that the
+off-target pairings are reported for completeness, that no discrimination test
+was performed, and that 18 of 20 also clear the threshold.
+
+**MT-04 resolved, and the earlier characterisation refined.** The `p_adjust`
+field *is* genuine `clusterProfiler` Benjamini–Hochberg output — but each pairing
+is run as a separate GSEA against a **single-signature collection**
+(`04_differential_expression_enrichment/09_control_spatial_identity_validation.r:591-601`,
+`TERM2GENE = data.frame(term = job$external_signature, gene = job$mapped)`).
+BH over a family of size one is a no-op, which is exactly why the field equals
+the raw *P*. **This is a scope artefact of the per-pairing design, not a coding
+error** — the earlier note implying a mislabelled value was correct in effect but
+wrong about the cause. The operative correction is `signature_FDR`, applied
+within three families of 12 (soma tissue), 6 (neuropil subregion) and 12 (CA1
+laminar) tests, assigned by `control_spatial_signature_family()` at line 503.
+Methods cites `signature_FDR`, never `p_adjust`. No column was renamed; a
+compatibility-safe rename is recommended for a later pass.
 
 ### PH-010 — a duplicate `%||%` definition was masked by the pre-commit test run
 **Severity:** P1 correctness. **Disposition:** **RESOLVED** — defect fixed at
