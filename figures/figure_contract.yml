@@ -195,3 +195,142 @@ figures:
         row: 3
         col: 1
         colspan: 2
+
+  # Manuscript-SUPPORTING, not a numbered manuscript figure. This is a
+  # candidate-comparison / immunostaining-planning visualisation over three
+  # already-nominated proteins. It introduces no new inferential analysis: both
+  # panels read frozen source data and every log2FC and FDR is a verified copy
+  # of the canonical differential-abundance output.
+  S_immunostaining_candidates:
+    title: Manuscript-supporting - immunostaining candidate comparison
+    manuscript_role: supporting_candidate_comparison
+    is_numbered_manuscript_figure: false
+    width_mm: 183
+    height_mm: 114
+    panels:
+      - id: SIa
+        description: Animal-level abundance of three immunostaining candidates across the ten neuropil region x layer units, by outcome group
+        producer_script: figures/manuscript_supporting_immunostaining_candidates.R
+        render_mode: render_candidate_abundance
+        figure_source: results/figures/manuscript/immunostaining_candidates/immunostaining_candidates_abundance.svg
+        primary_source: results/source_data/10_biological_integration/immunostaining_candidate_comparison/immunostaining_candidates_animal_abundance.csv
+        input_dependencies:
+          - results/source_data/10_biological_integration/immunostaining_candidate_comparison/immunostaining_candidates_animal_abundance.csv
+        required_columns: [ProteinGroupID, GeneSymbol, UniProt, spatial_unit, spatial_unit_display, spatial_order, AnimalID, ExpGroup, abundance]
+        scientific_contract: descriptive_candidate_comparison_no_new_inference
+        biological_unit: animal
+        hemisphere_handling: canonical_animal_level_hemisphere_averaged_ProTigy_GCT
+        row: 1
+        col: 1
+      - id: SIb
+        description: Canonical SUS-RES log2 fold change per neuropil region x layer unit for the same three candidates, BH-FDR <= 0.05 marked
+        producer_script: figures/manuscript_supporting_immunostaining_candidates.R
+        render_mode: render_candidate_sus_res
+        figure_source: results/figures/manuscript/immunostaining_candidates/immunostaining_candidates_sus_res_log2fc.svg
+        primary_source: results/source_data/10_biological_integration/immunostaining_candidate_comparison/immunostaining_candidates_sus_res_effects.csv
+        input_dependencies:
+          - results/source_data/10_biological_integration/immunostaining_candidate_comparison/immunostaining_candidates_sus_res_effects.csv
+        required_columns: [ProteinGroupID, GeneSymbol, spatial_unit, spatial_unit_display, spatial_order, contrast, log2FC, p_value, fdr_bh, fdr_supported, canonical_source_key]
+        scientific_contract: canonical_SUS_RES_DA_values_copied_and_verified_no_refit
+        biological_unit: animal
+        hemisphere_handling: canonical_animal_level_hemisphere_averaged_ProTigy_GCT
+        confidence_interval: none_available_in_canonical_DA_output
+        row: 2
+        col: 1
+
+  # The ten screened candidates. Also manuscript-SUPPORTING. The screen is
+  # selection only - it consumes the existing CA2-SLM robustness classes and
+  # WGCNA candidate tiers rather than deriving new ones - and every candidate
+  # carries an explicit evidence class that the figure prints in its facet
+  # label, because three of the ten have no FDR-supported context at all.
+  S_immunostaining_panel:
+    title: Manuscript-supporting - screened immunostaining candidate panel
+    manuscript_role: supporting_candidate_screen
+    is_numbered_manuscript_figure: false
+    width_mm: 183
+    height_mm: 178
+    panels:
+      - id: SPa
+        description: Animal-level abundance of the ten screened candidates across the ten neuropil region x layer units, by outcome group
+        producer_script: figures/manuscript_supporting_immunostaining_panel.R
+        render_mode: render_panel_abundance
+        figure_source: results/figures/manuscript/immunostaining_candidate_panel/immunostaining_panel_abundance.svg
+        primary_source: results/source_data/10_biological_integration/immunostaining_candidate_panel/candidate_panel_animal_abundance.csv
+        input_dependencies:
+          - results/source_data/10_biological_integration/immunostaining_candidate_panel/candidate_panel_animal_abundance.csv
+          - results/source_data/10_biological_integration/immunostaining_candidate_panel/candidate_panel_selection.csv
+        required_columns: [ProteinGroupID, GeneSymbol, UniProt, panel_rank, evidence_class, spatial_unit, spatial_unit_display, spatial_order, AnimalID, ExpGroup, abundance]
+        scientific_contract: descriptive_candidate_screen_no_new_inference
+        biological_unit: animal
+        hemisphere_handling: canonical_animal_level_hemisphere_averaged_ProTigy_GCT
+        row: 1
+        col: 1
+      - id: SPb
+        description: Canonical SUS-RES log2 fold change for the ten screened candidates, BH-FDR <= 0.05 marked, evidence class shown per facet
+        producer_script: figures/manuscript_supporting_immunostaining_panel.R
+        render_mode: render_panel_sus_res
+        figure_source: results/figures/manuscript/immunostaining_candidate_panel/immunostaining_panel_sus_res_log2fc.svg
+        primary_source: results/source_data/10_biological_integration/immunostaining_candidate_panel/candidate_panel_sus_res_effects.csv
+        input_dependencies:
+          - results/source_data/10_biological_integration/immunostaining_candidate_panel/candidate_panel_sus_res_effects.csv
+          - results/source_data/10_biological_integration/immunostaining_candidate_panel/candidate_panel_selection.csv
+        required_columns: [ProteinGroupID, GeneSymbol, spatial_unit, spatial_unit_display, spatial_order, contrast, log2FC, p_value, fdr_bh, fdr_supported, evidence_class, panel_rank]
+        scientific_contract: canonical_SUS_RES_DA_values_copied_and_verified_no_refit
+        biological_unit: animal
+        hemisphere_handling: canonical_animal_level_hemisphere_averaged_ProTigy_GCT
+        confidence_interval: none_available_in_canonical_DA_output
+        evidence_class_required: true
+        row: 2
+        col: 1
+
+  # The separation screen's panel. Manuscript-SUPPORTING, and deliberately NOT
+  # an FDR panel: at three animals per group a BH-FDR value is variance
+  # dominated, so it ranks small clean effects above large visible ones. This
+  # panel ranks on what decides whether a difference is detectable on tissue -
+  # fold change, complete separation between groups, directional consistency
+  # across units and within-group tightness. Every measure is descriptive. No
+  # p-value is derived, no model is fitted, and no candidate here is presented
+  # as a statistical result: it is a staining-planning shortlist.
+  S_immunostaining_separation:
+    title: Manuscript-supporting - separation-ranked immunostaining candidate panel
+    manuscript_role: supporting_candidate_screen
+    is_numbered_manuscript_figure: false
+    width_mm: 183
+    height_mm: 178
+    panels:
+      - id: SSa
+        description: Animal-level abundance of the ten separation-ranked candidates across the ten neuropil region x layer units, by outcome group
+        producer_script: figures/manuscript_supporting_immunostaining_panel.R
+        render_mode: render_panel_abundance
+        render_selector: IMMUNO_PANEL_SET=separation
+        figure_source: results/figures/manuscript/immunostaining_separation_panel/immunostaining_separation_abundance.svg
+        primary_source: results/source_data/10_biological_integration/immunostaining_separation_screen/separation_panel_animal_abundance.csv
+        input_dependencies:
+          - results/source_data/10_biological_integration/immunostaining_separation_screen/separation_panel_animal_abundance.csv
+          - results/source_data/10_biological_integration/immunostaining_separation_screen/separation_candidate_panel.csv
+        required_columns: [ProteinGroupID, GeneSymbol, UniProt, panel_rank, spatial_unit, spatial_unit_display, spatial_order, AnimalID, ExpGroup, abundance]
+        scientific_contract: descriptive_separation_screen_no_new_inference
+        biological_unit: animal
+        hemisphere_handling: canonical_animal_level_hemisphere_averaged_ProTigy_GCT
+        row: 1
+        col: 1
+      - id: SSb
+        description: SUS-RES log2 fold change per neuropil region x layer unit for the same ten candidates, computed as the animal-level group mean difference and verified equal to the canonical differential-abundance log2FC
+        producer_script: figures/manuscript_supporting_immunostaining_panel.R
+        render_mode: render_panel_sus_res
+        render_selector: IMMUNO_PANEL_SET=separation
+        figure_source: results/figures/manuscript/immunostaining_separation_panel/immunostaining_separation_sus_res_log2fc.svg
+        primary_source: results/source_data/10_biological_integration/immunostaining_separation_screen/separation_panel_sus_res_effects.csv
+        input_dependencies:
+          - results/source_data/10_biological_integration/immunostaining_separation_screen/separation_panel_sus_res_effects.csv
+          - results/source_data/10_biological_integration/immunostaining_separation_screen/separation_candidate_panel.csv
+        required_columns: [ProteinGroupID, GeneSymbol, spatial_unit, spatial_unit_display, spatial_order, contrast, log2FC, mean_SUS, mean_RES, sd_SUS, sd_RES, complete_separation, z_factor, ssmd, fully_observed, panel_rank]
+        scientific_contract: descriptive_separation_measures_no_p_value_derived
+        biological_unit: animal
+        hemisphere_handling: canonical_animal_level_hemisphere_averaged_ProTigy_GCT
+        confidence_interval: none_drawn_group_n_is_three
+        fdr_marking: absent_by_construction_this_panel_is_not_fdr_ranked
+        selection_gates: [fully_observed_only, complete_separation, abs_log2FC_ge_1, abs_ssmd_ge_1]
+        z_factor_used_as_gate: false
+        row: 2
+        col: 1
