@@ -1,0 +1,8 @@
+"event","age_or_day","clock_time","relative_to_CC1","duration","dataset_source","used_as_predictor","used_in_outcome","notes"
+"first cage change (CC1)","P25","cage change","0","","Analysis/09_early_prediction_model_ladder.R header","no","no",""
+"early RFID window","P25 onward","18:30 inclusive to 06:30 exclusive","first Active phase block after CC1","12 h (72 x 10-min slots)","early_window_contract_summary.csv","YES","no","fixed clock window; Inactive bins never included"
+"social-instability paradigm","after CC1","","after","","docs/COMBZ_CANONICAL_DEFINITION.md section 6","no","no",""
+"later behavioural outcome tests","during and after the paradigm","","after","","docs/COMBZ_CANONICAL_DEFINITION.md section 6","no","YES","NOR and sucrose preference"
+"terminal physiology","terminal","","after","","docs/COMBZ_CANONICAL_DEFINITION.md section 6","no","YES","corticosterone, adrenal, spleen"
+"CombZ computed","after all components collected","","after","","Analysis/build_later_outcome_combz.R","no","YES","unweighted mean of six components"
+"RES/SUS assigned","after CombZ","","after","","Analysis/build_later_outcome_combz.R","no","YES","within-sex control-referenced threshold"

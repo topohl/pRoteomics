@@ -1,11 +1,22 @@
 # Manuscript draft
 
-Phase 1: skeleton plus Results §2 and §3. Everything else is a placeholder.
+Phases 1–2C: Results §1, §2 and §3 and the Methods they depend on are drafted.
+Results §4 is closed rather than pending. The Abstract, Introduction and
+Discussion remain placeholders for phase 3.
 
 Every quantitative statement in the drafted sections carries a row in
 `manuscript/results_statement_provenance.csv`; every claim carries a row in
 `manuscript/results_claim_provenance.csv`. Literature citations are `[REF]`
 markers at this stage and are not to be invented.
+
+Results §1 and the behavioural Methods are quoted from a frozen evidence bundle
+imported from the upstream behavioural repository and mirrored byte-identically
+in `manuscript/figure1_bridge_mmmsociability/`. No behavioural statistic is
+computed in this repository. Provenance is in
+`manuscript/figure1_bridge_provenance.csv` and
+`manuscript/figure1_bridge_import_manifest.csv`; every point at which the bundle,
+the upstream code or an older statement here disagreed is recorded in
+`manuscript/figure1_bridge_conflicts.csv`.
 
 ---
 
@@ -25,37 +36,88 @@ _[PLACEHOLDER — phase 3.]_
 
 # Results
 
-## 1. Adolescent social instability stress produces divergent later behavioural outcomes
+## 1. Early spontaneous home-cage activity predicts later composite stress outcome
 
-_[BLOCKED — cannot be drafted from this repository. See
-`manuscript/figure1_authoritative_source_inventory.csv` for the item-by-item
-evidence.]_
+Adolescent social instability produces outcomes that differ markedly between
+individuals, and the question that motivates this work is whether that later
+divergence is foreshadowed by behaviour recorded before the divergence exists. We
+therefore separated the measurement timeline into a single early observation
+window and a set of later outcome measures, with no overlap between them.
+Radio-frequency identification tracking of undisturbed home-cage activity began at
+postnatal day 25, in the first active phase following the first cage change, and
+covered a fixed 12-h window from 18:30 to 06:30 in 10-min bins (72 slots;
+Fig. 1b). Every component of the later outcome — novel-object recognition,
+sucrose preference, weight deviation, delta corticosterone, adrenal weight and
+spleen weight — was collected after this window had closed, as were the composite
+score derived from those components and the resilient/susceptible labels derived
+from that score. The predictor therefore precedes the outcome and the
+classification by construction: neither existed at the time of recording.
 
-**What exists here:** the behavioural and physiological data arrive as finished
-external inputs — `E9_Behavior_Data.xlsx` (34 sheets; 117 animals with NOR,
-sucrose preference, weight deviation, delta corticosterone, adrenal and spleen
-weight, and a **precomputed** `CombZ` column) and the per-animal movement AUC for
-322 animals, already carrying its RES/SUS group label and marked
-`prediction_type = subject_specific_gamm_observed_grid`.
+Later outcome was summarised as a composite z-score (CombZ), the unweighted mean
+of those six components, each z-scored against same-sex control animals and with
+delta corticosterone, adrenal weight and spleen weight sign-inverted so that all
+six point in the same direction. Higher CombZ indicates a more resilient-like
+outcome; lower CombZ corresponds to a greater later stress burden. Stress-exposed
+animals were classified as susceptible when CombZ fell more than one control
+standard deviation below the same-sex control mean, and resilient otherwise;
+control animals were never relabelled. Because these six measures define the
+composite and the composite defines the classification, differences between the
+resulting groups in those same measures are guaranteed by construction, and we do
+not present them as independent confirmation of the phenotype (Fig. 1a).
 
-**What does not exist here:** the analyses that would have to be described. The
-CombZ construction is read, not computed (`01_preprocessing/06_merged_metadata_module_score.r`
-renames `comb_z` and performs no z-scoring, orientation, aggregation or
-sex/batch handling). The RES/SUS boundary arrives already assigned. No GAMM is
-fitted in any tracked script. There is **no out-of-sample prediction analysis at
-all** — no `glmnet`, `caret`, `pROC`, `randomForest`, `cv.glmnet`, `trainControl`
-or `createFolds` anywhere in the repository; every "leave-one-animal-out" match
-is a *proteomic* stability analysis. No HMM or behavioural state model exists. No
-sex-stratified or sex × predictor interaction model is fitted. Ages and windows
-are not recorded in any tracked file.
+Within this design, mean movement over the early window was negatively associated
+with later CombZ (Spearman ρ = −0.39, 95% CI [−0.55, −0.21], q = 6.9 × 10⁻⁵;
+n = 111 animals, 58 female and 53 male, comprising 24 control, 49 resilient and 38
+susceptible; Fig. 1c). Given the orientation of the score, the negative sign means
+that animals that were more active during the first undisturbed night after the
+cage change tended towards a lower later CombZ — that is, towards a less
+resilient-like outcome, corresponding to a greater later stress burden. The
+short-timescale variability of the same signal, movement RMSSD, was associated in
+the same direction but more weakly (ρ = −0.23, q = 0.026). A third prespecified
+feature, the lag-one autocorrelation of binned activity entropy, did not reach
+FDR support (ρ = −0.18, q = 0.067, with a bootstrap interval including zero) and
+is not interpreted further.
 
-**Consequence:** the word "predicts" cannot be licensed, no AUC or permutation
-null can be quoted, and no sex claim of any strength can be made. Writing this
-section requires the upstream behavioural repository. Nothing is asserted here in
-its place.
+To ask whether this association carries prospective information about individual
+animals rather than only about the group, we used a model registry fixed before
+fitting, in which the primary model takes mean movement as its sole predictor.
+Held-out performance was estimated by leave-one-animal-out cross-validation,
+refitting the model completely for each of the 111 animals and evaluating it on
+the animal withheld. This movement-mean model explained approximately 16% of the
+variation in later CombZ in held-out animals (R² = 0.159), against −0.018 for an
+intercept-only baseline. A repeated grouped five-fold scheme with the animal as
+the grouping unit (k = 5, 100 repeats) gave a closely matching estimate (mean
+R² = 0.156; 2.5th–97.5th percentile range across repeats 0.116–0.179), and a
+permutation test that repeated the entire fitting and cross-validation procedure
+under permuted outcomes placed the observed value beyond every one of 1,000 draws
+(p = 1/1001; Fig. 1d). No feature selection was performed, no model was chosen on
+observed performance, and no outcome-derived label entered any model. Adding the
+two remaining features, or sex, did not improve on mean movement alone. This is
+internal validation: performance was estimated by withholding animals within a
+single cohort, not by testing in an independent cohort.
 
-The CON / RES / SUS grouping that §2 and §3 depend on is used only as a grouping
-label, which is all the proteomic analyses require.
+The relationship did not differ detectably by sex. Formal feature-by-sex
+interaction tests were unsupported for all three features (all q = 0.90), and the
+sex-stratified estimates for mean movement, which are descriptive rather than a
+test of difference, were near-identical (ρ = −0.41 in 58 females and −0.42 in 53
+males; Fig. 1e).
+
+Two limitations bound this result. Cage identity is not represented in the
+analysis design, so cage-level dependence could be neither modelled nor assessed
+retrospectively; this concerns how far the estimate generalises beyond the cages
+sampled rather than offering any route by which outcome information could have
+reached the predictor. And because validation is internal, the held-out estimate
+may be optimistic with respect to structure shared within the cohort.
+
+Early spontaneous behaviour therefore carries prospective information about where
+an animal's later composite outcome will fall. What that later outcome
+corresponds to in the brain is a separate question, and it is the one the
+remainder of this work addresses. The proteomic analyses that follow use the
+resilient and susceptible assignments only as group labels, in the nine animals
+that contributed hippocampal tissue; they do not model `CombZ` as a continuous
+variable and they inherit no part of the prediction analysis above. We first
+establish what the spatially resolved proteome measures, and then ask how later
+resilient and susceptible outcomes are represented within it.
 
 ## 2. Spatially resolved hippocampal proteomics recovers reproducible anatomical molecular organisation
 
@@ -242,10 +304,13 @@ scale, so neither is claimed to be the stronger.
 
 ## 4. Integration of behavioural outcome with the spatial proteome
 
-_[PLACEHOLDER — phase 2 or later, only if the evidence warrants a separate
-section. The edge–behaviour coupling analysis did not survive correction, so this
-section may reduce to a limitation stated in the Discussion rather than a
-standalone Results section. Do not invent a positive integration result.]_
+_[CLOSED — no section will be written. Direct integration of the behavioural
+outcome with the spatial proteome reaches no result at FDR < 0.05 in either
+repository: the edge–behaviour coupling analysis here did not survive
+correction, and the upstream behavioural analysis records the same conclusion as
+finding BH-006. This is recorded as a limitation in the Discussion rather than
+as a Results section. Do not fill this placeholder with an unsupported
+integration result; the absence is the finding.]_
 
 ---
 
@@ -268,30 +333,136 @@ throughout** (n = 3 per group). Spatial acquisitions, hemispheres and
 animal × dataset network instances are repeated measurements and are never
 treated as independent replicates. [M-15]
 
+## Provenance of the behavioural analysis
+
+The behavioural analysis was performed in a separate repository and is not
+reproduced here. Every behavioural quantity reported in this work is quoted from
+a frozen evidence bundle imported into `manuscript/figure1_bridge_mmmsociability/`
+and recorded, with per-file hashes, in
+`manuscript/figure1_bridge_import_manifest.csv` and
+`manuscript/figure1_bridge_provenance.csv`. No behavioural statistic was
+recomputed in this repository and no behavioural analysis code was copied into
+it. The bundle derives from analysis commit `4b0f90f`, was frozen at commit
+`53bc7e9`, and is byte-identical to the state at the verified source head
+`a53d73f`. [M-19]
+
 ## Adolescent social instability stress
 
-_[PLACEHOLDER — phase 3, from the upstream behavioural repository. The paradigm
-is not specified in any tracked file here.]_
+Animals underwent an adolescent social-instability paradigm consisting of
+repeated changes of cage composition, beginning with the first cage change at
+postnatal day 25. All later outcome assessment followed the paradigm.
+_[PLACEHOLDER — phase 3: the number, spacing and composition rule of the cage
+changes and the duration of the paradigm are design parameters and are not
+specified in the frozen behavioural bundle, which fixes the analysis rather than
+the husbandry protocol. To be supplied from the experimental record.]_ [M-20]
 
-## Behavioural and physiological outcome assessment, outcome-score construction and phenotype classification
+## Experimental timeline and early home-cage recording window
 
-Composite outcome (`CombZ`) and the resilient/susceptible classification were
-taken as given from the upstream behavioural analysis. The components carried in
-the source workbook are novel-object recognition, sucrose preference, weight
-deviation, delta corticosterone, adrenal weight and spleen weight.
-**[METHOD DETAIL UNRESOLVED: the z-scoring population, sign orientation,
-aggregation formula, treatment of sex and batch, and the RES/SUS cut-point are
-not present in this repository — `CombZ` is read from a precomputed column and
-the group label arrives already assigned.]** [M-16, M-17]
+Home-cage activity was recorded continuously by radio-frequency identification
+tracking. The early window used as the predictor is the first active-phase block
+following the first cage change at postnatal day 25: a fixed clock window from
+18:30 inclusive to 06:30 exclusive, 12 h in total, binned at 10 min to give an
+expected 72 slots per animal. The window is defined on clock time, and
+inactive-phase bins were never included. Seventy-two slots is the design
+expectation rather than the realised coverage: 50 of 111 animals contributed all
+72, and the remaining 61 were missing only leading slots, with no interior or
+trailing gaps in any animal (mean coverage 98.6%, minimum 94.4%). Every component
+of the later outcome, the composite score and the resilient/susceptible
+classification derive from measurements taken after this window closed, so the
+predictor precedes both the outcome and the group labels. [M-21]
 
-## Home-cage monitoring and movement features
+## Composite outcome score
 
-Per-animal movement area-under-the-curve was taken from the upstream analysis
-(`prediction_type = subject_specific_gamm_observed_grid`).
-**[METHOD DETAIL UNRESOLVED: the GAMM formula, smoother basis, random-effect
-structure and prediction grid are not in this repository; only the fitted AUC
-is.]** No prediction or cross-validation analysis was performed in this work.
-[M-18]
+Later outcome was summarised as a composite z-score, `CombZ`, defined as the
+unweighted mean of six components: novel-object recognition, sucrose preference,
+weight deviation, delta corticosterone, adrenal weight and spleen weight. Each
+component was z-scored against the control animals of the same sex, using twelve
+control animals per sex and the population standard deviation. Delta
+corticosterone, adrenal weight and spleen weight were sign-inverted before
+averaging so that all six components share an orientation. Components contribute
+with equal weight, one sixth each, and the mean is taken over the components
+available for a given animal (`na.rm = TRUE`), so an animal missing a component is
+scored on the remainder rather than dropped. No batch term enters the
+construction. Higher `CombZ` denotes a more resilient-like outcome. [M-22]
+
+## Resilient and susceptible classification
+
+Among stress-exposed animals, an animal was classified susceptible when its
+`CombZ` fell below the mean of same-sex control animals minus one same-sex
+control population standard deviation, and resilient otherwise. The resulting
+thresholds are −0.436641698 for males and −0.222390844 for females. Control
+animals were never relabelled. Stored labels and labels reconstructed from the
+rule agree for every stress-exposed animal. [M-23]
+
+## Early behavioural features
+
+Three features, fixed in advance, summarise the early window: `Movement_mean`,
+the mean of the binned movement signal; `Movement_rmssd`, the root mean square of
+successive differences of the same binned signal, a short-timescale variability
+measure; and `Entropy_acf1`, the lag-one autocorrelation of the binned activity
+entropy. All three are raw summaries computed directly from the window. No
+scaling or transformation was applied, and no feature derived from a generalised
+additive mixed model entered the analysis. [M-24]
+
+## Association between early behaviour and later outcome
+
+Each feature was related to `CombZ` by Spearman rank correlation, with 95%
+confidence intervals from 5,000 non-parametric bootstrap resamples over animals
+(percentile method, seed 123) and Benjamini–Hochberg correction across the three
+prespecified features. The analysis population is 111 animals: 58 female and 53
+male; 24 control, 49 resilient and 38 susceptible. [M-25]
+
+## Out-of-sample prediction
+
+The set of candidate models was fixed in a registry before any model was fitted,
+and no model was selected on observed performance. The primary model, `movement_mean`,
+takes `Movement_mean` as its sole predictor. Out-of-sample performance was
+estimated by leave-one-animal-out cross-validation: for each of the 111 animals
+the model was refitted completely on the remaining 110 and evaluated on the
+withheld animal. A repeated grouped five-fold cross-validation was run as a
+companion, with five folds, 100 repeats, the animal as the grouping unit and seed
+521 for fold assignment; fold integrity was asserted rather than assumed, with
+exactly one fold per animal per repeat. Performance is reported as R² against the
+continuous `CombZ` target, with an intercept-only model as baseline. For the
+repeated scheme, each repeat yields one out-of-fold R², and the reported spread is
+the 2.5th–97.5th percentile range across the 100 repeat-level values; it is a
+resampling range and is not a confidence interval. Significance was assessed by
+permuting the outcome and repeating the complete fitting and cross-validation
+procedure for each of 1,000 draws (seed 20260811), giving p = 1/1001 with no null
+draw reaching the observed value. No feature selection, centring or scaling was
+applied to the canonical models, and no outcome-derived group label was used as a
+predictor in any of them; missing predictor values were imputed with the
+training-fold median inside each split, so no information crosses a
+cross-validation boundary. [M-26]
+
+## Sex
+
+Sex was examined by a formal feature-by-sex interaction term, fitted as a linear
+model of `CombZ` on the feature, sex and their product, one model per feature,
+with Benjamini–Hochberg correction across the three tests. Sex-stratified
+correlations are reported as descriptive summaries and were not used to infer a
+difference between sexes; where a within-sex correlation is quoted it is
+uncorrected. [M-27]
+
+## Interpretational constraints on the behavioural analysis
+
+Three constraints are stated explicitly because they bound what the behavioural
+result can support. First, the six outcome components define `CombZ` and `CombZ`
+defines the resilient/susceptible classification, so differences between those
+groups in those same components are guaranteed by construction; they are used to
+describe the classification and are never treated as independent validation of
+it. Second, cage identity is not represented in the analysis design, so
+cage-level dependence was neither modelled nor assessable retrospectively from
+this analysis; this is a limitation on generalisation rather than evidence of
+information leaking from outcome to predictor, and no cage random effect was
+introduced after the fact. Third, validation is internal — animals were withheld
+within a single cohort — and the estimate may therefore be optimistic with
+respect to structure shared within that cohort. A fourth point is recorded for
+reproducibility rather than interpretation: the individual component z-scores
+cannot all be regenerated under a single uniform derivation rule because the
+source workbook stores them in positional per-sex blocks, whereas the downstream
+chain from components to `CombZ` to group labels reproduces to numerical
+precision (maximum absolute deviation 4.4 × 10⁻¹⁶). [M-28]
 
 ## Spatial proteomics sample collection and acquisition
 

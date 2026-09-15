@@ -1,2 +1,9 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Frozen external evidence bundles are byte-exact imports whose hashes are
+# recorded in an import manifest and verified by test. Line-ending
+# normalisation would change those bytes on checkout and break verification on
+# any platform whose convention differs from the one that produced them, so
+# normalisation is disabled for the bridge.
+manuscript/figure1_bridge_mmmsociability/** -text
