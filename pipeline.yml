@@ -1314,6 +1314,39 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Phenotype-AWARE descriptive audit of where SUS-RES FDR-supported proteins sit within frozen WGCNA modules, against a module-stratified permutation null over the DA-tested universe. No WGCNA and no differential abundance is recomputed. Permutation p-values are descriptive, not independent replication."
+      - script: "10_biological_integration/10_prepare_immunostaining_candidate_comparison.R"
+        required: false
+        datasets: ["global"]
+        stage: "integration"
+        scope: "global"
+        produces: ["results/source_data/10_biological_integration/immunostaining_candidate_comparison/immunostaining_candidates_animal_abundance.csv", "results/source_data/10_biological_integration/immunostaining_candidate_comparison/immunostaining_candidates_sus_res_effects.csv", "results/source_data/10_biological_integration/immunostaining_candidate_comparison/immunostaining_candidates_mapping.csv", "results/source_data/10_biological_integration/immunostaining_candidate_comparison/immunostaining_candidates_provenance.csv"]
+        consumes_required: ["data/processed/01_preprocessing/protigy_input_animal_level/neuron_neuropil/neuron_neuropil_animal_level.gct", "data/processed/02_id_mapping/mapped/neuron_neuropil/forward/per_file/", "config/manuscript_spatial_order.yml"]
+        consumes_optional: []
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Source-data preparation for a manuscript-SUPPORTING candidate comparison over three already-nominated immunostaining targets (OGA, SLC22A23, ANXA2) in neuron_neuropil. No aggregation, no model and no candidate selection: the animal-level GCT is already bilateral, and every log2FC, p and BH-FDR is copied from the canonical SUS-RES output and then verified identical to it. Hard-fails on ambiguous protein mapping or on any duplicate protein x animal x spatial unit row."
+      - script: "10_biological_integration/11_screen_immunostaining_candidate_panel.R"
+        required: false
+        datasets: ["global"]
+        stage: "integration"
+        scope: "global"
+        produces: ["results/source_data/10_biological_integration/immunostaining_candidate_panel/candidate_panel_selection.csv", "results/source_data/10_biological_integration/immunostaining_candidate_panel/candidate_panel_sus_res_effects.csv", "results/source_data/10_biological_integration/immunostaining_candidate_panel/candidate_panel_animal_abundance.csv", "results/source_data/10_biological_integration/immunostaining_candidate_panel/candidate_panel_excluded_ca2slm.csv", "results/source_data/10_biological_integration/immunostaining_candidate_panel/candidate_panel_excluded_epidermal_qc.csv", "results/source_data/10_biological_integration/immunostaining_candidate_panel/candidate_panel_provenance.csv"]
+        consumes_required: ["data/processed/02_id_mapping/mapped/neuron_neuropil/forward/per_file/", "data/processed/01_preprocessing/protigy_input_animal_level/neuron_neuropil/neuron_neuropil_animal_level.gct", "results/tables/11_spatial_systems/ca2_slm_robustness/CA2_SLM_DAP_robustness.csv", "results/tables/10_biological_integration/wgcna_candidate_protein_shortlist/neuron_neuropil/wgcna_candidate_proteins_shortlist.csv", "config/manuscript_spatial_order.yml"]
+        consumes_optional: []
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Candidate SCREEN for additional immunostaining targets. Selection only: no model is refitted and no threshold is tuned. Consumes the existing CA2-SLM robustness classes and WGCNA candidate tiers rather than re-deriving them, because 28 of the 31 FDR-supported SUS-RES cells in the neuropil are in CA2-SLM and only 6 of those are robustness-qualified. Records an explicit evidence class per candidate and writes both exclusion lists."
+      - script: "10_biological_integration/12_screen_immunostaining_separation_candidates.R"
+        required: false
+        datasets: ["global"]
+        stage: "integration"
+        scope: "global"
+        produces: ["results/source_data/10_biological_integration/immunostaining_separation_screen/separation_candidate_panel.csv", "results/source_data/10_biological_integration/immunostaining_separation_screen/separation_metrics_all.csv", "results/source_data/10_biological_integration/immunostaining_separation_screen/separation_qualifying_cells.csv", "results/source_data/10_biological_integration/immunostaining_separation_screen/separation_panel_animal_abundance.csv", "results/source_data/10_biological_integration/immunostaining_separation_screen/separation_panel_sus_res_effects.csv", "results/source_data/10_biological_integration/immunostaining_separation_screen/separation_screen_provenance.csv"]
+        consumes_required: ["data/processed/01_preprocessing/protigy_input_animal_level/neuron_neuropil/neuron_neuropil_animal_level.gct", "data/raw/pg_matrix/quicksearch.pg_matrix.tsv", "data/processed/02_id_mapping/mapped/neuron_neuropil/forward/per_file/", "config/manuscript_spatial_order.yml"]
+        consumes_optional: []
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Separation screen for staining feasibility, complementary to the FDR screen. At three animals per group an FDR value is variance-dominated; what decides whether a difference is visible on tissue is effect size, consistency across animals and within-group tightness. Computes descriptive separation measures only - within-group SD, complete separation, Z-factor and SSMD - from the canonical animal-level values. No p-value is derived and no model is fitted. Reads the raw matrix solely to rebuild the missingness mask, because imputed cells are artificially tight and would otherwise inflate every variance-based score; only fully observed protein x unit cells enter the ranking."
       - script: "10_biological_integration/04_wgcna_circular_atlas.R"
         required: false
         datasets: ["global"]
@@ -1446,6 +1479,40 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Explicit Figure 2b-2f materialization and assembly from contract-pinned downstream artifacts. Figure 2a is intentionally deferred to Illustrator and is not a required repository input. Fits no model."
+      - script: "figures/manuscript_supporting_immunostaining_candidates.R"
+        required: false
+        datasets: ["global"]
+        stage: "integration"
+        scope: "global"
+        produces: ["results/figures/manuscript/immunostaining_candidates/"]
+        consumes_required:
+          - "figures/figure_contract.yml"
+          - "config/manuscript_palette.yml"
+          - "results/source_data/10_biological_integration/immunostaining_candidate_comparison/immunostaining_candidates_animal_abundance.csv"
+          - "results/source_data/10_biological_integration/immunostaining_candidate_comparison/immunostaining_candidates_sus_res_effects.csv"
+        consumes_optional: []
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Rendering only, manuscript-SUPPORTING rather than a numbered figure. Reads the frozen candidate source data and nothing else: no matrix, no model, no aggregation. Panel A shows one point per animal with the group mean; Panel B shows the canonical SUS-RES log2FC with BH-FDR <= 0.05 marked. No confidence interval is drawn because the canonical DA output does not carry one."
+      - script: "figures/manuscript_supporting_immunostaining_panel.R"
+        required: false
+        datasets: ["global"]
+        stage: "integration"
+        scope: "global"
+        produces: ["results/figures/manuscript/immunostaining_candidate_panel/", "results/figures/manuscript/immunostaining_separation_panel/"]
+        consumes_required:
+          - "figures/figure_contract.yml"
+          - "config/manuscript_palette.yml"
+          - "results/source_data/10_biological_integration/immunostaining_candidate_panel/candidate_panel_animal_abundance.csv"
+          - "results/source_data/10_biological_integration/immunostaining_candidate_panel/candidate_panel_sus_res_effects.csv"
+          - "results/source_data/10_biological_integration/immunostaining_candidate_panel/candidate_panel_selection.csv"
+        consumes_optional:
+          - "results/source_data/10_biological_integration/immunostaining_separation_screen/separation_panel_animal_abundance.csv"
+          - "results/source_data/10_biological_integration/immunostaining_separation_screen/separation_panel_sus_res_effects.csv"
+          - "results/source_data/10_biological_integration/immunostaining_separation_screen/separation_candidate_panel.csv"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Rendering only, manuscript-SUPPORTING. One renderer serves both candidate panels, selected by the IMMUNO_PANEL_SET environment variable so the two shortlists cannot drift into different plotting conventions. Default fdr renders the ten FDR-screened candidates and prints the evidence class in every facet label, so a class-3 candidate, which has no FDR-supported context anywhere, cannot be read as an FDR-supported one. Setting separation renders the ten separation-ranked candidates from 12_screen_immunostaining_separation_candidates.R; that panel carries no FDR marking at all by construction and labels each facet with its rank, SSMD and any housekeeping or low-abundance caution."
       - script: "figures/figure_03.R"
         required: false
         datasets: ["global"]
