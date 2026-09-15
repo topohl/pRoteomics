@@ -198,36 +198,48 @@ is a deliberate insertion convention. Numbered stages mix `.R` and `.r`
 extensions while every other layer is internally consistent. Renaming would
 churn every registry path for no functional gain.
 
-### PH-008 — "spatially restricted" describes the central claim and was reviewed, not changed
-**Severity:** P2 / open question. **Disposition:** REVIEWED, deliberately unchanged.
+### PH-008 — inconsistent spatial wording across the package
+**Severity:** P2 terminology. **Disposition:** **RESOLVED** — harmonised on
+`spatially resolved`, with a written contract and a guard.
 
-Raised during the PH-002 adjudication. `spatially restricted` describes the
-CENTRAL claim in two further reader-facing artefacts —
-`core_story_corrected.md:18` and `nature_reviewer_vulnerabilities.md:112` — and is
-the spatial-restriction cousin of the wording PH-002 removed.
+After PH-002 the package used two vocabularies for one claim: the Figure 3 title
+said `spatially resolved`, while the corrected core story and the reviewer audit
+said `spatially restricted`.
 
-It was left alone because it does **not** violate the existing statistical
-contract; it is the contract's own prescribed alternative:
+**Decision.** `spatially resolved` is the default descriptive wording. It
+describes what the design achieves — 18 prespecified spatial units, laminar in
+the neuropil and region-level in the soma and microglia-enriched ROI — and
+asserts nothing about where effects are or are not present. `restricted`,
+`selective` and `specific` assert a boundary that only a heterogeneity test could
+draw, and the only such test in the package is at WGCNA level and is FDR-negative
+(0 of 35, smallest FDR 0.2741).
 
-- `final_truth_v9_semantics.R` `RULE("selective")` lists "spatially restricted" in
-  the **USE** column, as a sanctioned substitute for the banned word.
-- The claim chain certifies it explicitly, with its evidence named:
-  `CS(2, "spatially restricted", TRUE, "the theme atlas and ED6: FDR-supported
-  terms occur in a subset of units", "keep")`.
+**Old → new, at generator source:**
 
-**The argument against it, recorded for an author decision.** At three animals per
-group, what is restricted is the *detection*, not the effect; absence of FDR
-support in a unit is not absence of an effect there. Two independent reviewers
-argued it should be reclassified PROHIBITED_UNSUPPORTED on that basis. Two others
-argued the opposite, on the contract grounds above. Changing it would mean
-amending `docs/MANUSCRIPT_STATISTICAL_CONTRACT.md` and the rulebook, not just
-rewording a sentence — a contract change, not a hardening fix.
+| Where | Old | New |
+|---|---|---|
+| core story preferred version | "coordinated, spatially **restricted** differences at the level of molecular programs" | "coordinated, spatially **resolved** differences at the level of molecular programs" |
+| reviewer audit, central claim | "associated with spatially **restricted** coordinated program differences" | "associated with spatially **resolved** coordinated program differences" |
+| `RULE("selective")` USE column | "spatially **restricted**; …" | "spatially **resolved**; …" |
+| `RULE("reprogramming / rewiring")` USE | "spatially **restricted** molecular differences" | "spatially **resolved** molecular differences" |
+| S19 rewiring fix-hint | "say program-level or spatially **restricted** differences" | "say program-level or spatially **resolved** differences" |
+| claim chain `CS(2, …)` | verdict `keep` → corrected clause "spatially restricted" | verdict `REWORD` → corrected clause "spatially resolved" |
+| claim chain verdict line | "**spatially restricted** — supported." | supported *as an observation*, not adopted *as wording* |
 
-**Note on vocabulary.** The Figure 3 title now says "spatially resolved" while the
-corrected core story says "spatially restricted". Both are licensed and they are
-compatible — one describes measurement resolution, the other describes where
-support was found — but the package now uses two vocabularies for one claim.
-Harmonising them is the natural follow-up if PH-008 is taken up.
+**Retained deliberately.** `claim_chain_audit.md` and `core_story_audit.csv` still
+contain "spatially restricted" where they quote the original audited sentence. An
+audit has to quote what it audited. Both are exempt from the scan by the
+repository's existing convention, and no non-exempt reader-facing prose contains
+the phrase. `final_figure_legends_v9.md` keeps "CA2-SLM interpretation is
+restricted" — that restricts an *interpretation*, not a spatial extent — and the
+ED2 "specificity inventory" is retained under PH-009.
+
+**Contract and guard.** Recorded as §6 of
+`docs/MANUSCRIPT_STATISTICAL_CONTRACT.md` and as `RULE("spatial wording")` in the
+generated rulebook (now 20 rules). Enforced by a new S9 entry matching
+`spatially[ -](restricted|specific)` — anchored to the adverb, so a restricted
+interpretation and a specificity inventory are not swept up — with a licence
+clause for a stated count of supported units.
 
 ### PH-009 — "specificity comparisons" in the external-validation legend
 **Severity:** P2 / unverified. **Disposition:** RECORDED, not changed, not verified.
@@ -247,29 +259,57 @@ contract. If the p-value claim is correct it is a genuine defect and would need
 its own pass.
 
 ### PH-010 — a duplicate `%||%` definition was masked by the pre-commit test run
-**Severity:** P1 correctness (test-visible). **Disposition:** FIXED in this pass.
+**Severity:** P1 correctness. **Disposition:** **RESOLVED** — defect fixed at
+e313863; the provenance contract and its guard added here.
 
-`99_audits/publication_hardening/01_manuscript_contract.R:66` defined
-``` `%||%` <- function(a, b) ... ```, which violates the repository's rule that
-`R/null_coalescing.R` holds the only definition
-(`tests/testthat/test-null-coalescing.R`).
+`99_audits/publication_hardening/01_manuscript_contract.R:66` defined `%||%`,
+violating the rule that `R/null_coalescing.R` holds the only definition. The
+b392977 suite ran *before* the commit, while that file was untracked; the test
+enumerates candidates with `git ls-files`, so it could not see the file. The
+number was true of the tree measured and false of the tree shipped.
 
-**Why it was not caught at b392977.** The test enumerates candidate files with
-`git ls-files`. The full suite for b392977 was run *before* the commit, while
-`01_manuscript_contract.R` was still untracked — so the test could not see the
-file and the run reported 11,364 passing. The commit then made the file tracked,
-and the defect became visible on the next run. **The b392977 benchmark was
-therefore measured on a tree that did not match what was committed, and the
-committed state was already failing this test.**
+**The verification-state contract.** A test result describes a tree, not a
+project. A result may be reported as describing the final committed state only if
+the tested tree is identified. Every final verification report must record:
 
-Fixed by deleting the redundant definition rather than by sourcing
-`R/null_coalescing.R`: `%||%` has been in base R since 4.4, the two other audit
-scripts in this directory already rely on that, and the definition sat *after*
-its first use in the file, so it was never doing anything.
+- `head_commit`
+- `worktree_clean` yes/no
+- `index_clean` and `index_differs_from_head` yes/no
+- `tested_state` — one of `HEAD`, `STAGED_TREE`, `DIRTY_WORKTREE`
+- whether the run was on HEAD, on the staged tree, or on a dirty worktree
+- the post-commit verification status
 
-**Process lesson.** A benchmark taken before `git add` is not a benchmark of the
-commit. Any future suite run used as a baseline must be taken against the staged
-or committed tree, not the working tree.
+**Release workflow.** Make changes → stage all intended files → run the suite →
+commit → **rerun verification on the committed HEAD** → report that result.
+
+**Guard.** `99_audits/publication_hardening/09_verification_state.R` emits
+`results/reports/publication_hardening/verification_state.csv`. Plain runs record
+and never fail, so ordinary development is unaffected. `--release` exits 1 unless
+`tested_state` is `HEAD`; `--allow-nonhead-verification` overrides it and labels
+the result as not describing HEAD. The guard proved itself on first use by
+flagging that it was itself untracked — the exact PH-010 blind spot.
+
+### PH-011 — the semantic scan read its own output one run late
+**Severity:** P1 verification gap. **Disposition:** **FIXED** in this pass.
+
+Found by the new PH-008 guard, which reported 1 unresolved hit against text that
+had already been corrected.
+
+`figures/final_truth_v9_semantics.R` runs its semantic scans at lines 831-922 but
+writes `core_story_corrected.md` at line 1099. Within a single run the scan
+therefore read the **previous** run's copy of the one reader-facing file this
+script authors itself. A violation newly introduced into the corrected core story
+would not have surfaced until somebody ran the script a second time, and a
+one-run "0 unresolved" was not trustworthy for that file.
+
+This is PH-010's failure mode in a different place: a verification result that
+silently describes a state other than the one it appears to describe.
+
+Fixed additively rather than by reordering a 1,100-line frozen generator: a
+re-scan of the self-written artefact now runs after it exists, replaces its stale
+rows in `hits`, rewrites `semantic_search_hits.csv`, and reports its own count
+(`self-written re-scan : N unresolved in core_story_corrected.md`). The P0 stop
+now sees the current file.
 
 ## Verified clean
 
@@ -310,6 +350,16 @@ or committed tree, not the working tree.
 - **DEC-009:** Findings outside PH-002's subject matter are recorded, not acted
   on. PH-009 concerns external-validation specificity and would require a new
   statistical audit to confirm; this pass is scoped out of that.
+- **DEC-010:** `spatially resolved` is the package's single spatial wording.
+  Restriction, selectivity and specificity wording are reserved for a formal test
+  or an explicitly factual support count. Recorded as §6 of
+  `docs/MANUSCRIPT_STATISTICAL_CONTRACT.md` and enforced by the S9 scan.
+- **DEC-011:** A verification result names the tree it describes. Release
+  benchmarks are taken on committed HEAD; a benchmark taken on a dirty or staged
+  tree must say so. Enforced by `09_verification_state.R --release`.
+- **DEC-012:** Verification gaps found in the checking machinery are fixed
+  additively, not by reordering frozen generators. PH-011 adds a re-scan after
+  the artefact is written rather than moving 250 lines of a working script.
 
 ## Deferred architecture changes
 
@@ -324,22 +374,37 @@ carries its precondition and its verification step.
 2. ~~**Rerun timing.**~~ **Closed.** The two generators were rerun; the delta
    audit confirms 3 files changed, all TEXT_EXPECTED, and 0 statistical values
    moved.
-3. **PH-008 — vocabulary harmonisation.** The Figure 3 title now says "spatially
-   resolved" while `core_story_corrected.md` says "spatially restricted". Both are
-   licensed and compatible, but the package now uses two vocabularies for one
-   claim. Harmonising needs an author decision, and dropping "restricted" would
-   mean amending the statistical contract and the rulebook.
+3. ~~**PH-008 — vocabulary harmonisation.**~~ **Closed.** Harmonised on
+   `spatially resolved`, written into the statistical contract as §6 and into the
+   rulebook, and guarded by a new S9 rule.
 4. **PH-009 — external-validation specificity.** Three reviewers argued
    "specificity comparisons" overclaims, and one asserted the plotted `p_adjust`
-   is an uncorrected single-set p. Unverified. If correct it is a real defect and
-   needs its own pass.
+   is an uncorrected single-set p. **Still unverified**, and the only finding
+   left open. If the p-value claim is correct it is a genuine statistical defect
+   and needs its own pass. It concerns external anatomical validation, not the
+   spatial-selectivity wording resolved by PH-002 and PH-008.
 
 ## Resume point
 
-**LAST COMPLETED SECTION:** B28 plus the PH-002 resolution pass.
+**LAST COMPLETED SECTION:** B28, the PH-002 resolution pass, and the PH-008 /
+PH-010 cleanup pass.
 
-**NEXT EXACT ACTION:** none. PH-002 is RESOLVED and verified. PH-001 is unchanged
-and remains an accepted architecture/provenance condition. PH-008 and PH-009 are
-recorded for an author decision and are not blocking. The next task is manuscript
-drafting; no repository migration should begin from this state without reopening
-the migration risk register.
+**STATUS OF EVERY FINDING**
+
+| Finding | Status |
+|---|---|
+| PH-001 five out-of-layer renderers | ACCEPTED, guarded, unchanged |
+| PH-002 specificity gate and prose | RESOLVED |
+| PH-003 unreferenced helper | RETAINED deliberately |
+| PH-004 duplicate interpretation stage | DEFERRED |
+| PH-005 unregistered stage scripts | documented, no change |
+| PH-006 ad-hoc output roots | DEFERRED |
+| PH-007 mixed naming conventions | no change |
+| PH-008 spatial wording | RESOLVED |
+| PH-009 external-validation specificity | **OPEN, unverified** |
+| PH-010 verification provenance | RESOLVED |
+| PH-011 scan read its own output late | FIXED |
+
+**NEXT EXACT ACTION:** none. The next task is manuscript drafting. PH-009 is the
+only open item and is not blocking. No repository migration should begin from
+this state without reopening the migration risk register.
