@@ -249,16 +249,22 @@ manuscript_figure_target_paths <- function(rel_paths, target_dir,
   }, character(1), USE.NAMES = FALSE)
 }
 
-# Route only the explicit manuscript-layer outputs into dedicated Figure 2/3
+# Route only the explicit manuscript-layer outputs into their dedicated figure
 # directories. Historical stage-level plots retain the established flattened
-# extended-data destination.
+# extended-data destination. The recognised figure IDs come from
+# MANUSCRIPT_FIGURE_IDS in R/output_namespace_utils.R so that the router and the
+# namespace validator cannot disagree about which figures exist; anything not on
+# that list still falls through to extended_data rather than inventing a
+# destination. Note the two conventions this function bridges: authoring paths
+# are zero-padded (manuscript/figure_02/) and export paths are not
+# (results/manuscript/figure_2/).
 manuscript_curated_figure_target_paths <- function(
     rel_paths, manuscript_root = output_namespace_manuscript_export_root()) {
   rel_paths <- as.character(rel_paths)
   targets <- manuscript_figure_target_paths(
     rel_paths, file.path(manuscript_root, "extended_data")
   )
-  for (figure_id in c("02", "03")) {
+  for (figure_id in MANUSCRIPT_FIGURE_IDS) {
     prefix <- paste0("manuscript/figure_", figure_id, "/")
     selected <- startsWith(rel_paths, prefix)
     if (any(selected)) {
