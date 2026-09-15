@@ -144,3 +144,83 @@ test_that("no manuscript prose claims a theme-level p-value or FDR", {
   }))
   expect_equal(hits, character(0))
 })
+
+# ------------------------------------------------- PH-008 spatial wording
+
+test_that("reader-facing prose uses spatially resolved, not restricted", {
+  # PH-008. "Resolved" describes what the design achieves; "restricted" and
+  # "specific" assert a boundary only a heterogeneity test could draw, and the
+  # only such test is at WGCNA level and is FDR-negative.
+  rep_dir <- repo("results", "reports", "manuscript_candidates",
+                  "final_truth_v9")
+  skip_if_not(dir.exists(rep_dir), "v9 report layer not built")
+  files <- list.files(rep_dir, pattern = "[.]md$", full.names = TRUE)
+  # these two exist in order to quote the wording they ban
+  files <- files[!basename(files) %in% c("manuscript_semantic_rules.md",
+                                         "claim_chain_audit.md")]
+  # A stated count of supported units is factual, not an inferential claim.
+  LICENCE <- "of 18|of 10|of 15|FDR-supported in|units in which|subset of units"
+  # The repository's standing convention: text that instructs against a phrase,
+  # or quotes it in order to replace it, necessarily contains it. The semantics
+  # layer exempts such lines and so must this guard, or the corrected core
+  # story's own explanation of the correction would fail it.
+  PROHIBITION <- paste0("never|must not|do not |does not|cannot|prohibited|",
+                        "instead of|rather than|avoid|banned|forbidden|",
+                        "reworded|not adopted|say spatially resolved|",
+                        "\\bNOT\\b|\\bNEVER\\b")
+  hits <- unlist(lapply(files, function(f) {
+    ln <- readLines(f, warn = FALSE)
+    h <- grep("spatially[ -](restricted|specific)", ln, ignore.case = TRUE,
+              value = TRUE)
+    h <- h[!grepl(LICENCE, h, ignore.case = TRUE)]
+    h[!grepl(PROHIBITION, h, perl = TRUE)]
+  }))
+  expect_equal(hits, character(0))
+})
+
+test_that("the spatial wording contract is declared in the rulebook", {
+  sem <- readLines(repo("figures", "final_truth_v9_semantics.R"), warn = FALSE)
+  expect_true(any(grepl('RULE("spatial wording"', sem, fixed = TRUE)))
+  # the S9 scan must carry the guard, anchored to the adverb so that a
+  # restricted INTERPRETATION or a specificity INVENTORY is not flagged
+  expect_true(any(grepl("spatially[ -](restricted|specific)", sem,
+                        fixed = TRUE)))
+})
+
+# ------------------------------------------- PH-010 verification provenance
+
+test_that("the verification-state guard exists and declares its contract", {
+  p <- repo("99_audits", "publication_hardening", "09_verification_state.R")
+  expect_true(file.exists(p))
+  src <- readLines(p, warn = FALSE)
+  # the three states a verification run can describe
+  for (tok in c("HEAD", "STAGED_TREE", "DIRTY_WORKTREE"))
+    expect_true(any(grepl(tok, src, fixed = TRUE)))
+  # strict only in release mode, with an explicit escape hatch
+  expect_true(any(grepl("--release", src, fixed = TRUE)))
+  expect_true(any(grepl("--allow-nonhead-verification", src, fixed = TRUE)))
+  expect_true(any(grepl("quit(status = 1L)", src, fixed = TRUE)))
+})
+
+test_that("a release verification refuses a tree that is not HEAD", {
+  # The guard is only useful if it actually fails. Exercise it in a throwaway
+  # repository rather than against the real one, so the test cannot depend on
+  # the state of the working tree it is being run from.
+  skip_if(nchar(Sys.which("git")) == 0, "git unavailable")
+  tmp <- file.path(tempdir(), paste0("phverif", as.integer(Sys.time())))
+  dir.create(tmp, showWarnings = FALSE)
+  on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
+  q <- function(...) suppressWarnings(system2("git", c("-C", shQuote(tmp), ...),
+                                              stdout = TRUE, stderr = FALSE))
+  q("init", "-q")
+  q("config", "user.email", "t@t"); q("config", "user.name", "t")
+  writeLines("x", file.path(tmp, "a.txt"))
+  q("add", "-A"); q("commit", "-qm", "init")
+  clean <- length(q("status", "--porcelain", "--untracked-files=all")) == 0
+  expect_true(clean)
+  writeLines("y", file.path(tmp, "b.txt"))
+  dirty <- q("status", "--porcelain", "--untracked-files=all")
+  expect_true(length(dirty) > 0)
+  # an untracked file is invisible to git ls-files - the exact PH-010 blind spot
+  expect_false("b.txt" %in% q("ls-files"))
+})
