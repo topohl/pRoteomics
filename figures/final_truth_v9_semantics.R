@@ -507,7 +507,11 @@ md <- c(md, "# The core story, tested sentence by sentence", "",
  paste0("**richer** - a loose comparison between two different statistical ",
         "objects, protein counts against enrichment statistics. State the ",
         "actual asymmetry instead."),
- "**spatially restricted** - supported.",
+ paste0("**spatially restricted** - the observation is supported (FDR-supported ",
+        "terms occur in a subset of units) but the wording is not adopted: at ",
+        "three animals per group what is restricted is the DETECTION, not the ",
+        "effect. Say spatially resolved, and give the count of supported units ",
+        "when the support pattern itself is the point."),
  "**coordinated** - fair; gene-set enrichment is about coordinated sets.",
  paste0("**changes** - implies a before-and-after. SUS-RES is a between-group ",
         "difference. Use differences."), "",
@@ -573,9 +577,16 @@ rules <- c(rules,
  RULE("susceptibility-specific", "susceptibility-associated; resilience-associated",
       "susceptibility-specific, resilience-specific",
       "a specificity analysis was actually performed."),
- RULE("selective", "spatially restricted; detectable in some spatial units and not others; the count of units in which the contrast was FDR-supported",
+ RULE("selective", "spatially resolved; detectable in some spatial units and not others; the count of units in which the contrast was FDR-supported",
       "selective, spatially selective, selectively",
       "a stress-by-spatial-unit heterogeneity test supports it. The only such test in the package is the WGCNA omnibus, in which 0 of 35 cells are FDR-supported (smallest FDR 0.27); no equivalent test exists at GO-program level."),
+ # The spatial wording contract. "Resolved" describes what the design achieves;
+ # "restricted", "selective" and "specific" assert a boundary that only a
+ # heterogeneity test could draw, and none exists at GO-program level.
+ RULE("spatial wording",
+      "spatially resolved, as the default descriptive wording; molecular-program differences resolved across hippocampal spatial contexts",
+      "spatially restricted, spatially selective, spatially specific, as generic interpretive wording",
+      "the sentence reports a factual support pattern - the count of spatial units in which the contrast was FDR-supported - rather than asserting restriction. Absence of support in a unit does not establish specificity at three animals per group."),
  RULE("pathway", "molecular program; biological program; GO-defined process",
       "pathway, for GO biological-process enrichment",
       "the gene set really is a curated pathway, for example KEGG or Reactome."),
@@ -591,7 +602,7 @@ rules <- c(rules,
  RULE("synaptic dysfunction", "reduced synaptic-signalling program",
       "synaptic dysfunction, impaired synapses, reduced synaptic transmission",
       "a physiological measurement exists."),
- RULE("reprogramming / rewiring", "program-level differences; spatially restricted molecular differences",
+ RULE("reprogramming / rewiring", "program-level differences; spatially resolved molecular differences",
       "reprogramming, rewiring, redistribution, relocation, remodelling",
       "never, on the present evidence. Reorganization may name the tested network metric, in its null form."),
  RULE("stable", "largely preserved spatial molecular architecture; spatial organisation remained evident across groups",
@@ -800,6 +811,16 @@ spec_spec <- rbind(
   S("selective / selectively / exclusively", "selectiv|exclusiv",
     "none", "", "P1 overclaim",
     "absence of support is not evidence of absence at n = 3 per group"),
+  # The spatial wording contract (PH-008). Deliberately anchored to the adverb
+  # "spatially" rather than matching "restricted" or "specific" anywhere: those
+  # words are legitimate elsewhere - a restricted INTERPRETATION, a specificity
+  # inventory - and a bare match on them produces more noise than signal.
+  S("spatially restricted / specific",
+    "spatially[ -](restricted|specific)",
+    "a stated count of supported spatial units",
+    "of 18|of 10|of 15|FDR-supported in|units in which|subset of units",
+    "P1 overclaim",
+    "say spatially resolved; restriction wording implies a heterogeneity test that exists only at WGCNA level and is FDR-negative there"),
   S("divergent", "divergen",
     "both arms supported in opposite directions", "opposite direction|both.{0,20}FDR",
     "P2 consistency",
@@ -990,7 +1011,8 @@ cs <- rbind(
     "and with differences at the level of molecular programs, with both inventories stated and neither claimed to be the stronger"),
  CS(2, "spatially restricted", TRUE,
     "the theme atlas and ED6: FDR-supported terms occur in a subset of units",
-    "keep", "spatially restricted"),
+    "REWORD - the observation holds, but at three animals per group the restriction is of detection, not of effect; restriction wording would imply a heterogeneity test that exists only at WGCNA level and is FDR-negative there",
+    "spatially resolved"),
  CS(2, "coordinated", TRUE,
     "GSEA operates on a ranked gene set, so coordination is what the statistic measures",
     "keep", "coordinated"),
@@ -1041,6 +1063,13 @@ STORY <- c(
 "is true of the whole-graph test but not of the edge-coupling test, which",
 "covered eight neuropil edges rather than every spatial-unit pair.",
 "",
+"One further clause is reworded rather than removed. 'Spatially restricted' is",
+"a supported observation - FDR-supported terms do occur in a subset of units -",
+"but at three animals per group what is restricted is the detection, not the",
+"effect, and restriction wording would imply a heterogeneity test that exists",
+"only at WGCNA level and is FDR-negative there. The preferred version therefore",
+"says spatially resolved, which describes what the design achieves.",
+"",
 "## Preferred version",
 "",
 "The hippocampal proteome is organised as a reproducible molecular geography",
@@ -1048,7 +1077,7 @@ STORY <- c(
 "in the neuronal soma and microglia-enriched ROI. Later stress outcome is",
 "associated with sparse individual-protein differences - 37 FDR-supported",
 "SUS-RES proteins, with none at all in 12 of the 18 spatial units - and with",
-"coordinated, spatially restricted differences at the level of molecular",
+"coordinated, spatially resolved differences at the level of molecular",
 "programs. The two are assessed in separate multiple-testing families and are",
 "not placed on a common scale, so neither is claimed to be the stronger.",
 "Representative FDR-supported examples span synaptic signalling in",
@@ -1116,7 +1145,7 @@ other_spec <- rbind(
   # S19 movement verbs describe a redistribution no design here can observe
   S("rewiring", "rewir|reprogramm|redistribut|relocat|remodell",
     "none", "", "P0 factual",
-    "nothing was observed to move; say program-level or spatially restricted differences"),
+    "nothing was observed to move; say program-level or spatially resolved differences"),
   # Part-27 declared this rule but never enforced it, so one legend kept the
   # word "trajectory" for what are three algebraically related contrasts.
   S("trajectory", "trajector",
@@ -1142,6 +1171,30 @@ if (nrow(oth_bad) || nrow(oth_panel)) {
                drop = FALSE]
   write_csv_safe(hits, file.path(OUT, "semantic_search_hits.csv"))
 }
+# ------------------------------- re-scan of the artefact this script writes
+#
+# The scans above run before core_story_corrected.md is regenerated further
+# down, so within a single run they read the PREVIOUS run's copy of it. A
+# violation newly introduced into the corrected core story would not surface
+# until the next run, which makes a one-run "0 unresolved" untrustworthy for
+# exactly the file this script authors. Re-scan it now that it exists, and
+# replace its stale rows rather than appending to them.
+SELF_WRITTEN <- "core_story_corrected.md"
+rescan <- do.call(rbind, lapply(
+  list(stress_spec, baseline_spec, spec_spec, other_spec),
+  function(sp) {
+    r <- scan_corpus(sp)
+    if (!nrow(r)) return(NULL)
+    r <- r[basename(r$file) == SELF_WRITTEN & r$severity != "OK", ,
+           drop = FALSE]
+    if (!nrow(r)) NULL else r[, KEEP, drop = FALSE]
+  }))
+hits <- hits[basename(hits$file) != SELF_WRITTEN, , drop = FALSE]
+if (!is.null(rescan) && nrow(rescan)) hits <- rbind(hits, rescan)
+hits <- hits[order(hits$severity, hits$file, hits$line_or_field), ,
+             drop = FALSE]
+write_csv_safe(hits, file.path(OUT, "semantic_search_hits.csv"))
+
 p0 <- hits[grepl("^P0", hits$severity), , drop = FALSE]
 if (nrow(p0)) {
   print(p0[, c("file", "line_or_field", "term", "context")])
@@ -1149,6 +1202,8 @@ if (nrow(p0)) {
 }
 cat("claim-strength scan  :", nrow(oth_bad), "prose +", nrow(oth_panel),
     "printed unresolved\n")
+cat("self-written re-scan :", if (is.null(rescan)) 0L else nrow(rescan),
+    "unresolved in", SELF_WRITTEN, "\n")
 cat("SEMANTIC SCAN FINAL  :", nrow(hits), "unresolved (",
     sum(grepl("^P1", hits$severity)), "P1,", sum(grepl("^P2", hits$severity)),
     "P2 ); 0 P0\n")
