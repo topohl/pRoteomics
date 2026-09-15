@@ -182,11 +182,30 @@ classify_output_namespace <- function(
   )
 }
 
+# The manuscript figure IDs this repository recognises, declared once and shared
+# with the export router in R/export_helpers.R. This is an explicit allow-list,
+# not a pattern: an unrecognised figure number must still fail closed, because a
+# typo silently creating results/figures/manuscript/figure_07 is exactly the
+# failure this validation exists to prevent.
+#
+# Figure 01 is included because pipeline.yml declares results/manuscript/figure_1
+# as an export destination. Before it was listed here that slot was unreachable -
+# declared by the pipeline and rejected by the validator - so a Figure 1 renderer
+# could not have written anywhere legal. No Figure 1 renderer exists yet; this
+# makes the namespace valid ahead of one.
+MANUSCRIPT_FIGURE_IDS <- c("01", "02", "03")
+
 output_namespace_manuscript_figure_paths <- function(
     output_root, figure_id) {
-  figure_id <- sprintf("%02d", as.integer(figure_id))
-  if (is.na(figure_id) || !figure_id %in% c("02", "03")) {
-    stop("Manuscript figure ID must be 02 or 03.", call. = FALSE)
+  figure_id <- suppressWarnings(as.integer(figure_id))
+  figure_id <- if (length(figure_id) != 1L || is.na(figure_id)) {
+    NA_character_
+  } else {
+    sprintf("%02d", figure_id)
+  }
+  if (is.na(figure_id) || !figure_id %in% MANUSCRIPT_FIGURE_IDS) {
+    stop("Manuscript figure ID must be one of ",
+         paste(MANUSCRIPT_FIGURE_IDS, collapse = ", "), ".", call. = FALSE)
   }
   figure_stub <- paste0("figure_", figure_id)
   list(

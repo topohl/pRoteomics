@@ -46,7 +46,7 @@ testthat::test_that("manuscript figure paths keep authoring separate from export
   )
   testthat::expect_error(
     output_namespace_manuscript_figure_paths(root, "04"),
-    "must be 02 or 03"
+    "must be one of 01, 02, 03"
   )
   testthat::expect_identical(
     classify_output_namespace(
@@ -83,4 +83,70 @@ testthat::test_that("pipeline manuscript entry points declare authoring outputs 
       classify_output_namespace(outputs)$namespace == "manuscript_authoring"
     ))
   }
+})
+
+testthat::test_that("figure 1 is a first-class manuscript figure namespace", {
+  source(testthat::test_path("..", "..", "R", "paths.R"))
+  source(repo_path("R", "output_namespace_utils.R"))
+
+  root <- tempfile("fig1-root-")
+  # Figure 1 was declared as an export destination in pipeline.yml while the
+  # validator rejected every ID but 02 and 03, so the slot was unreachable. All
+  # three must now resolve, and the authoring convention stays zero-padded.
+  for (id in c("01", "02", "03")) {
+    p <- output_namespace_manuscript_figure_paths(root, id)
+    testthat::expect_identical(
+      p$panels,
+      file.path(root, "figures", "manuscript", paste0("figure_", id), "panels")
+    )
+    testthat::expect_identical(
+      p$source_data,
+      file.path(root, "source_data", "manuscript", paste0("figure_", id))
+    )
+    testthat::expect_identical(
+      classify_output_namespace(
+        file.path("results", "figures", "manuscript", paste0("figure_", id))
+      )$namespace,
+      "manuscript_authoring"
+    )
+  }
+  # unpadded input still normalises to the padded stub
+  testthat::expect_identical(
+    output_namespace_manuscript_figure_paths(root, 1)$panels,
+    output_namespace_manuscript_figure_paths(root, "01")$panels
+  )
+
+  # Still fails closed. Widening the allow-list must not become a wildcard: an
+  # unrecognised figure number silently creating figure_07 is the failure this
+  # validation exists to prevent.
+  for (bad in list("04", "00", "10", 7L, "", "abc", NA_character_,
+                   "../../etc", "02; rm -rf", c("02", "03"))) {
+    testthat::expect_error(
+      output_namespace_manuscript_figure_paths(root, bad),
+      "Manuscript figure ID must be one of"
+    )
+  }
+})
+
+testthat::test_that("the export router recognises the same figure set", {
+  source(testthat::test_path("..", "..", "R", "paths.R"))
+  source(repo_path("R", "output_namespace_utils.R"))
+  source(repo_path("R", "export_helpers.R"))
+
+  # The router and the validator must not disagree about which figures exist.
+  testthat::expect_identical(MANUSCRIPT_FIGURE_IDS, c("01", "02", "03"))
+
+  mroot <- file.path(tempfile("ms-"), "manuscript")
+  rel <- c("manuscript/figure_01/panels/a.svg",
+           "manuscript/figure_02/panels/b.svg",
+           "manuscript/figure_03/panels/c.svg",
+           "manuscript/figure_07/panels/d.svg")
+  out <- manuscript_curated_figure_target_paths(rel, mroot)
+  # authoring stubs are zero-padded, export destinations are not
+  testthat::expect_identical(out[[1]], file.path(mroot, "figure_1", "panels", "a.svg"))
+  testthat::expect_identical(out[[2]], file.path(mroot, "figure_2", "panels", "b.svg"))
+  testthat::expect_identical(out[[3]], file.path(mroot, "figure_3", "panels", "c.svg"))
+  # an unrecognised figure is not given a destination of its own
+  testthat::expect_false(grepl("figure_7", out[[4]], fixed = TRUE))
+  testthat::expect_true(grepl("extended_data", out[[4]], fixed = TRUE))
 })
