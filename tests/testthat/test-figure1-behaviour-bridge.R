@@ -41,15 +41,36 @@ test_that("the bridge records the full upstream provenance chain", {
   p <- rd(file.path(MS, "figure1_bridge_provenance.csv"))
   val <- function(k) p$value[match(k, p$element)]
   expect_equal(val("source_repository"), "topohl/MMMSociability")
-  # the three commits the import is pinned to, in full
-  expect_equal(val("analysis_commit"), "4b0f90f974ce430d26f31c5e3ddce76f98ae70d1")
-  expect_equal(val("bundle_commit"), "53bc7e91f3a837c1814babbf5d2ad19553b12457")
-  expect_equal(val("verified_source_HEAD"),
-               "a53d73f6489ecd8940a88eb3eb24c4957352c204")
-  # the two facts that make the quote trustworthy at all
-  expect_equal(val("bundle_unchanged_since_freeze"), "TRUE")
+  # The commits the import is pinned to. These are full 40-character shas and
+  # move whenever the upstream bundle is re-frozen, so assert their shape and
+  # their mutual consistency rather than literal values that would have to be
+  # edited on every resync.
+  for (k in c("analysis_commit", "bundle_commit", "verified_source_HEAD"))
+    expect_match(val(k), "^[0-9a-f]{40}$")
+  # the re-freeze is itself the verified head, so these two agree
+  expect_equal(val("bundle_commit"), val("verified_source_HEAD"))
+  # the facts that make the quote trustworthy at all
   expect_equal(val("behavioural_code_copied"), "NONE")
   expect_equal(val("behavioural_results_recomputed"), "NONE")
+  expect_equal(val("scientific_values_changed_by_this_resync"), "NONE")
+  # the bundle must have been exported from a clean source tree; the first
+  # freeze recorded "dirty at export time" and that is what FC-10 was about
+  expect_equal(val("bundle_internal_worktree_state"), "clean")
+  expect_equal(val("source_worktree_state_at_import"), "clean")
+})
+
+test_that("the imported contract carries the corrected prediction seeds", {
+  skip_if_not(dir.exists(BRIDGE), "figure 1 bridge not imported")
+  fm <- rd(file.path(BRIDGE, "figure1_methods_contract.csv"))
+  design <- fm$value[fm$methods_id == "FM-07"]
+  # 521 assigns the CV folds. 123 is the association-bootstrap seed and must
+  # never appear in the prediction-design row: that substitution is exactly the
+  # defect this bridge was re-frozen to repair.
+  expect_true(grepl("seed 521", design, fixed = TRUE))
+  expect_false(grepl("123", design, fixed = TRUE))
+  assoc <- fm$value[fm$methods_id == "FM-06"]
+  expect_true(grepl("seed 123", assoc, fixed = TRUE))
+  expect_false(grepl("521", assoc, fixed = TRUE))
 })
 
 test_that("no behavioural analysis code was copied into this repository", {
@@ -124,6 +145,53 @@ test_that("manuscript prose carries no wording the frozen contract prohibits", {
     hits <- hits[!grepl(DENIAL, hits, perl = TRUE)]
     expect_equal(hits, character(0),
                  info = paste("prohibited wording in draft:", b))
+  }
+
+  # The provenance tables are manuscript-facing too - a claim row is what a
+  # reviewer reads when tracing a sentence - and scanning only the draft let
+  # "movement-only" survive in C1-8 and M-26 through a whole phase. Scan the
+  # claim and statement tables on the wording that names a real upstream model.
+  # Scan column-aware, not line-aware: a prohibited_wording cell exists in order
+  # to name banned phrasing, so matching it there is correct rather than a
+  # defect. Everything that asserts something is fair game.
+  NAME_BANNED <- c("movement-only", "movement only")
+  ASSERTIVE <- function(nm) !grepl("prohibit|banned|forbidden|phase2b|conflict",
+                                   nm, ignore.case = TRUE)
+  for (f in c("results_claim_provenance.csv", "methods_statement_provenance.csv",
+              "results_statement_provenance.csv")) {
+    p <- file.path(MS, f)
+    if (!file.exists(p)) next
+    tb <- rd(p)
+    for (nm in names(tb)[vapply(tb, is.character, logical(1))]) {
+      if (!ASSERTIVE(nm)) next
+      for (b in NAME_BANNED) {
+        hits <- grep(b, tb[[nm]], ignore.case = TRUE, value = TRUE)
+        hits <- hits[!grepl(DENIAL, hits, perl = TRUE)]
+        expect_equal(hits, character(0),
+                     info = paste0("prohibited model name in ", f, " column ",
+                                   nm, ": ", b))
+      }
+    }
+  }
+})
+
+test_that("no provenance row states the bootstrap seed as the CV seed", {
+  skip_if_not(dir.exists(BRIDGE), "figure 1 bridge not imported")
+  # 521 assigns folds; 123 drives the association bootstrap. A row describing
+  # the repeated grouped CV must never quote 123.
+  for (f in c("methods_statement_provenance.csv",
+              "behavior_prediction_contract.csv",
+              "figure1_red_team_review.csv")) {
+    p <- file.path(MS, f)
+    if (!file.exists(p)) next
+    ln <- readLines(p, warn = FALSE)
+    bad <- grep("(five-fold|5-fold|grouped)[^\"]{0,120}seed 123", ln,
+                ignore.case = TRUE, value = TRUE)
+    # a row that explicitly records the historical defect is legitimate
+    bad <- bad[!grepl("previously stated|was the|transcription defect|FC-02|default",
+                      bad, ignore.case = TRUE)]
+    expect_equal(bad, character(0),
+                 info = paste("CV seed misstated as 123 in", f))
   }
 })
 
