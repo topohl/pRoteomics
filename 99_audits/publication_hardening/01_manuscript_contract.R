@@ -63,7 +63,6 @@ inv <- do.call(rbind, lapply(seq_len(nrow(lay)), function(i) {
     manuscript_reachable = TRUE,
     stringsAsFactors = FALSE)
 }))
-`%||%` <- function(a, b) if (is.null(a)) b else a
 utils::write.csv(inv, file.path(PH_TAB, "manuscript_reachability_inventory.csv"),
                  row.names = FALSE)
 
