@@ -195,19 +195,33 @@ classify_output_namespace <- function(
 # makes the namespace valid ahead of one.
 MANUSCRIPT_FIGURE_IDS <- c("01", "02", "03")
 
+# Extended Data figures that this repository renders, as a second explicit
+# allow-list rather than a pattern, for the same fail-closed reason. They are
+# keyed by contract ID because an Extended Data figure has no figure number the
+# output namespace can be derived from: ED1 to ED8 belong to the frozen
+# final_truth_v9 generation and are not rendered through this router, so a bare
+# number here would collide with them. The value is the directory stub.
+MANUSCRIPT_EXTENDED_DATA_STUBS <- c(ED_behaviour = "extended_data_09")
+
 output_namespace_manuscript_figure_paths <- function(
     output_root, figure_id) {
-  figure_id <- suppressWarnings(as.integer(figure_id))
-  figure_id <- if (length(figure_id) != 1L || is.na(figure_id)) {
-    NA_character_
+  contract_key <- as.character(figure_id)
+  if (length(contract_key) == 1L && contract_key %in% names(MANUSCRIPT_EXTENDED_DATA_STUBS)) {
+    figure_stub <- unname(MANUSCRIPT_EXTENDED_DATA_STUBS[[contract_key]])
   } else {
-    sprintf("%02d", figure_id)
+    figure_id <- suppressWarnings(as.integer(figure_id))
+    figure_id <- if (length(figure_id) != 1L || is.na(figure_id)) {
+      NA_character_
+    } else {
+      sprintf("%02d", figure_id)
+    }
+    if (is.na(figure_id) || !figure_id %in% MANUSCRIPT_FIGURE_IDS) {
+      stop("Manuscript figure ID must be one of ",
+           paste(c(MANUSCRIPT_FIGURE_IDS, names(MANUSCRIPT_EXTENDED_DATA_STUBS)),
+                 collapse = ", "), ".", call. = FALSE)
+    }
+    figure_stub <- paste0("figure_", figure_id)
   }
-  if (is.na(figure_id) || !figure_id %in% MANUSCRIPT_FIGURE_IDS) {
-    stop("Manuscript figure ID must be one of ",
-         paste(MANUSCRIPT_FIGURE_IDS, collapse = ", "), ".", call. = FALSE)
-  }
-  figure_stub <- paste0("figure_", figure_id)
   list(
     figures = file.path(output_root, "figures", "manuscript", figure_stub),
     panels = file.path(

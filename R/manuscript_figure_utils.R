@@ -168,6 +168,27 @@ manuscript_figure_output_paths <- function(output_root, figure_id) {
   output_namespace_manuscript_figure_paths(output_root, figure_id)
 }
 
+# A contract ID is not always a figure number. Numbered main figures keep the
+# labels and filenames they have always had; Extended Data figures are keyed by
+# contract ID, so both the human label and the file stub are resolved here
+# rather than by calling as.integer() on the ID at each of the eight sites that
+# used to do it - which silently produced "Figure NA" for anything non-numeric.
+manuscript_figure_label <- function(figure_id, figure = NULL) {
+  n <- suppressWarnings(as.integer(figure_id))
+  if (!is.na(n)) return(paste0("Figure ", n))
+  ed <- suppressWarnings(as.integer(figure$extended_data_number %||% NA))
+  if (!is.na(ed)) return(paste0("Extended Data Figure ", ed))
+  as.character(figure$title %||% figure_id)
+}
+
+manuscript_figure_file_stub <- function(figure_id, figure = NULL) {
+  n <- suppressWarnings(as.integer(figure_id))
+  if (!is.na(n)) return(paste0("figure_", figure_id))
+  ed <- suppressWarnings(as.integer(figure$extended_data_number %||% NA))
+  if (!is.na(ed)) return(sprintf("extended_data_%02d", ed))
+  as.character(figure_id)
+}
+
 manuscript_figure_copy <- function(source, target) {
   dir_create(dirname(target))
   if (!file.copy(source, target, overwrite = TRUE, copy.date = TRUE)) {
@@ -403,6 +424,7 @@ manuscript_figure_records_as_list <- function(x) {
 manuscript_figure_write_manifest <- function(
     figure_id, figure, paths, panel_manifest, input_manifest, outputs,
     incomplete_panels = character(), deferred_panels = character()) {
+  fig_label <- manuscript_figure_label(figure_id, figure)
   dir_create(paths$reports)
   dir_create(paths$logs)
   panel_manifest_path <- file.path(paths$reports, "panel_manifest.csv")
@@ -415,7 +437,7 @@ manuscript_figure_write_manifest <- function(
   manifest <- list(
     timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z"),
     contract_version = figure$contract_version,
-    figure = paste0("Figure ", as.integer(figure_id)),
+    figure = fig_label,
     repository_relative_contract = relative_to(manuscript_figure_contract_path()),
     repository_root_at_render = repo_root(),
     render_git_commit = git_commit_sha(),
@@ -448,6 +470,8 @@ manuscript_figure_main <- function(figure_id) {
     stop("--allow-incomplete requires an explicit --output-root; incomplete placeholders cannot enter canonical results.", call. = FALSE)
   }
   figure <- manuscript_figure_contract(figure_id)
+  fig_label <- manuscript_figure_label(figure_id, figure)
+  fig_stub <- manuscript_figure_file_stub(figure_id, figure)
   declared_panels <- figure$panels
   deferred_panels <- Filter(function(x) !manuscript_figure_panel_is_automated(x), declared_panels)
   panels <- Filter(manuscript_figure_panel_is_automated, declared_panels)
@@ -496,14 +520,14 @@ manuscript_figure_main <- function(figure_id) {
   }
   if (nrow(missing_rows) && !args$allow_incomplete) {
     stop(
-      "Figure ", as.integer(figure_id), " is incomplete. Supply the tracked external asset or use ",
+      fig_label, " is incomplete. Supply the tracked external asset or use ",
       "--allow-incomplete together with an isolated --output-root for a clearly marked candidate render.",
       call. = FALSE
     )
   }
   if (args$check_only) {
     message(
-      "Figure ", as.integer(figure_id), " contract check passed for ",
+      fig_label, " contract check passed for ",
       length(panels), " automated panel(s)",
       if (is.null(args$panel) && length(deferred_panels)) {
         paste0("; deferred to Illustrator: ", paste(vapply(deferred_panels, function(x) x$id, character(1)), collapse = ", "))
@@ -521,8 +545,8 @@ manuscript_figure_main <- function(figure_id) {
 
   for (panel in panels) {
     panel_id <- as.character(panel$id)
-    panel_svg <- file.path(paths$panels, paste0("figure_", figure_id, sub("^[0-9]+", "", panel_id), ".svg"))
-    source_target <- file.path(paths$source_data, paste0("figure_", figure_id, sub("^[0-9]+", "", panel_id), "_source_data.csv"))
+    panel_svg <- file.path(paths$panels, paste0(fig_stub, sub("^[0-9]+", "", panel_id), ".svg"))
+    source_target <- file.path(paths$source_data, paste0(fig_stub, sub("^[0-9]+", "", panel_id), "_source_data.csv"))
     primary <- manuscript_figure_resolve(panel$primary_source)
     figure_source <- manuscript_figure_resolve(panel$figure_source)
     is_external_missing <- panel_id %in% missing_panels &&
@@ -550,7 +574,7 @@ manuscript_figure_main <- function(figure_id) {
 
     panel_paths[[panel_id]] <- panel_svg
     panel_records[[length(panel_records) + 1L]] <- data.frame(
-      figure = paste0("Figure ", as.integer(figure_id)),
+      figure = fig_label,
       panel = panel_id,
       description = as.character(panel$description),
       producer_script = as.character(panel$producer_script),
@@ -572,9 +596,9 @@ manuscript_figure_main <- function(figure_id) {
 
   outputs <- unname(panel_paths)
   if (is.null(args$panel)) {
-    assembled_svg <- file.path(paths$assembled, paste0("figure_", figure_id, ".svg"))
-    assembled_png <- file.path(paths$assembled, paste0("figure_", figure_id, ".png"))
-    assembled_pdf <- file.path(paths$assembled, paste0("figure_", figure_id, ".pdf"))
+    assembled_svg <- file.path(paths$assembled, paste0(fig_stub, ".svg"))
+    assembled_png <- file.path(paths$assembled, paste0(fig_stub, ".png"))
+    assembled_pdf <- file.path(paths$assembled, paste0(fig_stub, ".pdf"))
     manuscript_figure_assemble_svg(panel_paths, panels, figure, assembled_svg)
     companions <- manuscript_figure_raster_companions(assembled_svg, assembled_png, assembled_pdf)
     outputs <- c(outputs, assembled_svg, companions)
@@ -582,7 +606,7 @@ manuscript_figure_main <- function(figure_id) {
   if (is.null(args$panel) && length(deferred_panels)) {
     for (panel in deferred_panels) {
       panel_records[[length(panel_records) + 1L]] <- data.frame(
-        figure = paste0("Figure ", as.integer(figure_id)),
+        figure = fig_label,
         panel = as.character(panel$id),
         description = as.character(panel$description),
         producer_script = as.character(panel$producer_script),
@@ -613,7 +637,7 @@ manuscript_figure_main <- function(figure_id) {
     } else character()
   )
   message(
-    "Figure ", as.integer(figure_id), " materialized under ", paths$figures,
+    fig_label, " materialized under ", paths$figures,
     if (length(incomplete)) paste0("; incomplete panel(s): ", paste(incomplete, collapse = ", ")) else ""
   )
   invisible(list(

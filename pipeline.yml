@@ -1487,6 +1487,37 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Explicit manuscript Figure 1 entry point. Validates the declared panel assets against figures/figure_contract.yml, materialises them with per-panel SHA-256, copies each panel source table beside them, assembles the figure and writes a run manifest. Fits nothing. The contract pins expected_rows per panel, so a panel whose source data changes row count fails the render rather than producing a figure that silently disagrees with the manuscript."
+      - script: "figures/extended_data_behaviour_panels.R"
+        required: false
+        datasets: ["global"]
+        stage: "integration"
+        scope: "global"
+        produces: ["results/figures/manuscript/extended_data_behaviour_panels/"]
+        consumes_required:
+          - "manuscript/figure1_bridge_mmmsociability/behavior_prediction_model_ladder.csv"
+          - "manuscript/figure1_bridge_mmmsociability/behavior_sex_effect_contract.csv"
+        consumes_optional: []
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Renders the three behavioural Extended Data panels from two contracts frozen in topohl/MMMSociability and imported byte-identically with SHA-256. Rendering only: it fits nothing, resamples nothing and corrects nothing, and every value it draws is a cell of one of those two tables. Panel a is the complete a-priori model registry in registry order, never performance order, with the leave-one-animal-out point and the repeated grouped five-fold interval drawn in different ink because the interval belongs to the repeated-CV mean rather than to the point. Panel b is the formal feature-by-sex interaction tests with BH q printed rather than starred, because the result the manuscript relies on is the absence of an interaction. Panel c is the sex-stratified correlations, which are descriptive; the script refuses to render unless every row of the sex contract is still classified FORMAL_INTERACTION_NOT_SUPPORTED, because that classification is the only thing that makes drawing them honest."
+      - script: "figures/extended_data_behaviour.R"
+        required: false
+        datasets: ["global"]
+        stage: "integration"
+        scope: "global"
+        produces: ["results/figures/manuscript/extended_data_09/", "results/source_data/manuscript/extended_data_09/", "results/reports/manuscript_figures/extended_data_09/", "results/logs/manuscript_figures/extended_data_09/"]
+        consumes_required:
+          - "config/output_namespaces.yml"
+          - "figures/figure_contract.yml"
+          - "results/figures/manuscript/extended_data_behaviour_panels/extended_data_behaviour_a.svg"
+          - "results/figures/manuscript/extended_data_behaviour_panels/extended_data_behaviour_b.svg"
+          - "results/figures/manuscript/extended_data_behaviour_panels/extended_data_behaviour_c.svg"
+          - "manuscript/figure1_bridge_mmmsociability/behavior_prediction_model_ladder.csv"
+          - "manuscript/figure1_bridge_mmmsociability/behavior_sex_effect_contract.csv"
+        consumes_optional: []
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Explicit behavioural Extended Data entry point, the ED_behaviour figure in figures/figure_contract.yml. Same assembler and the same contract discipline as Figure 1: declared panel assets validated against the contract, expected_rows pinned per panel, per-panel SHA-256, source tables copied beside the panels, and a run manifest written. Fits nothing. The output namespace is extended_data_09 rather than a figure number, and is declared in the second explicit allow-list in R/output_namespace_utils.R so that an unrecognised Extended Data key still fails closed."
       - script: "figures/figure_02.R"
         required: false
         datasets: ["global"]
