@@ -14,8 +14,8 @@ given invented citations.
 
 Every quantitative statement in the drafted sections carries a row in
 `manuscript/results_statement_provenance.csv`; every claim carries a row in
-`manuscript/results_claim_provenance.csv`. Literature citations are `[REF]`
-markers at this stage and are not to be invented.
+`manuscript/results_claim_provenance.csv`. Literature citations are verified
+against PubMed and recorded in `manuscript/citation_needs.csv`; none is invented.
 
 Results §1 and the behavioural Methods are quoted from a frozen evidence bundle
 imported from the upstream behavioural repository and mirrored byte-identically
@@ -40,10 +40,10 @@ _[PLACEHOLDER — phase 3. Write last, once Results and Discussion are settled.]
 
 Adolescence is a period of pronounced neural and behavioural plasticity, and
 social experience during this window has a lasting influence on how an animal
-responds to later challenge [REF]. That influence is not uniform. Among animals
+responds to later challenge (McCormick et al., 2014). That influence is not uniform. Among animals
 given the same adverse social experience, some later resemble unexposed controls
 on measures of affective, cognitive and physiological state while others diverge
-markedly from them [REF]. This heterogeneity is the phenomenon that terms such as
+markedly from them (Krishnan et al., 2007). This heterogeneity is the phenomenon that terms such as
 resilience and susceptibility are used to describe, and it is a feature of the
 data rather than a property of individual animals: the labels summarise where an
 animal falls on a graded outcome distribution after a particular paradigm, and
@@ -57,13 +57,13 @@ The behavioural half of that problem is constrained by how behaviour is usually
 sampled. Standard assays are administered at defined time points, are brief
 relative to the paradigm they assess, and are themselves mildly stressful
 encounters that interrupt the ongoing experience they are meant to characterise
-[REF]. They therefore yield a small number of sparse snapshots, most of them
+(Kahnau et al., 2023; Bains et al., 2017). They therefore yield a small number of sparse snapshots, most of them
 after the exposure has ended. Spontaneous behaviour expressed continuously during
 the paradigm is a different kind of measurement: it is available at high temporal
 density, it requires no handling, and it reports on the animal's own activity
 rather than on its response to an imposed test. Radio-frequency identification
 tracking in the home cage makes this practical across many animals at once and
-over the full duration of a paradigm [REF]. Whether such spontaneous behaviour
+over the full duration of a paradigm (Kahnau et al., 2023). Whether such spontaneous behaviour
 carries information about an outcome that has not yet been measured is an open
 question, and answering it requires a predictor recorded early enough that the
 later outcome, and the grouping derived from it, cannot have influenced it.
@@ -72,10 +72,10 @@ The molecular half of the problem is constrained by anatomy. The hippocampus is
 not a homogeneous structure: its subregions differ in afferent and efferent
 connectivity, in local circuit composition, and in the laminar organisation of
 inputs onto principal cells, and its non-neuronal populations are distributed
-unevenly across those compartments [REF]. Stress-associated molecular adaptation
+unevenly across those compartments (Shah et al., 2016; Leonardo et al., 2005). Stress-associated molecular adaptation
 need not be uniform across such a structure, and a measurement that averages
 across it can obscure differences that are confined to, or that differ between,
-particular anatomical contexts [REF]. Measuring the proteome with spatial
+particular anatomical contexts (Shah et al., 2016). Measuring the proteome with spatial
 resolution addresses this directly, at the cost of small samples per unit and of
 a resolution limit that differs between compartments — laminar sampling of
 neuropil is achievable where an exhaustive cell-level census is not. What such a
@@ -262,7 +262,7 @@ Finally, the neuropil and neuronal-soma spatial assignments recover independentl
 published hippocampal anatomy. Testing nine control-only internal anatomical
 contrasts (five neuropil, four neuronal soma; three control animals) against
 seven hippocampal subregion and synaptic signatures reported by an independent
-study [REF], all ten a-priori expected contrast–signature pairings were recovered
+study (Kaulich et al., 2025), all ten a-priori expected contrast–signature pairings were recovered
 in the expected direction and all ten were supported under the stored
 signature-family correction (normalised enrichment score 1.95–3.69 for
 positive-direction pairings; Fig. 2g, Extended Data Fig. 2b). No external
@@ -916,7 +916,7 @@ concordance metrics. [M-14]
 
 Nine control-only internal anatomical contrasts (five neuropil, four neuronal
 soma; no microglia-enriched contrast has an external counterpart) were tested
-against seven published hippocampal subregion and synaptic signatures [REF],
+against seven published hippocampal subregion and synaptic signatures (Kaulich et al., 2025),
 giving 30 contrast–signature pairings: ten designated a priori as expected
 anatomical correspondences and twenty as off-target comparisons. **Each pairing
 was run as a separate gene-set enrichment test against a single-signature
@@ -967,4 +967,39 @@ _[PLACEHOLDER]_
 
 # References
 
-_[PLACEHOLDER — all citations are `[REF]` markers at this stage.]_
+Verified against PubMed. Each entry records the manuscript claim it supports in
+`manuscript/citation_needs.csv`, together with the species the evidence comes
+from, so a claim can never rest on a reference from the wrong organism.
+
+Bains, R. S., Wells, S., Sillito, R. R., Armstrong, J. D., Cater, H. L., Banks, G.,
+and Nolan, P. M. (2017). Assessing mouse behaviour throughout the light/dark cycle
+using automated in-cage analysis tools. *Journal of Neuroscience Methods* 300,
+37-47. doi:10.1016/j.jneumeth.2017.04.014
+
+Kahnau, P., Mieske, P., Wilzopolski, J., Kalliokoski, O., Mandillo, S., Hölter, S. M.,
+Voikar, V., et al. (2023). A systematic review of the development and application of
+home cage monitoring in laboratory mice and rats. *BMC Biology* 21(1), 256.
+doi:10.1186/s12915-023-01751-7
+
+Kaulich, E., Waselenchuk, Q., Fürst, N., Desch, K., Mosbacher, J., Ciirdaeva, E.,
+Juengling, M., et al. (2025). An integrated transcriptomic and proteomic map of the
+mouse hippocampus at synaptic resolution. *Nature Communications* 16(1), 7942.
+doi:10.1038/s41467-025-63119-5
+
+Krishnan, V., Han, M.-H., Graham, D. L., Berton, O., Renthal, W., Russo, S. J.,
+Laplant, Q., et al. (2007). Molecular adaptations underlying susceptibility and
+resistance to social defeat in brain reward regions. *Cell* 131(2), 391-404.
+doi:10.1016/j.cell.2007.09.018
+
+Leonardo, E. D., Richardson-Jones, J. W., Sibille, E., Kottman, A., and Hen, R.
+(2005). Molecular heterogeneity along the dorsal-ventral axis of the murine
+hippocampal CA1 field: a microarray analysis of gene expression. *Neuroscience*
+137(1), 177-186. doi:10.1016/j.neuroscience.2005.08.082
+
+McCormick, C. M., Hodges, T. E., and Simone, J. J. (2014). Peer pressures: social
+instability stress in adolescence and social deficits in adulthood in a rodent model.
+*Developmental Cognitive Neuroscience* 11, 2-11. doi:10.1016/j.dcn.2014.04.002
+
+Shah, S., Lubeck, E., Zhou, W., and Cai, L. (2016). In situ transcription profiling of
+single cells reveals spatial organization of cells in the mouse hippocampus.
+*Neuron* 92(2), 342-357. doi:10.1016/j.neuron.2016.10.001
