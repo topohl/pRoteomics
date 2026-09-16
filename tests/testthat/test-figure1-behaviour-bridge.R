@@ -153,9 +153,25 @@ test_that("manuscript prose carries no wording the frozen contract prohibits", {
     "strong prediction", "highly accurate", "biomarker",
     # names a different, group-adjusted model upstream
     "movement-only", "Movement only")
+  # A line-level denial regex is too blunt for prose: "a sensitivity analysis and
+  # not independent replication" is plainly a denial, but matches none of
+  # "is not", "are not" or "does not". Check instead whether the banned phrase is
+  # itself negated, by looking at the words immediately before each occurrence.
+  # That catches the real failure - a bald assertion - without exempting a whole
+  # line merely because the word "not" appears somewhere else on it.
+  NEGATED <- function(line, term) {
+    pos <- gregexpr(term, line, ignore.case = TRUE)[[1]]
+    if (pos[1] == -1L) return(FALSE)
+    all(vapply(pos, function(p) {
+      lead <- substr(line, max(1L, p - 40L), p - 1L)
+      grepl("(not|never|neither|nor|without|rather than|instead of)[^[:alnum:]]*$",
+            lead, ignore.case = TRUE, perl = TRUE)
+    }, logical(1)))
+  }
   for (b in BANNED) {
     hits <- grep(b, d, ignore.case = TRUE, value = TRUE)
     hits <- hits[!grepl(DENIAL, hits, perl = TRUE)]
+    hits <- hits[!vapply(hits, NEGATED, logical(1), term = b)]
     expect_equal(hits, character(0),
                  info = paste("prohibited wording in draft:", b))
   }
