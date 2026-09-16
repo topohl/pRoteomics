@@ -1,8 +1,15 @@
 # Manuscript draft
 
 Phases 1–3: the Introduction, Results §1–§3, the Methods they depend on and the
-Discussion are drafted. Results §4 is closed rather than pending. The Abstract
-remains the only placeholder, to be written last once the rest is settled.
+Discussion are drafted. Results §4 is closed rather than pending. The Abstract is
+to be written last, once the rest is settled; the title and the front-matter
+sections a journal asks for at submission are the remaining placeholders.
+
+The Methods TODO register in `manuscript/methods_todo.csv` is closed. Two details
+are deliberately left open in place, because neither is recorded anywhere in this
+repository and neither may be filled from convention: the mass-spectrometry
+acquisition and search settings, and the cage-change schedule of the stress
+paradigm. Both must come from the experimental record.
 
 Discussion statements carry a row in
 `manuscript/discussion_statement_provenance.csv`, labelled RESULT,
@@ -30,11 +37,43 @@ the upstream code or an older statement here disagreed is recorded in
 
 ## Title
 
-_(candidates under discussion — see the drafting report)_
+**Prospective behavioural prediction and spatially resolved hippocampal
+proteomics in adolescent social-instability stress**
+
+_Selected from four candidates; the three rejected ones, and why, are recorded in
+`manuscript/title_selection.csv`. The title is deliberately study-descriptive
+rather than result-first: the Discussion states that this work yields three
+separate findings about one cohort and that no evidence joins the behavioural
+result to the proteomic one, so any title with a verb between the two halves
+would assert the chain the manuscript declines to claim._
 
 ## Abstract
 
-_[PLACEHOLDER — phase 3. Write last, once Results and Discussion are settled.]_
+Individuals given the same social adversity diverge in outcome. How early that
+divergence becomes detectable, and how it is represented across the anatomically
+heterogeneous hippocampus, are open questions. Radio-frequency-identification
+home-cage activity, recorded over a fixed 12 h from the first cage change of an
+adolescent social-instability paradigm, predicted a later composite outcome score
+in animals withheld from fitting (leave-one-animal-out R² = 0.159, against −0.018
+for an intercept-only baseline; P = 1/1001 by full-refit outcome permutation;
+n = 111), using a model fixed before fitting. The window closed before any
+outcome component was measured, so the classification did not yet exist.
+Separately, laser-capture microdissection with data-independent-acquisition mass
+spectrometry across 18 hippocampal spatial units in nine animals resolved
+molecular organisation that was reproducible between the two hemispheres of one
+animal and recovered all ten a-priori expected pairings with published subregion
+signatures. Against that anatomy, later resilient and susceptible outcomes
+differed sparsely in individual proteins — 37 reached FDR support, 12 of the 18
+units contained none, and 15 were not excluded by a prespecified missingness
+audit — but showed coordinated differences in molecular programs, including in
+units where no individual protein reached support. These are separate findings
+about one cohort: no evidence joined the behavioural result to the proteomic one.
+
+_243 words, which fits a 250-word limit. Every quantity above is resolved to the
+Results statement it is quoted from in `manuscript/abstract_provenance.csv`. A
+journal with a 150-word limit will need the two measurement sentences compressed;
+the cut must not be made by dropping the qualifiers, which are what hold the
+claims inside what the data support._
 
 ## Introduction
 
@@ -170,15 +209,19 @@ permutation test that repeated the entire fitting and cross-validation procedure
 under permuted outcomes placed the observed value beyond every one of 1,000 draws
 (p = 1/1001; Fig. 1d). No feature selection was performed, no model was chosen on
 observed performance, and no outcome-derived label entered any model. Adding the
-two remaining features, or sex, did not improve on mean movement alone. This is
-internal validation: performance was estimated by withholding animals within a
-single cohort, not by testing in an independent cohort.
+two remaining features, or sex, did not improve on mean movement alone; the
+complete registry, with every model's held-out estimate beside its repeated
+cross-validation interval, is shown in Extended Data Fig. 9a. Because the models
+differ by less than the width of their own intervals, and because no test
+compares one model with another, the registry is reported rather than ranked.
+This is internal validation: performance was estimated by withholding animals
+within a single cohort, not by testing in an independent cohort.
 
 The relationship did not differ detectably by sex. Formal feature-by-sex
-interaction tests were unsupported for all three features (all q = 0.90), and the
-sex-stratified estimates for mean movement, which are descriptive rather than a
-test of difference, were near-identical (ρ = −0.41 in 58 females and −0.42 in 53
-males; Fig. 1e).
+interaction tests were unsupported for all three features (all q = 0.90;
+Extended Data Fig. 9b), and the sex-stratified estimates for mean movement,
+which are descriptive rather than a test of difference, were near-identical
+(ρ = −0.41 in 58 females and −0.42 in 53 males; Extended Data Fig. 9c).
 
 Two limitations bound this result. Cage identity is not represented in the
 analysis design, so cage-level dependence could be neither modelled nor assessed
@@ -213,7 +256,7 @@ filtering, the three analysis matrices comprised 5,054, 5,538 and 5,229 protein
 groups, with 4,242 protein groups detected in all three compartments. Throughout,
 the biological replicate is the animal (n = 3 per group); acquisitions are
 repeated measurements within animals and are never treated as independent
-replicates. [METHODS TODO: MT-01, MT-02]
+replicates. [Methods: MT-01, MT-02]
 
 Compartment, not stress group, dominates the global structure of the dataset. In
 a joint principal-component analysis of the 4,242 shared protein groups across
@@ -256,7 +299,7 @@ independent samples, averaging the two hemispheres raised the intraclass
 correlation of endpoint scores from a median of 0.33 to 0.50 for compartment
 scores and from 0.32 to 0.48 for reference-marker scores (Extended Data Fig. 1b),
 which is why all downstream inference is performed on bilaterally aggregated,
-animal-level values. [METHODS TODO: MT-13]
+animal-level values. [Methods: MT-13]
 
 Finally, the neuropil and neuronal-soma spatial assignments recover independently
 published hippocampal anatomy. Testing nine control-only internal anatomical
@@ -270,7 +313,7 @@ anatomical signature was available for the microglia-enriched compartment, which
 is therefore not externally anchored. This is the only externally anchored
 validation in the study; the gene-set annotation of the same contrasts shown
 alongside it (Fig. 2h) uses the same proteomic data and is functional
-characterisation, not independent validation. [METHODS TODO: MT-03, MT-04]
+characterisation, not independent validation. [Methods: MT-03, MT-04]
 
 Together these results show that the workflow resolves hippocampal molecular
 organisation that is reproducible between the two hemispheres of the same animal
@@ -302,7 +345,7 @@ prespecified robustness criteria, 6 of the 28 CA2-SLM proteins qualified; the 9
 FDR-supported proteins outside CA2-SLM were never exposed to this artefact and
 enter unchanged, giving 15 robustness-qualified proteins in total (Fig. 3a,
 Extended Data Fig. 3). "Robustness-qualified" therefore means not excluded by the
-CA2-SLM missingness audit, not passed an additional test. [METHODS TODO: MT-05]
+CA2-SLM missingness audit, not passed an additional test. [Methods: MT-05]
 
 Coordinated differences at the level of molecular programs are detectable,
 including in units where no individual protein reaches FDR support. To
@@ -320,7 +363,7 @@ descriptive summary, not a test: cell colour is the median normalised enrichment
 score of a family's constituent terms, no theme-level P value or FDR is computed
 or implied, and the seven families deliberately capture a curated subset — 26.7%
 of FDR-supported GO occurrences and 14.0% of unique supported GO identifiers —
-with the complete results provided as source data. [METHODS TODO: MT-06, MT-07]
+with the complete results provided as source data. [Methods: MT-06, MT-07]
 
 Three representative programs, one per measurement compartment, are shown (Fig.
 3c–f). Each was chosen editorially from the terms already FDR-supported for the
@@ -346,7 +389,7 @@ strongest result in their own units. The microglia-enriched ROI is an enriched
 measurement context rather than a purified population, so this result cannot
 establish a cell-intrinsic microglial property. The three displayed pairwise
 contrasts are algebraically related and are not independent replications.
-[METHODS TODO: MT-08, MT-09]
+[Methods: MT-08, MT-09]
 
 Three further analyses bound how strongly these program-level results should be
 read. Under a correlation-aware competitive gene-set sensitivity analysis applied
@@ -372,7 +415,7 @@ analysis. Selected leading-edge proteins are
 shown to expose which proteins carry each enrichment signal (Fig. 3g–i); none of
 the 63 displayed values is individually FDR-supported at the protein level
 (smallest BH FDR 0.53), and they are descriptive rather than independent
-confirmation. [METHODS TODO: MT-10, MT-11, MT-12]
+confirmation. [Methods: MT-10, MT-11, MT-12]
 
 Taken together, later resilient and susceptible outcomes are associated with
 sparse individual-protein differences and with coordinated molecular-program
@@ -816,8 +859,13 @@ Laser-capture microdissection followed by data-independent-acquisition mass
 spectrometry yielded 323 spatial acquisitions (180 neuropil, 71 neuronal soma, 72
 microglia-enriched ROI). Ten neuropil units carry region × layer resolution; the
 neuronal-soma and microglia-enriched compartments are region-level only, giving
-18 spatial units in total. _[METHODS TODO MT-01: instrument, gradient, DIA window
-scheme and search settings to be added from the acquisition records.]_
+18 spatial units in total. Spectra were searched with DIA-NN; the per-run search
+report supplies the identification and quantification summaries used for quality
+control. _[ACQUISITION DETAIL NOT IN THE ANALYSIS RECORD: the instrument model,
+chromatographic gradient, DIA isolation-window scheme, search-engine version,
+FASTA release and search settings are not recorded in the analysis repository,
+which begins at the protein-group matrix by design. They must be supplied from
+the acquisition and search records before submission.]_
 
 ## Preprocessing and animal-level bilateral aggregation
 
@@ -843,10 +891,20 @@ algebraically related to it (SUS−RES = SUS−CON − RES−CON). [M-02]
 Proteins reaching FDR support in CA2 stratum lacunosum-moleculare were
 additionally examined against prespecified robustness criteria following a
 missingness and normalisation audit of that unit. **This qualification is not a
-second FDR family and not an additional hypothesis test**: "robustness-qualified"
-means not excluded by that audit. Proteins outside CA2-SLM were not exposed to
-the artefact and enter unchanged. _[METHODS TODO MT-05: state the prespecified
-thresholds.]_
+second FDR family and not an additional hypothesis test**: the canonical log2
+fold change, P and adjusted P are read verbatim, no model is refitted and no new
+multiplicity correction is computed. The prespecified constants are an FDR
+threshold of 0.05; a requirement of at least two fully observed animals per group
+for an observed-only effect estimate, where an animal counts as fully observed
+only if both hemispheres were detected before imputation; imputation-dependence
+cut-offs of 0.25 for minimal and 0.50 for strong dependence; and a
+magnitude-collapse cut-off of 0.50. Applying these to the 28 CA2-SLM proteins
+classified 6 as robust to missingness and quality control, 10 as not claimable on
+quality-control grounds, and 12 as having insufficient observed data to evaluate.
+The last group is important for reading the count correctly: those 12 were
+non-evaluable rather than refuted, so "robustness-qualified" is better stated as
+evaluable and not excluded than as simply not excluded. Proteins outside CA2-SLM
+were not exposed to the artefact and enter unchanged. [M-30]
 
 ## Ranked GO enrichment
 
@@ -930,13 +988,31 @@ expected-versus-off-target discrimination test was performed**, and 18 of the 20
 off-target pairings also clear the threshold, so these comparisons should not be
 read as establishing anatomical specificity. [M-11, M-12, M-13]
 
-## Protein co-abundance network analysis
+## Animal-level spatial similarity networks
 
-Animal-level spatial networks were compared with a leave-one-control-animal-out
-consensus using exact permutation over group labels. Edge–behaviour associations
-were tested for eight neuropil spatial-unit pairs against behavioural readouts by
-Pearson correlation across the nine animals. _[METHODS TODO MT-12: state the
-edge-definition rule and the behavioural readouts used.]_
+A node is an anatomical sampling unit and an edge is the similarity of the
+molecular profiles of two anatomical units within one animal. This is not a
+protein co-abundance network and not connectivity of any kind. An edge is the
+within-animal Spearman correlation between the mean protein profiles of two
+region × layer units, computed over the 5,054 neuropil protein groups and
+requiring at least 250 protein groups in common; edges were not thresholded.
+
+Animal-level networks were compared with a leave-one-control-animal-out consensus
+using exact enumeration of group labels rather than sampling. For the
+susceptible-versus-resilient comparison there are C(6,3) = 20 assignments, giving
+an attainable P floor of 2/20 = 0.10; for the three-group omnibus there are
+9!/(3!3!3!) = 1,680 partitions, giving a floor of 6/1,680 = 0.0036, where the
+factor of six is the relabellings of a single partition. No add-one correction
+was applied.
+
+Edge–behaviour associations were tested separately and use no permutation: eight
+prespecified neuropil unit pairs were correlated against six behavioural readout
+instances — CombZ, delta corticosterone, sucrose preference, and a movement
+area-under-the-curve z-score relative to controls in three analysis-phase
+variants — by Pearson correlation across the nine animals, with
+Benjamini–Hochberg correction applied across the full set of stored tests. The
+eight pairs are fixed in the script rather than selected by a documented rule,
+and the neuronal-soma and microglia-enriched compartments were not tested. [M-29]
 
 ## Statistics and reproducibility
 
@@ -945,8 +1021,41 @@ group. Benjamini–Hochberg families are declared per analysis above and are nev
 pooled across analyses; protein-level and program-level results sit in separate
 families that were never placed on a common scale. Null results are reported as
 failure to survive correction at this sample size, never as evidence of absence.
-_[METHODS TODO MT-01: software and package versions, seeds and the ontology
-release used.]_
+## Software and reproducibility
+
+Canonical analyses were run in R 4.5.1 (2025-06-13 ucrt) against Bioconductor
+3.22 on Windows. The principal packages are limma 3.66.0; lme4 2.0-1 and
+lmerTest 3.2-1; clusterProfiler 4.18.4 with fgsea 1.36.2; WGCNA 1.74;
+AnnotationDbi 1.72.0, org.Mm.eg.db 3.22.0 and GO.db 3.22.0; and, for figures,
+ggplot2 4.0.2, patchwork 1.3.2 and svglite 2.2.2. Three microglia-enriched
+quality-control stages — marker rank-abundance quality control, marker
+detectability with the WGCNA bridge, and the WGCNA marker–trait export — are
+older and ran under R 4.4.1 with AnnotationDbi 1.68.0 and org.Mm.eg.db 3.20.0.
+No manuscript claim resolves to those three stages, and the microglia-enriched
+modules reported above were themselves fitted under R 4.5.1; the older stages
+were left unre-run so that their archived outputs remain unaltered.
+
+These versions are read from the `sessionInfo.txt` written beside each stage's
+output when that stage ran, which is the primary environment record. The
+repository also carries an `renv.lock`, but it is a retrospective inventory of
+the analysis library rather than the product of `renv::snapshot()` — the project
+has no renv infrastructure — and it renders hyphenated version strings such as
+lme4 2.0-1 with a period, so the `sessionInfo.txt` strings take precedence.
+
+Gene Ontology Biological Process terms come from GO.db 3.22.0, built from
+`go-basic.obo` with source date 2025-07-22, with mouse gene annotation from
+org.Mm.eg.db 3.22.0.
+
+Random number use is confined to three places. Imputation draws from base seed
+42, incremented deterministically across compartment × layer subsets after the
+subset labels are sorted. Ranked GO enrichment derives a separate seed for each
+comparison from base seed 20260824 together with the comparison identity and the
+analysis type, and applies it inside a scope that sets the generator to
+L'Ecuyer-CMRG with Inversion normal sampling and Rejection discrete sampling and
+restores the previous generator afterwards; the fgsea backend is called with
+nPermSimple = 100000. WGCNA module detection uses seed 12345. The animal-level
+spatial similarity network comparisons enumerate group labels exactly rather
+than sampling them and so use no seed. [M-31]
 
 # Data availability
 
