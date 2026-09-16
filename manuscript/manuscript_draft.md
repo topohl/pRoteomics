@@ -163,7 +163,7 @@ window and a set of later outcome measures, with no overlap between them.
 Radio-frequency identification tracking of undisturbed home-cage activity began at
 postnatal day 25, in the first active phase following the first cage change, and
 covered a fixed 12-h window from 18:30 to 06:30 in 10-min bins (72 slots;
-Fig. 1b). Every component of the later outcome — novel-object recognition,
+Fig. 1b, Extended Data Fig. 5a). Every component of the later outcome — novel-object recognition,
 sucrose preference, weight deviation, delta corticosterone, adrenal weight and
 spleen weight — was collected after this window had closed, as were the composite
 score derived from those components and the resilient/susceptible labels derived
@@ -192,8 +192,9 @@ resilient-like outcome, corresponding to a greater later stress burden. The
 short-timescale variability of the same signal, movement RMSSD, was associated in
 the same direction but more weakly (ρ = −0.23, q = 0.026). A third prespecified
 feature, the lag-one autocorrelation of binned activity entropy, did not reach
-FDR support (ρ = −0.18, q = 0.067, with a bootstrap interval including zero) and
-is not interpreted further.
+FDR support (ρ = −0.18, q = 0.067, with a bootstrap interval including zero;
+both secondary features are shown in Extended Data Fig. 9a) and is not
+interpreted further.
 
 To ask whether this association carries prospective information about individual
 animals rather than only about the group, we used a model registry fixed before
@@ -211,7 +212,7 @@ under permuted outcomes placed the observed value beyond every one of 1,000 draw
 observed performance, and no outcome-derived label entered any model. Adding the
 two remaining features, or sex, did not improve on mean movement alone; the
 complete registry, with every model's held-out estimate beside its repeated
-cross-validation interval, is shown in Extended Data Fig. 9a. Because the models
+cross-validation interval, is shown in Extended Data Fig. 5b. Because the models
 differ by less than the width of their own intervals, and because no test
 compares one model with another, the registry is reported rather than ranked.
 This is internal validation: performance was estimated by withholding animals

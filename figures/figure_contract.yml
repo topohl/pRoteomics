@@ -3,6 +3,7 @@ contract_version: manuscript_figures_v3_final_truth_v9_promoted
 figures:
   "01":
     title: Figure 1
+    canonical_publication_id: figure_01
     width_mm: 183
     height_mm: 180
     manuscript_role: primary_behavioural_figure
@@ -156,6 +157,7 @@ figures:
 
   "02":
     title: Figure 2
+    canonical_publication_id: figure_02
     width_mm: 183
     height_mm: 170
     layout_mode: absolute
@@ -346,6 +348,7 @@ figures:
 
   "03":
     title: Figure 3
+    canonical_publication_id: figure_03
     width_mm: 183
     height_mm: 170
     layout_mode: absolute
@@ -545,68 +548,531 @@ figures:
         w: 55
         h: 29
 
-  ED_behaviour:
+  # PROTEOMICS EXTENDED DATA, promoted in Phase 6A.
+  #
+  # Four of the seven v9 Extended Data figures were promotable. Each was audited
+  # against the current frozen contracts by reading its source tables rather than
+  # trusting the generation name, and each carries only provenance-level concerns.
+  #
+  # Three were NOT promoted and are deliberately absent from this contract:
+  #   ED2  - panel c is presented as the complete canonical GO inventory and as
+  #          the destination Figure 2h sends the reader to, but draws 14 of the
+  #          2826 FDR-supported positive terms across 7 of 11 contrasts.
+  #   ED4  - the WGCNA figure. Its phenotype panel annotates "0 of 45 module x
+  #          contrast cells" with no compartment scope beside an all-compartment
+  #          "0 of 35", and 45 is neuropil-only; and it labels 8 of 15 modules
+  #          with a peak unit the canonical atlas declines to assign.
+  #   ED7  - cited nowhere in the manuscript and supporting no recorded claim.
+  # Their defects are recorded in manuscript/extended_data_promotion_audit.csv.
+  # Nothing was substituted for them.
+
+  ED_01:
+    title: Extended Data Figure 1
+    width_mm: 183
+    height_mm: 150
+    layout_mode: absolute
+    manuscript_role: proteomics_extended_data
+    is_numbered_manuscript_figure: true
+    extended_data_number: 1
+    canonical_publication_id: extended_data_01
+    canonical_generation: final_truth_v9
+    canonical_generation_promoted_in_phase: "6A"
+    historical_generation: ED1_FINAL_V9
+    producing_entry_point: figures/final_truth_v9_extended_data.R
+    rendering_repository_computes_statistics: false
+    question: >-
+      Complete bilateral reproducibility and precision audit.
+    panels:
+      - id: 01a
+        v9_panel_id: v9_ed_bilateral_full
+        description: >-
+          complete stored bilateral metric inventory; main 2f shows only the
+          correlation.
+        producer_script: figures/final_truth_v9_extended_data.R
+        renderer: f9_ed_bilateral_full
+        render_mode: copy_svg
+        source_data_mode: copy_csv
+        figure_source: results/figures/manuscript_candidates/final_truth_v9/extended_data/panels/v9_ed_bilateral_full.svg
+        primary_source: results/source_data/manuscript_candidates/final_truth_v9/extended_data/v9_ed_bilateral_full_source_data.csv
+        input_dependencies:
+          - results/tables/11_spatial_systems/bilateral/bilateral_spatial_identity_summary.csv
+        scientific_contract: bilateral_audit
+        biological_unit: animal
+        hemisphere_handling: canonical_animal_level_bilaterally_aggregated
+        x: 4
+        "y": 4
+        w: 175
+        h: 88
+      - id: 01b
+        v9_panel_id: v9_ed_precision
+        description: >-
+          reliability gained by averaging hemispheres.
+        producer_script: figures/final_truth_v9_extended_data.R
+        renderer: f9_ed_precision
+        render_mode: copy_svg
+        source_data_mode: copy_csv
+        figure_source: results/figures/manuscript_candidates/final_truth_v9/extended_data/panels/v9_ed_precision.svg
+        primary_source: results/source_data/manuscript_candidates/final_truth_v9/extended_data/v9_ed_precision_source_data.csv
+        input_dependencies:
+          - results/tables/11_spatial_systems/precision/bilateral_precision_gain.csv
+        scientific_contract: measurement_quality
+        biological_unit: animal
+        hemisphere_handling: canonical_animal_level_bilaterally_aggregated
+        x: 4
+        "y": 96
+        w: 175
+        h: 48
+
+  ED_03:
+    title: Extended Data Figure 3
+    width_mm: 183
+    height_mm: 168
+    layout_mode: absolute
+    manuscript_role: proteomics_extended_data
+    is_numbered_manuscript_figure: true
+    extended_data_number: 3
+    canonical_publication_id: extended_data_03
+    canonical_generation: final_truth_v9
+    canonical_generation_promoted_in_phase: "6A"
+    historical_generation: ED3_FINAL_V9
+    producing_entry_point: figures/final_truth_v9_extended_data.R
+    rendering_repository_computes_statistics: false
+    question: >-
+      Why the canonical DA table is unchanged while CA2-SLM interpretation is
+      restricted.
+    panels:
+      - id: 03a
+        v9_panel_id: v9_ed_ca2_locator
+        description: >-
+          a small readable locator; the QC problem sits in neuropil, region CA2,
+          layer SLM.
+        producer_script: figures/final_truth_v9_extended_data.R
+        renderer: f9_ed_ca2_locator
+        render_mode: copy_svg
+        source_data_mode: copy_csv
+        figure_source: results/figures/manuscript_candidates/final_truth_v9/extended_data/panels/v9_ed_ca2_locator.svg
+        primary_source: results/source_data/manuscript_candidates/final_truth_v9/extended_data/v9_ed_ca2_locator_source_data.csv
+        input_dependencies: []
+        scientific_contract: ca2_spatial_locator
+        biological_unit: animal
+        hemisphere_handling: canonical_animal_level_bilaterally_aggregated
+        x: 4
+        "y": 4
+        w: 34
+        h: 44
+      - id: 03b
+        v9_panel_id: v9_ed_ca2_missing
+        description: >-
+          pre-imputation missingness per CA2-SLM sample, by stress group.
+        producer_script: figures/final_truth_v9_extended_data.R
+        renderer: f9_ed_ca2_missingness
+        render_mode: copy_svg
+        source_data_mode: copy_csv
+        figure_source: results/figures/manuscript_candidates/final_truth_v9/extended_data/panels/v9_ed_ca2_missing.svg
+        primary_source: results/source_data/manuscript_candidates/final_truth_v9/extended_data/v9_ed_ca2_missing_source_data.csv
+        input_dependencies:
+          - results/tables/11_spatial_systems/ca2_slm_robustness/CA2_SLM_sample_context.csv
+        scientific_contract: ca2_qc
+        biological_unit: animal
+        hemisphere_handling: canonical_animal_level_bilaterally_aggregated
+        x: 42
+        "y": 4
+        w: 137
+        h: 44
+      - id: 03c
+        v9_panel_id: v9_ed_ca2_displacement
+        description: >-
+          missingness inflates the observed median and centring displaces every
+          protein down.
+        producer_script: figures/final_truth_v9_extended_data.R
+        renderer: s5_ed_ca2_displacement
+        render_mode: copy_svg
+        source_data_mode: copy_csv
+        figure_source: results/figures/manuscript_candidates/final_truth_v9/extended_data/panels/v9_ed_ca2_displacement.svg
+        primary_source: results/source_data/manuscript_candidates/final_truth_v9/extended_data/v9_ed_ca2_displacement_source_data.csv
+        input_dependencies:
+          - results/tables/11_spatial_systems/ca2_slm_robustness/CA2_SLM_normalization_bias_context.csv
+        scientific_contract: ca2_qc
+        biological_unit: animal
+        hemisphere_handling: canonical_animal_level_bilaterally_aggregated
+        x: 4
+        "y": 52
+        w: 88
+        h: 52
+      - id: 03d
+        v9_panel_id: v9_ed_ca2_classes
+        description: >-
+          robust / not claimable / unevaluable split.
+        producer_script: figures/final_truth_v9_extended_data.R
+        renderer: f9_ed_ca2_classes
+        render_mode: copy_svg
+        source_data_mode: copy_csv
+        figure_source: results/figures/manuscript_candidates/final_truth_v9/extended_data/panels/v9_ed_ca2_classes.svg
+        primary_source: results/source_data/manuscript_candidates/final_truth_v9/extended_data/v9_ed_ca2_classes_source_data.csv
+        input_dependencies:
+          - results/tables/11_spatial_systems/ca2_slm_robustness/CA2_SLM_DAP_robustness.csv
+        scientific_contract: ca2_qc
+        biological_unit: animal
+        hemisphere_handling: canonical_animal_level_bilaterally_aggregated
+        x: 96
+        "y": 52
+        w: 83
+        h: 52
+      - id: 03e
+        v9_panel_id: v9_ed_ca2_sensitivity
+        description: >-
+          canonical effect versus the effect with QC-failed hemispheres dropped.
+        producer_script: figures/final_truth_v9_extended_data.R
+        renderer: f9_ed_ca2_sensitivity
+        render_mode: copy_svg
+        source_data_mode: copy_csv
+        figure_source: results/figures/manuscript_candidates/final_truth_v9/extended_data/panels/v9_ed_ca2_sensitivity.svg
+        primary_source: results/source_data/manuscript_candidates/final_truth_v9/extended_data/v9_ed_ca2_sensitivity_source_data.csv
+        input_dependencies:
+          - results/tables/11_spatial_systems/ca2_slm_robustness/CA2_SLM_DAP_robustness.csv
+        scientific_contract: ca2_qc
+        biological_unit: animal
+        hemisphere_handling: canonical_animal_level_bilaterally_aggregated
+        x: 4
+        "y": 110
+        w: 175
+        h: 54
+
+  ED_06:
+    title: Extended Data Figure 6
+    width_mm: 183
+    height_mm: 168
+    layout_mode: absolute
+    manuscript_role: proteomics_extended_data
+    is_numbered_manuscript_figure: true
+    extended_data_number: 6
+    canonical_publication_id: extended_data_06
+    canonical_generation: final_truth_v9
+    canonical_generation_promoted_in_phase: "6A"
+    historical_generation: ED6_FINAL_V9
+    producing_entry_point: figures/final_truth_v9_extended_data.R
+    rendering_repository_computes_statistics: false
+    question: >-
+      Complete three-contrast enrichment support behind the three highlighted
+      programs.
+    panels:
+      - id: 06a
+        v9_panel_id: v9_ed_atlas_rescon
+        description: >-
+          the RES vs CON atlas; main Figure 3b shows SUS vs RES.
+        producer_script: figures/final_truth_v9_extended_data.R
+        renderer: f9_gsea_atlas
+        render_mode: copy_svg
+        source_data_mode: copy_csv
+        figure_source: results/figures/manuscript_candidates/final_truth_v9/extended_data/panels/v9_ed_atlas_rescon.svg
+        primary_source: results/source_data/manuscript_candidates/final_truth_v9/extended_data/v9_ed_atlas_rescon_source_data.csv
+        input_dependencies:
+          - results/tables/10_biological_integration/gsea_wgcna_concordance/global/ontology_aware_gsea_theme_assignments_all_contrasts.csv
+        scientific_contract: gsea_support_three_contrast_pattern
+        biological_unit: animal
+        hemisphere_handling: canonical_animal_level_bilaterally_aggregated
+        x: 4
+        "y": 4
+        w: 175
+        h: 50
+      - id: 06b
+        v9_panel_id: v9_ed_atlas_suscon
+        description: >-
+          the SUS vs CON atlas, completing the set of three pairwise contrasts.
+        producer_script: figures/final_truth_v9_extended_data.R
+        renderer: f9_gsea_atlas
+        render_mode: copy_svg
+        source_data_mode: copy_csv
+        figure_source: results/figures/manuscript_candidates/final_truth_v9/extended_data/panels/v9_ed_atlas_suscon.svg
+        primary_source: results/source_data/manuscript_candidates/final_truth_v9/extended_data/v9_ed_atlas_suscon_source_data.csv
+        input_dependencies:
+          - results/tables/10_biological_integration/gsea_wgcna_concordance/global/ontology_aware_gsea_theme_assignments_all_contrasts.csv
+        scientific_contract: gsea_support_three_contrast_pattern
+        biological_unit: animal
+        hemisphere_handling: canonical_animal_level_bilaterally_aggregated
+        x: 4
+        "y": 58
+        w: 175
+        h: 50
+      - id: 06c
+        v9_panel_id: v9_ed_gsea_curve_syn
+        description: >-
+          detailed curve with set size, leading-edge counts and reconstruction
+          provenance.
+        producer_script: figures/final_truth_v9_extended_data.R
+        renderer: f9_ed_gsea_curve
+        render_mode: copy_svg
+        source_data_mode: copy_csv
+        figure_source: results/figures/manuscript_candidates/final_truth_v9/extended_data/panels/v9_ed_gsea_curve_syn.svg
+        primary_source: results/source_data/manuscript_candidates/final_truth_v9/extended_data/v9_ed_gsea_curve_syn_source_data.csv
+        input_dependencies:
+          - results/tables/10_biological_integration/gsea_wgcna_concordance/global/ontology_aware_gsea_theme_assignments_all_contrasts.csv
+        scientific_contract: gsea_support_detailed
+        biological_unit: animal
+        hemisphere_handling: canonical_animal_level_bilaterally_aggregated
+        x: 4
+        "y": 112
+        w: 57
+        h: 52
+      - id: 06d
+        v9_panel_id: v9_ed_gsea_curve_rna
+        description: >-
+          detailed curve, soma CA2-SP.
+        producer_script: figures/final_truth_v9_extended_data.R
+        renderer: f9_ed_gsea_curve
+        render_mode: copy_svg
+        source_data_mode: copy_csv
+        figure_source: results/figures/manuscript_candidates/final_truth_v9/extended_data/panels/v9_ed_gsea_curve_rna.svg
+        primary_source: results/source_data/manuscript_candidates/final_truth_v9/extended_data/v9_ed_gsea_curve_rna_source_data.csv
+        input_dependencies:
+          - results/tables/10_biological_integration/gsea_wgcna_concordance/global/ontology_aware_gsea_theme_assignments_all_contrasts.csv
+        scientific_contract: gsea_support_detailed
+        biological_unit: animal
+        hemisphere_handling: canonical_animal_level_bilaterally_aggregated
+        x: 65
+        "y": 112
+        w: 57
+        h: 52
+      - id: 06e
+        v9_panel_id: v9_ed_gsea_curve_ox
+        description: >-
+          detailed curve, microglia-enriched CA1.
+        producer_script: figures/final_truth_v9_extended_data.R
+        renderer: f9_ed_gsea_curve
+        render_mode: copy_svg
+        source_data_mode: copy_csv
+        figure_source: results/figures/manuscript_candidates/final_truth_v9/extended_data/panels/v9_ed_gsea_curve_ox.svg
+        primary_source: results/source_data/manuscript_candidates/final_truth_v9/extended_data/v9_ed_gsea_curve_ox_source_data.csv
+        input_dependencies:
+          - results/tables/10_biological_integration/gsea_wgcna_concordance/global/ontology_aware_gsea_theme_assignments_all_contrasts.csv
+        scientific_contract: gsea_support_detailed
+        biological_unit: animal
+        hemisphere_handling: canonical_animal_level_bilaterally_aggregated
+        x: 126
+        "y": 112
+        w: 53
+        h: 52
+
+  ED_08:
+    title: Extended Data Figure 8
+    width_mm: 183
+    height_mm: 168
+    layout_mode: absolute
+    manuscript_role: proteomics_extended_data
+    is_numbered_manuscript_figure: true
+    extended_data_number: 8
+    canonical_publication_id: extended_data_08
+    canonical_generation: final_truth_v9
+    canonical_generation_promoted_in_phase: "6A"
+    historical_generation: ED8_FINAL_V9
+    producing_entry_point: figures/final_truth_v9_extended_data.R
+    rendering_repository_computes_statistics: false
+    question: >-
+      What a spatial molecular network is, and what does not differ between
+      groups.
+    panels:
+      - id: 08a
+        v9_panel_id: v9_ed_similarity
+        description: >-
+          CON molecular-similarity matrices with facet width proportional to unit
+          count, and the not-connectivity statement promoted into the title.
+        producer_script: figures/final_truth_v9_extended_data.R
+        renderer: f9_ed_similarity
+        render_mode: copy_svg
+        source_data_mode: copy_csv
+        figure_source: results/figures/manuscript_candidates/final_truth_v9/extended_data/panels/v9_ed_similarity.svg
+        primary_source: results/source_data/manuscript_candidates/final_truth_v9/extended_data/v9_ed_similarity_source_data.csv
+        input_dependencies:
+          - results/tables/11_spatial_systems/networks/CON_spatial_molecular_similarity_matrix.csv
+        scientific_contract: what_a_spatial_network_is
+        biological_unit: animal
+        hemisphere_handling: canonical_animal_level_bilaterally_aggregated
+        x: 4
+        "y": 4
+        w: 175
+        h: 66
+      - id: 08b
+        v9_panel_id: v9_ed_network_distance
+        description: >-
+          animal-level network distance from the CON consensus.
+        producer_script: figures/final_truth_v9_extended_data.R
+        renderer: s5_ed_network_distance
+        render_mode: copy_svg
+        source_data_mode: copy_csv
+        figure_source: results/figures/manuscript_candidates/final_truth_v9/extended_data/panels/v9_ed_network_distance.svg
+        primary_source: results/source_data/manuscript_candidates/final_truth_v9/extended_data/v9_ed_network_distance_source_data.csv
+        input_dependencies:
+          - results/tables/11_spatial_systems/networks/animal_network_distance_from_CON.csv
+        scientific_contract: network_replicates
+        biological_unit: animal
+        hemisphere_handling: canonical_animal_level_bilaterally_aggregated
+        x: 4
+        "y": 74
+        w: 110
+        h: 44
+      - id: 08c
+        v9_panel_id: v9_ed_nulls
+        description: >-
+          exact whole-network permutation against its attainable floor.
+        producer_script: figures/final_truth_v9_extended_data.R
+        renderer: f9_ed_nulls
+        render_mode: copy_svg
+        source_data_mode: copy_csv
+        figure_source: results/figures/manuscript_candidates/final_truth_v9/extended_data/panels/v9_ed_nulls.svg
+        primary_source: results/source_data/manuscript_candidates/final_truth_v9/extended_data/v9_ed_nulls_source_data.csv
+        input_dependencies:
+          - results/tables/11_spatial_systems/networks/network_global_multivariate_test.csv
+        scientific_contract: network_null
+        biological_unit: animal
+        hemisphere_handling: canonical_animal_level_bilaterally_aggregated
+        x: 118
+        "y": 74
+        w: 61
+        h: 44
+      - id: 08d
+        v9_panel_id: v9_ed_coupling
+        description: >-
+          every distinct edge-behaviour correlation; an underpowered null.
+        producer_script: figures/final_truth_v9_extended_data.R
+        renderer: f9_ed_coupling
+        render_mode: copy_svg
+        source_data_mode: copy_csv
+        figure_source: results/figures/manuscript_candidates/final_truth_v9/extended_data/panels/v9_ed_coupling.svg
+        primary_source: results/source_data/manuscript_candidates/final_truth_v9/extended_data/v9_ed_coupling_source_data.csv
+        input_dependencies:
+          - results/tables/08_behavior_physio_coupling/network_behavior_coupling/edge_behavior_correlations_fdr_all_tests.csv
+        scientific_contract: coupling_null
+        biological_unit: animal
+        hemisphere_handling: canonical_animal_level_bilaterally_aggregated
+        x: 4
+        "y": 122
+        w: 175
+        h: 42
+
+  # Behavioural Extended Data, canonicalised in Phase 6A into two figures.
+  #
+  # The single ED9 that Phase 4 built carried the model ladder alongside the sex
+  # panels. That put two different arguments in one figure: how the early window
+  # was measured and how well it predicts, versus whether the association differs
+  # by sex. They are separated here. Panels 9b and 9c keep the meaning they
+  # already had; the ladder moves to ED5 and 9a becomes the two secondary
+  # feature associations, which the figure previously did not show at all.
+  #
+  # Both read contracts frozen in topohl/MMMSociability and imported
+  # byte-identically with SHA-256. Neither computes anything.
+  ED_behaviour_coverage:
+    title: Extended Data Figure 5
+    width_mm: 183
+    height_mm: 118
+    manuscript_role: behavioural_extended_data
+    is_numbered_manuscript_figure: true
+    extended_data_number: 5
+    canonical_publication_id: extended_data_05
+    analysis_repository: topohl/MMMSociability
+    analysis_frozen_at: 53bc7e91f3a837c1814babbf5d2ad19553b12457
+    historical_generation: behavioural_bridge_import
+    rendering_repository_computes_statistics: false
+    scientific_contract_summary: >-
+      How the early window was actually measured, and the complete a-priori model
+      registry. Coverage is stated as the aggregate the frozen bundle exports; no
+      per-animal coverage vector exists, so no distribution is drawn. The ladder
+      is shown in registry order, never performance order, and names no winner.
+    panels:
+      - id: 05a
+        description: >-
+          Early-window coverage: animals contributing every expected 10-min slot
+          against those missing leading slots only, with the mean and minimum
+          coverage fraction stated.
+        producer_script: figures/extended_data_behaviour_panels.R
+        render_mode: copy_svg
+        source_data_mode: copy_csv
+        figure_source: results/figures/manuscript/extended_data_behaviour_panels/extended_data_behaviour_ed05a.svg
+        primary_source: manuscript/figure1_bridge_mmmsociability/source_data/figure1a_timeline_source.csv
+        input_dependencies:
+          - manuscript/figure1_bridge_mmmsociability/source_data/figure1a_timeline_source.csv
+        scientific_contract: aggregate_coverage_no_per_animal_distribution_available
+        biological_unit: AnimalID
+        hemisphere_handling: not_applicable_behavioural
+        row: 1
+        col: 1
+        colspan: 2
+      - id: 05b
+        description: >-
+          The five a-priori prediction models with leave-one-animal-out R2, the
+          repeated grouped five-fold interval, and the permutation P where one
+          was run.
+        producer_script: figures/extended_data_behaviour_panels.R
+        render_mode: copy_svg
+        source_data_mode: copy_csv
+        figure_source: results/figures/manuscript/extended_data_behaviour_panels/extended_data_behaviour_ed05b.svg
+        primary_source: manuscript/figure1_bridge_mmmsociability/behavior_prediction_model_ladder.csv
+        input_dependencies:
+          - manuscript/figure1_bridge_mmmsociability/behavior_prediction_model_ladder.csv
+        required_columns: [model_id, features, sex_scope, cv_design, loao_r2, repeated_cv_mean_r2, cv_r2_q025, cv_r2_q975, permutation_p, "n", primary_or_exploratory, current_status]
+        expected_rows: 5
+        scientific_contract: fixed_a_priori_model_registry_no_model_selected_on_performance
+        biological_unit: AnimalID
+        hemisphere_handling: not_applicable_behavioural
+        interval_semantics: >-
+          The bar is the 2.5-97.5% range across repeated grouped five-fold splits
+          and belongs to the repeated-CV mean, not to the leave-one-animal-out
+          point. No per-repeat distribution exists upstream and none is invented.
+        row: 2
+        col: 1
+        colspan: 2
+
+  ED_behaviour_secondary:
     title: Extended Data Figure 9
     width_mm: 183
     height_mm: 118
     manuscript_role: behavioural_extended_data
     is_numbered_manuscript_figure: true
     extended_data_number: 9
+    canonical_publication_id: extended_data_09
     analysis_repository: topohl/MMMSociability
-    # The commit that froze these two tables. It is an ancestor of the bundle
-    # commit 5460cd4 recorded as verified_source_HEAD in
-    # manuscript/figure1_bridge_provenance.csv, and both blobs are identical at
-    # 53bc7e9, at 5460cd4 and at upstream HEAD - so this is the same freeze the
-    # Figure 1 bridge rests on, not a second one.
     analysis_frozen_at: 53bc7e91f3a837c1814babbf5d2ad19553b12457
-    unchanged_at_verified_source_head: 5460cd446843ac9904346dd0eed2479657ae45c5
-    source_data_frozen_in: manuscript/figure1_bridge_mmmsociability
+    historical_generation: behavioural_bridge_import
     rendering_repository_computes_statistics: false
     scientific_contract_summary: >-
-      The two facts a reader needs in order to know that Figure 1's model and
-      association were not chosen after the fact. Panel a is the complete
-      a-priori model registry, shown in registry order rather than performance
-      order; no test compares two models and the panel names no winner. Panels b
-      and c are the formal feature-by-sex interaction tests and the descriptive
-      sex-stratified correlations, which exist to license a negative statement
-      about sex and to block a positive one.
+      The two secondary early features and everything the study can say about
+      sex. Panel a is drawn as effect sizes because the frozen bundle exports
+      per-animal values for Movement_mean only; a scatter for the other two
+      features would require inventing the points. Panels b and c exist to
+      license a negative statement about sex and to block a positive one.
+    prohibited_wording: female-specific; sex-specific; stronger in females; the effect was driven by females
     panels:
-      - id: 9a
-        description: The five a-priori prediction models with leave-one-animal-out R2, the repeated grouped five-fold interval, and the permutation P where one was run
+      - id: 09a
+        description: >-
+          Movement RMSSD and entropy ACF1 against later CombZ: Spearman rho with
+          its bootstrap interval and the BH q across the three prespecified
+          features.
         producer_script: figures/extended_data_behaviour_panels.R
         render_mode: copy_svg
         source_data_mode: copy_csv
-        figure_source: results/figures/manuscript/extended_data_behaviour_panels/extended_data_behaviour_a.svg
-        primary_source: manuscript/figure1_bridge_mmmsociability/behavior_prediction_model_ladder.csv
+        figure_source: results/figures/manuscript/extended_data_behaviour_panels/extended_data_behaviour_ed09a.svg
+        primary_source: manuscript/figure1_bridge_mmmsociability/early_behavior_later_outcome_association.csv
         input_dependencies:
-          - manuscript/figure1_bridge_mmmsociability/behavior_prediction_model_ladder.csv
-        # "n" is quoted deliberately: YAML 1.1 reads a bare n as the boolean
-        # false, which silently turns this column name into FALSE.
-        required_columns: [model_id, features, sex_scope, cv_design, loao_r2, repeated_cv_mean_r2, cv_r2_q025, cv_r2_q975, permutation_p, "n", primary_or_exploratory, current_status]
-        expected_rows: 5
-        scientific_contract: fixed_a_priori_model_registry_no_model_selected_on_performance
+          - manuscript/figure1_bridge_mmmsociability/early_behavior_later_outcome_association.csv
+        required_columns: [predictor, outcome, "n", rho, ci_low, ci_high, p_raw, q_bh, evidence, primary_or_exploratory]
+        expected_rows: 3
+        scientific_contract: secondary_feature_associations_effect_size_only
         biological_unit: AnimalID
         hemisphere_handling: not_applicable_behavioural
-        analysis_repository: topohl/MMMSociability
-        rendering_repository_computes_statistics: false
-        interval_semantics: >-
-          The bar is the 2.5-97.5% range across repeated grouped five-fold splits
-          and belongs to the repeated-CV mean, not to the leave-one-animal-out
-          point. The two are drawn in different ink so they are not read as one
-          estimate with its own confidence interval.
-        permutation_scope: >-
-          A full-refit outcome permutation was run for the two behaviour-only
-          models only. An absent P is a design fact and is printed as not run,
-          never left blank.
+        representation_note: >-
+          Effect sizes, not scatters. figure1c_movement_combz_source.csv carries
+          per-animal values for Movement_mean only, so per-animal RMSSD and
+          entropy points do not exist in the frozen bundle and are not drawn.
         row: 1
         col: 1
         colspan: 2
-      - id: 9b
-        description: Formal feature-by-sex interaction tests with 95% CI and BH q across the three early features
+      - id: 09b
+        description: >-
+          Formal feature-by-sex interaction tests with 95% CI and BH q across the
+          three early features.
         producer_script: figures/extended_data_behaviour_panels.R
         render_mode: copy_svg
         source_data_mode: copy_csv
-        figure_source: results/figures/manuscript/extended_data_behaviour_panels/extended_data_behaviour_b.svg
+        figure_source: results/figures/manuscript/extended_data_behaviour_panels/extended_data_behaviour_ed09b.svg
         primary_source: manuscript/figure1_bridge_mmmsociability/behavior_sex_effect_contract.csv
         input_dependencies:
           - manuscript/figure1_bridge_mmmsociability/behavior_sex_effect_contract.csv
@@ -615,17 +1081,17 @@ figures:
         scientific_contract: formal_interaction_test_negative_result_reported_as_such
         biological_unit: AnimalID
         hemisphere_handling: not_applicable_behavioural
-        analysis_repository: topohl/MMMSociability
-        rendering_repository_computes_statistics: false
         q_values_printed_not_starred: true
         row: 2
         col: 1
-      - id: 9c
-        description: Sex-stratified Spearman correlations of each early feature with later CombZ, drawn as descriptive context
+      - id: 09c
+        description: >-
+          Sex-stratified Spearman correlations of each early feature with later
+          CombZ, drawn as descriptive context.
         producer_script: figures/extended_data_behaviour_panels.R
         render_mode: copy_svg
         source_data_mode: copy_csv
-        figure_source: results/figures/manuscript/extended_data_behaviour_panels/extended_data_behaviour_c.svg
+        figure_source: results/figures/manuscript/extended_data_behaviour_panels/extended_data_behaviour_ed09c.svg
         primary_source: manuscript/figure1_bridge_mmmsociability/behavior_sex_effect_contract.csv
         input_dependencies:
           - manuscript/figure1_bridge_mmmsociability/behavior_sex_effect_contract.csv
@@ -634,9 +1100,6 @@ figures:
         scientific_contract: descriptive_stratified_estimates_no_test_no_correction
         biological_unit: AnimalID
         hemisphere_handling: not_applicable_behavioural
-        analysis_repository: topohl/MMMSociability
-        rendering_repository_computes_statistics: false
-        prohibited_wording: female-specific; sex-specific; stronger in females; the effect was driven by females
         renderer_guard: >-
           The producer script refuses to render unless every row is classified
           FORMAL_INTERACTION_NOT_SUPPORTED, because these estimates are only

@@ -23,7 +23,8 @@ FIGURE1_BUNDLE_FILES <- c("figure1_claim_contract.csv",
                           "figure1_source_data_manifest.csv",
                           "figure1_timeline_contract.csv")
 EXTENDED_DATA_BUNDLE_FILES <- c("behavior_prediction_model_ladder.csv",
-                                "behavior_sex_effect_contract.csv")
+                                "behavior_sex_effect_contract.csv",
+                                "early_behavior_later_outcome_association.csv")
 BUNDLE_FILES <- c(FIGURE1_BUNDLE_FILES, EXTENDED_DATA_BUNDLE_FILES)
 
 test_that("the bridge is a byte-exact mirror of exactly the frozen bundle", {
