@@ -394,3 +394,75 @@ Introduction, Discussion, Abstract. No Figure 1 graphic: none exists in this
 repository by design, and Results §1 references panels `1a`–`1e` using the panel
 assignments carried in the imported claim contract. No behavioural analysis was
 re-run. No proteomics numerical output was touched.
+
+## Phase 3 (HEAD 0a53d3d → this commit)
+
+### Figure 1 frozen
+
+Inspected at 183 mm publication width, all four panels rendered at their placed
+size so native pt equals printed pt. No clipping, no overlapping annotation, no
+unreadable text; the type scale is 50 elements at 6.50 pt and 12 at 7.00 pt,
+which is the distribution Figures 2 and 3 use. Panel b reads as a definition
+rather than a comparison: it carries the title *Later composite outcome and
+phenotype definition*, the subtitle *the threshold defines these groups; it is
+not a test of them*, no brackets and no stars.
+
+**FIGURE_1_FROZEN = TRUE.** The renderer and its outputs are unchanged by this
+phase.
+
+One minor observation recorded and deliberately not acted on: in panel d the
+group legend key for RES and the sex legend key for Female both render as grey
+circles. The adjacent labels disambiguate them and the original design had the
+same structure, so this did not meet the bar for reopening a frozen figure.
+
+### Drafted
+
+**Introduction** — 754 words, five paragraphs: adolescent plasticity and outcome
+heterogeneity; the limits of endpoint behavioural sampling and the case for
+continuous home-cage measurement; anatomical heterogeneity and the case for
+spatial proteomics; the gap, stated as two separate questions rather than one
+causal chain; and a study overview ending on aim rather than result. Six `[REF]`
+markers, none invented.
+
+**Discussion** — 2,509 words across ten subsections: principal findings; early
+behaviour; sex; what the spatial measurement establishes; sparse protein-level
+differences alongside coordinated program-level ones; spatial context; CA2-SLM;
+co-abundance modules; candidate proteins; limitations; conclusion.
+
+Three interpretive positions are worth recording because they were the hard
+calls. The sparse-versus-coordinated section argues that protein-level testing
+and ranked enrichment ask different questions and explicitly refuses the reading
+that enrichment is more sensitive and therefore more true. The spatial section
+states the claim as resolution rather than specificity, because establishing that
+a program differs in one context and not another needs a heterogeneity test and
+the omnibus tests did not survive correction. The CA2-SLM section presents the
+quality-control audit as a strength rather than a caveat, on the grounds that an
+uncorrected version of that result would have placed a striking anatomical claim
+on the least reliable unit in the dataset.
+
+### Provenance
+
+- `manuscript/discussion_statement_provenance.csv` — new, 28 rows: 6 RESULT,
+  7 INTERPRETATION, 9 LIMITATION, 1 LITERATURE_CONTEXT and 4 combinations. Every
+  row resolves to an existing `C1-x`, `C2-x` or `C3-x` claim; no new scientific
+  claim was created.
+- `manuscript/citation_needs.csv` — new, 9 rows. Six required Introduction
+  citations, two optional Discussion ones, and one already resolved by the
+  reference the Results and Methods already carry.
+
+### Semantic red-team
+
+Twenty-five prohibited or risky terms scanned across the Introduction and
+Discussion; 32 occurrences found and adjudicated individually. **Zero required
+change.** Every occurrence is a denial (*not a molecular hotspot*, *rather than
+specificity*, *not independent replication*, *constrains temporal order, not
+mechanism*), a technical term (*data-independent-acquisition*, *cross-validation*,
+*global structure of the dataset* in the PCA sense), or qualified in the same
+clause (*sampled to favour microglia, not a purified population*). The single
+bare use of "microglia" occurs inside its own disclaimer.
+
+### Not done, deliberately
+
+The Abstract, which should be written last. No analysis was rerun, no Results or
+Methods value changed, Figures 2 and 3 were untouched, and the behaviour–proteomics
+integration section remains closed on BH-006.
