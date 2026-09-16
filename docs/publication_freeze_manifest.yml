@@ -1,6 +1,6 @@
 manifest_version: '1'
 metadata:
-  generated_at: 2026-09-07T13:57:47+0200
+  generated_at: 2026-09-16T17:29:35+0200
   generator: tools/generate_publication_freeze_manifest.R
   note: generated_at is metadata only and is excluded from every section that identifies
     scientific content.
@@ -8,11 +8,11 @@ freeze_identity:
   freeze_git_commit: f3d96cbff452f5a43e37a8597d054680f5c836c0
   freeze_git_tag: publication-freeze-2026-09-02
   freeze_identity_anchored_to: tag
-  head_commit_at_generation: 8c15027fbeecc1bdf594675842a9294f9dbc5561
+  head_commit_at_generation: 59b496bf6f55a57df63bb75acfe824f27e2e5857
   head_is_freeze_commit: no
   head_is_freeze_commit_or_descendant: yes
-  branch: main
-  upstream_commit: f3d96cbff452f5a43e37a8597d054680f5c836c0
+  branch: spatial-systems-foundations
+  upstream_commit: cfc7f6ddbd400a24e68d3a16f7890da931eb672d
   head_matches_upstream: no
   working_tree_clean: no
 software_environment:
@@ -368,14 +368,14 @@ export_payloads:
   producer: 09_export_pride_journal/08_export_manuscript_figures.R
   payload_roots: results/manuscript/extended_data
   manifest_path: results/manuscript/figure_export_manifest.csv
-  manifest_sha256: c361f641bd42a9bb4ae617ef2edb90f5372b003952ba4612c253a015c16e0ef5
-  manifest_row_count: 5164
+  manifest_sha256: 9acaf641e7d31558d41092bcee9e4a2687b621a1ea2a0aa7a480d306b64d350e
+  manifest_row_count: 5235
   audit_path: results/manuscript/figure_publication_audit.csv
-  audit_sha256: 4b481ad56671afaabdb6776ea3a17888d794a32506760d7d85792689ba6d3e8b
+  audit_sha256: d2c7bb188323885701642b81d36c89427bd90416a3933ea35e69d4018785a42d
   run_manifest_path: results/logs/09_export_pride_journal/manuscript_figures/run_manifest.yml
-  run_manifest_sha256: a2cafd72831e74487d1fd957b907723f474337450bb7b165d40613850bd58855
-  run_manifest_recorded_commit: f3d96cbff452f5a43e37a8597d054680f5c836c0
-  run_manifest_input_count: 5164
+  run_manifest_sha256: 2fce2537edc76252b05bcbb28d307705e1d06b8b0f7b1fcfcd5baf8fef0241d9
+  run_manifest_recorded_commit: 59b496bf6f55a57df63bb75acfe824f27e2e5857
+  run_manifest_input_count: 5235
   counts_agree: yes
   freeze_acceptance: accepted
   freeze_acceptance_basis: Manifest row count and run-manifest input count agree,
@@ -407,7 +407,7 @@ renv_lockfile:
   present: yes
   sha256: b801aeb120cebe4dc546b1dca2df4722d69c77d3698f3f6994275ade0d5a64d4
   package_records: 327
-  direct_dependencies: 77
+  direct_dependencies: 81
   r_version: 4.5.1
   bioconductor_version: '3.22'
   repositories_declared: 7
@@ -426,9 +426,9 @@ renv_lockfile:
 validation_state:
   command: Rscript tests/testthat.R
   log_path: .na.character
-  log_sha256: 6f3bef8a2b078d5982b9e0868b42fcaf4c7d49691dce3d52aba4e35a1bc1fdfa
+  log_sha256: c5eaeff1ef74a92f0d3bca8ba33436731aa0361b0c3f6bea62bfa268cc6ddf30
   log_retained_in_repository: no
-  test_files: 87
+  test_files: 114
   failures: 0
   failure_or_error_markers: 0
   failing_files: ~
