@@ -1,8 +1,16 @@
 # Manuscript draft
 
-Phases 1–2C: Results §1, §2 and §3 and the Methods they depend on are drafted.
-Results §4 is closed rather than pending. The Abstract, Introduction and
-Discussion remain placeholders for phase 3.
+Phases 1–3: the Introduction, Results §1–§3, the Methods they depend on and the
+Discussion are drafted. Results §4 is closed rather than pending. The Abstract
+remains the only placeholder, to be written last once the rest is settled.
+
+Discussion statements carry a row in
+`manuscript/discussion_statement_provenance.csv`, labelled RESULT,
+INTERPRETATION, LIMITATION or LITERATURE_CONTEXT so that an interpretation is
+never recorded as a measured result; each resolves back to an existing Figure 1–3
+claim rather than creating a duplicate one. Literature claims that this study
+does not itself support are listed in `manuscript/citation_needs.csv` rather than
+given invented citations.
 
 Every quantitative statement in the drafted sections carries a row in
 `manuscript/results_statement_provenance.csv`; every claim carries a row in
@@ -30,7 +38,77 @@ _[PLACEHOLDER — phase 3. Write last, once Results and Discussion are settled.]
 
 ## Introduction
 
-_[PLACEHOLDER — phase 3.]_
+Adolescence is a period of pronounced neural and behavioural plasticity, and
+social experience during this window has a lasting influence on how an animal
+responds to later challenge [REF]. That influence is not uniform. Among animals
+given the same adverse social experience, some later resemble unexposed controls
+on measures of affective, cognitive and physiological state while others diverge
+markedly from them [REF]. This heterogeneity is the phenomenon that terms such as
+resilience and susceptibility are used to describe, and it is a feature of the
+data rather than a property of individual animals: the labels summarise where an
+animal falls on a graded outcome distribution after a particular paradigm, and
+they are neither fixed types nor predictions about behaviour in other contexts.
+Explaining such heterogeneity requires two things that are usually pursued
+separately — a description of how individuals differ behaviourally while the
+stressor is still ongoing, and a description of the molecular state those
+individuals reach afterwards.
+
+The behavioural half of that problem is constrained by how behaviour is usually
+sampled. Standard assays are administered at defined time points, are brief
+relative to the paradigm they assess, and are themselves mildly stressful
+encounters that interrupt the ongoing experience they are meant to characterise
+[REF]. They therefore yield a small number of sparse snapshots, most of them
+after the exposure has ended. Spontaneous behaviour expressed continuously during
+the paradigm is a different kind of measurement: it is available at high temporal
+density, it requires no handling, and it reports on the animal's own activity
+rather than on its response to an imposed test. Radio-frequency identification
+tracking in the home cage makes this practical across many animals at once and
+over the full duration of a paradigm [REF]. Whether such spontaneous behaviour
+carries information about an outcome that has not yet been measured is an open
+question, and answering it requires a predictor recorded early enough that the
+later outcome, and the grouping derived from it, cannot have influenced it.
+
+The molecular half of the problem is constrained by anatomy. The hippocampus is
+not a homogeneous structure: its subregions differ in afferent and efferent
+connectivity, in local circuit composition, and in the laminar organisation of
+inputs onto principal cells, and its non-neuronal populations are distributed
+unevenly across those compartments [REF]. Stress-associated molecular adaptation
+need not be uniform across such a structure, and a measurement that averages
+across it can obscure differences that are confined to, or that differ between,
+particular anatomical contexts [REF]. Measuring the proteome with spatial
+resolution addresses this directly, at the cost of small samples per unit and of
+a resolution limit that differs between compartments — laminar sampling of
+neuropil is achievable where an exhaustive cell-level census is not. What such a
+measurement can support is a statement about protein abundance and about
+coordinated sets of proteins within defined anatomical contexts, not a statement
+about the cell of origin of any individual signal.
+
+These two halves are rarely brought into the same study, and when behaviour and
+molecular endpoints are reported together the implied claim is often that a
+molecular difference explains a behavioural one. That is not the claim a
+cross-sectional terminal measurement can support. The questions that can be asked
+are narrower and, we would argue, more useful: does spontaneous behaviour early
+in a stress paradigm contain information about where an animal's later composite
+outcome will fall, and are the later outcomes themselves accompanied by
+differences in the spatially resolved hippocampal proteome? These are separate
+questions about the same animals. Answering both does not license joining them
+into a single causal chain from early movement through molecular state to later
+phenotype, and we do not attempt that here.
+
+We addressed these questions in male and female mice exposed to adolescent social
+instability stress. Home-cage activity was recorded continuously by
+radio-frequency identification tracking from the beginning of the paradigm. After
+the paradigm, animals were characterised on a battery of behavioural and
+physiological measures that were combined into a single composite outcome score,
+and stress-exposed animals were classified relative to same-sex controls as
+resilient or susceptible on that score. A subset of animals then underwent
+laser-capture microdissection and data-independent-acquisition mass spectrometry
+of the hippocampus, sampling neuropil at region × layer resolution and neuronal
+soma and microglia-enriched regions of interest at region level. Our aim was to
+establish whether early spontaneous behaviour prospectively relates to later
+composite outcome, to characterise the anatomical organisation the spatial
+proteomic measurement recovers, and to ask how later resilient and susceptible
+outcomes are represented within it.
 
 ---
 
@@ -316,7 +394,275 @@ integration result; the absence is the finding.]_
 
 # Discussion
 
-_[PLACEHOLDER — phase 3.]_
+Three observations follow from this work. Spontaneous home-cage movement recorded
+early in an adolescent social-instability paradigm carries information about where
+an animal's later composite outcome will fall, and it does so prospectively: the
+window closes before any component of that outcome is measured. Spatially resolved
+hippocampal proteomics recovers anatomical organisation that is reproducible
+within animals and consistent with independently published subregion anatomy,
+with a resolution that differs between measurement compartments. And later
+resilient and susceptible outcomes are accompanied by few robust differences in
+individual proteins but by coordinated differences in molecular programs that are
+resolved across several hippocampal spatial contexts. These are three separate
+findings about one cohort. We did not find evidence joining the first to the
+third, and we do not present them as a chain.
+
+## Early spontaneous behaviour and later outcome
+
+The temporal ordering is what makes the behavioural result interpretable. Mean
+movement was measured in a fixed 12-h window beginning at the first cage change,
+and every component of the composite outcome — the behavioural assays, the
+terminal physiological measures, the composite score computed from them and the
+resilient/susceptible labels derived from that score — was obtained afterwards.
+The predictor therefore cannot have been shaped by the outcome or by the grouping,
+which is a stronger position than a cross-sectional correlation between two
+contemporaneous measures.
+
+Within that design, greater early movement was associated with a lower later
+composite score, that is, with a less resilient-like outcome. The relationship
+holds out of sample: a model fixed in a registry before fitting, taking early mean
+movement as its only predictor, explained approximately 16% of the variation in
+the continuous outcome in animals withheld from fitting, against a negative value
+for an intercept-only baseline, and the complete fitting and cross-validation
+procedure exceeded all of 1,000 permuted-outcome refits. A repeated grouped
+five-fold scheme with the animal as the grouping unit gave a closely matching
+estimate. We take this to mean that the association carries genuine predictive
+information about individual animals rather than describing only a group-level
+trend.
+
+We also take it to be modest. An R² near 0.16 leaves most of the variation in the
+later composite score unexplained, and the held-out predictions are visibly
+compressed toward the mean relative to the observed values. The appropriate
+reading is that early spontaneous behaviour contains some prospective information
+about later outcome, not that later outcome can be anticipated from it. The
+validation is internal: animals were withheld within a single cohort, which
+protects against overfitting to individual animals but says nothing about how the
+estimate would transfer to an independent cohort.
+
+What the early movement signal represents is not resolved by these data. Greater
+activity in the first undisturbed night after a cage change could index
+reactivity to social and environmental change, differences in arousal or
+exploratory tendency, the state of early adaptation to the paradigm, or
+behavioural variation that pre-dated the paradigm entirely. These are not
+mutually exclusive and the present design cannot distinguish among them. In
+particular, the data do not establish whether early movement is a pre-existing
+trait, an early response to the onset of instability, or a mediator of anything
+that follows; a prospective association constrains temporal order, not mechanism.
+Cage identity was not represented in the analysis design, so dependence among
+animals housed together could be neither modelled nor assessed retrospectively.
+This bounds how far the estimate should be expected to generalise beyond the cages
+sampled. It is not a route by which outcome information could have reached the
+predictor, because the predictor precedes the outcome.
+
+## Sex
+
+Both sexes were studied throughout, and the classification thresholds are
+referenced within sex because the composite score is standardised against same-sex
+controls. Formal feature-by-sex interaction tests were not supported for any of
+the prespecified early features. Sex-stratified correlations between early
+movement and later outcome were close to one another and close to the pooled
+estimate, but we treat the formal interaction test as primary and the stratified
+values as descriptive. Accordingly we do not claim a sex-specific predictive
+relationship. Nor do we claim the converse: an unsupported interaction test in a
+cohort of this size is an absence of detectable difference, not evidence that the
+relationship is equivalent between sexes, and a study designed to estimate such an
+interaction would require a different sample.
+
+## What the spatial proteomic measurement establishes
+
+Before asking how outcome is represented in the proteome, it is worth being
+explicit about what the measurement recovers. Compartment, rather than
+experimental group, dominates the global structure of the dataset, which is the
+ordering a spatial experiment is designed to produce. Within control animals
+alone, and using a phenotype-blind selection rule, the proteome separates the
+sampled units into anatomically coherent blocks, and prespecified compartment
+markers behave as expected. Independently published hippocampal subregion and
+synaptic signatures align with the internal anatomical contrasts. We read this as
+evidence that the spatial assignments are anatomically faithful, not as
+independent validation of any outcome-associated result.
+
+Resolution is not uniform, and we have left that asymmetry visible. Left–right
+concordance of anatomical contrast estimates was highest for neuronal-soma
+regional contrasts, intermediate and more variable in the neuropil, and lowest for
+the microglia-enriched regions of interest. Anatomical scale is not what
+distinguishes them: dentate-gyrus laminar contrasts reproduced as well as the
+better regional ones, whereas two CA1 laminar contrasts were the least reproducible
+in the inventory. Distinctions within CA1 strata, and among microglia-enriched
+regional contrasts, therefore warrant more conservative interpretation than
+neuronal-soma or dentate-gyrus contrasts. Because hemispheres are repeated tissue
+from the same animal rather than independent samples, averaging them improves the
+precision of the animal-level estimate, and all inference is performed on
+bilaterally aggregated animal-level values.
+
+The compartments also differ in what they contain. Neuropil is compositionally
+mixed: it comprises neuronal processes together with other local cellular
+material, and a laminar neuropil measurement is a statement about a region of
+tissue rather than about a cell type. Neuronal soma sampling is soma-enriched
+rather than an exhaustive laminar census. The microglia-enriched compartment is a
+local microenvironment sampled to favour microglia, not a purified population, and
+affinity between such a measurement and an external cell-type reference is
+contextual support for the sampling rather than proof that any signal is
+cell-intrinsic.
+
+## Sparse protein-level differences alongside coordinated program-level ones
+
+The most interpretively demanding feature of the proteomic result is that few
+individual proteins distinguish later resilient from later susceptible animals
+after correction and quality-control review, while coordinated differences among
+sets of proteins are detectable across many spatial contexts — including contexts
+where no individual protein reaches significance.
+
+It would be wrong to read this as one analysis being more sensitive and therefore
+closer to the truth. The two ask different questions of the same data. Testing
+proteins individually asks whether any single protein's difference is large
+relative to its variance and to the multiplicity of the family it sits in; with
+three animals per group, that is a demanding question, and few proteins answer it.
+Ranked enrichment asks whether the members of a defined set are systematically
+displaced in the ranking of all proteins, which can be satisfied by many small,
+consistently oriented differences that no member would pass individually. A result
+in which the second detects structure the first does not is the expected
+consequence of that difference in question, not evidence that one is correct.
+Neither is nested in the other, they are assessed in separate multiple-testing
+families, and we have not placed them on a common scale; accordingly we do not
+claim either as the stronger.
+
+The program families in which coordinated differences appear — RNA processing,
+translation, chromatin organisation, mitochondrial respiration, synaptic and
+vesicular signalling, neuron projection development, and autophagy and
+endolysosomal trafficking — are broad and interconnected, and we want to be
+careful about what their appearance licenses. They are a curated subset of the
+enrichment results, assembled to summarise them at family level, and the atlas is
+descriptive: no theme-level significance is computed, and the colour of a cell is
+a summary of its constituent terms. That several of these families are implicated
+together is consistent with a coordinated shift in cellular economy of the kind
+expected during prolonged adaptation, but it does not constitute seven independent
+mechanistic findings, and the families are not separable from one another at this
+level of description. Leading-edge proteins decompose which proteins carry each
+program-level signal and are useful for that purpose, but membership of a leading
+edge is not a protein-level result: none of the displayed leading-edge values is
+individually supported after correction.
+
+Two further analyses bound how strongly the program-level results should be read.
+A correlation-aware competitive sensitivity analysis applied to the identical
+ranked statistics agreed closely in direction but retained inferential support for
+a minority of terms; because it uses the same data and the same ranking, it is a
+sensitivity analysis and not independent replication. And the gene-set false
+discovery rate throughout is conditional on the ranked per-protein contrast
+statistic — it is a statement about the ordering of proteins, not a statement
+about three animals per group.
+
+## Spatial context
+
+Molecular-program differences were resolved across distinct hippocampal spatial
+contexts, and the contexts in which a given program is supported are not
+interchangeable. We state this deliberately as resolution rather than specificity.
+Establishing that a program differs in one anatomical context and not in another
+requires a test of heterogeneity across contexts, and the omnibus tests we ran for
+that purpose did not survive correction. What we observed is that the supported
+cells are distributed unevenly; what we did not do is test that unevenness.
+
+It follows that the same broad program family can appear in more than one
+anatomical context without contradiction, and that the context in which an
+outcome-associated difference is most evident need not be the context in which
+that program is most characteristic of the control state. This is what contextual
+heterogeneity of a distributed process looks like when it is sampled in several
+places. It is not evidence that a program has moved between compartments, and no
+such movement is implied or could be measured in a terminal cross-sectional
+design.
+
+## CA2 stratum lacunosum-moleculare
+
+The initial protein-level result was concentrated: of the proteins reaching
+support for the susceptible-versus-resilient contrast across all sampled units,
+the large majority fell in a single neuropil unit, CA2 stratum
+lacunosum-moleculare. That concentration does not survive scrutiny, and we report
+it as qualified rather than as a finding.
+
+That unit carried the highest pre-imputation missingness among the neuropil units,
+and the missingness was itself unequal between the groups being compared. Because
+per-sample median centring responds to differential missingness, this produced a
+systematic normalisation displacement between groups that tracked missingness
+closely across acquisitions. Under prespecified robustness criteria a small
+minority of the CA2-SLM proteins qualified; the supported proteins outside that
+unit were never exposed to the artefact and enter unchanged. Directional signs
+were stable under leave-one-animal-out resampling, so the concern is not that the
+effects are unstable across animals but that their magnitude cannot be separated
+from a normalisation artefact in this unit.
+
+CA2-SLM should therefore not be described as a molecular hotspot, and we have
+avoided that framing throughout. We regard the audit as a strength rather than a
+caveat: an uncorrected version of this result would have placed a striking
+anatomical claim on the least reliable unit in the dataset.
+
+## Co-abundance modules
+
+Co-abundance modules organise the proteome into biologically coherent groups and
+are useful for placing an individual protein in context. They did not, however,
+yield phenotype-level effects: no module-by-contrast cell survived correction in
+the neuropil, none survived across all three compartments, and no stress-by-spatial
+omnibus test was supported. The precise statement is that these effects did not
+survive correction in the families tested, which is not the same as establishing
+that no such effects exist.
+
+This bounds how module-level information may be used. Module membership and
+network position are properties of the correlation structure, not inferential
+results: a protein being a high-connectivity member of a coherent module is a
+statement about topology, and it does not add statistical support to that
+protein's association with outcome. Where we mention module context for a
+candidate protein below, it should be read in that light.
+
+## Candidate proteins
+
+A small number of proteins combine protein-level support with directional
+consistency across contexts, and are worth naming as candidates for orthogonal
+follow-up rather than as established findings. O-GlcNAcase reached support in
+CA2-SLM, retained it under the robustness criteria applied to that unit, and was
+negative in direction across all ten neuropil contexts; it is also a
+high-connectivity member of a coherent module, which describes its position in the
+correlation structure and not its statistical support. SLC22A23 showed a large,
+supported difference concentrated in dentate-gyrus polymorph layer, and is
+considerably more spatially concentrated than the former. Annexin A2 shows a large
+effect that is directionally coherent across many contexts and a strong network
+position, but is not individually supported after correction. None of these has
+been verified by an orthogonal method here, and their value at this stage is as
+targets for such verification.
+
+## Limitations
+
+Several boundaries define what this study can claim. On the behavioural side, the
+predictive result is internally validated and has not been replicated in an
+independent cohort; cage-level dependence could not be assessed because cage
+identity was not represented in the analysis design; and the early movement signal
+cannot be attributed to trait or to stress response. The composite outcome and the
+resilient/susceptible labels are derived constructs, and the measures used to
+build them cannot serve as independent confirmation of the labels they produce.
+
+On the proteomic side, the inferential sample is three animals per group, which
+limits protein-level detection and is the reason the program-level analysis
+carries much of the interpretation. Spatial resolution is asymmetric across
+compartments, with laminar sampling available only in the neuropil and the least
+reproducible contrasts falling within CA1 strata. The neuropil is compositionally
+mixed and the microglia-enriched compartment is an enriched local microenvironment
+rather than purified cells. CA2-SLM carries the quality-control concern described
+above. Gene-set inference is conditional on ranked statistics derived from
+small-sample contrasts, and leading-edge membership confers no protein-level
+support. Finally, direct integration of behavioural outcome with the spatial
+proteome produced no supported result, and we have not written one.
+
+## Conclusion
+
+Adolescent social instability stress produces heterogeneous later outcomes that
+are prospectively foreshadowed by spontaneous behaviour recorded early in the
+paradigm, and that are accompanied, at the terminal molecular level, by
+coordinated hippocampal proteomic differences resolved across several anatomical
+contexts. Both halves of that statement are associations rather than mechanisms:
+early movement constrains expectations about later outcome without explaining it,
+and the molecular differences accompany the outcome without being shown to produce
+it. What the work contributes is a demonstration that behavioural information
+about later divergence is present before that divergence can be measured, and a
+spatially resolved description of the molecular state those divergent outcomes
+reach — together with an explicit account of which parts of that description are
+robust and which are not.
 
 # Methods
 
