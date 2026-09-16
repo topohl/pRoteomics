@@ -13,10 +13,18 @@ BRIDGE <- file.path(MS, "figure1_bridge_mmmsociability")
 DRAFT <- file.path(MS, "manuscript_draft.md")
 rd <- function(p) utils::read.csv(p, stringsAsFactors = FALSE)
 
-BUNDLE_FILES <- c("figure1_claim_contract.csv", "figure1_methods_contract.csv",
-                  "figure1_repo_provenance.csv",
-                  "figure1_source_data_manifest.csv",
-                  "figure1_timeline_contract.csv")
+# The five Figure 1 contracts, plus the two tables the behavioural Extended Data
+# figure renders. All seven come from the same upstream freeze and are pinned by
+# the same import manifest; the two later additions are listed separately so it
+# stays visible which files arrived for which figure.
+FIGURE1_BUNDLE_FILES <- c("figure1_claim_contract.csv",
+                          "figure1_methods_contract.csv",
+                          "figure1_repo_provenance.csv",
+                          "figure1_source_data_manifest.csv",
+                          "figure1_timeline_contract.csv")
+EXTENDED_DATA_BUNDLE_FILES <- c("behavior_prediction_model_ladder.csv",
+                                "behavior_sex_effect_contract.csv")
+BUNDLE_FILES <- c(FIGURE1_BUNDLE_FILES, EXTENDED_DATA_BUNDLE_FILES)
 
 test_that("the bridge is a byte-exact mirror of exactly the frozen bundle", {
   skip_if_not(dir.exists(BRIDGE), "figure 1 bridge not imported")

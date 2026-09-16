@@ -335,6 +335,110 @@ figures:
         col: 1
         colspan: 2
 
+  # Behavioural Extended Data. Numbered ED9 because ED1 to ED8 are the frozen
+  # proteomics Extended Data set of the final_truth_v9 generation, and
+  # renumbering that set to put behaviour first would rewrite frozen figures for
+  # cosmetic reasons. Like Figure 1, this figure computes nothing: it reads two
+  # contracts frozen upstream and imported byte-identically with SHA-256.
+  ED_behaviour:
+    title: Extended Data Figure 9
+    width_mm: 183
+    height_mm: 118
+    manuscript_role: behavioural_extended_data
+    is_numbered_manuscript_figure: true
+    extended_data_number: 9
+    analysis_repository: topohl/MMMSociability
+    # The commit that froze these two tables. It is an ancestor of the bundle
+    # commit 5460cd4 recorded as verified_source_HEAD in
+    # manuscript/figure1_bridge_provenance.csv, and both blobs are identical at
+    # 53bc7e9, at 5460cd4 and at upstream HEAD - so this is the same freeze the
+    # Figure 1 bridge rests on, not a second one.
+    analysis_frozen_at: 53bc7e91f3a837c1814babbf5d2ad19553b12457
+    unchanged_at_verified_source_head: 5460cd446843ac9904346dd0eed2479657ae45c5
+    source_data_frozen_in: manuscript/figure1_bridge_mmmsociability
+    rendering_repository_computes_statistics: false
+    scientific_contract_summary: >-
+      The two facts a reader needs in order to know that Figure 1's model and
+      association were not chosen after the fact. Panel a is the complete
+      a-priori model registry, shown in registry order rather than performance
+      order; no test compares two models and the panel names no winner. Panels b
+      and c are the formal feature-by-sex interaction tests and the descriptive
+      sex-stratified correlations, which exist to license a negative statement
+      about sex and to block a positive one.
+    panels:
+      - id: 9a
+        description: The five a-priori prediction models with leave-one-animal-out R2, the repeated grouped five-fold interval, and the permutation P where one was run
+        producer_script: figures/extended_data_behaviour_panels.R
+        render_mode: copy_svg
+        source_data_mode: copy_csv
+        figure_source: results/figures/manuscript/extended_data_behaviour_panels/extended_data_behaviour_a.svg
+        primary_source: manuscript/figure1_bridge_mmmsociability/behavior_prediction_model_ladder.csv
+        input_dependencies:
+          - manuscript/figure1_bridge_mmmsociability/behavior_prediction_model_ladder.csv
+        # "n" is quoted deliberately: YAML 1.1 reads a bare n as the boolean
+        # false, which silently turns this column name into FALSE.
+        required_columns: [model_id, features, sex_scope, cv_design, loao_r2, repeated_cv_mean_r2, cv_r2_q025, cv_r2_q975, permutation_p, "n", primary_or_exploratory, current_status]
+        expected_rows: 5
+        scientific_contract: fixed_a_priori_model_registry_no_model_selected_on_performance
+        biological_unit: AnimalID
+        hemisphere_handling: not_applicable_behavioural
+        analysis_repository: topohl/MMMSociability
+        rendering_repository_computes_statistics: false
+        interval_semantics: >-
+          The bar is the 2.5-97.5% range across repeated grouped five-fold splits
+          and belongs to the repeated-CV mean, not to the leave-one-animal-out
+          point. The two are drawn in different ink so they are not read as one
+          estimate with its own confidence interval.
+        permutation_scope: >-
+          A full-refit outcome permutation was run for the two behaviour-only
+          models only. An absent P is a design fact and is printed as not run,
+          never left blank.
+        row: 1
+        col: 1
+        colspan: 2
+      - id: 9b
+        description: Formal feature-by-sex interaction tests with 95% CI and BH q across the three early features
+        producer_script: figures/extended_data_behaviour_panels.R
+        render_mode: copy_svg
+        source_data_mode: copy_csv
+        figure_source: results/figures/manuscript/extended_data_behaviour_panels/extended_data_behaviour_b.svg
+        primary_source: manuscript/figure1_bridge_mmmsociability/behavior_sex_effect_contract.csv
+        input_dependencies:
+          - manuscript/figure1_bridge_mmmsociability/behavior_sex_effect_contract.csv
+        required_columns: [feature, interaction_estimate, interaction_ci_low, interaction_ci_high, interaction_p, interaction_q_bh, female_rho, male_rho, classification, allowed_wording, prohibited_wording]
+        expected_rows: 3
+        scientific_contract: formal_interaction_test_negative_result_reported_as_such
+        biological_unit: AnimalID
+        hemisphere_handling: not_applicable_behavioural
+        analysis_repository: topohl/MMMSociability
+        rendering_repository_computes_statistics: false
+        q_values_printed_not_starred: true
+        row: 2
+        col: 1
+      - id: 9c
+        description: Sex-stratified Spearman correlations of each early feature with later CombZ, drawn as descriptive context
+        producer_script: figures/extended_data_behaviour_panels.R
+        render_mode: copy_svg
+        source_data_mode: copy_csv
+        figure_source: results/figures/manuscript/extended_data_behaviour_panels/extended_data_behaviour_c.svg
+        primary_source: manuscript/figure1_bridge_mmmsociability/behavior_sex_effect_contract.csv
+        input_dependencies:
+          - manuscript/figure1_bridge_mmmsociability/behavior_sex_effect_contract.csv
+        required_columns: [feature, female_rho, male_rho, classification, allowed_wording, prohibited_wording]
+        expected_rows: 3
+        scientific_contract: descriptive_stratified_estimates_no_test_no_correction
+        biological_unit: AnimalID
+        hemisphere_handling: not_applicable_behavioural
+        analysis_repository: topohl/MMMSociability
+        rendering_repository_computes_statistics: false
+        prohibited_wording: female-specific; sex-specific; stronger in females; the effect was driven by females
+        renderer_guard: >-
+          The producer script refuses to render unless every row is classified
+          FORMAL_INTERACTION_NOT_SUPPORTED, because these estimates are only
+          honest as context while that holds.
+        row: 2
+        col: 2
+
   # Manuscript-SUPPORTING, not a numbered manuscript figure. This is a
   # candidate-comparison / immunostaining-planning visualisation over three
   # already-nominated proteins. It introduces no new inferential analysis: both
