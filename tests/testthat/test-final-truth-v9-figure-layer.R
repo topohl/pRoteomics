@@ -30,9 +30,12 @@ sidecar <- function(fig, id) {
   if (file.exists(p)) rd(p) else NULL
 }
 
-testthat::test_that("v9 is a candidate layer inside the size contract", {
+testthat::test_that("v9 is the promoted main-figure layer inside the size contract", {
   testthat::expect_identical(V9$contract_version, s9f_contract_version())
-  testthat::expect_identical(V9$status, "candidate_only_not_promoted")
+  # Phase 5B promoted this layer for Figures 2 and 3. Its Extended Data figures
+  # are deliberately NOT promoted and stay candidates, which is why the status
+  # names the two figures rather than the whole contract.
+  testthat::expect_identical(V9$status, "promoted_canonical_manuscript_figures_2_and_3")
   for (f in V9$figures) {
     testthat::expect_identical(as.numeric(f$width_mm), 183)
     testthat::expect_lte(as.numeric(f$height_mm), 170)

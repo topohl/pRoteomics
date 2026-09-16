@@ -56,9 +56,22 @@ layers cannot simply be archived by generation.
 
 Seven figure generations coexist, distinguished by renderer prefix.
 
+**Promoted in Phase 5B.** `final_truth_v9` is no longer a candidate. It is the
+canonical manuscript-facing generation for **Figure 2 (a–h)** and **Figure 3
+(a–i)**, declared in `figures/figure_contract.yml` at contract version
+`manuscript_figures_v3_final_truth_v9_promoted` and shipped by the export. Its
+own contract's `status` field says so too, which resolves the contradiction this
+document previously carried against it. The registry of canonical versus
+superseded generations is `manuscript/figure_canonical_generation_registry.csv`.
+
+Two boundaries are deliberate. The **Extended Data** figures in the v9 contract
+are *not* promoted and remain candidates. **Figure 1** is unaffected: it is the
+frozen behavioural bridge figure and neither its contract entry nor its rendered
+bytes changed.
+
 | Prefix | Layer | Status | Renderers defined | Used by the frozen v9 contract |
 |---|---|---|---|---|
-| `f9_` | final_truth_v9 | CURRENT | 34 | 29 |
+| `f9_` | final_truth_v9 | CURRENT — PROMOTED for Figures 2 and 3 | 34 | 29 |
 | `s9f_` | final_truth_v9 engine | CURRENT | 10 | 0 |
 | `e8_` | editorial_v8 | superseded | 39 | 0 |
 | `nf_` | nature_final_v7 | superseded | 30 | **2** |
