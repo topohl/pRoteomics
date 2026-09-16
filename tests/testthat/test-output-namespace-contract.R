@@ -72,11 +72,11 @@ testthat::test_that("pipeline manuscript entry points declare authoring outputs 
     function(step) startsWith(as.character(step$script), "figures/"),
     integration
   )
-  # Inventory guard: figure_02, figure_03, and the two manuscript-supporting
-  # immunostaining renderers (three-candidate comparison and ten-candidate
-  # panel). Bump deliberately when a figure entry point is added, so an
-  # accidental one is still caught.
-  testthat::expect_length(figure_steps, 4L)
+  # Inventory guard: figure_01 and its panel producer, figure_02, figure_03,
+  # and the two manuscript-supporting immunostaining renderers.
+  # Bump deliberately when a figure entry point is added, so an accidental one
+  # is still caught.
+  testthat::expect_length(figure_steps, 6L)
   for (step in figure_steps) {
     outputs <- as.character(unlist(step$produces, use.names = FALSE))
     testthat::expect_true(all(
