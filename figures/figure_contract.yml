@@ -4,13 +4,22 @@ figures:
   "01":
     title: Figure 1
     width_mm: 183
-    height_mm: 168
+    height_mm: 180
     manuscript_role: primary_behavioural_figure
     is_numbered_manuscript_figure: true
     analysis_repository: topohl/MMMSociability
     analysis_frozen_at: 30a2666198ca6f23795773da1b7d0ef34e78ac37
     source_data_frozen_in: manuscript/figure1_bridge_mmmsociability/source_data
     rendering_repository_computes_statistics: false
+    visual_lineage: >-
+      Descends from the original behaviour main figure, whose closest surviving
+      ancestor is MMMSociability Analysis/27_candidate_recompose_behavior_main_figure.R
+      at commit 4b0f90f. The held-out prediction panel with its permutation null,
+      the dashed identity line, the circle/triangle sex encoding and the point and
+      histogram marks are recovered from it. The original's timeline schematic and
+      its six-component forest have no source in MMMSociability, SISanalyzer or this
+      repository at any commit; the timeline is therefore authored in that visual
+      language and the forest is deliberately not reproduced.
     scientific_contract_summary: >-
       Early spontaneous home-cage activity prospectively predicts later composite
       stress outcome. The biological unit is the animal throughout. The early
@@ -20,6 +29,14 @@ figures:
       the validation is internal out-of-sample, never independent or external. All
       statistics are computed in the behavioural repository and frozen; this
       repository renders them and computes nothing.
+    rejected_from_original: >-
+      The six-component forest, because those components construct CombZ and their
+      group separation is true by construction. The sex-split movement scatters,
+      because the formal feature-by-sex interaction is unsupported at all q = 0.90
+      and the original's rho of -0.38 and -0.43 come from a quarantined legacy run
+      that no longer reproduces. The movement trajectory panel, because it rests on
+      GAMM curves whose group contrasts are all BH-null. The p-value brackets over
+      CON/RES/SUS, because that comparison is definitional.
     panels:
       - id: 1a
         description: Experimental timeline and the temporal ordering of predictor and outcome
@@ -59,9 +76,9 @@ figures:
         analysis_repository: topohl/MMMSociability
         rendering_repository_computes_statistics: false
         circularity_note: >-
-          The six components that build CombZ are deliberately absent from the
-          source data. Their differences between the resulting groups are true
-          by construction and must never be shown as validation of the grouping.
+          The six components that build CombZ are absent from the source data, so
+          they cannot be plotted. No brackets, no stars. The subtitle states that
+          the threshold defines these groups rather than testing them.
         row: 2
         col: 1
       - id: 1c
@@ -83,10 +100,15 @@ figures:
         rendering_repository_computes_statistics: false
         statistic: Spearman rank correlation with 5000-sample percentile bootstrap CI, BH over three prespecified features
         stratification: none; the formal feature-by-sex interaction is unsupported
+        colour_encoding: >-
+          Single colour, deliberately. Susceptible animals sit low on this y axis and
+          resilient animals high by construction, because the axis is the score the
+          groups were cut from, so colouring by group would invite reading the
+          correlation as group separation.
         row: 2
         col: 2
       - id: 1d
-        description: Observed versus leave-one-animal-out predicted composite outcome
+        description: Held-out prediction of later composite outcome with its full-refit permutation null
         producer_script: figures/figure_01_panels.R
         render_mode: copy_svg
         source_data_mode: copy_csv
@@ -95,7 +117,7 @@ figures:
         input_dependencies:
           - manuscript/figure1_bridge_mmmsociability/source_data/figure1d_loao_predictions_source.csv
           - manuscript/figure1_bridge_mmmsociability/source_data/figure1_panel_statistics.csv
-        required_columns: [figure_panel, AnimalID, observed_CombZ, predicted_CombZ, model_id, validation_scheme]
+        required_columns: [figure_panel, AnimalID, Sex, Group, observed_CombZ, predicted_CombZ, model_id, validation_scheme]
         expected_rows: 111
         scientific_contract: held_out_prediction_continuous_target_internal_validation
         biological_unit: AnimalID
@@ -104,29 +126,20 @@ figures:
         rendering_repository_computes_statistics: false
         model: movement_mean; sole predictor Movement_mean; uses_group FALSE
         prediction_target: continuous CombZ, never the binary phenotype
+        composite_panel: >-
+          Two sub-plots in one panel, as the original presented them: the
+          observed-versus-predicted scatter with a dashed identity line at true 45
+          degrees, and beside it the 1000 full-refit permutation draws with the
+          observed value marked. The permutation source is
+          figure1e_permutation_source.csv and the repeated grouped five-fold
+          summary is figure1f_repeated_cv_source.csv; both are declared as
+          additional dependencies below.
+        additional_source_data:
+          - manuscript/figure1_bridge_mmmsociability/source_data/figure1e_permutation_source.csv
+          - manuscript/figure1_bridge_mmmsociability/source_data/figure1f_repeated_cv_source.csv
         row: 3
         col: 1
-      - id: 1e
-        description: Full-refit permutation null of the leave-one-animal-out R2
-        producer_script: figures/figure_01_panels.R
-        render_mode: copy_svg
-        source_data_mode: copy_csv
-        figure_source: results/figures/manuscript/figure_01_panels/figure_01e.svg
-        primary_source: manuscript/figure1_bridge_mmmsociability/source_data/figure1e_permutation_source.csv
-        input_dependencies:
-          - manuscript/figure1_bridge_mmmsociability/source_data/figure1e_permutation_source.csv
-          - manuscript/figure1_bridge_mmmsociability/source_data/figure1_panel_statistics.csv
-        required_columns: [figure_panel, permutation_id, seed, model_id, performance_value, is_observed, row_role]
-        expected_rows: 1001
-        scientific_contract: full_refit_outcome_permutation_null
-        biological_unit: AnimalID
-        hemisphere_handling: not_applicable_behavioural
-        analysis_repository: topohl/MMMSociability
-        rendering_repository_computes_statistics: false
-        permutation: 1000 full-refit draws, seed 20260811; p recomputable from the stored draws
-        repeated_cv_annotation: summary only; no per-repeat values exist upstream
-        row: 3
-        col: 2
+        colspan: 2
   "02":
     title: Figure 2
     width_mm: 183
