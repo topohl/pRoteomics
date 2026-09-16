@@ -86,33 +86,80 @@ testthat::test_that("the Extended Data contract declares the panels the renderer
   source(repo_path("R", "manuscript_figure_utils.R"))
   testthat::skip_if_not_installed("yaml")
 
-  fig <- manuscript_figure_contract("ED_behaviour")
-  ids <- vapply(fig$panels, function(x) as.character(x$id), character(1))
+  # Phase 6A split one behavioural Extended Data figure into two, because it was
+  # carrying two different arguments: how the early window was measured and how
+  # well it predicts, versus whether the association differs by sex. Panels 9b
+  # and 9c keep the meaning they already had.
+  cov <- manuscript_figure_contract("ED_behaviour_coverage")
+  sec <- manuscript_figure_contract("ED_behaviour_secondary")
 
-  testthat::expect_identical(ids, paste0("9", letters[1:3]))
-  testthat::expect_identical(fig$contract_version,
-                             "manuscript_figures_v3_final_truth_v9_promoted")
-  testthat::expect_identical(as.integer(fig$extended_data_number), 9L)
-  testthat::expect_false(isTRUE(fig$rendering_repository_computes_statistics))
-  # Two equal rows of 52 mm, so each panel is placed in a 48 mm image box and
-  # the panels are authored at exactly that size.
-  testthat::expect_identical(as.numeric(fig$width_mm), 183)
-  testthat::expect_identical(as.numeric(fig$height_mm), 118)
+  testthat::expect_identical(
+    vapply(cov$panels, function(x) as.character(x$id), character(1)), c("05a", "05b"))
+  testthat::expect_identical(
+    vapply(sec$panels, function(x) as.character(x$id), character(1)), c("09a", "09b", "09c"))
+  testthat::expect_identical(as.integer(cov$extended_data_number), 5L)
+  testthat::expect_identical(as.integer(sec$extended_data_number), 9L)
+  testthat::expect_identical(as.character(cov$canonical_publication_id), "extended_data_05")
+  testthat::expect_identical(as.character(sec$canonical_publication_id), "extended_data_09")
 
-  for (panel in fig$panels) {
-    testthat::expect_identical(
-      as.character(panel$producer_script), "figures/extended_data_behaviour_panels.R"
-    )
-    testthat::expect_false(isTRUE(panel$rendering_repository_computes_statistics))
-    testthat::expect_true(file.exists(repo_path(as.character(panel$primary_source))))
+  for (fig in list(cov, sec)) {
+    testthat::expect_identical(fig$contract_version,
+                               "manuscript_figures_v3_final_truth_v9_promoted")
+    testthat::expect_false(isTRUE(fig$rendering_repository_computes_statistics))
+    testthat::expect_identical(as.numeric(fig$width_mm), 183)
+    testthat::expect_identical(as.numeric(fig$height_mm), 118)
+    for (panel in fig$panels) {
+      testthat::expect_identical(as.character(panel$producer_script),
+                                 "figures/extended_data_behaviour_panels.R")
+      testthat::expect_true(file.exists(repo_path(as.character(panel$primary_source))))
+    }
   }
+})
+
+testthat::test_that("the secondary-feature panel is honest about what it can draw", {
+  source(testthat::test_path("..", "..", "R", "paths.R"))
+  # The bundle exports per-animal values for Movement_mean only, so RMSSD and
+  # entropy are shown as effect sizes. If a per-animal export ever appears this
+  # test should be revisited deliberately rather than the panel silently changed.
+  assoc <- utils::read.csv(ed_bridge_path("early_behavior_later_outcome_association.csv"),
+                           stringsAsFactors = FALSE)
+  testthat::expect_identical(nrow(assoc), 3L)
+  testthat::expect_true(all(c("Movement_mean", "Movement_rmssd", "Entropy_acf1") %in%
+                              assoc$predictor))
+  testthat::expect_identical(unique(assoc$n), 111L)
+
+  # The two secondary features and their adjudication, which the panel prints.
+  r <- assoc[assoc$predictor == "Movement_rmssd", ]
+  testthat::expect_lt(r$q_bh, 0.05)
+  testthat::expect_lt(r$ci_high, 0)                      # interval excludes zero
+  e <- assoc[assoc$predictor == "Entropy_acf1", ]
+  testthat::expect_gt(e$q_bh, 0.05)
+  testthat::expect_gt(e$ci_high, 0)                      # interval includes zero
+
+  # No per-animal secondary-feature source exists anywhere in the bridge.
+  f1c <- utils::read.csv(ed_bridge_path("source_data", "figure1c_movement_combz_source.csv"),
+                         stringsAsFactors = FALSE)
+  testthat::expect_false(any(grepl("rmssd|entropy", names(f1c), ignore.case = TRUE)))
+})
+
+testthat::test_that("early-window coverage is stated as the aggregate the bundle exports", {
+  source(testthat::test_path("..", "..", "R", "paths.R"))
+  tl <- utils::read.csv(ed_bridge_path("source_data", "figure1a_timeline_source.csv"),
+                        stringsAsFactors = FALSE)
+  cov <- tl[!is.na(tl$n_animals), , drop = FALSE][1, ]
+  testthat::expect_identical(as.integer(cov$n_animals), 111L)
+  testthat::expect_identical(as.integer(cov$n_animals_complete_slots), 50L)
+  # 111 - 50 = 61 animals missing leading slots only.
+  testthat::expect_identical(111L - as.integer(cov$n_animals_complete_slots), 61L)
+  testthat::expect_equal(round(100 * as.numeric(cov$mean_coverage_fraction), 1), 98.6)
+  testthat::expect_equal(round(100 * as.numeric(cov$min_coverage_fraction), 1), 94.4)
 })
 
 testthat::test_that("the Extended Data namespace resolves and still fails closed", {
   source(testthat::test_path("..", "..", "R", "paths.R"))
   source(repo_path("R", "output_namespace_utils.R"))
 
-  paths <- output_namespace_manuscript_figure_paths("/tmp/root", "ED_behaviour")
+  paths <- output_namespace_manuscript_figure_paths("/tmp/root", "ED_behaviour_secondary")
   testthat::expect_true(grepl("extended_data_09$", paths$figures))
   testthat::expect_true(grepl("extended_data_09$", paths$source_data))
 

@@ -201,7 +201,13 @@ MANUSCRIPT_FIGURE_IDS <- c("01", "02", "03")
 # output namespace can be derived from: ED1 to ED8 belong to the frozen
 # final_truth_v9 generation and are not rendered through this router, so a bare
 # number here would collide with them. The value is the directory stub.
-MANUSCRIPT_EXTENDED_DATA_STUBS <- c(ED_behaviour = "extended_data_09")
+MANUSCRIPT_EXTENDED_DATA_STUBS <- c(
+  ED_01 = "extended_data_01",
+  ED_03 = "extended_data_03",
+  ED_behaviour_coverage = "extended_data_05",
+  ED_06 = "extended_data_06",
+  ED_08 = "extended_data_08",
+  ED_behaviour_secondary = "extended_data_09")
 
 output_namespace_manuscript_figure_paths <- function(
     output_root, figure_id) {

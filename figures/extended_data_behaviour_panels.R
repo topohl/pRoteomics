@@ -56,6 +56,18 @@ need <- function(f) {
 }
 ladder <- need("behavior_prediction_model_ladder.csv")
 sexc <- need("behavior_sex_effect_contract.csv")
+assoc <- need("early_behavior_later_outcome_association.csv")
+
+# Early-window coverage is an aggregate in the frozen bundle: the number of
+# animals, how many contributed every expected slot, and the mean and minimum
+# coverage fraction. No per-animal coverage vector is exported, so the panel
+# states those figures and draws the split it can support. It does not draw a
+# distribution, because there is none to draw.
+tl_cov <- need(file.path("source_data", "figure1a_timeline_source.csv"))
+COV <- tl_cov[!is.na(tl_cov$n_animals), , drop = FALSE]
+if (!nrow(COV))
+  stop("figure1a_timeline_source.csv carries no coverage row.", call. = FALSE)
+COV <- COV[1, , drop = FALSE]
 
 # ------------------------------------------------------------------ contracts
 #
@@ -150,7 +162,7 @@ theme_ed <- function(base = BASE_PT) {
 
 fmt <- function(x, d = 3) formatC(x, format = "f", digits = d)
 
-# ================================================================== panel a
+# ===================================== the a-priori model ladder (ED5 b)
 #
 # The ladder is drawn in registry order, bottom to top, so the reader sees the
 # reference baseline first and the fixed order is visible as order. The point is
@@ -204,7 +216,7 @@ x_hi <- max(la$cv_r2_q975, la$loao_r2)
 pad <- 0.045 * (x_hi - x_lo)
 x_text <- x_hi + pad
 
-pa <- ggplot(la, aes(y = .data$label)) +
+p_ladder <- ggplot(la, aes(y = .data$label)) +
   geom_vline(xintercept = 0, linetype = "22", linewidth = 0.3, colour = RULE) +
   geom_segment(aes(x = .data$cv_r2_q025, xend = .data$cv_r2_q975,
                    yend = .data$label),
@@ -230,7 +242,7 @@ pa <- ggplot(la, aes(y = .data$label)) +
   theme_ed() +
   theme(axis.line.y = element_blank(), axis.ticks.y = element_blank())
 
-# ================================================================== panel b
+# ================================ feature-by-sex interactions (ED9 b)
 #
 # The formal test. Zero sits inside every interval, and the BH q values are
 # printed rather than starred, because the result the manuscript relies on is
@@ -254,7 +266,7 @@ b_lo <- min(sx$interaction_ci_low)
 b_hi <- max(sx$interaction_ci_high)
 b_pad <- 0.05 * (b_hi - b_lo)
 
-pb <- ggplot(sx, aes(y = .data$label)) +
+p_sex <- ggplot(sx, aes(y = .data$label)) +
   geom_vline(xintercept = 0, linetype = "22", linewidth = 0.3, colour = RULE) +
   geom_segment(aes(x = .data$interaction_ci_low, xend = .data$interaction_ci_high,
                    yend = .data$label),
@@ -274,7 +286,7 @@ pb <- ggplot(sx, aes(y = .data$label)) +
   theme_ed() +
   theme(axis.line.y = element_blank(), axis.ticks.y = element_blank())
 
-# ================================================================== panel c
+# ============================ sex-stratified correlations (ED9 c)
 #
 # Descriptive only, and labelled as such on the panel itself rather than only in
 # the legend. These two numbers are the ones most likely to be misread as a
@@ -297,7 +309,7 @@ link <- data.frame(
 
 SEX_SHAPE <- c(Female = 21L, Male = 24L)
 
-pc <- ggplot(rho, aes(y = .data$label)) +
+p_rho <- ggplot(rho, aes(y = .data$label)) +
   geom_vline(xintercept = 0, linetype = "22", linewidth = 0.3, colour = RULE) +
   geom_segment(data = link, aes(x = .data$lo, xend = .data$hi, yend = .data$label),
                linewidth = 0.5, colour = RULE) +
@@ -316,11 +328,98 @@ pc <- ggplot(rho, aes(y = .data$label)) +
   theme_ed() +
   theme(axis.line.y = element_blank(), axis.ticks.y = element_blank())
 
+
+# ==================== secondary early-feature associations (ED9 a)
+#
+# The two secondary early features against later CombZ. These are drawn as
+# effect sizes rather than scatters for a reason worth stating: the frozen
+# bundle exports per-animal values for Movement_mean only. figure1c carries
+# AnimalID, Sex, Group, Movement_mean and CombZ and nothing else, so a
+# per-animal RMSSD or entropy scatter could not be drawn without inventing the
+# points. What upstream does export for all three features is the association
+# contract - rho, its bootstrap interval and the BH q - and that is exactly the
+# quantity the manuscript claims, so that is what this panel shows.
+SECONDARY <- c(Movement_rmssd = "Movement RMSSD", Entropy_acf1 = "Entropy ACF1")
+absent <- setdiff(names(SECONDARY), assoc$predictor)
+if (length(absent))
+  stop("the association contract no longer carries: ",
+       paste(absent, collapse = ", "), call. = FALSE)
+
+as2 <- assoc[match(names(SECONDARY), assoc$predictor), , drop = FALSE]
+as2$label <- factor(unname(SECONDARY), levels = rev(unname(SECONDARY)))
+as2$q_text <- paste0("q = ", fmt(as2$q_bh, 3))
+# The evidence column is upstream's own adjudication and is printed verbatim,
+# so the panel cannot describe an uncertain association as a supported one.
+as2$ev <- ifelse(as2$ci_low < 0 & as2$ci_high > 0,
+                 "interval includes zero", "interval excludes zero")
+
+a_lo <- min(as2$ci_low); a_hi <- max(as2$ci_high)
+a_pad <- 0.06 * (a_hi - a_lo)
+
+p_assoc <- ggplot(as2, aes(y = .data$label)) +
+  geom_vline(xintercept = 0, linetype = "22", linewidth = 0.3, colour = RULE) +
+  geom_segment(aes(x = .data$ci_low, xend = .data$ci_high, yend = .data$label),
+               linewidth = 0.7, colour = MUTED, lineend = "round") +
+  geom_point(aes(x = .data$rho), shape = 21, size = 1.9, stroke = 0.3,
+             fill = GREEN_DARK, colour = "grey20") +
+  geom_text(aes(x = a_hi + a_pad, label = paste0(.data$q_text, "   ", .data$ev)),
+            hjust = 0, size = NOTE_PT / .pt, colour = MUTED) +
+  scale_x_continuous(expand = expansion(mult = c(0.06, 0.58))) +
+  labs(x = expression("Spearman " * rho * ", early feature versus later CombZ"),
+       y = NULL,
+       title = "The two secondary early features",
+       subtitle = paste0(
+         "Point, Spearman rho; bar, 5000-sample percentile bootstrap interval;\n",
+         "q, Benjamini-Hochberg across the three prespecified features. n = ",
+         as2$n[1], " animals.\n",
+         "Drawn as effect sizes because the frozen bundle exports no per-animal\n",
+         "values for these two features.")) +
+  theme_ed() +
+  theme(axis.line.y = element_blank(), axis.ticks.y = element_blank())
+
+# ============================ early-window coverage (ED5 a)
+#
+# Aggregate only. The bundle records the expected slot count, how many animals
+# contributed all of them, and the mean and minimum coverage fraction. It does
+# not export a per-animal coverage vector, so this states the split it can
+# support and does not imply a distribution it cannot.
+n_tot <- as.integer(COV$n_animals)
+n_full <- as.integer(COV$n_animals_complete_slots)
+n_part <- n_tot - n_full
+cov_mean <- as.numeric(COV$mean_coverage_fraction)
+cov_min <- as.numeric(COV$min_coverage_fraction)
+
+cv <- data.frame(
+  grp = factor(c("All expected slots", "Leading slots missing only"),
+               levels = rev(c("All expected slots", "Leading slots missing only"))),
+  n = c(n_full, n_part), stringsAsFactors = FALSE)
+cv$lab <- sprintf("%d of %d animals", cv$n, n_tot)
+
+p_cov <- ggplot(cv, aes(.data$n, .data$grp)) +
+  geom_col(fill = c(GREEN_MID, GREEN_LIGHT)[as.integer(cv$grp)],
+           colour = "grey30", linewidth = 0.25, width = 0.6) +
+  geom_text(aes(label = .data$lab), hjust = -0.08, size = NOTE_PT / .pt,
+            colour = INK) +
+  scale_x_continuous(limits = c(0, n_tot * 1.42), expand = c(0, 0)) +
+  labs(x = "Animals", y = NULL,
+       title = "Early-window coverage",
+       subtitle = paste0(
+         "A fixed 12-h window binned at 10 min gives ", COV$detail[1], "",
+         "mean coverage ", fmt(100 * cov_mean, 1), "%, minimum ",
+         fmt(100 * cov_min, 1), "%.\n",
+         "No animal has an interior or trailing gap, so the shortfall is\n",
+         "entirely leading slots. Aggregate figures; the bundle exports no\n",
+         "per-animal coverage vector.")) +
+  theme_ed() +
+  theme(axis.line.y = element_blank(), axis.ticks.y = element_blank())
+
 # ---------------------------------------------------------------- write out
 # Authored at the exact placed size, so scale = 1.0 and native pt == printed pt.
 # Two equal rows of 52 mm place 48 mm image boxes; a spans both columns.
-DIMS <- list(a = c(173, 48), b = c(84.5, 48), c = c(84.5, 48))
-PLOTS <- list(a = pa, b = pb, c = pc)
+DIMS <- list(ed09a = c(173, 48), ed09b = c(84.5, 48), ed09c = c(84.5, 48),
+             ed05a = c(173, 48), ed05b = c(173, 48))
+PLOTS <- list(ed09a = p_assoc, ed09b = p_sex, ed09c = p_rho,
+              ed05a = p_cov, ed05b = p_ladder)
 
 save_svg <- function(p, id) {
   d <- DIMS[[id]]
