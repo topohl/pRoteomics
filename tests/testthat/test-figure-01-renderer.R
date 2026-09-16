@@ -144,7 +144,7 @@ test_that("no panel can imply more than the analysis supports", {
 
 test_that("the rendered panels and assembly are vector, not rasterised", {
   skip_if_not(dir.exists(PANELS), "figure 1 panels not rendered")
-  for (id in c("a", "b", "c", "d", "e")) {
+  for (id in c("a", "b", "c", "d")) {
     p <- file.path(PANELS, paste0("figure_01", id, ".svg"))
     expect_true(file.exists(p))
     expect_gt(file.size(p), 0)
@@ -175,7 +175,7 @@ test_that("the figure contract registers Figure 1 with its scientific rules", {
   expect_false(is.null(e))
   expect_true(isTRUE(e$is_numbered_manuscript_figure))
   expect_false(isTRUE(e$rendering_repository_computes_statistics))
-  expect_equal(length(e$panels), 5L)
+  expect_equal(length(e$panels), 4L)
   for (p in e$panels) {
     expect_equal(p$biological_unit, "AnimalID")
     expect_equal(as.character(p$producer_script), "figures/figure_01_panels.R")
@@ -214,4 +214,53 @@ test_that("the legend states what it must and avoids what it may not", {
   }
   # the sign contract, which is the one error that would invert the result
   expect_true(grepl("[Hh]igher `CombZ` indicates a more resilient-like", d))
+})
+
+test_that("the superseded fifth panel leaves no stale artefact", {
+  # Panel e's content is now the right half of panel d. A leftover figure_01e.svg
+  # would still look canonical to anyone browsing the output tree, and the
+  # contract no longer declares it.
+  skip_if_not(dir.exists(PANELS), "figure 1 panels not rendered")
+  expect_false(file.exists(file.path(PANELS, "figure_01e.svg")))
+  expect_false(file.exists(file.path(FIG, "panels", "figure_01e.svg")))
+  expect_false(file.exists(repo("results", "source_data", "manuscript",
+                               "figure_01", "figure_01e_source_data.csv")))
+  y <- yaml::read_yaml(repo("figures", "figure_contract.yml"))
+  ids <- vapply(y$figures[["01"]]$panels, function(p) as.character(p$id),
+                character(1))
+  expect_false("1e" %in% ids)
+  expect_setequal(ids, c("1a", "1b", "1c", "1d"))
+})
+
+test_that("Figure 1 uses the same group palette as Figures 2 and 3", {
+  # The repository carries two group palettes. R/plotting_nature.R is the one
+  # Figures 2 and 3 actually render with, and it is byte-identical to
+  # MMM_GROUP_COLOURS upstream. config/manuscript_palette.yml declares a
+  # different set that no numbered figure uses; Figure 1 previously obeyed it.
+  source(repo("R", "plotting_nature.R"))
+  expect_equal(unname(NATURE_SEMANTIC_PALETTES$group[c("CON", "RES", "SUS")]),
+               c("#3E3C6F", "#C6C3BB", "#E63A48"))
+  src <- readLines(RENDERER, warn = FALSE)
+  code <- src[!grepl("^[[:space:]]*#", src)]
+  expect_true(any(grepl("NATURE_SEMANTIC_PALETTES$group", code, fixed = TRUE)))
+  expect_false(any(grepl("manuscript_palette.yml", code, fixed = TRUE)))
+
+  # and the rendered panels must actually carry those inks
+  skip_if_not(dir.exists(PANELS), "figure 1 panels not rendered")
+  ink <- paste(readLines(file.path(PANELS, "figure_01d.svg"), warn = FALSE),
+               collapse = "")
+  for (h in c("#3E3C6F", "#C6C3BB", "#E63A48"))
+    expect_true(grepl(h, ink, fixed = TRUE), info = paste("missing group ink", h))
+})
+
+test_that("the association panel is not coloured by outcome group", {
+  # Susceptible animals sit low on the CombZ axis and resilient animals high by
+  # construction, so colouring panel c by group would let the correlation read
+  # as group separation. It is deliberately single-colour.
+  skip_if_not(dir.exists(PANELS), "figure 1 panels not rendered")
+  ink <- paste(readLines(file.path(PANELS, "figure_01c.svg"), warn = FALSE),
+               collapse = "")
+  for (h in c("#3E3C6F", "#E63A48"))
+    expect_false(grepl(h, ink, fixed = TRUE),
+                 info = paste("panel c carries group ink", h))
 })

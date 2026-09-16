@@ -51,24 +51,24 @@ through the points; the reported statistic is a rank correlation. The panel is
 deliberately not stratified by sex, because the formal feature-by-sex interaction
 is unsupported (all q = 0.90).
 
-**(d)** Held-out prediction of continuous `CombZ`. Each point is one animal, with
-its predicted value obtained from a model refitted on the other 110 animals and
-evaluated on that animal alone (leave-one-animal-out, n = 111). The model is the
-prespecified movement-mean model, whose sole predictor is early mean movement;
-it was fixed in a registry before fitting and carries no outcome-derived term.
-Grey line, identity, not a fit. Leave-one-animal-out R² = 0.159 against −0.018
-for an intercept-only baseline. The prediction target is the continuous score
-throughout; no classifier was fitted, so no accuracy or area under the curve
-exists and none is reported.
-
-**(e)** Null distribution for the held-out result. The complete fitting and
-cross-validation procedure was repeated under 1,000 permutations of the outcome,
-refitting every model in full for each draw. Histogram, the 1,000 permuted
-leave-one-animal-out R² values; vertical line, the observed value of 0.159, which
-no permuted draw reached (p = 1/1001). A repeated grouped five-fold scheme with
-the animal as the grouping unit gives a closely matching estimate (R² = 0.156;
-2.5th–97.5th percentile range across 100 repeats 0.116–0.179 — a resampling range
-across repeats, not a confidence interval).
+**(d)** Held-out prediction of continuous `CombZ`, with its permutation null.
+*Left*, each point is one animal, its predicted value obtained from a model
+refitted on the other 110 animals and evaluated on that animal alone
+(leave-one-animal-out, n = 111). The model is the prespecified movement-mean
+model, whose sole predictor is early mean movement; it was fixed in a registry
+before fitting and carries no outcome-derived term. Fill denotes later outcome
+group and shape denotes sex, for orientation only: neither entered the model.
+Dashed line, identity, not a fit. Leave-one-animal-out R² = 0.159 against
+−0.018 for an intercept-only baseline. *Right*, the complete fitting and
+cross-validation procedure repeated under 1,000 permutations of the outcome,
+refitting every model in full for each draw; histogram, the 1,000 permuted
+leave-one-animal-out R² values; vertical line, the observed value of 0.159,
+which no permuted draw reached (p = 1/1001). A repeated grouped five-fold
+scheme with the animal as the grouping unit gives a closely matching estimate
+(R² = 0.156; 2.5th–97.5th percentile range across 100 repeats 0.116–0.179 — a
+resampling range across repeats, not a confidence interval). The prediction
+target is the continuous score throughout; no classifier was fitted, so no
+accuracy or area under the curve exists and none is reported.
 
 The biological unit is the animal throughout. Validation is internal: animals
 were withheld within a single cohort, not tested in an independent cohort. Cage
