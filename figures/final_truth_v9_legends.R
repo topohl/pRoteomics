@@ -37,6 +37,49 @@ sidecar <- function(fig, id) {
   if (file.exists(p)) nv_read_csv(p) else NULL
 }
 
+# ------------------------------------------------- eps-floor disclosure (PB-03)
+#
+# This disclosure used to be a hard-coded string: "90 of the 851 displayed
+# FDR-supported occurrences". It was a scientific constant written into a legend
+# by hand, so it silently went stale when the atlas was rebuilt - the current
+# data give 94 of 953 - and re-running this script could not correct it, because
+# there was nothing to re-run it FROM. It is now derived.
+#
+# eps is not set anywhere in this repository's GSEA configuration, so the floor
+# in force is the gseGO/fgseaMultilevel default. Rather than assert that from
+# documentation, the value is confirmed against the data: the smallest positive
+# raw p in the canonical enrichment output must equal the declared floor. If the
+# analysis is ever rerun with an explicit eps, this fails loudly instead of
+# printing a number that no longer describes the figure.
+GSEA_EPS <- 1e-10
+
+f9_eps_floor_disclosure <- function(eps = GSEA_EPS) {
+  th <- nv_read_csv(repo_path(
+    "results", "tables", "10_biological_integration", "gsea_wgcna_concordance",
+    "global", "ontology_aware_gsea_theme_assignments_all_contrasts.csv"))
+  seven <- c("rna_processing_splicing_rnp", "ribosome_translation",
+             "chromatin_organization", "mitochondrial_respiration_oxphos",
+             "synaptic_signaling_vesicle", "neuron_projection_development",
+             "autophagy_lysosome_endosome")
+  d <- th[th$theme_id %in% seven &
+            th$contrast %in% c("RES - CON", "SUS - CON", "SUS - RES"), ,
+          drop = FALSE]
+
+  observed_floor <- min(d$raw_p[d$raw_p > 0], na.rm = TRUE)
+  if (!isTRUE(all.equal(observed_floor, eps))) {
+    stop("f9_eps_floor_disclosure: the smallest positive raw p in the canonical ",
+         "enrichment output is ", format(observed_floor, scientific = TRUE),
+         ", which is not the declared floor ", format(eps, scientific = TRUE),
+         ". The legend would misdescribe the figure; fix the declared floor ",
+         "rather than this message.", call. = FALSE)
+  }
+
+  sup <- d[is.finite(d$GSEA_FDR) & d$GSEA_FDR < 0.05, , drop = FALSE]
+  list(eps = eps, displayed = nrow(sup), floored = sum(sup$raw_p <= eps))
+}
+
+EPSF <- f9_eps_floor_disclosure()
+
 # ---------------------------------------------------------------- shared text
 ALGEBRA <- paste0(
   "Pairwise contrasts are shown jointly to make the directional pattern ",
@@ -49,10 +92,11 @@ GSEA_N <- paste0(
   "prespecified median rule. The FDR is the gene-set enrichment FDR ",
   "conditional on that ranking; it is not a count of independent biological ",
   "observations. Enrichment p-values are floored at the fgsea tolerance ",
-  "eps = 1e-10: a term reported at that value has a true p somewhere below ",
-  "it that the method does not resolve, so its FDR bounds the evidence ",
-  "rather than measuring it. This applies to 90 of the 851 displayed ",
-  "FDR-supported occurrences, including each of the three exemplar terms in ",
+  "eps = ", format(EPSF$eps, scientific = TRUE), ": a term reported at that ",
+  "value has a true p somewhere below it that the method does not resolve, so ",
+  "its FDR bounds the evidence rather than measuring it. This applies to ",
+  EPSF$floored, " of the ", EPSF$displayed, " displayed FDR-supported ",
+  "occurrences, including each of the three exemplar terms in ",
   "at least one displayed cell. A very small gene-set FDR is a statement ",
   "about gene ranks, never about the three animals per group.")
 DESCRIPTIVE <- "Descriptive; no hypothesis test is performed in this panel."
