@@ -73,11 +73,12 @@ testthat::test_that("pipeline manuscript entry points declare authoring outputs 
     integration
   )
   # Inventory guard: figure_01 and its panel producer, the behavioural Extended
-  # Data figure and its panel producer, figure_02, figure_03, and the two
-  # manuscript-supporting immunostaining renderers.
+  # Data figure and its panel producer, the promoted proteomics Extended Data,
+  # figure_02, figure_03, and the two manuscript-supporting immunostaining
+  # renderers.
   # Bump deliberately when a figure entry point is added, so an accidental one
   # is still caught.
-  testthat::expect_length(figure_steps, 8L)
+  testthat::expect_length(figure_steps, 9L)
   for (step in figure_steps) {
     outputs <- as.character(unlist(step$produces, use.names = FALSE))
     testthat::expect_true(all(
