@@ -304,7 +304,26 @@ f9_sina_offset <- function(v, nbin = 34L, wmax = 0.40) {
 
 f9_depth_compact <- function(panel, svg_path, csv_path, w_mm, h_mm) {
   fam <- nf_fam()
-  d <- nv_read_csv(repo_path(panel$primary_source))
+  # PB-02. This panel used to read the tidy CSV that the manuscript_figures_v2
+  # entry point writes into results/source_data/manuscript/figure_02/. That made
+  # a candidate figure depend on the output of the generation it was meant to
+  # replace: retiring v2 would have removed the only producer of its input. The
+  # acquisition workbook is the canonical stage input and is what v2 itself
+  # declares as the primary source, so this reads it directly and no
+  # intermediate is needed. Every column this renderer uses - celltype_layer,
+  # Proteins.Identified and exclude - is present in the workbook, and the
+  # exclusion is applied here rather than inherited, so the plotted set is
+  # unchanged.
+  src <- repo_path(panel$primary_source)
+  d <- if (grepl("[.]xlsx?$", src, ignore.case = TRUE)) {
+    if (!requireNamespace("readxl", quietly = TRUE)) {
+      stop("f9_depth_compact: package 'readxl' is required to read ", src,
+           call. = FALSE)
+    }
+    as.data.frame(readxl::read_excel(src), stringsAsFactors = FALSE)
+  } else {
+    nv_read_csv(src)
+  }
   cn <- intersect(c("Proteins.Identified", "n_proteins", "proteins_identified"),
                   names(d))[1]
   if (is.na(cn)) stop("f9_depth_compact: no protein-count column", call. = FALSE)

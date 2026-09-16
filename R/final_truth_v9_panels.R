@@ -846,6 +846,39 @@ f9_gsea_atlas <- function(panel, svg_path, csv_path, w_mm, h_mm) {
       legend.position = "right",
       legend.key.width = ggplot2::unit(1.6, "mm"),
       legend.key.height = ggplot2::unit(3.4, "mm"))
+
+  # PB-01. A panel that carries the column labels for a track drawn above it is
+  # contracted to behave as ONE block with that track: the same left gutter,
+  # reserved in DATA units as NF_LAB, and the same right gutter, reserved in mm
+  # as NF_RGT. The left half of that contract was honoured here and the right
+  # half was not. A right-hand ggplot legend takes layout width that NF_RGT
+  # knows nothing about, so this panel's plot region was 10.5 mm narrower than
+  # the track's, the two column pitches differed by 1.18 pt, and the track's
+  # counts came to sit almost a full column to the right of the labels meant to
+  # identify them. Two independently rendered SVGs of equal total width can only
+  # be guaranteed to register if neither lets a variable-width guide into the
+  # horizontal flow, so when the coupling is declared the legend moves below the
+  # axis and the right gutter is pinned to the shared constant.
+  #
+  # Scoped deliberately: ED6 uses this same renderer with no track above it and
+  # keeps its right-hand legend, so the declaration lives in the contract rather
+  # than being assumed for every atlas.
+  if (nzchar(as.character(panel$shares_column_geometry_with %||% ""))) {
+    p <- p +
+      ggplot2::guides(fill = ggplot2::guide_colourbar(
+        title.position = "left", direction = "horizontal")) +
+      ggplot2::theme(
+        legend.position = "bottom",
+        legend.justification = "left",
+        legend.title = ggplot2::element_text(size = NF_MIN_PT, colour = "grey30",
+                                             vjust = 1),
+        legend.key.width = ggplot2::unit(10, "mm"),
+        legend.key.height = ggplot2::unit(1.5, "mm"),
+        legend.margin = ggplot2::margin(0, 0, 0, 0),
+        legend.box.margin = ggplot2::margin(-2, 0, -1, 0),
+        legend.box.spacing = ggplot2::unit(1, "mm"),
+        plot.margin = ggplot2::margin(1, NF_RGT, 0, 1, "mm"))
+  }
   cend <- utils::head(b$compartment$end, -1)
   rend <- setdiff(utils::head(b$region$end, -1), cend)
   if (length(cend)) p <- p + ggplot2::annotate(

@@ -365,8 +365,27 @@ manuscript_figure_assemble_svg <- function(panel_paths, panels, figure, target) 
   }
   width <- as.numeric(figure$width_mm)
   height <- as.numeric(figure$height_mm)
-  n_rows <- max(vapply(panels, function(x) as.integer(x$row), integer(1)))
-  n_cols <- max(vapply(panels, function(x) as.integer(x$col), integer(1)))
+
+  # Two layout modes. The equal-cell row/col grid is the original and remains the
+  # default. A figure whose panels differ in size - a wide track over a wide
+  # atlas over three narrow columns, say - cannot be expressed on an equal grid
+  # without distorting it, so a panel may instead declare its own box in mm.
+  # Absolute mode is opt-in per figure and is used by the promoted Figure 2 and
+  # Figure 3, which carry the exact boxes their renderers were authored against.
+  absolute <- identical(as.character(figure$layout_mode %||% "grid"), "absolute")
+  if (absolute) {
+    missing_box <- vapply(panels, function(p)
+      any(vapply(c("x", "y", "w", "h"), function(k) is.null(p[[k]]), logical(1))),
+      logical(1))
+    if (any(missing_box)) {
+      stop("Absolute layout requires x, y, w and h on every panel; missing on: ",
+           paste(vapply(panels[missing_box], function(p) as.character(p$id),
+                        character(1)), collapse = ", "), call. = FALSE)
+    }
+  }
+
+  n_rows <- if (absolute) 1L else max(vapply(panels, function(x) as.integer(x$row), integer(1)))
+  n_cols <- if (absolute) 1L else max(vapply(panels, function(x) as.integer(x$col), integer(1)))
   margin <- 5
   gap <- 4
   cell_width <- (width - 2 * margin - (n_cols - 1) * gap) / n_cols
@@ -375,17 +394,38 @@ manuscript_figure_assemble_svg <- function(panel_paths, panels, figure, target) 
   for (i in seq_along(panels)) {
     panel <- panels[[i]]
     colspan <- as.integer(panel$colspan %||% 1L)
+    if (absolute) {
+      x <- as.numeric(panel$x); y <- as.numeric(panel$y)
+      w <- as.numeric(panel$w); h <- as.numeric(panel$h)
+    } else {
     x <- margin + (as.integer(panel$col) - 1L) * (cell_width + gap)
     y <- margin + (as.integer(panel$row) - 1L) * (cell_height + gap)
     w <- cell_width * colspan + gap * (colspan - 1L)
     h <- cell_height
+    }
     uri <- base64enc::dataURI(file = panel_paths[[as.character(panel$id)]], mime = "image/svg+xml")
     label <- sub("^[0-9]+", "", as.character(panel$id))
-    items <- c(items,
-      sprintf('<image x="%.3f" y="%.3f" width="%.3f" height="%.3f" preserveAspectRatio="xMidYMid meet" href="%s"/>', x, y + 4, w, h - 4, uri),
-      sprintf('<rect x="%.3f" y="%.3f" width="7" height="7" fill="white" fill-opacity="0.9"/>', x, y),
-      sprintf('<text x="%.3f" y="%.3f" fill="black" font-family="Arial" font-size="5" font-weight="bold">%s</text>', x + 0.8, y + 5.2, label)
-    )
+    items <- if (absolute) {
+      # Match the producing layer's own composition exactly: the panel occupies
+      # its whole declared box and the letter is drawn over the top-left corner.
+      # The grid mode below instead reserves 4 mm above each panel for the
+      # letter. Mixing the two would shift every promoted panel down by 4 mm and
+      # squash it, which for Figure 3 would reintroduce precisely the kind of
+      # geometric drift PB-01 was about.
+      # The viewBox is in millimetres, so the label size must be converted from
+      # points. 8 pt is the producing layer's panel_label_pt, and the baseline
+      # offset reproduces the grid placement it uses.
+      lab_mm <- 8 * 25.4 / 72
+      c(items,
+        sprintf('<image x="%.3f" y="%.3f" width="%.3f" height="%.3f" preserveAspectRatio="xMidYMid meet" href="%s"/>', x, y, w, h, uri),
+        sprintf('<text x="%.3f" y="%.3f" fill="black" font-family="Arial" font-size="%.3f" font-weight="bold">%s</text>',
+                x, y + lab_mm * 0.92, lab_mm, label))
+    } else {
+      c(items,
+        sprintf('<image x="%.3f" y="%.3f" width="%.3f" height="%.3f" preserveAspectRatio="xMidYMid meet" href="%s"/>', x, y + 4, w, h - 4, uri),
+        sprintf('<rect x="%.3f" y="%.3f" width="7" height="7" fill="white" fill-opacity="0.9"/>', x, y),
+        sprintf('<text x="%.3f" y="%.3f" fill="black" font-family="Arial" font-size="5" font-weight="bold">%s</text>', x + 0.8, y + 5.2, label))
+    }
   }
   dir_create(dirname(target))
   writeLines(c(
