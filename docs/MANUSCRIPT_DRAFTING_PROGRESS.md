@@ -653,3 +653,67 @@ frozen source data changed, no Results value changed.
 The four external-record items only: acquisition and search settings, the
 cage-change schedule, the PRIDE accession and the front matter. Discussion
 compression remains deferred as SR-18.
+
+## Phase 6A (HEAD d47114b → this commit) — canonicalise and freeze Extended Data
+
+The last publication-generation ambiguity is gone. Every numbered figure now has
+exactly one canonical identity, recorded in
+`manuscript/canonical_publication_registry.csv`: **9 canonical** and **3
+withheld**, with the withheld identities reserved so nothing can quietly take
+them.
+
+### Promoted (6)
+
+`extended_data_01` (bilateral), `extended_data_03` (CA2-SLM),
+`extended_data_06` (atlas and exemplar curves), `extended_data_08` (networks),
+plus the two behavioural figures below. Each was audited by reading its source
+tables, not by trusting the generation name.
+
+### Not promoted (3), and why
+
+- **ED2** — panel c is presented on the figure, in its legend, in the contract
+  narrative and in the supplementary table as the *complete* canonical GO
+  inventory, and Figure 2h sends the reader to ED2 for "the complete evidence".
+  It draws **14 rows across 7 contrasts** against **2,826** FDR-supported
+  positive GO-BP terms across **11** contrasts — 0.5%. Verified independently.
+  The drawn values are fine; the completeness claim is not.
+- **ED4** (the WGCNA figure) — its phenotype panel annotates *"0 of 45 module ×
+  contrast cells"* with **no compartment scope**, immediately beside an
+  all-compartment *"0 of 35"*, in a figure whose panel a is explicitly
+  three-compartment. 45 is neuropil-only; the all-compartment figure is 105.
+  It also labels all 15 modules `peak <unit>` while 8 of 15 are classified
+  `has_spatial_identity = FALSE` by the canonical atlas.
+- **ED7** — scientifically current but cited nowhere. There is nothing to
+  promote it into.
+
+Nothing was substituted for any of them.
+
+### The behavioural Extended Data was split
+
+One figure was carrying two arguments. `extended_data_05` is now how the early
+window was measured (111 animals, 50 contributing every expected slot, 61 missing
+leading slots only, mean 98.6%, minimum 94.4%) plus the complete a-priori model
+ladder. `extended_data_09` is the two secondary features and everything the study
+can say about sex.
+
+**One thing could not be built as specified.** Panel 9a was to show "Movement
+RMSSD vs CombZ" and "Entropy ACF1 vs CombZ". The frozen bundle exports per-animal
+values for `Movement_mean` **only** — `figure1c_movement_combz_source.csv` has no
+RMSSD or entropy column and no other bridge table is per-animal. A scatter would
+have required inventing the points. The panel draws effect sizes instead (ρ with
+its bootstrap interval and BH q), which is exactly the quantity the manuscript
+claims, and a test asserts that no per-animal source exists.
+
+### Pre-restructure freeze
+
+`manuscript/prerestructure_freeze_manifest.csv` — **230 objects, all present,
+all hashed**: configuration contracts, manuscript provenance, the frozen upstream
+bridge, every canonical panel and its source data, protected scientific state and
+the guard tests. This is the equivalence oracle for the migration. See
+`docs/PRERESTRUCTURE_FREEZE.md` for how to use it and for the two hash changes
+that would be legitimate rather than defects.
+
+### Not done, deliberately
+
+No directory moved, no script renamed, no manuscript layer extracted, no import
+path rewritten. This phase froze identity; it did not restructure.
