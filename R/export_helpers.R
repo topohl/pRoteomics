@@ -302,6 +302,14 @@ copy_export_targets <- function(sources, targets) {
   if (length(sources) != length(targets)) {
     stop("copy_export_targets: sources and targets differ in length.", call. = FALSE)
   }
+  # Create parent directories first. file.copy() does not, and returns FALSE
+  # rather than erroring when a parent is missing, so an export into a target
+  # tree that does not yet carry the sub-path fails one file at a time. That is
+  # what blocked the curated Figure 1-3 export: results/manuscript/figure_N held
+  # only a .gitkeep, so every assembled/ and panels/ copy returned FALSE - after
+  # the flat extended_data copies had already been overwritten and before the
+  # manifests were rewritten, leaving payload and manifest disagreeing.
+  for (d in unique(dirname(targets))) dir_create(d)
   copied <- file.copy(sources, targets, overwrite = TRUE)
   failed <- which(!copied)
   if (length(failed)) {

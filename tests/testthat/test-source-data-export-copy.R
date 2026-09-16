@@ -235,3 +235,28 @@ testthat::test_that("PRIDE selectors reference none of the manuscript export hel
     }
   }
 })
+
+testthat::test_that("export copy creates missing parent directories", {
+  source(testthat::test_path("..", "..", "R", "paths.R"))
+  source(repo_path("R", "export_helpers.R"))
+
+  # file.copy() returns FALSE rather than erroring when a target's parent does
+  # not exist, so an export into a tree that does not yet carry the sub-path
+  # used to fail one file at a time - and only after earlier flat copies had
+  # already been written. The curated Figure 1-3 export hit exactly that.
+  root <- withr::local_tempdir("parent_mk_")
+  src <- file.path(root, "a.svg")
+  writeLines("<svg/>", src)
+  deep <- file.path(root, "out", "figure_1", "assembled", "figure_01.svg")
+  testthat::expect_false(dir.exists(dirname(deep)))
+  testthat::expect_true(copy_export_targets(src, deep))
+  testthat::expect_true(file.exists(deep))
+  testthat::expect_identical(readLines(deep, warn = FALSE), "<svg/>")
+
+  # and a genuinely unreadable source must still fail closed
+  testthat::expect_error(
+    copy_export_targets(file.path(root, "absent.svg"),
+                        file.path(root, "out2", "x.svg")),
+    "Export copy failed"
+  )
+})
