@@ -1496,22 +1496,39 @@ stages:
         consumes_required:
           - "manuscript/figure1_bridge_mmmsociability/behavior_prediction_model_ladder.csv"
           - "manuscript/figure1_bridge_mmmsociability/behavior_sex_effect_contract.csv"
+          - "manuscript/figure1_bridge_mmmsociability/early_behavior_later_outcome_association.csv"
+          - "manuscript/figure1_bridge_mmmsociability/source_data/figure1a_timeline_source.csv"
         consumes_optional: []
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Renders the three behavioural Extended Data panels from two contracts frozen in topohl/MMMSociability and imported byte-identically with SHA-256. Rendering only: it fits nothing, resamples nothing and corrects nothing, and every value it draws is a cell of one of those two tables. Panel a is the complete a-priori model registry in registry order, never performance order, with the leave-one-animal-out point and the repeated grouped five-fold interval drawn in different ink because the interval belongs to the repeated-CV mean rather than to the point. Panel b is the formal feature-by-sex interaction tests with BH q printed rather than starred, because the result the manuscript relies on is the absence of an interaction. Panel c is the sex-stratified correlations, which are descriptive; the script refuses to render unless every row of the sex contract is still classified FORMAL_INTERACTION_NOT_SUPPORTED, because that classification is the only thing that makes drawing them honest."
+      - script: "figures/extended_data_proteomics.R"
+        required: false
+        datasets: ["global"]
+        stage: "integration"
+        scope: "global"
+        produces: ["results/figures/manuscript/extended_data_01/", "results/source_data/manuscript/extended_data_01/", "results/reports/manuscript_figures/extended_data_01/", "results/logs/manuscript_figures/extended_data_01/", "results/figures/manuscript/extended_data_03/", "results/source_data/manuscript/extended_data_03/", "results/reports/manuscript_figures/extended_data_03/", "results/logs/manuscript_figures/extended_data_03/", "results/figures/manuscript/extended_data_06/", "results/source_data/manuscript/extended_data_06/", "results/reports/manuscript_figures/extended_data_06/", "results/logs/manuscript_figures/extended_data_06/", "results/figures/manuscript/extended_data_08/", "results/source_data/manuscript/extended_data_08/", "results/reports/manuscript_figures/extended_data_08/", "results/logs/manuscript_figures/extended_data_08/"]
+        consumes_required:
+          - "config/output_namespaces.yml"
+          - "figures/figure_contract.yml"
+        consumes_optional: []
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Explicit manuscript entry point for the promoted proteomics Extended Data, ED1, ED3, ED6 and ED8. Four of the seven final_truth_v9 Extended Data figures were promoted in Phase 6A after a per-figure audit that read the source tables rather than trusting the generation name. This layer validates the declared panel assets against figures/figure_contract.yml, materialises them with per-panel SHA-256, republishes each panel source table into the manuscript namespace and assembles. It fits nothing and computes nothing. ED2, the WGCNA figure and ED7 are deliberately absent: ED2 panel c is presented as the complete canonical GO inventory while drawing 14 of 2826 FDR-supported terms, the WGCNA phenotype panel annotates a neuropil-only count of 45 with no compartment scope beside an all-compartment 35 and labels 8 of 15 modules with a peak unit the canonical atlas declines to assign, and ED7 is cited nowhere in the manuscript. Their defects are recorded in manuscript/extended_data_promotion_audit.csv and nothing was substituted for them."
       - script: "figures/extended_data_behaviour.R"
         required: false
         datasets: ["global"]
         stage: "integration"
         scope: "global"
-        produces: ["results/figures/manuscript/extended_data_09/", "results/source_data/manuscript/extended_data_09/", "results/reports/manuscript_figures/extended_data_09/", "results/logs/manuscript_figures/extended_data_09/"]
+        produces: ["results/figures/manuscript/extended_data_05/", "results/source_data/manuscript/extended_data_05/", "results/reports/manuscript_figures/extended_data_05/", "results/logs/manuscript_figures/extended_data_05/", "results/figures/manuscript/extended_data_09/", "results/source_data/manuscript/extended_data_09/", "results/reports/manuscript_figures/extended_data_09/", "results/logs/manuscript_figures/extended_data_09/"]
         consumes_required:
           - "config/output_namespaces.yml"
           - "figures/figure_contract.yml"
-          - "results/figures/manuscript/extended_data_behaviour_panels/extended_data_behaviour_a.svg"
-          - "results/figures/manuscript/extended_data_behaviour_panels/extended_data_behaviour_b.svg"
-          - "results/figures/manuscript/extended_data_behaviour_panels/extended_data_behaviour_c.svg"
+          - "results/figures/manuscript/extended_data_behaviour_panels/extended_data_behaviour_ed05a.svg"
+          - "results/figures/manuscript/extended_data_behaviour_panels/extended_data_behaviour_ed05b.svg"
+          - "results/figures/manuscript/extended_data_behaviour_panels/extended_data_behaviour_ed09a.svg"
+          - "results/figures/manuscript/extended_data_behaviour_panels/extended_data_behaviour_ed09b.svg"
+          - "results/figures/manuscript/extended_data_behaviour_panels/extended_data_behaviour_ed09c.svg"
           - "manuscript/figure1_bridge_mmmsociability/behavior_prediction_model_ladder.csv"
           - "manuscript/figure1_bridge_mmmsociability/behavior_sex_effect_contract.csv"
         consumes_optional: []
