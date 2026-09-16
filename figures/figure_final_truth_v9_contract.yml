@@ -22,7 +22,12 @@
 # region x layer, soma and the microglia-enriched ROI are region-level only.
 
 contract_version: manuscript_final_truth_v9_figures_v1
-status: candidate_only_not_promoted
+status: promoted_canonical_manuscript_figures_2_and_3
+# Promoted in Phase 5B. Figures 2 and 3 of the manuscript are this generation.
+# figures/figure_contract.yml declares them and is the manuscript-facing
+# contract; this file remains the producing contract and keeps the renderer
+# and panel provenance. The Extended Data figures in this contract are NOT
+# promoted and remain candidates.
 palette: config/manuscript_palette.yml
 spatial_order: config/manuscript_spatial_order.yml
 font_floor_pt: 5
@@ -50,7 +55,8 @@ panels:
     phenotype_axes: none_intentional
     main_or_ed: main_concise
     narrative: all three compartments have sufficient coverage for spatial comparison.
-    primary_source: results/source_data/manuscript/figure_02/figure_02b_source_data.csv
+    # PB-02: canonical acquisition workbook, not the v2 export copy.
+    primary_source: data/raw/pg_matrix/quicksearch.stats.annotated.xlsx
 
   - id: v9_pca
     renderer: nf_pca_compact
@@ -63,7 +69,8 @@ panels:
       signature is inspected. Simplified for the main figure: no sample labels,
       deterministic legend order, compartment encoded clearly, no empty legend
       block and no boundary clipping.
-    primary_source: results/source_data/manuscript/figure_02/figure_02c_source_data.csv
+    # PB-02: canonical joint-QC PCA scores, not the v2 export copy.
+    primary_source: results/tables/03_qc_exploration/00b_joint_compartment_qc/global/joint_primary_pca_scores.csv
     input_dependencies:
       - results/tables/03_qc_exploration/00b_joint_compartment_qc/global/joint_primary_pca_variance_explained.csv
 
@@ -151,6 +158,13 @@ panels:
     renderer: f9_gsea_atlas
     role: program_atlas
     contrast: SUS - RES
+    # This panel carries the column labels for the DAP track drawn directly
+    # above it, which suppresses its own axis text. Declaring the coupling makes
+    # the renderer pin the right gutter to the shared NF_RGT constant and move
+    # its colour bar below the axis, so the two panels' column pitches are equal
+    # by construction rather than by coincidence. Without it the track's numbers
+    # sit nearly a full column right of the labels that identify them (PB-01).
+    shares_column_geometry_with: v9_dap_track
     spatial_axes: compartment+region+layer
     phenotype_axes: SUS-RES
     main_or_ed: main_concise
