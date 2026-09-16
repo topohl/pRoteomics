@@ -90,7 +90,8 @@ testthat::test_that("the Extended Data contract declares the panels the renderer
   ids <- vapply(fig$panels, function(x) as.character(x$id), character(1))
 
   testthat::expect_identical(ids, paste0("9", letters[1:3]))
-  testthat::expect_identical(fig$contract_version, "manuscript_figures_v2")
+  testthat::expect_identical(fig$contract_version,
+                             "manuscript_figures_v3_final_truth_v9_promoted")
   testthat::expect_identical(as.integer(fig$extended_data_number), 9L)
   testthat::expect_false(isTRUE(fig$rendering_repository_computes_statistics))
   # Two equal rows of 52 mm, so each panel is placed in a 48 mm image box and

@@ -22,14 +22,17 @@ testthat::test_that("the candidate contract is a separate file from the canonica
   testthat::expect_identical(CAND$status, "candidate_only_not_promoted")
   testthat::expect_identical(CAND$compares_against, "manuscript_figures_v2")
 
-  # the canonical contract is untouched by the candidate layer: still v2 and
-  # still exactly 2a-2f / 3a-3e
+  # The canonical contract is untouched BY THIS LAYER. It has moved on for its
+  # own reasons - Phase 5B promoted final_truth_v9, so it is now v3 with 2a-2h
+  # and 3a-3i - but nothing here may be the cause of that, which is what the
+  # reference check at the end of this file actually enforces.
   y <- yaml::read_yaml(cf_canonical_contract_path())
-  testthat::expect_identical(y$contract_version, "manuscript_figures_v2")
+  testthat::expect_identical(y$contract_version,
+                             "manuscript_figures_v3_final_truth_v9_promoted")
   ids2 <- vapply(y$figures[["02"]]$panels, function(p) as.character(p$id), character(1))
   ids3 <- vapply(y$figures[["03"]]$panels, function(p) as.character(p$id), character(1))
-  testthat::expect_identical(ids2, paste0("2", letters[1:6]))
-  testthat::expect_identical(ids3, paste0("3", letters[1:5]))
+  testthat::expect_identical(ids2, paste0("2", letters[1:8]))
+  testthat::expect_identical(ids3, paste0("3", letters[1:9]))
 })
 
 testthat::test_that("candidate panel ids cannot collide with canonical panel ids", {
@@ -311,11 +314,30 @@ testthat::test_that("the candidate output namespace is isolated", {
               repo_path("R", "manuscript_figure_utils.R"),
               repo_path("figures", "figure_contract.yml"))) {
     s <- paste(readLines(f, warn = FALSE), collapse = "\n")
-    for (tok in c("manuscript_candidates", "figure_candidate_contract",
+    for (tok in c("figure_candidate_contract",
                   "candidate_figure_utils", "candidate_figure_panels",
                   "candidate_figure_02", "candidate_figure_03", "cf_build_figure")) {
       testthat::expect_false(grepl(tok, s, fixed = TRUE),
                              info = paste(basename(f), tok))
     }
+    # The results root is shared by every non-canonical generation, so the bare
+    # directory name cannot be banned outright any more: Phase 5B promoted
+    # final_truth_v9, whose renderers still write there. What must stay true is
+    # that the ONLY thing the canonical layer reaches into that root for is the
+    # promoted generation. A reference to any other generation - or to this
+    # comparison layer - would mean the canonical figures depend on something
+    # removable.
+    # A declared input_dependency may name an older generation, because that is
+    # truthful provenance about what produced the artefact. What the canonical
+    # layer READS - figure_source and primary_source - may only ever come from
+    # the promoted generation.
+    read_lines_ <- grep("^\\s*(figure_source|primary_source):", strsplit(s, "\n")[[1]],
+                        value = TRUE)
+    hits <- unlist(regmatches(read_lines_,
+                              gregexpr("manuscript_candidates/[A-Za-z0-9_]+", read_lines_)))
+    testthat::expect_true(all(hits == "manuscript_candidates/final_truth_v9"),
+      info = paste(basename(f), "reads from a non-promoted candidate generation:",
+                   paste(setdiff(unique(hits), "manuscript_candidates/final_truth_v9"),
+                         collapse = ", ")))
   }
 })
