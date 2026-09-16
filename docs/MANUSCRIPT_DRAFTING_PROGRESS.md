@@ -527,3 +527,71 @@ and left for the author.
 SR-01 to SR-03, above. The acquisition settings and the cage-change schedule,
 neither of which is in this repository. The PRIDE accession and the front-matter
 sections. Discussion compression, which depends on the target journal.
+
+## Phase 5 (HEAD 146b036 → this commit) — figure-generation adjudication
+
+### Decision
+
+**PROMOTE_V9 = NO, at this HEAD.** Not because v9 is wrong — on the evidence it is
+the right generation — but because three defects would ship with it, one of which
+is a rendering fault that makes Figure 3 assert a false anatomical claim.
+
+### What the adjudication established
+
+v9 **strictly dominates** v2 on evidence. Of 13 Results §2/§3 claims: 7
+`SUPPORTED_BY_BOTH`, 6 `SUPPORTED_BY_V9`, **0 by v2 alone**, 0 by neither. v2
+cannot support the bilateral-concordance claim (no such panel exists), the
+CA2-SLM QC weakening (its DAP source has no robustness column at all), the
+seven-program atlas, or the three exemplar curves.
+
+The most instructive near-miss: manuscript Fig. 3b claims *"FDR-supported
+constituent terms occur in 132 of the 378 theme × unit × contrast cells."* The v2
+panel 3b source also has exactly 378 rows — and **zero** FDR-supported cells
+(`tier_specific_fdr` minimum 0.2493). The row count is a coincidence and the
+evidence is the opposite. Repointing the reference would have looked clean and
+been badly wrong. This is why the Phase 4 instruction not to repoint blindly was
+correct.
+
+v9 is also current where it was most suspect: registry `manuscript_go_themes_v3`,
+seven exact programs, 253 constituent GO terms, mitochondrial theme exactly 16
+terms with glycolysis excluded and PDH/TCA retained; DAP arithmetic 37/28/6/9/15
+exact; the three exemplars exact; leading edge 63 values with no invented
+confidence interval and an explicit statement that none is individually
+FDR-supported.
+
+### Why it is still blocked
+
+**PB-01 is the serious one.** `NF_RGT <- 7.6` is defined at
+`R/nature_final_v7_figure3_panels.R:48` as *"mm reserved at the right for the
+atlas legend, in a AND b"*. It is applied in all three DAP-track renderers (v7,
+v8, v9) and **in no atlas renderer** — `f9_gsea_atlas` sets `legend.position =
+"right"` with no matching `plot.margin`. So the "a AND b" contract was
+implemented on one side only, in three successive generations.
+
+Measured in the assembled SVG: panel a pitch 18.720 pt, panel b 17.540 pt. The
+headline `28` sits at x = 251.89, which is panel b's **CA3-SO** column (254.46),
+not CA2-SLM (236.92). Read as drawn, Figure 3 states that CA3 stratum oriens has
+28 FDR-supported and 6 robustness-qualified proteins. Its true values are 0 and
+0, and the CA2-SLM result the panel exists to carry is erased. A re-render does
+not fix it: the defect is deterministic code.
+
+PB-02 is structural — v9 Figure 2 panels b and c read their inputs from the *v2*
+export namespace, so promoting v9 and retiring v2 removes their only producer.
+PB-03 is a hard-coded stale legend constant that re-rendering cannot correct.
+
+### Also found
+
+The **currently shipped** Figure 3 is scientifically superseded (SR-21).
+`results/manuscript/figure_3/panels/figure_03a.svg` draws CA2-SLM as a bar 25
+units long against a maximum of 2 elsewhere, with no QC row — precisely what the
+standing requirement forbids. Neither generation is shippable today.
+
+`docs/REPOSITORY_ARCHITECTURE.md` already records `final_truth_v9` as the CURRENT
+layer while the v9 contract's own `status` field still reads
+`candidate_only_not_promoted`. That self-contradiction is the root of SR-01–03.
+
+### Not done, deliberately
+
+No promotion, no contract switch, no re-render, no export. Per the standing
+instruction to stop before promotion when a critical panel fails. No analysis was
+rerun and no Results value changed.
