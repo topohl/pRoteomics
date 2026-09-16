@@ -1,6 +1,132 @@
 contract_version: manuscript_figures_v2
 
 figures:
+  "01":
+    title: Figure 1
+    width_mm: 183
+    height_mm: 168
+    manuscript_role: primary_behavioural_figure
+    is_numbered_manuscript_figure: true
+    analysis_repository: topohl/MMMSociability
+    analysis_frozen_at: 30a2666198ca6f23795773da1b7d0ef34e78ac37
+    source_data_frozen_in: manuscript/figure1_bridge_mmmsociability/source_data
+    rendering_repository_computes_statistics: false
+    scientific_contract_summary: >-
+      Early spontaneous home-cage activity prospectively predicts later composite
+      stress outcome. The biological unit is the animal throughout. The early
+      predictor window closes before every component of the outcome is measured,
+      so the classification did not exist at the time of recording. The prediction
+      target is continuous CombZ, never the binary resilient/susceptible label, and
+      the validation is internal out-of-sample, never independent or external. All
+      statistics are computed in the behavioural repository and frozen; this
+      repository renders them and computes nothing.
+    panels:
+      - id: 1a
+        description: Experimental timeline and the temporal ordering of predictor and outcome
+        producer_script: figures/figure_01_panels.R
+        render_mode: copy_svg
+        source_data_mode: copy_csv
+        figure_source: results/figures/manuscript/figure_01_panels/figure_01a.svg
+        primary_source: manuscript/figure1_bridge_mmmsociability/source_data/figure1a_timeline_source.csv
+        input_dependencies:
+          - manuscript/figure1_bridge_mmmsociability/source_data/figure1a_timeline_source.csv
+          - manuscript/figure1_bridge_mmmsociability/source_data/figure1_panel_statistics.csv
+        required_columns: [figure_panel, step, event, age_or_time, precedes_outcome, used_as_predictor, used_in_outcome]
+        expected_rows: 7
+        scientific_contract: design_schematic_temporal_precedence
+        biological_unit: AnimalID
+        hemisphere_handling: not_applicable_behavioural
+        analysis_repository: topohl/MMMSociability
+        rendering_repository_computes_statistics: false
+        row: 1
+        col: 1
+        colspan: 2
+      - id: 1b
+        description: Later composite outcome and the same-sex control-referenced classification rule
+        producer_script: figures/figure_01_panels.R
+        render_mode: copy_svg
+        source_data_mode: copy_csv
+        figure_source: results/figures/manuscript/figure_01_panels/figure_01b.svg
+        primary_source: manuscript/figure1_bridge_mmmsociability/source_data/figure1b_combz_classification_source.csv
+        input_dependencies:
+          - manuscript/figure1_bridge_mmmsociability/source_data/figure1b_combz_classification_source.csv
+          - manuscript/figure1_bridge_mmmsociability/source_data/figure1_panel_statistics.csv
+        required_columns: [figure_panel, AnimalID, Sex, CombZ, final_group, control_reference_mean, control_reference_population_sd, susceptibility_threshold]
+        expected_rows: 117
+        scientific_contract: phenotype_definition_not_independent_validation
+        biological_unit: AnimalID
+        hemisphere_handling: not_applicable_behavioural
+        analysis_repository: topohl/MMMSociability
+        rendering_repository_computes_statistics: false
+        circularity_note: >-
+          The six components that build CombZ are deliberately absent from the
+          source data. Their differences between the resulting groups are true
+          by construction and must never be shown as validation of the grouping.
+        row: 2
+        col: 1
+      - id: 1c
+        description: Early mean movement versus later composite outcome
+        producer_script: figures/figure_01_panels.R
+        render_mode: copy_svg
+        source_data_mode: copy_csv
+        figure_source: results/figures/manuscript/figure_01_panels/figure_01c.svg
+        primary_source: manuscript/figure1_bridge_mmmsociability/source_data/figure1c_movement_combz_source.csv
+        input_dependencies:
+          - manuscript/figure1_bridge_mmmsociability/source_data/figure1c_movement_combz_source.csv
+          - manuscript/figure1_bridge_mmmsociability/source_data/figure1_panel_statistics.csv
+        required_columns: [figure_panel, AnimalID, Sex, Group, Movement_mean, CombZ]
+        expected_rows: 111
+        scientific_contract: primary_association_spearman_no_model_fitted
+        biological_unit: AnimalID
+        hemisphere_handling: not_applicable_behavioural
+        analysis_repository: topohl/MMMSociability
+        rendering_repository_computes_statistics: false
+        statistic: Spearman rank correlation with 5000-sample percentile bootstrap CI, BH over three prespecified features
+        stratification: none; the formal feature-by-sex interaction is unsupported
+        row: 2
+        col: 2
+      - id: 1d
+        description: Observed versus leave-one-animal-out predicted composite outcome
+        producer_script: figures/figure_01_panels.R
+        render_mode: copy_svg
+        source_data_mode: copy_csv
+        figure_source: results/figures/manuscript/figure_01_panels/figure_01d.svg
+        primary_source: manuscript/figure1_bridge_mmmsociability/source_data/figure1d_loao_predictions_source.csv
+        input_dependencies:
+          - manuscript/figure1_bridge_mmmsociability/source_data/figure1d_loao_predictions_source.csv
+          - manuscript/figure1_bridge_mmmsociability/source_data/figure1_panel_statistics.csv
+        required_columns: [figure_panel, AnimalID, observed_CombZ, predicted_CombZ, model_id, validation_scheme]
+        expected_rows: 111
+        scientific_contract: held_out_prediction_continuous_target_internal_validation
+        biological_unit: AnimalID
+        hemisphere_handling: not_applicable_behavioural
+        analysis_repository: topohl/MMMSociability
+        rendering_repository_computes_statistics: false
+        model: movement_mean; sole predictor Movement_mean; uses_group FALSE
+        prediction_target: continuous CombZ, never the binary phenotype
+        row: 3
+        col: 1
+      - id: 1e
+        description: Full-refit permutation null of the leave-one-animal-out R2
+        producer_script: figures/figure_01_panels.R
+        render_mode: copy_svg
+        source_data_mode: copy_csv
+        figure_source: results/figures/manuscript/figure_01_panels/figure_01e.svg
+        primary_source: manuscript/figure1_bridge_mmmsociability/source_data/figure1e_permutation_source.csv
+        input_dependencies:
+          - manuscript/figure1_bridge_mmmsociability/source_data/figure1e_permutation_source.csv
+          - manuscript/figure1_bridge_mmmsociability/source_data/figure1_panel_statistics.csv
+        required_columns: [figure_panel, permutation_id, seed, model_id, performance_value, is_observed, row_role]
+        expected_rows: 1001
+        scientific_contract: full_refit_outcome_permutation_null
+        biological_unit: AnimalID
+        hemisphere_handling: not_applicable_behavioural
+        analysis_repository: topohl/MMMSociability
+        rendering_repository_computes_statistics: false
+        permutation: 1000 full-refit draws, seed 20260811; p recomputable from the stored draws
+        repeated_cv_annotation: summary only; no per-repeat values exist upstream
+        row: 3
+        col: 2
   "02":
     title: Figure 2
     width_mm: 183

@@ -20,9 +20,22 @@ BUNDLE_FILES <- c("figure1_claim_contract.csv", "figure1_methods_contract.csv",
 
 test_that("the bridge is a byte-exact mirror of exactly the frozen bundle", {
   skip_if_not(dir.exists(BRIDGE), "figure 1 bridge not imported")
-  # exactly these files and nothing else - an extra file here would be a
-  # proteomics-side artefact masquerading as frozen upstream evidence
-  expect_setequal(list.files(BRIDGE), BUNDLE_FILES)
+  # Exactly these files and nothing else - an extra entry here would be a
+  # proteomics-side artefact masquerading as frozen upstream evidence. The
+  # source_data/ subdirectory is the one permitted addition: it is the frozen
+  # Figure 1 panel source data, itself a byte-exact upstream mirror, and it is
+  # pinned to its own expected contents below rather than waved through.
+  expect_setequal(list.files(BRIDGE), c(BUNDLE_FILES, "source_data"))
+  expect_true(dir.exists(file.path(BRIDGE, "source_data")))
+  expect_setequal(
+    list.files(file.path(BRIDGE, "source_data")),
+    c("figure1a_timeline_source.csv", "figure1b_combz_classification_source.csv",
+      "figure1c_movement_combz_source.csv", "figure1d_loao_predictions_source.csv",
+      "figure1e_permutation_source.csv", "figure1f_repeated_cv_source.csv",
+      "figure1_panel_statistics.csv", "figure1_panel_source_manifest.csv"))
+  # and nothing executable may live in the evidence interface
+  expect_equal(list.files(BRIDGE, pattern = "[.][Rr]$", recursive = TRUE),
+               character(0))
 
   man <- rd(file.path(MS, "figure1_bridge_import_manifest.csv"))
   expect_equal(nrow(man), length(BUNDLE_FILES))

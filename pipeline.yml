@@ -1445,6 +1445,48 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Render-only manuscript Figure 3 integration from existing Stage 07 WGCNA, canonical module membership, manifest-selected protein DA, concordance, and GO sources; fits no new model."
+      - script: "figures/figure_01_panels.R"
+        required: false
+        datasets: ["global"]
+        stage: "integration"
+        scope: "global"
+        produces: ["results/figures/manuscript/figure_01_panels/"]
+        consumes_required:
+          - "config/manuscript_palette.yml"
+          - "manuscript/figure1_bridge_mmmsociability/source_data/figure1a_timeline_source.csv"
+          - "manuscript/figure1_bridge_mmmsociability/source_data/figure1b_combz_classification_source.csv"
+          - "manuscript/figure1_bridge_mmmsociability/source_data/figure1c_movement_combz_source.csv"
+          - "manuscript/figure1_bridge_mmmsociability/source_data/figure1d_loao_predictions_source.csv"
+          - "manuscript/figure1_bridge_mmmsociability/source_data/figure1e_permutation_source.csv"
+          - "manuscript/figure1_bridge_mmmsociability/source_data/figure1f_repeated_cv_source.csv"
+          - "manuscript/figure1_bridge_mmmsociability/source_data/figure1_panel_statistics.csv"
+        consumes_optional: []
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Renders the five Figure 1 panels from the frozen behavioural source data imported at manuscript/figure1_bridge_mmmsociability/source_data. Rendering only: it fits no correlation, no model and runs no permutation, and every number it prints is resolved through figure1_panel_statistics.csv, which fails the render rather than inventing a value that is not in the frozen index. The behavioural analysis is owned by topohl/MMMSociability and is frozen there; this repository never recomputes a behavioural statistic. Panel a is a design schematic carrying the temporal ordering and the realised window coverage; panel b shows the classification rule and deliberately omits the six components that build CombZ, whose group differences are true by construction; panel c is the primary association, unstratified because the formal feature-by-sex interaction is unsupported; panel d is held-out prediction of continuous CombZ; panel e is the persisted full-refit permutation null. The repeated grouped five-fold result is annotated on panel e rather than given a panel, because upstream persists summary rows only and no per-repeat distribution exists to draw."
+      - script: "figures/figure_01.R"
+        required: false
+        datasets: ["global"]
+        stage: "integration"
+        scope: "global"
+        produces: ["results/figures/manuscript/figure_01/", "results/source_data/manuscript/figure_01/", "results/reports/manuscript_figures/figure_01/", "results/logs/manuscript_figures/figure_01/"]
+        consumes_required:
+          - "config/output_namespaces.yml"
+          - "figures/figure_contract.yml"
+          - "results/figures/manuscript/figure_01_panels/figure_01a.svg"
+          - "results/figures/manuscript/figure_01_panels/figure_01b.svg"
+          - "results/figures/manuscript/figure_01_panels/figure_01c.svg"
+          - "results/figures/manuscript/figure_01_panels/figure_01d.svg"
+          - "results/figures/manuscript/figure_01_panels/figure_01e.svg"
+          - "manuscript/figure1_bridge_mmmsociability/source_data/figure1a_timeline_source.csv"
+          - "manuscript/figure1_bridge_mmmsociability/source_data/figure1b_combz_classification_source.csv"
+          - "manuscript/figure1_bridge_mmmsociability/source_data/figure1c_movement_combz_source.csv"
+          - "manuscript/figure1_bridge_mmmsociability/source_data/figure1d_loao_predictions_source.csv"
+          - "manuscript/figure1_bridge_mmmsociability/source_data/figure1e_permutation_source.csv"
+        consumes_optional: []
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Explicit manuscript Figure 1 entry point. Validates the declared panel assets against figures/figure_contract.yml, materialises them with per-panel SHA-256, copies each panel source table beside them, assembles the figure and writes a run manifest. Fits nothing. The contract pins expected_rows per panel, so a panel whose source data changes row count fails the render rather than producing a figure that silently disagrees with the manuscript."
       - script: "figures/figure_02.R"
         required: false
         datasets: ["global"]
