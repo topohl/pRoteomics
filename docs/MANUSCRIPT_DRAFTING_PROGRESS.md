@@ -466,3 +466,64 @@ bare use of "microglia" occurs inside its own disclaimer.
 The Abstract, which should be written last. No analysis was rerun, no Results or
 Methods value changed, Figures 2 and 3 were untouched, and the behaviour–proteomics
 integration section remains closed on BH-006.
+
+## Phase 4 (HEAD 59b496b → this commit)
+
+### Scope
+
+Close the submission-readiness gaps: the Methods TODO register, the behavioural
+Extended Data, the figure export stage, the title, the Abstract, and an audit of
+what is left. No analysis was rerun, no Results or Methods value was changed, and
+no behavioural statistic was computed here.
+
+### The finding that matters most
+
+**Results §2 and §3 cite a figure generation that was never promoted.** The draft
+was written against `final_truth_v9`, in which Figure 2 has panels a–h and
+Figure 3 has panels a–i. What `figures/figure_02.R` and `figures/figure_03.R`
+render, and what the export stage ships, is `manuscript_figures_v2` — Figure 2
+with panels a–f and a Figure 3 that is a different figure, WGCNA-centred rather
+than program-exemplar-centred. The v9 contract's own `status` field reads
+`candidate_only_not_promoted`.
+
+This is not a numbering drift and it is not repaired here. The v2 Figure 2 has no
+CON-only spatial fingerprint panel and no bilateral reproducibility panel, and
+the v2 Figure 3 has none of the three program-exemplar GSEA curves or protein
+heatmaps that Results §3 points at. Renumbering the references would silently
+substitute different evidence for the evidence the text describes. Both figure
+sets exist and are rendered; what does not exist is a decision about which is the
+manuscript's. Recorded as SR-01 to SR-03 in `manuscript/submission_readiness.csv`
+and left for the author.
+
+### Closed
+
+- **Methods TODOs.** MT-01 software, seeds and ontology release, as a new
+  *Software and reproducibility* subsection; MT-05 CA2-SLM prespecified
+  thresholds; MT-12 network section retitled with its edge definition stated;
+  MT-03 external reference cited. Every value came from a per-stage
+  `sessionInfo.txt`, a committed config, or installed package metadata. The one
+  value that could not be recovered — the acquisition and search settings — is
+  marked in place and explained, not filled from convention.
+- **Figure export.** `copy_export_targets` called `file.copy` without creating
+  parent directories, so all 21 curated Figure 1–3 copies returned `FALSE` after
+  ~5,200 extended-data files had been overwritten and before the manifests were
+  rewritten — a silent partial export. Fixed and guarded; the stage now writes
+  5,235 manifest rows including all 23 curated copies.
+- **Behavioural Extended Data**, as Extended Data Figure 9: the complete a-priori
+  model registry, the formal feature-by-sex interaction tests, and the
+  sex-stratified correlations as descriptive context. Two tables imported
+  byte-identically from the same upstream freeze the Figure 1 bridge rests on.
+  The renderer computes nothing and refuses to draw panel c unless every
+  interaction is still classified `FORMAL_INTERACTION_NOT_SUPPORTED`.
+- **A dangling `Fig. 1e`.** Panel e was merged into panel d during the Figure 1
+  rebuild, but Results §1 and two provenance rows still pointed at it. They now
+  point at Extended Data Fig. 9b,c, which is where that evidence is.
+- **Title**, selected from four candidates with each rejection recorded, and the
+  **Abstract**, 243 words, with all eighteen quantities resolved to the Results
+  statement they are quoted from.
+
+### Not done, deliberately
+
+SR-01 to SR-03, above. The acquisition settings and the cage-change schedule,
+neither of which is in this repository. The PRIDE accession and the front-matter
+sections. Discussion compression, which depends on the target journal.
