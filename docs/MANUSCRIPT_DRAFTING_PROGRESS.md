@@ -595,3 +595,61 @@ layer while the v9 contract's own `status` field still reads
 No promotion, no contract switch, no re-render, no export. Per the standing
 instruction to stop before promotion when a critical panel fails. No analysis was
 rerun and no Results value changed.
+
+## Phase 5B (HEAD ebe3194 → this commit) — repair, promote, ship
+
+**PROMOTE_V9 = YES.** Figures 2 and 3 are now `final_truth_v9`: Figure 2 a–h,
+Figure 3 a–i, the structure Results §2 and §3 were written against. No Results
+prose was rewritten, because the promoted panels *are* the evidence the prose
+describes.
+
+### The three repairs
+
+**PB-01 — column misregistration.** Root cause was inter-panel layout geometry,
+not data: both panels compute `xpos` from the same `sg_blocks()` order, but the
+atlas let a right-hand ggplot legend take 18.07 mm of layout width while the DAP
+track reserved the shared `NF_RGT` constant of 7.60 mm. Pitches were 17.540 and
+18.720 pt, so the headline `28` sat on **CA3 SO** and the figure asserted a value
+of 28 for a unit whose true value is 0. The atlas now declares the coupling
+(`shares_column_geometry_with`) and moves its colour bar below the axis, pinning
+the right gutter to `NF_RGT`. Measured after: both panels left inset 137.60 pt,
+right inset 21.54 pt, pitch 18.720 pt — **18 of 18 columns misregistered before,
+0 of 18 after, maximum offset 0.00 pt.**
+
+**PB-02 — provenance.** Figure 2 b and c read from the *v2* export namespace, so
+retiring v2 would have removed the only producer of their inputs. They now read
+the canonical acquisition workbook and the canonical joint-QC PCA scores. Plotted
+values identical before and after (323×5 and 323×4, `all.equal` TRUE).
+
+**PB-03 — hard-coded constant.** The eps-floor disclosure said "90 of the 851"
+and could not be corrected by re-running, because it was a literal. It is now
+derived by `f9_eps_floor_disclosure()`, which also asserts that the smallest
+positive raw p in the canonical output equals the declared floor. The legend now
+reads **94 of 953**.
+
+### Promotion
+
+The manuscript assembler gained an opt-in `layout_mode: absolute`, because the
+promoted figures cannot be expressed on an equal-cell grid without distorting
+them. All 17 promoted panels are byte-identical copies of the v9 renders, so the
+repaired geometry is preserved exactly.
+
+### What shipped
+
+Export ships Figure 1 a–d unchanged, Figure 2 a–h and Figure 3 a–i.
+**SR-21 is closed on the artefact**: `figure_03a.svg` is byte-identical to the
+post-QC v9 DAP track, draws both rows (37 total / 15 total), contains 28 and 6,
+and contains no "hotspot". The pre-QC bar panel is no longer reachable from the
+manuscript contract.
+
+### Integrity
+
+24 of 24 validity checks PASS. Changed-output manifest: **0
+UNEXPECTED_SCIENTIFIC_CHANGE**. Figure 1 byte-identical. No analysis rerun, no
+frozen source data changed, no Results value changed.
+
+### Still open, deliberately
+
+The four external-record items only: acquisition and search settings, the
+cage-change schedule, the PRIDE accession and the front matter. Discussion
+compression remains deferred as SR-18.

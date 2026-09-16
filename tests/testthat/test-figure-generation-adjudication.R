@@ -120,28 +120,45 @@ testthat::test_that("the adjudication record is present and internally consisten
 
   b <- utils::read.csv(blk, stringsAsFactors = FALSE)
   testthat::expect_true(all(b$blocks_promotion %in% c("YES", "NO")))
-  # Promotion stays blocked while any blocker is open; this test is the tripwire
-  # that stops the contract being switched with blockers still recorded.
-  testthat::expect_gt(sum(b$blocks_promotion == "YES"), 0L)
+  # Phase 5B closed PB-01, PB-02 and PB-03 and the promotion happened, so the
+  # register must now be clear. This was the tripwire that stopped the contract
+  # being switched while blockers were still open; inverted, it now stops a new
+  # blocker being recorded while the promoted contract stays in place.
+  testthat::expect_identical(sum(b$blocks_promotion == "YES"), 0L)
+  testthat::expect_true(all(b$id[b$severity == "RESOLVED"] %in% c("PB-01", "PB-02", "PB-03")))
 })
 
-testthat::test_that("the column-registration defect that blocks promotion is still unfixed", {
-  # PB-01. NF_RGT reserves the atlas-legend gutter in the DAP track only; no atlas
-  # renderer applies it, so panels a and b of Figure 3 do not share column
-  # geometry. This test documents the defect rather than asserting correctness,
-  # because the figure is not promoted and the defect is deterministic code.
-  # WHEN IT IS FIXED, this test will fail - that is the signal to promote and to
-  # replace this test with a positive alignment assertion measured on the render.
+testthat::test_that("the column-registration defect is fixed and stays fixed", {
+  # PB-01, now resolved. NF_RGT reserves the atlas-legend gutter; before the
+  # repair it was applied in the DAP track only, so panels a and b of Figure 3
+  # did not share column geometry and the headline 28 pointed at CA3 stratum
+  # oriens. The tripwire this test used to carry has fired and been inverted:
+  # both sides of the gutter convention must now be present.
   src <- repo_rel("R", "final_truth_v9_panels.R")
   testthat::skip_if_not(file.exists(src), "v9 panel renderers not present")
   code <- readLines(src, warn = FALSE)
 
   dap <- grep("plot.margin = ggplot2::margin(1, NF_RGT, 0, 1, \"mm\")", code, fixed = TRUE)
-  testthat::expect_gt(length(dap), 0L)
+  testthat::expect_gte(length(dap), 2L)   # the DAP track and the coupled atlas
 
   atlas <- paste(code[seq(grep("^f9_gsea_atlas <- function", code)[1],
                           length(code))], collapse = "\n")
   atlas <- sub("\nf9_[a-z_]+ <- function.*$", "", atlas)
-  testthat::expect_false(grepl("NF_RGT", atlas, fixed = TRUE),
-    info = "NF_RGT now appears in f9_gsea_atlas: PB-01 may be fixed - re-measure and promote")
+  testthat::expect_true(grepl("NF_RGT", atlas, fixed = TRUE),
+    info = "f9_gsea_atlas must reserve the same right gutter as the track above it")
+  testthat::expect_true(grepl("shares_column_geometry_with", atlas, fixed = TRUE))
+
+  # The measured proof lives in the registration audit.
+  aud <- repo_rel("manuscript", "figure_pb01_registration_audit.csv")
+  testthat::skip_if_not(file.exists(aud), "registration audit not present")
+  a <- utils::read.csv(aud, stringsAsFactors = FALSE)
+  testthat::expect_identical(nrow(a), 18L)
+  testthat::expect_identical(sum(a$status == "MISREGISTERED"), 0L)
+  testthat::expect_identical(sum(a$status_before == "MISREGISTERED"), 18L)
+  # The column that carries the headline value must be CA2 SLM.
+  hit <- a[a$expected_value_canonical == 28L, ]
+  testthat::expect_identical(nrow(hit), 1L)
+  testthat::expect_identical(as.character(hit$expected_spatial_unit), "CA2 SLM")
+  testthat::expect_identical(as.character(hit$plotted_spatial_unit_after), "CA2 SLM")
+  testthat::expect_identical(as.character(hit$plotted_spatial_unit_before), "CA3 SO")
 })
