@@ -1,4 +1,4 @@
-# Committed, repo-relative defaults for 04_differential_expression_enrichment/01_clusterProfiler.r.
+# Committed, repo-relative defaults for 04_differential_expression_enrichment/run_clusterprofiler_enrichment.R.
 # For local overrides, copy to config/clusterProfiler_config.local.yml or set paths
 # interactively before sourcing the script; do not commit machine-specific paths.
 

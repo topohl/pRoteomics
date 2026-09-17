@@ -217,10 +217,10 @@ active_analysis_scripts <- function(
 guess_stage_for_script <- function(script) {
   s <- sub("^analysis/", "", script)
   if (grepl("^01_preprocessing", s)) return("core")
-  if (grepl("^02_qc/04b|^02_qc/05_empirical", s)) return("qc_global")
+  if (grepl("^02_qc/(build_reference_marker_registry|discover_empirical_roi_markers)", s)) return("qc_global")
   if (grepl("^02_qc", s)) return("qc")
   if (grepl("^04_differential_abundance|^06_gsea", s)) return("enrichment")
-  if (grepl("^05_wgcna/01_WGCNA", s)) return("modules_wgcna")
+  if (grepl("^05_wgcna/build_wgcna_modules", s)) return("modules_wgcna")
   if (grepl("^05_wgcna", s)) return("modules_downstream")
   if (grepl("^07_spatial_networks|^03_spatial_validation", s)) return("networks")
   if (grepl("^08_integration", s)) return("integration")
@@ -242,7 +242,7 @@ write_pipeline_validation_tables <- function(registry) {
     unregistered_tbl <- data.frame(
       script = unregistered,
       guessed_stage = vapply(unregistered, guess_stage_for_script, character(1)),
-      reason_not_registered = ifelse(grepl("^[0-9]{2}_.*/[0-9]{2}_|compat|legacy", unregistered), "compatibility wrapper or older numbering", "not present in pipeline.yml"),
+      reason_not_registered = ifelse(grepl("compat|legacy", unregistered), "compatibility wrapper or superseded variant", "not present in pipeline.yml"),
       recommendation = "Audit and either add to pipeline.yml or mark as legacy with a replacement/status.",
       stringsAsFactors = FALSE
     )

@@ -13,16 +13,16 @@ testthat::test_that("pipeline.yml is valid and references existing active script
     pipeline_registry_entries(registry)$script
   )
   steps <- pipeline_steps(registry, "enrichment", dataset = "microglia")
-  testthat::expect_true("analysis/04_differential_abundance/01_clusterProfiler.r" %in% steps$script)
+  testthat::expect_true("analysis/04_differential_abundance/run_clusterprofiler_enrichment.R" %in% steps$script)
 
   network_steps <- pipeline_steps(registry, "networks", dataset = "microglia")
-  testthat::expect_true("analysis/07_spatial_networks/01_network_spatial_relations.r" %in% network_steps$script)
-  downstream_networks <- setdiff(network_steps$script, "analysis/07_spatial_networks/01_network_spatial_relations.r")
+  testthat::expect_true("analysis/07_spatial_networks/build_spatial_networks.R" %in% network_steps$script)
+  downstream_networks <- setdiff(network_steps$script, "analysis/07_spatial_networks/build_spatial_networks.R")
   testthat::expect_false(any(grepl("02_differential|03_bootstrap|04_bootstrap|05_bootstrap|06_chord", downstream_networks)))
 
   coupling_steps <- pipeline_steps(registry, "coupling", dataset = "microglia")
-  testthat::expect_true("analysis/08_integration/03_module_behavior_coupling.r" %in% coupling_steps$script[coupling_steps$supported])
-  testthat::expect_false("analysis/08_integration/02_network_behavior_coupling.r" %in% coupling_steps$script[coupling_steps$supported])
+  testthat::expect_true("analysis/08_integration/test_module_behaviour_coupling.R" %in% coupling_steps$script[coupling_steps$supported])
+  testthat::expect_false("analysis/08_integration/test_network_behaviour_coupling.R" %in% coupling_steps$script[coupling_steps$supported])
 
   testthat::expect_true("integration" %in% pipeline_stage_names(registry))
   stage_names <- pipeline_stage_names(registry)
@@ -56,7 +56,17 @@ testthat::test_that("deprecated 04d stays excluded and documented as legacy", {
   row_04d <- audit[audit$script_path == script_04d, , drop = FALSE]
   testthat::expect_equal(nrow(row_04d), 1L)
   testthat::expect_identical(row_04d$status, "legacy_deprecated")
-  testthat::expect_match(row_04d$remaining_TODOs, "04e", fixed = TRUE)
+  ## The row must document what replaces the deprecated script. Asserting on a
+  ## historical numeric label ("04e") would break on any rename while a dangling
+  ## replacement path would still pass, so assert the substantive property: the
+  ## documented replacement resolves to a file that is a registered active
+  ## script.
+  testthat::expect_match(row_04d$remaining_TODOs, "replacement: ", fixed = TRUE)
+  replacement <- sub(".*replacement: *", "", row_04d$remaining_TODOs)
+  replacement <- trimws(sub(";.*$", "", replacement))
+  testthat::expect_true(nzchar(replacement))
+  testthat::expect_true(file.exists(repo_path(replacement)))
+  testthat::expect_true(replacement %in% active)
 })
 
 testthat::test_that("analysis discovery is repository-wide and fail closed", {
@@ -89,7 +99,7 @@ testthat::test_that("current optional and superseded blind-spot scripts are clas
     registry$legacy, function(x) as.character(x$script), character(1)
   )
   testthat::expect_true(
-    "analysis/08_integration/05_manuscript_figure3_wgcna_protein_zoom.R" %in%
+    "analysis/08_integration/export_module_protein_zoom_source_data.R" %in%
       active
   )
   testthat::expect_false(
@@ -128,7 +138,7 @@ testthat::test_that("README and RUN_ORDER do not present legacy scripts as activ
   active_blocks <- paste(readme, run_order, sep = "\n")
   testthat::expect_false(grepl("Backward-compatible retained names", active_blocks, fixed = TRUE))
   testthat::expect_false(grepl("04_neuropil_contamination_annotation.r", run_order, fixed = TRUE))
-  testthat::expect_true(grepl("analysis/05_wgcna/03_score_module_activity.R", run_order, fixed = TRUE))
+  testthat::expect_true(grepl("analysis/05_wgcna/score_module_activity.R", run_order, fixed = TRUE))
   testthat::expect_false(grepl("analysis/05_wgcna/91_module_score.r", run_order, fixed = TRUE))
   testthat::expect_true(grepl("analysis/09_publication_exports/", readme, fixed = TRUE))
   testthat::expect_true(grepl("legacy", readme, ignore.case = TRUE))

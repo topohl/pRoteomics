@@ -171,7 +171,7 @@ testthat::test_that("child R process exits nonzero for failed assessment", {
 
 testthat::test_that("active master flow preserves failed manifests and uses computed exit status", {
   script <- paste(readLines(
-    repo_path("analysis/04_differential_abundance", "01_clusterProfiler.r"),
+    repo_path("analysis/04_differential_abundance", "run_clusterprofiler_enrichment.R"),
     warn = FALSE
   ), collapse = "\n")
   testthat::expect_match(script, "make_failed_manifest_row\\(")

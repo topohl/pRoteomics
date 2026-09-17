@@ -57,7 +57,21 @@ R_DOMAINS <- c("data_contracts", "qc", "statistics", "spatial",
 ## would have changed a file that freeze_protected_export_files() compares
 ## across two historical commits, and a naming improvement is not worth
 ## perturbing a frozen provenance mechanism.
-RENAMES <- matrix(character(0), nrow = 0, ncol = 2)
+##
+## Phase 6E renamed 108 scripts and libraries, all byte-identical (git R100).
+## The pairs are read from the recorded migration rather than duplicated here,
+## so this canonicaliser cannot drift from the record. Old names collapse to
+## new ones on both sides, which is what makes a repointed reference compare
+## equal while a changed value still fails.
+RENAMES <- local({
+  f <- repo_path("audits", "phase6e_naming_migration.csv")
+  if (!file.exists(f)) return(matrix(character(0), nrow = 0, ncol = 2))
+  d <- utils::read.csv(f, stringsAsFactors = FALSE)
+  m <- cbind(basename(d$old_path), basename(d$new_path))
+  m <- m[m[, 1] != m[, 2], , drop = FALSE]
+  ## longest first, so one old name cannot be rewritten inside another
+  m[order(-nchar(m[, 1])), , drop = FALSE]
+})
 
 canonicalise <- function(x) {
   ## 3. collapse every library addressing style to RLIB(<name>)

@@ -124,7 +124,7 @@ testthat::test_that("9. the current canonical Stage-11 input passes the contract
 
 testthat::test_that("the Stage-11 consumer no longer uses a literal-equality check", {
   src <- readLines(repo_path("analysis/04_differential_abundance",
-    "11_stress_response_biological_audit.r"
+    "audit_stress_response_biology.R"
   ), warn = FALSE)
   testthat::expect_false(any(grepl(
     'evidence_source_family) != "ranked_GSEA"', src, fixed = TRUE

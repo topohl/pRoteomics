@@ -239,10 +239,10 @@ testthat::test_that("legacy WGCNA states are rejected by canonical QC bridge val
 
 testthat::test_that("active gene-aware consumers do not match marker genes to matrix row names", {
   scripts <- c(
-    "analysis/02_qc/04_marker_rank_abundance_qc.r",
-    "analysis/02_qc/04c_marker_detectability_and_wgcna_bridge.r",
-    "analysis/02_qc/05_empirical_roi_marker_discovery.r",
-    "analysis/02_qc/07_wgcna_marker_trait_export.r"
+    "analysis/02_qc/assess_marker_rank_abundance.R",
+    "analysis/02_qc/summarize_marker_detectability.R",
+    "analysis/02_qc/discover_empirical_roi_markers.R",
+    "analysis/02_qc/export_marker_traits.R"
   )
   text <- vapply(scripts, function(path) {
     paste(readLines(testthat::test_path("..", "..", path), warn = FALSE), collapse = "\n")
@@ -256,8 +256,8 @@ testthat::test_that("active gene-aware consumers do not match marker genes to ma
 testthat::test_that("pipeline declares Stage 01 canonical marker-QC inputs", {
   pipeline <- paste(readLines(testthat::test_path("..", "..", "pipeline.yml"), warn = FALSE), collapse = "\n")
   for (script in c(
-    "04_marker_rank_abundance_qc.r", "04c_marker_detectability_and_wgcna_bridge.r",
-    "05_empirical_roi_marker_discovery.r", "07_wgcna_marker_trait_export.r"
+    "assess_marker_rank_abundance.R", "summarize_marker_detectability.R",
+    "discover_empirical_roi_markers.R", "export_marker_traits.R"
   )) testthat::expect_match(pipeline, script, fixed = TRUE)
   testthat::expect_match(pipeline, "pgmatrix_imputed_<dataset>", fixed = TRUE)
   testthat::expect_match(pipeline, "MOUSE_10090_idmapping.dat", fixed = TRUE)

@@ -203,7 +203,7 @@ testthat::test_that("known gaps are reported as warnings, never silently ignored
   wc <- gaps[[which(ids == "processed_package_wildcard_glob_filter")]]
   testthat::expect_match(wc$reference, "export_helpers.R", fixed = TRUE)
   testthat::expect_match(wc$correction_to_prior_description,
-                         "not analysis/09_publication_exports/04_make_supplementary_tables.R",
+                         "not analysis/09_publication_exports/build_supplementary_tables.R",
                          fixed = TRUE)
 })
 

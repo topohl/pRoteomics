@@ -59,7 +59,7 @@ testthat::test_that("control-spatial seeded execution restores caller RNG", {
 
 testthat::test_that("script 09 cannot bypass deterministic GSEA governance", {
   script <- paste(readLines(repo_path("analysis/04_differential_abundance",
-    "09_control_spatial_identity_validation.r"
+    "validate_control_spatial_identity.R"
   ), warn = FALSE), collapse = "\n")
   testthat::expect_false(grepl(
     "clusterProfiler::(gseGO|GSEA)[[:space:]]*\\(", script, perl = TRUE
@@ -347,7 +347,7 @@ testthat::test_that("Figure 2f grouped layout abbreviates only the seven display
 
 testthat::test_that("Figure 2f grouped candidate is render-only from validated source data", {
   script <- paste(readLines(repo_path("analysis/04_differential_abundance",
-    "09_control_spatial_identity_validation.r"
+    "validate_control_spatial_identity.R"
   ), warn = FALSE), collapse = "\n")
   testthat::expect_match(
     script, "PROTEOMICS_CONTROL_SPATIAL_FIGURE2F_GROUPED_LAYOUT_RENDER_ONLY",
