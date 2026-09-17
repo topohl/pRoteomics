@@ -2,20 +2,28 @@
 # Script: analysis/differential_abundance/audit_gsea_protein_direction.R
 # Stage: enrichment
 # Scope: dataset_specific
-# Consumes: canonical clusterProfiler manifest, collapsed-gene inputs, and term-gene provenance.
-# Produces: diagnostic GSEA/protein direction audit CSVs under results/tables and run_manifest.yml under results/logs.
-# Dataset behavior: runs for neuron_neuropil, neuron_soma, microglia via --dataset.
+# Consumes: required results/differential_abundance/run_clusterprofiler_enrichment/<dataset>/models/clusterProfiler_manifest.csv; data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv; data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv; optional results/source_data/04_differential_expression_enrichment/clusterProfiler/<dataset>/
+# Produces: results/differential_abundance/audit_gsea_protein_direction/<dataset>/tables/<ontology>/gsea_term_direction_audit.csv; results/differential_abundance/audit_gsea_protein_direction/<dataset>/tables/<ontology>/gsea_contrast_direction_summary.csv; results/differential_abundance/audit_gsea_protein_direction/<dataset>/tables/<ontology>/ora_pooled_direction_warning.csv; +2 more
+# Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Read-only diagnostic. Does not modify ProTigy, mapped, clusterProfiler, or compareGO outputs.
 # ================================================================
+#  
+#  
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
 source(repo_path("R", "script_runtime.R"))
 source(repo_path("R", "enrichment_io.R"))
+source(repo_path("R", "differential_abundance_paths.R"))
+
+# Phase 6G.4: destinations resolve through the normalized output contract,
+# addressed by this analysis's own identity rather than by the historical
+# 04_differential_expression_enrichment stage directory. Outputs already
+# written there stay exactly where they are and are read, never rewritten.
+ANALYSIS_ID <- "audit_gsea_protein_direction"
 
 MODULE_ID <- "04_differential_expression_enrichment"
 SUBSTEP_ID <- "01b_gsea_protein_direction_audit"
-CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
 
 runtime <- init_script_runtime(
   script = "analysis/differential_abundance/audit_gsea_protein_direction.R",
@@ -31,8 +39,10 @@ if (!ONTOLOGY %in% c("BP", "MF", "CC")) {
   stop("--ontology must be one of BP, MF, or CC.", call. = FALSE)
 }
 
-tables_dir <- path_results("tables", MODULE_ID, SUBSTEP_ID, DATASET, ONTOLOGY)
-logs_dir <- path_results("logs", MODULE_ID, SUBSTEP_ID, DATASET, ONTOLOGY)
+CANONICAL_PATHS <- differential_abundance_dirs(ANALYSIS_ID, scope = DATASET,
+                                              suffix = ONTOLOGY)
+tables_dir <- CANONICAL_PATHS$tables
+logs_dir <- CANONICAL_PATHS$manifests
 output_paths <- list(
   term_audit = file.path(tables_dir, "gsea_term_direction_audit.csv"),
   contrast_summary = file.path(tables_dir, "gsea_contrast_direction_summary.csv"),

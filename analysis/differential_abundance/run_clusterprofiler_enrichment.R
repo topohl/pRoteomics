@@ -2,8 +2,8 @@
 # Script: analysis/differential_abundance/run_clusterprofiler_enrichment.R
 # Stage: enrichment
 # Scope: dataset_specific
-# Consumes: required data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv; optional data/external/MOUSE_10090_idmapping.dat.
-# Produces: data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv.
+# Consumes: required data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv; optional data/external/MOUSE_10090_idmapping.dat
+# Produces: results/differential_abundance/run_clusterprofiler_enrichment/<dataset>/models/clusterProfiler_manifest.csv
 # Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: ClusterProfiler enrichment source for compareGO and program summaries.
 # ================================================================
@@ -31,6 +31,8 @@
 #'
 #' @author Tobias Pohl
 #' ============================================================
+#  
+#  
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
@@ -40,6 +42,13 @@ source(repo_path("R", "protein_group_enrichment_utils.R"))
 source(repo_path("R", "enrichment_io.R"))
 source(repo_path("R", "schema_validation.R"))
 source(repo_path("R", "clusterprofiler_reproducibility.R"))
+source(repo_path("R", "differential_abundance_paths.R"))
+
+# Phase 6G.4: destinations resolve through the normalized output contract,
+# addressed by this analysis's own identity rather than by the historical
+# 04_differential_expression_enrichment stage directory. Outputs already
+# written there stay exactly where they are and are read, never rewritten.
+ANALYSIS_ID <- "run_clusterprofiler_enrichment"
 ENRICHMENT_BRANCH <- trimws(Sys.getenv("PROTEOMICS_ENRICHMENT_BRANCH", unset = ""))
 if (nzchar(ENRICHMENT_BRANCH) && !grepl("^[A-Za-z0-9_-]+$", ENRICHMENT_BRANCH)) {
   stop("PROTEOMICS_ENRICHMENT_BRANCH must match ^[A-Za-z0-9_-]+$.", call. = FALSE)
@@ -50,7 +59,6 @@ MODULE_ID <- if (nzchar(ENRICHMENT_BRANCH)) {
   "04_differential_expression_enrichment"
 }
 SUBSTEP_ID <- "clusterProfiler"
-CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
 
 # ----------------------------------------------------
 # 0. SIMPLIFICATION SETTINGS
@@ -160,7 +168,7 @@ setupPackages <- function() {
 # ----------------------------------------------------
 analysis_dir_paths <- function(base_dir, comparison_name, ontology) {
   route <- classify_comparison_route(comparison_name)
-  results_root <- file.path(CANONICAL_PATHS$processed, route$category, route$unit_folder, comparison_name)
+  results_root <- file.path(CANONICAL_PATHS$models, route$category, route$unit_folder, comparison_name)
   plots_root <- file.path(CANONICAL_PATHS$figures, route$category, route$unit_folder, comparison_name)
 
   list(
@@ -869,8 +877,15 @@ if (nzchar(mapped_dir_override)) {
   cfg$paths$mapped_dir <- mapped_dir_override
   cfg$paths$mapped_data_base <- mapped_dir_override
 }
-CANONICAL_PATHS <- lapply(CANONICAL_PATHS, function(path) file.path(path, DATASET))
-invisible(lapply(CANONICAL_PATHS, dir.create, recursive = TRUE, showWarnings = FALSE))
+CANONICAL_PATHS <- if (nzchar(ENRICHMENT_BRANCH)) {
+  ## experimental branch: a regenerable sandbox, never canonical output
+  canonical_module_dirs("differential_abundance", ANALYSIS_ID,
+                        scope = DATASET, suffix = ENRICHMENT_BRANCH,
+                        create = FALSE)
+} else {
+  differential_abundance_dirs(ANALYSIS_ID, scope = DATASET)
+}
+invisible(lapply(CANONICAL_PATHS, dir_create))
 
 dataset_mapped_default <- path_processed("02_id_mapping", "mapped", DATASET, "forward", "per_file")
 if (is.null(cfg$paths$mapped_dir) || !nzchar(cfg$paths$mapped_dir)) {
@@ -984,7 +999,7 @@ expected_output_paths <- c(
       use_simplified_for_plots = USE_SIMPLIFIED_FOR_PLOTS
     )
   ), use.names = FALSE),
-  file.path(CANONICAL_PATHS$processed, "clusterProfiler_manifest.csv"),
+  file.path(CANONICAL_PATHS$models, "clusterProfiler_manifest.csv"),
   file.path(CANONICAL_PATHS$reports, "clusterProfiler_manifest_YYYYMMDD_HHMMSS.csv"),
   file.path(CANONICAL_PATHS$reports, "clusterProfiler_run_summary_YYYYMMDD_HHMMSS.csv")
 )
@@ -1025,7 +1040,7 @@ if (isTRUE(DRY_RUN)) {
   dry_run_line("Enrichment branch", if (nzchar(ENRICHMENT_BRANCH)) ENRICHMENT_BRANCH else "canonical")
   dry_run_line("Resolved mapped_dir", cfg$paths$mapped_dir)
   dry_run_line("Resolved mapped_data_base", cfg$paths$mapped_data_base)
-  dry_run_line("Processed output root", CANONICAL_PATHS$processed)
+  dry_run_line("Processed output root", CANONICAL_PATHS$models)
   dry_run_line("Tables output root", CANONICAL_PATHS$tables)
   dry_run_line("Figures output root", CANONICAL_PATHS$figures)
   dry_run_line("Source-data output root", CANONICAL_PATHS$source_data)
@@ -1046,11 +1061,11 @@ if (isTRUE(DRY_RUN)) {
     dry_run_line("Route counts", paste(utils::capture.output(print(route_counts, row.names = FALSE)), collapse = " | "))
   }
   dry_run_line("Ontology", cfg$analysis$ontology)
-  dry_run_line("Dataset processed output", CANONICAL_PATHS$processed)
+  dry_run_line("Dataset processed output", CANONICAL_PATHS$models)
   dry_run_line("Dataset figures output", CANONICAL_PATHS$figures)
   dry_run_line("Dataset source data", CANONICAL_PATHS$source_data)
   dry_run_line("Maximum expected output path length", if (nrow(output_path_audit)) max(output_path_audit$path_length) else 0L)
-  dry_run_line("Result manifest", file.path(CANONICAL_PATHS$processed, "clusterProfiler_manifest.csv"))
+  dry_run_line("Result manifest", file.path(CANONICAL_PATHS$models, "clusterProfiler_manifest.csv"))
   dry_run_file <- file.path(CANONICAL_PATHS$reports, "clusterProfiler_dry_run_diagnostics.csv")
   write.csv(diagnostics, dry_run_file, row.names = FALSE)
   route_qc_file <- file.path(CANONICAL_PATHS$reports, "clusterProfiler_route_qc_dry_run.csv")
@@ -2255,7 +2270,7 @@ manifest <- if (length(manifest_rows) > 0) dplyr::bind_rows(manifest_rows) else 
 }
 validate_clusterprofiler_manifest_contract(manifest, strict = TRUE, require_files = TRUE)
 validate_table_schema(manifest, "clusterProfiler_manifest", strict = TRUE)
-manifest_file <- file.path(CANONICAL_PATHS$processed, "clusterProfiler_manifest.csv")
+manifest_file <- file.path(CANONICAL_PATHS$models, "clusterProfiler_manifest.csv")
 write_csv_strict(manifest, manifest_file, "clusterProfiler manifest")
 write_csv_strict(
   manifest,
