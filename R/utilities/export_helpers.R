@@ -18,7 +18,7 @@ if (!exists("output_namespace_manuscript_export_root", mode = "function")) {
 }
 
 export_config_path <- function() {
-  repo_path("analysis/09_publication_exports", "config", "export_config.yml")
+  repo_path("analysis/publication_source_data", "config", "export_config.yml")
 }
 
 load_export_config <- function(path = export_config_path()) {

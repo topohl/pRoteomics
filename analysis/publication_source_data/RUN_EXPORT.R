@@ -1,0 +1,80 @@
+#!/usr/bin/env Rscript
+# ================================================================
+# Script: analysis/publication_source_data/RUN_EXPORT.R
+# Stage: export
+# Scope: global
+# Consumes: required analysis/publication_source_data/build_pride_manifest.R; analysis/publication_source_data/build_sample_metadata.R; +3 more; optional analysis/publication_source_data/config/export_config.yml.
+# Produces: pride_submission/.
+# Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: Convenience export runner kept last; direct registry order above is preferred for dependency visibility.
+# ================================================================
+
+# Orchestrates pg_matrix-onward PRIDE/journal export.
+#
+# Usage:
+#   Rscript analysis/publication_source_data/RUN_EXPORT.R --dataset all --export-level pg_matrix_onward
+#   Rscript analysis/publication_source_data/RUN_EXPORT.R --dataset microglia --export-level pg_matrix_onward
+#   Rscript analysis/publication_source_data/RUN_EXPORT.R --dataset microglia --dry-run
+
+paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
+source(paths_file)
+source(repo_path("R", "export_helpers.R"))
+
+Sys.setenv(PROTEOMICS_PROJECT_ROOT = repo_root())
+cli <- export_cli_args()
+extra <- commandArgs(trailingOnly = TRUE)
+extra <- extra[!extra %in% c("--skip-validation", "--skip-supplementary", "--skip-manuscript", "--skip-claims")]
+
+run_script <- function(rel, required = TRUE) {
+  script <- repo_path(rel)
+  if (!file.exists(script)) {
+    msg <- paste("Export script missing:", rel)
+    if (isTRUE(required)) stop(msg, call. = FALSE) else { warning(msg, call. = FALSE); return(0L) }
+  }
+  args <- c(script, extra)
+  cat("\n==> ", rel, "\n", sep = "")
+  status <- system2("Rscript", args)
+  if (is.null(status)) status <- 0L
+  if (!identical(status, 0L) && isTRUE(required) && !isTRUE(cli$dry_run)) {
+    stop("Export step failed (exit ", status, "): ", rel, call. = FALSE)
+  }
+  as.integer(status)
+}
+
+cat("pRoteomics export runner\n")
+cat("Scope:", export_scope_label(cli$export_level), "\n")
+cat("Dataset:", cli$dataset, "\n")
+cat("Dry run:", cli$dry_run, "\n\n")
+
+steps <- c(
+  "analysis/publication_source_data/build_sample_metadata.R",
+  "analysis/publication_source_data/export_processed_matrices.R"
+)
+if (!cli$skip_supplementary) steps <- c(steps, "analysis/publication_source_data/build_supplementary_tables.R")
+if (!cli$skip_manuscript) {
+  steps <- c(steps, "analysis/publication_source_data/09_export_source_data.R", "analysis/publication_source_data/08_export_manuscript_figures.R")
+}
+if (!cli$skip_claims) steps <- c(steps, "analysis/publication_source_data/build_biological_claims_table.R")
+steps <- c(steps, "analysis/publication_source_data/build_methods_summary.R", "analysis/publication_source_data/build_pride_manifest.R")
+if (!cli$skip_validation) steps <- c(steps, "analysis/publication_source_data/validate_pride_submission.R")
+
+# Only these steps implement a dry-run guard that returns before any
+# filesystem mutation. --dry-run must not write, so the remaining steps are
+# skipped rather than executed for real. Extend this vector when a step
+# gains a verified side-effect-free dry-run path.
+dry_run_capable <- c(
+  "analysis/publication_source_data/09_export_source_data.R",
+  "analysis/publication_source_data/08_export_manuscript_figures.R"
+)
+if (isTRUE(cli$dry_run)) {
+  skipped <- setdiff(steps, dry_run_capable)
+  if (length(skipped)) {
+    cat("Dry run: skipping steps without a side-effect-free dry-run path:\n")
+    for (s in skipped) cat("  - ", s, "\n", sep = "")
+  }
+  steps <- intersect(steps, dry_run_capable)
+}
+
+statuses <- if (length(steps)) vapply(steps, run_script, integer(1)) else integer(0)
+cat("\nExport runner finished. Steps:", length(steps), " Failures:", sum(statuses != 0L), "\n")
+quit(status = if (any(statuses != 0L)) 1 else 0, save = "no")

@@ -13,16 +13,16 @@ testthat::test_that("pipeline.yml is valid and references existing active script
     pipeline_registry_entries(registry)$script
   )
   steps <- pipeline_steps(registry, "enrichment", dataset = "microglia")
-  testthat::expect_true("analysis/04_differential_abundance/run_clusterprofiler_enrichment.R" %in% steps$script)
+  testthat::expect_true("analysis/differential_abundance/run_clusterprofiler_enrichment.R" %in% steps$script)
 
   network_steps <- pipeline_steps(registry, "networks", dataset = "microglia")
-  testthat::expect_true("analysis/07_spatial_networks/build_spatial_networks.R" %in% network_steps$script)
-  downstream_networks <- setdiff(network_steps$script, "analysis/07_spatial_networks/build_spatial_networks.R")
+  testthat::expect_true("analysis/spatial_networks/build_spatial_networks.R" %in% network_steps$script)
+  downstream_networks <- setdiff(network_steps$script, "analysis/spatial_networks/build_spatial_networks.R")
   testthat::expect_false(any(grepl("02_differential|03_bootstrap|04_bootstrap|05_bootstrap|06_chord", downstream_networks)))
 
   coupling_steps <- pipeline_steps(registry, "coupling", dataset = "microglia")
-  testthat::expect_true("analysis/08_integration/test_module_behaviour_coupling.R" %in% coupling_steps$script[coupling_steps$supported])
-  testthat::expect_false("analysis/08_integration/test_network_behaviour_coupling.R" %in% coupling_steps$script[coupling_steps$supported])
+  testthat::expect_true("analysis/integration/test_module_behaviour_coupling.R" %in% coupling_steps$script[coupling_steps$supported])
+  testthat::expect_false("analysis/integration/test_network_behaviour_coupling.R" %in% coupling_steps$script[coupling_steps$supported])
 
   testthat::expect_true("integration" %in% pipeline_stage_names(registry))
   stage_names <- pipeline_stage_names(registry)
@@ -99,7 +99,7 @@ testthat::test_that("current optional and superseded blind-spot scripts are clas
     registry$legacy, function(x) as.character(x$script), character(1)
   )
   testthat::expect_true(
-    "analysis/08_integration/export_module_protein_zoom_source_data.R" %in%
+    "analysis/integration/export_module_protein_zoom_source_data.R" %in%
       active
   )
   testthat::expect_false(
@@ -138,9 +138,9 @@ testthat::test_that("README and RUN_ORDER do not present legacy scripts as activ
   active_blocks <- paste(readme, run_order, sep = "\n")
   testthat::expect_false(grepl("Backward-compatible retained names", active_blocks, fixed = TRUE))
   testthat::expect_false(grepl("04_neuropil_contamination_annotation.r", run_order, fixed = TRUE))
-  testthat::expect_true(grepl("analysis/05_wgcna/score_module_activity.R", run_order, fixed = TRUE))
-  testthat::expect_false(grepl("analysis/05_wgcna/91_module_score.r", run_order, fixed = TRUE))
-  testthat::expect_true(grepl("analysis/09_publication_exports/", readme, fixed = TRUE))
+  testthat::expect_true(grepl("analysis/wgcna/score_module_activity.R", run_order, fixed = TRUE))
+  testthat::expect_false(grepl("analysis/wgcna/91_module_score.r", run_order, fixed = TRUE))
+  testthat::expect_true(grepl("analysis/publication_source_data/", readme, fixed = TRUE))
   testthat::expect_true(grepl("legacy", readme, ignore.case = TRUE))
 })
 
@@ -151,9 +151,9 @@ testthat::test_that("bespoke enrichment legacy scripts stay out of the active fo
   registry <- read_pipeline_registry(repo_path("pipeline.yml"))
   steps <- pipeline_steps(registry, pipeline_stage_names(registry), dataset = "all", include_unsupported = TRUE)
   moved <- c(
-    "analysis/04_differential_abundance/04_compare_pathways.r",
-    "analysis/04_differential_abundance/05_compare_sig_expr.r",
-    "analysis/04_differential_abundance/07_control_strata_enrichment_figures.r"
+    "analysis/differential_abundance/04_compare_pathways.r",
+    "analysis/differential_abundance/05_compare_sig_expr.r",
+    "analysis/differential_abundance/07_control_strata_enrichment_figures.r"
   )
   legacy <- c(
     "archive/04_differential_expression_enrichment/legacy/04_compare_pathways.r",

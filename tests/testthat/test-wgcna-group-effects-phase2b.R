@@ -675,7 +675,7 @@ testthat::test_that("consumer scan is deterministic and excludes nonactive roots
   )))
   testthat::expect_false(any(first$consumer_script %in% c(
     "R/statistics/wgcna_group_effects_utils.R",
-    "analysis/05_wgcna/test_module_phenotypes.R",
+    "analysis/wgcna/test_module_phenotypes.R",
     "tests/testthat/test-wgcna-group-effects-phase2b.R",
     "tests/testthat/test-wgcna-group-effects-contract.R",
     "tests/testthat/test-schema-validation.R"
@@ -719,7 +719,7 @@ testthat::test_that("consumer audit exhaustively matches deterministic local sca
   )
   explicit_exclusions <- c(
     "R/statistics/wgcna_group_effects_utils.R",
-    "analysis/05_wgcna/test_module_phenotypes.R",
+    "analysis/wgcna/test_module_phenotypes.R",
     "tests/testthat/test-wgcna-group-effects-phase2b.R",
     "tests/testthat/test-wgcna-group-effects-contract.R",
     "tests/testthat/test-schema-validation.R"
@@ -757,7 +757,7 @@ testthat::test_that("Stage 05 status separates completion from readiness", {
     "microglia",
     c(
       repo_path("R", "wgcna_group_effects_utils.R"),
-      repo_path("analysis/05_wgcna", "test_module_phenotypes.R")
+      repo_path("analysis/wgcna", "test_module_phenotypes.R")
     ),
     canonical_primary_outputs_complete = TRUE
   )
@@ -793,7 +793,7 @@ testthat::test_that("Stage 05 source hashes cannot omit a direct dependency", {
   )
   relative_required <- vapply(required, relative_to, character(1))
   expected_code_and_schemas <- c(
-    "analysis/05_wgcna/test_module_phenotypes.R",
+    "analysis/wgcna/test_module_phenotypes.R",
     "R/paths.R", "R/data_contracts/dataset_config.R", "R/data_contracts/dataset_inputs.R",
     "R/data_contracts/module_contracts.R", "R/statistics/wgcna_downstream_utils.R",
     "R/statistics/wgcna_identity_contract_utils.R",

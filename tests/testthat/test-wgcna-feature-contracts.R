@@ -181,7 +181,7 @@ testthat::test_that("Phase 1B cache contract rejects legacy and mismatched state
 })
 
 testthat::test_that("active WGCNA feature construction cannot truncate or repair biological IDs", {
-  script <- readLines(repo_path("analysis/05_wgcna", "build_wgcna_modules.R"), warn = FALSE)
+  script <- readLines(repo_path("analysis/wgcna", "build_wgcna_modules.R"), warn = FALSE)
   active <- paste(script, collapse = "\n")
   testthat::expect_false(grepl("fix_feature_ids", active, fixed = TRUE))
   testthat::expect_false(grepl("sub(\";.*$\"", active, fixed = TRUE))

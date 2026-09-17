@@ -32,7 +32,7 @@ read_corrected_local_handoff <- function(path) {
 testthat::test_that("circular atlas uses the Stage 07 inferential handoff", {
   script <- paste(
     readLines(
-      test_root("analysis/08_integration", "render_module_circular_atlas.R"),
+      test_root("analysis/integration", "render_module_circular_atlas.R"),
       warn = FALSE
     ),
     collapse = "\n"
@@ -688,7 +688,7 @@ testthat::test_that("standardized circular SVG and PDF outputs exist", {
 testthat::test_that("circular script does not use broad legacy FDR for support", {
   script <- paste(
     readLines(
-      test_root("analysis/08_integration", "render_module_circular_atlas.R"),
+      test_root("analysis/integration", "render_module_circular_atlas.R"),
       warn = FALSE
     ),
     collapse = "\n"

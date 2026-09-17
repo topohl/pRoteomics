@@ -163,16 +163,16 @@ Key outputs to inspect:
 Safe to rerun: yes. These scripts consume existing WGCNA state and do not change
 network/module construction.
 
-Clarification: `analysis/05_wgcna/score_module_activity.R` is the
+Clarification: `analysis/wgcna/score_module_activity.R` is the
 score/statistics/QC producer and secondary robustness/behavior-coupling layer.
 It writes score tables, replicate QC, score-derived robustness statistics,
-correlation tables, and legacy/QC score plots. `analysis/05_wgcna/test_module_phenotypes.R`
+correlation tables, and legacy/QC score plots. `analysis/wgcna/test_module_phenotypes.R`
 is the primary WGCNA eigengene group-effect inference layer.
 
 Before moving on: check model warnings, `evidence_status`, FDR columns, spatial
 unit fields, whether module scores have adequate coverage, and whether the
 score-derived publication plots have been refreshed by
-`analysis/05_wgcna/summarize_module_scores.R` after labels are cleaned.
+`analysis/wgcna/summarize_module_scores.R` after labels are cleaned.
 
 ## 7. Biological Annotation
 
@@ -206,7 +206,7 @@ Run command:
 
 ```bash
 Rscript run_dataset_pipeline.R --dataset <dataset> --stage modules_downstream
-Rscript analysis/05_wgcna/summarize_module_interpretation.R --dataset all
+Rscript analysis/wgcna/summarize_module_interpretation.R --dataset all
 ```
 
 Key outputs to inspect:
@@ -231,8 +231,8 @@ cleaned semantic labels from `annotate_module_microenvironment.R` and
 Run command:
 
 ```bash
-Rscript analysis/05_wgcna/summarize_module_scores.R --dataset <dataset> --module-source wgcna
-Rscript analysis/05_wgcna/summarize_module_scores.R --dataset all --module-source wgcna
+Rscript analysis/wgcna/summarize_module_scores.R --dataset <dataset> --module-source wgcna
+Rscript analysis/wgcna/summarize_module_scores.R --dataset all --module-source wgcna
 ```
 
 Key outputs to inspect:

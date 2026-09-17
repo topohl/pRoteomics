@@ -2,18 +2,18 @@ testthat::test_that("dataset-scoped active scripts use shared CLI dataset resolu
   source(testthat::test_path("..", "..", "R", "paths.R"))
 
   scripts <- c(
-    "analysis/01_preprocessing/extract_protigy_contrasts.R",
-    "analysis/01_preprocessing/map_protein_identifiers.R",
-    "analysis/04_differential_abundance/run_clusterprofiler_enrichment.R",
-    "analysis/04_differential_abundance/compare_go_enrichment.R",
-    "analysis/04_differential_abundance/annotate_neuropil_reference.R",
-    "analysis/07_spatial_networks/build_differential_networks.R",
-    "analysis/07_spatial_networks/test_network_stability.R",
-    "analysis/07_spatial_networks/test_differential_network_stability.R",
-    "analysis/07_spatial_networks/render_differential_network_figures.R",
-    "analysis/07_spatial_networks/render_network_chord_diagram.R",
-    "analysis/08_integration/test_behaviour_proteomics_associations.R",
-    "analysis/08_integration/test_network_behaviour_coupling.R"
+    "analysis/preprocessing/extract_protigy_contrasts.R",
+    "analysis/preprocessing/map_protein_identifiers.R",
+    "analysis/differential_abundance/run_clusterprofiler_enrichment.R",
+    "analysis/differential_abundance/compare_go_enrichment.R",
+    "analysis/differential_abundance/annotate_neuropil_reference.R",
+    "analysis/spatial_networks/build_differential_networks.R",
+    "analysis/spatial_networks/test_network_stability.R",
+    "analysis/spatial_networks/test_differential_network_stability.R",
+    "analysis/spatial_networks/render_differential_network_figures.R",
+    "analysis/spatial_networks/render_network_chord_diagram.R",
+    "analysis/integration/test_behaviour_proteomics_associations.R",
+    "analysis/integration/test_network_behaviour_coupling.R"
   )
 
   for (script in scripts) {

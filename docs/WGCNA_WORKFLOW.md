@@ -82,7 +82,7 @@ member module. The full cut-height sensitivity grid is
 Run:
 
 ```bash
-Rscript analysis/05_wgcna/build_wgcna_modules.R --dataset <dataset>
+Rscript analysis/wgcna/build_wgcna_modules.R --dataset <dataset>
 ```
 
 Inspect:
@@ -110,7 +110,7 @@ metadata. It supports source-scoped definitions such as `wgcna`, `overlap`, or
 Run:
 
 ```bash
-Rscript analysis/05_wgcna/score_module_activity.R --dataset <dataset>
+Rscript analysis/wgcna/score_module_activity.R --dataset <dataset>
 ```
 
 Inspect:
@@ -174,7 +174,7 @@ statistics and diagnostics are inherited and every FDR field is `NA`.
 Run:
 
 ```bash
-Rscript analysis/05_wgcna/test_module_phenotypes.R --dataset <dataset> --level both
+Rscript analysis/wgcna/test_module_phenotypes.R --dataset <dataset> --level both
 ```
 
 Inspect:
@@ -229,7 +229,7 @@ manifest records the config path and hash.
 Run:
 
 ```bash
-Rscript analysis/05_wgcna/annotate_module_microenvironment.R --dataset <dataset>
+Rscript analysis/wgcna/annotate_module_microenvironment.R --dataset <dataset>
 ```
 
 Inspect:
@@ -286,8 +286,8 @@ exact compatibility alias for `canonical_plot_label`.
 Run:
 
 ```bash
-Rscript analysis/05_wgcna/summarize_module_interpretation.R --dataset <dataset>
-Rscript analysis/05_wgcna/summarize_module_interpretation.R --dataset all
+Rscript analysis/wgcna/summarize_module_interpretation.R --dataset <dataset>
+Rscript analysis/wgcna/summarize_module_interpretation.R --dataset all
 ```
 
 Inspect:
@@ -334,7 +334,7 @@ the exploratory strongest-Spearman match.
 Run:
 
 ```bash
-Rscript analysis/05_wgcna/test_microglia_neuropil_independence.R --dataset microglia
+Rscript analysis/wgcna/test_microglia_neuropil_independence.R --dataset microglia
 ```
 
 Inspect:
@@ -396,7 +396,7 @@ gate fails.
   labels as purified microglia regulation.
 # WGCNA Claim-Gate Inference Notes
 
-Primary WGCNA inference for group effects is the module or supermodule eigengene model exported by `analysis/05_wgcna/test_module_phenotypes.R`. The claim-grade columns in `module_group_effects.csv` and `supermodule_group_effects.csv` record the model family, formula, emmeans status, rank/singularity diagnostics, animal random-effect use, and biological replicate unit used for each row.
+Primary WGCNA inference for group effects is the module or supermodule eigengene model exported by `analysis/wgcna/test_module_phenotypes.R`. The claim-grade columns in `module_group_effects.csv` and `supermodule_group_effects.csv` record the model family, formula, emmeans status, rank/singularity diagnostics, animal random-effect use, and biological replicate unit used for each row.
 
 Fallback tests are diagnostic only. If emmeans fails or a two-group t-test substitute is emitted, the numerical estimate is retained for review, but `primary_model_stable = FALSE`, `claim_allowed_model = FALSE`, and `model_downgrade_reason` includes `diagnostic_only_model_fallback`.
 

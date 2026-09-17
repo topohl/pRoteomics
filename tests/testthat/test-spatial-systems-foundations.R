@@ -468,7 +468,7 @@ testthat::test_that("the registry reproduces the original inline contrast weight
 })
 
 testthat::test_that("the canonical Stage-09 script consumes the registry", {
-  src <- paste(readLines(repo_path("analysis/04_differential_abundance",
+  src <- paste(readLines(repo_path("analysis/differential_abundance",
                                    "validate_control_spatial_identity.R"),
                          warn = FALSE), collapse = "\n")
   testthat::expect_true(grepl("control_spatial_contrast_registry", src, fixed = TRUE))

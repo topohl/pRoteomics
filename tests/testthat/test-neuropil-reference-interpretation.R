@@ -17,7 +17,7 @@ load_assignment_helpers <- function(script, targets) {
 }
 
 load_neuropil_annotation_helpers <- function() {
-  script <- repo_path("analysis/04_differential_abundance",
+  script <- repo_path("analysis/differential_abundance",
     "annotate_neuropil_reference.R"
   )
   environment <- load_assignment_helpers(script, c(
@@ -42,7 +42,7 @@ load_neuropil_annotation_helpers <- function() {
 }
 
 load_neuropil_program_helpers <- function() {
-  script <- repo_path("analysis/04_differential_abundance",
+  script <- repo_path("analysis/differential_abundance",
     "summarize_biological_programs.R"
   )
   load_assignment_helpers(script, c(

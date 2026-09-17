@@ -239,10 +239,10 @@ testthat::test_that("legacy WGCNA states are rejected by canonical QC bridge val
 
 testthat::test_that("active gene-aware consumers do not match marker genes to matrix row names", {
   scripts <- c(
-    "analysis/02_qc/assess_marker_rank_abundance.R",
-    "analysis/02_qc/summarize_marker_detectability.R",
-    "analysis/02_qc/discover_empirical_roi_markers.R",
-    "analysis/02_qc/export_marker_traits.R"
+    "analysis/qc/assess_marker_rank_abundance.R",
+    "analysis/qc/summarize_marker_detectability.R",
+    "analysis/qc/discover_empirical_roi_markers.R",
+    "analysis/qc/export_marker_traits.R"
   )
   text <- vapply(scripts, function(path) {
     paste(readLines(testthat::test_path("..", "..", path), warn = FALSE), collapse = "\n")

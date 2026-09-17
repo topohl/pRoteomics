@@ -5,7 +5,7 @@ source(repo_path("R", "wgcna_downstream_utils.R"))
 source(repo_path("R", "wgcna_group_effects_utils.R"))
 
 stage05_script_assignments <- function() {
-  expressions <- parse(repo_path("analysis/05_wgcna", "test_module_phenotypes.R"
+  expressions <- parse(repo_path("analysis/wgcna", "test_module_phenotypes.R"
   ))
   names <- vapply(expressions, function(expression) {
     if (

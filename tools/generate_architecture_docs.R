@@ -21,22 +21,25 @@ steps <- steps[!duplicated(steps$script), , drop = FALSE]
 
 ## Analysis identity comes from the analysis/ directory a script lives in.
 area_of <- function(script) {
-  m <- regmatches(script, regexpr("^analysis/[0-9]{2}[a-z]?_[A-Za-z_]+", script))
+  m <- regmatches(script, regexpr("^analysis/[A-Za-z0-9_]+", script))
   if (!length(m) || !nzchar(m)) return(NA_character_)
   sub("^analysis/", "", m)
 }
 steps$area <- vapply(steps$script, area_of, character(1))
 
+## Phase 6F dropped the numeric prefixes: pipeline.yml owns execution order, and
+## the areas are not strictly linear, so numbering them implied an order that
+## was not real.
 AREA_TITLE <- c(
-  "01_preprocessing"        = "Preprocessing and identifier mapping",
-  "02_qc"                   = "Quality control and marker fidelity",
-  "03_spatial_validation"   = "Spatial systems validation, bilateral QC and CA2-SLM robustness",
-  "04_differential_abundance" = "Differential abundance and enrichment",
-  "05_wgcna"                = "WGCNA modules and supermodules",
-  "06_gsea"                 = "Cell-type enrichment (EWCE/GSEA)",
-  "07_spatial_networks"     = "Spatial and differential networks",
-  "08_integration"          = "Biological integration and behaviour coupling",
-  "09_publication_exports"  = "Publication source data and PRIDE export"
+  "preprocessing"           = "Preprocessing and identifier mapping",
+  "qc"                      = "Quality control and marker fidelity",
+  "spatial_validation"      = "Spatial systems validation, bilateral QC and CA2-SLM robustness",
+  "differential_abundance"  = "Differential abundance and GO/GSEA enrichment",
+  "wgcna"                   = "WGCNA modules and supermodules",
+  "enrichment"              = "Cell-type enrichment (EWCE)",
+  "spatial_networks"        = "Spatial and differential networks",
+  "integration"             = "Biological integration and behaviour coupling",
+  "publication_source_data" = "Publication source data and PRIDE export"
 )
 
 ## pipeline_steps() collapses list-valued fields with "|"; a few hand-written

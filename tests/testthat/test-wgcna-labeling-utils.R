@@ -50,7 +50,7 @@ testthat::test_that("joining canonical labels leaves numeric source values uncha
 })
 
 testthat::test_that("score publication script consumes only the canonical final lookup for active label choice", {
-  txt <- readLines(repo_path("analysis/05_wgcna", "summarize_module_scores.R"), warn = FALSE)
+  txt <- readLines(repo_path("analysis/wgcna", "summarize_module_scores.R"), warn = FALSE)
   active <- paste(txt[!grepl("^legacy_multifile_", trimws(txt))], collapse = "\n")
   testthat::expect_match(active, "WGCNA_final_label_lookup.csv", fixed = TRUE)
   testthat::expect_match(active, "validate_render_ids_in_lookup", fixed = TRUE)

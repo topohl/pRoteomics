@@ -59,7 +59,7 @@ testthat::test_that("no phenotype or group-effect field can enter a naming outpu
 })
 
 testthat::test_that("the adjudication script never reads phenotype inputs", {
-  code <- readLines(repo_path("analysis/05_wgcna", "adjudicate_module_labels.R"), warn = FALSE)
+  code <- readLines(repo_path("analysis/wgcna", "adjudicate_module_labels.R"), warn = FALSE)
   live <- paste(code[!grepl("^\\s*#", code)], collapse = "\n")
   for (p in c("clusterProfiler_manifest", "sus_res_resolve_manifest_input",
               "WGCNA_inferential_handoff", "wgcna_candidate_proteins",

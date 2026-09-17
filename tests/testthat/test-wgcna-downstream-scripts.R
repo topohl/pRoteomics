@@ -2,16 +2,16 @@ source(testthat::test_path("..", "..", "R", "paths.R"))
 
 testthat::test_that("WGCNA downstream entrypoints exist", {
   scripts <- c(
-    "analysis/02_qc/build_reference_marker_registry.R",
-    "analysis/02_qc/discover_empirical_roi_markers.R",
-    "analysis/02_qc/export_marker_traits.R",
-    "analysis/05_wgcna/test_module_phenotypes.R",
-    "analysis/05_wgcna/annotate_module_microenvironment.R",
-    "analysis/05_wgcna/summarize_module_interpretation.R",
-    "analysis/05_wgcna/render_module_figures.R",
-    "analysis/05_wgcna/test_microglia_neuropil_independence.R",
-    "analysis/05_wgcna/summarize_module_complex_architecture.R",
-    "analysis/05_wgcna/audit_module_robustness.R"
+    "analysis/qc/build_reference_marker_registry.R",
+    "analysis/qc/discover_empirical_roi_markers.R",
+    "analysis/qc/export_marker_traits.R",
+    "analysis/wgcna/test_module_phenotypes.R",
+    "analysis/wgcna/annotate_module_microenvironment.R",
+    "analysis/wgcna/summarize_module_interpretation.R",
+    "analysis/wgcna/render_module_figures.R",
+    "analysis/wgcna/test_microglia_neuropil_independence.R",
+    "analysis/wgcna/summarize_module_complex_architecture.R",
+    "analysis/wgcna/audit_module_robustness.R"
   )
   testthat::expect_true(all(file.exists(repo_path(scripts))))
 })
@@ -21,16 +21,16 @@ testthat::test_that("WGCNA downstream dry-runs report contracts", {
   old_wd <- setwd(repo_path())
   on.exit(setwd(old_wd), add = TRUE)
   cases <- list(
-    c("analysis/02_qc/build_reference_marker_registry.R", "--dry-run"),
-    c("analysis/02_qc/discover_empirical_roi_markers.R", "--dry-run"),
-    c("analysis/02_qc/export_marker_traits.R", "--dataset", "microglia", "--dry-run"),
-    c("analysis/05_wgcna/test_module_phenotypes.R", "--dataset", "microglia", "--dry-run"),
-    c("analysis/05_wgcna/annotate_module_microenvironment.R", "--dataset", "microglia", "--dry-run"),
-    c("analysis/05_wgcna/summarize_module_interpretation.R", "--dataset", "all", "--dry-run"),
-    c("analysis/05_wgcna/render_module_figures.R", "--dataset", "microglia", "--dry-run"),
-    c("analysis/05_wgcna/test_microglia_neuropil_independence.R", "--dataset", "microglia", "--dry-run"),
-    c("analysis/05_wgcna/summarize_module_complex_architecture.R", "--dataset", "all", "--dry-run"),
-    c("analysis/05_wgcna/audit_module_robustness.R", "--dataset", "all", "--dry-run")
+    c("analysis/qc/build_reference_marker_registry.R", "--dry-run"),
+    c("analysis/qc/discover_empirical_roi_markers.R", "--dry-run"),
+    c("analysis/qc/export_marker_traits.R", "--dataset", "microglia", "--dry-run"),
+    c("analysis/wgcna/test_module_phenotypes.R", "--dataset", "microglia", "--dry-run"),
+    c("analysis/wgcna/annotate_module_microenvironment.R", "--dataset", "microglia", "--dry-run"),
+    c("analysis/wgcna/summarize_module_interpretation.R", "--dataset", "all", "--dry-run"),
+    c("analysis/wgcna/render_module_figures.R", "--dataset", "microglia", "--dry-run"),
+    c("analysis/wgcna/test_microglia_neuropil_independence.R", "--dataset", "microglia", "--dry-run"),
+    c("analysis/wgcna/summarize_module_complex_architecture.R", "--dataset", "all", "--dry-run"),
+    c("analysis/wgcna/audit_module_robustness.R", "--dataset", "all", "--dry-run")
   )
   for (args in cases) {
     out <- suppressWarnings(system2(cmd, args, stdout = TRUE, stderr = TRUE))
@@ -129,14 +129,14 @@ testthat::test_that("semantic classifier treats synaptic adhesion scaffold as no
 })
 
 testthat::test_that("legacy static supermodule seeds stay opt-in", {
-  script <- readLines(repo_path("analysis/05_wgcna", "build_wgcna_modules.R"), warn = FALSE)
+  script <- readLines(repo_path("analysis/wgcna", "build_wgcna_modules.R"), warn = FALSE)
   txt <- paste(script, collapse = "\n")
   testthat::expect_true(grepl('PROTEOMICS_ALLOW_LEGACY_SUPERMODULE_SEED", unset = "false"', txt, fixed = TRUE))
   testthat::expect_match(txt, "legacy_static_seed")
 })
 
 testthat::test_that("supermodule sensitivity export uses fixed primary cut height", {
-  script <- readLines(repo_path("analysis/05_wgcna", "build_wgcna_modules.R"), warn = FALSE)
+  script <- readLines(repo_path("analysis/wgcna", "build_wgcna_modules.R"), warn = FALSE)
   txt <- paste(script, collapse = "\n")
   testthat::expect_match(txt, "primary_supermodule_cut_height <- cut_height")
   testthat::expect_match(txt, "primary_cut_height = primary_supermodule_cut_height")
@@ -147,9 +147,9 @@ testthat::test_that("supermodule sensitivity export uses fixed primary cut heigh
 
 testthat::test_that("downstream supermodule labels prefer display label consistently", {
   scripts <- c(
-    repo_path("analysis/05_wgcna", "test_module_phenotypes.R"),
-    repo_path("analysis/05_wgcna", "summarize_module_interpretation.R"),
-    repo_path("analysis/09_publication_exports", "build_biological_claims_table.R")
+    repo_path("analysis/wgcna", "test_module_phenotypes.R"),
+    repo_path("analysis/wgcna", "summarize_module_interpretation.R"),
+    repo_path("analysis/publication_source_data", "build_biological_claims_table.R")
   )
   txt <- paste(vapply(scripts, function(path) paste(readLines(path, warn = FALSE), collapse = "\n"), character(1)), collapse = "\n")
   testthat::expect_match(txt, "Supermodule_DisplayLabel")

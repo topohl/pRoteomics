@@ -15,13 +15,13 @@ directly from the registry.
 Recommended stage contents:
 
 ```text
-analysis/02_qc/assess_sample_quality.R
-analysis/02_qc/summarize_missingness.R
-analysis/02_qc/assess_replicate_consistency.R
-analysis/02_qc/assess_marker_rank_abundance.R
-analysis/02_qc/assess_pca_confounding.R
-analysis/02_qc/partition_variance.R
-analysis/02_qc/summarize_qc_confounding.R
+analysis/qc/assess_sample_quality.R
+analysis/qc/summarize_missingness.R
+analysis/qc/assess_replicate_consistency.R
+analysis/qc/assess_marker_rank_abundance.R
+analysis/qc/assess_pca_confounding.R
+analysis/qc/partition_variance.R
+analysis/qc/summarize_qc_confounding.R
 ```
 
 QC/confounding checks are now normal registry outputs rather than manual side
@@ -31,7 +31,7 @@ and technical PCs.
 
 ## Priority 2: Feed QC Flags Into Biological Claims
 
-Extend `analysis/09_publication_exports/build_biological_claims_table.R` so each
+Extend `analysis/publication_source_data/build_biological_claims_table.R` so each
 claim can carry QC/confounding context from:
 
 ```text
@@ -78,7 +78,7 @@ should remain broad enough to avoid false precision from regex-only mapping.
 
 ## Priority 4: Add Direction-Consistency to Program Summaries
 
-Extend `analysis/04_differential_abundance/summarize_biological_programs.R`
+Extend `analysis/differential_abundance/summarize_biological_programs.R`
 with direction-consistency fields:
 
 ```text
@@ -109,9 +109,9 @@ Highest-value targets:
 
 ```text
 04_differential_expression_enrichment summaries
-analysis/05_wgcna/score_module_activity.R
+analysis/wgcna/score_module_activity.R
 08_behavior_physio_coupling scripts
-analysis/09_publication_exports/build_biological_claims_table.R
+analysis/publication_source_data/build_biological_claims_table.R
 ```
 
 Rationale: the biological unit is animal, not individual tissue punch/replicate.
@@ -121,7 +121,7 @@ Claims should not accidentally borrow strength from pseudoreplicates.
 
 These scripts still deserve a focused pass:
 
-- `analysis/01_preprocessing/build_module_score_metadata.R`
+- `analysis/preprocessing/build_module_score_metadata.R`
   - Contains duplicated resolver logic and date-stamped/default legacy input
     assumptions.
   - Consider replacing resolver code with `R/data_contracts/dataset_inputs.R` helpers or
@@ -140,7 +140,7 @@ These scripts still deserve a focused pass:
   - Potentially useful figure logic, but it needs canonical input/output
     contracts and dry-run behavior.
 
-- `analysis/08_integration/test_behaviour_proteomics_associations.R`
+- `analysis/integration/test_behaviour_proteomics_associations.R`
   - Important behavior/proteomics producer, but still has date-stamped/default
     inputs.
   - Should become dataset-aware and animal-level explicit before manuscript use.
@@ -162,10 +162,10 @@ docs/current_data_flow.md
 
 Specific stale points to fix:
 
-- `analysis/02_qc/assess_sample_quality.R`,
+- `analysis/qc/assess_sample_quality.R`,
   `assess_marker_rank_abundance.R`, `assess_pca_confounding.R`, and `partition_variance.R` are now
   canonical dataset-aware scripts.
-- `analysis/02_qc/summarize_missingness.R`,
+- `analysis/qc/summarize_missingness.R`,
   `assess_replicate_consistency.R`, and
   `07_qc_biology_confounding_report.r` should be added to the audit/contracts.
 - `archive/03_qc_exploration/legacy/06_pcaPlot_Neha.r` and

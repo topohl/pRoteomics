@@ -61,15 +61,15 @@ execution order: `pipeline.yml` remains the sole execution-order authority.
 
 | Identity | Owns |
 | --- | --- |
-| `analysis/01_preprocessing` | preprocessing handoff and protein/gene identifier mapping |
-| `analysis/02_qc` | QC, missingness, marker fidelity, confounding |
-| `analysis/03_spatial_validation` | spatial systems, bilateral aggregation, CA2-SLM robustness |
-| `analysis/04_differential_abundance` | differential abundance and enrichment |
-| `analysis/05_wgcna` | WGCNA module and supermodule construction and downstream |
-| `analysis/06_gsea` | cell-type enrichment |
-| `analysis/07_spatial_networks` | spatial and differential networks |
-| `analysis/08_integration` | biological integration and behaviour/physiology coupling |
-| `analysis/09_publication_exports` | PRIDE and publication source-data export |
+| `analysis/preprocessing` | preprocessing handoff and protein/gene identifier mapping |
+| `analysis/qc` | QC, missingness, marker fidelity, confounding |
+| `analysis/spatial_validation` | spatial systems, bilateral aggregation, CA2-SLM robustness |
+| `analysis/differential_abundance` | differential abundance and enrichment |
+| `analysis/wgcna` | WGCNA module and supermodule construction and downstream |
+| `analysis/enrichment` | cell-type enrichment |
+| `analysis/spatial_networks` | spatial and differential networks |
+| `analysis/integration` | biological integration and behaviour/physiology coupling |
+| `analysis/publication_source_data` | PRIDE and publication source-data export |
 
 ## Output namespaces are deliberately not migrated
 
@@ -107,7 +107,7 @@ source data, legends and the submission bundle are owned by
 assembled artefact against the publication registry hash before packaging it
 and refuses to package one that does not match.
 
-What remains here is `analysis/09_publication_exports/08_export_manuscript_figures.R`.
+What remains here is `analysis/publication_source_data/08_export_manuscript_figures.R`.
 It scans this repository's figure outputs, records for each whether it is an
 editable vector, whether it has a PNG companion and whether sibling source data
 exists, and stages the candidates. That is a publication-readiness audit of

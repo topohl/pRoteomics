@@ -87,9 +87,9 @@ testthat::test_that("reviewed canonical lookup has exact fields and current fing
 })
 
 testthat::test_that("Stage 06 and publication code enforce stable non-circular contracts", {
-  stage06 <- paste(readLines(repo_path("analysis/05_wgcna", "annotate_module_microenvironment.R"), warn = FALSE), collapse = "\n")
-  stage08 <- paste(readLines(repo_path("analysis/05_wgcna", "render_module_figures.R"), warn = FALSE), collapse = "\n")
-  score_publication <- paste(readLines(repo_path("analysis/05_wgcna", "summarize_module_scores.R"), warn = FALSE), collapse = "\n")
+  stage06 <- paste(readLines(repo_path("analysis/wgcna", "annotate_module_microenvironment.R"), warn = FALSE), collapse = "\n")
+  stage08 <- paste(readLines(repo_path("analysis/wgcna", "render_module_figures.R"), warn = FALSE), collapse = "\n")
+  score_publication <- paste(readLines(repo_path("analysis/wgcna", "summarize_module_scores.R"), warn = FALSE), collapse = "\n")
   testthat::expect_match(stage06, "duplicate SM09 generation is forbidden", fixed = TRUE)
   testthat::expect_match(stage06, "member_modules_fingerprint", fixed = TRUE)
   testthat::expect_match(stage06, "automatic_biological_label", fixed = TRUE)

@@ -50,111 +50,111 @@ Rscript run_dataset_pipeline.R --dataset all --stage export
 
 Do not hand-edit this block; run `Rscript tools/generate_pipeline_docs.R`.
 
-1. `analysis/01_preprocessing/extract_protigy_contrasts.R` - stage `core`; scope `dataset_specific`
-2. `analysis/01_preprocessing/build_module_score_metadata.R` - stage `core`; scope `dataset_specific`
-3. `analysis/01_preprocessing/map_protein_identifiers.R` - stage `core`; scope `dataset_specific`
-4. `analysis/01_preprocessing/build_joint_protigy_input.R` - stage `joint_qc_preprocessing`; scope `global`
-5. `analysis/02_qc/assess_joint_compartment_quality.R` - stage `qc_global`; scope `global`
-6. `analysis/02_qc/render_joint_compartment_qc_figures.R` - stage `qc_global`; scope `global`
-7. `analysis/02_qc/build_reference_marker_registry.R` - stage `qc_global`; scope `global`
-8. `analysis/02_qc/discover_empirical_roi_markers.R` - stage `qc_global`; scope `global`
-9. `analysis/02_qc/assess_dataset_quality.R` - stage `qc`; scope `dataset_specific`
-10. `analysis/02_qc/assess_sample_quality.R` - stage `qc`; scope `dataset_specific`
-11. `analysis/02_qc/summarize_missingness.R` - stage `qc`; scope `dataset_specific`
-12. `analysis/02_qc/assess_replicate_consistency.R` - stage `qc`; scope `dataset_specific`
-13. `analysis/02_qc/assess_marker_rank_abundance.R` - stage `qc`; scope `dataset_specific`
-14. `analysis/02_qc/summarize_marker_detectability.R` - stage `qc`; scope `dataset_specific`
-15. `analysis/02_qc/assess_pca_confounding.R` - stage `qc`; scope `dataset_specific`
-16. `analysis/02_qc/partition_variance.R` - stage `qc`; scope `dataset_specific`
-17. `analysis/02_qc/export_marker_traits.R` - stage `qc`; scope `dataset_specific`
-18. `analysis/02_qc/summarize_qc_confounding.R` - stage `qc`; scope `dataset_specific`
-19. `analysis/02_qc/render_compartment_abundance_figures.R` - stage `qc_cross_dataset`; scope `global`
-20. `analysis/04_differential_abundance/run_clusterprofiler_enrichment.R` - stage `enrichment`; scope `dataset_specific`
-21. `analysis/04_differential_abundance/audit_gsea_protein_direction.R` - stage `enrichment`; scope `dataset_specific`
-22. `analysis/04_differential_abundance/compare_go_enrichment.R` - stage `enrichment`; scope `dataset_specific`
-23. `analysis/04_differential_abundance/annotate_neuropil_reference.R` - stage `enrichment`; scope `dataset_specific`
-24. `analysis/04_differential_abundance/test_microglia_targeted_signatures.R` - stage `enrichment`; scope `dataset_specific`
-25. `analysis/04_differential_abundance/summarize_biological_programs.R` - stage `enrichment`; scope `dataset_specific`
-26. `analysis/04_differential_abundance/build_go_program_atlas.R` - stage `enrichment`; scope `dataset_specific`
-27. `analysis/04_differential_abundance/compare_external_stress_signatures.R` - stage `enrichment`; scope `global`
-28. `analysis/04_differential_abundance/validate_control_spatial_identity.R` - stage `enrichment`; scope `global`
-29. `analysis/04_differential_abundance/build_sus_res_dap_atlas.R` - stage `enrichment`; scope `global`
-30. `analysis/04_differential_abundance/audit_stress_response_biology.R` - stage `enrichment`; scope `global`
-31. `analysis/06_gsea/run_ewce_celltype_enrichment.R` - stage `enrichment`; scope `dataset_specific`
-32. `analysis/05_wgcna/build_wgcna_modules.R` - stage `modules_wgcna`; scope `dataset_specific`
-33. `analysis/05_wgcna/render_module_go_heatmaps.R` - stage `modules_downstream`; scope `dataset_specific`
-34. `analysis/05_wgcna/compare_recurrent_module_proteins.R` - stage `modules_downstream`; scope `dataset_specific`
-35. `analysis/05_wgcna/build_curated_overlap_programs.R` - stage `modules_downstream`; scope `global`
-36. `analysis/05_wgcna/score_module_activity.R` - stage `modules_downstream`; scope `dataset_specific`
-37. `analysis/05_wgcna/compare_module_enrichment_overlap.R` - stage `modules_downstream`; scope `dataset_specific`
-38. `analysis/05_wgcna/build_module_identity_contract.R` - stage `modules_downstream`; scope `dataset_specific`
-39. `analysis/05_wgcna/test_module_phenotypes.R` - stage `modules_downstream`; scope `dataset_specific`
-40. `analysis/05_wgcna/annotate_module_microenvironment.R` - stage `modules_downstream`; scope `dataset_specific`
-41. `analysis/05_wgcna/summarize_module_interpretation.R` - stage `modules_downstream`; scope `dataset_specific`
-42. `analysis/05_wgcna/render_module_figures.R` - stage `modules_downstream`; scope `dataset_specific`
-43. `analysis/05_wgcna/summarize_module_scores.R` - stage `modules_downstream`; scope `dataset_specific`
-44. `analysis/05_wgcna/render_microglia_module_figures.R` - stage `modules_downstream`; scope `dataset_specific`
-45. `analysis/05_wgcna/test_microglia_neuropil_independence.R` - stage `modules_downstream`; scope `dataset_specific`
-46. `analysis/05_wgcna/render_microglia_independence_figures.R` - stage `modules_downstream`; scope `dataset_specific`
-47. `analysis/05_wgcna/summarize_microglia_roi_specificity.R` - stage `modules_downstream`; scope `dataset_specific`
-48. `analysis/05_wgcna/summarize_module_complex_architecture.R` - stage `modules_downstream`; scope `dataset_specific`
-49. `analysis/05_wgcna/audit_module_robustness.R` - stage `modules_downstream`; scope `dataset_specific`
-50. `analysis/05_wgcna/audit_microglia_module_claims.R` - stage `modules_downstream`; scope `dataset_specific`
-51. `analysis/05_wgcna/summarize_microglia_module_claims.R` - stage `modules_downstream`; scope `dataset_specific`
-52. `analysis/05_wgcna/audit_module_claim_readiness.R` - stage `modules_downstream`; scope `dataset_specific`
-53. `analysis/05_wgcna/audit_module_label_coherence.R` - stage `networks`; scope `per_dataset`
-54. `analysis/05_wgcna/adjudicate_module_labels.R` - stage `networks`; scope `per_dataset`
-55. `analysis/05_wgcna/build_module_label_registry.R` - stage `networks`; scope `per_dataset`
-56. `analysis/07_spatial_networks/build_spatial_networks.R` - stage `networks`; scope `dataset_specific`
-57. `analysis/07_spatial_networks/build_differential_networks.R` - stage `networks`; scope `dataset_specific`
-58. `analysis/07_spatial_networks/test_network_stability.R` - stage `networks`; scope `dataset_specific`
-59. `analysis/07_spatial_networks/test_differential_network_stability.R` - stage `networks`; scope `dataset_specific`
-60. `analysis/07_spatial_networks/render_differential_network_figures.R` - stage `networks`; scope `dataset_specific`
-61. `analysis/07_spatial_networks/render_network_chord_diagram.R` - stage `networks`; scope `dataset_specific`
-62. `analysis/03_spatial_validation/build_spatial_data_contract.R` - stage `networks`; scope `per_dataset`
-63. `analysis/03_spatial_validation/quantify_bilateral_spatial_identity.R` - stage `networks`; scope `per_dataset`
-64. `analysis/03_spatial_validation/quantify_empirical_compartments.R` - stage `networks`; scope `global`
-65. `analysis/03_spatial_validation/quantify_module_bilateral_identity.R` - stage `networks`; scope `per_dataset`
-66. `analysis/03_spatial_validation/annotate_module_celltypes.R` - stage `networks`; scope `per_dataset`
-67. `analysis/03_spatial_validation/decompose_bilateral_variance.R` - stage `networks`; scope `per_dataset`
-68. `analysis/03_spatial_validation/validate_spatial_foundations.R` - stage `networks`; scope `global`
-69. `analysis/03_spatial_validation/build_module_spatial_atlas.R` - stage `networks`; scope `per_dataset`
-70. `analysis/03_spatial_validation/build_protein_spatial_atlas.R` - stage `networks`; scope `global`
-71. `analysis/03_spatial_validation/quantify_neuropil_detection_context.R` - stage `networks`; scope `global`
-72. `analysis/03_spatial_validation/summarize_spatial_atlas.R` - stage `networks`; scope `global`
-73. `analysis/03_spatial_validation/quantify_neuropil_precision.R` - stage `networks`; scope `global`
-74. `analysis/03_spatial_validation/build_animal_spatial_networks.R` - stage `networks`; scope `global`
-75. `analysis/03_spatial_validation/test_network_group_organization.R` - stage `networks`; scope `global`
-76. `analysis/03_spatial_validation/validate_network_workbook.R` - stage `networks`; scope `global`
-77. `analysis/03_spatial_validation/audit_ca2_slm_robustness.R` - stage `networks`; scope `global`
-78. `analysis/03_spatial_validation/audit_stress_identity_robustness.R` - stage `networks`; scope `global`
-79. `analysis/03_spatial_validation/summarize_ca2_slm_robustness.R` - stage `networks`; scope `global`
-80. `analysis/08_integration/test_behaviour_proteomics_associations.R` - stage `coupling`; scope `dataset_specific`
-81. `analysis/08_integration/test_network_behaviour_coupling.R` - stage `coupling`; scope `dataset_specific`
-82. `analysis/08_integration/test_module_behaviour_coupling.R` - stage `coupling`; scope `dataset_specific`
-83. `analysis/08_integration/audit_animal_id_integrity.R` - stage `coupling`; scope `global`
-84. `analysis/08_integration/build_cross_compartment_atlas.R` - stage `integration`; scope `global`
-85. `analysis/08_integration/summarize_programs_for_manuscript.R` - stage `integration`; scope `global`
-86. `analysis/09_publication_exports/build_biological_claims_table.R` - stage `integration`; scope `global`
-87. `analysis/08_integration/build_evidence_priority_matrix.R` - stage `integration`; scope `global`
-88. `analysis/08_integration/test_enrichment_module_concordance.R` - stage `integration`; scope `global`
-89. `analysis/08_integration/summarize_enrichment_module_concordance.R` - stage `integration`; scope `global`
-90. `analysis/08_integration/build_candidate_protein_shortlist.R` - stage `integration`; scope `per_dataset_and_global`
-91. `analysis/08_integration/quantify_candidate_network_position.R` - stage `integration`; scope `per_dataset_and_global`
-92. `analysis/08_integration/build_immunostaining_candidates.R` - stage `integration`; scope `global`
-93. `analysis/08_integration/screen_immunostaining_panel.R` - stage `integration`; scope `global`
-94. `analysis/08_integration/screen_immunostaining_separation.R` - stage `integration`; scope `global`
-95. `analysis/08_integration/render_module_circular_atlas.R` - stage `integration`; scope `global`
-96. `analysis/08_integration/summarize_module_cross_compartment.R` - stage `integration`; scope `global`
-97. `analysis/08_integration/export_module_protein_zoom_source_data.R` - stage `integration`; scope `global`
-98. `analysis/09_publication_exports/build_sample_metadata.R` - stage `export`; scope `global`
-99. `analysis/09_publication_exports/export_processed_matrices.R` - stage `export`; scope `global`
-100. `analysis/09_publication_exports/build_supplementary_tables.R` - stage `export`; scope `global`
-101. `analysis/09_publication_exports/build_pride_manifest.R` - stage `export`; scope `global`
-102. `analysis/09_publication_exports/build_methods_summary.R` - stage `export`; scope `global`
-103. `analysis/09_publication_exports/08_export_manuscript_figures.R` - stage `export`; scope `global`
-104. `analysis/09_publication_exports/09_export_source_data.R` - stage `export`; scope `global`
-105. `analysis/09_publication_exports/validate_pride_submission.R` - stage `export`; scope `global`
+1. `analysis/preprocessing/extract_protigy_contrasts.R` - stage `core`; scope `dataset_specific`
+2. `analysis/preprocessing/build_module_score_metadata.R` - stage `core`; scope `dataset_specific`
+3. `analysis/preprocessing/map_protein_identifiers.R` - stage `core`; scope `dataset_specific`
+4. `analysis/preprocessing/build_joint_protigy_input.R` - stage `joint_qc_preprocessing`; scope `global`
+5. `analysis/qc/assess_joint_compartment_quality.R` - stage `qc_global`; scope `global`
+6. `analysis/qc/render_joint_compartment_qc_figures.R` - stage `qc_global`; scope `global`
+7. `analysis/qc/build_reference_marker_registry.R` - stage `qc_global`; scope `global`
+8. `analysis/qc/discover_empirical_roi_markers.R` - stage `qc_global`; scope `global`
+9. `analysis/qc/assess_dataset_quality.R` - stage `qc`; scope `dataset_specific`
+10. `analysis/qc/assess_sample_quality.R` - stage `qc`; scope `dataset_specific`
+11. `analysis/qc/summarize_missingness.R` - stage `qc`; scope `dataset_specific`
+12. `analysis/qc/assess_replicate_consistency.R` - stage `qc`; scope `dataset_specific`
+13. `analysis/qc/assess_marker_rank_abundance.R` - stage `qc`; scope `dataset_specific`
+14. `analysis/qc/summarize_marker_detectability.R` - stage `qc`; scope `dataset_specific`
+15. `analysis/qc/assess_pca_confounding.R` - stage `qc`; scope `dataset_specific`
+16. `analysis/qc/partition_variance.R` - stage `qc`; scope `dataset_specific`
+17. `analysis/qc/export_marker_traits.R` - stage `qc`; scope `dataset_specific`
+18. `analysis/qc/summarize_qc_confounding.R` - stage `qc`; scope `dataset_specific`
+19. `analysis/qc/render_compartment_abundance_figures.R` - stage `qc_cross_dataset`; scope `global`
+20. `analysis/differential_abundance/run_clusterprofiler_enrichment.R` - stage `enrichment`; scope `dataset_specific`
+21. `analysis/differential_abundance/audit_gsea_protein_direction.R` - stage `enrichment`; scope `dataset_specific`
+22. `analysis/differential_abundance/compare_go_enrichment.R` - stage `enrichment`; scope `dataset_specific`
+23. `analysis/differential_abundance/annotate_neuropil_reference.R` - stage `enrichment`; scope `dataset_specific`
+24. `analysis/differential_abundance/test_microglia_targeted_signatures.R` - stage `enrichment`; scope `dataset_specific`
+25. `analysis/differential_abundance/summarize_biological_programs.R` - stage `enrichment`; scope `dataset_specific`
+26. `analysis/differential_abundance/build_go_program_atlas.R` - stage `enrichment`; scope `dataset_specific`
+27. `analysis/differential_abundance/compare_external_stress_signatures.R` - stage `enrichment`; scope `global`
+28. `analysis/differential_abundance/validate_control_spatial_identity.R` - stage `enrichment`; scope `global`
+29. `analysis/differential_abundance/build_sus_res_dap_atlas.R` - stage `enrichment`; scope `global`
+30. `analysis/differential_abundance/audit_stress_response_biology.R` - stage `enrichment`; scope `global`
+31. `analysis/enrichment/run_ewce_celltype_enrichment.R` - stage `enrichment`; scope `dataset_specific`
+32. `analysis/wgcna/build_wgcna_modules.R` - stage `modules_wgcna`; scope `dataset_specific`
+33. `analysis/wgcna/render_module_go_heatmaps.R` - stage `modules_downstream`; scope `dataset_specific`
+34. `analysis/wgcna/compare_recurrent_module_proteins.R` - stage `modules_downstream`; scope `dataset_specific`
+35. `analysis/wgcna/build_curated_overlap_programs.R` - stage `modules_downstream`; scope `global`
+36. `analysis/wgcna/score_module_activity.R` - stage `modules_downstream`; scope `dataset_specific`
+37. `analysis/wgcna/compare_module_enrichment_overlap.R` - stage `modules_downstream`; scope `dataset_specific`
+38. `analysis/wgcna/build_module_identity_contract.R` - stage `modules_downstream`; scope `dataset_specific`
+39. `analysis/wgcna/test_module_phenotypes.R` - stage `modules_downstream`; scope `dataset_specific`
+40. `analysis/wgcna/annotate_module_microenvironment.R` - stage `modules_downstream`; scope `dataset_specific`
+41. `analysis/wgcna/summarize_module_interpretation.R` - stage `modules_downstream`; scope `dataset_specific`
+42. `analysis/wgcna/render_module_figures.R` - stage `modules_downstream`; scope `dataset_specific`
+43. `analysis/wgcna/summarize_module_scores.R` - stage `modules_downstream`; scope `dataset_specific`
+44. `analysis/wgcna/render_microglia_module_figures.R` - stage `modules_downstream`; scope `dataset_specific`
+45. `analysis/wgcna/test_microglia_neuropil_independence.R` - stage `modules_downstream`; scope `dataset_specific`
+46. `analysis/wgcna/render_microglia_independence_figures.R` - stage `modules_downstream`; scope `dataset_specific`
+47. `analysis/wgcna/summarize_microglia_roi_specificity.R` - stage `modules_downstream`; scope `dataset_specific`
+48. `analysis/wgcna/summarize_module_complex_architecture.R` - stage `modules_downstream`; scope `dataset_specific`
+49. `analysis/wgcna/audit_module_robustness.R` - stage `modules_downstream`; scope `dataset_specific`
+50. `analysis/wgcna/audit_microglia_module_claims.R` - stage `modules_downstream`; scope `dataset_specific`
+51. `analysis/wgcna/summarize_microglia_module_claims.R` - stage `modules_downstream`; scope `dataset_specific`
+52. `analysis/wgcna/audit_module_claim_readiness.R` - stage `modules_downstream`; scope `dataset_specific`
+53. `analysis/wgcna/audit_module_label_coherence.R` - stage `networks`; scope `per_dataset`
+54. `analysis/wgcna/adjudicate_module_labels.R` - stage `networks`; scope `per_dataset`
+55. `analysis/wgcna/build_module_label_registry.R` - stage `networks`; scope `per_dataset`
+56. `analysis/spatial_networks/build_spatial_networks.R` - stage `networks`; scope `dataset_specific`
+57. `analysis/spatial_networks/build_differential_networks.R` - stage `networks`; scope `dataset_specific`
+58. `analysis/spatial_networks/test_network_stability.R` - stage `networks`; scope `dataset_specific`
+59. `analysis/spatial_networks/test_differential_network_stability.R` - stage `networks`; scope `dataset_specific`
+60. `analysis/spatial_networks/render_differential_network_figures.R` - stage `networks`; scope `dataset_specific`
+61. `analysis/spatial_networks/render_network_chord_diagram.R` - stage `networks`; scope `dataset_specific`
+62. `analysis/spatial_validation/build_spatial_data_contract.R` - stage `networks`; scope `per_dataset`
+63. `analysis/spatial_validation/quantify_bilateral_spatial_identity.R` - stage `networks`; scope `per_dataset`
+64. `analysis/spatial_validation/quantify_empirical_compartments.R` - stage `networks`; scope `global`
+65. `analysis/spatial_validation/quantify_module_bilateral_identity.R` - stage `networks`; scope `per_dataset`
+66. `analysis/spatial_validation/annotate_module_celltypes.R` - stage `networks`; scope `per_dataset`
+67. `analysis/spatial_validation/decompose_bilateral_variance.R` - stage `networks`; scope `per_dataset`
+68. `analysis/spatial_validation/validate_spatial_foundations.R` - stage `networks`; scope `global`
+69. `analysis/spatial_validation/build_module_spatial_atlas.R` - stage `networks`; scope `per_dataset`
+70. `analysis/spatial_validation/build_protein_spatial_atlas.R` - stage `networks`; scope `global`
+71. `analysis/spatial_validation/quantify_neuropil_detection_context.R` - stage `networks`; scope `global`
+72. `analysis/spatial_validation/summarize_spatial_atlas.R` - stage `networks`; scope `global`
+73. `analysis/spatial_validation/quantify_neuropil_precision.R` - stage `networks`; scope `global`
+74. `analysis/spatial_validation/build_animal_spatial_networks.R` - stage `networks`; scope `global`
+75. `analysis/spatial_validation/test_network_group_organization.R` - stage `networks`; scope `global`
+76. `analysis/spatial_validation/validate_network_workbook.R` - stage `networks`; scope `global`
+77. `analysis/spatial_validation/audit_ca2_slm_robustness.R` - stage `networks`; scope `global`
+78. `analysis/spatial_validation/audit_stress_identity_robustness.R` - stage `networks`; scope `global`
+79. `analysis/spatial_validation/summarize_ca2_slm_robustness.R` - stage `networks`; scope `global`
+80. `analysis/integration/test_behaviour_proteomics_associations.R` - stage `coupling`; scope `dataset_specific`
+81. `analysis/integration/test_network_behaviour_coupling.R` - stage `coupling`; scope `dataset_specific`
+82. `analysis/integration/test_module_behaviour_coupling.R` - stage `coupling`; scope `dataset_specific`
+83. `analysis/integration/audit_animal_id_integrity.R` - stage `coupling`; scope `global`
+84. `analysis/integration/build_cross_compartment_atlas.R` - stage `integration`; scope `global`
+85. `analysis/integration/summarize_programs_for_manuscript.R` - stage `integration`; scope `global`
+86. `analysis/publication_source_data/build_biological_claims_table.R` - stage `integration`; scope `global`
+87. `analysis/integration/build_evidence_priority_matrix.R` - stage `integration`; scope `global`
+88. `analysis/integration/test_enrichment_module_concordance.R` - stage `integration`; scope `global`
+89. `analysis/integration/summarize_enrichment_module_concordance.R` - stage `integration`; scope `global`
+90. `analysis/integration/build_candidate_protein_shortlist.R` - stage `integration`; scope `per_dataset_and_global`
+91. `analysis/integration/quantify_candidate_network_position.R` - stage `integration`; scope `per_dataset_and_global`
+92. `analysis/integration/build_immunostaining_candidates.R` - stage `integration`; scope `global`
+93. `analysis/integration/screen_immunostaining_panel.R` - stage `integration`; scope `global`
+94. `analysis/integration/screen_immunostaining_separation.R` - stage `integration`; scope `global`
+95. `analysis/integration/render_module_circular_atlas.R` - stage `integration`; scope `global`
+96. `analysis/integration/summarize_module_cross_compartment.R` - stage `integration`; scope `global`
+97. `analysis/integration/export_module_protein_zoom_source_data.R` - stage `integration`; scope `global`
+98. `analysis/publication_source_data/build_sample_metadata.R` - stage `export`; scope `global`
+99. `analysis/publication_source_data/export_processed_matrices.R` - stage `export`; scope `global`
+100. `analysis/publication_source_data/build_supplementary_tables.R` - stage `export`; scope `global`
+101. `analysis/publication_source_data/build_pride_manifest.R` - stage `export`; scope `global`
+102. `analysis/publication_source_data/build_methods_summary.R` - stage `export`; scope `global`
+103. `analysis/publication_source_data/08_export_manuscript_figures.R` - stage `export`; scope `global`
+104. `analysis/publication_source_data/09_export_source_data.R` - stage `export`; scope `global`
+105. `analysis/publication_source_data/validate_pride_submission.R` - stage `export`; scope `global`
 
 <!-- END GENERATED PIPELINE REGISTRY INDEX -->
 
@@ -184,10 +184,10 @@ hemisphere imputation. It does not filter, transform, normalize, impute, or rema
 proteins.
 
 ```powershell
-Rscript analysis/01_preprocessing/build_animal_level_protigy_input.R --dataset neuron_neuropil --dry-run
-Rscript analysis/01_preprocessing/build_animal_level_protigy_input.R --dataset neuron_soma --dry-run
-Rscript analysis/01_preprocessing/build_animal_level_protigy_input.R --dataset microglia --dry-run
-Rscript analysis/01_preprocessing/build_animal_level_protigy_input.R --dataset all
+Rscript analysis/preprocessing/build_animal_level_protigy_input.R --dataset neuron_neuropil --dry-run
+Rscript analysis/preprocessing/build_animal_level_protigy_input.R --dataset neuron_soma --dry-run
+Rscript analysis/preprocessing/build_animal_level_protigy_input.R --dataset microglia --dry-run
+Rscript analysis/preprocessing/build_animal_level_protigy_input.R --dataset all
 ```
 
 Canonical quantitative inputs resolve as the newest file matching
@@ -245,7 +245,7 @@ This does not change the historical defaults or the canonical pipeline registry:
 $env:PROTEOMICS_GCT_INPUT_ROOT = "data/processed/01_preprocessing/protigy_output_animal_level"
 $env:PROTEOMICS_GCT_OUTPUT_ROOT = "data/processed/01_preprocessing/gct_extractR_animal_level"
 foreach ($dataset in @("neuron_neuropil", "neuron_soma", "microglia")) {
-  Rscript analysis/01_preprocessing/extract_protigy_contrasts.R --dataset $dataset
+  Rscript analysis/preprocessing/extract_protigy_contrasts.R --dataset $dataset
 }
 Remove-Item Env:PROTEOMICS_GCT_INPUT_ROOT
 Remove-Item Env:PROTEOMICS_GCT_OUTPUT_ROOT
@@ -270,9 +270,9 @@ cross-platform `sha256_utf8_lf_v1` aggregate hash serialization; it does not
 change the statistical analysis.
 
 ```bash
-Rscript analysis/01_preprocessing/extract_protigy_contrasts.R --dataset <dataset> --dry-run
-Rscript analysis/01_preprocessing/build_module_score_metadata.R --dataset <dataset> --dry-run
-Rscript analysis/01_preprocessing/map_protein_identifiers.R --dataset <dataset> --dry-run
+Rscript analysis/preprocessing/extract_protigy_contrasts.R --dataset <dataset> --dry-run
+Rscript analysis/preprocessing/build_module_score_metadata.R --dataset <dataset> --dry-run
+Rscript analysis/preprocessing/map_protein_identifiers.R --dataset <dataset> --dry-run
 ```
 
 Primary handoff outputs:
@@ -291,20 +291,20 @@ intentionally refreshing core handoff tables.
 Direct script commands:
 
 ```bash
-Rscript analysis/02_qc/build_reference_marker_registry.R --dry-run
-Rscript analysis/02_qc/discover_empirical_roi_markers.R --dry-run
-Rscript analysis/02_qc/assess_dataset_quality.R --dataset <dataset> --dry-run
-Rscript analysis/02_qc/assess_sample_quality.R --dataset <dataset> --dry-run
-Rscript analysis/02_qc/summarize_missingness.R --dataset <dataset> --dry-run
-Rscript analysis/02_qc/assess_replicate_consistency.R --dataset <dataset> --dry-run
-Rscript analysis/02_qc/assess_marker_rank_abundance.R --dataset <dataset> --dry-run
-Rscript analysis/02_qc/summarize_marker_detectability.R --dataset <dataset> --dry-run
-Rscript analysis/02_qc/assess_pca_confounding.R --dataset <dataset> --dry-run
-Rscript analysis/02_qc/partition_variance.R --dataset <dataset> --dry-run
-Rscript analysis/02_qc/export_marker_traits.R --dataset <dataset> --dry-run
-Rscript analysis/02_qc/summarize_qc_confounding.R --dataset <dataset> --dry-run
-Rscript analysis/02_qc/render_compartment_abundance_figures.R --dataset global --dry-run
-Rscript analysis/02_qc/render_compartment_abundance_figures.R --dataset global --render-only --dry-run
+Rscript analysis/qc/build_reference_marker_registry.R --dry-run
+Rscript analysis/qc/discover_empirical_roi_markers.R --dry-run
+Rscript analysis/qc/assess_dataset_quality.R --dataset <dataset> --dry-run
+Rscript analysis/qc/assess_sample_quality.R --dataset <dataset> --dry-run
+Rscript analysis/qc/summarize_missingness.R --dataset <dataset> --dry-run
+Rscript analysis/qc/assess_replicate_consistency.R --dataset <dataset> --dry-run
+Rscript analysis/qc/assess_marker_rank_abundance.R --dataset <dataset> --dry-run
+Rscript analysis/qc/summarize_marker_detectability.R --dataset <dataset> --dry-run
+Rscript analysis/qc/assess_pca_confounding.R --dataset <dataset> --dry-run
+Rscript analysis/qc/partition_variance.R --dataset <dataset> --dry-run
+Rscript analysis/qc/export_marker_traits.R --dataset <dataset> --dry-run
+Rscript analysis/qc/summarize_qc_confounding.R --dataset <dataset> --dry-run
+Rscript analysis/qc/render_compartment_abundance_figures.R --dataset global --dry-run
+Rscript analysis/qc/render_compartment_abundance_figures.R --dataset global --render-only --dry-run
 ```
 
 `04e` is the authoritative CON-only cross-compartment marker-abundance and
@@ -344,14 +344,14 @@ results/reports/03_qc_exploration/04e_control_compartment_abundance_publication_
 Direct script commands:
 
 ```bash
-Rscript analysis/04_differential_abundance/run_clusterprofiler_enrichment.R --dataset <dataset> --dry-run
-Rscript analysis/04_differential_abundance/compare_go_enrichment.R --dataset <dataset> --dry-run
-Rscript analysis/04_differential_abundance/annotate_neuropil_reference.R --dataset <dataset> --dry-run
-Rscript analysis/04_differential_abundance/test_microglia_targeted_signatures.R --dataset microglia --dry-run
-Rscript analysis/04_differential_abundance/summarize_biological_programs.R --dataset <dataset> --dry-run
-Rscript analysis/04_differential_abundance/build_go_program_atlas.R --dataset <dataset> --dry-run
-Rscript analysis/04_differential_abundance/compare_external_stress_signatures.R --dry-run
-Rscript analysis/06_gsea/run_ewce_celltype_enrichment.R --dataset <dataset> --dry-run
+Rscript analysis/differential_abundance/run_clusterprofiler_enrichment.R --dataset <dataset> --dry-run
+Rscript analysis/differential_abundance/compare_go_enrichment.R --dataset <dataset> --dry-run
+Rscript analysis/differential_abundance/annotate_neuropil_reference.R --dataset <dataset> --dry-run
+Rscript analysis/differential_abundance/test_microglia_targeted_signatures.R --dataset microglia --dry-run
+Rscript analysis/differential_abundance/summarize_biological_programs.R --dataset <dataset> --dry-run
+Rscript analysis/differential_abundance/build_go_program_atlas.R --dataset <dataset> --dry-run
+Rscript analysis/differential_abundance/compare_external_stress_signatures.R --dry-run
+Rscript analysis/enrichment/run_ewce_celltype_enrichment.R --dataset <dataset> --dry-run
 ```
 
 Canonical EWCE uses animal-level biological units by default: the two hemispheres are
@@ -382,31 +382,31 @@ Rscript run_dataset_pipeline.R --dataset <dataset> --stage modules_downstream --
 Direct script commands:
 
 ```bash
-Rscript analysis/05_wgcna/build_wgcna_modules.R --dataset <dataset> --dry-run
-Rscript analysis/05_wgcna/compare_recurrent_module_proteins.R --dry-run
-Rscript analysis/05_wgcna/build_curated_overlap_programs.R --dry-run
-Rscript analysis/05_wgcna/score_module_activity.R --dataset <dataset> --dry-run
-Rscript analysis/05_wgcna/compare_module_enrichment_overlap.R --dataset <dataset> --dry-run
-Rscript analysis/05_wgcna/test_module_phenotypes.R --dataset <dataset> --dry-run
-Rscript analysis/05_wgcna/annotate_module_microenvironment.R --dataset <dataset> --dry-run
-Rscript analysis/05_wgcna/summarize_module_interpretation.R --dataset <dataset> --dry-run
-Rscript analysis/05_wgcna/summarize_module_scores.R --dataset <dataset> --module-source wgcna --dry-run
-Rscript analysis/05_wgcna/test_microglia_neuropil_independence.R --dataset microglia --dry-run
-Rscript analysis/05_wgcna/summarize_module_complex_architecture.R --dataset <dataset> --dry-run
-Rscript analysis/05_wgcna/audit_module_robustness.R --dataset <dataset> --dry-run
-Rscript analysis/05_wgcna/summarize_module_interpretation.R --dataset all --dry-run
-Rscript analysis/05_wgcna/summarize_module_scores.R --dataset all --module-source wgcna --dry-run
+Rscript analysis/wgcna/build_wgcna_modules.R --dataset <dataset> --dry-run
+Rscript analysis/wgcna/compare_recurrent_module_proteins.R --dry-run
+Rscript analysis/wgcna/build_curated_overlap_programs.R --dry-run
+Rscript analysis/wgcna/score_module_activity.R --dataset <dataset> --dry-run
+Rscript analysis/wgcna/compare_module_enrichment_overlap.R --dataset <dataset> --dry-run
+Rscript analysis/wgcna/test_module_phenotypes.R --dataset <dataset> --dry-run
+Rscript analysis/wgcna/annotate_module_microenvironment.R --dataset <dataset> --dry-run
+Rscript analysis/wgcna/summarize_module_interpretation.R --dataset <dataset> --dry-run
+Rscript analysis/wgcna/summarize_module_scores.R --dataset <dataset> --module-source wgcna --dry-run
+Rscript analysis/wgcna/test_microglia_neuropil_independence.R --dataset microglia --dry-run
+Rscript analysis/wgcna/summarize_module_complex_architecture.R --dataset <dataset> --dry-run
+Rscript analysis/wgcna/audit_module_robustness.R --dataset <dataset> --dry-run
+Rscript analysis/wgcna/summarize_module_interpretation.R --dataset all --dry-run
+Rscript analysis/wgcna/summarize_module_scores.R --dataset all --module-source wgcna --dry-run
 ```
 
 Layer distinction:
 
 ```text
-analysis/05_wgcna/build_wgcna_modules.R                         network/module construction
-analysis/05_wgcna/score_module_activity.R         score/statistics/QC producer; secondary robustness/behavior coupling
-analysis/05_wgcna/test_module_phenotypes.R primary WGCNA eigengene group-effect inference
-analysis/05_wgcna/annotate_module_microenvironment.R biological annotation / cleaned semantic label contract
-analysis/05_wgcna/summarize_module_interpretation.R   final WGCNA interpretable module/supermodule summary tables and plots
-analysis/05_wgcna/summarize_module_scores.R final score-derived publication plots using cleaned labels
+analysis/wgcna/build_wgcna_modules.R                         network/module construction
+analysis/wgcna/score_module_activity.R         score/statistics/QC producer; secondary robustness/behavior coupling
+analysis/wgcna/test_module_phenotypes.R primary WGCNA eigengene group-effect inference
+analysis/wgcna/annotate_module_microenvironment.R biological annotation / cleaned semantic label contract
+analysis/wgcna/summarize_module_interpretation.R   final WGCNA interpretable module/supermodule summary tables and plots
+analysis/wgcna/summarize_module_scores.R final score-derived publication plots using cleaned labels
 ```
 
 Key outputs:
@@ -430,12 +430,12 @@ existing modules and are safe to rerun for reporting/annotation updates.
 Direct script commands:
 
 ```bash
-Rscript analysis/07_spatial_networks/build_spatial_networks.R --dataset <dataset> --dry-run
-Rscript analysis/07_spatial_networks/build_differential_networks.R --dataset <dataset> --dry-run
-Rscript analysis/07_spatial_networks/test_network_stability.R --dataset <dataset> --dry-run
-Rscript analysis/07_spatial_networks/test_differential_network_stability.R --dataset <dataset> --dry-run
-Rscript analysis/07_spatial_networks/render_differential_network_figures.R --dataset <dataset> --dry-run
-Rscript analysis/07_spatial_networks/render_network_chord_diagram.R --dataset <dataset> --dry-run
+Rscript analysis/spatial_networks/build_spatial_networks.R --dataset <dataset> --dry-run
+Rscript analysis/spatial_networks/build_differential_networks.R --dataset <dataset> --dry-run
+Rscript analysis/spatial_networks/test_network_stability.R --dataset <dataset> --dry-run
+Rscript analysis/spatial_networks/test_differential_network_stability.R --dataset <dataset> --dry-run
+Rscript analysis/spatial_networks/render_differential_network_figures.R --dataset <dataset> --dry-run
+Rscript analysis/spatial_networks/render_network_chord_diagram.R --dataset <dataset> --dry-run
 ```
 
 Key output:
@@ -449,9 +449,9 @@ data/processed/07_spatial_networks/network_spatial_relations/<dataset>/*/network
 Direct script commands:
 
 ```bash
-Rscript analysis/08_integration/test_behaviour_proteomics_associations.R --dataset neuron_soma --dry-run
-Rscript analysis/08_integration/test_network_behaviour_coupling.R --dataset neuron_neuropil --dry-run
-Rscript analysis/08_integration/test_module_behaviour_coupling.R --dataset <dataset> --dry-run
+Rscript analysis/integration/test_behaviour_proteomics_associations.R --dataset neuron_soma --dry-run
+Rscript analysis/integration/test_network_behaviour_coupling.R --dataset neuron_neuropil --dry-run
+Rscript analysis/integration/test_module_behaviour_coupling.R --dataset <dataset> --dry-run
 ```
 
 Key outputs:
@@ -466,14 +466,14 @@ results/tables/08_behavior_physio_coupling/module_behavior_coupling/<dataset>/
 Direct script commands:
 
 ```bash
-Rscript analysis/08_integration/build_cross_compartment_atlas.R --dry-run
-Rscript analysis/08_integration/summarize_programs_for_manuscript.R --dry-run
-Rscript analysis/09_publication_exports/build_biological_claims_table.R --dry-run
-Rscript analysis/08_integration/build_evidence_priority_matrix.R --dry-run
-Rscript analysis/08_integration/render_module_circular_atlas.R --dry-run
-Rscript analysis/08_integration/summarize_module_cross_compartment.R --dry-run
-Rscript analysis/08_integration/test_enrichment_module_concordance.R --dry-run
-Rscript analysis/08_integration/summarize_enrichment_module_concordance.R --dry-run
+Rscript analysis/integration/build_cross_compartment_atlas.R --dry-run
+Rscript analysis/integration/summarize_programs_for_manuscript.R --dry-run
+Rscript analysis/publication_source_data/build_biological_claims_table.R --dry-run
+Rscript analysis/integration/build_evidence_priority_matrix.R --dry-run
+Rscript analysis/integration/render_module_circular_atlas.R --dry-run
+Rscript analysis/integration/summarize_module_cross_compartment.R --dry-run
+Rscript analysis/integration/test_enrichment_module_concordance.R --dry-run
+Rscript analysis/integration/summarize_enrichment_module_concordance.R --dry-run
 ```
 
 Key outputs:
@@ -491,14 +491,14 @@ results/tables/10_biological_integration/gsea_wgcna_concordance_diagnostics/glob
 Direct script commands:
 
 ```bash
-Rscript analysis/09_publication_exports/build_sample_metadata.R --dry-run
-Rscript analysis/09_publication_exports/export_processed_matrices.R --dry-run
-Rscript analysis/09_publication_exports/build_supplementary_tables.R --dry-run
-Rscript analysis/09_publication_exports/build_pride_manifest.R --dry-run
-Rscript analysis/09_publication_exports/build_methods_summary.R --dry-run
-Rscript analysis/09_publication_exports/08_export_manuscript_figures.R --dry-run
-Rscript analysis/09_publication_exports/09_export_source_data.R --dry-run
-Rscript analysis/09_publication_exports/validate_pride_submission.R --dry-run
+Rscript analysis/publication_source_data/build_sample_metadata.R --dry-run
+Rscript analysis/publication_source_data/export_processed_matrices.R --dry-run
+Rscript analysis/publication_source_data/build_supplementary_tables.R --dry-run
+Rscript analysis/publication_source_data/build_pride_manifest.R --dry-run
+Rscript analysis/publication_source_data/build_methods_summary.R --dry-run
+Rscript analysis/publication_source_data/08_export_manuscript_figures.R --dry-run
+Rscript analysis/publication_source_data/09_export_source_data.R --dry-run
+Rscript analysis/publication_source_data/validate_pride_submission.R --dry-run
 ```
 
 Key outputs:

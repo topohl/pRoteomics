@@ -147,7 +147,7 @@ resolve_dataset_inputs <- function(
       script = script,
       dataset = dataset,
       stage = stage,
-      producer_script_or_artifact_id = "analysis/01_preprocessing/build_module_score_metadata.R",
+      producer_script_or_artifact_id = "analysis/preprocessing/build_module_score_metadata.R",
       record_resolution = record_resolution
     )
     matrix_format <- "morpheus_with_metadata_rows"
