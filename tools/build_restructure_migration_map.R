@@ -19,6 +19,17 @@ source(file.path("R", "paths.R"))
 BASELINE_COMMIT <- "6801edbce8a5d222f4af46e06b6db4e99f6a9761"
 BASELINE_MANIFEST <- "manuscript/prerestructure_freeze_manifest.csv"
 
+## Objects whose content changed for a reason other than file addressing:
+## the repository split removed the thing they described. Each is enumerated
+## here so the change is a declaration rather than a discovery, and
+## tools/verify_path_contract_rewrites.R holds every other rewrite to the
+## stricter standard of being explained by addressing alone.
+BOUNDARY_REWRITES <- c(
+  "pipeline.yml",
+  "tests/testthat/test-pipeline-registry.R",
+  "tests/testthat/test-output-namespace-contract.R"
+)
+
 MR <- Sys.getenv("EXP9_MANUSCRIPT_ROOT",
                  unset = normalizePath(file.path(repo_root(), "..", "Exp9_manuscript"),
                                        winslash = "/", mustWork = FALSE))
@@ -79,12 +90,21 @@ for (i in seq_len(nrow(obj))) {
       "Self-referential: the freeze manifest lists itself, so the sha256 it",
       "records for itself cannot be its own final content hash. Verified by",
       "byte length instead. Pre-existing property of the baseline.")
+  } else if (changed && bp %in% BOUNDARY_REWRITES) {
+    cls <- "REWRITTEN_BOUNDARY_CONTRACT"
+    status <- paste(
+      "Boundary contract: described the manuscript rendering layer that Phase 6C",
+      "removed from this repository. The registration of figure renderers was",
+      "deleted, and assertions that they are registered were replaced by their",
+      "inverse, which is strictly stronger. No scientific value, statistic,",
+      "table, panel or prose changed. Re-frozen under",
+      "post-restructure-architecture-freeze-2026-09.")
   } else if (changed) {
     cls <- "REWRITTEN_PATH_CONTRACT"
     status <- paste(
-      "Layout contract: content encodes the pre-migration directory structure,",
-      "so it had to be repointed for the suite to pass. No scientific value,",
-      "statistic, table, panel or prose changed. Re-frozen under",
+      "Addressing contract: content named files by their pre-migration path, so",
+      "it was repointed. Verified by tools/verify_path_contract_rewrites.R to
+ differ from the baseline in file addressing only. Re-frozen under",
       "post-restructure-architecture-freeze-2026-09.")
   } else if (cls == "RETAINED_LEGACY_PATH") {
     status <- "Untracked canonical output retained at its baseline path; not bulk-moved."

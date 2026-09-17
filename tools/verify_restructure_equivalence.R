@@ -38,7 +38,8 @@ ALLOWED_CLASSES <- c(
   "MOVED_TO_MANUSCRIPT_REPO",
   "MOVED_WITHIN_SCIENTIFIC_REPO",
   "RETAINED_LEGACY_PATH",
-  "REWRITTEN_PATH_CONTRACT"
+  "REWRITTEN_PATH_CONTRACT",
+  "REWRITTEN_BOUNDARY_CONTRACT"
 )
 ALLOWED_REPOS <- c("pRoteomics", "Exp9_manuscript")
 
@@ -177,7 +178,7 @@ for (i in which(map$exists)) {
   map$actual_bytes[i] <- file.info(map$abs[i])$size
 }
 
-is_rewritten <- map$migration_class == "REWRITTEN_PATH_CONTRACT"
+is_rewritten <- map$migration_class %in% c("REWRITTEN_PATH_CONTRACT", "REWRITTEN_BOUNDARY_CONTRACT")
 is_self <- map$baseline_path %in% SELF_REFERENTIAL
 checkable <- map$exists & !is_rewritten & !is_self
 

@@ -1,149 +1,125 @@
 # Repository architecture
 
-What this tree contains, which parts may depend on which, and which structural
-changes are deferred and why. Measured at commit `b26cd6f` by
-`audits/publication_hardening/04_architecture_inventory.R` and
-`05_output_and_layer_review.R`; the machine-readable form is
-`results/tables/publication_hardening/`.
+Post Phase 6B/6C. This repository owns scientific inference. Manuscript prose
+and journal figure assembly live in the sibling `Exp9_manuscript` repository.
 
-## 1. Layers
+See [RESTRUCTURE_PLAN.md](RESTRUCTURE_PLAN.md) for the migration record and the
+equivalence oracle, [ANALYSIS_ENTRYPOINTS.md](ANALYSIS_ENTRYPOINTS.md) for which
+script owns which analysis, and [RESULTS_OWNERSHIP.md](RESULTS_OWNERSHIP.md) for
+which analysis produces which result family.
 
-445 tracked R scripts, in nine layers.
+## Layers
 
-| Layer | Scripts | Role | May be depended on by |
-|---|---|---|---|
-| configuration | `config/` | registries, contracts, parameters | everything |
-| shared helper library | `R/` (100) | functions, no side effects at source time | everything |
-| numbered analysis stage | `00_setup` … `11_spatial_systems` (122) | the pipeline spine; 155 registered steps | figure layer, audits |
-| figure / manuscript layer | `figures/` (53) | renderers and manuscript-facing reports | audits |
-| audit layer | `99_audits/` (23) | one-off verification passes | nothing |
-| test suite | `tests/` (114) | guards | nothing |
-| developer tooling | `tools/` (9) | maintenance scripts | nothing |
-| testing scaffold | `90_testing/` (11) | historical scratch code | **nothing** |
-| deprecated | `99_deprecated/` (11) | superseded code, retained as history | **nothing** |
+| Layer | Contains | Does not contain |
+| --- | --- | --- |
+| `R/` | reusable scientific functions, grouped by domain | runnable analysis workflows |
+| `analysis/` | explicit runnable analysis entrypoints | reusable libraries, manuscript rendering |
+| `config/` | frozen scientific configuration and contracts | output |
+| `data/` | raw, metadata and reference inputs | derived results |
+| `results/` | canonical analysis products | code |
+| `tests/` | scientific and architectural regression guards | analysis |
+| `audits/` | provenance, robustness and migration audits | analysis entrypoints |
+| `tools/` | maintenance, export and reference-audit utilities | analysis entrypoints |
+| `archive/` | superseded code kept for provenance | anything canonical or executable by the registry |
 
-**The one hard rule:** no producer layer — a numbered stage, the figure layer or
-a shared helper — may `source()` anything in `90_testing/` or `99_deprecated/`.
-There are **0** such edges today, and
-`tests/testthat/test-publication-hardening.R` keeps it at 0.
+## R library addressing
 
-`99_audits/` is excluded from the pipeline registry by design (established at
-commit `bab450a`). An audit is not a stage and must never become a required step
-that a publication rerun depends on.
+`R/` is organised by domain:
 
-## 2. Dependency graph
+```
+R/
+├── paths.R              bootstrap: repository root, path helpers, the resolver
+├── null_coalescing.R    bootstrap dependency of paths.R
+├── data_contracts/      dataset, identifier, module and spatial-systems contracts
+├── qc/                  QC, compartment-marker and abundance helpers
+├── statistics/          module statistics, WGCNA, evidence and audit workbooks
+├── spatial/             spatial identity, atlas, CA2-SLM robustness
+├── enrichment/          enrichment IO, GO themes, EWCE, clusterProfiler
+├── networks/            network construction and position helpers
+└── utilities/           registry, validation, export, schema, plotting
+```
 
-839 resolved `source()` edges. Rendered by layer in
-`results/reports/publication_hardening/figures/repository_dependency_graph.svg`;
-the full file-level edge list is `repository_dependency_edges.csv`.
+Libraries are addressed **by bare name**, never by physical path:
 
-Most-depended-on files:
+```r
+source(repo_path("R", "module_stats.R"))   # resolves to R/statistics/module_stats.R
+```
 
-| File | Inbound edges |
-|---|---|
-| `R/data_contracts/dataset_config.R` | 90 |
-| `R/statistics/integration_utils.R` | 85 |
-| `R/nature_v2_figure_utils.R` | 50 |
-| `R/paths.R` | 29 |
-| `R/data_contracts/dataset_inputs.R` | 26 |
-| `R/qc/qc_exploration_utils.R` | 26 |
+`repo_path("R", "<name>.R")` delegates to `r_library_path()`, which looks for a
+flat `R/<name>.R` first and then searches one level deep. This is why the domain
+layout can be changed again without editing the 811 call sites and 97 test files
+that name these libraries. `paths.R` and `null_coalescing.R` stay at the `R/`
+root because they define the resolver and cannot use it.
 
-`R/nature_v2_figure_utils.R` at 50 inbound edges is worth noting: a *superseded*
-figure generation supplies utilities to the current one. That is why the figure
-layers cannot simply be archived by generation.
+Tests use the same addressing. A test that builds `R/<lib>.R` by hand would
+re-introduce the coupling this resolver exists to remove.
 
-## 3. Publication layers
+## Analysis stage identities
 
-Seven figure generations coexist, distinguished by renderer prefix.
+Stage directories describe function. The number is a stable identifier, not an
+execution order: `pipeline.yml` remains the sole execution-order authority.
 
-**Promoted in Phase 5B.** `final_truth_v9` is no longer a candidate. It is the
-canonical manuscript-facing generation for **Figure 2 (a–h)** and **Figure 3
-(a–i)**, declared in `figures/figure_contract.yml` at contract version
-`manuscript_figures_v3_final_truth_v9_promoted` and shipped by the export. Its
-own contract's `status` field says so too, which resolves the contradiction this
-document previously carried against it. The registry of canonical versus
-superseded generations is `manuscript/figure_canonical_generation_registry.csv`.
+| Identity | Owns |
+| --- | --- |
+| `analysis/01_preprocessing` | preprocessing handoff and protein/gene identifier mapping |
+| `analysis/02_qc` | QC, missingness, marker fidelity, confounding |
+| `analysis/03_spatial_validation` | spatial systems, bilateral aggregation, CA2-SLM robustness |
+| `analysis/04_differential_abundance` | differential abundance and enrichment |
+| `analysis/05_wgcna` | WGCNA module and supermodule construction and downstream |
+| `analysis/06_gsea` | cell-type enrichment |
+| `analysis/07_spatial_networks` | spatial and differential networks |
+| `analysis/08_integration` | biological integration and behaviour/physiology coupling |
+| `analysis/09_publication_exports` | PRIDE and publication source-data export |
 
-Two boundaries are deliberate. The **Extended Data** figures in the v9 contract
-are *not* promoted and remain candidates. **Figure 1** is unaffected: it is the
-frozen behavioural bridge figure and neither its contract entry nor its rendered
-bytes changed.
+## Output namespaces are deliberately not migrated
 
-| Prefix | Layer | Status | Renderers defined | Used by the frozen v9 contract |
-|---|---|---|---|---|
-| `f9_` | final_truth_v9 | CURRENT — PROMOTED for Figures 2 and 3 | 34 | 29 |
-| `s9f_` | final_truth_v9 engine | CURRENT | 10 | 0 |
-| `e8_` | editorial_v8 | superseded | 39 | 0 |
-| `nf_` | nature_final_v7 | superseded | 30 | **2** |
-| `nvp_` | nature_v2 | superseded | 19 | **1** |
-| `s6_` | spatial_v6 | superseded | 21 | 0 |
-| `s5_` | story_v5 | superseded | 16 | **2** |
+Paths under `results/` and `data/` are keyed on **stage identity**, not on
+script location, and they carry 129 frozen untracked baseline objects. Moving a
+script therefore does not move its outputs, and a stage name appearing inside
+`results/tables/06_modules_WGCNA/` is correct rather than stale.
 
-**Five of the 42 publication panels are rendered by functions that live in
-superseded layer files** (finding PH-001):
+This is the single most load-bearing invariant of the migration. Every
+repointing step verified it explicitly.
 
-| Figure | Panel | Renderer | Home layer |
-|---|---|---|---|
-| F2_NATURE_FINAL_V9 | c | `nf_pca_compact` | nature_final_v7 |
-| F2_NATURE_FINAL_V9 | f | `nf_bilateral_main` | nature_final_v7 |
-| ED3_FINAL_V9 | c | `s5_ed_ca2_displacement` | story_v5 |
-| ED_WGCNA_FINAL_V9 | c | `nvp_ed_celltype` | nature_v2 |
-| ED8_FINAL_V9 | b | `s5_ed_network_distance` | story_v5 |
+## Publication boundary
 
-This is **accepted, not repaired**. The frozen SVGs were produced by these exact
-function bodies; copying them into the v9 layer would mean the released figures
-were no longer reproducible from the code that made them. What the audit adds is
-a guard that fixes the set at exactly these five, so a panel cannot drift
-between generations unnoticed.
+```
+analysis/**                      scientific inference
+   |
+results/source_data/manuscript/  canonical per-identity source data
+   |
+tools/export_publication_source_data.R
+   |
+results/publication_source_data/<publication_id>/ + manifest.csv
+   |
+   v
+Exp9_manuscript                  renders from a frozen, hash-verified copy
+```
 
-## 4. Output model
+`config/publication_source_data_contract.yml` names the canonical publication
+identities and the withheld ones. It is a scientific-side contract, so building
+the bundle never requires reading the manuscript repository, and the manuscript
+repository never reads a live path here.
 
-`results/` is untracked apart from `results/manuscript/` and
-`results/reports/`; everything else is regenerated by the pipeline.
+`tests/testthat/test-analysis-publication-boundary.R` enforces the boundary:
+no `figures/`, no `manuscript/`, no generation-named panel library, no
+registered renderer, a complete and hash-exact source-data manifest, and no
+active path carrying a `final`/`v7`/`v8`/`v9`/`latest` namespace.
 
-Structured roots: `tables/`, `figures/`, `reports/`, `source_data/`, `audit/`,
-`logs/`, `manuscript/`, `module_scores/`, `reviewer_audit/`.
+## Version history belongs in git, not in filenames
 
-Two ad-hoc roots sit alongside them — `results/EWCE_sample_vs_animal_COMPARISON`
-and `results/EWCE_sample_vs_animal_REPAIRED`. Both are untracked and named by no
-registry, manifest or test. They belong under `results/audit/`, but moving them
-is a physical directory migration and is therefore deferred (DEC-002).
+Active paths do not carry generation names. Historical generations
+(`final_truth_v9`, `spatial_v6`, `editorial_v8`, `nature_final_v7`,
+`manuscript_figures_v2`, `ED1_FINAL_V9`) survive only in:
 
-**Source-data-first contract.** All 42 publication panels satisfy: a released
-source-data CSV, a vector SVG, and a named renderer. The fourth rule — renderer
-defined in a current v9 layer file — is satisfied by 37 of 42, the five in §3.
+- manuscript provenance records, now in `Exp9_manuscript/provenance/`;
+- `archive/`, which is excluded from script discovery;
+- `docs/NAMING_MIGRATION.md`, whose left column is intentionally historical;
+- `tools/restructure_pipeline_folders.sh`, which records an earlier migration.
 
-## 5. Deferred structural changes
-
-No directory was moved in this pass. Each proposal below is recorded in
-`results/tables/publication_hardening/migration_risk_register.csv` with its
-precondition and its verification step.
-
-| Change | Risk | What would break |
-|---|---|---|
-| ad-hoc EWCE roots → `results/audit/` | P1_SAFE_WITH_TESTS | nothing in the repository; it is a physical migration, which this pass excludes |
-| `audits/wgcna/proteomics_wgcna_downstream_audit.R` → `99_audits/` | P1_SAFE_WITH_TESTS | its own relative `source()` calls; `RUN_ORDER.md` if it names it |
-| fold `08_biological_interpretation` into `03_qc_exploration` | P2_DEFERRED | its output directory derives from the stage name, so every file it writes changes path |
-| `figures/current/` + `figures/superseded/` | P2_DEFERRED | `pipeline.yml` paths, the freeze manifest hashes, `RUN_ORDER.md` |
-| `R/` family subdirectories | P2_DEFERRED | every `source(repo_path("R", ...))` in 445 scripts, plus the `R/*.R` globs in the test suite |
-
-`08_biological_interpretation` holds a single script whose name is a near
-synonym of `10_biological_integration`, and it writes three files whose
-basenames duplicate those of `archive/02_qc/04d_compartment_marker_fidelity.r`.
-The paths differ, so nothing is overwritten — but a reader handed
-`compartment_marker_fidelity_scores.csv` cannot tell which stage produced it.
-
-## 6. Known structural facts
-
-- **19** scripts inside numbered stages carry a sub-step suffix (`02a_`, `04d_`)
-  rather than a bare `NN_`. This is a deliberate insertion convention, not drift.
-- Numbered stages mix `.R` and `.r` extensions; every other layer is internally
-  consistent. Cosmetic, and renaming would churn every registry path.
-- **43** output basenames are written by more than one script. **0** of them
-  resolve to the same relative path, so no output has two authoritative writers.
-- `R/statistics/module_stats.R` is referenced only by `R/README.md` (finding PH-003). It is
-  retained: deleting it would be exactly the tidiness-driven deletion this audit
-  is instructed not to make.
-- `R/utilities/renv_lock_audit.R` has no `source()` edge but is reached through a variable
-  in `R/data_contracts/publication_freeze_utils.R` and through `testthat::test_path`. Static
-  edge counting alone would misreport it as dead.
+Two exceptions are deliberate and documented in
+[RESTRUCTURE_PLAN.md](RESTRUCTURE_PLAN.md): the untracked output namespace
+`results/**/manuscript_candidates/final_truth_v9/` (PB-11) and the
+`spatial_v6` fingerprint source tables (PB-12). Both are frozen untracked
+objects; renaming them would mean bulk-moving the historical result tree, which
+the migration scope forbids.

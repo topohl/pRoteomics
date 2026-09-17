@@ -86,23 +86,66 @@ manuscript layer is removed, the architecture is re-treed, and the small set of
 and re-frozen under a new tag. Every scientific and publication object stays
 byte-identical.
 
-Objects permitted to change hash in this phase are confined to layout
-contracts, and each is logged in `audits/restructure_migration_map.csv` with
-`migration_class = REWRITTEN_PATH_CONTRACT`:
+Objects permitted to change are confined to contracts, and each is logged in
+`audits/restructure_migration_map.csv`. The eight that changed split into two
+classes, and the distinction matters:
 
-| Object | Why it must change |
+**`REWRITTEN_PATH_CONTRACT` (5) — addressing only.** The content named files by
+their pre-migration path. `tools/verify_path_contract_rewrites.R` reduces the
+baseline and current versions to a canonical form in which every way of naming
+a script or library collapses to one token, and requires the two to be
+*identical*. All five pass, so the only difference is addressing: no number,
+hash, threshold, claim or word of prose changed.
+
+| Object | Lines changed |
 | --- | --- |
-| `pipeline.yml` | stage paths + removal of the `manuscript_candidates` renderer stage |
-| `tests/testthat/test-pipeline-registry.R` | asserts registry script existence and stage-relative paths |
-| `tests/testthat/test-output-namespace-contract.R` | asserts namespace/stage paths |
-| `config/output_namespaces.yml` | output namespace roots |
-| `docs/publication_freeze_manifest.yml` | records renderer and stage paths |
-| `docs/MANUSCRIPT_STATISTICAL_CONTRACT.md` | cites stage-relative script paths |
-| `config/clusterProfiler_config.yml`, `config/manuscript_spatial_order.yml` | stage-relative input roots |
+| `docs/publication_freeze_manifest.yml` | 13 |
+| `tests/testthat/test-publication-freeze-manifest.R` | 5 |
+| `docs/MANUSCRIPT_STATISTICAL_CONTRACT.md` | 2 |
+| `tests/testthat/test-candidate-figure-layer.R` | 1 |
+| `tests/testthat/test-figure-01-renderer.R` | 1 |
 
-No table of numbers, no panel, no figure, no prose and no statistic is touched
-by any of these edits. The re-freeze tag is
-`post-restructure-architecture-freeze-2026-09`.
+**`REWRITTEN_BOUNDARY_CONTRACT` (3) — declared semantic change.** These
+described the manuscript rendering layer that Phase 6C removed, so their
+content had to change. They are enumerated in the map builder rather than
+discovered, and held to a weaker standard on purpose:
+
+| Object | Change |
+| --- | --- |
+| `pipeline.yml` | the 884-line `manuscript_candidates` stage and the 9 figure entry points under `integration` were deleted; 2675 → 1596 lines |
+| `tests/testthat/test-pipeline-registry.R` | asserted the Figure 2/3 entry points are registered here; now asserts no renderer is |
+| `tests/testthat/test-output-namespace-contract.R` | asserted exactly 9 figure entry points; now asserts 0 |
+
+Both replaced assertions are strictly stronger than the ones they replace: an
+accidentally reintroduced renderer is still caught. Both are recorded in
+`audits/test_migration_classification.csv` as
+`NO_LONGER_APPLICABLE_AFTER_REPO_SPLIT`.
+
+`config/output_namespaces.yml`, `config/clusterProfiler_config.yml` and
+`config/manuscript_spatial_order.yml` were expected to need rewriting and did
+not: they key on stage identity rather than script location, so they are
+byte-identical.
+
+The re-freeze tag is `post-restructure-architecture-freeze-2026-09`.
+
+## 2.1 Verified outcome
+
+| Check | Result |
+| --- | --- |
+| assertions mapped | 239 / 239 |
+| distinct objects mapped | 200 / 200 |
+| destinations present | 200 / 200 |
+| objects mapped exactly once | 200 / 200 |
+| hash-identical | 191 / 191 checkable |
+| missing / duplicate / unexplained mismatch | 0 / 0 / 0 |
+| declared rewrites | 8 (5 addressing, 3 boundary) |
+| self-referential rows | 1, verified by byte length |
+| named scientific contracts intact | 11 contracts, 23 carrier objects, 22 byte-identical + 1 addressing-only |
+
+The single self-referential row is `manuscript/prerestructure_freeze_manifest.csv`,
+which lists itself: a file cannot contain its own final hash, so the sha256 it
+records for itself is that of an earlier state. This is a property of the
+baseline, not of the migration, and is verified by byte length instead.
 
 ## 3. Destination split
 
