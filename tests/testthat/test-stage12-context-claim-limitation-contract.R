@@ -13,7 +13,7 @@ testthat::local_edition(3)
 # straight from the audit source and prove EVERY branch satisfies the
 # contract, including branches no module currently occupies.
 
-AUDIT_SCRIPT <- repo_path("analysis/05_wgcna", "12_microglia_wgcna_nature_readiness_audit.R"
+AUDIT_SCRIPT <- repo_path("analysis/05_wgcna", "audit_microglia_module_claims.R"
 )
 
 # The regex the Stage-12 validation contract uses. Deliberately duplicated

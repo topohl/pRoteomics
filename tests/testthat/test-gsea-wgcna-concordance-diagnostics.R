@@ -100,7 +100,7 @@ testthat::test_that("recurrent-cross-spatial direction counts local spatial unit
 testthat::test_that("candidate mapping filters use explicit environment dataset", {
   script <- paste(
     readLines(repo_path("analysis/08_integration",
-      "06_gsea_wgcna_concordance_diagnostics.R"
+      "summarize_enrichment_module_concordance.R"
     ), warn = FALSE),
     collapse = "\n"
   )
@@ -149,7 +149,7 @@ testthat::test_that("power diagnostic ranks unique endpoints without new tests",
 testthat::test_that("diagnostic source does not alter official classifier", {
   helper <- paste(readLines(repo_path("R", "gsea_wgcna_concordance_diagnostic_utils.R")), collapse = "\n")
   script <- paste(readLines(repo_path("analysis/08_integration",
-    "06_gsea_wgcna_concordance_diagnostics.R"
+    "summarize_enrichment_module_concordance.R"
   )), collapse = "\n")
   testthat::expect_false(grepl("gww_classify_concordance\\s*\\(", script))
   testthat::expect_false(grepl("stats::p.adjust", helper, fixed = TRUE))

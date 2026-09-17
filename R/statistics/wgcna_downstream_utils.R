@@ -824,7 +824,7 @@ load_wgcna_marker_sets <- function(include_empirical = TRUE, include_legacy_alia
   }
 
   if (!length(sets)) {
-    if (!isTRUE(quiet)) warning("Falling back to legacy hard-coded WGCNA marker panels; run analysis/02_qc/04b_import_reference_marker_sources.r to create the registry.", call. = FALSE)
+    if (!isTRUE(quiet)) warning("Falling back to legacy hard-coded WGCNA marker panels; run analysis/02_qc/build_reference_marker_registry.R to create the registry.", call. = FALSE)
     sets <- wgcna_marker_sets()
     metadata <- data.frame(marker_set = names(sets), marker_source = "legacy_hardcoded_fallback", source_file = NA_character_, stringsAsFactors = FALSE)
   } else if (isTRUE(include_legacy_aliases)) {

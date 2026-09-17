@@ -940,7 +940,7 @@ testthat::test_that("atomic publication rollback restores prior directories", {
 testthat::test_that("Phase 2 script is isolated from forbidden output writers", {
   script <- readLines(
     repo_path("analysis/05_wgcna",
-      "05_module_supermodule_group_effects.r"
+      "test_module_phenotypes.R"
     ),
     warn = FALSE
   )

@@ -1,7 +1,7 @@
 source(testthat::test_path("..", "..", "R", "paths.R"))
 
 testthat::test_that("spatial network script parses --dataset before current_dataset", {
-  txt <- paste(readLines(repo_path("analysis/07_spatial_networks/01_network_spatial_relations.r"), warn = FALSE), collapse = "\n")
+  txt <- paste(readLines(repo_path("analysis/07_spatial_networks/build_spatial_networks.R"), warn = FALSE), collapse = "\n")
 
   testthat::expect_true(grepl("args <- commandArgs\\(trailingOnly = TRUE\\)", txt))
   testthat::expect_true(grepl("dataset_cli <- arg_value\\(\"--dataset\"", txt))
@@ -41,7 +41,7 @@ testthat::test_that("spatial network dry-run honors --dataset", {
     on.exit(setwd(old_wd), add = TRUE)
     out <- suppressWarnings(system2(
       file.path(R.home("bin"), "Rscript"),
-      c("analysis/07_spatial_networks/01_network_spatial_relations.r", "--dataset", dataset, "--dry-run"),
+      c("analysis/07_spatial_networks/build_spatial_networks.R", "--dataset", dataset, "--dry-run"),
       stdout = TRUE,
       stderr = TRUE
     ))

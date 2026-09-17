@@ -326,7 +326,7 @@ testthat::test_that("fail-closed validation and status semantics are explicit", 
   testthat::expect_false(wgcna_identity_contract_publishable(validation))
   script <- paste(
     readLines(
-      repo_path("analysis/05_wgcna", "00_wgcna_identity_contract.R"
+      repo_path("analysis/05_wgcna", "build_module_identity_contract.R"
       ),
       warn = FALSE
     ),
@@ -353,7 +353,7 @@ testthat::test_that("dry-run preserves generated outputs and --dataset all fails
     mustWork = TRUE
   )
   script <- file.path(
-    "analysis", "05_wgcna", "00_wgcna_identity_contract.R"
+    "analysis", "05_wgcna", "build_module_identity_contract.R"
   )
   rscript <- Sys.which("Rscript")
   testthat::expect_true(nzchar(rscript))
@@ -392,11 +392,11 @@ testthat::test_that("pipeline registration remains read-only and precedes Stage 
     warn = FALSE
   )
   identity_line <- grep(
-    'script: "analysis/05_wgcna/00_wgcna_identity_contract.R"',
+    'script: "analysis/05_wgcna/build_module_identity_contract.R"',
     pipeline
   )
   stage05_line <- grep(
-    'script: "analysis/05_wgcna/05_module_supermodule_group_effects.r"',
+    'script: "analysis/05_wgcna/test_module_phenotypes.R"',
     pipeline
   )
   testthat::expect_length(identity_line, 1L)

@@ -37,7 +37,7 @@ Microglia data are region-only microglia/PVM-enriched ROI/local
 microenvironment proteomics, not purified microglia.
 
 The authoritative control compartment-marker validation is
-`analysis/02_qc/04e_control_compartment_abundance_publication_figures.r`.
+`analysis/02_qc/render_compartment_abundance_figures.R`.
 It uses reconstructed observed, non-imputed abundance and animal-level
 descriptive summaries; it does not estimate purity, cell fractions,
 deconvolution, copy number, or total hippocampal abundance.

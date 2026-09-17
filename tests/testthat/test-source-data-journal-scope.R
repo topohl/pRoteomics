@@ -320,10 +320,10 @@ testthat::test_that("the source-data exporter applies the scope before the dry-r
 
 testthat::test_that("the journal scope is not applied to PRIDE selectors", {
   pride <- c("R/statistics/pride_helpers.R",
-             "analysis/09_publication_exports/05_make_pride_manifest.R",
-             "analysis/09_publication_exports/10_validate_pride_submission.R",
-             "analysis/09_publication_exports/03_export_processed_pg_matrix_package.R",
-             "analysis/09_publication_exports/04_make_supplementary_tables.R")
+             "analysis/09_publication_exports/build_pride_manifest.R",
+             "analysis/09_publication_exports/validate_pride_submission.R",
+             "analysis/09_publication_exports/export_processed_matrices.R",
+             "analysis/09_publication_exports/build_supplementary_tables.R")
   for (p in pride) {
     joined <- paste(readLines(file.path(repo, p), warn = FALSE), collapse = "\n")
     testthat::expect_false(

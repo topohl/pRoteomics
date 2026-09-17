@@ -3,7 +3,7 @@ testthat::local_edition(3)
 source(testthat::test_path("..", "..", "R", "paths.R"))
 source(repo_path("R", "wgcna_downstream_utils.R"))
 source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
-source(repo_path("R", "wgcna_stage07_semantic_utils.R"))
+source(repo_path("R", "module_semantic_utils.R"))
 
 wave1a_effects <- function(dataset = "microglia", level = "module") {
   path <- testthat::test_path(
@@ -96,7 +96,7 @@ wave1a_set_support <- function(
 
 wave1a_stage06_guard <- function() {
   expressions <- parse(repo_path("analysis/05_wgcna",
-    "06_annotate_module_microenvironment.r"
+    "annotate_module_microenvironment.R"
   ))
   is_guard <- vapply(expressions, function(expression) {
     is.call(expression) &&
@@ -114,7 +114,7 @@ wave1a_stage06_guard <- function() {
 
 testthat::test_that("Stage 06 is contrast-blind and rejects statistical fields", {
   script <- paste(readLines(repo_path("analysis/05_wgcna",
-    "06_annotate_module_microenvironment.r"
+    "annotate_module_microenvironment.R"
   ), warn = FALSE), collapse = "\n")
 
   testthat::expect_false(grepl(
@@ -190,7 +190,7 @@ testthat::test_that("Stage 06 is contrast-blind and rejects statistical fields",
 
 testthat::test_that("Stage 07 uses the adapter without legacy inference", {
   script <- paste(readLines(repo_path("analysis/05_wgcna",
-    "07_wgcna_interpretable_summary.r"
+    "summarize_module_interpretation.R"
   ), warn = FALSE), collapse = "\n")
 
   testthat::expect_true(grepl(

@@ -28,7 +28,7 @@ sps_independence_classes <- function() {
 sps_evidence_dependence_registry <- function() {
   rows <- list(
     c("con_spatial_identity",
-      "analysis/04_differential_abundance/09_control_spatial_identity_validation.r",
+      "analysis/04_differential_abundance/validate_control_spatial_identity.R",
       "neuron_soma; neuron_neuropil", "AnimalID", "CON only",
       "modelled as a fixed nuisance covariate; sides not separated", "yes", "none",
       "phenotype_independent_context",
@@ -36,7 +36,7 @@ sps_evidence_dependence_registry <- function() {
       "Must not be described as replicated across animals beyond n=3 CON, and must not be used to support any group difference."),
 
     c("bilateral_spatial_validation",
-      "analysis/03_spatial_validation/02_bilateral_spatial_identity.R",
+      "analysis/03_spatial_validation/quantify_bilateral_spatial_identity.R",
       "neuron_soma; neuron_neuropil; microglia", "paired sides within AnimalID", "CON only",
       "left-only and right-only fits compared against the bilateral fit", "yes", "none",
       "internal_reproducibility",
@@ -44,7 +44,7 @@ sps_evidence_dependence_registry <- function() {
       "NOT independent biological replication. Two hemispheres of one animal are one animal; n does not double, and agreement between sides is not evidence that an effect generalises across animals."),
 
     c("empirical_compartment_identity",
-      "analysis/02_qc/05_empirical_roi_marker_discovery.r",
+      "analysis/02_qc/discover_empirical_roi_markers.R",
       "cross-dataset", "AnimalID", "none (dataset contrast, group-adjusted)",
       "averaged within animal before modelling", "yes", "none",
       "phenotype_independent_context",
@@ -52,7 +52,7 @@ sps_evidence_dependence_registry <- function() {
       "Not a cell-proportion estimate and not purified-cell evidence. A microglia-enriched ROI is not purified microglia."),
 
     c("cross_hemisphere_compartment_validation",
-      "analysis/03_spatial_validation/03_bilateral_empirical_compartment.R",
+      "analysis/03_spatial_validation/quantify_empirical_compartments.R",
       "cross-dataset", "paired sides within AnimalID", "adjusted for StressGroup",
       "left discovery evaluated on right and vice versa", "yes", "none",
       "internal_reproducibility",
@@ -60,7 +60,7 @@ sps_evidence_dependence_registry <- function() {
       "Not independent replication and not external validation. The same animals contribute both sides."),
 
     c("wgcna_module_identity",
-      "analysis/05_wgcna/01_WGCNA.r (frozen membership)",
+      "analysis/05_wgcna/build_wgcna_modules.R (frozen membership)",
       "neuron_soma; neuron_neuropil; microglia", "protein (network topology)", "none",
       "samples enter the network before any hemisphere aggregation", "yes", "none",
       "contextual_same_data",
@@ -68,7 +68,7 @@ sps_evidence_dependence_registry <- function() {
       "Module membership is not independent evidence for a claim about the proteins in it; it is the same measurements re-expressed."),
 
     c("wgcna_bilateral_validation",
-      "analysis/03_spatial_validation/04_wgcna_module_bilateral.R",
+      "analysis/03_spatial_validation/quantify_module_bilateral_identity.R",
       "neuron_soma; neuron_neuropil; microglia", "paired sides within AnimalID", "none",
       "consumes Stage-05 hemisphere values; sides kept apart", "yes", "none",
       "internal_reproducibility",
@@ -76,7 +76,7 @@ sps_evidence_dependence_registry <- function() {
       "NOT independent biological replication: both sides come from the same animal, so n does not increase. It also does not validate the module definition, and poor agreement is not automatically technical failure - it may be real hemispheric asymmetry."),
 
     c("ewce_differential",
-      "analysis/06_gsea/01_EWCE_E9.r (Differential arm)",
+      "analysis/06_gsea/run_ewce_celltype_enrichment.R (Differential arm)",
       "neuron_soma; neuron_neuropil; microglia", "AnimalID", "SUS/RES/CON contrasts",
       "averaged within animal before modelling", "yes",
       "EWCE specificity reference (ewceData CTD)",
@@ -85,7 +85,7 @@ sps_evidence_dependence_registry <- function() {
       "Its FDR family must never be shared with phenotype-blind annotation; doing so lets the phenotype arm determine a baseline result's significance."),
 
     c("ewce_module_annotation",
-      "analysis/03_spatial_validation/05_wgcna_module_celltype_annotation.R",
+      "analysis/03_spatial_validation/annotate_module_celltypes.R",
       "neuron_soma; neuron_neuropil; microglia", "gene set (module membership)", "none",
       "not applicable; membership carries no hemisphere", "yes",
       "EWCE specificity reference (ewceData CTD)",

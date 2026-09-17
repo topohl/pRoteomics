@@ -108,7 +108,7 @@ wcl_generic_label_patterns <- function() {
 # Recover the GO term that produced the Stage-01 label, exactly as Stage 01
 # selected it.
 #
-# analysis/05_wgcna/01_WGCNA.r:2746-2751 does:
+# analysis/05_wgcna/build_wgcna_modules.R:2746-2751 does:
 #     filter(ModuleProteinSetType == "all") %>%
 #     group_by(ModuleID, Ontology) %>%
 #     arrange(p.adjust, qvalue, .by_group = TRUE) %>%

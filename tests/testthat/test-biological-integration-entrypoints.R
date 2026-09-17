@@ -1,18 +1,18 @@
 testthat::test_that("biological integration entrypoints exist and dry-run", {
   source(testthat::test_path("..", "..", "R", "paths.R"))
   scripts <- c(
-    "analysis/04_differential_abundance/08_external_stress_disease_signature_overlap.r",
-    "analysis/08_integration/03_module_behavior_coupling.r",
-    "analysis/08_integration/01_cross_compartment_program_atlas.r",
-    "analysis/08_integration/02_manuscript_program_summary.r",
-    "analysis/08_integration/03_evidence_priority_matrix.r",
-    "analysis/08_integration/05_gsea_wgcna_concordance.R",
-    "analysis/08_integration/06_gsea_wgcna_concordance_diagnostics.R",
-    "analysis/08_integration/08_wgcna_candidate_protein_shortlist.R",
-    "analysis/08_integration/09_wgcna_sus_res_network_position.R",
-    "analysis/05_wgcna/14_wgcna_label_coherence_audit.R",
-    "analysis/05_wgcna/15_wgcna_label_adjudication.R",
-    "analysis/05_wgcna/16_wgcna_label_approval_table.R"
+    "analysis/04_differential_abundance/compare_external_stress_signatures.R",
+    "analysis/08_integration/test_module_behaviour_coupling.R",
+    "analysis/08_integration/build_cross_compartment_atlas.R",
+    "analysis/08_integration/summarize_programs_for_manuscript.R",
+    "analysis/08_integration/build_evidence_priority_matrix.R",
+    "analysis/08_integration/test_enrichment_module_concordance.R",
+    "analysis/08_integration/summarize_enrichment_module_concordance.R",
+    "analysis/08_integration/build_candidate_protein_shortlist.R",
+    "analysis/08_integration/quantify_candidate_network_position.R",
+    "analysis/05_wgcna/audit_module_label_coherence.R",
+    "analysis/05_wgcna/adjudicate_module_labels.R",
+    "analysis/05_wgcna/build_module_label_registry.R"
   )
   testthat::expect_true(all(file.exists(repo_path(scripts))))
 
@@ -20,18 +20,18 @@ testthat::test_that("biological integration entrypoints exist and dry-run", {
   old_wd <- setwd(repo_path())
   on.exit(setwd(old_wd), add = TRUE)
   cases <- list(
-    c("analysis/04_differential_abundance/08_external_stress_disease_signature_overlap.r", "--dry-run"),
-    c("analysis/08_integration/03_module_behavior_coupling.r", "--dataset", "microglia", "--dry-run"),
-    c("analysis/08_integration/01_cross_compartment_program_atlas.r", "--dry-run"),
-    c("analysis/08_integration/02_manuscript_program_summary.r", "--dry-run"),
-    c("analysis/08_integration/03_evidence_priority_matrix.r", "--dry-run"),
-    c("analysis/08_integration/05_gsea_wgcna_concordance.R", "--dataset", "all", "--dry-run"),
-    c("analysis/08_integration/06_gsea_wgcna_concordance_diagnostics.R", "--dataset", "all", "--dry-run"),
-    c("analysis/08_integration/08_wgcna_candidate_protein_shortlist.R", "--dataset", "all", "--dry-run"),
-    c("analysis/08_integration/09_wgcna_sus_res_network_position.R", "--dataset", "all", "--dry-run"),
-    c("analysis/05_wgcna/14_wgcna_label_coherence_audit.R", "--dataset", "all", "--dry-run"),
-    c("analysis/05_wgcna/15_wgcna_label_adjudication.R", "--dataset", "all", "--dry-run"),
-    c("analysis/05_wgcna/16_wgcna_label_approval_table.R", "--dataset", "all", "--dry-run")
+    c("analysis/04_differential_abundance/compare_external_stress_signatures.R", "--dry-run"),
+    c("analysis/08_integration/test_module_behaviour_coupling.R", "--dataset", "microglia", "--dry-run"),
+    c("analysis/08_integration/build_cross_compartment_atlas.R", "--dry-run"),
+    c("analysis/08_integration/summarize_programs_for_manuscript.R", "--dry-run"),
+    c("analysis/08_integration/build_evidence_priority_matrix.R", "--dry-run"),
+    c("analysis/08_integration/test_enrichment_module_concordance.R", "--dataset", "all", "--dry-run"),
+    c("analysis/08_integration/summarize_enrichment_module_concordance.R", "--dataset", "all", "--dry-run"),
+    c("analysis/08_integration/build_candidate_protein_shortlist.R", "--dataset", "all", "--dry-run"),
+    c("analysis/08_integration/quantify_candidate_network_position.R", "--dataset", "all", "--dry-run"),
+    c("analysis/05_wgcna/audit_module_label_coherence.R", "--dataset", "all", "--dry-run"),
+    c("analysis/05_wgcna/adjudicate_module_labels.R", "--dataset", "all", "--dry-run"),
+    c("analysis/05_wgcna/build_module_label_registry.R", "--dataset", "all", "--dry-run")
   )
   for (args in cases) {
     out <- suppressWarnings(system2(cmd, args, stdout = TRUE, stderr = TRUE))
@@ -111,14 +111,14 @@ testthat::test_that("integration CSV reads inspect sparse provenance columns ful
   testthat::expect_equal(nrow(readr::problems(parsed)), 0L)
 
   bundle_text <- paste(
-    readLines(repo_path("R", "final_evidence_bundle_utils.R"), warn = FALSE),
+    readLines(repo_path("R", "evidence_bundle_utils.R"), warn = FALSE),
     collapse = "\n"
   )
   testthat::expect_match(bundle_text, "guess_max = Inf", fixed = TRUE)
 
   overview_text <- paste(
     readLines(repo_path("analysis/08_integration",
-      "04_wgcna_cross_compartment_overview.R"
+      "summarize_module_cross_compartment.R"
     ), warn = FALSE),
     collapse = "\n"
   )

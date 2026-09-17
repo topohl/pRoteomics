@@ -3,7 +3,7 @@ testthat::local_edition(3)
 source(testthat::test_path("..", "..", "R", "paths.R"))
 
 source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
-source(repo_path("R", "wgcna_stage07_semantic_utils.R"))
+source(repo_path("R", "module_semantic_utils.R"))
 
 wgcna_consumer_fixture <- function() {
   data.frame(
@@ -578,17 +578,17 @@ testthat::test_that(
   {
     root <- testthat::test_path("..", "..")
     consumers <- c(
-      "analysis/05_wgcna/08_wgcna_publication_figures.R",
-      "analysis/05_wgcna/08b_microglia_wgcna_readiness_publication_figures.R",
-      "analysis/05_wgcna/09_microglia_neuropil_independence.R",
-      "analysis/05_wgcna/11_module_robustness_sensitivity.r",
-      "analysis/05_wgcna/13_wgcna_claim_readiness.R",
-      "analysis/08_integration/03_module_behavior_coupling.r",
-      "analysis/09_publication_exports/07_make_biological_claims_table.R",
-      "analysis/08_integration/01_cross_compartment_program_atlas.r",
-      "analysis/08_integration/04_wgcna_cross_compartment_overview.R",
-      "analysis/08_integration/04_wgcna_circular_atlas.R",
-      "R/statistics/final_evidence_bundle_utils.R"
+      "analysis/05_wgcna/render_module_figures.R",
+      "analysis/05_wgcna/render_microglia_module_figures.R",
+      "analysis/05_wgcna/test_microglia_neuropil_independence.R",
+      "analysis/05_wgcna/audit_module_robustness.R",
+      "analysis/05_wgcna/audit_module_claim_readiness.R",
+      "analysis/08_integration/test_module_behaviour_coupling.R",
+      "analysis/09_publication_exports/build_biological_claims_table.R",
+      "analysis/08_integration/build_cross_compartment_atlas.R",
+      "analysis/08_integration/summarize_module_cross_compartment.R",
+      "analysis/08_integration/render_module_circular_atlas.R",
+      "R/statistics/evidence_bundle_utils.R"
     )
     for (consumer in consumers) {
       text <- readLines(file.path(root, consumer), warn = FALSE)
@@ -608,9 +608,9 @@ testthat::test_that(
       )), info = consumer)
     }
     for (consumer in c(
-      "analysis/05_wgcna/08_wgcna_publication_figures.R",
-      "analysis/05_wgcna/08b_microglia_wgcna_readiness_publication_figures.R",
-      "analysis/08_integration/04_wgcna_circular_atlas.R"
+      "analysis/05_wgcna/render_module_figures.R",
+      "analysis/05_wgcna/render_microglia_module_figures.R",
+      "analysis/08_integration/render_module_circular_atlas.R"
     )) {
       text <- paste(
         readLines(file.path(root, consumer), warn = FALSE),
@@ -624,7 +624,7 @@ testthat::test_that(
     claims_text <- paste(
       readLines(file.path(
         root, "analysis/09_publication_exports",
-        "07_make_biological_claims_table.R"
+        "build_biological_claims_table.R"
       ), warn = FALSE),
       collapse = "\n"
     )
@@ -642,7 +642,7 @@ testthat::test_that(
       claims_text, ".data$level == .env$level", fixed = TRUE
     )
     semantic <- readLines(
-      repo_path("R", "wgcna_stage07_semantic_utils.R"),
+      repo_path("R", "module_semantic_utils.R"),
       warn = FALSE
     )
     testthat::expect_false(any(grepl("p\\.adjust\\s*\\(", semantic)))

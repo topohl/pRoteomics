@@ -286,7 +286,7 @@ testthat::test_that("final bundle preserves all Stage 13 rows and filters manusc
 })
 
 testthat::test_that("circular claim parsing uses exact status tokens and frozen neuronal states are unchanged", {
-  circular_script <- paste(readLines(stage13_test_path("analysis/08_integration", "04_wgcna_circular_atlas.R"), warn = FALSE), collapse = "\n")
+  circular_script <- paste(readLines(stage13_test_path("analysis/08_integration", "render_module_circular_atlas.R"), warn = FALSE), collapse = "\n")
   testthat::expect_match(circular_script, 'tokens == "disallowed"', fixed = TRUE)
   testthat::expect_match(circular_script, 'tokens %in% c("allowed", "downgraded")', fixed = TRUE)
   testthat::expect_false(grepl('grepl("allowed|downgraded", .data$claim_display_status)', circular_script, fixed = TRUE))

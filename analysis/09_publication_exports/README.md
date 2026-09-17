@@ -1,6 +1,16 @@
-# PRIDE and journal export (`09_export_pride_journal`)
+# PRIDE and journal export (`analysis/09_publication_exports`)
 
 Active export module for **processed-data PRIDE deposition** and **journal reproducibility** from the **pg_matrix** stage onward.
+
+## Why this directory is not called `09_publication_source_data`
+
+Source data is not produced here. Twenty-seven registered scripts across
+`02_qc`, `04_differential_abundance`, `05_wgcna` and `08_integration` write
+`results/source_data/`; `09_export_source_data.R` only collects and releases
+it. What this directory owns is everything this repository exports for
+publication: PRIDE deposition, the biological claims table, supplementary
+tables and the methods summary. Naming it for source data would claim a
+namespace four other areas write.
 
 ## Reproducibility boundary
 
@@ -37,18 +47,18 @@ Rscript analysis/09_publication_exports/RUN_EXPORT.R --dataset microglia --expor
 Individual steps:
 
 ```bash
-Rscript analysis/09_publication_exports/02_make_sample_metadata.R --dataset microglia
-Rscript analysis/09_publication_exports/03_export_processed_pg_matrix_package.R --dataset microglia
-Rscript analysis/09_publication_exports/04_make_supplementary_tables.R --dataset microglia
-Rscript analysis/09_publication_exports/05_make_pride_manifest.R --dataset microglia
-Rscript analysis/09_publication_exports/10_validate_pride_submission.R --export-level pg_matrix_onward
+Rscript analysis/09_publication_exports/build_sample_metadata.R --dataset microglia
+Rscript analysis/09_publication_exports/export_processed_matrices.R --dataset microglia
+Rscript analysis/09_publication_exports/build_supplementary_tables.R --dataset microglia
+Rscript analysis/09_publication_exports/build_pride_manifest.R --dataset microglia
+Rscript analysis/09_publication_exports/validate_pride_submission.R --export-level pg_matrix_onward
 ```
 
 Optional broader manifest (non-default):
 
 ```bash
-Rscript analysis/09_publication_exports/05_make_pride_manifest.R --dataset microglia --include-derived-results
-Rscript analysis/09_publication_exports/05_make_pride_manifest.R --dataset microglia --recursive
+Rscript analysis/09_publication_exports/build_pride_manifest.R --dataset microglia --include-derived-results
+Rscript analysis/09_publication_exports/build_pride_manifest.R --dataset microglia --recursive
 ```
 
 ## Script map
@@ -56,13 +66,13 @@ Rscript analysis/09_publication_exports/05_make_pride_manifest.R --dataset micro
 | Script | Role |
 |---|---|
 | `RUN_EXPORT.R` | Orchestrates the full export pipeline |
-| `01_make_pride_manifest.R` | Canonical file manifest (SHA256, non-recursive by default) |
-| `02_make_sample_metadata.R` | SDRF-like metadata from pg_matrix-era sample tables |
-| `03_export_processed_pg_matrix_package.R` | **PRIDE** processed matrix package + data dictionary |
-| `04_make_supplementary_tables.R` | Journal supplementary tables (config globs only) |
-| `05_validate_pride_submission.R` | Contract-aware validation report |
-| `06_make_methods_summary.R` | Methods, software versions, pipeline steps, limitations |
-| `07_make_biological_claims_table.R` | **Manuscript** claims index (not PRIDE-required) |
+| `build_pride_manifest.R` | Canonical file manifest (SHA256, non-recursive by default) |
+| `build_sample_metadata.R` | SDRF-like metadata from pg_matrix-era sample tables |
+| `export_processed_matrices.R` | **PRIDE** processed matrix package + data dictionary |
+| `build_supplementary_tables.R` | Journal supplementary tables (config globs only) |
+| `validate_pride_submission.R` | Contract-aware validation report |
+| `build_methods_summary.R` | Methods, software versions, pipeline steps, limitations |
+| `build_biological_claims_table.R` | **Manuscript** claims index (not PRIDE-required) |
 | `08_export_manuscript_figures.R` | Figure collection for manuscript |
 | `09_export_source_data.R` | Source-data table collection for manuscript |
 
@@ -83,7 +93,7 @@ pride_submission/validation/            validation_report.tsv, validation_summar
 
 Manuscript artifacts also land under `results/manuscript/` and `results/tables/biological_claims_table.*`.
 
-The biological claims table requires the finalized microglia Stage 13 WGCNA handoff. It separates WGCNA architecture, direct group effects, convergent overlaps, and compatibility provenance; compatibility aliases never create independent claim rows. Final bundle generation is owned by `analysis/08_integration/03_evidence_priority_matrix.r` after the updated claims and integration tables are available.
+The biological claims table requires the finalized microglia Stage 13 WGCNA handoff. It separates WGCNA architecture, direct group effects, convergent overlaps, and compatibility provenance; compatibility aliases never create independent claim rows. Final bundle generation is owned by `analysis/08_integration/build_evidence_priority_matrix.R` after the updated claims and integration tables are available.
 
 ## PRIDE vs journal
 

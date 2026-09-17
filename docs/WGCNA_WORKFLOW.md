@@ -54,7 +54,7 @@ activation.
 
 ## Script Layers
 
-### 01_WGCNA.r
+### build_wgcna_modules.R
 
 Role: network/module construction.
 
@@ -82,7 +82,7 @@ member module. The full cut-height sensitivity grid is
 Run:
 
 ```bash
-Rscript analysis/05_wgcna/01_WGCNA.r --dataset <dataset>
+Rscript analysis/05_wgcna/build_wgcna_modules.R --dataset <dataset>
 ```
 
 Inspect:
@@ -99,7 +99,7 @@ input matrices, WGCNA settings, or module construction choices change.
 States predating the `protein_group_id_v1` feature-key contract, or states whose
 ordered feature fingerprint differs, are rejected and require a full WGCNA rerun.
 
-### 03_score_module_activity.R
+### score_module_activity.R
 
 Role: module scoring.
 
@@ -110,7 +110,7 @@ metadata. It supports source-scoped definitions such as `wgcna`, `overlap`, or
 Run:
 
 ```bash
-Rscript analysis/05_wgcna/03_score_module_activity.R --dataset <dataset>
+Rscript analysis/05_wgcna/score_module_activity.R --dataset <dataset>
 ```
 
 Inspect:
@@ -119,7 +119,7 @@ Inspect:
 
 Safe to rerun: yes.
 
-### 05_module_supermodule_group_effects.r
+### test_module_phenotypes.R
 
 Role: group-effect modelling.
 
@@ -174,7 +174,7 @@ statistics and diagnostics are inherited and every FDR field is `NA`.
 Run:
 
 ```bash
-Rscript analysis/05_wgcna/05_module_supermodule_group_effects.r --dataset <dataset> --level both
+Rscript analysis/05_wgcna/test_module_phenotypes.R --dataset <dataset> --level both
 ```
 
 Inspect:
@@ -213,7 +213,7 @@ refresh. Those stale diagnostics do not require a WGCNA rebuild.
 
 Safe to rerun: Stage 05 only, after the identity contract is publishable.
 
-### 06_annotate_module_microenvironment.r
+### annotate_module_microenvironment.R
 
 Role: biological annotation.
 
@@ -229,7 +229,7 @@ manifest records the config path and hash.
 Run:
 
 ```bash
-Rscript analysis/05_wgcna/06_annotate_module_microenvironment.r --dataset <dataset>
+Rscript analysis/05_wgcna/annotate_module_microenvironment.R --dataset <dataset>
 ```
 
 Inspect:
@@ -265,7 +265,7 @@ columns and adds explicit driver/caution columns such as
 `n_unique_targeted_signatures`, `n_unique_targeted_overlap_proteins`, and
 `curated_program_overlap_warning`.
 
-### 07_wgcna_interpretable_summary.r
+### summarize_module_interpretation.R
 
 Role: manuscript-facing summary.
 
@@ -286,8 +286,8 @@ exact compatibility alias for `canonical_plot_label`.
 Run:
 
 ```bash
-Rscript analysis/05_wgcna/07_wgcna_interpretable_summary.r --dataset <dataset>
-Rscript analysis/05_wgcna/07_wgcna_interpretable_summary.r --dataset all
+Rscript analysis/05_wgcna/summarize_module_interpretation.R --dataset <dataset>
+Rscript analysis/05_wgcna/summarize_module_interpretation.R --dataset all
 ```
 
 Inspect:
@@ -302,7 +302,7 @@ Inspect:
 
 Safe to rerun: yes.
 
-### 08_wgcna_publication_figures.R
+### render_module_figures.R
 
 Role: final reviewed microglia all-supermodule publication layer.
 
@@ -316,12 +316,12 @@ supplementary all-contrast matrix as SVG/PDF plus one source CSV per figure.
 Run:
 
 ```powershell
-Rscript .\06_modules_WGCNA\08_wgcna_publication_figures.R --dataset microglia
+Rscript .\06_modules_WGCNA\render_module_figures.R --dataset microglia
 ```
 
 Safe to rerun: yes.
 
-### 09_microglia_neuropil_independence.R
+### test_microglia_neuropil_independence.R
 
 Role: microglia-neuropil independence sensitivity.
 
@@ -334,7 +334,7 @@ the exploratory strongest-Spearman match.
 Run:
 
 ```bash
-Rscript analysis/05_wgcna/09_microglia_neuropil_independence.R --dataset microglia
+Rscript analysis/05_wgcna/test_microglia_neuropil_independence.R --dataset microglia
 ```
 
 Inspect:
@@ -379,12 +379,12 @@ gate fails.
 
 ## Interpretation Checklist
 
-- Use `01_WGCNA.r` outputs to describe module construction, not final biological
+- Use `build_wgcna_modules.R` outputs to describe module construction, not final biological
   claims.
-- Use `05_module_supermodule_group_effects.r` for primary module/supermodule
+- Use `test_module_phenotypes.R` for primary module/supermodule
   group-effect evidence.
-- Use `06_annotate_module_microenvironment.r` and
-  `07_wgcna_interpretable_summary.r` to explain biological context and figure
+- Use `annotate_module_microenvironment.R` and
+  `summarize_module_interpretation.R` to explain biological context and figure
   labels.
 - For microglia ROI results, separate targeted microglia signature overlap,
   microglia-associated ROI signal, shared microglia-neuropil ROI signal, and
@@ -396,7 +396,7 @@ gate fails.
   labels as purified microglia regulation.
 # WGCNA Claim-Gate Inference Notes
 
-Primary WGCNA inference for group effects is the module or supermodule eigengene model exported by `analysis/05_wgcna/05_module_supermodule_group_effects.r`. The claim-grade columns in `module_group_effects.csv` and `supermodule_group_effects.csv` record the model family, formula, emmeans status, rank/singularity diagnostics, animal random-effect use, and biological replicate unit used for each row.
+Primary WGCNA inference for group effects is the module or supermodule eigengene model exported by `analysis/05_wgcna/test_module_phenotypes.R`. The claim-grade columns in `module_group_effects.csv` and `supermodule_group_effects.csv` record the model family, formula, emmeans status, rank/singularity diagnostics, animal random-effect use, and biological replicate unit used for each row.
 
 Fallback tests are diagnostic only. If emmeans fails or a two-group t-test substitute is emitted, the numerical estimate is retained for review, but `primary_model_stable = FALSE`, `claim_allowed_model = FALSE`, and `model_downgrade_reason` includes `diagnostic_only_model_fallback`.
 
@@ -412,7 +412,7 @@ Blocked WGCNA rows are retained for audit but must not be phrased as evidence-su
 
 ## Optional Microglia Readiness And Claim Handoff
 
-`12_microglia_wgcna_nature_readiness_audit.R` is additive: it keeps the
+`audit_microglia_module_claims.R` is additive: it keeps the
 historical primary network and memberships unchanged, recognizes AnimalID as
 the repeated-measure unit, and treats standard WGCNA permutation preservation
 as an unblocked ROI-row descriptive diagnostic rather than a claim gate. The
@@ -420,8 +420,8 @@ strict within-animal nonspatial sensitivity is diagnostic only; it cannot
 downgrade a module’s primary architecture classification. Region-organized
 covariance may be meaningful biology rather than technical failure.
 
-`12b_finalize_microglia_wgcna_nature_readiness_audit.R` performs integrity and
-report packaging only. `13_wgcna_claim_readiness.R` is the non-circular
+`summarize_microglia_module_claims.R` performs integrity and
+report packaging only. `audit_module_claim_readiness.R` is the non-circular
 manuscript handoff. Stages 05, 06, 07 and 12 do not consume Stage 13. The
 reviewed registry is authoritative for final microglia labels; automatic GO and
 marker names are candidate/provenance evidence only. Singleton compatibility
@@ -448,7 +448,7 @@ that selected value from the saved state, Stage 01 manifest, and clustering
 sensitivity record rather than substituting the future `0.45` default.
 
 ```powershell
-Rscript .\06_modules_WGCNA\12_microglia_wgcna_nature_readiness_audit.R --animal-bootstrap 500
-Rscript .\06_modules_WGCNA\08b_microglia_wgcna_readiness_publication_figures.R --dataset microglia
-Rscript .\06_modules_WGCNA\13_wgcna_claim_readiness.R --dataset microglia
+Rscript .\06_modules_WGCNA\audit_microglia_module_claims.R --animal-bootstrap 500
+Rscript .\06_modules_WGCNA\render_microglia_module_figures.R --dataset microglia
+Rscript .\06_modules_WGCNA\audit_module_claim_readiness.R --dataset microglia
 ```

@@ -123,13 +123,13 @@ testthat::test_that("fixed seeds make PCA, UMAP, and t-SNE reproducible", {
 
 testthat::test_that("joint scripts keep the global registry and fixed embedding seed contracts", {
   root <- testthat::test_path("..", "..")
-  prep <- paste(readLines(file.path(root, "analysis/01_preprocessing", "01_prepare_joint_protigy_input.r"), warn = FALSE), collapse = "\n")
-  qc <- paste(readLines(file.path(root, "analysis/02_qc", "00b_joint_compartment_qc.r"), warn = FALSE), collapse = "\n")
+  prep <- paste(readLines(file.path(root, "analysis/01_preprocessing", "build_joint_protigy_input.R"), warn = FALSE), collapse = "\n")
+  qc <- paste(readLines(file.path(root, "analysis/02_qc", "assess_joint_compartment_quality.R"), warn = FALSE), collapse = "\n")
   registry <- paste(readLines(file.path(root, "pipeline.yml"), warn = FALSE), collapse = "\n")
   testthat::expect_match(prep, "PROTEOMICS_JOINT_MIN_DETECTION_PER_BLOCK", fixed = TRUE)
   testthat::expect_match(prep, "joint_qc_write_gct_v13", fixed = TRUE)
   testthat::expect_match(qc, "set.seed(seed)", fixed = TRUE)
-  testthat::expect_match(registry, "analysis/01_preprocessing/01_prepare_joint_protigy_input.r", fixed = TRUE)
-  testthat::expect_match(registry, "analysis/02_qc/00b_joint_compartment_qc.r", fixed = TRUE)
+  testthat::expect_match(registry, "analysis/01_preprocessing/build_joint_protigy_input.R", fixed = TRUE)
+  testthat::expect_match(registry, "analysis/02_qc/assess_joint_compartment_quality.R", fixed = TRUE)
   testthat::expect_false(grepl("all_compartments", registry, fixed = TRUE))
 })

@@ -89,7 +89,7 @@ testthat::test_that("canonical Stage 02 tables carry versioned official gene aud
 })
 
 testthat::test_that("WGCNA separates quantitative inclusion from annotation eligibility", {
-  script <- paste(readLines(repo_path("analysis/05_wgcna", "01_WGCNA.r"), warn = FALSE), collapse = "\n")
+  script <- paste(readLines(repo_path("analysis/05_wgcna", "build_wgcna_modules.R"), warn = FALSE), collapse = "\n")
   testthat::expect_match(script, "manual_mapping_audit.tsv", fixed = TRUE)
   testthat::expect_match(script, "WGCNA_feature_universe_audit.csv", fixed = TRUE)
   testthat::expect_match(script, "validate_wgcna_feature_alignment", fixed = TRUE)
@@ -97,8 +97,8 @@ testthat::test_that("WGCNA separates quantitative inclusion from annotation elig
 })
 
 testthat::test_that("MapThatProt and WGCNA source shared protein mapping utilities", {
-  mapthatprot <- paste(readLines(repo_path("analysis/01_preprocessing", "01_MapThatProt_batch.r"), warn = FALSE), collapse = "\n")
-  wgcna <- paste(readLines(repo_path("analysis/05_wgcna", "01_WGCNA.r"), warn = FALSE), collapse = "\n")
+  mapthatprot <- paste(readLines(repo_path("analysis/01_preprocessing", "map_protein_identifiers.R"), warn = FALSE), collapse = "\n")
+  wgcna <- paste(readLines(repo_path("analysis/05_wgcna", "build_wgcna_modules.R"), warn = FALSE), collapse = "\n")
   testthat::expect_match(mapthatprot, "protein_mapping_utils.R", fixed = TRUE)
   testthat::expect_match(wgcna, "protein_mapping_utils.R", fixed = TRUE)
 })

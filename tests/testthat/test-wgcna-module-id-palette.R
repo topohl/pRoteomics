@@ -128,7 +128,7 @@ testthat::test_that("WGCNA feature integration keys internal colours separately 
 })
 
 testthat::test_that("WGCNA highlight mode greys non-selected modules", {
-  script <- paste(readLines(repo_path("analysis/05_wgcna", "01_WGCNA.r"), warn = FALSE), collapse = "\n")
+  script <- paste(readLines(repo_path("analysis/05_wgcna", "build_wgcna_modules.R"), warn = FALSE), collapse = "\n")
   testthat::expect_match(script, "module_highlight_colors", fixed = TRUE)
   testthat::expect_match(script, "PROTEOMICS_WGCNA_HIGHLIGHT_MODULES", fixed = TRUE)
   testthat::expect_match(script, "row_colors_vec[!selected_row] <- \"#D7DADD\"", fixed = TRUE)

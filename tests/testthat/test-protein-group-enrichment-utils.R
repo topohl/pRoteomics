@@ -35,7 +35,7 @@ testthat::test_that("ORA inputs are directional and never use group identifiers 
 })
 
 testthat::test_that("clusterProfiler cannot reintroduce effect sorting duplicate selection", {
-  script <- paste(readLines(repo_path("analysis/04_differential_abundance", "01_clusterProfiler.r"), warn = FALSE), collapse = "\n")
+  script <- paste(readLines(repo_path("analysis/04_differential_abundance", "run_clusterprofiler_enrichment.R"), warn = FALSE), collapse = "\n")
   testthat::expect_false(grepl("sort\\(na.omit\\(original_gene_list\\).*duplicated\\(names\\(gene_list\\)\\)", script))
 })
 
@@ -51,7 +51,7 @@ testthat::test_that("member order does not alter a same-gene enrichment mapping"
 })
 
 testthat::test_that("compareGO prefers manifest-provided collapsed gene inputs", {
-  script <- paste(readLines(repo_path("analysis/04_differential_abundance", "02_compareGO.r"), warn = FALSE), collapse = "\n")
+  script <- paste(readLines(repo_path("analysis/04_differential_abundance", "compare_go_enrichment.R"), warn = FALSE), collapse = "\n")
   testthat::expect_match(script, "comparison_input_file")
   testthat::expect_match(script, "GeneSymbol")
 })
@@ -136,7 +136,7 @@ testthat::test_that("SYMBOL-to-ENTREZ KEGG preparation is median and order invar
 })
 
 testthat::test_that("canonical symbol vectors are never submitted as UniProt identifiers", {
-  script <- paste(readLines(repo_path("analysis/04_differential_abundance", "01_clusterProfiler.r"), warn = FALSE), collapse = "\n")
+  script <- paste(readLines(repo_path("analysis/04_differential_abundance", "run_clusterprofiler_enrichment.R"), warn = FALSE), collapse = "\n")
   testthat::expect_false(grepl("bitr\\(names\\((original_)?gene_list\\).*fromType\\s*=\\s*['\"]UNIPROT", script, perl = TRUE))
   testthat::expect_false(grepl("enrichGO\\([\\s\\S]{0,500}keyType\\s*=\\s*['\"]UNIPROT", script, perl = TRUE))
   testthat::expect_false(grepl("merge\\(df,\\s*[^,]+,\\s*by.x\\s*=\\s*['\"]gene_symbol", script, perl = TRUE))

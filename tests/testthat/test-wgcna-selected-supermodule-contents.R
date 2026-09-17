@@ -39,7 +39,7 @@ testthat::test_that("v5 primary schema retains evidence and model-governance fie
 })
 
 testthat::test_that("legacy semantic builders cannot become active through the runner", {
-  script <- paste(readLines(repo_path("analysis/05_wgcna", "05_module_supermodule_group_effects.r"
+  script <- paste(readLines(repo_path("analysis/05_wgcna", "test_module_phenotypes.R"
   ), warn = FALSE), collapse = "\n")
   testthat::expect_false(grepl("selected_sus_res_supermodule_contents", script, fixed = TRUE))
   testthat::expect_false(grepl("add_claim_model_fields", script, fixed = TRUE))

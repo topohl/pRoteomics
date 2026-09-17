@@ -29,7 +29,7 @@ testthat::test_that("human-facing SUS-RES workbook has the six-sheet audit contr
   testthat::expect_equal(nrow(spatial), 8L)
   testthat::expect_equal(nrow(detail), 144L)
   # Mirrors the canonical supported-term audit from
-  # analysis/04_differential_abundance/07_compareGO_spatial_program_atlas.r.
+  # analysis/04_differential_abundance/build_go_program_atlas.R.
   # Refreshed 336 -> 1202 after the accepted 2026-08-26 canonical compareGO
   # spatial-atlas regeneration. Exact-value checking is retained deliberately.
   testthat::expect_equal(nrow(go_audit), 1202L)

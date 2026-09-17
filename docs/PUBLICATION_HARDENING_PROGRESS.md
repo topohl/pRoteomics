@@ -272,7 +272,7 @@ was performed, and that 18 of 20 also clear the threshold.
 **MT-04 resolved, and the earlier characterisation refined.** The `p_adjust`
 field *is* genuine `clusterProfiler` Benjamini–Hochberg output — but each pairing
 is run as a separate GSEA against a **single-signature collection**
-(`analysis/04_differential_abundance/09_control_spatial_identity_validation.r:591-601`,
+(`analysis/04_differential_abundance/validate_control_spatial_identity.R:591-601`,
 `TERM2GENE = data.frame(term = job$external_signature, gene = job$mapped)`).
 BH over a family of size one is a no-op, which is exactly why the field equals
 the raw *P*. **This is a scope artefact of the per-pairing design, not a coding

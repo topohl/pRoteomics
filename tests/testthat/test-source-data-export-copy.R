@@ -222,10 +222,10 @@ testthat::test_that("dry-run stays non-mutating and reports the required counter
 
 testthat::test_that("PRIDE selectors reference none of the manuscript export helpers", {
   pride <- c("R/statistics/pride_helpers.R",
-             "analysis/09_publication_exports/05_make_pride_manifest.R",
-             "analysis/09_publication_exports/10_validate_pride_submission.R",
-             "analysis/09_publication_exports/03_export_processed_pg_matrix_package.R",
-             "analysis/09_publication_exports/04_make_supplementary_tables.R")
+             "analysis/09_publication_exports/build_pride_manifest.R",
+             "analysis/09_publication_exports/validate_pride_submission.R",
+             "analysis/09_publication_exports/export_processed_matrices.R",
+             "analysis/09_publication_exports/build_supplementary_tables.R")
   banned <- c("manuscript_table_target_paths", "assert_unique_table_export_targets",
               "assert_export_sources_accessible", "source_data_scope_exclusion_reasons",
               "apply_manuscript_source_data_scope", "manuscript_figure_target_paths")

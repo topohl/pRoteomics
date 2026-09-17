@@ -680,9 +680,9 @@ freeze_known_gaps <- function(renv_state = freeze_renv_lockfile_state()) {
       correction_to_prior_description = paste(
         "Verified against the code, three details of the previously circulated",
         "description are wrong. (a) The defect is in R/utilities/export_helpers.R, not",
-        "analysis/09_publication_exports/04_make_supplementary_tables.R. (b) It affects the",
+        "analysis/09_publication_exports/build_supplementary_tables.R. (b) It affects the",
         "PRIDE processed-data package selection consumed by",
-        "03_export_processed_pg_matrix_package.R:69 and 05_make_pride_manifest.R:28;",
+        "export_processed_matrices.R:69 and build_pride_manifest.R:28;",
         "the supplementary-table export itself calls supplementary_candidate_files(),",
         "which applies no wildcard filter and is unaffected. (c) It is masked by the",
         "include_derived argument, which both callers pass as",

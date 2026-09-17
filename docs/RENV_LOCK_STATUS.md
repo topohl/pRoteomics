@@ -67,8 +67,8 @@ Nine scanner hits are excluded as verified false positives: seven string
 literals that contain `::` and are used as composite keys (`"Neuropil::CA1"` and
 similar), the loop parameter `pkg`, and `renv`. The two places that load
 packages dynamically —
-`analysis/04_differential_abundance/01_clusterProfiler.r` (`master_packages`)
-and `analysis/06_gsea/01_EWCE_E9.r` (`cran_packages` /
+`analysis/04_differential_abundance/run_clusterprofiler_enrichment.R` (`master_packages`)
+and `analysis/06_gsea/run_ewce_celltype_enrichment.R` (`cran_packages` /
 `bioc_packages`) — resolve to literal vectors that the static scan already
 covers.
 

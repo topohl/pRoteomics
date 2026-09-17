@@ -107,7 +107,7 @@ testthat::test_that("coordinate validation rejects any changed or missing sample
 
 testthat::test_that("publication entrypoint is rendering-only and output-isolated", {
   root <- testthat::test_path("..", "..")
-  script <- paste(readLines(file.path(root, "analysis/02_qc", "00c_joint_compartment_qc_publication_figures.r"), warn = FALSE), collapse = "\n")
+  script <- paste(readLines(file.path(root, "analysis/02_qc", "render_joint_compartment_qc_figures.R"), warn = FALSE), collapse = "\n")
   registry <- paste(readLines(file.path(root, "pipeline.yml"), warn = FALSE), collapse = "\n")
   testthat::expect_match(script, "publication_style", fixed = TRUE)
   testthat::expect_match(script, "joint_primary_pca_scores.csv", fixed = TRUE)
@@ -117,13 +117,13 @@ testthat::test_that("publication entrypoint is rendering-only and output-isolate
   testthat::expect_false(grepl("uwot::umap\\s*\\(", script))
   testthat::expect_false(grepl("Rtsne::Rtsne\\s*\\(", script))
   testthat::expect_false(grepl("write\\.csv\\s*\\(", script))
-  testthat::expect_match(registry, "analysis/02_qc/00c_joint_compartment_qc_publication_figures.r", fixed = TRUE)
+  testthat::expect_match(registry, "analysis/02_qc/render_joint_compartment_qc_figures.R", fixed = TRUE)
 })
 
 testthat::test_that("anatomical-island PCA has a panel-local tightened PC2 display range", {
   root <- testthat::test_path("..", "..")
   script <- paste(readLines(file.path(
-    root, "analysis/02_qc", "00c_joint_compartment_qc_publication_figures.r"
+    root, "analysis/02_qc", "render_joint_compartment_qc_figures.R"
   ), warn = FALSE), collapse = "\n")
   testthat::expect_match(
     script, "pca_island_ellipse_display_limits$y <- c(-45, 50)", fixed = TRUE

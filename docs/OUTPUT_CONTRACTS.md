@@ -196,7 +196,7 @@ stable `SMxx` prefix and collisions fail validation. Because WGCNA modules
 partition proteins, protein/hub overlap is only a partition-integrity
 diagnostic and never biological support.
 
-`00_wgcna_identity_contract.R` publishes the Phase 1 identity boundary without
+`build_module_identity_contract.R` publishes the Phase 1 identity boundary without
 recomputing network state. It accepts only exact module IDs or the syntax-only
 normalization `ME#RRGGBB` / `#RRGGBB` / `WGCNA_#RRGGBB` to
 `WGCNA_#RRGGBB`. Neuronal membership authority is the active

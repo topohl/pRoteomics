@@ -1,6 +1,6 @@
 # GSEA/GO to WGCNA concordance
 
-`05_gsea_wgcna_concordance.R` is an additive downstream integration. It reads the canonical spatial ranked-GSEA term table, canonical Stage 07 WGCNA inferential handoffs, canonical WGCNA `ProteinGroupID` feature universes, module-preservation summaries, and available microglia Stage 12/13 robustness/readiness summaries. It does not refit WGCNA, recompute modules, change source p-values/FDRs, loosen thresholds, or create a combined p-value.
+`test_enrichment_module_concordance.R` is an additive downstream integration. It reads the canonical spatial ranked-GSEA term table, canonical Stage 07 WGCNA inferential handoffs, canonical WGCNA `ProteinGroupID` feature universes, module-preservation summaries, and available microglia Stage 12/13 robustness/readiness summaries. It does not refit WGCNA, recompute modules, change source p-values/FDRs, loosen thresholds, or create a combined p-value.
 
 ## Matching
 
