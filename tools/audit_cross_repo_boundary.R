@@ -28,10 +28,13 @@ MR <- Sys.getenv("EXP9_MANUSCRIPT_ROOT",
                  unset = normalizePath(file.path(repo_root(), "..", "Exp9_manuscript"),
                                        winslash = "/", mustWork = FALSE))
 
+## A resolver only resolves a path when it is called, so the name must be
+## followed by an opening parenthesis. Matching the bare word made any prose
+## containing "source" look like a dependency.
 RESOLVERS <- paste0(
   "(source|sys[.]source|file[.]path|readLines|read[.]csv|read[.]delim|read_csv|",
   "read_yaml|list[.]files|Sys[.]glob|file[.]exists|dir[.]exists|file[.]copy|",
-  "setwd|system2|normalizePath|repo_path|path_results)")
+  "setwd|system2|normalizePath|repo_path|path_results)[ \t]*[(]")
 
 ## What counts as reaching into the other repository.
 PATTERNS_IN_PROTEOMICS <- c(
