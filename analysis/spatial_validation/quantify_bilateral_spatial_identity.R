@@ -26,9 +26,11 @@
 # Stage: networks
 # Scope: per_dataset
 # Consumes: required data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx; optional results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_modules_long.csv
-# Produces: results/tables/11_spatial_systems/bilateral/bilateral_spatial_identity_protein_level.csv; results/tables/11_spatial_systems/bilateral/bilateral_spatial_identity_summary.csv
+# Produces: results/spatial_validation/quantify_bilateral_spatial_identity/global/tables/bilateral_spatial_identity_protein_level.csv; results/spatial_validation/quantify_bilateral_spatial_identity/global/tables/bilateral_spatial_identity_summary.csv
 # Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Bilateral validation of anatomical spatial identity.
+#  
+#  
 
 source("R/paths.R")
 source("R/data_contracts/dataset_config.R")
@@ -37,6 +39,14 @@ source("R/qc/qc_exploration_utils.R")
 source("R/spatial/control_spatial_identity_utils.R")
 source("R/data_contracts/spatial_systems_data_utils.R")
 source("R/spatial/spatial_systems_bilateral_utils.R")
+source(repo_path("R", "spatial_systems_paths.R"))
+
+# Phase 6G.3: destinations resolve through the normalized output contract,
+# addressed by this analysis's own identity rather than by the historical
+# 11_spatial_systems stage directory. Outputs already written there stay
+# exactly where they are and are read, never rewritten.
+ANALYSIS_ID <- "quantify_bilateral_spatial_identity"
+CANONICAL_PATHS <- spatial_systems_dirs(ANALYSIS_ID)
 
 suppressPackageStartupMessages({ library(readr); library(dplyr); library(tidyr) })
 
@@ -45,7 +55,7 @@ Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 cli <- integration_cli(default_dataset = "all")
 
 OUT <- function() {
-  d <- path_results("tables", "11_spatial_systems", "bilateral"); dir_create(d); d
+  d <- CANONICAL_PATHS$tables; dir_create(d); d
 }
 meta_path <- function(ds) {
   path_processed("01_preprocessing", "06_merged_metadata_module_score", ds,

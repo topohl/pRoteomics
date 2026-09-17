@@ -1,8 +1,9 @@
 source(testthat::test_path("..", "..", "R", "paths.R"))
 source(repo_path("R", "spatial_atlas_utils.R"))
 source(repo_path("R", "ewce_gene_set_engine.R"))
+source(repo_path("R", "spatial_systems_paths.R"))
 
-A <- function(...) path_results("tables", "11_spatial_systems", "atlas", ...)
+A <- function(f) spatial_systems_find(f, "atlas")
 rd <- function(p) utils::read.csv(p, stringsAsFactors = FALSE, check.names = FALSE)
 
 # =====================================================================
@@ -324,7 +325,7 @@ testthat::test_that("labels and WGCNA membership are unchanged by the atlas", {
 })
 
 testthat::test_that("the atlas validation has no critical failure", {
-  p <- path_results("tables", "11_spatial_systems", "spatial_systems_atlas_validation.csv")
+  p <- spatial_systems_find("spatial_systems_atlas_validation.csv")
   testthat::skip_if_not(file.exists(p), "atlas validation not generated")
   v <- rd(p)
   testthat::expect_gt(nrow(v), 10L)

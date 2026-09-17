@@ -49,16 +49,26 @@
 # Script: analysis/spatial_validation/audit_ca2_slm_robustness.R
 # Stage: networks
 # Scope: global
-# Consumes: required data/processed/02_id_mapping/mapped/neuron_neuropil/forward/per_file/CA2slmsus_CA2slmres.csv; data/raw/pg_matrix/quicksearch.pg_matrix.tsv; data/metadata/TPE9_sample_metadata_males.xlsx; +2 more; optional results/tables/03_qc_exploration/00_dataset_qc_report/neuron_neuropil/dataset_qc_outlier_flags.csv; results/tables/11_spatial_systems/atlas/protein_spatial_cell_affinity.csv
-# Produces: results/tables/11_spatial_systems/ca2_slm_robustness/CA2_SLM_DAP_robustness.csv; results/tables/11_spatial_systems/ca2_slm_robustness/CA2_SLM_leave_one_animal_out_long.csv; results/tables/11_spatial_systems/ca2_slm_robustness/CA2_SLM_fully_observed_DAP_audit.csv; +3 more
+# Consumes: required data/processed/02_id_mapping/mapped/neuron_neuropil/forward/per_file/CA2slmsus_CA2slmres.csv; data/raw/pg_matrix/quicksearch.pg_matrix.tsv; data/metadata/TPE9_sample_metadata_males.xlsx; +2 more; optional results/tables/03_qc_exploration/00_dataset_qc_report/neuron_neuropil/dataset_qc_outlier_flags.csv; results/spatial_validation/build_protein_spatial_atlas/global/tables/protein_spatial_cell_affinity.csv; results/tables/11_spatial_systems/atlas/protein_spatial_cell_affinity.csv
+# Produces: results/spatial_validation/audit_ca2_slm_robustness/global/tables/CA2_SLM_DAP_robustness.csv; results/spatial_validation/audit_ca2_slm_robustness/global/tables/CA2_SLM_leave_one_animal_out_long.csv; results/spatial_validation/audit_ca2_slm_robustness/global/tables/CA2_SLM_fully_observed_DAP_audit.csv; +3 more
 # Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: CA2-SLM DAP robustness audit.
+#  
+#  
 
 source("R/paths.R")
 source("R/data_contracts/dataset_config.R")
 source("R/statistics/integration_utils.R")
 source("R/spatial/spatial_atlas_utils.R")
 source("R/spatial/ca2_slm_robustness_utils.R")
+source(repo_path("R", "spatial_systems_paths.R"))
+
+# Phase 6G.3: destinations resolve through the normalized output contract,
+# addressed by this analysis's own identity rather than by the historical
+# 11_spatial_systems stage directory. Outputs already written there stay
+# exactly where they are and are read, never rewritten.
+ANALYSIS_ID <- "audit_ca2_slm_robustness"
+CANONICAL_PATHS <- spatial_systems_dirs(ANALYSIS_ID)
 
 suppressPackageStartupMessages({ library(readr); library(dplyr) })
 
@@ -79,7 +89,7 @@ QC <- path_results("tables", "03_qc_exploration", "00_dataset_qc_report", DS,
 IMPUTED <- path_processed("01_preprocessing", "impute",
   "20260601_pgmatrix_imputed_neuron_neuropil_180samples_missing70pct.xlsx")
 OUT <- function(...) {
-  d <- path_results("tables", "11_spatial_systems", "ca2_slm_robustness")
+  d <- CANONICAL_PATHS$tables
   dir_create(d); file.path(d, ...)
 }
 
@@ -209,8 +219,7 @@ rob <- dplyr::bind_rows(rows)
 loo_long <- dplyr::bind_rows(loo_rows)
 
 # ------------------------------------------------- module / tier annotation
-atlas_p <- path_results("tables", "11_spatial_systems", "atlas",
-                        "protein_spatial_cell_affinity.csv")
+atlas_p <- spatial_systems_find("protein_spatial_cell_affinity.csv", "atlas")
 if (file.exists(atlas_p)) {
   at <- as.data.frame(readr::read_csv(atlas_p, show_col_types = FALSE,
                                       progress = FALSE, guess_max = Inf))

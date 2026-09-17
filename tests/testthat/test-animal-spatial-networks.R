@@ -1,7 +1,8 @@
 source(testthat::test_path("..", "..", "R", "paths.R"))
 source(repo_path("R", "animal_spatial_network_utils.R"))
+source(repo_path("R", "spatial_systems_paths.R"))
 
-NET <- function(...) path_results("tables", "11_spatial_systems", "networks", ...)
+NET <- function(f) spatial_systems_find(f, "networks")
 rd <- function(p) utils::read.csv(p, stringsAsFactors = FALSE, check.names = FALSE)
 
 # Source scans below must look at CODE, not at the comments that explain why a
@@ -280,8 +281,10 @@ testthat::test_that("legacy outputs are labelled, not rewritten", {
   l <- rd(p)
   testthat::expect_true(all(l$legacy_inference_status == "legacy_noncanonical_inference"))
   testthat::expect_true(all(grepl("SIGN FREQUENCY", l$legacy_defect)))
-  # the comparison is a NEW file; the historical tables keep their own paths
-  testthat::expect_true(grepl("11_spatial_systems", p))
+  # the comparison is a NEW file; the historical 07_spatial_networks tables
+  # keep their own paths. It resolves in whichever namespace currently holds
+  # it, and never in the legacy network tree.
+  testthat::expect_false(grepl("07_spatial_networks", p))
 })
 
 testthat::test_that("the network validation contract has no critical failure", {
@@ -293,7 +296,8 @@ testthat::test_that("the network validation contract has no critical failure", {
 })
 
 testthat::test_that("network figures each have exact source data", {
-  d <- path_results("figures", "11_spatial_systems", "networks")
+  d <- spatial_systems_dir_any("validate_network_workbook", "networks",
+                               kind = "figures")
   testthat::skip_if_not(dir.exists(d), "network figures not generated")
   pngs <- list.files(d, pattern = "[.]png$")
   testthat::skip_if(length(pngs) == 0L)
@@ -304,8 +308,7 @@ testthat::test_that("network figures each have exact source data", {
 })
 
 testthat::test_that("the CA2-SLM precision audit records the revised conclusion", {
-  p <- path_results("tables", "11_spatial_systems", "atlas",
-                    "neuropil_spatial_precision_context.csv")
+  p <- spatial_systems_find("neuropil_spatial_precision_context.csv", "atlas")
   testthat::skip_if_not(file.exists(p), "precision audit not generated")
   x <- rd(p)
   testthat::expect_equal(nrow(x), 10L)

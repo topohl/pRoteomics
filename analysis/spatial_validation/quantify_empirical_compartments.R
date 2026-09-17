@@ -27,9 +27,11 @@
 # Stage: networks
 # Scope: global
 # Consumes: required results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_protein_identity_crosswalk_proposed.csv; optional results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv
-# Produces: results/tables/11_spatial_systems/bilateral/bilateral_empirical_compartment_protein_level.csv; results/tables/11_spatial_systems/bilateral/bilateral_empirical_compartment_summary.csv; results/tables/11_spatial_systems/bilateral/bilateral_empirical_marker_transfer.csv
+# Produces: results/spatial_validation/quantify_empirical_compartments/global/tables/bilateral_empirical_compartment_protein_level.csv; results/spatial_validation/quantify_empirical_compartments/global/tables/bilateral_empirical_compartment_summary.csv; results/spatial_validation/quantify_empirical_compartments/global/tables/bilateral_empirical_marker_transfer.csv
 # Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Cross-hemisphere validation of empirical compartment identity.
+#  
+#  
 
 source("R/paths.R")
 source("R/data_contracts/dataset_config.R")
@@ -39,6 +41,14 @@ source("R/qc/empirical_roi_marker_utils.R")
 source("R/data_contracts/spatial_systems_data_utils.R")
 source("R/spatial/spatial_systems_bilateral_utils.R")
 source("R/data_contracts/spatial_systems_endpoint_utils.R")
+source(repo_path("R", "spatial_systems_paths.R"))
+
+# Phase 6G.3: destinations resolve through the normalized output contract,
+# addressed by this analysis's own identity rather than by the historical
+# 11_spatial_systems stage directory. Outputs already written there stay
+# exactly where they are and are read, never rewritten.
+ANALYSIS_ID <- "quantify_empirical_compartments"
+CANONICAL_PATHS <- spatial_systems_dirs(ANALYSIS_ID)
 
 suppressPackageStartupMessages({ library(readr); library(dplyr); library(tidyr) })
 
@@ -49,7 +59,7 @@ cli <- integration_cli(default_dataset = "all")
 TRANSFER_SIZES <- c(25L, 50L, 100L)   # pre-specified, not tuned
 
 OUT <- function() {
-  d <- path_results("tables", "11_spatial_systems", "bilateral"); dir_create(d); d
+  d <- CANONICAL_PATHS$tables; dir_create(d); d
 }
 crosswalk_path <- function() {
   path_results("tables", "03_qc_exploration", "05_empirical_roi_marker_discovery",

@@ -23,9 +23,11 @@
 # Stage: networks
 # Scope: per_dataset
 # Consumes: required data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx; optional results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_hemisphere_values.csv
-# Produces: results/tables/11_spatial_systems/data_contract/spatial_systems_hemisphere_inventory.csv; results/tables/11_spatial_systems/data_contract/spatial_systems_aggregation_validation.csv; results/tables/11_spatial_systems/data_contract/spatial_systems_evidence_dependence.csv
+# Produces: results/spatial_validation/build_spatial_data_contract/global/tables/spatial_systems_hemisphere_inventory.csv; results/spatial_validation/build_spatial_data_contract/global/tables/spatial_systems_aggregation_validation.csv; results/spatial_validation/build_spatial_data_contract/global/tables/spatial_systems_evidence_dependence.csv
 # Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Spatial systems foundation: the hemisphere-resolved data contract.
+#  
+#  
 
 source("R/paths.R")
 source("R/data_contracts/dataset_config.R")
@@ -35,6 +37,14 @@ source("R/data_contracts/protigy_input_utils.R")
 source("R/qc/empirical_roi_marker_utils.R")
 source("R/data_contracts/spatial_systems_data_utils.R")
 source("R/data_contracts/spatial_systems_evidence_registry.R")
+source(repo_path("R", "spatial_systems_paths.R"))
+
+# Phase 6G.3: destinations resolve through the normalized output contract,
+# addressed by this analysis's own identity rather than by the historical
+# 11_spatial_systems stage directory. Outputs already written there stay
+# exactly where they are and are read, never rewritten.
+ANALYSIS_ID <- "build_spatial_data_contract"
+CANONICAL_PATHS <- spatial_systems_dirs(ANALYSIS_ID)
 
 suppressPackageStartupMessages({ library(readr); library(dplyr) })
 
@@ -43,7 +53,7 @@ Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 cli <- integration_cli(default_dataset = "all")
 
 OUT <- function() {
-  d <- path_results("tables", "11_spatial_systems", "data_contract"); dir_create(d); d
+  d <- CANONICAL_PATHS$tables; dir_create(d); d
 }
 meta_path <- function(ds) {
   path_processed("01_preprocessing", "06_merged_metadata_module_score", ds,
@@ -64,7 +74,7 @@ if (isTRUE(cli$dry_run)) {
   }
   cat("[DRY-RUN] Spatial systems hemisphere-resolved data contract.\n")
   dry_run_inputs(SCRIPT_ID, inputs)
-  cat("[DRY-RUN] Would write to results/tables/11_spatial_systems/data_contract/.\n")
+  cat("[DRY-RUN] Would write to", OUT(), "\n")
   cat("[DRY-RUN] No WGCNA state, DA statistic or SUS-RES inference is recomputed.\n")
   quit(save = "no", status = 0L)
 }

@@ -41,8 +41,14 @@ split_paths <- function(x) {
 # from canonical_result_path() and canonical_work_path(). A writer that uses
 # it resolves through the output contract even though it never names those
 # two functions itself.
+# spatial_systems_dirs() is spatial_validation's thin wrapper over
+# canonical_module_dirs(): it fixes the domain and the global scope, which
+# every analysis in that domain shares, and defaults to creating nothing so
+# each writer creates only the lifecycle directories it uses. A writer calling
+# it resolves through the output contract without naming the lower-level
+# helpers itself.
 NORMALIZED_CALLS <- c("canonical_result_path", "canonical_work_path",
-                      "canonical_module_dirs")
+                      "canonical_module_dirs", "spatial_systems_dirs")
 # these create directories, so calling one is itself a write
 LEGACY_FACTORIES <- c("create_module_dirs", "module_paths", "qc_paths")
 PATH_BUILDERS <- c("path_results", "path_processed")

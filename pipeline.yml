@@ -835,9 +835,9 @@ stages:
         stage: "networks"
         scope: "per_dataset"
         produces:
-          - "results/tables/11_spatial_systems/data_contract/spatial_systems_hemisphere_inventory.csv"
-          - "results/tables/11_spatial_systems/data_contract/spatial_systems_aggregation_validation.csv"
-          - "results/tables/11_spatial_systems/data_contract/spatial_systems_evidence_dependence.csv"
+          - "results/spatial_validation/build_spatial_data_contract/global/tables/spatial_systems_hemisphere_inventory.csv"
+          - "results/spatial_validation/build_spatial_data_contract/global/tables/spatial_systems_aggregation_validation.csv"
+          - "results/spatial_validation/build_spatial_data_contract/global/tables/spatial_systems_evidence_dependence.csv"
         consumes_required:
           - "data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx"
         consumes_optional:
@@ -851,8 +851,8 @@ stages:
         stage: "networks"
         scope: "per_dataset"
         produces:
-          - "results/tables/11_spatial_systems/bilateral/bilateral_spatial_identity_protein_level.csv"
-          - "results/tables/11_spatial_systems/bilateral/bilateral_spatial_identity_summary.csv"
+          - "results/spatial_validation/quantify_bilateral_spatial_identity/global/tables/bilateral_spatial_identity_protein_level.csv"
+          - "results/spatial_validation/quantify_bilateral_spatial_identity/global/tables/bilateral_spatial_identity_summary.csv"
         consumes_required:
           - "data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx"
         consumes_optional:
@@ -866,9 +866,9 @@ stages:
         stage: "networks"
         scope: "global"
         produces:
-          - "results/tables/11_spatial_systems/bilateral/bilateral_empirical_compartment_protein_level.csv"
-          - "results/tables/11_spatial_systems/bilateral/bilateral_empirical_compartment_summary.csv"
-          - "results/tables/11_spatial_systems/bilateral/bilateral_empirical_marker_transfer.csv"
+          - "results/spatial_validation/quantify_empirical_compartments/global/tables/bilateral_empirical_compartment_protein_level.csv"
+          - "results/spatial_validation/quantify_empirical_compartments/global/tables/bilateral_empirical_compartment_summary.csv"
+          - "results/spatial_validation/quantify_empirical_compartments/global/tables/bilateral_empirical_marker_transfer.csv"
         consumes_required:
           - "results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_protein_identity_crosswalk_proposed.csv"
         consumes_optional:
@@ -882,9 +882,9 @@ stages:
         stage: "networks"
         scope: "per_dataset"
         produces:
-          - "results/tables/11_spatial_systems/bilateral/WGCNA_module_bilateral_reproducibility.csv"
-          - "results/tables/11_spatial_systems/bilateral/WGCNA_module_bilateral_spatial_profile_reproducibility.csv"
-          - "results/tables/11_spatial_systems/bilateral/WGCNA_module_bilateral_spatial_profile_summary.csv"
+          - "results/spatial_validation/quantify_module_bilateral_identity/global/tables/WGCNA_module_bilateral_reproducibility.csv"
+          - "results/spatial_validation/quantify_module_bilateral_identity/global/tables/WGCNA_module_bilateral_spatial_profile_reproducibility.csv"
+          - "results/spatial_validation/quantify_module_bilateral_identity/global/tables/WGCNA_module_bilateral_spatial_profile_summary.csv"
         consumes_required:
           - "results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_hemisphere_values.csv"
         consumes_optional: []
@@ -897,8 +897,8 @@ stages:
         stage: "networks"
         scope: "per_dataset"
         produces:
-          - "results/tables/11_spatial_systems/celltype_annotation/WGCNA_module_external_celltype_affinity_long.csv"
-          - "results/tables/11_spatial_systems/celltype_annotation/WGCNA_module_external_celltype_affinity_summary.csv"
+          - "results/spatial_validation/annotate_module_celltypes/global/tables/WGCNA_module_external_celltype_affinity_long.csv"
+          - "results/spatial_validation/annotate_module_celltypes/global/tables/WGCNA_module_external_celltype_affinity_summary.csv"
         consumes_required:
           - "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_modules_long.csv"
         consumes_optional: []
@@ -911,8 +911,8 @@ stages:
         stage: "networks"
         scope: "per_dataset"
         produces:
-          - "results/tables/11_spatial_systems/precision/bilateral_variance_decomposition.csv"
-          - "results/tables/11_spatial_systems/precision/bilateral_precision_gain.csv"
+          - "results/spatial_validation/decompose_bilateral_variance/global/tables/bilateral_variance_decomposition.csv"
+          - "results/spatial_validation/decompose_bilateral_variance/global/tables/bilateral_precision_gain.csv"
         consumes_required:
           - "results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_hemisphere_values.csv"
         consumes_optional:
@@ -927,8 +927,9 @@ stages:
         stage: "networks"
         scope: "global"
         produces:
-          - "results/tables/11_spatial_systems/spatial_systems_foundation_validation.csv"
+          - "results/spatial_validation/validate_spatial_foundations/global/tables/spatial_systems_foundation_validation.csv"
         consumes_required:
+          - "results/spatial_validation/build_spatial_data_contract/global/tables/spatial_systems_aggregation_validation.csv"
           - "results/tables/11_spatial_systems/data_contract/spatial_systems_aggregation_validation.csv"
         consumes_optional:
           - "results/tables/11_spatial_systems/bilateral/"
@@ -943,22 +944,25 @@ stages:
         stage: "networks"
         scope: "per_dataset"
         produces:
-          - "results/tables/11_spatial_systems/atlas/WGCNA_module_spatial_cell_affinity.csv"
-          - "results/tables/11_spatial_systems/atlas/WGCNA_module_baseline_spatial_profile_long.csv"
-          - "results/tables/11_spatial_systems/atlas/WGCNA_module_spatial_fingerprints_raw.csv"
-          - "results/tables/11_spatial_systems/atlas/WGCNA_module_spatial_fingerprints_z.csv"
-          - "results/tables/11_spatial_systems/atlas/WGCNA_module_spatial_similarity.csv"
-          - "results/tables/11_spatial_systems/atlas/WGCNA_module_empirical_compartment_affinity_long.csv"
-          - "results/tables/11_spatial_systems/atlas/WGCNA_module_reference_marker_affinity_long.csv"
-          - "results/tables/11_spatial_systems/atlas/WGCNA_label_spatial_cell_context_audit.csv"
-          - "results/tables/11_spatial_systems/atlas/WGCNA_supermodule_spatial_cell_context.csv"
-          - "results/tables/11_spatial_systems/atlas/WGCNA_supermodule_spatial_coherence.csv"
+          - "results/spatial_validation/build_module_spatial_atlas/global/tables/WGCNA_module_spatial_cell_affinity.csv"
+          - "results/spatial_validation/build_module_spatial_atlas/global/tables/WGCNA_module_baseline_spatial_profile_long.csv"
+          - "results/spatial_validation/build_module_spatial_atlas/global/tables/WGCNA_module_spatial_fingerprints_raw.csv"
+          - "results/spatial_validation/build_module_spatial_atlas/global/tables/WGCNA_module_spatial_fingerprints_z.csv"
+          - "results/spatial_validation/build_module_spatial_atlas/global/tables/WGCNA_module_spatial_similarity.csv"
+          - "results/spatial_validation/build_module_spatial_atlas/global/tables/WGCNA_module_empirical_compartment_affinity_long.csv"
+          - "results/spatial_validation/build_module_spatial_atlas/global/tables/WGCNA_module_reference_marker_affinity_long.csv"
+          - "results/spatial_validation/build_module_spatial_atlas/global/tables/WGCNA_label_spatial_cell_context_audit.csv"
+          - "results/spatial_validation/build_module_spatial_atlas/global/tables/WGCNA_supermodule_spatial_cell_context.csv"
+          - "results/spatial_validation/build_module_spatial_atlas/global/tables/WGCNA_supermodule_spatial_coherence.csv"
         consumes_required:
           - "results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_hemisphere_values.csv"
           - "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_modules_long.csv"
+          - "results/spatial_validation/annotate_module_celltypes/global/tables/WGCNA_module_external_celltype_affinity_long.csv"
           - "results/tables/11_spatial_systems/celltype_annotation/WGCNA_module_external_celltype_affinity_long.csv"
         consumes_optional:
+          - "results/spatial_validation/quantify_module_bilateral_identity/global/tables/WGCNA_module_bilateral_reproducibility.csv"
           - "results/tables/11_spatial_systems/bilateral/WGCNA_module_bilateral_reproducibility.csv"
+          - "results/spatial_validation/decompose_bilateral_variance/global/tables/bilateral_precision_gain.csv"
           - "results/tables/11_spatial_systems/precision/bilateral_precision_gain.csv"
           - "config/marker_panels/wgcna_reference_marker_sets.csv"
         recomputes_core_state: false
@@ -970,12 +974,13 @@ stages:
         stage: "networks"
         scope: "global"
         produces:
-          - "results/tables/11_spatial_systems/atlas/protein_spatial_cell_affinity.csv"
-          - "results/tables/11_spatial_systems/atlas/protein_baseline_spatial_profile.csv"
-          - "results/tables/11_spatial_systems/atlas/protein_sus_res_fdr_supported_atlas.csv"
+          - "results/spatial_validation/build_protein_spatial_atlas/global/tables/protein_spatial_cell_affinity.csv"
+          - "results/spatial_validation/build_protein_spatial_atlas/global/tables/protein_baseline_spatial_profile.csv"
+          - "results/spatial_validation/build_protein_spatial_atlas/global/tables/protein_sus_res_fdr_supported_atlas.csv"
         consumes_required:
           - "results/tables/10_biological_integration/wgcna_candidate_protein_shortlist/global/wgcna_candidate_proteins_all.csv"
         consumes_optional:
+          - "results/spatial_validation/quantify_bilateral_spatial_identity/global/tables/bilateral_spatial_identity_protein_level.csv"
           - "results/tables/11_spatial_systems/bilateral/bilateral_spatial_identity_protein_level.csv"
           - "results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv"
           - "config/marker_panels/wgcna_reference_marker_sets.csv"
@@ -988,7 +993,7 @@ stages:
         stage: "networks"
         scope: "global"
         produces:
-          - "results/tables/11_spatial_systems/atlas/neuropil_spatial_detection_context.csv"
+          - "results/spatial_validation/quantify_neuropil_detection_context/global/tables/neuropil_spatial_detection_context.csv"
         consumes_required:
           - "results/tables/04_differential_expression_enrichment/sus_res_spatial_dap_atlas/global/sus_res_dap_counts.csv"
         consumes_optional:
@@ -1002,14 +1007,18 @@ stages:
         stage: "networks"
         scope: "global"
         produces:
-          - "results/tables/11_spatial_systems/spatial_systems_atlas.xlsx"
-          - "results/tables/11_spatial_systems/spatial_systems_atlas_validation.csv"
-          - "results/figures/11_spatial_systems/atlas/"
+          - "results/spatial_validation/summarize_spatial_atlas/global/reports/spatial_systems_atlas.xlsx"
+          - "results/spatial_validation/summarize_spatial_atlas/global/tables/spatial_systems_atlas_validation.csv"
+          - "results/spatial_validation/summarize_spatial_atlas/global/plots"
         consumes_required:
+          - "results/spatial_validation/build_module_spatial_atlas/global/tables/WGCNA_module_spatial_cell_affinity.csv"
           - "results/tables/11_spatial_systems/atlas/WGCNA_module_spatial_cell_affinity.csv"
+          - "results/spatial_validation/build_protein_spatial_atlas/global/tables/protein_spatial_cell_affinity.csv"
           - "results/tables/11_spatial_systems/atlas/protein_spatial_cell_affinity.csv"
         consumes_optional:
+          - "results/spatial_validation/quantify_neuropil_detection_context/global/tables/neuropil_spatial_detection_context.csv"
           - "results/tables/11_spatial_systems/atlas/neuropil_spatial_detection_context.csv"
+          - "results/spatial_validation/decompose_bilateral_variance/global/tables/bilateral_precision_gain.csv"
           - "results/tables/11_spatial_systems/precision/bilateral_precision_gain.csv"
         recomputes_core_state: false
         safe_downstream_rerun: true
@@ -1020,8 +1029,8 @@ stages:
         stage: "networks"
         scope: "global"
         produces:
-          - "results/tables/11_spatial_systems/atlas/neuropil_spatial_precision_context.csv"
-          - "results/tables/11_spatial_systems/atlas/ca2_slm_imputation_artifact_test.csv"
+          - "results/spatial_validation/quantify_neuropil_precision/global/tables/neuropil_spatial_precision_context.csv"
+          - "results/spatial_validation/quantify_neuropil_precision/global/tables/ca2_slm_imputation_artifact_test.csv"
         consumes_required:
           - "data/processed/02_id_mapping_animal_level/mapped/neuron_neuropil/forward/per_file/"
         consumes_optional:
@@ -1036,16 +1045,17 @@ stages:
         stage: "networks"
         scope: "global"
         produces:
-          - "results/tables/11_spatial_systems/networks/network_representation_selection.csv"
-          - "results/tables/11_spatial_systems/networks/animal_network_edges.csv"
-          - "results/tables/11_spatial_systems/networks/animal_network_nodes.csv"
-          - "results/tables/11_spatial_systems/networks/animal_network_bilateral_reproducibility.csv"
-          - "results/tables/11_spatial_systems/networks/edge_bilateral_reproducibility.csv"
-          - "results/tables/11_spatial_systems/networks/animal_network_objects.rds"
-          - "results/tables/11_spatial_systems/networks/matrices/"
+          - "results/spatial_validation/build_animal_spatial_networks/global/tables/network_representation_selection.csv"
+          - "results/spatial_validation/build_animal_spatial_networks/global/tables/animal_network_edges.csv"
+          - "results/spatial_validation/build_animal_spatial_networks/global/tables/animal_network_nodes.csv"
+          - "results/spatial_validation/build_animal_spatial_networks/global/tables/animal_network_bilateral_reproducibility.csv"
+          - "results/spatial_validation/build_animal_spatial_networks/global/tables/edge_bilateral_reproducibility.csv"
+          - "results/spatial_validation/build_animal_spatial_networks/global/models/animal_network_objects.rds"
+          - "results/spatial_validation/build_animal_spatial_networks/global/tables"
         consumes_required:
           - "data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx"
         consumes_optional:
+          - "results/spatial_validation/build_spatial_data_contract/global/tables/spatial_systems_hemisphere_inventory.csv"
           - "results/tables/11_spatial_systems/data_contract/spatial_systems_hemisphere_inventory.csv"
         recomputes_core_state: false
         safe_downstream_rerun: true
@@ -1056,24 +1066,29 @@ stages:
         stage: "networks"
         scope: "global"
         produces:
-          - "results/tables/11_spatial_systems/networks/CON_spatial_molecular_similarity_matrix.csv"
-          - "results/tables/11_spatial_systems/networks/animal_network_global_metrics.csv"
-          - "results/tables/11_spatial_systems/networks/network_metric_redundancy.csv"
-          - "results/tables/11_spatial_systems/networks/animal_network_distance_from_CON.csv"
-          - "results/tables/11_spatial_systems/networks/network_group_metric_comparison.csv"
-          - "results/tables/11_spatial_systems/networks/network_global_multivariate_test.csv"
-          - "results/tables/11_spatial_systems/networks/network_edge_group_differences.csv"
-          - "results/tables/11_spatial_systems/networks/spatial_edge_module_context.csv"
-          - "results/tables/11_spatial_systems/networks/spatial_node_cell_context.csv"
-          - "results/tables/11_spatial_systems/networks/spatial_node_network_integration.csv"
-          - "results/tables/11_spatial_systems/atlas/WGCNA_module_network_context.csv"
-          - "results/tables/11_spatial_systems/atlas/protein_network_context.csv"
+          - "results/spatial_validation/test_network_group_organization/global/tables/CON_spatial_molecular_similarity_matrix.csv"
+          - "results/spatial_validation/test_network_group_organization/global/tables/animal_network_global_metrics.csv"
+          - "results/spatial_validation/test_network_group_organization/global/tables/network_metric_redundancy.csv"
+          - "results/spatial_validation/test_network_group_organization/global/tables/animal_network_distance_from_CON.csv"
+          - "results/spatial_validation/test_network_group_organization/global/tables/network_group_metric_comparison.csv"
+          - "results/spatial_validation/test_network_group_organization/global/tables/network_global_multivariate_test.csv"
+          - "results/spatial_validation/test_network_group_organization/global/tables/network_edge_group_differences.csv"
+          - "results/spatial_validation/test_network_group_organization/global/tables/spatial_edge_module_context.csv"
+          - "results/spatial_validation/test_network_group_organization/global/tables/spatial_node_cell_context.csv"
+          - "results/spatial_validation/test_network_group_organization/global/tables/spatial_node_network_integration.csv"
+          - "results/spatial_validation/test_network_group_organization/global/tables/WGCNA_module_network_context.csv"
+          - "results/spatial_validation/test_network_group_organization/global/tables/protein_network_context.csv"
         consumes_required:
+          - "results/spatial_validation/build_animal_spatial_networks/global/models/animal_network_objects.rds"
           - "results/tables/11_spatial_systems/networks/animal_network_objects.rds"
+          - "results/spatial_validation/build_animal_spatial_networks/global/tables/animal_network_edges.csv"
           - "results/tables/11_spatial_systems/networks/animal_network_edges.csv"
         consumes_optional:
+          - "results/spatial_validation/build_module_spatial_atlas/global/tables/WGCNA_module_spatial_cell_affinity.csv"
           - "results/tables/11_spatial_systems/atlas/WGCNA_module_spatial_cell_affinity.csv"
+          - "results/spatial_validation/build_module_spatial_atlas/global/tables/WGCNA_module_spatial_fingerprints_raw.csv"
           - "results/tables/11_spatial_systems/atlas/WGCNA_module_spatial_fingerprints_raw.csv"
+          - "results/spatial_validation/build_protein_spatial_atlas/global/tables/protein_spatial_cell_affinity.csv"
           - "results/tables/11_spatial_systems/atlas/protein_spatial_cell_affinity.csv"
         recomputes_core_state: false
         safe_downstream_rerun: true
@@ -1084,17 +1099,21 @@ stages:
         stage: "networks"
         scope: "global"
         produces:
-          - "results/tables/11_spatial_systems/spatial_systems_networks.xlsx"
-          - "results/tables/11_spatial_systems/networks/spatial_network_validation_status.csv"
-          - "results/tables/11_spatial_systems/networks/legacy_spatial_network_comparison.csv"
-          - "results/tables/11_spatial_systems/networks/network_behavior_coupling_audit.csv"
-          - "results/figures/11_spatial_systems/networks/"
+          - "results/spatial_validation/validate_network_workbook/global/reports/spatial_systems_networks.xlsx"
+          - "results/spatial_validation/validate_network_workbook/global/tables/spatial_network_validation_status.csv"
+          - "results/spatial_validation/validate_network_workbook/global/tables/legacy_spatial_network_comparison.csv"
+          - "results/spatial_validation/validate_network_workbook/global/tables/network_behavior_coupling_audit.csv"
+          - "results/spatial_validation/validate_network_workbook/global/plots"
         consumes_required:
+          - "results/spatial_validation/build_animal_spatial_networks/global/tables/animal_network_edges.csv"
           - "results/tables/11_spatial_systems/networks/animal_network_edges.csv"
+          - "results/spatial_validation/test_network_group_organization/global/tables/network_edge_group_differences.csv"
           - "results/tables/11_spatial_systems/networks/network_edge_group_differences.csv"
         consumes_optional:
           - "results/tables/07_spatial_networks/"
+          - "results/spatial_validation/test_network_group_organization/global/tables/WGCNA_module_network_context.csv"
           - "results/tables/11_spatial_systems/atlas/WGCNA_module_network_context.csv"
+          - "results/spatial_validation/test_network_group_organization/global/tables/spatial_node_network_integration.csv"
           - "results/tables/11_spatial_systems/networks/spatial_node_network_integration.csv"
         recomputes_core_state: false
         safe_downstream_rerun: true
@@ -1105,12 +1124,12 @@ stages:
         stage: "networks"
         scope: "global"
         produces:
-          - "results/tables/11_spatial_systems/ca2_slm_robustness/CA2_SLM_DAP_robustness.csv"
-          - "results/tables/11_spatial_systems/ca2_slm_robustness/CA2_SLM_leave_one_animal_out_long.csv"
-          - "results/tables/11_spatial_systems/ca2_slm_robustness/CA2_SLM_fully_observed_DAP_audit.csv"
-          - "results/tables/11_spatial_systems/ca2_slm_robustness/CA2_SLM_sample_context.csv"
-          - "results/tables/11_spatial_systems/ca2_slm_robustness/CA2_SLM_normalization_bias_context.csv"
-          - "results/tables/11_spatial_systems/ca2_slm_robustness/CA2_SLM_prespecified_thresholds.csv"
+          - "results/spatial_validation/audit_ca2_slm_robustness/global/tables/CA2_SLM_DAP_robustness.csv"
+          - "results/spatial_validation/audit_ca2_slm_robustness/global/tables/CA2_SLM_leave_one_animal_out_long.csv"
+          - "results/spatial_validation/audit_ca2_slm_robustness/global/tables/CA2_SLM_fully_observed_DAP_audit.csv"
+          - "results/spatial_validation/audit_ca2_slm_robustness/global/tables/CA2_SLM_sample_context.csv"
+          - "results/spatial_validation/audit_ca2_slm_robustness/global/tables/CA2_SLM_normalization_bias_context.csv"
+          - "results/spatial_validation/audit_ca2_slm_robustness/global/tables/CA2_SLM_prespecified_thresholds.csv"
         consumes_required:
           - "data/processed/02_id_mapping/mapped/neuron_neuropil/forward/per_file/CA2slmsus_CA2slmres.csv"
           - "data/raw/pg_matrix/quicksearch.pg_matrix.tsv"
@@ -1119,6 +1138,7 @@ stages:
           - "data/processed/01_preprocessing/impute/20260601_pgmatrix_imputed_neuron_neuropil_180samples_missing70pct.xlsx"
         consumes_optional:
           - "results/tables/03_qc_exploration/00_dataset_qc_report/neuron_neuropil/dataset_qc_outlier_flags.csv"
+          - "results/spatial_validation/build_protein_spatial_atlas/global/tables/protein_spatial_cell_affinity.csv"
           - "results/tables/11_spatial_systems/atlas/protein_spatial_cell_affinity.csv"
         recomputes_core_state: false
         safe_downstream_rerun: true
@@ -1129,15 +1149,17 @@ stages:
         stage: "networks"
         scope: "global"
         produces:
-          - "results/tables/11_spatial_systems/ca2_slm_robustness/CA2_SLM_DAP_robustness_annotated.csv"
-          - "results/tables/11_spatial_systems/ca2_slm_robustness/CA2_SLM_spatial_specificity.csv"
-          - "results/tables/11_spatial_systems/ca2_slm_robustness/CA2_SLM_effect_across_neuropil_units.csv"
-          - "results/tables/11_spatial_systems/ca2_slm_robustness/stress_identity_robustness_comparison.csv"
-          - "results/tables/11_spatial_systems/ca2_slm_robustness/CA2_SLM_module_distribution_comparison.csv"
-          - "results/tables/11_spatial_systems/ca2_slm_robustness/fdr_supported_hit_observation_status.csv"
-          - "results/tables/11_spatial_systems/atlas/protein_claimability_annotation.csv"
+          - "results/spatial_validation/audit_stress_identity_robustness/global/tables/CA2_SLM_DAP_robustness_annotated.csv"
+          - "results/spatial_validation/audit_stress_identity_robustness/global/tables/CA2_SLM_spatial_specificity.csv"
+          - "results/spatial_validation/audit_stress_identity_robustness/global/tables/CA2_SLM_effect_across_neuropil_units.csv"
+          - "results/spatial_validation/audit_stress_identity_robustness/global/tables/stress_identity_robustness_comparison.csv"
+          - "results/spatial_validation/audit_stress_identity_robustness/global/tables/CA2_SLM_module_distribution_comparison.csv"
+          - "results/spatial_validation/audit_stress_identity_robustness/global/tables/fdr_supported_hit_observation_status.csv"
+          - "results/spatial_validation/audit_stress_identity_robustness/global/tables/protein_claimability_annotation.csv"
         consumes_required:
+          - "results/spatial_validation/build_protein_spatial_atlas/global/tables/protein_spatial_cell_affinity.csv"
           - "results/tables/11_spatial_systems/atlas/protein_spatial_cell_affinity.csv"
+          - "results/spatial_validation/audit_ca2_slm_robustness/global/tables/CA2_SLM_DAP_robustness.csv"
           - "results/tables/11_spatial_systems/ca2_slm_robustness/CA2_SLM_DAP_robustness.csv"
           - "results/source_data/04_differential_expression_enrichment/sus_res_spatial_dap_atlas/global/sus_res_dap_membership.csv"
           - "data/raw/pg_matrix/quicksearch.pg_matrix.tsv"
@@ -1153,10 +1175,11 @@ stages:
         stage: "networks"
         scope: "global"
         produces:
-          - "results/tables/11_spatial_systems/CA2_SLM_robustness_audit.xlsx"
-          - "results/tables/11_spatial_systems/ca2_slm_robustness/CA2_SLM_robustness_validation.csv"
-          - "results/figures/11_spatial_systems/ca2_slm_robustness/"
+          - "results/spatial_validation/summarize_ca2_slm_robustness/global/reports/CA2_SLM_robustness_audit.xlsx"
+          - "results/spatial_validation/summarize_ca2_slm_robustness/global/tables/CA2_SLM_robustness_validation.csv"
+          - "results/spatial_validation/summarize_ca2_slm_robustness/global/plots"
         consumes_required:
+          - "results/spatial_validation/audit_ca2_slm_robustness/global/tables/CA2_SLM_DAP_robustness.csv"
           - "results/tables/11_spatial_systems/ca2_slm_robustness/CA2_SLM_DAP_robustness.csv"
           - "data/processed/02_id_mapping/mapped/neuron_neuropil/forward/per_file/CA2slmsus_CA2slmres.csv"
         consumes_optional:

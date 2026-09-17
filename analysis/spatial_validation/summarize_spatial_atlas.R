@@ -14,16 +14,26 @@
 # Script: analysis/spatial_validation/summarize_spatial_atlas.R
 # Stage: networks
 # Scope: global
-# Consumes: required results/tables/11_spatial_systems/atlas/WGCNA_module_spatial_cell_affinity.csv; results/tables/11_spatial_systems/atlas/protein_spatial_cell_affinity.csv; optional results/tables/11_spatial_systems/atlas/neuropil_spatial_detection_context.csv; results/tables/11_spatial_systems/precision/bilateral_precision_gain.csv
-# Produces: results/tables/11_spatial_systems/spatial_systems_atlas.xlsx; results/tables/11_spatial_systems/spatial_systems_atlas_validation.csv; results/figures/11_spatial_systems/atlas/
+# Consumes: required results/spatial_validation/build_module_spatial_atlas/global/tables/WGCNA_module_spatial_cell_affinity.csv; results/tables/11_spatial_systems/atlas/WGCNA_module_spatial_cell_affinity.csv; results/spatial_validation/build_protein_spatial_atlas/global/tables/protein_spatial_cell_affinity.csv; +1 more; optional results/spatial_validation/quantify_neuropil_detection_context/global/tables/neuropil_spatial_detection_context.csv; results/tables/11_spatial_systems/atlas/neuropil_spatial_detection_context.csv; results/spatial_validation/decompose_bilateral_variance/global/tables/bilateral_precision_gain.csv; +1 more
+# Produces: results/spatial_validation/summarize_spatial_atlas/global/reports/spatial_systems_atlas.xlsx; results/spatial_validation/summarize_spatial_atlas/global/tables/spatial_systems_atlas_validation.csv; results/spatial_validation/summarize_spatial_atlas/global/plots
 # Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Assembles the already-computed atlas tables into one OOXML-safe workbook, emits NEW candidate figures (never a manuscript contract replacement), and runs the atlas validation.
+#  
+#  
 
 source("R/paths.R")
 source("R/data_contracts/dataset_config.R")
 source("R/statistics/integration_utils.R")
 source("R/spatial/spatial_atlas_utils.R")
 source("R/utilities/xlsx_package_utils.R")
+source(repo_path("R", "spatial_systems_paths.R"))
+
+# Phase 6G.3: destinations resolve through the normalized output contract,
+# addressed by this analysis's own identity rather than by the historical
+# 11_spatial_systems stage directory. Outputs already written there stay
+# exactly where they are and are read, never rewritten.
+ANALYSIS_ID <- "summarize_spatial_atlas"
+CANONICAL_PATHS <- spatial_systems_dirs(ANALYSIS_ID)
 
 suppressPackageStartupMessages({ library(readr); library(dplyr); library(tidyr) })
 
@@ -31,15 +41,16 @@ SCRIPT_ID <- "analysis/spatial_validation/summarize_spatial_atlas.R"
 Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 cli <- integration_cli(default_dataset = "all")
 
-A <- function(...) path_results("tables", "11_spatial_systems", "atlas", ...)
-B <- function(...) path_results("tables", "11_spatial_systems", "bilateral", ...)
-C_ <- function(...) path_results("tables", "11_spatial_systems", "celltype_annotation", ...)
-D_ <- function(...) path_results("tables", "11_spatial_systems", "data_contract", ...)
-PR <- function(...) path_results("tables", "11_spatial_systems", "precision", ...)
-OUTT <- function() { d <- path_results("tables", "11_spatial_systems"); dir_create(d); d }
-FIG <- function() {
-  d <- path_results("figures", "11_spatial_systems", "atlas"); dir_create(d); d
-}
+# This script is a pure aggregator: it reads five families and writes a
+# workbook plus candidate figures. Every accessor below is a read and
+# resolves normalized-first.
+A <- function(f) spatial_systems_find(f, "atlas")
+B <- function(f) spatial_systems_find(f, "bilateral")
+C_ <- function(f) spatial_systems_find(f, "celltype_annotation")
+D_ <- function(f) spatial_systems_find(f, "data_contract")
+PR <- function(f) spatial_systems_find(f, "precision")
+OUTT <- function() { d <- CANONICAL_PATHS$tables; dir_create(d); d }
+FIG <- function() { d <- CANONICAL_PATHS$plots; dir_create(d); d }
 
 if (isTRUE(cli$dry_run)) {
   cat("[DRY-RUN] Spatial systems atlas workbook, candidate figures and validation.\n")
@@ -199,7 +210,8 @@ openxlsx::addStyle(wb, "Validation", hdr, rows = 1, cols = seq_len(ncol(validati
                    gridExpand = TRUE, stack = TRUE)
 openxlsx::setColWidths(wb, "Validation", cols = 1:4, widths = c(42, 10, 10, 110))
 
-wb_path <- file.path(OUTT(), "spatial_systems_atlas.xlsx")
+wb_path <- file.path(dir_create(CANONICAL_PATHS$reports),
+                     "spatial_systems_atlas.xlsx")
 xlsx_save_valid_workbook(wb, wb_path)
 write_csv_safe(validation, file.path(OUTT(), "spatial_systems_atlas_validation.csv"))
 

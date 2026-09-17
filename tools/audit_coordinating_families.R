@@ -168,8 +168,29 @@ d <- do.call(rbind, rows)
 g <- do.call(rbind, gate_rows)
 
 if (!dir.exists("audits")) dir.create("audits")
-utils::write.csv(d, file.path("audits", paste0("phase6g_coordinating_families_", DOMAIN, ".csv")),
+
+EMPTY <- data.frame(
+  result_family = character(0), role = character(0), script = character(0),
+  analysis_id = character(0), current_output = character(0),
+  proposed_output = character(0), shared_with_another_writer = logical(0),
+  stringsAsFactors = FALSE)
+utils::write.csv(if (is.null(d)) EMPTY else d,
+                 file.path("audits", paste0("phase6g_coordinating_families_", DOMAIN, ".csv")),
                  row.names = FALSE)
+
+## Zero is the expected state for a migrated domain, not an error. The
+## normalized layout keys each destination on its producing analysis, so a
+## family shared by several writers cannot survive migration: each contributor
+## ends up in its own tree and the coordination relationship moves into
+## config/results_ownership.csv. Reporting that as a crash would make the
+## successful outcome look like a tool failure.
+if (is.null(g) || !nrow(g)) {
+  cat("coordinating families touching ", DOMAIN, ": 0\n\n", sep = "")
+  cat("No family in this domain is written by more than one analysis.\n")
+  cat("For a migrated domain this is the expected end state: destinations are\n")
+  cat("keyed on the producing analysis, so a shared directory cannot persist.\n")
+  quit(save = "no", status = 0L)
+}
 
 cat("coordinating families touching", DOMAIN, ":", nrow(g), "\n\n")
 for (i in seq_len(nrow(g))) {

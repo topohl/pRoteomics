@@ -34,9 +34,11 @@
 # Stage: networks
 # Scope: per_dataset
 # Consumes: required results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_hemisphere_values.csv; optional config/marker_panels/wgcna_reference_marker_sets.csv; results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv
-# Produces: results/tables/11_spatial_systems/precision/bilateral_variance_decomposition.csv; results/tables/11_spatial_systems/precision/bilateral_precision_gain.csv
+# Produces: results/spatial_validation/decompose_bilateral_variance/global/tables/bilateral_variance_decomposition.csv; results/spatial_validation/decompose_bilateral_variance/global/tables/bilateral_precision_gain.csv
 # Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Bilateral variance decomposition: what does measuring both hemispheres buy?
+#  
+#  
 
 source("R/paths.R")
 source("R/data_contracts/dataset_config.R")
@@ -45,6 +47,14 @@ source("R/qc/qc_exploration_utils.R")
 source("R/data_contracts/spatial_systems_data_utils.R")
 source("R/spatial/spatial_systems_bilateral_utils.R")
 source("R/data_contracts/spatial_systems_endpoint_utils.R")
+source(repo_path("R", "spatial_systems_paths.R"))
+
+# Phase 6G.3: destinations resolve through the normalized output contract,
+# addressed by this analysis's own identity rather than by the historical
+# 11_spatial_systems stage directory. Outputs already written there stay
+# exactly where they are and are read, never rewritten.
+ANALYSIS_ID <- "decompose_bilateral_variance"
+CANONICAL_PATHS <- spatial_systems_dirs(ANALYSIS_ID)
 
 suppressPackageStartupMessages({ library(readr); library(dplyr) })
 
@@ -53,7 +63,7 @@ Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 cli <- integration_cli(default_dataset = "all")
 
 OUT <- function() {
-  d <- path_results("tables", "11_spatial_systems", "precision"); dir_create(d); d
+  d <- CANONICAL_PATHS$tables; dir_create(d); d
 }
 DATASETS <- valid_datasets()
 

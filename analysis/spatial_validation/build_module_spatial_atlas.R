@@ -22,16 +22,26 @@
 # Script: analysis/spatial_validation/build_module_spatial_atlas.R
 # Stage: networks
 # Scope: per_dataset
-# Consumes: required results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_hemisphere_values.csv; results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_modules_long.csv; results/tables/11_spatial_systems/celltype_annotation/WGCNA_module_external_celltype_affinity_long.csv; optional results/tables/11_spatial_systems/bilateral/WGCNA_module_bilateral_reproducibility.csv; results/tables/11_spatial_systems/precision/bilateral_precision_gain.csv; config/marker_panels/wgcna_reference_marker_sets.csv
-# Produces: results/tables/11_spatial_systems/atlas/WGCNA_module_spatial_cell_affinity.csv; results/tables/11_spatial_systems/atlas/WGCNA_module_baseline_spatial_profile_long.csv; results/tables/11_spatial_systems/atlas/WGCNA_module_spatial_fingerprints_raw.csv; +7 more
+# Consumes: required results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_hemisphere_values.csv; results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_modules_long.csv; results/spatial_validation/annotate_module_celltypes/global/tables/WGCNA_module_external_celltype_affinity_long.csv; +1 more; optional results/spatial_validation/quantify_module_bilateral_identity/global/tables/WGCNA_module_bilateral_reproducibility.csv; results/tables/11_spatial_systems/bilateral/WGCNA_module_bilateral_reproducibility.csv; results/spatial_validation/decompose_bilateral_variance/global/tables/bilateral_precision_gain.csv; +2 more
+# Produces: results/spatial_validation/build_module_spatial_atlas/global/tables/WGCNA_module_spatial_cell_affinity.csv; results/spatial_validation/build_module_spatial_atlas/global/tables/WGCNA_module_baseline_spatial_profile_long.csv; results/spatial_validation/build_module_spatial_atlas/global/tables/WGCNA_module_spatial_fingerprints_raw.csv; +7 more
 # Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Integrated spatial / cell-affinity atlas for WGCNA modules.
+#  
+#  
 
 source("R/paths.R")
 source("R/data_contracts/dataset_config.R")
 source("R/statistics/integration_utils.R")
 source("R/spatial/spatial_atlas_utils.R")
 source("R/enrichment/ewce_gene_set_engine.R")
+source(repo_path("R", "spatial_systems_paths.R"))
+
+# Phase 6G.3: destinations resolve through the normalized output contract,
+# addressed by this analysis's own identity rather than by the historical
+# 11_spatial_systems stage directory. Outputs already written there stay
+# exactly where they are and are read, never rewritten.
+ANALYSIS_ID <- "build_module_spatial_atlas"
+CANONICAL_PATHS <- spatial_systems_dirs(ANALYSIS_ID)
 
 suppressPackageStartupMessages({ library(readr); library(dplyr); library(tidyr) })
 
@@ -40,7 +50,7 @@ Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 cli <- integration_cli(default_dataset = "all")
 
 OUT <- function() {
-  d <- path_results("tables", "11_spatial_systems", "atlas"); dir_create(d); d
+  d <- CANONICAL_PATHS$tables; dir_create(d); d
 }
 P <- list(
   membership = function(ds) path_results("tables", "06_modules_WGCNA", "01_WGCNA", ds,
@@ -51,21 +61,20 @@ P <- list(
                                          ds, "WGCNA_module_supermodule_membership_contract.csv"),
   lookup     = function(ds) path_results("tables", "06_modules_WGCNA", "interpretable_summary",
                                          ds, "WGCNA_final_label_lookup.csv"),
-  bilateral  = path_results("tables", "11_spatial_systems", "bilateral",
-                            "WGCNA_module_bilateral_reproducibility.csv"),
-  bil_prof   = path_results("tables", "11_spatial_systems", "bilateral",
-                            "WGCNA_module_bilateral_spatial_profile_summary.csv"),
-  precision  = path_results("tables", "11_spatial_systems", "precision",
-                            "bilateral_precision_gain.csv"),
-  ewce_long  = path_results("tables", "11_spatial_systems", "celltype_annotation",
-                            "WGCNA_module_external_celltype_affinity_long.csv"),
+  bilateral  = spatial_systems_find("WGCNA_module_bilateral_reproducibility.csv",
+                                    "bilateral"),
+  bil_prof   = spatial_systems_find("WGCNA_module_bilateral_spatial_profile_summary.csv",
+                                    "bilateral"),
+  precision  = spatial_systems_find("bilateral_precision_gain.csv", "precision"),
+  ewce_long  = spatial_systems_find("WGCNA_module_external_celltype_affinity_long.csv",
+                                    "celltype_annotation"),
   emp_sets   = path_results("tables", "03_qc_exploration",
                             "05_empirical_roi_marker_discovery",
                             "empirical_roi_marker_sets.csv"),
-  emp_bil    = path_results("tables", "11_spatial_systems", "bilateral",
-                            "bilateral_empirical_compartment_summary.csv"),
-  emp_trans  = path_results("tables", "11_spatial_systems", "bilateral",
-                            "bilateral_empirical_marker_transfer.csv"),
+  emp_bil    = spatial_systems_find("bilateral_empirical_compartment_summary.csv",
+                                    "bilateral"),
+  emp_trans  = spatial_systems_find("bilateral_empirical_marker_transfer.csv",
+                                    "bilateral"),
   ref_panels = repo_path("config", "marker_panels", "wgcna_reference_marker_sets.csv")
 )
 DATASETS <- valid_datasets()
