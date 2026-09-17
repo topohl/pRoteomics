@@ -4,13 +4,13 @@
 # assertion here, so the freeze is enforced by the suite rather than by review.
 
 source(testthat::test_path("..", "..", "R", "paths.R"))
-source(testthat::test_path("..", "..", "R", "null_coalescing.R"))
-source(testthat::test_path("..", "..", "R", "integration_utils.R"))
-source(testthat::test_path("..", "..", "R", "nature_v2_figure_utils.R"))
-source(testthat::test_path("..", "..", "R", "spatial_grammar_utils.R"))
-source(testthat::test_path("..", "..", "R", "final_truth_v9_figure_utils.R"))
-source(testthat::test_path("..", "..", "R", "editorial_v8_export.R"))
-source(testthat::test_path("..", "..", "R", "final_truth_v9_fidelity_panels.R"))
+source(repo_path("R", "null_coalescing.R"))
+source(repo_path("R", "integration_utils.R"))
+source(repo_path("R", "nature_v2_figure_utils.R"))
+source(repo_path("R", "spatial_grammar_utils.R"))
+source(repo_path("R", "final_truth_v9_figure_utils.R"))
+source(repo_path("R", "editorial_v8_export.R"))
+source(repo_path("R", "final_truth_v9_fidelity_panels.R"))
 
 rd <- function(p) utils::read.csv(p, stringsAsFactors = FALSE, check.names = FALSE)
 V9 <- s9f_contract()

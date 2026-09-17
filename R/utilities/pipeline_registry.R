@@ -160,12 +160,15 @@ pipeline_audit_dir <- function() {
 pipeline_analysis_script_exclusions <- function() {
   list(
     roots = c(
-      ".github", "00_setup", "R", "config", "data", "docs", "renv",
-      "results", "tests", "tools", "90_testing", "99_deprecated",
-      # Part-29 governance: 99_audits is an isolated, non-promoted audit layer.
+      ".github", "R", "config", "data", "docs", "renv",
+      "results", "tests", "tools",
+      # Superseded and exploratory generations live under archive/ and are
+      # provenance, not runnable stages.
+      "archive",
+      # Part-29 governance: audits/ is an isolated, non-promoted audit layer.
       # Its scripts read canonical outputs and write only to
       # results/**/publication_audits/, so they are not pipeline stages.
-      "99_audits"
+      "audits"
     ),
     path_components = "legacy",
     files = c("run_dataset_pipeline.R", "proteomics_wgcna_downstream_audit.R")
@@ -212,17 +215,16 @@ active_analysis_scripts <- function(
 }
 
 guess_stage_for_script <- function(script) {
-  if (grepl("^01_preprocessing|^02_id_mapping", script)) return("core")
-  if (grepl("^03_qc_exploration/04b|^03_qc_exploration/05_empirical", script)) return("qc_global")
-  if (grepl("^03_qc_exploration", script)) return("qc")
-  if (grepl("^04_differential|^05_celltype", script)) return("enrichment")
-  if (grepl("^06_modules_WGCNA/01_WGCNA", script)) return("modules_wgcna")
-  if (grepl("^06_modules_WGCNA", script)) return("modules_downstream")
-  if (grepl("^07_spatial", script)) return("networks")
-  if (grepl("^08_behavior", script)) return("coupling")
-  if (grepl("^08_biological_interpretation", script)) return("integration")
-  if (grepl("^10_biological", script)) return("integration")
-  if (grepl("^09_export", script)) return("export")
+  s <- sub("^analysis/", "", script)
+  if (grepl("^01_preprocessing", s)) return("core")
+  if (grepl("^02_qc/04b|^02_qc/05_empirical", s)) return("qc_global")
+  if (grepl("^02_qc", s)) return("qc")
+  if (grepl("^04_differential_abundance|^06_gsea", s)) return("enrichment")
+  if (grepl("^05_wgcna/01_WGCNA", s)) return("modules_wgcna")
+  if (grepl("^05_wgcna", s)) return("modules_downstream")
+  if (grepl("^07_spatial_networks|^03_spatial_validation", s)) return("networks")
+  if (grepl("^08_integration", s)) return("integration")
+  if (grepl("^09_publication_exports", s)) return("export")
   "unknown"
 }
 
@@ -277,12 +279,14 @@ run_order_script_references <- function(path = repo_path("RUN_ORDER.md")) {
   refs <- unlist(regmatches(
     txt,
     gregexpr(
-      "(?:(?:[0-9]{2}_[A-Za-z0-9_./ -]+)|(?:figures/[A-Za-z0-9_./ -]+))\\.[Rr]",
+      paste0("(?:(?:analysis/[A-Za-z0-9_./ -]+)",
+             "|(?:[0-9]{2}_[A-Za-z0-9_./ -]+)",
+             "|(?:figures/[A-Za-z0-9_./ -]+))\\.[Rr]"),
       txt, perl = TRUE
     )
   ), use.names = FALSE)
   refs <- gsub("\\\\", "/", trimws(refs))
-  refs <- refs[!grepl("^(90_testing|99_deprecated|99_audits)/", refs)]
+  refs <- refs[!grepl("^(archive|audits)/", refs)]
   unique(refs[file.exists(repo_path(refs))])
 }
 

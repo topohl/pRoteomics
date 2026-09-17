@@ -1,9 +1,9 @@
 testthat::local_edition(3)
 
 source(testthat::test_path("..", "..", "R", "paths.R"))
-source(testthat::test_path("..", "..", "R", "dataset_config.R"))
-source(testthat::test_path("..", "..", "R", "wgcna_downstream_utils.R"))
-source(testthat::test_path("..", "..", "R", "wgcna_identity_contract_utils.R"))
+source(repo_path("R", "dataset_config.R"))
+source(repo_path("R", "wgcna_downstream_utils.R"))
+source(repo_path("R", "wgcna_identity_contract_utils.R"))
 
 identity_test_datasets <- c("neuron_soma", "neuron_neuropil", "microglia")
 
@@ -393,11 +393,11 @@ testthat::test_that("pipeline registration remains read-only and precedes Stage 
     warn = FALSE
   )
   identity_line <- grep(
-    'script: "06_modules_WGCNA/00_wgcna_identity_contract.R"',
+    'script: "analysis/05_wgcna/00_wgcna_identity_contract.R"',
     pipeline
   )
   stage05_line <- grep(
-    'script: "06_modules_WGCNA/05_module_supermodule_group_effects.r"',
+    'script: "analysis/05_wgcna/05_module_supermodule_group_effects.r"',
     pipeline
   )
   testthat::expect_length(identity_line, 1L)

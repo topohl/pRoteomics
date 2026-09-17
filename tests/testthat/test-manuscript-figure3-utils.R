@@ -1,4 +1,4 @@
-source(testthat::test_path("..", "..", "R", "manuscript_figure3_utils.R"))
+source(repo_path("R", "manuscript_figure3_utils.R"))
 
 testthat::test_that("Figure 3 gene labels accept each documented symbol column", {
   for (column in figure3_gene_symbol_columns()) {

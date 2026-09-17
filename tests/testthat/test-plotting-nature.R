@@ -1,4 +1,4 @@
-source(testthat::test_path("..", "..", "R", "plotting_nature.R"))
+source(repo_path("R", "plotting_nature.R"))
 
 testthat::test_that("manuscript dimensions and millimetre conversion are stable", {
   testthat::expect_identical(

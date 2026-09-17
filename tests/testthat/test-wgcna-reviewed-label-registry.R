@@ -4,7 +4,7 @@ testthat::skip_if_not_installed("dplyr")
 testthat::skip_if_not_installed("readr")
 testthat::skip_if_not_installed("digest")
 
-source(testthat::test_path("..", "..", "R", "wgcna_reviewed_label_registry.R"))
+source(repo_path("R", "wgcna_reviewed_label_registry.R"))
 
 registry_path <- testthat::test_path("..", "..", "config", "wgcna_labels", "microglia.csv")
 member_map_path <- testthat::test_path(

@@ -1,4 +1,4 @@
-source(testthat::test_path("..", "..", "R", "wgcna_candidate_protein_utils.R"))
+source(repo_path("R", "wgcna_candidate_protein_utils.R"))
 source(testthat::test_path("..", "..", "R", "paths.R"))
 
 # --------------------------------------------------------------- fixtures
@@ -246,7 +246,7 @@ testthat::test_that("consistency requires unanimity and calibrates to context co
 
 testthat::test_that("no independence-derived probability survives anywhere", {
   files <- c(
-    testthat::test_path("..", "..", "R", "wgcna_candidate_protein_utils.R"),
+    repo_path("R", "wgcna_candidate_protein_utils.R"),
     testthat::test_path("..", "..", "10_biological_integration",
                         "08_wgcna_candidate_protein_shortlist.R")
   )
@@ -449,7 +449,7 @@ testthat::test_that("flagging and ordering are deterministic", {
 
 testthat::test_that("no WGCNA or differential-abundance model is refitted", {
   files <- c(
-    testthat::test_path("..", "..", "R", "wgcna_candidate_protein_utils.R"),
+    repo_path("R", "wgcna_candidate_protein_utils.R"),
     testthat::test_path("..", "..", "10_biological_integration",
                         "08_wgcna_candidate_protein_shortlist.R")
   )
@@ -689,7 +689,7 @@ testthat::test_that("dry-run reports inputs and writes nothing", {
   on.exit(setwd(old_wd), add = TRUE)
   out <- suppressWarnings(system2(
     file.path(R.home("bin"), "Rscript"),
-    c("10_biological_integration/08_wgcna_candidate_protein_shortlist.R",
+    c("analysis/08_integration/08_wgcna_candidate_protein_shortlist.R",
       "--dry-run"),
     stdout = TRUE, stderr = TRUE
   ))
@@ -853,7 +853,7 @@ testthat::test_that("Module_review is one descriptive row per module", {
 testthat::test_that("openxlsx alone emits an invalid package that repair fixes", {
   testthat::skip_if_not_installed("openxlsx")
   testthat::skip_if_not_installed("zip")
-  source(testthat::test_path("..", "..", "R", "xlsx_package_utils.R"))
+  source(repo_path("R", "xlsx_package_utils.R"))
 
   path <- tempfile(fileext = ".xlsx")
   on.exit(unlink(path), add = TRUE)
@@ -880,7 +880,7 @@ testthat::test_that("openxlsx alone emits an invalid package that repair fixes",
 testthat::test_that("xlsx_save_valid_workbook writes a well-formed package", {
   testthat::skip_if_not_installed("openxlsx")
   testthat::skip_if_not_installed("zip")
-  source(testthat::test_path("..", "..", "R", "xlsx_package_utils.R"))
+  source(repo_path("R", "xlsx_package_utils.R"))
 
   path <- tempfile(fileext = ".xlsx")
   on.exit(unlink(path), add = TRUE)
@@ -909,7 +909,7 @@ testthat::test_that("generated workbooks are valid OOXML packages", {
   for (scope in c("neuron_neuropil", "neuron_soma", "microglia", "global")) {
     path <- wcp_workbook_path(scope)
     if (!file.exists(path)) next
-    source(testthat::test_path("..", "..", "R", "xlsx_package_utils.R"))
+    source(repo_path("R", "xlsx_package_utils.R"))
     testthat::expect_identical(
       nrow(xlsx_package_dangling_relationships(path)), 0L, info = scope
     )

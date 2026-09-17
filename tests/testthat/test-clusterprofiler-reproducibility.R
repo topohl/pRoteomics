@@ -151,7 +151,7 @@ testthat::test_that("active GSEA entry points all use the deterministic wrapper"
 
 testthat::test_that("the GSEA parallel-backend contract is deliberate and documented", {
   src <- readLines(
-    testthat::test_path("..", "..", "R", "clusterprofiler_reproducibility.R"),
+    repo_path("R", "clusterprofiler_reproducibility.R"),
     warn = FALSE
   )
   # The wrapper intentionally does NOT pin BPPARAM: backend, worker count and

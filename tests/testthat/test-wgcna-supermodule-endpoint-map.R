@@ -1,8 +1,8 @@
 testthat::local_edition(3)
 
 source(testthat::test_path("..", "..", "R", "paths.R"))
-source(testthat::test_path("..", "..", "R", "wgcna_downstream_utils.R"))
-source(testthat::test_path("..", "..", "R", "wgcna_group_effects_utils.R"))
+source(repo_path("R", "wgcna_downstream_utils.R"))
+source(repo_path("R", "wgcna_group_effects_utils.R"))
 
 testthat::test_that("canonical endpoint construction is membership and bridge keyed", {
   testthat::expect_true(is.function(wgcna_group_build_module_bridge))

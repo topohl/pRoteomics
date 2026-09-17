@@ -1,6 +1,6 @@
 testthat::local_edition(3)
 
-source(testthat::test_path("..", "..", "R", "empirical_roi_marker_utils.R"))
+source(repo_path("R", "empirical_roi_marker_utils.R"))
 
 make_empirical_metadata <- function(dataset, animals = sprintf("A%04d", 1:9),
                                     regions = c("CA1", "CA2", "CA3", "DG"),

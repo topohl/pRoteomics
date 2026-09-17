@@ -11,7 +11,7 @@
 setwd("S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/Analysis/proteomics")
 source("99_audits/publication_hardening/00_checkpoint.R")
 source("R/paths.R")
-source("R/pipeline_registry.R")
+source(repo_path("R", "pipeline_registry.R"))
 suppressMessages(library(yaml))
 
 dir.create(PH_TAB, recursive = TRUE, showWarnings = FALSE)

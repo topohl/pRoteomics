@@ -1,10 +1,10 @@
 testthat::local_edition(3)
 
 source(testthat::test_path("..", "..", "R", "paths.R"))
-source(testthat::test_path("..", "..", "R", "dataset_config.R"))
-source(testthat::test_path("..", "..", "R", "wgcna_downstream_utils.R"))
-source(testthat::test_path("..", "..", "R", "wgcna_identity_contract_utils.R"))
-source(testthat::test_path("..", "..", "R", "wgcna_group_effects_utils.R"))
+source(repo_path("R", "dataset_config.R"))
+source(repo_path("R", "wgcna_downstream_utils.R"))
+source(repo_path("R", "wgcna_identity_contract_utils.R"))
+source(repo_path("R", "wgcna_group_effects_utils.R"))
 
 valid_fixture <- function(...) {
   defaults <- list(
@@ -674,8 +674,8 @@ testthat::test_that("consumer scan is deterministic and excludes nonactive roots
     "^tests/testthat/", first$consumer_script
   )))
   testthat::expect_false(any(first$consumer_script %in% c(
-    "R/wgcna_group_effects_utils.R",
-    "06_modules_WGCNA/05_module_supermodule_group_effects.r",
+    "R/statistics/wgcna_group_effects_utils.R",
+    "analysis/05_wgcna/05_module_supermodule_group_effects.r",
     "tests/testthat/test-wgcna-group-effects-phase2b.R",
     "tests/testthat/test-wgcna-group-effects-contract.R",
     "tests/testthat/test-schema-validation.R"
@@ -718,8 +718,8 @@ testthat::test_that("consumer audit exhaustively matches deterministic local sca
     "\\\\", "/", substring(files, nchar(root) + 2L)
   )
   explicit_exclusions <- c(
-    "R/wgcna_group_effects_utils.R",
-    "06_modules_WGCNA/05_module_supermodule_group_effects.r",
+    "R/statistics/wgcna_group_effects_utils.R",
+    "analysis/05_wgcna/05_module_supermodule_group_effects.r",
     "tests/testthat/test-wgcna-group-effects-phase2b.R",
     "tests/testthat/test-wgcna-group-effects-contract.R",
     "tests/testthat/test-schema-validation.R"
@@ -793,11 +793,11 @@ testthat::test_that("Stage 05 source hashes cannot omit a direct dependency", {
   )
   relative_required <- vapply(required, relative_to, character(1))
   expected_code_and_schemas <- c(
-    "06_modules_WGCNA/05_module_supermodule_group_effects.r",
-    "R/paths.R", "R/dataset_config.R", "R/dataset_inputs.R",
-    "R/module_contracts.R", "R/wgcna_downstream_utils.R",
-    "R/wgcna_identity_contract_utils.R",
-    "R/wgcna_group_effects_utils.R",
+    "analysis/05_wgcna/05_module_supermodule_group_effects.r",
+    "R/paths.R", "R/data_contracts/dataset_config.R", "R/data_contracts/dataset_inputs.R",
+    "R/data_contracts/module_contracts.R", "R/statistics/wgcna_downstream_utils.R",
+    "R/statistics/wgcna_identity_contract_utils.R",
+    "R/statistics/wgcna_group_effects_utils.R",
     "inst/schemas/module_group_effects.yml",
     "inst/schemas/supermodule_group_effects.yml",
     "inst/schemas/wgcna_group_effect_model_validation.yml",

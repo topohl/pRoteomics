@@ -1,18 +1,18 @@
 testthat::test_that("canonical module entrypoints exist", {
   source(testthat::test_path("..", "..", "R", "paths.R"))
   active <- c(
-    "06_modules_WGCNA/01_WGCNA.r",
-    "06_modules_WGCNA/01b_module_supermodule_GO_heatmaps.R",
-    "06_modules_WGCNA/02_curated_overlap_programs.r",
-    "06_modules_WGCNA/03_score_module_activity.R",
-    "06_modules_WGCNA/04_wgcna_de_gsea_overlap.r"
+    "analysis/05_wgcna/01_WGCNA.r",
+    "analysis/05_wgcna/01b_module_supermodule_GO_heatmaps.R",
+    "analysis/05_wgcna/02_curated_overlap_programs.r",
+    "analysis/05_wgcna/03_score_module_activity.R",
+    "analysis/05_wgcna/04_wgcna_de_gsea_overlap.r"
   )
   testthat::expect_true(all(file.exists(repo_path(active))))
 })
 
 testthat::test_that("module score implementation lives in 03_score_module_activity", {
   source(testthat::test_path("..", "..", "R", "paths.R"))
-  txt <- paste(readLines(repo_path("06_modules_WGCNA/03_score_module_activity.R"), warn = FALSE), collapse = "\n")
+  txt <- paste(readLines(repo_path("analysis/05_wgcna/03_score_module_activity.R"), warn = FALSE), collapse = "\n")
   testthat::expect_false(grepl("source(repo_path(\"06_modules_WGCNA\", \"05_module_score.r\"))", txt, fixed = TRUE))
   testthat::expect_false(grepl("source(repo_path(\"06_modules_WGCNA\", \"91_module_score.r\"))", txt, fixed = TRUE))
   for (needle in c(
@@ -48,48 +48,48 @@ testthat::test_that("pipeline module stages use canonical scripts and contracts"
   modules_downstream <- registry$stages$modules_downstream$scripts
   scripts_wgcna <- vapply(modules_wgcna, function(x) x$script, character(1))
   scripts_downstream <- vapply(modules_downstream, function(x) x$script, character(1))
-  testthat::expect_equal(scripts_wgcna, "06_modules_WGCNA/01_WGCNA.r")
+  testthat::expect_equal(scripts_wgcna, "analysis/05_wgcna/01_WGCNA.r")
   required_downstream <- c(
-    "06_modules_WGCNA/01b_module_supermodule_GO_heatmaps.R",
-    "06_modules_WGCNA/01a_compare_GO_recurrent_proteins.r",
-    "06_modules_WGCNA/02_curated_overlap_programs.r",
-    "06_modules_WGCNA/03_score_module_activity.R",
-    "06_modules_WGCNA/04_wgcna_de_gsea_overlap.r",
-    "06_modules_WGCNA/00_wgcna_identity_contract.R",
-    "06_modules_WGCNA/05_module_supermodule_group_effects.r",
-    "06_modules_WGCNA/06_annotate_module_microenvironment.r",
-    "06_modules_WGCNA/07_wgcna_interpretable_summary.r",
-    "06_modules_WGCNA/08_wgcna_publication_figures.R",
-    "06_modules_WGCNA/08_wgcna_score_publication_summary.R",
-    "06_modules_WGCNA/08b_microglia_wgcna_readiness_publication_figures.R",
-    "06_modules_WGCNA/09_microglia_neuropil_independence.R",
-    "06_modules_WGCNA/09b_microglia_neuropil_independence_figures.R",
-    "06_modules_WGCNA/09c_microglia_roi_specificity_diagnostics.R",
-    "06_modules_WGCNA/10_module_complex_architecture.r",
-    "06_modules_WGCNA/11_module_robustness_sensitivity.r",
-    "06_modules_WGCNA/12_microglia_wgcna_nature_readiness_audit.R",
-    "06_modules_WGCNA/12b_finalize_microglia_wgcna_nature_readiness_audit.R",
-    "06_modules_WGCNA/13_wgcna_claim_readiness.R"
+    "analysis/05_wgcna/01b_module_supermodule_GO_heatmaps.R",
+    "analysis/05_wgcna/01a_compare_GO_recurrent_proteins.r",
+    "analysis/05_wgcna/02_curated_overlap_programs.r",
+    "analysis/05_wgcna/03_score_module_activity.R",
+    "analysis/05_wgcna/04_wgcna_de_gsea_overlap.r",
+    "analysis/05_wgcna/00_wgcna_identity_contract.R",
+    "analysis/05_wgcna/05_module_supermodule_group_effects.r",
+    "analysis/05_wgcna/06_annotate_module_microenvironment.r",
+    "analysis/05_wgcna/07_wgcna_interpretable_summary.r",
+    "analysis/05_wgcna/08_wgcna_publication_figures.R",
+    "analysis/05_wgcna/08_wgcna_score_publication_summary.R",
+    "analysis/05_wgcna/08b_microglia_wgcna_readiness_publication_figures.R",
+    "analysis/05_wgcna/09_microglia_neuropil_independence.R",
+    "analysis/05_wgcna/09b_microglia_neuropil_independence_figures.R",
+    "analysis/05_wgcna/09c_microglia_roi_specificity_diagnostics.R",
+    "analysis/05_wgcna/10_module_complex_architecture.r",
+    "analysis/05_wgcna/11_module_robustness_sensitivity.r",
+    "analysis/05_wgcna/12_microglia_wgcna_nature_readiness_audit.R",
+    "analysis/05_wgcna/12b_finalize_microglia_wgcna_nature_readiness_audit.R",
+    "analysis/05_wgcna/13_wgcna_claim_readiness.R"
   )
   testthat::expect_true(all(required_downstream %in% scripts_downstream))
   testthat::expect_equal(
-    sum(scripts_downstream == "06_modules_WGCNA/03_score_module_activity.R"),
+    sum(scripts_downstream == "analysis/05_wgcna/03_score_module_activity.R"),
     2L
   )
   ordered_contract <- c(
-    "06_modules_WGCNA/00_wgcna_identity_contract.R",
-    "06_modules_WGCNA/05_module_supermodule_group_effects.r",
-    "06_modules_WGCNA/06_annotate_module_microenvironment.r",
-    "06_modules_WGCNA/07_wgcna_interpretable_summary.r",
-    "06_modules_WGCNA/13_wgcna_claim_readiness.R"
+    "analysis/05_wgcna/00_wgcna_identity_contract.R",
+    "analysis/05_wgcna/05_module_supermodule_group_effects.r",
+    "analysis/05_wgcna/06_annotate_module_microenvironment.r",
+    "analysis/05_wgcna/07_wgcna_interpretable_summary.r",
+    "analysis/05_wgcna/13_wgcna_claim_readiness.R"
   )
   testthat::expect_true(all(diff(match(ordered_contract, scripts_downstream)) > 0L))
   testthat::expect_false(any(c(
-    "06_modules_WGCNA/03_overlap_modules.r",
-    "06_modules_WGCNA/04_overlap_modules.r",
-    "06_modules_WGCNA/05_module_score.r",
-    "06_modules_WGCNA/05_wgcna_de_gsea_overlap.r",
-    "06_modules_WGCNA/91_module_score.r"
+    "analysis/05_wgcna/03_overlap_modules.r",
+    "analysis/05_wgcna/04_overlap_modules.r",
+    "analysis/05_wgcna/05_module_score.r",
+    "analysis/05_wgcna/05_wgcna_de_gsea_overlap.r",
+    "analysis/05_wgcna/91_module_score.r"
   ) %in% c(scripts_wgcna, scripts_downstream)))
   pipeline_txt <- paste(readLines(repo_path("pipeline.yml"), warn = FALSE), collapse = "\n")
   testthat::expect_true(grepl("module_score/<dataset>/", pipeline_txt, fixed = TRUE))
@@ -120,7 +120,7 @@ testthat::test_that("module score dry-run reports dataset-aware source defaults"
     on.exit(setwd(old_wd), add = TRUE)
     out <- suppressWarnings(system2(
       cmd,
-      c("06_modules_WGCNA/03_score_module_activity.R", "--dataset", dataset, "--dry-run"),
+      c("analysis/05_wgcna/03_score_module_activity.R", "--dataset", dataset, "--dry-run"),
       stdout = TRUE,
       stderr = TRUE
     ))

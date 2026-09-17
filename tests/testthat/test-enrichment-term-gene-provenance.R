@@ -1,5 +1,5 @@
 testthat::test_that("term core genes expand to every eligible ProteinGroupID deterministically", {
-  source(testthat::test_path("..", "..", "R", "protein_group_enrichment_utils.R"))
+  source(repo_path("R", "protein_group_enrichment_utils.R"))
   gsea <- data.frame(
     ID = "GO:0001", Description = "example", NES = 1.5, p.adjust = 0.01,
     setSize = 2L, core_enrichment = "GeneB/GeneA", stringsAsFactors = FALSE
@@ -33,7 +33,7 @@ testthat::test_that("term core genes expand to every eligible ProteinGroupID det
 })
 
 testthat::test_that("term provenance handles zero terms and rejects missing core provenance", {
-  source(testthat::test_path("..", "..", "R", "protein_group_enrichment_utils.R"))
+  source(repo_path("R", "protein_group_enrichment_utils.R"))
   empty_gsea <- data.frame(
     ID = character(), Description = character(), NES = numeric(), p.adjust = numeric(),
     setSize = integer(), core_enrichment = character(), stringsAsFactors = FALSE
@@ -65,7 +65,7 @@ testthat::test_that("term provenance handles zero terms and rejects missing core
 })
 
 testthat::test_that("ineligible groups cannot re-enter GO or KEGG term provenance", {
-  source(testthat::test_path("..", "..", "R", "protein_group_enrichment_utils.R"))
+  source(repo_path("R", "protein_group_enrichment_utils.R"))
   gsea_go <- data.frame(
     ID = "GO:1", Description = "ambiguous", NES = 1, p.adjust = 0.1,
     setSize = 1L, core_enrichment = "GeneX", stringsAsFactors = FALSE

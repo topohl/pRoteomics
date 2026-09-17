@@ -1,7 +1,7 @@
 testthat::local_edition(3)
 
 source(testthat::test_path("..", "..", "R", "paths.R"))
-source(testthat::test_path("..", "..", "R", "compartment_abundance_utils.R"))
+source(repo_path("R", "compartment_abundance_utils.R"))
 
 ca_test_metadata <- function(groups = c(1, 2, 3), include_group = TRUE) {
   out <- data.frame(

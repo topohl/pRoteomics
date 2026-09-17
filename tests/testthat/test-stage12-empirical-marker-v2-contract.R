@@ -6,7 +6,7 @@ testthat::local_edition(3)
 # The producer sets GeneSymbol = if_else(claim_allowed, official_gene_symbol,
 # NA), making GeneSymbol claim-gated; keying descriptive panels on it silently
 # deletes descriptive-only rows. This mirrors the ec958ec regression contract
-# already enforced in R/wgcna_downstream_utils.R.
+# already enforced in R/statistics/wgcna_downstream_utils.R.
 #
 # The reader lives inside a self-executing audit script, so it is extracted
 # from the parsed source rather than sourced.

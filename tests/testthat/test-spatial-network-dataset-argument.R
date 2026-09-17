@@ -1,6 +1,6 @@
 testthat::test_that("spatial network script parses --dataset before current_dataset", {
   source(testthat::test_path("..", "..", "R", "paths.R"))
-  txt <- paste(readLines(repo_path("07_spatial_networks/01_network_spatial_relations.r"), warn = FALSE), collapse = "\n")
+  txt <- paste(readLines(repo_path("analysis/07_spatial_networks/01_network_spatial_relations.r"), warn = FALSE), collapse = "\n")
 
   testthat::expect_true(grepl("args <- commandArgs\\(trailingOnly = TRUE\\)", txt))
   testthat::expect_true(grepl("dataset_cli <- arg_value\\(\"--dataset\"", txt))
@@ -18,7 +18,7 @@ testthat::test_that("spatial network script parses --dataset before current_data
 })
 
 testthat::test_that("dataset_config records spatial-unit contracts", {
-  source(testthat::test_path("..", "..", "R", "dataset_config.R"))
+  source(repo_path("R", "dataset_config.R"))
   contracts <- dataset_contracts()
 
   testthat::expect_false(contracts$neuron_soma$layer)
@@ -41,7 +41,7 @@ testthat::test_that("spatial network dry-run honors --dataset", {
     on.exit(setwd(old_wd), add = TRUE)
     out <- suppressWarnings(system2(
       file.path(R.home("bin"), "Rscript"),
-      c("07_spatial_networks/01_network_spatial_relations.r", "--dataset", dataset, "--dry-run"),
+      c("analysis/07_spatial_networks/01_network_spatial_relations.r", "--dataset", dataset, "--dry-run"),
       stdout = TRUE,
       stderr = TRUE
     ))
@@ -65,4 +65,3 @@ testthat::test_that("spatial network dry-run honors --dataset", {
   testthat::expect_true(grepl("spatial_unit: region_layer", neuropil, fixed = TRUE))
   testthat::expect_true(grepl("pgmatrix_imputed_neuron_neuropil_", neuropil, fixed = TRUE))
 })
-

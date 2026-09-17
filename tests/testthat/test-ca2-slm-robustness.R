@@ -1,5 +1,5 @@
 source(testthat::test_path("..", "..", "R", "paths.R"))
-source(testthat::test_path("..", "..", "R", "ca2_slm_robustness_utils.R"))
+source(repo_path("R", "ca2_slm_robustness_utils.R"))
 
 ROB <- function(...) path_results("tables", "11_spatial_systems",
                                   "ca2_slm_robustness", ...)
