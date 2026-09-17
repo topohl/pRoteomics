@@ -135,6 +135,41 @@ for (i in seq_len(nrow(co))) {
   gate <- migration_destination_collisions(proposals, own)
   blockers <- migration_gate_blockers(gate)
 
+  ## ---- Phase 6G.4 section 6: how is this family actually shared? ----------
+  ##
+  ## "Coordinating family" turned out to be too coarse. Phase 6G.3 found four
+  ## families where several analyses wrote into one directory and not one
+  ## artifact had two writers, so the label implied a conflict that did not
+  ## exist. Three cases need telling apart, and only the last is a collision:
+  ##
+  ##   SHARED_DIRECTORY_ONLY   distinct outputs merely colocated under a common
+  ##                           ancestor, in different immediate directories
+  ##   SHARED_RESULT_FAMILY    distinct artifacts written side by side into the
+  ##                           same directory, contributing to one result family
+  ##   SHARED_CANONICAL_ARTIFACT  two active writers target the same file
+  ##
+  ## The test is positional and mechanical: compare the immediate parent of
+  ## each writer's declared files. Equal parents mean they are contributing to
+  ## one family; different parents mean they only share an ancestor.
+  parents_by_writer <- lapply(current, function(p) {
+    p <- p[!is.na(p) & nzchar(p)]
+    f <- p[grepl("[.][A-Za-z0-9]{2,5}$", basename(p))]
+    unique(dirname(if (length(f)) f else p))
+  })
+  parents_by_writer <- Filter(length, parents_by_writer)
+  shared_parent <- length(parents_by_writer) > 1L &&
+    length(unique(unlist(parents_by_writer))) < length(unlist(parents_by_writer))
+  all_same_parent <- length(parents_by_writer) > 1L &&
+    length(unique(unlist(parents_by_writer))) == 1L
+
+  sharing_class <- if (length(cur_shared)) {
+    "SHARED_CANONICAL_ARTIFACT"
+  } else if (all_same_parent || shared_parent) {
+    "SHARED_RESULT_FAMILY"
+  } else {
+    "SHARED_DIRECTORY_ONLY"
+  }
+
   for (s in scripts) {
     p_cur <- current[[s]]
     if (!length(p_cur)) p_cur <- NA_character_
@@ -147,6 +182,7 @@ for (i in seq_len(nrow(co))) {
         current_output = x,
         proposed_output = if (is.na(x)) NA_character_ else proposed_of(s, x),
         shared_with_another_writer = !is.na(x) && x %in% cur_shared,
+        sharing_class = sharing_class,
         stringsAsFactors = FALSE)
     }
   }
@@ -158,6 +194,7 @@ for (i in seq_len(nrow(co))) {
     contributors = paste(contribs, collapse = " | "),
     n_current_outputs = length(cur_flat),
     n_proposed_destinations = length(unlist(proposals, use.names = FALSE)),
+    sharing_class = sharing_class,
     current_file_level_collisions = length(cur_shared),
     proposed_destination_collisions = length(gate),
     gate = if (length(blockers)) paste("BLOCKED:", paste(blockers, collapse = "; ")) else "PASS",
@@ -173,6 +210,7 @@ EMPTY <- data.frame(
   result_family = character(0), role = character(0), script = character(0),
   analysis_id = character(0), current_output = character(0),
   proposed_output = character(0), shared_with_another_writer = logical(0),
+  sharing_class = character(0),
   stringsAsFactors = FALSE)
 utils::write.csv(if (is.null(d)) EMPTY else d,
                  file.path("audits", paste0("phase6g_coordinating_families_", DOMAIN, ".csv")),
@@ -200,6 +238,7 @@ for (i in seq_len(nrow(g))) {
       gsub(" [|] ", "\n                       ", g$contributors[i]), "\n", sep = "")
   cat("  declared outputs in family : ", g$n_current_outputs[i], "\n", sep = "")
   cat("  proposed destinations      : ", g$n_proposed_destinations[i], "\n", sep = "")
+  cat("  sharing class              : ", g$sharing_class[i], "\n", sep = "")
   cat("  file-level collisions now  : ", g$current_file_level_collisions[i], "\n", sep = "")
   cat("  proposed collisions        : ", g$proposed_destination_collisions[i], "\n", sep = "")
   cat("  gate                       : ", g$gate[i], "\n\n", sep = "")
@@ -210,6 +249,18 @@ cat("total file-level collisions in current layout :",
 cat("total proposed destination collisions         :",
     sum(g$proposed_destination_collisions), "\n")
 cat("families blocked                              :", sum(g$gate != "PASS"), "\n")
+
+cat("\n=== sharing taxonomy ===\n")
+for (k in c("SHARED_DIRECTORY_ONLY", "SHARED_RESULT_FAMILY",
+            "SHARED_CANONICAL_ARTIFACT")) {
+  cat(sprintf("%-26s %d\n", k, sum(g$sharing_class == k)))
+}
+if (any(g$sharing_class == "SHARED_CANONICAL_ARTIFACT")) {
+  cat("\nSTOP: two active writers target the same canonical artifact.\n")
+  print(g[g$sharing_class == "SHARED_CANONICAL_ARTIFACT",
+          c("result_family", "canonical_owner", "contributors")], row.names = FALSE)
+  quit(save = "no", status = 1L)
+}
 
 if (any(g$gate != "PASS")) {
   cat("\nSTOP: a coordinating family has an unresolved collision.\n")

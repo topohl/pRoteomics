@@ -359,7 +359,29 @@ EXPECT_CALLS <- c("expect_true", "expect_false", "expect_match", "expect_equal",
                   "expect_identical", "expect_gt", "expect_lt", "expect_setequal",
                   "grepl", "sub", "gsub", "regexpr", "startsWith", "endsWith")
 
-match_token <- function(txt, token) grepl(token, txt, fixed = TRUE)
+# A full path and an output filename are distinctive enough to match as plain
+# substrings. A NAMESPACE_BASENAME is not: it is a bare directory name such as
+# "atlas", "precision" or "data_contract", and a substring match on those
+# produces dependencies that do not exist.
+#
+# Phase 6G.4 found two concrete false positives, and they had already misled a
+# phase brief into asserting three cross-domain dependencies that were never
+# there: "data_contract" matched inside R/data_contracts/dataset_config.R, an
+# unrelated library path, and "precision" matched the word precision inside a
+# sentence about adjustment families.
+#
+# So a directory name only counts when it is addressed as a path segment:
+# followed by a separator, or standing alone as a complete quoted element.
+# \Q...\E quotes the token for the regex engine so no token needs escaping by
+# hand.
+match_token <- function(txt, token, kind = NA_character_) {
+  if (!identical(kind, "NAMESPACE_BASENAME")) {
+    return(grepl(token, txt, fixed = TRUE))
+  }
+  as_segment <- grepl(paste0("(^|[^A-Za-z0-9_])\\Q", token, "\\E/"), txt, perl = TRUE)
+  as_element <- grepl(paste0("[\"']\\Q", token, "\\E[\"']"), txt, perl = TRUE)
+  as_segment | as_element
+}
 
 classify_match_type <- function(token, kind_hint, file, in_comment, is_glob) {
   if (in_comment) return("DOCUMENTATION_ONLY")
@@ -415,7 +437,8 @@ for (i in seq_len(nrow(files))) {
           joined <- paste(lits, collapse = "/")
           for (kind in names(vocab)) {
             for (tok in vocab[[kind]]) {
-              if (match_token(joined, tok) || any(vapply(lits, function(z) match_token(z, tok), logical(1)))) {
+              if (match_token(joined, tok, kind) ||
+                  any(vapply(lits, function(z) match_token(z, tok, kind), logical(1)))) {
                 ast_hits[[length(ast_hits) + 1L]] <<- list(
                   ctx = ctx, call = nm, kind = kind, token = tok,
                   expr = paste(utils::head(lits, 4), collapse = " , "))
@@ -431,7 +454,7 @@ for (i in seq_len(nrow(files))) {
   ## ---- textual pass, for every surface --------------------------------
   for (kind in names(vocab)) {
     for (tok in vocab[[kind]]) {
-      hit_lines <- which(match_token(lines, tok))
+      hit_lines <- which(match_token(lines, tok, kind))
       if (!length(hit_lines)) next
       for (ln in hit_lines) {
         in_comment <- isTRUE(comment_line[ln])
