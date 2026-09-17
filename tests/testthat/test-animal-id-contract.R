@@ -195,7 +195,7 @@ testthat::test_that("no dataset gains a duplicate AnimalID through normalisation
 # =====================================================================
 
 testthat::test_that("the coupling consumer uses the contract, not a local regex", {
-  src <- code_of("08_behavior_physio_coupling", "02_network_behavior_coupling.r")
+  src <- code_of("analysis/08_integration", "02_network_behavior_coupling.r")
   testthat::expect_true(grepl("animal_id_contract.R", src, fixed = TRUE))
   testthat::expect_true(grepl("aid_resolve(", src, fixed = TRUE))
   testthat::expect_true(grepl("aid_assert_no_collision(", src, fixed = TRUE))
