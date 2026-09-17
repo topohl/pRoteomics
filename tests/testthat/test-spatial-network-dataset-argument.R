@@ -52,8 +52,11 @@ testthat::test_that("spatial network dry-run honors --dataset", {
   testthat::expect_true(grepl("Dataset: microglia", microglia, fixed = TRUE))
   testthat::expect_true(grepl("spatial_unit: region", microglia, fixed = TRUE))
   testthat::expect_true(grepl("pgmatrix_imputed_microglia_", microglia, fixed = TRUE))
-  testthat::expect_true(grepl("network_spatial_relations/microglia/region", microglia, fixed = TRUE))
-  testthat::expect_false(grepl("network_spatial_relations/neuron_neuropil/region_layer", microglia, fixed = TRUE))
+  testthat::expect_true(grepl(
+    "build_spatial_networks/microglia/models/region/network_spatial_relations_objects.rds",
+    microglia, fixed = TRUE))
+  testthat::expect_false(grepl("build_spatial_networks/neuron_neuropil/",
+                               microglia, fixed = TRUE))
 
   soma <- run("neuron_soma")
   testthat::expect_true(grepl("Dataset: neuron_soma", soma, fixed = TRUE))
