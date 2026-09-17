@@ -115,7 +115,6 @@ EWCE_SCOPE <- if (isTRUE(EWCE_RUN_CONTRACT$canonical)) {
 }
 # Recorded in the run counters so the table says where the run actually wrote.
 SUBSTEP_ID <- file.path("enrichment", ANALYSIS_ID, EWCE_SCOPE)
-LEGACY_SUBSTEP_ID <- EWCE_RUN_CONTRACT$substep_id
 
 resolve_ewce_pg_matrix <- function() {
   env_path <- Sys.getenv("PROTEOMICS_EWCE_MATRIX", unset = "")
