@@ -203,6 +203,7 @@ MANUSCRIPT_FIGURE_IDS <- c("01", "02", "03")
 # number here would collide with them. The value is the directory stub.
 MANUSCRIPT_EXTENDED_DATA_STUBS <- c(
   ED_01 = "extended_data_01",
+  ED_02 = "extended_data_02",
   ED_03 = "extended_data_03",
   ED_behaviour_coverage = "extended_data_05",
   ED_06 = "extended_data_06",

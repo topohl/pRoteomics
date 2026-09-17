@@ -328,8 +328,10 @@ figures:
           functional characterisation of the anatomical contrasts: do measured
           anatomical differences correspond to coherent biological programs? This
           annotates the SAME proteomic data and is NOT independent validation;
-          external validation is panel g. Selected canonical contrasts only; the
-          complete evidence lives in ED2.
+          external validation is panel g. It draws the strongest canonical term
+          per contrast for selected contrasts only; the complete term inventory
+          is the released control_anatomical_go_bp_gsea supplementary table,
+          40,680 rows across all 11 contrasts, not a figure panel.
         producer_script: figures/final_truth_v9_figure_02.R
         renderer: f9_internal_main
         render_mode: copy_svg
@@ -620,6 +622,102 @@ figures:
         hemisphere_handling: canonical_animal_level_bilaterally_aggregated
         x: 4
         "y": 96
+        w: 175
+        h: 48
+
+  # EXTENDED DATA 2, promoted in Phase 6A.5 with panels a and b only.
+  #
+  # Phase 6A withheld this figure because its third panel was presented as the
+  # complete canonical GO inventory while drawing 14 rows across 7 contrasts
+  # against 2,826 FDR-supported positive terms across 11. That panel is dropped
+  # rather than reworded, and the two artefacts that carried the same claim were
+  # corrected with it: the Figure 2h pointer now names the released
+  # control_anatomical_go_bp_gsea supplementary table, and ST3 states its
+  # selection instead of claiming completeness.
+  #
+  # Panel b needed a repair of its own before it could be promoted, and it is the
+  # panel the manuscript actually cites. It marked significance from the column
+  # named p_adjust and its legend called that Benjamini-Hochberg adjusted. In
+  # this analysis p_adjust is the raw single-set value, so that was the same
+  # class of false statistical label that withheld panel c - on the study's only
+  # externally anchored claim. It now uses signature_FDR, the signature-family
+  # correction the Results sentence actually rests on, and its released source
+  # data carries both statistics under their true names. No mark moved: the two
+  # agree on all 30 rows.
+  ED_02:
+    title: Extended Data Figure 2
+    width_mm: 183
+    height_mm: 116
+    layout_mode: absolute
+    manuscript_role: proteomics_extended_data
+    is_numbered_manuscript_figure: true
+    extended_data_number: 2
+    canonical_publication_id: extended_data_02
+    canonical_generation: final_truth_v9
+    canonical_generation_promoted_in_phase: "6A.5"
+    historical_generation: ED2_FINAL_V9
+    producing_entry_point: figures/final_truth_v9_extended_data.R
+    rendering_repository_computes_statistics: false
+    withheld_panel: >-
+      The historical panel c, v9_ed_internal_full, is deliberately not promoted.
+      It drew 14 of 2,826 FDR-supported positive GO terms under a complete-
+      inventory caption. No manuscript claim cites it.
+    question: >-
+      The complete control-only spatial fingerprint, and every tested pairing
+      between an internal anatomical contrast and an external hippocampal
+      signature.
+    panels:
+      - id: 02a
+        v9_panel_id: v9_ed_fingerprint_full
+        description: >-
+          The complete CON-only spatial fingerprint across every spatial unit.
+          Main Figure 2d shows a subset of these rows. Phenotype-blind: genes are
+          selected only by the prespecified control-only anatomical contrasts.
+        producer_script: figures/final_truth_v9_extended_data.R
+        renderer: f9_ed_fingerprint_full
+        render_mode: copy_svg
+        source_data_mode: copy_csv
+        figure_source: results/figures/manuscript_candidates/final_truth_v9/extended_data/panels/v9_ed_fingerprint_full.svg
+        primary_source: results/source_data/manuscript_candidates/final_truth_v9/extended_data/v9_ed_fingerprint_full_source_data.csv
+        input_dependencies:
+          - results/tables/manuscript_candidates/spatial_v6/figure2_spatial_fingerprint_scores.csv
+        scientific_contract: control_only_descriptive_spatial_fingerprint
+        biological_unit: animal
+        hemisphere_handling: canonical_animal_level_bilaterally_aggregated
+        x: 4
+        "y": 4
+        w: 175
+        h: 56
+      - id: 02b
+        v9_panel_id: v9_ed_external_full
+        description: >-
+          All 30 tested contrast-signature pairings: 10 expected and 20
+          specificity comparisons. Main Figure 2g shows the expected pairings
+          alone, so this is the only place the specificity grid appears.
+          Significance is the stored signature-family FDR.
+        producer_script: figures/final_truth_v9_extended_data.R
+        renderer: f9_ed_external_full
+        render_mode: copy_svg
+        source_data_mode: copy_csv
+        figure_source: results/figures/manuscript_candidates/final_truth_v9/extended_data/panels/v9_ed_external_full.svg
+        primary_source: results/source_data/manuscript_candidates/final_truth_v9/extended_data/v9_ed_external_full_source_data.csv
+        input_dependencies:
+          - results/source_data/04_differential_expression_enrichment/control_spatial_identity_validation/global/figure2e_source_data.csv
+        required_columns: [internal_contrast, external_signature, level, kind, expected_match, NES, signature_FDR]
+        expected_rows: 30
+        scientific_contract: external_contextual_anchoring_not_independent_validation
+        biological_unit: animal
+        hemisphere_handling: sample_level_model_blocked_by_AnimalID_and_adjusted_for_hemisphere
+        significance_statistic: >-
+          signature_FDR, Benjamini-Hochberg within the signature family. The
+          column formerly exported as p_adjust is the uncorrected single-set
+          value and is carried as single_set_p_unadjusted under that name (MT-04).
+        completeness_contract: >-
+          Complete with respect to what was tested: all 30 pairings. The 9
+          contrasts and 7 signatures form a 63-cell grid and only the
+          structurally applicable pairs were tested, which the panel states.
+        x: 4
+        "y": 64
         w: 175
         h: 48
 

@@ -125,7 +125,12 @@ testthat::test_that("the adjudication record is present and internally consisten
   # being switched while blockers were still open; inverted, it now stops a new
   # blocker being recorded while the promoted contract stays in place.
   testthat::expect_identical(sum(b$blocks_promotion == "YES"), 0L)
-  testthat::expect_true(all(b$id[b$severity == "RESOLVED"] %in% c("PB-01", "PB-02", "PB-03")))
+  # PB-01 to PB-03 were resolved in Phase 5B and PB-06 in Phase 6A.5, when the
+  # MT-04 relabelling it described was repaired in the panel, its legend and the
+  # supplementary table rather than left as a recorded concern.
+  testthat::expect_true(all(b$id[b$severity == "RESOLVED"] %in%
+                              c("PB-01", "PB-02", "PB-03", "PB-06")))
+  testthat::expect_true("PB-06" %in% b$id[b$severity == "RESOLVED"])
 })
 
 testthat::test_that("the column-registration defect is fixed and stays fixed", {
