@@ -7,6 +7,10 @@ if (!exists("repo_path", mode = "function")) {
 if (!exists("safe_name", mode = "function")) {
   source(repo_path("R", "validation_utils.R"))
 }
+## the manifest paths below resolve normalized-first through this helper
+if (!exists("resolve_differential_abundance_state", mode = "function")) {
+  source(repo_path("R", "differential_abundance_paths.R"))
+}
 
 canonical_clusterprofiler_manifest_contract_version <- function() {
   "clusterProfiler_manifest_v3_term_gene_provenance"
@@ -355,14 +359,27 @@ read_csv_contract <- function(path, character_columns = character()) {
   x
 }
 
+# Phase 6G.4: these two manifests moved into the normalized namespace as
+# models/, because downstream analyses in enrichment, integration and wgcna
+# read them as state rather than as provenance.
+#
+# Every consumer resolves them through these two functions and nowhere else,
+# so making the resolution normalized-first here repoints all of them at once.
+# Until run_clusterprofiler_enrichment / compare_go_enrichment are actually
+# rerun the normalized copy does not exist and the historical one answers,
+# which is why current behaviour is unchanged.
 canonical_clusterprofiler_manifest_path <- function(dataset, repository_root = repo_path()) {
-  file.path(repository_root, "data", "processed", "04_differential_expression_enrichment",
-    "clusterProfiler", as.character(dataset), "clusterProfiler_manifest.csv")
+  resolve_differential_abundance_state(
+    "clusterProfiler_manifest.csv",
+    owner = "run_clusterprofiler_enrichment", dataset = dataset,
+    legacy_substep = "clusterProfiler", repository_root = repository_root)
 }
 
 canonical_comparego_manifest_path <- function(dataset, repository_root = repo_path()) {
-  file.path(repository_root, "data", "processed", "04_differential_expression_enrichment",
-    "compareGO", as.character(dataset), "compareGO_input_manifest.csv")
+  resolve_differential_abundance_state(
+    "compareGO_input_manifest.csv",
+    owner = "compare_go_enrichment", dataset = dataset,
+    legacy_substep = "compareGO", repository_root = repository_root)
 }
 
 resolve_repository_contract_path <- function(path, repository_root = repo_path()) {

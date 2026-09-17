@@ -3,18 +3,28 @@
 # Script: analysis/differential_abundance/compare_external_stress_signatures.R
 # Stage: enrichment
 # Scope: global
-# Consumes: optional external cached stress/disease signatures and enrichment program summaries.
-# Produces: external stress/disease signature overlap tables and source data.
+# Consumes: required none declared in pipeline.yml; optional data/external/stress_disease_signatures/*.csv; results/tables/04_differential_expression_enrichment/biological_program_summary/neuron_neuropil/program_summary.csv; results/tables/04_differential_expression_enrichment/biological_program_summary/neuron_soma/program_summary.csv; +1 more
+# Produces: results/differential_abundance/compare_external_stress_signatures/global/tables/external_stress_disease_signature_overlap.csv; results/differential_abundance/compare_external_stress_signatures/global/tables/source_data/external_stress_disease_signature_overlap.csv; results/differential_abundance/compare_external_stress_signatures/global/manifests/run_manifest.yml
 # Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Registered in pipeline.yml stage enrichment; declares 3 output path(s).
 # ================================================================
+#  
+#  
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
 source(repo_path("R", "integration_utils.R"))
+source(repo_path("R", "differential_abundance_paths.R"))
+
+# Phase 6G.4: destinations resolve through the normalized output contract,
+# addressed by this analysis's own identity rather than by the historical
+# 04_differential_expression_enrichment stage directory. Outputs already
+# written there stay exactly where they are and are read, never rewritten.
+ANALYSIS_ID <- "compare_external_stress_signatures"
 
 SCRIPT_ID <- "analysis/differential_abundance/compare_external_stress_signatures.R"
-paths <- create_module_dirs("04_differential_expression_enrichment", "external_stress_disease_signature_overlap/global")
+paths <- differential_abundance_dirs(ANALYSIS_ID, scope = "global",
+                                     create = TRUE)
 signature_dir <- Sys.getenv("PROTEOMICS_EXTERNAL_SIGNATURE_DIR", unset = path_external("stress_disease_signatures"))
 signature_files <- Sys.glob(file.path(signature_dir, "*.csv"))
 

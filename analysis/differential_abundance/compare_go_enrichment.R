@@ -2,8 +2,8 @@
 # Script: analysis/differential_abundance/compare_go_enrichment.R
 # Stage: enrichment
 # Scope: dataset_specific
-# Consumes: required data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv; optional none.
-# Produces: data/processed/04_differential_expression_enrichment/compareGO/<dataset>/compareGO_input_manifest.csv; results/tables/04_differential_expression_enrichment/compareGO/<dataset>/.
+# Consumes: required results/differential_abundance/run_clusterprofiler_enrichment/<dataset>/models/clusterProfiler_manifest.csv; data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv; optional none declared in pipeline.yml
+# Produces: results/differential_abundance/compare_go_enrichment/<dataset>/models/compareGO_input_manifest.csv; results/differential_abundance/compare_go_enrichment/<dataset>/tables
 # Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Consumes clusterProfiler output.
 # ================================================================
@@ -53,6 +53,8 @@
 #'
 #' @author
 #'   Tobias Pohl
+#  
+#  
 
 script_file <- local({
   frame_files <- vapply(sys.frames(), function(frame) {
@@ -82,9 +84,15 @@ source(repo_path("R", "validation_utils.R"))
 source(repo_path("R", "enrichment_io.R"))
 source(repo_path("R", "schema_validation.R"))
 source(repo_path("R", "enrichment_plots.R"))
+source(repo_path("R", "differential_abundance_paths.R"))
+
+# Phase 6G.4: destinations resolve through the normalized output contract,
+# addressed by this analysis's own identity rather than by the historical
+# 04_differential_expression_enrichment stage directory. Outputs already
+# written there stay exactly where they are and are read, never rewritten.
+ANALYSIS_ID <- "compare_go_enrichment"
 MODULE_ID <- "04_differential_expression_enrichment"
 SUBSTEP_ID <- "compareGO"
-CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
 
 # Package installation policy. Keep FALSE for reproducible, fail-fast runs.
 AUTO_INSTALL_MISSING_PACKAGES <- FALSE
@@ -421,6 +429,7 @@ comparego_cfg$clusterProfiler_manifest <- as_repo_path(comparego_cfg$clusterProf
 comparego_cfg$uniprot_mapping_file <- as_repo_path(comparego_cfg$uniprot_mapping_file)
 DATASET <- current_dataset_from_cli(default = comparego_cfg$dataset %||% "neuron_neuropil")
 comparego_cfg$dataset <- DATASET
+CANONICAL_PATHS <- differential_abundance_dirs(ANALYSIS_ID, scope = DATASET)
 if (!nzchar(as.character(comparego_cfg$clusterProfiler_manifest))) {
   comparego_cfg$clusterProfiler_manifest <- path_processed(
     MODULE_ID, "clusterProfiler", DATASET, "clusterProfiler_manifest.csv"
@@ -516,7 +525,7 @@ if (isTRUE(DRY_RUN)) {
   quit(status = 0, save = "no")
 }
 
-comparego_processed_dir <- file.path(CANONICAL_PATHS$processed, DATASET)
+comparego_processed_dir <- file.path(CANONICAL_PATHS$models, DATASET)
 comparego_table_dir <- file.path(
   CANONICAL_PATHS$tables, DATASET, ont, ensemble_profiling,
   if (nzchar(condition)) condition else "all_route_units"
@@ -944,7 +953,7 @@ comparego_log_dir <- file.path(CANONICAL_PATHS$logs, DATASET)
 dir.create(comparego_log_dir, recursive = TRUE, showWarnings = FALSE)
 write_session_info(file.path(comparego_log_dir, "sessionInfo.txt"))
 write_config_snapshot(comparego_cfg, file.path(comparego_log_dir, "compareGO_config_snapshot.yml"))
-comparego_processed_dir <- file.path(CANONICAL_PATHS$processed, DATASET)
+comparego_processed_dir <- file.path(CANONICAL_PATHS$models, DATASET)
 dir.create(comparego_processed_dir, recursive = TRUE, showWarnings = FALSE)
 write_raw_csv(
   manifest_filtered,

@@ -280,7 +280,22 @@ testthat::test_that("pipeline registers one global downstream producer with cano
   testthat::expect_identical(unlist(producer$datasets), "global")
   testthat::expect_false(producer$recomputes_core_state)
   testthat::expect_true(producer$safe_downstream_rerun)
-  testthat::expect_length(producer$consumes_required, 6L)
+  ## Phase 6G.4 gave each differential_abundance dependency a normalized
+  ## counterpart alongside its historical path, so the raw entry count is no
+  ## longer 6. What the assertion protects is the dependency set, so that is
+  ## now checked directly: four distinct artifacts, the clusterProfiler
+  ## manifest once per dataset, and every normalized path paired with the
+  ## historical one it supersedes.
+  req <- unlist(producer$consumes_required)
+  testthat::expect_length(unique(basename(sub("/+$", "", req))), 4L)
+  testthat::expect_length(grep("clusterProfiler_manifest[.]csv$", req), 6L)
+  norm <- grep("^results/differential_abundance/", req, value = TRUE)
+  testthat::expect_gt(length(norm), 0L)
+  for (p in norm) {
+    testthat::expect_true(
+      any(basename(req[!req %in% norm]) == basename(p)),
+      info = paste("normalized dependency without a historical counterpart:", p))
+  }
   testthat::expect_true(any(grepl("source_data_SpatialProgramAtlas_SUS_vs_RES_publication.csv", producer$consumes_required, fixed = TRUE)))
   testthat::expect_true(any(grepl("sus_res_supported_go_term_theme_audit.csv", producer$consumes_required, fixed = TRUE)))
   testthat::expect_true(any(grepl("sus_res_biological_audit.xlsx", producer$produces, fixed = TRUE)))

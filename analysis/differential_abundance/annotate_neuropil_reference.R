@@ -3,8 +3,8 @@
 # Script: analysis/differential_abundance/annotate_neuropil_reference.R
 # Stage: enrichment
 # Scope: dataset_specific
-# Consumes: required data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv; data/processed/04_differential_expression_enrichment/clusterProfiler/neuron_neuropil/clusterProfiler_manifest.csv; optional config/marker_panels/wgcna_reference_marker_sets.csv.
-# Produces: results/tables/04_differential_expression_enrichment/neuropil_reference_annotation/<dataset>/.
+# Consumes: required results/differential_abundance/run_clusterprofiler_enrichment/<dataset>/models/clusterProfiler_manifest.csv; data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv; results/differential_abundance/run_clusterprofiler_enrichment/neuron_neuropil/models/clusterProfiler_manifest.csv; +1 more; optional config/marker_panels/wgcna_reference_marker_sets.csv
+# Produces: results/differential_abundance/annotate_neuropil_reference/<dataset>/tables
 # Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Runs after neuron_neuropil enrichment exists.
 # ================================================================
@@ -20,16 +20,24 @@
 #   - mixed_microenvironment
 #   - neuropil_sensitive
 #   - ambiguous
+#  
+#  
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
 source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "validation_utils.R"))
 source(repo_path("R", "enrichment_io.R"))
+source(repo_path("R", "differential_abundance_paths.R"))
+
+# Phase 6G.4: destinations resolve through the normalized output contract,
+# addressed by this analysis's own identity rather than by the historical
+# 04_differential_expression_enrichment stage directory. Outputs already
+# written there stay exactly where they are and are read, never rewritten.
+ANALYSIS_ID <- "annotate_neuropil_reference"
 
 MODULE_ID <- "04_differential_expression_enrichment"
 SUBSTEP_ID <- "neuropil_reference_annotation"
-CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
 
 DATASET <- current_dataset_from_cli()
 REFERENCE_DATASET <- Sys.getenv("PROTEOMICS_NEUROPIL_REFERENCE_DATASET", unset = "neuron_neuropil")
@@ -37,7 +45,7 @@ REFERENCE_DATASET <- validate_dataset(REFERENCE_DATASET, source = "PROTEOMICS_NE
 RUN_ID <- format(Sys.time(), "%Y%m%d_%H%M%S")
 DRY_RUN <- is_dry_run()
 
-CANONICAL_PATHS <- lapply(CANONICAL_PATHS, function(path) file.path(path, DATASET))
+CANONICAL_PATHS <- differential_abundance_dirs(ANALYSIS_ID, scope = DATASET)
 invisible(lapply(CANONICAL_PATHS, dir_create))
 
 message("Neuropil reference annotation")
