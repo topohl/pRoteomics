@@ -1,11 +1,11 @@
+source(testthat::test_path("..", "..", "R", "paths.R"))
+
 # Regression tests for the atlas program-evidence audit.
 #
 # These assert the contract a reviewer relies on: that every displayed row is
 # traceable from registry anchor to GO term to supported term to leading-edge
 # protein, and that the protein evidence is counted only over FDR-supported
 # results.
-
-source(testthat::test_path("..", "..", "R", "paths.R"))
 
 pe <- function(f) path_results("tables", "publication_audits",
                                "program_evidence", f)

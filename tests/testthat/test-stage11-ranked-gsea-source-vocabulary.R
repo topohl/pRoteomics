@@ -1,3 +1,5 @@
+source(testthat::test_path("..", "..", "R", "paths.R"))
+
 testthat::local_edition(3)
 
 # Stage 11 consumes the canonical compareGO ranked-GSEA long atlas. That
@@ -7,7 +9,6 @@ testthat::local_edition(3)
 # else is a different inferential lineage and must fail closed.
 
 # paths.R first: the utils header resolves its own dependencies relatively.
-source(testthat::test_path("..", "..", "R", "paths.R"))
 source(repo_path("R", "sus_res_spatial_dap_atlas_utils.R"))
 
 CURRENT <- "canonical_compareGO_ranked_GSEA_GO_BP"

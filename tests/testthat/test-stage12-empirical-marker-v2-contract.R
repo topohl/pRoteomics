@@ -1,3 +1,5 @@
+source(testthat::test_path("..", "..", "R", "paths.R"))
+
 testthat::local_edition(3)
 
 # Stage 12 consumes the empirical ROI marker panels DESCRIPTIVELY
@@ -10,8 +12,6 @@ testthat::local_edition(3)
 #
 # The reader lives inside a self-executing audit script, so it is extracted
 # from the parsed source rather than sourced.
-
-source(testthat::test_path("..", "..", "R", "paths.R"))
 
 AUDIT_SCRIPT <- repo_path("analysis/05_wgcna", "12_microglia_wgcna_nature_readiness_audit.R"
 )

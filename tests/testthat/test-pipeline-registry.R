@@ -1,5 +1,6 @@
+source(testthat::test_path("..", "..", "R", "paths.R"))
+
 testthat::test_that("pipeline.yml is valid and references existing active scripts", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   source(repo_path("R", "dataset_config.R"))
   source(repo_path("R", "pipeline_registry.R"))
 
@@ -37,7 +38,6 @@ testthat::test_that("pipeline.yml is valid and references existing active script
 })
 
 testthat::test_that("deprecated 04d stays excluded and documented as legacy", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   source(repo_path("R", "dataset_config.R"))
   source(repo_path("R", "pipeline_registry.R"))
 
@@ -60,7 +60,6 @@ testthat::test_that("deprecated 04d stays excluded and documented as legacy", {
 })
 
 testthat::test_that("analysis discovery is repository-wide and fail closed", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   source(repo_path("R", "pipeline_registry.R"))
 
   candidates <- c(
@@ -80,7 +79,6 @@ testthat::test_that("analysis discovery is repository-wide and fail closed", {
 })
 
 testthat::test_that("current optional and superseded blind-spot scripts are classified", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   source(repo_path("R", "dataset_config.R"))
   source(repo_path("R", "pipeline_registry.R"))
 
@@ -107,7 +105,6 @@ testthat::test_that("current optional and superseded blind-spot scripts are clas
 })
 
 testthat::test_that("documented dry-run stages are real registry stages", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   source(repo_path("R", "dataset_config.R"))
   source(repo_path("R", "pipeline_registry.R"))
 
@@ -124,7 +121,6 @@ testthat::test_that("documented dry-run stages are real registry stages", {
 })
 
 testthat::test_that("README and RUN_ORDER do not present legacy scripts as active", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
 
   readme <- paste(readLines(repo_path("README.md"), warn = FALSE), collapse = "\n")
   run_order <- paste(readLines(repo_path("RUN_ORDER.md"), warn = FALSE), collapse = "\n")
@@ -139,7 +135,6 @@ testthat::test_that("README and RUN_ORDER do not present legacy scripts as activ
 })
 
 testthat::test_that("bespoke enrichment legacy scripts stay out of the active folder", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   source(repo_path("R", "pipeline_registry.R"))
 
   testthat::skip_if_not_installed("yaml")

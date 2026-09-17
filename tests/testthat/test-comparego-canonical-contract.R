@@ -1,3 +1,5 @@
+source(testthat::test_path("..", "..", "R", "paths.R"))
+
 make_test_provenance <- function() {
   data.frame(
     dataset = "microglia", comparison = "manifest_identity", result_type = "GSEA_GO",
@@ -45,7 +47,6 @@ make_test_cluster_manifest <- function(root, status = "success_with_terms", malf
 }
 
 testthat::test_that("canonical compareGO accepts terms, zero terms, and explicit failures", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   source(repo_path("R", "enrichment_io.R"))
   root <- tempfile("comparego-contract-")
   dir.create(root)
@@ -79,7 +80,6 @@ testthat::test_that("canonical compareGO accepts terms, zero terms, and explicit
 })
 
 testthat::test_that("canonical compareGO rejects stale, malformed, and missing provenance inputs", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   source(repo_path("R", "enrichment_io.R"))
   root <- tempfile("comparego-invalid-")
   dir.create(root)
@@ -99,7 +99,6 @@ testthat::test_that("canonical compareGO rejects stale, malformed, and missing p
 })
 
 testthat::test_that("comparison identity and output are invariant to filenames and manifest order", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   source(repo_path("R", "enrichment_io.R"))
   root_a <- tempfile("comparego-order-a-"); dir.create(root_a)
   root_b <- tempfile("comparego-order-b-"); dir.create(root_b)

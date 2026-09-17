@@ -1,5 +1,6 @@
+source(testthat::test_path("..", "..", "R", "paths.R"))
+
 testthat::test_that("canonical module entrypoints exist", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   active <- c(
     "analysis/05_wgcna/01_WGCNA.r",
     "analysis/05_wgcna/01b_module_supermodule_GO_heatmaps.R",
@@ -11,7 +12,6 @@ testthat::test_that("canonical module entrypoints exist", {
 })
 
 testthat::test_that("module score implementation lives in 03_score_module_activity", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   txt <- paste(readLines(repo_path("analysis/05_wgcna/03_score_module_activity.R"), warn = FALSE), collapse = "\n")
   testthat::expect_false(grepl("source(repo_path(\"06_modules_WGCNA\", \"05_module_score.r\"))", txt, fixed = TRUE))
   testthat::expect_false(grepl("source(repo_path(\"06_modules_WGCNA\", \"91_module_score.r\"))", txt, fixed = TRUE))
@@ -29,7 +29,6 @@ testthat::test_that("module score implementation lives in 03_score_module_activi
 })
 
 testthat::test_that("legacy module wrapper scripts have been removed", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   removed <- c(
     "06_modules_WGCNA/legacy/05_module_score.r",
     "06_modules_WGCNA/legacy/91_module_score.r",
@@ -41,7 +40,6 @@ testthat::test_that("legacy module wrapper scripts have been removed", {
 })
 
 testthat::test_that("pipeline module stages use canonical scripts and contracts", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   testthat::skip_if_not_installed("yaml")
   registry <- yaml::read_yaml(repo_path("pipeline.yml"))
   modules_wgcna <- registry$stages$modules_wgcna$scripts
@@ -98,7 +96,6 @@ testthat::test_that("pipeline module stages use canonical scripts and contracts"
 })
 
 testthat::test_that("pipeline legacy block does not retain removed wrapper names", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   pipeline_txt <- paste(readLines(repo_path("pipeline.yml"), warn = FALSE), collapse = "\n")
   for (pair in c("03_overlap_modules.r", "04_overlap_modules.r", "05_module_score.r", "05_wgcna_de_gsea_overlap.r", "91_module_score.r")) {
     testthat::expect_false(grepl(pair, pipeline_txt, fixed = TRUE), info = pair)
@@ -113,7 +110,6 @@ testthat::test_that("pipeline legacy block does not retain removed wrapper names
 })
 
 testthat::test_that("module score dry-run reports dataset-aware source defaults", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   run <- function(dataset) {
     cmd <- file.path(R.home("bin"), "Rscript")
     old_wd <- setwd(repo_path())
