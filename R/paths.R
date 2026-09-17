@@ -120,6 +120,82 @@ path_external <- function(...) repo_path("data", "external", ...)
 path_processed <- function(...) repo_path("data", "processed", ...)
 path_results <- function(...) repo_path("results", ...)
 
+# --- output lifecycles (config/output_layout.yml) -------------------------
+# work/    regenerable intermediates, never cited, never canonical
+# results/ canonical scientific results
+# exports/ frozen outward-facing bundles, the only thing the manuscript reads
+path_work <- function(...) repo_path("work", ...)
+path_export <- function(...) repo_path("exports", ...)
+
+.output_layout_cache <- new.env(parent = emptyenv())
+
+output_layout <- function() {
+  if (!is.null(.output_layout_cache$layout)) return(.output_layout_cache$layout)
+  f <- repo_path("config", "output_layout.yml")
+  if (!file.exists(f) || !requireNamespace("yaml", quietly = TRUE)) return(NULL)
+  .output_layout_cache$layout <- yaml::read_yaml(f)
+  .output_layout_cache$layout
+}
+
+output_layout_domains <- function() {
+  l <- output_layout()
+  if (is.null(l)) return(character(0))
+  as.character(unlist(l$domains, use.names = FALSE))
+}
+
+output_layout_children <- function() {
+  l <- output_layout()
+  if (is.null(l)) return(character(0))
+  names(l$canonical_result_layout$children_in_use)
+}
+
+# results/<domain>/<analysis_id>/<scope>/<child>/...
+#
+# analysis_id is the canonical owner's script stem, so an output is addressed
+# by the analysis that owns it rather than by a historical stage number. The
+# domain and child are checked against the contract, because a typo here would
+# silently create a sibling namespace that no reader would ever find.
+canonical_result_path <- function(domain, analysis_id, scope = "global",
+                                  child = "tables", ...) {
+  domains <- output_layout_domains()
+  children <- output_layout_children()
+  if (length(domains) && !domain %in% domains) {
+    stop("unknown output domain '", domain, "'; config/output_layout.yml declares: ",
+         paste(domains, collapse = ", "), call. = FALSE)
+  }
+  if (length(children) && !child %in% children) {
+    stop("unknown result child '", child, "'; config/output_layout.yml declares: ",
+         paste(children, collapse = ", "), call. = FALSE)
+  }
+  analysis_id <- sub("[.][Rr]$", "", basename(analysis_id))
+  if (!nzchar(scope)) scope <- "global"
+  path_results(domain, analysis_id, scope, child, ...)
+}
+
+canonical_work_path <- function(domain, analysis_id, scope = "global", ...) {
+  analysis_id <- sub("[.][Rr]$", "", basename(analysis_id))
+  if (!nzchar(scope)) scope <- "global"
+  path_work(domain, analysis_id, scope, ...)
+}
+
+# --- legacy output roots --------------------------------------------------
+# Registered in config/legacy_output_registry.csv: real artefacts that no
+# registered writer produces any more. Reads are fine, writes are not.
+legacy_output_roots <- function() {
+  f <- repo_path("config", "legacy_output_registry.csv")
+  if (!file.exists(f)) return(character(0))
+  d <- utils::read.csv(f, stringsAsFactors = FALSE)
+  d$legacy_path[d$policy == "LEGACY_READ_ONLY"]
+}
+
+is_legacy_output_path <- function(path) {
+  roots <- legacy_output_roots()
+  if (!length(roots)) return(rep(FALSE, length(path)))
+  rel <- relative_to(path)
+  vapply(rel, function(p) any(p == roots | startsWith(p, paste0(roots, "/"))),
+         logical(1), USE.NAMES = FALSE)
+}
+
 dir_create <- function(...) {
   path <- file.path(...)
   if (!dir.exists(path)) dir.create(path, recursive = TRUE, showWarnings = FALSE)
@@ -439,6 +515,62 @@ write_config_snapshot <- function(config, path) {
     writeLines(yaml::as.yaml(config), path)
   } else {
     capture.output(str(config), file = path)
+  }
+  invisible(path)
+}
+
+# Provenance for one canonical result family, written into its manifests/
+# child: config/output_layout.yml section 9.
+#
+# biological unit and statistical scope are deliberately not restated here.
+# They are declared once, for the analyses that reach the manuscript, in
+# docs/MANUSCRIPT_STATISTICAL_CONTRACT.md, which is generated from the frozen
+# v9 contract. A manifest that paraphrased them would duplicate a frozen
+# scientific artefact with no authority to do so, so it points at it instead.
+write_result_manifest <- function(domain, analysis_id, scope = "global",
+                                  inputs = list(), outputs = list(),
+                                  parameters = list(), config_files = character(0),
+                                  notes = NULL) {
+  aid <- sub("[.][Rr]$", "", basename(analysis_id))
+  path <- canonical_result_path(domain, aid, scope, "manifests", "manifest.yml")
+  dir_create(dirname(path))
+
+  hash_map <- function(x) {
+    x <- as.character(unlist(x, use.names = TRUE))
+    x <- x[!is.na(x) & nzchar(x)]
+    if (!length(x)) return(list())
+    stats::setNames(lapply(x, function(p)
+      list(path = relative_to(p),
+           sha256 = if (file.exists(p) && !dir.exists(p)) file_hash_sha256(p) else NA_character_)),
+      names(x) %||% basename(x))
+  }
+
+  owner <- NA_character_
+  own_file <- repo_path("config", "results_ownership.csv")
+  if (file.exists(own_file)) {
+    o <- utils::read.csv(own_file, stringsAsFactors = FALSE)
+    hit <- grep(paste0("/", aid, "[.][Rr]$"), o$canonical_owner)
+    if (length(hit)) owner <- o$canonical_owner[hit[1]]
+  }
+
+  manifest <- list(
+    contract_version = "result_manifest_v1",
+    analysis_id = aid,
+    domain = domain,
+    scope = scope,
+    canonical_owner = if (is.na(owner)) paste0("analysis/", domain, "/", aid, ".R") else owner,
+    source_commit = git_commit_sha(),
+    timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z"),
+    r_version = paste(R.version$major, R.version$minor, sep = "."),
+    config = hash_map(config_files),
+    upstream_inputs = hash_map(inputs),
+    outputs = hash_map(outputs),
+    parameters = parameters,
+    statistical_contract = "docs/MANUSCRIPT_STATISTICAL_CONTRACT.md",
+    notes = notes
+  )
+  if (requireNamespace("yaml", quietly = TRUE)) {
+    writeLines(yaml::as.yaml(manifest), path, useBytes = TRUE)
   }
   invisible(path)
 }

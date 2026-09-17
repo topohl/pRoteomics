@@ -131,9 +131,41 @@ freeze_protected_export_files <- function() {
     "R/utilities/export_helpers.R",
     "R/paths.R",
     "R/statistics/pride_helpers.R",
-    "analysis/09_publication_exports/08_export_manuscript_figures.R",
-    "analysis/09_publication_exports/09_export_source_data.R"
+    "analysis/publication_source_data/08_export_manuscript_figures.R",
+    "analysis/publication_source_data/09_export_source_data.R"
   )
+}
+
+# A protected file is identified by what it is, not by where it currently sits.
+# Restructuring moved several of them, so a blob lookup at an older commit has
+# to try the path the file had at that commit. Without this the equivalence
+# claim silently degrades: the lookup misses, the sha256 comes back NA, and
+# "not identical" gets reported for a file that never changed.
+#
+# Only add an entry here when a file genuinely moved. The point of the list is
+# to make a rename visible in one place rather than to paper over a real
+# content change.
+freeze_protected_path_history <- function() {
+  list(
+    "analysis/publication_source_data/08_export_manuscript_figures.R" = c(
+      "analysis/09_publication_exports/08_export_manuscript_figures.R",
+      "09_export_pride_journal/08_export_manuscript_figures.R"
+    ),
+    "analysis/publication_source_data/09_export_source_data.R" = c(
+      "analysis/09_publication_exports/09_export_source_data.R",
+      "09_export_pride_journal/09_export_source_data.R"
+    ),
+    "R/enrichment/clusterprofiler_reproducibility.R" = c(
+      "R/clusterprofiler_reproducibility.R"
+    ),
+    "R/utilities/export_helpers.R" = c("R/export_helpers.R"),
+    "R/statistics/pride_helpers.R" = c("R/pride_helpers.R")
+  )
+}
+
+# Every path a protected file has been known by, current first.
+freeze_protected_path_candidates <- function(rel_path) {
+  unique(c(rel_path, freeze_protected_path_history()[[rel_path]]))
 }
 
 # Proof by git object identity plus SHA-256 of the extracted blobs. Git's blob
@@ -141,7 +173,13 @@ freeze_protected_export_files <- function() {
 # proof; the SHA-256 values are recorded so the manifest is verifiable without
 # git internals.
 freeze_blob_sha256 <- function(commit, rel_path) {
-  oid <- freeze_git_sha(paste0("rev-parse ", commit, ":", rel_path))
+  ## Try the current path first, then the paths this file had earlier, so a
+  ## rename does not turn an unchanged file into a reported mismatch.
+  oid <- NA_character_
+  for (p in freeze_protected_path_candidates(rel_path)) {
+    oid <- freeze_git_sha(paste0("rev-parse ", commit, ":", p))
+    if (!is.na(oid)) break
+  }
   if (is.na(oid)) {
     return(list(blob_oid = NA_character_, sha256 = NA_character_))
   }

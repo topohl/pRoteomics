@@ -7,19 +7,32 @@
 # rather than by renderer generation, so a future reorganisation of the
 # analysis output tree cannot break manuscript rendering.
 #
-#   results/publication_source_data/<publication_id>/...
-#   results/publication_source_data/manifest.csv
+#   exports/publication_source_data/<publication_id>/...
+#   exports/publication_source_data/manifest.csv
 #
 # The bundle is an export, not a move: the canonical analysis outputs stay
 # where the pre-restructure freeze recorded them, and each exported copy
 # carries the source path plus a SHA-256 so the manuscript repository can
 # verify it without knowing anything about this repository's internals.
+#
+# Phase 6F moved the bundle out of results/ and into the exports/ lifecycle.
+# It was sitting inside the canonical results tree, which made it look like an
+# analysis result rather than a frozen interface, and no registered pipeline
+# step declared it because this tool is invoked by hand rather than by
+# pipeline.yml. exports/ is now the only tree the manuscript repository reads.
+#
+# The two source roots below are registered LEGACY_READ_ONLY in
+# config/legacy_output_registry.csv: reading them is allowed and is what this
+# tool does, but nothing may write there any more. The assembled figures under
+# results/figures/manuscript are produced by renderers that moved to
+# Exp9_manuscript in Phase 6C, which is recorded as remaining debt in
+# docs/OUTPUT_LAYOUT.md.
 
 source(file.path("R", "paths.R"))
 
 SOURCE_ROOT <- path_results("source_data", "manuscript")
 FIGURE_ROOT <- path_results("figures", "manuscript")
-BUNDLE_ROOT <- path_results("publication_source_data")
+BUNDLE_ROOT <- path_export("publication_source_data")
 
 # The list of publication identities is a scientific-side contract, so that
 # building the bundle never requires reading the manuscript repository.

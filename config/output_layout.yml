@@ -1,0 +1,137 @@
+# Output layout contract, version 2.
+#
+# config/output_namespaces.yml is version 1. It is a frozen baseline object and
+# stays byte-identical; it describes the layout the historical results tree was
+# written in, and its rules (historical trees are read only, no automatic
+# migration or deletion) still hold. This file describes the layout every
+# future canonical write uses.
+#
+# Nothing in this contract moves or deletes an existing artefact. The
+# historical tree is registered in config/legacy_output_registry.csv and stays
+# where the frozen manifests already record it.
+
+contract_version: output_layout_v2
+supersedes: output_namespaces_v1
+frozen_predecessor_is_authoritative_for: historical output tree
+
+# ---------------------------------------------------------------- lifecycles
+# Three roots, by how long an artefact is meant to live and who may read it.
+lifecycles:
+  work:
+    root: work
+    holds: regenerable intermediates
+    tracked: false
+    may_be_manuscript_cited: false
+    may_be_canonical: false
+    note: >
+      Anything under work/ can be deleted and rebuilt from raw inputs and
+      config. Nothing may cite it, and no downstream contract may name it.
+  results:
+    root: results
+    holds: canonical scientific results
+    tracked: false
+    may_be_manuscript_cited: false
+    may_be_canonical: true
+    note: >
+      Stable, analysis-owned, downstream-consumable. One canonical owner per
+      family, recorded in config/results_ownership.csv. The manuscript does not
+      read this tree; it reads the export bundle.
+  exports:
+    root: exports
+    holds: frozen outward-facing bundles
+    tracked: false
+    tracked_exceptions: ["exports/**/manifest.csv"]
+    may_be_manuscript_cited: true
+    may_be_canonical: false
+    note: >
+      An export is a copy of canonical results, frozen with a manifest that
+      carries a sha256 per file. Exp9_manuscript imports from
+      exports/publication_source_data/ and from nowhere else.
+
+# ------------------------------------------------------------ canonical shape
+# results/<domain>/<analysis_id>/<scope>/<child>/
+canonical_result_layout:
+  pattern: results/<domain>/<analysis_id>/<scope>/<child>
+  domain: the analysis directory under analysis/, without a numeric prefix
+  analysis_id: >
+    the canonical owner's script stem, so an output is addressed by the
+    analysis that owns it rather than by a historical stage number
+  scope: global, or the dataset id for a dataset-specific analysis
+  children_in_use:
+    tables: machine-readable results
+    plots: scientific diagnostic plots
+    models: fitted objects and serialised state
+    manifests: run manifests, session info, provenance
+    reports: human-readable summaries
+  children_note: >
+    Only the child types an analysis actually writes are created. plots/ and
+    not figures/: figures/ is the manuscript repository's word for an
+    assembled journal figure, and reusing it here blurred the boundary.
+  segments_after_scope_are_preserved: >
+    A segment that carries meaning, such as an ontology or a contrast
+    direction, stays in the path.
+
+domains:
+  - preprocessing
+  - qc
+  - spatial_validation
+  - differential_abundance
+  - wgcna
+  - enrichment
+  - spatial_networks
+  - integration
+  - publication_source_data
+
+# ------------------------------------------------------------ artifact naming
+# A canonical filename describes the object, not when it was made.
+artifact_naming:
+  describe_the_object: true
+  banned_tokens:
+    - stage
+    - part
+    - final
+    - latest
+    - revised
+    - new
+    - old
+    - "v[0-9]"
+  context_belongs_in:
+    - directories
+    - table columns
+  rationale: >
+    Dataset, analysis and scope are already in the path, so repeating them in
+    the filename adds length without adding information.
+
+# ------------------------------------------------------------------- policies
+rules:
+  canonical_writers_target_the_normalized_namespace: true
+  intermediates_are_written_to_work: true
+  outward_facing_bundles_are_written_to_exports: true
+  manuscript_imports_only_from_exports: true
+  legacy_roots_are_read_only: true
+  no_automatic_migration_or_deletion: true
+  one_canonical_writer_per_artifact: true
+
+legacy_policy:
+  registry: config/legacy_output_registry.csv
+  physical_objects: unchanged
+  active_writes: forbidden
+  reads: permitted, so results produced before the migration stay reachable
+
+publication_boundary:
+  export_root: exports/publication_source_data
+  manifest: exports/publication_source_data/manifest.csv
+  contract: config/publication_source_data_contract.yml
+  writer: tools/export_publication_source_data.R
+  consumer: Exp9_manuscript
+  note: >
+    The bundle is written by a human-invoked tool rather than by a registered
+    pipeline step, which is why no produces entry in pipeline.yml declares it.
+    Before Phase 6F it was written into results/publication_source_data/, in
+    the middle of the canonical results tree, and the manuscript additionally
+    resolved 196 render inputs against arbitrary results/ paths. The export
+    root is now the single declared interface.
+  known_debt: >
+    The exporter reads results/figures/manuscript, whose renderers moved to
+    Exp9_manuscript in Phase 6C. The assembled-figure half of the bundle
+    therefore depends on artefacts this repository no longer produces.
