@@ -1,3 +1,5 @@
+source(testthat::test_path("..", "..", "R", "paths.R"))
+
 test_root <- function(...) {
   testthat::test_path("..", "..", ...)
 }
@@ -30,7 +32,7 @@ read_corrected_local_handoff <- function(path) {
 testthat::test_that("circular atlas uses the Stage 07 inferential handoff", {
   script <- paste(
     readLines(
-      test_root("10_biological_integration", "04_wgcna_circular_atlas.R"),
+      test_root("analysis/08_integration", "04_wgcna_circular_atlas.R"),
       warn = FALSE
     ),
     collapse = "\n"
@@ -686,15 +688,13 @@ testthat::test_that("standardized circular SVG and PDF outputs exist", {
 testthat::test_that("circular script does not use broad legacy FDR for support", {
   script <- paste(
     readLines(
-      test_root("10_biological_integration", "04_wgcna_circular_atlas.R"),
+      test_root("analysis/08_integration", "04_wgcna_circular_atlas.R"),
       warn = FALSE
     ),
     collapse = "\n"
   )
   testthat::expect_match(
     script,
-source(testthat::test_path("..", "..", "R", "paths.R"))
-
     'source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))',
     fixed = TRUE
   )

@@ -1,3 +1,5 @@
+source(testthat::test_path("..", "..", "R", "paths.R"))
+
 testthat::local_edition(3)
 
 # The Stage-12 audit enforces, as validation check `context_claim_limits`:
@@ -10,8 +12,6 @@ testthat::local_edition(3)
 # module first lands in it. These tests extract the shipped switch() table
 # straight from the audit source and prove EVERY branch satisfies the
 # contract, including branches no module currently occupies.
-
-source(testthat::test_path("..", "..", "R", "paths.R"))
 
 AUDIT_SCRIPT <- repo_path("analysis/05_wgcna", "12_microglia_wgcna_nature_readiness_audit.R"
 )

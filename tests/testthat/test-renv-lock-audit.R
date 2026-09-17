@@ -1,3 +1,5 @@
+source(testthat::test_path("..", "..", "R", "paths.R"))
+
 testthat::test_that("renv lock audit reads package records without guessing versions", {
   source(repo_path("R", "renv_lock_audit.R"))
 
@@ -163,7 +165,6 @@ testthat::test_that("source labels are faithful and no remote metadata is invent
 })
 
 testthat::test_that("the freeze manifest can inspect the lockfile deterministically", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   source(repo_path("R", "publication_freeze_utils.R"))
 
   a <- freeze_renv_lockfile_state()

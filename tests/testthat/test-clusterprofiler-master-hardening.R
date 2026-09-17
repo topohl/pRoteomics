@@ -1,3 +1,5 @@
+source(testthat::test_path("..", "..", "R", "paths.R"))
+
 make_master_test_manifest <- function(status = "success_with_terms", n_terms = 1L) {
   data.frame(
     result_type = "GSEA_GO", analysis_status = status, n_terms = as.integer(n_terms),
@@ -16,7 +18,6 @@ make_master_test_result <- function(comparison, manifest_status = "success_with_
 }
 
 testthat::test_that("master assessment distinguishes successful term and zero-term workers", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   source(repo_path("R", "enrichment_io.R"))
   results <- list(
     make_master_test_result("with_terms"),
@@ -33,7 +34,6 @@ testthat::test_that("master assessment distinguishes successful term and zero-te
 })
 
 testthat::test_that("one failed worker produces a nonzero truthful master status", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   source(repo_path("R", "enrichment_io.R"))
   results <- list(
     make_master_test_result("ok"),
@@ -49,7 +49,6 @@ testthat::test_that("one failed worker produces a nonzero truthful master status
 })
 
 testthat::test_that("all failed and malformed worker returns are counted as failed", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   source(repo_path("R", "enrichment_io.R"))
   failed <- list(
     make_master_test_result("a", "failed", NA_integer_, "FAILED", "a failed"),
@@ -72,7 +71,6 @@ testthat::test_that("all failed and malformed worker returns are counted as fail
 })
 
 testthat::test_that("path inventory includes fallback audits only when fallback is active", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   source(repo_path("R", "enrichment_io.R"))
   audit_root <- "P:/data/processed/clusterProfiler/protein_group_audits"
 
@@ -112,7 +110,6 @@ testthat::test_that("path inventory includes fallback audits only when fallback 
 })
 
 testthat::test_that("output path preflight evaluates only active paths", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   source(repo_path("R", "enrichment_io.R"))
   fallback_name <- "compatibility_fallback_protein_group_annotation_audit.csv"
   canonical_name <- "collapsed_gene_input_provenance.csv"
@@ -147,7 +144,6 @@ testthat::test_that("output path preflight evaluates only active paths", {
 })
 
 testthat::test_that("strict CSV writing fails loudly and verifies successful writes", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   source(repo_path("R", "enrichment_io.R"))
   root <- tempfile("strict-manifest-")
   dir.create(root)
@@ -161,7 +157,6 @@ testthat::test_that("strict CSV writing fails loudly and verifies successful wri
 })
 
 testthat::test_that("child R process exits nonzero for failed assessment", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   helper <- normalizePath(repo_path("R", "enrichment_io.R"), winslash = "/", mustWork = TRUE)
   script <- tempfile("clusterprofiler-exit-", fileext = ".R")
   writeLines(c(

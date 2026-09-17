@@ -1,3 +1,5 @@
+source(testthat::test_path("..", "..", "R", "paths.R"))
+
 testthat::local_edition(3)
 
 # Integration-level: exercise the real Stage-06 diagnostics chain
@@ -5,8 +7,6 @@ testthat::local_edition(3)
 #   -> build local/recurrent GSEA evidence
 # against each accepted comparison vocabulary, using the real helpers rather
 # than re-implementing them.
-
-source(testthat::test_path("..", "..", "R", "paths.R"))
 
 source(repo_path("R", "gsea_wgcna_concordance_utils.R"))
 

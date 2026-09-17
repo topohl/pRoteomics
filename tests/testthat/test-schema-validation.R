@@ -1,5 +1,6 @@
+source(testthat::test_path("..", "..", "R", "paths.R"))
+
 testthat::test_that("schema validation catches missing columns and accepts valid claims", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   source(repo_path("R", "schema_validation.R"))
   testthat::skip_if_not_installed("yaml")
 
@@ -97,7 +98,6 @@ testthat::test_that("schema validation catches missing columns and accepts valid
 })
 
 testthat::test_that("mapped contrast schema validates p-value ranges", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   source(repo_path("R", "schema_validation.R"))
   testthat::skip_if_not_installed("yaml")
 
@@ -137,10 +137,8 @@ testthat::test_that("mapped contrast schema validates p-value ranges", {
 })
 
 testthat::test_that("WGCNA module schema requires canonical protein-group identity", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   source(repo_path("R", "schema_validation.R"))
   testthat::skip_if_not_installed("yaml")
-
   good <- data.frame(
     dataset = "microglia",
     ProteinGroupID = "PG:microglia:ABC123",
@@ -161,7 +159,6 @@ testthat::test_that("WGCNA module schema requires canonical protein-group identi
 })
 
 testthat::test_that("clusterProfiler manifest records the protein-group enrichment contract", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   source(repo_path("R", "schema_validation.R"))
   testthat::skip_if_not_installed("yaml")
   good <- data.frame(dataset = "microglia", comparison = "cmp", result_type = "GSEA_GO", ontology = "BP",
@@ -178,7 +175,6 @@ testthat::test_that("clusterProfiler manifest records the protein-group enrichme
 })
 
 testthat::test_that("term-gene provenance schema preserves character Entrez identifiers", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   source(repo_path("R", "schema_validation.R"))
   testthat::skip_if_not_installed("yaml")
   good <- data.frame(
@@ -195,7 +191,6 @@ testthat::test_that("term-gene provenance schema preserves character Entrez iden
 })
 
 testthat::test_that("enrichment manifest schemas match the columns written by shared contracts", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   source(repo_path("R", "enrichment_io.R"))
   source(repo_path("R", "schema_validation.R"))
   testthat::skip_if_not_installed("yaml")
@@ -206,7 +201,6 @@ testthat::test_that("enrichment manifest schemas match the columns written by sh
 })
 
 testthat::test_that("WGCNA group-effect output validation checks required columns and ranges", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   source(repo_path("R", "dataset_config.R"))
   source(repo_path("R", "validation_utils.R"))
 
@@ -331,7 +325,6 @@ testthat::test_that("WGCNA group-effect output validation checks required column
 })
 
 testthat::test_that("Phase 2B Stage 05 typed schemas cover corrected outputs", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   source(repo_path("R", "dataset_config.R"))
   source(repo_path("R", "wgcna_downstream_utils.R"))
   source(repo_path("R", "wgcna_identity_contract_utils.R"))
@@ -356,7 +349,6 @@ testthat::test_that("Phase 2B Stage 05 typed schemas cover corrected outputs", {
 })
 
 testthat::test_that("microglia neuropil independence audit schemas validate", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   source(repo_path("R", "schema_validation.R"))
   testthat::skip_if_not_installed("yaml")
 
@@ -417,7 +409,6 @@ testthat::test_that("microglia neuropil independence audit schemas validate", {
 })
 
 testthat::test_that("WGCNA inferential handoff schema requires source provenance", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   source(repo_path("R", "schema_validation.R"))
   testthat::skip_if_not_installed("yaml")
 
@@ -473,7 +464,6 @@ testthat::test_that("WGCNA inferential handoff schema requires source provenance
 })
 
 testthat::test_that("final reviewer audit schemas validate", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   source(repo_path("R", "schema_validation.R"))
   testthat::skip_if_not_installed("yaml")
 

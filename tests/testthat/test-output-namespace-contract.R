@@ -1,5 +1,6 @@
+source(testthat::test_path("..", "..", "R", "paths.R"))
+
 testthat::test_that("output namespace contract is complete and classifies roles", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   source(repo_path("R", "output_namespace_utils.R"))
 
   contract <- read_output_namespace_contract()
@@ -31,9 +32,7 @@ testthat::test_that("output namespace contract is complete and classifies roles"
 })
 
 testthat::test_that("manuscript figure paths keep authoring separate from export", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   source(repo_path("R", "output_namespace_utils.R"))
-
   root <- tempfile("output-root-")
   paths <- output_namespace_manuscript_figure_paths(root, "03")
   testthat::expect_identical(
@@ -61,7 +60,6 @@ testthat::test_that("manuscript figure paths keep authoring separate from export
 })
 
 testthat::test_that("pipeline manuscript entry points declare authoring outputs only", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   source(repo_path("R", "dataset_config.R"))
   source(repo_path("R", "pipeline_registry.R"))
   source(repo_path("R", "output_namespace_utils.R"))
@@ -87,7 +85,6 @@ testthat::test_that("pipeline manuscript entry points declare authoring outputs 
 })
 
 testthat::test_that("figure 1 is a first-class manuscript figure namespace", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   source(repo_path("R", "output_namespace_utils.R"))
 
   root <- tempfile("fig1-root-")
@@ -130,7 +127,6 @@ testthat::test_that("figure 1 is a first-class manuscript figure namespace", {
 })
 
 testthat::test_that("the export router recognises the same figure set", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   source(repo_path("R", "output_namespace_utils.R"))
   source(repo_path("R", "export_helpers.R"))
 

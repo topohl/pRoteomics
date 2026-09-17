@@ -1,5 +1,6 @@
+source(testthat::test_path("..", "..", "R", "paths.R"))
+
 testthat::test_that("joint metadata requires an exact one-to-one matrix alignment", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   source(repo_path("R", "joint_compartment_qc_utils.R"))
   meta <- data.frame(sample_id = c("s1", "s2", "s3"), celltype_layer = c("neuropil", "soma", "microglia"), stringsAsFactors = FALSE)
   aligned <- joint_qc_prepare_metadata(meta, c("s1", "s2", "s3"))
@@ -9,7 +10,6 @@ testthat::test_that("joint metadata requires an exact one-to-one matrix alignmen
 })
 
 testthat::test_that("balanced feature filtering protects unequal dataset sizes", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   source(repo_path("R", "joint_compartment_qc_utils.R"))
   # Two neuropil samples and five soma samples: PG1 is abundant only in soma,
   # so a global threshold would retain it but the balanced rule rejects it.
@@ -23,7 +23,6 @@ testthat::test_that("balanced feature filtering protects unequal dataset sizes",
 })
 
 testthat::test_that("normalization and imputation are deterministic and label-blind", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   source(repo_path("R", "joint_compartment_qc_utils.R"))
   x <- matrix(c(10, 12, NA, 11, 20, 22), nrow = 2, dimnames = list(c("PG1", "PG2"), c("a", "b", "c")))
   norm_a <- joint_qc_joint_median_normalize(x)
@@ -37,7 +36,6 @@ testthat::test_that("normalization and imputation are deterministic and label-bl
 })
 
 testthat::test_that("canonical ProteinGroupID names propagate from source rows through positive filtering", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   source(repo_path("R", "joint_compartment_qc_utils.R"))
   # The source matrix begins with noncanonical row labels; canonical IDs are
   # attached once, in source-row order, before positive-value filtering.
@@ -53,7 +51,6 @@ testthat::test_that("canonical ProteinGroupID names propagate from source rows t
 })
 
 testthat::test_that("strict feature subsets preserve requested order and reject bad identities", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   source(repo_path("R", "joint_compartment_qc_utils.R"))
   mat <- matrix(1:8, nrow = 4, dimnames = list(c("PG:1", "PG:2", "PG:3", "PG:4"), c("s1", "s2")))
   selected <- joint_validate_feature_subset(c("PG:3", "PG:1"), mat, "ordered synthetic subset")
@@ -66,7 +63,6 @@ testthat::test_that("strict feature subsets preserve requested order and reject 
 })
 
 testthat::test_that("all feature universes retain exact canonical row-name contracts", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   source(repo_path("R", "joint_compartment_qc_utils.R"))
   mat <- matrix(c(1, 2, 3, 4, 5, 6), nrow = 3, dimnames = list(c("PG:1", "PG:2", "PG:3"), c("s1", "s2")))
   primary_ids <- c("PG:3", "PG:1"); complete_ids <- c("PG:1"); union_ids <- c("PG:2", "PG:3")
@@ -79,7 +75,6 @@ testthat::test_that("all feature universes retain exact canonical row-name contr
 })
 
 testthat::test_that("source-row alignment and contaminant exclusion cannot leave stale feature IDs", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   source(repo_path("R", "joint_compartment_qc_utils.R"))
   feature_table <- data.frame(ProteinGroupID = c("PG:keep", "PG:contaminant", "PG:keep2"), source_row_id = 1:3, joint_qc_eligible = c(TRUE, FALSE, TRUE), stringsAsFactors = FALSE)
   mat <- matrix(c(4, 8, 16, 32, 64, 128), nrow = 3, dimnames = list(feature_table$ProteinGroupID, c("s1", "s2")))
@@ -92,7 +87,6 @@ testthat::test_that("source-row alignment and contaminant exclusion cannot leave
 })
 
 testthat::test_that("complete case and strict GCT contracts reject missing or nonnumeric contents", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   source(repo_path("R", "joint_compartment_qc_utils.R"))
   mat <- matrix(c(1, 2, 3, 4), nrow = 2, dimnames = list(c("PG1", "PG2"), c("s1", "s2")))
   meta <- data.frame(Sample = c("s1", "s2"), dataset = c("neuron_neuropil", "microglia"), stringsAsFactors = FALSE)
@@ -104,7 +98,6 @@ testthat::test_that("complete case and strict GCT contracts reject missing or no
 })
 
 testthat::test_that("raw detection provenance never substitutes post-imputation availability", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   source(repo_path("R", "joint_compartment_qc_utils.R"))
   root <- tempfile(); dir.create(root)
   utils::write.csv(data.frame(ProteinGroupID = "PG1", dataset = "microglia", observed_detection_rate_raw = .5), file.path(root, "observed_detection_by_dataset.csv"), row.names = FALSE)
@@ -113,7 +106,6 @@ testthat::test_that("raw detection provenance never substitutes post-imputation 
   testthat::expect_false(any(provenance$observed_detection_rate_raw == 1, na.rm = TRUE))
   testthat::expect_equal(provenance$detectability_source[[1]], "raw_unified_pre_imputation")
 })
-
 testthat::test_that("fixed seeds make PCA, UMAP, and t-SNE reproducible", {
   x <- matrix(seq_len(72), nrow = 9) + rep(seq(0, 2, length.out = 8), each = 9)
   pca_a <- stats::prcomp(x, center = TRUE, scale. = TRUE)

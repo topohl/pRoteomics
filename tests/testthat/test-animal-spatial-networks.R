@@ -199,7 +199,7 @@ testthat::test_that("no bootstrap sign frequency is ever produced as a p-value",
   testthat::expect_false(grepl("permutation_p", src, fixed = TRUE))
   # and no producer emits that field name, nor a BH FDR over sign probabilities
   for (f in c("13_animal_spatial_networks.R", "14_network_group_organization.R")) {
-    s <- code_of("11_spatial_systems", f)
+    s <- code_of("analysis/03_spatial_validation", f)
     testthat::expect_false(grepl("permutation_p", s, fixed = TRUE), info = f)
     testthat::expect_false(grepl("Prob_DeltaR", s, fixed = TRUE), info = f)
     testthat::expect_false(grepl("p\\.adjust", s), info = f)

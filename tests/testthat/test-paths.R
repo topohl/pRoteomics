@@ -1,5 +1,6 @@
+source(testthat::test_path("..", "..", "R", "paths.R"))
+
 testthat::test_that("path helpers resolve inside repository", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   root <- repo_root()
   testthat::expect_true(file.exists(file.path(root, "README.md")))
   testthat::expect_match(repo_path("R", "paths.R"), "R[/\\\\]paths[.]R$")
@@ -8,7 +9,6 @@ testthat::test_that("path helpers resolve inside repository", {
 })
 
 testthat::test_that("SHA-256 file hashes are stable and use the digest fallback", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   path <- tempfile("sha256-")
   writeLines("stable hash fixture", path, useBytes = TRUE)
   on.exit(unlink(path, force = TRUE), add = TRUE)
@@ -38,7 +38,6 @@ testthat::test_that("SHA-256 file hashes are stable and use the digest fallback"
 })
 
 testthat::test_that("strict input resolver audits and refuses latest fallback", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   source(repo_path("R", "schema_validation.R"))
   old_strict <- Sys.getenv("PROTEOMICS_STRICT_INPUTS", unset = NA_character_)
   old_root <- Sys.getenv("PROTEOMICS_PROJECT_ROOT", unset = NA_character_)

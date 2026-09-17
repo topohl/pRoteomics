@@ -1,5 +1,6 @@
+source(testthat::test_path("..", "..", "R", "paths.R"))
+
 testthat::test_that("EWCE script parses --dataset before output paths are created", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   txt <- paste(readLines(repo_path("analysis/06_gsea/01_EWCE_E9.r"), warn = FALSE), collapse = "\n")
 
   testthat::expect_true(grepl("args <- commandArgs\\(trailingOnly = TRUE\\)", txt))
@@ -21,7 +22,6 @@ testthat::test_that("EWCE script parses --dataset before output paths are create
 })
 
 testthat::test_that("EWCE dry-run honors dataset-specific output folders", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   run <- function(dataset) {
     old_wd <- setwd(repo_path())
     on.exit(setwd(old_wd), add = TRUE)
@@ -50,7 +50,6 @@ testthat::test_that("EWCE dry-run honors dataset-specific output folders", {
 })
 
 testthat::test_that("EWCE animal mode is isolated and reports the shared aggregation contract", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   old_unit <- Sys.getenv("PROTEOMICS_EWCE_ANALYSIS_UNIT", unset = NA_character_)
   old_branch <- Sys.getenv("PROTEOMICS_EWCE_BRANCH", unset = NA_character_)
   on.exit({
@@ -75,7 +74,6 @@ testthat::test_that("EWCE animal mode is isolated and reports the shared aggrega
 })
 
 testthat::test_that("EWCE animal-level safeguards and cache identity are present", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   script <- repo_path("analysis/06_gsea/01_EWCE_E9.r")
   txt <- paste(readLines(script, warn = FALSE), collapse = "\n")
   testthat::expect_true(grepl("protigy_prepare_animal_level", txt, fixed = TRUE))
@@ -96,7 +94,6 @@ testthat::test_that("EWCE animal-level safeguards and cache identity are present
 })
 
 testthat::test_that("EWCE signature-only mode exits before parallel or bootstrap execution", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   txt <- paste(
     readLines(repo_path("analysis/06_gsea/01_EWCE_E9.r"), warn = FALSE),
     collapse = "\n"
@@ -111,7 +108,6 @@ testthat::test_that("EWCE signature-only mode exits before parallel or bootstrap
 })
 
 testthat::test_that("EWCE rejects an invalid comparison branch before analysis", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   old_branch <- Sys.getenv("PROTEOMICS_EWCE_BRANCH", unset = NA_character_)
   on.exit({
     if (is.na(old_branch)) Sys.unsetenv("PROTEOMICS_EWCE_BRANCH") else Sys.setenv(PROTEOMICS_EWCE_BRANCH = old_branch)

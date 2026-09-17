@@ -1,5 +1,6 @@
+source(testthat::test_path("..", "..", "R", "paths.R"))
+
 testthat::test_that("WGCNA downstream entrypoints exist", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   scripts <- c(
     "analysis/02_qc/04b_import_reference_marker_sources.r",
     "analysis/02_qc/05_empirical_roi_marker_discovery.r",
@@ -16,7 +17,6 @@ testthat::test_that("WGCNA downstream entrypoints exist", {
 })
 
 testthat::test_that("WGCNA downstream dry-runs report contracts", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   cmd <- file.path(R.home("bin"), "Rscript")
   old_wd <- setwd(repo_path())
   on.exit(setwd(old_wd), add = TRUE)
@@ -40,7 +40,6 @@ testthat::test_that("WGCNA downstream dry-runs report contracts", {
 })
 
 testthat::test_that("marker source manifest is parseable", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   manifest <- repo_path("data", "external", "reference_markers", "reference_marker_sources.yml")
   testthat::expect_true(file.exists(manifest))
   testthat::skip_if_not_installed("yaml")

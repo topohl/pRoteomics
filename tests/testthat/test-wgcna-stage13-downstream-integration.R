@@ -1,3 +1,5 @@
+source(testthat::test_path("..", "..", "R", "paths.R"))
+
 stage13_repo_root <- normalizePath(
   testthat::test_path("..", ".."), winslash = "/", mustWork = TRUE
 )
@@ -44,8 +46,6 @@ testthat::test_that("Stage 13 helper enforces the finalized microglia identity c
     ) %in% names(generated_stage13)),
     "Generated Stage 13 output predates direct Stage 07 provenance carry-through"
   )
-source(testthat::test_path("..", "..", "R", "paths.R"))
-
   source(repo_path("R", "paths.R"))
   source(repo_path("R", "wgcna_claim_readiness_utils.R"))
   contract <- load_microglia_wgcna_claim_readiness()

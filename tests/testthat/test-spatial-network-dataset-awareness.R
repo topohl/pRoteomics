@@ -1,5 +1,6 @@
+source(testthat::test_path("..", "..", "R", "paths.R"))
+
 testthat::test_that("spatial network producer is dataset and spatial-unit aware", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   txt <- paste(readLines(repo_path("analysis/07_spatial_networks/01_network_spatial_relations.r"), warn = FALSE), collapse = "\n")
 
   testthat::expect_false(grepl('assert_dataset_capability\\(SPATIAL_DATASET, "layer"', txt))
@@ -15,7 +16,6 @@ testthat::test_that("spatial network producer is dataset and spatial-unit aware"
 })
 
 testthat::test_that("pipeline registry advertises scoped spatial network outputs", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   testthat::skip_if_not_installed("yaml")
   registry <- yaml::read_yaml(repo_path("pipeline.yml"))
   scripts <- registry$stages$networks$scripts

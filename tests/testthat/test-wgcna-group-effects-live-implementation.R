@@ -1,3 +1,5 @@
+source(testthat::test_path("..", "..", "R", "paths.R"))
+
 testthat::test_that("Phase 2B/v5 is the sole WGCNA group-effect implementation", {
   path <- repo_path("R", "wgcna_group_effects_utils.R")
   expressions <- parse(file = path)
@@ -25,7 +27,6 @@ testthat::test_that("Phase 2B/v5 is the sole WGCNA group-effect implementation",
   )
   testthat::expect_false(any(grepl("phase2_legacy", assigned_names)))
 
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   source(repo_path("R", "wgcna_downstream_utils.R"))
   source(path)
   testthat::expect_identical(

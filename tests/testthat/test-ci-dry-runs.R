@@ -1,5 +1,6 @@
+source(testthat::test_path("..", "..", "R", "paths.R"))
+
 testthat::test_that("CI workflows install dependencies fail closed", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   workflow_paths <- repo_path(
     ".github", "workflows", c("dry-run.yml", "r-smoke-tests.yml")
   )
@@ -23,7 +24,6 @@ testthat::test_that("CI workflows install dependencies fail closed", {
 })
 
 testthat::test_that("contract smoke workflow does not mask failures", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   workflow <- readLines(
     repo_path(".github", "workflows", "r-smoke-tests.yml"), warn = FALSE
   )

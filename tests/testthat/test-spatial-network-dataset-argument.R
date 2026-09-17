@@ -1,5 +1,6 @@
+source(testthat::test_path("..", "..", "R", "paths.R"))
+
 testthat::test_that("spatial network script parses --dataset before current_dataset", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   txt <- paste(readLines(repo_path("analysis/07_spatial_networks/01_network_spatial_relations.r"), warn = FALSE), collapse = "\n")
 
   testthat::expect_true(grepl("args <- commandArgs\\(trailingOnly = TRUE\\)", txt))
@@ -35,7 +36,6 @@ testthat::test_that("dataset_config records spatial-unit contracts", {
 })
 
 testthat::test_that("spatial network dry-run honors --dataset", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   run <- function(dataset) {
     old_wd <- setwd(repo_path())
     on.exit(setwd(old_wd), add = TRUE)

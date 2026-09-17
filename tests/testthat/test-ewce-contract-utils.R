@@ -1,3 +1,5 @@
+source(testthat::test_path("..", "..", "R", "paths.R"))
+
 source(repo_path("R", "ewce_contract_utils.R"))
 
 testthat::test_that("canonical EWCE defaults to animal-level biological units", {
@@ -74,7 +76,6 @@ testthat::test_that("cache accounting distinguishes reuse, fallback, and computa
 })
 
 testthat::test_that("EWCE never silently falls back to a background-free test", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   # Scan CODE only: the comments explaining this rule necessarily name the very
   # call signature the rule forbids.
   code_of <- function(p) {
@@ -158,7 +159,6 @@ testthat::test_that("a value that is not a bootstrap count is refused", {
 })
 
 testthat::test_that("the generated module annotation stores no exact-zero p or FDR", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   p <- path_results("tables", "11_spatial_systems", "celltype_annotation",
                     "WGCNA_module_external_celltype_affinity_long.csv")
   testthat::skip_if_not(file.exists(p), "module EWCE annotation not generated")
