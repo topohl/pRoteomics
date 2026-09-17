@@ -95,26 +95,38 @@ emit(st1, "ST1_bilateral_reproducibility.csv",
 
 # ---------------------------------------------------------------- ST2
 ex <- sidecar("extended_data", "v9_ed_external_full")
+# MT-04. This table used to map the column named p_adjust onto a column called
+# "BH-adjusted p" and declare the FDR method to be Benjamini-Hochberg. In this
+# analysis p_adjust is the RAW single-set value - Benjamini-Hochberg over a
+# family of one is a no-op - so the table positively relabelled an uncorrected
+# p as adjusted, in a manuscript-facing artefact with a matching data
+# dictionary. The adjusted statistic is signature_FDR, corrected within the
+# signature family, and that is what the Results claim rests on. Both are now
+# reported, each under its true name.
 st2a <- pick(ex, c(internal_contrast = "Internal anatomical contrast",
                    external_signature = "External hippocampal signature",
                    level = "Identity level", kind = "Pairing type",
                    NES = "Normalised enrichment score",
-                   p_adjust = "BH-adjusted p"))
+                   signature_FDR = "Signature-family FDR",
+                   single_set_p_unadjusted = "Single-set p (uncorrected)"))
 if (!is.null(st2a)) {
   st2a$`Statistical test` <- "gene set enrichment (stored)"
-  st2a$`Multiple-testing family` <- "within the external-validation inventory"
-  st2a$`FDR method` <- "Benjamini-Hochberg"
+  st2a$`Multiple-testing family` <- "signature family"
+  st2a$`FDR method` <- "Benjamini-Hochberg within the signature family"
 }
 emit(st2a, "ST2_external_signature_validation.csv",
-     "Every internal anatomical contrast tested against every external signature",
+     "All 30 tested internal contrast by external signature pairings",
      paste0("Expected pairings and specificity comparisons are both reported, ",
-            "so specificity can be judged rather than assumed."),
+            "so specificity can be judged rather than assumed. The 9 contrasts ",
+            "and 7 signatures form a 63-cell grid; only the 30 structurally ",
+            "applicable pairs were tested."),
      c("Internal anatomical contrast" = "CON-only contrast defined in this study",
        "External hippocampal signature" = "published reference signature",
        "Identity level" = "regional or CA1 laminar identity",
        "Pairing type" = "expected pairing, or specificity comparison",
        "Normalised enrichment score" = "GSEA NES; positive = enriched in the first side of the contrast",
-       "BH-adjusted p" = "Benjamini-Hochberg adjusted p-value",
+       "Signature-family FDR" = "Benjamini-Hochberg adjusted within the signature family; this is the statistic the Results claim rests on",
+       "Single-set p (uncorrected)" = "the raw single-set value; Benjamini-Hochberg over a family of one is a no-op, so this is NOT an adjusted p and must not be read as one",
        "Statistical test" = "test that produced the statistic",
        "Multiple-testing family" = "family the p-value was corrected within",
        "FDR method" = "multiple-testing correction applied"))
@@ -128,9 +140,20 @@ if (!is.null(st2b)) {
   st2b$`Multiple-testing family` <- "within the internal anatomical inventory"
   st2b$`FDR method` <- "Benjamini-Hochberg"
 }
+# This table is generated from the same 14-row sidecar as the Extended Data
+# panel that was withheld in Phase 6A for claiming completeness it does not
+# have. Withholding the picture and leaving the table under the same sentence
+# would have moved the misrepresentation rather than removed it, so the title
+# now states the selection. The genuinely complete inventory is a different,
+# already released artefact and is named here so a reader can find it.
 emit(st2b, "ST3_internal_anatomical_programs.csv",
-     "Every canonical GO term retained for every anatomical contrast",
-     "CON-only. No stress information enters term selection.",
+     "Selected canonical GO terms: the strongest per anatomical contrast, for 7 of the 11 contrasts",
+     paste0("CON-only. No stress information enters term selection. This is a ",
+            "SELECTED SUBSET, not an inventory: 14 rows across 7 contrasts. The ",
+            "complete canonical result is the released ",
+            "control_anatomical_go_bp_gsea supplementary table, 40,680 rows ",
+            "across all 11 contrasts, of which 2,826 are FDR-supported in the ",
+            "positive direction."),
      c("Anatomical contrast" = "CON-only contrast identifier",
        "GO term" = "Gene Ontology biological process term",
        "Identity level" = "regional or CA1 laminar identity",

@@ -84,7 +84,23 @@ f9_ed_external_full <- function(panel, svg_path, csv_path, w_mm, h_mm) {
                     "CA1 laminar identity", "Regional identity")
   k$kind <- ifelse(k$expected_match %in% TRUE, "expected pairing",
                    "specificity comparison")
-  k$sig <- is.finite(k$p_adjust) & k$p_adjust < 0.05
+  # MT-04. The column named p_adjust in this table is the RAW single-set value -
+  # it is byte-identical to single_set_p_adjust, because Benjamini-Hochberg over
+  # a family of one is a no-op. The adjusted statistic is signature_FDR, which is
+  # what the manuscript's claim rests on ("supported under the stored
+  # signature-family correction"). Marking significance from p_adjust and then
+  # calling it BH-adjusted was the same class of false statistical label that
+  # withheld this figure's third panel, so it is corrected rather than inherited.
+  # On the current data the two agree on all 30 rows, so no mark moves; what
+  # changes is that the panel and its released source data now name and carry the
+  # statistic the claim actually uses.
+  if (!"signature_FDR" %in% names(k)) {
+    stop("f9_ed_external_full: signature_FDR is absent from ",
+         as.character(panel$primary_source),
+         ". The panel may not fall back to p_adjust, which is uncorrected.",
+         call. = FALSE)
+  }
+  k$sig <- is.finite(k$signature_FDR) & k$signature_FDR < 0.05
   k$ic <- gsub("_", " ", k$internal_contrast)
   ord <- unique(k$ic[order(k$level, k$ic)])
   k$ypos <- match(k$ic, rev(ord))
@@ -116,19 +132,31 @@ f9_ed_external_full <- function(panel, svg_path, csv_path, w_mm, h_mm) {
                                 expand = c(0, 0.6)) +
     ggplot2::labs(x = "external hippocampal signature", y = NULL,
                   caption = paste0(
-                    "Complete validation inventory: every tested internal ",
-                    "contrast against every external signature. Circles are ",
-                    "expected pairings, squares are specificity comparisons; ",
-                    "dark outline = FDR < 0.05.\nOnly structurally applicable ",
-                    "pairs are drawn. Main Figure 2g shows the expected ",
-                    "pairings alone.")) +
+                    "All ", nrow(k), " tested contrast-signature pairings: ",
+                    sum(k$kind == "expected pairing"), " expected (circles) and ",
+                    sum(k$kind == "specificity comparison"),
+                    " specificity comparisons (squares). Dark outline = ",
+                    "signature-family FDR < 0.05.\nThe ", length(ord), " contrasts and ",
+                    length(unique(k$external_signature)), " signatures form a ",
+                    length(ord) * length(unique(k$external_signature)),
+                    "-cell grid; only the structurally applicable pairs were ",
+                    "tested and only those are drawn. Main Figure 2g shows the ",
+                    "expected pairings alone.")) +
     nf_theme() +
     ggplot2::theme(axis.text.y = ggplot2::element_text(size = NF_MIN_PT),
                    axis.text.x = ggplot2::element_text(size = NF_MIN_PT),
                    legend.position = "right",
                    legend.key.size = ggplot2::unit(2.6, "mm"))
-  write_csv_safe(k[, c("internal_contrast", "external_signature", "level",
-                       "kind", "NES", "p_adjust")], csv_path)
+  # signature_FDR is the statistic the claim rests on and must be in the released
+  # source data. single_set_p_adjust is carried beside it, under its true name,
+  # so a reader can see that the column formerly exported as p_adjust was the
+  # uncorrected value rather than having to discover it.
+  out_cols <- c("internal_contrast", "external_signature", "level", "kind",
+                "expected_match", "NES", "signature_FDR", "signature_fdr_family")
+  out_cols <- out_cols[out_cols %in% names(k)]
+  out <- k[, out_cols, drop = FALSE]
+  out$single_set_p_unadjusted <- k$p_adjust
+  write_csv_safe(out, csv_path)
   nv_save_panel(p, svg_path, w_mm, h_mm)
   invisible(list(status = "ok"))
 }

@@ -136,7 +136,7 @@ panels:
       anatomical differences correspond to coherent biological programs?
       This annotates the SAME proteomic data and is NOT independent
       validation; external validation is panel g. Selected canonical
-      contrasts only; the complete evidence lives in ED2.
+      contrasts only; the complete term inventory is the released control_anatomical_go_bp_gsea supplementary table, not a figure panel.
     primary_source: results/source_data/04_differential_expression_enrichment/control_spatial_identity_validation/global/figure2f_regions_CA1layers_source_data.csv
 
   # ===================== FIGURE 3 =========================================
