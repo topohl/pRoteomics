@@ -13,7 +13,7 @@ source(testthat::test_path("..", "..", "R", "paths.R"))
 # collapse again.
 
 .spatial_producer <- function() {
-  repo_path("07_spatial_networks", "01_network_spatial_relations.r")
+  repo_path("analysis/07_spatial_networks", "01_network_spatial_relations.r")
 }
 
 # The real acquisition naming convention, verbatim in shape.

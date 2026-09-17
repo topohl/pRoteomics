@@ -137,7 +137,10 @@ testthat::test_that("an unknown or missing side is rejected outright", {
 # =====================================================================
 
 testthat::test_that("the contrast registry exists exactly once", {
-  files <- Sys.glob(repo_path("R", "*.R"))
+  # R/ is organised into domain directories, so the search must be recursive.
+  # A non-recursive glob would find zero definitions and pass vacuously.
+  files <- list.files(repo_path("R"), pattern = "[.]R$",
+                      recursive = TRUE, full.names = TRUE)
   defs <- sum(vapply(files, function(f) {
     any(grepl("^control_spatial_contrast_registry <- function",
               readLines(f, warn = FALSE)))
@@ -465,7 +468,7 @@ testthat::test_that("the registry reproduces the original inline contrast weight
 })
 
 testthat::test_that("the canonical Stage-09 script consumes the registry", {
-  src <- paste(readLines(repo_path("04_differential_expression_enrichment",
+  src <- paste(readLines(repo_path("analysis/04_differential_abundance",
                                    "09_control_spatial_identity_validation.r"),
                          warn = FALSE), collapse = "\n")
   testthat::expect_true(grepl("control_spatial_contrast_registry", src, fixed = TRUE))

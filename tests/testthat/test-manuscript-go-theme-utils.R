@@ -1,3 +1,5 @@
+source(testthat::test_path("..", "..", "R", "paths.R"))
+
 source(repo_path("R", "manuscript_go_theme_utils.R"))
 
 registry_path <- testthat::test_path("..", "..", "config", "manuscript_go_theme_registry.tsv")

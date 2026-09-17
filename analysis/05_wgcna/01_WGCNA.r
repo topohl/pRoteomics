@@ -160,10 +160,10 @@ if (early_has_flag("--dry-run") || tolower(Sys.getenv("PROTEOMICS_DRY_RUN", unse
   dry_run_line("Downstream module contract", downstream_contract_early, if (file.exists(downstream_contract_early)) "PASS" else "WARN")
   dry_run_line("WGCNA feature universe", feature_universe_early, if (file.exists(feature_universe_early)) "PASS" else "WARN")
   dry_run_line("WGCNA run manifest", wgcna_manifest_early, if (file.exists(wgcna_manifest_early)) "PASS" else "WARN")
-  dry_run_line("Optional DE/GSEA overlap bridge", repo_path("06_modules_WGCNA", "04_wgcna_de_gsea_overlap.r"), "WARN")
-  dry_run_line("Downstream group effects", repo_path("06_modules_WGCNA", "05_module_supermodule_group_effects.r"), "INFO")
-  dry_run_line("Downstream biological annotation", repo_path("06_modules_WGCNA", "06_annotate_module_microenvironment.r"), "INFO")
-  dry_run_line("Downstream interpretable summary", repo_path("06_modules_WGCNA", "07_wgcna_interpretable_summary.r"), "INFO")
+  dry_run_line("Optional DE/GSEA overlap bridge", repo_path("analysis/05_wgcna", "04_wgcna_de_gsea_overlap.r"), "WARN")
+  dry_run_line("Downstream group effects", repo_path("analysis/05_wgcna", "05_module_supermodule_group_effects.r"), "INFO")
+  dry_run_line("Downstream biological annotation", repo_path("analysis/05_wgcna", "06_annotate_module_microenvironment.r"), "INFO")
+  dry_run_line("Downstream interpretable summary", repo_path("analysis/05_wgcna", "07_wgcna_interpretable_summary.r"), "INFO")
   quit(status = if (file.exists(idmap_dat_early) && can_write_outputs_early && sample_check_ok_early && ((can_use_inputs_early && staged_identity_ok_early) || can_stage_inputs_early || can_use_cache_early)) 0 else 1, save = "no")
 }
 
@@ -1776,7 +1776,7 @@ if (isTRUE(wgcna_dry_run)) {
   dry_run_line("Downstream module contract", downstream_contract, if (file.exists(downstream_contract)) "PASS" else "WARN")
   dry_run_line("WGCNA feature universe", feature_universe, if (file.exists(feature_universe)) "PASS" else "WARN")
   dry_run_line("WGCNA run manifest", wgcna_run_manifest_path, if (file.exists(wgcna_run_manifest_path)) "PASS" else "WARN")
-  dry_run_line("Optional DE/GSEA overlap bridge", repo_path("06_modules_WGCNA", "04_wgcna_de_gsea_overlap.r"), "WARN")
+  dry_run_line("Optional DE/GSEA overlap bridge", repo_path("analysis/05_wgcna", "04_wgcna_de_gsea_overlap.r"), "WARN")
   quit(status = if (file.exists(idmap_dat) && can_write_outputs && sample_check_ok && ((can_use_inputs && staged_identity_ok) || can_stage_inputs || can_use_cache)) 0 else 1, save = "no")
 }
 
@@ -4335,7 +4335,7 @@ write_csv_safe(WGCNA_module_priority_summary, fp_modtab("WGCNA_module_priority_s
 write_csv_safe(WGCNA_module_definitions_for_downstream, fp_modtab("WGCNA_module_definitions_for_downstream.csv"))
 write_csv_safe(WGCNA_feature_universe, fp_modtab("WGCNA_feature_universe.csv"))
 write_csv_safe(WGCNA_module_definitions_for_downstream, fp_supertab("wgcna_module_results_with_supermodules.csv"))
-overlap_bridge_script <- repo_path("06_modules_WGCNA", "04_wgcna_de_gsea_overlap.r")
+overlap_bridge_script <- repo_path("analysis/05_wgcna", "04_wgcna_de_gsea_overlap.r")
 if (file.exists(overlap_bridge_script)) {
   tryCatch({
     source(overlap_bridge_script)

@@ -6,9 +6,9 @@ testthat::local_edition(3)
 # against each accepted comparison vocabulary, using the real helpers rather
 # than re-implementing them.
 
-source(testthat::test_path(
-  "..", "..", "R", "gsea_wgcna_concordance_utils.R"
-))
+source(testthat::test_path("..", "..", "R", "paths.R"))
+
+source(repo_path("R", "gsea_wgcna_concordance_utils.R"))
 
 CANONICAL_FAMILY <- "canonical_compareGO_ranked_GSEA_GO_BP"
 

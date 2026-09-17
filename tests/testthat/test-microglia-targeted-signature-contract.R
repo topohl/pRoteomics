@@ -6,10 +6,11 @@ targeted_repo_root <- function() {
   normalizePath(file.path(testthat::test_path(), "..", ".."), winslash = "/", mustWork = TRUE)
 }
 
-source(file.path(
-  targeted_repo_root(), "R", "clusterprofiler_reproducibility.R"
-))
-source(file.path(targeted_repo_root(), "R", "microglia_targeted_signature_utils.R"))
+source(repo_path("R", "paths.R"))
+source(testthat::test_path("..", "..", "R", "paths.R"))
+
+source(repo_path("R", "clusterprofiler_reproducibility.R"))
+source(repo_path("R", "microglia_targeted_signature_utils.R"))
 
 testthat::test_that("stochastic fallback seeds are stable and semantic", {
   first <- targeted_enrichment_reproducibility(
@@ -297,7 +298,7 @@ testthat::test_that("non-significant microglia enrichment fails claim-ready", {
 })
 
 testthat::test_that("active script cannot bind descriptive stress-rank membership into TERM2GENE", {
-  script <- paste(readLines(file.path(targeted_repo_root(), "04_differential_expression_enrichment", "05_microglia_targeted_signature_enrichment.r"), warn = FALSE), collapse = "\n")
+  script <- paste(readLines(repo_path("analysis/04_differential_abundance", "05_microglia_targeted_signature_enrichment.r"), warn = FALSE), collapse = "\n")
   testthat::expect_match(script, "bind_rows\\(curated_term2gene, canonical_empirical_term2gene, reference_term2gene\\)")
   testthat::expect_false(grepl("bind_rows\\([^\\n]*descriptive_rank_diagnostics\\$term2gene", script))
   testthat::expect_match(script, "stress_rank_derived_inferential_terms")

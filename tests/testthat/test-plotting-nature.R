@@ -1,3 +1,5 @@
+source(testthat::test_path("..", "..", "R", "paths.R"))
+
 source(repo_path("R", "plotting_nature.R"))
 
 testthat::test_that("manuscript dimensions and millimetre conversion are stable", {

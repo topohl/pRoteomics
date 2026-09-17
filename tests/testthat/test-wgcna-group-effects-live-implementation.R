@@ -1,7 +1,5 @@
 testthat::test_that("Phase 2B/v5 is the sole WGCNA group-effect implementation", {
-  path <- testthat::test_path(
-    "..", "..", "R", "wgcna_group_effects_utils.R"
-  )
+  path <- repo_path("R", "wgcna_group_effects_utils.R")
   expressions <- parse(file = path)
   assigned_names <- vapply(expressions, function(expression) {
     if (
@@ -28,9 +26,7 @@ testthat::test_that("Phase 2B/v5 is the sole WGCNA group-effect implementation",
   testthat::expect_false(any(grepl("phase2_legacy", assigned_names)))
 
   source(testthat::test_path("..", "..", "R", "paths.R"))
-  source(testthat::test_path(
-    "..", "..", "R", "wgcna_downstream_utils.R"
-  ))
+  source(repo_path("R", "wgcna_downstream_utils.R"))
   source(path)
   testthat::expect_identical(
     wgcna_group_effects_contract_version(),

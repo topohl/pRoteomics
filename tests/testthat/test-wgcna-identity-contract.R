@@ -326,8 +326,7 @@ testthat::test_that("fail-closed validation and status semantics are explicit", 
   testthat::expect_false(wgcna_identity_contract_publishable(validation))
   script <- paste(
     readLines(
-      testthat::test_path(
-        "..", "..", "06_modules_WGCNA", "00_wgcna_identity_contract.R"
+      repo_path("analysis/05_wgcna", "00_wgcna_identity_contract.R"
       ),
       warn = FALSE
     ),

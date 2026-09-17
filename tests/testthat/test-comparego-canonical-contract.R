@@ -116,7 +116,7 @@ testthat::test_that("comparison identity and output are invariant to filenames a
 })
 
 testthat::test_that("canonical compareGO path terminates before legacy UniProt logic", {
-  script <- readLines(testthat::test_path("..", "..", "04_differential_expression_enrichment", "02_compareGO.r"), warn = FALSE)
+  script <- readLines(repo_path("analysis/04_differential_abundance", "02_compareGO.r"), warn = FALSE)
   marker <- grep("LEGACY_COMPAREGO_TAIL_DISABLED_BY_CANONICAL_EXIT", script, fixed = TRUE)
   testthat::expect_length(marker, 1L)
   canonical <- paste(script[seq_len(marker - 1L)], collapse = "\n")

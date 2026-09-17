@@ -1,4 +1,6 @@
 testthat::test_that("term core genes expand to every eligible ProteinGroupID deterministically", {
+source(testthat::test_path("..", "..", "R", "paths.R"))
+
   source(repo_path("R", "protein_group_enrichment_utils.R"))
   gsea <- data.frame(
     ID = "GO:0001", Description = "example", NES = 1.5, p.adjust = 0.01,

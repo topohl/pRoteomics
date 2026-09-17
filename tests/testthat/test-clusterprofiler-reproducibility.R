@@ -1,6 +1,6 @@
-clusterprofiler_repro_helper <- testthat::test_path(
-  "..", "..", "R", "clusterprofiler_reproducibility.R"
-)
+source(testthat::test_path("..", "..", "R", "paths.R"))
+
+clusterprofiler_repro_helper <- repo_path("R", "clusterprofiler_reproducibility.R")
 source(clusterprofiler_repro_helper)
 
 testthat::test_that("per-comparison GSEA seed derivation is stable and identity-specific", {
@@ -137,7 +137,7 @@ testthat::test_that("single-comparison filter supports CLI and environment targe
 
 testthat::test_that("active GSEA entry points all use the deterministic wrapper", {
   script <- paste(readLines(
-    testthat::test_path("..", "..", "04_differential_expression_enrichment", "01_clusterProfiler.r"),
+    repo_path("analysis/04_differential_abundance", "01_clusterProfiler.r"),
     warn = FALSE
   ), collapse = "\n")
   testthat::expect_equal(

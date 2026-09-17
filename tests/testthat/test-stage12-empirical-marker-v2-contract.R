@@ -11,8 +11,9 @@ testthat::local_edition(3)
 # The reader lives inside a self-executing audit script, so it is extracted
 # from the parsed source rather than sourced.
 
-AUDIT_SCRIPT <- testthat::test_path(
-  "..", "..", "06_modules_WGCNA", "12_microglia_wgcna_nature_readiness_audit.R"
+source(testthat::test_path("..", "..", "R", "paths.R"))
+
+AUDIT_SCRIPT <- repo_path("analysis/05_wgcna", "12_microglia_wgcna_nature_readiness_audit.R"
 )
 CONTRACT <- "empirical_roi_marker_v2_animal_paired_limma"
 

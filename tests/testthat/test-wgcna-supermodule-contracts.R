@@ -2,6 +2,8 @@ testthat::local_edition(3)
 
 testthat::skip_if_not_installed("dplyr")
 testthat::skip_if_not_installed("tibble")
+source(testthat::test_path("..", "..", "R", "paths.R"))
+
 source(repo_path("R", "module_contracts.R"))
 
 supermodule_test_map <- function() {
@@ -174,7 +176,7 @@ testthat::test_that("supermodule sensitivity grid is complete and stable", {
 })
 
 testthat::test_that("construction source keys summaries by stable IDs and treats hubs as audit only", {
-  script <- paste(readLines(testthat::test_path("..", "..", "06_modules_WGCNA", "01_WGCNA.r"), warn = FALSE), collapse = "\n")
+  script <- paste(readLines(repo_path("analysis/05_wgcna", "01_WGCNA.r"), warn = FALSE), collapse = "\n")
   testthat::expect_match(script, "average_linkage_on_1_minus_signed_module_eigengene_correlation", fixed = TRUE)
   testthat::expect_match(script, "partition_integrity_diagnostic_not_supermodule_support", fixed = TRUE)
   testthat::expect_match(script, "expected_module_pairs", fixed = TRUE)
@@ -183,7 +185,7 @@ testthat::test_that("construction source keys summaries by stable IDs and treats
 })
 
 testthat::test_that("active downstream consumers do not use labels as supermodule keys", {
-  paths <- testthat::test_path("..", "..", "06_modules_WGCNA", c(
+  paths <- repo_path("analysis/05_wgcna", c(
     "01_WGCNA.r", "03_score_module_activity.R",
     "05_module_supermodule_group_effects.r",
     "06_annotate_module_microenvironment.r",

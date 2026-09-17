@@ -247,7 +247,7 @@ testthat::test_that("consistency requires unanimity and calibrates to context co
 testthat::test_that("no independence-derived probability survives anywhere", {
   files <- c(
     repo_path("R", "wgcna_candidate_protein_utils.R"),
-    testthat::test_path("..", "..", "10_biological_integration",
+    repo_path("analysis/08_integration",
                         "08_wgcna_candidate_protein_shortlist.R")
   )
   code <- unlist(lapply(files, readLines, warn = FALSE))
@@ -450,7 +450,7 @@ testthat::test_that("flagging and ordering are deterministic", {
 testthat::test_that("no WGCNA or differential-abundance model is refitted", {
   files <- c(
     repo_path("R", "wgcna_candidate_protein_utils.R"),
-    testthat::test_path("..", "..", "10_biological_integration",
+    repo_path("analysis/08_integration",
                         "08_wgcna_candidate_protein_shortlist.R")
   )
   code <- unlist(lapply(files, readLines, warn = FALSE))
@@ -470,8 +470,7 @@ testthat::test_that("no WGCNA or differential-abundance model is refitted", {
 })
 
 testthat::test_that("joins are keyed on canonical ProteinGroupID", {
-  script <- paste(readLines(testthat::test_path(
-    "..", "..", "10_biological_integration",
+  script <- paste(readLines(repo_path("analysis/08_integration",
     "08_wgcna_candidate_protein_shortlist.R"
   ), warn = FALSE), collapse = "\n")
 
@@ -674,7 +673,7 @@ testthat::test_that("direction concordance in the real export is never fabricate
 })
 
 testthat::test_that("dry-run reports inputs and writes nothing", {
-  script <- repo_path("10_biological_integration",
+  script <- repo_path("analysis/08_integration",
                       "08_wgcna_candidate_protein_shortlist.R")
   testthat::skip_if_not(file.exists(script))
 
@@ -1005,8 +1004,7 @@ testthat::test_that("ordering and review views survive zero rows and missing opt
 })
 
 testthat::test_that("the phenotype-linked row highlight targets A1/A2, not the retired A", {
-  script <- paste(readLines(testthat::test_path(
-    "..", "..", "10_biological_integration",
+  script <- paste(readLines(repo_path("analysis/08_integration",
     "08_wgcna_candidate_protein_shortlist.R"
   ), warn = FALSE), collapse = "\n")
   # `tier %in% "A"` would be dead code: wcp_candidate_tier never emits "A".

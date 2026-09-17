@@ -757,7 +757,7 @@ testthat::test_that("Stage 05 status separates completion from readiness", {
     "microglia",
     c(
       repo_path("R", "wgcna_group_effects_utils.R"),
-      repo_path("06_modules_WGCNA", "05_module_supermodule_group_effects.r")
+      repo_path("analysis/05_wgcna", "05_module_supermodule_group_effects.r")
     ),
     canonical_primary_outputs_complete = TRUE
   )
@@ -822,7 +822,10 @@ testthat::test_that("Stage 05 source hashes cannot omit a direct dependency", {
     wgcna_group_assert_stage05_source_dependencies(required, required)
   )
   omitted <- required[
-    !grepl("R/wgcna_downstream_utils[.]R$", gsub("\\\\", "/", required))
+    # Match the library by name, not by R/<name>: it now lives in a domain
+    # directory, and anchoring on R/ would silently remove nothing and make
+    # the expect_error below pass for the wrong reason.
+    !grepl("(^|/)wgcna_downstream_utils[.]R$", gsub("\\\\", "/", required))
   ]
   testthat::expect_error(
     wgcna_group_contract_status(

@@ -1,6 +1,6 @@
-source(testthat::test_path(
-  "..", "..", "R", "clusterprofiler_reproducibility.R"
-))
+source(testthat::test_path("..", "..", "R", "paths.R"))
+
+source(repo_path("R", "clusterprofiler_reproducibility.R"))
 source(repo_path("R", "control_spatial_identity_utils.R"))
 
 testthat::test_that("control-spatial GSEA seeds use stable semantic identity", {
@@ -58,8 +58,7 @@ testthat::test_that("control-spatial seeded execution restores caller RNG", {
 })
 
 testthat::test_that("script 09 cannot bypass deterministic GSEA governance", {
-  script <- paste(readLines(testthat::test_path(
-    "..", "..", "04_differential_expression_enrichment",
+  script <- paste(readLines(repo_path("analysis/04_differential_abundance",
     "09_control_spatial_identity_validation.r"
   ), warn = FALSE), collapse = "\n")
   testthat::expect_false(grepl(
@@ -347,8 +346,7 @@ testthat::test_that("Figure 2f grouped layout abbreviates only the seven display
 })
 
 testthat::test_that("Figure 2f grouped candidate is render-only from validated source data", {
-  script <- paste(readLines(testthat::test_path(
-    "..", "..", "04_differential_expression_enrichment",
+  script <- paste(readLines(repo_path("analysis/04_differential_abundance",
     "09_control_spatial_identity_validation.r"
   ), warn = FALSE), collapse = "\n")
   testthat::expect_match(

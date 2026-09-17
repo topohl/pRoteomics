@@ -76,6 +76,68 @@ testthat::test_that("the publication source-data interface exists and is self-de
                                      paste(unique(m$publication_id), collapse = ", ")))
 })
 
+testthat::test_that("no producer layer sources archived or scaffold code", {
+  # Ported from test-publication-hardening.R, which moved to Exp9_manuscript
+  # with the publication layer in Phase 6C. The assertion is unchanged in
+  # direction and strength: deprecated code must not masquerade as active by
+  # being sourced from a layer that produces results. Only the layer names
+  # changed, because 99_deprecated and 90_testing became archive/.
+  layer_of <- function(p) {
+    top <- sub("/.*", "", p)
+    if (top == "archive") "archive"
+    else if (top == "audits") "audit layer"
+    else if (top == "analysis") "analysis stage"
+    else if (top == "R") "shared helper library"
+    else if (top == "tests") "test suite"
+    else "other"
+  }
+  producer <- c("analysis stage", "shared helper library")
+
+  tracked <- suppressWarnings(system2(
+    "git", c("-C", shQuote(repo_root()), "ls-files"), stdout = TRUE, stderr = FALSE))
+  scripts <- grep("[.][Rr]$", tracked, value = TRUE)
+  testthat::expect_gt(length(scripts), 0L)
+
+  SRC <- paste0("(?<![A-Za-z0-9_.])(source|sys[.]source)\\s*\\(\\s*",
+                "(repo_path\\s*\\(([^)]*)\\)|[\"']([^\"']+)[\"'])")
+  leaks <- character(0)
+  for (p in scripts) {
+    if (!layer_of(p) %in% producer) next
+    ln <- readLines(repo_path(p), warn = FALSE)
+    ln <- sub("#.*$", "", ln)
+
+    ## Two active scripts print operator instructions whose text contains
+    ## source('archive/...'). That is documentation, not a dependency. Stripping
+    ## every string literal would make this guard vacuous, because a real call
+    ## carries its target in a string too. So keep only matches that begin
+    ## outside a string, judged by the parity of the double quotes before them.
+    m <- character(0)
+    for (line in ln) {
+      hits <- gregexpr(SRC, line, perl = TRUE)[[1]]
+      if (identical(hits[1], -1L)) next
+      lens <- attr(hits, "match.length")
+      for (j in seq_along(hits)) {
+        prefix <- substr(line, 1L, hits[j] - 1L)
+        quotes <- lengths(regmatches(prefix, gregexpr('"', prefix, fixed = TRUE)))
+        if (quotes %% 2L == 1L) next          # inside a double-quoted string
+        m <- c(m, substr(line, hits[j], hits[j] + lens[j] - 1L))
+      }
+    }
+    if (!length(m)) next
+    tgt <- vapply(m, function(x) {
+      if (grepl("repo_path", x)) {
+        a <- sub(".*repo_path\\s*\\(", "", x)
+        paste(gsub("[\"' )]", "", strsplit(a, ",")[[1]]), collapse = "/")
+      } else sub(".*[\"']([^\"']+)[\"'].*", "\\1", x)
+    }, character(1))
+    bad <- tgt[vapply(tgt, layer_of, character(1)) == "archive"]
+    if (length(bad)) leaks <- c(leaks, sprintf("%s -> %s", p, bad))
+  }
+  testthat::expect_identical(as.character(leaks), character(0),
+                             info = paste("producer layer sources archived code:",
+                                          paste(leaks, collapse = ", ")))
+})
+
 testthat::test_that("no active path depends on a generation namespace", {
   # Historical generation names are allowed in provenance and archive records,
   # which is where version history belongs. They must not appear in the active

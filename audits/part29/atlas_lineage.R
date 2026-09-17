@@ -72,13 +72,13 @@ P_REGISTRY    <- file.path("config", "manuscript_go_theme_registry.tsv")
 P_CPCONFIG    <- file.path("config", "clusterProfiler_config.yml")
 P_CONTRACT    <- file.path("figures", "figure_final_truth_v9_contract.yml")
 
-S_CLUSTERPROF <- file.path("04_differential_expression_enrichment",
+S_CLUSTERPROF <- file.path("analysis/04_differential_abundance",
                            "01_clusterProfiler.r")
-S_COMPAREGO   <- file.path("04_differential_expression_enrichment",
+S_COMPAREGO   <- file.path("analysis/04_differential_abundance",
                            "02_compareGO.r")
-S_ATLAS       <- file.path("04_differential_expression_enrichment",
+S_ATLAS       <- file.path("analysis/04_differential_abundance",
                            "07_compareGO_spatial_program_atlas.r")
-S_CONCORD     <- file.path("10_biological_integration",
+S_CONCORD     <- file.path("analysis/08_integration",
                            "05_gsea_wgcna_concordance.R")
 S_PANELS      <- file.path("R", "final_truth_v9_panels.R")
 S_FIGUTILS    <- file.path("R", "final_truth_v9_figure_utils.R")

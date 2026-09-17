@@ -1,10 +1,10 @@
 testthat::skip_if_not_installed("dplyr")
 testthat::skip_if_not_installed("tidyr")
 
+source(testthat::test_path("..", "..", "R", "paths.R"))
+
 source(repo_path("R", "gsea_wgcna_concordance_utils.R"))
-source(testthat::test_path(
-  "..", "..", "R", "gsea_wgcna_concordance_diagnostic_utils.R"
-))
+source(repo_path("R", "gsea_wgcna_concordance_diagnostic_utils.R"))
 
 testthat::test_that("effect percentiles retain canonical source-key grain", {
   handoff <- data.frame(
@@ -99,8 +99,7 @@ testthat::test_that("recurrent-cross-spatial direction counts local spatial unit
 
 testthat::test_that("candidate mapping filters use explicit environment dataset", {
   script <- paste(
-    readLines(testthat::test_path(
-      "..", "..", "10_biological_integration",
+    readLines(repo_path("analysis/08_integration",
       "06_gsea_wgcna_concordance_diagnostics.R"
     ), warn = FALSE),
     collapse = "\n"
@@ -148,11 +147,8 @@ testthat::test_that("power diagnostic ranks unique endpoints without new tests",
 })
 
 testthat::test_that("diagnostic source does not alter official classifier", {
-  helper <- paste(readLines(testthat::test_path(
-    "..", "..", "R", "gsea_wgcna_concordance_diagnostic_utils.R"
-  )), collapse = "\n")
-  script <- paste(readLines(testthat::test_path(
-    "..", "..", "10_biological_integration",
+  helper <- paste(readLines(repo_path("R", "gsea_wgcna_concordance_diagnostic_utils.R")), collapse = "\n")
+  script <- paste(readLines(repo_path("analysis/08_integration",
     "06_gsea_wgcna_concordance_diagnostics.R"
   )), collapse = "\n")
   testthat::expect_false(grepl("gww_classify_concordance\\s*\\(", script))

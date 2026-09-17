@@ -126,8 +126,7 @@ testthat::test_that("module summary counts each module once and BH-corrects with
 })
 
 testthat::test_that("network-position helpers never recompute WGCNA or DA", {
-  code <- readLines(testthat::test_path("..", "..", "R",
-                                        "wgcna_network_position_utils.R"), warn = FALSE)
+  code <- readLines(repo_path("R", "wgcna_network_position_utils.R"), warn = FALSE)
   code <- paste(code[!grepl("^\\s*#", code)], collapse = "\n")
   for (pattern in c("blockwiseModules", "signedKME", "moduleEigengenes", "lmFit",
                     "eBayes", "topTable", "\\blm\\(", "p\\.adjust\\(.*BH.*log2")) {
@@ -365,8 +364,7 @@ testthat::test_that("the label audit source contains no phenotype input", {
   # R/statistics/wgcna_label_coherence_utils.R is excluded because
   # wcl_forbidden_field_patterns() must literally contain these tokens in order
   # to blacklist them; that helper is covered by the column-level guard tests.
-  code <- readLines(testthat::test_path(
-    "..", "..", "06_modules_WGCNA", "14_wgcna_label_coherence_audit.R"
+  code <- readLines(repo_path("analysis/05_wgcna", "14_wgcna_label_coherence_audit.R"
   ), warn = FALSE)
   live <- code[!grepl("^\\s*#", code)]
   text <- paste(live, collapse = "\n")

@@ -3901,7 +3901,7 @@ wgcna_group_stage05_source_dependencies <- function(
     state_path, contract_paths
 ) {
   source_files <- c(
-    repo_path("06_modules_WGCNA", "05_module_supermodule_group_effects.r"),
+    repo_path("analysis/05_wgcna", "05_module_supermodule_group_effects.r"),
     repo_path("R", "paths.R"),
     repo_path("R", "dataset_config.R"),
     repo_path("R", "dataset_inputs.R"),

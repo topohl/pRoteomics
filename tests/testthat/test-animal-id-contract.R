@@ -234,7 +234,7 @@ testthat::test_that("the corrected coupling recovers every animal", {
 })
 
 testthat::test_that("the WGCNA-side normaliser touches no canonical module state", {
-  src <- readLines(repo_path("06_modules_WGCNA", "03_score_module_activity.R"),
+  src <- readLines(repo_path("analysis/05_wgcna", "03_score_module_activity.R"),
                    warn = FALSE)
   def <- grep("^normalize_animal_id <- function", src)
   use <- grep("normalize_animal_id\\(", src)

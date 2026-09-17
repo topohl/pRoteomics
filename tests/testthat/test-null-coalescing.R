@@ -31,7 +31,7 @@ testthat::test_that("active code has one null-coalescing definition", {
   testthat::expect_null(attr(relative, "status"))
   relative <- unique(c(relative, "R/null_coalescing.R"))
   active <- !grepl(
-    "(^|/)(99_deprecated|legacy)(/|$)", relative, ignore.case = TRUE
+    "(^|/)(archive|legacy)(/|$)", relative, ignore.case = TRUE
   )
   definitions <- vapply(repo_path(relative[active]), function(path) {
     any(grepl(

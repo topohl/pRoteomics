@@ -1,8 +1,10 @@
+source(testthat::test_path("..", "..", "R", "paths.R"))
+
 source(repo_path("R", "wgcna_go_comparison_utils.R"))
 
 testthat::test_that("01b CLI defaults to three focused terms and supports the canonical all compositor", {
   script <- paste(readLines(
-    testthat::test_path("..", "..", "06_modules_WGCNA", "01b_module_supermodule_GO_heatmaps.R"),
+    repo_path("analysis/05_wgcna", "01b_module_supermodule_GO_heatmaps.R"),
     warn = FALSE
   ), collapse = "\n")
   testthat::expect_true(grepl(

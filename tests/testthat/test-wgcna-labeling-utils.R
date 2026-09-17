@@ -1,4 +1,6 @@
 testthat::test_that("WGCNA final labeling is unique, singleton-aware, and context-separated", {
+source(testthat::test_path("..", "..", "R", "paths.R"))
+
   source(repo_path("R", "wgcna_labeling_utils.R"))
   testthat::skip_if_not_installed("dplyr")
   testthat::skip_if_not_installed("tibble")
@@ -48,7 +50,7 @@ testthat::test_that("joining canonical labels leaves numeric source values uncha
 })
 
 testthat::test_that("score publication script consumes only the canonical final lookup for active label choice", {
-  txt <- readLines(testthat::test_path("..", "..", "06_modules_WGCNA", "08_wgcna_score_publication_summary.R"), warn = FALSE)
+  txt <- readLines(repo_path("analysis/05_wgcna", "08_wgcna_score_publication_summary.R"), warn = FALSE)
   active <- paste(txt[!grepl("^legacy_multifile_", trimws(txt))], collapse = "\n")
   testthat::expect_match(active, "WGCNA_final_label_lookup.csv", fixed = TRUE)
   testthat::expect_match(active, "validate_render_ids_in_lookup", fixed = TRUE)

@@ -1,6 +1,6 @@
-source(testthat::test_path(
-  "..", "..", "R", "wgcna_support_status_utils.R"
-))
+source(testthat::test_path("..", "..", "R", "paths.R"))
+
+source(repo_path("R", "wgcna_support_status_utils.R"))
 
 testthat::test_that("finite applicable FDR controls WGCNA support", {
   observed <- wgcna_group_classify_statistical_support(

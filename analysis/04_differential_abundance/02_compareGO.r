@@ -64,9 +64,9 @@ script_file <- local({
 })
 script_dir <- if (!is.na(script_file)) dirname(script_file) else getwd()
 paths_candidates <- c(
-  file.path(getwd(), "R", "paths.R"),
+  repo_path("R", "paths.R"),
   file.path(getwd(), "..", "R", "paths.R"),
-  file.path(script_dir, "R", "paths.R"),
+  repo_path("R", "paths.R"),
   file.path(script_dir, "..", "R", "paths.R")
 )
 paths_file <- normalizePath(paths_candidates[file.exists(paths_candidates)][1], winslash = "/", mustWork = FALSE)

@@ -114,7 +114,7 @@ if (nrow(legacy)) {
 #
 # AUDIT ONLY in this pass. The consumer is not migrated here because migrating
 # the edge source alone would not make it work.
-beh_src <- repo_path("08_behavior_physio_coupling", "02_network_behavior_coupling.r")
+beh_src <- repo_path("analysis/08_integration", "02_network_behavior_coupling.r")
 beh_rows <- list()
 if (file.exists(beh_src)) {
   src <- paste(readLines(beh_src, warn = FALSE), collapse = "\n")

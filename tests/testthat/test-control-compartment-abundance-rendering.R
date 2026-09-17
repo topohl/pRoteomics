@@ -196,9 +196,7 @@ testthat::test_that("terminal-drop audit is deterministic and preserves the comp
 })
 
 testthat::test_that("04e exposes a rendering-only path based on completed source tables", {
-  script <- readLines(testthat::test_path(
-    "..", "..", "R", "control_compartment_abundance_workflow_v2.R"
-  ), warn = FALSE)
+  script <- readLines(repo_path("R", "control_compartment_abundance_workflow_v2.R"), warn = FALSE)
   text <- paste(script, collapse = "\n")
   testthat::expect_match(text, "--render-only", fixed = TRUE)
   testthat::expect_match(text, "v2_17_marker_detection_dot_heatmap_source.csv", fixed = TRUE)
