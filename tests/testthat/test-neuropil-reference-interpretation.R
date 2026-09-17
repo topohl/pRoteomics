@@ -17,8 +17,7 @@ load_assignment_helpers <- function(script, targets) {
 }
 
 load_neuropil_annotation_helpers <- function() {
-  script <- testthat::test_path(
-    "..", "..", "04_differential_expression_enrichment",
+  script <- repo_path("analysis/04_differential_abundance",
     "04_neuropil_reference_annotation.r"
   )
   environment <- load_assignment_helpers(script, c(
@@ -43,8 +42,7 @@ load_neuropil_annotation_helpers <- function() {
 }
 
 load_neuropil_program_helpers <- function() {
-  script <- testthat::test_path(
-    "..", "..", "04_differential_expression_enrichment",
+  script <- repo_path("analysis/04_differential_abundance",
     "06_biological_program_summary.r"
   )
   load_assignment_helpers(script, c(

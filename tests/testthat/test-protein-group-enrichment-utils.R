@@ -1,4 +1,6 @@
 testthat::test_that("canonical enrichment transformation preserves one group observation", {
+source(testthat::test_path("..", "..", "R", "paths.R"))
+
   source(repo_path("R", "protein_group_enrichment_utils.R"))
   d <- data.frame(ProteinGroupID = c("PG1", "PG2", "PG3", "PG4", "PG5"), original_identifier = c("A", "B", "C", "D", "E"),
     member_accessions = c("P1", "P2;P3", "P4;P5", "P6", "P7;H1"), member_gene_symbols = c("A", "B", "C;D", "", "E"),
@@ -33,7 +35,7 @@ testthat::test_that("ORA inputs are directional and never use group identifiers 
 })
 
 testthat::test_that("clusterProfiler cannot reintroduce effect sorting duplicate selection", {
-  script <- paste(readLines(testthat::test_path("..", "..", "04_differential_expression_enrichment", "01_clusterProfiler.r"), warn = FALSE), collapse = "\n")
+  script <- paste(readLines(repo_path("analysis/04_differential_abundance", "01_clusterProfiler.r"), warn = FALSE), collapse = "\n")
   testthat::expect_false(grepl("sort\\(na.omit\\(original_gene_list\\).*duplicated\\(names\\(gene_list\\)\\)", script))
 })
 
@@ -49,7 +51,7 @@ testthat::test_that("member order does not alter a same-gene enrichment mapping"
 })
 
 testthat::test_that("compareGO prefers manifest-provided collapsed gene inputs", {
-  script <- paste(readLines(testthat::test_path("..", "..", "04_differential_expression_enrichment", "02_compareGO.r"), warn = FALSE), collapse = "\n")
+  script <- paste(readLines(repo_path("analysis/04_differential_abundance", "02_compareGO.r"), warn = FALSE), collapse = "\n")
   testthat::expect_match(script, "comparison_input_file")
   testthat::expect_match(script, "GeneSymbol")
 })
@@ -134,7 +136,7 @@ testthat::test_that("SYMBOL-to-ENTREZ KEGG preparation is median and order invar
 })
 
 testthat::test_that("canonical symbol vectors are never submitted as UniProt identifiers", {
-  script <- paste(readLines(testthat::test_path("..", "..", "04_differential_expression_enrichment", "01_clusterProfiler.r"), warn = FALSE), collapse = "\n")
+  script <- paste(readLines(repo_path("analysis/04_differential_abundance", "01_clusterProfiler.r"), warn = FALSE), collapse = "\n")
   testthat::expect_false(grepl("bitr\\(names\\((original_)?gene_list\\).*fromType\\s*=\\s*['\"]UNIPROT", script, perl = TRUE))
   testthat::expect_false(grepl("enrichGO\\([\\s\\S]{0,500}keyType\\s*=\\s*['\"]UNIPROT", script, perl = TRUE))
   testthat::expect_false(grepl("merge\\(df,\\s*[^,]+,\\s*by.x\\s*=\\s*['\"]gene_symbol", script, perl = TRUE))

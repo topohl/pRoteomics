@@ -44,8 +44,10 @@ testthat::test_that("Stage 13 helper enforces the finalized microglia identity c
     ) %in% names(generated_stage13)),
     "Generated Stage 13 output predates direct Stage 07 provenance carry-through"
   )
-  source(stage13_test_path("R", "paths.R"))
-  source(stage13_test_path("R", "wgcna_claim_readiness_utils.R"))
+source(testthat::test_path("..", "..", "R", "paths.R"))
+
+  source(repo_path("R", "paths.R"))
+  source(repo_path("R", "wgcna_claim_readiness_utils.R"))
   contract <- load_microglia_wgcna_claim_readiness()
   x <- contract$all
 
@@ -120,7 +122,7 @@ testthat::test_that("integration separates validated, diagnostic, annotation, un
   }
   old_wd <- setwd(stage13_repo_root)
   on.exit(setwd(old_wd), add = TRUE)
-  source(stage13_test_path("R", "integration_utils.R"))
+  source(repo_path("R", "integration_utils.R"))
   unavailable <- assign_downstream_evidence_roles(availability_evidence(
     "neuron_soma", "external_signature_overlap", "missing.csv", "Optional input unavailable."
   ))
@@ -284,7 +286,7 @@ testthat::test_that("final bundle preserves all Stage 13 rows and filters manusc
 })
 
 testthat::test_that("circular claim parsing uses exact status tokens and frozen neuronal states are unchanged", {
-  circular_script <- paste(readLines(stage13_test_path("10_biological_integration", "04_wgcna_circular_atlas.R"), warn = FALSE), collapse = "\n")
+  circular_script <- paste(readLines(stage13_test_path("analysis/08_integration", "04_wgcna_circular_atlas.R"), warn = FALSE), collapse = "\n")
   testthat::expect_match(circular_script, 'tokens == "disallowed"', fixed = TRUE)
   testthat::expect_match(circular_script, 'tokens %in% c("allowed", "downgraded")', fixed = TRUE)
   testthat::expect_false(grepl('grepl("allowed|downgraded", .data$claim_display_status)', circular_script, fixed = TRUE))

@@ -17,9 +17,7 @@ testthat::test_that("the accepted vocabulary matches the established repository 
   # The list is duplicated in sus_res_spatial_dap_atlas_utils.R to avoid
   # pulling the whole GSEA-WGCNA concordance utility into Stage 10/11. This
   # pins the duplicate to the canonical definition so the two cannot drift.
-  concordance <- testthat::test_path(
-    "..", "..", "R", "gsea_wgcna_concordance_utils.R"
-  )
+  concordance <- repo_path("R", "gsea_wgcna_concordance_utils.R")
   testthat::skip_if_not(file.exists(concordance), "Concordance utility unavailable")
   env <- new.env(parent = globalenv())
   for (e in parse(concordance, keep.source = FALSE)) {
@@ -124,8 +122,7 @@ testthat::test_that("9. the current canonical Stage-11 input passes the contract
 })
 
 testthat::test_that("the Stage-11 consumer no longer uses a literal-equality check", {
-  src <- readLines(testthat::test_path(
-    "..", "..", "04_differential_expression_enrichment",
+  src <- readLines(repo_path("analysis/04_differential_abundance",
     "11_stress_response_biological_audit.r"
   ), warn = FALSE)
   testthat::expect_false(any(grepl(

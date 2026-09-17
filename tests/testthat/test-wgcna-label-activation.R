@@ -373,7 +373,7 @@ testthat::test_that("the approval script writes the rules but activates nothing"
   testthat::expect_false(any(as.logical(r$executed_by_this_script)))
 
   # the script must not contain a write into the live registry directory
-  src <- readLines(repo_path("06_modules_WGCNA",
+  src <- readLines(repo_path("analysis/05_wgcna",
                              "16_wgcna_label_approval_table.R"), warn = FALSE)
   writes <- grep("write_csv_safe|write[.]csv|writeLines|saveRDS|file[.]copy|file[.]rename",
                  src, value = TRUE)

@@ -224,7 +224,7 @@ testthat::test_that("canonical fidelity matching excludes cross-class conflicts"
 })
 
 testthat::test_that("04 keeps the all-group default and declares the CON namespace contract", {
-  script <- paste(readLines(testthat::test_path("..", "..", "03_qc_exploration", "04_marker_rank_abundance_qc.r"), warn = FALSE), collapse = "\n")
+  script <- paste(readLines(repo_path("analysis/02_qc", "04_marker_rank_abundance_qc.r"), warn = FALSE), collapse = "\n")
   testthat::expect_match(script, "PROTEOMICS_RANK_ABUNDANCE_GROUP_FILTER", fixed = TRUE)
   testthat::expect_match(script, "--group", fixed = TRUE)
   testthat::expect_match(script, "ca_namespace_paths", fixed = TRUE)

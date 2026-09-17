@@ -262,7 +262,7 @@ testthat::test_that("DA statistics are joined with provenance, not recomputed", 
   testthat::expect_true(all(grepl("no differential statistic recomputed",
                                   x$da_provenance)))
   # the producer must not contain a differential model fit
-  src <- paste(readLines(repo_path("11_spatial_systems",
+  src <- paste(readLines(repo_path("analysis/03_spatial_validation",
                                    "09_protein_spatial_cell_atlas.R"),
                          warn = FALSE), collapse = "\n")
   for (bad in c("lmFit", "eBayes", "p.adjust", "t.test", "wilcox.test")) {
@@ -315,7 +315,7 @@ testthat::test_that("labels and WGCNA membership are unchanged by the atlas", {
   # no atlas producer may write into the label registry or WGCNA state
   for (f in c("08_module_spatial_cell_atlas.R", "09_protein_spatial_cell_atlas.R",
               "10_neuropil_spatial_detection_context.R")) {
-    src <- readLines(repo_path("11_spatial_systems", f), warn = FALSE)
+    src <- readLines(repo_path("analysis/03_spatial_validation", f), warn = FALSE)
     writes <- grep("write_csv_safe|write\\.csv|saveRDS", src, value = TRUE)
     testthat::expect_false(any(grepl("config|wgcna_labels", writes)), info = f)
     testthat::expect_false(any(grepl("01_WGCNA|modules/WGCNA_modules_long", writes)),

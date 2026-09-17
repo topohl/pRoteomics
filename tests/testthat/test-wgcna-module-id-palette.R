@@ -1,5 +1,7 @@
 testthat::test_that("WGCNA module palette is muted, unique, and not recycled", {
   testthat::skip_if_not_installed("dplyr")
+source(testthat::test_path("..", "..", "R", "paths.R"))
+
   source(repo_path("R", "module_contracts.R"))
 
   pal <- wgcna_publication_module_palette()
@@ -126,7 +128,7 @@ testthat::test_that("WGCNA feature integration keys internal colours separately 
 })
 
 testthat::test_that("WGCNA highlight mode greys non-selected modules", {
-  script <- paste(readLines(testthat::test_path("..", "..", "06_modules_WGCNA", "01_WGCNA.r"), warn = FALSE), collapse = "\n")
+  script <- paste(readLines(repo_path("analysis/05_wgcna", "01_WGCNA.r"), warn = FALSE), collapse = "\n")
   testthat::expect_match(script, "module_highlight_colors", fixed = TRUE)
   testthat::expect_match(script, "PROTEOMICS_WGCNA_HIGHLIGHT_MODULES", fixed = TRUE)
   testthat::expect_match(script, "row_colors_vec[!selected_row] <- \"#D7DADD\"", fixed = TRUE)

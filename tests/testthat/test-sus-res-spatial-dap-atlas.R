@@ -259,7 +259,7 @@ testthat::test_that("Panel C filters canonical SUS-RES ranked-GSEA rows without 
 })
 
 testthat::test_that("script 10 consumes script 07 source rather than executing or copying its analysis", {
-  script_lines <- readLines(repo_path("04_differential_expression_enrichment", "10_sus_res_spatial_dap_atlas.r"), warn = FALSE)
+  script_lines <- readLines(repo_path("analysis/04_differential_abundance", "10_sus_res_spatial_dap_atlas.r"), warn = FALSE)
   script <- paste(script_lines, collapse = "\n")
   testthat::expect_match(script, "source_data_SpatialProgramAtlas_SUS_vs_RES_publication.csv", fixed = TRUE)
   testthat::expect_false(any(grepl("^\\s*source\\(.*07_compareGO_spatial_program_atlas", script_lines)))

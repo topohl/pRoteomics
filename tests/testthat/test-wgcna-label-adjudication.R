@@ -59,8 +59,7 @@ testthat::test_that("no phenotype or group-effect field can enter a naming outpu
 })
 
 testthat::test_that("the adjudication script never reads phenotype inputs", {
-  code <- readLines(testthat::test_path(
-    "..", "..", "06_modules_WGCNA", "15_wgcna_label_adjudication.R"), warn = FALSE)
+  code <- readLines(repo_path("analysis/05_wgcna", "15_wgcna_label_adjudication.R"), warn = FALSE)
   live <- paste(code[!grepl("^\\s*#", code)], collapse = "\n")
   for (p in c("clusterProfiler_manifest", "sus_res_resolve_manifest_input",
               "WGCNA_inferential_handoff", "wgcna_candidate_proteins",
@@ -147,8 +146,7 @@ testthat::test_that("centrality support uses contributor identity, not hub text"
 })
 
 testthat::test_that("no arbitrary presence bonus survives in the helper source", {
-  code <- readLines(testthat::test_path(
-    "..", "..", "R", "wgcna_label_adjudication_utils.R"), warn = FALSE)
+  code <- readLines(repo_path("R", "wgcna_label_adjudication_utils.R"), warn = FALSE)
   live <- paste(code[!grepl("^\\s*#", code)], collapse = "\n")
   # the specific defect: an additive presence bonus. A 0.75 used as a
   # comparison threshold elsewhere is legitimate and must not trip this.
@@ -506,8 +504,7 @@ testthat::test_that("nonsignificant GO terms cannot yield a high-confidence labe
 
 testthat::test_that("expected counts derive from the authoritative member map", {
   source(repo_path("R", "wgcna_reviewed_label_registry.R"))
-  src <- paste(readLines(testthat::test_path(
-    "..", "..", "R", "wgcna_reviewed_label_registry.R"), warn = FALSE), collapse = "\n")
+  src <- paste(readLines(repo_path("R", "wgcna_reviewed_label_registry.R"), warn = FALSE), collapse = "\n")
 
   # the microglia-only literals are gone from the signature and the checks
   testthat::expect_false(grepl("expected_n_modules = 13L", src, fixed = TRUE))

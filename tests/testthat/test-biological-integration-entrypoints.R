@@ -117,8 +117,7 @@ testthat::test_that("integration CSV reads inspect sparse provenance columns ful
   testthat::expect_match(bundle_text, "guess_max = Inf", fixed = TRUE)
 
   overview_text <- paste(
-    readLines(testthat::test_path(
-      "..", "..", "10_biological_integration",
+    readLines(repo_path("analysis/08_integration",
       "04_wgcna_cross_compartment_overview.R"
     ), warn = FALSE),
     collapse = "\n"

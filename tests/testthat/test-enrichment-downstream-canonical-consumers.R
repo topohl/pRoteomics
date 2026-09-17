@@ -2,8 +2,7 @@ source(testthat::test_path("..", "..", "R", "paths.R"))
 source(repo_path("R", "enrichment_io.R"))
 
 load_direction_comparison_parser <- function() {
-  script <- testthat::test_path(
-    "..", "..", "04_differential_expression_enrichment",
+  script <- repo_path("analysis/04_differential_abundance",
     "01b_gsea_protein_direction_audit.r"
   )
   expressions <- parse(script)
@@ -18,8 +17,7 @@ load_direction_comparison_parser <- function() {
 }
 
 load_direction_status_helpers <- function() {
-  script <- testthat::test_path(
-    "..", "..", "04_differential_expression_enrichment",
+  script <- repo_path("analysis/04_differential_abundance",
     "01b_gsea_protein_direction_audit.r"
   )
   targets <- c(
@@ -42,8 +40,7 @@ load_direction_status_helpers <- function() {
 }
 
 evaluate_direction_summary_constructor <- function(term_summary) {
-  script <- testthat::test_path(
-    "..", "..", "04_differential_expression_enrichment",
+  script <- repo_path("analysis/04_differential_abundance",
     "01b_gsea_protein_direction_audit.r"
   )
   definitions <- Filter(function(expr) {
@@ -311,7 +308,7 @@ testthat::test_that("compareGO bundle reads only manifest-declared canonical out
 })
 
 testthat::test_that("active B2a scripts contain no legacy discovery or identifier remapping", {
-  paths <- testthat::test_path("..", "..", "04_differential_expression_enrichment",
+  paths <- repo_path("analysis/04_differential_abundance",
     c("01b_gsea_protein_direction_audit.r", "04_neuropil_reference_annotation.r", "06_biological_program_summary.r"))
   scripts <- vapply(paths, function(path) paste(readLines(path, warn = FALSE), collapse = "\n"), character(1))
   testthat::expect_false(any(grepl("list\\.files\\(", scripts)))

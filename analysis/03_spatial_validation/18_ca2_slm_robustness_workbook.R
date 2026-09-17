@@ -245,9 +245,9 @@ add("canonical_statistics_carried_verbatim", TRUE,
     if (fc_ok && fdr_ok) "PASS" else "FAIL",
     "every log2FC and BH FDR in the audit equals the canonical contrast value exactly")
 
-src16 <- paste(sub("#.*$", "", readLines(repo_path("11_spatial_systems",
+src16 <- paste(sub("#.*$", "", readLines(repo_path("analysis/03_spatial_validation",
   "16_ca2_slm_robustness_audit.R"), warn = FALSE)), collapse = "\n")
-src17 <- paste(sub("#.*$", "", readLines(repo_path("11_spatial_systems",
+src17 <- paste(sub("#.*$", "", readLines(repo_path("analysis/03_spatial_validation",
   "17_stress_identity_robustness.R"), warn = FALSE)), collapse = "\n")
 srcu <- paste(sub("#.*$", "", readLines(repo_path("R",
   "ca2_slm_robustness_utils.R"), warn = FALSE)), collapse = "\n")
@@ -370,8 +370,8 @@ add("network_layer_unchanged", TRUE,
 # table or in the robustness scripts themselves.
 scan_files <- c(
   list.files(dirname(ROB("x")), pattern = "[.]csv$", full.names = TRUE),
-  repo_path("11_spatial_systems", "16_ca2_slm_robustness_audit.R"),
-  repo_path("11_spatial_systems", "17_stress_identity_robustness.R"))
+  repo_path("analysis/03_spatial_validation", "16_ca2_slm_robustness_audit.R"),
+  repo_path("analysis/03_spatial_validation", "17_stress_identity_robustness.R"))
 offending <- character()
 for (f in scan_files) {
   if (!file.exists(f)) next

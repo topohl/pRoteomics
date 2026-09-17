@@ -1,5 +1,7 @@
 testthat::local_edition(3)
 
+source(testthat::test_path("..", "..", "R", "paths.R"))
+
 source(repo_path("R", "protein_mapping_utils.R"))
 source(repo_path("R", "module_contracts.R"))
 
@@ -179,7 +181,7 @@ testthat::test_that("Phase 1B cache contract rejects legacy and mismatched state
 })
 
 testthat::test_that("active WGCNA feature construction cannot truncate or repair biological IDs", {
-  script <- readLines(testthat::test_path("..", "..", "06_modules_WGCNA", "01_WGCNA.r"), warn = FALSE)
+  script <- readLines(repo_path("analysis/05_wgcna", "01_WGCNA.r"), warn = FALSE)
   active <- paste(script, collapse = "\n")
   testthat::expect_false(grepl("fix_feature_ids", active, fixed = TRUE))
   testthat::expect_false(grepl("sub(\";.*$\"", active, fixed = TRUE))

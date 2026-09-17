@@ -1,5 +1,7 @@
 testthat::local_edition(3)
 
+source(testthat::test_path("..", "..", "R", "paths.R"))
+
 source(repo_path("R", "wgcna_stage07_semantic_utils.R"))
 
 plot_levels <- c("RES - CON", "SUS - CON", "SUS - RES")

@@ -16,7 +16,7 @@ file_arg <- grep("^--file=", args, value = TRUE)
 script_path <- if (length(file_arg)) sub("^--file=", "", file_arg[[1]]) else "tools/generate_renv_lockfile.R"
 repo_root <- normalizePath(file.path(dirname(script_path), ".."), winslash = "/", mustWork = TRUE)
 
-source(file.path(repo_root, "R", "renv_lock_audit.R"))
+source(repo_path("R", "renv_lock_audit.R"))
 
 cli <- commandArgs(trailingOnly = TRUE)
 dry_run <- "--dry-run" %in% cli
