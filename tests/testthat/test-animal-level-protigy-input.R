@@ -634,7 +634,7 @@ testthat::test_that("02_excel_convert shared writer uses cmapR-compatible id sem
   testthat::expect_identical(alternate_prepared$Description, "protein_a")
 
   excel_convert_text <- paste(
-    readLines(repo_path("analysis/01_preprocessing", "02_excel_convert.r")),
+    readLines(repo_path("archive/01_preprocessing", "02_excel_convert.r")),
     collapse = "\n"
   )
   testthat::expect_match(
