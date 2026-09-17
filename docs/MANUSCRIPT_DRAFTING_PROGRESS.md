@@ -717,3 +717,58 @@ that would be legitimate rather than defects.
 
 No directory moved, no script renamed, no manuscript layer extracted, no import
 path rewritten. This phase froze identity; it did not restructure.
+
+## Phase 6A.5 (HEAD c6fc77f → this commit) — resolve Extended Data 2
+
+**ED2 = CANONICAL**, with panels a and b. The last withheld identity the
+manuscript depended on is gone, and the registry is now 10 canonical / 2
+withheld.
+
+### The proposal was wrong, and the check caught it
+
+The obvious resolution — promote ED2 with the two sound panels, drop the
+defective third, change nothing else — survived the structural attack and failed
+the scientific one. Panel b, *the panel the manuscript actually cites*, carried
+the same class of defect that withheld panel c: it marked significance from the
+column named `p_adjust` and its legend and ST2 called that Benjamini-Hochberg
+adjusted. In this analysis `p_adjust` is byte-identical to
+`single_set_p_adjust` — BH over a family of one is a no-op — so a false
+multiple-testing label sat on the study's **only externally anchored claim**.
+Promoting it unfixed would have canonicalised exactly what the phase existed to
+remove.
+
+Repaired before promotion: the panel now uses `signature_FDR`, and its released
+source data carries both statistics under their true names. **No mark moved** —
+the two agree on all 30 rows, 28 significant either way.
+
+### What else had to move with it
+
+Dropping panel c does not remove a misrepresentation if its twin keeps shipping.
+Corrected in the same pass:
+
+- **ST3** was generated from the same 14-row sidecar under the title *"Every
+  canonical GO term retained for every anatomical contrast"*. It now states its
+  selection and names where the complete result actually is.
+- **Figure 2h's pointer to ED2** existed in **four** places, one of them inside
+  its own published source data (`legend_text_moved`). All four now name the
+  released `control_anatomical_go_bp_gsea` supplementary table — 40,680 rows
+  across all 11 contrasts.
+- **ST2** relabelled the uncorrected p as BH-adjusted with a matching data
+  dictionary. Both statistics are now named honestly.
+
+### A detector that could not see the thing it was checking
+
+Phase 5B closed SR-02 on "49 citation instances, 0 unresolved". That audit
+matched only `Fig. Nx` and therefore examined **zero Extended Data citations**
+while returning green. It is now `tools/audit_manuscript_references.R`, which
+resolves each citation against the contract, the registry and the exported
+artefact, and also reports the reverse defect. Current: **37 instances, 24 main
+and 13 Extended Data, 0 unresolved, 0 canonical-but-uncited.**
+
+That reverse check immediately found one: `extended_data_08` was canonical,
+fully rendered and cited nowhere in the prose. The network paragraph states
+exactly its evidence, so it now carries the citation.
+
+### Still withheld, deliberately
+
+ED4 and ED7, untouched. Their identities stay reserved.

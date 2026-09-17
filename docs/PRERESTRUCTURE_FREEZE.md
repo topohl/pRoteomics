@@ -26,20 +26,20 @@ expected exceptions that must be argued explicitly rather than assumed:
   bytes stay comparable. If those hashes change, normalisation was applied and
   the byte-exactness of the upstream import has been lost.
 
-## Contents at generation: 230 objects, 230 present
+## Contents at generation: 239 objects, 239 present
 
 | class | objects |
 |---|---|
-| canonical_analysis_table | 46 |
-| canonical_assembled_figure | 27 |
-| canonical_figure_panel | 42 |
+| canonical_analysis_table | 48 |
+| canonical_assembled_figure | 30 |
+| canonical_figure_panel | 44 |
 | configuration_contract | 7 |
 | frozen_upstream_import | 16 |
 | guard_test | 10 |
 | manuscript_provenance | 31 |
 | manuscript_text | 3 |
 | protected_scientific_state | 6 |
-| publication_source_data | 42 |
+| publication_source_data | 44 |
 
 Objects recorded as absent are declared dependencies that are not materialised
 in this checkout - typically regenerable `results/` artefacts. They are listed
