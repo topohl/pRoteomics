@@ -47,7 +47,45 @@ Rscript run_dataset_pipeline.R --list-stages
 Rscript run_dataset_pipeline.R --dataset all --stage all --dry-run
 Rscript tests/smoke_test_active_script_contracts.R
 Rscript tests/smoke_test_file_contracts.R
+Rscript tools/audit_active_scripts.R
+Rscript audits/verify_scientific_contracts.R
 ```
+
+`audits/verify_scientific_contracts.R` checks the named scientific contracts
+(bilateral averaging, CA2-SLM QC, the module identity contract and the rest)
+against the code that carries them. It takes no arguments and has no callers by
+design: run it by hand after touching anything those contracts describe.
+
+## Regenerate The Architecture Records
+
+These write the derived architecture documents. They read `pipeline.yml`, so
+run them after changing the registry, and commit the result:
+
+```bash
+Rscript tools/generate_architecture_docs.R    # docs/ANALYSIS_ENTRYPOINTS.md
+Rscript tools/generate_results_ownership.R    # config/results_ownership.csv + docs/RESULTS_OWNERSHIP.md
+Rscript tools/generate_active_code_tree.R     # audits/phase6e_final_active_tree.csv
+Rscript tools/normalize_script_headers.R      # fills missing script-header fields
+```
+
+`tools/build_restructure_migration_map.R` belongs to the repository-split
+migration rather than to routine maintenance. It rebuilds
+`audits/restructure_migration_map.csv` from the recorded path, boundary and
+test-repoint contracts, and is the tool to run if that record needs refreshing.
+
+## Which Document Answers What
+
+One authority per question, so they cannot contradict each other:
+
+| Question | Authority |
+| --- | --- |
+| What order do scripts run in, and what does each declare? | `pipeline.yml` |
+| What command do I type? | `RUN_ORDER.md` |
+| Which script is the entry point for an analysis area, and what does it depend on? | `docs/ANALYSIS_ENTRYPOINTS.md` (generated) |
+| Which script produces a given manuscript result? | `docs/CANONICAL_ANALYSIS_ENTRYPOINTS.md` |
+| Who is the canonical owner of a result family, and who else writes into it? | `config/results_ownership.csv`, rendered as `docs/RESULTS_OWNERSHIP.md` (generated) |
+| What role does a given active file play? | `audits/phase6e_final_active_tree.csv` (generated) |
+| What was a file called before the Phase 6E renames? | `audits/phase6e_naming_migration.csv` |
 
 For a focused downstream rerun, prefer:
 
