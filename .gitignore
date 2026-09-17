@@ -104,3 +104,15 @@ hemisphere_protigy_audit.txt
 
 # testthat scratch output from interactive runs
 tests/testthat/_problems/
+
+# --- Phase 6F output lifecycles (config/output_layout.yml) ----------------
+# work/ holds regenerable intermediates; exports/ holds frozen outward-facing
+# bundles. Both are generated, so both stay untracked. The export manifests are
+# the exception: they are the publication boundary and must be reviewable in
+# git without committing the derived data itself.
+/work/
+# git will not descend into an excluded directory, so exclude the
+# contents and re-include directories before naming the exception.
+/exports/**
+!/exports/**/
+!/exports/**/manifest.csv

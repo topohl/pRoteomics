@@ -66,7 +66,12 @@ Rscript tools/generate_architecture_docs.R    # docs/ANALYSIS_ENTRYPOINTS.md
 Rscript tools/generate_results_ownership.R    # config/results_ownership.csv + docs/RESULTS_OWNERSHIP.md
 Rscript tools/generate_active_code_tree.R     # audits/phase6e_final_active_tree.csv
 Rscript tools/normalize_script_headers.R      # fills missing script-header fields
+Rscript tools/generate_legacy_output_registry.R  # config/legacy_output_registry.csv
 ```
+
+Run the legacy registry generator after adding or removing a registered
+writer: a root becomes legacy the moment nothing declares output beneath it,
+and `tests/testthat/test-output-layout-contract.R` holds writers to the result.
 
 `tools/build_restructure_migration_map.R` belongs to the repository-split
 migration rather than to routine maintenance. It rebuilds
@@ -86,6 +91,10 @@ One authority per question, so they cannot contradict each other:
 | Who is the canonical owner of a result family, and who else writes into it? | `config/results_ownership.csv`, rendered as `docs/RESULTS_OWNERSHIP.md` (generated) |
 | What role does a given active file play? | `audits/phase6e_final_active_tree.csv` (generated) |
 | What was a file called before the Phase 6E renames? | `audits/phase6e_naming_migration.csv` |
+| Where does an output go, and what are `work/`, `results/` and `exports/`? | `docs/OUTPUT_LAYOUT.md`, from `config/output_layout.yml` |
+| Which output roots are read-only, and why? | `config/legacy_output_registry.csv` (generated) |
+| Where was an output written before Phase 6F? | `audits/phase6f_output_inventory.csv` |
+| Should the repository be renamed? | `docs/REPOSITORY_NAME_RECOMMENDATION.md` |
 
 For a focused downstream rerun, prefer:
 

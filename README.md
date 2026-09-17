@@ -76,19 +76,22 @@ R/                                   reusable scientific function libraries
   utilities/                           paths, registry, validation, export, plotting
 
 analysis/                            runnable analysis entrypoints
-  01_preprocessing/                    preprocessing and identifier mapping
-  02_qc/                               QC, marker and confounding checks
-  03_spatial_validation/               spatial systems, bilateral, CA2-SLM
-  04_differential_abundance/           differential abundance and enrichment
-  05_wgcna/                            WGCNA construction and downstream
-  06_gsea/                             cell-type enrichment
-  07_spatial_networks/                 spatial and differential networks
-  08_integration/                      integration and behaviour coupling
-  09_publication_exports/              PRIDE and publication source data
+  preprocessing/                       preprocessing and identifier mapping
+  qc/                                  QC, marker and confounding checks
+  spatial_validation/                  spatial systems, bilateral, CA2-SLM
+  differential_abundance/              differential abundance and GO/GSEA
+  wgcna/                               WGCNA construction and downstream
+  enrichment/                          cell-type enrichment (EWCE)
+  spatial_networks/                    spatial and differential networks
+  integration/                         integration and behaviour coupling
+  publication_source_data/             PRIDE and publication source data
 
 config/                              frozen scientific configuration contracts
 data/                                raw, metadata and reference inputs
-results/                             canonical analysis products
+work/                                regenerable intermediates, gitignored
+results/                             canonical scientific results
+  <domain>/<analysis>/<scope>/         tables/ plots/ models/ manifests/ reports/
+exports/                             frozen outward-facing bundles
   publication_source_data/             the only manuscript-facing interface
 tests/                               private-data-independent tests
 audits/                              provenance and robustness audits
@@ -109,8 +112,8 @@ This repository's responsibility ends at **canonical publication source data
 plus a scientific provenance manifest**:
 
 ```
-results/publication_source_data/<publication_id>/
-results/publication_source_data/manifest.csv
+exports/publication_source_data/<publication_id>/
+exports/publication_source_data/manifest.csv
 ```
 
 **This repository has no publication responsibility beyond that point.** The
@@ -141,6 +144,8 @@ prose and no journal assembly code may reappear in this repository.
 - [Datasets](docs/DATASETS.md)
 - [Input contracts](docs/INPUT_CONTRACTS.md)
 - [Output contracts](docs/OUTPUT_CONTRACTS.md)
+- [Output layout: work, results, exports](docs/OUTPUT_LAYOUT.md)
+- [Repository name recommendation](docs/REPOSITORY_NAME_RECOMMENDATION.md)
 - [Microglia ROI interpretation](docs/MICROGLIA_ROI_INTERPRETATION.md)
 - [Reviewer reproducibility](docs/REVIEWER_REPRODUCIBILITY.md)
 - [PRIDE export](docs/PRIDE_EXPORT.md)
