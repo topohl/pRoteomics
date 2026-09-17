@@ -46,11 +46,37 @@ NORMALIZED_CALLS <- c("canonical_result_path", "canonical_work_path",
 # these create directories, so calling one is itself a write
 LEGACY_FACTORIES <- c("create_module_dirs", "module_paths", "qc_paths")
 PATH_BUILDERS <- c("path_results", "path_processed")
-WRITE_CALLS <- c("dir_create", "write.csv", "write.table", "write_csv_safe",
-                 "write_csv_safe2", "writeLines", "saveRDS", "ggsave",
-                 "saveWorkbook", "write.xlsx", "file.copy", "file.rename",
-                 "write_run_manifest", "write_result_manifest", "write_yaml",
-                 "png", "pdf", "svg", "jpeg", "tiff", "cairo_pdf")
+# A write call is whatever actually puts bytes on disk, which includes the
+# repository's own wrappers. Phase 6G.3 found this list too short: three
+# spatial_validation scripts write workbooks through
+# xlsx_save_valid_workbook(wb, wb_path), where wb_path is
+# path_results("tables", "11_spatial_systems", ...). The path construction was
+# detected, the write was not, so those legacy writes were invisible and the
+# "active legacy write sites = 0" gate would have passed with them still in
+# place. A detector that only knows base R is not AST-aware detection of this
+# codebase.
+#
+# The wrappers below were derived, not guessed: every function defined in R/
+# whose body reaches write.csv/write.table/writeLines/saveRDS/ggsave/
+# saveWorkbook/write.xlsx/file.copy/file.rename/dir.create, and which analysis/
+# actually calls. Pure-removal helpers (unlink) are deliberately excluded: a
+# delete is not a write to a destination.
+BASE_WRITE_CALLS <- c("dir_create", "write.csv", "write.table", "write_csv_safe",
+                      "write_csv_safe2", "writeLines", "saveRDS", "ggsave",
+                      "saveWorkbook", "write.xlsx", "file.copy", "file.rename",
+                      "write_run_manifest", "write_result_manifest", "write_yaml",
+                      "png", "pdf", "svg", "jpeg", "tiff", "cairo_pdf")
+WRAPPER_WRITE_CALLS <- c(
+  "xlsx_save_valid_workbook", "write_input_status", "save_nature_svg",
+  "write_sus_res_biological_audit_workbook", "write_config_snapshot",
+  "write_csv_strict", "save_plot_dual", "write_gct_v1.3",
+  "joint_qc_write_matrix_tsv", "joint_qc_write_gct_v13",
+  "write_gct_extract_contract_manifest", "write_tsv", "copy_export_targets",
+  "copy_export_file", "write_validation_summary_md", "qc_write_csv",
+  "qc_write_xlsx", "qc_save_square_svg", "joint_pub_save_svg",
+  "tokenize_wgcna_mouse_only", "wgcna_group_prepare_stage",
+  "wgcna_group_atomic_publish")
+WRITE_CALLS <- c(BASE_WRITE_CALLS, WRAPPER_WRITE_CALLS)
 STAGE_NS <- "^[0-9]{2}[a-z]?_[A-Za-z]"
 
 call_name <- function(e) {

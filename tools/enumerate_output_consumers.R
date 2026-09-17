@@ -312,6 +312,36 @@ generated_artifacts <- local({
   cand[keep]
 })
 
+## Scripts that address outputs by their *baseline* path.
+##
+## audits/verify_scientific_contracts.R names frozen carriers such as
+## results/tables/11_spatial_systems/atlas/... and then resolves each one
+## through audits/restructure_migration_map.csv (baseline_path ->
+## destination_path). It is an equivalence oracle keyed on the pre-restructure
+## address, not a reader of the current namespace, so migrating a writer must
+## not repoint it: the map already carries the translation, and rewriting the
+## keys would destroy the very provenance it exists to prove.
+##
+## Before this rule those 212 hits landed in UNKNOWN, because the classifier's
+## fallthrough knew tools/, R/, config/, docs/ and analysis/ but not an
+## executable script under audits/. That blocked the Phase 6G.3 preflight.
+##
+## Derived rather than listed, in keeping with the rest of this tool: the
+## property that matters is "resolves through the migration map", which is
+## observable. An audits/ script that does NOT do so is classified
+## AUDIT_READER and stays runtime-relevant, so a genuine new reader cannot be
+## excused by living in the same directory.
+baseline_keyed_surfaces <- local({
+  code <- system2("git", c("ls-files"), stdout = TRUE)
+  code <- code[grepl("^(audits|tools)/.*[.][Rr]$", code)]
+  keep <- vapply(code, function(p) {
+    if (!file.exists(p) || file.info(p)$size > 4e6) return(FALSE)
+    txt <- paste(readLines(p, warn = FALSE), collapse = "\n")
+    grepl("restructure_migration_map", txt, fixed = TRUE)
+  }, logical(1))
+  unname(code[keep])
+})
+
 READ_CALLS <- c("read.csv", "read.delim", "read.table", "readRDS", "readLines",
                 "read_csv", "read_tsv", "read_yaml", "read.xlsx", "read_excel",
                 "fread", "load", "list.files", "dir", "Sys.glob", "file.exists",
@@ -416,7 +446,7 @@ for (i in seq_len(nrow(files))) {
         ## dependency kind
         dk <- if (in_comment || is_doc) {
           "DOCUMENTATION"
-        } else if (is_hist) {
+        } else if (is_hist || f %in% baseline_keyed_surfaces) {
           "PROVENANCE"
         } else if (identical(f, "pipeline.yml")) {
           "CONFIG"
@@ -442,6 +472,10 @@ for (i in seq_len(nrow(files))) {
           "CONTRACT_RECORD"
         } else if (startsWith(f, "analysis/")) {
           "DOWNSTREAM_ANALYSIS"
+        } else if (startsWith(f, "audits/") && is_r) {
+          ## an executable audit that is not keyed on the migration map really
+          ## does read the current namespace, so it must be repointed
+          "AUDIT_READER"
         } else {
           "UNKNOWN"
         }
