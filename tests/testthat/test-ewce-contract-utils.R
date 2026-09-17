@@ -114,7 +114,7 @@ testthat::test_that("EWCE never silently falls back to a background-free test", 
 
   # The analysis script must DELEGATE rather than carry its own copy, so the
   # guarantee above cannot be bypassed by a second implementation.
-  script_path <- repo_path("analysis/06_gsea", "01_EWCE_E9.r")
+  script_path <- repo_path("analysis/06_gsea", "run_ewce_celltype_enrichment.R")
   script_code <- code_of(script_path)
   testthat::expect_length(calls_in(script_code), 0L)
   testthat::expect_true(grepl("ewce_bootstrap_once", script_code, fixed = TRUE))

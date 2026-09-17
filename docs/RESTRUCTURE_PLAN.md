@@ -207,7 +207,7 @@ archivable** (§19). They move with the manuscript layer rather than to
 The two residual failures reported at the end of Phase 6C were introduced by
 this migration, not pre-existing.
 `tests/testthat/test-wgcna-identity-contract.R` built a script path as a
-multi-line `file.path("06_modules_WGCNA", "00_wgcna_identity_contract.R")`
+multi-line `file.path("06_modules_WGCNA", "build_module_identity_contract.R")`
 call with no root variable, which every Phase 6B sweep missed because each one
 matched line by line. The stale path made `Rscript` exit 139 with no output,
 so both assertions failed.

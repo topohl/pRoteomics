@@ -8,7 +8,7 @@ stages:
   core:
     description: "Core dataset handoff: split upstream contrast files, prepare module-score metadata, and map protein identifiers for downstream analyses."
     scripts:
-      - script: "analysis/01_preprocessing/03_gct_extractR.r"
+      - script: "analysis/01_preprocessing/extract_protigy_contrasts.R"
         required: true
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "core"
@@ -19,7 +19,7 @@ stages:
         recomputes_core_state: true
         safe_downstream_rerun: false
         notes: "Creates dataset-scoped GCT comparison CSVs consumed by MapThatProt; rerun intentionally because this refreshes core handoff state."
-      - script: "analysis/01_preprocessing/06_merged_metadata_module_score.r"
+      - script: "analysis/01_preprocessing/build_module_score_metadata.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "core"
@@ -30,7 +30,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Builds dataset-scoped behavior/physiology metadata used by module activity scoring; does not change expression matrices."
-      - script: "analysis/01_preprocessing/01_MapThatProt_batch.r"
+      - script: "analysis/01_preprocessing/map_protein_identifiers.R"
         required: true
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "core"
@@ -44,7 +44,7 @@ stages:
   joint_qc_preprocessing:
     description: "Raw-derived global joint compartment preprocessing for QC and a single ProTIGY input; it does not alter dataset-specific analysis contracts."
     scripts:
-      - script: "analysis/01_preprocessing/01_prepare_joint_protigy_input.r"
+      - script: "analysis/01_preprocessing/build_joint_protigy_input.R"
         required: false
         datasets: ["global"]
         stage: "joint_qc_preprocessing"
@@ -58,7 +58,7 @@ stages:
   qc_global:
     description: "Global QC and marker/reference setup across dataset families."
     scripts:
-      - script: "analysis/02_qc/00b_joint_compartment_qc.r"
+      - script: "analysis/02_qc/assess_joint_compartment_quality.R"
         required: false
         datasets: ["global"]
         stage: "qc_global"
@@ -69,7 +69,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Uncorrected global PCA plus exploratory UMAP/t-SNE from the raw-derived primary shared core; does not perform combined DE/WGCNA or primary batch correction."
-      - script: "analysis/02_qc/00c_joint_compartment_qc_publication_figures.r"
+      - script: "analysis/02_qc/render_joint_compartment_qc_figures.R"
         required: false
         datasets: ["global"]
         stage: "qc_global_publication_figures"
@@ -80,7 +80,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Plot-only Nature-style rendering of completed joint-QC coordinates and audits; writes new editable SVGs without replacing source tables or recomputing PCA/UMAP/t-SNE."
-      - script: "analysis/02_qc/04b_import_reference_marker_sources.r"
+      - script: "analysis/02_qc/build_reference_marker_registry.R"
         required: false
         datasets: ["global"]
         stage: "qc_global"
@@ -91,7 +91,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Creates the marker registry consumed by marker QC and WGCNA downstream annotation; offline/cached sources are preferred."
-      - script: "analysis/02_qc/05_empirical_roi_marker_discovery.r"
+      - script: "analysis/02_qc/discover_empirical_roi_markers.R"
         required: false
         datasets: ["global"]
         stage: "qc_global"
@@ -105,7 +105,7 @@ stages:
   qc:
     description: "Dataset QC: sample quality, missingness, replicate consistency, marker abundance, PCA/confounding, variance partitioning, and QC-to-biology summaries."
     scripts:
-      - script: "analysis/02_qc/00_dataset_qc_report.r"
+      - script: "analysis/02_qc/assess_dataset_quality.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "qc"
@@ -116,7 +116,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Baseline dataset QC."
-      - script: "analysis/02_qc/01_sample_qc_quicksearch.r"
+      - script: "analysis/02_qc/assess_sample_quality.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "qc"
@@ -127,7 +127,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Quicksearch sample-level QC."
-      - script: "analysis/02_qc/02_missingness_diagnostics.r"
+      - script: "analysis/02_qc/summarize_missingness.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "qc"
@@ -138,7 +138,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Missingness diagnostics."
-      - script: "analysis/02_qc/03_replicate_consistency.r"
+      - script: "analysis/02_qc/assess_replicate_consistency.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "qc"
@@ -149,7 +149,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Replicate consistency diagnostics."
-      - script: "analysis/02_qc/04_marker_rank_abundance_qc.r"
+      - script: "analysis/02_qc/assess_marker_rank_abundance.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "qc"
@@ -160,7 +160,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Marker abundance QC; benefits from qc_global marker registries."
-      - script: "analysis/02_qc/04c_marker_detectability_and_wgcna_bridge.r"
+      - script: "analysis/02_qc/summarize_marker_detectability.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "qc"
@@ -171,7 +171,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Dataset-specific canonical marker mapping, post-filter/post-imputation processed-matrix availability, and WGCNA interpretation bridge. These nonmissing values are not raw detection and are not the authoritative cross-compartment abundance validation."
-      - script: "analysis/02_qc/05_pca_confounding_qc.r"
+      - script: "analysis/02_qc/assess_pca_confounding.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "qc"
@@ -182,7 +182,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "PCA and confounding QC."
-      - script: "analysis/02_qc/06_variance_partitioning.r"
+      - script: "analysis/02_qc/partition_variance.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "qc"
@@ -193,7 +193,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Variance partitioning; no WGCNA recomputation."
-      - script: "analysis/02_qc/07_wgcna_marker_trait_export.r"
+      - script: "analysis/02_qc/export_marker_traits.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "qc"
@@ -204,7 +204,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Exports canonical ProteinGroupID/member-provenance marker traits for later WGCNA annotation without depending on completed WGCNA outputs."
-      - script: "analysis/02_qc/08_qc_biology_confounding_report.r"
+      - script: "analysis/02_qc/summarize_qc_confounding.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "qc"
@@ -218,7 +218,7 @@ stages:
   qc_cross_dataset:
     description: "Cross-dataset QC summaries that require completed dataset-specific QC outputs."
     scripts:
-      - script: "analysis/02_qc/04e_control_compartment_abundance_publication_figures.r"
+      - script: "analysis/02_qc/render_compartment_abundance_figures.R"
         required: false
         datasets: ["global"]
         stage: "qc_cross_dataset"
@@ -232,7 +232,7 @@ stages:
   enrichment:
     description: "Differential abundance interpretation: enrichment manifests, GO/GSEA comparisons, neuropil/reference annotations, targeted signatures, program summaries, external overlaps, and EWCE."
     scripts:
-      - script: "analysis/04_differential_abundance/01_clusterProfiler.r"
+      - script: "analysis/04_differential_abundance/run_clusterprofiler_enrichment.R"
         required: true
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "enrichment"
@@ -243,7 +243,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Creates the dataset-scoped clusterProfiler manifest consumed by compareGO and program summaries."
-      - script: "analysis/04_differential_abundance/01b_gsea_protein_direction_audit.r"
+      - script: "analysis/04_differential_abundance/audit_gsea_protein_direction.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "enrichment"
@@ -254,7 +254,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Optional read-only diagnostic audit of GSEA NES direction against leading/core protein log2fc direction; does not alter enrichment outputs."
-      - script: "analysis/04_differential_abundance/02_compareGO.r"
+      - script: "analysis/04_differential_abundance/compare_go_enrichment.R"
         required: true
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "enrichment"
@@ -265,7 +265,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Consumes only the manifest-selected clusterProfiler outputs for this dataset."
-      - script: "analysis/04_differential_abundance/04_neuropil_reference_annotation.r"
+      - script: "analysis/04_differential_abundance/annotate_neuropil_reference.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "enrichment"
@@ -276,7 +276,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Adds neuropil-reference annotation where supported; microglia uses this as context for ROI/local microenvironment interpretation, not subtraction."
-      - script: "analysis/04_differential_abundance/05_microglia_targeted_signature_enrichment.r"
+      - script: "analysis/04_differential_abundance/test_microglia_targeted_signatures.R"
         required: false
         datasets: ["microglia"]
         stage: "enrichment"
@@ -287,7 +287,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Microglia-only targeted signature enrichment; supports conservative ROI annotation rather than purified-cell claims. Canonical EWCE RDS is optional diagnostic target-list support only and does not determine signatures, enrichment statistics, claims, or figures."
-      - script: "analysis/04_differential_abundance/06_biological_program_summary.r"
+      - script: "analysis/04_differential_abundance/summarize_biological_programs.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "enrichment"
@@ -298,7 +298,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Runs after clusterProfiler and compareGO; summarizes conservative biological programs and uses annotations/signatures where supported."
-      - script: "analysis/04_differential_abundance/07_compareGO_spatial_program_atlas.r"
+      - script: "analysis/04_differential_abundance/build_go_program_atlas.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "enrichment"
@@ -309,7 +309,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Builds the backward-compatible broad heuristic spatial program atlas plus a SUS-RES manuscript layer mapped by GO ID through GO.db is_a/part_of relationships. GOSemSim Wang similarity is descriptive redundancy QA only; enrichment statistics are unchanged."
-      - script: "analysis/04_differential_abundance/08_external_stress_disease_signature_overlap.r"
+      - script: "analysis/04_differential_abundance/compare_external_stress_signatures.R"
         required: false
         datasets: ["global"]
         stage: "enrichment"
@@ -320,7 +320,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Offline-only overlap against cached stress/disease signatures; missing optional signatures become status rows."
-      - script: "analysis/04_differential_abundance/09_control_spatial_identity_validation.r"
+      - script: "analysis/04_differential_abundance/validate_control_spatial_identity.R"
         required: false
         datasets: ["global"]
         stage: "enrichment"
@@ -331,7 +331,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Narrow CON-only Figure 2 anatomical validation using canonical ProteinGroupID input/mapping, Kaulich 2025 reference signatures, and GO-BP preranked GSEA. It neither consumes nor modifies WGCNA state, stress contrasts, clusterProfiler manifests, or compareGO."
-      - script: "analysis/04_differential_abundance/10_sus_res_spatial_dap_atlas.r"
+      - script: "analysis/04_differential_abundance/build_sus_res_dap_atlas.R"
         required: false
         datasets: ["global"]
         stage: "enrichment"
@@ -342,7 +342,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Downstream ProteinGroupID-level SUS-RES spatial DAP counts and within-dataset direction-aware overlap, plus a manuscript Panel C that separates descriptive all-tested-term median NES from original constituent GO-term BH FDR support. Spatial concordance and semantic redundancy are descriptive only. The XLSX is a human-facing audit of canonical CSVs. DAP-set GO-BP ORA remains separate; the stage does not rerun differential abundance or ranked GO/GSEA."
-      - script: "analysis/04_differential_abundance/11_stress_response_biological_audit.r"
+      - script: "analysis/04_differential_abundance/audit_stress_response_biology.R"
         required: false
         datasets: ["global"]
         stage: "enrichment"
@@ -353,7 +353,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Bounded downstream three-contrast audit. Preserves individual-contrast protein/GO BH FDR; adds secondary dataset-by-spatial-unit joint control-pair BH families on matched ProteinGroupID/GO-ID universes using raw nominal p-values. SUS-RES remains outside those families. Direct-DAP control-reference geometry is selected only by canonical SUS-RES FDR and is descriptive, not independent validation. Effect/NES trajectories are descriptive; no DA model, GSEA, DAP-set ORA, WGCNA, or behavior model is rerun. The SUS-RES audit workbook is a protected reference artifact, not a Stage-11 input."
-      - script: "analysis/06_gsea/01_EWCE_E9.r"
+      - script: "analysis/06_gsea/run_ewce_celltype_enrichment.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "enrichment"
@@ -367,7 +367,7 @@ stages:
   modules_wgcna:
     description: "WGCNA network/module construction only: build modules, eigengenes, module definitions, and supermodule clustering state."
     scripts:
-      - script: "analysis/05_wgcna/01_WGCNA.r"
+      - script: "analysis/05_wgcna/build_wgcna_modules.R"
         required: true
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "modules_wgcna"
@@ -381,7 +381,7 @@ stages:
   modules_downstream:
     description: "WGCNA downstream interpretation: GO comparison heatmaps, curated overlap programs, module scoring, DE/GSEA overlap, group-effect modelling, biological annotation, interpretable summaries, and robustness/context layers."
     scripts:
-      - script: "analysis/05_wgcna/01b_module_supermodule_GO_heatmaps.R"
+      - script: "analysis/05_wgcna/render_module_go_heatmaps.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "modules_downstream"
@@ -392,7 +392,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Creates representative all-module GO heatmaps. Module cells are BH-FDR enrichment strengths; supermodule cells are recurrence-weighted member-module summaries, not pooled ORA tests."
-      - script: "analysis/05_wgcna/01a_compare_GO_recurrent_proteins.r"
+      - script: "analysis/05_wgcna/compare_recurrent_module_proteins.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "modules_downstream"
@@ -403,7 +403,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Dataset-specific recurrent GO/protein comparison across spatial units; does not alter WGCNA modules."
-      - script: "analysis/05_wgcna/02_curated_overlap_programs.r"
+      - script: "analysis/05_wgcna/build_curated_overlap_programs.R"
         required: false
         datasets: ["global"]
         stage: "modules_downstream"
@@ -414,7 +414,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Curated overlap programs are global biological program sets and are distinct from WGCNA module construction."
-      - script: "analysis/05_wgcna/03_score_module_activity.R"
+      - script: "analysis/05_wgcna/score_module_activity.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "modules_downstream"
@@ -425,7 +425,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Module scoring layer: scores existing module definitions against dataset matrices; does not rebuild WGCNA modules. Dataset fallback is overlap for neuron_neuropil and WGCNA for neuron_soma/microglia."
-      - script: "analysis/05_wgcna/03_score_module_activity.R"
+      - script: "analysis/05_wgcna/score_module_activity.R"
         required: false
         datasets: ["neuron_neuropil"]
         stage: "modules_downstream"
@@ -438,7 +438,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Additional neuron_neuropil WGCNA-source module-score pass. Keeps the default curated-overlap score run and adds data-driven WGCNA module-score effect-size plots."
-      - script: "analysis/05_wgcna/04_wgcna_de_gsea_overlap.r"
+      - script: "analysis/05_wgcna/compare_module_enrichment_overlap.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "modules_downstream"
@@ -449,7 +449,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Bridge layer between WGCNA modules and DE/GSEA manifests; must run after WGCNA and enrichment."
-      - script: "analysis/05_wgcna/00_wgcna_identity_contract.R"
+      - script: "analysis/05_wgcna/build_module_identity_contract.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "modules_downstream"
@@ -460,7 +460,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Read-only canonical identity publication. Neuronal authority is the provenance-selected Stage 01 cluster assignment; microglia authority is the current Stage 01 member map. Stage 05-13 inputs are compatibility-audit only and never select membership or labels."
-      - script: "analysis/05_wgcna/05_module_supermodule_group_effects.r"
+      - script: "analysis/05_wgcna/test_module_phenotypes.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "modules_downstream"
@@ -471,7 +471,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: false
         notes: "Phase 2B v5 statistical production only. Bilateral values use equal hemisphere weighting after within-hemisphere technical-row means and sha256_utf8_lf_v1 content hashes. Named, full-interaction follow-up, and composite reduced/full omnibus diagnostics have explicit scopes; mixed-model boundaries use the prespecified variance-ratio rule and retain lme4 singularity as a separate diagnostic. The identity contract is the sole membership authority; publication readiness is not assessed. Existing generated Stage 05 migration-status artifacts remain stale until a later authorized refresh; the source migration is complete and claim-facing consumers use only the Stage 07 inferential handoff."
-      - script: "analysis/05_wgcna/06_annotate_module_microenvironment.r"
+      - script: "analysis/05_wgcna/annotate_module_microenvironment.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "modules_downstream"
@@ -482,7 +482,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Biological annotation layer. Consumes marker registry, empirical markers, WGCNA outputs, and neuropil annotations when present; microglia labels refer to ROI/local microenvironment unless explicit immune-state evidence is present."
-      - script: "analysis/05_wgcna/07_wgcna_interpretable_summary.r"
+      - script: "analysis/05_wgcna/summarize_module_interpretation.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "modules_downstream"
@@ -493,7 +493,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Final WGCNA interpretable module/supermodule summary tables and plots. The inferential handoff retains every independent module endpoint and only genuine multi-module supermodule endpoints, with tier-specific FDR copied through the Phase 2B adapter. For microglia, reviewed biological labels remain authoritative while automatic proposals, GO, hub, and microenvironment evidence remain provenance."
-      - script: "analysis/05_wgcna/08_wgcna_publication_figures.R"
+      - script: "analysis/05_wgcna/render_module_figures.R"
         required: false
         datasets: ["microglia"]
         stage: "modules_downstream"
@@ -511,7 +511,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Final all-supermodule publication renderer. Uses the reviewed Stage 07 lookup and inferential handoff; singleton panels reuse their canonical module endpoint and do not create an independent claim. Raw eigengene values and PCA loadings remain non-inferential Stage 05 inputs."
-      - script: "analysis/05_wgcna/08_wgcna_score_publication_summary.R"
+      - script: "analysis/05_wgcna/summarize_module_scores.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "modules_downstream"
@@ -528,8 +528,8 @@ stages:
         consumes_optional: []
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "Final publication rendering only. Score/statistics computation stays in 03_score_module_activity.R; every rendered label must come from the canonical final lookup produced by 07_wgcna_interpretable_summary.r."
-      - script: "analysis/05_wgcna/08b_microglia_wgcna_readiness_publication_figures.R"
+        notes: "Final publication rendering only. Score/statistics computation stays in score_module_activity.R; every rendered label must come from the canonical final lookup produced by summarize_module_interpretation.R."
+      - script: "analysis/05_wgcna/render_microglia_module_figures.R"
         required: false
         datasets: ["microglia"]
         stage: "modules_downstream"
@@ -574,7 +574,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Additive corrected WGCNA figure layer. Reads inference only from the Stage 07 handoff, standardizes by the exact response SD, and presents AnimalID means without overwriting historic Stage 08 outputs."
-      - script: "analysis/05_wgcna/09_microglia_neuropil_independence.R"
+      - script: "analysis/05_wgcna/test_microglia_neuropil_independence.R"
         required: false
         datasets: ["microglia"]
         stage: "modules_downstream"
@@ -585,7 +585,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Microglia-only sensitivity analysis testing whether module/signature group effects persist after matched region-level neuron_neuropil covariate adjustment. Predeclared config-driven adjustments are separated from exploratory strongest-Spearman matching; exploratory rows are diagnostic only and cannot enable purified cell-type claim wording."
-      - script: "analysis/05_wgcna/09b_microglia_neuropil_independence_figures.R"
+      - script: "analysis/05_wgcna/render_microglia_independence_figures.R"
         required: false
         datasets: ["microglia"]
         stage: "modules_downstream"
@@ -601,7 +601,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Publication-style rendering of existing microglia matched-neuropil independence diagnostics; no model refitting and no WGCNA recomputation."
-      - script: "analysis/05_wgcna/09c_microglia_roi_specificity_diagnostics.R"
+      - script: "analysis/05_wgcna/summarize_microglia_roi_specificity.R"
         required: false
         datasets: ["microglia"]
         stage: "modules_downstream"
@@ -627,7 +627,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Contrast-free diagnostic of microglia ROI module specificity, matched neuropil/soma coupling, and cross-compartment module sharing. Does not test StressGroup effects and does not enable purified cell-type claims without supporting evidence."
-      - script: "analysis/05_wgcna/10_module_complex_architecture.r"
+      - script: "analysis/05_wgcna/summarize_module_complex_architecture.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "modules_downstream"
@@ -638,7 +638,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Protein-complex/organelle architecture evidence from existing module definitions; no core WGCNA recomputation."
-      - script: "analysis/05_wgcna/11_module_robustness_sensitivity.r"
+      - script: "analysis/05_wgcna/audit_module_robustness.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "modules_downstream"
@@ -649,7 +649,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Robustness/sensitivity synthesis from the Stage 07 inferential handoff, preservation, and QC/confounding outputs; tier family, claim gate, and source key are retained."
-      - script: "analysis/05_wgcna/12_microglia_wgcna_nature_readiness_audit.R"
+      - script: "analysis/05_wgcna/audit_microglia_module_claims.R"
         required: false
         datasets: ["microglia"]
         stage: "modules_downstream"
@@ -660,7 +660,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Optional additive manuscript-readiness audit. Fixed memberships only; unblocked conventional WGCNA preservation is descriptive, strict nonspatial sensitivity is diagnostic, and region-organized covariance is not a technical failure."
-      - script: "analysis/05_wgcna/12b_finalize_microglia_wgcna_nature_readiness_audit.R"
+      - script: "analysis/05_wgcna/summarize_microglia_module_claims.R"
         required: false
         datasets: ["microglia"]
         stage: "modules_downstream"
@@ -671,7 +671,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Packaging and integrity finalization only; it performs no scientific inference."
-      - script: "analysis/05_wgcna/13_wgcna_claim_readiness.R"
+      - script: "analysis/05_wgcna/audit_module_claim_readiness.R"
         required: false
         datasets: ["microglia"]
         stage: "modules_downstream"
@@ -696,7 +696,7 @@ stages:
   networks:
     description: "Spatial network analyses: build spatial relation objects, differential networks, bootstrap stability summaries, figures, and chord diagrams."
     scripts:
-      - script: "analysis/05_wgcna/14_wgcna_label_coherence_audit.R"
+      - script: "analysis/05_wgcna/audit_module_label_coherence.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "modules_downstream"
@@ -718,7 +718,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "PHENOTYPE-BLIND label coherence audit. Asks whether the GO term that named each module describes its network centre, using frozen ORA geneID contributors mapped to ProteinGroupIDs. No WGCNA, ORA or label is recomputed and no canonical label is overwritten; proposed reviewed registries are written to the review namespace for manual adjudication only."
-      - script: "analysis/05_wgcna/15_wgcna_label_adjudication.R"
+      - script: "analysis/05_wgcna/adjudicate_module_labels.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "modules_downstream"
@@ -742,7 +742,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "PHENOTYPE-BLIND conservative naming adjudication. Consolidates the frozen Stage-01 ORA (all / core kME>=0.60 / top-25 hub protein sets) into biological themes, measures whether the network centre supports each theme, and emits PROPOSED reviewed labels with adjudication_status=proposed and reviewer=NA. No WGCNA, ORA or canonical label is recomputed or overwritten; proposals are never treated as active registries."
-      - script: "analysis/05_wgcna/16_wgcna_label_approval_table.R"
+      - script: "analysis/05_wgcna/build_module_label_registry.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "modules_downstream"
@@ -763,7 +763,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "MANUAL-ADJUDICATION SUPPORT. Reads the frozen Stage-15 evidence packet (no scoring is rerun) and emits one approval row per module and supermodule with proposed_final_label, two alternatives, confidence, rationale, a label-hierarchy redundancy warning and recommended_for_activation. proposal_prepared_by=automated_evidence_audit, reviewer=NA, human_decision=NA - approval is a human act performed outside this pipeline. Activates nothing."
-      - script: "analysis/07_spatial_networks/01_network_spatial_relations.r"
+      - script: "analysis/07_spatial_networks/build_spatial_networks.R"
         required: true
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "networks"
@@ -774,7 +774,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Generates spatial relation objects; may use module annotations when present but does not recompute WGCNA."
-      - script: "analysis/07_spatial_networks/02_differential_networks.r"
+      - script: "analysis/07_spatial_networks/build_differential_networks.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma"]
         stage: "networks"
@@ -785,7 +785,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Differential networks after spatial relation generation."
-      - script: "analysis/07_spatial_networks/03_bootstrap_network_stability.r"
+      - script: "analysis/07_spatial_networks/test_network_stability.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma"]
         stage: "networks"
@@ -796,7 +796,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Bootstrap network stability."
-      - script: "analysis/07_spatial_networks/04_bootstrap_differential_network_stability.r"
+      - script: "analysis/07_spatial_networks/test_differential_network_stability.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma"]
         stage: "networks"
@@ -807,7 +807,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Bootstrap differential network stability."
-      - script: "analysis/07_spatial_networks/05_bootstrap_differential_network_figures.r"
+      - script: "analysis/07_spatial_networks/render_differential_network_figures.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma"]
         stage: "networks"
@@ -818,7 +818,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Figure layer after bootstrap differential network stability."
-      - script: "analysis/07_spatial_networks/06_chord_diagram.r"
+      - script: "analysis/07_spatial_networks/render_network_chord_diagram.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma"]
         stage: "networks"
@@ -829,7 +829,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Chord diagrams from mapped phenotype-within-unit edge/protein tables; current stage placement is retained although the input path is legacy-shaped."
-      - script: "analysis/03_spatial_validation/01_spatial_systems_data_contract.R"
+      - script: "analysis/03_spatial_validation/build_spatial_data_contract.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "networks"
@@ -845,7 +845,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Hemisphere-resolved data contract. Builds ProteinGroupID x AnimalID x Hemisphere x SpatialUnit (level 1), the equal-weight bilateral level 2 and explicit L/R/bilateral matrices, then proves level 2 against the canonical protigy_aggregate_expression_columns() aggregation. AnimalID is the biological replicate; a hemisphere is a repeated tissue sample within an animal. A critical validation failure stops the layer."
-      - script: "analysis/03_spatial_validation/02_bilateral_spatial_identity.R"
+      - script: "analysis/03_spatial_validation/quantify_bilateral_spatial_identity.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "networks"
@@ -860,7 +860,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "CON-only bilateral validation of anatomical identity. Runs the SAME contrast definitions, from the single registry in R/control_spatial_identity_utils.R, on left-only, right-only and bilateral data. Reports effect reproducibility; the both-sides-significant fraction is a sensitivity descriptor only. Does not replace the canonical Stage-09 analysis."
-      - script: "analysis/03_spatial_validation/03_bilateral_empirical_compartment.R"
+      - script: "analysis/03_spatial_validation/quantify_empirical_compartments.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "networks"
@@ -876,7 +876,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Cross-hemisphere validation of empirical compartment identity, rebuilt from the side-resolved matrices. Reuses the canonical ~ AnimalID + dataset design; AnimalID is nested within StressGroup so group membership is fully absorbed and the compartment effect is phenotype-independent. Marker transfer sizes 25/50/100 are pre-specified, not tuned."
-      - script: "analysis/03_spatial_validation/04_wgcna_module_bilateral.R"
+      - script: "analysis/03_spatial_validation/quantify_module_bilateral_identity.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "networks"
@@ -891,7 +891,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Module bilateral reproducibility from the ACCEPTED Stage-05 hemisphere values; no WGCNA state is recomputed. Reports absolute-value reproducibility and spatial-pattern reproducibility separately, because a module can carry a constant side offset while preserving its spatial pattern. Poor agreement is not labelled a technical failure."
-      - script: "analysis/03_spatial_validation/05_wgcna_module_celltype_annotation.R"
+      - script: "analysis/03_spatial_validation/annotate_module_celltypes.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "networks"
@@ -905,7 +905,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Phenotype-blind external cell-type annotation of every module at three scopes (all / core_kME06 / top25) via the shared engine in R/ewce_gene_set_engine.R. Measured-proteome background; BH applied strictly within ewce_module_annotation_<dataset>_<scope>_<level> so the phenotype arm can never move these FDRs. External expression enrichment is NOT empirical compartment affinity and NOT a cell-proportion claim. WGCNA labels are unchanged."
-      - script: "analysis/03_spatial_validation/06_bilateral_variance_decomposition.R"
+      - script: "analysis/03_spatial_validation/decompose_bilateral_variance.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "networks"
@@ -921,7 +921,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Repeated-measures variance decomposition over WGCNA modules, reference marker scores and empirical compartment scores. Hemisphere is a FIXED effect so a systematic side offset is estimated rather than absorbed into noise; SpatialUnit is random so the anatomical gradient does not inflate the residual. Reliability is reported only for converged, non-singular fits, and L/R variation is called within-animal hemispheric variance, not measurement error."
-      - script: "analysis/03_spatial_validation/07_spatial_systems_foundation_validation.R"
+      - script: "analysis/03_spatial_validation/validate_spatial_foundations.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "networks"
@@ -937,7 +937,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Gates the spatial systems layer. A critical FAIL exits non-zero so later atlas and network stages cannot be built on a foundation that did not hold."
-      - script: "analysis/03_spatial_validation/08_module_spatial_cell_atlas.R"
+      - script: "analysis/03_spatial_validation/build_module_spatial_atlas.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "networks"
@@ -964,7 +964,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Integrated module spatial/cell-affinity atlas. Baseline identity is CON-only from the validated Stage-05 hemisphere values; empirical compartment, reference marker and external EWCE affinity are kept as separate dimensions and never summed into a composite score. Marker sets outside 0.5%-50% of the measured universe are flagged non-informative and excluded from the strongest-compartment call, because empirical_microglia_neuropil_shared spans ~73% of the proteome and cannot discriminate. Labels are audited, never changed."
-      - script: "analysis/03_spatial_validation/09_protein_spatial_cell_atlas.R"
+      - script: "analysis/03_spatial_validation/build_protein_spatial_atlas.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "networks"
@@ -982,7 +982,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Protein-level atlas over the UNION of the WGCNA candidate shortlist and every SUS-RES FDR-supported protein, deduplicated by dataset x ProteinGroupID. Baseline spatial identity is established from CON animals only; SUS-RES statistics are JOINED from canonical outputs and never recomputed. The effect-at-identity classification uses a prespecified within-protein high-affinity rule (upper third of that protein's own spatial ranking)."
-      - script: "analysis/03_spatial_validation/10_neuropil_spatial_detection_context.R"
+      - script: "analysis/03_spatial_validation/quantify_neuropil_detection_context.R"
         required: false
         datasets: ["neuron_neuropil"]
         stage: "networks"
@@ -996,7 +996,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Detectability audit for the CA2-SLM hit burden. Separates genuine spatial concentration from baseline abundance and from per-unit statistical power, using ALL tested proteins per unit as the denominator rather than the phenotype-selected candidate subset. Joins the DAP-count table on route_unit: the sibling spatial_unit column is collapsed to bare Region for soma and microglia and would silently drop 8 of 18 units. No DA statistic is refitted."
-      - script: "analysis/03_spatial_validation/11_spatial_systems_atlas_workbook.R"
+      - script: "analysis/03_spatial_validation/summarize_spatial_atlas.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "networks"
@@ -1014,7 +1014,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Reviewer workbook, candidate figures and atlas validation. Figures are NEW candidates and replace no manuscript contract; each writes its own source-data CSV. A critical validation FAIL exits non-zero, which is how a stored zero empirical EWCE p-value would block the atlas."
-      - script: "analysis/03_spatial_validation/12_neuropil_spatial_precision_context.R"
+      - script: "analysis/03_spatial_validation/quantify_neuropil_precision.R"
         required: false
         datasets: ["neuron_neuropil"]
         stage: "networks"
@@ -1030,7 +1030,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Final power audit of the CA2-SLM hit concentration. Model SE is RECOVERED as |log2FC|/|t| from the published statistics, never refitted. Result: precision is ruled out by construction because the canonical DA shares one residual variance per protein across units (SE identical to 3.3e-14), and detectability is contradicted because CA2_slm has the HIGHEST pre-imputation missingness and the LOWEST baseline abundance. Differential missingness IS supported (SUS 0.229 vs RES 0.181; r(dmiss, log2FC) = -0.455) and 3 of the 5 QC-flagged neuropil samples are CA2_slm, so the concentration is substantially an imputation artifact; only 8 of 28 DAPs are fully observed."
-      - script: "analysis/03_spatial_validation/13_animal_spatial_networks.R"
+      - script: "analysis/03_spatial_validation/build_animal_spatial_networks.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "networks"
@@ -1050,7 +1050,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "ONE AnimalID = ONE independent network replicate. Builds a side-resolved and a bilateral spatial molecular-profile similarity matrix per animal. The representation is chosen PHENOTYPE-BLIND on CON animals: anatomical discrimination is a validity FLOOR (0.05), not a tiebreaker, which is why raw abundance is rejected despite posting the highest inter-animal stability - it scores highest precisely because similarity is dominated by the global abundance rank every unit shares (0.009 discrimination versus 0.12-0.13). Full weighted matrices only; no thresholding."
-      - script: "analysis/03_spatial_validation/14_network_group_organization.R"
+      - script: "analysis/03_spatial_validation/test_network_group_organization.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "networks"
@@ -1078,7 +1078,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Group organisation with the ANIMAL as the inferential unit throughout: every permutation relabels whole animals and every bootstrap resamples animals. SUS vs RES enumerates all 20 assignments exactly, so the smallest ATTAINABLE two-sided p is 0.10 and no such comparison can reach 0.05 - failing to cross it is not evidence of no difference. The three-group omnibus enumerates 1680. No bootstrap sign frequency is ever reported as a p-value and no BH FDR is derived from one. CON animals are scored against a LEAVE-ONE-CON-OUT centroid. Part 23 adds node-level integration context back to the module and protein atlas; the edge structure stays in the network tables."
-      - script: "analysis/03_spatial_validation/15_network_legacy_workbook_validation.R"
+      - script: "analysis/03_spatial_validation/validate_network_workbook.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "networks"
@@ -1099,7 +1099,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Legacy comparison, reviewer workbook, candidate figures and the network validation contract; a critical FAIL exits non-zero. The legacy 07_spatial_networks outputs are READ and labelled legacy_noncanonical_inference, never modified: its permutation_p was a bootstrap sign frequency (no group label was ever shuffled) and its fdr was a BH adjustment of that pseudo-p, with a minimum of 0.890 across all 18 edges. Zero legacy edges are comparable to the corrected 10-unit neuropil axis because the legacy network was built on the corrupted 4-node axis."
-      - script: "analysis/03_spatial_validation/16_ca2_slm_robustness_audit.R"
+      - script: "analysis/03_spatial_validation/audit_ca2_slm_robustness.R"
         required: false
         datasets: ["neuron_neuropil"]
         stage: "networks"
@@ -1123,7 +1123,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Per-protein robustness audit of the 28 FDR-supported CA2-SLM DAPs. Canonical differential abundance is READ, never refitted, and no new FDR is computed anywhere; every quantity is a descriptive sensitivity diagnostic on the same animal-level values the model consumed. Imputation status is derived from the PRE-imputation raw matrix, because the post-imputation matrix has no NA left. The sample-level reconstruction is proven to reproduce the animal-level matrix to 1e-14 before any sensitivity number is formed. Also measures the missingness-driven normalisation displacement: per-sample median centring on observed values inflates the median of a heavily missing sample, displacing EVERY protein in it downwards, including proteins with no imputed value. All thresholds are prespecified named constants and the classifier has no argument through which a module, gene or tier could reach it."
-      - script: "analysis/03_spatial_validation/17_stress_identity_robustness.R"
+      - script: "analysis/03_spatial_validation/audit_stress_identity_robustness.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "networks"
@@ -1147,7 +1147,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Spatial specificity, module distribution, and the stress-vs-baseline-identity result recomputed over explicit robustness subsets. The effect-vs-identity rule is NOT reimplemented: the canonical per-protein labels from script 09 are TABULATED over different row subsets, so the headline number and the robustness-qualified number cannot drift apart. No FDR is recomputed and no protein is removed from the atlas. TWO-PASS DEPENDENCY: this script writes protein_claimability_annotation.csv, which script 09 joins as an optional overlay. On a clean pipeline script 09 emits the not_yet_audited state on its first pass and the populated state after this script has run, so 09 must be re-run once after 17 to carry the claimability fields."
-      - script: "analysis/03_spatial_validation/18_ca2_slm_robustness_workbook.R"
+      - script: "analysis/03_spatial_validation/summarize_ca2_slm_robustness.R"
         required: false
         datasets: ["neuron_neuropil"]
         stage: "networks"
@@ -1170,7 +1170,7 @@ stages:
   coupling:
     description: "Behavior/physiology coupling for networks, modules, and selected proteomic summaries."
     scripts:
-      - script: "analysis/08_integration/01_correlate_proteomics_with_behavior.r"
+      - script: "analysis/08_integration/test_behaviour_proteomics_associations.R"
         required: false
         datasets: ["neuron_soma"]
         stage: "coupling"
@@ -1181,7 +1181,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Legacy direct proteomics-behavior coupling retained as optional soma-only analysis."
-      - script: "analysis/08_integration/02_network_behavior_coupling.r"
+      - script: "analysis/08_integration/test_network_behaviour_coupling.R"
         required: false
         datasets: ["neuron_neuropil"]
         stage: "coupling"
@@ -1192,7 +1192,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Network/module/behavior coupling after networks and downstream module summaries."
-      - script: "analysis/08_integration/03_module_behavior_coupling.r"
+      - script: "analysis/08_integration/test_module_behaviour_coupling.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "coupling"
@@ -1203,7 +1203,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Module-level behavior/physiology coupling context. WGCNA inference comes only from the Stage 07 handoff; missing behavior inputs become status rows."
-      - script: "analysis/08_integration/04_animal_id_integrity_audit.R"
+      - script: "analysis/08_integration/audit_animal_id_integrity.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "coupling"
@@ -1222,11 +1222,11 @@ stages:
           - "results/tables/08_behavior_physio_coupling/network_behavior_coupling/"
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "Read-only repository-level AnimalID integrity audit and blast radius. The withdrawn normalize_animal_id() in 02_network_behavior_coupling.r did three independent kinds of damage: it truncated digit runs longer than four (merging 23 behaviour animals into 7 keys, after which distinct() silently dropped 16 rows), it zero-padded bare numerals to four while leaving already-A ids at their original width (so the proteomics A111 never matched the behaviour OR111 -> A0111, reducing the join to a single animal), and it required at least three digits (so canonical animal 3 became NA and lost all movement rows). Canonical WGCNA state, differential abundance and the spatial-systems layer are provably unaffected: no normaliser sits on their path."
+        notes: "Read-only repository-level AnimalID integrity audit and blast radius. The withdrawn normalize_animal_id() in test_network_behaviour_coupling.R did three independent kinds of damage: it truncated digit runs longer than four (merging 23 behaviour animals into 7 keys, after which distinct() silently dropped 16 rows), it zero-padded bare numerals to four while leaving already-A ids at their original width (so the proteomics A111 never matched the behaviour OR111 -> A0111, reducing the join to a single animal), and it required at least three digits (so canonical animal 3 became NA and lost all movement rows). Canonical WGCNA state, differential abundance and the spatial-systems layer are provably unaffected: no normaliser sits on their path."
   integration:
     description: "Manuscript-level synthesis: integrate existing enrichment, WGCNA, microenvironment, complex/organelle, robustness, spatial, behavior, and QC evidence."
     scripts:
-      - script: "analysis/08_integration/01_cross_compartment_program_atlas.r"
+      - script: "analysis/08_integration/build_cross_compartment_atlas.R"
         required: false
         datasets: ["global"]
         stage: "integration"
@@ -1237,7 +1237,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Global synthesis; optional missing evidence is represented explicitly in status rows."
-      - script: "analysis/08_integration/02_manuscript_program_summary.r"
+      - script: "analysis/08_integration/summarize_programs_for_manuscript.R"
         required: false
         datasets: ["global"]
         stage: "integration"
@@ -1248,7 +1248,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Manuscript-facing summary built from the integration atlas."
-      - script: "analysis/09_publication_exports/07_make_biological_claims_table.R"
+      - script: "analysis/09_publication_exports/build_biological_claims_table.R"
         required: false
         datasets: ["global"]
         stage: "export"
@@ -1259,7 +1259,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Final biological claims table after Stage 13 and manuscript summary; does not generate the final bundle, which is refreshed only after the priority matrix is current."
-      - script: "analysis/08_integration/03_evidence_priority_matrix.r"
+      - script: "analysis/08_integration/build_evidence_priority_matrix.R"
         required: false
         datasets: ["global"]
         stage: "integration"
@@ -1270,7 +1270,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Ranks candidate manuscript programs and refreshes the final biological evidence bundle from existing downstream outputs."
-      - script: "analysis/08_integration/05_gsea_wgcna_concordance.R"
+      - script: "analysis/08_integration/test_enrichment_module_concordance.R"
         required: false
         datasets: ["global"]
         stage: "integration"
@@ -1281,7 +1281,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Additive low-n concordance synthesis. GSEA-derived representations remain one lineage; Stage 07 p/FDR values are copied unchanged; new Fisher/BH tests use program-specific leading edges against canonical module universes."
-      - script: "analysis/08_integration/06_gsea_wgcna_concordance_diagnostics.R"
+      - script: "analysis/08_integration/summarize_enrichment_module_concordance.R"
         required: false
         datasets: ["global"]
         stage: "integration"
@@ -1292,7 +1292,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Read-only diagnostic of strict concordance/adaptive gates plus a separately labelled descriptive complete-effect direction layer. It does not modify classifications, thresholds, source inference, mappings, or claim gates."
-      - script: "analysis/08_integration/08_wgcna_candidate_protein_shortlist.R"
+      - script: "analysis/08_integration/build_candidate_protein_shortlist.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia", "global"]
         stage: "integration"
@@ -1303,7 +1303,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Additive descriptive candidate-protein layer. Joins frozen Stage 01 membership, manifest-selected protein DA and the Stage 07 module handoff on canonical ProteinGroupID; every statistic is copied unchanged. Derives only ranks, counts and boolean flags. No weighted composite score. GSEA leading-edge membership is not independent of the DA columns and spatial contexts are repeated measures, both stated in the outputs."
-      - script: "analysis/08_integration/09_wgcna_sus_res_network_position.R"
+      - script: "analysis/08_integration/quantify_candidate_network_position.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia", "global"]
         stage: "integration"
@@ -1314,7 +1314,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Phenotype-AWARE descriptive audit of where SUS-RES FDR-supported proteins sit within frozen WGCNA modules, against a module-stratified permutation null over the DA-tested universe. No WGCNA and no differential abundance is recomputed. Permutation p-values are descriptive, not independent replication."
-      - script: "analysis/08_integration/10_prepare_immunostaining_candidate_comparison.R"
+      - script: "analysis/08_integration/build_immunostaining_candidates.R"
         required: false
         datasets: ["global"]
         stage: "integration"
@@ -1325,7 +1325,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Source-data preparation for a manuscript-SUPPORTING candidate comparison over three already-nominated immunostaining targets (OGA, SLC22A23, ANXA2) in neuron_neuropil. No aggregation, no model and no candidate selection: the animal-level GCT is already bilateral, and every log2FC, p and BH-FDR is copied from the canonical SUS-RES output and then verified identical to it. Hard-fails on ambiguous protein mapping or on any duplicate protein x animal x spatial unit row."
-      - script: "analysis/08_integration/11_screen_immunostaining_candidate_panel.R"
+      - script: "analysis/08_integration/screen_immunostaining_panel.R"
         required: false
         datasets: ["global"]
         stage: "integration"
@@ -1336,7 +1336,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Candidate SCREEN for additional immunostaining targets. Selection only: no model is refitted and no threshold is tuned. Consumes the existing CA2-SLM robustness classes and WGCNA candidate tiers rather than re-deriving them, because 28 of the 31 FDR-supported SUS-RES cells in the neuropil are in CA2-SLM and only 6 of those are robustness-qualified. Records an explicit evidence class per candidate and writes both exclusion lists."
-      - script: "analysis/08_integration/12_screen_immunostaining_separation_candidates.R"
+      - script: "analysis/08_integration/screen_immunostaining_separation.R"
         required: false
         datasets: ["global"]
         stage: "integration"
@@ -1347,7 +1347,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Separation screen for staining feasibility, complementary to the FDR screen. At three animals per group an FDR value is variance-dominated; what decides whether a difference is visible on tissue is effect size, consistency across animals and within-group tightness. Computes descriptive separation measures only - within-group SD, complete separation, Z-factor and SSMD - from the canonical animal-level values. No p-value is derived and no model is fitted. Reads the raw matrix solely to rebuild the missingness mask, because imputed cells are artificially tight and would otherwise inflate every variance-based score; only fully observed protein x unit cells enter the ranking."
-      - script: "analysis/08_integration/04_wgcna_circular_atlas.R"
+      - script: "analysis/08_integration/render_module_circular_atlas.R"
         required: false
         datasets: ["global"]
         stage: "integration"
@@ -1404,7 +1404,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Global circular WGCNA atlas. Claim-facing inference comes only from the Stage 07 handoff; singleton display aliases reuse canonical module endpoints. Technical response values and score-derived descriptive panels remain separate inputs."
-      - script: "analysis/08_integration/04_wgcna_cross_compartment_overview.R"
+      - script: "analysis/08_integration/summarize_module_cross_compartment.R"
         required: false
         datasets: ["global"]
         stage: "integration"
@@ -1434,7 +1434,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Read-only compact WGCNA/supermodule overview across datasets; uses the Stage 07 inferential handoff, existing labels, and claim gates without recomputing WGCNA."
-      - script: "analysis/08_integration/05_manuscript_figure3_wgcna_protein_zoom.R"
+      - script: "analysis/08_integration/export_module_protein_zoom_source_data.R"
         required: false
         datasets: ["global"]
         stage: "integration"
@@ -1448,7 +1448,7 @@ stages:
   export:
     description: "Export layer for PRIDE, manuscript tables, reviewer materials, source data, methods summaries, and validation reports."
     scripts:
-      - script: "analysis/09_publication_exports/02_make_sample_metadata.R"
+      - script: "analysis/09_publication_exports/build_sample_metadata.R"
         required: false
         datasets: ["global"]
         stage: "export"
@@ -1459,7 +1459,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "PRIDE sample metadata."
-      - script: "analysis/09_publication_exports/03_export_processed_pg_matrix_package.R"
+      - script: "analysis/09_publication_exports/export_processed_matrices.R"
         required: false
         datasets: ["global"]
         stage: "export"
@@ -1470,7 +1470,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Exports processed pg/mapped matrix package."
-      - script: "analysis/09_publication_exports/04_make_supplementary_tables.R"
+      - script: "analysis/09_publication_exports/build_supplementary_tables.R"
         required: false
         datasets: ["global"]
         stage: "export"
@@ -1481,7 +1481,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "PRIDE supplementary tables."
-      - script: "analysis/09_publication_exports/05_make_pride_manifest.R"
+      - script: "analysis/09_publication_exports/build_pride_manifest.R"
         required: true
         datasets: ["global"]
         stage: "export"
@@ -1492,7 +1492,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Manifest after metadata and processed-data export."
-      - script: "analysis/09_publication_exports/06_make_methods_summary.R"
+      - script: "analysis/09_publication_exports/build_methods_summary.R"
         required: false
         datasets: ["global"]
         stage: "export"
@@ -1525,7 +1525,7 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Manuscript source-data export."
-      - script: "analysis/09_publication_exports/10_validate_pride_submission.R"
+      - script: "analysis/09_publication_exports/validate_pride_submission.R"
         required: false
         datasets: ["global"]
         stage: "export"
@@ -1537,38 +1537,38 @@ stages:
         safe_downstream_rerun: true
         notes: "Validation runs after export products exist."
 legacy:
-  - script: "analysis/01_preprocessing/02a_prepare_animal_level_protigy_input.r"
+  - script: "analysis/01_preprocessing/build_animal_level_protigy_input.R"
     replacement: "external/manual ProTigy input boundary"
     status: "external manual utility documented in RUN_ORDER.md; excluded from canonical runnable stages"
   - script: "archive/01_preprocessing/03c_legacy_vs_animal_level_da_audit.r"
     replacement: "standalone pre-promotion DA audit"
     status: "external diagnostic documented in RUN_ORDER.md; excluded from canonical runnable stages"
   - script: "archive/01_preprocessing/01_impute.r"
-    replacement: "analysis/01_preprocessing/03_gct_extractR.r"
+    replacement: "analysis/01_preprocessing/extract_protigy_contrasts.R"
     status: "older preprocessing branch not used by canonical registry"
   - script: "archive/01_preprocessing/02_excel_convert.r"
-    replacement: "analysis/01_preprocessing/03_gct_extractR.r"
+    replacement: "analysis/01_preprocessing/extract_protigy_contrasts.R"
     status: "older preprocessing branch not used by canonical registry"
   - script: "archive/01_preprocessing/04_format_metadata.r"
-    replacement: "analysis/01_preprocessing/06_merged_metadata_module_score.r"
+    replacement: "analysis/01_preprocessing/build_module_score_metadata.R"
     status: "older metadata helper"
   - script: "archive/01_preprocessing/05_metadata_create.r"
-    replacement: "analysis/01_preprocessing/06_merged_metadata_module_score.r"
+    replacement: "analysis/01_preprocessing/build_module_score_metadata.R"
     status: "older metadata helper"
   - script: "archive/04_differential_expression_enrichment/legacy/04_compare_pathways.r"
-    replacement: "analysis/04_differential_abundance/06_biological_program_summary.r"
+    replacement: "analysis/04_differential_abundance/summarize_biological_programs.R"
     status: "bespoke learning-signature workbook comparison; not part of canonical dataset pipeline"
   - script: "archive/04_differential_expression_enrichment/legacy/05_compare_sig_expr.r"
-    replacement: "analysis/04_differential_abundance/06_biological_program_summary.r"
+    replacement: "analysis/04_differential_abundance/summarize_biological_programs.R"
     status: "bespoke learning-signature expression comparison; not part of canonical dataset pipeline"
   - script: "archive/04_differential_expression_enrichment/legacy/07_control_strata_enrichment_figures.r"
-    replacement: "analysis/04_differential_abundance/02_compareGO.r"
+    replacement: "analysis/04_differential_abundance/compare_go_enrichment.R"
     status: "bespoke control-strata figure helper requiring variancePartition-era inputs"
   - script: "archive/05_celltype_enrichment_EWCE/90_EWCE_legacy.r"
-    replacement: "analysis/06_gsea/01_EWCE_E9.r"
+    replacement: "analysis/06_gsea/run_ewce_celltype_enrichment.R"
     status: "legacy EWCE script"
-  - script: "analysis/05_wgcna/06_module_spatial_networks.r"
-    replacement: "analysis/07_spatial_networks/01_network_spatial_relations.r"
+  - script: "analysis/05_wgcna/build_module_spatial_networks.R"
+    replacement: "analysis/07_spatial_networks/build_spatial_networks.R"
     status: "argument-driven module spatial network helper; excluded from canonical full pipeline"
   - script: "09_pride_submission/00_make_pride_package.R"
     replacement: "09_export_pride_journal/"
@@ -1577,10 +1577,10 @@ legacy:
     replacement: "run_dataset_pipeline.R --stage export"
     status: "convenience export wrapper; excluded from canonical full pipeline to avoid re-running export steps already registered individually"
   - script: "archive/02_qc/04d_compartment_marker_fidelity.r"
-    replacement: "analysis/02_qc/04e_control_compartment_abundance_publication_figures.r"
+    replacement: "analysis/02_qc/render_compartment_abundance_figures.R"
     status: "deprecated sample-level cross-compartment inference; disabled by default and excluded from the canonical pipeline"
   - script: "archive/08_integration/01_compartment_fidelity_summary.R"
-    replacement: "analysis/02_qc/04e_control_compartment_abundance_publication_figures.r"
+    replacement: "analysis/02_qc/render_compartment_abundance_figures.R"
     status: "superseded poster-summary of imputed 04c marker scores; not authoritative cross-compartment abundance and has no current consumer"
   - script: "audits/preprocessing/03b_directionality_audit_raw_vs_protigy.r"
     replacement: "standalone raw-versus-ProTigy directionality audit"

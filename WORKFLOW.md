@@ -163,16 +163,16 @@ Key outputs to inspect:
 Safe to rerun: yes. These scripts consume existing WGCNA state and do not change
 network/module construction.
 
-Clarification: `analysis/05_wgcna/03_score_module_activity.R` is the
+Clarification: `analysis/05_wgcna/score_module_activity.R` is the
 score/statistics/QC producer and secondary robustness/behavior-coupling layer.
 It writes score tables, replicate QC, score-derived robustness statistics,
-correlation tables, and legacy/QC score plots. `analysis/05_wgcna/05_module_supermodule_group_effects.r`
+correlation tables, and legacy/QC score plots. `analysis/05_wgcna/test_module_phenotypes.R`
 is the primary WGCNA eigengene group-effect inference layer.
 
 Before moving on: check model warnings, `evidence_status`, FDR columns, spatial
 unit fields, whether module scores have adequate coverage, and whether the
 score-derived publication plots have been refreshed by
-`analysis/05_wgcna/08_wgcna_score_publication_summary.R` after labels are cleaned.
+`analysis/05_wgcna/summarize_module_scores.R` after labels are cleaned.
 
 ## 7. Biological Annotation
 
@@ -206,7 +206,7 @@ Run command:
 
 ```bash
 Rscript run_dataset_pipeline.R --dataset <dataset> --stage modules_downstream
-Rscript analysis/05_wgcna/07_wgcna_interpretable_summary.r --dataset all
+Rscript analysis/05_wgcna/summarize_module_interpretation.R --dataset all
 ```
 
 Key outputs to inspect:
@@ -224,15 +224,15 @@ audit tables, and confirm source-data mirrors were written.
 ## 8b. Score-Derived WGCNA Publication Plots
 
 Purpose: render final score-derived WGCNA supermodule robustness, consistency,
-and correlation plots from `03_score_module_activity.R` outputs using the
-cleaned semantic labels from `06_annotate_module_microenvironment.r` and
-`07_wgcna_interpretable_summary.r`.
+and correlation plots from `score_module_activity.R` outputs using the
+cleaned semantic labels from `annotate_module_microenvironment.R` and
+`summarize_module_interpretation.R`.
 
 Run command:
 
 ```bash
-Rscript analysis/05_wgcna/08_wgcna_score_publication_summary.R --dataset <dataset> --module-source wgcna
-Rscript analysis/05_wgcna/08_wgcna_score_publication_summary.R --dataset all --module-source wgcna
+Rscript analysis/05_wgcna/summarize_module_scores.R --dataset <dataset> --module-source wgcna
+Rscript analysis/05_wgcna/summarize_module_scores.R --dataset all --module-source wgcna
 ```
 
 Key outputs to inspect:

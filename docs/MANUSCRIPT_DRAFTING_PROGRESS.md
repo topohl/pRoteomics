@@ -228,7 +228,7 @@ Item-by-item evidence: `manuscript/figure1_authoritative_source_inventory.csv`
 `prediction_type = subject_specific_gamm_observed_grid`).
 
 **Absent:** the CombZ construction (read and renamed at
-`analysis/01_preprocessing/06_merged_metadata_module_score.r:399-427`; no z-scoring,
+`analysis/01_preprocessing/build_module_score_metadata.R:399-427`; no z-scoring,
 orientation, aggregation, sex or batch handling anywhere); the RES/SUS
 cut-point; the GAMM specification; **any prediction or cross-validation analysis
 at all** — no `glmnet`, `caret`, `pROC`, `randomForest`, `cv.glmnet`,

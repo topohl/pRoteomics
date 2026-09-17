@@ -137,7 +137,7 @@ testthat::test_that("single-comparison filter supports CLI and environment targe
 
 testthat::test_that("active GSEA entry points all use the deterministic wrapper", {
   script <- paste(readLines(
-    repo_path("analysis/04_differential_abundance", "01_clusterProfiler.r"),
+    repo_path("analysis/04_differential_abundance", "run_clusterprofiler_enrichment.R"),
     warn = FALSE
   ), collapse = "\n")
   testthat::expect_equal(

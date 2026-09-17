@@ -25,11 +25,11 @@ environment variables are still honored, and the shared defaults come from
 Run the raw-derived preprocessing product before the global QC consumer:
 
 ```powershell
-Rscript analysis/01_preprocessing/01_prepare_joint_protigy_input.r --dataset all --dry-run
-Rscript analysis/02_qc/00b_joint_compartment_qc.r --dataset all --dry-run
+Rscript analysis/01_preprocessing/build_joint_protigy_input.R --dataset all --dry-run
+Rscript analysis/02_qc/assess_joint_compartment_quality.R --dataset all --dry-run
 ```
 
-`01_prepare_joint_protigy_input.r` uses the unified raw protein-group matrix,
+`build_joint_protigy_input.R` uses the unified raw protein-group matrix,
 canonical metadata, and mouse mapping to build a balanced shared core (default:
 observed in at least 70% of every dataset-by-technical-block), a complete-case
 sensitivity matrix, and a broad detected/not-detected union. It applies log2
@@ -37,12 +37,12 @@ and one joint sample-wise median normalization, then only the primary core gets
 label-blind protein-wise median imputation. Its strict GCT v1.3 export is one
 joint ProTIGY input; ProTIGY must not log-transform, normalize, or impute it.
 
-`00b_joint_compartment_qc.r` consumes that prepared bundle for uncorrected PCA,
+`assess_joint_compartment_quality.R` consumes that prepared bundle for uncorrected PCA,
 metadata associations, correlations/clustering, and exploratory fixed-seed
 UMAP/t-SNE. It does not run combined DE/WGCNA, batch-correct the primary PCA,
 or interpret microglia-enriched ROI observations as purified microglia.
 
-`00c_joint_compartment_qc_publication_figures.r` is a rendering-only consumer
+`render_joint_compartment_qc_figures.R` is a rendering-only consumer
 of the completed bundle and `00b` tables. It does not call PCA, UMAP or t-SNE,
 and it does not overwrite source-data tables. It creates title-free editable
 panels plus assembled 183-mm main and Extended Data figures under
@@ -52,14 +52,14 @@ panels plus assembled 183-mm main and Extended Data figures under
 
 Recommended run order:
 
-0. `00b_joint_compartment_qc.r` (after `analysis/01_preprocessing/01_prepare_joint_protigy_input.r`)
+0. `assess_joint_compartment_quality.R` (after `analysis/01_preprocessing/build_joint_protigy_input.R`)
    - Input: raw-derived global joint QC bundle.
    - Override: `PROTEOMICS_JOINT_QC_PROCESSED_DIR`.
    - Output: global PCA/UMAP/t-SNE, associations, correlations, sensitivity
      concordance, figures, and Markdown summary under
      `results/*/03_qc_exploration/00b_joint_compartment_qc/global/`.
 
-0a. `00c_joint_compartment_qc_publication_figures.r` (after a completed `00b` run)
+0a. `render_joint_compartment_qc_figures.R` (after a completed `00b` run)
    - Inputs: the joint preprocessing RDS and existing `00b` PCA, UMAP, t-SNE,
      correlation, clustering, concordance, normalization, and imputation outputs.
    - Override: `PROTEOMICS_JOINT_QC_PUBLICATION_FIGURE_DIR`.
@@ -71,7 +71,7 @@ Recommended run order:
      by dataset, plate, region and layer, and proteins are clustered by binary
      detection pattern.
 
-1. `00_dataset_qc_report.r`
+1. `assess_dataset_quality.R`
    - Input: processed expression matrix plus sample metadata.
    - Overrides: `PROTEOMICS_DATASET_QC_MATRIX_FILE`,
      `PROTEOMICS_DATASET_QC_METADATA_FILE`.
@@ -80,14 +80,14 @@ Recommended run order:
      counts, PCA, metadata structure, abundance distributions, and outlier
      flags under `results/*/03_qc_exploration/00_dataset_qc_report/<dataset>/`.
 
-1. `01_sample_qc_quicksearch.r`
+1. `assess_sample_quality.R`
    - Input: annotated quicksearch stats workbook, default
      `data/raw/pg_matrix/quicksearch.stats.annotated.xlsx`.
    - Override: `PROTEOMICS_QC_STATS_FILE`.
    - Output: sample-level QC figures, robust outlier tables, and QC summary
      tables under `results/figures|tables|logs/03_qc_exploration/01_sample_qc_quicksearch/<dataset>/`.
 
-2. `02_missingness_diagnostics.r`
+2. `summarize_missingness.R`
    - Input: processed expression matrix plus sample metadata.
    - Overrides: `PROTEOMICS_MISSINGNESS_MATRIX_FILE`,
      `PROTEOMICS_MISSINGNESS_METADATA_FILE`.
@@ -97,7 +97,7 @@ Recommended run order:
    - Prefer a raw or non-imputed matrix. If the resolved file looks imputed, the
      report states that limitation.
 
-3. `03_replicate_consistency.r`
+3. `assess_replicate_consistency.R`
    - Input: processed expression matrix plus metadata with `AnimalID` and, where
      available, `ReplicateGroup`, region/layer/group/plate fields.
    - Overrides: `PROTEOMICS_REPLICATE_MATRIX_FILE`,
@@ -105,7 +105,7 @@ Recommended run order:
    - Output: pairwise sample correlations, within-vs-across animal summaries,
      optional animal-aggregated matrix, SVG plot, and PASS/WARN report.
 
-4. `04_marker_rank_abundance_qc.r`
+4. `assess_marker_rank_abundance.R`
    - Input: processed expression matrix plus metadata.
    - Overrides: `PROTEOMICS_RANK_ABUNDANCE_MATRIX_FILE`,
      `PROTEOMICS_RANK_ABUNDANCE_METADATA_FILE`.
@@ -119,7 +119,7 @@ Recommended run order:
      the matrix and metadata before ranking/scoring and write beneath
      `group_CON` without replacing the all-group QC outputs.
 
-4e. `04e_control_compartment_abundance_publication_figures.r`
+4e. `render_compartment_abundance_figures.R`
    - Authoritative cross-compartment marker-abundance and detection workflow.
      It reconstructs raw-positive log2 values from the validated joint-QC
      bundle, applies the sample offsets estimated on the joint shared core, and
@@ -151,7 +151,7 @@ Recommended run order:
      `04d` cross-compartment sample-level inference is deprecated and disabled
      by default; it is not an active biological-claim workflow.
 
-5. `05_pca_confounding_qc.r`
+5. `assess_pca_confounding.R`
    - Input: processed expression matrix or strict GCT v1.3 plus metadata.
    - Overrides: `PROTEOMICS_PCA_MATRIX_FILE`,
      `PROTEOMICS_PCA_METADATA_FILE`.
@@ -161,7 +161,7 @@ Recommended run order:
    - UMAP/t-SNE/clustering are default off. Enable only for exploratory checks
      with `--run-embeddings` and/or `--run-clustering`.
 
-6. `06_variance_partitioning.r`
+6. `partition_variance.R`
    - Input: processed expression matrix plus metadata.
    - Overrides: `PROTEOMICS_VARPART_MATRIX_FILE`,
      `PROTEOMICS_VARPART_METADATA_FILE`.
@@ -171,7 +171,7 @@ Recommended run order:
    - The formula adapts to available metadata and includes `(1|AnimalID)` only
      when repeated samples per animal exist.
 
-7. `07_qc_biology_confounding_report.r`
+7. `summarize_qc_confounding.R`
    - Input: processed expression matrix plus metadata; reuses marker score
      outputs when present.
    - Overrides: `PROTEOMICS_CONFOUNDING_MATRIX_FILE`,
@@ -184,17 +184,17 @@ Recommended run order:
 
 ```powershell
 foreach ($dataset in @("neuron_neuropil", "neuron_soma", "microglia")) {
-  Rscript analysis/02_qc/00_dataset_qc_report.r --dataset $dataset --dry-run
-  Rscript analysis/02_qc/01_sample_qc_quicksearch.r --dataset $dataset --dry-run
-  Rscript analysis/02_qc/02_missingness_diagnostics.r --dataset $dataset --dry-run
-  Rscript analysis/02_qc/03_replicate_consistency.r --dataset $dataset --dry-run
-  Rscript analysis/02_qc/04_marker_rank_abundance_qc.r --dataset $dataset --dry-run
-  Rscript analysis/02_qc/04c_marker_detectability_and_wgcna_bridge.r --dataset $dataset --dry-run
-  Rscript analysis/02_qc/05_pca_confounding_qc.r --dataset $dataset --dry-run
-  Rscript analysis/02_qc/06_variance_partitioning.r --dataset $dataset --dry-run
-  Rscript analysis/02_qc/08_qc_biology_confounding_report.r --dataset $dataset --dry-run
+  Rscript analysis/02_qc/assess_dataset_quality.R --dataset $dataset --dry-run
+  Rscript analysis/02_qc/assess_sample_quality.R --dataset $dataset --dry-run
+  Rscript analysis/02_qc/summarize_missingness.R --dataset $dataset --dry-run
+  Rscript analysis/02_qc/assess_replicate_consistency.R --dataset $dataset --dry-run
+  Rscript analysis/02_qc/assess_marker_rank_abundance.R --dataset $dataset --dry-run
+  Rscript analysis/02_qc/summarize_marker_detectability.R --dataset $dataset --dry-run
+  Rscript analysis/02_qc/assess_pca_confounding.R --dataset $dataset --dry-run
+  Rscript analysis/02_qc/partition_variance.R --dataset $dataset --dry-run
+  Rscript analysis/02_qc/summarize_qc_confounding.R --dataset $dataset --dry-run
 }
-Rscript analysis/02_qc/04e_control_compartment_abundance_publication_figures.r --dataset global --dry-run
+Rscript analysis/02_qc/render_compartment_abundance_figures.R --dataset global --dry-run
 ```
 
 Remove `--dry-run` after resolving missing private inputs.

@@ -7,7 +7,7 @@
 # ---------------
 # results/tables/11_spatial_systems/atlas/protein_baseline_spatial_profile.csv
 # already holds CON-only means, but its ROW MEMBERSHIP is not phenotype-blind.
-# 11_spatial_systems/09_protein_spatial_cell_atlas.R sets its scope at
+# 11_spatial_systems/build_protein_spatial_atlas.R sets its scope at
 #
 #   scope <- cand[cand$is_sus_res_fdr_supported | cand$is_wgcna_candidate, ]
 #

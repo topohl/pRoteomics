@@ -1,4 +1,4 @@
-# Committed, repo-relative defaults for 04_differential_expression_enrichment/02_compareGO.r.
+# Committed, repo-relative defaults for 04_differential_expression_enrichment/compare_go_enrichment.R.
 # Filter these fields to select one manifest-backed route for compareGO.
 
 dataset: neuron_neuropil

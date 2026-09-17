@@ -59,7 +59,7 @@ testthat::test_that("no phenotype or group-effect field can enter a naming outpu
 })
 
 testthat::test_that("the adjudication script never reads phenotype inputs", {
-  code <- readLines(repo_path("analysis/05_wgcna", "15_wgcna_label_adjudication.R"), warn = FALSE)
+  code <- readLines(repo_path("analysis/05_wgcna", "adjudicate_module_labels.R"), warn = FALSE)
   live <- paste(code[!grepl("^\\s*#", code)], collapse = "\n")
   for (p in c("clusterProfiler_manifest", "sus_res_resolve_manifest_input",
               "WGCNA_inferential_handoff", "wgcna_candidate_proteins",
@@ -614,7 +614,12 @@ testthat::test_that("the consumer migration plan is complete and does not migrat
     c("high", "medium", "low", "none")))
   testthat::expect_identical(anyDuplicated(plan$script), 0L)
 
-  fig3 <- plan[grepl("figure3", plan$script, ignore.case = TRUE), , drop = FALSE]
+  ## Select the Figure 3 consumer by the artefact it produces, not by its
+  ## filename. The exporter is named for what it does
+  ## (export_module_protein_zoom_source_data.R) because figure identity belongs
+  ## to the manuscript repository, so a filename-based selector would silently
+  ## match nothing and assert nothing.
+  fig3 <- plan[grepl("Figure 3", plan$output, fixed = TRUE), , drop = FALSE]
   testthat::expect_identical(nrow(fig3), 1L)
   testthat::expect_match(fig3$action_after_adjudication, "Do NOT migrate", fixed = TRUE)
   testthat::expect_identical(fig3$migration_priority, "low")

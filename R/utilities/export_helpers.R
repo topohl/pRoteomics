@@ -366,7 +366,7 @@ source_data_excluded_diagnostic <- function(rel) {
 
 # (2) SUPERSEDED REMOVED PIPELINE: outputs of
 #     04_neuropil_contamination_annotation.r, which docs/NAMING_MIGRATION.md
-#     records as removed and replaced by 04_neuropil_reference_annotation.r.
+#     records as removed and replaced by annotate_neuropil_reference.R.
 #     Scoped to this one tree; not generalised.
 source_data_excluded_removed_pipeline <- function(rel) {
   startsWith(rel, paste0(

@@ -364,7 +364,7 @@ testthat::test_that("the label audit source contains no phenotype input", {
   # R/statistics/wgcna_label_coherence_utils.R is excluded because
   # wcl_forbidden_field_patterns() must literally contain these tokens in order
   # to blacklist them; that helper is covered by the column-level guard tests.
-  code <- readLines(repo_path("analysis/05_wgcna", "14_wgcna_label_coherence_audit.R"
+  code <- readLines(repo_path("analysis/05_wgcna", "audit_module_label_coherence.R"
   ), warn = FALSE)
   live <- code[!grepl("^\\s*#", code)]
   text <- paste(live, collapse = "\n")
