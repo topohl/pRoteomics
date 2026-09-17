@@ -29,14 +29,20 @@ testthat::test_that("module score implementation lives in 03_score_module_activi
 })
 
 testthat::test_that("legacy module wrapper scripts have been removed", {
+  # Named by basename rather than by a stage path. Checking a pre-migration
+  # path would pass vacuously after Phase 6B, because nothing can exist
+  # there; checking the basename across the whole active namespace keeps the
+  # assertion biting under any directory layout.
   removed <- c(
-    "06_modules_WGCNA/legacy/05_module_score.r",
-    "06_modules_WGCNA/legacy/91_module_score.r",
-    "06_modules_WGCNA/legacy/03_overlap_modules.r",
-    "06_modules_WGCNA/legacy/04_overlap_modules.r",
-    "06_modules_WGCNA/legacy/05_wgcna_de_gsea_overlap.r"
+    "05_module_score.r",
+    "91_module_score.r",
+    "03_overlap_modules.r",
+    "04_overlap_modules.r",
+    "05_wgcna_de_gsea_overlap.r"
   )
-  testthat::expect_false(any(file.exists(repo_path(removed))))
+  active <- c(list.files(repo_path("analysis"), recursive = TRUE),
+              list.files(repo_path("R"), recursive = TRUE))
+  testthat::expect_false(any(basename(active) %in% removed))
 })
 
 testthat::test_that("pipeline module stages use canonical scripts and contracts", {

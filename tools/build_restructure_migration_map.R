@@ -30,6 +30,22 @@ BOUNDARY_REWRITES <- c(
   "tests/testthat/test-output-namespace-contract.R"
 )
 
+## Frozen guard tests repointed onto the post-split layout in Phase 6D. Their
+## assertions are preserved; the mechanism that resolves a path is not, because
+## it cannot be. Each is recorded in audits/test_migration_classification.csv
+## and each passes with no fewer assertions than at the baseline, which is a
+## more direct standard than textual canonicalisation for a test.
+TEST_REPOINTS <- c(
+  "tests/testthat/test-candidate-figure-layer.R",
+  "tests/testthat/test-extended-data-behaviour.R",
+  "tests/testthat/test-figure-01-renderer.R",
+  "tests/testthat/test-figure-generation-adjudication.R",
+  "tests/testthat/test-figure-promotion-v9.R",
+  "tests/testthat/test-figure1-behaviour-bridge.R",
+  "tests/testthat/test-manuscript-figure-entrypoints.R",
+  "tests/testthat/test-publication-freeze-manifest.R"
+)
+
 MR <- Sys.getenv("EXP9_MANUSCRIPT_ROOT",
                  unset = normalizePath(file.path(repo_root(), "..", "Exp9_manuscript"),
                                        winslash = "/", mustWork = FALSE))
@@ -90,6 +106,14 @@ for (i in seq_len(nrow(obj))) {
       "Self-referential: the freeze manifest lists itself, so the sha256 it",
       "records for itself cannot be its own final content hash. Verified by",
       "byte length instead. Pre-existing property of the baseline.")
+  } else if (changed && bp %in% TEST_REPOINTS) {
+    cls <- "REWRITTEN_TEST_REPOINT"
+    status <- paste(
+      "Frozen guard test repointed onto the post-split layout. Assertion text",
+      "and direction preserved; only how it resolves a path changed. Recorded",
+      "in audits/test_migration_classification.csv and passing with no fewer",
+      "assertions than at the baseline. Re-frozen under",
+      "post-restructure-architecture-freeze-2026-09.")
   } else if (changed && bp %in% BOUNDARY_REWRITES) {
     cls <- "REWRITTEN_BOUNDARY_CONTRACT"
     status <- paste(

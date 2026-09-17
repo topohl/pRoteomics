@@ -101,6 +101,30 @@ identities and the withheld ones. It is a scientific-side contract, so building
 the bundle never requires reading the manuscript repository, and the manuscript
 repository never reads a live path here.
 
+Phase 6D closed the last two gaps. Journal figure naming, layout, per-identity
+source data, legends and the submission bundle are owned by
+`Exp9_manuscript/tools/package_journal_figures.R`, which verifies every
+assembled artefact against the publication registry hash before packaging it
+and refuses to package one that does not match.
+
+What remains here is `analysis/09_publication_exports/08_export_manuscript_figures.R`.
+It scans this repository's figure outputs, records for each whether it is an
+editable vector, whether it has a PNG companion and whether sibling source data
+exists, and stages the candidates. That is a publication-readiness audit of
+scientific output, which is a scientific-repository responsibility.
+
+The script keeps its name deliberately. It is listed in
+`freeze_protected_export_files()`, whose provenance equivalence check compares
+blobs across two historical commits, so renaming it broke that check when
+tried. A clearer filename is not worth perturbing a frozen mechanism, and the
+ownership boundary is carried by what the code does and by the tests rather
+than by the filename.
+
+`tools/audit_cross_repo_boundary.R` measures the result. It strips comments and
+requires a mention to sit inside something that actually resolves a path or
+loads code before counting it, so provenance text is not mistaken for coupling.
+Runtime live cross-repository dependencies in either direction are zero.
+
 `tests/testthat/test-analysis-publication-boundary.R` enforces the boundary:
 no `figures/`, no `manuscript/`, no generation-named panel library, no
 registered renderer, a complete and hash-exact source-data manifest, and no
