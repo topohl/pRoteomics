@@ -10,10 +10,12 @@
 # Script: analysis/spatial_validation/validate_spatial_foundations.R
 # Stage: networks
 # Scope: global
-# Consumes: required results/tables/11_spatial_systems/data_contract/spatial_systems_aggregation_validation.csv; optional results/tables/11_spatial_systems/bilateral/; results/tables/11_spatial_systems/precision/; results/tables/11_spatial_systems/celltype_annotation/
-# Produces: results/tables/11_spatial_systems/spatial_systems_foundation_validation.csv
+# Consumes: required results/spatial_validation/build_spatial_data_contract/global/tables/spatial_systems_aggregation_validation.csv; results/tables/11_spatial_systems/data_contract/spatial_systems_aggregation_validation.csv; optional results/tables/11_spatial_systems/bilateral/; results/tables/11_spatial_systems/precision/; results/tables/11_spatial_systems/celltype_annotation/
+# Produces: results/spatial_validation/validate_spatial_foundations/global/tables/spatial_systems_foundation_validation.csv
 # Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Spatial systems foundation validation.
+#  
+#  
 
 source("R/paths.R")
 source("R/data_contracts/dataset_config.R")
@@ -22,6 +24,14 @@ source("R/data_contracts/spatial_systems_data_utils.R")
 source("R/data_contracts/spatial_systems_evidence_registry.R")
 source("R/enrichment/ewce_gene_set_engine.R")
 source("R/spatial/control_spatial_identity_utils.R")
+source(repo_path("R", "spatial_systems_paths.R"))
+
+# Phase 6G.3: destinations resolve through the normalized output contract,
+# addressed by this analysis's own identity rather than by the historical
+# 11_spatial_systems stage directory. Outputs already written there stay
+# exactly where they are and are read, never rewritten.
+ANALYSIS_ID <- "validate_spatial_foundations"
+CANONICAL_PATHS <- spatial_systems_dirs(ANALYSIS_ID)
 
 suppressPackageStartupMessages({ library(readr); library(dplyr) })
 
@@ -30,9 +40,9 @@ Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 cli <- integration_cli(default_dataset = "all")
 
 OUT <- function() {
-  d <- path_results("tables", "11_spatial_systems"); dir_create(d); d
+  d <- CANONICAL_PATHS$tables; dir_create(d); d
 }
-T_ <- function(...) path_results("tables", "11_spatial_systems", ...)
+T_ <- function(family, f) spatial_systems_find(f, family)
 
 if (isTRUE(cli$dry_run)) {
   cat("[DRY-RUN] Spatial systems foundation validation.\n")

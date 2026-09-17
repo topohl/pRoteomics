@@ -17,10 +17,12 @@
 # Script: analysis/spatial_validation/build_protein_spatial_atlas.R
 # Stage: networks
 # Scope: global
-# Consumes: required results/tables/10_biological_integration/wgcna_candidate_protein_shortlist/global/wgcna_candidate_proteins_all.csv; optional results/tables/11_spatial_systems/bilateral/bilateral_spatial_identity_protein_level.csv; results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv; config/marker_panels/wgcna_reference_marker_sets.csv
-# Produces: results/tables/11_spatial_systems/atlas/protein_spatial_cell_affinity.csv; results/tables/11_spatial_systems/atlas/protein_baseline_spatial_profile.csv; results/tables/11_spatial_systems/atlas/protein_sus_res_fdr_supported_atlas.csv
+# Consumes: required results/tables/10_biological_integration/wgcna_candidate_protein_shortlist/global/wgcna_candidate_proteins_all.csv; optional results/spatial_validation/quantify_bilateral_spatial_identity/global/tables/bilateral_spatial_identity_protein_level.csv; results/tables/11_spatial_systems/bilateral/bilateral_spatial_identity_protein_level.csv; results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv; +1 more
+# Produces: results/spatial_validation/build_protein_spatial_atlas/global/tables/protein_spatial_cell_affinity.csv; results/spatial_validation/build_protein_spatial_atlas/global/tables/protein_baseline_spatial_profile.csv; results/spatial_validation/build_protein_spatial_atlas/global/tables/protein_sus_res_fdr_supported_atlas.csv
 # Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Protein-level spatial / cell-affinity atlas, plus the SUS-RES overlay.
+#  
+#  
 
 source("R/paths.R")
 source("R/data_contracts/dataset_config.R")
@@ -29,6 +31,14 @@ source("R/qc/qc_exploration_utils.R")
 source("R/data_contracts/protigy_input_utils.R")
 source("R/data_contracts/spatial_systems_data_utils.R")
 source("R/spatial/spatial_atlas_utils.R")
+source(repo_path("R", "spatial_systems_paths.R"))
+
+# Phase 6G.3: destinations resolve through the normalized output contract,
+# addressed by this analysis's own identity rather than by the historical
+# 11_spatial_systems stage directory. Outputs already written there stay
+# exactly where they are and are read, never rewritten.
+ANALYSIS_ID <- "build_protein_spatial_atlas"
+CANONICAL_PATHS <- spatial_systems_dirs(ANALYSIS_ID)
 
 suppressPackageStartupMessages({ library(readr); library(dplyr); library(tidyr) })
 
@@ -37,7 +47,7 @@ Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 cli <- integration_cli(default_dataset = "all")
 
 OUT <- function() {
-  d <- path_results("tables", "11_spatial_systems", "atlas"); dir_create(d); d
+  d <- CANONICAL_PATHS$tables; dir_create(d); d
 }
 CAND <- path_results("tables", "10_biological_integration",
                      "wgcna_candidate_protein_shortlist", "global",
@@ -117,8 +127,8 @@ metrics <- dplyr::bind_rows(metric_rows)
 
 # ============== PART 14b: contrast-level bilateral support (already validated)
 
-bsi_path <- path_results("tables", "11_spatial_systems", "bilateral",
-                         "bilateral_spatial_identity_protein_level.csv")
+bsi_path <- spatial_systems_find("bilateral_spatial_identity_protein_level.csv",
+                                 "bilateral")
 contrast_support <- NULL
 if (file.exists(bsi_path)) {
   bsi <- read_req(bsi_path, "bilateral spatial identity")

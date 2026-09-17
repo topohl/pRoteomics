@@ -27,16 +27,26 @@
 # Script: analysis/spatial_validation/audit_stress_identity_robustness.R
 # Stage: networks
 # Scope: global
-# Consumes: required results/tables/11_spatial_systems/atlas/protein_spatial_cell_affinity.csv; results/tables/11_spatial_systems/ca2_slm_robustness/CA2_SLM_DAP_robustness.csv; results/source_data/04_differential_expression_enrichment/sus_res_spatial_dap_atlas/global/sus_res_dap_membership.csv; +2 more; optional data/processed/02_id_mapping/mapped/neuron_neuropil/forward/per_file/
-# Produces: results/tables/11_spatial_systems/ca2_slm_robustness/CA2_SLM_DAP_robustness_annotated.csv; results/tables/11_spatial_systems/ca2_slm_robustness/CA2_SLM_spatial_specificity.csv; results/tables/11_spatial_systems/ca2_slm_robustness/CA2_SLM_effect_across_neuropil_units.csv; +4 more
+# Consumes: required results/spatial_validation/build_protein_spatial_atlas/global/tables/protein_spatial_cell_affinity.csv; results/tables/11_spatial_systems/atlas/protein_spatial_cell_affinity.csv; results/spatial_validation/audit_ca2_slm_robustness/global/tables/CA2_SLM_DAP_robustness.csv; +4 more; optional data/processed/02_id_mapping/mapped/neuron_neuropil/forward/per_file/
+# Produces: results/spatial_validation/audit_stress_identity_robustness/global/tables/CA2_SLM_DAP_robustness_annotated.csv; results/spatial_validation/audit_stress_identity_robustness/global/tables/CA2_SLM_spatial_specificity.csv; results/spatial_validation/audit_stress_identity_robustness/global/tables/CA2_SLM_effect_across_neuropil_units.csv; +4 more
 # Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Spatial specificity, module distribution, and the stress-vs-baseline-identity result recomputed on explicit robustness subsets.
+#  
+#  
 
 source("R/paths.R")
 source("R/data_contracts/dataset_config.R")
 source("R/statistics/integration_utils.R")
 source("R/spatial/spatial_atlas_utils.R")
 source("R/spatial/ca2_slm_robustness_utils.R")
+source(repo_path("R", "spatial_systems_paths.R"))
+
+# Phase 6G.3: destinations resolve through the normalized output contract,
+# addressed by this analysis's own identity rather than by the historical
+# 11_spatial_systems stage directory. Outputs already written there stay
+# exactly where they are and are read, never rewritten.
+ANALYSIS_ID <- "audit_stress_identity_robustness"
+CANONICAL_PATHS <- spatial_systems_dirs(ANALYSIS_ID)
 
 suppressPackageStartupMessages({ library(readr); library(dplyr) })
 
@@ -49,12 +59,10 @@ NEUROPIL_UNITS <- c("CA1_slm", "CA1_so", "CA1_sr", "CA2_slm", "CA2_so", "CA2_sr"
 DA_DIR <- path_processed("02_id_mapping", "mapped", "neuron_neuropil", "forward", "per_file")
 RAW <- repo_path("data", "raw", "pg_matrix", "quicksearch.pg_matrix.tsv")
 META <- repo_path("data", "metadata", "TPE9_sample_metadata_males.xlsx")
-ATLAS <- path_results("tables", "11_spatial_systems", "atlas",
-                      "protein_spatial_cell_affinity.csv")
-ROB <- path_results("tables", "11_spatial_systems", "ca2_slm_robustness",
-                    "CA2_SLM_DAP_robustness.csv")
+ATLAS <- spatial_systems_find("protein_spatial_cell_affinity.csv", "atlas")
+ROB <- spatial_systems_find("CA2_SLM_DAP_robustness.csv", "ca2_slm_robustness")
 OUT <- function(...) {
-  d <- path_results("tables", "11_spatial_systems", "ca2_slm_robustness")
+  d <- CANONICAL_PATHS$tables
   dir_create(d); file.path(d, ...)
 }
 
@@ -309,8 +317,7 @@ write_csv_safe(unit_long[unit_long$original_identifier %in% rob$original_identif
 write_csv_safe(identity_cmp, OUT("stress_identity_robustness_comparison.csv"))
 write_csv_safe(module_cmp, OUT("CA2_SLM_module_distribution_comparison.csv"))
 write_csv_safe(hit_obs, OUT("fdr_supported_hit_observation_status.csv"))
-write_csv_safe(claim, path_results("tables", "11_spatial_systems", "atlas",
-                                   "protein_claimability_annotation.csv"))
+write_csv_safe(claim, OUT("protein_claimability_annotation.csv"))
 
 cat("\n===== Stress identity and specificity =====\n")
 cat("\n--- spatial specificity of the 28 CA2-SLM DAPs ---\n")

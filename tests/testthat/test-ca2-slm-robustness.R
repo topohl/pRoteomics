@@ -1,9 +1,9 @@
 source(testthat::test_path("..", "..", "R", "paths.R"))
 source(repo_path("R", "ca2_slm_robustness_utils.R"))
+source(repo_path("R", "spatial_systems_paths.R"))
 
-ROB <- function(...) path_results("tables", "11_spatial_systems",
-                                  "ca2_slm_robustness", ...)
-ATL <- function(...) path_results("tables", "11_spatial_systems", "atlas", ...)
+ROB <- function(f) spatial_systems_find(f, "ca2_slm_robustness")
+ATL <- function(f) spatial_systems_find(f, "atlas")
 rd <- function(p) utils::read.csv(p, stringsAsFactors = FALSE, check.names = FALSE)
 code_of <- function(...) {
   l <- readLines(repo_path(...), warn = FALSE)
@@ -339,7 +339,8 @@ testthat::test_that("the robustness validation contract has no critical failure"
 })
 
 testthat::test_that("every candidate figure has source data", {
-  d <- path_results("figures", "11_spatial_systems", "ca2_slm_robustness")
+  d <- spatial_systems_dir_any("summarize_ca2_slm_robustness",
+                               "ca2_slm_robustness", kind = "figures")
   testthat::skip_if_not(dir.exists(d), "figures not generated")
   pngs <- list.files(d, pattern = "[.]png$")
   testthat::skip_if(length(pngs) == 0L)
@@ -351,7 +352,7 @@ testthat::test_that("every candidate figure has source data", {
 })
 
 testthat::test_that("the workbook exists and opens", {
-  p <- path_results("tables", "11_spatial_systems", "CA2_SLM_robustness_audit.xlsx")
+  p <- spatial_systems_find("CA2_SLM_robustness_audit.xlsx", kind = "reports")
   testthat::skip_if_not(have(p), "workbook not generated")
   testthat::skip_if_not(requireNamespace("openxlsx", quietly = TRUE))
   sh <- openxlsx::getSheetNames(p)
