@@ -191,7 +191,39 @@ archivable** (§19). They move with the manuscript layer rather than to
 | --- | --- | --- |
 | PB-11 `manuscript_candidates/final_truth_v9` output namespace | DEFERRED | Resolution requires relocating 129 untracked frozen result objects, which §4 forbids bulk-moving; the forward interface avoids inheriting the name |
 | PB-12 `spatial_v6` fingerprint source table | DEFERRED, documented | Phase 5 established this is the only generation that ever existed and its content is current; rehoming is optional and would move a frozen untracked object |
-| Renderer repoint onto frozen `source_data/` | Phase 6D | §15 forbids editing renderers during extraction; they move byte-identical and are not executed in the manuscript repo this phase |
+| Renderer repoint onto frozen `source_data/` | **CLOSED in Phase 6D** | The manuscript repository imports the contract-declared render inputs into its own gitignored `results/` workspace at the paths the contracts name, so no renderer was rewritten and every assertion kept its meaning |
+| Journal figure packaging and submission bundle | **CLOSED in Phase 6D** | Moved to `Exp9_manuscript/tools/package_journal_figures.R`. pRoteomics retains only the publication-readiness audit. The script keeps its name: it is listed in `freeze_protected_export_files()`, which compares blobs across two historical commits, so renaming it broke that check when tried |
+
+## 5.1 Phase 6D outcome
+
+| Check | Result |
+| --- | --- |
+| renderer tests brought into gating | 16 of 16 |
+| Exp9_manuscript suite | 21 files, 0 failures, 0 errors |
+| runtime live cross-repo dependencies | 0 in both directions |
+| vendored shared libraries | 9, byte-identical, 0 inference calls, hash-manifested |
+| residual pRoteomics failures | resolved; they were a stale hardcoded script path, not a baseline failure |
+
+The two residual failures reported at the end of Phase 6C were introduced by
+this migration, not pre-existing.
+`tests/testthat/test-wgcna-identity-contract.R` built a script path as a
+multi-line `file.path("06_modules_WGCNA", "00_wgcna_identity_contract.R")`
+call with no root variable, which every Phase 6B sweep missed because each one
+matched line by line. The stale path made `Rscript` exit 139 with no output,
+so both assertions failed.
+
+The reason the earlier baseline comparison appeared to agree is a methodology
+error worth recording. It ran the baseline commit in a fresh `git worktree`,
+which contains tracked files only. `results/` is gitignored, so every
+generated artifact was absent there, and eight tests in that file failed for
+missing inputs -- a different failure mode that looked like the same one.
+Re-run at the baseline commit *in the real working tree*, where the
+generated artifacts exist, the file passes 124 of 124. The freeze tag's claim
+of a green suite was correct.
+
+The lesson is general: a baseline comparison for any test that reads generated
+output must be run in a tree that has that output, which a fresh worktree
+never does.
 
 ## 6. Commit sequence
 

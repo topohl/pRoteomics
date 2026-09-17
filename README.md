@@ -113,9 +113,10 @@ results/publication_source_data/<publication_id>/
 results/publication_source_data/manifest.csv
 ```
 
-The manuscript repository (`Exp9_manuscript`, local/private) owns panel
+**This repository has no publication responsibility beyond that point.** The
+manuscript repository (`Exp9_manuscript`, local/private) owns panel
 composition, typography, panel dimensions, legends, SVG assembly, PDF/PNG/TIFF
-export and journal-specific formatting. It renders from a frozen copy of the
+export, journal figure naming and layout, and the submission bundle. It renders from a frozen copy of the
 bundle above and never reads a live path in this repository, so a future
 restructure here cannot break manuscript rendering.
 
@@ -150,7 +151,12 @@ Active scripts are listed only in `pipeline.yml`. Scripts excluded from the
 canonical automated run are tracked in its `legacy` section with an explicit
 replacement and status, and are documented in `docs/NAMING_MIGRATION.md`.
 
-`analysis/09_publication_exports/` is the active export module. Superseded
+`analysis/09_publication_exports/` is the active export module. It builds the
+canonical publication source-data bundle, its manifest and the hashes of the
+scientific source tables, and audits figure outputs for publication readiness.
+It does not assemble journal figures, name or lay them out for a journal, or
+build a submission package: those belong to
+`Exp9_manuscript/tools/package_journal_figures.R`. Superseded
 generations live under `archive/` and must not be treated as canonical;
 diagnostic and validation-only scripts live under `audits/`.
 
