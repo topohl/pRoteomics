@@ -1,6 +1,6 @@
 testthat::test_that("module-score metadata merge script is dataset-aware", {
   source(testthat::test_path("..", "..", "R", "paths.R"))
-  txt <- paste(readLines(repo_path("01_preprocessing/06_merged_metadata_module_score.r"), warn = FALSE), collapse = "\n")
+  txt <- paste(readLines(repo_path("analysis/01_preprocessing/06_merged_metadata_module_score.r"), warn = FALSE), collapse = "\n")
 
   testthat::expect_true(grepl("--dataset", txt, fixed = TRUE))
   testthat::expect_true(grepl("PROTEOMICS_DATASET", txt, fixed = TRUE))
@@ -11,7 +11,7 @@ testthat::test_that("module-score metadata merge script is dataset-aware", {
 
 testthat::test_that("dataset input resolution prefers dataset-scoped module metadata", {
   source(testthat::test_path("..", "..", "R", "paths.R"))
-  txt <- paste(readLines(repo_path("R/dataset_inputs.R"), warn = FALSE), collapse = "\n")
+  txt <- paste(readLines(repo_path("R/data_contracts/dataset_inputs.R"), warn = FALSE), collapse = "\n")
 
   testthat::expect_true(grepl("path_processed(\n      \"01_preprocessing\",\n      \"06_merged_metadata_module_score\"", txt, fixed = TRUE) || grepl("06_merged_metadata_module_score", txt, fixed = TRUE))
   testthat::expect_true(grepl("legacy_dataset_candidates", txt, fixed = TRUE))
@@ -21,14 +21,14 @@ testthat::test_that("dataset input resolution prefers dataset-scoped module meta
 
 testthat::test_that("module scoring writes overlap diagnostics and preserves spatial labels", {
   source(testthat::test_path("..", "..", "R", "paths.R"))
-  txt <- paste(readLines(repo_path("06_modules_WGCNA/03_score_module_activity.R"), warn = FALSE), collapse = "\n")
+  txt <- paste(readLines(repo_path("analysis/05_wgcna/03_score_module_activity.R"), warn = FALSE), collapse = "\n")
 
   for (needle in c(
     "module_score_sample_overlap_diagnostics.csv",
     "protein_matrix_sample_columns.csv",
     "metadata_sample_ids.csv",
     "No matching sample names between protein matrix and metadata. This usually means the module-score metadata workbook was generated for another dataset.",
-    "Rscript 01_preprocessing/06_merged_metadata_module_score.r --dataset <dataset>",
+    "Rscript analysis/01_preprocessing/06_merged_metadata_module_score.r --dataset <dataset>",
     "SpatialUnit",
     "SpatialLabel"
   )) {

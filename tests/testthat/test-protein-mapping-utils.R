@@ -1,6 +1,6 @@
 testthat::test_that("manual mapping table parsing tolerates supported column aliases", {
   testthat::skip_if_not_installed("dplyr")
-  source(testthat::test_path("..", "..", "R", "protein_mapping_utils.R"))
+  source(repo_path("R", "protein_mapping_utils.R"))
   manual_file <- tempfile(fileext = ".csv")
   utils::write.csv(
     data.frame(input = "foo_mouse", mapped = "Q9CQH5", stringsAsFactors = FALSE),
@@ -15,7 +15,7 @@ testthat::test_that("manual mapping table parsing tolerates supported column ali
 
 testthat::test_that("manual override resolves before UNMAPPED fallback", {
   testthat::skip_if_not_installed("dplyr")
-  source(testthat::test_path("..", "..", "R", "protein_mapping_utils.R"))
+  source(repo_path("R", "protein_mapping_utils.R"))
   resolved <- data.frame(
     token_raw = "foo_mouse",
     token_base = "FOO",
@@ -33,7 +33,7 @@ testthat::test_that("manual override resolves before UNMAPPED fallback", {
 })
 
 testthat::test_that("mouse gene annotation is accession-first and audits ambiguity", {
-  source(testthat::test_path("..", "..", "R", "protein_mapping_utils.R"))
+  source(repo_path("R", "protein_mapping_utils.R"))
   maps <- list(
     uniprot_map = data.frame(UNIPROT = c("P1", "P2", "P2"), SYMBOL = c("GeneA", "GeneB", "GeneC"), ENTREZID = c("1", "2", "3"), stringsAsFactors = FALSE),
     symbol_map = data.frame(SYMBOL = c("GeneA", "Submitted"), ENTREZID = c("1", "9"), stringsAsFactors = FALSE),
@@ -53,7 +53,7 @@ testthat::test_that("mouse gene annotation is accession-first and audits ambigui
 })
 
 testthat::test_that("protein-group gene claims require accession concordance", {
-  source(testthat::test_path("..", "..", "R", "protein_mapping_utils.R"))
+  source(repo_path("R", "protein_mapping_utils.R"))
   bridge <- data.frame(member_accession = c("P1", "P2"), member_gene_symbol = c("GeneA", "GeneA"),
     member_entrez_id = c("1", "1"), gene_annotation_status = "resolved", stringsAsFactors = FALSE)
   testthat::expect_equal(assess_protein_group_gene_annotation(bridge)$protein_group_gene_annotation_status, "concordant_official_gene")
@@ -63,7 +63,7 @@ testthat::test_that("protein-group gene claims require accession concordance", {
 
 testthat::test_that("canonical Stage 02 tables carry versioned official gene audits", {
   testthat::skip_if_not_installed("dplyr")
-  source(testthat::test_path("..", "..", "R", "protein_mapping_utils.R"))
+  source(repo_path("R", "protein_mapping_utils.R"))
   entry <- data.frame(UNIPROT = c("P11111", "P22222"), entry_full = c("OLD1_MOUSE", "OLD2_MOUSE"),
     entry_base = c("OLD1", "OLD2"), stringsAsFactors = FALSE)
   genes <- data.frame(input = c("OLD1", "OLD2"), primaryAccession = c("P11111", "P22222"), stringsAsFactors = FALSE)
@@ -103,7 +103,7 @@ testthat::test_that("MapThatProt and WGCNA source shared protein mapping utiliti
 
 testthat::test_that("canonical protein-group mapping preserves rows and members", {
   testthat::skip_if_not_installed("dplyr")
-  source(testthat::test_path("..", "..", "R", "protein_mapping_utils.R"))
+  source(repo_path("R", "protein_mapping_utils.R"))
 
   entry_map <- data.frame(
     UNIPROT = c("Q9CQH5", "P12345", "Q8K1A0", "Q9D0M3", "P99999"),
@@ -209,7 +209,7 @@ testthat::test_that("canonical protein-group mapping preserves rows and members"
 testthat::test_that("WGCNA input tables include only resolved mouse UniProt rows and audit exclusions", {
   testthat::skip_if_not_installed("dplyr")
   testthat::skip_if_not_installed("tidyr")
-  source(testthat::test_path("..", "..", "R", "protein_mapping_utils.R"))
+  source(repo_path("R", "protein_mapping_utils.R"))
 
   male_data <- data.frame(
     gene_symbol = c("", "HUMAN_CONTAM_HUMAN", "FOO_MOUSE", "BAR_HUMAN;BAZ_MOUSE", "NOHIT_MOUSE"),

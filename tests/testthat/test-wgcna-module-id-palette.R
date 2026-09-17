@@ -1,6 +1,6 @@
 testthat::test_that("WGCNA module palette is muted, unique, and not recycled", {
   testthat::skip_if_not_installed("dplyr")
-  source(testthat::test_path("..", "..", "R", "module_contracts.R"))
+  source(repo_path("R", "module_contracts.R"))
 
   pal <- wgcna_publication_module_palette()
   testthat::expect_equal(length(pal), length(unique(unname(pal))))
@@ -20,7 +20,7 @@ testthat::test_that("WGCNA module palette is muted, unique, and not recycled", {
 })
 
 testthat::test_that("WGCNA module contract decouples stable IDs from colour metadata", {
-  source(testthat::test_path("..", "..", "R", "module_contracts.R"))
+  source(repo_path("R", "module_contracts.R"))
   df <- data.frame(
     ModuleSet = "WGCNA",
     WGCNAInternalColor = "blue",
@@ -65,7 +65,7 @@ testthat::test_that("WGCNA module contract decouples stable IDs from colour meta
 
 testthat::test_that("WGCNA feature integration keys internal colours separately from publication colours", {
   testthat::skip_if_not_installed("dplyr")
-  source(testthat::test_path("..", "..", "R", "module_contracts.R"))
+  source(repo_path("R", "module_contracts.R"))
 
   internal_colors <- c("turquoise", "blue", "brown")
   publication_palette <- c(

@@ -1,5 +1,5 @@
 source(testthat::test_path("..", "..", "R", "paths.R"))
-source(testthat::test_path("..", "..", "R", "sus_res_spatial_dap_atlas_utils.R"))
+source(repo_path("R", "sus_res_spatial_dap_atlas_utils.R"))
 
 make_sus_res_fixture <- function(ids = c("PG1", "PG2"), genes = c("GeneA", "GeneB"),
                                  fdr = c(0.01, 0.2), effect = c(1, -1), eligible = TRUE) {
@@ -272,7 +272,7 @@ testthat::test_that("pipeline registers one global downstream producer with cano
   testthat::skip_if_not_installed("yaml")
   registry <- yaml::read_yaml(repo_path("pipeline.yml"))
   scripts <- registry$stages$enrichment$scripts
-  hits <- which(vapply(scripts, function(x) identical(x$script, "04_differential_expression_enrichment/10_sus_res_spatial_dap_atlas.r"), logical(1)))
+  hits <- which(vapply(scripts, function(x) identical(x$script, "analysis/04_differential_abundance/10_sus_res_spatial_dap_atlas.r"), logical(1)))
   testthat::expect_length(hits, 1L)
   producer <- scripts[[hits]]
   testthat::expect_identical(producer$stage, "enrichment")

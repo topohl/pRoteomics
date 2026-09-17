@@ -52,7 +52,7 @@ if (!is.null(registry)) {
     )
   }))
   registry_scripts_in_order <- unique(registry_entries$script)
-  duplicate_script_exemptions <- "06_modules_WGCNA/03_score_module_activity.R"
+  duplicate_script_exemptions <- "analysis/05_wgcna/03_score_module_activity.R"
   required_registry_fields <- c(
     "script", "stage", "scope", "supported_datasets", "consumes_required",
     "consumes_optional", "produces", "recomputes_core_state", "safe_downstream_rerun"

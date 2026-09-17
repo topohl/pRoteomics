@@ -1,7 +1,7 @@
 testthat::local_edition(3)
 
 source(testthat::test_path("..", "..", "R", "paths.R"))
-source(testthat::test_path("..", "..", "R", "wgcna_downstream_utils.R"))
+source(repo_path("R", "wgcna_downstream_utils.R"))
 
 # Fixture reproducing the current empirical ROI marker v2 schema:
 #   - descriptive-only shared panel with empty claim-gated GeneSymbol but

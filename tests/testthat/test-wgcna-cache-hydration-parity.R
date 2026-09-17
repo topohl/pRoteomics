@@ -2,8 +2,8 @@ testthat::local_edition(3)
 
 testthat::skip_if_not_installed("dplyr")
 testthat::skip_if_not_installed("tibble")
-source(testthat::test_path("..", "..", "R", "protein_mapping_utils.R"))
-source(testthat::test_path("..", "..", "R", "module_contracts.R"))
+source(repo_path("R", "protein_mapping_utils.R"))
+source(repo_path("R", "module_contracts.R"))
 
 cache_parity_fixture <- function() {
   metadata <- data.frame(

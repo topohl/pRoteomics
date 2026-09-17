@@ -1,6 +1,6 @@
 source(testthat::test_path("..", "..", "R", "paths.R"))
-source(testthat::test_path("..", "..", "R", "wgcna_label_adjudication_utils.R"))
-source(testthat::test_path("..", "..", "R", "wgcna_label_activation_utils.R"))
+source(repo_path("R", "wgcna_label_adjudication_utils.R"))
+source(repo_path("R", "wgcna_label_activation_utils.R"))
 
 # ---------------------------------------------------------------- fixtures
 

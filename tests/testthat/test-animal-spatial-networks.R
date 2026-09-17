@@ -1,5 +1,5 @@
 source(testthat::test_path("..", "..", "R", "paths.R"))
-source(testthat::test_path("..", "..", "R", "animal_spatial_network_utils.R"))
+source(repo_path("R", "animal_spatial_network_utils.R"))
 
 NET <- function(...) path_results("tables", "11_spatial_systems", "networks", ...)
 rd <- function(p) utils::read.csv(p, stringsAsFactors = FALSE, check.names = FALSE)

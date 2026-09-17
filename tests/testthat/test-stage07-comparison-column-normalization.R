@@ -1,7 +1,7 @@
 testthat::local_edition(3)
 
-source(testthat::test_path("..", "..", "R", "manuscript_go_theme_utils.R"))
-source(testthat::test_path("..", "..", "R", "gsea_wgcna_concordance_utils.R"))
+source(repo_path("R", "manuscript_go_theme_utils.R"))
+source(repo_path("R", "gsea_wgcna_concordance_utils.R"))
 
 testthat::test_that("canonical stage-07 export (comparison + legacy_Comparison) normalizes on comparison", {
   x <- data.frame(

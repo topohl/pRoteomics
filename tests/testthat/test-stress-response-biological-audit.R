@@ -1,9 +1,9 @@
 source(testthat::test_path("..", "..", "R", "paths.R"))
-source(testthat::test_path("..", "..", "R", "dataset_config.R"))
-source(testthat::test_path("..", "..", "R", "enrichment_io.R"))
-source(testthat::test_path("..", "..", "R", "sus_res_spatial_dap_atlas_utils.R"))
-source(testthat::test_path("..", "..", "R", "manuscript_go_theme_utils.R"))
-source(testthat::test_path("..", "..", "R", "stress_response_biological_audit_utils.R"))
+source(repo_path("R", "dataset_config.R"))
+source(repo_path("R", "enrichment_io.R"))
+source(repo_path("R", "sus_res_spatial_dap_atlas_utils.R"))
+source(repo_path("R", "manuscript_go_theme_utils.R"))
+source(repo_path("R", "stress_response_biological_audit_utils.R"))
 
 testthat::test_that("three formal contrast signs are deterministic", {
   testthat::expect_identical(stress_response_parse_comparison("unitres_unitcon")$contrast, "RES_vs_CON")

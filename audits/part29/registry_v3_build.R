@@ -21,7 +21,7 @@
 setwd("S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/Analysis/proteomics")
 suppressMessages({ library(GO.db); library(AnnotationDbi); library(digest) })
 source(file.path("R", "paths.R"))
-source(file.path("R", "manuscript_go_theme_utils.R"))
+source(repo_path("R", "manuscript_go_theme_utils.R"))
 
 AUD <- file.path("results", "tables", "publication_audits",
                  "upstream_enrichment_v10")

@@ -1,6 +1,6 @@
 source(testthat::test_path("..", "..", "R", "paths.R"))
-source(testthat::test_path("..", "..", "R", "spatial_atlas_utils.R"))
-source(testthat::test_path("..", "..", "R", "ewce_gene_set_engine.R"))
+source(repo_path("R", "spatial_atlas_utils.R"))
+source(repo_path("R", "ewce_gene_set_engine.R"))
 
 A <- function(...) path_results("tables", "11_spatial_systems", "atlas", ...)
 rd <- function(p) utils::read.csv(p, stringsAsFactors = FALSE, check.names = FALSE)

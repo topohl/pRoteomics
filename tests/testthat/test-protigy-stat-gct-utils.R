@@ -1,6 +1,6 @@
 source(testthat::test_path("..", "..", "R", "paths.R"))
-source(testthat::test_path("..", "..", "R", "dataset_config.R"))
-source(testthat::test_path("..", "..", "R", "protigy_stat_gct_utils.R"))
+source(repo_path("R", "dataset_config.R"))
+source(repo_path("R", "protigy_stat_gct_utils.R"))
 
 testthat::test_that("historical and corrected statistical fields parse to one canonical comparison", {
   historical <- parse_protigy_stat_field("logFC.CA1_slm_3.over.CA1_slm_2")

@@ -8,7 +8,7 @@ testthat::local_edition(3)
 
 # paths.R first: the utils header resolves its own dependencies relatively.
 source(testthat::test_path("..", "..", "R", "paths.R"))
-source(testthat::test_path("..", "..", "R", "sus_res_spatial_dap_atlas_utils.R"))
+source(repo_path("R", "sus_res_spatial_dap_atlas_utils.R"))
 
 CURRENT <- "canonical_compareGO_ranked_GSEA_GO_BP"
 HISTORICAL <- "ranked_GSEA"

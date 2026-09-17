@@ -1,10 +1,10 @@
 source(testthat::test_path("..", "..", "R", "paths.R"))
-source(testthat::test_path("..", "..", "R", "protigy_input_utils.R"))
-source(testthat::test_path("..", "..", "R", "spatial_systems_data_utils.R"))
-source(testthat::test_path("..", "..", "R", "spatial_systems_bilateral_utils.R"))
-source(testthat::test_path("..", "..", "R", "spatial_systems_evidence_registry.R"))
-source(testthat::test_path("..", "..", "R", "ewce_gene_set_engine.R"))
-source(testthat::test_path("..", "..", "R", "control_spatial_identity_utils.R"))
+source(repo_path("R", "protigy_input_utils.R"))
+source(repo_path("R", "spatial_systems_data_utils.R"))
+source(repo_path("R", "spatial_systems_bilateral_utils.R"))
+source(repo_path("R", "spatial_systems_evidence_registry.R"))
+source(repo_path("R", "ewce_gene_set_engine.R"))
+source(repo_path("R", "control_spatial_identity_utils.R"))
 
 # ---------------------------------------------------------------- fixtures
 
@@ -227,7 +227,7 @@ testthat::test_that("paired sides match on the exact same animal and unit", {
 })
 
 testthat::test_that("the variance model formula separates hemisphere from animal", {
-  source(testthat::test_path("..", "..", "R", "spatial_systems_endpoint_utils.R"))
+  source(repo_path("R", "spatial_systems_endpoint_utils.R"))
   # sized like the real design (9 animals x 4 units x 2 sides) so the variance
   # components are estimable rather than singular
   e <- expand.grid(AnimalID = paste0("A", 1:9),
@@ -261,7 +261,7 @@ testthat::test_that("the variance model formula separates hemisphere from animal
 })
 
 testthat::test_that("reliability is reported only when the guards pass", {
-  source(testthat::test_path("..", "..", "R", "spatial_systems_endpoint_utils.R"))
+  source(repo_path("R", "spatial_systems_endpoint_utils.R"))
   vc <- data.frame(
     dataset = "d", endpoint_class = "c", endpoint_id = c("ok", "singular"),
     n_animals = 9L, n_spatial_units = 4L,

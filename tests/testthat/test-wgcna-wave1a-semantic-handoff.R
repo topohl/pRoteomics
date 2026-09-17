@@ -1,7 +1,7 @@
 testthat::local_edition(3)
 
 source(testthat::test_path("..", "..", "R", "paths.R"))
-source(testthat::test_path("..", "..", "R", "wgcna_downstream_utils.R"))
+source(repo_path("R", "wgcna_downstream_utils.R"))
 source(testthat::test_path(
   "..", "..", "R", "wgcna_group_effect_consumer_utils.R"
 ))

@@ -1,7 +1,7 @@
 source(testthat::test_path("..", "..", "R", "paths.R"))
-source(testthat::test_path("..", "..", "R", "dataset_config.R"))
-source(testthat::test_path("..", "..", "R", "dataset_inputs.R"))
-source(testthat::test_path("..", "..", "R", "protigy_input_utils.R"))
+source(repo_path("R", "dataset_config.R"))
+source(repo_path("R", "dataset_inputs.R"))
+source(repo_path("R", "protigy_input_utils.R"))
 
 make_protigy_fixture <- function(dataset = "neuron_neuropil", specs = NULL) {
   if (is.null(specs)) {

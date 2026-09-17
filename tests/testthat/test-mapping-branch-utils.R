@@ -1,8 +1,8 @@
 testthat::local_edition(3)
 
 source(testthat::test_path("..", "..", "R", "paths.R"))
-source(testthat::test_path("..", "..", "R", "dataset_config.R"))
-source(testthat::test_path("..", "..", "R", "mapping_branch_utils.R"))
+source(repo_path("R", "dataset_config.R"))
+source(repo_path("R", "mapping_branch_utils.R"))
 
 testthat::test_that("historical MapThatProt roots and paths remain unchanged", {
   roots <- resolve_mapthatprot_roots(gct_extract_root = "", mapping_output_root = "")

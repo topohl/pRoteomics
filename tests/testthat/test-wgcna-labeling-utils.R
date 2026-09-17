@@ -1,5 +1,5 @@
 testthat::test_that("WGCNA final labeling is unique, singleton-aware, and context-separated", {
-  source(testthat::test_path("..", "..", "R", "wgcna_labeling_utils.R"))
+  source(repo_path("R", "wgcna_labeling_utils.R"))
   testthat::skip_if_not_installed("dplyr")
   testthat::skip_if_not_installed("tibble")
 
@@ -39,7 +39,7 @@ testthat::test_that("WGCNA final labeling is unique, singleton-aware, and contex
 })
 
 testthat::test_that("joining canonical labels leaves numeric source values unchanged", {
-  source(testthat::test_path("..", "..", "R", "wgcna_labeling_utils.R"))
+  source(repo_path("R", "wgcna_labeling_utils.R"))
   source_numeric <- tibble::tibble(Module = c("SM01", "SM02"), estimate = c(0.25, -0.5), p_value = c(0.01, 0.2))
   lookup <- tibble::tibble(entity_id = c("SM01", "SM02"), final_plot_label = c("SM01 · singleton: RNA", "SM02 · mixed / unresolved"))
   labelled <- dplyr::left_join(source_numeric, lookup, by = c("Module" = "entity_id"))

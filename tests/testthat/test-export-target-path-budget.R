@@ -1,5 +1,5 @@
 source(testthat::test_path("..", "..", "R", "paths.R"))
-source(testthat::test_path("..", "..", "R", "export_helpers.R"))
+source(repo_path("R", "export_helpers.R"))
 
 repo <- normalizePath(testthat::test_path("..", ".."), winslash = "/", mustWork = TRUE)
 exporter <- file.path(repo, "09_export_pride_journal", "08_export_manuscript_figures.R")
@@ -202,7 +202,7 @@ testthat::test_that("write_run_manifest survives the full export source chain", 
   script <- c(
     sprintf('setwd(%s)', shQuote(repo)),
     'source("R/paths.R")',
-    'source(file.path("R", "export_helpers.R"))',
+    'source(repo_path("R", "export_helpers.R"))',
     'out <- file.path(tempdir(), "wrm_probe", "run_manifest.yml")',
     'write_run_manifest(out, inputs = list(), outputs = list(), notes = "probe")',
     'cat("WROTE:", file.exists(out), "\n")'
@@ -215,7 +215,7 @@ testthat::test_that("write_run_manifest survives the full export source chain", 
 })
 
 testthat::test_that("only R/paths.R defines relative_to", {
-  helpers <- list.files(file.path(repo, "R"), pattern = "[.]R$", full.names = TRUE)
+  helpers <- list.files(file.path(repo, "R"), pattern = "[.]R$", full.names = TRUE, recursive = TRUE)
   definers <- helpers[vapply(helpers, function(f) {
     any(grepl("^relative_to <- function", readLines(f, warn = FALSE)))
   }, logical(1))]

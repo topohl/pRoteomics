@@ -1,5 +1,5 @@
 testthat::test_that("renv lock audit reads package records without guessing versions", {
-  source(testthat::test_path("..", "..", "R", "renv_lock_audit.R"))
+  source(repo_path("R", "renv_lock_audit.R"))
 
   lockfile <- tempfile(fileext = ".lock")
   writeLines(c(
@@ -25,7 +25,7 @@ testthat::test_that("renv lock audit reads package records without guessing vers
 })
 
 testthat::test_that("renv lock audit fails closed when scientific sentinels are absent", {
-  source(testthat::test_path("..", "..", "R", "renv_lock_audit.R"))
+  source(repo_path("R", "renv_lock_audit.R"))
 
   lockfile <- tempfile(fileext = ".lock")
   writeLines(c(
@@ -45,7 +45,7 @@ testthat::test_that("renv lock audit fails closed when scientific sentinels are 
 })
 
 testthat::test_that("current lock status is computed from the current file", {
-  source(testthat::test_path("..", "..", "R", "renv_lock_audit.R"))
+  source(repo_path("R", "renv_lock_audit.R"))
   lockfile <- testthat::test_path("..", "..", "renv.lock")
   audit <- audit_renv_lock(lockfile)
 
@@ -67,7 +67,7 @@ testthat::test_that("current lock status is computed from the current file", {
 freeze_lock_path <- function() testthat::test_path("..", "..", "renv.lock")
 
 testthat::test_that("the lockfile records the required scientific stack at frozen versions", {
-  source(testthat::test_path("..", "..", "R", "renv_lock_audit.R"))
+  source(repo_path("R", "renv_lock_audit.R"))
   testthat::skip_if_not(requireNamespace("jsonlite", quietly = TRUE), "jsonlite required")
   lock <- jsonlite::fromJSON(freeze_lock_path(), simplifyVector = FALSE)
 
@@ -101,7 +101,7 @@ testthat::test_that("the lockfile encodes the R 4.5.1 / Bioconductor 3.22 contra
 })
 
 testthat::test_that("every active direct dependency is recorded in the lockfile", {
-  source(testthat::test_path("..", "..", "R", "renv_lock_audit.R"))
+  source(repo_path("R", "renv_lock_audit.R"))
   root <- testthat::test_path("..", "..")
   audit <- audit_renv_lock_completeness(freeze_lock_path(), root = root)
 
@@ -111,7 +111,7 @@ testthat::test_that("every active direct dependency is recorded in the lockfile"
 })
 
 testthat::test_that("the dependency closure has no unresolved package references", {
-  source(testthat::test_path("..", "..", "R", "renv_lock_audit.R"))
+  source(repo_path("R", "renv_lock_audit.R"))
   audit <- audit_renv_lock_completeness(freeze_lock_path(),
                                         root = testthat::test_path("..", ".."))
   testthat::expect_identical(audit$unresolved_requirements, character(0))
@@ -119,7 +119,7 @@ testthat::test_that("the dependency closure has no unresolved package references
 })
 
 testthat::test_that("the lockfile has not regressed to the trivial bootstrap state", {
-  source(testthat::test_path("..", "..", "R", "renv_lock_audit.R"))
+  source(repo_path("R", "renv_lock_audit.R"))
   audit <- audit_renv_lock(freeze_lock_path())
 
   # The known failure mode: exactly renv/yaml/testthat and nothing else.
@@ -164,7 +164,7 @@ testthat::test_that("source labels are faithful and no remote metadata is invent
 
 testthat::test_that("the freeze manifest can inspect the lockfile deterministically", {
   source(testthat::test_path("..", "..", "R", "paths.R"))
-  source(testthat::test_path("..", "..", "R", "publication_freeze_utils.R"))
+  source(repo_path("R", "publication_freeze_utils.R"))
 
   a <- freeze_renv_lockfile_state()
   b <- freeze_renv_lockfile_state()

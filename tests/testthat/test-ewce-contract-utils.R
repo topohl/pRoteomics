@@ -1,4 +1,4 @@
-source(testthat::test_path("..", "..", "R", "ewce_contract_utils.R"))
+source(repo_path("R", "ewce_contract_utils.R"))
 
 testthat::test_that("canonical EWCE defaults to animal-level biological units", {
   default_contract <- ewce_resolve_run_contract("neuron_neuropil")
@@ -105,7 +105,7 @@ testthat::test_that("EWCE never silently falls back to a background-free test", 
                               engine_code, fixed = TRUE))
 
   # Behavioural guarantee, not just textual: an empty background is refused.
-  source(testthat::test_path("..", "..", "R", "ewce_gene_set_engine.R"))
+  source(repo_path("R", "ewce_gene_set_engine.R"))
   testthat::expect_error(
     ewce_bootstrap_once(hits = letters, background = character(),
                         reference = list(), annot_level = 1L),
@@ -125,7 +125,7 @@ testthat::test_that("EWCE never silently falls back to a background-free test", 
 # =====================================================================
 
 testthat::test_that("the finite-sample correction bounds an empirical p below", {
-  source(testthat::test_path("..", "..", "R", "ewce_gene_set_engine.R"))
+  source(repo_path("R", "ewce_gene_set_engine.R"))
   B <- 10000L
   # EWCE computes p <- sum(ct_boot_dist >= hit_sum) / reps, so a raw 0 means
   # "0 of B draws were as extreme" - it does NOT mean the null probability is 0.
@@ -145,7 +145,7 @@ testthat::test_that("the finite-sample correction bounds an empirical p below", 
 })
 
 testthat::test_that("a value that is not a bootstrap count is refused", {
-  source(testthat::test_path("..", "..", "R", "ewce_gene_set_engine.R"))
+  source(repo_path("R", "ewce_gene_set_engine.R"))
   # guards against silently "correcting" an analytical p-value, which would be
   # scientifically wrong: the correction is only valid for count/B proportions.
   testthat::expect_error(ewce_finite_sample_p(0.123456789, 10000L),

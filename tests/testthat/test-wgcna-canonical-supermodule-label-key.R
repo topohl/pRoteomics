@@ -1,8 +1,8 @@
 testthat::local_edition(3)
 
 source(testthat::test_path("..", "..", "R", "paths.R"))
-source(testthat::test_path("..", "..", "R", "wgcna_downstream_utils.R"))
-source(testthat::test_path("..", "..", "R", "wgcna_group_effects_utils.R"))
+source(repo_path("R", "wgcna_downstream_utils.R"))
+source(repo_path("R", "wgcna_group_effects_utils.R"))
 
 stage05_script_assignments <- function() {
   expressions <- parse(testthat::test_path(

@@ -1,4 +1,4 @@
-source(testthat::test_path("..", "..", "R", "wgcna_go_comparison_utils.R"))
+source(repo_path("R", "wgcna_go_comparison_utils.R"))
 
 testthat::test_that("01b CLI defaults to three focused terms and supports the canonical all compositor", {
   script <- paste(readLines(

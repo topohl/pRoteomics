@@ -1,8 +1,8 @@
 source(testthat::test_path("..", "..", "R", "paths.R"))
-source(testthat::test_path("..", "..", "R", "integration_utils.R"))
-source(testthat::test_path("..", "..", "R", "nature_v2_figure_utils.R"))
-source(testthat::test_path("..", "..", "R", "spatial_grammar_utils.R"))
-source(testthat::test_path("..", "..", "R", "nature_final_v7_figure_utils.R"))
+source(repo_path("R", "integration_utils.R"))
+source(repo_path("R", "nature_v2_figure_utils.R"))
+source(repo_path("R", "spatial_grammar_utils.R"))
+source(repo_path("R", "nature_final_v7_figure_utils.R"))
 
 rd <- function(p) utils::read.csv(p, stringsAsFactors = FALSE, check.names = FALSE)
 have <- function(p) file.exists(p)

@@ -2,7 +2,7 @@ testthat::local_edition(3)
 
 testthat::skip_if_not_installed("dplyr")
 testthat::skip_if_not_installed("tibble")
-source(testthat::test_path("..", "..", "R", "module_contracts.R"))
+source(repo_path("R", "module_contracts.R"))
 
 hub_handoff_fixture <- function() {
   modules <- tibble::tibble(

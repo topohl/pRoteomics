@@ -1,5 +1,5 @@
 source(testthat::test_path("..", "..", "R", "paths.R"))
-source(testthat::test_path("..", "..", "R", "animal_id_contract.R"))
+source(repo_path("R", "animal_id_contract.R"))
 
 CANON <- aid_expected_exp9_animals()
 rd <- function(p) utils::read.csv(p, stringsAsFactors = FALSE, check.names = FALSE)

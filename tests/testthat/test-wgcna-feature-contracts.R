@@ -1,7 +1,7 @@
 testthat::local_edition(3)
 
-source(testthat::test_path("..", "..", "R", "protein_mapping_utils.R"))
-source(testthat::test_path("..", "..", "R", "module_contracts.R"))
+source(repo_path("R", "protein_mapping_utils.R"))
+source(repo_path("R", "module_contracts.R"))
 
 wgcna_test_maps <- function() {
   list(

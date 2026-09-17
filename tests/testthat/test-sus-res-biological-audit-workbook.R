@@ -1,8 +1,8 @@
 source(testthat::test_path("..", "..", "R", "paths.R"))
-source(testthat::test_path("..", "..", "R", "manuscript_go_theme_utils.R"))
-source(testthat::test_path("..", "..", "R", "dataset_config.R"))
-source(testthat::test_path("..", "..", "R", "plotting_nature.R"))
-source(testthat::test_path("..", "..", "R", "sus_res_biological_audit_workbook.R"))
+source(repo_path("R", "manuscript_go_theme_utils.R"))
+source(repo_path("R", "dataset_config.R"))
+source(repo_path("R", "plotting_nature.R"))
+source(repo_path("R", "sus_res_biological_audit_workbook.R"))
 
 workbook_path <- repo_path(
   "results", "reports", "04_differential_expression_enrichment",
@@ -29,7 +29,7 @@ testthat::test_that("human-facing SUS-RES workbook has the six-sheet audit contr
   testthat::expect_equal(nrow(spatial), 8L)
   testthat::expect_equal(nrow(detail), 144L)
   # Mirrors the canonical supported-term audit from
-  # 04_differential_expression_enrichment/07_compareGO_spatial_program_atlas.r.
+  # analysis/04_differential_abundance/07_compareGO_spatial_program_atlas.r.
   # Refreshed 336 -> 1202 after the accepted 2026-08-26 canonical compareGO
   # spatial-atlas regeneration. Exact-value checking is retained deliberately.
   testthat::expect_equal(nrow(go_audit), 1202L)

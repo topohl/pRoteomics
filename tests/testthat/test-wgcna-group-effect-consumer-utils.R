@@ -580,17 +580,17 @@ testthat::test_that(
   {
     root <- testthat::test_path("..", "..")
     consumers <- c(
-      "06_modules_WGCNA/08_wgcna_publication_figures.R",
-      "06_modules_WGCNA/08b_microglia_wgcna_readiness_publication_figures.R",
-      "06_modules_WGCNA/09_microglia_neuropil_independence.R",
-      "06_modules_WGCNA/11_module_robustness_sensitivity.r",
-      "06_modules_WGCNA/13_wgcna_claim_readiness.R",
-      "08_behavior_physio_coupling/03_module_behavior_coupling.r",
-      "09_export_pride_journal/07_make_biological_claims_table.R",
-      "10_biological_integration/01_cross_compartment_program_atlas.r",
-      "10_biological_integration/04_wgcna_cross_compartment_overview.R",
-      "10_biological_integration/04_wgcna_circular_atlas.R",
-      "R/final_evidence_bundle_utils.R"
+      "analysis/05_wgcna/08_wgcna_publication_figures.R",
+      "analysis/05_wgcna/08b_microglia_wgcna_readiness_publication_figures.R",
+      "analysis/05_wgcna/09_microglia_neuropil_independence.R",
+      "analysis/05_wgcna/11_module_robustness_sensitivity.r",
+      "analysis/05_wgcna/13_wgcna_claim_readiness.R",
+      "analysis/08_integration/03_module_behavior_coupling.r",
+      "analysis/09_publication_exports/07_make_biological_claims_table.R",
+      "analysis/08_integration/01_cross_compartment_program_atlas.r",
+      "analysis/08_integration/04_wgcna_cross_compartment_overview.R",
+      "analysis/08_integration/04_wgcna_circular_atlas.R",
+      "R/statistics/final_evidence_bundle_utils.R"
     )
     for (consumer in consumers) {
       text <- readLines(file.path(root, consumer), warn = FALSE)
@@ -610,9 +610,9 @@ testthat::test_that(
       )), info = consumer)
     }
     for (consumer in c(
-      "06_modules_WGCNA/08_wgcna_publication_figures.R",
-      "06_modules_WGCNA/08b_microglia_wgcna_readiness_publication_figures.R",
-      "10_biological_integration/04_wgcna_circular_atlas.R"
+      "analysis/05_wgcna/08_wgcna_publication_figures.R",
+      "analysis/05_wgcna/08b_microglia_wgcna_readiness_publication_figures.R",
+      "analysis/08_integration/04_wgcna_circular_atlas.R"
     )) {
       text <- paste(
         readLines(file.path(root, consumer), warn = FALSE),

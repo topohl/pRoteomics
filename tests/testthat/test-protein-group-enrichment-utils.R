@@ -1,5 +1,5 @@
 testthat::test_that("canonical enrichment transformation preserves one group observation", {
-  source(testthat::test_path("..", "..", "R", "protein_group_enrichment_utils.R"))
+  source(repo_path("R", "protein_group_enrichment_utils.R"))
   d <- data.frame(ProteinGroupID = c("PG1", "PG2", "PG3", "PG4", "PG5"), original_identifier = c("A", "B", "C", "D", "E"),
     member_accessions = c("P1", "P2;P3", "P4;P5", "P6", "P7;H1"), member_gene_symbols = c("A", "B", "C;D", "", "E"),
     representative_accession = "", representative_gene_symbol = "", representative_selection_rule = "display_only",
@@ -17,7 +17,7 @@ testthat::test_that("canonical enrichment transformation preserves one group obs
 })
 
 testthat::test_that("duplicate gene collapse is median, provenance-preserving, and order invariant", {
-  source(testthat::test_path("..", "..", "R", "protein_group_enrichment_utils.R"))
+  source(repo_path("R", "protein_group_enrichment_utils.R"))
   base <- data.frame(ProteinGroupID = c("PG2", "PG1", "PG3"), GeneSymbol = c("A", "A", "A"), source_statistic = c(-1, 3, 2), eligibility_status = "eligible", original_identifier = c("b", "a", "c"), member_accessions = "P", member_gene_symbols = "A", stringsAsFactors = FALSE)
   a <- collapse_protein_group_genes(base); b <- collapse_protein_group_genes(base[3:1, ])
   testthat::expect_equal(a$collapsed_statistic, 2)
@@ -26,7 +26,7 @@ testthat::test_that("duplicate gene collapse is median, provenance-preserving, a
 })
 
 testthat::test_that("ORA inputs are directional and never use group identifiers as genes", {
-  source(testthat::test_path("..", "..", "R", "protein_group_enrichment_utils.R"))
+  source(repo_path("R", "protein_group_enrichment_utils.R"))
   c <- data.frame(GeneSymbol = c("A", "B", "C"), collapsed_statistic = c(2, -3, 0.2), stringsAsFactors = FALSE)
   ora <- build_ora_inputs(c, fc_threshold = 1)
   testthat::expect_equal(ora$up, "A"); testthat::expect_equal(ora$down, "B")
@@ -38,7 +38,7 @@ testthat::test_that("clusterProfiler cannot reintroduce effect sorting duplicate
 })
 
 testthat::test_that("member order does not alter a same-gene enrichment mapping", {
-  source(testthat::test_path("..", "..", "R", "protein_group_enrichment_utils.R"))
+  source(repo_path("R", "protein_group_enrichment_utils.R"))
   make_row <- function(members) data.frame(ProteinGroupID = "PG1", original_identifier = members, member_accessions = members,
     member_gene_symbols = "A", representative_accession = "", representative_gene_symbol = "", representative_selection_rule = "display_only",
     protein_group_ambiguity_class = "multi_accession_same_gene", gene_level_claim_allowed = TRUE, protein_level_claim_allowed = FALSE,
@@ -55,19 +55,19 @@ testthat::test_that("compareGO prefers manifest-provided collapsed gene inputs",
 })
 
 testthat::test_that("strict mode rejects legacy gene-only input", {
-  source(testthat::test_path("..", "..", "R", "protein_group_enrichment_utils.R"))
+  source(repo_path("R", "protein_group_enrichment_utils.R"))
   testthat::expect_error(build_enrichment_gene_inputs(data.frame(gene_symbol = "A", log2fc = 1), strict = TRUE), "Canonical ProteinGroupID")
 })
 
 testthat::test_that("ORA significance uses collapsed FDR without effect-dependent duplicate selection", {
-  source(testthat::test_path("..", "..", "R", "protein_group_enrichment_utils.R"))
+  source(repo_path("R", "protein_group_enrichment_utils.R"))
   d <- data.frame(GeneSymbol = c("A", "B"), collapsed_statistic = c(2, -2), collapsed_fdr = c(.01, .2), collapsed_logfc = c(2, -2))
   x <- build_ora_inputs(d, fdr_threshold = .05, fc_threshold = 1)
   testthat::expect_equal(x$up, "A"); testthat::expect_length(x$down, 0)
 })
 
 testthat::test_that("ORA input audits preserve direction for empty and non-empty inputs", {
-  source(testthat::test_path("..", "..", "R", "protein_group_enrichment_utils.R"))
+  source(repo_path("R", "protein_group_enrichment_utils.R"))
   empty <- make_ora_input_audit(character(), "upregulated")
   testthat::expect_equal(names(empty), c("GeneSymbol", "ORA_direction"))
   testthat::expect_equal(nrow(empty), 0L)
@@ -82,7 +82,7 @@ testthat::test_that("ORA input audits preserve direction for empty and non-empty
 })
 
 testthat::test_that("GSEA diagnostics and result guards handle null, malformed, and empty results", {
-  source(testthat::test_path("..", "..", "R", "protein_group_enrichment_utils.R"))
+  source(repo_path("R", "protein_group_enrichment_utils.R"))
   ranks <- c(A = 2, B = -1, C = .5)
   diagnostics <- gsea_input_diagnostics(ranks, c("A", "C", "X"))
   testthat::expect_equal(diagnostics$orgdb_symbol_matches, 2)
@@ -97,7 +97,7 @@ testthat::test_that("GSEA diagnostics and result guards handle null, malformed, 
 })
 
 testthat::test_that("canonical SYMBOL resolution is deterministic and provenance-preserving", {
-  source(testthat::test_path("..", "..", "R", "protein_group_enrichment_utils.R"))
+  source(repo_path("R", "protein_group_enrichment_utils.R"))
   collapsed <- data.frame(
     GeneSymbol = c("Aaas", "bRaF", "DUP", "missing"),
     collapsed_statistic = c(1, 2, 3, 4),
@@ -120,7 +120,7 @@ testthat::test_that("canonical SYMBOL resolution is deterministic and provenance
 })
 
 testthat::test_that("SYMBOL-to-ENTREZ KEGG preparation is median and order invariant", {
-  source(testthat::test_path("..", "..", "R", "protein_group_enrichment_utils.R"))
+  source(repo_path("R", "protein_group_enrichment_utils.R"))
   collapsed <- data.frame(GeneSymbol = c("A", "B", "C"), collapsed_statistic = c(3, -1, 5),
     contributing_ProteinGroupIDs = c("PG1", "PG2", "PG3"), stringsAsFactors = FALSE)
   mapping <- data.frame(SYMBOL = c("A", "B", "C", "C"), ENTREZID = c("1", "1", "2", "3"), stringsAsFactors = FALSE)
@@ -141,15 +141,15 @@ testthat::test_that("canonical symbol vectors are never submitted as UniProt ide
 })
 
 testthat::test_that("generic enrichment result guard accepts empty results and rejects NULL", {
-  source(testthat::test_path("..", "..", "R", "protein_group_enrichment_utils.R"))
+  source(repo_path("R", "protein_group_enrichment_utils.R"))
   testthat::expect_error(enrichment_result_table(NULL, "KEGG GSEA"), "KEGG GSEA returned NULL")
   empty <- structure(list(result = data.frame()), class = "enrichResult")
   testthat::expect_equal(nrow(enrichment_result_table(empty, "general GO enrichment")), 0L)
 })
 
 testthat::test_that("aliases converge before duplicate-gene median collapse", {
-  source(testthat::test_path("..", "..", "R", "protein_mapping_utils.R"))
-  source(testthat::test_path("..", "..", "R", "protein_group_enrichment_utils.R"))
+  source(repo_path("R", "protein_mapping_utils.R"))
+  source(repo_path("R", "protein_group_enrichment_utils.R"))
   maps <- list(
     uniprot_map = data.frame(UNIPROT = character(), SYMBOL = character(), ENTREZID = character()),
     symbol_map = data.frame(SYMBOL = "GeneA", ENTREZID = "1"),
@@ -174,7 +174,7 @@ testthat::test_that("aliases converge before duplicate-gene median collapse", {
 })
 
 testthat::test_that("strict enrichment validates precomputed symbols without repairing them", {
-  source(testthat::test_path("..", "..", "R", "protein_group_enrichment_utils.R"))
+  source(repo_path("R", "protein_group_enrichment_utils.R"))
   d <- data.frame(GeneSymbol = c("GeneA", "genea"), contributing_ProteinGroupIDs = c("PG1", "PG2"))
   audit <- validate_precomputed_enrichment_symbols(d, "GeneA")
   testthat::expect_equal(audit$symbol_resolution_status,

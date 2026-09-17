@@ -23,10 +23,13 @@ for (.null_coalescing_start in .null_coalescing_search_dirs) {
     .null_coalescing_start, winslash = "/", mustWork = FALSE
   )
   repeat {
-    .null_coalescing_candidate <- file.path(
-      .null_coalescing_search_dir, "R", "null_coalescing.R"
-    )
-    if (file.exists(.null_coalescing_candidate)) {
+    .null_coalescing_candidate <- Filter(file.exists, c(
+      file.path(
+        .null_coalescing_search_dir, "R", "utilities", "null_coalescing.R"
+      ),
+      file.path(.null_coalescing_search_dir, "R", "null_coalescing.R")
+    ))[1]
+    if (!is.na(.null_coalescing_candidate)) {
       .null_coalescing_file <- .null_coalescing_candidate
       break
     }
@@ -63,7 +66,7 @@ repo_root <- function() {
 
   cur <- normalizePath(getwd(), winslash = "/", mustWork = TRUE)
   repeat {
-    markers <- c(".git", "README.md", "01_preprocessing")
+    markers <- c(".git", "README.md", "pipeline.yml", "analysis")
     if (any(file.exists(file.path(cur, markers)))) return(cur)
     parent <- dirname(cur)
     if (identical(parent, cur)) {
@@ -73,7 +76,43 @@ repo_root <- function() {
   }
 }
 
-repo_path <- function(...) file.path(repo_root(), ...)
+# R/ is organised into domain subdirectories (data_contracts, qc, statistics,
+# spatial, enrichment, networks, utilities). Call sites address a library by
+# bare name -- repo_path("R", "module_stats.R") -- so the domain layout can be
+# changed without editing the 800+ source() lines that name these libraries.
+# This resolver maps a bare library name onto its domain directory and is the
+# minimum path abstraction the layout requires.
+.r_library_cache <- new.env(parent = emptyenv())
+
+r_library_path <- function(name, root = repo_root()) {
+  flat <- file.path(root, "R", name)
+  if (file.exists(flat)) return(flat)
+
+  key <- paste0("index:", root)
+  if (!exists(key, envir = .r_library_cache, inherits = FALSE)) {
+    rel <- list.files(
+      file.path(root, "R"), pattern = "[.]R$", recursive = TRUE
+    )
+    index <- stats::setNames(file.path(root, "R", rel), basename(rel))
+    assign(key, index[!duplicated(names(index))], envir = .r_library_cache)
+  }
+  index <- get(key, envir = .r_library_cache, inherits = FALSE)
+
+  hit <- unname(index[name])
+  if (!is.na(hit)) return(hit)
+  flat
+}
+
+repo_path <- function(...) {
+  parts <- list(...)
+  if (length(parts) == 2L &&
+      identical(as.character(parts[[1]]), "R") &&
+      length(parts[[2]]) == 1L &&
+      grepl("[.]R$", as.character(parts[[2]]))) {
+    return(r_library_path(as.character(parts[[2]])))
+  }
+  file.path(repo_root(), ...)
+}
 
 path_raw <- function(...) repo_path("data", "raw", ...)
 path_metadata <- function(...) repo_path("data", "metadata", ...)

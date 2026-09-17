@@ -1,5 +1,5 @@
 source(testthat::test_path("..", "..", "R", "paths.R"))
-source(testthat::test_path("..", "..", "R", "publication_freeze_utils.R"))
+source(repo_path("R", "publication_freeze_utils.R"))
 
 repo <- normalizePath(testthat::test_path("..", ".."), winslash = "/", mustWork = TRUE)
 
@@ -144,7 +144,7 @@ testthat::test_that("the historical-to-freeze claim is scoped to the protected f
   testthat::expect_true(freeze_equivalence_scope_ok(eq_ok))
 
   # Silently widening the claim must be detectable.
-  eq_wide <- list(files = lapply(c(expected, "R/wgcna_group_effects_utils.R"),
+  eq_wide <- list(files = lapply(c(expected, "R/statistics/wgcna_group_effects_utils.R"),
                                  function(p) list(path = p)))
   testthat::expect_false(freeze_equivalence_scope_ok(eq_wide))
 
@@ -203,7 +203,7 @@ testthat::test_that("known gaps are reported as warnings, never silently ignored
   wc <- gaps[[which(ids == "processed_package_wildcard_glob_filter")]]
   testthat::expect_match(wc$reference, "export_helpers.R", fixed = TRUE)
   testthat::expect_match(wc$correction_to_prior_description,
-                         "not 09_export_pride_journal/04_make_supplementary_tables.R",
+                         "not analysis/09_publication_exports/04_make_supplementary_tables.R",
                          fixed = TRUE)
 })
 

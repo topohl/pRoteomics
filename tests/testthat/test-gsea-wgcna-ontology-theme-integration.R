@@ -3,8 +3,8 @@ testthat::local_edition(3)
 testthat::skip_if_not_installed("GO.db")
 testthat::skip_if_not_installed("AnnotationDbi")
 
-source(testthat::test_path("..", "..", "R", "manuscript_go_theme_utils.R"))
-source(testthat::test_path("..", "..", "R", "gsea_wgcna_concordance_utils.R"))
+source(repo_path("R", "manuscript_go_theme_utils.R"))
+source(repo_path("R", "gsea_wgcna_concordance_utils.R"))
 
 ontology_fixture <- function(ids, descriptions) {
   data.frame(
