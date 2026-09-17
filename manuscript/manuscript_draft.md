@@ -410,7 +410,8 @@ At the network level, no whole-network group difference was detectable at three
 animals per group (exact permutation P = 0.58, 0.80 and 0.74 for the three
 compartments, against an attainable floor of 0.004), and among the eight neuropil
 spatial-unit pairs tested against behavioural readouts no edge–behaviour
-association survived correction (0 of 48 tests; smallest BH-adjusted P = 0.43);
+association survived correction (0 of 48 tests; smallest BH-adjusted P = 0.43;
+Extended Data Fig. 8);
 the neuronal-soma and microglia-enriched compartments were not tested in that
 analysis. Selected leading-edge proteins are
 shown to expose which proteins carry each enrichment signal (Fig. 3g–i); none of
