@@ -19,6 +19,7 @@ its outputs.
 
 | Result family | Canonical owner | Contributors | Outputs |
 | --- | --- | --- | --- |
+| `results/enrichment/run_ewce_celltype_enrichment/<dataset>` | `run_ewce_celltype_enrichment.R` | 1 | 0 |
 | `results/figures/03_qc_exploration/00b_joint_compartment_qc` | `render_joint_compartment_qc_figures.R` | 2 | 2 |
 | `results/figures/03_qc_exploration/01_sample_qc_quicksearch` | `assess_sample_quality.R` | 1 | 0 |
 | `results/figures/03_qc_exploration/04e_control_compartment_abundance_publication_figures` | `render_compartment_abundance_figures.R` | 1 | 0 |
@@ -167,7 +168,6 @@ its outputs.
 | `results/tables/04_differential_expression_enrichment/neuropil_reference_annotation` | `annotate_neuropil_reference.R` | 1 | 0 |
 | `results/tables/04_differential_expression_enrichment/stress_response_biological_audit` | `audit_stress_response_biology.R` | 1 | 0 |
 | `results/tables/04_differential_expression_enrichment/sus_res_spatial_dap_atlas` | `build_sus_res_dap_atlas.R` | 1 | 1 |
-| `results/tables/05_celltype_enrichment_EWCE/EWCE_E9` | `run_ewce_celltype_enrichment.R` | 1 | 0 |
 | `results/tables/06_modules_WGCNA/01_WGCNA` | `build_wgcna_modules.R` | 1 | 6 |
 | `results/tables/06_modules_WGCNA/01b_module_supermodule_GO_heatmaps` | `render_module_go_heatmaps.R` | 1 | 0 |
 | `results/tables/06_modules_WGCNA/04_wgcna_de_gsea_overlap` | `compare_module_enrichment_overlap.R` | 1 | 0 |

@@ -105,13 +105,16 @@ normalize_export_path <- function(path) {
   gsub("\\\\", "/", normalizePath(path, winslash = "/", mustWork = FALSE))
 }
 
+# A sensitivity branch must never reach the manuscript. Both namespaces are
+# matched: the historical EWCE_E9_comparison sibling, and the normalized
+# comparison segment that sits directly under the analysis identity.
 is_noncanonical_ewce_export_path <- function(path) {
   normalized <- normalize_export_path(path)
-  grepl(
-    "/05_celltype_enrichment_EWCE/EWCE_E9_comparison/",
-    normalized,
-    fixed = TRUE
-  )
+  historical <- grepl("/05_celltype_enrichment_EWCE/EWCE_E9_comparison/",
+                      normalized, fixed = TRUE)
+  normalized_branch <- grepl("/run_ewce_celltype_enrichment/comparison/",
+                             normalized, fixed = TRUE)
+  historical | normalized_branch
 }
 
 is_exportable_result_path <- function(path) {
@@ -626,8 +629,31 @@ drop_orphan_figure_families <- function(paths) {
   paths[!is_orphan_figure_family_path(paths)]
 }
 
+# The canonical EWCE figure roots, normalized first and historical second.
+#
+# "Canonical" here means the canonical branch, as against a sensitivity branch,
+# and that is the part the export contract depends on: a comparison run must
+# never reach the manuscript. Both roots are returned because Phase 6G moved
+# where the analysis writes without moving what it has already written, so
+# figures from before the migration are still exportable and figures from after
+# it are found at the normalized path.
+#
+# The name and arity of the call are load-bearing:
+# analysis/publication_source_data/08_export_manuscript_figures.R is
+# freeze-protected and calls this inside c(), which absorbs a vector, so the
+# migration needed no edit to a protected file.
+# In the historical layout the canonical branch was excluded from the
+# comparison branch by being its sibling: EWCE_E9 against
+# EWCE_E9_comparison/<branch>. In the normalized layout the branch sits inside
+# the analysis directory, so scanning covers both datasets and branches and the
+# exclusion rests entirely on is_noncanonical_ewce_export_path(). That
+# predicate is therefore load-bearing rather than belt-and-braces, and it is
+# tested against both namespaces.
 canonical_ewce_figure_root <- function() {
-  path_results("figures", "05_celltype_enrichment_EWCE", "EWCE_E9")
+  c(
+    path_results("enrichment", "run_ewce_celltype_enrichment"),
+    path_results("figures", "05_celltype_enrichment_EWCE", "EWCE_E9")
+  )
 }
 
 pg_matrix_input_paths <- function(config) {

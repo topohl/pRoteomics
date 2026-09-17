@@ -207,8 +207,8 @@ Scripts:
 | scripts_in_area | 1 (0 required) |
 | inputs | `data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv` |
 | optional_inputs | `data/processed/04_differential_expression_enrichment/compareGO/<dataset>/compareGO_input_manifest.csv` |
-| outputs | `results/tables/05_celltype_enrichment_EWCE/EWCE_E9/` |
-| required_config | - |
+| outputs | `results/enrichment/run_ewce_celltype_enrichment/<dataset>/tables/`, `results/enrichment/run_ewce_celltype_enrichment/<dataset>/plots/`, `results/enrichment/run_ewce_celltype_enrichment/<dataset>/models/`, `results/enrichment/run_ewce_celltype_enrichment/<dataset>/manifests/`, +1 more |
+| required_config | `config/legacy_output_registry.csv`, `config/output_layout.yml` |
 | upstream_dependencies | `differential_abundance` |
 | downstream_consumers | - |
 | publication_source_outputs | - |
