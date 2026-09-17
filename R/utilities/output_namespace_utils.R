@@ -183,7 +183,7 @@ classify_output_namespace <- function(
 }
 
 # The manuscript figure IDs this repository recognises, declared once and shared
-# with the export router in R/export_helpers.R. This is an explicit allow-list,
+# with the export router in R/utilities/export_helpers.R. This is an explicit allow-list,
 # not a pattern: an unrecognised figure number must still fail closed, because a
 # typo silently creating results/figures/manuscript/figure_07 is exactly the
 # failure this validation exists to prevent.

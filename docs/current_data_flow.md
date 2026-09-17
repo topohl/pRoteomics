@@ -18,14 +18,14 @@ This audit was generated before targeted refactoring of the clusterProfiler to c
 
 ## Module Refactor Status
 
-- Refactored first: `04_differential_expression_enrichment/01_clusterProfiler.r` and `04_differential_expression_enrichment/02_compareGO.r`, because this handoff had the highest stale-file and duplicate-file risk.
-- Safe next candidates: `05_celltype_enrichment_EWCE/01_EWCE_E9.r`, `06_modules_WGCNA/06_module_spatial_networks.r`, `07_spatial_networks/03_bootstrap_network_stability.r`, `07_spatial_networks/04_bootstrap_differential_network_stability.r`, and `07_spatial_networks/05_bootstrap_differential_network_figures.r`; these can mostly be refactored through parameter/config path changes.
-- Higher-risk candidates at the time of the audit were the WGCNA model producer, `07_spatial_networks/01_network_spatial_relations.r`, and `08_behavior_physio_coupling/01_correlate_proteomics_with_behavior.r`; these are central producers or depend on external behavior data and should be changed with input data available.
-- Keep documented unless revived: `05_celltype_enrichment_EWCE/90_EWCE_legacy.r`, `90_testing/`, and `99_deprecated/`.
+- Refactored first: `analysis/04_differential_abundance/01_clusterProfiler.r` and `analysis/04_differential_abundance/02_compareGO.r`, because this handoff had the highest stale-file and duplicate-file risk.
+- Safe next candidates: `analysis/06_gsea/01_EWCE_E9.r`, `analysis/05_wgcna/06_module_spatial_networks.r`, `analysis/07_spatial_networks/03_bootstrap_network_stability.r`, `analysis/07_spatial_networks/04_bootstrap_differential_network_stability.r`, and `analysis/07_spatial_networks/05_bootstrap_differential_network_figures.r`; these can mostly be refactored through parameter/config path changes.
+- Higher-risk candidates at the time of the audit were the WGCNA model producer, `analysis/07_spatial_networks/01_network_spatial_relations.r`, and `analysis/08_integration/01_correlate_proteomics_with_behavior.r`; these are central producers or depend on external behavior data and should be changed with input data available.
+- Keep documented unless revived: `archive/05_celltype_enrichment_EWCE/90_EWCE_legacy.r`, `90_testing/`, and `99_deprecated/`.
 
 ## clusterProfiler to compareGO Before Refactor
 
-`04_differential_expression_enrichment/01_clusterProfiler.r` scanned `cfg$paths$mapped_dir` for mapped contrast CSVs. Each filename was split on `_` to infer a two-token comparison. The script classified each comparison into:
+`analysis/04_differential_abundance/01_clusterProfiler.r` scanned `cfg$paths$mapped_dir` for mapped contrast CSVs. Each filename was split on `_` to infer a two-token comparison. The script classified each comparison into:
 
 - `phenotype_within_unit`
 - `phenotype_between_unit`
@@ -46,7 +46,7 @@ For each mapped contrast file, clusterProfiler read a gene/protein identifier co
 - plots under legacy routed `Plots/`
 - QC summaries and completion flags under routed result folders
 
-`04_differential_expression_enrichment/02_compareGO.r` then selected one `ont`, `ensemble_profiling` route category and `condition` route unit using hard-coded variables. It recursively listed all CSV files in `Datasets/core_enrichment/<ont>/<ensemble_profiling>/<condition>`, named comparisons from filenames, and combined all rows. Separately, it listed mapped/log2FC CSVs from `Datasets/mapped/<ensemble_profiling>/<condition>` for volcano, significant protein, and gene-centric analyses.
+`analysis/04_differential_abundance/02_compareGO.r` then selected one `ont`, `ensemble_profiling` route category and `condition` route unit using hard-coded variables. It recursively listed all CSV files in `Datasets/core_enrichment/<ont>/<ensemble_profiling>/<condition>`, named comparisons from filenames, and combined all rows. Separately, it listed mapped/log2FC CSVs from `Datasets/mapped/<ensemble_profiling>/<condition>` for volcano, significant protein, and gene-centric analyses.
 
 Risks in the old flow:
 
@@ -72,7 +72,7 @@ This makes the data flow explicit and reproducible while preserving the biologic
 
 GSEA is directional through NES because clusterProfiler ranks the gene/protein list by decreasing `log2fc`: positive NES reflects the positive side of the formal contrast, while negative NES reflects the negative side. ORA/top-regulated GO from `01_clusterProfiler.r` is based on `abs(log2fc)` and is therefore not direction-specific unless the input proteins are split into positive and negative `log2fc` sets. For example, in the formal contrast `3.over.2` (`SUS - RES`), negative NES or negative `log2fc` means higher in RES.
 
-`04_differential_expression_enrichment/06_biological_program_summary.r` is an additive interpretation layer over these manifest-selected outputs. It writes dataset-scoped program summaries under `results/tables`, source evidence under `results/source_data`, and a heatmap under `results/figures` for `biological_program_summary/<dataset>/`.
+`analysis/04_differential_abundance/06_biological_program_summary.r` is an additive interpretation layer over these manifest-selected outputs. It writes dataset-scoped program summaries under `results/tables`, source evidence under `results/source_data`, and a heatmap under `results/figures` for `biological_program_summary/<dataset>/`.
 
 ## Canonical Output Roots
 
@@ -82,7 +82,7 @@ Deprecated technical roots are not valid new output locations for active scripts
 
 ## Module-Score Metadata Contract
 
-`01_preprocessing/06_merged_metadata_module_score.r` now writes the dataset-scoped module-score metadata workbook to:
+`analysis/01_preprocessing/06_merged_metadata_module_score.r` now writes the dataset-scoped module-score metadata workbook to:
 
 `data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx`
 
@@ -92,15 +92,15 @@ Its QC tables, summary report, run manifest, and session info are split under:
 - `results/reports/01_preprocessing/06_merged_metadata_module_score/<dataset>/`
 - `results/logs/01_preprocessing/06_merged_metadata_module_score/<dataset>/`
 
-`R/dataset_inputs.R` resolves module-score metadata in this order: canonical processed dataset path, explicit `PROTEOMICS_MODULE_SCORE_METADATA_FILE`, legacy dataset-scoped fallbacks with a warning, and legacy global fallback only when `PROTEOMICS_ALLOW_GLOBAL_MODULE_SCORE_METADATA=true`.
+`R/data_contracts/dataset_inputs.R` resolves module-score metadata in this order: canonical processed dataset path, explicit `PROTEOMICS_MODULE_SCORE_METADATA_FILE`, legacy dataset-scoped fallbacks with a warning, and legacy global fallback only when `PROTEOMICS_ALLOW_GLOBAL_MODULE_SCORE_METADATA=true`.
 
 Checkpoint behavior: if clusterProfiler skips a completed comparison, it reconstructs manifest rows from existing canonical GSEA_GO/GSEA_KEGG source-data tables when present and marks `checkpoint_status = reconstructed_from_checkpoint`. If a checkpoint predates canonical source-data outputs, rerun with `force_rerun: true` to refresh the manifest.
 
 Dry-run commands:
 
 ```bash
-Rscript 04_differential_expression_enrichment/01_clusterProfiler.r --dry-run
-Rscript 04_differential_expression_enrichment/02_compareGO.r --dry-run
+Rscript analysis/04_differential_abundance/01_clusterProfiler.r --dry-run
+Rscript analysis/04_differential_abundance/02_compareGO.r --dry-run
 ```
 
 ## PRIDE and Journal Layers
@@ -118,20 +118,20 @@ Repository outputs should be separated as:
 
 Phase 3 applied targeted path-only refactors where script behavior could be preserved without data-dependent interpretation. The following active scripts now source `R/paths.R`, write canonical outputs first, include script I/O headers, add dry-run diagnostics, and avoid committed machine-specific paths:
 
-- `01_preprocessing/04_format_metadata.r`
-- `01_preprocessing/05_metadata_create.r`
-- `05_celltype_enrichment_EWCE/01_EWCE_E9.r`
-- `06_modules_WGCNA/06_module_spatial_networks.r`
-- `06_modules_WGCNA/02_curated_overlap_programs.r`
-- `06_modules_WGCNA/03_score_module_activity.R`
-- `06_modules_WGCNA/04_wgcna_de_gsea_overlap.r`
-- `07_spatial_networks/02_differential_networks.r`
-- `07_spatial_networks/03_bootstrap_network_stability.r`
-- `07_spatial_networks/04_bootstrap_differential_network_stability.r`
-- `07_spatial_networks/05_bootstrap_differential_network_figures.r`
-- `07_spatial_networks/06_chord_diagram.r`
-- `08_behavior_physio_coupling/02_network_behavior_coupling.r`
-- `01_preprocessing/06_merged_metadata_module_score.r`
+- `archive/01_preprocessing/04_format_metadata.r`
+- `archive/01_preprocessing/05_metadata_create.r`
+- `analysis/06_gsea/01_EWCE_E9.r`
+- `analysis/05_wgcna/06_module_spatial_networks.r`
+- `analysis/05_wgcna/02_curated_overlap_programs.r`
+- `analysis/05_wgcna/03_score_module_activity.R`
+- `analysis/05_wgcna/04_wgcna_de_gsea_overlap.r`
+- `analysis/07_spatial_networks/02_differential_networks.r`
+- `analysis/07_spatial_networks/03_bootstrap_network_stability.r`
+- `analysis/07_spatial_networks/04_bootstrap_differential_network_stability.r`
+- `analysis/07_spatial_networks/05_bootstrap_differential_network_figures.r`
+- `analysis/07_spatial_networks/06_chord_diagram.r`
+- `analysis/08_integration/02_network_behavior_coupling.r`
+- `analysis/01_preprocessing/06_merged_metadata_module_score.r`
 
 The old technical folder roots map as follows:
 
@@ -150,16 +150,16 @@ The old technical folder roots map as follows:
 
 Scripts left unchanged in Phase 3 are documented because they are central producers, exploratory notebooks-as-scripts, superseded versions, or require data-aware confirmation of file contracts before changing paths:
 
-- `01_preprocessing/01_impute.r`, `01_preprocessing/02_excel_convert.r`, `01_preprocessing/03_gct_extractR.r`
-- `02_id_mapping/01_MapThatProt_batch.r`
+- `archive/01_preprocessing/01_impute.r`, `archive/01_preprocessing/02_excel_convert.r`, `analysis/01_preprocessing/03_gct_extractR.r`
+- `analysis/01_preprocessing/01_MapThatProt_batch.r`
 - `03_qc_exploration/*.r`
-- `06_modules_WGCNA/01_WGCNA.r`, `06_modules_WGCNA/06_module_spatial_networks.r`
-- `07_spatial_networks/01_network_spatial_relations.r`
-- `08_behavior_physio_coupling/01_correlate_proteomics_with_behavior.r`
+- `analysis/05_wgcna/01_WGCNA.r`, `analysis/05_wgcna/06_module_spatial_networks.r`
+- `analysis/07_spatial_networks/01_network_spatial_relations.r`
+- `analysis/08_integration/01_correlate_proteomics_with_behavior.r`
 
 ## Phase 4 Producer Refactors
 
-Phase 4 fixed the main remaining spatial-network dependency gap. `07_spatial_networks/01_network_spatial_relations.r` now writes the canonical downstream object:
+Phase 4 fixed the main remaining spatial-network dependency gap. `analysis/07_spatial_networks/01_network_spatial_relations.r` now writes the canonical downstream object:
 
 `data/processed/07_spatial_networks/network_spatial_relations/<dataset>/<spatial_unit>/network_spatial_relations_objects.rds`
 
@@ -167,8 +167,8 @@ The object records `dataset`, `spatial_unit`, `spatial_col`, `spatial_label_col`
 
 Phase 4 also canonicalized the preprocessing to ID-mapping contract:
 
-- `01_preprocessing/03_gct_extractR.r` reads a GCT from `data/processed/01_preprocessing/protigy_output/<comparison>/` and writes split contrast CSVs to `data/processed/01_preprocessing/gct_extractR/<comparison>/{forward,reverse}/`.
-- `02_id_mapping/01_MapThatProt_batch.r` consumes those split CSVs plus `data/external/MOUSE_10090_idmapping.dat` and writes mapped contrast CSVs to `data/processed/02_id_mapping/mapped/<comparison>/<forward|reverse>/per_file/`.
+- `analysis/01_preprocessing/03_gct_extractR.r` reads a GCT from `data/processed/01_preprocessing/protigy_output/<comparison>/` and writes split contrast CSVs to `data/processed/01_preprocessing/gct_extractR/<comparison>/{forward,reverse}/`.
+- `analysis/01_preprocessing/01_MapThatProt_batch.r` consumes those split CSVs plus `data/external/MOUSE_10090_idmapping.dat` and writes mapped contrast CSVs to `data/processed/02_id_mapping/mapped/<comparison>/<forward|reverse>/per_file/`.
 - The default mapping direction is now `forward`, matching the `clusterProfiler` contract. Reverse mapping remains available with `PROTEOMICS_MAP_DIRECTION=reverse`.
 - The default comparison family is `neuron_neuropil`, overridable with `PROTEOMICS_COMPARISON`. The recognized default families are `neuron_neuropil`, `neuron_soma`, and `microglia`; extend `PROTEOMICS_ALLOWED_COMPARISONS` for new families.
 

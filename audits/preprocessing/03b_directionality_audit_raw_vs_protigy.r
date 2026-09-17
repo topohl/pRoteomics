@@ -18,7 +18,7 @@ source(if (file.exists(file.path("R", "script_runtime.R"))) file.path("R", "scri
 source(repo_path("R", "dataset_inputs.R"))
 
 runtime <- init_script_runtime(
-  script = "01_preprocessing/03b_directionality_audit_raw_vs_protigy.r",
+  script = "audits/preprocessing/03b_directionality_audit_raw_vs_protigy.r",
   stage = "core",
   default_dataset = "neuron_neuropil"
 )

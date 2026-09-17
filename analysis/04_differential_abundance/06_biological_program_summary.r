@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript
 
 # ================================================================
-# Script: 04_differential_expression_enrichment/06_biological_program_summary.r
+# Script: analysis/04_differential_abundance/06_biological_program_summary.r
 # Stage: enrichment
 # Scope: dataset_specific
 # Consumes: canonical compareGO manifest and declared term/provenance/status tables; optional canonical neuropil-reference and targeted-signature annotations.
@@ -18,7 +18,7 @@ source(repo_path("R", "enrichment_io.R"))
 source(repo_path("R", "enrichment_plots.R"))
 source(repo_path("R", "plotting_nature.R"))
 
-SCRIPT_ID <- "04_differential_expression_enrichment/06_biological_program_summary.r"
+SCRIPT_ID <- "analysis/04_differential_abundance/06_biological_program_summary.r"
 Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 args <- commandArgs(trailingOnly = TRUE)
 arg_value <- function(flag, default = "") {
@@ -47,7 +47,7 @@ if (is_dry_run()) {
   if (file.exists(manifest_file)) {
     read_canonical_comparego_manifest(manifest_file, DATASET, require_files = FALSE)
   }
-  dry_run_line("Script", "04_differential_expression_enrichment/06_biological_program_summary.r")
+  dry_run_line("Script", "analysis/04_differential_abundance/06_biological_program_summary.r")
   dry_run_line("Dataset", DATASET)
   dry_run_line("Manifest", manifest_file, if (file.exists(manifest_file)) "PASS" else "FAIL")
   dry_run_line("Program summary", file.path(PATHS$tables, "program_summary.csv"))
@@ -461,7 +461,7 @@ record_input_resolution(
   resolution_mode = if (file.exists(microglia_signature_path)) "canonical" else "missing",
   strict_mode = strict_inputs_enabled(),
   allowed_in_strict_mode = TRUE,
-  producer_script_or_artifact_id = "04_differential_expression_enrichment/05_microglia_targeted_signature_enrichment.r"
+  producer_script_or_artifact_id = "analysis/04_differential_abundance/05_microglia_targeted_signature_enrichment.r"
 )
 
 neuropil_annotation <- optional_read_csv(neuropil_annotation_path)

@@ -3,7 +3,7 @@
 # Cross-hemisphere validation of empirical compartment identity.
 #
 # Rebuilds the empirical compartment contrast from the TRUE hemisphere-resolved
-# matrices (R/spatial_systems_data_utils.R), then runs it twice:
+# matrices (R/data_contracts/spatial_systems_data_utils.R), then runs it twice:
 #   LEFT discovery  -> RIGHT evaluation
 #   RIGHT discovery -> LEFT evaluation
 #
@@ -22,21 +22,21 @@
 # whichever value produces the best agreement.
 #
 # USAGE
-#   Rscript 11_spatial_systems/03_bilateral_empirical_compartment.R
-#   Rscript 11_spatial_systems/03_bilateral_empirical_compartment.R --dry-run
+#   Rscript analysis/03_spatial_validation/03_bilateral_empirical_compartment.R
+#   Rscript analysis/03_spatial_validation/03_bilateral_empirical_compartment.R --dry-run
 
 source("R/paths.R")
-source("R/dataset_config.R")
-source("R/integration_utils.R")
-source("R/qc_exploration_utils.R")
-source("R/empirical_roi_marker_utils.R")
-source("R/spatial_systems_data_utils.R")
-source("R/spatial_systems_bilateral_utils.R")
-source("R/spatial_systems_endpoint_utils.R")
+source("R/data_contracts/dataset_config.R")
+source("R/statistics/integration_utils.R")
+source("R/qc/qc_exploration_utils.R")
+source("R/qc/empirical_roi_marker_utils.R")
+source("R/data_contracts/spatial_systems_data_utils.R")
+source("R/spatial/spatial_systems_bilateral_utils.R")
+source("R/data_contracts/spatial_systems_endpoint_utils.R")
 
 suppressPackageStartupMessages({ library(readr); library(dplyr); library(tidyr) })
 
-SCRIPT_ID <- "11_spatial_systems/03_bilateral_empirical_compartment.R"
+SCRIPT_ID <- "analysis/03_spatial_validation/03_bilateral_empirical_compartment.R"
 Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 cli <- integration_cli(default_dataset = "all")
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 # ================================================================
-# Script: 06_modules_WGCNA/09c_microglia_roi_specificity_diagnostics.R
+# Script: analysis/05_wgcna/09c_microglia_roi_specificity_diagnostics.R
 # Stage: modules_downstream
 # Scope: dataset_specific
 # Consumes: Existing WGCNA states, module definitions, annotation, and marker traits.
@@ -14,7 +14,7 @@ source(repo_path("R", "script_runtime.R"))
 source(repo_path("R", "wgcna_downstream_utils.R"))
 source(repo_path("R", "plotting_nature.R"))
 
-SCRIPT_ID <- "06_modules_WGCNA/09c_microglia_roi_specificity_diagnostics.R"
+SCRIPT_ID <- "analysis/05_wgcna/09c_microglia_roi_specificity_diagnostics.R"
 runtime <- init_script_runtime(SCRIPT_ID, stage = "modules_downstream", default_dataset = "microglia")
 if (!identical(runtime$dataset, "microglia") && !isTRUE(runtime$dry_run)) {
   stop("This diagnostic is microglia-only. Use --dataset microglia.", call. = FALSE)

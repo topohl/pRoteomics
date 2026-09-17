@@ -147,74 +147,14 @@ Do not hand-edit this block; run `Rscript tools/generate_pipeline_docs.R`.
 95. `analysis/08_integration/04_wgcna_circular_atlas.R` - stage `integration`; scope `global`
 96. `analysis/08_integration/04_wgcna_cross_compartment_overview.R` - stage `integration`; scope `global`
 97. `analysis/08_integration/05_manuscript_figure3_wgcna_protein_zoom.R` - stage `integration`; scope `global`
-98. `figures/figure_01_panels.R` - stage `integration`; scope `global`
-99. `figures/figure_01.R` - stage `integration`; scope `global`
-100. `figures/extended_data_behaviour_panels.R` - stage `integration`; scope `global`
-101. `figures/extended_data_proteomics.R` - stage `integration`; scope `global`
-102. `figures/extended_data_behaviour.R` - stage `integration`; scope `global`
-103. `figures/figure_02.R` - stage `integration`; scope `global`
-104. `figures/manuscript_supporting_immunostaining_candidates.R` - stage `integration`; scope `global`
-105. `figures/manuscript_supporting_immunostaining_panel.R` - stage `integration`; scope `global`
-106. `figures/figure_03.R` - stage `integration`; scope `global`
-107. `figures/candidate_figure_02.R` - stage `manuscript_candidates`; scope `global`
-108. `figures/candidate_figure_03.R` - stage `manuscript_candidates`; scope `global`
-109. `figures/candidate_figure_contact_sheet.R` - stage `manuscript_candidates`; scope `global`
-110. `figures/nature_v2_figure_02.R` - stage `manuscript_candidates`; scope `global`
-111. `figures/nature_v2_figure_03.R` - stage `manuscript_candidates`; scope `global`
-112. `figures/nature_v2_extended_data.R` - stage `manuscript_candidates`; scope `global`
-113. `figures/nature_v2_contact_sheet.R` - stage `manuscript_candidates`; scope `global`
-114. `figures/story_v3_panel_audit.R` - stage `manuscript_candidates`; scope `global`
-115. `figures/story_v3_figure_02.R` - stage `manuscript_candidates`; scope `global`
-116. `figures/story_v3_figure_03.R` - stage `manuscript_candidates`; scope `global`
-117. `figures/story_v3_extended_data.R` - stage `manuscript_candidates`; scope `global`
-118. `figures/story_v3_contact_sheet.R` - stage `manuscript_candidates`; scope `global`
-119. `figures/story_v4_evidence_inventory.R` - stage `manuscript_candidates`; scope `global`
-120. `figures/story_v4_figure_02.R` - stage `manuscript_candidates`; scope `global`
-121. `figures/story_v4_figure_03.R` - stage `manuscript_candidates`; scope `global`
-122. `figures/story_v5_validation_audit.R` - stage `manuscript_candidates`; scope `global`
-123. `figures/story_v5_figure_02.R` - stage `manuscript_candidates`; scope `global`
-124. `figures/story_v5_extended_data.R` - stage `manuscript_candidates`; scope `global`
-125. `figures/spatial_v6_baseline_profile.R` - stage `manuscript_candidates`; scope `global`
-126. `figures/spatial_v6_fingerprint_selection.R` - stage `manuscript_candidates`; scope `global`
-127. `figures/spatial_v6_story_coverage_audit.R` - stage `manuscript_candidates`; scope `global`
-128. `figures/spatial_v6_figure_02.R` - stage `manuscript_candidates`; scope `global`
-129. `figures/spatial_v6_figure_03.R` - stage `manuscript_candidates`; scope `global`
-130. `figures/spatial_v6_extended_data.R` - stage `manuscript_candidates`; scope `global`
-131. `figures/nature_final_v7_wireframe.R` - stage `manuscript_candidates`; scope `global`
-132. `figures/nature_final_v7_figure_02.R` - stage `manuscript_candidates`; scope `global`
-133. `figures/nature_final_v7_figure_03.R` - stage `manuscript_candidates`; scope `global`
-134. `figures/nature_final_v7_extended_data.R` - stage `manuscript_candidates`; scope `global`
-135. `figures/nature_final_v7_hierarchy_audit.R` - stage `manuscript_candidates`; scope `global`
-136. `figures/nature_final_v7_contact_sheet.R` - stage `manuscript_candidates`; scope `global`
-137. `figures/editorial_v8_figure_02.R` - stage `manuscript_candidates`; scope `global`
-138. `figures/editorial_v8_figure_03.R` - stage `manuscript_candidates`; scope `global`
-139. `figures/editorial_v8_extended_data.R` - stage `manuscript_candidates`; scope `global`
-140. `figures/editorial_v8_vector_audit.R` - stage `manuscript_candidates`; scope `global`
-141. `figures/editorial_v8_previews.R` - stage `manuscript_candidates`; scope `global`
-142. `figures/editorial_v8_supplementary_tables.R` - stage `manuscript_candidates`; scope `global`
-143. `figures/editorial_v8_readmes.R` - stage `manuscript_candidates`; scope `global`
-144. `figures/final_truth_v9_figure_02.R` - stage `manuscript_candidates`; scope `global`
-145. `figures/final_truth_v9_figure_03.R` - stage `manuscript_candidates`; scope `global`
-146. `figures/final_truth_v9_extended_data.R` - stage `manuscript_candidates`; scope `global`
-147. `figures/final_truth_v9_legends.R` - stage `manuscript_candidates`; scope `global`
-148. `figures/final_truth_v9_supplementary_tables.R` - stage `manuscript_candidates`; scope `global`
-149. `figures/final_truth_v9_readmes.R` - stage `manuscript_candidates`; scope `global`
-150. `figures/final_truth_v9_vector_audit.R` - stage `manuscript_candidates`; scope `global`
-151. `figures/final_truth_v9_previews.R` - stage `manuscript_candidates`; scope `global`
-152. `figures/final_truth_v9_claim_audit.R` - stage `manuscript_candidates`; scope `global`
-153. `figures/final_truth_v9_reviewer_audit.R` - stage `manuscript_candidates`; scope `global`
-154. `figures/final_truth_v9_annotation_audit.R` - stage `manuscript_candidates`; scope `global`
-155. `figures/final_truth_v9_wgcna_annotation_audit.R` - stage `manuscript_candidates`; scope `global`
-156. `figures/final_truth_v9_heatmap_scale_audit.R` - stage `manuscript_candidates`; scope `global`
-157. `figures/final_truth_v9_semantics.R` - stage `manuscript_candidates`; scope `global`
-158. `analysis/09_publication_exports/02_make_sample_metadata.R` - stage `export`; scope `global`
-159. `analysis/09_publication_exports/03_export_processed_pg_matrix_package.R` - stage `export`; scope `global`
-160. `analysis/09_publication_exports/04_make_supplementary_tables.R` - stage `export`; scope `global`
-161. `analysis/09_publication_exports/05_make_pride_manifest.R` - stage `export`; scope `global`
-162. `analysis/09_publication_exports/06_make_methods_summary.R` - stage `export`; scope `global`
-163. `analysis/09_publication_exports/08_export_manuscript_figures.R` - stage `export`; scope `global`
-164. `analysis/09_publication_exports/09_export_source_data.R` - stage `export`; scope `global`
-165. `analysis/09_publication_exports/10_validate_pride_submission.R` - stage `export`; scope `global`
+98. `analysis/09_publication_exports/02_make_sample_metadata.R` - stage `export`; scope `global`
+99. `analysis/09_publication_exports/03_export_processed_pg_matrix_package.R` - stage `export`; scope `global`
+100. `analysis/09_publication_exports/04_make_supplementary_tables.R` - stage `export`; scope `global`
+101. `analysis/09_publication_exports/05_make_pride_manifest.R` - stage `export`; scope `global`
+102. `analysis/09_publication_exports/06_make_methods_summary.R` - stage `export`; scope `global`
+103. `analysis/09_publication_exports/08_export_manuscript_figures.R` - stage `export`; scope `global`
+104. `analysis/09_publication_exports/09_export_source_data.R` - stage `export`; scope `global`
+105. `analysis/09_publication_exports/10_validate_pride_submission.R` - stage `export`; scope `global`
 
 <!-- END GENERATED PIPELINE REGISTRY INDEX -->
 
@@ -295,7 +235,7 @@ After the manual animal-level ProTigy run, validate the six statistical-result
 GCTs and compare DA results directly without mapping or enrichment:
 
 ```powershell
-Rscript 01_preprocessing/03c_legacy_vs_animal_level_da_audit.r --dataset all
+Rscript archive/01_preprocessing/03c_legacy_vs_animal_level_da_audit.r --dataset all
 ```
 
 To create the isolated corrected extraction handoff, set both roots explicitly.

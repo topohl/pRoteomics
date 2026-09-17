@@ -39,7 +39,7 @@ Before moving on: confirm the expected comparison CSVs exist for the dataset and
 metadata rows match the samples used downstream.
 
 The manual animal-level ProTigy branch is audited separately with
-`01_preprocessing/03c_legacy_vs_animal_level_da_audit.r --dataset all`. Its
+`archive/01_preprocessing/03c_legacy_vs_animal_level_da_audit.r --dataset all`. Its
 pre-promotion extraction namespace is
 `data/processed/01_preprocessing/gct_extractR_animal_level/<dataset>/`, selected
 with `PROTEOMICS_GCT_INPUT_ROOT` and `PROTEOMICS_GCT_OUTPUT_ROOT`. The canonical
@@ -163,16 +163,16 @@ Key outputs to inspect:
 Safe to rerun: yes. These scripts consume existing WGCNA state and do not change
 network/module construction.
 
-Clarification: `06_modules_WGCNA/03_score_module_activity.R` is the
+Clarification: `analysis/05_wgcna/03_score_module_activity.R` is the
 score/statistics/QC producer and secondary robustness/behavior-coupling layer.
 It writes score tables, replicate QC, score-derived robustness statistics,
-correlation tables, and legacy/QC score plots. `06_modules_WGCNA/05_module_supermodule_group_effects.r`
+correlation tables, and legacy/QC score plots. `analysis/05_wgcna/05_module_supermodule_group_effects.r`
 is the primary WGCNA eigengene group-effect inference layer.
 
 Before moving on: check model warnings, `evidence_status`, FDR columns, spatial
 unit fields, whether module scores have adequate coverage, and whether the
 score-derived publication plots have been refreshed by
-`06_modules_WGCNA/08_wgcna_score_publication_summary.R` after labels are cleaned.
+`analysis/05_wgcna/08_wgcna_score_publication_summary.R` after labels are cleaned.
 
 ## 7. Biological Annotation
 
@@ -206,7 +206,7 @@ Run command:
 
 ```bash
 Rscript run_dataset_pipeline.R --dataset <dataset> --stage modules_downstream
-Rscript 06_modules_WGCNA/07_wgcna_interpretable_summary.r --dataset all
+Rscript analysis/05_wgcna/07_wgcna_interpretable_summary.r --dataset all
 ```
 
 Key outputs to inspect:
@@ -231,8 +231,8 @@ cleaned semantic labels from `06_annotate_module_microenvironment.r` and
 Run command:
 
 ```bash
-Rscript 06_modules_WGCNA/08_wgcna_score_publication_summary.R --dataset <dataset> --module-source wgcna
-Rscript 06_modules_WGCNA/08_wgcna_score_publication_summary.R --dataset all --module-source wgcna
+Rscript analysis/05_wgcna/08_wgcna_score_publication_summary.R --dataset <dataset> --module-source wgcna
+Rscript analysis/05_wgcna/08_wgcna_score_publication_summary.R --dataset all --module-source wgcna
 ```
 
 Key outputs to inspect:

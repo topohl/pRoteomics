@@ -171,7 +171,7 @@ pipeline_analysis_script_exclusions <- function() {
       "audits"
     ),
     path_components = "legacy",
-    files = c("run_dataset_pipeline.R", "proteomics_wgcna_downstream_audit.R")
+    files = c("run_dataset_pipeline.R", "audits/wgcna/proteomics_wgcna_downstream_audit.R")
   )
 }
 

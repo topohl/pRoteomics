@@ -189,7 +189,7 @@ cut_height_provenance <- rbind(
   data.frame(evidence_source = "saved_WGCNA_state_parameters", recorded_cut_height = state_cut, evidence_type = "active_historical_state", authoritative = TRUE, consistent_with_current_membership = is.finite(state_cut), interpretation = "Active saved state records the selected historical cut height.", source_hash = source_hash(state_path), stringsAsFactors = FALSE),
   do.call(rbind, lapply(seq_along(manifest_paths), function(i) data.frame(evidence_source = rel(manifest_paths[[i]]), recorded_cut_height = manifest_cut[[i]], evidence_type = "Stage_01_run_manifest", authoritative = TRUE, consistent_with_current_membership = is.finite(manifest_cut[[i]]), interpretation = paste0("Run manifest records override ", manifest_override[[i]], " and selected historical cut height."), source_hash = source_hash(manifest_paths[[i]]), stringsAsFactors = FALSE))),
   data.frame(evidence_source = rel(sensitivity_path), recorded_cut_height = if (length(sensitivity_cut) == 1L) sensitivity_cut else NA_real_, evidence_type = "Stage_01_sensitivity_primary_cut", authoritative = TRUE, consistent_with_current_membership = length(sensitivity_cut) == 1L, interpretation = "Sensitivity table records the primary cut used for historical-membership matching.", source_hash = source_hash(sensitivity_path), stringsAsFactors = FALSE),
-  data.frame(evidence_source = "06_modules_WGCNA/01_WGCNA.r", recorded_cut_height = configured_default_cut_height, evidence_type = "configured_future_default", authoritative = FALSE, consistent_with_current_membership = is.finite(state_cut) && isTRUE(all.equal(configured_default_cut_height, state_cut)), interpretation = "The intended future default is distinct from the selected value that generated the frozen historical network.", source_hash = source_hash(file.path(repo_root, "06_modules_WGCNA/01_WGCNA.r")), stringsAsFactors = FALSE)
+  data.frame(evidence_source = "analysis/05_wgcna/01_WGCNA.r", recorded_cut_height = configured_default_cut_height, evidence_type = "configured_future_default", authoritative = FALSE, consistent_with_current_membership = is.finite(state_cut) && isTRUE(all.equal(configured_default_cut_height, state_cut)), interpretation = "The intended future default is distinct from the selected value that generated the frozen historical network.", source_hash = source_hash(file.path(repo_root, "analysis/05_wgcna/01_WGCNA.r")), stringsAsFactors = FALSE)
 )
 authoritative_cuts <- unique(c(state_cut, manifest_cut[is.finite(manifest_cut)], sensitivity_cut[is.finite(sensitivity_cut)]))
 authoritative_cuts <- authoritative_cuts[is.finite(authoritative_cuts)]
@@ -1306,7 +1306,7 @@ microenv_markers <- utils::read.csv(microenvironment_markers_path, check.names =
 # GeneSymbol a claim-gated field. Keying descriptive panels on GeneSymbol
 # silently deletes descriptive-only rows.
 #
-# This mirrors read_empirical_roi_marker_sets() in R/wgcna_downstream_utils.R
+# This mirrors read_empirical_roi_marker_sets() in R/statistics/wgcna_downstream_utils.R
 # rather than sourcing it: that utility pulls dataset_config.R,
 # dataset_inputs.R and module_contracts.R transitively, and this audit
 # deliberately sources only R/null_coalescing.R (see 702c95f, which removed
@@ -1694,7 +1694,7 @@ report_lines <- c(
   "",
   "## Reproducibility",
   "",
-  paste0("Audit script: `06_modules_WGCNA/12_microglia_wgcna_nature_readiness_audit.R`; conventional preservation permutations: ", n_permutations, "; AnimalID-cluster bootstrap: ", n_animal_bootstrap, "; generated: ", format(Sys.time(), tz = "Europe/Berlin", usetz = TRUE), ". See `input_hashes.csv`, `protected_output_hash_audit.csv`, `validation_table.csv` and `session_info.txt`." )
+  paste0("Audit script: `analysis/05_wgcna/12_microglia_wgcna_nature_readiness_audit.R`; conventional preservation permutations: ", n_permutations, "; AnimalID-cluster bootstrap: ", n_animal_bootstrap, "; generated: ", format(Sys.time(), tz = "Europe/Berlin", usetz = TRUE), ". See `input_hashes.csv`, `protected_output_hash_audit.csv`, `validation_table.csv` and `session_info.txt`." )
 )
 write_lines_atomic(report_lines, file.path(output_dir, "WGCNA_nature_readiness_report.md"))
 

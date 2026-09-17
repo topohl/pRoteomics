@@ -252,7 +252,7 @@ manuscript_figure_target_paths <- function(rel_paths, target_dir,
 # Route only the explicit manuscript-layer outputs into their dedicated figure
 # directories. Historical stage-level plots retain the established flattened
 # extended-data destination. The recognised figure IDs come from
-# MANUSCRIPT_FIGURE_IDS in R/output_namespace_utils.R so that the router and the
+# MANUSCRIPT_FIGURE_IDS in R/utilities/output_namespace_utils.R so that the router and the
 # namespace validator cannot disagree about which figures exist; anything not on
 # that list still falls through to extended_data rather than inventing a
 # destination. Note the two conventions this function bridges: authoring paths
@@ -339,7 +339,7 @@ copy_export_targets <- function(sources, targets) {
 # SCOPE OF THESE RULES: they filter the *manuscript source-data export* only
 # (09_export_source_data.R). They never delete or alter an analysis output, and
 # they are deliberately NOT applied to PRIDE/deposition packaging, whose
-# selectors live in R/pride_helpers.R and remain untouched.
+# selectors live in R/statistics/pride_helpers.R and remain untouched.
 #
 # Every rule names an explicit path or family and records why it is diagnostic,
 # superseded, proposed or intermediate. There is intentionally NO size-based,

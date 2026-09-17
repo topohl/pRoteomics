@@ -1,5 +1,5 @@
 # ================================================================
-# Script: 07_spatial_networks/05_bootstrap_differential_network_figures.r
+# Script: analysis/07_spatial_networks/05_bootstrap_differential_network_figures.r
 # Stage: networks
 # Scope: dataset_specific
 # Consumes: required results/tables/07_spatial_networks/bootstrap_differential_network_stability/01_Tables/bootstrap_differential_edge_stability_summary.csv; results/tables/07_spatial_networks/bootstrap_differential_network_stability/01_Tables/bootstrap_differential_edge_values_long.csv; optional results/tables/07_spatial_networks/bootstrap_differential_network_stability/01_Tables/candidate_edge_differential_stability_summary.csv.
@@ -14,7 +14,7 @@
 # Produces:
 #   - publication-ready figures and source tables in canonical folders
 # File contract:
-#   - docs/active_script_io_audit.tsv object 07_spatial_networks/05_bootstrap_differential_network_figures.r
+#   - docs/active_script_io_audit.tsv object analysis/07_spatial_networks/05_bootstrap_differential_network_figures.r
 # ================================================================
 # Publication-style figures for bootstrap differential spatial networks
 # ================================================================
@@ -73,7 +73,7 @@ params <- list(
 )
 
 if (is_dry_run()) {
-  dry_run_line("Script", "07_spatial_networks/05_bootstrap_differential_network_figures.r")
+  dry_run_line("Script", "analysis/07_spatial_networks/05_bootstrap_differential_network_figures.r")
   dry_run_line("Bootstrap table directory", params$bootstrap_dir, if (dir.exists(params$bootstrap_dir)) "PASS" else "FAIL")
   dry_run_line("Output folders", paste(unlist(CANONICAL_PATHS), collapse = "; "))
   quit(status = if (dir.exists(params$bootstrap_dir)) 0 else 1, save = "no")

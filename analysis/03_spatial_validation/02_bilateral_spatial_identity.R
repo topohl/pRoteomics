@@ -3,7 +3,7 @@
 # Bilateral validation of anatomical spatial identity.
 #
 # Runs the SAME anatomical contrast definitions - from the single registry in
-# R/control_spatial_identity_utils.R - three times per dataset: on left-only
+# R/spatial/control_spatial_identity_utils.R - three times per dataset: on left-only
 # samples, on right-only samples, and on the bilateral data. The canonical
 # Stage-09 model is not rewritten and not replaced; this sits beside it.
 #
@@ -21,20 +21,20 @@
 # PHENOTYPE-BLIND: CON animals only, exactly as the canonical workflow.
 #
 # USAGE
-#   Rscript 11_spatial_systems/02_bilateral_spatial_identity.R
-#   Rscript 11_spatial_systems/02_bilateral_spatial_identity.R --dry-run
+#   Rscript analysis/03_spatial_validation/02_bilateral_spatial_identity.R
+#   Rscript analysis/03_spatial_validation/02_bilateral_spatial_identity.R --dry-run
 
 source("R/paths.R")
-source("R/dataset_config.R")
-source("R/integration_utils.R")
-source("R/qc_exploration_utils.R")
-source("R/control_spatial_identity_utils.R")
-source("R/spatial_systems_data_utils.R")
-source("R/spatial_systems_bilateral_utils.R")
+source("R/data_contracts/dataset_config.R")
+source("R/statistics/integration_utils.R")
+source("R/qc/qc_exploration_utils.R")
+source("R/spatial/control_spatial_identity_utils.R")
+source("R/data_contracts/spatial_systems_data_utils.R")
+source("R/spatial/spatial_systems_bilateral_utils.R")
 
 suppressPackageStartupMessages({ library(readr); library(dplyr); library(tidyr) })
 
-SCRIPT_ID <- "11_spatial_systems/02_bilateral_spatial_identity.R"
+SCRIPT_ID <- "analysis/03_spatial_validation/02_bilateral_spatial_identity.R"
 Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 cli <- integration_cli(default_dataset = "all")
 
@@ -53,7 +53,7 @@ if (isTRUE(cli$dry_run)) {
   cat("[DRY-RUN] Bilateral spatial identity validation (CON only).\n")
   dry_run_inputs(SCRIPT_ID, inputs)
   cat("[DRY-RUN] Contrast definitions come from the single registry in ",
-      "R/control_spatial_identity_utils.R.\n", sep = "")
+      "R/spatial/control_spatial_identity_utils.R.\n", sep = "")
   quit(save = "no", status = 0L)
 }
 

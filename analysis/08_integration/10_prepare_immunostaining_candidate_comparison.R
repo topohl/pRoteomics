@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 # ================================================================
-# Script: 10_biological_integration/10_prepare_immunostaining_candidate_comparison.R
+# Script: analysis/08_integration/10_prepare_immunostaining_candidate_comparison.R
 # Stage: integration
 # Scope: global (neuron_neuropil only)
 # Consumes: required data/processed/01_preprocessing/protigy_input_animal_level/neuron_neuropil/neuron_neuropil_animal_level.gct;

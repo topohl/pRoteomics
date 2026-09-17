@@ -1,5 +1,5 @@
 # ================================================================
-# Script: 06_modules_WGCNA/01a_compare_GO_recurrent_proteins.r
+# Script: analysis/05_wgcna/01a_compare_GO_recurrent_proteins.r
 # Stage: modules_downstream
 # Scope: global
 # Consumes: required data/processed/04_differential_expression_enrichment/compareGO/neuron_neuropil/compareGO_input_manifest.csv; data/processed/04_differential_expression_enrichment/compareGO/neuron_soma/compareGO_input_manifest.csv; +1 more; optional none.
@@ -78,7 +78,7 @@ expected_spatial_units <- switch(
 )
 
 if (dry_run) {
-  dry_run_line("Script", "06_modules_WGCNA/01a_compare_GO_recurrent_proteins.r")
+  dry_run_line("Script", "analysis/05_wgcna/01a_compare_GO_recurrent_proteins.r")
   dry_run_line("Dataset", DATASET)
   dry_run_line("compareGO aggregate top-gene file", aggregate_input_file, if (file.exists(aggregate_input_file)) "PASS" else "FAIL")
   dry_run_line("Expected spatial units", paste(expected_spatial_units, collapse = ", "), "INFO")

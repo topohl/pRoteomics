@@ -21,7 +21,7 @@ MIN_ORA_DAP_GENES <- 10L
 # inferential lineage and must not enter these consumers.
 #
 # This list mirrors gww_ranked_gsea_source_families() in
-# R/gsea_wgcna_concordance_utils.R. It is duplicated here rather than sourced
+# R/enrichment/gsea_wgcna_concordance_utils.R. It is duplicated here rather than sourced
 # so that Stage 10/11 do not pull 1400+ lines of unrelated GSEA-WGCNA
 # concordance helpers into their namespaces; a regression test pins the two
 # lists together so they cannot drift.

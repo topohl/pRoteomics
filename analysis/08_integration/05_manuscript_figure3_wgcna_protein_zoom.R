@@ -2,9 +2,9 @@
 # inference and manifest-selected protein DA rows; no network, DA, or GO model
 # is fitted here.
 source("R/paths.R")
-source("R/enrichment_io.R")
-source("R/sus_res_spatial_dap_atlas_utils.R")
-source("R/plotting_nature.R")
+source("R/enrichment/enrichment_io.R")
+source("R/statistics/sus_res_spatial_dap_atlas_utils.R")
+source("R/utilities/plotting_nature.R")
 source("R/manuscript_figure3_utils.R")
 suppressPackageStartupMessages({ library(readr); library(dplyr); library(ggplot2); library(patchwork) })
 
@@ -487,7 +487,7 @@ figure3_warn_snapshot_mismatches(validation)
 readr::write_csv(validation, file.path(table_dir, "figure3_validation.csv"), na = "")
 focused_go_path <- path_results("tables", "06_modules_WGCNA", "01b_module_supermodule_GO_heatmaps", dataset, "WGCNA_supermodule_GO_focused_source_BP.csv")
 inventory <- tibble(figure = "3", panel = c("3a", "3b", "3c", "3d"), question = c("SUS-RES spatial DAP atlas", "Complete Neuropil WGCNA module landscape across the three canonical global contrasts.", "Focused Neuropil supermodule GO-BP member-module evidence.", "Protein-level spatial zoom-ins for selected biologically interpretable WGCNA modules."),
-                    renderer = c("04_differential_expression_enrichment/10_sus_res_spatial_dap_atlas.r", "10_biological_integration/05_manuscript_figure3_wgcna_protein_zoom.R", "06_modules_WGCNA/01b_module_supermodule_GO_heatmaps.R", "10_biological_integration/05_manuscript_figure3_wgcna_protein_zoom.R"),
+                    renderer = c("analysis/04_differential_abundance/10_sus_res_spatial_dap_atlas.r", "analysis/08_integration/05_manuscript_figure3_wgcna_protein_zoom.R", "analysis/05_wgcna/01b_module_supermodule_GO_heatmaps.R", "analysis/08_integration/05_manuscript_figure3_wgcna_protein_zoom.R"),
                     upstream_source = c("manifest-selected DA/GSEA", handoff_path, focused_go_path, paste(membership_path, manifest_path, sep = ";")), metric = c("DAP/GSEA", "Stage-07 estimate", "member-module GO support", "protein log2FC"), statistical_level = c("canonical atlas", "module-level Stage-07 / Stage-05 WGCNA effects", "member-module evidence; no pooled supermodule inference", "protein-level canonical differential-abundance log2FC"), FDR_source = c("canonical protein/GO families", "tier_specific_fdr", "member-module BH FDR", "protein padj"), status = c("reused", "rendered", "reused", "downstream renderer"), notes = c("No rebuild.", sprintf("%d/%d descriptive RES > CON > SUS point-estimate geometry; no new test; no Cohen's d.", geometry_count, stage07_module_count), "Selected GO terms, recurrence and redundancy pruning unchanged.", sprintf("m01, m02, m12; abs(kME)-only display selection; within-module display ranks; current m12 authoritative RNA/RNP overlap coverage %d/15; CA2-SLM context is annotation only.", m12_coverage)))
 readr::write_csv(inventory, path_results("tables", "manuscript_panels", "manuscript_panel_inventory.csv"), na = "")
 protein_support_text <- if (displayed_proteins_with_bh_support > 0L) {

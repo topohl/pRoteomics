@@ -39,7 +39,7 @@ own status note said. It had also drifted: it recorded `yaml 2.3.10` and
 ## What changed
 
 `renv.lock` is now generated from the installed library by
-`tools/generate_renv_lockfile.R`, backed by `R/renv_lock_audit.R`. Nothing is
+`tools/generate_renv_lockfile.R`, backed by `R/utilities/renv_lock_audit.R`. Nothing is
 installed, updated or loaded; versions and source metadata are read from
 installed `DESCRIPTION` files only.
 
@@ -67,8 +67,8 @@ Nine scanner hits are excluded as verified false positives: seven string
 literals that contain `::` and are used as composite keys (`"Neuropil::CA1"` and
 similar), the loop parameter `pkg`, and `renv`. The two places that load
 packages dynamically —
-`04_differential_expression_enrichment/01_clusterProfiler.r` (`master_packages`)
-and `05_celltype_enrichment_EWCE/01_EWCE_E9.r` (`cran_packages` /
+`analysis/04_differential_abundance/01_clusterProfiler.r` (`master_packages`)
+and `analysis/06_gsea/01_EWCE_E9.r` (`cran_packages` /
 `bioc_packages`) — resolve to literal vectors that the static scan already
 covers.
 

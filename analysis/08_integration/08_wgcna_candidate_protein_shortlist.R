@@ -31,18 +31,18 @@
 #     animals. Agreement across them is spatial consistency, not replication.
 #
 # USAGE
-#   Rscript 10_biological_integration/08_wgcna_candidate_protein_shortlist.R
-#   Rscript 10_biological_integration/08_wgcna_candidate_protein_shortlist.R --dataset microglia
-#   Rscript 10_biological_integration/08_wgcna_candidate_protein_shortlist.R --dataset neuron_neuropil --module WGCNA_m02
-#   Rscript 10_biological_integration/08_wgcna_candidate_protein_shortlist.R --dry-run
+#   Rscript analysis/08_integration/08_wgcna_candidate_protein_shortlist.R
+#   Rscript analysis/08_integration/08_wgcna_candidate_protein_shortlist.R --dataset microglia
+#   Rscript analysis/08_integration/08_wgcna_candidate_protein_shortlist.R --dataset neuron_neuropil --module WGCNA_m02
+#   Rscript analysis/08_integration/08_wgcna_candidate_protein_shortlist.R --dry-run
 
 source("R/paths.R")
-source("R/dataset_config.R")
-source("R/integration_utils.R")
-source("R/enrichment_io.R")
-source("R/sus_res_spatial_dap_atlas_utils.R")
-source("R/wgcna_candidate_protein_utils.R")
-source("R/xlsx_package_utils.R")
+source("R/data_contracts/dataset_config.R")
+source("R/statistics/integration_utils.R")
+source("R/enrichment/enrichment_io.R")
+source("R/statistics/sus_res_spatial_dap_atlas_utils.R")
+source("R/statistics/wgcna_candidate_protein_utils.R")
+source("R/utilities/xlsx_package_utils.R")
 
 suppressPackageStartupMessages({
   library(readr)
@@ -50,7 +50,7 @@ suppressPackageStartupMessages({
   library(tidyr)
 })
 
-SCRIPT_ID <- "10_biological_integration/08_wgcna_candidate_protein_shortlist.R"
+SCRIPT_ID <- "analysis/08_integration/08_wgcna_candidate_protein_shortlist.R"
 SUBSTEP <- "wgcna_candidate_protein_shortlist"
 Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 
@@ -649,7 +649,7 @@ write_workbook <- function(path, scope, summary_tbl, top10, by_dataset) {
     message("NOTE openxlsx is not installed; skipping ", basename(path))
     return(NA_character_)
   }
-  wb <- openxlsx::createWorkbook(creator = "10_biological_integration/08_wgcna_candidate_protein_shortlist.R")
+  wb <- openxlsx::createWorkbook(creator = "analysis/08_integration/08_wgcna_candidate_protein_shortlist.R")
 
   title_style <- openxlsx::createStyle(fontName = "Arial", fontSize = 14, fontColour = "#1F2933", textDecoration = "bold", halign = "left", valign = "center")
   note_style <- openxlsx::createStyle(fontName = "Arial", fontSize = 9, fontColour = "#5B6770", textDecoration = "italic", wrapText = TRUE, valign = "top")
@@ -876,7 +876,7 @@ write_workbook <- function(path, scope, summary_tbl, top10, by_dataset) {
 
   # saveWorkbook alone emits a drawing relationship and a content-type override
   # for every sheet without writing the drawing part, which leaves a package
-  # that strict OOXML readers reject. See R/xlsx_package_utils.R.
+  # that strict OOXML readers reject. See R/utilities/xlsx_package_utils.R.
   xlsx_save_valid_workbook(wb, path)
   path
 }

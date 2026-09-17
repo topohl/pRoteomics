@@ -12,7 +12,7 @@ source(repo_path("R", "joint_compartment_qc_plotting.R"))
 global_arg <- tolower(script_arg_value("--dataset", "global"))
 if (!global_arg %in% c("all", "global")) stop("This is a global figure script; use --dataset all or global.", call. = FALSE)
 runtime <- list(
-  script = "03_qc_exploration/00c_joint_compartment_qc_publication_figures.r",
+  script = "analysis/02_qc/00c_joint_compartment_qc_publication_figures.r",
   stage = "qc_global_publication_figures",
   dataset = "global",
   args = commandArgs(trailingOnly = TRUE),

@@ -127,12 +127,12 @@ freeze_git_state <- function(expected_tag = "publication-freeze-2026-09-02") {
 # exactly this list; it is NOT a claim about the whole repository tree.
 freeze_protected_export_files <- function() {
   c(
-    "R/clusterprofiler_reproducibility.R",
-    "R/export_helpers.R",
+    "R/enrichment/clusterprofiler_reproducibility.R",
+    "R/utilities/export_helpers.R",
     "R/paths.R",
-    "R/pride_helpers.R",
-    "09_export_pride_journal/08_export_manuscript_figures.R",
-    "09_export_pride_journal/09_export_source_data.R"
+    "R/statistics/pride_helpers.R",
+    "analysis/09_publication_exports/08_export_manuscript_figures.R",
+    "analysis/09_publication_exports/09_export_source_data.R"
   )
 }
 
@@ -525,7 +525,7 @@ freeze_export_payloads <- function() {
       audit = path_results("manuscript", "figure_publication_audit.csv"),
       run_manifest = path_results("logs", "09_export_pride_journal",
                                   "manuscript_figures", "run_manifest.yml"),
-      producer = "09_export_pride_journal/08_export_manuscript_figures.R"
+      producer = "analysis/09_publication_exports/08_export_manuscript_figures.R"
     ),
     manuscript_source_data = list(
       payload_root = c(path_results("manuscript", "source_data"),
@@ -534,7 +534,7 @@ freeze_export_payloads <- function() {
       audit = NA_character_,
       run_manifest = path_results("logs", "09_export_pride_journal",
                                   "source_data", "run_manifest.yml"),
-      producer = "09_export_pride_journal/09_export_source_data.R"
+      producer = "analysis/09_publication_exports/09_export_source_data.R"
     )
   )
   lapply(sort(names(defs), method = "radix"), function(nm) {
@@ -660,7 +660,7 @@ freeze_known_gaps <- function(renv_state = freeze_renv_lockfile_state()) {
         "is safe, but the remaining seven steps remain individually unguarded and",
         "would write if invoked directly with --dry-run."
       ),
-      reference = "09_export_pride_journal/RUN_EXPORT.R",
+      reference = "analysis/09_publication_exports/RUN_EXPORT.R",
       action_in_this_task = "documented only; not fixed"
     ),
     list(
@@ -668,7 +668,7 @@ freeze_known_gaps <- function(renv_state = freeze_renv_lockfile_state()) {
       severity = "warn",
       classification = "latent defect, currently masked",
       summary = paste(
-        "R/export_helpers.R:658, inside processed_files_for_dataset() (defined at",
+        "R/utilities/export_helpers.R:658, inside processed_files_for_dataset() (defined at",
         "line 610), filters config$supplementary_table_globs with",
         "grepl(\"\\\\*\", g, fixed = TRUE). Under fixed = TRUE that searches for a",
         "literal backslash-star, which none of the six configured globs contains,",
@@ -679,8 +679,8 @@ freeze_known_gaps <- function(renv_state = freeze_renv_lockfile_state()) {
       ),
       correction_to_prior_description = paste(
         "Verified against the code, three details of the previously circulated",
-        "description are wrong. (a) The defect is in R/export_helpers.R, not",
-        "09_export_pride_journal/04_make_supplementary_tables.R. (b) It affects the",
+        "description are wrong. (a) The defect is in R/utilities/export_helpers.R, not",
+        "analysis/09_publication_exports/04_make_supplementary_tables.R. (b) It affects the",
         "PRIDE processed-data package selection consumed by",
         "03_export_processed_pg_matrix_package.R:69 and 05_make_pride_manifest.R:28;",
         "the supplementary-table export itself calls supplementary_candidate_files(),",
@@ -691,7 +691,7 @@ freeze_known_gaps <- function(renv_state = freeze_renv_lockfile_state()) {
         "manifest.default_include_derived_results: false config key documents the",
         "same intent but does not gate this code path."
       ),
-      reference = "R/export_helpers.R:658 (processed_files_for_dataset)",
+      reference = "R/utilities/export_helpers.R:658 (processed_files_for_dataset)",
       action_in_this_task = "documented only; not fixed"
     )
   ))

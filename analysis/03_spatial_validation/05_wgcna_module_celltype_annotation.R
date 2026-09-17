@@ -2,7 +2,7 @@
 #
 # Phenotype-blind external cell-type annotation of WGCNA modules.
 #
-# Uses the shared engine in R/ewce_gene_set_engine.R - the SAME EWCE method and
+# Uses the shared engine in R/enrichment/ewce_gene_set_engine.R - the SAME EWCE method and
 # the SAME specificity reference as the canonical analysis. Nothing about the
 # test is reimplemented.
 #
@@ -24,18 +24,18 @@
 # WGCNA LABELS ARE NOT ALTERED BY THIS SCRIPT.
 #
 # USAGE
-#   Rscript 11_spatial_systems/05_wgcna_module_celltype_annotation.R
-#   Rscript 11_spatial_systems/05_wgcna_module_celltype_annotation.R --dry-run
-#   Rscript 11_spatial_systems/05_wgcna_module_celltype_annotation.R --reps 1000
+#   Rscript analysis/03_spatial_validation/05_wgcna_module_celltype_annotation.R
+#   Rscript analysis/03_spatial_validation/05_wgcna_module_celltype_annotation.R --dry-run
+#   Rscript analysis/03_spatial_validation/05_wgcna_module_celltype_annotation.R --reps 1000
 
 source("R/paths.R")
-source("R/dataset_config.R")
-source("R/integration_utils.R")
-source("R/ewce_gene_set_engine.R")
+source("R/data_contracts/dataset_config.R")
+source("R/statistics/integration_utils.R")
+source("R/enrichment/ewce_gene_set_engine.R")
 
 suppressPackageStartupMessages({ library(readr); library(dplyr) })
 
-SCRIPT_ID <- "11_spatial_systems/05_wgcna_module_celltype_annotation.R"
+SCRIPT_ID <- "analysis/03_spatial_validation/05_wgcna_module_celltype_annotation.R"
 Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 cli <- integration_cli(default_dataset = "all")
 

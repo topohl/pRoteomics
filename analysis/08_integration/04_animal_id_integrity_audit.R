@@ -4,7 +4,7 @@
 #
 # Enumerates every animal-identifier normaliser in the active repository, every
 # consumer, and every artifact whose values can change once the canonical
-# contract in R/animal_id_contract.R replaces them. The numeric columns are
+# contract in R/data_contracts/animal_id_contract.R replaces them. The numeric columns are
 # computed from the real source files, not asserted.
 #
 # THE DEFECT, IN THREE PARTS
@@ -18,17 +18,17 @@
 #   3. MINIMUM WIDTH   three digits are required, so animal "3" becomes NA.
 #
 # USAGE
-#   Rscript 08_behavior_physio_coupling/04_animal_id_integrity_audit.R
-#   Rscript 08_behavior_physio_coupling/04_animal_id_integrity_audit.R --dry-run
+#   Rscript analysis/08_integration/04_animal_id_integrity_audit.R
+#   Rscript analysis/08_integration/04_animal_id_integrity_audit.R --dry-run
 
 source("R/paths.R")
-source("R/dataset_config.R")
-source("R/integration_utils.R")
-source("R/animal_id_contract.R")
+source("R/data_contracts/dataset_config.R")
+source("R/statistics/integration_utils.R")
+source("R/data_contracts/animal_id_contract.R")
 
 suppressPackageStartupMessages({ library(readr); library(dplyr) })
 
-SCRIPT_ID <- "08_behavior_physio_coupling/04_animal_id_integrity_audit.R"
+SCRIPT_ID <- "analysis/08_integration/04_animal_id_integrity_audit.R"
 Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 cli <- integration_cli(default_dataset = "all")
 
@@ -110,24 +110,24 @@ alias_system <- c(behavior_zscore = "behavior_zscore",
 # Every invocation site found by exhaustive grep of the active repository.
 consumers <- tibble::tribble(
   ~script, ~function_name, ~invocation_line, ~source_key, ~input_source_label, ~artifacts, ~rerun_required,
-  "08_behavior_physio_coupling/02_network_behavior_coupling.r", "normalize_animal_id", 312L,
+  "analysis/08_integration/02_network_behavior_coupling.r", "normalize_animal_id", 312L,
     "spatial_network_rds", "07_spatial_networks RDS sample_metadata$AnimalID",
     paste("animal_level_candidate_edge_scores.csv", "animal_level_global_network_metrics.csv",
           "merged_edge_behavior_long.csv", "merged_global_network_behavior.csv",
           "edge_behavior_correlations.csv", "join_diagnostics_*.csv",
           "qc_counts_edge_behavior.csv", "central_edge_*_behavior_table.csv", sep = "; "), "yes",
-  "08_behavior_physio_coupling/02_network_behavior_coupling.r", "normalize_animal_id", 434L,
+  "analysis/08_integration/02_network_behavior_coupling.r", "normalize_animal_id", 434L,
     "behavior_zscore", "E9_Behavior_Data.xlsx sheet zScore column ID",
     paste("physiology_traits_loaded.csv", "merged_edge_behavior_long.csv",
           "merged_global_network_behavior.csv", "edge_behavior_correlations.csv", sep = "; "), "yes",
-  "08_behavior_physio_coupling/02_network_behavior_coupling.r", "normalize_animal_id", 464L,
+  "analysis/08_integration/02_network_behavior_coupling.r", "normalize_animal_id", 464L,
     "movement_auc_first", "auc_individual_animals_*.csv column AnimalNum",
     paste("movement_auc_z_loaded.csv", "merged_edge_behavior_long.csv",
           "edge_behavior_correlations_sex_stratified.csv", sep = "; "), "yes",
-  "06_modules_WGCNA/03_score_module_activity.R", "normalize_animal_id", 2083L,
+  "analysis/05_wgcna/03_score_module_activity.R", "normalize_animal_id", 2083L,
     "proteomics_metadata_neuron_neuropil", "module score table AnimalID (behaviour handoff export only)",
     "results/source_data/.../behavior_coupling_inputs/module_scores_*.csv", "no",
-  "08_behavior_physio_coupling/01_correlate_proteomics_with_behavior.r", "normalize_mouse_id", 304L,
+  "analysis/08_integration/01_correlate_proteomics_with_behavior.r", "normalize_mouse_id", 304L,
     "behavior_zscore", "behavior table AnimalNum/MouseID",
     "proteomics-behaviour correlation outputs", "no"
 )

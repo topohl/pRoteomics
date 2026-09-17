@@ -47,7 +47,7 @@ testthat::test_that("generated_at is metadata only and never enters an identity 
   testthat::expect_identical(m1$publication_source_data, m2$publication_source_data)
 
   # And the real manifest keeps generated_at out of every hashed section.
-  src <- readLines(file.path(repo, "R", "publication_freeze_utils.R"), warn = FALSE)
+  src <- readLines(repo_path("R", "publication_freeze_utils.R"), warn = FALSE)
   gen_lines <- grep("generated_at", src)
   testthat::expect_gt(length(gen_lines), 0L)
   # No identity/section builder may reference it.
@@ -253,7 +253,7 @@ testthat::test_that("an unresolvable freeze tag fails closed", {
 # --- validator is read-only ----------------------------------------------
 
 testthat::test_that("the validator sources contain no mutating call", {
-  for (f in c(file.path(repo, "R", "publication_freeze_utils.R"),
+  for (f in c(repo_path("R", "publication_freeze_utils.R"),
               file.path(repo, "tools", "validate_publication_freeze.R"))) {
     src <- readLines(f, warn = FALSE)
     code <- src[!grepl("^\\s*#", src)]

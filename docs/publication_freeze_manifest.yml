@@ -59,7 +59,7 @@ gsea_reproducibility_contract:
     path: config/clusterProfiler_config.yml
     sha256: 0c815964fd226909c6333b375ed534c25fc4dc076773718efd41bec799fdea2b
   implementation_source:
-    path: R/clusterprofiler_reproducibility.R
+    path: R/enrichment/clusterprofiler_reproducibility.R
     sha256: 2c1cac6303c2b461154bd67c3a58f94faefd1552cb0521a96ef8691c24db692e
   contract: Deterministic inputs and configuration are frozen (ranked input, per-comparison
     derived seed, RNGkind, nPermSimple, by = 'fgsea', and clusterProfiler's logical
@@ -76,25 +76,25 @@ export_provenance_equivalence:
   scope: export-relevant implementation files only; NOT a whole-repository equivalence
     claim
   files:
-  - path: 09_export_pride_journal/08_export_manuscript_figures.R
+  - path: analysis/09_publication_exports/08_export_manuscript_figures.R
     historical_blob_oid: 378a9e577086bf742c379f70d319d3370006f19e
     historical_sha256: b2fee7e35e4b902981f3a51932153abf354cc2dbc346e355f9d826e3515538e9
     freeze_blob_oid: 378a9e577086bf742c379f70d319d3370006f19e
     freeze_sha256: b2fee7e35e4b902981f3a51932153abf354cc2dbc346e355f9d826e3515538e9
     identical: yes
-  - path: 09_export_pride_journal/09_export_source_data.R
+  - path: analysis/09_publication_exports/09_export_source_data.R
     historical_blob_oid: 4c455a433624aa8aa9b000d574a72cb30a8e0ca7
     historical_sha256: 3f24840fa4c0e47718cefaba9362bbc95360819f2b5e0d899a2e13a99d6ff659
     freeze_blob_oid: 4c455a433624aa8aa9b000d574a72cb30a8e0ca7
     freeze_sha256: 3f24840fa4c0e47718cefaba9362bbc95360819f2b5e0d899a2e13a99d6ff659
     identical: yes
-  - path: R/clusterprofiler_reproducibility.R
+  - path: R/enrichment/clusterprofiler_reproducibility.R
     historical_blob_oid: ff8052e7083cd205c3d0a7b4824be26409e9017d
     historical_sha256: ff77bde2ec1b83bb0b19ae9bf00a7cf1d7f57f1014f6bcc2b30515ce0f2edf1e
     freeze_blob_oid: ff8052e7083cd205c3d0a7b4824be26409e9017d
     freeze_sha256: ff77bde2ec1b83bb0b19ae9bf00a7cf1d7f57f1014f6bcc2b30515ce0f2edf1e
     identical: yes
-  - path: R/export_helpers.R
+  - path: R/utilities/export_helpers.R
     historical_blob_oid: f53d7e276af1decb740390de3db8f8fac6189d0f
     historical_sha256: b567d3dc73c1399eb0ab9e453c186b064cf89179ee05827fc8adce978d095b48
     freeze_blob_oid: f53d7e276af1decb740390de3db8f8fac6189d0f
@@ -106,7 +106,7 @@ export_provenance_equivalence:
     freeze_blob_oid: 79e0d3b8120b940462f3717fd05534cdd8387207
     freeze_sha256: a07a5db658684a22a46136d82ad9dcd837043a71fb9f3bb3ba71570b3b36ea09
     identical: yes
-  - path: R/pride_helpers.R
+  - path: R/statistics/pride_helpers.R
     historical_blob_oid: be4a9f345d92d5f65ad3474bf7378e919b9676ce
     historical_sha256: b67d20dbd2c45392ff19db94aeee235ecb78289c35a601d8b5a0cc3270840256
     freeze_blob_oid: be4a9f345d92d5f65ad3474bf7378e919b9676ce
@@ -365,7 +365,7 @@ publication_source_data:
       size_bytes: 380461.0
 export_payloads:
 - export: manuscript_figures
-  producer: 09_export_pride_journal/08_export_manuscript_figures.R
+  producer: analysis/09_publication_exports/08_export_manuscript_figures.R
   payload_roots: results/manuscript/extended_data
   manifest_path: results/manuscript/figure_export_manifest.csv
   manifest_sha256: 3c278296b18cf3d93839251225d535c08ae0b04b7c9cda994f3b766700248a13
@@ -383,7 +383,7 @@ export_payloads:
     historical commit and the freeze commit. Payload files are validated through the
     manifest contract rather than re-hashed in bulk.
 - export: manuscript_source_data
-  producer: 09_export_pride_journal/09_export_source_data.R
+  producer: analysis/09_publication_exports/09_export_source_data.R
   payload_roots:
   - results/manuscript/source_data
   - results/manuscript/supplementary_tables
@@ -449,12 +449,12 @@ known_gaps:
     implement a side-effect-free dry-run guard. RUN_EXPORT.R restricts the step list
     under --dry-run so the orchestrator is safe, but the remaining seven steps remain
     individually unguarded and would write if invoked directly with --dry-run.
-  reference: 09_export_pride_journal/RUN_EXPORT.R
+  reference: analysis/09_publication_exports/RUN_EXPORT.R
   action_in_this_task: documented only; not fixed
 - id: processed_package_wildcard_glob_filter
   severity: warn
   classification: latent defect, currently masked
-  summary: 'R/export_helpers.R:658, inside processed_files_for_dataset() (defined
+  summary: 'R/utilities/export_helpers.R:658, inside processed_files_for_dataset() (defined
     at line 610), filters config$supplementary_table_globs with grepl("\\*", g, fixed
     = TRUE). Under fixed = TRUE that searches for a literal backslash-star, which
     none of the six configured globs contains, so the wildcard arm never fires and
@@ -462,13 +462,13 @@ known_gaps:
     for microglia and 0 of 6 for neuron_soma and neuron_neuropil, where the intended
     test would keep 6 of 6.'
   correction_to_prior_description: 'Verified against the code, three details of the
-    previously circulated description are wrong. (a) The defect is in R/export_helpers.R,
-    not 09_export_pride_journal/04_make_supplementary_tables.R. (b) It affects the
+    previously circulated description are wrong. (a) The defect is in R/utilities/export_helpers.R,
+    not analysis/09_publication_exports/04_make_supplementary_tables.R. (b) It affects the
     PRIDE processed-data package selection consumed by 03_export_processed_pg_matrix_package.R:69
     and 05_make_pride_manifest.R:28; the supplementary-table export itself calls supplementary_candidate_files(),
     which applies no wildcard filter and is unaffected. (c) It is masked by the include_derived
     argument, which both callers pass as cli$include_derived_results == has("--include-derived-results")
     and is therefore FALSE unless that flag is given; the manifest.default_include_derived_results:
     false config key documents the same intent but does not gate this code path.'
-  reference: R/export_helpers.R:658 (processed_files_for_dataset)
+  reference: R/utilities/export_helpers.R:658 (processed_files_for_dataset)
   action_in_this_task: documented only; not fixed

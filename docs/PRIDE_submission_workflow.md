@@ -13,11 +13,11 @@ Canonical processed quantitative matrices should come from `data/processed/01_pr
 Run these before staging a deposition:
 
 ```bash
-Rscript 09_export_pride_journal/05_make_pride_manifest.R --dry-run
-Rscript 09_export_pride_journal/02_make_sample_metadata.R --dry-run
-Rscript 09_export_pride_journal/04_make_supplementary_tables.R --dry-run
-Rscript 09_export_pride_journal/10_validate_pride_submission.R --dry-run
-Rscript 09_export_pride_journal/06_make_methods_summary.R --dry-run
+Rscript analysis/09_publication_exports/05_make_pride_manifest.R --dry-run
+Rscript analysis/09_publication_exports/02_make_sample_metadata.R --dry-run
+Rscript analysis/09_publication_exports/04_make_supplementary_tables.R --dry-run
+Rscript analysis/09_publication_exports/10_validate_pride_submission.R --dry-run
+Rscript analysis/09_publication_exports/06_make_methods_summary.R --dry-run
 ```
 
 Dry-run mode prints pass/fail diagnostics and target output paths without copying supplementary files or writing final export products.

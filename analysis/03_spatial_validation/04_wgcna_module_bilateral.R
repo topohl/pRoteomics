@@ -19,18 +19,18 @@
 # hemispheric asymmetry. Nothing here is labelled as a quality verdict.
 #
 # USAGE
-#   Rscript 11_spatial_systems/04_wgcna_module_bilateral.R
-#   Rscript 11_spatial_systems/04_wgcna_module_bilateral.R --dry-run
+#   Rscript analysis/03_spatial_validation/04_wgcna_module_bilateral.R
+#   Rscript analysis/03_spatial_validation/04_wgcna_module_bilateral.R --dry-run
 
 source("R/paths.R")
-source("R/dataset_config.R")
-source("R/integration_utils.R")
-source("R/spatial_systems_data_utils.R")
-source("R/spatial_systems_bilateral_utils.R")
+source("R/data_contracts/dataset_config.R")
+source("R/statistics/integration_utils.R")
+source("R/data_contracts/spatial_systems_data_utils.R")
+source("R/spatial/spatial_systems_bilateral_utils.R")
 
 suppressPackageStartupMessages({ library(readr); library(dplyr) })
 
-SCRIPT_ID <- "11_spatial_systems/04_wgcna_module_bilateral.R"
+SCRIPT_ID <- "analysis/03_spatial_validation/04_wgcna_module_bilateral.R"
 Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 cli <- integration_cli(default_dataset = "all")
 

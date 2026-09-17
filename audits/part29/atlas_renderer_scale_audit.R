@@ -105,7 +105,7 @@ message("      f9_atlas_limit = ", fmt(V9_LIMIT), " over ", length(v9_all),
 message("[3/5] evaluating the percentile renderers on their released source data")
 
 # publication_color_limits(), verbatim from
-# 04_differential_expression_enrichment/07_compareGO_spatial_program_atlas.r:582
+# analysis/04_differential_abundance/07_compareGO_spatial_program_atlas.r:582
 publication_color_limits <- function(x, cap = 2.5) {
   lim <- suppressWarnings(stats::quantile(abs(x), probs = 0.98, na.rm = TRUE,
                                           names = FALSE))
@@ -266,16 +266,16 @@ R_ <- function(file, line, fn, atlas, rule, pct, pctval, reach, cls, conflict, e
              evidence = ev,
              stringsAsFactors = FALSE)
 
-F07 <- "04_differential_expression_enrichment/07_compareGO_spatial_program_atlas.r"
-F10 <- "04_differential_expression_enrichment/10_sus_res_spatial_dap_atlas.r"
+F07 <- "analysis/04_differential_abundance/07_compareGO_spatial_program_atlas.r"
+F10 <- "analysis/04_differential_abundance/10_sus_res_spatial_dap_atlas.r"
 
 reach07 <- paste0(
   "YES. pipeline.yml registers '", F07, "' (registered=", registered(F07),
   ", stage=", stage_of(F07), "); RUN_ORDER.md lists it (", in_run_order(F07),
   "). Its figure root results/figures/04_differential_expression_enrichment ",
   "is an explicit candidate_root of the registered exporter ",
-  "09_export_pride_journal/08_export_manuscript_figures.R (stage=",
-  stage_of("09_export_pride_journal/08_export_manuscript_figures.R"),
+  "analysis/09_publication_exports/08_export_manuscript_figures.R (stage=",
+  stage_of("analysis/09_publication_exports/08_export_manuscript_figures.R"),
   "), and results/manuscript/figure_export_manifest.csv actually lists ",
   fig07_theme, " (", n_exported(fig07_theme), " row(s)) copied into ",
   "results/manuscript/extended_data/. It is NOT in the publication freeze ",
@@ -551,7 +551,7 @@ rows <- rbind(
 
 # provenance row so the artefact carries its own reference numbers
 rows <- rbind(rows, R_(
-  "99_audits/part29/atlas_renderer_scale_audit.R", 0,
+  "audits/part29/atlas_renderer_scale_audit.R", 0,
   "AUDIT_REFERENCE_VALUES (this script)", "FALSE",
   paste0("f9_atlas_limit = max(abs(median_NES)) over RES-CON, SUS-CON, SUS-RES = ",
          fmt(V9_LIMIT)),

@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript
 
 # ================================================================
-# Script: 03_qc_exploration/00_dataset_qc_report.r
+# Script: analysis/02_qc/00_dataset_qc_report.r
 # Stage: qc
 # Scope: dataset_specific
 # Consumes: required data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv; optional data/metadata/*.xlsx.
@@ -26,7 +26,7 @@ metadata_file <- qc_resolve_metadata(DATASET, env = "PROTEOMICS_DATASET_QC_METAD
 
 if (run$dry_run) {
   status <- qc_dry_run_contract(
-    "03_qc_exploration/00_dataset_qc_report.r",
+    "analysis/02_qc/00_dataset_qc_report.r",
     DATASET,
     matrix_file = matrix_file,
     metadata_file = metadata_file,

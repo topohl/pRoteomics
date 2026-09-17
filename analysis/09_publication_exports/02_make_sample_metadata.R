@@ -1,9 +1,9 @@
 #!/usr/bin/env Rscript
 # ================================================================
-# Script: 09_export_pride_journal/02_make_sample_metadata.R
+# Script: analysis/09_publication_exports/02_make_sample_metadata.R
 # Stage: export
 # Scope: global
-# Consumes: required data/metadata/; optional 09_export_pride_journal/config/export_config.yml.
+# Consumes: required data/metadata/; optional analysis/09_publication_exports/config/export_config.yml.
 # Produces: pride_submission/metadata/sample_metadata.tsv; pride_submission/metadata/sdrf_like_metadata.tsv.
 # Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: PRIDE sample metadata.
@@ -40,7 +40,7 @@ standardize_meta_names <- function(df) {
 meta_raw <- read_metadata_workbook()
 if (!nrow(meta_raw)) {
   if (isTRUE(cli$dry_run)) {
-    dry_run_line("Script", "09_export_pride_journal/02_make_sample_metadata.R")
+    dry_run_line("Script", "analysis/09_publication_exports/02_make_sample_metadata.R")
     dry_run_line("Sample metadata rows", 0, "FAIL")
     quit(status = 1, save = "no")
   }
@@ -147,7 +147,7 @@ out_clean <- pride_submission_dir("metadata", "sample_metadata.tsv")
 out_sdrf <- pride_submission_dir("metadata", "sdrf_like_metadata.tsv")
 
 if (isTRUE(cli$dry_run)) {
-  dry_run_line("Script", "09_export_pride_journal/02_make_sample_metadata.R")
+  dry_run_line("Script", "analysis/09_publication_exports/02_make_sample_metadata.R")
   dry_run_line("Datasets", paste(datasets, collapse = ", "))
   dry_run_line("Sample metadata rows", nrow(export_meta), if (nrow(export_meta) > 0) "PASS" else "FAIL")
   dry_run_line("Metadata target", out_clean)

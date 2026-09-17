@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript
 
 # ================================================================
-# Script: 09_export_pride_journal/08_export_manuscript_figures.R
+# Script: analysis/09_publication_exports/08_export_manuscript_figures.R
 # Stage: export
 # Scope: global
 # Consumes: required config/output_namespaces.yml and results/figures/; optional none.
@@ -52,7 +52,7 @@ candidates <- drop_legacy_dataset_suffixed_aliases(candidates)
 candidates <- drop_orphan_figure_families(candidates)
 
 if (isTRUE(dry_run)) {
-  dry_run_line("Script", "09_export_pride_journal/08_export_manuscript_figures.R")
+  dry_run_line("Script", "analysis/09_publication_exports/08_export_manuscript_figures.R")
   dry_run_line("Candidate figure roots", paste(candidate_roots, collapse = "; "))
   dry_run_line("Output root", manuscript_root)
   dry_run_line("Selected files", length(candidates))

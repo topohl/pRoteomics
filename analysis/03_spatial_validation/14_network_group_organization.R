@@ -16,18 +16,18 @@
 #   give the same statistic, so the smallest attainable p is 6/1680 = 0.0036.
 #
 # USAGE
-#   Rscript 11_spatial_systems/14_network_group_organization.R
-#   Rscript 11_spatial_systems/14_network_group_organization.R --dry-run
+#   Rscript analysis/03_spatial_validation/14_network_group_organization.R
+#   Rscript analysis/03_spatial_validation/14_network_group_organization.R --dry-run
 
 source("R/paths.R")
-source("R/dataset_config.R")
-source("R/integration_utils.R")
-source("R/spatial_atlas_utils.R")
-source("R/animal_spatial_network_utils.R")
+source("R/data_contracts/dataset_config.R")
+source("R/statistics/integration_utils.R")
+source("R/spatial/spatial_atlas_utils.R")
+source("R/networks/animal_spatial_network_utils.R")
 
 suppressPackageStartupMessages({ library(readr); library(dplyr); library(tidyr) })
 
-SCRIPT_ID <- "11_spatial_systems/14_network_group_organization.R"
+SCRIPT_ID <- "analysis/03_spatial_validation/14_network_group_organization.R"
 Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 cli <- integration_cli(default_dataset = "all")
 

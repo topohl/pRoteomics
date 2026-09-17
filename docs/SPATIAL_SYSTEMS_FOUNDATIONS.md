@@ -34,7 +34,7 @@ Bilateral coverage is near complete:
 
 ## 3. The aggregation hierarchy
 
-`R/spatial_systems_data_utils.R` builds four explicit levels:
+`R/data_contracts/spatial_systems_data_utils.R` builds four explicit levels:
 
 ```
 LEVEL 0   canonical source samples
@@ -48,8 +48,8 @@ LEVEL 3   explicit left-only / right-only / bilateral matrices
 The one-sided rule is **not invented here**. Both canonical animal-level paths
 already agree, and this layer reuses their vocabulary:
 
-- `R/wgcna_group_effects_utils.R` — `equal_weight_mean_available_LR_after_within_hemisphere_mean`, `one_sided_observed_no_imputation`
-- `R/protigy_input_utils.R` — `single_observed_hemisphere_no_imputation`
+- `R/statistics/wgcna_group_effects_utils.R` — `equal_weight_mean_available_LR_after_within_hemisphere_mean`, `one_sided_observed_no_imputation`
+- `R/data_contracts/protigy_input_utils.R` — `single_observed_hemisphere_no_imputation`
 
 A one-sided cell contributes its observed side unchanged. Nothing is imputed.
 

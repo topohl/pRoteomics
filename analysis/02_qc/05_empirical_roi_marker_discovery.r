@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 # ================================================================
-# Script: 03_qc_exploration/05_empirical_roi_marker_discovery.r
+# Script: analysis/02_qc/05_empirical_roi_marker_discovery.r
 # Stage: qc_global
 # Scope: global
 # Consumes: required Stage 01 post-filter/imputed quantitative matrices for all datasets, mouse UniProt mapping, sample metadata; optional manual mappings.
@@ -54,7 +54,7 @@ proposed_marker_path <- file.path(PATHS$tables, "empirical_roi_marker_sets_propo
 selected_marker_path <- if (proposed_only) proposed_marker_path else canonical_marker_path
 
 if (dry_run) {
-  dry_run_line("Script", "03_qc_exploration/05_empirical_roi_marker_discovery.r")
+  dry_run_line("Script", "analysis/02_qc/05_empirical_roi_marker_discovery.r")
   dry_run_line("Mode", if (proposed_only) "proposed-only (canonical output protected)" else "canonical")
   for (dataset in DATASETS) {
     dry_run_line(
