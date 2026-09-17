@@ -1,5 +1,6 @@
+source(testthat::test_path("..", "..", "R", "paths.R"))
+
 testthat::test_that("module-score metadata merge script is dataset-aware", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   txt <- paste(readLines(repo_path("analysis/01_preprocessing/06_merged_metadata_module_score.r"), warn = FALSE), collapse = "\n")
 
   testthat::expect_true(grepl("--dataset", txt, fixed = TRUE))
@@ -10,9 +11,7 @@ testthat::test_that("module-score metadata merge script is dataset-aware", {
 })
 
 testthat::test_that("dataset input resolution prefers dataset-scoped module metadata", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   txt <- paste(readLines(repo_path("R/data_contracts/dataset_inputs.R"), warn = FALSE), collapse = "\n")
-
   testthat::expect_true(grepl("path_processed(\n      \"01_preprocessing\",\n      \"06_merged_metadata_module_score\"", txt, fixed = TRUE) || grepl("06_merged_metadata_module_score", txt, fixed = TRUE))
   testthat::expect_true(grepl("legacy_dataset_candidates", txt, fixed = TRUE))
   testthat::expect_true(grepl("PROTEOMICS_ALLOW_GLOBAL_MODULE_SCORE_METADATA", txt, fixed = TRUE))
@@ -20,7 +19,6 @@ testthat::test_that("dataset input resolution prefers dataset-scoped module meta
 })
 
 testthat::test_that("module scoring writes overlap diagnostics and preserves spatial labels", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   txt <- paste(readLines(repo_path("analysis/05_wgcna/03_score_module_activity.R"), warn = FALSE), collapse = "\n")
 
   for (needle in c(

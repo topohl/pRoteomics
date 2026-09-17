@@ -1,3 +1,5 @@
+source(testthat::test_path("..", "..", "R", "paths.R"))
+
 testthat::skip_if_not_installed("dplyr")
 testthat::skip_if_not_installed("tibble")
 testthat::skip_if_not_installed("readr")
@@ -7,8 +9,6 @@ targeted_repo_root <- function() {
 }
 
 source(repo_path("R", "paths.R"))
-source(testthat::test_path("..", "..", "R", "paths.R"))
-
 source(repo_path("R", "clusterprofiler_reproducibility.R"))
 source(repo_path("R", "microglia_targeted_signature_utils.R"))
 

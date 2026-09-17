@@ -101,8 +101,8 @@ testthat::test_that("effect helpers behave and never invent a value", {
 # =====================================================================
 
 testthat::test_that("no FDR is recomputed and no model is refitted", {
-  for (f in list(c("11_spatial_systems", "16_ca2_slm_robustness_audit.R"),
-                 c("11_spatial_systems", "17_stress_identity_robustness.R"),
+  for (f in list(c("analysis/03_spatial_validation", "16_ca2_slm_robustness_audit.R"),
+                 c("analysis/03_spatial_validation", "17_stress_identity_robustness.R"),
                  c("R", "ca2_slm_robustness_utils.R"))) {
     s <- do.call(code_of, as.list(f))
     testthat::expect_false(grepl("p\\.adjust", s), info = paste(f, collapse = "/"))
@@ -143,7 +143,7 @@ testthat::test_that("all 28 canonical DAPs enter the audit with verbatim statist
 })
 
 testthat::test_that("imputation status comes from pre-imputation missingness", {
-  s <- code_of("11_spatial_systems", "16_ca2_slm_robustness_audit.R")
+  s <- code_of("analysis/03_spatial_validation", "16_ca2_slm_robustness_audit.R")
   testthat::expect_true(grepl("quicksearch.pg_matrix.tsv", s, fixed = TRUE))
   testthat::expect_true(grepl("csr_preimputation_mask", s, fixed = TRUE))
   u <- code_of("R", "ca2_slm_robustness_utils.R")
@@ -264,7 +264,7 @@ testthat::test_that("the stress-identity comparison uses explicit subsets and th
   testthat::expect_identical(h$n_at_baseline_rank_10, 15L)
   # every subset is a subset: never more hits than the full set
   testthat::expect_true(all(z$n_hits <= 37L))
-  s <- code_of("11_spatial_systems", "17_stress_identity_robustness.R")
+  s <- code_of("analysis/03_spatial_validation", "17_stress_identity_robustness.R")
   # the classification rule is not reimplemented here
   testthat::expect_false(grepl("effect_at_baseline_peak\\s*<-", s))
   testthat::expect_false(grepl("HIGH_AFFINITY_FRACTION", s))

@@ -1,7 +1,7 @@
+source(testthat::test_path("..", "..", "R", "paths.R"))
+
 testthat::skip_if_not_installed("dplyr")
 testthat::skip_if_not_installed("tidyr")
-
-source(testthat::test_path("..", "..", "R", "paths.R"))
 
 source(repo_path("R", "gsea_wgcna_concordance_utils.R"))
 source(repo_path("R", "gsea_wgcna_concordance_diagnostic_utils.R"))

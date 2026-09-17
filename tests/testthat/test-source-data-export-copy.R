@@ -1,4 +1,5 @@
 source(testthat::test_path("..", "..", "R", "paths.R"))
+
 source(repo_path("R", "export_helpers.R"))
 
 repo <- normalizePath(testthat::test_path("..", ".."), winslash = "/", mustWork = TRUE)
@@ -237,9 +238,7 @@ testthat::test_that("PRIDE selectors reference none of the manuscript export hel
 })
 
 testthat::test_that("export copy creates missing parent directories", {
-  source(testthat::test_path("..", "..", "R", "paths.R"))
   source(repo_path("R", "export_helpers.R"))
-
   # file.copy() returns FALSE rather than erroring when a target's parent does
   # not exist, so an export into a tree that does not yet carry the sub-path
   # used to fail one file at a time - and only after earlier flat copies had

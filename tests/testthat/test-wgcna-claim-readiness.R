@@ -1,3 +1,5 @@
+source(testthat::test_path("..", "..", "R", "paths.R"))
+
 testthat::local_edition(3)
 
 root <- normalizePath(testthat::test_path("..", ".."), winslash = "/", mustWork = TRUE)
@@ -87,8 +89,6 @@ testthat::test_that("completed Stage 13 output has exact current identities with
   testthat::expect_setequal(x$entity_id[x$level == "module"], sprintf("WGCNA_m%02d", 1:13))
   testthat::expect_setequal(x$entity_id[x$level == "supermodule"], sprintf("SM%02d", 1:9))
   testthat::expect_false(any(x$conventional_preservation_claim_gate_eligible %in% TRUE))
-source(testthat::test_path("..", "..", "R", "paths.R"))
-
   source(repo_path("R", "paths.R"), local = TRUE)
   source(repo_path("R", "schema_validation.R"), local = TRUE)
   if (all(c(

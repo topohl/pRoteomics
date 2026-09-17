@@ -1,10 +1,10 @@
+source(testthat::test_path("..", "..", "R", "paths.R"))
+
 testthat::local_edition(3)
 
 testthat::skip_if_not_installed("dplyr")
 testthat::skip_if_not_installed("readr")
 testthat::skip_if_not_installed("digest")
-
-source(testthat::test_path("..", "..", "R", "paths.R"))
 
 source(repo_path("R", "wgcna_reviewed_label_registry.R"))
 
