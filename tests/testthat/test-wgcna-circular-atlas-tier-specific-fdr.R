@@ -61,8 +61,8 @@ testthat::test_that("circular atlas uses the Stage 07 inferential handoff", {
 })
 
 testthat::test_that("live handoffs reconstruct explicit supermodule display semantics", {
-  source(test_root("R", "paths.R"))
-  source(test_root("R", "wgcna_group_effect_consumer_utils.R"))
+  source(repo_path("R", "paths.R"))
+  source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
   for (dataset in c("neuron_neuropil", "neuron_soma", "microglia")) {
     handoff <- read_corrected_local_handoff(path_results(
       "tables", "06_modules_WGCNA", "interpretable_summary", dataset,
@@ -242,8 +242,8 @@ testthat::test_that("circular group-effect plotting sources retain complete effe
 })
 
 testthat::test_that("circular heatmap estimates retain exact handoff source rows", {
-  source(test_root("R", "paths.R"))
-  source(test_root("R", "wgcna_group_effect_consumer_utils.R"))
+  source(repo_path("R", "paths.R"))
+  source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
   datasets <- c("neuron_neuropil", "neuron_soma", "microglia")
   source_dir <- file.path(
     "results", "source_data", "10_biological_integration",
@@ -341,8 +341,8 @@ testthat::test_that("circular heatmap estimates retain exact handoff source rows
 })
 
 testthat::test_that("outer support track uses exact handoff FDR families", {
-  source(test_root("R", "paths.R"))
-  source(test_root("R", "wgcna_group_effect_consumer_utils.R"))
+  source(repo_path("R", "paths.R"))
+  source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
   datasets <- c("neuron_neuropil", "neuron_soma", "microglia")
   source_dir <- file.path(
     "results", "source_data", "10_biological_integration",
@@ -476,7 +476,7 @@ testthat::test_that("outer support track uses exact handoff FDR families", {
 })
 
 testthat::test_that("local standardized effects use exact Stage 05 animal-spatial response subsets", {
-  source(test_root("R", "paths.R"))
+  source(repo_path("R", "paths.R"))
   datasets <- c("neuron_neuropil", "neuron_soma", "microglia")
   source_dir <- file.path(
     "results", "source_data", "10_biological_integration",
