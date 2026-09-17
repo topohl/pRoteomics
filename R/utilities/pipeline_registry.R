@@ -216,15 +216,15 @@ active_analysis_scripts <- function(
 
 guess_stage_for_script <- function(script) {
   s <- sub("^analysis/", "", script)
-  if (grepl("^01_preprocessing", s)) return("core")
-  if (grepl("^02_qc/(build_reference_marker_registry|discover_empirical_roi_markers)", s)) return("qc_global")
-  if (grepl("^02_qc", s)) return("qc")
-  if (grepl("^04_differential_abundance|^06_gsea", s)) return("enrichment")
-  if (grepl("^05_wgcna/build_wgcna_modules", s)) return("modules_wgcna")
-  if (grepl("^05_wgcna", s)) return("modules_downstream")
-  if (grepl("^07_spatial_networks|^03_spatial_validation", s)) return("networks")
-  if (grepl("^08_integration", s)) return("integration")
-  if (grepl("^09_publication_exports", s)) return("export")
+  if (grepl("^preprocessing", s)) return("core")
+  if (grepl("^qc/(build_reference_marker_registry|discover_empirical_roi_markers)", s)) return("qc_global")
+  if (grepl("^qc", s)) return("qc")
+  if (grepl("^differential_abundance|^enrichment", s)) return("enrichment")
+  if (grepl("^wgcna/build_wgcna_modules", s)) return("modules_wgcna")
+  if (grepl("^wgcna", s)) return("modules_downstream")
+  if (grepl("^spatial_networks|^spatial_validation", s)) return("networks")
+  if (grepl("^integration", s)) return("integration")
+  if (grepl("^publication_source_data", s)) return("export")
   "unknown"
 }
 

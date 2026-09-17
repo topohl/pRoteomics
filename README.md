@@ -37,7 +37,7 @@ Microglia data are region-only microglia/PVM-enriched ROI/local
 microenvironment proteomics, not purified microglia.
 
 The authoritative control compartment-marker validation is
-`analysis/02_qc/render_compartment_abundance_figures.R`.
+`analysis/qc/render_compartment_abundance_figures.R`.
 It uses reconstructed observed, non-imputed abundance and animal-level
 descriptive summaries; it does not estimate purity, cell fractions,
 deconvolution, copy number, or total hippocampal abundance.
@@ -100,7 +100,7 @@ pride_submission/                    generated, gitignored deposition payload
 
 Analysis stage identities describe function rather than history. The former
 `04_differential_expression_enrichment/` is now
-`analysis/04_differential_abundance/`; manuscript-facing text should describe
+`analysis/differential_abundance/`; manuscript-facing text should describe
 these outputs as differential abundance and enrichment results.
 
 ## Publication boundary
@@ -151,7 +151,7 @@ Active scripts are listed only in `pipeline.yml`. Scripts excluded from the
 canonical automated run are tracked in its `legacy` section with an explicit
 replacement and status, and are documented in `docs/NAMING_MIGRATION.md`.
 
-`analysis/09_publication_exports/` is the active export module. It builds the
+`analysis/publication_source_data/` is the active export module. It builds the
 canonical publication source-data bundle, its manifest and the hashes of the
 scientific source tables, and audits figure outputs for publication readiness.
 It does not assemble journal figures, name or lay them out for a journal, or

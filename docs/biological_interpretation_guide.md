@@ -18,7 +18,7 @@ compareGO harmonizes manifest-selected enrichment outputs across comparisons and
 
 **Biological program summaries**
 
-`analysis/04_differential_abundance/summarize_biological_programs.R` maps GO/GSEA terms into broad programs such as mitochondria, RNA/RNP processing, synapse/vesicle, proteostasis, immune/microglia, and cytoskeleton. This is an interpretation layer, not a new statistical test. Use it for figure planning and thematic synthesis.
+`analysis/differential_abundance/summarize_biological_programs.R` maps GO/GSEA terms into broad programs such as mitochondria, RNA/RNP processing, synapse/vesicle, proteostasis, immune/microglia, and cytoskeleton. This is an interpretation layer, not a new statistical test. Use it for figure planning and thematic synthesis.
 
 **WGCNA**
 

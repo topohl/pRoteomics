@@ -1,5 +1,5 @@
 # Authoritative v2 workflow for control-only compartment-marker abundance.
-# Sourced by analysis/02_qc/render_compartment_abundance_figures.R.
+# Sourced by analysis/qc/render_compartment_abundance_figures.R.
 
 source(repo_path("R", "script_runtime.R"))
 source(repo_path("R", "dataset_config.R"))

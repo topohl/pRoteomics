@@ -13,320 +13,320 @@ Manuscript rendering is intentionally not listed here. It lives in the Exp9_manu
 
 `upstream_dependencies` and `downstream_consumers` are computed by matching produced paths against consumed paths across areas, so they reflect the registry rather than a hand-maintained diagram.
 
-## 01_preprocessing
+## preprocessing
 
 **Preprocessing and identifier mapping**
 
 | field | value |
 | --- | --- |
-| analysis_id | `01_preprocessing` |
+| analysis_id | `preprocessing` |
 | human_name | Preprocessing and identifier mapping |
-| entrypoint | `analysis/01_preprocessing/extract_protigy_contrasts.R` |
+| entrypoint | `analysis/preprocessing/extract_protigy_contrasts.R` |
 | scripts_in_area | 4 (2 required) |
 | inputs | `data/processed/01_preprocessing/protigy_output/<dataset>/*.gct`, `data/processed/01_preprocessing/**/*.xlsx`, `data/processed/01_preprocessing/gct_extractR/<dataset>/forward/*.csv`, +3 more |
 | optional_inputs | `data/processed/01_preprocessing/protigy_output/<dataset>/protigy_manifest.csv`, `data/processed/01_preprocessing/protigy_output/protigy_manifest.csv`, `data/external/behavior/auc_individual_animals_all.csv`, +4 more |
 | outputs | `data/processed/01_preprocessing/gct_extractR/<dataset>/forward/*.csv`, `data/processed/01_preprocessing/gct_extractR/<dataset>/reverse/*.csv`, `data/processed/01_preprocessing/gct_extractR/<dataset>/indexComparisons.csv`, `data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx`, +9 more |
 | required_config | - |
 | upstream_dependencies | - |
-| downstream_consumers | `02_qc`, `03_spatial_validation`, `04_differential_abundance`, `05_wgcna`, `07_spatial_networks` |
+| downstream_consumers | `qc`, `spatial_validation`, `differential_abundance`, `wgcna`, `spatial_networks` |
 | publication_source_outputs | - |
 | dependency_stages | `core`, `joint_qc_preprocessing` |
 
 Scripts:
 
-- `analysis/01_preprocessing/extract_protigy_contrasts.R` - stage `core`, scope `dataset_specific`, required
-- `analysis/01_preprocessing/build_module_score_metadata.R` - stage `core`, scope `dataset_specific`
-- `analysis/01_preprocessing/map_protein_identifiers.R` - stage `core`, scope `dataset_specific`, required
-- `analysis/01_preprocessing/build_joint_protigy_input.R` - stage `joint_qc_preprocessing`, scope `global`
+- `analysis/preprocessing/extract_protigy_contrasts.R` - stage `core`, scope `dataset_specific`, required
+- `analysis/preprocessing/build_module_score_metadata.R` - stage `core`, scope `dataset_specific`
+- `analysis/preprocessing/map_protein_identifiers.R` - stage `core`, scope `dataset_specific`, required
+- `analysis/preprocessing/build_joint_protigy_input.R` - stage `joint_qc_preprocessing`, scope `global`
 
-## 02_qc
+## qc
 
 **Quality control and marker fidelity**
 
 | field | value |
 | --- | --- |
-| analysis_id | `02_qc` |
+| analysis_id | `qc` |
 | human_name | Quality control and marker fidelity |
-| entrypoint | `analysis/02_qc/assess_joint_compartment_quality.R` |
+| entrypoint | `analysis/qc/assess_joint_compartment_quality.R` |
 | scripts_in_area | 15 (0 required) |
 | inputs | `data/processed/01_preprocessing/joint_compartment_qc/global/joint_compartment_qc_matrices.rds`, `results/tables/03_qc_exploration/00b_joint_compartment_qc/global/joint_primary_pca_scores.csv`, `results/tables/03_qc_exploration/00b_joint_compartment_qc/global/joint_primary_pca_variance_explained.csv`, +16 more |
 | optional_inputs | `config/marker_panels/compartment_fidelity_marker_sets.csv`, `data/external/reference_markers/go_mgi/raw/mgi.gaf.gz`, `data/external/reference_markers/go_mgi/raw/go-basic.obo`, +9 more |
 | outputs | `results/tables/03_qc_exploration/00b_joint_compartment_qc/global/`, `results/figures/03_qc_exploration/00b_joint_compartment_qc/global/`, `results/reports/03_qc_exploration/00b_joint_compartment_qc/global/joint_compartment_qc_summary.md`, `results/logs/03_qc_exploration/00b_joint_compartment_qc/global/run_manifest.yml`, +24 more |
 | required_config | `config/marker_panels/compartment_fidelity_marker_sets.csv`, `config/marker_panels/wgcna_reference_marker_sets.csv` |
-| upstream_dependencies | `01_preprocessing` |
+| upstream_dependencies | `preprocessing` |
 | downstream_consumers | Exp9_manuscript (via frozen source data) |
 | publication_source_outputs | `results/source_data/03_qc_exploration/04e_control_compartment_abundance_publication_figures/global/` |
 | dependency_stages | `qc_global`, `qc`, `qc_cross_dataset` |
 
 Scripts:
 
-- `analysis/02_qc/assess_joint_compartment_quality.R` - stage `qc_global`, scope `global`
-- `analysis/02_qc/render_joint_compartment_qc_figures.R` - stage `qc_global`, scope `global`
-- `analysis/02_qc/build_reference_marker_registry.R` - stage `qc_global`, scope `global`
-- `analysis/02_qc/discover_empirical_roi_markers.R` - stage `qc_global`, scope `global`
-- `analysis/02_qc/assess_dataset_quality.R` - stage `qc`, scope `dataset_specific`
-- `analysis/02_qc/assess_sample_quality.R` - stage `qc`, scope `dataset_specific`
-- `analysis/02_qc/summarize_missingness.R` - stage `qc`, scope `dataset_specific`
-- `analysis/02_qc/assess_replicate_consistency.R` - stage `qc`, scope `dataset_specific`
-- `analysis/02_qc/assess_marker_rank_abundance.R` - stage `qc`, scope `dataset_specific`
-- `analysis/02_qc/summarize_marker_detectability.R` - stage `qc`, scope `dataset_specific`
-- `analysis/02_qc/assess_pca_confounding.R` - stage `qc`, scope `dataset_specific`
-- `analysis/02_qc/partition_variance.R` - stage `qc`, scope `dataset_specific`
-- `analysis/02_qc/export_marker_traits.R` - stage `qc`, scope `dataset_specific`
-- `analysis/02_qc/summarize_qc_confounding.R` - stage `qc`, scope `dataset_specific`
-- `analysis/02_qc/render_compartment_abundance_figures.R` - stage `qc_cross_dataset`, scope `global`
+- `analysis/qc/assess_joint_compartment_quality.R` - stage `qc_global`, scope `global`
+- `analysis/qc/render_joint_compartment_qc_figures.R` - stage `qc_global`, scope `global`
+- `analysis/qc/build_reference_marker_registry.R` - stage `qc_global`, scope `global`
+- `analysis/qc/discover_empirical_roi_markers.R` - stage `qc_global`, scope `global`
+- `analysis/qc/assess_dataset_quality.R` - stage `qc`, scope `dataset_specific`
+- `analysis/qc/assess_sample_quality.R` - stage `qc`, scope `dataset_specific`
+- `analysis/qc/summarize_missingness.R` - stage `qc`, scope `dataset_specific`
+- `analysis/qc/assess_replicate_consistency.R` - stage `qc`, scope `dataset_specific`
+- `analysis/qc/assess_marker_rank_abundance.R` - stage `qc`, scope `dataset_specific`
+- `analysis/qc/summarize_marker_detectability.R` - stage `qc`, scope `dataset_specific`
+- `analysis/qc/assess_pca_confounding.R` - stage `qc`, scope `dataset_specific`
+- `analysis/qc/partition_variance.R` - stage `qc`, scope `dataset_specific`
+- `analysis/qc/export_marker_traits.R` - stage `qc`, scope `dataset_specific`
+- `analysis/qc/summarize_qc_confounding.R` - stage `qc`, scope `dataset_specific`
+- `analysis/qc/render_compartment_abundance_figures.R` - stage `qc_cross_dataset`, scope `global`
 
-## 03_spatial_validation
+## spatial_validation
 
 **Spatial systems validation, bilateral QC and CA2-SLM robustness**
 
 | field | value |
 | --- | --- |
-| analysis_id | `03_spatial_validation` |
+| analysis_id | `spatial_validation` |
 | human_name | Spatial systems validation, bilateral QC and CA2-SLM robustness |
-| entrypoint | `analysis/03_spatial_validation/build_spatial_data_contract.R` |
+| entrypoint | `analysis/spatial_validation/build_spatial_data_contract.R` |
 | scripts_in_area | 18 (0 required) |
 | inputs | `data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx`, `results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_protein_identity_crosswalk_proposed.csv`, `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_hemisphere_values.csv`, +18 more |
 | optional_inputs | `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_hemisphere_values.csv`, `results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_modules_long.csv`, `results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv`, +24 more |
 | outputs | `results/tables/11_spatial_systems/data_contract/spatial_systems_hemisphere_inventory.csv`, `results/tables/11_spatial_systems/data_contract/spatial_systems_aggregation_validation.csv`, `results/tables/11_spatial_systems/data_contract/spatial_systems_evidence_dependence.csv`, `results/tables/11_spatial_systems/bilateral/bilateral_spatial_identity_protein_level.csv`, +71 more |
 | required_config | `config/marker_panels/wgcna_reference_marker_sets.csv` |
-| upstream_dependencies | `01_preprocessing`, `04_differential_abundance`, `05_wgcna`, `08_integration` |
-| downstream_consumers | `08_integration` |
+| upstream_dependencies | `preprocessing`, `differential_abundance`, `wgcna`, `integration` |
+| downstream_consumers | `integration` |
 | publication_source_outputs | - |
 | dependency_stages | `networks` |
 
 Scripts:
 
-- `analysis/03_spatial_validation/build_spatial_data_contract.R` - stage `networks`, scope `per_dataset`
-- `analysis/03_spatial_validation/quantify_bilateral_spatial_identity.R` - stage `networks`, scope `per_dataset`
-- `analysis/03_spatial_validation/quantify_empirical_compartments.R` - stage `networks`, scope `global`
-- `analysis/03_spatial_validation/quantify_module_bilateral_identity.R` - stage `networks`, scope `per_dataset`
-- `analysis/03_spatial_validation/annotate_module_celltypes.R` - stage `networks`, scope `per_dataset`
-- `analysis/03_spatial_validation/decompose_bilateral_variance.R` - stage `networks`, scope `per_dataset`
-- `analysis/03_spatial_validation/validate_spatial_foundations.R` - stage `networks`, scope `global`
-- `analysis/03_spatial_validation/build_module_spatial_atlas.R` - stage `networks`, scope `per_dataset`
-- `analysis/03_spatial_validation/build_protein_spatial_atlas.R` - stage `networks`, scope `global`
-- `analysis/03_spatial_validation/quantify_neuropil_detection_context.R` - stage `networks`, scope `global`
-- `analysis/03_spatial_validation/summarize_spatial_atlas.R` - stage `networks`, scope `global`
-- `analysis/03_spatial_validation/quantify_neuropil_precision.R` - stage `networks`, scope `global`
-- `analysis/03_spatial_validation/build_animal_spatial_networks.R` - stage `networks`, scope `global`
-- `analysis/03_spatial_validation/test_network_group_organization.R` - stage `networks`, scope `global`
-- `analysis/03_spatial_validation/validate_network_workbook.R` - stage `networks`, scope `global`
-- `analysis/03_spatial_validation/audit_ca2_slm_robustness.R` - stage `networks`, scope `global`
-- `analysis/03_spatial_validation/audit_stress_identity_robustness.R` - stage `networks`, scope `global`
-- `analysis/03_spatial_validation/summarize_ca2_slm_robustness.R` - stage `networks`, scope `global`
+- `analysis/spatial_validation/build_spatial_data_contract.R` - stage `networks`, scope `per_dataset`
+- `analysis/spatial_validation/quantify_bilateral_spatial_identity.R` - stage `networks`, scope `per_dataset`
+- `analysis/spatial_validation/quantify_empirical_compartments.R` - stage `networks`, scope `global`
+- `analysis/spatial_validation/quantify_module_bilateral_identity.R` - stage `networks`, scope `per_dataset`
+- `analysis/spatial_validation/annotate_module_celltypes.R` - stage `networks`, scope `per_dataset`
+- `analysis/spatial_validation/decompose_bilateral_variance.R` - stage `networks`, scope `per_dataset`
+- `analysis/spatial_validation/validate_spatial_foundations.R` - stage `networks`, scope `global`
+- `analysis/spatial_validation/build_module_spatial_atlas.R` - stage `networks`, scope `per_dataset`
+- `analysis/spatial_validation/build_protein_spatial_atlas.R` - stage `networks`, scope `global`
+- `analysis/spatial_validation/quantify_neuropil_detection_context.R` - stage `networks`, scope `global`
+- `analysis/spatial_validation/summarize_spatial_atlas.R` - stage `networks`, scope `global`
+- `analysis/spatial_validation/quantify_neuropil_precision.R` - stage `networks`, scope `global`
+- `analysis/spatial_validation/build_animal_spatial_networks.R` - stage `networks`, scope `global`
+- `analysis/spatial_validation/test_network_group_organization.R` - stage `networks`, scope `global`
+- `analysis/spatial_validation/validate_network_workbook.R` - stage `networks`, scope `global`
+- `analysis/spatial_validation/audit_ca2_slm_robustness.R` - stage `networks`, scope `global`
+- `analysis/spatial_validation/audit_stress_identity_robustness.R` - stage `networks`, scope `global`
+- `analysis/spatial_validation/summarize_ca2_slm_robustness.R` - stage `networks`, scope `global`
 
-## 04_differential_abundance
+## differential_abundance
 
-**Differential abundance and enrichment**
+**Differential abundance and GO/GSEA enrichment**
 
 | field | value |
 | --- | --- |
-| analysis_id | `04_differential_abundance` |
-| human_name | Differential abundance and enrichment |
-| entrypoint | `analysis/04_differential_abundance/run_clusterprofiler_enrichment.R` |
+| analysis_id | `differential_abundance` |
+| human_name | Differential abundance and GO/GSEA enrichment |
+| entrypoint | `analysis/differential_abundance/run_clusterprofiler_enrichment.R` |
 | scripts_in_area | 11 (2 required) |
 | inputs | `data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv`, `data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv`, `data/processed/04_differential_expression_enrichment/clusterProfiler/neuron_neuropil/clusterProfiler_manifest.csv`, +9 more |
 | optional_inputs | `data/external/MOUSE_10090_idmapping.dat`, `results/source_data/04_differential_expression_enrichment/clusterProfiler/<dataset>/`, `config/marker_panels/wgcna_reference_marker_sets.csv`, +9 more |
 | outputs | `data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv`, `results/tables/04_differential_expression_enrichment/01b_gsea_protein_direction_audit/<dataset>/<ontology>/gsea_term_direction_audit.csv`, `results/tables/04_differential_expression_enrichment/01b_gsea_protein_direction_audit/<dataset>/<ontology>/gsea_contrast_direction_summary.csv`, `results/tables/04_differential_expression_enrichment/01b_gsea_protein_direction_audit/<dataset>/<ontology>/ora_pooled_direction_warning.csv`, +31 more |
 | required_config | `config/clusterProfiler_config.local.yml`, `config/clusterProfiler_config.yml`, `config/compareGO_config.local.yml`, `config/compareGO_config.yml`, +2 more |
-| upstream_dependencies | `01_preprocessing` |
-| downstream_consumers | `03_spatial_validation`, `05_wgcna`, `06_gsea`, `08_integration`, Exp9_manuscript (via frozen source data) |
+| upstream_dependencies | `preprocessing` |
+| downstream_consumers | `spatial_validation`, `wgcna`, `enrichment`, `integration`, Exp9_manuscript (via frozen source data) |
 | publication_source_outputs | `results/source_data/04_differential_expression_enrichment/compareGO_spatial_atlas/spatial_atlas_enrichment_long.csv`, `results/source_data/04_differential_expression_enrichment/compareGO_spatial_atlas/sus_res_supported_go_term_theme_audit.csv`, `results/source_data/04_differential_expression_enrichment/compareGO_spatial_atlas/source_data_SpatialProgramAtlas_SUS_vs_RES_publication.csv`, +4 more |
 | dependency_stages | `enrichment` |
 
 Scripts:
 
-- `analysis/04_differential_abundance/run_clusterprofiler_enrichment.R` - stage `enrichment`, scope `dataset_specific`, required
-- `analysis/04_differential_abundance/audit_gsea_protein_direction.R` - stage `enrichment`, scope `dataset_specific`
-- `analysis/04_differential_abundance/compare_go_enrichment.R` - stage `enrichment`, scope `dataset_specific`, required
-- `analysis/04_differential_abundance/annotate_neuropil_reference.R` - stage `enrichment`, scope `dataset_specific`
-- `analysis/04_differential_abundance/test_microglia_targeted_signatures.R` - stage `enrichment`, scope `dataset_specific`
-- `analysis/04_differential_abundance/summarize_biological_programs.R` - stage `enrichment`, scope `dataset_specific`
-- `analysis/04_differential_abundance/build_go_program_atlas.R` - stage `enrichment`, scope `dataset_specific`
-- `analysis/04_differential_abundance/compare_external_stress_signatures.R` - stage `enrichment`, scope `global`
-- `analysis/04_differential_abundance/validate_control_spatial_identity.R` - stage `enrichment`, scope `global`
-- `analysis/04_differential_abundance/build_sus_res_dap_atlas.R` - stage `enrichment`, scope `global`
-- `analysis/04_differential_abundance/audit_stress_response_biology.R` - stage `enrichment`, scope `global`
+- `analysis/differential_abundance/run_clusterprofiler_enrichment.R` - stage `enrichment`, scope `dataset_specific`, required
+- `analysis/differential_abundance/audit_gsea_protein_direction.R` - stage `enrichment`, scope `dataset_specific`
+- `analysis/differential_abundance/compare_go_enrichment.R` - stage `enrichment`, scope `dataset_specific`, required
+- `analysis/differential_abundance/annotate_neuropil_reference.R` - stage `enrichment`, scope `dataset_specific`
+- `analysis/differential_abundance/test_microglia_targeted_signatures.R` - stage `enrichment`, scope `dataset_specific`
+- `analysis/differential_abundance/summarize_biological_programs.R` - stage `enrichment`, scope `dataset_specific`
+- `analysis/differential_abundance/build_go_program_atlas.R` - stage `enrichment`, scope `dataset_specific`
+- `analysis/differential_abundance/compare_external_stress_signatures.R` - stage `enrichment`, scope `global`
+- `analysis/differential_abundance/validate_control_spatial_identity.R` - stage `enrichment`, scope `global`
+- `analysis/differential_abundance/build_sus_res_dap_atlas.R` - stage `enrichment`, scope `global`
+- `analysis/differential_abundance/audit_stress_response_biology.R` - stage `enrichment`, scope `global`
 
-## 05_wgcna
+## wgcna
 
 **WGCNA modules and supermodules**
 
 | field | value |
 | --- | --- |
-| analysis_id | `05_wgcna` |
+| analysis_id | `wgcna` |
 | human_name | WGCNA modules and supermodules |
-| entrypoint | `analysis/05_wgcna/build_wgcna_modules.R` |
+| entrypoint | `analysis/wgcna/build_wgcna_modules.R` |
 | scripts_in_area | 24 (1 required) |
 | inputs | `data/processed/01_preprocessing/impute/*_pgmatrix_imputed_<dataset>_*_missing70pct.xlsx`, `data/metadata/TPE9_sample_metadata_males.xlsx`, `data/external/MOUSE_10090_idmapping.dat`, +56 more |
 | optional_inputs | `data/metadata/manual_mapping.xlsx`, `data/external/MOUSE_10090_idmapping.dat`, `data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx`, +29 more |
 | outputs | `results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/`, `results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_module_supermodule_annotation.csv`, `results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_supermodule_summary.csv`, `results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_supermodule_GO_term_support_audit.csv`, +119 more |
 | required_config | `config/marker_panels/microenvironment_marker_panels.csv`, `config/marker_panels/wgcna_reference_marker_sets.csv`, `config/microglia_neuropil_independence.yml`, `config/wgcna_labels/microglia.csv` |
-| upstream_dependencies | `01_preprocessing`, `04_differential_abundance` |
-| downstream_consumers | `03_spatial_validation`, `08_integration`, `09_publication_exports`, Exp9_manuscript (via frozen source data) |
+| upstream_dependencies | `preprocessing`, `differential_abundance` |
+| downstream_consumers | `spatial_validation`, `integration`, `publication_source_data`, Exp9_manuscript (via frozen source data) |
 | publication_source_outputs | `results/source_data/06_modules_WGCNA/identity_contract/<dataset>/`, `results/source_data/06_modules_WGCNA/wgcna_publication_figures_corrected/microglia/corrected_all_supermodule_architecture_source.csv`, `results/source_data/06_modules_WGCNA/wgcna_publication_figures_corrected/microglia/corrected_all_supermodule_global_eigengenes_source.csv`, +10 more |
 | dependency_stages | `modules_wgcna`, `modules_downstream`, `networks` |
 
 Scripts:
 
-- `analysis/05_wgcna/build_wgcna_modules.R` - stage `modules_wgcna`, scope `dataset_specific`, required
-- `analysis/05_wgcna/render_module_go_heatmaps.R` - stage `modules_downstream`, scope `dataset_specific`
-- `analysis/05_wgcna/compare_recurrent_module_proteins.R` - stage `modules_downstream`, scope `dataset_specific`
-- `analysis/05_wgcna/build_curated_overlap_programs.R` - stage `modules_downstream`, scope `global`
-- `analysis/05_wgcna/score_module_activity.R` - stage `modules_downstream`, scope `dataset_specific`
-- `analysis/05_wgcna/compare_module_enrichment_overlap.R` - stage `modules_downstream`, scope `dataset_specific`
-- `analysis/05_wgcna/build_module_identity_contract.R` - stage `modules_downstream`, scope `dataset_specific`
-- `analysis/05_wgcna/test_module_phenotypes.R` - stage `modules_downstream`, scope `dataset_specific`
-- `analysis/05_wgcna/annotate_module_microenvironment.R` - stage `modules_downstream`, scope `dataset_specific`
-- `analysis/05_wgcna/summarize_module_interpretation.R` - stage `modules_downstream`, scope `dataset_specific`
-- `analysis/05_wgcna/render_module_figures.R` - stage `modules_downstream`, scope `dataset_specific`
-- `analysis/05_wgcna/summarize_module_scores.R` - stage `modules_downstream`, scope `dataset_specific`
-- `analysis/05_wgcna/render_microglia_module_figures.R` - stage `modules_downstream`, scope `dataset_specific`
-- `analysis/05_wgcna/test_microglia_neuropil_independence.R` - stage `modules_downstream`, scope `dataset_specific`
-- `analysis/05_wgcna/render_microglia_independence_figures.R` - stage `modules_downstream`, scope `dataset_specific`
-- `analysis/05_wgcna/summarize_microglia_roi_specificity.R` - stage `modules_downstream`, scope `dataset_specific`
-- `analysis/05_wgcna/summarize_module_complex_architecture.R` - stage `modules_downstream`, scope `dataset_specific`
-- `analysis/05_wgcna/audit_module_robustness.R` - stage `modules_downstream`, scope `dataset_specific`
-- `analysis/05_wgcna/audit_microglia_module_claims.R` - stage `modules_downstream`, scope `dataset_specific`
-- `analysis/05_wgcna/summarize_microglia_module_claims.R` - stage `modules_downstream`, scope `dataset_specific`
-- `analysis/05_wgcna/audit_module_claim_readiness.R` - stage `modules_downstream`, scope `dataset_specific`
-- `analysis/05_wgcna/audit_module_label_coherence.R` - stage `networks`, scope `per_dataset`
-- `analysis/05_wgcna/adjudicate_module_labels.R` - stage `networks`, scope `per_dataset`
-- `analysis/05_wgcna/build_module_label_registry.R` - stage `networks`, scope `per_dataset`
+- `analysis/wgcna/build_wgcna_modules.R` - stage `modules_wgcna`, scope `dataset_specific`, required
+- `analysis/wgcna/render_module_go_heatmaps.R` - stage `modules_downstream`, scope `dataset_specific`
+- `analysis/wgcna/compare_recurrent_module_proteins.R` - stage `modules_downstream`, scope `dataset_specific`
+- `analysis/wgcna/build_curated_overlap_programs.R` - stage `modules_downstream`, scope `global`
+- `analysis/wgcna/score_module_activity.R` - stage `modules_downstream`, scope `dataset_specific`
+- `analysis/wgcna/compare_module_enrichment_overlap.R` - stage `modules_downstream`, scope `dataset_specific`
+- `analysis/wgcna/build_module_identity_contract.R` - stage `modules_downstream`, scope `dataset_specific`
+- `analysis/wgcna/test_module_phenotypes.R` - stage `modules_downstream`, scope `dataset_specific`
+- `analysis/wgcna/annotate_module_microenvironment.R` - stage `modules_downstream`, scope `dataset_specific`
+- `analysis/wgcna/summarize_module_interpretation.R` - stage `modules_downstream`, scope `dataset_specific`
+- `analysis/wgcna/render_module_figures.R` - stage `modules_downstream`, scope `dataset_specific`
+- `analysis/wgcna/summarize_module_scores.R` - stage `modules_downstream`, scope `dataset_specific`
+- `analysis/wgcna/render_microglia_module_figures.R` - stage `modules_downstream`, scope `dataset_specific`
+- `analysis/wgcna/test_microglia_neuropil_independence.R` - stage `modules_downstream`, scope `dataset_specific`
+- `analysis/wgcna/render_microglia_independence_figures.R` - stage `modules_downstream`, scope `dataset_specific`
+- `analysis/wgcna/summarize_microglia_roi_specificity.R` - stage `modules_downstream`, scope `dataset_specific`
+- `analysis/wgcna/summarize_module_complex_architecture.R` - stage `modules_downstream`, scope `dataset_specific`
+- `analysis/wgcna/audit_module_robustness.R` - stage `modules_downstream`, scope `dataset_specific`
+- `analysis/wgcna/audit_microglia_module_claims.R` - stage `modules_downstream`, scope `dataset_specific`
+- `analysis/wgcna/summarize_microglia_module_claims.R` - stage `modules_downstream`, scope `dataset_specific`
+- `analysis/wgcna/audit_module_claim_readiness.R` - stage `modules_downstream`, scope `dataset_specific`
+- `analysis/wgcna/audit_module_label_coherence.R` - stage `networks`, scope `per_dataset`
+- `analysis/wgcna/adjudicate_module_labels.R` - stage `networks`, scope `per_dataset`
+- `analysis/wgcna/build_module_label_registry.R` - stage `networks`, scope `per_dataset`
 
-## 06_gsea
+## enrichment
 
-**Cell-type enrichment (EWCE/GSEA)**
+**Cell-type enrichment (EWCE)**
 
 | field | value |
 | --- | --- |
-| analysis_id | `06_gsea` |
-| human_name | Cell-type enrichment (EWCE/GSEA) |
-| entrypoint | `analysis/06_gsea/run_ewce_celltype_enrichment.R` |
+| analysis_id | `enrichment` |
+| human_name | Cell-type enrichment (EWCE) |
+| entrypoint | `analysis/enrichment/run_ewce_celltype_enrichment.R` |
 | scripts_in_area | 1 (0 required) |
 | inputs | `data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv` |
 | optional_inputs | `data/processed/04_differential_expression_enrichment/compareGO/<dataset>/compareGO_input_manifest.csv` |
 | outputs | `results/tables/05_celltype_enrichment_EWCE/EWCE_E9/` |
 | required_config | - |
-| upstream_dependencies | `04_differential_abundance` |
+| upstream_dependencies | `differential_abundance` |
 | downstream_consumers | - |
 | publication_source_outputs | - |
 | dependency_stages | `enrichment` |
 
 Scripts:
 
-- `analysis/06_gsea/run_ewce_celltype_enrichment.R` - stage `enrichment`, scope `dataset_specific`
+- `analysis/enrichment/run_ewce_celltype_enrichment.R` - stage `enrichment`, scope `dataset_specific`
 
-## 07_spatial_networks
+## spatial_networks
 
 **Spatial and differential networks**
 
 | field | value |
 | --- | --- |
-| analysis_id | `07_spatial_networks` |
+| analysis_id | `spatial_networks` |
 | human_name | Spatial and differential networks |
-| entrypoint | `analysis/07_spatial_networks/build_spatial_networks.R` |
+| entrypoint | `analysis/spatial_networks/build_spatial_networks.R` |
 | scripts_in_area | 6 (1 required) |
 | inputs | `data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv`, `data/processed/07_spatial_networks/network_spatial_relations/<dataset>/*/network_spatial_relations_objects.rds`, `results/tables/07_spatial_networks/bootstrap_differential_network_stability/01_Tables/bootstrap_differential_edge_stability_summary.csv`, +2 more |
 | optional_inputs | `results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/`, `results/tables/07_spatial_networks/bootstrap_differential_network_stability/01_Tables/candidate_edge_differential_stability_summary.csv`, `results/tables/07_spatial_networks/` |
 | outputs | `data/processed/07_spatial_networks/network_spatial_relations/<dataset>/*/network_spatial_relations_objects.rds`, `results/tables/07_spatial_networks/differential_networks/all_group_edges_long.csv`, `results/tables/07_spatial_networks/differential_networks/rewiring_summary_counts.csv`, `results/tables/07_spatial_networks/differential_networks/differential_networks_summary.xlsx`, +4 more |
 | required_config | `config/spatial_networks.local.yml` |
-| upstream_dependencies | `01_preprocessing` |
-| downstream_consumers | `08_integration` |
+| upstream_dependencies | `preprocessing` |
+| downstream_consumers | `integration` |
 | publication_source_outputs | - |
 | dependency_stages | `networks` |
 
 Scripts:
 
-- `analysis/07_spatial_networks/build_spatial_networks.R` - stage `networks`, scope `dataset_specific`, required
-- `analysis/07_spatial_networks/build_differential_networks.R` - stage `networks`, scope `dataset_specific`
-- `analysis/07_spatial_networks/test_network_stability.R` - stage `networks`, scope `dataset_specific`
-- `analysis/07_spatial_networks/test_differential_network_stability.R` - stage `networks`, scope `dataset_specific`
-- `analysis/07_spatial_networks/render_differential_network_figures.R` - stage `networks`, scope `dataset_specific`
-- `analysis/07_spatial_networks/render_network_chord_diagram.R` - stage `networks`, scope `dataset_specific`
+- `analysis/spatial_networks/build_spatial_networks.R` - stage `networks`, scope `dataset_specific`, required
+- `analysis/spatial_networks/build_differential_networks.R` - stage `networks`, scope `dataset_specific`
+- `analysis/spatial_networks/test_network_stability.R` - stage `networks`, scope `dataset_specific`
+- `analysis/spatial_networks/test_differential_network_stability.R` - stage `networks`, scope `dataset_specific`
+- `analysis/spatial_networks/render_differential_network_figures.R` - stage `networks`, scope `dataset_specific`
+- `analysis/spatial_networks/render_network_chord_diagram.R` - stage `networks`, scope `dataset_specific`
 
-## 08_integration
+## integration
 
 **Biological integration and behaviour coupling**
 
 | field | value |
 | --- | --- |
-| analysis_id | `08_integration` |
+| analysis_id | `integration` |
 | human_name | Biological integration and behaviour coupling |
-| entrypoint | `analysis/08_integration/test_behaviour_proteomics_associations.R` |
+| entrypoint | `analysis/integration/test_behaviour_proteomics_associations.R` |
 | scripts_in_area | 17 (0 required) |
 | inputs | `data/external/behavior/auc_individual_animals_firstChangeActive.csv`, `data/processed/07_spatial_networks/network_spatial_relations/<dataset>/*/network_spatial_relations_objects.rds`, `data/external/behavior/E9_Behavior_Data.xlsx`, +51 more |
 | optional_inputs | `data/processed/morpheus/20260218_pgmatrix_imputed_neuron_soma_71samples_missing70pct_with_metadata.xlsx`, `data/external/MOUSE_10090_idmapping.dat`, `data/external/behavior/auc_individual_animals_all.csv`, +25 more |
 | outputs | `results/figures/08_behavior_physio_coupling/correlate_proteomics_with_behavior/Figure3_AUC_vs_Proteomics.svg`, `results/figures/08_behavior_physio_coupling/correlate_proteomics_with_behavior/SourceData_Figure3_Correlation.csv`, `results/tables/08_behavior_physio_coupling/correlate_proteomics_with_behavior/join_diagnostics_summary.csv`, `results/tables/08_behavior_physio_coupling/network_behavior_coupling/`, +118 more |
 | required_config | `config/animal_id_aliases.csv`, `config/gsea_wgcna_program_module_mapping.csv`, `config/gsea_wgcna_theme_module_mapping.csv`, `config/manuscript_go_theme_registry.tsv`, +1 more |
-| upstream_dependencies | `03_spatial_validation`, `04_differential_abundance`, `05_wgcna`, `07_spatial_networks`, `09_publication_exports` |
-| downstream_consumers | `03_spatial_validation`, `09_publication_exports`, Exp9_manuscript (via frozen source data) |
+| upstream_dependencies | `spatial_validation`, `differential_abundance`, `wgcna`, `spatial_networks`, `publication_source_data` |
+| downstream_consumers | `spatial_validation`, `publication_source_data`, Exp9_manuscript (via frozen source data) |
 | publication_source_outputs | `results/source_data/08_behavior_physio_coupling/module_behavior_coupling/<dataset>/module_behavior_coupling.csv`, `results/source_data/10_biological_integration/cross_compartment_program_atlas/global/cross_compartment_program_atlas.csv`, `results/source_data/10_biological_integration/cross_compartment_program_atlas/global/cross_compartment_program_atlas_long.csv`, +34 more |
 | dependency_stages | `coupling`, `integration` |
 
 Scripts:
 
-- `analysis/08_integration/test_behaviour_proteomics_associations.R` - stage `coupling`, scope `dataset_specific`
-- `analysis/08_integration/test_network_behaviour_coupling.R` - stage `coupling`, scope `dataset_specific`
-- `analysis/08_integration/test_module_behaviour_coupling.R` - stage `coupling`, scope `dataset_specific`
-- `analysis/08_integration/audit_animal_id_integrity.R` - stage `coupling`, scope `global`
-- `analysis/08_integration/build_cross_compartment_atlas.R` - stage `integration`, scope `global`
-- `analysis/08_integration/summarize_programs_for_manuscript.R` - stage `integration`, scope `global`
-- `analysis/08_integration/build_evidence_priority_matrix.R` - stage `integration`, scope `global`
-- `analysis/08_integration/test_enrichment_module_concordance.R` - stage `integration`, scope `global`
-- `analysis/08_integration/summarize_enrichment_module_concordance.R` - stage `integration`, scope `global`
-- `analysis/08_integration/build_candidate_protein_shortlist.R` - stage `integration`, scope `per_dataset_and_global`
-- `analysis/08_integration/quantify_candidate_network_position.R` - stage `integration`, scope `per_dataset_and_global`
-- `analysis/08_integration/build_immunostaining_candidates.R` - stage `integration`, scope `global`
-- `analysis/08_integration/screen_immunostaining_panel.R` - stage `integration`, scope `global`
-- `analysis/08_integration/screen_immunostaining_separation.R` - stage `integration`, scope `global`
-- `analysis/08_integration/render_module_circular_atlas.R` - stage `integration`, scope `global`
-- `analysis/08_integration/summarize_module_cross_compartment.R` - stage `integration`, scope `global`
-- `analysis/08_integration/export_module_protein_zoom_source_data.R` - stage `integration`, scope `global`
+- `analysis/integration/test_behaviour_proteomics_associations.R` - stage `coupling`, scope `dataset_specific`
+- `analysis/integration/test_network_behaviour_coupling.R` - stage `coupling`, scope `dataset_specific`
+- `analysis/integration/test_module_behaviour_coupling.R` - stage `coupling`, scope `dataset_specific`
+- `analysis/integration/audit_animal_id_integrity.R` - stage `coupling`, scope `global`
+- `analysis/integration/build_cross_compartment_atlas.R` - stage `integration`, scope `global`
+- `analysis/integration/summarize_programs_for_manuscript.R` - stage `integration`, scope `global`
+- `analysis/integration/build_evidence_priority_matrix.R` - stage `integration`, scope `global`
+- `analysis/integration/test_enrichment_module_concordance.R` - stage `integration`, scope `global`
+- `analysis/integration/summarize_enrichment_module_concordance.R` - stage `integration`, scope `global`
+- `analysis/integration/build_candidate_protein_shortlist.R` - stage `integration`, scope `per_dataset_and_global`
+- `analysis/integration/quantify_candidate_network_position.R` - stage `integration`, scope `per_dataset_and_global`
+- `analysis/integration/build_immunostaining_candidates.R` - stage `integration`, scope `global`
+- `analysis/integration/screen_immunostaining_panel.R` - stage `integration`, scope `global`
+- `analysis/integration/screen_immunostaining_separation.R` - stage `integration`, scope `global`
+- `analysis/integration/render_module_circular_atlas.R` - stage `integration`, scope `global`
+- `analysis/integration/summarize_module_cross_compartment.R` - stage `integration`, scope `global`
+- `analysis/integration/export_module_protein_zoom_source_data.R` - stage `integration`, scope `global`
 
-## 09_publication_exports
+## publication_source_data
 
 **Publication source data and PRIDE export**
 
 | field | value |
 | --- | --- |
-| analysis_id | `09_publication_exports` |
+| analysis_id | `publication_source_data` |
 | human_name | Publication source data and PRIDE export |
-| entrypoint | `analysis/09_publication_exports/build_pride_manifest.R` |
+| entrypoint | `analysis/publication_source_data/build_pride_manifest.R` |
 | scripts_in_area | 9 (1 required) |
 | inputs | `results/tables/04_differential_expression_enrichment/`, `results/tables/06_modules_WGCNA/`, `results/tables/06_modules_WGCNA/claim_readiness/microglia/WGCNA_entity_claim_readiness.csv`, +13 more |
 | optional_inputs | `results/tables/06_modules_WGCNA/interpretable_summary/`, `results/tables/08_behavior_physio_coupling/network_behavior_coupling/`, `09_export_pride_journal/config/export_config.yml`, +9 more |
 | outputs | `results/tables/biological_claims_table.csv`, `results/tables/biological_claims_table.xlsx`, `results/reviewer_audit/wgcna_stage13_claim_cardinality_audit.csv`, `results/reviewer_audit/microglia_wgcna_overlap_stage13_identity_audit.csv`, +21 more |
 | required_config | `config/output_namespaces.yml` |
-| upstream_dependencies | `05_wgcna`, `08_integration` |
-| downstream_consumers | `08_integration` |
+| upstream_dependencies | `wgcna`, `integration` |
+| downstream_consumers | `integration` |
 | publication_source_outputs | - |
 | dependency_stages | `integration`, `export` |
 
 Scripts:
 
-- `analysis/09_publication_exports/build_biological_claims_table.R` - stage `integration`, scope `global`
-- `analysis/09_publication_exports/build_sample_metadata.R` - stage `export`, scope `global`
-- `analysis/09_publication_exports/export_processed_matrices.R` - stage `export`, scope `global`
-- `analysis/09_publication_exports/build_supplementary_tables.R` - stage `export`, scope `global`
-- `analysis/09_publication_exports/build_pride_manifest.R` - stage `export`, scope `global`, required
-- `analysis/09_publication_exports/build_methods_summary.R` - stage `export`, scope `global`
-- `analysis/09_publication_exports/08_export_manuscript_figures.R` - stage `export`, scope `global`
-- `analysis/09_publication_exports/09_export_source_data.R` - stage `export`, scope `global`
-- `analysis/09_publication_exports/validate_pride_submission.R` - stage `export`, scope `global`
+- `analysis/publication_source_data/build_biological_claims_table.R` - stage `integration`, scope `global`
+- `analysis/publication_source_data/build_sample_metadata.R` - stage `export`, scope `global`
+- `analysis/publication_source_data/export_processed_matrices.R` - stage `export`, scope `global`
+- `analysis/publication_source_data/build_supplementary_tables.R` - stage `export`, scope `global`
+- `analysis/publication_source_data/build_pride_manifest.R` - stage `export`, scope `global`, required
+- `analysis/publication_source_data/build_methods_summary.R` - stage `export`, scope `global`
+- `analysis/publication_source_data/08_export_manuscript_figures.R` - stage `export`, scope `global`
+- `analysis/publication_source_data/09_export_source_data.R` - stage `export`, scope `global`
+- `analysis/publication_source_data/validate_pride_submission.R` - stage `export`, scope `global`
 
 ## Area-level cycles
 
 These area pairs exchange files in both directions. Execution order is defined by `pipeline.yml` stage order, not by area; an area is a naming grouping and scripts within two areas can legitimately interleave. Each direction below is created by a specific file.
 
-### `03_spatial_validation` and `08_integration`
+### `integration` and `spatial_validation`
 
-- `08_integration` requires from `03_spatial_validation`: `results/tables/11_spatial_systems/ca2_slm_robustness/CA2_SLM_DAP_robustness.csv`
-- `03_spatial_validation` requires from `08_integration`: `results/tables/10_biological_integration/wgcna_candidate_protein_shortlist/global/wgcna_candidate_proteins_all.csv`
+- `spatial_validation` requires from `integration`: `results/tables/10_biological_integration/wgcna_candidate_protein_shortlist/global/wgcna_candidate_proteins_all.csv`
+- `integration` requires from `spatial_validation`: `results/tables/11_spatial_systems/ca2_slm_robustness/CA2_SLM_DAP_robustness.csv`
 
-### `08_integration` and `09_publication_exports`
+### `integration` and `publication_source_data`
 
-- `09_publication_exports` requires from `08_integration`: `results/tables/10_biological_integration/manuscript_program_summary/global/manuscript_program_summary.csv`
-- `08_integration` requires from `09_publication_exports`: `results/tables/biological_claims_table.csv`
+- `publication_source_data` requires from `integration`: `results/tables/10_biological_integration/manuscript_program_summary/global/manuscript_program_summary.csv`
+- `integration` requires from `publication_source_data`: `results/tables/biological_claims_table.csv`
 

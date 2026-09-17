@@ -72,8 +72,8 @@ write_sus_res_biological_audit_workbook <- function(
     overview, detail, supported_go_audit, dap_counts, registry, output_file,
     protected_hashes = NULL,
     source_scripts = c(
-      "analysis/04_differential_abundance/build_go_program_atlas.R",
-      "analysis/04_differential_abundance/build_sus_res_dap_atlas.R"
+      "analysis/differential_abundance/build_go_program_atlas.R",
+      "analysis/differential_abundance/build_sus_res_dap_atlas.R"
     )) {
   if (!requireNamespace("openxlsx", quietly = TRUE)) {
     stop("Writing sus_res_biological_audit.xlsx requires the installed openxlsx package; packages are not installed automatically.", call. = FALSE)

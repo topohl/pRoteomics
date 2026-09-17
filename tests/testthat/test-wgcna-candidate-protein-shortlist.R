@@ -247,7 +247,7 @@ testthat::test_that("consistency requires unanimity and calibrates to context co
 testthat::test_that("no independence-derived probability survives anywhere", {
   files <- c(
     repo_path("R", "wgcna_candidate_protein_utils.R"),
-    repo_path("analysis/08_integration",
+    repo_path("analysis/integration",
                         "build_candidate_protein_shortlist.R")
   )
   code <- unlist(lapply(files, readLines, warn = FALSE))
@@ -450,7 +450,7 @@ testthat::test_that("flagging and ordering are deterministic", {
 testthat::test_that("no WGCNA or differential-abundance model is refitted", {
   files <- c(
     repo_path("R", "wgcna_candidate_protein_utils.R"),
-    repo_path("analysis/08_integration",
+    repo_path("analysis/integration",
                         "build_candidate_protein_shortlist.R")
   )
   code <- unlist(lapply(files, readLines, warn = FALSE))
@@ -470,7 +470,7 @@ testthat::test_that("no WGCNA or differential-abundance model is refitted", {
 })
 
 testthat::test_that("joins are keyed on canonical ProteinGroupID", {
-  script <- paste(readLines(repo_path("analysis/08_integration",
+  script <- paste(readLines(repo_path("analysis/integration",
     "build_candidate_protein_shortlist.R"
   ), warn = FALSE), collapse = "\n")
 
@@ -673,7 +673,7 @@ testthat::test_that("direction concordance in the real export is never fabricate
 })
 
 testthat::test_that("dry-run reports inputs and writes nothing", {
-  script <- repo_path("analysis/08_integration",
+  script <- repo_path("analysis/integration",
                       "build_candidate_protein_shortlist.R")
   testthat::skip_if_not(file.exists(script))
 
@@ -688,7 +688,7 @@ testthat::test_that("dry-run reports inputs and writes nothing", {
   on.exit(setwd(old_wd), add = TRUE)
   out <- suppressWarnings(system2(
     file.path(R.home("bin"), "Rscript"),
-    c("analysis/08_integration/build_candidate_protein_shortlist.R",
+    c("analysis/integration/build_candidate_protein_shortlist.R",
       "--dry-run"),
     stdout = TRUE, stderr = TRUE
   ))
@@ -1004,7 +1004,7 @@ testthat::test_that("ordering and review views survive zero rows and missing opt
 })
 
 testthat::test_that("the phenotype-linked row highlight targets A1/A2, not the retired A", {
-  script <- paste(readLines(repo_path("analysis/08_integration",
+  script <- paste(readLines(repo_path("analysis/integration",
     "build_candidate_protein_shortlist.R"
   ), warn = FALSE), collapse = "\n")
   # `tier %in% "A"` would be dead code: wcp_candidate_tier never emits "A".

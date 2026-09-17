@@ -505,20 +505,20 @@ build_bundle_readme <- function() {
       "qc_flags", "biological_claims"
     ),
     produced_from = c(
-      "analysis/08_integration/build_evidence_priority_matrix.R and analysis/09_publication_exports/build_biological_claims_table.R",
+      "analysis/integration/build_evidence_priority_matrix.R and analysis/publication_source_data/build_biological_claims_table.R",
       "Final bundle input scanner",
-      "analysis/09_publication_exports/build_biological_claims_table.R",
-      "analysis/09_publication_exports/build_biological_claims_table.R",
-      "analysis/08_integration/summarize_programs_for_manuscript.R",
-      "analysis/08_integration/build_evidence_priority_matrix.R",
-      "analysis/08_integration/build_cross_compartment_atlas.R",
-      "analysis/05_wgcna/summarize_module_interpretation.R",
-      "analysis/05_wgcna/summarize_module_interpretation.R",
-      "analysis/05_wgcna/audit_module_claim_readiness.R",
-      "analysis/05_wgcna/annotate_module_microenvironment.R",
-      "analysis/05_wgcna/test_microglia_neuropil_independence.R",
-      "analysis/09_publication_exports/build_biological_claims_table.R",
-      "analysis/09_publication_exports/build_biological_claims_table.R"
+      "analysis/publication_source_data/build_biological_claims_table.R",
+      "analysis/publication_source_data/build_biological_claims_table.R",
+      "analysis/integration/summarize_programs_for_manuscript.R",
+      "analysis/integration/build_evidence_priority_matrix.R",
+      "analysis/integration/build_cross_compartment_atlas.R",
+      "analysis/wgcna/summarize_module_interpretation.R",
+      "analysis/wgcna/summarize_module_interpretation.R",
+      "analysis/wgcna/audit_module_claim_readiness.R",
+      "analysis/wgcna/annotate_module_microenvironment.R",
+      "analysis/wgcna/test_microglia_neuropil_independence.R",
+      "analysis/publication_source_data/build_biological_claims_table.R",
+      "analysis/publication_source_data/build_biological_claims_table.R"
     ),
     meaning = c(
       "Plain-language index for the workbook.",

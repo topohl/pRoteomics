@@ -33,8 +33,8 @@ FIELDS <- c("Script:", "Stage:", "Scope:", "Consumes:", "Produces:",
 # These two are byte-compared against historical commits by
 # freeze_protected_export_files(); never rewrite them.
 NEVER_TOUCH <- c(
-  "analysis/09_publication_exports/08_export_manuscript_figures.R",
-  "analysis/09_publication_exports/09_export_source_data.R"
+  "analysis/publication_source_data/08_export_manuscript_figures.R",
+  "analysis/publication_source_data/09_export_source_data.R"
 )
 
 registry <- read_pipeline_registry(repo_path("pipeline.yml"))

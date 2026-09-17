@@ -2,17 +2,17 @@ source(testthat::test_path("..", "..", "R", "paths.R"))
 
 testthat::test_that("canonical module entrypoints exist", {
   active <- c(
-    "analysis/05_wgcna/build_wgcna_modules.R",
-    "analysis/05_wgcna/render_module_go_heatmaps.R",
-    "analysis/05_wgcna/build_curated_overlap_programs.R",
-    "analysis/05_wgcna/score_module_activity.R",
-    "analysis/05_wgcna/compare_module_enrichment_overlap.R"
+    "analysis/wgcna/build_wgcna_modules.R",
+    "analysis/wgcna/render_module_go_heatmaps.R",
+    "analysis/wgcna/build_curated_overlap_programs.R",
+    "analysis/wgcna/score_module_activity.R",
+    "analysis/wgcna/compare_module_enrichment_overlap.R"
   )
   testthat::expect_true(all(file.exists(repo_path(active))))
 })
 
 testthat::test_that("module score implementation lives in 03_score_module_activity", {
-  txt <- paste(readLines(repo_path("analysis/05_wgcna/score_module_activity.R"), warn = FALSE), collapse = "\n")
+  txt <- paste(readLines(repo_path("analysis/wgcna/score_module_activity.R"), warn = FALSE), collapse = "\n")
   testthat::expect_false(grepl("source(repo_path(\"06_modules_WGCNA\", \"05_module_score.r\"))", txt, fixed = TRUE))
   testthat::expect_false(grepl("source(repo_path(\"06_modules_WGCNA\", \"91_module_score.r\"))", txt, fixed = TRUE))
   for (needle in c(
@@ -52,48 +52,48 @@ testthat::test_that("pipeline module stages use canonical scripts and contracts"
   modules_downstream <- registry$stages$modules_downstream$scripts
   scripts_wgcna <- vapply(modules_wgcna, function(x) x$script, character(1))
   scripts_downstream <- vapply(modules_downstream, function(x) x$script, character(1))
-  testthat::expect_equal(scripts_wgcna, "analysis/05_wgcna/build_wgcna_modules.R")
+  testthat::expect_equal(scripts_wgcna, "analysis/wgcna/build_wgcna_modules.R")
   required_downstream <- c(
-    "analysis/05_wgcna/render_module_go_heatmaps.R",
-    "analysis/05_wgcna/compare_recurrent_module_proteins.R",
-    "analysis/05_wgcna/build_curated_overlap_programs.R",
-    "analysis/05_wgcna/score_module_activity.R",
-    "analysis/05_wgcna/compare_module_enrichment_overlap.R",
-    "analysis/05_wgcna/build_module_identity_contract.R",
-    "analysis/05_wgcna/test_module_phenotypes.R",
-    "analysis/05_wgcna/annotate_module_microenvironment.R",
-    "analysis/05_wgcna/summarize_module_interpretation.R",
-    "analysis/05_wgcna/render_module_figures.R",
-    "analysis/05_wgcna/summarize_module_scores.R",
-    "analysis/05_wgcna/render_microglia_module_figures.R",
-    "analysis/05_wgcna/test_microglia_neuropil_independence.R",
-    "analysis/05_wgcna/render_microglia_independence_figures.R",
-    "analysis/05_wgcna/summarize_microglia_roi_specificity.R",
-    "analysis/05_wgcna/summarize_module_complex_architecture.R",
-    "analysis/05_wgcna/audit_module_robustness.R",
-    "analysis/05_wgcna/audit_microglia_module_claims.R",
-    "analysis/05_wgcna/summarize_microglia_module_claims.R",
-    "analysis/05_wgcna/audit_module_claim_readiness.R"
+    "analysis/wgcna/render_module_go_heatmaps.R",
+    "analysis/wgcna/compare_recurrent_module_proteins.R",
+    "analysis/wgcna/build_curated_overlap_programs.R",
+    "analysis/wgcna/score_module_activity.R",
+    "analysis/wgcna/compare_module_enrichment_overlap.R",
+    "analysis/wgcna/build_module_identity_contract.R",
+    "analysis/wgcna/test_module_phenotypes.R",
+    "analysis/wgcna/annotate_module_microenvironment.R",
+    "analysis/wgcna/summarize_module_interpretation.R",
+    "analysis/wgcna/render_module_figures.R",
+    "analysis/wgcna/summarize_module_scores.R",
+    "analysis/wgcna/render_microglia_module_figures.R",
+    "analysis/wgcna/test_microglia_neuropil_independence.R",
+    "analysis/wgcna/render_microglia_independence_figures.R",
+    "analysis/wgcna/summarize_microglia_roi_specificity.R",
+    "analysis/wgcna/summarize_module_complex_architecture.R",
+    "analysis/wgcna/audit_module_robustness.R",
+    "analysis/wgcna/audit_microglia_module_claims.R",
+    "analysis/wgcna/summarize_microglia_module_claims.R",
+    "analysis/wgcna/audit_module_claim_readiness.R"
   )
   testthat::expect_true(all(required_downstream %in% scripts_downstream))
   testthat::expect_equal(
-    sum(scripts_downstream == "analysis/05_wgcna/score_module_activity.R"),
+    sum(scripts_downstream == "analysis/wgcna/score_module_activity.R"),
     2L
   )
   ordered_contract <- c(
-    "analysis/05_wgcna/build_module_identity_contract.R",
-    "analysis/05_wgcna/test_module_phenotypes.R",
-    "analysis/05_wgcna/annotate_module_microenvironment.R",
-    "analysis/05_wgcna/summarize_module_interpretation.R",
-    "analysis/05_wgcna/audit_module_claim_readiness.R"
+    "analysis/wgcna/build_module_identity_contract.R",
+    "analysis/wgcna/test_module_phenotypes.R",
+    "analysis/wgcna/annotate_module_microenvironment.R",
+    "analysis/wgcna/summarize_module_interpretation.R",
+    "analysis/wgcna/audit_module_claim_readiness.R"
   )
   testthat::expect_true(all(diff(match(ordered_contract, scripts_downstream)) > 0L))
   testthat::expect_false(any(c(
-    "analysis/05_wgcna/03_overlap_modules.r",
-    "analysis/05_wgcna/04_overlap_modules.r",
-    "analysis/05_wgcna/05_module_score.r",
-    "analysis/05_wgcna/05_wgcna_de_gsea_overlap.r",
-    "analysis/05_wgcna/91_module_score.r"
+    "analysis/wgcna/03_overlap_modules.r",
+    "analysis/wgcna/04_overlap_modules.r",
+    "analysis/wgcna/05_module_score.r",
+    "analysis/wgcna/05_wgcna_de_gsea_overlap.r",
+    "analysis/wgcna/91_module_score.r"
   ) %in% c(scripts_wgcna, scripts_downstream)))
   pipeline_txt <- paste(readLines(repo_path("pipeline.yml"), warn = FALSE), collapse = "\n")
   testthat::expect_true(grepl("module_score/<dataset>/", pipeline_txt, fixed = TRUE))
@@ -122,7 +122,7 @@ testthat::test_that("module score dry-run reports dataset-aware source defaults"
     on.exit(setwd(old_wd), add = TRUE)
     out <- suppressWarnings(system2(
       cmd,
-      c("analysis/05_wgcna/score_module_activity.R", "--dataset", dataset, "--dry-run"),
+      c("analysis/wgcna/score_module_activity.R", "--dataset", dataset, "--dry-run"),
       stdout = TRUE,
       stderr = TRUE
     ))

@@ -3694,7 +3694,7 @@ wgcna_group_consumer_scan_rules <- function() {
       "tests/testthat/fixtures/; explicitly excluded producers, registry, and",
       "Stage 05 fixtures containing deliberate legacy tokens:",
       "R/statistics/wgcna_group_effects_utils.R and",
-      "analysis/05_wgcna/test_module_phenotypes.R;",
+      "analysis/wgcna/test_module_phenotypes.R;",
       "tests/testthat/test-wgcna-group-effects-phase2b.R,",
       "tests/testthat/test-wgcna-group-effects-contract.R, and",
       "tests/testthat/test-schema-validation.R"
@@ -3782,7 +3782,7 @@ wgcna_group_scan_downstream_consumers <- function(root = repo_root()) {
   relative <- gsub("\\\\", "/", relative)
   excluded <- relative %in% c(
     "R/statistics/wgcna_group_effects_utils.R",
-    "analysis/05_wgcna/test_module_phenotypes.R",
+    "analysis/wgcna/test_module_phenotypes.R",
     "tests/testthat/test-wgcna-group-effects-phase2b.R",
     "tests/testthat/test-wgcna-group-effects-contract.R",
     "tests/testthat/test-schema-validation.R"
@@ -3901,7 +3901,7 @@ wgcna_group_stage05_source_dependencies <- function(
     state_path, contract_paths
 ) {
   source_files <- c(
-    repo_path("analysis/05_wgcna", "test_module_phenotypes.R"),
+    repo_path("analysis/wgcna", "test_module_phenotypes.R"),
     repo_path("R", "paths.R"),
     repo_path("R", "dataset_config.R"),
     repo_path("R", "dataset_inputs.R"),

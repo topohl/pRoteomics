@@ -227,31 +227,31 @@ script that writes the family's manuscript-facing product.
 
 ### `results/figures/03_qc_exploration/00b_joint_compartment_qc`
 
-- **owner:** `analysis/02_qc/render_joint_compartment_qc_figures.R` — declares 2 of the 2 outputs in this shared diagnostic family
-- **contributors (1):** `analysis/02_qc/assess_joint_compartment_quality.R`
+- **owner:** `analysis/qc/render_joint_compartment_qc_figures.R` — declares 2 of the 2 outputs in this shared diagnostic family
+- **contributors (1):** `analysis/qc/assess_joint_compartment_quality.R`
 
 ### `results/tables/04_differential_expression_enrichment/compareGO`
 
-- **owner:** `analysis/05_wgcna/compare_recurrent_module_proteins.R` — declares 1 of the 1 outputs in this shared diagnostic family
-- **contributors (1):** `analysis/04_differential_abundance/compare_go_enrichment.R`
+- **owner:** `analysis/wgcna/compare_recurrent_module_proteins.R` — declares 1 of the 1 outputs in this shared diagnostic family
+- **contributors (1):** `analysis/differential_abundance/compare_go_enrichment.R`
 
 ### `results/tables/11_spatial_systems/atlas`
 
-- **owner:** `analysis/03_spatial_validation/build_protein_spatial_atlas.R` — writes the frozen or publication-facing output
-- **contributors (5):** `analysis/03_spatial_validation/build_module_spatial_atlas.R`, `analysis/03_spatial_validation/quantify_neuropil_detection_context.R`, `analysis/03_spatial_validation/quantify_neuropil_precision.R`, `analysis/03_spatial_validation/test_network_group_organization.R`, `analysis/03_spatial_validation/audit_stress_identity_robustness.R`
+- **owner:** `analysis/spatial_validation/build_protein_spatial_atlas.R` — writes the frozen or publication-facing output
+- **contributors (5):** `analysis/spatial_validation/build_module_spatial_atlas.R`, `analysis/spatial_validation/quantify_neuropil_detection_context.R`, `analysis/spatial_validation/quantify_neuropil_precision.R`, `analysis/spatial_validation/test_network_group_organization.R`, `analysis/spatial_validation/audit_stress_identity_robustness.R`
 
 ### `results/tables/11_spatial_systems/bilateral`
 
-- **owner:** `analysis/03_spatial_validation/quantify_bilateral_spatial_identity.R` — writes the frozen or publication-facing output
-- **contributors (2):** `analysis/03_spatial_validation/quantify_empirical_compartments.R`, `analysis/03_spatial_validation/quantify_module_bilateral_identity.R`
+- **owner:** `analysis/spatial_validation/quantify_bilateral_spatial_identity.R` — writes the frozen or publication-facing output
+- **contributors (2):** `analysis/spatial_validation/quantify_empirical_compartments.R`, `analysis/spatial_validation/quantify_module_bilateral_identity.R`
 
 ### `results/tables/11_spatial_systems/ca2_slm_robustness`
 
-- **owner:** `analysis/03_spatial_validation/audit_ca2_slm_robustness.R` — writes the frozen or publication-facing output
-- **contributors (2):** `analysis/03_spatial_validation/audit_stress_identity_robustness.R`, `analysis/03_spatial_validation/summarize_ca2_slm_robustness.R`
+- **owner:** `analysis/spatial_validation/audit_ca2_slm_robustness.R` — writes the frozen or publication-facing output
+- **contributors (2):** `analysis/spatial_validation/audit_stress_identity_robustness.R`, `analysis/spatial_validation/summarize_ca2_slm_robustness.R`
 
 ### `results/tables/11_spatial_systems/networks`
 
-- **owner:** `analysis/03_spatial_validation/test_network_group_organization.R` — writes the frozen or publication-facing output
-- **contributors (2):** `analysis/03_spatial_validation/build_animal_spatial_networks.R`, `analysis/03_spatial_validation/validate_network_workbook.R`
+- **owner:** `analysis/spatial_validation/test_network_group_organization.R` — writes the frozen or publication-facing output
+- **contributors (2):** `analysis/spatial_validation/build_animal_spatial_networks.R`, `analysis/spatial_validation/validate_network_workbook.R`
 

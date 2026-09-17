@@ -19,8 +19,8 @@ mutating_call_pattern <- paste(
 )
 
 dry_run_scripts <- c(
-  "analysis/09_publication_exports/08_export_manuscript_figures.R",
-  "analysis/09_publication_exports/09_export_source_data.R"
+  "analysis/publication_source_data/08_export_manuscript_figures.R",
+  "analysis/publication_source_data/09_export_source_data.R"
 )
 
 for (rel in dry_run_scripts) {
@@ -44,7 +44,7 @@ for (rel in dry_run_scripts) {
 }
 
 testthat::test_that("the export runner only runs dry-run-capable steps under --dry-run", {
-  src <- readLines(file.path(repo, "analysis/09_publication_exports/RUN_EXPORT.R"), warn = FALSE)
+  src <- readLines(file.path(repo, "analysis/publication_source_data/RUN_EXPORT.R"), warn = FALSE)
   joined <- paste(src, collapse = "\n")
   # Steps without a side-effect-free dry-run path must be skipped, not executed.
   testthat::expect_match(joined, "dry_run_capable", fixed = TRUE)
@@ -180,7 +180,7 @@ testthat::test_that("the stale manuscript payload cannot be re-collected as an e
 # ---------------------------------------------------------------------------
 testthat::test_that("figure export routes from canonical result roots only", {
   src <- readLines(
-    file.path(repo, "analysis/09_publication_exports/08_export_manuscript_figures.R"), warn = FALSE
+    file.path(repo, "analysis/publication_source_data/08_export_manuscript_figures.R"), warn = FALSE
   )
   joined <- paste(src, collapse = "\n")
   # Canonical EWCE root, not the comparison branch.
@@ -271,7 +271,7 @@ testthat::test_that("every member of the orphan family is dropped, including the
 
 testthat::test_that("the figure export applies the orphan-family filter", {
   joined <- paste(readLines(
-    file.path(repo, "analysis/09_publication_exports/08_export_manuscript_figures.R"), warn = FALSE
+    file.path(repo, "analysis/publication_source_data/08_export_manuscript_figures.R"), warn = FALSE
   ), collapse = "\n")
   testthat::expect_match(joined, "drop_orphan_figure_families(candidates)", fixed = TRUE)
 })

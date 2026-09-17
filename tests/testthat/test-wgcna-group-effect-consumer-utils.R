@@ -578,16 +578,16 @@ testthat::test_that(
   {
     root <- testthat::test_path("..", "..")
     consumers <- c(
-      "analysis/05_wgcna/render_module_figures.R",
-      "analysis/05_wgcna/render_microglia_module_figures.R",
-      "analysis/05_wgcna/test_microglia_neuropil_independence.R",
-      "analysis/05_wgcna/audit_module_robustness.R",
-      "analysis/05_wgcna/audit_module_claim_readiness.R",
-      "analysis/08_integration/test_module_behaviour_coupling.R",
-      "analysis/09_publication_exports/build_biological_claims_table.R",
-      "analysis/08_integration/build_cross_compartment_atlas.R",
-      "analysis/08_integration/summarize_module_cross_compartment.R",
-      "analysis/08_integration/render_module_circular_atlas.R",
+      "analysis/wgcna/render_module_figures.R",
+      "analysis/wgcna/render_microglia_module_figures.R",
+      "analysis/wgcna/test_microglia_neuropil_independence.R",
+      "analysis/wgcna/audit_module_robustness.R",
+      "analysis/wgcna/audit_module_claim_readiness.R",
+      "analysis/integration/test_module_behaviour_coupling.R",
+      "analysis/publication_source_data/build_biological_claims_table.R",
+      "analysis/integration/build_cross_compartment_atlas.R",
+      "analysis/integration/summarize_module_cross_compartment.R",
+      "analysis/integration/render_module_circular_atlas.R",
       "R/statistics/evidence_bundle_utils.R"
     )
     for (consumer in consumers) {
@@ -608,9 +608,9 @@ testthat::test_that(
       )), info = consumer)
     }
     for (consumer in c(
-      "analysis/05_wgcna/render_module_figures.R",
-      "analysis/05_wgcna/render_microglia_module_figures.R",
-      "analysis/08_integration/render_module_circular_atlas.R"
+      "analysis/wgcna/render_module_figures.R",
+      "analysis/wgcna/render_microglia_module_figures.R",
+      "analysis/integration/render_module_circular_atlas.R"
     )) {
       text <- paste(
         readLines(file.path(root, consumer), warn = FALSE),
@@ -623,7 +623,7 @@ testthat::test_that(
     }
     claims_text <- paste(
       readLines(file.path(
-        root, "analysis/09_publication_exports",
+        root, "analysis/publication_source_data",
         "build_biological_claims_table.R"
       ), warn = FALSE),
       collapse = "\n"

@@ -195,7 +195,7 @@ testthat::test_that("no dataset gains a duplicate AnimalID through normalisation
 # =====================================================================
 
 testthat::test_that("the coupling consumer uses the contract, not a local regex", {
-  src <- code_of("analysis/08_integration", "test_network_behaviour_coupling.R")
+  src <- code_of("analysis/integration", "test_network_behaviour_coupling.R")
   testthat::expect_true(grepl("animal_id_contract.R", src, fixed = TRUE))
   testthat::expect_true(grepl("aid_resolve(", src, fixed = TRUE))
   testthat::expect_true(grepl("aid_assert_no_collision(", src, fixed = TRUE))
@@ -234,7 +234,7 @@ testthat::test_that("the corrected coupling recovers every animal", {
 })
 
 testthat::test_that("the WGCNA-side normaliser touches no canonical module state", {
-  src <- readLines(repo_path("analysis/05_wgcna", "score_module_activity.R"),
+  src <- readLines(repo_path("analysis/wgcna", "score_module_activity.R"),
                    warn = FALSE)
   def <- grep("^normalize_animal_id <- function", src)
   use <- grep("normalize_animal_id\\(", src)

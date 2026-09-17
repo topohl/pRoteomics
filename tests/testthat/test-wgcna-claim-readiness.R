@@ -8,7 +8,7 @@ testthat::test_that(
   "repeated-animal lm fallback cannot enable neuropil claims",
   {
     script <- file.path(
-      root, "analysis/05_wgcna",
+      root, "analysis/wgcna",
       "test_microglia_neuropil_independence.R"
     )
     expressions <- parse(file = script)
@@ -46,7 +46,7 @@ testthat::test_that(
 )
 
 testthat::test_that("Stage 13 is a parseable non-circular microglia handoff", {
-  stage13 <- file.path(root, "analysis/05_wgcna", "audit_module_claim_readiness.R")
+  stage13 <- file.path(root, "analysis/wgcna", "audit_module_claim_readiness.R")
   testthat::expect_silent(parse(file = stage13))
   text <- paste(readLines(stage13, warn = FALSE), collapse = "\n")
   testthat::expect_match(text, "WGCNA_entity_claim_readiness.csv", fixed = TRUE)
@@ -75,7 +75,7 @@ testthat::test_that("Stage 13 is a parseable non-circular microglia handoff", {
   testthat::expect_false(grepl("Stage 05 selected endpoint", effect_text, fixed = TRUE))
   testthat::expect_match(text, 'write_csv(out, file.path(OUT$tables, "WGCNA_entity_claim_readiness.csv"), na = "NA")', fixed = TRUE)
   for (script in c("test_module_phenotypes.R", "annotate_module_microenvironment.R", "summarize_module_interpretation.R", "audit_microglia_module_claims.R")) {
-    source_text <- paste(readLines(file.path(root, "analysis/05_wgcna", script), warn = FALSE), collapse = "\n")
+    source_text <- paste(readLines(file.path(root, "analysis/wgcna", script), warn = FALSE), collapse = "\n")
     testthat::expect_false(grepl("13_wgcna_claim_readiness|claim_readiness", source_text))
   }
 })
@@ -216,7 +216,7 @@ testthat::test_that("Stage 13 carries the exact Stage 07 primary endpoint and pr
 })
 
 testthat::test_that("future cut-height defaults remain distinct from frozen microglia provenance", {
-  stage01 <- file.path(root, "analysis/05_wgcna", "build_wgcna_modules.R")
+  stage01 <- file.path(root, "analysis/wgcna", "build_wgcna_modules.R")
   expressions <- parse(file = stage01)
   is_default_function <- vapply(expressions, function(expr) {
     is.call(expr) && identical(as.character(expr[[1]]), "<-") && identical(as.character(expr[[2]]), "supermodule_merge_cut_height")
@@ -238,7 +238,7 @@ testthat::test_that("future cut-height defaults remain distinct from frozen micr
   } else {
     testthat::succeed("Frozen microglia state is unavailable.")
   }
-  stage12_text <- paste(readLines(file.path(root, "analysis/05_wgcna", "audit_microglia_module_claims.R"), warn = FALSE), collapse = "\n")
+  stage12_text <- paste(readLines(file.path(root, "analysis/wgcna", "audit_microglia_module_claims.R"), warn = FALSE), collapse = "\n")
   testthat::expect_match(stage12_text, "configured_default_cut_height", fixed = TRUE)
   testthat::expect_match(stage12_text, "selected_network_cut_height", fixed = TRUE)
   testthat::expect_match(stage12_text, "historical_explicit_override", fixed = TRUE)
