@@ -4,11 +4,13 @@
 # Script: analysis/differential_abundance/summarize_biological_programs.R
 # Stage: enrichment
 # Scope: dataset_specific
-# Consumes: canonical compareGO manifest and declared term/provenance/status tables; optional canonical neuropil-reference and targeted-signature annotations.
-# Produces: results/tables/04_differential_expression_enrichment/biological_program_summary/<dataset>/program_summary.csv.
+# Consumes: required results/differential_abundance/run_clusterprofiler_enrichment/<dataset>/models/clusterProfiler_manifest.csv; data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv; results/differential_abundance/compare_go_enrichment/<dataset>/models/compareGO_input_manifest.csv; +1 more; optional results/differential_abundance/annotate_neuropil_reference/<dataset>/tables; results/tables/04_differential_expression_enrichment/neuropil_reference_annotation/<dataset>/; results/tables/04_differential_expression_enrichment/microglia_targeted_signature_enrichment/<dataset>/
+# Produces: results/differential_abundance/summarize_biological_programs/<dataset>/tables/program_summary.csv
 # Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Runs after clusterProfiler and compareGO; uses annotations/signatures where supported.
 # ================================================================
+#  
+#  
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
@@ -17,6 +19,13 @@ source(repo_path("R", "validation_utils.R"))
 source(repo_path("R", "enrichment_io.R"))
 source(repo_path("R", "enrichment_plots.R"))
 source(repo_path("R", "plotting_nature.R"))
+source(repo_path("R", "differential_abundance_paths.R"))
+
+# Phase 6G.4: destinations resolve through the normalized output contract,
+# addressed by this analysis's own identity rather than by the historical
+# 04_differential_expression_enrichment stage directory. Outputs already
+# written there stay exactly where they are and are read, never rewritten.
+ANALYSIS_ID <- "summarize_biological_programs"
 
 SCRIPT_ID <- "analysis/differential_abundance/summarize_biological_programs.R"
 Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
@@ -32,7 +41,8 @@ DATASET <- current_dataset()
 
 MODULE_ID <- "04_differential_expression_enrichment"
 SUBSTEP_ID <- file.path("biological_program_summary", DATASET)
-PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
+PATHS <- differential_abundance_dirs(ANALYSIS_ID, scope = DATASET,
+                                     create = TRUE)
 
 required_pkgs <- c("dplyr", "tidyr", "readr", "stringr", "tibble", "ggplot2")
 missing <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]

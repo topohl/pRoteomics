@@ -90,7 +90,7 @@ Scripts:
 | optional_inputs | `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_hemisphere_values.csv`, `results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_modules_long.csv`, `results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv`, +34 more |
 | outputs | `results/spatial_validation/build_spatial_data_contract/global/tables/spatial_systems_hemisphere_inventory.csv`, `results/spatial_validation/build_spatial_data_contract/global/tables/spatial_systems_aggregation_validation.csv`, `results/spatial_validation/build_spatial_data_contract/global/tables/spatial_systems_evidence_dependence.csv`, `results/spatial_validation/quantify_bilateral_spatial_identity/global/tables/bilateral_spatial_identity_protein_level.csv`, +71 more |
 | required_config | `config/marker_panels/wgcna_reference_marker_sets.csv` |
-| upstream_dependencies | `preprocessing`, `differential_abundance`, `wgcna`, `integration` |
+| upstream_dependencies | `preprocessing`, `wgcna`, `integration` |
 | downstream_consumers | - |
 | publication_source_outputs | - |
 | dependency_stages | `networks` |
@@ -126,13 +126,13 @@ Scripts:
 | human_name | Differential abundance and GO/GSEA enrichment |
 | entrypoint | `analysis/differential_abundance/run_clusterprofiler_enrichment.R` |
 | scripts_in_area | 11 (2 required) |
-| inputs | `data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv`, `data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv`, `data/processed/04_differential_expression_enrichment/clusterProfiler/neuron_neuropil/clusterProfiler_manifest.csv`, +9 more |
-| optional_inputs | `data/external/MOUSE_10090_idmapping.dat`, `results/source_data/04_differential_expression_enrichment/clusterProfiler/<dataset>/`, `config/marker_panels/wgcna_reference_marker_sets.csv`, +9 more |
-| outputs | `data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv`, `results/tables/04_differential_expression_enrichment/01b_gsea_protein_direction_audit/<dataset>/<ontology>/gsea_term_direction_audit.csv`, `results/tables/04_differential_expression_enrichment/01b_gsea_protein_direction_audit/<dataset>/<ontology>/gsea_contrast_direction_summary.csv`, `results/tables/04_differential_expression_enrichment/01b_gsea_protein_direction_audit/<dataset>/<ontology>/ora_pooled_direction_warning.csv`, +31 more |
+| inputs | `data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv`, `results/differential_abundance/run_clusterprofiler_enrichment/<dataset>/models/clusterProfiler_manifest.csv`, `data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv`, +17 more |
+| optional_inputs | `data/external/MOUSE_10090_idmapping.dat`, `results/source_data/04_differential_expression_enrichment/clusterProfiler/<dataset>/`, `config/marker_panels/wgcna_reference_marker_sets.csv`, +11 more |
+| outputs | `results/differential_abundance/run_clusterprofiler_enrichment/<dataset>/models/clusterProfiler_manifest.csv`, `results/differential_abundance/audit_gsea_protein_direction/<dataset>/tables/<ontology>/gsea_term_direction_audit.csv`, `results/differential_abundance/audit_gsea_protein_direction/<dataset>/tables/<ontology>/gsea_contrast_direction_summary.csv`, `results/differential_abundance/audit_gsea_protein_direction/<dataset>/tables/<ontology>/ora_pooled_direction_warning.csv`, +31 more |
 | required_config | `config/clusterProfiler_config.local.yml`, `config/clusterProfiler_config.yml`, `config/compareGO_config.local.yml`, `config/compareGO_config.yml`, +2 more |
 | upstream_dependencies | `preprocessing` |
-| downstream_consumers | `spatial_validation`, `wgcna`, `enrichment`, `integration`, Exp9_manuscript (via frozen source data) |
-| publication_source_outputs | `results/source_data/04_differential_expression_enrichment/compareGO_spatial_atlas/spatial_atlas_enrichment_long.csv`, `results/source_data/04_differential_expression_enrichment/compareGO_spatial_atlas/sus_res_supported_go_term_theme_audit.csv`, `results/source_data/04_differential_expression_enrichment/compareGO_spatial_atlas/source_data_SpatialProgramAtlas_SUS_vs_RES_publication.csv`, +4 more |
+| downstream_consumers | `wgcna`, `enrichment`, `integration` |
+| publication_source_outputs | - |
 | dependency_stages | `enrichment` |
 
 Scripts:
@@ -159,8 +159,8 @@ Scripts:
 | human_name | WGCNA modules and supermodules |
 | entrypoint | `analysis/wgcna/build_wgcna_modules.R` |
 | scripts_in_area | 24 (1 required) |
-| inputs | `data/processed/01_preprocessing/impute/*_pgmatrix_imputed_<dataset>_*_missing70pct.xlsx`, `data/metadata/TPE9_sample_metadata_males.xlsx`, `data/external/MOUSE_10090_idmapping.dat`, +56 more |
-| optional_inputs | `data/metadata/manual_mapping.xlsx`, `data/external/MOUSE_10090_idmapping.dat`, `data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx`, +29 more |
+| inputs | `data/processed/01_preprocessing/impute/*_pgmatrix_imputed_<dataset>_*_missing70pct.xlsx`, `data/metadata/TPE9_sample_metadata_males.xlsx`, `data/external/MOUSE_10090_idmapping.dat`, +58 more |
+| optional_inputs | `data/metadata/manual_mapping.xlsx`, `data/external/MOUSE_10090_idmapping.dat`, `data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx`, +31 more |
 | outputs | `results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/`, `results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_module_supermodule_annotation.csv`, `results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_supermodule_summary.csv`, `results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_supermodule_GO_term_support_audit.csv`, +119 more |
 | required_config | `config/marker_panels/microenvironment_marker_panels.csv`, `config/marker_panels/wgcna_reference_marker_sets.csv`, `config/microglia_neuropil_independence.yml`, `config/wgcna_labels/microglia.csv` |
 | upstream_dependencies | `preprocessing`, `differential_abundance` |
@@ -205,8 +205,8 @@ Scripts:
 | human_name | Cell-type enrichment (EWCE) |
 | entrypoint | `analysis/enrichment/run_ewce_celltype_enrichment.R` |
 | scripts_in_area | 1 (0 required) |
-| inputs | `data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv` |
-| optional_inputs | `data/processed/04_differential_expression_enrichment/compareGO/<dataset>/compareGO_input_manifest.csv` |
+| inputs | `results/differential_abundance/run_clusterprofiler_enrichment/<dataset>/models/clusterProfiler_manifest.csv`, `data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv` |
+| optional_inputs | `results/differential_abundance/compare_go_enrichment/<dataset>/models/compareGO_input_manifest.csv`, `data/processed/04_differential_expression_enrichment/compareGO/<dataset>/compareGO_input_manifest.csv` |
 | outputs | `results/enrichment/run_ewce_celltype_enrichment/<dataset>/tables/`, `results/enrichment/run_ewce_celltype_enrichment/<dataset>/plots/`, `results/enrichment/run_ewce_celltype_enrichment/<dataset>/models/`, `results/enrichment/run_ewce_celltype_enrichment/<dataset>/manifests/`, +1 more |
 | required_config | `config/legacy_output_registry.csv`, `config/output_layout.yml` |
 | upstream_dependencies | `differential_abundance` |
@@ -256,8 +256,8 @@ Scripts:
 | human_name | Biological integration and behaviour coupling |
 | entrypoint | `analysis/integration/test_behaviour_proteomics_associations.R` |
 | scripts_in_area | 17 (0 required) |
-| inputs | `data/external/behavior/auc_individual_animals_firstChangeActive.csv`, `results/spatial_networks/build_spatial_networks/<dataset>/models/*/network_spatial_relations_objects.rds`, `data/processed/07_spatial_networks/network_spatial_relations/<dataset>/*/network_spatial_relations_objects.rds`, +52 more |
-| optional_inputs | `data/processed/morpheus/20260218_pgmatrix_imputed_neuron_soma_71samples_missing70pct_with_metadata.xlsx`, `data/external/MOUSE_10090_idmapping.dat`, `data/external/behavior/auc_individual_animals_all.csv`, +25 more |
+| inputs | `data/external/behavior/auc_individual_animals_firstChangeActive.csv`, `results/spatial_networks/build_spatial_networks/<dataset>/models/*/network_spatial_relations_objects.rds`, `data/processed/07_spatial_networks/network_spatial_relations/<dataset>/*/network_spatial_relations_objects.rds`, +55 more |
+| optional_inputs | `data/processed/morpheus/20260218_pgmatrix_imputed_neuron_soma_71samples_missing70pct_with_metadata.xlsx`, `data/external/MOUSE_10090_idmapping.dat`, `data/external/behavior/auc_individual_animals_all.csv`, +27 more |
 | outputs | `results/figures/08_behavior_physio_coupling/correlate_proteomics_with_behavior/Figure3_AUC_vs_Proteomics.svg`, `results/figures/08_behavior_physio_coupling/correlate_proteomics_with_behavior/SourceData_Figure3_Correlation.csv`, `results/tables/08_behavior_physio_coupling/correlate_proteomics_with_behavior/join_diagnostics_summary.csv`, `results/tables/08_behavior_physio_coupling/network_behavior_coupling/`, +118 more |
 | required_config | `config/animal_id_aliases.csv`, `config/gsea_wgcna_program_module_mapping.csv`, `config/gsea_wgcna_theme_module_mapping.csv`, `config/manuscript_go_theme_registry.tsv`, +1 more |
 | upstream_dependencies | `differential_abundance`, `wgcna`, `spatial_networks`, `publication_source_data` |

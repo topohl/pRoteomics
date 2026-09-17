@@ -6,10 +6,12 @@
 # Script: analysis/differential_abundance/audit_stress_response_biology.R
 # Stage: enrichment
 # Scope: global
-# Consumes: required data/processed/04_differential_expression_enrichment/clusterProfiler/neuron_neuropil/clusterProfiler_manifest.csv; data/processed/04_differential_expression_enrichment/clusterProfiler/neuron_soma/clusterProfiler_manifest.csv; data/processed/04_differential_expression_enrichment/clusterProfiler/microglia/clusterProfiler_manifest.csv; +2 more; optional none declared in pipeline.yml
-# Produces: results/tables/04_differential_expression_enrichment/stress_response_biological_audit/global/; results/source_data/04_differential_expression_enrichment/stress_response_biological_audit/global/; results/figures/04_differential_expression_enrichment/stress_response_biological_audit/global/; +2 more
+# Consumes: required results/differential_abundance/run_clusterprofiler_enrichment/neuron_neuropil/models/clusterProfiler_manifest.csv; data/processed/04_differential_expression_enrichment/clusterProfiler/neuron_neuropil/clusterProfiler_manifest.csv; results/differential_abundance/run_clusterprofiler_enrichment/neuron_soma/models/clusterProfiler_manifest.csv; +6 more; optional none declared in pipeline.yml
+# Produces: results/differential_abundance/audit_stress_response_biology/global/tables; results/differential_abundance/audit_stress_response_biology/global/tables/source_data; results/differential_abundance/audit_stress_response_biology/global/plots; +2 more
 # Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Bounded downstream three-contrast audit of active stress-response remodeling.
+#  
+#  
 
 source("R/paths.R")
 source("R/data_contracts/dataset_config.R")
@@ -18,16 +20,24 @@ source("R/enrichment/enrichment_io.R")
 source("R/enrichment/manuscript_go_theme_utils.R")
 source("R/statistics/sus_res_spatial_dap_atlas_utils.R")
 source("R/statistics/stress_response_biological_audit_utils.R")
+source(repo_path("R", "differential_abundance_paths.R"))
+
+# Phase 6G.4: destinations resolve through the normalized output contract,
+# addressed by this analysis's own identity rather than by the historical
+# 04_differential_expression_enrichment stage directory. Outputs already
+# written there stay exactly where they are and are read, never rewritten.
+ANALYSIS_ID <- "audit_stress_response_biology"
 
 MODULE_ID <- "04_differential_expression_enrichment"
 SUBSTEP_ID <- "stress_response_biological_audit"
 DATASETS <- c("neuron_neuropil", "neuron_soma", "microglia")
 ROOT <- repo_root()
-TABLE_DIR <- path_results("tables", MODULE_ID, SUBSTEP_ID, "global")
-SOURCE_DIR <- path_results("source_data", MODULE_ID, SUBSTEP_ID, "global")
-FIGURE_DIR <- path_results("figures", MODULE_ID, SUBSTEP_ID, "global")
-REPORT_DIR <- path_results("reports", MODULE_ID, SUBSTEP_ID, "global")
-LOG_DIR <- path_results("logs", MODULE_ID, SUBSTEP_ID, "global")
+CANONICAL_PATHS <- differential_abundance_dirs(ANALYSIS_ID, scope = "global")
+TABLE_DIR <- CANONICAL_PATHS$tables
+SOURCE_DIR <- CANONICAL_PATHS$source_data
+FIGURE_DIR <- CANONICAL_PATHS$plots
+REPORT_DIR <- CANONICAL_PATHS$reports
+LOG_DIR <- CANONICAL_PATHS$manifests
 REGISTRY_PATH <- repo_path("config", "manuscript_go_theme_registry.tsv")
 GO_SOURCE <- path_results("source_data", MODULE_ID, "compareGO_spatial_atlas", "spatial_atlas_enrichment_long.csv")
 SUS_RES_REFERENCE_WORKBOOK <- path_results("reports", MODULE_ID, "sus_res_spatial_dap_atlas", "global", "sus_res_biological_audit.xlsx")

@@ -2,14 +2,23 @@
 # Stage: enrichment
 # Scope: global
 # Consumes: required data/external/kaulich_2025/kaulich_supplementary_data_2.xlsx; data/metadata/TPE9_sample_metadata_males.xlsx; optional none declared in pipeline.yml
-# Produces: results/tables/04_differential_expression_enrichment/control_spatial_identity_validation/global/; results/source_data/04_differential_expression_enrichment/control_spatial_identity_validation/global/; results/figures/04_differential_expression_enrichment/control_spatial_identity_validation/global/; +1 more
+# Produces: results/differential_abundance/validate_control_spatial_identity/global/tables; results/differential_abundance/validate_control_spatial_identity/global/tables/source_data; results/differential_abundance/validate_control_spatial_identity/global/plots; +1 more
 # Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Figure 2 control-anatomy validation only; does not consume or modify stress/WGCNA outputs.
+#  
+#  
 source("R/paths.R"); source("R/data_contracts/dataset_config.R"); source("R/data_contracts/dataset_inputs.R")
 source("R/utilities/validation_utils.R"); source("R/qc/qc_exploration_utils.R")
 source("R/enrichment/protein_group_enrichment_utils.R"); source("R/spatial/control_spatial_identity_utils.R")
 source("R/enrichment/clusterprofiler_reproducibility.R")
 source("R/utilities/plotting_nature.R")
+source(repo_path("R", "differential_abundance_paths.R"))
+
+# Phase 6G.4: destinations resolve through the normalized output contract,
+# addressed by this analysis's own identity rather than by the historical
+# 04_differential_expression_enrichment stage directory. Outputs already
+# written there stay exactly where they are and are read, never rewritten.
+ANALYSIS_ID <- "validate_control_spatial_identity"
 suppressPackageStartupMessages({ library(limma); library(clusterProfiler); library(org.Mm.eg.db); library(ggplot2) })
 
 control_spatial_publication_contrast_label <- function(x) {
@@ -386,7 +395,29 @@ if (!nzchar(validation_output_root)) validation_output_root <- root
 validation_output_root <- normalizePath(
   validation_output_root, winslash = "/", mustWork = FALSE
 )
-out <- function(kind, name) file.path(validation_output_root, "results", kind, "04_differential_expression_enrichment", "control_spatial_identity_validation", "global", name)
+## kind is the historical top-level results directory; it maps onto the
+## normalized lifecycle child. figures becomes plots, logs becomes
+## manifests, source_data sits under tables.
+## kind is the historical top-level results directory; it maps onto the
+## normalized lifecycle child. figures becomes plots and logs becomes
+## manifests, because the layout contract reserves "figures" for the
+## manuscript's assembled panels and treats run manifests as provenance.
+##
+## The shape comes from the central path API rather than being written out
+## here. It has to be the repo-relative form because this script supports
+## redirecting its output root, which an absolute canonical path cannot honour.
+out <- function(kind, name) {
+  spec <- switch(kind,
+    tables      = list("tables", NULL),
+    source_data = list("tables", "source_data"),
+    figures     = list("plots", NULL),
+    logs        = list("manifests", NULL),
+    reports     = list("reports", NULL),
+    list(kind, NULL))
+  rel <- differential_abundance_relative_path(ANALYSIS_ID, "global", spec[[1]],
+                                              spec[[2]], name)
+  file.path(validation_output_root, rel)
+}
 tables <- c(protein=out("tables","anatomical_protein_contrasts.csv"), mapping=out("tables","kaulich_signature_mapping.csv"), kaulich=out("tables","kaulich_signature_gsea.csv"), go=out("tables","control_anatomical_go_bp_gsea.csv"), matching_audit=out("tables","figure2e_matching_audit.csv"), status=out("tables","analysis_status.csv"))
 source_data <- c(e=out("source_data","figure2e_source_data.csv"), f=out("source_data","figure2f_source_data.csv")); figures <- c(e=out("figures","figure2e_kaulich_validation.svg"), f=out("figures","figure2f_control_anatomical_GO.svg")); manifest <- out("logs","run_manifest.yml")
 candidate_source <- out("source_data", "figure2f_regions_CA1layers_source_data.csv")

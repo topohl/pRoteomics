@@ -4,8 +4,8 @@
 # Script: analysis/differential_abundance/test_microglia_targeted_signatures.R
 # Stage: enrichment
 # Scope: dataset_specific
-# Consumes: required mapped microglia/neuropil ranked contrasts and results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv; optional config/marker_panels/wgcna_reference_marker_sets.csv and results/enrichment/run_ewce_celltype_enrichment/<dataset>/models/EWCE_results_full.rds (historical location also accepted) (diagnostic only).
-# Produces: results/tables/04_differential_expression_enrichment/microglia_targeted_signature_enrichment/microglia/.
+# Consumes: required results/differential_abundance/run_clusterprofiler_enrichment/microglia/models/clusterProfiler_manifest.csv; data/processed/04_differential_expression_enrichment/clusterProfiler/microglia/clusterProfiler_manifest.csv; optional config/marker_panels/wgcna_reference_marker_sets.csv; results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv; data/processed/05_celltype_enrichment_EWCE/EWCE_E9/microglia/EWCE_results_full.rds
+# Produces: results/differential_abundance/test_microglia_targeted_signatures/microglia/tables
 # Dataset behavior: runs for microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Microglia-only targeted signature enrichment.
 # ================================================================
@@ -16,6 +16,8 @@
 # microenvironment samples, not purified microglia. Neuropil is therefore used
 # as a reference annotation layer only. This script never subtracts neuropil
 # intensities or logFC values.
+#  
+#  
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
@@ -23,6 +25,13 @@ source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "validation_utils.R"))
 source(repo_path("R", "clusterprofiler_reproducibility.R"))
 source(repo_path("R", "microglia_targeted_signature_utils.R"))
+source(repo_path("R", "differential_abundance_paths.R"))
+
+# Phase 6G.4: destinations resolve through the normalized output contract,
+# addressed by this analysis's own identity rather than by the historical
+# 04_differential_expression_enrichment stage directory. Outputs already
+# written there stay exactly where they are and are read, never rewritten.
+ANALYSIS_ID <- "test_microglia_targeted_signatures"
 
 args <- commandArgs(trailingOnly = TRUE)
 arg_value <- function(flag, default = "") {
@@ -60,7 +69,7 @@ EMPIRICAL_ROI_MARKER_PATH <- Sys.getenv(
 )
 
 OUTPUT_DATASET_ID <- if (VALIDATION_ONLY) paste0(DATASET, "_validation_proposed") else DATASET
-PATHS <- create_module_dirs(MODULE_ID, file.path(SUBSTEP_ID, OUTPUT_DATASET_ID))
+PATHS <- differential_abundance_dirs(ANALYSIS_ID, scope = OUTPUT_DATASET_ID)
 invisible(lapply(PATHS, dir_create))
 FIG_PATHS <- list(
   main_candidate = file.path(PATHS$figures, "main_candidate"),

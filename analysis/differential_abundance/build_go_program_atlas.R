@@ -2,8 +2,8 @@
 # Script: analysis/differential_abundance/build_go_program_atlas.R
 # Stage: enrichment
 # Scope: dataset_specific
-# Consumes: canonical compareGO manifest-declared term comparison, term-gene provenance, and analysis-status tables for each dataset; config/manuscript_go_theme_registry.tsv; optional finalized biological_program_summary/<dataset>/program_summary.csv for validation cross-checks.
-# Produces: legacy broad heuristic spatial-program outputs plus ontology-aware SUS-RES manuscript-theme tables/audits under compareGO_spatial_atlas.
+# Consumes: required results/differential_abundance/compare_go_enrichment/<dataset>/models/compareGO_input_manifest.csv; data/processed/04_differential_expression_enrichment/compareGO/<dataset>/compareGO_input_manifest.csv; config/manuscript_go_theme_registry.tsv; optional results/differential_abundance/summarize_biological_programs/<dataset>/tables/program_summary.csv; results/tables/04_differential_expression_enrichment/biological_program_summary/<dataset>/program_summary.csv
+# Produces: results/differential_abundance/build_go_program_atlas/global/tables/spatial_program_summary.csv; results/differential_abundance/build_go_program_atlas/global/tables/compareGO_spatial_program_atlas_tables.xlsx; results/differential_abundance/build_go_program_atlas/global/tables/sus_res_manuscript_theme_summary.csv; +3 more
 # Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Spatial program atlas from compareGO outputs.
 # ================================================================
@@ -13,6 +13,8 @@
 #' Consumes existing compareGO outputs across dataset families and synthesizes
 #' generic spatial program summaries and ontology-aware SUS-RES manuscript
 #' theme outputs. This script does not rerun clusterProfiler or compareGO.
+#  
+#  
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
@@ -24,6 +26,13 @@ if (!file.exists(dataset_config_file)) {
   stop("Missing required config: ", dataset_config_file, call. = FALSE)
 }
 source(dataset_config_file)
+source(repo_path("R", "differential_abundance_paths.R"))
+
+# Phase 6G.4: destinations resolve through the normalized output contract,
+# addressed by this analysis's own identity rather than by the historical
+# 04_differential_expression_enrichment stage directory. Outputs already
+# written there stay exactly where they are and are read, never rewritten.
+ANALYSIS_ID <- "build_go_program_atlas"
 
 if (!exists("proteomics_dataset_order", inherits = TRUE)) {
   proteomics_dataset_order <- if (exists("valid_datasets", inherits = TRUE)) valid_datasets() else c("neuron_neuropil", "neuron_soma", "microglia")
@@ -47,7 +56,9 @@ MODULE_ID <- "04_differential_expression_enrichment"
 args <- commandArgs(trailingOnly = TRUE)
 VALIDATION_ONLY <- "--validation-only" %in% args || tolower(Sys.getenv("PROTEOMICS_SPATIAL_ATLAS_VALIDATION_ONLY", unset = "")) %in% c("1", "true", "yes", "y")
 SUBSTEP_ID <- if (VALIDATION_ONLY) "compareGO_spatial_atlas_validation_proposed" else "compareGO_spatial_atlas"
-CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
+CANONICAL_PATHS <- differential_abundance_dirs(
+  ANALYSIS_ID, scope = "global",
+  suffix = if (VALIDATION_ONLY) "validation_proposed" else NULL)
 
 required_pkgs <- c("dplyr", "tidyr", "purrr", "readr", "writexl", "ggplot2", "stringr", "tibble", "scales")
 MANUSCRIPT_GO_THEME_REGISTRY <- repo_path("config", "manuscript_go_theme_registry.tsv")

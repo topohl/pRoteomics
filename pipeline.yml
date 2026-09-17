@@ -237,7 +237,7 @@ stages:
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "enrichment"
         scope: "dataset_specific"
-        produces: ["data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv"]
+        produces: ["results/differential_abundance/run_clusterprofiler_enrichment/<dataset>/models/clusterProfiler_manifest.csv"]
         consumes_required: ["data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv"]
         consumes_optional: ["data/external/MOUSE_10090_idmapping.dat"]
         recomputes_core_state: false
@@ -248,8 +248,8 @@ stages:
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "enrichment"
         scope: "dataset_specific"
-        produces: ["results/tables/04_differential_expression_enrichment/01b_gsea_protein_direction_audit/<dataset>/<ontology>/gsea_term_direction_audit.csv", "results/tables/04_differential_expression_enrichment/01b_gsea_protein_direction_audit/<dataset>/<ontology>/gsea_contrast_direction_summary.csv", "results/tables/04_differential_expression_enrichment/01b_gsea_protein_direction_audit/<dataset>/<ontology>/ora_pooled_direction_warning.csv", "results/tables/04_differential_expression_enrichment/01b_gsea_protein_direction_audit/<dataset>/<ontology>/input_status.csv", "results/logs/04_differential_expression_enrichment/01b_gsea_protein_direction_audit/<dataset>/<ontology>/run_manifest.yml"]
-        consumes_required: ["data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv", "data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv"]
+        produces: ["results/differential_abundance/audit_gsea_protein_direction/<dataset>/tables/<ontology>/gsea_term_direction_audit.csv", "results/differential_abundance/audit_gsea_protein_direction/<dataset>/tables/<ontology>/gsea_contrast_direction_summary.csv", "results/differential_abundance/audit_gsea_protein_direction/<dataset>/tables/<ontology>/ora_pooled_direction_warning.csv", "results/differential_abundance/audit_gsea_protein_direction/<dataset>/tables/<ontology>/input_status.csv", "results/differential_abundance/audit_gsea_protein_direction/<dataset>/manifests/<ontology>/run_manifest.yml"]
+        consumes_required: ["results/differential_abundance/run_clusterprofiler_enrichment/<dataset>/models/clusterProfiler_manifest.csv", "data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv", "data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv"]
         consumes_optional: ["results/source_data/04_differential_expression_enrichment/clusterProfiler/<dataset>/"]
         recomputes_core_state: false
         safe_downstream_rerun: true
@@ -259,8 +259,8 @@ stages:
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "enrichment"
         scope: "dataset_specific"
-        produces: ["data/processed/04_differential_expression_enrichment/compareGO/<dataset>/compareGO_input_manifest.csv", "results/tables/04_differential_expression_enrichment/compareGO/<dataset>/"]
-        consumes_required: ["data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv"]
+        produces: ["results/differential_abundance/compare_go_enrichment/<dataset>/models/compareGO_input_manifest.csv", "results/differential_abundance/compare_go_enrichment/<dataset>/tables"]
+        consumes_required: ["results/differential_abundance/run_clusterprofiler_enrichment/<dataset>/models/clusterProfiler_manifest.csv", "data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv"]
         consumes_optional: []
         recomputes_core_state: false
         safe_downstream_rerun: true
@@ -270,8 +270,8 @@ stages:
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "enrichment"
         scope: "dataset_specific"
-        produces: ["results/tables/04_differential_expression_enrichment/neuropil_reference_annotation/<dataset>/"]
-        consumes_required: ["data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv", "data/processed/04_differential_expression_enrichment/clusterProfiler/neuron_neuropil/clusterProfiler_manifest.csv"]
+        produces: ["results/differential_abundance/annotate_neuropil_reference/<dataset>/tables"]
+        consumes_required: ["results/differential_abundance/run_clusterprofiler_enrichment/<dataset>/models/clusterProfiler_manifest.csv", "data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv", "results/differential_abundance/run_clusterprofiler_enrichment/neuron_neuropil/models/clusterProfiler_manifest.csv", "data/processed/04_differential_expression_enrichment/clusterProfiler/neuron_neuropil/clusterProfiler_manifest.csv"]
         consumes_optional: ["config/marker_panels/wgcna_reference_marker_sets.csv"]
         recomputes_core_state: false
         safe_downstream_rerun: true
@@ -281,8 +281,8 @@ stages:
         datasets: ["microglia"]
         stage: "enrichment"
         scope: "dataset_specific"
-        produces: ["results/tables/04_differential_expression_enrichment/microglia_targeted_signature_enrichment/microglia/"]
-        consumes_required: ["data/processed/04_differential_expression_enrichment/clusterProfiler/microglia/clusterProfiler_manifest.csv"]
+        produces: ["results/differential_abundance/test_microglia_targeted_signatures/microglia/tables"]
+        consumes_required: ["results/differential_abundance/run_clusterprofiler_enrichment/microglia/models/clusterProfiler_manifest.csv", "data/processed/04_differential_expression_enrichment/clusterProfiler/microglia/clusterProfiler_manifest.csv"]
         consumes_optional: ["config/marker_panels/wgcna_reference_marker_sets.csv", "results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv", "data/processed/05_celltype_enrichment_EWCE/EWCE_E9/microglia/EWCE_results_full.rds"]
         recomputes_core_state: false
         safe_downstream_rerun: true
@@ -292,9 +292,9 @@ stages:
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "enrichment"
         scope: "dataset_specific"
-        produces: ["results/tables/04_differential_expression_enrichment/biological_program_summary/<dataset>/program_summary.csv"]
-        consumes_required: ["data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv", "data/processed/04_differential_expression_enrichment/compareGO/<dataset>/compareGO_input_manifest.csv"]
-        consumes_optional: ["results/tables/04_differential_expression_enrichment/neuropil_reference_annotation/<dataset>/", "results/tables/04_differential_expression_enrichment/microglia_targeted_signature_enrichment/<dataset>/"]
+        produces: ["results/differential_abundance/summarize_biological_programs/<dataset>/tables/program_summary.csv"]
+        consumes_required: ["results/differential_abundance/run_clusterprofiler_enrichment/<dataset>/models/clusterProfiler_manifest.csv", "data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv", "results/differential_abundance/compare_go_enrichment/<dataset>/models/compareGO_input_manifest.csv", "data/processed/04_differential_expression_enrichment/compareGO/<dataset>/compareGO_input_manifest.csv"]
+        consumes_optional: ["results/differential_abundance/annotate_neuropil_reference/<dataset>/tables", "results/tables/04_differential_expression_enrichment/neuropil_reference_annotation/<dataset>/", "results/tables/04_differential_expression_enrichment/microglia_targeted_signature_enrichment/<dataset>/"]
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Runs after clusterProfiler and compareGO; summarizes conservative biological programs and uses annotations/signatures where supported."
@@ -303,9 +303,9 @@ stages:
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "enrichment"
         scope: "dataset_specific"
-        produces: ["results/tables/04_differential_expression_enrichment/compareGO_spatial_atlas/spatial_program_summary.csv", "results/tables/04_differential_expression_enrichment/compareGO_spatial_atlas/compareGO_spatial_program_atlas_tables.xlsx", "results/tables/04_differential_expression_enrichment/compareGO_spatial_atlas/sus_res_manuscript_theme_summary.csv", "results/source_data/04_differential_expression_enrichment/compareGO_spatial_atlas/spatial_atlas_enrichment_long.csv", "results/source_data/04_differential_expression_enrichment/compareGO_spatial_atlas/sus_res_supported_go_term_theme_audit.csv", "results/source_data/04_differential_expression_enrichment/compareGO_spatial_atlas/source_data_SpatialProgramAtlas_SUS_vs_RES_publication.csv"]
-        consumes_required: ["data/processed/04_differential_expression_enrichment/compareGO/<dataset>/compareGO_input_manifest.csv", "config/manuscript_go_theme_registry.tsv"]
-        consumes_optional: ["results/tables/04_differential_expression_enrichment/biological_program_summary/<dataset>/program_summary.csv"]
+        produces: ["results/differential_abundance/build_go_program_atlas/global/tables/spatial_program_summary.csv", "results/differential_abundance/build_go_program_atlas/global/tables/compareGO_spatial_program_atlas_tables.xlsx", "results/differential_abundance/build_go_program_atlas/global/tables/sus_res_manuscript_theme_summary.csv", "results/differential_abundance/build_go_program_atlas/global/tables/source_data/spatial_atlas_enrichment_long.csv", "results/differential_abundance/build_go_program_atlas/global/tables/source_data/sus_res_supported_go_term_theme_audit.csv", "results/differential_abundance/build_go_program_atlas/global/tables/source_data/source_data_SpatialProgramAtlas_SUS_vs_RES_publication.csv"]
+        consumes_required: ["results/differential_abundance/compare_go_enrichment/<dataset>/models/compareGO_input_manifest.csv", "data/processed/04_differential_expression_enrichment/compareGO/<dataset>/compareGO_input_manifest.csv", "config/manuscript_go_theme_registry.tsv"]
+        consumes_optional: ["results/differential_abundance/summarize_biological_programs/<dataset>/tables/program_summary.csv", "results/tables/04_differential_expression_enrichment/biological_program_summary/<dataset>/program_summary.csv"]
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Builds the backward-compatible broad heuristic spatial program atlas plus a SUS-RES manuscript layer mapped by GO ID through GO.db is_a/part_of relationships. GOSemSim Wang similarity is descriptive redundancy QA only; enrichment statistics are unchanged."
@@ -314,7 +314,7 @@ stages:
         datasets: ["global"]
         stage: "enrichment"
         scope: "global"
-        produces: ["results/tables/04_differential_expression_enrichment/external_stress_disease_signature_overlap/global/external_stress_disease_signature_overlap.csv", "results/source_data/04_differential_expression_enrichment/external_stress_disease_signature_overlap/global/external_stress_disease_signature_overlap.csv", "results/logs/04_differential_expression_enrichment/external_stress_disease_signature_overlap/global/run_manifest.yml"]
+        produces: ["results/differential_abundance/compare_external_stress_signatures/global/tables/external_stress_disease_signature_overlap.csv", "results/differential_abundance/compare_external_stress_signatures/global/tables/source_data/external_stress_disease_signature_overlap.csv", "results/differential_abundance/compare_external_stress_signatures/global/manifests/run_manifest.yml"]
         consumes_required: []
         consumes_optional: ["data/external/stress_disease_signatures/*.csv", "results/tables/04_differential_expression_enrichment/biological_program_summary/neuron_neuropil/program_summary.csv", "results/tables/04_differential_expression_enrichment/biological_program_summary/neuron_soma/program_summary.csv", "results/tables/04_differential_expression_enrichment/biological_program_summary/microglia/program_summary.csv"]
         recomputes_core_state: false
@@ -325,7 +325,7 @@ stages:
         datasets: ["global"]
         stage: "enrichment"
         scope: "global"
-        produces: ["results/tables/04_differential_expression_enrichment/control_spatial_identity_validation/global/", "results/source_data/04_differential_expression_enrichment/control_spatial_identity_validation/global/", "results/figures/04_differential_expression_enrichment/control_spatial_identity_validation/global/", "results/logs/04_differential_expression_enrichment/control_spatial_identity_validation/global/run_manifest.yml"]
+        produces: ["results/differential_abundance/validate_control_spatial_identity/global/tables", "results/differential_abundance/validate_control_spatial_identity/global/tables/source_data", "results/differential_abundance/validate_control_spatial_identity/global/plots", "results/differential_abundance/validate_control_spatial_identity/global/manifests/run_manifest.yml"]
         consumes_required: ["data/external/kaulich_2025/kaulich_supplementary_data_2.xlsx", "data/metadata/TPE9_sample_metadata_males.xlsx"]
         consumes_optional: []
         recomputes_core_state: false
@@ -336,8 +336,8 @@ stages:
         datasets: ["global"]
         stage: "enrichment"
         scope: "global"
-        produces: ["results/tables/04_differential_expression_enrichment/sus_res_spatial_dap_atlas/global/sus_res_manuscript_theme_summary.csv", "results/tables/04_differential_expression_enrichment/sus_res_spatial_dap_atlas/global/", "results/source_data/04_differential_expression_enrichment/sus_res_spatial_dap_atlas/global/", "results/figures/04_differential_expression_enrichment/sus_res_spatial_dap_atlas/global/", "results/reports/04_differential_expression_enrichment/sus_res_spatial_dap_atlas/global/sus_res_biological_audit.xlsx", "results/logs/04_differential_expression_enrichment/sus_res_spatial_dap_atlas/global/run_manifest.yml"]
-        consumes_required: ["data/processed/04_differential_expression_enrichment/clusterProfiler/neuron_neuropil/clusterProfiler_manifest.csv", "data/processed/04_differential_expression_enrichment/clusterProfiler/neuron_soma/clusterProfiler_manifest.csv", "data/processed/04_differential_expression_enrichment/clusterProfiler/microglia/clusterProfiler_manifest.csv", "config/manuscript_go_theme_registry.tsv", "results/source_data/04_differential_expression_enrichment/compareGO_spatial_atlas/source_data_SpatialProgramAtlas_SUS_vs_RES_publication.csv", "results/source_data/04_differential_expression_enrichment/compareGO_spatial_atlas/sus_res_supported_go_term_theme_audit.csv"]
+        produces: ["results/differential_abundance/build_sus_res_dap_atlas/global/tables/sus_res_manuscript_theme_summary.csv", "results/differential_abundance/build_sus_res_dap_atlas/global/tables", "results/differential_abundance/build_sus_res_dap_atlas/global/tables/source_data", "results/differential_abundance/build_sus_res_dap_atlas/global/plots", "results/differential_abundance/build_sus_res_dap_atlas/global/reports/sus_res_biological_audit.xlsx", "results/differential_abundance/build_sus_res_dap_atlas/global/manifests/run_manifest.yml"]
+        consumes_required: ["results/differential_abundance/run_clusterprofiler_enrichment/neuron_neuropil/models/clusterProfiler_manifest.csv", "data/processed/04_differential_expression_enrichment/clusterProfiler/neuron_neuropil/clusterProfiler_manifest.csv", "results/differential_abundance/run_clusterprofiler_enrichment/neuron_soma/models/clusterProfiler_manifest.csv", "data/processed/04_differential_expression_enrichment/clusterProfiler/neuron_soma/clusterProfiler_manifest.csv", "results/differential_abundance/run_clusterprofiler_enrichment/microglia/models/clusterProfiler_manifest.csv", "data/processed/04_differential_expression_enrichment/clusterProfiler/microglia/clusterProfiler_manifest.csv", "config/manuscript_go_theme_registry.tsv", "results/differential_abundance/build_go_program_atlas/global/tables/source_data/source_data_SpatialProgramAtlas_SUS_vs_RES_publication.csv", "results/source_data/04_differential_expression_enrichment/compareGO_spatial_atlas/source_data_SpatialProgramAtlas_SUS_vs_RES_publication.csv", "results/differential_abundance/build_go_program_atlas/global/tables/source_data/sus_res_supported_go_term_theme_audit.csv", "results/source_data/04_differential_expression_enrichment/compareGO_spatial_atlas/sus_res_supported_go_term_theme_audit.csv"]
         consumes_optional: []
         recomputes_core_state: false
         safe_downstream_rerun: true
@@ -347,8 +347,8 @@ stages:
         datasets: ["global"]
         stage: "enrichment"
         scope: "global"
-        produces: ["results/tables/04_differential_expression_enrichment/stress_response_biological_audit/global/", "results/source_data/04_differential_expression_enrichment/stress_response_biological_audit/global/", "results/figures/04_differential_expression_enrichment/stress_response_biological_audit/global/", "results/reports/04_differential_expression_enrichment/stress_response_biological_audit/global/", "results/logs/04_differential_expression_enrichment/stress_response_biological_audit/global/run_manifest.yml"]
-        consumes_required: ["data/processed/04_differential_expression_enrichment/clusterProfiler/neuron_neuropil/clusterProfiler_manifest.csv", "data/processed/04_differential_expression_enrichment/clusterProfiler/neuron_soma/clusterProfiler_manifest.csv", "data/processed/04_differential_expression_enrichment/clusterProfiler/microglia/clusterProfiler_manifest.csv", "config/manuscript_go_theme_registry.tsv", "results/source_data/04_differential_expression_enrichment/compareGO_spatial_atlas/spatial_atlas_enrichment_long.csv"]
+        produces: ["results/differential_abundance/audit_stress_response_biology/global/tables", "results/differential_abundance/audit_stress_response_biology/global/tables/source_data", "results/differential_abundance/audit_stress_response_biology/global/plots", "results/differential_abundance/audit_stress_response_biology/global/reports", "results/differential_abundance/audit_stress_response_biology/global/manifests/run_manifest.yml"]
+        consumes_required: ["results/differential_abundance/run_clusterprofiler_enrichment/neuron_neuropil/models/clusterProfiler_manifest.csv", "data/processed/04_differential_expression_enrichment/clusterProfiler/neuron_neuropil/clusterProfiler_manifest.csv", "results/differential_abundance/run_clusterprofiler_enrichment/neuron_soma/models/clusterProfiler_manifest.csv", "data/processed/04_differential_expression_enrichment/clusterProfiler/neuron_soma/clusterProfiler_manifest.csv", "results/differential_abundance/run_clusterprofiler_enrichment/microglia/models/clusterProfiler_manifest.csv", "data/processed/04_differential_expression_enrichment/clusterProfiler/microglia/clusterProfiler_manifest.csv", "config/manuscript_go_theme_registry.tsv", "results/differential_abundance/build_go_program_atlas/global/tables/source_data/spatial_atlas_enrichment_long.csv", "results/source_data/04_differential_expression_enrichment/compareGO_spatial_atlas/spatial_atlas_enrichment_long.csv"]
         consumes_optional: []
         recomputes_core_state: false
         safe_downstream_rerun: true
@@ -359,8 +359,8 @@ stages:
         stage: "enrichment"
         scope: "dataset_specific"
         produces: ["results/enrichment/run_ewce_celltype_enrichment/<dataset>/tables/", "results/enrichment/run_ewce_celltype_enrichment/<dataset>/plots/", "results/enrichment/run_ewce_celltype_enrichment/<dataset>/models/", "results/enrichment/run_ewce_celltype_enrichment/<dataset>/manifests/", "results/enrichment/run_ewce_celltype_enrichment/<dataset>/reports/"]
-        consumes_required: ["data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv"]
-        consumes_optional: ["data/processed/04_differential_expression_enrichment/compareGO/<dataset>/compareGO_input_manifest.csv"]
+        consumes_required: ["results/differential_abundance/run_clusterprofiler_enrichment/<dataset>/models/clusterProfiler_manifest.csv", "data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv"]
+        consumes_optional: ["results/differential_abundance/compare_go_enrichment/<dataset>/models/compareGO_input_manifest.csv", "data/processed/04_differential_expression_enrichment/compareGO/<dataset>/compareGO_input_manifest.csv"]
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Canonical EWCE uses AnimalID x spatial-unit biological replicates: observed left/right hemispheres are aggregated within animal, with biological n=3 animals per condition. Ordinary execution therefore writes EWCE_E9/<dataset>. Sample-level EWCE is retained only as explicit legacy/sensitivity work with PROTEOMICS_EWCE_ANALYSIS_UNIT=sample and a required PROTEOMICS_EWCE_BRANCH, which writes EWCE_E9_comparison/<branch>/<dataset>. Animal cache identity is branch-independent and records cache accounting after completed runs."
@@ -444,8 +444,8 @@ stages:
         stage: "modules_downstream"
         scope: "dataset_specific"
         produces: ["results/tables/06_modules_WGCNA/04_wgcna_de_gsea_overlap/<dataset>/"]
-        consumes_required: ["results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/", "data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv", "data/processed/04_differential_expression_enrichment/compareGO/<dataset>/compareGO_input_manifest.csv"]
-        consumes_optional: ["results/tables/04_differential_expression_enrichment/biological_program_summary/<dataset>/program_summary.csv"]
+        consumes_required: ["results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/", "results/differential_abundance/run_clusterprofiler_enrichment/<dataset>/models/clusterProfiler_manifest.csv", "data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv", "results/differential_abundance/compare_go_enrichment/<dataset>/models/compareGO_input_manifest.csv", "data/processed/04_differential_expression_enrichment/compareGO/<dataset>/compareGO_input_manifest.csv"]
+        consumes_optional: ["results/differential_abundance/summarize_biological_programs/<dataset>/tables/program_summary.csv", "results/tables/04_differential_expression_enrichment/biological_program_summary/<dataset>/program_summary.csv"]
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Bridge layer between WGCNA modules and DE/GSEA manifests; must run after WGCNA and enrichment."
@@ -478,7 +478,7 @@ stages:
         scope: "dataset_specific"
         produces: ["results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_module_biological_annotation.csv", "results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_supermodule_biological_annotation.csv", "results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_module_targeted_signature_overlap_details.csv"]
         consumes_required: ["results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_module_supermodule_annotation.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_supermodule_summary.csv"]
-        consumes_optional: ["config/marker_panels/wgcna_reference_marker_sets.csv", "results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv", "results/tables/04_differential_expression_enrichment/neuropil_reference_annotation/<dataset>/"]
+        consumes_optional: ["config/marker_panels/wgcna_reference_marker_sets.csv", "results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv", "results/differential_abundance/annotate_neuropil_reference/<dataset>/tables", "results/tables/04_differential_expression_enrichment/neuropil_reference_annotation/<dataset>/"]
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Biological annotation layer. Consumes marker registry, empirical markers, WGCNA outputs, and neuropil annotations when present; microglia labels refer to ROI/local microenvironment unless explicit immune-state evidence is present."
@@ -1256,7 +1256,7 @@ stages:
         scope: "global"
         produces: ["results/tables/10_biological_integration/cross_compartment_program_atlas/global/cross_compartment_program_atlas.csv", "results/tables/10_biological_integration/cross_compartment_program_atlas/global/cross_compartment_program_atlas_long.csv", "results/source_data/10_biological_integration/cross_compartment_program_atlas/global/cross_compartment_program_atlas.csv", "results/source_data/10_biological_integration/cross_compartment_program_atlas/global/cross_compartment_program_atlas_long.csv", "results/source_data/10_biological_integration/cross_compartment_program_atlas/global/cross_compartment_program_atlas_input_status.csv", "results/reports/10_biological_integration/cross_compartment_program_atlas/global/input_status.csv", "results/logs/10_biological_integration/cross_compartment_program_atlas/global/run_manifest.yml"]
         consumes_required: ["results/tables/06_modules_WGCNA/claim_readiness/microglia/WGCNA_entity_claim_readiness.csv"]
-        consumes_optional: ["results/tables/04_differential_expression_enrichment/biological_program_summary/", "results/tables/04_differential_expression_enrichment/external_stress_disease_signature_overlap/global/external_stress_disease_signature_overlap.csv", "results/tables/04_differential_expression_enrichment/compareGO_spatial_atlas/spatial_program_summary.csv", "results/tables/06_modules_WGCNA/interpretable_summary/", "results/tables/06_modules_WGCNA/module_annotation/", "results/tables/06_modules_WGCNA/module_complex_architecture/", "results/tables/06_modules_WGCNA/module_robustness_sensitivity/", "results/tables/08_behavior_physio_coupling/module_behavior_coupling/", "results/reports/03_qc_exploration/07_qc_biology_confounding_report/"]
+        consumes_optional: ["results/tables/04_differential_expression_enrichment/biological_program_summary/", "results/differential_abundance/compare_external_stress_signatures/global/tables/external_stress_disease_signature_overlap.csv", "results/tables/04_differential_expression_enrichment/external_stress_disease_signature_overlap/global/external_stress_disease_signature_overlap.csv", "results/differential_abundance/build_go_program_atlas/global/tables/spatial_program_summary.csv", "results/tables/04_differential_expression_enrichment/compareGO_spatial_atlas/spatial_program_summary.csv", "results/tables/06_modules_WGCNA/interpretable_summary/", "results/tables/06_modules_WGCNA/module_annotation/", "results/tables/06_modules_WGCNA/module_complex_architecture/", "results/tables/06_modules_WGCNA/module_robustness_sensitivity/", "results/tables/08_behavior_physio_coupling/module_behavior_coupling/", "results/reports/03_qc_exploration/07_qc_biology_confounding_report/"]
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Global synthesis; optional missing evidence is represented explicitly in status rows."
@@ -1299,7 +1299,7 @@ stages:
         stage: "integration"
         scope: "global"
         produces: ["results/tables/10_biological_integration/gsea_wgcna_concordance/global/gsea_wgcna_concordance_long.csv", "results/tables/10_biological_integration/gsea_wgcna_concordance/global/gsea_wgcna_concordance_summary.csv", "results/tables/10_biological_integration/gsea_wgcna_concordance/global/adaptive_resilience_pattern_summary.csv", "results/tables/10_biological_integration/gsea_wgcna_concordance/global/program_specific_leading_edge_module_overlap.csv", "results/tables/10_biological_integration/gsea_wgcna_concordance/global/gsea_wgcna_concordance_audit.csv", "results/tables/10_biological_integration/gsea_wgcna_concordance/global/program_module_matching_audit.csv", "results/tables/10_biological_integration/gsea_wgcna_concordance/global/ontology_aware_gsea_theme_assignments_all_contrasts.csv", "results/source_data/10_biological_integration/gsea_wgcna_concordance/global/", "results/reports/10_biological_integration/gsea_wgcna_concordance/global/README.md", "results/logs/10_biological_integration/gsea_wgcna_concordance/global/run_manifest.yml"]
-        consumes_required: ["results/source_data/04_differential_expression_enrichment/compareGO_spatial_atlas/spatial_atlas_enrichment_long.csv", "results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_inferential_handoff.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_feature_universe.csv", "config/manuscript_go_theme_registry.tsv", "config/gsea_wgcna_theme_module_mapping.csv"]
+        consumes_required: ["results/differential_abundance/build_go_program_atlas/global/tables/source_data/spatial_atlas_enrichment_long.csv", "results/source_data/04_differential_expression_enrichment/compareGO_spatial_atlas/spatial_atlas_enrichment_long.csv", "results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_inferential_handoff.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_feature_universe.csv", "config/manuscript_go_theme_registry.tsv", "config/gsea_wgcna_theme_module_mapping.csv"]
         consumes_optional: ["results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_module_preservation_summary.csv", "results/tables/06_modules_WGCNA/claim_readiness/microglia/WGCNA_entity_claim_readiness.csv", "results/reviewer_audit/microglia_wgcna_nature_readiness/module_robustness_consensus.csv", "results/reviewer_audit/microglia_wgcna_nature_readiness/higher_order_block_readiness_summary.csv", "config/gsea_wgcna_program_module_mapping.csv"]
         recomputes_core_state: false
         safe_downstream_rerun: true
@@ -1321,7 +1321,7 @@ stages:
         stage: "integration"
         scope: "per_dataset_and_global"
         produces: ["results/tables/10_biological_integration/wgcna_candidate_protein_shortlist/<dataset>/wgcna_candidate_proteins_all.csv", "results/tables/10_biological_integration/wgcna_candidate_protein_shortlist/<dataset>/wgcna_candidate_proteins_long.csv", "results/tables/10_biological_integration/wgcna_candidate_protein_shortlist/<dataset>/wgcna_candidate_proteins_shortlist.csv", "results/tables/10_biological_integration/wgcna_candidate_protein_shortlist/<dataset>/wgcna_top10_per_module.csv", "results/tables/10_biological_integration/wgcna_candidate_protein_shortlist/<dataset>/wgcna_candidate_proteins_shortlist.xlsx", "results/source_data/10_biological_integration/wgcna_candidate_protein_shortlist/<dataset>/", "results/reports/10_biological_integration/wgcna_candidate_protein_shortlist/<dataset>/README.md", "results/logs/10_biological_integration/wgcna_candidate_protein_shortlist/<dataset>/run_manifest.yml"]
-        consumes_required: ["results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_modules_long.csv", "results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_inferential_handoff.csv", "data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv"]
+        consumes_required: ["results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_modules_long.csv", "results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_inferential_handoff.csv", "results/differential_abundance/run_clusterprofiler_enrichment/<dataset>/models/clusterProfiler_manifest.csv", "data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv"]
         consumes_optional: ["results/tables/10_biological_integration/gsea_wgcna_concordance/global/program_specific_leading_edge_module_overlap.csv"]
         recomputes_core_state: false
         safe_downstream_rerun: true
@@ -1332,7 +1332,7 @@ stages:
         stage: "integration"
         scope: "per_dataset_and_global"
         produces: ["results/tables/10_biological_integration/wgcna_sus_res_network_position/<dataset>/wgcna_sus_res_network_position_protein_level.csv", "results/tables/10_biological_integration/wgcna_sus_res_network_position/<dataset>/wgcna_sus_res_network_position_module_summary.csv", "results/tables/10_biological_integration/wgcna_sus_res_network_position/<dataset>/wgcna_sus_res_network_position_permutation_summary.csv", "results/figures/10_biological_integration/wgcna_sus_res_network_position/<dataset>/", "results/source_data/10_biological_integration/wgcna_sus_res_network_position/<dataset>/", "results/reports/10_biological_integration/wgcna_sus_res_network_position/<dataset>/README.md", "results/logs/10_biological_integration/wgcna_sus_res_network_position/<dataset>/run_manifest.yml"]
-        consumes_required: ["results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_modules_long.csv", "data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv"]
+        consumes_required: ["results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_modules_long.csv", "results/differential_abundance/run_clusterprofiler_enrichment/<dataset>/models/clusterProfiler_manifest.csv", "data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv"]
         consumes_optional: ["results/tables/10_biological_integration/wgcna_candidate_protein_shortlist/<dataset>/wgcna_candidate_proteins_all.csv"]
         recomputes_core_state: false
         safe_downstream_rerun: true
@@ -1463,7 +1463,7 @@ stages:
         stage: "integration"
         scope: "global"
         produces: ["results/figures/manuscript_panels/figure_3/", "results/source_data/manuscript_panels/figure_3/", "results/tables/manuscript_panels/figure_3/", "results/reports/manuscript_panels/figure_3/", "results/tables/manuscript_panels/manuscript_panel_inventory.csv"]
-        consumes_required: ["results/source_data/06_modules_WGCNA/interpretable_summary/neuron_neuropil/module_group_effects_main_heatmap_source.csv", "results/tables/06_modules_WGCNA/01_WGCNA/neuron_neuropil/modules/WGCNA_modules_long.csv", "data/processed/04_differential_expression_enrichment/clusterProfiler/neuron_neuropil/clusterProfiler_manifest.csv", "results/tables/10_biological_integration/gsea_wgcna_concordance/global/program_specific_leading_edge_module_overlap.csv", "results/tables/06_modules_WGCNA/01b_module_supermodule_GO_heatmaps/neuron_neuropil/WGCNA_module_GO_heatmap_source_BP.csv"]
+        consumes_required: ["results/source_data/06_modules_WGCNA/interpretable_summary/neuron_neuropil/module_group_effects_main_heatmap_source.csv", "results/tables/06_modules_WGCNA/01_WGCNA/neuron_neuropil/modules/WGCNA_modules_long.csv", "results/differential_abundance/run_clusterprofiler_enrichment/neuron_neuropil/models/clusterProfiler_manifest.csv", "data/processed/04_differential_expression_enrichment/clusterProfiler/neuron_neuropil/clusterProfiler_manifest.csv", "results/tables/10_biological_integration/gsea_wgcna_concordance/global/program_specific_leading_edge_module_overlap.csv", "results/tables/06_modules_WGCNA/01b_module_supermodule_GO_heatmaps/neuron_neuropil/WGCNA_module_GO_heatmap_source_BP.csv"]
         consumes_optional: []
         recomputes_core_state: false
         safe_downstream_rerun: true

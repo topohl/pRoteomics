@@ -705,8 +705,23 @@ processed_files_for_dataset <- function(dataset, config, include_derived = FALSE
     files <- c(files, list.files(map_root, pattern = "\\.(csv|tsv|xlsx|yml|yaml)$", recursive = TRUE, full.names = TRUE, ignore.case = TRUE))
   }
 
+  ## Phase 6G.4: the clusterProfiler and compareGO manifests and bundles moved
+  ## from data/processed/04_differential_expression_enrichment/<substep>/<dataset>
+  ## into results/differential_abundance/<analysis_id>/<dataset>/models.
+  ##
+  ## Both locations are scanned, historical and normalized, for the same reason
+  ## the resolvers prefer normalized and fall back: until those analyses are
+  ## rerun only the historical tree exists, and after a rerun only the
+  ## normalized one is current. Scanning just the historical root would freeze
+  ## the exported bundle on pre-migration data without any error, which is the
+  ## quietest way for an export to go stale.
   de_root <- repo_path(config$canonical_inputs$processed_de_enrichment$root)
-  de_ds <- file.path(de_root, c("clusterProfiler", "compareGO"), dataset)
+  de_ds <- c(
+    file.path(de_root, c("clusterProfiler", "compareGO"), dataset),
+    repo_path("results", "differential_abundance",
+              c("run_clusterprofiler_enrichment", "compare_go_enrichment"),
+              dataset, "models")
+  )
   for (d in de_ds) {
     if (dir.exists(d)) {
       files <- c(files, list.files(d, pattern = "\\.(csv|tsv|xlsx|yml|yaml)$", recursive = TRUE, full.names = TRUE, ignore.case = TRUE))

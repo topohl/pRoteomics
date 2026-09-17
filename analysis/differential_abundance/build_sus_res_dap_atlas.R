@@ -11,10 +11,12 @@
 # Script: analysis/differential_abundance/build_sus_res_dap_atlas.R
 # Stage: enrichment
 # Scope: global
-# Consumes: required data/processed/04_differential_expression_enrichment/clusterProfiler/neuron_neuropil/clusterProfiler_manifest.csv; data/processed/04_differential_expression_enrichment/clusterProfiler/neuron_soma/clusterProfiler_manifest.csv; data/processed/04_differential_expression_enrichment/clusterProfiler/microglia/clusterProfiler_manifest.csv; +3 more; optional none declared in pipeline.yml
-# Produces: results/tables/04_differential_expression_enrichment/sus_res_spatial_dap_atlas/global/sus_res_manuscript_theme_summary.csv; results/tables/04_differential_expression_enrichment/sus_res_spatial_dap_atlas/global/; results/source_data/04_differential_expression_enrichment/sus_res_spatial_dap_atlas/global/; +3 more
+# Consumes: required results/differential_abundance/run_clusterprofiler_enrichment/neuron_neuropil/models/clusterProfiler_manifest.csv; data/processed/04_differential_expression_enrichment/clusterProfiler/neuron_neuropil/clusterProfiler_manifest.csv; results/differential_abundance/run_clusterprofiler_enrichment/neuron_soma/models/clusterProfiler_manifest.csv; +8 more; optional none declared in pipeline.yml
+# Produces: results/differential_abundance/build_sus_res_dap_atlas/global/tables/sus_res_manuscript_theme_summary.csv; results/differential_abundance/build_sus_res_dap_atlas/global/tables; results/differential_abundance/build_sus_res_dap_atlas/global/tables/source_data; +3 more
 # Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Manuscript-facing spatial atlas of SUS-RES differential protein changes and GO-ID ontology-mapped ranked-GSEA themes.
+#  
+#  
 
 source("R/paths.R")
 source("R/data_contracts/dataset_config.R")
@@ -24,6 +26,13 @@ source("R/enrichment/enrichment_io.R")
 source("R/enrichment/manuscript_go_theme_utils.R")
 source("R/statistics/sus_res_spatial_dap_atlas_utils.R")
 source("R/statistics/sus_res_biological_audit_workbook.R")
+source(repo_path("R", "differential_abundance_paths.R"))
+
+# Phase 6G.4: destinations resolve through the normalized output contract,
+# addressed by this analysis's own identity rather than by the historical
+# 04_differential_expression_enrichment stage directory. Outputs already
+# written there stay exactly where they are and are read, never rewritten.
+ANALYSIS_ID <- "build_sus_res_dap_atlas"
 
 MODULE_ID <- "04_differential_expression_enrichment"
 SUBSTEP_ID <- file.path("sus_res_spatial_dap_atlas", "global")
@@ -36,12 +45,12 @@ if (AUDIT_ONLY && RENDER_ONLY) {
   stop("Choose either --audit-only or --render-only, not both.", call. = FALSE)
 }
 
-root_parts <- c(MODULE_ID, "sus_res_spatial_dap_atlas", "global")
-TABLE_DIR <- do.call(path_results, as.list(c("tables", root_parts)))
-SOURCE_DIR <- do.call(path_results, as.list(c("source_data", root_parts)))
-FIGURE_DIR <- do.call(path_results, as.list(c("figures", root_parts)))
-LOG_DIR <- do.call(path_results, as.list(c("logs", root_parts)))
-REPORT_DIR <- do.call(path_results, as.list(c("reports", root_parts)))
+CANONICAL_PATHS <- differential_abundance_dirs(ANALYSIS_ID, scope = "global")
+TABLE_DIR <- CANONICAL_PATHS$tables
+SOURCE_DIR <- CANONICAL_PATHS$source_data
+FIGURE_DIR <- CANONICAL_PATHS$plots
+LOG_DIR <- CANONICAL_PATHS$manifests
+REPORT_DIR <- CANONICAL_PATHS$reports
 
 files <- list(
   counts = file.path(TABLE_DIR, "sus_res_dap_counts.csv"),
