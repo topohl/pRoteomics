@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 # ================================================================
-# Script: 06_modules_WGCNA/09_microglia_neuropil_independence.R
+# Script: analysis/05_wgcna/09_microglia_neuropil_independence.R
 # Stage: modules_downstream
 # Scope: dataset_specific
 # Consumes: microglia and neuron_neuropil WGCNA state/metadata plus optional marker traits.
@@ -14,7 +14,7 @@ source(repo_path("R", "wgcna_downstream_utils.R"))
 source(repo_path("R", "schema_validation.R"))
 source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
 
-SCRIPT_ID <- "06_modules_WGCNA/09_microglia_neuropil_independence.R"
+SCRIPT_ID <- "analysis/05_wgcna/09_microglia_neuropil_independence.R"
 required_pkgs <- c("dplyr", "tidyr", "tibble", "readr", "yaml")
 missing_pkgs <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
 if (length(missing_pkgs) && !is_dry_run()) stop("Missing required R package(s): ", paste(missing_pkgs, collapse = ", "), call. = FALSE)

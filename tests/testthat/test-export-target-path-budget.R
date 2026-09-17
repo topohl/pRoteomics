@@ -2,7 +2,7 @@ source(testthat::test_path("..", "..", "R", "paths.R"))
 source(repo_path("R", "export_helpers.R"))
 
 repo <- normalizePath(testthat::test_path("..", ".."), winslash = "/", mustWork = TRUE)
-exporter <- file.path(repo, "09_export_pride_journal", "08_export_manuscript_figures.R")
+exporter <- file.path(repo, "analysis", "09_publication_exports", "08_export_manuscript_figures.R")
 
 # A target directory the same depth as the real one on the analysis machine
 # (results/manuscript/extended_data under a deep share path was 103 chars).
@@ -177,11 +177,11 @@ testthat::test_that("sourcing pride_helpers cannot shadow the generic relative_t
   # that the generic relative_to() survives with its default root intact. It
   # previously did not, which broke write_run_manifest().
   env <- new.env(parent = globalenv())
-  sys.source(file.path(repo, "R", "paths.R"), envir = env)
+  sys.source(repo_path("R", "paths.R"), envir = env)
   generic <- get("relative_to", envir = env)
   testthat::expect_false(identical(formals(generic)$root, quote(expr = )))
 
-  sys.source(file.path(repo, "R", "pride_helpers.R"), envir = env)
+  sys.source(repo_path("R", "pride_helpers.R"), envir = env)
   after <- get("relative_to", envir = env)
 
   testthat::expect_identical(after, generic)

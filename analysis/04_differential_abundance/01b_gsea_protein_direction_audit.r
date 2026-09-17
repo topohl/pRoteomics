@@ -1,5 +1,5 @@
 # ================================================================
-# Script: 04_differential_expression_enrichment/01b_gsea_protein_direction_audit.r
+# Script: analysis/04_differential_abundance/01b_gsea_protein_direction_audit.r
 # Stage: enrichment
 # Scope: dataset_specific
 # Consumes: canonical clusterProfiler manifest, collapsed-gene inputs, and term-gene provenance.
@@ -18,7 +18,7 @@ SUBSTEP_ID <- "01b_gsea_protein_direction_audit"
 CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
 
 runtime <- init_script_runtime(
-  script = "04_differential_expression_enrichment/01b_gsea_protein_direction_audit.r",
+  script = "analysis/04_differential_abundance/01b_gsea_protein_direction_audit.r",
   stage = "enrichment",
   default_dataset = "neuron_neuropil"
 )
@@ -256,7 +256,7 @@ if (length(missing_pkgs)) {
 
 if (!manifest_exists) {
   stop("clusterProfiler manifest not found: ", manifest_path,
-       "\nRun 04_differential_expression_enrichment/01_clusterProfiler.r first.", call. = FALSE)
+       "\nRun analysis/04_differential_abundance/01_clusterProfiler.r first.", call. = FALSE)
 }
 if (!nrow(manifest_filtered)) {
   stop("No manifest rows matched dataset=", DATASET, ", ontology=", ONTOLOGY,

@@ -47,8 +47,8 @@ CFG_MAX         <- num_from_cfg("max_gs_size")       # 800
 CFG_NPERMSIMPLE <- num_from_cfg("n_perm_simple")     # 100000
 
 # gseGO's eps is NOT set anywhere in the repository: neither at the call site
-# (04_differential_expression_enrichment/01_clusterProfiler.r:1501-1511) nor in
-# clusterprofiler_fgsea_control_args() (R/clusterprofiler_reproducibility.R:110).
+# (analysis/04_differential_abundance/01_clusterProfiler.r:1501-1511) nor in
+# clusterprofiler_fgsea_control_args() (R/enrichment/clusterprofiler_reproducibility.R:110).
 # Therefore the package default is in force. Read it from the installed package
 # rather than hard-coding it.
 EPS_IN_FORCE     <- as.numeric(eval(formals(clusterProfiler::gseGO)$eps))
@@ -57,9 +57,9 @@ FGSEA_NPERM_DEF  <- as.numeric(eval(formals(fgsea::fgseaMultilevel)$nPermSimple)
 FGSEA_SAMPLESIZE <- as.numeric(eval(formals(fgsea::fgseaMultilevel)$sampleSize))
 
 # assert that the repository really does not override eps
-src_files <- c("04_differential_expression_enrichment/01_clusterProfiler.r",
-               "R/clusterprofiler_reproducibility.R",
-               "R/protein_group_enrichment_utils.R")
+src_files <- c("analysis/04_differential_abundance/01_clusterProfiler.r",
+               "R/enrichment/clusterprofiler_reproducibility.R",
+               "R/enrichment/protein_group_enrichment_utils.R")
 eps_hits <- unlist(lapply(src_files, function(f) {
   grep("[^a-zA-Z_.]eps[[:space:]]*=", readLines(f, warn = FALSE), value = TRUE)
 }))

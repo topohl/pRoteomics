@@ -7,19 +7,19 @@
 # foundation that did not hold.
 #
 # USAGE
-#   Rscript 11_spatial_systems/07_spatial_systems_foundation_validation.R
+#   Rscript analysis/03_spatial_validation/07_spatial_systems_foundation_validation.R
 
 source("R/paths.R")
-source("R/dataset_config.R")
-source("R/integration_utils.R")
-source("R/spatial_systems_data_utils.R")
-source("R/spatial_systems_evidence_registry.R")
-source("R/ewce_gene_set_engine.R")
-source("R/control_spatial_identity_utils.R")
+source("R/data_contracts/dataset_config.R")
+source("R/statistics/integration_utils.R")
+source("R/data_contracts/spatial_systems_data_utils.R")
+source("R/data_contracts/spatial_systems_evidence_registry.R")
+source("R/enrichment/ewce_gene_set_engine.R")
+source("R/spatial/control_spatial_identity_utils.R")
 
 suppressPackageStartupMessages({ library(readr); library(dplyr) })
 
-SCRIPT_ID <- "11_spatial_systems/07_spatial_systems_foundation_validation.R"
+SCRIPT_ID <- "analysis/03_spatial_validation/07_spatial_systems_foundation_validation.R"
 Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 cli <- integration_cli(default_dataset = "all")
 
@@ -175,7 +175,7 @@ add("no_canonical_da_changes", TRUE,
     if (!touches("results/tables/04_differential")) "PASS" else "FAIL",
     "no differential-abundance output modified in the working tree")
 add("no_wgcna_state_changes", TRUE,
-    if (!touches("06_modules_WGCNA/01_WGCNA.r") &&
+    if (!touches("analysis/05_wgcna/01_WGCNA.r") &&
         !touches("wgcna_final_model_state")) "PASS" else "FAIL",
     "WGCNA construction script and frozen model state untouched")
 add("figure_contracts_unchanged", TRUE,

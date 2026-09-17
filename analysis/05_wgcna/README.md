@@ -9,7 +9,7 @@ microglia, neuron_soma, and neuron_neuropil?**
 The primary inference layer is:
 
 ```powershell
-Rscript 06_modules_WGCNA/05_module_supermodule_group_effects.r --dataset <dataset> --level both
+Rscript analysis/05_wgcna/05_module_supermodule_group_effects.r --dataset <dataset> --level both
 ```
 
 `01_WGCNA.r` builds networks and exports QC/descriptive screens. Its
@@ -66,26 +66,26 @@ Outputs are under
 ## Recommended Run Order
 
 ```powershell
-Rscript 06_modules_WGCNA/01_WGCNA.r --dataset <dataset>
-Rscript 06_modules_WGCNA/01b_module_supermodule_GO_heatmaps.R --dataset <dataset>
-Rscript 06_modules_WGCNA/00_wgcna_identity_contract.R --dataset <dataset>
-Rscript 06_modules_WGCNA/05_module_supermodule_group_effects.r --dataset <dataset> --level both
-Rscript 06_modules_WGCNA/04_wgcna_de_gsea_overlap.r --dataset <dataset>
-Rscript 06_modules_WGCNA/06_annotate_module_microenvironment.r --dataset <dataset>
-Rscript 06_modules_WGCNA/07_wgcna_interpretable_summary.r --dataset <dataset>
-Rscript 06_modules_WGCNA/08_wgcna_publication_figures.R --dataset microglia
-Rscript 06_modules_WGCNA/09_microglia_neuropil_independence.R --dataset microglia
-Rscript 06_modules_WGCNA/10_module_complex_architecture.r --dataset <dataset>
-Rscript 06_modules_WGCNA/11_module_robustness_sensitivity.r --dataset <dataset>
-Rscript 06_modules_WGCNA/12_microglia_wgcna_nature_readiness_audit.R --animal-bootstrap 500
-Rscript 06_modules_WGCNA/08b_microglia_wgcna_readiness_publication_figures.R --dataset microglia
-Rscript 06_modules_WGCNA/13_wgcna_claim_readiness.R --dataset microglia
+Rscript analysis/05_wgcna/01_WGCNA.r --dataset <dataset>
+Rscript analysis/05_wgcna/01b_module_supermodule_GO_heatmaps.R --dataset <dataset>
+Rscript analysis/05_wgcna/00_wgcna_identity_contract.R --dataset <dataset>
+Rscript analysis/05_wgcna/05_module_supermodule_group_effects.r --dataset <dataset> --level both
+Rscript analysis/05_wgcna/04_wgcna_de_gsea_overlap.r --dataset <dataset>
+Rscript analysis/05_wgcna/06_annotate_module_microenvironment.r --dataset <dataset>
+Rscript analysis/05_wgcna/07_wgcna_interpretable_summary.r --dataset <dataset>
+Rscript analysis/05_wgcna/08_wgcna_publication_figures.R --dataset microglia
+Rscript analysis/05_wgcna/09_microglia_neuropil_independence.R --dataset microglia
+Rscript analysis/05_wgcna/10_module_complex_architecture.r --dataset <dataset>
+Rscript analysis/05_wgcna/11_module_robustness_sensitivity.r --dataset <dataset>
+Rscript analysis/05_wgcna/12_microglia_wgcna_nature_readiness_audit.R --animal-bootstrap 500
+Rscript analysis/05_wgcna/08b_microglia_wgcna_readiness_publication_figures.R --dataset microglia
+Rscript analysis/05_wgcna/13_wgcna_claim_readiness.R --dataset microglia
 ```
 
 Run the final cross-dataset summary after all datasets are complete:
 
 ```powershell
-Rscript 06_modules_WGCNA/07_wgcna_interpretable_summary.r --dataset all
+Rscript analysis/05_wgcna/07_wgcna_interpretable_summary.r --dataset all
 ```
 
 ## Canonical Identity Contract
@@ -291,41 +291,41 @@ Example explicit score-source runs:
 
 ```powershell
 $env:PROTEOMICS_MODULE_DEFINITION_SOURCE = "wgcna"
-Rscript 06_modules_WGCNA/03_score_module_activity.R --dataset microglia
-Rscript 06_modules_WGCNA/03_score_module_activity.R --dataset neuron_soma
+Rscript analysis/05_wgcna/03_score_module_activity.R --dataset microglia
+Rscript analysis/05_wgcna/03_score_module_activity.R --dataset neuron_soma
 
 $env:PROTEOMICS_MODULE_DEFINITION_SOURCE = "overlap"
-Rscript 06_modules_WGCNA/03_score_module_activity.R --dataset neuron_neuropil
+Rscript analysis/05_wgcna/03_score_module_activity.R --dataset neuron_neuropil
 
 $env:PROTEOMICS_MODULE_DEFINITION_SOURCE = "wgcna"
-Rscript 06_modules_WGCNA/03_score_module_activity.R --dataset neuron_neuropil
+Rscript analysis/05_wgcna/03_score_module_activity.R --dataset neuron_neuropil
 Remove-Item Env:\PROTEOMICS_MODULE_DEFINITION_SOURCE
 ```
 
 ## Example PowerShell Commands
 
 ```powershell
-Rscript 06_modules_WGCNA/01_WGCNA.r --dataset microglia
-Rscript 06_modules_WGCNA/05_module_supermodule_group_effects.r --dataset microglia --level both
-Rscript 06_modules_WGCNA/04_wgcna_de_gsea_overlap.r --dataset microglia
-Rscript 06_modules_WGCNA/06_annotate_module_microenvironment.r --dataset microglia
-Rscript 06_modules_WGCNA/07_wgcna_interpretable_summary.r --dataset microglia
+Rscript analysis/05_wgcna/01_WGCNA.r --dataset microglia
+Rscript analysis/05_wgcna/05_module_supermodule_group_effects.r --dataset microglia --level both
+Rscript analysis/05_wgcna/04_wgcna_de_gsea_overlap.r --dataset microglia
+Rscript analysis/05_wgcna/06_annotate_module_microenvironment.r --dataset microglia
+Rscript analysis/05_wgcna/07_wgcna_interpretable_summary.r --dataset microglia
 ```
 
 ```powershell
-Rscript 06_modules_WGCNA/01_WGCNA.r --dataset neuron_soma
-Rscript 06_modules_WGCNA/05_module_supermodule_group_effects.r --dataset neuron_soma --level both
-Rscript 06_modules_WGCNA/04_wgcna_de_gsea_overlap.r --dataset neuron_soma
-Rscript 06_modules_WGCNA/06_annotate_module_microenvironment.r --dataset neuron_soma
-Rscript 06_modules_WGCNA/07_wgcna_interpretable_summary.r --dataset neuron_soma
+Rscript analysis/05_wgcna/01_WGCNA.r --dataset neuron_soma
+Rscript analysis/05_wgcna/05_module_supermodule_group_effects.r --dataset neuron_soma --level both
+Rscript analysis/05_wgcna/04_wgcna_de_gsea_overlap.r --dataset neuron_soma
+Rscript analysis/05_wgcna/06_annotate_module_microenvironment.r --dataset neuron_soma
+Rscript analysis/05_wgcna/07_wgcna_interpretable_summary.r --dataset neuron_soma
 ```
 
 ```powershell
-Rscript 06_modules_WGCNA/01_WGCNA.r --dataset neuron_neuropil
-Rscript 06_modules_WGCNA/05_module_supermodule_group_effects.r --dataset neuron_neuropil --level both
-Rscript 06_modules_WGCNA/04_wgcna_de_gsea_overlap.r --dataset neuron_neuropil
-Rscript 06_modules_WGCNA/06_annotate_module_microenvironment.r --dataset neuron_neuropil
-Rscript 06_modules_WGCNA/07_wgcna_interpretable_summary.r --dataset neuron_neuropil
+Rscript analysis/05_wgcna/01_WGCNA.r --dataset neuron_neuropil
+Rscript analysis/05_wgcna/05_module_supermodule_group_effects.r --dataset neuron_neuropil --level both
+Rscript analysis/05_wgcna/04_wgcna_de_gsea_overlap.r --dataset neuron_neuropil
+Rscript analysis/05_wgcna/06_annotate_module_microenvironment.r --dataset neuron_neuropil
+Rscript analysis/05_wgcna/07_wgcna_interpretable_summary.r --dataset neuron_neuropil
 ```
 
 Note: `06_module_spatial_networks.r` is a legacy optional helper. The canonical

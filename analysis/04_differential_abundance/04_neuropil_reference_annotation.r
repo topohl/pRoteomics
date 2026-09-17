@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 # ================================================================
-# Script: 04_differential_expression_enrichment/04_neuropil_reference_annotation.r
+# Script: analysis/04_differential_abundance/04_neuropil_reference_annotation.r
 # Stage: enrichment
 # Scope: dataset_specific
 # Consumes: required data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv; data/processed/04_differential_expression_enrichment/clusterProfiler/neuron_neuropil/clusterProfiler_manifest.csv; optional config/marker_panels/wgcna_reference_marker_sets.csv.

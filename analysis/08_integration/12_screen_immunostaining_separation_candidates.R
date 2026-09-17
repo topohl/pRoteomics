@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 # ================================================================
-# Script: 10_biological_integration/12_screen_immunostaining_separation_candidates.R
+# Script: analysis/08_integration/12_screen_immunostaining_separation_candidates.R
 # Stage: integration
 # Scope: global (neuron_neuropil only)
 # Consumes: required data/processed/01_preprocessing/protigy_input_animal_level/neuron_neuropil/neuron_neuropil_animal_level.gct;
@@ -31,7 +31,7 @@
 #
 # THE IMPUTATION TRAP THIS SCREEN AVOIDS
 #   Missing values were imputed by drawing from a downshifted normal
-#   (01_preprocessing/01_impute.r uses rnorm with a narrow sd). Imputed cells
+#   (archive/01_preprocessing/01_impute.r uses rnorm with a narrow sd). Imputed cells
 #   are therefore artificially tight, which INFLATES every variance-based
 #   separation score. Ranking on Z'-factor without guarding this would
 #   systematically promote proteins that were mostly missing. The raw matrix is

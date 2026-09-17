@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 # ================================================================
-# Script: 06_modules_WGCNA/01b_module_supermodule_GO_heatmaps.R
+# Script: analysis/05_wgcna/01b_module_supermodule_GO_heatmaps.R
 # Stage: modules_downstream
 # Scope: dataset_specific plus focused all-datasets compositor.
 # Consumes: required Stage 01 module GO enrichment and supermodule membership.
@@ -64,7 +64,7 @@ focused_dataset_table_file <- function(dataset, stem, ontology) {
 
 if (run$dry_run) {
   invisible(lapply(unlist(PATHS), dir_create))
-  dry_run_line("Script", "06_modules_WGCNA/01b_module_supermodule_GO_heatmaps.R")
+  dry_run_line("Script", "analysis/05_wgcna/01b_module_supermodule_GO_heatmaps.R")
   dry_run_line("Dataset", DATASET)
   dry_run_line("Ontologies", paste(ONTOLOGIES, collapse = ", "), "INFO")
   dry_run_line("Focused terms per supermodule", FOCUSED_TERMS_PER_SUPERMODULE, "INFO")

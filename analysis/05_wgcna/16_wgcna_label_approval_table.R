@@ -3,8 +3,8 @@
 # Final manual-adjudication support: the human approval table.
 #
 # This does NOT rerun the scoring system. It reads the existing evidence packet
-# produced by 06_modules_WGCNA/15_wgcna_label_adjudication.R, applies the curated
-# adjudications recorded in R/wgcna_label_activation_utils.R, runs the hierarchy
+# produced by analysis/05_wgcna/15_wgcna_label_adjudication.R, applies the curated
+# adjudications recorded in R/statistics/wgcna_label_activation_utils.R, runs the hierarchy
 # redundancy check, and emits one row per module and supermodule for a human to
 # approve.
 #
@@ -18,19 +18,19 @@
 # contributed to any name; the packet this reads is itself gated.
 #
 # USAGE
-#   Rscript 06_modules_WGCNA/16_wgcna_label_approval_table.R
-#   Rscript 06_modules_WGCNA/16_wgcna_label_approval_table.R --dry-run
+#   Rscript analysis/05_wgcna/16_wgcna_label_approval_table.R
+#   Rscript analysis/05_wgcna/16_wgcna_label_approval_table.R --dry-run
 
 source("R/paths.R")
-source("R/dataset_config.R")
-source("R/integration_utils.R")
-source("R/wgcna_label_adjudication_utils.R")
-source("R/wgcna_label_activation_utils.R")
-source("R/xlsx_package_utils.R")
+source("R/data_contracts/dataset_config.R")
+source("R/statistics/integration_utils.R")
+source("R/statistics/wgcna_label_adjudication_utils.R")
+source("R/statistics/wgcna_label_activation_utils.R")
+source("R/utilities/xlsx_package_utils.R")
 
 suppressPackageStartupMessages({ library(readr); library(dplyr) })
 
-SCRIPT_ID <- "06_modules_WGCNA/16_wgcna_label_approval_table.R"
+SCRIPT_ID <- "analysis/05_wgcna/16_wgcna_label_approval_table.R"
 Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 cli <- integration_cli(default_dataset = "all")
 

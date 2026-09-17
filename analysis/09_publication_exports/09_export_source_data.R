@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript
 
 # ================================================================
-# Script: 09_export_pride_journal/09_export_source_data.R
+# Script: analysis/09_publication_exports/09_export_source_data.R
 # Stage: export
 # Scope: global
 # Consumes: required config/output_namespaces.yml and results/tables/; optional results/source_data/.
@@ -33,7 +33,7 @@ candidates <- candidates[is_exportable_result_path(candidates)]
 # Journal source-data scope: drop diagnostic, superseded, proposed and
 # intermediate families that are not manuscript source data. Applies to this
 # export only -- analysis outputs are untouched and PRIDE packaging is
-# unaffected. See the scope block in R/export_helpers.R for per-family
+# unaffected. See the scope block in R/utilities/export_helpers.R for per-family
 # justification.
 scope_before <- length(candidates)
 scope_reasons <- source_data_scope_exclusion_reasons(candidates)
@@ -49,7 +49,7 @@ n_over_budget <- sum(nchar(target_paths) > manuscript_figure_path_budget())
 n_duplicate_targets <- sum(duplicated(target_paths))
 
 if (isTRUE(dry_run)) {
-  dry_run_line("Script", "09_export_pride_journal/09_export_source_data.R")
+  dry_run_line("Script", "analysis/09_publication_exports/09_export_source_data.R")
   dry_run_line("Candidate table/source-data roots", paste(table_roots, collapse = "; "))
   dry_run_line("Source data output", target_source)
   dry_run_line("Supplementary table output", target_supp)

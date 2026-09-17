@@ -2,7 +2,7 @@ source(testthat::test_path("..", "..", "R", "paths.R"))
 source(repo_path("R", "export_helpers.R"))
 
 repo <- normalizePath(testthat::test_path("..", ".."), winslash = "/", mustWork = TRUE)
-exporter <- file.path(repo, "09_export_pride_journal", "09_export_source_data.R")
+exporter <- file.path(repo, "analysis", "09_publication_exports", "09_export_source_data.R")
 
 # Output directories as deep as the real ones (results/manuscript/source_data
 # under a deep share path measured 102 characters).

@@ -1,5 +1,5 @@
 # ================================================================
-# Script: 03_qc_exploration/02_missingness_diagnostics.r
+# Script: analysis/02_qc/02_missingness_diagnostics.r
 # Stage: qc
 # Scope: dataset_specific
 # Consumes: required data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv; optional data/metadata/*.xlsx.
@@ -24,7 +24,7 @@ metadata_file <- qc_resolve_metadata(DATASET, env = "PROTEOMICS_MISSINGNESS_META
 
 if (run$dry_run) {
   status <- qc_dry_run_contract(
-    "03_qc_exploration/02_missingness_diagnostics.r",
+    "analysis/02_qc/02_missingness_diagnostics.r",
     DATASET,
     matrix_file = matrix_file,
     metadata_file = metadata_file,

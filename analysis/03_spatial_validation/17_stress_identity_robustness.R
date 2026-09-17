@@ -8,7 +8,7 @@
 #   FDR, and does not remove any protein from the canonical atlas. The
 #   classification rule for effect-vs-baseline-identity is NOT reimplemented
 #   here: the canonical per-protein labels produced by
-#   11_spatial_systems/09_protein_spatial_cell_atlas.R are read and tabulated
+#   analysis/03_spatial_validation/09_protein_spatial_cell_atlas.R are read and tabulated
 #   over different row subsets, so the rule cannot drift between the headline
 #   number and the robustness-qualified number.
 #
@@ -22,18 +22,18 @@
 #   CA2-SLM findings are excluded?
 #
 # USAGE
-#   Rscript 11_spatial_systems/17_stress_identity_robustness.R
-#   Rscript 11_spatial_systems/17_stress_identity_robustness.R --dry-run
+#   Rscript analysis/03_spatial_validation/17_stress_identity_robustness.R
+#   Rscript analysis/03_spatial_validation/17_stress_identity_robustness.R --dry-run
 
 source("R/paths.R")
-source("R/dataset_config.R")
-source("R/integration_utils.R")
-source("R/spatial_atlas_utils.R")
-source("R/ca2_slm_robustness_utils.R")
+source("R/data_contracts/dataset_config.R")
+source("R/statistics/integration_utils.R")
+source("R/spatial/spatial_atlas_utils.R")
+source("R/spatial/ca2_slm_robustness_utils.R")
 
 suppressPackageStartupMessages({ library(readr); library(dplyr) })
 
-SCRIPT_ID <- "11_spatial_systems/17_stress_identity_robustness.R"
+SCRIPT_ID <- "analysis/03_spatial_validation/17_stress_identity_robustness.R"
 Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 cli <- integration_cli(default_dataset = "all")
 

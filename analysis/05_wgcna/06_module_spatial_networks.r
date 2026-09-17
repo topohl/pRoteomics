@@ -1,7 +1,7 @@
 # ================================================================
 # Consumes:
 #   - spatial network RDS from data/processed/07_spatial_networks/network_spatial_relations/
-#   - dataset/source-scoped module score output from 06_modules_WGCNA/03_score_module_activity.R
+#   - dataset/source-scoped module score output from analysis/05_wgcna/03_score_module_activity.R
 # Produces:
 #   - module spatial network tables/figures/network files/logs in canonical module folders
 # File contract:
@@ -94,7 +94,7 @@ figure_diverging <- c(low = "#3B6FB6", mid = "#F8FAFC", high = "#C84C5A")
 figure_condition_cols <- c(CON = "#6C757D", RES = "#2A9D8F", SUS = "#E76F51")
 
 if (is_dry_run()) {
-  dry_run_line("Script", "06_modules_WGCNA/06_module_spatial_networks.r")
+  dry_run_line("Script", "analysis/05_wgcna/06_module_spatial_networks.r")
   dry_run_line("Dataset", dataset_profile)
   dry_run_line("Spatial unit", spatial_unit)
   dry_run_line("Module definition source", module_definition_source)
@@ -107,7 +107,7 @@ if (is_dry_run()) {
 if (!file.exists(params$spatial_rds)) stop("spatial_rds not found: ", params$spatial_rds, call. = FALSE)
 if (!file.exists(params$module_score_file) && !allow_regex_fallback) {
   stop("Module score output not found: ", params$module_score_file,
-       ". Run 06_modules_WGCNA/03_score_module_activity.R for dataset=", dataset_profile,
+       ". Run analysis/05_wgcna/03_score_module_activity.R for dataset=", dataset_profile,
        " and module_definition_source=", module_definition_source,
        ", or explicitly allow regex fallback with PROTEOMICS_ALLOW_REGEX_MODULE_FALLBACK=true / --allow-regex-fallback.",
        call. = FALSE)

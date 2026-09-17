@@ -2,7 +2,7 @@
 #
 # Spatial systems foundation: the hemisphere-resolved data contract.
 #
-# Builds the side-resolved aggregation hierarchy (R/spatial_systems_data_utils.R)
+# Builds the side-resolved aggregation hierarchy (R/data_contracts/spatial_systems_data_utils.R)
 # for every dataset and PROVES it against the canonical animal-level paths that
 # already exist, rather than asserting it.
 #
@@ -18,21 +18,21 @@
 #   here is phenotype-derived: the hierarchy is built from sample identity only.
 #
 # USAGE
-#   Rscript 11_spatial_systems/01_spatial_systems_data_contract.R
-#   Rscript 11_spatial_systems/01_spatial_systems_data_contract.R --dry-run
+#   Rscript analysis/03_spatial_validation/01_spatial_systems_data_contract.R
+#   Rscript analysis/03_spatial_validation/01_spatial_systems_data_contract.R --dry-run
 
 source("R/paths.R")
-source("R/dataset_config.R")
-source("R/integration_utils.R")
-source("R/qc_exploration_utils.R")
-source("R/protigy_input_utils.R")
-source("R/empirical_roi_marker_utils.R")
-source("R/spatial_systems_data_utils.R")
-source("R/spatial_systems_evidence_registry.R")
+source("R/data_contracts/dataset_config.R")
+source("R/statistics/integration_utils.R")
+source("R/qc/qc_exploration_utils.R")
+source("R/data_contracts/protigy_input_utils.R")
+source("R/qc/empirical_roi_marker_utils.R")
+source("R/data_contracts/spatial_systems_data_utils.R")
+source("R/data_contracts/spatial_systems_evidence_registry.R")
 
 suppressPackageStartupMessages({ library(readr); library(dplyr) })
 
-SCRIPT_ID <- "11_spatial_systems/01_spatial_systems_data_contract.R"
+SCRIPT_ID <- "analysis/03_spatial_validation/01_spatial_systems_data_contract.R"
 Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 cli <- integration_cli(default_dataset = "all")
 

@@ -1,5 +1,5 @@
 # ================================================================
-# Script: 03_qc_exploration/04c_marker_detectability_and_wgcna_bridge.r
+# Script: analysis/02_qc/04c_marker_detectability_and_wgcna_bridge.r
 # Stage: qc
 # Scope: dataset_specific
 # Consumes: required Stage 01 post-filter/imputed quantitative matrix, mouse UniProt mapping, sample metadata and marker registry; optional validated current WGCNA state/module bridge.
@@ -33,7 +33,7 @@ marker_file <- Sys.getenv(
 
 if (run$dry_run) {
   status <- qc_dry_run_contract(
-    "03_qc_exploration/04c_marker_detectability_and_wgcna_bridge.r",
+    "analysis/02_qc/04c_marker_detectability_and_wgcna_bridge.r",
     DATASET,
     matrix_file = matrix_file,
     metadata_file = metadata_file,

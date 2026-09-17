@@ -5,7 +5,7 @@
 # cannot drift from the audit that produced it.
 
 setwd("S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/Analysis/proteomics")
-source("99_audits/publication_hardening/00_checkpoint.R")
+source("audits/publication_hardening/00_checkpoint.R")
 
 rd <- function(f) utils::read.csv(file.path(PH_TAB, f), stringsAsFactors = FALSE)
 m <- rd("manuscript_methods_contract.csv")
@@ -22,8 +22,8 @@ L <- c(
   "what exactly was tested, on how many animals, against which multiple-testing",
   "family, and what may therefore be claimed.", "",
   "Generated from the frozen v9 figure contract and the Part A audit tables by",
-  "`99_audits/publication_hardening/02_statistical_audits.R` and rendered by",
-  "`99_audits/publication_hardening/03_statistical_contract_doc.R`.", "",
+  "`audits/publication_hardening/02_statistical_audits.R` and rendered by",
+  "`audits/publication_hardening/03_statistical_contract_doc.R`.", "",
   "## 1. Analyses", "")
 for (k in seq_len(nrow(m))) L <- c(L,
   sprintf("### %s", m$analysis_id[k]), "",

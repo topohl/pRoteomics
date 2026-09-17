@@ -25,7 +25,7 @@
 # them, and hashing them over this share does not terminate.
 
 setwd("S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/Analysis/proteomics")
-source("99_audits/publication_hardening/00_checkpoint.R")
+source("audits/publication_hardening/00_checkpoint.R")
 suppressMessages({library(digest); library(yaml)})
 
 MODE <- commandArgs(trailingOnly = TRUE)[1]

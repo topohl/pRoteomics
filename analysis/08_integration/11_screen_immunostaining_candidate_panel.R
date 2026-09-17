@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 # ================================================================
-# Script: 10_biological_integration/11_screen_immunostaining_candidate_panel.R
+# Script: analysis/08_integration/11_screen_immunostaining_candidate_panel.R
 # Stage: integration
 # Scope: global (neuron_neuropil only)
 # Consumes: required data/processed/02_id_mapping/mapped/neuron_neuropil/forward/per_file/<unit>sus_<unit>res.csv;

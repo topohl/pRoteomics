@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript
 
 # ================================================================
-# Script: 04_differential_expression_enrichment/05_microglia_targeted_signature_enrichment.r
+# Script: analysis/04_differential_abundance/05_microglia_targeted_signature_enrichment.r
 # Stage: enrichment
 # Scope: dataset_specific
 # Consumes: required mapped microglia/neuropil ranked contrasts and results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv; optional config/marker_panels/wgcna_reference_marker_sets.csv and data/processed/05_celltype_enrichment_EWCE/EWCE_E9/microglia/EWCE_results_full.rds (diagnostic only).
@@ -1325,7 +1325,7 @@ if (isTRUE(DRY_RUN)) {
       detail = c(DATASET, REFERENCE_DATASET, input_dir, reference_dir, PATHS$tables, PATHS$figures, FIG_PATHS$main_candidate, FIG_PATHS$supplementary_qc)
     )
   )
-  dry_run_line("Script", "04_differential_expression_enrichment/05_microglia_targeted_signature_enrichment.r")
+  dry_run_line("Script", "analysis/04_differential_abundance/05_microglia_targeted_signature_enrichment.r")
   dry_run_line("Dataset", DATASET, ifelse(DATASET == "microglia", "PASS", "WARN"))
   dry_run_line("Input contrasts", input_dir, ifelse(dir.exists(input_dir), "PASS", "WARN"))
   dry_run_line("Neuropil reference contrasts", reference_dir, ifelse(dir.exists(reference_dir), "PASS", "WARN"))

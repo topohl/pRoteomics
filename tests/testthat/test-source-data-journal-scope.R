@@ -2,7 +2,7 @@ source(testthat::test_path("..", "..", "R", "paths.R"))
 source(repo_path("R", "export_helpers.R"))
 
 repo <- normalizePath(testthat::test_path("..", ".."), winslash = "/", mustWork = TRUE)
-exporter <- file.path(repo, "09_export_pride_journal", "09_export_source_data.R")
+exporter <- file.path(repo, "analysis", "09_publication_exports", "09_export_source_data.R")
 
 # Build an isolated results tree so the scope predicates are exercised against
 # fixtures rather than the live analysis outputs.
@@ -261,7 +261,7 @@ testthat::test_that("required manuscript-facing source families are never exclud
 })
 
 testthat::test_that("the scope uses no size, timestamp-pattern or name heuristics", {
-  src <- readLines(file.path(repo, "R", "export_helpers.R"), warn = FALSE)
+  src <- readLines(repo_path("R", "export_helpers.R"), warn = FALSE)
   block_start <- grep("Manuscript / journal source-data scope", src, fixed = TRUE)
   testthat::expect_length(block_start, 1L)
   # Bound the region to the exclusion predicates and their resolver only. The
@@ -408,7 +408,7 @@ testthat::test_that("the nine 260-character legacy_replay sources are unselected
 })
 
 testthat::test_that("the legacy_replay rule is a single literal prefix", {
-  src <- readLines(file.path(repo, "R", "export_helpers.R"), warn = FALSE)
+  src <- readLines(repo_path("R", "export_helpers.R"), warn = FALSE)
   fn <- grep("^source_data_excluded_legacy_replay <- function", src)
   testthat::expect_length(fn, 1L)
   body <- src[fn[[1]]:(fn[[1]] + 2L)]

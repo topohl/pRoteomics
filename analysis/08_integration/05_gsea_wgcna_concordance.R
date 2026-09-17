@@ -1,5 +1,5 @@
 #!/usr/bin/env Rscript
-# Script: 10_biological_integration/05_gsea_wgcna_concordance.R
+# Script: analysis/08_integration/05_gsea_wgcna_concordance.R
 # Stage: additive downstream biological integration
 # Consumes: canonical spatial ranked-GSEA terms, Stage 07 inferential handoffs,
 #   canonical WGCNA feature universes, and existing robustness/readiness outputs.
@@ -18,7 +18,7 @@ source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
 source(repo_path("R", "manuscript_go_theme_utils.R"))
 source(repo_path("R", "gsea_wgcna_concordance_utils.R"))
 
-SCRIPT_ID <- "10_biological_integration/05_gsea_wgcna_concordance.R"
+SCRIPT_ID <- "analysis/08_integration/05_gsea_wgcna_concordance.R"
 Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 run <- integration_cli(default_dataset = "all", allow_all = TRUE)
 datasets <- integration_datasets(run$dataset)

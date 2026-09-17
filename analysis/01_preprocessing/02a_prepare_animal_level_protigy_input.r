@@ -30,7 +30,7 @@ source(if (file.exists(file.path("R", "script_runtime.R"))) {
 source(repo_path("R", "dataset_inputs.R"))
 source(repo_path("R", "protigy_input_utils.R"))
 
-SCRIPT_ID <- "01_preprocessing/02a_prepare_animal_level_protigy_input.r"
+SCRIPT_ID <- "analysis/01_preprocessing/02a_prepare_animal_level_protigy_input.r"
 MODULE_ID <- "01_preprocessing/02a_prepare_animal_level_protigy_input"
 runtime <- init_script_runtime(
   script = SCRIPT_ID,

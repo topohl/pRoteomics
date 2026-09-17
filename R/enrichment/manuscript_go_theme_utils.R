@@ -1,5 +1,5 @@
 # Ontology-aware manuscript GO-theme mapping and descriptive redundancy QA.
-# The broad text-regex program mapper in R/enrichment_io.R remains a legacy
+# The broad text-regex program mapper in R/enrichment/enrichment_io.R remains a legacy
 # technical classifier. Valid GO IDs are never publication-classified by text.
 
 manuscript_go_allowed_relationships <- function() c("is_a", "part_of")

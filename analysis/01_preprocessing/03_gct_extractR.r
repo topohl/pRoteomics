@@ -1,5 +1,5 @@
 # ================================================================
-# Script: 01_preprocessing/03_gct_extractR.r
+# Script: analysis/01_preprocessing/03_gct_extractR.r
 # Stage: core
 # Scope: dataset_specific
 # Consumes: corrected animal-level ProTigy GCT by default; legacy input requires PROTEOMICS_GCT_BRANCH=legacy|comparison.
@@ -71,7 +71,7 @@ if (is_dry_run()) {
     list.files(outdir_fwd, pattern = "\\.csv$", full.names = TRUE),
     list.files(outdir_rev, pattern = "\\.csv$", full.names = TRUE)
   )
-  dry_run_line("Script", "01_preprocessing/03_gct_extractR.r")
+  dry_run_line("Script", "analysis/01_preprocessing/03_gct_extractR.r")
   dry_run_line("Dry-run mode", "no output folders or CSV files will be created")
   dry_run_line("Dataset", comparison_name)
   dry_run_line("Analysis/input root", roots$input_root, if (dir.exists(roots$input_root)) "PASS" else "FAIL")

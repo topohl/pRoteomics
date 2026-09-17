@@ -1,5 +1,5 @@
 # ================================================================
-# Script: 08_behavior_physio_coupling/02_network_behavior_coupling.r
+# Script: analysis/08_integration/02_network_behavior_coupling.r
 # Stage: coupling
 # Scope: dataset_specific
 # Consumes: required data/processed/07_spatial_networks/network_spatial_relations/<dataset>/*/network_spatial_relations_objects.rds; data/external/behavior/auc_individual_animals_firstChangeActive.csv; +1 more; optional data/external/behavior/auc_individual_animals_all.csv.
@@ -15,7 +15,7 @@
 # Produces:
 #   - network-behavior coupling tables, figures and logs in canonical folders
 # File contract:
-#   - docs/active_script_io_audit.tsv object 08_behavior_physio_coupling/02_network_behavior_coupling.r
+#   - docs/active_script_io_audit.tsv object analysis/08_integration/02_network_behavior_coupling.r
 # ================================================================
 # Network-behavior coupling analysis for spatial proteomics
 # ================================================================
@@ -115,7 +115,7 @@ params <- list(
 )
 
 if (is_dry_run()) {
-  dry_run_line("Script", "08_behavior_physio_coupling/02_network_behavior_coupling.r")
+  dry_run_line("Script", "analysis/08_integration/02_network_behavior_coupling.r")
   dry_run_line("Spatial RDS", params$spatial_rds, if (file.exists(params$spatial_rds)) "PASS" else "FAIL")
   dry_run_line("Movement AUC", params$movement_auc_file, if (file.exists(params$movement_auc_file)) "PASS" else "FAIL")
   dry_run_line("Movement AUC all", params$movement_auc_all_file, if (file.exists(params$movement_auc_all_file)) "PASS" else "WARN")
@@ -178,7 +178,7 @@ group_colors <- c(
 
 group_fills <- scales::alpha(group_colors, 0.35)
 
-# Animal identity is resolved by the canonical contract in R/animal_id_contract.R,
+# Animal identity is resolved by the canonical contract in R/data_contracts/animal_id_contract.R,
 # never by an ad-hoc regex here. The historical local normalize_animal_id() did
 # three separate kinds of damage: it truncated digit runs longer than four
 # (merging 23 behaviour animals into 7 keys), it zero-padded bare numerals to
@@ -189,7 +189,7 @@ group_fills <- scales::alpha(group_colors, 0.35)
 normalize_animal_id <- function(x) {
   stop("normalize_animal_id() is withdrawn. Use ",
        "aid_resolve(x, source_system, canonical = CANON_ANIMALS) from ",
-       "R/animal_id_contract.R, which fails closed on unresolved ids and ",
+       "R/data_contracts/animal_id_contract.R, which fails closed on unresolved ids and ",
        "hard-errors on collisions.", call. = FALSE)
 }
 

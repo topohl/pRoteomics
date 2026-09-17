@@ -9,7 +9,7 @@ source(repo_path("R", "joint_compartment_qc_utils.R"))
 
 global_arg <- tolower(script_arg_value("--dataset", "all"))
 if (!global_arg %in% c("all", "global")) stop("This is a global preprocessing script; use --dataset all or global.", call. = FALSE)
-runtime <- list(script = "01_preprocessing/01_prepare_joint_protigy_input.r", stage = "joint_qc_preprocessing", dataset = "global", args = commandArgs(trailingOnly = TRUE), dry_run = is_dry_run(), started_at = Sys.time())
+runtime <- list(script = "analysis/01_preprocessing/01_prepare_joint_protigy_input.r", stage = "joint_qc_preprocessing", dataset = "global", args = commandArgs(trailingOnly = TRUE), dry_run = is_dry_run(), started_at = Sys.time())
 raw_file <- Sys.getenv("PROTEOMICS_JOINT_RAW_MATRIX_FILE", unset = path_raw("pg_matrix", "quicksearch.pg_matrix.tsv"))
 metadata_file <- Sys.getenv("PROTEOMICS_JOINT_METADATA_FILE", unset = path_metadata("TPE9_sample_metadata_males.xlsx"))
 idmap_file <- Sys.getenv("PROTEOMICS_JOINT_IDMAPPING_FILE", unset = path_external("MOUSE_10090_idmapping.dat"))

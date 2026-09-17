@@ -62,7 +62,11 @@ testthat::test_that("--dry-run creates no directories or files in an isolated ro
   testthat::skip_if_not(nzchar(Sys.which("Rscript")), "Rscript not on PATH")
 
   root <- withr::local_tempdir("export_dry_run_")
-  dir.create(file.path(root, "09_export_pride_journal"), recursive = TRUE)
+  # Mirror each script at its real relative path so the fixture does not
+  # hard-code the stage directory layout.
+  for (rel in dry_run_scripts) {
+    dir.create(file.path(root, dirname(rel)), recursive = TRUE, showWarnings = FALSE)
+  }
   dir.create(file.path(root, "config"), recursive = TRUE)
   file.copy(file.path(repo, "R"), root, recursive = TRUE)
   file.copy(
@@ -70,7 +74,7 @@ testthat::test_that("--dry-run creates no directories or files in an isolated ro
     file.path(root, "config", "output_namespaces.yml")
   )
   for (rel in dry_run_scripts) {
-    file.copy(file.path(repo, rel), file.path(root, "09_export_pride_journal"))
+    file.copy(file.path(repo, rel), file.path(root, rel))
   }
 
   # Minimal readable inputs so the selection step has something to find.
@@ -220,7 +224,7 @@ testthat::test_that("the orphan family is enumerated explicitly, not inferred", 
     "all_supermodule_eigengene_spatial_group_plot" %in% orphan_figure_family_stems()
   )
   helpers <- readLines(
-    file.path(repo, "R", "export_helpers.R"), warn = FALSE
+    repo_path("R", "export_helpers.R"), warn = FALSE
   )
   # Fail closed: the exclusion must stay a literal stem list.
   testthat::expect_true(any(grepl(

@@ -1,5 +1,5 @@
 # ================================================================
-# Script: 04_differential_expression_enrichment/01_clusterProfiler.r
+# Script: analysis/04_differential_abundance/01_clusterProfiler.r
 # Stage: enrichment
 # Scope: dataset_specific
 # Consumes: required data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv; optional data/external/MOUSE_10090_idmapping.dat.

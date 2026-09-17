@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 # ================================================================
-# Script: 06_modules_WGCNA/05_module_supermodule_group_effects.r
+# Script: analysis/05_wgcna/05_module_supermodule_group_effects.r
 # Stage: modules_downstream
 # Scope: dataset_specific
 # Purpose: canonical identity-contract-based module and supermodule
@@ -50,7 +50,7 @@ sample_audit <- wgcna_group_sample_audit(
 if (run$dry_run) {
   dry_run_line(
     "Script",
-    "06_modules_WGCNA/05_module_supermodule_group_effects.r"
+    "analysis/05_wgcna/05_module_supermodule_group_effects.r"
   )
   dry_run_line("Dataset", DATASET)
   dry_run_line("Level", LEVEL)

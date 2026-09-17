@@ -51,7 +51,7 @@ Frozen: the ranked input, the per-comparison derived seed, `RNGkind`,
 `FALSE`). Numerical reproducibility is expected within one execution context.
 
 Bit-exact equality across *different* execution contexts is **not** guaranteed.
-`R/clusterprofiler_reproducibility.R` records a measured tolerance instead
+`R/enrichment/clusterprofiler_reproducibility.R` records a measured tolerance instead
 (`enrichmentScore` to ~1.6e-15, propagating to ≤ ~2.4e-05 in NES and ≤ ~2.3e-05
 in p-value/FDR), with no FDR-0.05 crossings and an unchanged Figure-2f display
 selection in the audited comparison. The manifest restates that contract and
@@ -69,7 +69,7 @@ fatal:
    `09_export_source_data.R` implement a side-effect-free dry-run guard.
    `RUN_EXPORT.R` restricts the step list under `--dry-run`, so the orchestrator
    is safe, but the other seven steps remain individually unguarded.
-3. **Wildcard glob filter** — `R/export_helpers.R:658`, in
+3. **Wildcard glob filter** — `R/utilities/export_helpers.R:658`, in
    `processed_files_for_dataset()`, filters globs with
    `grepl("\\*", g, fixed = TRUE)`, which searches for a literal backslash-star
    and therefore never matches an ordinary `*`. The filter degenerates to a

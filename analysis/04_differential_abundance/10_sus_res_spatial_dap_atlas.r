@@ -10,13 +10,13 @@
 # ProteinGroupIDs with finite FDR and formal SUS-RES effect in both units.
 
 source("R/paths.R")
-source("R/dataset_config.R")
-source("R/plotting_nature.R")
-source("R/protein_group_enrichment_utils.R")
-source("R/enrichment_io.R")
-source("R/manuscript_go_theme_utils.R")
-source("R/sus_res_spatial_dap_atlas_utils.R")
-source("R/sus_res_biological_audit_workbook.R")
+source("R/data_contracts/dataset_config.R")
+source("R/utilities/plotting_nature.R")
+source("R/enrichment/protein_group_enrichment_utils.R")
+source("R/enrichment/enrichment_io.R")
+source("R/enrichment/manuscript_go_theme_utils.R")
+source("R/statistics/sus_res_spatial_dap_atlas_utils.R")
+source("R/statistics/sus_res_biological_audit_workbook.R")
 
 MODULE_ID <- "04_differential_expression_enrichment"
 SUBSTEP_ID <- file.path("sus_res_spatial_dap_atlas", "global")
@@ -442,7 +442,7 @@ if (nrow(go_display)) {
 if (!file.exists(RANKED_PROGRAM_SOURCE)) {
   stop(
     "Missing ranked GO/GSEA Panel C source: ", RANKED_PROGRAM_SOURCE,
-    ". Run 04_differential_expression_enrichment/07_compareGO_spatial_program_atlas.r first; script 10 does not recompute ranked GO/GSEA statistics.",
+    ". Run analysis/04_differential_abundance/07_compareGO_spatial_program_atlas.r first; script 10 does not recompute ranked GO/GSEA statistics.",
     call. = FALSE
   )
 }

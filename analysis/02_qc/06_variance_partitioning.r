@@ -1,5 +1,5 @@
 # ================================================================
-# Script: 03_qc_exploration/06_variance_partitioning.r
+# Script: analysis/02_qc/06_variance_partitioning.r
 # Stage: qc
 # Scope: dataset_specific
 # Consumes: required data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv; optional data/metadata/*.xlsx.
@@ -48,7 +48,7 @@ metadata_file <- qc_resolve_metadata(
 
 if (run$dry_run) {
   status <- qc_dry_run_contract(
-    "03_qc_exploration/06_variance_partitioning.r",
+    "analysis/02_qc/06_variance_partitioning.r",
     DATASET,
     matrix_file = matrix_file,
     metadata_file = metadata_file,

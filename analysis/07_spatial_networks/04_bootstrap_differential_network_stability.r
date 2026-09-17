@@ -1,5 +1,5 @@
 # ================================================================
-# Script: 07_spatial_networks/04_bootstrap_differential_network_stability.r
+# Script: analysis/07_spatial_networks/04_bootstrap_differential_network_stability.r
 # Stage: networks
 # Scope: dataset_specific
 # Consumes: required results/tables/07_spatial_networks/differential_networks/<dataset>/; optional none.
@@ -14,7 +14,7 @@
 # Produces:
 #   - bootstrap differential network tables, figures, network files and RDS cache in canonical folders
 # File contract:
-#   - docs/active_script_io_audit.tsv object 07_spatial_networks/04_bootstrap_differential_network_stability.r
+#   - docs/active_script_io_audit.tsv object analysis/07_spatial_networks/04_bootstrap_differential_network_stability.r
 # ================================================================
 # Bootstrap stability analysis for differential spatial networks
 # ================================================================
@@ -86,7 +86,7 @@ params <- list(
 )
 
 if (is_dry_run()) {
-  dry_run_line("Script", "07_spatial_networks/04_bootstrap_differential_network_stability.r")
+  dry_run_line("Script", "analysis/07_spatial_networks/04_bootstrap_differential_network_stability.r")
   dry_run_line("Dataset", NETWORK_DATASET)
   dry_run_line("Spatial unit", spatial_unit)
   dry_run_line("Spatial RDS", params$spatial_rds, if (file.exists(params$spatial_rds)) "PASS" else "FAIL")

@@ -8,7 +8,7 @@
 # contract and the source-data-first check.
 
 setwd("S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/Analysis/proteomics")
-source("99_audits/publication_hardening/00_checkpoint.R")
+source("audits/publication_hardening/00_checkpoint.R")
 suppressMessages({library(ggplot2); library(yaml)})
 
 PH_FIG <- file.path(PH_OUT, "figures")

@@ -152,12 +152,12 @@ values compared across 455 columns, **0 changed**; 29 canonical statistic files
 hashed, only the edited generator differs. No SVG or PDF changed, and vector
 integrity held at 51 of 51.
 
-### PH-003 — `R/module_stats.R` is unreferenced
+### PH-003 — `R/statistics/module_stats.R` is unreferenced
 **Severity:** P2. **Disposition:** RETAINED deliberately.
 
 The only helper of 100 with no `source()` edge and no indirect reference; it is
 named only in `R/README.md`. Deleting it would be exactly the tidiness-driven
-deletion this audit was told not to make. (`R/renv_lock_audit.R` also has no
+deletion this audit was told not to make. (`R/utilities/renv_lock_audit.R` also has no
 `source()` edge but is reached through a variable and through
 `testthat::test_path` — static edge counting alone would misreport it.)
 
@@ -166,7 +166,7 @@ deletion this audit was told not to make. (`R/renv_lock_audit.R` also has no
 
 One script, a name that is a near-synonym of `10_biological_integration`, not a
 registry step, and it emits three files whose basenames duplicate those of
-`03_qc_exploration/04d_compartment_marker_fidelity.r`. The paths differ, so
+`archive/02_qc/04d_compartment_marker_fidelity.r`. The paths differ, so
 nothing is overwritten — but a reader handed
 `compartment_marker_fidelity_scores.csv` cannot tell which stage produced it.
 Folding it in would change its output directory, which derives from the stage
@@ -177,7 +177,7 @@ name, so every path it writes would move.
 
 Eight are `01_preprocessing` predecessors of the animal-level contract, five are
 in explicit `legacy/` subdirectories, and the rest are audits or wrappers
-(`09_export_pride_journal/RUN_EXPORT.R`). None is reachable from a publication
+(`analysis/09_publication_exports/RUN_EXPORT.R`). None is reachable from a publication
 artefact, and no producer layer sources any of them (0 edges, now tested). The
 residual risk is that each can still be run by hand while never being validated
 by the registry.
@@ -272,7 +272,7 @@ was performed, and that 18 of 20 also clear the threshold.
 **MT-04 resolved, and the earlier characterisation refined.** The `p_adjust`
 field *is* genuine `clusterProfiler` Benjamini–Hochberg output — but each pairing
 is run as a separate GSEA against a **single-signature collection**
-(`04_differential_expression_enrichment/09_control_spatial_identity_validation.r:591-601`,
+(`analysis/04_differential_abundance/09_control_spatial_identity_validation.r:591-601`,
 `TERM2GENE = data.frame(term = job$external_signature, gene = job$mapped)`).
 BH over a family of size one is a no-op, which is exactly why the field equals
 the raw *P*. **This is a scope artefact of the per-pairing design, not a coding
@@ -287,7 +287,7 @@ compatibility-safe rename is recommended for a later pass.
 **Severity:** P1 correctness. **Disposition:** **RESOLVED** — defect fixed at
 e313863; the provenance contract and its guard added here.
 
-`99_audits/publication_hardening/01_manuscript_contract.R:66` defined `%||%`,
+`audits/publication_hardening/01_manuscript_contract.R:66` defined `%||%`,
 violating the rule that `R/null_coalescing.R` holds the only definition. The
 b392977 suite ran *before* the commit, while that file was untracked; the test
 enumerates candidates with `git ls-files`, so it could not see the file. The
@@ -307,7 +307,7 @@ the tested tree is identified. Every final verification report must record:
 **Release workflow.** Make changes → stage all intended files → run the suite →
 commit → **rerun verification on the committed HEAD** → report that result.
 
-**Guard.** `99_audits/publication_hardening/09_verification_state.R` emits
+**Guard.** `audits/publication_hardening/09_verification_state.R` emits
 `results/reports/publication_hardening/verification_state.csv`. Plain runs record
 and never fail, so ordinary development is unaffected. `--release` exits 1 unless
 `tested_state` is `HEAD`; `--allow-nonhead-verification` overrides it and labels

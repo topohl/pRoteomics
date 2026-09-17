@@ -22,9 +22,9 @@
 # THE ONE-SIDED POLICY IS NOT INVENTED HERE.
 #   Both canonical animal-level paths already agree, and this file reuses their
 #   vocabulary rather than adding a third rule:
-#     R/wgcna_group_effects_utils.R  "equal_weight_mean_available_LR_after_within_hemisphere_mean"
+#     R/statistics/wgcna_group_effects_utils.R  "equal_weight_mean_available_LR_after_within_hemisphere_mean"
 #                                    / "one_sided_observed_no_imputation"
-#     R/protigy_input_utils.R        "single_observed_hemisphere_no_imputation"
+#     R/data_contracts/protigy_input_utils.R        "single_observed_hemisphere_no_imputation"
 #   A one-sided cell contributes its observed side unchanged. Nothing is imputed.
 #
 # NAMING

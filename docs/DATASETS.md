@@ -1,6 +1,6 @@
 # Datasets
 
-The active dataset families are defined in `R/dataset_config.R` and mirrored in `pipeline.yml`.
+The active dataset families are defined in `R/data_contracts/dataset_config.R` and mirrored in `pipeline.yml`.
 
 | dataset | region | layer | celltype_roi | purified_celltype | interpretation |
 |---|---:|---:|---:|---:|---|
@@ -27,7 +27,7 @@ The active dataset families are defined in `R/dataset_config.R` and mirrored in 
 ## Examples
 
 ```r
-source("R/dataset_config.R")
+source("R/data_contracts/dataset_config.R")
 
 assert_dataset_capability("neuron_neuropil", "layer", analysis = "spatial network analysis")
 assert_dataset_capability("microglia", "region", analysis = "regional ROI summary")

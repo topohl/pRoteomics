@@ -1,5 +1,5 @@
 # ================================================================
-# Script: 03_qc_exploration/01_sample_qc_quicksearch.r
+# Script: analysis/02_qc/01_sample_qc_quicksearch.r
 # Stage: qc
 # Scope: dataset_specific
 # Consumes: required data/raw/pg_matrix/quicksearch.stats.annotated.xlsx; optional data/metadata/*.xlsx.
@@ -35,7 +35,7 @@ if (early_run$dry_run) {
   early_out_dir <- Sys.getenv("PROTEOMICS_QC_PUBLICATION_DIR", unset = early_paths$figures)
   early_table_dir <- Sys.getenv("PROTEOMICS_QC_TABLE_DIR", unset = early_paths$tables)
   status <- qc_dry_run_contract(
-    "03_qc_exploration/01_sample_qc_quicksearch.r",
+    "analysis/02_qc/01_sample_qc_quicksearch.r",
     early_dataset,
     matrix_file = early_input,
     paths = list(figures = early_out_dir, tables = early_table_dir, logs = early_paths$logs),
@@ -83,7 +83,7 @@ global_out_dir <- path_results("figures", MODULE_ID, SUBSTEP_ID, "global")
 table_dir <- Sys.getenv("PROTEOMICS_QC_TABLE_DIR", unset = CANONICAL_PATHS$tables)
 if (run$dry_run) {
   status <- qc_dry_run_contract(
-    "03_qc_exploration/01_sample_qc_quicksearch.r",
+    "analysis/02_qc/01_sample_qc_quicksearch.r",
     DATASET,
     matrix_file = input_file,
     paths = list(figures = out_dir, tables = table_dir, logs = CANONICAL_PATHS$logs),

@@ -8,7 +8,7 @@ source(repo_path("R", "joint_compartment_qc_utils.R"))
 
 global_arg <- tolower(script_arg_value("--dataset", "all"))
 if (!global_arg %in% c("all", "global")) stop("This is a global QC script; use --dataset all or global.", call. = FALSE)
-runtime <- list(script = "03_qc_exploration/00b_joint_compartment_qc.r", stage = "qc_global", dataset = "global", args = commandArgs(trailingOnly = TRUE), dry_run = is_dry_run(), started_at = Sys.time())
+runtime <- list(script = "analysis/02_qc/00b_joint_compartment_qc.r", stage = "qc_global", dataset = "global", args = commandArgs(trailingOnly = TRUE), dry_run = is_dry_run(), started_at = Sys.time())
 processed_root <- Sys.getenv("PROTEOMICS_JOINT_QC_PROCESSED_DIR", unset = path_processed("01_preprocessing", "joint_compartment_qc", "global"))
 bundle_file <- file.path(processed_root, "joint_compartment_qc_matrices.rds")
 out_root <- list(tables = path_results("tables", "03_qc_exploration", "00b_joint_compartment_qc", "global"), figures = path_results("figures", "03_qc_exploration", "00b_joint_compartment_qc", "global"), reports = path_results("reports", "03_qc_exploration", "00b_joint_compartment_qc", "global"), logs = path_results("logs", "03_qc_exploration", "00b_joint_compartment_qc", "global"))

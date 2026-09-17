@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 # ================================================================
-# Script: 09_export_pride_journal/07_make_biological_claims_table.R
+# Script: analysis/09_publication_exports/07_make_biological_claims_table.R
 # Stage: export
 # Scope: global
 # Consumes: required enrichment, WGCNA, Stage 13 claim-readiness, and manuscript-summary tables; optional behavior coupling.
@@ -22,7 +22,7 @@ source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
 source(repo_path("R", "wgcna_stage07_semantic_utils.R"))
 source(repo_path("R", "wgcna_label_activation_utils.R"))
 
-SCRIPT_ID <- "09_export_pride_journal/07_make_biological_claims_table.R"
+SCRIPT_ID <- "analysis/09_publication_exports/07_make_biological_claims_table.R"
 Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 
 required_pkgs <- c("dplyr", "readr", "tibble", "stringr", "tidyr")
@@ -1389,12 +1389,12 @@ final_reviewer_audit_specs <- function() {
     "claim_use_class_wording_audit.csv", file.path(audit_dir, "claim_use_class_wording_audit.csv"), "claim_use_class_wording_audit", SCRIPT_ID, "Final wording consistency checks", FALSE, "All severe_issue_count values must be zero.",
     "wgcna_label_completeness_audit.csv", file.path(audit_dir, "wgcna_label_completeness_audit.csv"), NA_character_, SCRIPT_ID, "Incomplete WGCNA label exceptions", FALSE, "Allowed-row exceptions must be absent.",
     "wgcna_claim_source_audit.csv", file.path(audit_dir, "wgcna_claim_source_audit.csv"), NA_character_, SCRIPT_ID, "WGCNA source and use-class provenance", FALSE, "Audit summary only.",
-    "wgcna_label_confidence_audit.csv", file.path(audit_dir, "wgcna_label_confidence_audit.csv"), NA_character_, "06_modules_WGCNA/06_annotate_module_microenvironment.r", "WGCNA label confidence", FALSE, "Audit summary only.",
-    "wgcna_annotation_source_audit.csv", file.path(audit_dir, "wgcna_annotation_source_audit.csv"), NA_character_, "06_modules_WGCNA/06_annotate_module_microenvironment.r", "WGCNA annotation provenance", FALSE, "Audit summary only.",
-    "wgcna_microenvironment_threshold_sensitivity.csv", file.path(audit_dir, "wgcna_microenvironment_threshold_sensitivity.csv"), NA_character_, "06_modules_WGCNA/06_annotate_module_microenvironment.r", "Threshold sensitivity", FALSE, "Diagnostic audit only.",
-    "microglia_neuropil_independence_claim_gate.csv", file.path(audit_dir, "microglia_neuropil_independence_claim_gate.csv"), "microglia_neuropil_independence_claim_gate", "06_modules_WGCNA/09_microglia_neuropil_independence.R", "Direct module-level independence claim gate", FALSE, "Module endpoints only unless endpoint_scope explicitly says supermodule.",
-    "microglia_neuropil_covariate_selection_audit.csv", file.path(audit_dir, "microglia_neuropil_covariate_selection_audit.csv"), "microglia_neuropil_covariate_selection_audit", "06_modules_WGCNA/09_microglia_neuropil_independence.R", "Covariate selection provenance", FALSE, "Exploratory rows are diagnostic only.",
-    "microglia_neuropil_independence_endpoint_scope_audit.csv", file.path(audit_dir, "microglia_neuropil_independence_endpoint_scope_audit.csv"), "microglia_neuropil_independence_endpoint_scope_audit", "06_modules_WGCNA/09_microglia_neuropil_independence.R", "Endpoint-scope certification", FALSE, "Supermodule claims require a direct supermodule endpoint.",
+    "wgcna_label_confidence_audit.csv", file.path(audit_dir, "wgcna_label_confidence_audit.csv"), NA_character_, "analysis/05_wgcna/06_annotate_module_microenvironment.r", "WGCNA label confidence", FALSE, "Audit summary only.",
+    "wgcna_annotation_source_audit.csv", file.path(audit_dir, "wgcna_annotation_source_audit.csv"), NA_character_, "analysis/05_wgcna/06_annotate_module_microenvironment.r", "WGCNA annotation provenance", FALSE, "Audit summary only.",
+    "wgcna_microenvironment_threshold_sensitivity.csv", file.path(audit_dir, "wgcna_microenvironment_threshold_sensitivity.csv"), NA_character_, "analysis/05_wgcna/06_annotate_module_microenvironment.r", "Threshold sensitivity", FALSE, "Diagnostic audit only.",
+    "microglia_neuropil_independence_claim_gate.csv", file.path(audit_dir, "microglia_neuropil_independence_claim_gate.csv"), "microglia_neuropil_independence_claim_gate", "analysis/05_wgcna/09_microglia_neuropil_independence.R", "Direct module-level independence claim gate", FALSE, "Module endpoints only unless endpoint_scope explicitly says supermodule.",
+    "microglia_neuropil_covariate_selection_audit.csv", file.path(audit_dir, "microglia_neuropil_covariate_selection_audit.csv"), "microglia_neuropil_covariate_selection_audit", "analysis/05_wgcna/09_microglia_neuropil_independence.R", "Covariate selection provenance", FALSE, "Exploratory rows are diagnostic only.",
+    "microglia_neuropil_independence_endpoint_scope_audit.csv", file.path(audit_dir, "microglia_neuropil_independence_endpoint_scope_audit.csv"), "microglia_neuropil_independence_endpoint_scope_audit", "analysis/05_wgcna/09_microglia_neuropil_independence.R", "Endpoint-scope certification", FALSE, "Supermodule claims require a direct supermodule endpoint.",
     "input_resolution_audit.csv", file.path(audit_dir, "input_resolution_audit.csv"), NA_character_, "R/paths.R and claim-critical scripts", "Input path and hash provenance", FALSE, "Provenance only.",
     "final_evidence_bundle_validation.csv", file.path(audit_dir, "final_evidence_bundle_validation.csv"), "final_evidence_bundle_validation", SCRIPT_ID, "Machine-readable final PASS/FAIL checks", FALSE, "Every check must pass.",
     "final_reviewer_audit_manifest.csv", file.path(audit_dir, "final_reviewer_audit_manifest.csv"), "final_reviewer_audit_manifest", SCRIPT_ID, "Index of final reviewer evidence", FALSE, "Start reviewer audit here."
@@ -1535,7 +1535,7 @@ collect_program_claims <- function(dataset) {
     script = SCRIPT_ID,
     dataset = dataset,
     stage = "export",
-    producer_script_or_artifact_id = "04_differential_expression_enrichment/06_biological_program_summary.r"
+    producer_script_or_artifact_id = "analysis/04_differential_abundance/06_biological_program_summary.r"
   )
   df <- read_csv_if_exists(f)
   if (is.null(df) || !nrow(df) || !"biological_program" %in% names(df)) return(empty_claims())
@@ -1586,7 +1586,7 @@ collect_wgcna_claims <- function(dataset) {
     script = SCRIPT_ID,
     dataset = dataset,
     stage = "export",
-    producer_script_or_artifact_id = "06_modules_WGCNA/01_WGCNA.r"
+    producer_script_or_artifact_id = "analysis/05_wgcna/01_WGCNA.r"
   )
   df <- read_csv_if_exists(f)
   if (is.null(df) || !nrow(df) || !"ModuleID" %in% names(df)) return(empty_claims())
@@ -1732,7 +1732,7 @@ collect_overlap_claims <- function(dataset) {
     script = SCRIPT_ID,
     dataset = dataset,
     stage = "export",
-    producer_script_or_artifact_id = "06_modules_WGCNA/04_wgcna_de_gsea_overlap.r"
+    producer_script_or_artifact_id = "analysis/05_wgcna/04_wgcna_de_gsea_overlap.r"
   )
   df <- read_csv_if_exists(f)
   if (is.null(df) || !nrow(df) || !"ModuleID" %in% names(df)) return(empty_claims())
@@ -1847,7 +1847,7 @@ collect_behavior_claims <- function() {
     script = SCRIPT_ID,
     dataset = "global",
     stage = "export",
-    producer_script_or_artifact_id = "08_behavior_physio_coupling/03_module_behavior_coupling.r"
+    producer_script_or_artifact_id = "analysis/08_integration/03_module_behavior_coupling.r"
   )
   df <- read_csv_if_exists(f)
   if (is.null(df) || !nrow(df)) return(empty_claims())
@@ -1885,7 +1885,7 @@ collect_microglia_signature_claims <- function(dataset) {
     script = SCRIPT_ID,
     dataset = dataset,
     stage = "export",
-    producer_script_or_artifact_id = "04_differential_expression_enrichment/05_microglia_targeted_signature_enrichment.r"
+    producer_script_or_artifact_id = "analysis/04_differential_abundance/05_microglia_targeted_signature_enrichment.r"
   )
   df <- read_csv_if_exists(f)
   if (is.null(df) || !nrow(df) || !"signature" %in% names(df)) return(empty_claims())
@@ -1930,7 +1930,7 @@ collect_wgcna_group_effect_claims <- function(dataset, level = c("module", "supe
     script = SCRIPT_ID,
     dataset = dataset,
     stage = "export",
-    producer_script_or_artifact_id = "06_modules_WGCNA/07_wgcna_interpretable_summary.r"
+    producer_script_or_artifact_id = "analysis/05_wgcna/07_wgcna_interpretable_summary.r"
   )
   df <- if (!is.na(f) && file.exists(f)) {
     wgcna_inferential_handoff_read(f)
@@ -2069,7 +2069,7 @@ collect_integration_claims <- function() {
     script = SCRIPT_ID,
     dataset = "global",
     stage = "export",
-    producer_script_or_artifact_id = "10_biological_integration/02_manuscript_program_summary.r"
+    producer_script_or_artifact_id = "analysis/08_integration/02_manuscript_program_summary.r"
   )
   df <- read_csv_if_exists(f)
   if (is.null(df) || !nrow(df) || !"program_key" %in% names(df)) return(empty_claims())
@@ -2109,7 +2109,7 @@ collect_integration_claims <- function() {
 
 if (is_dry_run()) {
   manuscript_summary_path <- path_results("tables", "10_biological_integration", "manuscript_program_summary", "global", "manuscript_program_summary.csv")
-  dry_run_line("Script", "09_export_pride_journal/07_make_biological_claims_table.R")
+  dry_run_line("Script", "analysis/09_publication_exports/07_make_biological_claims_table.R")
   dry_run_line("Datasets", paste(valid_datasets(), collapse = ", "))
   dry_run_line("Integration manuscript summary", manuscript_summary_path, if (file.exists(manuscript_summary_path)) "PASS" else "FAIL")
   dry_run_line("Required microglia WGCNA Stage 13 claim readiness", STAGE13_PATH, if (file.exists(STAGE13_PATH)) "PASS" else "FAIL")

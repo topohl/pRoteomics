@@ -1,5 +1,5 @@
 # ================================================================
-# Script: 01_preprocessing/06_merged_metadata_module_score.r
+# Script: analysis/01_preprocessing/06_merged_metadata_module_score.r
 # Stage: core
 # Scope: dataset_specific
 # Consumes: required data/processed/01_preprocessing/**/*.xlsx; optional data/external/behavior/auc_individual_animals_all.csv; data/external/behavior/auc_individual_animals_firstChangeActive.csv; +1 more.
@@ -144,7 +144,7 @@ if (length(missing_inputs) > 0) {
   stop(
     "Required module-score merge input file(s) not found:\n",
     paste(missing_lines, collapse = "\n"),
-    "\n\nIf the proteomics workbook is missing, run source('01_preprocessing/02_excel_convert.r') ",
+    "\n\nIf the proteomics workbook is missing, run source('archive/01_preprocessing/02_excel_convert.r') ",
     "or set PROTEOMICS_MODULE_SCORE_PROTEOMICS_FILE to the metadata-augmented workbook.",
     "\nIf behavior inputs are missing, set PROTEOMICS_MODULE_SCORE_AUC_ALL, ",
     "PROTEOMICS_MODULE_SCORE_AUC_FIRST, or PROTEOMICS_MODULE_SCORE_BEHAVIOR_FILE.",
@@ -175,7 +175,7 @@ report_file <- file.path(reports_dir, "metadata_merge_summary.md")
 manifest_file <- file.path(logs_dir, "run_manifest.yml")
 
 if (is_dry_run()) {
-  dry_run_line("Script", "01_preprocessing/06_merged_metadata_module_score.r")
+  dry_run_line("Script", "analysis/01_preprocessing/06_merged_metadata_module_score.r")
   dry_run_line("Dataset", dataset_profile)
   dry_run_line("Proteomics workbook", proteomics_file, if (file.exists(proteomics_file)) "PASS" else "FAIL")
   dry_run_line("AUC all file", auc_all_file, if (file.exists(auc_all_file)) "PASS" else "FAIL")

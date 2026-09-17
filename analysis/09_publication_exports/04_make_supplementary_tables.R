@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 # ================================================================
-# Script: 09_export_pride_journal/04_make_supplementary_tables.R
+# Script: analysis/09_publication_exports/04_make_supplementary_tables.R
 # Stage: export
 # Scope: global
 # Consumes: required results/tables/; optional results/source_data/.
@@ -95,7 +95,7 @@ supplementary_stage_names <- function(files, datasets, max_chars = 96L) {
 }
 
 if (isTRUE(cli$dry_run)) {
-  dry_run_line("Script", "09_export_pride_journal/04_make_supplementary_tables.R")
+  dry_run_line("Script", "analysis/09_publication_exports/04_make_supplementary_tables.R")
   dry_run_line("Datasets", paste(datasets, collapse = ", "))
   dry_run_line("Supplementary candidate count", length(files), if (length(files) > 0) "PASS" else "WARN")
   dry_run_line("Supplementary target", out_dir)

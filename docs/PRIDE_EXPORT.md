@@ -7,7 +7,7 @@
 - **In scope**: pg_matrix reference, sample metadata, processed matrices/tables, manifests, methods/limitations, validation.
 - **Out of scope for repo reproducibility**: raw/vendor MS files, search-engine outputs, FASTA, search parameters (may exist externally).
 
-See [`09_export_pride_journal/README.md`](../09_export_pride_journal/README.md) for commands and output layout.
+See [`analysis/09_publication_exports/README.md`](../09_export_pride_journal/README.md) for commands and output layout.
 
 ## Generated payload (gitignored)
 
@@ -23,9 +23,9 @@ pride_submission/validation/
 ## Commands
 
 ```bash
-Rscript 09_export_pride_journal/RUN_EXPORT.R --dataset all --export-level pg_matrix_onward
-Rscript 09_export_pride_journal/RUN_EXPORT.R --dataset microglia --export-level pg_matrix_onward --dry-run
-Rscript 09_export_pride_journal/10_validate_pride_submission.R --export-level pg_matrix_onward
+Rscript analysis/09_publication_exports/RUN_EXPORT.R --dataset all --export-level pg_matrix_onward
+Rscript analysis/09_publication_exports/RUN_EXPORT.R --dataset microglia --export-level pg_matrix_onward --dry-run
+Rscript analysis/09_publication_exports/10_validate_pride_submission.R --export-level pg_matrix_onward
 ```
 
 Large raw/vendor files should be uploaded to PRIDE separately and must not be committed to GitHub.

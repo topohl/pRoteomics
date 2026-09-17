@@ -505,20 +505,20 @@ build_bundle_readme <- function() {
       "qc_flags", "biological_claims"
     ),
     produced_from = c(
-      "10_biological_integration/03_evidence_priority_matrix.r and 09_export_pride_journal/07_make_biological_claims_table.R",
+      "analysis/08_integration/03_evidence_priority_matrix.r and analysis/09_publication_exports/07_make_biological_claims_table.R",
       "Final bundle input scanner",
-      "09_export_pride_journal/07_make_biological_claims_table.R",
-      "09_export_pride_journal/07_make_biological_claims_table.R",
-      "10_biological_integration/02_manuscript_program_summary.r",
-      "10_biological_integration/03_evidence_priority_matrix.r",
-      "10_biological_integration/01_cross_compartment_program_atlas.r",
-      "06_modules_WGCNA/07_wgcna_interpretable_summary.r",
-      "06_modules_WGCNA/07_wgcna_interpretable_summary.r",
-      "06_modules_WGCNA/13_wgcna_claim_readiness.R",
-      "06_modules_WGCNA/06_annotate_module_microenvironment.r",
-      "06_modules_WGCNA/09_microglia_neuropil_independence.R",
-      "09_export_pride_journal/07_make_biological_claims_table.R",
-      "09_export_pride_journal/07_make_biological_claims_table.R"
+      "analysis/09_publication_exports/07_make_biological_claims_table.R",
+      "analysis/09_publication_exports/07_make_biological_claims_table.R",
+      "analysis/08_integration/02_manuscript_program_summary.r",
+      "analysis/08_integration/03_evidence_priority_matrix.r",
+      "analysis/08_integration/01_cross_compartment_program_atlas.r",
+      "analysis/05_wgcna/07_wgcna_interpretable_summary.r",
+      "analysis/05_wgcna/07_wgcna_interpretable_summary.r",
+      "analysis/05_wgcna/13_wgcna_claim_readiness.R",
+      "analysis/05_wgcna/06_annotate_module_microenvironment.r",
+      "analysis/05_wgcna/09_microglia_neuropil_independence.R",
+      "analysis/09_publication_exports/07_make_biological_claims_table.R",
+      "analysis/09_publication_exports/07_make_biological_claims_table.R"
     ),
     meaning = c(
       "Plain-language index for the workbook.",

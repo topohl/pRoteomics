@@ -1,5 +1,5 @@
 # ================================================================
-# Script: 08_behavior_physio_coupling/01_correlate_proteomics_with_behavior.r
+# Script: analysis/08_integration/01_correlate_proteomics_with_behavior.r
 # Stage: coupling
 # Scope: dataset_specific
 # Consumes: required data/external/behavior/auc_individual_animals_firstChangeActive.csv; optional data/processed/morpheus/20260218_pgmatrix_imputed_neuron_soma_71samples_missing70pct_with_metadata.xlsx; data/external/MOUSE_10090_idmapping.dat.
@@ -41,7 +41,7 @@ target_layer_env <- Sys.getenv("PROTEOMICS_BEHAVIOR_COR_LAYER", unset = "sp")
 target_metric_env <- Sys.getenv("PROTEOMICS_BEHAVIOR_COR_METRIC", unset = "Movement")
 
 if (is_dry_run()) {
-  dry_run_line("Script", "08_behavior_physio_coupling/01_correlate_proteomics_with_behavior.r")
+  dry_run_line("Script", "analysis/08_integration/01_correlate_proteomics_with_behavior.r")
   dry_run_line("Dataset", current_dataset_from_cli(default = "neuron_soma"))
   dry_run_line("Proteomics input", proteomics_input_file, if (file.exists(proteomics_input_file)) "PASS" else "FAIL")
   dry_run_line("Behavior input", behavior_input_file, if (file.exists(behavior_input_file)) "PASS" else "FAIL")

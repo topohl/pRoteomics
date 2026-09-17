@@ -22,18 +22,18 @@
 # definition of the moderated t and involves no refitting.
 #
 # USAGE
-#   Rscript 11_spatial_systems/12_neuropil_spatial_precision_context.R
+#   Rscript analysis/03_spatial_validation/12_neuropil_spatial_precision_context.R
 
 source("R/paths.R")
-source("R/dataset_config.R")
-source("R/integration_utils.R")
-source("R/qc_exploration_utils.R")
-source("R/spatial_systems_data_utils.R")
-source("R/spatial_atlas_utils.R")
+source("R/data_contracts/dataset_config.R")
+source("R/statistics/integration_utils.R")
+source("R/qc/qc_exploration_utils.R")
+source("R/data_contracts/spatial_systems_data_utils.R")
+source("R/spatial/spatial_atlas_utils.R")
 
 suppressPackageStartupMessages({ library(readr); library(dplyr); library(readxl) })
 
-SCRIPT_ID <- "11_spatial_systems/12_neuropil_spatial_precision_context.R"
+SCRIPT_ID <- "analysis/03_spatial_validation/12_neuropil_spatial_precision_context.R"
 Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 cli <- integration_cli(default_dataset = "all")
 

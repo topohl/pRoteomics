@@ -1,5 +1,5 @@
 # ================================================================
-# Script: 06_modules_WGCNA/02_curated_overlap_programs.r
+# Script: analysis/05_wgcna/02_curated_overlap_programs.r
 # Stage: modules_downstream
 # Scope: global
 # Consumes: required results/tables/06_modules_WGCNA/01a_compare_GO_recurrent_proteins/; optional data/external/MOUSE_10090_idmapping.dat.
@@ -15,7 +15,7 @@
 # Produces:
 #   - curated overlap program definitions under global-scoped results/data folders
 # File contract:
-#   - docs/active_script_io_audit.tsv object 06_modules_WGCNA/02_curated_overlap_programs.r
+#   - docs/active_script_io_audit.tsv object analysis/05_wgcna/02_curated_overlap_programs.r
 # ================================================================
 # Build curated overlap-derived neuropil biological programs from recurrent compareGO proteins.
 # Requires recurrent compareGO protein table with columns:
@@ -51,7 +51,7 @@ dir.create(saving_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(CANONICAL_PATHS$processed, recursive = TRUE, showWarnings = FALSE)
 
 if (is_dry_run()) {
-  dry_run_line("Script", "06_modules_WGCNA/02_curated_overlap_programs.r")
+  dry_run_line("Script", "analysis/05_wgcna/02_curated_overlap_programs.r")
   dry_run_line("Dataset", "global")
   dry_run_line("Module source", "curated_overlap_programs")
   dry_run_line("Overlap file", overlap_file, if (file.exists(overlap_file)) "PASS" else "FAIL")

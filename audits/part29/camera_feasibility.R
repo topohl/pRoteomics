@@ -493,8 +493,8 @@ report <- data.frame(
             sprintf(MAPPED_DIR, EXEMPLARS$dataset, EXEMPLARS$contrast)), collapse = " | "),
     paste(c(file.path(sprintf(AUDIT_DIR, EXEMPLARS$dataset, EXEMPLARS$unit, EXEMPLARS$contrast), "protein_group_to_gene_transformation_audit.csv"),
             file.path(sprintf(AUDIT_DIR, EXEMPLARS$dataset, EXEMPLARS$unit, EXEMPLARS$contrast), "collapsed_gene_input.csv"),
-            "R/protein_group_enrichment_utils.R:96 collapse_protein_group_genes",
-            "R/protein_group_enrichment_utils.R:30 select_rank_statistic"), collapse = " | ")
+            "R/enrichment/protein_group_enrichment_utils.R:96 collapse_protein_group_genes",
+            "R/enrichment/protein_group_enrichment_utils.R:30 select_rank_statistic"), collapse = " | ")
   ),
   exact_numbers = c(
     paste0(

@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 # ================================================================
-# Script: 06_modules_WGCNA/06_annotate_module_microenvironment.r
+# Script: analysis/05_wgcna/06_annotate_module_microenvironment.r
 # Stage: modules_downstream
 # Scope: dataset_specific
 # Consumes: required module outputs and authoritative supermodule annotation/summary; optional marker and neuropil-reference annotations.
@@ -116,7 +116,7 @@ read_microenvironment_marker_panels <- function(path = supplemental_marker_panel
 
 if (run$dry_run) {
   invisible(lapply(unlist(PATHS), dir_create))
-  dry_run_line("Script", "06_modules_WGCNA/06_annotate_module_microenvironment.r")
+  dry_run_line("Script", "analysis/05_wgcna/06_annotate_module_microenvironment.r")
   dry_run_line("Dataset", DATASET)
   dry_run_line("Module definitions", FILES$definitions, if (file.exists(FILES$definitions)) "PASS" else "WARN")
   dry_run_line("GO enrichment", FILES$go, if (file.exists(FILES$go)) "PASS" else "WARN")

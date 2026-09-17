@@ -15,13 +15,13 @@ directly from the registry.
 Recommended stage contents:
 
 ```text
-03_qc_exploration/01_sample_qc_quicksearch.r
-03_qc_exploration/02_missingness_diagnostics.r
-03_qc_exploration/03_replicate_consistency.r
-03_qc_exploration/04_marker_rank_abundance_qc.r
-03_qc_exploration/05_pca_confounding_qc.r
-03_qc_exploration/06_variance_partitioning.r
-03_qc_exploration/08_qc_biology_confounding_report.r
+analysis/02_qc/01_sample_qc_quicksearch.r
+analysis/02_qc/02_missingness_diagnostics.r
+analysis/02_qc/03_replicate_consistency.r
+analysis/02_qc/04_marker_rank_abundance_qc.r
+analysis/02_qc/05_pca_confounding_qc.r
+analysis/02_qc/06_variance_partitioning.r
+analysis/02_qc/08_qc_biology_confounding_report.r
 ```
 
 QC/confounding checks are now normal registry outputs rather than manual side
@@ -31,7 +31,7 @@ and technical PCs.
 
 ## Priority 2: Feed QC Flags Into Biological Claims
 
-Extend `09_export_pride_journal/07_make_biological_claims_table.R` so each
+Extend `analysis/09_publication_exports/07_make_biological_claims_table.R` so each
 claim can carry QC/confounding context from:
 
 ```text
@@ -59,7 +59,7 @@ confounding.
 
 ## Priority 3: Expand Stress/Social-Instability Program Mapping
 
-Update `R/enrichment_io.R::biological_program_patterns()` so the program summary
+Update `R/enrichment/enrichment_io.R::biological_program_patterns()` so the program summary
 layer better matches the stress/social-instability interpretation guide.
 
 Candidate additions or splits:
@@ -78,7 +78,7 @@ should remain broad enough to avoid false precision from regex-only mapping.
 
 ## Priority 4: Add Direction-Consistency to Program Summaries
 
-Extend `04_differential_expression_enrichment/06_biological_program_summary.r`
+Extend `analysis/04_differential_abundance/06_biological_program_summary.r`
 with direction-consistency fields:
 
 ```text
@@ -109,9 +109,9 @@ Highest-value targets:
 
 ```text
 04_differential_expression_enrichment summaries
-06_modules_WGCNA/03_score_module_activity.R
+analysis/05_wgcna/03_score_module_activity.R
 08_behavior_physio_coupling scripts
-09_export_pride_journal/07_make_biological_claims_table.R
+analysis/09_publication_exports/07_make_biological_claims_table.R
 ```
 
 Rationale: the biological unit is animal, not individual tissue punch/replicate.
@@ -121,26 +121,26 @@ Claims should not accidentally borrow strength from pseudoreplicates.
 
 These scripts still deserve a focused pass:
 
-- `01_preprocessing/06_merged_metadata_module_score.r`
+- `analysis/01_preprocessing/06_merged_metadata_module_score.r`
   - Contains duplicated resolver logic and date-stamped/default legacy input
     assumptions.
-  - Consider replacing resolver code with `R/dataset_inputs.R` helpers or
+  - Consider replacing resolver code with `R/data_contracts/dataset_inputs.R` helpers or
     archiving if superseded.
 
-- `04_differential_expression_enrichment/legacy/04_compare_pathways.r`
+- `archive/04_differential_expression_enrichment/legacy/04_compare_pathways.r`
   - Clarify whether it is canonical, optional, or legacy.
   - If retained, add dataset-aware inputs, dry-run, manifest, and documented
     output contracts.
 
-- `04_differential_expression_enrichment/legacy/05_compare_sig_expr.r`
+- `archive/04_differential_expression_enrichment/legacy/05_compare_sig_expr.r`
   - Contains legacy path hints and older compareGO assumptions.
   - Either make it manifest-driven or move to a legacy folder.
 
-- `04_differential_expression_enrichment/legacy/07_control_strata_enrichment_figures.r`
+- `archive/04_differential_expression_enrichment/legacy/07_control_strata_enrichment_figures.r`
   - Potentially useful figure logic, but it needs canonical input/output
     contracts and dry-run behavior.
 
-- `08_behavior_physio_coupling/01_correlate_proteomics_with_behavior.r`
+- `analysis/08_integration/01_correlate_proteomics_with_behavior.r`
   - Important behavior/proteomics producer, but still has date-stamped/default
     inputs.
   - Should become dataset-aware and animal-level explicit before manuscript use.
@@ -162,12 +162,12 @@ docs/current_data_flow.md
 
 Specific stale points to fix:
 
-- `03_qc_exploration/01_sample_qc_quicksearch.r`,
+- `analysis/02_qc/01_sample_qc_quicksearch.r`,
   `04_marker_rank_abundance_qc.r`, `05_pca_confounding_qc.r`, and `06_variance_partitioning.r` are now
   canonical dataset-aware scripts.
-- `03_qc_exploration/02_missingness_diagnostics.r`,
+- `analysis/02_qc/02_missingness_diagnostics.r`,
   `03_replicate_consistency.r`, and
   `07_qc_biology_confounding_report.r` should be added to the audit/contracts.
-- `03_qc_exploration/legacy/06_pcaPlot_Neha.r` and
-  `03_qc_exploration/legacy/08_boxplotBonanza.r` should be marked legacy, not
+- `archive/03_qc_exploration/legacy/06_pcaPlot_Neha.r` and
+  `archive/03_qc_exploration/legacy/08_boxplotBonanza.r` should be marked legacy, not
   active canonical scripts.

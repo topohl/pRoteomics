@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 # ================================================================
-# Script: 03_qc_exploration/04b_import_reference_marker_sources.r
+# Script: analysis/02_qc/04b_import_reference_marker_sources.r
 # Stage: qc_global
 # Scope: global
 # Consumes: required data/external/reference_markers/reference_marker_sources.yml; optional config/marker_panels/compartment_fidelity_marker_sets.csv; data/external/reference_markers/go_mgi/raw/mgi.gaf.gz; +3 more.
@@ -72,7 +72,7 @@ syngo_ontologies_file_name_env <- Sys.getenv("PROTEOMICS_SYNGo_ONTOLOGIES_FILE_N
 
 if (dry_run) {
   invisible(lapply(unlist(PATHS), dir_create))
-  dry_run_line("Script", "03_qc_exploration/04b_import_reference_marker_sources.r")
+  dry_run_line("Script", "analysis/02_qc/04b_import_reference_marker_sources.r")
   dry_run_line("Manifest", manifest_file, if (file.exists(manifest_file)) "PASS" else "FAIL")
   dry_run_line("Live download allowed", allow_download, "INFO")
   dry_run_line("GO/MGI GAF cache", path_external("reference_markers", "go_mgi", "raw", "mgi.gaf.gz"), "INFO")
@@ -1115,7 +1115,7 @@ fallback_registry <- dplyr::bind_rows(lapply(names(canonical_marker_panels), fun
     gene_symbol = canonical_marker_panels[[ms]],
     source_type = "curated_fallback",
     source_name = "proteomics_curated_fallback",
-    source_reference = "03_qc_exploration/04b_import_reference_marker_sources.r curated conservative fallback",
+    source_reference = "analysis/02_qc/04b_import_reference_marker_sources.r curated conservative fallback",
     source_term_or_category = NA_character_,
     evidence_level = NA_character_,
     source_rank = NA_integer_,

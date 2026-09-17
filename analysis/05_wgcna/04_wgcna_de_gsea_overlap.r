@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 # ================================================================
-# Script: 06_modules_WGCNA/04_wgcna_de_gsea_overlap.r
+# Script: analysis/05_wgcna/04_wgcna_de_gsea_overlap.r
 # Stage: modules_downstream
 # Scope: dataset_specific
 # Consumes: required results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/; data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv; +1 more; optional results/tables/04_differential_expression_enrichment/biological_program_summary/<dataset>/program_summary.csv.
@@ -11,7 +11,7 @@
 
 #
 # File contract:
-#   06_modules_WGCNA/04_wgcna_de_gsea_overlap.r
+#   analysis/05_wgcna/04_wgcna_de_gsea_overlap.r
 #   results/tables/06_modules_WGCNA/04_wgcna_de_gsea_overlap/<dataset>/
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
@@ -141,7 +141,7 @@ run_wgcna_de_gsea_overlap <- function(dataset = current_dataset(), dry_run = is_
   ))
 
   if (isTRUE(dry_run)) {
-    dry_run_line("Script", "06_modules_WGCNA/04_wgcna_de_gsea_overlap.r")
+    dry_run_line("Script", "analysis/05_wgcna/04_wgcna_de_gsea_overlap.r")
     dry_run_line("Dataset", dataset)
     dry_run_line("WGCNA downstream definitions", definitions_file, if (file.exists(definitions_file)) "PASS" else "WARN")
     dry_run_line("WGCNA Fisher background universe", universe_file, if (file.exists(universe_file)) "PASS" else "FAIL")

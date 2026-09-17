@@ -5,12 +5,12 @@
 # Does not refit differential abundance, rerun GSEA, modify DAP-set ORA, or create new tests.
 
 source("R/paths.R")
-source("R/dataset_config.R")
-source("R/plotting_nature.R")
-source("R/enrichment_io.R")
-source("R/manuscript_go_theme_utils.R")
-source("R/sus_res_spatial_dap_atlas_utils.R")
-source("R/stress_response_biological_audit_utils.R")
+source("R/data_contracts/dataset_config.R")
+source("R/utilities/plotting_nature.R")
+source("R/enrichment/enrichment_io.R")
+source("R/enrichment/manuscript_go_theme_utils.R")
+source("R/statistics/sus_res_spatial_dap_atlas_utils.R")
+source("R/statistics/stress_response_biological_audit_utils.R")
 
 MODULE_ID <- "04_differential_expression_enrichment"
 SUBSTEP_ID <- "stress_response_biological_audit"
@@ -172,7 +172,7 @@ input_provenance <- specs[c(
 )]
 protected_reference <- stress_response_protected_reference_artifacts(
   SUS_RES_REFERENCE_WORKBOOK,
-  producer = "04_differential_expression_enrichment/10_sus_res_spatial_dap_atlas.r",
+  producer = "analysis/04_differential_abundance/10_sus_res_spatial_dap_atlas.r",
   note = "Stage 11 does not read or modify this protected SUS-RES biological audit workbook."
 )
 

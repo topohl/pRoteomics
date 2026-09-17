@@ -1,5 +1,5 @@
 # ================================================================
-# Script: 02_id_mapping/01_MapThatProt_batch.r
+# Script: analysis/01_preprocessing/01_MapThatProt_batch.r
 # Stage: core
 # Scope: dataset_specific
 # Consumes: required PROTEOMICS_GCT_EXTRACT_ROOT/<dataset>/<direction>/*.csv (historical default data/processed/01_preprocessing/gct_extractR); data/external/MOUSE_10090_idmapping.dat; optional manual protein and gene-annotation mapping tables.
@@ -149,7 +149,7 @@ if (is_dry_run()) {
             "Results namespace" = mapping_paths$analysis_namespace
         )
     }
-    dry_run_line("Script", "02_id_mapping/01_MapThatProt_batch.r")
+    dry_run_line("Script", "analysis/01_preprocessing/01_MapThatProt_batch.r")
     for (label in names(resolution_report)[seq_len(min(5L, length(resolution_report)))]) {
         dry_run_line(label, resolution_report[[label]])
     }
@@ -161,7 +161,7 @@ if (is_dry_run()) {
     dry_run_line("Remaining table sets", sum(!existing_complete))
     dry_run_line("Recompute existing tables", force_rerun)
     if (!dir.exists(raw_dir) || length(csv_files) == 0) {
-        dry_run_line("Required upstream step", "Rscript 01_preprocessing/03_gct_extractR.r without --dry-run")
+        dry_run_line("Required upstream step", "Rscript analysis/01_preprocessing/03_gct_extractR.r without --dry-run")
     }
     dry_run_line("UniProt mapping file", uniprot_mapping_file_path, if (file.exists(uniprot_mapping_file_path)) "PASS" else "FAIL")
     dry_run_line("Manual gene annotation overrides", Sys.getenv("PROTEOMICS_MANUAL_GENE_ANNOTATION_FILE", unset = path_metadata("manual_gene_annotation_overrides.csv")), "optional")

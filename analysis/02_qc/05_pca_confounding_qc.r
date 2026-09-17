@@ -1,5 +1,5 @@
 # ================================================================
-# Script: 03_qc_exploration/05_pca_confounding_qc.r
+# Script: analysis/02_qc/05_pca_confounding_qc.r
 # Stage: qc
 # Scope: dataset_specific
 # Consumes: required data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv; optional data/metadata/*.xlsx.
@@ -26,7 +26,7 @@ metadata_file <- qc_resolve_metadata(DATASET, env = "PROTEOMICS_PCA_METADATA_FIL
 
 if (run$dry_run) {
   status <- qc_dry_run_contract(
-    "03_qc_exploration/05_pca_confounding_qc.r",
+    "analysis/02_qc/05_pca_confounding_qc.r",
     DATASET,
     matrix_file = matrix_file,
     metadata_file = metadata_file,

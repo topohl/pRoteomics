@@ -17,16 +17,16 @@ Rscript 03_qc_exploration/<script>.r --dataset microglia --dry-run
 
 `PROTEOMICS_DATASET` can be used instead of `--dataset`. Script-specific input
 environment variables are still honored, and the shared defaults come from
-`R/paths.R`, `R/dataset_config.R`, `R/dataset_inputs.R`, and
-`R/qc_exploration_utils.R`.
+`R/paths.R`, `R/data_contracts/dataset_config.R`, `R/data_contracts/dataset_inputs.R`, and
+`R/qc/qc_exploration_utils.R`.
 
 ## Global joint-compartment QC
 
 Run the raw-derived preprocessing product before the global QC consumer:
 
 ```powershell
-Rscript 01_preprocessing/01_prepare_joint_protigy_input.r --dataset all --dry-run
-Rscript 03_qc_exploration/00b_joint_compartment_qc.r --dataset all --dry-run
+Rscript analysis/01_preprocessing/01_prepare_joint_protigy_input.r --dataset all --dry-run
+Rscript analysis/02_qc/00b_joint_compartment_qc.r --dataset all --dry-run
 ```
 
 `01_prepare_joint_protigy_input.r` uses the unified raw protein-group matrix,
@@ -52,7 +52,7 @@ panels plus assembled 183-mm main and Extended Data figures under
 
 Recommended run order:
 
-0. `00b_joint_compartment_qc.r` (after `01_preprocessing/01_prepare_joint_protigy_input.r`)
+0. `00b_joint_compartment_qc.r` (after `analysis/01_preprocessing/01_prepare_joint_protigy_input.r`)
    - Input: raw-derived global joint QC bundle.
    - Override: `PROTEOMICS_JOINT_QC_PROCESSED_DIR`.
    - Output: global PCA/UMAP/t-SNE, associations, correlations, sensitivity
@@ -184,17 +184,17 @@ Recommended run order:
 
 ```powershell
 foreach ($dataset in @("neuron_neuropil", "neuron_soma", "microglia")) {
-  Rscript 03_qc_exploration/00_dataset_qc_report.r --dataset $dataset --dry-run
-  Rscript 03_qc_exploration/01_sample_qc_quicksearch.r --dataset $dataset --dry-run
-  Rscript 03_qc_exploration/02_missingness_diagnostics.r --dataset $dataset --dry-run
-  Rscript 03_qc_exploration/03_replicate_consistency.r --dataset $dataset --dry-run
-  Rscript 03_qc_exploration/04_marker_rank_abundance_qc.r --dataset $dataset --dry-run
-  Rscript 03_qc_exploration/04c_marker_detectability_and_wgcna_bridge.r --dataset $dataset --dry-run
-  Rscript 03_qc_exploration/05_pca_confounding_qc.r --dataset $dataset --dry-run
-  Rscript 03_qc_exploration/06_variance_partitioning.r --dataset $dataset --dry-run
-  Rscript 03_qc_exploration/08_qc_biology_confounding_report.r --dataset $dataset --dry-run
+  Rscript analysis/02_qc/00_dataset_qc_report.r --dataset $dataset --dry-run
+  Rscript analysis/02_qc/01_sample_qc_quicksearch.r --dataset $dataset --dry-run
+  Rscript analysis/02_qc/02_missingness_diagnostics.r --dataset $dataset --dry-run
+  Rscript analysis/02_qc/03_replicate_consistency.r --dataset $dataset --dry-run
+  Rscript analysis/02_qc/04_marker_rank_abundance_qc.r --dataset $dataset --dry-run
+  Rscript analysis/02_qc/04c_marker_detectability_and_wgcna_bridge.r --dataset $dataset --dry-run
+  Rscript analysis/02_qc/05_pca_confounding_qc.r --dataset $dataset --dry-run
+  Rscript analysis/02_qc/06_variance_partitioning.r --dataset $dataset --dry-run
+  Rscript analysis/02_qc/08_qc_biology_confounding_report.r --dataset $dataset --dry-run
 }
-Rscript 03_qc_exploration/04e_control_compartment_abundance_publication_figures.r --dataset global --dry-run
+Rscript analysis/02_qc/04e_control_compartment_abundance_publication_figures.r --dataset global --dry-run
 ```
 
 Remove `--dry-run` after resolving missing private inputs.

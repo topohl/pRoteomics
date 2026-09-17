@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 # ================================================================
-# Script: 09_export_pride_journal/06_make_methods_summary.R
+# Script: analysis/09_publication_exports/06_make_methods_summary.R
 # Stage: export
 # Scope: global
 # Consumes: required pipeline.yml; optional results/logs/; renv.lock.
@@ -63,7 +63,7 @@ build_pipeline_steps <- function() {
 }
 
 if (isTRUE(cli$dry_run)) {
-  dry_run_line("Script", "09_export_pride_journal/06_make_methods_summary.R")
+  dry_run_line("Script", "analysis/09_publication_exports/06_make_methods_summary.R")
   dry_run_line("Methods summary target", file.path(methods_dir, "methods_summary.md"))
   dry_run_line("Software versions target", file.path(methods_dir, "software_versions.tsv"))
   dry_run_line("Pipeline steps target", file.path(methods_dir, "pipeline_steps.tsv"))

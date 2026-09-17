@@ -26,29 +26,29 @@
 #
 # SCOPE SEPARATION
 #   This script is PHENOTYPE-AWARE by design. The companion label-coherence
-#   audit (06_modules_WGCNA/14_wgcna_label_coherence_audit.R) is strictly
+#   audit (analysis/05_wgcna/14_wgcna_label_coherence_audit.R) is strictly
 #   phenotype-blind and must never consume this script's outputs.
 #
 # USAGE
-#   Rscript 10_biological_integration/09_wgcna_sus_res_network_position.R
-#   Rscript 10_biological_integration/09_wgcna_sus_res_network_position.R --dataset microglia
-#   Rscript 10_biological_integration/09_wgcna_sus_res_network_position.R --permutations 20000
-#   Rscript 10_biological_integration/09_wgcna_sus_res_network_position.R --dry-run
+#   Rscript analysis/08_integration/09_wgcna_sus_res_network_position.R
+#   Rscript analysis/08_integration/09_wgcna_sus_res_network_position.R --dataset microglia
+#   Rscript analysis/08_integration/09_wgcna_sus_res_network_position.R --permutations 20000
+#   Rscript analysis/08_integration/09_wgcna_sus_res_network_position.R --dry-run
 
 source("R/paths.R")
-source("R/dataset_config.R")
-source("R/integration_utils.R")
-source("R/enrichment_io.R")
-source("R/sus_res_spatial_dap_atlas_utils.R")
-source("R/wgcna_candidate_protein_utils.R")
-source("R/wgcna_network_position_utils.R")
+source("R/data_contracts/dataset_config.R")
+source("R/statistics/integration_utils.R")
+source("R/enrichment/enrichment_io.R")
+source("R/statistics/sus_res_spatial_dap_atlas_utils.R")
+source("R/statistics/wgcna_candidate_protein_utils.R")
+source("R/networks/wgcna_network_position_utils.R")
 
 suppressPackageStartupMessages({
   library(readr)
   library(dplyr)
 })
 
-SCRIPT_ID <- "10_biological_integration/09_wgcna_sus_res_network_position.R"
+SCRIPT_ID <- "analysis/08_integration/09_wgcna_sus_res_network_position.R"
 SUBSTEP <- "wgcna_sus_res_network_position"
 Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 
@@ -104,7 +104,7 @@ relpath <- function(path) relative_to(normalizePath(path, winslash = "/", mustWo
 
 # The null universe is the set of proteins actually TESTED for SUS - RES DA, not
 # every module member. "Tested" reuses the canonical Stage 04 definition from
-# R/sus_res_spatial_dap_atlas_utils.R: a finite BH FDR and a finite effect.
+# R/statistics/sus_res_spatial_dap_atlas_utils.R: a finite BH FDR and a finite effect.
 load_sus_res_eligibility <- function(dataset) {
   manifest_path <- canonical_clusterprofiler_manifest_path(dataset)
   if (!file.exists(manifest_path)) {

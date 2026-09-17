@@ -6,11 +6,11 @@
 # Three ad-hoc animal-identifier normalisers grew up independently in this
 # repository and disagreed with each other:
 #
-#   08_behavior_physio_coupling/02_network_behavior_coupling.r
+#   analysis/08_integration/02_network_behavior_coupling.r
 #       str_extract(x, "A[0-9]{3,4}|[0-9]{3,4}") then "A" + str_pad(x, 4)
-#   06_modules_WGCNA/03_score_module_activity.R
+#   analysis/05_wgcna/03_score_module_activity.R
 #       str_extract(x, "\\d+$") then sprintf("%04d")
-#   08_behavior_physio_coupling/01_correlate_proteomics_with_behavior.r
+#   analysis/08_integration/01_correlate_proteomics_with_behavior.r
 #       gsub("[^0-9]", "") then sub("^0+", "")
 #
 # The first one is not merely lossy, it MANUFACTURES WRONG ANIMALS, in three

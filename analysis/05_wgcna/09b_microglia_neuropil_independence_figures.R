@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 # ================================================================
-# Script: 06_modules_WGCNA/09b_microglia_neuropil_independence_figures.R
+# Script: analysis/05_wgcna/09b_microglia_neuropil_independence_figures.R
 # Stage: modules_downstream
 # Scope: dataset_specific
 # Consumes: Existing microglia matched-neuropil independence diagnostic tables.
@@ -13,7 +13,7 @@ source(paths_file)
 source(repo_path("R", "script_runtime.R"))
 source(repo_path("R", "plotting_nature.R"))
 
-SCRIPT_ID <- "06_modules_WGCNA/09b_microglia_neuropil_independence_figures.R"
+SCRIPT_ID <- "analysis/05_wgcna/09b_microglia_neuropil_independence_figures.R"
 runtime <- init_script_runtime(SCRIPT_ID, stage = "modules_downstream", default_dataset = "microglia")
 if (!identical(runtime$dataset, "microglia") && !isTRUE(runtime$dry_run)) {
   stop("This figure layer is microglia-only. Use --dataset microglia.", call. = FALSE)
@@ -86,7 +86,7 @@ if (length(missing_required)) {
   stop(
     "Missing required input table(s) for the matched-neuropil figure layer:\n",
     paste0(" - ", names(missing_required), ": ", unname(missing_required), collapse = "\n"),
-    "\nRun 06_modules_WGCNA/09_microglia_neuropil_independence.R first; this script only visualizes its outputs.",
+    "\nRun analysis/05_wgcna/09_microglia_neuropil_independence.R first; this script only visualizes its outputs.",
     call. = FALSE
   )
 }
@@ -555,7 +555,7 @@ write_run_manifest(
   ),
   parameters = list(
     dataset = dataset,
-    source_tables = "Existing outputs from 06_modules_WGCNA/09_microglia_neuropil_independence.R",
+    source_tables = "Existing outputs from analysis/05_wgcna/09_microglia_neuropil_independence.R",
     model_refit = FALSE,
     wgcna_recomputed = FALSE,
     neuropil_matching = "neuron_neuropil covariates aggregated by AnimalID + Region",

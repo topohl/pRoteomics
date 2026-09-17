@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 # ================================================================
-# Script: 09_export_pride_journal/03_export_processed_pg_matrix_package.R
+# Script: analysis/09_publication_exports/03_export_processed_pg_matrix_package.R
 # Stage: export
 # Scope: global
 # Consumes: required data/raw/pg_matrix/; data/processed/01_preprocessing/; +1 more; optional none.
@@ -93,7 +93,7 @@ for (ds in datasets) {
 
 dict_path <- pride_submission_dir("processed_data", "data_dictionary_processed_matrices.tsv")
 if (isTRUE(cli$dry_run)) {
-  dry_run_line("Script", "09_export_pride_journal/03_export_processed_pg_matrix_package.R")
+  dry_run_line("Script", "analysis/09_publication_exports/03_export_processed_pg_matrix_package.R")
   dry_run_line("Datasets", paste(datasets, collapse = ", "))
   dry_run_line("Staged file count (planned)", planned_count)
   dry_run_line("Dictionary target", dict_path)

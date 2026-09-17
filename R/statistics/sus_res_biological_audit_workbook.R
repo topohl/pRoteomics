@@ -72,8 +72,8 @@ write_sus_res_biological_audit_workbook <- function(
     overview, detail, supported_go_audit, dap_counts, registry, output_file,
     protected_hashes = NULL,
     source_scripts = c(
-      "04_differential_expression_enrichment/07_compareGO_spatial_program_atlas.r",
-      "04_differential_expression_enrichment/10_sus_res_spatial_dap_atlas.r"
+      "analysis/04_differential_abundance/07_compareGO_spatial_program_atlas.r",
+      "analysis/04_differential_abundance/10_sus_res_spatial_dap_atlas.r"
     )) {
   if (!requireNamespace("openxlsx", quietly = TRUE)) {
     stop("Writing sus_res_biological_audit.xlsx requires the installed openxlsx package; packages are not installed automatically.", call. = FALSE)
@@ -294,7 +294,7 @@ write_sus_res_biological_audit_workbook <- function(
       ontology$go_source_date, ontology$approved_relationships,
       unique(registry$registry_version)[[1]], paste(source_scripts, collapse = "; "),
       git_head, format(Sys.time(), "%Y-%m-%d %H:%M:%S %z"),
-      "R/sus_res_biological_audit_workbook.R using openxlsx fallback"
+      "R/statistics/sus_res_biological_audit_workbook.R using openxlsx fallback"
     ),
     stringsAsFactors = FALSE
   )

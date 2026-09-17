@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 # ================================================================
-# Script: 06_modules_WGCNA/13_wgcna_claim_readiness.R
+# Script: analysis/05_wgcna/13_wgcna_claim_readiness.R
 # Stage: optional manuscript-readiness handoff
 # Scope: microglia
 # Consumes: Stage 05/06/07 plus optional Stage 09/11 and additive Stage 12.

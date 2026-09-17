@@ -8,7 +8,7 @@
 # the migration can be executed later, in pieces, against a written contract.
 
 setwd("S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/Analysis/proteomics")
-source("99_audits/publication_hardening/00_checkpoint.R")
+source("audits/publication_hardening/00_checkpoint.R")
 rd <- function(f) utils::read.csv(file.path(PH_TAB, f), stringsAsFactors = FALSE)
 inv <- rd("repository_architecture_inventory.csv")
 ap <- rd("repository_anti_patterns.csv")
@@ -34,7 +34,7 @@ target <- rbind(
     FALSE),
   T("duplicate interpretation stage",
     "08_biological_interpretation (1 script) alongside 10_biological_integration (11 scripts)",
-    "fold 08_biological_interpretation/01_compartment_fidelity_summary.R into 03_qc_exploration as 04f_, or register it as a step of 10_biological_integration",
+    "fold archive/08_integration/01_compartment_fidelity_summary.R into 03_qc_exploration as 04f_, or register it as a step of 10_biological_integration",
     "a one-script stage whose name is a near-synonym of another stage forces the reader to guess which is current; it also emits three files whose names duplicate 04d's",
     TRUE),
   T("figure / manuscript layer",
@@ -49,7 +49,7 @@ target <- rbind(
     TRUE),
   T("audit layer",
     "99_audits/ holds part29, program_evidence, publication_hardening; excluded from the registry by design",
-    "unchanged, with the exclusion stated in R/pipeline_registry.R as it is now",
+    "unchanged, with the exclusion stated in R/utilities/pipeline_registry.R as it is now",
     "audits are not pipeline stages and must not become required steps; DEC-004",
     FALSE),
   T("deprecated and scaffold code",
@@ -58,8 +58,8 @@ target <- rbind(
     "the tree is already clean here; what is missing is the test that keeps it clean",
     FALSE),
   T("repository root",
-    "run_dataset_pipeline.R and proteomics_wgcna_downstream_audit.R sit at the root",
-    "run_dataset_pipeline.R stays (it is the entrypoint); proteomics_wgcna_downstream_audit.R moves to 99_audits/",
+    "run_dataset_pipeline.R and audits/wgcna/proteomics_wgcna_downstream_audit.R sit at the root",
+    "run_dataset_pipeline.R stays (it is the entrypoint); audits/wgcna/proteomics_wgcna_downstream_audit.R moves to 99_audits/",
     "an entrypoint belongs at the root; a one-off audit does not, and the audit layer already exists for it",
     TRUE),
   T("output model",
@@ -94,13 +94,13 @@ risk <- rbind(
     "new RULE(\"selective\", ...) after susceptibility-specific", "P0_SAFE_NOW",
     "nothing - the rules file is regenerated from this block",
     "none", "regenerated manuscript_semantic_rules.md gains one section"),
-  R("one-off root audit script", "proteomics_wgcna_downstream_audit.R",
+  R("one-off root audit script", "audits/wgcna/proteomics_wgcna_downstream_audit.R",
     "99_audits/", "P1_SAFE_WITH_TESTS",
     "any hard-coded relative source() inside it, and RUN_ORDER.md if it names it",
     "confirm it is in no registry step and no RUN_ORDER entry",
     "Rscript the moved file; run test-pipeline-registry.R"),
   R("duplicate interpretation stage",
-    "08_biological_interpretation/01_compartment_fidelity_summary.R",
+    "archive/08_integration/01_compartment_fidelity_summary.R",
     "03_qc_exploration/04f_compartment_fidelity_summary.r",
     "P2_DEFERRED",
     "its output directory is derived from the stage name, so every file it writes changes path; downstream readers of those paths break",
@@ -116,7 +116,7 @@ risk <- rbind(
     "every source(repo_path(\"R\", \"x.R\")) in 445 scripts, and the one-definition tests that glob R/*.R",
     "mechanical rewrite of all source() calls plus the R/ globs in the test suite",
     "full test suite; dependency-edge count must be unchanged at 839"),
-  R("unreferenced helper", "R/module_stats.R", "retain in place",
+  R("unreferenced helper", "R/statistics/module_stats.R", "retain in place",
     "NO_CHANGE",
     "nothing - but it is referenced only by R/README.md, so deleting it would be the tidy-driven deletion the audit is told not to make",
     "none", "recorded as PH-003; revisit only if a rewrite needs the namespace"),

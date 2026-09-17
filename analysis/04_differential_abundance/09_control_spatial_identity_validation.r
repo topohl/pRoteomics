@@ -1,9 +1,9 @@
 # Figure 2 control-anatomy validation only; does not consume or modify stress/WGCNA outputs.
-source("R/paths.R"); source("R/dataset_config.R"); source("R/dataset_inputs.R")
-source("R/validation_utils.R"); source("R/qc_exploration_utils.R")
-source("R/protein_group_enrichment_utils.R"); source("R/control_spatial_identity_utils.R")
-source("R/clusterprofiler_reproducibility.R")
-source("R/plotting_nature.R")
+source("R/paths.R"); source("R/data_contracts/dataset_config.R"); source("R/data_contracts/dataset_inputs.R")
+source("R/utilities/validation_utils.R"); source("R/qc/qc_exploration_utils.R")
+source("R/enrichment/protein_group_enrichment_utils.R"); source("R/spatial/control_spatial_identity_utils.R")
+source("R/enrichment/clusterprofiler_reproducibility.R")
+source("R/utilities/plotting_nature.R")
 suppressPackageStartupMessages({ library(limma); library(clusterProfiler); library(org.Mm.eg.db); library(ggplot2) })
 
 control_spatial_publication_contrast_label <- function(x) {
@@ -477,7 +477,7 @@ for (dataset in c("neuron_soma", "neuron_neuropil")) {
   fit <- limma::lmFit(mat, design, block=meta$AnimalID, correlation=corfit$consensus)
   unit_levels <- sub("^anatomical_unit_", "", colnames(design)[grepl("^anatomical_unit_", colnames(design))])
   # The anatomical contrast definitions live in ONE place:
-  # control_spatial_contrast_registry() in R/control_spatial_identity_utils.R.
+  # control_spatial_contrast_registry() in R/spatial/control_spatial_identity_utils.R.
   # They were previously built inline here, which meant the bilateral, left-only
   # and right-only analyses would each need their own copy of a
   # manuscript-locked list. The registry reproduces these definitions exactly;

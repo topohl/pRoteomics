@@ -20,23 +20,24 @@ source(file.path("R", "paths.R"))
 SOURCE_ROOT <- path_results("source_data", "manuscript")
 FIGURE_ROOT <- path_results("figures", "manuscript")
 BUNDLE_ROOT <- path_results("publication_source_data")
-CONTRACT_VERSION <- "publication_source_data_v1"
 
-registry_path <- repo_path("manuscript", "canonical_publication_registry.csv")
-if (!file.exists(registry_path)) {
-  registry_path <- Sys.getenv("EXP9_PUBLICATION_REGISTRY", unset = "")
-  if (!nzchar(registry_path) || !file.exists(registry_path)) {
-    stop("Cannot locate canonical_publication_registry.csv. After the manuscript ",
-         "extraction, point EXP9_PUBLICATION_REGISTRY at the copy in ",
-         "Exp9_manuscript/provenance/publication_registry/.", call. = FALSE)
-  }
+# The list of publication identities is a scientific-side contract, so that
+# building the bundle never requires reading the manuscript repository.
+contract_path <- repo_path("config", "publication_source_data_contract.yml")
+if (!file.exists(contract_path)) {
+  stop("Missing config/publication_source_data_contract.yml", call. = FALSE)
 }
-registry <- utils::read.csv(registry_path, stringsAsFactors = FALSE)
+contract <- yaml::read_yaml(contract_path)
+CONTRACT_VERSION <- as.character(contract$contract_version)
+canonical <- do.call(rbind, lapply(contract$identities, function(x) data.frame(
+  publication_id = as.character(x$publication_id),
+  canonical_source_data = as.character(x$source_data_dir),
+  originating_analysis = as.character(x$originating_analysis),
+  stringsAsFactors = FALSE)))
 
 source_commit <- git_commit_sha()
 if (is.na(source_commit)) source_commit <- "UNKNOWN"
 
-canonical <- registry[registry$status == "CANONICAL", , drop = FALSE]
 cat("canonical publication identities:", nrow(canonical), "\n")
 cat("source commit                  :", source_commit, "\n\n")
 

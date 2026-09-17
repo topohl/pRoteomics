@@ -72,13 +72,12 @@ testthat::test_that("pipeline manuscript entry points declare authoring outputs 
     function(step) startsWith(as.character(step$script), "figures/"),
     integration
   )
-  # Inventory guard: figure_01 and its panel producer, the behavioural Extended
-  # Data figure and its panel producer, the promoted proteomics Extended Data,
-  # figure_02, figure_03, and the two manuscript-supporting immunostaining
-  # renderers.
-  # Bump deliberately when a figure entry point is added, so an accidental one
-  # is still caught.
-  testthat::expect_length(figure_steps, 9L)
+  # Phase 6C moved all nine figure entry points to Exp9_manuscript. The
+  # inventory guard becomes its inverse, which is stronger: no figure entry
+  # point may be registered here at all, so an accidental one is still
+  # caught. The namespace classification below is retained so that if one
+  # ever reappears it must still declare manuscript_authoring outputs only.
+  testthat::expect_length(figure_steps, 0L)
   for (step in figure_steps) {
     outputs <- as.character(unlist(step$produces, use.names = FALSE))
     testthat::expect_true(all(

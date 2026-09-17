@@ -1,5 +1,5 @@
 # ================================================================
-# Script: 06_modules_WGCNA/01_WGCNA.r
+# Script: analysis/05_wgcna/01_WGCNA.r
 # Stage: modules_wgcna
 # Scope: dataset_specific
 # Consumes: required Stage 01 post-70%-missingness/imputed matrix, sample metadata, and mouse UniProt idmapping; optional manual protein mapping.
@@ -137,7 +137,7 @@ if (early_has_flag("--dry-run") || tolower(Sys.getenv("PROTEOMICS_DRY_RUN", unse
   downstream_contract_early <- file.path(subdirs_early$tables_modules, "WGCNA_module_definitions_for_downstream.csv")
   feature_universe_early <- file.path(subdirs_early$tables_modules, "WGCNA_feature_universe.csv")
   wgcna_manifest_early <- file.path(subdirs_early$logs, "wgcna_run_manifest.yml")
-  dry_run_line("Script", "06_modules_WGCNA/01_WGCNA.r")
+  dry_run_line("Script", "analysis/05_wgcna/01_WGCNA.r")
   dry_run_line("Dataset", dataset_profile_early)
   dry_run_line("Resolved input diagnostics", paste(dataset_inputs_early$diagnostics, collapse = " | "))
   dry_run_line("Reuse cached final state", reuse_completed_analysis_early)
@@ -1708,7 +1708,7 @@ stop_if_missing <- function(path) {
       "Missing WGCNA input file: ", path,
       ". This script stages dataset-scoped WGCNA inputs under data/processed/06_modules_WGCNA/01_WGCNA/<dataset>/inputs. ",
       "If using custom inputs, set PROTEOMICS_WGCNA_EXPR_XLSX / PROTEOMICS_WGCNA_META_XLSX. Otherwise, ",
-      "rerun 01_preprocessing/01_impute.r and ensure TPE9_sample_metadata_males.xlsx is available.",
+      "rerun archive/01_preprocessing/01_impute.r and ensure TPE9_sample_metadata_males.xlsx is available.",
       call. = FALSE
     )
   }
@@ -1754,7 +1754,7 @@ if (isTRUE(wgcna_dry_run)) {
     sample_check <- "staged files missing and canonical upstream cannot be staged"
     sample_check_ok <- FALSE
   }
-  dry_run_line("Script", "06_modules_WGCNA/01_WGCNA.r")
+  dry_run_line("Script", "analysis/05_wgcna/01_WGCNA.r")
   dry_run_line("Dataset", dataset_profile)
   dry_run_line("Resolved input diagnostics", paste(dataset_inputs$diagnostics, collapse = " | "))
   dry_run_line("Reuse cached final state", reuse_completed_analysis)
@@ -2460,7 +2460,7 @@ write_csv_safe(
       p = as.vector(MEp),
       fdr = as.vector(MEfdr),
       inference_role = "descriptive_screening",
-      primary_group_effect_script = "06_modules_WGCNA/05_module_supermodule_group_effects.r",
+      primary_group_effect_script = "analysis/05_wgcna/05_module_supermodule_group_effects.r",
       source_note = "Module-trait and condition one-hot correlations are QC/exploration only; final CON/RES/SUS inference uses adjusted eigengene/supermodule models from 05_module_supermodule_group_effects.r."
     ),
   fp_source("ME_trait_correlations.csv")
@@ -3543,7 +3543,7 @@ ME_contrast_stats <- ME_long %>%
     sig = sig_dot(.data$fdr),
     contrast = factor(.data$contrast, levels = contrast_specs$contrast),
     inference_role = "descriptive_screening",
-    primary_group_effect_script = "06_modules_WGCNA/05_module_supermodule_group_effects.r",
+    primary_group_effect_script = "analysis/05_wgcna/05_module_supermodule_group_effects.r",
     source_note = "Pairwise eigengene condition panels from 01_WGCNA.r are QC/exploration only; final CON/RES/SUS inference uses adjusted module and supermodule models from 05_module_supermodule_group_effects.r."
   )
 supermodule_annotation <- build_supermodule_annotation(

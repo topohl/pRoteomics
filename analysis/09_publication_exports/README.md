@@ -24,31 +24,31 @@ Configuration: [`config/export_config.yml`](config/export_config.yml).
 Full export (recommended):
 
 ```bash
-Rscript 09_export_pride_journal/RUN_EXPORT.R --dataset all --export-level pg_matrix_onward
-Rscript 09_export_pride_journal/RUN_EXPORT.R --dataset microglia --export-level pg_matrix_onward
+Rscript analysis/09_publication_exports/RUN_EXPORT.R --dataset all --export-level pg_matrix_onward
+Rscript analysis/09_publication_exports/RUN_EXPORT.R --dataset microglia --export-level pg_matrix_onward
 ```
 
 Dry-run (no writes; validation still reports contract status):
 
 ```bash
-Rscript 09_export_pride_journal/RUN_EXPORT.R --dataset microglia --export-level pg_matrix_onward --dry-run
+Rscript analysis/09_publication_exports/RUN_EXPORT.R --dataset microglia --export-level pg_matrix_onward --dry-run
 ```
 
 Individual steps:
 
 ```bash
-Rscript 09_export_pride_journal/02_make_sample_metadata.R --dataset microglia
-Rscript 09_export_pride_journal/03_export_processed_pg_matrix_package.R --dataset microglia
-Rscript 09_export_pride_journal/04_make_supplementary_tables.R --dataset microglia
-Rscript 09_export_pride_journal/05_make_pride_manifest.R --dataset microglia
-Rscript 09_export_pride_journal/10_validate_pride_submission.R --export-level pg_matrix_onward
+Rscript analysis/09_publication_exports/02_make_sample_metadata.R --dataset microglia
+Rscript analysis/09_publication_exports/03_export_processed_pg_matrix_package.R --dataset microglia
+Rscript analysis/09_publication_exports/04_make_supplementary_tables.R --dataset microglia
+Rscript analysis/09_publication_exports/05_make_pride_manifest.R --dataset microglia
+Rscript analysis/09_publication_exports/10_validate_pride_submission.R --export-level pg_matrix_onward
 ```
 
 Optional broader manifest (non-default):
 
 ```bash
-Rscript 09_export_pride_journal/05_make_pride_manifest.R --dataset microglia --include-derived-results
-Rscript 09_export_pride_journal/05_make_pride_manifest.R --dataset microglia --recursive
+Rscript analysis/09_publication_exports/05_make_pride_manifest.R --dataset microglia --include-derived-results
+Rscript analysis/09_publication_exports/05_make_pride_manifest.R --dataset microglia --recursive
 ```
 
 ## Script map
@@ -83,7 +83,7 @@ pride_submission/validation/            validation_report.tsv, validation_summar
 
 Manuscript artifacts also land under `results/manuscript/` and `results/tables/biological_claims_table.*`.
 
-The biological claims table requires the finalized microglia Stage 13 WGCNA handoff. It separates WGCNA architecture, direct group effects, convergent overlaps, and compatibility provenance; compatibility aliases never create independent claim rows. Final bundle generation is owned by `10_biological_integration/03_evidence_priority_matrix.r` after the updated claims and integration tables are available.
+The biological claims table requires the finalized microglia Stage 13 WGCNA handoff. It separates WGCNA architecture, direct group effects, convergent overlaps, and compatibility provenance; compatibility aliases never create independent claim rows. Final bundle generation is owned by `analysis/08_integration/03_evidence_priority_matrix.r` after the updated claims and integration tables are available.
 
 ## PRIDE vs journal
 

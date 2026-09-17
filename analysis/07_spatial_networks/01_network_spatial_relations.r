@@ -1,5 +1,5 @@
 # ================================================================
-# Script: 07_spatial_networks/01_network_spatial_relations.r
+# Script: analysis/07_spatial_networks/01_network_spatial_relations.r
 # Stage: networks
 # Scope: dataset_specific
 # Consumes: required data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv; optional results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/.
@@ -47,7 +47,7 @@ source(repo_path("R", "dataset_inputs.R"))
 source(repo_path("R", "validation_utils.R"))
 source(repo_path("R", "spatial_network_utils.R"))
 MODULE_ID <- "07_spatial_networks"
-SCRIPT_ID <- "07_spatial_networks/01_network_spatial_relations.r"
+SCRIPT_ID <- "analysis/07_spatial_networks/01_network_spatial_relations.r"
 Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 args <- commandArgs(trailingOnly = TRUE)
 arg_value <- function(flag, default = "") {
@@ -686,7 +686,7 @@ validate_required_inputs <- function(params) {
 dry_run_validate <- function(params) {
   dirs <- make_dirs(params$output_dir)
   missing_inputs <- validate_required_inputs(params)
-  dry_run_line("Script", "07_spatial_networks/01_network_spatial_relations.r")
+  dry_run_line("Script", "analysis/07_spatial_networks/01_network_spatial_relations.r")
   dry_run_line("Dataset", SPATIAL_DATASET)
   dry_run_line("spatial_unit", spatial_unit)
   dry_run_line("spatial_col", spatial_col)
