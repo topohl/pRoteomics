@@ -12,13 +12,10 @@ Each result family below is listed with every registered script that declares it
 | `results/figures/07_spatial_networks` | `analysis/07_spatial_networks/05_bootstrap_differential_network_figures.r`<br>`analysis/07_spatial_networks/06_chord_diagram.r` |
 | `results/figures/08_behavior_physio_coupling` | `analysis/08_integration/01_correlate_proteomics_with_behavior.r` |
 | `results/figures/10_biological_integration` | `analysis/08_integration/04_wgcna_circular_atlas.R` |
-| `results/figures/manuscript` | `figures/figure_01_panels.R`<br>`figures/figure_01.R`<br>`figures/extended_data_behaviour_panels.R`<br>`figures/extended_data_proteomics.R`<br>`figures/extended_data_behaviour.R`<br>`figures/figure_02.R`<br>`figures/manuscript_supporting_immunostaining_candidates.R`<br>`figures/manuscript_supporting_immunostaining_panel.R`<br>`figures/figure_03.R` |
-| `results/figures/manuscript_candidates` | `figures/candidate_figure_02.R`<br>`figures/candidate_figure_03.R`<br>`figures/candidate_figure_contact_sheet.R`<br>`figures/nature_v2_figure_02.R`<br>`figures/nature_v2_figure_03.R`<br>`figures/nature_v2_extended_data.R`<br>`figures/nature_v2_contact_sheet.R`<br>`figures/story_v3_figure_02.R`<br>`figures/story_v3_figure_03.R`<br>`figures/story_v3_extended_data.R`<br>`figures/story_v3_contact_sheet.R`<br>`figures/story_v4_figure_02.R`<br>`figures/story_v4_figure_03.R`<br>`figures/story_v5_figure_02.R`<br>`figures/story_v5_extended_data.R`<br>`figures/spatial_v6_figure_02.R`<br>`figures/spatial_v6_figure_03.R`<br>`figures/spatial_v6_extended_data.R`<br>`figures/nature_final_v7_wireframe.R`<br>`figures/nature_final_v7_figure_02.R`<br>`figures/nature_final_v7_figure_03.R`<br>`figures/nature_final_v7_extended_data.R`<br>`figures/nature_final_v7_contact_sheet.R`<br>`figures/editorial_v8_figure_02.R`<br>`figures/editorial_v8_figure_03.R`<br>`figures/editorial_v8_extended_data.R`<br>`figures/editorial_v8_previews.R`<br>`figures/editorial_v8_readmes.R`<br>`figures/final_truth_v9_figure_02.R`<br>`figures/final_truth_v9_figure_03.R`<br>`figures/final_truth_v9_extended_data.R`<br>`figures/final_truth_v9_previews.R` |
 | `results/figures/manuscript_panels` | `analysis/08_integration/05_manuscript_figure3_wgcna_protein_zoom.R` |
 | `results/manuscript/figure_1` | `analysis/09_publication_exports/08_export_manuscript_figures.R` |
 | `results/manuscript/source_data` | `analysis/09_publication_exports/09_export_source_data.R` |
 | `results/reports/03_qc_exploration` | `analysis/02_qc/08_qc_biology_confounding_report.r` |
-| `results/reports/manuscript_candidates` | `figures/final_truth_v9_legends.R`<br>`figures/final_truth_v9_readmes.R`<br>`figures/final_truth_v9_reviewer_audit.R` |
 | `results/reviewer_audit/microglia_wgcna_nature_readiness` | `analysis/05_wgcna/12_microglia_wgcna_nature_readiness_audit.R`<br>`analysis/05_wgcna/12b_finalize_microglia_wgcna_nature_readiness_audit.R` |
 | `results/reviewer_audit/wgcna_label_adjudication` | `analysis/05_wgcna/15_wgcna_label_adjudication.R` |
 | `results/reviewer_audit/wgcna_label_approval` | `analysis/05_wgcna/16_wgcna_label_approval_table.R` |
@@ -34,16 +31,12 @@ Each result family below is listed with every registered script that declares it
 | `results/tables/10_biological_integration` | `analysis/08_integration/01_cross_compartment_program_atlas.r`<br>`analysis/08_integration/02_manuscript_program_summary.r`<br>`analysis/08_integration/03_evidence_priority_matrix.r`<br>`analysis/08_integration/05_gsea_wgcna_concordance.R`<br>`analysis/08_integration/06_gsea_wgcna_concordance_diagnostics.R`<br>`analysis/08_integration/08_wgcna_candidate_protein_shortlist.R`<br>`analysis/08_integration/09_wgcna_sus_res_network_position.R`<br>`analysis/08_integration/04_wgcna_cross_compartment_overview.R` |
 | `results/tables/11_spatial_systems` | `analysis/03_spatial_validation/01_spatial_systems_data_contract.R`<br>`analysis/03_spatial_validation/02_bilateral_spatial_identity.R`<br>`analysis/03_spatial_validation/03_bilateral_empirical_compartment.R`<br>`analysis/03_spatial_validation/04_wgcna_module_bilateral.R`<br>`analysis/03_spatial_validation/05_wgcna_module_celltype_annotation.R`<br>`analysis/03_spatial_validation/06_bilateral_variance_decomposition.R`<br>`analysis/03_spatial_validation/07_spatial_systems_foundation_validation.R`<br>`analysis/03_spatial_validation/08_module_spatial_cell_atlas.R`<br>`analysis/03_spatial_validation/09_protein_spatial_cell_atlas.R`<br>`analysis/03_spatial_validation/10_neuropil_spatial_detection_context.R`<br>`analysis/03_spatial_validation/11_spatial_systems_atlas_workbook.R`<br>`analysis/03_spatial_validation/12_neuropil_spatial_precision_context.R`<br>`analysis/03_spatial_validation/13_animal_spatial_networks.R`<br>`analysis/03_spatial_validation/14_network_group_organization.R`<br>`analysis/03_spatial_validation/15_network_legacy_workbook_validation.R`<br>`analysis/03_spatial_validation/16_ca2_slm_robustness_audit.R`<br>`analysis/03_spatial_validation/17_stress_identity_robustness.R`<br>`analysis/03_spatial_validation/18_ca2_slm_robustness_workbook.R` |
 | `results/tables/biological_claims_table.csv|results` | `analysis/09_publication_exports/07_make_biological_claims_table.R` |
-| `results/tables/manuscript_candidates` | `figures/story_v3_panel_audit.R`<br>`figures/story_v4_evidence_inventory.R`<br>`figures/story_v5_validation_audit.R`<br>`figures/spatial_v6_baseline_profile.R`<br>`figures/spatial_v6_fingerprint_selection.R`<br>`figures/spatial_v6_story_coverage_audit.R`<br>`figures/nature_final_v7_hierarchy_audit.R`<br>`figures/editorial_v8_vector_audit.R`<br>`figures/editorial_v8_supplementary_tables.R`<br>`figures/final_truth_v9_supplementary_tables.R`<br>`figures/final_truth_v9_vector_audit.R`<br>`figures/final_truth_v9_claim_audit.R`<br>`figures/final_truth_v9_annotation_audit.R`<br>`figures/final_truth_v9_wgcna_annotation_audit.R`<br>`figures/final_truth_v9_heatmap_scale_audit.R`<br>`figures/final_truth_v9_semantics.R` |
 
 ## Families with more than one registered producer
 
 - `results/figures/03_qc_exploration` (2 scripts)
 - `results/figures/06_modules_WGCNA` (4 scripts)
 - `results/figures/07_spatial_networks` (2 scripts)
-- `results/figures/manuscript` (9 scripts)
-- `results/figures/manuscript_candidates` (32 scripts)
-- `results/reports/manuscript_candidates` (3 scripts)
 - `results/reviewer_audit/microglia_wgcna_nature_readiness` (2 scripts)
 - `results/source_data/10_biological_integration` (3 scripts)
 - `results/tables/03_qc_exploration` (10 scripts)
@@ -53,7 +46,6 @@ Each result family below is listed with every registered script that declares it
 - `results/tables/08_behavior_physio_coupling` (3 scripts)
 - `results/tables/10_biological_integration` (8 scripts)
 - `results/tables/11_spatial_systems` (18 scripts)
-- `results/tables/manuscript_candidates` (16 scripts)
 
 ## Publication source data
 

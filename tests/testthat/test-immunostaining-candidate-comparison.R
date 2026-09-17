@@ -92,18 +92,6 @@ test_that("all three proteins share one identical spatial ordering", {
                  "CA3_so", "CA3_sr", "DG_mo", "DG_po"))
 })
 
-test_that("the renderer depends only on the prepared source data", {
-  p <- repo("figures", "manuscript_supporting_immunostaining_candidates.R")
-  skip_if_not(file.exists(p), "renderer absent")
-  src <- readLines(p, warn = FALSE)
-  # it must not reach back past the frozen source-data layer
-  forbidden <- "data/processed|data/raw|\\.gct|protigy|per_file|lmFit|eBayes|p\\.adjust"
-  offending <- grep(forbidden, src, value = TRUE)
-  # comments may name those paths when explaining what is NOT done
-  offending <- offending[!grepl("^\\s*#", offending)]
-  expect_equal(offending, character(0))
-})
-
 test_that("the vector outputs exist, are non-empty and are not rasterised", {
   skip_if_not(dir.exists(FIG), "figure not rendered")
   svgs <- c("immunostaining_candidates_spatial_comparison.svg",

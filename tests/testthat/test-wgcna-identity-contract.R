@@ -353,7 +353,7 @@ testthat::test_that("dry-run preserves generated outputs and --dataset all fails
     mustWork = TRUE
   )
   script <- file.path(
-    "06_modules_WGCNA", "00_wgcna_identity_contract.R"
+    "analysis", "05_wgcna", "00_wgcna_identity_contract.R"
   )
   rscript <- Sys.which("Rscript")
   testthat::expect_true(nzchar(rscript))

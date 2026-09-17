@@ -51,7 +51,13 @@ STAGES <- rbind(
 
 ## Domain directories that R libraries moved into.
 R_DOMAINS <- c("data_contracts", "qc", "statistics", "spatial",
-               "enrichment", "networks", "utilities", "panels")
+               "enrichment", "networks", "utilities", "panels", "vendor")
+
+## No Phase 6D renames survived. The export script kept its name: renaming it
+## would have changed a file that freeze_protected_export_files() compares
+## across two historical commits, and a naming improvement is not worth
+## perturbing a frozen provenance mechanism.
+RENAMES <- matrix(character(0), nrow = 0, ncol = 2)
 
 canonicalise <- function(x) {
   ## 3. collapse every library addressing style to RLIB(<name>)
@@ -67,6 +73,11 @@ canonicalise <- function(x) {
   ## 2. drop the R/ domain directory so R/statistics/x.R == R/x.R
   for (d in R_DOMAINS) {
     x <- gsub(paste0("R/", d, "/"), "R/", x, fixed = TRUE)
+  }
+
+  ## 0. Phase 6D renames
+  for (i in seq_len(nrow(RENAMES))) {
+    x <- gsub(RENAMES[i, 1], RENAMES[i, 2], x, fixed = TRUE)
   }
 
   ## 1. old stage root -> new, only at a path-token boundary
