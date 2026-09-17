@@ -3,7 +3,7 @@
 # Stage: networks
 # Scope: dataset_specific
 # Consumes: required data/processed/02_id_mapping/mapped/neuron-phenotypeWithinUnit/; optional results/tables/07_spatial_networks/.
-# Produces: results/figures/07_spatial_networks/chord_diagram/.
+# Produces: results/spatial_networks/render_network_chord_diagram/<dataset>/plots; results/spatial_networks/render_network_chord_diagram/<dataset>/manifests.
 # Dataset behavior: runs for neuron_neuropil,neuron_soma according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Chord diagrams from mapped phenotype-within-unit edge/protein tables.
 
@@ -22,11 +22,20 @@
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
 source(repo_path("R", "dataset_config.R"))
-MODULE_ID <- "07_spatial_networks"
+# Phase 6G: destinations resolve through the normalized output contract in
+# config/output_layout.yml, addressed by this analysis's own identity.
+#
+# Its historical namespace was 07_spatial_networks/<substep>. Outputs already
+# written there stay exactly where they are, registered LEGACY_READ_ONLY in
+# config/legacy_output_registry.csv; readers still resolve them and nothing
+# writes there again. The name appears only in comments, which a test
+# enforces, so it cannot return as a destination.
+ANALYSIS_ID <- "render_network_chord_diagram"
 SUBSTEP_ID <- "chord_diagram"
-CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
 NETWORK_DATASET <- current_dataset_from_cli()
 assert_dataset_capability(NETWORK_DATASET, "layer", analysis = "spatial chord overlap analysis")
+CANONICAL_PATHS <- canonical_module_dirs("spatial_networks", ANALYSIS_ID,
+                                         scope = NETWORK_DATASET)
 
 in_dir  <- path_processed("02_id_mapping", "mapped", "neuron-phenotypeWithinUnit")
 out_dir <- CANONICAL_PATHS$figures

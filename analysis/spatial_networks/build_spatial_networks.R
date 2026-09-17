@@ -3,7 +3,7 @@
 # Stage: networks
 # Scope: dataset_specific
 # Consumes: required data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv; optional results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/.
-# Produces: data/processed/07_spatial_networks/network_spatial_relations/<dataset>/*/network_spatial_relations_objects.rds.
+# Produces: results/spatial_networks/build_spatial_networks/<dataset>/models/*/network_spatial_relations_objects.rds; results/spatial_networks/build_spatial_networks/<dataset>/tables; results/spatial_networks/build_spatial_networks/<dataset>/plots; +2 more.
 # Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Generates spatial relation objects; may use module annotations when present.
 
@@ -14,8 +14,15 @@
 # Produces:
 # ================================================================
 #   - canonical spatial network object:
-#     data/processed/07_spatial_networks/network_spatial_relations/<dataset>/<spatial_unit>/network_spatial_relations_objects.rds
-#   - tables/figures/source data/logs/reports under results/*/07_spatial_networks/network_spatial_relations/<dataset>/<spatial_unit>/
+#     results/spatial_networks/build_spatial_networks/<dataset>/models/<spatial_unit>/network_spatial_relations_objects.rds
+#   - tables/plots/source data/manifests/reports under
+#     results/spatial_networks/build_spatial_networks/<dataset>/<kind>/<spatial_unit>/
+#   - regenerable network exchange files under
+#     work/spatial_networks/build_spatial_networks/<dataset>/<spatial_unit>/network_files/
+#   The historical location,
+#   data/processed/07_spatial_networks/network_spatial_relations/<dataset>/<spatial_unit>/,
+#   is no longer written. It is still read as a fallback until a run produces
+#   the canonical object; see R/networks/spatial_network_utils.R.
 # File contract:
 #   - docs/file_contracts.tsv object spatial_network_objects
 # ================================================================
@@ -46,7 +53,17 @@ source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "dataset_inputs.R"))
 source(repo_path("R", "validation_utils.R"))
 source(repo_path("R", "spatial_network_utils.R"))
-MODULE_ID <- "07_spatial_networks"
+# Phase 6G: destinations resolve through the normalized output contract in
+# config/output_layout.yml, addressed by this analysis's own identity.
+#
+# Its historical namespace was 07_spatial_networks/<substep>. Outputs already
+# written there stay exactly where they are, registered LEGACY_READ_ONLY in
+# config/legacy_output_registry.csv; readers still resolve them and nothing
+# writes there again. The name appears only in comments, which a test
+# enforces, so it cannot return as a destination.
+#
+# network_spatial_relations_objects.rds is a persistent model: eleven consumers read it
+ANALYSIS_ID <- "build_spatial_networks"
 SCRIPT_ID <- "analysis/spatial_networks/build_spatial_networks.R"
 Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 args <- commandArgs(trailingOnly = TRUE)
@@ -69,7 +86,8 @@ spatial_col <- if (identical(spatial_unit, "region_layer")) "RegionLayer" else "
 spatial_label_col <- "SpatialLabel"
 message2("Resolved spatial_unit: ", spatial_unit)
 SUBSTEP_ID <- file.path("network_spatial_relations", SPATIAL_DATASET, spatial_unit)
-CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
+CANONICAL_PATHS <- canonical_module_dirs("spatial_networks", ANALYSIS_ID,
+                                         scope = SPATIAL_DATASET, suffix = spatial_unit)
 SPATIAL_INPUTS <- resolve_dataset_inputs(SPATIAL_DATASET, purpose = "wgcna", script = SCRIPT_ID, stage = "networks")
 
 required_pkgs <- c(
@@ -194,11 +212,15 @@ safe_name <- function(x) {
 make_dirs <- function(base_dir) {
   dirs <- list(
     base = base_dir,
-    processed = CANONICAL_PATHS$processed,
+    # the canonical network object: read by integration, wgcna,
+    # spatial_validation and the figure exporter, so it is a result
+    processed = CANONICAL_PATHS$models,
     tables = CANONICAL_PATHS$tables,
     figures = CANONICAL_PATHS$figures,
     source_data = CANONICAL_PATHS$source_data,
-    networks = file.path(CANONICAL_PATHS$processed, "network_files"),
+    # per-network node and edge csv files: nothing outside this writer
+    # reads them, so they are regenerable intermediates
+    networks = file.path(CANONICAL_PATHS$work, "network_files"),
     logs = CANONICAL_PATHS$logs,
     reports = CANONICAL_PATHS$reports
   )
@@ -916,14 +938,19 @@ network_object <- list(
 saveRDS(network_object, file.path(dirs$processed, "network_spatial_relations_objects.rds"))
 # Compatibility/debug copy kept with logs; downstream scripts should not consume this path.
 saveRDS(network_object, file.path(dirs$logs, "network_spatial_relations_objects.rds"))
-if (SPATIAL_DATASET == "neuron_neuropil" && spatial_unit == "region_layer") {
-  legacy_object_path <- path_processed("07_spatial_networks", "network_spatial_relations", "network_spatial_relations_objects.rds")
-  dir.create(dirname(legacy_object_path), recursive = TRUE, showWarnings = FALSE)
-  saveRDS(network_object, legacy_object_path)
-  message2("Legacy compatibility object written for neuron_neuropil: ", legacy_object_path)
-} else {
-  legacy_object_path <- NA_character_
-}
+# Phase 6G: this script used to write a second copy of the object to the
+# historical unscoped path, for neuron_neuropil/region_layer only, so that
+# downstream scripts expecting that location kept working. It no longer does.
+#
+# The copy is unnecessary now: every consumer resolves through
+# resolve_spatial_network_object(), which prefers the normalized location and
+# falls back to the historical ones. It is also forbidden - an active write
+# into the legacy namespace is exactly what this migration removes.
+#
+# The historical object itself is untouched. It remains on disk where earlier
+# runs left it, and the resolver still finds it, so nothing that reads it today
+# stops working.
+legacy_object_path <- NA_character_
 write_run_manifest(
   file.path(dirs$logs, "run_manifest.yml"),
   inputs = as.list(stats::setNames(input_manifest$path, input_manifest$input_type)),

@@ -22,6 +22,8 @@ testthat::test_that("pipeline registry advertises scoped spatial network outputs
   producer <- scripts[[which(vapply(scripts, function(x) x$script, character(1)) == "analysis/spatial_networks/build_spatial_networks.R")]]
 
   testthat::expect_true("microglia" %in% producer$datasets)
-  testthat::expect_true(any(grepl("network_spatial_relations/<dataset>/*/network_spatial_relations_objects.rds", producer$produces, fixed = TRUE)))
+  testthat::expect_true(any(grepl(
+    "results/spatial_networks/build_spatial_networks/<dataset>/models/*/network_spatial_relations_objects.rds",
+    producer$produces, fixed = TRUE)))
   testthat::expect_true(any(grepl("data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv", producer$consumes_required, fixed = TRUE)))
 })

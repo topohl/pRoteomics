@@ -228,10 +228,10 @@ Scripts:
 | human_name | Spatial and differential networks |
 | entrypoint | `analysis/spatial_networks/build_spatial_networks.R` |
 | scripts_in_area | 6 (1 required) |
-| inputs | `data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv`, `data/processed/07_spatial_networks/network_spatial_relations/<dataset>/*/network_spatial_relations_objects.rds`, `results/tables/07_spatial_networks/bootstrap_differential_network_stability/01_Tables/bootstrap_differential_edge_stability_summary.csv`, +2 more |
-| optional_inputs | `results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/`, `results/tables/07_spatial_networks/bootstrap_differential_network_stability/01_Tables/candidate_edge_differential_stability_summary.csv`, `results/tables/07_spatial_networks/` |
-| outputs | `data/processed/07_spatial_networks/network_spatial_relations/<dataset>/*/network_spatial_relations_objects.rds`, `results/tables/07_spatial_networks/differential_networks/all_group_edges_long.csv`, `results/tables/07_spatial_networks/differential_networks/rewiring_summary_counts.csv`, `results/tables/07_spatial_networks/differential_networks/differential_networks_summary.xlsx`, +4 more |
-| required_config | `config/spatial_networks.local.yml` |
+| inputs | `data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv`, `results/spatial_networks/build_spatial_networks/<dataset>/models/*/network_spatial_relations_objects.rds`, `data/processed/07_spatial_networks/network_spatial_relations/<dataset>/*/network_spatial_relations_objects.rds`, +3 more |
+| optional_inputs | `results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/`, `results/spatial_networks/test_differential_network_stability/<dataset>/tables/candidate_edge_differential_stability_summary.csv`, `results/tables/07_spatial_networks/bootstrap_differential_network_stability/bootstrap_differential_edge_stability_summary.csv`, +1 more |
+| outputs | `results/spatial_networks/build_spatial_networks/<dataset>/models/*/network_spatial_relations_objects.rds`, `results/spatial_networks/build_spatial_networks/<dataset>/tables`, `results/spatial_networks/build_spatial_networks/<dataset>/plots`, `results/spatial_networks/build_spatial_networks/<dataset>/manifests`, +17 more |
+| required_config | `config/legacy_output_registry.csv`, `config/output_layout.yml`, `config/spatial_networks.local.yml` |
 | upstream_dependencies | `preprocessing` |
 | downstream_consumers | `integration` |
 | publication_source_outputs | - |
@@ -256,7 +256,7 @@ Scripts:
 | human_name | Biological integration and behaviour coupling |
 | entrypoint | `analysis/integration/test_behaviour_proteomics_associations.R` |
 | scripts_in_area | 17 (0 required) |
-| inputs | `data/external/behavior/auc_individual_animals_firstChangeActive.csv`, `data/processed/07_spatial_networks/network_spatial_relations/<dataset>/*/network_spatial_relations_objects.rds`, `data/external/behavior/E9_Behavior_Data.xlsx`, +51 more |
+| inputs | `data/external/behavior/auc_individual_animals_firstChangeActive.csv`, `results/spatial_networks/build_spatial_networks/<dataset>/models/*/network_spatial_relations_objects.rds`, `data/processed/07_spatial_networks/network_spatial_relations/<dataset>/*/network_spatial_relations_objects.rds`, +52 more |
 | optional_inputs | `data/processed/morpheus/20260218_pgmatrix_imputed_neuron_soma_71samples_missing70pct_with_metadata.xlsx`, `data/external/MOUSE_10090_idmapping.dat`, `data/external/behavior/auc_individual_animals_all.csv`, +25 more |
 | outputs | `results/figures/08_behavior_physio_coupling/correlate_proteomics_with_behavior/Figure3_AUC_vs_Proteomics.svg`, `results/figures/08_behavior_physio_coupling/correlate_proteomics_with_behavior/SourceData_Figure3_Correlation.csv`, `results/tables/08_behavior_physio_coupling/correlate_proteomics_with_behavior/join_diagnostics_summary.csv`, `results/tables/08_behavior_physio_coupling/network_behavior_coupling/`, +118 more |
 | required_config | `config/animal_id_aliases.csv`, `config/gsea_wgcna_program_module_mapping.csv`, `config/gsea_wgcna_theme_module_mapping.csv`, `config/manuscript_go_theme_registry.tsv`, +1 more |

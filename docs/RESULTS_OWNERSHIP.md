@@ -8,7 +8,7 @@ legitimately write different files into one family, which is coordination
 rather than a defect. What must never happen is two scripts declaring the
 same concrete output file, and this tool fails if any does.
 
-At this commit: **199 families**, **327 concrete declared outputs**, **0** of which have more than one declared writer.
+At this commit: **200 families**, **328 concrete declared outputs**, **0** of which have more than one declared writer.
 
 Output namespaces are keyed on **stage identity**, not on script location.
 That is why a script named `summarize_missingness.R` writes into
@@ -32,8 +32,6 @@ its outputs.
 | `results/figures/06_modules_WGCNA/score_publication_summary` | `summarize_module_scores.R` | 1 | 6 |
 | `results/figures/06_modules_WGCNA/wgcna_publication_figures` | `render_module_figures.R` | 1 | 6 |
 | `results/figures/06_modules_WGCNA/wgcna_publication_figures_corrected` | `render_microglia_module_figures.R` | 1 | 14 |
-| `results/figures/07_spatial_networks/bootstrap_differential_network_figures` | `render_differential_network_figures.R` | 1 | 0 |
-| `results/figures/07_spatial_networks/chord_diagram` | `render_network_chord_diagram.R` | 1 | 0 |
 | `results/figures/08_behavior_physio_coupling/correlate_proteomics_with_behavior` | `test_behaviour_proteomics_associations.R` | 1 | 2 |
 | `results/figures/08_behavior_physio_coupling/network_behavior_coupling` | `test_network_behaviour_coupling.R` | 1 | 0 |
 | `results/figures/10_biological_integration/wgcna_circular_atlas` | `render_module_circular_atlas.R` | 1 | 22 |
@@ -144,6 +142,12 @@ its outputs.
 | `results/source_data/10_biological_integration/wgcna_cross_compartment_overview` | `summarize_module_cross_compartment.R` | 1 | 0 |
 | `results/source_data/10_biological_integration/wgcna_sus_res_network_position` | `quantify_candidate_network_position.R` | 1 | 0 |
 | `results/source_data/manuscript_panels/figure_3` | `export_module_protein_zoom_source_data.R` | 1 | 0 |
+| `results/spatial_networks/build_differential_networks/<dataset>` | `build_differential_networks.R` | 1 | 3 |
+| `results/spatial_networks/build_spatial_networks/<dataset>` | `build_spatial_networks.R` | 1 | 1 |
+| `results/spatial_networks/render_differential_network_figures/<dataset>` | `render_differential_network_figures.R` | 1 | 0 |
+| `results/spatial_networks/render_network_chord_diagram/<dataset>` | `render_network_chord_diagram.R` | 1 | 0 |
+| `results/spatial_networks/test_differential_network_stability/<dataset>` | `test_differential_network_stability.R` | 1 | 1 |
+| `results/spatial_networks/test_network_stability/<dataset>` | `test_network_stability.R` | 1 | 0 |
 | `results/tables/01_preprocessing/06_merged_metadata_module_score` | `build_module_score_metadata.R` | 1 | 1 |
 | `results/tables/02_id_mapping/MapThatProt_batch` | `map_protein_identifiers.R` | 1 | 1 |
 | `results/tables/03_qc_exploration/00_dataset_qc_report` | `assess_dataset_quality.R` | 1 | 1 |
@@ -185,9 +189,6 @@ its outputs.
 | `results/tables/06_modules_WGCNA/score_publication_summary` | `summarize_module_scores.R` | 1 | 1 |
 | `results/tables/06_modules_WGCNA/wgcna_publication_figures` | `render_module_figures.R` | 1 | 1 |
 | `results/tables/06_modules_WGCNA/wgcna_publication_figures_corrected` | `render_microglia_module_figures.R` | 1 | 2 |
-| `results/tables/07_spatial_networks/bootstrap_differential_network_stability` | `test_differential_network_stability.R` | 1 | 1 |
-| `results/tables/07_spatial_networks/bootstrap_network_stability` | `test_network_stability.R` | 1 | 0 |
-| `results/tables/07_spatial_networks/differential_networks` | `build_differential_networks.R` | 1 | 3 |
 | `results/tables/08_behavior_physio_coupling/animal_id_integrity` | `audit_animal_id_integrity.R` | 1 | 3 |
 | `results/tables/08_behavior_physio_coupling/correlate_proteomics_with_behavior` | `test_behaviour_proteomics_associations.R` | 1 | 1 |
 | `results/tables/08_behavior_physio_coupling/module_behavior_coupling` | `test_module_behaviour_coupling.R` | 1 | 1 |

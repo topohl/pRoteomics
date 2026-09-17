@@ -178,6 +178,47 @@ canonical_work_path <- function(domain, analysis_id, scope = "global", ...) {
   path_work(domain, analysis_id, scope, ...)
 }
 
+# The normalized replacement for create_module_dirs(), which keyed output on
+# stage identity. One call gives a writer every destination it needs, so
+# repointing a writer is one edit rather than one per write site.
+#
+# `suffix` is a segment below the child, for a writer whose historical layout
+# nested one: build_spatial_networks wrote
+# network_spatial_relations/<dataset>/<spatial_unit>, and the spatial unit
+# carries meaning, so it is preserved.
+#
+# figures and logs are aliases, because renaming a key to plots or manifests is
+# a pure rename with no judgement in it.
+#
+# There is deliberately no `processed` alias. Under the historical layout every
+# writer put both its persistent objects and its scratch files under
+# data/processed, and those two now diverge: a consumed object belongs in
+# models/ and a disposable one in work/. Aliasing the old key would silently
+# pick one, and that choice is exactly what section 2 of the Phase 6G.2 brief
+# requires a human to make per artefact. A writer must therefore name $models
+# or $work.
+canonical_module_dirs <- function(domain, analysis_id, scope = "global",
+                                  suffix = NULL, create = TRUE) {
+  aid <- sub("[.][Rr]$", "", basename(analysis_id))
+  if (!nzchar(scope)) scope <- "global"
+  join <- function(p) if (is.null(suffix) || !length(suffix) || !nzchar(suffix)) p else file.path(p, suffix)
+
+  out <- list(
+    tables    = join(canonical_result_path(domain, aid, scope, "tables")),
+    plots     = join(canonical_result_path(domain, aid, scope, "plots")),
+    models    = join(canonical_result_path(domain, aid, scope, "models")),
+    manifests = join(canonical_result_path(domain, aid, scope, "manifests")),
+    reports   = join(canonical_result_path(domain, aid, scope, "reports")),
+    work      = join(canonical_work_path(domain, aid, scope))
+  )
+  out$source_data <- file.path(out$tables, "source_data")
+  out$figures <- out$plots
+  out$logs <- out$manifests
+
+  if (isTRUE(create)) invisible(lapply(out, dir_create))
+  out
+}
+
 # --- legacy output roots --------------------------------------------------
 # Registered in config/legacy_output_registry.csv: real artefacts that no
 # registered writer produces any more. Reads are fine, writes are not.

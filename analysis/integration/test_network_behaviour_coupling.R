@@ -2,7 +2,7 @@
 # Script: analysis/integration/test_network_behaviour_coupling.R
 # Stage: coupling
 # Scope: dataset_specific
-# Consumes: required data/processed/07_spatial_networks/network_spatial_relations/<dataset>/*/network_spatial_relations_objects.rds; data/external/behavior/auc_individual_animals_firstChangeActive.csv; +1 more; optional data/external/behavior/auc_individual_animals_all.csv.
+# Consumes: required results/spatial_networks/build_spatial_networks/<dataset>/models/*/network_spatial_relations_objects.rds; data/processed/07_spatial_networks/network_spatial_relations/<dataset>/*/network_spatial_relations_objects.rds; data/external/behavior/auc_individual_animals_firstChangeActive.csv; +1 more; optional data/external/behavior/auc_individual_animals_all.csv.
 # Produces: results/tables/08_behavior_physio_coupling/network_behavior_coupling/; results/figures/08_behavior_physio_coupling/network_behavior_coupling/.
 # Dataset behavior: runs for neuron_neuropil according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Network/module/behavior coupling after networks and downstream module summaries.
@@ -42,6 +42,7 @@
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
 source(repo_path("R", "dataset_config.R"))
+source(repo_path("R", "spatial_network_utils.R"))
 source(repo_path("R", "validation_utils.R"))
 source(repo_path("R", "animal_id_contract.R"))
 MODULE_ID <- "08_behavior_physio_coupling"
@@ -62,12 +63,11 @@ invisible(lapply(required_pkgs, library, character.only = TRUE))
 # -------------------------------
 # 1) Parameters
 # -------------------------------
+# Delegates to the shared resolver in R/networks/spatial_network_utils.R,
+# which prefers the normalized canonical location and falls back to the
+# historical ones. Five scripts previously carried identical copies of this.
 resolve_spatial_rds <- function() {
-  override <- Sys.getenv("PROTEOMICS_SPATIAL_NETWORK_OBJECT", unset = "")
-  if (nzchar(override)) return(normalizePath(override, winslash = "/", mustWork = FALSE))
-  scoped <- path_processed("07_spatial_networks", "network_spatial_relations", BEHAVIOR_DATASET, behavior_spatial_unit, "network_spatial_relations_objects.rds")
-  if (file.exists(scoped)) return(scoped)
-  path_processed("07_spatial_networks", "network_spatial_relations", "network_spatial_relations_objects.rds")
+  resolve_spatial_network_object(BEHAVIOR_DATASET, behavior_spatial_unit)
 }
 
 params <- list(

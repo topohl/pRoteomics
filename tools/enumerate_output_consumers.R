@@ -23,6 +23,24 @@
 # to a runtime consumer. This is not a static interpreter and does not try to
 # be: a token reaching a helper function is reported as helper-mediated rather
 # than resolved through it.
+#
+# Known limitation, and it grows as migration proceeds. A consumer that reads
+# through a shared resolver contains no path token of its own, so this tool
+# cannot see it. Phase 6G.2 produced the first instances: after
+# test_network_behaviour_coupling.R and
+# render_differential_network_figures.R were repointed onto
+# resolve_spatial_network_object() and
+# resolve_bootstrap_differential_tables(), both dropped out of the inventory
+# while still reading exactly what they read before. The dependency did not
+# disappear, it moved to R/networks/spatial_network_utils.R, which the
+# inventory does report.
+#
+# So a shrinking inventory is not evidence that consumers went away, and must
+# be reconciled against the pre-migration set rather than read on its own
+# (audits/phase6g_spatial_networks_consumer_reconciliation.csv). The
+# compensating control is by function name instead of by path: the callers of
+# a resolver are enumerable, and the writer-namespace test asserts that every
+# caller actually loads the library that defines it.
 
 source(file.path("R", "paths.R"))
 source(repo_path("R", "dataset_config.R"))
@@ -235,6 +253,16 @@ say("output filenames   :", length(output_filenames), "\n")
 tracked <- system2("git", c("ls-files"), stdout = TRUE)
 SURFACES <- "^(analysis|R|tests|tools|audits|config|docs)/|^pipeline\\.yml$"
 files <- tracked[grepl(SURFACES, tracked)]
+
+## This tool's own output must not be part of its input. A consumer inventory
+## quotes the matched line for every finding, so once one is committed the next
+## run matches every token in it and reports the inventory as a consumer of the
+## analysis it describes. That is a feedback loop, not a dependency: committing
+## the six spatial_networks inventories turned 0 unclassified rows into 67332
+## and blocked the preflight. Excluded by path, so the exclusion cannot be
+## defeated by the file merely being untracked at the time.
+TOOL_OUTPUT <- "^audits/(consumer_inventory/|phase6g_preflight_)"
+files <- files[!grepl(TOOL_OUTPUT, files)]
 files <- files[grepl("[.]([Rr]|ya?ml|md|csv|tsv|txt|json)$", files) | files == "pipeline.yml"]
 files <- data.frame(path = files, repo = "pRoteomics", stringsAsFactors = FALSE)
 

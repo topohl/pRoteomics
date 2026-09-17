@@ -36,7 +36,13 @@ split_paths <- function(x) {
   unique(p[nzchar(p)])
 }
 
-NORMALIZED_CALLS <- c("canonical_result_path", "canonical_work_path")
+# canonical_module_dirs() is the normalized replacement for
+# create_module_dirs(): it returns every destination a writer needs, built
+# from canonical_result_path() and canonical_work_path(). A writer that uses
+# it resolves through the output contract even though it never names those
+# two functions itself.
+NORMALIZED_CALLS <- c("canonical_result_path", "canonical_work_path",
+                      "canonical_module_dirs")
 # these create directories, so calling one is itself a write
 LEGACY_FACTORIES <- c("create_module_dirs", "module_paths", "qc_paths")
 PATH_BUILDERS <- c("path_results", "path_processed")

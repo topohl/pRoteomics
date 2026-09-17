@@ -1,0 +1,6 @@
+"reader","domain","mode","parses","sources_resolver_lib","calls_resolver","resolved_path","candidate_selected","target_exists"
+"analysis/integration/test_network_behaviour_coupling.R","integration","RESOLVER",TRUE,TRUE,TRUE,"data/processed/07_spatial_networks/network_spatial_relations/neuron_neuropil/region_layer/network_spatial_relations_objects.rds","legacy_scoped",TRUE
+"analysis/wgcna/build_module_spatial_networks.R","wgcna","RESOLVER",TRUE,TRUE,TRUE,"data/processed/07_spatial_networks/network_spatial_relations/neuron_neuropil/region_layer/network_spatial_relations_objects.rds","legacy_scoped",TRUE
+"analysis/integration/audit_animal_id_integrity.R","integration","LEGACY_LITERAL",TRUE,NA,FALSE,"data/processed/07_spatial_networks/network_spatial_relations/neuron_neuropil/region_layer/network_spatial_relations_objects.rds","legacy_literal",TRUE
+"analysis/spatial_validation/validate_network_workbook.R","spatial_validation","LEGACY_LITERAL",TRUE,NA,FALSE,"results/tables/07_spatial_networks","legacy_literal",TRUE
+"analysis/publication_source_data/08_export_manuscript_figures.R","publication_source_data","LEGACY_LITERAL",TRUE,NA,FALSE,"results/figures/07_spatial_networks","legacy_literal",TRUE
