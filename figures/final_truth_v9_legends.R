@@ -178,7 +178,7 @@ ROLES <- list(
            "hippocampal signatures, so this panel is genuine external ",
            "validation. ", GSEA_N)),
   R("v9_internal_main", "GSEA normalised enrichment score", "animal",
-    "inferential", "one canonical term per contrast; the complete inventory is ED2",
+    "inferential", "one canonical term per contrast; the complete inventory is the released control_anatomical_go_bp_gsea supplementary table",
     "gene set enrichment", "BH within the internal anatomical inventory",
     "no - same data",
     paste0("FUNCTIONAL CHARACTERISATION of the anatomical contrasts. This ",
@@ -286,13 +286,25 @@ ED_DEFAULT_LEGEND <- list(
     "hemisphere; filled symbol = bilateral mean. Intraclass correlation is ",
     "reported as descriptive precision context; no significance test is ",
     "applied. ", DESCRIPTIVE),
+  # This panel is the CON-only spatial fingerprint, not an external inventory.
+  # The old text was copied from its neighbour and described the wrong analysis.
   v9_ed_fingerprint_full = paste0(
-    "Complete external signature inventory across all spatial units. ",
-    DESCRIPTIVE),
+    "Complete CON-only spatial fingerprint across all spatial units: the genes ",
+    "selected by the prespecified control-only anatomical contrasts, shown as ",
+    "within-protein standardised control abundance. Main Figure 2d shows a ",
+    "subset of these rows. ", DESCRIPTIVE),
+  # Two corrections here. The grid is 63 cells and 30 pairings were tested, so
+  # "every contrast against every signature" overstated it; and the significance
+  # statistic is signature_FDR, the signature-family correction, NOT the column
+  # formerly exported as p_adjust, which is the uncorrected single-set value.
   v9_ed_external_full = paste0(
-    "Complete external validation inventory: every internal contrast against ",
-    "every external signature, expected pairings and specificity comparisons ",
-    "alike. BH-adjusted within this inventory."),
+    "All 30 tested contrast-signature pairings - 10 expected and 20 specificity ",
+    "comparisons - across the 9 control-only contrasts and 7 external ",
+    "signatures that were structurally applicable to one another. Significance ",
+    "is the stored signature-family FDR, which is the statistic the Results ",
+    "claim rests on; the uncorrected single-set value is carried separately in ",
+    "the source data under its own name. Main Figure 2g shows the expected ",
+    "pairings alone."),
   v9_ed_internal_full = paste0(
     "Complete functional characterisation inventory: every canonical GO term ",
     "retained for every anatomical contrast, on one shared NES axis. This is ",

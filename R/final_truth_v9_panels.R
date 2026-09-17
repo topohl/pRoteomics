@@ -244,9 +244,9 @@ f9_internal_main <- function(panel, svg_path, csv_path, w_mm, h_mm) {
                                linewidth = 0.3, colour = "grey55")
   }
   g$legend_text_moved <- paste0(
-    "strongest canonical term per contrast; filled point = FDR < 0.05; the ",
-    "complete term inventory is in ED2 - stated in the figure legend, not on ",
-    "the artwork. Set-size encoding was dropped: it competed with the effect ",
+    "strongest canonical term per contrast; filled point = FDR < 0.05; ",
+    "the complete term inventory is the released control_anatomical_go_bp_gsea supplementary table, 40,680 rows across all 11 contrasts, not a figure panel. ",
+    "Set-size encoding was dropped: it competed with the effect ",
     "for the same visual channel and the sizes are in the source data.")
   write_csv_safe(g[, c("contrast", "Description", "level", "NES", "p_adjust",
                        "setSize", "legend_text_moved")], csv_path)
