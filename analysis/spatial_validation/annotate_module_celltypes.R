@@ -30,14 +30,24 @@
 # Stage: networks
 # Scope: per_dataset
 # Consumes: required results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_modules_long.csv; optional none declared in pipeline.yml
-# Produces: results/tables/11_spatial_systems/celltype_annotation/WGCNA_module_external_celltype_affinity_long.csv; results/tables/11_spatial_systems/celltype_annotation/WGCNA_module_external_celltype_affinity_summary.csv
+# Produces: results/spatial_validation/annotate_module_celltypes/global/tables/WGCNA_module_external_celltype_affinity_long.csv; results/spatial_validation/annotate_module_celltypes/global/tables/WGCNA_module_external_celltype_affinity_summary.csv
 # Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Phenotype-blind external cell-type annotation of WGCNA modules.
+#  
+#  
 
 source("R/paths.R")
 source("R/data_contracts/dataset_config.R")
 source("R/statistics/integration_utils.R")
 source("R/enrichment/ewce_gene_set_engine.R")
+source(repo_path("R", "spatial_systems_paths.R"))
+
+# Phase 6G.3: destinations resolve through the normalized output contract,
+# addressed by this analysis's own identity rather than by the historical
+# 11_spatial_systems stage directory. Outputs already written there stay
+# exactly where they are and are read, never rewritten.
+ANALYSIS_ID <- "annotate_module_celltypes"
+CANONICAL_PATHS <- spatial_systems_dirs(ANALYSIS_ID)
 
 suppressPackageStartupMessages({ library(readr); library(dplyr) })
 
@@ -54,7 +64,7 @@ LEVELS <- c(1L, 2L)
 SEED <- 20260101L
 
 OUT <- function() {
-  d <- path_results("tables", "11_spatial_systems", "celltype_annotation"); dir_create(d); d
+  d <- CANONICAL_PATHS$tables; dir_create(d); d
 }
 membership_path <- function(ds) {
   path_results("tables", "06_modules_WGCNA", "01_WGCNA", ds, "modules",

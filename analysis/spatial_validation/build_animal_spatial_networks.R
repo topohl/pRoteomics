@@ -21,10 +21,12 @@
 # Script: analysis/spatial_validation/build_animal_spatial_networks.R
 # Stage: networks
 # Scope: global
-# Consumes: required data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx; optional results/tables/11_spatial_systems/data_contract/spatial_systems_hemisphere_inventory.csv
-# Produces: results/tables/11_spatial_systems/networks/network_representation_selection.csv; results/tables/11_spatial_systems/networks/animal_network_edges.csv; results/tables/11_spatial_systems/networks/animal_network_nodes.csv; +4 more
+# Consumes: required data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx; optional results/spatial_validation/build_spatial_data_contract/global/tables/spatial_systems_hemisphere_inventory.csv; results/tables/11_spatial_systems/data_contract/spatial_systems_hemisphere_inventory.csv
+# Produces: results/spatial_validation/build_animal_spatial_networks/global/tables/network_representation_selection.csv; results/spatial_validation/build_animal_spatial_networks/global/tables/animal_network_edges.csv; results/spatial_validation/build_animal_spatial_networks/global/tables/animal_network_nodes.csv; +4 more
 # Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Animal-level spatial molecular-similarity networks.
+#  
+#  
 
 source("R/paths.R")
 source("R/data_contracts/dataset_config.R")
@@ -34,6 +36,14 @@ source("R/data_contracts/spatial_systems_data_utils.R")
 source("R/spatial/spatial_systems_bilateral_utils.R")
 source("R/spatial/spatial_atlas_utils.R")
 source("R/networks/animal_spatial_network_utils.R")
+source(repo_path("R", "spatial_systems_paths.R"))
+
+# Phase 6G.3: destinations resolve through the normalized output contract,
+# addressed by this analysis's own identity rather than by the historical
+# 11_spatial_systems stage directory. Outputs already written there stay
+# exactly where they are and are read, never rewritten.
+ANALYSIS_ID <- "build_animal_spatial_networks"
+CANONICAL_PATHS <- spatial_systems_dirs(ANALYSIS_ID)
 
 suppressPackageStartupMessages({ library(readr); library(dplyr) })
 
@@ -43,7 +53,7 @@ cli <- integration_cli(default_dataset = "all")
 
 EDGE_METHOD <- "spearman"   # prospective choice; audited in the selection table
 OUT <- function() {
-  d <- path_results("tables", "11_spatial_systems", "networks"); dir_create(d); d
+  d <- CANONICAL_PATHS$tables; dir_create(d); d
 }
 DATASETS <- valid_datasets()
 

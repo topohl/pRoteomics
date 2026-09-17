@@ -86,12 +86,12 @@ Scripts:
 | human_name | Spatial systems validation, bilateral QC and CA2-SLM robustness |
 | entrypoint | `analysis/spatial_validation/build_spatial_data_contract.R` |
 | scripts_in_area | 18 (0 required) |
-| inputs | `data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx`, `results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_protein_identity_crosswalk_proposed.csv`, `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_hemisphere_values.csv`, +18 more |
-| optional_inputs | `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_hemisphere_values.csv`, `results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_modules_long.csv`, `results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv`, +24 more |
-| outputs | `results/tables/11_spatial_systems/data_contract/spatial_systems_hemisphere_inventory.csv`, `results/tables/11_spatial_systems/data_contract/spatial_systems_aggregation_validation.csv`, `results/tables/11_spatial_systems/data_contract/spatial_systems_evidence_dependence.csv`, `results/tables/11_spatial_systems/bilateral/bilateral_spatial_identity_protein_level.csv`, +71 more |
+| inputs | `data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx`, `results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_protein_identity_crosswalk_proposed.csv`, `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_hemisphere_values.csv`, +26 more |
+| optional_inputs | `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_hemisphere_values.csv`, `results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_modules_long.csv`, `results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv`, +34 more |
+| outputs | `results/spatial_validation/build_spatial_data_contract/global/tables/spatial_systems_hemisphere_inventory.csv`, `results/spatial_validation/build_spatial_data_contract/global/tables/spatial_systems_aggregation_validation.csv`, `results/spatial_validation/build_spatial_data_contract/global/tables/spatial_systems_evidence_dependence.csv`, `results/spatial_validation/quantify_bilateral_spatial_identity/global/tables/bilateral_spatial_identity_protein_level.csv`, +71 more |
 | required_config | `config/marker_panels/wgcna_reference_marker_sets.csv` |
 | upstream_dependencies | `preprocessing`, `differential_abundance`, `wgcna`, `integration` |
-| downstream_consumers | `integration` |
+| downstream_consumers | - |
 | publication_source_outputs | - |
 | dependency_stages | `networks` |
 
@@ -260,7 +260,7 @@ Scripts:
 | optional_inputs | `data/processed/morpheus/20260218_pgmatrix_imputed_neuron_soma_71samples_missing70pct_with_metadata.xlsx`, `data/external/MOUSE_10090_idmapping.dat`, `data/external/behavior/auc_individual_animals_all.csv`, +25 more |
 | outputs | `results/figures/08_behavior_physio_coupling/correlate_proteomics_with_behavior/Figure3_AUC_vs_Proteomics.svg`, `results/figures/08_behavior_physio_coupling/correlate_proteomics_with_behavior/SourceData_Figure3_Correlation.csv`, `results/tables/08_behavior_physio_coupling/correlate_proteomics_with_behavior/join_diagnostics_summary.csv`, `results/tables/08_behavior_physio_coupling/network_behavior_coupling/`, +118 more |
 | required_config | `config/animal_id_aliases.csv`, `config/gsea_wgcna_program_module_mapping.csv`, `config/gsea_wgcna_theme_module_mapping.csv`, `config/manuscript_go_theme_registry.tsv`, +1 more |
-| upstream_dependencies | `spatial_validation`, `differential_abundance`, `wgcna`, `spatial_networks`, `publication_source_data` |
+| upstream_dependencies | `differential_abundance`, `wgcna`, `spatial_networks`, `publication_source_data` |
 | downstream_consumers | `spatial_validation`, `publication_source_data`, Exp9_manuscript (via frozen source data) |
 | publication_source_outputs | `results/source_data/08_behavior_physio_coupling/module_behavior_coupling/<dataset>/module_behavior_coupling.csv`, `results/source_data/10_biological_integration/cross_compartment_program_atlas/global/cross_compartment_program_atlas.csv`, `results/source_data/10_biological_integration/cross_compartment_program_atlas/global/cross_compartment_program_atlas_long.csv`, +34 more |
 | dependency_stages | `coupling`, `integration` |
@@ -319,11 +319,6 @@ Scripts:
 ## Area-level cycles
 
 These area pairs exchange files in both directions. Execution order is defined by `pipeline.yml` stage order, not by area; an area is a naming grouping and scripts within two areas can legitimately interleave. Each direction below is created by a specific file.
-
-### `integration` and `spatial_validation`
-
-- `spatial_validation` requires from `integration`: `results/tables/10_biological_integration/wgcna_candidate_protein_shortlist/global/wgcna_candidate_proteins_all.csv`
-- `integration` requires from `spatial_validation`: `results/tables/11_spatial_systems/ca2_slm_robustness/CA2_SLM_DAP_robustness.csv`
 
 ### `integration` and `publication_source_data`
 

@@ -37,6 +37,7 @@ suppressPackageStartupMessages({
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
+source(repo_path("R", "spatial_systems_paths.R"))
 
 MODULE_ID <- "10_biological_integration"
 SUBSTEP_ID <- "immunostaining_candidate_panel"
@@ -51,8 +52,8 @@ ALREADY_NOMINATED <- c("OGA", "SLC22A23", "ANXA2")
 
 DA_DIR <- repo_path("data", "processed", "02_id_mapping", "mapped", DATASET,
                     "forward", "per_file")
-ROBUST <- repo_path("results", "tables", "11_spatial_systems",
-                    "ca2_slm_robustness", "CA2_SLM_DAP_robustness.csv")
+ROBUST <- spatial_systems_find("CA2_SLM_DAP_robustness.csv",
+                               "ca2_slm_robustness")
 SHORT <- repo_path("results", "tables", "10_biological_integration",
                    "wgcna_candidate_protein_shortlist", DATASET,
                    "wgcna_candidate_proteins_shortlist.csv")

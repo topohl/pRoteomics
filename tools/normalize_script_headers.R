@@ -88,11 +88,31 @@ scripts <- setdiff(scripts, NEVER_TOUCH)
 
 changed <- character(0)
 added <- 0L
+## --refresh also rewrites the machine-derived fields that are already
+## present, instead of only adding absent ones.
+##
+## Without it this tool cannot correct a stale header, which is a real gap: a
+## writer migration changes what a script produces, so Consumes:/Produces:
+## silently go out of date and the header disagrees with both the registry and
+## the code. That happened in Phase 6G.2 (build_spatial_networks.R kept
+## advertising its historical destination) and to all eighteen
+## spatial_validation writers in 6G.3.
+##
+## Only the three fields derived wholly from the registry are refreshed.
+## Script:, Stage: and Scope: are identity, and Notes: is the file's own prose
+## and must never be machine-overwritten.
+REFRESH <- "--refresh" %in% commandArgs(trailingOnly = TRUE)
+REFRESHABLE <- c("Consumes:", "Produces:", "Dataset behavior:")
+
 for (f in scripts) {
   lines <- readLines(f, warn = FALSE)
   hb <- paste(utils::head(lines, 60), collapse = "\n")
   missing <- FIELDS[!vapply(FIELDS, function(fd) grepl(fd, hb, fixed = TRUE), logical(1))]
-  if (!length(missing)) next
+  stale <- character(0)
+  if (REFRESH) {
+    stale <- setdiff(intersect(REFRESHABLE, FIELDS), missing)
+  }
+  if (!length(missing) && !length(stale)) next
 
   s <- steps[steps$script == f, , drop = FALSE]
   ds <- unique(s$dataset[s$supported %in% TRUE])
@@ -112,11 +132,34 @@ for (f in scripts) {
       "Registered in pipeline.yml stage ", paste(unique(s$stage), collapse = "/"),
       "; declares ", length(split_paths(s$produces)), " output path(s).")
   )
+  ## rewrite in place any field whose value the registry now contradicts
+  n_refreshed <- 0L
+  for (fd in stale) {
+    want <- paste0("# ", fd, " ", value[[fd]])
+    i <- grep(paste0("^#\\s*", fd), lines)
+    if (!length(i)) next
+    i <- i[1]
+    ## a field may wrap onto continuation comment lines; drop them so the
+    ## rewritten value does not leave half of the old one behind
+    j <- i
+    while (j + 1L <= length(lines) && grepl("^#\\s", lines[j + 1L]) &&
+           !grepl("^#\\s*[A-Z][A-Za-z ]{2,24}:", lines[j + 1L]) &&
+           !grepl("^#\\s*[=-]{3,}", lines[j + 1L])) {
+      j <- j + 1L
+    }
+    if (identical(lines[i], want) && j == i) next
+    lines <- append(lines[-(i:j)], want, after = i - 1L)
+    n_refreshed <- n_refreshed + 1L
+  }
+
   new_lines <- paste0("# ", names(value)[FIELDS %in% missing], " ",
                       value[FIELDS %in% missing])
 
   at <- leading_block_end(lines)
-  if (at == 0L) {
+  if (!length(new_lines)) {
+    ## refresh-only: the header already had every field, the values changed
+    out <- lines
+  } else if (at == 0L) {
     # no leading comment block: open one at the very top, after any shebang
     top <- if (length(lines) && grepl("^#!", lines[1])) 1L else 0L
     block <- c("# ================================================================",

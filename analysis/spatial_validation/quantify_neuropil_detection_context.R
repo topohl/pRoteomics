@@ -23,9 +23,11 @@
 # Stage: networks
 # Scope: global
 # Consumes: required results/tables/04_differential_expression_enrichment/sus_res_spatial_dap_atlas/global/sus_res_dap_counts.csv; optional results/tables/10_biological_integration/wgcna_candidate_protein_shortlist/neuron_neuropil/wgcna_candidate_proteins_long.csv
-# Produces: results/tables/11_spatial_systems/atlas/neuropil_spatial_detection_context.csv
+# Produces: results/spatial_validation/quantify_neuropil_detection_context/global/tables/neuropil_spatial_detection_context.csv
 # Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Neuropil spatial detection context: is the CA2-SLM hit burden biological?
+#  
+#  
 
 source("R/paths.R")
 source("R/data_contracts/dataset_config.R")
@@ -33,6 +35,14 @@ source("R/statistics/integration_utils.R")
 source("R/qc/qc_exploration_utils.R")
 source("R/data_contracts/spatial_systems_data_utils.R")
 source("R/spatial/spatial_atlas_utils.R")
+source(repo_path("R", "spatial_systems_paths.R"))
+
+# Phase 6G.3: destinations resolve through the normalized output contract,
+# addressed by this analysis's own identity rather than by the historical
+# 11_spatial_systems stage directory. Outputs already written there stay
+# exactly where they are and are read, never rewritten.
+ANALYSIS_ID <- "quantify_neuropil_detection_context"
+CANONICAL_PATHS <- spatial_systems_dirs(ANALYSIS_ID)
 
 suppressPackageStartupMessages({ library(readr); library(dplyr) })
 
@@ -41,7 +51,7 @@ Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 cli <- integration_cli(default_dataset = "all")
 
 OUT <- function() {
-  d <- path_results("tables", "11_spatial_systems", "atlas"); dir_create(d); d
+  d <- CANONICAL_PATHS$tables; dir_create(d); d
 }
 DAP <- path_results("tables", "04_differential_expression_enrichment",
                     "sus_res_spatial_dap_atlas", "global", "sus_res_dap_counts.csv")

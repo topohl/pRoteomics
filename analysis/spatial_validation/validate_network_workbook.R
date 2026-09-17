@@ -11,16 +11,26 @@
 # Script: analysis/spatial_validation/validate_network_workbook.R
 # Stage: networks
 # Scope: global
-# Consumes: required results/tables/11_spatial_systems/networks/animal_network_edges.csv; results/tables/11_spatial_systems/networks/network_edge_group_differences.csv; optional results/tables/07_spatial_networks/; results/tables/11_spatial_systems/atlas/WGCNA_module_network_context.csv; results/tables/11_spatial_systems/networks/spatial_node_network_integration.csv
-# Produces: results/tables/11_spatial_systems/spatial_systems_networks.xlsx; results/tables/11_spatial_systems/networks/spatial_network_validation_status.csv; results/tables/11_spatial_systems/networks/legacy_spatial_network_comparison.csv; +2 more
+# Consumes: required results/spatial_validation/build_animal_spatial_networks/global/tables/animal_network_edges.csv; results/tables/11_spatial_systems/networks/animal_network_edges.csv; results/spatial_validation/test_network_group_organization/global/tables/network_edge_group_differences.csv; +1 more; optional results/tables/07_spatial_networks/; results/spatial_validation/test_network_group_organization/global/tables/WGCNA_module_network_context.csv; results/tables/11_spatial_systems/atlas/WGCNA_module_network_context.csv; +2 more
+# Produces: results/spatial_validation/validate_network_workbook/global/reports/spatial_systems_networks.xlsx; results/spatial_validation/validate_network_workbook/global/tables/spatial_network_validation_status.csv; results/spatial_validation/validate_network_workbook/global/tables/legacy_spatial_network_comparison.csv; +2 more
 # Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Legacy comparison, behaviour-coupling audit, workbook, candidate figures and the network validation contract.
+#  
+#  
 
 source("R/paths.R")
 source("R/data_contracts/dataset_config.R")
 source("R/statistics/integration_utils.R")
 source("R/networks/animal_spatial_network_utils.R")
 source("R/utilities/xlsx_package_utils.R")
+source(repo_path("R", "spatial_systems_paths.R"))
+
+# Phase 6G.3: destinations resolve through the normalized output contract,
+# addressed by this analysis's own identity rather than by the historical
+# 11_spatial_systems stage directory. Outputs already written there stay
+# exactly where they are and are read, never rewritten.
+ANALYSIS_ID <- "validate_network_workbook"
+CANONICAL_PATHS <- spatial_systems_dirs(ANALYSIS_ID)
 
 suppressPackageStartupMessages({ library(readr); library(dplyr); library(tidyr) })
 
@@ -28,10 +38,12 @@ SCRIPT_ID <- "analysis/spatial_validation/validate_network_workbook.R"
 Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 cli <- integration_cli(default_dataset = "all")
 
-NET <- function(...) path_results("tables", "11_spatial_systems", "networks", ...)
+# reads resolve normalized-first; writes go to this analysis's own directory
+NET <- function(f) spatial_systems_find(f, "networks")
+NET_OUT <- function(...) { d <- CANONICAL_PATHS$tables; dir_create(d); file.path(d, ...) }
 LEG <- function(...) path_results("tables", "07_spatial_networks", ...)
 FIG <- function() {
-  d <- path_results("figures", "11_spatial_systems", "networks"); dir_create(d); d
+  d <- CANONICAL_PATHS$plots; dir_create(d); d
 }
 rd <- function(p) if (file.exists(p)) {
   as.data.frame(readr::read_csv(p, show_col_types = FALSE, progress = FALSE,
@@ -58,8 +70,8 @@ distances <- rd(NET("animal_network_distance_from_CON.csv"))
 edge_ctx <- rd(NET("spatial_edge_module_context.csv"))
 node_ctx <- rd(NET("spatial_node_cell_context.csv"))
 node_int <- rd(NET("spatial_node_network_integration.csv"))
-module_net_ctx <- rd(path_results("tables", "11_spatial_systems", "atlas",
-                                  "WGCNA_module_network_context.csv"))
+module_net_ctx <- rd(spatial_systems_find("WGCNA_module_network_context.csv",
+                                          "atlas"))
 
 # ==================================== PART 17: legacy comparison
 
@@ -271,9 +283,9 @@ add("atlas_context_is_node_level", TRUE,
               nrow(module_net_ctx), length(atlas_edge_cols)))
 
 validation <- dplyr::bind_rows(checks)
-write_csv_safe(validation, NET("spatial_network_validation_status.csv"))
-if (nrow(legacy)) write_csv_safe(legacy, NET("legacy_spatial_network_comparison.csv"))
-if (nrow(behaviour)) write_csv_safe(behaviour, NET("network_behavior_coupling_audit.csv"))
+write_csv_safe(validation, NET_OUT("spatial_network_validation_status.csv"))
+if (nrow(legacy)) write_csv_safe(legacy, NET_OUT("legacy_spatial_network_comparison.csv"))
+if (nrow(behaviour)) write_csv_safe(behaviour, NET_OUT("network_behavior_coupling_audit.csv"))
 
 # ------------------------------------------------------------- figures
 
@@ -398,7 +410,8 @@ for (nm in names(sheets)) {
   openxlsx::setColWidths(wb, sh, cols = seq_len(ncol(d)),
                          widths = pmin(44, pmax(12, nchar(names(d)) + 2)))
 }
-wb_path <- path_results("tables", "11_spatial_systems", "spatial_systems_networks.xlsx")
+wb_path <- file.path(dir_create(CANONICAL_PATHS$reports),
+                     "spatial_systems_networks.xlsx")
 xlsx_save_valid_workbook(wb, wb_path)
 
 cat("\n===== Network legacy comparison, workbook and validation =====\n")

@@ -20,16 +20,26 @@
 # Script: analysis/spatial_validation/test_network_group_organization.R
 # Stage: networks
 # Scope: global
-# Consumes: required results/tables/11_spatial_systems/networks/animal_network_objects.rds; results/tables/11_spatial_systems/networks/animal_network_edges.csv; optional results/tables/11_spatial_systems/atlas/WGCNA_module_spatial_cell_affinity.csv; results/tables/11_spatial_systems/atlas/WGCNA_module_spatial_fingerprints_raw.csv; results/tables/11_spatial_systems/atlas/protein_spatial_cell_affinity.csv
-# Produces: results/tables/11_spatial_systems/networks/CON_spatial_molecular_similarity_matrix.csv; results/tables/11_spatial_systems/networks/animal_network_global_metrics.csv; results/tables/11_spatial_systems/networks/network_metric_redundancy.csv; +9 more
+# Consumes: required results/spatial_validation/build_animal_spatial_networks/global/models/animal_network_objects.rds; results/tables/11_spatial_systems/networks/animal_network_objects.rds; results/spatial_validation/build_animal_spatial_networks/global/tables/animal_network_edges.csv; +1 more; optional results/spatial_validation/build_module_spatial_atlas/global/tables/WGCNA_module_spatial_cell_affinity.csv; results/tables/11_spatial_systems/atlas/WGCNA_module_spatial_cell_affinity.csv; results/spatial_validation/build_module_spatial_atlas/global/tables/WGCNA_module_spatial_fingerprints_raw.csv; +3 more
+# Produces: results/spatial_validation/test_network_group_organization/global/tables/CON_spatial_molecular_similarity_matrix.csv; results/spatial_validation/test_network_group_organization/global/tables/animal_network_global_metrics.csv; results/spatial_validation/test_network_group_organization/global/tables/network_metric_redundancy.csv; +9 more
 # Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Group organisation of the animal-level spatial molecular-similarity networks.
+#  
+#  
 
 source("R/paths.R")
 source("R/data_contracts/dataset_config.R")
 source("R/statistics/integration_utils.R")
 source("R/spatial/spatial_atlas_utils.R")
 source("R/networks/animal_spatial_network_utils.R")
+source(repo_path("R", "spatial_systems_paths.R"))
+
+# Phase 6G.3: destinations resolve through the normalized output contract,
+# addressed by this analysis's own identity rather than by the historical
+# 11_spatial_systems stage directory. Outputs already written there stay
+# exactly where they are and are read, never rewritten.
+ANALYSIS_ID <- "test_network_group_organization"
+CANONICAL_PATHS <- spatial_systems_dirs(ANALYSIS_ID)
 
 suppressPackageStartupMessages({ library(readr); library(dplyr); library(tidyr) })
 
@@ -39,18 +49,21 @@ cli <- integration_cli(default_dataset = "all")
 
 N_BOOT <- 5000L
 SEED <- 20260912L
-NET <- function(...) path_results("tables", "11_spatial_systems", "networks", ...)
+# reads resolve normalized-first; writes go to this analysis's own directory
+NET <- function(f) spatial_systems_find(f, "networks")
+NET_OUT <- function(...) { d <- CANONICAL_PATHS$tables; dir_create(d); file.path(d, ...) }
 DATASETS <- valid_datasets()
 
 if (isTRUE(cli$dry_run)) {
   cat("[DRY-RUN] Group organisation of animal-level spatial networks.\n")
-  dry_run_inputs(SCRIPT_ID, list(animal_network_objects = NET("animal_network_objects.rds"),
+  dry_run_inputs(SCRIPT_ID, list(animal_network_objects = spatial_systems_find("animal_network_objects.rds", "networks", kind = "models"),
                                  animal_network_edges = NET("animal_network_edges.csv")))
   cat("[DRY-RUN] Permutation unit = AnimalID; bootstrap resamples animals only.\n")
   quit(save = "no", status = 0L)
 }
 
-obj_path <- NET("animal_network_objects.rds")
+obj_path <- spatial_systems_find("animal_network_objects.rds", "networks",
+                                 kind = "models")
 if (!file.exists(obj_path)) {
   stop("missing_required_input: animal network objects: ", obj_path, call. = FALSE)
 }
@@ -273,10 +286,8 @@ edge_groups <- dplyr::bind_rows(edge_rows)
 # =============== PART 18 + 19: module and cell context for edges/nodes
 
 message("Annotating edges and nodes with module and cell context")
-atlas_p <- path_results("tables", "11_spatial_systems", "atlas",
-                        "WGCNA_module_spatial_cell_affinity.csv")
-fp_p <- path_results("tables", "11_spatial_systems", "atlas",
-                     "WGCNA_module_spatial_fingerprints_raw.csv")
+atlas_p <- spatial_systems_find("WGCNA_module_spatial_cell_affinity.csv", "atlas")
+fp_p <- spatial_systems_find("WGCNA_module_spatial_fingerprints_raw.csv", "atlas")
 edge_ctx <- NULL; node_ctx <- NULL
 if (file.exists(atlas_p) && file.exists(fp_p)) {
   atlas <- as.data.frame(readr::read_csv(atlas_p, show_col_types = FALSE, progress = FALSE))
@@ -400,8 +411,7 @@ if (!is.null(node_integration) && file.exists(atlas_p)) {
   module_net_ctx <- attach_network_context(
     atlas_full, c("dataset", "ModuleID", "canonical_display_label", "peak_unit"))
 }
-prot_p <- path_results("tables", "11_spatial_systems", "atlas",
-                       "protein_spatial_cell_affinity.csv")
+prot_p <- spatial_systems_find("protein_spatial_cell_affinity.csv", "atlas")
 if (!is.null(node_integration) && file.exists(prot_p)) {
   prot <- as.data.frame(readr::read_csv(prot_p, show_col_types = FALSE,
                                         progress = FALSE, guess_max = Inf))
@@ -411,7 +421,7 @@ if (!is.null(node_integration) && file.exists(prot_p)) {
 
 # ------------------------------------------------------------------ write
 
-root <- NET()
+root <- NET_OUT()
 write_csv_safe(baseline, file.path(root, "CON_spatial_molecular_similarity_matrix.csv"))
 write_csv_safe(descriptors, file.path(root, "animal_network_global_metrics.csv"))
 write_csv_safe(redundancy, file.path(root, "network_metric_redundancy.csv"))
@@ -424,7 +434,7 @@ if (!is.null(node_ctx)) write_csv_safe(node_ctx, file.path(root, "spatial_node_c
 if (!is.null(node_integration)) {
   write_csv_safe(node_integration, file.path(root, "spatial_node_network_integration.csv"))
 }
-atlas_root <- path_results("tables", "11_spatial_systems", "atlas")
+atlas_root <- NET_OUT()
 if (!is.null(module_net_ctx)) {
   write_csv_safe(module_net_ctx, file.path(atlas_root, "WGCNA_module_network_context.csv"))
 }

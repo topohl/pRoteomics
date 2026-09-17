@@ -26,9 +26,11 @@
 # Stage: networks
 # Scope: global
 # Consumes: required data/processed/02_id_mapping_animal_level/mapped/neuron_neuropil/forward/per_file/; optional data/raw/pg_matrix/quicksearch.pg_matrix.tsv; results/tables/03_qc_exploration/
-# Produces: results/tables/11_spatial_systems/atlas/neuropil_spatial_precision_context.csv; results/tables/11_spatial_systems/atlas/ca2_slm_imputation_artifact_test.csv
+# Produces: results/spatial_validation/quantify_neuropil_precision/global/tables/neuropil_spatial_precision_context.csv; results/spatial_validation/quantify_neuropil_precision/global/tables/ca2_slm_imputation_artifact_test.csv
 # Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Neuropil spatial precision context: the final CA2-SLM power audit.
+#  
+#  
 
 source("R/paths.R")
 source("R/data_contracts/dataset_config.R")
@@ -36,6 +38,14 @@ source("R/statistics/integration_utils.R")
 source("R/qc/qc_exploration_utils.R")
 source("R/data_contracts/spatial_systems_data_utils.R")
 source("R/spatial/spatial_atlas_utils.R")
+source(repo_path("R", "spatial_systems_paths.R"))
+
+# Phase 6G.3: destinations resolve through the normalized output contract,
+# addressed by this analysis's own identity rather than by the historical
+# 11_spatial_systems stage directory. Outputs already written there stay
+# exactly where they are and are read, never rewritten.
+ANALYSIS_ID <- "quantify_neuropil_precision"
+CANONICAL_PATHS <- spatial_systems_dirs(ANALYSIS_ID)
 
 suppressPackageStartupMessages({ library(readr); library(dplyr); library(readxl) })
 
@@ -49,7 +59,7 @@ UNITS <- c("ca1_slm", "ca1_so", "ca1_sr", "ca2_slm", "ca2_so", "ca2_sr",
 DA_DIR <- path_processed("02_id_mapping_animal_level", "mapped", DS, "forward", "per_file")
 RAW <- repo_path("data", "raw", "pg_matrix", "quicksearch.pg_matrix.tsv")
 OUT <- function() {
-  d <- path_results("tables", "11_spatial_systems", "atlas"); dir_create(d); d
+  d <- CANONICAL_PATHS$tables; dir_create(d); d
 }
 
 if (isTRUE(cli$dry_run)) {

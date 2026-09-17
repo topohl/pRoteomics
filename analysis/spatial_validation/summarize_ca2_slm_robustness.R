@@ -12,10 +12,12 @@
 # Script: analysis/spatial_validation/summarize_ca2_slm_robustness.R
 # Stage: networks
 # Scope: global
-# Consumes: required results/tables/11_spatial_systems/ca2_slm_robustness/CA2_SLM_DAP_robustness.csv; data/processed/02_id_mapping/mapped/neuron_neuropil/forward/per_file/CA2slmsus_CA2slmres.csv; optional results/tables/11_spatial_systems/ca2_slm_robustness/; results/tables/08_behavior_physio_coupling/animal_id_integrity/; results/tables/08_behavior_physio_coupling/network_behavior_coupling/; +1 more
-# Produces: results/tables/11_spatial_systems/CA2_SLM_robustness_audit.xlsx; results/tables/11_spatial_systems/ca2_slm_robustness/CA2_SLM_robustness_validation.csv; results/figures/11_spatial_systems/ca2_slm_robustness/
+# Consumes: required results/spatial_validation/audit_ca2_slm_robustness/global/tables/CA2_SLM_DAP_robustness.csv; results/tables/11_spatial_systems/ca2_slm_robustness/CA2_SLM_DAP_robustness.csv; data/processed/02_id_mapping/mapped/neuron_neuropil/forward/per_file/CA2slmsus_CA2slmres.csv; optional results/tables/11_spatial_systems/ca2_slm_robustness/; results/tables/08_behavior_physio_coupling/animal_id_integrity/; results/tables/08_behavior_physio_coupling/network_behavior_coupling/; +1 more
+# Produces: results/spatial_validation/summarize_ca2_slm_robustness/global/reports/CA2_SLM_robustness_audit.xlsx; results/spatial_validation/summarize_ca2_slm_robustness/global/tables/CA2_SLM_robustness_validation.csv; results/spatial_validation/summarize_ca2_slm_robustness/global/plots
 # Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: CA2-SLM robustness: candidate figures, reviewer workbook and the validation contract.
+#  
+#  
 
 source("R/paths.R")
 source("R/data_contracts/dataset_config.R")
@@ -23,6 +25,14 @@ source("R/statistics/integration_utils.R")
 source("R/utilities/xlsx_package_utils.R")
 source("R/data_contracts/animal_id_contract.R")
 source("R/spatial/ca2_slm_robustness_utils.R")
+source(repo_path("R", "spatial_systems_paths.R"))
+
+# Phase 6G.3: destinations resolve through the normalized output contract,
+# addressed by this analysis's own identity rather than by the historical
+# 11_spatial_systems stage directory. Outputs already written there stay
+# exactly where they are and are read, never rewritten.
+ANALYSIS_ID <- "summarize_ca2_slm_robustness"
+CANONICAL_PATHS <- spatial_systems_dirs(ANALYSIS_ID)
 
 suppressPackageStartupMessages({ library(readr); library(dplyr); library(tidyr) })
 
@@ -30,13 +40,13 @@ SCRIPT_ID <- "analysis/spatial_validation/summarize_ca2_slm_robustness.R"
 Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 cli <- integration_cli(default_dataset = "all")
 
-ROB <- function(...) path_results("tables", "11_spatial_systems", "ca2_slm_robustness", ...)
+ROB <- function(f) spatial_systems_find(f, "ca2_slm_robustness")
 AID <- function(...) path_results("tables", "08_behavior_physio_coupling",
                                   "animal_id_integrity", ...)
 COUP <- function(...) path_results("tables", "08_behavior_physio_coupling",
                                    "network_behavior_coupling", ...)
 FIG <- function(...) {
-  d <- path_results("figures", "11_spatial_systems", "ca2_slm_robustness")
+  d <- CANONICAL_PATHS$plots
   dir_create(d); file.path(d, ...)
 }
 DA_FILE <- path_processed("02_id_mapping", "mapped", "neuron_neuropil", "forward",
@@ -472,7 +482,8 @@ for (nm in names(sheets)) {
   openxlsx::setColWidths(wb, sh, cols = seq_len(ncol(d)),
                          widths = pmin(44, pmax(12, nchar(names(d)) + 2)))
 }
-wb_path <- path_results("tables", "11_spatial_systems", "CA2_SLM_robustness_audit.xlsx")
+wb_path <- file.path(dir_create(CANONICAL_PATHS$reports),
+                     "CA2_SLM_robustness_audit.xlsx")
 xlsx_save_valid_workbook(wb, wb_path)
 
 cat("\n===== CA2-SLM robustness workbook and validation =====\n")
