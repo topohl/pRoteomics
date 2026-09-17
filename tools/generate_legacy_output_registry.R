@@ -52,7 +52,17 @@ candidates <- candidates[dir.exists(candidates) | file.exists(candidates)]
 ## the manuscript_candidates trees are named by a comparison marker, not listed
 candidates <- unique(c(candidates,
   file.path(analytical, "manuscript_candidates")[dir.exists(file.path(analytical, "manuscript_candidates"))]))
-candidates <- sort(unique(candidates))
+
+## Every historical stage namespace under an analytical root. As Phase 6G
+## migrates a domain its old namespace stops having a writer and shows up here
+## as legacy, which is how "the historical tree is now read only" becomes a
+## measurement instead of a claim.
+for (a in analytical) {
+  if (!dir.exists(a)) next
+  ns_dirs <- list.dirs(a, recursive = FALSE)
+  candidates <- c(candidates, ns_dirs[grepl("/[0-9]{2}[a-z]?_", ns_dirs)])
+}
+candidates <- sort(unique(sub(paste0("^", repo_root(), "/"), "", candidates)))
 
 count_files <- function(p) {
   if (!dir.exists(p)) return(if (file.exists(p)) 1L else 0L)

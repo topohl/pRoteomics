@@ -109,7 +109,29 @@ testthat::test_that("the legacy registry covers the trees that lost their writer
                 "results/source_data/manuscript_candidates",
                 "results/tables/manuscript_candidates")
   testthat::expect_true(all(required %in% legacy$legacy_path))
-  testthat::expect_identical(sum(legacy$frozen_objects_beneath), 111L)
+
+  # Every frozen baseline object under results/ must be accounted for by the
+  # registry exactly once, whether its root is legacy or still has a writer.
+  # Checking against the manifest rather than a hardcoded number keeps this
+  # honest as Phase 6G migrates domains: each migration moves frozen objects
+  # from the active side of this ledger to the legacy side without changing
+  # the total.
+  baseline <- "6801edbce8a5d222f4af46e06b6db4e99f6a9761"
+  fm <- suppressWarnings(system2(
+    "git", c("show", paste0(baseline, ":manuscript/prerestructure_freeze_manifest.csv")),
+    stdout = TRUE, stderr = FALSE))
+  testthat::skip_if(!length(fm), "baseline manifest not resolvable here")
+  frozen <- unique(utils::read.csv(text = paste(fm, collapse = "\n"),
+                                   stringsAsFactors = FALSE)$repository_relative_path)
+  frozen_results <- frozen[startsWith(frozen, "results/")]
+  testthat::expect_identical(sum(reg$frozen_objects_beneath),
+                             length(frozen_results))
+
+  # The frozen objects whose root still has a writer belong to domains Phase 6G
+  # has not migrated yet. That number may only fall.
+  still_active <- sum(reg$frozen_objects_beneath[reg$policy == "ACTIVE_NOT_LEGACY"])
+  testthat::expect_gt(sum(legacy$frozen_objects_beneath), 0L)
+  testthat::expect_lte(still_active, 18L)
 
   # a legacy root with an active writer would be a contradiction
   testthat::expect_identical(sum(legacy$n_active_writers), 0L)

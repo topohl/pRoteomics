@@ -11,13 +11,17 @@ testthat::test_that("EWCE script parses --dataset before output paths are create
   pos_dataset_cli <- regexpr("dataset_cli <-", txt, fixed = TRUE)[1]
   pos_current_dataset <- regexpr("EWCE_DATASET <- current_dataset()", txt, fixed = TRUE)[1]
   pos_contract <- regexpr("EWCE_RUN_CONTRACT <- ewce_resolve_run_contract", txt, fixed = TRUE)[1]
-  pos_substep <- regexpr("SUBSTEP_ID <- EWCE_RUN_CONTRACT$substep_id", txt, fixed = TRUE)[1]
-  pos_create_dirs <- regexpr("CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)", txt, fixed = TRUE)[1]
+  # Phase 6G: the scope replaces the historical substep id and destinations are
+  # built by ewce_result_dir(), but the property under test is unchanged - no
+  # output directory may be constructed before the dataset is known, or a run
+  # would write into the wrong dataset's folder.
+  pos_scope <- regexpr("EWCE_SCOPE <- if (isTRUE(EWCE_RUN_CONTRACT$canonical))", txt, fixed = TRUE)[1]
+  pos_create_dirs <- regexpr('base_results <- ewce_result_dir("reports")', txt, fixed = TRUE)[1]
   testthat::expect_gt(pos_current_dataset, pos_dataset_cli)
   testthat::expect_gt(pos_contract, pos_current_dataset)
-  testthat::expect_gt(pos_substep, pos_contract)
+  testthat::expect_gt(pos_scope, pos_contract)
   testthat::expect_gt(pos_create_dirs, pos_current_dataset)
-  testthat::expect_gt(pos_create_dirs, pos_substep)
+  testthat::expect_gt(pos_create_dirs, pos_scope)
   testthat::expect_true(grepl('source\\(repo_path\\("R", "ewce_contract_utils.R"\\)\\)', txt))
 })
 
@@ -40,13 +44,15 @@ testthat::test_that("EWCE dry-run honors dataset-specific output folders", {
   testthat::expect_true(grepl("Branch: canonical", microglia, fixed = TRUE))
   testthat::expect_true(grepl("Legacy cache reuse allowed: FALSE", microglia, fixed = TRUE))
   testthat::expect_true(grepl("pgmatrix_imputed_microglia_", microglia, fixed = TRUE))
-  testthat::expect_true(grepl("EWCE_E9/microglia", microglia, fixed = TRUE))
-  testthat::expect_false(grepl("EWCE_E9/neuron_neuropil", microglia, fixed = TRUE))
+  # the dry-run reports its resolved destinations, so this is a runtime proof
+  # that the writer lands in the normalized namespace for this dataset
+  testthat::expect_true(grepl("results/enrichment/run_ewce_celltype_enrichment/microglia", microglia, fixed = TRUE))
+  testthat::expect_false(grepl("results/enrichment/run_ewce_celltype_enrichment/neuron_neuropil", microglia, fixed = TRUE))
 
   soma <- run("neuron_soma")
   testthat::expect_true(grepl("Dataset: neuron_soma", soma, fixed = TRUE))
   testthat::expect_true(grepl("pgmatrix_imputed_neuron_soma_", soma, fixed = TRUE))
-  testthat::expect_true(grepl("EWCE_E9/neuron_soma", soma, fixed = TRUE))
+  testthat::expect_true(grepl("results/enrichment/run_ewce_celltype_enrichment/neuron_soma", soma, fixed = TRUE))
 })
 
 testthat::test_that("EWCE animal mode is isolated and reports the shared aggregation contract", {
@@ -69,8 +75,10 @@ testthat::test_that("EWCE animal mode is isolated and reports the shared aggrega
   testthat::expect_true(grepl("Analysis unit: animal", out, fixed = TRUE))
   testthat::expect_true(grepl("Animal-level column count: 36", out, fixed = TRUE))
   testthat::expect_true(grepl("Legacy cache reuse allowed: FALSE", out, fixed = TRUE))
-  testthat::expect_true(grepl("EWCE_E9_comparison/animal_level/neuron_soma", out, fixed = TRUE))
-  testthat::expect_false(grepl("EWCE_E9/neuron_soma", out, fixed = TRUE))
+  # a sensitivity branch is separated by a comparison segment under the same
+  # analysis identity, and must not touch the canonical dataset folder
+  testthat::expect_true(grepl("run_ewce_celltype_enrichment/comparison/animal_level/neuron_soma", out, fixed = TRUE))
+  testthat::expect_false(grepl("results/enrichment/run_ewce_celltype_enrichment/neuron_soma/", out, fixed = TRUE))
 })
 
 testthat::test_that("EWCE animal-level safeguards and cache identity are present", {

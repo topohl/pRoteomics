@@ -4,7 +4,7 @@
 # Script: analysis/differential_abundance/test_microglia_targeted_signatures.R
 # Stage: enrichment
 # Scope: dataset_specific
-# Consumes: required mapped microglia/neuropil ranked contrasts and results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv; optional config/marker_panels/wgcna_reference_marker_sets.csv and data/processed/05_celltype_enrichment_EWCE/EWCE_E9/microglia/EWCE_results_full.rds (diagnostic only).
+# Consumes: required mapped microglia/neuropil ranked contrasts and results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv; optional config/marker_panels/wgcna_reference_marker_sets.csv and results/enrichment/run_ewce_celltype_enrichment/<dataset>/models/EWCE_results_full.rds (historical location also accepted) (diagnostic only).
 # Produces: results/tables/04_differential_expression_enrichment/microglia_targeted_signature_enrichment/microglia/.
 # Dataset behavior: runs for microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Microglia-only targeted signature enrichment.
@@ -641,7 +641,14 @@ derive_empirical_signatures <- function(micro_ranked, neuropil_ranked, id_map) {
 }
 
 ewce_results_path <- function(dataset = DATASET) {
+  # Normalized location first, then the historical ones. Phase 6G repointed the
+  # EWCE writer without moving what it had already written, so a run from
+  # before the migration still resolves here. This input is optional and
+  # diagnostic only: when none of the candidates exists the caller degrades
+  # rather than failing, which is why adding a candidate cannot change a result.
   candidates <- c(
+    canonical_result_path("enrichment", "run_ewce_celltype_enrichment", dataset,
+                          "models", "EWCE_results_full.rds"),
     path_processed("05_celltype_enrichment_EWCE", "EWCE_E9", dataset, "EWCE_results_full.rds"),
     path_processed("05_celltype_enrichment_EWCE", "EWCE_E9", "EWCE_results_full.rds"),
     path_processed("05_celltype_enrichment_EWCE", "EWCE_E9", "neuron_neuropil", "EWCE_results_full.rds")

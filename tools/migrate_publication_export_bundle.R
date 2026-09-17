@@ -24,9 +24,11 @@ DRY <- nzchar(Sys.getenv("DRY"))
 SRC <- "results/publication_source_data"
 DST <- "exports/publication_source_data"
 
-MR <- Sys.getenv("EXP9_MANUSCRIPT_ROOT",
-                 unset = normalizePath(file.path(repo_root(), "..", "Exp9_manuscript"),
-                                       winslash = "/", mustWork = FALSE))
+## The producing commit is read from the bundle's own manifest, not from the
+## manuscript repository. An earlier version resolved the sibling repository to
+## look it up, which made this tool the only runtime cross-repo dependency in
+## the analysis repository; the bundle already records the value, so the reach
+## was unnecessary as well as unwanted.
 
 if (!dir.exists(SRC)) stop("source bundle not found: ", SRC, call. = FALSE)
 
@@ -41,17 +43,17 @@ if (file.exists(contract_path)) {
   identities <- vapply(ct$identities, function(x) as.character(x$publication_id), character(1))
 }
 
-## provenance the manuscript already recorded for this bundle
+## the producing commit, as the bundle itself records it
 recorded_commit <- NA_character_
-mm <- file.path(MR, "source_data/pRoteomics/manifest.csv")
-if (file.exists(mm)) {
-  d <- utils::read.csv(mm, stringsAsFactors = FALSE)
+bm <- file.path(SRC, "manifest.csv")
+if (file.exists(bm)) {
+  d <- utils::read.csv(bm, stringsAsFactors = FALSE)
   if ("source_commit" %in% names(d)) {
     u <- unique(d$source_commit[nzchar(d$source_commit)])
     recorded_commit <- if (length(u) == 1L) u else paste(u, collapse = ";")
   }
 }
-cat("commit recorded by the manuscript for this bundle:", recorded_commit, "\n")
+cat("commit recorded in the bundle manifest:", recorded_commit, "\n")
 
 rows <- list()
 copied <- 0L

@@ -13,7 +13,43 @@ testthat::test_that("canonical EWCE figure paths are exportable and comparison p
 
   testthat::expect_true(is_exportable_result_path(canonical))
   testthat::expect_false(is_exportable_result_path(comparison))
-  testthat::expect_match(canonical_ewce_figure_root(), "05_celltype_enrichment_EWCE/EWCE_E9$", fixed = FALSE)
+
+  # Phase 6G: the analysis writes results/enrichment/run_ewce_celltype_enrichment
+  # and its pre-migration outputs stay under the historical figure root, so both
+  # are scanned. The exclusion of a sensitivity branch no longer comes from the
+  # root being a sibling of the comparison tree; it comes from
+  # is_noncanonical_ewce_export_path(), which is asserted below for both.
+  roots <- canonical_ewce_figure_root()
+  testthat::expect_gte(length(roots), 2L)
+  testthat::expect_true(any(grepl("/results/enrichment/run_ewce_celltype_enrichment$", roots)))
+  testthat::expect_true(any(grepl("05_celltype_enrichment_EWCE/EWCE_E9$", roots)))
+  testthat::expect_false(any(grepl("comparison", roots, fixed = TRUE)))
+})
+
+testthat::test_that("the normalized EWCE namespace keeps comparison branches unexportable", {
+  canonical <- file.path(
+    tempdir(), "results", "enrichment", "run_ewce_celltype_enrichment",
+    "microglia", "plots", "Fig1_EWCE_Summary.pdf"
+  )
+  comparison <- file.path(
+    tempdir(), "results", "enrichment", "run_ewce_celltype_enrichment",
+    "comparison", "sample_level_sensitivity", "microglia", "plots",
+    "Fig1_EWCE_Summary.pdf"
+  )
+
+  testthat::expect_true(is_exportable_result_path(canonical))
+  testthat::expect_false(is_exportable_result_path(comparison))
+  testthat::expect_identical(
+    is_noncanonical_ewce_export_path(c(canonical, comparison)),
+    c(FALSE, TRUE)
+  )
+
+  # tables and plot source data behave the same way
+  ctab <- file.path(tempdir(), "results", "enrichment", "run_ewce_celltype_enrichment",
+                    "microglia", "tables", "Supplementary_Table_EWCE.xlsx")
+  btab <- file.path(tempdir(), "results", "enrichment", "run_ewce_celltype_enrichment",
+                    "comparison", "b", "microglia", "tables", "Supplementary_Table_EWCE.xlsx")
+  testthat::expect_identical(is_exportable_result_path(c(ctab, btab)), c(TRUE, FALSE))
 })
 
 testthat::test_that("source-data and table filters retain canonical EWCE only", {

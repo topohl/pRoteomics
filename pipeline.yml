@@ -358,7 +358,7 @@ stages:
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "enrichment"
         scope: "dataset_specific"
-        produces: ["results/tables/05_celltype_enrichment_EWCE/EWCE_E9/"]
+        produces: ["results/enrichment/run_ewce_celltype_enrichment/<dataset>/tables/", "results/enrichment/run_ewce_celltype_enrichment/<dataset>/plots/", "results/enrichment/run_ewce_celltype_enrichment/<dataset>/models/", "results/enrichment/run_ewce_celltype_enrichment/<dataset>/manifests/", "results/enrichment/run_ewce_celltype_enrichment/<dataset>/reports/"]
         consumes_required: ["data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv"]
         consumes_optional: ["data/processed/04_differential_expression_enrichment/compareGO/<dataset>/compareGO_input_manifest.csv"]
         recomputes_core_state: false

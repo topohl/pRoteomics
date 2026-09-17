@@ -3,7 +3,7 @@
 # Stage: enrichment
 # Scope: dataset_specific
 # Consumes: required data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv; optional data/processed/04_differential_expression_enrichment/compareGO/<dataset>/compareGO_input_manifest.csv.
-# Produces: results/tables/05_celltype_enrichment_EWCE/EWCE_E9/.
+# Produces: results/enrichment/run_ewce_celltype_enrichment/<dataset>/{tables,plots,models,manifests,reports}/ and work/enrichment/run_ewce_celltype_enrichment/<dataset>/cache/.
 # Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: EWCE after differential/enrichment inputs are available.
 # Canonical analysis unit: animal; hemispheres are aggregated within AnimalID x spatial unit.
@@ -14,8 +14,13 @@
 #   - processed proteomics matrix from data/processed/01_preprocessing/ or local config override
 #   - sample metadata from data/metadata/ or local config override
 # Produces:
+#   - tables, plots, plot source data, model objects, manifests and reports under
+#     results/enrichment/run_ewce_celltype_enrichment/<dataset>/
+#   - bootstrap cache under work/enrichment/run_ewce_celltype_enrichment/<dataset>/
+#   - a sensitivity branch writes under
+#     results/enrichment/run_ewce_celltype_enrichment/comparison/<branch>/<dataset>/
+#     and is excluded from every publication export
 # ================================================================
-#   - EWCE tables, figures, source data, processed objects, cache and logs under canonical module folders
 # File contract:
 #   - docs/active_script_io_audit.tsv object analysis/enrichment/run_ewce_celltype_enrichment.R
 # ==========================================
@@ -41,7 +46,17 @@ source(repo_path("R", "validation_utils.R"))
 source(repo_path("R", "protigy_input_utils.R"))
 source(repo_path("R", "ewce_contract_utils.R"))
 source(repo_path("R", "ewce_gene_set_engine.R"))
-MODULE_ID <- "05_celltype_enrichment_EWCE"
+# Phase 6G: this analysis writes the normalized namespace declared in
+# config/output_layout.yml, addressed by its own analysis identity rather than
+# by a historical stage number.
+#
+# Its historical namespace was 05_celltype_enrichment_EWCE/EWCE_E9/<dataset>.
+# Outputs already written there stay exactly where they are, registered
+# LEGACY_READ_ONLY in config/legacy_output_registry.csv; readers still resolve
+# them and nothing writes there again. The name is deliberately mentioned only
+# in this comment: a test requires it to be absent from active code, so it
+# cannot come back as a write destination.
+ANALYSIS_ID <- "run_ewce_celltype_enrichment"
 EWCE_ANIMAL_CONTRACT_VERSION <- "EWCE_animal_level_v1"
 
 args <- commandArgs(trailingOnly = TRUE)
@@ -88,8 +103,19 @@ EWCE_BRANCH <- trimws(Sys.getenv("PROTEOMICS_EWCE_BRANCH", unset = ""))
 EWCE_RUN_CONTRACT <- ewce_resolve_run_contract(EWCE_DATASET, EWCE_ANALYSIS_UNIT, EWCE_BRANCH)
 EWCE_ANALYSIS_UNIT <- EWCE_RUN_CONTRACT$analysis_unit
 EWCE_BRANCH <- if (EWCE_RUN_CONTRACT$canonical) "" else EWCE_RUN_CONTRACT$branch
-SUBSTEP_ID <- EWCE_RUN_CONTRACT$substep_id
-CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
+# The canonical run is addressed by its dataset. A sensitivity branch keeps the
+# same analysis identity - it is the same analysis, run differently - and is
+# separated by a "comparison" segment directly under the analysis, mirroring the
+# historical EWCE_E9 against EWCE_E9_comparison/<branch> split. The export layer
+# excludes that segment, so a branch result can never reach the manuscript.
+EWCE_SCOPE <- if (isTRUE(EWCE_RUN_CONTRACT$canonical)) {
+  EWCE_RUN_CONTRACT$dataset
+} else {
+  file.path("comparison", EWCE_RUN_CONTRACT$branch, EWCE_RUN_CONTRACT$dataset)
+}
+# Recorded in the run counters so the table says where the run actually wrote.
+SUBSTEP_ID <- file.path("enrichment", ANALYSIS_ID, EWCE_SCOPE)
+LEGACY_SUBSTEP_ID <- EWCE_RUN_CONTRACT$substep_id
 
 resolve_ewce_pg_matrix <- function() {
   env_path <- Sys.getenv("PROTEOMICS_EWCE_MATRIX", unset = "")
@@ -150,15 +176,24 @@ if (!exists("data_path", inherits = FALSE)) {
 if (!exists("sample_metadata_path", inherits = FALSE)) {
   sample_metadata_path <- resolve_dataset_inputs(EWCE_DATASET, purpose = "wgcna")$metadata_file
 }
-base_results <- CANONICAL_PATHS$reports
+# Destinations resolve through the output-layout API rather than through literal
+# strings, so an unknown domain or child is an error instead of a new namespace
+# nobody finds. EWCE_results_full.rds is a model artefact and not a work
+# intermediate, because a downstream diagnostic reads it; the bootstrap cache is
+# a work intermediate, because nothing cites it.
+ewce_result_dir <- function(child, ...) {
+  dir_create(canonical_result_path("enrichment", ANALYSIS_ID, EWCE_SCOPE, child, ...))
+}
+
+base_results <- ewce_result_dir("reports")
 dirs <- list(
-  plots   = CANONICAL_PATHS$figures,
-  svgs    = file.path(CANONICAL_PATHS$figures, "SVG_Editable"),
-  tables  = CANONICAL_PATHS$tables,
-  qc      = CANONICAL_PATHS$logs,
-  data    = CANONICAL_PATHS$processed,
-  source  = CANONICAL_PATHS$source_data,
-  cache   = file.path(CANONICAL_PATHS$processed, "cache")
+  plots   = ewce_result_dir("plots"),
+  svgs    = ewce_result_dir("plots", "SVG_Editable"),
+  tables  = ewce_result_dir("tables"),
+  qc      = ewce_result_dir("manifests"),
+  data    = ewce_result_dir("models"),
+  source  = ewce_result_dir("tables", "source_data"),
+  cache   = dir_create(canonical_work_path("enrichment", ANALYSIS_ID, EWCE_SCOPE, "cache"))
 )
 
 animal_bundle_summary <- function(bundle) {
@@ -2010,5 +2045,35 @@ reproducibility_lines <- c(
 )
 
 writeLines(reproducibility_lines, file.path(dirs$qc, "reproducibility_session_info.txt"))
+
+# Phase 6G section 19: machine-readable provenance for this result family,
+# written into its own manifests/ child. It records where the run wrote, who
+# owns the family and a sha256 for each declared output, and it restates no
+# scientific interpretation: biological unit and statistical scope are declared
+# once in docs/MANUSCRIPT_STATISTICAL_CONTRACT.md, which the manifest points at.
+write_result_manifest(
+  domain = "enrichment",
+  analysis_id = ANALYSIS_ID,
+  scope = EWCE_SCOPE,
+  inputs = list(pg_matrix = data_path, sample_metadata = sample_metadata_path),
+  outputs = list(
+    supplementary_table = file.path(dirs$tables, "Supplementary_Table_EWCE.xlsx"),
+    high_confidence = file.path(dirs$tables, "High_Confidence_EWCE_Findings.xlsx"),
+    input_signatures = file.path(dirs$tables, "EWCE_input_signatures.xlsx"),
+    figure_source_data = file.path(dirs$source, "Source_Data_EWCE_Figures.xlsx"),
+    results_object = file.path(dirs$data, "EWCE_results_full.rds")
+  ),
+  parameters = list(
+    dataset = EWCE_DATASET,
+    analysis_unit = EWCE_ANALYSIS_UNIT,
+    branch = EWCE_RUN_CONTRACT$branch,
+    canonical = EWCE_RUN_CONTRACT$canonical,
+    annot_levels = analysis_params$annot_levels,
+    primary_top_n = analysis_params$primary_top_n,
+    primary_annot_level = analysis_params$primary_annot_level,
+    background_universe_size = length(background_universe)
+  ),
+  notes = "EWCE cell-type enrichment; destinations resolved through config/output_layout.yml."
+)
 
 cat("\nPipeline complete. Files organized in:", base_results, "\n")
