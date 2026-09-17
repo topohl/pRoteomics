@@ -145,6 +145,50 @@ testthat::test_that("a baseline-keyed audit is provenance, not a live consumer",
   testthat::expect_true(grepl("AUDIT_READER", etxt, fixed = TRUE))
 })
 
+testthat::test_that("a bare directory name only matches as a path segment", {
+  ## Phase 6G.4: NAMESPACE_BASENAME tokens are bare directory names such as
+  ## "atlas", "precision" or "data_contract". Matched as plain substrings they
+  ## invent dependencies: "data_contract" matched inside
+  ## R/data_contracts/dataset_config.R and "precision" matched the word
+  ## precision in a sentence, which together put three differential_abundance
+  ## scripts in spatial_validation's consumer inventory and then into a phase
+  ## brief as three cross-domain dependencies that never existed.
+  src <- readLines(ENUM, warn = FALSE)
+  i <- grep("^match_token <- function", src)
+  testthat::expect_length(i, 1L)
+  j <- i
+  depth <- 0L
+  repeat {
+    depth <- depth + lengths(regmatches(src[j], gregexpr("[{]", src[j]))) -
+      lengths(regmatches(src[j], gregexpr("[}]", src[j])))
+    if (depth <= 0L && j > i) break
+    j <- j + 1L
+  }
+  env <- new.env(parent = globalenv())
+  eval(parse(text = paste(src[i:j], collapse = "\n")), envir = env)
+  mt <- get("match_token", envir = env)
+
+  NB <- "NAMESPACE_BASENAME"
+  ## the two real false positives
+  testthat::expect_false(mt('source("R/data_contracts/dataset_config.R")',
+                            "data_contract", NB))
+  testthat::expect_false(mt("adjustment family/precision; canonical padj",
+                            "precision", NB))
+  ## a prefix of a longer identifier is not a match
+  testthat::expect_false(mt("atlas_root <- something", "atlas", NB))
+  ## genuine path references still match
+  testthat::expect_true(mt("results/tables/11_spatial_systems/data_contract/x.csv",
+                           "data_contract", NB))
+  testthat::expect_true(mt('path_results("tables", "11_spatial_systems", "data_contract")',
+                           "data_contract", NB))
+  testthat::expect_true(mt("results/tables/11_spatial_systems/precision/bilateral_precision_gain.csv",
+                           "precision", NB))
+  ## and the distinctive vocabularies are unaffected
+  testthat::expect_true(mt("a/full/path/here.csv", "full/path", "FULL_PATH"))
+  testthat::expect_true(mt("wrote thing_summary.csv today", "thing_summary.csv",
+                           "OUTPUT_FILENAME"))
+})
+
 testthat::test_that("the spatial_validation inventories classify nothing as UNKNOWN", {
   dir <- repo_path("audits", "consumer_inventory")
   testthat::skip_if_not(dir.exists(dir))
