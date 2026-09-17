@@ -129,6 +129,69 @@ testthat::test_that("the wrapper that hid spatial_validation's workbook writes i
   testthat::expect_true("xlsx_save_valid_workbook" %in% known)
 })
 
+testthat::test_that("only the destination argument decides where a call writes", {
+  ## Phase 6G.4: the audit used to test every argument of a write call, which
+  ## cannot tell a destination from a payload. Two correctly migrated writes in
+  ## test_microglia_targeted_signatures were reported as legacy writes because
+  ## a report printed the input path it had read and a run manifest recorded
+  ## its inputs as provenance. Recording where you read from is the opposite of
+  ## writing there.
+  src <- readLines(AUDIT, warn = FALSE)
+  i <- grep("^dest_args <- function", src)
+  testthat::expect_length(i, 1L)
+  ## evaluate DEST_ARG and dest_args together
+  env <- new.env(parent = globalenv())
+  j <- grep("^DEST_ARG <- list\\(", src)
+  testthat::expect_length(j, 1L)
+  k <- j
+  depth <- 0L
+  repeat {
+    depth <- depth + lengths(regmatches(src[k], gregexpr("[(]", src[k]))) -
+      lengths(regmatches(src[k], gregexpr("[)]", src[k])))
+    if (depth <= 0L && k > j) break
+    k <- k + 1L
+  }
+  eval(parse(text = paste(src[j:k], collapse = "\n")), envir = env)
+  m <- i
+  depth <- 0L
+  repeat {
+    depth <- depth + lengths(regmatches(src[m], gregexpr("[{]", src[m]))) -
+      lengths(regmatches(src[m], gregexpr("[}]", src[m])))
+    if (depth <= 0L && m > i) break
+    m <- m + 1L
+  }
+  eval(parse(text = paste(src[i:m], collapse = "\n")), envir = env)
+  dest_args <- get("dest_args", envir = env)
+
+  dep <- function(txt) {
+    e <- parse(text = txt)[[1]]
+    vapply(dest_args(as.character(e[[1]]), e),
+           function(a) paste(deparse(a), collapse = ""), character(1))
+  }
+
+  ## writeLines: the connection is the destination, not the text
+  d <- dep('writeLines(c("read from", LEGACY_PATH), PATHS$reports)')
+  testthat::expect_identical(unname(d), "PATHS$reports")
+
+  ## write_run_manifest: the path is first; inputs are metadata
+  d <- dep('write_run_manifest(file.path(PATHS$logs, "m.yml"), inputs = list(LEGACY_PATH))')
+  testthat::expect_true(grepl("PATHS$logs", d[1], fixed = TRUE))
+  testthat::expect_false(any(grepl("LEGACY_PATH", d, fixed = TRUE)))
+
+  ## a named destination wins over position
+  d <- dep('write.csv(x, file = PATHS$tables)')
+  testthat::expect_identical(unname(d), "PATHS$tables")
+
+  ## ggsave takes its destination first
+  d <- dep('ggsave(PATHS$plots, plot = p)')
+  testthat::expect_identical(unname(d), "PATHS$plots")
+
+  ## an unmapped call keeps the conservative all-argument behaviour, which is
+  ## right for directory creation
+  d <- dep('dir_create(A, B)')
+  testthat::expect_length(d, 2L)
+})
+
 testthat::test_that("a baseline-keyed audit is provenance, not a live consumer", {
   ## audits/verify_scientific_contracts.R names frozen carriers by their
   ## pre-restructure path and resolves them through the migration map, so it

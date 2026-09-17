@@ -47,8 +47,13 @@ split_paths <- function(x) {
 # each writer creates only the lifecycle directories it uses. A writer calling
 # it resolves through the output contract without naming the lower-level
 # helpers itself.
+# differential_abundance_dirs() is the same kind of wrapper for that domain,
+# and differential_abundance_relative_path() is the repo-relative form used by
+# the one writer that supports redirecting its output root.
 NORMALIZED_CALLS <- c("canonical_result_path", "canonical_work_path",
-                      "canonical_module_dirs", "spatial_systems_dirs")
+                      "canonical_module_dirs", "spatial_systems_dirs",
+                      "differential_abundance_dirs",
+                      "differential_abundance_relative_path")
 # these create directories, so calling one is itself a write
 LEGACY_FACTORIES <- c("create_module_dirs", "module_paths", "qc_paths")
 PATH_BUILDERS <- c("path_results", "path_processed")
@@ -100,6 +105,56 @@ call_name <- function(e) {
 ## omitted index in x[i, ]. It can be assigned to a variable but any reference
 ## to it raises "argument is missing", including is.null(). So the test is
 ## wrapped, covers NULL as well, and treats a throw as "skip".
+# Only the destination argument decides where a call writes.
+#
+# The earlier rule tested every argument of a write call, which cannot tell a
+# destination from a payload. Phase 6G.4 showed the cost: two correctly
+# migrated writes in test_microglia_targeted_signatures were reported as
+# legacy writes because
+#
+#   writeLines(c("...", EMPIRICAL_ROI_MARKER_PATH, ...), PATHS$reports)
+#   write_run_manifest(file.path(PATHS$logs, "..."), inputs = list(contrast_dir(...)))
+#
+# mention historical paths in their *content*: a report that prints which
+# input it read, and a manifest that records its inputs as provenance. Both
+# write to the normalized namespace. Recording where you read from is the
+# opposite of writing there, and a gate that calls it a legacy write would
+# block a correct migration.
+#
+# Positions follow each function's signature; a named argument wins over the
+# position. A call absent from this table keeps the conservative behaviour of
+# testing every argument, which is right for dir_create() and friends where
+# every argument is part of the destination.
+DEST_ARG <- list(
+  write.csv = list(2L, "file"), write.table = list(2L, "file"),
+  write_csv_safe = list(2L, "path"), write_csv_safe2 = list(2L, "path"),
+  writeLines = list(2L, "con"), saveRDS = list(2L, "file"),
+  ggsave = list(1L, "filename"), saveWorkbook = list(2L, "file"),
+  write.xlsx = list(2L, "file"), file.copy = list(2L, "to"),
+  file.rename = list(2L, "to"), write_run_manifest = list(1L, "path"),
+  write_result_manifest = list(1L, "path"), write_yaml = list(2L, "file"),
+  png = list(1L, "filename"), pdf = list(1L, "file"),
+  svg = list(1L, "filename"), jpeg = list(1L, "filename"),
+  tiff = list(1L, "filename"), cairo_pdf = list(1L, "filename"),
+  xlsx_save_valid_workbook = list(2L, "path"),
+  write_csv_strict = list(2L, "path"), save_nature_svg = list(2L, "filename"),
+  save_plot_dual = list(2L, "path"), qc_write_csv = list(2L, "path"),
+  qc_write_xlsx = list(2L, "path"), write_tsv = list(2L, "path")
+)
+
+# The subtrees that determine this call's destination.
+dest_args <- function(nm, call) {
+  spec <- DEST_ARG[[nm]]
+  args <- as.list(call)[-1]
+  if (is.null(spec) || !length(args)) return(args)
+  nms <- names(args)
+  if (!is.null(nms) && spec[[2]] %in% nms) return(args[nms == spec[[2]]])
+  ## positional: count only the unnamed arguments
+  unnamed <- if (is.null(nms)) args else args[!nzchar(nms)]
+  if (length(unnamed) >= spec[[1]]) return(unnamed[spec[[1]]])
+  args
+}
+
 is_skippable <- function(x) {
   tryCatch(is.null(x) || (is.symbol(x) && !nzchar(as.character(x))), error = function(...) TRUE)
 }
@@ -188,7 +243,7 @@ analyse <- function(f) {
         return(invisible(NULL))
       }
       if (nm %in% WRITE_CALLS) {
-        args <- as.list(x)[-1]
+        args <- dest_args(nm, x)
         hit <- any(vapply(args, function(a)
           subtree_has(a, is_legacy_construction), logical(1))) ||
           any(legacy_vars %in% unlist(lapply(args, subtree_names)))
