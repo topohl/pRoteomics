@@ -2,8 +2,8 @@
 # Script: analysis/spatial_networks/test_differential_network_stability.R
 # Stage: networks
 # Scope: dataset_specific
-# Consumes: required results/tables/07_spatial_networks/differential_networks/<dataset>/; optional none.
-# Produces: results/tables/07_spatial_networks/bootstrap_differential_network_stability/01_Tables/bootstrap_differential_edge_stability_summary.csv.
+# Consumes: required results/spatial_networks/build_spatial_networks/<dataset>/models/*/network_spatial_relations_objects.rds; data/processed/07_spatial_networks/network_spatial_relations/<dataset>/*/network_spatial_relations_objects.rds; optional none declared in pipeline.yml.
+# Produces: results/spatial_networks/test_differential_network_stability/<dataset>/tables/bootstrap_differential_edge_stability_summary.csv; results/spatial_networks/test_differential_network_stability/<dataset>/tables; results/spatial_networks/test_differential_network_stability/<dataset>/plots; +1 more.
 # Dataset behavior: runs for neuron_neuropil,neuron_soma according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Bootstrap differential network stability.
 
@@ -36,12 +36,23 @@ paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.
 source(paths_file)
 source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "spatial_network_utils.R"))
-MODULE_ID <- "07_spatial_networks"
+# Phase 6G: destinations resolve through the normalized output contract in
+# config/output_layout.yml, addressed by this analysis's own identity.
+#
+# Its historical namespace was 07_spatial_networks/<substep>. Outputs already
+# written there stay exactly where they are, registered LEGACY_READ_ONLY in
+# config/legacy_output_registry.csv; readers still resolve them and nothing
+# writes there again. The name appears only in comments, which a test
+# enforces, so it cannot return as a destination.
+#
+# writes tables/ directly; the historical 01_Tables layout is not reproduced
+ANALYSIS_ID <- "test_differential_network_stability"
 SUBSTEP_ID <- "bootstrap_differential_network_stability"
-CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
 NETWORK_DATASET <- current_dataset_from_cli()
 assert_dataset_capability(NETWORK_DATASET, "region", analysis = "bootstrap differential spatial network stability analysis")
 spatial_unit <- if (NETWORK_DATASET == "neuron_neuropil") "region_layer" else "region"
+CANONICAL_PATHS <- canonical_module_dirs("spatial_networks", ANALYSIS_ID,
+                                         scope = NETWORK_DATASET)
 
 required_pkgs <- c(
   "dplyr", "tidyr", "stringr", "purrr", "tibble", "ggplot2",
@@ -49,12 +60,11 @@ required_pkgs <- c(
 )
 missing <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
 if (length(missing) > 0) stop("Missing required R package(s): ", paste(missing, collapse = ", "), ". Install them explicitly before running this script.", call. = FALSE)
+# Delegates to the shared resolver in R/networks/spatial_network_utils.R,
+# which prefers the normalized canonical location and falls back to the
+# historical ones. Five scripts previously carried identical copies of this.
 resolve_spatial_rds <- function() {
-  override <- Sys.getenv("PROTEOMICS_SPATIAL_NETWORK_OBJECT", unset = "")
-  if (nzchar(override)) return(normalizePath(override, winslash = "/", mustWork = FALSE))
-  scoped <- path_processed("07_spatial_networks", "network_spatial_relations", NETWORK_DATASET, spatial_unit, "network_spatial_relations_objects.rds")
-  if (file.exists(scoped)) return(scoped)
-  path_processed("07_spatial_networks", "network_spatial_relations", "network_spatial_relations_objects.rds")
+  resolve_spatial_network_object(NETWORK_DATASET, spatial_unit)
 }
 
 params <- list(
@@ -104,7 +114,8 @@ make_dirs <- function(base_dir) {
     base = base_dir,
     tables = CANONICAL_PATHS$tables,
     figures = CANONICAL_PATHS$figures,
-    networks = file.path(CANONICAL_PATHS$processed, "network_files"),
+    # regenerable intermediates: written here, read by nothing
+    networks = file.path(CANONICAL_PATHS$work, "network_files"),
     logs = CANONICAL_PATHS$logs
   )
   invisible(lapply(dirs, dir.create, recursive = TRUE, showWarnings = FALSE))

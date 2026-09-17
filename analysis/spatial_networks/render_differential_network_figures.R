@@ -2,8 +2,8 @@
 # Script: analysis/spatial_networks/render_differential_network_figures.R
 # Stage: networks
 # Scope: dataset_specific
-# Consumes: required results/tables/07_spatial_networks/bootstrap_differential_network_stability/01_Tables/bootstrap_differential_edge_stability_summary.csv; results/tables/07_spatial_networks/bootstrap_differential_network_stability/01_Tables/bootstrap_differential_edge_values_long.csv; optional results/tables/07_spatial_networks/bootstrap_differential_network_stability/01_Tables/candidate_edge_differential_stability_summary.csv.
-# Produces: results/figures/07_spatial_networks/bootstrap_differential_network_figures/.
+# Consumes: required results/spatial_networks/test_differential_network_stability/<dataset>/tables/bootstrap_differential_edge_stability_summary.csv; results/spatial_networks/test_differential_network_stability/<dataset>/tables/bootstrap_differential_edge_values_long.csv; optional results/spatial_networks/test_differential_network_stability/<dataset>/tables/candidate_edge_differential_stability_summary.csv; results/tables/07_spatial_networks/bootstrap_differential_network_stability/bootstrap_differential_edge_stability_summary.csv.
+# Produces: results/spatial_networks/render_differential_network_figures/<dataset>/plots; results/spatial_networks/render_differential_network_figures/<dataset>/manifests.
 # Dataset behavior: runs for neuron_neuropil,neuron_soma according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Figure layer after bootstrap differential network stability.
 
@@ -34,11 +34,21 @@
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
 source(repo_path("R", "dataset_config.R"))
-MODULE_ID <- "07_spatial_networks"
+source(repo_path("R", "spatial_network_utils.R"))
+# Phase 6G: destinations resolve through the normalized output contract in
+# config/output_layout.yml, addressed by this analysis's own identity.
+#
+# Its historical namespace was 07_spatial_networks/<substep>. Outputs already
+# written there stay exactly where they are, registered LEGACY_READ_ONLY in
+# config/legacy_output_registry.csv; readers still resolve them and nothing
+# writes there again. The name appears only in comments, which a test
+# enforces, so it cannot return as a destination.
+ANALYSIS_ID <- "render_differential_network_figures"
 SUBSTEP_ID <- "bootstrap_differential_network_figures"
-CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
 NETWORK_DATASET <- current_dataset_from_cli()
 assert_dataset_capability(NETWORK_DATASET, "layer", analysis = "bootstrap differential spatial network figure export")
+CANONICAL_PATHS <- canonical_module_dirs("spatial_networks", ANALYSIS_ID,
+                                         scope = NETWORK_DATASET)
 
 required_pkgs <- c(
   "dplyr", "tidyr", "stringr", "purrr", "tibble", "ggplot2",
@@ -47,7 +57,8 @@ required_pkgs <- c(
 missing <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
 if (length(missing) > 0) stop("Missing required R package(s): ", paste(missing, collapse = ", "), ". Install them explicitly before running this script.", call. = FALSE)
 params <- list(
-  bootstrap_dir = path_results("tables", "07_spatial_networks", "bootstrap_differential_network_stability"),
+  # normalized tables first, historical layouts as compatibility fallback
+  bootstrap_dir = resolve_bootstrap_differential_tables(NETWORK_DATASET),
 
   stable_frequency_threshold = 0.70,
   top_n_edges_per_comparison = 8,
@@ -143,7 +154,9 @@ add_edge_labels <- function(df) {
 }
 
 load_bootstrap_outputs <- function(params) {
-  tables_dir <- file.path(params$bootstrap_dir, "01_Tables")
+  # bootstrap_dir is already the resolved table directory; the historical
+  # 01_Tables subdirectory is one of its compatibility candidates
+  tables_dir <- params$bootstrap_dir
 
   edge_summary_file <- file.path(tables_dir, "bootstrap_differential_edge_stability_summary.csv")
   boot_long_file <- file.path(tables_dir, "bootstrap_differential_edge_values_long.csv")

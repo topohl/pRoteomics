@@ -34,6 +34,7 @@
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
 source(repo_path("R", "dataset_config.R"))
+source(repo_path("R", "spatial_network_utils.R"))
 source(repo_path("R", "module_contracts.R"))
 MODULE_ID <- "06_modules_WGCNA"
 args <- commandArgs(trailingOnly = TRUE)
@@ -72,12 +73,11 @@ resolve_module_score_file <- function() {
 allow_regex_fallback <- tolower(Sys.getenv("PROTEOMICS_ALLOW_REGEX_MODULE_FALLBACK", unset = "false")) %in% c("1", "true", "yes", "y") ||
   has_flag("--allow-regex-fallback")
 
+# Delegates to the shared resolver in R/networks/spatial_network_utils.R,
+# which prefers the normalized canonical location and falls back to the
+# historical ones. Five scripts previously carried identical copies of this.
 resolve_spatial_rds <- function() {
-  override <- Sys.getenv("PROTEOMICS_SPATIAL_NETWORK_OBJECT", unset = "")
-  if (nzchar(override)) return(normalizePath(override, winslash = "/", mustWork = FALSE))
-  scoped <- path_processed("07_spatial_networks", "network_spatial_relations", dataset_profile, spatial_unit, "network_spatial_relations_objects.rds")
-  if (file.exists(scoped)) return(scoped)
-  path_processed("07_spatial_networks", "network_spatial_relations", "network_spatial_relations_objects.rds")
+  resolve_spatial_network_object(dataset_profile, spatial_unit)
 }
 
 params <- list(
