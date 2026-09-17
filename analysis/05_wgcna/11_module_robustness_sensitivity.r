@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 # ================================================================
-# Script: 06_modules_WGCNA/11_module_robustness_sensitivity.r
+# Script: analysis/05_wgcna/11_module_robustness_sensitivity.r
 # Stage: modules_downstream
 # Scope: dataset_specific
 # Consumes: Stage 07 inferential handoff, preservation summaries, and QC/confounding outputs.
@@ -12,7 +12,7 @@ source(paths_file)
 source(repo_path("R", "integration_utils.R"))
 source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
 
-SCRIPT_ID <- "06_modules_WGCNA/11_module_robustness_sensitivity.r"
+SCRIPT_ID <- "analysis/05_wgcna/11_module_robustness_sensitivity.r"
 run <- integration_cli(allow_all = TRUE)
 
 claim_gate_rows <- list()

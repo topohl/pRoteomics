@@ -91,7 +91,7 @@ list_pride_files <- function(package_dir = pride_package_dir()) {
 }
 
 # PRIDE-local relativiser. Deliberately NOT named relative_to(): this file is
-# sourced by R/export_helpers.R, so a second global relative_to() shadowed the
+# sourced by R/utilities/export_helpers.R, so a second global relative_to() shadowed the
 # generic R/paths.R::relative_to(path, root = repo_root()) and broke
 # write_run_manifest(), which relies on that default. Root is required here.
 pride_relative_to <- function(path, root) {

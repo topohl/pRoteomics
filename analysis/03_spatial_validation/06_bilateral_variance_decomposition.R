@@ -29,20 +29,20 @@
 #   row records the formula, the assumption status and the fit diagnostics.
 #
 # USAGE
-#   Rscript 11_spatial_systems/06_bilateral_variance_decomposition.R
-#   Rscript 11_spatial_systems/06_bilateral_variance_decomposition.R --dry-run
+#   Rscript analysis/03_spatial_validation/06_bilateral_variance_decomposition.R
+#   Rscript analysis/03_spatial_validation/06_bilateral_variance_decomposition.R --dry-run
 
 source("R/paths.R")
-source("R/dataset_config.R")
-source("R/integration_utils.R")
-source("R/qc_exploration_utils.R")
-source("R/spatial_systems_data_utils.R")
-source("R/spatial_systems_bilateral_utils.R")
-source("R/spatial_systems_endpoint_utils.R")
+source("R/data_contracts/dataset_config.R")
+source("R/statistics/integration_utils.R")
+source("R/qc/qc_exploration_utils.R")
+source("R/data_contracts/spatial_systems_data_utils.R")
+source("R/spatial/spatial_systems_bilateral_utils.R")
+source("R/data_contracts/spatial_systems_endpoint_utils.R")
 
 suppressPackageStartupMessages({ library(readr); library(dplyr) })
 
-SCRIPT_ID <- "11_spatial_systems/06_bilateral_variance_decomposition.R"
+SCRIPT_ID <- "analysis/03_spatial_validation/06_bilateral_variance_decomposition.R"
 Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 cli <- integration_cli(default_dataset = "all")
 

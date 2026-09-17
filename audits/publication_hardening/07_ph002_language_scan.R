@@ -9,7 +9,7 @@
 # directly would be overwritten on the next rebuild.
 
 setwd("S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/Analysis/proteomics")
-source("99_audits/publication_hardening/00_checkpoint.R")
+source("audits/publication_hardening/00_checkpoint.R")
 
 V9R <- file.path("results", "reports", "manuscript_candidates", "final_truth_v9")
 V9T <- file.path("results", "tables", "manuscript_candidates", "final_truth_v9")

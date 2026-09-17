@@ -1,5 +1,5 @@
 # ================================================================
-# Script: 05_celltype_enrichment_EWCE/01_EWCE_E9.r
+# Script: analysis/06_gsea/01_EWCE_E9.r
 # Stage: enrichment
 # Scope: dataset_specific
 # Consumes: required data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv; optional data/processed/04_differential_expression_enrichment/compareGO/<dataset>/compareGO_input_manifest.csv.
@@ -17,7 +17,7 @@
 # Produces:
 #   - EWCE tables, figures, source data, processed objects, cache and logs under canonical module folders
 # File contract:
-#   - docs/active_script_io_audit.tsv object 05_celltype_enrichment_EWCE/01_EWCE_E9.r
+#   - docs/active_script_io_audit.tsv object analysis/06_gsea/01_EWCE_E9.r
 # ==========================================
 # EWCE E9: Publication-oriented proteomics workflow
 # ==========================================
@@ -225,7 +225,7 @@ if (is_dry_run()) {
       conditionMessage(e)
     })
   }
-  dry_run_line("Script", "05_celltype_enrichment_EWCE/01_EWCE_E9.r")
+  dry_run_line("Script", "analysis/06_gsea/01_EWCE_E9.r")
   dry_run_line("Dataset", EWCE_DATASET)
   dry_run_line(
     "Dataset source",
@@ -682,7 +682,7 @@ make_differential_targets <- function(de_tbl, top_n_values) {
   }))
 }
 
-# Delegates to the shared engine in R/ewce_gene_set_engine.R so that exactly one
+# Delegates to the shared engine in R/enrichment/ewce_gene_set_engine.R so that exactly one
 # code path performs the enrichment test. The engine keeps the same method and
 # the same reference; what it removes is the ability to lose the background.
 run_ewce_once <- function(hits, bg, annot_level) {

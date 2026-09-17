@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 # ================================================================
-# Script: 06_modules_WGCNA/07_wgcna_interpretable_summary.r
+# Script: analysis/05_wgcna/07_wgcna_interpretable_summary.r
 # Stage: modules_downstream
 # Scope: dataset_specific
 # Consumes: required module/supermodule group effects, supermodule composition, and module/supermodule biological annotations; optional DE/GSEA overlap.

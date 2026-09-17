@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 # ================================================================
-# Script: 08_behavior_physio_coupling/03_module_behavior_coupling.r
+# Script: analysis/08_integration/03_module_behavior_coupling.r
 # Stage: coupling
 # Scope: dataset_specific
 # Consumes: module activity/effect tables and behavior/network coupling summaries.
@@ -12,7 +12,7 @@ source(paths_file)
 source(repo_path("R", "integration_utils.R"))
 source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
 
-SCRIPT_ID <- "08_behavior_physio_coupling/03_module_behavior_coupling.r"
+SCRIPT_ID <- "analysis/08_integration/03_module_behavior_coupling.r"
 run <- integration_cli(allow_all = TRUE)
 
 make_dataset <- function(ds) {

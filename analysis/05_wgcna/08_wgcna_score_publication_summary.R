@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 # ================================================================
-# Script: 06_modules_WGCNA/08_wgcna_score_publication_summary.R
+# Script: analysis/05_wgcna/08_wgcna_score_publication_summary.R
 # Stage: modules_downstream
 # Scope: dataset_specific
 # Consumes: results/tables/06_modules_WGCNA/module_score/<dataset>/wgcna/supermodule_*.csv; cleaned WGCNA labels from 06/07.
@@ -431,7 +431,7 @@ run_one_dataset <- function(dataset, module_source = "wgcna") {
   out_logs <- out_paths$logs
 
   if (run$dry_run) {
-    dry_run_line("Script", "06_modules_WGCNA/08_wgcna_score_publication_summary.R")
+    dry_run_line("Script", "analysis/05_wgcna/08_wgcna_score_publication_summary.R")
     dry_run_line("Dataset", dataset)
     dry_run_line("Module source", module_source)
     dry_run_line("Score directional effects", paths$directional_effects, if (file.exists(paths$directional_effects)) "PASS" else "FAIL")

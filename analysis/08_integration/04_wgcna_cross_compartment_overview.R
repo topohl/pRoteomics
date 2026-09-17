@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 # ================================================================
-# Script: 10_biological_integration/04_wgcna_cross_compartment_overview.R
+# Script: analysis/08_integration/04_wgcna_cross_compartment_overview.R
 # Stage: integration
 # Scope: global
 # Consumes: existing WGCNA module/supermodule summaries, downstream group effects,
@@ -19,7 +19,7 @@ source(repo_path("R", "wgcna_claim_readiness_utils.R"))
 source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
 source(repo_path("R", "wgcna_stage07_semantic_utils.R"))
 
-SCRIPT_ID <- "10_biological_integration/04_wgcna_cross_compartment_overview.R"
+SCRIPT_ID <- "analysis/08_integration/04_wgcna_cross_compartment_overview.R"
 Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 
 required_pkgs <- c("dplyr", "tidyr", "tibble", "ggplot2", "readr", "stringr", "scales", "svglite")

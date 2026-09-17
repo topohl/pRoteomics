@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 # ================================================================
-# Script: 06_modules_WGCNA/08_wgcna_publication_figures.R
+# Script: analysis/05_wgcna/08_wgcna_publication_figures.R
 # Stage: modules_downstream
 # Scope: microglia
 # Consumes: current Stage 01 identities, Stage 05 statistics, and the reviewed
@@ -41,7 +41,7 @@ figure_stems <- c(
 )
 
 if (run$dry_run) {
-  dry_run_line("Script", "06_modules_WGCNA/08_wgcna_publication_figures.R")
+  dry_run_line("Script", "analysis/05_wgcna/08_wgcna_publication_figures.R")
   dry_run_line("Dataset", DATASET)
   dry_run_line("Reviewed canonical lookup", LABEL_FILE, if (file.exists(LABEL_FILE)) "PASS" else "FAIL")
   dry_run_line("Stage 07 inferential handoff", HANDOFF_FILE, if (file.exists(HANDOFF_FILE)) "PASS" else "FAIL")

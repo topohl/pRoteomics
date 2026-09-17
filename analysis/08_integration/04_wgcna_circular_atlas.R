@@ -1,5 +1,5 @@
 #!/usr/bin/env Rscript
-# Script: 10_biological_integration/04_wgcna_circular_atlas.R
+# Script: analysis/08_integration/04_wgcna_circular_atlas.R
 # Stage: integration
 # Scope: global
 # Consumes: WGCNA technical outputs, biological claims, and required microglia Stage 13 readiness.
@@ -715,10 +715,10 @@ build_neuropil_availability_audit <- function() {
       path_results("tables", "06_modules_WGCNA", "module_annotation", "neuron_neuropil", "WGCNA_supermodule_biological_annotation.csv")
     ),
     producing_script = c(
-      "06_modules_WGCNA/01_WGCNA.r",
-      "06_modules_WGCNA/01_WGCNA.r",
-      "06_modules_WGCNA/07_wgcna_interpretable_summary.r",
-      "06_modules_WGCNA/06_annotate_module_microenvironment.r"
+      "analysis/05_wgcna/01_WGCNA.r",
+      "analysis/05_wgcna/01_WGCNA.r",
+      "analysis/05_wgcna/07_wgcna_interpretable_summary.r",
+      "analysis/05_wgcna/06_annotate_module_microenvironment.r"
     )
   )
   expected <- expected |>
@@ -742,9 +742,9 @@ build_neuropil_availability_audit <- function() {
       ),
       recommended_action = dplyr::case_when(
         .data$exists ~ "use_current_expected_file",
-        grepl("01_WGCNA", .data$producing_script) ~ "run Rscript 06_modules_WGCNA/01_WGCNA.r --dataset neuron_neuropil with cached state reuse enabled",
-        grepl("06_annotate", .data$producing_script) ~ "run Rscript 06_modules_WGCNA/06_annotate_module_microenvironment.r --dataset neuron_neuropil after 01_WGCNA/group effects exist",
-        grepl("07_wgcna", .data$producing_script) ~ "run Rscript 06_modules_WGCNA/07_wgcna_interpretable_summary.r --dataset neuron_neuropil after existing Stage 05 group effects and annotation exist",
+        grepl("01_WGCNA", .data$producing_script) ~ "run Rscript analysis/05_wgcna/01_WGCNA.r --dataset neuron_neuropil with cached state reuse enabled",
+        grepl("06_annotate", .data$producing_script) ~ "run Rscript analysis/05_wgcna/06_annotate_module_microenvironment.r --dataset neuron_neuropil after 01_WGCNA/group effects exist",
+        grepl("07_wgcna", .data$producing_script) ~ "run Rscript analysis/05_wgcna/07_wgcna_interpretable_summary.r --dataset neuron_neuropil after existing Stage 05 group effects and annotation exist",
         TRUE ~ "inspect pipeline registration and dataset inputs"
       )
     ) |>
@@ -3464,13 +3464,13 @@ build_source_lineage_audit <- function(datasets, heatmap_source_supermodule, hea
         ds, "publication_score_directional_effects", score_paths$supermodule_directional_effects,
         read_csv_quiet(score_paths$supermodule_directional_effects),
         "Cohen_d", "Analysis", "within_BH_significant/p_adj_within_model_BH", "within_BH_significant == TRUE or p_adj_within_model_BH <= 0.05",
-        "Primary table consumed by 06_modules_WGCNA/08_wgcna_score_publication_summary.R."
+        "Primary table consumed by analysis/05_wgcna/08_wgcna_score_publication_summary.R."
       ),
       source_summary_row(
         ds, "publication_heatmap_source", score_paths$publication_heatmap_source,
         read_csv_quiet(score_paths$publication_heatmap_source),
         "Cohen_d", "Analysis", "within_BH_significant/p_adj_within_model_BH", "within_BH_significant == TRUE or p_adj_within_model_BH <= 0.05",
-        "Source data written by 06_modules_WGCNA/08_wgcna_score_publication_summary.R."
+        "Source data written by analysis/05_wgcna/08_wgcna_score_publication_summary.R."
       ),
       source_summary_row(
         ds, "inferential_handoff_source", paths$inferential_handoff,
@@ -4400,7 +4400,7 @@ render_rectangular_module_heatmap <- function(source_module, svg_path, pdf_path)
 
 if (run$dry_run) {
   ds <- available_datasets()
-  dry_run_line("Script", "10_biological_integration/04_wgcna_circular_atlas.R")
+  dry_run_line("Script", "analysis/08_integration/04_wgcna_circular_atlas.R")
   dry_run_line("Dataset argument", DATASET_ARG)
   dry_run_line("Datasets discovered", paste(ds, collapse = ", "))
   dry_run_line("Downstream-only mode", "No WGCNA definitions/effects/FDRs/p-values/claim gates are modified", "PASS")
@@ -4834,7 +4834,7 @@ write_run_manifest(
     neuron_neuropil_availability = out_neuropil_availability
   ),
   parameters = list(
-    script = "10_biological_integration/04_wgcna_circular_atlas.R",
+    script = "analysis/08_integration/04_wgcna_circular_atlas.R",
     dataset_argument = DATASET_ARG,
     downstream_only = TRUE,
     circular_plot_tracks = c(

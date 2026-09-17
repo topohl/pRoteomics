@@ -5,8 +5,8 @@ what exactly was tested, on how many animals, against which multiple-testing
 family, and what may therefore be claimed.
 
 Generated from the frozen v9 figure contract and the Part A audit tables by
-`99_audits/publication_hardening/02_statistical_audits.R` and rendered by
-`99_audits/publication_hardening/03_statistical_contract_doc.R`.
+`audits/publication_hardening/02_statistical_audits.R` and rendered by
+`audits/publication_hardening/03_statistical_contract_doc.R`.
 
 ## 1. Analyses
 
@@ -241,4 +241,3 @@ Enforced by the `spatially restricted / specific` rule in the S9 scan of
 `figures/final_truth_v9_semantics.R`, which is anchored to the adverb
 `spatially` so that a restricted *interpretation* or a specificity
 *inventory* is not flagged.
-

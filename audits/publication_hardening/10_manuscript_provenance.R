@@ -252,19 +252,19 @@ T <- function(id, sid, topic, src, prio, notes)
              stringsAsFactors = FALSE)
 todo <- rbind(
   T("MT-01", "S2-01..S2-05", "LCM and DIA-MS acquisition; identification depth",
-    "docs/DATASETS.md; 03_qc_exploration/00_dataset_qc_report.r", "high",
+    "docs/DATASETS.md; analysis/02_qc/00_dataset_qc_report.r", "high",
     "state the 70% missingness filter and that depth is per acquisition, not per animal"),
   T("MT-02", "S2-01", "bilateral animal-level aggregation contract",
     "manuscript_methods_contract.csv row preprocessing_bilateral", "high",
     "the biological replicate is the animal; hemispheres are repeated tissue"),
   T("MT-03", "S2-19..S2-21", "external signature validation design",
-    "04_differential_expression_enrichment/09_control_spatial_identity_validation.r",
+    "analysis/04_differential_abundance/09_control_spatial_identity_validation.r",
     "high", "name the external reference and the three BH families actually used"),
   T("MT-04", "S2-19..S2-21", "PH-009: p_adjust column semantics",
     "results/source_data/.../v9_ed_external_full_source_data.csv", "high",
     "the column named p_adjust equals the raw single-set p; Methods must not call it adjusted"),
   T("MT-05", "S3-04..S3-09", "CA2-SLM robustness criteria",
-    "11_spatial_systems/16_ca2_slm_robustness_audit.R", "high",
+    "analysis/03_spatial_validation/16_ca2_slm_robustness_audit.R", "high",
     "prespecified thresholds; robustness-qualified = not excluded, not a second test"),
   T("MT-06", "S3-10..S3-12", "canonical GSEA contract",
     "manuscript_methods_contract.csv row gsea", "high",
@@ -289,7 +289,7 @@ todo <- rbind(
     "medium",
     "exact label enumeration; state the attainable p floor; 8 neuropil edges only"),
   T("MT-13", "S2-13..S2-17b", "bilateral contrast registry and the DG mirror",
-    "R/control_spatial_identity_utils.R; bilateral_spatial_identity_summary.csv",
+    "R/spatial/control_spatial_identity_utils.R; bilateral_spatial_identity_summary.csv",
     "high",
     "11 contrasts are manuscript-locked (7 neuropil + 4 soma); the 4 microglia contrasts are regional context; DG_MO and DG_PO are algebraic mirror images and must not be counted as two independent laminar contrasts"))
 utils::write.csv(todo, file.path(MS, "methods_todo.csv"), row.names = FALSE)

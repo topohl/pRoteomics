@@ -1,5 +1,5 @@
 # ================================================================
-# Script: 07_spatial_networks/06_chord_diagram.r
+# Script: analysis/07_spatial_networks/06_chord_diagram.r
 # Stage: networks
 # Scope: dataset_specific
 # Consumes: required data/processed/02_id_mapping/mapped/neuron-phenotypeWithinUnit/; optional results/tables/07_spatial_networks/.
@@ -14,7 +14,7 @@
 # Produces:
 #   - chord overlap figures and shared-protein workbooks under canonical spatial-network folders
 # File contract:
-#   - docs/active_script_io_audit.tsv object 07_spatial_networks/06_chord_diagram.r
+#   - docs/active_script_io_audit.tsv object analysis/07_spatial_networks/06_chord_diagram.r
 # =========================================================
 # Proteomics overlaps: plots + Excel shared-protein exports
 # =========================================================
@@ -35,7 +35,7 @@ if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE, showWarnings = F
 # -------- Read CSVs and build wide tables --------
 csv_files <- list.files(in_dir, pattern = "\\.csv$", full.names = TRUE)
 if (is_dry_run()) {
-  dry_run_line("Script", "07_spatial_networks/06_chord_diagram.r")
+  dry_run_line("Script", "analysis/07_spatial_networks/06_chord_diagram.r")
   dry_run_line("Mapped input directory", in_dir, if (dir.exists(in_dir)) "PASS" else "FAIL")
   dry_run_line("CSV count", length(csv_files), if (length(csv_files) > 0) "PASS" else "FAIL")
   dry_run_line("Output folders", paste(unlist(CANONICAL_PATHS), collapse = "; "))

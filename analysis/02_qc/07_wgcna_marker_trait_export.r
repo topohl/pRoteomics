@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 # ================================================================
-# Script: 03_qc_exploration/07_wgcna_marker_trait_export.r
+# Script: analysis/02_qc/07_wgcna_marker_trait_export.r
 # Stage: qc
 # Scope: dataset_specific
 # Consumes: required Stage 01 post-filter/imputed quantitative matrix, mouse UniProt mapping, sample metadata; optional marker registry and manual mappings.
@@ -29,7 +29,7 @@ metadata_file <- qc_resolve_metadata(DATASET, env = "PROTEOMICS_WGCNA_MARKER_TRA
 
 if (run$dry_run) {
   status <- qc_dry_run_contract(
-    "03_qc_exploration/07_wgcna_marker_trait_export.r",
+    "analysis/02_qc/07_wgcna_marker_trait_export.r",
     DATASET,
     matrix_file = matrix_file,
     metadata_file = metadata_file,

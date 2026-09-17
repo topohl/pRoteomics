@@ -1,0 +1,65 @@
+# Publication source-data contract.
+#
+# The scientific repository owns this list: which publication identities it
+# exports source data for, and which analysis originates each one. It does
+# NOT own how a journal figure is assembled from that data.
+#
+# This file exists so that building the bundle never requires reading the
+# manuscript repository. The two repositories are coupled only through the
+# frozen bundle and its manifest, in that direction.
+#
+# Identities are stable publication names. Historical renderer generations
+# (final_truth_v9, spatial_v6, ED1_FINAL_V9) live in manuscript provenance,
+# never here.
+
+contract_version: publication_source_data_v1
+
+identities:
+  - publication_id: extended_data_01
+    source_data_dir: results/source_data/manuscript/extended_data_01
+    originating_analysis: "this repository"
+    upstream_source_commit: "n/a"
+  - publication_id: extended_data_02
+    source_data_dir: results/source_data/manuscript/extended_data_02
+    originating_analysis: "this repository"
+    upstream_source_commit: "n/a"
+  - publication_id: extended_data_03
+    source_data_dir: results/source_data/manuscript/extended_data_03
+    originating_analysis: "this repository"
+    upstream_source_commit: "n/a"
+  - publication_id: extended_data_05
+    source_data_dir: results/source_data/manuscript/extended_data_05
+    originating_analysis: "topohl/MMMSociability"
+    upstream_source_commit: "53bc7e91f3a837c1814babbf5d2ad19553b12457"
+  - publication_id: extended_data_06
+    source_data_dir: results/source_data/manuscript/extended_data_06
+    originating_analysis: "this repository"
+    upstream_source_commit: "n/a"
+  - publication_id: extended_data_08
+    source_data_dir: results/source_data/manuscript/extended_data_08
+    originating_analysis: "this repository"
+    upstream_source_commit: "n/a"
+  - publication_id: extended_data_09
+    source_data_dir: results/source_data/manuscript/extended_data_09
+    originating_analysis: "topohl/MMMSociability"
+    upstream_source_commit: "53bc7e91f3a837c1814babbf5d2ad19553b12457"
+  - publication_id: figure_01
+    source_data_dir: results/source_data/manuscript/figure_01
+    originating_analysis: "topohl/MMMSociability"
+    upstream_source_commit: "30a2666198ca6f23795773da1b7d0ef34e78ac37"
+  - publication_id: figure_02
+    source_data_dir: results/source_data/manuscript/figure_02
+    originating_analysis: "this repository"
+    upstream_source_commit: "n/a"
+  - publication_id: figure_03
+    source_data_dir: results/source_data/manuscript/figure_03
+    originating_analysis: "this repository"
+    upstream_source_commit: "n/a"
+
+# Identities deliberately withheld from the publication layer. Their names are
+# reserved so that a later promotion cannot silently reuse a number.
+withheld:
+  - publication_id: extended_data_04
+    reason: "WITHHELD_SCOPE_AND_UNSUPPORTED_SPATIAL_LABELS"
+  - publication_id: extended_data_07
+    reason: "WITHHELD_UNUSED_AND_ARCHIVABLE"

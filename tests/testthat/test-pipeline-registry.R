@@ -30,8 +30,10 @@ testthat::test_that("pipeline.yml is valid and references existing active script
   integration_steps <- pipeline_steps(
     registry, "integration", dataset = "all", include_unsupported = TRUE
   )$script
-  testthat::expect_true("figures/figure_02.R" %in% integration_steps)
-  testthat::expect_true("figures/figure_03.R" %in% integration_steps)
+  # The Figure 2 and Figure 3 entry points moved to Exp9_manuscript in
+  # Phase 6C. What this repository must now guarantee is the inverse:
+  # no figure renderer is registered as a pipeline step at all.
+  testthat::expect_false(any(grepl("^figures/", integration_steps)))
 })
 
 testthat::test_that("deprecated 04d stays excluded and documented as legacy", {

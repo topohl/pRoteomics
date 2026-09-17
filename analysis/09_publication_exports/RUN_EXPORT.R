@@ -1,9 +1,9 @@
 #!/usr/bin/env Rscript
 # ================================================================
-# Script: 09_export_pride_journal/RUN_EXPORT.R
+# Script: analysis/09_publication_exports/RUN_EXPORT.R
 # Stage: export
 # Scope: global
-# Consumes: required 09_export_pride_journal/05_make_pride_manifest.R; 09_export_pride_journal/02_make_sample_metadata.R; +3 more; optional 09_export_pride_journal/config/export_config.yml.
+# Consumes: required analysis/09_publication_exports/05_make_pride_manifest.R; analysis/09_publication_exports/02_make_sample_metadata.R; +3 more; optional analysis/09_publication_exports/config/export_config.yml.
 # Produces: pride_submission/.
 # Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Convenience export runner kept last; direct registry order above is preferred for dependency visibility.
@@ -12,9 +12,9 @@
 # Orchestrates pg_matrix-onward PRIDE/journal export.
 #
 # Usage:
-#   Rscript 09_export_pride_journal/RUN_EXPORT.R --dataset all --export-level pg_matrix_onward
-#   Rscript 09_export_pride_journal/RUN_EXPORT.R --dataset microglia --export-level pg_matrix_onward
-#   Rscript 09_export_pride_journal/RUN_EXPORT.R --dataset microglia --dry-run
+#   Rscript analysis/09_publication_exports/RUN_EXPORT.R --dataset all --export-level pg_matrix_onward
+#   Rscript analysis/09_publication_exports/RUN_EXPORT.R --dataset microglia --export-level pg_matrix_onward
+#   Rscript analysis/09_publication_exports/RUN_EXPORT.R --dataset microglia --dry-run
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
@@ -47,24 +47,24 @@ cat("Dataset:", cli$dataset, "\n")
 cat("Dry run:", cli$dry_run, "\n\n")
 
 steps <- c(
-  "09_export_pride_journal/02_make_sample_metadata.R",
-  "09_export_pride_journal/03_export_processed_pg_matrix_package.R"
+  "analysis/09_publication_exports/02_make_sample_metadata.R",
+  "analysis/09_publication_exports/03_export_processed_pg_matrix_package.R"
 )
-if (!cli$skip_supplementary) steps <- c(steps, "09_export_pride_journal/04_make_supplementary_tables.R")
+if (!cli$skip_supplementary) steps <- c(steps, "analysis/09_publication_exports/04_make_supplementary_tables.R")
 if (!cli$skip_manuscript) {
-  steps <- c(steps, "09_export_pride_journal/09_export_source_data.R", "09_export_pride_journal/08_export_manuscript_figures.R")
+  steps <- c(steps, "analysis/09_publication_exports/09_export_source_data.R", "analysis/09_publication_exports/08_export_manuscript_figures.R")
 }
-if (!cli$skip_claims) steps <- c(steps, "09_export_pride_journal/07_make_biological_claims_table.R")
-steps <- c(steps, "09_export_pride_journal/06_make_methods_summary.R", "09_export_pride_journal/05_make_pride_manifest.R")
-if (!cli$skip_validation) steps <- c(steps, "09_export_pride_journal/10_validate_pride_submission.R")
+if (!cli$skip_claims) steps <- c(steps, "analysis/09_publication_exports/07_make_biological_claims_table.R")
+steps <- c(steps, "analysis/09_publication_exports/06_make_methods_summary.R", "analysis/09_publication_exports/05_make_pride_manifest.R")
+if (!cli$skip_validation) steps <- c(steps, "analysis/09_publication_exports/10_validate_pride_submission.R")
 
 # Only these steps implement a dry-run guard that returns before any
 # filesystem mutation. --dry-run must not write, so the remaining steps are
 # skipped rather than executed for real. Extend this vector when a step
 # gains a verified side-effect-free dry-run path.
 dry_run_capable <- c(
-  "09_export_pride_journal/09_export_source_data.R",
-  "09_export_pride_journal/08_export_manuscript_figures.R"
+  "analysis/09_publication_exports/09_export_source_data.R",
+  "analysis/09_publication_exports/08_export_manuscript_figures.R"
 )
 if (isTRUE(cli$dry_run)) {
   skipped <- setdiff(steps, dry_run_capable)

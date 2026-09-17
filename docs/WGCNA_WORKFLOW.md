@@ -82,7 +82,7 @@ member module. The full cut-height sensitivity grid is
 Run:
 
 ```bash
-Rscript 06_modules_WGCNA/01_WGCNA.r --dataset <dataset>
+Rscript analysis/05_wgcna/01_WGCNA.r --dataset <dataset>
 ```
 
 Inspect:
@@ -110,7 +110,7 @@ metadata. It supports source-scoped definitions such as `wgcna`, `overlap`, or
 Run:
 
 ```bash
-Rscript 06_modules_WGCNA/03_score_module_activity.R --dataset <dataset>
+Rscript analysis/05_wgcna/03_score_module_activity.R --dataset <dataset>
 ```
 
 Inspect:
@@ -174,7 +174,7 @@ statistics and diagnostics are inherited and every FDR field is `NA`.
 Run:
 
 ```bash
-Rscript 06_modules_WGCNA/05_module_supermodule_group_effects.r --dataset <dataset> --level both
+Rscript analysis/05_wgcna/05_module_supermodule_group_effects.r --dataset <dataset> --level both
 ```
 
 Inspect:
@@ -229,7 +229,7 @@ manifest records the config path and hash.
 Run:
 
 ```bash
-Rscript 06_modules_WGCNA/06_annotate_module_microenvironment.r --dataset <dataset>
+Rscript analysis/05_wgcna/06_annotate_module_microenvironment.r --dataset <dataset>
 ```
 
 Inspect:
@@ -274,7 +274,7 @@ readable tables, source data, and plots. It should preserve both broad plotting
 labels and full annotation labels so figures stay compact without hiding the
 underlying rationale.
 
-Automatic proposals remain centralized in `R/wgcna_labeling_utils.R`. For the
+Automatic proposals remain centralized in `R/statistics/wgcna_labeling_utils.R`. For the
 current microglia network, Stage 07 additionally loads
 `config/wgcna_labels/microglia.csv`, validates exactly 13 modules and 9
 supermodules against current Stage 01 membership, and makes reviewed labels
@@ -286,8 +286,8 @@ exact compatibility alias for `canonical_plot_label`.
 Run:
 
 ```bash
-Rscript 06_modules_WGCNA/07_wgcna_interpretable_summary.r --dataset <dataset>
-Rscript 06_modules_WGCNA/07_wgcna_interpretable_summary.r --dataset all
+Rscript analysis/05_wgcna/07_wgcna_interpretable_summary.r --dataset <dataset>
+Rscript analysis/05_wgcna/07_wgcna_interpretable_summary.r --dataset all
 ```
 
 Inspect:
@@ -334,7 +334,7 @@ the exploratory strongest-Spearman match.
 Run:
 
 ```bash
-Rscript 06_modules_WGCNA/09_microglia_neuropil_independence.R --dataset microglia
+Rscript analysis/05_wgcna/09_microglia_neuropil_independence.R --dataset microglia
 ```
 
 Inspect:
@@ -396,7 +396,7 @@ gate fails.
   labels as purified microglia regulation.
 # WGCNA Claim-Gate Inference Notes
 
-Primary WGCNA inference for group effects is the module or supermodule eigengene model exported by `06_modules_WGCNA/05_module_supermodule_group_effects.r`. The claim-grade columns in `module_group_effects.csv` and `supermodule_group_effects.csv` record the model family, formula, emmeans status, rank/singularity diagnostics, animal random-effect use, and biological replicate unit used for each row.
+Primary WGCNA inference for group effects is the module or supermodule eigengene model exported by `analysis/05_wgcna/05_module_supermodule_group_effects.r`. The claim-grade columns in `module_group_effects.csv` and `supermodule_group_effects.csv` record the model family, formula, emmeans status, rank/singularity diagnostics, animal random-effect use, and biological replicate unit used for each row.
 
 Fallback tests are diagnostic only. If emmeans fails or a two-group t-test substitute is emitted, the numerical estimate is retained for review, but `primary_model_stable = FALSE`, `claim_allowed_model = FALSE`, and `model_downgrade_reason` includes `diagnostic_only_model_fallback`.
 

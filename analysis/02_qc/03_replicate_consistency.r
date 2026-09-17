@@ -1,5 +1,5 @@
 # ================================================================
-# Script: 03_qc_exploration/03_replicate_consistency.r
+# Script: analysis/02_qc/03_replicate_consistency.r
 # Stage: qc
 # Scope: dataset_specific
 # Consumes: required data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv; optional data/metadata/*.xlsx.
@@ -23,7 +23,7 @@ matrix_file <- qc_resolve_matrix(DATASET, env = "PROTEOMICS_REPLICATE_MATRIX_FIL
 metadata_file <- qc_resolve_metadata(DATASET, env = "PROTEOMICS_REPLICATE_METADATA_FILE")
 
 if (run$dry_run) {
-  status <- qc_dry_run_contract("03_qc_exploration/03_replicate_consistency.r", DATASET,
+  status <- qc_dry_run_contract("analysis/02_qc/03_replicate_consistency.r", DATASET,
                                 matrix_file = matrix_file, metadata_file = metadata_file, paths = PATHS,
                                 extra = c("Requires AnimalID and/or ReplicateGroup for strongest replicate interpretation."))
   quit(status = status, save = "no")

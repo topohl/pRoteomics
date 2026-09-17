@@ -3693,8 +3693,8 @@ wgcna_group_consumer_scan_rules <- function() {
       "tmp/, docs/, review bundles, generated outputs, tests/fixtures/, and",
       "tests/testthat/fixtures/; explicitly excluded producers, registry, and",
       "Stage 05 fixtures containing deliberate legacy tokens:",
-      "R/wgcna_group_effects_utils.R and",
-      "06_modules_WGCNA/05_module_supermodule_group_effects.r;",
+      "R/statistics/wgcna_group_effects_utils.R and",
+      "analysis/05_wgcna/05_module_supermodule_group_effects.r;",
       "tests/testthat/test-wgcna-group-effects-phase2b.R,",
       "tests/testthat/test-wgcna-group-effects-contract.R, and",
       "tests/testthat/test-schema-validation.R"
@@ -3781,8 +3781,8 @@ wgcna_group_scan_downstream_consumers <- function(root = repo_root()) {
   relative <- substring(files, nchar(root) + 2L)
   relative <- gsub("\\\\", "/", relative)
   excluded <- relative %in% c(
-    "R/wgcna_group_effects_utils.R",
-    "06_modules_WGCNA/05_module_supermodule_group_effects.r",
+    "R/statistics/wgcna_group_effects_utils.R",
+    "analysis/05_wgcna/05_module_supermodule_group_effects.r",
     "tests/testthat/test-wgcna-group-effects-phase2b.R",
     "tests/testthat/test-wgcna-group-effects-contract.R",
     "tests/testthat/test-schema-validation.R"

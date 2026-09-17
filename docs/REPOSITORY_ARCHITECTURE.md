@@ -2,7 +2,7 @@
 
 What this tree contains, which parts may depend on which, and which structural
 changes are deferred and why. Measured at commit `b26cd6f` by
-`99_audits/publication_hardening/04_architecture_inventory.R` and
+`audits/publication_hardening/04_architecture_inventory.R` and
 `05_output_and_layer_review.R`; the machine-readable form is
 `results/tables/publication_hardening/`.
 
@@ -41,12 +41,12 @@ Most-depended-on files:
 
 | File | Inbound edges |
 |---|---|
-| `R/dataset_config.R` | 90 |
-| `R/integration_utils.R` | 85 |
+| `R/data_contracts/dataset_config.R` | 90 |
+| `R/statistics/integration_utils.R` | 85 |
 | `R/nature_v2_figure_utils.R` | 50 |
 | `R/paths.R` | 29 |
-| `R/dataset_inputs.R` | 26 |
-| `R/qc_exploration_utils.R` | 26 |
+| `R/data_contracts/dataset_inputs.R` | 26 |
+| `R/qc/qc_exploration_utils.R` | 26 |
 
 `R/nature_v2_figure_utils.R` at 50 inbound edges is worth noting: a *superseded*
 figure generation supplies utilities to the current one. That is why the figure
@@ -122,14 +122,14 @@ precondition and its verification step.
 | Change | Risk | What would break |
 |---|---|---|
 | ad-hoc EWCE roots → `results/audit/` | P1_SAFE_WITH_TESTS | nothing in the repository; it is a physical migration, which this pass excludes |
-| `proteomics_wgcna_downstream_audit.R` → `99_audits/` | P1_SAFE_WITH_TESTS | its own relative `source()` calls; `RUN_ORDER.md` if it names it |
+| `audits/wgcna/proteomics_wgcna_downstream_audit.R` → `99_audits/` | P1_SAFE_WITH_TESTS | its own relative `source()` calls; `RUN_ORDER.md` if it names it |
 | fold `08_biological_interpretation` into `03_qc_exploration` | P2_DEFERRED | its output directory derives from the stage name, so every file it writes changes path |
 | `figures/current/` + `figures/superseded/` | P2_DEFERRED | `pipeline.yml` paths, the freeze manifest hashes, `RUN_ORDER.md` |
 | `R/` family subdirectories | P2_DEFERRED | every `source(repo_path("R", ...))` in 445 scripts, plus the `R/*.R` globs in the test suite |
 
 `08_biological_interpretation` holds a single script whose name is a near
 synonym of `10_biological_integration`, and it writes three files whose
-basenames duplicate those of `03_qc_exploration/04d_compartment_marker_fidelity.r`.
+basenames duplicate those of `archive/02_qc/04d_compartment_marker_fidelity.r`.
 The paths differ, so nothing is overwritten — but a reader handed
 `compartment_marker_fidelity_scores.csv` cannot tell which stage produced it.
 
@@ -141,9 +141,9 @@ The paths differ, so nothing is overwritten — but a reader handed
   consistent. Cosmetic, and renaming would churn every registry path.
 - **43** output basenames are written by more than one script. **0** of them
   resolve to the same relative path, so no output has two authoritative writers.
-- `R/module_stats.R` is referenced only by `R/README.md` (finding PH-003). It is
+- `R/statistics/module_stats.R` is referenced only by `R/README.md` (finding PH-003). It is
   retained: deleting it would be exactly the tidiness-driven deletion this audit
   is instructed not to make.
-- `R/renv_lock_audit.R` has no `source()` edge but is reached through a variable
-  in `R/publication_freeze_utils.R` and through `testthat::test_path`. Static
+- `R/utilities/renv_lock_audit.R` has no `source()` edge but is reached through a variable
+  in `R/data_contracts/publication_freeze_utils.R` and through `testthat::test_path`. Static
   edge counting alone would misreport it as dead.

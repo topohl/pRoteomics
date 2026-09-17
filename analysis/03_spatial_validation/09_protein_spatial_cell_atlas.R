@@ -13,20 +13,20 @@
 #   to identity. No differential statistic is recomputed here.
 #
 # USAGE
-#   Rscript 11_spatial_systems/09_protein_spatial_cell_atlas.R
-#   Rscript 11_spatial_systems/09_protein_spatial_cell_atlas.R --dry-run
+#   Rscript analysis/03_spatial_validation/09_protein_spatial_cell_atlas.R
+#   Rscript analysis/03_spatial_validation/09_protein_spatial_cell_atlas.R --dry-run
 
 source("R/paths.R")
-source("R/dataset_config.R")
-source("R/integration_utils.R")
-source("R/qc_exploration_utils.R")
-source("R/protigy_input_utils.R")
-source("R/spatial_systems_data_utils.R")
-source("R/spatial_atlas_utils.R")
+source("R/data_contracts/dataset_config.R")
+source("R/statistics/integration_utils.R")
+source("R/qc/qc_exploration_utils.R")
+source("R/data_contracts/protigy_input_utils.R")
+source("R/data_contracts/spatial_systems_data_utils.R")
+source("R/spatial/spatial_atlas_utils.R")
 
 suppressPackageStartupMessages({ library(readr); library(dplyr); library(tidyr) })
 
-SCRIPT_ID <- "11_spatial_systems/09_protein_spatial_cell_atlas.R"
+SCRIPT_ID <- "analysis/03_spatial_validation/09_protein_spatial_cell_atlas.R"
 Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 cli <- integration_cli(default_dataset = "all")
 
@@ -255,7 +255,7 @@ atlas$contract_version <- sat_contract_version()
 # QC-failed SUS acquisitions in CA2-SLM. The fields are ALWAYS present, so a
 # consumer can never mistake "not yet audited" for "claimable".
 #
-# Produced by 11_spatial_systems/17_stress_identity_robustness.R, which runs
+# Produced by analysis/03_spatial_validation/17_stress_identity_robustness.R, which runs
 # AFTER this script. On a clean pipeline this script therefore emits the
 # not_yet_audited state on its first pass and the populated state on a rerun;
 # that ordering is recorded in pipeline.yml.

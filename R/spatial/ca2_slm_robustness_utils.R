@@ -48,7 +48,7 @@ csr_thresholds <- function() {
               csr_imputation_minimal_cut(), csr_imputation_strong_cut(),
               csr_magnitude_collapse_cut()),
     meaning = c(
-      "canonical DAP threshold, matching R/sus_res_spatial_dap_atlas_utils.R",
+      "canonical DAP threshold, matching R/statistics/sus_res_spatial_dap_atlas_utils.R",
       "fully observed animals required in EACH group for an observed-only effect",
       "relative change in effect magnitude up to which imputation dependence is minimal",
       "relative change above which imputation dependence is strong",
@@ -108,7 +108,7 @@ csr_read_imputed_samples <- function(path, sample_ids) {
 # The authoritative pre-imputation mask is the raw DIA-NN matrix, where a
 # missing measurement is a literal NA. The post-imputation matrix cannot
 # answer this question: it has no NAs left at all. The 70% row filter from
-# 01_preprocessing/01_impute.r is reproduced so the analysed row set matches
+# archive/01_preprocessing/01_impute.r is reproduced so the analysed row set matches
 # what the pipeline actually modelled.
 csr_preimputation_mask <- function(raw_path, dataset_samples, unit_samples) {
   raw <- utils::read.delim(raw_path, check.names = FALSE, stringsAsFactors = FALSE)
@@ -136,7 +136,7 @@ csr_preimputation_mask <- function(raw_path, dataset_samples, unit_samples) {
 
 # ------------------------------------------- normalisation bias context
 #
-# 01_preprocessing/01_impute.r median-centres each sample column on its
+# archive/01_preprocessing/01_impute.r median-centres each sample column on its
 # OBSERVED values (step 4) before imputing (step 6). When a sample is heavily
 # missing, only the more abundant proteins are detected, so its observed
 # median is inflated; subtracting that inflated median then displaces EVERY

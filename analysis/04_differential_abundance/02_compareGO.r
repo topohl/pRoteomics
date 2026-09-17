@@ -1,5 +1,5 @@
 # ================================================================
-# Script: 04_differential_expression_enrichment/02_compareGO.r
+# Script: analysis/04_differential_abundance/02_compareGO.r
 # Stage: enrichment
 # Scope: dataset_specific
 # Consumes: required data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv; optional none.
@@ -459,7 +459,7 @@ if (length(unsupported_configured_types)) {
 }
 if (!file.exists(manifest_path)) {
   stop("clusterProfiler manifest not found: ", manifest_path,
-    "\nRun 04_differential_expression_enrichment/01_clusterProfiler.r first.", call. = FALSE)
+    "\nRun analysis/04_differential_abundance/01_clusterProfiler.r first.", call. = FALSE)
 }
 
 canonical_cluster_manifest <- utils::read.csv(
@@ -659,13 +659,13 @@ if (isTRUE(DRY_RUN)) {
 
 if (!file.exists(manifest_path)) {
   stop("clusterProfiler manifest not found: ", manifest_path,
-       "\nRun 04_differential_expression_enrichment/01_clusterProfiler.r first.", call. = FALSE)
+       "\nRun analysis/04_differential_abundance/01_clusterProfiler.r first.", call. = FALSE)
 }
 cluster_manifest <- readr::read_csv(manifest_path, show_col_types = FALSE)
 if (ncol(cluster_manifest) == 0 ||
     (ncol(cluster_manifest) == 1 && names(cluster_manifest)[[1]] %in% c("", "...1") && nrow(cluster_manifest) <= 1)) {
   stop("clusterProfiler manifest is empty or malformed: ", manifest_path,
-       "\nRerun 04_differential_expression_enrichment/01_clusterProfiler.r, or rebuild the manifest from existing source-data outputs.",
+       "\nRerun analysis/04_differential_abundance/01_clusterProfiler.r, or rebuild the manifest from existing source-data outputs.",
        call. = FALSE)
 }
 required_manifest_cols <- c(

@@ -36,7 +36,7 @@ Output paths in `pipeline.yml` should be stable contracts, not temporary scratch
 
 ## Add Output Validation
 
-Use existing validators in `R/module_contracts.R`, `R/schema_validation.R`, or `R/validation_utils.R` where possible. For new final-facing tables, add a small validator that checks required columns and basic ranges without changing the underlying scientific calculations.
+Use existing validators in `R/data_contracts/module_contracts.R`, `R/utilities/schema_validation.R`, or `R/utilities/validation_utils.R` where possible. For new final-facing tables, add a small validator that checks required columns and basic ranges without changing the underlying scientific calculations.
 
 ## Run Checks
 

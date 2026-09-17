@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 # ================================================================
-# Script: 10_biological_integration/02_manuscript_program_summary.r
+# Script: analysis/08_integration/02_manuscript_program_summary.r
 # Stage: integration
 # Scope: global
 # Consumes: cross-compartment program atlas.
@@ -13,7 +13,7 @@ paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.
 source(paths_file)
 source(repo_path("R", "integration_utils.R"))
 
-SCRIPT_ID <- "10_biological_integration/02_manuscript_program_summary.r"
+SCRIPT_ID <- "analysis/08_integration/02_manuscript_program_summary.r"
 Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 run <- integration_cli(default_dataset = "all", allow_all = TRUE)
 paths <- integration_paths("manuscript_program_summary", "global")

@@ -1,5 +1,5 @@
 # ================================================================
-# Script: 02_id_mapping/01b_animal_level_mapping_audit.r
+# Script: audits/preprocessing/01b_animal_level_mapping_audit.r
 # Scope: validation-only audit of isolated animal-level forward mapping
 # Notes: Does not map proteins and does not write to historical mapping trees.
 # ================================================================

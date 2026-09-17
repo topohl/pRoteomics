@@ -15,7 +15,7 @@
 #   table is checked by wcl_assert_phenotype_blind().
 #
 #   The companion phenotype-AWARE analysis lives in
-#   10_biological_integration/09_wgcna_sus_res_network_position.R and is kept
+#   analysis/08_integration/09_wgcna_sus_res_network_position.R and is kept
 #   deliberately separate. Neither script reads the other's outputs.
 #
 # WHAT THIS SCRIPT DOES NOT DO
@@ -32,24 +32,24 @@
 #   a poor module NAME. contributor_centrality_auc measures exactly that.
 #
 # USAGE
-#   Rscript 06_modules_WGCNA/14_wgcna_label_coherence_audit.R
-#   Rscript 06_modules_WGCNA/14_wgcna_label_coherence_audit.R --dataset neuron_neuropil
-#   Rscript 06_modules_WGCNA/14_wgcna_label_coherence_audit.R --dry-run
+#   Rscript analysis/05_wgcna/14_wgcna_label_coherence_audit.R
+#   Rscript analysis/05_wgcna/14_wgcna_label_coherence_audit.R --dataset neuron_neuropil
+#   Rscript analysis/05_wgcna/14_wgcna_label_coherence_audit.R --dry-run
 
 source("R/paths.R")
-source("R/dataset_config.R")
-source("R/integration_utils.R")
-source("R/wgcna_downstream_utils.R")
-source("R/wgcna_candidate_protein_utils.R")
-source("R/wgcna_label_coherence_utils.R")
-source("R/xlsx_package_utils.R")
+source("R/data_contracts/dataset_config.R")
+source("R/statistics/integration_utils.R")
+source("R/statistics/wgcna_downstream_utils.R")
+source("R/statistics/wgcna_candidate_protein_utils.R")
+source("R/statistics/wgcna_label_coherence_utils.R")
+source("R/utilities/xlsx_package_utils.R")
 
 suppressPackageStartupMessages({
   library(readr)
   library(dplyr)
 })
 
-SCRIPT_ID <- "06_modules_WGCNA/14_wgcna_label_coherence_audit.R"
+SCRIPT_ID <- "analysis/05_wgcna/14_wgcna_label_coherence_audit.R"
 SUBSTEP <- "label_coherence_audit"
 Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 
@@ -186,7 +186,7 @@ build_dataset <- function(dataset) {
   # HUB-ONLY theme: only the top-10 hub symbols.
   # Their agreement is a genuine, non-circular hub-concordance measure. The
   # existing Stage-06 scorer cannot do this: its hub_support term is a pure
-  # non-emptiness test (R/wgcna_labeling_utils.R:66) that never compares hubs
+  # non-emptiness test (R/statistics/wgcna_labeling_utils.R:66) that never compares hubs
   # with the candidate label, and it is TRUE for every row in every dataset.
   go_theme <- character(nrow(evidence))
   hub_theme <- character(nrow(evidence))

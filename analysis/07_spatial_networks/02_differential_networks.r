@@ -1,5 +1,5 @@
 # ================================================================
-# Script: 07_spatial_networks/02_differential_networks.r
+# Script: analysis/07_spatial_networks/02_differential_networks.r
 # Stage: networks
 # Scope: dataset_specific
 # Consumes: required data/processed/07_spatial_networks/network_spatial_relations/<dataset>/*/network_spatial_relations_objects.rds; optional none.
@@ -14,7 +14,7 @@
 # Produces:
 #   - differential network tables, figures, network files and RDS cache in canonical folders
 # File contract:
-#   - docs/active_script_io_audit.tsv object 07_spatial_networks/02_differential_networks.r
+#   - docs/active_script_io_audit.tsv object analysis/07_spatial_networks/02_differential_networks.r
 # ================================================================
 # Differential spatial network analysis
 # ================================================================
@@ -67,7 +67,7 @@ params <- list(
 )
 
 if (is_dry_run()) {
-  dry_run_line("Script", "07_spatial_networks/02_differential_networks.r")
+  dry_run_line("Script", "analysis/07_spatial_networks/02_differential_networks.r")
   dry_run_line("Dataset", NETWORK_DATASET)
   dry_run_line("Spatial unit", spatial_unit)
   dry_run_line("Spatial RDS", params$spatial_rds, if (file.exists(params$spatial_rds)) "PASS" else "FAIL")

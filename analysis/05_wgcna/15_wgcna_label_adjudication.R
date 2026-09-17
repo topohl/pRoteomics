@@ -31,23 +31,23 @@
 # gated by wla_assert_phenotype_blind().
 #
 # USAGE
-#   Rscript 06_modules_WGCNA/15_wgcna_label_adjudication.R
-#   Rscript 06_modules_WGCNA/15_wgcna_label_adjudication.R --dataset neuron_neuropil
-#   Rscript 06_modules_WGCNA/15_wgcna_label_adjudication.R --dry-run
+#   Rscript analysis/05_wgcna/15_wgcna_label_adjudication.R
+#   Rscript analysis/05_wgcna/15_wgcna_label_adjudication.R --dataset neuron_neuropil
+#   Rscript analysis/05_wgcna/15_wgcna_label_adjudication.R --dry-run
 
 source("R/paths.R")
-source("R/dataset_config.R")
-source("R/integration_utils.R")
-source("R/wgcna_candidate_protein_utils.R")
-source("R/wgcna_label_adjudication_utils.R")
-source("R/xlsx_package_utils.R")
+source("R/data_contracts/dataset_config.R")
+source("R/statistics/integration_utils.R")
+source("R/statistics/wgcna_candidate_protein_utils.R")
+source("R/statistics/wgcna_label_adjudication_utils.R")
+source("R/utilities/xlsx_package_utils.R")
 
 suppressPackageStartupMessages({
   library(readr)
   library(dplyr)
 })
 
-SCRIPT_ID <- "06_modules_WGCNA/15_wgcna_label_adjudication.R"
+SCRIPT_ID <- "analysis/05_wgcna/15_wgcna_label_adjudication.R"
 Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 
 cli <- integration_cli(default_dataset = "all")

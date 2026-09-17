@@ -1,5 +1,5 @@
 # ================================================================
-# Script: 04_differential_expression_enrichment/07_compareGO_spatial_program_atlas.r
+# Script: analysis/04_differential_abundance/07_compareGO_spatial_program_atlas.r
 # Stage: enrichment
 # Scope: dataset_specific
 # Consumes: canonical compareGO manifest-declared term comparison, term-gene provenance, and analysis-status tables for each dataset; config/manuscript_go_theme_registry.tsv; optional finalized biological_program_summary/<dataset>/program_summary.csv for validation cross-checks.

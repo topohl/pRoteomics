@@ -1,5 +1,5 @@
 #!/usr/bin/env Rscript
-# Script: 10_biological_integration/06_gsea_wgcna_concordance_diagnostics.R
+# Script: analysis/08_integration/06_gsea_wgcna_concordance_diagnostics.R
 # Stage: additive diagnostic review of 05_gsea_wgcna_concordance.R
 #
 # The strict concordance classifications and adaptive pattern summary are read
@@ -18,7 +18,7 @@ source(repo_path("R", "manuscript_go_theme_utils.R"))
 source(repo_path("R", "gsea_wgcna_concordance_utils.R"))
 source(repo_path("R", "gsea_wgcna_concordance_diagnostic_utils.R"))
 
-SCRIPT_ID <- "10_biological_integration/06_gsea_wgcna_concordance_diagnostics.R"
+SCRIPT_ID <- "analysis/08_integration/06_gsea_wgcna_concordance_diagnostics.R"
 Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 run <- integration_cli(default_dataset = "all", allow_all = TRUE)
 datasets <- integration_datasets(run$dataset)

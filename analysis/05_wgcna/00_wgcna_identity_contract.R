@@ -1,5 +1,5 @@
 # ================================================================
-# Script: 06_modules_WGCNA/00_wgcna_identity_contract.R
+# Script: analysis/05_wgcna/00_wgcna_identity_contract.R
 # Stage: modules_downstream
 # Scope: dataset_specific
 # Purpose: publish a read-only canonical identity contract for a frozen WGCNA
@@ -21,7 +21,7 @@ OUTPUTS <- module_paths(
 bundle <- wgcna_identity_build_contract_bundle(DATASET)
 
 if (run$dry_run) {
-  dry_run_line("Script", "06_modules_WGCNA/00_wgcna_identity_contract.R")
+  dry_run_line("Script", "analysis/05_wgcna/00_wgcna_identity_contract.R")
   dry_run_line("Dataset", DATASET)
   dry_run_line(
     "Selected membership authority",

@@ -346,9 +346,9 @@ for (i in seq_len(nrow(man))) {
     DA_model = paste0(
       "limma moderated t-test computed by ProTigy on animal-level log2 imputed protein-group ",
       "intensities (Left/Right hemispheres averaged within AnimalID x canonical spatial unit; ",
-      "01_preprocessing/02a_prepare_animal_level_protigy_input.r); two-group comparison fitted ",
+      "analysis/01_preprocessing/02a_prepare_animal_level_protigy_input.r); two-group comparison fitted ",
       "within one spatial unit; topTable fields logFC/AveExpr/t/P.Value/adj.P.Val/B split out by ",
-      "01_preprocessing/03_gct_extractR.r and carried into 02_id_mapping as log2fc/aveExpr/t/pval/padj/B"),
+      "analysis/01_preprocessing/03_gct_extractR.r and carried into 02_id_mapping as log2fc/aveExpr/t/pval/padj/B"),
     effect_definition = effect_def,
     rank_statistic_column = mr$rank_statistic_column,
     rank_statistic_type = mr$rank_statistic_type,
@@ -549,7 +549,7 @@ for (ds in DATASETS) {
     bounds_source = paste0(
       "config/clusterProfiler_config.yml analysis.min_gs_size / analysis.max_gs_size (md5 ",
       CFG_HASH, ") passed to clusterProfiler::gseGO at ",
-      "04_differential_expression_enrichment/01_clusterProfiler.r:1502; gseGO package defaults ",
+      "analysis/04_differential_abundance/01_clusterProfiler.r:1502; gseGO package defaults ",
       "minGSSize=", GSEGO_DEFAULT_MIN, " / maxGSSize=", GSEGO_DEFAULT_MAX, " are overridden"),
     n_go_bp_sets_in_orgdb = N_GO_BP_SETS,
     n_ranked_genes = length(u$genes),

@@ -1,5 +1,5 @@
 # ================================================================
-# Script: 03_qc_exploration/04_marker_rank_abundance_qc.r
+# Script: analysis/02_qc/04_marker_rank_abundance_qc.r
 # Stage: qc
 # Scope: dataset_specific
 # Consumes: required Stage 01 post-filter/imputed quantitative matrix, mouse UniProt mapping, sample metadata; optional manual mappings and marker registry.
@@ -34,7 +34,7 @@ metadata_file <- qc_resolve_metadata(DATASET, env = "PROTEOMICS_RANK_ABUNDANCE_M
 
 if (run$dry_run) {
   status <- qc_dry_run_contract(
-    "03_qc_exploration/04_marker_rank_abundance_qc.r",
+    "analysis/02_qc/04_marker_rank_abundance_qc.r",
     DATASET,
     matrix_file = matrix_file,
     metadata_file = metadata_file,

@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript
 
 # ================================================================
-# Script: 06_modules_WGCNA/03_score_module_activity.R
+# Script: analysis/05_wgcna/03_score_module_activity.R
 # Stage: modules_downstream
 # Scope: dataset_specific
 # Consumes: required results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/; data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv; optional merged score metadata and the authoritative supermodule annotation.
@@ -18,7 +18,7 @@
 # Produces:
 #   - module score tables, QC workbooks, figures and source data in canonical folders
 # File contract:
-#   - docs/active_script_io_audit.tsv object 06_modules_WGCNA/03_score_module_activity.R
+#   - docs/active_script_io_audit.tsv object analysis/05_wgcna/03_score_module_activity.R
 # ================================================================
 # Dataset-aware module score analysis with group-aware replicate QC
 # ================================================================
@@ -30,7 +30,7 @@ source(repo_path("R", "dataset_inputs.R"))
 source(repo_path("R", "module_contracts.R"))
 source(repo_path("R", "wgcna_downstream_utils.R"))
 MODULE_ID <- "06_modules_WGCNA"
-SCRIPT_ID <- "06_modules_WGCNA/03_score_module_activity.R"
+SCRIPT_ID <- "analysis/05_wgcna/03_score_module_activity.R"
 Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 args <- commandArgs(trailingOnly = TRUE)
 arg_value <- function(flag, default = "") {
@@ -142,7 +142,7 @@ resolve_wgcna_state_file <- function() {
     script = SCRIPT_ID,
     dataset = dataset_profile,
     stage = "modules_downstream",
-    producer_script_or_artifact_id = "06_modules_WGCNA/01_WGCNA.r"
+    producer_script_or_artifact_id = "analysis/05_wgcna/01_WGCNA.r"
   )
 }
 
@@ -157,7 +157,7 @@ resolve_supermodule_annotation_file <- function() {
     script = SCRIPT_ID,
     dataset = dataset_profile,
     stage = "modules_downstream",
-    producer_script_or_artifact_id = "06_modules_WGCNA/01_WGCNA.r"
+    producer_script_or_artifact_id = "analysis/05_wgcna/01_WGCNA.r"
   )
 }
 
@@ -177,7 +177,7 @@ resolve_module_definitions_file <- function(source = module_definition_source) {
       script = SCRIPT_ID,
       dataset = dataset_profile,
       stage = "modules_downstream",
-      producer_script_or_artifact_id = "06_modules_WGCNA/04_wgcna_de_gsea_overlap.r"
+      producer_script_or_artifact_id = "analysis/05_wgcna/04_wgcna_de_gsea_overlap.r"
     ))
   }
 
@@ -197,7 +197,7 @@ resolve_module_definitions_file <- function(source = module_definition_source) {
       script = SCRIPT_ID,
       dataset = dataset_profile,
       stage = "modules_downstream",
-      producer_script_or_artifact_id = "06_modules_WGCNA/01_WGCNA.r"
+      producer_script_or_artifact_id = "analysis/05_wgcna/01_WGCNA.r"
     ))
   }
 
@@ -249,10 +249,10 @@ dir.create(dir_group_qc, recursive = TRUE, showWarnings = FALSE)
 dir.create(dir_directional, recursive = TRUE, showWarnings = FALSE)
 
 if (is_dry_run()) {
-  dry_run_line("Script", "06_modules_WGCNA/03_score_module_activity.R")
+  dry_run_line("Script", "analysis/05_wgcna/03_score_module_activity.R")
   dry_run_line("Dataset", dataset_profile)
   dry_run_line("Module source override", if (nzchar(module_definition_source_override)) module_definition_source_override else paste0("not set; recorded dataset fallback used: ", module_definition_source))
-  dry_run_line("Inference role", "secondary robustness/program scoring; primary WGCNA eigengene group effects come from 06_modules_WGCNA/05_module_supermodule_group_effects.r")
+  dry_run_line("Inference role", "secondary robustness/program scoring; primary WGCNA eigengene group effects come from analysis/05_wgcna/05_module_supermodule_group_effects.r")
   dry_run_line("Resolved input diagnostics", paste(dataset_inputs$diagnostics, collapse = " | "))
   dry_run_line("Protein matrix", protein_file, if (file.exists(protein_file)) "PASS" else "FAIL")
   dry_run_line("Metadata file", metadata_file, if (file.exists(metadata_file)) "PASS" else "FAIL")
@@ -278,7 +278,7 @@ if (is_dry_run()) {
   dry_run_line("Expected mapping trace", file.path(dir_tables, "module_feature_mapping_trace.csv"))
   quit(status = if (all(file.exists(c(protein_file, metadata_file, mapping_file, module_definitions_file)))) 0 else 1, save = "no")
 }
-module_score_role_note <- "Secondary module/program scoring and behavior-coupling layer. Primary WGCNA module and supermodule CON/RES/SUS inference uses eigengene models from 06_modules_WGCNA/05_module_supermodule_group_effects.r."
+module_score_role_note <- "Secondary module/program scoring and behavior-coupling layer. Primary WGCNA module and supermodule CON/RES/SUS inference uses eigengene models from analysis/05_wgcna/05_module_supermodule_group_effects.r."
 module_score_run_metadata <- tibble::tibble(
   dataset = dataset_profile,
   module_definition_source = module_definition_source,
@@ -286,7 +286,7 @@ module_score_run_metadata <- tibble::tibble(
   module_definition_source_env = if (module_definition_source_was_explicit) module_definition_source_override else NA_character_,
   module_definition_source_resolution = if (module_definition_source_was_explicit) "PROTEOMICS_MODULE_DEFINITION_SOURCE" else "recorded_dataset_fallback",
   inference_role = "secondary_module_score_robustness_behavior_coupling",
-  primary_wgcna_inference_script = "06_modules_WGCNA/05_module_supermodule_group_effects.r",
+  primary_wgcna_inference_script = "analysis/05_wgcna/05_module_supermodule_group_effects.r",
   interpretation_note = module_score_role_note
 )
 readr::write_csv(module_score_run_metadata, file.path(dir_tables, "module_score_run_metadata.csv"), na = "")
@@ -302,8 +302,8 @@ if (length(missing_inputs) > 0) {
   missing_lines <- paste0(missing_inputs, ": ", input_paths[missing_inputs])
   hint_lines <- c(
     "Expected upstream producers:",
-    "- Protein matrix with metadata: source('01_preprocessing/02_excel_convert.r')",
-    "- Merged module-score metadata: source('01_preprocessing/06_merged_metadata_module_score.r')",
+    "- Protein matrix with metadata: source('archive/01_preprocessing/02_excel_convert.r')",
+    "- Merged module-score metadata: source('analysis/01_preprocessing/06_merged_metadata_module_score.r')",
     "Optional overrides:",
     "- Sys.setenv(PROTEOMICS_MODULE_SCORE_PROTEIN_FILE = 'path/to/*_with_metadata.xlsx')",
     "- Sys.setenv(PROTEOMICS_MODULE_SCORE_METADATA_FILE = 'path/to/sample_metadata_merged_clean_for_module_scores.xlsx')"
@@ -494,7 +494,7 @@ if (length(sample_cols) == 0) {
   write_overlap_diagnostics()
   stop(
     "No matching sample names between protein matrix and metadata. This usually means the module-score metadata workbook was generated for another dataset. Run:\n",
-    "Rscript 01_preprocessing/06_merged_metadata_module_score.r --dataset <dataset>\n",
+    "Rscript analysis/01_preprocessing/06_merged_metadata_module_score.r --dataset <dataset>\n",
     "or set PROTEOMICS_MODULE_SCORE_METADATA_FILE to the dataset-specific metadata workbook.",
     call. = FALSE
   )

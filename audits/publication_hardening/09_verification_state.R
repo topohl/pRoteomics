@@ -21,7 +21,7 @@
 # only a release claim is a claim about the committed state.
 
 setwd("S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/Analysis/proteomics")
-source("99_audits/publication_hardening/00_checkpoint.R")
+source("audits/publication_hardening/00_checkpoint.R")
 
 args <- commandArgs(trailingOnly = TRUE)
 RELEASE <- "--release" %in% args

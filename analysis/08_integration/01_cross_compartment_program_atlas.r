@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 # ================================================================
-# Script: 10_biological_integration/01_cross_compartment_program_atlas.r
+# Script: analysis/08_integration/01_cross_compartment_program_atlas.r
 # Stage: integration
 # Scope: global
 # Consumes: enrichment, WGCNA, microenvironment, complex/organelle, robustness,
@@ -17,7 +17,7 @@ source(repo_path("R", "wgcna_claim_readiness_utils.R"))
 source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
 source(repo_path("R", "wgcna_stage07_semantic_utils.R"))
 
-SCRIPT_ID <- "10_biological_integration/01_cross_compartment_program_atlas.r"
+SCRIPT_ID <- "analysis/08_integration/01_cross_compartment_program_atlas.r"
 Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 run <- integration_cli(default_dataset = "all", allow_all = TRUE)
 paths <- integration_paths("cross_compartment_program_atlas", "global")
