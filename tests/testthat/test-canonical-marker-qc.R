@@ -1,9 +1,9 @@
 testthat::local_edition(3)
 
 source(testthat::test_path("..", "..", "R", "paths.R"))
-source(testthat::test_path("..", "..", "R", "dataset_config.R"))
-source(testthat::test_path("..", "..", "R", "dataset_inputs.R"))
-source(testthat::test_path("..", "..", "R", "qc_exploration_utils.R"))
+source(repo_path("R", "dataset_config.R"))
+source(repo_path("R", "dataset_inputs.R"))
+source(repo_path("R", "qc_exploration_utils.R"))
 
 qc_test_context <- function() {
   list(
@@ -239,10 +239,10 @@ testthat::test_that("legacy WGCNA states are rejected by canonical QC bridge val
 
 testthat::test_that("active gene-aware consumers do not match marker genes to matrix row names", {
   scripts <- c(
-    "03_qc_exploration/04_marker_rank_abundance_qc.r",
-    "03_qc_exploration/04c_marker_detectability_and_wgcna_bridge.r",
-    "03_qc_exploration/05_empirical_roi_marker_discovery.r",
-    "03_qc_exploration/07_wgcna_marker_trait_export.r"
+    "analysis/02_qc/04_marker_rank_abundance_qc.r",
+    "analysis/02_qc/04c_marker_detectability_and_wgcna_bridge.r",
+    "analysis/02_qc/05_empirical_roi_marker_discovery.r",
+    "analysis/02_qc/07_wgcna_marker_trait_export.r"
   )
   text <- vapply(scripts, function(path) {
     paste(readLines(testthat::test_path("..", "..", path), warn = FALSE), collapse = "\n")

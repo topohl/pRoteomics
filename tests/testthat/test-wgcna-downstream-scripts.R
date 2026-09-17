@@ -1,16 +1,16 @@
 testthat::test_that("WGCNA downstream entrypoints exist", {
   source(testthat::test_path("..", "..", "R", "paths.R"))
   scripts <- c(
-    "03_qc_exploration/04b_import_reference_marker_sources.r",
-    "03_qc_exploration/05_empirical_roi_marker_discovery.r",
-    "03_qc_exploration/07_wgcna_marker_trait_export.r",
-    "06_modules_WGCNA/05_module_supermodule_group_effects.r",
-    "06_modules_WGCNA/06_annotate_module_microenvironment.r",
-    "06_modules_WGCNA/07_wgcna_interpretable_summary.r",
-    "06_modules_WGCNA/08_wgcna_publication_figures.R",
-    "06_modules_WGCNA/09_microglia_neuropil_independence.R",
-    "06_modules_WGCNA/10_module_complex_architecture.r",
-    "06_modules_WGCNA/11_module_robustness_sensitivity.r"
+    "analysis/02_qc/04b_import_reference_marker_sources.r",
+    "analysis/02_qc/05_empirical_roi_marker_discovery.r",
+    "analysis/02_qc/07_wgcna_marker_trait_export.r",
+    "analysis/05_wgcna/05_module_supermodule_group_effects.r",
+    "analysis/05_wgcna/06_annotate_module_microenvironment.r",
+    "analysis/05_wgcna/07_wgcna_interpretable_summary.r",
+    "analysis/05_wgcna/08_wgcna_publication_figures.R",
+    "analysis/05_wgcna/09_microglia_neuropil_independence.R",
+    "analysis/05_wgcna/10_module_complex_architecture.r",
+    "analysis/05_wgcna/11_module_robustness_sensitivity.r"
   )
   testthat::expect_true(all(file.exists(repo_path(scripts))))
 })
@@ -21,16 +21,16 @@ testthat::test_that("WGCNA downstream dry-runs report contracts", {
   old_wd <- setwd(repo_path())
   on.exit(setwd(old_wd), add = TRUE)
   cases <- list(
-    c("03_qc_exploration/04b_import_reference_marker_sources.r", "--dry-run"),
-    c("03_qc_exploration/05_empirical_roi_marker_discovery.r", "--dry-run"),
-    c("03_qc_exploration/07_wgcna_marker_trait_export.r", "--dataset", "microglia", "--dry-run"),
-    c("06_modules_WGCNA/05_module_supermodule_group_effects.r", "--dataset", "microglia", "--dry-run"),
-    c("06_modules_WGCNA/06_annotate_module_microenvironment.r", "--dataset", "microglia", "--dry-run"),
-    c("06_modules_WGCNA/07_wgcna_interpretable_summary.r", "--dataset", "all", "--dry-run"),
-    c("06_modules_WGCNA/08_wgcna_publication_figures.R", "--dataset", "microglia", "--dry-run"),
-    c("06_modules_WGCNA/09_microglia_neuropil_independence.R", "--dataset", "microglia", "--dry-run"),
-    c("06_modules_WGCNA/10_module_complex_architecture.r", "--dataset", "all", "--dry-run"),
-    c("06_modules_WGCNA/11_module_robustness_sensitivity.r", "--dataset", "all", "--dry-run")
+    c("analysis/02_qc/04b_import_reference_marker_sources.r", "--dry-run"),
+    c("analysis/02_qc/05_empirical_roi_marker_discovery.r", "--dry-run"),
+    c("analysis/02_qc/07_wgcna_marker_trait_export.r", "--dataset", "microglia", "--dry-run"),
+    c("analysis/05_wgcna/05_module_supermodule_group_effects.r", "--dataset", "microglia", "--dry-run"),
+    c("analysis/05_wgcna/06_annotate_module_microenvironment.r", "--dataset", "microglia", "--dry-run"),
+    c("analysis/05_wgcna/07_wgcna_interpretable_summary.r", "--dataset", "all", "--dry-run"),
+    c("analysis/05_wgcna/08_wgcna_publication_figures.R", "--dataset", "microglia", "--dry-run"),
+    c("analysis/05_wgcna/09_microglia_neuropil_independence.R", "--dataset", "microglia", "--dry-run"),
+    c("analysis/05_wgcna/10_module_complex_architecture.r", "--dataset", "all", "--dry-run"),
+    c("analysis/05_wgcna/11_module_robustness_sensitivity.r", "--dataset", "all", "--dry-run")
   )
   for (args in cases) {
     out <- suppressWarnings(system2(cmd, args, stdout = TRUE, stderr = TRUE))
@@ -53,7 +53,7 @@ testthat::test_that("marker source manifest is parseable", {
 })
 
 testthat::test_that("marker registry helpers load registry, empirical sets, and legacy fallback", {
-  source(testthat::test_path("..", "..", "R", "wgcna_downstream_utils.R"))
+  source(repo_path("R", "wgcna_downstream_utils.R"))
   registry_file <- tempfile(fileext = ".csv")
   empirical_file <- tempfile(fileext = ".csv")
   utils::write.csv(data.frame(
@@ -101,7 +101,7 @@ testthat::test_that("marker registry helpers load registry, empirical sets, and 
 })
 
 testthat::test_that("supermodule display labels keep immutable IDs and cap singleton confidence", {
-  source(testthat::test_path("..", "..", "R", "wgcna_downstream_utils.R"))
+  source(repo_path("R", "wgcna_downstream_utils.R"))
   testthat::expect_equal(
     classify_supermodule_label_confidence(
       n_modules = 1L,
@@ -115,7 +115,7 @@ testthat::test_that("supermodule display labels keep immutable IDs and cap singl
 })
 
 testthat::test_that("semantic classifier treats synaptic adhesion scaffold as non-ECM", {
-  source(testthat::test_path("..", "..", "R", "wgcna_downstream_utils.R"))
+  source(repo_path("R", "wgcna_downstream_utils.R"))
   assigned <- wgcna_assign_semantic_program(
     bp_terms = "regulation of monoatomic ion transport",
     mf_terms = c("PDZ domain binding", "cell-cell adhesion mediator activity"),
@@ -166,7 +166,7 @@ testthat::test_that("downstream supermodule labels prefer display label consiste
 })
 
 testthat::test_that("WGCNA downstream schemas expose required columns", {
-  source(testthat::test_path("..", "..", "R", "module_contracts.R"))
+  source(repo_path("R", "module_contracts.R"))
   group_cols <- c(
     "dataset", "level", "module_id", "supermodule_id", "module_label",
     "supermodule_label", "spatial_unit", "contrast", "estimate", "SE",

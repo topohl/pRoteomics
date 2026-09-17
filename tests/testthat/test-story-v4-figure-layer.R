@@ -1,6 +1,6 @@
 source(testthat::test_path("..", "..", "R", "paths.R"))
-source(testthat::test_path("..", "..", "R", "nature_v2_figure_utils.R"))
-source(testthat::test_path("..", "..", "R", "story_v4_figure_utils.R"))
+source(repo_path("R", "nature_v2_figure_utils.R"))
+source(repo_path("R", "story_v4_figure_utils.R"))
 
 rd <- function(p) utils::read.csv(p, stringsAsFactors = FALSE, check.names = FALSE)
 have <- function(p) file.exists(p)

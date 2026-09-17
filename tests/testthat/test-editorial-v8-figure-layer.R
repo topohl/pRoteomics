@@ -5,13 +5,13 @@
 # vector export - and hard-stop if the layer starts reopening analysis.
 
 source(testthat::test_path("..", "..", "R", "paths.R"))
-source(testthat::test_path("..", "..", "R", "null_coalescing.R"))
-source(testthat::test_path("..", "..", "R", "integration_utils.R"))
-source(testthat::test_path("..", "..", "R", "nature_v2_figure_utils.R"))
-source(testthat::test_path("..", "..", "R", "spatial_grammar_utils.R"))
-source(testthat::test_path("..", "..", "R", "editorial_v8_figure_utils.R"))
-source(testthat::test_path("..", "..", "R", "editorial_v8_export.R"))
-source(testthat::test_path("..", "..", "R", "editorial_v8_fidelity_panels.R"))
+source(repo_path("R", "null_coalescing.R"))
+source(repo_path("R", "integration_utils.R"))
+source(repo_path("R", "nature_v2_figure_utils.R"))
+source(repo_path("R", "spatial_grammar_utils.R"))
+source(repo_path("R", "editorial_v8_figure_utils.R"))
+source(repo_path("R", "editorial_v8_export.R"))
+source(repo_path("R", "editorial_v8_fidelity_panels.R"))
 
 rd <- function(p) utils::read.csv(p, stringsAsFactors = FALSE, check.names = FALSE)
 V8 <- s8e_contract()

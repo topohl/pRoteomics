@@ -2,18 +2,18 @@ testthat::test_that("dataset-scoped active scripts use shared CLI dataset resolu
   source(testthat::test_path("..", "..", "R", "paths.R"))
 
   scripts <- c(
-    "01_preprocessing/03_gct_extractR.r",
-    "02_id_mapping/01_MapThatProt_batch.r",
-    "04_differential_expression_enrichment/01_clusterProfiler.r",
-    "04_differential_expression_enrichment/02_compareGO.r",
-    "04_differential_expression_enrichment/04_neuropil_reference_annotation.r",
-    "07_spatial_networks/02_differential_networks.r",
-    "07_spatial_networks/03_bootstrap_network_stability.r",
-    "07_spatial_networks/04_bootstrap_differential_network_stability.r",
-    "07_spatial_networks/05_bootstrap_differential_network_figures.r",
-    "07_spatial_networks/06_chord_diagram.r",
-    "08_behavior_physio_coupling/01_correlate_proteomics_with_behavior.r",
-    "08_behavior_physio_coupling/02_network_behavior_coupling.r"
+    "analysis/01_preprocessing/03_gct_extractR.r",
+    "analysis/01_preprocessing/01_MapThatProt_batch.r",
+    "analysis/04_differential_abundance/01_clusterProfiler.r",
+    "analysis/04_differential_abundance/02_compareGO.r",
+    "analysis/04_differential_abundance/04_neuropil_reference_annotation.r",
+    "analysis/07_spatial_networks/02_differential_networks.r",
+    "analysis/07_spatial_networks/03_bootstrap_network_stability.r",
+    "analysis/07_spatial_networks/04_bootstrap_differential_network_stability.r",
+    "analysis/07_spatial_networks/05_bootstrap_differential_network_figures.r",
+    "analysis/07_spatial_networks/06_chord_diagram.r",
+    "analysis/08_integration/01_correlate_proteomics_with_behavior.r",
+    "analysis/08_integration/02_network_behavior_coupling.r"
   )
 
   for (script in scripts) {
@@ -26,7 +26,7 @@ testthat::test_that("dataset-scoped active scripts use shared CLI dataset resolu
 })
 
 testthat::test_that("dataset CLI helper prefers --dataset over environment and defaults", {
-  source(testthat::test_path("..", "..", "R", "dataset_config.R"))
+  source(repo_path("R", "dataset_config.R"))
   old <- Sys.getenv("PROTEOMICS_DATASET", unset = NA_character_)
   on.exit({
     if (is.na(old)) Sys.unsetenv("PROTEOMICS_DATASET") else Sys.setenv(PROTEOMICS_DATASET = old)

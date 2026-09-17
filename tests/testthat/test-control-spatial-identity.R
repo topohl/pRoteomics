@@ -1,7 +1,7 @@
 source(testthat::test_path(
   "..", "..", "R", "clusterprofiler_reproducibility.R"
 ))
-source(testthat::test_path("..", "..", "R", "control_spatial_identity_utils.R"))
+source(repo_path("R", "control_spatial_identity_utils.R"))
 
 testthat::test_that("control-spatial GSEA seeds use stable semantic identity", {
   args <- list(
@@ -103,7 +103,7 @@ testthat::test_that("missing AnimalID and rank-deficient designs are rejected", 
 
 testthat::test_that("protein statistics remain separate from eligible gene input and zero terms are valid", {
   p <- data.frame(ProteinGroupID="P1",original_identifier="x",member_accessions="P1",member_gene_symbols="A",representative_accession="P1",representative_gene_symbol="A",representative_selection_rule="x",protein_group_ambiguity_class="single_accession_single_gene",gene_level_claim_allowed=TRUE,protein_level_claim_allowed=TRUE,mapping_status="mapped",official_gene_symbol="A",official_entrez_id="1",protein_group_gene_annotation_status="concordant_official_gene",gene_annotation_contract_version="x",uniprot_mapping_file_hash="x",orgdb_package_version="x",t=2)
-  source(testthat::test_path("..", "..", "R", "protein_group_enrichment_utils.R")); g <- build_enrichment_gene_inputs(p)
+  source(repo_path("R", "protein_group_enrichment_utils.R")); g <- build_enrichment_gene_inputs(p)
   testthat::expect_identical(g$transformation$ProteinGroupID,"P1"); testthat::expect_identical(names(g$ranked),"A"); testthat::expect_identical(control_spatial_empty_status("d","c","completed_zero_terms","none")$status,"completed_zero_terms")
 })
 

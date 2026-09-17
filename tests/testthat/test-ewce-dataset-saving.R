@@ -1,6 +1,6 @@
 testthat::test_that("EWCE script parses --dataset before output paths are created", {
   source(testthat::test_path("..", "..", "R", "paths.R"))
-  txt <- paste(readLines(repo_path("05_celltype_enrichment_EWCE/01_EWCE_E9.r"), warn = FALSE), collapse = "\n")
+  txt <- paste(readLines(repo_path("analysis/06_gsea/01_EWCE_E9.r"), warn = FALSE), collapse = "\n")
 
   testthat::expect_true(grepl("args <- commandArgs\\(trailingOnly = TRUE\\)", txt))
   testthat::expect_true(grepl("dataset_cli <- arg_value\\(\"--dataset\"", txt))
@@ -27,7 +27,7 @@ testthat::test_that("EWCE dry-run honors dataset-specific output folders", {
     on.exit(setwd(old_wd), add = TRUE)
     out <- suppressWarnings(system2(
       file.path(R.home("bin"), "Rscript"),
-      c("05_celltype_enrichment_EWCE/01_EWCE_E9.r", "--dataset", dataset, "--dry-run"),
+      c("analysis/06_gsea/01_EWCE_E9.r", "--dataset", dataset, "--dry-run"),
       stdout = TRUE,
       stderr = TRUE
     ))
@@ -62,7 +62,7 @@ testthat::test_that("EWCE animal mode is isolated and reports the shared aggrega
   on.exit(setwd(old_wd), add = TRUE)
   out <- suppressWarnings(system2(
     file.path(R.home("bin"), "Rscript"),
-    c("05_celltype_enrichment_EWCE/01_EWCE_E9.r", "--dataset", "neuron_soma", "--dry-run"),
+    c("analysis/06_gsea/01_EWCE_E9.r", "--dataset", "neuron_soma", "--dry-run"),
     stdout = TRUE,
     stderr = TRUE
   ))
@@ -76,7 +76,7 @@ testthat::test_that("EWCE animal mode is isolated and reports the shared aggrega
 
 testthat::test_that("EWCE animal-level safeguards and cache identity are present", {
   source(testthat::test_path("..", "..", "R", "paths.R"))
-  script <- repo_path("05_celltype_enrichment_EWCE/01_EWCE_E9.r")
+  script <- repo_path("analysis/06_gsea/01_EWCE_E9.r")
   txt <- paste(readLines(script, warn = FALSE), collapse = "\n")
   testthat::expect_true(grepl("protigy_prepare_animal_level", txt, fixed = TRUE))
   testthat::expect_true(grepl("animal_bundle$output_metadata", txt, fixed = TRUE))
@@ -98,7 +98,7 @@ testthat::test_that("EWCE animal-level safeguards and cache identity are present
 testthat::test_that("EWCE signature-only mode exits before parallel or bootstrap execution", {
   source(testthat::test_path("..", "..", "R", "paths.R"))
   txt <- paste(
-    readLines(repo_path("05_celltype_enrichment_EWCE/01_EWCE_E9.r"), warn = FALSE),
+    readLines(repo_path("analysis/06_gsea/01_EWCE_E9.r"), warn = FALSE),
     collapse = "\n"
   )
   testthat::expect_true(grepl("PROTEOMICS_EWCE_SIGNATURE_ONLY", txt, fixed = TRUE))
@@ -121,7 +121,7 @@ testthat::test_that("EWCE rejects an invalid comparison branch before analysis",
   on.exit(setwd(old_wd), add = TRUE)
   out <- suppressWarnings(system2(
     file.path(R.home("bin"), "Rscript"),
-    c("05_celltype_enrichment_EWCE/01_EWCE_E9.r", "--dataset", "neuron_soma", "--dry-run"),
+    c("analysis/06_gsea/01_EWCE_E9.r", "--dataset", "neuron_soma", "--dry-run"),
     stdout = TRUE,
     stderr = TRUE
   ))

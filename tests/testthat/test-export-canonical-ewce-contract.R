@@ -1,5 +1,5 @@
 source(testthat::test_path("..", "..", "R", "paths.R"))
-source(testthat::test_path("..", "..", "R", "export_helpers.R"))
+source(repo_path("R", "export_helpers.R"))
 
 testthat::test_that("canonical EWCE figure paths are exportable and comparison paths are not", {
   canonical <- file.path(

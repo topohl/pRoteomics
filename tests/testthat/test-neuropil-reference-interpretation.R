@@ -1,5 +1,5 @@
 source(testthat::test_path("..", "..", "R", "paths.R"))
-source(testthat::test_path("..", "..", "R", "enrichment_io.R"))
+source(repo_path("R", "enrichment_io.R"))
 
 suppressPackageStartupMessages(library(dplyr))
 

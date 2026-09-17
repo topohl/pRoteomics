@@ -1,10 +1,10 @@
 testthat::local_edition(3)
 
 source(testthat::test_path("..", "..", "R", "paths.R"))
-source(testthat::test_path("..", "..", "R", "plotting_nature.R"))
-source(testthat::test_path("..", "..", "R", "joint_compartment_qc_plotting.R"))
-source(testthat::test_path("..", "..", "R", "compartment_abundance_utils.R"))
-source(testthat::test_path("..", "..", "R", "control_compartment_abundance_rendering.R"))
+source(repo_path("R", "plotting_nature.R"))
+source(repo_path("R", "joint_compartment_qc_plotting.R"))
+source(repo_path("R", "compartment_abundance_utils.R"))
+source(repo_path("R", "control_compartment_abundance_rendering.R"))
 
 ca_render_test_config <- function() {
   data.frame(

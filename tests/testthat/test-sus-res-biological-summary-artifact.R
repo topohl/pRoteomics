@@ -64,7 +64,7 @@ testthat::test_that("every supported occurrence is retained with explicit assign
   testthat::skip_if_not(file.exists(sus_res_supported_audit_path), "Generated supported-term audit is unavailable")
   audit <- utils::read.csv(sus_res_supported_audit_path, check.names = FALSE, stringsAsFactors = FALSE)
   # Frozen snapshot of the canonical supported-term audit produced by
-  # 04_differential_expression_enrichment/07_compareGO_spatial_program_atlas.r.
+  # analysis/04_differential_abundance/07_compareGO_spatial_program_atlas.r.
   # Refreshed 336 -> 1202 rows and 167 -> 549 distinct GO IDs after the
   # accepted 2026-08-26 canonical compareGO spatial-atlas regeneration, which
   # also moved leading-edge identities to dataset-scoped ProteinGroupIDs. The

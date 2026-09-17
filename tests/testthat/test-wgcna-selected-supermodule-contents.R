@@ -1,8 +1,8 @@
 testthat::local_edition(3)
 
 source(testthat::test_path("..", "..", "R", "paths.R"))
-source(testthat::test_path("..", "..", "R", "wgcna_downstream_utils.R"))
-source(testthat::test_path("..", "..", "R", "wgcna_group_effects_utils.R"))
+source(repo_path("R", "wgcna_downstream_utils.R"))
+source(repo_path("R", "wgcna_group_effects_utils.R"))
 
 testthat::test_that("legacy selected-supermodule outputs are not v5 canonical outputs", {
   allowed <- wgcna_group_allowed_output_names()

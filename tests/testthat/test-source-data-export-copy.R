@@ -1,5 +1,5 @@
 source(testthat::test_path("..", "..", "R", "paths.R"))
-source(testthat::test_path("..", "..", "R", "export_helpers.R"))
+source(repo_path("R", "export_helpers.R"))
 
 repo <- normalizePath(testthat::test_path("..", ".."), winslash = "/", mustWork = TRUE)
 exporter <- file.path(repo, "09_export_pride_journal", "09_export_source_data.R")
@@ -220,11 +220,11 @@ testthat::test_that("dry-run stays non-mutating and reports the required counter
 })
 
 testthat::test_that("PRIDE selectors reference none of the manuscript export helpers", {
-  pride <- c("R/pride_helpers.R",
-             "09_export_pride_journal/05_make_pride_manifest.R",
-             "09_export_pride_journal/10_validate_pride_submission.R",
-             "09_export_pride_journal/03_export_processed_pg_matrix_package.R",
-             "09_export_pride_journal/04_make_supplementary_tables.R")
+  pride <- c("R/statistics/pride_helpers.R",
+             "analysis/09_publication_exports/05_make_pride_manifest.R",
+             "analysis/09_publication_exports/10_validate_pride_submission.R",
+             "analysis/09_publication_exports/03_export_processed_pg_matrix_package.R",
+             "analysis/09_publication_exports/04_make_supplementary_tables.R")
   banned <- c("manuscript_table_target_paths", "assert_unique_table_export_targets",
               "assert_export_sources_accessible", "source_data_scope_exclusion_reasons",
               "apply_manuscript_source_data_scope", "manuscript_figure_target_paths")

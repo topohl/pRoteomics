@@ -2,7 +2,7 @@ testthat::local_edition(3)
 
 testthat::skip_if_not_installed("dplyr")
 testthat::skip_if_not_installed("tibble")
-source(testthat::test_path("..", "..", "R", "module_contracts.R"))
+source(repo_path("R", "module_contracts.R"))
 
 supermodule_test_map <- function() {
   data.frame(
@@ -89,12 +89,12 @@ testthat::test_that("singleton GO evidence and naming confidence remain low", {
   old_root <- Sys.getenv("PROTEOMICS_PROJECT_ROOT", unset = NA_character_)
   on.exit(if (is.na(old_root)) Sys.unsetenv("PROTEOMICS_PROJECT_ROOT") else Sys.setenv(PROTEOMICS_PROJECT_ROOT = old_root), add = TRUE)
   Sys.setenv(PROTEOMICS_PROJECT_ROOT = normalizePath(testthat::test_path("..", ".."), winslash = "/", mustWork = TRUE))
-  source(testthat::test_path("..", "..", "R", "wgcna_downstream_utils.R"), chdir = TRUE)
+  source(repo_path("R", "wgcna_downstream_utils.R"), chdir = TRUE)
   testthat::expect_equal(classify_supermodule_label_confidence(1L, "high"), "low")
 })
 
 testthat::test_that("hub evidence is audit-only for supermodule labels and confidence", {
-  source(testthat::test_path("..", "..", "R", "wgcna_labeling_utils.R"))
+  source(repo_path("R", "wgcna_labeling_utils.R"))
   super_rows <- data.frame(
     dataset = "neuron_soma",
     supermodule_id = "SM01",

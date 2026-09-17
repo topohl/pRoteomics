@@ -233,7 +233,7 @@ test_that("the superseded fifth panel leaves no stale artefact", {
 })
 
 test_that("Figure 1 uses the same group palette as Figures 2 and 3", {
-  # The repository carries two group palettes. R/plotting_nature.R is the one
+  # The repository carries two group palettes. R/utilities/plotting_nature.R is the one
   # Figures 2 and 3 actually render with, and it is byte-identical to
   # MMM_GROUP_COLOURS upstream. config/manuscript_palette.yml declares a
   # different set that no numbered figure uses; Figure 1 previously obeyed it.

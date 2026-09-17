@@ -1,5 +1,5 @@
 source(testthat::test_path("..", "..", "R", "paths.R"))
-source(testthat::test_path("..", "..", "R", "enrichment_io.R"))
+source(repo_path("R", "enrichment_io.R"))
 
 load_direction_comparison_parser <- function() {
   script <- testthat::test_path(

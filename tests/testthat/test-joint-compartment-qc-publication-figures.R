@@ -1,5 +1,5 @@
-source(testthat::test_path("..", "..", "R", "plotting_nature.R"))
-source(testthat::test_path("..", "..", "R", "joint_compartment_qc_plotting.R"))
+source(repo_path("R", "plotting_nature.R"))
+source(repo_path("R", "joint_compartment_qc_plotting.R"))
 
 testthat::test_that("publication dataset palette and labels are exact", {
   testthat::expect_identical(
@@ -115,7 +115,7 @@ testthat::test_that("publication entrypoint is rendering-only and output-isolate
   testthat::expect_false(grepl("uwot::umap\\s*\\(", script))
   testthat::expect_false(grepl("Rtsne::Rtsne\\s*\\(", script))
   testthat::expect_false(grepl("write\\.csv\\s*\\(", script))
-  testthat::expect_match(registry, "03_qc_exploration/00c_joint_compartment_qc_publication_figures.r", fixed = TRUE)
+  testthat::expect_match(registry, "analysis/02_qc/00c_joint_compartment_qc_publication_figures.r", fixed = TRUE)
 })
 
 testthat::test_that("anatomical-island PCA has a panel-local tightened PC2 display range", {

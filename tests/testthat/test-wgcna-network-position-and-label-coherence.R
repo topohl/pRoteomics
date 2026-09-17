@@ -1,6 +1,6 @@
 source(testthat::test_path("..", "..", "R", "paths.R"))
-source(testthat::test_path("..", "..", "R", "wgcna_network_position_utils.R"))
-source(testthat::test_path("..", "..", "R", "wgcna_label_coherence_utils.R"))
+source(repo_path("R", "wgcna_network_position_utils.R"))
+source(repo_path("R", "wgcna_label_coherence_utils.R"))
 
 # =====================================================================
 # A. SUS - RES NETWORK POSITION (phenotype-aware)
@@ -362,7 +362,7 @@ testthat::test_that("a singleton supermodule inherits its member module identity
 
 testthat::test_that("the label audit source contains no phenotype input", {
   # Only the SCRIPT is scanned: it is what actually resolves and reads inputs.
-  # R/wgcna_label_coherence_utils.R is excluded because
+  # R/statistics/wgcna_label_coherence_utils.R is excluded because
   # wcl_forbidden_field_patterns() must literally contain these tokens in order
   # to blacklist them; that helper is covered by the column-level guard tests.
   code <- readLines(testthat::test_path(
