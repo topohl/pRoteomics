@@ -130,14 +130,14 @@ testthat::test_that("semantic classifier treats synaptic adhesion scaffold as no
 })
 
 testthat::test_that("legacy static supermodule seeds stay opt-in", {
-  script <- readLines(testthat::test_path("..", "..", "06_modules_WGCNA", "01_WGCNA.r"), warn = FALSE)
+  script <- readLines(repo_path("analysis/05_wgcna", "01_WGCNA.r"), warn = FALSE)
   txt <- paste(script, collapse = "\n")
   testthat::expect_true(grepl('PROTEOMICS_ALLOW_LEGACY_SUPERMODULE_SEED", unset = "false"', txt, fixed = TRUE))
   testthat::expect_match(txt, "legacy_static_seed")
 })
 
 testthat::test_that("supermodule sensitivity export uses fixed primary cut height", {
-  script <- readLines(testthat::test_path("..", "..", "06_modules_WGCNA", "01_WGCNA.r"), warn = FALSE)
+  script <- readLines(repo_path("analysis/05_wgcna", "01_WGCNA.r"), warn = FALSE)
   txt <- paste(script, collapse = "\n")
   testthat::expect_match(txt, "primary_supermodule_cut_height <- cut_height")
   testthat::expect_match(txt, "primary_cut_height = primary_supermodule_cut_height")
@@ -148,9 +148,9 @@ testthat::test_that("supermodule sensitivity export uses fixed primary cut heigh
 
 testthat::test_that("downstream supermodule labels prefer display label consistently", {
   scripts <- c(
-    testthat::test_path("..", "..", "06_modules_WGCNA", "05_module_supermodule_group_effects.r"),
-    testthat::test_path("..", "..", "06_modules_WGCNA", "07_wgcna_interpretable_summary.r"),
-    testthat::test_path("..", "..", "09_export_pride_journal", "07_make_biological_claims_table.R")
+    repo_path("analysis/05_wgcna", "05_module_supermodule_group_effects.r"),
+    repo_path("analysis/05_wgcna", "07_wgcna_interpretable_summary.r"),
+    repo_path("analysis/09_publication_exports", "07_make_biological_claims_table.R")
   )
   txt <- paste(vapply(scripts, function(path) paste(readLines(path, warn = FALSE), collapse = "\n"), character(1)), collapse = "\n")
   testthat::expect_match(txt, "Supermodule_DisplayLabel")

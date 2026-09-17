@@ -5,8 +5,7 @@ source(repo_path("R", "wgcna_downstream_utils.R"))
 source(repo_path("R", "wgcna_group_effects_utils.R"))
 
 stage05_script_assignments <- function() {
-  expressions <- parse(testthat::test_path(
-    "..", "..", "06_modules_WGCNA", "05_module_supermodule_group_effects.r"
+  expressions <- parse(repo_path("analysis/05_wgcna", "05_module_supermodule_group_effects.r"
   ))
   names <- vapply(expressions, function(expression) {
     if (

@@ -5,7 +5,7 @@ file_arg <- grep("^--file=", args, value = TRUE)
 script_path <- if (length(file_arg)) sub("^--file=", "", file_arg[[1]]) else "tools/audit_renv_lock.R"
 repo_root <- normalizePath(file.path(dirname(script_path), ".."), winslash = "/", mustWork = TRUE)
 
-source(file.path(repo_root, "R", "renv_lock_audit.R"))
+source(repo_path("R", "renv_lock_audit.R"))
 audit <- audit_renv_lock(file.path(repo_root, "renv.lock"))
 
 cat("renv.lock package records:", audit$package_count, "\n")

@@ -194,13 +194,13 @@ testthat::test_that("protected workbook is a deterministic reference artifact, n
   testthat::expect_true(first$exists)
   testthat::expect_identical(first$role, "protected_reference_not_consumed")
   testthat::expect_identical(first$sha256_at_stage11_run, file_hash_sha256(tmp))
-  script <- readLines(testthat::test_path("..", "..", "04_differential_expression_enrichment", "11_stress_response_biological_audit.r"), warn = FALSE)
+  script <- readLines(repo_path("analysis/04_differential_abundance", "11_stress_response_biological_audit.r"), warn = FALSE)
   testthat::expect_false(any(grepl("sus_res_workbook_protected =", script, fixed = TRUE)))
   testthat::expect_true(any(grepl("protected_reference_artifacts.csv", script, fixed = TRUE)))
 })
 
 testthat::test_that("script 07 marks legacy heuristic behavior classes ineligible for manuscript evidence", {
-  script <- readLines(testthat::test_path("..", "..", "04_differential_expression_enrichment", "07_compareGO_spatial_program_atlas.r"), warn = FALSE)
+  script <- readLines(repo_path("analysis/04_differential_abundance", "07_compareGO_spatial_program_atlas.r"), warn = FALSE)
   testthat::expect_true(any(grepl("legacy_heuristic_classification = TRUE", script, fixed = TRUE)))
   testthat::expect_true(any(grepl("manuscript_evidence_eligible = FALSE", script, fixed = TRUE)))
 })

@@ -1,11 +1,9 @@
 testthat::local_edition(3)
 
-source(testthat::test_path(
-  "..", "..", "R", "wgcna_group_effect_consumer_utils.R"
-))
-source(testthat::test_path(
-  "..", "..", "R", "wgcna_stage07_semantic_utils.R"
-))
+source(testthat::test_path("..", "..", "R", "paths.R"))
+
+source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
+source(repo_path("R", "wgcna_stage07_semantic_utils.R"))
 
 wgcna_consumer_fixture <- function() {
   data.frame(
@@ -625,7 +623,7 @@ testthat::test_that(
     }
     claims_text <- paste(
       readLines(file.path(
-        root, "09_export_pride_journal",
+        root, "analysis/09_publication_exports",
         "07_make_biological_claims_table.R"
       ), warn = FALSE),
       collapse = "\n"
@@ -644,7 +642,7 @@ testthat::test_that(
       claims_text, ".data$level == .env$level", fixed = TRUE
     )
     semantic <- readLines(
-      file.path(root, "R", "wgcna_stage07_semantic_utils.R"),
+      repo_path("R", "wgcna_stage07_semantic_utils.R"),
       warn = FALSE
     )
     testthat::expect_false(any(grepl("p\\.adjust\\s*\\(", semantic)))
@@ -888,9 +886,7 @@ testthat::test_that("zero supported primary results are valid", {
 })
 
 testthat::test_that("adapter source contains no statistical recomputation", {
-  helper <- readLines(testthat::test_path(
-    "..", "..", "R", "wgcna_group_effect_consumer_utils.R"
-  ), warn = FALSE)
+  helper <- readLines(repo_path("R", "wgcna_group_effect_consumer_utils.R"), warn = FALSE)
   testthat::expect_false(any(grepl(
     "p\\.adjust\\s*\\(",
     helper

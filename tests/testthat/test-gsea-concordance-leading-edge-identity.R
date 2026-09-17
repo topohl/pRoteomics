@@ -1,8 +1,8 @@
 testthat::local_edition(3)
 
-source(testthat::test_path(
-  "..", "..", "R", "gsea_wgcna_concordance_utils.R"
-))
+source(testthat::test_path("..", "..", "R", "paths.R"))
+
+source(repo_path("R", "gsea_wgcna_concordance_utils.R"))
 
 # Minimal canonical WGCNA universe in the shape gww_build_universe_bundle()
 # requires: dataset-scoped ProteinGroupIDs plus historical accession fields.

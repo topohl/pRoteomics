@@ -55,9 +55,9 @@ testthat::test_that("supplementary EWCE glob selects canonical tables, not compa
 })
 
 testthat::test_that("export scripts and pipeline declare the canonical-only EWCE contract", {
-  figure_script <- paste(readLines(repo_path("09_export_pride_journal", "08_export_manuscript_figures.R")), collapse = "\n")
-  source_data_script <- paste(readLines(repo_path("09_export_pride_journal", "09_export_source_data.R")), collapse = "\n")
-  targeted_signature_script <- paste(readLines(repo_path("04_differential_expression_enrichment", "05_microglia_targeted_signature_enrichment.r")), collapse = "\n")
+  figure_script <- paste(readLines(repo_path("analysis/09_publication_exports", "08_export_manuscript_figures.R")), collapse = "\n")
+  source_data_script <- paste(readLines(repo_path("analysis/09_publication_exports", "09_export_source_data.R")), collapse = "\n")
+  targeted_signature_script <- paste(readLines(repo_path("analysis/04_differential_abundance", "05_microglia_targeted_signature_enrichment.r")), collapse = "\n")
   pipeline <- paste(readLines(repo_path("pipeline.yml")), collapse = "\n")
 
   testthat::expect_match(figure_script, "canonical_ewce_figure_root\\(\\)")

@@ -693,6 +693,8 @@ testthat::test_that("circular script does not use broad legacy FDR for support",
   )
   testthat::expect_match(
     script,
+source(testthat::test_path("..", "..", "R", "paths.R"))
+
     'source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))',
     fixed = TRUE
   )

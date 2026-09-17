@@ -1,8 +1,8 @@
 testthat::local_edition(3)
 
-source(testthat::test_path(
-  "..", "..", "R", "gsea_wgcna_concordance_utils.R"
-))
+source(testthat::test_path("..", "..", "R", "paths.R"))
+
+source(repo_path("R", "gsea_wgcna_concordance_utils.R"))
 
 gww_term_fixture <- function() {
   data.frame(
@@ -252,9 +252,7 @@ testthat::test_that("adaptive pattern requires effects and direct contrast", {
 })
 
 testthat::test_that("utility adjusts only the new overlap family", {
-  text <- paste(readLines(testthat::test_path(
-    "..", "..", "R", "gsea_wgcna_concordance_utils.R"
-  ), warn = FALSE), collapse = "\n")
+  text <- paste(readLines(repo_path("R", "gsea_wgcna_concordance_utils.R"), warn = FALSE), collapse = "\n")
   hits <- gregexpr("p\\.adjust\\s*\\(", text)[[1]]
   testthat::expect_equal(sum(hits > 0), 1L)
   testthat::expect_match(text, "overlap_FDR = stats::p.adjust", fixed = TRUE)

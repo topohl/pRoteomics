@@ -4,6 +4,8 @@ testthat::skip_if_not_installed("dplyr")
 testthat::skip_if_not_installed("readr")
 testthat::skip_if_not_installed("digest")
 
+source(testthat::test_path("..", "..", "R", "paths.R"))
+
 source(repo_path("R", "wgcna_reviewed_label_registry.R"))
 
 registry_path <- testthat::test_path("..", "..", "config", "wgcna_labels", "microglia.csv")
@@ -85,9 +87,9 @@ testthat::test_that("reviewed canonical lookup has exact fields and current fing
 })
 
 testthat::test_that("Stage 06 and publication code enforce stable non-circular contracts", {
-  stage06 <- paste(readLines(testthat::test_path("..", "..", "06_modules_WGCNA", "06_annotate_module_microenvironment.r"), warn = FALSE), collapse = "\n")
-  stage08 <- paste(readLines(testthat::test_path("..", "..", "06_modules_WGCNA", "08_wgcna_publication_figures.R"), warn = FALSE), collapse = "\n")
-  score_publication <- paste(readLines(testthat::test_path("..", "..", "06_modules_WGCNA", "08_wgcna_score_publication_summary.R"), warn = FALSE), collapse = "\n")
+  stage06 <- paste(readLines(repo_path("analysis/05_wgcna", "06_annotate_module_microenvironment.r"), warn = FALSE), collapse = "\n")
+  stage08 <- paste(readLines(repo_path("analysis/05_wgcna", "08_wgcna_publication_figures.R"), warn = FALSE), collapse = "\n")
+  score_publication <- paste(readLines(repo_path("analysis/05_wgcna", "08_wgcna_score_publication_summary.R"), warn = FALSE), collapse = "\n")
   testthat::expect_match(stage06, "duplicate SM09 generation is forbidden", fixed = TRUE)
   testthat::expect_match(stage06, "member_modules_fingerprint", fixed = TRUE)
   testthat::expect_match(stage06, "automatic_biological_label", fixed = TRUE)
