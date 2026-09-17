@@ -27,6 +27,18 @@ source(repo_path("R", "pipeline_registry.R"))
 
 DRY <- nzchar(Sys.getenv("DRY"))
 
+## --domain <name> restricts the pass to one analysis directory.
+##
+## Without it --refresh rewrites every registered entrypoint, which in Phase
+## 6G.3 pulled 85 files from unmigrated domains into a domain commit and had
+## to be reverted by hand. A migration touches one domain, so the header pass
+## should be able to as well.
+DOMAIN_FILTER <- local({
+  a <- commandArgs(trailingOnly = TRUE)
+  i <- which(a == "--domain")
+  if (!length(i) || i[1] == length(a)) "" else a[i[1] + 1L]
+})
+
 FIELDS <- c("Script:", "Stage:", "Scope:", "Consumes:", "Produces:",
             "Dataset behavior:", "Notes:")
 
@@ -85,6 +97,10 @@ leading_block_end <- function(lines) {
 scripts <- unique(steps$script)
 scripts <- scripts[grepl("^analysis/", scripts) & file.exists(scripts)]
 scripts <- setdiff(scripts, NEVER_TOUCH)
+if (nzchar(DOMAIN_FILTER)) {
+  scripts <- scripts[startsWith(scripts, paste0("analysis/", DOMAIN_FILTER, "/"))]
+  cat("restricted to domain:", DOMAIN_FILTER, "->", length(scripts), "entrypoints\n")
+}
 
 changed <- character(0)
 added <- 0L
@@ -103,6 +119,7 @@ added <- 0L
 ## and must never be machine-overwritten.
 REFRESH <- "--refresh" %in% commandArgs(trailingOnly = TRUE)
 REFRESHABLE <- c("Consumes:", "Produces:", "Dataset behavior:")
+
 
 for (f in scripts) {
   lines <- readLines(f, warn = FALSE)
