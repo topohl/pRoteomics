@@ -58,7 +58,7 @@ testthat::test_that("control-spatial seeded execution restores caller RNG", {
 })
 
 testthat::test_that("script 09 cannot bypass deterministic GSEA governance", {
-  script <- paste(readLines(repo_path("analysis/04_differential_abundance",
+  script <- paste(readLines(repo_path("analysis/differential_abundance",
     "validate_control_spatial_identity.R"
   ), warn = FALSE), collapse = "\n")
   testthat::expect_false(grepl(
@@ -346,7 +346,7 @@ testthat::test_that("Figure 2f grouped layout abbreviates only the seven display
 })
 
 testthat::test_that("Figure 2f grouped candidate is render-only from validated source data", {
-  script <- paste(readLines(repo_path("analysis/04_differential_abundance",
+  script <- paste(readLines(repo_path("analysis/differential_abundance",
     "validate_control_spatial_identity.R"
   ), warn = FALSE), collapse = "\n")
   testthat::expect_match(

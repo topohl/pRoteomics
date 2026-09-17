@@ -298,7 +298,7 @@ testthat::test_that("non-significant microglia enrichment fails claim-ready", {
 })
 
 testthat::test_that("active script cannot bind descriptive stress-rank membership into TERM2GENE", {
-  script <- paste(readLines(repo_path("analysis/04_differential_abundance", "test_microglia_targeted_signatures.R"), warn = FALSE), collapse = "\n")
+  script <- paste(readLines(repo_path("analysis/differential_abundance", "test_microglia_targeted_signatures.R"), warn = FALSE), collapse = "\n")
   testthat::expect_match(script, "bind_rows\\(curated_term2gene, canonical_empirical_term2gene, reference_term2gene\\)")
   testthat::expect_false(grepl("bind_rows\\([^\\n]*descriptive_rank_diagnostics\\$term2gene", script))
   testthat::expect_match(script, "stress_rank_derived_inferential_terms")

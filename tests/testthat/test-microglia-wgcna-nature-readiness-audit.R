@@ -3,7 +3,7 @@ audit_repo_root <- function() {
 }
 
 test_that("microglia WGCNA Nature-readiness audit script is additive and parses", {
-  script <- file.path(audit_repo_root(), "analysis/05_wgcna", "audit_microglia_module_claims.R")
+  script <- file.path(audit_repo_root(), "analysis/wgcna", "audit_microglia_module_claims.R")
   expect_true(file.exists(script))
   expect_silent(parse(file = script))
 

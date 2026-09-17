@@ -177,7 +177,7 @@ name, so every path it writes would move.
 
 Eight are `01_preprocessing` predecessors of the animal-level contract, five are
 in explicit `legacy/` subdirectories, and the rest are audits or wrappers
-(`analysis/09_publication_exports/RUN_EXPORT.R`). None is reachable from a publication
+(`analysis/publication_source_data/RUN_EXPORT.R`). None is reachable from a publication
 artefact, and no producer layer sources any of them (0 edges, now tested). The
 residual risk is that each can still be run by hand while never being validated
 by the registry.
@@ -272,7 +272,7 @@ was performed, and that 18 of 20 also clear the threshold.
 **MT-04 resolved, and the earlier characterisation refined.** The `p_adjust`
 field *is* genuine `clusterProfiler` Benjamini–Hochberg output — but each pairing
 is run as a separate GSEA against a **single-signature collection**
-(`analysis/04_differential_abundance/validate_control_spatial_identity.R:591-601`,
+(`analysis/differential_abundance/validate_control_spatial_identity.R:591-601`,
 `TERM2GENE = data.frame(term = job$external_signature, gene = job$mapped)`).
 BH over a family of size one is a no-op, which is exactly why the field equals
 the raw *P*. **This is a scope artefact of the per-pairing design, not a coding

@@ -176,7 +176,7 @@ testthat::test_that("supermodule sensitivity grid is complete and stable", {
 })
 
 testthat::test_that("construction source keys summaries by stable IDs and treats hubs as audit only", {
-  script <- paste(readLines(repo_path("analysis/05_wgcna", "build_wgcna_modules.R"), warn = FALSE), collapse = "\n")
+  script <- paste(readLines(repo_path("analysis/wgcna", "build_wgcna_modules.R"), warn = FALSE), collapse = "\n")
   testthat::expect_match(script, "average_linkage_on_1_minus_signed_module_eigengene_correlation", fixed = TRUE)
   testthat::expect_match(script, "partition_integrity_diagnostic_not_supermodule_support", fixed = TRUE)
   testthat::expect_match(script, "expected_module_pairs", fixed = TRUE)
@@ -185,7 +185,7 @@ testthat::test_that("construction source keys summaries by stable IDs and treats
 })
 
 testthat::test_that("active downstream consumers do not use labels as supermodule keys", {
-  paths <- repo_path("analysis/05_wgcna", c(
+  paths <- repo_path("analysis/wgcna", c(
     "build_wgcna_modules.R", "score_module_activity.R",
     "test_module_phenotypes.R",
     "annotate_module_microenvironment.R",

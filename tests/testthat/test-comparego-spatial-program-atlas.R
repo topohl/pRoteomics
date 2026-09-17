@@ -5,7 +5,7 @@ load_spatial_atlas_helpers <- function() {
   old_wd <- setwd(repo_path())
   on.exit(setwd(old_wd), add = TRUE)
   sys.source(
-    repo_path("analysis/04_differential_abundance", "build_go_program_atlas.R"),
+    repo_path("analysis/differential_abundance", "build_go_program_atlas.R"),
     envir = env
   )
   env
@@ -152,7 +152,7 @@ testthat::test_that("driver recurrence uses claim-safe official genes rather tha
 
 testthat::test_that("canonical execution has no legacy workbook dependency", {
   script <- readLines(
-    repo_path("analysis/04_differential_abundance", "build_go_program_atlas.R"),
+    repo_path("analysis/differential_abundance", "build_go_program_atlas.R"),
     warn = FALSE
   )
   text <- paste(script, collapse = "\n")

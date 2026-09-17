@@ -25,14 +25,14 @@
 wcp_contract_version <- function() "wgcna_candidate_protein_shortlist_v1"
 
 # Canonical three-contrast vocabulary, identical to the Stage 07 module-level
-# handoff and to analysis/08_integration/export_module_protein_zoom_source_data.R.
+# handoff and to analysis/integration/export_module_protein_zoom_source_data.R.
 wcp_contrast_levels <- function() c("RES - CON", "SUS - CON", "SUS - RES")
 
 # Primary biological endpoint of the study.
 wcp_primary_contrast <- function() "SUS - RES"
 
 # |kME| >= 0.60 reproduces the frozen `is_core_kME_0.6` definition emitted by
-# analysis/05_wgcna/build_wgcna_modules.R.  It is NOT re-derived from expression data.
+# analysis/wgcna/build_wgcna_modules.R.  It is NOT re-derived from expression data.
 wcp_high_kme_threshold <- function() 0.60
 
 # Descriptive only.  The repository defines no canonical 0.80 kME threshold;
@@ -932,7 +932,7 @@ wcp_flag_dictionary <- function() {
       "Derived here"),
     c("kME / abs_kME", "WGCNA module centrality",
       "Signed and absolute module eigengene correlation, copied unchanged from frozen Stage 01 WGCNA output.",
-      "analysis/05_wgcna/build_wgcna_modules.R"),
+      "analysis/wgcna/build_wgcna_modules.R"),
     c("abs_kME_rank_in_module", "WGCNA module centrality",
       "Rank of |kME| within the protein's own module; ties broken by ProteinGroupID ascending.",
       "Derived here"),
@@ -940,10 +940,10 @@ wcp_flag_dictionary <- function() {
       "Rank divided by module size; 0 = most central.", "Derived here"),
     c("is_core_kME_0.6", "WGCNA module centrality",
       "Frozen upstream flag, |kME| >= 0.60. Copied unchanged; not recomputed.",
-      "analysis/05_wgcna/build_wgcna_modules.R"),
+      "analysis/wgcna/build_wgcna_modules.R"),
     c("is_top_hub_25", "WGCNA module centrality",
       "Frozen upstream flag, top 25 members per module by |kME|. Copied unchanged.",
-      "analysis/05_wgcna/build_wgcna_modules.R"),
+      "analysis/wgcna/build_wgcna_modules.R"),
     c("top5_hub / is_top5_module_representative", "WGCNA module centrality",
       "Top 5 members of the module by |kME|. Answers 'which proteins best represent this module'.",
       "Derived here"),
@@ -957,7 +957,7 @@ wcp_flag_dictionary <- function() {
       "Derived here"),
     c("GeneSignificanceP / GeneSignificanceFDR", "Omnibus condition test",
       "OMNIBUS one-way ANOVA across CON/RES/SUS on the WGCNA expression matrix, BH adjusted. UNSIGNED, and NOT a SUS-vs-RES contrast. Do not read as phenotype correlation.",
-      "analysis/05_wgcna/build_wgcna_modules.R"),
+      "analysis/wgcna/build_wgcna_modules.R"),
     c("log2FC / raw_p / BH_FDR", "Protein-level differential abundance",
       "Manifest-selected limma results copied unchanged; oriented to the canonical contrast label. No DA model is refitted.",
       "clusterProfiler manifest -> Stage 02 mapped per-file DA"),
@@ -972,10 +972,10 @@ wcp_flag_dictionary <- function() {
       "Derived here"),
     c("module_estimate / module_tier_specific_fdr", "Module-level inference",
       "Stage 07 module eigengene contrast estimate and its tier-specific BH FDR, copied unchanged from the canonical inferential handoff.",
-      "analysis/05_wgcna/summarize_module_interpretation.R"),
+      "analysis/wgcna/summarize_module_interpretation.R"),
     c("module_support_class / module_model_valid", "Module-level inference",
       "Frozen Stage 07 support classification and model validity gate. Copied unchanged.",
-      "analysis/05_wgcna/summarize_module_interpretation.R"),
+      "analysis/wgcna/summarize_module_interpretation.R"),
     c("direction_matches_module", "Directional concordance",
       "Sign agreement between the protein log2FC and the module eigengene estimate for the SAME contrast. NA unless both are finite and non-zero. DESCRIPTIVE CONCORDANCE, NOT independent replication - the eigengene summarises the same proteins in the same animals.",
       "Derived here"),
@@ -993,7 +993,7 @@ wcp_flag_dictionary <- function() {
       "Derived here"),
     c("gsea_leading_edge", "GSEA-derived concordance",
       "Protein lies in the leading edge of a module-concordant GSEA term (overlap BH FDR <= 0.05). NOT independent of the DA columns: that GSEA ranks on the moderated t statistic from the SAME limma fit.",
-      "analysis/08_integration/test_enrichment_module_concordance.R"),
+      "analysis/integration/test_enrichment_module_concordance.R"),
     c("mapping_status / *_claim_allowed / protein_group_ambiguity_class",
       "Mapping and claimability",
       "Frozen Stage 02 protein-group identity contract fields, copied unchanged.",

@@ -2,7 +2,7 @@ source(testthat::test_path("..", "..", "R", "paths.R"))
 source(repo_path("R", "export_helpers.R"))
 
 repo <- normalizePath(testthat::test_path("..", ".."), winslash = "/", mustWork = TRUE)
-exporter <- file.path(repo, "analysis", "09_publication_exports", "09_export_source_data.R")
+exporter <- file.path(repo, "analysis", "publication_source_data", "09_export_source_data.R")
 
 # Build an isolated results tree so the scope predicates are exercised against
 # fixtures rather than the live analysis outputs.
@@ -320,10 +320,10 @@ testthat::test_that("the source-data exporter applies the scope before the dry-r
 
 testthat::test_that("the journal scope is not applied to PRIDE selectors", {
   pride <- c("R/statistics/pride_helpers.R",
-             "analysis/09_publication_exports/build_pride_manifest.R",
-             "analysis/09_publication_exports/validate_pride_submission.R",
-             "analysis/09_publication_exports/export_processed_matrices.R",
-             "analysis/09_publication_exports/build_supplementary_tables.R")
+             "analysis/publication_source_data/build_pride_manifest.R",
+             "analysis/publication_source_data/validate_pride_submission.R",
+             "analysis/publication_source_data/export_processed_matrices.R",
+             "analysis/publication_source_data/build_supplementary_tables.R")
   for (p in pride) {
     joined <- paste(readLines(file.path(repo, p), warn = FALSE), collapse = "\n")
     testthat::expect_false(

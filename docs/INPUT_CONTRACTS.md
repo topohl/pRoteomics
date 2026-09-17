@@ -35,7 +35,7 @@ Reviewer/manuscript runs should use strict input mode:
 
 ```bash
 Rscript run_dataset_pipeline.R --dataset all --stage export --dry-run --strict-inputs
-PROTEOMICS_STRICT_INPUTS=true Rscript analysis/09_publication_exports/build_biological_claims_table.R --dry-run
+PROTEOMICS_STRICT_INPUTS=true Rscript analysis/publication_source_data/build_biological_claims_table.R --dry-run
 ```
 
 Strict mode is enabled by `--strict-inputs` or `PROTEOMICS_STRICT_INPUTS=true`. In strict mode, claim-critical and manuscript-facing scripts must use explicit or canonical inputs; newest-file and legacy fallback selection is forbidden unless a resolver explicitly marks that fallback as strict-safe. In exploratory/non-strict mode, fallbacks may still be used for backwards compatibility, but they emit warnings and append rows to `results/reviewer_audit/input_resolution_audit.csv` with SHA-256 hashes and modification times for resolved files.

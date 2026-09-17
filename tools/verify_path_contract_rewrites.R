@@ -35,18 +35,32 @@ STAGES <- rbind(
   c("99_deprecated",                         "archive/deprecated"),
   c("90_testing",                            "archive/exploratory"),
   c("00_setup",                              "tools/reference_data"),
-  c("01_preprocessing",                      "analysis/01_preprocessing"),
-  c("02_id_mapping",                         "analysis/01_preprocessing"),
-  c("03_qc_exploration",                     "analysis/02_qc"),
-  c("04_differential_expression_enrichment", "analysis/04_differential_abundance"),
-  c("05_celltype_enrichment_EWCE",           "analysis/06_gsea"),
-  c("06_modules_WGCNA",                      "analysis/05_wgcna"),
-  c("07_spatial_networks",                   "analysis/07_spatial_networks"),
-  c("08_behavior_physio_coupling",           "analysis/08_integration"),
-  c("08_biological_interpretation",          "analysis/08_integration"),
-  c("09_export_pride_journal",               "analysis/09_publication_exports"),
-  c("10_biological_integration",             "analysis/08_integration"),
-  c("11_spatial_systems",                    "analysis/03_spatial_validation")
+  c("01_preprocessing",                      "analysis/preprocessing"),
+  c("02_id_mapping",                         "analysis/preprocessing"),
+  c("03_qc_exploration",                     "analysis/qc"),
+  c("04_differential_expression_enrichment", "analysis/differential_abundance"),
+  c("05_celltype_enrichment_EWCE",           "analysis/enrichment"),
+  c("06_modules_WGCNA",                      "analysis/wgcna"),
+  c("07_spatial_networks",                   "analysis/spatial_networks"),
+  c("08_behavior_physio_coupling",           "analysis/integration"),
+  c("08_biological_interpretation",          "analysis/integration"),
+  c("09_export_pride_journal",               "analysis/publication_source_data"),
+  c("10_biological_integration",             "analysis/integration"),
+  c("11_spatial_systems",                    "analysis/spatial_validation")
+)
+
+## Phase 6F renamed the analysis directories themselves, so a baseline path
+## that already used the Phase 6B layout must also collapse onto the new name.
+DIR_RENAMES <- rbind(
+  c("analysis/01_preprocessing",          "analysis/preprocessing"),
+  c("analysis/02_qc",                     "analysis/qc"),
+  c("analysis/03_spatial_validation",     "analysis/spatial_validation"),
+  c("analysis/04_differential_abundance", "analysis/differential_abundance"),
+  c("analysis/05_wgcna",                  "analysis/wgcna"),
+  c("analysis/06_gsea",                   "analysis/enrichment"),
+  c("analysis/07_spatial_networks",       "analysis/spatial_networks"),
+  c("analysis/08_integration",            "analysis/integration"),
+  c("analysis/09_publication_exports",    "analysis/publication_source_data")
 )
 
 ## Domain directories that R libraries moved into.
@@ -89,7 +103,13 @@ canonicalise <- function(x) {
     x <- gsub(paste0("R/", d, "/"), "R/", x, fixed = TRUE)
   }
 
-  ## 0. Phase 6D renames
+  ## 0a. Phase 6F analysis directory renames, before the stage-root pass so a
+  ## path written in either layout collapses onto the same token.
+  for (i in seq_len(nrow(DIR_RENAMES))) {
+    x <- gsub(DIR_RENAMES[i, 1], DIR_RENAMES[i, 2], x, fixed = TRUE)
+  }
+
+  ## 0b. Phase 6D and 6E renames
   for (i in seq_len(nrow(RENAMES))) {
     x <- gsub(RENAMES[i, 1], RENAMES[i, 2], x, fixed = TRUE)
   }

@@ -1,7 +1,7 @@
 source(testthat::test_path("..", "..", "R", "paths.R"))
 
 testthat::test_that("module-score metadata merge script is dataset-aware", {
-  txt <- paste(readLines(repo_path("analysis/01_preprocessing/build_module_score_metadata.R"), warn = FALSE), collapse = "\n")
+  txt <- paste(readLines(repo_path("analysis/preprocessing/build_module_score_metadata.R"), warn = FALSE), collapse = "\n")
 
   testthat::expect_true(grepl("--dataset", txt, fixed = TRUE))
   testthat::expect_true(grepl("PROTEOMICS_DATASET", txt, fixed = TRUE))
@@ -19,14 +19,14 @@ testthat::test_that("dataset input resolution prefers dataset-scoped module meta
 })
 
 testthat::test_that("module scoring writes overlap diagnostics and preserves spatial labels", {
-  txt <- paste(readLines(repo_path("analysis/05_wgcna/score_module_activity.R"), warn = FALSE), collapse = "\n")
+  txt <- paste(readLines(repo_path("analysis/wgcna/score_module_activity.R"), warn = FALSE), collapse = "\n")
 
   for (needle in c(
     "module_score_sample_overlap_diagnostics.csv",
     "protein_matrix_sample_columns.csv",
     "metadata_sample_ids.csv",
     "No matching sample names between protein matrix and metadata. This usually means the module-score metadata workbook was generated for another dataset.",
-    "Rscript analysis/01_preprocessing/build_module_score_metadata.R --dataset <dataset>",
+    "Rscript analysis/preprocessing/build_module_score_metadata.R --dataset <dataset>",
     "SpatialUnit",
     "SpatialLabel"
   )) {

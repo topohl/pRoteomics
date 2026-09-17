@@ -259,7 +259,7 @@ testthat::test_that("Panel C filters canonical SUS-RES ranked-GSEA rows without 
 })
 
 testthat::test_that("script 10 consumes script 07 source rather than executing or copying its analysis", {
-  script_lines <- readLines(repo_path("analysis/04_differential_abundance", "build_sus_res_dap_atlas.R"), warn = FALSE)
+  script_lines <- readLines(repo_path("analysis/differential_abundance", "build_sus_res_dap_atlas.R"), warn = FALSE)
   script <- paste(script_lines, collapse = "\n")
   testthat::expect_match(script, "source_data_SpatialProgramAtlas_SUS_vs_RES_publication.csv", fixed = TRUE)
   testthat::expect_false(any(grepl("^\\s*source\\(.*07_compareGO_spatial_program_atlas", script_lines)))
@@ -272,7 +272,7 @@ testthat::test_that("pipeline registers one global downstream producer with cano
   testthat::skip_if_not_installed("yaml")
   registry <- yaml::read_yaml(repo_path("pipeline.yml"))
   scripts <- registry$stages$enrichment$scripts
-  hits <- which(vapply(scripts, function(x) identical(x$script, "analysis/04_differential_abundance/build_sus_res_dap_atlas.R"), logical(1)))
+  hits <- which(vapply(scripts, function(x) identical(x$script, "analysis/differential_abundance/build_sus_res_dap_atlas.R"), logical(1)))
   testthat::expect_length(hits, 1L)
   producer <- scripts[[hits]]
   testthat::expect_identical(producer$stage, "enrichment")
