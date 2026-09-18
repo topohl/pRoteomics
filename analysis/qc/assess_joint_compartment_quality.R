@@ -3,21 +3,29 @@
 # Stage: qc_global
 # Scope: global
 # Consumes: required data/processed/01_preprocessing/joint_compartment_qc/global/joint_compartment_qc_matrices.rds; optional none declared in pipeline.yml
-# Produces: results/tables/03_qc_exploration/00b_joint_compartment_qc/global/; results/figures/03_qc_exploration/00b_joint_compartment_qc/global/; results/reports/03_qc_exploration/00b_joint_compartment_qc/global/joint_compartment_qc_summary.md; +1 more
+# Produces: results/qc/assess_joint_compartment_quality/global/tables; results/qc/assess_joint_compartment_quality/global/plots; results/qc/assess_joint_compartment_quality/global/reports/joint_compartment_qc_summary.md; +1 more
 # Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Global joint-compartment QC consumer. Exploratory embeddings never replace PCA.
+#  
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
 source(repo_path("R", "script_runtime.R"))
 source(repo_path("R", "joint_compartment_qc_utils.R"))
+source(repo_path("R", "qc_result_paths.R"))
+
+# Phase 6G.5: destinations resolve through the normalized output
+# contract, addressed by this analysis's own identity rather than by the
+# historical 03_qc_exploration stage directory and its chronological
+# substep. Outputs already written there stay exactly where they are.
+ANALYSIS_ID <- "assess_joint_compartment_quality"
 
 global_arg <- tolower(script_arg_value("--dataset", "all"))
 if (!global_arg %in% c("all", "global")) stop("This is a global QC script; use --dataset all or global.", call. = FALSE)
 runtime <- list(script = "analysis/qc/assess_joint_compartment_quality.R", stage = "qc_global", dataset = "global", args = commandArgs(trailingOnly = TRUE), dry_run = is_dry_run(), started_at = Sys.time())
 processed_root <- Sys.getenv("PROTEOMICS_JOINT_QC_PROCESSED_DIR", unset = path_processed("01_preprocessing", "joint_compartment_qc", "global"))
 bundle_file <- file.path(processed_root, "joint_compartment_qc_matrices.rds")
-out_root <- list(tables = path_results("tables", "03_qc_exploration", "00b_joint_compartment_qc", "global"), figures = path_results("figures", "03_qc_exploration", "00b_joint_compartment_qc", "global"), reports = path_results("reports", "03_qc_exploration", "00b_joint_compartment_qc", "global"), logs = path_results("logs", "03_qc_exploration", "00b_joint_compartment_qc", "global"))
+out_root <- qc_dirs(ANALYSIS_ID, "global", create = TRUE)
 seed <- suppressWarnings(as.integer(Sys.getenv("PROTEOMICS_JOINT_QC_SEED", unset = "42"))); if (is.na(seed)) seed <- 42L
 
 if (runtime$dry_run) {

@@ -3,8 +3,8 @@
 # Script: analysis/qc/export_marker_traits.R
 # Stage: qc
 # Scope: dataset_specific
-# Consumes: required Stage 01 post-filter/imputed quantitative matrix, mouse UniProt mapping, sample metadata; optional marker registry and manual mappings.
-# Produces: results/tables/03_qc_exploration/06_wgcna_marker_trait_export/<dataset>/.
+# Consumes: required data/processed/01_preprocessing/impute/*_pgmatrix_imputed_<dataset>_*_missing70pct.xlsx; data/external/MOUSE_10090_idmapping.dat; data/metadata/TPE9_sample_metadata_males.xlsx; +1 more; optional data/metadata/manual_mapping.xlsx; data/metadata/manual_gene_annotation_overrides.csv; results/qc/discover_empirical_roi_markers/global/tables/empirical_roi_marker_sets.csv; +1 more
+# Produces: results/qc/export_marker_traits/<dataset>/tables
 # Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Exports marker traits for later WGCNA annotation without depending on a completed WGCNA run.
 # ================================================================
@@ -12,6 +12,7 @@
 #
 # Export sample-level marker and compartment traits for downstream WGCNA annotation.
 # These scores are annotation traits, not purity estimates and not default covariates.
+#  
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
@@ -20,10 +21,16 @@ source(repo_path("R", "dataset_inputs.R"))
 source(repo_path("R", "qc_exploration_utils.R"))
 source(repo_path("R", "wgcna_downstream_utils.R"))
 
+# Phase 6G.5: destinations resolve through the normalized output
+# contract, addressed by this analysis's own identity rather than by the
+# historical 03_qc_exploration stage directory and its chronological
+# substep. Outputs already written there stay exactly where they are.
+ANALYSIS_ID <- "export_marker_traits"
+
 run <- qc_args()
 DATASET <- run$dataset
 SUBSTEP_ID <- "06_wgcna_marker_trait_export"
-PATHS <- qc_paths(SUBSTEP_ID, DATASET)
+PATHS <- qc_dirs(ANALYSIS_ID, DATASET, create = TRUE)
 matrix_file <- qc_resolve_matrix(DATASET, env = "PROTEOMICS_WGCNA_MARKER_TRAIT_MATRIX_FILE")
 metadata_file <- qc_resolve_metadata(DATASET, env = "PROTEOMICS_WGCNA_MARKER_TRAIT_METADATA_FILE")
 

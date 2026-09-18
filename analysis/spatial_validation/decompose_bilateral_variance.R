@@ -48,6 +48,7 @@ source("R/data_contracts/spatial_systems_data_utils.R")
 source("R/spatial/spatial_systems_bilateral_utils.R")
 source("R/data_contracts/spatial_systems_endpoint_utils.R")
 source(repo_path("R", "spatial_systems_paths.R"))
+source(repo_path("R", "qc_result_paths.R"))
 
 # Phase 6G.3: destinations resolve through the normalized output contract,
 # addressed by this analysis's own identity rather than by the historical
@@ -71,9 +72,9 @@ if (isTRUE(cli$dry_run)) {
   inputs <- list(
     reference_marker_panels = repo_path("config", "marker_panels",
                                         "wgcna_reference_marker_sets.csv"),
-    empirical_marker_sets = path_results("tables", "03_qc_exploration",
-                                         "05_empirical_roi_marker_discovery",
-                                         "empirical_roi_marker_sets.csv"))
+    empirical_marker_sets = qc_find("empirical_roi_marker_sets.csv",
+                                    owner = "discover_empirical_roi_markers",
+                                    legacy_substep = "05_empirical_roi_marker_discovery"))
   for (ds in DATASETS) {
     inputs[[paste0("stage05_hemisphere_values__", ds)]] <-
       path_results("tables", "06_modules_WGCNA", "group_effects", ds,

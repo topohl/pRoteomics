@@ -86,6 +86,7 @@ rel <- function(path) {
   if (startsWith(path, prefix)) substring(path, nchar(prefix) + 1L) else path
 }
 source(repo_path("R", "null_coalescing.R"))
+source(repo_path("R", "qc_result_paths.R"))
 
 state_path <- file.path(repo_root, "data/processed/06_modules_WGCNA/01_WGCNA/microglia/wgcna_final_model_state.rds")
 definitions_path <- file.path(repo_root, "results/tables/06_modules_WGCNA/01_WGCNA/microglia/modules/WGCNA_module_definitions_for_downstream.csv")
@@ -95,7 +96,9 @@ registry_path <- file.path(repo_root, "config/wgcna_labels/microglia.csv")
 joint_path <- file.path(repo_root, "data/processed/01_preprocessing/joint_compartment_qc/global/joint_compartment_qc_matrices.rds")
 reference_markers_path <- file.path(repo_root, "config/marker_panels/wgcna_reference_marker_sets.csv")
 microenvironment_markers_path <- file.path(repo_root, "config/marker_panels/microenvironment_marker_panels.csv")
-empirical_markers_path <- file.path(repo_root, "results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv")
+empirical_markers_path <- qc_find("empirical_roi_marker_sets.csv",
+                                  owner = "discover_empirical_roi_markers",
+                                  legacy_substep = "05_empirical_roi_marker_discovery")
 
 required_inputs <- c(
   state_path, definitions_path, super_values_path, annotation_path,

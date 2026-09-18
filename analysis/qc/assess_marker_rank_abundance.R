@@ -2,14 +2,15 @@
 # Script: analysis/qc/assess_marker_rank_abundance.R
 # Stage: qc
 # Scope: dataset_specific
-# Consumes: required Stage 01 post-filter/imputed quantitative matrix, mouse UniProt mapping, sample metadata; optional manual mappings and marker registry.
-# Produces: results/tables/03_qc_exploration/04_marker_rank_abundance_qc/<dataset>/.
+# Consumes: required data/processed/01_preprocessing/impute/*_pgmatrix_imputed_<dataset>_*_missing70pct.xlsx; data/external/MOUSE_10090_idmapping.dat; data/metadata/TPE9_sample_metadata_males.xlsx; +1 more; optional data/metadata/manual_mapping.xlsx; data/metadata/manual_gene_annotation_overrides.csv
+# Produces: results/qc/assess_marker_rank_abundance/<dataset>/tables
 # Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Marker abundance QC; benefits from qc_global marker registries.
 # ================================================================
 
 # Dataset-aware rank-abundance and marker abundance sanity checks.
 # Marker panels are abundance/compartment checks, not definitive purity estimates.
+#  
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
@@ -18,6 +19,12 @@ source(repo_path("R", "dataset_inputs.R"))
 source(repo_path("R", "qc_exploration_utils.R"))
 source(repo_path("R", "wgcna_downstream_utils.R"))
 source(repo_path("R", "compartment_abundance_utils.R"))
+
+# Phase 6G.5: destinations resolve through the normalized output
+# contract, addressed by this analysis's own identity rather than by the
+# historical 03_qc_exploration stage directory and its chronological
+# substep. Outputs already written there stay exactly where they are.
+ANALYSIS_ID <- "assess_marker_rank_abundance"
 
 run <- qc_args()
 DATASET <- run$dataset
@@ -28,7 +35,8 @@ requested_group <- cli_arg_value(
   args = run$args
 )
 canonical_group <- if (nzchar(trimws(requested_group))) ca_normalize_group(requested_group)[[1]] else ""
-PATHS <- ca_namespace_paths(qc_paths(SUBSTEP_ID, DATASET), canonical_group)
+PATHS <- ca_namespace_paths(qc_dirs(ANALYSIS_ID, DATASET, create = TRUE),
+                            canonical_group)
 matrix_file <- qc_resolve_matrix(DATASET, env = "PROTEOMICS_RANK_ABUNDANCE_MATRIX_FILE")
 metadata_file <- qc_resolve_metadata(DATASET, env = "PROTEOMICS_RANK_ABUNDANCE_METADATA_FILE")
 

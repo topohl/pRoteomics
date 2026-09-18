@@ -164,7 +164,12 @@ spatial_systems_dir_any <- function(owner, legacy_family = NULL,
   child <- switch(kind, figures = "plots", tables = "tables",
                   models = "models", reports = "reports")
   norm <- canonical_result_path("spatial_validation", owner, "global", child)
-  if (dir.exists(norm) && length(list.files(norm))) return(norm)
+  ## Regular files only: list.files() also reports subdirectories, so a
+  ## normalized directory holding nothing but a source_data subdirectory
+  ## would otherwise look populated and shadow real historical data. Found
+  ## in Phase 6G.5 on the equivalent QC resolver.
+  norm_files <- if (dir.exists(norm)) list.files(norm, full.names = TRUE, no.. = TRUE) else character(0)
+  if (length(norm_files) && any(!file.info(norm_files)$isdir)) return(norm)
   hist_kind <- if (identical(kind, "figures")) "figures" else "tables"
   if (is.null(legacy_family) || !length(legacy_family) || !nzchar(legacy_family)) {
     path_results(hist_kind, "11_spatial_systems")

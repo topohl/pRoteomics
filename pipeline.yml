@@ -63,7 +63,7 @@ stages:
         datasets: ["global"]
         stage: "qc_global"
         scope: "global"
-        produces: ["results/tables/03_qc_exploration/00b_joint_compartment_qc/global/", "results/figures/03_qc_exploration/00b_joint_compartment_qc/global/", "results/reports/03_qc_exploration/00b_joint_compartment_qc/global/joint_compartment_qc_summary.md", "results/logs/03_qc_exploration/00b_joint_compartment_qc/global/run_manifest.yml"]
+        produces: ["results/qc/assess_joint_compartment_quality/global/tables", "results/qc/assess_joint_compartment_quality/global/plots", "results/qc/assess_joint_compartment_quality/global/reports/joint_compartment_qc_summary.md", "results/qc/assess_joint_compartment_quality/global/manifests/run_manifest.yml"]
         consumes_required: ["data/processed/01_preprocessing/joint_compartment_qc/global/joint_compartment_qc_matrices.rds"]
         consumes_optional: []
         recomputes_core_state: false
@@ -74,7 +74,7 @@ stages:
         datasets: ["global"]
         stage: "qc_global_publication_figures"
         scope: "global"
-        produces: ["results/figures/03_qc_exploration/00b_joint_compartment_qc/publication_style/global/joint_compartment_qc_main_figure_183mm.svg", "results/figures/03_qc_exploration/00b_joint_compartment_qc/publication_style/global/joint_compartment_qc_extended_data_figure_183mm.svg", "results/figures/03_qc_exploration/00b_joint_compartment_qc/publication_style/global/panels/", "results/reports/03_qc_exploration/00c_joint_compartment_qc_publication_figures/global/joint_compartment_qc_publication_figure_manifest.md", "results/logs/03_qc_exploration/00c_joint_compartment_qc_publication_figures/global/run_manifest.yml"]
+        produces: ["results/qc/render_joint_compartment_qc_figures/global/plots/publication_style/joint_compartment_qc_main_figure_183mm.svg", "results/qc/render_joint_compartment_qc_figures/global/plots/publication_style/joint_compartment_qc_extended_data_figure_183mm.svg", "results/qc/render_joint_compartment_qc_figures/global/plots/publication_style/panels", "results/qc/render_joint_compartment_qc_figures/global/reports/joint_compartment_qc_publication_figure_manifest.md", "results/qc/render_joint_compartment_qc_figures/global/manifests/run_manifest.yml"]
         consumes_required: ["data/processed/01_preprocessing/joint_compartment_qc/global/joint_compartment_qc_matrices.rds", "results/tables/03_qc_exploration/00b_joint_compartment_qc/global/joint_primary_pca_scores.csv", "results/tables/03_qc_exploration/00b_joint_compartment_qc/global/joint_primary_pca_variance_explained.csv", "results/tables/03_qc_exploration/00b_joint_compartment_qc/global/joint_umap_exploratory_scores.csv", "results/tables/03_qc_exploration/00b_joint_compartment_qc/global/joint_tsne_exploratory_scores.csv", "results/tables/03_qc_exploration/00b_joint_compartment_qc/global/joint_sample_correlations.csv", "results/tables/03_qc_exploration/00b_joint_compartment_qc/global/primary_vs_complete_case_pca_concordance.csv"]
         consumes_optional: []
         recomputes_core_state: false
@@ -85,7 +85,7 @@ stages:
         datasets: ["global"]
         stage: "qc_global"
         scope: "global"
-        produces: ["config/marker_panels/wgcna_reference_marker_sets.csv", "results/tables/03_qc_exploration/reference_marker_import/"]
+        produces: ["config/marker_panels/wgcna_reference_marker_sets.csv", "results/qc/build_reference_marker_registry/global/tables"]
         consumes_required: ["data/external/reference_markers/reference_marker_sources.yml"]
         consumes_optional: ["config/marker_panels/compartment_fidelity_marker_sets.csv", "data/external/reference_markers/go_mgi/raw/mgi.gaf.gz", "data/external/reference_markers/go_mgi/raw/go-basic.obo", "data/external/reference_markers/go_mgi/raw/HOM_MouseHumanSequence.rpt", "data/external/reference_markers/syngo/raw/"]
         recomputes_core_state: false
@@ -96,7 +96,7 @@ stages:
         datasets: ["global"]
         stage: "qc_global"
         scope: "global"
-        produces: ["results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv"]
+        produces: ["results/qc/discover_empirical_roi_markers/global/tables/empirical_roi_marker_sets.csv"]
         consumes_required: ["data/processed/01_preprocessing/impute/*_pgmatrix_imputed_neuron_neuropil_*_missing70pct.xlsx", "data/processed/01_preprocessing/impute/*_pgmatrix_imputed_neuron_soma_*_missing70pct.xlsx", "data/processed/01_preprocessing/impute/*_pgmatrix_imputed_microglia_*_missing70pct.xlsx", "data/external/MOUSE_10090_idmapping.dat", "data/metadata/TPE9_sample_metadata_males.xlsx"]
         consumes_optional: ["data/metadata/manual_mapping.xlsx", "data/metadata/manual_gene_annotation_overrides.csv"]
         recomputes_core_state: false
@@ -110,7 +110,7 @@ stages:
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "qc"
         scope: "dataset_specific"
-        produces: ["results/tables/03_qc_exploration/00_dataset_qc_report/<dataset>/dataset_qc_report.xlsx", "results/reports/03_qc_exploration/00_dataset_qc_report/<dataset>/dataset_qc_summary.md"]
+        produces: ["results/qc/assess_dataset_quality/<dataset>/tables/dataset_qc_report.xlsx", "results/qc/assess_dataset_quality/<dataset>/reports/dataset_qc_summary.md"]
         consumes_required: ["data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv"]
         consumes_optional: ["data/metadata/*.xlsx"]
         recomputes_core_state: false
@@ -121,7 +121,7 @@ stages:
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "qc"
         scope: "dataset_specific"
-        produces: ["results/figures/03_qc_exploration/01_sample_qc_quicksearch/<dataset>/", "results/tables/03_qc_exploration/01_sample_qc_quicksearch/<dataset>/qc_summary_tables.xlsx"]
+        produces: ["results/qc/assess_sample_quality/<dataset>/plots", "results/qc/assess_sample_quality/<dataset>/tables/qc_summary_tables.xlsx"]
         consumes_required: ["data/raw/pg_matrix/quicksearch.stats.annotated.xlsx"]
         consumes_optional: ["data/metadata/*.xlsx"]
         recomputes_core_state: false
@@ -132,7 +132,7 @@ stages:
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "qc"
         scope: "dataset_specific"
-        produces: ["results/tables/03_qc_exploration/02_missingness_diagnostics/<dataset>/missingness_diagnostics.xlsx"]
+        produces: ["results/qc/summarize_missingness/<dataset>/tables/missingness_diagnostics.xlsx"]
         consumes_required: ["data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv"]
         consumes_optional: ["data/metadata/*.xlsx"]
         recomputes_core_state: false
@@ -143,7 +143,7 @@ stages:
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "qc"
         scope: "dataset_specific"
-        produces: ["results/tables/03_qc_exploration/03_replicate_consistency/<dataset>/replicate_consistency.xlsx"]
+        produces: ["results/qc/assess_replicate_consistency/<dataset>/tables/replicate_consistency.xlsx"]
         consumes_required: ["data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv"]
         consumes_optional: ["data/metadata/*.xlsx"]
         recomputes_core_state: false
@@ -154,7 +154,7 @@ stages:
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "qc"
         scope: "dataset_specific"
-        produces: ["results/tables/03_qc_exploration/04_marker_rank_abundance_qc/<dataset>/"]
+        produces: ["results/qc/assess_marker_rank_abundance/<dataset>/tables"]
         consumes_required: ["data/processed/01_preprocessing/impute/*_pgmatrix_imputed_<dataset>_*_missing70pct.xlsx", "data/external/MOUSE_10090_idmapping.dat", "data/metadata/TPE9_sample_metadata_males.xlsx", "config/marker_panels/wgcna_reference_marker_sets.csv"]
         consumes_optional: ["data/metadata/manual_mapping.xlsx", "data/metadata/manual_gene_annotation_overrides.csv"]
         recomputes_core_state: false
@@ -165,9 +165,9 @@ stages:
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "qc"
         scope: "dataset_specific"
-        produces: ["results/tables/03_qc_exploration/04c_marker_detectability_and_wgcna_bridge/<dataset>/"]
+        produces: ["results/qc/summarize_marker_detectability/<dataset>/tables"]
         consumes_required: ["data/processed/01_preprocessing/impute/*_pgmatrix_imputed_<dataset>_*_missing70pct.xlsx", "data/external/MOUSE_10090_idmapping.dat", "data/metadata/TPE9_sample_metadata_males.xlsx", "config/marker_panels/wgcna_reference_marker_sets.csv"]
-        consumes_optional: ["data/metadata/manual_mapping.xlsx", "data/metadata/manual_gene_annotation_overrides.csv", "results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv", "data/processed/06_modules_WGCNA/01_WGCNA/<dataset>/wgcna_final_model_state.rds", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/"]
+        consumes_optional: ["data/metadata/manual_mapping.xlsx", "data/metadata/manual_gene_annotation_overrides.csv", "results/qc/discover_empirical_roi_markers/global/tables/empirical_roi_marker_sets.csv", "results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv", "data/processed/06_modules_WGCNA/01_WGCNA/<dataset>/wgcna_final_model_state.rds", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/"]
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Dataset-specific canonical marker mapping, post-filter/post-imputation processed-matrix availability, and WGCNA interpretation bridge. These nonmissing values are not raw detection and are not the authoritative cross-compartment abundance validation."
@@ -176,7 +176,7 @@ stages:
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "qc"
         scope: "dataset_specific"
-        produces: ["results/tables/03_qc_exploration/05_pca_confounding_qc/<dataset>/"]
+        produces: ["results/qc/assess_pca_confounding/<dataset>/tables"]
         consumes_required: ["data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv"]
         consumes_optional: ["data/metadata/*.xlsx"]
         recomputes_core_state: false
@@ -187,7 +187,7 @@ stages:
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "qc"
         scope: "dataset_specific"
-        produces: ["results/tables/03_qc_exploration/06_variance_partitioning/<dataset>/", "results/reports/03_qc_exploration/06_variance_partitioning/<dataset>/"]
+        produces: ["results/qc/partition_variance/<dataset>/tables", "results/qc/partition_variance/<dataset>/reports"]
         consumes_required: ["data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv"]
         consumes_optional: ["data/metadata/*.xlsx"]
         recomputes_core_state: false
@@ -198,9 +198,9 @@ stages:
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "qc"
         scope: "dataset_specific"
-        produces: ["results/tables/03_qc_exploration/06_wgcna_marker_trait_export/<dataset>/"]
+        produces: ["results/qc/export_marker_traits/<dataset>/tables"]
         consumes_required: ["data/processed/01_preprocessing/impute/*_pgmatrix_imputed_<dataset>_*_missing70pct.xlsx", "data/external/MOUSE_10090_idmapping.dat", "data/metadata/TPE9_sample_metadata_males.xlsx", "config/marker_panels/wgcna_reference_marker_sets.csv"]
-        consumes_optional: ["data/metadata/manual_mapping.xlsx", "data/metadata/manual_gene_annotation_overrides.csv", "results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv"]
+        consumes_optional: ["data/metadata/manual_mapping.xlsx", "data/metadata/manual_gene_annotation_overrides.csv", "results/qc/discover_empirical_roi_markers/global/tables/empirical_roi_marker_sets.csv", "results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv"]
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Exports canonical ProteinGroupID/member-provenance marker traits for later WGCNA annotation without depending on completed WGCNA outputs."
@@ -209,9 +209,9 @@ stages:
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "qc"
         scope: "dataset_specific"
-        produces: ["results/reports/03_qc_exploration/07_qc_biology_confounding_report/<dataset>/"]
-        consumes_required: ["results/tables/03_qc_exploration/05_pca_confounding_qc/<dataset>/", "results/tables/03_qc_exploration/06_variance_partitioning/<dataset>/"]
-        consumes_optional: ["results/tables/03_qc_exploration/04_marker_rank_abundance_qc/<dataset>/"]
+        produces: ["results/qc/summarize_qc_confounding/<dataset>/reports"]
+        consumes_required: ["results/qc/assess_pca_confounding/<dataset>/tables", "results/tables/03_qc_exploration/05_pca_confounding_qc/<dataset>/", "results/qc/partition_variance/<dataset>/tables", "results/tables/03_qc_exploration/06_variance_partitioning/<dataset>/"]
+        consumes_optional: ["results/qc/assess_marker_rank_abundance/<dataset>/tables", "results/tables/03_qc_exploration/04_marker_rank_abundance_qc/<dataset>/"]
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Summarizes QC biology/confounding evidence."
@@ -223,7 +223,7 @@ stages:
         datasets: ["global"]
         stage: "qc_cross_dataset"
         scope: "global"
-        produces: ["results/source_data/03_qc_exploration/04e_control_compartment_abundance_publication_figures/global/", "results/figures/03_qc_exploration/04e_control_compartment_abundance_publication_figures/global/", "results/reports/03_qc_exploration/04e_control_compartment_abundance_publication_figures/global/"]
+        produces: ["results/qc/render_compartment_abundance_figures/global/tables/source_data", "results/qc/render_compartment_abundance_figures/global/plots", "results/qc/render_compartment_abundance_figures/global/reports"]
         consumes_required: ["data/processed/01_preprocessing/joint_compartment_qc/global/joint_compartment_qc_matrices.rds", "config/marker_panels/wgcna_reference_marker_sets.csv"]
         consumes_optional: []
         recomputes_core_state: false
@@ -283,7 +283,7 @@ stages:
         scope: "dataset_specific"
         produces: ["results/differential_abundance/test_microglia_targeted_signatures/microglia/tables"]
         consumes_required: ["results/differential_abundance/run_clusterprofiler_enrichment/microglia/models/clusterProfiler_manifest.csv", "data/processed/04_differential_expression_enrichment/clusterProfiler/microglia/clusterProfiler_manifest.csv"]
-        consumes_optional: ["config/marker_panels/wgcna_reference_marker_sets.csv", "results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv", "data/processed/05_celltype_enrichment_EWCE/EWCE_E9/microglia/EWCE_results_full.rds"]
+        consumes_optional: ["config/marker_panels/wgcna_reference_marker_sets.csv", "results/qc/discover_empirical_roi_markers/global/tables/empirical_roi_marker_sets.csv", "results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv", "data/processed/05_celltype_enrichment_EWCE/EWCE_E9/microglia/EWCE_results_full.rds"]
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Microglia-only targeted signature enrichment; supports conservative ROI annotation rather than purified-cell claims. Canonical EWCE RDS is optional diagnostic target-list support only and does not determine signatures, enrichment statistics, claims, or figures."
@@ -478,7 +478,7 @@ stages:
         scope: "dataset_specific"
         produces: ["results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_module_biological_annotation.csv", "results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_supermodule_biological_annotation.csv", "results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_module_targeted_signature_overlap_details.csv"]
         consumes_required: ["results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_module_supermodule_annotation.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_supermodule_summary.csv"]
-        consumes_optional: ["config/marker_panels/wgcna_reference_marker_sets.csv", "results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv", "results/differential_abundance/annotate_neuropil_reference/<dataset>/tables", "results/tables/04_differential_expression_enrichment/neuropil_reference_annotation/<dataset>/"]
+        consumes_optional: ["config/marker_panels/wgcna_reference_marker_sets.csv", "results/qc/discover_empirical_roi_markers/global/tables/empirical_roi_marker_sets.csv", "results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv", "results/differential_abundance/annotate_neuropil_reference/<dataset>/tables", "results/tables/04_differential_expression_enrichment/neuropil_reference_annotation/<dataset>/"]
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Biological annotation layer. Consumes marker registry, empirical markers, WGCNA outputs, and neuropil annotations when present; microglia labels refer to ROI/local microenvironment unless explicit immune-state evidence is present."
@@ -872,6 +872,7 @@ stages:
         consumes_required:
           - "results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_protein_identity_crosswalk_proposed.csv"
         consumes_optional:
+          - "results/qc/discover_empirical_roi_markers/global/tables/empirical_roi_marker_sets.csv"
           - "results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv"
         recomputes_core_state: false
         safe_downstream_rerun: true
@@ -917,6 +918,7 @@ stages:
           - "results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_hemisphere_values.csv"
         consumes_optional:
           - "config/marker_panels/wgcna_reference_marker_sets.csv"
+          - "results/qc/discover_empirical_roi_markers/global/tables/empirical_roi_marker_sets.csv"
           - "results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv"
         recomputes_core_state: false
         safe_downstream_rerun: true
@@ -982,6 +984,7 @@ stages:
         consumes_optional:
           - "results/spatial_validation/quantify_bilateral_spatial_identity/global/tables/bilateral_spatial_identity_protein_level.csv"
           - "results/tables/11_spatial_systems/bilateral/bilateral_spatial_identity_protein_level.csv"
+          - "results/qc/discover_empirical_roi_markers/global/tables/empirical_roi_marker_sets.csv"
           - "results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv"
           - "config/marker_panels/wgcna_reference_marker_sets.csv"
         recomputes_core_state: false

@@ -13,6 +13,7 @@ paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.
 source(paths_file)
 source(repo_path("R", "integration_utils.R"))
 source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
+source(repo_path("R", "qc_result_paths.R"))
 
 SCRIPT_ID <- "analysis/wgcna/audit_module_robustness.R"
 run <- integration_cli(allow_all = TRUE)
@@ -127,8 +128,11 @@ make_dataset <- function(ds) {
   inputs <- list(
     inferential_handoff = path_results("tables", "06_modules_WGCNA", "interpretable_summary", ds, "WGCNA_inferential_handoff.csv"),
     preservation = path_results("tables", "06_modules_WGCNA", "01_WGCNA", ds, "modules", "WGCNA_module_preservation_summary.csv"),
-    pca_qc = path_results("tables", "03_qc_exploration", "05_pca_confounding_qc", ds, "PCA_confounding_summary.csv"),
-    variance_qc = path_results("tables", "03_qc_exploration", "06_variance_partitioning", ds, "group_technical_confounding_screen.csv")
+    pca_qc = qc_find("PCA_confounding_summary.csv", owner = "assess_pca_confounding",
+                     legacy_substep = "05_pca_confounding_qc", scope = ds),
+    variance_qc = qc_find("group_technical_confounding_screen.csv",
+                          owner = "partition_variance",
+                          legacy_substep = "06_variance_partitioning", scope = ds)
   )
   if (run$dry_run) {
     dry_run_inputs(paste(SCRIPT_ID, ds), inputs)

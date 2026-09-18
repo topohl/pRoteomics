@@ -7,6 +7,7 @@ if (!exists("repo_path", mode = "function")) {
 source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "dataset_inputs.R"))
 source(repo_path("R", "module_contracts.R"))
+source(repo_path("R", "qc_result_paths.R"))
 
 WGCNA_ROI_NOTE <- "microglia-enriched ROI/local microenvironment; annotation only, not purity correction."
 
@@ -730,7 +731,9 @@ WGCNA_EMPIRICAL_MARKER_IDENTITY_FIELD <- "mapped_gene_symbol"
 
 read_empirical_roi_marker_sets <- function(path = Sys.getenv("PROTEOMICS_WGCNA_EMPIRICAL_MARKER_FILE", unset = ""),
                                            expected_contract = WGCNA_EMPIRICAL_MARKER_CONTRACT) {
-  if (!nzchar(path)) path <- path_results("tables", "03_qc_exploration", "05_empirical_roi_marker_discovery", "empirical_roi_marker_sets.csv")
+  if (!nzchar(path)) path <- qc_find("empirical_roi_marker_sets.csv",
+                                    owner = "discover_empirical_roi_markers",
+                                    legacy_substep = "05_empirical_roi_marker_discovery")
   path <- normalizePath(path, winslash = "/", mustWork = FALSE)
   empirical <- safe_read_csv(path)
   if (is.null(empirical) || !nrow(empirical)) return(NULL)
@@ -889,7 +892,10 @@ resolve_wgcna_files <- function(dataset) {
     go = path_results("tables", "06_modules_WGCNA", "01_WGCNA", dataset, "modules", "WGCNA_module_GO_enrichment_long.csv"),
     supermodule_annotation = path_results("tables", "06_modules_WGCNA", "01_WGCNA", dataset, "supermodules", "wgcna_module_supermodule_annotation.csv"),
     supermodule_summary = path_results("tables", "06_modules_WGCNA", "01_WGCNA", dataset, "supermodules", "wgcna_supermodule_summary.csv"),
-    marker_traits = path_results("tables", "03_qc_exploration", "06_wgcna_marker_trait_export", dataset, "wgcna_marker_traits_by_sample.csv"),
+    marker_traits = qc_find("wgcna_marker_traits_by_sample.csv",
+                            owner = "export_marker_traits",
+                            legacy_substep = "06_wgcna_marker_trait_export",
+                            scope = dataset),
     neuropil_annotation = path_results("tables", "04_differential_expression_enrichment", "neuropil_reference_annotation", "microglia", "microglia_neuropil_annotation_latest.csv")
   )
 }

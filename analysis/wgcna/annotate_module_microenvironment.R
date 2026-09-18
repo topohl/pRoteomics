@@ -16,6 +16,7 @@ paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.
 source(paths_file)
 source(repo_path("R", "wgcna_downstream_utils.R"))
 source(repo_path("R", "wgcna_reviewed_label_registry.R"))
+source(repo_path("R", "qc_result_paths.R"))
 
 required_pkgs <- c("dplyr", "tidyr", "tibble", "ggplot2", "svglite", "readr", "stringr", "scales")
 missing_pkgs <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
@@ -125,7 +126,7 @@ if (run$dry_run) {
   if (DATASET == "microglia" || force_microglia) dry_run_line("Neuropil reference annotation", FILES$neuropil_annotation, if (file.exists(FILES$neuropil_annotation)) "PASS" else "WARN")
   if (DATASET == "microglia" || force_microglia) dry_run_line("Targeted microglia signature enrichment", path_results("tables", "04_differential_expression_enrichment", "microglia_targeted_signature_enrichment", "microglia", "microglia_signature_enrichment_with_contrast_class.csv"), if (file.exists(path_results("tables", "04_differential_expression_enrichment", "microglia_targeted_signature_enrichment", "microglia", "microglia_signature_enrichment_with_contrast_class.csv"))) "PASS" else "WARN")
   dry_run_line("Marker registry", Sys.getenv("PROTEOMICS_WGCNA_MARKER_REGISTRY_FILE", unset = repo_path("config", "marker_panels", "wgcna_reference_marker_sets.csv")), "INFO")
-  dry_run_line("Empirical ROI marker sets", Sys.getenv("PROTEOMICS_WGCNA_EMPIRICAL_MARKER_FILE", unset = path_results("tables", "03_qc_exploration", "05_empirical_roi_marker_discovery", "empirical_roi_marker_sets.csv")), "INFO")
+  dry_run_line("Empirical ROI marker sets", Sys.getenv("PROTEOMICS_WGCNA_EMPIRICAL_MARKER_FILE", unset = qc_find("empirical_roi_marker_sets.csv", owner = "discover_empirical_roi_markers", legacy_substep = "05_empirical_roi_marker_discovery")), "INFO")
   dry_run_line("Supplemental microenvironment marker panels", supplemental_marker_panel_file, if (file.exists(supplemental_marker_panel_file)) "PASS" else "FAIL")
   dry_run_line("Microenvironment threshold sensitivity audit", path_results("reviewer_audit", "wgcna_microenvironment_threshold_sensitivity.csv"), "INFO")
   dry_run_line("Output tables", PATHS$tables)

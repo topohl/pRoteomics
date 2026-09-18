@@ -62,6 +62,7 @@ source("R/statistics/integration_utils.R")
 source("R/spatial/spatial_atlas_utils.R")
 source("R/spatial/ca2_slm_robustness_utils.R")
 source(repo_path("R", "spatial_systems_paths.R"))
+source(repo_path("R", "qc_result_paths.R"))
 
 # Phase 6G.3: destinations resolve through the normalized output contract,
 # addressed by this analysis's own identity rather than by the historical
@@ -84,8 +85,8 @@ RAW <- repo_path("data", "raw", "pg_matrix", "quicksearch.pg_matrix.tsv")
 META <- repo_path("data", "metadata", "TPE9_sample_metadata_males.xlsx")
 GCT <- path_processed("01_preprocessing", "protigy_input_animal_level", DS,
                       "neuron_neuropil_animal_level.gct")
-QC <- path_results("tables", "03_qc_exploration", "00_dataset_qc_report", DS,
-                   "dataset_qc_outlier_flags.csv")
+QC <- qc_find("dataset_qc_outlier_flags.csv", owner = "assess_dataset_quality",
+              legacy_substep = "00_dataset_qc_report", scope = DS)
 IMPUTED <- path_processed("01_preprocessing", "impute",
   "20260601_pgmatrix_imputed_neuron_neuropil_180samples_missing70pct.xlsx")
 OUT <- function(...) {

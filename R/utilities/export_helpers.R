@@ -751,8 +751,10 @@ classify_export_category <- function(path, config) {
   if (grepl("/metadata/", p) || grepl("sample_metadata", p)) return("sample_metadata")
   if (grepl("/01_preprocessing/", p)) return("processed_preprocessing")
   if (grepl("/02_id_mapping/", p)) return("protein_id_mapping")
-  if (grepl("/04_differential_expression_enrichment/", p)) return("differential_abundance_enrichment")
-  if (grepl("/03_qc_exploration/", p) || grepl("/reports/03_qc", p)) return("qc_report")
+  if (grepl("/04_differential_expression_enrichment/", p) ||
+      grepl("/results/differential_abundance/", p)) return("differential_abundance_enrichment")
+  if (grepl("/03_qc_exploration/", p) || grepl("/reports/03_qc", p) ||
+      grepl("/results/qc/", p)) return("qc_report")
   if (grepl("/results/tables/", p) || grepl("/results/source_data/", p)) return("derived_results")
   if (grepl("/pride_submission/", p)) return("pride_staging")
   if (grepl("/methods/", p)) return("provenance")

@@ -4,13 +4,14 @@
 # Script: analysis/qc/assess_dataset_quality.R
 # Stage: qc
 # Scope: dataset_specific
-# Consumes: required data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv; optional data/metadata/*.xlsx.
-# Produces: results/tables/03_qc_exploration/00_dataset_qc_report/<dataset>/dataset_qc_report.xlsx; results/reports/03_qc_exploration/00_dataset_qc_report/<dataset>/dataset_qc_summary.md.
+# Consumes: required data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv; optional data/metadata/*.xlsx
+# Produces: results/qc/assess_dataset_quality/<dataset>/tables/dataset_qc_report.xlsx; results/qc/assess_dataset_quality/<dataset>/reports/dataset_qc_summary.md
 # Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Baseline dataset QC.
 # ================================================================
 
 # Canonical one-stop dataset QC report.
+#  
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
@@ -18,9 +19,15 @@ source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "dataset_inputs.R"))
 source(repo_path("R", "qc_exploration_utils.R"))
 
+# Phase 6G.5: destinations resolve through the normalized output
+# contract, addressed by this analysis's own identity rather than by the
+# historical 03_qc_exploration stage directory and its chronological
+# substep. Outputs already written there stay exactly where they are.
+ANALYSIS_ID <- "assess_dataset_quality"
+
 run <- qc_args()
 DATASET <- run$dataset
-PATHS <- qc_paths("00_dataset_qc_report", DATASET)
+PATHS <- qc_dirs(ANALYSIS_ID, DATASET, create = TRUE)
 matrix_file <- qc_resolve_matrix(DATASET, env = "PROTEOMICS_DATASET_QC_MATRIX_FILE")
 metadata_file <- qc_resolve_metadata(DATASET, env = "PROTEOMICS_DATASET_QC_METADATA_FILE")
 

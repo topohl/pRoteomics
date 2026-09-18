@@ -31,8 +31,14 @@ manuscript_dirs <- file.path(
 # also pull comparison/repro trees. manuscript_panels holds the Figure-3 panels
 # and was previously omitted, so no Figure-3 panel could ever be exported.
 candidate_roots <- c(
+  ## Historical figure roots, kept because that is where the figures still
+  ## are, plus the normalized roots a migrated domain now writes to. Without
+  ## the second pair a rerun would leave the exporter scanning empty
+  ## historical trees and finding nothing new.
   path_results("figures", "03_qc_exploration"),
   path_results("figures", "04_differential_expression_enrichment"),
+  path_results("qc"),
+  path_results("differential_abundance"),
   canonical_ewce_figure_root(),
   path_results("figures", "06_modules_WGCNA"),
   path_results("figures", "07_spatial_networks"),

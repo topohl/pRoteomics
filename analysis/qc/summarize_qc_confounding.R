@@ -2,13 +2,14 @@
 # Script: analysis/qc/summarize_qc_confounding.R
 # Stage: qc
 # Scope: dataset_specific
-# Consumes: required results/tables/03_qc_exploration/05_pca_confounding_qc/<dataset>/; results/tables/03_qc_exploration/06_variance_partitioning/<dataset>/; optional results/tables/03_qc_exploration/04_marker_rank_abundance_qc/<dataset>/.
-# Produces: results/reports/03_qc_exploration/07_qc_biology_confounding_report/<dataset>/.
+# Consumes: required results/qc/assess_pca_confounding/<dataset>/tables; results/tables/03_qc_exploration/05_pca_confounding_qc/<dataset>/; results/qc/partition_variance/<dataset>/tables; +1 more; optional results/qc/assess_marker_rank_abundance/<dataset>/tables; results/tables/03_qc_exploration/04_marker_rank_abundance_qc/<dataset>/
+# Produces: results/qc/summarize_qc_confounding/<dataset>/reports
 # Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Summarizes QC biology/confounding evidence.
 # ================================================================
 
 # Combine QC, missingness, marker, PCA, and metadata into a compact confounding report.
+#  
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
@@ -16,9 +17,15 @@ source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "dataset_inputs.R"))
 source(repo_path("R", "qc_exploration_utils.R"))
 
+# Phase 6G.5: destinations resolve through the normalized output
+# contract, addressed by this analysis's own identity rather than by the
+# historical 03_qc_exploration stage directory and its chronological
+# substep. Outputs already written there stay exactly where they are.
+ANALYSIS_ID <- "summarize_qc_confounding"
+
 run <- qc_args()
 DATASET <- run$dataset
-PATHS <- qc_paths("07_qc_biology_confounding_report", DATASET)
+PATHS <- qc_dirs(ANALYSIS_ID, DATASET, create = TRUE)
 matrix_file <- qc_resolve_matrix(DATASET, env = "PROTEOMICS_CONFOUNDING_MATRIX_FILE")
 metadata_file <- qc_resolve_metadata(DATASET, env = "PROTEOMICS_CONFOUNDING_METADATA_FILE")
 if (run$dry_run) {
@@ -54,8 +61,10 @@ pc_scores <- data.frame(Sample = rownames(pca$x), pca$x[, seq_len(min(10L, ncol(
 combined <- qc_metrics |>
   dplyr::left_join(pc_scores, by = "Sample")
 
-marker_file <- file.path(module_paths("03_qc_exploration", file.path("04_marker_rank_abundance_qc", DATASET))$tables,
-                         "marker_scores_by_sample.csv")
+marker_file <- qc_find("marker_scores_by_sample.csv",
+                       owner = "assess_marker_rank_abundance",
+                       legacy_substep = "04_marker_rank_abundance_qc",
+                       scope = DATASET)
 if (file.exists(marker_file)) {
   marker_scores <- utils::read.csv(marker_file, check.names = FALSE)
   marker_wide <- marker_scores |>

@@ -3,8 +3,8 @@
 # Script: analysis/qc/build_reference_marker_registry.R
 # Stage: qc_global
 # Scope: global
-# Consumes: required data/external/reference_markers/reference_marker_sources.yml; optional config/marker_panels/compartment_fidelity_marker_sets.csv; data/external/reference_markers/go_mgi/raw/mgi.gaf.gz; +3 more.
-# Produces: config/marker_panels/wgcna_reference_marker_sets.csv; results/tables/03_qc_exploration/reference_marker_import/.
+# Consumes: required data/external/reference_markers/reference_marker_sources.yml; optional config/marker_panels/compartment_fidelity_marker_sets.csv; data/external/reference_markers/go_mgi/raw/mgi.gaf.gz; data/external/reference_markers/go_mgi/raw/go-basic.obo; +2 more
+# Produces: config/marker_panels/wgcna_reference_marker_sets.csv; results/qc/build_reference_marker_registry/global/tables
 # Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Creates the marker registry consumed by marker QC and WGCNA downstream annotation.
 # ================================================================
@@ -23,15 +23,23 @@
 #   Soma markers, Neuropil markers, Microglia/PVM markers.
 # It is QC/interpreter support only; it is not purity estimation and must not be
 # derived from CON/RES/SUS differential abundance results.
+#  
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
 source(repo_path("R", "wgcna_downstream_utils.R"))
+source(repo_path("R", "qc_result_paths.R"))
+
+# Phase 6G.5: destinations resolve through the normalized output
+# contract, addressed by this analysis's own identity rather than by the
+# historical 03_qc_exploration stage directory and its chronological
+# substep. Outputs already written there stay exactly where they are.
+ANALYSIS_ID <- "build_reference_marker_registry"
 
 args <- commandArgs(trailingOnly = TRUE)
 dry_run <- is_dry_run()
 SUBSTEP_ID <- "reference_marker_import"
-PATHS <- create_module_dirs("03_qc_exploration", file.path("reference_marker_import"))
+PATHS <- qc_dirs(ANALYSIS_ID, "global", create = TRUE)
 manifest_file <- Sys.getenv(
   "PROTEOMICS_REFERENCE_MARKER_SOURCES_YML",
   unset = path_external("reference_markers", "reference_marker_sources.yml")

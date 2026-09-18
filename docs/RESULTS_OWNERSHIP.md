@@ -8,7 +8,7 @@ legitimately write different files into one family, which is coordination
 rather than a defect. What must never happen is two scripts declaring the
 same concrete output file, and this tool fails if any does.
 
-At this commit: **190 families**, **330 concrete declared outputs**, **0** of which have more than one declared writer.
+At this commit: **181 families**, **330 concrete declared outputs**, **0** of which have more than one declared writer.
 
 Output namespaces are keyed on **stage identity**, not on script location.
 That is why a script named `summarize_missingness.R` writes into
@@ -31,9 +31,6 @@ its outputs.
 | `results/differential_abundance/test_microglia_targeted_signatures/microglia` | `test_microglia_targeted_signatures.R` | 1 | 0 |
 | `results/differential_abundance/validate_control_spatial_identity/global` | `validate_control_spatial_identity.R` | 1 | 1 |
 | `results/enrichment/run_ewce_celltype_enrichment/<dataset>` | `run_ewce_celltype_enrichment.R` | 1 | 0 |
-| `results/figures/03_qc_exploration/00b_joint_compartment_qc` | `render_joint_compartment_qc_figures.R` | 2 | 2 |
-| `results/figures/03_qc_exploration/01_sample_qc_quicksearch` | `assess_sample_quality.R` | 1 | 0 |
-| `results/figures/03_qc_exploration/04e_control_compartment_abundance_publication_figures` | `render_compartment_abundance_figures.R` | 1 | 0 |
 | `results/figures/06_modules_WGCNA/01b_module_supermodule_GO_heatmaps` | `render_module_go_heatmaps.R` | 1 | 0 |
 | `results/figures/06_modules_WGCNA/microglia_neuropil_independence` | `render_microglia_independence_figures.R` | 1 | 0 |
 | `results/figures/06_modules_WGCNA/microglia_roi_specificity` | `summarize_microglia_roi_specificity.R` | 1 | 2 |
@@ -48,8 +45,6 @@ its outputs.
 | `results/figures/manuscript_panels/figure_3` | `export_module_protein_zoom_source_data.R` | 1 | 0 |
 | `results/logs/01_preprocessing/01_prepare_joint_protigy_input` | `build_joint_protigy_input.R` | 1 | 1 |
 | `results/logs/01_preprocessing/06_merged_metadata_module_score` | `build_module_score_metadata.R` | 1 | 1 |
-| `results/logs/03_qc_exploration/00b_joint_compartment_qc` | `assess_joint_compartment_quality.R` | 1 | 1 |
-| `results/logs/03_qc_exploration/00c_joint_compartment_qc_publication_figures` | `render_joint_compartment_qc_figures.R` | 1 | 1 |
 | `results/logs/06_modules_WGCNA/identity_contract` | `build_module_identity_contract.R` | 1 | 0 |
 | `results/logs/06_modules_WGCNA/module_complex_architecture` | `summarize_module_complex_architecture.R` | 1 | 1 |
 | `results/logs/06_modules_WGCNA/module_robustness_sensitivity` | `audit_module_robustness.R` | 1 | 1 |
@@ -74,13 +69,22 @@ its outputs.
 | `results/manuscript/source_data` | `09_export_source_data.R` | 1 | 0 |
 | `results/manuscript/source_data_export_manifest.csv` | `09_export_source_data.R` | 1 | 1 |
 | `results/manuscript/supplementary_tables` | `09_export_source_data.R` | 1 | 0 |
+| `results/qc/assess_dataset_quality/<dataset>` | `assess_dataset_quality.R` | 1 | 2 |
+| `results/qc/assess_joint_compartment_quality/global` | `assess_joint_compartment_quality.R` | 1 | 2 |
+| `results/qc/assess_marker_rank_abundance/<dataset>` | `assess_marker_rank_abundance.R` | 1 | 0 |
+| `results/qc/assess_pca_confounding/<dataset>` | `assess_pca_confounding.R` | 1 | 0 |
+| `results/qc/assess_replicate_consistency/<dataset>` | `assess_replicate_consistency.R` | 1 | 1 |
+| `results/qc/assess_sample_quality/<dataset>` | `assess_sample_quality.R` | 1 | 1 |
+| `results/qc/build_reference_marker_registry/global` | `build_reference_marker_registry.R` | 1 | 0 |
+| `results/qc/discover_empirical_roi_markers/global` | `discover_empirical_roi_markers.R` | 1 | 1 |
+| `results/qc/export_marker_traits/<dataset>` | `export_marker_traits.R` | 1 | 0 |
+| `results/qc/partition_variance/<dataset>` | `partition_variance.R` | 1 | 0 |
+| `results/qc/render_compartment_abundance_figures/global` | `render_compartment_abundance_figures.R` | 1 | 0 |
+| `results/qc/render_joint_compartment_qc_figures/global` | `render_joint_compartment_qc_figures.R` | 1 | 4 |
+| `results/qc/summarize_marker_detectability/<dataset>` | `summarize_marker_detectability.R` | 1 | 0 |
+| `results/qc/summarize_missingness/<dataset>` | `summarize_missingness.R` | 1 | 1 |
+| `results/qc/summarize_qc_confounding/<dataset>` | `summarize_qc_confounding.R` | 1 | 0 |
 | `results/reports/01_preprocessing/06_merged_metadata_module_score` | `build_module_score_metadata.R` | 1 | 1 |
-| `results/reports/03_qc_exploration/00_dataset_qc_report` | `assess_dataset_quality.R` | 1 | 1 |
-| `results/reports/03_qc_exploration/00b_joint_compartment_qc` | `assess_joint_compartment_quality.R` | 1 | 1 |
-| `results/reports/03_qc_exploration/00c_joint_compartment_qc_publication_figures` | `render_joint_compartment_qc_figures.R` | 1 | 1 |
-| `results/reports/03_qc_exploration/04e_control_compartment_abundance_publication_figures` | `render_compartment_abundance_figures.R` | 1 | 0 |
-| `results/reports/03_qc_exploration/06_variance_partitioning` | `partition_variance.R` | 1 | 0 |
-| `results/reports/03_qc_exploration/07_qc_biology_confounding_report` | `summarize_qc_confounding.R` | 1 | 0 |
 | `results/reports/06_modules_WGCNA/identity_contract` | `build_module_identity_contract.R` | 1 | 0 |
 | `results/reports/06_modules_WGCNA/microglia_roi_specificity` | `summarize_microglia_roi_specificity.R` | 1 | 0 |
 | `results/reports/10_biological_integration/cross_compartment_program_atlas` | `build_cross_compartment_atlas.R` | 1 | 1 |
@@ -112,7 +116,6 @@ its outputs.
 | `results/reviewer_audit/wgcna_label_approval/WGCNA_label_activation_rules.csv` | `build_module_label_registry.R` | 1 | 1 |
 | `results/reviewer_audit/wgcna_label_review/<dataset>` | `audit_module_label_coherence.R` | 1 | 5 |
 | `results/reviewer_audit/wgcna_stage13_claim_cardinality_audit.csv` | `build_biological_claims_table.R` | 1 | 1 |
-| `results/source_data/03_qc_exploration/04e_control_compartment_abundance_publication_figures` | `render_compartment_abundance_figures.R` | 1 | 0 |
 | `results/source_data/06_modules_WGCNA/claim_readiness` | `audit_module_claim_readiness.R` | 1 | 1 |
 | `results/source_data/06_modules_WGCNA/identity_contract` | `build_module_identity_contract.R` | 1 | 0 |
 | `results/source_data/06_modules_WGCNA/microglia_neuropil_independence` | `render_microglia_independence_figures.R` | 1 | 0 |
@@ -161,18 +164,6 @@ its outputs.
 | `results/spatial_validation/validate_spatial_foundations/global` | `validate_spatial_foundations.R` | 1 | 1 |
 | `results/tables/01_preprocessing/06_merged_metadata_module_score` | `build_module_score_metadata.R` | 1 | 1 |
 | `results/tables/02_id_mapping/MapThatProt_batch` | `map_protein_identifiers.R` | 1 | 1 |
-| `results/tables/03_qc_exploration/00_dataset_qc_report` | `assess_dataset_quality.R` | 1 | 1 |
-| `results/tables/03_qc_exploration/00b_joint_compartment_qc` | `assess_joint_compartment_quality.R` | 1 | 0 |
-| `results/tables/03_qc_exploration/01_sample_qc_quicksearch` | `assess_sample_quality.R` | 1 | 1 |
-| `results/tables/03_qc_exploration/02_missingness_diagnostics` | `summarize_missingness.R` | 1 | 1 |
-| `results/tables/03_qc_exploration/03_replicate_consistency` | `assess_replicate_consistency.R` | 1 | 1 |
-| `results/tables/03_qc_exploration/04_marker_rank_abundance_qc` | `assess_marker_rank_abundance.R` | 1 | 0 |
-| `results/tables/03_qc_exploration/04c_marker_detectability_and_wgcna_bridge` | `summarize_marker_detectability.R` | 1 | 0 |
-| `results/tables/03_qc_exploration/05_empirical_roi_marker_discovery` | `discover_empirical_roi_markers.R` | 1 | 1 |
-| `results/tables/03_qc_exploration/05_pca_confounding_qc` | `assess_pca_confounding.R` | 1 | 0 |
-| `results/tables/03_qc_exploration/06_variance_partitioning` | `partition_variance.R` | 1 | 0 |
-| `results/tables/03_qc_exploration/06_wgcna_marker_trait_export` | `export_marker_traits.R` | 1 | 0 |
-| `results/tables/03_qc_exploration/reference_marker_import` | `build_reference_marker_registry.R` | 1 | 0 |
 | `results/tables/04_differential_expression_enrichment/compareGO` | `compare_recurrent_module_proteins.R` | 1 | 1 |
 | `results/tables/06_modules_WGCNA/01_WGCNA` | `build_wgcna_modules.R` | 1 | 6 |
 | `results/tables/06_modules_WGCNA/01b_module_supermodule_GO_heatmaps` | `render_module_go_heatmaps.R` | 1 | 0 |
@@ -215,9 +206,4 @@ its outputs.
 All are `LEGITIMATE_MULTI_STAGE_COORDINATION`: the contributors write
 different files into a shared stage directory. The canonical owner is the
 script that writes the family's manuscript-facing product.
-
-### `results/figures/03_qc_exploration/00b_joint_compartment_qc`
-
-- **owner:** `analysis/qc/render_joint_compartment_qc_figures.R` — declares 2 of the 2 outputs in this shared diagnostic family
-- **contributors (1):** `analysis/qc/assess_joint_compartment_quality.R`
 

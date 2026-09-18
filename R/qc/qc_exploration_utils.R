@@ -37,8 +37,9 @@ qc_args <- function(default_dataset = "neuron_neuropil") {
   )
 }
 
-qc_paths <- function(substep, dataset) {
-  create_module_dirs("03_qc_exploration", file.path(substep, dataset))
+## the canonical/historical QC path resolvers live in their own file
+if (!exists("qc_dirs", mode = "function")) {
+  source(repo_path("R", "qc_result_paths.R"))
 }
 
 qc_latest <- function(root, pattern) {

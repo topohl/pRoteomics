@@ -32,6 +32,7 @@ source("R/data_contracts/protigy_input_utils.R")
 source("R/data_contracts/spatial_systems_data_utils.R")
 source("R/spatial/spatial_atlas_utils.R")
 source(repo_path("R", "spatial_systems_paths.R"))
+source(repo_path("R", "qc_result_paths.R"))
 
 # Phase 6G.3: destinations resolve through the normalized output contract,
 # addressed by this analysis's own identity rather than by the historical
@@ -52,8 +53,9 @@ OUT <- function() {
 CAND <- path_results("tables", "10_biological_integration",
                      "wgcna_candidate_protein_shortlist", "global",
                      "wgcna_candidate_proteins_all.csv")
-EMP <- path_results("tables", "03_qc_exploration", "05_empirical_roi_marker_discovery",
-                    "empirical_roi_marker_sets.csv")
+EMP <- qc_find("empirical_roi_marker_sets.csv",
+               owner = "discover_empirical_roi_markers",
+               legacy_substep = "05_empirical_roi_marker_discovery")
 REF <- repo_path("config", "marker_panels", "wgcna_reference_marker_sets.csv")
 DATASETS <- valid_datasets()
 

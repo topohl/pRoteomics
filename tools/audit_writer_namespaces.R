@@ -50,10 +50,13 @@ split_paths <- function(x) {
 # differential_abundance_dirs() is the same kind of wrapper for that domain,
 # and differential_abundance_relative_path() is the repo-relative form used by
 # the one writer that supports redirecting its output root.
+# qc_dirs() is the QC domain's wrapper, and it replaced qc_paths(), the legacy
+# factory eleven of the fifteen QC writers shared.
 NORMALIZED_CALLS <- c("canonical_result_path", "canonical_work_path",
                       "canonical_module_dirs", "spatial_systems_dirs",
                       "differential_abundance_dirs",
-                      "differential_abundance_relative_path")
+                      "differential_abundance_relative_path",
+                      "qc_dirs")
 # these create directories, so calling one is itself a write
 LEGACY_FACTORIES <- c("create_module_dirs", "module_paths", "qc_paths")
 PATH_BUILDERS <- c("path_results", "path_processed")
@@ -207,6 +210,32 @@ subtree_names <- function(e) {
   unique(out)
 }
 
+# The R libraries an entrypoint sources, one level deep.
+#
+# Some writers construct no destination themselves:
+# analysis/qc/render_compartment_abundance_figures.R has no write call at all,
+# because R/qc/control_compartment_abundance_workflow.R does the rendering and
+# builds the paths. Judging only the entrypoint reports such a writer as
+# having no destination, which then looks like a split brain against a
+# perfectly good registry declaration. One level is enough for the cases that
+# exist and keeps this a reader rather than a link-time resolver.
+sourced_libraries <- function(f) {
+  exprs <- tryCatch(parse(f), error = function(e) NULL)
+  if (is.null(exprs)) return(character(0))
+  out <- character(0)
+  for (e in exprs) walk(e, function(x) {
+    if (!is.call(x)) return(invisible(NULL))
+    nm <- call_name(x)
+    if (is.na(nm) || !nm %in% c("source", "sys.source")) return(invisible(NULL))
+    p <- tryCatch(eval(x[[2]], envir = globalenv()), error = function(...) NA_character_)
+    if (length(p) == 1L && !is.na(p) && file.exists(p) && grepl("[.][Rr]$", p)) {
+      out <<- c(out, p)
+    }
+    invisible(NULL)
+  })
+  unique(out)
+}
+
 analyse <- function(f) {
   if (!file.exists(f)) {
     return(list(api = FALSE, legacy = FALSE, n_legacy = 0L, n_api = 0L, parsed = FALSE))
@@ -263,12 +292,35 @@ rows <- lapply(seq_len(nrow(steps)), function(i) {
   a <- analyse(f)
 
   declared <- split_paths(steps$produces[i])
-  declared_normalized <- length(declared) > 0 &&
-    all(startsWith(declared, paste0("results/", domain, "/")) |
-        startsWith(declared, paste0("work/", domain, "/")))
+  ## A generated configuration contract is not a result and is exempt.
+  ##
+  ## analysis/qc/build_reference_marker_registry.R declares
+  ## config/marker_panels/wgcna_reference_marker_sets.csv. That file is
+  ## committed, sits beside three hand-maintained marker panels, and is read as
+  ## configuration by twelve scripts across five domains through
+  ## consumes_required/consumes_optional. The output-layout contract governs
+  ## results, not configuration, so requiring it under results/<domain>/ would
+  ## be wrong rather than merely strict.
+  declared_results <- declared[!startsWith(declared, "config/")]
+  declared_normalized <- length(declared_results) > 0 &&
+    all(startsWith(declared_results, paste0("results/", domain, "/")) |
+        startsWith(declared_results, paste0("work/", domain, "/")))
+
+  ## A writer that constructs no destination at all cannot contradict its
+  ## declaration, so it is not a split brain.
+  ##
+  ## analysis/qc/render_compartment_abundance_figures.R has no write call and
+  ## no path construction: R/qc/control_compartment_abundance_workflow.R does
+  ## both. Calling that PARTIAL would report a disagreement between a
+  ## declaration and code that says nothing. It gets its own status so it stays
+  ## visible rather than being quietly counted as migrated, and the domain's
+  ## test asserts that the library it delegates to resolves normalized.
+  constructs_nothing <- a$parsed && a$n_api == 0L && a$n_legacy == 0L
 
   status <- if (!a$parsed) {
     "UNPARSED"
+  } else if (constructs_nothing) {
+    if (declared_normalized) "DELEGATED" else "PENDING"
   } else if (a$api && !a$legacy && declared_normalized) {
     "MIGRATED"
   } else if ((a$api && !a$legacy) != declared_normalized) {

@@ -2,14 +2,15 @@
 # Script: analysis/qc/assess_pca_confounding.R
 # Stage: qc
 # Scope: dataset_specific
-# Consumes: required data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv; optional data/metadata/*.xlsx.
-# Produces: results/tables/03_qc_exploration/05_pca_confounding_qc/<dataset>/.
+# Consumes: required data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv; optional data/metadata/*.xlsx
+# Produces: results/qc/assess_pca_confounding/<dataset>/tables
 # Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: PCA and confounding QC.
 # ================================================================
 
 # Dataset-aware PCA QC for spatial proteomics.
 # UMAP/t-SNE/clustering are explicitly optional exploratory outputs.
+#  
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
@@ -17,10 +18,16 @@ source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "dataset_inputs.R"))
 source(repo_path("R", "qc_exploration_utils.R"))
 
+# Phase 6G.5: destinations resolve through the normalized output
+# contract, addressed by this analysis's own identity rather than by the
+# historical 03_qc_exploration stage directory and its chronological
+# substep. Outputs already written there stay exactly where they are.
+ANALYSIS_ID <- "assess_pca_confounding"
+
 run <- qc_args()
 DATASET <- run$dataset
 SUBSTEP_ID <- "05_pca_confounding_qc"
-PATHS <- qc_paths(SUBSTEP_ID, DATASET)
+PATHS <- qc_dirs(ANALYSIS_ID, DATASET, create = TRUE)
 matrix_file <- path_or_env("PROTEOMICS_PCA_MATRIX_FILE", qc_resolve_matrix(DATASET), must_exist = FALSE)
 metadata_file <- qc_resolve_metadata(DATASET, env = "PROTEOMICS_PCA_METADATA_FILE")
 

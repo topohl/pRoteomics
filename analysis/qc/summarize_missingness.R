@@ -2,13 +2,14 @@
 # Script: analysis/qc/summarize_missingness.R
 # Stage: qc
 # Scope: dataset_specific
-# Consumes: required data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv; optional data/metadata/*.xlsx.
-# Produces: results/tables/03_qc_exploration/02_missingness_diagnostics/<dataset>/missingness_diagnostics.xlsx.
+# Consumes: required data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv; optional data/metadata/*.xlsx
+# Produces: results/qc/summarize_missingness/<dataset>/tables/missingness_diagnostics.xlsx
 # Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Missingness diagnostics.
 # ================================================================
 
 # Dataset-aware missingness diagnostics before imputation when possible.
+#  
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
@@ -16,9 +17,15 @@ source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "dataset_inputs.R"))
 source(repo_path("R", "qc_exploration_utils.R"))
 
+# Phase 6G.5: destinations resolve through the normalized output
+# contract, addressed by this analysis's own identity rather than by the
+# historical 03_qc_exploration stage directory and its chronological
+# substep. Outputs already written there stay exactly where they are.
+ANALYSIS_ID <- "summarize_missingness"
+
 run <- qc_args()
 DATASET <- run$dataset
-PATHS <- qc_paths("02_missingness_diagnostics", DATASET)
+PATHS <- qc_dirs(ANALYSIS_ID, DATASET, create = TRUE)
 matrix_file <- qc_resolve_matrix(DATASET, env = "PROTEOMICS_MISSINGNESS_MATRIX_FILE")
 metadata_file <- qc_resolve_metadata(DATASET, env = "PROTEOMICS_MISSINGNESS_METADATA_FILE")
 
