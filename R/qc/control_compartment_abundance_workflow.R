@@ -3,6 +3,7 @@
 
 source(repo_path("R", "script_runtime.R"))
 source(repo_path("R", "dataset_config.R"))
+source(repo_path("R", "preprocessing_paths.R"))
 source(repo_path("R", "qc_exploration_utils.R"))
 source(repo_path("R", "compartment_abundance_utils.R"))
 source(repo_path("R", "plotting_nature.R"))
@@ -50,12 +51,22 @@ if (!is.finite(min_score_fraction) || min_score_fraction < 0 || min_score_fracti
   )
 }
 
-processed_root <- Sys.getenv(
-  "PROTEOMICS_JOINT_QC_PROCESSED_DIR",
-  unset = path_processed("01_preprocessing", "joint_compartment_qc", "global")
-)
+## Phase 6G.7: the serialised bundle moved to the normalized models/ child, so
+## the default is resolved normalized-first with a historical fallback. An
+## explicit PROTEOMICS_JOINT_QC_PROCESSED_DIR still wins.
+processed_root <- Sys.getenv("PROTEOMICS_JOINT_QC_PROCESSED_DIR", unset = "")
+joint_bundle_file <- if (nzchar(processed_root)) {
+  file.path(processed_root, "joint_compartment_qc_matrices.rds")
+} else {
+  preprocessing_find("joint_compartment_qc_matrices.rds",
+                     owner = "build_joint_protigy_input",
+                     legacy_stage = "01_preprocessing",
+                     legacy_substep = "joint_compartment_qc",
+                     scope = "global", child = "models",
+                     legacy_family = "processed")
+}
 inputs <- c(
-  joint_bundle = file.path(processed_root, "joint_compartment_qc_matrices.rds"),
+  joint_bundle = joint_bundle_file,
   marker_registry = repo_path(
     "config", "marker_panels", "wgcna_reference_marker_sets.csv"
   )

@@ -7,6 +7,9 @@ if (!exists("repo_path", mode = "function")) {
 if (!exists("validate_dataset", mode = "function")) {
   source(repo_path("R", "dataset_config.R"))
 }
+if (!exists("preprocessing_find", mode = "function")) {
+  source(repo_path("R", "preprocessing_paths.R"))
+}
 
 first_existing_path <- function(paths) {
   paths <- unique(normalizePath(paths[nzchar(paths)], winslash = "/", mustWork = FALSE))
@@ -122,13 +125,20 @@ resolve_dataset_inputs <- function(
       producer_script_or_artifact_id = "archive/01_preprocessing/02_excel_convert.r",
       record_resolution = record_resolution
     )
-    canonical_metadata <- path_processed(
-      "01_preprocessing",
-      "06_merged_metadata_module_score",
+    ## Phase 6G.7: build_module_score_metadata now writes into the normalized
+    ## namespace, so that is the expected path and the historical
+    ## data/processed location joins the legacy candidates below. Nineteen
+    ## analyses read this workbook through here.
+    canonical_metadata <- canonical_result_path(
+      "preprocessing",
+      "build_module_score_metadata",
       dataset,
+      "tables",
       "sample_metadata_merged_clean_for_module_scores.xlsx"
     )
     legacy_dataset_candidates <- c(
+      path_processed("01_preprocessing", "06_merged_metadata_module_score", dataset,
+                     "sample_metadata_merged_clean_for_module_scores.xlsx"),
       path_results("module_scores", dataset, "sample_metadata_merged_clean_for_module_scores.xlsx"),
       path_processed("01_preprocessing", dataset, "sample_metadata_merged_clean_for_module_scores.xlsx")
     )

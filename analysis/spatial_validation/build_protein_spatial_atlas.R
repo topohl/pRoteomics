@@ -95,8 +95,7 @@ for (ds in DATASETS) {
   if (!length(want)) next
   inputs <- resolve_dataset_inputs(ds, purpose = "wgcna", script = SCRIPT_ID,
                                    stage = "networks")
-  md <- path_processed("01_preprocessing", "06_merged_metadata_module_score", ds,
-                       "sample_metadata_merged_clean_for_module_scores.xlsx")
+  md <- preprocessing_module_score_metadata(ds)
   canonical <- qc_load_canonical_expression(inputs$expression_file, md,
                                             dataset = ds, strict = TRUE)
   lv <- sps_build_spatial_levels(ds, canonical = canonical)

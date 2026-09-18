@@ -62,6 +62,7 @@ source("R/statistics/integration_utils.R")
 source("R/spatial/spatial_atlas_utils.R")
 source("R/spatial/ca2_slm_robustness_utils.R")
 source(repo_path("R", "spatial_systems_paths.R"))
+source(repo_path("R", "preprocessing_paths.R"))
 source(repo_path("R", "qc_result_paths.R"))
 
 # Phase 6G.3: destinations resolve through the normalized output contract,
@@ -79,7 +80,7 @@ cli <- integration_cli(default_dataset = "neuron_neuropil")
 
 DS <- "neuron_neuropil"
 UNIT <- "CA2_slm"
-DA_DIR <- path_processed("02_id_mapping", "mapped", DS, "forward", "per_file")
+DA_DIR <- preprocessing_mapped_contrast_dir(DS, "forward")
 DA_FILE <- file.path(DA_DIR, "CA2slmsus_CA2slmres.csv")
 RAW <- repo_path("data", "raw", "pg_matrix", "quicksearch.pg_matrix.tsv")
 META <- repo_path("data", "metadata", "TPE9_sample_metadata_males.xlsx")

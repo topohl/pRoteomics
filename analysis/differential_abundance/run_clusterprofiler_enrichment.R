@@ -40,6 +40,7 @@ source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "protein_mapping_utils.R"))
 source(repo_path("R", "protein_group_enrichment_utils.R"))
 source(repo_path("R", "enrichment_io.R"))
+source(repo_path("R", "preprocessing_paths.R"))
 source(repo_path("R", "schema_validation.R"))
 source(repo_path("R", "clusterprofiler_reproducibility.R"))
 source(repo_path("R", "differential_abundance_paths.R"))
@@ -887,7 +888,7 @@ CANONICAL_PATHS <- if (nzchar(ENRICHMENT_BRANCH)) {
 }
 invisible(lapply(CANONICAL_PATHS, dir_create))
 
-dataset_mapped_default <- path_processed("02_id_mapping", "mapped", DATASET, "forward", "per_file")
+dataset_mapped_default <- preprocessing_mapped_contrast_dir(DATASET, "forward")
 if (is.null(cfg$paths$mapped_dir) || !nzchar(cfg$paths$mapped_dir)) {
   cfg$paths$mapped_dir <- dataset_mapped_default
 }

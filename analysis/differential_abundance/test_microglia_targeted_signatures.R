@@ -26,6 +26,7 @@ source(repo_path("R", "validation_utils.R"))
 source(repo_path("R", "clusterprofiler_reproducibility.R"))
 source(repo_path("R", "microglia_targeted_signature_utils.R"))
 source(repo_path("R", "differential_abundance_paths.R"))
+source(repo_path("R", "preprocessing_paths.R"))
 source(repo_path("R", "qc_result_paths.R"))
 
 # Phase 6G.4: destinations resolve through the normalized output contract,
@@ -432,7 +433,7 @@ add_symbol_aliases <- function(tbl, id_map) {
 }
 
 contrast_dir <- function(dataset) {
-  path_processed("02_id_mapping", "mapped", dataset, "forward", "per_file")
+  preprocessing_mapped_contrast_dir(dataset, "forward")
 }
 
 safe_read_contrast <- function(path) {

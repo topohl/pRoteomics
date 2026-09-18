@@ -33,6 +33,7 @@ source("R/data_contracts/dataset_config.R")
 source("R/statistics/integration_utils.R")
 source("R/data_contracts/animal_id_contract.R")
 source(repo_path("R", "spatial_network_utils.R"))
+source(repo_path("R", "preprocessing_paths.R"))
 
 # Phase 6G.6: destinations resolve through the normalized output
 # contract, addressed by this analysis's own identity. This domain
@@ -59,9 +60,7 @@ BEHAVIOR_XLSX <- path_external("behavior", "E9_Behavior_Data.xlsx")
 AUC_FIRST <- path_external("behavior", "auc_individual_animals_firstChangeActive.csv")
 AUC_ALL <- path_external("behavior", "auc_individual_animals_all.csv")
 SPATIAL_RDS <- resolve_spatial_network_object("neuron_neuropil", "region_layer")
-META <- function(ds) path_processed(
-  "01_preprocessing", "06_merged_metadata_module_score", ds,
-  "sample_metadata_merged_clean_for_module_scores.xlsx")
+META <- function(ds) preprocessing_module_score_metadata(ds)
 
 if (isTRUE(cli$dry_run)) {
   cat("[DRY-RUN] Repository-level AnimalID integrity audit.\n")

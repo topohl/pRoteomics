@@ -56,8 +56,7 @@ OUT <- function() {
   d <- CANONICAL_PATHS$tables; dir_create(d); d
 }
 meta_path <- function(ds) {
-  path_processed("01_preprocessing", "06_merged_metadata_module_score", ds,
-                 "sample_metadata_merged_clean_for_module_scores.xlsx")
+  preprocessing_module_score_metadata(ds)
 }
 stage05_hemi_path <- function(ds) {
   path_results("tables", "06_modules_WGCNA", "group_effects", ds,

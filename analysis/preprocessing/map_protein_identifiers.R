@@ -2,8 +2,8 @@
 # Script: analysis/preprocessing/map_protein_identifiers.R
 # Stage: core
 # Scope: dataset_specific
-# Consumes: required PROTEOMICS_GCT_EXTRACT_ROOT/<dataset>/<direction>/*.csv (historical default data/processed/01_preprocessing/gct_extractR); data/external/MOUSE_10090_idmapping.dat; optional manual protein and gene-annotation mapping tables.
-# Produces: PROTEOMICS_MAPPING_OUTPUT_ROOT/{mapped,unmapped,member_bridge}/<dataset>/<direction>/per_file/ (historical default data/processed/02_id_mapping) plus namespaced QC outputs.
+# Consumes: required results/preprocessing/extract_protigy_contrasts/<dataset>/tables/forward/*.csv; data/processed/01_preprocessing/gct_extractR/<dataset>/forward/*.csv; data/external/MOUSE_10090_idmapping.dat; optional data/metadata/manual_mapping.xlsx
+# Produces: results/preprocessing/map_protein_identifiers/<dataset>/tables/mapped/forward/per_file/*.csv; results/preprocessing/map_protein_identifiers/<dataset>/tables/mapped/forward/summaries/*.csv
 # Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Maps GCT-derived protein IDs to UniProt/gene symbols; enrichment consumes these mapped files.
 # ================================================================
@@ -31,15 +31,18 @@
 #' @date 2025-12-15
 #'
 #' Consumes:
-#'   - contrast CSVs from data/processed/01_preprocessing/gct_extractR/<comparison>/<forward|reverse>/
+#'   - contrast CSVs from results/preprocessing/extract_protigy_contrasts/<comparison>/tables/<forward|reverse>/,
+#'     falling back to data/processed/01_preprocessing/gct_extractR/<comparison>/<forward|reverse>/
 #'   - UniProt idmapping from data/external/MOUSE_10090_idmapping.dat
 #'   - optional manual mapping workbook from data/metadata/manual_mapping.xlsx
-#' Produces:
-#'   - mapped contrast CSVs under data/processed/02_id_mapping/mapped/<comparison>/<forward|reverse>/per_file/
-#'   - unmapped tracking under data/processed/02_id_mapping/unmapped/<comparison>/<forward|reverse>/per_file/
-#'   - mapping summaries/reports/logs under results/{tables,reports,logs}/02_id_mapping/MapThatProt_batch/<comparison>/
+#' Produces (Phase 6G.7 normalized namespace; an explicit
+#' PROTEOMICS_MAPPING_OUTPUT_ROOT keeps the historical root-relative layout):
+#'   - mapped contrast CSVs under results/preprocessing/map_protein_identifiers/<comparison>/tables/mapped/<forward|reverse>/per_file/
+#'   - unmapped tracking under results/preprocessing/map_protein_identifiers/<comparison>/tables/unmapped/<forward|reverse>/per_file/
+#'   - mapping summaries under .../tables/, reports under .../reports/, provenance under .../manifests/
 #' File contract:
 #'   - docs/file_contracts.tsv object mapped_contrast_csv
+#  
 
 cat("====================================================\n")
 cat("Starting MapThatProt_batch execution...\n")
@@ -98,16 +101,18 @@ CANONICAL_PATHS <- list(
 raw_dir <- mapping_paths$raw_dir
 
 # Define output directories for mapped datasets, unmapped trackers, and QC info
-info_dir <- file.path(CANONICAL_PATHS$logs, mapped_comparisons, "mapped", map_direction, "info")
+## Phase 6G.7: the roots from resolve_mapthatprot_paths() arrive already scoped
+## to the dataset, so only the meaning-carrying segments are appended here.
+info_dir <- file.path(CANONICAL_PATHS$logs, "mapped", map_direction, "info")
 mapped_dir <- mapping_paths$mapped_dir
-mapped_summary_dir <- file.path(CANONICAL_PATHS$tables, mapped_comparisons, "mapped", map_direction, "summaries")
+mapped_summary_dir <- file.path(CANONICAL_PATHS$tables, "mapped", map_direction, "summaries")
 unmapped_dir <- mapping_paths$unmapped_dir
-unmapped_summary_dir <- file.path(CANONICAL_PATHS$tables, mapped_comparisons, "unmapped", map_direction, "summaries")
+unmapped_summary_dir <- file.path(CANONICAL_PATHS$tables, "unmapped", map_direction, "summaries")
 member_bridge_dir <- mapping_paths$member_bridge_dir
-protein_group_audit_dir <- file.path(CANONICAL_PATHS$tables, mapped_comparisons, "protein_groups", map_direction, "audits")
-accession_annotation_audit_dir <- file.path(CANONICAL_PATHS$tables, mapped_comparisons, "gene_annotation", map_direction, "accessions")
-protein_group_annotation_audit_dir <- file.path(CANONICAL_PATHS$tables, mapped_comparisons, "gene_annotation", map_direction, "protein_groups")
-report_dir <- file.path(CANONICAL_PATHS$reports, mapped_comparisons, "mapping_reports", map_direction)
+protein_group_audit_dir <- file.path(CANONICAL_PATHS$tables, "protein_groups", map_direction, "audits")
+accession_annotation_audit_dir <- file.path(CANONICAL_PATHS$tables, "gene_annotation", map_direction, "accessions")
+protein_group_annotation_audit_dir <- file.path(CANONICAL_PATHS$tables, "gene_annotation", map_direction, "protein_groups")
+report_dir <- file.path(CANONICAL_PATHS$reports, "mapping_reports", map_direction)
 
 # --- Reference Databases ---
 # Define path for central UniProt species-specific knowledgebase flatfile
@@ -230,7 +235,7 @@ utils::write.csv(
             file_hash(Sys.getenv("PROTEOMICS_MANUAL_GENE_ANNOTATION_FILE", unset = path_metadata("manual_gene_annotation_overrides.csv")))),
         stringsAsFactors = FALSE
     ),
-    file.path(CANONICAL_PATHS$logs, mapped_comparisons, paste0("MapThatProt_batch_input_manifest_", map_direction, ".csv")),
+    file.path(CANONICAL_PATHS$logs, paste0("MapThatProt_batch_input_manifest_", map_direction, ".csv")),
     row.names = FALSE
 )
 

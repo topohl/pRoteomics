@@ -7,6 +7,7 @@ if (!exists("repo_path", mode = "function")) {
 if (!exists("dataset_capabilities", mode = "function")) source(repo_path("R", "dataset_config.R"))
 if (!exists("build_enrichment_gene_inputs", mode = "function")) source(repo_path("R", "protein_group_enrichment_utils.R"))
 if (!exists("validate_clusterprofiler_manifest_contract", mode = "function")) source(repo_path("R", "enrichment_io.R"))
+if (!exists("preprocessing_find", mode = "function")) source(repo_path("R", "preprocessing_paths.R"))
 
 SUS_RES_DAP_FDR_THRESHOLD <- 0.05
 MIN_ORA_DAP_GENES <- 10L
@@ -113,10 +114,21 @@ sus_res_resolve_manifest_input <- function(manifest_input, dataset, repository_r
   # Historical manifests may retain an absolute path from the producing checkout.
   # Relocation is deterministic: keep the manifest-declared basename and place it
   # only in the current canonical dataset-specific mapped-contrast directory.
+  ## Phase 6G.7: normalized first, then the historical location under the
+  ## caller's repository_root, so an explicitly-rooted call still resolves.
   relocated <- file.path(
-    repository_root, "data", "processed", "02_id_mapping", "mapped", dataset,
-    "forward", "per_file", basename(manifest_input)
+    preprocessing_mapping_dir_find("mapped", dataset, "forward"),
+    basename(manifest_input)
   )
+  if (!file.exists(relocated)) {
+    historical <- file.path(
+      repository_root, "data", "processed", "02_id_mapping", "mapped", dataset,
+      "forward", "per_file", basename(manifest_input)
+    )
+    if (file.exists(historical)) {
+      return(normalizePath(historical, winslash = "/", mustWork = TRUE))
+    }
+  }
   if (!file.exists(relocated)) {
     stop("Manifest-selected mapped contrast is missing at both its recorded and canonical relocated paths: ",
       manifest_input, " | ", relocated, call. = FALSE)

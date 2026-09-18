@@ -6,6 +6,7 @@ if (!exists("repo_path", mode = "function")) source(file.path("R", "paths.R"))
 if (!exists("valid_datasets", mode = "function")) source(repo_path("R", "dataset_config.R"))
 if (!exists("build_canonical_protein_group_tables", mode = "function")) source(repo_path("R", "protein_mapping_utils.R"))
 if (!exists("qc_build_mapping_context", mode = "function")) source(repo_path("R", "qc_exploration_utils.R"))
+if (!exists("preprocessing_find", mode = "function")) source(repo_path("R", "preprocessing_paths.R"))
 
 joint_qc_datasets <- function() valid_datasets()
 
@@ -246,7 +247,9 @@ joint_qc_validate_gct_v13 <- function(path, n_rows = NULL, n_cols = NULL, n_row_
   invisible(TRUE)
 }
 
-joint_qc_observed_detection_provenance <- function(protein_ids, dataset, root = path_processed("01_preprocessing", "joint_compartment_qc", "global")) {
+## Phase 6G.7: the audit tables moved to the normalized tables/ child, so the
+## default root is resolved normalized-first with a historical fallback.
+joint_qc_observed_detection_provenance <- function(protein_ids, dataset, root = preprocessing_dir_any("build_joint_protigy_input", "01_preprocessing", "joint_compartment_qc", "global", "tables", "processed")) {
   file <- file.path(root, "observed_detection_by_dataset.csv")
   out <- data.frame(ProteinGroupID = protein_ids, observed_detection_rate_raw = NA_real_, detectability_source = "raw_unified_output_not_available", stringsAsFactors = FALSE)
   if (!file.exists(file)) return(out)
