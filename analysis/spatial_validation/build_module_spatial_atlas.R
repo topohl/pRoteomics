@@ -35,6 +35,7 @@ source("R/statistics/integration_utils.R")
 source("R/spatial/spatial_atlas_utils.R")
 source("R/enrichment/ewce_gene_set_engine.R")
 source(repo_path("R", "spatial_systems_paths.R"))
+source(repo_path("R", "qc_result_paths.R"))
 
 # Phase 6G.3: destinations resolve through the normalized output contract,
 # addressed by this analysis's own identity rather than by the historical
@@ -68,9 +69,9 @@ P <- list(
   precision  = spatial_systems_find("bilateral_precision_gain.csv", "precision"),
   ewce_long  = spatial_systems_find("WGCNA_module_external_celltype_affinity_long.csv",
                                     "celltype_annotation"),
-  emp_sets   = path_results("tables", "03_qc_exploration",
-                            "05_empirical_roi_marker_discovery",
-                            "empirical_roi_marker_sets.csv"),
+  emp_sets   = qc_find("empirical_roi_marker_sets.csv",
+                       owner = "discover_empirical_roi_markers",
+                       legacy_substep = "05_empirical_roi_marker_discovery"),
   emp_bil    = spatial_systems_find("bilateral_empirical_compartment_summary.csv",
                                     "bilateral"),
   emp_trans  = spatial_systems_find("bilateral_empirical_marker_transfer.csv",

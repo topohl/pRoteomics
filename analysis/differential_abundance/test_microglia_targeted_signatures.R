@@ -26,6 +26,7 @@ source(repo_path("R", "validation_utils.R"))
 source(repo_path("R", "clusterprofiler_reproducibility.R"))
 source(repo_path("R", "microglia_targeted_signature_utils.R"))
 source(repo_path("R", "differential_abundance_paths.R"))
+source(repo_path("R", "qc_result_paths.R"))
 
 # Phase 6G.4: destinations resolve through the normalized output contract,
 # addressed by this analysis's own identity rather than by the historical
@@ -65,7 +66,8 @@ if (!length(SIGNATURE_METHOD_PRIORITY) ||
 }
 EMPIRICAL_ROI_MARKER_PATH <- Sys.getenv(
   "PROTEOMICS_EMPIRICAL_ROI_MARKER_FILE",
-  unset = path_results("tables", "03_qc_exploration", "05_empirical_roi_marker_discovery", "empirical_roi_marker_sets.csv")
+  unset = qc_find("empirical_roi_marker_sets.csv", owner = "discover_empirical_roi_markers",
+                  legacy_substep = "05_empirical_roi_marker_discovery")
 )
 
 OUTPUT_DATASET_ID <- if (VALIDATION_ONLY) paste0(DATASET, "_validation_proposed") else DATASET

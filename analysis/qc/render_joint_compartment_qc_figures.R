@@ -6,15 +6,23 @@
 # Stage: qc_global
 # Scope: global
 # Consumes: required data/processed/01_preprocessing/joint_compartment_qc/global/joint_compartment_qc_matrices.rds; results/tables/03_qc_exploration/00b_joint_compartment_qc/global/joint_primary_pca_scores.csv; results/tables/03_qc_exploration/00b_joint_compartment_qc/global/joint_primary_pca_variance_explained.csv; +4 more; optional none declared in pipeline.yml
-# Produces: results/figures/03_qc_exploration/00b_joint_compartment_qc/publication_style/global/joint_compartment_qc_main_figure_183mm.svg; results/figures/03_qc_exploration/00b_joint_compartment_qc/publication_style/global/joint_compartment_qc_extended_data_figure_183mm.svg; results/figures/03_qc_exploration/00b_joint_compartment_qc/publication_style/global/panels/; +2 more
+# Produces: results/qc/render_joint_compartment_qc_figures/global/plots/publication_style/joint_compartment_qc_main_figure_183mm.svg; results/qc/render_joint_compartment_qc_figures/global/plots/publication_style/joint_compartment_qc_extended_data_figure_183mm.svg; results/qc/render_joint_compartment_qc_figures/global/plots/publication_style/panels; +2 more
 # Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Plot-only Nature-style rendering of the completed joint-compartment QC.
+#  
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
 source(repo_path("R", "script_runtime.R"))
 source(repo_path("R", "plotting_nature.R"))
 source(repo_path("R", "joint_compartment_qc_plotting.R"))
+source(repo_path("R", "qc_result_paths.R"))
+
+# Phase 6G.5: destinations resolve through the normalized output
+# contract, addressed by this analysis's own identity rather than by the
+# historical 03_qc_exploration stage directory and its chronological
+# substep. Outputs already written there stay exactly where they are.
+ANALYSIS_ID <- "render_joint_compartment_qc_figures"
 
 global_arg <- tolower(script_arg_value("--dataset", "global"))
 if (!global_arg %in% c("all", "global")) stop("This is a global figure script; use --dataset all or global.", call. = FALSE)
@@ -31,14 +39,16 @@ processed_root <- Sys.getenv(
   "PROTEOMICS_JOINT_QC_PROCESSED_DIR",
   unset = path_processed("01_preprocessing", "joint_compartment_qc", "global")
 )
-qc_table_root <- path_results("tables", "03_qc_exploration", "00b_joint_compartment_qc", "global")
+qc_table_root <- qc_dir_any(owner = "assess_joint_compartment_quality",
+                            legacy_substep = "00b_joint_compartment_qc")
 figure_root <- Sys.getenv(
   "PROTEOMICS_JOINT_QC_PUBLICATION_FIGURE_DIR",
-  unset = path_results("figures", "03_qc_exploration", "00b_joint_compartment_qc", "publication_style", "global")
+  unset = file.path(qc_dirs(ANALYSIS_ID, "global", create = TRUE)$plots,
+                    "publication_style")
 )
 panel_root <- file.path(figure_root, "panels")
-report_root <- path_results("reports", "03_qc_exploration", "00c_joint_compartment_qc_publication_figures", "global")
-log_root <- path_results("logs", "03_qc_exploration", "00c_joint_compartment_qc_publication_figures", "global")
+report_root <- qc_dirs(ANALYSIS_ID, "global", create = TRUE)$reports
+log_root <- qc_dirs(ANALYSIS_ID, "global", create = TRUE)$manifests
 
 inputs <- c(
   bundle = file.path(processed_root, "joint_compartment_qc_matrices.rds"),

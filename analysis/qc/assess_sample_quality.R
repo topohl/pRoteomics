@@ -2,8 +2,8 @@
 # Script: analysis/qc/assess_sample_quality.R
 # Stage: qc
 # Scope: dataset_specific
-# Consumes: required data/raw/pg_matrix/quicksearch.stats.annotated.xlsx; optional data/metadata/*.xlsx.
-# Produces: results/figures/03_qc_exploration/01_sample_qc_quicksearch/<dataset>/; results/tables/03_qc_exploration/01_sample_qc_quicksearch/<dataset>/qc_summary_tables.xlsx.
+# Consumes: required data/raw/pg_matrix/quicksearch.stats.annotated.xlsx; optional data/metadata/*.xlsx
+# Produces: results/qc/assess_sample_quality/<dataset>/plots; results/qc/assess_sample_quality/<dataset>/tables/qc_summary_tables.xlsx
 # Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Quicksearch sample-level QC.
 # ================================================================
@@ -17,6 +17,7 @@
 # The script is designed to be flexible to varying QC metrics and sample annotations, and includes error handling for missing data. It also saves all outputs in a specified results directory.
 # Author: Tobias Pohl
 # ================================================================
+#  
 
 early_paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(early_paths_file)
@@ -27,7 +28,7 @@ source(repo_path("R", "qc_exploration_utils.R"))
 early_run <- qc_args()
 if (early_run$dry_run) {
   early_dataset <- early_run$dataset
-  early_paths <- qc_paths("01_sample_qc_quicksearch", early_dataset)
+  early_paths <- qc_dirs("assess_sample_quality", early_dataset, create = TRUE)
   early_input <- Sys.getenv(
     "PROTEOMICS_QC_STATS_FILE",
     unset = path_raw("pg_matrix", "quicksearch.stats.annotated.xlsx")
@@ -63,11 +64,16 @@ source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "dataset_inputs.R"))
 source(repo_path("R", "qc_exploration_utils.R"))
 
+# Phase 6G.5: destinations resolve through the normalized output
+# contract, addressed by this analysis's own identity rather than by the
+# historical 03_qc_exploration stage directory and its chronological
+# substep. Outputs already written there stay exactly where they are.
+ANALYSIS_ID <- "assess_sample_quality"
+
 run <- qc_args()
 DATASET <- run$dataset
-MODULE_ID <- "03_qc_exploration"
 SUBSTEP_ID <- "01_sample_qc_quicksearch"
-CANONICAL_PATHS <- qc_paths(SUBSTEP_ID, DATASET)
+CANONICAL_PATHS <- qc_dirs(ANALYSIS_ID, DATASET, create = TRUE)
 
 # ================================================================
 # 1. Paths
@@ -79,7 +85,7 @@ input_file <- Sys.getenv(
 )
 
 out_dir <- Sys.getenv("PROTEOMICS_QC_PUBLICATION_DIR", unset = CANONICAL_PATHS$figures)
-global_out_dir <- path_results("figures", MODULE_ID, SUBSTEP_ID, "global")
+global_out_dir <- qc_dirs(ANALYSIS_ID, "global", create = TRUE)$plots
 table_dir <- Sys.getenv("PROTEOMICS_QC_TABLE_DIR", unset = CANONICAL_PATHS$tables)
 if (run$dry_run) {
   status <- qc_dry_run_contract(

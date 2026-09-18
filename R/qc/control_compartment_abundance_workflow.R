@@ -60,20 +60,16 @@ inputs <- c(
     "config", "marker_panels", "wgcna_reference_marker_sets.csv"
   )
 )
-substep <- "04e_control_compartment_abundance_publication_figures"
+## Phase 6G.5: this workflow is the destination construction for
+## analysis/qc/render_compartment_abundance_figures.R, which has no
+## write call of its own.
+ca_analysis_id <- "render_compartment_abundance_figures"
+ca_dirs <- qc_dirs(ca_analysis_id, "global", create = TRUE)
 roots <- list(
-  source_data = path_results(
-    "source_data", "03_qc_exploration", substep, "global"
-  ),
-  figures = path_results(
-    "figures", "03_qc_exploration", substep, "global"
-  ),
-  reports = path_results(
-    "reports", "03_qc_exploration", substep, "global"
-  ),
-  logs = path_results(
-    "logs", "03_qc_exploration", substep, "global"
-  )
+  source_data = ca_dirs$source_data,
+  figures = ca_dirs$plots,
+  reports = ca_dirs$reports,
+  logs = ca_dirs$manifests
 )
 render_inputs <- c(
   dot_source = file.path(

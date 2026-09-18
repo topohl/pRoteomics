@@ -16,6 +16,7 @@ source(repo_path("R", "integration_utils.R"))
 source(repo_path("R", "wgcna_claim_readiness_utils.R"))
 source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
 source(repo_path("R", "module_semantic_utils.R"))
+source(repo_path("R", "qc_result_paths.R"))
 
 SCRIPT_ID <- "analysis/integration/build_cross_compartment_atlas.R"
 Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
@@ -32,7 +33,10 @@ dataset_inputs <- function(ds) {
     complex_architecture = path_results("tables", "06_modules_WGCNA", "module_complex_architecture", ds, "module_complex_architecture.csv"),
     robustness = path_results("tables", "06_modules_WGCNA", "module_robustness_sensitivity", ds, "module_robustness_sensitivity.csv"),
     module_behavior = path_results("tables", "08_behavior_physio_coupling", "module_behavior_coupling", ds, "module_behavior_coupling.csv"),
-    qc_report = path_results("reports", "03_qc_exploration", "07_qc_biology_confounding_report", ds, "qc_biology_confounding_summary.md"),
+    qc_report = qc_find("qc_biology_confounding_summary.md",
+                        owner = "summarize_qc_confounding",
+                        legacy_substep = "07_qc_biology_confounding_report",
+                        scope = ds, kind = "reports"),
     spatial_program = path_results("tables", "04_differential_expression_enrichment", "compareGO_spatial_atlas", "spatial_program_summary.csv")
   )
   if (identical(ds, "microglia")) inputs$wgcna_claim_readiness <- microglia_wgcna_claim_readiness_path()

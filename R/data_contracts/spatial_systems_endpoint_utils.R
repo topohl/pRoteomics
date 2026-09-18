@@ -11,6 +11,18 @@
 .sps_level_cache <- new.env(parent = emptyenv())
 
 # Build (and memoise) the hemisphere-resolved levels for a dataset.
+
+## qc_find() resolves QC outputs normalized-first with a historical
+## fallback; it lives in its own small file so this library does not have to
+## load the whole QC utility stack.
+if (!exists("qc_find", mode = "function")) {
+  if (!exists("repo_path", mode = "function")) {
+    paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
+    source(paths_file)
+  }
+  source(repo_path("R", "qc_result_paths.R"))
+}
+
 sps_levels_for_dataset <- function(dataset) {
   key <- as.character(dataset)
   if (!is.null(.sps_level_cache[[key]])) return(.sps_level_cache[[key]])
@@ -118,9 +130,9 @@ sps_endpoints_reference_marker_scores <- function(dataset, levels,
 # 3. Empirical (experiment-derived) compartment marker sets.
 sps_endpoints_empirical_compartment_scores <- function(dataset, levels,
                                                        min_members = 3L) {
-  p <- path_results("tables", "03_qc_exploration",
-                    "05_empirical_roi_marker_discovery",
-                    "empirical_roi_marker_sets.csv")
+  p <- qc_find("empirical_roi_marker_sets.csv",
+               owner = "discover_empirical_roi_markers",
+               legacy_substep = "05_empirical_roi_marker_discovery")
   if (!file.exists(p)) return(NULL)
   sets <- as.data.frame(readr::read_csv(p, show_col_types = FALSE,
                                         progress = FALSE, guess_max = Inf))
