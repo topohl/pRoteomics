@@ -17,6 +17,7 @@ source(repo_path("R", "script_runtime.R"))
 source(repo_path("R", "plotting_nature.R"))
 source(repo_path("R", "joint_compartment_qc_plotting.R"))
 source(repo_path("R", "qc_result_paths.R"))
+source(repo_path("R", "preprocessing_paths.R"))
 
 # Phase 6G.5: destinations resolve through the normalized output
 # contract, addressed by this analysis's own identity rather than by the
@@ -35,10 +36,16 @@ runtime <- list(
   started_at = Sys.time()
 )
 
-processed_root <- Sys.getenv(
-  "PROTEOMICS_JOINT_QC_PROCESSED_DIR",
-  unset = path_processed("01_preprocessing", "joint_compartment_qc", "global")
-)
+## Phase 6G.7: audit tables resolve under the normalized tables/ child and the
+## serialised bundle under models/, so they resolve separately. An explicit
+## override still supplies both from one directory.
+joint_qc_override <- Sys.getenv("PROTEOMICS_JOINT_QC_PROCESSED_DIR", unset = "")
+processed_root <- if (nzchar(joint_qc_override)) joint_qc_override else preprocessing_joint_qc_tables()
+joint_bundle_file <- if (nzchar(joint_qc_override)) {
+  file.path(joint_qc_override, "joint_compartment_qc_matrices.rds")
+} else {
+  preprocessing_joint_qc_bundle()
+}
 qc_table_root <- qc_dir_any(owner = "assess_joint_compartment_quality",
                             legacy_substep = "00b_joint_compartment_qc")
 figure_root <- Sys.getenv(
@@ -51,7 +58,7 @@ report_root <- qc_dirs(ANALYSIS_ID, "global", create = TRUE)$reports
 log_root <- qc_dirs(ANALYSIS_ID, "global", create = TRUE)$manifests
 
 inputs <- c(
-  bundle = file.path(processed_root, "joint_compartment_qc_matrices.rds"),
+  bundle = joint_bundle_file,
   normalization = file.path(processed_root, "sample_normalization_audit.csv"),
   imputation = file.path(processed_root, "imputation_footprint_by_sample.csv"),
   pca_scores = file.path(qc_table_root, "joint_primary_pca_scores.csv"),

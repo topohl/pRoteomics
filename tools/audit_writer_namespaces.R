@@ -56,7 +56,16 @@ NORMALIZED_CALLS <- c("canonical_result_path", "canonical_work_path",
                       "canonical_module_dirs", "spatial_systems_dirs",
                       "differential_abundance_dirs",
                       "differential_abundance_relative_path",
-                      "qc_dirs", "integration_dirs")
+                      "qc_dirs", "integration_dirs",
+                      # Phase 6G.7. Two preprocessing writers take a
+                      # configurable output root, so their destination is a
+                      # resolver call rather than a fixed dirs() lookup.
+                      "preprocessing_dirs",
+                      "preprocessing_gct_extract_dir",
+                      "preprocessing_gct_extract_manifest_dir",
+                      "preprocessing_gct_extract_manifest_path",
+                      "preprocessing_mapping_dir",
+                      "preprocessing_mapping_result_dir")
 # these create directories, so calling one is itself a write
 LEGACY_FACTORIES <- c("create_module_dirs", "module_paths", "qc_paths")
 PATH_BUILDERS <- c("path_results", "path_processed")

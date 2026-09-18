@@ -67,9 +67,16 @@ add_check(
 )
 
 id_map_hits <- unlist(lapply(config$datasets, function(ds) {
-  root <- file.path(repo_path(config$canonical_inputs$processed_id_mapping$root), ds, "forward", "per_file")
-  if (!dir.exists(root)) return(character(0))
-  list.files(root, pattern = "\\.csv$", full.names = TRUE)
+  ## Phase 6G.7: map_protein_identifiers writes into the normalized namespace,
+  ## so both roots count. Checking only the historical one would report the
+  ## mapped contrasts absent after a legitimate rerun.
+  roots <- c(
+    file.path(repo_path(config$canonical_inputs$processed_id_mapping$root), ds, "forward", "per_file"),
+    repo_path("results", "preprocessing", "map_protein_identifiers", ds,
+              "tables", "mapped", "forward", "per_file")
+  )
+  unlist(lapply(roots[dir.exists(roots)], list.files,
+                pattern = "\\.csv$", full.names = TRUE), use.names = FALSE)
 }))
 add_check(
   "id_mapping_present",

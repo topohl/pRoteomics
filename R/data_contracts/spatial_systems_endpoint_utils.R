@@ -22,6 +22,7 @@ if (!exists("qc_find", mode = "function")) {
   }
   source(repo_path("R", "qc_result_paths.R"))
 }
+if (!exists("preprocessing_find", mode = "function")) source(repo_path("R", "preprocessing_paths.R"))
 
 sps_levels_for_dataset <- function(dataset) {
   key <- as.character(dataset)
@@ -30,8 +31,13 @@ sps_levels_for_dataset <- function(dataset) {
                                    script = Sys.getenv("PROTEOMICS_SCRIPT_ID",
                                                        "spatial_systems"),
                                    stage = "networks")
-  md <- path_processed("01_preprocessing", "06_merged_metadata_module_score",
-                       dataset, "sample_metadata_merged_clean_for_module_scores.xlsx")
+  ## Normalized first, historical second (Phase 6G.7).
+  md <- preprocessing_find("sample_metadata_merged_clean_for_module_scores.xlsx",
+                           owner = "build_module_score_metadata",
+                           legacy_stage = "01_preprocessing",
+                           legacy_substep = "06_merged_metadata_module_score",
+                           scope = dataset, child = "tables",
+                           legacy_family = "processed")
   canonical <- qc_load_canonical_expression(inputs$expression_file, md,
                                             dataset = dataset, strict = TRUE)
   lv <- sps_build_spatial_levels(dataset, canonical = canonical)

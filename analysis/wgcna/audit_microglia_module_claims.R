@@ -87,13 +87,16 @@ rel <- function(path) {
 }
 source(repo_path("R", "null_coalescing.R"))
 source(repo_path("R", "qc_result_paths.R"))
+source(repo_path("R", "preprocessing_paths.R"))
 
 state_path <- file.path(repo_root, "data/processed/06_modules_WGCNA/01_WGCNA/microglia/wgcna_final_model_state.rds")
 definitions_path <- file.path(repo_root, "results/tables/06_modules_WGCNA/01_WGCNA/microglia/modules/WGCNA_module_definitions_for_downstream.csv")
 super_values_path <- file.path(repo_root, "results/tables/06_modules_WGCNA/group_effects/microglia/all_supermodule_eigengene_group_values.csv")
 annotation_path <- file.path(repo_root, "results/tables/06_modules_WGCNA/module_annotation/microglia/WGCNA_module_biological_annotation.csv")
 registry_path <- file.path(repo_root, "config/wgcna_labels/microglia.csv")
-joint_path <- file.path(repo_root, "data/processed/01_preprocessing/joint_compartment_qc/global/joint_compartment_qc_matrices.rds")
+## Phase 6G.7: a read of a migrated preprocessing object, normalized first and
+## historical second. WGCNA's own output paths are untouched by that phase.
+joint_path <- preprocessing_joint_qc_bundle()
 reference_markers_path <- file.path(repo_root, "config/marker_panels/wgcna_reference_marker_sets.csv")
 microenvironment_markers_path <- file.path(repo_root, "config/marker_panels/microenvironment_marker_panels.csv")
 empirical_markers_path <- qc_find("empirical_roi_marker_sets.csv",

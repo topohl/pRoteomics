@@ -23,8 +23,17 @@ ANALYSIS_ID <- "assess_joint_compartment_quality"
 global_arg <- tolower(script_arg_value("--dataset", "all"))
 if (!global_arg %in% c("all", "global")) stop("This is a global QC script; use --dataset all or global.", call. = FALSE)
 runtime <- list(script = "analysis/qc/assess_joint_compartment_quality.R", stage = "qc_global", dataset = "global", args = commandArgs(trailingOnly = TRUE), dry_run = is_dry_run(), started_at = Sys.time())
-processed_root <- Sys.getenv("PROTEOMICS_JOINT_QC_PROCESSED_DIR", unset = path_processed("01_preprocessing", "joint_compartment_qc", "global"))
-bundle_file <- file.path(processed_root, "joint_compartment_qc_matrices.rds")
+## Phase 6G.7: the audit tables and the serialised bundle now live in different
+## normalized children (tables/ and models/), so they resolve separately. An
+## explicit PROTEOMICS_JOINT_QC_PROCESSED_DIR still supplies both from one
+## directory, which is also what every historical layout did.
+joint_qc_override <- Sys.getenv("PROTEOMICS_JOINT_QC_PROCESSED_DIR", unset = "")
+processed_root <- if (nzchar(joint_qc_override)) joint_qc_override else preprocessing_joint_qc_tables()
+bundle_file <- if (nzchar(joint_qc_override)) {
+  file.path(joint_qc_override, "joint_compartment_qc_matrices.rds")
+} else {
+  preprocessing_joint_qc_bundle()
+}
 out_root <- qc_dirs(ANALYSIS_ID, "global", create = TRUE)
 seed <- suppressWarnings(as.integer(Sys.getenv("PROTEOMICS_JOINT_QC_SEED", unset = "42"))); if (is.na(seed)) seed <- 42L
 

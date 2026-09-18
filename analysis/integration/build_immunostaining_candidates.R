@@ -32,6 +32,7 @@ suppressPackageStartupMessages({
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
 source(repo_path("R", "integration_utils.R"))
+source(repo_path("R", "preprocessing_paths.R"))
 
 # Phase 6G.6: destinations resolve through the normalized output
 # contract, addressed by this analysis's own identity. This domain
@@ -59,8 +60,7 @@ CANDIDATES <- data.frame(
 GCT <- repo_path("data", "processed", "01_preprocessing",
                  "protigy_input_animal_level", DATASET,
                  paste0(DATASET, "_animal_level.gct"))
-DA_DIR <- repo_path("data", "processed", "02_id_mapping", "mapped", DATASET,
-                    "forward", "per_file")
+DA_DIR <- preprocessing_mapped_contrast_dir(DATASET, "forward")
 if (!file.exists(GCT)) stop("missing_required_input: ", GCT, call. = FALSE)
 if (!dir.exists(DA_DIR)) stop("missing_required_input: ", DA_DIR, call. = FALSE)
 
@@ -268,8 +268,10 @@ prov <- do.call(rbind, lapply(seq_len(nrow(effects)), function(i) data.frame(
   UniProt = effects$UniProt[i],
   spatial_unit = effects$spatial_unit[i],
   canonical_da_source_key = effects$canonical_source_key[i],
-  canonical_da_input = file.path("data/processed/02_id_mapping/mapped",
-                                 DATASET, "forward/per_file",
+  ## Phase 6G.7: record the directory that was actually resolved rather than a
+  ## hard-coded historical literal, so this provenance field stays true once
+  ## the mapped contrasts are produced in the normalized namespace.
+  canonical_da_input = file.path(relative_to(DA_DIR),
                                  effects$canonical_source_key[i]),
   canonical_abundance_input = file.path(
     "data/processed/01_preprocessing/protigy_input_animal_level", DATASET,

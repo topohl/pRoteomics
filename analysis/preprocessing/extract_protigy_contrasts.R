@@ -2,16 +2,18 @@
 # Script: analysis/preprocessing/extract_protigy_contrasts.R
 # Stage: core
 # Scope: dataset_specific
-# Consumes: corrected animal-level ProTigy GCT by default; legacy input requires PROTEOMICS_GCT_BRANCH=legacy|comparison.
-# Produces: PROTEOMICS_GCT_OUTPUT_ROOT/<dataset>/{forward,reverse}/*.csv and indexComparisons.csv
+# Consumes: required data/processed/01_preprocessing/protigy_output/<dataset>/*.gct; optional data/processed/01_preprocessing/protigy_output/<dataset>/protigy_manifest.csv; data/processed/01_preprocessing/protigy_output/protigy_manifest.csv
+# Produces: results/preprocessing/extract_protigy_contrasts/<dataset>/tables/forward/*.csv; results/preprocessing/extract_protigy_contrasts/<dataset>/tables/reverse/*.csv; results/preprocessing/extract_protigy_contrasts/<dataset>/manifests/indexComparisons.csv; +1 more
 # Notes: Splits physical ProTigy statistical-result GCT fields; statistical fields may be row descriptors.
 # Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # ================================================================
+#  
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
 source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "protigy_stat_gct_utils.R"))
+source(repo_path("R", "preprocessing_paths.R"))
 
 MODULE_ID <- "01_preprocessing"
 DEFAULT_SUBSTEP_ID <- "gct_extractR"
@@ -43,18 +45,29 @@ resolved <- resolve_single_protigy_gct(
   use_manifest = TRUE
 )
 gct_path <- resolved$path
-outdir <- file.path(roots$output_root, comparison_name)
 
 default_output_root <- normalizePath(
   path_processed("01_preprocessing", "gct_extractR"),
   winslash = "/", mustWork = FALSE
 )
+## Phase 6G.7: the split contrast tables are the canonical head of the
+## DA -> enrichment chain, so they move into the analysis-owned results
+## namespace. An explicit PROTEOMICS_GCT_OUTPUT_ROOT is a deliberate branch
+## replay and keeps its root-relative layout; only the default moves.
+outdir_fwd <- preprocessing_gct_extract_dir(comparison_name, "forward",
+                                            roots$output_root, default_output_root)
+outdir_rev <- preprocessing_gct_extract_dir(comparison_name, "reverse",
+                                            roots$output_root, default_output_root)
+index_dir <- preprocessing_gct_extract_manifest_dir(comparison_name,
+                                                    roots$output_root, default_output_root)
+index_file <- file.path(index_dir, "indexComparisons.csv")
+
 analysis_namespace <- if (identical(roots$output_root, default_output_root)) {
   DEFAULT_SUBSTEP_ID
 } else {
   safe_filename(basename(roots$output_root))
 }
-CANONICAL_PATHS <- module_paths(MODULE_ID, analysis_namespace)
+CANONICAL_PATHS <- preprocessing_dirs("extract_protigy_contrasts", comparison_name)
 
 legacy_mode <- tolower(Sys.getenv("PROTEOMICS_GCT_BRANCH", unset = "canonical")) %in% c("legacy", "comparison")
 animal_level_mode <- !legacy_mode
@@ -66,8 +79,6 @@ contract_current <- !animal_level_mode || gct_extract_contract_is_current(roots$
 if (animal_level_mode && !contract_current) force_rerun <- TRUE
 
 if (is_dry_run()) {
-  outdir_fwd <- file.path(outdir, "forward")
-  outdir_rev <- file.path(outdir, "reverse")
   existing_tables <- c(
     list.files(outdir_fwd, pattern = "\\.csv$", full.names = TRUE),
     list.files(outdir_rev, pattern = "\\.csv$", full.names = TRUE)
@@ -96,7 +107,7 @@ if (is_dry_run()) {
   dry_run_line("Analysis/output root", roots$output_root)
   dry_run_line("Forward output directory", outdir_fwd)
   dry_run_line("Reverse output directory", outdir_rev)
-  dry_run_line("Index output", file.path(outdir, "indexComparisons.csv"))
+  dry_run_line("Index output", index_file)
   dry_run_line("Existing split contrast tables", length(existing_tables))
   dry_run_line("Recompute existing tables", force_rerun)
   quit(status = 0, save = "no")
@@ -109,8 +120,8 @@ if (length(missing_pkgs)) {
 }
 invisible(lapply(required_pkgs, library, character.only = TRUE))
 
-dir_create(CANONICAL_PATHS$logs)
-write_session_info(file.path(CANONICAL_PATHS$logs, "sessionInfo.txt"))
+dir_create(CANONICAL_PATHS$manifests)
+write_session_info(file.path(CANONICAL_PATHS$manifests, "sessionInfo.txt"))
 
 safe_name <- function(x) {
   x |>
@@ -154,10 +165,9 @@ if (animal_level_mode) {
 if (!nrow(parsed_fields)) stop("No valid Metric.Comparison fields detected.", call. = FALSE)
 by_comparison <- split(parsed_fields, parsed_fields$comparison)
 
-outdir_fwd <- file.path(outdir, "forward")
-outdir_rev <- file.path(outdir, "reverse")
 fs::dir_create(outdir_fwd)
 fs::dir_create(outdir_rev)
+fs::dir_create(index_dir)
 
 recode_map <- c(
   "adj.P.Val" = "padj",
@@ -224,11 +234,11 @@ written_index <- purrr::imap_dfr(by_comparison, function(field_rows, comp_key) {
   )
 })
 
-readr::write_csv(written_index, file.path(outdir, "indexComparisons.csv"))
+readr::write_csv(written_index, index_file)
 if (animal_level_mode) write_gct_extract_contract_manifest(roots$output_root, comparison_name, gct_path, gct$sha256, nrow(written_index))
 
 write_run_manifest(
-  file.path(CANONICAL_PATHS$logs, comparison_name, "run_manifest.yml"),
+  file.path(CANONICAL_PATHS$manifests, "run_manifest.yml"),
   inputs = list(
     analysis_input_root = roots$input_root,
     resolved_dataset_directory = resolved$dataset_dir,
@@ -237,10 +247,10 @@ write_run_manifest(
   ),
   outputs = list(
     analysis_output_root = roots$output_root,
-    output_dir = outdir,
+    output_dir = CANONICAL_PATHS$tables,
     forward_dir = outdir_fwd,
     reverse_dir = outdir_rev,
-    index = file.path(outdir, "indexComparisons.csv")
+    index = index_file
   ),
   parameters = list(
     comparison_name = comparison_name,

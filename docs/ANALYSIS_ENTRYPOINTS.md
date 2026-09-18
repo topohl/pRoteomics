@@ -23,9 +23,9 @@ Manuscript rendering is intentionally not listed here. It lives in the Exp9_manu
 | human_name | Preprocessing and identifier mapping |
 | entrypoint | `analysis/preprocessing/extract_protigy_contrasts.R` |
 | scripts_in_area | 4 (2 required) |
-| inputs | `data/processed/01_preprocessing/protigy_output/<dataset>/*.gct`, `data/processed/01_preprocessing/**/*.xlsx`, `data/processed/01_preprocessing/gct_extractR/<dataset>/forward/*.csv`, +3 more |
+| inputs | `data/processed/01_preprocessing/protigy_output/<dataset>/*.gct`, `data/processed/01_preprocessing/**/*.xlsx`, `results/preprocessing/extract_protigy_contrasts/<dataset>/tables/forward/*.csv`, +4 more |
 | optional_inputs | `data/processed/01_preprocessing/protigy_output/<dataset>/protigy_manifest.csv`, `data/processed/01_preprocessing/protigy_output/protigy_manifest.csv`, `data/external/behavior/auc_individual_animals_all.csv`, +4 more |
-| outputs | `data/processed/01_preprocessing/gct_extractR/<dataset>/forward/*.csv`, `data/processed/01_preprocessing/gct_extractR/<dataset>/reverse/*.csv`, `data/processed/01_preprocessing/gct_extractR/<dataset>/indexComparisons.csv`, `data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx`, +9 more |
+| outputs | `results/preprocessing/extract_protigy_contrasts/<dataset>/tables/forward/*.csv`, `results/preprocessing/extract_protigy_contrasts/<dataset>/tables/reverse/*.csv`, `results/preprocessing/extract_protigy_contrasts/<dataset>/manifests/indexComparisons.csv`, `results/preprocessing/extract_protigy_contrasts/<dataset>/manifests/canonical_gct_extract_manifest.csv`, +10 more |
 | required_config | - |
 | upstream_dependencies | - |
 | downstream_consumers | `qc`, `spatial_validation`, `differential_abundance`, `wgcna`, `spatial_networks` |
@@ -49,7 +49,7 @@ Scripts:
 | human_name | Quality control and marker fidelity |
 | entrypoint | `analysis/qc/assess_joint_compartment_quality.R` |
 | scripts_in_area | 15 (0 required) |
-| inputs | `data/processed/01_preprocessing/joint_compartment_qc/global/joint_compartment_qc_matrices.rds`, `results/tables/03_qc_exploration/00b_joint_compartment_qc/global/joint_primary_pca_scores.csv`, `results/tables/03_qc_exploration/00b_joint_compartment_qc/global/joint_primary_pca_variance_explained.csv`, +18 more |
+| inputs | `results/preprocessing/build_joint_protigy_input/global/models/joint_compartment_qc_matrices.rds`, `data/processed/01_preprocessing/joint_compartment_qc/global/joint_compartment_qc_matrices.rds`, `results/tables/03_qc_exploration/00b_joint_compartment_qc/global/joint_primary_pca_scores.csv`, +20 more |
 | optional_inputs | `config/marker_panels/compartment_fidelity_marker_sets.csv`, `data/external/reference_markers/go_mgi/raw/mgi.gaf.gz`, `data/external/reference_markers/go_mgi/raw/go-basic.obo`, +11 more |
 | outputs | `results/qc/assess_joint_compartment_quality/global/tables`, `results/qc/assess_joint_compartment_quality/global/plots`, `results/qc/assess_joint_compartment_quality/global/reports/joint_compartment_qc_summary.md`, `results/qc/assess_joint_compartment_quality/global/manifests/run_manifest.yml`, +24 more |
 | required_config | `config/marker_panels/compartment_fidelity_marker_sets.csv`, `config/marker_panels/wgcna_reference_marker_sets.csv` |
@@ -86,8 +86,8 @@ Scripts:
 | human_name | Spatial systems validation, bilateral QC and CA2-SLM robustness |
 | entrypoint | `analysis/spatial_validation/build_spatial_data_contract.R` |
 | scripts_in_area | 18 (0 required) |
-| inputs | `data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx`, `results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_protein_identity_crosswalk_proposed.csv`, `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_hemisphere_values.csv`, +26 more |
-| optional_inputs | `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_hemisphere_values.csv`, `results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_modules_long.csv`, `results/qc/discover_empirical_roi_markers/global/tables/empirical_roi_marker_sets.csv`, +36 more |
+| inputs | `results/preprocessing/build_module_score_metadata/<dataset>/tables/sample_metadata_merged_clean_for_module_scores.xlsx`, `data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx`, `results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_protein_identity_crosswalk_proposed.csv`, +28 more |
+| optional_inputs | `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_hemisphere_values.csv`, `results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_modules_long.csv`, `results/qc/discover_empirical_roi_markers/global/tables/empirical_roi_marker_sets.csv`, +37 more |
 | outputs | `results/spatial_validation/build_spatial_data_contract/global/tables/spatial_systems_hemisphere_inventory.csv`, `results/spatial_validation/build_spatial_data_contract/global/tables/spatial_systems_aggregation_validation.csv`, `results/spatial_validation/build_spatial_data_contract/global/tables/spatial_systems_evidence_dependence.csv`, `results/spatial_validation/quantify_bilateral_spatial_identity/global/tables/bilateral_spatial_identity_protein_level.csv`, +71 more |
 | required_config | `config/marker_panels/wgcna_reference_marker_sets.csv` |
 | upstream_dependencies | `preprocessing`, `wgcna` |
@@ -126,7 +126,7 @@ Scripts:
 | human_name | Differential abundance and GO/GSEA enrichment |
 | entrypoint | `analysis/differential_abundance/run_clusterprofiler_enrichment.R` |
 | scripts_in_area | 11 (2 required) |
-| inputs | `data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv`, `results/differential_abundance/run_clusterprofiler_enrichment/<dataset>/models/clusterProfiler_manifest.csv`, `data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv`, +17 more |
+| inputs | `results/preprocessing/map_protein_identifiers/<dataset>/tables/mapped/forward/per_file/*.csv`, `data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv`, `results/differential_abundance/run_clusterprofiler_enrichment/<dataset>/models/clusterProfiler_manifest.csv`, +18 more |
 | optional_inputs | `data/external/MOUSE_10090_idmapping.dat`, `results/source_data/04_differential_expression_enrichment/clusterProfiler/<dataset>/`, `config/marker_panels/wgcna_reference_marker_sets.csv`, +12 more |
 | outputs | `results/differential_abundance/run_clusterprofiler_enrichment/<dataset>/models/clusterProfiler_manifest.csv`, `results/differential_abundance/audit_gsea_protein_direction/<dataset>/tables/<ontology>/gsea_term_direction_audit.csv`, `results/differential_abundance/audit_gsea_protein_direction/<dataset>/tables/<ontology>/gsea_contrast_direction_summary.csv`, `results/differential_abundance/audit_gsea_protein_direction/<dataset>/tables/<ontology>/ora_pooled_direction_warning.csv`, +31 more |
 | required_config | `config/clusterProfiler_config.local.yml`, `config/clusterProfiler_config.yml`, `config/compareGO_config.local.yml`, `config/compareGO_config.yml`, +2 more |
@@ -159,8 +159,8 @@ Scripts:
 | human_name | WGCNA modules and supermodules |
 | entrypoint | `analysis/wgcna/build_wgcna_modules.R` |
 | scripts_in_area | 24 (1 required) |
-| inputs | `data/processed/01_preprocessing/impute/*_pgmatrix_imputed_<dataset>_*_missing70pct.xlsx`, `data/metadata/TPE9_sample_metadata_males.xlsx`, `data/external/MOUSE_10090_idmapping.dat`, +58 more |
-| optional_inputs | `data/metadata/manual_mapping.xlsx`, `data/external/MOUSE_10090_idmapping.dat`, `data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx`, +33 more |
+| inputs | `data/processed/01_preprocessing/impute/*_pgmatrix_imputed_<dataset>_*_missing70pct.xlsx`, `data/metadata/TPE9_sample_metadata_males.xlsx`, `data/external/MOUSE_10090_idmapping.dat`, +59 more |
+| optional_inputs | `data/metadata/manual_mapping.xlsx`, `data/external/MOUSE_10090_idmapping.dat`, `results/preprocessing/build_module_score_metadata/<dataset>/tables/sample_metadata_merged_clean_for_module_scores.xlsx`, +34 more |
 | outputs | `results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/`, `results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_module_supermodule_annotation.csv`, `results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_supermodule_summary.csv`, `results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_supermodule_GO_term_support_audit.csv`, +119 more |
 | required_config | `config/marker_panels/microenvironment_marker_panels.csv`, `config/marker_panels/wgcna_reference_marker_sets.csv`, `config/microglia_neuropil_independence.yml`, `config/wgcna_labels/microglia.csv` |
 | upstream_dependencies | `preprocessing`, `differential_abundance` |
@@ -228,7 +228,7 @@ Scripts:
 | human_name | Spatial and differential networks |
 | entrypoint | `analysis/spatial_networks/build_spatial_networks.R` |
 | scripts_in_area | 6 (1 required) |
-| inputs | `data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv`, `results/spatial_networks/build_spatial_networks/<dataset>/models/*/network_spatial_relations_objects.rds`, `data/processed/07_spatial_networks/network_spatial_relations/<dataset>/*/network_spatial_relations_objects.rds`, +3 more |
+| inputs | `results/preprocessing/map_protein_identifiers/<dataset>/tables/mapped/forward/per_file/*.csv`, `data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv`, `results/spatial_networks/build_spatial_networks/<dataset>/models/*/network_spatial_relations_objects.rds`, +4 more |
 | optional_inputs | `results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/`, `results/spatial_networks/test_differential_network_stability/<dataset>/tables/candidate_edge_differential_stability_summary.csv`, `results/tables/07_spatial_networks/bootstrap_differential_network_stability/bootstrap_differential_edge_stability_summary.csv`, +1 more |
 | outputs | `results/spatial_networks/build_spatial_networks/<dataset>/models/*/network_spatial_relations_objects.rds`, `results/spatial_networks/build_spatial_networks/<dataset>/tables`, `results/spatial_networks/build_spatial_networks/<dataset>/plots`, `results/spatial_networks/build_spatial_networks/<dataset>/manifests`, +17 more |
 | required_config | `config/legacy_output_registry.csv`, `config/output_layout.yml`, `config/spatial_networks.local.yml` |
@@ -256,7 +256,7 @@ Scripts:
 | human_name | Biological integration and behaviour coupling |
 | entrypoint | `analysis/integration/test_behaviour_proteomics_associations.R` |
 | scripts_in_area | 17 (0 required) |
-| inputs | `data/external/behavior/auc_individual_animals_firstChangeActive.csv`, `results/spatial_networks/build_spatial_networks/<dataset>/models/*/network_spatial_relations_objects.rds`, `data/processed/07_spatial_networks/network_spatial_relations/<dataset>/*/network_spatial_relations_objects.rds`, +63 more |
+| inputs | `data/external/behavior/auc_individual_animals_firstChangeActive.csv`, `results/spatial_networks/build_spatial_networks/<dataset>/models/*/network_spatial_relations_objects.rds`, `data/processed/07_spatial_networks/network_spatial_relations/<dataset>/*/network_spatial_relations_objects.rds`, +64 more |
 | optional_inputs | `data/processed/morpheus/20260218_pgmatrix_imputed_neuron_soma_71samples_missing70pct_with_metadata.xlsx`, `data/external/MOUSE_10090_idmapping.dat`, `data/external/behavior/auc_individual_animals_all.csv`, +35 more |
 | outputs | `results/integration/test_behaviour_proteomics_associations/global/plots/Figure3_AUC_vs_Proteomics.svg`, `results/integration/test_behaviour_proteomics_associations/global/plots/SourceData_Figure3_Correlation.csv`, `results/integration/test_behaviour_proteomics_associations/global/tables/join_diagnostics_summary.csv`, `results/integration/test_network_behaviour_coupling/global/tables`, +118 more |
 | required_config | `config/animal_id_aliases.csv`, `config/gsea_wgcna_program_module_mapping.csv`, `config/gsea_wgcna_theme_module_mapping.csv`, `config/manuscript_go_theme_registry.tsv`, +1 more |

@@ -26,6 +26,7 @@ source("R/utilities/xlsx_package_utils.R")
 source("R/data_contracts/animal_id_contract.R")
 source("R/spatial/ca2_slm_robustness_utils.R")
 source(repo_path("R", "spatial_systems_paths.R"))
+source(repo_path("R", "preprocessing_paths.R"))
 
 # Phase 6G.3: destinations resolve through the normalized output contract,
 # addressed by this analysis's own identity rather than by the historical
@@ -49,8 +50,8 @@ FIG <- function(...) {
   d <- CANONICAL_PATHS$plots
   dir_create(d); file.path(d, ...)
 }
-DA_FILE <- path_processed("02_id_mapping", "mapped", "neuron_neuropil", "forward",
-                          "per_file", "CA2slmsus_CA2slmres.csv")
+DA_FILE <- file.path(preprocessing_mapped_contrast_dir("neuron_neuropil", "forward"),
+                     "CA2slmsus_CA2slmres.csv")
 IMPUTED <- path_processed("01_preprocessing", "impute",
   "20260601_pgmatrix_imputed_neuron_neuropil_180samples_missing70pct.xlsx")
 

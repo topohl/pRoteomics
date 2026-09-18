@@ -105,8 +105,7 @@ da_stats <- sus_res %>%
 message("Measuring CON baseline abundance per spatial unit (all measured proteins)")
 inputs <- resolve_dataset_inputs(DS, purpose = "wgcna", script = SCRIPT_ID,
                                  stage = "networks")
-md <- path_processed("01_preprocessing", "06_merged_metadata_module_score", DS,
-                     "sample_metadata_merged_clean_for_module_scores.xlsx")
+md <- preprocessing_module_score_metadata(DS)
 canonical <- qc_load_canonical_expression(inputs$expression_file, md,
                                           dataset = DS, strict = TRUE)
 lv <- sps_build_spatial_levels(DS, canonical = canonical)

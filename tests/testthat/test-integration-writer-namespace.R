@@ -381,7 +381,9 @@ testthat::test_that("inputs from unmigrated producers are not given invented pat
   deps <- unique(unlist(lapply(seq_len(nrow(int)), function(i) {
     c(sp(int$consumes_required[i]), sp(int$consumes_optional[i]))
   })))
-  for (dom in c("wgcna", "preprocessing", "publication_source_data")) {
+  ## Phase 6G.7 migrated preprocessing, so it left this list. wgcna and
+  ## publication_source_data are still pending.
+  for (dom in c("wgcna", "publication_source_data")) {
     invented <- deps[startsWith(deps, paste0("results/", dom, "/"))]
     testthat::expect_identical(
       invented, character(0),
@@ -393,11 +395,18 @@ testthat::test_that("inputs from unmigrated producers are not given invented pat
 })
 
 testthat::test_that("every migrated-domain input has a normalized sibling declared", {
+  ## 02_id_mapping is here but 01_preprocessing deliberately is not. Phase
+  ## 6G.7 migrated the mapped contrast tables, so those edges must carry a
+  ## normalized sibling; integration's only 01_preprocessing edge is the
+  ## animal-level ProTigy GCT, whose producer sits in pipeline.yml's legacy:
+  ## section. Demanding a normalized sibling for it would claim a path no
+  ## producer has adopted, which is the very thing the previous test forbids.
   MIG <- c("05_celltype_enrichment_EWCE" = "enrichment",
            "07_spatial_networks" = "spatial_networks",
            "11_spatial_systems" = "spatial_validation",
            "04_differential_expression_enrichment" = "differential_abundance",
-           "03_qc_exploration" = "qc")
+           "03_qc_exploration" = "qc",
+           "02_id_mapping" = "preprocessing")
   s <- registry_steps()
   int <- s[grepl("^analysis/integration/", s$script), , drop = FALSE]
   for (i in seq_len(nrow(int))) {

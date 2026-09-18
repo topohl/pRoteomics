@@ -1,5 +1,16 @@
 # Shared path and input-contract helpers for isolated MapThatProt branches.
 
+# Destinations and the extraction contract manifest come from the preprocessing
+# path resolver: this file decides which branch is in force, not where a
+# normalized artifact lives.
+if (!exists("preprocessing_mapping_dir", mode = "function")) {
+  if (!exists("repo_path", mode = "function")) {
+    paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
+    source(paths_file)
+  }
+  source(repo_path("R", "preprocessing_paths.R"))
+}
+
 mapping_is_absolute_path <- function(path) {
   grepl("^([A-Za-z]:[\\\\/]|\\\\\\\\|/)", path)
 }
@@ -64,18 +75,36 @@ resolve_mapthatprot_paths <- function(dataset, direction = "forward", roots = re
     stop("Mapping direction must be 'forward' or 'reverse'.", call. = FALSE)
   }
   namespace <- mapping_results_namespace(roots$mapping_output_root)
-  result_root <- function(kind) path_results(kind, namespace, "MapThatProt_batch")
+  ## Already scoped to the dataset, so the caller appends only the segments
+  ## that carry meaning. Historical shape is preserved for an explicit root.
+  result_root <- function(kind) {
+    preprocessing_mapping_result_dir(kind, dataset, root = roots$mapping_output_root,
+                                     namespace = namespace)
+  }
   list(
     dataset = dataset,
     direction = direction,
     analysis_namespace = namespace,
     gct_extract_root = roots$gct_extract_root,
     mapping_output_root = roots$mapping_output_root,
-    mapped_dataset_dir = file.path(roots$mapping_output_root, "mapped", dataset, direction),
-    raw_dir = file.path(roots$gct_extract_root, dataset, direction),
-    mapped_dir = file.path(roots$mapping_output_root, "mapped", dataset, direction, "per_file"),
-    unmapped_dir = file.path(roots$mapping_output_root, "unmapped", dataset, direction, "per_file"),
-    member_bridge_dir = file.path(roots$mapping_output_root, "member_bridge", dataset, direction, "per_file"),
+    ## Phase 6G.7 destinations. The mapped contrast CSVs are a versioned file
+    ## contract read by six analysis domains, so they are canonical results,
+    ## not intermediates. The dataset moves from the third path segment to the
+    ## scope position, which is why these are built by the resolver rather than
+    ## concatenated onto a root.
+    mapped_dataset_dir = preprocessing_mapping_dir("mapped", dataset, direction,
+                                                   leaf = NULL,
+                                                   root = roots$mapping_output_root),
+    ## raw_dir is a read of extract_protigy_contrasts' output: normalized
+    ## first, historical second, so mapping still finds today's extraction.
+    raw_dir = preprocessing_gct_extract_dir_find(dataset, direction,
+                                                 root = roots$gct_extract_root),
+    mapped_dir = preprocessing_mapping_dir("mapped", dataset, direction,
+                                           root = roots$mapping_output_root),
+    unmapped_dir = preprocessing_mapping_dir("unmapped", dataset, direction,
+                                             root = roots$mapping_output_root),
+    member_bridge_dir = preprocessing_mapping_dir("member_bridge", dataset, direction,
+                                                  root = roots$mapping_output_root),
     tables_root = result_root("tables"),
     logs_root = result_root("logs"),
     reports_root = result_root("reports")
@@ -95,7 +124,12 @@ is_animal_level_gct_extract_root <- function(path) {
   )
 }
 
-canonical_gct_extract_manifest <- function(root, dataset) file.path(root, validate_dataset(dataset), "canonical_gct_extract_manifest.csv")
+## A read of extract_protigy_contrasts' provenance manifest, so normalized
+## first and historical second. It delegates to the same resolver the writer
+## uses, which is what keeps the two sides from drifting apart.
+canonical_gct_extract_manifest <- function(root, dataset) {
+  preprocessing_gct_extract_manifest_find(validate_dataset(dataset), root = root)
+}
 
 validate_canonical_gct_extract_provenance <- function(root, dataset) {
   p <- canonical_gct_extract_manifest(root, dataset)

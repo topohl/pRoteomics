@@ -37,6 +37,7 @@ paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.
 source(paths_file)
 source(repo_path("R", "spatial_systems_paths.R"))
 source(repo_path("R", "integration_utils.R"))
+source(repo_path("R", "preprocessing_paths.R"))
 
 # Phase 6G.6: destinations resolve through the normalized output
 # contract, addressed by this analysis's own identity. This domain
@@ -55,8 +56,7 @@ dir.create(OUT, recursive = TRUE, showWarnings = FALSE)
 
 ALREADY_NOMINATED <- c("OGA", "SLC22A23", "ANXA2")
 
-DA_DIR <- repo_path("data", "processed", "02_id_mapping", "mapped", DATASET,
-                    "forward", "per_file")
+DA_DIR <- preprocessing_mapped_contrast_dir(DATASET, "forward")
 ROBUST <- spatial_systems_find("CA2_SLM_DAP_robustness.csv",
                                "ca2_slm_robustness")
 SHORT <- integration_find("wgcna_candidate_proteins_shortlist.csv",
@@ -333,7 +333,8 @@ utils::write.csv(epidermal_dropped,
 utils::write.csv(
   data.frame(repository_commit = git_sha, contract_version = CONTRACT_VERSION,
              dataset = DATASET, n_target = N_TARGET,
-             canonical_da_input = "data/processed/02_id_mapping/mapped/neuron_neuropil/forward/per_file/",
+             ## Phase 6G.7: the resolved directory, not a historical literal.
+             canonical_da_input = paste0(relative_to(DA_DIR), "/"),
              ca2_robustness_input = "results/tables/11_spatial_systems/ca2_slm_robustness/CA2_SLM_DAP_robustness.csv",
              wgcna_shortlist_input = "results/tables/10_biological_integration/wgcna_candidate_protein_shortlist/neuron_neuropil/wgcna_candidate_proteins_shortlist.csv",
              spatial_order_contract = "config/manuscript_spatial_order.yml",

@@ -1,5 +1,15 @@
 # Shared parsing, validation, and comparison helpers for ProTigy statistical-result GCTs.
 
+# The extraction contract manifest is addressed through the preprocessing path
+# resolver so the writer side and the mapping reader side cannot drift apart.
+if (!exists("preprocessing_gct_extract_manifest_path", mode = "function")) {
+  if (!exists("repo_path", mode = "function")) {
+    paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
+    source(paths_file)
+  }
+  source(repo_path("R", "preprocessing_paths.R"))
+}
+
 protigy_supported_metrics <- function() {
   c(
     "signed.Log.P.Value", "Log.P.Value", "adj.P.Val", "P.Value",
@@ -227,10 +237,17 @@ is_corrected_protigy_root <- function(path) {
   identical(tolower(basename(normalizePath(path, winslash = "/", mustWork = FALSE))), "protigy_output_animal_level")
 }
 
-gct_extract_contract_manifest_path <- function(output_root, dataset) file.path(output_root, dataset, "canonical_gct_extract_manifest.csv")
+## Phase 6G.7: the write destination follows the extraction output. When
+## PROTEOMICS_GCT_OUTPUT_ROOT is the historical default this is the normalized
+## manifests/ directory; an explicit override keeps its root-relative layout.
+gct_extract_contract_manifest_path <- function(output_root, dataset) {
+  preprocessing_gct_extract_manifest_path(dataset, root = output_root)
+}
 
 gct_extract_contract_is_current <- function(output_root, dataset, source_path, source_sha256) {
-  p <- gct_extract_contract_manifest_path(output_root, dataset)
+  ## A read, so normalized first and historical second: the extraction that
+  ## exists on disk today is the historical one.
+  p <- preprocessing_gct_extract_manifest_find(dataset, root = output_root)
   if (!file.exists(p)) return(FALSE)
   x <- tryCatch(utils::read.csv(p, stringsAsFactors = FALSE), error = function(e) NULL)
   is.data.frame(x) && nrow(x) == 1L && identical(x$contract_version[[1]], corrected_gct_contract_version()) &&

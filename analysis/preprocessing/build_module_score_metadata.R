@@ -2,14 +2,15 @@
 # Script: analysis/preprocessing/build_module_score_metadata.R
 # Stage: core
 # Scope: dataset_specific
-# Consumes: required data/processed/01_preprocessing/**/*.xlsx; optional data/external/behavior/auc_individual_animals_all.csv; data/external/behavior/auc_individual_animals_firstChangeActive.csv; +1 more.
-# Produces: data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx; results/tables/01_preprocessing/06_merged_metadata_module_score/<dataset>/metadata_merge_qc_summary.csv; results/logs/01_preprocessing/06_merged_metadata_module_score/<dataset>/run_manifest.yml; +1 more.
+# Consumes: required data/processed/01_preprocessing/**/*.xlsx; optional data/external/behavior/auc_individual_animals_all.csv; data/external/behavior/auc_individual_animals_firstChangeActive.csv; data/external/behavior/E9_Behavior_Data.xlsx
+# Produces: results/preprocessing/build_module_score_metadata/<dataset>/tables/sample_metadata_merged_clean_for_module_scores.xlsx; results/preprocessing/build_module_score_metadata/<dataset>/tables/metadata_merge_qc_summary.csv; results/preprocessing/build_module_score_metadata/<dataset>/manifests/run_manifest.yml; +1 more
 # Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Builds behavior/physiology metadata used by module activity scoring.
 # ================================================================
 
 # Build clean merged metadata sheet for module-score analysis
 # ================================================================
+#  
 
 library(readxl)
 library(dplyr)
@@ -23,6 +24,7 @@ paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.
 source(paths_file)
 source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "dataset_inputs.R"))
+source(repo_path("R", "preprocessing_paths.R"))
 
 args <- commandArgs(trailingOnly = TRUE)
 arg_value <- function(flag, default = "") {
@@ -161,11 +163,14 @@ message("Resolved dataset inputs diagnostics: ", paste(dataset_inputs$diagnostic
 
 module_id <- "01_preprocessing"
 substep_id <- "06_merged_metadata_module_score"
-processed_dir <- path_processed(module_id, substep_id, dataset_profile)
-tables_dir <- path_results("tables", module_id, substep_id, dataset_profile)
-reports_dir <- path_results("reports", module_id, substep_id, dataset_profile)
-logs_dir <- path_results("logs", module_id, substep_id, dataset_profile)
-invisible(lapply(c(processed_dir, tables_dir, reports_dir, logs_dir), ensure_dir))
+## Phase 6G.7: the merged metadata workbook is the canonical AnimalID /
+## StressGroup / spatial-unit assignment that nineteen downstream analyses read,
+## so it is a canonical result rather than a processed intermediate.
+CANONICAL_PATHS <- preprocessing_dirs("build_module_score_metadata", dataset_profile)
+processed_dir <- CANONICAL_PATHS$tables
+tables_dir <- CANONICAL_PATHS$tables
+reports_dir <- CANONICAL_PATHS$reports
+logs_dir <- CANONICAL_PATHS$manifests
 
 out_file <- file.path(processed_dir, "sample_metadata_merged_clean_for_module_scores.xlsx")
 qc_summary_file <- file.path(tables_dir, "metadata_merge_qc_summary.csv")
@@ -186,6 +191,11 @@ if (is_dry_run()) {
   dry_run_line("Run manifest", manifest_file)
   quit(status = if (all(file.exists(c(proteomics_file, auc_all_file, auc_first_file, behavior_file)))) 0 else 1, save = "no")
 }
+
+## Created only on a real run. These four ensure_dir calls used to sit above the
+## dry-run gate, so --dry-run left an output skeleton behind - exactly the empty
+## directory that can shadow historical data in a normalized-first resolver.
+invisible(lapply(c(processed_dir, tables_dir, reports_dir, logs_dir), ensure_dir))
 
 # ------------------------------------------------
 # 2) HELPERS

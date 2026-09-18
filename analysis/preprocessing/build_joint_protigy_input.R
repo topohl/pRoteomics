@@ -5,14 +5,16 @@
 # Stage: joint_qc_preprocessing
 # Scope: global
 # Consumes: required data/raw/pg_matrix/quicksearch.pg_matrix.tsv; data/metadata/TPE9_sample_metadata_males.xlsx; data/external/MOUSE_10090_idmapping.dat; optional data/metadata/manual_mapping.xlsx; data/metadata/manual_gene_annotation_overrides.csv
-# Produces: data/processed/01_preprocessing/joint_compartment_qc/global/joint_compartment_qc_matrices.rds; data/processed/01_preprocessing/joint_compartment_qc/global/feature_filter_audit.csv; data/processed/01_preprocessing/protigy_input/global/joint_shared_core_log2_median_normalized_imputed.gct; +1 more
+# Produces: results/preprocessing/build_joint_protigy_input/global/models/joint_compartment_qc_matrices.rds; results/preprocessing/build_joint_protigy_input/global/tables/feature_filter_audit.csv; results/preprocessing/build_joint_protigy_input/global/models/joint_shared_core_log2_median_normalized_imputed.gct; +1 more
 # Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Global raw-derived joint compartment QC preprocessing.
+#  
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
 source(repo_path("R", "script_runtime.R"))
 source(repo_path("R", "joint_compartment_qc_utils.R"))
+source(repo_path("R", "preprocessing_paths.R"))
 
 global_arg <- tolower(script_arg_value("--dataset", "all"))
 if (!global_arg %in% c("all", "global")) stop("This is a global preprocessing script; use --dataset all or global.", call. = FALSE)
@@ -20,8 +22,13 @@ runtime <- list(script = "analysis/preprocessing/build_joint_protigy_input.R", s
 raw_file <- Sys.getenv("PROTEOMICS_JOINT_RAW_MATRIX_FILE", unset = path_raw("pg_matrix", "quicksearch.pg_matrix.tsv"))
 metadata_file <- Sys.getenv("PROTEOMICS_JOINT_METADATA_FILE", unset = path_metadata("TPE9_sample_metadata_males.xlsx"))
 idmap_file <- Sys.getenv("PROTEOMICS_JOINT_IDMAPPING_FILE", unset = path_external("MOUSE_10090_idmapping.dat"))
-output_root <- path_processed("01_preprocessing", "joint_compartment_qc", "global")
-protigy_file <- path_processed("01_preprocessing", "protigy_input", "global", "joint_shared_core_log2_median_normalized_imputed.gct")
+## Phase 6G.7: the two historical substeps (joint_compartment_qc and
+## protigy_input) were the same writer all along, so they collapse into one
+## analysis-owned scope. The audit tables stay together in tables/, the two
+## serialised matrices go to models/, provenance to manifests/.
+CANONICAL_PATHS <- preprocessing_dirs("build_joint_protigy_input", "global")
+output_root <- CANONICAL_PATHS$tables
+protigy_file <- file.path(CANONICAL_PATHS$models, "joint_shared_core_log2_median_normalized_imputed.gct")
 min_block <- joint_qc_env_number("PROTEOMICS_JOINT_MIN_DETECTION_PER_BLOCK", .70, 0, 1)
 min_union <- joint_qc_env_number("PROTEOMICS_JOINT_UNION_MIN_DETECTION", .30, 0, 1)
 max_imputed <- joint_qc_env_number("PROTEOMICS_JOINT_MAX_IMPUTED_FRACTION_WARN", .05, 0, 1)
@@ -31,6 +38,9 @@ if (runtime$dry_run) {
   cat("[DRY-RUN] joint metadata: ", normalizePath(metadata_file, winslash = "/", mustWork = FALSE), " [", if (file.exists(metadata_file)) "PASS" else "FAIL", "]\n", sep = "")
   cat("[DRY-RUN] mouse idmapping: ", normalizePath(idmap_file, winslash = "/", mustWork = FALSE), " [", if (file.exists(idmap_file)) "PASS" else "FAIL", "]\n", sep = "")
   cat("[DRY-RUN] output root: ", output_root, "\n", sep = "")
+  cat("[DRY-RUN] serialised matrices: ", CANONICAL_PATHS$models, "\n", sep = "")
+  cat("[DRY-RUN] protigy gct: ", protigy_file, "\n", sep = "")
+  cat("[DRY-RUN] manifests: ", CANONICAL_PATHS$manifests, "\n", sep = "")
   cat("[DRY-RUN] balanced shared-core detection threshold: ", min_block, "; broad-union threshold: ", min_union, "\n", sep = "")
   quit(status = if (all(file.exists(c(raw_file, metadata_file, idmap_file)))) 0 else 1, save = "no")
 }
@@ -144,7 +154,8 @@ impute_by_block <- lapply(unique(block_key), function(key) {
 impute_summary <- do.call(rbind, c(list(data.frame(level = "global", dataset = "all", technical_block = "all", n_imputed = sum(imputation$missing), n_values = length(imputation$missing), fraction_imputed = mean(imputation$missing))), impute_by_block))
 if (mean(imputation$missing) > max_imputed) warning("Primary shared-core imputation fraction exceeds PROTEOMICS_JOINT_MAX_IMPUTED_FRACTION_WARN (", max_imputed, "): ", signif(mean(imputation$missing), 3), call. = FALSE)
 
-dir_create(output_root); dir_create(dirname(protigy_file))
+dir_create(output_root); dir_create(CANONICAL_PATHS$models)
+dir_create(CANONICAL_PATHS$manifests); dir_create(CANONICAL_PATHS$reports)
 write_csv <- function(x, name) utils::write.csv(x, file.path(output_root, name), row.names = FALSE, na = "")
 write_csv(feature_table, "canonical_feature_table.csv"); write_csv(canonical$bridge, "protein_group_member_bridge.csv")
 write_csv(feature_audit, "feature_filter_audit.csv"); write_csv(filters$dataset_long, "observed_detection_by_dataset.csv"); write_csv(filters$block_long, "observed_detection_by_dataset_technical_block.csv")
@@ -154,11 +165,11 @@ write_csv(feature_table[, c("ProteinGroupID", "source_file", "source_feature_id"
 write_csv(metadata_alignment_audit, "sample_metadata_alignment_audit.csv"); write_csv(sample_selection_audit, "sample_selection_exclusion_background_audit.csv"); write_csv(sample_counts, "compartment_technical_block_sample_counts.csv"); write_csv(sample_missingness, "sample_missingness_raw.csv")
 write_csv(data.frame(annotation_column = annotation_columns, present = annotation_columns %in% names(raw), stringsAsFactors = FALSE), "raw_annotation_column_audit.csv"); write_csv(data.frame(quantitative_sample_column = names(raw_numeric), stringsAsFactors = FALSE), "raw_quantitative_sample_column_audit.csv")
 write_csv(sample_norm, "sample_normalization_audit.csv"); write_csv(sample_impute, "imputation_footprint_by_sample.csv"); write_csv(imputation$audit, "imputation_footprint_by_protein.csv"); write_csv(impute_audit, "row_level_imputation_audit.csv"); write_csv(impute_summary, "imputation_summary_by_dataset_technical_block.csv")
-write_csv(data.frame(input_name = c("raw_matrix", "metadata", "idmapping"), path = normalizePath(c(raw_file, metadata_file, idmap_file), winslash = "/", mustWork = TRUE), sha256 = vapply(c(raw_file, metadata_file, idmap_file), file_hash_sha256, character(1)), stringsAsFactors = FALSE), "input_manifest.csv")
+utils::write.csv(data.frame(input_name = c("raw_matrix", "metadata", "idmapping"), path = normalizePath(c(raw_file, metadata_file, idmap_file), winslash = "/", mustWork = TRUE), sha256 = vapply(c(raw_file, metadata_file, idmap_file), file_hash_sha256, character(1)), stringsAsFactors = FALSE), file.path(CANONICAL_PATHS$manifests, "input_manifest.csv"), row.names = FALSE, na = "")
 write_csv(data.frame(metric = c("raw_rows", "raw_columns", "quantitative_samples", "retained_samples", "primary_shared_core_proteins", "complete_case_proteins", "broad_union_proteins", "primary_imputed_fraction", "zero_values", "nonfinite_values"), value = c(nrow(raw), ncol(raw), ncol(raw_numeric), nrow(metadata), length(primary_ids), length(complete_ids), length(broad_ids), mean(imputation$missing), sum(positive$zero), sum(positive$nonfinite)), stringsAsFactors = FALSE), "input_and_matrix_audit.csv")
 joint_qc_write_matrix_tsv(imputation$matrix, file.path(output_root, "joint_shared_core_log2_median_normalized_imputed.tsv")); joint_qc_write_matrix_tsv(primary_log2, file.path(output_root, "joint_shared_core_log2_unnormalized.tsv")); joint_qc_write_matrix_tsv(complete_log2, file.path(output_root, "joint_complete_case_log2.tsv")); joint_qc_write_matrix_tsv(broad_binary, file.path(output_root, "joint_broad_union_detected_binary.tsv"))
 joint_qc_write_gct_v13(imputation$matrix, metadata, feature_table, protigy_file)
-saveRDS(list(contract_version = "joint_compartment_qc_v1", metadata = metadata, technical_block = technical, primary = list(matrix = imputation$matrix, unnormalized_log2 = primary_log2, feature_ids = primary_ids), complete_case = list(matrix = complete_log2, feature_ids = complete_ids), broad_union = list(detected_binary = broad_binary, feature_ids = broad_ids), feature_table = feature_table, feature_filter_audit = feature_audit), file.path(output_root, "joint_compartment_qc_matrices.rds"))
+saveRDS(list(contract_version = "joint_compartment_qc_v1", metadata = metadata, technical_block = technical, primary = list(matrix = imputation$matrix, unnormalized_log2 = primary_log2, feature_ids = primary_ids), complete_case = list(matrix = complete_log2, feature_ids = complete_ids), broad_union = list(detected_binary = broad_binary, feature_ids = broad_ids), feature_table = feature_table, feature_filter_audit = feature_audit), file.path(CANONICAL_PATHS$models, "joint_compartment_qc_matrices.rds"))
 if (requireNamespace("writexl", quietly = TRUE)) writexl::write_xlsx(list(feature_filter = feature_audit, sample_normalization = sample_norm, sample_imputation = sample_impute, observed_detection = filters$dataset_long), file.path(output_root, "joint_compartment_qc_audit_bundle.xlsx"))
-writeLines(c("# Joint compartment preprocessing", paste0("Input matrix: ", normalizePath(raw_file, winslash = "/", mustWork = TRUE)), paste0("Retained samples: ", nrow(metadata)), paste0("Technical block: ", technical$variable, " (", technical$mode, ")"), paste0("Primary/complete/union proteins: ", length(primary_ids), "/", length(complete_ids), "/", length(broad_ids)), paste0("Primary imputed fraction: ", signif(mean(imputation$missing), 4)), "Primary analysis is raw-positive log2, one joint sample-wise median normalization, then label-blind protein-wise median imputation. Microglia samples are microglia-enriched ROIs, not purified microglia."), file.path(output_root, "README.md"))
-write_run_manifest(file.path(path_results("logs", "01_preprocessing", "01_prepare_joint_protigy_input", "global"), "run_manifest.yml"), inputs = list(raw_matrix = raw_file, metadata = metadata_file, idmapping = idmap_file), outputs = list(processed = output_root, protigy_gct = protigy_file), parameters = list(min_detection_per_dataset_batch = min_block, union_min_detection = min_union, normalization = "joint_sample_wise_median", imputation = "global_joint_protein_wise_median"), notes = "Global QC only; no combined DE/WGCNA or primary batch correction.")
+writeLines(c("# Joint compartment preprocessing", paste0("Input matrix: ", normalizePath(raw_file, winslash = "/", mustWork = TRUE)), paste0("Retained samples: ", nrow(metadata)), paste0("Technical block: ", technical$variable, " (", technical$mode, ")"), paste0("Primary/complete/union proteins: ", length(primary_ids), "/", length(complete_ids), "/", length(broad_ids)), paste0("Primary imputed fraction: ", signif(mean(imputation$missing), 4)), "Primary analysis is raw-positive log2, one joint sample-wise median normalization, then label-blind protein-wise median imputation. Microglia samples are microglia-enriched ROIs, not purified microglia."), file.path(CANONICAL_PATHS$reports, "README.md"))
+write_run_manifest(file.path(CANONICAL_PATHS$manifests, "run_manifest.yml"), inputs = list(raw_matrix = raw_file, metadata = metadata_file, idmapping = idmap_file), outputs = list(tables = output_root, models = CANONICAL_PATHS$models, protigy_gct = protigy_file), parameters = list(min_detection_per_dataset_batch = min_block, union_min_detection = min_union, normalization = "joint_sample_wise_median", imputation = "global_joint_protein_wise_median"), notes = "Global QC only; no combined DE/WGCNA or primary batch correction.")

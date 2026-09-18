@@ -1,5 +1,13 @@
 # Utilities for animal-level empirical ROI marker discovery.
 
+if (!exists("preprocessing_dir_any", mode = "function")) {
+  if (!exists("repo_path", mode = "function")) {
+    paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
+    source(paths_file)
+  }
+  source(repo_path("R", "preprocessing_paths.R"))
+}
+
 empirical_roi_marker_contract_version <- function() {
   "empirical_roi_marker_v2_animal_paired_limma"
 }
@@ -462,7 +470,11 @@ map_empirical_roi_raw_detection <- function(protein_index, global_features, raw_
 
 read_empirical_roi_raw_detection <- function(
     protein_index,
-    root = file.path("data", "processed", "01_preprocessing", "joint_compartment_qc", "global")) {
+    ## Phase 6G.7: normalized tables/ first, historical second. The old default
+    ## was also a bare relative path, which only resolved from the repo root.
+    root = preprocessing_dir_any("build_joint_protigy_input", "01_preprocessing",
+                                 "joint_compartment_qc", "global", "tables",
+                                 "processed")) {
   feature_file <- file.path(root, "canonical_feature_table.csv")
   detection_file <- file.path(root, "observed_detection_by_dataset.csv")
   if (!file.exists(feature_file) || !file.exists(detection_file)) {

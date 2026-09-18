@@ -40,6 +40,7 @@ source("R/statistics/integration_utils.R")
 source("R/spatial/spatial_atlas_utils.R")
 source("R/spatial/ca2_slm_robustness_utils.R")
 source(repo_path("R", "spatial_systems_paths.R"))
+source(repo_path("R", "preprocessing_paths.R"))
 
 # Phase 6G.3: destinations resolve through the normalized output contract,
 # addressed by this analysis's own identity rather than by the historical
@@ -56,7 +57,7 @@ cli <- integration_cli(default_dataset = "all")
 
 NEUROPIL_UNITS <- c("CA1_slm", "CA1_so", "CA1_sr", "CA2_slm", "CA2_so", "CA2_sr",
                     "CA3_so", "CA3_sr", "DG_mo", "DG_po")
-DA_DIR <- path_processed("02_id_mapping", "mapped", "neuron_neuropil", "forward", "per_file")
+DA_DIR <- preprocessing_mapped_contrast_dir("neuron_neuropil", "forward")
 RAW <- repo_path("data", "raw", "pg_matrix", "quicksearch.pg_matrix.tsv")
 META <- repo_path("data", "metadata", "TPE9_sample_metadata_males.xlsx")
 ATLAS <- spatial_systems_find("protein_spatial_cell_affinity.csv", "atlas")

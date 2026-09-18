@@ -501,7 +501,7 @@ go_announced <- FALSE
 for (dataset in c("neuron_soma", "neuron_neuropil")) {
   message("Loading ", dataset)
   inputs <- resolve_dataset_inputs(dataset, purpose="wgcna", script="validate_control_spatial_identity.R", stage="differential_expression_enrichment")
-  canonical_metadata <- path_processed("01_preprocessing", "06_merged_metadata_module_score", dataset, "sample_metadata_merged_clean_for_module_scores.xlsx")
+  canonical_metadata <- preprocessing_module_score_metadata(dataset)
   if (!file.exists(canonical_metadata)) stop("Canonical merged metadata not found: ", canonical_metadata, call. = FALSE)
   # The canonical loader keeps quantitative processing untouched while reconstructing the existing ProteinGroupID/mapping contract.
   canonical <- qc_load_canonical_expression(inputs$expression_file, canonical_metadata, dataset=dataset, strict=TRUE)
