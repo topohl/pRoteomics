@@ -2,8 +2,8 @@
 # Script: analysis/qc/summarize_marker_detectability.R
 # Stage: qc
 # Scope: dataset_specific
-# Consumes: required Stage 01 post-filter/imputed quantitative matrix, mouse UniProt mapping, sample metadata and marker registry; optional validated current WGCNA state/module bridge.
-# Produces: results/tables/03_qc_exploration/04c_marker_detectability_and_wgcna_bridge/<dataset>/.
+# Consumes: required data/processed/01_preprocessing/impute/*_pgmatrix_imputed_<dataset>_*_missing70pct.xlsx; data/external/MOUSE_10090_idmapping.dat; data/metadata/TPE9_sample_metadata_males.xlsx; +1 more; optional data/metadata/manual_mapping.xlsx; data/metadata/manual_gene_annotation_overrides.csv; results/qc/discover_empirical_roi_markers/global/tables/empirical_roi_marker_sets.csv; +3 more
+# Produces: results/qc/summarize_marker_detectability/<dataset>/tables
 # Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: QC bridge into WGCNA marker interpretation; optional WGCNA state is used when present.
 # ================================================================
@@ -12,6 +12,7 @@
 # This script is QC/interpreter support, not a formal purity or deconvolution analysis.
 # It reports individual marker-panel scores, broad marker-compartment scores,
 # and a narrow soma/neuropil/microglia marker-fidelity layer.
+#  
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
@@ -20,10 +21,16 @@ source(repo_path("R", "dataset_inputs.R"))
 source(repo_path("R", "qc_exploration_utils.R"))
 source(repo_path("R", "joint_compartment_qc_utils.R"))
 
+# Phase 6G.5: destinations resolve through the normalized output
+# contract, addressed by this analysis's own identity rather than by the
+# historical 03_qc_exploration stage directory and its chronological
+# substep. Outputs already written there stay exactly where they are.
+ANALYSIS_ID <- "summarize_marker_detectability"
+
 run <- qc_args()
 DATASET <- run$dataset
 SUBSTEP_ID <- "04c_marker_detectability_and_wgcna_bridge"
-PATHS <- qc_paths(SUBSTEP_ID, DATASET)
+PATHS <- qc_dirs(ANALYSIS_ID, DATASET, create = TRUE)
 matrix_file <- qc_resolve_matrix(DATASET, env = "PROTEOMICS_MARKER_DETECTABILITY_MATRIX_FILE")
 metadata_file <- qc_resolve_metadata(DATASET, env = "PROTEOMICS_MARKER_DETECTABILITY_METADATA_FILE")
 marker_file <- Sys.getenv(

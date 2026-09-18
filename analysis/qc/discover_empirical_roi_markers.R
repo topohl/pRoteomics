@@ -3,8 +3,8 @@
 # Script: analysis/qc/discover_empirical_roi_markers.R
 # Stage: qc_global
 # Scope: global
-# Consumes: required Stage 01 post-filter/imputed quantitative matrices for all datasets, mouse UniProt mapping, sample metadata; optional manual mappings.
-# Produces: results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv.
+# Consumes: required data/processed/01_preprocessing/impute/*_pgmatrix_imputed_neuron_neuropil_*_missing70pct.xlsx; data/processed/01_preprocessing/impute/*_pgmatrix_imputed_neuron_soma_*_missing70pct.xlsx; data/processed/01_preprocessing/impute/*_pgmatrix_imputed_microglia_*_missing70pct.xlsx; +2 more; optional data/metadata/manual_mapping.xlsx; data/metadata/manual_gene_annotation_overrides.csv
+# Produces: results/qc/discover_empirical_roi_markers/global/tables/empirical_roi_marker_sets.csv
 # Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Global because it compares all three dataset matrices.
 # ================================================================
@@ -12,6 +12,7 @@
 # Discover experiment-specific ROI-enrichment marker sets across neuron
 # neuropil, neuron soma, and microglia at the AnimalID biological-replicate
 # level. Structured metadata defines anatomy; raw acquisition names do not.
+#  
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
@@ -21,13 +22,19 @@ source(repo_path("R", "qc_exploration_utils.R"))
 source(repo_path("R", "wgcna_downstream_utils.R"))
 source(repo_path("R", "empirical_roi_marker_utils.R"))
 
+# Phase 6G.5: destinations resolve through the normalized output
+# contract, addressed by this analysis's own identity rather than by the
+# historical 03_qc_exploration stage directory and its chronological
+# substep. Outputs already written there stay exactly where they are.
+ANALYSIS_ID <- "discover_empirical_roi_markers"
+
 args <- commandArgs(trailingOnly = TRUE)
 dry_run <- is_dry_run()
 proposed_only <- "--proposed-only" %in% args ||
   tolower(Sys.getenv("PROTEOMICS_EMPIRICAL_MARKER_PROPOSED_ONLY", unset = "false")) == "true"
 DATASETS <- empirical_roi_dataset_levels()
 SUBSTEP_ID <- "05_empirical_roi_marker_discovery"
-PATHS <- create_module_dirs("03_qc_exploration", SUBSTEP_ID)
+PATHS <- qc_dirs(ANALYSIS_ID, "global", create = TRUE)
 
 min_detection <- suppressWarnings(as.numeric(Sys.getenv("PROTEOMICS_EMPIRICAL_MARKER_MIN_DETECTION", unset = "0.30")))
 min_abs_logfc <- suppressWarnings(as.numeric(Sys.getenv("PROTEOMICS_EMPIRICAL_MARKER_MIN_ABS_LOGFC", unset = "0.50")))

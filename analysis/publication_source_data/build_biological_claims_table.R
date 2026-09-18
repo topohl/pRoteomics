@@ -21,6 +21,7 @@ source(repo_path("R", "wgcna_claim_readiness_utils.R"))
 source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
 source(repo_path("R", "module_semantic_utils.R"))
 source(repo_path("R", "wgcna_label_activation_utils.R"))
+source(repo_path("R", "qc_result_paths.R"))
 
 SCRIPT_ID <- "analysis/publication_source_data/build_biological_claims_table.R"
 Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
@@ -193,11 +194,22 @@ read_lines_if_exists <- function(path) {
 }
 
 claim_qc_context <- function(dataset) {
-  missingness_lines <- read_lines_if_exists(path_results("reports", "03_qc_exploration", "02_missingness_diagnostics", dataset, "missingness_summary.md"))
-  qc_lines <- read_lines_if_exists(path_results("reports", "03_qc_exploration", "07_qc_biology_confounding_report", dataset, "qc_biology_confounding_summary.md"))
-  pca <- read_csv_if_exists(path_results("tables", "03_qc_exploration", "05_pca_confounding_qc", dataset, "PCA_confounding_summary.csv"))
-  variance <- read_csv_if_exists(path_results("tables", "03_qc_exploration", "06_variance_partitioning", dataset, "group_technical_confounding_screen.csv"))
-  marker <- read_csv_if_exists(path_results("tables", "03_qc_exploration", "04_marker_rank_abundance_qc", dataset, "marker_score_summary_by_metadata.csv"))
+  missingness_lines <- read_lines_if_exists(qc_find("missingness_summary.md",
+    owner = "summarize_missingness", legacy_substep = "02_missingness_diagnostics",
+    scope = dataset, kind = "reports"))
+  qc_lines <- read_lines_if_exists(qc_find("qc_biology_confounding_summary.md",
+    owner = "summarize_qc_confounding",
+    legacy_substep = "07_qc_biology_confounding_report",
+    scope = dataset, kind = "reports"))
+  pca <- read_csv_if_exists(qc_find("PCA_confounding_summary.csv",
+    owner = "assess_pca_confounding", legacy_substep = "05_pca_confounding_qc",
+    scope = dataset))
+  variance <- read_csv_if_exists(qc_find("group_technical_confounding_screen.csv",
+    owner = "partition_variance", legacy_substep = "06_variance_partitioning",
+    scope = dataset))
+  marker <- read_csv_if_exists(qc_find("marker_score_summary_by_metadata.csv",
+    owner = "assess_marker_rank_abundance",
+    legacy_substep = "04_marker_rank_abundance_qc", scope = dataset))
   fidelity <- read_csv_if_exists(path_results("tables", "03_qc_exploration", "04d_compartment_marker_fidelity", "global", "compartment_marker_fidelity_summary.csv"))
 
   pca_flag <- "not_available"

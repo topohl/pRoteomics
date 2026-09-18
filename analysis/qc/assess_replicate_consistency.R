@@ -2,13 +2,14 @@
 # Script: analysis/qc/assess_replicate_consistency.R
 # Stage: qc
 # Scope: dataset_specific
-# Consumes: required data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv; optional data/metadata/*.xlsx.
-# Produces: results/tables/03_qc_exploration/03_replicate_consistency/<dataset>/replicate_consistency.xlsx.
+# Consumes: required data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv; optional data/metadata/*.xlsx
+# Produces: results/qc/assess_replicate_consistency/<dataset>/tables/replicate_consistency.xlsx
 # Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Replicate consistency diagnostics.
 # ================================================================
 
 # Dataset-aware replicate and animal-level consistency QC.
+#  
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
@@ -16,9 +17,15 @@ source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "dataset_inputs.R"))
 source(repo_path("R", "qc_exploration_utils.R"))
 
+# Phase 6G.5: destinations resolve through the normalized output
+# contract, addressed by this analysis's own identity rather than by the
+# historical 03_qc_exploration stage directory and its chronological
+# substep. Outputs already written there stay exactly where they are.
+ANALYSIS_ID <- "assess_replicate_consistency"
+
 run <- qc_args()
 DATASET <- run$dataset
-PATHS <- qc_paths("03_replicate_consistency", DATASET)
+PATHS <- qc_dirs(ANALYSIS_ID, DATASET, create = TRUE)
 matrix_file <- qc_resolve_matrix(DATASET, env = "PROTEOMICS_REPLICATE_MATRIX_FILE")
 metadata_file <- qc_resolve_metadata(DATASET, env = "PROTEOMICS_REPLICATE_METADATA_FILE")
 

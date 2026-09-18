@@ -2,8 +2,8 @@
 # Script: analysis/qc/partition_variance.R
 # Stage: qc
 # Scope: dataset_specific
-# Consumes: required data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv; optional data/metadata/*.xlsx.
-# Produces: results/tables/03_qc_exploration/06_variance_partitioning/<dataset>/; results/reports/03_qc_exploration/06_variance_partitioning/<dataset>/.
+# Consumes: required data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv; optional data/metadata/*.xlsx
+# Produces: results/qc/partition_variance/<dataset>/tables; results/qc/partition_variance/<dataset>/reports
 # Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Variance partitioning; no WGCNA recomputation.
 # ================================================================
@@ -18,6 +18,7 @@
 # - Samples with missing formula metadata are dropped before fitting.
 # - Near-redundant categorical terms are screened with Cramer's V.
 # - Outputs include ranked summary, distribution plot, and top-protein heatmap.
+#  
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) {
   file.path("R", "paths.R")
@@ -30,10 +31,16 @@ source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "dataset_inputs.R"))
 source(repo_path("R", "qc_exploration_utils.R"))
 
+# Phase 6G.5: destinations resolve through the normalized output
+# contract, addressed by this analysis's own identity rather than by the
+# historical 03_qc_exploration stage directory and its chronological
+# substep. Outputs already written there stay exactly where they are.
+ANALYSIS_ID <- "partition_variance"
+
 run <- qc_args()
 DATASET <- run$dataset
 
-PATHS <- qc_paths("06_variance_partitioning", DATASET)
+PATHS <- qc_dirs(ANALYSIS_ID, DATASET, create = TRUE)
 
 matrix_file <- path_or_env(
   "PROTEOMICS_VARPART_MATRIX_FILE",

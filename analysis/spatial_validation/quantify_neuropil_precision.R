@@ -39,6 +39,7 @@ source("R/qc/qc_exploration_utils.R")
 source("R/data_contracts/spatial_systems_data_utils.R")
 source("R/spatial/spatial_atlas_utils.R")
 source(repo_path("R", "spatial_systems_paths.R"))
+source(repo_path("R", "qc_result_paths.R"))
 
 # Phase 6G.3: destinations resolve through the normalized output contract,
 # addressed by this analysis's own identity rather than by the historical
@@ -223,8 +224,9 @@ art <- list(
 # A fourth artefact route the earlier audit did not cover: technically poor
 # SAMPLES concentrated in one unit. These carry an outlier_flag but Exclude is
 # FALSE for every sample, so they entered the aggregation.
-qc_path <- path_results("tables", "03_qc_exploration", "00_dataset_qc_report", DS,
-                        "dataset_qc_outlier_flags.csv")
+qc_path <- qc_find("dataset_qc_outlier_flags.csv",
+                   owner = "assess_dataset_quality",
+                   legacy_substep = "00_dataset_qc_report", scope = DS)
 qc_tbl <- NULL
 if (file.exists(qc_path)) {
   q <- as.data.frame(readr::read_csv(qc_path, show_col_types = FALSE, progress = FALSE))

@@ -42,6 +42,7 @@ source("R/data_contracts/spatial_systems_data_utils.R")
 source("R/spatial/spatial_systems_bilateral_utils.R")
 source("R/data_contracts/spatial_systems_endpoint_utils.R")
 source(repo_path("R", "spatial_systems_paths.R"))
+source(repo_path("R", "qc_result_paths.R"))
 
 # Phase 6G.3: destinations resolve through the normalized output contract,
 # addressed by this analysis's own identity rather than by the historical
@@ -62,12 +63,14 @@ OUT <- function() {
   d <- CANONICAL_PATHS$tables; dir_create(d); d
 }
 crosswalk_path <- function() {
-  path_results("tables", "03_qc_exploration", "05_empirical_roi_marker_discovery",
-               "empirical_roi_protein_identity_crosswalk_proposed.csv")
+  qc_find("empirical_roi_protein_identity_crosswalk_proposed.csv",
+          owner = "discover_empirical_roi_markers",
+          legacy_substep = "05_empirical_roi_marker_discovery")
 }
 marker_sets_path <- function() {
-  path_results("tables", "03_qc_exploration", "05_empirical_roi_marker_discovery",
-               "empirical_roi_marker_sets.csv")
+  qc_find("empirical_roi_marker_sets.csv",
+          owner = "discover_empirical_roi_markers",
+          legacy_substep = "05_empirical_roi_marker_discovery")
 }
 DATASETS <- valid_datasets()
 
