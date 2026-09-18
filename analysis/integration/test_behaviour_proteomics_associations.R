@@ -2,13 +2,14 @@
 # Script: analysis/integration/test_behaviour_proteomics_associations.R
 # Stage: coupling
 # Scope: dataset_specific
-# Consumes: required data/external/behavior/auc_individual_animals_firstChangeActive.csv; optional data/processed/morpheus/20260218_pgmatrix_imputed_neuron_soma_71samples_missing70pct_with_metadata.xlsx; data/external/MOUSE_10090_idmapping.dat.
-# Produces: results/figures/08_behavior_physio_coupling/01_correlate_proteomics_with_behavior/; results/tables/08_behavior_physio_coupling/01_correlate_proteomics_with_behavior/.
+# Consumes: required data/external/behavior/auc_individual_animals_firstChangeActive.csv; optional data/processed/morpheus/20260218_pgmatrix_imputed_neuron_soma_71samples_missing70pct_with_metadata.xlsx; data/external/MOUSE_10090_idmapping.dat
+# Produces: results/integration/test_behaviour_proteomics_associations/global/plots/Figure3_AUC_vs_Proteomics.svg; results/integration/test_behaviour_proteomics_associations/global/plots/SourceData_Figure3_Correlation.csv; results/integration/test_behaviour_proteomics_associations/global/tables/join_diagnostics_summary.csv
 # Dataset behavior: runs for neuron_soma according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Legacy direct proteomics-behavior coupling retained as optional soma-only analysis.
 # ================================================================
 
 # --- 1. Load Necessary Libraries ---
+#  
 library(dplyr)
 library(tidyr)
 library(ggplot2)
@@ -21,9 +22,16 @@ paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.
 source(paths_file)
 source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "protein_mapping_utils.R"))
+source(repo_path("R", "integration_utils.R"))
+
+# Phase 6G.6: destinations resolve through the normalized output
+# contract, addressed by this analysis's own identity. This domain
+# spanned two historical stage namespaces; neither survives in a new
+# path. Outputs already written there stay exactly where they are.
+ANALYSIS_ID <- "test_behaviour_proteomics_associations"
 MODULE_ID <- "08_behavior_physio_coupling"
 SUBSTEP_ID <- "correlate_proteomics_with_behavior"
-CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
+CANONICAL_PATHS <- integration_dirs(ANALYSIS_ID, "global", create = TRUE)
 out_dir <- path_or_env("PROTEOMICS_BEHAVIOR_COR_OUTPUT_DIR", CANONICAL_PATHS$figures, kind = "dir")
 ensure_dir(out_dir)
 

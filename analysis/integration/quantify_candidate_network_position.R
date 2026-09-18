@@ -37,10 +37,11 @@
 # Script: analysis/integration/quantify_candidate_network_position.R
 # Stage: integration
 # Scope: per_dataset_and_global
-# Consumes: required results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_modules_long.csv; data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv; optional results/tables/10_biological_integration/wgcna_candidate_protein_shortlist/<dataset>/wgcna_candidate_proteins_all.csv
-# Produces: results/tables/10_biological_integration/wgcna_sus_res_network_position/<dataset>/wgcna_sus_res_network_position_protein_level.csv; results/tables/10_biological_integration/wgcna_sus_res_network_position/<dataset>/wgcna_sus_res_network_position_module_summary.csv; results/tables/10_biological_integration/wgcna_sus_res_network_position/<dataset>/wgcna_sus_res_network_position_permutation_summary.csv; +4 more
+# Consumes: required results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_modules_long.csv; results/differential_abundance/run_clusterprofiler_enrichment/<dataset>/models/clusterProfiler_manifest.csv; data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv; optional results/integration/build_candidate_protein_shortlist/<dataset>/tables/wgcna_candidate_proteins_all.csv; results/tables/10_biological_integration/wgcna_candidate_protein_shortlist/<dataset>/wgcna_candidate_proteins_all.csv
+# Produces: results/integration/quantify_candidate_network_position/<dataset>/tables/wgcna_sus_res_network_position_protein_level.csv; results/integration/quantify_candidate_network_position/<dataset>/tables/wgcna_sus_res_network_position_module_summary.csv; results/integration/quantify_candidate_network_position/<dataset>/tables/wgcna_sus_res_network_position_permutation_summary.csv; +4 more
 # Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Do SUS - RES FDR-supported proteins occupy unusual positions within their frozen WGCNA modules?
+#  
 
 source("R/paths.R")
 source("R/data_contracts/dataset_config.R")
@@ -49,6 +50,12 @@ source("R/enrichment/enrichment_io.R")
 source("R/statistics/sus_res_spatial_dap_atlas_utils.R")
 source("R/statistics/wgcna_candidate_protein_utils.R")
 source("R/networks/wgcna_network_position_utils.R")
+
+# Phase 6G.6: destinations resolve through the normalized output
+# contract, addressed by this analysis's own identity. This domain
+# spanned two historical stage namespaces; neither survives in a new
+# path. Outputs already written there stay exactly where they are.
+ANALYSIS_ID <- "quantify_candidate_network_position"
 
 suppressPackageStartupMessages({
   library(readr)
@@ -77,9 +84,11 @@ membership_path <- function(dataset) {
                "WGCNA_modules_long.csv")
 }
 candidate_path <- function(dataset) {
-  path_results("tables", "10_biological_integration",
-               "wgcna_candidate_protein_shortlist", dataset,
-               "wgcna_candidate_proteins_all.csv")
+  integration_find("wgcna_candidate_proteins_all.csv",
+                   owner = "build_candidate_protein_shortlist",
+                   legacy_stage = "10_biological_integration",
+                   legacy_substep = "wgcna_candidate_protein_shortlist",
+                   scope = dataset)
 }
 
 datasets <- integration_datasets(cli$dataset)
@@ -346,8 +355,7 @@ for (dataset in datasets) {
 }
 
 emit <- function(scope, protein) {
-  paths <- create_module_dirs("10_biological_integration",
-                              file.path(SUBSTEP, scope))
+  paths <- integration_dirs(ANALYSIS_ID, scope, create = TRUE)
   perm <- wnp_permute(protein, n_permutations = n_permutations)
   perm_summary <- wnp_permutation_summary(
     perm, dataset = scope, scope = "module_stratified"

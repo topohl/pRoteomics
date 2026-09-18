@@ -1,13 +1,12 @@
 #!/usr/bin/env Rscript
 # Script: analysis/integration/test_enrichment_module_concordance.R
 # Stage: additive downstream biological integration
-# Consumes: canonical spatial ranked-GSEA terms, Stage 07 inferential handoffs,
-# Produces: transparent GSEA-program <-> WGCNA concordance and module-overlap
-#   tables. No upstream inference, WGCNA state, p-value, FDR, or claim gate is
-#   recomputed or modified.
+# Consumes: required results/differential_abundance/build_go_program_atlas/global/tables/source_data/spatial_atlas_enrichment_long.csv; results/source_data/04_differential_expression_enrichment/compareGO_spatial_atlas/spatial_atlas_enrichment_long.csv; results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_inferential_handoff.csv; +3 more; optional results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_module_preservation_summary.csv; results/tables/06_modules_WGCNA/claim_readiness/microglia/WGCNA_entity_claim_readiness.csv; results/reviewer_audit/microglia_wgcna_nature_readiness/module_robustness_consensus.csv; +2 more
+# Produces: results/integration/test_enrichment_module_concordance/global/tables/gsea_wgcna_concordance_long.csv; results/integration/test_enrichment_module_concordance/global/tables/gsea_wgcna_concordance_summary.csv; results/integration/test_enrichment_module_concordance/global/tables/adaptive_resilience_pattern_summary.csv; +7 more
 # Scope: global
 # Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: canonical WGCNA feature universes, and existing robustness/readiness outputs.
+#  
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) {
   file.path("R", "paths.R")
@@ -20,11 +19,17 @@ source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
 source(repo_path("R", "manuscript_go_theme_utils.R"))
 source(repo_path("R", "gsea_wgcna_concordance_utils.R"))
 
+# Phase 6G.6: destinations resolve through the normalized output
+# contract, addressed by this analysis's own identity. This domain
+# spanned two historical stage namespaces; neither survives in a new
+# path. Outputs already written there stay exactly where they are.
+ANALYSIS_ID <- "test_enrichment_module_concordance"
+
 SCRIPT_ID <- "analysis/integration/test_enrichment_module_concordance.R"
 Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 run <- integration_cli(default_dataset = "all", allow_all = TRUE)
 datasets <- integration_datasets(run$dataset)
-paths <- integration_paths("gsea_wgcna_concordance", "global")
+paths <- integration_dirs(ANALYSIS_ID, "global", create = TRUE)
 
 required_packages <- c(
   "dplyr", "tidyr", "tidyselect", "readr", "stringr", "tibble",
