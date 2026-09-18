@@ -8,7 +8,7 @@ legitimately write different files into one family, which is coordination
 rather than a defect. What must never happen is two scripts declaring the
 same concrete output file, and this tool fails if any does.
 
-At this commit: **181 families**, **330 concrete declared outputs**, **0** of which have more than one declared writer.
+At this commit: **142 families**, **330 concrete declared outputs**, **0** of which have more than one declared writer.
 
 Output namespaces are keyed on **stage identity**, not on script location.
 That is why a script named `summarize_missingness.R` writes into
@@ -37,29 +37,29 @@ its outputs.
 | `results/figures/06_modules_WGCNA/score_publication_summary` | `summarize_module_scores.R` | 1 | 6 |
 | `results/figures/06_modules_WGCNA/wgcna_publication_figures` | `render_module_figures.R` | 1 | 6 |
 | `results/figures/06_modules_WGCNA/wgcna_publication_figures_corrected` | `render_microglia_module_figures.R` | 1 | 14 |
-| `results/figures/08_behavior_physio_coupling/correlate_proteomics_with_behavior` | `test_behaviour_proteomics_associations.R` | 1 | 2 |
-| `results/figures/08_behavior_physio_coupling/network_behavior_coupling` | `test_network_behaviour_coupling.R` | 1 | 0 |
-| `results/figures/10_biological_integration/wgcna_circular_atlas` | `render_module_circular_atlas.R` | 1 | 22 |
-| `results/figures/10_biological_integration/wgcna_cross_compartment_overview` | `summarize_module_cross_compartment.R` | 1 | 0 |
-| `results/figures/10_biological_integration/wgcna_sus_res_network_position` | `quantify_candidate_network_position.R` | 1 | 0 |
-| `results/figures/manuscript_panels/figure_3` | `export_module_protein_zoom_source_data.R` | 1 | 0 |
+| `results/integration/audit_animal_id_integrity/global` | `audit_animal_id_integrity.R` | 1 | 3 |
+| `results/integration/build_candidate_protein_shortlist/<dataset>` | `build_candidate_protein_shortlist.R` | 1 | 7 |
+| `results/integration/build_cross_compartment_atlas/global` | `build_cross_compartment_atlas.R` | 1 | 7 |
+| `results/integration/build_evidence_priority_matrix/global` | `build_evidence_priority_matrix.R` | 1 | 5 |
+| `results/integration/build_immunostaining_candidates/global` | `build_immunostaining_candidates.R` | 1 | 4 |
+| `results/integration/export_module_protein_zoom_source_data/global` | `export_module_protein_zoom_source_data.R` | 1 | 1 |
+| `results/integration/quantify_candidate_network_position/<dataset>` | `quantify_candidate_network_position.R` | 1 | 5 |
+| `results/integration/render_module_circular_atlas/global` | `render_module_circular_atlas.R` | 1 | 37 |
+| `results/integration/screen_immunostaining_panel/global` | `screen_immunostaining_panel.R` | 1 | 6 |
+| `results/integration/screen_immunostaining_separation/global` | `screen_immunostaining_separation.R` | 1 | 6 |
+| `results/integration/summarize_enrichment_module_concordance/global` | `summarize_enrichment_module_concordance.R` | 1 | 2 |
+| `results/integration/summarize_module_cross_compartment/global` | `summarize_module_cross_compartment.R` | 1 | 0 |
+| `results/integration/summarize_programs_for_manuscript/global` | `summarize_programs_for_manuscript.R` | 1 | 3 |
+| `results/integration/test_behaviour_proteomics_associations/global` | `test_behaviour_proteomics_associations.R` | 1 | 3 |
+| `results/integration/test_enrichment_module_concordance/global` | `test_enrichment_module_concordance.R` | 1 | 9 |
+| `results/integration/test_module_behaviour_coupling/<dataset>` | `test_module_behaviour_coupling.R` | 1 | 3 |
+| `results/integration/test_network_behaviour_coupling/global` | `test_network_behaviour_coupling.R` | 1 | 0 |
 | `results/logs/01_preprocessing/01_prepare_joint_protigy_input` | `build_joint_protigy_input.R` | 1 | 1 |
 | `results/logs/01_preprocessing/06_merged_metadata_module_score` | `build_module_score_metadata.R` | 1 | 1 |
 | `results/logs/06_modules_WGCNA/identity_contract` | `build_module_identity_contract.R` | 1 | 0 |
 | `results/logs/06_modules_WGCNA/module_complex_architecture` | `summarize_module_complex_architecture.R` | 1 | 1 |
 | `results/logs/06_modules_WGCNA/module_robustness_sensitivity` | `audit_module_robustness.R` | 1 | 1 |
 | `results/logs/06_modules_WGCNA/wgcna_publication_figures_corrected` | `render_microglia_module_figures.R` | 1 | 1 |
-| `results/logs/08_behavior_physio_coupling/module_behavior_coupling` | `test_module_behaviour_coupling.R` | 1 | 1 |
-| `results/logs/10_biological_integration/cross_compartment_program_atlas` | `build_cross_compartment_atlas.R` | 1 | 1 |
-| `results/logs/10_biological_integration/evidence_priority_matrix` | `build_evidence_priority_matrix.R` | 1 | 1 |
-| `results/logs/10_biological_integration/final_evidence_bundle` | `build_evidence_priority_matrix.R` | 1 | 1 |
-| `results/logs/10_biological_integration/gsea_wgcna_concordance` | `test_enrichment_module_concordance.R` | 1 | 1 |
-| `results/logs/10_biological_integration/gsea_wgcna_concordance_diagnostics` | `summarize_enrichment_module_concordance.R` | 1 | 1 |
-| `results/logs/10_biological_integration/manuscript_program_summary` | `summarize_programs_for_manuscript.R` | 1 | 1 |
-| `results/logs/10_biological_integration/wgcna_candidate_protein_shortlist` | `build_candidate_protein_shortlist.R` | 1 | 1 |
-| `results/logs/10_biological_integration/wgcna_circular_atlas` | `render_module_circular_atlas.R` | 1 | 1 |
-| `results/logs/10_biological_integration/wgcna_cross_compartment_overview` | `summarize_module_cross_compartment.R` | 1 | 0 |
-| `results/logs/10_biological_integration/wgcna_sus_res_network_position` | `quantify_candidate_network_position.R` | 1 | 1 |
 | `results/manuscript/extended_data` | `08_export_manuscript_figures.R` | 1 | 0 |
 | `results/manuscript/figure_1` | `08_export_manuscript_figures.R` | 1 | 0 |
 | `results/manuscript/figure_2` | `08_export_manuscript_figures.R` | 1 | 0 |
@@ -87,14 +87,6 @@ its outputs.
 | `results/reports/01_preprocessing/06_merged_metadata_module_score` | `build_module_score_metadata.R` | 1 | 1 |
 | `results/reports/06_modules_WGCNA/identity_contract` | `build_module_identity_contract.R` | 1 | 0 |
 | `results/reports/06_modules_WGCNA/microglia_roi_specificity` | `summarize_microglia_roi_specificity.R` | 1 | 0 |
-| `results/reports/10_biological_integration/cross_compartment_program_atlas` | `build_cross_compartment_atlas.R` | 1 | 1 |
-| `results/reports/10_biological_integration/gsea_wgcna_concordance` | `test_enrichment_module_concordance.R` | 1 | 1 |
-| `results/reports/10_biological_integration/gsea_wgcna_concordance_diagnostics` | `summarize_enrichment_module_concordance.R` | 1 | 1 |
-| `results/reports/10_biological_integration/wgcna_candidate_protein_shortlist` | `build_candidate_protein_shortlist.R` | 1 | 1 |
-| `results/reports/10_biological_integration/wgcna_circular_atlas` | `render_module_circular_atlas.R` | 1 | 6 |
-| `results/reports/10_biological_integration/wgcna_cross_compartment_overview` | `summarize_module_cross_compartment.R` | 1 | 0 |
-| `results/reports/10_biological_integration/wgcna_sus_res_network_position` | `quantify_candidate_network_position.R` | 1 | 1 |
-| `results/reports/manuscript_panels/figure_3` | `export_module_protein_zoom_source_data.R` | 1 | 0 |
 | `results/reviewer_audit/microglia_neuropil_covariate_selection_audit.csv` | `test_microglia_neuropil_independence.R` | 1 | 1 |
 | `results/reviewer_audit/microglia_neuropil_independence_claim_gate.csv` | `test_microglia_neuropil_independence.R` | 1 | 1 |
 | `results/reviewer_audit/microglia_wgcna_nature_readiness/finalization_validation.csv` | `summarize_microglia_module_claims.R` | 1 | 1 |
@@ -123,21 +115,6 @@ its outputs.
 | `results/source_data/06_modules_WGCNA/module_complex_architecture` | `summarize_module_complex_architecture.R` | 1 | 1 |
 | `results/source_data/06_modules_WGCNA/module_robustness_sensitivity` | `audit_module_robustness.R` | 1 | 1 |
 | `results/source_data/06_modules_WGCNA/wgcna_publication_figures_corrected` | `render_microglia_module_figures.R` | 1 | 7 |
-| `results/source_data/08_behavior_physio_coupling/module_behavior_coupling` | `test_module_behaviour_coupling.R` | 1 | 1 |
-| `results/source_data/10_biological_integration/cross_compartment_program_atlas` | `build_cross_compartment_atlas.R` | 1 | 3 |
-| `results/source_data/10_biological_integration/evidence_priority_matrix` | `build_evidence_priority_matrix.R` | 1 | 1 |
-| `results/source_data/10_biological_integration/final_evidence_bundle` | `build_evidence_priority_matrix.R` | 1 | 0 |
-| `results/source_data/10_biological_integration/gsea_wgcna_concordance` | `test_enrichment_module_concordance.R` | 1 | 0 |
-| `results/source_data/10_biological_integration/gsea_wgcna_concordance_diagnostics` | `summarize_enrichment_module_concordance.R` | 1 | 0 |
-| `results/source_data/10_biological_integration/immunostaining_candidate_comparison` | `build_immunostaining_candidates.R` | 1 | 4 |
-| `results/source_data/10_biological_integration/immunostaining_candidate_panel` | `screen_immunostaining_panel.R` | 1 | 6 |
-| `results/source_data/10_biological_integration/immunostaining_separation_screen` | `screen_immunostaining_separation.R` | 1 | 6 |
-| `results/source_data/10_biological_integration/manuscript_program_summary` | `summarize_programs_for_manuscript.R` | 1 | 1 |
-| `results/source_data/10_biological_integration/wgcna_candidate_protein_shortlist` | `build_candidate_protein_shortlist.R` | 1 | 0 |
-| `results/source_data/10_biological_integration/wgcna_circular_atlas` | `render_module_circular_atlas.R` | 1 | 7 |
-| `results/source_data/10_biological_integration/wgcna_cross_compartment_overview` | `summarize_module_cross_compartment.R` | 1 | 0 |
-| `results/source_data/10_biological_integration/wgcna_sus_res_network_position` | `quantify_candidate_network_position.R` | 1 | 0 |
-| `results/source_data/manuscript_panels/figure_3` | `export_module_protein_zoom_source_data.R` | 1 | 0 |
 | `results/spatial_networks/build_differential_networks/<dataset>` | `build_differential_networks.R` | 1 | 3 |
 | `results/spatial_networks/build_spatial_networks/<dataset>` | `build_spatial_networks.R` | 1 | 1 |
 | `results/spatial_networks/render_differential_network_figures/<dataset>` | `render_differential_network_figures.R` | 1 | 0 |
@@ -182,24 +159,8 @@ its outputs.
 | `results/tables/06_modules_WGCNA/score_publication_summary` | `summarize_module_scores.R` | 1 | 1 |
 | `results/tables/06_modules_WGCNA/wgcna_publication_figures` | `render_module_figures.R` | 1 | 1 |
 | `results/tables/06_modules_WGCNA/wgcna_publication_figures_corrected` | `render_microglia_module_figures.R` | 1 | 2 |
-| `results/tables/08_behavior_physio_coupling/animal_id_integrity` | `audit_animal_id_integrity.R` | 1 | 3 |
-| `results/tables/08_behavior_physio_coupling/correlate_proteomics_with_behavior` | `test_behaviour_proteomics_associations.R` | 1 | 1 |
-| `results/tables/08_behavior_physio_coupling/module_behavior_coupling` | `test_module_behaviour_coupling.R` | 1 | 1 |
-| `results/tables/08_behavior_physio_coupling/network_behavior_coupling` | `test_network_behaviour_coupling.R` | 1 | 0 |
-| `results/tables/10_biological_integration/cross_compartment_program_atlas` | `build_cross_compartment_atlas.R` | 1 | 2 |
-| `results/tables/10_biological_integration/evidence_priority_matrix` | `build_evidence_priority_matrix.R` | 1 | 1 |
-| `results/tables/10_biological_integration/final_evidence_bundle` | `build_evidence_priority_matrix.R` | 1 | 1 |
-| `results/tables/10_biological_integration/gsea_wgcna_concordance` | `test_enrichment_module_concordance.R` | 1 | 7 |
-| `results/tables/10_biological_integration/gsea_wgcna_concordance_diagnostics` | `summarize_enrichment_module_concordance.R` | 1 | 0 |
-| `results/tables/10_biological_integration/manuscript_program_summary` | `summarize_programs_for_manuscript.R` | 1 | 1 |
-| `results/tables/10_biological_integration/wgcna_candidate_protein_shortlist` | `build_candidate_protein_shortlist.R` | 1 | 5 |
-| `results/tables/10_biological_integration/wgcna_circular_atlas` | `render_module_circular_atlas.R` | 1 | 1 |
-| `results/tables/10_biological_integration/wgcna_cross_compartment_overview` | `summarize_module_cross_compartment.R` | 1 | 0 |
-| `results/tables/10_biological_integration/wgcna_sus_res_network_position` | `quantify_candidate_network_position.R` | 1 | 3 |
 | `results/tables/biological_claims_table.csv` | `build_biological_claims_table.R` | 1 | 1 |
 | `results/tables/biological_claims_table.xlsx` | `build_biological_claims_table.R` | 1 | 1 |
-| `results/tables/manuscript_panels/figure_3` | `export_module_protein_zoom_source_data.R` | 1 | 0 |
-| `results/tables/manuscript_panels/manuscript_panel_inventory.csv` | `export_module_protein_zoom_source_data.R` | 1 | 1 |
 
 ## Families with more than one contributor
 

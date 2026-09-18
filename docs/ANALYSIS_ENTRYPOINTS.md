@@ -87,11 +87,11 @@ Scripts:
 | entrypoint | `analysis/spatial_validation/build_spatial_data_contract.R` |
 | scripts_in_area | 18 (0 required) |
 | inputs | `data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx`, `results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_protein_identity_crosswalk_proposed.csv`, `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_hemisphere_values.csv`, +26 more |
-| optional_inputs | `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_hemisphere_values.csv`, `results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_modules_long.csv`, `results/qc/discover_empirical_roi_markers/global/tables/empirical_roi_marker_sets.csv`, +35 more |
+| optional_inputs | `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_hemisphere_values.csv`, `results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_modules_long.csv`, `results/qc/discover_empirical_roi_markers/global/tables/empirical_roi_marker_sets.csv`, +36 more |
 | outputs | `results/spatial_validation/build_spatial_data_contract/global/tables/spatial_systems_hemisphere_inventory.csv`, `results/spatial_validation/build_spatial_data_contract/global/tables/spatial_systems_aggregation_validation.csv`, `results/spatial_validation/build_spatial_data_contract/global/tables/spatial_systems_evidence_dependence.csv`, `results/spatial_validation/quantify_bilateral_spatial_identity/global/tables/bilateral_spatial_identity_protein_level.csv`, +71 more |
 | required_config | `config/marker_panels/wgcna_reference_marker_sets.csv` |
-| upstream_dependencies | `preprocessing`, `wgcna`, `integration` |
-| downstream_consumers | - |
+| upstream_dependencies | `preprocessing`, `wgcna` |
+| downstream_consumers | `integration` |
 | publication_source_outputs | - |
 | dependency_stages | `networks` |
 
@@ -160,7 +160,7 @@ Scripts:
 | entrypoint | `analysis/wgcna/build_wgcna_modules.R` |
 | scripts_in_area | 24 (1 required) |
 | inputs | `data/processed/01_preprocessing/impute/*_pgmatrix_imputed_<dataset>_*_missing70pct.xlsx`, `data/metadata/TPE9_sample_metadata_males.xlsx`, `data/external/MOUSE_10090_idmapping.dat`, +58 more |
-| optional_inputs | `data/metadata/manual_mapping.xlsx`, `data/external/MOUSE_10090_idmapping.dat`, `data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx`, +32 more |
+| optional_inputs | `data/metadata/manual_mapping.xlsx`, `data/external/MOUSE_10090_idmapping.dat`, `data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx`, +33 more |
 | outputs | `results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/`, `results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_module_supermodule_annotation.csv`, `results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_supermodule_summary.csv`, `results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_supermodule_GO_term_support_audit.csv`, +119 more |
 | required_config | `config/marker_panels/microenvironment_marker_panels.csv`, `config/marker_panels/wgcna_reference_marker_sets.csv`, `config/microglia_neuropil_independence.yml`, `config/wgcna_labels/microglia.csv` |
 | upstream_dependencies | `preprocessing`, `differential_abundance` |
@@ -256,13 +256,13 @@ Scripts:
 | human_name | Biological integration and behaviour coupling |
 | entrypoint | `analysis/integration/test_behaviour_proteomics_associations.R` |
 | scripts_in_area | 17 (0 required) |
-| inputs | `data/external/behavior/auc_individual_animals_firstChangeActive.csv`, `results/spatial_networks/build_spatial_networks/<dataset>/models/*/network_spatial_relations_objects.rds`, `data/processed/07_spatial_networks/network_spatial_relations/<dataset>/*/network_spatial_relations_objects.rds`, +55 more |
-| optional_inputs | `data/processed/morpheus/20260218_pgmatrix_imputed_neuron_soma_71samples_missing70pct_with_metadata.xlsx`, `data/external/MOUSE_10090_idmapping.dat`, `data/external/behavior/auc_individual_animals_all.csv`, +27 more |
-| outputs | `results/figures/08_behavior_physio_coupling/correlate_proteomics_with_behavior/Figure3_AUC_vs_Proteomics.svg`, `results/figures/08_behavior_physio_coupling/correlate_proteomics_with_behavior/SourceData_Figure3_Correlation.csv`, `results/tables/08_behavior_physio_coupling/correlate_proteomics_with_behavior/join_diagnostics_summary.csv`, `results/tables/08_behavior_physio_coupling/network_behavior_coupling/`, +118 more |
+| inputs | `data/external/behavior/auc_individual_animals_firstChangeActive.csv`, `results/spatial_networks/build_spatial_networks/<dataset>/models/*/network_spatial_relations_objects.rds`, `data/processed/07_spatial_networks/network_spatial_relations/<dataset>/*/network_spatial_relations_objects.rds`, +63 more |
+| optional_inputs | `data/processed/morpheus/20260218_pgmatrix_imputed_neuron_soma_71samples_missing70pct_with_metadata.xlsx`, `data/external/MOUSE_10090_idmapping.dat`, `data/external/behavior/auc_individual_animals_all.csv`, +35 more |
+| outputs | `results/integration/test_behaviour_proteomics_associations/global/plots/Figure3_AUC_vs_Proteomics.svg`, `results/integration/test_behaviour_proteomics_associations/global/plots/SourceData_Figure3_Correlation.csv`, `results/integration/test_behaviour_proteomics_associations/global/tables/join_diagnostics_summary.csv`, `results/integration/test_network_behaviour_coupling/global/tables`, +118 more |
 | required_config | `config/animal_id_aliases.csv`, `config/gsea_wgcna_program_module_mapping.csv`, `config/gsea_wgcna_theme_module_mapping.csv`, `config/manuscript_go_theme_registry.tsv`, +1 more |
-| upstream_dependencies | `differential_abundance`, `wgcna`, `spatial_networks`, `publication_source_data` |
-| downstream_consumers | `spatial_validation`, `publication_source_data`, Exp9_manuscript (via frozen source data) |
-| publication_source_outputs | `results/source_data/08_behavior_physio_coupling/module_behavior_coupling/<dataset>/module_behavior_coupling.csv`, `results/source_data/10_biological_integration/cross_compartment_program_atlas/global/cross_compartment_program_atlas.csv`, `results/source_data/10_biological_integration/cross_compartment_program_atlas/global/cross_compartment_program_atlas_long.csv`, +34 more |
+| upstream_dependencies | `spatial_validation`, `differential_abundance`, `wgcna`, `spatial_networks`, `publication_source_data` |
+| downstream_consumers | `publication_source_data` |
+| publication_source_outputs | - |
 | dependency_stages | `coupling`, `integration` |
 
 Scripts:
@@ -295,8 +295,8 @@ Scripts:
 | human_name | Publication source data and PRIDE export |
 | entrypoint | `analysis/publication_source_data/build_pride_manifest.R` |
 | scripts_in_area | 9 (1 required) |
-| inputs | `results/tables/04_differential_expression_enrichment/`, `results/tables/06_modules_WGCNA/`, `results/tables/06_modules_WGCNA/claim_readiness/microglia/WGCNA_entity_claim_readiness.csv`, +13 more |
-| optional_inputs | `results/tables/06_modules_WGCNA/interpretable_summary/`, `results/tables/08_behavior_physio_coupling/network_behavior_coupling/`, `09_export_pride_journal/config/export_config.yml`, +9 more |
+| inputs | `results/tables/04_differential_expression_enrichment/`, `results/tables/06_modules_WGCNA/`, `results/tables/06_modules_WGCNA/claim_readiness/microglia/WGCNA_entity_claim_readiness.csv`, +14 more |
+| optional_inputs | `results/tables/06_modules_WGCNA/interpretable_summary/`, `results/integration/test_network_behaviour_coupling/global/tables`, `results/tables/08_behavior_physio_coupling/network_behavior_coupling/`, +10 more |
 | outputs | `results/tables/biological_claims_table.csv`, `results/tables/biological_claims_table.xlsx`, `results/reviewer_audit/wgcna_stage13_claim_cardinality_audit.csv`, `results/reviewer_audit/microglia_wgcna_overlap_stage13_identity_audit.csv`, +21 more |
 | required_config | `config/output_namespaces.yml` |
 | upstream_dependencies | `wgcna`, `integration` |
@@ -322,6 +322,6 @@ These area pairs exchange files in both directions. Execution order is defined b
 
 ### `integration` and `publication_source_data`
 
-- `publication_source_data` requires from `integration`: `results/tables/10_biological_integration/manuscript_program_summary/global/manuscript_program_summary.csv`
+- `publication_source_data` requires from `integration`: `results/integration/summarize_programs_for_manuscript/global/tables/manuscript_program_summary.csv`
 - `integration` requires from `publication_source_data`: `results/tables/biological_claims_table.csv`
 

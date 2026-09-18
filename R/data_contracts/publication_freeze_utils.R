@@ -511,18 +511,37 @@ freeze_wgcna_identities <- function(dataset = "microglia", strict = TRUE) {
 
 # Canonical directories are discovered from the producing stage's output roots
 # rather than by guessing filenames.
+#
+# Each set lists both the historical roots and the normalized roots its
+# producer now writes to. That pairing is the whole point: the producing
+# analyses have migrated, so a set rooted only at the historical tree would go
+# on hashing pre-migration files and silently stop tracking current data the
+# moment anything is rerun. The historical roots stay because that is where the
+# frozen files actually are.
+#
+# Phase 6G.6 added the normalized roots. Two of these three sets belong to
+# differential_abundance and had already gone stale when that domain migrated
+# in Phase 6G.4; only figure_3_manuscript_panels belongs to the domain being
+# migrated here. Non-existent roots are filtered out before listing, so adding
+# an empty root changes neither the file count nor the hash.
 freeze_source_data_sets <- function() {
   list(
     figure_2_control_spatial = c(
       path_results("source_data", "04_differential_expression_enrichment",
                    "control_spatial_identity_validation", "global"),
       path_results("tables", "04_differential_expression_enrichment",
-                   "control_spatial_identity_validation", "global")
+                   "control_spatial_identity_validation", "global"),
+      path_results("differential_abundance", "validate_control_spatial_identity",
+                   "global", "tables")
     ),
     figure_3_manuscript_panels = c(
       path_results("source_data", "manuscript_panels"),
       path_results("tables", "manuscript_panels"),
-      path_results("reports", "manuscript_panels")
+      path_results("reports", "manuscript_panels"),
+      path_results("integration", "export_module_protein_zoom_source_data",
+                   "global", "tables"),
+      path_results("integration", "export_module_protein_zoom_source_data",
+                   "global", "reports")
     ),
     sus_res_stage11 = c(
       path_results("source_data", "04_differential_expression_enrichment",
@@ -530,7 +549,13 @@ freeze_source_data_sets <- function() {
       path_results("source_data", "04_differential_expression_enrichment",
                    "sus_res_spatial_dap_atlas", "global"),
       path_results("reports", "04_differential_expression_enrichment",
-                   "stress_response_biological_audit", "global")
+                   "stress_response_biological_audit", "global"),
+      path_results("differential_abundance", "audit_stress_response_biology",
+                   "global", "tables"),
+      path_results("differential_abundance", "audit_stress_response_biology",
+                   "global", "reports"),
+      path_results("differential_abundance", "build_sus_res_dap_atlas",
+                   "global", "tables")
     )
   )
 }

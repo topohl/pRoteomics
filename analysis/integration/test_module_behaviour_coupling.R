@@ -3,25 +3,35 @@
 # Script: analysis/integration/test_module_behaviour_coupling.R
 # Stage: coupling
 # Scope: dataset_specific
-# Consumes: module activity/effect tables and behavior/network coupling summaries.
-# Produces: module-behavior coupling evidence.
+# Consumes: required results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_inferential_handoff.csv; optional results/tables/08_behavior_physio_coupling/network_behavior_coupling/edge_behavior_figure_ready_table.csv
+# Produces: results/integration/test_module_behaviour_coupling/<dataset>/tables/module_behavior_coupling.csv; results/integration/test_module_behaviour_coupling/<dataset>/tables/source_data/module_behavior_coupling.csv; results/integration/test_module_behaviour_coupling/<dataset>/manifests/run_manifest.yml
 # Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Registered in pipeline.yml stage coupling; declares 3 output path(s).
 # ================================================================
+#  
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
 source(repo_path("R", "integration_utils.R"))
 source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
 
+# Phase 6G.6: destinations resolve through the normalized output
+# contract, addressed by this analysis's own identity. This domain
+# spanned two historical stage namespaces; neither survives in a new
+# path. Outputs already written there stay exactly where they are.
+ANALYSIS_ID <- "test_module_behaviour_coupling"
+
 SCRIPT_ID <- "analysis/integration/test_module_behaviour_coupling.R"
 run <- integration_cli(allow_all = TRUE)
 
 make_dataset <- function(ds) {
-  paths <- create_module_dirs("08_behavior_physio_coupling", file.path("module_behavior_coupling", ds))
+  paths <- integration_dirs(ANALYSIS_ID, ds, create = TRUE)
   inputs <- list(
     inferential_handoff = path_results("tables", "06_modules_WGCNA", "interpretable_summary", ds, "WGCNA_inferential_handoff.csv"),
-    network_behavior = path_results("tables", "08_behavior_physio_coupling", "network_behavior_coupling", "edge_behavior_figure_ready_table.csv")
+    network_behavior = integration_find("edge_behavior_figure_ready_table.csv",
+      owner = "test_network_behaviour_coupling",
+      legacy_stage = "08_behavior_physio_coupling",
+      legacy_substep = "network_behavior_coupling")
   )
   if (run$dry_run) {
     dry_run_inputs(paste(SCRIPT_ID, ds), inputs)

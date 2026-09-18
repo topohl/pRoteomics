@@ -6,10 +6,11 @@
 # unchanged. This script explains their gates and writes a separate descriptive,
 # hypothesis-generating direction layer from complete canonical GSEA effects.
 # Scope: global
-# Consumes: required results/tables/10_biological_integration/gsea_wgcna_concordance/global/gsea_wgcna_concordance_long.csv; results/tables/10_biological_integration/gsea_wgcna_concordance/global/adaptive_resilience_pattern_summary.csv; results/tables/10_biological_integration/gsea_wgcna_concordance/global/program_specific_leading_edge_module_overlap.csv; +11 more; optional none declared in pipeline.yml
-# Produces: results/tables/10_biological_integration/gsea_wgcna_concordance_diagnostics/global/; results/source_data/10_biological_integration/gsea_wgcna_concordance_diagnostics/global/; results/reports/10_biological_integration/gsea_wgcna_concordance_diagnostics/global/README.md; +1 more
+# Consumes: required results/integration/test_enrichment_module_concordance/global/tables/gsea_wgcna_concordance_long.csv; results/tables/10_biological_integration/gsea_wgcna_concordance/global/gsea_wgcna_concordance_long.csv; results/integration/test_enrichment_module_concordance/global/tables/adaptive_resilience_pattern_summary.csv; +16 more; optional none declared in pipeline.yml
+# Produces: results/integration/summarize_enrichment_module_concordance/global/tables; results/integration/summarize_enrichment_module_concordance/global/tables/source_data; results/integration/summarize_enrichment_module_concordance/global/reports/README.md; +1 more
 # Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: The strict concordance classifications and adaptive pattern summary are read unchanged.
+#  
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) {
   file.path("R", "paths.R")
@@ -23,6 +24,12 @@ source(repo_path("R", "manuscript_go_theme_utils.R"))
 source(repo_path("R", "gsea_wgcna_concordance_utils.R"))
 source(repo_path("R", "gsea_wgcna_concordance_diagnostic_utils.R"))
 
+# Phase 6G.6: destinations resolve through the normalized output
+# contract, addressed by this analysis's own identity. This domain
+# spanned two historical stage namespaces; neither survives in a new
+# path. Outputs already written there stay exactly where they are.
+ANALYSIS_ID <- "summarize_enrichment_module_concordance"
+
 SCRIPT_ID <- "analysis/integration/summarize_enrichment_module_concordance.R"
 Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 run <- integration_cli(default_dataset = "all", allow_all = TRUE)
@@ -31,7 +38,7 @@ if (!setequal(datasets, valid_datasets())) {
   stop("The diagnostic is a global three-dataset integration and requires --dataset all.",
        call. = FALSE)
 }
-paths <- integration_paths("gsea_wgcna_concordance_diagnostics", "global")
+paths <- integration_dirs(ANALYSIS_ID, "global", create = TRUE)
 
 required_packages <- c(
   "dplyr", "tidyr", "tidyselect", "readr", "stringr", "tibble"
@@ -44,9 +51,10 @@ if (length(missing_packages)) {
        ".", call. = FALSE)
 }
 
-strict_dir <- path_results(
-  "tables", "10_biological_integration", "gsea_wgcna_concordance", "global"
-)
+strict_dir <- dirname(integration_find("program_specific_leading_edge_module_overlap.csv",
+  owner = "test_enrichment_module_concordance",
+  legacy_stage = "10_biological_integration",
+  legacy_substep = "gsea_wgcna_concordance"))
 strict_long_file <- file.path(strict_dir, "gsea_wgcna_concordance_long.csv")
 strict_pattern_file <- file.path(
   strict_dir, "adaptive_resilience_pattern_summary.csv"

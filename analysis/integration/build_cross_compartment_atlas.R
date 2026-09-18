@@ -3,12 +3,12 @@
 # Script: analysis/integration/build_cross_compartment_atlas.R
 # Stage: integration
 # Scope: global
-# Consumes: enrichment, WGCNA, microenvironment, complex/organelle, robustness,
-#           spatial architecture, behavior-coupling, QC, and required microglia Stage 13 tables.
-# Produces: cross-compartment program atlas and Stage 13 identity audit.
-# Dataset behavior: global synthesis across all three canonical datasets.
+# Consumes: required results/tables/06_modules_WGCNA/claim_readiness/microglia/WGCNA_entity_claim_readiness.csv; optional results/tables/04_differential_expression_enrichment/biological_program_summary/; results/differential_abundance/compare_external_stress_signatures/global/tables/external_stress_disease_signature_overlap.csv; results/tables/04_differential_expression_enrichment/external_stress_disease_signature_overlap/global/external_stress_disease_signature_overlap.csv; +9 more
+# Produces: results/integration/build_cross_compartment_atlas/global/tables/cross_compartment_program_atlas.csv; results/integration/build_cross_compartment_atlas/global/tables/cross_compartment_program_atlas_long.csv; results/integration/build_cross_compartment_atlas/global/tables/source_data/cross_compartment_program_atlas.csv; +4 more
+# Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Stage 13 controls only microglia WGCNA convergence semantics.
 # ================================================================
+#  
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
@@ -18,10 +18,16 @@ source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
 source(repo_path("R", "module_semantic_utils.R"))
 source(repo_path("R", "qc_result_paths.R"))
 
+# Phase 6G.6: destinations resolve through the normalized output
+# contract, addressed by this analysis's own identity. This domain
+# spanned two historical stage namespaces; neither survives in a new
+# path. Outputs already written there stay exactly where they are.
+ANALYSIS_ID <- "build_cross_compartment_atlas"
+
 SCRIPT_ID <- "analysis/integration/build_cross_compartment_atlas.R"
 Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 run <- integration_cli(default_dataset = "all", allow_all = TRUE)
-paths <- integration_paths("cross_compartment_program_atlas", "global")
+paths <- integration_dirs(ANALYSIS_ID, "global", create = TRUE)
 
 dataset_inputs <- function(ds) {
   inputs <- list(
@@ -32,7 +38,10 @@ dataset_inputs <- function(ds) {
     microenvironment = path_results("tables", "06_modules_WGCNA", "module_annotation", ds, "WGCNA_supermodule_biological_annotation.csv"),
     complex_architecture = path_results("tables", "06_modules_WGCNA", "module_complex_architecture", ds, "module_complex_architecture.csv"),
     robustness = path_results("tables", "06_modules_WGCNA", "module_robustness_sensitivity", ds, "module_robustness_sensitivity.csv"),
-    module_behavior = path_results("tables", "08_behavior_physio_coupling", "module_behavior_coupling", ds, "module_behavior_coupling.csv"),
+    module_behavior = integration_find("module_behavior_coupling.csv",
+      owner = "test_module_behaviour_coupling",
+      legacy_stage = "08_behavior_physio_coupling",
+      legacy_substep = "module_behavior_coupling", scope = ds),
     qc_report = qc_find("qc_biology_confounding_summary.md",
                         owner = "summarize_qc_confounding",
                         legacy_substep = "07_qc_biology_confounding_report",

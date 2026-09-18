@@ -38,8 +38,67 @@ integration_datasets <- function(dataset_arg) {
   if (identical(dataset_arg, "all")) valid_datasets() else validate_dataset(dataset_arg)
 }
 
-integration_paths <- function(substep, dataset = "global") {
-  create_module_dirs("10_biological_integration", file.path(substep, dataset))
+# Where integration's results live, before and after Phase 6G.6.
+#
+# This domain spanned two historical stage namespaces rather than one,
+# 10_biological_integration and 08_behavior_physio_coupling, plus the
+# publication-facing manuscript_panels namespace. All three collapse onto
+# results/integration/<analysis_id>/<scope>/<child>/, keyed on analysis
+# identity, so the stage number no longer decides where anything lands.
+#
+# integration_paths() was the factory six of the seventeen writers shared;
+# they now pass their own analysis_id instead of a substep.
+integration_dirs <- function(analysis_id, scope = "global", suffix = NULL,
+                             create = FALSE) {
+  if (is.null(scope) || !length(scope) || !nzchar(scope)) scope <- "global"
+  canonical_module_dirs("integration", analysis_id, scope = scope,
+                        suffix = suffix, create = create)
+}
+
+# Normalized-first resolution for an integration artifact that another
+# analysis reads.
+#
+# These writers read each other: audit_animal_id_integrity and
+# test_module_behaviour_coupling both read the network-behaviour coupling
+# table, and several read the candidate shortlist. `legacy_stage` is needed
+# because the historical layout used two different stage directories.
+#
+# Existence is established from the named file, never from the directory, so an
+# empty skeleton left behind by a dry run cannot shadow populated historical
+# data.
+integration_artifact_candidates <- function(filename, owner, legacy_stage,
+                                            legacy_substep, scope = "global",
+                                            kind = c("tables", "figures",
+                                                     "reports", "logs",
+                                                     "source_data")) {
+  kind <- match.arg(kind)
+  child <- switch(kind, tables = "tables", figures = "plots",
+                  reports = "reports", logs = "manifests",
+                  source_data = "tables")
+  norm <- if (identical(kind, "source_data")) {
+    canonical_result_path("integration", owner, scope, child, "source_data", filename)
+  } else {
+    canonical_result_path("integration", owner, scope, child, filename)
+  }
+  ## the historical layout is not uniform: some substeps carry a scope segment
+  ## and some wrote straight into the substep directory
+  c(
+    normalized = norm,
+    legacy_scoped = path_results(kind, legacy_stage, legacy_substep, scope, filename),
+    legacy_flat = path_results(kind, legacy_stage, legacy_substep, filename)
+  )
+}
+
+integration_find <- function(filename, owner, legacy_stage, legacy_substep,
+                             scope = "global",
+                             kind = c("tables", "figures", "reports", "logs",
+                                      "source_data")) {
+  kind <- match.arg(kind)
+  cand <- integration_artifact_candidates(filename, owner, legacy_stage,
+                                          legacy_substep, scope, kind)
+  hit <- cand[file.exists(cand)]
+  if (length(hit)) return(unname(hit[1]))
+  unname(cand[["normalized"]])
 }
 
 read_csv_optional <- function(path, dataset = "global", evidence_domain = "input",

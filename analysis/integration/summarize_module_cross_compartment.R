@@ -3,13 +3,13 @@
 # Script: analysis/integration/summarize_module_cross_compartment.R
 # Stage: integration
 # Scope: global
-# Consumes: existing WGCNA module/supermodule summaries, downstream group effects,
-#           cleaned labels, biological annotations, and optional claims table.
-# Produces: conservative cross-compartment WGCNA/supermodule overview.
-# Dataset behavior: global descriptive overview of all three canonical datasets.
+# Consumes: required results/tables/06_modules_WGCNA/01_WGCNA/neuron_neuropil/modules/WGCNA_module_summary.csv; results/tables/06_modules_WGCNA/01_WGCNA/neuron_neuropil/modules/WGCNA_module_definitions_for_downstream.csv; results/tables/06_modules_WGCNA/01_WGCNA/neuron_neuropil/supermodules/wgcna_supermodule_summary.csv; +16 more; optional results/tables/06_modules_WGCNA/01_WGCNA/; results/tables/06_modules_WGCNA/module_annotation/; results/tables/biological_claims_table.csv; +2 more
+# Produces: results/integration/summarize_module_cross_compartment/global/tables; results/integration/summarize_module_cross_compartment/global/tables/source_data; results/integration/summarize_module_cross_compartment/global/plots; +2 more
+# Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Read-only reporting layer. Does not recompute WGCNA or alter module,
 #        supermodule, model, FDR, effect-size, or claim-gate state.
 # ================================================================
+#  
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
@@ -18,6 +18,12 @@ source(repo_path("R", "wgcna_labeling_utils.R"))
 source(repo_path("R", "wgcna_claim_readiness_utils.R"))
 source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
 source(repo_path("R", "module_semantic_utils.R"))
+
+# Phase 6G.6: destinations resolve through the normalized output
+# contract, addressed by this analysis's own identity. This domain
+# spanned two historical stage namespaces; neither survives in a new
+# path. Outputs already written there stay exactly where they are.
+ANALYSIS_ID <- "summarize_module_cross_compartment"
 
 SCRIPT_ID <- "analysis/integration/summarize_module_cross_compartment.R"
 Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
@@ -31,7 +37,7 @@ if (!length(missing_pkgs)) suppressPackageStartupMessages(invisible(lapply(requi
 
 run <- integration_cli(default_dataset = "all", allow_all = TRUE)
 DATASETS <- integration_datasets(run$dataset)
-paths <- integration_paths("wgcna_cross_compartment_overview", "global")
+paths <- integration_dirs(ANALYSIS_ID, "global", create = TRUE)
 
 input_spec <- function(ds) {
   base01 <- path_results("tables", "06_modules_WGCNA", "01_WGCNA", ds)
@@ -54,7 +60,11 @@ input_spec <- function(ds) {
 
 global_inputs <- list(
   biological_claims_table = list(path = path_results("tables", "biological_claims_table.csv"), required = FALSE),
-  final_biological_evidence_bundle = list(path = path_results("tables", "10_biological_integration", "final_evidence_bundle", "global", "final_biological_evidence_bundle.xlsx"), required = FALSE)
+  final_biological_evidence_bundle = list(path = integration_find(
+    "final_biological_evidence_bundle.xlsx",
+    owner = "build_evidence_priority_matrix",
+    legacy_stage = "10_biological_integration",
+    legacy_substep = "final_evidence_bundle"), required = FALSE)
 )
 
 all_input_paths <- c(

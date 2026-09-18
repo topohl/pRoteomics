@@ -3,10 +3,8 @@
 # Script: analysis/integration/build_immunostaining_candidates.R
 # Stage: integration
 # Scope: global (neuron_neuropil only)
-# Consumes: required data/processed/01_preprocessing/protigy_input_animal_level/neuron_neuropil/neuron_neuropil_animal_level.gct;
-#   data/processed/02_id_mapping/mapped/neuron_neuropil/forward/per_file/<unit>sus_<unit>res.csv;
-#   config/manuscript_spatial_order.yml.
-# Produces: results/source_data/10_biological_integration/immunostaining_candidate_comparison/.
+# Consumes: required data/processed/01_preprocessing/protigy_input_animal_level/neuron_neuropil/neuron_neuropil_animal_level.gct; data/processed/02_id_mapping/mapped/neuron_neuropil/forward/per_file/; config/manuscript_spatial_order.yml; optional none declared in pipeline.yml
+# Produces: results/integration/build_immunostaining_candidates/global/tables/source_data/immunostaining_candidates_animal_abundance.csv; results/integration/build_immunostaining_candidates/global/tables/source_data/immunostaining_candidates_sus_res_effects.csv; results/integration/build_immunostaining_candidates/global/tables/source_data/immunostaining_candidates_mapping.csv; +1 more
 # Notes: Source-data preparation only. No new statistics.
 # ================================================================
 #
@@ -24,6 +22,7 @@
 #   tuned. Every log2FC, p and FDR is copied from its canonical file and then
 #   verified against it.
 # Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+#  
 
 suppressPackageStartupMessages({
   library(dplyr)
@@ -32,13 +31,20 @@ suppressPackageStartupMessages({
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
+source(repo_path("R", "integration_utils.R"))
+
+# Phase 6G.6: destinations resolve through the normalized output
+# contract, addressed by this analysis's own identity. This domain
+# spanned two historical stage namespaces; neither survives in a new
+# path. Outputs already written there stay exactly where they are.
+ANALYSIS_ID <- "build_immunostaining_candidates"
 
 MODULE_ID <- "10_biological_integration"
 SUBSTEP_ID <- "immunostaining_candidate_comparison"
 DATASET <- "neuron_neuropil"
 CONTRACT_VERSION <- "immunostaining_candidate_comparison_v1"
 
-OUT <- path_results("source_data", MODULE_ID, SUBSTEP_ID)
+OUT <- integration_dirs(ANALYSIS_ID, "global", create = TRUE)$source_data
 dir.create(OUT, recursive = TRUE, showWarnings = FALSE)
 
 # The three candidates, nominated upstream. Requested UniProt accessions are

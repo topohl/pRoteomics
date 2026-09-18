@@ -2,21 +2,29 @@
 # Script: analysis/integration/render_module_circular_atlas.R
 # Stage: integration
 # Scope: global
-# Consumes: WGCNA technical outputs, biological claims, and required microglia Stage 13 readiness.
-# Produces: full/selected circular-atlas tables, figures, and stable-ID selection audits.
-# Dataset behavior: includes only the three canonical datasets; every source supermodule appears once.
+# Consumes: required results/tables/06_modules_WGCNA/; results/tables/06_modules_WGCNA/interpretable_summary/neuron_neuropil/WGCNA_inferential_handoff.csv; results/tables/06_modules_WGCNA/interpretable_summary/neuron_soma/WGCNA_inferential_handoff.csv; +3 more; optional results/integration/build_evidence_priority_matrix/global/tables/evidence_priority_matrix.csv; results/tables/10_biological_integration/evidence_priority_matrix/global/evidence_priority_matrix.csv
+# Produces: results/integration/render_module_circular_atlas/global/plots; results/integration/render_module_circular_atlas/global/plots/wgcna_circular_atlas_main.svg; results/integration/render_module_circular_atlas/global/plots/wgcna_circular_atlas_main.pdf; +36 more
+# Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Build and audit WGCNA circular-atlas source data.
 #
 # Downstream-only contract:
 #   - do not recompute WGCNA or alter module/supermodule definitions
 #   - copy group-effect statistics/status from source WGCNA outputs
 #   - represent every source supermodule exactly once in the atlas segments
+#  
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
 source(repo_path("R", "wgcna_downstream_utils.R"))
 source(repo_path("R", "wgcna_claim_readiness_utils.R"))
 source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
+source(repo_path("R", "integration_utils.R"))
+
+# Phase 6G.6: destinations resolve through the normalized output
+# contract, addressed by this analysis's own identity. This domain
+# spanned two historical stage namespaces; neither survives in a new
+# path. Outputs already written there stay exactly where they are.
+ANALYSIS_ID <- "render_module_circular_atlas"
 
 required_pkgs <- c("dplyr", "readr", "tibble", "tidyr", "stringr")
 plot_pkgs <- c("circlize", "svglite", "ggplot2", "scales")
@@ -33,11 +41,12 @@ if (length(available_pkgs)) {
 run <- wgcna_cli(default_dataset = "all", allow_all = TRUE)
 DATASET_ARG <- run$dataset
 
-table_dir <- path_results("tables", "10_biological_integration", "wgcna_circular_atlas", "global")
-source_dir <- path_results("source_data", "10_biological_integration", "wgcna_circular_atlas", "global")
-report_dir <- path_results("reports", "10_biological_integration", "wgcna_circular_atlas", "global")
-figure_dir <- path_results("figures", "10_biological_integration", "wgcna_circular_atlas", "global")
-log_dir <- path_results("logs", "10_biological_integration", "wgcna_circular_atlas", "global")
+CANONICAL_PATHS <- integration_dirs(ANALYSIS_ID, "global", create = TRUE)
+table_dir <- CANONICAL_PATHS$tables
+source_dir <- CANONICAL_PATHS$source_data
+report_dir <- CANONICAL_PATHS$reports
+figure_dir <- CANONICAL_PATHS$plots
+log_dir <- CANONICAL_PATHS$manifests
 invisible(lapply(c(table_dir, source_dir, report_dir, figure_dir, log_dir), dir_create))
 
 out_segments <- file.path(source_dir, "wgcna_circular_atlas_segments.csv")
@@ -47,7 +56,7 @@ out_logic_audit <- file.path(report_dir, "wgcna_circular_atlas_logic_audit.csv")
 out_count_audit <- file.path(report_dir, "wgcna_circular_atlas_supermodule_count_audit.csv")
 out_join_audit <- file.path(report_dir, "wgcna_circular_atlas_join_audit.csv")
 out_selected_audit <- file.path(report_dir, "wgcna_circular_atlas_selected_table_audit.csv")
-out_stage13_selection_audit <- file.path(report_dir, "wgcna_circular_atlas_stage13_selection_audit.csv")
+out_stage13_selection_audit <- file.path(report_dir, "circular_atlas_selection_audit.csv")
 out_neuropil_availability <- file.path(report_dir, "neuron_neuropil_supermodule_availability_audit.csv")
 out_duplicate_audit <- file.path(report_dir, "wgcna_circular_atlas_duplicate_source_audit.csv")
 out_effect_scope_audit <- file.path(report_dir, "wgcna_circular_atlas_effect_scope_audit.csv")

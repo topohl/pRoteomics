@@ -46,7 +46,10 @@ candidate_roots <- c(
   path_results("figures", "08_biological_interpretation"),
   path_results("figures", "10_biological_integration"),
   path_results("figures", "manuscript"),
-  path_results("figures", "manuscript_panels")
+  path_results("figures", "manuscript_panels"),
+  ## the normalized root the migrated integration writer now uses
+  path_results("integration", "export_module_protein_zoom_source_data",
+               "global", "plots")
 )
 
 # Selection is read-only, so it is computed before the dry-run guard and

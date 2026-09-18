@@ -3,24 +3,37 @@
 # Script: analysis/integration/build_evidence_priority_matrix.R
 # Stage: integration
 # Scope: global
-# Consumes: cross-compartment atlas, manuscript summary, biological claims, and Stage 13 readiness.
-# Produces: evidence priority matrix and final evidence bundle.
-# Dataset behavior: global ranking across the canonical integration atlas.
+# Consumes: required results/integration/build_cross_compartment_atlas/global/tables/cross_compartment_program_atlas_long.csv; results/tables/10_biological_integration/cross_compartment_program_atlas/global/cross_compartment_program_atlas_long.csv; results/integration/summarize_programs_for_manuscript/global/tables/manuscript_program_summary.csv; +3 more; optional results/tables/06_modules_WGCNA/interpretable_summary/
+# Produces: results/integration/build_evidence_priority_matrix/global/tables/evidence_priority_matrix.csv; results/integration/build_evidence_priority_matrix/global/tables/source_data/evidence_priority_matrix.csv; results/integration/build_evidence_priority_matrix/global/tables/final_biological_evidence_bundle.xlsx; +4 more
+# Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Priority uses distinct evidence_source_family lineages among eligible rows.
 # ================================================================
+#  
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
 source(repo_path("R", "integration_utils.R"))
 source(repo_path("R", "evidence_bundle_utils.R"))
 
+# Phase 6G.6: destinations resolve through the normalized output
+# contract, addressed by this analysis's own identity. This domain
+# spanned two historical stage namespaces; neither survives in a new
+# path. Outputs already written there stay exactly where they are.
+ANALYSIS_ID <- "build_evidence_priority_matrix"
+
 SCRIPT_ID <- "analysis/integration/build_evidence_priority_matrix.R"
 Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 run <- integration_cli(default_dataset = "all", allow_all = TRUE)
-paths <- integration_paths("evidence_priority_matrix", "global")
+paths <- integration_dirs(ANALYSIS_ID, "global", create = TRUE)
 inputs <- list(
-  atlas = path_results("tables", "10_biological_integration", "cross_compartment_program_atlas", "global", "cross_compartment_program_atlas_long.csv"),
-  manuscript_summary = path_results("tables", "10_biological_integration", "manuscript_program_summary", "global", "manuscript_program_summary.csv")
+  atlas = integration_find("cross_compartment_program_atlas_long.csv",
+    owner = "build_cross_compartment_atlas",
+    legacy_stage = "10_biological_integration",
+    legacy_substep = "cross_compartment_program_atlas"),
+  manuscript_summary = integration_find("manuscript_program_summary.csv",
+    owner = "summarize_programs_for_manuscript",
+    legacy_stage = "10_biological_integration",
+    legacy_substep = "manuscript_program_summary")
 )
 
 if (run$dry_run) {

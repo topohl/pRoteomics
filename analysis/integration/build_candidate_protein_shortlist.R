@@ -37,10 +37,11 @@
 # Script: analysis/integration/build_candidate_protein_shortlist.R
 # Stage: integration
 # Scope: per_dataset_and_global
-# Consumes: required results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_modules_long.csv; results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_inferential_handoff.csv; data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv; optional results/tables/10_biological_integration/gsea_wgcna_concordance/global/program_specific_leading_edge_module_overlap.csv
-# Produces: results/tables/10_biological_integration/wgcna_candidate_protein_shortlist/<dataset>/wgcna_candidate_proteins_all.csv; results/tables/10_biological_integration/wgcna_candidate_protein_shortlist/<dataset>/wgcna_candidate_proteins_long.csv; results/tables/10_biological_integration/wgcna_candidate_protein_shortlist/<dataset>/wgcna_candidate_proteins_shortlist.csv; +5 more
+# Consumes: required results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_modules_long.csv; results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_inferential_handoff.csv; results/differential_abundance/run_clusterprofiler_enrichment/<dataset>/models/clusterProfiler_manifest.csv; +1 more; optional results/integration/test_enrichment_module_concordance/global/tables/program_specific_leading_edge_module_overlap.csv; results/tables/10_biological_integration/gsea_wgcna_concordance/global/program_specific_leading_edge_module_overlap.csv
+# Produces: results/integration/build_candidate_protein_shortlist/<dataset>/tables/wgcna_candidate_proteins_all.csv; results/integration/build_candidate_protein_shortlist/<dataset>/tables/wgcna_candidate_proteins_long.csv; results/integration/build_candidate_protein_shortlist/<dataset>/tables/wgcna_candidate_proteins_shortlist.csv; +5 more
 # Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Additive downstream candidate-protein shortlist for frozen WGCNA modules.
+#  
 
 source("R/paths.R")
 source("R/data_contracts/dataset_config.R")
@@ -49,6 +50,11 @@ source("R/enrichment/enrichment_io.R")
 source("R/statistics/sus_res_spatial_dap_atlas_utils.R")
 source("R/statistics/wgcna_candidate_protein_utils.R")
 source("R/utilities/xlsx_package_utils.R")
+
+# Phase 6G.6: destinations resolve through the normalized output contract,
+# addressed by this analysis's own identity rather than by a historical
+# stage namespace and substep.
+ANALYSIS_ID <- "build_candidate_protein_shortlist"
 
 suppressPackageStartupMessages({
   library(readr)
@@ -79,8 +85,10 @@ handoff_path <- function(dataset) {
                "WGCNA_inferential_handoff.csv")
 }
 leading_edge_path <- function() {
-  path_results("tables", "10_biological_integration", "gsea_wgcna_concordance",
-               "global", "program_specific_leading_edge_module_overlap.csv")
+  integration_find("program_specific_leading_edge_module_overlap.csv",
+               owner = "test_enrichment_module_concordance",
+               legacy_stage = "10_biological_integration",
+               legacy_substep = "gsea_wgcna_concordance")
 }
 
 datasets <- integration_datasets(cli$dataset)
@@ -899,7 +907,7 @@ for (dataset in datasets) {
 }
 
 emit <- function(scope, summary_tbl, long_tbl, by_dataset) {
-  paths <- integration_paths(SUBSTEP, scope)
+  paths <- integration_dirs(ANALYSIS_ID, scope, create = TRUE)
   summary_tbl <- summary_column_order(summary_tbl)
   long_tbl <- long_column_order(long_tbl)
 
