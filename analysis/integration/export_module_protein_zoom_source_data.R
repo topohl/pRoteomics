@@ -4,15 +4,23 @@
 # Script: analysis/integration/export_module_protein_zoom_source_data.R
 # Stage: integration
 # Scope: global
-# Consumes: required results/source_data/06_modules_WGCNA/interpretable_summary/neuron_neuropil/module_group_effects_main_heatmap_source.csv; results/tables/06_modules_WGCNA/01_WGCNA/neuron_neuropil/modules/WGCNA_modules_long.csv; data/processed/04_differential_expression_enrichment/clusterProfiler/neuron_neuropil/clusterProfiler_manifest.csv; +2 more; optional none declared in pipeline.yml
-# Produces: results/figures/manuscript_panels/figure_3/; results/source_data/manuscript_panels/figure_3/; results/tables/manuscript_panels/figure_3/; +2 more
+# Consumes: required results/source_data/06_modules_WGCNA/interpretable_summary/neuron_neuropil/module_group_effects_main_heatmap_source.csv; results/tables/06_modules_WGCNA/01_WGCNA/neuron_neuropil/modules/WGCNA_modules_long.csv; results/differential_abundance/run_clusterprofiler_enrichment/neuron_neuropil/models/clusterProfiler_manifest.csv; +4 more; optional none declared in pipeline.yml
+# Produces: results/integration/export_module_protein_zoom_source_data/global/plots/figure_3; results/integration/export_module_protein_zoom_source_data/global/tables/source_data/figure_3; results/integration/export_module_protein_zoom_source_data/global/tables/figure_3; +2 more
 # Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Downstream manuscript Figure 3 render only.
+#  
 source("R/paths.R")
 source("R/enrichment/enrichment_io.R")
 source("R/statistics/sus_res_spatial_dap_atlas_utils.R")
 source("R/utilities/plotting_nature.R")
 source("R/manuscript_figure3_utils.R")
+source(repo_path("R", "integration_utils.R"))
+
+# Phase 6G.6: destinations resolve through the normalized output
+# contract, addressed by this analysis's own identity. This domain
+# spanned two historical stage namespaces; neither survives in a new
+# path. Outputs already written there stay exactly where they are.
+ANALYSIS_ID <- "export_module_protein_zoom_source_data"
 suppressPackageStartupMessages({ library(readr); library(dplyr); library(ggplot2); library(patchwork) })
 
 dataset <- "neuron_neuropil"
@@ -30,10 +38,10 @@ if ("--dry-run" %in% commandArgs(trailingOnly = TRUE)) {
       "WGCNA_modules_long.csv"
     ),
     clusterprofiler_manifest = canonical_clusterprofiler_manifest_path(dataset),
-    concordance_overlap = path_results(
-      "tables", "10_biological_integration", "gsea_wgcna_concordance",
-      "global", "program_specific_leading_edge_module_overlap.csv"
-    ),
+    concordance_overlap = integration_find("program_specific_leading_edge_module_overlap.csv",
+      owner = "test_enrichment_module_concordance",
+      legacy_stage = "10_biological_integration",
+      legacy_substep = "gsea_wgcna_concordance"),
     module_go = path_results(
       "tables", "06_modules_WGCNA", "01b_module_supermodule_GO_heatmaps",
       dataset, "WGCNA_module_GO_heatmap_source_BP.csv"
@@ -48,7 +56,15 @@ if ("--dry-run" %in% commandArgs(trailingOnly = TRUE)) {
   }
   quit(save = "no", status = 0L)
 }
-out <- function(kind, ...) path_results(kind, "manuscript_panels", "figure_3", ...)
+## figure_3 is meaningful and is kept as a segment below the lifecycle
+## child; manuscript_panels was the historical grouping and is not.
+out <- function(kind, ...) {
+  d <- integration_dirs(ANALYSIS_ID, "global", create = TRUE)
+  child <- switch(kind, figures = d$plots, source_data = d$source_data,
+                  tables = d$tables, reports = d$reports, logs = d$manifests,
+                  d$tables)
+  file.path(child, "figure_3", ...)
+}
 fig_dir <- out("figures"); source_dir <- out("source_data"); table_dir <- out("tables"); report_dir <- out("reports")
 invisible(lapply(c(fig_dir, source_dir, table_dir, report_dir), dir.create, recursive = TRUE, showWarnings = FALSE))
 
@@ -268,7 +284,10 @@ display_ids <- members %>%
   ) %>%
   ungroup()
 theme_program <- c(WGCNA_m01 = "synaptic_signaling_vesicle", WGCNA_m02 = "mitochondrial_respiration_oxphos", WGCNA_m12 = "rna_processing_splicing_rnp")
-overlap_path <- path_results("tables", "10_biological_integration", "gsea_wgcna_concordance", "global", "program_specific_leading_edge_module_overlap.csv")
+overlap_path <- integration_find("program_specific_leading_edge_module_overlap.csv",
+  owner = "test_enrichment_module_concordance",
+  legacy_stage = "10_biological_integration",
+  legacy_substep = "gsea_wgcna_concordance")
 overlap_hash <- file_hash_sha256(overlap_path)
 theme_members <- read_required(overlap_path, "authoritative program-specific leading-edge overlap") %>%
   filter(.data$dataset == dataset, .data$entity_id %in% selected_modules, is.finite(.data$overlap_FDR), .data$overlap_FDR <= .05) %>%
@@ -496,7 +515,13 @@ focused_go_path <- path_results("tables", "06_modules_WGCNA", "01b_module_superm
 inventory <- tibble(figure = "3", panel = c("3a", "3b", "3c", "3d"), question = c("SUS-RES spatial DAP atlas", "Complete Neuropil WGCNA module landscape across the three canonical global contrasts.", "Focused Neuropil supermodule GO-BP member-module evidence.", "Protein-level spatial zoom-ins for selected biologically interpretable WGCNA modules."),
                     renderer = c("analysis/differential_abundance/build_sus_res_dap_atlas.R", "analysis/integration/export_module_protein_zoom_source_data.R", "analysis/wgcna/render_module_go_heatmaps.R", "analysis/integration/export_module_protein_zoom_source_data.R"),
                     upstream_source = c("manifest-selected DA/GSEA", handoff_path, focused_go_path, paste(membership_path, manifest_path, sep = ";")), metric = c("DAP/GSEA", "Stage-07 estimate", "member-module GO support", "protein log2FC"), statistical_level = c("canonical atlas", "module-level Stage-07 / Stage-05 WGCNA effects", "member-module evidence; no pooled supermodule inference", "protein-level canonical differential-abundance log2FC"), FDR_source = c("canonical protein/GO families", "tier_specific_fdr", "member-module BH FDR", "protein padj"), status = c("reused", "rendered", "reused", "downstream renderer"), notes = c("No rebuild.", sprintf("%d/%d descriptive RES > CON > SUS point-estimate geometry; no new test; no Cohen's d.", geometry_count, stage07_module_count), "Selected GO terms, recurrence and redundancy pruning unchanged.", sprintf("m01, m02, m12; abs(kME)-only display selection; within-module display ranks; current m12 authoritative RNA/RNP overlap coverage %d/15; CA2-SLM context is annotation only.", m12_coverage)))
-readr::write_csv(inventory, path_results("tables", "manuscript_panels", "manuscript_panel_inventory.csv"), na = "")
+## The panel inventory sits at the analysis root rather than under figure_3,
+## so it does not go through out(), which appends the figure segment.
+readr::write_csv(
+  inventory,
+  file.path(integration_dirs(ANALYSIS_ID, "global", create = TRUE)$tables,
+            "manuscript_panel_inventory.csv"),
+  na = "")
 protein_support_text <- if (displayed_proteins_with_bh_support > 0L) {
   sprintf(
     "%d of %d displayed canonical module proteins have at least one displayed DA row with BH FDR <= 0.05 (%d supported rows); those rows carry the plotted support symbol.",

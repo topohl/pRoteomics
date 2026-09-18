@@ -3,23 +3,36 @@
 # Script: analysis/integration/summarize_programs_for_manuscript.R
 # Stage: integration
 # Scope: global
-# Consumes: cross-compartment program atlas.
-# Produces: manuscript program summary.
-# Dataset behavior: global summary across the canonical integration atlas.
+# Consumes: required results/integration/build_cross_compartment_atlas/global/tables/cross_compartment_program_atlas_long.csv; results/tables/10_biological_integration/cross_compartment_program_atlas/global/cross_compartment_program_atlas_long.csv; optional results/integration/build_cross_compartment_atlas/global/tables/cross_compartment_program_atlas.csv; results/tables/10_biological_integration/cross_compartment_program_atlas/global/cross_compartment_program_atlas.csv
+# Produces: results/integration/summarize_programs_for_manuscript/global/tables/manuscript_program_summary.csv; results/integration/summarize_programs_for_manuscript/global/tables/source_data/manuscript_program_summary.csv; results/integration/summarize_programs_for_manuscript/global/manifests/run_manifest.yml
+# Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Counts distinct evidence_source_family lineages among eligible evidence rows.
 # ================================================================
+#  
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
 source(repo_path("R", "integration_utils.R"))
 
+# Phase 6G.6: destinations resolve through the normalized output
+# contract, addressed by this analysis's own identity. This domain
+# spanned two historical stage namespaces; neither survives in a new
+# path. Outputs already written there stay exactly where they are.
+ANALYSIS_ID <- "summarize_programs_for_manuscript"
+
 SCRIPT_ID <- "analysis/integration/summarize_programs_for_manuscript.R"
 Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 run <- integration_cli(default_dataset = "all", allow_all = TRUE)
-paths <- integration_paths("manuscript_program_summary", "global")
+paths <- integration_dirs(ANALYSIS_ID, "global", create = TRUE)
 inputs <- list(
-  atlas_long = path_results("tables", "10_biological_integration", "cross_compartment_program_atlas", "global", "cross_compartment_program_atlas_long.csv"),
-  atlas_summary = path_results("tables", "10_biological_integration", "cross_compartment_program_atlas", "global", "cross_compartment_program_atlas.csv")
+  atlas_long = integration_find("cross_compartment_program_atlas_long.csv",
+    owner = "build_cross_compartment_atlas",
+    legacy_stage = "10_biological_integration",
+    legacy_substep = "cross_compartment_program_atlas"),
+  atlas_summary = integration_find("cross_compartment_program_atlas.csv",
+    owner = "build_cross_compartment_atlas",
+    legacy_stage = "10_biological_integration",
+    legacy_substep = "cross_compartment_program_atlas")
 )
 
 if (run$dry_run) {

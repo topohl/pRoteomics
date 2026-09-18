@@ -2,8 +2,8 @@
 # Script: analysis/integration/test_network_behaviour_coupling.R
 # Stage: coupling
 # Scope: dataset_specific
-# Consumes: required results/spatial_networks/build_spatial_networks/<dataset>/models/*/network_spatial_relations_objects.rds; data/processed/07_spatial_networks/network_spatial_relations/<dataset>/*/network_spatial_relations_objects.rds; data/external/behavior/auc_individual_animals_firstChangeActive.csv; +1 more; optional data/external/behavior/auc_individual_animals_all.csv.
-# Produces: results/tables/08_behavior_physio_coupling/network_behavior_coupling/; results/figures/08_behavior_physio_coupling/network_behavior_coupling/.
+# Consumes: required results/spatial_networks/build_spatial_networks/<dataset>/models/*/network_spatial_relations_objects.rds; data/processed/07_spatial_networks/network_spatial_relations/<dataset>/*/network_spatial_relations_objects.rds; data/external/behavior/auc_individual_animals_firstChangeActive.csv; +1 more; optional data/external/behavior/auc_individual_animals_all.csv
+# Produces: results/integration/test_network_behaviour_coupling/global/tables; results/integration/test_network_behaviour_coupling/global/plots
 # Dataset behavior: runs for neuron_neuropil according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Network/module/behavior coupling after networks and downstream module summaries.
 
@@ -38,6 +38,7 @@
 #   2) GAMM movement AUC tables from MMMSociability
 #   3) E9_Behavior_Data.xlsx with zScore sheet
 # ================================================================
+#  
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
@@ -45,9 +46,16 @@ source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "spatial_network_utils.R"))
 source(repo_path("R", "validation_utils.R"))
 source(repo_path("R", "animal_id_contract.R"))
+source(repo_path("R", "integration_utils.R"))
+
+# Phase 6G.6: destinations resolve through the normalized output
+# contract, addressed by this analysis's own identity. This domain
+# spanned two historical stage namespaces; neither survives in a new
+# path. Outputs already written there stay exactly where they are.
+ANALYSIS_ID <- "test_network_behaviour_coupling"
 MODULE_ID <- "08_behavior_physio_coupling"
 SUBSTEP_ID <- "network_behavior_coupling"
-CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
+CANONICAL_PATHS <- integration_dirs(ANALYSIS_ID, "global", create = TRUE)
 BEHAVIOR_DATASET <- current_dataset_from_cli()
 assert_dataset_capability(BEHAVIOR_DATASET, "layer", analysis = "network-behavior coupling")
 behavior_spatial_unit <- if (BEHAVIOR_DATASET == "neuron_neuropil") "region_layer" else "region"

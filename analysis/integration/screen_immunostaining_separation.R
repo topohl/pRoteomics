@@ -3,11 +3,8 @@
 # Script: analysis/integration/screen_immunostaining_separation.R
 # Stage: integration
 # Scope: global (neuron_neuropil only)
-# Consumes: required data/processed/01_preprocessing/protigy_input_animal_level/neuron_neuropil/neuron_neuropil_animal_level.gct;
-#   data/raw/pg_matrix/quicksearch.pg_matrix.tsv;
-#   data/processed/02_id_mapping/mapped/neuron_neuropil/forward/per_file/<unit>sus_<unit>res.csv;
-#   config/manuscript_spatial_order.yml.
-# Produces: results/source_data/10_biological_integration/immunostaining_separation_screen/.
+# Consumes: required data/processed/01_preprocessing/protigy_input_animal_level/neuron_neuropil/neuron_neuropil_animal_level.gct; data/raw/pg_matrix/quicksearch.pg_matrix.tsv; data/processed/02_id_mapping/mapped/neuron_neuropil/forward/per_file/; +1 more; optional none declared in pipeline.yml
+# Produces: results/integration/screen_immunostaining_separation/global/tables/source_data/separation_candidate_panel.csv; results/integration/screen_immunostaining_separation/global/tables/source_data/separation_metrics_all.csv; results/integration/screen_immunostaining_separation/global/tables/source_data/separation_qualifying_cells.csv; +3 more
 # Notes: Descriptive separation screen for staining feasibility. No new inference.
 # ================================================================
 #
@@ -39,6 +36,7 @@
 #   only enters the ranking when all six SUS and RES animal values are fully
 #   observed with no imputed acquisition behind them.
 # Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+#  
 
 suppressPackageStartupMessages({
   library(dplyr)
@@ -46,6 +44,13 @@ suppressPackageStartupMessages({
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
+source(repo_path("R", "integration_utils.R"))
+
+# Phase 6G.6: destinations resolve through the normalized output
+# contract, addressed by this analysis's own identity. This domain
+# spanned two historical stage namespaces; neither survives in a new
+# path. Outputs already written there stay exactly where they are.
+ANALYSIS_ID <- "screen_immunostaining_separation"
 
 MODULE_ID <- "10_biological_integration"
 SUBSTEP_ID <- "immunostaining_separation_screen"
@@ -74,7 +79,7 @@ MIN_ABS_SSMD <- 1.0
 HOUSEKEEPING_FLAG <- c("Actb", "Actg1", "Gapdh", "Tubb5", "Tubb4a", "Tuba1a",
                        "Tuba1b", "Ppia", "Ywhaz", "Rplp0", "Hprt", "B2m")
 
-OUT <- path_results("source_data", MODULE_ID, SUBSTEP_ID)
+OUT <- integration_dirs(ANALYSIS_ID, "global", create = TRUE)$source_data
 dir.create(OUT, recursive = TRUE, showWarnings = FALSE)
 
 GCT <- repo_path("data", "processed", "01_preprocessing",

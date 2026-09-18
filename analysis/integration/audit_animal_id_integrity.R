@@ -22,15 +22,23 @@
 # Script: analysis/integration/audit_animal_id_integrity.R
 # Stage: coupling
 # Scope: global
-# Consumes: required config/animal_id_aliases.csv; data/external/behavior/E9_Behavior_Data.xlsx; optional data/external/behavior/auc_individual_animals_firstChangeActive.csv; data/external/behavior/auc_individual_animals_all.csv; data/processed/07_spatial_networks/network_spatial_relations/neuron_neuropil/region_layer/network_spatial_relations_objects.rds; +1 more
-# Produces: results/tables/08_behavior_physio_coupling/animal_id_integrity/animal_id_normalization_consumer_audit.csv; results/tables/08_behavior_physio_coupling/animal_id_integrity/animal_id_normalization_blast_radius.csv; results/tables/08_behavior_physio_coupling/animal_id_integrity/animal_id_resolution_report.csv
+# Consumes: required config/animal_id_aliases.csv; data/external/behavior/E9_Behavior_Data.xlsx; optional data/external/behavior/auc_individual_animals_firstChangeActive.csv; data/external/behavior/auc_individual_animals_all.csv; results/spatial_networks/build_spatial_networks/neuron_neuropil/models/region_layer/network_spatial_relations_objects.rds; +3 more
+# Produces: results/integration/audit_animal_id_integrity/global/tables/animal_id_normalization_consumer_audit.csv; results/integration/audit_animal_id_integrity/global/tables/animal_id_normalization_blast_radius.csv; results/integration/audit_animal_id_integrity/global/tables/animal_id_resolution_report.csv
 # Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Repository-level AnimalID integrity audit.
+#  
 
 source("R/paths.R")
 source("R/data_contracts/dataset_config.R")
 source("R/statistics/integration_utils.R")
 source("R/data_contracts/animal_id_contract.R")
+source(repo_path("R", "spatial_network_utils.R"))
+
+# Phase 6G.6: destinations resolve through the normalized output
+# contract, addressed by this analysis's own identity. This domain
+# spanned two historical stage namespaces; neither survives in a new
+# path. Outputs already written there stay exactly where they are.
+ANALYSIS_ID <- "audit_animal_id_integrity"
 
 suppressPackageStartupMessages({ library(readr); library(dplyr) })
 
@@ -39,18 +47,18 @@ Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 cli <- integration_cli(default_dataset = "all")
 
 OUT <- function(...) {
-  d <- path_results("tables", "08_behavior_physio_coupling", "animal_id_integrity")
-  dir_create(d); file.path(d, ...)
+  d <- integration_dirs(ANALYSIS_ID, "global", create = TRUE)$tables
+  file.path(d, ...)
 }
-COUPLING <- function(...) path_results(
-  "tables", "08_behavior_physio_coupling", "network_behavior_coupling", ...)
+COUPLING <- function(f) integration_find(f,
+  owner = "test_network_behaviour_coupling",
+  legacy_stage = "08_behavior_physio_coupling",
+  legacy_substep = "network_behavior_coupling")
 
 BEHAVIOR_XLSX <- path_external("behavior", "E9_Behavior_Data.xlsx")
 AUC_FIRST <- path_external("behavior", "auc_individual_animals_firstChangeActive.csv")
 AUC_ALL <- path_external("behavior", "auc_individual_animals_all.csv")
-SPATIAL_RDS <- path_processed("07_spatial_networks", "network_spatial_relations",
-                              "neuron_neuropil", "region_layer",
-                              "network_spatial_relations_objects.rds")
+SPATIAL_RDS <- resolve_spatial_network_object("neuron_neuropil", "region_layer")
 META <- function(ds) path_processed(
   "01_preprocessing", "06_merged_metadata_module_score", ds,
   "sample_metadata_merged_clean_for_module_scores.xlsx")
