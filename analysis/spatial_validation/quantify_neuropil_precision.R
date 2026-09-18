@@ -119,8 +119,7 @@ animal_raw <- sub(".*_Tobias_A?0*([0-9]+)_(L|R)_.*", "\\1", nm[sel])
 mat <- as.matrix(raw[, scols[sel], drop = FALSE])
 
 # animal -> group from the canonical metadata
-md <- path_processed("01_preprocessing", "06_merged_metadata_module_score", DS,
-                     "sample_metadata_merged_clean_for_module_scores.xlsx")
+md <- preprocessing_module_score_metadata(DS)
 meta <- as.data.frame(readxl::read_excel(md))
 grp <- stats::setNames(as.character(meta$StressGroup),
                        sub("^A?0*", "", as.character(meta$AnimalID)))

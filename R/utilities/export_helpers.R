@@ -685,6 +685,17 @@ processed_files_for_dataset <- function(dataset, config, include_derived = FALSE
       if (dir.exists(ds_dir)) {
         files <- c(files, list_files_shallow(ds_dir, max_depth = 3L))
       }
+      ## Phase 6G.7, same reasoning as the differential-abundance block below:
+      ## extract_protigy_contrasts now writes the split contrast tables and the
+      ## extraction index into results/preprocessing/<analysis_id>/<dataset>/,
+      ## so both trees are scanned. protigy_output has no canonical producer in
+      ## this repository and stays historical-only.
+      if (identical(sub, "gct_extractR")) {
+        for (d in repo_path("results", "preprocessing", "extract_protigy_contrasts",
+                            dataset, c("tables", "manifests"))) {
+          if (dir.exists(d)) files <- c(files, list_files_shallow(d, max_depth = 3L))
+        }
+      }
       next
     }
     if (!dir.exists(base)) next
@@ -700,9 +711,17 @@ processed_files_for_dataset <- function(dataset, config, include_derived = FALSE
     }
   }
 
-  map_root <- file.path(repo_path(config$canonical_inputs$processed_id_mapping$root), dataset)
-  if (dir.exists(map_root)) {
-    files <- c(files, list.files(map_root, pattern = "\\.(csv|tsv|xlsx|yml|yaml)$", recursive = TRUE, full.names = TRUE, ignore.case = TRUE))
+  ## Phase 6G.7: map_protein_identifiers now writes the mapped contrast tables
+  ## into results/preprocessing/map_protein_identifiers/<dataset>/tables, so
+  ## both the historical and the normalized root are scanned.
+  map_roots <- c(
+    file.path(repo_path(config$canonical_inputs$processed_id_mapping$root), dataset),
+    repo_path("results", "preprocessing", "map_protein_identifiers", dataset, "tables")
+  )
+  for (map_root in map_roots) {
+    if (dir.exists(map_root)) {
+      files <- c(files, list.files(map_root, pattern = "\\.(csv|tsv|xlsx|yml|yaml)$", recursive = TRUE, full.names = TRUE, ignore.case = TRUE))
+    }
   }
 
   ## Phase 6G.4: the clusterProfiler and compareGO manifests and bundles moved
@@ -749,8 +768,14 @@ classify_export_category <- function(path, config) {
   if (any(grepl(paste0("/", gsub("\\.", "\\\\.", basename(pg_matrix_input_paths(config)[1])), "$"), p, fixed = FALSE)) ||
       grepl("/pg_matrix/", p)) return("pg_matrix_input")
   if (grepl("/metadata/", p) || grepl("sample_metadata", p)) return("sample_metadata")
-  if (grepl("/01_preprocessing/", p)) return("processed_preprocessing")
-  if (grepl("/02_id_mapping/", p)) return("protein_id_mapping")
+  ## Phase 6G.7: both historical preprocessing namespaces now also have a
+  ## normalized home under results/preprocessing/. The identifier-mapping
+  ## category is keyed on its analysis_id, because one normalized domain root
+  ## now covers what used to be two stage directories.
+  if (grepl("/results/preprocessing/map_protein_identifiers/", p) ||
+      grepl("/02_id_mapping/", p)) return("protein_id_mapping")
+  if (grepl("/01_preprocessing/", p) ||
+      grepl("/results/preprocessing/", p)) return("processed_preprocessing")
   if (grepl("/04_differential_expression_enrichment/", p) ||
       grepl("/results/differential_abundance/", p)) return("differential_abundance_enrichment")
   if (grepl("/03_qc_exploration/", p) || grepl("/reports/03_qc", p) ||

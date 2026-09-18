@@ -45,6 +45,7 @@ suppressPackageStartupMessages({
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
 source(repo_path("R", "integration_utils.R"))
+source(repo_path("R", "preprocessing_paths.R"))
 
 # Phase 6G.6: destinations resolve through the normalized output
 # contract, addressed by this analysis's own identity. This domain
@@ -86,8 +87,7 @@ GCT <- repo_path("data", "processed", "01_preprocessing",
                  "protigy_input_animal_level", DATASET,
                  paste0(DATASET, "_animal_level.gct"))
 RAW <- repo_path("data", "raw", "pg_matrix", "quicksearch.pg_matrix.tsv")
-DA_DIR <- repo_path("data", "processed", "02_id_mapping", "mapped", DATASET,
-                    "forward", "per_file")
+DA_DIR <- preprocessing_mapped_contrast_dir(DATASET, "forward")
 for (p in c(GCT, RAW)) if (!file.exists(p))
   stop("missing_required_input: ", p, call. = FALSE)
 

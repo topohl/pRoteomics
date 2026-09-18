@@ -61,8 +61,7 @@ if (isTRUE(cli$dry_run)) {
   inputs <- list()
   for (ds in DATASETS) {
     inputs[[paste0("canonical_metadata__", ds)]] <-
-      path_processed("01_preprocessing", "06_merged_metadata_module_score", ds,
-                     "sample_metadata_merged_clean_for_module_scores.xlsx")
+      preprocessing_module_score_metadata(ds)
   }
   cat("[DRY-RUN] Animal-level spatial molecular-similarity networks.\n")
   dry_run_inputs(SCRIPT_ID, inputs)
@@ -80,8 +79,7 @@ animal_meta <- list()
 for (ds in DATASETS) {
   inputs <- resolve_dataset_inputs(ds, purpose = "wgcna", script = SCRIPT_ID,
                                    stage = "networks")
-  md <- path_processed("01_preprocessing", "06_merged_metadata_module_score", ds,
-                       "sample_metadata_merged_clean_for_module_scores.xlsx")
+  md <- preprocessing_module_score_metadata(ds)
   canonical <- qc_load_canonical_expression(inputs$expression_file, md,
                                             dataset = ds, strict = TRUE)
   lv <- sps_build_spatial_levels(ds, canonical = canonical)

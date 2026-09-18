@@ -7,7 +7,16 @@ testthat::test_that("module-score metadata merge script is dataset-aware", {
   testthat::expect_true(grepl("PROTEOMICS_DATASET", txt, fixed = TRUE))
   testthat::expect_true(grepl("resolve_dataset_inputs(dataset_profile, purpose = \"module_score\")", txt, fixed = TRUE))
   testthat::expect_false(grepl("expected_name <- \"20260218_pgmatrix_imputed_neuron_neuropil", txt, fixed = TRUE))
-  testthat::expect_true(grepl("data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>", txt, fixed = TRUE) || grepl("path_processed(module_id, substep_id, dataset_profile)", txt, fixed = TRUE))
+  ## The property under test is that the destination is scoped to the resolved
+  ## dataset rather than hard-coded. Phase 6G.7 changed how that is spelled:
+  ## the scope is now the dataset argument to preprocessing_dirs() instead of a
+  ## path_processed() segment, and the header names the normalized namespace.
+  ## All three spellings are accepted so this locks the property, not a phase.
+  testthat::expect_true(
+    grepl("preprocessing_dirs(\"build_module_score_metadata\", dataset_profile)", txt, fixed = TRUE) ||
+      grepl("results/preprocessing/build_module_score_metadata/<dataset>", txt, fixed = TRUE) ||
+      grepl("data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>", txt, fixed = TRUE) ||
+      grepl("path_processed(module_id, substep_id, dataset_profile)", txt, fixed = TRUE))
 })
 
 testthat::test_that("dataset input resolution prefers dataset-scoped module metadata", {

@@ -70,7 +70,13 @@ for (ds in datasets) {
   planned_count <- planned_count + length(proc_files) + length(pg_paths)
   for (src in proc_files) {
     rel <- relative_to(src, repo_root())
-    dest <- file.path(ds_out, gsub("^data/processed/", "", rel))
+    ## Phase 6G.7: processed_files_for_dataset() now also returns normalized
+    ## preprocessing paths, so the staged name is flattened for both trees.
+    ## Without the second rule a migrated file would stage under
+    ## <dataset>/results/preprocessing/... instead of a substep-style path.
+    rel_staged <- gsub("^data/processed/", "", rel)
+    rel_staged <- gsub("^results/preprocessing/", "", rel_staged)
+    dest <- file.path(ds_out, rel_staged)
     dest <- gsub("^data/raw/", "pg_matrix_reference/", dest)
     if (isTRUE(cli$dry_run)) {
       dry_run_line("processed file", paste(rel, "->", dest))

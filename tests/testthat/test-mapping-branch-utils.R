@@ -4,7 +4,14 @@ source(testthat::test_path("..", "..", "R", "paths.R"))
 source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "mapping_branch_utils.R"))
 
-testthat::test_that("historical MapThatProt roots and paths remain unchanged", {
+testthat::test_that("the historical MapThatProt roots are unchanged but the default destination is normalized", {
+  ## Phase 6G.7 separated two things this test used to treat as one. The ROOTS
+  ## still resolve to the historical defaults, because they are what decides
+  ## whether a branch override is in force, and the derived namespace is still
+  ## 02_id_mapping for the default branch. The DESTINATION moved: the mapped
+  ## contrast tables are a versioned file contract read by six analysis
+  ## domains, so they are canonical results and now live under
+  ## results/preprocessing/map_protein_identifiers/<dataset>/tables/.
   roots <- resolve_mapthatprot_roots(gct_extract_root = "", mapping_output_root = "")
   testthat::expect_identical(
     roots$gct_extract_root,
@@ -17,7 +24,16 @@ testthat::test_that("historical MapThatProt roots and paths remain unchanged", {
   paths <- resolve_mapthatprot_paths("microglia", "forward", roots)
   testthat::expect_identical(
     normalizePath(paths$mapped_dir, winslash = "/", mustWork = FALSE),
-    normalizePath(path_processed("02_id_mapping", "mapped", "microglia", "forward", "per_file"), winslash = "/", mustWork = FALSE)
+    normalizePath(canonical_result_path("preprocessing", "map_protein_identifiers",
+                                        "microglia", "tables", "mapped", "forward",
+                                        "per_file"),
+                  winslash = "/", mustWork = FALSE)
+  )
+  ## and the read side still finds the historical extraction that exists today
+  testthat::expect_identical(
+    normalizePath(paths$raw_dir, winslash = "/", mustWork = FALSE),
+    normalizePath(path_processed("01_preprocessing", "gct_extractR", "microglia", "forward"),
+                  winslash = "/", mustWork = FALSE)
   )
   testthat::expect_identical(paths$analysis_namespace, "02_id_mapping")
 })
