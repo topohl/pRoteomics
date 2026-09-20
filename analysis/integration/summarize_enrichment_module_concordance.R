@@ -23,6 +23,7 @@ source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
 source(repo_path("R", "manuscript_go_theme_utils.R"))
 source(repo_path("R", "gsea_wgcna_concordance_utils.R"))
 source(repo_path("R", "gsea_wgcna_concordance_diagnostic_utils.R"))
+source(repo_path("R", "wgcna_paths.R"))
 
 # Phase 6G.6: destinations resolve through the normalized output
 # contract, addressed by this analysis's own identity. This domain
@@ -73,34 +74,13 @@ theme_registry_file <- repo_path("config", "manuscript_go_theme_registry.tsv")
 
 dataset_inputs <- lapply(datasets, function(dataset) {
   list(
-    wgcna_handoff = path_results(
-      "tables", "06_modules_WGCNA", "interpretable_summary", dataset,
-      "WGCNA_inferential_handoff.csv"
-    ),
-    feature_universe = path_results(
-      "tables", "06_modules_WGCNA", "01_WGCNA", dataset, "modules",
-      "WGCNA_feature_universe.csv"
-    ),
-    module_annotation = path_results(
-      "tables", "06_modules_WGCNA", "module_annotation", dataset,
-      "WGCNA_module_biological_annotation.csv"
-    ),
-    supermodule_annotation = path_results(
-      "tables", "06_modules_WGCNA", "module_annotation", dataset,
-      "WGCNA_supermodule_biological_annotation.csv"
-    ),
-    module_go = path_results(
-      "tables", "06_modules_WGCNA", "01_WGCNA", dataset, "modules",
-      "WGCNA_module_GO_enrichment_long.csv"
-    ),
-    final_labels = path_results(
-      "tables", "06_modules_WGCNA", "interpretable_summary", dataset,
-      "WGCNA_final_label_lookup.csv"
-    ),
-    group_sensitivity = path_results(
-      "tables", "06_modules_WGCNA", "group_effects", dataset,
-      "WGCNA_group_effect_sensitivity.csv"
-    )
+    wgcna_handoff = wgcna_interpretable_artifact("WGCNA_inferential_handoff.csv", dataset),
+    feature_universe = wgcna_modules_artifact("WGCNA_feature_universe.csv", dataset, child = "tables", "modules"),
+    module_annotation = wgcna_annotation_artifact("WGCNA_module_biological_annotation.csv", dataset),
+    supermodule_annotation = wgcna_annotation_artifact("WGCNA_supermodule_biological_annotation.csv", dataset),
+    module_go = wgcna_modules_artifact("WGCNA_module_GO_enrichment_long.csv", dataset, child = "tables", "modules"),
+    final_labels = wgcna_interpretable_artifact("WGCNA_final_label_lookup.csv", dataset),
+    group_sensitivity = wgcna_group_effects_artifact("WGCNA_group_effect_sensitivity.csv", dataset)
   )
 })
 names(dataset_inputs) <- datasets

@@ -17,6 +17,7 @@ source(repo_path("R", "wgcna_reviewed_label_registry.R"))
 source(repo_path("R", "schema_validation.R"))
 source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
 source(repo_path("R", "module_semantic_utils.R"))
+source(repo_path("R", "wgcna_paths.R"))
 
 required_pkgs <- c("dplyr", "readr", "tibble", "yaml")
 missing_pkgs <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
@@ -26,17 +27,18 @@ if (!length(missing_pkgs)) suppressPackageStartupMessages(invisible(lapply(requi
 run <- wgcna_cli()
 if (!identical(run$dataset, "microglia")) stop("audit_module_claim_readiness.R is restricted to microglia.", call. = FALSE)
 DATASET <- "microglia"
-OUT <- create_module_dirs("06_modules_WGCNA", file.path("claim_readiness", DATASET))
+OUT <- wgcna_dirs("audit_module_claim_readiness", DATASET, create = TRUE)
 FILES <- resolve_wgcna_files(DATASET)
-TABLE_DIR <- path_results("tables", "06_modules_WGCNA")
-AUDIT_DIR <- path_results("reviewer_audit", "microglia_wgcna_nature_readiness")
+AUDIT_DIR <- wgcna_dir_any("audit_microglia_module_claims",
+                           "microglia_wgcna_nature_readiness", "global",
+                           "tables", "reviewer_audit", legacy_scoped = FALSE)
 inputs <- list(
-  stage07_handoff = file.path(TABLE_DIR, "interpretable_summary", DATASET, "WGCNA_inferential_handoff.csv"),
-  stage06_module = file.path(TABLE_DIR, "module_annotation", DATASET, "WGCNA_module_biological_annotation.csv"),
-  stage06_supermodule = file.path(TABLE_DIR, "module_annotation", DATASET, "WGCNA_supermodule_biological_annotation.csv"),
-  stage07_lookup = file.path(TABLE_DIR, "interpretable_summary", DATASET, "WGCNA_final_label_lookup.csv"),
-  stage09_neuropil = file.path(TABLE_DIR, "microglia_neuropil_independence", DATASET, "microglia_module_neuropil_independence_classification.csv"),
-  stage11_robustness = file.path(TABLE_DIR, "module_robustness_sensitivity", DATASET, "WGCNA_claim_gate_audit.csv"),
+  stage07_handoff = wgcna_interpretable_artifact("WGCNA_inferential_handoff.csv", DATASET),
+  stage06_module = wgcna_annotation_artifact("WGCNA_module_biological_annotation.csv", DATASET),
+  stage06_supermodule = wgcna_annotation_artifact("WGCNA_supermodule_biological_annotation.csv", DATASET),
+  stage07_lookup = wgcna_interpretable_artifact("WGCNA_final_label_lookup.csv", DATASET),
+  stage09_neuropil = wgcna_independence_artifact("microglia_module_neuropil_independence_classification.csv", DATASET),
+  stage11_robustness = wgcna_robustness_artifact("WGCNA_claim_gate_audit.csv", DATASET),
   stage12_modules = file.path(AUDIT_DIR, "module_robustness_consensus.csv"),
   stage12_blocks = file.path(AUDIT_DIR, "higher_order_block_readiness_summary.csv"),
   stage01_supermodule_annotation = FILES$supermodule_annotation

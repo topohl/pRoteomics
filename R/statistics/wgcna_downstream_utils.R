@@ -8,6 +8,13 @@ source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "dataset_inputs.R"))
 source(repo_path("R", "module_contracts.R"))
 source(repo_path("R", "qc_result_paths.R"))
+if (!exists("wgcna_dirs", mode = "function")) {
+  if (!exists("repo_path", mode = "function")) {
+    paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
+    source(paths_file)
+  }
+  source(repo_path("R", "wgcna_paths.R"))
+}
 
 WGCNA_ROI_NOTE <- "microglia-enriched ROI/local microenvironment; annotation only, not purity correction."
 
@@ -196,9 +203,6 @@ wgcna_cli <- function(default_dataset = "neuron_neuropil", allow_all = FALSE) {
   )
 }
 
-wgcna_downstream_paths <- function(substep, dataset) {
-  create_module_dirs("06_modules_WGCNA", file.path(substep, dataset))
-}
 
 safe_read_csv <- function(path) {
   if (is.na(path) || !nzchar(path) || !file.exists(path)) return(NULL)
@@ -886,12 +890,12 @@ standardize_wgcna_metadata <- function(meta, dataset) {
 
 resolve_wgcna_files <- function(dataset) {
   list(
-    state = path_processed("06_modules_WGCNA", "01_WGCNA", dataset, "wgcna_final_model_state.rds"),
-    definitions = path_results("tables", "06_modules_WGCNA", "01_WGCNA", dataset, "modules", "WGCNA_module_definitions_for_downstream.csv"),
-    module_summary = path_results("tables", "06_modules_WGCNA", "01_WGCNA", dataset, "modules", "WGCNA_module_summary.csv"),
-    go = path_results("tables", "06_modules_WGCNA", "01_WGCNA", dataset, "modules", "WGCNA_module_GO_enrichment_long.csv"),
-    supermodule_annotation = path_results("tables", "06_modules_WGCNA", "01_WGCNA", dataset, "supermodules", "wgcna_module_supermodule_annotation.csv"),
-    supermodule_summary = path_results("tables", "06_modules_WGCNA", "01_WGCNA", dataset, "supermodules", "wgcna_supermodule_summary.csv"),
+    state = wgcna_modules_artifact("wgcna_final_model_state.rds", dataset, child = "models"),
+    definitions = wgcna_modules_artifact("WGCNA_module_definitions_for_downstream.csv", dataset, child = "tables", "modules"),
+    module_summary = wgcna_modules_artifact("WGCNA_module_summary.csv", dataset, child = "tables", "modules"),
+    go = wgcna_modules_artifact("WGCNA_module_GO_enrichment_long.csv", dataset, child = "tables", "modules"),
+    supermodule_annotation = wgcna_modules_artifact("wgcna_module_supermodule_annotation.csv", dataset, child = "tables", "supermodules"),
+    supermodule_summary = wgcna_modules_artifact("wgcna_supermodule_summary.csv", dataset, child = "tables", "supermodules"),
     marker_traits = qc_find("wgcna_marker_traits_by_sample.csv",
                             owner = "export_marker_traits",
                             legacy_substep = "06_wgcna_marker_trait_export",

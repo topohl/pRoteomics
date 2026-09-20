@@ -13,6 +13,7 @@ paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.
 source(paths_file)
 source(repo_path("R", "script_runtime.R"))
 source(repo_path("R", "plotting_nature.R"))
+source(repo_path("R", "wgcna_paths.R"))
 
 SCRIPT_ID <- "analysis/wgcna/render_microglia_independence_figures.R"
 runtime <- init_script_runtime(SCRIPT_ID, stage = "modules_downstream", default_dataset = "microglia")
@@ -38,8 +39,11 @@ if (length(missing_pkgs) && !isTRUE(runtime$dry_run)) {
 if (!length(missing_pkgs)) suppressPackageStartupMessages(invisible(lapply(required_pkgs, library, character.only = TRUE)))
 
 dataset <- "microglia"
-in_dir <- path_results("tables", "06_modules_WGCNA", "microglia_neuropil_independence", dataset)
-paths <- create_module_dirs("06_modules_WGCNA", file.path("microglia_neuropil_independence", dataset))
+## A read of test_microglia_neuropil_independence's output, not of this
+## renderer's own: the two are different analyses and only the producer owns
+## this family.
+in_dir <- wgcna_independence_dir(dataset)
+paths <- wgcna_dirs("render_microglia_independence_figures", dataset, create = TRUE)
 fig_dir <- paths$figures
 source_dir <- paths$source_data
 log_dir <- paths$logs
@@ -48,8 +52,8 @@ inputs <- list(
   classification = file.path(in_dir, "microglia_module_neuropil_independence_classification.csv"),
   effects = file.path(in_dir, "microglia_neuropil_independence_effects.csv"),
   handoff_with_independence = file.path(in_dir, "WGCNA_module_inferential_handoff_with_neuropil_independence.csv"),
-  module_annotation_optional = path_results("tables", "06_modules_WGCNA", "module_annotation", dataset, "WGCNA_module_biological_annotation.csv"),
-  final_label_lookup_optional = path_results("tables", "06_modules_WGCNA", "interpretable_summary", dataset, "WGCNA_final_label_lookup.csv")
+  module_annotation_optional = wgcna_annotation_artifact("WGCNA_module_biological_annotation.csv", dataset),
+  final_label_lookup_optional = wgcna_interpretable_artifact("WGCNA_final_label_lookup.csv", dataset)
 )
 required_inputs <- inputs[c("classification", "effects", "handoff_with_independence")]
 

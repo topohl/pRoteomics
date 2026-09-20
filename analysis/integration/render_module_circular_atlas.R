@@ -19,6 +19,7 @@ source(repo_path("R", "wgcna_downstream_utils.R"))
 source(repo_path("R", "wgcna_claim_readiness_utils.R"))
 source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
 source(repo_path("R", "integration_utils.R"))
+source(repo_path("R", "wgcna_paths.R"))
 
 # Phase 6G.6: destinations resolve through the normalized output
 # contract, addressed by this analysis's own identity. This domain
@@ -290,9 +291,9 @@ score_contrast_order_value <- function(x) {
 
 publication_score_paths <- function(dataset) {
   list(
-    supermodule_directional_effects = path_results("tables", "06_modules_WGCNA", "module_score", dataset, "wgcna", "supermodule_directional_effects.csv"),
-    publication_heatmap_source = path_results("source_data", "06_modules_WGCNA", "score_publication_summary", dataset, "publication_supermodule_effect_heatmap_source.csv"),
-    final_label_lookup = path_results("tables", "06_modules_WGCNA", "interpretable_summary", dataset, "WGCNA_final_label_lookup.csv")
+    supermodule_directional_effects = wgcna_module_score_artifact("supermodule_directional_effects.csv", dataset, "wgcna"),
+    publication_heatmap_source = wgcna_score_summary_artifact("publication_supermodule_effect_heatmap_source.csv", dataset, source_data = TRUE),
+    final_label_lookup = wgcna_interpretable_artifact("WGCNA_final_label_lookup.csv", dataset)
   )
 }
 
@@ -447,12 +448,12 @@ audit_join <- function(join_name, left, right, keys, left_table, right_table) {
 
 dataset_source_paths <- function(ds) {
   list(
-    supermodule_summary = path_results("tables", "06_modules_WGCNA", "01_WGCNA", ds, "supermodules", "wgcna_supermodule_summary.csv"),
-    module_supermodule_annotation = path_results("tables", "06_modules_WGCNA", "01_WGCNA", ds, "supermodules", "wgcna_module_supermodule_annotation.csv"),
-    inferential_handoff = path_results("tables", "06_modules_WGCNA", "interpretable_summary", ds, "WGCNA_inferential_handoff.csv"),
-    final_label_lookup = path_results("tables", "06_modules_WGCNA", "interpretable_summary", ds, "WGCNA_final_label_lookup.csv"),
-    biological_annotation = path_results("tables", "06_modules_WGCNA", "module_annotation", ds, "WGCNA_supermodule_biological_annotation.csv"),
-    modules_dir = path_results("tables", "06_modules_WGCNA", "01_WGCNA", ds, "modules")
+    supermodule_summary = wgcna_modules_artifact("wgcna_supermodule_summary.csv", ds, child = "tables", "supermodules"),
+    module_supermodule_annotation = wgcna_modules_artifact("wgcna_module_supermodule_annotation.csv", ds, child = "tables", "supermodules"),
+    inferential_handoff = wgcna_interpretable_artifact("WGCNA_inferential_handoff.csv", ds),
+    final_label_lookup = wgcna_interpretable_artifact("WGCNA_final_label_lookup.csv", ds),
+    biological_annotation = wgcna_annotation_artifact("WGCNA_supermodule_biological_annotation.csv", ds),
+    modules_dir = wgcna_modules_dir(ds)
   )
 }
 
@@ -718,10 +719,10 @@ summarise_effect_scopes <- function(effects, dataset, source_ids) {
 build_neuropil_availability_audit <- function() {
   expected <- tibble::tibble(
     expected_file = c(
-      path_results("tables", "06_modules_WGCNA", "01_WGCNA", "neuron_neuropil", "supermodules", "wgcna_supermodule_summary.csv"),
-      path_results("tables", "06_modules_WGCNA", "01_WGCNA", "neuron_neuropil", "supermodules", "wgcna_module_supermodule_annotation.csv"),
-      path_results("tables", "06_modules_WGCNA", "interpretable_summary", "neuron_neuropil", "WGCNA_inferential_handoff.csv"),
-      path_results("tables", "06_modules_WGCNA", "module_annotation", "neuron_neuropil", "WGCNA_supermodule_biological_annotation.csv")
+      wgcna_modules_artifact("wgcna_supermodule_summary.csv", "neuron_neuropil", child = "tables", "supermodules"),
+      wgcna_modules_artifact("wgcna_module_supermodule_annotation.csv", "neuron_neuropil", child = "tables", "supermodules"),
+      wgcna_interpretable_artifact("WGCNA_inferential_handoff.csv", "neuron_neuropil"),
+      wgcna_annotation_artifact("WGCNA_supermodule_biological_annotation.csv", "neuron_neuropil")
     ),
     producing_script = c(
       "analysis/wgcna/build_wgcna_modules.R",
@@ -769,7 +770,7 @@ build_neuropil_availability_audit <- function() {
 }
 
 available_datasets <- function() {
-  root <- path_results("tables", "06_modules_WGCNA", "01_WGCNA")
+  root <- wgcna_modules_scope_root()
   present <- if (dir.exists(root)) list.dirs(root, full.names = FALSE, recursive = FALSE) else character()
   ds <- intersect(valid_datasets(), present)
   if (!identical(DATASET_ARG, "all")) ds <- intersect(ds, DATASET_ARG)
@@ -1813,10 +1814,7 @@ LOCAL_EFFECT_INTERPRETATION_GUARD <- paste(
 
 stage05_local_response_sd_lookup <- function(datasets) {
   rows <- lapply(datasets, function(ds) {
-    path <- path_results(
-      "tables", "06_modules_WGCNA", "group_effects", ds,
-      "WGCNA_group_effect_animal_spatial_unit_values.csv"
-    )
+    path <- wgcna_group_effects_artifact("WGCNA_group_effect_animal_spatial_unit_values.csv", ds)
     values <- read_csv_quiet(path)
     if (is.null(values) || !nrow(values)) {
       stop(

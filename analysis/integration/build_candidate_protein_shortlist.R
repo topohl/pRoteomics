@@ -50,6 +50,7 @@ source("R/enrichment/enrichment_io.R")
 source("R/statistics/sus_res_spatial_dap_atlas_utils.R")
 source("R/statistics/wgcna_candidate_protein_utils.R")
 source("R/utilities/xlsx_package_utils.R")
+source(repo_path("R", "wgcna_paths.R"))
 
 # Phase 6G.6: destinations resolve through the normalized output contract,
 # addressed by this analysis's own identity rather than by a historical
@@ -77,12 +78,10 @@ module_focus <- trimws(cli_value("--module", ""))
 # ------------------------------------------------------------------- inputs
 
 membership_path <- function(dataset) {
-  path_results("tables", "06_modules_WGCNA", "01_WGCNA", dataset, "modules",
-               "WGCNA_modules_long.csv")
+  wgcna_modules_artifact("WGCNA_modules_long.csv", dataset, child = "tables", "modules")
 }
 handoff_path <- function(dataset) {
-  path_results("tables", "06_modules_WGCNA", "interpretable_summary", dataset,
-               "WGCNA_inferential_handoff.csv")
+  wgcna_interpretable_artifact("WGCNA_inferential_handoff.csv", dataset)
 }
 leading_edge_path <- function() {
   integration_find("program_specific_leading_edge_module_overlap.csv",

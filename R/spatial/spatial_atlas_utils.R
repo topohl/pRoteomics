@@ -15,6 +15,18 @@
 # EVERYTHING HERE IS PHENOTYPE-BLIND. SUS/RES never define identity; they are
 # joined later as a downstream overlay only.
 
+## The Stage-05 hemisphere values come from the WGCNA path resolver, which
+## looks in the normalized location first and falls back to the historical
+## one. This file has no plain source() block of its own, so the guard is
+## explicit; callers that already loaded the resolver pay nothing.
+if (!exists("wgcna_group_effects_artifact", mode = "function")) {
+  if (!exists("repo_path", mode = "function")) {
+    paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
+    source(paths_file)
+  }
+  source(repo_path("R", "wgcna_paths.R"))
+}
+
 sat_contract_version <- function() "spatial_cell_atlas_v1"
 
 # ------------------------------------------------------ spatial profile metrics
@@ -102,8 +114,7 @@ sat_row_z <- function(m) {
 # within an animal (the canonical bilateral policy) and then averaged across CON
 # animals only.
 sat_con_bilateral_module_profiles <- function(dataset, level = "module") {
-  p <- path_results("tables", "06_modules_WGCNA", "group_effects", dataset,
-                    "WGCNA_group_effect_hemisphere_values.csv")
+  p <- wgcna_group_effects_artifact("WGCNA_group_effect_hemisphere_values.csv", dataset)
   if (!file.exists(p)) {
     stop("missing_required_input: Stage-05 hemisphere values: ", p, call. = FALSE)
   }

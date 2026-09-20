@@ -8,7 +8,29 @@ paths_file <- if (file.exists(file.path("R", "paths.R"))) {
   file.path("..", "R", "paths.R")
 }
 source(paths_file)
+source(repo_path("R", "dataset_config.R"))
+source(repo_path("R", "wgcna_paths.R"))
 source(repo_path("R", "wgcna_support_status_utils.R"))
+
+# Phase 6G.8 section 8. Both input sets were previously discovered with
+# Sys.glob() using "*" in the DATASET position. That is the same wildcard class
+# that let a failed run into the publication export config: the glob cannot
+# distinguish a canonical dataset from a failed-run directory such as
+# microglia_failed_20260720_133211, nor from the cross-dataset "all" aggregate
+# that already exists under interpretable_summary. Nothing downstream re-checks
+# dataset identity - the dataset column is simply read out of whatever file was
+# found - so the guard has to be at discovery.
+#
+# Discovery is therefore an explicit product of the canonical datasets and the
+# named artifacts, resolved through the owner helpers so a future normalized run
+# is found in the same way. Files that do not exist are dropped, which is what
+# the glob did for an absent dataset anyway.
+wgcna_canonical_inputs <- function(filenames, resolver) {
+  paths <- unlist(lapply(valid_datasets(), function(ds) {
+    vapply(filenames, function(fn) resolver(fn, ds), character(1))
+  }), use.names = FALSE)
+  paths[file.exists(paths)]
+}
 
 args <- commandArgs(trailingOnly = TRUE)
 output_index <- match("--output", args)
@@ -21,10 +43,10 @@ output_path <- if (!is.na(output_index)) {
   NA_character_
 }
 
-group_effect_files <- Sys.glob(file.path(
-  repo_root(), "results", "tables", "06_modules_WGCNA", "group_effects",
-  "*", "*group_effects.csv"
-))
+group_effect_files <- wgcna_canonical_inputs(
+  c("module_group_effects.csv", "supermodule_group_effects.csv"),
+  wgcna_group_effects_artifact
+)
 if (!length(group_effect_files)) {
   stop("No Stage 05 group-effect tables were found.", call. = FALSE)
 }
@@ -55,10 +77,9 @@ if (nrow(audit)) {
   )
 }
 
-handoff_files <- Sys.glob(file.path(
-  repo_root(), "results", "tables", "06_modules_WGCNA",
-  "interpretable_summary", "*", "WGCNA_inferential_handoff.csv"
-))
+handoff_files <- wgcna_canonical_inputs(
+  "WGCNA_inferential_handoff.csv", wgcna_interpretable_artifact
+)
 handoff_keys <- unique(unlist(lapply(handoff_files, function(path) {
   data <- utils::read.csv(
     path, check.names = FALSE, stringsAsFactors = FALSE,

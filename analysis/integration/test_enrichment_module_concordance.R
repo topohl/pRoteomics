@@ -18,6 +18,7 @@ source(repo_path("R", "integration_utils.R"))
 source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
 source(repo_path("R", "manuscript_go_theme_utils.R"))
 source(repo_path("R", "gsea_wgcna_concordance_utils.R"))
+source(repo_path("R", "wgcna_paths.R"))
 
 # Phase 6G.6: destinations resolve through the normalized output
 # contract, addressed by this analysis's own identity. This domain
@@ -57,27 +58,15 @@ theme_mapping_file <- repo_path(
 
 dataset_inputs <- lapply(datasets, function(dataset) {
   list(
-    wgcna_handoff = path_results(
-      "tables", "06_modules_WGCNA", "interpretable_summary", dataset,
-      "WGCNA_inferential_handoff.csv"
-    ),
-    wgcna_universe = path_results(
-      "tables", "06_modules_WGCNA", "01_WGCNA", dataset, "modules",
-      "WGCNA_feature_universe.csv"
-    ),
-    module_preservation = path_results(
-      "tables", "06_modules_WGCNA", "01_WGCNA", dataset, "modules",
-      "WGCNA_module_preservation_summary.csv"
-    )
+    wgcna_handoff = wgcna_interpretable_artifact("WGCNA_inferential_handoff.csv", dataset),
+    wgcna_universe = wgcna_modules_artifact("WGCNA_feature_universe.csv", dataset, child = "tables", "modules"),
+    module_preservation = wgcna_modules_artifact("WGCNA_module_preservation_summary.csv", dataset, child = "tables", "modules")
   )
 })
 names(dataset_inputs) <- datasets
 
 microglia_inputs <- list(
-  claim_readiness = path_results(
-    "tables", "06_modules_WGCNA", "claim_readiness", "microglia",
-    "WGCNA_entity_claim_readiness.csv"
-  ),
+  claim_readiness = wgcna_claim_readiness_artifact("WGCNA_entity_claim_readiness.csv"),
   module_robustness = path_results(
     "reviewer_audit", "microglia_wgcna_nature_readiness",
     "module_robustness_consensus.csv"
@@ -86,10 +75,7 @@ microglia_inputs <- list(
     "reviewer_audit", "microglia_wgcna_nature_readiness",
     "higher_order_block_readiness_summary.csv"
   ),
-  legacy_overlap = path_results(
-    "tables", "06_modules_WGCNA", "04_wgcna_de_gsea_overlap", "microglia",
-    "WGCNA_vs_DE_GSEA_overlap.csv"
-  )
+  legacy_overlap = wgcna_gsea_overlap_artifact("WGCNA_vs_DE_GSEA_overlap.csv", "microglia")
 )
 
 required_inputs <- c(

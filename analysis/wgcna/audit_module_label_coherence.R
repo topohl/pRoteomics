@@ -49,6 +49,7 @@ source("R/statistics/wgcna_downstream_utils.R")
 source("R/statistics/wgcna_candidate_protein_utils.R")
 source("R/statistics/wgcna_label_coherence_utils.R")
 source("R/utilities/xlsx_package_utils.R")
+source(repo_path("R", "wgcna_paths.R"))
 
 suppressPackageStartupMessages({
   library(readr)
@@ -63,30 +64,24 @@ cli <- integration_cli(default_dataset = "all")
 datasets <- integration_datasets(cli$dataset)
 
 membership_path <- function(dataset) {
-  path_results("tables", "06_modules_WGCNA", "01_WGCNA", dataset, "modules",
-               "WGCNA_modules_long.csv")
+  wgcna_modules_artifact("WGCNA_modules_long.csv", dataset, child = "tables", "modules")
 }
 go_path <- function(dataset) {
-  path_results("tables", "06_modules_WGCNA", "01_WGCNA", dataset, "modules",
-               "WGCNA_module_GO_enrichment_long.csv")
+  wgcna_modules_artifact("WGCNA_module_GO_enrichment_long.csv", dataset, child = "tables", "modules")
 }
 # docs/OUTPUT_CONTRACTS.md: "The identity contract is the sole
 # supermodule-membership authority."
 membership_contract_path <- function(dataset) {
-  path_results("tables", "06_modules_WGCNA", "identity_contract", dataset,
-               "WGCNA_module_supermodule_membership_contract.csv")
+  wgcna_identity_contract_artifact("WGCNA_module_supermodule_membership_contract.csv", dataset)
 }
 structural_path <- function(dataset) {
-  path_results("tables", "06_modules_WGCNA", "01_WGCNA", dataset, "supermodules",
-               "wgcna_supermodule_biological_coherence.csv")
+  wgcna_modules_artifact("wgcna_supermodule_biological_coherence.csv", dataset, child = "tables", "supermodules")
 }
 final_lookup_path <- function(dataset) {
-  path_results("tables", "06_modules_WGCNA", "interpretable_summary", dataset,
-               "WGCNA_final_label_lookup.csv")
+  wgcna_interpretable_artifact("WGCNA_final_label_lookup.csv", dataset)
 }
 annotation_path <- function(dataset) {
-  path_results("tables", "06_modules_WGCNA", "module_annotation", dataset,
-               "WGCNA_module_biological_annotation.csv")
+  wgcna_annotation_artifact("WGCNA_module_biological_annotation.csv", dataset)
 }
 
 if (isTRUE(cli$dry_run)) {
@@ -113,7 +108,7 @@ read_required <- function(path, label) {
 }
 relpath <- function(path) relative_to(normalizePath(path, winslash = "/", mustWork = FALSE))
 review_dir <- function(dataset) {
-  d <- path_results("reviewer_audit", "wgcna_label_review", dataset)
+  d <- wgcna_dirs("audit_module_label_coherence", dataset, create = TRUE)$tables
   dir_create(d)
   d
 }

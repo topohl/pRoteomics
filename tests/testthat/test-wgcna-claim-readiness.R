@@ -1,4 +1,5 @@
 source(testthat::test_path("..", "..", "R", "paths.R"))
+source(repo_path("R", "pipeline_registry.R"))
 
 testthat::local_edition(3)
 
@@ -247,19 +248,67 @@ testthat::test_that("future cut-height defaults remain distinct from frozen micr
 })
 
 testthat::test_that("pipeline declares Stage 13 and corrected-renderer contracts", {
-  pipeline_text <- paste(readLines(file.path(root, "pipeline.yml"), warn = FALSE), collapse = "\n")
-  stage13_required <- c(
-    "interpretable_summary/microglia/WGCNA_inferential_handoff.csv",
-    "module_annotation/microglia/WGCNA_module_biological_annotation.csv", "module_annotation/microglia/WGCNA_supermodule_biological_annotation.csv",
-    "interpretable_summary/microglia/WGCNA_final_label_lookup.csv", "module_robustness_consensus.csv",
-    "higher_order_block_readiness_summary.csv", "wgcna_module_supermodule_annotation.csv",
-    "claim_readiness/microglia/WGCNA_entity_claim_readiness.csv",
-    "results/source_data/06_modules_WGCNA/claim_readiness/microglia/WGCNA_entity_claim_readiness_source.csv"
-  )
-  for (value in stage13_required) testthat::expect_match(pipeline_text, value, fixed = TRUE)
-  testthat::expect_match(pipeline_text, "corrected_multi_supermodule_member_loadings.pdf", fixed = TRUE)
-  testthat::expect_match(pipeline_text, "wgcna_readiness_summary_source.csv", fixed = TRUE)
-  testthat::expect_match(pipeline_text, "supermodule_group_effects_standardized.csv", fixed = TRUE)
+  # Asserts the CONTRACT, not a path spelling.
+  #
+  # This test used to pin the literal
+  #   results/source_data/06_modules_WGCNA/claim_readiness/microglia/...
+  # and so began failing the moment Phase 6G migrated the writer to the
+  # normalized namespace - the code was right and the assertion was stale. A
+  # namespace literal is the wrong thing to assert here: what Stage 13 actually
+  # requires is that a named owner produces a named object, and that the
+  # downstream claim consumer depends on it. Both survive a namespace change;
+  # neither survives an ownership or identity change, which is the failure this
+  # test exists to catch.
+  reg <- read_pipeline_registry(file.path(root, "pipeline.yml"))
+  steps <- pipeline_steps(reg, pipeline_stage_names(reg), dataset = "all",
+                          include_unsupported = TRUE)
+  # pipeline_steps() returns these columns as pipe-delimited strings
+  split_paths <- function(x) {
+    x <- x[!is.na(x) & nzchar(x)]
+    if (!length(x)) return(character(0))
+    unique(unlist(strsplit(x, "|", fixed = TRUE), use.names = FALSE))
+  }
+  produced_by <- function(script) split_paths(steps$produces[steps$script == script])
+  consumed_by <- function(script) split_paths(c(steps$consumes_required[steps$script == script],
+                                                steps$consumes_optional[steps$script == script]))
+  has_object <- function(paths, basename_wanted) {
+    any(basename(paths) == basename_wanted)
+  }
+
+  # 1. the claim-readiness owner produces the readiness table and its
+  #    figure-source companion, whatever namespace they live in
+  readiness <- produced_by("analysis/wgcna/audit_module_claim_readiness.R")
+  testthat::expect_true(has_object(readiness, "WGCNA_entity_claim_readiness.csv"))
+  testthat::expect_true(has_object(readiness, "WGCNA_entity_claim_readiness_source.csv"))
+  # and it is owned by exactly that analysis, not by a sibling
+  testthat::expect_true(all(grepl("audit_module_claim_readiness|06_modules_WGCNA/claim_readiness",
+                                  readiness[basename(readiness) %in%
+                                    c("WGCNA_entity_claim_readiness.csv",
+                                      "WGCNA_entity_claim_readiness_source.csv")])))
+
+  # 2. the Stage-13 inputs it depends on are declared, by object identity
+  inputs <- consumed_by("analysis/wgcna/audit_module_claim_readiness.R")
+  for (obj in c("WGCNA_inferential_handoff.csv",
+                "WGCNA_module_biological_annotation.csv",
+                "WGCNA_supermodule_biological_annotation.csv",
+                "WGCNA_final_label_lookup.csv")) {
+    testthat::expect_true(has_object(inputs, obj), info = obj)
+  }
+
+  # 3. the corrected-renderer contract, still by object identity
+  corrected <- produced_by("analysis/wgcna/render_microglia_module_figures.R")
+  testthat::expect_true(has_object(corrected, "corrected_multi_supermodule_member_loadings.pdf"))
+  testthat::expect_true(has_object(corrected, "wgcna_readiness_summary_source.csv"))
+
+  # 4. the standardized group-effect object remains declared somewhere in the
+  #    registry: it is a cross-script contract, not one owner's private output
+  all_declared <- split_paths(c(steps$produces, steps$consumes_required,
+                                steps$consumes_optional))
+  testflags <- basename(all_declared)
+  testthat::expect_true("supermodule_group_effects_standardized.csv" %in% testflags)
+  testthat::expect_true("module_robustness_consensus.csv" %in% testflags)
+  testthat::expect_true("higher_order_block_readiness_summary.csv" %in% testflags)
+  testthat::expect_true("wgcna_module_supermodule_annotation.csv" %in% testflags)
 })
 
 testthat::test_that("protected current state and memberships retain audited hashes", {
