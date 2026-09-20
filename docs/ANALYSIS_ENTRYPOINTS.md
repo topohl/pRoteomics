@@ -260,7 +260,7 @@ Scripts:
 | optional_inputs | `data/processed/morpheus/20260218_pgmatrix_imputed_neuron_soma_71samples_missing70pct_with_metadata.xlsx`, `data/external/MOUSE_10090_idmapping.dat`, `data/external/behavior/auc_individual_animals_all.csv`, +42 more |
 | outputs | `results/integration/test_behaviour_proteomics_associations/global/plots/Figure3_AUC_vs_Proteomics.svg`, `results/integration/test_behaviour_proteomics_associations/global/plots/SourceData_Figure3_Correlation.csv`, `results/integration/test_behaviour_proteomics_associations/global/tables/join_diagnostics_summary.csv`, `results/integration/test_network_behaviour_coupling/global/tables`, +118 more |
 | required_config | `config/animal_id_aliases.csv`, `config/gsea_wgcna_program_module_mapping.csv`, `config/gsea_wgcna_theme_module_mapping.csv`, `config/manuscript_go_theme_registry.tsv`, +1 more |
-| upstream_dependencies | `spatial_validation`, `differential_abundance`, `wgcna`, `spatial_networks`, `publication_source_data` |
+| upstream_dependencies | `spatial_validation`, `differential_abundance`, `wgcna`, `spatial_networks` |
 | downstream_consumers | `publication_source_data` |
 | publication_source_outputs | - |
 | dependency_stages | `coupling`, `integration` |
@@ -297,11 +297,11 @@ Scripts:
 | scripts_in_area | 9 (1 required) |
 | inputs | `results/tables/04_differential_expression_enrichment/`, `results/tables/06_modules_WGCNA/`, `results/wgcna/audit_module_claim_readiness/microglia/tables/WGCNA_entity_claim_readiness.csv`, +15 more |
 | optional_inputs | `results/wgcna/summarize_module_interpretation/<dataset>/tables/`, `results/tables/06_modules_WGCNA/interpretable_summary/`, `results/integration/test_network_behaviour_coupling/global/tables`, +11 more |
-| outputs | `results/tables/biological_claims_table.csv`, `results/tables/biological_claims_table.xlsx`, `results/reviewer_audit/wgcna_stage13_claim_cardinality_audit.csv`, `results/reviewer_audit/microglia_wgcna_overlap_stage13_identity_audit.csv`, +21 more |
+| outputs | `results/publication_source_data/build_biological_claims_table/global/tables/biological_claims_table.csv`, `results/publication_source_data/build_biological_claims_table/global/tables/biological_claims_table.xlsx`, `results/publication_source_data/build_biological_claims_table/global/tables/wgcna_stage13_claim_cardinality_audit.csv`, `results/publication_source_data/build_biological_claims_table/global/tables/microglia_wgcna_overlap_stage13_identity_audit.csv`, +21 more |
 | required_config | `config/output_namespaces.yml` |
 | upstream_dependencies | `wgcna`, `integration` |
-| downstream_consumers | `integration` |
-| publication_source_outputs | - |
+| downstream_consumers | Exp9_manuscript (via frozen source data) |
+| publication_source_outputs | `results/publication_source_data/build_biological_claims_table/global/tables/biological_claims_table.csv`, `results/publication_source_data/build_biological_claims_table/global/tables/biological_claims_table.xlsx`, `results/publication_source_data/build_biological_claims_table/global/tables/wgcna_stage13_claim_cardinality_audit.csv`, +1 more |
 | dependency_stages | `integration`, `export` |
 
 Scripts:
@@ -318,10 +318,5 @@ Scripts:
 
 ## Area-level cycles
 
-These area pairs exchange files in both directions. Execution order is defined by `pipeline.yml` stage order, not by area; an area is a naming grouping and scripts within two areas can legitimately interleave. Each direction below is created by a specific file.
-
-### `integration` and `publication_source_data`
-
-- `publication_source_data` requires from `integration`: `results/integration/summarize_programs_for_manuscript/global/tables/manuscript_program_summary.csv`
-- `integration` requires from `publication_source_data`: `results/tables/biological_claims_table.csv`
+None: the area graph is acyclic.
 

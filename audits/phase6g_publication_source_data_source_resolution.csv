@@ -1,0 +1,17 @@
+"artifact","role","source_path_before","resolved_source_after","same_path","historical_exists","same_source_hash"
+"blocked_claim_wording_audit.csv","claims reviewer audit","results/reviewer_audit/blocked_claim_wording_audit.csv","results/reviewer_audit/blocked_claim_wording_audit.csv",TRUE,TRUE,TRUE
+"claim_gate_evidence_availability.csv","claims reviewer audit","results/reviewer_audit/claim_gate_evidence_availability.csv","results/reviewer_audit/claim_gate_evidence_availability.csv",TRUE,TRUE,TRUE
+"claim_gate_summary.csv","claims reviewer audit","results/reviewer_audit/claim_gate_summary.csv","results/reviewer_audit/claim_gate_summary.csv",TRUE,TRUE,TRUE
+"claim_use_class_summary.csv","claims reviewer audit","results/reviewer_audit/claim_use_class_summary.csv","results/reviewer_audit/claim_use_class_summary.csv",TRUE,TRUE,TRUE
+"claim_use_class_wording_audit.csv","claims reviewer audit","results/reviewer_audit/claim_use_class_wording_audit.csv","results/reviewer_audit/claim_use_class_wording_audit.csv",TRUE,TRUE,TRUE
+"final_claim_gate_summary.csv","claims reviewer audit","results/reviewer_audit/final_claim_gate_summary.csv","results/reviewer_audit/final_claim_gate_summary.csv",TRUE,TRUE,TRUE
+"final_evidence_bundle_validation.csv","claims reviewer audit","results/reviewer_audit/final_evidence_bundle_validation.csv","results/reviewer_audit/final_evidence_bundle_validation.csv",TRUE,TRUE,TRUE
+"final_reviewer_audit_manifest.csv","claims reviewer audit","results/reviewer_audit/final_reviewer_audit_manifest.csv","results/reviewer_audit/final_reviewer_audit_manifest.csv",TRUE,TRUE,TRUE
+"go_label_risk_audit.csv","claims reviewer audit","results/reviewer_audit/go_label_risk_audit.csv","results/reviewer_audit/go_label_risk_audit.csv",TRUE,TRUE,TRUE
+"go_label_safe_interpretation_audit.csv","claims reviewer audit","results/reviewer_audit/go_label_safe_interpretation_audit.csv","results/reviewer_audit/go_label_safe_interpretation_audit.csv",TRUE,TRUE,TRUE
+"microglia_wgcna_overlap_stage13_identity_audit.csv","claims reviewer audit","results/reviewer_audit/microglia_wgcna_overlap_stage13_identity_audit.csv","results/reviewer_audit/microglia_wgcna_overlap_stage13_identity_audit.csv",TRUE,TRUE,TRUE
+"wgcna_claim_source_audit.csv","claims reviewer audit","results/reviewer_audit/wgcna_claim_source_audit.csv","results/reviewer_audit/wgcna_claim_source_audit.csv",TRUE,TRUE,TRUE
+"wgcna_label_completeness_audit.csv","claims reviewer audit","results/reviewer_audit/wgcna_label_completeness_audit.csv","results/reviewer_audit/wgcna_label_completeness_audit.csv",TRUE,TRUE,TRUE
+"wgcna_stage13_claim_cardinality_audit.csv","claims reviewer audit","results/reviewer_audit/wgcna_stage13_claim_cardinality_audit.csv","results/reviewer_audit/wgcna_stage13_claim_cardinality_audit.csv",TRUE,TRUE,TRUE
+"biological_claims_table.csv","primary claims table","results/tables/biological_claims_table.csv","results/tables/biological_claims_table.csv",TRUE,TRUE,TRUE
+"biological_claims_table.xlsx","primary claims table","results/tables/biological_claims_table.xlsx","results/tables/biological_claims_table.xlsx",TRUE,TRUE,TRUE

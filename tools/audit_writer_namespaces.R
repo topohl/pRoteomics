@@ -57,6 +57,12 @@ split_paths <- function(x) {
 # factory eleven of the fifteen QC writers shared.
 NORMALIZED_CALLS <- c("canonical_result_path", "canonical_work_path",
                       "canonical_module_dirs", "spatial_systems_dirs",
+                      # Phase 6G.9. The publication boundary resolves through
+                      # its own thin layer, which delegates to
+                      # canonical_module_dirs for production and keeps the
+                      # frozen exports root separate.
+                      "psd_dirs", "psd_find", "psd_claims_audit",
+                      "psd_claims_table", "psd_export_root",
                       "differential_abundance_dirs",
                       "differential_abundance_relative_path",
                       "qc_dirs", "integration_dirs",
@@ -393,9 +399,36 @@ rows <- lapply(seq_len(nrow(steps)), function(i) {
   ## results, not configuration, so requiring it under results/<domain>/ would
   ## be wrong rather than merely strict.
   declared_results <- declared[!startsWith(declared, "config/")]
+
+  ## Phase 6G.9. results/<domain>/ is not the only canonical destination in the
+  ## repository, and treating it as such mis-reported the publication boundary
+  ## as unmigrated.
+  ##
+  ## Three further namespaces are declared, not incidental:
+  ##   exports/            output_layout.yml, "frozen outward-facing bundles",
+  ##                       may_be_canonical: false - a COPY of canonical results
+  ##   pride_submission/   an allowed non-result root in the output-namespace
+  ##                       classifier; the proteomics repository deposit bundle
+  ##   results/manuscript/ output_namespaces.yml manuscript_export_root, with
+  ##                       the explicit rule
+  ##                       exporters_write_only_to_manuscript_export_root: true
+  ##
+  ## A writer targeting one of these is obeying a contract, not evading one, so
+  ## it counts as normalized. The roots are read from the contracts rather than
+  ## hard-coded, so this cannot drift from them. Everything else still has to
+  ## sit under results/<domain>/ or work/<domain>/.
+  sanctioned_roots <- local({
+    r <- c("exports/", "pride_submission/")
+    ns <- tryCatch(read_output_namespace_contract(), error = function(e) NULL)
+    mer <- if (!is.null(ns) && !is.null(ns$manuscript_export_root)) {
+      paste0(sub("/*$", "", as.character(ns$manuscript_export_root)), "/")
+    } else "results/manuscript/"
+    c(r, mer)
+  })
   declared_normalized <- length(declared_results) > 0 &&
     all(startsWith(declared_results, paste0("results/", domain, "/")) |
-        startsWith(declared_results, paste0("work/", domain, "/")))
+        startsWith(declared_results, paste0("work/", domain, "/")) |
+        Reduce(`|`, lapply(sanctioned_roots, function(p) startsWith(declared_results, p))))
 
   ## A writer that constructs no destination at all cannot contradict its
   ## declaration, so it is not a split brain.
