@@ -134,7 +134,9 @@ wcs_call_segments <- function(cl, aliases) {
   segs
 }
 
-`%||%` <- function(x, y) if (is.null(x)) y else x
+# `%||%` comes from the canonical R/null_coalescing.R, loaded via R/paths.R in
+# the bootstrap above. It is deliberately NOT redefined here: the repository
+# keeps exactly one definition so that its NA-aware semantics cannot fork.
 
 # Does a resolved segment list land inside the historical WGCNA tree?
 wcs_is_historical <- function(segs) {
