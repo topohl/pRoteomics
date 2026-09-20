@@ -255,6 +255,159 @@ safe_filename <- function(x, max_chars = 180) {
   substr(x, 1, max_chars)
 }
 
+# --- input addressability ---------------------------------------------------
+#
+# Windows MAX_PATH is 260 characters and R cannot open a path at or beyond it.
+# Measured in this repository with LongPathsEnabled = 0: every sampled path at
+# <= 259 characters opened, none at >= 260 did, and file.copy() returns FALSE
+# with a warning rather than raising. list.files() still enumerates them, so an
+# over-limit file is visible but unreadable, and a relative path from a deep
+# working directory does not escape the limit either - the resolved path is
+# what counts.
+#
+# The consequence is that file.exists() alone cannot separate three materially
+# different conditions:
+#
+#   * the declared root is not mounted in this session. Manifests written while
+#     the repository was addressed through a substituted P:/ root are the known
+#     case; the artefacts may be perfectly fine, just not reachable by the
+#     address recorded for them.
+#   * the file is present and enumerable, but its resolved path reaches the
+#     wall, so R cannot open it.
+#   * the file genuinely is not there.
+#
+# All three previously reported as "missing", which let the provenance ledger
+# assert something untrue about the run. These helpers keep them distinct.
+# Classification is diagnosis only: it does not decide whether a contract
+# passes, and a caller that required a file still fails when it is unusable.
+
+PATH_LENGTH_WALL <- 260L
+
+# The same measurement the clusterProfiler preflight uses, so the two cannot
+# drift: normalizePath() with mustWork = FALSE, counted in characters.
+path_length_chars <- function(path) {
+  nchar(normalizePath(path, winslash = "/", mustWork = FALSE), type = "chars")
+}
+
+# The root a path declares for itself: a drive letter, or a UNC //server/share.
+# NA means the path declares no root of its own and is therefore addressed
+# relative to the repository.
+path_declared_root <- function(path) {
+  path <- as.character(path)
+  out <- rep(NA_character_, length(path))
+  if (!length(path)) return(out)
+  usable <- !is.na(path) & nzchar(path)
+  drive <- usable & grepl("^[A-Za-z]:[/\\\\]", path)
+  out[drive] <- paste0(substr(path[drive], 1, 2), "/")
+  unc <- usable & !drive & grepl("^[/\\\\]{2}[^/\\\\]+[/\\\\][^/\\\\]+", path)
+  if (any(unc)) {
+    out[unc] <- gsub("\\\\", "/",
+                     sub("^([/\\\\]{2}[^/\\\\]+[/\\\\][^/\\\\]+).*$", "\\1", path[unc]))
+  }
+  out
+}
+
+# A path with no declared root is addressed against the repository root, which
+# is available by construction, so absence of a declared root is not a failure.
+path_declared_root_available <- function(path) {
+  root <- path_declared_root(path)
+  ifelse(is.na(root), TRUE, dir.exists(root))
+}
+
+INPUT_STATUS_PRESENT <- "present"
+INPUT_STATUS_ROOT_UNMOUNTED <- "declared_root_unmounted"
+INPUT_STATUS_OVER_LIMIT <- "path_over_limit"
+INPUT_STATUS_ABSENT <- "absent"
+INPUT_STATUS_LEVELS <- c(
+  INPUT_STATUS_PRESENT, INPUT_STATUS_ROOT_UNMOUNTED,
+  INPUT_STATUS_OVER_LIMIT, INPUT_STATUS_ABSENT
+)
+
+# Precedence is fixed and total, and the order is forced by what each test can
+# honestly answer:
+#   1. declared root availability, because nothing below it can be measured
+#      when the root the path names is not mounted;
+#   2. the path budget, because file.exists() is not trustworthy at or beyond
+#      the wall - it returns FALSE for files that demonstrably exist;
+#   3. existence, consulted only once the address is known to be usable.
+# An empty or NA path declares nothing and cannot be resolved, so it is
+# reported as absent rather than given a class it has not earned.
+input_addressability <- function(path, wall = PATH_LENGTH_WALL) {
+  path <- as.character(path)
+  out <- rep(NA_character_, length(path))
+  if (!length(path)) return(out)
+
+  blank <- is.na(path) | !nzchar(trimws(path))
+  out[blank] <- INPUT_STATUS_ABSENT
+  idx <- which(!blank)
+  if (!length(idx)) return(out)
+
+  unmounted <- !path_declared_root_available(path[idx])
+  out[idx[unmounted]] <- INPUT_STATUS_ROOT_UNMOUNTED
+  idx <- idx[!unmounted]
+  if (!length(idx)) return(out)
+
+  over <- path_length_chars(path[idx]) >= as.integer(wall)
+  out[idx[over]] <- INPUT_STATUS_OVER_LIMIT
+  idx <- idx[!over]
+  if (!length(idx)) return(out)
+
+  hit <- file.exists(path[idx]) | dir.exists(path[idx])
+  out[idx[hit]] <- INPUT_STATUS_PRESENT
+  out[idx[!hit]] <- INPUT_STATUS_ABSENT
+  out
+}
+
+# The one compatibility predicate. Anything that used to ask file.exists() and
+# meant "can I use this input" asks this instead, and it is defined as exactly
+# status == present so a Boolean can never disagree with the classification.
+input_is_present <- function(path, wall = PATH_LENGTH_WALL) {
+  input_addressability(path, wall = wall) == INPUT_STATUS_PRESENT
+}
+
+input_status_message <- function(status) {
+  vapply(as.character(status), function(s) switch(
+    s,
+    present = "input available",
+    declared_root_unmounted =
+      "declared root is not mounted in this session; the input was not looked for",
+    path_over_limit = paste0(
+      "path reaches the ", PATH_LENGTH_WALL,
+      "-character limit and cannot be opened by R; presence is undetermined"),
+    absent = "input not available",
+    "input status unknown"
+  ), character(1), USE.NAMES = FALSE)
+}
+
+# Groups unusable paths by class so a failure message says which of the three
+# failures happened, instead of calling all of them "missing".
+describe_input_status_failures <- function(path, status = NULL,
+                                           max_shown = 3L) {
+  path <- as.character(path)
+  status <- status %||% input_addressability(path)
+  bad <- which(status != INPUT_STATUS_PRESENT)
+  if (!length(bad)) return("")
+  label <- c(
+    declared_root_unmounted = "declared root not mounted",
+    path_over_limit = paste0("path at or beyond the ", PATH_LENGTH_WALL,
+                             "-character limit (present but unopenable)"),
+    absent = "genuinely absent"
+  )
+  parts <- character(0)
+  for (cls in names(label)) {
+    hit <- bad[status[bad] == cls]
+    if (!length(hit)) next
+    shown <- path[utils::head(hit, max_shown)]
+    more <- length(hit) - length(shown)
+    parts <- c(parts, paste0(
+      label[[cls]], " (", length(hit), "): ",
+      paste(shown, collapse = ", "),
+      if (more > 0L) paste0(" [+", more, " more]") else ""
+    ))
+  }
+  paste(parts, collapse = "; ")
+}
+
 file_hash <- function(path) {
   if (is.null(path) || !length(path) || is.na(path) || !file.exists(path)) return(NA_character_)
   unname(tools::md5sum(path))

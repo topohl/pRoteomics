@@ -4,6 +4,9 @@ if (!exists("repo_path", mode = "function")) {
   paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
   source(paths_file)
 }
+if (!exists("input_addressability", mode = "function")) {
+  source(repo_path("R", "paths.R"))
+}
 if (!exists("current_dataset_from_cli", mode = "function")) {
   source(repo_path("R", "dataset_config.R"))
 }
@@ -50,16 +53,31 @@ input_status_row <- function(input_name,
                              status = NULL,
                              message = NULL,
                              n_rows = NA_integer_) {
-  exists <- file.exists(path) || dir.exists(path) || length(Sys.glob(path)) > 0L
-  status <- status %||% if (exists) "present" else if (isTRUE(required)) "missing_required" else "missing_optional"
-  message <- message %||% if (exists) "input available" else "input not available"
+  ## The ledger now records WHY an input is unusable, not just that it is.
+  ## The previous vocabulary folded three different conditions into
+  ## missing_required / missing_optional, which made the recorded state
+  ## disagree with the run: an input behind an unmounted root, or one whose
+  ## path is past the limit R can open, was written down as simply missing.
+  ## `required` is already its own column, so the failure classes no longer
+  ## have to carry it.
+  addressability <- input_addressability(path)[[1]]
+  ## Some callers pass a glob rather than a literal path. A pattern that
+  ## matches something is present whatever the literal string resolves to.
+  if (!identical(addressability, INPUT_STATUS_PRESENT) &&
+      length(Sys.glob(path)) > 0L) {
+    addressability <- INPUT_STATUS_PRESENT
+  }
+  present <- identical(addressability, INPUT_STATUS_PRESENT)
   data.frame(
     dataset = dataset,
     input_name = input_name,
     path = normalizePath(path, winslash = "/", mustWork = FALSE),
     required = isTRUE(required),
-    status = status,
-    message = message,
+    status = status %||% addressability,
+    ## Derived, by definition, from status == present. It exists so a caller
+    ## that only needs a yes/no cannot reintroduce the four-into-one collapse.
+    input_present = present,
+    message = message %||% input_status_message(addressability),
     n_rows = n_rows,
     stringsAsFactors = FALSE
   )
