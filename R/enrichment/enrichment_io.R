@@ -4,6 +4,9 @@ if (!exists("repo_path", mode = "function")) {
   paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
   source(paths_file)
 }
+if (!exists("input_addressability", mode = "function")) {
+  source(repo_path("R", "paths.R"))
+}
 if (!exists("safe_name", mode = "function")) {
   source(repo_path("R", "validation_utils.R"))
 }
@@ -308,10 +311,16 @@ validate_clusterprofiler_manifest_contract <- function(manifest, strict = TRUE, 
     file_columns <- c("output_table", "collapsed_gene_input_file", "collapsed_gene_provenance_file", "term_gene_provenance_file")
     for (column in file_columns) {
       paths <- as.character(manifest[[column]][success])
-      missing_paths <- is.na(paths) | !nzchar(paths) | !file.exists(paths)
-      if (any(missing_paths)) {
-        stop("Successful clusterProfiler manifest row references missing ", column, ": ",
-          paste(paths[missing_paths], collapse = ", "), call. = FALSE)
+      ## The contract is unchanged and still all-or-nothing: every declared
+      ## file of a successful row must be usable, or the manifest is invalid.
+      ## What changed is that the failure is named. file.exists() reports FALSE
+      ## for an unmounted declared root, for a path past the 260-character
+      ## limit, and for a file that is simply not there, and those demand
+      ## different responses from whoever reads this message.
+      status <- input_addressability(paths)
+      if (any(status != INPUT_STATUS_PRESENT)) {
+        stop("Successful clusterProfiler manifest row references unusable ", column, ": ",
+          describe_input_status_failures(paths, status), call. = FALSE)
       }
     }
   }

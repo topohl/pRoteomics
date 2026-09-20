@@ -246,9 +246,11 @@ testthat::test_that("strict contracts reject stale, missing, malformed, and inel
 
   missing <- make_downstream_fixture(tempfile("b2a-missing-"))
   unlink(file.path(missing$root, "fixture", "term_provenance.csv"))
+  ## A deleted file must still fail the contract, and must be classified as
+  ## genuinely absent rather than as an unmounted root or an over-limit path.
   testthat::expect_error(
     read_canonical_clusterprofiler_bundle(missing$manifest, missing$dataset, repository_root = missing$root),
-    "missing term_gene_provenance_file"
+    "unusable term_gene_provenance_file: genuinely absent"
   )
 
   malformed <- make_downstream_fixture(tempfile("b2a-malformed-"))

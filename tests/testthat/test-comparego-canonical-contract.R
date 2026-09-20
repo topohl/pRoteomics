@@ -95,7 +95,10 @@ testthat::test_that("canonical compareGO rejects stale, malformed, and missing p
   missing_root <- tempfile("comparego-missing-")
   dir.create(missing_root)
   missing <- make_test_cluster_manifest(missing_root, missing_provenance = TRUE)
-  testthat::expect_error(collect_canonical_comparego_outputs(missing), "missing term_gene_provenance_file")
+  ## A deleted file must still fail the contract, and must be classified as
+  ## genuinely absent rather than as an unmounted root or an over-limit path.
+  testthat::expect_error(collect_canonical_comparego_outputs(missing),
+                         "unusable term_gene_provenance_file: genuinely absent")
 })
 
 testthat::test_that("comparison identity and output are invariant to filenames and manifest order", {
