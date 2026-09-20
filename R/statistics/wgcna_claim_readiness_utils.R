@@ -6,12 +6,16 @@ if (!exists("repo_path", mode = "function")) {
   source(paths_file)
 }
 source(repo_path("R", "schema_validation.R"))
+if (!exists("wgcna_dirs", mode = "function")) {
+  if (!exists("repo_path", mode = "function")) {
+    paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
+    source(paths_file)
+  }
+  source(repo_path("R", "wgcna_paths.R"))
+}
 
 microglia_wgcna_claim_readiness_path <- function() {
-  path_results(
-    "tables", "06_modules_WGCNA", "claim_readiness", "microglia",
-    "WGCNA_entity_claim_readiness.csv"
-  )
+  wgcna_claim_readiness_artifact("WGCNA_entity_claim_readiness.csv")
 }
 
 wgcna_claim_readiness_alias_map <- function() {

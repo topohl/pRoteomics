@@ -19,14 +19,12 @@ source(paths_file)
 source(repo_path("R", "wgcna_downstream_utils.R"))
 source(repo_path("R", "wgcna_identity_contract_utils.R"))
 source(repo_path("R", "wgcna_group_effects_utils.R"))
+source(repo_path("R", "wgcna_paths.R"))
 
 run <- wgcna_cli(default_dataset = "neuron_neuropil", allow_all = FALSE)
 DATASET <- wgcna_identity_validate_dataset(run$dataset)
 LEVEL <- match.arg(tolower(run$level), c("module", "supermodule", "both"))
-STATE_PATH <- path_processed(
-  "06_modules_WGCNA", "01_WGCNA", DATASET,
-  "wgcna_final_model_state.rds"
-)
+STATE_PATH <- wgcna_final_state(DATASET)
 CONTRACT_PATHS <- wgcna_group_contract_paths(DATASET)
 
 if (!run$dry_run && !identical(LEVEL, "both")) {
@@ -146,15 +144,12 @@ if (run$dry_run) {
 }
 
 wgcna_group_require_primary_packages()
-PATHS <- wgcna_downstream_paths("group_effects", DATASET)
+PATHS <- wgcna_dirs("test_module_phenotypes", DATASET, create = TRUE)
 run_id <- paste0(
   format(Sys.time(), "%Y%m%dT%H%M%SZ", tz = "UTC"),
   "_", Sys.getpid()
 )
-failed_root <- path_results(
-  "logs", "06_modules_WGCNA", "group_effects_failed",
-  DATASET, run_id
-)
+failed_root <- file.path(PATHS$manifests, "group_effects_failed", run_id)
 
 write_failure <- function(error, validation = NULL) {
   dir_create(failed_root)

@@ -1,0 +1,3 @@
+"item","status","detail"
+"results_ownership.csv","DEFERRED_UNTIL_READER_CONSUMES_LIFECYCLE_FINAL","Ownership regeneration is the last step after reader migration, consumes pairing and lifecycle finalization."
+"tests/testthat/test-wgcna-claim-readiness.R","STALE_CONTRACT_ASSERTION_PENDING_FINAL_ALIGNMENT","Asserts pipeline.yml still spells the claim-readiness source-data produces entry as results/source_data/06_modules_WGCNA/claim_readiness/microglia/WGCNA_entity_claim_readiness_source.csv. The Batch 1/2 writer migration correctly normalized it to results/wgcna/audit_module_claim_readiness/microglia/tables/source_data/... The code is right and the assertion is stale; repair belongs to final contract alignment."

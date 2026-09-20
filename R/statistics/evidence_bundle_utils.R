@@ -8,6 +8,13 @@ source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "wgcna_claim_readiness_utils.R"))
 source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
 source(repo_path("R", "module_semantic_utils.R"))
+if (!exists("wgcna_dirs", mode = "function")) {
+  if (!exists("repo_path", mode = "function")) {
+    paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
+    source(paths_file)
+  }
+  source(repo_path("R", "wgcna_paths.R"))
+}
 
 final_dataset_terminology <- function(dataset) {
   x <- as.character(dataset)
@@ -120,10 +127,7 @@ append_no_validated_neuronal_key_status <- function(df) {
 
 build_wgcna_key_modules <- function() {
   modules <- read_all_dataset_tables(function(ds) {
-    path_results(
-      "tables", "06_modules_WGCNA", "interpretable_summary", ds,
-      "WGCNA_inferential_handoff.csv"
-    )
+    wgcna_interpretable_artifact("WGCNA_inferential_handoff.csv", ds)
   })
   if (is.null(modules) || !nrow(modules)) {
     return(empty_bundle_table("WGCNA inferential handoffs were not available."))
@@ -143,7 +147,7 @@ build_wgcna_key_modules <- function() {
     )
   if (!"module_id" %in% names(modules)) modules$module_id <- NA_character_
   if (!"ModuleID" %in% names(modules)) modules$ModuleID <- NA_character_
-  micro_independence <- read_final_csv(path_results("tables", "06_modules_WGCNA", "microglia_neuropil_independence", "microglia", "microglia_module_neuropil_independence_classification.csv"))
+  micro_independence <- read_final_csv(wgcna_independence_artifact("microglia_module_neuropil_independence_classification.csv"))
   if (!is.null(micro_independence) && nrow(micro_independence)) {
     if (!"module_id" %in% names(micro_independence)) micro_independence$module_id <- NA_character_
     if (!"endpoint_id" %in% names(micro_independence)) micro_independence$endpoint_id <- NA_character_
@@ -283,10 +287,7 @@ build_wgcna_key_modules <- function() {
 
 build_wgcna_key_supermodules <- function() {
   supers <- read_all_dataset_tables(function(ds) {
-    path_results(
-      "tables", "06_modules_WGCNA", "interpretable_summary", ds,
-      "WGCNA_inferential_handoff.csv"
-    )
+    wgcna_interpretable_artifact("WGCNA_inferential_handoff.csv", ds)
   })
   if (is.null(supers) || !nrow(supers)) {
     return(empty_bundle_table("WGCNA inferential handoffs were not available."))
@@ -408,7 +409,7 @@ build_wgcna_key_supermodules <- function() {
 }
 
 build_microglia_roi_signature_drivers <- function() {
-  modules <- read_final_csv(path_results("tables", "06_modules_WGCNA", "module_annotation", "microglia", "WGCNA_module_biological_annotation.csv"))
+  modules <- read_final_csv(wgcna_annotation_artifact("WGCNA_module_biological_annotation.csv", "microglia"))
   if (is.null(modules) || !nrow(modules)) {
     return(empty_bundle_table("Microglia ROI WGCNA module annotation was not available."))
   }
@@ -439,7 +440,7 @@ build_microglia_roi_signature_drivers <- function() {
 }
 
 build_microglia_neuropil_independence <- function() {
-  tbl <- read_final_csv(path_results("tables", "06_modules_WGCNA", "microglia_neuropil_independence", "microglia", "microglia_neuropil_independence_effects.csv"))
+  tbl <- read_final_csv(wgcna_independence_artifact("microglia_neuropil_independence_effects.csv"))
   if (is.null(tbl) || !nrow(tbl)) {
     return(empty_bundle_table("Microglia neuropil-independence sensitivity analysis was not available."))
   }
@@ -596,9 +597,9 @@ write_final_evidence_bundle <- function(reason = "integration") {
     evidence_priority_matrix = path_results("tables", "10_biological_integration", "evidence_priority_matrix", "global", "evidence_priority_matrix.csv"),
     cross_compartment_program_atlas = path_results("tables", "10_biological_integration", "cross_compartment_program_atlas", "global", "cross_compartment_program_atlas_long.csv"),
     biological_claims = path_results("tables", "biological_claims_table.csv"),
-    microglia_module_annotation = path_results("tables", "06_modules_WGCNA", "module_annotation", "microglia", "WGCNA_module_biological_annotation.csv"),
-    microglia_targeted_signature_details = path_results("tables", "06_modules_WGCNA", "module_annotation", "microglia", "WGCNA_module_targeted_signature_overlap_details.csv"),
-    microglia_neuropil_independence = path_results("tables", "06_modules_WGCNA", "microglia_neuropil_independence", "microglia", "microglia_neuropil_independence_effects.csv"),
+    microglia_module_annotation = wgcna_annotation_artifact("WGCNA_module_biological_annotation.csv", "microglia"),
+    microglia_targeted_signature_details = wgcna_annotation_artifact("WGCNA_module_targeted_signature_overlap_details.csv", "microglia"),
+    microglia_neuropil_independence = wgcna_independence_artifact("microglia_neuropil_independence_effects.csv"),
     reviewer_audit_manifest = path_results("reviewer_audit", "final_reviewer_audit_manifest.csv"),
     final_validation = path_results("reviewer_audit", "final_evidence_bundle_validation.csv"),
     microglia_wgcna_claim_readiness = microglia_wgcna_claim_readiness_path()

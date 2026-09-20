@@ -373,17 +373,20 @@ testthat::test_that("the two publication_source_data stage13 names are untouched
 # --- section 12: pending producers keep their historical paths ----------
 
 testthat::test_that("inputs from unmigrated producers are not given invented paths", {
-  ## Sixty of this domain's input edges come from WGCNA, which has not
-  ## migrated. Declaring results/wgcna/... for them would claim a location the
-  ## producer has not adopted.
+  ## The rule is unchanged: a consume may not name results/<domain>/... for a
+  ## domain whose producer has not adopted that location. Only the membership
+  ## of the pending list changes as domains migrate.
+  ##
+  ## Phase 6G.7 removed preprocessing from this list; Phase 6G.8 removes wgcna,
+  ## whose 24 writers now declare normalized produces and whose readers resolve
+  ## through R/wgcna/wgcna_paths.R. publication_source_data is still pending and
+  ## is the only domain left here.
   s <- registry_steps()
   int <- s[grepl("^analysis/integration/", s$script), , drop = FALSE]
   deps <- unique(unlist(lapply(seq_len(nrow(int)), function(i) {
     c(sp(int$consumes_required[i]), sp(int$consumes_optional[i]))
   })))
-  ## Phase 6G.7 migrated preprocessing, so it left this list. wgcna and
-  ## publication_source_data are still pending.
-  for (dom in c("wgcna", "publication_source_data")) {
+  for (dom in c("publication_source_data")) {
     invented <- deps[startsWith(deps, paste0("results/", dom, "/"))]
     testthat::expect_identical(
       invented, character(0),
@@ -406,7 +409,10 @@ testthat::test_that("every migrated-domain input has a normalized sibling declar
            "11_spatial_systems" = "spatial_validation",
            "04_differential_expression_enrichment" = "differential_abundance",
            "03_qc_exploration" = "qc",
-           "02_id_mapping" = "preprocessing")
+           "02_id_mapping" = "preprocessing",
+           ## Phase 6G.8: WGCNA is migrated, so every integration edge naming
+           ## the historical stage must now carry its normalized sibling too.
+           "06_modules_WGCNA" = "wgcna")
   s <- registry_steps()
   int <- s[grepl("^analysis/integration/", s$script), , drop = FALSE]
   for (i in seq_len(nrow(int))) {

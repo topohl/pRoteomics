@@ -18,6 +18,7 @@ source(repo_path("R", "wgcna_labeling_utils.R"))
 source(repo_path("R", "wgcna_claim_readiness_utils.R"))
 source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
 source(repo_path("R", "module_semantic_utils.R"))
+source(repo_path("R", "wgcna_paths.R"))
 
 # Phase 6G.6: destinations resolve through the normalized output
 # contract, addressed by this analysis's own identity. This domain
@@ -40,17 +41,17 @@ DATASETS <- integration_datasets(run$dataset)
 paths <- integration_dirs(ANALYSIS_ID, "global", create = TRUE)
 
 input_spec <- function(ds) {
-  base01 <- path_results("tables", "06_modules_WGCNA", "01_WGCNA", ds)
+  base01 <- wgcna_modules_scope_dir(ds)
   inputs <- list(
-    module_summary = list(path = file.path(base01, "modules", "WGCNA_module_summary.csv"), required = TRUE),
-    module_definitions = list(path = file.path(base01, "modules", "WGCNA_module_definitions_for_downstream.csv"), required = TRUE),
-    supermodule_summary = list(path = file.path(base01, "supermodules", "wgcna_supermodule_summary.csv"), required = TRUE),
-    supermodule_clustering_sensitivity = list(path = file.path(base01, "supermodules", "supermodule_clustering_sensitivity.csv"), required = FALSE),
-    module_supermodule_annotation = list(path = file.path(base01, "supermodules", "wgcna_module_supermodule_annotation.csv"), required = TRUE),
-    inferential_handoff = list(path = path_results("tables", "06_modules_WGCNA", "interpretable_summary", ds, "WGCNA_inferential_handoff.csv"), required = TRUE),
-    final_label_lookup = list(path = path_results("tables", "06_modules_WGCNA", "interpretable_summary", ds, "WGCNA_final_label_lookup.csv"), required = TRUE),
-    module_biological_annotation = list(path = path_results("tables", "06_modules_WGCNA", "module_annotation", ds, "WGCNA_module_biological_annotation.csv"), required = FALSE),
-    supermodule_biological_annotation = list(path = path_results("tables", "06_modules_WGCNA", "module_annotation", ds, "WGCNA_supermodule_biological_annotation.csv"), required = FALSE)
+    module_summary = list(path = wgcna_modules_artifact("WGCNA_module_summary.csv", ds, child = "tables", "modules"), required = TRUE),
+    module_definitions = list(path = wgcna_modules_artifact("WGCNA_module_definitions_for_downstream.csv", ds, child = "tables", "modules"), required = TRUE),
+    supermodule_summary = list(path = wgcna_modules_artifact("wgcna_supermodule_summary.csv", ds, child = "tables", "supermodules"), required = TRUE),
+    supermodule_clustering_sensitivity = list(path = wgcna_modules_artifact("supermodule_clustering_sensitivity.csv", ds, child = "tables", "supermodules"), required = FALSE),
+    module_supermodule_annotation = list(path = wgcna_modules_artifact("wgcna_module_supermodule_annotation.csv", ds, child = "tables", "supermodules"), required = TRUE),
+    inferential_handoff = list(path = wgcna_interpretable_artifact("WGCNA_inferential_handoff.csv", ds), required = TRUE),
+    final_label_lookup = list(path = wgcna_interpretable_artifact("WGCNA_final_label_lookup.csv", ds), required = TRUE),
+    module_biological_annotation = list(path = wgcna_annotation_artifact("WGCNA_module_biological_annotation.csv", ds), required = FALSE),
+    supermodule_biological_annotation = list(path = wgcna_annotation_artifact("WGCNA_supermodule_biological_annotation.csv", ds), required = FALSE)
   )
   if (identical(ds, "microglia")) {
     inputs$claim_readiness <- list(path = microglia_wgcna_claim_readiness_path(), required = TRUE)

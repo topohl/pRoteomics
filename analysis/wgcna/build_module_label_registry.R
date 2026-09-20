@@ -33,6 +33,7 @@ source("R/statistics/integration_utils.R")
 source("R/statistics/wgcna_label_adjudication_utils.R")
 source("R/statistics/wgcna_label_activation_utils.R")
 source("R/utilities/xlsx_package_utils.R")
+source(repo_path("R", "wgcna_paths.R"))
 
 suppressPackageStartupMessages({ library(readr); library(dplyr) })
 
@@ -40,13 +41,15 @@ SCRIPT_ID <- "analysis/wgcna/build_module_label_registry.R"
 Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 cli <- integration_cli(default_dataset = "all")
 
-PACKET <- function(f) path_results("reviewer_audit", "wgcna_label_adjudication", f)
+PACKET <- function(f) wgcna_find(f, "adjudicate_module_labels",
+                                 "wgcna_label_adjudication", "global",
+                                 "tables", "reviewer_audit",
+                                 legacy_scoped = FALSE)
 OUT <- function() {
-  d <- path_results("reviewer_audit", "wgcna_label_approval"); dir_create(d); d
+  d <- wgcna_dirs("build_module_label_registry", "global", create = TRUE)$tables; d
 }
 final_lookup_path <- function(ds) {
-  path_results("tables", "06_modules_WGCNA", "interpretable_summary", ds,
-               "WGCNA_final_label_lookup.csv")
+  wgcna_interpretable_artifact("WGCNA_final_label_lookup.csv", ds)
 }
 
 if (isTRUE(cli$dry_run)) {

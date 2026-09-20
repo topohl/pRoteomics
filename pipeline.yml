@@ -167,7 +167,7 @@ stages:
         scope: "dataset_specific"
         produces: ["results/qc/summarize_marker_detectability/<dataset>/tables"]
         consumes_required: ["data/processed/01_preprocessing/impute/*_pgmatrix_imputed_<dataset>_*_missing70pct.xlsx", "data/external/MOUSE_10090_idmapping.dat", "data/metadata/TPE9_sample_metadata_males.xlsx", "config/marker_panels/wgcna_reference_marker_sets.csv"]
-        consumes_optional: ["data/metadata/manual_mapping.xlsx", "data/metadata/manual_gene_annotation_overrides.csv", "results/qc/discover_empirical_roi_markers/global/tables/empirical_roi_marker_sets.csv", "results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv", "data/processed/06_modules_WGCNA/01_WGCNA/<dataset>/wgcna_final_model_state.rds", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/"]
+        consumes_optional: ["data/metadata/manual_mapping.xlsx", "data/metadata/manual_gene_annotation_overrides.csv", "results/qc/discover_empirical_roi_markers/global/tables/empirical_roi_marker_sets.csv", "results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv", "results/wgcna/build_wgcna_modules/<dataset>/models/wgcna_final_model_state.rds", "data/processed/06_modules_WGCNA/01_WGCNA/<dataset>/wgcna_final_model_state.rds", "results/wgcna/build_wgcna_modules/<dataset>/tables/modules/", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/"]
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Dataset-specific canonical marker mapping, post-filter/post-imputation processed-matrix availability, and WGCNA interpretation bridge. These nonmissing values are not raw detection and are not the authoritative cross-compartment abundance validation."
@@ -372,7 +372,7 @@ stages:
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "modules_wgcna"
         scope: "dataset_specific"
-        produces: ["results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_module_supermodule_annotation.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_supermodule_summary.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_supermodule_GO_term_support_audit.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_supermodule_biological_coherence.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_supermodule_validation_summary.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/supermodule_clustering_sensitivity.csv"]
+        produces: ["results/wgcna/build_wgcna_modules/<dataset>/tables/modules", "results/wgcna/build_wgcna_modules/<dataset>/tables/supermodules/wgcna_module_supermodule_annotation.csv", "results/wgcna/build_wgcna_modules/<dataset>/tables/supermodules/wgcna_supermodule_summary.csv", "results/wgcna/build_wgcna_modules/<dataset>/tables/supermodules/wgcna_supermodule_GO_term_support_audit.csv", "results/wgcna/build_wgcna_modules/<dataset>/tables/supermodules/wgcna_supermodule_biological_coherence.csv", "results/wgcna/build_wgcna_modules/<dataset>/tables/supermodules/wgcna_supermodule_validation_summary.csv", "results/wgcna/build_wgcna_modules/<dataset>/tables/supermodules/supermodule_clustering_sensitivity.csv"]
         consumes_required: ["data/processed/01_preprocessing/impute/*_pgmatrix_imputed_<dataset>_*_missing70pct.xlsx", "data/metadata/TPE9_sample_metadata_males.xlsx", "data/external/MOUSE_10090_idmapping.dat"]
         consumes_optional: ["data/metadata/manual_mapping.xlsx"]
         recomputes_core_state: true
@@ -386,8 +386,8 @@ stages:
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "modules_downstream"
         scope: "dataset_specific"
-        produces: ["results/tables/06_modules_WGCNA/01b_module_supermodule_GO_heatmaps/<dataset>/", "results/figures/06_modules_WGCNA/01b_module_supermodule_GO_heatmaps/<dataset>/"]
-        consumes_required: ["results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_module_GO_enrichment_long.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/module_name_map.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/"]
+        produces: ["results/wgcna/render_module_go_heatmaps/<dataset>/tables", "results/wgcna/render_module_go_heatmaps/<dataset>/plots"]
+        consumes_required: ["results/wgcna/build_wgcna_modules/<dataset>/tables/modules/WGCNA_module_GO_enrichment_long.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_module_GO_enrichment_long.csv", "results/wgcna/build_wgcna_modules/<dataset>/tables/modules/module_name_map.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/module_name_map.csv", "results/wgcna/build_wgcna_modules/<dataset>/tables/supermodules/", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/"]
         consumes_optional: []
         recomputes_core_state: false
         safe_downstream_rerun: true
@@ -397,7 +397,7 @@ stages:
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "modules_downstream"
         scope: "dataset_specific"
-        produces: ["results/tables/04_differential_expression_enrichment/compareGO/<dataset>/recurrent_top_gene_drivers/overlapping_proteins_min3_spatial_units.xlsx"]
+        produces: ["results/wgcna/compare_recurrent_module_proteins/<dataset>/tables/recurrent_top_gene_drivers/overlapping_proteins_min3_spatial_units.xlsx"]
         consumes_required: ["results/tables/04_differential_expression_enrichment/compareGO/<dataset>/BP/phenotype_within_unit/07_Top_Genes_Driving_TopTerms.xlsx"]
         consumes_optional: []
         recomputes_core_state: false
@@ -408,7 +408,7 @@ stages:
         datasets: ["global"]
         stage: "modules_downstream"
         scope: "global"
-        produces: ["results/tables/06_modules_WGCNA/curated_overlap_programs/global/"]
+        produces: ["results/wgcna/build_curated_overlap_programs/global/tables"]
         consumes_required: ["results/tables/04_differential_expression_enrichment/compareGO/overlapping_proteins_min3_datasets.xlsx"]
         consumes_optional: ["data/external/MOUSE_10090_idmapping.dat"]
         recomputes_core_state: false
@@ -419,9 +419,9 @@ stages:
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "modules_downstream"
         scope: "dataset_specific"
-        produces: ["results/tables/06_modules_WGCNA/module_score/<dataset>/"]
-        consumes_required: ["results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/", "results/preprocessing/map_protein_identifiers/<dataset>/tables/mapped/forward/per_file/*.csv", "data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv"]
-        consumes_optional: ["results/preprocessing/build_module_score_metadata/<dataset>/tables/sample_metadata_merged_clean_for_module_scores.xlsx", "data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_module_supermodule_annotation.csv"]
+        produces: ["results/wgcna/score_module_activity/<dataset>/tables"]
+        consumes_required: ["results/wgcna/build_wgcna_modules/<dataset>/tables/modules/", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/", "results/preprocessing/map_protein_identifiers/<dataset>/tables/mapped/forward/per_file/*.csv", "data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv"]
+        consumes_optional: ["results/preprocessing/build_module_score_metadata/<dataset>/tables/sample_metadata_merged_clean_for_module_scores.xlsx", "data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx", "results/wgcna/build_wgcna_modules/<dataset>/tables/supermodules/wgcna_module_supermodule_annotation.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_module_supermodule_annotation.csv"]
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Module scoring layer: scores existing module definitions against dataset matrices; does not rebuild WGCNA modules. Dataset fallback is overlap for neuron_neuropil and WGCNA for neuron_soma/microglia."
@@ -432,9 +432,9 @@ stages:
         scope: "dataset_specific"
         env:
           PROTEOMICS_MODULE_DEFINITION_SOURCE: "wgcna"
-        produces: ["results/tables/06_modules_WGCNA/module_score/<dataset>/wgcna/"]
-        consumes_required: ["results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/", "results/preprocessing/map_protein_identifiers/<dataset>/tables/mapped/forward/per_file/*.csv", "data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv"]
-        consumes_optional: ["results/preprocessing/build_module_score_metadata/<dataset>/tables/sample_metadata_merged_clean_for_module_scores.xlsx", "data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_module_supermodule_annotation.csv"]
+        produces: ["results/wgcna/score_module_activity/<dataset>/tables/wgcna"]
+        consumes_required: ["results/wgcna/build_wgcna_modules/<dataset>/tables/modules/", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/", "results/preprocessing/map_protein_identifiers/<dataset>/tables/mapped/forward/per_file/*.csv", "data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv"]
+        consumes_optional: ["results/preprocessing/build_module_score_metadata/<dataset>/tables/sample_metadata_merged_clean_for_module_scores.xlsx", "data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx", "results/wgcna/build_wgcna_modules/<dataset>/tables/supermodules/wgcna_module_supermodule_annotation.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_module_supermodule_annotation.csv"]
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Additional neuron_neuropil WGCNA-source module-score pass. Keeps the default curated-overlap score run and adds data-driven WGCNA module-score effect-size plots."
@@ -443,8 +443,8 @@ stages:
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "modules_downstream"
         scope: "dataset_specific"
-        produces: ["results/tables/06_modules_WGCNA/04_wgcna_de_gsea_overlap/<dataset>/"]
-        consumes_required: ["results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/", "results/differential_abundance/run_clusterprofiler_enrichment/<dataset>/models/clusterProfiler_manifest.csv", "data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv", "results/differential_abundance/compare_go_enrichment/<dataset>/models/compareGO_input_manifest.csv", "data/processed/04_differential_expression_enrichment/compareGO/<dataset>/compareGO_input_manifest.csv"]
+        produces: ["results/wgcna/compare_module_enrichment_overlap/<dataset>/tables"]
+        consumes_required: ["results/wgcna/build_wgcna_modules/<dataset>/tables/modules/", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/", "results/differential_abundance/run_clusterprofiler_enrichment/<dataset>/models/clusterProfiler_manifest.csv", "data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv", "results/differential_abundance/compare_go_enrichment/<dataset>/models/compareGO_input_manifest.csv", "data/processed/04_differential_expression_enrichment/compareGO/<dataset>/compareGO_input_manifest.csv"]
         consumes_optional: ["results/differential_abundance/summarize_biological_programs/<dataset>/tables/program_summary.csv", "results/tables/04_differential_expression_enrichment/biological_program_summary/<dataset>/program_summary.csv"]
         recomputes_core_state: false
         safe_downstream_rerun: true
@@ -454,9 +454,9 @@ stages:
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "modules_downstream"
         scope: "dataset_specific"
-        produces: ["results/tables/06_modules_WGCNA/identity_contract/<dataset>/", "results/source_data/06_modules_WGCNA/identity_contract/<dataset>/", "results/reports/06_modules_WGCNA/identity_contract/<dataset>/", "results/logs/06_modules_WGCNA/identity_contract/<dataset>/"]
-        consumes_required: ["data/processed/06_modules_WGCNA/01_WGCNA/<dataset>/wgcna_final_model_state.rds", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_module_definitions_for_downstream.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_module_supermodule_annotation.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_supermodule_summary.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_supermodule_eigengene_clusters.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/supermodule_clustering_sensitivity.csv", "results/logs/06_modules_WGCNA/01_WGCNA/<dataset>/run_manifest.yml", "results/logs/06_modules_WGCNA/01_WGCNA/<dataset>/wgcna_run_manifest.yml", "results/logs/06_modules_WGCNA/01_WGCNA/<dataset>/output_manifest.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_parameter_audit.csv"]
-        consumes_optional: ["results/tables/06_modules_WGCNA/group_effects/<dataset>/", "results/tables/06_modules_WGCNA/module_annotation/<dataset>/", "results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/", "results/tables/06_modules_WGCNA/score_publication_summary/<dataset>/", "results/tables/06_modules_WGCNA/claim_readiness/<dataset>/", "results/integration/render_module_circular_atlas/global/tables/source_data", "results/source_data/10_biological_integration/wgcna_circular_atlas/global/"]
+        produces: ["results/wgcna/build_module_identity_contract/<dataset>/tables", "results/wgcna/build_module_identity_contract/<dataset>/tables/source_data", "results/wgcna/build_module_identity_contract/<dataset>/reports", "results/wgcna/build_module_identity_contract/<dataset>/manifests"]
+        consumes_required: ["results/wgcna/build_wgcna_modules/<dataset>/models/wgcna_final_model_state.rds", "data/processed/06_modules_WGCNA/01_WGCNA/<dataset>/wgcna_final_model_state.rds", "results/wgcna/build_wgcna_modules/<dataset>/tables/modules/WGCNA_module_definitions_for_downstream.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_module_definitions_for_downstream.csv", "results/wgcna/build_wgcna_modules/<dataset>/tables/supermodules/wgcna_module_supermodule_annotation.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_module_supermodule_annotation.csv", "results/wgcna/build_wgcna_modules/<dataset>/tables/supermodules/wgcna_supermodule_summary.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_supermodule_summary.csv", "results/wgcna/build_wgcna_modules/<dataset>/tables/supermodules/wgcna_supermodule_eigengene_clusters.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_supermodule_eigengene_clusters.csv", "results/wgcna/build_wgcna_modules/<dataset>/tables/supermodules/supermodule_clustering_sensitivity.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/supermodule_clustering_sensitivity.csv", "results/wgcna/build_wgcna_modules/<dataset>/manifests/run_manifest.yml", "results/logs/06_modules_WGCNA/01_WGCNA/<dataset>/run_manifest.yml", "results/wgcna/build_wgcna_modules/<dataset>/manifests/wgcna_run_manifest.yml", "results/logs/06_modules_WGCNA/01_WGCNA/<dataset>/wgcna_run_manifest.yml", "results/wgcna/build_wgcna_modules/<dataset>/manifests/output_manifest.csv", "results/logs/06_modules_WGCNA/01_WGCNA/<dataset>/output_manifest.csv", "results/wgcna/build_wgcna_modules/<dataset>/tables/modules/WGCNA_parameter_audit.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_parameter_audit.csv"]
+        consumes_optional: ["results/wgcna/test_module_phenotypes/<dataset>/tables/", "results/tables/06_modules_WGCNA/group_effects/<dataset>/", "results/wgcna/annotate_module_microenvironment/<dataset>/tables/", "results/tables/06_modules_WGCNA/module_annotation/<dataset>/", "results/wgcna/summarize_module_interpretation/<dataset>/tables/", "results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/", "results/wgcna/summarize_module_scores/<dataset>/tables/", "results/tables/06_modules_WGCNA/score_publication_summary/<dataset>/", "results/wgcna/audit_module_claim_readiness/<dataset>/tables/", "results/tables/06_modules_WGCNA/claim_readiness/<dataset>/", "results/integration/render_module_circular_atlas/global/tables/source_data", "results/source_data/10_biological_integration/wgcna_circular_atlas/global/"]
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Read-only canonical identity publication. Neuronal authority is the provenance-selected Stage 01 cluster assignment; microglia authority is the current Stage 01 member map. Stage 05-13 inputs are compatibility-audit only and never select membership or labels."
@@ -465,8 +465,8 @@ stages:
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "modules_downstream"
         scope: "dataset_specific"
-        produces: ["results/tables/06_modules_WGCNA/group_effects/<dataset>/module_group_effects.csv", "results/tables/06_modules_WGCNA/group_effects/<dataset>/supermodule_group_effects.csv", "results/tables/06_modules_WGCNA/group_effects/<dataset>/supermodule_composition.csv", "results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_endpoint_provenance.csv", "results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_model_validation.csv", "results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_sample_inclusion_audit.csv", "results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_animal_spatial_unit_values.csv", "results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_hemisphere_values.csv", "results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_interaction_conditional_followup.csv", "results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_sensitivity.csv", "results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_left_right_concordance.csv", "results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_downstream_consumer_migration_audit.csv", "results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_contract_status.csv", "results/tables/06_modules_WGCNA/group_effects/<dataset>/supermodule_pca_input_audit.csv", "results/tables/06_modules_WGCNA/group_effects/<dataset>/supermodule_pca_eigenvalues.csv", "results/tables/06_modules_WGCNA/group_effects/<dataset>/supermodule_pca_member_loadings.csv", "results/tables/06_modules_WGCNA/group_effects/<dataset>/all_supermodule_eigengene_group_values.csv", "results/tables/06_modules_WGCNA/group_effects/<dataset>/all_supermodule_eigengene_spatial_group_values.csv", "results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_legacy_output_staleness_audit.csv"]
-        consumes_required: ["data/processed/06_modules_WGCNA/01_WGCNA/<dataset>/wgcna_final_model_state.rds", "results/tables/06_modules_WGCNA/identity_contract/<dataset>/WGCNA_entity_identity_contract.csv", "results/tables/06_modules_WGCNA/identity_contract/<dataset>/WGCNA_module_supermodule_membership_contract.csv", "results/tables/06_modules_WGCNA/identity_contract/<dataset>/WGCNA_identity_contract_status.csv"]
+        produces: ["results/wgcna/test_module_phenotypes/<dataset>/tables/module_group_effects.csv", "results/wgcna/test_module_phenotypes/<dataset>/tables/supermodule_group_effects.csv", "results/wgcna/test_module_phenotypes/<dataset>/tables/supermodule_composition.csv", "results/wgcna/test_module_phenotypes/<dataset>/tables/WGCNA_group_effect_endpoint_provenance.csv", "results/wgcna/test_module_phenotypes/<dataset>/tables/WGCNA_group_effect_model_validation.csv", "results/wgcna/test_module_phenotypes/<dataset>/tables/WGCNA_group_effect_sample_inclusion_audit.csv", "results/wgcna/test_module_phenotypes/<dataset>/tables/WGCNA_group_effect_animal_spatial_unit_values.csv", "results/wgcna/test_module_phenotypes/<dataset>/tables/WGCNA_group_effect_hemisphere_values.csv", "results/wgcna/test_module_phenotypes/<dataset>/tables/WGCNA_group_effect_interaction_conditional_followup.csv", "results/wgcna/test_module_phenotypes/<dataset>/tables/WGCNA_group_effect_sensitivity.csv", "results/wgcna/test_module_phenotypes/<dataset>/tables/WGCNA_group_effect_left_right_concordance.csv", "results/wgcna/test_module_phenotypes/<dataset>/tables/WGCNA_group_effect_downstream_consumer_migration_audit.csv", "results/wgcna/test_module_phenotypes/<dataset>/tables/WGCNA_group_effect_contract_status.csv", "results/wgcna/test_module_phenotypes/<dataset>/tables/supermodule_pca_input_audit.csv", "results/wgcna/test_module_phenotypes/<dataset>/tables/supermodule_pca_eigenvalues.csv", "results/wgcna/test_module_phenotypes/<dataset>/tables/supermodule_pca_member_loadings.csv", "results/wgcna/test_module_phenotypes/<dataset>/tables/all_supermodule_eigengene_group_values.csv", "results/wgcna/test_module_phenotypes/<dataset>/tables/all_supermodule_eigengene_spatial_group_values.csv", "results/wgcna/test_module_phenotypes/<dataset>/tables/WGCNA_group_effect_legacy_output_staleness_audit.csv"]
+        consumes_required: ["results/wgcna/build_wgcna_modules/<dataset>/models/wgcna_final_model_state.rds", "data/processed/06_modules_WGCNA/01_WGCNA/<dataset>/wgcna_final_model_state.rds", "results/wgcna/build_module_identity_contract/<dataset>/tables/WGCNA_entity_identity_contract.csv", "results/tables/06_modules_WGCNA/identity_contract/<dataset>/WGCNA_entity_identity_contract.csv", "results/wgcna/build_module_identity_contract/<dataset>/tables/WGCNA_module_supermodule_membership_contract.csv", "results/tables/06_modules_WGCNA/identity_contract/<dataset>/WGCNA_module_supermodule_membership_contract.csv", "results/wgcna/build_module_identity_contract/<dataset>/tables/WGCNA_identity_contract_status.csv", "results/tables/06_modules_WGCNA/identity_contract/<dataset>/WGCNA_identity_contract_status.csv"]
         consumes_optional: []
         recomputes_core_state: false
         safe_downstream_rerun: false
@@ -476,8 +476,8 @@ stages:
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "modules_downstream"
         scope: "dataset_specific"
-        produces: ["results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_module_biological_annotation.csv", "results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_supermodule_biological_annotation.csv", "results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_module_targeted_signature_overlap_details.csv"]
-        consumes_required: ["results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_module_supermodule_annotation.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_supermodule_summary.csv"]
+        produces: ["results/wgcna/annotate_module_microenvironment/<dataset>/tables/WGCNA_module_biological_annotation.csv", "results/wgcna/annotate_module_microenvironment/<dataset>/tables/WGCNA_supermodule_biological_annotation.csv", "results/wgcna/annotate_module_microenvironment/<dataset>/tables/WGCNA_module_targeted_signature_overlap_details.csv"]
+        consumes_required: ["results/wgcna/build_wgcna_modules/<dataset>/tables/modules/", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/", "results/wgcna/build_wgcna_modules/<dataset>/tables/supermodules/wgcna_module_supermodule_annotation.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_module_supermodule_annotation.csv", "results/wgcna/build_wgcna_modules/<dataset>/tables/supermodules/wgcna_supermodule_summary.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_supermodule_summary.csv"]
         consumes_optional: ["config/marker_panels/wgcna_reference_marker_sets.csv", "results/qc/discover_empirical_roi_markers/global/tables/empirical_roi_marker_sets.csv", "results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv", "results/differential_abundance/annotate_neuropil_reference/<dataset>/tables", "results/tables/04_differential_expression_enrichment/neuropil_reference_annotation/<dataset>/"]
         recomputes_core_state: false
         safe_downstream_rerun: true
@@ -487,9 +487,9 @@ stages:
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "modules_downstream"
         scope: "dataset_specific"
-        produces: ["results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_interpretable_summary.xlsx", "results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_label_candidates.csv", "results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_final_label_lookup.csv", "results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_inferential_handoff.csv"]
-        consumes_required: ["results/tables/06_modules_WGCNA/group_effects/<dataset>/module_group_effects.csv", "results/tables/06_modules_WGCNA/group_effects/<dataset>/supermodule_group_effects.csv", "results/tables/06_modules_WGCNA/group_effects/<dataset>/supermodule_composition.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_module_supermodule_annotation.csv", "results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_module_biological_annotation.csv", "results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_supermodule_biological_annotation.csv", "config/wgcna_labels/<dataset>.csv (required for microglia reviewed-label authority)"]
-        consumes_optional: ["results/tables/06_modules_WGCNA/04_wgcna_de_gsea_overlap/<dataset>/"]
+        produces: ["results/wgcna/summarize_module_interpretation/<dataset>/tables/WGCNA_interpretable_summary.xlsx", "results/wgcna/summarize_module_interpretation/<dataset>/tables/WGCNA_label_candidates.csv", "results/wgcna/summarize_module_interpretation/<dataset>/tables/WGCNA_final_label_lookup.csv", "results/wgcna/summarize_module_interpretation/<dataset>/tables/WGCNA_inferential_handoff.csv"]
+        consumes_required: ["results/wgcna/test_module_phenotypes/<dataset>/tables/module_group_effects.csv", "results/tables/06_modules_WGCNA/group_effects/<dataset>/module_group_effects.csv", "results/wgcna/test_module_phenotypes/<dataset>/tables/supermodule_group_effects.csv", "results/tables/06_modules_WGCNA/group_effects/<dataset>/supermodule_group_effects.csv", "results/wgcna/test_module_phenotypes/<dataset>/tables/supermodule_composition.csv", "results/tables/06_modules_WGCNA/group_effects/<dataset>/supermodule_composition.csv", "results/wgcna/build_wgcna_modules/<dataset>/tables/supermodules/wgcna_module_supermodule_annotation.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_module_supermodule_annotation.csv", "results/wgcna/annotate_module_microenvironment/<dataset>/tables/WGCNA_module_biological_annotation.csv", "results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_module_biological_annotation.csv", "results/wgcna/annotate_module_microenvironment/<dataset>/tables/WGCNA_supermodule_biological_annotation.csv", "results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_supermodule_biological_annotation.csv", "config/wgcna_labels/<dataset>.csv (required for microglia reviewed-label authority)"]
+        consumes_optional: ["results/wgcna/compare_module_enrichment_overlap/<dataset>/tables/", "results/tables/06_modules_WGCNA/04_wgcna_de_gsea_overlap/<dataset>/"]
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Final WGCNA interpretable module/supermodule summary tables and plots. The inferential handoff retains every independent module endpoint and only genuine multi-module supermodule endpoints, with tier-specific FDR copied through the Phase 2B adapter. For microglia, reviewed biological labels remain authoritative while automatic proposals, GO, hub, and microenvironment evidence remain provenance."
@@ -499,14 +499,14 @@ stages:
         stage: "modules_downstream"
         scope: "dataset_specific"
         produces:
-          - "results/figures/06_modules_WGCNA/wgcna_publication_figures/microglia/all_supermodule_architecture.svg"
-          - "results/figures/06_modules_WGCNA/wgcna_publication_figures/microglia/all_supermodule_global_eigengenes.svg"
-          - "results/figures/06_modules_WGCNA/wgcna_publication_figures/microglia/all_supermodule_sus_res_forest.svg"
-          - "results/figures/06_modules_WGCNA/wgcna_publication_figures/microglia/all_supermodule_sus_res_spatial_heatmap.svg"
-          - "results/figures/06_modules_WGCNA/wgcna_publication_figures/microglia/multi_supermodule_member_loadings.svg"
-          - "results/figures/06_modules_WGCNA/wgcna_publication_figures/microglia/supplementary_all_contrast_effect_matrix.svg"
-          - "results/tables/06_modules_WGCNA/wgcna_publication_figures/microglia/WGCNA_publication_figure_validation.csv"
-        consumes_required: ["results/tables/06_modules_WGCNA/interpretable_summary/microglia/WGCNA_final_label_lookup.csv", "results/tables/06_modules_WGCNA/interpretable_summary/microglia/WGCNA_inferential_handoff.csv", "results/tables/06_modules_WGCNA/group_effects/microglia/all_supermodule_eigengene_group_values.csv", "results/tables/06_modules_WGCNA/group_effects/microglia/supermodule_pca_member_loadings.csv", "results/tables/06_modules_WGCNA/01_WGCNA/microglia/supermodules/wgcna_module_supermodule_annotation.csv"]
+          - "results/wgcna/render_module_figures/microglia/plots/all_supermodule_architecture.svg"
+          - "results/wgcna/render_module_figures/microglia/plots/all_supermodule_global_eigengenes.svg"
+          - "results/wgcna/render_module_figures/microglia/plots/all_supermodule_sus_res_forest.svg"
+          - "results/wgcna/render_module_figures/microglia/plots/all_supermodule_sus_res_spatial_heatmap.svg"
+          - "results/wgcna/render_module_figures/microglia/plots/multi_supermodule_member_loadings.svg"
+          - "results/wgcna/render_module_figures/microglia/plots/supplementary_all_contrast_effect_matrix.svg"
+          - "results/wgcna/render_module_figures/microglia/tables/WGCNA_publication_figure_validation.csv"
+        consumes_required: ["results/wgcna/summarize_module_interpretation/microglia/tables/WGCNA_final_label_lookup.csv", "results/tables/06_modules_WGCNA/interpretable_summary/microglia/WGCNA_final_label_lookup.csv", "results/wgcna/summarize_module_interpretation/microglia/tables/WGCNA_inferential_handoff.csv", "results/tables/06_modules_WGCNA/interpretable_summary/microglia/WGCNA_inferential_handoff.csv", "results/wgcna/test_module_phenotypes/microglia/tables/all_supermodule_eigengene_group_values.csv", "results/tables/06_modules_WGCNA/group_effects/microglia/all_supermodule_eigengene_group_values.csv", "results/wgcna/test_module_phenotypes/microglia/tables/supermodule_pca_member_loadings.csv", "results/tables/06_modules_WGCNA/group_effects/microglia/supermodule_pca_member_loadings.csv", "results/wgcna/build_wgcna_modules/microglia/tables/supermodules/wgcna_module_supermodule_annotation.csv", "results/tables/06_modules_WGCNA/01_WGCNA/microglia/supermodules/wgcna_module_supermodule_annotation.csv"]
         consumes_optional: []
         recomputes_core_state: false
         safe_downstream_rerun: true
@@ -517,14 +517,14 @@ stages:
         stage: "modules_downstream"
         scope: "dataset_specific"
         produces:
-          - "results/figures/06_modules_WGCNA/score_publication_summary/<dataset>/publication_supermodule_effect_heatmap_<dataset>_wgcna_primary_all_replicates.svg"
-          - "results/figures/06_modules_WGCNA/score_publication_summary/<dataset>/publication_supermodule_effect_heatmap_<dataset>_wgcna_sensitivity.svg"
-          - "results/figures/06_modules_WGCNA/score_publication_summary/<dataset>/publication_supermodule_correlation_<dataset>_wgcna_primary_all_replicates.svg"
-          - "results/figures/06_modules_WGCNA/score_publication_summary/<dataset>/publication_supermodule_correlation_<dataset>_wgcna_sensitivity.svg"
-          - "results/figures/06_modules_WGCNA/score_publication_summary/<dataset>/publication_supermodule_consistency_<dataset>_wgcna_primary_all_replicates.svg"
-          - "results/figures/06_modules_WGCNA/score_publication_summary/<dataset>/publication_supermodule_consistency_<dataset>_wgcna_sensitivity.svg"
-          - "results/tables/06_modules_WGCNA/score_publication_summary/<dataset>/WGCNA_score_publication_validation.csv"
-        consumes_required: ["results/tables/06_modules_WGCNA/module_score/<dataset>/wgcna/supermodule_directional_effects.csv", "results/tables/06_modules_WGCNA/module_score/<dataset>/wgcna/supermodule_directional_consistency.csv", "results/tables/06_modules_WGCNA/module_score/<dataset>/wgcna/supermodule_score_correlation_structure.csv", "results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_final_label_lookup.csv"]
+          - "results/wgcna/summarize_module_scores/<dataset>/plots/publication_supermodule_effect_heatmap_<dataset>_wgcna_primary_all_replicates.svg"
+          - "results/wgcna/summarize_module_scores/<dataset>/plots/publication_supermodule_effect_heatmap_<dataset>_wgcna_sensitivity.svg"
+          - "results/wgcna/summarize_module_scores/<dataset>/plots/publication_supermodule_correlation_<dataset>_wgcna_primary_all_replicates.svg"
+          - "results/wgcna/summarize_module_scores/<dataset>/plots/publication_supermodule_correlation_<dataset>_wgcna_sensitivity.svg"
+          - "results/wgcna/summarize_module_scores/<dataset>/plots/publication_supermodule_consistency_<dataset>_wgcna_primary_all_replicates.svg"
+          - "results/wgcna/summarize_module_scores/<dataset>/plots/publication_supermodule_consistency_<dataset>_wgcna_sensitivity.svg"
+          - "results/wgcna/summarize_module_scores/<dataset>/tables/WGCNA_score_publication_validation.csv"
+        consumes_required: ["results/wgcna/score_module_activity/<dataset>/tables/wgcna/supermodule_directional_effects.csv", "results/tables/06_modules_WGCNA/module_score/<dataset>/wgcna/supermodule_directional_effects.csv", "results/wgcna/score_module_activity/<dataset>/tables/wgcna/supermodule_directional_consistency.csv", "results/tables/06_modules_WGCNA/module_score/<dataset>/wgcna/supermodule_directional_consistency.csv", "results/wgcna/score_module_activity/<dataset>/tables/wgcna/supermodule_score_correlation_structure.csv", "results/tables/06_modules_WGCNA/module_score/<dataset>/wgcna/supermodule_score_correlation_structure.csv", "results/wgcna/summarize_module_interpretation/<dataset>/tables/WGCNA_final_label_lookup.csv", "results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_final_label_lookup.csv"]
         consumes_optional: []
         recomputes_core_state: false
         safe_downstream_rerun: true
@@ -535,37 +535,44 @@ stages:
         stage: "modules_downstream"
         scope: "dataset_specific"
         produces:
-          - "results/figures/06_modules_WGCNA/wgcna_publication_figures_corrected/microglia/corrected_all_supermodule_architecture.svg"
-          - "results/figures/06_modules_WGCNA/wgcna_publication_figures_corrected/microglia/corrected_all_supermodule_architecture.pdf"
-          - "results/figures/06_modules_WGCNA/wgcna_publication_figures_corrected/microglia/corrected_all_supermodule_global_eigengenes.svg"
-          - "results/figures/06_modules_WGCNA/wgcna_publication_figures_corrected/microglia/corrected_all_supermodule_global_eigengenes.pdf"
-          - "results/figures/06_modules_WGCNA/wgcna_publication_figures_corrected/microglia/corrected_all_supermodule_sus_res_forest.svg"
-          - "results/figures/06_modules_WGCNA/wgcna_publication_figures_corrected/microglia/corrected_all_supermodule_sus_res_forest.pdf"
-          - "results/figures/06_modules_WGCNA/wgcna_publication_figures_corrected/microglia/corrected_all_supermodule_sus_res_spatial_heatmap.svg"
-          - "results/figures/06_modules_WGCNA/wgcna_publication_figures_corrected/microglia/corrected_all_supermodule_sus_res_spatial_heatmap.pdf"
-          - "results/figures/06_modules_WGCNA/wgcna_publication_figures_corrected/microglia/corrected_multi_supermodule_member_loadings.svg"
-          - "results/figures/06_modules_WGCNA/wgcna_publication_figures_corrected/microglia/corrected_multi_supermodule_member_loadings.pdf"
-          - "results/figures/06_modules_WGCNA/wgcna_publication_figures_corrected/microglia/corrected_supplementary_all_contrast_effect_matrix.svg"
-          - "results/figures/06_modules_WGCNA/wgcna_publication_figures_corrected/microglia/corrected_supplementary_all_contrast_effect_matrix.pdf"
-          - "results/figures/06_modules_WGCNA/wgcna_publication_figures_corrected/microglia/wgcna_readiness_summary.svg"
-          - "results/figures/06_modules_WGCNA/wgcna_publication_figures_corrected/microglia/wgcna_readiness_summary.pdf"
-          - "results/source_data/06_modules_WGCNA/wgcna_publication_figures_corrected/microglia/corrected_all_supermodule_architecture_source.csv"
-          - "results/source_data/06_modules_WGCNA/wgcna_publication_figures_corrected/microglia/corrected_all_supermodule_global_eigengenes_source.csv"
-          - "results/source_data/06_modules_WGCNA/wgcna_publication_figures_corrected/microglia/corrected_all_supermodule_sus_res_forest_source.csv"
-          - "results/source_data/06_modules_WGCNA/wgcna_publication_figures_corrected/microglia/corrected_all_supermodule_sus_res_spatial_heatmap_source.csv"
-          - "results/source_data/06_modules_WGCNA/wgcna_publication_figures_corrected/microglia/corrected_multi_supermodule_member_loadings_source.csv"
-          - "results/source_data/06_modules_WGCNA/wgcna_publication_figures_corrected/microglia/corrected_supplementary_all_contrast_effect_matrix_source.csv"
-          - "results/source_data/06_modules_WGCNA/wgcna_publication_figures_corrected/microglia/wgcna_readiness_summary_source.csv"
-          - "results/tables/06_modules_WGCNA/wgcna_publication_figures_corrected/microglia/supermodule_group_effects_standardized.csv"
-          - "results/tables/06_modules_WGCNA/wgcna_publication_figures_corrected/microglia/WGCNA_corrected_publication_figure_validation.csv"
-          - "results/logs/06_modules_WGCNA/wgcna_publication_figures_corrected/microglia/run_manifest.yml"
+          - "results/wgcna/render_microglia_module_figures/microglia/plots/corrected_all_supermodule_architecture.svg"
+          - "results/wgcna/render_microglia_module_figures/microglia/plots/corrected_all_supermodule_architecture.pdf"
+          - "results/wgcna/render_microglia_module_figures/microglia/plots/corrected_all_supermodule_global_eigengenes.svg"
+          - "results/wgcna/render_microglia_module_figures/microglia/plots/corrected_all_supermodule_global_eigengenes.pdf"
+          - "results/wgcna/render_microglia_module_figures/microglia/plots/corrected_all_supermodule_sus_res_forest.svg"
+          - "results/wgcna/render_microglia_module_figures/microglia/plots/corrected_all_supermodule_sus_res_forest.pdf"
+          - "results/wgcna/render_microglia_module_figures/microglia/plots/corrected_all_supermodule_sus_res_spatial_heatmap.svg"
+          - "results/wgcna/render_microglia_module_figures/microglia/plots/corrected_all_supermodule_sus_res_spatial_heatmap.pdf"
+          - "results/wgcna/render_microglia_module_figures/microglia/plots/corrected_multi_supermodule_member_loadings.svg"
+          - "results/wgcna/render_microglia_module_figures/microglia/plots/corrected_multi_supermodule_member_loadings.pdf"
+          - "results/wgcna/render_microglia_module_figures/microglia/plots/corrected_supplementary_all_contrast_effect_matrix.svg"
+          - "results/wgcna/render_microglia_module_figures/microglia/plots/corrected_supplementary_all_contrast_effect_matrix.pdf"
+          - "results/wgcna/render_microglia_module_figures/microglia/plots/wgcna_readiness_summary.svg"
+          - "results/wgcna/render_microglia_module_figures/microglia/plots/wgcna_readiness_summary.pdf"
+          - "results/wgcna/render_microglia_module_figures/microglia/tables/source_data/corrected_all_supermodule_architecture_source.csv"
+          - "results/wgcna/render_microglia_module_figures/microglia/tables/source_data/corrected_all_supermodule_global_eigengenes_source.csv"
+          - "results/wgcna/render_microglia_module_figures/microglia/tables/source_data/corrected_all_supermodule_sus_res_forest_source.csv"
+          - "results/wgcna/render_microglia_module_figures/microglia/tables/source_data/corrected_all_supermodule_sus_res_spatial_heatmap_source.csv"
+          - "results/wgcna/render_microglia_module_figures/microglia/tables/source_data/corrected_multi_supermodule_member_loadings_source.csv"
+          - "results/wgcna/render_microglia_module_figures/microglia/tables/source_data/corrected_supplementary_all_contrast_effect_matrix_source.csv"
+          - "results/wgcna/render_microglia_module_figures/microglia/tables/source_data/wgcna_readiness_summary_source.csv"
+          - "results/wgcna/render_microglia_module_figures/microglia/tables/supermodule_group_effects_standardized.csv"
+          - "results/wgcna/render_microglia_module_figures/microglia/tables/WGCNA_corrected_publication_figure_validation.csv"
+          - "results/wgcna/render_microglia_module_figures/microglia/manifests/run_manifest.yml"
         consumes_required:
+          - "results/wgcna/summarize_module_interpretation/microglia/tables/WGCNA_final_label_lookup.csv"
           - "results/tables/06_modules_WGCNA/interpretable_summary/microglia/WGCNA_final_label_lookup.csv"
+          - "results/wgcna/test_module_phenotypes/microglia/tables/all_supermodule_eigengene_group_values.csv"
           - "results/tables/06_modules_WGCNA/group_effects/microglia/all_supermodule_eigengene_group_values.csv"
+          - "results/wgcna/summarize_module_interpretation/microglia/tables/WGCNA_inferential_handoff.csv"
           - "results/tables/06_modules_WGCNA/interpretable_summary/microglia/WGCNA_inferential_handoff.csv"
+          - "results/wgcna/test_module_phenotypes/microglia/tables/supermodule_pca_member_loadings.csv"
           - "results/tables/06_modules_WGCNA/group_effects/microglia/supermodule_pca_member_loadings.csv"
+          - "results/wgcna/build_wgcna_modules/microglia/tables/supermodules/wgcna_module_supermodule_annotation.csv"
           - "results/tables/06_modules_WGCNA/01_WGCNA/microglia/supermodules/wgcna_module_supermodule_annotation.csv"
+          - "results/wgcna/build_wgcna_modules/microglia/tables/supermodules/wgcna_supermodule_summary.csv"
           - "results/tables/06_modules_WGCNA/01_WGCNA/microglia/supermodules/wgcna_supermodule_summary.csv"
+          - "results/wgcna/build_wgcna_modules/microglia/tables/modules/WGCNA_module_definitions_for_downstream.csv"
           - "results/tables/06_modules_WGCNA/01_WGCNA/microglia/modules/WGCNA_module_definitions_for_downstream.csv"
           - "results/reviewer_audit/microglia_wgcna_nature_readiness/module_robustness_consensus.csv"
           - "results/reviewer_audit/microglia_wgcna_nature_readiness/higher_order_block_readiness_summary.csv"
@@ -579,8 +586,8 @@ stages:
         datasets: ["microglia"]
         stage: "modules_downstream"
         scope: "dataset_specific"
-        produces: ["results/tables/06_modules_WGCNA/microglia_neuropil_independence/microglia/microglia_neuropil_independence_effects.csv", "results/tables/06_modules_WGCNA/microglia_neuropil_independence/microglia/microglia_module_neuropil_independence_classification.csv", "results/tables/06_modules_WGCNA/microglia_neuropil_independence/microglia/WGCNA_module_inferential_handoff_with_neuropil_independence.csv", "results/reviewer_audit/microglia_neuropil_independence_claim_gate.csv", "results/reviewer_audit/microglia_neuropil_covariate_selection_audit.csv"]
-        consumes_required: ["config/microglia_neuropil_independence.yml", "results/tables/06_modules_WGCNA/interpretable_summary/microglia/WGCNA_inferential_handoff.csv", "results/tables/06_modules_WGCNA/01_WGCNA/microglia/modules/", "results/tables/06_modules_WGCNA/01_WGCNA/neuron_neuropil/modules/"]
+        produces: ["results/wgcna/test_microglia_neuropil_independence/microglia/tables/microglia_neuropil_independence_effects.csv", "results/wgcna/test_microglia_neuropil_independence/microglia/tables/microglia_module_neuropil_independence_classification.csv", "results/wgcna/test_microglia_neuropil_independence/microglia/tables/WGCNA_module_inferential_handoff_with_neuropil_independence.csv", "results/wgcna/test_microglia_neuropil_independence/global/tables/microglia_neuropil_independence_claim_gate.csv", "results/wgcna/test_microglia_neuropil_independence/global/tables/microglia_neuropil_covariate_selection_audit.csv"]
+        consumes_required: ["config/microglia_neuropil_independence.yml", "results/wgcna/summarize_module_interpretation/microglia/tables/WGCNA_inferential_handoff.csv", "results/tables/06_modules_WGCNA/interpretable_summary/microglia/WGCNA_inferential_handoff.csv", "results/wgcna/build_wgcna_modules/microglia/tables/modules/", "results/tables/06_modules_WGCNA/01_WGCNA/microglia/modules/", "results/wgcna/build_wgcna_modules/neuron_neuropil/tables/modules/", "results/tables/06_modules_WGCNA/01_WGCNA/neuron_neuropil/modules/"]
         consumes_optional: ["results/tables/03_qc_exploration/06_wgcna_marker_trait_export/microglia/wgcna_marker_traits_by_sample.csv", "results/tables/03_qc_exploration/06_wgcna_marker_trait_export/neuron_neuropil/wgcna_marker_traits_by_sample.csv"]
         recomputes_core_state: false
         safe_downstream_rerun: true
@@ -591,12 +598,15 @@ stages:
         stage: "modules_downstream"
         scope: "dataset_specific"
         consumes_required:
+          - "results/wgcna/test_microglia_neuropil_independence/microglia/tables/microglia_neuropil_independence_effects.csv"
           - "results/tables/06_modules_WGCNA/microglia_neuropil_independence/microglia/microglia_neuropil_independence_effects.csv"
+          - "results/wgcna/test_microglia_neuropil_independence/microglia/tables/microglia_module_neuropil_independence_classification.csv"
           - "results/tables/06_modules_WGCNA/microglia_neuropil_independence/microglia/microglia_module_neuropil_independence_classification.csv"
+          - "results/wgcna/test_microglia_neuropil_independence/microglia/tables/WGCNA_module_inferential_handoff_with_neuropil_independence.csv"
           - "results/tables/06_modules_WGCNA/microglia_neuropil_independence/microglia/WGCNA_module_inferential_handoff_with_neuropil_independence.csv"
         produces:
-          - "results/figures/06_modules_WGCNA/microglia_neuropil_independence/microglia/"
-          - "results/source_data/06_modules_WGCNA/microglia_neuropil_independence/microglia/"
+          - "results/wgcna/render_microglia_independence_figures/microglia/plots"
+          - "results/wgcna/render_microglia_independence_figures/microglia/tables/source_data"
         consumes_optional: []
         recomputes_core_state: false
         safe_downstream_rerun: true
@@ -608,22 +618,27 @@ stages:
         scope: "dataset_specific"
         consumes_required:
           - "config/microglia_neuropil_independence.yml"
+          - "results/wgcna/build_wgcna_modules/microglia/tables/modules/"
           - "results/tables/06_modules_WGCNA/01_WGCNA/microglia/modules/"
+          - "results/wgcna/build_wgcna_modules/neuron_neuropil/tables/modules/"
           - "results/tables/06_modules_WGCNA/01_WGCNA/neuron_neuropil/modules/"
+          - "results/wgcna/annotate_module_microenvironment/microglia/tables/WGCNA_module_biological_annotation.csv"
           - "results/tables/06_modules_WGCNA/module_annotation/microglia/WGCNA_module_biological_annotation.csv"
         consumes_optional:
+          - "results/wgcna/build_wgcna_modules/neuron_soma/tables/modules/"
           - "results/tables/06_modules_WGCNA/01_WGCNA/neuron_soma/modules/"
           - "results/tables/03_qc_exploration/06_wgcna_marker_trait_export/microglia/wgcna_marker_traits_by_sample.csv"
           - "results/tables/03_qc_exploration/06_wgcna_marker_trait_export/neuron_neuropil/wgcna_marker_traits_by_sample.csv"
           - "results/tables/03_qc_exploration/06_wgcna_marker_trait_export/neuron_soma/wgcna_marker_traits_by_sample.csv"
+          - "results/wgcna/annotate_module_microenvironment/microglia/tables/WGCNA_module_targeted_signature_overlap_details.csv"
           - "results/tables/06_modules_WGCNA/module_annotation/microglia/WGCNA_module_targeted_signature_overlap_details.csv"
         produces:
-          - "results/tables/06_modules_WGCNA/microglia_roi_specificity/microglia/"
-          - "results/source_data/06_modules_WGCNA/microglia_roi_specificity/microglia/"
-          - "results/figures/06_modules_WGCNA/microglia_roi_specificity/microglia/"
-          - "results/reports/06_modules_WGCNA/microglia_roi_specificity/microglia/"
-          - "results/figures/06_modules_WGCNA/microglia_roi_specificity/microglia/microglia_roi_specificity_decision_map.svg"
-          - "results/figures/06_modules_WGCNA/microglia_roi_specificity/microglia/microglia_roi_specificity_decision_map.pdf"
+          - "results/wgcna/summarize_microglia_roi_specificity/microglia/tables"
+          - "results/wgcna/summarize_microglia_roi_specificity/microglia/tables/source_data"
+          - "results/wgcna/summarize_microglia_roi_specificity/microglia/plots"
+          - "results/wgcna/summarize_microglia_roi_specificity/microglia/reports"
+          - "results/wgcna/summarize_microglia_roi_specificity/microglia/plots/microglia_roi_specificity_decision_map.svg"
+          - "results/wgcna/summarize_microglia_roi_specificity/microglia/plots/microglia_roi_specificity_decision_map.pdf"
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Contrast-free diagnostic of microglia ROI module specificity, matched neuropil/soma coupling, and cross-compartment module sharing. Does not test StressGroup effects and does not enable purified cell-type claims without supporting evidence."
@@ -632,9 +647,9 @@ stages:
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "modules_downstream"
         scope: "dataset_specific"
-        produces: ["results/tables/06_modules_WGCNA/module_complex_architecture/<dataset>/module_complex_architecture.csv", "results/source_data/06_modules_WGCNA/module_complex_architecture/<dataset>/module_complex_architecture.csv", "results/logs/06_modules_WGCNA/module_complex_architecture/<dataset>/run_manifest.yml"]
-        consumes_required: ["results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/"]
-        consumes_optional: ["results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_module_biological_annotation.csv", "config/marker_panels/wgcna_reference_marker_sets.csv"]
+        produces: ["results/wgcna/summarize_module_complex_architecture/<dataset>/tables/module_complex_architecture.csv", "results/wgcna/summarize_module_complex_architecture/<dataset>/tables/source_data/module_complex_architecture.csv", "results/wgcna/summarize_module_complex_architecture/<dataset>/manifests/run_manifest.yml"]
+        consumes_required: ["results/wgcna/build_wgcna_modules/<dataset>/tables/modules/", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/"]
+        consumes_optional: ["results/wgcna/annotate_module_microenvironment/<dataset>/tables/WGCNA_module_biological_annotation.csv", "results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_module_biological_annotation.csv", "config/marker_panels/wgcna_reference_marker_sets.csv"]
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Protein-complex/organelle architecture evidence from existing module definitions; no core WGCNA recomputation."
@@ -643,9 +658,9 @@ stages:
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
         stage: "modules_downstream"
         scope: "dataset_specific"
-        produces: ["results/tables/06_modules_WGCNA/module_robustness_sensitivity/<dataset>/module_robustness_sensitivity.csv", "results/source_data/06_modules_WGCNA/module_robustness_sensitivity/<dataset>/module_robustness_sensitivity.csv", "results/logs/06_modules_WGCNA/module_robustness_sensitivity/<dataset>/run_manifest.yml"]
-        consumes_required: ["results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_inferential_handoff.csv"]
-        consumes_optional: ["results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_module_preservation_summary.csv", "results/tables/03_qc_exploration/05_pca_confounding_qc/<dataset>/PCA_confounding_summary.csv", "results/tables/03_qc_exploration/06_variance_partitioning/<dataset>/group_technical_confounding_screen.csv"]
+        produces: ["results/wgcna/audit_module_robustness/<dataset>/tables/module_robustness_sensitivity.csv", "results/wgcna/audit_module_robustness/<dataset>/tables/source_data/module_robustness_sensitivity.csv", "results/wgcna/audit_module_robustness/<dataset>/manifests/run_manifest.yml"]
+        consumes_required: ["results/wgcna/summarize_module_interpretation/<dataset>/tables/WGCNA_inferential_handoff.csv", "results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_inferential_handoff.csv"]
+        consumes_optional: ["results/wgcna/build_wgcna_modules/<dataset>/tables/modules/WGCNA_module_preservation_summary.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_module_preservation_summary.csv", "results/tables/03_qc_exploration/05_pca_confounding_qc/<dataset>/PCA_confounding_summary.csv", "results/tables/03_qc_exploration/06_variance_partitioning/<dataset>/group_technical_confounding_screen.csv"]
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Robustness/sensitivity synthesis from the Stage 07 inferential handoff, preservation, and QC/confounding outputs; tier family, claim gate, and source key are retained."
@@ -654,9 +669,9 @@ stages:
         datasets: ["microglia"]
         stage: "modules_downstream"
         scope: "dataset_specific"
-        produces: ["results/reviewer_audit/microglia_wgcna_nature_readiness/WGCNA_nature_readiness_report.md", "results/reviewer_audit/microglia_wgcna_nature_readiness/module_robustness_consensus.csv", "results/reviewer_audit/microglia_wgcna_nature_readiness/higher_order_block_readiness_summary.csv"]
-        consumes_required: ["data/processed/06_modules_WGCNA/01_WGCNA/microglia/wgcna_final_model_state.rds", "results/tables/06_modules_WGCNA/group_effects/microglia/"]
-        consumes_optional: ["results/tables/06_modules_WGCNA/microglia_neuropil_independence/microglia/", "results/tables/06_modules_WGCNA/module_robustness_sensitivity/microglia/"]
+        produces: ["results/wgcna/audit_microglia_module_claims/global/reports/WGCNA_nature_readiness_report.md", "results/wgcna/audit_microglia_module_claims/global/tables/module_robustness_consensus.csv", "results/wgcna/audit_microglia_module_claims/global/tables/higher_order_block_readiness_summary.csv"]
+        consumes_required: ["results/wgcna/build_wgcna_modules/microglia/models/wgcna_final_model_state.rds", "data/processed/06_modules_WGCNA/01_WGCNA/microglia/wgcna_final_model_state.rds", "results/wgcna/test_module_phenotypes/microglia/tables/", "results/tables/06_modules_WGCNA/group_effects/microglia/"]
+        consumes_optional: ["results/wgcna/test_microglia_neuropil_independence/microglia/tables/", "results/tables/06_modules_WGCNA/microglia_neuropil_independence/microglia/", "results/wgcna/audit_module_robustness/microglia/tables/", "results/tables/06_modules_WGCNA/module_robustness_sensitivity/microglia/"]
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Optional additive manuscript-readiness audit. Fixed memberships only; unblocked conventional WGCNA preservation is descriptive, strict nonspatial sensitivity is diagnostic, and region-organized covariance is not a technical failure."
@@ -665,7 +680,7 @@ stages:
         datasets: ["microglia"]
         stage: "modules_downstream"
         scope: "dataset_specific"
-        produces: ["results/reviewer_audit/microglia_wgcna_nature_readiness/finalization_validation.csv"]
+        produces: ["results/wgcna/summarize_microglia_module_claims/global/tables/finalization_validation.csv"]
         consumes_required: ["results/reviewer_audit/microglia_wgcna_nature_readiness/"]
         consumes_optional: []
         recomputes_core_state: false
@@ -677,18 +692,25 @@ stages:
         stage: "modules_downstream"
         scope: "dataset_specific"
         produces:
-          - "results/tables/06_modules_WGCNA/claim_readiness/microglia/WGCNA_entity_claim_readiness.csv"
-          - "results/source_data/06_modules_WGCNA/claim_readiness/microglia/WGCNA_entity_claim_readiness_source.csv"
+          - "results/wgcna/audit_module_claim_readiness/microglia/tables/WGCNA_entity_claim_readiness.csv"
+          - "results/wgcna/audit_module_claim_readiness/microglia/tables/source_data/WGCNA_entity_claim_readiness_source.csv"
         consumes_required:
+          - "results/wgcna/summarize_module_interpretation/microglia/tables/WGCNA_inferential_handoff.csv"
           - "results/tables/06_modules_WGCNA/interpretable_summary/microglia/WGCNA_inferential_handoff.csv"
+          - "results/wgcna/annotate_module_microenvironment/microglia/tables/WGCNA_module_biological_annotation.csv"
           - "results/tables/06_modules_WGCNA/module_annotation/microglia/WGCNA_module_biological_annotation.csv"
+          - "results/wgcna/annotate_module_microenvironment/microglia/tables/WGCNA_supermodule_biological_annotation.csv"
           - "results/tables/06_modules_WGCNA/module_annotation/microglia/WGCNA_supermodule_biological_annotation.csv"
+          - "results/wgcna/summarize_module_interpretation/microglia/tables/WGCNA_final_label_lookup.csv"
           - "results/tables/06_modules_WGCNA/interpretable_summary/microglia/WGCNA_final_label_lookup.csv"
           - "results/reviewer_audit/microglia_wgcna_nature_readiness/module_robustness_consensus.csv"
           - "results/reviewer_audit/microglia_wgcna_nature_readiness/higher_order_block_readiness_summary.csv"
+          - "results/wgcna/build_wgcna_modules/microglia/tables/supermodules/wgcna_module_supermodule_annotation.csv"
           - "results/tables/06_modules_WGCNA/01_WGCNA/microglia/supermodules/wgcna_module_supermodule_annotation.csv"
         consumes_optional:
+          - "results/wgcna/test_microglia_neuropil_independence/microglia/tables/microglia_module_neuropil_independence_classification.csv"
           - "results/tables/06_modules_WGCNA/microglia_neuropil_independence/microglia/microglia_module_neuropil_independence_classification.csv"
+          - "results/wgcna/audit_module_robustness/microglia/tables/WGCNA_claim_gate_audit.csv"
           - "results/tables/06_modules_WGCNA/module_robustness_sensitivity/microglia/WGCNA_claim_gate_audit.csv"
         recomputes_core_state: false
         safe_downstream_rerun: true
@@ -702,18 +724,24 @@ stages:
         stage: "modules_downstream"
         scope: "per_dataset"
         produces:
-          - "results/reviewer_audit/wgcna_label_review/<dataset>/WGCNA_module_label_coherence_audit.csv"
-          - "results/reviewer_audit/wgcna_label_review/<dataset>/WGCNA_supermodule_label_coherence_audit.csv"
-          - "results/reviewer_audit/wgcna_label_review/<dataset>/WGCNA_label_supporting_proteins.csv"
-          - "results/reviewer_audit/wgcna_label_review/<dataset>/WGCNA_label_review.xlsx"
-          - "results/reviewer_audit/wgcna_label_review/<dataset>/PROPOSED_wgcna_reviewed_labels_<dataset>.csv"
+          - "results/wgcna/audit_module_label_coherence/<dataset>/tables/WGCNA_module_label_coherence_audit.csv"
+          - "results/wgcna/audit_module_label_coherence/<dataset>/tables/WGCNA_supermodule_label_coherence_audit.csv"
+          - "results/wgcna/audit_module_label_coherence/<dataset>/tables/WGCNA_label_supporting_proteins.csv"
+          - "results/wgcna/audit_module_label_coherence/<dataset>/tables/WGCNA_label_review.xlsx"
+          - "results/wgcna/audit_module_label_coherence/<dataset>/tables/PROPOSED_wgcna_reviewed_labels_<dataset>.csv"
         consumes_required:
+          - "results/wgcna/build_wgcna_modules/<dataset>/tables/modules/WGCNA_modules_long.csv"
           - "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_modules_long.csv"
+          - "results/wgcna/build_wgcna_modules/<dataset>/tables/modules/WGCNA_module_GO_enrichment_long.csv"
           - "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_module_GO_enrichment_long.csv"
+          - "results/wgcna/build_module_identity_contract/<dataset>/tables/WGCNA_module_supermodule_membership_contract.csv"
           - "results/tables/06_modules_WGCNA/identity_contract/<dataset>/WGCNA_module_supermodule_membership_contract.csv"
         consumes_optional:
+          - "results/wgcna/build_wgcna_modules/<dataset>/tables/supermodules/wgcna_supermodule_biological_coherence.csv"
           - "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_supermodule_biological_coherence.csv"
+          - "results/wgcna/summarize_module_interpretation/<dataset>/tables/WGCNA_final_label_lookup.csv"
           - "results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_final_label_lookup.csv"
+          - "results/wgcna/annotate_module_microenvironment/<dataset>/tables/WGCNA_module_biological_annotation.csv"
           - "results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_module_biological_annotation.csv"
         recomputes_core_state: false
         safe_downstream_rerun: true
@@ -724,20 +752,26 @@ stages:
         stage: "modules_downstream"
         scope: "per_dataset"
         produces:
-          - "results/reviewer_audit/wgcna_label_adjudication/WGCNA_module_adjudication.csv"
-          - "results/reviewer_audit/wgcna_label_adjudication/WGCNA_supermodule_adjudication.csv"
-          - "results/reviewer_audit/wgcna_label_adjudication/WGCNA_module_theme_evidence.csv"
-          - "results/reviewer_audit/wgcna_label_adjudication/WGCNA_module_top25_hubs.csv"
-          - "results/reviewer_audit/wgcna_label_adjudication/WGCNA_label_consumer_migration_plan.csv"
-          - "results/reviewer_audit/wgcna_label_adjudication/WGCNA_label_adjudication.xlsx"
-          - "results/reviewer_audit/wgcna_label_adjudication/proposed_<dataset>_reviewed_labels.csv"
+          - "results/wgcna/adjudicate_module_labels/global/tables/WGCNA_module_adjudication.csv"
+          - "results/wgcna/adjudicate_module_labels/global/tables/WGCNA_supermodule_adjudication.csv"
+          - "results/wgcna/adjudicate_module_labels/global/tables/WGCNA_module_theme_evidence.csv"
+          - "results/wgcna/adjudicate_module_labels/global/tables/WGCNA_module_top25_hubs.csv"
+          - "results/wgcna/adjudicate_module_labels/global/tables/WGCNA_label_consumer_migration_plan.csv"
+          - "results/wgcna/adjudicate_module_labels/global/tables/WGCNA_label_adjudication.xlsx"
+          - "results/wgcna/adjudicate_module_labels/global/tables/proposed_<dataset>_reviewed_labels.csv"
         consumes_required:
+          - "results/wgcna/build_wgcna_modules/<dataset>/tables/modules/WGCNA_modules_long.csv"
           - "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_modules_long.csv"
+          - "results/wgcna/build_wgcna_modules/<dataset>/tables/modules/WGCNA_module_GO_enrichment_long.csv"
           - "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_module_GO_enrichment_long.csv"
+          - "results/wgcna/build_module_identity_contract/<dataset>/tables/WGCNA_module_supermodule_membership_contract.csv"
           - "results/tables/06_modules_WGCNA/identity_contract/<dataset>/WGCNA_module_supermodule_membership_contract.csv"
         consumes_optional:
+          - "results/wgcna/build_wgcna_modules/<dataset>/tables/supermodules/wgcna_supermodule_biological_coherence.csv"
           - "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_supermodule_biological_coherence.csv"
+          - "results/wgcna/summarize_module_interpretation/<dataset>/tables/WGCNA_final_label_lookup.csv"
           - "results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_final_label_lookup.csv"
+          - "results/wgcna/annotate_module_microenvironment/<dataset>/tables/WGCNA_module_biological_annotation.csv"
           - "results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_module_biological_annotation.csv"
         recomputes_core_state: false
         safe_downstream_rerun: true
@@ -748,17 +782,19 @@ stages:
         stage: "modules_downstream"
         scope: "per_dataset"
         produces:
-          - "results/reviewer_audit/wgcna_label_approval/WGCNA_final_label_approval_table.csv"
-          - "results/reviewer_audit/wgcna_label_approval/WGCNA_canonical_display_label_resolution.csv"
-          - "results/reviewer_audit/wgcna_label_approval/WGCNA_label_activation_rules.csv"
-          - "results/reviewer_audit/wgcna_label_approval/WGCNA_ambiguous_module_comparison.csv"
-          - "results/reviewer_audit/wgcna_label_approval/WGCNA_final_label_approval.xlsx"
+          - "results/wgcna/build_module_label_registry/global/tables/WGCNA_final_label_approval_table.csv"
+          - "results/wgcna/build_module_label_registry/global/tables/WGCNA_canonical_display_label_resolution.csv"
+          - "results/wgcna/build_module_label_registry/global/tables/WGCNA_label_activation_rules.csv"
+          - "results/wgcna/build_module_label_registry/global/tables/WGCNA_ambiguous_module_comparison.csv"
+          - "results/wgcna/build_module_label_registry/global/tables/WGCNA_final_label_approval.xlsx"
         consumes_required:
           - "results/reviewer_audit/wgcna_label_adjudication/WGCNA_module_adjudication.csv"
+          - "results/wgcna/build_module_identity_contract/<dataset>/tables/WGCNA_module_supermodule_membership_contract.csv"
           - "results/tables/06_modules_WGCNA/identity_contract/<dataset>/WGCNA_module_supermodule_membership_contract.csv"
         consumes_optional:
           - "results/reviewer_audit/wgcna_label_adjudication/WGCNA_supermodule_adjudication.csv"
           - "results/reviewer_audit/wgcna_label_adjudication/WGCNA_module_top25_hubs.csv"
+          - "results/wgcna/summarize_module_interpretation/<dataset>/tables/WGCNA_final_label_lookup.csv"
           - "results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_final_label_lookup.csv"
         recomputes_core_state: false
         safe_downstream_rerun: true
@@ -770,7 +806,7 @@ stages:
         scope: "dataset_specific"
         produces: ["results/spatial_networks/build_spatial_networks/<dataset>/models/*/network_spatial_relations_objects.rds", "results/spatial_networks/build_spatial_networks/<dataset>/tables", "results/spatial_networks/build_spatial_networks/<dataset>/plots", "results/spatial_networks/build_spatial_networks/<dataset>/manifests", "results/spatial_networks/build_spatial_networks/<dataset>/reports"]
         consumes_required: ["results/preprocessing/map_protein_identifiers/<dataset>/tables/mapped/forward/per_file/*.csv", "data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv"]
-        consumes_optional: ["results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/"]
+        consumes_optional: ["results/wgcna/build_wgcna_modules/<dataset>/tables/modules/", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/"]
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Generates spatial relation objects; may use module annotations when present but does not recompute WGCNA."
@@ -842,6 +878,7 @@ stages:
           - "results/preprocessing/build_module_score_metadata/<dataset>/tables/sample_metadata_merged_clean_for_module_scores.xlsx"
           - "data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx"
         consumes_optional:
+          - "results/wgcna/test_module_phenotypes/<dataset>/tables/WGCNA_group_effect_hemisphere_values.csv"
           - "results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_hemisphere_values.csv"
         recomputes_core_state: false
         safe_downstream_rerun: true
@@ -858,6 +895,7 @@ stages:
           - "results/preprocessing/build_module_score_metadata/<dataset>/tables/sample_metadata_merged_clean_for_module_scores.xlsx"
           - "data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx"
         consumes_optional:
+          - "results/wgcna/build_wgcna_modules/<dataset>/tables/modules/WGCNA_modules_long.csv"
           - "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_modules_long.csv"
         recomputes_core_state: false
         safe_downstream_rerun: true
@@ -889,6 +927,7 @@ stages:
           - "results/spatial_validation/quantify_module_bilateral_identity/global/tables/WGCNA_module_bilateral_spatial_profile_reproducibility.csv"
           - "results/spatial_validation/quantify_module_bilateral_identity/global/tables/WGCNA_module_bilateral_spatial_profile_summary.csv"
         consumes_required:
+          - "results/wgcna/test_module_phenotypes/<dataset>/tables/WGCNA_group_effect_hemisphere_values.csv"
           - "results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_hemisphere_values.csv"
         consumes_optional: []
         recomputes_core_state: false
@@ -903,6 +942,7 @@ stages:
           - "results/spatial_validation/annotate_module_celltypes/global/tables/WGCNA_module_external_celltype_affinity_long.csv"
           - "results/spatial_validation/annotate_module_celltypes/global/tables/WGCNA_module_external_celltype_affinity_summary.csv"
         consumes_required:
+          - "results/wgcna/build_wgcna_modules/<dataset>/tables/modules/WGCNA_modules_long.csv"
           - "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_modules_long.csv"
         consumes_optional: []
         recomputes_core_state: false
@@ -917,6 +957,7 @@ stages:
           - "results/spatial_validation/decompose_bilateral_variance/global/tables/bilateral_variance_decomposition.csv"
           - "results/spatial_validation/decompose_bilateral_variance/global/tables/bilateral_precision_gain.csv"
         consumes_required:
+          - "results/wgcna/test_module_phenotypes/<dataset>/tables/WGCNA_group_effect_hemisphere_values.csv"
           - "results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_hemisphere_values.csv"
         consumes_optional:
           - "config/marker_panels/wgcna_reference_marker_sets.csv"
@@ -959,7 +1000,9 @@ stages:
           - "results/spatial_validation/build_module_spatial_atlas/global/tables/WGCNA_supermodule_spatial_cell_context.csv"
           - "results/spatial_validation/build_module_spatial_atlas/global/tables/WGCNA_supermodule_spatial_coherence.csv"
         consumes_required:
+          - "results/wgcna/test_module_phenotypes/<dataset>/tables/WGCNA_group_effect_hemisphere_values.csv"
           - "results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_hemisphere_values.csv"
+          - "results/wgcna/build_wgcna_modules/<dataset>/tables/modules/WGCNA_modules_long.csv"
           - "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_modules_long.csv"
           - "results/spatial_validation/annotate_module_celltypes/global/tables/WGCNA_module_external_celltype_affinity_long.csv"
           - "results/tables/11_spatial_systems/celltype_annotation/WGCNA_module_external_celltype_affinity_long.csv"
@@ -1233,7 +1276,7 @@ stages:
         stage: "coupling"
         scope: "dataset_specific"
         produces: ["results/integration/test_module_behaviour_coupling/<dataset>/tables/module_behavior_coupling.csv", "results/integration/test_module_behaviour_coupling/<dataset>/tables/source_data/module_behavior_coupling.csv", "results/integration/test_module_behaviour_coupling/<dataset>/manifests/run_manifest.yml"]
-        consumes_required: ["results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_inferential_handoff.csv"]
+        consumes_required: ["results/wgcna/summarize_module_interpretation/<dataset>/tables/WGCNA_inferential_handoff.csv", "results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_inferential_handoff.csv"]
         consumes_optional: ["results/tables/08_behavior_physio_coupling/network_behavior_coupling/edge_behavior_figure_ready_table.csv"]
         recomputes_core_state: false
         safe_downstream_rerun: true
@@ -1269,8 +1312,8 @@ stages:
         stage: "integration"
         scope: "global"
         produces: ["results/integration/build_cross_compartment_atlas/global/tables/cross_compartment_program_atlas.csv", "results/integration/build_cross_compartment_atlas/global/tables/cross_compartment_program_atlas_long.csv", "results/integration/build_cross_compartment_atlas/global/tables/source_data/cross_compartment_program_atlas.csv", "results/integration/build_cross_compartment_atlas/global/tables/source_data/cross_compartment_program_atlas_long.csv", "results/integration/build_cross_compartment_atlas/global/tables/source_data/cross_compartment_program_atlas_input_status.csv", "results/integration/build_cross_compartment_atlas/global/reports/input_status.csv", "results/integration/build_cross_compartment_atlas/global/manifests/run_manifest.yml"]
-        consumes_required: ["results/tables/06_modules_WGCNA/claim_readiness/microglia/WGCNA_entity_claim_readiness.csv"]
-        consumes_optional: ["results/tables/04_differential_expression_enrichment/biological_program_summary/", "results/differential_abundance/compare_external_stress_signatures/global/tables/external_stress_disease_signature_overlap.csv", "results/tables/04_differential_expression_enrichment/external_stress_disease_signature_overlap/global/external_stress_disease_signature_overlap.csv", "results/differential_abundance/build_go_program_atlas/global/tables/spatial_program_summary.csv", "results/tables/04_differential_expression_enrichment/compareGO_spatial_atlas/spatial_program_summary.csv", "results/tables/06_modules_WGCNA/interpretable_summary/", "results/tables/06_modules_WGCNA/module_annotation/", "results/tables/06_modules_WGCNA/module_complex_architecture/", "results/tables/06_modules_WGCNA/module_robustness_sensitivity/", "results/tables/08_behavior_physio_coupling/module_behavior_coupling/", "results/qc/summarize_qc_confounding/<dataset>/reports/", "results/reports/03_qc_exploration/07_qc_biology_confounding_report/"]
+        consumes_required: ["results/wgcna/audit_module_claim_readiness/microglia/tables/WGCNA_entity_claim_readiness.csv", "results/tables/06_modules_WGCNA/claim_readiness/microglia/WGCNA_entity_claim_readiness.csv"]
+        consumes_optional: ["results/tables/04_differential_expression_enrichment/biological_program_summary/", "results/differential_abundance/compare_external_stress_signatures/global/tables/external_stress_disease_signature_overlap.csv", "results/tables/04_differential_expression_enrichment/external_stress_disease_signature_overlap/global/external_stress_disease_signature_overlap.csv", "results/differential_abundance/build_go_program_atlas/global/tables/spatial_program_summary.csv", "results/tables/04_differential_expression_enrichment/compareGO_spatial_atlas/spatial_program_summary.csv", "results/wgcna/summarize_module_interpretation/<dataset>/tables/", "results/tables/06_modules_WGCNA/interpretable_summary/", "results/wgcna/annotate_module_microenvironment/<dataset>/tables/", "results/tables/06_modules_WGCNA/module_annotation/", "results/wgcna/summarize_module_complex_architecture/<dataset>/tables/", "results/tables/06_modules_WGCNA/module_complex_architecture/", "results/wgcna/audit_module_robustness/<dataset>/tables/", "results/tables/06_modules_WGCNA/module_robustness_sensitivity/", "results/tables/08_behavior_physio_coupling/module_behavior_coupling/", "results/qc/summarize_qc_confounding/<dataset>/reports/", "results/reports/03_qc_exploration/07_qc_biology_confounding_report/"]
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Global synthesis; optional missing evidence is represented explicitly in status rows."
@@ -1291,8 +1334,8 @@ stages:
         stage: "export"
         scope: "global"
         produces: ["results/tables/biological_claims_table.csv", "results/tables/biological_claims_table.xlsx", "results/reviewer_audit/wgcna_stage13_claim_cardinality_audit.csv", "results/reviewer_audit/microglia_wgcna_overlap_stage13_identity_audit.csv"]
-        consumes_required: ["results/tables/04_differential_expression_enrichment/", "results/tables/06_modules_WGCNA/", "results/tables/06_modules_WGCNA/claim_readiness/microglia/WGCNA_entity_claim_readiness.csv", "results/integration/summarize_programs_for_manuscript/global/tables/manuscript_program_summary.csv", "results/tables/10_biological_integration/manuscript_program_summary/global/manuscript_program_summary.csv"]
-        consumes_optional: ["results/tables/06_modules_WGCNA/interpretable_summary/", "results/integration/test_network_behaviour_coupling/global/tables", "results/tables/08_behavior_physio_coupling/network_behavior_coupling/"]
+        consumes_required: ["results/tables/04_differential_expression_enrichment/", "results/tables/06_modules_WGCNA/", "results/wgcna/audit_module_claim_readiness/microglia/tables/WGCNA_entity_claim_readiness.csv", "results/tables/06_modules_WGCNA/claim_readiness/microglia/WGCNA_entity_claim_readiness.csv", "results/integration/summarize_programs_for_manuscript/global/tables/manuscript_program_summary.csv", "results/tables/10_biological_integration/manuscript_program_summary/global/manuscript_program_summary.csv"]
+        consumes_optional: ["results/wgcna/summarize_module_interpretation/<dataset>/tables/", "results/tables/06_modules_WGCNA/interpretable_summary/", "results/integration/test_network_behaviour_coupling/global/tables", "results/tables/08_behavior_physio_coupling/network_behavior_coupling/"]
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Final biological claims table after Stage 13 and manuscript summary; does not generate the final bundle, which is refreshed only after the priority matrix is current."
@@ -1302,8 +1345,8 @@ stages:
         stage: "integration"
         scope: "global"
         produces: ["results/integration/build_evidence_priority_matrix/global/tables/evidence_priority_matrix.csv", "results/integration/build_evidence_priority_matrix/global/tables/source_data/evidence_priority_matrix.csv", "results/integration/build_evidence_priority_matrix/global/tables/final_biological_evidence_bundle.xlsx", "results/integration/build_evidence_priority_matrix/global/tables", "results/integration/build_evidence_priority_matrix/global/tables/source_data", "results/integration/build_evidence_priority_matrix/global/manifests/final_evidence_bundle/run_manifest.yml", "results/integration/build_evidence_priority_matrix/global/manifests/evidence_priority_matrix/run_manifest.yml"]
-        consumes_required: ["results/integration/build_cross_compartment_atlas/global/tables/cross_compartment_program_atlas_long.csv", "results/tables/10_biological_integration/cross_compartment_program_atlas/global/cross_compartment_program_atlas_long.csv", "results/integration/summarize_programs_for_manuscript/global/tables/manuscript_program_summary.csv", "results/tables/10_biological_integration/manuscript_program_summary/global/manuscript_program_summary.csv", "results/tables/biological_claims_table.csv", "results/tables/06_modules_WGCNA/claim_readiness/microglia/WGCNA_entity_claim_readiness.csv"]
-        consumes_optional: ["results/tables/06_modules_WGCNA/interpretable_summary/"]
+        consumes_required: ["results/integration/build_cross_compartment_atlas/global/tables/cross_compartment_program_atlas_long.csv", "results/tables/10_biological_integration/cross_compartment_program_atlas/global/cross_compartment_program_atlas_long.csv", "results/integration/summarize_programs_for_manuscript/global/tables/manuscript_program_summary.csv", "results/tables/10_biological_integration/manuscript_program_summary/global/manuscript_program_summary.csv", "results/tables/biological_claims_table.csv", "results/wgcna/audit_module_claim_readiness/microglia/tables/WGCNA_entity_claim_readiness.csv", "results/tables/06_modules_WGCNA/claim_readiness/microglia/WGCNA_entity_claim_readiness.csv"]
+        consumes_optional: ["results/wgcna/summarize_module_interpretation/<dataset>/tables/", "results/tables/06_modules_WGCNA/interpretable_summary/"]
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Ranks candidate manuscript programs and refreshes the final biological evidence bundle from existing downstream outputs."
@@ -1313,8 +1356,8 @@ stages:
         stage: "integration"
         scope: "global"
         produces: ["results/integration/test_enrichment_module_concordance/global/tables/gsea_wgcna_concordance_long.csv", "results/integration/test_enrichment_module_concordance/global/tables/gsea_wgcna_concordance_summary.csv", "results/integration/test_enrichment_module_concordance/global/tables/adaptive_resilience_pattern_summary.csv", "results/integration/test_enrichment_module_concordance/global/tables/program_specific_leading_edge_module_overlap.csv", "results/integration/test_enrichment_module_concordance/global/tables/gsea_wgcna_concordance_audit.csv", "results/integration/test_enrichment_module_concordance/global/tables/program_module_matching_audit.csv", "results/integration/test_enrichment_module_concordance/global/tables/ontology_aware_gsea_theme_assignments_all_contrasts.csv", "results/integration/test_enrichment_module_concordance/global/tables/source_data", "results/integration/test_enrichment_module_concordance/global/reports/README.md", "results/integration/test_enrichment_module_concordance/global/manifests/run_manifest.yml"]
-        consumes_required: ["results/differential_abundance/build_go_program_atlas/global/tables/source_data/spatial_atlas_enrichment_long.csv", "results/source_data/04_differential_expression_enrichment/compareGO_spatial_atlas/spatial_atlas_enrichment_long.csv", "results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_inferential_handoff.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_feature_universe.csv", "config/manuscript_go_theme_registry.tsv", "config/gsea_wgcna_theme_module_mapping.csv"]
-        consumes_optional: ["results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_module_preservation_summary.csv", "results/tables/06_modules_WGCNA/claim_readiness/microglia/WGCNA_entity_claim_readiness.csv", "results/reviewer_audit/microglia_wgcna_nature_readiness/module_robustness_consensus.csv", "results/reviewer_audit/microglia_wgcna_nature_readiness/higher_order_block_readiness_summary.csv", "config/gsea_wgcna_program_module_mapping.csv"]
+        consumes_required: ["results/differential_abundance/build_go_program_atlas/global/tables/source_data/spatial_atlas_enrichment_long.csv", "results/source_data/04_differential_expression_enrichment/compareGO_spatial_atlas/spatial_atlas_enrichment_long.csv", "results/wgcna/summarize_module_interpretation/<dataset>/tables/WGCNA_inferential_handoff.csv", "results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_inferential_handoff.csv", "results/wgcna/build_wgcna_modules/<dataset>/tables/modules/WGCNA_feature_universe.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_feature_universe.csv", "config/manuscript_go_theme_registry.tsv", "config/gsea_wgcna_theme_module_mapping.csv"]
+        consumes_optional: ["results/wgcna/build_wgcna_modules/<dataset>/tables/modules/WGCNA_module_preservation_summary.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_module_preservation_summary.csv", "results/wgcna/audit_module_claim_readiness/microglia/tables/WGCNA_entity_claim_readiness.csv", "results/tables/06_modules_WGCNA/claim_readiness/microglia/WGCNA_entity_claim_readiness.csv", "results/reviewer_audit/microglia_wgcna_nature_readiness/module_robustness_consensus.csv", "results/reviewer_audit/microglia_wgcna_nature_readiness/higher_order_block_readiness_summary.csv", "config/gsea_wgcna_program_module_mapping.csv"]
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Additive low-n concordance synthesis. GSEA-derived representations remain one lineage; Stage 07 p/FDR values are copied unchanged; new Fisher/BH tests use program-specific leading edges against canonical module universes."
@@ -1324,7 +1367,7 @@ stages:
         stage: "integration"
         scope: "global"
         produces: ["results/integration/summarize_enrichment_module_concordance/global/tables", "results/integration/summarize_enrichment_module_concordance/global/tables/source_data", "results/integration/summarize_enrichment_module_concordance/global/reports/README.md", "results/integration/summarize_enrichment_module_concordance/global/manifests/run_manifest.yml"]
-        consumes_required: ["results/integration/test_enrichment_module_concordance/global/tables/gsea_wgcna_concordance_long.csv", "results/tables/10_biological_integration/gsea_wgcna_concordance/global/gsea_wgcna_concordance_long.csv", "results/integration/test_enrichment_module_concordance/global/tables/adaptive_resilience_pattern_summary.csv", "results/tables/10_biological_integration/gsea_wgcna_concordance/global/adaptive_resilience_pattern_summary.csv", "results/integration/test_enrichment_module_concordance/global/tables/program_specific_leading_edge_module_overlap.csv", "results/tables/10_biological_integration/gsea_wgcna_concordance/global/program_specific_leading_edge_module_overlap.csv", "results/integration/test_enrichment_module_concordance/global/tables/program_module_matching_audit.csv", "results/tables/10_biological_integration/gsea_wgcna_concordance/global/program_module_matching_audit.csv", "results/integration/test_enrichment_module_concordance/global/tables/ontology_aware_gsea_theme_assignments_all_contrasts.csv", "results/tables/10_biological_integration/gsea_wgcna_concordance/global/ontology_aware_gsea_theme_assignments_all_contrasts.csv", "config/manuscript_go_theme_registry.tsv", "config/gsea_wgcna_theme_module_mapping.csv", "results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_inferential_handoff.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_feature_universe.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_module_GO_enrichment_long.csv", "results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_module_biological_annotation.csv", "results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_supermodule_biological_annotation.csv", "results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_final_label_lookup.csv", "results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_sensitivity.csv"]
+        consumes_required: ["results/integration/test_enrichment_module_concordance/global/tables/gsea_wgcna_concordance_long.csv", "results/tables/10_biological_integration/gsea_wgcna_concordance/global/gsea_wgcna_concordance_long.csv", "results/integration/test_enrichment_module_concordance/global/tables/adaptive_resilience_pattern_summary.csv", "results/tables/10_biological_integration/gsea_wgcna_concordance/global/adaptive_resilience_pattern_summary.csv", "results/integration/test_enrichment_module_concordance/global/tables/program_specific_leading_edge_module_overlap.csv", "results/tables/10_biological_integration/gsea_wgcna_concordance/global/program_specific_leading_edge_module_overlap.csv", "results/integration/test_enrichment_module_concordance/global/tables/program_module_matching_audit.csv", "results/tables/10_biological_integration/gsea_wgcna_concordance/global/program_module_matching_audit.csv", "results/integration/test_enrichment_module_concordance/global/tables/ontology_aware_gsea_theme_assignments_all_contrasts.csv", "results/tables/10_biological_integration/gsea_wgcna_concordance/global/ontology_aware_gsea_theme_assignments_all_contrasts.csv", "config/manuscript_go_theme_registry.tsv", "config/gsea_wgcna_theme_module_mapping.csv", "results/wgcna/summarize_module_interpretation/<dataset>/tables/WGCNA_inferential_handoff.csv", "results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_inferential_handoff.csv", "results/wgcna/build_wgcna_modules/<dataset>/tables/modules/WGCNA_feature_universe.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_feature_universe.csv", "results/wgcna/build_wgcna_modules/<dataset>/tables/modules/WGCNA_module_GO_enrichment_long.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_module_GO_enrichment_long.csv", "results/wgcna/annotate_module_microenvironment/<dataset>/tables/WGCNA_module_biological_annotation.csv", "results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_module_biological_annotation.csv", "results/wgcna/annotate_module_microenvironment/<dataset>/tables/WGCNA_supermodule_biological_annotation.csv", "results/tables/06_modules_WGCNA/module_annotation/<dataset>/WGCNA_supermodule_biological_annotation.csv", "results/wgcna/summarize_module_interpretation/<dataset>/tables/WGCNA_final_label_lookup.csv", "results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_final_label_lookup.csv", "results/wgcna/test_module_phenotypes/<dataset>/tables/WGCNA_group_effect_sensitivity.csv", "results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_sensitivity.csv"]
         consumes_optional: []
         recomputes_core_state: false
         safe_downstream_rerun: true
@@ -1335,7 +1378,7 @@ stages:
         stage: "integration"
         scope: "per_dataset_and_global"
         produces: ["results/integration/build_candidate_protein_shortlist/<dataset>/tables/wgcna_candidate_proteins_all.csv", "results/integration/build_candidate_protein_shortlist/<dataset>/tables/wgcna_candidate_proteins_long.csv", "results/integration/build_candidate_protein_shortlist/<dataset>/tables/wgcna_candidate_proteins_shortlist.csv", "results/integration/build_candidate_protein_shortlist/<dataset>/tables/wgcna_top10_per_module.csv", "results/integration/build_candidate_protein_shortlist/<dataset>/tables/wgcna_candidate_proteins_shortlist.xlsx", "results/integration/build_candidate_protein_shortlist/<dataset>/tables/source_data", "results/integration/build_candidate_protein_shortlist/<dataset>/reports/README.md", "results/integration/build_candidate_protein_shortlist/<dataset>/manifests/run_manifest.yml"]
-        consumes_required: ["results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_modules_long.csv", "results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_inferential_handoff.csv", "results/differential_abundance/run_clusterprofiler_enrichment/<dataset>/models/clusterProfiler_manifest.csv", "data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv"]
+        consumes_required: ["results/wgcna/build_wgcna_modules/<dataset>/tables/modules/WGCNA_modules_long.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_modules_long.csv", "results/wgcna/summarize_module_interpretation/<dataset>/tables/WGCNA_inferential_handoff.csv", "results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_inferential_handoff.csv", "results/differential_abundance/run_clusterprofiler_enrichment/<dataset>/models/clusterProfiler_manifest.csv", "data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv"]
         consumes_optional: ["results/integration/test_enrichment_module_concordance/global/tables/program_specific_leading_edge_module_overlap.csv", "results/tables/10_biological_integration/gsea_wgcna_concordance/global/program_specific_leading_edge_module_overlap.csv"]
         recomputes_core_state: false
         safe_downstream_rerun: true
@@ -1346,7 +1389,7 @@ stages:
         stage: "integration"
         scope: "per_dataset_and_global"
         produces: ["results/integration/quantify_candidate_network_position/<dataset>/tables/wgcna_sus_res_network_position_protein_level.csv", "results/integration/quantify_candidate_network_position/<dataset>/tables/wgcna_sus_res_network_position_module_summary.csv", "results/integration/quantify_candidate_network_position/<dataset>/tables/wgcna_sus_res_network_position_permutation_summary.csv", "results/integration/quantify_candidate_network_position/<dataset>/plots", "results/integration/quantify_candidate_network_position/<dataset>/tables/source_data", "results/integration/quantify_candidate_network_position/<dataset>/reports/README.md", "results/integration/quantify_candidate_network_position/<dataset>/manifests/run_manifest.yml"]
-        consumes_required: ["results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_modules_long.csv", "results/differential_abundance/run_clusterprofiler_enrichment/<dataset>/models/clusterProfiler_manifest.csv", "data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv"]
+        consumes_required: ["results/wgcna/build_wgcna_modules/<dataset>/tables/modules/WGCNA_modules_long.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/modules/WGCNA_modules_long.csv", "results/differential_abundance/run_clusterprofiler_enrichment/<dataset>/models/clusterProfiler_manifest.csv", "data/processed/04_differential_expression_enrichment/clusterProfiler/<dataset>/clusterProfiler_manifest.csv"]
         consumes_optional: ["results/integration/build_candidate_protein_shortlist/<dataset>/tables/wgcna_candidate_proteins_all.csv", "results/tables/10_biological_integration/wgcna_candidate_protein_shortlist/<dataset>/wgcna_candidate_proteins_all.csv"]
         recomputes_core_state: false
         safe_downstream_rerun: true
@@ -1431,9 +1474,13 @@ stages:
           - "results/integration/render_module_circular_atlas/global/manifests/run_manifest.yml"
         consumes_required:
           - "results/tables/06_modules_WGCNA/"
+          - "results/wgcna/summarize_module_interpretation/neuron_neuropil/tables/WGCNA_inferential_handoff.csv"
           - "results/tables/06_modules_WGCNA/interpretable_summary/neuron_neuropil/WGCNA_inferential_handoff.csv"
+          - "results/wgcna/summarize_module_interpretation/neuron_soma/tables/WGCNA_inferential_handoff.csv"
           - "results/tables/06_modules_WGCNA/interpretable_summary/neuron_soma/WGCNA_inferential_handoff.csv"
+          - "results/wgcna/summarize_module_interpretation/microglia/tables/WGCNA_inferential_handoff.csv"
           - "results/tables/06_modules_WGCNA/interpretable_summary/microglia/WGCNA_inferential_handoff.csv"
+          - "results/wgcna/audit_module_claim_readiness/microglia/tables/WGCNA_entity_claim_readiness.csv"
           - "results/tables/06_modules_WGCNA/claim_readiness/microglia/WGCNA_entity_claim_readiness.csv"
           - "results/tables/biological_claims_table.csv"
         consumes_optional:
@@ -1449,26 +1496,45 @@ stages:
         scope: "global"
         produces: ["results/integration/summarize_module_cross_compartment/global/tables", "results/integration/summarize_module_cross_compartment/global/tables/source_data", "results/integration/summarize_module_cross_compartment/global/plots", "results/integration/summarize_module_cross_compartment/global/manifests", "results/integration/summarize_module_cross_compartment/global/reports"]
         consumes_required:
+          - "results/wgcna/build_wgcna_modules/neuron_neuropil/tables/modules/WGCNA_module_summary.csv"
           - "results/tables/06_modules_WGCNA/01_WGCNA/neuron_neuropil/modules/WGCNA_module_summary.csv"
+          - "results/wgcna/build_wgcna_modules/neuron_neuropil/tables/modules/WGCNA_module_definitions_for_downstream.csv"
           - "results/tables/06_modules_WGCNA/01_WGCNA/neuron_neuropil/modules/WGCNA_module_definitions_for_downstream.csv"
+          - "results/wgcna/build_wgcna_modules/neuron_neuropil/tables/supermodules/wgcna_supermodule_summary.csv"
           - "results/tables/06_modules_WGCNA/01_WGCNA/neuron_neuropil/supermodules/wgcna_supermodule_summary.csv"
+          - "results/wgcna/build_wgcna_modules/neuron_neuropil/tables/supermodules/wgcna_module_supermodule_annotation.csv"
           - "results/tables/06_modules_WGCNA/01_WGCNA/neuron_neuropil/supermodules/wgcna_module_supermodule_annotation.csv"
+          - "results/wgcna/summarize_module_interpretation/neuron_neuropil/tables/WGCNA_inferential_handoff.csv"
           - "results/tables/06_modules_WGCNA/interpretable_summary/neuron_neuropil/WGCNA_inferential_handoff.csv"
+          - "results/wgcna/summarize_module_interpretation/neuron_neuropil/tables/WGCNA_final_label_lookup.csv"
           - "results/tables/06_modules_WGCNA/interpretable_summary/neuron_neuropil/WGCNA_final_label_lookup.csv"
+          - "results/wgcna/build_wgcna_modules/neuron_soma/tables/modules/WGCNA_module_summary.csv"
           - "results/tables/06_modules_WGCNA/01_WGCNA/neuron_soma/modules/WGCNA_module_summary.csv"
+          - "results/wgcna/build_wgcna_modules/neuron_soma/tables/modules/WGCNA_module_definitions_for_downstream.csv"
           - "results/tables/06_modules_WGCNA/01_WGCNA/neuron_soma/modules/WGCNA_module_definitions_for_downstream.csv"
+          - "results/wgcna/build_wgcna_modules/neuron_soma/tables/supermodules/wgcna_supermodule_summary.csv"
           - "results/tables/06_modules_WGCNA/01_WGCNA/neuron_soma/supermodules/wgcna_supermodule_summary.csv"
+          - "results/wgcna/build_wgcna_modules/neuron_soma/tables/supermodules/wgcna_module_supermodule_annotation.csv"
           - "results/tables/06_modules_WGCNA/01_WGCNA/neuron_soma/supermodules/wgcna_module_supermodule_annotation.csv"
+          - "results/wgcna/summarize_module_interpretation/neuron_soma/tables/WGCNA_inferential_handoff.csv"
           - "results/tables/06_modules_WGCNA/interpretable_summary/neuron_soma/WGCNA_inferential_handoff.csv"
+          - "results/wgcna/summarize_module_interpretation/neuron_soma/tables/WGCNA_final_label_lookup.csv"
           - "results/tables/06_modules_WGCNA/interpretable_summary/neuron_soma/WGCNA_final_label_lookup.csv"
+          - "results/wgcna/build_wgcna_modules/microglia/tables/modules/WGCNA_module_summary.csv"
           - "results/tables/06_modules_WGCNA/01_WGCNA/microglia/modules/WGCNA_module_summary.csv"
+          - "results/wgcna/build_wgcna_modules/microglia/tables/modules/WGCNA_module_definitions_for_downstream.csv"
           - "results/tables/06_modules_WGCNA/01_WGCNA/microglia/modules/WGCNA_module_definitions_for_downstream.csv"
+          - "results/wgcna/build_wgcna_modules/microglia/tables/supermodules/wgcna_supermodule_summary.csv"
           - "results/tables/06_modules_WGCNA/01_WGCNA/microglia/supermodules/wgcna_supermodule_summary.csv"
+          - "results/wgcna/build_wgcna_modules/microglia/tables/supermodules/wgcna_module_supermodule_annotation.csv"
           - "results/tables/06_modules_WGCNA/01_WGCNA/microglia/supermodules/wgcna_module_supermodule_annotation.csv"
+          - "results/wgcna/summarize_module_interpretation/microglia/tables/WGCNA_inferential_handoff.csv"
           - "results/tables/06_modules_WGCNA/interpretable_summary/microglia/WGCNA_inferential_handoff.csv"
+          - "results/wgcna/summarize_module_interpretation/microglia/tables/WGCNA_final_label_lookup.csv"
           - "results/tables/06_modules_WGCNA/interpretable_summary/microglia/WGCNA_final_label_lookup.csv"
+          - "results/wgcna/audit_module_claim_readiness/microglia/tables/WGCNA_entity_claim_readiness.csv"
           - "results/tables/06_modules_WGCNA/claim_readiness/microglia/WGCNA_entity_claim_readiness.csv"
-        consumes_optional: ["results/tables/06_modules_WGCNA/01_WGCNA/", "results/tables/06_modules_WGCNA/module_annotation/", "results/tables/biological_claims_table.csv", "results/integration/build_evidence_priority_matrix/global/tables/final_biological_evidence_bundle.xlsx", "results/tables/10_biological_integration/final_evidence_bundle/global/final_biological_evidence_bundle.xlsx"]
+        consumes_optional: ["results/wgcna/build_wgcna_modules/<dataset>/tables/", "results/tables/06_modules_WGCNA/01_WGCNA/", "results/wgcna/annotate_module_microenvironment/<dataset>/tables/", "results/tables/06_modules_WGCNA/module_annotation/", "results/tables/biological_claims_table.csv", "results/integration/build_evidence_priority_matrix/global/tables/final_biological_evidence_bundle.xlsx", "results/tables/10_biological_integration/final_evidence_bundle/global/final_biological_evidence_bundle.xlsx"]
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Read-only compact WGCNA/supermodule overview across datasets; uses the Stage 07 inferential handoff, existing labels, and claim gates without recomputing WGCNA."
@@ -1478,7 +1544,7 @@ stages:
         stage: "integration"
         scope: "global"
         produces: ["results/integration/export_module_protein_zoom_source_data/global/plots/figure_3", "results/integration/export_module_protein_zoom_source_data/global/tables/source_data/figure_3", "results/integration/export_module_protein_zoom_source_data/global/tables/figure_3", "results/integration/export_module_protein_zoom_source_data/global/reports/figure_3", "results/integration/export_module_protein_zoom_source_data/global/tables/manuscript_panel_inventory.csv"]
-        consumes_required: ["results/source_data/06_modules_WGCNA/interpretable_summary/neuron_neuropil/module_group_effects_main_heatmap_source.csv", "results/tables/06_modules_WGCNA/01_WGCNA/neuron_neuropil/modules/WGCNA_modules_long.csv", "results/differential_abundance/run_clusterprofiler_enrichment/neuron_neuropil/models/clusterProfiler_manifest.csv", "data/processed/04_differential_expression_enrichment/clusterProfiler/neuron_neuropil/clusterProfiler_manifest.csv", "results/integration/test_enrichment_module_concordance/global/tables/program_specific_leading_edge_module_overlap.csv", "results/tables/10_biological_integration/gsea_wgcna_concordance/global/program_specific_leading_edge_module_overlap.csv", "results/tables/06_modules_WGCNA/01b_module_supermodule_GO_heatmaps/neuron_neuropil/WGCNA_module_GO_heatmap_source_BP.csv"]
+        consumes_required: ["results/wgcna/summarize_module_interpretation/neuron_neuropil/tables/source_data/module_group_effects_main_heatmap_source.csv", "results/source_data/06_modules_WGCNA/interpretable_summary/neuron_neuropil/module_group_effects_main_heatmap_source.csv", "results/wgcna/build_wgcna_modules/neuron_neuropil/tables/modules/WGCNA_modules_long.csv", "results/tables/06_modules_WGCNA/01_WGCNA/neuron_neuropil/modules/WGCNA_modules_long.csv", "results/differential_abundance/run_clusterprofiler_enrichment/neuron_neuropil/models/clusterProfiler_manifest.csv", "data/processed/04_differential_expression_enrichment/clusterProfiler/neuron_neuropil/clusterProfiler_manifest.csv", "results/integration/test_enrichment_module_concordance/global/tables/program_specific_leading_edge_module_overlap.csv", "results/tables/10_biological_integration/gsea_wgcna_concordance/global/program_specific_leading_edge_module_overlap.csv", "results/wgcna/render_module_go_heatmaps/neuron_neuropil/tables/WGCNA_module_GO_heatmap_source_BP.csv", "results/tables/06_modules_WGCNA/01b_module_supermodule_GO_heatmaps/neuron_neuropil/WGCNA_module_GO_heatmap_source_BP.csv"]
         consumes_optional: []
         recomputes_core_state: false
         safe_downstream_rerun: true

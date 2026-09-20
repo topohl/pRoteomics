@@ -4,6 +4,17 @@
 # supermodule maps. The Phase 1 identity contract is the sole supermodule
 # membership authority.
 
+# The identity-contract location comes from the WGCNA path resolver. This file
+# has no plain source() block of its own, so the guard is explicit: the
+# source-order check found the first resolver call with nothing above it.
+if (!exists("wgcna_identity_contract_dir", mode = "function")) {
+  if (!exists("repo_path", mode = "function")) {
+    paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
+    source(paths_file)
+  }
+  source(repo_path("R", "wgcna_paths.R"))
+}
+
 if (!exists("wgcna_group_classify_statistical_support", mode = "function")) {
   support_utils <- c(
     if (exists("repo_path", mode = "function")) {
@@ -46,9 +57,7 @@ wgcna_group_require_primary_packages <- function() {
 }
 
 wgcna_group_contract_paths <- function(dataset) {
-  root <- path_results(
-    "tables", "06_modules_WGCNA", "identity_contract", dataset
-  )
+  root <- wgcna_identity_contract_dir(dataset)
   list(
     entity = file.path(root, "WGCNA_entity_identity_contract.csv"),
     membership = file.path(

@@ -47,6 +47,7 @@ source("R/statistics/integration_utils.R")
 source("R/statistics/wgcna_candidate_protein_utils.R")
 source("R/statistics/wgcna_label_adjudication_utils.R")
 source("R/utilities/xlsx_package_utils.R")
+source(repo_path("R", "wgcna_paths.R"))
 
 suppressPackageStartupMessages({
   library(readr)
@@ -59,15 +60,15 @@ Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 cli <- integration_cli(default_dataset = "all")
 datasets <- integration_datasets(cli$dataset)
 
-membership_path <- function(ds) path_results("tables", "06_modules_WGCNA", "01_WGCNA", ds, "modules", "WGCNA_modules_long.csv")
-go_path <- function(ds) path_results("tables", "06_modules_WGCNA", "01_WGCNA", ds, "modules", "WGCNA_module_GO_enrichment_long.csv")
-contract_path <- function(ds) path_results("tables", "06_modules_WGCNA", "identity_contract", ds, "WGCNA_module_supermodule_membership_contract.csv")
-structural_path <- function(ds) path_results("tables", "06_modules_WGCNA", "01_WGCNA", ds, "supermodules", "wgcna_supermodule_biological_coherence.csv")
-final_lookup_path <- function(ds) path_results("tables", "06_modules_WGCNA", "interpretable_summary", ds, "WGCNA_final_label_lookup.csv")
-annotation_path <- function(ds) path_results("tables", "06_modules_WGCNA", "module_annotation", ds, "WGCNA_module_biological_annotation.csv")
+membership_path <- function(ds) wgcna_modules_artifact("WGCNA_modules_long.csv", ds, child = "tables", "modules")
+go_path <- function(ds) wgcna_modules_artifact("WGCNA_module_GO_enrichment_long.csv", ds, child = "tables", "modules")
+contract_path <- function(ds) wgcna_identity_contract_artifact("WGCNA_module_supermodule_membership_contract.csv", ds)
+structural_path <- function(ds) wgcna_modules_artifact("wgcna_supermodule_biological_coherence.csv", ds, child = "tables", "supermodules")
+final_lookup_path <- function(ds) wgcna_interpretable_artifact("WGCNA_final_label_lookup.csv", ds)
+annotation_path <- function(ds) wgcna_annotation_artifact("WGCNA_module_biological_annotation.csv", ds)
 
 out_root <- function() {
-  d <- path_results("reviewer_audit", "wgcna_label_adjudication")
+  d <- wgcna_dirs("adjudicate_module_labels", "global", create = TRUE)$tables
   dir_create(d); d
 }
 

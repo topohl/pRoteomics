@@ -20,6 +20,7 @@ source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "dataset_inputs.R"))
 source(repo_path("R", "qc_exploration_utils.R"))
 source(repo_path("R", "joint_compartment_qc_utils.R"))
+source(repo_path("R", "wgcna_paths.R"))
 
 # Phase 6G.5: destinations resolve through the normalized output
 # contract, addressed by this analysis's own identity rather than by the
@@ -1009,11 +1010,26 @@ if (length(group_col)) {
 find_wgcna_modules <- function(dataset) {
   override <- Sys.getenv("PROTEOMICS_WGCNA_MODULE_ASSIGNMENT_FILE", unset = "")
   if (nzchar(override)) return(override)
+  ## Phase 6G.8: the normalized WGCNA roots come first, the historical ones
+  ## stay as the compatibility fallback. The ordered-root search and the loose
+  ## filename patterns below are pre-existing and deliberately left alone: the
+  ## result is schema-validated by read_wgcna_modules(), which requires a
+  ## ProteinGroupID column and a module column and returns NULL otherwise, so a
+  ## wrong file is rejected rather than used. The looseness is recorded as debt
+  ## rather than redesigned here.
   roots <- c(
-    path_results("tables", "06_modules_WGCNA", "01_WGCNA", dataset, "modules"),
-    path_results("tables", "06_modules_WGCNA", "01_WGCNA", dataset),
-    path_results("tables", "06_modules_WGCNA", dataset),
-    path_processed("06_modules_WGCNA", "01_WGCNA", dataset, "modules")
+    wgcna_dirs("build_wgcna_modules", dataset)$tables |> file.path("modules"),
+    wgcna_dirs("build_wgcna_modules", dataset)$tables,
+    wgcna_dirs("build_wgcna_modules", dataset)$models,
+    wgcna_modules_dir(dataset),
+    wgcna_modules_scope_dir(dataset),
+    ## Phase 6G.8 Batch 3D: results/tables/06_modules_WGCNA/<dataset> was
+    ## removed rather than normalized. It never existed: the historical layout
+    ## puts the family before the dataset, so every child of that stage root is
+    ## a family name and a bare dataset directory is not one of them. Verified
+    ## absent for all three canonical datasets, so dropping it changes nothing
+    ## that dir.exists() was not already skipping.
+    wgcna_dir_any("build_wgcna_modules", "01_WGCNA", dataset, "models", "processed", TRUE, "modules")
   )
   patterns <- c("module.*assignment.*\\.(csv|tsv)$", "module.*membership.*\\.(csv|tsv)$", "protein.*module.*\\.(csv|tsv)$", ".*modules.*\\.(csv|tsv)$")
   files <- unique(unlist(lapply(roots[dir.exists(roots)], function(root) {
@@ -1038,7 +1054,9 @@ read_wgcna_modules <- function(path) {
 find_wgcna_state <- function(dataset) {
   override <- Sys.getenv("PROTEOMICS_WGCNA_STATE_FILE", unset = "")
   if (nzchar(override)) return(override)
-  path_processed("06_modules_WGCNA", "01_WGCNA", dataset, "wgcna_final_model_state.rds")
+  ## Phase 6G.8: normalized first, historical fallback, and scoped to the
+  ## validated dataset so the retained failed-run state can never be returned.
+  wgcna_final_state(dataset)
 }
 
 run_enrichment <- function(feature_keys, feature_col, modules, universe, dataset) {

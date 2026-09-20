@@ -88,11 +88,16 @@ rel <- function(path) {
 source(repo_path("R", "null_coalescing.R"))
 source(repo_path("R", "qc_result_paths.R"))
 source(repo_path("R", "preprocessing_paths.R"))
+source(repo_path("R", "wgcna_paths.R"))
 
-state_path <- file.path(repo_root, "data/processed/06_modules_WGCNA/01_WGCNA/microglia/wgcna_final_model_state.rds")
-definitions_path <- file.path(repo_root, "results/tables/06_modules_WGCNA/01_WGCNA/microglia/modules/WGCNA_module_definitions_for_downstream.csv")
-super_values_path <- file.path(repo_root, "results/tables/06_modules_WGCNA/group_effects/microglia/all_supermodule_eigengene_group_values.csv")
-annotation_path <- file.path(repo_root, "results/tables/06_modules_WGCNA/module_annotation/microglia/WGCNA_module_biological_annotation.csv")
+state_path <- wgcna_modules_artifact("wgcna_final_model_state.rds", "microglia", child = "models")
+definitions_path <- wgcna_modules_artifact("WGCNA_module_definitions_for_downstream.csv", "microglia", child = "tables", "modules")
+## Phase 6G.8: reads of migrated WGCNA objects, normalized first and historical
+## second, matching what 6G.7 already did for the preprocessing and QC inputs
+## below. These were spelled as one slash-joined literal, which is why the
+## original path_results() enumeration never saw them.
+super_values_path <- wgcna_group_effects_artifact("all_supermodule_eigengene_group_values.csv", "microglia")
+annotation_path <- wgcna_annotation_artifact("WGCNA_module_biological_annotation.csv", "microglia")
 registry_path <- file.path(repo_root, "config/wgcna_labels/microglia.csv")
 ## Phase 6G.7: a read of a migrated preprocessing object, normalized first and
 ## historical second. WGCNA's own output paths are untouched by that phase.
@@ -116,10 +121,16 @@ readiness_contract_version <- "microglia_wgcna_nature_readiness_v2"
 
 protected_roots <- c(
   state_path,
-  file.path(repo_root, "results/tables/06_modules_WGCNA/01_WGCNA/microglia"),
-  file.path(repo_root, "results/tables/06_modules_WGCNA/group_effects/microglia"),
+  wgcna_modules_scope_dir("microglia"),
+  wgcna_group_effects_dir("microglia"),
   registry_path,
-  file.path(repo_root, "results/figures/06_modules_WGCNA/wgcna_publication_figures")
+  ## Phase 6G.8 Batch 3D: the publication-figure directory for THIS dataset,
+  ## resolved normalized-first with the historical directory as the fallback.
+  ## Naming the scope matters: the construction here was the family root, and a
+  ## recursive listing of a family root would hash whatever scopes happen to
+  ## sit under it. This script is microglia-only by contract (it stops above
+  ## otherwise), so the scope is DATASET.
+  wgcna_publication_figures_dir(DATASET)
 )
 protected_files <- unique(unlist(lapply(protected_roots, function(x) {
   if (!file.exists(x)) return(character())
@@ -174,10 +185,10 @@ if (any(lengths(observed_members[singleton_ids]) != 1L)) stop("The six standalon
 # the immutable historical membership.
 # -------------------------------------------------------------------------
 manifest_paths <- c(
-  file.path(repo_root, "results/logs/06_modules_WGCNA/01_WGCNA/microglia/wgcna_run_manifest.yml"),
-  file.path(repo_root, "results/logs/06_modules_WGCNA/01_WGCNA/microglia/run_manifest.yml")
+  wgcna_modules_artifact("wgcna_run_manifest.yml", "microglia", child = "manifests"),
+  wgcna_modules_artifact("run_manifest.yml", "microglia", child = "manifests")
 )
-sensitivity_path <- file.path(repo_root, "results/tables/06_modules_WGCNA/01_WGCNA/microglia/supermodules/supermodule_clustering_sensitivity.csv")
+sensitivity_path <- wgcna_modules_artifact("supermodule_clustering_sensitivity.csv", "microglia", child = "tables", "supermodules")
 source_hash <- function(path) if (file.exists(path)) unname(tools::md5sum(path)) else NA_character_
 extract_manifest_numeric <- function(path, key) {
   if (!file.exists(path)) return(NA_real_)

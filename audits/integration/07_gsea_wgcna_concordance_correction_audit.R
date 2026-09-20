@@ -10,6 +10,7 @@ suppressPackageStartupMessages({
 })
 
 source(file.path("R", "paths.R"))
+source(repo_path("R", "wgcna_paths.R"))
 
 args <- commandArgs(trailingOnly = TRUE)
 dry_run <- "--dry-run" %in% args
@@ -58,9 +59,7 @@ protected_base <- c("estimate", "SE", "statistic", "df_num", "df_den", "p_value"
 
 read_pair <- function(dataset, filename) {
   before_file <- file.path(baseline_dir, paste0(dataset, "__", filename))
-  after_file <- path_results(
-    "tables", "06_modules_WGCNA", "group_effects", dataset, filename
-  )
+  after_file <- wgcna_group_effects_artifact(filename, dataset)
   if (!file.exists(before_file) || !file.exists(after_file)) {
     stop("Missing Stage-05 audit pair: ", before_file, " / ", after_file,
          call. = FALSE)

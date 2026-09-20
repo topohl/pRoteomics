@@ -14,6 +14,7 @@ paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.
 source(paths_file)
 source(repo_path("R", "integration_utils.R"))
 source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
+source(repo_path("R", "wgcna_paths.R"))
 
 # Phase 6G.6: destinations resolve through the normalized output
 # contract, addressed by this analysis's own identity. This domain
@@ -27,7 +28,7 @@ run <- integration_cli(allow_all = TRUE)
 make_dataset <- function(ds) {
   paths <- integration_dirs(ANALYSIS_ID, ds, create = TRUE)
   inputs <- list(
-    inferential_handoff = path_results("tables", "06_modules_WGCNA", "interpretable_summary", ds, "WGCNA_inferential_handoff.csv"),
+    inferential_handoff = wgcna_interpretable_artifact("WGCNA_inferential_handoff.csv", ds),
     network_behavior = integration_find("edge_behavior_figure_ready_table.csv",
       owner = "test_network_behaviour_coupling",
       legacy_stage = "08_behavior_physio_coupling",

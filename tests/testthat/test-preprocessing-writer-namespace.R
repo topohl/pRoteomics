@@ -562,10 +562,24 @@ testthat::test_that("WGCNA reads migrated preprocessing but its outputs are unto
                       include_unsupported = TRUE)
   s <- s[startsWith(s$script, "analysis/wgcna/"), , drop = FALSE]
   testthat::expect_gt(nrow(s), 0L)
+  ## This used to assert that NO WGCNA script had a normalized output contract.
+  ## That was the right guard for Phase 6G.7, whose rule was that migrating
+  ## preprocessing must not incidentally normalize a neighbouring domain. Phase
+  ## 6G.8 then migrated WGCNA deliberately, so the prohibition is obsolete and
+  ## its inverse is what now needs protecting: WGCNA's normalized outputs must
+  ## be owned by WGCNA itself and must never be claimed by preprocessing.
   for (i in seq_len(nrow(s))) {
     prod <- sp(s$produces[i])
-    testthat::expect_false(any(startsWith(prod, "results/wgcna/")),
-      info = paste(s$script[i], "gained a normalized WGCNA output contract"))
+    norm <- prod[startsWith(prod, "results/")]
+    testthat::expect_false(any(startsWith(norm, "results/preprocessing/")),
+      info = paste(s$script[i], "claims a preprocessing-owned output"))
+  }
+  pp <- pipeline_steps(reg, pipeline_stage_names(reg), dataset = "all",
+                       include_unsupported = TRUE)
+  pp <- pp[startsWith(pp$script, "analysis/preprocessing/"), , drop = FALSE]
+  for (i in seq_len(nrow(pp))) {
+    testthat::expect_false(any(startsWith(sp(pp$produces[i]), "results/wgcna/")),
+      info = paste(pp$script[i], "claims a WGCNA-owned output"))
   }
   ## and the one WGCNA reader of the joint bundle goes through the resolver
   f <- repo_path("analysis", "wgcna", "audit_microglia_module_claims.R")

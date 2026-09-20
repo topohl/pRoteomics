@@ -16,21 +16,24 @@ source(repo_path("R", "wgcna_downstream_utils.R"))
 source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
 source(repo_path("R", "wgcna_labeling_utils.R"))
 source(repo_path("R", "wgcna_reviewed_label_registry.R"))
+source(repo_path("R", "wgcna_paths.R"))
 pkgs <- c("dplyr", "readr", "tidyr", "ggplot2", "svglite", "scales", "stringr")
 missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
 if (length(missing) && !is_dry_run()) stop("Missing packages: ", paste(missing, collapse = ", "), call. = FALSE)
 if (!length(missing)) suppressPackageStartupMessages(invisible(lapply(pkgs, library, character.only = TRUE)))
 run <- wgcna_cli(); if (!identical(run$dataset, "microglia")) stop("08b is microglia-only", call. = FALSE)
 DATASET <- "microglia"; sm_order <- sprintf("SM%02d", 1:9); roi_order <- c("CA1", "CA2", "CA3", "DG")
-OUT <- create_module_dirs("06_modules_WGCNA", file.path("wgcna_publication_figures_corrected", DATASET))
-FILES <- resolve_wgcna_files(DATASET); TBL <- path_results("tables", "06_modules_WGCNA")
-AUDIT <- path_results("reviewer_audit", "microglia_wgcna_nature_readiness")
-paths <- list(lookup = file.path(TBL, "interpretable_summary", DATASET, "WGCNA_final_label_lookup.csv"),
-  values = file.path(TBL, "group_effects", DATASET, "all_supermodule_eigengene_group_values.csv"),
-  effects = file.path(TBL, "interpretable_summary", DATASET, "WGCNA_inferential_handoff.csv"),
+OUT <- wgcna_dirs("render_microglia_module_figures", DATASET, create = TRUE)
+FILES <- resolve_wgcna_files(DATASET)
+AUDIT <- wgcna_dir_any("audit_microglia_module_claims",
+                       "microglia_wgcna_nature_readiness", "global",
+                       "tables", "reviewer_audit", legacy_scoped = FALSE)
+paths <- list(lookup = wgcna_interpretable_artifact("WGCNA_final_label_lookup.csv", DATASET),
+  values = wgcna_group_effects_artifact("all_supermodule_eigengene_group_values.csv", DATASET),
+  effects = wgcna_interpretable_artifact("WGCNA_inferential_handoff.csv", DATASET),
   member = FILES$supermodule_annotation, summary = FILES$supermodule_summary,
   definitions = FILES$definitions,
-  loadings = file.path(TBL, "group_effects", DATASET, "supermodule_pca_member_loadings.csv"),
+  loadings = wgcna_group_effects_artifact("supermodule_pca_member_loadings.csv", DATASET),
   modules = file.path(AUDIT, "module_robustness_consensus.csv"), blocks = file.path(AUDIT, "higher_order_block_readiness_summary.csv"),
   variance = file.path(AUDIT, "module_eigengene_variance_partition_fixed_group.csv"))
 if (run$dry_run) { for (p in unlist(paths)) dry_run_line("Input", p, if (file.exists(p)) "PASS" else "FAIL"); dry_run_line("Output", file.path(OUT$figures, "wgcna_readiness_summary.svg")); quit(status = 0) }

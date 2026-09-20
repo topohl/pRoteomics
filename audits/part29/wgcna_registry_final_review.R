@@ -3,6 +3,18 @@
 # Part-29, sections 28 / 29 / 30 - final WGCNA annotation-registry review
 # =====================================================================
 #
+# Phase 6G.8: the canonical Stage-01 tables below are named through the WGCNA
+# path resolver, which looks in the normalized location first and falls back to
+# the historical one. This script has no source() block of its own, so the
+# bootstrap is explicit and must precede the first resolver call.
+paths_file <- if (file.exists(file.path("R", "paths.R"))) {
+  file.path("R", "paths.R")
+} else {
+  file.path("..", "..", "R", "paths.R")
+}
+source(paths_file)
+source(repo_path("R", "wgcna_paths.R"))
+#
 # AUDIT ONLY. Nothing canonical is recomputed, rerun or rewritten. This
 # script READS the canonical tables, re-derives every evidence layer from
 # them, and writes CSVs under
@@ -68,8 +80,7 @@ rd <- function(...) utils::read.csv(file.path(...), stringsAsFactors = FALSE,
 
 ## ---------------------------------------------------------------- E1/E2
 read_ds <- function(ds, f) {
-  p <- file.path("results", "tables", "06_modules_WGCNA", "01_WGCNA", ds,
-                 "modules", f)
+  p <- wgcna_modules_artifact(f, ds, child = "tables", "modules")
   if (!file.exists(p)) stop("missing canonical table: ", p)
   x <- rd(p); x$dataset <- ds; x
 }

@@ -15,6 +15,7 @@ source("R/statistics/sus_res_spatial_dap_atlas_utils.R")
 source("R/utilities/plotting_nature.R")
 source("R/manuscript_figure3_utils.R")
 source(repo_path("R", "integration_utils.R"))
+source(repo_path("R", "wgcna_paths.R"))
 
 # Phase 6G.6: destinations resolve through the normalized output
 # contract, addressed by this analysis's own identity. This domain
@@ -29,23 +30,14 @@ contrast_levels <- c("RES - CON", "SUS - CON", "SUS - RES")
 manuscript_text <- nature_manuscript_text_sizes_pt()
 if ("--dry-run" %in% commandArgs(trailingOnly = TRUE)) {
   dry_inputs <- c(
-    stage07_handoff = path_results(
-      "source_data", "06_modules_WGCNA", "interpretable_summary", dataset,
-      "module_group_effects_main_heatmap_source.csv"
-    ),
-    module_membership = path_results(
-      "tables", "06_modules_WGCNA", "01_WGCNA", dataset, "modules",
-      "WGCNA_modules_long.csv"
-    ),
+    stage07_handoff = wgcna_interpretable_artifact("module_group_effects_main_heatmap_source.csv", dataset, source_data = TRUE),
+    module_membership = wgcna_modules_artifact("WGCNA_modules_long.csv", dataset, child = "tables", "modules"),
     clusterprofiler_manifest = canonical_clusterprofiler_manifest_path(dataset),
     concordance_overlap = integration_find("program_specific_leading_edge_module_overlap.csv",
       owner = "test_enrichment_module_concordance",
       legacy_stage = "10_biological_integration",
       legacy_substep = "gsea_wgcna_concordance"),
-    module_go = path_results(
-      "tables", "06_modules_WGCNA", "01b_module_supermodule_GO_heatmaps",
-      dataset, "WGCNA_module_GO_heatmap_source_BP.csv"
-    )
+    module_go = wgcna_go_heatmap_artifact("WGCNA_module_GO_heatmap_source_BP.csv", dataset)
   )
   cat("[DRY-RUN] Figure 3 WGCNA/protein renderer; no outputs written.\n")
   for (name in names(dry_inputs)) {
@@ -89,7 +81,7 @@ save_both <- function(plot, stem, width_mm, height_mm) {
   )
 }
 
-handoff_path <- path_results("source_data", "06_modules_WGCNA", "interpretable_summary", dataset, "module_group_effects_main_heatmap_source.csv")
+handoff_path <- wgcna_interpretable_artifact("module_group_effects_main_heatmap_source.csv", dataset, source_data = TRUE)
 handoff_hash <- file_hash_sha256(handoff_path)
 handoff <- read_required(handoff_path, "complete Stage 07 module heatmap source") %>%
   filter(.data$contrast %in% contrast_levels) %>%
@@ -224,7 +216,7 @@ p3b_width_mm <- max(76, 54 + 6.2 * length(contrast_levels))
 p3b_height_mm <- 19 + 7.0 * nrow(module_rows)
 save_both(p3b, "figure3b_stage07_wgcna_effects", p3b_width_mm, p3b_height_mm)
 
-membership_path <- path_results("tables", "06_modules_WGCNA", "01_WGCNA", dataset, "modules", "WGCNA_modules_long.csv")
+membership_path <- wgcna_modules_artifact("WGCNA_modules_long.csv", dataset, child = "tables", "modules")
 membership_hash <- file_hash_sha256(membership_path)
 members_raw <- read_required(membership_path, "canonical WGCNA module membership") %>%
   filter(.data$ModuleID %in% selected_modules)
@@ -463,7 +455,7 @@ save_both(p3d, "figure3d_neuropil_module_protein_log2fc", p3d_width_mm, p3d_heig
 # Established pre-layout-correction compatibility stem.
 save_both(p3d, "figure3c_neuropil_module_protein_log2fc", p3d_width_mm, p3d_height_mm)
 
-go_path <- path_results("tables", "06_modules_WGCNA", "01b_module_supermodule_GO_heatmaps", dataset, "WGCNA_module_GO_heatmap_source_BP.csv")
+go_path <- wgcna_go_heatmap_artifact("WGCNA_module_GO_heatmap_source_BP.csv", dataset)
 go <- read_required(go_path, "canonical module GO source") %>% filter(.data$ModuleID %in% selected_modules, .data$Significant) %>% group_by(.data$ModuleID) %>% arrange(.data$p_adjust, desc(.data$EnrichmentScore), .data$TermID, .by_group = TRUE) %>% slice_head(n = 3L) %>% ungroup()
 readr::write_csv(go, file.path(source_dir, "figure3c_selected_module_go_source.csv"), na = "")
 readr::write_csv(go, file.path(source_dir, "figure3d_selected_module_go_source.csv"), na = "")
@@ -511,7 +503,7 @@ validation <- do.call(rbind, validation_records)
 figure3_assert_structural_checks(validation)
 figure3_warn_snapshot_mismatches(validation)
 readr::write_csv(validation, file.path(table_dir, "figure3_validation.csv"), na = "")
-focused_go_path <- path_results("tables", "06_modules_WGCNA", "01b_module_supermodule_GO_heatmaps", dataset, "WGCNA_supermodule_GO_focused_source_BP.csv")
+focused_go_path <- wgcna_go_heatmap_artifact("WGCNA_supermodule_GO_focused_source_BP.csv", dataset)
 inventory <- tibble(figure = "3", panel = c("3a", "3b", "3c", "3d"), question = c("SUS-RES spatial DAP atlas", "Complete Neuropil WGCNA module landscape across the three canonical global contrasts.", "Focused Neuropil supermodule GO-BP member-module evidence.", "Protein-level spatial zoom-ins for selected biologically interpretable WGCNA modules."),
                     renderer = c("analysis/differential_abundance/build_sus_res_dap_atlas.R", "analysis/integration/export_module_protein_zoom_source_data.R", "analysis/wgcna/render_module_go_heatmaps.R", "analysis/integration/export_module_protein_zoom_source_data.R"),
                     upstream_source = c("manifest-selected DA/GSEA", handoff_path, focused_go_path, paste(membership_path, manifest_path, sep = ";")), metric = c("DAP/GSEA", "Stage-07 estimate", "member-module GO support", "protein log2FC"), statistical_level = c("canonical atlas", "module-level Stage-07 / Stage-05 WGCNA effects", "member-module evidence; no pooled supermodule inference", "protein-level canonical differential-abundance log2FC"), FDR_source = c("canonical protein/GO families", "tier_specific_fdr", "member-module BH FDR", "protein padj"), status = c("reused", "rendered", "reused", "downstream renderer"), notes = c("No rebuild.", sprintf("%d/%d descriptive RES > CON > SUS point-estimate geometry; no new test; no Cohen's d.", geometry_count, stage07_module_count), "Selected GO terms, recurrence and redundancy pruning unchanged.", sprintf("m01, m02, m12; abs(kME)-only display selection; within-module display ranks; current m12 authoritative RNA/RNP overlap coverage %d/15; CA2-SLM context is annotation only.", m12_coverage)))

@@ -40,6 +40,7 @@ source("R/spatial/control_spatial_identity_utils.R")
 source("R/data_contracts/spatial_systems_data_utils.R")
 source("R/spatial/spatial_systems_bilateral_utils.R")
 source(repo_path("R", "spatial_systems_paths.R"))
+source(repo_path("R", "wgcna_paths.R"))
 
 # Phase 6G.3: destinations resolve through the normalized output contract,
 # addressed by this analysis's own identity rather than by the historical
@@ -176,8 +177,7 @@ wide <- fits %>%
 
 # gene symbol where a gene-level claim is allowed
 sym_lut <- dplyr::bind_rows(lapply(DATASETS, function(ds) {
-  p <- path_results("tables", "06_modules_WGCNA", "01_WGCNA", ds, "modules",
-                    "WGCNA_modules_long.csv")
+  p <- wgcna_modules_artifact("WGCNA_modules_long.csv", ds, child = "tables", "modules")
   if (!file.exists(p)) return(NULL)
   z <- as.data.frame(readr::read_csv(p, show_col_types = FALSE, progress = FALSE,
                                      guess_max = Inf))

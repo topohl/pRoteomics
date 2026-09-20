@@ -17,6 +17,7 @@ source(paths_file)
 source(repo_path("R", "wgcna_downstream_utils.R"))
 source(repo_path("R", "wgcna_reviewed_label_registry.R"))
 source(repo_path("R", "qc_result_paths.R"))
+source(repo_path("R", "wgcna_paths.R"))
 
 required_pkgs <- c("dplyr", "tidyr", "tibble", "ggplot2", "svglite", "readr", "stringr", "scales")
 missing_pkgs <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
@@ -64,7 +65,7 @@ wgcna_stage06_validate_contrast_blind_annotation <- function(
 
 run <- wgcna_cli()
 DATASET <- run$dataset
-PATHS <- wgcna_downstream_paths("module_annotation", DATASET)
+PATHS <- wgcna_dirs("annotate_module_microenvironment", DATASET, create = TRUE)
 FILES <- resolve_wgcna_files(DATASET)
 force_microglia <- tolower(Sys.getenv("PROTEOMICS_FORCE_MICROGLIA_MODULE_ANNOTATION", unset = "false")) %in% c("1", "true", "yes")
 classification_threshold <- suppressWarnings(as.numeric(Sys.getenv("PROTEOMICS_WGCNA_MARKER_FRACTION_THRESHOLD", unset = "0.10")))
@@ -128,7 +129,7 @@ if (run$dry_run) {
   dry_run_line("Marker registry", Sys.getenv("PROTEOMICS_WGCNA_MARKER_REGISTRY_FILE", unset = repo_path("config", "marker_panels", "wgcna_reference_marker_sets.csv")), "INFO")
   dry_run_line("Empirical ROI marker sets", Sys.getenv("PROTEOMICS_WGCNA_EMPIRICAL_MARKER_FILE", unset = qc_find("empirical_roi_marker_sets.csv", owner = "discover_empirical_roi_markers", legacy_substep = "05_empirical_roi_marker_discovery")), "INFO")
   dry_run_line("Supplemental microenvironment marker panels", supplemental_marker_panel_file, if (file.exists(supplemental_marker_panel_file)) "PASS" else "FAIL")
-  dry_run_line("Microenvironment threshold sensitivity audit", path_results("reviewer_audit", "wgcna_microenvironment_threshold_sensitivity.csv"), "INFO")
+  dry_run_line("Microenvironment threshold sensitivity audit", file.path(PATHS$tables, "wgcna_microenvironment_threshold_sensitivity.csv"), "INFO")
   dry_run_line("Output tables", PATHS$tables)
   quit(status = 0, save = "no")
 }
@@ -1588,7 +1589,7 @@ for (nm in supermodule_composition_columns) {
   if (!nm %in% names(super_annot)) super_annot[[nm]] <- NA
 }
 
-audit_dir <- path_results("reviewer_audit")
+audit_dir <- PATHS$tables
 dir_create(audit_dir)
 replace_dataset_audit <- function(path, rows) {
   old <- safe_read_csv(path)

@@ -17,6 +17,7 @@ source(repo_path("R", "plotting_nature.R"))
 source(repo_path("R", "wgcna_downstream_utils.R"))
 source(repo_path("R", "wgcna_go_comparison_utils.R"))
 source(repo_path("R", "validation_utils.R"))
+source(repo_path("R", "wgcna_paths.R"))
 
 run <- wgcna_cli(allow_all = TRUE)
 DATASET <- run$dataset
@@ -45,21 +46,15 @@ if (any(!is.finite(c(TOP_TERMS_PER_MODULE, TOP_TERMS_PER_SUPERMODULE, FOCUSED_TE
   stop("Term-count parameters must be positive integers.", call. = FALSE)
 }
 
-PATHS <- wgcna_downstream_paths("01b_module_supermodule_GO_heatmaps", DATASET)
-MODULES_DIR <- path_results("tables", "06_modules_WGCNA", "01_WGCNA", DATASET, "modules")
-SUPERMODULES_DIR <- path_results("tables", "06_modules_WGCNA", "01_WGCNA", DATASET, "supermodules")
-GO_FILE <- file.path(MODULES_DIR, "WGCNA_module_GO_enrichment_long.csv")
-MODULE_MAP_FILE <- file.path(MODULES_DIR, "module_name_map.csv")
-MEMBERSHIP_FILE <- file.path(
-  SUPERMODULES_DIR,
-  if (identical(DATASET, "microglia")) "wgcna_module_supermodule_annotation.csv" else "wgcna_supermodule_eigengene_clusters.csv"
-)
+PATHS <- wgcna_dirs("render_module_go_heatmaps", DATASET, create = TRUE)
+MODULES_DIR <- wgcna_modules_dir(DATASET)
+SUPERMODULES_DIR <- wgcna_supermodules_dir(DATASET)
+GO_FILE <- wgcna_modules_artifact("WGCNA_module_GO_enrichment_long.csv", DATASET, child = "tables", "modules")
+MODULE_MAP_FILE <- wgcna_modules_artifact("module_name_map.csv", DATASET, child = "tables", "modules")
+MEMBERSHIP_FILE <- wgcna_modules_artifact(if (identical(DATASET, "microglia")) "wgcna_module_supermodule_annotation.csv" else "wgcna_supermodule_eigengene_clusters.csv", DATASET, child = "tables", "supermodules")
 FOCUSED_DATASETS <- wgcna_focused_dataset_order()
 focused_dataset_table_file <- function(dataset, stem, ontology) {
-  path_results(
-    "tables", "06_modules_WGCNA", "01b_module_supermodule_GO_heatmaps", dataset,
-    paste0(stem, "_", ontology, ".csv")
-  )
+  wgcna_go_heatmap_artifact(paste0(stem, "_", ontology, ".csv"), dataset)
 }
 
 if (run$dry_run) {

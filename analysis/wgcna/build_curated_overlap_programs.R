@@ -33,9 +33,10 @@ library(openxlsx)
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
 source(repo_path("R", "module_contracts.R"))
+source(repo_path("R", "wgcna_paths.R"))
 MODULE_ID <- "06_modules_WGCNA"
 SUBSTEP_ID <- file.path("curated_overlap_programs", "global")
-CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
+CANONICAL_PATHS <- wgcna_dirs("build_curated_overlap_programs", "global", create = TRUE)
 
 # ------------------------------------------------
 # 1) PATHS
@@ -48,7 +49,7 @@ mapping_file <- path_external("MOUSE_10090_idmapping.dat")
 saving_dir <- CANONICAL_PATHS$tables
 
 dir.create(saving_dir, recursive = TRUE, showWarnings = FALSE)
-dir.create(CANONICAL_PATHS$processed, recursive = TRUE, showWarnings = FALSE)
+dir.create(CANONICAL_PATHS$models, recursive = TRUE, showWarnings = FALSE)
 
 if (is_dry_run()) {
   dry_run_line("Script", "analysis/wgcna/build_curated_overlap_programs.R")
@@ -375,20 +376,20 @@ saveWorkbook(
 
 saveRDS(
   module_defs,
-  file.path(CANONICAL_PATHS$processed, "curated_overlap_programs.rds")
+  file.path(CANONICAL_PATHS$models, "curated_overlap_programs.rds")
 )
 saveRDS(
   module_defs,
-  file.path(CANONICAL_PATHS$processed, "Overlap_based_neuropil_modules_classified.rds")
+  file.path(CANONICAL_PATHS$models, "Overlap_based_neuropil_modules_classified.rds")
 )
 
 write_csv(
   module_long,
-  file.path(CANONICAL_PATHS$processed, "curated_overlap_programs_long.csv")
+  file.path(CANONICAL_PATHS$models, "curated_overlap_programs_long.csv")
 )
 write_csv(
   module_long,
-  file.path(CANONICAL_PATHS$processed, "Overlap_based_neuropil_modules_classified_long.csv")
+  file.path(CANONICAL_PATHS$models, "Overlap_based_neuropil_modules_classified_long.csv")
 )
 write_csv(
   module_long,
@@ -407,7 +408,7 @@ write_run_manifest(
   outputs = list(
     workbook = file.path(saving_dir, "curated_overlap_programs.xlsx"),
     long_csv = file.path(saving_dir, "curated_overlap_programs_long.csv"),
-    processed_rds = file.path(CANONICAL_PATHS$processed, "curated_overlap_programs.rds")
+    processed_rds = file.path(CANONICAL_PATHS$models, "curated_overlap_programs.rds")
   ),
   parameters = list(
     dataset_scope = "global",

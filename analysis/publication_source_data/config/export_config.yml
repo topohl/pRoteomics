@@ -101,7 +101,22 @@ supplementary_table_globs:
   # found; neither pattern can match a comparison branch.
   - "results/enrichment/run_ewce_celltype_enrichment/*/tables/Supplementary_Table_EWCE.xlsx"
   - "results/enrichment/run_ewce_celltype_enrichment/*/tables/High_Confidence_EWCE_Findings.xlsx"
-  - "results/tables/06_modules_WGCNA/01_WGCNA/*/modules/WGCNA_module_evidence_rank.csv"
+  # Phase 6G.8. The scope slot here was an unguarded "*", and 01_WGCNA holds a
+  # fourth directory: microglia_failed_20260720_133211, the retained artifact
+  # of a failed run. Sys.glob matched it alongside the three real datasets and
+  # build_supplementary_tables.R applies no dataset validation, so a failed-run
+  # module ranking could have entered the supplementary tables as if it were a
+  # fourth dataset. It is not in today's payload - this family contributes no
+  # rows to the current manifest - so the datasets are named explicitly here
+  # before that can happen. Each carries its normalized sibling first, so a
+  # future normalized WGCNA run is discoverable, with the historical path kept
+  # as the compatibility fallback.
+  - "results/wgcna/build_wgcna_modules/neuron_neuropil/tables/modules/WGCNA_module_evidence_rank.csv"
+  - "results/tables/06_modules_WGCNA/01_WGCNA/neuron_neuropil/modules/WGCNA_module_evidence_rank.csv"
+  - "results/wgcna/build_wgcna_modules/neuron_soma/tables/modules/WGCNA_module_evidence_rank.csv"
+  - "results/tables/06_modules_WGCNA/01_WGCNA/neuron_soma/modules/WGCNA_module_evidence_rank.csv"
+  - "results/wgcna/build_wgcna_modules/microglia/tables/modules/WGCNA_module_evidence_rank.csv"
+  - "results/tables/06_modules_WGCNA/01_WGCNA/microglia/modules/WGCNA_module_evidence_rank.csv"
   - "results/source_data/04_differential_expression_enrichment/**/*.csv"
   - "results/differential_abundance/*/*/tables/source_data/*.csv"
 

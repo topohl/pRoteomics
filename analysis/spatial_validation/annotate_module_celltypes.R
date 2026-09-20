@@ -41,6 +41,7 @@ source("R/data_contracts/dataset_config.R")
 source("R/statistics/integration_utils.R")
 source("R/enrichment/ewce_gene_set_engine.R")
 source(repo_path("R", "spatial_systems_paths.R"))
+source(repo_path("R", "wgcna_paths.R"))
 
 # Phase 6G.3: destinations resolve through the normalized output contract,
 # addressed by this analysis's own identity rather than by the historical
@@ -67,8 +68,7 @@ OUT <- function() {
   d <- CANONICAL_PATHS$tables; dir_create(d); d
 }
 membership_path <- function(ds) {
-  path_results("tables", "06_modules_WGCNA", "01_WGCNA", ds, "modules",
-               "WGCNA_modules_long.csv")
+  wgcna_modules_artifact("WGCNA_modules_long.csv", ds, child = "tables", "modules")
 }
 DATASETS <- valid_datasets()
 

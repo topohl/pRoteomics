@@ -16,6 +16,7 @@ source(repo_path("R", "wgcna_downstream_utils.R"))
 source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
 source(repo_path("R", "wgcna_labeling_utils.R"))
 source(repo_path("R", "wgcna_reviewed_label_registry.R"))
+source(repo_path("R", "wgcna_paths.R"))
 
 required_pkgs <- c("dplyr", "tidyr", "tibble", "ggplot2", "readr", "stringr", "scales", "svglite", "digest")
 missing_pkgs <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
@@ -26,10 +27,10 @@ run <- wgcna_cli()
 DATASET <- run$dataset
 if (!identical(DATASET, "microglia")) stop("render_module_figures.R is restricted to the reviewed microglia network.", call. = FALSE)
 
-OUT <- create_module_dirs("06_modules_WGCNA", file.path("wgcna_publication_figures", DATASET))
-GROUP_DIR <- path_results("tables", "06_modules_WGCNA", "group_effects", DATASET)
-LABEL_FILE <- path_results("tables", "06_modules_WGCNA", "interpretable_summary", DATASET, "WGCNA_final_label_lookup.csv")
-HANDOFF_FILE <- path_results("tables", "06_modules_WGCNA", "interpretable_summary", DATASET, "WGCNA_inferential_handoff.csv")
+OUT <- wgcna_dirs("render_module_figures", DATASET, create = TRUE)
+GROUP_DIR <- wgcna_group_effects_dir(DATASET)
+LABEL_FILE <- wgcna_interpretable_artifact("WGCNA_final_label_lookup.csv", DATASET)
+HANDOFF_FILE <- wgcna_interpretable_artifact("WGCNA_inferential_handoff.csv", DATASET)
 FILES <- resolve_wgcna_files(DATASET)
 
 figure_stems <- c(

@@ -36,6 +36,7 @@ source("R/spatial/spatial_atlas_utils.R")
 source("R/enrichment/ewce_gene_set_engine.R")
 source(repo_path("R", "spatial_systems_paths.R"))
 source(repo_path("R", "qc_result_paths.R"))
+source(repo_path("R", "wgcna_paths.R"))
 
 # Phase 6G.3: destinations resolve through the normalized output contract,
 # addressed by this analysis's own identity rather than by the historical
@@ -54,14 +55,10 @@ OUT <- function() {
   d <- CANONICAL_PATHS$tables; dir_create(d); d
 }
 P <- list(
-  membership = function(ds) path_results("tables", "06_modules_WGCNA", "01_WGCNA", ds,
-                                         "modules", "WGCNA_modules_long.csv"),
-  universe   = function(ds) path_results("tables", "06_modules_WGCNA", "01_WGCNA", ds,
-                                         "modules", "WGCNA_feature_universe.csv"),
-  contract   = function(ds) path_results("tables", "06_modules_WGCNA", "identity_contract",
-                                         ds, "WGCNA_module_supermodule_membership_contract.csv"),
-  lookup     = function(ds) path_results("tables", "06_modules_WGCNA", "interpretable_summary",
-                                         ds, "WGCNA_final_label_lookup.csv"),
+  membership = function(ds) wgcna_modules_artifact("WGCNA_modules_long.csv", ds, child = "tables", "modules"),
+  universe   = function(ds) wgcna_modules_artifact("WGCNA_feature_universe.csv", ds, child = "tables", "modules"),
+  contract   = function(ds) wgcna_identity_contract_artifact("WGCNA_module_supermodule_membership_contract.csv", ds),
+  lookup     = function(ds) wgcna_interpretable_artifact("WGCNA_final_label_lookup.csv", ds),
   bilateral  = spatial_systems_find("WGCNA_module_bilateral_reproducibility.csv",
                                     "bilateral"),
   bil_prof   = spatial_systems_find("WGCNA_module_bilateral_spatial_profile_summary.csv",

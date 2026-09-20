@@ -17,6 +17,7 @@ source(repo_path("R", "wgcna_claim_readiness_utils.R"))
 source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
 source(repo_path("R", "module_semantic_utils.R"))
 source(repo_path("R", "qc_result_paths.R"))
+source(repo_path("R", "wgcna_paths.R"))
 
 # Phase 6G.6: destinations resolve through the normalized output
 # contract, addressed by this analysis's own identity. This domain
@@ -33,11 +34,11 @@ dataset_inputs <- function(ds) {
   inputs <- list(
     enrichment_program = path_results("tables", "04_differential_expression_enrichment", "biological_program_summary", ds, "program_summary.csv"),
     external_signature = path_results("tables", "04_differential_expression_enrichment", "external_stress_disease_signature_overlap", "global", "external_stress_disease_signature_overlap.csv"),
-    wgcna_inferential = path_results("tables", "06_modules_WGCNA", "interpretable_summary", ds, "WGCNA_inferential_handoff.csv"),
-    wgcna_label_lookup = path_results("tables", "06_modules_WGCNA", "interpretable_summary", ds, "WGCNA_final_label_lookup.csv"),
-    microenvironment = path_results("tables", "06_modules_WGCNA", "module_annotation", ds, "WGCNA_supermodule_biological_annotation.csv"),
-    complex_architecture = path_results("tables", "06_modules_WGCNA", "module_complex_architecture", ds, "module_complex_architecture.csv"),
-    robustness = path_results("tables", "06_modules_WGCNA", "module_robustness_sensitivity", ds, "module_robustness_sensitivity.csv"),
+    wgcna_inferential = wgcna_interpretable_artifact("WGCNA_inferential_handoff.csv", ds),
+    wgcna_label_lookup = wgcna_interpretable_artifact("WGCNA_final_label_lookup.csv", ds),
+    microenvironment = wgcna_annotation_artifact("WGCNA_supermodule_biological_annotation.csv", ds),
+    complex_architecture = wgcna_complex_architecture_artifact("module_complex_architecture.csv", ds),
+    robustness = wgcna_robustness_artifact("module_robustness_sensitivity.csv", ds),
     module_behavior = integration_find("module_behavior_coupling.csv",
       owner = "test_module_behaviour_coupling",
       legacy_stage = "08_behavior_physio_coupling",

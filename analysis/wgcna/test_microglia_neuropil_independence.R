@@ -14,6 +14,7 @@ source(paths_file)
 source(repo_path("R", "wgcna_downstream_utils.R"))
 source(repo_path("R", "schema_validation.R"))
 source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
+source(repo_path("R", "wgcna_paths.R"))
 
 SCRIPT_ID <- "analysis/wgcna/test_microglia_neuropil_independence.R"
 required_pkgs <- c("dplyr", "tidyr", "tibble", "readr", "yaml")
@@ -32,7 +33,7 @@ if (!identical(DATASET, "microglia") && !is_dry_run()) {
   stop("This sensitivity analysis is microglia-only. Use --dataset microglia.", call. = FALSE)
 }
 
-PATHS <- create_module_dirs("06_modules_WGCNA", file.path("microglia_neuropil_independence", "microglia"))
+PATHS <- wgcna_dirs("test_microglia_neuropil_independence", "microglia", create = TRUE)
 FILES_MICRO <- resolve_wgcna_files("microglia")
 FILES_NEURO <- resolve_wgcna_files("neuron_neuropil")
 CONFIG_FILE <- repo_path("config", "microglia_neuropil_independence.yml")
@@ -44,16 +45,16 @@ inputs <- list(
   neuron_neuropil_definitions = FILES_NEURO$definitions,
   microglia_marker_traits = FILES_MICRO$marker_traits,
   neuron_neuropil_marker_traits = FILES_NEURO$marker_traits,
-  microglia_inferential_handoff = path_results("tables", "06_modules_WGCNA", "interpretable_summary", "microglia", "WGCNA_inferential_handoff.csv")
+  microglia_inferential_handoff = wgcna_interpretable_artifact("WGCNA_inferential_handoff.csv", "microglia")
 )
 
 if (is_dry_run()) {
   dry_run_line("Script", SCRIPT_ID)
   dry_run_line("Dataset", DATASET)
   dry_run_line("Output tables", PATHS$tables)
-  dry_run_line("Reviewer claim gate audit", path_results("reviewer_audit", "microglia_neuropil_independence_claim_gate.csv"))
-  dry_run_line("Reviewer covariate selection audit", path_results("reviewer_audit", "microglia_neuropil_covariate_selection_audit.csv"))
-  dry_run_line("Reviewer endpoint scope audit", path_results("reviewer_audit", "microglia_neuropil_independence_endpoint_scope_audit.csv"))
+  dry_run_line("Reviewer claim gate audit", file.path(wgcna_dirs("test_microglia_neuropil_independence", "global")$tables, "microglia_neuropil_independence_claim_gate.csv"))
+  dry_run_line("Reviewer covariate selection audit", file.path(wgcna_dirs("test_microglia_neuropil_independence", "global")$tables, "microglia_neuropil_covariate_selection_audit.csv"))
+  dry_run_line("Reviewer endpoint scope audit", file.path(wgcna_dirs("test_microglia_neuropil_independence", "global")$tables, "microglia_neuropil_independence_endpoint_scope_audit.csv"))
   for (nm in names(inputs)) dry_run_line(nm, inputs[[nm]], if (file.exists(inputs[[nm]])) "PASS" else "WARN")
   quit(status = 0, save = "no")
 }
@@ -787,7 +788,7 @@ module_classification <- results |>
   )
 
 signature_results <- results |> dplyr::filter(.data$endpoint_type == "targeted_signature_score")
-module_annotation <- read_csv_optional2(path_results("tables", "06_modules_WGCNA", "module_annotation", "microglia", "WGCNA_module_biological_annotation.csv"))
+module_annotation <- read_csv_optional2(wgcna_annotation_artifact("WGCNA_module_biological_annotation.csv", "microglia"))
 claim_gate_audit <- results |>
   dplyr::filter(.data$endpoint_type == "module_eigengene") |>
   dplyr::left_join(
@@ -870,7 +871,7 @@ write_table_and_source(results, PATHS$tables, PATHS$source_data, "microglia_neur
 write_table_and_source(module_classification, PATHS$tables, PATHS$source_data, "microglia_module_neuropil_independence_classification.csv")
 write_table_and_source(signature_results, PATHS$tables, PATHS$source_data, "microglia_targeted_signature_neuropil_independence_effects.csv")
 
-audit_dir <- path_results("reviewer_audit")
+audit_dir <- wgcna_dirs("test_microglia_neuropil_independence", "global", create = TRUE)$tables
 dir_create(audit_dir)
 validate_table_schema(claim_gate_audit, "microglia_neuropil_independence_claim_gate", strict = TRUE)
 validate_table_schema(selection_audit, "microglia_neuropil_covariate_selection_audit", strict = FALSE)

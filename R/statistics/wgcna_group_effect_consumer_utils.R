@@ -3,6 +3,16 @@
 # This helper is a semantic handoff only. It must not calculate FDR values,
 # rebuild statistical support, decide manuscript readiness, or label biology.
 
+# The Stage 05 source artifact is named through the WGCNA path resolver, which
+# looks in the normalized location first and falls back to the historical one.
+if (!exists("wgcna_group_effects_artifact", mode = "function")) {
+  if (!exists("repo_path", mode = "function")) {
+    paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
+    source(paths_file)
+  }
+  source(repo_path("R", "wgcna_paths.R"))
+}
+
 if (!exists("wgcna_group_classify_statistical_support", mode = "function")) {
   support_utils <- c(
     if (exists("repo_path", mode = "function")) {
@@ -716,9 +726,19 @@ wgcna_inferential_handoff_source_artifact <- function(dataset, entity_level) {
       NA_character_
     )
   )
+  # DELIBERATELY NOT the path resolver. This is not a read: the value is written
+  # into WGCNA_inferential_handoff.csv as the source_artifact provenance column
+  # and is only ever compared for string equality by
+  # wgcna_stage07_validate_inferential_handoff(). It is a repo-RELATIVE
+  # identifier, and thousands of rows of existing handoff artifacts already
+  # carry exactly this string.
+  #
+  # Phase 6G.8 converted this to wgcna_group_effects_artifact() and it had to be
+  # reverted: the resolver returns an absolute path, so every stored trace
+  # stopped matching and validation rejected all rows of the frozen handoffs.
+  # Per section 22, a manifest-origin string is not repointed for consistency.
   file.path(
-    "results", "tables", "06_modules_WGCNA", "group_effects",
-    dataset, filename
+    "results", "tables", "06_modules_WGCNA", "group_effects", dataset, filename
   )
 }
 

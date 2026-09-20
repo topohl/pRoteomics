@@ -24,6 +24,7 @@ library(tibble)
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
 source(repo_path("R", "dataset_config.R"))
+source(repo_path("R", "wgcna_paths.R"))
 
 # ------------------------------------------------
 # 1) SETTINGS
@@ -54,11 +55,8 @@ comparego_dir <- path_results(
 
 aggregate_input_file <- file.path(comparego_dir, target_file)
 
-output_dir <- path_results(
-  "tables",
-  "04_differential_expression_enrichment",
-  "compareGO",
-  DATASET,
+output_dir <- file.path(
+  wgcna_dirs("compare_recurrent_module_proteins", DATASET)$tables,
   "recurrent_top_gene_drivers"
 )
 dir_create(output_dir)

@@ -4,6 +4,17 @@
 # Stage 01-13 outputs. It derives current identity only from frozen state plus
 # an explicitly selected Stage 01 membership artifact.
 
+# The downstream specs below name Stage 01-13 artifacts through the WGCNA path
+# resolver. This file has no plain source() block of its own, so the guard is
+# explicit; a caller that already loaded the resolver pays nothing.
+if (!exists("wgcna_group_effects_artifact", mode = "function")) {
+  if (!exists("repo_path", mode = "function")) {
+    paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
+    source(paths_file)
+  }
+  source(repo_path("R", "wgcna_paths.R"))
+}
+
 wgcna_identity_contract_version <- function() {
   "wgcna_identity_contract_v1"
 }
@@ -102,34 +113,20 @@ wgcna_identity_supermodule_membership_key <- function(dataset, member_module_ids
 
 wgcna_identity_source_paths <- function(dataset) {
   dataset <- wgcna_identity_validate_dataset(dataset)
-  stage01_tables <- path_results("tables", "06_modules_WGCNA", "01_WGCNA", dataset)
-  stage01_logs <- path_results("logs", "06_modules_WGCNA", "01_WGCNA", dataset)
+  stage01_tables <- wgcna_modules_scope_dir(dataset)
+  stage01_logs <- wgcna_modules_scope_dir(dataset, "manifests")
   list(
-    frozen_state = path_processed(
-      "06_modules_WGCNA", "01_WGCNA", dataset, "wgcna_final_model_state.rds"
-    ),
-    module_definitions = file.path(
-      stage01_tables, "modules", "WGCNA_module_definitions_for_downstream.csv"
-    ),
-    current_membership_mapping = file.path(
-      stage01_tables, "supermodules", "wgcna_module_supermodule_annotation.csv"
-    ),
-    current_supermodule_summary = file.path(
-      stage01_tables, "supermodules", "wgcna_supermodule_summary.csv"
-    ),
-    selected_cluster_assignment = file.path(
-      stage01_tables, "supermodules", "wgcna_supermodule_eigengene_clusters.csv"
-    ),
-    clustering_sensitivity = file.path(
-      stage01_tables, "supermodules", "supermodule_clustering_sensitivity.csv"
-    ),
-    run_manifest = file.path(stage01_logs, "run_manifest.yml"),
-    wgcna_run_manifest = file.path(stage01_logs, "wgcna_run_manifest.yml"),
-    output_manifest = file.path(stage01_logs, "output_manifest.csv"),
-    parameter_audit = file.path(
-      stage01_tables, "modules", "WGCNA_parameter_audit.csv"
-    ),
-    analysis_parameters = file.path(stage01_logs, "analysis_parameters.csv")
+    frozen_state = wgcna_modules_artifact("wgcna_final_model_state.rds", dataset, child = "models"),
+    module_definitions = wgcna_modules_artifact("WGCNA_module_definitions_for_downstream.csv", dataset, child = "tables", "modules"),
+    current_membership_mapping = wgcna_modules_artifact("wgcna_module_supermodule_annotation.csv", dataset, child = "tables", "supermodules"),
+    current_supermodule_summary = wgcna_modules_artifact("wgcna_supermodule_summary.csv", dataset, child = "tables", "supermodules"),
+    selected_cluster_assignment = wgcna_modules_artifact("wgcna_supermodule_eigengene_clusters.csv", dataset, child = "tables", "supermodules"),
+    clustering_sensitivity = wgcna_modules_artifact("supermodule_clustering_sensitivity.csv", dataset, child = "tables", "supermodules"),
+    run_manifest = wgcna_modules_artifact("run_manifest.yml", dataset, child = "manifests"),
+    wgcna_run_manifest = wgcna_modules_artifact("wgcna_run_manifest.yml", dataset, child = "manifests"),
+    output_manifest = wgcna_modules_artifact("output_manifest.csv", dataset, child = "manifests"),
+    parameter_audit = wgcna_modules_artifact("WGCNA_parameter_audit.csv", dataset, child = "tables", "modules"),
+    analysis_parameters = wgcna_modules_artifact("analysis_parameters.csv", dataset, child = "manifests")
   )
 }
 
@@ -845,16 +842,14 @@ wgcna_identity_downstream_specs <- function(dataset) {
   rows <- list(
     data.frame(
       stage = "Stage01_selected_cluster_assignment",
-      path = base("06_modules_WGCNA", "01_WGCNA", dataset, "supermodules",
-                  "wgcna_supermodule_eigengene_clusters.csv"),
+      path = wgcna_modules_artifact("wgcna_supermodule_eigengene_clusters.csv", dataset, child = "tables", "supermodules"),
       level = "both",
       source_system_status = "current_membership_system",
       stringsAsFactors = FALSE
     ),
     data.frame(
       stage = "Stage01_current_mapping",
-      path = base("06_modules_WGCNA", "01_WGCNA", dataset, "supermodules",
-                  "wgcna_module_supermodule_annotation.csv"),
+      path = wgcna_modules_artifact("wgcna_module_supermodule_annotation.csv", dataset, child = "tables", "supermodules"),
       level = "both",
       source_system_status = if (dataset == "microglia") {
         "current_membership_system"
@@ -865,8 +860,7 @@ wgcna_identity_downstream_specs <- function(dataset) {
     ),
     data.frame(
       stage = "Stage01_current_summary",
-      path = base("06_modules_WGCNA", "01_WGCNA", dataset, "supermodules",
-                  "wgcna_supermodule_summary.csv"),
+      path = wgcna_modules_artifact("wgcna_supermodule_summary.csv", dataset, child = "tables", "supermodules"),
       level = "supermodule",
       source_system_status = if (dataset == "microglia") {
         "current_membership_system"
@@ -877,72 +871,63 @@ wgcna_identity_downstream_specs <- function(dataset) {
     ),
     data.frame(
       stage = "Stage05_group_effects",
-      path = base("06_modules_WGCNA", "group_effects", dataset,
-                  "module_group_effects.csv"),
+      path = wgcna_group_effects_artifact("module_group_effects.csv", dataset),
       level = "module",
       source_system_status = "downstream_identity_usage",
       stringsAsFactors = FALSE
     ),
     data.frame(
       stage = "Stage05_group_effects",
-      path = base("06_modules_WGCNA", "group_effects", dataset,
-                  "supermodule_group_effects.csv"),
+      path = wgcna_group_effects_artifact("supermodule_group_effects.csv", dataset),
       level = "supermodule",
       source_system_status = "downstream_identity_usage",
       stringsAsFactors = FALSE
     ),
     data.frame(
       stage = "Stage05_group_effects",
-      path = base("06_modules_WGCNA", "group_effects", dataset,
-                  "supermodule_composition.csv"),
+      path = wgcna_group_effects_artifact("supermodule_composition.csv", dataset),
       level = "supermodule",
       source_system_status = "downstream_identity_usage",
       stringsAsFactors = FALSE
     ),
     data.frame(
       stage = "Stage06_annotation",
-      path = base("06_modules_WGCNA", "module_annotation", dataset,
-                  "WGCNA_module_biological_annotation.csv"),
+      path = wgcna_annotation_artifact("WGCNA_module_biological_annotation.csv", dataset),
       level = "module",
       source_system_status = "downstream_identity_usage",
       stringsAsFactors = FALSE
     ),
     data.frame(
       stage = "Stage06_annotation",
-      path = base("06_modules_WGCNA", "module_annotation", dataset,
-                  "WGCNA_supermodule_biological_annotation.csv"),
+      path = wgcna_annotation_artifact("WGCNA_supermodule_biological_annotation.csv", dataset),
       level = "supermodule",
       source_system_status = "downstream_identity_usage",
       stringsAsFactors = FALSE
     ),
     data.frame(
       stage = "Stage07_interpretable_summary",
-      path = base("06_modules_WGCNA", "interpretable_summary", dataset,
-                  "WGCNA_final_label_lookup.csv"),
+      path = wgcna_interpretable_artifact("WGCNA_final_label_lookup.csv", dataset),
       level = "from_column",
       source_system_status = "downstream_identity_usage",
       stringsAsFactors = FALSE
     ),
     data.frame(
       stage = "Stage07_interpretable_summary",
-      path = base("06_modules_WGCNA", "interpretable_summary", dataset,
-                  "WGCNA_module_group_effects_interpretable.csv"),
+      path = wgcna_interpretable_artifact("WGCNA_module_group_effects_interpretable.csv", dataset),
       level = "module",
       source_system_status = "downstream_identity_usage",
       stringsAsFactors = FALSE
     ),
     data.frame(
       stage = "Stage07_interpretable_summary",
-      path = base("06_modules_WGCNA", "interpretable_summary", dataset,
-                  "WGCNA_supermodule_group_effects_interpretable.csv"),
+      path = wgcna_interpretable_artifact("WGCNA_supermodule_group_effects_interpretable.csv", dataset),
       level = "supermodule",
       source_system_status = "downstream_identity_usage",
       stringsAsFactors = FALSE
     ),
     data.frame(
       stage = "Stage08_score_publication",
-      path = base("06_modules_WGCNA", "score_publication_summary", dataset,
-                  "WGCNA_score_publication_validation.csv"),
+      path = wgcna_score_summary_artifact("WGCNA_score_publication_validation.csv", dataset),
       level = "supermodule",
       source_system_status = "downstream_identity_usage",
       stringsAsFactors = FALSE
@@ -957,8 +942,7 @@ wgcna_identity_downstream_specs <- function(dataset) {
     ),
     data.frame(
       stage = "Stage13_claim_readiness",
-      path = base("06_modules_WGCNA", "claim_readiness", dataset,
-                  "WGCNA_entity_claim_readiness.csv"),
+      path = wgcna_claim_readiness_artifact("WGCNA_entity_claim_readiness.csv", scope = dataset),
       level = "from_column",
       source_system_status = "downstream_identity_usage",
       stringsAsFactors = FALSE

@@ -15,6 +15,16 @@
 
 # `%||%` comes from the canonical R/null_coalescing.R, loaded via R/paths.R.
 
+# The Stage 07 canonical lookup is named through the WGCNA path resolver. This
+# file has no plain source() block of its own, so the guard is explicit.
+if (!exists("wgcna_interpretable_artifact", mode = "function")) {
+  if (!exists("repo_path", mode = "function")) {
+    paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
+    source(paths_file)
+  }
+  source(repo_path("R", "wgcna_paths.R"))
+}
+
 wal_contract_version <- function() "wgcna_label_activation_v1"
 
 # ------------------------------------------------- canonical label resolver
@@ -431,9 +441,7 @@ attach_canonical_wgcna_display_label <- function(claims, reviewed_dir = NULL,
 
   stage07 <- NULL
   reader <- stage07_reader %||% function(ds) {
-    p <- file.path(repo_path("results", "tables", "06_modules_WGCNA",
-                             "interpretable_summary", ds),
-                   "WGCNA_final_label_lookup.csv")
+    p <- wgcna_interpretable_artifact("WGCNA_final_label_lookup.csv", ds)
     if (!file.exists(p)) return(NULL)
     utils::read.csv(p, stringsAsFactors = FALSE)
   }

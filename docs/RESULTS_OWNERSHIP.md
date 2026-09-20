@@ -8,7 +8,7 @@ legitimately write different files into one family, which is coordination
 rather than a defect. What must never happen is two scripts declaring the
 same concrete output file, and this tool fails if any does.
 
-At this commit: **141 families**, **339 concrete declared outputs**, **0** of which have more than one declared writer.
+At this commit: **110 families**, **339 concrete declared outputs**, **0** of which have more than one declared writer.
 
 Output namespaces are keyed on **stage identity**, not on script location.
 That is why a script named `summarize_missingness.R` writes into
@@ -31,12 +31,6 @@ its outputs.
 | `results/differential_abundance/test_microglia_targeted_signatures/microglia` | `test_microglia_targeted_signatures.R` | 1 | 0 |
 | `results/differential_abundance/validate_control_spatial_identity/global` | `validate_control_spatial_identity.R` | 1 | 1 |
 | `results/enrichment/run_ewce_celltype_enrichment/<dataset>` | `run_ewce_celltype_enrichment.R` | 1 | 0 |
-| `results/figures/06_modules_WGCNA/01b_module_supermodule_GO_heatmaps` | `render_module_go_heatmaps.R` | 1 | 0 |
-| `results/figures/06_modules_WGCNA/microglia_neuropil_independence` | `render_microglia_independence_figures.R` | 1 | 0 |
-| `results/figures/06_modules_WGCNA/microglia_roi_specificity` | `summarize_microglia_roi_specificity.R` | 1 | 2 |
-| `results/figures/06_modules_WGCNA/score_publication_summary` | `summarize_module_scores.R` | 1 | 6 |
-| `results/figures/06_modules_WGCNA/wgcna_publication_figures` | `render_module_figures.R` | 1 | 6 |
-| `results/figures/06_modules_WGCNA/wgcna_publication_figures_corrected` | `render_microglia_module_figures.R` | 1 | 14 |
 | `results/integration/audit_animal_id_integrity/global` | `audit_animal_id_integrity.R` | 1 | 3 |
 | `results/integration/build_candidate_protein_shortlist/<dataset>` | `build_candidate_protein_shortlist.R` | 1 | 7 |
 | `results/integration/build_cross_compartment_atlas/global` | `build_cross_compartment_atlas.R` | 1 | 7 |
@@ -54,10 +48,6 @@ its outputs.
 | `results/integration/test_enrichment_module_concordance/global` | `test_enrichment_module_concordance.R` | 1 | 9 |
 | `results/integration/test_module_behaviour_coupling/<dataset>` | `test_module_behaviour_coupling.R` | 1 | 3 |
 | `results/integration/test_network_behaviour_coupling/global` | `test_network_behaviour_coupling.R` | 1 | 0 |
-| `results/logs/06_modules_WGCNA/identity_contract` | `build_module_identity_contract.R` | 1 | 0 |
-| `results/logs/06_modules_WGCNA/module_complex_architecture` | `summarize_module_complex_architecture.R` | 1 | 1 |
-| `results/logs/06_modules_WGCNA/module_robustness_sensitivity` | `audit_module_robustness.R` | 1 | 1 |
-| `results/logs/06_modules_WGCNA/wgcna_publication_figures_corrected` | `render_microglia_module_figures.R` | 1 | 1 |
 | `results/manuscript/extended_data` | `08_export_manuscript_figures.R` | 1 | 0 |
 | `results/manuscript/figure_1` | `08_export_manuscript_figures.R` | 1 | 0 |
 | `results/manuscript/figure_2` | `08_export_manuscript_figures.R` | 1 | 0 |
@@ -86,36 +76,8 @@ its outputs.
 | `results/qc/summarize_marker_detectability/<dataset>` | `summarize_marker_detectability.R` | 1 | 0 |
 | `results/qc/summarize_missingness/<dataset>` | `summarize_missingness.R` | 1 | 1 |
 | `results/qc/summarize_qc_confounding/<dataset>` | `summarize_qc_confounding.R` | 1 | 0 |
-| `results/reports/06_modules_WGCNA/identity_contract` | `build_module_identity_contract.R` | 1 | 0 |
-| `results/reports/06_modules_WGCNA/microglia_roi_specificity` | `summarize_microglia_roi_specificity.R` | 1 | 0 |
-| `results/reviewer_audit/microglia_neuropil_covariate_selection_audit.csv` | `test_microglia_neuropil_independence.R` | 1 | 1 |
-| `results/reviewer_audit/microglia_neuropil_independence_claim_gate.csv` | `test_microglia_neuropil_independence.R` | 1 | 1 |
-| `results/reviewer_audit/microglia_wgcna_nature_readiness/finalization_validation.csv` | `summarize_microglia_module_claims.R` | 1 | 1 |
-| `results/reviewer_audit/microglia_wgcna_nature_readiness/higher_order_block_readiness_summary.csv` | `audit_microglia_module_claims.R` | 1 | 1 |
-| `results/reviewer_audit/microglia_wgcna_nature_readiness/module_robustness_consensus.csv` | `audit_microglia_module_claims.R` | 1 | 1 |
-| `results/reviewer_audit/microglia_wgcna_nature_readiness/WGCNA_nature_readiness_report.md` | `audit_microglia_module_claims.R` | 1 | 1 |
 | `results/reviewer_audit/microglia_wgcna_overlap_stage13_identity_audit.csv` | `build_biological_claims_table.R` | 1 | 1 |
-| `results/reviewer_audit/wgcna_label_adjudication/proposed_<dataset>_reviewed_labels.csv` | `adjudicate_module_labels.R` | 1 | 1 |
-| `results/reviewer_audit/wgcna_label_adjudication/WGCNA_label_adjudication.xlsx` | `adjudicate_module_labels.R` | 1 | 1 |
-| `results/reviewer_audit/wgcna_label_adjudication/WGCNA_label_consumer_migration_plan.csv` | `adjudicate_module_labels.R` | 1 | 1 |
-| `results/reviewer_audit/wgcna_label_adjudication/WGCNA_module_adjudication.csv` | `adjudicate_module_labels.R` | 1 | 1 |
-| `results/reviewer_audit/wgcna_label_adjudication/WGCNA_module_theme_evidence.csv` | `adjudicate_module_labels.R` | 1 | 1 |
-| `results/reviewer_audit/wgcna_label_adjudication/WGCNA_module_top25_hubs.csv` | `adjudicate_module_labels.R` | 1 | 1 |
-| `results/reviewer_audit/wgcna_label_adjudication/WGCNA_supermodule_adjudication.csv` | `adjudicate_module_labels.R` | 1 | 1 |
-| `results/reviewer_audit/wgcna_label_approval/WGCNA_ambiguous_module_comparison.csv` | `build_module_label_registry.R` | 1 | 1 |
-| `results/reviewer_audit/wgcna_label_approval/WGCNA_canonical_display_label_resolution.csv` | `build_module_label_registry.R` | 1 | 1 |
-| `results/reviewer_audit/wgcna_label_approval/WGCNA_final_label_approval.xlsx` | `build_module_label_registry.R` | 1 | 1 |
-| `results/reviewer_audit/wgcna_label_approval/WGCNA_final_label_approval_table.csv` | `build_module_label_registry.R` | 1 | 1 |
-| `results/reviewer_audit/wgcna_label_approval/WGCNA_label_activation_rules.csv` | `build_module_label_registry.R` | 1 | 1 |
-| `results/reviewer_audit/wgcna_label_review/<dataset>` | `audit_module_label_coherence.R` | 1 | 5 |
 | `results/reviewer_audit/wgcna_stage13_claim_cardinality_audit.csv` | `build_biological_claims_table.R` | 1 | 1 |
-| `results/source_data/06_modules_WGCNA/claim_readiness` | `audit_module_claim_readiness.R` | 1 | 1 |
-| `results/source_data/06_modules_WGCNA/identity_contract` | `build_module_identity_contract.R` | 1 | 0 |
-| `results/source_data/06_modules_WGCNA/microglia_neuropil_independence` | `render_microglia_independence_figures.R` | 1 | 0 |
-| `results/source_data/06_modules_WGCNA/microglia_roi_specificity` | `summarize_microglia_roi_specificity.R` | 1 | 0 |
-| `results/source_data/06_modules_WGCNA/module_complex_architecture` | `summarize_module_complex_architecture.R` | 1 | 1 |
-| `results/source_data/06_modules_WGCNA/module_robustness_sensitivity` | `audit_module_robustness.R` | 1 | 1 |
-| `results/source_data/06_modules_WGCNA/wgcna_publication_figures_corrected` | `render_microglia_module_figures.R` | 1 | 7 |
 | `results/spatial_networks/build_differential_networks/<dataset>` | `build_differential_networks.R` | 1 | 3 |
 | `results/spatial_networks/build_spatial_networks/<dataset>` | `build_spatial_networks.R` | 1 | 1 |
 | `results/spatial_networks/render_differential_network_figures/<dataset>` | `render_differential_network_figures.R` | 1 | 0 |
@@ -140,26 +102,33 @@ its outputs.
 | `results/spatial_validation/test_network_group_organization/global` | `test_network_group_organization.R` | 1 | 12 |
 | `results/spatial_validation/validate_network_workbook/global` | `validate_network_workbook.R` | 1 | 4 |
 | `results/spatial_validation/validate_spatial_foundations/global` | `validate_spatial_foundations.R` | 1 | 1 |
-| `results/tables/04_differential_expression_enrichment/compareGO` | `compare_recurrent_module_proteins.R` | 1 | 1 |
-| `results/tables/06_modules_WGCNA/01_WGCNA` | `build_wgcna_modules.R` | 1 | 6 |
-| `results/tables/06_modules_WGCNA/01b_module_supermodule_GO_heatmaps` | `render_module_go_heatmaps.R` | 1 | 0 |
-| `results/tables/06_modules_WGCNA/04_wgcna_de_gsea_overlap` | `compare_module_enrichment_overlap.R` | 1 | 0 |
-| `results/tables/06_modules_WGCNA/claim_readiness` | `audit_module_claim_readiness.R` | 1 | 1 |
-| `results/tables/06_modules_WGCNA/curated_overlap_programs` | `build_curated_overlap_programs.R` | 1 | 0 |
-| `results/tables/06_modules_WGCNA/group_effects` | `test_module_phenotypes.R` | 1 | 19 |
-| `results/tables/06_modules_WGCNA/identity_contract` | `build_module_identity_contract.R` | 1 | 0 |
-| `results/tables/06_modules_WGCNA/interpretable_summary` | `summarize_module_interpretation.R` | 1 | 4 |
-| `results/tables/06_modules_WGCNA/microglia_neuropil_independence` | `test_microglia_neuropil_independence.R` | 1 | 3 |
-| `results/tables/06_modules_WGCNA/microglia_roi_specificity` | `summarize_microglia_roi_specificity.R` | 1 | 0 |
-| `results/tables/06_modules_WGCNA/module_annotation` | `annotate_module_microenvironment.R` | 1 | 3 |
-| `results/tables/06_modules_WGCNA/module_complex_architecture` | `summarize_module_complex_architecture.R` | 1 | 1 |
-| `results/tables/06_modules_WGCNA/module_robustness_sensitivity` | `audit_module_robustness.R` | 1 | 1 |
-| `results/tables/06_modules_WGCNA/module_score` | `score_module_activity.R` | 1 | 0 |
-| `results/tables/06_modules_WGCNA/score_publication_summary` | `summarize_module_scores.R` | 1 | 1 |
-| `results/tables/06_modules_WGCNA/wgcna_publication_figures` | `render_module_figures.R` | 1 | 1 |
-| `results/tables/06_modules_WGCNA/wgcna_publication_figures_corrected` | `render_microglia_module_figures.R` | 1 | 2 |
 | `results/tables/biological_claims_table.csv` | `build_biological_claims_table.R` | 1 | 1 |
 | `results/tables/biological_claims_table.xlsx` | `build_biological_claims_table.R` | 1 | 1 |
+| `results/wgcna/adjudicate_module_labels/global` | `adjudicate_module_labels.R` | 1 | 7 |
+| `results/wgcna/annotate_module_microenvironment/<dataset>` | `annotate_module_microenvironment.R` | 1 | 3 |
+| `results/wgcna/audit_microglia_module_claims/global` | `audit_microglia_module_claims.R` | 1 | 3 |
+| `results/wgcna/audit_module_claim_readiness/microglia` | `audit_module_claim_readiness.R` | 1 | 2 |
+| `results/wgcna/audit_module_label_coherence/<dataset>` | `audit_module_label_coherence.R` | 1 | 5 |
+| `results/wgcna/audit_module_robustness/<dataset>` | `audit_module_robustness.R` | 1 | 3 |
+| `results/wgcna/build_curated_overlap_programs/global` | `build_curated_overlap_programs.R` | 1 | 0 |
+| `results/wgcna/build_module_identity_contract/<dataset>` | `build_module_identity_contract.R` | 1 | 0 |
+| `results/wgcna/build_module_label_registry/global` | `build_module_label_registry.R` | 1 | 5 |
+| `results/wgcna/build_wgcna_modules/<dataset>` | `build_wgcna_modules.R` | 1 | 6 |
+| `results/wgcna/compare_module_enrichment_overlap/<dataset>` | `compare_module_enrichment_overlap.R` | 1 | 0 |
+| `results/wgcna/compare_recurrent_module_proteins/<dataset>` | `compare_recurrent_module_proteins.R` | 1 | 1 |
+| `results/wgcna/render_microglia_independence_figures/microglia` | `render_microglia_independence_figures.R` | 1 | 0 |
+| `results/wgcna/render_microglia_module_figures/microglia` | `render_microglia_module_figures.R` | 1 | 24 |
+| `results/wgcna/render_module_figures/microglia` | `render_module_figures.R` | 1 | 7 |
+| `results/wgcna/render_module_go_heatmaps/<dataset>` | `render_module_go_heatmaps.R` | 1 | 0 |
+| `results/wgcna/score_module_activity/<dataset>` | `score_module_activity.R` | 1 | 0 |
+| `results/wgcna/summarize_microglia_module_claims/global` | `summarize_microglia_module_claims.R` | 1 | 1 |
+| `results/wgcna/summarize_microglia_roi_specificity/microglia` | `summarize_microglia_roi_specificity.R` | 1 | 2 |
+| `results/wgcna/summarize_module_complex_architecture/<dataset>` | `summarize_module_complex_architecture.R` | 1 | 3 |
+| `results/wgcna/summarize_module_interpretation/<dataset>` | `summarize_module_interpretation.R` | 1 | 4 |
+| `results/wgcna/summarize_module_scores/<dataset>` | `summarize_module_scores.R` | 1 | 7 |
+| `results/wgcna/test_microglia_neuropil_independence/global` | `test_microglia_neuropil_independence.R` | 1 | 2 |
+| `results/wgcna/test_microglia_neuropil_independence/microglia` | `test_microglia_neuropil_independence.R` | 1 | 3 |
+| `results/wgcna/test_module_phenotypes/<dataset>` | `test_module_phenotypes.R` | 1 | 19 |
 
 ## Families with more than one contributor
 

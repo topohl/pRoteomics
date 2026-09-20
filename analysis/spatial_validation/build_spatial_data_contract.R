@@ -38,6 +38,7 @@ source("R/qc/empirical_roi_marker_utils.R")
 source("R/data_contracts/spatial_systems_data_utils.R")
 source("R/data_contracts/spatial_systems_evidence_registry.R")
 source(repo_path("R", "spatial_systems_paths.R"))
+source(repo_path("R", "wgcna_paths.R"))
 
 # Phase 6G.3: destinations resolve through the normalized output contract,
 # addressed by this analysis's own identity rather than by the historical
@@ -59,8 +60,7 @@ meta_path <- function(ds) {
   preprocessing_module_score_metadata(ds)
 }
 stage05_hemi_path <- function(ds) {
-  path_results("tables", "06_modules_WGCNA", "group_effects", ds,
-               "WGCNA_group_effect_hemisphere_values.csv")
+  wgcna_group_effects_artifact("WGCNA_group_effect_hemisphere_values.csv", ds)
 }
 
 DATASETS <- valid_datasets()

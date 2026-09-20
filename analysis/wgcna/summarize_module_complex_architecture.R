@@ -13,6 +13,7 @@ paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.
 source(paths_file)
 source(repo_path("R", "integration_utils.R"))
 source(repo_path("R", "wgcna_downstream_utils.R"))
+source(repo_path("R", "wgcna_paths.R"))
 
 SCRIPT_ID <- "analysis/wgcna/summarize_module_complex_architecture.R"
 run <- integration_cli(allow_all = TRUE)
@@ -26,9 +27,9 @@ complex_sets <- list(
 )
 
 make_dataset <- function(ds) {
-  paths <- create_module_dirs("06_modules_WGCNA", file.path("module_complex_architecture", ds))
+  paths <- wgcna_dirs("summarize_module_complex_architecture", ds, create = TRUE)
   files <- resolve_wgcna_files(ds)
-  inputs <- list(definitions = files$definitions, module_annotation = path_results("tables", "06_modules_WGCNA", "module_annotation", ds, "WGCNA_module_biological_annotation.csv"))
+  inputs <- list(definitions = files$definitions, module_annotation = wgcna_annotation_artifact("WGCNA_module_biological_annotation.csv", ds))
   if (run$dry_run) {
     dry_run_inputs(paste(SCRIPT_ID, ds), inputs)
     return(NULL)

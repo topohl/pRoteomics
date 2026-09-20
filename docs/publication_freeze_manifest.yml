@@ -368,15 +368,36 @@ export_payloads:
   producer: analysis/09_publication_exports/08_export_manuscript_figures.R
   payload_roots: results/manuscript/extended_data
   manifest_path: results/manuscript/figure_export_manifest.csv
-  manifest_sha256: 3c278296b18cf3d93839251225d535c08ae0b04b7c9cda994f3b766700248a13
-  manifest_row_count: 5251
+  manifest_sha256: 1bf4fe2e16f57ccc3bd684a048e367bae9cdc5c2c92f8d643ad5fcaa1d7b22e9
+  manifest_row_count: 5244
   audit_path: results/manuscript/figure_publication_audit.csv
-  audit_sha256: b432d01edde6365a3fc6a8fe5c24afe7fd835634cec5e05e2980608b5e0ecf45
+  audit_sha256: fc05e117a1b7e46d0ffbf932e159f487271584b590e8c196666778f3d374bb6b
   run_manifest_path: results/logs/09_export_pride_journal/manuscript_figures/run_manifest.yml
-  run_manifest_sha256: ea643edc56d17ed824f18e1eb94aed9b9d5f058a848b073659ea0f56b00b0e69
-  run_manifest_recorded_commit: ebe31949e53e10233787ba9b7cadf2e5930352d7
-  run_manifest_input_count: 5251
+  run_manifest_sha256: 23c05baf093d3b99cd391576231e7e1e5a954d13cc4904047c50986f23b7ed9e
+  run_manifest_recorded_commit: 21d4c2c69839e252a52ca6ea8a686d67f83ed6e5
+  run_manifest_input_count: 5244
   counts_agree: yes
+  superseded_manifest_sha256: 3c278296b18cf3d93839251225d535c08ae0b04b7c9cda994f3b766700248a13
+  superseded_manifest_row_count: 5251
+  superseded_audit_sha256: b432d01edde6365a3fc6a8fe5c24afe7fd835634cec5e05e2980608b5e0ecf45
+  superseded_run_manifest_sha256: ea643edc56d17ed824f18e1eb94aed9b9d5f058a848b073659ea0f56b00b0e69
+  superseded_run_manifest_recorded_commit: ebe31949e53e10233787ba9b7cadf2e5930352d7
+  freeze_revision_reason: 'Publication-selection correction, not scientific-result
+    drift. The superseded manifest pinned an export that included 50 figures from
+    the failed WGCNA run microglia_failed_20260720_133211, whose dataset-scope
+    segment was never validated by the recursive figure scan. That run is
+    FAILED_RUN_PROVENANCE and must never be a publication candidate. The exporter
+    now applies drop_noncanonical_wgcna_dataset_scopes(), an exact path-segment
+    test over both the historical 06_modules_WGCNA tree and the normalized
+    results/wgcna tree, and retires targets it previously wrote but no longer
+    selects. Rows removed: 50, all carrying that exact scope segment; unexpected
+    canonical removals: 0; all 5201 previously selected canonical rows retained.
+    The regenerated export additionally picked up 43 curated extended-data figures
+    created after the superseded manifest was written, and refreshed 4 retained
+    extended_data_09 files to their current source bytes; both are consequences of
+    rerunning a deterministic exporter against a figure tree that had moved on,
+    and every affected destination is byte-identical to its current source. No
+    WGCNA analysis was rerun and no historical source figure was modified.'
   freeze_acceptance: accepted
   freeze_acceptance_basis: Manifest row count and run-manifest input count agree,
     and the export-relevant implementation is byte-identical between the recorded

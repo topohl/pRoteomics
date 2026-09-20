@@ -19,6 +19,7 @@ source(paths_file)
 source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "dataset_inputs.R"))
 source(repo_path("R", "module_contracts.R"))
+source(repo_path("R", "wgcna_paths.R"))
 
 packages <- c("dplyr", "tidyr", "readr", "stringr", "tibble", "purrr")
 missing_packages <- packages[!vapply(packages, requireNamespace, logical(1), quietly = TRUE)]
@@ -123,15 +124,15 @@ overlap_stats <- function(module_set, signature_set, universe) {
 
 run_wgcna_de_gsea_overlap <- function(dataset = current_dataset(), dry_run = is_dry_run()) {
   dataset <- validate_dataset(dataset)
-  out_paths <- create_module_dirs("06_modules_WGCNA", file.path("04_wgcna_de_gsea_overlap", dataset))
+  out_paths <- wgcna_dirs("compare_module_enrichment_overlap", dataset, create = TRUE)
   out_csv <- file.path(out_paths$tables, "WGCNA_vs_DE_GSEA_overlap.csv")
   out_xlsx <- file.path(out_paths$tables, "WGCNA_vs_DE_GSEA_overlap.xlsx")
   status_csv <- file.path(out_paths$logs, "WGCNA_vs_DE_GSEA_overlap_status.csv")
 
-  wgcna_modules_dir <- path_results("tables", "06_modules_WGCNA", "01_WGCNA", dataset, "modules")
-  definitions_file <- file.path(wgcna_modules_dir, "WGCNA_module_definitions_for_downstream.csv")
-  universe_file <- file.path(wgcna_modules_dir, "WGCNA_feature_universe.csv")
-  priority_file <- file.path(wgcna_modules_dir, "WGCNA_module_priority_summary.csv")
+  wgcna_modules_dir <- wgcna_modules_dir(dataset)
+  definitions_file <- wgcna_modules_artifact("WGCNA_module_definitions_for_downstream.csv", dataset, child = "tables", "modules")
+  universe_file <- wgcna_modules_artifact("WGCNA_feature_universe.csv", dataset, child = "tables", "modules")
+  priority_file <- wgcna_modules_artifact("WGCNA_module_priority_summary.csv", dataset, child = "tables", "modules")
   cluster_manifest <- find_latest(
     path_results("reports", "04_differential_expression_enrichment", "clusterProfiler", dataset),
     "^clusterProfiler_manifest.*\\.csv$"
