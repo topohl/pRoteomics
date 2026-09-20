@@ -8,7 +8,7 @@ legitimately write different files into one family, which is coordination
 rather than a defect. What must never happen is two scripts declaring the
 same concrete output file, and this tool fails if any does.
 
-At this commit: **110 families**, **339 concrete declared outputs**, **0** of which have more than one declared writer.
+At this commit: **107 families**, **339 concrete declared outputs**, **0** of which have more than one declared writer.
 
 Output namespaces are keyed on **stage identity**, not on script location.
 That is why a script named `summarize_missingness.R` writes into
@@ -61,6 +61,7 @@ its outputs.
 | `results/preprocessing/build_module_score_metadata/<dataset>` | `build_module_score_metadata.R` | 1 | 4 |
 | `results/preprocessing/extract_protigy_contrasts/<dataset>` | `extract_protigy_contrasts.R` | 1 | 4 |
 | `results/preprocessing/map_protein_identifiers/<dataset>` | `map_protein_identifiers.R` | 1 | 2 |
+| `results/publication_source_data/build_biological_claims_table/global` | `build_biological_claims_table.R` | 1 | 4 |
 | `results/qc/assess_dataset_quality/<dataset>` | `assess_dataset_quality.R` | 1 | 2 |
 | `results/qc/assess_joint_compartment_quality/global` | `assess_joint_compartment_quality.R` | 1 | 2 |
 | `results/qc/assess_marker_rank_abundance/<dataset>` | `assess_marker_rank_abundance.R` | 1 | 0 |
@@ -76,8 +77,6 @@ its outputs.
 | `results/qc/summarize_marker_detectability/<dataset>` | `summarize_marker_detectability.R` | 1 | 0 |
 | `results/qc/summarize_missingness/<dataset>` | `summarize_missingness.R` | 1 | 1 |
 | `results/qc/summarize_qc_confounding/<dataset>` | `summarize_qc_confounding.R` | 1 | 0 |
-| `results/reviewer_audit/microglia_wgcna_overlap_stage13_identity_audit.csv` | `build_biological_claims_table.R` | 1 | 1 |
-| `results/reviewer_audit/wgcna_stage13_claim_cardinality_audit.csv` | `build_biological_claims_table.R` | 1 | 1 |
 | `results/spatial_networks/build_differential_networks/<dataset>` | `build_differential_networks.R` | 1 | 3 |
 | `results/spatial_networks/build_spatial_networks/<dataset>` | `build_spatial_networks.R` | 1 | 1 |
 | `results/spatial_networks/render_differential_network_figures/<dataset>` | `render_differential_network_figures.R` | 1 | 0 |
@@ -102,8 +101,6 @@ its outputs.
 | `results/spatial_validation/test_network_group_organization/global` | `test_network_group_organization.R` | 1 | 12 |
 | `results/spatial_validation/validate_network_workbook/global` | `validate_network_workbook.R` | 1 | 4 |
 | `results/spatial_validation/validate_spatial_foundations/global` | `validate_spatial_foundations.R` | 1 | 1 |
-| `results/tables/biological_claims_table.csv` | `build_biological_claims_table.R` | 1 | 1 |
-| `results/tables/biological_claims_table.xlsx` | `build_biological_claims_table.R` | 1 | 1 |
 | `results/wgcna/adjudicate_module_labels/global` | `adjudicate_module_labels.R` | 1 | 7 |
 | `results/wgcna/annotate_module_microenvironment/<dataset>` | `annotate_module_microenvironment.R` | 1 | 3 |
 | `results/wgcna/audit_microglia_module_claims/global` | `audit_microglia_module_claims.R` | 1 | 3 |

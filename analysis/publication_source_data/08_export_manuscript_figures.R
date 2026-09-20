@@ -18,6 +18,7 @@ source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "validation_utils.R"))
 source(repo_path("R", "export_helpers.R"))
 source(repo_path("R", "wgcna_paths.R"))
+source(repo_path("R", "publication_source_data_paths.R"))
 
 args <- commandArgs(trailingOnly = TRUE)
 dry_run <- is_dry_run()
@@ -191,7 +192,8 @@ audit_path <- file.path(manuscript_root, "figure_publication_audit.csv")
 utils::write.csv(manifest, manifest_path, row.names = FALSE)
 utils::write.csv(figure_audit, audit_path, row.names = FALSE)
 write_run_manifest(
-  path_results("logs", "09_export_pride_journal", "manuscript_figures", "run_manifest.yml"),
+  file.path(psd_dirs("08_export_manuscript_figures", create = TRUE)$manifests,
+            "run_manifest.yml"),
   inputs = list(figures = candidates),
   outputs = list(manifest = manifest_path, figure_audit = audit_path, manuscript_root = manuscript_root),
   notes = "Collect-only manuscript figure export; no analyses are recomputed. Target filenames preserve source-relative context to avoid basename collisions."

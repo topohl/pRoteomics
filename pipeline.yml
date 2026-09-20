@@ -1333,7 +1333,7 @@ stages:
         datasets: ["global"]
         stage: "export"
         scope: "global"
-        produces: ["results/tables/biological_claims_table.csv", "results/tables/biological_claims_table.xlsx", "results/reviewer_audit/wgcna_stage13_claim_cardinality_audit.csv", "results/reviewer_audit/microglia_wgcna_overlap_stage13_identity_audit.csv"]
+        produces: ["results/publication_source_data/build_biological_claims_table/global/tables/biological_claims_table.csv", "results/publication_source_data/build_biological_claims_table/global/tables/biological_claims_table.xlsx", "results/publication_source_data/build_biological_claims_table/global/tables/wgcna_stage13_claim_cardinality_audit.csv", "results/publication_source_data/build_biological_claims_table/global/tables/microglia_wgcna_overlap_stage13_identity_audit.csv"]
         consumes_required: ["results/tables/04_differential_expression_enrichment/", "results/tables/06_modules_WGCNA/", "results/wgcna/audit_module_claim_readiness/microglia/tables/WGCNA_entity_claim_readiness.csv", "results/tables/06_modules_WGCNA/claim_readiness/microglia/WGCNA_entity_claim_readiness.csv", "results/integration/summarize_programs_for_manuscript/global/tables/manuscript_program_summary.csv", "results/tables/10_biological_integration/manuscript_program_summary/global/manuscript_program_summary.csv"]
         consumes_optional: ["results/wgcna/summarize_module_interpretation/<dataset>/tables/", "results/tables/06_modules_WGCNA/interpretable_summary/", "results/integration/test_network_behaviour_coupling/global/tables", "results/tables/08_behavior_physio_coupling/network_behavior_coupling/"]
         recomputes_core_state: false
