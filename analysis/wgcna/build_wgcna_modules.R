@@ -27,6 +27,10 @@ if (early_has_flag("--dry-run") || tolower(Sys.getenv("PROTEOMICS_DRY_RUN", unse
     source(repo_path("R", "dataset_inputs.R"))
     source(repo_path("R", "module_contracts.R"))
     source(repo_path("R", "protein_mapping_utils.R"))
+    ## This early block has its own bootstrap and runs entirely above the main
+    ## one, so it needs the resolver too: canonical_paths_early below would
+    ## otherwise call wgcna_dirs() before the main block sources it.
+    source(repo_path("R", "wgcna_paths.R"))
   dataset_cli_early <- early_arg_value("--dataset", default = "")
   if (nzchar(dataset_cli_early)) Sys.setenv(PROTEOMICS_DATASET = validate_dataset(dataset_cli_early, source = "--dataset"))
   dataset_profile_early <- {
@@ -35,7 +39,7 @@ if (early_has_flag("--dry-run") || tolower(Sys.getenv("PROTEOMICS_DRY_RUN", unse
     else if (nzchar(profile_override)) validate_dataset(profile_override, source = "PROTEOMICS_WGCNA_DATASET_PROFILE")
     else current_dataset()
   }
-  canonical_paths_early <- module_paths("06_modules_WGCNA", file.path("01_WGCNA", dataset_profile_early))
+  canonical_paths_early <- wgcna_dirs("build_wgcna_modules", dataset_profile_early)
   output_dir_env_early <- Sys.getenv("PROTEOMICS_WGCNA_OUTPUT_DIR", unset = "")
   output_root_early <- if (nzchar(output_dir_env_early)) file.path(output_dir_env_early, dataset_profile_early) else canonical_paths_early$reports
   subdirs_early <- if (nzchar(output_dir_env_early)) {
@@ -69,7 +73,7 @@ if (early_has_flag("--dry-run") || tolower(Sys.getenv("PROTEOMICS_DRY_RUN", unse
       tables_supermodules = file.path(canonical_paths_early$tables, "supermodules"),
       figures_supermodules = file.path(canonical_paths_early$figures, "supermodules"),
       source_data = canonical_paths_early$source_data,
-      state = canonical_paths_early$processed,
+      state = canonical_paths_early$models,
       logs = canonical_paths_early$logs
     )
   }
@@ -77,8 +81,8 @@ if (early_has_flag("--dry-run") || tolower(Sys.getenv("PROTEOMICS_DRY_RUN", unse
   dataset_inputs_early <- resolve_dataset_inputs(dataset_profile_early, purpose = "wgcna")
   expr_xlsx_env_early <- Sys.getenv("PROTEOMICS_WGCNA_EXPR_XLSX", unset = "")
   meta_xlsx_env_early <- Sys.getenv("PROTEOMICS_WGCNA_META_XLSX", unset = "")
-  expr_xlsx_early <- if (nzchar(expr_xlsx_env_early)) expr_xlsx_env_early else path_processed("06_modules_WGCNA", "01_WGCNA", dataset_profile_early, "inputs", "wgcna_expression.xlsx")
-  meta_xlsx_early <- if (nzchar(meta_xlsx_env_early)) meta_xlsx_env_early else path_processed("06_modules_WGCNA", "01_WGCNA", dataset_profile_early, "inputs", "wgcna_sample_info.xlsx")
+  expr_xlsx_early <- if (nzchar(expr_xlsx_env_early)) expr_xlsx_env_early else wgcna_modules_artifact("wgcna_expression.xlsx", dataset_profile_early, child = "models", "inputs")
+  meta_xlsx_early <- if (nzchar(meta_xlsx_env_early)) meta_xlsx_env_early else wgcna_modules_artifact("wgcna_sample_info.xlsx", dataset_profile_early, child = "models", "inputs")
   idmap_dat_early <- Sys.getenv("PROTEOMICS_WGCNA_IDMAP_DAT", unset = dataset_inputs_early$idmap_file)
   wgcna_final_state_path_early <- file.path(subdirs_early$state, "wgcna_final_model_state.rds")
   reuse_completed_analysis_early <- tolower(Sys.getenv("PROTEOMICS_WGCNA_REUSE_STATE", unset = "true")) %in% c("1", "true", "yes", "y")
@@ -194,6 +198,7 @@ source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "dataset_inputs.R"))
 source(repo_path("R", "module_contracts.R"))
 source(repo_path("R", "protein_mapping_utils.R"))
+source(repo_path("R", "wgcna_paths.R"))
 
 args <- commandArgs(trailingOnly = TRUE)
 arg_value <- function(flag, default = "") {
@@ -334,7 +339,6 @@ dataset_profile <- {
   else if (nzchar(profile_override)) validate_dataset(profile_override, source = "PROTEOMICS_WGCNA_DATASET_PROFILE")
   else current_dataset()
 }
-wgcna_substep <- file.path("01_WGCNA", dataset_profile)
 output_dir_env <- Sys.getenv("PROTEOMICS_WGCNA_OUTPUT_DIR", unset = "")
 if (nzchar(output_dir_env)) {
   output_dir <- file.path(output_dir_env, dataset_profile)
@@ -355,7 +359,7 @@ if (nzchar(output_dir_env)) {
     logs                = file.path(output_dir, "logs")
   )
 } else {
-  canonical_paths <- module_paths(wgcna_module, wgcna_substep)
+  canonical_paths <- wgcna_dirs("build_wgcna_modules", dataset_profile, create = TRUE)
   output_dir <- canonical_paths$reports
   subdirs <- list(
     figures_qc          = file.path(canonical_paths$figures, "qc"),
@@ -370,7 +374,7 @@ if (nzchar(output_dir_env)) {
     tables_supermodules = file.path(canonical_paths$tables, "supermodules"),
     figures_supermodules= file.path(canonical_paths$figures, "supermodules"),
     source_data         = canonical_paths$source_data,
-    state               = canonical_paths$processed,
+    state               = canonical_paths$models,
     logs                = canonical_paths$logs
   )
 }
@@ -447,8 +451,8 @@ current_staged_input_paths <- function() {
   meta_env <- Sys.getenv("PROTEOMICS_WGCNA_META_XLSX", unset = "")
   idmap_env <- Sys.getenv("PROTEOMICS_WGCNA_IDMAP_DAT", unset = "")
   c(
-    expression_matrix = if (nzchar(expr_env)) expr_env else path_processed(wgcna_module, "01_WGCNA", dataset_profile, "inputs", "wgcna_expression.xlsx"),
-    sample_metadata = if (nzchar(meta_env)) meta_env else path_processed(wgcna_module, "01_WGCNA", dataset_profile, "inputs", "wgcna_sample_info.xlsx"),
+    expression_matrix = if (nzchar(expr_env)) expr_env else wgcna_modules_artifact("wgcna_expression.xlsx", dataset_profile, child = "models", "inputs"),
+    sample_metadata = if (nzchar(meta_env)) meta_env else wgcna_modules_artifact("wgcna_sample_info.xlsx", dataset_profile, child = "models", "inputs"),
     mouse_idmapping = if (nzchar(idmap_env)) idmap_env else dataset_inputs_now$idmap_file
   )
 }
@@ -1559,8 +1563,8 @@ if (!isTRUE(wgcna_dry_run) && using_cached_final_state) {
 
 expr_xlsx_env <- Sys.getenv("PROTEOMICS_WGCNA_EXPR_XLSX", unset = "")
 meta_xlsx_env <- Sys.getenv("PROTEOMICS_WGCNA_META_XLSX", unset = "")
-expr_xlsx_default <- path_processed(wgcna_module, "01_WGCNA", dataset_profile, "inputs", "wgcna_expression.xlsx")
-meta_xlsx_default <- path_processed(wgcna_module, "01_WGCNA", dataset_profile, "inputs", "wgcna_sample_info.xlsx")
+expr_xlsx_default <- wgcna_modules_artifact("wgcna_expression.xlsx", dataset_profile, child = "models", "inputs")
+meta_xlsx_default <- wgcna_modules_artifact("wgcna_sample_info.xlsx", dataset_profile, child = "models", "inputs")
 expr_xlsx <- if (nzchar(expr_xlsx_env)) expr_xlsx_env else expr_xlsx_default
 meta_xlsx <- if (nzchar(meta_xlsx_env)) meta_xlsx_env else meta_xlsx_default
 dataset_inputs <- resolve_dataset_inputs(dataset_profile, purpose = "wgcna")
@@ -4377,7 +4381,7 @@ WGCNA_module_preservation_summary <- WGCNA_module_priority_summary %>%
   )
 write_csv_safe(WGCNA_module_preservation_summary, fp_modtab("WGCNA_module_preservation_summary.csv"))
 
-gsea_overlap_file <- path_results("tables", "06_modules_WGCNA", "04_wgcna_de_gsea_overlap", dataset_profile, "WGCNA_vs_DE_GSEA_overlap.csv")
+gsea_overlap_file <- wgcna_gsea_overlap_artifact("WGCNA_vs_DE_GSEA_overlap.csv", dataset_profile)
 WGCNA_module_GSEA_coregene_overlap <- if (file.exists(gsea_overlap_file)) {
   readr::read_csv(gsea_overlap_file, show_col_types = FALSE) %>%
     dplyr::select(dplyr::any_of(c(

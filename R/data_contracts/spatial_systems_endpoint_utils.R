@@ -22,6 +22,16 @@ if (!exists("qc_find", mode = "function")) {
   }
   source(repo_path("R", "qc_result_paths.R"))
 }
+
+## Same arrangement for the Stage-05 hemisphere values: the WGCNA resolver
+## owns that location, and this library has no plain source() block.
+if (!exists("wgcna_group_effects_artifact", mode = "function")) {
+  if (!exists("repo_path", mode = "function")) {
+    paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
+    source(paths_file)
+  }
+  source(repo_path("R", "wgcna_paths.R"))
+}
 if (!exists("preprocessing_find", mode = "function")) source(repo_path("R", "preprocessing_paths.R"))
 
 sps_levels_for_dataset <- function(dataset) {
@@ -64,8 +74,7 @@ sps_levels_for_dataset <- function(dataset) {
 
 # 1. WGCNA modules: the ACCEPTED Stage-05 hemisphere values, not a recomputation.
 sps_endpoints_wgcna_modules <- function(dataset, level_filter = "module") {
-  p <- path_results("tables", "06_modules_WGCNA", "group_effects", dataset,
-                    "WGCNA_group_effect_hemisphere_values.csv")
+  p <- wgcna_group_effects_artifact("WGCNA_group_effect_hemisphere_values.csv", dataset)
   if (!file.exists(p)) return(NULL)
   x <- as.data.frame(readr::read_csv(p, show_col_types = FALSE, progress = FALSE,
                                      guess_max = Inf))

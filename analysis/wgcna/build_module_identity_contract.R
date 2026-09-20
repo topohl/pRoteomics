@@ -13,13 +13,11 @@ source(file.path("R", "paths.R"))
 source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "wgcna_downstream_utils.R"))
 source(repo_path("R", "wgcna_identity_contract_utils.R"))
+source(repo_path("R", "wgcna_paths.R"))
 
 run <- wgcna_cli(default_dataset = "neuron_neuropil", allow_all = FALSE)
 DATASET <- wgcna_identity_validate_dataset(run$dataset)
-OUTPUTS <- module_paths(
-  "06_modules_WGCNA",
-  file.path("identity_contract", DATASET)
-)
+OUTPUTS <- wgcna_dirs("build_module_identity_contract", DATASET)
 
 bundle <- wgcna_identity_build_contract_bundle(DATASET)
 

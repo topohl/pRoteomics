@@ -14,6 +14,7 @@ source(paths_file)
 source(repo_path("R", "script_runtime.R"))
 source(repo_path("R", "wgcna_downstream_utils.R"))
 source(repo_path("R", "plotting_nature.R"))
+source(repo_path("R", "wgcna_paths.R"))
 
 SCRIPT_ID <- "analysis/wgcna/summarize_microglia_roi_specificity.R"
 runtime <- init_script_runtime(SCRIPT_ID, stage = "modules_downstream", default_dataset = "microglia")
@@ -51,15 +52,15 @@ if (length(missing_pkgs) && !isTRUE(runtime$dry_run)) {
 }
 if (!length(missing_pkgs)) suppressPackageStartupMessages(invisible(lapply(required_pkgs, library, character.only = TRUE)))
 
-PATHS <- create_module_dirs("06_modules_WGCNA", file.path("microglia_roi_specificity", "microglia"))
-REPORT_DIR <- path_results("reports", "06_modules_WGCNA", "microglia_roi_specificity", "microglia")
+PATHS <- wgcna_dirs("summarize_microglia_roi_specificity", "microglia", create = TRUE)
+REPORT_DIR <- PATHS$reports
 FILES_MICRO <- resolve_wgcna_files("microglia")
 FILES_NEUROPIL <- resolve_wgcna_files("neuron_neuropil")
 FILES_SOMA <- resolve_wgcna_files("neuron_soma")
 CONFIG_FILE <- repo_path("config", "microglia_neuropil_independence.yml")
-ANNOTATION_FILE <- path_results("tables", "06_modules_WGCNA", "module_annotation", "microglia", "WGCNA_module_biological_annotation.csv")
-TARGETED_FILE <- path_results("tables", "06_modules_WGCNA", "module_annotation", "microglia", "WGCNA_module_targeted_signature_overlap_details.csv")
-LABEL_LOOKUP_FILE <- path_results("tables", "06_modules_WGCNA", "interpretable_summary", "microglia", "WGCNA_final_label_lookup.csv")
+ANNOTATION_FILE <- wgcna_annotation_artifact("WGCNA_module_biological_annotation.csv", "microglia")
+TARGETED_FILE <- wgcna_annotation_artifact("WGCNA_module_targeted_signature_overlap_details.csv", "microglia")
+LABEL_LOOKUP_FILE <- wgcna_interpretable_artifact("WGCNA_final_label_lookup.csv", "microglia")
 soma_available <- file.exists(FILES_SOMA$state) && file.exists(FILES_SOMA$definitions)
 INCLUDE_SOMA <- bool_arg("--include-soma", FALSE, args = runtime$args) && soma_available
 

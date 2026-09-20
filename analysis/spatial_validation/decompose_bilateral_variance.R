@@ -49,6 +49,7 @@ source("R/spatial/spatial_systems_bilateral_utils.R")
 source("R/data_contracts/spatial_systems_endpoint_utils.R")
 source(repo_path("R", "spatial_systems_paths.R"))
 source(repo_path("R", "qc_result_paths.R"))
+source(repo_path("R", "wgcna_paths.R"))
 
 # Phase 6G.3: destinations resolve through the normalized output contract,
 # addressed by this analysis's own identity rather than by the historical
@@ -77,8 +78,7 @@ if (isTRUE(cli$dry_run)) {
                                     legacy_substep = "05_empirical_roi_marker_discovery"))
   for (ds in DATASETS) {
     inputs[[paste0("stage05_hemisphere_values__", ds)]] <-
-      path_results("tables", "06_modules_WGCNA", "group_effects", ds,
-                   "WGCNA_group_effect_hemisphere_values.csv")
+      wgcna_group_effects_artifact("WGCNA_group_effect_hemisphere_values.csv", ds)
   }
   cat("[DRY-RUN] Bilateral variance decomposition and precision gain.\n")
   dry_run_inputs(SCRIPT_ID, inputs)

@@ -24,6 +24,9 @@
 source(file.path("R", "paths.R"))
 source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "pipeline_registry.R"))
+## Phase 6G.8: the canonical-versus-historical rule lives in one library so it
+## can be tested on fixtures without running this audit.
+source(repo_path("R", "output_namespace_classification.R"))
 
 registry <- read_pipeline_registry(repo_path("pipeline.yml"))
 steps <- pipeline_steps(registry, pipeline_stage_names(registry),
@@ -65,7 +68,10 @@ NORMALIZED_CALLS <- c("canonical_result_path", "canonical_work_path",
                       "preprocessing_gct_extract_manifest_dir",
                       "preprocessing_gct_extract_manifest_path",
                       "preprocessing_mapping_dir",
-                      "preprocessing_mapping_result_dir")
+                      "preprocessing_mapping_result_dir",
+                      # Phase 6G.8. One domain-level directory helper plus a
+                      # few named artifact helpers; see R/wgcna/wgcna_paths.R.
+                      "wgcna_dirs", "wgcna_find", "wgcna_dir_any")
 # these create directories, so calling one is itself a write
 LEGACY_FACTORIES <- c("create_module_dirs", "module_paths", "qc_paths")
 PATH_BUILDERS <- c("path_results", "path_processed")
@@ -88,7 +94,18 @@ BASE_WRITE_CALLS <- c("dir_create", "write.csv", "write.table", "write_csv_safe"
                       "write_csv_safe2", "writeLines", "saveRDS", "ggsave",
                       "saveWorkbook", "write.xlsx", "file.copy", "file.rename",
                       "write_run_manifest", "write_result_manifest", "write_yaml",
-                      "png", "pdf", "svg", "jpeg", "tiff", "cairo_pdf")
+                      "png", "pdf", "svg", "jpeg", "tiff", "cairo_pdf",
+                      # Phase 6G.8. The list above knew write.csv and
+                      # write.xlsx, the base/openxlsx spellings, but not the
+                      # readr and writexl ones the codebase actually uses most:
+                      # write_csv has 346 call sites in analysis/ and
+                      # write_xlsx 37, and every one of them was invisible to
+                      # this audit. A destination spec is added for each below,
+                      # because a write call with no DEST_ARG entry has all of
+                      # its arguments tested and that is how correctly migrated
+                      # writes got reported as legacy in Phase 6G.4.
+                      "write_csv", "write_xlsx", "write_json", "write_delim",
+                      "write_lines", "write_rds", "svglite")
 WRAPPER_WRITE_CALLS <- c(
   "xlsx_save_valid_workbook", "write_input_status", "save_nature_svg",
   "write_sus_res_biological_audit_workbook", "write_config_snapshot",
@@ -100,7 +117,52 @@ WRAPPER_WRITE_CALLS <- c(
   "tokenize_wgcna_mouse_only", "wgcna_group_prepare_stage",
   "wgcna_group_atomic_publish")
 WRITE_CALLS <- c(BASE_WRITE_CALLS, WRAPPER_WRITE_CALLS)
+
+# Phase 6G.8: classify a destination from the contract, not from numbering.
+#
+# The previous rule called a path construction legacy only when one of its
+# literal arguments matched a numbered stage namespace. That is a proxy for the
+# thing that matters, and it missed a whole family: results/reviewer_audit/
+# carries no stage number, so five WGCNA writers wrote there while their
+# pipeline.yml declarations already said results/wgcna/..., and the split-brain
+# gate still reported 0. A detector that recognizes historical destinations by
+# their spelling will keep missing every historical root that is not numbered.
+#
+# The contract is the authority instead:
+#   config/output_layout.yml declares the canonical shape
+#     results/<domain>/<analysis_id>/<scope>/<child>/
+#   so in canonical code the FIRST argument of path_results() is a declared
+#   domain, while in historical code it is a "kind" (tables, figures, logs,
+#   source_data, reports, reviewer_audit).
+#   config/legacy_output_registry.csv confirms the historical roots
+#   independently, and is used when the first argument is computed.
+#   config/output_layout.yml declares exactly three lifecycles - work, results
+#   and exports - so data/processed is not a canonical output destination at
+#   all, and a write through path_processed() is noncanonical by contract.
+#
+# STAGE_NS is retained as an additional signal, never as the only one, so the
+# numbered roots keep being caught when the first argument is not a literal.
 STAGE_NS <- "^[0-9]{2}[a-z]?_[A-Za-z]"
+
+OUTPUT_DOMAINS <- output_layout_domains()
+OUTPUT_CHILDREN <- output_layout_children()
+
+# Registered historical roots, as their segment under results/.
+LEGACY_REGISTERED_SEGMENTS <- local({
+  reg <- repo_path("config", "legacy_output_registry.csv")
+  if (!file.exists(reg)) return(character(0))
+  d <- utils::read.csv(reg, stringsAsFactors = FALSE)
+  s <- vapply(strsplit(d$legacy_path, "/", fixed = TRUE),
+              function(p) if (length(p) >= 2L) p[[2]] else NA_character_,
+              character(1))
+  unique(s[!is.na(s)])
+})
+
+# Adjudicated destinations outside results/ that are NOT legacy writes:
+#   config/           a generated configuration contract, adjudicated in 6G.5
+#   exports/          the frozen outward-facing bundle
+#   pride_submission/ gitignored export staging
+ALLOWED_NONRESULT_ROOTS <- c("config", "exports", "pride_submission")
 
 call_name <- function(e) {
   if (!is.call(e)) return(NA_character_)
@@ -151,8 +213,21 @@ DEST_ARG <- list(
   xlsx_save_valid_workbook = list(2L, "path"),
   write_csv_strict = list(2L, "path"), save_nature_svg = list(2L, "filename"),
   save_plot_dual = list(2L, "path"), qc_write_csv = list(2L, "path"),
-  qc_write_xlsx = list(2L, "path"), write_tsv = list(2L, "path")
+  qc_write_xlsx = list(2L, "path"), write_tsv = list(2L, "path"),
+  # Phase 6G.8 additions, positions taken from each function's signature.
+  write_csv = list(2L, "file"), write_xlsx = list(2L, "path"),
+  write_json = list(2L, "path"), write_delim = list(2L, "file"),
+  write_lines = list(2L, "file"), write_rds = list(2L, "file"),
+  svglite = list(1L, "filename")
 )
+
+# Calls that write only when they are handed a destination. cat() has 552 call
+# sites in analysis/ and almost all of them print to the console; treating it
+# as an unconditional write would make every legacy path named in a message a
+# legacy write, which is the false-positive class Phase 6G.4 removed. So these
+# count as a write only when the named argument below is actually present, and
+# that argument is the only destination considered.
+CONDITIONAL_WRITE_CALLS <- c(cat = "file", capture.output = "file", sink = "file")
 
 # The subtrees that determine this call's destination.
 dest_args <- function(nm, call) {
@@ -194,17 +269,14 @@ walk <- function(e, fn) {
   invisible(NULL)
 }
 
-# a path construction that lands in the historical namespace
+# The canonical-versus-historical rule is R/utilities/output_namespace_classification.R.
+# It is delegated rather than duplicated: two copies of this predicate would
+# drift, and the whole reason Phase 6G.8 needed a correction is that the rule
+# was a proxy nobody could test in isolation.
 is_legacy_construction <- function(e) {
-  nm <- call_name(e)
-  if (is.na(nm)) return(FALSE)
-  if (nm %in% LEGACY_FACTORIES) return(TRUE)
-  if (nm %in% PATH_BUILDERS) {
-    args <- as.list(e)[-1]
-    lits <- unlist(lapply(args, function(a) if (is.character(a)) a else NULL))
-    return(any(grepl(STAGE_NS, lits)))
-  }
-  FALSE
+  is_legacy_path_construction(e, domains = OUTPUT_DOMAINS,
+                              legacy_segments = LEGACY_REGISTERED_SEGMENTS,
+                              allowed = ALLOWED_NONRESULT_ROOTS)
 }
 
 subtree_has <- function(e, pred) {
@@ -280,12 +352,22 @@ analyse <- function(f) {
         n_legacy <<- n_legacy + 1L                 # creates directories itself
         return(invisible(NULL))
       }
-      if (nm %in% WRITE_CALLS) {
-        args <- dest_args(nm, x)
-        hit <- any(vapply(args, function(a)
-          subtree_has(a, is_legacy_construction), logical(1))) ||
-          any(legacy_vars %in% unlist(lapply(args, subtree_names)))
-        if (hit) n_legacy <<- n_legacy + 1L
+      if (nm %in% WRITE_CALLS || nm %in% names(CONDITIONAL_WRITE_CALLS)) {
+        args <- if (nm %in% names(CONDITIONAL_WRITE_CALLS)) {
+          ## a write only when the destination argument is actually supplied
+          key <- CONDITIONAL_WRITE_CALLS[[nm]]
+          a <- as.list(x)[-1]
+          nms <- names(a)
+          if (is.null(nms) || !key %in% nms) list() else a[nms == key]
+        } else {
+          dest_args(nm, x)
+        }
+        if (length(args)) {
+          hit <- any(vapply(args, function(a)
+            subtree_has(a, is_legacy_construction), logical(1))) ||
+            any(legacy_vars %in% unlist(lapply(args, subtree_names)))
+          if (hit) n_legacy <<- n_legacy + 1L
+        }
       }
       invisible(NULL)
     })

@@ -165,6 +165,73 @@ drop_legacy_dataset_suffixed_aliases <- function(paths) {
   paths[!is_legacy_dataset_suffixed_alias(paths)]
 }
 
+# Non-canonical dataset scopes under the historical WGCNA stage.
+#
+# Phase 6G.8 section 27. A WGCNA run that failed is kept on disk for
+# provenance as <dataset>_failed_<YYYYmmdd>_<HHMMSS>, with the full directory
+# shape of a real run: the same subdirectories, the same figure stems, the same
+# file types. Nothing about its contents marks it as unusable, so any collector
+# that walks the stage recursively will pick it up and nothing downstream will
+# notice.
+#
+# The scope segment is tested for EXACT membership of valid_datasets(), never
+# by prefix or substring: "microglia" is a prefix of
+# "microglia_failed_20260720_133211", so a prefix test admits precisely the
+# directory it is meant to exclude. Scopes that are not dataset positions at
+# all -- the cross-dataset "all" and "global" aggregates -- are kept.
+#
+# Only paths under the historical stage are judged. Everything else is returned
+# untouched, so this cannot silently prune another domain's output.
+WGCNA_NON_DATASET_SCOPES <- c("all", "global")
+
+# Both discovery routes are guarded, not just the historical one. WGCNA output
+# is mid-migration: the historical tree is
+#     results/<kind>/06_modules_WGCNA/<family>/<scope>/...
+# and the normalized tree is
+#     results/wgcna/<analysis_id>/<scope>/<child>/...
+# A guard written only around the historical shape would silently stop working
+# the moment a WGCNA analysis is rerun into the normalized namespace, which is
+# exactly when a fresh failed run becomes most likely.
+wgcna_dataset_scope_of <- function(seg) {
+  i <- which(seg == "06_modules_WGCNA")
+  if (length(i)) {
+    i <- i[[1]]
+    ## <stage>/<family>/<scope>/...
+    return(if (length(seg) >= i + 2L) seg[[i + 2L]] else NA_character_)
+  }
+  j <- which(seg == "wgcna")
+  j <- j[j > 1L & seg[pmax(j - 1L, 1L)] == "results"]
+  if (length(j)) {
+    j <- j[[1]]
+    ## results/wgcna/<analysis_id>/<scope>/<child>/...
+    return(if (length(seg) >= j + 2L) seg[[j + 2L]] else NA_character_)
+  }
+  NA_character_
+}
+
+is_noncanonical_wgcna_dataset_scope <- function(paths) {
+  if (!length(paths)) return(logical(0))
+  parts <- strsplit(gsub("\\\\", "/", paths), "/", fixed = TRUE)
+  vapply(parts, function(seg) {
+    scope <- wgcna_dataset_scope_of(seg)
+    if (is.na(scope)) return(FALSE)
+    if (scope %in% c(valid_datasets(), WGCNA_NON_DATASET_SCOPES)) return(FALSE)
+    ## Only a segment that is trying to be a dataset is rejected. A family whose
+    ## third level is a content directory rather than a scope (modules/,
+    ## supermodules/, main/) must not be pruned, so the rejection is limited to
+    ## segments that carry a canonical dataset name plus a suffix. Matching is on
+    ## the WHOLE segment: "microglia" is a prefix of
+    ## "microglia_failed_20260720_133211", so a prefix test on the path admits
+    ## precisely the directory it is meant to exclude.
+    any(startsWith(scope, paste0(valid_datasets(), "_")))
+  }, logical(1))
+}
+
+drop_noncanonical_wgcna_dataset_scopes <- function(paths) {
+  if (!length(paths)) return(paths)
+  paths[!is_noncanonical_wgcna_dataset_scope(paths)]
+}
+
 # Figure families with no current producer.
 #
 # Entries are exact stems that were each individually confirmed to be written

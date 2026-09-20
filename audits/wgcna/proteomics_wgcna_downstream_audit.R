@@ -1,6 +1,19 @@
 #!/usr/bin/env Rscript
 options(stringsAsFactors = FALSE, warn = 1)
 
+# This audit reports on whatever the CURRENT Stage 05/13 outputs are, so it
+# names them through the WGCNA path resolver rather than hard-coding the
+# historical tree. The resolver looks in the normalized location first and
+# falls back to the historical one, so today it reads exactly what it read
+# before.
+paths_file <- if (file.exists(file.path("R", "paths.R"))) {
+  file.path("R", "paths.R")
+} else {
+  file.path("..", "..", "R", "paths.R")
+}
+source(paths_file)
+source(repo_path("R", "wgcna_paths.R"))
+
 report_path <- file.path(getwd(), "proteomics_wgcna_downstream_audit_output.txt")
 con <- file(report_path, open = "wt", encoding = "UTF-8")
 sink(con, split = TRUE)
@@ -33,7 +46,7 @@ get_col <- function(df, candidates, default = NA) {
 
 summarise_stage05 <- function(dataset, level) {
   file <- if (level == "module") "module_group_effects.csv" else "supermodule_group_effects.csv"
-  x <- read_required(file.path("results", "tables", "06_modules_WGCNA", "group_effects", dataset, file))
+  x <- read_required(wgcna_group_effects_artifact(file, dataset))
   id <- get_col(x, if (level == "module") c("module_id", "ModuleID", "endpoint_id") else c("supermodule_id", "SupermoduleID", "endpoint_id"))
   p <- as_num(get_col(x, c("p_value", "raw_p", "p")))
   fw <- as_num(get_col(x, c("FDR_within_dataset_level", "FDR", "fdr")))
@@ -90,7 +103,7 @@ main <- function() {
   })))
 
   section("B. MICROGLIA STAGE 13")
-  readiness <- read_required(file.path("results", "tables", "06_modules_WGCNA", "claim_readiness", "microglia", "WGCNA_entity_claim_readiness.csv"))
+  readiness <- read_required(wgcna_claim_readiness_artifact("WGCNA_entity_claim_readiness.csv", scope = "microglia"))
   print_df(as.data.frame(table(readiness$claim_entity_role), stringsAsFactors = FALSE))
   eligible <- readiness[as_bool(readiness$separate_manuscript_claim_allowed), c("level", "entity_id", "claim_entity_role", "primary_architecture_status", "group_effect_status"), drop = FALSE]
   cat("\nEligible identities:\n"); print_df(eligible[order(eligible$level, eligible$entity_id), ])

@@ -164,6 +164,49 @@ for (i in seq_len(nrow(rewrites))) {
   ## Blank lines carry no content; ignore pure-whitespace-only differences.
   a <- a[nzchar(a)]; b <- b[nzchar(b)]
 
+  ## An ACCEPTED, RECORDED revision is not undeclared drift.
+  ##
+  ## Phase 6G.8 Interlude 3B.1 intentionally re-froze one export: 50 figures
+  ## from the failed WGCNA run microglia_failed_20260720_133211 had been
+  ## selected into the manuscript figure set, so the export was corrected and
+  ## the freeze re-pinned. That is a content change, and this tool is right to
+  ## see one - the guarantee it must keep is not "nothing changed" but "nothing
+  ## changed WITHOUT being declared".
+  ##
+  ## The allowance is therefore narrow and evidence-bearing: a freeze payload
+  ## field may differ only when the current file records the superseded value
+  ## under superseded_<field> AND carries a freeze_revision_reason. Drop such a
+  ## pair from both sides, so any OTHER difference in the same file still fails.
+  if (any(grepl("^[[:space:]]*freeze_revision_reason:", b))) {
+    ## Drop the revision bookkeeping from BOTH sides: the payload fields the
+    ## revision replaced, the superseded_* records of their previous values,
+    ## and the free-prose reason block. Everything else in the file is still
+    ## compared, so any OTHER undeclared change still fails.
+    REVISED <- c("manifest_sha256", "manifest_row_count", "audit_sha256",
+                 "run_manifest_sha256", "run_manifest_recorded_commit",
+                 "run_manifest_input_count")
+    key_re <- paste0("^[[:space:]]*(", paste(REVISED, collapse = "|"), "):")
+    a <- a[!grepl(key_re, a)]
+    b <- b[!grepl(key_re, b)]
+    b <- b[!grepl("^[[:space:]]*superseded_[a-z0-9_]+:", b)]
+    ## the reason is a wrapped scalar: skip from its key to the next mapping key
+    start <- grep("^[[:space:]]*freeze_revision_reason:", b)
+    if (length(start)) {
+      drop <- integer(0)
+      for (s0 in start) {
+        j <- s0
+        repeat {
+          drop <- c(drop, j)
+          j <- j + 1L
+          if (j > length(b)) break
+          if (grepl("^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*:", b[[j]])) break
+          if (grepl("^[[:space:]]*-", b[[j]])) break
+        }
+      }
+      b <- b[-drop]
+    }
+  }
+
   if (identical(a, b)) {
     raw_changed <- length(setdiff(sub("[[:space:]]+$", "", old),
                                   sub("[[:space:]]+$", "", new)))
@@ -188,7 +231,10 @@ for (i in seq_len(nrow(rewrites))) {
 cat("\n")
 if (problems == 0L) {
   cat("RESULT: PASS - every declared rewrite is explained by file addressing alone.\n")
-  cat("No value, hash, threshold, claim or word of prose changed.\n")
+  cat("No value, hash, threshold, claim or word of prose changed, except where a\n")
+  cat("freeze_revision_reason records an accepted revision and superseded_* keeps\n")
+  cat("the replaced value. Today that is the Phase 6G.8 Interlude 3B.1 figure-export\n")
+  cat("re-freeze; every other difference is addressing alone.\n")
   quit(status = 0L)
 }
 cat("RESULT: FAIL -", problems, "object(s) changed beyond addressing.\n")

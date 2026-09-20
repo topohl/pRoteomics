@@ -14,6 +14,7 @@ source(paths_file)
 source(repo_path("R", "integration_utils.R"))
 source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
 source(repo_path("R", "qc_result_paths.R"))
+source(repo_path("R", "wgcna_paths.R"))
 
 SCRIPT_ID <- "analysis/wgcna/audit_module_robustness.R"
 run <- integration_cli(allow_all = TRUE)
@@ -124,10 +125,10 @@ make_claim_gate_audit <- function(ds, effects, level, source_file, preservation 
 }
 
 make_dataset <- function(ds) {
-  paths <- create_module_dirs("06_modules_WGCNA", file.path("module_robustness_sensitivity", ds))
+  paths <- wgcna_dirs("audit_module_robustness", ds, create = TRUE)
   inputs <- list(
-    inferential_handoff = path_results("tables", "06_modules_WGCNA", "interpretable_summary", ds, "WGCNA_inferential_handoff.csv"),
-    preservation = path_results("tables", "06_modules_WGCNA", "01_WGCNA", ds, "modules", "WGCNA_module_preservation_summary.csv"),
+    inferential_handoff = wgcna_interpretable_artifact("WGCNA_inferential_handoff.csv", ds),
+    preservation = wgcna_modules_artifact("WGCNA_module_preservation_summary.csv", ds, child = "tables", "modules"),
     pca_qc = qc_find("PCA_confounding_summary.csv", owner = "assess_pca_confounding",
                      legacy_substep = "05_pca_confounding_qc", scope = ds),
     variance_qc = qc_find("group_technical_confounding_screen.csv",
@@ -142,7 +143,7 @@ make_dataset <- function(ds) {
       inputs$inferential_handoff,
       if (handoff_ready) "PASS" else "FAIL"
     )
-    dry_run_line("WGCNA robustness claim gate audit", path_results("reviewer_audit", "wgcna_robustness_claim_gate.csv"))
+    dry_run_line("WGCNA robustness claim gate audit", file.path(wgcna_dirs("audit_module_robustness", "global")$tables, "wgcna_robustness_claim_gate.csv"))
     return(handoff_ready)
   }
   loaded <- lapply(names(inputs), function(nm) read_csv_optional(inputs[[nm]], ds, "robustness_sensitivity", nm, required = FALSE))
@@ -230,6 +231,6 @@ if (run$dry_run) {
 }
 invisible(dataset_results)
 audit <- dplyr::bind_rows(claim_gate_rows)
-dir_create(path_results("reviewer_audit"))
-write_csv_safe(audit, path_results("reviewer_audit", "wgcna_robustness_claim_gate.csv"))
+robustness_audit_dir <- wgcna_dirs("audit_module_robustness", "global", create = TRUE)$tables
+write_csv_safe(audit, file.path(robustness_audit_dir, "wgcna_robustness_claim_gate.csv"))
 message("Module robustness/sensitivity complete.")

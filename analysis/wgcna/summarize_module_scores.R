@@ -14,6 +14,7 @@ source(paths_file)
 source(repo_path("R", "wgcna_downstream_utils.R"))
 source(repo_path("R", "wgcna_labeling_utils.R"))
 source(repo_path("R", "wgcna_reviewed_label_registry.R"))
+source(repo_path("R", "wgcna_paths.R"))
 
 required_pkgs <- c("dplyr", "tidyr", "tibble", "ggplot2", "svglite", "readr", "stringr", "scales")
 missing_pkgs <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
@@ -131,7 +132,7 @@ read_csv_required <- function(path, label) {
 }
 
 canonical_final_label_lookup <- function(dataset) {
-  path <- path_results("tables", "06_modules_WGCNA", "interpretable_summary", dataset, "WGCNA_final_label_lookup.csv")
+  path <- wgcna_interpretable_artifact("WGCNA_final_label_lookup.csv", dataset)
   lookup <- read_csv_required(path, "canonical WGCNA final label lookup produced by summarize_module_interpretation.R")
   wgcna_validate_label_lookup(lookup)
   if (!all(lookup$dataset == dataset)) {
@@ -415,7 +416,7 @@ validate_unchanged_numeric <- function(original, labelled, key_cols, numeric_col
 }
 
 run_one_dataset <- function(dataset, module_source = "wgcna") {
-  score_dir <- path_results("tables", "06_modules_WGCNA", "module_score", dataset, module_source)
+  score_dir <- wgcna_module_score_dir(dataset, module_source)
   paths <- list(
     directional_effects = file.path(score_dir, "supermodule_directional_effects.csv"),
     directional_consistency = file.path(score_dir, "supermodule_directional_consistency.csv"),
@@ -425,7 +426,7 @@ run_one_dataset <- function(dataset, module_source = "wgcna") {
     full_workbook = file.path(score_dir, "WGCNA_supermodule_score_statistics_full.xlsx")
   )
 
-  out_paths <- create_module_dirs("06_modules_WGCNA", file.path("score_publication_summary", dataset))
+  out_paths <- wgcna_dirs("summarize_module_scores", dataset, create = TRUE)
   out_fig <- out_paths$figures
   out_tables <- out_paths$tables
   out_source <- out_paths$source_data
@@ -436,7 +437,7 @@ run_one_dataset <- function(dataset, module_source = "wgcna") {
     dry_run_line("Dataset", dataset)
     dry_run_line("Module source", module_source)
     dry_run_line("Score directional effects", paths$directional_effects, if (file.exists(paths$directional_effects)) "PASS" else "FAIL")
-    label_lookup_path <- path_results("tables", "06_modules_WGCNA", "interpretable_summary", dataset, "WGCNA_final_label_lookup.csv")
+    label_lookup_path <- wgcna_interpretable_artifact("WGCNA_final_label_lookup.csv", dataset)
     dry_run_line("Canonical final label lookup", label_lookup_path, if (file.exists(label_lookup_path)) "PASS" else "FAIL")
     dry_run_line("Output figures", out_fig)
     return(invisible(NULL))
@@ -569,7 +570,7 @@ run_one_dataset <- function(dataset, module_source = "wgcna") {
   write_run_manifest(
     file.path(out_logs, "run_manifest.yml"),
     inputs = c(paths, list(
-      final_label_lookup = path_results("tables", "06_modules_WGCNA", "interpretable_summary", dataset, "WGCNA_final_label_lookup.csv")
+      final_label_lookup = wgcna_interpretable_artifact("WGCNA_final_label_lookup.csv", dataset)
     )),
     outputs = list(figures = out_fig, tables = out_tables, source_data = out_source),
     parameters = list(dataset = dataset, module_source = module_source, analyses = paste(analysis_expected, collapse = ";")),

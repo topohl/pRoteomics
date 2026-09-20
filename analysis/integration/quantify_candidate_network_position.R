@@ -50,6 +50,7 @@ source("R/enrichment/enrichment_io.R")
 source("R/statistics/sus_res_spatial_dap_atlas_utils.R")
 source("R/statistics/wgcna_candidate_protein_utils.R")
 source("R/networks/wgcna_network_position_utils.R")
+source(repo_path("R", "wgcna_paths.R"))
 
 # Phase 6G.6: destinations resolve through the normalized output
 # contract, addressed by this analysis's own identity. This domain
@@ -80,8 +81,7 @@ if (is.na(n_permutations) || n_permutations < 1L) {
 }
 
 membership_path <- function(dataset) {
-  path_results("tables", "06_modules_WGCNA", "01_WGCNA", dataset, "modules",
-               "WGCNA_modules_long.csv")
+  wgcna_modules_artifact("WGCNA_modules_long.csv", dataset, child = "tables", "modules")
 }
 candidate_path <- function(dataset) {
   integration_find("wgcna_candidate_proteins_all.csv",

@@ -22,6 +22,7 @@ source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
 source(repo_path("R", "module_semantic_utils.R"))
 source(repo_path("R", "wgcna_label_activation_utils.R"))
 source(repo_path("R", "qc_result_paths.R"))
+source(repo_path("R", "wgcna_paths.R"))
 
 SCRIPT_ID <- "analysis/publication_source_data/build_biological_claims_table.R"
 Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
@@ -380,10 +381,7 @@ first_non_incomplete <- function(...) {
 
 wgcna_label_lookup <- function() {
   rows <- lapply(valid_datasets(), function(ds) {
-    lookup_path <- path_results(
-      "tables", "06_modules_WGCNA", "interpretable_summary", ds,
-      "WGCNA_final_label_lookup.csv"
-    )
+    lookup_path <- wgcna_interpretable_artifact("WGCNA_final_label_lookup.csv", ds)
     lookup <- read_csv_if_exists(lookup_path)
     if (is.null(lookup) || !nrow(lookup)) return(tibble::tibble())
     for (col in c(
@@ -458,10 +456,7 @@ repair_incomplete_wgcna_labels <- function(claims) {
 }
 
 wgcna_module_claim_status <- function(dataset) {
-  handoff_path <- path_results(
-    "tables", "06_modules_WGCNA", "interpretable_summary", dataset,
-    "WGCNA_inferential_handoff.csv"
-  )
+  handoff_path <- wgcna_interpretable_artifact("WGCNA_inferential_handoff.csv", dataset)
   effects <- if (file.exists(handoff_path)) {
     wgcna_inferential_handoff_read(handoff_path)
   } else NULL
@@ -894,8 +889,8 @@ write_wgcna_label_completeness_audit <- function(claims) {
 microglia_neuropil_independence_available <- function() {
   paths <- c(
     path_results("reviewer_audit", "microglia_neuropil_independence_claim_gate.csv"),
-    path_results("tables", "06_modules_WGCNA", "microglia_neuropil_independence", "microglia", "microglia_neuropil_independence_effects.csv"),
-    path_results("tables", "06_modules_WGCNA", "microglia_neuropil_independence", "microglia", "microglia_module_neuropil_independence_classification.csv")
+    wgcna_independence_artifact("microglia_neuropil_independence_effects.csv"),
+    wgcna_independence_artifact("microglia_module_neuropil_independence_classification.csv")
   )
   any(file.exists(paths))
 }
@@ -1496,7 +1491,7 @@ write_final_evidence_bundle_validation <- function(claims, manifest = NULL) {
 }
 
 supermodule_annotation_for_claims <- function(dataset) {
-  f <- path_results("tables", "06_modules_WGCNA", "module_annotation", dataset, "WGCNA_supermodule_biological_annotation.csv")
+  f <- wgcna_annotation_artifact("WGCNA_supermodule_biological_annotation.csv", dataset)
   ann <- read_csv_if_exists(f)
   if (is.null(ann) || !nrow(ann)) return(NULL)
   for (col in c("dataset", "SupermoduleID", "safe_display_label", "Supermodule_DisplayLabel", "Supermodule_FinalLabel", "Macroprogram_Display", "dominant_microenvironment_class", "annotation_confidence", "annotation_stable_across_thresholds", "label_basis", "label_downgrade_reason")) {
@@ -1592,8 +1587,8 @@ collect_program_claims <- function(dataset) {
 collect_wgcna_claims <- function(dataset) {
   f <- resolve_input_path(
     input_name = "wgcna_module_evidence_rank",
-    expected_path = path_results("tables", "06_modules_WGCNA", "01_WGCNA", dataset, "modules", "WGCNA_module_evidence_rank.csv"),
-    fallback_paths = path_results("tables", "06_modules_WGCNA", "01_WGCNA", dataset, "modules", "WGCNA_module_priority_summary.csv"),
+    expected_path = wgcna_modules_artifact("WGCNA_module_evidence_rank.csv", dataset, child = "tables", "modules"),
+    fallback_paths = wgcna_modules_artifact("WGCNA_module_priority_summary.csv", dataset, child = "tables", "modules"),
     required = TRUE,
     script = SCRIPT_ID,
     dataset = dataset,
@@ -1739,7 +1734,7 @@ collect_microglia_stage13_supermodule_architecture_claims <- function() {
 collect_overlap_claims <- function(dataset) {
   f <- resolve_input_path(
     input_name = "wgcna_de_gsea_overlap",
-    expected_path = path_results("tables", "06_modules_WGCNA", "04_wgcna_de_gsea_overlap", dataset, "WGCNA_vs_DE_GSEA_overlap.csv"),
+    expected_path = wgcna_gsea_overlap_artifact("WGCNA_vs_DE_GSEA_overlap.csv", dataset),
     required = TRUE,
     script = SCRIPT_ID,
     dataset = dataset,
@@ -1934,10 +1929,7 @@ collect_wgcna_group_effect_claims <- function(dataset, level = c("module", "supe
   filename <- "WGCNA_inferential_handoff.csv"
   f <- resolve_input_path(
     input_name = paste0("wgcna_", level, "_inferential_handoff"),
-    expected_path = path_results(
-      "tables", "06_modules_WGCNA", "interpretable_summary", dataset,
-      filename
-    ),
+    expected_path = wgcna_interpretable_artifact(filename, dataset),
     required = FALSE,
     script = SCRIPT_ID,
     dataset = dataset,

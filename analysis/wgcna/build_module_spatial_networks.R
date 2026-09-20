@@ -36,6 +36,7 @@ source(paths_file)
 source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "spatial_network_utils.R"))
 source(repo_path("R", "module_contracts.R"))
+source(repo_path("R", "wgcna_paths.R"))
 MODULE_ID <- "06_modules_WGCNA"
 args <- commandArgs(trailingOnly = TRUE)
 arg_value <- function(flag, default = "") {
@@ -64,8 +65,8 @@ CANONICAL_PATHS <- create_module_dirs(MODULE_ID, SUBSTEP_ID)
 resolve_module_score_file <- function() {
   override <- Sys.getenv("PROTEOMICS_MODULE_SPATIAL_SCORE_FILE", unset = "")
   if (nzchar(override)) return(normalizePath(override, winslash = "/", mustWork = FALSE))
-  csv <- path_results("tables", "06_modules_WGCNA", "module_score", dataset_profile, module_definition_source, "module_scores_per_sample.csv")
-  xlsx <- path_results("tables", "06_modules_WGCNA", "module_score", dataset_profile, module_definition_source, "module_scores_per_sample.xlsx")
+  csv <- wgcna_module_score_artifact("module_scores_per_sample.csv", dataset_profile, module_definition_source)
+  xlsx <- wgcna_module_score_artifact("module_scores_per_sample.xlsx", dataset_profile, module_definition_source)
   if (file.exists(csv)) return(csv)
   xlsx
 }

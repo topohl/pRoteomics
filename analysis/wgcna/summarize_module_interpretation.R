@@ -27,6 +27,7 @@ source(repo_path("R", "wgcna_labeling_utils.R"))
 source(repo_path("R", "wgcna_reviewed_label_registry.R"))
 source(repo_path("R", "module_contracts.R"))
 source(repo_path("R", "schema_validation.R"))
+source(repo_path("R", "wgcna_paths.R"))
 
 required_pkgs <- c("dplyr", "tidyr", "tibble", "ggplot2", "svglite", "readr", "stringr", "scales")
 missing_pkgs <- required_pkgs[!vapply(required_pkgs, requireNamespace, logical(1), quietly = TRUE)]
@@ -1378,7 +1379,7 @@ plot_microglia_marker_evidence <- function(module_annot, paths) {
 }
 
 make_dataset_summary <- function(ds) {
-  paths <- wgcna_downstream_paths("interpretable_summary", ds)
+  paths <- wgcna_dirs("summarize_module_interpretation", ds, create = TRUE)
 
   # Correct upstream inputs:
   #   - group_effects/<dataset>/module_group_effects.csv
@@ -1386,19 +1387,16 @@ make_dataset_summary <- function(ds) {
   #   - module_annotation/<dataset>/WGCNA_module_biological_annotation.csv
   #   - module_annotation/<dataset>/WGCNA_supermodule_biological_annotation.csv
   #   - 04_wgcna_de_gsea_overlap/<dataset>/WGCNA_vs_DE_GSEA_overlap.csv
-  module_effects_file <- path_results("tables", "06_modules_WGCNA", "group_effects", ds, "module_group_effects.csv")
-  super_effects_file <- path_results("tables", "06_modules_WGCNA", "group_effects", ds, "supermodule_group_effects.csv")
-  conditional_effects_file <- path_results(
-    "tables", "06_modules_WGCNA", "group_effects", ds,
-    "WGCNA_group_effect_interaction_conditional_followup.csv"
-  )
+  module_effects_file <- wgcna_group_effects_artifact("module_group_effects.csv", ds)
+  super_effects_file <- wgcna_group_effects_artifact("supermodule_group_effects.csv", ds)
+  conditional_effects_file <- wgcna_group_effects_artifact("WGCNA_group_effect_interaction_conditional_followup.csv", ds)
   module_effects <- safe_read_csv(module_effects_file)
   super_effects <- safe_read_csv(super_effects_file)
   conditional_effects <- safe_read_csv(conditional_effects_file)
-  module_annot <- safe_read_csv(path_results("tables", "06_modules_WGCNA", "module_annotation", ds, "WGCNA_module_biological_annotation.csv"))
-  super_annot <- safe_read_csv(path_results("tables", "06_modules_WGCNA", "module_annotation", ds, "WGCNA_supermodule_biological_annotation.csv"))
-  overlap <- safe_read_csv(path_results("tables", "06_modules_WGCNA", "04_wgcna_de_gsea_overlap", ds, "WGCNA_vs_DE_GSEA_overlap.csv"))
-  super_comp <- safe_read_csv(path_results("tables", "06_modules_WGCNA", "group_effects", ds, "supermodule_composition.csv"))
+  module_annot <- safe_read_csv(wgcna_annotation_artifact("WGCNA_module_biological_annotation.csv", ds))
+  super_annot <- safe_read_csv(wgcna_annotation_artifact("WGCNA_supermodule_biological_annotation.csv", ds))
+  overlap <- safe_read_csv(wgcna_gsea_overlap_artifact("WGCNA_vs_DE_GSEA_overlap.csv", ds))
+  super_comp <- safe_read_csv(wgcna_group_effects_artifact("supermodule_composition.csv", ds))
   current_files <- resolve_wgcna_files(ds)
   current_member_map_raw <- safe_read_csv(current_files$supermodule_annotation)
   current_super_summary <- safe_read_csv(current_files$supermodule_summary)
@@ -2200,17 +2198,14 @@ make_dataset_summary <- function(ds) {
   write_run_manifest(
     file.path(paths$logs, "run_manifest.yml"),
     inputs = list(
-      module_effects = path_results("tables", "06_modules_WGCNA", "group_effects", ds, "module_group_effects.csv"),
-      supermodule_effects = path_results("tables", "06_modules_WGCNA", "group_effects", ds, "supermodule_group_effects.csv"),
-      interaction_conditional_followups = path_results(
-        "tables", "06_modules_WGCNA", "group_effects", ds,
-        "WGCNA_group_effect_interaction_conditional_followup.csv"
-      ),
-      module_annotation = path_results("tables", "06_modules_WGCNA", "module_annotation", ds, "WGCNA_module_biological_annotation.csv"),
-      supermodule_annotation = path_results("tables", "06_modules_WGCNA", "module_annotation", ds, "WGCNA_supermodule_biological_annotation.csv"),
-      de_gsea_overlap = path_results("tables", "06_modules_WGCNA", "04_wgcna_de_gsea_overlap", ds, "WGCNA_vs_DE_GSEA_overlap.csv"),
-      supermodule_composition = path_results("tables", "06_modules_WGCNA", "group_effects", ds, "supermodule_composition.csv"),
-      module_to_supermodule_map = path_results("tables", "06_modules_WGCNA", "group_effects", ds, "module_to_supermodule_map_with_annotations.csv")
+      module_effects = wgcna_group_effects_artifact("module_group_effects.csv", ds),
+      supermodule_effects = wgcna_group_effects_artifact("supermodule_group_effects.csv", ds),
+      interaction_conditional_followups = wgcna_group_effects_artifact("WGCNA_group_effect_interaction_conditional_followup.csv", ds),
+      module_annotation = wgcna_annotation_artifact("WGCNA_module_biological_annotation.csv", ds),
+      supermodule_annotation = wgcna_annotation_artifact("WGCNA_supermodule_biological_annotation.csv", ds),
+      de_gsea_overlap = wgcna_gsea_overlap_artifact("WGCNA_vs_DE_GSEA_overlap.csv", ds),
+      supermodule_composition = wgcna_group_effects_artifact("supermodule_composition.csv", ds),
+      module_to_supermodule_map = wgcna_group_effects_artifact("module_to_supermodule_map_with_annotations.csv", ds)
     ),
     outputs = list(
       tables = paths$tables,
@@ -2246,7 +2241,7 @@ make_dataset_summary <- function(ds) {
 }
 
 make_cross_dataset_summary <- function(summaries) {
-  paths_all <- wgcna_downstream_paths("interpretable_summary", "all")
+  paths_all <- wgcna_dirs("summarize_module_interpretation", "all", create = TRUE)
 
   all_super <- dplyr::bind_rows(lapply(summaries, `[[`, "super"))
   if (!nrow(all_super)) {
@@ -2362,15 +2357,15 @@ if (run$dry_run) {
   datasets <- if (DATASET_ARG == "all") valid_datasets() else DATASET_ARG
   missing_required <- character()
   for (ds in datasets) {
-    paths <- wgcna_downstream_paths("interpretable_summary", ds)
+    paths <- wgcna_dirs("summarize_module_interpretation", ds, create = TRUE)
     invisible(lapply(unlist(paths), dir_create))
     dry_run_line("Dataset", ds)
     required_inputs <- c(
-      "Module effects" = path_results("tables", "06_modules_WGCNA", "group_effects", ds, "module_group_effects.csv"),
-      "Supermodule effects" = path_results("tables", "06_modules_WGCNA", "group_effects", ds, "supermodule_group_effects.csv"),
-      "Supermodule composition" = path_results("tables", "06_modules_WGCNA", "group_effects", ds, "supermodule_composition.csv"),
-      "Module annotation" = path_results("tables", "06_modules_WGCNA", "module_annotation", ds, "WGCNA_module_biological_annotation.csv"),
-      "Supermodule annotation" = path_results("tables", "06_modules_WGCNA", "module_annotation", ds, "WGCNA_supermodule_biological_annotation.csv")
+      "Module effects" = wgcna_group_effects_artifact("module_group_effects.csv", ds),
+      "Supermodule effects" = wgcna_group_effects_artifact("supermodule_group_effects.csv", ds),
+      "Supermodule composition" = wgcna_group_effects_artifact("supermodule_composition.csv", ds),
+      "Module annotation" = wgcna_annotation_artifact("WGCNA_module_biological_annotation.csv", ds),
+      "Supermodule annotation" = wgcna_annotation_artifact("WGCNA_supermodule_biological_annotation.csv", ds)
     )
     for (input_name in names(required_inputs)) {
       input_path <- required_inputs[[input_name]]
@@ -2380,18 +2375,17 @@ if (run$dry_run) {
     }
     dry_run_line(
       "Conditional interaction follow-ups",
-      path_results(
-        "tables", "06_modules_WGCNA", "group_effects", ds,
-        "WGCNA_group_effect_interaction_conditional_followup.csv"
-      ),
-      if (file.exists(path_results(
-        "tables", "06_modules_WGCNA", "group_effects", ds,
-        "WGCNA_group_effect_interaction_conditional_followup.csv"
-      ))) "PASS" else "WARN"
+      wgcna_group_effects_artifact("WGCNA_group_effect_interaction_conditional_followup.csv", ds),
+      if (file.exists(wgcna_group_effects_artifact("WGCNA_group_effect_interaction_conditional_followup.csv", ds))) "PASS" else "WARN"
     )
   }
   if (DATASET_ARG == "all") {
-    dry_run_line("Cross-dataset output", path_results("tables", "06_modules_WGCNA", "interpretable_summary", "all"))
+    # Report the directory the run actually writes to. The real cross-dataset
+    # write below uses wgcna_dirs(..., "all"); this line still named the
+    # historical location, so --dry-run told the operator one destination while
+    # the run used another. create is left at its default here: a dry run must
+    # not make directories.
+    dry_run_line("Cross-dataset output", wgcna_dirs("summarize_module_interpretation", "all")$tables)
   }
   dry_run_line(
     "Status",
