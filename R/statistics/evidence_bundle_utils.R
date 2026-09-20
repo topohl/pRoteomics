@@ -8,6 +8,11 @@ source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "wgcna_claim_readiness_utils.R"))
 source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
 source(repo_path("R", "module_semantic_utils.R"))
+## The claims table and its reviewer audits are owned by
+## publication_source_data and resolve normalized-first through its own layer.
+if (!exists("psd_claims_table", mode = "function")) {
+  source(repo_path("R", "publication_source_data_paths.R"))
+}
 if (!exists("wgcna_dirs", mode = "function")) {
   if (!exists("repo_path", mode = "function")) {
     paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
@@ -596,12 +601,12 @@ write_final_evidence_bundle <- function(reason = "integration") {
     manuscript_program_summary = path_results("tables", "10_biological_integration", "manuscript_program_summary", "global", "manuscript_program_summary.csv"),
     evidence_priority_matrix = path_results("tables", "10_biological_integration", "evidence_priority_matrix", "global", "evidence_priority_matrix.csv"),
     cross_compartment_program_atlas = path_results("tables", "10_biological_integration", "cross_compartment_program_atlas", "global", "cross_compartment_program_atlas_long.csv"),
-    biological_claims = path_results("tables", "biological_claims_table.csv"),
+    biological_claims = psd_claims_table("biological_claims_table.csv"),
     microglia_module_annotation = wgcna_annotation_artifact("WGCNA_module_biological_annotation.csv", "microglia"),
     microglia_targeted_signature_details = wgcna_annotation_artifact("WGCNA_module_targeted_signature_overlap_details.csv", "microglia"),
     microglia_neuropil_independence = wgcna_independence_artifact("microglia_neuropil_independence_effects.csv"),
-    reviewer_audit_manifest = path_results("reviewer_audit", "final_reviewer_audit_manifest.csv"),
-    final_validation = path_results("reviewer_audit", "final_evidence_bundle_validation.csv"),
+    reviewer_audit_manifest = psd_claims_audit("final_reviewer_audit_manifest.csv"),
+    final_validation = psd_claims_audit("final_evidence_bundle_validation.csv"),
     microglia_wgcna_claim_readiness = microglia_wgcna_claim_readiness_path()
   )
 

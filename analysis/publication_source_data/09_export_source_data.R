@@ -16,6 +16,7 @@ paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.
 source(paths_file)
 source(repo_path("R", "validation_utils.R"))
 source(repo_path("R", "export_helpers.R"))
+source(repo_path("R", "publication_source_data_paths.R"))
 
 dry_run <- is_dry_run()
 manuscript_root <- output_namespace_manuscript_export_root()
@@ -95,7 +96,8 @@ copy_export_targets(manifest$source_file, manifest$target_file)
 manifest_path <- file.path(manuscript_root, "source_data_export_manifest.csv")
 utils::write.csv(manifest, manifest_path, row.names = FALSE)
 write_run_manifest(
-  path_results("logs", "09_export_pride_journal", "source_data", "run_manifest.yml"),
+  file.path(psd_dirs("09_export_source_data", create = TRUE)$manifests,
+            "run_manifest.yml"),
   inputs = list(tables = candidates),
   outputs = list(manifest = manifest_path, source_data = target_source, supplementary_tables = target_supp),
   notes = "Collect-only manuscript source-data export; no analyses are recomputed."

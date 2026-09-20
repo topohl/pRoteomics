@@ -18,6 +18,7 @@ source(repo_path("R", "validation_utils.R"))
 source(repo_path("R", "enrichment_io.R"))
 source(repo_path("R", "schema_validation.R"))
 source(repo_path("R", "wgcna_claim_readiness_utils.R"))
+source(repo_path("R", "publication_source_data_paths.R"))
 source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
 source(repo_path("R", "module_semantic_utils.R"))
 source(repo_path("R", "wgcna_label_activation_utils.R"))
@@ -784,7 +785,7 @@ harmonize_claim_use_class_wording <- function(claims) {
 }
 
 write_blocked_claim_wording_audit <- function(claims) {
-  audit_dir <- path_results("reviewer_audit")
+  audit_dir <- psd_dirs("build_biological_claims_table", create = TRUE)$tables
   dir_create(audit_dir)
   audit <- claims %>%
     dplyr::filter(!.data$claim_allowed, positive_blocked_wording(.data$safe_interpretation)) %>%
@@ -797,7 +798,7 @@ write_blocked_claim_wording_audit <- function(claims) {
 }
 
 write_claim_use_class_wording_audit <- function(claims) {
-  audit_dir <- path_results("reviewer_audit")
+  audit_dir <- psd_dirs("build_biological_claims_table", create = TRUE)$tables
   dir_create(audit_dir)
   incomplete_allowed <- claims$claim_allowed &
     (grepl("WGCNA|module", claims$evidence_type, ignore.case = TRUE) | claims$claim_type == "wgcna_group_effect") &
@@ -833,7 +834,7 @@ write_claim_use_class_wording_audit <- function(claims) {
 }
 
 write_wgcna_claim_source_audit <- function(claims) {
-  audit_dir <- path_results("reviewer_audit")
+  audit_dir <- psd_dirs("build_biological_claims_table", create = TRUE)$tables
   dir_create(audit_dir)
   audit <- claims %>%
     dplyr::filter(grepl("WGCNA|module", .data$evidence_type, ignore.case = TRUE) | .data$claim_type == "wgcna_group_effect") %>%
@@ -853,7 +854,7 @@ write_wgcna_claim_source_audit <- function(claims) {
 }
 
 write_wgcna_label_completeness_audit <- function(claims) {
-  audit_dir <- path_results("reviewer_audit")
+  audit_dir <- psd_dirs("build_biological_claims_table", create = TRUE)$tables
   dir_create(audit_dir)
   if (is.null(claims) || !nrow(claims)) {
     audit <- tibble::tibble(
@@ -1266,7 +1267,7 @@ write_wgcna_stage13_cardinality_audit <- function(claims) {
   if (any(rows$wgcna_claim_entity_role == "compatibility_alias")) {
     stop("Compatibility aliases must not create biological claim rows.", call. = FALSE)
   }
-  readr::write_csv(rows, path_results("reviewer_audit", "wgcna_stage13_claim_cardinality_audit.csv"), na = "")
+  readr::write_csv(rows, psd_claims_audit("wgcna_stage13_claim_cardinality_audit.csv"), na = "")
   invisible(rows)
 }
 
@@ -1276,7 +1277,7 @@ write_claim_gate_audits <- function(claims) {
     "batch_confound_gate", "marker_contamination_gate", "microglia_roi_gate",
     "neuropil_independence_gate", "robustness_gate", "evidence_independence_gate"
   )
-  audit_dir <- path_results("reviewer_audit")
+  audit_dir <- psd_dirs("build_biological_claims_table", create = TRUE)$tables
   dir_create(audit_dir)
   req <- gate_required(claims)
   required_df <- data.frame(
@@ -1320,7 +1321,7 @@ write_claim_gate_audits <- function(claims) {
 }
 
 write_go_label_audits <- function(claims) {
-  audit_dir <- path_results("reviewer_audit")
+  audit_dir <- psd_dirs("build_biological_claims_table", create = TRUE)$tables
   dir_create(audit_dir)
   enrichment <- claims |>
     dplyr::filter(.data$claim_type == "enrichment_program") |>
@@ -1369,7 +1370,7 @@ write_go_label_audits <- function(claims) {
 }
 
 write_final_claim_gate_summary <- function(claims) {
-  audit_dir <- path_results("reviewer_audit")
+  audit_dir <- psd_dirs("build_biological_claims_table", create = TRUE)$tables
   dir_create(audit_dir)
   group_cols <- c(
     "dataset", "claim_type", "evidence_type", "claim_allowed", "claim_gate_status",
@@ -1385,10 +1386,10 @@ write_final_claim_gate_summary <- function(claims) {
 }
 
 final_reviewer_audit_specs <- function() {
-  audit_dir <- path_results("reviewer_audit")
+  audit_dir <- psd_dirs("build_biological_claims_table", create = TRUE)$tables
   tibble::tribble(
     ~audit_file, ~path, ~schema_name, ~produced_by_script, ~reviewer_use, ~manuscript_use_allowed, ~notes,
-    "biological_claims_table.csv", path_results("tables", "biological_claims_table.csv"), "biological_claims_table", SCRIPT_ID, "Row-level claim eligibility and wording", TRUE, "Use only rows whose claim gates and claim_use_class permit manuscript use.",
+    "biological_claims_table.csv", file.path(psd_dirs("build_biological_claims_table", create = TRUE)$tables, "biological_claims_table.csv"), "biological_claims_table", SCRIPT_ID, "Row-level claim eligibility and wording", TRUE, "Use only rows whose claim gates and claim_use_class permit manuscript use.",
     "claim_gate_summary.csv", file.path(audit_dir, "claim_gate_summary.csv"), NA_character_, SCRIPT_ID, "High-level claim-gate counts", FALSE, "Audit summary only.",
     "final_claim_gate_summary.csv", file.path(audit_dir, "final_claim_gate_summary.csv"), "final_claim_gate_summary", SCRIPT_ID, "Fully stratified final claim-gate counts", FALSE, "Audit summary only.",
     "claim_use_class_summary.csv", file.path(audit_dir, "claim_use_class_summary.csv"), NA_character_, SCRIPT_ID, "Claim-use-class and GO-risk counts", FALSE, "Audit summary only.",
@@ -1437,7 +1438,8 @@ write_final_reviewer_audit_manifest <- function() {
     dplyr::ungroup() |>
     dplyr::select("audit_file", "exists", "n_rows", "schema_validated", "produced_by_script", "reviewer_use", "manuscript_use_allowed", "notes")
   validate_table_schema(manifest, "final_reviewer_audit_manifest", strict = TRUE)
-  out <- path_results("reviewer_audit", manifest_name)
+  out <- psd_claims_audit(manifest_name)
+  dir_create(dirname(out))
   readr::write_csv(manifest, out, na = "")
   invisible(manifest)
 }
@@ -1486,7 +1488,7 @@ write_final_evidence_bundle_validation <- function(claims, manifest = NULL) {
     )
   )
   validate_table_schema(validation, "final_evidence_bundle_validation", strict = TRUE)
-  readr::write_csv(validation, path_results("reviewer_audit", "final_evidence_bundle_validation.csv"), na = "")
+  readr::write_csv(validation, psd_claims_audit("final_evidence_bundle_validation.csv"), na = "")
   invisible(validation)
 }
 
@@ -1767,10 +1769,10 @@ collect_overlap_claims <- function(dataset) {
         "claim_rows_created", "exclusion_reason",
         "stage13_source_file", "overlap_source_file"
       )
-    dir_create(path_results("reviewer_audit"))
+    dir_create(psd_dirs("build_biological_claims_table", create = TRUE)$tables)
     readr::write_csv(
       identity_audit,
-      path_results("reviewer_audit", "microglia_wgcna_overlap_stage13_identity_audit.csv"),
+      psd_claims_audit("microglia_wgcna_overlap_stage13_identity_audit.csv"),
       na = ""
     )
     df <- df |>
@@ -2117,22 +2119,22 @@ if (is_dry_run()) {
   dry_run_line("Datasets", paste(valid_datasets(), collapse = ", "))
   dry_run_line("Integration manuscript summary", manuscript_summary_path, if (file.exists(manuscript_summary_path)) "PASS" else "FAIL")
   dry_run_line("Required microglia WGCNA Stage 13 claim readiness", STAGE13_PATH, if (file.exists(STAGE13_PATH)) "PASS" else "FAIL")
-  dry_run_line("Output CSV", path_results("tables", "biological_claims_table.csv"))
-  dry_run_line("Output XLSX", path_results("tables", "biological_claims_table.xlsx"))
-  dry_run_line("Claim gate evidence availability audit", path_results("reviewer_audit", "claim_gate_evidence_availability.csv"))
-  dry_run_line("Claim gate summary audit", path_results("reviewer_audit", "claim_gate_summary.csv"))
-  dry_run_line("GO label risk audit", path_results("reviewer_audit", "go_label_risk_audit.csv"))
-  dry_run_line("Claim use class summary", path_results("reviewer_audit", "claim_use_class_summary.csv"))
-  dry_run_line("GO safe interpretation audit", path_results("reviewer_audit", "go_label_safe_interpretation_audit.csv"))
-  dry_run_line("Blocked claim wording audit", path_results("reviewer_audit", "blocked_claim_wording_audit.csv"))
-  dry_run_line("WGCNA claim source audit", path_results("reviewer_audit", "wgcna_claim_source_audit.csv"))
-  dry_run_line("WGCNA label completeness audit", path_results("reviewer_audit", "wgcna_label_completeness_audit.csv"))
-  dry_run_line("WGCNA Stage 13 claim cardinality audit", path_results("reviewer_audit", "wgcna_stage13_claim_cardinality_audit.csv"))
-  dry_run_line("Microglia WGCNA overlap stable-ID audit", path_results("reviewer_audit", "microglia_wgcna_overlap_stage13_identity_audit.csv"))
-  dry_run_line("Claim-use-class wording audit", path_results("reviewer_audit", "claim_use_class_wording_audit.csv"))
-  dry_run_line("Final claim-gate summary", path_results("reviewer_audit", "final_claim_gate_summary.csv"))
-  dry_run_line("Final reviewer audit manifest", path_results("reviewer_audit", "final_reviewer_audit_manifest.csv"))
-  dry_run_line("Final evidence bundle validation", path_results("reviewer_audit", "final_evidence_bundle_validation.csv"))
+  dry_run_line("Output CSV", file.path(psd_dirs("build_biological_claims_table", create = TRUE)$tables, "biological_claims_table.csv"))
+  dry_run_line("Output XLSX", file.path(psd_dirs("build_biological_claims_table", create = TRUE)$tables, "biological_claims_table.xlsx"))
+  dry_run_line("Claim gate evidence availability audit", psd_claims_audit("claim_gate_evidence_availability.csv"))
+  dry_run_line("Claim gate summary audit", psd_claims_audit("claim_gate_summary.csv"))
+  dry_run_line("GO label risk audit", psd_claims_audit("go_label_risk_audit.csv"))
+  dry_run_line("Claim use class summary", psd_claims_audit("claim_use_class_summary.csv"))
+  dry_run_line("GO safe interpretation audit", psd_claims_audit("go_label_safe_interpretation_audit.csv"))
+  dry_run_line("Blocked claim wording audit", psd_claims_audit("blocked_claim_wording_audit.csv"))
+  dry_run_line("WGCNA claim source audit", psd_claims_audit("wgcna_claim_source_audit.csv"))
+  dry_run_line("WGCNA label completeness audit", psd_claims_audit("wgcna_label_completeness_audit.csv"))
+  dry_run_line("WGCNA Stage 13 claim cardinality audit", psd_claims_audit("wgcna_stage13_claim_cardinality_audit.csv"))
+  dry_run_line("Microglia WGCNA overlap stable-ID audit", psd_claims_audit("microglia_wgcna_overlap_stage13_identity_audit.csv"))
+  dry_run_line("Claim-use-class wording audit", psd_claims_audit("claim_use_class_wording_audit.csv"))
+  dry_run_line("Final claim-gate summary", psd_claims_audit("final_claim_gate_summary.csv"))
+  dry_run_line("Final reviewer audit manifest", psd_claims_audit("final_reviewer_audit_manifest.csv"))
+  dry_run_line("Final evidence bundle validation", psd_claims_audit("final_evidence_bundle_validation.csv"))
   required_ready <- file.exists(manuscript_summary_path) &&
     file.exists(STAGE13_PATH)
   dry_run_line(
@@ -2226,9 +2228,9 @@ wgcna_stage13_cardinality_audit <- write_wgcna_stage13_cardinality_audit(claims)
 claims <- attach_canonical_wgcna_display_label(claims)
 assert_one_canonical_label_per_wgcna_entity(claims)
 
-dir_create(path_results("tables"))
-csv_out <- path_results("tables", "biological_claims_table.csv")
-xlsx_out <- path_results("tables", "biological_claims_table.xlsx")
+claims_tables <- psd_dirs("build_biological_claims_table", create = TRUE)$tables
+csv_out <- file.path(claims_tables, "biological_claims_table.csv")
+xlsx_out <- file.path(claims_tables, "biological_claims_table.xlsx")
 readr::write_csv(claims, csv_out, na = "")
 if (requireNamespace("writexl", quietly = TRUE)) {
   tryCatch(
@@ -2251,23 +2253,24 @@ final_reviewer_audit_manifest <- write_final_reviewer_audit_manifest()
 message("Biological claims table written: ", csv_out)
 
 write_run_manifest(
-  path_results("logs", "09_export_pride_journal", "biological_claims_table", "run_manifest.yml"),
+  file.path(psd_dirs("build_biological_claims_table", create = TRUE)$manifests,
+            "run_manifest.yml"),
   inputs = list(source_files = unique(claims$source_file)),
   outputs = list(
     csv = csv_out,
     xlsx = if (file.exists(xlsx_out)) xlsx_out else NA_character_,
-    claim_gate_evidence_availability = path_results("reviewer_audit", "claim_gate_evidence_availability.csv"),
-    claim_gate_summary = path_results("reviewer_audit", "claim_gate_summary.csv"),
-    go_label_risk_audit = path_results("reviewer_audit", "go_label_risk_audit.csv"),
-    claim_use_class_summary = path_results("reviewer_audit", "claim_use_class_summary.csv"),
-    go_label_safe_interpretation_audit = path_results("reviewer_audit", "go_label_safe_interpretation_audit.csv"),
-    blocked_claim_wording_audit = path_results("reviewer_audit", "blocked_claim_wording_audit.csv"),
-    wgcna_claim_source_audit = path_results("reviewer_audit", "wgcna_claim_source_audit.csv"),
-    wgcna_label_completeness_audit = path_results("reviewer_audit", "wgcna_label_completeness_audit.csv"),
-    claim_use_class_wording_audit = path_results("reviewer_audit", "claim_use_class_wording_audit.csv"),
-    final_claim_gate_summary = path_results("reviewer_audit", "final_claim_gate_summary.csv"),
-    final_reviewer_audit_manifest = path_results("reviewer_audit", "final_reviewer_audit_manifest.csv"),
-    final_evidence_bundle_validation = path_results("reviewer_audit", "final_evidence_bundle_validation.csv")
+    claim_gate_evidence_availability = psd_claims_audit("claim_gate_evidence_availability.csv"),
+    claim_gate_summary = psd_claims_audit("claim_gate_summary.csv"),
+    go_label_risk_audit = psd_claims_audit("go_label_risk_audit.csv"),
+    claim_use_class_summary = psd_claims_audit("claim_use_class_summary.csv"),
+    go_label_safe_interpretation_audit = psd_claims_audit("go_label_safe_interpretation_audit.csv"),
+    blocked_claim_wording_audit = psd_claims_audit("blocked_claim_wording_audit.csv"),
+    wgcna_claim_source_audit = psd_claims_audit("wgcna_claim_source_audit.csv"),
+    wgcna_label_completeness_audit = psd_claims_audit("wgcna_label_completeness_audit.csv"),
+    claim_use_class_wording_audit = psd_claims_audit("claim_use_class_wording_audit.csv"),
+    final_claim_gate_summary = psd_claims_audit("final_claim_gate_summary.csv"),
+    final_reviewer_audit_manifest = psd_claims_audit("final_reviewer_audit_manifest.csv"),
+    final_evidence_bundle_validation = psd_claims_audit("final_evidence_bundle_validation.csv")
   ),
   parameters = list(datasets = valid_datasets(), schema = "biological_claims_table"),
   notes = "Reviewer-facing manuscript claim gate. claim_grade is descriptive; claim_allowed and claim_gate_status determine eligibility. Missing statistics remain NA."
