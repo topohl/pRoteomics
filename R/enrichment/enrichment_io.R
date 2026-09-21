@@ -272,7 +272,8 @@ validate_gsea_result_table_contract <- function(x, context = "GSEA result") {
   invisible(TRUE)
 }
 
-validate_clusterprofiler_manifest_contract <- function(manifest, strict = TRUE, require_files = TRUE) {
+validate_clusterprofiler_manifest_contract <- function(manifest, strict = TRUE, require_files = TRUE,
+                                                       file_columns = clusterprofiler_runtime_required_fields()) {
   required <- c(
     "dataset", "comparison", "result_type", "ontology", "analysis_status", "n_terms",
     "output_table", "collapsed_gene_input_file", "collapsed_gene_provenance_file",
@@ -308,8 +309,15 @@ validate_clusterprofiler_manifest_contract <- function(manifest, strict = TRUE, 
     stop("success_with_terms rows must record n_terms > 0.", call. = FALSE)
   }
   if (isTRUE(require_files) && any(success)) {
-    file_columns <- c("output_table", "collapsed_gene_input_file", "collapsed_gene_provenance_file", "term_gene_provenance_file")
-    for (column in file_columns) {
+    ## Runtime validity is gated on the fields runtime actually reads. A
+    ## provenance-only field stays in the manifest and keeps its declared
+    ## value, but nothing opens it, so requiring it to be openable would force
+    ## 108 pointless staged copies and would fail for a reason no consumer
+    ## cares about. Which fields are which is recorded in
+    ## CLUSTERPROFILER_MANIFEST_PATH_FIELDS, derived from a grep for reads.
+    ## Semantics are otherwise untouched: still all-or-nothing over the gated
+    ## fields, and a single unusable one still invalidates the manifest.
+    for (column in intersect(file_columns, names(manifest))) {
       paths <- as.character(manifest[[column]][success])
       ## The contract is unchanged and still all-or-nothing: every declared
       ## file of a successful row must be usable, or the manifest is invalid.
@@ -403,6 +411,186 @@ resolve_repository_contract_path <- function(path, repository_root = repo_path()
   out
 }
 
+# --- runtime manifest resolution --------------------------------------------
+#
+# The stored manifests are immutable provenance. Every path in them is recorded
+# under a substituted P:/ root that describes the machine the run happened on,
+# and that root is not mounted here. Re-anchoring the stored suffix on this
+# repository root is necessary but not sufficient: the stored paths are short
+# (max 207) and this root is 69 characters, so re-anchoring adds ~66 and pushes
+# part of the set past the wall R can open.
+#
+# So the declared path stays exactly as recorded, and a runtime path is derived
+# beside it. Only an actively read field whose re-anchored path crosses the
+# wall is staged.
+#
+# Which fields are actually read was derived mechanically from a grep for
+# content reads. A field whose value is only carried into another table as a
+# string is provenance: nothing opens it, so runtime validity must not depend
+# on it being openable. collapsed_gene_provenance_file is the case that
+# matters - its re-anchored paths reach 273 characters, and staging 108 cells
+# nothing reads would be pure waste.
+## input_gene_file is read by analysis/wgcna/compare_module_enrichment_overlap.R,
+## not by this file, but it is declared under the same unmounted root and so
+## needs the same re-anchoring. Its paths top out at 168 characters, so it is
+## runtime-required and never a staging candidate.
+## The other three provenance-only fields are listed so the runtime ledger
+## accounts for every path-bearing column rather than going quiet about four of
+## them. gene_mapping_policy is deliberately absent: it contains prose
+## ("SYMBOL/ENTREZ") and is not a path at all.
+CLUSTERPROFILER_MANIFEST_PATH_FIELDS <- c(
+  output_table                   = "runtime_required",
+  collapsed_gene_input_file      = "runtime_required",
+  term_gene_provenance_file      = "runtime_required",
+  input_gene_file                = "runtime_required",
+  collapsed_gene_provenance_file = "provenance_only",
+  config_file                    = "provenance_only",
+  gene_input_file                = "provenance_only",
+  output_plot                    = "provenance_only"
+)
+
+clusterprofiler_runtime_required_fields <- function() {
+  names(CLUSTERPROFILER_MANIFEST_PATH_FIELDS)[
+    CLUSTERPROFILER_MANIFEST_PATH_FIELDS == "runtime_required"]
+}
+
+clusterprofiler_provenance_only_fields <- function() {
+  names(CLUSTERPROFILER_MANIFEST_PATH_FIELDS)[
+    CLUSTERPROFILER_MANIFEST_PATH_FIELDS == "provenance_only"]
+}
+
+# Strip whatever root a stored path declares, leaving the repository-relative
+# remainder that both environments agree on.
+manifest_declared_suffix <- function(path) {
+  p <- gsub("\\\\", "/", as.character(path))
+  p <- sub("^[A-Za-z]:/+", "", p)
+  sub("^/+", "", p)
+}
+
+# Resolve one vector of declared paths to usable runtime paths.
+#
+# Precedence, deliberately: a declared path that already works is used as-is;
+# otherwise the re-anchored candidate is used if R can open it; otherwise, if
+# the candidate exists physically but is too long, a byte-identical copy is
+# staged; otherwise the failure is left truthful. A genuinely absent file is
+# never staged to make validation pass.
+resolve_runtime_paths <- function(declared, repository_root = repo_path(),
+                                  stage_root = NULL, stage = TRUE) {
+  declared <- as.character(declared)
+  n <- length(declared)
+  out <- data.frame(
+    declared_path = declared,
+    runtime_path = declared,
+    runtime_resolution = rep(RUNTIME_RESOLUTION_UNRESOLVED, n),
+    declared_status = input_addressability(declared),
+    candidate_path = NA_character_,
+    candidate_length = NA_integer_,
+    source_sha256 = NA_character_,
+    staged_sha256 = NA_character_,
+    stringsAsFactors = FALSE)
+  if (!n) return(out)
+
+  usable <- !is.na(declared) & nzchar(declared)
+  ## a declared path that is simply usable here needs nothing done to it
+  direct <- usable & out$declared_status == INPUT_STATUS_PRESENT
+  out$runtime_resolution[direct] <- RUNTIME_RESOLUTION_DIRECT
+
+  todo <- which(usable & !direct)
+  if (!length(todo)) return(out)
+
+  cand <- gsub("\\\\", "/", file.path(repository_root, manifest_declared_suffix(declared[todo])))
+  out$candidate_path[todo] <- cand
+  out$candidate_length[todo] <- path_length_chars(cand)
+
+  short <- out$candidate_length[todo] < PATH_LENGTH_WALL
+  ## Below the wall R can answer for itself, which keeps fixtures fast and free
+  ## of any dependency on an external shell.
+  if (any(short)) {
+    i <- todo[short]
+    hit <- file.exists(out$candidate_path[i])
+    out$runtime_path[i[hit]] <- out$candidate_path[i[hit]]
+    out$runtime_resolution[i[hit]] <- RUNTIME_RESOLUTION_REBASED
+  }
+
+  long <- which(!short)
+  if (!length(long)) return(out)
+  i <- todo[long]
+  ## At or beyond the wall only an extended-length-aware runtime can tell us
+  ## whether the file is there, so file.exists() must not be consulted.
+  facts <- os_path_facts(out$candidate_path[i])
+  exists <- !is.na(facts$exists) & facts$exists
+  out$source_sha256[i] <- facts$sha256
+  if (!isTRUE(stage) || !any(exists)) return(out)
+
+  root <- stage_root %||% stop("resolve_runtime_paths needs a stage_root", call. = FALSE)
+  j <- i[exists]
+  dest <- staged_destination(out$declared_path[j], root)
+  staged <- stage_addressable_copies(out$candidate_path[j], dest,
+                                     expected_sha256 = facts$sha256[exists])
+  out$staged_sha256[j] <- staged$staged_sha256
+  ## Only a verified staged copy becomes the runtime path. A copy that failed,
+  ## or a destination holding different bytes, stays unresolved so the
+  ## validator can refuse it rather than reading something unexpected.
+  good <- j[staged$ok]
+  out$runtime_path[good] <- staged$staged_path[staged$ok]
+  out$runtime_resolution[good] <- RUNTIME_RESOLUTION_STAGED
+  out
+}
+
+# Resolve a whole manifest to its runtime view.
+#
+# Returns the manifest with runtime paths in the runtime-required columns and
+# the declared values preserved in <field>_declared, plus a per-cell resolution
+# table. The manifest FILE is not touched; this is an in-memory view.
+clusterprofiler_manifest_runtime_resolution <- function(manifest, dataset = NULL,
+                                                        repository_root = repo_path(),
+                                                        stage = TRUE) {
+  rows <- list()
+  row_dataset <- if ("dataset" %in% names(manifest)) as.character(manifest$dataset) else
+    rep(dataset %||% "global", nrow(manifest))
+  row_dataset[is.na(row_dataset) | !nzchar(row_dataset)] <- dataset %||% "global"
+
+  for (field in names(CLUSTERPROFILER_MANIFEST_PATH_FIELDS)) {
+    if (!field %in% names(manifest)) next
+    kind <- CLUSTERPROFILER_MANIFEST_PATH_FIELDS[[field]]
+    declared <- as.character(manifest[[field]])
+
+    if (identical(kind, "provenance_only")) {
+      ## Recorded, deliberately not resolved and never staged. Its declared
+      ## status is still reported so the ledger stays truthful about it.
+      rows[[length(rows) + 1L]] <- data.frame(
+        dataset = row_dataset, field = field, field_kind = kind,
+        declared_path = declared, runtime_path = declared,
+        runtime_resolution = RUNTIME_RESOLUTION_NOT_CONSUMED,
+        declared_status = input_addressability(declared),
+        candidate_path = NA_character_, candidate_length = NA_integer_,
+        source_sha256 = NA_character_, staged_sha256 = NA_character_,
+        stringsAsFactors = FALSE)
+      next
+    }
+
+    res <- do.call(rbind, lapply(split(seq_len(nrow(manifest)), row_dataset), function(idx) {
+      ds <- row_dataset[[idx[[1]]]]
+      r <- resolve_runtime_paths(
+        declared[idx], repository_root = repository_root,
+        stage_root = path_stage_root("differential_abundance",
+                                     "run_clusterprofiler_enrichment", ds),
+        stage = stage)
+      r$.idx <- idx
+      r
+    }))
+    res <- res[order(res$.idx), , drop = FALSE]
+    manifest[[paste0(field, "_declared")]] <- res$declared_path
+    manifest[[field]] <- res$runtime_path
+    res$.idx <- NULL
+    rows[[length(rows) + 1L]] <- data.frame(
+      dataset = row_dataset, field = field, field_kind = kind, res,
+      stringsAsFactors = FALSE)
+  }
+  list(manifest = manifest,
+       resolution = if (length(rows)) do.call(rbind, rows) else NULL)
+}
+
 resolve_manifest_contract_paths <- function(manifest, path_columns, repository_root = repo_path()) {
   for (column in intersect(path_columns, names(manifest))) {
     manifest[[column]] <- resolve_repository_contract_path(manifest[[column]], repository_root)
@@ -412,15 +600,23 @@ resolve_manifest_contract_paths <- function(manifest, path_columns, repository_r
 
 read_canonical_clusterprofiler_manifest <- function(path, dataset, strict = TRUE,
                                                     require_files = TRUE,
-                                                    repository_root = repo_path()) {
+                                                    repository_root = repo_path(),
+                                                    stage_long_paths = TRUE) {
   if (!file.exists(path)) stop("Canonical clusterProfiler manifest not found: ", path, call. = FALSE)
   manifest <- read_csv_contract(path)
   manifest <- resolve_manifest_contract_paths(
-    manifest,
-    c("output_table", "collapsed_gene_input_file", "collapsed_gene_provenance_file", "term_gene_provenance_file"),
-    repository_root
+    manifest, names(CLUSTERPROFILER_MANIFEST_PATH_FIELDS), repository_root
   )
+  ## The stored manifest on disk is never rewritten. Each runtime-required
+  ## field keeps its declared value in a <field>_declared column and carries
+  ## the usable runtime path in the original column, so every downstream
+  ## reader works unchanged while provenance stays recoverable.
+  resolution <- clusterprofiler_manifest_runtime_resolution(
+    manifest, dataset = dataset, repository_root = repository_root,
+    stage = stage_long_paths)
+  manifest <- resolution$manifest
   validate_clusterprofiler_manifest_contract(manifest, strict = strict, require_files = require_files)
+  attr(manifest, "runtime_resolution") <- resolution$resolution
   manifest <- manifest[as.character(manifest$dataset) == as.character(dataset), , drop = FALSE]
   if (!nrow(manifest)) stop("Canonical clusterProfiler manifest has no rows for dataset ", dataset, ".", call. = FALSE)
   manifest[order(manifest$dataset, manifest$comparison, manifest$result_type, manifest$ontology, method = "radix"), , drop = FALSE]
