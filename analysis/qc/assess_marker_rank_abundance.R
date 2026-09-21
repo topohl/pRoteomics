@@ -14,7 +14,7 @@
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
-source(repo_path("R", "plotting_nature.R"))  # NATURE_REPEL_SEED
+source(repo_path("R", "plotting_nature.R"))  # NATURE_REPEL_SEED, NATURE_JITTER_SEED
 source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "dataset_inputs.R"))
 source(repo_path("R", "qc_exploration_utils.R"))
@@ -217,7 +217,7 @@ if (length(summary_vars)) {
 
   p_score <- ggplot(sample_scores, aes(x = marker_panel, y = marker_score, color = .data[[summary_vars[[1]]]])) +
     geom_boxplot(outlier.shape = NA, color = "grey35") +
-    geom_point(position = position_jitter(width = 0.16), alpha = 0.75, size = 1) +
+    geom_point(position = position_jitter(width = 0.16, seed = NATURE_JITTER_SEED), alpha = 0.75, size = 1) +
     coord_flip() +
     labs(x = NULL, y = "Mean marker abundance", color = summary_vars[[1]]) +
     theme_classic(base_size = 8) +

@@ -12,6 +12,7 @@
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
+source(repo_path("R", "plotting_nature.R"))  # NATURE_JITTER_SEED
 source(repo_path("R", "wgcna_downstream_utils.R"))
 source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
 source(repo_path("R", "wgcna_labeling_utils.R"))
@@ -287,7 +288,7 @@ global_annotations <- if (nrow(global_annotation_rows)) {
 }
 p_global <- ggplot2::ggplot(global_eigengene_source, ggplot2::aes(x = .data$StressGroup, y = .data$eigengene_z)) +
   ggplot2::geom_boxplot(ggplot2::aes(fill = .data$StressGroup), width = 0.56, outlier.shape = NA, linewidth = 0.16, alpha = 0.28, colour = "#333333") +
-  ggplot2::geom_point(ggplot2::aes(colour = .data$StressGroup), position = ggplot2::position_jitter(width = 0.11, height = 0), size = 0.65, alpha = 0.65) +
+  ggplot2::geom_point(ggplot2::aes(colour = .data$StressGroup), position = ggplot2::position_jitter(width = 0.11, height = 0, seed = NATURE_JITTER_SEED), size = 0.65, alpha = 0.65) +
   ggplot2::geom_text(data = global_annotations, ggplot2::aes(x = 2, y = .data$y, label = .data$fdr_supported_contrasts), inherit.aes = FALSE, size = 2.45, family = "Arial") +
   ggplot2::facet_wrap(~ panel_label, ncol = 3, scales = "free_y") +
   ggplot2::scale_fill_manual(values = stress_colours, drop = FALSE) +

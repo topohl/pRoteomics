@@ -25,7 +25,7 @@
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
-source(repo_path("R", "plotting_nature.R"))  # NATURE_REPEL_SEED
+source(repo_path("R", "plotting_nature.R"))  # NATURE_REPEL_SEED, NATURE_JITTER_SEED
 source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "dataset_inputs.R"))
 source(repo_path("R", "module_contracts.R"))
@@ -1796,7 +1796,7 @@ p_context <- ggplot(
       color = QC_plot_status,
       shape = ReplicateGroup
     ),
-    position = position_jitter(width = 0.10, height = 0),
+    position = position_jitter(width = 0.10, height = 0, seed = NATURE_JITTER_SEED),
     size = 1.25,
     alpha = 0.82
   ) +
@@ -3271,7 +3271,7 @@ plot_module_scores <- function(
         y = ModuleScore,
         color = StressGroup
       ),
-      position = position_jitter(width = 0.10, height = 0),
+      position = position_jitter(width = 0.10, height = 0, seed = NATURE_JITTER_SEED),
       shape = 16,
       size = 3.1,
       alpha = 0.48
