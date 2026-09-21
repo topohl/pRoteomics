@@ -634,6 +634,80 @@ stage_addressable_copies <- function(source, destination, expected_sha256 = NULL
   out
 }
 
+# --- budgeted figure targets ------------------------------------------------
+#
+# A figure filename has to be budgeted against the ABSOLUTE path, not against
+# a fixed basename length, because the space available depends on how deep the
+# output directory is. The WGCNA module-score directories measure 190-198
+# characters, so a basename limit that looks generous in isolation still
+# overruns; conversely the canonical successor root is 127 characters and has
+# ample room. One number cannot serve both.
+#
+# What went wrong before: three ggsave() sites built their target with paste0()
+# and no budget at all. The underlying Windows file API then truncated the
+# path at MAX_PATH-1 instead of failing, so 354 figures landed on disk with
+# ".svg" cut off - and the manuscript exporter selects on \.(svg|pdf|png)$, so
+# every one of them silently dropped out of publication discovery. A naming
+# bug became a publication-selection bug.
+#
+# Two budgets, deliberately distinct:
+#   FIGURE_WRITE_BUDGET (240) is the conservative budget for NEW writes.
+#   PATH_LENGTH_WALL    (260) is the empirical wall R cannot read past.
+FIGURE_WRITE_BUDGET <- 240L
+
+# The filename budget left by a directory, under a chosen total budget.
+figure_filename_budget <- function(directory, budget = FIGURE_WRITE_BUDGET) {
+  as.integer(budget) - path_length_chars(directory) - 1L
+}
+
+# Fit `filename` into the space `directory` leaves, keeping the extension whole.
+#
+# `taken` lets a caller pass names already claimed in that directory so a
+# shortened stem cannot collide; disambiguation appends the repository's usual
+# short stable digest, and the extension is reattached after it.
+budgeted_figure_target <- function(directory, filename,
+                                   budget = FIGURE_WRITE_BUDGET,
+                                   taken = character(0), digest_chars = 8L) {
+  filename <- as.character(filename)
+  room <- figure_filename_budget(directory, budget)
+  ext <- tools::file_ext(filename)
+  ext_part <- if (nzchar(ext)) paste0(".", ext) else ""
+  stem <- tools::file_path_sans_ext(filename)
+
+  ## An extension is atomic. If the directory leaves no room for one stem
+  ## character plus the whole extension, that is a contract error: emitting a
+  ## clipped ".s" or ".sv" is exactly the failure this function exists to stop.
+  if (room < nchar(ext_part, type = "chars") + 1L) {
+    stop("Figure directory leaves ", room, " characters for a filename, which cannot hold ",
+         "a stem character plus the extension '", ext_part, "'. Directory: ", directory,
+         call. = FALSE)
+  }
+
+  out <- if (nchar(filename, type = "chars") <= room) filename else
+    paste0(substr(stem, 1L, room - nchar(ext_part, type = "chars")), ext_part)
+
+  if (out %in% taken) {
+    suffix <- paste0("__", substr(
+      if (requireNamespace("digest", quietly = TRUE))
+        digest::digest(file.path(directory, filename), algo = "sha256", serialize = FALSE)
+      else sprintf("%08x", sum(utf8ToInt(file.path(directory, filename)))),
+      1L, digest_chars))
+    keep <- room - nchar(suffix, type = "chars") - nchar(ext_part, type = "chars")
+    if (keep < 1L) {
+      stop("Figure directory leaves no room to disambiguate '", filename, "' in ",
+           directory, call. = FALSE)
+    }
+    out <- paste0(substr(tools::file_path_sans_ext(out), 1L, keep), suffix, ext_part)
+  }
+  out
+}
+
+# The full target, for a caller that just wants a path it can write.
+budgeted_figure_path <- function(directory, filename,
+                                 budget = FIGURE_WRITE_BUDGET, taken = character(0)) {
+  file.path(directory, budgeted_figure_target(directory, filename, budget, taken))
+}
+
 file_hash <- function(path) {
   if (is.null(path) || !length(path) || is.na(path) || !file.exists(path)) return(NA_character_)
   unname(tools::md5sum(path))

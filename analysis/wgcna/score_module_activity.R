@@ -3340,7 +3340,8 @@ for (rl in region_layers) {
     )
 
     if (!is.null(p_all)) {
-      ggsave(file.path(dir_group_primary, paste0("module_score_", rl, "_", mod, "_", analysis_primary, ".svg")),
+      ggsave(budgeted_figure_path(dir_group_primary,
+                                 paste0("module_score_", rl, "_", mod, "_", analysis_primary, ".svg")),
              plot = p_all, width = 74, height = 86, units = "mm")
     }
 
@@ -3354,7 +3355,8 @@ for (rl in region_layers) {
     )
 
     if (!is.null(p_qc)) {
-      ggsave(file.path(dir_group_qc, paste0("module_score_", rl, "_", mod, "_", analysis_qc_sensitivity, ".svg")),
+      ggsave(budgeted_figure_path(dir_group_qc,
+                                 paste0("module_score_", rl, "_", mod, "_", analysis_qc_sensitivity, ".svg")),
              plot = p_qc, width = 74, height = 86, units = "mm")
     }
   }
@@ -4086,7 +4088,8 @@ for (rl in region_layers) {
 
       if (!is.null(p)) {
         ggsave(
-          file.path(dir_cor, paste0("cor_", rl, "_", mod, "_", v, "_", analysis_primary, ".svg")),
+          budgeted_figure_path(dir_cor,
+                               paste0("cor_", rl, "_", mod, "_", v, "_", analysis_primary, ".svg")),
           plot = p,
           width = 68,
           height = 56,
