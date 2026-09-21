@@ -41,14 +41,46 @@ stable_path_hash <- function(path, n = 8L) {
   substr(sprintf("%04x%04x", high, low), 1L, n)
 }
 
+# Fit a filename into a character budget without ever cutting into its
+# extension.
+#
+# The previous version called safe_filename(x, max_chars = max_chars) first,
+# and safe_filename() ends in substr(x, 1, max_chars). So the name was already
+# truncated before the extension was looked at, which did two things: it cut
+# through ".csv" and left ".c", ".cs" or nothing, and it made the guard below
+# (nchar(x) <= max_chars) unconditionally TRUE, so the reattachment branch that
+# was meant to prevent exactly this could never run. 63 staged tables reached
+# the PRIDE bundle with a clipped or absent extension.
+#
+# Sanitising and budgeting are now separate steps, and the extension is atomic:
+# the budget is spent on the stem, never on the extension.
 trim_with_ext <- function(x, max_chars) {
-  x <- safe_filename(x, max_chars = max_chars)
-  ext <- tools::file_ext(x)
-  stem <- tools::file_path_sans_ext(x)
-  if (!nzchar(ext) || nchar(x, type = "chars") <= max_chars) return(substr(x, 1L, max_chars))
+  x <- as.character(x)
+  max_chars <- as.integer(max_chars)
+  ## Sanitise without imposing a length: passing the budget here is what broke
+  ## it. safe_filename() normally only shortens, but it also substitutes
+  ## "unnamed" for a name that sanitises away to nothing, which can be longer
+  ## than the input - hence the slack, so its own substr() can never bind here.
+  clean <- safe_filename(x, max_chars = nchar(x, type = "chars") + nchar("unnamed"))
+  ext <- tools::file_ext(clean)
+
+  ## No extension supplied: nothing to protect, budget the whole name.
+  if (!nzchar(ext)) return(substr(clean, 1L, max_chars))
+
+  ## Already within budget: leave it exactly as it is.
+  if (nchar(clean, type = "chars") <= max_chars) return(clean)
+
   ext_part <- paste0(".", ext)
-  stem_limit <- max(1L, max_chars - nchar(ext_part, type = "chars"))
-  paste0(substr(stem, 1L, stem_limit), ext_part)
+  ## A budget that cannot hold one stem character plus the whole extension is a
+  ## contract error. Emitting a clipped extension instead is what produced the
+  ## defect this function now exists to prevent, so fail loudly.
+  if (max_chars < nchar(ext_part, type = "chars") + 1L) {
+    stop("Filename budget of ", max_chars, " cannot hold a stem character plus the ",
+      "extension '", ext_part, "'; at least ", nchar(ext_part, type = "chars") + 1L,
+      " characters are required.", call. = FALSE)
+  }
+  stem <- tools::file_path_sans_ext(clean)
+  paste0(substr(stem, 1L, max_chars - nchar(ext_part, type = "chars")), ext_part)
 }
 
 supplementary_stage_names <- function(files, datasets, max_chars = 96L) {
@@ -81,6 +113,11 @@ supplementary_stage_names <- function(files, datasets, max_chars = 96L) {
     for (name in duplicate_names) {
       idx <- which(staged == name)
       for (i in idx) {
+        ## staged[[i]] now still carries its extension, because trim_with_ext()
+        ## no longer cuts into it. That matters here: this block reads the
+        ## extension back off the trimmed name, so when truncation used to
+        ## destroy it, the disambiguated name lost it too - which is why 12 of
+        ## the 63 malformed files ended in "__<hash>" with no extension.
         ext <- tools::file_ext(staged[[i]])
         stem <- tools::file_path_sans_ext(staged[[i]])
         suffix <- paste0("__", stable_path_hash(files[[i]]))
