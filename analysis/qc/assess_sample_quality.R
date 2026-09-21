@@ -469,7 +469,7 @@ plot_box_jitter <- function(df, yvar, ylab) {
     ) +
     geom_point(
       aes(colour = celltype_layer),
-      position = position_jitter(width = 0.12, height = 0),
+      position = position_jitter(width = 0.12, height = 0, seed = NATURE_JITTER_SEED),
       size = 1,
       alpha = 0.65
     ) +
@@ -965,7 +965,7 @@ if ("batch" %in% names(qc) && "Normalisation.Instability" %in% names(qc)) {
     geom_boxplot(width = 0.55, outlier.shape = NA, linewidth = 0.35, alpha = 0.75) +
     geom_point(
       aes(colour = celltype_layer),
-      position = position_jitterdodge(jitter.width = 0.12, dodge.width = 0.65),
+      position = position_jitterdodge(jitter.width = 0.12, dodge.width = 0.65, seed = NATURE_JITTER_SEED),
       size = 1,
       alpha = 0.65
     ) +

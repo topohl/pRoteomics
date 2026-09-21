@@ -13,6 +13,7 @@
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
+source(repo_path("R", "plotting_nature.R"))  # NATURE_JITTER_SEED
 source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "dataset_inputs.R"))
 source(repo_path("R", "qc_exploration_utils.R"))
@@ -106,7 +107,7 @@ if (length(terms)) {
   color_term <- terms[[1]]
   p_box <- ggplot(sample_missing, aes(x = .data[[color_term]], y = missing_fraction)) +
     geom_boxplot(outlier.shape = NA, fill = "grey90", color = "grey30") +
-    geom_point(position = position_jitter(width = 0.12), alpha = 0.75, size = 1) +
+    geom_point(position = position_jitter(width = 0.12, seed = NATURE_JITTER_SEED), alpha = 0.75, size = 1) +
     scale_y_continuous(labels = scales::percent_format()) +
     labs(x = color_term, y = "Missing fraction") +
     theme_classic(base_size = 8) +

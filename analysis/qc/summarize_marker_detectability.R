@@ -16,6 +16,7 @@
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
+source(repo_path("R", "plotting_nature.R"))  # NATURE_JITTER_SEED
 source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "dataset_inputs.R"))
 source(repo_path("R", "qc_exploration_utils.R"))
@@ -910,7 +911,7 @@ if (length(group_col)) {
   if (nrow(sample_scores_plot)) {
     p_box <- ggplot(sample_scores_plot, aes(x = marker_panel, y = marker_score, color = .data[[group_col[[1]]]])) +
       geom_boxplot(outlier.shape = NA, color = "grey35") +
-      geom_point(position = position_jitter(width = 0.15), alpha = 0.75, size = 0.9) +
+      geom_point(position = position_jitter(width = 0.15, seed = NATURE_JITTER_SEED), alpha = 0.75, size = 0.9) +
       coord_flip() +
       labs(x = NULL, y = "Mean marker abundance", color = group_col[[1]]) +
       theme_classic(base_size = 8) +
@@ -942,7 +943,7 @@ if (length(group_col)) {
   if (nrow(sample_compartment_scores_plot)) {
     p_comp_box <- ggplot(sample_compartment_scores_plot, aes(x = marker_compartment, y = marker_compartment_score, color = .data[[group_col[[1]]]])) +
       geom_boxplot(outlier.shape = NA, color = "grey35") +
-      geom_point(position = position_jitter(width = 0.15), alpha = 0.75, size = 0.9) +
+      geom_point(position = position_jitter(width = 0.15, seed = NATURE_JITTER_SEED), alpha = 0.75, size = 0.9) +
       coord_flip() +
       labs(x = NULL, y = "Mean compartment marker abundance", color = group_col[[1]]) +
       theme_classic(base_size = 8) +
@@ -977,7 +978,7 @@ if (length(group_col)) {
   if (nrow(fidelity_sample_scores_plot)) {
     p_fidelity_box <- ggplot(fidelity_sample_scores_plot, aes(x = fidelity_marker_class, y = fidelity_marker_score, color = .data[[group_col[[1]]]])) +
       geom_boxplot(outlier.shape = NA, color = "grey35") +
-      geom_point(position = position_jitter(width = 0.15), alpha = 0.75, size = 0.9) +
+      geom_point(position = position_jitter(width = 0.15, seed = NATURE_JITTER_SEED), alpha = 0.75, size = 0.9) +
       scale_x_discrete(drop = FALSE) +
       labs(x = NULL, y = "Mean fidelity marker abundance", color = group_col[[1]]) +
       theme_classic(base_size = 8) +

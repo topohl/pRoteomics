@@ -13,6 +13,7 @@
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
+source(repo_path("R", "plotting_nature.R"))  # NATURE_JITTER_SEED
 source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "dataset_inputs.R"))
 source(repo_path("R", "qc_exploration_utils.R"))
@@ -89,7 +90,7 @@ qc_write_xlsx(list(pairwise_correlations = pair_df, summary = pair_summary),
 
 p <- ggplot(pair_df, aes(x = factor(same_AnimalID), y = correlation)) +
   geom_boxplot(outlier.shape = NA, fill = "grey90", color = "grey30") +
-  geom_point(position = position_jitter(width = 0.12), alpha = 0.25, size = 0.6) +
+  geom_point(position = position_jitter(width = 0.12, seed = NATURE_JITTER_SEED), alpha = 0.25, size = 0.6) +
   labs(x = "Same AnimalID", y = "Pairwise sample correlation") +
   theme_classic(base_size = 8)
 ggsave(file.path(PATHS$figures, "within_vs_across_animal_correlations.svg"), p,

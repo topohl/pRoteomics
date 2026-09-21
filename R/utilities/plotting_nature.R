@@ -22,6 +22,27 @@
 # no reproducibility gain.
 NATURE_REPEL_SEED <- 20260824L
 
+# The seed for stochastic point placement - position_jitter(),
+# position_jitterdodge() and geom_jitter() - in publication-facing figures.
+#
+# Same problem as the repel seed and the same fix, but a separate mechanism:
+# ggplot2's jitter positions also default to seed = NA and draw from the global
+# RNG stream, so identical data rendered at two different points in a script's
+# life produced different point coordinates. Verified in this environment:
+# unseeded, identical data under two incoming RNG states gives different bytes
+# AND different geometry; seeded, it is byte-identical.
+#
+# Deliberately a distinct constant rather than a shared render seed. Jitter and
+# repel are independent mechanisms, and keeping them separate means either can
+# be changed without silently moving the other's layout. The shared value is
+# incidental; only stability matters, and nothing scientific depends on it.
+#
+# Note that geom_jitter() has no seed argument. It must be given
+# position = position_jitter(..., seed = NATURE_JITTER_SEED) instead, and its
+# width/height move into that call, because ggplot2 rejects width alongside an
+# explicit position.
+NATURE_JITTER_SEED <- 20260824L
+
 NATURE_DIMENSIONS_MM <- c(
   single_column = 89,
   double_column = 183,

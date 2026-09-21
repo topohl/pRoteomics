@@ -40,6 +40,7 @@ set.seed(42)
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
+source(repo_path("R", "plotting_nature.R"))  # NATURE_JITTER_SEED
 source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "dataset_inputs.R"))
 source(repo_path("R", "validation_utils.R"))
@@ -1743,7 +1744,7 @@ p6 <- ggplot2::ggplot(
   ggplot2::aes(x = sd_from_mean, y = Stratum, color = Direction)
 ) +
   ggplot2::geom_jitter(
-    position = ggplot2::position_jitter(width = 0, height = 0.22),
+    position = ggplot2::position_jitter(width = 0, height = 0.22, seed = NATURE_JITTER_SEED),
     size = 0.45,
     alpha = 0.55,
     stroke = 0

@@ -16,6 +16,7 @@
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
+source(repo_path("R", "plotting_nature.R"))  # NATURE_JITTER_SEED
 source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "dataset_inputs.R"))
 source(repo_path("R", "qc_exploration_utils.R"))
@@ -160,7 +161,7 @@ p_summary <- sample_scores |>
   dplyr::mutate(marker_panel = factor(.data$marker_panel, levels = rev(primary_panels))) |>
   ggplot2::ggplot(ggplot2::aes(x = .data$marker_panel, y = .data$z_marker_score)) +
   ggplot2::geom_boxplot(outlier.shape = NA, linewidth = 0.25, fill = "grey92", color = "grey35") +
-  ggplot2::geom_point(position = ggplot2::position_jitter(width = 0.12), size = 1, alpha = 0.7, color = "#2F6F73") +
+  ggplot2::geom_point(position = ggplot2::position_jitter(width = 0.12, seed = NATURE_JITTER_SEED), size = 1, alpha = 0.7, color = "#2F6F73") +
   ggplot2::coord_flip() +
   ggplot2::labs(x = NULL, y = "Mean marker z-score") +
   ggplot2::theme_classic(base_size = 8)
