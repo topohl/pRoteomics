@@ -408,6 +408,232 @@ describe_input_status_failures <- function(path, status = NULL,
   paste(parts, collapse = "; ")
 }
 
+# --- runtime addressability staging -----------------------------------------
+#
+# Some inputs are recorded under an address that cannot be used here, and the
+# corrected address is too long for R to open. The historical enrichment
+# manifests are the case in hand: every path is stored under a substituted P:/
+# root, and re-anchoring the short stored suffix on this 69-character
+# repository root pushes part of it past the wall.
+#
+# The answer is to keep the declared path as provenance and derive a usable
+# runtime path, staging a byte-identical copy into the regenerable work/
+# lifecycle only where the re-anchored path actually crosses the wall.
+#
+# Staging is addressability, never transformation: no conversion, filtering,
+# renaming by meaning, recompression or schema change. The staged basename is
+# copied verbatim, so an extension cannot be clipped.
+#
+# Provenance keeps pointing at the declared scientific artifact. Nothing under
+# work/ may be cited, and the layout contract already says so.
+
+RUNTIME_RESOLUTION_DIRECT <- "direct"
+RUNTIME_RESOLUTION_REBASED <- "rebased"
+RUNTIME_RESOLUTION_STAGED <- "staged"
+RUNTIME_RESOLUTION_UNRESOLVED <- "unresolved"
+RUNTIME_RESOLUTION_NOT_CONSUMED <- "not_consumed"
+RUNTIME_RESOLUTION_LEVELS <- c(
+  RUNTIME_RESOLUTION_DIRECT, RUNTIME_RESOLUTION_REBASED,
+  RUNTIME_RESOLUTION_STAGED, RUNTIME_RESOLUTION_UNRESOLVED,
+  RUNTIME_RESOLUTION_NOT_CONSUMED
+)
+
+# R cannot stat, open or hash a path at or beyond the wall, so the facts about
+# a long source have to come from a runtime that can. .NET Core is
+# extended-length aware; this is the same reason the existing robocopy stager
+# in audits/part29 works. The helper is written to a temporary file rather than
+# passed through -Command because the paths would otherwise have to survive two
+# layers of shell quoting.
+.os_path_helper <- local({
+  cached <- NULL
+  function() {
+    if (!is.null(cached) && file.exists(cached)) return(cached)
+    f <- tempfile("os_path_helper_", fileext = ".ps1")
+    writeLines(c(
+      "param([string]$Mode, [string]$InFile, [string]$OutFile)",
+      "$tab = [string][char]9",
+      "$w = [System.IO.StreamWriter]::new($OutFile, $false, [System.Text.UTF8Encoding]::new($false))",
+      "foreach ($line in [System.IO.File]::ReadLines($InFile)) {",
+      "  if ([string]::IsNullOrWhiteSpace($line)) { continue }",
+      "  $parts = $line.Split([char]9)",
+      "  $src = $parts[0]",
+      "  if ($Mode -eq 'facts') {",
+      "    $e = [System.IO.File]::Exists($src)",
+      "    $len = -1; $mt = ''; $sha = ''",
+      "    if ($e) {",
+      "      try {",
+      "        $fi = [System.IO.FileInfo]::new($src)",
+      "        $len = $fi.Length",
+      "        $mt = $fi.LastWriteTimeUtc.ToString('o')",
+      "        $sha = (Get-FileHash -LiteralPath $src -Algorithm SHA256).Hash",
+      "      } catch { $len = -1 }",
+      "    }",
+      "    $w.WriteLine($src + $tab + $e.ToString() + $tab + $len + $tab + $mt + $tab + $sha)",
+      "  } elseif ($Mode -eq 'copy') {",
+      "    $dst = $parts[1]",
+      "    $ok = 'FALSE'; $msg = ''",
+      "    try {",
+      "      $d = [System.IO.Path]::GetDirectoryName($dst)",
+      "      if (-not [System.IO.Directory]::Exists($d)) { [void][System.IO.Directory]::CreateDirectory($d) }",
+      "      [System.IO.File]::Copy($src, $dst, $false)",
+      "      $ok = 'TRUE'",
+      "    } catch { $msg = $_.Exception.Message }",
+      "    $w.WriteLine($src + $tab + $dst + $tab + $ok + $tab + $msg)",
+      "  }",
+      "}",
+      "$w.Close()"
+    ), f)
+    cached <<- f
+    f
+  }
+})
+
+.os_path_run <- function(mode, lines) {
+  helper <- .os_path_helper()
+  infile <- tempfile("os_path_in_", fileext = ".txt")
+  outfile <- tempfile("os_path_out_", fileext = ".txt")
+  on.exit(unlink(c(infile, outfile)), add = TRUE)
+  writeLines(lines, infile, useBytes = TRUE)
+  status <- suppressWarnings(system2(
+    "pwsh", c("-NoProfile", "-File", helper, "-Mode", mode,
+              "-InFile", infile, "-OutFile", outfile),
+    stdout = TRUE, stderr = TRUE))
+  if (!file.exists(outfile)) {
+    stop("OS path helper did not run (mode=", mode, "): ",
+         paste(utils::head(status, 5), collapse = " | "), call. = FALSE)
+  }
+  readLines(outfile, warn = FALSE)
+}
+
+# exists / bytes / mtime / sha256 for paths of any length.
+os_path_facts <- function(paths) {
+  paths <- as.character(paths)
+  empty <- data.frame(path = character(), exists = logical(), bytes = numeric(),
+                      mtime_utc = character(), sha256 = character(),
+                      stringsAsFactors = FALSE)
+  keep <- !is.na(paths) & nzchar(paths)
+  if (!any(keep)) return(empty)
+  raw <- .os_path_run("facts", unique(paths[keep]))
+  sp <- strsplit(raw, "\t", fixed = TRUE)
+  sp <- sp[vapply(sp, length, 0L) >= 3L]
+  out <- data.frame(
+    path = vapply(sp, `[`, "", 1L),
+    exists = toupper(vapply(sp, `[`, "", 2L)) == "TRUE",
+    bytes = suppressWarnings(as.numeric(vapply(sp, `[`, "", 3L))),
+    mtime_utc = vapply(sp, function(x) if (length(x) >= 4L) x[[4]] else "", ""),
+    sha256 = tolower(vapply(sp, function(x) if (length(x) >= 5L) x[[5]] else "", "")),
+    stringsAsFactors = FALSE)
+  out[match(paths, out$path), , drop = FALSE]
+}
+
+# Copy that refuses to overwrite. Staleness is resolved by the caller, which
+# can see the hashes; silently replacing a mismatched staged file would hide
+# exactly the problem worth knowing about.
+os_copy_no_clobber <- function(src, dst) {
+  stopifnot(length(src) == length(dst))
+  if (!length(src)) return(logical(0))
+  raw <- .os_path_run("copy", paste(src, dst, sep = "\t"))
+  sp <- strsplit(raw, "\t", fixed = TRUE)
+  ok <- setNames(
+    toupper(vapply(sp, function(x) if (length(x) >= 3L) x[[3]] else "FALSE", "")) == "TRUE",
+    vapply(sp, `[`, "", 1L))
+  unname(ok[src])
+}
+
+# The staging root lives inside the declared work/ lifecycle and is owned by
+# the analysis that produced the artifacts, so it cannot drift into being a
+# second scientific namespace.
+path_stage_root <- function(domain, analysis_id, scope = "global", create = FALSE) {
+  root <- canonical_work_path(domain, analysis_id, scope, "path_stage")
+  if (isTRUE(create)) dir_create(root)
+  root
+}
+
+# Deterministic destination: one source maps to exactly one staged path.
+# The digest is taken over the DECLARED path, the stable provenance identifier,
+# and the basename is reused verbatim so the extension survives untouched.
+# A per-digest directory avoids both collisions and rebuilding the original
+# deep hierarchy.
+staged_destination <- function(declared_path, root, hash_chars = 12L) {
+  declared_path <- as.character(declared_path)
+  digest <- vapply(declared_path, function(p) {
+    h <- if (requireNamespace("digest", quietly = TRUE)) {
+      digest::digest(p, algo = "sha256", serialize = FALSE)
+    } else {
+      f <- tempfile("stage_key_")
+      on.exit(unlink(f), add = TRUE)
+      writeBin(charToRaw(p), f)
+      unname(tools::sha256sum(f))
+    }
+    substr(h, 1L, hash_chars)
+  }, character(1), USE.NAMES = FALSE)
+  file.path(root, digest, basename(declared_path))
+}
+
+# Stage byte-identical copies for addressability, idempotently.
+#
+# A destination that already holds the expected bytes is reused. A destination
+# that holds anything else is reported as a mismatch and is NOT overwritten:
+# silently replacing it would hide the one condition worth knowing about, and
+# silently accepting it would feed stale content to the science.
+#
+# The source is treated as read-only and is checked for that: size, mtime and
+# hash are compared either side of the copy.
+stage_addressable_copies <- function(source, destination, expected_sha256 = NULL) {
+  source <- as.character(source)
+  destination <- as.character(destination)
+  stopifnot(length(source) == length(destination))
+  n <- length(source)
+  out <- data.frame(
+    source = source, staged_path = destination,
+    action = rep(NA_character_, n), staged_sha256 = NA_character_,
+    source_sha256 = if (is.null(expected_sha256)) NA_character_ else as.character(expected_sha256),
+    source_bytes = NA_real_, staged_bytes = NA_real_,
+    same_hash = FALSE, same_size = FALSE, source_unchanged = NA,
+    ok = FALSE, stringsAsFactors = FALSE)
+  if (!n) return(out)
+
+  before <- os_path_facts(source)
+  if (is.null(expected_sha256)) out$source_sha256 <- before$sha256
+  out$source_bytes <- before$bytes
+
+  present <- file.exists(destination)
+  if (any(present)) {
+    i <- which(present)
+    have <- tolower(vapply(destination[i], function(p) unname(tools::sha256sum(p)),
+                           character(1), USE.NAMES = FALSE))
+    out$staged_sha256[i] <- have
+    match_i <- have == tolower(out$source_sha256[i])
+    out$action[i] <- ifelse(match_i, "reused", "mismatch")
+  }
+  todo <- which(!present)
+  if (length(todo)) {
+    ok <- os_copy_no_clobber(source[todo], destination[todo])
+    out$action[todo] <- ifelse(ok, "copied", "copy_failed")
+    got <- todo[file.exists(destination[todo])]
+    if (length(got)) {
+      out$staged_sha256[got] <- tolower(vapply(destination[got],
+        function(p) unname(tools::sha256sum(p)), character(1), USE.NAMES = FALSE))
+    }
+  }
+
+  staged_ok <- file.exists(out$staged_path)
+  out$staged_bytes[staged_ok] <- file.size(out$staged_path[staged_ok])
+  out$same_hash <- !is.na(out$staged_sha256) & !is.na(out$source_sha256) &
+    tolower(out$staged_sha256) == tolower(out$source_sha256)
+  out$same_size <- !is.na(out$staged_bytes) & !is.na(out$source_bytes) &
+    out$staged_bytes == out$source_bytes
+
+  after <- os_path_facts(source)
+  out$source_unchanged <- !is.na(after$sha256) & !is.na(before$sha256) &
+    after$sha256 == before$sha256 & after$bytes == before$bytes &
+    after$mtime_utc == before$mtime_utc
+
+  out$ok <- out$action %in% c("copied", "reused") & out$same_hash & out$same_size &
+    out$source_unchanged
+  out
+}
+
 file_hash <- function(path) {
   if (is.null(path) || !length(path) || is.na(path) || !file.exists(path)) return(NA_character_)
   unname(tools::md5sum(path))

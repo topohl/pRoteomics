@@ -221,12 +221,21 @@ testthat::test_that("the manifest contract names the failure class per dataset",
         make_contract_manifest(dataset, unmounted), require_files = TRUE),
       "declared root not mounted")
 
-    # an over-wall path is reported as unopenable, never as absent
-    over <- as.list(good); over[[3]] <- path_of_length(280L)
+    # an over-wall path is reported as unopenable, never as absent.
+    # Slot 1 is output_table: a runtime-required field. Slot 3 is
+    # collapsed_gene_provenance_file, which Phase 6H.3 classified as
+    # provenance-only and deliberately removed from the runtime gate, so it is
+    # no longer the right probe for this assertion.
+    over <- as.list(good); over[[1]] <- path_of_length(280L)
     testthat::expect_error(
       validate_clusterprofiler_manifest_contract(
         make_contract_manifest(dataset, over), require_files = TRUE),
       "character limit")
+
+    # and the provenance-only field is not gated at all: unusable there is fine
+    ungated <- as.list(good); ungated[[3]] <- path_of_length(280L)
+    testthat::expect_true(validate_clusterprofiler_manifest_contract(
+      make_contract_manifest(dataset, ungated), require_files = TRUE))
 
     # a genuinely absent file keeps saying so
     gone <- as.list(good); gone[[4]] <- file.path(tmp, "nope.csv")
