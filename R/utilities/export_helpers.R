@@ -479,20 +479,50 @@ source_data_excluded_timestamped_variant <- function(rel, results_root = path_re
   }, logical(1), USE.NAMES = FALSE)
 }
 
-# (4) PROPOSED / NON-CANONICAL VARIANTS: two explicitly named trees, excluded
-#     only because a canonical sibling tree exists. Listed as
+# (4) PROPOSED / NON-CANONICAL VARIANTS: explicitly named trees, excluded only
+#     because a canonical sibling tree exists. Listed as
 #     (proposed prefix, canonical prefix) pairs relative to the repository.
+#
+# The scope is named exactly, never matched by pattern. A regex over
+# "validation|proposed" would also catch
+# results/figures/04_differential_expression_enrichment/control_spatial_identity_validation
+# and the whole results/spatial_validation domain, both of which are canonical
+# analyses rather than proposed variants.
+#
+# The figure pairs were added in Phase 6H.5B. Until then the policy covered
+# only tables/ and source_data/, so the figure exporter had no notion of a
+# proposed scope at all: eligibility was decided by whichever proposed figures
+# happened to have an intact filename. That made a truncation bug act as an
+# implicit publication filter, which is not a contract anybody chose.
 source_data_proposed_tree_pairs <- function() {
   list(
     c("results/tables/04_differential_expression_enrichment/compareGO_spatial_atlas_validation_proposed/",
       "results/tables/04_differential_expression_enrichment/compareGO_spatial_atlas"),
     c("results/source_data/04_differential_expression_enrichment/compareGO_spatial_atlas_validation_proposed/",
       "results/source_data/04_differential_expression_enrichment/compareGO_spatial_atlas"),
+    c("results/figures/04_differential_expression_enrichment/compareGO_spatial_atlas_validation_proposed/",
+      "results/figures/04_differential_expression_enrichment/compareGO_spatial_atlas"),
     c("results/tables/04_differential_expression_enrichment/microglia_targeted_signature_enrichment/microglia_validation_proposed/",
       "results/tables/04_differential_expression_enrichment/microglia_targeted_signature_enrichment/microglia"),
     c("results/source_data/04_differential_expression_enrichment/microglia_targeted_signature_enrichment/microglia_validation_proposed/",
-      "results/source_data/04_differential_expression_enrichment/microglia_targeted_signature_enrichment/microglia")
+      "results/source_data/04_differential_expression_enrichment/microglia_targeted_signature_enrichment/microglia"),
+    c("results/figures/04_differential_expression_enrichment/microglia_targeted_signature_enrichment/microglia_validation_proposed/",
+      "results/figures/04_differential_expression_enrichment/microglia_targeted_signature_enrichment/microglia")
   )
+}
+
+# Publication eligibility for a proposed-scope figure, decided by scope
+# semantics alone. Filename validity, duplicate coincidence and mtime are
+# deliberately not consulted: a correctly named figure in a proposed scope is
+# ineligible, and a damaged name in a canonical scope stays eligible.
+#
+# Absolute paths in, absolute paths out, so it drops into the exporter's filter
+# chain beside the other drop_* helpers. The underlying exclusion fails closed:
+# it refuses to exclude a proposed tree whose canonical sibling is missing.
+drop_noncanonical_proposed_scopes <- function(paths, results_root = path_results()) {
+  if (!length(paths)) return(paths)
+  rel <- relative_to(normalize_export_path(paths), dirname(results_root))
+  paths[!source_data_excluded_proposed_tree(rel, results_root)]
 }
 
 source_data_excluded_proposed_tree <- function(rel, results_root = path_results()) {

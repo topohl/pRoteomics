@@ -74,6 +74,13 @@ candidates <- drop_legacy_dataset_suffixed_aliases(candidates)
 # the other filters look at the dataset scope, so without this the failed run's
 # figures are selected and copied into extended_data under their own name.
 candidates <- drop_noncanonical_wgcna_dataset_scopes(candidates)
+# Phase 6H.5B: proposed/validation figure trees are ineligible whenever a
+# canonical sibling tree exists, decided by exact scope identity and nothing
+# else. Before this, the figure exporter had no notion of a proposed scope, so
+# eligibility fell to whichever proposed figures happened to have an intact
+# filename - a path-truncation bug acting as an implicit publication filter.
+# Filename correctness and publication eligibility are now separate contracts.
+candidates <- drop_noncanonical_proposed_scopes(candidates)
 candidates <- drop_orphan_figure_families(candidates)
 
 if (isTRUE(dry_run)) {

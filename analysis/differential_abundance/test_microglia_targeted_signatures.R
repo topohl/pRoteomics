@@ -231,6 +231,14 @@ region_pair_levels <- function(x) {
 }
 
 ggsave_plot <- function(filename, plot, width, height, dpi = 450, ...) {
+  ## Phase 6H.5B: budget the target against the ABSOLUTE path before writing.
+  ## Five figures from this script reached disk with ".svg" or ".png" cut off:
+  ## the _validation_proposed output scope pushed the path past MAX_PATH and the
+  ## Windows file API truncated it at 259 instead of failing. Budgeting here
+  ## covers every call site, including ggsave_publication() below, and
+  ## budgeted_figure_path() holds the extension atomic - it raises rather than
+  ## emitting a clipped ".s" or ".p".
+  filename <- budgeted_figure_path(dirname(filename), basename(filename))
   ext <- tolower(tools::file_ext(filename))
   args <- list(filename = filename, plot = plot, width = width, height = height, units = "in", limitsize = FALSE, ...)
   if (ext == "png") args$dpi <- dpi
