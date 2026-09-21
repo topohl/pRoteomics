@@ -14,6 +14,7 @@
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
+source(repo_path("R", "plotting_nature.R"))  # NATURE_REPEL_SEED
 source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "dataset_inputs.R"))
 source(repo_path("R", "qc_exploration_utils.R"))
@@ -190,7 +191,8 @@ p_rank <- ggplot(plot_data, aes(Rank, LinearValue)) +
   ggrepel::geom_label_repel(
     data = label_data,
     aes(label = FeatureDisplayLabel, fill = marker_panel),
-    color = "white", size = 2, label.size = 0, max.overlaps = 100
+    color = "white", size = 2, label.size = 0, max.overlaps = 100,
+    seed = NATURE_REPEL_SEED
   ) +
   scale_y_log10(labels = scales::label_number()) +
   facet_wrap(~RankGroup, scales = "free_x") +
