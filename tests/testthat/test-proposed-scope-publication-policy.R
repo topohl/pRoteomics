@@ -161,18 +161,20 @@ testthat::test_that("the repaired validation figures kept their bytes and their 
   testthat::expect_true(all(d$new_abs_chars < PATH_LENGTH_WALL))
 })
 
-testthat::test_that("the accepted figure export is untouched by this policy change", {
+testthat::test_that("the figure export carries no proposed-scope selection", {
   mp <- path_results("manuscript", "figure_export_manifest.csv")
   testthat::skip_if_not(file.exists(mp), "figure export manifest not present")
   m <- utils::read.csv(mp, stringsAsFactors = FALSE)
-  testthat::expect_identical(nrow(m), 5598L)
-  testthat::expect_identical(
-    unname(tools::sha256sum(mp)),
-    "68850f547e5ed71ce1223051761c3a636bc4922037c67248a7bd25cd0b42ad28")
-  # none of the five repaired files entered the export
+  src <- gsub("\\\\", "/", m$source_file)
+  ## Phase 6H.5D applied the policy to the package: the 16 proposed-scope rows
+  ## that predated it are gone, so this asserts the invariant rather than a row
+  ## count, which is what the policy actually guarantees.
+  testthat::expect_identical(sum(grepl("_validation_proposed/", src)), 0L)
+  testthat::expect_setequal(src, gsub("\\\\", "/", drop_noncanonical_proposed_scopes(src)))
+
+  # and none of the five repaired validation figures entered the export
   a <- testthat::test_path("..", "..", "audits", "phase6h_validation_figure_repair.csv")
   testthat::skip_if_not(file.exists(a), "repair audit not present")
   d <- utils::read.csv(a, stringsAsFactors = FALSE)
-  src <- gsub("\\\\", "/", m$source_file)
   testthat::expect_false(any(gsub("\\\\", "/", file.path(repo_path(), d$new_path)) %in% src))
 })

@@ -580,14 +580,35 @@ freeze_source_data <- function(sets = freeze_source_data_sets()) {
 
 # --- 8. export payloads ---------------------------------------------------
 
+# The run manifest, at whichever address its producer currently writes.
+#
+# Phase 6G moved these exporters onto psd_dirs(<analysis_id>)$manifests, but the
+# freeze kept reading the pre-6G results/logs/09_export_pride_journal/ path. The
+# effect was silent and misleading: the figure exporter was rerun twice in Phase
+# 6H, writing 5598 and then 5582 inputs canonically, while the freeze went on
+# comparing against a legacy file frozen at 5244 and reported counts_agree = no
+# for a reason that had nothing to do with the export.
+#
+# Canonical first, legacy second, and only if the canonical file is actually
+# there: 09_export_source_data has not been rerun since the migration, so its
+# legacy manifest is still the only populated one and remains correct.
+freeze_run_manifest_path <- function(analysis_id, legacy_subdir) {
+  if (!exists("psd_dirs", mode = "function")) {
+    source(repo_path("R", "utilities", "publication_source_data_paths.R"))
+  }
+  canonical <- file.path(psd_dirs(analysis_id)$manifests, "run_manifest.yml")
+  if (file.exists(canonical)) return(canonical)
+  path_results("logs", "09_export_pride_journal", legacy_subdir, "run_manifest.yml")
+}
+
 freeze_export_payloads <- function() {
   defs <- list(
     manuscript_figures = list(
       payload_root = path_results("manuscript", "extended_data"),
       manifest = path_results("manuscript", "figure_export_manifest.csv"),
       audit = path_results("manuscript", "figure_publication_audit.csv"),
-      run_manifest = path_results("logs", "09_export_pride_journal",
-                                  "manuscript_figures", "run_manifest.yml"),
+      run_manifest = freeze_run_manifest_path("08_export_manuscript_figures",
+                                              "manuscript_figures"),
       producer = "analysis/09_publication_exports/08_export_manuscript_figures.R"
     ),
     manuscript_source_data = list(
@@ -595,8 +616,8 @@ freeze_export_payloads <- function() {
                        path_results("manuscript", "supplementary_tables")),
       manifest = path_results("manuscript", "source_data_export_manifest.csv"),
       audit = NA_character_,
-      run_manifest = path_results("logs", "09_export_pride_journal",
-                                  "source_data", "run_manifest.yml"),
+      run_manifest = freeze_run_manifest_path("09_export_source_data",
+                                              "source_data"),
       producer = "analysis/09_publication_exports/09_export_source_data.R"
     )
   )
