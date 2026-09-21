@@ -928,7 +928,7 @@ plot_res_sus_divergence_publication <- function(behavior_df, figure_file, source
     theme_nature_dotplot(7) +
     ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 0))
   if (requireNamespace("ggrepel", quietly = TRUE)) {
-    p <- p + ggrepel::geom_text_repel(data = labels_df, ggplot2::aes(label = .data$point_label), size = 2, min.segment.length = 0, max.overlaps = 12, show.legend = FALSE)
+    p <- p + ggrepel::geom_text_repel(data = labels_df, ggplot2::aes(label = .data$point_label), size = 2, min.segment.length = 0, max.overlaps = 12, seed = NATURE_REPEL_SEED, show.legend = FALSE)
   } else {
     p <- p + ggplot2::geom_text(data = labels_df, ggplot2::aes(label = .data$point_label), size = 2, check_overlap = TRUE, vjust = -0.6, show.legend = FALSE)
   }

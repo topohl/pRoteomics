@@ -1,5 +1,27 @@
 # Compact plotting helpers for manuscript-scale enrichment figures.
 
+# The seed for ggrepel label placement in publication-facing figures.
+#
+# ggrepel places labels by a randomised physical simulation. With seed = NA,
+# its default, two renders of identical data produce different label and leader
+# coordinates. That is how two variants of
+# Fig_RES_SUS_divergence_publication.svg came to differ: the same producer, the
+# same byte-identical source-data CSV, the same 22 labels, and SVGs that are
+# identical line-by-line once every number is stripped - only the geometry moved.
+# A figure whose bytes change when nothing scientific changed cannot be checked
+# against a freeze, so the placement has to be pinned.
+#
+# The value is arbitrary and deliberately so: nothing about the science depends
+# on it, and only its stability matters. It is written in the date-shaped form
+# the repository already uses for seeds elsewhere. Passing it per layer keeps the
+# determinism local - ggrepel restores the global RNG stream itself, so seeding a
+# layer does not perturb unrelated stochastic code in the same script.
+#
+# Layers that already carry their own seed are left alone. They are already
+# deterministic, and changing their seed would move existing label layouts for
+# no reproducibility gain.
+NATURE_REPEL_SEED <- 20260824L
+
 NATURE_DIMENSIONS_MM <- c(
   single_column = 89,
   double_column = 183,

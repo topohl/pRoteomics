@@ -25,6 +25,7 @@
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
+source(repo_path("R", "plotting_nature.R"))  # NATURE_REPEL_SEED
 source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "dataset_inputs.R"))
 source(repo_path("R", "module_contracts.R"))
@@ -1729,6 +1730,7 @@ p_rep <- ggplot(
     aes(label = Label),
     size = 2,
     max.overlaps = 100,
+    seed = NATURE_REPEL_SEED,
     segment.linewidth = 0.2,
     show.legend = FALSE
   ) +
@@ -1803,6 +1805,7 @@ p_context <- ggplot(
     aes(label = PlotLabel),
     size = 1.8,
     max.overlaps = 80,
+    seed = NATURE_REPEL_SEED,
     min.segment.length = 0,
     segment.linewidth = 0.18,
     box.padding = 0.25,
@@ -1863,6 +1866,7 @@ p_ba <- ggplot(
     aes(label = BA_Label),
     size = 2,
     max.overlaps = 100,
+    seed = NATURE_REPEL_SEED,
     segment.linewidth = 0.2,
     show.legend = FALSE
   ) +

@@ -79,6 +79,7 @@ if (!nzchar(Sys.getenv("PROTEOMICS_PROJECT_ROOT", unset = ""))) {
   Sys.setenv(PROTEOMICS_PROJECT_ROOT = dirname(dirname(paths_file)))
 }
 source(paths_file)
+source(repo_path("R", "plotting_nature.R"))  # NATURE_REPEL_SEED
 source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "validation_utils.R"))
 source(repo_path("R", "enrichment_io.R"))
@@ -2454,7 +2455,8 @@ for (comp in unique_comparisons) {
       size = 3,
       min.segment.length = 0,
       max.overlaps = Inf,
-      box.padding = 0.5
+      box.padding = 0.5,
+      seed = NATURE_REPEL_SEED
     ) +
     scale_color_manual(
       values = c("up" = "#CA0020", "down" = "#0571B0", "n.s." = "#CCCCCC"),
