@@ -368,25 +368,57 @@ export_payloads:
   producer: analysis/09_publication_exports/08_export_manuscript_figures.R
   payload_roots: results/manuscript/extended_data
   manifest_path: results/manuscript/figure_export_manifest.csv
-  manifest_sha256: 68850f547e5ed71ce1223051761c3a636bc4922037c67248a7bd25cd0b42ad28
-  manifest_row_count: 5598
+  manifest_sha256: 0fd0c9ed9febbc05ed6928b7fc6bfffdab845daba6255d8b47c607dee5d3c02c
+  manifest_row_count: 5582
   audit_path: results/manuscript/figure_publication_audit.csv
-  audit_sha256: f94793ad4103e6616c1c51452c73955a1fea337735ebb19b1f0e0df229b8431a
-  run_manifest_path: results/logs/09_export_pride_journal/manuscript_figures/run_manifest.yml
-  run_manifest_sha256: 23c05baf093d3b99cd391576231e7e1e5a954d13cc4904047c50986f23b7ed9e
-  run_manifest_recorded_commit: 21d4c2c69839e252a52ca6ea8a686d67f83ed6e5
-  run_manifest_input_count: 5244
-  counts_agree: no
-  counts_disagreement_reason: 'The run manifest is written by
-    analysis/09_publication_exports/09_export_pride_journal, a different producer,
-    which was deliberately not rerun in Phase 6H.5: that batch reran only the
-    deterministic figure packaging exporter. The run manifest therefore still
-    records the 5244 inputs of the previous packaging run. It is stale by exactly
-    the 354 repaired figures and will agree again the next time the PRIDE/journal
-    export runs. No scientific input set changed.'
-  superseded_manifest_sha256: 1bf4fe2e16f57ccc3bd684a048e367bae9cdc5c2c92f8d643ad5fcaa1d7b22e9
-  superseded_manifest_row_count: 5244
-  superseded_audit_sha256: fc05e117a1b7e46d0ffbf932e159f487271584b590e8c196666778f3d374bb6b
+  audit_sha256: 6075ed9866da4036b469cce48dba7e47b609a3b5e9a6c6142934ca335b8f7538
+  run_manifest_path: results/publication_source_data/08_export_manuscript_figures/global/manifests/run_manifest.yml
+  run_manifest_sha256: dd2f876bc5658d6d584c755a729ca4585925d08c2d0424dbd518f1dae2fe4488
+  run_manifest_recorded_commit: 715c7849c8e84a3c678924adcc3b331fda23bcb6
+  run_manifest_input_count: 5582
+  counts_agree: yes
+  run_manifest_address_correction: 'Phase 6H.5D repointed this entry at the
+    address the producer actually writes. Phase 6G moved the exporter onto
+    psd_dirs("08_export_manuscript_figures")$manifests, but the freeze kept
+    reading the pre-6G results/logs/09_export_pride_journal/ path. The figure
+    exporter was rerun twice during Phase 6H, recording 5598 and then 5582 inputs
+    canonically, while the freeze went on comparing against a legacy file frozen
+    at 5244 from 2026-09-19 and reported counts_agree = no for a reason unrelated
+    to the export. freeze_run_manifest_path() now prefers the canonical address
+    and falls back to the legacy one only when the canonical file is absent, which
+    is still the case for 09_export_source_data because that exporter has not been
+    rerun since the migration.'
+  superseded_manifest_sha256: 68850f547e5ed71ce1223051761c3a636bc4922037c67248a7bd25cd0b42ad28
+  superseded_manifest_row_count: 5598
+  superseded_audit_sha256: f94793ad4103e6616c1c51452c73955a1fea337735ebb19b1f0e0df229b8431a
+  superseded_run_manifest_path: results/logs/09_export_pride_journal/manuscript_figures/run_manifest.yml
+  superseded_run_manifest_sha256: 23c05baf093d3b99cd391576231e7e1e5a954d13cc4904047c50986f23b7ed9e
+  superseded_run_manifest_input_count: 5244
+  freeze_revision_reason_phase6h5d: 'Publication packaging correction, not
+    scientific-result drift. The accepted 5598-row selection predated the explicit
+    canonical-scope policy and still carried 16 _validation_proposed rows: 10 from
+    compareGO_spatial_atlas_validation_proposed and 6 from
+    microglia_validation_proposed. Phase 6H.5C adjudicated all 16 against
+    repository provenance: every one has a canonical counterpart on disk and all 16
+    counterparts were themselves already exported. 15 are byte-identical to that
+    counterpart. The 16th, Fig_RES_SUS_divergence_publication.svg, carries the same
+    scientific payload - its source-data CSV is byte-identical to the canonical
+    one at e1ed9fc9..., 252 rows x 31 columns - and differs only in unseeded
+    ggrepel label placement: the label text is the same 22-element set and the two
+    SVGs are identical line-by-line once every number is stripped. It was therefore
+    classified as a non-deterministic generation difference, not a withheld
+    correction, so no canonical promotion was required. Removals: 16, of which 15
+    REMOVE_PROPOSED_DUPLICATE and 1 REMOVE_NONDETERMINISTIC_PROPOSED_VARIANT.
+    Additions 0, unrelated removals 0, failed-run additions 0. All 16 canonical
+    counterparts remain selected, all 5582 retained destinations are byte-identical,
+    and 16 package destinations were retired. No source figure was renamed,
+    rerendered or deleted: the 16 proposed source figures and all 359 figures
+    repaired in Phases 6H.5 and 6H.5B still hash exactly as recorded. Known debt
+    left untouched: build_go_program_atlas.R renders with unseeded ggrepel, so its
+    figure bytes are not reproducible across runs.'
+  superseded_manifest_sha256_phase6h5: 1bf4fe2e16f57ccc3bd684a048e367bae9cdc5c2c92f8d643ad5fcaa1d7b22e9
+  superseded_manifest_row_count_phase6h5: 5244
+  superseded_audit_sha256_phase6h5: fc05e117a1b7e46d0ffbf932e159f487271584b590e8c196666778f3d374bb6b
   superseded_manifest_sha256_phase6g8: 3c278296b18cf3d93839251225d535c08ae0b04b7c9cda994f3b766700248a13
   superseded_manifest_row_count_phase6g8: 5251
   superseded_audit_sha256_phase6g8: b432d01edde6365a3fc6a8fe5c24afe7fd835634cec5e05e2980608b5e0ecf45

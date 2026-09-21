@@ -101,15 +101,35 @@ testthat::test_that("no proposed-scope figure is selected under the current poli
   testthat::expect_setequal(drop_noncanonical_proposed_scopes(canon), canon)
 })
 
-testthat::test_that("the accepted export still holds the 16 rows this turn did not touch", {
+testthat::test_that("the adjudicated 16 rows are gone and every counterpart remains", {
+  testthat::skip_if_not(file.exists(ADJ), "adjudication audit not present")
+  d <- utils::read.csv(ADJ, stringsAsFactors = FALSE)
   mp <- path_results("manuscript", "figure_export_manifest.csv")
   testthat::skip_if_not(file.exists(mp), "figure export manifest not present")
   m <- utils::read.csv(mp, stringsAsFactors = FALSE)
-  testthat::expect_identical(nrow(m), 5598L)
-  testthat::expect_identical(
-    unname(tools::sha256sum(mp)),
-    "68850f547e5ed71ce1223051761c3a636bc4922037c67248a7bd25cd0b42ad28")
-  # the adjudication is a record, not an export change
   src <- gsub("\\\\", "/", m$source_file)
-  testthat::expect_identical(sum(grepl("_validation_proposed/", src)), 16L)
+
+  ## Phase 6H.5D removed all 16 from the package.
+  prop <- gsub("\\\\", "/", file.path(repo_path(), d$proposed_source))
+  testthat::expect_false(any(prop %in% src))
+  ## and every canonical counterpart the adjudication relied on is still there
+  canon <- gsub("\\\\", "/", file.path(repo_path(), d$canonical_counterpart))
+  testthat::expect_true(all(canon %in% src))
+  ## the proposed SOURCE figures were never deleted, only de-selected
+  testthat::expect_true(all(file.exists(prop)))
+})
+
+testthat::test_that("the packaged figure count agrees with the producer's run manifest", {
+  mp <- path_results("manuscript", "figure_export_manifest.csv")
+  testthat::skip_if_not(file.exists(mp), "figure export manifest not present")
+  m <- utils::read.csv(mp, stringsAsFactors = FALSE)
+  if (!exists("psd_dirs", mode = "function")) {
+    source(repo_path("R", "utilities", "publication_source_data_paths.R"))
+  }
+  rm_path <- file.path(psd_dirs("08_export_manuscript_figures")$manifests, "run_manifest.yml")
+  testthat::skip_if_not(file.exists(rm_path), "run manifest not present")
+  y <- yaml::read_yaml(rm_path)
+  ## The freeze reads the producer's own address, so these two cannot drift
+  ## apart the way they did when the freeze pointed at the pre-6G log path.
+  testthat::expect_identical(length(unlist(y$inputs)), nrow(m))
 })
