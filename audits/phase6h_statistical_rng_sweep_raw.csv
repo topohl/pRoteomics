@@ -1,0 +1,335 @@
+"file","line","fn","universe","rng_class","explicit_seed_arg","seed_arg_value","preceding_seed_call_in_file","seed_calls_in_file","call_text","publication_facing","writes_results"
+"analysis/differential_abundance/build_go_program_atlas.R",931,"geom_text_repel","active","rendering",TRUE,"NATURE_REPEL_SEED",NA,0,"geom_text_repel(data = labels_df, ggplot2::aes(label = .data$point_label), size = 2, min.segment.length = 0, max.overlaps = 12, seed = NATURE_REPEL_SEED, show.legend = FALSE)",TRUE,TRUE
+"analysis/differential_abundance/compare_go_enrichment.R",2452,"geom_text_repel","active","rendering",TRUE,"NATURE_REPEL_SEED",NA,0,"geom_text_repel( data = top_genes_to_label, aes(label = Gene_Name), size = 3, min.segment.length = 0, max.overlaps = Inf, box.padding = 0.5, seed = NATURE_REPEL_SEED )",TRUE,TRUE
+"analysis/differential_abundance/compare_go_enrichment.R",2951,"slice_sample","active","statistical_draw",FALSE,NA,NA,0,"slice_sample(prop = 1, replace = TRUE)",TRUE,TRUE
+"analysis/differential_abundance/test_microglia_targeted_signatures.R",888,"fgseaSimple","active","statistical_library",FALSE,NA,NA,0,"fgseaSimple( pathways = pathways, stats = stats, minSize = 3, maxSize = 500, nperm = 1000, nproc = 1 )",TRUE,TRUE
+"analysis/differential_abundance/test_microglia_targeted_signatures.R",893,"fgsea","active","statistical_library",FALSE,NA,NA,0,"fgsea( pathways = pathways, stats = stats, minSize = 3, maxSize = 500, BPPARAM = BiocParallel::SerialParam() )",TRUE,TRUE
+"analysis/differential_abundance/test_microglia_targeted_signatures.R",898,"fgsea","active","statistical_library",FALSE,NA,NA,0,"fgsea( pathways = pathways, stats = stats, minSize = 3, maxSize = 500, nproc = 1 )",TRUE,TRUE
+"analysis/enrichment/run_ewce_celltype_enrichment.R",39,"set.seed","active","seed_control",FALSE,NA,39,1,"set.seed(42)",TRUE,TRUE
+"analysis/enrichment/run_ewce_celltype_enrichment.R",1746,"geom_jitter","active","rendering",FALSE,NA,39,1,"geom_jitter( position = ggplot2::position_jitter(width = 0, height = 0.22, seed = NATURE_JITTER_SEED), size = 0.45, alpha = 0.55, stroke = 0 )",TRUE,TRUE
+"analysis/enrichment/run_ewce_celltype_enrichment.R",1747,"position_jitter","active","rendering",TRUE,"NATURE_JITTER_SEED",39,1,"position_jitter(width = 0, height = 0.22, seed = NATURE_JITTER_SEED)",TRUE,TRUE
+"analysis/integration/quantify_candidate_network_position.R",330,"geom_jitter","active","rendering",FALSE,NA,NA,0,"geom_jitter(data = d3[!(d3$is_hit %in% TRUE), , drop = FALSE], width = 0.25, height = 0, colour = ""#DDDBD5"", size = 0.25)",FALSE,TRUE
+"analysis/integration/quantify_candidate_network_position.R",332,"geom_jitter","active","rendering",FALSE,NA,NA,0,"geom_jitter(data = d3[d3$is_hit %in% TRUE, , drop = FALSE], width = 0.15, height = 0, colour = ""#E63947"", size = 1.1)",FALSE,TRUE
+"analysis/integration/test_network_behaviour_coupling.R",765,"position_jitter","active","rendering",FALSE,NA,NA,0,"position_jitter(width = 0.07, height = 0)",FALSE,TRUE
+"analysis/qc/assess_dataset_quality.R",196,"set.seed","active","seed_control",FALSE,NA,196,2,"set.seed(20260623)",TRUE,TRUE
+"analysis/qc/assess_dataset_quality.R",197,"umap","active","statistical_library",FALSE,NA,196,2,"umap(embedding_input, n_threads = 1)",TRUE,TRUE
+"analysis/qc/assess_dataset_quality.R",228,"set.seed","active","seed_control",FALSE,NA,228,2,"set.seed(20260623)",TRUE,TRUE
+"analysis/qc/assess_dataset_quality.R",229,"Rtsne","active","statistical_library",FALSE,NA,228,2,"Rtsne(embedding_input, dims = 2, perplexity = perplexity, pca = FALSE, theta = 0.5, check_duplicates = FALSE, verbose = FALSE)",TRUE,TRUE
+"analysis/qc/assess_joint_compartment_quality.R",95,"set.seed","active","seed_control",FALSE,NA,95,2,"set.seed(seed)",TRUE,TRUE
+"analysis/qc/assess_joint_compartment_quality.R",95,"umap","active","statistical_library",FALSE,NA,95,2,"umap(pc_input, n_neighbors = min(15L, nrow(pc_input) - 1L), n_threads = 1, verbose = FALSE, ret_model = FALSE)",TRUE,TRUE
+"analysis/qc/assess_joint_compartment_quality.R",101,"set.seed","active","seed_control",FALSE,NA,101,2,"set.seed(seed)",TRUE,TRUE
+"analysis/qc/assess_joint_compartment_quality.R",101,"Rtsne","active","statistical_library",FALSE,NA,101,2,"Rtsne(pc_input, dims = 2, perplexity = perplexity, check_duplicates = FALSE, pca = FALSE, verbose = FALSE, max_iter = 1000)",TRUE,TRUE
+"analysis/qc/assess_joint_compartment_quality.R",127,"geom_jitter","active","rendering",FALSE,NA,101,2,"geom_jitter(position = ggplot2::position_jitter(width = .15, seed = NATURE_JITTER_SEED))",TRUE,TRUE
+"analysis/qc/assess_joint_compartment_quality.R",127,"position_jitter","active","rendering",TRUE,"NATURE_JITTER_SEED",101,2,"position_jitter(width = .15, seed = NATURE_JITTER_SEED)",TRUE,TRUE
+"analysis/qc/assess_marker_rank_abundance.R",191,"geom_label_repel","active","rendering",TRUE,"NATURE_REPEL_SEED",NA,0,"geom_label_repel( data = label_data, aes(label = FeatureDisplayLabel, fill = marker_panel), color = ""white"", size = 2, label.size = 0, max.overlaps = 100, seed = NATURE_REPEL_SEED )",TRUE,TRUE
+"analysis/qc/assess_marker_rank_abundance.R",220,"position_jitter","active","rendering",TRUE,"NATURE_JITTER_SEED",NA,0,"position_jitter(width = 0.16, seed = NATURE_JITTER_SEED)",TRUE,TRUE
+"analysis/qc/assess_pca_confounding.R",182,"set.seed","active","seed_control",FALSE,NA,182,2,"set.seed(20260623)",TRUE,TRUE
+"analysis/qc/assess_pca_confounding.R",183,"umap","active","statistical_library",FALSE,NA,182,2,"umap(embedding_input, n_threads = 1)",TRUE,TRUE
+"analysis/qc/assess_pca_confounding.R",215,"set.seed","active","seed_control",FALSE,NA,215,2,"set.seed(20260623)",TRUE,TRUE
+"analysis/qc/assess_pca_confounding.R",216,"Rtsne","active","statistical_library",FALSE,NA,215,2,"Rtsne(embedding_input, dims = 2, perplexity = perplexity, pca = FALSE, theta = 0.5, check_duplicates = FALSE, verbose = FALSE)",TRUE,TRUE
+"analysis/qc/assess_pca_confounding.R",255,"kmeans","active","statistical_library",FALSE,NA,215,2,"kmeans(pcs, centers = min(3L, nrow(pcs) - 1L), nstart = 50)",TRUE,TRUE
+"analysis/qc/assess_replicate_consistency.R",93,"position_jitter","active","rendering",TRUE,"NATURE_JITTER_SEED",NA,0,"position_jitter(width = 0.12, seed = NATURE_JITTER_SEED)",TRUE,TRUE
+"analysis/qc/assess_sample_quality.R",472,"position_jitter","active","rendering",TRUE,"NATURE_JITTER_SEED",NA,0,"position_jitter(width = 0.12, height = 0, seed = NATURE_JITTER_SEED)",TRUE,TRUE
+"analysis/qc/assess_sample_quality.R",968,"position_jitterdodge","active","rendering",TRUE,"NATURE_JITTER_SEED",NA,0,"position_jitterdodge(jitter.width = 0.12, dodge.width = 0.65, seed = NATURE_JITTER_SEED)",TRUE,TRUE
+"analysis/qc/export_marker_traits.R",164,"position_jitter","active","rendering",TRUE,"NATURE_JITTER_SEED",NA,0,"position_jitter(width = 0.12, seed = NATURE_JITTER_SEED)",TRUE,TRUE
+"analysis/qc/render_joint_compartment_qc_figures.R",237,"geom_text_repel","active","rendering",TRUE,"20260817L",NA,0,"geom_text_repel( data = pca_island_labels, ggplot2::aes(PC1, PC2, label = Island), inherit.aes = FALSE, family = ""Arial"", size = 2.29, colour = ""#303030"", box.padding = 0.35, point.padding = 0.10, for",TRUE,TRUE
+"analysis/qc/render_joint_compartment_qc_figures.R",274,"geom_text_repel","active","rendering",TRUE,"20260817L",NA,0,"geom_text_repel( data = pca_island_labels, ggplot2::aes(PC1, PC2, label = Island), inherit.aes = FALSE, family = ""Arial"", size = 2.29, colour = ""#303030"", box.padding = 0.42, point.padding = 0.10, for",TRUE,TRUE
+"analysis/qc/render_joint_compartment_qc_figures.R",410,"geom_text_repel","active","rendering",TRUE,"42",NA,0,"geom_text_repel( data = label_data, ggplot2::aes(label = label), family = ""sans"", size = 2.1, colour = ""#1a1a1a"", min.segment.length = 0, segment.size = 0.22, seed = 42, box.padding = 0.22, point.padd",TRUE,TRUE
+"analysis/qc/summarize_marker_detectability.R",914,"position_jitter","active","rendering",TRUE,"NATURE_JITTER_SEED",NA,0,"position_jitter(width = 0.15, seed = NATURE_JITTER_SEED)",TRUE,TRUE
+"analysis/qc/summarize_marker_detectability.R",946,"position_jitter","active","rendering",TRUE,"NATURE_JITTER_SEED",NA,0,"position_jitter(width = 0.15, seed = NATURE_JITTER_SEED)",TRUE,TRUE
+"analysis/qc/summarize_marker_detectability.R",981,"position_jitter","active","rendering",TRUE,"NATURE_JITTER_SEED",NA,0,"position_jitter(width = 0.15, seed = NATURE_JITTER_SEED)",TRUE,TRUE
+"analysis/qc/summarize_missingness.R",110,"position_jitter","active","rendering",TRUE,"NATURE_JITTER_SEED",NA,0,"position_jitter(width = 0.12, seed = NATURE_JITTER_SEED)",TRUE,TRUE
+"analysis/spatial_networks/test_differential_network_stability.R",177,"sample","active","statistical_draw",FALSE,NA,NA,1,"sample(cols, size = length(cols), replace = TRUE)",FALSE,TRUE
+"analysis/spatial_networks/test_differential_network_stability.R",426,"set.seed","active","seed_control",FALSE,NA,426,1,"set.seed(params$seed)",FALSE,TRUE
+"analysis/spatial_networks/test_network_stability.R",137,"sample","active","statistical_draw",FALSE,NA,NA,1,"sample(sample_md$SampleColumn, size = nrow(sample_md), replace = TRUE)",FALSE,TRUE
+"analysis/spatial_networks/test_network_stability.R",249,"set.seed","active","seed_control",FALSE,NA,249,1,"set.seed(params$seed)",FALSE,TRUE
+"analysis/spatial_validation/validate_network_workbook.R",329,"position_jitter","active","rendering",FALSE,NA,NA,0,"position_jitter(width = 0.12, height = 0)",FALSE,TRUE
+"analysis/spatial_validation/validate_network_workbook.R",342,"position_jitter","active","rendering",FALSE,NA,NA,0,"position_jitter(width = 0.1, height = 0)",FALSE,TRUE
+"analysis/spatial_validation/validate_spatial_foundations.R",158,"set.seed","active","seed_control",FALSE,NA,158,1,"set.seed(11)",FALSE,TRUE
+"analysis/spatial_validation/validate_spatial_foundations.R",161,"runif","active","statistical_draw",FALSE,NA,158,1,"runif(20)",FALSE,TRUE
+"analysis/spatial_validation/validate_spatial_foundations.R",165,"runif","active","statistical_draw",FALSE,NA,158,1,"runif(40)",FALSE,TRUE
+"analysis/wgcna/audit_microglia_module_claims.R",749,"set.seed","active","seed_control",FALSE,NA,749,2,"set.seed(12345)",TRUE,TRUE
+"analysis/wgcna/audit_microglia_module_claims.R",919,"set.seed","active","seed_control",FALSE,NA,919,2,"set.seed(animal_bootstrap_seed)",TRUE,TRUE
+"analysis/wgcna/audit_microglia_module_claims.R",924,"sample","active","statistical_draw",FALSE,NA,919,2,"sample(animals, length(animals), replace = TRUE)",TRUE,TRUE
+"analysis/wgcna/build_wgcna_modules.R",2230,"pickSoftThreshold","active","statistical_library",FALSE,NA,NA,1,"pickSoftThreshold(expression.data, networkType = ""signed"", corFnc = ""bicor"", corOptions = list(use = ""p"", maxPOutliers = 0.05))",TRUE,TRUE
+"analysis/wgcna/build_wgcna_modules.R",3014,"set.seed","active","seed_control",FALSE,NA,3014,1,"set.seed(12345)",TRUE,TRUE
+"analysis/wgcna/build_wgcna_modules.R",3789,"position_jitter","active","rendering",TRUE,"1",3014,1,"position_jitter(width = 0.08, height = 0, seed = 1)",TRUE,TRUE
+"analysis/wgcna/build_wgcna_modules.R",3856,"position_jitter","active","rendering",TRUE,"1",3014,1,"position_jitter(width = 0.08, height = 0, seed = 1)",TRUE,TRUE
+"analysis/wgcna/build_wgcna_modules.R",4190,"position_jitter","active","rendering",TRUE,"1",3014,1,"position_jitter(width = 0.08, height = 0, seed = 1)",TRUE,TRUE
+"analysis/wgcna/render_microglia_independence_figures.R",392,"geom_text_repel","active","rendering",TRUE,"9",NA,0,"geom_text_repel( data = diagnostic_label_source, ggplot2::aes(label = .data$diagnostic_label), size = 2.0, colour = dark_grey, min.segment.length = 0, segment.size = 0.18, segment.colour = poster_grey",TRUE,TRUE
+"analysis/wgcna/render_microglia_module_figures.R",97,"position_jitter","active","rendering",TRUE,"1",NA,0,"position_jitter(width = .12, height = 0, seed = 1)",TRUE,TRUE
+"analysis/wgcna/render_module_figures.R",291,"position_jitter","active","rendering",TRUE,"NATURE_JITTER_SEED",NA,0,"position_jitter(width = 0.11, height = 0, seed = NATURE_JITTER_SEED)",TRUE,TRUE
+"analysis/wgcna/score_module_activity.R",1728,"geom_text_repel","active","rendering",TRUE,"NATURE_REPEL_SEED",NA,0,"geom_text_repel( data = rep_label_df, aes(label = Label), size = 2, max.overlaps = 100, seed = NATURE_REPEL_SEED, segment.linewidth = 0.2, show.legend = FALSE )",TRUE,TRUE
+"analysis/wgcna/score_module_activity.R",1799,"position_jitter","active","rendering",TRUE,"NATURE_JITTER_SEED",NA,0,"position_jitter(width = 0.10, height = 0, seed = NATURE_JITTER_SEED)",TRUE,TRUE
+"analysis/wgcna/score_module_activity.R",1803,"geom_text_repel","active","rendering",TRUE,"NATURE_REPEL_SEED",NA,0,"geom_text_repel( data = context_label_df, aes(label = PlotLabel), size = 1.8, max.overlaps = 80, seed = NATURE_REPEL_SEED, min.segment.length = 0, segment.linewidth = 0.18, box.padding = 0.25, point.p",TRUE,TRUE
+"analysis/wgcna/score_module_activity.R",1864,"geom_text_repel","active","rendering",TRUE,"NATURE_REPEL_SEED",NA,0,"geom_text_repel( data = replicate_ba_label_df, aes(label = BA_Label), size = 2, max.overlaps = 100, seed = NATURE_REPEL_SEED, segment.linewidth = 0.2, show.legend = FALSE )",TRUE,TRUE
+"analysis/wgcna/score_module_activity.R",3274,"position_jitter","active","rendering",TRUE,"NATURE_JITTER_SEED",NA,0,"position_jitter(width = 0.10, height = 0, seed = NATURE_JITTER_SEED)",TRUE,TRUE
+"analysis/wgcna/summarize_microglia_roi_specificity.R",929,"geom_text_repel","active","rendering",TRUE,"9",NA,0,"geom_text_repel( data = decision_label_source, ggplot2::aes(label = .data$decision_label), size = 1.65, segment.size = 0.14, segment.colour = ""#8A8F93"", box.padding = 0.12, point.padding = 0.06, force",TRUE,TRUE
+"analysis/wgcna/summarize_module_interpretation.R",1096,"position_jitter","active","rendering",TRUE,"1",NA,0,"position_jitter( width = 0, height = 0.08, seed = 1 )",TRUE,TRUE
+"R/enrichment/clusterprofiler_reproducibility.R",128,"with_preserve_seed","active","seed_control",FALSE,NA,128,4,"with_preserve_seed({ previous_kind <- RNGkind() tryCatch({ RNGkind( kind = ""L'Ecuyer-CMRG"", normal.kind = ""Inversion"", sample.kind = ""Rejection"" ) set.seed(gsea_seed) do.call(gsea_fun, dots) }, finall",FALSE,FALSE
+"R/enrichment/clusterprofiler_reproducibility.R",129,"RNGkind","active","seed_control",FALSE,NA,129,4,"RNGkind()",FALSE,FALSE
+"R/enrichment/clusterprofiler_reproducibility.R",131,"RNGkind","active","seed_control",FALSE,NA,131,4,"RNGkind( kind = ""L'Ecuyer-CMRG"", normal.kind = ""Inversion"", sample.kind = ""Rejection"" )",FALSE,FALSE
+"R/enrichment/clusterprofiler_reproducibility.R",135,"set.seed","active","seed_control",FALSE,NA,135,4,"set.seed(gsea_seed)",FALSE,FALSE
+"R/enrichment/ewce_gene_set_engine.R",100,"set.seed","active","seed_control",FALSE,NA,100,1,"set.seed(as.integer(seed))",FALSE,FALSE
+"R/networks/animal_spatial_network_utils.R",268,"set.seed","active","seed_control",FALSE,NA,268,2,"set.seed(as.integer(seed))",FALSE,FALSE
+"R/networks/animal_spatial_network_utils.R",277,"sample","active","statistical_draw",FALSE,NA,268,2,"sample(v, length(v), replace = TRUE)",FALSE,FALSE
+"R/networks/animal_spatial_network_utils.R",292,"set.seed","active","seed_control",FALSE,NA,292,2,"set.seed(as.integer(seed))",FALSE,FALSE
+"R/networks/animal_spatial_network_utils.R",300,"sample","active","statistical_draw",FALSE,NA,292,2,"sample(va, length(va), replace = TRUE)",FALSE,FALSE
+"R/networks/animal_spatial_network_utils.R",301,"sample","active","statistical_draw",FALSE,NA,292,2,"sample(vb, length(vb), replace = TRUE)",FALSE,FALSE
+"R/networks/wgcna_network_position_utils.R",131,"sample","active","statistical_draw",FALSE,NA,NA,1,"sample(pool, k)",FALSE,FALSE
+"R/networks/wgcna_network_position_utils.R",175,"set.seed","active","seed_control",FALSE,NA,175,1,"set.seed(seed)",FALSE,FALSE
+"R/qc/control_compartment_abundance_rendering.R",744,"geom_text_repel","active","rendering",TRUE,"20260724L",NA,0,"geom_text_repel( data = labels, ggplot2::aes(label = .data$configured_official_gene_symbol), seed = 20260724L, direction = ""both"", box.padding = 0.28, point.padding = 0.12, min.segment.length = 0, max",FALSE,FALSE
+"archive/01_preprocessing/01_impute.r",69,"set.seed","archive","seed_control",FALSE,NA,69,1,"set.seed(seed)",FALSE,FALSE
+"archive/01_preprocessing/01_impute.r",84,"rnorm","archive","statistical_draw",FALSE,NA,69,1,"rnorm(length(missing_idx), mean = impute_mean, sd = impute_sd)",FALSE,FALSE
+"archive/02_qc/04d_compartment_marker_fidelity.r",625,"position_jitter","archive","rendering",TRUE,"42",NA,0,"position_jitter(width = 0.10, height = 0, seed = 42)",FALSE,FALSE
+"archive/03_qc_exploration/legacy/06_pcaPlot_Neha.r",21,"set.seed","archive","seed_control",FALSE,NA,21,4,"set.seed(42)",FALSE,FALSE
+"archive/03_qc_exploration/legacy/06_pcaPlot_Neha.r",449,"set.seed","archive","seed_control",FALSE,NA,449,4,"set.seed(42)",FALSE,FALSE
+"archive/03_qc_exploration/legacy/06_pcaPlot_Neha.r",450,"umap","archive","statistical_library",FALSE,NA,449,4,"umap(X, n_neighbors = n_neighbors, min_dist = min_dist, n_components = n_components, metric = metric, verbose = FALSE)",FALSE,FALSE
+"archive/03_qc_exploration/legacy/06_pcaPlot_Neha.r",580,"geom_jitter","archive","rendering",FALSE,NA,449,4,"geom_jitter(width = 0.2, alpha = 0.7, size = 3)",FALSE,FALSE
+"archive/03_qc_exploration/legacy/06_pcaPlot_Neha.r",606,"kmeans","archive","statistical_library",FALSE,NA,449,4,"kmeans(pc_for_cluster, centers = k, nstart = 50, iter.max = 100)",FALSE,FALSE
+"archive/03_qc_exploration/legacy/06_pcaPlot_Neha.r",631,"kmeans","archive","statistical_library",FALSE,NA,449,4,"kmeans(pc_for_cluster, centers = suggest_k, nstart = 100, iter.max = 200)",FALSE,FALSE
+"archive/03_qc_exploration/legacy/06_pcaPlot_Neha.r",697,"geom_text_repel","archive","rendering",FALSE,NA,449,4,"geom_text_repel(data=arrows, aes(x=PC1s, y=PC2s, label=protein), inherit.aes = FALSE, size=3, max.overlaps = 200)",FALSE,FALSE
+"archive/03_qc_exploration/legacy/06_pcaPlot_Neha.r",795,"irlba","archive","statistical_library",FALSE,NA,449,4,"irlba(X, nv = k, nu = k)",FALSE,FALSE
+"archive/03_qc_exploration/legacy/06_pcaPlot_Neha.r",859,"set.seed","archive","seed_control",FALSE,NA,859,4,"set.seed(42 + perp)",FALSE,FALSE
+"archive/03_qc_exploration/legacy/06_pcaPlot_Neha.r",860,"Rtsne","archive","statistical_library",FALSE,NA,859,4,"Rtsne(X, perplexity = p_ok, pca = FALSE, theta = 0.5, check_duplicates = FALSE, verbose = FALSE)",FALSE,FALSE
+"archive/03_qc_exploration/legacy/06_pcaPlot_Neha.r",883,"set.seed","archive","seed_control",FALSE,NA,883,4,"set.seed(42)",FALSE,FALSE
+"archive/03_qc_exploration/legacy/06_pcaPlot_Neha.r",1352,"geom_jitter","archive","rendering",FALSE,NA,883,4,"geom_jitter(width = 0.2, alpha = 0.5, size = 2)",FALSE,FALSE
+"archive/03_qc_exploration/legacy/06_pcaPlot_Neha.r",1389,"geom_jitter","archive","rendering",FALSE,NA,883,4,"geom_jitter(width = 0.15, alpha = 0.8, size = 4)",FALSE,FALSE
+"archive/03_qc_exploration/legacy/06_pcaPlot_Neha.r",1625,"geom_text_repel","archive","rendering",FALSE,NA,883,4,"geom_text_repel(data = df, aes(x = PC1, y = PC2, label = protein), size = 3, max.overlaps = 30)",FALSE,FALSE
+"archive/03_qc_exploration/legacy/06_pcaPlot_Neha.r",1987,"geom_text_repel","archive","rendering",FALSE,NA,883,4,"geom_text_repel(aes(label = protein), size = 3.5, max.overlaps = 30, box.padding = 0.5)",FALSE,FALSE
+"archive/03_qc_exploration/legacy/08_boxplotBonanza.r",73,"geom_jitter","archive","rendering",FALSE,NA,NA,0,"geom_jitter(width = 0.1, size = 5, alpha = 0.8, shape = 21, stroke = 0.5, aes(fill = Celltype), color = ""#DFDFDF"")",FALSE,FALSE
+"archive/03_qc_exploration/legacy/08_boxplotBonanza.r",181,"geom_jitter","archive","rendering",FALSE,NA,NA,0,"geom_jitter(width = 0.1, size = 5, alpha = 0.7, shape = 21, stroke = 0.4, aes(fill = Celltype), color = ""#DFDFDF"")",FALSE,FALSE
+"archive/04_differential_expression_enrichment/legacy/07_control_strata_enrichment_figures.r",19,"set.seed","archive","seed_control",FALSE,NA,19,1,"set.seed(17)",FALSE,FALSE
+"archive/04_differential_expression_enrichment/legacy/07_control_strata_enrichment_figures.r",250,"geom_text_repel","archive","rendering",FALSE,NA,19,1,"geom_text_repel( data = labels_df, aes(x = logFC, y = -log10(padj), label = label), color = ""black"", size = 3, max.overlaps = 200, box.padding = 0.25, point.padding = 0.25, segment.color = ""grey50"", s",FALSE,FALSE
+"archive/04_differential_expression_enrichment/legacy/07_control_strata_enrichment_figures.r",436,"geom_text_repel","archive","rendering",FALSE,NA,19,1,"geom_text_repel( data = labels_df %>% mutate(logFC_pos = pmax(logFC, 0)), aes(x = x_mean, y = logFC_pos, label = label), color = ""black"", size = 3, max.overlaps = 200, box.padding = 0.25, point.paddin",FALSE,FALSE
+"archive/04_differential_expression_enrichment/legacy/07_control_strata_enrichment_figures.r",555,"geom_text_repel","archive","rendering",FALSE,NA,19,1,"geom_text_repel( data = mg_top10_labels %>% mutate(minus_log10_padj = -log10(padj)), aes(x = logFC, y = minus_log10_padj, label = label), color = ""black"", size = 3, max.overlaps = 200, box.padding = 0",FALSE,FALSE
+"archive/04_differential_expression_enrichment/legacy/07_control_strata_enrichment_figures.r",656,"geom_text_repel","archive","rendering",FALSE,NA,19,1,"geom_text_repel( data = lab_df, aes(label = label), color = ""black"", size = 3, max.overlaps = 200, box.padding = 0.25, point.padding = 0.25, segment.color = ""grey50"", segment.size = 0.3 )",FALSE,FALSE
+"archive/05_celltype_enrichment_EWCE/90_EWCE_legacy.r",108,"set.seed","archive","seed_control",FALSE,NA,108,3,"set.seed(42)",FALSE,FALSE
+"archive/05_celltype_enrichment_EWCE/90_EWCE_legacy.r",109,"Rtsne","archive","statistical_library",FALSE,NA,108,3,"Rtsne(t(z_matrix), perplexity = 1, check_duplicates = FALSE)",FALSE,FALSE
+"archive/05_celltype_enrichment_EWCE/90_EWCE_legacy.r",139,"geom_text_repel","archive","rendering",FALSE,NA,108,3,"geom_text_repel(data = subset(all_results_lvl2, q < 0.05 & sd_from_mean > 3), aes(label = CellType), size = 2, max.overlaps = 20)",FALSE,FALSE
+"archive/05_celltype_enrichment_EWCE/90_EWCE_legacy.r",161,"geom_text_repel","archive","rendering",FALSE,NA,108,3,"geom_text_repel(aes(label = Group), size = 2.5)",FALSE,FALSE
+"archive/05_celltype_enrichment_EWCE/90_EWCE_legacy.r",173,"geom_text_repel","archive","rendering",FALSE,NA,108,3,"geom_text_repel(aes(label = Group), size = 2.5)",FALSE,FALSE
+"archive/05_celltype_enrichment_EWCE/90_EWCE_legacy.r",365,"geom_text_repel","archive","rendering",FALSE,NA,108,3,"geom_text_repel(aes(label=Group), size=1.8)",FALSE,FALSE
+"archive/05_celltype_enrichment_EWCE/90_EWCE_legacy.r",540,"set.seed","archive","seed_control",FALSE,NA,540,3,"set.seed(42)",FALSE,FALSE
+"archive/05_celltype_enrichment_EWCE/90_EWCE_legacy.r",541,"Rtsne","archive","statistical_library",FALSE,NA,540,3,"Rtsne(t(z_matrix), perplexity = 1, check_duplicates = FALSE)",FALSE,FALSE
+"archive/05_celltype_enrichment_EWCE/90_EWCE_legacy.r",560,"geom_text_repel","archive","rendering",FALSE,NA,540,3,"geom_text_repel(aes(label=Group), size=1.5)",FALSE,FALSE
+"archive/05_celltype_enrichment_EWCE/90_EWCE_legacy.r",571,"geom_text_repel","archive","rendering",FALSE,NA,540,3,"geom_text_repel(data=subset(all_results_lvl2, q<0.05 & sd_from_mean>4), aes(label=CellType), size=1.5)",FALSE,FALSE
+"archive/05_celltype_enrichment_EWCE/90_EWCE_legacy.r",732,"set.seed","archive","seed_control",FALSE,NA,732,3,"set.seed(42)",FALSE,FALSE
+"archive/05_celltype_enrichment_EWCE/90_EWCE_legacy.r",733,"Rtsne","archive","statistical_library",FALSE,NA,732,3,"Rtsne(t(z_matrix), perplexity = 1, check_duplicates = FALSE)",FALSE,FALSE
+"archive/05_celltype_enrichment_EWCE/90_EWCE_legacy.r",752,"geom_text_repel","archive","rendering",FALSE,NA,732,3,"geom_text_repel(aes(label=Group), size=2)",FALSE,FALSE
+"archive/05_celltype_enrichment_EWCE/90_EWCE_legacy.r",753,"geom_text_repel","archive","rendering",FALSE,NA,732,3,"geom_text_repel(aes(label=Group), size=2)",FALSE,FALSE
+"archive/05_celltype_enrichment_EWCE/90_EWCE_legacy.r",759,"geom_text_repel","archive","rendering",FALSE,NA,732,3,"geom_text_repel(data=subset(all_results_lvl2, q<0.05 & sd_from_mean>3.5), aes(label=CellType), size=1.8)",FALSE,FALSE
+"archive/08_integration/01_compartment_fidelity_summary.R",128,"position_jitter","archive","rendering",FALSE,NA,NA,0,"position_jitter(width = 0.12)",FALSE,FALSE
+"archive/deprecated/01_WGCNA.r",115,"pickSoftThreshold","archive","statistical_library",FALSE,NA,NA,0,"pickSoftThreshold(expression.data)",FALSE,FALSE
+"archive/deprecated/01_WGCNA.r",826,"geom_jitter","archive","rendering",FALSE,NA,NA,0,"geom_jitter(width = 0.16, height = 0, size = 7, shape = 21, color = ""white"", alpha = 0.85, stroke = 0.6)",FALSE,FALSE
+"archive/deprecated/02_WGCNAtraitpreservation.r",513,"pickSoftThreshold","archive","statistical_library",FALSE,NA,NA,1,"pickSoftThreshold(expression.data)",FALSE,FALSE
+"archive/deprecated/02_WGCNAtraitpreservation.r",583,"pickSoftThreshold","archive","statistical_library",FALSE,NA,NA,1,"pickSoftThreshold(expression.data)",FALSE,FALSE
+"archive/deprecated/02_WGCNAtraitpreservation.r",905,"geom_text_repel","archive","rendering",FALSE,NA,NA,1,"geom_text_repel(data = top5, aes(label = label), color = ""#ff9900"", size = 6, fontface = ""bold"", max.overlaps = 10, box.padding = 0.7, point.padding = 0.6, segment.color = ""grey60"")",FALSE,FALSE
+"archive/deprecated/02_WGCNAtraitpreservation.r",975,"set.seed","archive","seed_control",FALSE,NA,975,1,"set.seed(12345)",FALSE,FALSE
+"archive/deprecated/02_WGCNAtraitpreservation.r",1413,"position_jitter","archive","rendering",TRUE,"1",975,1,"position_jitter(width = 0.08, height = 0, seed = 1)",FALSE,FALSE
+"archive/deprecated/02_WGCNAtraitpreservation.r",1484,"position_jitter","archive","rendering",TRUE,"1",975,1,"position_jitter(width = 0.08, height = 0, seed = 1)",FALSE,FALSE
+"archive/deprecated/04_pcaPlot_v2.r",23,"set.seed","archive","seed_control",FALSE,NA,23,4,"set.seed(42)",FALSE,FALSE
+"archive/deprecated/04_pcaPlot_v2.r",461,"set.seed","archive","seed_control",FALSE,NA,461,4,"set.seed(42)",FALSE,FALSE
+"archive/deprecated/04_pcaPlot_v2.r",462,"umap","archive","statistical_library",FALSE,NA,461,4,"umap(X, n_neighbors = n_neighbors, min_dist = min_dist, n_components = n_components, metric = metric, verbose = FALSE)",FALSE,FALSE
+"archive/deprecated/04_pcaPlot_v2.r",594,"geom_jitter","archive","rendering",FALSE,NA,461,4,"geom_jitter(width = 0.2, alpha = 0.7, size = 3)",FALSE,FALSE
+"archive/deprecated/04_pcaPlot_v2.r",620,"kmeans","archive","statistical_library",FALSE,NA,461,4,"kmeans(pc_for_cluster, centers = k, nstart = 50, iter.max = 100)",FALSE,FALSE
+"archive/deprecated/04_pcaPlot_v2.r",645,"kmeans","archive","statistical_library",FALSE,NA,461,4,"kmeans(pc_for_cluster, centers = suggest_k, nstart = 100, iter.max = 200)",FALSE,FALSE
+"archive/deprecated/04_pcaPlot_v2.r",711,"geom_text_repel","archive","rendering",FALSE,NA,461,4,"geom_text_repel(data=arrows, aes(x=PC1s, y=PC2s, label=protein), inherit.aes = FALSE, size=3, max.overlaps = 200)",FALSE,FALSE
+"archive/deprecated/04_pcaPlot_v2.r",831,"irlba","archive","statistical_library",FALSE,NA,461,4,"irlba(X, nv = k, nu = k)",FALSE,FALSE
+"archive/deprecated/04_pcaPlot_v2.r",895,"set.seed","archive","seed_control",FALSE,NA,895,4,"set.seed(42 + perp)",FALSE,FALSE
+"archive/deprecated/04_pcaPlot_v2.r",896,"Rtsne","archive","statistical_library",FALSE,NA,895,4,"Rtsne(X, perplexity = p_ok, pca = FALSE, theta = 0.5, check_duplicates = FALSE, verbose = FALSE)",FALSE,FALSE
+"archive/deprecated/04_pcaPlot_v2.r",919,"set.seed","archive","seed_control",FALSE,NA,919,4,"set.seed(42)",FALSE,FALSE
+"archive/deprecated/04_pcaPlot_v2.r",1388,"geom_jitter","archive","rendering",FALSE,NA,919,4,"geom_jitter(width = 0.2, alpha = 0.5, size = 2)",FALSE,FALSE
+"archive/deprecated/04_pcaPlot_v2.r",1427,"geom_jitter","archive","rendering",FALSE,NA,919,4,"geom_jitter(width = 0.15, alpha = 0.8, size = 4)",FALSE,FALSE
+"archive/deprecated/04_pcaPlot_v2.r",1665,"geom_text_repel","archive","rendering",FALSE,NA,919,4,"geom_text_repel(data = df, aes(x = PC1, y = PC2, label = protein), size = 3, max.overlaps = 30)",FALSE,FALSE
+"archive/deprecated/04_pcaPlot_v2.r",2039,"geom_text_repel","archive","rendering",FALSE,NA,919,4,"geom_text_repel(aes(label = protein), size = 3.5, max.overlaps = 30, box.padding = 0.5)",FALSE,FALSE
+"archive/deprecated/05_pcaPlot_v3.r",10,"set.seed","archive","seed_control",FALSE,NA,10,4,"set.seed(42)",FALSE,FALSE
+"archive/deprecated/05_pcaPlot_v3.r",658,"set.seed","archive","seed_control",FALSE,NA,658,4,"set.seed(42)",FALSE,FALSE
+"archive/deprecated/05_pcaPlot_v3.r",659,"umap","archive","statistical_library",FALSE,NA,658,4,"umap(X, n_neighbors = n_neighbors, min_dist = min_dist, n_components = n_components, metric = metric, verbose = FALSE)",FALSE,FALSE
+"archive/deprecated/05_pcaPlot_v3.r",792,"geom_jitter","archive","rendering",FALSE,NA,658,4,"geom_jitter(width = 0.2, alpha = 0.7, size = 3)",FALSE,FALSE
+"archive/deprecated/05_pcaPlot_v3.r",818,"kmeans","archive","statistical_library",FALSE,NA,658,4,"kmeans(pc_for_cluster, centers = k, nstart = 50, iter.max = 100)",FALSE,FALSE
+"archive/deprecated/05_pcaPlot_v3.r",843,"kmeans","archive","statistical_library",FALSE,NA,658,4,"kmeans(pc_for_cluster, centers = suggest_k, nstart = 100, iter.max = 200)",FALSE,FALSE
+"archive/deprecated/05_pcaPlot_v3.r",909,"geom_text_repel","archive","rendering",FALSE,NA,658,4,"geom_text_repel(data=arrows, aes(x=PC1s, y=PC2s, label=protein), inherit.aes = FALSE, size=3, max.overlaps = 200)",FALSE,FALSE
+"archive/deprecated/05_pcaPlot_v3.r",1007,"irlba","archive","statistical_library",FALSE,NA,658,4,"irlba(X, nv = k, nu = k)",FALSE,FALSE
+"archive/deprecated/05_pcaPlot_v3.r",1071,"set.seed","archive","seed_control",FALSE,NA,1071,4,"set.seed(42 + perp)",FALSE,FALSE
+"archive/deprecated/05_pcaPlot_v3.r",1072,"Rtsne","archive","statistical_library",FALSE,NA,1071,4,"Rtsne(X, perplexity = p_ok, pca = FALSE, theta = 0.5, check_duplicates = FALSE, verbose = FALSE)",FALSE,FALSE
+"archive/deprecated/05_pcaPlot_v3.r",1095,"set.seed","archive","seed_control",FALSE,NA,1095,4,"set.seed(42)",FALSE,FALSE
+"archive/deprecated/05_pcaPlot_v3.r",1564,"geom_jitter","archive","rendering",FALSE,NA,1095,4,"geom_jitter(width = 0.2, alpha = 0.5, size = 2)",FALSE,FALSE
+"archive/deprecated/05_pcaPlot_v3.r",1611,"geom_jitter","archive","rendering",FALSE,NA,1095,4,"geom_jitter(width = 0.15, alpha = 0.8, size = 4)",FALSE,FALSE
+"archive/deprecated/05_pcaPlot_v3.r",1854,"geom_text_repel","archive","rendering",FALSE,NA,1095,4,"geom_text_repel(data = df, aes(x = PC1, y = PC2, label = protein), size = 3, max.overlaps = 30)",FALSE,FALSE
+"archive/deprecated/05_pcaPlot_v3.r",2230,"geom_text_repel","archive","rendering",FALSE,NA,1095,4,"geom_text_repel(aes(label = protein), size = 3.5, max.overlaps = 30, box.padding = 0.5)",FALSE,FALSE
+"archive/deprecated/90_module_score_v0.0.1.r",943,"geom_text_repel","archive","rendering",FALSE,NA,NA,0,"geom_text_repel( data = rep_label_df, aes(label = Label), size = 2, max.overlaps = 100, segment.linewidth = 0.2, show.legend = FALSE )",FALSE,FALSE
+"archive/deprecated/90_module_score_v0.0.1.r",1013,"position_jitter","archive","rendering",FALSE,NA,NA,0,"position_jitter(width = 0.10, height = 0)",FALSE,FALSE
+"archive/deprecated/90_module_score_v0.0.1.r",1017,"geom_text_repel","archive","rendering",FALSE,NA,NA,0,"geom_text_repel( data = context_label_df, aes(label = PlotLabel), size = 1.8, max.overlaps = 80, min.segment.length = 0, segment.linewidth = 0.18, box.padding = 0.25, point.padding = 0.12, show.legend",FALSE,FALSE
+"archive/deprecated/90_module_score_v0.0.1.r",1077,"geom_text_repel","archive","rendering",FALSE,NA,NA,0,"geom_text_repel( data = replicate_ba_label_df, aes(label = BA_Label), size = 2, max.overlaps = 100, segment.linewidth = 0.2, show.legend = FALSE )",FALSE,FALSE
+"archive/deprecated/90_module_score_v0.0.1.r",2223,"position_jitter","archive","rendering",FALSE,NA,NA,0,"position_jitter(width = 0.10, height = 0)",FALSE,FALSE
+"archive/deprecated/clusterProfiler_jan2026.r",195,"gseGO","archive","statistical_library",FALSE,NA,NA,0,"gseGO(geneList = gene_list, ont = ont, keyType = ""UNIPROT"", minGSSize = 10, maxGSSize = 800, pvalueCutoff = 1, verbose = FALSE, OrgDb = organism, pAdjustMethod = ""BH"")",FALSE,FALSE
+"archive/deprecated/clusterProfiler_jan2026.r",363,"gseKEGG","archive","statistical_library",FALSE,NA,NA,0,"gseKEGG(geneList = kegg_gene_list, organism = ""mmu"", minGSSize = 10, maxGSSize = 800, pvalueCutoff = 1, pAdjustMethod = ""BH"", keyType = ""ncbi-geneid"", verbose = FALSE)",FALSE,FALSE
+"archive/deprecated/clusterProfiler_jan2026.r",502,"gseKEGG","archive","statistical_library",FALSE,NA,NA,0,"gseKEGG(geneList = selected_kegg_list, organism = ""mmu"", minGSSize = 10, maxGSSize = 800, pvalueCutoff = 1, pAdjustMethod = ""BH"", keyType = ""ncbi-geneid"", verbose = FALSE)",FALSE,FALSE
+"archive/deprecated/clusterProfiler_jan2026.r",530,"GSEA","archive","statistical_library",FALSE,NA,NA,0,"GSEA(geneList = custom_gene_list, TERM2GENE = term2gene_nk3r, pvalueCutoff = 1, minGSSize = 1, maxGSSize = 500, verbose = FALSE)",FALSE,FALSE
+"archive/deprecated/clusterProfiler_jan2026.r",1074,"position_jitterdodge","archive","rendering",FALSE,NA,NA,0,"position_jitterdodge(jitter.width = 0.1, dodge.width = 0.8)",FALSE,FALSE
+"archive/deprecated/clusterProfiler_newest_Sep16.r",231,"gseGO","archive","statistical_library",FALSE,NA,NA,0,"gseGO( geneList = gene_list, ont = ont, keyType = ""UNIPROT"", minGSSize = 10, maxGSSize = 800, pvalueCutoff = 1, verbose = TRUE, OrgDb = organism, pAdjustMethod = ""BH"" )",FALSE,FALSE
+"archive/deprecated/clusterProfiler_newest_Sep16.r",366,"gseKEGG","archive","statistical_library",FALSE,NA,NA,0,"gseKEGG( geneList = kegg_gene_list, organism = ""mmu"", minGSSize = 10, maxGSSize = 800, pvalueCutoff = 1, pAdjustMethod = ""BH"", keyType = ""ncbi-geneid"" )",FALSE,FALSE
+"archive/deprecated/clusterProfiler_newest_Sep16.r",689,"gseGO","archive","statistical_library",FALSE,NA,NA,0,"gseGO( geneList = gene_list, ont = ont, keyType = ""UNIPROT"", minGSSize = 10, maxGSSize = 800, pvalueCutoff = 1, verbose = FALSE, OrgDb = organism, pAdjustMethod = ""BH"" )",FALSE,FALSE
+"archive/deprecated/clusterProfiler_newest_Sep16.r",753,"gseKEGG","archive","statistical_library",FALSE,NA,NA,0,"gseKEGG( geneList = kegg_gene_list, organism = ""mmu"", minGSSize = 10, maxGSSize = 800, pvalueCutoff = 1, pAdjustMethod = ""BH"", keyType = ""ncbi-geneid"" )",FALSE,FALSE
+"archive/deprecated/clusterProfiler_newest_Sep16.r",817,"gseGO","archive","statistical_library",FALSE,NA,NA,0,"gseGO( geneList = sort(m_gene_list, decreasing = TRUE), ont = ont, keyType = ""UNIPROT"", minGSSize = 10, maxGSSize = 800, pvalueCutoff = 1, verbose = FALSE, OrgDb = organism, pAdjustMethod = ""BH"" )",FALSE,FALSE
+"archive/deprecated/clusterProfiler_newest_Sep16.r",1143,"gseGO","archive","statistical_library",FALSE,NA,NA,0,"gseGO( geneList = gene_list, ont = ont, keyType = ""UNIPROT"", minGSSize = 10, maxGSSize = 800, pvalueCutoff = 1, by = ""fgsea"", nPermSimple = 10000, eps = 0, verbose = TRUE, OrgDb = organism, pAdjustMet",FALSE,FALSE
+"archive/deprecated/clusterProfiler_newest_Sep16.r",1198,"gseKEGG","archive","statistical_library",FALSE,NA,NA,0,"gseKEGG( geneList = kegg_gene_list, organism = ""mmu"", minGSSize = 10, maxGSSize = 800, pvalueCutoff = 1, pAdjustMethod = ""BH"", keyType = ""ncbi-geneid"" )",FALSE,FALSE
+"archive/deprecated/clusterProfiler_newest_Sep16.r",1259,"gseGO","archive","statistical_library",FALSE,NA,NA,0,"gseGO( geneList = sort(m_gene_list, decreasing = TRUE), ont = ont, keyType = ""UNIPROT"", minGSSize = 5, maxGSSize = 800, pvalueCutoff = 1, by = ""fgsea"", nPermSimple = 10000, eps = 0, verbose = FALSE, O",FALSE,FALSE
+"archive/deprecated/clusterProfiler_newest_Sep16.r",1637,"gseGO","archive","statistical_library",FALSE,NA,NA,0,"gseGO( geneList = gene_list, ont = ont, keyType = ""UNIPROT"", minGSSize = 10, maxGSSize = 800, pvalueCutoff = 1, by = ""fgsea"", nPermSimple = 10000, eps = 0, verbose = TRUE, OrgDb = organism, pAdjustMet",FALSE,FALSE
+"archive/deprecated/clusterProfiler_newest_Sep16.r",1692,"gseKEGG","archive","statistical_library",FALSE,NA,NA,0,"gseKEGG( geneList = kegg_gene_list, organism = ""mmu"", minGSSize = 10, maxGSSize = 800, pvalueCutoff = 1, pAdjustMethod = ""BH"", keyType = ""ncbi-geneid"" )",FALSE,FALSE
+"archive/deprecated/clusterProfiler_newest_Sep16.r",1832,"gseGO","archive","statistical_library",FALSE,NA,NA,0,"gseGO( geneList = sort(m_gene_list, decreasing = TRUE), ont = ont, keyType = ""UNIPROT"", minGSSize = 5, maxGSSize = 800, pvalueCutoff = 1, by = ""fgsea"", nPermSimple = 10000, eps = 0, verbose = FALSE, O",FALSE,FALSE
+"archive/deprecated/clusterProfiler_newest_Sep16.r",2190,"gseGO","archive","statistical_library",FALSE,NA,NA,0,"gseGO( geneList = gene_list, ont = ont, keyType = ""UNIPROT"", minGSSize = 10, maxGSSize = 800, pvalueCutoff = 1, by = ""fgsea"", nPermSimple = 10000, eps = 0, verbose = TRUE, OrgDb = organism, pAdjustMet",FALSE,FALSE
+"archive/deprecated/clusterProfiler_newest_Sep16.r",2267,"gseKEGG","archive","statistical_library",FALSE,NA,NA,0,"gseKEGG( geneList = kegg_gene_list, organism = ""mmu"", minGSSize = 10, maxGSSize = 800, pvalueCutoff = 1, pAdjustMethod = ""BH"", keyType = ""ncbi-geneid"" )",FALSE,FALSE
+"archive/deprecated/clusterProfiler_newest_Sep16.r",2457,"gseGO","archive","statistical_library",FALSE,NA,NA,0,"gseGO( geneList = sort(m_gene_list, decreasing = TRUE), ont = ont, keyType = ""UNIPROT"", minGSSize = 5, maxGSSize = 800, pvalueCutoff = 1, by = ""fgsea"", nPermSimple = 10000, eps = 0, verbose = FALSE, O",FALSE,FALSE
+"archive/deprecated/clusterProfiler_newest_Sep16.r",2824,"gseGO","archive","statistical_library",FALSE,NA,NA,0,"gseGO( geneList = gene_list, ont = ont, keyType = ""UNIPROT"", minGSSize = 10, maxGSSize = 800, pvalueCutoff = 1, by = ""fgsea"", nPermSimple = 10000, eps = 0, verbose = TRUE, OrgDb = organism, pAdjustMet",FALSE,FALSE
+"archive/deprecated/clusterProfiler_newest_Sep16.r",2922,"gseKEGG","archive","statistical_library",FALSE,NA,NA,0,"gseKEGG( geneList = kegg_gene_list, organism = ""mmu"", minGSSize = 10, maxGSSize = 800, pvalueCutoff = 1, pAdjustMethod = ""BH"", keyType = ""ncbi-geneid"" )",FALSE,FALSE
+"archive/deprecated/clusterProfiler_newest_Sep16.r",3122,"gseGO","archive","statistical_library",FALSE,NA,NA,0,"gseGO( geneList = sort(m_gene_list, decreasing = TRUE), ont = ont, keyType = ""UNIPROT"", minGSSize = 5, maxGSSize = 800, pvalueCutoff = 1, by = ""fgsea"", nPermSimple = 10000, eps = 0, verbose = FALSE, O",FALSE,FALSE
+"archive/deprecated/clusterProfiler_newest_Sep16.r",3518,"gseGO","archive","statistical_library",FALSE,NA,NA,0,"gseGO( geneList = gene_list, ont = ont, keyType = ""UNIPROT"", minGSSize = 10, maxGSSize = 800, pvalueCutoff = 1, by = ""fgsea"", nPermSimple = 10000, eps = 0, verbose = TRUE, OrgDb = organism, pAdjustMet",FALSE,FALSE
+"archive/deprecated/clusterProfiler_newest_Sep16.r",3617,"gseKEGG","archive","statistical_library",FALSE,NA,NA,0,"gseKEGG( geneList = kegg_gene_list, organism = ""mmu"", minGSSize = 10, maxGSSize = 800, pvalueCutoff = 1, pAdjustMethod = ""BH"", keyType = ""ncbi-geneid"" )",FALSE,FALSE
+"archive/deprecated/clusterProfiler_newest_Sep16.r",3817,"gseGO","archive","statistical_library",FALSE,NA,NA,0,"gseGO( geneList = m_gene_list, ont = ont, keyType = ""UNIPROT"", minGSSize = 5, maxGSSize = 800, pvalueCutoff = 1, by = ""fgsea"", nPermSimple = 10000, eps = 0, verbose = FALSE, OrgDb = organism, pAdjustM",FALSE,FALSE
+"archive/deprecated/clusterProfiler_newest_Sep16.r",4216,"gseGO","archive","statistical_library",FALSE,NA,NA,0,"gseGO( geneList = gene_list, ont = ont, keyType = ""UNIPROT"", minGSSize = 10, maxGSSize = 800, pvalueCutoff = 1, by = ""fgsea"", nPermSimple = 10000, eps = 0, verbose = TRUE, OrgDb = organism, pAdjustMet",FALSE,FALSE
+"archive/deprecated/clusterProfiler_newest_Sep16.r",4315,"gseKEGG","archive","statistical_library",FALSE,NA,NA,0,"gseKEGG( geneList = kegg_gene_list, organism = ""mmu"", minGSSize = 10, maxGSSize = 800, pvalueCutoff = 1, pAdjustMethod = ""BH"", keyType = ""ncbi-geneid"" )",FALSE,FALSE
+"archive/deprecated/clusterProfiler_newest_Sep16.r",4523,"gseGO","archive","statistical_library",FALSE,NA,NA,0,"gseGO( geneList = m_gene_list, ont = ont, keyType = ""UNIPROT"", minGSSize = 5, maxGSSize = 800, pvalueCutoff = 1, by = ""fgsea"", nPermSimple = 10000, eps = 0, verbose = FALSE, OrgDb = organism, pAdjustM",FALSE,FALSE
+"archive/deprecated/clusterProfiler_newest_Sep16.r",4918,"gseGO","archive","statistical_library",FALSE,NA,NA,0,"gseGO( geneList = gene_list, ont = ont, keyType = ""UNIPROT"", minGSSize = 10, maxGSSize = 800, pvalueCutoff = 1, by = ""fgsea"", nPermSimple = 10000, eps = 0, verbose = TRUE, OrgDb = organism, pAdjustMet",FALSE,FALSE
+"archive/deprecated/clusterProfiler_newest_Sep16.r",5054,"gseKEGG","archive","statistical_library",FALSE,NA,NA,0,"gseKEGG( geneList = kegg_gene_list, organism = ""mmu"", minGSSize = 10, maxGSSize = 800, pvalueCutoff = 1, pAdjustMethod = ""BH"", keyType = ""ncbi-geneid"" )",FALSE,FALSE
+"archive/deprecated/clusterProfiler_newest_Sep16.r",5270,"gseGO","archive","statistical_library",FALSE,NA,NA,0,"gseGO( geneList = m_gene_list, ont = ont, keyType = ""UNIPROT"", minGSSize = 5, maxGSSize = 800, pvalueCutoff = 1, by = ""fgsea"", nPermSimple = 10000, eps = 0, verbose = FALSE, OrgDb = organism, pAdjustM",FALSE,FALSE
+"archive/deprecated/clusterProfiler_newest_Sep16.r",5744,"gseGO","archive","statistical_library",FALSE,NA,NA,0,"gseGO( geneList = gene_list, ont = ont, keyType = ""UNIPROT"", minGSSize = 10, maxGSSize = 800, pvalueCutoff = 1, by = ""fgsea"", nPermSimple = 10000, eps = 0, verbose = TRUE, OrgDb = organism, pAdjustMet",FALSE,FALSE
+"archive/deprecated/clusterProfiler_newest_Sep16.r",5861,"gsePathway","archive","statistical_library",FALSE,NA,NA,0,"gsePathway(geneList = re_gene_list, organism = ""mouse"", minGSSize = 10, maxGSSize = 800, pvalueCutoff = 1, pAdjustMethod = ""BH"", eps = 0, nPermSimple = 10000)",FALSE,FALSE
+"archive/deprecated/clusterProfiler_newest_Sep16.r",5918,"gseKEGG","archive","statistical_library",FALSE,NA,NA,0,"gseKEGG( geneList = kegg_gene_list, organism = ""mmu"", minGSSize = 10, maxGSSize = 800, pvalueCutoff = 1, pAdjustMethod = ""BH"", keyType = ""ncbi-geneid"" )",FALSE,FALSE
+"archive/deprecated/clusterProfiler_newest_Sep16.r",6111,"gseGO","archive","statistical_library",FALSE,NA,NA,0,"gseGO( geneList = m_gene_list, ont = ont, keyType = ""UNIPROT"", minGSSize = 5, maxGSSize = 800, pvalueCutoff = 1, by = ""fgsea"", nPermSimple = 10000, eps = 0, verbose = FALSE, OrgDb = organism, pAdjustM",FALSE,FALSE
+"archive/deprecated/clusterProfiler_newest_Sep16.r",6592,"gseGO","archive","statistical_library",FALSE,NA,NA,0,"gseGO( geneList = gene_list, ont = ont, keyType = ""UNIPROT"", minGSSize = 10, maxGSSize = 800, pvalueCutoff = 1, by = ""fgsea"", nPermSimple = 10000, eps = 0, verbose = TRUE, OrgDb = organism, pAdjustMet",FALSE,FALSE
+"archive/deprecated/clusterProfiler_newest_Sep16.r",6701,"gseKEGG","archive","statistical_library",FALSE,NA,NA,0,"gseKEGG( geneList = kegg_gene_list, organism = ""mmu"", minGSSize = 10, maxGSSize = 800, pvalueCutoff = 1, pAdjustMethod = ""BH"", keyType = ""ncbi-geneid"" )",FALSE,FALSE
+"archive/deprecated/clusterProfiler_newest_Sep16.r",6893,"gseGO","archive","statistical_library",FALSE,NA,NA,0,"gseGO( geneList = m_gene_list, ont = ont, keyType = ""UNIPROT"", minGSSize = 5, maxGSSize = 800, pvalueCutoff = 1, by = ""fgsea"", nPermSimple = 10000, eps = 0, verbose = FALSE, OrgDb = organism, pAdjustM",FALSE,FALSE
+"archive/deprecated/clusterProfiler_newest_Sep16.r",7417,"gseGO","archive","statistical_library",FALSE,NA,NA,0,"gseGO( geneList = gene_list, ont = ont, keyType = ""UNIPROT"", minGSSize = 10, maxGSSize = 800, pvalueCutoff = 1, by = ""fgsea"", nPermSimple = 10000, eps = 0, verbose = TRUE, OrgDb = organism, pAdjustMet",FALSE,FALSE
+"archive/deprecated/clusterProfiler_newest_Sep16.r",7540,"gseKEGG","archive","statistical_library",FALSE,NA,NA,0,"gseKEGG( geneList = kegg_gene_list, organism = ""mmu"", minGSSize = 10, maxGSSize = 800, pvalueCutoff = 1, pAdjustMethod = ""BH"", keyType = ""ncbi-geneid"" )",FALSE,FALSE
+"archive/deprecated/clusterProfiler_newest_Sep16.r",7624,"gsePathway","archive","statistical_library",FALSE,NA,NA,0,"gsePathway( geneList = re_gene_list, organism = ""mouse"", minGSSize = 10, maxGSSize = 800, pvalueCutoff = 1, pAdjustMethod = ""BH"", eps = 0, nPermSimple = 10000 )",FALSE,FALSE
+"archive/deprecated/clusterProfiler_newest_Sep16.r",7804,"gseGO","archive","statistical_library",FALSE,NA,NA,0,"gseGO( geneList = m_gene_list, ont = ont, keyType = ""UNIPROT"", minGSSize = 5, maxGSSize = 800, pvalueCutoff = 1, by = ""fgsea"", nPermSimple = 10000, eps = 0, verbose = FALSE, OrgDb = organism, pAdjustM",FALSE,FALSE
+"archive/deprecated/clusterProfiler_newest_Sep16.r",8457,"gseGO","archive","statistical_library",FALSE,NA,NA,0,"gseGO( geneList = gene_list, ont = ont, keyType = ""UNIPROT"", minGSSize = 10, maxGSSize = 800, pvalueCutoff = 1, by = ""fgsea"", nPermSimple = 10000, eps = 0, verbose = TRUE, OrgDb = organism, pAdjustMet",FALSE,FALSE
+"archive/deprecated/clusterProfiler_newest_Sep16.r",8587,"gseKEGG","archive","statistical_library",FALSE,NA,NA,0,"gseKEGG( geneList = kegg_gene_list, organism = ""mmu"", minGSSize = 10, maxGSSize = 800, pvalueCutoff = 1, pAdjustMethod = ""BH"", keyType = ""ncbi-geneid"" )",FALSE,FALSE
+"archive/deprecated/clusterProfiler_newest_Sep16.r",8676,"gsePathway","archive","statistical_library",FALSE,NA,NA,0,"gsePathway( geneList = re_gene_list, organism = ""mouse"", minGSSize = 10, maxGSSize = 800, pvalueCutoff = 1, pAdjustMethod = ""BH"", eps = 0, nPermSimple = 10000 )",FALSE,FALSE
+"archive/deprecated/clusterProfiler_newest_Sep16.r",8871,"gseGO","archive","statistical_library",FALSE,NA,NA,0,"gseGO( geneList = m_gene_list, ont = ont, keyType = ""UNIPROT"", minGSSize = 5, maxGSSize = 800, pvalueCutoff = 1, by = ""fgsea"", nPermSimple = 10000, eps = 0, verbose = FALSE, OrgDb = organism, pAdjustM",FALSE,FALSE
+"archive/deprecated/compareGO_v2.r",1005,"geom_text_repel","archive","rendering",FALSE,NA,NA,0,"geom_text_repel( data = subset(volcano_df, padj < 0.05), aes(label = Gene_Name), size = 4, max.overlaps = Inf, show.legend = FALSE )",FALSE,FALSE
+"archive/exploratory/clusterProfiler_test.r",51,"gseGO","archive","statistical_library",FALSE,NA,NA,0,"gseGO( geneList = gene_list, ont = ""ALL"", keyType = ""SYMBOL"", nPerm = 10000, minGSSize = 3, maxGSSize = 800, pvalueCutoff = 0.05, verbose = TRUE, OrgDb = organism, pAdjustMethod = ""none"" )",FALSE,FALSE
+"archive/exploratory/clusterProfiler_test.r",92,"gseKEGG","archive","statistical_library",FALSE,NA,NA,0,"gseKEGG( geneList = kegg_gene_list, organism = kegg_organism, nPerm = 10000, minGSSize = 3, maxGSSize = 800, pvalueCutoff = 0.05, pAdjustMethod = ""none"", keyType = ""uniprot"" )",FALSE,FALSE
+"archive/exploratory/clusterProfiler_v0.0.1.r",73,"gseKEGG","archive","statistical_library",FALSE,NA,NA,0,"gseKEGG( geneList = gene_list, organism = kegg_organism, nPerm = 10000, minGSSize = 3, maxGSSize = 800, pvalueCutoff = 0.05, pAdjustMethod = ""none"" )",FALSE,FALSE
+"archive/exploratory/clusterProfiler_v3.r",88,"gseGO","archive","statistical_library",FALSE,NA,NA,0,"gseGO( geneList = gene_list, ont = ""BP"", keyType = ""UNIPROT"", minGSSize = 3, maxGSSize = 800, pvalueCutoff = 1, verbose = TRUE, OrgDb = organism, pAdjustMethod = ""BH"" )",FALSE,FALSE
+"archive/exploratory/clusterProfiler_v3.r",115,"gseKEGG","archive","statistical_library",FALSE,NA,NA,0,"gseKEGG( geneList = kegg_gene_list, organism = ""mmu"", minGSSize = 3, maxGSSize = 800, pvalueCutoff = 1, pAdjustMethod = ""BH"", keyType = ""ncbi-geneid"" )",FALSE,FALSE
+"archive/exploratory/clusterProfiler_v3_test.r",89,"gseGO","archive","statistical_library",FALSE,NA,NA,0,"gseGO( geneList = gene_list, ont = ont, keyType = ""UNIPROT"", minGSSize = 3, maxGSSize = 800, pvalueCutoff = 1, verbose = TRUE, OrgDb = organism, pAdjustMethod = ""BH"" )",FALSE,FALSE
+"archive/exploratory/clusterProfiler_v3_test.r",116,"gseKEGG","archive","statistical_library",FALSE,NA,NA,0,"gseKEGG( geneList = kegg_gene_list, organism = ""mmu"", minGSSize = 3, maxGSSize = 800, pvalueCutoff = 1, pAdjustMethod = ""BH"", keyType = ""ncbi-geneid"" )",FALSE,FALSE
+"archive/exploratory/clusterProfiler_v3_test_2.r",89,"gseGO","archive","statistical_library",FALSE,NA,NA,0,"gseGO( geneList = gene_list, ont = ont, keyType = ""UNIPROT"", minGSSize = 3, maxGSSize = 800, pvalueCutoff = 1, verbose = TRUE, OrgDb = organism, pAdjustMethod = ""BH"" )",FALSE,FALSE
+"archive/exploratory/clusterProfiler_v3_test_2.r",116,"gseKEGG","archive","statistical_library",FALSE,NA,NA,0,"gseKEGG( geneList = kegg_gene_list, organism = ""mmu"", minGSSize = 3, maxGSSize = 800, pvalueCutoff = 1, pAdjustMethod = ""BH"", keyType = ""ncbi-geneid"" )",FALSE,FALSE
+"archive/exploratory/clusterProfilerBatch.r",189,"gseGO","archive","statistical_library",FALSE,NA,NA,0,"gseGO( geneList = gene_list, ont = ont, keyType = ""UNIPROT"", minGSSize = 3, maxGSSize = 800, pvalueCutoff = 1, verbose = TRUE, OrgDb = organism, pAdjustMethod = ""BH"" )",FALSE,FALSE
+"archive/exploratory/clusterProfilerBatch.r",296,"gseKEGG","archive","statistical_library",FALSE,NA,NA,0,"gseKEGG( geneList = kegg_gene_list, organism = ""mmu"", minGSSize = 3, maxGSSize = 800, pvalueCutoff = 1, pAdjustMethod = ""BH"", keyType = ""ncbi-geneid"" )",FALSE,FALSE
+"archive/exploratory/WGCNAtraitpreservation.r",58,"pickSoftThreshold","archive","statistical_library",FALSE,NA,NA,6,"pickSoftThreshold(expression.data)",FALSE,FALSE
+"archive/exploratory/WGCNAtraitpreservation.r",338,"set.seed","archive","seed_control",FALSE,NA,338,6,"set.seed(12345)",FALSE,FALSE
+"archive/exploratory/WGCNAtraitpreservation.r",455,"pickSoftThreshold","archive","statistical_library",FALSE,NA,338,6,"pickSoftThreshold(expression.data)",FALSE,FALSE
+"archive/exploratory/WGCNAtraitpreservation.r",730,"set.seed","archive","seed_control",FALSE,NA,730,6,"set.seed(12345)",FALSE,FALSE
+"archive/exploratory/WGCNAtraitpreservation.r",1304,"pickSoftThreshold","archive","statistical_library",FALSE,NA,730,6,"pickSoftThreshold(expression.data)",FALSE,FALSE
+"archive/exploratory/WGCNAtraitpreservation.r",1524,"set.seed","archive","seed_control",FALSE,NA,1524,6,"set.seed(12345)",FALSE,FALSE
+"archive/exploratory/WGCNAtraitpreservation.r",1767,"pickSoftThreshold","archive","statistical_library",FALSE,NA,1524,6,"pickSoftThreshold(expression.data)",FALSE,FALSE
+"archive/exploratory/WGCNAtraitpreservation.r",2014,"set.seed","archive","seed_control",FALSE,NA,2014,6,"set.seed(12345)",FALSE,FALSE
+"archive/exploratory/WGCNAtraitpreservation.r",2575,"pickSoftThreshold","archive","statistical_library",FALSE,NA,2014,6,"pickSoftThreshold(expression.data)",FALSE,FALSE
+"archive/exploratory/WGCNAtraitpreservation.r",2817,"set.seed","archive","seed_control",FALSE,NA,2817,6,"set.seed(12345)",FALSE,FALSE
+"archive/exploratory/WGCNAtraitpreservation.r",3194,"pickSoftThreshold","archive","statistical_library",FALSE,NA,2817,6,"pickSoftThreshold(expression.data)",FALSE,FALSE
+"archive/exploratory/WGCNAtraitpreservation.r",3441,"set.seed","archive","seed_control",FALSE,NA,3441,6,"set.seed(12345)",FALSE,FALSE
+"archive/exploratory/WGCNAtraitpreservation.r",3857,"position_jitter","archive","rendering",TRUE,"1",3441,6,"position_jitter(width = 0.08, height = 0, seed = 1)",FALSE,FALSE
+"archive/exploratory/WGCNAtraitpreservation.r",3917,"position_jitter","archive","rendering",TRUE,"1",3441,6,"position_jitter(width = 0.08, height = 0, seed = 1)",FALSE,FALSE
+"tests/testthat/test-animal-spatial-networks.R",17,"set.seed","tests","seed_control",FALSE,NA,17,3,"set.seed(seed)",FALSE,FALSE
+"tests/testthat/test-animal-spatial-networks.R",18,"rnorm","tests","statistical_draw",FALSE,NA,17,3,"rnorm(n_prot * length(nodes))",FALSE,FALSE
+"tests/testthat/test-animal-spatial-networks.R",113,"set.seed","tests","seed_control",FALSE,NA,113,3,"set.seed(5)",FALSE,FALSE
+"tests/testthat/test-animal-spatial-networks.R",114,"rnorm","tests","statistical_draw",FALSE,NA,113,3,"rnorm(6 * 4)",FALSE,FALSE
+"tests/testthat/test-animal-spatial-networks.R",182,"set.seed","tests","seed_control",FALSE,NA,182,3,"set.seed(2)",FALSE,FALSE
+"tests/testthat/test-clusterprofiler-reproducibility.R",64,"runif","tests","statistical_draw",FALSE,NA,NA,3,"runif(4)",FALSE,FALSE
+"tests/testthat/test-clusterprofiler-reproducibility.R",67,"set.seed","tests","seed_control",FALSE,NA,67,3,"set.seed(4242)",FALSE,FALSE
+"tests/testthat/test-clusterprofiler-reproducibility.R",68,"RNGkind","tests","seed_control",FALSE,NA,68,3,"RNGkind()",FALSE,FALSE
+"tests/testthat/test-clusterprofiler-reproducibility.R",76,"RNGkind","tests","seed_control",FALSE,NA,76,3,"RNGkind()",FALSE,FALSE
+"tests/testthat/test-control-spatial-identity.R",43,"runif","tests","statistical_draw",FALSE,NA,NA,3,"runif(4)",FALSE,FALSE
+"tests/testthat/test-control-spatial-identity.R",44,"set.seed","tests","seed_control",FALSE,NA,44,3,"set.seed(9876)",FALSE,FALSE
+"tests/testthat/test-control-spatial-identity.R",45,"RNGkind","tests","seed_control",FALSE,NA,45,3,"RNGkind()",FALSE,FALSE
+"tests/testthat/test-control-spatial-identity.R",51,"RNGkind","tests","seed_control",FALSE,NA,51,3,"RNGkind()",FALSE,FALSE
+"tests/testthat/test-control-spatial-identity.R",378,"sample","tests","statistical_draw",FALSE,NA,51,3,"sample(seq_len(nrow(complete)))",FALSE,FALSE
+"tests/testthat/test-export-canonical-ewce-contract.R",72,"runif","tests","statistical_draw",FALSE,NA,NA,0,"runif(1, 1, 1e9)",FALSE,FALSE
+"tests/testthat/test-ggrepel-render-determinism.R",28,"set.seed","tests","seed_control",FALSE,NA,28,10,"set.seed(1)",FALSE,FALSE
+"tests/testthat/test-ggrepel-render-determinism.R",29,"runif","tests","statistical_draw",FALSE,NA,28,10,"runif(40L)",FALSE,FALSE
+"tests/testthat/test-ggrepel-render-determinism.R",29,"runif","tests","statistical_draw",FALSE,NA,28,10,"runif(40L)",FALSE,FALSE
+"tests/testthat/test-ggrepel-render-determinism.R",35,"geom_text_repel","tests","rendering",FALSE,NA,28,10,"geom_text_repel(ggplot2::aes(label = lab), size = 2, max.overlaps = 12)",FALSE,FALSE
+"tests/testthat/test-ggrepel-render-determinism.R",37,"geom_text_repel","tests","rendering",TRUE,"seed",28,10,"geom_text_repel(ggplot2::aes(label = lab), size = 2, max.overlaps = 12, seed = seed)",FALSE,FALSE
+"tests/testthat/test-ggrepel-render-determinism.R",118,"set.seed","tests","seed_control",FALSE,NA,118,10,"set.seed(11)",FALSE,FALSE
+"tests/testthat/test-ggrepel-render-determinism.R",119,"set.seed","tests","seed_control",FALSE,NA,119,10,"set.seed(99)",FALSE,FALSE
+"tests/testthat/test-ggrepel-render-determinism.R",128,"set.seed","tests","seed_control",FALSE,NA,128,10,"set.seed(11)",FALSE,FALSE
+"tests/testthat/test-ggrepel-render-determinism.R",129,"set.seed","tests","seed_control",FALSE,NA,129,10,"set.seed(99)",FALSE,FALSE
+"tests/testthat/test-ggrepel-render-determinism.R",139,"set.seed","tests","seed_control",FALSE,NA,139,10,"set.seed(11)",FALSE,FALSE
+"tests/testthat/test-ggrepel-render-determinism.R",140,"set.seed","tests","seed_control",FALSE,NA,140,10,"set.seed(99)",FALSE,FALSE
+"tests/testthat/test-ggrepel-render-determinism.R",164,"set.seed","tests","seed_control",FALSE,NA,164,10,"set.seed(4242)",FALSE,FALSE
+"tests/testthat/test-ggrepel-render-determinism.R",170,"set.seed","tests","seed_control",FALSE,NA,170,10,"set.seed(4242)",FALSE,FALSE
+"tests/testthat/test-ggrepel-render-determinism.R",172,"runif","tests","statistical_draw",FALSE,NA,170,10,"runif(3)",FALSE,FALSE
+"tests/testthat/test-ggrepel-render-determinism.R",173,"set.seed","tests","seed_control",FALSE,NA,173,10,"set.seed(4242)",FALSE,FALSE
+"tests/testthat/test-ggrepel-render-determinism.R",174,"runif","tests","statistical_draw",FALSE,NA,173,10,"runif(3)",FALSE,FALSE
+"tests/testthat/test-gsea-wgcna-concordance.R",51,"sample","tests","statistical_draw",FALSE,NA,NA,0,"sample(nrow(terms))",FALSE,FALSE
+"tests/testthat/test-jitter-render-determinism.R",27,"set.seed","tests","seed_control",FALSE,NA,27,16,"set.seed(1)",FALSE,FALSE
+"tests/testthat/test-jitter-render-determinism.R",30,"runif","tests","statistical_draw",FALSE,NA,27,16,"runif(90L)",FALSE,FALSE
+"tests/testthat/test-jitter-render-determinism.R",36,"position_jitter","tests","rendering",FALSE,NA,27,16,"position_jitter(width = 0.16, height = 0)",FALSE,FALSE
+"tests/testthat/test-jitter-render-determinism.R",38,"position_jitter","tests","rendering",TRUE,"seed",27,16,"position_jitter(width = 0.16, height = 0, seed = seed)",FALSE,FALSE
+"tests/testthat/test-jitter-render-determinism.R",43,"geom_text_repel","tests","rendering",TRUE,"repel_seed",27,16,"geom_text_repel(data = d[seq_len(20L), ], ggplot2::aes(label = lab), size = 2, max.overlaps = 12, seed = repel_seed)",FALSE,FALSE
+"tests/testthat/test-jitter-render-determinism.R",324,"set.seed","tests","seed_control",FALSE,NA,324,16,"set.seed(11)",FALSE,FALSE
+"tests/testthat/test-jitter-render-determinism.R",325,"set.seed","tests","seed_control",FALSE,NA,325,16,"set.seed(99)",FALSE,FALSE
+"tests/testthat/test-jitter-render-determinism.R",334,"set.seed","tests","seed_control",FALSE,NA,334,16,"set.seed(11)",FALSE,FALSE
+"tests/testthat/test-jitter-render-determinism.R",335,"set.seed","tests","seed_control",FALSE,NA,335,16,"set.seed(99)",FALSE,FALSE
+"tests/testthat/test-jitter-render-determinism.R",348,"set.seed","tests","seed_control",FALSE,NA,348,16,"set.seed(11)",FALSE,FALSE
+"tests/testthat/test-jitter-render-determinism.R",350,"set.seed","tests","seed_control",FALSE,NA,350,16,"set.seed(99)",FALSE,FALSE
+"tests/testthat/test-jitter-render-determinism.R",355,"set.seed","tests","seed_control",FALSE,NA,355,16,"set.seed(1)",FALSE,FALSE
+"tests/testthat/test-jitter-render-determinism.R",357,"set.seed","tests","seed_control",FALSE,NA,357,16,"set.seed(2)",FALSE,FALSE
+"tests/testthat/test-jitter-render-determinism.R",365,"set.seed","tests","seed_control",FALSE,NA,365,16,"set.seed(4242)",FALSE,FALSE
+"tests/testthat/test-jitter-render-determinism.R",371,"set.seed","tests","seed_control",FALSE,NA,371,16,"set.seed(4242)",FALSE,FALSE
+"tests/testthat/test-jitter-render-determinism.R",373,"runif","tests","statistical_draw",FALSE,NA,371,16,"runif(3)",FALSE,FALSE
+"tests/testthat/test-jitter-render-determinism.R",374,"set.seed","tests","seed_control",FALSE,NA,374,16,"set.seed(4242)",FALSE,FALSE
+"tests/testthat/test-jitter-render-determinism.R",375,"runif","tests","statistical_draw",FALSE,NA,374,16,"runif(3)",FALSE,FALSE
+"tests/testthat/test-jitter-render-determinism.R",408,"geom_jitter","tests","rendering",TRUE,"1L",374,16,"geom_jitter(width = 0.15, seed = 1L)",FALSE,FALSE
+"tests/testthat/test-jitter-render-determinism.R",412,"set.seed","tests","seed_control",FALSE,NA,412,16,"set.seed(11)",FALSE,FALSE
+"tests/testthat/test-jitter-render-determinism.R",414,"set.seed","tests","seed_control",FALSE,NA,414,16,"set.seed(99)",FALSE,FALSE
+"tests/testthat/test-jitter-render-determinism.R",433,"set.seed","tests","seed_control",FALSE,NA,433,16,"set.seed(101)",FALSE,FALSE
+"tests/testthat/test-jitter-render-determinism.R",434,"geom_jitter","tests","rendering",FALSE,NA,433,16,"geom_jitter(width = 0.15)",FALSE,FALSE
+"tests/testthat/test-jitter-render-determinism.R",435,"set.seed","tests","seed_control",FALSE,NA,435,16,"set.seed(101)",FALSE,FALSE
+"tests/testthat/test-jitter-render-determinism.R",437,"position_jitter","tests","rendering",FALSE,NA,435,16,"position_jitter(width = 0.15)",FALSE,FALSE
+"tests/testthat/test-jitter-render-determinism.R",446,"geom_jitter","tests","rendering",FALSE,NA,435,16,"geom_jitter( width = 0.15, position = ggplot2::position_jitter(width = 0.15, seed = 1L))",FALSE,FALSE
+"tests/testthat/test-jitter-render-determinism.R",447,"position_jitter","tests","rendering",TRUE,"1L",435,16,"position_jitter(width = 0.15, seed = 1L)",FALSE,FALSE
+"tests/testthat/test-joint-compartment-qc-publication-figures.R",59,"sample","tests","statistical_draw",FALSE,NA,NA,0,"sample(seq_len(nrow(x)))",FALSE,FALSE
+"tests/testthat/test-joint-compartment-qc.R",115,"set.seed","tests","seed_control",FALSE,NA,115,4,"set.seed(42)",FALSE,FALSE
+"tests/testthat/test-joint-compartment-qc.R",115,"umap","tests","statistical_library",FALSE,NA,115,4,"umap(pca_a$x[, 1:2], n_neighbors = 3, n_threads = 1, verbose = FALSE)",FALSE,FALSE
+"tests/testthat/test-joint-compartment-qc.R",116,"set.seed","tests","seed_control",FALSE,NA,116,4,"set.seed(42)",FALSE,FALSE
+"tests/testthat/test-joint-compartment-qc.R",116,"umap","tests","statistical_library",FALSE,NA,116,4,"umap(pca_a$x[, 1:2], n_neighbors = 3, n_threads = 1, verbose = FALSE)",FALSE,FALSE
+"tests/testthat/test-joint-compartment-qc.R",119,"set.seed","tests","seed_control",FALSE,NA,119,4,"set.seed(42)",FALSE,FALSE
+"tests/testthat/test-joint-compartment-qc.R",119,"Rtsne","tests","statistical_library",FALSE,NA,119,4,"Rtsne(pca_a$x[, 1:2], dims = 2, perplexity = 2, pca = FALSE, check_duplicates = FALSE, verbose = FALSE, max_iter = 250)",FALSE,FALSE
+"tests/testthat/test-joint-compartment-qc.R",120,"set.seed","tests","seed_control",FALSE,NA,120,4,"set.seed(42)",FALSE,FALSE
+"tests/testthat/test-joint-compartment-qc.R",120,"Rtsne","tests","statistical_library",FALSE,NA,120,4,"Rtsne(pca_a$x[, 1:2], dims = 2, perplexity = 2, pca = FALSE, check_duplicates = FALSE, verbose = FALSE, max_iter = 250)",FALSE,FALSE
+"tests/testthat/test-microglia-targeted-signature-contract.R",69,"set.seed","tests","seed_control",FALSE,NA,69,3,"set.seed(12345)",FALSE,FALSE
+"tests/testthat/test-microglia-targeted-signature-contract.R",70,"RNGkind","tests","seed_control",FALSE,NA,70,3,"RNGkind()",FALSE,FALSE
+"tests/testthat/test-microglia-targeted-signature-contract.R",73,"runif","tests","statistical_draw",FALSE,NA,70,3,"runif(5)",FALSE,FALSE
+"tests/testthat/test-microglia-targeted-signature-contract.R",75,"RNGkind","tests","seed_control",FALSE,NA,75,3,"RNGkind()",FALSE,FALSE
+"tests/testthat/test-microglia-targeted-signature-contract.R",78,"runif","tests","statistical_draw",FALSE,NA,75,3,"runif(5)",FALSE,FALSE
+"tests/testthat/test-spatial-cell-atlas.R",45,"set.seed","tests","seed_control",FALSE,NA,45,2,"set.seed(3)",FALSE,FALSE
+"tests/testthat/test-spatial-cell-atlas.R",47,"rnorm","tests","statistical_draw",FALSE,NA,45,2,"rnorm(sample(3:12, 1))",FALSE,FALSE
+"tests/testthat/test-spatial-cell-atlas.R",47,"sample","tests","statistical_draw",FALSE,NA,45,2,"sample(3:12, 1)",FALSE,FALSE
+"tests/testthat/test-spatial-cell-atlas.R",80,"set.seed","tests","seed_control",FALSE,NA,80,2,"set.seed(11)",FALSE,FALSE
+"tests/testthat/test-spatial-cell-atlas.R",82,"rnorm","tests","statistical_draw",FALSE,NA,80,2,"rnorm(sample(3:12, 1))",FALSE,FALSE
+"tests/testthat/test-spatial-cell-atlas.R",82,"sample","tests","statistical_draw",FALSE,NA,80,2,"sample(3:12, 1)",FALSE,FALSE
+"tests/testthat/test-spatial-systems-foundations.R",188,"set.seed","tests","seed_control",FALSE,NA,188,3,"set.seed(4)",FALSE,FALSE
+"tests/testthat/test-spatial-systems-foundations.R",190,"rnorm","tests","statistical_draw",FALSE,NA,188,3,"rnorm(200)",FALSE,FALSE
+"tests/testthat/test-spatial-systems-foundations.R",190,"rnorm","tests","statistical_draw",FALSE,NA,188,3,"rnorm(200, sd = 0.1)",FALSE,FALSE
+"tests/testthat/test-spatial-systems-foundations.R",203,"sample","tests","statistical_draw",FALSE,NA,188,3,"sample(ids, 25)",FALSE,FALSE
+"tests/testthat/test-spatial-systems-foundations.R",241,"set.seed","tests","seed_control",FALSE,NA,241,3,"set.seed(7)",FALSE,FALSE
+"tests/testthat/test-spatial-systems-foundations.R",244,"rnorm","tests","statistical_draw",FALSE,NA,241,3,"rnorm(9, sd = 1.5)",FALSE,FALSE
+"tests/testthat/test-spatial-systems-foundations.R",245,"rnorm","tests","statistical_draw",FALSE,NA,241,3,"rnorm(4, sd = 0.8)",FALSE,FALSE
+"tests/testthat/test-spatial-systems-foundations.R",246,"rnorm","tests","statistical_draw",FALSE,NA,241,3,"rnorm(36, sd = 0.4)",FALSE,FALSE
+"tests/testthat/test-spatial-systems-foundations.R",250,"rnorm","tests","statistical_draw",FALSE,NA,241,3,"rnorm(nrow(e), sd = 0.3)",FALSE,FALSE
+"tests/testthat/test-spatial-systems-foundations.R",305,"set.seed","tests","seed_control",FALSE,NA,305,3,"set.seed(99)",FALSE,FALSE
+"tests/testthat/test-spatial-systems-foundations.R",309,"runif","tests","statistical_draw",FALSE,NA,305,3,"runif(20)",FALSE,FALSE
+"tests/testthat/test-spatial-systems-foundations.R",314,"runif","tests","statistical_draw",FALSE,NA,305,3,"runif(40)",FALSE,FALSE
+"tests/testthat/test-wgcna-candidate-protein-shortlist.R",31,"set.seed","tests","seed_control",FALSE,NA,31,1,"set.seed(42)",FALSE,FALSE
+"tests/testthat/test-wgcna-network-position-and-label-coherence.R",44,"set.seed","tests","seed_control",FALSE,NA,44,3,"set.seed(1)",FALSE,FALSE
+"tests/testthat/test-wgcna-network-position-and-label-coherence.R",111,"set.seed","tests","seed_control",FALSE,NA,111,3,"set.seed(99)",FALSE,FALSE
+"tests/testthat/test-wgcna-network-position-and-label-coherence.R",111,"runif","tests","statistical_draw",FALSE,NA,111,3,"runif(3)",FALSE,FALSE
+"tests/testthat/test-wgcna-network-position-and-label-coherence.R",112,"set.seed","tests","seed_control",FALSE,NA,112,3,"set.seed(99)",FALSE,FALSE
+"tests/testthat/test-wgcna-network-position-and-label-coherence.R",112,"runif","tests","statistical_draw",FALSE,NA,112,3,"runif(3)",FALSE,FALSE
+"tests/testthat/test-wgcna-wave1a-semantic-handoff.R",143,"sample","tests","statistical_draw",FALSE,NA,NA,0,"sample(c(""SUS - RES"", ""RES - CON""))",FALSE,FALSE
