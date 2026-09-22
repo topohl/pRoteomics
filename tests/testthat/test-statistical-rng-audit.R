@@ -348,21 +348,39 @@ testthat::test_that("the PRIDE-staged copy is recorded and byte-unchanged", {
                  paste0("results_tables_04_differential_expression_enrichment_",
                         "compareGO_neuron_neuropil_BP_phenotype_within_unit_",
                         "08_Bootstrap_Stability_Summary.xlsx"))
-  testthat::skip_if_not(file.exists(f), "PRIDE staging copy not present")
-  testthat::expect_identical(file.size(f), 5141)
-  testthat::expect_identical(
-    unname(tools::sha256sum(f)),
-    "024d3671f2cd6026e8bfd7feb6d9839c7ff23eeb41c98d8f66235d854185baba")
+  # Deliberately NOT skip_if_not(file.exists(f)). An earlier version gated the
+  # whole block on the file existing, so deleting it made every assertion below
+  # - including the manifest-row guard - vanish into a silent skip. A tripwire
+  # that disappears when the thing it watches disappears is not a tripwire.
+  # Phase 6H.9 recommended P2 (retain as internal provenance only); when that is
+  # implemented this test SHOULD fail, and the failure is the checklist.
+  testthat::expect_true(file.exists(f),
+    info = paste("PRIDE staging copy is gone. If Phase 6H.9's P2 decision was",
+                 "implemented, update this test and the curation audit."))
+  if (file.exists(f)) {
+    testthat::expect_identical(file.size(f), 5141)
+    testthat::expect_identical(
+      unname(tools::sha256sum(f)),
+      "024d3671f2cd6026e8bfd7feb6d9839c7ff23eeb41c98d8f66235d854185baba")
+  }
 
-  # it is still flagged for deposition; if that ever changes, the separate
-  # curation decision this audit flagged has been taken and should be recorded
   man <- repo_path("pride_submission", "manifests", "pride_file_manifest.tsv")
   testthat::skip_if_not(file.exists(man), "PRIDE manifest not present")
   m <- utils::read.delim(man, stringsAsFactors = FALSE, check.names = FALSE)
   row <- m[grepl("Bootstrap_Stability_Summary", m$file_path, fixed = TRUE), , drop = FALSE]
-  testthat::expect_identical(nrow(row), 1L)
-  testthat::expect_identical(row$export_category[1], "pride_staging")
-  testthat::expect_true(as.logical(row$intended_for_PRIDE[1]))
+
+  # The invariant that must hold under EITHER decision, checked without any
+  # dependence on the file being present: on-disk presence and manifest
+  # endorsement agree. A manifest row for an absent file, or an unlisted file on
+  # disk, is a bookkeeping break either way.
+  testthat::expect_identical(nrow(row) > 0L, file.exists(f),
+    info = "pride_submission presence and manifest endorsement have diverged")
+
+  if (nrow(row)) {
+    testthat::expect_identical(nrow(row), 1L)
+    testthat::expect_identical(row$export_category[1], "pride_staging")
+    testthat::expect_true(as.logical(row$intended_for_PRIDE[1]))
+  }
 })
 
 testthat::test_that("the accepted package and freeze are unchanged by this audit", {
