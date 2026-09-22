@@ -1,7 +1,5 @@
 "file","line","fn","universe","rng_class","explicit_seed_arg","seed_arg_value","preceding_seed_call_in_file","seed_calls_in_file","call_text","publication_facing","writes_results"
 "analysis/differential_abundance/build_go_program_atlas.R",931,"geom_text_repel","active","rendering",TRUE,"NATURE_REPEL_SEED",NA,0,"geom_text_repel(data = labels_df, ggplot2::aes(label = .data$point_label), size = 2, min.segment.length = 0, max.overlaps = 12, seed = NATURE_REPEL_SEED, show.legend = FALSE)",TRUE,TRUE
-"analysis/differential_abundance/compare_go_enrichment.R",2452,"geom_text_repel","active","rendering",TRUE,"NATURE_REPEL_SEED",NA,0,"geom_text_repel( data = top_genes_to_label, aes(label = Gene_Name), size = 3, min.segment.length = 0, max.overlaps = Inf, box.padding = 0.5, seed = NATURE_REPEL_SEED )",TRUE,TRUE
-"analysis/differential_abundance/compare_go_enrichment.R",2951,"slice_sample","active","statistical_draw",FALSE,NA,NA,0,"slice_sample(prop = 1, replace = TRUE)",TRUE,TRUE
 "analysis/differential_abundance/test_microglia_targeted_signatures.R",888,"fgseaSimple","active","statistical_library",FALSE,NA,NA,0,"fgseaSimple( pathways = pathways, stats = stats, minSize = 3, maxSize = 500, nperm = 1000, nproc = 1 )",TRUE,TRUE
 "analysis/differential_abundance/test_microglia_targeted_signatures.R",893,"fgsea","active","statistical_library",FALSE,NA,NA,0,"fgsea( pathways = pathways, stats = stats, minSize = 3, maxSize = 500, BPPARAM = BiocParallel::SerialParam() )",TRUE,TRUE
 "analysis/differential_abundance/test_microglia_targeted_signatures.R",898,"fgsea","active","statistical_library",FALSE,NA,NA,0,"fgsea( pathways = pathways, stats = stats, minSize = 3, maxSize = 500, nproc = 1 )",TRUE,TRUE
@@ -99,6 +97,8 @@
 "archive/03_qc_exploration/legacy/06_pcaPlot_Neha.r",1987,"geom_text_repel","archive","rendering",FALSE,NA,883,4,"geom_text_repel(aes(label = protein), size = 3.5, max.overlaps = 30, box.padding = 0.5)",FALSE,FALSE
 "archive/03_qc_exploration/legacy/08_boxplotBonanza.r",73,"geom_jitter","archive","rendering",FALSE,NA,NA,0,"geom_jitter(width = 0.1, size = 5, alpha = 0.8, shape = 21, stroke = 0.5, aes(fill = Celltype), color = ""#DFDFDF"")",FALSE,FALSE
 "archive/03_qc_exploration/legacy/08_boxplotBonanza.r",181,"geom_jitter","archive","rendering",FALSE,NA,NA,0,"geom_jitter(width = 0.1, size = 5, alpha = 0.7, shape = 21, stroke = 0.4, aes(fill = Celltype), color = ""#DFDFDF"")",FALSE,FALSE
+"archive/04_differential_expression_enrichment/legacy/02_compareGO_superseded_tail.r",1883,"geom_text_repel","archive","rendering",TRUE,"NATURE_REPEL_SEED",NA,0,"geom_text_repel( data = top_genes_to_label, aes(label = Gene_Name), size = 3, min.segment.length = 0, max.overlaps = Inf, box.padding = 0.5, seed = NATURE_REPEL_SEED )",FALSE,FALSE
+"archive/04_differential_expression_enrichment/legacy/02_compareGO_superseded_tail.r",2382,"slice_sample","archive","statistical_draw",FALSE,NA,NA,0,"slice_sample(prop = 1, replace = TRUE)",FALSE,FALSE
 "archive/04_differential_expression_enrichment/legacy/07_control_strata_enrichment_figures.r",19,"set.seed","archive","seed_control",FALSE,NA,19,1,"set.seed(17)",FALSE,FALSE
 "archive/04_differential_expression_enrichment/legacy/07_control_strata_enrichment_figures.r",250,"geom_text_repel","archive","rendering",FALSE,NA,19,1,"geom_text_repel( data = labels_df, aes(x = logFC, y = -log10(padj), label = label), color = ""black"", size = 3, max.overlaps = 200, box.padding = 0.25, point.padding = 0.25, segment.color = ""grey50"", s",FALSE,FALSE
 "archive/04_differential_expression_enrichment/legacy/07_control_strata_enrichment_figures.r",436,"geom_text_repel","archive","rendering",FALSE,NA,19,1,"geom_text_repel( data = labels_df %>% mutate(logFC_pos = pmax(logFC, 0)), aes(x = x_mean, y = logFC_pos, label = label), color = ""black"", size = 3, max.overlaps = 200, box.padding = 0.25, point.paddin",FALSE,FALSE
@@ -255,17 +255,17 @@
 "tests/testthat/test-ggrepel-render-determinism.R",29,"runif","tests","statistical_draw",FALSE,NA,28,10,"runif(40L)",FALSE,FALSE
 "tests/testthat/test-ggrepel-render-determinism.R",35,"geom_text_repel","tests","rendering",FALSE,NA,28,10,"geom_text_repel(ggplot2::aes(label = lab), size = 2, max.overlaps = 12)",FALSE,FALSE
 "tests/testthat/test-ggrepel-render-determinism.R",37,"geom_text_repel","tests","rendering",TRUE,"seed",28,10,"geom_text_repel(ggplot2::aes(label = lab), size = 2, max.overlaps = 12, seed = seed)",FALSE,FALSE
-"tests/testthat/test-ggrepel-render-determinism.R",118,"set.seed","tests","seed_control",FALSE,NA,118,10,"set.seed(11)",FALSE,FALSE
-"tests/testthat/test-ggrepel-render-determinism.R",119,"set.seed","tests","seed_control",FALSE,NA,119,10,"set.seed(99)",FALSE,FALSE
-"tests/testthat/test-ggrepel-render-determinism.R",128,"set.seed","tests","seed_control",FALSE,NA,128,10,"set.seed(11)",FALSE,FALSE
-"tests/testthat/test-ggrepel-render-determinism.R",129,"set.seed","tests","seed_control",FALSE,NA,129,10,"set.seed(99)",FALSE,FALSE
-"tests/testthat/test-ggrepel-render-determinism.R",139,"set.seed","tests","seed_control",FALSE,NA,139,10,"set.seed(11)",FALSE,FALSE
-"tests/testthat/test-ggrepel-render-determinism.R",140,"set.seed","tests","seed_control",FALSE,NA,140,10,"set.seed(99)",FALSE,FALSE
-"tests/testthat/test-ggrepel-render-determinism.R",164,"set.seed","tests","seed_control",FALSE,NA,164,10,"set.seed(4242)",FALSE,FALSE
-"tests/testthat/test-ggrepel-render-determinism.R",170,"set.seed","tests","seed_control",FALSE,NA,170,10,"set.seed(4242)",FALSE,FALSE
-"tests/testthat/test-ggrepel-render-determinism.R",172,"runif","tests","statistical_draw",FALSE,NA,170,10,"runif(3)",FALSE,FALSE
-"tests/testthat/test-ggrepel-render-determinism.R",173,"set.seed","tests","seed_control",FALSE,NA,173,10,"set.seed(4242)",FALSE,FALSE
-"tests/testthat/test-ggrepel-render-determinism.R",174,"runif","tests","statistical_draw",FALSE,NA,173,10,"runif(3)",FALSE,FALSE
+"tests/testthat/test-ggrepel-render-determinism.R",123,"set.seed","tests","seed_control",FALSE,NA,123,10,"set.seed(11)",FALSE,FALSE
+"tests/testthat/test-ggrepel-render-determinism.R",124,"set.seed","tests","seed_control",FALSE,NA,124,10,"set.seed(99)",FALSE,FALSE
+"tests/testthat/test-ggrepel-render-determinism.R",133,"set.seed","tests","seed_control",FALSE,NA,133,10,"set.seed(11)",FALSE,FALSE
+"tests/testthat/test-ggrepel-render-determinism.R",134,"set.seed","tests","seed_control",FALSE,NA,134,10,"set.seed(99)",FALSE,FALSE
+"tests/testthat/test-ggrepel-render-determinism.R",144,"set.seed","tests","seed_control",FALSE,NA,144,10,"set.seed(11)",FALSE,FALSE
+"tests/testthat/test-ggrepel-render-determinism.R",145,"set.seed","tests","seed_control",FALSE,NA,145,10,"set.seed(99)",FALSE,FALSE
+"tests/testthat/test-ggrepel-render-determinism.R",169,"set.seed","tests","seed_control",FALSE,NA,169,10,"set.seed(4242)",FALSE,FALSE
+"tests/testthat/test-ggrepel-render-determinism.R",175,"set.seed","tests","seed_control",FALSE,NA,175,10,"set.seed(4242)",FALSE,FALSE
+"tests/testthat/test-ggrepel-render-determinism.R",177,"runif","tests","statistical_draw",FALSE,NA,175,10,"runif(3)",FALSE,FALSE
+"tests/testthat/test-ggrepel-render-determinism.R",178,"set.seed","tests","seed_control",FALSE,NA,178,10,"set.seed(4242)",FALSE,FALSE
+"tests/testthat/test-ggrepel-render-determinism.R",179,"runif","tests","statistical_draw",FALSE,NA,178,10,"runif(3)",FALSE,FALSE
 "tests/testthat/test-gsea-wgcna-concordance.R",51,"sample","tests","statistical_draw",FALSE,NA,NA,0,"sample(nrow(terms))",FALSE,FALSE
 "tests/testthat/test-jitter-render-determinism.R",27,"set.seed","tests","seed_control",FALSE,NA,27,16,"set.seed(1)",FALSE,FALSE
 "tests/testthat/test-jitter-render-determinism.R",30,"runif","tests","statistical_draw",FALSE,NA,27,16,"runif(90L)",FALSE,FALSE
@@ -308,6 +308,13 @@
 "tests/testthat/test-microglia-targeted-signature-contract.R",73,"runif","tests","statistical_draw",FALSE,NA,70,3,"runif(5)",FALSE,FALSE
 "tests/testthat/test-microglia-targeted-signature-contract.R",75,"RNGkind","tests","seed_control",FALSE,NA,75,3,"RNGkind()",FALSE,FALSE
 "tests/testthat/test-microglia-targeted-signature-contract.R",78,"runif","tests","statistical_draw",FALSE,NA,75,3,"runif(5)",FALSE,FALSE
+"tests/testthat/test-orphan-bootstrap-curation.R",215,"set.seed","tests","seed_control",FALSE,NA,215,3,"set.seed(11)",FALSE,FALSE
+"tests/testthat/test-orphan-bootstrap-curation.R",219,"sample","tests","statistical_draw",FALSE,NA,215,3,"sample(seq_along(terms), 50L)",FALSE,FALSE
+"tests/testthat/test-orphan-bootstrap-curation.R",221,"runif","tests","statistical_draw",FALSE,NA,215,3,"runif(50L)",FALSE,FALSE
+"tests/testthat/test-orphan-bootstrap-curation.R",226,"set.seed","tests","seed_control",FALSE,NA,226,3,"set.seed(seed)",FALSE,FALSE
+"tests/testthat/test-orphan-bootstrap-curation.R",231,"slice_sample","tests","statistical_draw",FALSE,NA,226,3,"slice_sample(prop = 1, replace = TRUE)",FALSE,FALSE
+"tests/testthat/test-orphan-bootstrap-curation.R",259,"set.seed","tests","seed_control",FALSE,NA,259,3,"set.seed(7)",FALSE,FALSE
+"tests/testthat/test-orphan-bootstrap-curation.R",264,"slice_sample","tests","statistical_draw",FALSE,NA,259,3,"slice_sample(prop = 1, replace = TRUE)",FALSE,FALSE
 "tests/testthat/test-spatial-cell-atlas.R",45,"set.seed","tests","seed_control",FALSE,NA,45,2,"set.seed(3)",FALSE,FALSE
 "tests/testthat/test-spatial-cell-atlas.R",47,"rnorm","tests","statistical_draw",FALSE,NA,45,2,"rnorm(sample(3:12, 1))",FALSE,FALSE
 "tests/testthat/test-spatial-cell-atlas.R",47,"sample","tests","statistical_draw",FALSE,NA,45,2,"sample(3:12, 1)",FALSE,FALSE
@@ -326,6 +333,33 @@
 "tests/testthat/test-spatial-systems-foundations.R",305,"set.seed","tests","seed_control",FALSE,NA,305,3,"set.seed(99)",FALSE,FALSE
 "tests/testthat/test-spatial-systems-foundations.R",309,"runif","tests","statistical_draw",FALSE,NA,305,3,"runif(20)",FALSE,FALSE
 "tests/testthat/test-spatial-systems-foundations.R",314,"runif","tests","statistical_draw",FALSE,NA,305,3,"runif(40)",FALSE,FALSE
+"tests/testthat/test-statistical-rng-audit.R",188,"set.seed","tests","seed_control",FALSE,NA,188,15,"set.seed(7)",FALSE,FALSE
+"tests/testthat/test-statistical-rng-audit.R",189,"rnorm","tests","statistical_draw",FALSE,NA,188,15,"rnorm(30 * 40)",FALSE,FALSE
+"tests/testthat/test-statistical-rng-audit.R",192,"set.seed","tests","seed_control",FALSE,NA,192,15,"set.seed(s)",FALSE,FALSE
+"tests/testthat/test-statistical-rng-audit.R",194,"pickSoftThreshold","tests","statistical_library",FALSE,NA,192,15,"pickSoftThreshold( X, networkType = ""signed"", powerVector = c(4, 6), verbose = 0)",FALSE,FALSE
+"tests/testthat/test-statistical-rng-audit.R",208,"runif","tests","statistical_draw",FALSE,NA,192,15,"runif(3)",FALSE,FALSE
+"tests/testthat/test-statistical-rng-audit.R",209,"set.seed","tests","seed_control",FALSE,NA,209,15,"set.seed(11)",FALSE,FALSE
+"tests/testthat/test-statistical-rng-audit.R",210,"set.seed","tests","seed_control",FALSE,NA,210,15,"set.seed(99)",FALSE,FALSE
+"tests/testthat/test-statistical-rng-audit.R",214,"set.seed","tests","seed_control",FALSE,NA,214,15,"set.seed(11)",FALSE,FALSE
+"tests/testthat/test-statistical-rng-audit.R",218,"set.seed","tests","seed_control",FALSE,NA,218,15,"set.seed(4242)",FALSE,FALSE
+"tests/testthat/test-statistical-rng-audit.R",223,"RNGkind","tests","seed_control",FALSE,NA,223,15,"RNGkind()",FALSE,FALSE
+"tests/testthat/test-statistical-rng-audit.R",225,"RNGkind","tests","seed_control",FALSE,NA,225,15,"RNGkind()",FALSE,FALSE
+"tests/testthat/test-statistical-rng-audit.R",231,"set.seed","tests","seed_control",FALSE,NA,231,15,"set.seed(3)",FALSE,FALSE
+"tests/testthat/test-statistical-rng-audit.R",232,"rnorm","tests","statistical_draw",FALSE,NA,231,15,"rnorm(200)",FALSE,FALSE
+"tests/testthat/test-statistical-rng-audit.R",235,"set.seed","tests","seed_control",FALSE,NA,235,15,"set.seed(s)",FALSE,FALSE
+"tests/testthat/test-statistical-rng-audit.R",239,"fgseaSimple","tests","statistical_library",FALSE,NA,235,15,"fgseaSimple( pathways = pw, stats = stats_v, minSize = 3, maxSize = 500, nperm = 200, nproc = 1)",FALSE,FALSE
+"tests/testthat/test-statistical-rng-audit.R",256,"set.seed","tests","seed_control",FALSE,NA,256,15,"set.seed(4242)",FALSE,FALSE
+"tests/testthat/test-statistical-rng-audit.R",259,"sample","tests","statistical_draw",FALSE,NA,256,15,"sample(seq_along(terms), 80L)",FALSE,FALSE
+"tests/testthat/test-statistical-rng-audit.R",261,"runif","tests","statistical_draw",FALSE,NA,256,15,"runif(80L)",FALSE,FALSE
+"tests/testthat/test-statistical-rng-audit.R",262,"runif","tests","statistical_draw",FALSE,NA,256,15,"runif(80L, 1e-4, 0.049)",FALSE,FALSE
+"tests/testthat/test-statistical-rng-audit.R",263,"runif","tests","statistical_draw",FALSE,NA,256,15,"runif(80L, 0.06, 0.9)",FALSE,FALSE
+"tests/testthat/test-statistical-rng-audit.R",273,"slice_sample","tests","statistical_draw",FALSE,NA,256,15,"slice_sample(prop = 1, replace = TRUE)",FALSE,FALSE
+"tests/testthat/test-statistical-rng-audit.R",289,"set.seed","tests","seed_control",FALSE,NA,289,15,"set.seed(1)",FALSE,FALSE
+"tests/testthat/test-statistical-rng-audit.R",290,"set.seed","tests","seed_control",FALSE,NA,290,15,"set.seed(999)",FALSE,FALSE
+"tests/testthat/test-statistical-rng-audit.R",303,"set.seed","tests","seed_control",FALSE,NA,303,15,"set.seed(7)",FALSE,FALSE
+"tests/testthat/test-statistical-rng-audit.R",307,"runif","tests","statistical_draw",FALSE,NA,303,15,"runif(100L)",FALSE,FALSE
+"tests/testthat/test-statistical-rng-audit.R",309,"set.seed","tests","seed_control",FALSE,NA,309,15,"set.seed(s)",FALSE,FALSE
+"tests/testthat/test-statistical-rng-audit.R",312,"slice_sample","tests","statistical_draw",FALSE,NA,309,15,"slice_sample(prop = 1, replace = TRUE)",FALSE,FALSE
 "tests/testthat/test-wgcna-candidate-protein-shortlist.R",31,"set.seed","tests","seed_control",FALSE,NA,31,1,"set.seed(42)",FALSE,FALSE
 "tests/testthat/test-wgcna-network-position-and-label-coherence.R",44,"set.seed","tests","seed_control",FALSE,NA,44,3,"set.seed(1)",FALSE,FALSE
 "tests/testthat/test-wgcna-network-position-and-label-coherence.R",111,"set.seed","tests","seed_control",FALSE,NA,111,3,"set.seed(99)",FALSE,FALSE
