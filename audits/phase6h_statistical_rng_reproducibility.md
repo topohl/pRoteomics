@@ -26,7 +26,11 @@ unconditional `quit(status = 0, save = "no")`, followed at :571 by the marker
 rather than from indentation: top-level expression 103 of 439 is exactly that
 `quit()`, and **336 of 439 top-level expressions — lines 572 to 4321 — are
 unreachable**. The bootstrap block is top-level expression 311, at lines
-2943-2975. The marker was introduced on 2026-09-17 in commit `5919819`.
+2943-2975. The marker was introduced on **2026-07-16 in commit `6999f47`**
+("Enforce canonical enrichment provenance contracts"). An earlier draft of this
+record dated it to `5919819` (2026-09-17); that commit is a repository-wide
+rename that merely touched the file, and `git log -S` without `--follow` could
+not see past it. Corrected in Phase 6H.9.
 
 The script itself remains registered `active_required`; it is the *tail* that is
 dead, not the file. But the consequence for this audit is decisive: **there are
