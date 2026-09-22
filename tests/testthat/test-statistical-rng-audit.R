@@ -14,11 +14,12 @@ source(testthat::test_path("..", "..", "R", "paths.R"))
 
 AUDIT_CSV <- repo_path("audits", "phase6h_statistical_rng_audit.csv")
 
-# The single active statistical RNG call that has no seed, as adjudicated in
-# Phase 6H.8. It is listed explicitly so that a new unseeded statistical draw
-# anywhere else fails this file, and so that seeding this one later is a
-# deliberate edit to a named contract rather than a silent change.
-KNOWN_UNSEEDED <- "analysis/differential_abundance/compare_go_enrichment.R"
+# Phase 6H.8 found exactly one active statistical RNG call without a seed - the
+# compareGO bootstrap - and allowlisted it here because it was unreachable.
+# Phase 6H.10 archived that region, so the allowlist is now EMPTY: every
+# statistical draw in active code carries a deterministic seed source, and any
+# new unseeded one fails this file with nowhere to hide.
+KNOWN_UNSEEDED <- character(0)
 
 RENDER_FNS <- c("position_jitter", "position_jitterdodge", "geom_jitter",
                 "geom_text_repel", "geom_label_repel")
@@ -146,38 +147,38 @@ testthat::test_that("the discovered call set matches the audited call set", {
                  paste(setdiff(found, audited), collapse = ", ")))
 })
 
-testthat::test_that("the compareGO bootstrap block is still unreachable", {
-  # The Phase 6H.8 recommendation is R1 (no change required) and it rests
-  # entirely on this: the slice_sample call sits in the disabled legacy tail,
-  # after a bare unconditional quit() at top level. If that exit is ever removed
-  # or made conditional, the call becomes live UNSEEDED statistical RNG and the
-  # recommendation must be revisited - so this assertion is the tripwire.
+testthat::test_that("the compareGO bootstrap is gone from the active surface", {
+  # Phase 6H.8 recommended R1 because the slice_sample bootstrap sat below an
+  # unconditional quit() and could not execute; this test was the tripwire that
+  # asserted it was still PRESENT but unreachable. Phase 6H.10 implemented
+  # decision C2 and archived the whole unreachable region, so the premise is
+  # spent: the call is not unreachable, it is absent.
   f <- repo_path("analysis", "differential_abundance", "compare_go_enrichment.R")
   testthat::skip_if_not(file.exists(f), "compare_go_enrichment.R not present")
   ex <- parse(f, keep.source = TRUE)
-  sr <- attr(ex, "srcref")
-  starts <- vapply(sr, function(s) s[1], numeric(1))
-  ends <- vapply(sr, function(s) s[3], numeric(1))
-
-  # locate the bare top-level quit() - it must exist and be unconditional
-  is_bare_quit <- vapply(seq_along(ex), function(i) {
-    e <- ex[[i]]
-    is.call(e) && identical(as.character(e[[1]])[1], "quit")
-  }, logical(1))
-  testthat::expect_true(any(is_bare_quit),
-    info = "no unconditional top-level quit(): the legacy tail may now be live")
-  exit_line <- min(starts[is_bare_quit])
-
-  # and the slice_sample must sit after it
   pd <- utils::getParseData(ex)
-  ss <- pd$line1[pd$token == "SYMBOL_FUNCTION_CALL" & pd$text == "slice_sample"]
-  testthat::expect_identical(length(ss), 1L)
-  testthat::expect_gt(ss, exit_line)
 
-  # the marker that records the intent, so a silent refactor is noticed
-  src <- readLines(f, warn = FALSE)
-  testthat::expect_true(
-    any(grepl("LEGACY_COMPAREGO_TAIL_DISABLED_BY_CANONICAL_EXIT", src, fixed = TRUE)))
+  # Phase 6H.10 implemented C2 and archived the unreachable region, so the
+  # bootstrap is no longer merely unreachable - it is absent. The replacement
+  # invariant is stronger and still live: no statistical draw anywhere in the
+  # canonical path, and the exit as the final expression rather than a divider
+  # with dead code behind it.
+  testthat::expect_identical(
+    sum(pd$token == "SYMBOL_FUNCTION_CALL" & pd$text == "slice_sample"), 0L)
+  testthat::expect_identical(
+    sum(pd$token == "SYMBOL_FUNCTION_CALL" &
+          pd$text %in% c("sample", "sample.int", "runif", "rnorm", "set.seed")), 0L,
+    info = "a statistical draw has appeared in the canonical compareGO path")
+
+  last <- ex[[length(ex)]]
+  testthat::expect_true(is.call(last) && identical(as.character(last[[1]])[1], "quit"),
+    info = "the canonical exit is no longer the final expression - has a new tail appeared?")
+  testthat::expect_true(all(vapply(as.list(last)[-1],
+    function(a) !is.call(a) && !is.name(a), logical(1))))
+
+  # the obsolete marker must not come back with a new tail
+  testthat::expect_false(any(grepl("LEGACY_COMPAREGO_TAIL_DISABLED_BY_CANONICAL_EXIT",
+                                   readLines(f, warn = FALSE), fixed = TRUE)))
 })
 
 testthat::test_that("WGCNA::pickSoftThreshold is deterministic, not stochastic", {
@@ -338,29 +339,34 @@ testthat::test_that("the stochastic call's downstream artifacts are untouched", 
       length(list.files(live, pattern = "Bootstrap_Stability_Summary")), 0L)
 })
 
-testthat::test_that("the PRIDE-staged copy is recorded and byte-unchanged", {
-  # The initial audit searched results/ only and concluded the artifact was
-  # superseded-only. It is not: a copy sits in the PRIDE deposition payload,
-  # flagged intended_for_PRIDE = TRUE by a path-matching rule rather than by a
-  # curation decision. Pinning it here means the file cannot quietly change, and
-  # documents that it is a known orphan rather than an oversight.
+testthat::test_that("the curated workbook is out of PRIDE and retained internally", {
+  # Phase 6H.8 found this workbook sitting in the PRIDE payload, flagged
+  # intended_for_PRIDE = TRUE by a path rule rather than by curation, and
+  # pinned it here so it could not quietly change. Phase 6H.9 adjudicated P2
+  # and Phase 6H.10 implemented it, so the assertion is inverted: the outward
+  # copy must be ABSENT and the internal provenance copy must carry the same
+  # bytes. The detailed gates live in test-comparego-tail-archival.R.
   f <- repo_path("pride_submission", "supplementary_tables",
                  paste0("results_tables_04_differential_expression_enrichment_",
                         "compareGO_neuron_neuropil_BP_phenotype_within_unit_",
                         "08_Bootstrap_Stability_Summary.xlsx"))
   # Deliberately NOT skip_if_not(file.exists(f)). An earlier version gated the
-  # whole block on the file existing, so deleting it made every assertion below
-  # - including the manifest-row guard - vanish into a silent skip. A tripwire
-  # that disappears when the thing it watches disappears is not a tripwire.
-  # Phase 6H.9 recommended P2 (retain as internal provenance only); when that is
-  # implemented this test SHOULD fail, and the failure is the checklist.
-  testthat::expect_true(file.exists(f),
-    info = paste("PRIDE staging copy is gone. If Phase 6H.9's P2 decision was",
-                 "implemented, update this test and the curation audit."))
-  if (file.exists(f)) {
-    testthat::expect_identical(file.size(f), 5141)
+  # whole block on the file existing, so its disappearance would have produced
+  # a silent skip instead of a signal. A tripwire that vanishes with the thing
+  # it watches is not a tripwire.
+  testthat::expect_false(file.exists(f),
+    info = "the workbook is back in pride_submission - P2 has been reverted")
+
+  curated <- path_results("manuscript", "_curated",
+                 paste0("results_tables_04_differential_expression_enrichment_",
+                        "compareGO_neuron_neuropil_BP_phenotype_within_unit_",
+                        "08_Bootstrap_Stability_Summary.xlsx"))
+  testthat::expect_true(file.exists(curated),
+    info = "the internal provenance copy is missing - P2 retains the bytes")
+  if (file.exists(curated)) {
+    testthat::expect_identical(file.size(curated), 5141)
     testthat::expect_identical(
-      unname(tools::sha256sum(f)),
+      unname(tools::sha256sum(curated)),
       "024d3671f2cd6026e8bfd7feb6d9839c7ff23eeb41c98d8f66235d854185baba")
   }
 

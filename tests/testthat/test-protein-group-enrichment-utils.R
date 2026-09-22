@@ -50,10 +50,53 @@ testthat::test_that("member order does not alter a same-gene enrichment mapping"
   testthat::expect_identical(build_enrichment_gene_inputs(make_row("P1;P2"))$ranked, build_enrichment_gene_inputs(make_row("P2;P1"))$ranked)
 })
 
-testthat::test_that("compareGO prefers manifest-provided collapsed gene inputs", {
-  script <- paste(readLines(repo_path("analysis/differential_abundance", "compare_go_enrichment.R"), warn = FALSE), collapse = "\n")
-  testthat::expect_match(script, "comparison_input_file")
-  testthat::expect_match(script, "GeneSymbol")
+testthat::test_that("compareGO enforces the manifest contract that carries collapsed gene inputs", {
+  # This test previously asserted that compare_go_enrichment.R's text matched
+  # "comparison_input_file" and "GeneSymbol". Phase 6H.9 found that BOTH tokens
+  # occurred only below the script's unconditional quit(), i.e. only in code
+  # that could not execute - so the test passed while verifying nothing about
+  # the live path, and it would have kept passing had the runtime behaviour
+  # been removed entirely. Phase 6H.10 archived that region.
+  #
+  # The guarantee still exists, but it moved: collapsing happens upstream in
+  # run_clusterprofiler_enrichment.R, and compareGO's obligation is to REFUSE a
+  # manifest that does not carry a usable collapsed gene input. That obligation
+  # is executable, so it is now tested by running it rather than by grepping.
+  source(repo_path("R", "enrichment", "enrichment_io.R"))
+
+  # 1. the contract declares the field runtime-required
+  testthat::expect_true("collapsed_gene_input_file" %in% clusterprofiler_runtime_required_fields())
+
+  # 2. the canonical compareGO path actually invokes that validation
+  script <- readLines(
+    repo_path("analysis/differential_abundance", "compare_go_enrichment.R"), warn = FALSE)
+  testthat::expect_true(any(grepl("validate_clusterprofiler_manifest_contract", script, fixed = TRUE)))
+
+  # 3. and the validation genuinely rejects a manifest whose collapsed gene
+  #    input is missing - this executes the live contract, which is the part
+  #    the old assertion never did
+  tmp <- withr::local_tempdir()
+  good <- file.path(tmp, "genes.txt"); writeLines("Gene1", good)
+  mk <- function(collapsed) data.frame(
+    dataset = "neuron_neuropil", comparison = "A_vs_B", result_type = "GSEA_GO",
+    ontology = "BP", analysis_status = "success_with_terms", n_terms = 1L,
+    output_table = good, collapsed_gene_input_file = collapsed,
+    collapsed_gene_provenance_file = good, term_gene_provenance_file = good,
+    input_gene_file = good, gene_input_file = good, config_file = good,
+    output_plot = good, gene_mapping_policy = "protein_group_collapsed",
+    enrichment_contract_version = 1L, gene_annotation_contract_version = 1L,
+    stringsAsFactors = FALSE)
+
+  # sanity: a fully-present manifest passes, so the failure below is caused by
+  # the missing collapsed gene input and not by an incomplete fixture
+  testthat::expect_silent(
+    validate_clusterprofiler_manifest_contract(mk(good), strict = FALSE,
+                                               require_files = TRUE))
+  testthat::expect_error(
+    validate_clusterprofiler_manifest_contract(
+      mk(file.path(tmp, "absent_collapsed_genes.txt")),
+      strict = FALSE, require_files = TRUE),
+    "collapsed_gene_input_file")
 })
 
 testthat::test_that("strict mode rejects legacy gene-only input", {

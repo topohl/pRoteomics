@@ -117,12 +117,36 @@ testthat::test_that("comparison identity and output are invariant to filenames a
   testthat::expect_true("manifest_identity" %in% forward$terms$comparison)
 })
 
-testthat::test_that("canonical compareGO path terminates before legacy UniProt logic", {
-  script <- readLines(repo_path("analysis/differential_abundance", "compare_go_enrichment.R"), warn = FALSE)
-  marker <- grep("LEGACY_COMPAREGO_TAIL_DISABLED_BY_CANONICAL_EXIT", script, fixed = TRUE)
-  testthat::expect_length(marker, 1L)
-  canonical <- paste(script[seq_len(marker - 1L)], collapse = "\n")
-  testthat::expect_match(canonical, "quit\\(status = 0, save = \\\"no\\\"\\)")
-  testthat::expect_false(grepl("keyType\\s*=\\s*['\"]UNIPROT|fromType\\s*=\\s*['\"]UNIPROT", canonical, perl = TRUE))
-  testthat::expect_false(grepl("PROTEOMICS_COMPAREGO_QUICK_PLOTS", canonical, fixed = TRUE))
+testthat::test_that("canonical compareGO path contains no legacy logic at all", {
+  # Phase 6H.10 (decision C2) archived the disabled legacy tail to
+  # archive/04_differential_expression_enrichment/legacy/. Before that, this
+  # test split the file at the LEGACY_COMPAREGO_TAIL_DISABLED_BY_CANONICAL_EXIT
+  # marker and checked only the part above it - which meant the legacy logic it
+  # was guarding against was still sitting in the active file, merely below a
+  # line the test agreed to stop reading at.
+  #
+  # The invariant is now structural and stronger: the whole active file is the
+  # canonical path, so legacy logic must be absent from ALL of it, and the exit
+  # must be the final expression rather than a divider in the middle.
+  path <- repo_path("analysis/differential_abundance", "compare_go_enrichment.R")
+  script <- readLines(path, warn = FALSE)
+  whole <- paste(script, collapse = "\n")
+
+  testthat::expect_false(any(grepl("LEGACY_COMPAREGO_TAIL_DISABLED_BY_CANONICAL_EXIT",
+                                   script, fixed = TRUE)),
+    info = "the disable marker is obsolete once the tail is archived")
+
+  ex <- parse(path, keep.source = TRUE)
+  last <- ex[[length(ex)]]
+  testthat::expect_true(is.call(last) && identical(as.character(last[[1]])[1], "quit"),
+    info = "the canonical exit must be the final top-level expression")
+  # and it is unconditional: constant arguments, not a computed status
+  testthat::expect_true(all(vapply(as.list(last)[-1],
+    function(a) !is.call(a) && !is.name(a), logical(1))))
+
+  # the legacy logic this test has always been about, now checked over the
+  # entire active file rather than a prefix of it
+  testthat::expect_false(grepl("keyType\\s*=\\s*['\"]UNIPROT|fromType\\s*=\\s*['\"]UNIPROT",
+                               whole, perl = TRUE))
+  testthat::expect_false(grepl("PROTEOMICS_COMPAREGO_QUICK_PLOTS", whole, fixed = TRUE))
 })

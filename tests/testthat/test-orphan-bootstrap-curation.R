@@ -36,12 +36,13 @@ testthat::test_that("the exit is a bare unconditional top-level quit()", {
   # constant arguments only - a computed status could in principle be a no-op
   args <- as.list(e)[-1]
   testthat::expect_true(all(vapply(args, function(a) !is.call(a) && !is.name(a), logical(1))))
-  # and it precedes the bootstrap block
+  # Until Phase 6H.10 this also asserted that the bootstrap's slice_sample sat
+  # AFTER the exit. Decision C2 archived that region, so the exit is now the
+  # final expression and there is no code behind it to order against.
+  testthat::expect_identical(idx, length(ex))
   pd <- utils::getParseData(ex)
-  ss <- pd$line1[pd$token == "SYMBOL_FUNCTION_CALL" & pd$text == "slice_sample"]
-  testthat::expect_identical(length(ss), 1L)
-  sr <- attr(ex, "srcref")
-  testthat::expect_lt(sr[[idx]][1], ss)
+  testthat::expect_identical(
+    sum(pd$token == "SYMBOL_FUNCTION_CALL" & pd$text == "slice_sample"), 0L)
 })
 
 testthat::test_that("nothing can bypass the exit by masking quit()", {
@@ -138,36 +139,51 @@ testthat::test_that("the unreachable tail metrics are as adjudicated", {
   testthat::expect_identical(get("tail_functions_used_outside"), "none")
 })
 
-testthat::test_that("the two tests that depend on the tail's text still do", {
-  # Archiving the tail (decision C2) MUST be accompanied by rewriting these two.
-  # This test records the coupling so the breakage is expected, not a surprise.
+testthat::test_that("the tests that drew assurance from dead code were rewritten", {
+  # Phase 6H.9 recorded four tests coupled to the tail's literal text and
+  # predicted they would break under C2. Phase 6H.10 rewrote each against a
+  # live invariant. This now asserts the repair rather than the coupling, so a
+  # regression to text-matching dead code is caught.
   t1 <- repo_path("tests", "testthat", "test-comparego-canonical-contract.R")
   testthat::skip_if_not(file.exists(t1), "canonical contract test absent")
-  testthat::expect_true(any(grepl("LEGACY_COMPAREGO_TAIL_DISABLED_BY_CANONICAL_EXIT",
-                                  readLines(t1, warn = FALSE), fixed = TRUE)))
+  # it no longer splits the script at the obsolete marker
+  testthat::expect_false(any(grepl("marker <- grep", readLines(t1, warn = FALSE), fixed = TRUE)))
 
-  # and these tokens live ONLY in the dead tail, so the other test currently
-  # asserts a property of code that cannot run
+  t2 <- repo_path("tests", "testthat", "test-protein-group-enrichment-utils.R")
+  testthat::skip_if_not(file.exists(t2), "protein group test absent")
+  s2 <- readLines(t2, warn = FALSE)
+  # it no longer proves runtime behaviour by grepping the script for tokens
+  # that lived only below the exit; it executes the manifest contract instead
+  testthat::expect_true(any(grepl("clusterprofiler_runtime_required_fields", s2, fixed = TRUE)))
+  testthat::expect_true(any(grepl("validate_clusterprofiler_manifest_contract", s2, fixed = TRUE)))
+
+  # and the tokens themselves are gone from the active script, as expected
   testthat::skip_if_not(file.exists(SCRIPT), "compare_go_enrichment.R absent")
   lines <- readLines(SCRIPT, warn = FALSE)
-  head_lines <- lines[seq_len(569L)]
-  for (tok in c("comparison_input_file", "GeneSymbol")) {
-    testthat::expect_gt(length(grep(tok, lines, fixed = TRUE)), 0L)
-    testthat::expect_identical(length(grep(tok, head_lines, fixed = TRUE)), 0L,
-      info = paste(tok, "now appears in the canonical head - re-check the C2 bookkeeping"))
-  }
+  for (tok in c("comparison_input_file", "GeneSymbol"))
+    testthat::expect_identical(length(grep(tok, lines, fixed = TRUE)), 0L, info = tok)
 })
 
 # ---- the artifact ---------------------------------------------------------
 
 testthat::test_that("the orphaned workbook is unchanged and still a 1x5 sheet", {
-  testthat::skip_if_not(file.exists(WORKBOOK), "PRIDE staging copy absent")
-  testthat::expect_identical(file.size(WORKBOOK), 5141)
-  testthat::expect_identical(unname(tools::sha256sum(WORKBOOK)), WORKBOOK_SHA)
+  # Follows the artifact to where Phase 6H.10 put it. Pointing this at the old
+  # outward path would have turned the whole block into a silent skip the moment
+  # P2 was implemented - the same defect this phase criticised in the 6H.8 guard
+  # and fixed there.
+  wb <- path_results("manuscript", "_curated",
+    paste0("results_tables_04_differential_expression_enrichment_compareGO_",
+           "neuron_neuropil_BP_phenotype_within_unit_",
+           "08_Bootstrap_Stability_Summary.xlsx"))
+  testthat::expect_true(file.exists(wb),
+    info = "the curated provenance copy is missing")
+  testthat::skip_if_not(file.exists(wb))
+  testthat::expect_identical(file.size(wb), 5141)
+  testthat::expect_identical(unname(tools::sha256sum(wb)), WORKBOOK_SHA)
   testthat::skip_if_not_installed("readxl")
-  sh <- readxl::excel_sheets(WORKBOOK)
+  sh <- readxl::excel_sheets(wb)
   testthat::expect_identical(length(sh), 1L)
-  d <- readxl::read_excel(WORKBOOK, sheet = sh[1])
+  d <- readxl::read_excel(wb, sheet = sh[1])
   testthat::expect_identical(dim(d), c(1L, 5L))
   testthat::expect_identical(names(d), c("Mean_Recovery_Rate", "SD_Recovery_Rate",
                                          "Min_Recovery", "Max_Recovery", "Total_TopTerms"))
@@ -301,8 +317,11 @@ testthat::test_that("this adjudication changed no payload", {
   testthat::expect_identical(
     unname(tools::sha256sum(fz)),
     "b4d37250360e2e07136ccdfbca64bd0a629e22946ced1f5ffd1fb730b445c49a")
-  # the workbook is still in the deposition tree: P2 was NOT implemented
-  testthat::expect_true(file.exists(WORKBOOK))
-  # and the tail is still in place: C2 was NOT implemented
-  testthat::expect_identical(length(readLines(SCRIPT, warn = FALSE)), 4321L)
+  # Both decisions are now implemented (Phase 6H.10), so these two assertions
+  # were inverted. Their detailed gates live in
+  # tests/testthat/test-comparego-tail-archival.R; what is checked here is only
+  # that the adjudication did not drag the publication payload with it.
+  testthat::expect_false(file.exists(WORKBOOK),
+    info = "the workbook is back in pride_submission - P2 has been reverted")
+  testthat::expect_identical(length(readLines(SCRIPT, warn = FALSE)), 569L)
 })

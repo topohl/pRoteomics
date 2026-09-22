@@ -105,7 +105,12 @@ testthat::test_that("every active ggrepel layer carries a seed", {
       if (!"seed" %in% names(e)) unseeded <- c(unseeded, paste0(basename(f), ":", i))
     }
   }
-  testthat::expect_gte(total, 12L)
+  # 11, not the 12 Phase 6H.6 recorded. One of those twelve layers was
+  # compare_go_enrichment.R:2452, inside the script's unreachable tail - a
+  # repel layer that could never render. Phase 6H.10 archived that region, so
+  # the live count is 11. No 6H.6 conclusion changes: the other eleven are
+  # live and all twelve were seeded, including the archived one.
+  testthat::expect_gte(total, 11L)
   testthat::expect_identical(length(unseeded), 0L,
     info = paste("unseeded repel layers:", paste(unseeded, collapse = ", ")))
 })

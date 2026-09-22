@@ -1,13 +1,140 @@
 # Phase 6H.9 — curation of the orphaned bootstrap artifact and the unreachable code tail
 
-Adjudication only. Nothing was moved, deleted, seeded, rerun or regenerated. The
-workbook remains in `pride_submission/`; the code tail remains in place.
+Two decisions were taken independently, as the brief requires, and on different
+grounds:
 
-Two decisions are taken independently, as the brief requires, and they are
-reached on different grounds:
+- **Code:** `C2 — ARCHIVE_UNREACHABLE_TAIL` — **IMPLEMENTED** (Phase 6H.10)
+- **Artifact:** `P2 — RETAIN_AS_INTERNAL_PROVENANCE_ONLY` — **IMPLEMENTED** (Phase 6H.10)
 
-- **Code:** `C2 — ARCHIVE_UNREACHABLE_TAIL`
-- **Artifact:** `P2 — RETAIN_AS_INTERNAL_PROVENANCE_ONLY`
+> **Phase 6H.9 was adjudication only.** The sections below describe the evidence
+> and reasoning as they stood then, when nothing had been moved. Phase 6H.10
+> implemented both decisions; its results are recorded immediately below, and
+> where a later section still says "the workbook remains in `pride_submission/`"
+> or "the tail remains in place", read that as the pre-implementation state.
+
+## Phase 6H.10 — implementation results
+
+### C2 — code archival
+
+| | before | after |
+|---|---|---|
+| active script lines | 4,321 | **569** |
+| active top-level expressions | 439 | **103** |
+| expressions after the exit | 336 | **0** |
+| write calls in the active file | 60 | **4** (all canonical-head CSVs) |
+| `slice_sample` in the active file | 1 | **0** |
+| ggrepel layers in the active file | 1 | **0** |
+
+- archive path: `archive/04_differential_expression_enrichment/legacy/02_compareGO_superseded_tail.r`
+- sidecar: `…/02_compareGO_superseded_tail.PROVENANCE.md`
+- archived region: lines **570–4321**, 3,752 lines
+- original full-file SHA-256: `dc9e41d98a309ba7b582576984a7a7fc0e83712deeb8bc3d079e3cb91aef9a91`
+- retained prefix SHA-256: `e5bce156c78365e2f393a78cdb2aac9ea7a48ec0476a8f0ab9ec1f0d7450f5d7`
+- archived tail SHA-256: `cde1bccf1e4f6381b7a40c9cf66389dfb8d22a58b46bf8f548cc33dcd04403ba`
+
+**Byte preservation was proved by reconstruction, not inspection:**
+`sha256(active_prefix ‖ archived_tail)` equals the original file hash exactly.
+The active prefix is byte-identical to the original lines 1–569 — no
+reformatting, no lint, no reordering, and `quit()` neither moved nor removed.
+Active behaviour changed: **no**.
+
+The destination follows the existing convention rather than inventing one:
+`archive/04_differential_expression_enrichment/legacy/` already held
+`04_compare_pathways.r`, `05_compare_sig_expr.r` and
+`07_control_strata_enrichment_figures.r`, and `archive/` is declared
+non-runnable by `pipeline_analysis_script_exclusions()`.
+
+### P2 — artifact curation
+
+| | value |
+|---|---|
+| outward path (removed) | `pride_submission/supplementary_tables/…08_Bootstrap_Stability_Summary.xlsx` |
+| internal path (retained) | `results/manuscript/_curated/…08_Bootstrap_Stability_Summary.xlsx` |
+| SHA-256 | `024d3671…185baba` — **unchanged** |
+| size | 5,141 → **5,141** |
+| mtime | 2026-05-27 16:05:13 +0200 — **preserved** |
+| PRIDE outward files | 1,310 → **1,309** |
+| PRIDE manifest rows | 1,721 → **1,720** |
+| validator supplementary count | 496 → **495** |
+| other historical copies modified | **0** |
+
+A first attempt placed the file under
+`results/manuscript/_curated_out_20260922/supplementary_tables/`, which produced
+a **271-character** absolute path — past the 260-character wall documented in
+Phases 6H.1–6H.3, leaving the retained provenance copy unreadable by R. A
+provenance copy that cannot be opened is not provenance. The destination was
+shortened to `results/manuscript/_curated/` (**237 characters**, inside both the
+260 wall and the conservative 240 write guard) and the curation date moved into
+the sidecar.
+
+### Why future packaging cannot re-add it
+
+No new rule was needed, and none was added. Deposition eligibility already
+excludes the destination:
+
+```r
+# R/utilities/export_helpers.R:125
+!grepl("/results/manuscript(/|$)", normalized) & !is_noncanonical_ewce_export_path(normalized)
+```
+
+Two independent mechanisms now apply. The path rule at `:881` that assigned
+`pride_staging` only matches files under `pride_submission/`, and
+`build_pride_manifest.R`'s directory rescan can no longer see the file; and
+`is_exportable_result_path()` independently rules out everything under
+`results/manuscript/`. The test suite asserts the rule stays general — it must
+still exclude any other `results/manuscript/` path, still admit the live
+scientific tree, and `export_helpers.R` must contain no artifact-specific
+`Bootstrap_Stability` string.
+
+### Bookkeeping actually changed
+
+| file | change |
+|---|---|
+| `pride_submission/manifests/pride_file_manifest.tsv` | exactly one row removed, matched by SHA-256 |
+| `pride_submission/validation/validation_report.tsv` | recomputed, 496 → 495 |
+| `pride_submission/validation/validation_summary.md` | recomputed, 496 → 495 |
+
+The manifest row was removed at the **byte level**: shell tools translated CRLF
+on redirect and rewrote all 1,722 lines, so the edit was redone in R over the
+raw byte stream. Verified: 1,720 surviving rows identical and in original order,
+CR count down by exactly one.
+
+A full manifest recompute was **deliberately not** run. The manifest already
+carries **805 pre-existing dangling rows** for files that no longer exist and
+spans `data/processed` as well as `pride_submission/`; recomputing would have
+rewritten those 805 unrelated rows, violating the brief's own requirement to
+preserve unrelated manifest rows. The validator outputs, by contrast, are
+self-contained and were recomputed rather than edited.
+
+### Tests repaired
+
+Four tests drew assurance from the dead region; a fifth pinned the
+pre-implementation state deliberately.
+
+| test | old assertion | why it was hollow | new live invariant |
+|---|---|---|---|
+| `test-comparego-canonical-contract.R` | split the file at the disable marker, checked only the prefix for legacy UniProt logic | the logic it guarded against was still in the file, just below the line the test stopped reading at | the exit is the **final** top-level expression, and legacy logic is absent from the **whole** file |
+| `test-protein-group-enrichment-utils.R` | script text matches `comparison_input_file` and `GeneSymbol` | both tokens existed **only** below the exit, so it verified nothing live and would have passed had the behaviour been deleted | **executes** `validate_clusterprofiler_manifest_contract()` and asserts it rejects a manifest with a missing `collapsed_gene_input_file` |
+| `test-ggrepel-render-determinism.R` | `expect_gte(total, 12L)` | one of the twelve was in the tail and could never render | `expect_gte(total, 11L)` — the live count |
+| `test-statistical-rng-audit.R` | bootstrap is present but unreachable; workbook present in PRIDE | premise spent once the region was archived | no statistical draw anywhere in the active script; workbook absent outward and byte-identical internally |
+| `test-orphan-bootstrap-curation.R` | asserted the un-implemented state | by design — the breakage was the checklist | asserts the implemented state |
+
+New: `tests/testthat/test-comparego-tail-archival.R` — reconstruction gate,
+active-surface cleanliness, curation delta, selection-contract generality, and
+immutability of the frozen snapshot.
+
+### Reference reconciliation after implementation
+
+- current mutable references updated: **1** (the PRIDE manifest row)
+- superseded `_superseded_20260622` reference: **preserved, untouched** —
+  `97b08c92…` unchanged, and it still names the workbook, which is correct
+  provenance for the state it records
+- SHA-based references: **1**, and it was the reliable identifier
+- filename-based references: 2, one of which is the immutable snapshot
+- size-based "references": 5,407 files coincidentally contain `5141` — size
+  remains an invalid identifier, as `c9368b9` recorded
+
+---
 
 Evidence tables:
 - `phase6h_orphan_bootstrap_artifact_inventory.csv` — 5 rows, one per surviving copy
