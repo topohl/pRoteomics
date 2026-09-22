@@ -487,6 +487,28 @@ SHA-256 or its size: `results/manuscript/figure_export_manifest.csv`,
 `pride_submission` file count (1,310) or manifest row count (1,721)** — the
 literals 1310, 1721 and 1564 appear nowhere in `tests/` or `docs/`.
 
+### Reconciling the reference count
+
+A wider sweep finds the name `08_Bootstrap_Stability_Summary` in **two** files,
+not one, so the counts above need reconciling:
+
+| file | live? | needs update on removal |
+|---|---|---|
+| `pride_submission/manifests/pride_file_manifest.tsv` | yes | **yes** |
+| `results/manuscript/_superseded_20260622/source_data_export_manifest.csv` | **no — superseded snapshot** | **no** |
+
+The second is a frozen historical manifest inside the `_superseded_20260622`
+bundle, which is why the live `results/manuscript/source_data_export_manifest.csv`
+correctly shows zero. It records what that bundle contained at the time and
+should **not** be retroactively edited — rewriting a superseded snapshot to
+match a later curation decision would destroy the provenance the snapshot exists
+to hold.
+
+For completeness, searching on the artifact's *size* rather than its name
+matches 5,407 files. Those are coincidental occurrences of the digits `5141`
+inside `.gct` and `.csv` data payloads, not references. Size is not a usable
+identifier here; the SHA-256 is, and it appears in exactly one file.
+
 ### One piece of evidence that does *not* support the decision
 
 `pride_submission/supplementary_tables/_supplementary_table_staging_manifest.tsv`
