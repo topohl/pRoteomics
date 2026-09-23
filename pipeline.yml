@@ -1361,6 +1361,28 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Additive low-n concordance synthesis. GSEA-derived representations remain one lineage; Stage 07 p/FDR values are copied unchanged; new Fisher/BH tests use program-specific leading edges against canonical module universes."
+      - script: "analysis/integration/build_display_selection_inventories.R"
+        required: false
+        datasets: ["global"]
+        stage: "integration"
+        scope: "global"
+        produces: ["results/integration/build_display_selection_inventories/global/tables/pathway_enrichment_inventory.csv", "results/integration/build_display_selection_inventories/global/tables/pathway_enrichment_inventory_fdr_supported.csv", "results/integration/build_display_selection_inventories/global/tables/leading_edge_protein_inventory.csv", "results/integration/build_display_selection_inventories/global/tables/leading_edge_protein_recurrence.csv", "results/integration/build_display_selection_inventories/global/tables/display_selection_disclosure.csv", "results/integration/build_display_selection_inventories/global/tables/inventory_data_dictionary.csv", "results/integration/build_display_selection_inventories/global/tables", "results/integration/build_display_selection_inventories/global/tables/source_data", "results/integration/build_display_selection_inventories/global/tables/source_data/pathway_enrichment_inventory.csv", "results/integration/build_display_selection_inventories/global/tables/source_data/pathway_enrichment_inventory_fdr_supported.csv", "results/integration/build_display_selection_inventories/global/tables/source_data/leading_edge_protein_inventory.csv", "results/integration/build_display_selection_inventories/global/tables/source_data/leading_edge_protein_recurrence.csv", "results/integration/build_display_selection_inventories/global/tables/source_data/display_selection_disclosure.csv", "results/integration/build_display_selection_inventories/global/tables/source_data/inventory_data_dictionary.csv", "results/integration/build_display_selection_inventories/global/manifests/run_manifest.yml"]
+        consumes_required: ["results/tables/10_biological_integration/gsea_wgcna_concordance/global/ontology_aware_gsea_theme_assignments_all_contrasts.csv"]
+        consumes_optional: []
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Releases the pathway and leading-edge protein denominators behind the selected results shown in Figures 2 and 3. Reshapes and counts frozen values only; no GSEA, model or correction is recomputed."
+      - script: "analysis/integration/plot_display_selection_context.R"
+        required: false
+        datasets: ["global"]
+        stage: "integration"
+        scope: "global"
+        produces: ["results/integration/plot_display_selection_context/global/plots/display_selection_context.svg", "results/integration/plot_display_selection_context/global/plots/display_selection_context.pdf", "results/integration/plot_display_selection_context/global/tables/source_data/display_selection_context_panel_a.csv", "results/integration/plot_display_selection_context/global/tables/source_data/display_selection_context_panel_b.csv", "results/integration/plot_display_selection_context/global/tables/source_data/display_selection_context_panel_c.csv", "results/integration/plot_display_selection_context/global/manifests/run_manifest.yml"]
+        consumes_required: ["results/integration/build_display_selection_inventories/global/tables/pathway_enrichment_inventory.csv", "results/integration/build_display_selection_inventories/global/tables/leading_edge_protein_recurrence.csv"]
+        consumes_optional: []
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Diagnostic figure placing each displayed selection inside its complete distribution. Reads the released inventories; computes no statistic. Not a manuscript panel."
       - script: "analysis/integration/summarize_enrichment_module_concordance.R"
         required: false
         datasets: ["global"]

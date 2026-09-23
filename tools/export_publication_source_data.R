@@ -60,7 +60,24 @@ skipped <- character(0)
 
 for (i in seq_len(nrow(canonical))) {
   pid <- canonical$publication_id[i]
-  src_dir <- file.path(SOURCE_ROOT, pid)
+
+  ## The contract declares a source_data_dir per identity, and this loop used
+  ## to ignore it and rebuild SOURCE_ROOT/<pid> instead. For every identity
+  ## that existed then the two were the same path, so the field was inert and
+  ## the assumption held silently.
+  ##
+  ## It stops holding as soon as an identity's source data lives anywhere else,
+  ## and it cannot be satisfied by staging a copy under SOURCE_ROOT: that root
+  ## is registered LEGACY_READ_ONLY in config/legacy_output_registry.csv,
+  ## precisely because no registered writer declares output there. Honouring
+  ## the declared path lets an identity be exported straight from the canonical
+  ## results tree of the analysis that owns it, with no write into the legacy
+  ## tree and no second copy to keep in step.
+  ##
+  ## The declared path wins; SOURCE_ROOT/<pid> remains the fallback so an
+  ## identity whose contract entry predates this change resolves as before.
+  src_dir <- repo_path(canonical$canonical_source_data[i])
+  if (!dir.exists(src_dir)) src_dir <- file.path(SOURCE_ROOT, pid)
   if (!dir.exists(src_dir)) { skipped <- c(skipped, pid); next }
 
   dst_dir <- file.path(BUNDLE_ROOT, pid)
