@@ -218,8 +218,50 @@ because the upstream theme table supplies `leading_edge_genes` as an
 alphabetically sorted string, so neither the value nor its order reaches the
 inventory. A reader can therefore confirm that the seven shown were eligible and
 how many they were drawn from, but cannot reproduce *which* seven the rule
-picked. Carrying the statistic would mean joining the GSEA ranked lists, which
-is tracked separately as `RANKED_LIST_JOIN_PENDING`.
+picked. Carrying the statistic in the release would mean joining the GSEA ranked
+lists into it, and that join is deliberately not part of the release.
+
+**The selection has nonetheless been verified, internally.** Phase 6I.2 closed
+`RANKED_LIST_JOIN_PENDING` by doing the join as an internal reproduction rather
+than as a released artifact. Three independent records agree on the ranking that
+was executed:
+
+- `rank_statistic_sensitivity_audit.csv` stores the ranked vector **as ordered** —
+  it is written from `names(gene_inputs$sensitivity$median)`, and that `median`
+  element *is* the vector passed to `gseGO()`. So the historical rank order is
+  stored evidence, not a reconstruction.
+- `collapsed_gene_input.csv` holds the byte-exact collapsed input, from which the
+  same order rebuilds under one stable sort. These statistics carry **no ties at
+  all** — 276,054 ranked genes across the 54 comparisons, zero tie groups — so
+  the order is unique and no collation rule can reach it. (The stored row order
+  is `levels(as.factor(GeneSymbol))`, i.e. locale-collated, *not* the radix order
+  set earlier in the same function. That would have mattered if ties existed.)
+- the manifest's `n_genes`, recorded at GSEA time by a third code path.
+
+All 54 comparisons agree on all three, and the leading-edge join is an exact
+string match at **4,534,560 of 4,534,560** memberships across **203,073** terms —
+no case folding, no alias table, and no current annotation database consulted,
+which would have answered a historical question with present-day annotations.
+Applying the rule above to those recovered inputs returns the 21 proteins listed
+below **exactly**, for all three exemplars, with rank 7 strictly ahead of rank 8
+in each (margins 0.064, 0.081, 0.049).
+
+Nine of the 54 collapsed inputs — and 18 of the 54 sensitivity audits, whose
+basename is longer — are reachable only through the Phase 6H.3 staging contract,
+because re-anchoring their recorded paths on this repository root puts them at
+262 characters, two past the limit R can open. That includes the microglia CA1
+comparison that carries the OXPHOS exemplar. Provenance and addressability are
+the same question here, not two adjacent ones.
+
+> **Retention note.** `rank_statistic_sensitivity_audit.csv` currently reads as a
+> disposable diagnostic: `audits/phase6h_over_maxpath_reader_check.csv` records
+> one active code reference for it, and that reference is the *write* site, so it
+> has no readers. It is in fact the primary stored record of an executed ranking
+> behind a published figure. It must not be pruned as a regenerable audit.
+
+None of this changes what a reader of the release can do, and none of it moves a
+number, a figure or a claim. It changes what the project may state about the
+selection: that it is reproducible from retained evidence, not merely documented.
 
 **Did the rule see the result?** **Yes, twice over** — both the parent program
 and the ranking within it are outcome-dependent. This panel inherits the
