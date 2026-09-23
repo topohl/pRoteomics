@@ -467,16 +467,34 @@ if (length(unsupported_configured_types)) {
   stop("compareGO configuration requests unsupported result_type value(s): ",
     paste(unsupported_configured_types, collapse = ", "), call. = FALSE)
 }
-if (!file.exists(manifest_path)) {
-  stop("clusterProfiler manifest not found: ", manifest_path,
-    "\nRun analysis/differential_abundance/run_clusterprofiler_enrichment.R first.", call. = FALSE)
+manifest_status <- input_addressability(manifest_path)
+if (!identical(manifest_status, INPUT_STATUS_PRESENT)) {
+  ## Only genuine absence is fixed by running the producer. An unmounted root
+  ## and a path at or past the character limit are both present-but-unopenable,
+  ## and sending the reader off to re-run the enrichment is the wrong
+  ## instruction for either - it costs hours and cannot succeed.
+  remedy <- if (identical(manifest_status, INPUT_STATUS_ABSENT)) {
+    "\nRun analysis/differential_abundance/run_clusterprofiler_enrichment.R first."
+  } else {
+    ""
+  }
+  stop("clusterProfiler manifest is not usable: ",
+    describe_input_status_failures(manifest_path, manifest_status), remedy, call. = FALSE)
 }
 
-canonical_cluster_manifest <- utils::read.csv(
-  manifest_path, stringsAsFactors = FALSE, check.names = FALSE
-)
-validate_clusterprofiler_manifest_contract(
-  canonical_cluster_manifest, strict = TRUE, require_files = TRUE
+## The manifest records its path columns under the substituted P:// root it
+## was written with, and P:// is not mounted here. Reading it raw and then
+## applying the addressability contract to those recorded strings classifies
+## every successful row as declared_root_unmounted and stops - which is what
+## this script did, on all three datasets, for as long as the contract has
+## been in force. read_canonical_clusterprofiler_manifest() is the only reader
+## that re-anchors the recorded paths on this repository root and stages the
+## ones that cross the 260-character wall, and it runs the same validation at
+## the same strictness afterwards. The difference is that the paths reaching
+## the contract can actually be opened. It also filters to DATASET, which the
+## scope filter below then repeats harmlessly.
+canonical_cluster_manifest <- read_canonical_clusterprofiler_manifest(
+  manifest_path, dataset = DATASET, strict = TRUE, require_files = TRUE
 )
 canonical_scope <- canonical_cluster_manifest[
   canonical_cluster_manifest$dataset == DATASET &

@@ -360,8 +360,17 @@ validate_comparego_manifest_contract <- function(manifest, require_files = TRUE)
     file_columns <- c("input_manifest", "term_comparison_file", "term_gene_provenance_output_file", "analysis_status_summary_file")
     for (column in file_columns) {
       paths <- unique(as.character(manifest[[column]]))
-      if (any(is.na(paths) | !nzchar(paths) | !file.exists(paths))) {
-        stop("compareGO manifest references missing ", column, ".", call. = FALSE)
+      ## Same all-or-nothing contract as the clusterProfiler manifest above, and
+      ## now the same vocabulary. file.exists() returns FALSE for an unmounted
+      ## declared root, for a path at or past the character limit, and for a file
+      ## that is genuinely not there; only the last is fixed by re-running the
+      ## producer, so a message that calls all three "missing" misdirects whoever
+      ## reads it. input_addressability() already classifies NA and empty as
+      ## absent, so the two guards it replaces are subsumed, not dropped.
+      status <- input_addressability(paths)
+      if (any(status != INPUT_STATUS_PRESENT)) {
+        stop("compareGO manifest references unusable ", column, ": ",
+          describe_input_status_failures(paths, status), call. = FALSE)
       }
     }
   }
@@ -734,7 +743,14 @@ read_canonical_clusterprofiler_bundle <- function(manifest_path, dataset,
 read_single_declared_contract_table <- function(paths, label, character_columns = character()) {
   paths <- sort(unique(as.character(paths[!is.na(paths) & nzchar(paths)])), method = "radix")
   if (length(paths) != 1L) stop("Canonical compareGO manifest must declare exactly one ", label, ".", call. = FALSE)
-  if (!file.exists(paths[[1]])) stop("Declared ", label, " does not exist: ", paths[[1]], call. = FALSE)
+  ## "does not exist" is a claim this check is not entitled to make: the same
+  ## FALSE is returned for a path past the character limit and for an unmounted
+  ## declared root, and those are present-but-unopenable, not absent.
+  declared_status <- input_addressability(paths[[1]])
+  if (!identical(declared_status, INPUT_STATUS_PRESENT)) {
+    stop("Declared ", label, " is not usable: ",
+      describe_input_status_failures(paths[[1]], declared_status), call. = FALSE)
+  }
   list(path = paths[[1]], data = read_csv_contract(paths[[1]], character_columns = character_columns))
 }
 

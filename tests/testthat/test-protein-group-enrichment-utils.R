@@ -67,10 +67,25 @@ testthat::test_that("compareGO enforces the manifest contract that carries colla
   # 1. the contract declares the field runtime-required
   testthat::expect_true("collapsed_gene_input_file" %in% clusterprofiler_runtime_required_fields())
 
-  # 2. the canonical compareGO path actually invokes that validation
+  # 2. the canonical compareGO path actually invokes that validation.
+  #    It no longer calls the validator by name. Phase 6I.2 found that reading
+  #    the manifest raw and then validating it was itself the bug: the manifest
+  #    records its paths under a substituted P:// root, so the contract was
+  #    being applied to strings no resolver had seen, and the script stopped on
+  #    every dataset. It now goes through read_canonical_clusterprofiler_manifest(),
+  #    which re-anchors and stages first and then runs the same validation.
+  #    Checking for the validator's name here would therefore re-introduce
+  #    exactly the grep-verifies-nothing problem this test was rewritten to
+  #    escape: what matters is that the path taken reaches the validation.
   script <- readLines(
     repo_path("analysis/differential_abundance", "compare_go_enrichment.R"), warn = FALSE)
-  testthat::expect_true(any(grepl("validate_clusterprofiler_manifest_contract", script, fixed = TRUE)))
+  testthat::expect_true(any(grepl("read_canonical_clusterprofiler_manifest", script, fixed = TRUE)))
+  testthat::expect_false(any(grepl("canonical_cluster_manifest <- utils::read.csv",
+                                   script, fixed = TRUE)))
+  reader <- deparse(read_canonical_clusterprofiler_manifest)
+  testthat::expect_true(any(grepl("validate_clusterprofiler_manifest_contract",
+                                  reader, fixed = TRUE)))
+  testthat::expect_true(any(grepl("resolve_manifest_contract_paths", reader, fixed = TRUE)))
 
   # 3. and the validation genuinely rejects a manifest whose collapsed gene
   #    input is missing - this executes the live contract, which is the part

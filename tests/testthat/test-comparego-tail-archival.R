@@ -22,6 +22,39 @@ ORIGINAL_SHA <- "dc9e41d98a309ba7b582576984a7a7fc0e83712deeb8bc3d079e3cb91aef9a9
 PREFIX_SHA   <- "e5bce156c78365e2f393a78cdb2aac9ea7a48ec0476a8f0ab9ec1f0d7450f5d7"
 TAIL_SHA     <- "cde1bccf1e4f6381b7a40c9cf66389dfb8d22a58b46bf8f548cc33dcd04403ba"
 
+# The commit that performed the split. Phase 6I.2 re-anchored the byte gates
+# below onto this commit rather than onto the working tree.
+#
+# As first written, the gates compared PREFIX_SHA against the LIVE
+# compare_go_enrichment.R, which froze that file permanently: any later edit
+# broke them, however correct. That turned out to be untenable rather than
+# merely strict. The script read the clusterProfiler manifest with a raw
+# read.csv() and then applied the addressability contract to the P:// paths the
+# manifest records; P:// is not mounted here, so every successful row
+# classified as declared_root_unmounted and the script stopped before doing any
+# work - on all three datasets. Fixing that meant editing the file.
+#
+# The claim these gates exist to protect is historical: that the split was
+# byte-exact AT THE MOMENT IT HAPPENED. Checking it against the archival
+# commit's blob states exactly that claim, and keeps stating it however the
+# live script evolves afterwards. It is verified, not assumed, that the blob
+# reproduces PREFIX_SHA.
+ARCHIVAL_COMMIT <- "9ca7822"
+ACTIVE_RELPATH  <- "analysis/differential_abundance/compare_go_enrichment.R"
+
+# The blob exactly as committed. cat-file writes bytes, with no checkout
+# filters, so this is not subject to core.autocrlf.
+git_blob_file <- function(commit, relpath) {
+  out <- tempfile()
+  code <- suppressWarnings(system2("git", c("-C", shQuote(repo_path()), "cat-file",
+                                            "blob", paste0(commit, ":", relpath)),
+                                   stdout = out, stderr = FALSE))
+  if (!identical(as.integer(code), 0L) || !file.exists(out) || file.size(out) == 0) {
+    return(NA_character_)
+  }
+  out
+}
+
 WORKBOOK_SHA <- "024d3671f2cd6026e8bfd7feb6d9839c7ff23eeb41c98d8f66235d854185baba"
 WORKBOOK_NAME <- paste0("results_tables_04_differential_expression_enrichment_compareGO_",
                         "neuron_neuropil_BP_phenotype_within_unit_",
@@ -42,24 +75,41 @@ testthat::test_that("the archived tail is byte-identical to what was removed", {
   testthat::expect_identical(unname(tools::sha256sum(ARCHIVE)), TAIL_SHA)
 })
 
-testthat::test_that("the retained active prefix is byte-identical to the original head", {
-  # Section 6 of the brief: this is dead-code removal, not a rewrite. The live
-  # code must be the SAME BYTES it was before, not merely equivalent.
-  testthat::skip_if_not(file.exists(ACTIVE), "active script absent")
-  testthat::expect_identical(unname(tools::sha256sum(ACTIVE)), PREFIX_SHA)
+testthat::test_that("the retained prefix was byte-identical to the original head", {
+  # Section 6 of the brief: this was dead-code removal, not a rewrite. What was
+  # kept had to be the SAME BYTES, not merely equivalent - and it was.
+  prefix <- git_blob_file(ARCHIVAL_COMMIT, ACTIVE_RELPATH)
+  testthat::skip_if(is.na(prefix), "archival commit not reachable in this clone")
+  testthat::expect_identical(unname(tools::sha256sum(prefix)), PREFIX_SHA)
 })
 
 testthat::test_that("prefix and archive reconstruct the original file exactly", {
   # The strongest gate available: concatenating what was kept with what was
   # archived must reproduce the pre-change file bit for bit. If either side
-  # drifts - a reformat, a lint, a line-ending change - this fails.
-  testthat::skip_if_not(file.exists(ACTIVE) && file.exists(ARCHIVE),
-                        "split artefacts absent")
+  # drifts - a reformat, a lint, a line-ending change - this fails. The archive
+  # is frozen provenance and is still checked as it stands on disk; the prefix
+  # is taken from the archival commit, because the live script has moved on.
+  prefix <- git_blob_file(ARCHIVAL_COMMIT, ACTIVE_RELPATH)
+  testthat::skip_if(is.na(prefix) || !file.exists(ARCHIVE), "split artefacts absent")
   tmp <- withr::local_tempfile()
   con <- file(tmp, open = "wb")
-  for (f in c(ACTIVE, ARCHIVE)) writeBin(readBin(f, "raw", file.size(f)), con)
+  for (f in c(prefix, ARCHIVE)) writeBin(readBin(f, "raw", file.size(f)), con)
   close(con)
   testthat::expect_identical(unname(tools::sha256sum(tmp)), ORIGINAL_SHA)
+})
+
+testthat::test_that("the split really happened in this history", {
+  # A hash pinned to a commit is only evidence if the commit is an ancestor of
+  # what is checked out. Otherwise the gate above could be satisfied by a
+  # commit that was rewritten away.
+  code <- suppressWarnings(system2("git", c("-C", shQuote(repo_path()), "merge-base",
+                                            "--is-ancestor", ARCHIVAL_COMMIT, "HEAD"),
+                                   stdout = FALSE, stderr = FALSE))
+  testthat::skip_if(!identical(as.integer(code), 0L) &&
+                      !identical(as.integer(code), 1L), "git unavailable")
+  testthat::expect_identical(as.integer(code), 0L,
+    info = paste(ARCHIVAL_COMMIT, "is no longer an ancestor of HEAD;",
+                 "the archival provenance has been rewritten"))
 })
 
 testthat::test_that("the archived payload carries no added commentary", {
@@ -81,13 +131,36 @@ testthat::test_that("the archived payload carries no added commentary", {
 
 # ---- C2: the active surface ------------------------------------------------
 
-testthat::test_that("the active script ends at its real execution boundary", {
+testthat::test_that("the archived-at prefix had the shape Phase 6H.10 recorded", {
+  # The 569 lines and 103 top-level expressions are facts about the prefix as
+  # committed, so they are checked there. Pinning them on the live file would
+  # forbid ever editing it again, which is how this test previously blocked the
+  # fix the script needed.
+  prefix <- git_blob_file(ARCHIVAL_COMMIT, ACTIVE_RELPATH)
+  testthat::skip_if(is.na(prefix), "archival commit not reachable in this clone")
+  testthat::expect_identical(length(readLines(prefix, warn = FALSE)), 569L)
+  testthat::expect_identical(length(parse(prefix, keep.source = FALSE)), 103L)
+})
+
+testthat::test_that("the active script still ends at its real execution boundary", {
+  # What must hold forever is the BOUNDARY, not the byte count: the script stops
+  # where execution stopped, with nothing after the exit.
   testthat::skip_if_not(file.exists(ACTIVE), "active script absent")
   ex <- parse(ACTIVE, keep.source = TRUE)
-  testthat::expect_identical(length(ex), 103L)
   last <- ex[[length(ex)]]
   testthat::expect_true(is.call(last) && identical(as.character(last[[1]])[1], "quit"))
-  testthat::expect_identical(length(readLines(ACTIVE, warn = FALSE)), 569L)
+
+  # And nothing follows it. That is the invariant - not a count of exits: the
+  # script has two, an early one inside the dry-run branch and this final one,
+  # and it had two at the archival commit too. What the tail removal bought is
+  # that no code sits after the last exit, which is stated directly rather
+  # than inferred from a line total.
+  lines <- readLines(ACTIVE, warn = FALSE)
+  last_code_line <- max(which(nzchar(trimws(lines))))
+  # a srcref is c(first_line, first_byte, LAST_LINE, last_byte, ...)
+  final_expr_end <- as.integer(attr(ex, "srcref")[[length(ex)]])[3]
+  testthat::expect_identical(final_expr_end, as.integer(last_code_line),
+    info = "there is code after the final quit() - an unreachable tail has returned")
 })
 
 testthat::test_that("no former-tail material survives in the active script", {

@@ -323,5 +323,18 @@ testthat::test_that("this adjudication changed no payload", {
   # that the adjudication did not drag the publication payload with it.
   testthat::expect_false(file.exists(WORKBOOK),
     info = "the workbook is back in pride_submission - P2 has been reverted")
-  testthat::expect_identical(length(readLines(SCRIPT, warn = FALSE)), 569L)
+  # The line count was a proxy for "the tail is still gone". It is checked
+  # directly instead, because the script is live code and Phase 6I.2 had to
+  # edit it: it read the clusterProfiler manifest raw and hard-stopped on the
+  # unmounted P:// root the manifest records. The byte gates for the split now
+  # live on the archival commit, in test-comparego-tail-archival.R.
+  ex <- parse(SCRIPT, keep.source = TRUE)
+  called <- utils::getParseData(ex)
+  called <- called$text[called$token == "SYMBOL_FUNCTION_CALL"]
+  testthat::expect_false("slice_sample" %in% called)
+  # the tail is gone if no code survives past the final exit
+  lines <- readLines(SCRIPT, warn = FALSE)
+  testthat::expect_identical(
+    as.integer(attr(ex, "srcref")[[length(ex)]])[3],
+    as.integer(max(which(nzchar(trimws(lines))))))
 })

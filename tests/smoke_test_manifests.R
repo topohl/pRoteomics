@@ -55,9 +55,16 @@ for (f in manifest_files) {
     if (isTRUE(dup$n_duplicate_keys > 0)) fail <- c(fail, paste("Duplicate manifest keys in", f, ":", dup$n_duplicate_keys))
   }
   path_qc <- validate_manifest_paths(df, allow_missing = TRUE)
-  missing_required <- path_qc[!path_qc$exists & nzchar(path_qc$path), , drop = FALSE]
-  if (nrow(missing_required)) {
-    message("WARN manifest has missing paths: ", f, " (", nrow(missing_required), ")")
+  ## Report by addressability class, not as one undifferentiated "missing".
+  ## These manifests record their paths under a substituted P:// root that is
+  ## not mounted on every machine, and 150 of the neuron_neuropil manifest
+  ## paths are in exactly that state. Printing them as missing sent whoever
+  ## read this line looking for files that had never gone anywhere.
+  unusable <- path_qc[path_qc$status != INPUT_STATUS_PRESENT & nzchar(path_qc$path), , drop = FALSE]
+  if (nrow(unusable)) {
+    by_class <- table(unusable$status)
+    message("WARN manifest has unusable paths: ", f, " (",
+      paste(sprintf("%s=%d", names(by_class), as.integer(by_class)), collapse = ", "), ")")
   }
 }
 
