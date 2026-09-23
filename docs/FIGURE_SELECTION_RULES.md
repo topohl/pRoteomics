@@ -210,6 +210,17 @@ constraint chosen for legibility, not a statistical threshold.
 **Selected from.** The complete leading edge of each exemplar term, for
 SUS − RES: **255** genes (synaptic), **112** (mRNA processing), **48** (OXPHOS).
 
+**What the released inventory does and does not let you check.**
+`leading_edge_protein_inventory.csv` records **membership** — which proteins are
+in each term's leading edge — and the **universe size** above. It does **not**
+preserve the per-protein GSEA rank statistic or the original ranked-list order,
+because the upstream theme table supplies `leading_edge_genes` as an
+alphabetically sorted string, so neither the value nor its order reaches the
+inventory. A reader can therefore confirm that the seven shown were eligible and
+how many they were drawn from, but cannot reproduce *which* seven the rule
+picked. Carrying the statistic would mean joining the GSEA ranked lists, which
+is tracked separately as `RANKED_LIST_JOIN_PENDING`.
+
 **Did the rule see the result?** **Yes, twice over** — both the parent program
 and the ranking within it are outcome-dependent. This panel inherits the
 regime-C status of the exemplar that produced it.

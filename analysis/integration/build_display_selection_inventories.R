@@ -458,7 +458,13 @@ SHARED <- c(
   contributes_to_figure_3b_cell = "TRUE when this term contributes to a drawn Figure 3b cell: claim-eligible AND in the SUS - RES contrast the panel draws. The cell value is the median NES of its contributing terms. Use theme_claim_eligible for the contrast-independent denominator (12,598 occurrences); this column is the 4,199 that reach the panel.",
   is_figure_3_exemplar_term = "TRUE for the three GO terms shown as exemplar curves in Figure 3 d/e/f.",
   gene = "Official mouse gene symbol of a leading-edge member of that enrichment.",
-  leading_edge_size_of_term = "Number of leading-edge genes in that term, spatial unit and contrast. Figure 3 g/h/i display 7 of these.")
+  ## The old definition ended "Figure 3 g/h/i display 7 of these", which invites
+  ## the reader to look for WHICH seven. This inventory cannot answer that: the
+  ## upstream theme table supplies leading_edge_genes as an alphabetically
+  ## sorted string, so neither the per-protein rank statistic nor the ranked
+  ## order survives. The other two disclosure surfaces already say so; this one
+  ## did not, which made it the only place the limitation was unstated.
+  leading_edge_size_of_term = "Number of leading-edge genes in that term, spatial unit and contrast. Figure 3 g/h/i display seven proteins from this universe; this inventory records membership and universe size but does not preserve the original per-protein GSEA rank statistic or ranked-list order.")
 
 dd <- rbind(
   do.call(rbind, lapply(names(inv), function(c_)
