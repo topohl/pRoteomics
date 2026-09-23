@@ -468,6 +468,82 @@ clusterprofiler_provenance_only_fields <- function() {
     CLUSTERPROFILER_MANIFEST_PATH_FIELDS == "provenance_only"]
 }
 
+# The executed ranked order, and why "regenerable" was the wrong word for it.
+#
+# analysis/differential_abundance/run_clusterprofiler_enrichment.R:1498 writes
+# rank_statistic_sensitivity_audit.csv from
+# names(gene_inputs$sensitivity$median), and that element IS the vector handed
+# to gseGO(). The file records the rank ORDER that executed. Phase 6I.2
+# classified it BYTE_EXACT_STORED_ORDER: across all 54 GSEA_GO/BP comparisons
+# its row order equals the order rebuilt from collapsed_gene_input.csv and its
+# row count equals the manifest's n_genes, and the Figure 3 g/h/i seven-protein
+# selection reproduces exactly from it.
+#
+# Three separate things had left it looking disposable. The clusterProfiler
+# manifest has no column for it, so no registry knew it existed. Nothing reads
+# it, so a reader census returns its own write site and nothing else. And the
+# Phase 6H over-wall inventory recorded its tree as REGENERABLE - which was a
+# statement about which directory it sits in, derived from the root, not a
+# retention decision about this file.
+#
+# Computationally reconstructible is not the same as disposable provenance.
+# The reconstruction only exists while collapsed_gene_input.csv also survives,
+# and it is this file that records what actually ran rather than what could be
+# recomputed. So it is declared in the role this repository already uses for a
+# protected artifact that is hashed but never consumed - see
+# stress_response_protected_reference_artifacts() in
+# R/statistics/stress_response_biological_audit_utils.R and the two Stage-11
+# rows in docs/OUTPUT_CONTRACTS.md.
+CLUSTERPROFILER_PROTECTED_REFERENCE_ROLE <- "protected_reference_not_consumed"
+
+clusterprofiler_protected_reference_artifacts <- function() {
+  data.frame(
+    artifact = "rank_statistic_sensitivity_audit.csv",
+    role = CLUSTERPROFILER_PROTECTED_REFERENCE_ROLE,
+    records = "BYTE_EXACT_STORED_ORDER",
+    producer = "analysis/differential_abundance/run_clusterprofiler_enrichment.R",
+    sibling_of = "collapsed_gene_input.csv",
+    supports = "Figure 3 g/h/i leading-edge protein selection",
+    cleanup_eligible = FALSE,
+    note = paste("Stores names(gene_inputs$sensitivity$median), the ordered vector",
+                 "passed to gseGO(). No consumer reads it; it is retained as the",
+                 "primary record of the ranking that executed."),
+    stringsAsFactors = FALSE
+  )
+}
+
+# Where the declared artifact actually lives, derived from the manifest rather
+# than from a hardcoded path list: it is a sibling of collapsed_gene_input.csv,
+# one instance per comparison. Returns declared paths; callers resolve them
+# through the addressability contract, because 18 of the 54 are past the wall.
+clusterprofiler_protected_reference_paths <- function(manifest,
+                                                      artifact = clusterprofiler_protected_reference_artifacts()$artifact,
+                                                      repository_root = repo_path()) {
+  if (is.null(manifest) || !nrow(manifest) ||
+      !"collapsed_gene_input_file" %in% names(manifest)) return(character(0))
+  siblings <- unique(as.character(manifest$collapsed_gene_input_file))
+  siblings <- siblings[!is.na(siblings) & nzchar(siblings)]
+  if (!length(siblings)) return(character(0))
+  ## Accepts either a resolved manifest or the raw stored one. The stored
+  ## paths carry the substituted P:/ root of the machine that ran them, and
+  ## resolve_repository_contract_path() deliberately leaves an already-absolute
+  ## path alone, so re-anchoring needs the declared suffix. Same precedence
+  ## resolve_runtime_paths() documents: a declared path that already works is
+  ## used as-is, otherwise it is re-anchored on this root.
+  anchored <- vapply(siblings, function(p) {
+    if (identical(input_addressability(p), INPUT_STATUS_PRESENT)) return(p)
+    file.path(repository_root, manifest_declared_suffix(p))
+  }, character(1), USE.NAMES = FALSE)
+  sort(unique(file.path(dirname(anchored), artifact)), method = "radix")
+}
+
+# One predicate, so a caller never has to know the vocabulary.
+clusterprofiler_artifact_is_cleanup_eligible <- function(artifact) {
+  declared <- clusterprofiler_protected_reference_artifacts()
+  hit <- match(basename(as.character(artifact)), declared$artifact)
+  ifelse(is.na(hit), TRUE, declared$cleanup_eligible[hit])
+}
+
 # Strip whatever root a stored path declares, leaving the repository-relative
 # remainder that both environments agree on.
 manifest_declared_suffix <- function(path) {
