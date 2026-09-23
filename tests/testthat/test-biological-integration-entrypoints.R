@@ -17,6 +17,11 @@ testthat::test_that("biological integration entrypoints exist and dry-run", {
   testthat::expect_true(all(file.exists(repo_path(scripts))))
 
   cmd <- file.path(R.home("bin"), "Rscript")
+  # These are real scripts, spawned as child processes, and they resolve real
+  # inputs - which records provenance. setup.R routes the reviewer ledger to a
+  # temp file for the whole suite, and the child inherits that environment
+  # variable, so nothing here reaches production evidence. Verified by the
+  # tripwire in test-reviewer-ledger-integrity.R.
   old_wd <- setwd(repo_path())
   on.exit(setwd(old_wd), add = TRUE)
   cases <- list(

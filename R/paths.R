@@ -755,8 +755,45 @@ strict_inputs_enabled <- function(config = NULL) {
   isTRUE(from_args || from_env || from_config)
 }
 
+# The reviewer ledger, and how a test avoids writing to it.
+#
+# This is production evidence: reviewers read it to see how every scientific
+# input was resolved. A test that appends to it puts synthetic fixture paths
+# into that record, which is exactly what happened in Phase 6I.2 - 80 rows
+# naming a drive letter that does not exist had to be removed again.
+#
+# Isolation is by path routing, not by a dry-run guard. The appender must
+# stay unconditional: tests/testthat/test-preprocessing-writer-namespace.R
+# depends on it having no dry-run guard, because that is why
+# build_module_score_metadata is classified PATH_VERIFIED_STRUCTURALLY_ONLY.
+# Routing the destination leaves the writer's behaviour untouched.
+#
+# Two levers, in precedence order:
+#   PROTEOMICS_INPUT_RESOLUTION_AUDIT  send the ledger somewhere disposable.
+#     Inherited by child processes, so it also covers tests that spawn a
+#     script with system2() rather than calling into it.
+#   PROTEOMICS_PROJECT_ROOT            the existing whole-repository sandbox,
+#     which already routes this file along with everything else.
 input_resolution_audit_path <- function() {
+  override <- Sys.getenv("PROTEOMICS_INPUT_RESOLUTION_AUDIT", unset = "")
+  if (nzchar(override)) return(override)
   path_results("reviewer_audit", "input_resolution_audit.csv")
+}
+
+# Point the ledger at a throwaway file for the duration of the calling frame.
+# Returns the path, so a caller can assert on what was written.
+local_input_resolution_audit <- function(path = NULL, .local_envir = parent.frame()) {
+  if (is.null(path)) path <- file.path(tempfile("ledger-"), "input_resolution_audit.csv")
+  dir_create(dirname(path))
+  old <- Sys.getenv("PROTEOMICS_INPUT_RESOLUTION_AUDIT", unset = NA_character_)
+  Sys.setenv(PROTEOMICS_INPUT_RESOLUTION_AUDIT = path)
+  if (requireNamespace("withr", quietly = TRUE)) {
+    withr::defer({
+      if (is.na(old)) Sys.unsetenv("PROTEOMICS_INPUT_RESOLUTION_AUDIT")
+      else Sys.setenv(PROTEOMICS_INPUT_RESOLUTION_AUDIT = old)
+    }, envir = .local_envir)
+  }
+  path
 }
 
 input_resolution_audit_columns <- function() {

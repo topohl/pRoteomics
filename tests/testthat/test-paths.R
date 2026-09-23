@@ -53,9 +53,19 @@ testthat::test_that("strict input resolver audits and refuses latest fallback", 
   dir.create(latest_dir, recursive = TRUE)
   writeLines("fallback", file.path(latest_dir, "input_20260101.csv"))
   Sys.setenv(PROTEOMICS_PROJECT_ROOT = tmp)
+  # setup.R routes the reviewer ledger to a suite-wide temp file so no test
+  # appends to production evidence. This test is about where the resolver
+  # records provenance, so it takes the more specific override and points it
+  # back inside its own sandbox repo - which is also what demonstrates the
+  # precedence: PROTEOMICS_INPUT_RESOLUTION_AUDIT wins over both setup.R's
+  # value and PROTEOMICS_PROJECT_ROOT.
+  old_ledger <- Sys.getenv("PROTEOMICS_INPUT_RESOLUTION_AUDIT", unset = NA_character_)
+  Sys.setenv(PROTEOMICS_INPUT_RESOLUTION_AUDIT =
+               file.path(tmp, "results", "reviewer_audit", "input_resolution_audit.csv"))
   on.exit({
     if (is.na(old_strict)) Sys.unsetenv("PROTEOMICS_STRICT_INPUTS") else Sys.setenv(PROTEOMICS_STRICT_INPUTS = old_strict)
     if (is.na(old_root)) Sys.unsetenv("PROTEOMICS_PROJECT_ROOT") else Sys.setenv(PROTEOMICS_PROJECT_ROOT = old_root)
+    if (is.na(old_ledger)) Sys.unsetenv("PROTEOMICS_INPUT_RESOLUTION_AUDIT") else Sys.setenv(PROTEOMICS_INPUT_RESOLUTION_AUDIT = old_ledger)
     unlink(tmp, recursive = TRUE, force = TRUE)
   }, add = TRUE)
 
