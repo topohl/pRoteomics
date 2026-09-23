@@ -780,16 +780,48 @@ append_input_resolution_audit <- function(rows, path = input_resolution_audit_pa
   rows <- rows[, cols, drop = FALSE]
   dir_create(dirname(path))
   write_header <- !file.exists(path) || file.info(path)$size == 0
+
+  # Render first, append once. write.table(append = TRUE) issues several
+  # writes per call, and this ledger is appended to by concurrently running
+  # analyses. Three records in the file on disk are spliced remnants of that,
+  # and the three stray quote characters they leave behind desynchronise CSV
+  # quoting for every one of the 50,510 lines that follow: 0.005% of the rows
+  # cost 97% of the ledger. Rendering to a buffer keeps write.table's exact
+  # formatting and quoting but narrows the write to a single call and makes
+  # the block checkable before it is committed.
+  buffer <- character(0)
+  render <- textConnection("buffer", open = "w", local = TRUE)
   utils::write.table(
     rows,
-    file = path,
+    file = render,
     sep = ",",
     row.names = FALSE,
     col.names = write_header,
-    append = !write_header,
     na = "",
     qmethod = "double"
   )
+  close(render)
+
+  # A record carrying an odd number of quote characters is not merely a bad
+  # row: it reopens a quoted field and swallows the rest of the file.
+  # Dropping it loses one row, admitting it loses the ledger.
+  balanced <- vapply(buffer, function(line) {
+    hit <- gregexpr("\"", line, fixed = TRUE)[[1]]
+    (if (hit[[1]] == -1L) 0L else length(hit)) %% 2L == 0L
+  }, logical(1), USE.NAMES = FALSE)
+  if (any(!balanced)) {
+    warning("Dropped ", sum(!balanced), " unbalanced input-resolution audit ",
+      "record(s); admitting them would have made ", basename(path),
+      " unparseable from that point on.", call. = FALSE)
+    buffer <- buffer[balanced]
+  }
+  if (!length(buffer)) return(invisible(path))
+
+  # Text mode, matching what write.table(file = path) did, so the ledger keeps
+  # the line endings it already has.
+  con <- file(path, open = if (write_header) "wt" else "at")
+  on.exit(close(con), add = TRUE)
+  writeLines(buffer, con)
   invisible(path)
 }
 
@@ -838,10 +870,13 @@ latest_input_candidate <- function(roots, pattern, recursive = TRUE) {
   if (!length(roots) || is.na(pattern) || !nzchar(pattern)) return(NA_character_)
   files <- unlist(lapply(roots, function(root) {
     root <- normalizePath(root, winslash = "/", mustWork = FALSE)
-    if (!dir.exists(root)) return(character())
+    ## An unmounted declared root and an empty directory are not the same
+    ## thing, and dir.exists() cannot tell them apart. Enumerating a root
+    ## that was never reachable would silently narrow the candidate set.
+    if (!path_declared_root_available(root) || !dir.exists(root)) return(character())
     list.files(root, pattern = pattern, full.names = TRUE, recursive = recursive)
   }), use.names = FALSE)
-  files <- files[file.exists(files)]
+  files <- files[input_is_present(files)]
   if (!length(files)) return(NA_character_)
   info <- file.info(files)
   normalizePath(rownames(info)[order(info$mtime, decreasing = TRUE)[1]], winslash = "/", mustWork = FALSE)
@@ -896,20 +931,42 @@ resolve_input_path <- function(
     resolved
   }
 
-  if (!is.na(explicit_path) && file.exists(explicit_path)) {
+  ## Every presence decision below goes through the four-state contract
+  ## declared at the top of this file. It used to ask file.exists() here, and
+  ## the resolution_mode tokens it emits are the second vocabulary that the
+  ## contract was written to end: they still name the PRECEDENCE that was
+  ## used, which is their job, but a failure now also carries the
+  ## addressability state, so "missing" can no longer stand for an unmounted
+  ## root or a path past the character limit.
+  if (!is.na(explicit_path) && input_is_present(explicit_path)) {
     return(finish(explicit_path, "explicit_override", TRUE))
   }
-  if (!is.na(explicit_path) && !file.exists(explicit_path)) {
-    warn <- paste0("Explicit input override does not exist for ", input_name, ": ", explicit_path)
-    finish(explicit_path, "explicit_missing", TRUE, warn)
+  if (!is.na(explicit_path) && !input_is_present(explicit_path)) {
+    explicit_state <- input_addressability(explicit_path)
+    warn <- paste0("Explicit input override for ", input_name, " is not usable: ",
+      input_status_message(explicit_state), ": ", explicit_path)
+    finish(explicit_path, paste0("explicit_missing:", explicit_state), TRUE, warn)
     if (isTRUE(required)) stop(warn, call. = FALSE)
     return(explicit_path)
   }
-  if (!is.na(expected_path) && file.exists(expected_path)) {
+  if (!is.na(expected_path) && input_is_present(expected_path)) {
     return(finish(expected_path, "canonical", TRUE))
   }
 
-  fallback_hit <- fallback_paths[file.exists(fallback_paths)][1]
+  ## A canonical input that is present-but-unopenable must not be silently
+  ## replaced by a non-canonical fallback: that substitutes different data
+  ## under the same name. Only genuine absence earns a fallback.
+  expected_state <- if (is.na(expected_path)) NA_character_ else input_addressability(expected_path)
+  if (!is.na(expected_state) && expected_state %in% c(INPUT_STATUS_ROOT_UNMOUNTED,
+                                                      INPUT_STATUS_OVER_LIMIT)) {
+    warn <- paste0("Canonical input for ", input_name, " is present but unopenable (",
+      input_status_message(expected_state), "), so no fallback may stand in for it: ",
+      expected_path)
+    finish(NA_character_, paste0("canonical_undetermined:", expected_state), FALSE, warn)
+    if (isTRUE(required)) stop(warn, call. = FALSE)
+    return(NA_character_)
+  }
+  fallback_hit <- fallback_paths[input_is_present(fallback_paths)][1]
   if (!is.na(fallback_hit)) {
     warn <- paste0("Using non-canonical fallback for ", input_name, ": ", fallback_hit)
     if (isTRUE(strict) && !isTRUE(allow_fallback_in_strict)) {
@@ -933,8 +990,11 @@ resolve_input_path <- function(
     return(finish(latest_hit, "latest_fallback", isTRUE(allow_latest_in_strict), warn))
   }
 
-  warn <- paste0("Missing input for ", input_name, if (!is.na(expected_path)) paste0(": ", expected_path) else ".")
-  finish(NA_character_, "missing", TRUE, if (isTRUE(required)) warn else NA_character_)
+  warn <- paste0("Missing input for ", input_name,
+    if (!is.na(expected_path)) paste0(": ", expected_path) else ".")
+  finish(NA_character_,
+    if (is.na(expected_state)) "missing" else paste0("missing:", expected_state),
+    TRUE, if (isTRUE(required)) warn else NA_character_)
   if (isTRUE(required)) stop(warn, call. = FALSE)
   NA_character_
 }

@@ -4,6 +4,11 @@ if (!exists("repo_path", mode = "function")) {
   paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
   source(paths_file)
 }
+## The four-state input-addressability contract is used below, so make its
+## presence a load-time guarantee rather than an assumption about the caller.
+if (!exists("input_addressability", mode = "function")) {
+  source(repo_path("R", "paths.R"))
+}
 source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "module_contracts.R"))
 
@@ -96,14 +101,41 @@ integration_find <- function(filename, owner, legacy_stage, legacy_substep,
   kind <- match.arg(kind)
   cand <- integration_artifact_candidates(filename, owner, legacy_stage,
                                           legacy_substep, scope, kind)
-  hit <- cand[file.exists(cand)]
-  if (length(hit)) return(unname(hit[1]))
+  ## Candidates are tried in precedence order, canonical first, legacy last.
+  ## A candidate that is present-but-unopenable must not be skipped in silence:
+  ## file.exists() would report FALSE and the search would fall through to a
+  ## LEGACY artifact, reading different data under the same name. No candidate
+  ## is in that state today - the longest of these is 174 characters against a
+  ## 260 wall - so this is a guard against a future rename, not a change of
+  ## behaviour for any path the repository currently constructs.
+  status <- input_addressability(unname(cand))
+  undetermined <- which(status %in% c(INPUT_STATUS_ROOT_UNMOUNTED, INPUT_STATUS_OVER_LIMIT))
+  present <- which(status == INPUT_STATUS_PRESENT)
+  if (length(undetermined) && (!length(present) || undetermined[1] < present[1])) {
+    stop("Integration artifact ", filename, " has a higher-precedence candidate whose",
+      " presence is undetermined, so a lower-precedence candidate must not be",
+      " substituted for it: ",
+      describe_input_status_failures(unname(cand)[undetermined[1]], status[undetermined[1]]),
+      call. = FALSE)
+  }
+  if (length(present)) return(unname(cand)[present[1]])
   unname(cand[["normalized"]])
 }
 
 read_csv_optional <- function(path, dataset = "global", evidence_domain = "input",
                               input_type = basename(path), required = FALSE) {
-  exists <- file.exists(path)
+  ## Addressability and consequence are two axes. Collapsing them into one
+  ## token is what allowed a present-but-unopenable input to be recorded as
+  ## "missing":
+  ##   addressability - what the filesystem can tell us, one of the four
+  ##                    canonical states defined in R/paths.R;
+  ##   required       - what this analysis does about it.
+  ## `status` below deliberately keeps its existing values, because downstream
+  ## code derives evidence_role and counts_toward_convergence from them and a
+  ## new token there would silently move scientific rows. The added
+  ## `addressability` column is what names the failure.
+  addressability <- input_addressability(path)
+  exists <- identical(addressability, INPUT_STATUS_PRESENT)
   record_input_resolution(
     script = Sys.getenv("PROTEOMICS_SCRIPT_ID", unset = NA_character_),
     dataset = dataset,
@@ -111,11 +143,14 @@ read_csv_optional <- function(path, dataset = "global", evidence_domain = "input
     input_name = input_type,
     expected_path = path,
     resolved_path = path,
-    resolution_mode = if (exists) "canonical" else if (required) "missing_required" else "missing_optional",
+    resolution_mode = if (exists) "canonical" else paste0(
+      if (isTRUE(required)) "missing_required" else "missing_optional", ":", addressability),
     strict_mode = strict_inputs_enabled(),
     allowed_in_strict_mode = TRUE,
     producer_script_or_artifact_id = evidence_domain,
-    warning = if (!exists && isTRUE(required)) "Required integration input missing." else NA_character_
+    warning = if (!exists && isTRUE(required)) paste0(
+      "Required integration input is not usable: ", input_status_message(addressability))
+      else NA_character_
   )
   status <- data.frame(
     dataset = dataset,
@@ -124,8 +159,10 @@ read_csv_optional <- function(path, dataset = "global", evidence_domain = "input
     path = normalizePath(path, winslash = "/", mustWork = FALSE),
     required = isTRUE(required),
     status = if (exists) "present" else if (required) "missing_required" else "missing_optional",
-    message = if (exists) "loaded" else "input not available; downstream rows marked unavailable",
+    message = if (exists) "loaded" else paste0(
+      input_status_message(addressability), "; downstream rows marked unavailable"),
     n_rows = 0L,
+    addressability = addressability,
     stringsAsFactors = FALSE
   )
   if (!exists) return(list(data = NULL, status = status))
@@ -391,6 +428,10 @@ dry_run_inputs <- function(label, inputs) {
   for (i in seq_along(inputs)) {
     nm <- nms[[i]] %||% paste0("input_", i)
     path <- inputs[[i]]
+    ## dir.exists() was consulted here alongside file.exists() because these
+    ## inputs may be directories; input_addressability() covers both, and also
+    ## distinguishes the two failures that are not absence.
+    addressability <- input_addressability(path)
     record_input_resolution(
       script = label,
       dataset = Sys.getenv("PROTEOMICS_DATASET", unset = "global"),
@@ -398,11 +439,13 @@ dry_run_inputs <- function(label, inputs) {
       input_name = nm,
       expected_path = path,
       resolved_path = path,
-      resolution_mode = if (file.exists(path) || dir.exists(path)) "canonical" else "missing_optional",
+      resolution_mode = if (identical(addressability, INPUT_STATUS_PRESENT)) "canonical"
+        else paste0("missing_optional:", addressability),
       strict_mode = strict_inputs_enabled(),
       allowed_in_strict_mode = TRUE,
       producer_script_or_artifact_id = "dry_run_inputs"
     )
-    dry_run_line(nm, path, if (file.exists(path) || dir.exists(path)) "PASS" else "WARN")
+    dry_run_line(nm, path, if (identical(addressability, INPUT_STATUS_PRESENT)) "PASS"
+      else paste0("WARN (", addressability, ")"))
   }
 }

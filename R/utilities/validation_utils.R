@@ -4,6 +4,11 @@ if (!exists("repo_path", mode = "function")) {
   paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
   source(paths_file)
 }
+## validate_manifest_paths() below classifies scientific inputs with the
+## four-state addressability contract, so make it a load-time guarantee.
+if (!exists("input_addressability", mode = "function")) {
+  source(repo_path("R", "paths.R"))
+}
 
 safe_name <- function(x, max_chars = 180) {
   x <- as.character(x)
@@ -53,17 +58,30 @@ sample_overlap_summary <- function(matrix_samples, metadata_samples) {
 
 validate_manifest_paths <- function(manifest, path_cols = c("input_gene_file", "output_table", "output_plot"), allow_missing = TRUE) {
   if (is.null(manifest) || !nrow(manifest)) {
-    return(data.frame(path_column = character(), path = character(), exists = logical(), stringsAsFactors = FALSE))
+    return(data.frame(path_column = character(), path = character(), exists = logical(),
+                      status = character(), stringsAsFactors = FALSE))
   }
   cols <- intersect(path_cols, names(manifest))
   out <- do.call(rbind, lapply(cols, function(col) {
     vals <- unique(as.character(manifest[[col]]))
     vals <- vals[!is.na(vals) & nzchar(vals)]
-    data.frame(path_column = col, path = vals, exists = file.exists(vals), stringsAsFactors = FALSE)
+    ## `exists` is what file.exists() returned and keeps that meaning, because
+    ## two callers index it. `status` is what the four-state contract in
+    ## R/paths.R says, and it is the one that can tell an unmounted declared
+    ## root or a path past the 260-character wall from a file that is simply
+    ## not there. The neuron_neuropil clusterProfiler manifest declares 150
+    ## paths under an unmounted P:// root; calling those "missing" is wrong.
+    data.frame(path_column = col, path = vals, exists = file.exists(vals),
+               status = input_addressability(vals), stringsAsFactors = FALSE)
   }))
-  if (is.null(out)) out <- data.frame(path_column = character(), path = character(), exists = logical(), stringsAsFactors = FALSE)
-  if (!allow_missing && any(!out$exists)) {
-    stop("Manifest contains missing paths:\n", paste(out$path[!out$exists], collapse = "\n"), call. = FALSE)
+  if (is.null(out)) out <- data.frame(path_column = character(), path = character(),
+                                      exists = logical(), status = character(),
+                                      stringsAsFactors = FALSE)
+  unusable <- out$status != INPUT_STATUS_PRESENT
+  if (!allow_missing && any(unusable)) {
+    stop("Manifest references unusable paths: ",
+      describe_input_status_failures(out$path[unusable], out$status[unusable]),
+      call. = FALSE)
   }
   out
 }

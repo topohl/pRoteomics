@@ -4,6 +4,11 @@ if (!exists("repo_path", mode = "function")) {
   paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
   source(paths_file)
 }
+## The four-state input-addressability contract is used below, so make its
+## presence a load-time guarantee rather than an assumption about the caller.
+if (!exists("input_addressability", mode = "function")) {
+  source(repo_path("R", "paths.R"))
+}
 source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "wgcna_claim_readiness_utils.R"))
 source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
@@ -34,6 +39,11 @@ final_dataset_terminology <- function(dataset) {
 }
 
 read_final_csv <- function(path) {
+  ## One classifier for the whole repository. The final evidence bundle used
+  ## to record every unusable input as "missing_optional", which reads as "the
+  ## producer has not run yet" and is wrong for a path past the character
+  ## limit or an unmounted declared root.
+  addressability <- input_addressability(path)
   record_input_resolution(
     script = Sys.getenv("PROTEOMICS_SCRIPT_ID", unset = NA_character_),
     dataset = "global",
@@ -41,12 +51,13 @@ read_final_csv <- function(path) {
     input_name = basename(path),
     expected_path = path,
     resolved_path = path,
-    resolution_mode = if (file.exists(path)) "canonical" else "missing_optional",
+    resolution_mode = if (identical(addressability, INPUT_STATUS_PRESENT)) "canonical"
+      else paste0("missing_optional:", addressability),
     strict_mode = strict_inputs_enabled(),
     allowed_in_strict_mode = TRUE,
     producer_script_or_artifact_id = "final_evidence_bundle_source"
   )
-  if (!file.exists(path)) return(NULL)
+  if (!identical(addressability, INPUT_STATUS_PRESENT)) return(NULL)
   if (requireNamespace("readr", quietly = TRUE)) {
     readr::read_csv(
       path, show_col_types = FALSE, progress = FALSE,
@@ -73,11 +84,14 @@ bundle_input_status <- function(inputs) {
   data.frame(
     input_name = names(inputs),
     path = normalizePath(unname(unlist(inputs)), winslash = "/", mustWork = FALSE),
-    status = ifelse(file.exists(unname(unlist(inputs))), "present", "missing_optional"),
+    ## `status` keeps its two existing values so bundle consumers are unmoved;
+    ## `addressability` below is what distinguishes absent from unopenable.
+    status = ifelse(input_is_present(unname(unlist(inputs))), "present", "missing_optional"),
     n_rows = vapply(unname(unlist(inputs)), function(path) {
       df <- read_final_csv(path)
       if (is.null(df)) 0L else nrow(df)
     }, integer(1)),
+    addressability = input_addressability(unname(unlist(inputs))),
     stringsAsFactors = FALSE
   )
 }
