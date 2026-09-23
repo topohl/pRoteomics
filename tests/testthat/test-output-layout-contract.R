@@ -179,9 +179,20 @@ testthat::test_that("the export bundle is present, manifested and hash-consisten
   testthat::expect_gt(nrow(m), 0L)
 
   # every manifest row must resolve inside the bundle and still hash as recorded
+  #
+  # exported_file is recorded relative to this repository's root, so the bundle
+  # root has to come off before joining it to dst. Phase 6F moved that root
+  # from results/ to exports/ and this strip was never updated, which was
+  # invisible for as long as the committed manifest predated the move: every
+  # row failed to resolve, `next` swallowed it, and only the final
+  # expect_gt(checked, 0) stood between the check and being vacuous. Stripping
+  # either prefix is what Exp9_manuscript's tools/verify_source_bundles.R
+  # already does, and the manuscript's import boundary additionally REQUIRES
+  # the exports/ form, so that is the one a regenerated manifest carries.
   checked <- 0L
   for (i in seq_len(nrow(m))) {
-    f <- file.path(dst, sub("^results/publication_source_data/", "", m$exported_file[i]))
+    f <- file.path(dst, sub("^(exports|results)/publication_source_data/", "",
+                            m$exported_file[i]))
     if (!file.exists(f)) next
     testthat::expect_identical(unname(tools::sha256sum(f)), m$sha256[i],
                                info = m$exported_file[i])

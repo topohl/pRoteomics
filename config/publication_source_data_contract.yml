@@ -55,6 +55,15 @@ identities:
     source_data_dir: results/source_data/manuscript/figure_03
     originating_analysis: "this repository"
     upstream_source_commit: "n/a"
+  # Supplementary tables, not a figure. These are the complete sets that the
+  # selected proteins and pathways in Figures 2 and 3 were drawn from: the
+  # denominators. Exported straight from the owning analysis's canonical
+  # results tree rather than staged under results/source_data/manuscript,
+  # which is LEGACY_READ_ONLY. See docs/FIGURE_SELECTION_RULES.md.
+  - publication_id: supplementary_selection_inventories
+    source_data_dir: results/integration/build_display_selection_inventories/global/tables/source_data
+    originating_analysis: "analysis/integration/build_display_selection_inventories.R"
+    upstream_source_commit: "n/a"
 
 # Identities deliberately withheld from the publication layer. Their names are
 # reserved so that a later promotion cannot silently reuse a number.

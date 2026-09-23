@@ -8,7 +8,7 @@ legitimately write different files into one family, which is coordination
 rather than a defect. What must never happen is two scripts declaring the
 same concrete output file, and this tool fails if any does.
 
-At this commit: **107 families**, **339 concrete declared outputs**, **0** of which have more than one declared writer.
+At this commit: **109 families**, **358 concrete declared outputs**, **0** of which have more than one declared writer.
 
 Output namespaces are keyed on **stage identity**, not on script location.
 That is why a script named `summarize_missingness.R` writes into
@@ -34,9 +34,11 @@ its outputs.
 | `results/integration/audit_animal_id_integrity/global` | `audit_animal_id_integrity.R` | 1 | 3 |
 | `results/integration/build_candidate_protein_shortlist/<dataset>` | `build_candidate_protein_shortlist.R` | 1 | 7 |
 | `results/integration/build_cross_compartment_atlas/global` | `build_cross_compartment_atlas.R` | 1 | 7 |
+| `results/integration/build_display_selection_inventories/global` | `build_display_selection_inventories.R` | 1 | 13 |
 | `results/integration/build_evidence_priority_matrix/global` | `build_evidence_priority_matrix.R` | 1 | 5 |
 | `results/integration/build_immunostaining_candidates/global` | `build_immunostaining_candidates.R` | 1 | 4 |
 | `results/integration/export_module_protein_zoom_source_data/global` | `export_module_protein_zoom_source_data.R` | 1 | 1 |
+| `results/integration/plot_display_selection_context/global` | `plot_display_selection_context.R` | 1 | 6 |
 | `results/integration/quantify_candidate_network_position/<dataset>` | `quantify_candidate_network_position.R` | 1 | 5 |
 | `results/integration/render_module_circular_atlas/global` | `render_module_circular_atlas.R` | 1 | 37 |
 | `results/integration/screen_immunostaining_panel/global` | `screen_immunostaining_panel.R` | 1 | 6 |
