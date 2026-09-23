@@ -219,6 +219,64 @@ testthat::test_that("every dataset has at least one imputed matrix, without pinn
   testthat::expect_true(all(q$base_seed == 42L))
 })
 
+testthat::test_that("the upstream input roots are declared at all", {
+  # Phase 6I.8. Before it, docs/file_contracts.tsv declared ZERO paths under
+  # data/raw/, data/metadata/ or data/external/ - it described derived results
+  # almost exclusively, so the entire upstream input layer was invisible to the
+  # registry while being read by dozens of scripts.
+  testthat::skip_if_not(file.exists(CONTRACTS), "file contracts absent")
+  d <- utils::read.delim(CONTRACTS, sep = "\t", stringsAsFactors = FALSE,
+                         check.names = FALSE)
+  for (root in c("data/raw", "data/metadata", "data/external")) {
+    testthat::expect_gt(sum(grepl(root, d$path, fixed = TRUE)), 0L)
+  }
+})
+
+testthat::test_that("externally sourced inputs may declare no producer", {
+  # Several of these have no repository producer by nature - instrument export,
+  # manual curation, external download - and a contract that invented one would
+  # be worse than no contract. The rule is that created_by must SAY so rather
+  # than name a script that does not produce it.
+  testthat::skip_if_not(file.exists(CONTRACTS), "file contracts absent")
+  d <- utils::read.delim(CONTRACTS, sep = "\t", stringsAsFactors = FALSE,
+                         check.names = FALSE)
+  for (id in c("raw_protein_group_matrix", "sample_metadata_workbook",
+               "manual_identifier_mapping", "uniprot_idmapping_reference",
+               "external_reference_marker_sets", "external_behaviour_data",
+               "external_published_reference_dataset")) {
+    r <- d[d$object_id == id, , drop = FALSE]
+    testthat::expect_identical(nrow(r), 1L, info = id)
+    testthat::expect_true(grepl("NO repository producer", r$created_by[1], fixed = TRUE),
+      info = paste(id, "no longer states that it has no producer here"))
+  }
+})
+
+testthat::test_that("every active-reader family under the audited roots is declared", {
+  # The completeness property, measured rather than asserted. A family counts
+  # if it exists under one of the three roots; data/metadata/README.md is
+  # excluded because R/paths.R reads it as the rprojroot repository-root
+  # sentinel, not as a scientific input.
+  testthat::skip_if_not(file.exists(CONTRACTS), "file contracts absent")
+  d <- utils::read.delim(CONTRACTS, sep = "\t", stringsAsFactors = FALSE,
+                         check.names = FALSE)
+  declared <- paste(d$path, collapse = " ")
+  SENTINELS <- "README.md"
+
+  undeclared <- character(0)
+  for (root in c("data/raw", "data/metadata", "data/external")) {
+    r <- repo_path(root)
+    testthat::skip_if_not(dir.exists(r), paste(root, "absent"))
+    for (fam in list.files(r)) {
+      if (fam %in% SENTINELS) next
+      rel <- file.path(root, fam)
+      if (!grepl(rel, declared, fixed = TRUE) && !grepl(fam, declared, fixed = TRUE))
+        undeclared <- c(undeclared, rel)
+    }
+  }
+  testthat::expect_identical(undeclared, character(0),
+    info = paste("undeclared input families:", paste(undeclared, collapse = ", ")))
+})
+
 testthat::test_that("the audit contract and the retention declaration agree on a location", {
   # The retention declaration added in Phase 6I.3 protects the executed rank
   # record inside protein_group_audits/. If the file contract named a different
