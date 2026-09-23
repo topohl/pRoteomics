@@ -157,6 +157,68 @@ testthat::test_that("the clusterProfiler audit contracts point at the executed a
   }
 })
 
+testthat::test_that("the canonical imputed matrices are declared, with an honest producer", {
+  # Phase 6I.7. These are a REQUIRED active input - dataset_inputs.R resolves
+  # them with required = TRUE for both the WGCNA and Protigy paths - whose only
+  # producer is archived and is not a registered pipeline step. The contract
+  # has to say that rather than imply an active producer, so the producer
+  # string is asserted, not just the row's existence.
+  testthat::skip_if_not(file.exists(CONTRACTS), "file contracts absent")
+  d <- utils::read.delim(CONTRACTS, sep = "\t", stringsAsFactors = FALSE,
+                         check.names = FALSE)
+  for (id in c("imputed_protein_matrix", "imputation_seed_provenance")) {
+    r <- d[d$object_id == id, , drop = FALSE]
+    testthat::expect_identical(nrow(r), 1L, info = id)
+    testthat::expect_true(grepl("archive/01_preprocessing/01_impute.r", r$created_by[1], fixed = TRUE),
+      info = paste(id, "no longer names the archived producer"))
+    testthat::expect_true(grepl("ARCHIVED", r$created_by[1], fixed = TRUE),
+      info = paste(id, "stopped flagging that no active step regenerates these"))
+  }
+})
+
+testthat::test_that("the declared matrix pattern is the one the resolver actually uses", {
+  # The cross-check that matters. A contract naming a pattern the resolver does
+  # not use would be decorative: the resolver is what decides which file is the
+  # active input, so the two must describe the same object.
+  testthat::skip_if_not(file.exists(CONTRACTS), "file contracts absent")
+  d <- utils::read.delim(CONTRACTS, sep = "\t", stringsAsFactors = FALSE,
+                         check.names = FALSE)
+  declared <- d$path[d$object_id == "imputed_protein_matrix"][1]
+  testthat::expect_true(grepl("data/processed/01_preprocessing/impute/", declared, fixed = TRUE))
+  testthat::expect_true(grepl("pgmatrix_imputed", declared, fixed = TRUE))
+  testthat::expect_true(grepl("missing70pct.xlsx", declared, fixed = TRUE))
+
+  src <- paste(readLines(repo_path("R", "data_contracts", "dataset_inputs.R"), warn = FALSE),
+               collapse = "\n")
+  testthat::expect_true(grepl("pgmatrix_imputed", src, fixed = TRUE),
+    info = "the resolver no longer addresses these matrices")
+  testthat::expect_true(grepl("missing70pct", src, fixed = TRUE))
+  # and it is still a newest-wins resolution, which is why the contract states
+  # cardinality as a pattern rather than a file list
+  testthat::expect_true(grepl("latest_pattern", src, fixed = TRUE) ||
+                          grepl("latest_matching_file", src, fixed = TRUE),
+    info = "generation selection stopped being newest-wins; the contract's cardinality wording is now wrong")
+})
+
+testthat::test_that("every dataset has at least one imputed matrix, without pinning a count", {
+  # Cardinality is one per dataset per dated generation, newest wins. Two
+  # generations coexist today and that is legitimate, so the assertion is
+  # per-dataset presence rather than a file total, which would break the next
+  # time the imputation is rerun.
+  root <- repo_path("data", "processed", "01_preprocessing", "impute")
+  testthat::skip_if_not(dir.exists(root), "impute directory absent")
+  for (ds in c("microglia", "neuron_neuropil", "neuron_soma")) {
+    pat <- paste0("^[0-9]{8}_pgmatrix_imputed_", ds, "_[0-9]+samples_missing70pct[.]xlsx$")
+    testthat::expect_gt(length(list.files(root, pattern = pat)), 0L)
+  }
+  # the seed record that makes the recovery path verifiable
+  qc <- file.path(root, "imputation_qc.csv")
+  testthat::skip_if_not(file.exists(qc), "imputation QC absent")
+  q <- utils::read.csv(qc, stringsAsFactors = FALSE)
+  testthat::expect_setequal(q$celltype_layer, c("microglia", "neuron_neuropil", "neuron_soma"))
+  testthat::expect_true(all(q$base_seed == 42L))
+})
+
 testthat::test_that("the audit contract and the retention declaration agree on a location", {
   # The retention declaration added in Phase 6I.3 protects the executed rank
   # record inside protein_group_audits/. If the file contract named a different
