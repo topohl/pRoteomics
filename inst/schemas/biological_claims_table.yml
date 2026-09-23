@@ -120,3 +120,19 @@ columns:
   wgcna_readiness_contract_version: {type: character}
   wgcna_stage13_source_file: {type: character}
   wgcna_statistical_endpoint_id: {type: character}
+  # WGCNA display label and its provenance, attached by
+  # attach_canonical_wgcna_display_label() in R/statistics/wgcna_label_activation_utils.R.
+  # One canonical label per dataset and entity, plus what each naming stage
+  # said - the producer keeps the superseded labels on purpose ("No historical
+  # label is discarded", :406-408) so the submission artifact still records
+  # them, and test-wgcna-label-activation.R asserts they are never dropped.
+  #
+  # Declared here rather than in required_columns because they are attached
+  # only to rows that are WGCNA entities: the function returns early when the
+  # entity columns are absent, so a claims table without WGCNA rows legitimately
+  # has none of them. Typed-and-optional is the truthful statement.
+  canonical_display_label: {type: character}
+  canonical_label_source: {type: character}
+  Stage01_ModuleLabel_Final: {type: character}
+  Stage06_label: {type: character}
+  Stage07_label: {type: character}

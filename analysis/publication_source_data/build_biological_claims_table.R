@@ -2209,7 +2209,6 @@ claims <- dplyr::bind_rows(
   apply_neuronal_wgcna_architecture_semantics() %>%
   standardize_claims()
 
-validate_table_schema(claims, "biological_claims_table", strict = TRUE)
 wgcna_stage13_cardinality_audit <- write_wgcna_stage13_cardinality_audit(claims)
 
 # ---- one canonical display label per WGCNA entity ------------------------
@@ -2227,6 +2226,16 @@ wgcna_stage13_cardinality_audit <- write_wgcna_stage13_cardinality_audit(claims)
 # before - the change is that they now do so consistently.
 claims <- attach_canonical_wgcna_display_label(claims)
 assert_one_canonical_label_per_wgcna_entity(claims)
+
+# Validate the object that is actually written, not an earlier one.
+#
+# This call used to sit above attach_canonical_wgcna_display_label(), so it
+# checked a frame five columns narrower than the artifact. The producer
+# passed and the written table failed the identical check in
+# smoke_test_active_script_contracts - which is how the schema went 51 days
+# out of date without anyone here noticing. Validating immediately before the
+# write means the producer cannot emit a table its own contract rejects.
+validate_table_schema(claims, "biological_claims_table", strict = TRUE)
 
 claims_tables <- psd_dirs("build_biological_claims_table", create = TRUE)$tables
 csv_out <- file.path(claims_tables, "biological_claims_table.csv")
