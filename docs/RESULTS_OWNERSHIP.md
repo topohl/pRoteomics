@@ -8,7 +8,7 @@ legitimately write different files into one family, which is coordination
 rather than a defect. What must never happen is two scripts declaring the
 same concrete output file, and this tool fails if any does.
 
-At this commit: **109 families**, **358 concrete declared outputs**, **0** of which have more than one declared writer.
+At this commit: **110 families**, **370 concrete declared outputs**, **0** of which have more than one declared writer.
 
 Output namespaces are keyed on **stage identity**, not on script location.
 That is why a script named `summarize_missingness.R` writes into
@@ -50,6 +50,7 @@ its outputs.
 | `results/integration/test_enrichment_module_concordance/global` | `test_enrichment_module_concordance.R` | 1 | 9 |
 | `results/integration/test_module_behaviour_coupling/<dataset>` | `test_module_behaviour_coupling.R` | 1 | 3 |
 | `results/integration/test_network_behaviour_coupling/global` | `test_network_behaviour_coupling.R` | 1 | 0 |
+| `results/integration/test_theme_module_composition/global` | `test_theme_module_composition.R` | 1 | 12 |
 | `results/manuscript/extended_data` | `08_export_manuscript_figures.R` | 1 | 0 |
 | `results/manuscript/figure_1` | `08_export_manuscript_figures.R` | 1 | 0 |
 | `results/manuscript/figure_2` | `08_export_manuscript_figures.R` | 1 | 0 |
