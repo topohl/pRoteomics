@@ -77,14 +77,10 @@ files <- list(
   manifest = file.path(LOG_DIR, "run_manifest.yml")
 )
 
-RANKED_PROGRAM_SOURCE <- path_results(
-  "source_data", MODULE_ID, "compareGO_spatial_atlas",
-  "source_data_SpatialProgramAtlas_SUS_vs_RES_publication.csv"
-)
-SUPPORTED_GO_AUDIT_SOURCE <- path_results(
-  "source_data", MODULE_ID, "compareGO_spatial_atlas",
-  "sus_res_supported_go_term_theme_audit.csv"
-)
+# written by analysis/differential_abundance/build_go_program_atlas.R (the legacy compareGO_spatial_atlas copy is stale)
+GO_ATLAS_SOURCE_DIR <- path_results("differential_abundance", "build_go_program_atlas", "global", "tables", "source_data")
+RANKED_PROGRAM_SOURCE <- file.path(GO_ATLAS_SOURCE_DIR, "source_data_SpatialProgramAtlas_SUS_vs_RES_publication.csv")
+SUPPORTED_GO_AUDIT_SOURCE <- file.path(GO_ATLAS_SOURCE_DIR, "sus_res_supported_go_term_theme_audit.csv")
 MANUSCRIPT_GO_THEME_REGISTRY <- repo_path("config", "manuscript_go_theme_registry.tsv")
 
 manifest_paths <- setNames(vapply(DATASETS, canonical_clusterprofiler_manifest_path, character(1)), DATASETS)

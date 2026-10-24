@@ -596,14 +596,15 @@ qc_validate_optional_wgcna_bridge <- function(state_file, canonical, strict = FA
 }
 
 qc_add_input_manifest_paths <- function(canonical, paths) {
+  paths <- paths[!is.na(paths) & nzchar(paths)]  # an absent optional input is not recorded
   if (!length(paths)) return(canonical)
   roles <- names(paths)
   if (is.null(roles) || any(!nzchar(roles))) stop("Additional canonical QC inputs require named roles.", call. = FALSE)
   paths <- as.character(paths)
   extra <- data.frame(
     input_role = roles,
-    resolved_path = vapply(paths, normalizePath, character(1), winslash = "/", mustWork = FALSE),
-    sha256 = vapply(paths, file_hash_sha256, character(1)),
+    resolved_path = vapply(paths, normalizePath, character(1), winslash = "/", mustWork = FALSE, USE.NAMES = FALSE),
+    sha256 = vapply(paths, file_hash_sha256, character(1), USE.NAMES = FALSE),
     exists = file.exists(paths),
     stringsAsFactors = FALSE
   )
